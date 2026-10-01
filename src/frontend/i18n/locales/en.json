@@ -16,7 +16,8 @@
     "hide": "Hide menu",
     "signedInAs": "Signed in as {{name}}",
     "close": "Close menu",
-    "import": "Import"
+    "import": "Import",
+    "home": "Home"
   },
   "language": {
     "label": "Language"
@@ -148,7 +149,8 @@
       "refuelings": "Refuelings",
       "details": "Details",
       "sharing": "Sharing",
-      "expenses": "Expenses"
+      "expenses": "Expenses",
+      "dashboard": "Dashboard"
     },
     "owner": "Owner",
     "fuel": "Fuel",
@@ -335,6 +337,21 @@
       "incomeSkipped": "“{{title}}” is income, which is not imported.",
       "titleMissing": "The row has no title or category.",
       "unitsDiffer": "The file uses other units than this vehicle. Numbers are imported as they are, without conversion."
+    },
+    "chart": {
+      "invalid": "This chart is not valid.",
+      "categoryNeedsExpenses": "Grouping by category is only available for expense costs.",
+      "donutNeedsTotals": "A donut chart needs a metric that adds up (costs, volume, distance or fill-ups).",
+      "stackNeedsTotalSpend": "Splitting into fuel and expenses is only available for total spend.",
+      "datesRequired": "Choose the first and the last day of the period.",
+      "datesReversed": "The first day cannot be after the last day.",
+      "rangeTooLong": "The period can be at most {{max}} years.",
+      "titleRequired": "The chart needs a title.",
+      "titleTooLong": "The title can be at most {{max}} characters.",
+      "limit": "You can have at most {{max}} charts for a vehicle.",
+      "needEditToShare": "You need edit access to the vehicle's logs to share a chart.",
+      "notYours": "Only the creator can change this chart.",
+      "notFound": "This chart does not exist."
     }
   },
   "a11y": {
@@ -530,6 +547,129 @@
       "log": "Fuel logs",
       "costs": "Costs",
       "vehicle": "Vehicle"
+    }
+  },
+  "welcome": {
+    "title": "Your vehicles",
+    "empty": "You have no vehicles yet. Add your first one or import your logs from another app.",
+    "add": "Add vehicle",
+    "import": "Import logs",
+    "all": "All vehicles",
+    "countLabel": "{{count}} vehicles",
+    "card": {
+      "openAria": "Open {{name}}",
+      "odometer": "Odometer",
+      "consumption": "Avg. consumption",
+      "lastFillUp": "Last fill-up",
+      "thisMonth": "This month",
+      "none": "No data yet",
+      "noFillUps": "No fill-ups yet",
+      "logAccess": "Logs: {{level}}",
+      "owner": "Owner: {{name}}",
+      "trend": "Spending in the last six months"
+    }
+  },
+  "dashboard": {
+    "kpi": {
+      "thisMonth": "Spent this month",
+      "lastMonth": "Last month: {{amount}}",
+      "consumption": "Average consumption",
+      "consumptionHint": "last 10 full fill-ups",
+      "odometer": "Odometer",
+      "lastFillUp": "Last fill-up",
+      "counts": "{{fuel}} fill-ups, {{expenses}} expenses",
+      "none": "–",
+      "title": "Key figures"
+    },
+    "overview": "Overview",
+    "yourCharts": "Charts",
+    "addChart": "Add chart",
+    "noCharts": "Compose your own charts from your data: pick what to measure, how to group it, and the period.",
+    "noData": "No data for this period yet.",
+    "shared": "Shared",
+    "by": "by {{name}}",
+    "showTable": "Show the data as a table",
+    "hideTable": "Hide the table",
+    "editChart": "Edit the chart {{title}}",
+    "deleteChart": "Delete the chart {{title}}",
+    "deleteTitle": "Delete this chart?",
+    "deleteDescription": "“{{title}}” is removed for everyone it is shared with. The data itself is not affected.",
+    "deleteConfirm": "Delete chart",
+    "chartLabel": "{{title}}: chart",
+    "table": {
+      "period": "Period",
+      "category": "Category",
+      "series": "Series"
+    },
+    "series": {
+      "total": "Total",
+      "fuel": "Fuel",
+      "expenses": "Expenses",
+      "value": "Value"
+    },
+    "uncategorised": "Uncategorised",
+    "presets": {
+      "monthlyCosts": "Monthly costs",
+      "consumption": "Consumption",
+      "fuelPrice": "Fuel price",
+      "categories": "Expenses by category",
+      "distance": "Distance per month"
+    }
+  },
+  "charts": {
+    "dialogAdd": "Add chart",
+    "dialogEdit": "Edit chart",
+    "dialogDescription": "Choose what to measure, how to group it and for which period. The preview shows your data.",
+    "save": "Save chart",
+    "preview": "Preview",
+    "fields": {
+      "title": "Title",
+      "metric": "What to measure",
+      "grouping": "Group by",
+      "kind": "Chart type",
+      "range": "Period",
+      "from": "From",
+      "to": "To",
+      "stacked": "Split into fuel and expenses",
+      "shared": "Share with everyone who can see this vehicle"
+    },
+    "hints": {
+      "stacked": "Shows fuel and expenses on top of each other.",
+      "shared": "Others can see this chart but only you can change it.",
+      "donut": "Donuts need a total (costs, volume, distance, fill-ups).",
+      "category": "Grouping by category is only for expense costs."
+    },
+    "metrics": {
+      "TOTAL_SPEND": "Total spend (fuel and expenses)",
+      "FUEL_COST": "Fuel cost",
+      "EXPENSE_COST": "Expense cost",
+      "FUEL_VOLUME": "Fuel volume",
+      "DISTANCE": "Distance driven",
+      "AVERAGE_CONSUMPTION": "Average consumption",
+      "AVERAGE_PRICE_PER_UNIT": "Average fuel price",
+      "FILL_UPS": "Number of fill-ups"
+    },
+    "groupings": {
+      "MONTH": "Month",
+      "QUARTER": "Quarter",
+      "YEAR": "Year",
+      "CATEGORY": "Expense category"
+    },
+    "kinds": {
+      "BAR": "Bars",
+      "LINE": "Line",
+      "AREA": "Area",
+      "DONUT": "Donut"
+    },
+    "ranges": {
+      "LAST1_MONTH": "1 month",
+      "LAST3_MONTHS": "3 months",
+      "LAST6_MONTHS": "Half a year",
+      "LAST12_MONTHS": "One year",
+      "THIS_YEAR": "This year",
+      "LAST_YEAR": "Last year",
+      "ALL": "All time",
+      "CUSTOM": "Custom (from – to)"
     }
   }
 }

@@ -11,6 +11,7 @@ using Tankstat.Application.Imports;
 using Tankstat.Application.Odometers;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Sharing;
+using Tankstat.Application.Stats;
 using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
 
@@ -40,6 +41,8 @@ public static class DependencyInjection
         services.AddScoped<ImageService>();
         services.AddScoped<RefuelingService>();
         services.AddScoped<ExpenseService>();
+        services.AddScoped<StatsService>();
+        services.AddScoped<ChartService>();
         services.AddSingleton<ImportSessionStore>();
         services.AddSingleton<IImportParser, FuelioCsvParser>();
         services.AddScoped<ImportService>();

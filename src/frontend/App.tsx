@@ -13,6 +13,7 @@ import { ErrorMessage } from './messages.tsx'
 import { NoticeBanner } from './NoticeBanner.tsx'
 import { ResetPasswordView } from './PasswordForms.tsx'
 import { ImportPage } from './pages/ImportPage.tsx'
+import { WelcomePage } from './pages/WelcomePage.tsx'
 import { AccountPage } from './pages/AccountPage.tsx'
 import { AdminPanel } from './admin/AdminPanel.tsx'
 import { TrashPage } from './pages/TrashPage.tsx'
@@ -100,7 +101,7 @@ function Content({ data }: { data: SessionQuery }) {
     // A short fade/slide-in on every page change (honours the user's reduced-motion setting).
     <motion.div key={pathname} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
       <Routes>
-        <Route path="/" element={<Navigate to="/vehicles" replace />} />
+        <Route path="/" element={<WelcomePage />} />
         <Route path="/vehicles" element={<VehiclesPage />} />
         <Route path="/vehicles/:id/*" element={<VehiclePage />} />
         <Route path="/import" element={<ImportPage />} />

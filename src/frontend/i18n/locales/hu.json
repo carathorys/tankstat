@@ -16,7 +16,8 @@
     "hide": "Menü elrejtése",
     "signedInAs": "Bejelentkezve mint {{name}}",
     "close": "Menü bezárása",
-    "import": "Importálás"
+    "import": "Importálás",
+    "home": "Kezdőlap"
   },
   "language": {
     "label": "Nyelv"
@@ -148,7 +149,8 @@
       "refuelings": "Tankolások",
       "details": "Részletek",
       "sharing": "Megosztás",
-      "expenses": "Költségek"
+      "expenses": "Költségek",
+      "dashboard": "Áttekintés"
     },
     "owner": "Tulajdonos",
     "fuel": "Üzemanyag",
@@ -335,6 +337,21 @@
       "incomeSkipped": "A(z) „{{title}}” bevétel, amelyet nem importálunk.",
       "titleMissing": "A sorban nincs megnevezés vagy kategória.",
       "unitsDiffer": "A fájl más mértékegységeket használ, mint ez a jármű. A számok átváltás nélkül, úgy kerülnek be, ahogy vannak."
+    },
+    "chart": {
+      "invalid": "Ez a grafikon nem érvényes.",
+      "categoryNeedsExpenses": "A kategória szerinti csoportosítás csak a költségekhez érhető el.",
+      "donutNeedsTotals": "A fánkdiagramhoz összegezhető adat kell (költség, mennyiség, távolság vagy tankolások száma).",
+      "stackNeedsTotalSpend": "A bontás üzemanyagra és költségekre csak a teljes költésnél érhető el.",
+      "datesRequired": "Add meg az időszak első és utolsó napját.",
+      "datesReversed": "Az első nap nem lehet az utolsó után.",
+      "rangeTooLong": "Az időszak legfeljebb {{max}} év lehet.",
+      "titleRequired": "A grafikonhoz cím kell.",
+      "titleTooLong": "A cím legfeljebb {{max}} karakter lehet.",
+      "limit": "Egy járműhöz legfeljebb {{max}} grafikonod lehet.",
+      "needEditToShare": "A grafikon megosztásához szerkesztési jog kell a jármű naplójához.",
+      "notYours": "Ezt a grafikont csak a létrehozója módosíthatja.",
+      "notFound": "Ez a grafikon nem létezik."
     }
   },
   "a11y": {
@@ -530,6 +547,129 @@
       "log": "Tankolások",
       "costs": "Költségek",
       "vehicle": "Jármű"
+    }
+  },
+  "welcome": {
+    "title": "Járműveid",
+    "empty": "Még nincs járműved. Add hozzá az elsőt, vagy importáld a naplóidat egy másik alkalmazásból.",
+    "add": "Jármű hozzáadása",
+    "import": "Napló importálása",
+    "all": "Minden jármű",
+    "countLabel": "{{count}} jármű",
+    "card": {
+      "openAria": "{{name}} megnyitása",
+      "odometer": "Kilométeróra",
+      "consumption": "Átl. fogyasztás",
+      "lastFillUp": "Utolsó tankolás",
+      "thisMonth": "Ebben a hónapban",
+      "none": "Még nincs adat",
+      "noFillUps": "Még nincs tankolás",
+      "logAccess": "Napló: {{level}}",
+      "owner": "Tulajdonos: {{name}}",
+      "trend": "Költés az elmúlt hat hónapban"
+    }
+  },
+  "dashboard": {
+    "kpi": {
+      "thisMonth": "Költés ebben a hónapban",
+      "lastMonth": "Előző hónap: {{amount}}",
+      "consumption": "Átlagos fogyasztás",
+      "consumptionHint": "az utolsó 10 teli tankolás",
+      "odometer": "Kilométeróra",
+      "lastFillUp": "Utolsó tankolás",
+      "counts": "{{fuel}} tankolás, {{expenses}} költség",
+      "none": "–",
+      "title": "Fő adatok"
+    },
+    "overview": "Áttekintés",
+    "yourCharts": "Grafikonok",
+    "addChart": "Grafikon hozzáadása",
+    "noCharts": "Állítsd össze saját grafikonjaidat: válaszd ki, mit mérjünk, hogyan csoportosítsuk, és melyik időszakra.",
+    "noData": "Ebben az időszakban még nincs adat.",
+    "shared": "Megosztva",
+    "by": "{{name}} által",
+    "showTable": "Az adatok megjelenítése táblázatként",
+    "hideTable": "A táblázat elrejtése",
+    "editChart": "A(z) {{title}} grafikon szerkesztése",
+    "deleteChart": "A(z) {{title}} grafikon törlése",
+    "deleteTitle": "Törlöd ezt a grafikont?",
+    "deleteDescription": "A(z) „{{title}}” mindenkinek eltűnik, akivel meg van osztva. Maguk az adatok nem változnak.",
+    "deleteConfirm": "Grafikon törlése",
+    "chartLabel": "{{title}}: grafikon",
+    "table": {
+      "period": "Időszak",
+      "category": "Kategória",
+      "series": "Adatsor"
+    },
+    "series": {
+      "total": "Összesen",
+      "fuel": "Üzemanyag",
+      "expenses": "Költségek",
+      "value": "Érték"
+    },
+    "uncategorised": "Kategória nélkül",
+    "presets": {
+      "monthlyCosts": "Havi költségek",
+      "consumption": "Fogyasztás",
+      "fuelPrice": "Üzemanyagár",
+      "categories": "Költségek kategóriánként",
+      "distance": "Havi megtett távolság"
+    }
+  },
+  "charts": {
+    "dialogAdd": "Grafikon hozzáadása",
+    "dialogEdit": "Grafikon szerkesztése",
+    "dialogDescription": "Válaszd ki, mit mérjünk, hogyan csoportosítsuk, és melyik időszakra. Az előnézet a saját adataidat mutatja.",
+    "save": "Grafikon mentése",
+    "preview": "Előnézet",
+    "fields": {
+      "title": "Cím",
+      "metric": "Mit mérjünk",
+      "grouping": "Csoportosítás",
+      "kind": "Grafikon típusa",
+      "range": "Időszak",
+      "from": "Ettől",
+      "to": "Eddig",
+      "stacked": "Bontás üzemanyagra és költségekre",
+      "shared": "Megosztás mindenkivel, aki látja ezt a járművet"
+    },
+    "hints": {
+      "stacked": "Az üzemanyag és a költségek egymás tetején látszanak.",
+      "shared": "Mások látják ezt a grafikont, de csak te módosíthatod.",
+      "donut": "A fánkdiagramhoz összegezhető adat kell (költség, mennyiség, távolság, tankolások száma).",
+      "category": "A kategória szerinti csoportosítás csak a költségekhez érhető el."
+    },
+    "metrics": {
+      "TOTAL_SPEND": "Teljes költés (üzemanyag és költségek)",
+      "FUEL_COST": "Üzemanyagköltség",
+      "EXPENSE_COST": "Egyéb költségek",
+      "FUEL_VOLUME": "Üzemanyag mennyisége",
+      "DISTANCE": "Megtett távolság",
+      "AVERAGE_CONSUMPTION": "Átlagos fogyasztás",
+      "AVERAGE_PRICE_PER_UNIT": "Átlagos üzemanyagár",
+      "FILL_UPS": "Tankolások száma"
+    },
+    "groupings": {
+      "MONTH": "Hónap",
+      "QUARTER": "Negyedév",
+      "YEAR": "Év",
+      "CATEGORY": "Költségkategória"
+    },
+    "kinds": {
+      "BAR": "Oszlopok",
+      "LINE": "Vonal",
+      "AREA": "Terület",
+      "DONUT": "Fánk"
+    },
+    "ranges": {
+      "LAST1_MONTH": "1 hónap",
+      "LAST3_MONTHS": "3 hónap",
+      "LAST6_MONTHS": "Fél év",
+      "LAST12_MONTHS": "Egy év",
+      "THIS_YEAR": "Idén",
+      "LAST_YEAR": "Tavaly",
+      "ALL": "Teljes időszak",
+      "CUSTOM": "Egyéni (ettől – eddig)"
     }
   }
 }

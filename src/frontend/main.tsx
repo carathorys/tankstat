@@ -9,20 +9,23 @@ import { BrowserRouter } from 'react-router'
 import App from './App.tsx'
 import { createApolloClient } from './apolloClient.ts'
 import { initI18n } from './i18n/index.ts'
+import { ThemeProvider } from "next-themes";
 
 // The translations are ready before the first render, so the UI never flashes untranslated.
 await initI18n()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <Theme accentColor="indigo" grayColor="slate" appearance="dark" radius="large" panelBackground="translucent">
-      <MotionConfig reducedMotion="user">
-        <ApolloProvider client={createApolloClient()}>
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
-        </ApolloProvider>
-      </MotionConfig>
-    </Theme>
+    <ThemeProvider attribute="class">
+      <Theme accentColor="indigo" grayColor="sand" appearance="dark" radius="full" panelBackground="translucent" className="dark">
+        <MotionConfig reducedMotion="user">
+          <ApolloProvider client={createApolloClient()}>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </ApolloProvider>
+        </MotionConfig>
+      </Theme>
+    </ThemeProvider>
   </StrictMode>,
 )

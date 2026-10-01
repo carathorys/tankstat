@@ -7,6 +7,8 @@ using Tankstat.Application.Images;
 using Tankstat.Application.Imports;
 using Tankstat.Application.Odometers;
 using Tankstat.Application.Sharing;
+using Tankstat.Application.Stats;
+using Tankstat.Domain.Charts;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
@@ -106,6 +108,31 @@ internal sealed class InMemoryExpenses : IExpenseRepository
     public Task UpdateAsync(Expense expense, OdometerReading? newReading, OdometerReading? removedReading, CancellationToken ct) => Task.CompletedTask; // shared references
     public Task<int> PurgeAsync(OwnerScope scope, CancellationToken ct) =>
         Task.FromResult(Items.RemoveAll(e => e.IsDeleted && scope.Contains(e.OwnerId, e.VehicleId)));
+}
+
+internal sealed class InMemoryStats(InMemoryRefuelings refuelings, InMemoryExpenses expenses) : IStatsRepository
+{
+    public Task<StatsData> LoadAsync(Guid vehicleId, CancellationToken ct)
+    {
+        var fuel = refuelings.Items.Where(r => !r.IsDeleted && r.VehicleId == vehicleId).ToList();
+        var costs = expenses.Items.Where(e => !e.IsDeleted && e.VehicleId == vehicleId).ToList();
+        return Task.FromResult(new StatsData(
+            fuel.Select(r => new FuelPoint(r.Date, r.Volume, r.TotalCost, r.Currency, r.Odometer, r.IsFullTank, r.Consumption)).ToList(),
+            costs.Select(e => new ExpensePoint(e.Date, e.Category, e.Amount, e.Currency)).ToList(),
+            fuel.Select(r => new OdometerPoint(r.Date, r.Odometer)).Concat(costs.Where(e => e.Odometer is not null).Select(e => new OdometerPoint(e.Date, e.Odometer!.Value))).ToList()));
+    }
+}
+
+internal sealed class InMemoryCharts : IVehicleChartRepository
+{
+    public List<VehicleChart> Items { get; } = [];
+    public Task<IReadOnlyList<VehicleChart>> ListVisibleAsync(Guid vehicleId, Guid userId, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<VehicleChart>>(Items.Where(c => c.VehicleId == vehicleId && (c.IsShared || c.CreatedById == userId)).OrderBy(c => c.CreatedAt).ToList());
+    public Task<int> CountByUserAsync(Guid vehicleId, Guid userId, CancellationToken ct) => Task.FromResult(Items.Count(c => c.VehicleId == vehicleId && c.CreatedById == userId));
+    public Task<VehicleChart?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(c => c.Id == id));
+    public Task AddAsync(VehicleChart chart, CancellationToken ct) { Items.Add(chart); return Task.CompletedTask; }
+    public Task UpdateAsync(VehicleChart chart, CancellationToken ct) => Task.CompletedTask; // shared references
+    public Task RemoveAsync(VehicleChart chart, CancellationToken ct) { Items.Remove(chart); return Task.CompletedTask; }
 }
 
 /// <summary>Readings are the ones owned by the in-memory logs and expenses (live ones only, like the real query filter).</summary>
@@ -233,6 +260,7 @@ internal sealed class World
     public InMemoryVehicles Vehicles { get; } = new();
     public InMemoryRefuelings Refuelings { get; } = new();
     public InMemoryExpenses Expenses { get; } = new();
+    public InMemoryCharts Charts { get; } = new();
     public InMemoryUsers Users { get; } = new();
     public InMemoryTokens Tokens { get; } = new();
     public InMemoryGrants Grants { get; } = new();
@@ -248,6 +276,8 @@ internal sealed class World
     public VehicleService VehicleService { get; }
     public RefuelingService RefuelingService { get; }
     public ExpenseService ExpenseService { get; }
+    public StatsService Stats { get; }
+    public ChartService ChartService { get; }
     public ImportService Imports { get; }
     public OdometerService Odometer { get; }
     public ResourceSharingService Sharing { get; }
@@ -271,6 +301,8 @@ internal sealed class World
         RefuelingService = new RefuelingService(Vehicles, Refuelings, Access, Odometer, Clock);
         ExpenseService = new ExpenseService(Vehicles, Expenses, Access, Odometer, Clock);
         Imports = new ImportService([new FuelioCsvParser()], new ImportSessionStore(Clock), Access, VehicleService, RefuelingService, ExpenseService, Refuelings, Expenses, new VehicleDefaultsOptions { Currency = "HUF" }.Create());
+        Stats = new StatsService(Vehicles, new InMemoryStats(Refuelings, Expenses), Access, Clock);
+        ChartService = new ChartService(Vehicles, Charts, Access, Clock);
         Sharing = new ResourceSharingService(Vehicles, ResourceGrants, Users, Access);
         Auth = new AuthService(Users, new FakeHasher(), resets, Access, options, Clock);
         UserService = new UserService(Access, Users, resets, options);

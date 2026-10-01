@@ -68,6 +68,9 @@ type Query {
   importPreview(token: String!, vehicleId: UUID): ImportPreviewInfo!
     @cost(weight: "10")
   importFormats: [String!]!
+  vehicleChartData(vehicleId: UUID!, config: ChartConfigInput!): ChartData!
+    @cost(weight: "10")
+  vehicleCharts(vehicleId: UUID!): [VehicleChart!]! @cost(weight: "10")
 }
 
 type Mutation {
@@ -102,6 +105,8 @@ type Mutation {
   emptyExpenseTrash: Int! @cost(weight: "10")
   confirmImport(input: ConfirmImportInput!): ImportResultInfo!
     @cost(weight: "10")
+  saveVehicleChart(input: SaveChartInput!): VehicleChart! @cost(weight: "10")
+  deleteVehicleChart(id: UUID!): Boolean! @cost(weight: "10")
 }
 
 type AccessGrantInfo {
@@ -113,6 +118,22 @@ type AccessGrantInfo {
 
 type AccessSettingsInfo {
   defaultLevelForOthers: AccessLevel!
+}
+
+type ChartData {
+  unit: ChartUnit!
+  series: [ChartSeries!]!
+}
+
+type ChartPoint {
+  key: String!
+  value: Decimal
+}
+
+type ChartSeries {
+  kind: String!
+  currency: String
+  points: [ChartPoint!]!
 }
 
 type CreatedUser {
@@ -198,6 +219,11 @@ type MeasurementUnits {
   volume: VolumeUnit!
 }
 
+type MonthAmount {
+  month: String!
+  amount: Decimal!
+}
+
 type Notice {
   code: String!
   severity: NoticeSeverity!
@@ -275,12 +301,42 @@ type Vehicle {
   pictureUrl: String
   refuelingCount: Int! @cost(weight: "10")
   expenseCount: Int! @cost(weight: "10")
+  summary: VehicleSummary @cost(weight: "10")
+}
+
+type VehicleChart {
+  id: UUID!
+  vehicleId: UUID!
+  title: String!
+  metric: ChartMetric!
+  grouping: ChartGrouping!
+  kind: ChartKind!
+  range: ChartRange!
+  stacked: Boolean!
+  rangeFrom: LocalDate
+  rangeTo: LocalDate
+  isShared: Boolean!
+  createdAt: DateTime!
+  canEdit: Boolean! @cost(weight: "10")
+  createdBy: UserRef @cost(weight: "10")
 }
 
 type VehicleDefaults {
   distanceUnit: DistanceUnit!
   volumeUnit: VolumeUnit!
   currency: String!
+}
+
+type VehicleSummary {
+  lastFillUpDate: LocalDate
+  latestOdometer: Long
+  averageConsumption: Decimal
+  currency: String
+  thisMonthSpend: Decimal!
+  lastMonthSpend: Decimal!
+  spendTrend: [MonthAmount!]!
+  fillUpCount: Int!
+  expenseCount: Int!
 }
 
 input AddExpenseInput {
@@ -304,6 +360,16 @@ input AddVehicleInput {
 input ChangePasswordInput {
   currentPassword: String!
   newPassword: String!
+}
+
+input ChartConfigInput {
+  metric: ChartMetric!
+  grouping: ChartGrouping!
+  kind: ChartKind!
+  range: ChartRange!
+  stacked: Boolean!
+  from: LocalDate
+  to: LocalDate
 }
 
 input ConfirmImportInput {
@@ -351,6 +417,14 @@ input NewVehicleInput {
 input ResetPasswordInput {
   token: String!
   newPassword: String!
+}
+
+input SaveChartInput {
+  id: UUID
+  vehicleId: UUID!
+  title: String!
+  config: ChartConfigInput!
+  shared: Boolean!
 }
 
 input SetAccessGrantInput {
@@ -407,6 +481,50 @@ enum AuthMode {
   STANDALONE
   OIDC
   PROXY_HEADER
+}
+
+enum ChartGrouping {
+  MONTH
+  QUARTER
+  YEAR
+  CATEGORY
+}
+
+enum ChartKind {
+  BAR
+  LINE
+  AREA
+  DONUT
+}
+
+enum ChartMetric {
+  TOTAL_SPEND
+  FUEL_COST
+  EXPENSE_COST
+  FUEL_VOLUME
+  DISTANCE
+  AVERAGE_CONSUMPTION
+  AVERAGE_PRICE_PER_UNIT
+  FILL_UPS
+}
+
+enum ChartRange {
+  LAST1_MONTH
+  LAST3_MONTHS
+  LAST6_MONTHS
+  LAST12_MONTHS
+  THIS_YEAR
+  LAST_YEAR
+  ALL
+  CUSTOM
+}
+
+enum ChartUnit {
+  CURRENCY
+  VOLUME
+  DISTANCE
+  CONSUMPTION
+  COUNT
 }
 
 enum DistanceUnit {

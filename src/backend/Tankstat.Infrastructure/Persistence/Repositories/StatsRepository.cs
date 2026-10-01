@@ -1,0 +1,64 @@
+using Microsoft.EntityFrameworkCore;
+using Tankstat.Application.Stats;
+using Tankstat.Domain.Charts;
+
+namespace Tankstat.Infrastructure.Persistence.Repositories;
+
+internal sealed class StatsRepository(IDbContextFactory<AppDbContext> dbFactory) : IStatsRepository
+{
+    public async Task<StatsData> LoadAsync(Guid vehicleId, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct); // the global filters already leave out the trash
+
+        var fuel = await db.Refuelings.AsNoTracking().Where(r => r.VehicleId == vehicleId)
+            .Select(r => new FuelPoint(r.Date, r.Volume, r.Cost.Amount, r.Cost.Currency, r.OdometerReading.Value, r.IsFullTank, r.Consumption)).ToListAsync(ct);
+        var expenses = await db.Expenses.AsNoTracking().Where(e => e.VehicleId == vehicleId)
+            .Select(e => new ExpensePoint(e.Date, e.Category, e.Cost.Amount, e.Cost.Currency)).ToListAsync(ct);
+        var readings = await db.OdometerReadings.AsNoTracking().Where(r => r.VehicleId == vehicleId)
+            .Select(r => new OdometerPoint(r.Date, r.Value)).ToListAsync(ct);
+        return new StatsData(fuel, expenses, readings);
+    }
+}
+
+internal sealed class VehicleChartRepository(IDbContextFactory<AppDbContext> dbFactory) : IVehicleChartRepository
+{
+    public async Task<IReadOnlyList<VehicleChart>> ListVisibleAsync(Guid vehicleId, Guid userId, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.VehicleCharts.AsNoTracking().Where(c => c.VehicleId == vehicleId && (c.IsShared || c.CreatedById == userId))
+            .OrderBy(c => c.CreatedAt).ThenBy(c => c.Id).ToListAsync(ct);
+    }
+
+    public async Task<int> CountByUserAsync(Guid vehicleId, Guid userId, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.VehicleCharts.CountAsync(c => c.VehicleId == vehicleId && c.CreatedById == userId, ct);
+    }
+
+    public async Task<VehicleChart?> FindAsync(Guid id, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.VehicleCharts.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, ct);
+    }
+
+    public async Task AddAsync(VehicleChart chart, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        db.VehicleCharts.Add(chart);
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task UpdateAsync(VehicleChart chart, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        db.VehicleCharts.Update(chart);
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task RemoveAsync(VehicleChart chart, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        db.VehicleCharts.Remove(chart);
+        await db.SaveChangesAsync(ct);
+    }
+}

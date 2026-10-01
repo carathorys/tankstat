@@ -17,7 +17,7 @@ const logs = [
   fakeRefueling({ id: 'r2', date: '2026-09-01', volume: 41.5, totalCost: 22000, odometer: 12000, isFullTank: false, note: 'Holiday' }),
 ]
 
-function setup(vehicle = fakeVehicle(), initial = logs, route = '/vehicles/v1') {
+function setup(vehicle = fakeVehicle(), initial = logs, route = '/vehicles/v1?tab=refuelings') {
   stubViewport('desktop')
   const backend = fakeLogBackend(vehicle, initial)
   server.use(sessionHandler('NONE', () => null), healthHandler, ...backend.handlers)

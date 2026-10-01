@@ -57,6 +57,10 @@ public class ContractTests
     [InlineData("ImportPreviewInfo", "sourceVehicle", "fuelRows", "expenseRows", "duplicateFuelRows", "duplicateExpenseRows", "firstDate", "lastDate", "categories", "issues")]
     [InlineData("ImportResultInfo", "vehicleId", "fuelImported", "expensesImported", "fuelSkippedDuplicates", "expensesSkippedDuplicates", "errors")]
     [InlineData("ImportIssueInfo", "section", "row", "key", "args")]
+    [InlineData("VehicleSummary", "lastFillUpDate", "latestOdometer", "averageConsumption", "currency", "thisMonthSpend", "lastMonthSpend", "spendTrend", "fillUpCount", "expenseCount")]
+    [InlineData("ChartData", "unit", "series")]
+    [InlineData("ChartSeries", "kind", "currency", "points")]
+    [InlineData("VehicleChart", "id", "vehicleId", "title", "metric", "grouping", "kind", "range", "rangeFrom", "rangeTo", "stacked", "isShared", "createdAt", "canEdit", "createdBy")]
     [InlineData("Refueling", "id", "vehicleId", "createdBy", "date", "volume", "totalCost", "currency", "odometer", "pricePerUnit", "consumption", "isFullTank", "note", "deletedAt", "canEdit", "canDelete", "vehicle")]
     public async Task Schema_TypeExposesContractFields(string type, params string[] fields)
     {
@@ -84,6 +88,10 @@ public class ContractTests
     [InlineData("VolumeUnit", "LITERS", "US_GALLONS", "IMPERIAL_GALLONS")]
     [InlineData("RefuelingSortField", "DATE", "VOLUME", "TOTAL_COST", "ODOMETER", "PRICE_PER_UNIT", "CONSUMPTION", "CREATED_BY", "VEHICLE", "DELETED_AT")]
     [InlineData("ExpenseSortField", "DATE", "TITLE", "CATEGORY", "AMOUNT", "ODOMETER", "CREATED_BY", "VEHICLE", "DELETED_AT")]
+    [InlineData("ChartMetric", "TOTAL_SPEND", "FUEL_COST", "EXPENSE_COST", "FUEL_VOLUME", "DISTANCE", "AVERAGE_CONSUMPTION", "AVERAGE_PRICE_PER_UNIT", "FILL_UPS")]
+    [InlineData("ChartGrouping", "MONTH", "QUARTER", "YEAR", "CATEGORY")]
+    [InlineData("ChartKind", "BAR", "LINE", "AREA", "DONUT")]
+    [InlineData("ChartRange", "LAST1_MONTH", "LAST3_MONTHS", "LAST6_MONTHS", "LAST12_MONTHS", "THIS_YEAR", "LAST_YEAR", "ALL", "CUSTOM")]
     [InlineData("NoticeSeverity", "INFO", "WARNING")]
     public async Task Schema_EnumsExposeContractValues(string type, params string[] expected)
     {

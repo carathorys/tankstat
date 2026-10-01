@@ -27,6 +27,11 @@ builder.Services.AddGraphQLServer()
     .AddTypeExtension<ExpenseMutations>()
     .AddTypeExtension<ImportQueries>()
     .AddTypeExtension<ImportMutations>()
+    .AddType<VehicleChartType>()
+    .AddTypeExtension<VehicleChartExtensions>()
+    .AddTypeExtension<VehicleSummaryExtensions>()
+    .AddTypeExtension<DashboardQueries>()
+    .AddTypeExtension<DashboardMutations>()
     .AddErrorFilter<BusinessErrorFilter>();
 
 var app = builder.Build();

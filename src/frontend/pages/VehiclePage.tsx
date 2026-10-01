@@ -1,9 +1,10 @@
 import { useQuery } from '@apollo/client/react'
-import { Box, Flex, Heading, Link as RadixLink, Tabs, Text } from '@radix-ui/themes'
+import { Box, Link as RadixLink, Tabs, Text } from '@radix-ui/themes'
 import { ArrowLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Link, useParams, useSearchParams } from 'react-router'
-import { VehiclePicture } from '../components/VehiclePicture.tsx'
+import { VehicleHero } from '../components/VehicleHero.tsx'
+import { DashboardPanel } from '../dashboard/DashboardPanel.tsx'
 import { VehicleDetailsDocument } from '../gql/generated.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { ErrorMessage } from '../messages.tsx'
@@ -12,7 +13,7 @@ import { ExpensesPanel } from './vehicle/ExpensesPanel.tsx'
 import { RefuelingsPanel } from './vehicle/RefuelingsPanel.tsx'
 import { SharingPanel } from './vehicle/SharingPanel.tsx'
 
-const TABS = ['refuelings', 'expenses', 'details', 'sharing'] as const
+const TABS = ['dashboard', 'refuelings', 'expenses', 'details', 'sharing'] as const
 type Tab = (typeof TABS)[number]
 
 /** One vehicle: its logs, its details and picture, and who the logs are shared with (tabs; the choice is in the address). */
@@ -26,7 +27,7 @@ export function VehiclePage() {
 
   const canLog = vehicle ? vehicle.canEdit || vehicle.logAccess === 'EDIT' || vehicle.logAccess === 'DELETE' : false
   const requested = params.get('tab') as Tab | null
-  const tab: Tab = requested && TABS.includes(requested) && (requested !== 'sharing' || vehicle?.canEdit) ? requested : 'refuelings'
+  const tab: Tab = requested && TABS.includes(requested) && (requested !== 'sharing' || vehicle?.canEdit) ? requested : 'dashboard'
 
   return (
     <section aria-labelledby="page-title">
@@ -45,31 +46,27 @@ export function VehiclePage() {
       {data && !vehicle && <ErrorMessage>{t('vehicles.notFound')}</ErrorMessage>}
       {vehicle && (
         <>
-          <Flex align="center" gap="4" my="3">
-            <VehiclePicture url={vehicle.pictureUrl} name={vehicle.name} width={72} />
-            <Box>
-              <Heading id="page-title">{vehicle.name}</Heading>
-              {vehicle.licensePlate && (
-                <Text size="2" color="gray">
-                  {vehicle.licensePlate}
-                </Text>
-              )}
-              {!vehicle.canEdit && (
-                <Text as="p" size="1" color="gray">
-                  {t('vehicles.logAccessNote')}
-                </Text>
-              )}
-            </Box>
-          </Flex>
+          <Box my="3">
+            <VehicleHero id={vehicle.id} name={vehicle.name} plate={vehicle.licensePlate} pictureUrl={vehicle.pictureUrl} owner={vehicle.owner} />
+            {!vehicle.canEdit && (
+              <Text as="p" size="1" color="gray" mt="2">
+                {t('vehicles.logAccessNote')}
+              </Text>
+            )}
+          </Box>
 
-          <Tabs.Root value={tab} onValueChange={(value) => setParams(value === 'refuelings' ? {} : { tab: value }, { replace: true })}>
+          <Tabs.Root value={tab} onValueChange={(value) => setParams(value === 'dashboard' ? {} : { tab: value }, { replace: true })}>
             <Tabs.List aria-label={vehicle.name} size={{ initial: '2', md: '2' }} style={{ overflowX: 'auto' }}>
+              <Tabs.Trigger value="dashboard">{t('vehicles.tabs.dashboard')}</Tabs.Trigger>
               <Tabs.Trigger value="refuelings">{t('vehicles.tabs.refuelings')}</Tabs.Trigger>
               <Tabs.Trigger value="expenses">{t('vehicles.tabs.expenses')}</Tabs.Trigger>
               <Tabs.Trigger value="details">{t('vehicles.tabs.details')}</Tabs.Trigger>
               {vehicle.canEdit && <Tabs.Trigger value="sharing">{t('vehicles.tabs.sharing')}</Tabs.Trigger>}
             </Tabs.List>
             <Box pt="4">
+              <Tabs.Content value="dashboard">
+                <DashboardPanel vehicle={vehicle} />
+              </Tabs.Content>
               <Tabs.Content value="refuelings">
                 <RefuelingsPanel vehicle={vehicle} canLog={canLog} />
               </Tabs.Content>

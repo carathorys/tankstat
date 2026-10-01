@@ -65,7 +65,7 @@ it('the vehicle list has no accessibility violations (phone, menu drawer open)',
 })
 
 it('the vehicle page and its tabs have no violations', async () => {
-  const { view, ui } = setup('/vehicles/v1')
+  const { view, ui } = setup('/vehicles/v1?tab=refuelings')
   await screen.findByText(/Sep 1, 2026/)
   await check(view.container)
 
@@ -83,7 +83,7 @@ it('the vehicle page and its tabs have no violations', async () => {
 })
 
 it('the add refuelling dialog is labelled, described and free of violations', async () => {
-  const { ui } = setup('/vehicles/v1')
+  const { ui } = setup('/vehicles/v1?tab=refuelings')
   await screen.findByText(/Sep 1, 2026/)
 
   await ui.click(screen.getByRole('button', { name: 'Add refuelling' }))
@@ -105,7 +105,7 @@ it('the trash, account and administration pages have no violations', async () =>
 })
 
 it('sortable columns announce their state and every grid is a labelled table', async () => {
-  setup('/vehicles/v1')
+  setup('/vehicles/v1?tab=refuelings')
   await screen.findByText(/Sep 1, 2026/)
 
   expect(screen.getByRole('table', { name: 'Refuelings' })).toBeInTheDocument()

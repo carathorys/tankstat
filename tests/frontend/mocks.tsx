@@ -53,6 +53,31 @@ export const gqlError = (message: string, code: string, key?: string, args?: Rec
 
 type Person = { id: string; displayName: string; avatarUrl: string | null }
 
+export interface FakeSummary {
+  lastFillUpDate: string | null
+  latestOdometer: number | null
+  averageConsumption: number | null
+  currency: string | null
+  thisMonthSpend: number
+  lastMonthSpend: number
+  fillUpCount: number
+  expenseCount: number
+  spendTrend: { month: string; amount: number }[]
+}
+
+export const fakeSummary = (over: Partial<FakeSummary> = {}): FakeSummary => ({
+  lastFillUpDate: '2026-09-17',
+  latestOdometer: 12000,
+  averageConsumption: 6.5,
+  currency: 'HUF',
+  thisMonthSpend: 50000,
+  lastMonthSpend: 40000,
+  fillUpCount: 5,
+  expenseCount: 2,
+  spendTrend: ['2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'].map((month, i) => ({ month, amount: 10000 * i })),
+  ...over,
+})
+
 export interface FakeVehicle {
   id: string
   name: string
@@ -62,6 +87,7 @@ export interface FakeVehicle {
   canEdit: boolean
   logAccess: 'NONE' | 'VIEW' | 'EDIT' | 'DELETE'
   pictureUrl: string | null
+  summary: FakeSummary
   units: { distance: 'KILOMETERS' | 'MILES'; volume: 'LITERS' | 'US_GALLONS' | 'IMPERIAL_GALLONS' }
   refuelingCount: number
 }
@@ -80,6 +106,7 @@ export const fakeVehicle = (over: Partial<FakeVehicle> & { ownerName?: string | 
     canEdit: true,
     logAccess: 'DELETE',
     pictureUrl: null,
+    summary: fakeSummary(),
     units: { distance: 'KILOMETERS', volume: 'LITERS' },
     refuelingCount: 2,
     ...rest,
@@ -129,6 +156,7 @@ export function fakeVehicleBackend(initial: FakeVehicle[] = [], trashed: FakeVeh
         data: { vehicles: page(state.vehicles, variables as unknown as GridVars), vehicleCount: state.vehicles.length },
       })
     }),
+    graphql.query('Welcome', () => HttpResponse.json({ data: { vehicles: state.vehicles, vehicleCount: state.vehicles.length } })),
     graphql.query('Trash', ({ variables }) => {
       state.requests.Trash.push(variables)
       return HttpResponse.json({
@@ -462,6 +490,86 @@ export function fakeExpenseBackend(vehicle: FakeVehicle, expenses: FakeExpense[]
       const removed = state.trash.length
       state.trash = []
       return HttpResponse.json({ data: { emptyExpenseTrash: removed } })
+    }),
+  ]
+  return { state, handlers }
+}
+
+export interface FakeChart {
+  id: string
+  title: string
+  metric: string
+  grouping: string
+  kind: string
+  range: string
+  rangeFrom: string | null
+  rangeTo: string | null
+  stacked: boolean
+  isShared: boolean
+  canEdit: boolean
+  createdBy: Person
+}
+
+export const fakeChart = (over: Partial<FakeChart> = {}): FakeChart => ({
+  id: 'c1',
+  title: 'My chart',
+  metric: 'FUEL_COST',
+  grouping: 'MONTH',
+  kind: 'BAR',
+  range: 'LAST6_MONTHS',
+  rangeFrom: null,
+  rangeTo: null,
+  stacked: false,
+  isShared: false,
+  canEdit: true,
+  createdBy: person('Alice'),
+  ...over,
+})
+
+/** A small in-memory backend for a vehicle's dashboard: key figures, saved charts and chart data (a fixed answer per unit). */
+export function fakeDashboardBackend(vehicle: FakeVehicle, charts: FakeChart[] = []) {
+  const state = {
+    vehicle,
+    charts: [...charts],
+    calls: {} as Record<string, unknown[]>,
+    chartRequests: [] as { vehicleId: string; config: Record<string, unknown> }[],
+    failWith: undefined as { message: string; key: string; args?: Record<string, unknown> } | undefined,
+    nextId: 400,
+  }
+  const record = (name: string, vars: unknown) => (state.calls[name] ??= []).push(vars)
+  const months = ['2026-08', '2026-09', '2026-10']
+  const answer = (config: Record<string, unknown>) => {
+    const metric = String(config.metric)
+    const unit = metric === 'FUEL_VOLUME' ? 'VOLUME' : metric === 'DISTANCE' ? 'DISTANCE' : metric === 'AVERAGE_CONSUMPTION' ? 'CONSUMPTION' : metric === 'FILL_UPS' ? 'COUNT' : 'CURRENCY'
+    const cost = unit === 'CURRENCY'
+    const keys = config.grouping === 'CATEGORY' ? ['Service', 'Parking', ''] : months
+    const kinds = config.stacked ? ['fuel', 'expenses'] : [config.metric === 'EXPENSE_COST' ? 'expenses' : cost ? 'total' : 'fuel']
+    return {
+      unit,
+      series: kinds.map((kind, k) => ({ kind, currency: cost ? 'HUF' : null, points: keys.map((key, i) => ({ key, value: (i + 1) * 1000 * (k + 1) })) })),
+    }
+  }
+
+  const handlers = [
+    graphql.query('VehicleDashboard', ({ variables }) =>
+      HttpResponse.json({ data: { vehicle: variables.id === state.vehicle.id ? { id: state.vehicle.id, summary: state.vehicle.summary } : null, vehicleCharts: state.charts } }),
+    ),
+    graphql.query('ChartData', ({ variables }) => {
+      state.chartRequests.push(variables as never)
+      return HttpResponse.json({ data: { vehicleChartData: answer(variables.config as Record<string, unknown>) } })
+    }),
+    graphql.mutation('SaveChart', ({ variables }) => {
+      record('SaveChart', variables)
+      if (state.failWith) return HttpResponse.json(gqlError(state.failWith.message, 'VALIDATION_FAILED', state.failWith.key, state.failWith.args))
+      const { id, title, shared, config } = variables.input as { id: string | null; title: string; shared: boolean; config: Record<string, unknown> }
+      const entry = fakeChart({ id: id ?? `c${state.nextId++}`, title, isShared: shared, metric: String(config.metric), grouping: String(config.grouping), kind: String(config.kind), range: String(config.range), stacked: Boolean(config.stacked), rangeFrom: (config.from as string) ?? null, rangeTo: (config.to as string) ?? null })
+      state.charts = id ? state.charts.map((c) => (c.id === id ? entry : c)) : [...state.charts, entry]
+      return HttpResponse.json({ data: { saveVehicleChart: { id: entry.id } } })
+    }),
+    graphql.mutation('DeleteChart', ({ variables }) => {
+      record('DeleteChart', variables)
+      state.charts = state.charts.filter((c) => c.id !== variables.id)
+      return HttpResponse.json({ data: { deleteVehicleChart: true } })
     }),
   ]
   return { state, handlers }

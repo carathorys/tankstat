@@ -48,7 +48,7 @@ function standaloneServer(login: (vars: { email: string; password: string }) => 
 
 it('anonymous visitors get the login form instead of data', async () => {
   standaloneServer()
-  renderWithApollo(<App />)
+  renderWithApollo(<App />, '/vehicles')
 
   await screen.findByRole('heading', { name: 'Sign in' })
   expect(screen.queryByText('Vehicles')).not.toBeInTheDocument()
@@ -57,7 +57,7 @@ it('anonymous visitors get the login form instead of data', async () => {
 it('signs in, shows the app, and signs out again', async () => {
   const ui = userEvent.setup()
   standaloneServer()
-  renderWithApollo(<App />)
+  renderWithApollo(<App />, '/vehicles')
 
   await ui.type(await screen.findByLabelText('E-mail'), 'alice@example.com')
   await ui.type(screen.getByLabelText('Password'), 'alice-password-1')
@@ -73,7 +73,7 @@ it('signs in, shows the app, and signs out again', async () => {
 it('sends the entered credentials and shows the server message on failure', async () => {
   const ui = userEvent.setup()
   const state = standaloneServer(() => false)
-  renderWithApollo(<App />)
+  renderWithApollo(<App />, '/vehicles')
 
   await ui.type(await screen.findByLabelText('E-mail'), 'alice@example.com')
   await ui.type(screen.getByLabelText('Password'), 'wrong')
@@ -87,7 +87,7 @@ it('sends the entered credentials and shows the server message on failure', asyn
 it('does not call the server when the form is incomplete', async () => {
   const ui = userEvent.setup()
   const state = standaloneServer()
-  renderWithApollo(<App />)
+  renderWithApollo(<App />, '/vehicles')
 
   await ui.type(await screen.findByLabelText('E-mail'), 'not-an-email')
   await ui.click(screen.getByRole('button', { name: 'Sign in' }))
@@ -100,7 +100,7 @@ it('does not call the server when the form is incomplete', async () => {
 it('forgot password: requests a reset and gives neutral feedback', async () => {
   const ui = userEvent.setup()
   const state = standaloneServer()
-  renderWithApollo(<App />)
+  renderWithApollo(<App />, '/vehicles')
 
   await ui.click(await screen.findByRole('button', { name: 'Forgot password?' }))
   await ui.type(screen.getByLabelText('E-mail'), 'alice@example.com')

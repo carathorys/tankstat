@@ -1,0 +1,99 @@
+# The welcome screen: a card per vehicle the user can see, with the key figures the server calculated.
+query Welcome {
+  vehicles(orderBy: NAME, direction: ASC, skip: 0, take: 60) {
+    id
+    name
+    licensePlate
+    fuelType
+    pictureUrl
+    canEdit
+    logAccess
+    units {
+      distance
+      volume
+    }
+    owner {
+      id
+      displayName
+      avatarUrl
+    }
+    summary {
+      lastFillUpDate
+      latestOdometer
+      averageConsumption
+      currency
+      thisMonthSpend
+      lastMonthSpend
+      fillUpCount
+      expenseCount
+      spendTrend {
+        month
+        amount
+      }
+    }
+  }
+  vehicleCount
+}
+
+# A vehicle's dashboard: the key figures and the saved charts (the user's own and the shared ones). Each chart loads its own data.
+query VehicleDashboard($id: UUID!) {
+  vehicle(id: $id) {
+    id
+    summary {
+      lastFillUpDate
+      latestOdometer
+      averageConsumption
+      currency
+      thisMonthSpend
+      lastMonthSpend
+      fillUpCount
+      expenseCount
+      spendTrend {
+        month
+        amount
+      }
+    }
+  }
+  vehicleCharts(vehicleId: $id) {
+    id
+    title
+    metric
+    grouping
+    kind
+    range
+    rangeFrom
+    rangeTo
+    stacked
+    isShared
+    canEdit
+    createdBy {
+      id
+      displayName
+      avatarUrl
+    }
+  }
+}
+
+query ChartData($vehicleId: UUID!, $config: ChartConfigInput!) {
+  vehicleChartData(vehicleId: $vehicleId, config: $config) {
+    unit
+    series {
+      kind
+      currency
+      points {
+        key
+        value
+      }
+    }
+  }
+}
+
+mutation SaveChart($input: SaveChartInput!) {
+  saveVehicleChart(input: $input) {
+    id
+  }
+}
+
+mutation DeleteChart($id: UUID!) {
+  deleteVehicleChart(id: $id)
+}

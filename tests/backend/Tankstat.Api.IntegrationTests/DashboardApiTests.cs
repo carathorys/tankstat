@@ -1,0 +1,111 @@
+using System.Text.Json;
+
+namespace Tankstat.Api.IntegrationTests;
+
+/// <summary>Dashboard data over real GraphQL and a real database: summaries, chart data and saved/shared charts.</summary>
+[Collection(ApiCollection.Name)]
+public class DashboardApiTests : IDisposable
+{
+    private readonly TestApp _app = TestApp.Standalone();
+
+    public void Dispose() => _app.Dispose();
+
+    private async Task<(HttpClient Alice, HttpClient Bob, string BobId)> Users()
+    {
+        var admin = _app.NewClient();
+        await admin.LoginAs("root@example.com", "initial-password-1");
+        async Task<(HttpClient, string)> Create(string name)
+        {
+            var created = (await admin.Gql("mutation($i: CreateUserInput!) { createUser(input: $i) { user { id } reset { token } } }", new { i = new { email = $"{name}@example.com", displayName = name, isAdmin = false } })).Data().GetProperty("createUser");
+            await _app.NewClient().Gql("mutation($i: ResetPasswordInput!) { resetPassword(input: $i) }", new { i = new { token = created.GetProperty("reset").GetProperty("token").GetString(), newPassword = name + "-password-1" } });
+            var client = _app.NewClient();
+            await client.LoginAs($"{name}@example.com", name + "-password-1");
+            return (client, created.GetProperty("user").GetProperty("id").GetString()!);
+        }
+        var (alice, _) = await Create("alice");
+        var (bob, bobId) = await Create("bob");
+        return (alice, bob, bobId);
+    }
+
+    private static async Task<string> CarWithLogs(HttpClient c)
+    {
+        var id = (await c.Gql("mutation { addVehicle(input: { name: \"Car\", fuelType: PETROL }) { id } }")).Data().GetProperty("addVehicle").GetProperty("id").GetString()!;
+        var today = DateTime.UtcNow;
+        string D(int monthsAgo) => new DateTime(today.Year, today.Month, 1).AddMonths(-monthsAgo).ToString("yyyy-MM-dd");
+        foreach (var (months, odo, vol, cost) in new[] { (2, 1000, 40, 20000), (1, 1500, 30, 18000), (0, 2000, 25, 17500) })
+            await c.Gql("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }", new { i = new { vehicleId = id, date = D(months), volume = vol, totalCost = cost, currency = "HUF", odometer = odo, isFullTank = true } });
+        await c.Gql("mutation($i: AddExpenseInput!) { addExpense(input: $i) { id } }", new { i = new { vehicleId = id, date = D(0), title = "Oil", category = "Service", amount = 35000, currency = "HUF" } });
+        return id;
+    }
+
+    [Fact]
+    public async Task TheSummary_AndChartData_ComeFromTheStoredLogs()
+    {
+        var (alice, _, _) = await Users();
+        var id = await CarWithLogs(alice);
+
+        var data = (await alice.Gql(@"query($id: UUID!, $c: ChartConfigInput!, $c2: ChartConfigInput!) {
+              vehicle(id: $id) { summary { latestOdometer averageConsumption currency thisMonthSpend fillUpCount expenseCount spendTrend { month amount } } }
+              total: vehicleChartData(vehicleId: $id, config: $c) { unit series { kind currency points { key value } } }
+              byCategory: vehicleChartData(vehicleId: $id, config: $c2) { series { currency points { key value } } } }",
+            new
+            {
+                id,
+                c = new { metric = "TOTAL_SPEND", grouping = "MONTH", kind = "BAR", range = "LAST3_MONTHS", stacked = true },
+                c2 = new { metric = "EXPENSE_COST", grouping = "CATEGORY", kind = "DONUT", range = "ALL", stacked = false },
+            })).Data();
+
+        var summary = data.GetProperty("vehicle").GetProperty("summary");
+        Assert.Equal((2000L, "HUF", 3, 1), (summary.GetProperty("latestOdometer").GetInt64(), summary.GetProperty("currency").GetString(), summary.GetProperty("fillUpCount").GetInt32(), summary.GetProperty("expenseCount").GetInt32()));
+        Assert.Equal(52500m, summary.GetProperty("thisMonthSpend").GetDecimal()); // 17500 fuel + 35000 oil
+        Assert.Equal(5.5m, summary.GetProperty("averageConsumption").GetDecimal()); // the mean of 6 (30 l / 500 km) and 5 (25 l / 500 km)
+        Assert.Equal(6, summary.GetProperty("spendTrend").GetArrayLength());
+
+        var total = data.GetProperty("total");
+        Assert.Equal("CURRENCY", total.GetProperty("unit").GetString());
+        Assert.Equal(["expenses", "fuel"], total.GetProperty("series").EnumerateArray().Select(s => s.GetProperty("kind").GetString()!).Order());
+        var category = data.GetProperty("byCategory").GetProperty("series")[0].GetProperty("points")[0];
+        Assert.Equal(("Service", 35000m), (category.GetProperty("key").GetString(), category.GetProperty("value").GetDecimal()));
+    }
+
+    [Fact]
+    public async Task SavedCharts_ArePrivateUntilShared_AndOnlyTheCreatorChangesThem()
+    {
+        var (alice, bob, bobId) = await Users();
+        var id = await CarWithLogs(alice);
+        await alice.Gql("mutation($i: SetLogAccessInput!) { setVehicleLogAccess(input: $i) }", new { i = new { vehicleId = id, userId = bobId, level = "EDIT" } });
+        const string save = "mutation($i: SaveChartInput!) { saveVehicleChart(input: $i) { id title isShared metric kind range rangeFrom rangeTo canEdit createdBy { displayName } } }";
+        object Input(string title, bool shared, string range = "LAST6_MONTHS", string? from = null, string? to = null, string? chartId = null) =>
+            new { i = new { id = chartId, vehicleId = id, title, shared, config = new { metric = "FUEL_VOLUME", grouping = "MONTH", kind = "LINE", range, stacked = false, from, to } } };
+
+        var mine = (await alice.Gql(save, Input("Mine", false, "CUSTOM", "2026-01-01", "2026-03-31"))).Data().GetProperty("saveVehicleChart");
+        var shared = (await alice.Gql(save, Input("For everyone", true))).Data().GetProperty("saveVehicleChart");
+        Assert.Equal(("CUSTOM", "2026-01-01", "2026-03-31", true, "alice"), (mine.GetProperty("range").GetString(), mine.GetProperty("rangeFrom").GetString(), mine.GetProperty("rangeTo").GetString(), mine.GetProperty("canEdit").GetBoolean(), mine.GetProperty("createdBy").GetProperty("displayName").GetString()));
+
+        const string list = "query($id: UUID!) { vehicleCharts(vehicleId: $id) { id title canEdit } }";
+        var bobsView = (await bob.Gql(list, new { id })).Data().GetProperty("vehicleCharts").EnumerateArray().ToList();
+        Assert.Equal(["For everyone"], bobsView.Select(c => c.GetProperty("title").GetString()));
+        Assert.False(bobsView[0].GetProperty("canEdit").GetBoolean());
+
+        var denied = await bob.Gql(save, Input("Hijack", true, chartId: shared.GetProperty("id").GetString()));
+        Assert.Equal("chart.notYours", denied.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
+        var invalid = await alice.Gql(save, Input("Bad", false, "CUSTOM"));
+        Assert.Equal("chart.datesRequired", invalid.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
+
+        Assert.True((await alice.Gql("mutation($id: UUID!) { deleteVehicleChart(id: $id) }", new { id = mine.GetProperty("id").GetString() })).Data().GetProperty("deleteVehicleChart").GetBoolean());
+        Assert.Single((await alice.Gql(list, new { id })).Data().GetProperty("vehicleCharts").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task StrangersGetNothing()
+    {
+        var (alice, bob, _) = await Users();
+        var id = await CarWithLogs(alice);
+
+        var summary = (await bob.Gql("query($id: UUID!) { vehicle(id: $id) { id } }", new { id })).Data().GetProperty("vehicle");
+        var chart = await bob.Gql("query($id: UUID!) { vehicleChartData(vehicleId: $id, config: { metric: TOTAL_SPEND, grouping: MONTH, kind: BAR, range: ALL, stacked: false }) { unit } }", new { id });
+
+        Assert.Equal(JsonValueKind.Null, summary.ValueKind);
+        Assert.Equal("vehicle.notFound", chart.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
+    }
+}

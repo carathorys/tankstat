@@ -16,6 +16,8 @@ export function useFormat() {
     const number = (value: number, options?: Intl.NumberFormatOptions) => new Intl.NumberFormat(language, options).format(value)
     return {
       number,
+      /** Short form for axes: 12 500 becomes 12.5K (or 12,5 E in Hungarian). */
+      compact: (value: number) => new Intl.NumberFormat(language, { notation: 'compact', maximumFractionDigits: 1 }).format(value),
       dateTime: (iso: string) => new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso)),
       /** A calendar date such as "2026-09-01" (no time zone shifts it to another day). */
       date: (isoDate: string) => new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${isoDate}T00:00:00Z`)),

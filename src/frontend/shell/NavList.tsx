@@ -1,6 +1,6 @@
 import { useApolloClient, useMutation } from '@apollo/client/react'
 import { Button, Flex } from '@radix-ui/themes'
-import { Car, FileUp, LogOut, Settings, ShieldCheck, Trash2 } from 'lucide-react'
+import { Car, FileUp, House, LogOut, Settings, ShieldCheck, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { NavLink } from 'react-router'
 import { LogoutDocument, type AuthMode, type SessionQuery } from '../gql/generated.ts'
@@ -13,7 +13,7 @@ export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: Sess
   const canSignOut = user !== null && mode !== 'PROXY_HEADER' // behind a proxy the proxy owns the session
 
   const link = (to: string, label: string, icon: React.ReactNode) => (
-    <NavLink to={to} className="nav-link" onClick={onNavigate}>
+    <NavLink to={to} end={to === '/'} className="nav-link" onClick={onNavigate}>
       {icon}
       {label}
     </NavLink>
@@ -22,6 +22,7 @@ export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: Sess
   return (
     <Flex asChild direction="column" gap="1">
       <nav aria-label={t('nav.main')}>
+        {link('/', t('nav.home'), <House size={18} aria-hidden />)}
         {link('/vehicles', t('nav.vehicles'), <Car size={18} aria-hidden />)}
         {link('/import', t('nav.import'), <FileUp size={18} aria-hidden />)}
         {link('/trash', t('nav.trash'), <Trash2 size={18} aria-hidden />)}

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Tankstat.Domain.Access;
+using Tankstat.Domain.Charts;
 using Tankstat.Domain.Images;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
@@ -13,6 +14,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
     public DbSet<Refueling> Refuelings => Set<Refueling>();
     public DbSet<Expense> Expenses => Set<Expense>();
+    public DbSet<VehicleChart> VehicleCharts => Set<VehicleChart>();
     public DbSet<OdometerReading> OdometerReadings => Set<OdometerReading>();
     public DbSet<Cost> Costs => Set<Cost>();
     public DbSet<StoredImage> Images => Set<StoredImage>();

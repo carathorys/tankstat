@@ -166,7 +166,7 @@ it('offers the delete level for the default and for grants, and shows people wit
   renderWithApollo(<App />, '/admin')
   await screen.findByRole('heading', { name: 'Administration' })
 
-  expect(within(screen.getByRole('table')).getAllByText('B').length).toBeGreaterThan(0) // Bob's initials
+  expect((await within(screen.getByRole('table')).findAllByText('B')).length).toBeGreaterThan(0) // Bob's initials (the avatar fallback appears right after mounting)
   await ui.click(screen.getByRole('tab', { name: /Access/ }))
   await ui.click(await screen.findByRole('combobox', { name: 'Level' }))
 
