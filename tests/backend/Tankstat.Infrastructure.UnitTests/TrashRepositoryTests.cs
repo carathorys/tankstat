@@ -11,6 +11,7 @@ namespace Tankstat.Infrastructure.UnitTests;
 public class TrashRepositoryTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+    private static readonly VehicleQuery Newest = new(VehicleSortField.DeletedAt, SortDirection.Desc);
     private static readonly Guid Alice = Guid.NewGuid();
     private static readonly Guid Bob = Guid.NewGuid();
 
@@ -30,7 +31,7 @@ public class TrashRepositoryTests
         var live = await Add(db, Alice, "Live");
         var trashed = await Add(db, Alice, "Trashed", Now);
 
-        Assert.Equal(["Live"], (await repo.ListAsync(OwnerScope.All, default)).Select(v => v.Name));
+        Assert.Equal(["Live"], (await repo.ListAsync(OwnerScope.All, new VehicleQuery(), default)).Select(v => v.Name));
         Assert.Null(await repo.FindAsync(trashed.Id, default));
         Assert.NotNull(await repo.FindAsync(live.Id, default));
 
@@ -70,9 +71,9 @@ public class TrashRepositoryTests
         await Add(db, Bob, "Bobs", Now.AddDays(-1));
         await Add(db, Alice, "Live");
 
-        Assert.Equal(["Newer", "Bobs", "Older"], (await repo.ListDeletedAsync(OwnerScope.All, default)).Select(v => v.Name));
-        Assert.Equal(["Newer", "Older"], (await repo.ListDeletedAsync(OwnerScope.Of([Alice]), default)).Select(v => v.Name));
-        Assert.Empty(await repo.ListDeletedAsync(OwnerScope.Of([]), default));
+        Assert.Equal(["Newer", "Bobs", "Older"], (await repo.ListDeletedAsync(OwnerScope.All, Newest, default)).Select(v => v.Name));
+        Assert.Equal(["Newer", "Older"], (await repo.ListDeletedAsync(OwnerScope.Of([Alice]), Newest, default)).Select(v => v.Name));
+        Assert.Empty(await repo.ListDeletedAsync(OwnerScope.Of([]), Newest, default));
     }
 
     [Fact]

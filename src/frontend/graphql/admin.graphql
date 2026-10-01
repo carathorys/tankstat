@@ -1,0 +1,62 @@
+query Admin {
+  users {
+    id
+    provider
+    email
+    displayName
+    isAdmin
+    isDisabled
+  }
+  accessSettings {
+    defaultLevelForOthers
+  }
+  accessGrants {
+    id
+    ownerId
+    granteeId
+    level
+  }
+}
+
+mutation CreateUser($input: CreateUserInput!) {
+  createUser(input: $input) {
+    user {
+      id
+    }
+    reset {
+      token
+      url
+      emailSent
+    }
+  }
+}
+
+mutation IssuePasswordReset($userId: UUID!) {
+  issuePasswordReset(userId: $userId) {
+    token
+    url
+    emailSent
+  }
+}
+
+mutation SetUserAdmin($userId: UUID!, $isAdmin: Boolean!) {
+  setUserAdmin(userId: $userId, isAdmin: $isAdmin) {
+    id
+  }
+}
+
+mutation SetUserDisabled($userId: UUID!, $disabled: Boolean!) {
+  setUserDisabled(userId: $userId, disabled: $disabled) {
+    id
+  }
+}
+
+mutation SetDefaultAccess($level: AccessLevel!) {
+  setDefaultAccess(level: $level) {
+    defaultLevelForOthers
+  }
+}
+
+mutation SetAccessGrant($input: SetAccessGrantInput!) {
+  setAccessGrant(input: $input)
+}

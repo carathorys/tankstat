@@ -18,6 +18,9 @@ public sealed class VehicleExtensions
     public async Task<string?> GetOwnerName([Parent] Vehicle vehicle, [Service] IUserRepository users, CancellationToken ct) =>
         (await users.FindByIdAsync(vehicle.OwnerId, ct))?.DisplayName;
 
+    public Task<int> GetRefuelingCount([Parent] Vehicle vehicle, [Service] RefuelingService refuelings, CancellationToken ct) =>
+        refuelings.CountForVehicleAsync(vehicle.Id, ct);
+
     public Task<IReadOnlyList<Refueling>> GetRefuelings(
         [Parent] Vehicle vehicle, [Service] RefuelingService refuelings, CancellationToken ct) =>
         refuelings.ListForVehicleAsync(vehicle.Id, ct);

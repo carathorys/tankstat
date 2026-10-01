@@ -1,82 +1,91 @@
 import { useApolloClient, useMutation } from '@apollo/client/react'
+import { Button, Card, Heading, Link, Text } from '@radix-ui/themes'
 import { useState } from 'react'
-import { Form } from './forms.tsx'
-import { LOGIN_MUTATION, REQUEST_RESET_MUTATION, type AuthMode } from './session.ts'
+import { useTranslation } from 'react-i18next'
+import { FieldForm } from './forms.tsx'
+import { LoginDocument, RequestPasswordResetDocument, type AuthMode } from './gql/generated.ts'
+import { SuccessMessage } from './messages.tsx'
 
 function PasswordLogin() {
+  const { t } = useTranslation()
   const client = useApolloClient()
-  const [login] = useMutation(LOGIN_MUTATION)
-  const [requestReset] = useMutation(REQUEST_RESET_MUTATION)
+  const [login] = useMutation(LoginDocument)
+  const [requestReset] = useMutation(RequestPasswordResetDocument)
   const [forgot, setForgot] = useState(false)
   const [sent, setSent] = useState(false)
 
   if (forgot) {
     return (
-      <section>
-        <h2>Forgot your password?</h2>
+      <>
+        <Heading as="h2" size="5" mb="3">
+          {t('auth.forgotTitle')}
+        </Heading>
         {sent ? (
-          <p role="status">
-            If that address is registered and the server can send e-mail, a reset link is on its way. Otherwise ask an
-            administrator for a reset link.
-          </p>
+          <SuccessMessage>{t('auth.resetSent')}</SuccessMessage>
         ) : (
-          <Form
-            fields={[{ name: 'email', label: 'E-mail', type: 'email', autoComplete: 'username' }]}
-            submitLabel="Send reset link"
+          <FieldForm
+            fields={[{ name: 'email', label: 'fields.email', type: 'email', autoComplete: 'username' }]}
+            submitLabel="auth.sendReset"
             onSubmit={async (v) => {
               await requestReset({ variables: { email: v.email ?? '' } })
               setSent(true)
             }}
           />
         )}
-        <button type="button" onClick={() => setForgot(false)}>
-          Back to sign in
-        </button>
-      </section>
+        <Button mt="3" variant="ghost" onClick={() => setForgot(false)}>
+          {t('auth.backToSignIn')}
+        </Button>
+      </>
     )
   }
 
   return (
-    <section>
-      <h2>Sign in</h2>
-      <Form
+    <>
+      <Heading as="h2" size="5" mb="3">
+        {t('auth.signIn')}
+      </Heading>
+      <FieldForm
         fields={[
-          { name: 'email', label: 'E-mail', type: 'email', autoComplete: 'username' },
-          { name: 'password', label: 'Password', type: 'password', autoComplete: 'current-password' },
+          { name: 'email', label: 'fields.email', type: 'email', autoComplete: 'username' },
+          { name: 'password', label: 'fields.password', type: 'password', autoComplete: 'current-password' },
         ]}
-        submitLabel="Sign in"
+        submitLabel="auth.signIn"
         onSubmit={async (v) => {
           await login({ variables: { input: { email: v.email ?? '', password: v.password ?? '' } } })
           await client.resetStore()
         }}
       >
-        <button type="button" onClick={() => setForgot(true)}>
-          Forgot password?
-        </button>
-      </Form>
-    </section>
+        <Button type="button" variant="ghost" onClick={() => setForgot(true)}>
+          {t('auth.forgotLink')}
+        </Button>
+      </FieldForm>
+    </>
   )
 }
 
 /** What an anonymous visitor sees when the instance requires authentication. */
 export function LoginView({ mode }: { mode: AuthMode }) {
-  if (mode === 'OIDC') {
-    return (
-      <section>
-        <h2>Sign in</h2>
-        <p>
-          <a href="/auth/oidc/login">Sign in with your identity provider</a>
-        </p>
-      </section>
-    )
-  }
-  if (mode === 'PROXY_HEADER') {
-    return (
-      <section>
-        <h2>Not signed in</h2>
-        <p>Access is controlled by your reverse proxy. Open this app through the proxy and sign in there.</p>
-      </section>
-    )
-  }
-  return <PasswordLogin />
+  const { t } = useTranslation()
+
+  return (
+    <Card size="3" style={{ maxWidth: 420, margin: '2rem auto' }}>
+      {mode === 'OIDC' && (
+        <>
+          <Heading as="h2" size="5" mb="3">
+            {t('auth.signIn')}
+          </Heading>
+          <Link href="/auth/oidc/login">{t('auth.signInProvider')}</Link>
+        </>
+      )}
+      {mode === 'PROXY_HEADER' && (
+        <>
+          <Heading as="h2" size="5" mb="3">
+            {t('auth.notSignedIn')}
+          </Heading>
+          <Text as="p">{t('auth.proxyHint')}</Text>
+        </>
+      )}
+      {mode !== 'OIDC' && mode !== 'PROXY_HEADER' && <PasswordLogin />}
+    </Card>
+  )
 }

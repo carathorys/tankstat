@@ -28,7 +28,7 @@ public sealed class User
     {
         var normalized = (email ?? "").Trim().ToLowerInvariant();
         if (normalized.Length == 0 || normalized.Length > 254 || !MailAddress.TryCreate(normalized, out var parsed) || parsed.Address != normalized)
-            throw new DomainException("A valid e-mail address is required.");
+            throw new DomainException("user.emailInvalid", "A valid e-mail address is required.");
         return normalized;
     }
 
@@ -55,8 +55,8 @@ public sealed class User
 
     public static User CreateExternal(UserProvider provider, string subject, string? email, string? displayName, bool isAdmin)
     {
-        if (provider == UserProvider.Local) throw new DomainException("Use CreateLocal for local users.");
-        if (string.IsNullOrWhiteSpace(subject)) throw new DomainException("An external user needs a subject.");
+        if (provider == UserProvider.Local) throw new DomainException("user.useCreateLocal", "Use CreateLocal for local users.");
+        if (string.IsNullOrWhiteSpace(subject)) throw new DomainException("user.subjectRequired", "An external user needs a subject.");
         var mail = (email ?? "").Trim().ToLowerInvariant();
         return new User
         {
@@ -93,7 +93,7 @@ public sealed class User
     /// <summary>Sets a new password and invalidates every existing session.</summary>
     public void SetPasswordHash(string hash)
     {
-        if (Provider != UserProvider.Local) throw new DomainException("Only local users have a password.");
+        if (Provider != UserProvider.Local) throw new DomainException("user.passwordLocalOnly", "Only local users have a password.");
         PasswordHash = hash;
         FailedLoginCount = 0;
         LockoutEnd = null;

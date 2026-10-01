@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import App from '../../src/frontend/App.tsx'
-import type { SessionUser } from '../../src/frontend/session.ts'
+import type { SessionQuery } from '../../src/frontend/gql/generated.ts'
 import { server } from './server.ts'
 import { fakeVehicleBackend, gqlError, healthHandler, renderWithApollo, sessionHandler, user } from './mocks.tsx'
 
@@ -13,7 +13,7 @@ afterAll(() => server.close())
 
 /** A fake server session: login/logout flip it, and the Session query reports it. */
 function standaloneServer(login: (vars: { email: string; password: string }) => boolean = () => true) {
-  const state: { current: SessionUser | null; calls: Record<string, unknown[]> } = { current: null, calls: {} }
+  const state: { current: SessionQuery['session']['user']; calls: Record<string, unknown[]> } = { current: null, calls: {} }
   const record = (name: string, vars: unknown) => (state.calls[name] ??= []).push(vars)
 
   server.use(
@@ -83,6 +83,19 @@ it('sends the entered credentials and shows the server message on failure', asyn
   expect(await screen.findByRole('alert')).toHaveTextContent('Invalid e-mail or password.')
   expect(state.calls.Login).toEqual([{ input: { email: 'alice@example.com', password: 'wrong' } }])
   expect(screen.queryByText('Vehicles')).not.toBeInTheDocument()
+})
+
+it('does not call the server when the form is incomplete', async () => {
+  const ui = userEvent.setup()
+  const state = standaloneServer()
+  renderWithApollo(<App />)
+
+  await ui.type(await screen.findByLabelText('E-mail'), 'not-an-email')
+  await ui.click(screen.getByRole('button', { name: 'Sign in' }))
+
+  expect(await screen.findByText('Enter a valid e-mail address')).toBeInTheDocument()
+  expect(await screen.findByText('Password is required')).toBeInTheDocument()
+  expect(state.calls.Login).toBeUndefined()
 })
 
 it('forgot password: requests a reset and gives neutral feedback', async () => {

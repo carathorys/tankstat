@@ -19,7 +19,7 @@ src/backend/Tankstat.Application/         use cases and ports (e.g. IDatabasePro
 src/backend/Tankstat.Domain/              entities (Vehicle, Refueling, User, access grants) and their rules, no dependencies
 src/backend/Tankstat.Infrastructure/      EF Core mapping, repositories, database provider selection
 src/backend/Tankstat.Migrations.*/        one EF Core migration set per provider (Sqlite, PostgreSql, SqlServer, MySql)
-src/frontend/                             React + Vite app: top bar, hamburger menu, pages (vehicles, trash, account, administration); UI built on Radix (radix-ui)
+src/frontend/                             React + Vite app: top bar, hamburger menu, pages (vehicles, trash, account, administration); UI built with Radix Themes (@radix-ui/themes), lucide-react icons, motion animations, react-i18next
 tests/backend/Tankstat.Domain.UnitTests/          entity rules
 tests/backend/Tankstat.Application.UnitTests/     services (incl. access and auth rules) against in-memory fakes
 tests/backend/Tankstat.Infrastructure.UnitTests/  config binding, repositories (SQLite file), migration/model consistency for every provider
@@ -98,9 +98,18 @@ Auth__AdminEmails__0=you@example.com                # matched against e-mail or 
 
 A top bar with a hamburger menu gives access to:
 
-- **Vehicles**: list, add, edit and delete vehicles (editing and deleting only appears for vehicles you may edit).
+- **Vehicles**: a grid with add, edit and delete (editing and deleting only appear for vehicles you may edit).
 - **Trash**: deleting moves a vehicle to the trash (it keeps a deletion timestamp). From there it can be **restored**, or the whole trash can be **emptied**, which permanently deletes the trashed vehicles you have edit access to together with their refuelings. There is no automatic clean-up yet.
 - **Account** (change password in Standalone mode) and **Administration** (administrators only), plus **Sign out**.
+
+### Grids
+Sorting (click a column header), paging and column selection are done by the **server**: the GraphQL query gets `orderBy`, `direction`, `skip`, `take`, and one Boolean variable per optional column that drives `@include`, so hidden columns are not even fetched. The toolbar has a refresh button and a column picker (show/hide and move up/down, which works with touch). Column choices, order, page size and sorting are remembered per grid in the browser. Data is re-fetched whenever a page is opened. The layout is mobile-first: on a phone only the essential columns start visible, and the table scrolls horizontally.
+
+### Languages
+English and Hungarian (react-i18next); the language menu in the top bar is available before sign-in, defaults to the browser language and is remembered. Every visible string is in `src/frontend/i18n/locales/<lang>.json` (typed keys; a test checks that all languages have the same messages and placeholders). API errors carry a stable `key` and `args` (e.g. `password.tooShort`, `{min: 10}`) which the UI translates; the API's English message is only a fallback. Dates and numbers use `Intl` for the selected language. To add a language: add `<lang>.json`, list it in `LANGUAGES` (`i18n/index.ts`), and the test tells you what is missing.
+
+### GraphQL types are generated
+Nothing GraphQL is typed by hand. `schema.graphql` is exported from the API (`mise run schema:export`) and, with the operations in `src/frontend/graphql/*.graphql`, GraphQL Code Generator writes `src/frontend/gql/generated.ts`. After changing the API schema or a `.graphql` document run `mise run codegen` and commit the results; `mise run test` (and an API test) fail if they are stale.
 
 ## Data model and migrations
 

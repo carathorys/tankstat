@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import App from '../../src/frontend/App.tsx'
+import en from '../../src/frontend/i18n/locales/en.json'
 import { server } from './server.ts'
 import {
   authWarning,
@@ -24,7 +25,7 @@ it('without authentication shows the warning, the top bar, the data and the API 
   server.use(sessionHandler('NONE', () => null, [authWarning]), healthHandler, ...withBackend())
   renderWithApollo(<App />)
 
-  await screen.findByText(authWarning.message)
+  await screen.findByText(en.notices.AUTH_DISABLED)
   expect(screen.getByRole('banner')).toHaveTextContent('Tankstat')
   await screen.findByText('Octavia')
   await screen.findByText('Healthy')

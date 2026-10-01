@@ -16,7 +16,7 @@ public sealed class AuthService(
 
     private void RequireMode(AuthMode mode)
     {
-        if (auth.Value.Mode != mode) throw new DomainException($"This is not available in {auth.Value.Mode} authentication mode.");
+        if (auth.Value.Mode != mode) throw new DomainException("auth.modeUnavailable", $"This is not available in {auth.Value.Mode} authentication mode.", new { Mode = auth.Value.Mode.ToString() });
     }
 
     public async Task<User> LoginAsync(string? email, string? password, CancellationToken ct)
@@ -52,7 +52,7 @@ public sealed class AuthService(
         var user = await users.FindByIdAsync(principal.Id, ct) ?? throw new UnauthenticatedException();
 
         if (user.PasswordHash is null || !hasher.Verify(user.PasswordHash, currentPassword ?? ""))
-            throw new DomainException("The current password is not correct.");
+            throw new DomainException("password.currentIncorrect", "The current password is not correct.");
         PasswordPolicy.Validate(newPassword);
 
         user.SetPasswordHash(hasher.Hash(newPassword!));
@@ -97,7 +97,7 @@ public sealed class AuthService(
             return user;
         }
 
-        if (user.IsDisabled) throw new ForbiddenException("This account has been disabled.");
+        if (user.IsDisabled) throw new ForbiddenException("auth.accountDisabled", "This account has been disabled.");
         user.UpdateProfile(email, displayName);
         if (configuredAdmin) user.SetAdmin(true); // configuration only promotes; demotion happens in the UI
         await users.UpdateAsync(user, ct);

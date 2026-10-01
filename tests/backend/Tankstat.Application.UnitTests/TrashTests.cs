@@ -1,3 +1,4 @@
+using Tankstat.Application.Vehicles;
 using Tankstat.Application;
 using Tankstat.Application.Auth;
 using Tankstat.Domain;
@@ -47,9 +48,9 @@ public class VehicleLifecycleTests
         await w.VehicleService.DeleteAsync(car.Id, default);
 
         Assert.Equal(w.Clock.GetUtcNow(), car.DeletedAt);
-        Assert.Empty(await w.VehicleService.ListAsync(default));
+        Assert.Empty(await w.VehicleService.ListAsync(new VehicleQuery(), default));
         Assert.Null(await w.VehicleService.FindAsync(car.Id, default));
-        Assert.Same(car, Assert.Single(await w.VehicleService.ListTrashAsync(default)));
+        Assert.Same(car, Assert.Single(await w.VehicleService.ListTrashAsync(new VehicleQuery(), default)));
         Assert.Single(w.Vehicles.Items); // logical deletion only: the row is still there
     }
 
@@ -61,8 +62,8 @@ public class VehicleLifecycleTests
 
         await w.VehicleService.RestoreAsync(car.Id, default);
 
-        Assert.Single(await w.VehicleService.ListAsync(default));
-        Assert.Empty(await w.VehicleService.ListTrashAsync(default));
+        Assert.Single(await w.VehicleService.ListAsync(new VehicleQuery(), default));
+        Assert.Empty(await w.VehicleService.ListTrashAsync(new VehicleQuery(), default));
     }
 
     [Fact]
@@ -100,7 +101,7 @@ public class VehicleLifecycleTests
         w.Current.SignInAs(bob);
 
         await Assert.ThrowsAsync<NotFoundException>(() => w.VehicleService.RestoreAsync(car.Id, default));
-        Assert.Empty(await w.VehicleService.ListTrashAsync(default));
+        Assert.Empty(await w.VehicleService.ListTrashAsync(new VehicleQuery(), default));
         Assert.Equal(0, await w.VehicleService.EmptyTrashAsync(default));
         Assert.Single(w.Vehicles.Items);
     }
@@ -118,7 +119,7 @@ public class VehicleLifecycleTests
         w.Current.SignInAs(alice);
         await w.VehicleService.DeleteAsync(car.Id, default);
         w.Current.SignInAs(bob);
-        Assert.Empty(await w.VehicleService.ListTrashAsync(default));
+        Assert.Empty(await w.VehicleService.ListTrashAsync(new VehicleQuery(), default));
         Assert.Equal(0, await w.VehicleService.EmptyTrashAsync(default));
     }
 
@@ -132,7 +133,7 @@ public class VehicleLifecycleTests
 
         await w.VehicleService.DeleteAsync(car.Id, default); // Alice's, via the grant
         await w.VehicleService.DeleteAsync(bobs.Id, default);
-        Assert.Equal(2, (await w.VehicleService.ListTrashAsync(default)).Count);
+        Assert.Equal(2, (await w.VehicleService.ListTrashAsync(new VehicleQuery(), default)).Count);
         await w.VehicleService.RestoreAsync(car.Id, default);
 
         Assert.Equal(1, await w.VehicleService.EmptyTrashAsync(default));
@@ -147,7 +148,7 @@ public class VehicleLifecycleTests
         await w.VehicleService.DeleteAsync(car.Id, default);
         w.Current.SignInAs(w.AddUser("root@x.co", admin: true));
 
-        Assert.Single(await w.VehicleService.ListTrashAsync(default));
+        Assert.Single(await w.VehicleService.ListTrashAsync(new VehicleQuery(), default));
         Assert.Equal(1, await w.VehicleService.EmptyTrashAsync(default));
     }
 
@@ -160,7 +161,7 @@ public class VehicleLifecycleTests
         await w.VehicleService.DeleteAsync(car.Id, default);
         await w.VehicleService.RestoreAsync(car.Id, default);
 
-        Assert.Single(await w.VehicleService.ListAsync(default));
+        Assert.Single(await w.VehicleService.ListAsync(new VehicleQuery(), default));
     }
 
     [Fact]
@@ -170,7 +171,7 @@ public class VehicleLifecycleTests
         w.Current.Principal = null;
 
         await Assert.ThrowsAsync<UnauthenticatedException>(() => w.VehicleService.DeleteAsync(car.Id, default));
-        await Assert.ThrowsAsync<UnauthenticatedException>(() => w.VehicleService.ListTrashAsync(default));
+        await Assert.ThrowsAsync<UnauthenticatedException>(() => w.VehicleService.ListTrashAsync(new VehicleQuery(), default));
         await Assert.ThrowsAsync<UnauthenticatedException>(() => w.VehicleService.EmptyTrashAsync(default));
     }
 }

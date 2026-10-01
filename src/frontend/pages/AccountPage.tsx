@@ -1,19 +1,34 @@
+import { DataList, Heading, Text } from '@radix-ui/themes'
+import { useTranslation } from 'react-i18next'
+import type { AuthMode, SessionQuery } from '../gql/generated.ts'
 import { ChangePasswordForm } from '../PasswordForms.tsx'
-import type { AuthMode, SessionUser } from '../session.ts'
 
-export function AccountPage({ mode, user }: { mode: AuthMode; user: SessionUser | null }) {
+export function AccountPage({ mode, user }: { mode: AuthMode; user: SessionQuery['session']['user'] }) {
+  const { t } = useTranslation()
+
   return (
     <section>
-      <h1>Account</h1>
+      <Heading mb="3">{t('account.title')}</Heading>
       {user ? (
-        <p>
-          Signed in as <strong>{user.displayName}</strong> ({user.email || 'no e-mail'}){user.isAdmin && ', administrator'}.
-        </p>
+        <DataList.Root>
+          <DataList.Item>
+            <DataList.Label>{t('account.name')}</DataList.Label>
+            <DataList.Value>{user.displayName}</DataList.Value>
+          </DataList.Item>
+          <DataList.Item>
+            <DataList.Label>{t('account.email')}</DataList.Label>
+            <DataList.Value>{user.email || t('common.none')}</DataList.Value>
+          </DataList.Item>
+          <DataList.Item>
+            <DataList.Label>{t('account.role')}</DataList.Label>
+            <DataList.Value>{user.isAdmin ? t('role.admin') : t('role.user')}</DataList.Value>
+          </DataList.Item>
+        </DataList.Root>
       ) : (
-        <p>Authentication is disabled, so there is no personal account.</p>
+        <Text as="p">{t('account.noAuth')}</Text>
       )}
       {user && mode === 'STANDALONE' && <ChangePasswordForm />}
-      {user && mode !== 'STANDALONE' && <p>Your password is managed by your identity provider or proxy.</p>}
+      {user && mode !== 'STANDALONE' && <Text as="p">{t('account.managed')}</Text>}
     </section>
   )
 }

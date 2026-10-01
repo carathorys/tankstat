@@ -1,0 +1,220 @@
+{
+  "app": {
+    "name": "Tankstat",
+    "loading": "Betöltés…",
+    "notFound": "Ez az oldal nem létezik."
+  },
+  "nav": {
+    "menu": "Menü megnyitása",
+    "vehicles": "Járművek",
+    "trash": "Kuka",
+    "account": "Fiók",
+    "admin": "Adminisztráció",
+    "signOut": "Kijelentkezés"
+  },
+  "language": {
+    "label": "Nyelv"
+  },
+  "common": {
+    "cancel": "Mégse",
+    "none": "–"
+  },
+  "notices": {
+    "warning": "Figyelem:",
+    "AUTH_DISABLED": "A hitelesítés ki van kapcsolva: aki eléri ezt az alkalmazást, az minden adatot láthat és módosíthat. Ez nem biztonságos; állítsd be az Auth:Mode értékét."
+  },
+  "status": {
+    "healthy": "Működik",
+    "degraded": "Korlátozott",
+    "api": "API:",
+    "unreachable": "Az API nem érhető el: {{message}}"
+  },
+  "fuel": {
+    "PETROL": "Benzin",
+    "DIESEL": "Dízel",
+    "LPG": "LPG"
+  },
+  "level": {
+    "NONE": "semmit",
+    "VIEW": "megtekintést",
+    "EDIT": "megtekintést és szerkesztést"
+  },
+  "role": {
+    "admin": "Adminisztrátor",
+    "user": "Felhasználó",
+    "adminBadge": "admin"
+  },
+  "fields": {
+    "email": "E-mail",
+    "password": "Jelszó",
+    "currentPassword": "Jelenlegi jelszó",
+    "newPassword": "Új jelszó",
+    "name": "Név",
+    "licensePlate": "Rendszám",
+    "licensePlateOptional": "Rendszám (nem kötelező)",
+    "fuel": "Üzemanyag"
+  },
+  "forms": {
+    "required": "A(z) {{field}} megadása kötelező",
+    "emailInvalid": "Adj meg érvényes e-mail-címet"
+  },
+  "auth": {
+    "signIn": "Bejelentkezés",
+    "signInProvider": "Bejelentkezés az identitásszolgáltatóddal",
+    "notSignedIn": "Nem vagy bejelentkezve",
+    "proxyHint": "A hozzáférést a reverse proxy szabályozza. Nyisd meg az alkalmazást a proxyn keresztül, és ott jelentkezz be.",
+    "forgotTitle": "Elfelejtetted a jelszavad?",
+    "forgotLink": "Elfelejtett jelszó?",
+    "sendReset": "Visszaállító link küldése",
+    "backToSignIn": "Vissza a bejelentkezéshez",
+    "resetSent": "Ha ez a cím regisztrálva van, és a szerver tud e-mailt küldeni, a visszaállító link úton van. Ellenkező esetben kérj linket egy adminisztrátortól.",
+    "changeTitle": "Jelszó módosítása",
+    "changeSubmit": "Jelszó frissítése",
+    "changed": "A jelszó megváltozott. A többi munkamenetedből kijelentkeztettünk.",
+    "setTitle": "Add meg a jelszavad",
+    "setSubmit": "Jelszó beállítása",
+    "setDone": "A jelszavad beállítottuk.",
+    "continueSignIn": "Tovább a bejelentkezéshez"
+  },
+  "columns": {
+    "name": "Név",
+    "licensePlate": "Rendszám",
+    "fuelType": "Üzemanyag",
+    "owner": "Tulajdonos",
+    "refuelings": "Tankolások",
+    "deletedAt": "Törölve"
+  },
+  "grid": {
+    "refresh": "Frissítés",
+    "columns": "Oszlopok",
+    "columnsHint": "Oszlopok megjelenítése, elrejtése és átrendezése.",
+    "showColumn": "{{column}} megjelenítése",
+    "moveUp": "{{column}} feljebb",
+    "moveDown": "{{column}} lejjebb",
+    "reset": "Alapértelmezések visszaállítása",
+    "pageSize": "Sorok oldalanként",
+    "range": "{{from}}–{{to}} / {{total}}",
+    "previous": "Előző oldal",
+    "next": "Következő oldal",
+    "sortedAscending": "növekvő sorrend",
+    "sortedDescending": "csökkenő sorrend"
+  },
+  "vehicles": {
+    "title": "Járművek",
+    "add": "Jármű hozzáadása",
+    "edit": "Szerkesztés",
+    "delete": "Törlés",
+    "editAria": "{{name}} szerkesztése",
+    "deleteAria": "{{name}} törlése",
+    "viewOnly": "csak megtekinthető",
+    "empty": "Még nincs jármű. Add hozzá az elsőt a kezdéshez.",
+    "dialogAdd": "Jármű hozzáadása",
+    "dialogEdit": "Jármű szerkesztése",
+    "dialogAddDescription": "Add meg az új jármű adatait.",
+    "dialogEditDescription": "Módosítsd a jármű adatait.",
+    "save": "Módosítások mentése",
+    "trashTitle": "Áthelyezed a(z) {{name}} járművet a kukába?",
+    "trashDescription": "A kuka kiürítéséig visszaállíthatod a kukából.",
+    "trashConfirm": "Áthelyezés a kukába"
+  },
+  "trash": {
+    "title": "Kuka",
+    "empty": "A kuka üres.",
+    "restore": "Visszaállítás",
+    "restoreAria": "{{name}} visszaállítása",
+    "emptyAction": "Kuka ürítése",
+    "emptyTitle": "Kiüríted a kukát?",
+    "emptyDescription_one": "Ez véglegesen töröl {{count}} járművet és a tankolásait. A művelet nem vonható vissza.",
+    "emptyDescription_other": "Ez véglegesen töröl {{count}} járművet és a tankolásaikat. A művelet nem vonható vissza.",
+    "emptied_one": "Véglegesen törölve: {{count}} jármű.",
+    "emptied_other": "Véglegesen törölve: {{count}} jármű."
+  },
+  "account": {
+    "title": "Fiók",
+    "name": "Név",
+    "email": "E-mail",
+    "role": "Szerepkör",
+    "noAuth": "A hitelesítés ki van kapcsolva, ezért nincs személyes fiók.",
+    "managed": "A jelszavadat az identitásszolgáltatód vagy a proxy kezeli."
+  },
+  "admin": {
+    "title": "Adminisztráció",
+    "loading": "Az adminisztráció betöltése…",
+    "users": "Felhasználók",
+    "access": "Hozzáférés",
+    "colName": "Név",
+    "colEmail": "E-mail",
+    "colAdmin": "Admin",
+    "colDisabled": "Letiltva",
+    "adminAria": "Adminisztrátor: {{name}}",
+    "disabledAria": "Letiltva: {{name}}",
+    "resetLink": "Visszaállító link: {{name}}",
+    "addUser": "Felhasználó hozzáadása",
+    "createUser": "Felhasználó létrehozása",
+    "linkEmailed": "A linket e-mailben elküldtük.",
+    "linkHandOver": "Add át a felhasználónak ezt az egyszer használható linket:",
+    "accessTitle": "Hozzáférés mások adataihoz",
+    "defaultLabel": "Alapértelmezés szerint mindenki jogosult erre:",
+    "defaultAria": "Alapértelmezett hozzáférés mindenkinek",
+    "grantView": "{{grantee}} megtekintheti {{owner}} adatait",
+    "grantEdit": "{{grantee}} megtekintheti és szerkesztheti {{owner}} adatait",
+    "revoke": "Visszavonás",
+    "grantTo": "Jogosultság adása neki:",
+    "accessTo": "a következő felhasználó adataihoz:",
+    "atLevel": "szint:",
+    "dataOwner": "Adatok tulajdonosa",
+    "level": "Szint",
+    "grantAction": "Hozzáférés megadása",
+    "choose": "Válassz…"
+  },
+  "errors": {
+    "network": "A szerver nem érhető el. Ellenőrizd a kapcsolatot, és próbáld újra.",
+    "auth": {
+      "unauthenticated": "A folytatáshoz jelentkezz be.",
+      "forbidden": "Ehhez nincs jogosultságod.",
+      "adminRequired": "Adminisztrátori jogosultság szükséges.",
+      "invalidCredentials": "Hibás e-mail-cím vagy jelszó, vagy a fiók átmenetileg zárolva van.",
+      "accountDisabled": "Ez a fiók le van tiltva.",
+      "modeUnavailable": "Ez az aktuális hitelesítési módban ({{mode}}) nem érhető el."
+    },
+    "vehicle": {
+      "nameRequired": "A jármű nevének megadása kötelező.",
+      "unknownFuelType": "Ismeretlen üzemanyag-típus: {{value}}.",
+      "trashedCannotEdit": "A kukában lévő jármű nem szerkeszthető. Előbb állítsd vissza.",
+      "alreadyTrashed": "Ez a jármű már a kukában van.",
+      "notTrashed": "Ez a jármű nincs a kukában.",
+      "notFound": "Ez a jármű nem létezik.",
+      "viewOnly": "Ezt a járművet csak megtekintheted."
+    },
+    "refueling": {
+      "litersPositive": "A literszámnak nullánál nagyobbnak kell lennie.",
+      "costNegative": "A teljes költség nem lehet negatív.",
+      "odometerNegative": "A kilométeróra állása nem lehet negatív."
+    },
+    "access": {
+      "selfGrant": "A felhasználók mindig teljes hozzáféréssel rendelkeznek a saját adataikhoz.",
+      "levelRequired": "Válaszd a megtekintés vagy a szerkesztés szintet.",
+      "unknownLevel": "Ismeretlen hozzáférési szint: {{level}}."
+    },
+    "user": {
+      "emailInvalid": "Adj meg érvényes e-mail-címet.",
+      "subjectRequired": "A külső felhasználóhoz azonosító szükséges.",
+      "useCreateLocal": "A helyi felhasználókat helyi felhasználóként kell létrehozni.",
+      "passwordLocalOnly": "Csak a helyi felhasználóknak van jelszavuk.",
+      "passwordsLocalOnly": "A jelszó csak helyi felhasználóknál kezelhető.",
+      "notFound": "Ez a felhasználó nem létezik.",
+      "emailExists": "Már létezik felhasználó ezzel az e-mail-címmel.",
+      "onlyStandalone": "Felhasználót itt csak önálló hitelesítési módban lehet létrehozni.",
+      "cannotDemoteSelf": "Nem vonhatod vissza a saját adminisztrátori jogosultságodat.",
+      "cannotDisableSelf": "Nem tilthatod le a saját fiókodat."
+    },
+    "password": {
+      "tooShort": "A jelszónak legalább {{min}} karakter hosszúnak kell lennie.",
+      "tooLong": "A jelszó legfeljebb {{max}} karakter hosszú lehet.",
+      "currentIncorrect": "A jelenlegi jelszó nem helyes."
+    },
+    "reset": {
+      "invalid": "Ez a jelszó-visszaállító link érvénytelen vagy lejárt."
+    }
+  }
+}

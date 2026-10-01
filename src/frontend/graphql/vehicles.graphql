@@ -1,0 +1,82 @@
+# The grid asks only for the columns the user has switched on: each optional column has a
+# Boolean variable that drives @include, so the server skips the fields (and their resolvers) otherwise.
+query Vehicles(
+  $orderBy: VehicleSortField!
+  $direction: SortDirection!
+  $skip: Int!
+  $take: Int!
+  $withLicensePlate: Boolean!
+  $withFuelType: Boolean!
+  $withOwner: Boolean!
+  $withRefuelings: Boolean!
+) {
+  vehicles(orderBy: $orderBy, direction: $direction, skip: $skip, take: $take) {
+    id
+    name
+    canEdit
+    licensePlate @include(if: $withLicensePlate)
+    fuelType @include(if: $withFuelType)
+    ownerName @include(if: $withOwner)
+    refuelingCount @include(if: $withRefuelings)
+  }
+  vehicleCount
+}
+
+query Trash(
+  $orderBy: VehicleSortField!
+  $direction: SortDirection!
+  $skip: Int!
+  $take: Int!
+  $withLicensePlate: Boolean!
+  $withFuelType: Boolean!
+  $withOwner: Boolean!
+  $withDeletedAt: Boolean!
+) {
+  trash(orderBy: $orderBy, direction: $direction, skip: $skip, take: $take) {
+    id
+    name
+    licensePlate @include(if: $withLicensePlate)
+    fuelType @include(if: $withFuelType)
+    ownerName @include(if: $withOwner)
+    deletedAt @include(if: $withDeletedAt)
+  }
+  trashCount
+}
+
+# Loaded when the edit dialog opens: the grid may not have fetched every field (columns can be hidden).
+query VehicleDetails($id: UUID!) {
+  vehicle(id: $id) {
+    id
+    name
+    licensePlate
+    fuelType
+  }
+}
+
+mutation AddVehicle($input: AddVehicleInput!) {
+  addVehicle(input: $input) {
+    id
+  }
+}
+
+mutation UpdateVehicle($input: UpdateVehicleInput!) {
+  updateVehicle(input: $input) {
+    id
+  }
+}
+
+mutation DeleteVehicle($id: UUID!) {
+  deleteVehicle(id: $id) {
+    id
+  }
+}
+
+mutation RestoreVehicle($id: UUID!) {
+  restoreVehicle(id: $id) {
+    id
+  }
+}
+
+mutation EmptyTrash {
+  emptyTrash
+}

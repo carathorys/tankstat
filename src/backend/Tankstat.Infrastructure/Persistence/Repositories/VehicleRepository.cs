@@ -7,24 +7,56 @@ namespace Tankstat.Infrastructure.Persistence.Repositories;
 
 internal sealed class VehicleRepository(IDbContextFactory<AppDbContext> dbFactory) : IVehicleRepository
 {
-    public async Task<IReadOnlyList<Vehicle>> ListAsync(OwnerScope scope, CancellationToken ct)
+    public async Task<IReadOnlyList<Vehicle>> ListAsync(OwnerScope scope, VehicleQuery query, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await db.Vehicles.AsNoTracking().InScope(scope).OrderBy(v => v.Name).ToListAsync(ct);
+        return await Page(db, db.Vehicles.AsNoTracking().InScope(scope), query).ToListAsync(ct);
     }
+
+    public async Task<int> CountAsync(OwnerScope scope, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.Vehicles.InScope(scope).CountAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<Vehicle>> ListDeletedAsync(OwnerScope scope, VehicleQuery query, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var trashed = db.Vehicles.IgnoreQueryFilters().AsNoTracking().Where(v => v.DeletedAt != null).InScope(scope);
+        return await Page(db, trashed, query).ToListAsync(ct);
+    }
+
+    public async Task<int> CountDeletedAsync(OwnerScope scope, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.Vehicles.IgnoreQueryFilters().Where(v => v.DeletedAt != null).InScope(scope).CountAsync(ct);
+    }
+
+    /// <summary>Orders (always ending in the id, so pages are stable) and pages inside the database.</summary>
+    private static IQueryable<Vehicle> Page(AppDbContext db, IQueryable<Vehicle> vehicles, VehicleQuery query)
+    {
+        var q = query.Normalized();
+        var desc = q.Direction == SortDirection.Desc;
+
+        var ordered = q.SortBy switch
+        {
+            VehicleSortField.LicensePlate => Order(vehicles, v => v.LicensePlate == null ? null : v.LicensePlate.ToLower(), desc),
+            VehicleSortField.FuelType => Order(vehicles, v => v.FuelType, desc),
+            VehicleSortField.Owner => Order(vehicles, v => db.Users.Where(u => u.Id == v.OwnerId).Select(u => u.DisplayName.ToLower()).FirstOrDefault(), desc),
+            VehicleSortField.RefuelingCount => Order(vehicles, v => db.Refuelings.Count(r => r.VehicleId == v.Id), desc),
+            VehicleSortField.DeletedAt => Order(vehicles, v => v.DeletedAt, desc),
+            _ => Order(vehicles, v => v.Name.ToLower(), desc),
+        };
+        return ordered.ThenBy(v => v.Id).Skip(q.Skip).Take(q.Take);
+    }
+
+    private static IOrderedQueryable<Vehicle> Order<TKey>(IQueryable<Vehicle> vehicles, System.Linq.Expressions.Expression<Func<Vehicle, TKey>> key, bool desc) =>
+        desc ? vehicles.OrderByDescending(key) : vehicles.OrderBy(key);
 
     public async Task<Vehicle?> FindAsync(Guid id, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         return await db.Vehicles.AsNoTracking().FirstOrDefaultAsync(v => v.Id == id, ct);
-    }
-
-    public async Task<IReadOnlyList<Vehicle>> ListDeletedAsync(OwnerScope scope, CancellationToken ct)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var deleted = await db.Vehicles.IgnoreQueryFilters().AsNoTracking()
-            .Where(v => v.DeletedAt != null).InScope(scope).ToListAsync(ct);
-        return deleted.OrderByDescending(v => v.DeletedAt).ToList();
     }
 
     public async Task<Vehicle?> FindIncludingDeletedAsync(Guid id, CancellationToken ct)

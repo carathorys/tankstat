@@ -1,54 +1,54 @@
 import { useApolloClient, useMutation } from '@apollo/client/react'
-import { DropdownMenu } from 'radix-ui'
+import { DropdownMenu, IconButton } from '@radix-ui/themes'
+import { Menu } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
-import { LOGOUT_MUTATION, type AuthMode, type SessionUser } from '../session.ts'
+import { LogoutDocument, type AuthMode, type SessionQuery } from '../gql/generated.ts'
 
-export function HamburgerMenu({ mode, user }: { mode: AuthMode; user: SessionUser | null }) {
+export function HamburgerMenu({ mode, user }: { mode: AuthMode; user: SessionQuery['session']['user'] }) {
+  const { t } = useTranslation()
   const client = useApolloClient()
-  const [logout] = useMutation(LOGOUT_MUTATION)
+  const [logout] = useMutation(LogoutDocument)
   const canSignOut = user !== null && mode !== 'PROXY_HEADER' // behind a proxy the proxy owns the session
 
   return (
     <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
-        <button type="button" className="hamburger" aria-label="Open menu">
-          ☰
-        </button>
+      <DropdownMenu.Trigger>
+        <IconButton variant="soft" color="gray" highContrast aria-label={t('nav.menu')}>
+          <Menu size={18} />
+        </IconButton>
       </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content className="menu" align="start" sideOffset={6}>
-          <DropdownMenu.Item asChild className="menu-item">
-            <Link to="/vehicles">Vehicles</Link>
+      <DropdownMenu.Content align="start">
+        <DropdownMenu.Item asChild>
+          <Link to="/vehicles">{t('nav.vehicles')}</Link>
+        </DropdownMenu.Item>
+        <DropdownMenu.Item asChild>
+          <Link to="/trash">{t('nav.trash')}</Link>
+        </DropdownMenu.Item>
+        {user && (
+          <DropdownMenu.Item asChild>
+            <Link to="/account">{t('nav.account')}</Link>
           </DropdownMenu.Item>
-          <DropdownMenu.Item asChild className="menu-item">
-            <Link to="/trash">Trash</Link>
+        )}
+        {user?.isAdmin && (
+          <DropdownMenu.Item asChild>
+            <Link to="/admin">{t('nav.admin')}</Link>
           </DropdownMenu.Item>
-          {user && (
-            <DropdownMenu.Item asChild className="menu-item">
-              <Link to="/account">Account</Link>
+        )}
+        {canSignOut && (
+          <>
+            <DropdownMenu.Separator />
+            <DropdownMenu.Item
+              onSelect={async () => {
+                await logout()
+                await client.resetStore()
+              }}
+            >
+              {t('nav.signOut')}
             </DropdownMenu.Item>
-          )}
-          {user?.isAdmin && (
-            <DropdownMenu.Item asChild className="menu-item">
-              <Link to="/admin">Administration</Link>
-            </DropdownMenu.Item>
-          )}
-          {canSignOut && (
-            <>
-              <DropdownMenu.Separator className="menu-separator" />
-              <DropdownMenu.Item
-                className="menu-item"
-                onSelect={async () => {
-                  await logout()
-                  await client.resetStore()
-                }}
-              >
-                Sign out
-              </DropdownMenu.Item>
-            </>
-          )}
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
+          </>
+        )}
+      </DropdownMenu.Content>
     </DropdownMenu.Root>
   )
 }

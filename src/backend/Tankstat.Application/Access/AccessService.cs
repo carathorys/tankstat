@@ -22,7 +22,7 @@ public sealed class AccessService(
     public async Task<Principal> RequireAdminAsync(CancellationToken ct)
     {
         var principal = await RequirePrincipalAsync(ct);
-        if (principal.IsAnonymous || !principal.IsAdmin) throw new ForbiddenException("Administrator rights are required.");
+        if (principal.IsAnonymous || !principal.IsAdmin) throw new ForbiddenException("auth.adminRequired", "Administrator rights are required.");
         return principal;
     }
 

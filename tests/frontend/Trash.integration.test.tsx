@@ -21,7 +21,7 @@ it('lists trashed vehicles with their deletion time', async () => {
 
   const row = (await screen.findByText('Old Fiat')).closest('tr')!
   expect(within(row).getByText('ABC-123')).toBeInTheDocument()
-  expect(within(row).getByText(new Date('2026-10-01T08:00:00Z').toLocaleString())).toBeInTheDocument()
+  expect(within(row).getByText(new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date('2026-10-01T08:00:00Z')))).toBeInTheDocument()
   expect(screen.getByText('Old Opel')).toBeInTheDocument()
 })
 

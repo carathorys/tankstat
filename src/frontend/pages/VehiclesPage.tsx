@@ -1,110 +1,105 @@
-import { useMutation, useQuery } from '@apollo/client/react'
+import { useMutation } from '@apollo/client/react'
+import { AlertDialog, Button, Flex, Heading, Text } from '@radix-ui/themes'
 import { useState } from 'react'
-import { ConfirmDialog } from '../ui/Dialog.tsx'
-import { VehicleFormDialog } from '../VehicleFormDialog.tsx'
+import { useTranslation } from 'react-i18next'
 import {
-  ADD_VEHICLE_MUTATION,
-  DELETE_VEHICLE_MUTATION,
-  TRASH_QUERY,
-  UPDATE_VEHICLE_MUTATION,
-  VEHICLES_QUERY,
-  fuelLabel,
-  type Vehicle,
-} from '../vehicles.ts'
+  AddVehicleDocument,
+  DeleteVehicleDocument,
+  UpdateVehicleDocument,
+  VehiclesDocument,
+  type VehiclesQuery,
+  type VehiclesQueryVariables,
+} from '../gql/generated.ts'
+import { DataGrid, type GridColumn } from '../grid/DataGrid.tsx'
+import { ErrorMessage } from '../messages.tsx'
+import { VehicleFormDialog } from '../VehicleFormDialog.tsx'
 
-const refetch = { refetchQueries: [VEHICLES_QUERY, TRASH_QUERY], awaitRefetchQueries: true }
+type Row = VehiclesQuery['vehicles'][number]
+
+const refetch = { refetchQueries: ['Vehicles', 'Trash'], awaitRefetchQueries: true }
 
 export function VehiclesPage() {
-  const { data, error, loading } = useQuery(VEHICLES_QUERY)
-  const [addVehicle] = useMutation(ADD_VEHICLE_MUTATION, refetch)
-  const [updateVehicle] = useMutation(UPDATE_VEHICLE_MUTATION, refetch)
-  const [deleteVehicle] = useMutation(DELETE_VEHICLE_MUTATION, refetch)
-  const [adding, setAdding] = useState(false)
-  const [editing, setEditing] = useState<Vehicle>()
-  const [deleting, setDeleting] = useState<Vehicle>()
-  const [actionError, setActionError] = useState<string>()
+  const { t } = useTranslation()
+  const [addVehicle] = useMutation(AddVehicleDocument, refetch)
+  const [updateVehicle] = useMutation(UpdateVehicleDocument, refetch)
+  const [deleteVehicle] = useMutation(DeleteVehicleDocument, refetch)
+  const [actionError, setActionError] = useState<unknown>()
+  const none = t('common.none')
+
+  const columns: GridColumn<Row, VehiclesQueryVariables>[] = [
+    { id: 'name', label: 'columns.name', hideable: false, mobile: true, sortField: 'NAME', cell: (r) => r.name },
+    { id: 'licensePlate', label: 'columns.licensePlate', include: 'withLicensePlate', sortField: 'LICENSE_PLATE', cell: (r) => r.licensePlate ?? none },
+    { id: 'fuelType', label: 'columns.fuelType', include: 'withFuelType', mobile: true, sortField: 'FUEL_TYPE', cell: (r) => (r.fuelType ? t(`fuel.${r.fuelType}`) : none) },
+    { id: 'owner', label: 'columns.owner', include: 'withOwner', sortField: 'OWNER', cell: (r) => r.ownerName ?? none },
+    { id: 'refuelings', label: 'columns.refuelings', include: 'withRefuelings', sortField: 'REFUELING_COUNT', cell: (r) => r.refuelingCount ?? none },
+  ]
+
+  async function moveToTrash(vehicle: Row) {
+    setActionError(undefined)
+    try {
+      await deleteVehicle({ variables: { id: vehicle.id } })
+    } catch (e) {
+      setActionError(e)
+    }
+  }
 
   return (
     <section>
-      <div className="page-header">
-        <h1>Vehicles</h1>
-        <button type="button" onClick={() => setAdding(true)}>
-          Add vehicle
-        </button>
-      </div>
-      {error && <p role="alert">{error.message}</p>}
-      {actionError && <p role="alert">{actionError}</p>}
-      {loading && <p>Loading…</p>}
-      {data && data.vehicles.length === 0 && <p>No vehicles yet. Add your first vehicle to get started.</p>}
-      {data && data.vehicles.length > 0 && (
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>License plate</th>
-              <th>Fuel</th>
-              <th>Owner</th>
-              <th>Refuelings</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {data.vehicles.map((v) => (
-              <tr key={v.id}>
-                <td>{v.name}</td>
-                <td>{v.licensePlate ?? '–'}</td>
-                <td>{fuelLabel(v.fuelType)}</td>
-                <td>{v.ownerName ?? '–'}</td>
-                <td>{v.refuelings.length}</td>
-                <td className="row-actions">
-                  {v.canEdit ? (
-                    <>
-                      <button type="button" aria-label={`Edit ${v.name}`} onClick={() => setEditing(v)}>
-                        Edit
-                      </button>
-                      <button type="button" aria-label={`Delete ${v.name}`} onClick={() => setDeleting(v)}>
-                        Delete
-                      </button>
-                    </>
-                  ) : (
-                    <span className="muted">view only</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {adding && (
-        <VehicleFormDialog
-          open
-          onOpenChange={(open) => !open && setAdding(false)}
-          onSubmit={(input) => addVehicle({ variables: { input } })}
-        />
-      )}
-      {editing && (
-        <VehicleFormDialog
-          open
-          onOpenChange={(open) => !open && setEditing(undefined)}
-          initial={{ name: editing.name, licensePlate: editing.licensePlate, fuelType: editing.fuelType }}
-          onSubmit={(input) => updateVehicle({ variables: { input: { ...input, id: editing.id } } })}
-        />
-      )}
-      <ConfirmDialog
-        open={deleting !== undefined}
-        onOpenChange={(open) => !open && setDeleting(undefined)}
-        title={`Move ${deleting?.name ?? 'vehicle'} to the trash?`}
-        description="You can restore it from the trash until the trash is emptied."
-        confirmLabel="Move to trash"
-        onConfirm={async () => {
-          setActionError(undefined)
-          try {
-            if (deleting) await deleteVehicle({ variables: { id: deleting.id } })
-          } catch (e) {
-            setActionError(e instanceof Error ? e.message : String(e))
-          }
-        }}
+      <Heading mb="4">{t('vehicles.title')}</Heading>
+      {actionError !== undefined && <ErrorMessage error={actionError} />}
+      <DataGrid
+        gridId="vehicles"
+        query={VehiclesDocument}
+        select={(d) => ({ rows: d.vehicles, total: d.vehicleCount })}
+        rowKey={(r) => r.id}
+        columns={columns}
+        defaultSort={{ field: 'NAME', direction: 'ASC' }}
+        emptyText={t('vehicles.empty')}
+        toolbar={() => (
+          <VehicleFormDialog trigger={<Button>{t('vehicles.add')}</Button>} onSubmit={(input) => addVehicle({ variables: { input } })} />
+        )}
+        actions={(v) =>
+          v.canEdit ? (
+            <Flex gap="2" justify="end">
+              <VehicleFormDialog
+                vehicleId={v.id}
+                trigger={
+                  <Button size="1" variant="soft" aria-label={t('vehicles.editAria', { name: v.name })}>
+                    {t('vehicles.edit')}
+                  </Button>
+                }
+                onSubmit={(input) => updateVehicle({ variables: { input: { ...input, id: v.id } } })}
+              />
+              <AlertDialog.Root>
+                <AlertDialog.Trigger>
+                  <Button size="1" variant="soft" color="red" aria-label={t('vehicles.deleteAria', { name: v.name })}>
+                    {t('vehicles.delete')}
+                  </Button>
+                </AlertDialog.Trigger>
+                <AlertDialog.Content maxWidth="450px">
+                  <AlertDialog.Title>{t('vehicles.trashTitle', { name: v.name })}</AlertDialog.Title>
+                  <AlertDialog.Description size="2">{t('vehicles.trashDescription')}</AlertDialog.Description>
+                  <Flex gap="3" mt="4" justify="end">
+                    <AlertDialog.Cancel>
+                      <Button variant="soft" color="gray">
+                        {t('common.cancel')}
+                      </Button>
+                    </AlertDialog.Cancel>
+                    <AlertDialog.Action>
+                      <Button color="red" onClick={() => moveToTrash(v)}>
+                        {t('vehicles.trashConfirm')}
+                      </Button>
+                    </AlertDialog.Action>
+                  </Flex>
+                </AlertDialog.Content>
+              </AlertDialog.Root>
+            </Flex>
+          ) : (
+            <Text size="2" color="gray">
+              {t('vehicles.viewOnly')}
+            </Text>
+          )
+        }
       />
     </section>
   )

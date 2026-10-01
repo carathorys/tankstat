@@ -1,3 +1,4 @@
+using HotChocolate.Execution;
 using Tankstat.Api.Auth;
 using Tankstat.Api.GraphQL;
 using Tankstat.Application;
@@ -25,6 +26,16 @@ app.MapGraphQL(); // POST /graphql (Banana Cake Pop UI on GET in Development)
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.MapFallbackToFile("index.html");
+
+// `dotnet run -- schema export --output schema.graphql` writes the GraphQL schema for client code generation
+// (see `mise run schema:export`) without starting the server.
+if (args is ["schema", "export", ..])
+{
+    var output = args is [_, _, "--output", var path, ..] ? path : "schema.graphql";
+    var executor = await app.Services.GetRequiredService<IRequestExecutorProvider>().GetExecutorAsync();
+    await File.WriteAllTextAsync(output, executor.Schema.ToString() + Environment.NewLine);
+    return;
+}
 
 app.Run();
 

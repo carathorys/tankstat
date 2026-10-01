@@ -16,7 +16,7 @@ public sealed class AccessSettings
 
     public void SetDefaultLevelForOthers(AccessLevel level)
     {
-        if (!Enum.IsDefined(level)) throw new DomainException($"Unknown access level '{level}'.");
+        if (!Enum.IsDefined(level)) throw new DomainException("access.unknownLevel", $"Unknown access level '{level}'.", new { Level = level.ToString() });
         DefaultLevelForOthers = level;
     }
 }

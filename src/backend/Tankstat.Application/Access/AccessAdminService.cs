@@ -32,8 +32,8 @@ public sealed class AccessAdminService(
     public async Task SetGrantAsync(Guid ownerId, Guid granteeId, AccessLevel level, CancellationToken ct)
     {
         await access.RequireAdminAsync(ct);
-        if (await users.FindByIdAsync(ownerId, ct) is null) throw new NotFoundException($"User {ownerId} does not exist.");
-        if (await users.FindByIdAsync(granteeId, ct) is null) throw new NotFoundException($"User {granteeId} does not exist.");
+        if (await users.FindByIdAsync(ownerId, ct) is null) throw new NotFoundException("user.notFound", $"User {ownerId} does not exist.", new { Id = ownerId });
+        if (await users.FindByIdAsync(granteeId, ct) is null) throw new NotFoundException("user.notFound", $"User {granteeId} does not exist.", new { Id = granteeId });
 
         var existing = await grants.FindAsync(ownerId, granteeId, ct);
         if (level == AccessLevel.None)

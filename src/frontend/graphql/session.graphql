@@ -1,0 +1,38 @@
+query Session {
+  session {
+    mode
+    user {
+      id
+      displayName
+      email
+      isAdmin
+    }
+  }
+  notices {
+    code
+    severity
+    message
+  }
+}
+
+mutation Login($input: LoginInput!) {
+  login(input: $input) {
+    id
+  }
+}
+
+mutation Logout {
+  logout
+}
+
+mutation ChangePassword($input: ChangePasswordInput!) {
+  changePassword(input: $input)
+}
+
+mutation RequestPasswordReset($email: String!) {
+  requestPasswordReset(email: $email)
+}
+
+mutation ResetPassword($input: ResetPasswordInput!) {
+  resetPassword(input: $input)
+}

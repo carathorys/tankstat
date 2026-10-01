@@ -19,9 +19,9 @@ public sealed class Refueling : IOwned
 
     public static Refueling Create(Guid ownerId, Guid vehicleId, DateOnly date, decimal liters, decimal totalCost, int odometerKm, bool isFullTank)
     {
-        if (liters <= 0) throw new DomainException("Liters must be greater than zero.");
-        if (totalCost < 0) throw new DomainException("Total cost cannot be negative.");
-        if (odometerKm < 0) throw new DomainException("Odometer cannot be negative.");
+        if (liters <= 0) throw new DomainException("refueling.litersPositive", "Liters must be greater than zero.");
+        if (totalCost < 0) throw new DomainException("refueling.costNegative", "Total cost cannot be negative.");
+        if (odometerKm < 0) throw new DomainException("refueling.odometerNegative", "Odometer cannot be negative.");
 
         return new Refueling
         {

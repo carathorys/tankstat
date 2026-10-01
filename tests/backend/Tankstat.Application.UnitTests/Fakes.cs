@@ -14,10 +14,25 @@ namespace Tankstat.Application.UnitTests;
 internal sealed class InMemoryVehicles : IVehicleRepository
 {
     public List<Vehicle> Items { get; } = [];
-    public Task<IReadOnlyList<Vehicle>> ListAsync(OwnerScope scope, CancellationToken ct) =>
-        Task.FromResult<IReadOnlyList<Vehicle>>(Items.Where(v => !v.IsDeleted && scope.Contains(v.OwnerId)).ToList());
-    public Task<IReadOnlyList<Vehicle>> ListDeletedAsync(OwnerScope scope, CancellationToken ct) =>
-        Task.FromResult<IReadOnlyList<Vehicle>>(Items.Where(v => v.IsDeleted && scope.Contains(v.OwnerId)).OrderByDescending(v => v.DeletedAt).ToList());
+
+    /// <summary>The last query the service passed down (after normalization).</summary>
+    public VehicleQuery? LastQuery { get; private set; }
+
+    // Sorting itself is the database's job and is tested against the real repository; the fake orders by name.
+    private IReadOnlyList<Vehicle> Page(IEnumerable<Vehicle> rows, VehicleQuery query)
+    {
+        LastQuery = query;
+        return rows.OrderBy(v => v.Name, StringComparer.OrdinalIgnoreCase).Skip(query.Skip).Take(query.Take).ToList();
+    }
+
+    public Task<IReadOnlyList<Vehicle>> ListAsync(OwnerScope scope, VehicleQuery query, CancellationToken ct) =>
+        Task.FromResult(Page(Items.Where(v => !v.IsDeleted && scope.Contains(v.OwnerId)), query));
+    public Task<int> CountAsync(OwnerScope scope, CancellationToken ct) =>
+        Task.FromResult(Items.Count(v => !v.IsDeleted && scope.Contains(v.OwnerId)));
+    public Task<IReadOnlyList<Vehicle>> ListDeletedAsync(OwnerScope scope, VehicleQuery query, CancellationToken ct) =>
+        Task.FromResult(Page(Items.Where(v => v.IsDeleted && scope.Contains(v.OwnerId)), query));
+    public Task<int> CountDeletedAsync(OwnerScope scope, CancellationToken ct) =>
+        Task.FromResult(Items.Count(v => v.IsDeleted && scope.Contains(v.OwnerId)));
     public Task<Vehicle?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(v => v.Id == id && !v.IsDeleted));
     public Task<Vehicle?> FindIncludingDeletedAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(v => v.Id == id));
     public Task AddAsync(Vehicle vehicle, CancellationToken ct) { Items.Add(vehicle); return Task.CompletedTask; }
@@ -31,6 +46,7 @@ internal sealed class InMemoryRefuelings : IRefuelingRepository
     public List<Refueling> Items { get; } = [];
     public Task<IReadOnlyList<Refueling>> ListForVehicleAsync(Guid vehicleId, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<Refueling>>(Items.Where(r => r.VehicleId == vehicleId).ToList());
+    public Task<int> CountForVehicleAsync(Guid vehicleId, CancellationToken ct) => Task.FromResult(Items.Count(r => r.VehicleId == vehicleId));
     public Task AddAsync(Refueling refueling, CancellationToken ct) { Items.Add(refueling); return Task.CompletedTask; }
 }
 

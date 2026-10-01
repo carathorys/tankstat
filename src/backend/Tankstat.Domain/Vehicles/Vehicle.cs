@@ -26,26 +26,26 @@ public sealed class Vehicle : IOwned, ISoftDeletable
 
     public void Update(string name, string? licensePlate, FuelType fuelType)
     {
-        if (IsDeleted) throw new DomainException("A vehicle in the trash cannot be edited; restore it first.");
+        if (IsDeleted) throw new DomainException("vehicle.trashedCannotEdit", "A vehicle in the trash cannot be edited; restore it first.");
         Apply(name, licensePlate, fuelType);
     }
 
     public void MarkDeleted(DateTimeOffset now)
     {
-        if (IsDeleted) throw new DomainException("This vehicle is already in the trash.");
+        if (IsDeleted) throw new DomainException("vehicle.alreadyTrashed", "This vehicle is already in the trash.");
         DeletedAt = now;
     }
 
     public void Restore()
     {
-        if (!IsDeleted) throw new DomainException("This vehicle is not in the trash.");
+        if (!IsDeleted) throw new DomainException("vehicle.notTrashed", "This vehicle is not in the trash.");
         DeletedAt = null;
     }
 
     private void Apply(string name, string? licensePlate, FuelType fuelType)
     {
-        if (string.IsNullOrWhiteSpace(name)) throw new DomainException("Vehicle name is required.");
-        if (!Enum.IsDefined(fuelType)) throw new DomainException($"Unknown fuel type '{fuelType}'.");
+        if (string.IsNullOrWhiteSpace(name)) throw new DomainException("vehicle.nameRequired", "Vehicle name is required.");
+        if (!Enum.IsDefined(fuelType)) throw new DomainException("vehicle.unknownFuelType", $"Unknown fuel type '{fuelType}'.", new { Value = fuelType.ToString() });
 
         Name = name.Trim();
         LicensePlate = string.IsNullOrWhiteSpace(licensePlate) ? null : licensePlate.Trim().ToUpperInvariant();

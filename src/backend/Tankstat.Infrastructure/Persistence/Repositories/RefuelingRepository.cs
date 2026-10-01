@@ -15,6 +15,12 @@ internal sealed class RefuelingRepository(IDbContextFactory<AppDbContext> dbFact
             .ToListAsync(ct);
     }
 
+    public async Task<int> CountForVehicleAsync(Guid vehicleId, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.Refuelings.CountAsync(r => r.VehicleId == vehicleId, ct);
+    }
+
     public async Task AddAsync(Refueling refueling, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);

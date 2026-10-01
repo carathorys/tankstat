@@ -5,11 +5,16 @@ namespace Tankstat.Application.Vehicles;
 
 public interface IVehicleRepository
 {
-    /// <summary>Vehicles that are not in the trash.</summary>
-    Task<IReadOnlyList<Vehicle>> ListAsync(OwnerScope scope, CancellationToken ct);
+    /// <summary>One page of the vehicles that are not in the trash, ordered by the database.</summary>
+    Task<IReadOnlyList<Vehicle>> ListAsync(OwnerScope scope, VehicleQuery query, CancellationToken ct);
 
-    /// <summary>Vehicles in the trash, most recently deleted first.</summary>
-    Task<IReadOnlyList<Vehicle>> ListDeletedAsync(OwnerScope scope, CancellationToken ct);
+    /// <summary>How many vehicles are not in the trash (for paging).</summary>
+    Task<int> CountAsync(OwnerScope scope, CancellationToken ct);
+
+    /// <summary>One page of the vehicles in the trash, ordered by the database.</summary>
+    Task<IReadOnlyList<Vehicle>> ListDeletedAsync(OwnerScope scope, VehicleQuery query, CancellationToken ct);
+
+    Task<int> CountDeletedAsync(OwnerScope scope, CancellationToken ct);
 
     /// <summary>Finds a vehicle that is not in the trash.</summary>
     Task<Vehicle?> FindAsync(Guid id, CancellationToken ct);

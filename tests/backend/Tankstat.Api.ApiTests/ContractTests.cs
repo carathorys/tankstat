@@ -42,13 +42,13 @@ public class ContractTests
     }
 
     [Theory]
-    [InlineData("Query", "health", "vehicles", "vehicle", "session", "notices", "users", "accessSettings", "accessGrants", "trash")]
+    [InlineData("Query", "health", "vehicles", "vehicle", "session", "notices", "users", "accessSettings", "accessGrants", "trash", "vehicleCount", "trashCount")]
     [InlineData("Mutation", "addVehicle", "logRefueling", "login", "logout", "changePassword", "requestPasswordReset", "resetPassword", "createUser", "issuePasswordReset", "setUserAdmin", "setUserDisabled", "setDefaultAccess", "setAccessGrant", "updateVehicle", "deleteVehicle", "restoreVehicle", "emptyTrash")]
     [InlineData("Session", "mode", "user")]
     [InlineData("UserInfo", "id", "displayName", "email", "isAdmin")]
     [InlineData("UserAccount", "id", "provider", "email", "displayName", "isAdmin", "isDisabled")]
     [InlineData("Notice", "code", "severity", "message")]
-    [InlineData("Vehicle", "id", "ownerId", "name", "licensePlate", "fuelType", "deletedAt", "canEdit", "ownerName", "refuelings")]
+    [InlineData("Vehicle", "id", "ownerId", "name", "licensePlate", "fuelType", "deletedAt", "canEdit", "ownerName", "refuelingCount", "refuelings")]
     [InlineData("Refueling", "id", "vehicleId", "date", "liters", "totalCost", "odometerKm", "isFullTank")]
     public async Task Schema_TypeExposesContractFields(string type, params string[] fields)
     {
@@ -68,6 +68,8 @@ public class ContractTests
     }
 
     [Theory]
+    [InlineData("VehicleSortField", "NAME", "LICENSE_PLATE", "FUEL_TYPE", "OWNER", "REFUELING_COUNT", "DELETED_AT")]
+    [InlineData("SortDirection", "ASC", "DESC")]
     [InlineData("AuthMode", "NONE", "STANDALONE", "OIDC", "PROXY_HEADER")]
     [InlineData("AccessLevel", "NONE", "VIEW", "EDIT")]
     [InlineData("NoticeSeverity", "INFO", "WARNING")]
@@ -78,6 +80,19 @@ public class ContractTests
         var values = body.GetProperty("data").GetProperty("__type").GetProperty("enumValues")
             .EnumerateArray().Select(v => v.GetProperty("name").GetString());
         Assert.Equal(expected, values);
+    }
+
+    [Theory]
+    [InlineData("vehicles")]
+    [InlineData("trash")]
+    public async Task Lists_TakeSortingAndPagingArguments(string field)
+    {
+        var body = await Query("{ __type(name: \"Query\") { fields { name args { name } } } }");
+
+        var args = body.GetProperty("data").GetProperty("__type").GetProperty("fields").EnumerateArray()
+            .Single(f => f.GetProperty("name").GetString() == field).GetProperty("args").EnumerateArray()
+            .Select(a => a.GetProperty("name").GetString());
+        Assert.Equal(["orderBy", "direction", "skip", "take"], args);
     }
 
     [Fact]

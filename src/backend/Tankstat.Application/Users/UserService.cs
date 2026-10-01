@@ -20,10 +20,10 @@ public sealed class UserService(
     public async Task<(User User, IssuedReset Reset)> CreateLocalAsync(string? email, string? displayName, bool isAdmin, CancellationToken ct)
     {
         await access.RequireAdminAsync(ct);
-        if (auth.Value.Mode != AuthMode.Standalone) throw new DomainException("Users are only created here in Standalone authentication mode.");
+        if (auth.Value.Mode != AuthMode.Standalone) throw new DomainException("user.onlyStandalone", "Users are only created here in Standalone authentication mode.");
 
         var user = User.CreateLocal(email!, displayName, isAdmin);
-        if (await users.FindLocalByEmailAsync(user.Email, ct) is not null) throw new DomainException("A user with this e-mail already exists.");
+        if (await users.FindLocalByEmailAsync(user.Email, ct) is not null) throw new DomainException("user.emailExists", "A user with this e-mail already exists.");
 
         await users.AddAsync(user, ct);
         return (user, await resets.IssueAsync(user, sendEmail: true, ct));
@@ -33,14 +33,14 @@ public sealed class UserService(
     {
         await access.RequireAdminAsync(ct);
         var user = await Find(userId, ct);
-        if (user.Provider != UserProvider.Local) throw new DomainException("Only local users have passwords managed here.");
+        if (user.Provider != UserProvider.Local) throw new DomainException("user.passwordsLocalOnly", "Only local users have passwords managed here.");
         return await resets.IssueAsync(user, sendEmail: true, ct);
     }
 
     public async Task<User> SetAdminAsync(Guid userId, bool isAdmin, CancellationToken ct)
     {
         var self = await access.RequireAdminAsync(ct);
-        if (!isAdmin && self.Id == userId) throw new DomainException("You cannot remove your own administrator rights.");
+        if (!isAdmin && self.Id == userId) throw new DomainException("user.cannotDemoteSelf", "You cannot remove your own administrator rights.");
         var user = await Find(userId, ct);
         user.SetAdmin(isAdmin);
         await users.UpdateAsync(user, ct);
@@ -50,7 +50,7 @@ public sealed class UserService(
     public async Task<User> SetDisabledAsync(Guid userId, bool disabled, CancellationToken ct)
     {
         var self = await access.RequireAdminAsync(ct);
-        if (disabled && self.Id == userId) throw new DomainException("You cannot disable your own account.");
+        if (disabled && self.Id == userId) throw new DomainException("user.cannotDisableSelf", "You cannot disable your own account.");
         var user = await Find(userId, ct);
         user.SetDisabled(disabled);
         await users.UpdateAsync(user, ct);
@@ -58,5 +58,5 @@ public sealed class UserService(
     }
 
     private async Task<User> Find(Guid id, CancellationToken ct) =>
-        await users.FindByIdAsync(id, ct) ?? throw new NotFoundException($"User {id} does not exist.");
+        await users.FindByIdAsync(id, ct) ?? throw new NotFoundException("user.notFound", $"User {id} does not exist.", new { Id = id });
 }

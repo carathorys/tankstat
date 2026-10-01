@@ -18,7 +18,7 @@ public class RepositoryTests
         var octavia = Vehicle.Create(Owner, "Octavia", null, FuelType.Diesel);
         await repo.AddAsync(octavia, default);
 
-        var all = await repo.ListAsync(OwnerScope.All, default);
+        var all = await repo.ListAsync(OwnerScope.All, new VehicleQuery(), default);
         var found = await repo.FindAsync(octavia.Id, default);
 
         Assert.Equal(["Octavia", "Zafira"], all.Select(v => v.Name));
@@ -38,9 +38,9 @@ public class RepositoryTests
         await repo.AddAsync(Vehicle.Create(bob, "B", null, FuelType.Petrol), default);
         await repo.AddAsync(Vehicle.Create(carol, "C", null, FuelType.Petrol), default);
 
-        Assert.Equal(["A", "C"], (await repo.ListAsync(OwnerScope.Of([alice, carol]), default)).Select(v => v.Name));
-        Assert.Empty(await repo.ListAsync(OwnerScope.Of([]), default));
-        Assert.Equal(3, (await repo.ListAsync(OwnerScope.All, default)).Count);
+        Assert.Equal(["A", "C"], (await repo.ListAsync(OwnerScope.Of([alice, carol]), new VehicleQuery(), default)).Select(v => v.Name));
+        Assert.Empty(await repo.ListAsync(OwnerScope.Of([]), new VehicleQuery(), default));
+        Assert.Equal(3, (await repo.ListAsync(OwnerScope.All, new VehicleQuery(), default)).Count);
     }
 
     [Fact]

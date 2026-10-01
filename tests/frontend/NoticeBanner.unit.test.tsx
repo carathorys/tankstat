@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { expect, it } from 'vitest'
 import { NoticeBanner } from '../../src/frontend/NoticeBanner.tsx'
+import en from '../../src/frontend/i18n/locales/en.json'
 import { authWarning } from './mocks.tsx'
 
 it('renders nothing without notices', () => {
@@ -13,7 +14,7 @@ it('shows a warning notice prominently', () => {
   const note = screen.getByRole('note')
   expect(note).toHaveAttribute('data-severity', 'WARNING')
   expect(note).toHaveTextContent('Warning:')
-  expect(note).toHaveTextContent(authWarning.message)
+  expect(note).toHaveTextContent(en.notices.AUTH_DISABLED)
 })
 
 it('shows several notices, info ones without the warning label', () => {

@@ -26,6 +26,18 @@ for p in Sqlite PostgreSql SqlServer MySql; do
 done
 '''
 
+[tasks."schema:export"]
+description = "Export the GraphQL schema from the API to schema.graphql (no server is started)"
+run = 'dotnet run --project src/backend/Tankstat.Api --no-launch-profile -- schema export --output "$PWD/schema.graphql"'
+
+[tasks.codegen]
+description = "Regenerate schema.graphql and the TypeScript GraphQL types/documents (src/frontend/gql/generated.ts)"
+run = ["mise run schema:export", "npm run codegen"]
+
+[tasks."codegen:check"]
+description = "Fail if schema.graphql or the generated GraphQL types are out of date"
+run = "scripts/check-codegen.sh"
+
 [tasks.lint]
 run = "npm run lint"
 
@@ -52,4 +64,4 @@ run = "scripts/test-api.sh"
 [tasks.test]
 description = "Everything: typecheck, lint, unit, integration, API"
 depends = ["lint"]
-run = ["npm run typecheck", "mise run test:unit", "mise run test:integration", "mise run test:api"]
+run = ["mise run codegen:check", "npm run typecheck", "mise run test:unit", "mise run test:integration", "mise run test:api"]

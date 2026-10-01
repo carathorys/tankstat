@@ -1,0 +1,220 @@
+{
+  "app": {
+    "name": "Tankstat",
+    "loading": "Loading…",
+    "notFound": "This page does not exist."
+  },
+  "nav": {
+    "menu": "Open menu",
+    "vehicles": "Vehicles",
+    "trash": "Trash",
+    "account": "Account",
+    "admin": "Administration",
+    "signOut": "Sign out"
+  },
+  "language": {
+    "label": "Language"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "none": "–"
+  },
+  "notices": {
+    "warning": "Warning:",
+    "AUTH_DISABLED": "Authentication is disabled: anyone who can reach this app can see and change all data. This is unsafe; configure Auth:Mode."
+  },
+  "status": {
+    "healthy": "Healthy",
+    "degraded": "Degraded",
+    "api": "API:",
+    "unreachable": "API unreachable: {{message}}"
+  },
+  "fuel": {
+    "PETROL": "Petrol",
+    "DIESEL": "Diesel",
+    "LPG": "LPG"
+  },
+  "level": {
+    "NONE": "nothing",
+    "VIEW": "view",
+    "EDIT": "view and edit"
+  },
+  "role": {
+    "admin": "Administrator",
+    "user": "User",
+    "adminBadge": "admin"
+  },
+  "fields": {
+    "email": "E-mail",
+    "password": "Password",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "name": "Name",
+    "licensePlate": "License plate",
+    "licensePlateOptional": "License plate (optional)",
+    "fuel": "Fuel"
+  },
+  "forms": {
+    "required": "{{field}} is required",
+    "emailInvalid": "Enter a valid e-mail address"
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "signInProvider": "Sign in with your identity provider",
+    "notSignedIn": "Not signed in",
+    "proxyHint": "Access is controlled by your reverse proxy. Open this app through the proxy and sign in there.",
+    "forgotTitle": "Forgot your password?",
+    "forgotLink": "Forgot password?",
+    "sendReset": "Send reset link",
+    "backToSignIn": "Back to sign in",
+    "resetSent": "If that address is registered and the server can send e-mail, a reset link is on its way. Otherwise ask an administrator for a reset link.",
+    "changeTitle": "Change password",
+    "changeSubmit": "Update password",
+    "changed": "Password changed. Your other sessions were signed out.",
+    "setTitle": "Set your password",
+    "setSubmit": "Set password",
+    "setDone": "Your password has been set.",
+    "continueSignIn": "Continue to sign in"
+  },
+  "columns": {
+    "name": "Name",
+    "licensePlate": "License plate",
+    "fuelType": "Fuel",
+    "owner": "Owner",
+    "refuelings": "Refuelings",
+    "deletedAt": "Deleted"
+  },
+  "grid": {
+    "refresh": "Refresh",
+    "columns": "Columns",
+    "columnsHint": "Show, hide and reorder columns.",
+    "showColumn": "Show {{column}}",
+    "moveUp": "Move {{column}} up",
+    "moveDown": "Move {{column}} down",
+    "reset": "Reset to defaults",
+    "pageSize": "Rows per page",
+    "range": "{{from}}–{{to}} of {{total}}",
+    "previous": "Previous page",
+    "next": "Next page",
+    "sortedAscending": "sorted ascending",
+    "sortedDescending": "sorted descending"
+  },
+  "vehicles": {
+    "title": "Vehicles",
+    "add": "Add vehicle",
+    "edit": "Edit",
+    "delete": "Delete",
+    "editAria": "Edit {{name}}",
+    "deleteAria": "Delete {{name}}",
+    "viewOnly": "view only",
+    "empty": "No vehicles yet. Add your first vehicle to get started.",
+    "dialogAdd": "Add vehicle",
+    "dialogEdit": "Edit vehicle",
+    "dialogAddDescription": "Enter the details of the new vehicle.",
+    "dialogEditDescription": "Change the details of this vehicle.",
+    "save": "Save changes",
+    "trashTitle": "Move {{name}} to the trash?",
+    "trashDescription": "You can restore it from the trash until the trash is emptied.",
+    "trashConfirm": "Move to trash"
+  },
+  "trash": {
+    "title": "Trash",
+    "empty": "The trash is empty.",
+    "restore": "Restore",
+    "restoreAria": "Restore {{name}}",
+    "emptyAction": "Empty trash",
+    "emptyTitle": "Empty the trash?",
+    "emptyDescription_one": "This permanently deletes {{count}} vehicle and its refuelings. It cannot be undone.",
+    "emptyDescription_other": "This permanently deletes {{count}} vehicles and their refuelings. It cannot be undone.",
+    "emptied_one": "Permanently deleted {{count}} vehicle.",
+    "emptied_other": "Permanently deleted {{count}} vehicles."
+  },
+  "account": {
+    "title": "Account",
+    "name": "Name",
+    "email": "E-mail",
+    "role": "Role",
+    "noAuth": "Authentication is disabled, so there is no personal account.",
+    "managed": "Your password is managed by your identity provider or proxy."
+  },
+  "admin": {
+    "title": "Administration",
+    "loading": "Loading administration…",
+    "users": "Users",
+    "access": "Access",
+    "colName": "Name",
+    "colEmail": "E-mail",
+    "colAdmin": "Admin",
+    "colDisabled": "Disabled",
+    "adminAria": "Administrator: {{name}}",
+    "disabledAria": "Disabled: {{name}}",
+    "resetLink": "Reset link for {{name}}",
+    "addUser": "Add user",
+    "createUser": "Create user",
+    "linkEmailed": "The link was e-mailed.",
+    "linkHandOver": "Hand this one-time link to the user:",
+    "accessTitle": "Access to other people's data",
+    "defaultLabel": "Everyone may, by default:",
+    "defaultAria": "Default access for everyone",
+    "grantView": "{{grantee}} may view the data of {{owner}}",
+    "grantEdit": "{{grantee}} may view and edit the data of {{owner}}",
+    "revoke": "Revoke",
+    "grantTo": "Grant to",
+    "accessTo": "access to the data of",
+    "atLevel": "at level",
+    "dataOwner": "Data owner",
+    "level": "Level",
+    "grantAction": "Grant access",
+    "choose": "Choose…"
+  },
+  "errors": {
+    "network": "Cannot reach the server. Check your connection and try again.",
+    "auth": {
+      "unauthenticated": "Please sign in to continue.",
+      "forbidden": "You are not allowed to do this.",
+      "adminRequired": "Administrator rights are required.",
+      "invalidCredentials": "Invalid e-mail or password, or the account is temporarily locked.",
+      "accountDisabled": "This account has been disabled.",
+      "modeUnavailable": "This is not available with the current authentication mode ({{mode}})."
+    },
+    "vehicle": {
+      "nameRequired": "The vehicle name is required.",
+      "unknownFuelType": "Unknown fuel type: {{value}}.",
+      "trashedCannotEdit": "A vehicle in the trash cannot be edited. Restore it first.",
+      "alreadyTrashed": "This vehicle is already in the trash.",
+      "notTrashed": "This vehicle is not in the trash.",
+      "notFound": "This vehicle does not exist.",
+      "viewOnly": "You may only view this vehicle."
+    },
+    "refueling": {
+      "litersPositive": "Liters must be greater than zero.",
+      "costNegative": "The total cost cannot be negative.",
+      "odometerNegative": "The odometer cannot be negative."
+    },
+    "access": {
+      "selfGrant": "Users always have full access to their own data.",
+      "levelRequired": "Choose a grant level of view or edit.",
+      "unknownLevel": "Unknown access level: {{level}}."
+    },
+    "user": {
+      "emailInvalid": "Enter a valid e-mail address.",
+      "subjectRequired": "An external user needs a subject.",
+      "useCreateLocal": "Local users must be created as local users.",
+      "passwordLocalOnly": "Only local users have a password.",
+      "passwordsLocalOnly": "Passwords can only be managed for local users.",
+      "notFound": "This user does not exist.",
+      "emailExists": "A user with this e-mail address already exists.",
+      "onlyStandalone": "Users can only be created here in standalone authentication mode.",
+      "cannotDemoteSelf": "You cannot remove your own administrator rights.",
+      "cannotDisableSelf": "You cannot disable your own account."
+    },
+    "password": {
+      "tooShort": "The password must be at least {{min}} characters long.",
+      "tooLong": "The password must be at most {{max}} characters long.",
+      "currentIncorrect": "The current password is not correct."
+    },
+    "reset": {
+      "invalid": "This password reset link is invalid or has expired."
+    }
+  }
+}

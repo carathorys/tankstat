@@ -78,7 +78,7 @@ it('lists users and the access rules for administrators', async () => {
   expect(admin.getByRole('checkbox', { name: 'Administrator: Alice' })).toBeChecked()
   expect(admin.getByRole('checkbox', { name: 'Administrator: Bob' })).not.toBeChecked()
 
-  await ui.click(admin.getByRole('tab', { name: 'Access' }))
+  await ui.click(admin.getByRole('tab', { name: /Access/ }))
   expect(await admin.findByText(/Alice may view the data of Bob/)).toBeInTheDocument()
   expect(admin.getByRole('combobox', { name: 'Default access for everyone' })).toHaveTextContent('nothing')
 })
@@ -102,7 +102,7 @@ it('changes the default access and manages grants', async () => {
   renderWithApollo(<App />, '/admin')
   const admin = await panel()
 
-  await ui.click(await admin.findByRole('tab', { name: 'Access' }))
+  await ui.click(await admin.findByRole('tab', { name: /Access/ }))
   await choose(ui, 'Default access for everyone', 'view')
   await ui.click(admin.getByRole('button', { name: 'Revoke' }))
   await choose(ui, 'Grant to', 'Carol')

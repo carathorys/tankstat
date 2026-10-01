@@ -1,0 +1,256 @@
+schema {
+  query: Query
+  mutation: Mutation
+}
+
+type Query {
+  health: HealthReport! @cost(weight: "10")
+  vehicles(
+    orderBy: VehicleSortField! = NAME
+    direction: SortDirection! = ASC
+    skip: Int! = 0
+    take: Int! = 50
+  ): [Vehicle!]! @cost(weight: "10")
+  vehicleCount: Int! @cost(weight: "10")
+  trash(
+    orderBy: VehicleSortField! = DELETED_AT
+    direction: SortDirection! = DESC
+    skip: Int! = 0
+    take: Int! = 50
+  ): [Vehicle!]! @cost(weight: "10")
+  trashCount: Int! @cost(weight: "10")
+  vehicle(id: UUID!): Vehicle @cost(weight: "10")
+  session: Session! @cost(weight: "10")
+  notices: [Notice!]!
+  users: [UserAccount!]! @cost(weight: "10")
+  accessSettings: AccessSettingsInfo! @cost(weight: "10")
+  accessGrants: [AccessGrantInfo!]! @cost(weight: "10")
+}
+
+type Mutation {
+  addVehicle(input: AddVehicleInput!): Vehicle! @cost(weight: "10")
+  updateVehicle(input: UpdateVehicleInput!): Vehicle! @cost(weight: "10")
+  deleteVehicle(id: UUID!): Vehicle! @cost(weight: "10")
+  restoreVehicle(id: UUID!): Vehicle! @cost(weight: "10")
+  emptyTrash: Int! @cost(weight: "10")
+  logRefueling(input: LogRefuelingInput!): Refueling! @cost(weight: "10")
+  login(input: LoginInput!): UserInfo! @cost(weight: "10")
+  logout: Boolean! @cost(weight: "10")
+  changePassword(input: ChangePasswordInput!): Boolean! @cost(weight: "10")
+  requestPasswordReset(email: String!): Boolean! @cost(weight: "10")
+  resetPassword(input: ResetPasswordInput!): Boolean! @cost(weight: "10")
+  createUser(input: CreateUserInput!): CreatedUser! @cost(weight: "10")
+  issuePasswordReset(userId: UUID!): PasswordResetLink! @cost(weight: "10")
+  setUserAdmin(userId: UUID!, isAdmin: Boolean!): UserAccount!
+    @cost(weight: "10")
+  setUserDisabled(userId: UUID!, disabled: Boolean!): UserAccount!
+    @cost(weight: "10")
+  setDefaultAccess(level: AccessLevel!): AccessSettingsInfo! @cost(weight: "10")
+  setAccessGrant(input: SetAccessGrantInput!): Boolean! @cost(weight: "10")
+}
+
+type AccessGrantInfo {
+  id: UUID!
+  ownerId: UUID!
+  granteeId: UUID!
+  level: AccessLevel!
+}
+
+type AccessSettingsInfo {
+  defaultLevelForOthers: AccessLevel!
+}
+
+type CreatedUser {
+  user: UserAccount!
+  reset: PasswordResetLink!
+}
+
+type HealthReport {
+  status: String!
+  version: String!
+  uptime: Duration!
+  databaseReachable: Boolean!
+}
+
+type Notice {
+  code: String!
+  severity: NoticeSeverity!
+  message: String!
+}
+
+type PasswordResetLink {
+  token: String!
+  url: String
+  emailSent: Boolean!
+}
+
+type Refueling {
+  id: UUID!
+  ownerId: UUID!
+  vehicleId: UUID!
+  date: LocalDate!
+  liters: Decimal!
+  totalCost: Decimal!
+  odometerKm: Int!
+  isFullTank: Boolean!
+}
+
+type Session {
+  mode: AuthMode!
+  user: UserInfo
+}
+
+type UserAccount {
+  id: UUID!
+  provider: UserProvider!
+  email: String!
+  displayName: String!
+  isAdmin: Boolean!
+  isDisabled: Boolean!
+}
+
+type UserInfo {
+  id: UUID!
+  displayName: String!
+  email: String!
+  isAdmin: Boolean!
+}
+
+type Vehicle {
+  id: UUID!
+  ownerId: UUID!
+  name: String!
+  licensePlate: String
+  fuelType: FuelType!
+  deletedAt: DateTime
+  isDeleted: Boolean!
+  canEdit: Boolean! @cost(weight: "10")
+  ownerName: String @cost(weight: "10")
+  refuelingCount: Int! @cost(weight: "10")
+  refuelings: [Refueling!]! @cost(weight: "10")
+}
+
+input AddVehicleInput {
+  name: String!
+  licensePlate: String
+  fuelType: FuelType!
+}
+
+input ChangePasswordInput {
+  currentPassword: String!
+  newPassword: String!
+}
+
+input CreateUserInput {
+  email: String!
+  displayName: String
+  isAdmin: Boolean!
+}
+
+input LoginInput {
+  email: String!
+  password: String!
+}
+
+input LogRefuelingInput {
+  vehicleId: UUID!
+  date: LocalDate!
+  liters: Decimal!
+  totalCost: Decimal!
+  odometerKm: Int!
+  isFullTank: Boolean!
+}
+
+input ResetPasswordInput {
+  token: String!
+  newPassword: String!
+}
+
+input SetAccessGrantInput {
+  ownerId: UUID!
+  granteeId: UUID!
+  level: AccessLevel!
+}
+
+input UpdateVehicleInput {
+  id: UUID!
+  name: String!
+  licensePlate: String
+  fuelType: FuelType!
+}
+
+enum AccessLevel {
+  NONE
+  VIEW
+  EDIT
+}
+
+enum AuthMode {
+  NONE
+  STANDALONE
+  OIDC
+  PROXY_HEADER
+}
+
+enum FuelType {
+  PETROL
+  DIESEL
+  LPG
+}
+
+enum NoticeSeverity {
+  INFO
+  WARNING
+}
+
+enum SortDirection {
+  ASC
+  DESC
+}
+
+enum UserProvider {
+  LOCAL
+  OIDC
+  PROXY
+}
+
+enum VehicleSortField {
+  NAME
+  LICENSE_PLATE
+  FUEL_TYPE
+  OWNER
+  REFUELING_COUNT
+  DELETED_AT
+}
+
+"The `DateTime` scalar type represents a date and time with time zone offset information."
+scalar DateTime
+  @specifiedBy(url: "https://scalars.graphql.org/chillicream/date-time.html")
+
+"The `Decimal` scalar type represents a decimal floating-point number with high precision."
+scalar Decimal
+  @specifiedBy(url: "https://scalars.graphql.org/chillicream/decimal.html")
+
+"The `Duration` scalar type represents a duration of time."
+scalar Duration
+  @specifiedBy(url: "https://scalars.graphql.org/chillicream/duration.html")
+
+"The `LocalDate` scalar type represents a date without time or time zone information."
+scalar LocalDate
+  @specifiedBy(url: "https://scalars.graphql.org/chillicream/local-date.html")
+
+"The `UUID` scalar type represents a Universally Unique Identifier (UUID) as defined by RFC 9562."
+scalar UUID
+  @specifiedBy(url: "https://scalars.graphql.org/chillicream/uuid.html")
+
+"The purpose of the `cost` directive is to define a `weight` for GraphQL types, fields, and arguments. Static analysis can use these weights when calculating the overall cost of a query or response."
+directive @cost(
+  "The `weight` argument defines what value to add to the overall cost for every appearance, or possible appearance, of a type, field, argument, etc."
+  weight: String!
+) on
+  | SCALAR
+  | OBJECT
+  | FIELD_DEFINITION
+  | ARGUMENT_DEFINITION
+  | ENUM
+  | INPUT_FIELD_DEFINITION

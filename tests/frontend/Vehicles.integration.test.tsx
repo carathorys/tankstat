@@ -66,16 +66,42 @@ it('sends an empty plate as null', async () => {
   expect(state.calls.AddVehicle).toEqual([{ input: { name: 'Scooter', licensePlate: null, fuelType: 'PETROL' } }])
 })
 
-it('keeps the dialog open and shows the server message when adding fails', async () => {
+it('blocks an empty name in the form, without calling the server', async () => {
   const { ui, state } = setup([])
-  state.failWith = 'Vehicle name is required.'
   await screen.findByText(/No vehicles yet/)
 
   await ui.click(screen.getByRole('button', { name: 'Add vehicle' }))
   await ui.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Add vehicle' }))
 
+  expect(await screen.findByText('Name is required')).toBeInTheDocument()
+  expect(screen.getByRole('dialog')).toBeInTheDocument()
+  expect(state.calls.AddVehicle).toBeUndefined()
+})
+
+it('keeps the dialog open and shows the server message when adding fails', async () => {
+  const { ui, state } = setup([])
+  state.failWith = { message: 'A vehicle with this name already exists.' }
+  await screen.findByText(/No vehicles yet/)
+
+  await ui.click(screen.getByRole('button', { name: 'Add vehicle' }))
+  await ui.type(await screen.findByLabelText('Name'), 'Golf')
+  await ui.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Add vehicle' }))
+
   const dialog = screen.getByRole('dialog')
-  expect(await within(dialog).findByRole('alert')).toHaveTextContent('Vehicle name is required.')
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('A vehicle with this name already exists.')
+})
+
+it('starts from the current values each time the edit dialog is opened', async () => {
+  const { ui } = setup()
+  await screen.findByText('Octavia')
+
+  await ui.click(screen.getByRole('button', { name: 'Edit Octavia' }))
+  await ui.clear(await screen.findByLabelText('Name'))
+  await ui.type(screen.getByLabelText('Name'), 'Scrapped draft')
+  await ui.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }))
+  await ui.click(screen.getByRole('button', { name: 'Edit Octavia' }))
+
+  expect(await screen.findByLabelText('Name')).toHaveValue('Octavia')
 })
 
 it('cancelling the add dialog changes nothing', async () => {

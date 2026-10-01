@@ -1,49 +1,41 @@
 import { useMutation, useQuery } from '@apollo/client/react'
+import { Box, Button, Checkbox, Code, Flex, Heading, Select, Table, Tabs, Text } from '@radix-ui/themes'
 import { useState } from 'react'
-import { Form } from '../forms.tsx'
-import { Checkbox } from '../ui/Checkbox.tsx'
-import { Select } from '../ui/Select.tsx'
-import { Tabs } from '../ui/Tabs.tsx'
+import { useTranslation } from 'react-i18next'
+import { FieldForm } from '../forms.tsx'
 import {
-  ADMIN_QUERY,
-  CREATE_USER_MUTATION,
-  ISSUE_RESET_MUTATION,
-  SET_ADMIN_MUTATION,
-  SET_DEFAULT_ACCESS_MUTATION,
-  SET_DISABLED_MUTATION,
-  SET_GRANT_MUTATION,
+  AdminDocument,
+  CreateUserDocument,
+  IssuePasswordResetDocument,
+  SetAccessGrantDocument,
+  SetDefaultAccessDocument,
+  SetUserAdminDocument,
+  SetUserDisabledDocument,
   type AccessLevel,
-  type ResetLink,
-} from './admin.ts'
+  type IssuePasswordResetMutation,
+} from '../gql/generated.ts'
+import { ErrorMessage, SuccessMessage } from '../messages.tsx'
 
-const refetch = { refetchQueries: [ADMIN_QUERY], awaitRefetchQueries: true }
+const refetch = { refetchQueries: ['Admin'], awaitRefetchQueries: true }
 
-function linkFor(reset: ResetLink) {
-  return reset.url ?? `${window.location.origin}/?resetToken=${reset.token}`
-}
+type ResetLink = IssuePasswordResetMutation['issuePasswordReset']
 
-function ResetLinkNotice({ reset }: { reset: ResetLink }) {
-  return (
-    <p role="status">
-      {reset.emailSent ? 'The link was e-mailed. ' : 'Hand this one-time link to the user: '}
-      <code>{linkFor(reset)}</code>
-    </p>
-  )
-}
+const linkFor = (reset: ResetLink) => reset.url ?? `${window.location.origin}/?resetToken=${reset.token}`
 
 export function AdminPanel() {
-  const { data, error } = useQuery(ADMIN_QUERY)
-  const [createUser] = useMutation(CREATE_USER_MUTATION, refetch)
-  const [issueReset] = useMutation(ISSUE_RESET_MUTATION)
-  const [setAdmin] = useMutation(SET_ADMIN_MUTATION, refetch)
-  const [setDisabled] = useMutation(SET_DISABLED_MUTATION, refetch)
-  const [setDefault] = useMutation(SET_DEFAULT_ACCESS_MUTATION, refetch)
-  const [setGrant] = useMutation(SET_GRANT_MUTATION, refetch)
+  const { t } = useTranslation()
+  const { data, error } = useQuery(AdminDocument, { fetchPolicy: 'cache-and-network' })
+  const [createUser] = useMutation(CreateUserDocument, refetch)
+  const [issueReset] = useMutation(IssuePasswordResetDocument)
+  const [setAdmin] = useMutation(SetUserAdminDocument, refetch)
+  const [setDisabled] = useMutation(SetUserDisabledDocument, refetch)
+  const [setDefault] = useMutation(SetDefaultAccessDocument, refetch)
+  const [setGrant] = useMutation(SetAccessGrantDocument, refetch)
   const [reset, setReset] = useState<ResetLink>()
-  const [actionError, setActionError] = useState<string>()
+  const [actionError, setActionError] = useState<unknown>()
 
-  if (error) return <p role="alert">{error.message}</p>
-  if (!data) return <p>Loading administration…</p>
+  if (error) return <ErrorMessage error={error} />
+  if (!data) return <Text as="p">{t('admin.loading')}</Text>
 
   const name = (id: string) => data.users.find((u) => u.id === id)?.displayName ?? id
   const run = async (action: () => Promise<unknown>) => {
@@ -51,126 +43,168 @@ export function AdminPanel() {
     try {
       await action()
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : String(e))
+      setActionError(e)
     }
   }
 
   return (
-    <section aria-label="Administration">
-      <h1>Administration</h1>
-      {actionError && <p role="alert">{actionError}</p>}
-      {reset && <ResetLinkNotice reset={reset} />}
+    <section aria-label={t('admin.title')}>
+      <Heading mb="3">{t('admin.title')}</Heading>
+      {actionError !== undefined && <ErrorMessage error={actionError} />}
+      {reset && (
+        <SuccessMessage>
+          {reset.emailSent ? t('admin.linkEmailed') : t('admin.linkHandOver')} <Code>{linkFor(reset)}</Code>
+        </SuccessMessage>
+      )}
 
-      <Tabs
-        defaultValue="users"
-        tabs={[
-          {
-            value: 'users',
-            label: 'Users',
-            content: (
-              <>
-                <h3>Users</h3>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>E-mail</th>
-                      <th>Admin</th>
-                      <th>Disabled</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.users.map((u) => (
-                      <tr key={u.id}>
-                        <td>{u.displayName}</td>
-                        <td>{u.email}</td>
-                        <td>
-                          <Checkbox
-                            label={`Administrator: ${u.displayName}`}
-                            checked={u.isAdmin}
-                            onCheckedChange={(checked) => run(() => setAdmin({ variables: { userId: u.id, isAdmin: checked } }))}
-                          />
-                        </td>
-                        <td>
-                          <Checkbox
-                            label={`Disabled: ${u.displayName}`}
-                            checked={u.isDisabled}
-                            onCheckedChange={(checked) => run(() => setDisabled({ variables: { userId: u.id, disabled: checked } }))}
-                          />
-                        </td>
-                        <td>
-                          {u.provider === 'LOCAL' && (
-                            <button
-                              type="button"
-                              onClick={() => run(async () => setReset((await issueReset({ variables: { userId: u.id } })).data?.issuePasswordReset))}
-                            >
-                              Reset link for {u.displayName}
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+      <Tabs.Root defaultValue="users">
+        <Tabs.List>
+          <Tabs.Trigger value="users">{t('admin.users')}</Tabs.Trigger>
+          <Tabs.Trigger value="access">{t('admin.access')}</Tabs.Trigger>
+        </Tabs.List>
 
-                <h3>Add user</h3>
-                <Form
-                  fields={[
-                    { name: 'email', label: 'E-mail', type: 'email' },
-                    { name: 'displayName', label: 'Name' },
-                  ]}
-                  submitLabel="Create user"
-                  onSubmit={async (v) => {
-                    const created = await createUser({
-                      variables: { input: { email: v.email ?? '', displayName: v.displayName || null, isAdmin: false } },
-                    })
-                    setReset(created.data?.createUser.reset)
-                  }}
-                />
+        <Box pt="4">
+          <Tabs.Content value="users">
+            <Box style={{ overflowX: 'auto' }}>
+              <Table.Root variant="surface">
+                <Table.Header>
+                  <Table.Row>
+                    <Table.ColumnHeaderCell>{t('admin.colName')}</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell>{t('admin.colEmail')}</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell>{t('admin.colAdmin')}</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell>{t('admin.colDisabled')}</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell />
+                  </Table.Row>
+                </Table.Header>
+                <Table.Body>
+                  {data.users.map((u) => (
+                    <Table.Row key={u.id} align="center">
+                      <Table.RowHeaderCell>{u.displayName}</Table.RowHeaderCell>
+                      <Table.Cell>{u.email}</Table.Cell>
+                      <Table.Cell>
+                        <Checkbox
+                          aria-label={t('admin.adminAria', { name: u.displayName })}
+                          checked={u.isAdmin}
+                          onCheckedChange={(checked) => run(() => setAdmin({ variables: { userId: u.id, isAdmin: checked === true } }))}
+                        />
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Checkbox
+                          aria-label={t('admin.disabledAria', { name: u.displayName })}
+                          checked={u.isDisabled}
+                          onCheckedChange={(checked) => run(() => setDisabled({ variables: { userId: u.id, disabled: checked === true } }))}
+                        />
+                      </Table.Cell>
+                      <Table.Cell justify="end">
+                        {u.provider === 'LOCAL' && (
+                          <Button
+                            size="1"
+                            variant="soft"
+                            onClick={() => run(async () => setReset((await issueReset({ variables: { userId: u.id } })).data?.issuePasswordReset))}
+                          >
+                            {t('admin.resetLink', { name: u.displayName })}
+                          </Button>
+                        )}
+                      </Table.Cell>
+                    </Table.Row>
+                  ))}
+                </Table.Body>
+              </Table.Root>
+            </Box>
 
-              </>
-            ),
-          },
-          {
-            value: 'access',
-            label: 'Access',
-            content: (
-              <>
-                <h3>Access to other people&apos;s data</h3>
-                <p>
-                  Everyone may, by default:{' '}
-                  <Select
-                    label="Default access for everyone"
-                    value={data.accessSettings.defaultLevelForOthers}
-                    onValueChange={(level) => run(() => setDefault({ variables: { level: level as AccessLevel } }))}
-                    options={[
-                      { value: 'NONE', label: 'nothing' },
-                      { value: 'VIEW', label: 'view' },
-                      { value: 'EDIT', label: 'view and edit' },
-                    ]}
-                  />
-                </p>
-                <ul>
-                  {data.accessGrants.map((g) => (
-                    <li key={g.id}>
-                      {name(g.granteeId)} may {g.level === 'EDIT' ? 'view and edit' : 'view'} the data of {name(g.ownerId)}{' '}
-                      <button
-                        type="button"
+            <Heading as="h2" size="4" mb="3">
+              {t('admin.addUser')}
+            </Heading>
+            <FieldForm
+              fields={[
+                { name: 'email', label: 'fields.email', type: 'email' },
+                { name: 'displayName', label: 'fields.name', required: false },
+              ]}
+              submitLabel="admin.createUser"
+              onSubmit={async (v) => {
+                const created = await createUser({
+                  variables: { input: { email: v.email ?? '', displayName: v.displayName || null, isAdmin: false } },
+                })
+                setReset(created.data?.createUser.reset)
+              }}
+            />
+          </Tabs.Content>
+
+          <Tabs.Content value="access">
+            <Heading as="h2" size="4" mb="3">
+              {t('admin.accessTitle')}
+            </Heading>
+            <Flex align="center" gap="2" mb="4" wrap="wrap">
+              <Text>{t('admin.defaultLabel')}</Text>
+              <Select.Root
+                value={data.accessSettings.defaultLevelForOthers}
+                onValueChange={(level) => run(() => setDefault({ variables: { level: level as AccessLevel } }))}
+              >
+                <Select.Trigger aria-label={t('admin.defaultAria')} />
+                <Select.Content>
+                  {(['NONE', 'VIEW', 'EDIT'] as const satisfies readonly AccessLevel[]).map((l) => (
+                    <Select.Item key={l} value={l}>
+                      {t(`level.${l}`)}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
+            </Flex>
+
+            <Flex direction="column" gap="2" mb="4" asChild>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {data.accessGrants.map((g) => (
+                  <li key={g.id}>
+                    <Flex align="center" gap="3" wrap="wrap">
+                      <Text>
+                        {t(g.level === 'EDIT' ? 'admin.grantEdit' : 'admin.grantView', { grantee: name(g.granteeId), owner: name(g.ownerId) })}
+                      </Text>
+                      <Button
+                        size="1"
+                        variant="soft"
+                        color="red"
                         onClick={() => run(() => setGrant({ variables: { input: { ownerId: g.ownerId, granteeId: g.granteeId, level: 'NONE' } } }))}
                       >
-                        Revoke
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <GrantForm users={data.users} onGrant={(input) => run(() => setGrant({ variables: { input } }))} />
-              </>
-            ),
-          },
-        ]}
-      />
+                        {t('admin.revoke')}
+                      </Button>
+                    </Flex>
+                  </li>
+                ))}
+              </ul>
+            </Flex>
+
+            <GrantForm users={data.users} onGrant={(input) => run(() => setGrant({ variables: { input } }))} />
+          </Tabs.Content>
+        </Box>
+      </Tabs.Root>
     </section>
+  )
+}
+
+function PersonSelect({
+  label,
+  value,
+  onValueChange,
+  users,
+}: {
+  label: string
+  value: string
+  onValueChange: (id: string) => void
+  users: { id: string; displayName: string }[]
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <Select.Root value={value || undefined} onValueChange={onValueChange}>
+      <Select.Trigger aria-label={label} placeholder={t('admin.choose')} />
+      <Select.Content>
+        {users.map((u) => (
+          <Select.Item key={u.id} value={u.id}>
+            {u.displayName}
+          </Select.Item>
+        ))}
+      </Select.Content>
+    </Select.Root>
   )
 }
 
@@ -181,10 +215,10 @@ function GrantForm({
   users: { id: string; displayName: string }[]
   onGrant: (input: { ownerId: string; granteeId: string; level: AccessLevel }) => void
 }) {
+  const { t } = useTranslation()
   const [ownerId, setOwnerId] = useState('')
   const [granteeId, setGranteeId] = useState('')
   const [level, setLevel] = useState<AccessLevel>('VIEW')
-  const people = users.map((u) => ({ value: u.id, label: u.displayName }))
 
   return (
     <form
@@ -193,18 +227,21 @@ function GrantForm({
         if (ownerId && granteeId) onGrant({ ownerId, granteeId, level })
       }}
     >
-      Grant to <Select label="Grant to" value={granteeId} onValueChange={setGranteeId} options={people} /> access to the
-      data of <Select label="Data owner" value={ownerId} onValueChange={setOwnerId} options={people} /> at level{' '}
-      <Select
-        label="Level"
-        value={level}
-        onValueChange={(v) => setLevel(v as AccessLevel)}
-        options={[
-          { value: 'VIEW', label: 'view' },
-          { value: 'EDIT', label: 'view and edit' },
-        ]}
-      />{' '}
-      <button type="submit">Grant access</button>
+      <Flex align="center" gap="2" wrap="wrap">
+        <Text>{t('admin.grantTo')}</Text>
+        <PersonSelect label={t('admin.grantTo')} value={granteeId} onValueChange={setGranteeId} users={users} />
+        <Text>{t('admin.accessTo')}</Text>
+        <PersonSelect label={t('admin.dataOwner')} value={ownerId} onValueChange={setOwnerId} users={users} />
+        <Text>{t('admin.atLevel')}</Text>
+        <Select.Root value={level} onValueChange={(v) => setLevel(v as AccessLevel)}>
+          <Select.Trigger aria-label={t('admin.level')} />
+          <Select.Content>
+            <Select.Item value="VIEW">{t('level.VIEW')}</Select.Item>
+            <Select.Item value="EDIT">{t('level.EDIT')}</Select.Item>
+          </Select.Content>
+        </Select.Root>
+        <Button type="submit">{t('admin.grantAction')}</Button>
+      </Flex>
     </form>
   )
 }

@@ -38,7 +38,7 @@ public sealed class PasswordResetService(
     /// <summary>Validates the token and returns it with its user; throws the same vague error for every failure.</summary>
     public async Task<(User User, PasswordResetToken Token)> ResolveAsync(string? token, CancellationToken ct)
     {
-        var invalid = new DomainException("This password reset link is invalid or has expired.");
+        var invalid = new DomainException("reset.invalid", "This password reset link is invalid or has expired.");
         var parts = (token ?? "").Split('.', 2);
         if (parts.Length != 2 || !Guid.TryParseExact(parts[0], "N", out var id)) throw invalid;
 
