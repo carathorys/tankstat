@@ -8,11 +8,20 @@
 
   <ItemGroup>
     <PackageReference Include="HotChocolate.AspNetCore" Version="16.6.7" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.12" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Tankstat.Application\Tankstat.Application.csproj" />
     <ProjectReference Include="..\Tankstat.Infrastructure\Tankstat.Infrastructure.csproj" />
+    <ProjectReference Include="..\Tankstat.Migrations.Sqlite\Tankstat.Migrations.Sqlite.csproj" />
+    <ProjectReference Include="..\Tankstat.Migrations.PostgreSql\Tankstat.Migrations.PostgreSql.csproj" />
+    <ProjectReference Include="..\Tankstat.Migrations.SqlServer\Tankstat.Migrations.SqlServer.csproj" />
+    <ProjectReference Include="..\Tankstat.Migrations.MySql\Tankstat.Migrations.MySql.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tankstat.Api.IntegrationTests" />
   </ItemGroup>
 
 </Project>

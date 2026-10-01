@@ -8,11 +8,23 @@ run = ["npm ci", "dotnet restore"]
 
 [tasks."dev:api"]
 description = "Run the API with hot reload on :5080"
-run = "dotnet watch run --project src/backend/Tankstat.Api"
+# Run from the project directory: `dotnet watch --project` from the repo root mis-resolves
+# obj\Debug\... (staticwebassets.development.json) on Linux.
+dir = "src/backend/Tankstat.Api"
+run = "dotnet watch run"
 
 [tasks."dev:web"]
 description = "Run the Vite dev server (proxies /graphql to :5080)"
 run = "npm run dev"
+
+[tasks."db:migration"]
+description = "Add an EF Core migration to every provider: mise run db:migration <Name>"
+usage = 'arg "<name>" help="Migration name, e.g. AddFuelStation"'
+run = '''
+for p in Sqlite PostgreSql SqlServer MySql; do
+  dotnet ef migrations add "${usage_name}" --project "src/backend/Tankstat.Migrations.$p" --output-dir . --namespace "Tankstat.Migrations.$p"
+done
+'''
 
 [tasks.lint]
 run = "npm run lint"
@@ -27,7 +39,7 @@ run = [
 
 [tasks."test:unit"]
 description = "Unit tests (web + API)"
-run = ["npm run test:unit", "dotnet test tests/backend/Tankstat.Application.UnitTests", "dotnet test tests/backend/Tankstat.Infrastructure.UnitTests"]
+run = ["npm run test:unit", "dotnet test tests/backend/Tankstat.Domain.UnitTests", "dotnet test tests/backend/Tankstat.Application.UnitTests", "dotnet test tests/backend/Tankstat.Infrastructure.UnitTests"]
 
 [tasks."test:integration"]
 description = "Integration tests (web with mocked HTTP + API in-process)"

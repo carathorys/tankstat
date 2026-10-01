@@ -4,11 +4,19 @@
     <Project Path="src/backend/Tankstat.Application/Tankstat.Application.csproj" />
     <Project Path="src/backend/Tankstat.Domain/Tankstat.Domain.csproj" />
     <Project Path="src/backend/Tankstat.Infrastructure/Tankstat.Infrastructure.csproj" />
+    <Project Path="src/backend/Tankstat.Migrations.MySql/Tankstat.Migrations.MySql.csproj" />
+    <Project Path="src/backend/Tankstat.Migrations.PostgreSql/Tankstat.Migrations.PostgreSql.csproj" />
+    <Project Path="src/backend/Tankstat.Migrations.Sqlite/Tankstat.Migrations.Sqlite.csproj" />
+    <Project Path="src/backend/Tankstat.Migrations.SqlServer/Tankstat.Migrations.SqlServer.csproj" />
   </Folder>
+  <Folder Name="/src/backend/" />
   <Folder Name="/tests/">
     <Project Path="tests/backend/Tankstat.Api.ApiTests/Tankstat.Api.ApiTests.csproj" />
     <Project Path="tests/backend/Tankstat.Api.IntegrationTests/Tankstat.Api.IntegrationTests.csproj" />
     <Project Path="tests/backend/Tankstat.Application.UnitTests/Tankstat.Application.UnitTests.csproj" />
     <Project Path="tests/backend/Tankstat.Infrastructure.UnitTests/Tankstat.Infrastructure.UnitTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/backend/">
+    <Project Path="tests/backend/Tankstat.Domain.UnitTests/Tankstat.Domain.UnitTests.csproj" />
   </Folder>
 </Solution>

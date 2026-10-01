@@ -22,6 +22,21 @@ public class DatabaseProbeTests
         Assert.True(await Probe("Data Source=:memory:").IsReachableAsync(default));
 
     [Fact]
+    public async Task Reachable_WhenSqliteFileDoesNotExistYet()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"tankstat-{Guid.NewGuid():N}.db");
+        try
+        {
+            Assert.True(await Probe($"Data Source={path}").IsReachableAsync(default));
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public async Task Unreachable_WhenDatabaseCannotOpen() =>
         Assert.False(await Probe("Data Source=/nonexistent-dir/x.db;Mode=ReadOnly").IsReachableAsync(default));
 }

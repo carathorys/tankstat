@@ -25,8 +25,25 @@ public class DatabaseOptionsTests
     }
 
     [Fact]
-    public void MissingConnectionString_FailsValidation()
+    public void NothingConfigured_FallsBackToLocalSqlite()
     {
-        Assert.Throws<OptionsValidationException>(() => Resolve(new() { ["Database:Provider"] = "Sqlite" }));
+        var options = Resolve([]);
+
+        Assert.Equal(DatabaseProvider.Sqlite, options.Provider);
+        Assert.Equal(DatabaseOptions.DefaultSqliteConnectionString, options.ConnectionString);
     }
+
+    [Fact]
+    public void Sqlite_WithoutConnectionString_UsesDefault() =>
+        Assert.Equal(DatabaseOptions.DefaultSqliteConnectionString,
+            Resolve(new() { ["Database:Provider"] = "Sqlite" }).ConnectionString);
+
+    [Fact]
+    public void ExplicitConnectionString_IsNotReplacedByDefault() =>
+        Assert.Equal("Data Source=other.db",
+            Resolve(new() { ["Database:ConnectionString"] = "Data Source=other.db" }).ConnectionString);
+
+    [Fact]
+    public void NonSqliteProvider_WithoutConnectionString_FailsValidation() =>
+        Assert.Throws<OptionsValidationException>(() => Resolve(new() { ["Database:Provider"] = "PostgreSql" }));
 }

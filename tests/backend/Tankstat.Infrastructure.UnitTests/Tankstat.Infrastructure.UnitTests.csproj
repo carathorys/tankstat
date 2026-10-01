@@ -21,6 +21,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\backend\Tankstat.Infrastructure\Tankstat.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\src\backend\Tankstat.Migrations.Sqlite\Tankstat.Migrations.Sqlite.csproj" />
+    <ProjectReference Include="..\..\..\src\backend\Tankstat.Migrations.PostgreSql\Tankstat.Migrations.PostgreSql.csproj" />
+    <ProjectReference Include="..\..\..\src\backend\Tankstat.Migrations.SqlServer\Tankstat.Migrations.SqlServer.csproj" />
+    <ProjectReference Include="..\..\..\src\backend\Tankstat.Migrations.MySql\Tankstat.Migrations.MySql.csproj" />
   </ItemGroup>
 
 </Project>

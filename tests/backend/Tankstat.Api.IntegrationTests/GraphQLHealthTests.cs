@@ -7,46 +7,60 @@ using Tankstat.Infrastructure.Persistence;
 
 namespace Tankstat.Api.IntegrationTests;
 
-/// <summary>In-process host: real DI, real HotChocolate pipeline, real EF Core (in-memory SQLite).</summary>
-public class GraphQLHealthTests : IClassFixture<WebApplicationFactory<Program>>, IDisposable
+/// <summary>
+/// In-process host: real DI, HotChocolate pipeline, EF Core and migrations on a throwaway SQLite file.
+/// The database is configured through environment variables, the same mechanism that overrides appsettings.json.
+/// </summary>
+public sealed class ApiFixture : IDisposable
 {
     private const string ProviderVar = "Database__Provider";
     private const string ConnectionVar = "Database__ConnectionString";
 
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly string _path = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}.db");
 
-    public GraphQLHealthTests(WebApplicationFactory<Program> factory)
+    public WebApplicationFactory<Program> Factory { get; }
+
+    public ApiFixture()
     {
-        // Env vars outrank appsettings.json: this is the supported override mechanism.
         Environment.SetEnvironmentVariable(ProviderVar, "Sqlite");
-        Environment.SetEnvironmentVariable(ConnectionVar, "Data Source=:memory:");
-        _factory = factory;
+        Environment.SetEnvironmentVariable(ConnectionVar, $"Data Source={_path}");
+        Factory = new WebApplicationFactory<Program>();
     }
 
     public void Dispose()
     {
+        Factory.Dispose();
         Environment.SetEnvironmentVariable(ProviderVar, null);
         Environment.SetEnvironmentVariable(ConnectionVar, null);
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        File.Delete(_path);
     }
+}
 
+/// <summary>One shared host/database for all API integration tests (env vars are process-global).</summary>
+[CollectionDefinition(Name)]
+public sealed class ApiCollection : ICollectionFixture<ApiFixture>
+{
+    public const string Name = "Api";
+}
+
+[Collection(ApiCollection.Name)]
+public class GraphQLHealthTests(ApiFixture api)
+{
     [Fact]
-    public async Task EnvironmentVariables_OverrideAppSettings()
+    public void EnvironmentVariables_OverrideAppSettings()
     {
-        Environment.SetEnvironmentVariable(ProviderVar, "SqlServer");
-        Environment.SetEnvironmentVariable(ConnectionVar, "Server=override");
+        var options = api.Factory.Services.GetRequiredService<IOptions<DatabaseOptions>>().Value;
 
-        using var factory = new WebApplicationFactory<Program>();
-        var options = factory.Services.GetRequiredService<IOptions<DatabaseOptions>>().Value;
-
-        Assert.Equal(DatabaseProvider.SqlServer, options.Provider);
-        Assert.Equal("Server=override", options.ConnectionString);
-        await Task.CompletedTask;
+        Assert.Equal(DatabaseProvider.Sqlite, options.Provider);
+        Assert.StartsWith("Data Source=", options.ConnectionString);
+        Assert.Contains("tankstat-it-", options.ConnectionString);
     }
 
     [Fact]
     public async Task HealthQuery_ReturnsOk()
     {
-        var response = await _factory.CreateClient().PostAsJsonAsync("/graphql",
+        var response = await api.Factory.CreateClient().PostAsJsonAsync("/graphql",
             new { query = "{ health { status databaseReachable } }" });
 
         response.EnsureSuccessStatusCode();
@@ -58,7 +72,7 @@ public class GraphQLHealthTests : IClassFixture<WebApplicationFactory<Program>>,
     [Fact]
     public async Task UnknownField_ReturnsGraphQLError()
     {
-        var response = await _factory.CreateClient().PostAsJsonAsync("/graphql", new { query = "{ nope }" });
+        var response = await api.Factory.CreateClient().PostAsJsonAsync("/graphql", new { query = "{ nope }" });
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.True(body.TryGetProperty("errors", out var errors) && errors.GetArrayLength() > 0);

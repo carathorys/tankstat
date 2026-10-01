@@ -1,14 +1,36 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
+using Tankstat.Application.Access;
+using Tankstat.Application.Auth;
 using Tankstat.Application.Health;
+using Tankstat.Application.Refuelings;
+using Tankstat.Application.Users;
+using Tankstat.Application.Vehicles;
 
 namespace Tankstat.Application;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddApplication(this IServiceCollection services)
+    public static IServiceCollection AddApplication(this IServiceCollection services, IConfiguration configuration)
     {
+        services.AddOptions<SmtpOptions>().Bind(configuration.GetSection(SmtpOptions.SectionName));
+        services.AddOptions<AuthOptions>().Bind(configuration.GetSection(AuthOptions.SectionName)).ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<AuthOptions>, AuthOptionsValidator>());
+
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<HealthReporter>();
+        services.AddSingleton<NoticeService>();
+
+        services.AddScoped<AccessService>();
+        services.AddScoped<AccessAdminService>();
+        services.AddScoped<SessionService>();
+        services.AddScoped<PasswordResetService>();
+        services.AddScoped<AuthService>();
+        services.AddScoped<UserService>();
+        services.AddScoped<VehicleService>();
+        services.AddScoped<RefuelingService>();
         return services;
     }
 }

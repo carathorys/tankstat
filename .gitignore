@@ -509,3 +509,8 @@ dist-ssr
 
 # Self-host build output
 out/
+
+# Local SQLite databases (default dev database is tankstat.db)
+*.db
+*.db-shm
+*.db-wal

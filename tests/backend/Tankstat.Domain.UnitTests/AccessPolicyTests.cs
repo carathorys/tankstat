@@ -1,0 +1,68 @@
+using Tankstat.Domain;
+using Tankstat.Domain.Access;
+
+namespace Tankstat.Domain.UnitTests;
+
+public class AccessPolicyTests
+{
+    private static readonly Guid Alice = Guid.NewGuid();
+    private static readonly Guid Bob = Guid.NewGuid();
+    private static readonly Guid Carol = Guid.NewGuid();
+
+    private static AccessLevel Resolve(Guid user, Guid owner, AccessLevel defaults = AccessLevel.None, bool admin = false, params AccessGrant[] grants) =>
+        AccessPolicy.Resolve(user, admin, owner, defaults, grants);
+
+    [Fact]
+    public void Owner_HasFullAccess() => Assert.Equal(AccessLevel.Edit, Resolve(Alice, Alice));
+
+    [Fact]
+    public void Admin_HasFullAccessToEverything() => Assert.Equal(AccessLevel.Edit, Resolve(Bob, Alice, admin: true));
+
+    [Fact]
+    public void Others_GetNothingByDefault() => Assert.Equal(AccessLevel.None, Resolve(Bob, Alice));
+
+    [Fact]
+    public void Others_GetTheInstanceDefault() => Assert.Equal(AccessLevel.View, Resolve(Bob, Alice, AccessLevel.View));
+
+    [Fact]
+    public void Grant_RaisesAboveDefault() =>
+        Assert.Equal(AccessLevel.Edit, Resolve(Bob, Alice, AccessLevel.View, false, AccessGrant.Create(Alice, Bob, AccessLevel.Edit)));
+
+    [Fact]
+    public void Grant_DoesNotLowerTheDefault() =>
+        Assert.Equal(AccessLevel.Edit, Resolve(Bob, Alice, AccessLevel.Edit, false, AccessGrant.Create(Alice, Bob, AccessLevel.View)));
+
+    [Fact]
+    public void Grant_OnlyAppliesToItsOwnerAndGrantee()
+    {
+        var grant = AccessGrant.Create(Alice, Bob, AccessLevel.Edit);
+
+        Assert.Equal(AccessLevel.None, Resolve(Carol, Alice, grants: grant)); // other grantee
+        Assert.Equal(AccessLevel.None, Resolve(Bob, Carol, grants: grant));   // other owner
+    }
+}
+
+public class AccessGrantTests
+{
+    [Fact]
+    public void Create_RejectsSelfGrant()
+    {
+        var id = Guid.NewGuid();
+        Assert.Throws<DomainException>(() => AccessGrant.Create(id, id, AccessLevel.View));
+    }
+
+    [Fact]
+    public void Create_RejectsNoneLevel() =>
+        Assert.Throws<DomainException>(() => AccessGrant.Create(Guid.NewGuid(), Guid.NewGuid(), AccessLevel.None));
+
+    [Fact]
+    public void Settings_DefaultToNoAccessForOthers()
+    {
+        var settings = AccessSettings.Default();
+        Assert.Equal(AccessLevel.None, settings.DefaultLevelForOthers);
+
+        settings.SetDefaultLevelForOthers(AccessLevel.View);
+        Assert.Equal(AccessLevel.View, settings.DefaultLevelForOthers);
+        Assert.Throws<DomainException>(() => settings.SetDefaultLevelForOthers((AccessLevel)42));
+    }
+}

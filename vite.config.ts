@@ -6,7 +6,7 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   root: 'src/frontend',
   plugins: [react()],
-  server: { proxy: { '/graphql': 'http://localhost:5080' } },
+  server: { proxy: { '/graphql': 'http://localhost:5080', '/auth': 'http://localhost:5080' } },
   build: { outDir: '../../dist', emptyOutDir: true },
   test: {
     environment: 'jsdom',
