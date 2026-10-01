@@ -1,0 +1,43 @@
+[tools]
+node = "lts"
+dotnet = "10"
+
+[tasks.install]
+description = "Install web dependencies and restore .NET packages"
+run = ["npm ci", "dotnet restore"]
+
+[tasks."dev:api"]
+description = "Run the API with hot reload on :5080"
+run = "dotnet watch run --project src/backend/Tankstat.Api"
+
+[tasks."dev:web"]
+description = "Run the Vite dev server (proxies /graphql to :5080)"
+run = "npm run dev"
+
+[tasks.lint]
+run = "npm run lint"
+
+[tasks.build]
+description = "Produce a self-hostable build in ./out (API + SPA in wwwroot)"
+run = [
+  "npm run build",
+  "dotnet publish src/backend/Tankstat.Api -c Release -o out",
+  "rm -rf out/wwwroot && cp -r dist out/wwwroot",
+]
+
+[tasks."test:unit"]
+description = "Unit tests (web + API)"
+run = ["npm run test:unit", "dotnet test tests/backend/Tankstat.Application.UnitTests", "dotnet test tests/backend/Tankstat.Infrastructure.UnitTests"]
+
+[tasks."test:integration"]
+description = "Integration tests (web with mocked HTTP + API in-process)"
+run = ["npm run test:integration", "dotnet test tests/backend/Tankstat.Api.IntegrationTests"]
+
+[tasks."test:api"]
+description = "Black-box API contract tests against a freshly started server"
+run = "scripts/test-api.sh"
+
+[tasks.test]
+description = "Everything: typecheck, lint, unit, integration, API"
+depends = ["lint"]
+run = ["npm run typecheck", "mise run test:unit", "mise run test:integration", "mise run test:api"]

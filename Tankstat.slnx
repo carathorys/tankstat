@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/backend/Tankstat.Api/Tankstat.Api.csproj" />
+    <Project Path="src/backend/Tankstat.Application/Tankstat.Application.csproj" />
+    <Project Path="src/backend/Tankstat.Domain/Tankstat.Domain.csproj" />
+    <Project Path="src/backend/Tankstat.Infrastructure/Tankstat.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/backend/Tankstat.Api.ApiTests/Tankstat.Api.ApiTests.csproj" />
+    <Project Path="tests/backend/Tankstat.Api.IntegrationTests/Tankstat.Api.IntegrationTests.csproj" />
+    <Project Path="tests/backend/Tankstat.Application.UnitTests/Tankstat.Application.UnitTests.csproj" />
+    <Project Path="tests/backend/Tankstat.Infrastructure.UnitTests/Tankstat.Infrastructure.UnitTests.csproj" />
+  </Folder>
+</Solution>
