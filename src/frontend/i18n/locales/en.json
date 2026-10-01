@@ -14,7 +14,8 @@
     "skip": "Skip to main content",
     "show": "Show menu",
     "hide": "Hide menu",
-    "signedInAs": "Signed in as {{name}}"
+    "signedInAs": "Signed in as {{name}}",
+    "close": "Close menu"
   },
   "language": {
     "label": "Language"

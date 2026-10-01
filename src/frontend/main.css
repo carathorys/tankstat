@@ -75,3 +75,9 @@ body {
 
 .topbar-name { display: none; }
 @media (min-width: 520px) { .topbar-name { display: inline; } }
+
+/* Phones: tighter table cells so the data columns and the two action buttons fit without sideways scrolling. */
+@media (max-width: 767px) {
+    .rt-TableCell,
+    .rt-TableColumnHeaderCell { padding-inline: var(--space-2); }
+}

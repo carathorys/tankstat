@@ -1,5 +1,6 @@
 import { useMutation } from '@apollo/client/react'
-import { Button, Flex, Heading, Link as RadixLink, Text } from '@radix-ui/themes'
+import { Button, Flex, Heading, IconButton, Link as RadixLink, Text } from '@radix-ui/themes'
+import { Pencil, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
@@ -88,17 +89,17 @@ export function VehiclesPage() {
               <VehicleFormDialog
                 vehicleId={v.id}
                 trigger={
-                  <Button size="2" variant="soft" aria-label={t('vehicles.editAria', { name: v.name })}>
-                    {t('vehicles.edit')}
-                  </Button>
+                  <IconButton size="3" variant="soft" aria-label={t('vehicles.editAria', { name: v.name })}>
+                    <Pencil size={16} aria-hidden />
+                  </IconButton>
                 }
                 onSubmit={(input) => updateVehicle({ variables: { input: { ...input, id: v.id } } })}
               />
               <ConfirmDialog
                 trigger={
-                  <Button size="2" variant="soft" color="red" aria-label={t('vehicles.deleteAria', { name: v.name })}>
-                    {t('vehicles.delete')}
-                  </Button>
+                  <IconButton size="3" variant="soft" color="red" aria-label={t('vehicles.deleteAria', { name: v.name })}>
+                    <Trash2 size={16} aria-hidden />
+                  </IconButton>
                 }
                 title={t('vehicles.trashTitle', { name: v.name })}
                 description={t('vehicles.trashDescription')}

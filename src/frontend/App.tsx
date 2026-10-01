@@ -1,5 +1,6 @@
 import { useQuery } from '@apollo/client/react'
-import { Box, Container, Dialog, Flex, Text, VisuallyHidden } from '@radix-ui/themes'
+import { Box, Container, Dialog, Flex, IconButton, Text } from '@radix-ui/themes'
+import { X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -43,7 +44,7 @@ export default function App() {
         {t('nav.skip')}
       </a>
       <TopBar user={user} showMenu={showMenu} navOpen={navOpen} onToggleNav={toggleNav} />
-      <Flex flexGrow="1" align="stretch">
+      <Flex flexGrow="1" align="stretch" style={{ minWidth: 0 }}>
         {showMenu && desktop && dockedOpen && (
           <Box id="app-nav" className="glass app-sidebar" p="3" width="16rem" flexShrink="0">
             <NavList mode={mode} user={user} />
@@ -52,14 +53,21 @@ export default function App() {
         {showMenu && !desktop && (
           <Dialog.Root open={drawerOpen} onOpenChange={setDrawerOpen}>
             <Dialog.Content id="app-nav" className="glass drawer" aria-describedby={undefined}>
-              <VisuallyHidden>
-                <Dialog.Title>{t('nav.main')}</Dialog.Title>
-              </VisuallyHidden>
+              <Flex justify="between" align="center" mb="3">
+                <Dialog.Title size="4" mb="0">
+                  {t('app.name')}
+                </Dialog.Title>
+                <Dialog.Close>
+                  <IconButton variant="ghost" color="gray" size="3" aria-label={t('nav.close')}>
+                    <X size={20} aria-hidden />
+                  </IconButton>
+                </Dialog.Close>
+              </Flex>
               <NavList mode={mode} user={user} onNavigate={() => setDrawerOpen(false)} />
             </Dialog.Content>
           </Dialog.Root>
         )}
-        <Container asChild size="3" flexGrow="1" p={{ initial: '3', sm: '4' }}>
+        <Container asChild size="3" flexGrow="1" p={{ initial: '3', sm: '4' }} minWidth="0" style={{ minWidth: 0, maxWidth: '100%' }}>
           <main id="main" tabIndex={-1}>
             {error && <ErrorMessage error={error} />}
             {loading && (

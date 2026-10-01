@@ -1,5 +1,6 @@
 import { useMutation } from '@apollo/client/react'
-import { Badge, Button, Flex, Text } from '@radix-ui/themes'
+import { Badge, Button, Flex, IconButton, Text } from '@radix-ui/themes'
+import { Pencil, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '../../components/ConfirmDialog.tsx'
@@ -102,17 +103,17 @@ export function RefuelingsPanel({
                 vehicle={vehicle}
                 refuelingId={r.id}
                 trigger={
-                  <Button size="2" variant="soft" aria-label={t('refuelings.editAria', { date: format.date(r.date) })}>
-                    {t('refuelings.edit')}
-                  </Button>
+                  <IconButton size="3" variant="soft" aria-label={t('refuelings.editAria', { date: format.date(r.date) })}>
+                    <Pencil size={16} aria-hidden />
+                  </IconButton>
                 }
                 onSubmit={(input) => updateRefueling({ variables: { input: { ...input, id: r.id } } })}
               />
               <ConfirmDialog
                 trigger={
-                  <Button size="2" variant="soft" color="red" aria-label={t('refuelings.deleteAria', { date: format.date(r.date) })}>
-                    {t('refuelings.delete')}
-                  </Button>
+                  <IconButton size="3" variant="soft" color="red" aria-label={t('refuelings.deleteAria', { date: format.date(r.date) })}>
+                    <Trash2 size={16} aria-hidden />
+                  </IconButton>
                 }
                 title={t('refuelings.trashTitle')}
                 description={t('refuelings.trashDescription', { date: format.date(r.date) })}

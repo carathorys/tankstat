@@ -14,7 +14,8 @@
     "skip": "Ugrás a fő tartalomhoz",
     "show": "Menü megjelenítése",
     "hide": "Menü elrejtése",
-    "signedInAs": "Bejelentkezve mint {{name}}"
+    "signedInAs": "Bejelentkezve mint {{name}}",
+    "close": "Menü bezárása"
   },
   "language": {
     "label": "Nyelv"
