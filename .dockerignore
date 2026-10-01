@@ -1,0 +1,21 @@
+# Keep the build context small and the layer cache stable: only sources go into the image build.
+**/.git
+**/.github
+**/node_modules
+**/bin
+**/obj
+dist
+out
+test-results
+coverage
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/TestResults
+**/.vs
+.idea
+.vscode
+.claude
+tests
+Dockerfile
+.dockerignore

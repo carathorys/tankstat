@@ -31,6 +31,14 @@ description = "Test data (auth mode None only): deletes the dev database, recrea
 # The default target is the database `mise run dev:api` uses; a later --connection overrides it.
 run = 'dotnet run --project src/backend/Tankstat.Seeder -- --connection "Data Source=$PWD/src/backend/Tankstat.Api/tankstat.db"'
 
+[tasks."docker:build"]
+description = "Build the single-container image (API + web app) as tankstat:local"
+run = "docker build -t tankstat:local --build-arg REVISION=$(git rev-parse --short HEAD) ."
+
+[tasks."docker:smoke"]
+description = "Run the image built by docker:build and check it serves the web app and the API"
+run = "scripts/docker-smoke.sh tankstat:local"
+
 [tasks."schema:export"]
 description = "Export the GraphQL schema from the API to schema.graphql (no server is started)"
 run = 'dotnet run --project src/backend/Tankstat.Api --no-launch-profile -- schema export --output "$PWD/schema.graphql"'

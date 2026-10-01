@@ -1,0 +1,148 @@
+name: Release
+
+# Publishing a GitHub release (tag vMAJOR.MINOR.PATCH[-prerelease]) builds the single-container image
+# (API + web app) and pushes it to the GitHub Container Registry as ghcr.io/<owner>/<repo>.
+# "Run workflow" builds and smoke-tests the image from any branch; it pushes (as a dev-<sha> tag) only if asked to.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      push:
+        description: Also push a dev-<sha> image to the registry
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false # never cancel a half-finished publish
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # The same checks as every pull request, so an image is never built from a commit that does not pass them.
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  image:
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write # push to ghcr.io with the workflow's own token
+      id-token: write # keyless signing of the provenance attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Work out the version and image name
+        id: info
+        env:
+          EVENT: ${{ github.event_name }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "release" ]; then
+            if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::Release tag '$TAG' must look like v1.2.3 (or v1.2.3-rc.1)."
+              exit 1
+            fi
+            version="${TAG#v}"
+          else
+            version="0.0.0-dev.${GITHUB_SHA::7}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # Registry repository names must be lowercase.
+          echo "image=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      # Needed only for the few RUN steps of the runtime stage on arm64; the build stages run natively on amd64.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.info.outputs.image }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.event.release.tag_name, 'v0.') }}
+            type=raw,value=dev-${{ github.sha }},enable=${{ github.event_name == 'workflow_dispatch' }}
+
+      # Build the amd64 image, load it into the local daemon and run it before anything is published.
+      - name: Build for testing
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          platforms: linux/amd64
+          tags: tankstat:smoke
+          build-args: |
+            VERSION=${{ steps.info.outputs.version }}
+            REVISION=${{ github.sha }}
+            CREATED=${{ steps.info.outputs.created }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test the image
+        run: scripts/docker-smoke.sh tankstat:smoke "${{ steps.info.outputs.version }}"
+
+      - name: Log in to the registry
+        if: github.event_name == 'release' || inputs.push
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Reuses the layers built above (cache), adds arm64, and pushes.
+      - name: Build and push (amd64 + arm64)
+        id: push
+        if: github.event_name == 'release' || inputs.push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.info.outputs.version }}
+            REVISION=${{ github.sha }}
+            CREATED=${{ steps.info.outputs.created }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
+
+      - name: Attest build provenance
+        if: github.event_name == 'release' || inputs.push
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ steps.info.outputs.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Summary
+        if: github.event_name == 'release' || inputs.push
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          {
+            echo "### Published image"
+            echo
+            echo '```'
+            echo "$TAGS"
+            echo '```'
+            echo "Digest: \`$DIGEST\`"
+            echo
+            echo "Run it: \`docker run -p 8080:8080 -v tankstat-data:/data -e Auth__Mode=Standalone ... ${TAGS%%$'\n'*}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
