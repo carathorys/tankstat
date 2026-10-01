@@ -111,6 +111,27 @@ English and Hungarian (react-i18next); the language menu in the top bar is avail
 ### GraphQL types are generated
 Nothing GraphQL is typed by hand. `schema.graphql` is exported from the API (`mise run schema:export`) and, with the operations in `src/frontend/graphql/*.graphql`, GraphQL Code Generator writes `src/frontend/gql/generated.ts`. After changing the API schema or a `.graphql` document run `mise run codegen` and commit the results; `mise run test` (and an API test) fail if they are stale.
 
+## Test data (seeder)
+
+`Tankstat.Seeder` is a standalone console tool that does only one thing: **deletes the database, creates it, migrates it and fills it with random, consistent test data**. For the no-authentication setup only: it creates no users (everything belongs to the anonymous owner) and refuses to run when `Auth__Mode` is anything but `None`.
+
+```sh
+mise run seed                                                       # 25 vehicles, 20 refuelings each, into the dev:api database
+mise run seed -- --vehicles 500 --trashed 40 --refuelings 5-60 --seed 7
+mise run seed -- --help
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--vehicles <n>` | vehicles to create (default 25) |
+| `--trashed <n>` | additional vehicles that are in the trash (default 0) |
+| `--refuelings <n\|a-b>` | refuelings per vehicle, a number or a range (default 20) |
+| `--seed <n>` | same seed, same data (default 1234) |
+| `--provider`, `--connection` | override the database (otherwise `Database__*` settings; `mise run seed` targets the `dev:api` SQLite file) |
+| `--yes` | skip the "type yes" confirmation before the database is deleted |
+
+The fuel logs are consistent: per vehicle, dates and the odometer only increase, the last fill-up is recent, litres follow the distance at a per-vehicle consumption, and prices drift slowly. Trashed vehicles keep their fuel logs.
+
 ## Data model and migrations
 
 A vehicle fuel log: `Vehicle` (name, licence plate, fuel type) and `Refueling` (date, litres, total cost, odometer, full tank), exposed via GraphQL queries `vehicles` / `vehicle(id)` and mutations `addVehicle` / `logRefueling`.
