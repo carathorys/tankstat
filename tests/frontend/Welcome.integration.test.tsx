@@ -1,4 +1,5 @@
 import { screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import { server } from './server.ts'
@@ -11,8 +12,8 @@ afterEach(() => {
 })
 afterAll(() => server.close())
 
-function setup(vehicles = [fakeVehicle()]) {
-  stubViewport('desktop')
+function setup(vehicles = [fakeVehicle()], device: 'desktop' | 'phone' = 'desktop') {
+  stubViewport(device)
   server.use(sessionHandler('NONE', () => null), healthHandler, ...fakeVehicleBackend(vehicles).handlers)
   renderWithApollo(<App />, '/')
 }
@@ -30,7 +31,7 @@ it('shows a card per vehicle with the key figures', async () => {
   expect(c.getByText('6.25 L/100 km')).toBeInTheDocument()
   expect(c.getByText('Sep 17, 2026')).toBeInTheDocument()
   expect(c.getByText(/52,000/)).toBeInTheDocument()
-  expect(c.getByRole('img', { name: /Spending in the last six months/ })).toBeInTheDocument()
+  expect(await c.findByRole('img', { name: /Spending in the last six months/ })).toBeInTheDocument() // the chart library loads on demand
 })
 
 it('uses the uploaded picture as the card background, and a gradient without one', async () => {
@@ -39,10 +40,10 @@ it('uses the uploaded picture as the card background, and a gradient without one
   const withPicture = (await card('With picture')).querySelector('.vehicle-card')!
   const plain = (await card('Plain')).querySelector('.vehicle-card')!
 
-  expect(withPicture.querySelector('img.cover')).toHaveAttribute('src', '/media/abc')
-  expect(withPicture.querySelector('img.cover')).toHaveAttribute('alt', '') // decorative: the name is next to it
+  expect((withPicture.querySelector('.cover-picture') as HTMLElement).style.backgroundImage).toBe('url("/media/abc")') // a CSS background: cropped to fill, never stretched
+  expect(withPicture.querySelector('img')).toBeNull()
   expect(withPicture.querySelector('.scrim')).toBeInTheDocument() // keeps the white text readable
-  expect(plain.querySelector('img')).toBeNull()
+  expect(plain.querySelector('.cover-picture')).toBeNull()
   expect((plain.querySelector('.cover') as HTMLElement).style.background).toContain('linear-gradient')
 })
 
@@ -87,4 +88,47 @@ it('has links to all vehicles and the import', async () => {
 
   expect(screen.getByRole('link', { name: 'All vehicles' })).toHaveAttribute('href', '/vehicles')
   expect(screen.getByRole('link', { name: 'Import logs' })).toHaveAttribute('href', '/import')
+})
+
+const vehicleCard = async (name: string) => (await card(name)).querySelector('.vehicle-card') as HTMLElement
+
+it('keeps the figures in the page for screen readers, hidden only visually until the card is hovered, focused or tapped', async () => {
+  setup()
+
+  const c = await vehicleCard('Octavia')
+
+  expect(c.style.getPropertyValue('--panel-h')).toMatch(/px$/) // the panel's height: it sits just below the card edge until revealed (a transform, never display: none)
+  expect(c).not.toHaveAttribute('data-open')
+  expect(within(c).getByText('Odometer')).toBeInTheDocument()
+})
+
+it('on a touch screen a tap on the card shows the figures, and another tap hides them again', async () => {
+  const ui = userEvent.setup()
+  setup([fakeVehicle()], 'phone')
+  const c = await vehicleCard('Octavia')
+
+  await ui.click(within(c).getByText('Odometer'))
+  expect(c).toHaveAttribute('data-open')
+  await ui.click(within(c).getByText('Odometer'))
+  expect(c).not.toHaveAttribute('data-open')
+})
+
+it('a tap on the name is navigation, not a reveal', async () => {
+  const ui = userEvent.setup()
+  setup([fakeVehicle()], 'phone')
+  const c = await vehicleCard('Octavia')
+
+  await ui.click(within(c).getByRole('link', { name: 'Open Octavia' }))
+
+  expect(c).not.toHaveAttribute('data-open')
+})
+
+it('with a mouse a click on the card does not toggle anything (the whole card is the link)', async () => {
+  const ui = userEvent.setup()
+  setup([fakeVehicle()], 'desktop')
+  const c = await vehicleCard('Octavia')
+
+  await ui.click(within(c).getByText('Odometer'))
+
+  expect(c).not.toHaveAttribute('data-open')
 })

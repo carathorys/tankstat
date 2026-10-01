@@ -99,7 +99,7 @@ body {
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
-    min-height: 15rem;
+    height: 17rem; /* fixed: revealing the figures must not move the cards around it */
     border-radius: var(--radius-4);
     box-shadow: var(--shadow-3);
     color: white;
@@ -111,14 +111,36 @@ body {
 .vehicle-card-link::after { content: ''; position: absolute; inset: 0; } /* the whole card is the link target */
 .vehicle-card-link:focus-visible { outline: none; }
 .vehicle-card:has(.vehicle-card-link:focus-visible) { outline: 2px solid var(--focus-8); outline-offset: 2px; }
-.vehicle-card-stats {
+/* The figures and the trend slide up from the bottom edge of the card on hover, focus (keyboard) or, on a touch screen, a tap. The panel is
+   always full size and fully formed: while hidden it sits just below the card edge (the card clips it), and the name moves up with it.
+   They stay in the accessibility tree, so a screen reader always reads them. The panel's height is measured by the component
+   (--panel-h). Its blur and tint are static: an ancestor fading in would isolate backdrop-filter and delay the blur. */
+.vehicle-card .card-content {
+    position: absolute;
+    inset: auto 0 0 0;
+    transform: translateY(var(--panel-h, 0px));
+    transition: transform 0.34s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.vehicle-card:hover .card-content,
+.vehicle-card:focus-within .card-content,
+.vehicle-card[data-open] .card-content { transform: translateY(0); }
+.vehicle-card-stats-container {
     background: rgba(0, 0, 0, 0.35);
     -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
-    border-radius: var(--radius-3);
 }
-@media (prefers-reduced-motion: reduce) { .vehicle-card { transition: none; } .vehicle-card:hover, .vehicle-card:focus-within { transform: none; } }
 
-.cover { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+@media (hover: none) {
+    /* Touch: a tap on the card shows the figures; only the name opens the vehicle (so a tap is never a surprise navigation). */
+    .vehicle-card-link::after { display: none; }
+    .vehicle-card-link { display: inline-block; padding-block: var(--space-2); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .vehicle-card, .vehicle-card .card-content { transition: none; }
+    .vehicle-card:hover, .vehicle-card:focus-within { transform: none; }
+}
+
+.cover { position: absolute; inset: 0; }
+.cover-picture { background-size: cover; background-position: center; background-repeat: no-repeat; }
 .scrim { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0.18)); }
-.card-content, .hero-content { position: relative; }
+.hero-content { position: relative; }

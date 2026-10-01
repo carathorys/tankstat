@@ -2,7 +2,7 @@ import { useQuery } from '@apollo/client/react'
 import { Box, Container, Dialog, Flex, IconButton, Text } from '@radix-ui/themes'
 import { X } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, Route, Routes, useLocation, useSearchParams } from 'react-router'
 import { useMediaQuery } from './hooks/useMediaQuery.ts'
@@ -12,16 +12,18 @@ import { LoginView } from './LoginView.tsx'
 import { ErrorMessage } from './messages.tsx'
 import { NoticeBanner } from './NoticeBanner.tsx'
 import { ResetPasswordView } from './PasswordForms.tsx'
-import { ImportPage } from './pages/ImportPage.tsx'
-import { WelcomePage } from './pages/WelcomePage.tsx'
-import { AccountPage } from './pages/AccountPage.tsx'
-import { AdminPanel } from './admin/AdminPanel.tsx'
-import { TrashPage } from './pages/TrashPage.tsx'
-import { VehiclePage } from './pages/VehiclePage.tsx'
-import { VehiclesPage } from './pages/VehiclesPage.tsx'
 import { HealthFooter } from './shell/HealthFooter.tsx'
 import { NavList } from './shell/NavList.tsx'
 import { TopBar } from './shell/TopBar.tsx'
+
+// Every page is its own chunk, loaded when it is first visited: the first screen only needs the shell and the page it opens on.
+const WelcomePage = lazy(() => import('./pages/WelcomePage.tsx').then((m) => ({ default: m.WelcomePage })))
+const VehiclesPage = lazy(() => import('./pages/VehiclesPage.tsx').then((m) => ({ default: m.VehiclesPage })))
+const VehiclePage = lazy(() => import('./pages/VehiclePage.tsx').then((m) => ({ default: m.VehiclePage })))
+const TrashPage = lazy(() => import('./pages/TrashPage.tsx').then((m) => ({ default: m.TrashPage })))
+const ImportPage = lazy(() => import('./pages/ImportPage.tsx').then((m) => ({ default: m.ImportPage })))
+const AccountPage = lazy(() => import('./pages/AccountPage.tsx').then((m) => ({ default: m.AccountPage })))
+const AdminPanel = lazy(() => import('./admin/AdminPanel.tsx').then((m) => ({ default: m.AdminPanel })))
 
 const isBoolean = (value: unknown): value is boolean => typeof value === 'boolean'
 
@@ -100,7 +102,14 @@ function Content({ data }: { data: SessionQuery }) {
   return (
     // A short fade/slide-in on every page change (honours the user's reduced-motion setting).
     <motion.div key={pathname} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
-      <Routes>
+      <Suspense
+        fallback={
+          <Text as="p" role="status">
+            {t('app.loading')}
+          </Text>
+        }
+      >
+        <Routes>
         <Route path="/" element={<WelcomePage />} />
         <Route path="/vehicles" element={<VehiclesPage />} />
         <Route path="/vehicles/:id/*" element={<VehiclePage />} />
@@ -109,7 +118,8 @@ function Content({ data }: { data: SessionQuery }) {
         <Route path="/account" element={<AccountPage mode={mode} user={user} />} />
         <Route path="/admin" element={user?.isAdmin ? <AdminPanel /> : <Navigate to="/vehicles" replace />} />
         <Route path="*" element={<Text as="p">{t('app.notFound')}</Text>} />
-      </Routes>
+        </Routes>
+      </Suspense>
     </motion.div>
   )
 }

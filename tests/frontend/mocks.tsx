@@ -217,7 +217,8 @@ export function fakeVehicleBackend(initial: FakeVehicle[] = [], trashed: FakeVeh
 /** Pretends to be a phone (narrow) or a desktop (wide) browser window for CSS media queries. */
 export function stubViewport(kind: 'phone' | 'desktop') {
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: kind === 'phone' ? query.includes('max-width: 767px') : query.includes('min-width: 1024px'),
+    // A phone is narrow and has no hover (a touch screen); a desktop is wide and has a mouse.
+    matches: kind === 'phone' ? query.includes('max-width: 767px') || query.includes('hover: none') : query.includes('min-width: 1024px'),
     media: query,
     onchange: null,
     addEventListener() {},

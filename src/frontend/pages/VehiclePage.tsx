@@ -1,10 +1,10 @@
 import { useQuery } from '@apollo/client/react'
 import { Box, Link as RadixLink, Tabs, Text } from '@radix-ui/themes'
 import { ArrowLeft } from 'lucide-react'
+import { lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { VehicleHero } from '../components/VehicleHero.tsx'
-import { DashboardPanel } from '../dashboard/DashboardPanel.tsx'
 import { VehicleDetailsDocument } from '../gql/generated.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { ErrorMessage } from '../messages.tsx'
@@ -12,6 +12,9 @@ import { DetailsPanel } from './vehicle/DetailsPanel.tsx'
 import { ExpensesPanel } from './vehicle/ExpensesPanel.tsx'
 import { RefuelingsPanel } from './vehicle/RefuelingsPanel.tsx'
 import { SharingPanel } from './vehicle/SharingPanel.tsx'
+
+// The dashboard brings the chart library; it is loaded with the first tab instead of with the page shell.
+const DashboardPanel = lazy(() => import('../dashboard/DashboardPanel.tsx').then((m) => ({ default: m.DashboardPanel })))
 
 const TABS = ['dashboard', 'refuelings', 'expenses', 'details', 'sharing'] as const
 type Tab = (typeof TABS)[number]
@@ -65,7 +68,9 @@ export function VehiclePage() {
             </Tabs.List>
             <Box pt="4">
               <Tabs.Content value="dashboard">
-                <DashboardPanel vehicle={vehicle} />
+                <Suspense fallback={<Text as="p" role="status">{t('app.loading')}</Text>}>
+                  <DashboardPanel vehicle={vehicle} />
+                </Suspense>
               </Tabs.Content>
               <Tabs.Content value="refuelings">
                 <RefuelingsPanel vehicle={vehicle} canLog={canLog} />

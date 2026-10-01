@@ -11,7 +11,7 @@ import { ErrorMessage } from '../messages.tsx'
 import { useMutation } from '@apollo/client/react'
 import { ChartBuilderDialog } from './ChartBuilderDialog.tsx'
 import { ChartCard } from './ChartCard.tsx'
-import { Sparkline } from './Sparkline.tsx'
+import { LazySparkline } from './LazySparkline.tsx'
 import { NEW_RECIPE, type ChartRecipe } from './chartFormat.ts'
 
 type Units = { distance: DistanceUnit; volume: VolumeUnit }
@@ -85,7 +85,7 @@ export function DashboardPanel({ vehicle }: { vehicle: { id: string; units: Unit
             value={s?.currency ? format.money(s.thisMonthSpend, s.currency) : none}
             hint={s?.currency ? t('dashboard.kpi.lastMonth', { amount: format.money(s.lastMonthSpend, s.currency) }) : undefined}
           >
-            {s && s.currency && <Sparkline points={s.spendTrend} currency={s.currency} />}
+            {s && s.currency && <LazySparkline points={s.spendTrend} currency={s.currency} />}
           </Kpi>
           <Kpi label={t('dashboard.kpi.consumption')} value={s?.averageConsumption != null ? format.consumption(s.averageConsumption, vehicle.units) : none} hint={t('dashboard.kpi.consumptionHint')} />
           <Kpi label={t('dashboard.kpi.odometer')} value={s?.latestOdometer != null ? format.distance(s.latestOdometer, vehicle.units.distance) : none} />

@@ -35,7 +35,7 @@ it('opens on the dashboard, with the vehicle picture as the banner', async () =>
 
   expect(await screen.findByRole('tab', { name: /Dashboard/, selected: true })).toBeInTheDocument()
   const banner = (await screen.findByRole('heading', { name: 'Octavia', level: 1 })).closest('.hero') as HTMLElement
-  expect(banner.querySelector('img.cover')).toHaveAttribute('src', '/media/car')
+  expect((banner.querySelector('.cover-picture') as HTMLElement).style.backgroundImage).toBe('url("/media/car")')
   expect(within(banner).getByText('ABC-123')).toBeInTheDocument()
 })
 
