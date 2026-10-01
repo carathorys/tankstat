@@ -7,13 +7,18 @@ import { ApiError } from '../pictures/ApiError.ts'
  * Turns a failed request into text in the UI language. The API sends a stable `key` (e.g. "vehicle.nameRequired")
  * and `args` in the error extensions; the message itself is only an English fallback for unknown keys.
  */
-export function useErrorText() {
+export function useKeyText() {
   const { t, i18n } = useTranslation()
-
-  const byKey = (key: unknown, args: unknown): string | undefined => {
+  /** The translated message for an error key and its arguments, or undefined when the key is unknown. */
+  return (key: unknown, args: unknown): string | undefined => {
     const path = `errors.${String(key)}`
     return typeof key === 'string' && i18n.exists(path) ? String(t(path as never, (args ?? {}) as never)) : undefined
   }
+}
+
+export function useErrorText() {
+  const { t } = useTranslation()
+  const byKey = useKeyText()
 
   return (error: unknown): string => {
     if (error instanceof ApiError) return byKey(error.key, error.args) ?? error.message

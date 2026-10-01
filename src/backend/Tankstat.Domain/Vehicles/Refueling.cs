@@ -49,6 +49,16 @@ public sealed class Refueling : IOwned, ISoftDeletable
     /// <summary>The odometer value, in the vehicle's distance unit.</summary>
     public long Odometer => OdometerReading.Value;
 
+    /// <summary>
+    /// Fuel used per 100 distance units, between the previous full fill-up and this one (litres per 100 km, gallons per 100 miles, ...),
+    /// or null when it cannot be known: the log is not a full fill-up, no earlier full fill-up exists, or the odometer did not advance.
+    /// It is stored so it is not recalculated on every read; <see cref="ConsumptionCalculator"/> refreshes it whenever the vehicle's logs change.
+    /// </summary>
+    public decimal? Consumption { get; private set; }
+
+    /// <summary>Only <see cref="ConsumptionCalculator"/> should call this (consumption depends on the neighbouring logs, not on this log alone).</summary>
+    public void SetConsumption(decimal? value) => Consumption = value is { } v ? Math.Round(v, 3) : null;
+
     /// <summary>Set while the log is in the trash.</summary>
     public DateTimeOffset? DeletedAt { get; private set; }
 

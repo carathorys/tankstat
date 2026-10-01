@@ -47,6 +47,27 @@ type Query {
   refuelingTrashDeletableCount: Int! @cost(weight: "10")
   vehicleLogAccess(vehicleId: UUID!): [LogAccessGrantInfo!]! @cost(weight: "10")
   shareCandidates(vehicleId: UUID!): [UserRef!]! @cost(weight: "10")
+  expenses(
+    vehicleId: UUID!
+    orderBy: ExpenseSortField! = DATE
+    direction: SortDirection! = DESC
+    skip: Int! = 0
+    take: Int! = 50
+  ): [Expense!]! @cost(weight: "10")
+  expenseCount(vehicleId: UUID!): Int! @cost(weight: "10")
+  expense(id: UUID!): Expense @cost(weight: "10")
+  expenseCategories(vehicleId: UUID!): [String!]! @cost(weight: "10")
+  expenseTrash(
+    orderBy: ExpenseSortField! = DELETED_AT
+    direction: SortDirection! = DESC
+    skip: Int! = 0
+    take: Int! = 50
+  ): [Expense!]! @cost(weight: "10")
+  expenseTrashCount: Int! @cost(weight: "10")
+  expenseTrashDeletableCount: Int! @cost(weight: "10")
+  importPreview(token: String!, vehicleId: UUID): ImportPreviewInfo!
+    @cost(weight: "10")
+  importFormats: [String!]!
 }
 
 type Mutation {
@@ -74,6 +95,13 @@ type Mutation {
   restoreRefueling(id: UUID!): Refueling! @cost(weight: "10")
   emptyRefuelingTrash: Int! @cost(weight: "10")
   setVehicleLogAccess(input: SetLogAccessInput!): Boolean! @cost(weight: "10")
+  addExpense(input: AddExpenseInput!): Expense! @cost(weight: "10")
+  updateExpense(input: UpdateExpenseInput!): Expense! @cost(weight: "10")
+  deleteExpense(id: UUID!): Expense! @cost(weight: "10")
+  restoreExpense(id: UUID!): Expense! @cost(weight: "10")
+  emptyExpenseTrash: Int! @cost(weight: "10")
+  confirmImport(input: ConfirmImportInput!): ImportResultInfo!
+    @cost(weight: "10")
 }
 
 type AccessGrantInfo {
@@ -92,11 +120,66 @@ type CreatedUser {
   reset: PasswordResetLink!
 }
 
+type Expense {
+  id: UUID!
+  ownerId: UUID!
+  vehicleId: UUID!
+  createdById: UUID!
+  date: LocalDate!
+  title: String!
+  category: String
+  note: String
+  amount: Decimal!
+  currency: String!
+  odometer: Long
+  deletedAt: DateTime
+  canEdit: Boolean! @cost(weight: "10")
+  canDelete: Boolean! @cost(weight: "10")
+  createdBy: UserRef @cost(weight: "10")
+  vehicle: Vehicle @cost(weight: "10")
+}
+
 type HealthReport {
   status: String!
   version: String!
   uptime: Duration!
   databaseReachable: Boolean!
+}
+
+type ImportedVehicleInfo {
+  name: String
+  licensePlate: String
+  fuelType: FuelType
+  distanceUnit: DistanceUnit
+  volumeUnit: VolumeUnit
+}
+
+type ImportIssueInfo {
+  section: String!
+  row: Int!
+  key: String!
+  args: Any!
+}
+
+type ImportPreviewInfo {
+  sourceVehicle: ImportedVehicleInfo
+  fuelRows: Int!
+  expenseRows: Int!
+  duplicateFuelRows: Int!
+  duplicateExpenseRows: Int!
+  firstDate: LocalDate
+  lastDate: LocalDate
+  categories: [String!]!
+  issues: [ImportIssueInfo!]!
+}
+
+type ImportResultInfo {
+  vehicleId: UUID!
+  fuelImported: Int!
+  expensesImported: Int!
+  fuelSkippedDuplicates: Int!
+  expensesSkippedDuplicates: Int!
+  errors: [ImportIssueInfo!]!
 }
 
 type LogAccessGrantInfo {
@@ -139,6 +222,7 @@ type Refueling {
   isFullTank: Boolean!
   note: String
   odometer: Long!
+  consumption: Decimal
   deletedAt: DateTime
   pricePerUnit: Decimal!
   canEdit: Boolean! @cost(weight: "10")
@@ -190,12 +274,24 @@ type Vehicle {
   owner: UserRef @cost(weight: "10")
   pictureUrl: String
   refuelingCount: Int! @cost(weight: "10")
+  expenseCount: Int! @cost(weight: "10")
 }
 
 type VehicleDefaults {
   distanceUnit: DistanceUnit!
   volumeUnit: VolumeUnit!
   currency: String!
+}
+
+input AddExpenseInput {
+  vehicleId: UUID!
+  date: LocalDate!
+  title: String!
+  category: String
+  amount: Decimal!
+  currency: String
+  odometer: Long
+  note: String
 }
 
 input AddVehicleInput {
@@ -208,6 +304,14 @@ input AddVehicleInput {
 input ChangePasswordInput {
   currentPassword: String!
   newPassword: String!
+}
+
+input ConfirmImportInput {
+  token: String!
+  vehicleId: UUID
+  newVehicle: NewVehicleInput
+  currency: String
+  importDuplicates: Boolean!
 }
 
 input CreateUserInput {
@@ -237,6 +341,13 @@ input MeasurementUnitsInput {
   volume: VolumeUnit!
 }
 
+input NewVehicleInput {
+  name: String!
+  licensePlate: String
+  fuelType: FuelType!
+  units: MeasurementUnitsInput!
+}
+
 input ResetPasswordInput {
   token: String!
   newPassword: String!
@@ -252,6 +363,17 @@ input SetLogAccessInput {
   vehicleId: UUID!
   userId: UUID!
   level: AccessLevel!
+}
+
+input UpdateExpenseInput {
+  id: UUID!
+  date: LocalDate!
+  title: String!
+  category: String
+  amount: Decimal!
+  currency: String
+  odometer: Long
+  note: String
 }
 
 input UpdateRefuelingInput {
@@ -292,6 +414,17 @@ enum DistanceUnit {
   MILES
 }
 
+enum ExpenseSortField {
+  DATE
+  TITLE
+  CATEGORY
+  AMOUNT
+  ODOMETER
+  CREATED_BY
+  VEHICLE
+  DELETED_AT
+}
+
 enum FuelType {
   PETROL
   DIESEL
@@ -309,6 +442,7 @@ enum RefuelingSortField {
   TOTAL_COST
   ODOMETER
   PRICE_PER_UNIT
+  CONSUMPTION
   CREATED_BY
   VEHICLE
   DELETED_AT
@@ -339,6 +473,9 @@ enum VolumeUnit {
   US_GALLONS
   IMPERIAL_GALLONS
 }
+
+"The `Any` scalar type represents any valid GraphQL value."
+scalar Any @specifiedBy(url: "https://scalars.graphql.org/chillicream/any.html")
 
 "The `DateTime` scalar type represents a date and time with time zone offset information."
 scalar DateTime

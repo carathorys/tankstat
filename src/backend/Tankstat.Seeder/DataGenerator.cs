@@ -138,6 +138,7 @@ public sealed class DataGenerator(TimeProvider clock)
                 OdometerReading.Create(vehicle.OwnerId, vehicle.Id, dates[i], odometer),
                 isFullTank: random.NextDouble() < 0.85));
         }
+        ConsumptionCalculator.Apply(log); // stored like the app stores it
         return log;
     }
 }

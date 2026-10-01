@@ -2,7 +2,9 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Expenses;
 using Tankstat.Application.Images;
+using Tankstat.Application.Imports;
 using Tankstat.Application.Odometers;
 using Tankstat.Application.Sharing;
 using Tankstat.Application.Refuelings;
@@ -64,6 +66,9 @@ internal sealed class InMemoryRefuelings : IRefuelingRepository
         Task.FromResult(Page(Items.Where(r => !r.IsDeleted && r.VehicleId == vehicleId), query));
     public Task<int> CountForVehicleAsync(Guid vehicleId, CancellationToken ct) => Task.FromResult(Items.Count(r => !r.IsDeleted && r.VehicleId == vehicleId));
     public Task<bool> AnyForVehicleAsync(Guid vehicleId, CancellationToken ct) => Task.FromResult(Items.Any(r => r.VehicleId == vehicleId));
+    public Task<IReadOnlyList<Refueling>> ListAllForVehicleAsync(Guid vehicleId, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<Refueling>>(Items.Where(r => !r.IsDeleted && r.VehicleId == vehicleId).ToList());
+    public Task SaveConsumptionsAsync(IReadOnlyList<Refueling> refuelings, CancellationToken ct) => Task.CompletedTask; // entities are shared references
     public Task<IReadOnlyList<Refueling>> ListDeletedAsync(OwnerScope scope, RefuelingQuery query, CancellationToken ct) =>
         Task.FromResult(Page(Items.Where(r => r.IsDeleted && scope.Contains(r.OwnerId, r.VehicleId)), query));
     public Task<int> CountDeletedAsync(OwnerScope scope, CancellationToken ct) =>
@@ -76,10 +81,39 @@ internal sealed class InMemoryRefuelings : IRefuelingRepository
         Task.FromResult(Items.RemoveAll(r => r.IsDeleted && scope.Contains(r.OwnerId, r.VehicleId)));
 }
 
-/// <summary>Readings are the ones owned by the in-memory logs (live ones only, like the real query filter).</summary>
-internal sealed class InMemoryReadings(InMemoryRefuelings refuelings) : IOdometerReadingRepository
+internal sealed class InMemoryExpenses : IExpenseRepository
 {
-    private IEnumerable<OdometerReading> Live(Guid vehicleId) => refuelings.Items.Where(r => !r.IsDeleted && r.VehicleId == vehicleId).Select(r => r.OdometerReading);
+    public List<Expense> Items { get; } = [];
+
+    private static IReadOnlyList<Expense> Page(IEnumerable<Expense> rows, ExpenseQuery q) =>
+        rows.OrderByDescending(e => e.Date).ThenBy(e => e.Id).Skip(q.Skip).Take(q.Take).ToList();
+
+    public Task<IReadOnlyList<Expense>> ListForVehicleAsync(Guid vehicleId, ExpenseQuery query, CancellationToken ct) =>
+        Task.FromResult(Page(Items.Where(e => !e.IsDeleted && e.VehicleId == vehicleId), query));
+    public Task<int> CountForVehicleAsync(Guid vehicleId, CancellationToken ct) => Task.FromResult(Items.Count(e => !e.IsDeleted && e.VehicleId == vehicleId));
+    public Task<bool> AnyForVehicleAsync(Guid vehicleId, CancellationToken ct) => Task.FromResult(Items.Any(e => e.VehicleId == vehicleId));
+    public Task<IReadOnlyList<Expense>> ListAllForVehicleAsync(Guid vehicleId, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<Expense>>(Items.Where(e => !e.IsDeleted && e.VehicleId == vehicleId).ToList());
+    public Task<IReadOnlyList<Expense>> ListDeletedAsync(OwnerScope scope, ExpenseQuery query, CancellationToken ct) =>
+        Task.FromResult(Page(Items.Where(e => e.IsDeleted && scope.Contains(e.OwnerId, e.VehicleId)), query));
+    public Task<int> CountDeletedAsync(OwnerScope scope, CancellationToken ct) =>
+        Task.FromResult(Items.Count(e => e.IsDeleted && scope.Contains(e.OwnerId, e.VehicleId)));
+    public Task<IReadOnlyList<string>> CategoriesAsync(Guid vehicleId, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<string>>(Items.Where(e => e.VehicleId == vehicleId && e.Category is not null).Select(e => e.Category!).Distinct().Order().ToList());
+    public Task<Expense?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(e => e.Id == id && !e.IsDeleted));
+    public Task<Expense?> FindIncludingDeletedAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(e => e.Id == id));
+    public Task AddAsync(Expense expense, CancellationToken ct) { Items.Add(expense); return Task.CompletedTask; }
+    public Task UpdateAsync(Expense expense, OdometerReading? newReading, OdometerReading? removedReading, CancellationToken ct) => Task.CompletedTask; // shared references
+    public Task<int> PurgeAsync(OwnerScope scope, CancellationToken ct) =>
+        Task.FromResult(Items.RemoveAll(e => e.IsDeleted && scope.Contains(e.OwnerId, e.VehicleId)));
+}
+
+/// <summary>Readings are the ones owned by the in-memory logs and expenses (live ones only, like the real query filter).</summary>
+internal sealed class InMemoryReadings(InMemoryRefuelings refuelings, InMemoryExpenses expenses) : IOdometerReadingRepository
+{
+    private IEnumerable<OdometerReading> Live(Guid vehicleId) =>
+        refuelings.Items.Where(r => !r.IsDeleted && r.VehicleId == vehicleId).Select(r => r.OdometerReading)
+            .Concat(expenses.Items.Where(e => !e.IsDeleted && e.VehicleId == vehicleId && e.OdometerReading is not null).Select(e => e.OdometerReading!));
 
     public Task<OdometerReading?> PreviousAsync(Guid vehicleId, DateOnly date, Guid? except, CancellationToken ct) =>
         Task.FromResult(Live(vehicleId).Where(r => r.Date < date && r.Id != except).OrderByDescending(r => r.Date).ThenByDescending(r => r.Value).FirstOrDefault());
@@ -87,7 +121,8 @@ internal sealed class InMemoryReadings(InMemoryRefuelings refuelings) : IOdomete
         Task.FromResult(Live(vehicleId).Where(r => r.Date > date && r.Id != except).OrderBy(r => r.Date).ThenBy(r => r.Value).FirstOrDefault());
     public Task<OdometerReading?> LatestAsync(Guid vehicleId, CancellationToken ct) =>
         Task.FromResult(Live(vehicleId).OrderByDescending(r => r.Date).ThenByDescending(r => r.Value).FirstOrDefault());
-    public Task<bool> AnyAsync(Guid vehicleId, CancellationToken ct) => Task.FromResult(refuelings.Items.Any(r => r.VehicleId == vehicleId));
+    public Task<bool> AnyAsync(Guid vehicleId, CancellationToken ct) =>
+        Task.FromResult(refuelings.Items.Any(r => r.VehicleId == vehicleId) || expenses.Items.Any(e => e.VehicleId == vehicleId && e.OdometerReading is not null));
 }
 
 internal sealed class InMemoryResourceGrants : IResourceGrantRepository
@@ -197,6 +232,7 @@ internal sealed class World
     public FakeTimeProvider Clock { get; } = new(new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero));
     public InMemoryVehicles Vehicles { get; } = new();
     public InMemoryRefuelings Refuelings { get; } = new();
+    public InMemoryExpenses Expenses { get; } = new();
     public InMemoryUsers Users { get; } = new();
     public InMemoryTokens Tokens { get; } = new();
     public InMemoryGrants Grants { get; } = new();
@@ -211,6 +247,8 @@ internal sealed class World
     public AccessService Access { get; }
     public VehicleService VehicleService { get; }
     public RefuelingService RefuelingService { get; }
+    public ExpenseService ExpenseService { get; }
+    public ImportService Imports { get; }
     public OdometerService Odometer { get; }
     public ResourceSharingService Sharing { get; }
     public ImageService ImageService { get; }
@@ -226,11 +264,13 @@ internal sealed class World
         var options = Options.Create();
 
         Access = new AccessService(Current, options, Grants, Settings, ResourceGrants);
-        Odometer = new OdometerService(new InMemoryReadings(Refuelings));
+        Odometer = new OdometerService(new InMemoryReadings(Refuelings, Expenses));
         var resets = new PasswordResetService(Tokens, Users, Email, options, Clock);
         VehicleService = new VehicleService(Vehicles, Refuelings, Access, Odometer, ImageStore, Images, Clock);
         ImageService = new ImageService(ImageStore, Images, Users, Vehicles, Access, Clock);
         RefuelingService = new RefuelingService(Vehicles, Refuelings, Access, Odometer, Clock);
+        ExpenseService = new ExpenseService(Vehicles, Expenses, Access, Odometer, Clock);
+        Imports = new ImportService([new FuelioCsvParser()], new ImportSessionStore(Clock), Access, VehicleService, RefuelingService, ExpenseService, Refuelings, Expenses, new VehicleDefaultsOptions { Currency = "HUF" }.Create());
         Sharing = new ResourceSharingService(Vehicles, ResourceGrants, Users, Access);
         Auth = new AuthService(Users, new FakeHasher(), resets, Access, options, Clock);
         UserService = new UserService(Access, Users, resets, options);

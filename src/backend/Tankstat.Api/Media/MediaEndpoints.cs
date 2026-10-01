@@ -69,7 +69,7 @@ public static class MediaEndpoints
         new("image.tooLarge", $"The picture can be at most {ImageFormat.MaxBytes / 1024} KB.", new { MaxKb = ImageFormat.MaxBytes / 1024 });
 
     /// <summary>The same stable keys as in GraphQL errors, as JSON with a matching HTTP status.</summary>
-    private static async ValueTask<object?> TranslateErrors(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    internal static async ValueTask<object?> TranslateErrors(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
         try
         {
@@ -82,7 +82,7 @@ public static class MediaEndpoints
                 UnauthenticatedException => StatusCodes.Status401Unauthorized,
                 ForbiddenException => StatusCodes.Status403Forbidden,
                 NotFoundException => StatusCodes.Status404NotFound,
-                _ when e.Key == "image.tooLarge" => StatusCodes.Status413PayloadTooLarge,
+                _ when e.Key.EndsWith(".tooLarge", StringComparison.Ordinal) => StatusCodes.Status413PayloadTooLarge,
                 _ => StatusCodes.Status400BadRequest,
             };
             return Results.Json(new { key = e.Key, args = e.Args, message = e.Message }, statusCode: status);

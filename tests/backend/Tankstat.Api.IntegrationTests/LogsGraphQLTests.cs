@@ -36,6 +36,34 @@ public class LogsGraphQLTests(ApiFixture api)
         return body.GetProperty("data");
     }
 
+    private async Task<(string Odometer, decimal? Consumption)[]> Consumptions(string vehicleId)
+    {
+        var data = Data(await Send("query($id: UUID!) { refuelings(vehicleId: $id, orderBy: ODOMETER, direction: ASC) { odometer consumption } }", new { id = vehicleId }));
+        return data.GetProperty("refuelings").EnumerateArray()
+            .Select(r => (r.GetProperty("odometer").GetInt64().ToString(), r.GetProperty("consumption").ValueKind == JsonValueKind.Null ? (decimal?)null : r.GetProperty("consumption").GetDecimal()))
+            .ToArray();
+    }
+
+    [Fact]
+    public async Task TheConsumptionBetweenFullFillUps_IsStored_AndFollowsEveryChange()
+    {
+        var id = await AddVehicle();
+        await Log(id, "2026-08-01", 1000, volume: 40);
+        var second = Data(await Log(id, "2026-08-11", 1500, volume: 30)).GetProperty("logRefueling").GetProperty("id").GetString();
+        await Log(id, "2026-08-21", 2000, volume: 25);
+        Assert.Equal([("1000", (decimal?)null), ("1500", 6m), ("2000", 5m)], await Consumptions(id));
+
+        Data(await Send("mutation($i: UpdateRefuelingInput!) { updateRefueling(input: $i) { consumption } }",
+            new { i = new { id = second, date = "2026-08-11", volume = 50, totalCost = 60, currency = "EUR", odometer = 1500, isFullTank = true } }));
+        Assert.Equal([("1000", (decimal?)null), ("1500", 10m), ("2000", 5m)], await Consumptions(id));
+
+        Data(await Send("mutation($id: UUID!) { deleteRefueling(id: $id) { id } }", new { id = second }));
+        Assert.Equal([("1000", (decimal?)null), ("2000", 2.5m)], await Consumptions(id)); // 25 l over 1000 km
+
+        Data(await Send("mutation($id: UUID!) { restoreRefueling(id: $id) { consumption } }", new { id = second }));
+        Assert.Equal([("1000", (decimal?)null), ("1500", 10m), ("2000", 5m)], await Consumptions(id));
+    }
+
     [Fact]
     public async Task LogEditTrashRestoreAndEmptyTheTrash()
     {

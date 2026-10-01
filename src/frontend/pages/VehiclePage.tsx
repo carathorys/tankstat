@@ -8,10 +8,11 @@ import { VehicleDetailsDocument } from '../gql/generated.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { ErrorMessage } from '../messages.tsx'
 import { DetailsPanel } from './vehicle/DetailsPanel.tsx'
+import { ExpensesPanel } from './vehicle/ExpensesPanel.tsx'
 import { RefuelingsPanel } from './vehicle/RefuelingsPanel.tsx'
 import { SharingPanel } from './vehicle/SharingPanel.tsx'
 
-const TABS = ['refuelings', 'details', 'sharing'] as const
+const TABS = ['refuelings', 'expenses', 'details', 'sharing'] as const
 type Tab = (typeof TABS)[number]
 
 /** One vehicle: its logs, its details and picture, and who the logs are shared with (tabs; the choice is in the address). */
@@ -64,12 +65,16 @@ export function VehiclePage() {
           <Tabs.Root value={tab} onValueChange={(value) => setParams(value === 'refuelings' ? {} : { tab: value }, { replace: true })}>
             <Tabs.List aria-label={vehicle.name} size={{ initial: '2', md: '2' }} style={{ overflowX: 'auto' }}>
               <Tabs.Trigger value="refuelings">{t('vehicles.tabs.refuelings')}</Tabs.Trigger>
+              <Tabs.Trigger value="expenses">{t('vehicles.tabs.expenses')}</Tabs.Trigger>
               <Tabs.Trigger value="details">{t('vehicles.tabs.details')}</Tabs.Trigger>
               {vehicle.canEdit && <Tabs.Trigger value="sharing">{t('vehicles.tabs.sharing')}</Tabs.Trigger>}
             </Tabs.List>
             <Box pt="4">
               <Tabs.Content value="refuelings">
                 <RefuelingsPanel vehicle={vehicle} canLog={canLog} />
+              </Tabs.Content>
+              <Tabs.Content value="expenses">
+                <ExpensesPanel vehicle={vehicle} canLog={canLog} />
               </Tabs.Content>
               <Tabs.Content value="details">
                 <DetailsPanel vehicle={vehicle} onChanged={() => refetch()} />

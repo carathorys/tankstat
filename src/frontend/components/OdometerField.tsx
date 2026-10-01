@@ -9,19 +9,22 @@ export function OdometerField({
   unit,
   defaultValue,
   last,
+  optional,
 }: {
   unit: DistanceUnit
   defaultValue?: number
   /** The latest reading of the vehicle, shown as a hint. */
   last?: { value: number; date: string } | null
+  /** The reading may be left empty (an expense where the odometer was not noted). */
+  optional?: boolean
 }) {
   const { t } = useTranslation()
   const { distance, date } = useFormat()
   return (
     <Field
       name="odometer"
-      label={t('refuelings.fields.odometer', { unit: t(`units.distance.${unit}`).toLowerCase() })}
-      required
+      label={t(optional ? 'expenses.fields.odometer' : 'refuelings.fields.odometer', { unit: t(`units.distance.${unit}`).toLowerCase() })}
+      required={!optional}
       hint={last ? t('refuelings.hints.lastReading', { value: distance(last.value, unit), date: date(last.date) }) : undefined}
       invalid={{ message: t('errors.odometer.negative'), test: (v) => v !== '' && !/^\d+$/.test(v.trim()) }}
     >

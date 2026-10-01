@@ -53,12 +53,19 @@ export function RefuelingsPanel({
         sortField: 'PRICE_PER_UNIT',
         cell: (r) => (r.pricePerUnit == null || !r.currency ? none : format.pricePerUnit(r.pricePerUnit, r.currency, units.volume)),
       },
+      {
+        id: 'consumption',
+        label: 'columns.consumption',
+        include: 'withConsumption',
+        sortField: 'CONSUMPTION',
+        cell: (r) => (r.consumption == null ? none : format.consumption(r.consumption, units)),
+      },
       { id: 'odometer', label: 'columns.odometer', include: 'withOdometer', sortField: 'ODOMETER', cell: (r) => (r.odometer == null ? none : format.distance(r.odometer, units.distance)) },
       { id: 'fullTank', label: 'columns.fullTank', include: 'withFullTank', cell: (r) => (r.isFullTank == null ? none : r.isFullTank ? t('refuelings.full') : <Badge color="amber">{t('refuelings.partial')}</Badge>) },
       { id: 'note', label: 'columns.note', include: 'withNote', cell: (r) => r.note || none },
       { id: 'createdBy', label: 'columns.createdBy', include: 'withCreatedBy', sortField: 'CREATED_BY', cell: (r) => (r.createdBy ? <UserChip user={r.createdBy} /> : none) },
     ]
-  }, [t, format, units.volume, units.distance])
+  }, [t, format, units])
 
   async function moveToTrash(row: Row) {
     setActionError(undefined)

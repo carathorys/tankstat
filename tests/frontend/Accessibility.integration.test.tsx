@@ -5,7 +5,7 @@ import { axe } from 'vitest-axe'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import { server } from './server.ts'
-import { fakeLogBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, stubViewport, user } from './mocks.tsx'
+import { fakeExpense, fakeExpenseBackend, fakeLogBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, stubViewport, user } from './mocks.tsx'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
@@ -23,11 +23,14 @@ const check = async (container: HTMLElement) => {
 function setup(route: string, viewport: 'desktop' | 'phone' = 'desktop') {
   stubViewport(viewport)
   const logs = fakeLogBackend(fakeVehicle(), [fakeRefueling({ id: 'r1' }), fakeRefueling({ id: 'r2', date: '2026-08-01', note: 'Trip' })])
+  const expenseBackend = fakeExpenseBackend(fakeVehicle(), [fakeExpense({ id: 'e1' }), fakeExpense({ id: 'e2', title: 'Parking', category: null, odometer: null })])
+  expenseBackend.state.trash = [fakeExpense({ id: 'x1', title: 'Old fee', deletedAt: '2026-10-01T08:00:00Z' })]
   const vehicles = fakeVehicleBackend([fakeVehicle()], [fakeVehicle({ id: 't1', name: 'Old Fiat' })])
   server.use(
     sessionHandler('STANDALONE', () => user({ isAdmin: true })),
     healthHandler,
     ...logs.handlers,
+    ...expenseBackend.handlers, // shares VehicleDetails and LogDefaults with the logs backend: the first handler wins, they answer alike
     ...vehicles.handlers,
     graphql.query('Admin', () =>
       HttpResponse.json({
@@ -66,6 +69,10 @@ it('the vehicle page and its tabs have no violations', async () => {
   await screen.findByText(/Sep 1, 2026/)
   await check(view.container)
 
+  await ui.click(screen.getByRole('tab', { name: /Expenses/ }))
+  await screen.findByText('Oil change')
+  await check(view.container)
+
   await ui.click(screen.getByRole('tab', { name: /Details/ }))
   await screen.findByRole('button', { name: 'Choose a picture' })
   await check(view.container)
@@ -88,7 +95,7 @@ it('the add refuelling dialog is labelled, described and free of violations', as
 })
 
 it('the trash, account and administration pages have no violations', async () => {
-  for (const route of ['/trash', '/trash?tab=refuelings', '/account', '/admin']) {
+  for (const route of ['/trash', '/trash?tab=refuelings', '/trash?tab=expenses', '/account', '/admin']) {
     const { view } = setup(route)
     await screen.findByRole('main')
     await screen.findByRole('heading', { level: 1 })
@@ -104,4 +111,16 @@ it('sortable columns announce their state and every grid is a labelled table', a
   expect(screen.getByRole('table', { name: 'Refuelings' })).toBeInTheDocument()
   expect(screen.getByRole('columnheader', { name: /Date/ })).toHaveAttribute('aria-sort', 'descending')
   expect(screen.getByRole('columnheader', { name: /Odometer/ })).toHaveAttribute('aria-sort', 'none')
+})
+
+it('the add expense dialog is labelled, described and free of violations', async () => {
+  const { ui } = setup('/vehicles/v1?tab=expenses')
+  await screen.findByText('Oil change')
+
+  await ui.click(screen.getByRole('button', { name: 'Add expense' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add expense' })
+  await within(dialog).findByText(/Used before/)
+
+  expect(dialog).toHaveAccessibleDescription(/Money spent on the vehicle/)
+  await check(document.body)
 })

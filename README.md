@@ -112,11 +112,21 @@ Everything goes through one access layer (`AccessService`), so new kinds of data
 The app is mobile-first and responsive. A navigation menu opened by the hamburger button in the top bar gives access to:
 
 - **Vehicles**: a grid with add, edit and delete (editing and deleting only appear for vehicles you may edit). A row opens the vehicle page.
-- **Vehicle page** (tabs): **Refuelings** (the logs: add, edit, move to trash; sortable, paged, selectable columns), **Details** (owner, fuel, units, the vehicle's picture) and **Sharing** (give people access to this vehicle's logs; only for those who can edit the vehicle).
-- **Trash**: deleting moves a vehicle or a refuelling to the trash. Tabs *Vehicles* and *Refuelings*: **restore**, or **empty the trash**, which permanently deletes only what you have Delete access to (the rest stays and the dialog says so).
+- **Vehicle page** (tabs): **Refuelings** (the logs: add, edit, move to trash; sortable, paged, selectable columns), **Expenses** (service, insurance, parking, ...: title, free-text category, a cost with its own currency, optional odometer; same access rules as the logs), **Details** (owner, fuel, units, the vehicle's picture) and **Sharing** (give people access to this vehicle's logs; only for those who can edit the vehicle).
+- **Import**: bring fuel logs and other costs from another app (Fuelio CSV today), see below.
+- **Trash**: deleting moves a vehicle, a refuelling or an expense to the trash. Tabs *Vehicles*, *Refuelings* and *Expenses*: **restore**, or **empty the trash**, which permanently deletes only what you have Delete access to (the rest stays and the dialog says so).
 - **Account** (profile picture; change password in Standalone mode) and **Administration** (administrators only), plus **Sign out**.
 
 **Navigation menu.** On a desktop it is a docked sidebar, open by default; the hamburger button hides and shows it, and the choice is remembered in this browser only (`localStorage`, `tankstat.nav.open`). On a phone it is an overlay drawer, closed until the button is pressed, and closes after choosing a page.
+
+**Importing.** The *Import* page walks through four steps: choose the file, choose the target (an existing vehicle you may add logs to, or a new one), review, done. Nothing is saved before you confirm.
+
+- The file is uploaded raw with `POST /imports/{format}` (the answer is a token for the parsed file, kept in memory for 30 minutes); the preview (`importPreview`) and the confirmation (`confirmImport`) are GraphQL.
+- **Fuelio** (`fuelio`): the "sync" CSV export of one vehicle (unzip it first). Fuel logs, other costs (with their category names) and the vehicle's name, plate, units and fuel type are read; stations, GPS, weather and reminder templates are ignored, income rows are skipped, and a cost with odometer 0 gets no odometer. Fuelio files carry no currency, so you enter one (it defaults to `Defaults:Currency`). Dates keep only the day.
+- Rows are saved through the same services as rows typed by hand, so every rule applies (access, odometer order against the vehicle's other readings, future dates). A row that breaks a rule is reported and the rest is still imported. For an existing vehicle you choose whether rows that already exist (same date and odometer; same date, title and amount for expenses) are skipped or imported again.
+- More formats (other CSV or JSON sources) are one more `IImportParser` that turns a file into an `ImportBatch`.
+
+**Fuel consumption.** Each full fill-up shows the consumption since the previous full one: all fuel added since then (partial top-ups in between count, the previous full fill-up does not) divided by the distance driven, per 100 distance units, in the vehicle's own units (for example L/100 km; miles with gallons read as mpg). Partial fill-ups, the first full fill-up and logs without any distance since the last full one show a dash. It is stored on the log and refreshed for the whole vehicle whenever one of its logs is added, changed, trashed, restored or imported (once per import), never on read; the first start after the upgrade calculates it for existing logs. The column can be sorted on the server like the others.
 
 **Units and money.** Every vehicle has its own distance unit (kilometres or miles) and fuel volume unit (litres, US gallons, imperial gallons); numbers are stored exactly as entered and never converted, so the units are locked once a vehicle has logs. Every cost carries its own currency (a reusable `Cost` value: amount plus currency), and a log links to an odometer reading (a reusable `OdometerReading`, without an upper limit; the server checks a new reading against the neighbouring readings of the same vehicle, from any source).
 

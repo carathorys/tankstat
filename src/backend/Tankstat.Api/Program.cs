@@ -20,6 +20,13 @@ builder.Services.AddGraphQLServer()
     .AddTypeExtension<RefuelingExtensions>()
     .AddTypeExtension<RefuelingQueries>()
     .AddTypeExtension<RefuelingMutations>()
+    .AddType<ExpenseType>()
+    .AddTypeExtension<ExpenseExtensions>()
+    .AddTypeExtension<VehicleExpenseExtensions>()
+    .AddTypeExtension<ExpenseQueries>()
+    .AddTypeExtension<ExpenseMutations>()
+    .AddTypeExtension<ImportQueries>()
+    .AddTypeExtension<ImportMutations>()
     .AddErrorFilter<BusinessErrorFilter>();
 
 var app = builder.Build();
@@ -27,6 +34,7 @@ var app = builder.Build();
 app.UseAuthentication();
 app.MapAuthEndpoints();
 app.MapMediaEndpoints();
+app.MapImportEndpoints();
 app.MapGraphQL(); // POST /graphql (Banana Cake Pop UI on GET in Development)
 
 // Self-hosting: the built SPA (dist/) is copied into wwwroot and served by Kestrel.

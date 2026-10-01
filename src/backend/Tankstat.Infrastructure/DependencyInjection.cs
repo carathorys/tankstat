@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Tankstat.Application;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Expenses;
 using Tankstat.Application.Images;
 using Tankstat.Application.Odometers;
 using Tankstat.Application.Refuelings;
@@ -54,6 +55,7 @@ public static class DependencyInjection
         services.AddSingleton<IDatabaseProbe, EfDatabaseProbe>();
         services.AddScoped<IVehicleRepository, VehicleRepository>();
         services.AddScoped<IRefuelingRepository, RefuelingRepository>();
+        services.AddScoped<IExpenseRepository, ExpenseRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IPasswordResetTokenRepository, PasswordResetTokenRepository>();
         services.AddScoped<IAccessGrantRepository, AccessGrantRepository>();

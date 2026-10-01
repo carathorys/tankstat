@@ -15,7 +15,8 @@
     "show": "Menü megjelenítése",
     "hide": "Menü elrejtése",
     "signedInAs": "Bejelentkezve mint {{name}}",
-    "close": "Menü bezárása"
+    "close": "Menü bezárása",
+    "import": "Importálás"
   },
   "language": {
     "label": "Nyelv"
@@ -99,7 +100,11 @@
     "fullTank": "Teli tank",
     "note": "Megjegyzés",
     "createdBy": "Rögzítette",
-    "picture": "Kép"
+    "picture": "Kép",
+    "title": "Megnevezés",
+    "category": "Kategória",
+    "amount": "Összeg",
+    "consumption": "Fogyasztás"
   },
   "grid": {
     "refresh": "Frissítés",
@@ -142,7 +147,8 @@
     "tabs": {
       "refuelings": "Tankolások",
       "details": "Részletek",
-      "sharing": "Megosztás"
+      "sharing": "Megosztás",
+      "expenses": "Költségek"
     },
     "owner": "Tulajdonos",
     "fuel": "Üzemanyag",
@@ -165,7 +171,8 @@
     "emptied_other": "Véglegesen törölve: {{count}} jármű.",
     "tabs": {
       "vehicles": "Járművek",
-      "refuelings": "Tankolások"
+      "refuelings": "Tankolások",
+      "expenses": "Költségek"
     },
     "emptyPartial_one": "Ez véglegesen töröl {{count}} elemet, amelyet törölhetsz; amelyeket csak visszaállíthatsz, a kukában maradnak. A művelet nem vonható vissza.",
     "emptyPartial_other": "Ez véglegesen töröl {{count}} elemet, amelyet törölhetsz; amelyeket csak visszaállíthatsz, a kukában maradnak. A művelet nem vonható vissza.",
@@ -173,7 +180,12 @@
     "emptiedRefuelings_one": "Véglegesen törölve: {{count}} tankolás.",
     "emptiedRefuelings_other": "Véglegesen törölve: {{count}} tankolás.",
     "refuelingDescription_one": "Ez véglegesen töröl {{count}} tankolást. A művelet nem vonható vissza.",
-    "refuelingDescription_other": "Ez véglegesen töröl {{count}} tankolást. A művelet nem vonható vissza."
+    "refuelingDescription_other": "Ez véglegesen töröl {{count}} tankolást. A művelet nem vonható vissza.",
+    "expensesEmpty": "Nincs költség a kukában.",
+    "emptiedExpenses_one": "Véglegesen törölve: {{count}} költség.",
+    "emptiedExpenses_other": "Véglegesen törölve: {{count}} költség.",
+    "expenseDescription_one": "Ez véglegesen töröl {{count}} költséget. A művelet nem vonható vissza.",
+    "expenseDescription_other": "Ez véglegesen töröl {{count}} költséget. A művelet nem vonható vissza."
   },
   "account": {
     "title": "Fiók",
@@ -298,6 +310,31 @@
       "unsupportedType": "Csak JPEG, PNG és WebP képek támogatottak.",
       "tooLarge": "A kép legfeljebb {{maxKb}} KB lehet.",
       "noAccount": "A profilképhez felhasználói fiók kell; a hitelesítés ki van kapcsolva."
+    },
+    "expense": {
+      "titleRequired": "A költséghez megnevezés kell.",
+      "titleTooLong": "A megnevezés legfeljebb {{max}} karakter lehet.",
+      "categoryTooLong": "A kategória legfeljebb {{max}} karakter lehet.",
+      "noteTooLong": "A megjegyzés legfeljebb {{max}} karakter lehet.",
+      "notFound": "Ez a költség nem létezik.",
+      "wrongVehicle": "Az óraállásnak és a költségnek ugyanahhoz a járműhöz kell tartoznia.",
+      "trashedCannotEdit": "A kukában lévő költség nem szerkeszthető. Előbb állítsd vissza.",
+      "alreadyTrashed": "Ez a költség már a kukában van.",
+      "notTrashed": "Ez a költség nincs a kukában."
+    },
+    "import": {
+      "unknownFormat": "Ez az importformátum nem támogatott: {{format}}.",
+      "unreadable": "Ez a fájl nem a kiválasztott alkalmazás exportjának tűnik.",
+      "nothingFound": "A fájlban nincs importálható tankolás vagy költség.",
+      "tooLarge": "A fájl legfeljebb {{maxMb}} MB lehet.",
+      "expired": "Ez az importálás lejárt. Válaszd ki újra a fájlt.",
+      "targetRequired": "Válassz járművet, vagy hozz létre újat.",
+      "badDate": "A(z) „{{value}}” dátum nem olvasható.",
+      "badNumber": "A(z) {{field}} „{{value}}” nem érvényes szám.",
+      "templateSkipped": "A(z) „{{title}}” emlékeztető sablon, nem költség.",
+      "incomeSkipped": "A(z) „{{title}}” bevétel, amelyet nem importálunk.",
+      "titleMissing": "A sorban nincs megnevezés vagy kategória.",
+      "unitsDiffer": "A fájl más mértékegységeket használ, mint ez a jármű. A számok átváltás nélkül, úgy kerülnek be, ahogy vannak."
     }
   },
   "a11y": {
@@ -322,7 +359,16 @@
     "label": "Mértékegységek",
     "distanceLabel": "Távolság",
     "volumeLabel": "Üzemanyag mennyisége",
-    "hint": "A számokat pontosan úgy mentjük, ahogy megadod, átváltás nélkül."
+    "hint": "A számokat pontosan úgy mentjük, ahogy megadod, átváltás nélkül.",
+    "distanceShort": {
+      "KILOMETERS": "km",
+      "MILES": "mérföld"
+    },
+    "consumption": {
+      "perDistance": "{{value}} {{volume}}/100 {{distance}}",
+      "mpgUs": "{{value}} mérföld/gallon (US)",
+      "mpgImperial": "{{value}} mérföld/gallon (imp.)"
+    }
   },
   "refuelings": {
     "title": "Tankolások",
@@ -388,5 +434,102 @@
     "hint": "JPEG, PNG vagy WebP. A nagy képeket automatikusan lekicsinyítjük.",
     "unreadable": "Ezt a fájlt nem sikerült képként beolvasni.",
     "avatarFor": "{{name}} profilképe"
+  },
+  "expenses": {
+    "title": "Költségek",
+    "add": "Költség hozzáadása",
+    "edit": "Szerkesztés",
+    "delete": "Törlés",
+    "editAria": "A(z) {{title}} költség szerkesztése",
+    "deleteAria": "A(z) {{title}} költség törlése",
+    "empty": "Még nincs költség. A szerviz, biztosítás, parkolás és más költségek ide kerülnek.",
+    "viewOnly": "csak megtekinthető",
+    "countLabel": "{{count}} költség",
+    "dialogAdd": "Költség hozzáadása",
+    "dialogEdit": "Költség szerkesztése",
+    "dialogAddDescription": "A járműre költött pénz, amely nem tankolás.",
+    "dialogEditDescription": "Módosítsd ezt a költséget.",
+    "save": "Módosítások mentése",
+    "saveAdd": "Költség hozzáadása",
+    "fields": {
+      "date": "Dátum",
+      "title": "Megnevezés",
+      "category": "Kategória (nem kötelező)",
+      "amount": "Összeg",
+      "currency": "Pénznem",
+      "odometer": "Kilométeróra ({{unit}}, nem kötelező)",
+      "note": "Megjegyzés (nem kötelező)"
+    },
+    "hints": {
+      "categories": "Korábban használt: {{list}}"
+    },
+    "trashTitle": "Kukába helyezed ezt a költséget?",
+    "trashDescription": "A(z) {{title}} visszaállítható a kukából, amíg véglegesen nem töröljük.",
+    "trashConfirm": "Áthelyezés a kukába"
+  },
+  "import": {
+    "title": "Importálás",
+    "intro": "Hozz át tankolásokat és más költségeket egy másik alkalmazásból. Mentés előtt látod, mi fog történni.",
+    "steps": {
+      "file": "Fájl",
+      "target": "Cél",
+      "review": "Áttekintés",
+      "done": "Kész"
+    },
+    "file": {
+      "format": "Forrás",
+      "chooseFile": "Fájl kiválasztása",
+      "chosen": "Kiválasztott fájl: {{name}}",
+      "none": "Nincs kiválasztott fájl",
+      "upload": "Fájl beolvasása",
+      "reading": "A fájl beolvasása…",
+      "fuelioHint": "A Fuelióban exportáld a járművet (Beállítások, Export/Szinkron), és itt a .csv fájlt válaszd ki. A .zip fájlt előbb ki kell csomagolni.",
+      "formats": {
+        "fuelio": "Fuelio (CSV)"
+      }
+    },
+    "target": {
+      "title": "Hova kerüljenek az adatok?",
+      "existing": "Meglévő jármű",
+      "new": "Új jármű",
+      "vehicle": "Jármű",
+      "chooseVehicle": "Válassz járművet",
+      "noVehicles": "Nincs olyan járműved, amelyhez naplóbejegyzést adhatnál; hozz létre újat.",
+      "newDetails": "Az új jármű",
+      "name": "Név",
+      "plate": "Rendszám (nem kötelező)",
+      "currency": "Az összegek pénzneme",
+      "currencyHint": "A fájl nem tartalmazza a pénznemet. Háromjegyű kód, pl. HUF vagy EUR."
+    },
+    "review": {
+      "title": "Mi lesz importálva",
+      "summary": "{{fuel}} tankolás és {{expenses}} költség, {{from}} és {{to}} között.",
+      "duplicates": "{{fuel}} tankolás és {{expenses}} költség már szerepel ebben a járműben.",
+      "duplicateChoice": "Már meglévő sorok",
+      "skipDuplicates": "Kihagyás (ajánlott)",
+      "importDuplicates": "Importálás mégis",
+      "categories": "A fájlban szereplő kategóriák: {{list}}",
+      "issuesTitle": "A beolvasáskor kihagyva ({{count}})",
+      "issuesHint": "Ezeket a sorokat nem lehet importálni.",
+      "moreIssues": "…és még {{count}}.",
+      "unitsFromFile": "A fájl ezeket használja: {{distance}}, {{volume}}.",
+      "back": "Vissza",
+      "confirm": "Importálás",
+      "importing": "Importálás…"
+    },
+    "done": {
+      "title": "Az importálás kész",
+      "imported": "Importálva: {{fuel}} tankolás és {{expenses}} költség.",
+      "skipped": "Kihagyva (már létezett): {{fuel}} tankolás és {{expenses}} költség.",
+      "errorsTitle": "Ezeket a sorokat nem sikerült importálni ({{count}})",
+      "open": "A jármű megnyitása",
+      "another": "Másik fájl importálása"
+    },
+    "row": "{{section}}, {{row}}. sor",
+    "sections": {
+      "log": "Tankolások",
+      "costs": "Költségek",
+      "vehicle": "Jármű"
+    }
   }
 }

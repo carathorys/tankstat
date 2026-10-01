@@ -1,6 +1,6 @@
 import { useApolloClient, useMutation } from '@apollo/client/react'
 import { Button, Flex } from '@radix-ui/themes'
-import { LogOut, Settings, ShieldCheck, Trash2, Car } from 'lucide-react'
+import { Car, FileUp, LogOut, Settings, ShieldCheck, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { NavLink } from 'react-router'
 import { LogoutDocument, type AuthMode, type SessionQuery } from '../gql/generated.ts'
@@ -23,6 +23,7 @@ export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: Sess
     <Flex asChild direction="column" gap="1">
       <nav aria-label={t('nav.main')}>
         {link('/vehicles', t('nav.vehicles'), <Car size={18} aria-hidden />)}
+        {link('/import', t('nav.import'), <FileUp size={18} aria-hidden />)}
         {link('/trash', t('nav.trash'), <Trash2 size={18} aria-hidden />)}
         {user && link('/account', t('nav.account'), <Settings size={18} aria-hidden />)}
         {user?.isAdmin && link('/admin', t('nav.admin'), <ShieldCheck size={18} aria-hidden />)}

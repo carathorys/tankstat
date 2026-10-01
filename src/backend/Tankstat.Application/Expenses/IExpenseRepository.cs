@@ -1,0 +1,36 @@
+using Tankstat.Application.Access;
+using Tankstat.Domain.Odometers;
+using Tankstat.Domain.Vehicles;
+
+namespace Tankstat.Application.Expenses;
+
+public interface IExpenseRepository
+{
+    /// <summary>One page of a vehicle's expenses that are not in the trash.</summary>
+    Task<IReadOnlyList<Expense>> ListForVehicleAsync(Guid vehicleId, ExpenseQuery query, CancellationToken ct);
+    Task<int> CountForVehicleAsync(Guid vehicleId, CancellationToken ct);
+
+    /// <summary>Whether the vehicle has any expense, trashed ones included.</summary>
+    Task<bool> AnyForVehicleAsync(Guid vehicleId, CancellationToken ct);
+
+    /// <summary>All live expenses of a vehicle (date, title, amount), to recognise duplicates when importing.</summary>
+    Task<IReadOnlyList<Expense>> ListAllForVehicleAsync(Guid vehicleId, CancellationToken ct);
+
+    Task<IReadOnlyList<Expense>> ListDeletedAsync(OwnerScope scope, ExpenseQuery query, CancellationToken ct);
+    Task<int> CountDeletedAsync(OwnerScope scope, CancellationToken ct);
+
+    /// <summary>The distinct categories used on a vehicle's expenses, for suggestions.</summary>
+    Task<IReadOnlyList<string>> CategoriesAsync(Guid vehicleId, CancellationToken ct);
+
+    Task<Expense?> FindAsync(Guid id, CancellationToken ct);
+    Task<Expense?> FindIncludingDeletedAsync(Guid id, CancellationToken ct);
+
+    Task AddAsync(Expense expense, CancellationToken ct);
+
+    /// <param name="newReading">A reading created by this update (it is inserted).</param>
+    /// <param name="removedReading">A reading detached by this update (it is deleted).</param>
+    Task UpdateAsync(Expense expense, OdometerReading? newReading, OdometerReading? removedReading, CancellationToken ct);
+
+    /// <summary>Physically removes the trashed expenses in scope. Returns how many.</summary>
+    Task<int> PurgeAsync(OwnerScope scope, CancellationToken ct);
+}

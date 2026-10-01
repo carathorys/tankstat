@@ -15,6 +15,17 @@ public class DataGeneratorTests
         new DataGenerator(Clock).Generate(new SeedOptions(vehicles, trashed, refuelings ?? new IntRange(5, 25), seed, true, null, null)).ToList();
 
     [Fact]
+    public void GeneratedLogs_CarryTheirStoredConsumption_LikeLogsEnteredInTheApp()
+    {
+        var logs = Generate(vehicles: 5, trashed: 0, refuelings: new IntRange(30, 30)).SelectMany(g => g.Refuelings).ToList();
+
+        var fullOnes = logs.Where(l => l.IsFullTank && l.Consumption is not null).ToList();
+        Assert.NotEmpty(fullOnes);
+        Assert.All(logs.Where(l => !l.IsFullTank), l => Assert.Null(l.Consumption));
+        Assert.All(fullOnes, l => Assert.InRange(l.Consumption!.Value, 1m, 40m)); // plausible litres (or gallons) per 100 km (or miles)
+    }
+
+    [Fact]
     public void CreatesTheRequestedNumberOfLiveAndTrashedVehicles()
     {
         var all = Generate(30, 7);

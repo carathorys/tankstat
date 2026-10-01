@@ -7,12 +7,18 @@ import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { UserChip } from '../components/UserAvatar.tsx'
 import { VehiclePicture } from '../components/VehiclePicture.tsx'
 import {
+  EmptyExpenseTrashDocument,
   EmptyRefuelingTrashDocument,
+  ExpenseTrashDocument,
+  RestoreExpenseDocument,
   EmptyTrashDocument,
   RefuelingTrashDocument,
   RestoreRefuelingDocument,
   RestoreVehicleDocument,
   TrashDocument,
+  type ExpenseSortField,
+  type ExpenseTrashQuery,
+  type ExpenseTrashQueryVariables,
   type RefuelingSortField,
   type RefuelingTrashQuery,
   type RefuelingTrashQueryVariables,
@@ -27,14 +33,16 @@ import { ErrorMessage, SuccessMessage } from '../messages.tsx'
 
 type VehicleRow = TrashQuery['trash'][number]
 type LogRow = RefuelingTrashQuery['refuelingTrash'][number]
+type ExpenseRow = ExpenseTrashQuery['expenseTrash'][number]
 
-const refetch = { refetchQueries: ['Vehicles', 'Trash', 'Refuelings', 'RefuelingTrash', 'VehicleDetails'], awaitRefetchQueries: true }
+const refetch = { refetchQueries: ['Vehicles', 'Trash', 'Refuelings', 'RefuelingTrash', 'Expenses', 'ExpenseTrash', 'VehicleDetails'], awaitRefetchQueries: true }
 
 export function TrashPage() {
   const { t } = useTranslation()
   usePageTitle(t('trash.title'))
   const [params, setParams] = useSearchParams()
-  const tab = params.get('tab') === 'refuelings' ? 'refuelings' : 'vehicles'
+  const requested = params.get('tab')
+  const tab = requested === 'refuelings' || requested === 'expenses' ? requested : 'vehicles'
   const [actionError, setActionError] = useState<unknown>()
   const [notice, setNotice] = useState<ReactNode>()
 
@@ -59,6 +67,7 @@ export function TrashPage() {
         <Tabs.List aria-label={t('trash.title')}>
           <Tabs.Trigger value="vehicles">{t('trash.tabs.vehicles')}</Tabs.Trigger>
           <Tabs.Trigger value="refuelings">{t('trash.tabs.refuelings')}</Tabs.Trigger>
+          <Tabs.Trigger value="expenses">{t('trash.tabs.expenses')}</Tabs.Trigger>
         </Tabs.List>
         <Box pt="4">
           <Tabs.Content value="vehicles">
@@ -66,6 +75,9 @@ export function TrashPage() {
           </Tabs.Content>
           <Tabs.Content value="refuelings">
             <RefuelingTrash run={run} setNotice={setNotice} />
+          </Tabs.Content>
+          <Tabs.Content value="expenses">
+            <ExpenseTrash run={run} setNotice={setNotice} />
           </Tabs.Content>
         </Box>
       </Tabs.Root>
@@ -195,6 +207,53 @@ function RefuelingTrash({ run, setNotice }: Shared) {
       )}
       actions={(r) => (
         <Button size="2" variant="soft" aria-label={t('trash.restoreAria', { name: format.date(r.date) })} onClick={() => void run(() => restore({ variables: { id: r.id } }))}>
+          {t('trash.restore')}
+        </Button>
+      )}
+    />
+  )
+}
+
+function ExpenseTrash({ run, setNotice }: Shared) {
+  const { t } = useTranslation()
+  const format = useFormat()
+  const [restore] = useMutation(RestoreExpenseDocument, refetch)
+  const [emptyTrash] = useMutation(EmptyExpenseTrashDocument, refetch)
+
+  const columns = useMemo<GridColumn<ExpenseRow, ExpenseTrashQueryVariables, ExpenseSortField>[]>(() => {
+    const none = t('common.none')
+    return [
+      { id: 'date', label: 'columns.date', hideable: false, mobile: true, sortField: 'DATE', cell: (r) => format.date(r.date) },
+      { id: 'title', label: 'columns.title', hideable: false, mobile: true, sortField: 'TITLE', cell: (r) => r.title },
+      { id: 'vehicle', label: 'columns.vehicle', sortField: 'VEHICLE', cell: (r) => r.vehicle?.name ?? none },
+      { id: 'amount', label: 'columns.amount', include: 'withAmount', sortField: 'AMOUNT', cell: (r) => (r.amount == null || !r.currency ? none : format.money(r.amount, r.currency)) },
+      { id: 'category', label: 'columns.category', include: 'withCategory', sortField: 'CATEGORY', cell: (r) => r.category ?? none },
+      { id: 'createdBy', label: 'columns.createdBy', include: 'withCreatedBy', sortField: 'CREATED_BY', cell: (r) => (r.createdBy ? <UserChip user={r.createdBy} /> : none) },
+      { id: 'deletedAt', label: 'columns.deletedAt', include: 'withDeletedAt', mobile: true, sortField: 'DELETED_AT', cell: (r) => (r.deletedAt ? format.dateTime(r.deletedAt) : none) },
+    ]
+  }, [t, format])
+
+  return (
+    <DataGrid
+      gridId="expense-trash"
+      caption={t('trash.tabs.expenses')}
+      query={ExpenseTrashDocument}
+      select={(d) => ({ rows: d.expenseTrash, total: d.expenseTrashCount })}
+      rowKey={(r) => r.id}
+      columns={columns}
+      defaultSort={{ column: 'deletedAt', direction: 'DESC' }}
+      emptyText={t('trash.expensesEmpty')}
+      toolbar={({ total, data }) => (
+        <EmptyButton
+          total={total}
+          deletable={data?.expenseTrashDeletableCount ?? 0}
+          title={t('trash.emptyTitle')}
+          description={t('trash.expenseDescription', { count: total })}
+          onConfirm={() => void run(async () => setNotice(t('trash.emptiedExpenses', { count: (await emptyTrash()).data?.emptyExpenseTrash ?? 0 })))}
+        />
+      )}
+      actions={(r) => (
+        <Button size="2" variant="soft" aria-label={t('trash.restoreAria', { name: r.title })} onClick={() => void run(() => restore({ variables: { id: r.id } }))}>
           {t('trash.restore')}
         </Button>
       )}

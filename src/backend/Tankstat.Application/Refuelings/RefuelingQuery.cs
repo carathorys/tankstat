@@ -9,6 +9,7 @@ public enum RefuelingSortField
     TotalCost,
     Odometer,
     PricePerUnit,
+    Consumption,
     CreatedBy,
     Vehicle,
     DeletedAt,

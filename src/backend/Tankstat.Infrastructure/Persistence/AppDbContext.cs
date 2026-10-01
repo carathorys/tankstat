@@ -12,6 +12,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 {
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
     public DbSet<Refueling> Refuelings => Set<Refueling>();
+    public DbSet<Expense> Expenses => Set<Expense>();
     public DbSet<OdometerReading> OdometerReadings => Set<OdometerReading>();
     public DbSet<Cost> Costs => Set<Cost>();
     public DbSet<StoredImage> Images => Set<StoredImage>();

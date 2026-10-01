@@ -12,6 +12,7 @@ import { LoginView } from './LoginView.tsx'
 import { ErrorMessage } from './messages.tsx'
 import { NoticeBanner } from './NoticeBanner.tsx'
 import { ResetPasswordView } from './PasswordForms.tsx'
+import { ImportPage } from './pages/ImportPage.tsx'
 import { AccountPage } from './pages/AccountPage.tsx'
 import { AdminPanel } from './admin/AdminPanel.tsx'
 import { TrashPage } from './pages/TrashPage.tsx'
@@ -102,6 +103,7 @@ function Content({ data }: { data: SessionQuery }) {
         <Route path="/" element={<Navigate to="/vehicles" replace />} />
         <Route path="/vehicles" element={<VehiclesPage />} />
         <Route path="/vehicles/:id/*" element={<VehiclePage />} />
+        <Route path="/import" element={<ImportPage />} />
         <Route path="/trash" element={<TrashPage />} />
         <Route path="/account" element={<AccountPage mode={mode} user={user} />} />
         <Route path="/admin" element={user?.isAdmin ? <AdminPanel /> : <Navigate to="/vehicles" replace />} />

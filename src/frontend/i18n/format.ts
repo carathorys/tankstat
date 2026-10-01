@@ -30,6 +30,16 @@ export function useFormat() {
       distance: (value: number, unit: DistanceUnit) =>
         new Intl.NumberFormat(language, { style: 'unit', unit: DISTANCE_UNITS[unit], unitDisplay: 'short', maximumFractionDigits: 0 }).format(value),
       volume: (value: number, unit: VolumeUnit) => `${number(value, { maximumFractionDigits: 2 })} ${t(`units.volumeShort.${unit}`)}`,
+      /** Fuel used per 100 distance units, in the vehicle's own units; miles with gallons read as miles per gallon, the way those countries say it. */
+      consumption: (per100: number, units: { distance: DistanceUnit; volume: VolumeUnit }) => {
+        const mpg = per100 > 0 && units.distance === 'MILES' && units.volume !== 'LITERS'
+        if (mpg) return t(units.volume === 'US_GALLONS' ? 'units.consumption.mpgUs' : 'units.consumption.mpgImperial', { value: number(100 / per100, { maximumFractionDigits: 1 }) })
+        return t('units.consumption.perDistance', {
+          value: number(per100, { maximumFractionDigits: 2 }),
+          volume: t(`units.volumeShort.${units.volume}`),
+          distance: t(`units.distanceShort.${units.distance}`),
+        })
+      },
       pricePerUnit: (value: number, currency: string, unit: VolumeUnit) => `${(() => {
         try {
           return new Intl.NumberFormat(language, { style: 'currency', currency, maximumFractionDigits: 3 }).format(value)

@@ -1,0 +1,110 @@
+# A vehicle's expenses (service, insurance, ...). Like the logs, optional columns are switched on and off with @include variables.
+query Expenses(
+  $vehicleId: UUID!
+  $orderBy: ExpenseSortField!
+  $direction: SortDirection!
+  $skip: Int!
+  $take: Int!
+  $withCategory: Boolean!
+  $withAmount: Boolean!
+  $withOdometer: Boolean!
+  $withNote: Boolean!
+  $withCreatedBy: Boolean!
+) {
+  expenses(vehicleId: $vehicleId, orderBy: $orderBy, direction: $direction, skip: $skip, take: $take) {
+    id
+    date
+    title
+    canEdit
+    canDelete
+    category @include(if: $withCategory)
+    amount @include(if: $withAmount)
+    currency @include(if: $withAmount)
+    odometer @include(if: $withOdometer)
+    note @include(if: $withNote)
+    createdBy @include(if: $withCreatedBy) {
+      id
+      displayName
+      avatarUrl
+    }
+  }
+  expenseCount(vehicleId: $vehicleId)
+}
+
+query ExpenseTrash(
+  $orderBy: ExpenseSortField!
+  $direction: SortDirection!
+  $skip: Int!
+  $take: Int!
+  $withCategory: Boolean!
+  $withAmount: Boolean!
+  $withDeletedAt: Boolean!
+  $withCreatedBy: Boolean!
+) {
+  expenseTrash(orderBy: $orderBy, direction: $direction, skip: $skip, take: $take) {
+    id
+    date
+    title
+    vehicle {
+      id
+      name
+    }
+    category @include(if: $withCategory)
+    amount @include(if: $withAmount)
+    currency @include(if: $withAmount)
+    deletedAt @include(if: $withDeletedAt)
+    createdBy @include(if: $withCreatedBy) {
+      id
+      displayName
+      avatarUrl
+    }
+  }
+  expenseTrashCount
+  expenseTrashDeletableCount
+}
+
+query ExpenseDetails($id: UUID!) {
+  expense(id: $id) {
+    id
+    vehicleId
+    date
+    title
+    category
+    amount
+    currency
+    odometer
+    note
+  }
+}
+
+query ExpenseCategories($vehicleId: UUID!) {
+  expenseCategories(vehicleId: $vehicleId)
+}
+
+mutation AddExpense($input: AddExpenseInput!) {
+  addExpense(input: $input) {
+    id
+  }
+}
+
+mutation UpdateExpense($input: UpdateExpenseInput!) {
+  updateExpense(input: $input) {
+    id
+  }
+}
+
+mutation DeleteExpense($id: UUID!) {
+  deleteExpense(id: $id) {
+    id
+  }
+}
+
+mutation RestoreExpense($id: UUID!) {
+  restoreExpense(id: $id) {
+    id
+  }
+}
+
+mutation EmptyExpenseTrash {
+  emptyExpenseTrash
+}

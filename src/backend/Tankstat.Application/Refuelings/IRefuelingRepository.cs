@@ -12,6 +12,12 @@ public interface IRefuelingRepository
     /// <summary>Whether the vehicle has any log, trashed ones included (its units are locked then).</summary>
     Task<bool> AnyForVehicleAsync(Guid vehicleId, CancellationToken ct);
 
+    /// <summary>Every log of the vehicle that is not in the trash (date and odometer are loaded), to recognise duplicates when importing.</summary>
+    Task<IReadOnlyList<Refueling>> ListAllForVehicleAsync(Guid vehicleId, CancellationToken ct);
+
+    /// <summary>Writes only the consumption of these logs (nothing else about them changes).</summary>
+    Task SaveConsumptionsAsync(IReadOnlyList<Refueling> refuelings, CancellationToken ct);
+
     /// <summary>One page of the trashed logs in scope (across vehicles).</summary>
     Task<IReadOnlyList<Refueling>> ListDeletedAsync(OwnerScope scope, RefuelingQuery query, CancellationToken ct);
     Task<int> CountDeletedAsync(OwnerScope scope, CancellationToken ct);

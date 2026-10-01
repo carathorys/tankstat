@@ -15,7 +15,8 @@
     "show": "Show menu",
     "hide": "Hide menu",
     "signedInAs": "Signed in as {{name}}",
-    "close": "Close menu"
+    "close": "Close menu",
+    "import": "Import"
   },
   "language": {
     "label": "Language"
@@ -99,7 +100,11 @@
     "fullTank": "Full tank",
     "note": "Note",
     "createdBy": "Logged by",
-    "picture": "Picture"
+    "picture": "Picture",
+    "title": "Title",
+    "category": "Category",
+    "amount": "Amount",
+    "consumption": "Consumption"
   },
   "grid": {
     "refresh": "Refresh",
@@ -142,7 +147,8 @@
     "tabs": {
       "refuelings": "Refuelings",
       "details": "Details",
-      "sharing": "Sharing"
+      "sharing": "Sharing",
+      "expenses": "Expenses"
     },
     "owner": "Owner",
     "fuel": "Fuel",
@@ -165,7 +171,8 @@
     "emptied_other": "Permanently deleted {{count}} vehicles.",
     "tabs": {
       "vehicles": "Vehicles",
-      "refuelings": "Refuelings"
+      "refuelings": "Refuelings",
+      "expenses": "Expenses"
     },
     "emptyPartial_one": "This permanently deletes {{count}} item you are allowed to delete; items you may only restore stay in the trash. It cannot be undone.",
     "emptyPartial_other": "This permanently deletes {{count}} items you are allowed to delete; items you may only restore stay in the trash. It cannot be undone.",
@@ -173,7 +180,12 @@
     "emptiedRefuelings_one": "Permanently deleted {{count}} refuelling.",
     "emptiedRefuelings_other": "Permanently deleted {{count}} refuelings.",
     "refuelingDescription_one": "This permanently deletes {{count}} refuelling. It cannot be undone.",
-    "refuelingDescription_other": "This permanently deletes {{count}} refuelings. It cannot be undone."
+    "refuelingDescription_other": "This permanently deletes {{count}} refuelings. It cannot be undone.",
+    "expensesEmpty": "No expenses in the trash.",
+    "emptiedExpenses_one": "Permanently deleted {{count}} expense.",
+    "emptiedExpenses_other": "Permanently deleted {{count}} expenses.",
+    "expenseDescription_one": "This permanently deletes {{count}} expense. It cannot be undone.",
+    "expenseDescription_other": "This permanently deletes {{count}} expenses. It cannot be undone."
   },
   "account": {
     "title": "Account",
@@ -298,6 +310,31 @@
       "unsupportedType": "Only JPEG, PNG and WebP pictures are supported.",
       "tooLarge": "The picture can be at most {{maxKb}} KB.",
       "noAccount": "Profile pictures need a user account; authentication is turned off."
+    },
+    "expense": {
+      "titleRequired": "The expense needs a title.",
+      "titleTooLong": "The title can be at most {{max}} characters.",
+      "categoryTooLong": "The category can be at most {{max}} characters.",
+      "noteTooLong": "The note can be at most {{max}} characters.",
+      "notFound": "This expense does not exist.",
+      "wrongVehicle": "The reading and the cost must belong to the same vehicle.",
+      "trashedCannotEdit": "An expense in the trash cannot be edited. Restore it first.",
+      "alreadyTrashed": "This expense is already in the trash.",
+      "notTrashed": "This expense is not in the trash."
+    },
+    "import": {
+      "unknownFormat": "This import format is not supported: {{format}}.",
+      "unreadable": "This file does not look like an export of the chosen app.",
+      "nothingFound": "The file contains no fuel logs or expenses to import.",
+      "tooLarge": "The file can be at most {{maxMb}} MB.",
+      "expired": "This import has expired. Choose the file again.",
+      "targetRequired": "Choose a vehicle or create a new one.",
+      "badDate": "The date “{{value}}” cannot be read.",
+      "badNumber": "The {{field}} “{{value}}” is not a valid number.",
+      "templateSkipped": "“{{title}}” is a reminder template, not a cost.",
+      "incomeSkipped": "“{{title}}” is income, which is not imported.",
+      "titleMissing": "The row has no title or category.",
+      "unitsDiffer": "The file uses other units than this vehicle. Numbers are imported as they are, without conversion."
     }
   },
   "a11y": {
@@ -322,7 +359,16 @@
     "label": "Units",
     "distanceLabel": "Distance",
     "volumeLabel": "Fuel volume",
-    "hint": "Numbers are saved exactly as entered and never converted."
+    "hint": "Numbers are saved exactly as entered and never converted.",
+    "distanceShort": {
+      "KILOMETERS": "km",
+      "MILES": "mi"
+    },
+    "consumption": {
+      "perDistance": "{{value}} {{volume}}/100 {{distance}}",
+      "mpgUs": "{{value}} mpg (US)",
+      "mpgImperial": "{{value}} mpg (imp.)"
+    }
   },
   "refuelings": {
     "title": "Refuelings",
@@ -388,5 +434,102 @@
     "hint": "JPEG, PNG or WebP. Large pictures are made smaller automatically.",
     "unreadable": "This file could not be read as a picture.",
     "avatarFor": "Profile picture of {{name}}"
+  },
+  "expenses": {
+    "title": "Expenses",
+    "add": "Add expense",
+    "edit": "Edit",
+    "delete": "Delete",
+    "editAria": "Edit the expense {{title}}",
+    "deleteAria": "Delete the expense {{title}}",
+    "empty": "No expenses yet. Service, insurance, parking and other costs go here.",
+    "viewOnly": "view only",
+    "countLabel": "{{count}} expenses",
+    "dialogAdd": "Add expense",
+    "dialogEdit": "Edit expense",
+    "dialogAddDescription": "Money spent on the vehicle that is not a fill-up.",
+    "dialogEditDescription": "Change this expense.",
+    "save": "Save changes",
+    "saveAdd": "Add expense",
+    "fields": {
+      "date": "Date",
+      "title": "Title",
+      "category": "Category (optional)",
+      "amount": "Amount",
+      "currency": "Currency",
+      "odometer": "Odometer ({{unit}}, optional)",
+      "note": "Note (optional)"
+    },
+    "hints": {
+      "categories": "Used before: {{list}}"
+    },
+    "trashTitle": "Move this expense to the trash?",
+    "trashDescription": "{{title}} can be restored from the trash until it is deleted permanently.",
+    "trashConfirm": "Move to trash"
+  },
+  "import": {
+    "title": "Import",
+    "intro": "Bring fuel logs and other costs from another app into Tankstat. You see what will happen before anything is saved.",
+    "steps": {
+      "file": "File",
+      "target": "Target",
+      "review": "Review",
+      "done": "Done"
+    },
+    "file": {
+      "format": "Source",
+      "chooseFile": "Choose file",
+      "chosen": "Selected file: {{name}}",
+      "none": "No file chosen",
+      "upload": "Read the file",
+      "reading": "Reading the file…",
+      "fuelioHint": "In Fuelio, export the vehicle (Settings, Export/Sync) and choose the .csv file here. A .zip file has to be unzipped first.",
+      "formats": {
+        "fuelio": "Fuelio (CSV)"
+      }
+    },
+    "target": {
+      "title": "Where should the data go?",
+      "existing": "An existing vehicle",
+      "new": "A new vehicle",
+      "vehicle": "Vehicle",
+      "chooseVehicle": "Choose a vehicle",
+      "noVehicles": "You have no vehicle you can add logs to; create a new one.",
+      "newDetails": "The new vehicle",
+      "name": "Name",
+      "plate": "License plate (optional)",
+      "currency": "Currency of all amounts",
+      "currencyHint": "The file does not say which currency was paid. Three-letter code, e.g. HUF or EUR."
+    },
+    "review": {
+      "title": "What will be imported",
+      "summary": "{{fuel}} fuel logs and {{expenses}} expenses, from {{from}} to {{to}}.",
+      "duplicates": "{{fuel}} fuel logs and {{expenses}} expenses already exist in this vehicle.",
+      "duplicateChoice": "Rows that already exist",
+      "skipDuplicates": "Skip them (recommended)",
+      "importDuplicates": "Import them again anyway",
+      "categories": "Categories in the file: {{list}}",
+      "issuesTitle": "Left out while reading the file ({{count}})",
+      "issuesHint": "These rows cannot be imported.",
+      "moreIssues": "…and {{count}} more.",
+      "unitsFromFile": "The file uses {{distance}} and {{volume}}.",
+      "back": "Back",
+      "confirm": "Import",
+      "importing": "Importing…"
+    },
+    "done": {
+      "title": "Import finished",
+      "imported": "Imported {{fuel}} fuel logs and {{expenses}} expenses.",
+      "skipped": "Skipped {{fuel}} fuel logs and {{expenses}} expenses that already existed.",
+      "errorsTitle": "These rows could not be imported ({{count}})",
+      "open": "Open the vehicle",
+      "another": "Import another file"
+    },
+    "row": "{{section}}, row {{row}}",
+    "sections": {
+      "log": "Fuel logs",
+      "costs": "Costs",
+      "vehicle": "Vehicle"
+    }
   }
 }

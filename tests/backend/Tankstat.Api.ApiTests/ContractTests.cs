@@ -53,7 +53,11 @@ public class ContractTests
     [InlineData("UserRef", "id", "displayName", "avatarUrl")]
     [InlineData("LogDefaults", "lastOdometer", "lastDate", "currency")]
     [InlineData("LogAccessGrantInfo", "user", "level")]
-    [InlineData("Refueling", "id", "vehicleId", "createdBy", "date", "volume", "totalCost", "currency", "odometer", "pricePerUnit", "isFullTank", "note", "deletedAt", "canEdit", "canDelete", "vehicle")]
+    [InlineData("Expense", "id", "vehicleId", "createdBy", "date", "title", "category", "amount", "currency", "odometer", "note", "deletedAt", "canEdit", "canDelete", "vehicle")]
+    [InlineData("ImportPreviewInfo", "sourceVehicle", "fuelRows", "expenseRows", "duplicateFuelRows", "duplicateExpenseRows", "firstDate", "lastDate", "categories", "issues")]
+    [InlineData("ImportResultInfo", "vehicleId", "fuelImported", "expensesImported", "fuelSkippedDuplicates", "expensesSkippedDuplicates", "errors")]
+    [InlineData("ImportIssueInfo", "section", "row", "key", "args")]
+    [InlineData("Refueling", "id", "vehicleId", "createdBy", "date", "volume", "totalCost", "currency", "odometer", "pricePerUnit", "consumption", "isFullTank", "note", "deletedAt", "canEdit", "canDelete", "vehicle")]
     public async Task Schema_TypeExposesContractFields(string type, params string[] fields)
     {
         var names = await FieldNames(type);
@@ -78,7 +82,8 @@ public class ContractTests
     [InlineData("AccessLevel", "NONE", "VIEW", "EDIT", "DELETE")]
     [InlineData("DistanceUnit", "KILOMETERS", "MILES")]
     [InlineData("VolumeUnit", "LITERS", "US_GALLONS", "IMPERIAL_GALLONS")]
-    [InlineData("RefuelingSortField", "DATE", "VOLUME", "TOTAL_COST", "ODOMETER", "PRICE_PER_UNIT", "CREATED_BY", "VEHICLE", "DELETED_AT")]
+    [InlineData("RefuelingSortField", "DATE", "VOLUME", "TOTAL_COST", "ODOMETER", "PRICE_PER_UNIT", "CONSUMPTION", "CREATED_BY", "VEHICLE", "DELETED_AT")]
+    [InlineData("ExpenseSortField", "DATE", "TITLE", "CATEGORY", "AMOUNT", "ODOMETER", "CREATED_BY", "VEHICLE", "DELETED_AT")]
     [InlineData("NoticeSeverity", "INFO", "WARNING")]
     public async Task Schema_EnumsExposeContractValues(string type, params string[] expected)
     {

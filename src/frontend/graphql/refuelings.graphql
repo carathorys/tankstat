@@ -8,6 +8,7 @@ query Refuelings(
   $withVolume: Boolean!
   $withCost: Boolean!
   $withPrice: Boolean!
+  $withConsumption: Boolean!
   $withOdometer: Boolean!
   $withFullTank: Boolean!
   $withNote: Boolean!
@@ -22,6 +23,7 @@ query Refuelings(
     totalCost @include(if: $withCost)
     currency @include(if: $withCost)
     pricePerUnit @include(if: $withPrice)
+    consumption @include(if: $withConsumption)
     odometer @include(if: $withOdometer)
     isFullTank @include(if: $withFullTank)
     note @include(if: $withNote)

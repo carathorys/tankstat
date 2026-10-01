@@ -1,0 +1,100 @@
+using Microsoft.Extensions.Options;
+using Tankstat.Application.Access;
+using Tankstat.Application.Expenses;
+using Tankstat.Application.Refuelings;
+using Tankstat.Application.Users;
+using Tankstat.Application.Vehicles;
+using Tankstat.Domain.Access;
+using Tankstat.Domain.Vehicles;
+
+namespace Tankstat.Api.GraphQL;
+
+/// <param name="Currency">ISO 4217 code of the currency paid in; omit to use the instance default.</param>
+/// <param name="Odometer">Omit when the odometer was not noted.</param>
+public sealed record AddExpenseInput(Guid VehicleId, DateOnly Date, string Title, string? Category, decimal Amount, string? Currency, long? Odometer, string? Note);
+
+/// <param name="Currency">Omit to keep the expense's currency.</param>
+public sealed record UpdateExpenseInput(Guid Id, DateOnly Date, string Title, string? Category, decimal Amount, string? Currency, long? Odometer, string? Note);
+
+/// <summary>The expense type exposes its odometer and amount as plain values; the linked reading and cost stay internal details.</summary>
+public sealed class ExpenseType : ObjectType<Expense>
+{
+    protected override void Configure(IObjectTypeDescriptor<Expense> descriptor)
+    {
+        descriptor.Ignore(e => e.OdometerReading);
+        descriptor.Ignore(e => e.OdometerReadingId);
+        descriptor.Ignore(e => e.Cost);
+        descriptor.Ignore(e => e.CostId);
+        descriptor.Ignore(e => e.IsDeleted);
+    }
+}
+
+[ExtendObjectType<Expense>]
+public sealed class ExpenseExtensions
+{
+    public async Task<bool> GetCanEdit([Parent] Expense expense, [Service] RefuelingService refuelings, CancellationToken ct) =>
+        await refuelings.LevelForVehicleAsync(expense.VehicleId, ct) >= AccessLevel.Edit;
+
+    public async Task<bool> GetCanDelete([Parent] Expense expense, [Service] RefuelingService refuelings, CancellationToken ct) =>
+        await refuelings.LevelForVehicleAsync(expense.VehicleId, ct) >= AccessLevel.Delete;
+
+    public async Task<UserRef?> GetCreatedBy([Parent] Expense expense, [Service] IUserRepository users, CancellationToken ct) =>
+        await users.FindByIdAsync(expense.CreatedById, ct) is { } user ? UserRef.From(user) : null;
+
+    public async Task<Vehicle?> GetVehicle([Parent] Expense expense, [Service] IVehicleRepository vehicles, CancellationToken ct) =>
+        await vehicles.FindIncludingDeletedAsync(expense.VehicleId, ct);
+}
+
+[ExtendObjectType<Vehicle>]
+public sealed class VehicleExpenseExtensions
+{
+    public Task<int> GetExpenseCount([Parent] Vehicle vehicle, [Service] ExpenseService expenses, CancellationToken ct) =>
+        expenses.CountAsync(vehicle.Id, ct);
+}
+
+[ExtendObjectType(OperationTypeNames.Query)]
+public sealed class ExpenseQueries
+{
+    /// <summary>One page of a vehicle's expenses, sorted by the server (newest first by default).</summary>
+    public Task<IReadOnlyList<Expense>> GetExpenses(
+        Guid vehicleId, [Service] ExpenseService expenses, CancellationToken ct,
+        ExpenseSortField orderBy = ExpenseSortField.Date, SortDirection direction = SortDirection.Desc,
+        int skip = 0, int take = ExpenseQuery.DefaultTake) =>
+        expenses.ListAsync(vehicleId, new ExpenseQuery(orderBy, direction, skip, take), ct);
+
+    public Task<int> GetExpenseCount(Guid vehicleId, [Service] ExpenseService expenses, CancellationToken ct) => expenses.CountAsync(vehicleId, ct);
+
+    public Task<Expense?> GetExpense(Guid id, [Service] ExpenseService expenses, CancellationToken ct) => expenses.FindAsync(id, ct);
+
+    /// <summary>The categories already used on a vehicle's expenses, as suggestions for the form.</summary>
+    public Task<IReadOnlyList<string>> GetExpenseCategories(Guid vehicleId, [Service] ExpenseService expenses, CancellationToken ct) =>
+        expenses.CategoriesAsync(vehicleId, ct);
+
+    public Task<IReadOnlyList<Expense>> GetExpenseTrash(
+        [Service] ExpenseService expenses, CancellationToken ct,
+        ExpenseSortField orderBy = ExpenseSortField.DeletedAt, SortDirection direction = SortDirection.Desc,
+        int skip = 0, int take = ExpenseQuery.DefaultTake) =>
+        expenses.ListTrashAsync(new ExpenseQuery(orderBy, direction, skip, take), ct);
+
+    public Task<int> GetExpenseTrashCount([Service] ExpenseService expenses, CancellationToken ct) => expenses.CountTrashAsync(ct);
+
+    public Task<int> GetExpenseTrashDeletableCount([Service] ExpenseService expenses, CancellationToken ct) => expenses.CountDeletableTrashAsync(ct);
+}
+
+[ExtendObjectType(OperationTypeNames.Mutation)]
+public sealed class ExpenseMutations
+{
+    public Task<Expense> AddExpense(AddExpenseInput input, [Service] ExpenseService expenses, [Service] IOptions<VehicleDefaultsOptions> defaults, CancellationToken ct) =>
+        expenses.AddAsync(input.VehicleId,
+            new ExpenseInput(input.Date, input.Title, input.Category, input.Amount, input.Currency ?? defaults.Value.Currency, input.Odometer, input.Note), ct);
+
+    public Task<Expense> UpdateExpense(UpdateExpenseInput input, [Service] ExpenseService expenses, CancellationToken ct) =>
+        expenses.UpdateAsync(input.Id, new ExpenseInput(input.Date, input.Title, input.Category, input.Amount, input.Currency, input.Odometer, input.Note), ct);
+
+    public Task<Expense> DeleteExpense(Guid id, [Service] ExpenseService expenses, CancellationToken ct) => expenses.DeleteAsync(id, ct);
+
+    public Task<Expense> RestoreExpense(Guid id, [Service] ExpenseService expenses, CancellationToken ct) => expenses.RestoreAsync(id, ct);
+
+    /// <summary>Permanently removes the trashed expenses the user has Delete access to; returns how many.</summary>
+    public Task<int> EmptyExpenseTrash([Service] ExpenseService expenses, CancellationToken ct) => expenses.EmptyTrashAsync(ct);
+}

@@ -210,6 +210,8 @@ export interface FakeRefueling {
   odometer: number
   isFullTank: boolean
   note: string | null
+  /** Fuel per 100 distance units between this and the previous full fill-up (the server calculates and stores it). */
+  consumption: number | null
   canEdit: boolean
   canDelete: boolean
   createdBy: Person
@@ -226,6 +228,7 @@ export const fakeRefueling = (over: Partial<FakeRefueling> = {}): FakeRefueling 
   odometer: 12000,
   isFullTank: true,
   note: null,
+  consumption: null,
   canEdit: true,
   canDelete: false,
   createdBy: person('Alice'),
@@ -238,6 +241,7 @@ const logSorters: Record<string, (r: FakeRefueling) => string | number> = {
   TOTAL_COST: (r) => r.totalCost,
   ODOMETER: (r) => r.odometer,
   PRICE_PER_UNIT: (r) => r.totalCost / r.volume,
+  CONSUMPTION: (r) => r.consumption ?? 0,
   CREATED_BY: (r) => r.createdBy.displayName.toLowerCase(),
   VEHICLE: (r) => r.vehicleId,
   DELETED_AT: (r) => r.deletedAt ?? '',
@@ -341,6 +345,123 @@ export function fakeLogBackend(vehicle: FakeVehicle, logs: FakeRefueling[] = [])
       state.grants = state.grants.filter((g) => g.user.id !== userId)
       if (level !== 'NONE') state.grants.push({ user: state.candidates.find((c) => c.id === userId)!, level })
       return HttpResponse.json({ data: { setVehicleLogAccess: true } })
+    }),
+  ]
+  return { state, handlers }
+}
+
+export interface FakeExpense {
+  id: string
+  vehicleId: string
+  date: string
+  title: string
+  category: string | null
+  amount: number
+  currency: string
+  odometer: number | null
+  note: string | null
+  canEdit: boolean
+  canDelete: boolean
+  createdBy: Person
+  deletedAt?: string
+}
+
+export const fakeExpense = (over: Partial<FakeExpense> = {}): FakeExpense => ({
+  id: 'e1',
+  vehicleId: 'v1',
+  date: '2026-09-01',
+  title: 'Oil change',
+  category: 'Service',
+  amount: 35000,
+  currency: 'HUF',
+  odometer: 12000,
+  note: null,
+  canEdit: true,
+  canDelete: false,
+  createdBy: person('Alice'),
+  ...over,
+})
+
+const expenseSorters: Record<string, (e: FakeExpense) => string | number> = {
+  DATE: (e) => e.date,
+  TITLE: (e) => e.title.toLowerCase(),
+  CATEGORY: (e) => (e.category ?? '').toLowerCase(),
+  AMOUNT: (e) => e.amount,
+  ODOMETER: (e) => e.odometer ?? 0,
+  CREATED_BY: (e) => e.createdBy.displayName.toLowerCase(),
+  VEHICLE: (e) => e.vehicleId,
+  DELETED_AT: (e) => e.deletedAt ?? '',
+}
+
+/** A small in-memory backend for one vehicle's expenses (and their trash). */
+export function fakeExpenseBackend(vehicle: FakeVehicle, expenses: FakeExpense[] = []) {
+  const state = {
+    vehicle,
+    expenses: [...expenses],
+    trash: [] as FakeExpense[],
+    calls: {} as Record<string, unknown[]>,
+    requests: [] as Record<string, unknown>[],
+    failWith: undefined as { message: string; key: string; args?: Record<string, unknown> } | undefined,
+    nextId: 300,
+  }
+  const record = (name: string, vars: unknown) => (state.calls[name] ??= []).push(vars)
+  const fail = (): Response | undefined => (state.failWith ? HttpResponse.json(gqlError(state.failWith.message, 'VALIDATION_FAILED', state.failWith.key, state.failWith.args)) : undefined)
+  const rows = (list: FakeExpense[], vars: GridVars) => {
+    const key = expenseSorters[vars.orderBy]
+    const sorted = [...list].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0))
+    if (vars.direction === 'DESC') sorted.reverse()
+    return sorted.slice(vars.skip, vars.skip + vars.take).map((e) => ({ ...e, vehicle: { id: state.vehicle.id, name: state.vehicle.name } }))
+  }
+
+  const handlers = [
+    graphql.query('VehicleDetails', ({ variables }) =>
+      HttpResponse.json({ data: { vehicle: variables.id === state.vehicle.id ? { ...state.vehicle, refuelingCount: 0 } : null } }),
+    ),
+    graphql.query('Expenses', ({ variables }) => {
+      state.requests.push(variables)
+      return HttpResponse.json({ data: { expenses: rows(state.expenses, variables as unknown as GridVars), expenseCount: state.expenses.length } })
+    }),
+    graphql.query('ExpenseTrash', ({ variables }) =>
+      HttpResponse.json({ data: { expenseTrash: rows(state.trash, variables as unknown as GridVars), expenseTrashCount: state.trash.length, expenseTrashDeletableCount: state.trash.length } }),
+    ),
+    graphql.query('ExpenseDetails', ({ variables }) => HttpResponse.json({ data: { expense: state.expenses.find((e) => e.id === variables.id) ?? null } })),
+    graphql.query('ExpenseCategories', () =>
+      HttpResponse.json({ data: { expenseCategories: [...new Set(state.expenses.map((e) => e.category).filter((c): c is string => c !== null))].sort() } }),
+    ),
+    graphql.query('LogDefaults', () => HttpResponse.json({ data: { logDefaults: { lastOdometer: null, lastDate: null, currency: 'HUF' } } })),
+    graphql.mutation('AddExpense', ({ variables }) => {
+      record('AddExpense', variables)
+      const failure = fail()
+      if (failure) return failure
+      const id = `e${state.nextId++}`
+      state.expenses.push(fakeExpense({ id, vehicleId: variables.input.vehicleId, ...variables.input }))
+      return HttpResponse.json({ data: { addExpense: { id } } })
+    }),
+    graphql.mutation('UpdateExpense', ({ variables }) => {
+      record('UpdateExpense', variables)
+      const i = state.expenses.findIndex((e) => e.id === variables.input.id)
+      state.expenses[i] = { ...state.expenses[i], ...variables.input }
+      return HttpResponse.json({ data: { updateExpense: { id: variables.input.id } } })
+    }),
+    graphql.mutation('DeleteExpense', ({ variables }) => {
+      record('DeleteExpense', variables)
+      const e = state.expenses.find((x) => x.id === variables.id)!
+      state.expenses = state.expenses.filter((x) => x.id !== variables.id)
+      state.trash.push({ ...e, deletedAt: '2026-10-02T09:30:00Z' })
+      return HttpResponse.json({ data: { deleteExpense: { id: variables.id } } })
+    }),
+    graphql.mutation('RestoreExpense', ({ variables }) => {
+      record('RestoreExpense', variables)
+      const e = state.trash.find((x) => x.id === variables.id)!
+      state.trash = state.trash.filter((x) => x.id !== variables.id)
+      state.expenses.push(e)
+      return HttpResponse.json({ data: { restoreExpense: { id: variables.id } } })
+    }),
+    graphql.mutation('EmptyExpenseTrash', () => {
+      record('EmptyExpenseTrash', {})
+      const removed = state.trash.length
+      state.trash = []
+      return HttpResponse.json({ data: { emptyExpenseTrash: removed } })
     }),
   ]
   return { state, handlers }

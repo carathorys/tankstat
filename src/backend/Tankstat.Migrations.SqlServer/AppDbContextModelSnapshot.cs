@@ -267,10 +267,71 @@ namespace Tankstat.Migrations.SqlServer
                     b.ToTable("Users", (string)null);
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Vehicles.Expense", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<Guid>("CostId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid?>("OdometerReadingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CostId")
+                        .IsUnique();
+
+                    b.HasIndex("DeletedAt");
+
+                    b.HasIndex("OdometerReadingId")
+                        .IsUnique()
+                        .HasFilter("[OdometerReadingId] IS NOT NULL");
+
+                    b.HasIndex("OwnerId");
+
+                    b.HasIndex("VehicleId", "Date");
+
+                    b.ToTable("Expenses", (string)null);
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Vehicles.Refueling", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal?>("Consumption")
+                        .HasPrecision(9, 3)
+                        .HasColumnType("decimal(9,3)");
 
                     b.Property<Guid>("CostId")
                         .HasColumnType("uniqueidentifier");
@@ -409,6 +470,30 @@ namespace Tankstat.Migrations.SqlServer
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Vehicles.Expense", b =>
+                {
+                    b.HasOne("Tankstat.Domain.Measurements.Cost", "Cost")
+                        .WithOne()
+                        .HasForeignKey("Tankstat.Domain.Vehicles.Expense", "CostId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Tankstat.Domain.Odometers.OdometerReading", "OdometerReading")
+                        .WithOne()
+                        .HasForeignKey("Tankstat.Domain.Vehicles.Expense", "OdometerReadingId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
+                        .WithMany()
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Cost");
+
+                    b.Navigation("OdometerReading");
                 });
 
             modelBuilder.Entity("Tankstat.Domain.Vehicles.Refueling", b =>

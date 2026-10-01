@@ -156,13 +156,13 @@ it('menu entries follow the user: no account/admin without a user, admin entry o
   server.use(sessionHandler('NONE', () => null), healthHandler, ...withBackend())
   const none = renderWithApollo(<App />)
   await screen.findByRole('heading', { name: 'Vehicles' })
-  expect(navLinks()).toEqual(['Vehicles', 'Trash'])
+  expect(navLinks()).toEqual(['Vehicles', 'Import', 'Trash'])
   none.unmount()
 
   server.use(sessionHandler('STANDALONE', () => user({ isAdmin: true })))
   renderWithApollo(<App />)
   await screen.findByText('admin')
-  expect(navLinks()).toEqual(['Vehicles', 'Trash', 'Account', 'Administration'])
+  expect(navLinks()).toEqual(['Vehicles', 'Import', 'Trash', 'Account', 'Administration'])
   expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
 })
 
@@ -172,7 +172,7 @@ it('regular users get no administration entry; behind a proxy there is no sign o
   renderWithApollo(<App />)
   await screen.findByRole('heading', { name: 'Vehicles' })
 
-  expect(navLinks()).toEqual(['Vehicles', 'Trash', 'Account'])
+  expect(navLinks()).toEqual(['Vehicles', 'Import', 'Trash', 'Account'])
   expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
 })
 

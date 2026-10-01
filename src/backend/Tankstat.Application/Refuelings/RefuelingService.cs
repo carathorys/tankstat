@@ -49,7 +49,8 @@ public sealed class RefuelingService(
         return refueling is not null && await VisibleVehicleAsync(refueling.VehicleId, ct) is not null ? refueling : null;
     }
 
-    public async Task<Refueling> LogAsync(Guid vehicleId, RefuelingInput input, CancellationToken ct)
+    /// <param name="recalculateConsumption">Set to false when adding many logs in a row (an import) and call <see cref="RecalculateConsumptionAsync"/> once at the end.</param>
+    public async Task<Refueling> LogAsync(Guid vehicleId, RefuelingInput input, CancellationToken ct, bool recalculateConsumption = true)
     {
         var (vehicle, _) = await EditableVehicleAsync(vehicleId, ct);
         var creator = await access.RequirePrincipalAsync(ct);
@@ -59,7 +60,8 @@ public sealed class RefuelingService(
         var cost = Cost.Create(vehicle.OwnerId, vehicle.Id, input.Date, input.TotalCost, input.Currency);
         var refueling = Refueling.Create(vehicle.OwnerId, creator.Id, vehicle.Id, input.Date, input.Volume, cost, reading, input.IsFullTank, input.Note);
         await refuelings.AddAsync(refueling, ct);
-        return refueling;
+        if (recalculateConsumption) await RecalculateConsumptionAsync(vehicle.Id, ct);
+        return await refuelings.FindAsync(refueling.Id, ct) ?? refueling;
     }
 
     public async Task<Refueling> UpdateAsync(Guid id, RefuelingInput input, CancellationToken ct)
@@ -69,7 +71,8 @@ public sealed class RefuelingService(
 
         refueling.Update(input.Date, input.Volume, input.TotalCost, input.Currency ?? refueling.Currency, input.Odometer, input.IsFullTank, input.Note);
         await refuelings.UpdateAsync(refueling, ct);
-        return refueling;
+        await RecalculateConsumptionAsync(refueling.VehicleId, ct);
+        return await refuelings.FindAsync(id, ct) ?? refueling;
     }
 
     /// <summary>Moves the log to the trash; it can be restored until it is deleted permanently.</summary>
@@ -78,6 +81,7 @@ public sealed class RefuelingService(
         var refueling = await EditableLogAsync(id, includeDeleted: false, ct);
         refueling.MarkDeleted(clock.GetUtcNow());
         await refuelings.UpdateAsync(refueling, ct);
+        await RecalculateConsumptionAsync(refueling.VehicleId, ct); // the neighbours' fill-up intervals change
         return refueling;
     }
 
@@ -87,7 +91,18 @@ public sealed class RefuelingService(
         await ValidateAsync(refueling.VehicleId, new RefuelingInput(refueling.Date, refueling.Volume, refueling.TotalCost, refueling.Currency, refueling.Odometer, refueling.IsFullTank, refueling.Note), exceptReadingId: null, ct);
         refueling.Restore();
         await refuelings.UpdateAsync(refueling, ct);
-        return refueling;
+        await RecalculateConsumptionAsync(refueling.VehicleId, ct);
+        return await refuelings.FindAsync(id, ct) ?? refueling;
+    }
+
+    /// <summary>
+    /// Refreshes the stored consumption of every log of the vehicle (see <see cref="ConsumptionCalculator"/>) and saves only the ones that
+    /// changed. Runs whenever a log is added, changed, trashed or restored, because a change moves the boundaries between full fill-ups.
+    /// </summary>
+    public async Task RecalculateConsumptionAsync(Guid vehicleId, CancellationToken ct)
+    {
+        var logs = await refuelings.ListAllForVehicleAsync(vehicleId, ct);
+        await refuelings.SaveConsumptionsAsync(ConsumptionCalculator.Apply(logs), ct);
     }
 
     /// <summary>Trashed logs the user could restore.</summary>

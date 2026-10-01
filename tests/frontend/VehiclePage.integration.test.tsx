@@ -49,6 +49,33 @@ it('shows the price per unit and the cost in the currency it was paid in', async
   expect(within(row).getByText(/530/)).toBeInTheDocument() // 22000 / 41.5 per liter
 })
 
+it('shows the stored consumption per 100 units, and a dash where there is none', async () => {
+  setup(fakeVehicle(), [
+    fakeRefueling({ id: 'r1', date: '2026-08-01', odometer: 11000, consumption: null }),
+    fakeRefueling({ id: 'r2', date: '2026-09-01', odometer: 12000, consumption: 6.667 }),
+  ])
+
+  const row = (await screen.findByText(/Sep 1, 2026/)).closest('tr')!
+  expect(within(row).getByText('6.67 L/100 km')).toBeInTheDocument()
+  expect(within((await screen.findByText(/Aug 1, 2026/)).closest('tr')!).getAllByText('–').length).toBeGreaterThan(0)
+})
+
+it('shows miles per gallon where the vehicle uses miles and gallons', async () => {
+  setup(fakeVehicle({ units: { distance: 'MILES', volume: 'US_GALLONS' } }), [fakeRefueling({ id: 'r2', date: '2026-09-01', consumption: 8 })])
+
+  expect(await screen.findByText('12.5 mpg (US)')).toBeInTheDocument()
+})
+
+it('asks the server for the consumption and sorts by it on the server', async () => {
+  const { ui, state } = setup()
+  await screen.findByText(/Sep 1, 2026/)
+  expect(state.requests.at(-1)).toMatchObject({ withConsumption: true })
+
+  await ui.click(screen.getByRole('button', { name: /^Sort by Consumption/ }))
+
+  await waitFor(() => expect(state.requests.at(-1)).toMatchObject({ orderBy: 'CONSUMPTION', direction: 'ASC' }))
+})
+
 it('sorts the logs on the server, newest first by default', async () => {
   const { ui, state } = setup()
   await screen.findByText(/Sep 1, 2026/)

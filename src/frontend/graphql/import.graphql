@@ -1,0 +1,56 @@
+# Importing from another app: the file is uploaded with POST /imports/{format} (which answers a token); the rest is GraphQL.
+query ImportPreview($token: String!, $vehicleId: UUID) {
+  importPreview(token: $token, vehicleId: $vehicleId) {
+    fuelRows
+    expenseRows
+    duplicateFuelRows
+    duplicateExpenseRows
+    firstDate
+    lastDate
+    categories
+    sourceVehicle {
+      name
+      licensePlate
+      fuelType
+      distanceUnit
+      volumeUnit
+    }
+    issues {
+      section
+      row
+      key
+      args
+    }
+  }
+}
+
+# Vehicles the user may import into (those whose logs they may edit).
+query ImportTargets {
+  vehicles(orderBy: NAME, direction: ASC, skip: 0, take: 200) {
+    id
+    name
+    licensePlate
+    canEdit
+    logAccess
+    units {
+      distance
+      volume
+    }
+  }
+}
+
+mutation ConfirmImport($input: ConfirmImportInput!) {
+  confirmImport(input: $input) {
+    vehicleId
+    fuelImported
+    expensesImported
+    fuelSkippedDuplicates
+    expensesSkippedDuplicates
+    errors {
+      section
+      row
+      key
+      args
+    }
+  }
+}

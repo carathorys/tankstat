@@ -26,6 +26,23 @@ internal sealed class RefuelingRepository(IDbContextFactory<AppDbContext> dbFact
         return await db.Refuelings.IgnoreQueryFilters().AnyAsync(r => r.VehicleId == vehicleId, ct);
     }
 
+    public async Task<IReadOnlyList<Refueling>> ListAllForVehicleAsync(Guid vehicleId, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.Refuelings.Include(r => r.OdometerReading).Include(r => r.Cost).AsNoTracking().Where(r => r.VehicleId == vehicleId).ToListAsync(ct);
+    }
+
+    public async Task SaveConsumptionsAsync(IReadOnlyList<Refueling> refuelings, CancellationToken ct)
+    {
+        if (refuelings.Count == 0) return;
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        foreach (var r in refuelings)
+        {
+            var value = r.Consumption;
+            await db.Refuelings.Where(x => x.Id == r.Id).ExecuteUpdateAsync(s => s.SetProperty(x => x.Consumption, value), ct);
+        }
+    }
+
     public async Task<IReadOnlyList<Refueling>> ListDeletedAsync(OwnerScope scope, RefuelingQuery query, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
@@ -89,6 +106,7 @@ internal sealed class RefuelingRepository(IDbContextFactory<AppDbContext> dbFact
             RefuelingSortField.Volume => Order(refuelings, r => r.Volume, desc),
             RefuelingSortField.TotalCost => Order(refuelings, r => r.Cost.Amount, desc),
             RefuelingSortField.Odometer => Order(refuelings, r => r.OdometerReading.Value, desc),
+            RefuelingSortField.Consumption => Order(refuelings, r => r.Consumption, desc),
             RefuelingSortField.PricePerUnit => Order(refuelings, r => r.Cost.Amount / r.Volume, desc),
             RefuelingSortField.CreatedBy => Order(refuelings, r => db.Users.Where(u => u.Id == r.CreatedById).Select(u => u.DisplayName.ToLower()).FirstOrDefault(), desc),
             RefuelingSortField.Vehicle => Order(refuelings, r => db.Vehicles.IgnoreQueryFilters().Where(v => v.Id == r.VehicleId).Select(v => v.Name.ToLower()).FirstOrDefault(), desc),
