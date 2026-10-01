@@ -21,19 +21,29 @@ public class StartupSmokeTests
     // ---- None ---------------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task TheShippedDefaults_StartInNoAuthMode_WithTheSqliteFallbackInTheWorkingDirectory()
+    public async Task TheShippedDefaults_Start_WithTheSqliteFallbackInTheWorkingDirectory()
     {
-        // No environment settings at all: only the appsettings.json that ships with the app. If someone changes the
-        // default there (e.g. to Standalone) without the settings that mode needs, this is the test that catches it.
+        // No environment settings at all: only the appsettings.json that ships with the app, whatever mode it selects.
+        // If the default mode needs settings that are not there (e.g. Standalone without an administrator), this fails.
         var work = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"tankstat-smoke-{Guid.NewGuid():N}")).FullName;
         await using var app = await AppProcess.StartAsync(Env(), workDirectory: work, useTempDatabase: false);
 
         var data = (await app.Gql(Session)).Data();
 
-        Assert.Equal("NONE", data.GetProperty("session").GetProperty("mode").GetString());
-        Assert.Equal("AUTH_DISABLED", data.GetProperty("notices")[0].GetProperty("code").GetString());
+        Assert.Contains(data.GetProperty("session").GetProperty("mode").GetString(), new[] { "NONE", "STANDALONE", "OIDC", "PROXY_HEADER" });
         Assert.Equal("ok", data.GetProperty("health").GetProperty("status").GetString());
         Assert.True(File.Exists(Path.Combine(work, "tankstat.db")), "the default SQLite database should have been created");
+    }
+
+    [Fact]
+    public async Task NoAuthMode_ShowsTheUnsafeNotice()
+    {
+        await using var app = await AppProcess.StartAsync(Env(("Auth__Mode", "None")));
+
+        var data = (await app.Gql(Session)).Data();
+
+        Assert.Equal("NONE", data.GetProperty("session").GetProperty("mode").GetString());
+        Assert.Equal("AUTH_DISABLED", data.GetProperty("notices")[0].GetProperty("code").GetString());
     }
 
     [Fact]
@@ -108,7 +118,7 @@ public class StartupSmokeTests
     {
         // The behaviour reported as "crash on startup": nothing configured and no administrator in the database.
         // Today this is a deliberate fail-fast; this test pins down exactly what happens.
-        var (exitCode, log) = await AppProcess.RunUntilExitAsync(Env(("Auth__Mode", "Standalone")));
+        var (exitCode, log) = await AppProcess.RunUntilExitAsync(Env(("Auth__Mode", "Standalone"), ("Auth__Standalone__AdminEmail", ""), ("Auth__Standalone__AdminPassword", "")));
 
         Assert.NotEqual(0, exitCode);
         Assert.Contains("no administrator exists", log);

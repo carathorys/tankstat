@@ -12,7 +12,7 @@ namespace Tankstat.Api.IntegrationTests;
 [Collection(ApiCollection.Name)]
 public class NoAuthModeTests : IDisposable
 {
-    private readonly TestApp _app = new([]);
+    private readonly TestApp _app = new(new() { ["Auth:Mode"] = "None" });
 
     public void Dispose() => _app.Dispose();
 

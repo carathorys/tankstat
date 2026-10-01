@@ -1,0 +1,157 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch/PR makes the older, still running, run pointless.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+
+jobs:
+  # Everything that needs only Node: lint, types, unit + integration tests (Vitest), production build.
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Installs the versions pinned in mise.toml (the same ones developers use); only Node is needed here.
+      - uses: jdx/mise-action@v2
+        with:
+          install_args: node
+          cache: true
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  # Everything that needs only .NET: build, unit tests, in-process integration tests.
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+        with:
+          install_args: dotnet
+          cache: true
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - run: dotnet restore Tankstat.slnx
+      - run: dotnet build Tankstat.slnx --no-restore
+
+      - name: Unit and integration tests
+        run: |
+          for project in tests/backend/*.UnitTests tests/backend/Tankstat.Api.IntegrationTests; do
+            echo "::group::$project"
+            dotnet test "$project" --no-build --logger "trx;LogFileName=$(basename "$project").trx" --results-directory test-results
+            echo "::endgroup::"
+          done
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: test-results
+          retention-days: 7
+
+  # Runs the real app as a process: once per authentication mode (startup smoke tests), and the black-box GraphQL
+  # contract tests against a freshly started server. Slower, so it runs next to the others rather than after them.
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+        with:
+          install_args: dotnet
+          cache: true
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Startup smoke tests (None, Standalone, OIDC, ProxyHeader, bad settings)
+        run: mise run test:smoke
+
+      - name: API contract tests against a running server
+        run: mise run test:api
+
+  # schema.graphql and the generated TypeScript GraphQL types must match the API and the .graphql documents.
+  codegen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+        with:
+          cache: true
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            ~/.nuget/packages
+          key: codegen-${{ runner.os }}-${{ hashFiles('package-lock.json', '**/*.csproj') }}
+
+      - run: npm ci
+      - run: mise run codegen:check
+
+  # The self-hostable build (API + frontend in wwwroot), kept as an artifact for pull requests and main.
+  build:
+    needs: [frontend, backend, smoke, codegen]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+        with:
+          cache: true
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            ~/.nuget/packages
+          key: build-${{ runner.os }}-${{ hashFiles('package-lock.json', '**/*.csproj') }}
+
+      - run: npm ci
+      - run: mise run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tankstat-${{ github.sha }}
+          path: out
+          if-no-files-found: error
+          retention-days: 14

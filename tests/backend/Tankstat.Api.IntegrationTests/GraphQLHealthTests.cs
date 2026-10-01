@@ -15,6 +15,7 @@ public sealed class ApiFixture : IDisposable
 {
     private const string ProviderVar = "Database__Provider";
     private const string ConnectionVar = "Database__ConnectionString";
+    private const string ModeVar = "Auth__Mode";
 
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}.db");
 
@@ -24,6 +25,7 @@ public sealed class ApiFixture : IDisposable
     {
         Environment.SetEnvironmentVariable(ProviderVar, "Sqlite");
         Environment.SetEnvironmentVariable(ConnectionVar, $"Data Source={_path}");
+        Environment.SetEnvironmentVariable(ModeVar, "None"); // these tests are about no-auth; appsettings.json may say otherwise
         Factory = new WebApplicationFactory<Program>();
     }
 
@@ -32,6 +34,7 @@ public sealed class ApiFixture : IDisposable
         Factory.Dispose();
         Environment.SetEnvironmentVariable(ProviderVar, null);
         Environment.SetEnvironmentVariable(ConnectionVar, null);
+        Environment.SetEnvironmentVariable(ModeVar, null);
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         File.Delete(_path);
     }

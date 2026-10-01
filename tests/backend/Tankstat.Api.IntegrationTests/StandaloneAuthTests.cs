@@ -358,7 +358,8 @@ public class StandaloneStartupTests
     [Fact]
     public void Startup_Fails_WithoutAnAdministratorOrBootstrapConfiguration()
     {
-        using var app = new TestApp(new() { ["Auth:Mode"] = "Standalone" });
+        // Blank administrator settings: whatever appsettings.json provides must not matter.
+        using var app = new TestApp(new() { ["Auth:Mode"] = "Standalone", ["Auth:Standalone:AdminEmail"] = "", ["Auth:Standalone:AdminPassword"] = "" });
 
         var e = Assert.ThrowsAny<Exception>(() => app.NewClient());
 

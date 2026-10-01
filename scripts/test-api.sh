@@ -8,6 +8,8 @@ export TANKSTAT_API_URL="http://localhost:${port}"
 dotnet build src/backend/Tankstat.Api -c Release --nologo -v q
 # Schema introspection (used by the contract tests) is Development-only in HotChocolate.
 export ASPNETCORE_ENVIRONMENT=Development
+# The contract tests assume no authentication, whatever appsettings.json says.
+export Auth__Mode=None
 # Throwaway DB so the run never touches a developer database.
 db="$(mktemp -u -t tankstat-api-XXXXXX.db)"
 export Database__ConnectionString="Data Source=${db}"
