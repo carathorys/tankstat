@@ -62,6 +62,10 @@ run = ["npm run test:unit", "dotnet test tests/backend/Tankstat.Seeder.UnitTests
 description = "Integration tests (web with mocked HTTP + API in-process)"
 run = ["npm run test:integration", "dotnet test tests/backend/Tankstat.Api.IntegrationTests"]
 
+[tasks."test:smoke"]
+description = "Start the real app as a process in every authentication mode (and with bad settings) and check it comes up"
+run = "dotnet test tests/backend/Tankstat.Api.SmokeTests"
+
 [tasks."test:api"]
 description = "Black-box API contract tests against a freshly started server"
 run = "scripts/test-api.sh"
@@ -69,4 +73,4 @@ run = "scripts/test-api.sh"
 [tasks.test]
 description = "Everything: typecheck, lint, unit, integration, API"
 depends = ["lint"]
-run = ["mise run codegen:check", "npm run typecheck", "mise run test:unit", "mise run test:integration", "mise run test:api"]
+run = ["mise run codegen:check", "npm run typecheck", "mise run test:unit", "mise run test:integration", "mise run test:smoke", "mise run test:api"]

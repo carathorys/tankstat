@@ -1,0 +1,241 @@
+using System.Net;
+
+namespace Tankstat.Api.SmokeTests;
+
+/// <summary>
+/// Starts the real app in every authentication mode, the way a self-hoster would (environment variables only),
+/// and checks it comes up and behaves like that mode. Misconfigurations must stop the app with a clear message.
+/// </summary>
+public class StartupSmokeTests
+{
+    /// <summary>Later entries override earlier ones.</summary>
+    private static Dictionary<string, string?> Env(params (string Key, string? Value)[] pairs)
+    {
+        var settings = new Dictionary<string, string?>();
+        foreach (var (key, value) in pairs) settings[key] = value;
+        return settings;
+    }
+
+    private const string Session = "{ session { mode user { email isAdmin } } notices { code } health { status databaseReachable } }";
+
+    // ---- None ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task TheShippedDefaults_StartInNoAuthMode_WithTheSqliteFallbackInTheWorkingDirectory()
+    {
+        // No environment settings at all: only the appsettings.json that ships with the app. If someone changes the
+        // default there (e.g. to Standalone) without the settings that mode needs, this is the test that catches it.
+        var work = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"tankstat-smoke-{Guid.NewGuid():N}")).FullName;
+        await using var app = await AppProcess.StartAsync(Env(), workDirectory: work, useTempDatabase: false);
+
+        var data = (await app.Gql(Session)).Data();
+
+        Assert.Equal("NONE", data.GetProperty("session").GetProperty("mode").GetString());
+        Assert.Equal("AUTH_DISABLED", data.GetProperty("notices")[0].GetProperty("code").GetString());
+        Assert.Equal("ok", data.GetProperty("health").GetProperty("status").GetString());
+        Assert.True(File.Exists(Path.Combine(work, "tankstat.db")), "the default SQLite database should have been created");
+    }
+
+    [Fact]
+    public async Task NoneMode_ServesVehicles_EndToEnd()
+    {
+        await using var app = await AppProcess.StartAsync(Env(("Auth__Mode", "None")));
+
+        var added = (await app.Gql("mutation { addVehicle(input: { name: \"Smoke car\", fuelType: PETROL }) { id } }")).Data();
+        var list = (await app.Gql("{ vehicles { name } vehicleCount }")).Data();
+
+        Assert.NotNull(added.GetProperty("addVehicle").GetProperty("id").GetString());
+        Assert.Equal("Smoke car", list.GetProperty("vehicles")[0].GetProperty("name").GetString());
+        Assert.Equal(1, list.GetProperty("vehicleCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task TheSpaFallback_DoesNotCrashWhenTheFrontendIsNotBuilt()
+    {
+        await using var app = await AppProcess.StartAsync(Env(("Auth__Mode", "None")));
+
+        var response = await app.GetAsync("/vehicles");
+
+        Assert.NotEqual(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.False(app.HasExited, app.Log);
+    }
+
+    // ---- Standalone ---------------------------------------------------------------------------------------
+
+    private static Dictionary<string, string?> Standalone(params (string Key, string? Value)[] extra) =>
+        Env([("Auth__Mode", "Standalone"), ("Auth__Standalone__AdminEmail", "root@example.com"), ("Auth__Standalone__AdminPassword", "initial-password-1"), .. extra]);
+
+    [Fact]
+    public async Task Standalone_WithAnAdministratorConfigured_Starts_AndTheAdministratorCanSignIn()
+    {
+        await using var app = await AppProcess.StartAsync(Standalone());
+
+        var anonymous = (await app.Gql(Session)).Data();
+        Assert.Equal("STANDALONE", anonymous.GetProperty("session").GetProperty("mode").GetString());
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, anonymous.GetProperty("session").GetProperty("user").ValueKind);
+        Assert.Equal("UNAUTHENTICATED", (await app.Gql("{ vehicles { id } }")).ErrorCode());
+
+        await app.Gql("mutation($i: LoginInput!) { login(input: $i) { id } }", new { i = new { email = "root@example.com", password = "initial-password-1" } });
+        var signedIn = (await app.Gql(Session)).Data().GetProperty("session").GetProperty("user");
+        Assert.Equal("root@example.com", signedIn.GetProperty("email").GetString());
+        Assert.True(signedIn.GetProperty("isAdmin").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Standalone_StartsAgainOnAnExistingDatabase_WithoutTheBootstrapSettings()
+    {
+        var first = await AppProcess.StartAsync(Standalone());
+        var work = first.WorkDirectory;
+        await first.StopAsync();
+
+        // Second start: the administrator already exists in the database, so no bootstrap settings are needed.
+        var settings = Env(("Auth__Mode", "Standalone"), ("Database__ConnectionString", $"Data Source={first.DatabasePath}"));
+        var second = await AppProcess.StartAsync(settings, workDirectory: work, useTempDatabase: false);
+        try
+        {
+            await second.Gql("mutation($i: LoginInput!) { login(input: $i) { id } }", new { i = new { email = "root@example.com", password = "initial-password-1" } });
+            Assert.Equal("root@example.com", (await second.Gql(Session)).Data().GetProperty("session").GetProperty("user").GetProperty("email").GetString());
+        }
+        finally
+        {
+            await second.DisposeAsync();
+            await first.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Standalone_WithoutAnAdministrator_StopsAtStartupWithAnActionableMessage()
+    {
+        // The behaviour reported as "crash on startup": nothing configured and no administrator in the database.
+        // Today this is a deliberate fail-fast; this test pins down exactly what happens.
+        var (exitCode, log) = await AppProcess.RunUntilExitAsync(Env(("Auth__Mode", "Standalone")));
+
+        Assert.NotEqual(0, exitCode);
+        Assert.Contains("no administrator exists", log);
+        Assert.Contains("Auth:Standalone:AdminEmail", log);
+        Assert.Contains("Auth__Standalone__AdminEmail", log);
+    }
+
+    [Fact]
+    public async Task Standalone_WithAWeakAdministratorPassword_StopsAtStartup()
+    {
+        var (exitCode, log) = await AppProcess.RunUntilExitAsync(Standalone(("Auth__Standalone__AdminPassword", "weak")));
+
+        Assert.NotEqual(0, exitCode);
+        Assert.Contains("at least", log);
+    }
+
+    [Fact]
+    public async Task Standalone_WithSmtpButNoPublicUrl_StopsAtStartup()
+    {
+        var (exitCode, log) = await AppProcess.RunUntilExitAsync(Standalone(("Smtp__Host", "mail.example.com"), ("Smtp__From", "tank@example.com")));
+
+        Assert.NotEqual(0, exitCode);
+        Assert.Contains("Auth:PublicUrl", log);
+    }
+
+    [Fact]
+    public async Task Standalone_WithSmtpAndPublicUrl_Starts()
+    {
+        await using var app = await AppProcess.StartAsync(Standalone(("Smtp__Host", "mail.example.com"), ("Smtp__From", "tank@example.com"), ("Auth__PublicUrl", "https://tank.example.com")));
+
+        Assert.Equal("STANDALONE", (await app.Gql(Session)).Data().GetProperty("session").GetProperty("mode").GetString());
+    }
+
+    // ---- OIDC ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Oidc_Starts_WithoutContactingTheProvider()
+    {
+        // The authority does not exist: startup must not depend on the identity provider being reachable.
+        await using var app = await AppProcess.StartAsync(Env(
+            ("Auth__Mode", "Oidc"), ("Auth__Oidc__Authority", "https://id.invalid"), ("Auth__Oidc__ClientId", "tankstat"), ("Auth__Oidc__ClientSecret", "secret")));
+
+        var data = (await app.Gql(Session)).Data();
+        Assert.Equal("OIDC", data.GetProperty("session").GetProperty("mode").GetString());
+        Assert.Empty(data.GetProperty("notices").EnumerateArray());
+        Assert.Equal("UNAUTHENTICATED", (await app.Gql("{ vehicles { id } }")).ErrorCode());
+        Assert.NotEqual(HttpStatusCode.NotFound, (await app.GetAsync("/auth/oidc/login")).StatusCode); // the login endpoint exists in this mode
+    }
+
+    [Fact]
+    public async Task Oidc_WithoutProviderSettings_StopsAtStartup()
+    {
+        var (exitCode, log) = await AppProcess.RunUntilExitAsync(Env(("Auth__Mode", "Oidc")));
+
+        Assert.NotEqual(0, exitCode);
+        Assert.Contains("Auth:Oidc:Authority", log);
+    }
+
+    // ---- Proxy header -------------------------------------------------------------------------------------
+
+    private static Dictionary<string, string?> Proxy(string trusted) =>
+        Env(("Auth__Mode", "ProxyHeader"), ("Auth__ProxyHeader__TrustedProxies__0", trusted), ("Auth__AdminEmails__0", "boss@example.com"));
+
+    private static Dictionary<string, string> User(string name, string email) =>
+        new() { ["X-Forwarded-User"] = name, ["X-Forwarded-Email"] = email };
+
+    [Fact]
+    public async Task ProxyHeader_TrustsTheHeaderFromTheConfiguredProxy()
+    {
+        await using var app = await AppProcess.StartAsync(Proxy("127.0.0.0/8")); // the test connects from loopback
+
+        var anonymous = (await app.Gql(Session)).Data();
+        Assert.Equal("PROXY_HEADER", anonymous.GetProperty("session").GetProperty("mode").GetString());
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, anonymous.GetProperty("session").GetProperty("user").ValueKind);
+
+        var boss = (await app.Gql(Session, headers: User("boss", "boss@example.com"))).Data().GetProperty("session").GetProperty("user");
+        Assert.Equal("boss@example.com", boss.GetProperty("email").GetString());
+        Assert.True(boss.GetProperty("isAdmin").GetBoolean());
+        Assert.Null((await app.Gql("{ vehicles { id } }", headers: User("boss", "boss@example.com"))).ErrorCode());
+    }
+
+    [Fact]
+    public async Task ProxyHeader_IgnoresTheHeaderFromAnyoneElse()
+    {
+        await using var app = await AppProcess.StartAsync(Proxy("10.0.0.0/8")); // the test connects from 127.0.0.1: not trusted
+
+        var forged = (await app.Gql(Session, headers: User("boss", "boss@example.com"))).Data().GetProperty("session").GetProperty("user");
+
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, forged.ValueKind);
+        Assert.Equal("UNAUTHENTICATED", (await app.Gql("{ vehicles { id } }", headers: User("boss", "boss@example.com"))).ErrorCode());
+    }
+
+    [Fact]
+    public async Task ProxyHeader_WithoutTrustedProxies_StopsAtStartup()
+    {
+        var (exitCode, log) = await AppProcess.RunUntilExitAsync(Env(("Auth__Mode", "ProxyHeader")));
+
+        Assert.NotEqual(0, exitCode);
+        Assert.Contains("TrustedProxies", log);
+    }
+
+    // ---- Misconfiguration ---------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task AnUnknownAuthMode_StopsAtStartup()
+    {
+        var (exitCode, log) = await AppProcess.RunUntilExitAsync(Env(("Auth__Mode", "Kerberos")));
+
+        Assert.NotEqual(0, exitCode);
+        Assert.Contains("Auth:Mode", log, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AnUnknownDatabaseProvider_StopsAtStartup()
+    {
+        var (exitCode, log) = await AppProcess.RunUntilExitAsync(Env(("Database__Provider", "Oracle")));
+
+        Assert.NotEqual(0, exitCode);
+        Assert.Contains("Oracle", log);
+    }
+
+    [Fact]
+    public async Task ANetworkDatabaseWithoutAConnectionString_StopsAtStartup()
+    {
+        var (exitCode, log) = await AppProcess.RunUntilExitAsync(Env(("Database__Provider", "PostgreSql")), useTempDatabase: false);
+
+        Assert.NotEqual(0, exitCode);
+        Assert.Contains("Database:ConnectionString", log);
+    }
+}
