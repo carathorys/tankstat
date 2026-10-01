@@ -1,18 +1,17 @@
 using Microsoft.EntityFrameworkCore;
+using Tankstat.Application.Access;
 using Tankstat.Application.Refuelings;
+using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Vehicles;
 
 namespace Tankstat.Infrastructure.Persistence.Repositories;
 
 internal sealed class RefuelingRepository(IDbContextFactory<AppDbContext> dbFactory) : IRefuelingRepository
 {
-    public async Task<IReadOnlyList<Refueling>> ListForVehicleAsync(Guid vehicleId, CancellationToken ct)
+    public async Task<IReadOnlyList<Refueling>> ListForVehicleAsync(Guid vehicleId, RefuelingQuery query, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await db.Refuelings.AsNoTracking()
-            .Where(r => r.VehicleId == vehicleId)
-            .OrderByDescending(r => r.Date).ThenByDescending(r => r.OdometerKm)
-            .ToListAsync(ct);
+        return await Page(db, db.Refuelings.Include(r => r.OdometerReading).Include(r => r.Cost).AsNoTracking().Where(r => r.VehicleId == vehicleId), query).ToListAsync(ct);
     }
 
     public async Task<int> CountForVehicleAsync(Guid vehicleId, CancellationToken ct)
@@ -21,10 +20,85 @@ internal sealed class RefuelingRepository(IDbContextFactory<AppDbContext> dbFact
         return await db.Refuelings.CountAsync(r => r.VehicleId == vehicleId, ct);
     }
 
+    public async Task<bool> AnyForVehicleAsync(Guid vehicleId, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.Refuelings.IgnoreQueryFilters().AnyAsync(r => r.VehicleId == vehicleId, ct);
+    }
+
+    public async Task<IReadOnlyList<Refueling>> ListDeletedAsync(OwnerScope scope, RefuelingQuery query, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await Page(db, Trashed(db, scope).AsNoTracking(), query).ToListAsync(ct);
+    }
+
+    public async Task<int> CountDeletedAsync(OwnerScope scope, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await Trashed(db, scope).CountAsync(ct);
+    }
+
+    public async Task<Refueling?> FindAsync(Guid id, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.Refuelings.Include(r => r.OdometerReading).Include(r => r.Cost).AsNoTracking().FirstOrDefaultAsync(r => r.Id == id, ct);
+    }
+
+    public async Task<Refueling?> FindIncludingDeletedAsync(Guid id, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.Refuelings.IgnoreQueryFilters().Include(r => r.OdometerReading).Include(r => r.Cost).AsNoTracking().FirstOrDefaultAsync(r => r.Id == id, ct);
+    }
+
     public async Task AddAsync(Refueling refueling, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         db.Refuelings.Add(refueling);
         await db.SaveChangesAsync(ct);
     }
+
+    public async Task UpdateAsync(Refueling refueling, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        db.Refuelings.Update(refueling);
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task<int> PurgeAsync(OwnerScope scope, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var doomed = await Trashed(db, scope).ToListAsync(ct);
+        db.Refuelings.RemoveRange(doomed); // the dependents first, then the reading and cost that went with each log
+        db.OdometerReadings.RemoveRange(doomed.Select(r => r.OdometerReading));
+        db.Costs.RemoveRange(doomed.Select(r => r.Cost));
+        await db.SaveChangesAsync(ct);
+        return doomed.Count;
+    }
+
+    private static IQueryable<Refueling> Trashed(AppDbContext db, OwnerScope scope) =>
+        db.Refuelings.IgnoreQueryFilters().Include(r => r.OdometerReading).Include(r => r.Cost).Where(r => r.DeletedAt != null).InScope(scope, r => r.VehicleId);
+
+    /// <summary>Orders (always ending in date, odometer and id, so pages are stable) and pages inside the database.</summary>
+    private static IQueryable<Refueling> Page(AppDbContext db, IQueryable<Refueling> refuelings, RefuelingQuery query)
+    {
+        var q = query.Normalized();
+        var desc = q.Direction == SortDirection.Desc;
+
+        var ordered = q.SortBy switch
+        {
+            RefuelingSortField.Volume => Order(refuelings, r => r.Volume, desc),
+            RefuelingSortField.TotalCost => Order(refuelings, r => r.Cost.Amount, desc),
+            RefuelingSortField.Odometer => Order(refuelings, r => r.OdometerReading.Value, desc),
+            RefuelingSortField.PricePerUnit => Order(refuelings, r => r.Cost.Amount / r.Volume, desc),
+            RefuelingSortField.CreatedBy => Order(refuelings, r => db.Users.Where(u => u.Id == r.CreatedById).Select(u => u.DisplayName.ToLower()).FirstOrDefault(), desc),
+            RefuelingSortField.Vehicle => Order(refuelings, r => db.Vehicles.IgnoreQueryFilters().Where(v => v.Id == r.VehicleId).Select(v => v.Name.ToLower()).FirstOrDefault(), desc),
+            RefuelingSortField.DeletedAt => Order(refuelings, r => r.DeletedAt, desc),
+            _ => Order(refuelings, r => r.Date, desc),
+        };
+        return (desc ? ordered.ThenByDescending(r => r.OdometerReading.Value) : ordered.ThenBy(r => r.OdometerReading.Value))
+            .ThenBy(r => r.Id).Skip(q.Skip).Take(q.Take);
+    }
+
+    private static IOrderedQueryable<Refueling> Order<TKey>(IQueryable<Refueling> refuelings, System.Linq.Expressions.Expression<Func<Refueling, TKey>> key, bool desc) =>
+        desc ? refuelings.OrderByDescending(key) : refuelings.OrderBy(key);
 }

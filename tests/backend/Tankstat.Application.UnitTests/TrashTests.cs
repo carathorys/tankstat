@@ -43,7 +43,7 @@ public class VehicleLifecycleTests
     public async Task Delete_MovesToTrash_Timestamped_AndHidesFromTheList()
     {
         var (w, _, _, car) = await Setup();
-        w.Clock.SetUtcNow(new DateTimeOffset(2026, 10, 1, 8, 0, 0, TimeSpan.Zero));
+        w.Clock.SetUtcNow(new DateTimeOffset(2026, 10, 1, 14, 0, 0, TimeSpan.Zero));
 
         await w.VehicleService.DeleteAsync(car.Id, default);
 

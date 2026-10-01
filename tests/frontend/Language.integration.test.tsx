@@ -46,8 +46,7 @@ it('keeps the language across pages', async () => {
   await screen.findByRole('heading', { name: 'Vehicles' })
   await switchToHungarian(ui)
 
-  await ui.click(screen.getByRole('button', { name: 'Menü megnyitása' }))
-  await ui.click(await screen.findByRole('menuitem', { name: 'Kuka' }))
+  await ui.click(screen.getByRole('link', { name: 'Kuka' }))
 
   await screen.findByRole('heading', { name: 'Kuka' })
   await screen.findByText('A kuka üres.')

@@ -15,7 +15,7 @@ await initI18n()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <Theme accentColor="blue" appearance="dark">
+    <Theme accentColor="indigo" grayColor="slate" appearance="dark" radius="large" panelBackground="translucent">
       <MotionConfig reducedMotion="user">
         <ApolloProvider client={createApolloClient()}>
           <BrowserRouter>

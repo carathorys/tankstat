@@ -3,7 +3,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Tankstat.Application.Access;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Vehicles;
+using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Vehicles;
+using Tankstat.TestSupport;
 using Tankstat.Infrastructure.Persistence;
 
 namespace Tankstat.Infrastructure.UnitTests;
@@ -17,7 +19,7 @@ public class TrashRepositoryTests
 
     private static async Task<Vehicle> Add(TestDatabase db, Guid owner, string name, DateTimeOffset? deletedAt = null)
     {
-        var v = Vehicle.Create(owner, name, null, FuelType.Petrol);
+        var v = TestData.Vehicle(owner, name, null, FuelType.Petrol);
         if (deletedAt is { } at) v.MarkDeleted(at);
         await db.Get<IVehicleRepository>().AddAsync(v, default);
         return v;
@@ -54,7 +56,7 @@ public class TrashRepositoryTests
 
         var trashed = (await repo.FindIncludingDeletedAsync(v.Id, default))!;
         trashed.Restore();
-        trashed.Update("Renamed", "ab-1", FuelType.Diesel);
+        trashed.Update("Renamed", "ab-1", FuelType.Diesel, MeasurementUnits.Metric);
         await repo.UpdateAsync(trashed, default);
 
         var again = (await repo.FindAsync(v.Id, default))!;
@@ -85,12 +87,12 @@ public class TrashRepositoryTests
         var doomed = await Add(db, Alice, "Doomed", Now);
         var live = await Add(db, Alice, "Live");
         var others = await Add(db, Bob, "Bobs trashed", Now);
-        await refuelings.AddAsync(Refueling.Create(Alice, doomed.Id, new(2026, 9, 1), 10, 10, 1, true), default);
-        await refuelings.AddAsync(Refueling.Create(Alice, live.Id, new(2026, 9, 1), 10, 10, 1, true), default);
+        await refuelings.AddAsync(TestData.Refueling(Alice, Guid.Empty, doomed.Id, new(2026, 9, 1), 10, 10, 1, true), default);
+        await refuelings.AddAsync(TestData.Refueling(Alice, Guid.Empty, live.Id, new(2026, 9, 1), 10, 10, 1, true), default);
 
         var purged = await repo.PurgeAsync(OwnerScope.Of([Alice]), default);
 
-        Assert.Equal(1, purged);
+        Assert.Equal(1, purged.Count);
         Assert.Null(await repo.FindIncludingDeletedAsync(doomed.Id, default));
         Assert.NotNull(await repo.FindIncludingDeletedAsync(live.Id, default));
         Assert.NotNull(await repo.FindIncludingDeletedAsync(others.Id, default));

@@ -1,5 +1,6 @@
 using HotChocolate.Execution;
 using Tankstat.Api.Auth;
+using Tankstat.Api.Media;
 using Tankstat.Api.GraphQL;
 using Tankstat.Application;
 using Tankstat.Infrastructure;
@@ -13,13 +14,19 @@ builder.Services.AddGraphQLServer()
     .AddMutationType<Mutation>()
     .AddTypeExtension<SessionQueries>()
     .AddTypeExtension<AuthMutations>()
+    .AddType<VehicleType>()
+    .AddType<RefuelingType>()
     .AddTypeExtension<VehicleExtensions>()
+    .AddTypeExtension<RefuelingExtensions>()
+    .AddTypeExtension<RefuelingQueries>()
+    .AddTypeExtension<RefuelingMutations>()
     .AddErrorFilter<BusinessErrorFilter>();
 
 var app = builder.Build();
 
 app.UseAuthentication();
 app.MapAuthEndpoints();
+app.MapMediaEndpoints();
 app.MapGraphQL(); // POST /graphql (Banana Cake Pop UI on GET in Development)
 
 // Self-hosting: the built SPA (dist/) is copied into wwwroot and served by Kestrel.

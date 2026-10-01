@@ -85,3 +85,59 @@ export function FieldForm({
     </RadixForm.Root>
   )
 }
+
+/**
+ * One labelled control for a Radix Form: the label, an optional always-visible hint and the error messages are all linked to the
+ * control (aria-describedby), and the "required" message is built in. `children` is the control itself (Radix Form's Control wraps it).
+ * `invalid` maps further validation messages (key to translated text) to a check on the typed value.
+ */
+export function Field({
+  name,
+  label,
+  hint,
+  required,
+  invalid,
+  children,
+}: {
+  name: string
+  label: string
+  hint?: string
+  required?: boolean
+  invalid?: { message: string; test: (value: string) => boolean }
+  children: ReactNode
+}) {
+  const { t } = useTranslation()
+  return (
+    <RadixForm.Field name={name} asChild>
+      <Flex direction="column" gap="1">
+        <RadixForm.Label asChild>
+          <Text as="label" size="2" weight="bold">
+            {label}
+          </Text>
+        </RadixForm.Label>
+        <RadixForm.Control asChild>{children}</RadixForm.Control>
+        {hint && (
+          <RadixForm.Message forceMatch asChild>
+            <Text size="1" color="gray">
+              {hint}
+            </Text>
+          </RadixForm.Message>
+        )}
+        {required && (
+          <RadixForm.Message match="valueMissing" asChild>
+            <Text size="1" color="red">
+              {t('forms.required', { field: label })}
+            </Text>
+          </RadixForm.Message>
+        )}
+        {invalid && (
+          <RadixForm.Message match={invalid.test} asChild>
+            <Text size="1" color="red">
+              {invalid.message}
+            </Text>
+          </RadixForm.Message>
+        )}
+      </Flex>
+    </RadixForm.Field>
+  )
+}

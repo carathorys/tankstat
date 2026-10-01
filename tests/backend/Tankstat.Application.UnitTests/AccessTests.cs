@@ -2,6 +2,7 @@ using Tankstat.Application.Vehicles;
 using Tankstat.Application;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Refuelings;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Users;
 using Tankstat.Domain.Vehicles;
@@ -148,7 +149,7 @@ public class VehicleAccessTests
 
         await Assert.ThrowsAsync<NotFoundException>(() =>
             w.RefuelingService.LogAsync(car.Id, new(2026, 10, 1), 10, 10, 10, true, default));
-        Assert.Empty(await w.RefuelingService.ListForVehicleAsync(car.Id, default));
+        Assert.Empty(await w.RefuelingService.ListAsync(car.Id, new RefuelingQuery(), default));
     }
 
     [Fact]

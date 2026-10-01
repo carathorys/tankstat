@@ -7,20 +7,18 @@ export interface ColumnChoice {
   id: string
   label: ParseKeys
   hideable: boolean
+  visible: boolean
+  toggle: (visible: boolean) => void
 }
 
 /** Show/hide and reorder columns. Up/down buttons (not drag and drop) so it works with touch and keyboard. */
 export function ColumnsPopover({
   columns,
-  hidden,
-  onToggle,
   onMove,
   onReset,
 }: {
   /** In current display order. */
   columns: ColumnChoice[]
-  hidden: string[]
-  onToggle: (id: string, visible: boolean) => void
   onMove: (id: string, offset: -1 | 1) => void
   onReset: () => void
 }) {
@@ -29,7 +27,7 @@ export function ColumnsPopover({
   return (
     <Popover.Root>
       <Popover.Trigger>
-        <IconButton variant="soft" color="gray" aria-label={t('grid.columns')}>
+        <IconButton variant="soft" color="gray" size={{ initial: '3', md: '2' }} aria-label={t('grid.columns')}>
           <Columns3 size={18} />
         </IconButton>
       </Popover.Trigger>
@@ -42,9 +40,9 @@ export function ColumnsPopover({
             <Flex key={c.id} align="center" gap="2">
               <Checkbox
                 aria-label={t('grid.showColumn', { column: t(c.label) })}
-                checked={!hidden.includes(c.id)}
+                checked={c.visible}
                 disabled={!c.hideable}
-                onCheckedChange={(checked) => onToggle(c.id, checked === true)}
+                onCheckedChange={(checked) => c.toggle(checked === true)}
               />
               <Text size="2" style={{ flex: 1 }}>
                 {t(c.label)}

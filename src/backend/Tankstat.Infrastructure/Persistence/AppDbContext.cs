@@ -1,5 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Tankstat.Domain.Access;
+using Tankstat.Domain.Images;
+using Tankstat.Domain.Measurements;
+using Tankstat.Domain.Odometers;
 using Tankstat.Domain.Users;
 using Tankstat.Domain.Vehicles;
 
@@ -9,10 +12,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 {
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
     public DbSet<Refueling> Refuelings => Set<Refueling>();
+    public DbSet<OdometerReading> OdometerReadings => Set<OdometerReading>();
+    public DbSet<Cost> Costs => Set<Cost>();
+    public DbSet<StoredImage> Images => Set<StoredImage>();
     public DbSet<User> Users => Set<User>();
     public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
     public DbSet<AccessGrant> AccessGrants => Set<AccessGrant>();
     public DbSet<AccessSettings> AccessSettings => Set<AccessSettings>();
+    public DbSet<ResourceGrant> ResourceGrants => Set<ResourceGrant>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);

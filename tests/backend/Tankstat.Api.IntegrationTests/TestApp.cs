@@ -16,6 +16,9 @@ internal sealed class TestApp : IDisposable
 {
     private readonly string _db = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}.db");
 
+    /// <summary>Where uploaded pictures of this host go.</summary>
+    public string UploadsPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-uploads");
+
     public WebApplicationFactory<Program> Factory { get; }
 
     public TestApp(Dictionary<string, string?> settings, Action<IServiceCollection>? services = null)
@@ -24,6 +27,7 @@ internal sealed class TestApp : IDisposable
         {
             ["Database:Provider"] = "Sqlite",
             ["Database:ConnectionString"] = $"Data Source={_db}",
+            ["Storage:Path"] = UploadsPath,
         };
         foreach (var (key, value) in settings) all[key] = value;
 
@@ -53,6 +57,7 @@ internal sealed class TestApp : IDisposable
         Factory.Dispose();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         File.Delete(_db);
+        if (Directory.Exists(UploadsPath)) Directory.Delete(UploadsPath, recursive: true);
     }
 }
 

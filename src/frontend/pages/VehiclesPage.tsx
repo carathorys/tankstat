@@ -1,16 +1,22 @@
 import { useMutation } from '@apollo/client/react'
-import { AlertDialog, Button, Flex, Heading, Text } from '@radix-ui/themes'
-import { useState } from 'react'
+import { Button, Flex, Heading, Link as RadixLink, Text } from '@radix-ui/themes'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Link } from 'react-router'
+import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
+import { UserChip } from '../components/UserAvatar.tsx'
+import { VehiclePicture } from '../components/VehiclePicture.tsx'
 import {
   AddVehicleDocument,
   DeleteVehicleDocument,
   UpdateVehicleDocument,
   VehiclesDocument,
+  type VehicleSortField,
   type VehiclesQuery,
   type VehiclesQueryVariables,
 } from '../gql/generated.ts'
 import { DataGrid, type GridColumn } from '../grid/DataGrid.tsx'
+import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { ErrorMessage } from '../messages.tsx'
 import { VehicleFormDialog } from '../VehicleFormDialog.tsx'
 
@@ -20,19 +26,36 @@ const refetch = { refetchQueries: ['Vehicles', 'Trash'], awaitRefetchQueries: tr
 
 export function VehiclesPage() {
   const { t } = useTranslation()
+  usePageTitle(t('vehicles.title'))
   const [addVehicle] = useMutation(AddVehicleDocument, refetch)
   const [updateVehicle] = useMutation(UpdateVehicleDocument, refetch)
   const [deleteVehicle] = useMutation(DeleteVehicleDocument, refetch)
   const [actionError, setActionError] = useState<unknown>()
-  const none = t('common.none')
 
-  const columns: GridColumn<Row, VehiclesQueryVariables>[] = [
-    { id: 'name', label: 'columns.name', hideable: false, mobile: true, sortField: 'NAME', cell: (r) => r.name },
-    { id: 'licensePlate', label: 'columns.licensePlate', include: 'withLicensePlate', sortField: 'LICENSE_PLATE', cell: (r) => r.licensePlate ?? none },
-    { id: 'fuelType', label: 'columns.fuelType', include: 'withFuelType', mobile: true, sortField: 'FUEL_TYPE', cell: (r) => (r.fuelType ? t(`fuel.${r.fuelType}`) : none) },
-    { id: 'owner', label: 'columns.owner', include: 'withOwner', sortField: 'OWNER', cell: (r) => r.ownerName ?? none },
-    { id: 'refuelings', label: 'columns.refuelings', include: 'withRefuelings', sortField: 'REFUELING_COUNT', cell: (r) => r.refuelingCount ?? none },
-  ]
+  const columns = useMemo<GridColumn<Row, VehiclesQueryVariables, VehicleSortField>[]>(() => {
+    const none = t('common.none')
+    return [
+      {
+        id: 'name',
+        label: 'columns.name',
+        hideable: false,
+        mobile: true,
+        sortField: 'NAME',
+        cell: (r) => (
+          <Flex align="center" gap="3">
+            <VehiclePicture url={r.pictureUrl} name={r.name} width={40} />
+            <RadixLink asChild weight="medium" aria-label={t('vehicles.open', { name: r.name })}>
+              <Link to={`/vehicles/${r.id}`}>{r.name}</Link>
+            </RadixLink>
+          </Flex>
+        ),
+      },
+      { id: 'licensePlate', label: 'columns.licensePlate', include: 'withLicensePlate', sortField: 'LICENSE_PLATE', cell: (r) => r.licensePlate ?? none },
+      { id: 'fuelType', label: 'columns.fuelType', include: 'withFuelType', mobile: true, sortField: 'FUEL_TYPE', cell: (r) => (r.fuelType ? t(`fuel.${r.fuelType}`) : none) },
+      { id: 'owner', label: 'columns.owner', include: 'withOwner', sortField: 'OWNER', cell: (r) => (r.owner ? <UserChip user={r.owner} /> : none) },
+      { id: 'refuelings', label: 'columns.refuelings', include: 'withRefuelings', sortField: 'REFUELING_COUNT', cell: (r) => r.refuelingCount ?? none },
+    ]
+  }, [t])
 
   async function moveToTrash(vehicle: Row) {
     setActionError(undefined)
@@ -44,55 +67,44 @@ export function VehiclesPage() {
   }
 
   return (
-    <section>
-      <Heading mb="4">{t('vehicles.title')}</Heading>
+    <section aria-labelledby="page-title">
+      <Heading id="page-title" mb="4">
+        {t('vehicles.title')}
+      </Heading>
       {actionError !== undefined && <ErrorMessage error={actionError} />}
       <DataGrid
         gridId="vehicles"
+        caption={t('vehicles.title')}
         query={VehiclesDocument}
         select={(d) => ({ rows: d.vehicles, total: d.vehicleCount })}
         rowKey={(r) => r.id}
         columns={columns}
-        defaultSort={{ field: 'NAME', direction: 'ASC' }}
+        defaultSort={{ column: 'name', direction: 'ASC' }}
         emptyText={t('vehicles.empty')}
-        toolbar={() => (
-          <VehicleFormDialog trigger={<Button>{t('vehicles.add')}</Button>} onSubmit={(input) => addVehicle({ variables: { input } })} />
-        )}
+        toolbar={() => <VehicleFormDialog trigger={<Button size="3">{t('vehicles.add')}</Button>} onSubmit={(input) => addVehicle({ variables: { input } })} />}
         actions={(v) =>
           v.canEdit ? (
             <Flex gap="2" justify="end">
               <VehicleFormDialog
                 vehicleId={v.id}
                 trigger={
-                  <Button size="1" variant="soft" aria-label={t('vehicles.editAria', { name: v.name })}>
+                  <Button size="2" variant="soft" aria-label={t('vehicles.editAria', { name: v.name })}>
                     {t('vehicles.edit')}
                   </Button>
                 }
                 onSubmit={(input) => updateVehicle({ variables: { input: { ...input, id: v.id } } })}
               />
-              <AlertDialog.Root>
-                <AlertDialog.Trigger>
-                  <Button size="1" variant="soft" color="red" aria-label={t('vehicles.deleteAria', { name: v.name })}>
+              <ConfirmDialog
+                trigger={
+                  <Button size="2" variant="soft" color="red" aria-label={t('vehicles.deleteAria', { name: v.name })}>
                     {t('vehicles.delete')}
                   </Button>
-                </AlertDialog.Trigger>
-                <AlertDialog.Content maxWidth="450px">
-                  <AlertDialog.Title>{t('vehicles.trashTitle', { name: v.name })}</AlertDialog.Title>
-                  <AlertDialog.Description size="2">{t('vehicles.trashDescription')}</AlertDialog.Description>
-                  <Flex gap="3" mt="4" justify="end">
-                    <AlertDialog.Cancel>
-                      <Button variant="soft" color="gray">
-                        {t('common.cancel')}
-                      </Button>
-                    </AlertDialog.Cancel>
-                    <AlertDialog.Action>
-                      <Button color="red" onClick={() => moveToTrash(v)}>
-                        {t('vehicles.trashConfirm')}
-                      </Button>
-                    </AlertDialog.Action>
-                  </Flex>
-                </AlertDialog.Content>
-              </AlertDialog.Root>
+                }
+                title={t('vehicles.trashTitle', { name: v.name })}
+                description={t('vehicles.trashDescription')}
+                confirmLabel={t('vehicles.trashConfirm')}
+                onConfirm={() => void moveToTrash(v)}
+              />
             </Flex>
           ) : (
             <Text size="2" color="gray">

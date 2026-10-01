@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\backend\Tankstat.Application\Tankstat.Application.csproj" />
+    <ProjectReference Include="..\Tankstat.TestSupport\Tankstat.TestSupport.csproj" />
   </ItemGroup>
 
 </Project>

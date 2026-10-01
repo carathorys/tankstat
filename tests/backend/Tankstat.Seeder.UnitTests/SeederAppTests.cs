@@ -50,6 +50,8 @@ public sealed class SeederAppTests : IDisposable
         Assert.Equal(6, Scalar("select count(*) from Vehicles where DeletedAt is not null"));
         Assert.InRange(Scalar("select count(*) from Refuelings"), 46 * 5, 46 * 15);
         Assert.Equal(0, Scalar("select count(*) from Users")); // no users, ever
+        Assert.Equal(Scalar("select count(*) from Refuelings"), Scalar("select count(*) from OdometerReadings"));
+        Assert.Equal(Scalar("select count(*) from Refuelings"), Scalar("select count(*) from Costs"));
         Assert.Equal(0, Scalar("select count(*) from Vehicles where OwnerId <> '00000000-0000-0000-0000-000000000000'"));
         Assert.True(Scalar("select count(*) from __EFMigrationsHistory") >= 2); // really migrated
     }
@@ -122,6 +124,49 @@ public sealed class SeederAppTests : IDisposable
     }
 
     [Fact]
+    public async Task ClearsTheUploadedPictures_WhenAFolderIsGiven()
+    {
+        var uploads = Path.Combine(Path.GetTempPath(), $"tankstat-seed-uploads-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(uploads);
+        File.WriteAllText(Path.Combine(uploads, "old-picture"), "x");
+
+        var (code, output) = await Run(["--vehicles", "2", "--uploads", uploads, "--yes"]);
+
+        Assert.Equal(SeederApp.Success, code);
+        Assert.False(Directory.Exists(uploads));
+        Assert.Contains(uploads, output); // told the user before deleting
+    }
+
+    [Fact]
+    public async Task LeavesPicturesAloneWhenTheUserDeclines_OrNoFolderIsKnown()
+    {
+        var uploads = Path.Combine(Path.GetTempPath(), $"tankstat-seed-uploads-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(uploads);
+        try
+        {
+            await Run(["--vehicles", "2", "--uploads", uploads], input: "no\n");
+            await Run(["--vehicles", "2", "--yes"]); // no folder given or configured: nothing is deleted
+
+            Assert.True(Directory.Exists(uploads));
+        }
+        finally
+        {
+            Directory.Delete(uploads, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task UsesTheConfiguredStoragePath_WhenNoFolderIsGiven()
+    {
+        var uploads = Path.Combine(Path.GetTempPath(), $"tankstat-seed-uploads-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(uploads);
+
+        await Run(["--vehicles", "1", "--yes"], env: new Dictionary<string, string?> { ["Storage:Path"] = uploads });
+
+        Assert.False(Directory.Exists(uploads));
+    }
+
+    [Fact]
     public async Task InvalidArguments_AreExplained_AndNothingHappens()
     {
         var (code, output) = await Run(["--vehicles", "abc", "--yes"]);
@@ -159,11 +204,11 @@ public sealed class SeederAppTests : IDisposable
     public async Task SameSeedGivesTheSameDatabaseContent()
     {
         await Run(["--vehicles", "20", "--trashed", "3", "--seed", "99", "--yes"]);
-        var first = Scalar("select sum(OdometerKm) + count(*) from Refuelings");
+        var first = Scalar("select sum(Value) + count(*) from OdometerReadings");
 
         await Run(["--vehicles", "20", "--trashed", "3", "--seed", "99", "--yes"]);
 
-        Assert.Equal(first, Scalar("select sum(OdometerKm) + count(*) from Refuelings"));
+        Assert.Equal(first, Scalar("select sum(Value) + count(*) from OdometerReadings"));
     }
 
     [Fact]
@@ -173,10 +218,13 @@ public sealed class SeederAppTests : IDisposable
 
         Assert.Equal(0, Scalar("select count(*) from Refuelings r left join Vehicles v on v.Id = r.VehicleId where v.Id is null"));
         Assert.Equal(0, Scalar("select count(*) from Refuelings r join Vehicles v on v.Id = r.VehicleId where r.OwnerId <> v.OwnerId"));
-        // odometer and date both increase with the row order of the same vehicle
+        // every log owns exactly one reading and one cost of its own vehicle, dated like the log
+        Assert.Equal(0, Scalar("select count(*) from Refuelings r left join OdometerReadings o on o.Id = r.OdometerReadingId where o.Id is null or o.VehicleId <> r.VehicleId or o.Date <> r.Date"));
+        Assert.Equal(0, Scalar("select count(*) from Refuelings r left join Costs c on c.Id = r.CostId where c.Id is null or c.VehicleId <> r.VehicleId or c.Date <> r.Date"));
+        // odometer and date both increase within a vehicle
         Assert.Equal(0, Scalar("""
-            select count(*) from Refuelings a join Refuelings b on a.VehicleId = b.VehicleId
-            where a.Date < b.Date and a.OdometerKm >= b.OdometerKm
+            select count(*) from OdometerReadings a join OdometerReadings b on a.VehicleId = b.VehicleId
+            where a.Date < b.Date and a.Value >= b.Value
             """));
     }
 
@@ -199,7 +247,7 @@ public sealed class SeederAppTests : IDisposable
         Assert.Equal(30, counts.GetProperty("vehicleCount").GetInt32());
         Assert.Equal(4, counts.GetProperty("trashCount").GetInt32());
 
-        var page = (await Gql("{ vehicles(orderBy: REFUELING_COUNT, direction: DESC, take: 5) { refuelingCount canEdit ownerName } }"))
+        var page = (await Gql("{ vehicles(orderBy: REFUELING_COUNT, direction: DESC, take: 5) { refuelingCount canEdit owner { id } } }"))
             .GetProperty("data").GetProperty("vehicles").EnumerateArray().ToList();
         Assert.Equal(5, page.Count);
         Assert.Equal(page.Select(v => v.GetProperty("refuelingCount").GetInt32()).OrderByDescending(x => x), page.Select(v => v.GetProperty("refuelingCount").GetInt32()));

@@ -12,7 +12,8 @@ public sealed record SeedOptions(
     int RandomSeed,
     bool AssumeYes,
     string? Provider,
-    string? ConnectionString);
+    string? ConnectionString,
+    string? UploadsPath = null);
 
 public sealed class SeedOptionsException(string message) : Exception(message);
 
@@ -37,6 +38,8 @@ public static class SeedOptionsParser
           --provider <name>      Sqlite, PostgreSql, SqlServer or MySql              (default: Database:Provider, else Sqlite)
           --connection <string>  database connection string                          (default: Database:ConnectionString,
                                                                                       else Data Source=tankstat.db)
+          --uploads <folder>     the folder of uploaded pictures to delete too (default: Storage:Path
+                                                                                      if set; nothing is deleted otherwise)
           --yes                  do not ask for confirmation before deleting the database
           --help                 show this text
 
@@ -50,7 +53,7 @@ public static class SeedOptionsParser
         int vehicles = 25, trashed = 0, seed = 1234;
         var refuelings = new IntRange(20, 20);
         var yes = false;
-        string? provider = null, connection = null;
+        string? provider = null, connection = null, uploads = null;
 
         for (var i = 0; i < args.Count; i++)
         {
@@ -76,12 +79,13 @@ public static class SeedOptionsParser
                 case "--seed": seed = int.TryParse(Value(), out var s) ? s : throw new SeedOptionsException("--seed must be a whole number."); break;
                 case "--provider": provider = Value(); break;
                 case "--connection": connection = Value(); break;
+                case "--uploads": uploads = Value(); break;
                 default: throw new SeedOptionsException($"Unknown option '{arg}'. Use --help.");
             }
         }
 
         if ((long)vehicles + trashed > MaxVehicles) throw new SeedOptionsException($"At most {MaxVehicles:N0} vehicles in total.");
-        return new SeedOptions(vehicles, trashed, refuelings, seed, yes, provider, connection);
+        return new SeedOptions(vehicles, trashed, refuelings, seed, yes, provider, connection, uploads);
     }
 
     private static int Count(string name, string text, int max)

@@ -1,7 +1,7 @@
-import { screen } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
-import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import en from '../../src/frontend/i18n/locales/en.json'
 import { server } from './server.ts'
@@ -12,11 +12,15 @@ import {
   healthHandler,
   renderWithApollo,
   sessionHandler,
+  stubViewport,
   user,
 } from './mocks.tsx'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
+afterEach(() => {
+  server.resetHandlers()
+  vi.unstubAllGlobals()
+})
 afterAll(() => server.close())
 
 const withBackend = (vehicles = [fakeVehicle()]) => fakeVehicleBackend(vehicles).handlers
@@ -63,7 +67,7 @@ it('in OIDC mode an anonymous visitor only sees the provider link, no menu and n
   renderWithApollo(<App />)
 
   await screen.findByRole('link', { name: /identity provider/i })
-  expect(screen.queryByRole('button', { name: 'Open menu' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /menu/i })).not.toBeInTheDocument()
   expect(screen.queryByText('Vehicles')).not.toBeInTheDocument()
 })
 
@@ -82,45 +86,94 @@ it('only administrators can open the administration page', async () => {
   expect(screen.queryByRole('region', { name: 'Administration' })).not.toBeInTheDocument()
 })
 
-it('the hamburger menu navigates between pages', async () => {
+const navLinks = () => within(screen.getByRole('navigation', { name: 'Main navigation' })).getAllByRole('link').map((l) => l.textContent)
+
+it('on a desktop the navigation is docked and open by default, and its links navigate', async () => {
   const ui = userEvent.setup()
+  stubViewport('desktop')
   server.use(sessionHandler('NONE', () => null), healthHandler, ...withBackend())
   renderWithApollo(<App />)
   await screen.findByRole('heading', { name: 'Vehicles' })
 
-  await ui.click(screen.getByRole('button', { name: 'Open menu' }))
-  await ui.click(await screen.findByRole('menuitem', { name: 'Trash' }))
+  expect(screen.getByRole('button', { name: 'Hide menu' })).toHaveAttribute('aria-expanded', 'true')
+  await ui.click(within(screen.getByRole('navigation', { name: 'Main navigation' })).getByRole('link', { name: 'Trash' }))
 
   await screen.findByRole('heading', { name: 'Trash' })
+  expect(within(screen.getByRole('navigation', { name: 'Main navigation' })).getByRole('link', { name: 'Trash' })).toHaveAttribute('aria-current', 'page')
+})
+
+it('hiding the docked menu is remembered in this browser, and it stays hidden', async () => {
+  const ui = userEvent.setup()
+  stubViewport('desktop')
+  server.use(sessionHandler('NONE', () => null), healthHandler, ...withBackend())
+  const first = renderWithApollo(<App />)
+  await screen.findByRole('heading', { name: 'Vehicles' })
+
+  await ui.click(screen.getByRole('button', { name: 'Hide menu' }))
+
+  expect(screen.queryByRole('navigation', { name: 'Main navigation' })).not.toBeInTheDocument()
+  expect(window.localStorage.getItem('tankstat.nav.open')).toBe('false')
+  first.unmount()
+
+  renderWithApollo(<App />) // a later visit
+  await screen.findByRole('heading', { name: 'Vehicles' })
+  expect(screen.queryByRole('navigation', { name: 'Main navigation' })).not.toBeInTheDocument()
+  await ui.click(screen.getByRole('button', { name: 'Show menu' }))
+  expect(screen.getByRole('navigation', { name: 'Main navigation' })).toBeInTheDocument()
+  expect(window.localStorage.getItem('tankstat.nav.open')).toBe('true')
+})
+
+it('on a phone the menu is a closed overlay that opens from the button and closes after choosing a page', async () => {
+  const ui = userEvent.setup()
+  stubViewport('phone')
+  server.use(sessionHandler('NONE', () => null), healthHandler, ...withBackend())
+  renderWithApollo(<App />)
+  await screen.findByRole('heading', { name: 'Vehicles' })
+  expect(screen.queryByRole('navigation', { name: 'Main navigation' })).not.toBeInTheDocument()
+
+  await ui.click(screen.getByRole('button', { name: 'Show menu' }))
+  await ui.click(await screen.findByRole('link', { name: 'Trash' }))
+
+  await screen.findByRole('heading', { name: 'Trash' })
+  await waitFor(() => expect(screen.queryByRole('navigation', { name: 'Main navigation' })).not.toBeInTheDocument())
+  expect(window.localStorage.getItem('tankstat.nav.open')).toBeNull() // the phone drawer is never remembered
+})
+
+it('has a skip link, the landmarks and a labelled navigation', async () => {
+  stubViewport('desktop')
+  server.use(sessionHandler('NONE', () => null), healthHandler, ...withBackend())
+  renderWithApollo(<App />)
+  await screen.findByRole('heading', { name: 'Vehicles' })
+
+  expect(screen.getByRole('link', { name: 'Skip to main content' })).toHaveAttribute('href', '#main')
+  expect(screen.getByRole('banner')).toBeInTheDocument()
+  expect(screen.getByRole('main')).toHaveAttribute('id', 'main')
+  expect(screen.getByRole('contentinfo')).toBeInTheDocument()
 })
 
 it('menu entries follow the user: no account/admin without a user, admin entry only for administrators', async () => {
-  const ui = userEvent.setup()
+  stubViewport('desktop')
   server.use(sessionHandler('NONE', () => null), healthHandler, ...withBackend())
   const none = renderWithApollo(<App />)
   await screen.findByRole('heading', { name: 'Vehicles' })
-  await ui.click(screen.getByRole('button', { name: 'Open menu' }))
-  expect(await screen.findAllByRole('menuitem')).toHaveLength(2)
+  expect(navLinks()).toEqual(['Vehicles', 'Trash'])
   none.unmount()
-  await ui.keyboard('{Escape}')
 
   server.use(sessionHandler('STANDALONE', () => user({ isAdmin: true })))
   renderWithApollo(<App />)
   await screen.findByText('admin')
-  await ui.click(screen.getByRole('button', { name: 'Open menu' }))
-  const names = (await screen.findAllByRole('menuitem')).map((i) => i.textContent)
-  expect(names).toEqual(['Vehicles', 'Trash', 'Account', 'Administration', 'Sign out'])
+  expect(navLinks()).toEqual(['Vehicles', 'Trash', 'Account', 'Administration'])
+  expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
 })
 
 it('regular users get no administration entry; behind a proxy there is no sign out', async () => {
-  const ui = userEvent.setup()
+  stubViewport('desktop')
   server.use(sessionHandler('PROXY_HEADER', () => user()), healthHandler, ...withBackend())
   renderWithApollo(<App />)
   await screen.findByRole('heading', { name: 'Vehicles' })
 
-  await ui.click(screen.getByRole('button', { name: 'Open menu' }))
-
-  expect((await screen.findAllByRole('menuitem')).map((i) => i.textContent)).toEqual(['Vehicles', 'Trash', 'Account'])
+  expect(navLinks()).toEqual(['Vehicles', 'Trash', 'Account'])
+  expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
 })
 
 it('the account page shows who is signed in', async () => {

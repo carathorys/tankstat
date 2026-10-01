@@ -1,7 +1,8 @@
 import { useMutation, useQuery } from '@apollo/client/react'
-import { Box, Button, Checkbox, Code, Flex, Heading, Select, Table, Tabs, Text } from '@radix-ui/themes'
+import { Box, Button, Checkbox, Code, Flex, Heading, Select, Table, Tabs, Text, VisuallyHidden } from '@radix-ui/themes'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { UserChip } from '../components/UserAvatar.tsx'
 import { FieldForm } from '../forms.tsx'
 import {
   AdminDocument,
@@ -73,13 +74,17 @@ export function AdminPanel() {
                     <Table.ColumnHeaderCell>{t('admin.colEmail')}</Table.ColumnHeaderCell>
                     <Table.ColumnHeaderCell>{t('admin.colAdmin')}</Table.ColumnHeaderCell>
                     <Table.ColumnHeaderCell>{t('admin.colDisabled')}</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell />
+                    <Table.ColumnHeaderCell>
+                      <VisuallyHidden>{t('grid.actions')}</VisuallyHidden>
+                    </Table.ColumnHeaderCell>
                   </Table.Row>
                 </Table.Header>
                 <Table.Body>
                   {data.users.map((u) => (
                     <Table.Row key={u.id} align="center">
-                      <Table.RowHeaderCell>{u.displayName}</Table.RowHeaderCell>
+                      <Table.RowHeaderCell>
+                        <UserChip user={u} />
+                      </Table.RowHeaderCell>
                       <Table.Cell>{u.email}</Table.Cell>
                       <Table.Cell>
                         <Checkbox
@@ -134,6 +139,9 @@ export function AdminPanel() {
             <Heading as="h2" size="4" mb="3">
               {t('admin.accessTitle')}
             </Heading>
+            <Text as="p" size="2" color="gray" mb="3">
+              {t('admin.levelsHelp')}
+            </Text>
             <Flex align="center" gap="2" mb="4" wrap="wrap">
               <Text>{t('admin.defaultLabel')}</Text>
               <Select.Root
@@ -142,7 +150,7 @@ export function AdminPanel() {
               >
                 <Select.Trigger aria-label={t('admin.defaultAria')} />
                 <Select.Content>
-                  {(['NONE', 'VIEW', 'EDIT'] as const satisfies readonly AccessLevel[]).map((l) => (
+                  {(['NONE', 'VIEW', 'EDIT', 'DELETE'] as const satisfies readonly AccessLevel[]).map((l) => (
                     <Select.Item key={l} value={l}>
                       {t(`level.${l}`)}
                     </Select.Item>
@@ -157,7 +165,7 @@ export function AdminPanel() {
                   <li key={g.id}>
                     <Flex align="center" gap="3" wrap="wrap">
                       <Text>
-                        {t(g.level === 'EDIT' ? 'admin.grantEdit' : 'admin.grantView', { grantee: name(g.granteeId), owner: name(g.ownerId) })}
+                        {t(g.level === 'DELETE' ? 'admin.grantDelete' : g.level === 'EDIT' ? 'admin.grantEdit' : 'admin.grantView', { grantee: name(g.granteeId), owner: name(g.ownerId) })}
                       </Text>
                       <Button
                         size="1"
@@ -238,6 +246,7 @@ function GrantForm({
           <Select.Content>
             <Select.Item value="VIEW">{t('level.VIEW')}</Select.Item>
             <Select.Item value="EDIT">{t('level.EDIT')}</Select.Item>
+            <Select.Item value="DELETE">{t('level.DELETE')}</Select.Item>
           </Select.Content>
         </Select.Root>
         <Button type="submit">{t('admin.grantAction')}</Button>

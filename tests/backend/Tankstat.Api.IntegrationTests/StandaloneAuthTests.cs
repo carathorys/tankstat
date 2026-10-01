@@ -134,9 +134,9 @@ public class StandaloneAuthTests : IDisposable
         var id = (await alice.Gql("mutation { addVehicle(input: { name: \"Secret\", fuelType: LPG }) { id } }")).Data()
             .GetProperty("addVehicle").GetProperty("id").GetString();
 
-        var read = await bob.Gql("query($id: UUID!) { vehicle(id: $id) { name refuelings { id } } }", new { id });
+        var read = await bob.Gql("query($id: UUID!) { vehicle(id: $id) { name refuelingCount } }", new { id });
         var log = await bob.Gql("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }",
-            new { i = new { vehicleId = id, date = "2026-10-01", liters = 1, totalCost = 1, odometerKm = 1, isFullTank = true } });
+            new { i = new { vehicleId = id, date = "2026-10-01", volume = 1, totalCost = 1, odometer = 1, isFullTank = true } });
 
         Assert.Equal(System.Text.Json.JsonValueKind.Null, read.Data().GetProperty("vehicle").ValueKind);
         Assert.Equal("NOT_FOUND", log.ErrorCode());
@@ -153,7 +153,7 @@ public class StandaloneAuthTests : IDisposable
         var vehicleId = (await alice.Gql("mutation { addVehicle(input: { name: \"Shared\", fuelType: PETROL }) { id } }")).Data()
             .GetProperty("addVehicle").GetProperty("id").GetString();
         const string Log = "mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { ownerId: id } }";
-        var input = new { i = new { vehicleId, date = "2026-10-01", liters = 10, totalCost = 10, odometerKm = 10, isFullTank = true } };
+        var input = new { i = new { vehicleId, date = "2026-10-01", volume = 10, totalCost = 10, odometer = 10, isFullTank = true } };
 
         // 1. per-user grant: view only
         await admin.Gql("mutation($i: SetAccessGrantInput!) { setAccessGrant(input: $i) }", new { i = new { ownerId = aliceId, granteeId = bobId, level = "VIEW" } });
@@ -163,8 +163,8 @@ public class StandaloneAuthTests : IDisposable
         // 2. upgrade the grant to edit
         await admin.Gql("mutation($i: SetAccessGrantInput!) { setAccessGrant(input: $i) }", new { i = new { ownerId = aliceId, granteeId = bobId, level = "EDIT" } });
         Assert.Null((await bob.Gql(Log, input)).ErrorCode());
-        var refuelings = (await alice.Gql("{ vehicles { refuelings { id } } }")).Data().GetProperty("vehicles")[0].GetProperty("refuelings");
-        Assert.Equal(1, refuelings.GetArrayLength()); // belongs to the vehicle owner, so Alice sees it
+        var refuelingCount = (await alice.Gql("{ vehicles { refuelingCount } }")).Data().GetProperty("vehicles")[0].GetProperty("refuelingCount").GetInt32();
+        Assert.Equal(1, refuelingCount); // belongs to the vehicle owner, so Alice sees it
 
         // 3. revoke, then open everything for viewing through the instance default
         await admin.Gql("mutation($i: SetAccessGrantInput!) { setAccessGrant(input: $i) }", new { i = new { ownerId = aliceId, granteeId = bobId, level = "NONE" } });
@@ -190,9 +190,9 @@ public class StandaloneAuthTests : IDisposable
         var edit = new { i = new { id, name = "Bob edit", fuelType = "DIESEL" } };
 
         await admin.Gql(Grant, new { i = new { ownerId = aliceId, granteeId = bobId, level = "VIEW" } });
-        var seen = (await bob.Gql("{ vehicles { canEdit ownerName } }")).Data().GetProperty("vehicles")[0];
+        var seen = (await bob.Gql("{ vehicles { canEdit owner { displayName } } }")).Data().GetProperty("vehicles")[0];
         Assert.False(seen.GetProperty("canEdit").GetBoolean());
-        Assert.Equal("alice@example.com", seen.GetProperty("ownerName").GetString());
+        Assert.Equal("alice@example.com", seen.GetProperty("owner").GetProperty("displayName").GetString());
         Assert.Equal("FORBIDDEN", (await bob.Gql(Edit, edit)).ErrorCode());
         Assert.Equal("FORBIDDEN", (await bob.Gql(Delete, new { id })).ErrorCode());
 

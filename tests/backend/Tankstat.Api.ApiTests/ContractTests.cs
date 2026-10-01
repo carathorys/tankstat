@@ -42,14 +42,18 @@ public class ContractTests
     }
 
     [Theory]
-    [InlineData("Query", "health", "vehicles", "vehicle", "session", "notices", "users", "accessSettings", "accessGrants", "trash", "vehicleCount", "trashCount")]
-    [InlineData("Mutation", "addVehicle", "logRefueling", "login", "logout", "changePassword", "requestPasswordReset", "resetPassword", "createUser", "issuePasswordReset", "setUserAdmin", "setUserDisabled", "setDefaultAccess", "setAccessGrant", "updateVehicle", "deleteVehicle", "restoreVehicle", "emptyTrash")]
+    [InlineData("Query", "health", "vehicles", "vehicle", "session", "notices", "users", "accessSettings", "accessGrants", "trash", "vehicleCount", "trashCount", "trashDeletableCount", "vehicleDefaults", "refuelings", "refuelingCount", "refueling", "logDefaults", "refuelingTrash", "refuelingTrashCount", "refuelingTrashDeletableCount", "vehicleLogAccess", "shareCandidates")]
+    [InlineData("Mutation", "addVehicle", "logRefueling", "login", "logout", "changePassword", "requestPasswordReset", "resetPassword", "createUser", "issuePasswordReset", "setUserAdmin", "setUserDisabled", "setDefaultAccess", "setAccessGrant", "updateVehicle", "deleteVehicle", "restoreVehicle", "emptyTrash", "logRefueling", "updateRefueling", "deleteRefueling", "restoreRefueling", "emptyRefuelingTrash", "setVehicleLogAccess")]
     [InlineData("Session", "mode", "user")]
     [InlineData("UserInfo", "id", "displayName", "email", "isAdmin")]
     [InlineData("UserAccount", "id", "provider", "email", "displayName", "isAdmin", "isDisabled")]
     [InlineData("Notice", "code", "severity", "message")]
-    [InlineData("Vehicle", "id", "ownerId", "name", "licensePlate", "fuelType", "deletedAt", "canEdit", "ownerName", "refuelingCount", "refuelings")]
-    [InlineData("Refueling", "id", "vehicleId", "date", "liters", "totalCost", "odometerKm", "isFullTank")]
+    [InlineData("Vehicle", "id", "ownerId", "name", "licensePlate", "fuelType", "units", "deletedAt", "canEdit", "logAccess", "owner", "refuelingCount")]
+    [InlineData("MeasurementUnits", "distance", "volume")]
+    [InlineData("UserRef", "id", "displayName", "avatarUrl")]
+    [InlineData("LogDefaults", "lastOdometer", "lastDate", "currency")]
+    [InlineData("LogAccessGrantInfo", "user", "level")]
+    [InlineData("Refueling", "id", "vehicleId", "createdBy", "date", "volume", "totalCost", "currency", "odometer", "pricePerUnit", "isFullTank", "note", "deletedAt", "canEdit", "canDelete", "vehicle")]
     public async Task Schema_TypeExposesContractFields(string type, params string[] fields)
     {
         var names = await FieldNames(type);
@@ -71,7 +75,10 @@ public class ContractTests
     [InlineData("VehicleSortField", "NAME", "LICENSE_PLATE", "FUEL_TYPE", "OWNER", "REFUELING_COUNT", "DELETED_AT")]
     [InlineData("SortDirection", "ASC", "DESC")]
     [InlineData("AuthMode", "NONE", "STANDALONE", "OIDC", "PROXY_HEADER")]
-    [InlineData("AccessLevel", "NONE", "VIEW", "EDIT")]
+    [InlineData("AccessLevel", "NONE", "VIEW", "EDIT", "DELETE")]
+    [InlineData("DistanceUnit", "KILOMETERS", "MILES")]
+    [InlineData("VolumeUnit", "LITERS", "US_GALLONS", "IMPERIAL_GALLONS")]
+    [InlineData("RefuelingSortField", "DATE", "VOLUME", "TOTAL_COST", "ODOMETER", "PRICE_PER_UNIT", "CREATED_BY", "VEHICLE", "DELETED_AT")]
     [InlineData("NoticeSeverity", "INFO", "WARNING")]
     public async Task Schema_EnumsExposeContractValues(string type, params string[] expected)
     {
@@ -119,12 +126,13 @@ public class ContractTests
     {
         var added = await Query("mutation { addVehicle(input: { name: \"Contract car\", fuelType: PETROL }) { id } }");
         var id = added.GetProperty("data").GetProperty("addVehicle").GetProperty("id").GetString();
-        await Query($"mutation {{ logRefueling(input: {{ vehicleId: \"{id}\", date: \"2026-10-01\", liters: 10, totalCost: 20, odometerKm: 100, isFullTank: true }}) {{ id }} }}");
+        await Query($"mutation {{ logRefueling(input: {{ vehicleId: \"{id}\", date: \"2026-10-01\", volume: 10, totalCost: 20, currency: \"HUF\", odometer: 100, isFullTank: true }}) {{ id }} }}");
 
-        var read = await Query($"{{ vehicle(id: \"{id}\") {{ name refuelings {{ liters }} }} }}");
+        var read = await Query($"{{ vehicle(id: \"{id}\") {{ name }} refuelings(vehicleId: \"{id}\") {{ volume currency }} refuelingCount(vehicleId: \"{id}\") }}");
 
         Assert.False(read.TryGetProperty("errors", out _), read.ToString());
-        Assert.Single(read.GetProperty("data").GetProperty("vehicle").GetProperty("refuelings").EnumerateArray());
+        Assert.Equal("HUF", Assert.Single(read.GetProperty("data").GetProperty("refuelings").EnumerateArray()).GetProperty("currency").GetString());
+        Assert.Equal(1, read.GetProperty("data").GetProperty("refuelingCount").GetInt32());
     }
 
     [Fact]

@@ -19,12 +19,34 @@ type Query {
     take: Int! = 50
   ): [Vehicle!]! @cost(weight: "10")
   trashCount: Int! @cost(weight: "10")
+  trashDeletableCount: Int! @cost(weight: "10")
+  vehicleDefaults: VehicleDefaults!
   vehicle(id: UUID!): Vehicle @cost(weight: "10")
   session: Session! @cost(weight: "10")
   notices: [Notice!]!
   users: [UserAccount!]! @cost(weight: "10")
   accessSettings: AccessSettingsInfo! @cost(weight: "10")
   accessGrants: [AccessGrantInfo!]! @cost(weight: "10")
+  refuelings(
+    vehicleId: UUID!
+    orderBy: RefuelingSortField! = DATE
+    direction: SortDirection! = DESC
+    skip: Int! = 0
+    take: Int! = 50
+  ): [Refueling!]! @cost(weight: "10")
+  refuelingCount(vehicleId: UUID!): Int! @cost(weight: "10")
+  refueling(id: UUID!): Refueling @cost(weight: "10")
+  logDefaults(vehicleId: UUID!): LogDefaults @cost(weight: "10")
+  refuelingTrash(
+    orderBy: RefuelingSortField! = DELETED_AT
+    direction: SortDirection! = DESC
+    skip: Int! = 0
+    take: Int! = 50
+  ): [Refueling!]! @cost(weight: "10")
+  refuelingTrashCount: Int! @cost(weight: "10")
+  refuelingTrashDeletableCount: Int! @cost(weight: "10")
+  vehicleLogAccess(vehicleId: UUID!): [LogAccessGrantInfo!]! @cost(weight: "10")
+  shareCandidates(vehicleId: UUID!): [UserRef!]! @cost(weight: "10")
 }
 
 type Mutation {
@@ -33,7 +55,6 @@ type Mutation {
   deleteVehicle(id: UUID!): Vehicle! @cost(weight: "10")
   restoreVehicle(id: UUID!): Vehicle! @cost(weight: "10")
   emptyTrash: Int! @cost(weight: "10")
-  logRefueling(input: LogRefuelingInput!): Refueling! @cost(weight: "10")
   login(input: LoginInput!): UserInfo! @cost(weight: "10")
   logout: Boolean! @cost(weight: "10")
   changePassword(input: ChangePasswordInput!): Boolean! @cost(weight: "10")
@@ -47,6 +68,12 @@ type Mutation {
     @cost(weight: "10")
   setDefaultAccess(level: AccessLevel!): AccessSettingsInfo! @cost(weight: "10")
   setAccessGrant(input: SetAccessGrantInput!): Boolean! @cost(weight: "10")
+  logRefueling(input: LogRefuelingInput!): Refueling! @cost(weight: "10")
+  updateRefueling(input: UpdateRefuelingInput!): Refueling! @cost(weight: "10")
+  deleteRefueling(id: UUID!): Refueling! @cost(weight: "10")
+  restoreRefueling(id: UUID!): Refueling! @cost(weight: "10")
+  emptyRefuelingTrash: Int! @cost(weight: "10")
+  setVehicleLogAccess(input: SetLogAccessInput!): Boolean! @cost(weight: "10")
 }
 
 type AccessGrantInfo {
@@ -72,6 +99,22 @@ type HealthReport {
   databaseReachable: Boolean!
 }
 
+type LogAccessGrantInfo {
+  user: UserRef!
+  level: AccessLevel!
+}
+
+type LogDefaults {
+  lastOdometer: Long
+  lastDate: LocalDate
+  currency: String!
+}
+
+type MeasurementUnits {
+  distance: DistanceUnit!
+  volume: VolumeUnit!
+}
+
 type Notice {
   code: String!
   severity: NoticeSeverity!
@@ -88,11 +131,20 @@ type Refueling {
   id: UUID!
   ownerId: UUID!
   vehicleId: UUID!
+  createdById: UUID!
   date: LocalDate!
-  liters: Decimal!
+  volume: Decimal!
   totalCost: Decimal!
-  odometerKm: Int!
+  currency: String!
   isFullTank: Boolean!
+  note: String
+  odometer: Long!
+  deletedAt: DateTime
+  pricePerUnit: Decimal!
+  canEdit: Boolean! @cost(weight: "10")
+  canDelete: Boolean! @cost(weight: "10")
+  createdBy: UserRef @cost(weight: "10")
+  vehicle: Vehicle @cost(weight: "10")
 }
 
 type Session {
@@ -107,6 +159,7 @@ type UserAccount {
   displayName: String!
   isAdmin: Boolean!
   isDisabled: Boolean!
+  avatarUrl: String
 }
 
 type UserInfo {
@@ -114,6 +167,13 @@ type UserInfo {
   displayName: String!
   email: String!
   isAdmin: Boolean!
+  avatarUrl: String
+}
+
+type UserRef {
+  id: UUID!
+  displayName: String!
+  avatarUrl: String
 }
 
 type Vehicle {
@@ -122,18 +182,27 @@ type Vehicle {
   name: String!
   licensePlate: String
   fuelType: FuelType!
+  units: MeasurementUnits!
   deletedAt: DateTime
   isDeleted: Boolean!
   canEdit: Boolean! @cost(weight: "10")
-  ownerName: String @cost(weight: "10")
+  logAccess: AccessLevel! @cost(weight: "10")
+  owner: UserRef @cost(weight: "10")
+  pictureUrl: String
   refuelingCount: Int! @cost(weight: "10")
-  refuelings: [Refueling!]! @cost(weight: "10")
+}
+
+type VehicleDefaults {
+  distanceUnit: DistanceUnit!
+  volumeUnit: VolumeUnit!
+  currency: String!
 }
 
 input AddVehicleInput {
   name: String!
   licensePlate: String
   fuelType: FuelType!
+  units: MeasurementUnitsInput
 }
 
 input ChangePasswordInput {
@@ -155,10 +224,17 @@ input LoginInput {
 input LogRefuelingInput {
   vehicleId: UUID!
   date: LocalDate!
-  liters: Decimal!
+  volume: Decimal!
   totalCost: Decimal!
-  odometerKm: Int!
+  currency: String
+  odometer: Long!
   isFullTank: Boolean!
+  note: String
+}
+
+input MeasurementUnitsInput {
+  distance: DistanceUnit!
+  volume: VolumeUnit!
 }
 
 input ResetPasswordInput {
@@ -172,17 +248,36 @@ input SetAccessGrantInput {
   level: AccessLevel!
 }
 
+input SetLogAccessInput {
+  vehicleId: UUID!
+  userId: UUID!
+  level: AccessLevel!
+}
+
+input UpdateRefuelingInput {
+  id: UUID!
+  date: LocalDate!
+  volume: Decimal!
+  totalCost: Decimal!
+  currency: String
+  odometer: Long!
+  isFullTank: Boolean!
+  note: String
+}
+
 input UpdateVehicleInput {
   id: UUID!
   name: String!
   licensePlate: String
   fuelType: FuelType!
+  units: MeasurementUnitsInput
 }
 
 enum AccessLevel {
   NONE
   VIEW
   EDIT
+  DELETE
 }
 
 enum AuthMode {
@@ -190,6 +285,11 @@ enum AuthMode {
   STANDALONE
   OIDC
   PROXY_HEADER
+}
+
+enum DistanceUnit {
+  KILOMETERS
+  MILES
 }
 
 enum FuelType {
@@ -201,6 +301,17 @@ enum FuelType {
 enum NoticeSeverity {
   INFO
   WARNING
+}
+
+enum RefuelingSortField {
+  DATE
+  VOLUME
+  TOTAL_COST
+  ODOMETER
+  PRICE_PER_UNIT
+  CREATED_BY
+  VEHICLE
+  DELETED_AT
 }
 
 enum SortDirection {
@@ -223,6 +334,12 @@ enum VehicleSortField {
   DELETED_AT
 }
 
+enum VolumeUnit {
+  LITERS
+  US_GALLONS
+  IMPERIAL_GALLONS
+}
+
 "The `DateTime` scalar type represents a date and time with time zone offset information."
 scalar DateTime
   @specifiedBy(url: "https://scalars.graphql.org/chillicream/date-time.html")
@@ -238,6 +355,10 @@ scalar Duration
 "The `LocalDate` scalar type represents a date without time or time zone information."
 scalar LocalDate
   @specifiedBy(url: "https://scalars.graphql.org/chillicream/local-date.html")
+
+"The `Long` scalar type represents a signed 64-bit integer."
+scalar Long
+  @specifiedBy(url: "https://scalars.graphql.org/chillicream/long.html")
 
 "The `UUID` scalar type represents a Universally Unique Identifier (UUID) as defined by RFC 9562."
 scalar UUID

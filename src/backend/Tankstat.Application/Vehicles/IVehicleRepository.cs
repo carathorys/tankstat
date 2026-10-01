@@ -22,9 +22,15 @@ public interface IVehicleRepository
     /// <summary>Finds a vehicle whether or not it is in the trash.</summary>
     Task<Vehicle?> FindIncludingDeletedAsync(Guid id, CancellationToken ct);
 
+    /// <summary>The (live) vehicle whose picture is the given image.</summary>
+    Task<Vehicle?> FindByPictureImageAsync(Guid imageId, CancellationToken ct);
+
     Task AddAsync(Vehicle vehicle, CancellationToken ct);
     Task UpdateAsync(Vehicle vehicle, CancellationToken ct);
 
-    /// <summary>Physically removes the trashed vehicles (and their refuelings) in scope. Returns how many vehicles were removed.</summary>
-    Task<int> PurgeAsync(OwnerScope scope, CancellationToken ct);
+    /// <summary>Physically removes the trashed vehicles (and their logs) in scope.</summary>
+    Task<PurgeResult> PurgeAsync(OwnerScope scope, CancellationToken ct);
 }
+
+/// <summary>What a permanent deletion removed: how many vehicles, and which pictures are now orphaned and must be deleted too.</summary>
+public sealed record PurgeResult(int Count, IReadOnlyList<Guid> ImageIds);

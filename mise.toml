@@ -29,7 +29,7 @@ done
 [tasks.seed]
 description = "Test data (auth mode None only): deletes the dev database, recreates, migrates and seeds it. Options after --, e.g. mise run seed -- --vehicles 200 --trashed 20 --refuelings 5-40 (see --help)"
 # The default target is the database `mise run dev:api` uses; a later --connection overrides it.
-run = 'dotnet run --project src/backend/Tankstat.Seeder -- --connection "Data Source=$PWD/src/backend/Tankstat.Api/tankstat.db"'
+run = 'dotnet run --project src/backend/Tankstat.Seeder -- --connection "Data Source=$PWD/src/backend/Tankstat.Api/tankstat.db" --uploads "$PWD/src/backend/Tankstat.Api/uploads"'
 
 [tasks."docker:build"]
 description = "Build the single-container image (API + web app) as tankstat:local"

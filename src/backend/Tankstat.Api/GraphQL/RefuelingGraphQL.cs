@@ -1,0 +1,121 @@
+using Microsoft.Extensions.Options;
+using Tankstat.Application.Access;
+using Tankstat.Application.Refuelings;
+using Tankstat.Application.Sharing;
+using Tankstat.Application.Users;
+using Tankstat.Application.Vehicles;
+using Tankstat.Domain.Access;
+using Tankstat.Domain.Vehicles;
+
+namespace Tankstat.Api.GraphQL;
+
+/// <param name="Currency">ISO 4217 code of the currency paid in; omit to use the instance default.</param>
+public sealed record LogRefuelingInput(Guid VehicleId, DateOnly Date, decimal Volume, decimal TotalCost, string? Currency, long Odometer, bool IsFullTank, string? Note);
+
+/// <param name="Currency">Omit to keep the log's currency.</param>
+public sealed record UpdateRefuelingInput(Guid Id, DateOnly Date, decimal Volume, decimal TotalCost, string? Currency, long Odometer, bool IsFullTank, string? Note);
+public sealed record SetLogAccessInput(Guid VehicleId, Guid UserId, AccessLevel Level);
+
+/// <summary>What the add-log form starts from.</summary>
+public sealed record LogDefaults(long? LastOdometer, DateOnly? LastDate, string Currency);
+
+public sealed record LogAccessGrantInfo(UserRef User, AccessLevel Level);
+
+/// <summary>The refuelling type exposes its odometer as a plain number; the linked reading stays an internal detail.</summary>
+public sealed class RefuelingType : ObjectType<Refueling>
+{
+    protected override void Configure(IObjectTypeDescriptor<Refueling> descriptor)
+    {
+        descriptor.Ignore(r => r.OdometerReading);
+        descriptor.Ignore(r => r.OdometerReadingId);
+        descriptor.Ignore(r => r.Cost);
+        descriptor.Ignore(r => r.CostId);
+        descriptor.Ignore(r => r.IsDeleted);
+    }
+}
+
+[ExtendObjectType<Refueling>]
+public sealed class RefuelingExtensions
+{
+    public async Task<bool> GetCanEdit([Parent] Refueling refueling, [Service] RefuelingService refuelings, CancellationToken ct) =>
+        await refuelings.LevelForVehicleAsync(refueling.VehicleId, ct) >= AccessLevel.Edit;
+
+    public async Task<bool> GetCanDelete([Parent] Refueling refueling, [Service] RefuelingService refuelings, CancellationToken ct) =>
+        await refuelings.LevelForVehicleAsync(refueling.VehicleId, ct) >= AccessLevel.Delete;
+
+    public async Task<UserRef?> GetCreatedBy([Parent] Refueling refueling, [Service] IUserRepository users, CancellationToken ct) =>
+        await users.FindByIdAsync(refueling.CreatedById, ct) is { } user ? UserRef.From(user) : null;
+
+    /// <summary>The vehicle (even a trashed one), for its name and units next to a log in the trash.</summary>
+    public async Task<Vehicle?> GetVehicle([Parent] Refueling refueling, [Service] IVehicleRepository vehicles, CancellationToken ct) =>
+        await vehicles.FindIncludingDeletedAsync(refueling.VehicleId, ct);
+}
+
+[ExtendObjectType(OperationTypeNames.Query)]
+public sealed class RefuelingQueries
+{
+    /// <summary>One page of a vehicle's logs, sorted by the server (newest first by default).</summary>
+    public Task<IReadOnlyList<Refueling>> GetRefuelings(
+        Guid vehicleId, [Service] RefuelingService refuelings, CancellationToken ct,
+        RefuelingSortField orderBy = RefuelingSortField.Date, SortDirection direction = SortDirection.Desc,
+        int skip = 0, int take = RefuelingQuery.DefaultTake) =>
+        refuelings.ListAsync(vehicleId, new RefuelingQuery(orderBy, direction, skip, take), ct);
+
+    public Task<int> GetRefuelingCount(Guid vehicleId, [Service] RefuelingService refuelings, CancellationToken ct) =>
+        refuelings.CountAsync(vehicleId, ct);
+
+    public Task<Refueling?> GetRefueling(Guid id, [Service] RefuelingService refuelings, CancellationToken ct) =>
+        refuelings.FindAsync(id, ct);
+
+    /// <summary>Starting values for a new log: the vehicle's latest odometer reading and the currency of its latest log.</summary>
+    public async Task<LogDefaults?> GetLogDefaults(
+        Guid vehicleId, [Service] RefuelingService refuelings, [Service] IOptions<VehicleDefaultsOptions> defaults, CancellationToken ct) =>
+        await refuelings.DefaultsAsync(vehicleId, ct) is { } d ? new LogDefaults(d.LastOdometer, d.LastDate, d.LastCurrency ?? defaults.Value.Currency) : null;
+
+    /// <summary>One page of trashed logs (across vehicles) the user may restore.</summary>
+    public Task<IReadOnlyList<Refueling>> GetRefuelingTrash(
+        [Service] RefuelingService refuelings, CancellationToken ct,
+        RefuelingSortField orderBy = RefuelingSortField.DeletedAt, SortDirection direction = SortDirection.Desc,
+        int skip = 0, int take = RefuelingQuery.DefaultTake) =>
+        refuelings.ListTrashAsync(new RefuelingQuery(orderBy, direction, skip, take), ct);
+
+    public Task<int> GetRefuelingTrashCount([Service] RefuelingService refuelings, CancellationToken ct) => refuelings.CountTrashAsync(ct);
+
+    public Task<int> GetRefuelingTrashDeletableCount([Service] RefuelingService refuelings, CancellationToken ct) =>
+        refuelings.CountDeletableTrashAsync(ct);
+
+    /// <summary>Who has access to a vehicle's logs through a grant on that vehicle (needs edit access to the vehicle).</summary>
+    public async Task<IReadOnlyList<LogAccessGrantInfo>> GetVehicleLogAccess(Guid vehicleId, [Service] ResourceSharingService sharing, CancellationToken ct) =>
+        (await sharing.ListLogAccessAsync(vehicleId, ct)).Select(e => new LogAccessGrantInfo(UserRef.From(e.User), e.Level)).ToList();
+
+    /// <summary>Users a vehicle's logs could still be shared with.</summary>
+    public async Task<IReadOnlyList<UserRef>> GetShareCandidates(Guid vehicleId, [Service] ResourceSharingService sharing, CancellationToken ct) =>
+        (await sharing.CandidatesAsync(vehicleId, ct)).Select(UserRef.From).ToList();
+}
+
+[ExtendObjectType(OperationTypeNames.Mutation)]
+public sealed class RefuelingMutations
+{
+    public Task<Refueling> LogRefueling(
+        LogRefuelingInput input, [Service] RefuelingService refuelings, [Service] IOptions<VehicleDefaultsOptions> defaults, CancellationToken ct) =>
+        refuelings.LogAsync(input.VehicleId,
+            new RefuelingInput(input.Date, input.Volume, input.TotalCost, input.Currency ?? defaults.Value.Currency, input.Odometer, input.IsFullTank, input.Note), ct);
+
+    public Task<Refueling> UpdateRefueling(UpdateRefuelingInput input, [Service] RefuelingService refuelings, CancellationToken ct) =>
+        refuelings.UpdateAsync(input.Id, new RefuelingInput(input.Date, input.Volume, input.TotalCost, input.Currency, input.Odometer, input.IsFullTank, input.Note), ct);
+
+    /// <summary>Moves the log to the trash (needs Edit access to the vehicle's logs).</summary>
+    public Task<Refueling> DeleteRefueling(Guid id, [Service] RefuelingService refuelings, CancellationToken ct) => refuelings.DeleteAsync(id, ct);
+
+    public Task<Refueling> RestoreRefueling(Guid id, [Service] RefuelingService refuelings, CancellationToken ct) => refuelings.RestoreAsync(id, ct);
+
+    /// <summary>Permanently removes the trashed logs the user has Delete access to; returns how many.</summary>
+    public Task<int> EmptyRefuelingTrash([Service] RefuelingService refuelings, CancellationToken ct) => refuelings.EmptyTrashAsync(ct);
+
+    /// <summary>Gives a user access to one vehicle's logs (Edit or Delete), or removes it with level NONE.</summary>
+    public async Task<bool> SetVehicleLogAccess(SetLogAccessInput input, [Service] ResourceSharingService sharing, CancellationToken ct)
+    {
+        await sharing.SetLogAccessAsync(input.VehicleId, input.UserId, input.Level, ct);
+        return true;
+    }
+}

@@ -1,0 +1,107 @@
+import { screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { graphql, HttpResponse } from 'msw'
+import { axe } from 'vitest-axe'
+import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
+import App from '../../src/frontend/App.tsx'
+import { server } from './server.ts'
+import { fakeLogBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, stubViewport, user } from './mocks.tsx'
+
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+afterEach(() => {
+  server.resetHandlers()
+  vi.unstubAllGlobals()
+})
+afterAll(() => server.close())
+
+// Colour contrast cannot be computed without a real renderer; everything else axe knows is checked.
+const check = async (container: HTMLElement) => {
+  const results = await axe(container, { rules: { 'color-contrast': { enabled: false } } })
+  expect(results.violations.map((v) => `${v.id}: ${v.help} (${v.nodes.map((n) => n.target.join(' ')).join(', ')})`)).toEqual([])
+}
+
+function setup(route: string, viewport: 'desktop' | 'phone' = 'desktop') {
+  stubViewport(viewport)
+  const logs = fakeLogBackend(fakeVehicle(), [fakeRefueling({ id: 'r1' }), fakeRefueling({ id: 'r2', date: '2026-08-01', note: 'Trip' })])
+  const vehicles = fakeVehicleBackend([fakeVehicle()], [fakeVehicle({ id: 't1', name: 'Old Fiat' })])
+  server.use(
+    sessionHandler('STANDALONE', () => user({ isAdmin: true })),
+    healthHandler,
+    ...logs.handlers,
+    ...vehicles.handlers,
+    graphql.query('Admin', () =>
+      HttpResponse.json({
+        data: {
+          users: [{ id: 'u1', provider: 'LOCAL', email: 'alice@example.com', displayName: 'Alice', isAdmin: true, isDisabled: false, avatarUrl: null }],
+          accessSettings: { defaultLevelForOthers: 'NONE' },
+          accessGrants: [],
+        },
+      }),
+    ),
+  )
+  const view = renderWithApollo(<App />, route)
+  return { view, ui: userEvent.setup() }
+}
+
+it('the vehicle list has no accessibility violations (desktop)', async () => {
+  const { view } = setup('/vehicles')
+  await screen.findByText('Octavia')
+
+  await check(view.container)
+})
+
+it('the vehicle list has no accessibility violations (phone, menu drawer open)', async () => {
+  const { view, ui } = setup('/vehicles', 'phone')
+  await screen.findByText('Octavia')
+  await ui.click(screen.getByRole('button', { name: 'Show menu' }))
+
+  await check(await screen.findByRole('dialog').then((d) => d.ownerDocument.body)).catch((e) => {
+    throw e
+  })
+  expect(view.container).toBeTruthy()
+})
+
+it('the vehicle page and its tabs have no violations', async () => {
+  const { view, ui } = setup('/vehicles/v1')
+  await screen.findByText(/Sep 1, 2026/)
+  await check(view.container)
+
+  await ui.click(screen.getByRole('tab', { name: /Details/ }))
+  await screen.findByRole('button', { name: 'Choose a picture' })
+  await check(view.container)
+
+  await ui.click(screen.getByRole('tab', { name: /Sharing/ }))
+  await screen.findByText('Nobody has been given access to the logs yet.')
+  await check(view.container)
+})
+
+it('the add refuelling dialog is labelled, described and free of violations', async () => {
+  const { ui } = setup('/vehicles/v1')
+  await screen.findByText(/Sep 1, 2026/)
+
+  await ui.click(screen.getByRole('button', { name: 'Add refuelling' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add refuelling' })
+  await within(dialog).findByText(/Last reading/)
+
+  expect(dialog).toHaveAccessibleDescription(/Enter what you filled up/)
+  await check(document.body)
+})
+
+it('the trash, account and administration pages have no violations', async () => {
+  for (const route of ['/trash', '/trash?tab=refuelings', '/account', '/admin']) {
+    const { view } = setup(route)
+    await screen.findByRole('main')
+    await screen.findByRole('heading', { level: 1 })
+    await check(view.container)
+    view.unmount()
+  }
+})
+
+it('sortable columns announce their state and every grid is a labelled table', async () => {
+  setup('/vehicles/v1')
+  await screen.findByText(/Sep 1, 2026/)
+
+  expect(screen.getByRole('table', { name: 'Refuelings' })).toBeInTheDocument()
+  expect(screen.getByRole('columnheader', { name: /Date/ })).toHaveAttribute('aria-sort', 'descending')
+  expect(screen.getByRole('columnheader', { name: /Odometer/ })).toHaveAttribute('aria-sort', 'none')
+})

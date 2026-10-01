@@ -1,7 +1,9 @@
 using Tankstat.Domain;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Users;
+using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Vehicles;
+using Tankstat.TestSupport;
 
 namespace Tankstat.Domain.UnitTests;
 
@@ -14,16 +16,16 @@ public class ErrorKeyTests
     public void Vehicle_Errors()
     {
         var owner = Guid.NewGuid();
-        var vehicle = Vehicle.Create(owner, "Car", null, FuelType.Petrol);
+        var vehicle = TestData.Vehicle(owner, "Car", null, FuelType.Petrol);
 
-        Assert.Equal("vehicle.nameRequired", Catch(() => Vehicle.Create(owner, " ", null, FuelType.Petrol)).Key);
-        var fuel = Catch(() => Vehicle.Create(owner, "Car", null, (FuelType)99));
+        Assert.Equal("vehicle.nameRequired", Catch(() => TestData.Vehicle(owner, " ", null, FuelType.Petrol)).Key);
+        var fuel = Catch(() => TestData.Vehicle(owner, "Car", null, (FuelType)99));
         Assert.Equal("vehicle.unknownFuelType", fuel.Key);
         Assert.Equal("99", fuel.Args["value"]);
         Assert.Equal("vehicle.notTrashed", Catch(vehicle.Restore).Key);
         vehicle.MarkDeleted(DateTimeOffset.UtcNow);
         Assert.Equal("vehicle.alreadyTrashed", Catch(() => vehicle.MarkDeleted(DateTimeOffset.UtcNow)).Key);
-        Assert.Equal("vehicle.trashedCannotEdit", Catch(() => vehicle.Update("x", null, FuelType.Lpg)).Key);
+        Assert.Equal("vehicle.trashedCannotEdit", Catch(() => vehicle.Update("x", null, FuelType.Lpg, MeasurementUnits.Metric)).Key);
     }
 
     [Fact]
@@ -31,9 +33,9 @@ public class ErrorKeyTests
     {
         var day = new DateOnly(2026, 10, 1);
 
-        Assert.Equal("refueling.litersPositive", Catch(() => Refueling.Create(Guid.NewGuid(), Guid.NewGuid(), day, 0, 1, 1, true)).Key);
-        Assert.Equal("refueling.costNegative", Catch(() => Refueling.Create(Guid.NewGuid(), Guid.NewGuid(), day, 1, -1, 1, true)).Key);
-        Assert.Equal("refueling.odometerNegative", Catch(() => Refueling.Create(Guid.NewGuid(), Guid.NewGuid(), day, 1, 1, -1, true)).Key);
+        Assert.Equal("refueling.volumePositive", Catch(() => TestData.Refueling(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), day, volume: 0)).Key);
+        Assert.Equal("cost.negative", Catch(() => TestData.Refueling(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), day, totalCost: -1)).Key);
+        Assert.Equal("odometer.negative", Catch(() => TestData.Refueling(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), day, odometer: -1)).Key);
     }
 
     [Fact]
@@ -64,5 +66,5 @@ public class ErrorKeyTests
 
     [Fact]
     public void Message_StaysAvailableAsEnglishFallback() =>
-        Assert.Equal("Vehicle name is required.", Catch(() => Vehicle.Create(Guid.NewGuid(), "", null, FuelType.Petrol)).Message);
+        Assert.Equal("Vehicle name is required.", Catch(() => TestData.Vehicle(Guid.NewGuid(), "", null, FuelType.Petrol)).Message);
 }

@@ -66,8 +66,7 @@ it('signs in, shows the app, and signs out again', async () => {
   await screen.findByText('Alice')
   await screen.findByText(/No vehicles yet/)
 
-  await ui.click(screen.getByRole('button', { name: 'Open menu' }))
-  await ui.click(await screen.findByRole('menuitem', { name: 'Sign out' }))
+  await ui.click(screen.getByRole('button', { name: 'Sign out' }))
   await screen.findByRole('heading', { name: 'Sign in' })
 })
 

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Auth;
 using Tankstat.Domain.Access;
+using Tankstat.Domain.Vehicles;
 
 namespace Tankstat.Application.Access;
 
@@ -9,7 +10,8 @@ namespace Tankstat.Application.Access;
 /// instead of looking at owners itself. Works for any <see cref="IOwned"/> entity.
 /// </summary>
 public sealed class AccessService(
-    ICurrentUser current, IOptions<AuthOptions> auth, IAccessGrantRepository grants, IAccessSettingsRepository settings)
+    ICurrentUser current, IOptions<AuthOptions> auth, IAccessGrantRepository grants, IAccessSettingsRepository settings,
+    IResourceGrantRepository resourceGrants)
 {
     public async Task<Principal> RequirePrincipalAsync(CancellationToken ct)
     {
@@ -29,7 +31,7 @@ public sealed class AccessService(
     public async Task<AccessLevel> LevelAsync(Guid ownerId, CancellationToken ct)
     {
         var principal = await RequirePrincipalAsync(ct);
-        if (principal.IsAdmin || principal.Id == ownerId) return AccessLevel.Edit;
+        if (principal.IsAdmin || principal.Id == ownerId) return AccessLevel.Delete;
 
         var defaults = (await settings.GetAsync(ct)).DefaultLevelForOthers;
         var granted = await grants.ListForGranteeAsync(principal.Id, ct);
@@ -51,5 +53,55 @@ public sealed class AccessService(
         var owners = (await grants.ListForGranteeAsync(principal.Id, ct))
             .Where(g => g.Level >= level).Select(g => g.OwnerId).Append(principal.Id);
         return OwnerScope.Of(owners);
+    }
+
+    // ---- Vehicles and their logs -----------------------------------------------------------------------------
+
+    /// <summary>
+    /// Access to the vehicle itself. A grant on its logs lets the user see the vehicle (so it shows up in their list and
+    /// they can open it) but never change it.
+    /// </summary>
+    public async Task<AccessLevel> VehicleLevelAsync(Vehicle vehicle, CancellationToken ct)
+    {
+        var level = await LevelAsync(vehicle.OwnerId, ct);
+        if (level >= AccessLevel.View) return level;
+        return await LogGrantAsync(vehicle.Id, ct) is not AccessLevel.None ? AccessLevel.View : AccessLevel.None;
+    }
+
+    /// <summary>Access to the logs (refuelings, ...) of a vehicle: the owner-based access or the vehicle's log grant, whichever is more.</summary>
+    public async Task<AccessLevel> LogLevelAsync(Vehicle vehicle, CancellationToken ct)
+    {
+        var level = await LevelAsync(vehicle.OwnerId, ct);
+        return level == AccessLevel.Delete ? level : (AccessLevel)Math.Max((int)level, (int)await LogGrantAsync(vehicle.Id, ct));
+    }
+
+    private async Task<AccessLevel> LogGrantAsync(Guid vehicleId, CancellationToken ct)
+    {
+        var principal = await RequirePrincipalAsync(ct);
+        var grant = await resourceGrants.FindAsync(ResourceType.Vehicle, vehicleId, principal.Id, GrantedFeature.Logs, ct);
+        return grant?.Level ?? AccessLevel.None;
+    }
+
+    /// <summary>Vehicles the user may see at <paramref name="level"/>: owner-based, plus (for viewing) the vehicles whose logs they were granted.</summary>
+    public async Task<OwnerScope> VehicleScopeAsync(AccessLevel level, CancellationToken ct)
+    {
+        var owners = await ScopeAsync(level, ct);
+        if (owners.IsAll || level != AccessLevel.View) return owners;
+        return OwnerScope.Of(owners.Owners, await GrantedVehiclesAsync(AccessLevel.Edit, ct));
+    }
+
+    /// <summary>Logs the user may access at <paramref name="level"/>: owner-based, plus the vehicles whose log grant is at least that level.</summary>
+    public async Task<OwnerScope> LogScopeAsync(AccessLevel level, CancellationToken ct)
+    {
+        var owners = await ScopeAsync(level, ct);
+        if (owners.IsAll) return owners;
+        return OwnerScope.Of(owners.Owners, await GrantedVehiclesAsync(level, ct));
+    }
+
+    private async Task<IReadOnlyList<Guid>> GrantedVehiclesAsync(AccessLevel atLeast, CancellationToken ct)
+    {
+        var principal = await RequirePrincipalAsync(ct);
+        var granted = await resourceGrants.ListForGranteeAsync(principal.Id, ResourceType.Vehicle, GrantedFeature.Logs, ct);
+        return granted.Where(g => g.Level >= atLeast).Select(g => g.ResourceId).ToList();
     }
 }

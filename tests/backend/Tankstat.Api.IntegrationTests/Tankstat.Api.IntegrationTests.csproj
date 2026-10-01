@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\backend\Tankstat.Api\Tankstat.Api.csproj" />
+    <ProjectReference Include="..\Tankstat.TestSupport\Tankstat.TestSupport.csproj" />
   </ItemGroup>
 
 </Project>

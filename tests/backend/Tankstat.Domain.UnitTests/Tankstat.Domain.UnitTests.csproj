@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\backend\Tankstat.Domain\Tankstat.Domain.csproj" />
+    <ProjectReference Include="..\Tankstat.TestSupport\Tankstat.TestSupport.csproj" />
   </ItemGroup>
 
 </Project>

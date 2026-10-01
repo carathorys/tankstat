@@ -10,26 +10,26 @@ internal sealed class VehicleRepository(IDbContextFactory<AppDbContext> dbFactor
     public async Task<IReadOnlyList<Vehicle>> ListAsync(OwnerScope scope, VehicleQuery query, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await Page(db, db.Vehicles.AsNoTracking().InScope(scope), query).ToListAsync(ct);
+        return await Page(db, db.Vehicles.AsNoTracking().InScope(scope, v => v.Id), query).ToListAsync(ct);
     }
 
     public async Task<int> CountAsync(OwnerScope scope, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await db.Vehicles.InScope(scope).CountAsync(ct);
+        return await db.Vehicles.InScope(scope, v => v.Id).CountAsync(ct);
     }
 
     public async Task<IReadOnlyList<Vehicle>> ListDeletedAsync(OwnerScope scope, VehicleQuery query, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var trashed = db.Vehicles.IgnoreQueryFilters().AsNoTracking().Where(v => v.DeletedAt != null).InScope(scope);
+        var trashed = db.Vehicles.IgnoreQueryFilters().AsNoTracking().Where(v => v.DeletedAt != null).InScope(scope, v => v.Id);
         return await Page(db, trashed, query).ToListAsync(ct);
     }
 
     public async Task<int> CountDeletedAsync(OwnerScope scope, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await db.Vehicles.IgnoreQueryFilters().Where(v => v.DeletedAt != null).InScope(scope).CountAsync(ct);
+        return await db.Vehicles.IgnoreQueryFilters().Where(v => v.DeletedAt != null).InScope(scope, v => v.Id).CountAsync(ct);
     }
 
     /// <summary>Orders (always ending in the id, so pages are stable) and pages inside the database.</summary>
@@ -72,13 +72,19 @@ internal sealed class VehicleRepository(IDbContextFactory<AppDbContext> dbFactor
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task<int> PurgeAsync(OwnerScope scope, CancellationToken ct)
+    public async Task<PurgeResult> PurgeAsync(OwnerScope scope, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var doomed = await db.Vehicles.IgnoreQueryFilters().Where(v => v.DeletedAt != null).InScope(scope).ToListAsync(ct);
+        var doomed = await db.Vehicles.IgnoreQueryFilters().Where(v => v.DeletedAt != null).InScope(scope, v => v.Id).ToListAsync(ct);
         db.Vehicles.RemoveRange(doomed); // refuelings go with them through the database's cascade
         await db.SaveChangesAsync(ct);
-        return doomed.Count;
+        return new PurgeResult(doomed.Count, doomed.Where(v => v.PictureImageId is not null).Select(v => v.PictureImageId!.Value).ToList());
+    }
+
+    public async Task<Vehicle?> FindByPictureImageAsync(Guid imageId, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.Vehicles.AsNoTracking().FirstOrDefaultAsync(v => v.PictureImageId == imageId, ct);
     }
 
     public async Task AddAsync(Vehicle vehicle, CancellationToken ct)

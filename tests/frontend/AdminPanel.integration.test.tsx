@@ -11,9 +11,9 @@ afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
 const users = [
-  { id: 'u1', provider: 'LOCAL', email: 'alice@example.com', displayName: 'Alice', isAdmin: true, isDisabled: false },
-  { id: 'u2', provider: 'LOCAL', email: 'bob@example.com', displayName: 'Bob', isAdmin: false, isDisabled: false },
-  { id: 'u3', provider: 'OIDC', email: 'carol@example.com', displayName: 'Carol', isAdmin: false, isDisabled: false },
+  { id: 'u1', provider: 'LOCAL', email: 'alice@example.com', displayName: 'Alice', isAdmin: true, isDisabled: false, avatarUrl: null },
+  { id: 'u2', provider: 'LOCAL', email: 'bob@example.com', displayName: 'Bob', isAdmin: false, isDisabled: false, avatarUrl: null },
+  { id: 'u3', provider: 'OIDC', email: 'carol@example.com', displayName: 'Carol', isAdmin: false, isDisabled: false, avatarUrl: null },
 ]
 
 function adminServer() {
@@ -158,4 +158,17 @@ it('shows the server error when an action is refused', async () => {
   await ui.click(await admin.findByRole('checkbox', { name: 'Administrator: Alice' }))
 
   expect(await admin.findByRole('alert')).toHaveTextContent('cannot remove your own administrator rights')
+})
+
+it('offers the delete level for the default and for grants, and shows people with avatars', async () => {
+  const ui = userEvent.setup()
+  adminServer()
+  renderWithApollo(<App />, '/admin')
+  await screen.findByRole('heading', { name: 'Administration' })
+
+  expect(within(screen.getByRole('table')).getAllByText('B').length).toBeGreaterThan(0) // Bob's initials
+  await ui.click(screen.getByRole('tab', { name: /Access/ }))
+  await ui.click(await screen.findByRole('combobox', { name: 'Level' }))
+
+  expect(await screen.findByRole('option', { name: 'view, edit and delete permanently' })).toBeInTheDocument()
 })

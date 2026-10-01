@@ -27,6 +27,12 @@ internal sealed class UserRepository(IDbContextFactory<AppDbContext> dbFactory) 
         return await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Provider == provider && u.Subject == subject, ct);
     }
 
+    public async Task<User?> FindByAvatarImageAsync(Guid imageId, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.AvatarImageId == imageId, ct);
+    }
+
     public async Task<IReadOnlyList<User>> ListAsync(CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);

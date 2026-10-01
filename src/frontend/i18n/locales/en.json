@@ -5,12 +5,16 @@
     "notFound": "This page does not exist."
   },
   "nav": {
-    "menu": "Open menu",
     "vehicles": "Vehicles",
     "trash": "Trash",
     "account": "Account",
     "admin": "Administration",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "main": "Main navigation",
+    "skip": "Skip to main content",
+    "show": "Show menu",
+    "hide": "Hide menu",
+    "signedInAs": "Signed in as {{name}}"
   },
   "language": {
     "label": "Language"
@@ -37,7 +41,8 @@
   "level": {
     "NONE": "nothing",
     "VIEW": "view",
-    "EDIT": "view and edit"
+    "EDIT": "view and edit",
+    "DELETE": "view, edit and delete permanently"
   },
   "role": {
     "admin": "Administrator",
@@ -56,7 +61,8 @@
   },
   "forms": {
     "required": "{{field}} is required",
-    "emailInvalid": "Enter a valid e-mail address"
+    "emailInvalid": "Enter a valid e-mail address",
+    "numberInvalid": "Enter a number, for example 12.5."
   },
   "auth": {
     "signIn": "Sign in",
@@ -82,7 +88,17 @@
     "fuelType": "Fuel",
     "owner": "Owner",
     "refuelings": "Refuelings",
-    "deletedAt": "Deleted"
+    "deletedAt": "Deleted",
+    "date": "Date",
+    "vehicle": "Vehicle",
+    "volume": "Volume",
+    "cost": "Cost",
+    "price": "Price per unit",
+    "odometer": "Odometer",
+    "fullTank": "Full tank",
+    "note": "Note",
+    "createdBy": "Logged by",
+    "picture": "Picture"
   },
   "grid": {
     "refresh": "Refresh",
@@ -97,7 +113,9 @@
     "previous": "Previous page",
     "next": "Next page",
     "sortedAscending": "sorted ascending",
-    "sortedDescending": "sorted descending"
+    "sortedDescending": "sorted descending",
+    "caption": "{{name}}",
+    "actions": "Actions"
   },
   "vehicles": {
     "title": "Vehicles",
@@ -115,7 +133,23 @@
     "save": "Save changes",
     "trashTitle": "Move {{name}} to the trash?",
     "trashDescription": "You can restore it from the trash until the trash is emptied.",
-    "trashConfirm": "Move to trash"
+    "trashConfirm": "Move to trash",
+    "open": "Open {{name}}",
+    "pictureAlt": "Picture of {{name}}",
+    "noPicture": "No picture",
+    "back": "Back to vehicles",
+    "tabs": {
+      "refuelings": "Refuelings",
+      "details": "Details",
+      "sharing": "Sharing"
+    },
+    "owner": "Owner",
+    "fuel": "Fuel",
+    "plate": "License plate",
+    "logAccessNote": "You can work with this vehicle's logs, but not change the vehicle itself.",
+    "notFound": "This vehicle does not exist, or you do not have access to it.",
+    "unitsInUse": "The units are fixed because this vehicle already has logs.",
+    "editVehicle": "Edit vehicle"
   },
   "trash": {
     "title": "Trash",
@@ -127,7 +161,18 @@
     "emptyDescription_one": "This permanently deletes {{count}} vehicle and its refuelings. It cannot be undone.",
     "emptyDescription_other": "This permanently deletes {{count}} vehicles and their refuelings. It cannot be undone.",
     "emptied_one": "Permanently deleted {{count}} vehicle.",
-    "emptied_other": "Permanently deleted {{count}} vehicles."
+    "emptied_other": "Permanently deleted {{count}} vehicles.",
+    "tabs": {
+      "vehicles": "Vehicles",
+      "refuelings": "Refuelings"
+    },
+    "emptyPartial_one": "This permanently deletes {{count}} item you are allowed to delete; items you may only restore stay in the trash. It cannot be undone.",
+    "emptyPartial_other": "This permanently deletes {{count}} items you are allowed to delete; items you may only restore stay in the trash. It cannot be undone.",
+    "refuelingsEmpty": "No refuelings in the trash.",
+    "emptiedRefuelings_one": "Permanently deleted {{count}} refuelling.",
+    "emptiedRefuelings_other": "Permanently deleted {{count}} refuelings.",
+    "refuelingDescription_one": "This permanently deletes {{count}} refuelling. It cannot be undone.",
+    "refuelingDescription_other": "This permanently deletes {{count}} refuelings. It cannot be undone."
   },
   "account": {
     "title": "Account",
@@ -135,7 +180,9 @@
     "email": "E-mail",
     "role": "Role",
     "noAuth": "Authentication is disabled, so there is no personal account.",
-    "managed": "Your password is managed by your identity provider or proxy."
+    "managed": "Your password is managed by your identity provider or proxy.",
+    "avatar": "Profile picture",
+    "avatarHelp": "Shown next to your name for other people."
   },
   "admin": {
     "title": "Administration",
@@ -165,7 +212,9 @@
     "dataOwner": "Data owner",
     "level": "Level",
     "grantAction": "Grant access",
-    "choose": "Choose…"
+    "choose": "Choose…",
+    "levelsHelp": "Delete is the only level that may permanently delete; every level includes the ones before it.",
+    "grantDelete": "{{grantee}} may view, edit and delete permanently the data of {{owner}}"
   },
   "errors": {
     "network": "Cannot reach the server. Check your connection and try again.",
@@ -184,16 +233,26 @@
       "alreadyTrashed": "This vehicle is already in the trash.",
       "notTrashed": "This vehicle is not in the trash.",
       "notFound": "This vehicle does not exist.",
-      "viewOnly": "You may only view this vehicle."
+      "viewOnly": "You may only view this vehicle.",
+      "unitsLocked": "The units cannot be changed once the vehicle has logs.",
+      "unknownUnit": "Unknown unit: {{value}}."
     },
     "refueling": {
       "litersPositive": "Liters must be greater than zero.",
       "costNegative": "The total cost cannot be negative.",
-      "odometerNegative": "The odometer cannot be negative."
+      "odometerNegative": "The odometer cannot be negative.",
+      "volumePositive": "The volume must be greater than zero.",
+      "dateInFuture": "The date cannot be in the future.",
+      "noteTooLong": "The note can be at most {{max}} characters.",
+      "notFound": "This refuelling does not exist.",
+      "wrongVehicle": "The reading and the cost must belong to the same vehicle.",
+      "trashedCannotEdit": "A refuelling in the trash cannot be edited. Restore it first.",
+      "alreadyTrashed": "This refuelling is already in the trash.",
+      "notTrashed": "This refuelling is not in the trash."
     },
     "access": {
       "selfGrant": "Users always have full access to their own data.",
-      "levelRequired": "Choose a grant level of view or edit.",
+      "levelRequired": "Choose a level of view, edit or delete.",
       "unknownLevel": "Unknown access level: {{level}}."
     },
     "user": {
@@ -215,6 +274,118 @@
     },
     "reset": {
       "invalid": "This password reset link is invalid or has expired."
+    },
+    "cost": {
+      "negative": "A cost cannot be negative."
+    },
+    "money": {
+      "currencyInvalid": "Enter a three-letter currency code such as EUR or USD."
+    },
+    "odometer": {
+      "negative": "The odometer cannot be negative.",
+      "belowPrevious": "The odometer cannot be lower than {{previous}}, the reading on {{date}}.",
+      "aboveNext": "The odometer cannot be higher than {{next}}, the reading on {{date}}."
+    },
+    "share": {
+      "ownerHasAccess": "The owner always has full access.",
+      "cannotGrantMore": "You cannot give more access than you have.",
+      "editRequired": "You need edit access to the vehicle to share its logs.",
+      "levelRequired": "Choose edit or delete access."
+    },
+    "image": {
+      "empty": "No file was sent.",
+      "unsupportedType": "Only JPEG, PNG and WebP pictures are supported.",
+      "tooLarge": "The picture can be at most {{maxKb}} KB.",
+      "noAccount": "Profile pictures need a user account; authentication is turned off."
     }
+  },
+  "a11y": {
+    "sortBy": "Sort by {{column}}",
+    "uploadStatus": "Upload status"
+  },
+  "units": {
+    "distance": {
+      "KILOMETERS": "Kilometers",
+      "MILES": "Miles"
+    },
+    "volume": {
+      "LITERS": "Liters",
+      "US_GALLONS": "US gallons",
+      "IMPERIAL_GALLONS": "Imperial gallons"
+    },
+    "volumeShort": {
+      "LITERS": "L",
+      "US_GALLONS": "gal",
+      "IMPERIAL_GALLONS": "imp gal"
+    },
+    "label": "Units",
+    "distanceLabel": "Distance",
+    "volumeLabel": "Fuel volume",
+    "hint": "Numbers are saved exactly as entered and never converted."
+  },
+  "refuelings": {
+    "title": "Refuelings",
+    "add": "Add refuelling",
+    "edit": "Edit",
+    "delete": "Delete",
+    "editAria": "Edit the refuelling of {{date}}",
+    "deleteAria": "Delete the refuelling of {{date}}",
+    "empty": "No refuelings yet. Add the first one.",
+    "viewOnly": "view only",
+    "countLabel": "{{count}} refuelings",
+    "dialogAdd": "Add refuelling",
+    "dialogEdit": "Edit refuelling",
+    "dialogAddDescription": "Enter what you filled up and what the odometer showed.",
+    "dialogEditDescription": "Change this refuelling.",
+    "save": "Save changes",
+    "saveAdd": "Add refuelling",
+    "fields": {
+      "date": "Date",
+      "volume": "Volume ({{unit}})",
+      "cost": "Total cost",
+      "currency": "Currency",
+      "odometer": "Odometer ({{unit}})",
+      "fullTank": "Full tank",
+      "note": "Note (optional)"
+    },
+    "hints": {
+      "lastReading": "Last reading: {{value}} on {{date}}",
+      "currency": "Three-letter code, e.g. EUR",
+      "fullTankHelp": "Switch off for a partial fill-up."
+    },
+    "trashTitle": "Move this refuelling to the trash?",
+    "trashDescription": "The refuelling of {{date}} can be restored from the trash until it is deleted permanently.",
+    "trashConfirm": "Move to trash",
+    "partial": "Partial",
+    "full": "Full"
+  },
+  "sharing": {
+    "title": "Share this vehicle's logs",
+    "description": "People you add here can see this vehicle and work with its logs. They cannot change the vehicle itself or anything else you own.",
+    "none": "Nobody has been given access to the logs yet.",
+    "addTitle": "Give someone access",
+    "person": "Person",
+    "accessLevel": "Access",
+    "add": "Give access",
+    "revoke": "Remove access",
+    "revokeAria": "Remove access of {{name}}",
+    "levels": {
+      "EDIT": "Add and change logs",
+      "DELETE": "Add, change and delete logs permanently"
+    },
+    "noCandidates": "There is nobody else to share with.",
+    "choose": "Choose a person",
+    "changeLevel": "Access of {{name}}"
+  },
+  "image": {
+    "choose": "Choose a picture",
+    "change": "Change picture",
+    "remove": "Remove picture",
+    "uploading": "Uploading…",
+    "uploaded": "Picture saved.",
+    "removed": "Picture removed.",
+    "hint": "JPEG, PNG or WebP. Large pictures are made smaller automatically.",
+    "unreadable": "This file could not be read as a picture.",
+    "avatarFor": "Profile picture of {{name}}"
   }
 }

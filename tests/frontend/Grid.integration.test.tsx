@@ -27,7 +27,7 @@ function setup(vehicles = cars, route = '/vehicles') {
   return { ...backend, view, ui: userEvent.setup() }
 }
 
-const headers = () => screen.getAllByRole('columnheader').map((h) => h.textContent).filter(Boolean)
+const headers = () => screen.getAllByRole('columnheader').map((h) => h.textContent).filter((text) => text && text !== 'Actions')
 const names = () => screen.getAllByRole('rowheader').map((c) => c.textContent)
 const lastRequest = (reqs: Record<string, unknown>[]) => reqs[reqs.length - 1]
 
@@ -58,12 +58,12 @@ it('sorts on the server when a header is clicked, toggling the direction', async
   const { ui, state } = setup()
   await screen.findByText('Beta')
 
-  await ui.click(screen.getByRole('button', { name: /^Name/ }))
+  await ui.click(screen.getByRole('button', { name: /^Sort by Name/ }))
   await waitFor(() => expect(names()).toEqual(['Gamma', 'Beta', 'alpha']))
   expect(lastRequest(state.requests.Vehicles)).toMatchObject({ orderBy: 'NAME', direction: 'DESC', skip: 0 })
   expect(screen.getByRole('columnheader', { name: /Name/ })).toHaveAttribute('aria-sort', 'descending')
 
-  await ui.click(screen.getByRole('button', { name: /^Refuelings/ }))
+  await ui.click(screen.getByRole('button', { name: /^Sort by Refuelings/ }))
   await waitFor(() => expect(names()).toEqual(['Gamma', 'Beta', 'alpha']))
   expect(lastRequest(state.requests.Vehicles)).toMatchObject({ orderBy: 'REFUELING_COUNT', direction: 'ASC' })
   expect(screen.getByRole('columnheader', { name: /Refuelings/ })).toHaveAttribute('aria-sort', 'ascending')
@@ -73,7 +73,7 @@ it('sorts by owner, as the server defines it', async () => {
   const { ui, state } = setup()
   await screen.findByText('Beta')
 
-  await ui.click(screen.getByRole('button', { name: /^Owner/ }))
+  await ui.click(screen.getByRole('button', { name: /^Sort by Owner/ }))
 
   await waitFor(() => expect(names()).toEqual(['Gamma', 'alpha', 'Beta']))
   expect(lastRequest(state.requests.Vehicles)).toMatchObject({ orderBy: 'OWNER', direction: 'ASC' })
@@ -197,12 +197,10 @@ it('loads fresh data every time the page is opened again from the menu', async (
   const { ui, state } = setup()
   await screen.findByText('Beta')
 
-  await ui.click(screen.getByRole('button', { name: 'Open menu' }))
-  await ui.click(await screen.findByRole('menuitem', { name: 'Trash' }))
+  await ui.click(screen.getByRole('link', { name: 'Trash' }))
   await screen.findByRole('heading', { name: 'Trash' })
   state.vehicles.push({ ...fakeVehicle({ id: 'z', name: 'Added elsewhere' }), deletedAt: '' }) // e.g. by another user
-  await ui.click(screen.getByRole('button', { name: 'Open menu' }))
-  await ui.click(await screen.findByRole('menuitem', { name: 'Vehicles' }))
+  await ui.click(screen.getByRole('link', { name: 'Vehicles' }))
 
   await screen.findByText('Added elsewhere')
 })
@@ -265,7 +263,7 @@ it('edits with the real values even when columns are hidden (the grid did not lo
   expect(within(dialog).getByRole('combobox', { name: 'Fuel' })).toHaveTextContent('Petrol')
   await ui.click(within(dialog).getByRole('button', { name: 'Save changes' }))
 
-  await waitFor(() => expect(state.calls.UpdateVehicle).toEqual([{ input: { id: 'a', name: 'Beta', licensePlate: 'BBB-2', fuelType: 'PETROL' } }]))
+  await waitFor(() => expect(state.calls.UpdateVehicle).toEqual([{ input: { id: 'a', name: 'Beta', licensePlate: 'BBB-2', fuelType: 'PETROL', units: { distance: 'KILOMETERS', volume: 'LITERS' } } }]))
 })
 
 it('the trash grid starts newest-deleted first and keeps its own settings', async () => {

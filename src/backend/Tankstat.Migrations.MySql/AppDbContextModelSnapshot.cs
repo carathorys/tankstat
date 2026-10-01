@@ -60,6 +60,127 @@ namespace Tankstat.Migrations.MySql
                     b.ToTable("AccessSettings", (string)null);
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Access.ResourceGrant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Feature")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<Guid>("GranteeId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Level")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.Property<Guid>("ResourceId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ResourceType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GranteeId", "ResourceType", "Feature");
+
+                    b.HasIndex("ResourceType", "ResourceId", "GranteeId", "Feature")
+                        .IsUnique();
+
+                    b.ToTable("ResourceGrants", (string)null);
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Images.StoredImage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Images", (string)null);
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Measurements.Cost", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("decimal(14,2)");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("varchar(3)");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId");
+
+                    b.HasIndex("VehicleId", "Date");
+
+                    b.ToTable("Costs", (string)null);
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Odometers.OdometerReading", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<long>("Value")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId");
+
+                    b.HasIndex("VehicleId", "Date");
+
+                    b.ToTable("OdometerReadings", (string)null);
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Users.PasswordResetToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -89,6 +210,9 @@ namespace Tankstat.Migrations.MySql
             modelBuilder.Entity("Tankstat.Domain.Users.User", b =>
                 {
                     b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("AvatarImageId")
                         .HasColumnType("char(36)");
 
                     b.Property<string>("DisplayName")
@@ -132,6 +256,8 @@ namespace Tankstat.Migrations.MySql
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AvatarImageId");
+
                     b.HasIndex("Provider", "Subject")
                         .IsUnique();
 
@@ -143,30 +269,47 @@ namespace Tankstat.Migrations.MySql
                     b.Property<Guid>("Id")
                         .HasColumnType("char(36)");
 
+                    b.Property<Guid>("CostId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("char(36)");
+
                     b.Property<DateOnly>("Date")
                         .HasColumnType("date");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<bool>("IsFullTank")
                         .HasColumnType("tinyint(1)");
 
-                    b.Property<decimal>("Liters")
-                        .HasPrecision(9, 3)
-                        .HasColumnType("decimal(9,3)");
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
 
-                    b.Property<int>("OdometerKm")
-                        .HasColumnType("int");
+                    b.Property<Guid>("OdometerReadingId")
+                        .HasColumnType("char(36)");
 
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("char(36)");
 
-                    b.Property<decimal>("TotalCost")
-                        .HasPrecision(12, 2)
-                        .HasColumnType("decimal(12,2)");
-
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("char(36)");
 
+                    b.Property<decimal>("Volume")
+                        .HasPrecision(9, 3)
+                        .HasColumnType("decimal(9,3)");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("CostId")
+                        .IsUnique();
+
+                    b.HasIndex("DeletedAt");
+
+                    b.HasIndex("OdometerReadingId")
+                        .IsUnique();
 
                     b.HasIndex("OwnerId");
 
@@ -200,11 +343,16 @@ namespace Tankstat.Migrations.MySql
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("char(36)");
 
+                    b.Property<Guid?>("PictureImageId")
+                        .HasColumnType("char(36)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("DeletedAt");
 
                     b.HasIndex("OwnerId");
+
+                    b.HasIndex("PictureImageId");
 
                     b.ToTable("Vehicles", (string)null);
                 });
@@ -224,6 +372,33 @@ namespace Tankstat.Migrations.MySql
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Access.ResourceGrant", b =>
+                {
+                    b.HasOne("Tankstat.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("GranteeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Measurements.Cost", b =>
+                {
+                    b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
+                        .WithMany()
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Odometers.OdometerReading", b =>
+                {
+                    b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
+                        .WithMany()
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Users.PasswordResetToken", b =>
                 {
                     b.HasOne("Tankstat.Domain.Users.User", null)
@@ -235,10 +410,61 @@ namespace Tankstat.Migrations.MySql
 
             modelBuilder.Entity("Tankstat.Domain.Vehicles.Refueling", b =>
                 {
+                    b.HasOne("Tankstat.Domain.Measurements.Cost", "Cost")
+                        .WithOne()
+                        .HasForeignKey("Tankstat.Domain.Vehicles.Refueling", "CostId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Tankstat.Domain.Odometers.OdometerReading", "OdometerReading")
+                        .WithOne()
+                        .HasForeignKey("Tankstat.Domain.Vehicles.Refueling", "OdometerReadingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
                         .WithMany()
                         .HasForeignKey("VehicleId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Cost");
+
+                    b.Navigation("OdometerReading");
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Vehicles.Vehicle", b =>
+                {
+                    b.OwnsOne("Tankstat.Domain.Measurements.MeasurementUnits", "Units", b1 =>
+                        {
+                            b1.Property<Guid>("VehicleId")
+                                .HasColumnType("char(36)");
+
+                            b1.Property<string>("Distance")
+                                .IsRequired()
+                                .ValueGeneratedOnAdd()
+                                .HasMaxLength(20)
+                                .HasColumnType("varchar(20)")
+                                .HasDefaultValue("Kilometers")
+                                .HasColumnName("OdometerUnit");
+
+                            b1.Property<string>("Volume")
+                                .IsRequired()
+                                .ValueGeneratedOnAdd()
+                                .HasMaxLength(20)
+                                .HasColumnType("varchar(20)")
+                                .HasDefaultValue("Liters")
+                                .HasColumnName("VolumeUnit");
+
+                            b1.HasKey("VehicleId");
+
+                            b1.ToTable("Vehicles");
+
+                            b1.WithOwner()
+                                .HasForeignKey("VehicleId");
+                        });
+
+                    b.Navigation("Units")
                         .IsRequired();
                 });
 #pragma warning restore 612, 618

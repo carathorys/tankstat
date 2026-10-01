@@ -26,17 +26,18 @@ public class VehicleGraphQLTests(ApiFixture api)
 
         var logged = await Send(
             "mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }",
-            new { i = new { vehicleId = id, date = "2026-10-01", liters = 41.5, totalCost = 79.9, odometerKm = 12000, isFullTank = true } });
+            new { i = new { vehicleId = id, date = "2026-10-01", volume = 41.5, totalCost = 79.9, odometer = 12000, isFullTank = true } });
         Assert.False(logged.TryGetProperty("errors", out _), logged.ToString());
 
         var read = await Send(
-            "query($id: UUID!) { vehicle(id: $id) { name refuelings { date liters totalCost odometerKm isFullTank } } }",
+            "query($id: UUID!) { vehicle(id: $id) { name } refuelings(vehicleId: $id) { date volume totalCost currency odometer isFullTank pricePerUnit } }",
             new { id });
         Assert.False(read.TryGetProperty("errors", out _), read.ToString());
-        var refueling = read.GetProperty("data").GetProperty("vehicle").GetProperty("refuelings")[0];
+        var refueling = read.GetProperty("data").GetProperty("refuelings")[0];
         Assert.Equal("2026-10-01", refueling.GetProperty("date").GetString());
-        Assert.Equal(41.5m, refueling.GetProperty("liters").GetDecimal());
-        Assert.Equal(12000, refueling.GetProperty("odometerKm").GetInt32());
+        Assert.Equal(41.5m, refueling.GetProperty("volume").GetDecimal());
+        Assert.Equal("EUR", refueling.GetProperty("currency").GetString()); // the instance default when none is given
+        Assert.Equal(12000, refueling.GetProperty("odometer").GetInt64());
 
         var list = await Send("{ vehicles { name } }");
         Assert.Contains(list.GetProperty("data").GetProperty("vehicles").EnumerateArray(),
@@ -60,7 +61,7 @@ public class VehicleGraphQLTests(ApiFixture api)
     {
         var body = await Send(
             "mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }",
-            new { i = new { vehicleId = Guid.NewGuid(), date = "2026-10-01", liters = 1, totalCost = 1, odometerKm = 1, isFullTank = true } });
+            new { i = new { vehicleId = Guid.NewGuid(), date = "2026-10-01", volume = 1, totalCost = 1, odometer = 1, isFullTank = true } });
 
         Assert.Equal("NOT_FOUND", body.GetProperty("errors")[0].GetProperty("extensions").GetProperty("code").GetString());
     }
@@ -91,14 +92,14 @@ public class VehicleLifecycleGraphQLTests(ApiFixture api)
         var id = await AddVehicle("Lifecycle car");
 
         var updated = await Send(
-            "mutation($i: UpdateVehicleInput!) { updateVehicle(input: $i) { name licensePlate fuelType canEdit ownerName } }",
+            "mutation($i: UpdateVehicleInput!) { updateVehicle(input: $i) { name licensePlate fuelType canEdit owner { id } } }",
             new { i = new { id, name = "Renamed car", licensePlate = "ab-12", fuelType = "DIESEL" } });
         var vehicle = updated.GetProperty("data").GetProperty("updateVehicle");
         Assert.Equal("Renamed car", vehicle.GetProperty("name").GetString());
         Assert.Equal("AB-12", vehicle.GetProperty("licensePlate").GetString());
         Assert.Equal("DIESEL", vehicle.GetProperty("fuelType").GetString());
         Assert.True(vehicle.GetProperty("canEdit").GetBoolean());
-        Assert.Equal(JsonValueKind.Null, vehicle.GetProperty("ownerName").ValueKind); // no users when auth is off
+        Assert.Equal(JsonValueKind.Null, vehicle.GetProperty("owner").ValueKind); // no users when auth is off
 
         var deleted = await Send("mutation($id: UUID!) { deleteVehicle(id: $id) { deletedAt } }", new { id });
         Assert.NotEqual(JsonValueKind.Null, deleted.GetProperty("data").GetProperty("deleteVehicle").GetProperty("deletedAt").ValueKind);
@@ -231,7 +232,7 @@ public class VehicleGridGraphQLTests(ApiFixture api)
         var added = await Send("mutation($i: AddVehicleInput!) { addVehicle(input: $i) { id } }", new { i = new { name = "Counted " + Guid.NewGuid().ToString("N")[..6], fuelType = "LPG" } });
         var id = added.GetProperty("data").GetProperty("addVehicle").GetProperty("id").GetString();
         await Send("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }",
-            new { i = new { vehicleId = id, date = "2026-10-01", liters = 1, totalCost = 1, odometerKm = 1, isFullTank = true } });
+            new { i = new { vehicleId = id, date = "2026-10-01", volume = 1, totalCost = 1, odometer = 1, isFullTank = true } });
 
         var body = await Send("query($id: UUID!) { vehicle(id: $id) { refuelingCount } }", new { id });
 

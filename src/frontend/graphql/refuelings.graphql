@@ -1,0 +1,124 @@
+# A vehicle's logs. Like the vehicle grid, optional columns are switched on and off with @include variables.
+query Refuelings(
+  $vehicleId: UUID!
+  $orderBy: RefuelingSortField!
+  $direction: SortDirection!
+  $skip: Int!
+  $take: Int!
+  $withVolume: Boolean!
+  $withCost: Boolean!
+  $withPrice: Boolean!
+  $withOdometer: Boolean!
+  $withFullTank: Boolean!
+  $withNote: Boolean!
+  $withCreatedBy: Boolean!
+) {
+  refuelings(vehicleId: $vehicleId, orderBy: $orderBy, direction: $direction, skip: $skip, take: $take) {
+    id
+    date
+    canEdit
+    canDelete
+    volume @include(if: $withVolume)
+    totalCost @include(if: $withCost)
+    currency @include(if: $withCost)
+    pricePerUnit @include(if: $withPrice)
+    odometer @include(if: $withOdometer)
+    isFullTank @include(if: $withFullTank)
+    note @include(if: $withNote)
+    createdBy @include(if: $withCreatedBy) {
+      id
+      displayName
+      avatarUrl
+    }
+  }
+  refuelingCount(vehicleId: $vehicleId)
+}
+
+# Logs in the trash, across vehicles. The vehicle (with its units, needed to show the numbers correctly) is always loaded.
+query RefuelingTrash(
+  $orderBy: RefuelingSortField!
+  $direction: SortDirection!
+  $skip: Int!
+  $take: Int!
+  $withVolume: Boolean!
+  $withCost: Boolean!
+  $withOdometer: Boolean!
+  $withDeletedAt: Boolean!
+  $withCreatedBy: Boolean!
+) {
+  refuelingTrash(orderBy: $orderBy, direction: $direction, skip: $skip, take: $take) {
+    id
+    date
+    vehicle {
+      id
+      name
+      units {
+        distance
+        volume
+      }
+    }
+    volume @include(if: $withVolume)
+    totalCost @include(if: $withCost)
+    currency @include(if: $withCost)
+    odometer @include(if: $withOdometer)
+    deletedAt @include(if: $withDeletedAt)
+    createdBy @include(if: $withCreatedBy) {
+      id
+      displayName
+      avatarUrl
+    }
+  }
+  refuelingTrashCount
+  refuelingTrashDeletableCount
+}
+
+query RefuelingDetails($id: UUID!) {
+  refueling(id: $id) {
+    id
+    vehicleId
+    date
+    volume
+    totalCost
+    currency
+    odometer
+    isFullTank
+    note
+  }
+}
+
+# What the add-log form starts from: the latest odometer reading and the currency of the latest log.
+query LogDefaults($vehicleId: UUID!) {
+  logDefaults(vehicleId: $vehicleId) {
+    lastOdometer
+    lastDate
+    currency
+  }
+}
+
+mutation LogRefueling($input: LogRefuelingInput!) {
+  logRefueling(input: $input) {
+    id
+  }
+}
+
+mutation UpdateRefueling($input: UpdateRefuelingInput!) {
+  updateRefueling(input: $input) {
+    id
+  }
+}
+
+mutation DeleteRefueling($id: UUID!) {
+  deleteRefueling(id: $id) {
+    id
+  }
+}
+
+mutation RestoreRefueling($id: UUID!) {
+  restoreRefueling(id: $id) {
+    id
+  }
+}
+
+mutation EmptyRefuelingTrash {
+  emptyRefuelingTrash
+}

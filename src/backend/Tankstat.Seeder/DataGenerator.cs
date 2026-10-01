@@ -1,3 +1,5 @@
+using Tankstat.Domain.Measurements;
+using Tankstat.Domain.Odometers;
 using Tankstat.Domain.Vehicles;
 
 namespace Tankstat.Seeder;
@@ -34,13 +36,40 @@ public sealed class DataGenerator(TimeProvider clock)
         for (var i = 0; i < total; i++)
         {
             var fuel = PickFuel(random);
-            var vehicle = Vehicle.Create(NoAuthOwner, UniqueName(random, names), random.NextDouble() < 0.1 ? null : Plate(random), fuel);
+            var market = PickMarket(random);
+            var vehicle = Vehicle.Create(NoAuthOwner, UniqueName(random, names), random.NextDouble() < 0.1 ? null : Plate(random), fuel, market.Units);
 
             if (i >= options.Vehicles) vehicle.MarkDeleted(clock.GetUtcNow() - TimeSpan.FromDays(random.Next(1, 61)) - TimeSpan.FromMinutes(random.Next(0, 1440)));
 
             var count = random.Next(options.RefuelingsPerVehicle.Min, options.RefuelingsPerVehicle.Max + 1);
-            yield return new GeneratedVehicle(vehicle, Refuelings(random, vehicle, count, today));
+            yield return new GeneratedVehicle(vehicle, Refuelings(random, vehicle, market, count, today));
         }
+    }
+
+    private const double KmToMiles = 0.621371;
+    private const double LitersPerUsGallon = 3.78541;
+    private const double LitersPerImperialGallon = 4.54609;
+
+    /// <summary>Where a vehicle "lives": its units, the currency it is normally paid in (and one for the odd trip abroad) and a price level.</summary>
+    private sealed record Market(MeasurementUnits Units, string HomeCurrency, double HomeRate, string AbroadCurrency, double AbroadRate)
+    {
+        public double LitersPerUnit => Units.Volume switch { VolumeUnit.UsGallons => LitersPerUsGallon, VolumeUnit.ImperialGallons => LitersPerImperialGallon, _ => 1 };
+        public double DistancePerKm => Units.Distance == DistanceUnit.Miles ? KmToMiles : 1;
+    }
+
+    // Prices are generated in euro per litre and multiplied by the rate of the currency they are paid in.
+    private static readonly Market[] Markets =
+    [
+        new(MeasurementUnits.Metric, "EUR", 1.0, "HUF", 400),
+        new(MeasurementUnits.Metric, "HUF", 400, "EUR", 1.0),
+        new(MeasurementUnits.Create(DistanceUnit.Miles, VolumeUnit.ImperialGallons), "GBP", 0.85, "EUR", 1.0),
+        new(MeasurementUnits.Create(DistanceUnit.Miles, VolumeUnit.UsGallons), "USD", 1.1, "EUR", 1.0),
+    ];
+
+    private static Market PickMarket(Random random)
+    {
+        var roll = random.NextDouble();
+        return roll < 0.45 ? Markets[0] : roll < 0.75 ? Markets[1] : roll < 0.88 ? Markets[2] : Markets[3];
     }
 
     private static FuelType PickFuel(Random random)
@@ -64,11 +93,12 @@ public sealed class DataGenerator(TimeProvider clock)
     /// A fuel log walked backwards in time from today: the dates only increase, the odometer only increases, and the litres of
     /// each fill-up equal the distance driven since the previous one at the vehicle's consumption (give or take 10%).
     /// </summary>
-    private static List<Refueling> Refuelings(Random random, Vehicle vehicle, int count, DateOnly today)
+    private static List<Refueling> Refuelings(Random random, Vehicle vehicle, Market market, int count, DateOnly today)
     {
         var log = new List<Refueling>(count);
         if (count == 0) return log;
 
+        // Consumption (litres per 100 km), tank size (litres) and price (euro per litre) depend on the fuel.
         var (consumption, tank, pricePerLiter) = vehicle.FuelType switch
         {
             FuelType.Diesel => (4.5 + random.NextDouble() * 3.0, 40 + random.Next(0, 31), 1.50 + random.NextDouble() * 0.2),
@@ -86,16 +116,27 @@ public sealed class DataGenerator(TimeProvider clock)
             date = date.AddDays(-gaps[i]);
         }
 
-        var odometer = random.Next(5_000, 250_000);
+        var odometer = (long)(random.Next(5_000, 250_000) * market.DistancePerKm);
         for (var i = 0; i < count; i++)
         {
-            var liters = Math.Round((decimal)(tank * (0.5 + random.NextDouble() * 0.45)), 2);
-            var distance = Math.Max(1, (int)Math.Round((double)liters / (consumption * (0.9 + random.NextDouble() * 0.2)) * 100));
-            odometer += distance;
+            var liters = tank * (0.5 + random.NextDouble() * 0.45);
+            var distanceKm = liters / (consumption * (0.9 + random.NextDouble() * 0.2)) * 100;
+            odometer += Math.Max(1, (long)Math.Round(distanceKm * market.DistancePerKm)); // in the vehicle's unit
             pricePerLiter *= 1 + (random.NextDouble() - 0.5) * 0.02; // the price drifts slowly
-            var cost = Math.Round(liters * (decimal)pricePerLiter, 2);
 
-            log.Add(Refueling.Create(vehicle.OwnerId, vehicle.Id, dates[i], liters, cost, odometer, isFullTank: random.NextDouble() < 0.85));
+            // Mostly paid at home; now and then abroad, in the other currency.
+            var abroad = random.NextDouble() < 0.1;
+            var currency = abroad ? market.AbroadCurrency : market.HomeCurrency;
+            var rate = abroad ? market.AbroadRate : market.HomeRate;
+
+            var volume = Math.Round((decimal)(liters / market.LitersPerUnit), 2);
+            var cost = Math.Round((decimal)(liters * pricePerLiter * rate), 2);
+
+            log.Add(Refueling.Create(
+                vehicle.OwnerId, vehicle.OwnerId, vehicle.Id, dates[i], volume,
+                Cost.Create(vehicle.OwnerId, vehicle.Id, dates[i], cost, currency),
+                OdometerReading.Create(vehicle.OwnerId, vehicle.Id, dates[i], odometer),
+                isFullTank: random.NextDouble() < 0.85));
         }
         return log;
     }

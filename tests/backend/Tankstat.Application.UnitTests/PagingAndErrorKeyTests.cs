@@ -86,10 +86,10 @@ public class PagingTests
         w.Current.SignInAs(alice);
         var car = await w.VehicleService.AddAsync("Car", null, FuelType.Lpg, default);
         await w.RefuelingService.LogAsync(car.Id, new(2026, 10, 1), 10, 10, 10, true, default);
-        Assert.Equal(1, await w.RefuelingService.CountForVehicleAsync(car.Id, default));
+        Assert.Equal(1, await w.RefuelingService.CountAsync(car.Id, default));
 
         w.Current.SignInAs(bob);
-        Assert.Equal(0, await w.RefuelingService.CountForVehicleAsync(car.Id, default));
+        Assert.Equal(0, await w.RefuelingService.CountAsync(car.Id, default));
     }
 }
 

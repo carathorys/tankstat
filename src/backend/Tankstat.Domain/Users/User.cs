@@ -16,6 +16,9 @@ public sealed class User
     public bool IsAdmin { get; private set; }
     public bool IsDisabled { get; private set; }
 
+    /// <summary>The profile picture (a <c>StoredImage</c>), if the user uploaded one.</summary>
+    public Guid? AvatarImageId { get; private set; }
+
     // Local (standalone) credentials.
     public string? PasswordHash { get; private set; }
     public int FailedLoginCount { get; private set; }
@@ -107,6 +110,8 @@ public sealed class User
     }
 
     public void SetAdmin(bool isAdmin) => IsAdmin = isAdmin;
+
+    public void SetAvatar(Guid? imageId) => AvatarImageId = imageId;
 
     public void SetDisabled(bool disabled)
     {

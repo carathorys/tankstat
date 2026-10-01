@@ -5,7 +5,10 @@ using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Health;
+using Tankstat.Application.Images;
+using Tankstat.Application.Odometers;
 using Tankstat.Application.Refuelings;
+using Tankstat.Application.Sharing;
 using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
 
@@ -15,6 +18,8 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddApplication(this IServiceCollection services, IConfiguration configuration)
     {
+        services.AddOptions<VehicleDefaultsOptions>().Bind(configuration.GetSection(VehicleDefaultsOptions.SectionName));
+        services.AddOptions<StorageOptions>().Bind(configuration.GetSection(StorageOptions.SectionName));
         services.AddOptions<SmtpOptions>().Bind(configuration.GetSection(SmtpOptions.SectionName));
         services.AddOptions<AuthOptions>().Bind(configuration.GetSection(AuthOptions.SectionName)).ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<AuthOptions>, AuthOptionsValidator>());
@@ -30,7 +35,10 @@ public static class DependencyInjection
         services.AddScoped<AuthService>();
         services.AddScoped<UserService>();
         services.AddScoped<VehicleService>();
+        services.AddScoped<ImageService>();
         services.AddScoped<RefuelingService>();
+        services.AddScoped<OdometerService>();
+        services.AddScoped<ResourceSharingService>();
         return services;
     }
 }

@@ -1,38 +1,42 @@
 import { useMutation } from '@apollo/client/react'
-import { AlertDialog, Button, Flex, Heading } from '@radix-ui/themes'
-import { useState, type ReactNode } from 'react'
+import { Button, Heading, Tabs, Box } from '@radix-ui/themes'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useSearchParams } from 'react-router'
+import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
+import { UserChip } from '../components/UserAvatar.tsx'
+import { VehiclePicture } from '../components/VehiclePicture.tsx'
 import {
+  EmptyRefuelingTrashDocument,
   EmptyTrashDocument,
+  RefuelingTrashDocument,
+  RestoreRefuelingDocument,
   RestoreVehicleDocument,
   TrashDocument,
+  type RefuelingSortField,
+  type RefuelingTrashQuery,
+  type RefuelingTrashQueryVariables,
   type TrashQuery,
   type TrashQueryVariables,
+  type VehicleSortField,
 } from '../gql/generated.ts'
 import { DataGrid, type GridColumn } from '../grid/DataGrid.tsx'
+import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { useFormat } from '../i18n/format.ts'
 import { ErrorMessage, SuccessMessage } from '../messages.tsx'
 
-type Row = TrashQuery['trash'][number]
+type VehicleRow = TrashQuery['trash'][number]
+type LogRow = RefuelingTrashQuery['refuelingTrash'][number]
 
-const refetch = { refetchQueries: ['Vehicles', 'Trash'], awaitRefetchQueries: true }
+const refetch = { refetchQueries: ['Vehicles', 'Trash', 'Refuelings', 'RefuelingTrash', 'VehicleDetails'], awaitRefetchQueries: true }
 
 export function TrashPage() {
   const { t } = useTranslation()
-  const { dateTime } = useFormat()
-  const [restore] = useMutation(RestoreVehicleDocument, refetch)
-  const [emptyTrash] = useMutation(EmptyTrashDocument, refetch)
+  usePageTitle(t('trash.title'))
+  const [params, setParams] = useSearchParams()
+  const tab = params.get('tab') === 'refuelings' ? 'refuelings' : 'vehicles'
   const [actionError, setActionError] = useState<unknown>()
   const [notice, setNotice] = useState<ReactNode>()
-  const none = t('common.none')
-
-  const columns: GridColumn<Row, TrashQueryVariables>[] = [
-    { id: 'name', label: 'columns.name', hideable: false, mobile: true, sortField: 'NAME', cell: (r) => r.name },
-    { id: 'licensePlate', label: 'columns.licensePlate', include: 'withLicensePlate', sortField: 'LICENSE_PLATE', cell: (r) => r.licensePlate ?? none },
-    { id: 'fuelType', label: 'columns.fuelType', include: 'withFuelType', sortField: 'FUEL_TYPE', cell: (r) => (r.fuelType ? t(`fuel.${r.fuelType}`) : none) },
-    { id: 'owner', label: 'columns.owner', include: 'withOwner', sortField: 'OWNER', cell: (r) => r.ownerName ?? none },
-    { id: 'deletedAt', label: 'columns.deletedAt', include: 'withDeletedAt', mobile: true, sortField: 'DELETED_AT', cell: (r) => (r.deletedAt ? dateTime(r.deletedAt) : none) },
-  ]
 
   async function run(action: () => Promise<unknown>) {
     setActionError(undefined)
@@ -45,57 +49,155 @@ export function TrashPage() {
   }
 
   return (
-    <section>
-      <Heading mb="4">{t('trash.title')}</Heading>
+    <section aria-labelledby="page-title">
+      <Heading id="page-title" mb="2">
+        {t('trash.title')}
+      </Heading>
       {actionError !== undefined && <ErrorMessage error={actionError} />}
       {notice && <SuccessMessage>{notice}</SuccessMessage>}
-      <DataGrid
-        gridId="trash"
-        query={TrashDocument}
-        select={(d) => ({ rows: d.trash, total: d.trashCount })}
-        rowKey={(r) => r.id}
-        columns={columns}
-        defaultSort={{ field: 'DELETED_AT', direction: 'DESC' }}
-        emptyText={t('trash.empty')}
-        toolbar={({ total }) => (
-          <AlertDialog.Root>
-            <AlertDialog.Trigger>
-              <Button color="red" variant="soft" disabled={total === 0}>
-                {t('trash.emptyAction')}
-              </Button>
-            </AlertDialog.Trigger>
-            <AlertDialog.Content maxWidth="450px">
-              <AlertDialog.Title>{t('trash.emptyTitle')}</AlertDialog.Title>
-              <AlertDialog.Description size="2">{t('trash.emptyDescription', { count: total })}</AlertDialog.Description>
-              <Flex gap="3" mt="4" justify="end">
-                <AlertDialog.Cancel>
-                  <Button variant="soft" color="gray">
-                    {t('common.cancel')}
-                  </Button>
-                </AlertDialog.Cancel>
-                <AlertDialog.Action>
-                  <Button
-                    color="red"
-                    onClick={() =>
-                      run(async () => {
-                        const result = await emptyTrash()
-                        setNotice(t('trash.emptied', { count: result.data?.emptyTrash ?? 0 }))
-                      })
-                    }
-                  >
-                    {t('trash.emptyAction')}
-                  </Button>
-                </AlertDialog.Action>
-              </Flex>
-            </AlertDialog.Content>
-          </AlertDialog.Root>
-        )}
-        actions={(v) => (
-          <Button size="1" variant="soft" aria-label={t('trash.restoreAria', { name: v.name })} onClick={() => run(() => restore({ variables: { id: v.id } }))}>
-            {t('trash.restore')}
-          </Button>
-        )}
-      />
+      <Tabs.Root value={tab} onValueChange={(value) => { setNotice(undefined); setParams(value === 'vehicles' ? {} : { tab: value }, { replace: true }) }}>
+        <Tabs.List aria-label={t('trash.title')}>
+          <Tabs.Trigger value="vehicles">{t('trash.tabs.vehicles')}</Tabs.Trigger>
+          <Tabs.Trigger value="refuelings">{t('trash.tabs.refuelings')}</Tabs.Trigger>
+        </Tabs.List>
+        <Box pt="4">
+          <Tabs.Content value="vehicles">
+            <VehicleTrash run={run} setNotice={setNotice} />
+          </Tabs.Content>
+          <Tabs.Content value="refuelings">
+            <RefuelingTrash run={run} setNotice={setNotice} />
+          </Tabs.Content>
+        </Box>
+      </Tabs.Root>
     </section>
+  )
+}
+
+interface Shared {
+  run: (action: () => Promise<unknown>) => Promise<void>
+  setNotice: (notice: ReactNode) => void
+}
+
+/** "Empty trash" removes only what the person may delete for good; the rest stays and is explained. */
+function EmptyButton({ total, deletable, title, description, onConfirm }: { total: number; deletable: number; title: string; description: string; onConfirm: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <Box>
+      <ConfirmDialog
+        trigger={
+          <Button size="3" color="red" variant="soft" disabled={deletable === 0}>
+            {t('trash.emptyAction')}
+          </Button>
+        }
+        title={title}
+        description={deletable < total ? t('trash.emptyPartial', { count: deletable }) : description}
+        confirmLabel={t('trash.emptyAction')}
+        onConfirm={onConfirm}
+      />
+    </Box>
+  )
+}
+
+function VehicleTrash({ run, setNotice }: Shared) {
+  const { t } = useTranslation()
+  const { dateTime } = useFormat()
+  const [restore] = useMutation(RestoreVehicleDocument, refetch)
+  const [emptyTrash] = useMutation(EmptyTrashDocument, refetch)
+
+  const columns = useMemo<GridColumn<VehicleRow, TrashQueryVariables, VehicleSortField>[]>(() => {
+    const none = t('common.none')
+    return [
+      {
+        id: 'name',
+        label: 'columns.name',
+        hideable: false,
+        mobile: true,
+        sortField: 'NAME',
+        cell: (r) => (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <VehiclePicture url={r.pictureUrl} name={r.name} width={40} />
+            {r.name}
+          </span>
+        ),
+      },
+      { id: 'licensePlate', label: 'columns.licensePlate', include: 'withLicensePlate', sortField: 'LICENSE_PLATE', cell: (r) => r.licensePlate ?? none },
+      { id: 'fuelType', label: 'columns.fuelType', include: 'withFuelType', sortField: 'FUEL_TYPE', cell: (r) => (r.fuelType ? t(`fuel.${r.fuelType}`) : none) },
+      { id: 'owner', label: 'columns.owner', include: 'withOwner', sortField: 'OWNER', cell: (r) => (r.owner ? <UserChip user={r.owner} /> : none) },
+      { id: 'deletedAt', label: 'columns.deletedAt', include: 'withDeletedAt', mobile: true, sortField: 'DELETED_AT', cell: (r) => (r.deletedAt ? dateTime(r.deletedAt) : none) },
+    ]
+  }, [t, dateTime])
+
+  return (
+    <DataGrid
+      gridId="trash"
+      caption={t('trash.tabs.vehicles')}
+      query={TrashDocument}
+      select={(d) => ({ rows: d.trash, total: d.trashCount })}
+      rowKey={(r) => r.id}
+      columns={columns}
+      defaultSort={{ column: 'deletedAt', direction: 'DESC' }}
+      emptyText={t('trash.empty')}
+      toolbar={({ total, data }) => (
+        <EmptyButton
+          total={total}
+          deletable={data?.trashDeletableCount ?? 0}
+          title={t('trash.emptyTitle')}
+          description={t('trash.emptyDescription', { count: total })}
+          onConfirm={() => void run(async () => setNotice(t('trash.emptied', { count: (await emptyTrash()).data?.emptyTrash ?? 0 })))}
+        />
+      )}
+      actions={(v) => (
+        <Button size="2" variant="soft" aria-label={t('trash.restoreAria', { name: v.name })} onClick={() => void run(() => restore({ variables: { id: v.id } }))}>
+          {t('trash.restore')}
+        </Button>
+      )}
+    />
+  )
+}
+
+function RefuelingTrash({ run, setNotice }: Shared) {
+  const { t } = useTranslation()
+  const format = useFormat()
+  const [restore] = useMutation(RestoreRefuelingDocument, refetch)
+  const [emptyTrash] = useMutation(EmptyRefuelingTrashDocument, refetch)
+
+  const columns = useMemo<GridColumn<LogRow, RefuelingTrashQueryVariables, RefuelingSortField>[]>(() => {
+    const none = t('common.none')
+    return [
+      { id: 'date', label: 'columns.date', hideable: false, mobile: true, sortField: 'DATE', cell: (r) => format.date(r.date) },
+      { id: 'vehicle', label: 'columns.vehicle', mobile: true, sortField: 'VEHICLE', cell: (r) => r.vehicle?.name ?? none },
+      { id: 'volume', label: 'columns.volume', include: 'withVolume', sortField: 'VOLUME', cell: (r) => (r.volume == null || !r.vehicle ? none : format.volume(r.volume, r.vehicle.units.volume)) },
+      { id: 'cost', label: 'columns.cost', include: 'withCost', sortField: 'TOTAL_COST', cell: (r) => (r.totalCost == null || !r.currency ? none : format.money(r.totalCost, r.currency)) },
+      { id: 'odometer', label: 'columns.odometer', include: 'withOdometer', sortField: 'ODOMETER', cell: (r) => (r.odometer == null || !r.vehicle ? none : format.distance(r.odometer, r.vehicle.units.distance)) },
+      { id: 'createdBy', label: 'columns.createdBy', include: 'withCreatedBy', sortField: 'CREATED_BY', cell: (r) => (r.createdBy ? <UserChip user={r.createdBy} /> : none) },
+      { id: 'deletedAt', label: 'columns.deletedAt', include: 'withDeletedAt', mobile: true, sortField: 'DELETED_AT', cell: (r) => (r.deletedAt ? format.dateTime(r.deletedAt) : none) },
+    ]
+  }, [t, format])
+
+  return (
+    <DataGrid
+      gridId="refueling-trash"
+      caption={t('trash.tabs.refuelings')}
+      query={RefuelingTrashDocument}
+      select={(d) => ({ rows: d.refuelingTrash, total: d.refuelingTrashCount })}
+      rowKey={(r) => r.id}
+      columns={columns}
+      defaultSort={{ column: 'deletedAt', direction: 'DESC' }}
+      emptyText={t('trash.refuelingsEmpty')}
+      toolbar={({ total, data }) => (
+        <EmptyButton
+          total={total}
+          deletable={data?.refuelingTrashDeletableCount ?? 0}
+          title={t('trash.emptyTitle')}
+          description={t('trash.refuelingDescription', { count: total })}
+          onConfirm={() => void run(async () => setNotice(t('trash.emptiedRefuelings', { count: (await emptyTrash()).data?.emptyRefuelingTrash ?? 0 })))}
+        />
+      )}
+      actions={(r) => (
+        <Button size="2" variant="soft" aria-label={t('trash.restoreAria', { name: format.date(r.date) })} onClick={() => void run(() => restore({ variables: { id: r.id } }))}>
+          {t('trash.restore')}
+        </Button>
+      )}
+    />
   )
 }

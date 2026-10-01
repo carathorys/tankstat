@@ -7,6 +7,7 @@ public interface IUserRepository
     Task<User?> FindByIdAsync(Guid id, CancellationToken ct);
     Task<User?> FindLocalByEmailAsync(string normalizedEmail, CancellationToken ct);
     Task<User?> FindExternalAsync(UserProvider provider, string subject, CancellationToken ct);
+    Task<User?> FindByAvatarImageAsync(Guid imageId, CancellationToken ct);
     Task<IReadOnlyList<User>> ListAsync(CancellationToken ct);
     Task<bool> AnyLocalAdminAsync(CancellationToken ct);
     Task AddAsync(User user, CancellationToken ct);

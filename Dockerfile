@@ -64,11 +64,12 @@ COPY --from=backend /app ./
 # The API serves the SPA from wwwroot next to the binaries.
 COPY --from=frontend /src/dist ./wwwroot
 
-# SQLite database lives in a volume the unprivileged user can write to. Every setting is a normal ASP.NET Core
+# The SQLite database and the uploaded pictures live in a volume the unprivileged user can write to. Every setting is a normal ASP.NET Core
 # setting and can be overridden at run time (Database__Provider, Database__ConnectionString, Auth__Mode, ...).
 ENV ASPNETCORE_URLS=http://+:8080 \
     Database__Provider=Sqlite \
-    Database__ConnectionString="Data Source=/data/tankstat.db"
+    Database__ConnectionString="Data Source=/data/tankstat.db" \
+    Storage__Path=/data/uploads
 RUN mkdir /data && chown "$APP_UID:$APP_UID" /data
 VOLUME /data
 

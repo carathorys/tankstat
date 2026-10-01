@@ -12,6 +12,7 @@
   </Folder>
   <Folder Name="/src/backend/" />
   <Folder Name="/tests/">
+    <Project Path="tests/backend/Tankstat.TestSupport/Tankstat.TestSupport.csproj" />
     <Project Path="tests/backend/Tankstat.Api.ApiTests/Tankstat.Api.ApiTests.csproj" />
     <Project Path="tests/backend/Tankstat.Api.SmokeTests/Tankstat.Api.SmokeTests.csproj" />
     <Project Path="tests/backend/Tankstat.Api.IntegrationTests/Tankstat.Api.IntegrationTests.csproj" />

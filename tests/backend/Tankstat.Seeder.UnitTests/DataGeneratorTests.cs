@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Time.Testing;
+using Tankstat.Domain.Measurements;
+using Tankstat.Domain.Odometers;
 using Tankstat.Domain.Vehicles;
 using Tankstat.Seeder;
 
@@ -93,7 +95,7 @@ public class DataGeneratorTests
             for (var i = 1; i < log.Count; i++)
             {
                 Assert.True(log[i].Date > log[i - 1].Date, $"{g.Vehicle.Name}: dates must increase");
-                Assert.True(log[i].OdometerKm > log[i - 1].OdometerKm, $"{g.Vehicle.Name}: odometer must increase");
+                Assert.True(log[i].Odometer > log[i - 1].Odometer, $"{g.Vehicle.Name}: odometer must increase");
             }
         }
     }
@@ -108,31 +110,82 @@ public class DataGeneratorTests
         }
     }
 
-    [Fact]
-    public void Amounts_ArePositive_AndPlausible()
+    private const double LitersPerUsGallon = 3.78541, LitersPerImperialGallon = 4.54609, MilesPerKm = 0.621371;
+
+    private static double Liters(GeneratedVehicle g, Refueling r) => (double)r.Volume * g.Vehicle.Units.Volume switch
     {
-        foreach (var r in Generate(80, 10, new IntRange(5, 30)).SelectMany(g => g.Refuelings))
+        VolumeUnit.UsGallons => LitersPerUsGallon,
+        VolumeUnit.ImperialGallons => LitersPerImperialGallon,
+        _ => 1,
+    };
+
+    [Fact]
+    public void Amounts_ArePositive_AndPlausibleInTheVehiclesOwnUnits()
+    {
+        foreach (var g in Generate(120, 10, new IntRange(5, 30)))
+            foreach (var r in g.Refuelings)
+            {
+                Assert.InRange(Liters(g, r), 10.0, 80.0);
+                Assert.True(r.TotalCost > 0);
+                Assert.True(r.Odometer > 0);
+                var pricePerLiter = (double)r.TotalCost / Liters(g, r);
+                var (low, high) = r.Currency switch { "EUR" => (0.5, 2.5), "HUF" => (200.0, 1000.0), "GBP" => (0.4, 2.2), "USD" => (0.5, 2.6), _ => (0.0, double.MaxValue) };
+                Assert.InRange(pricePerLiter, low, high);
+            }
+    }
+
+    [Fact]
+    public void ConsumptionFollowsThePerVehicleValue_WhateverTheUnits()
+    {
+        // Litres per 100 km between consecutive fill-ups stay near one value per vehicle (the generator allows +-10%, plus rounding),
+        // also for vehicles that use miles and gallons.
+        foreach (var g in Generate(80, 0, new IntRange(10, 30)))
         {
-            Assert.InRange(r.Liters, 10m, 80m);
-            Assert.True(r.TotalCost > 0);
-            Assert.InRange(r.TotalCost / r.Liters, 0.5m, 2.5m); // price per litre
-            Assert.True(r.OdometerKm > 0);
+            var log = g.Refuelings;
+            var kmPerUnit = g.Vehicle.Units.Distance == DistanceUnit.Miles ? 1 / MilesPerKm : 1;
+            var consumption = Enumerable.Range(1, log.Count - 1)
+                .Select(i => Liters(g, log[i]) / ((log[i].Odometer - log[i - 1].Odometer) * kmPerUnit) * 100).ToList();
+
+            Assert.InRange(consumption.Min(), 3.0, 15.0);
+            Assert.True(consumption.Max() / consumption.Min() < 1.6, $"{g.Vehicle.Name}: consumption varies {consumption.Min():F1}..{consumption.Max():F1}");
         }
     }
 
     [Fact]
-    public void LitersFollowThePerVehicleConsumption()
+    public void VehiclesUseDifferentUnits_AndLogsDifferentCurrencies()
     {
-        // Litres per 100 km between consecutive fill-ups stay near one value per vehicle (the generator allows +-10%).
-        foreach (var g in Generate(60, 0, new IntRange(10, 30)))
-        {
-            var log = g.Refuelings;
-            var consumption = Enumerable.Range(1, log.Count - 1)
-                .Select(i => (double)log[i].Liters / (log[i].OdometerKm - log[i - 1].OdometerKm) * 100).ToList();
+        var all = Generate(300, 0, new IntRange(10, 10));
 
-            Assert.InRange(consumption.Min(), 3.5, 14.5);
-            Assert.True(consumption.Max() / consumption.Min() < 1.4, $"{g.Vehicle.Name}: consumption varies {consumption.Min():F1}..{consumption.Max():F1}");
-        }
+        Assert.Contains(all, g => g.Vehicle.Units == MeasurementUnits.Metric);
+        Assert.Contains(all, g => g.Vehicle.Units.Distance == DistanceUnit.Miles && g.Vehicle.Units.Volume == VolumeUnit.UsGallons);
+        Assert.Contains(all, g => g.Vehicle.Units.Distance == DistanceUnit.Miles && g.Vehicle.Units.Volume == VolumeUnit.ImperialGallons);
+        var currencies = all.SelectMany(g => g.Refuelings).Select(r => r.Currency).Distinct().Order().ToArray();
+        Assert.Equal(["EUR", "GBP", "HUF", "USD"], currencies);
+    }
+
+    [Fact]
+    public void ALogIsMostlyPaidInOneCurrency_AndSometimesAbroad()
+    {
+        var logs = Generate(200, 0, new IntRange(20, 20));
+
+        var dominantShare = logs.Select(g => g.Refuelings.GroupBy(r => r.Currency).Max(c => c.Count()) / (double)g.Refuelings.Count).Average();
+        Assert.InRange(dominantShare, 0.8, 0.97);
+        Assert.Contains(logs, g => g.Refuelings.Select(r => r.Currency).Distinct().Count() > 1);
+    }
+
+    [Fact]
+    public void ReadingsAndCosts_AreLinkedConsistentlyToTheirLogs()
+    {
+        foreach (var g in Generate(60, 10, new IntRange(2, 15)))
+            foreach (var r in g.Refuelings)
+            {
+                Assert.Equal(r.OdometerReadingId, r.OdometerReading.Id);
+                Assert.Equal((g.Vehicle.Id, r.Date, r.Odometer), (r.OdometerReading.VehicleId, r.OdometerReading.Date, r.OdometerReading.Value));
+                Assert.Equal(r.CostId, r.Cost.Id);
+                Assert.Equal((g.Vehicle.Id, r.Date, r.TotalCost, r.Currency), (r.Cost.VehicleId, r.Cost.Date, r.Cost.Amount, r.Cost.Currency));
+                Assert.Equal(g.Vehicle.OwnerId, r.OdometerReading.OwnerId);
+                Assert.Equal(g.Vehicle.OwnerId, r.Cost.OwnerId);
+            }
     }
 
     [Fact]
@@ -140,7 +193,7 @@ public class DataGeneratorTests
     {
         static string Fingerprint(List<GeneratedVehicle> all) =>
             string.Join("|", all.Select(g => $"{g.Vehicle.Name}/{g.Vehicle.LicensePlate}/{g.Vehicle.FuelType}/{g.Vehicle.IsDeleted}/" +
-                string.Join(",", g.Refuelings.Select(r => $"{r.Date:o}:{r.Liters}:{r.TotalCost}:{r.OdometerKm}:{r.IsFullTank}"))));
+                string.Join(",", g.Refuelings.Select(r => $"{r.Date:o}:{r.Volume}:{r.TotalCost}:{r.Currency}:{r.Odometer}:{r.IsFullTank}:{g.Vehicle.Units.Distance}"))));
 
         Assert.Equal(Fingerprint(Generate(seed: 5)), Fingerprint(Generate(seed: 5)));
         Assert.NotEqual(Fingerprint(Generate(seed: 5)), Fingerprint(Generate(seed: 6)));

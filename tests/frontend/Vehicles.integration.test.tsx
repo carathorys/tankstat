@@ -51,7 +51,7 @@ it('adds a vehicle through the dialog', async () => {
 
   await screen.findByText('Golf')
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-  expect(state.calls.AddVehicle).toEqual([{ input: { name: 'Golf', licensePlate: 'xy-99', fuelType: 'LPG' } }])
+  expect(state.calls.AddVehicle).toEqual([{ input: { name: 'Golf', licensePlate: 'xy-99', fuelType: 'LPG', units: { distance: 'KILOMETERS', volume: 'LITERS' } } }])
 })
 
 it('sends an empty plate as null', async () => {
@@ -63,7 +63,7 @@ it('sends an empty plate as null', async () => {
   await ui.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Add vehicle' }))
 
   await screen.findByText('Scooter')
-  expect(state.calls.AddVehicle).toEqual([{ input: { name: 'Scooter', licensePlate: null, fuelType: 'PETROL' } }])
+  expect(state.calls.AddVehicle).toEqual([{ input: { name: 'Scooter', licensePlate: null, fuelType: 'PETROL', units: { distance: 'KILOMETERS', volume: 'LITERS' } } }])
 })
 
 it('blocks an empty name in the form, without calling the server', async () => {
@@ -132,7 +132,7 @@ it('edits a vehicle, starting from its current values', async () => {
 
   await screen.findByText('Superb')
   expect(screen.queryByText('Octavia')).not.toBeInTheDocument()
-  expect(state.calls.UpdateVehicle).toEqual([{ input: { id: 'v1', name: 'Superb', licensePlate: 'ABC-123', fuelType: 'PETROL' } }])
+  expect(state.calls.UpdateVehicle).toEqual([{ input: { id: 'v1', name: 'Superb', licensePlate: 'ABC-123', fuelType: 'PETROL', units: { distance: 'KILOMETERS', volume: 'LITERS' } } }])
 })
 
 it('asks for confirmation, then moves the vehicle to the trash', async () => {
@@ -169,4 +169,48 @@ it('offers no changes for vehicles the user may only view', async () => {
   expect(screen.queryByRole('button', { name: 'Edit Octavia' })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Delete Octavia' })).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Edit Mine' })).toBeInTheDocument()
+})
+
+it('links every vehicle to its page', async () => {
+  setup()
+
+  const link = await screen.findByRole('link', { name: 'Open Octavia' })
+
+  expect(link).toHaveAttribute('href', '/vehicles/v1')
+})
+
+it('shows the owner with an avatar (initials without a picture)', async () => {
+  setup()
+
+  const row = (await screen.findByText('Octavia')).closest('tr')!
+  expect(within(row).getByText('Alice')).toBeInTheDocument()
+  expect(await within(row).findByText('A')).toBeInTheDocument() // the avatar fallback appears right after mounting
+})
+
+it('a new vehicle starts with the installation default units, which can be changed before saving', async () => {
+  const { ui, state } = setup([])
+  await screen.findByText(/No vehicles yet/)
+
+  await ui.click(screen.getByRole('button', { name: 'Add vehicle' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add vehicle' })
+  await waitFor(() => expect(within(dialog).getByRole('combobox', { name: 'Distance' })).toHaveTextContent('Kilometers'))
+  await ui.type(within(dialog).getByLabelText('Name'), 'Mustang')
+  await choose(ui, 'Distance', 'Miles')
+  await choose(ui, 'Fuel volume', 'US gallons')
+  await ui.click(within(dialog).getByRole('button', { name: 'Add vehicle' }))
+
+  await screen.findByText('Mustang')
+  expect(state.calls.AddVehicle).toEqual([{ input: { name: 'Mustang', licensePlate: null, fuelType: 'PETROL', units: { distance: 'MILES', volume: 'US_GALLONS' } } }])
+})
+
+it('locks the units once the vehicle has logs, and explains why', async () => {
+  const { ui } = setup([fakeVehicle({ refuelingCount: 3 })])
+  await screen.findByText('Octavia')
+
+  await ui.click(screen.getByRole('button', { name: 'Edit Octavia' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Edit vehicle' })
+
+  expect(await within(dialog).findByRole('combobox', { name: 'Distance' })).toBeDisabled()
+  expect(within(dialog).getByRole('combobox', { name: 'Fuel volume' })).toBeDisabled()
+  expect(within(dialog).getByText(/units are fixed because this vehicle already has logs/)).toBeInTheDocument()
 })

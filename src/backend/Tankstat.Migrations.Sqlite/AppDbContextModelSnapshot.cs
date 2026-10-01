@@ -58,6 +58,127 @@ namespace Tankstat.Migrations.Sqlite
                     b.ToTable("AccessSettings", (string)null);
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Access.ResourceGrant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Feature")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("GranteeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Level")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ResourceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ResourceType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GranteeId", "ResourceType", "Feature");
+
+                    b.HasIndex("ResourceType", "ResourceId", "GranteeId", "Feature")
+                        .IsUnique();
+
+                    b.ToTable("ResourceGrants", (string)null);
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Images.StoredImage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Images", (string)null);
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Measurements.Cost", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId");
+
+                    b.HasIndex("VehicleId", "Date");
+
+                    b.ToTable("Costs", (string)null);
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Odometers.OdometerReading", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Value")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId");
+
+                    b.HasIndex("VehicleId", "Date");
+
+                    b.ToTable("OdometerReadings", (string)null);
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Users.PasswordResetToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -87,6 +208,9 @@ namespace Tankstat.Migrations.Sqlite
             modelBuilder.Entity("Tankstat.Domain.Users.User", b =>
                 {
                     b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("AvatarImageId")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("DisplayName")
@@ -130,6 +254,8 @@ namespace Tankstat.Migrations.Sqlite
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AvatarImageId");
+
                     b.HasIndex("Provider", "Subject")
                         .IsUnique();
 
@@ -141,30 +267,47 @@ namespace Tankstat.Migrations.Sqlite
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid>("CostId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateOnly>("Date")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("IsFullTank")
                         .HasColumnType("INTEGER");
 
-                    b.Property<decimal>("Liters")
-                        .HasPrecision(9, 3)
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("OdometerKm")
-                        .HasColumnType("INTEGER");
+                    b.Property<Guid>("OdometerReadingId")
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid>("OwnerId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<decimal>("TotalCost")
-                        .HasPrecision(12, 2)
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal>("Volume")
+                        .HasPrecision(9, 3)
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("CostId")
+                        .IsUnique();
+
+                    b.HasIndex("DeletedAt");
+
+                    b.HasIndex("OdometerReadingId")
+                        .IsUnique();
 
                     b.HasIndex("OwnerId");
 
@@ -198,11 +341,16 @@ namespace Tankstat.Migrations.Sqlite
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("PictureImageId")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("DeletedAt");
 
                     b.HasIndex("OwnerId");
+
+                    b.HasIndex("PictureImageId");
 
                     b.ToTable("Vehicles", (string)null);
                 });
@@ -222,6 +370,33 @@ namespace Tankstat.Migrations.Sqlite
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Access.ResourceGrant", b =>
+                {
+                    b.HasOne("Tankstat.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("GranteeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Measurements.Cost", b =>
+                {
+                    b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
+                        .WithMany()
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Odometers.OdometerReading", b =>
+                {
+                    b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
+                        .WithMany()
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Users.PasswordResetToken", b =>
                 {
                     b.HasOne("Tankstat.Domain.Users.User", null)
@@ -233,10 +408,61 @@ namespace Tankstat.Migrations.Sqlite
 
             modelBuilder.Entity("Tankstat.Domain.Vehicles.Refueling", b =>
                 {
+                    b.HasOne("Tankstat.Domain.Measurements.Cost", "Cost")
+                        .WithOne()
+                        .HasForeignKey("Tankstat.Domain.Vehicles.Refueling", "CostId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Tankstat.Domain.Odometers.OdometerReading", "OdometerReading")
+                        .WithOne()
+                        .HasForeignKey("Tankstat.Domain.Vehicles.Refueling", "OdometerReadingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
                         .WithMany()
                         .HasForeignKey("VehicleId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Cost");
+
+                    b.Navigation("OdometerReading");
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Vehicles.Vehicle", b =>
+                {
+                    b.OwnsOne("Tankstat.Domain.Measurements.MeasurementUnits", "Units", b1 =>
+                        {
+                            b1.Property<Guid>("VehicleId")
+                                .HasColumnType("TEXT");
+
+                            b1.Property<string>("Distance")
+                                .IsRequired()
+                                .ValueGeneratedOnAdd()
+                                .HasMaxLength(20)
+                                .HasColumnType("TEXT")
+                                .HasDefaultValue("Kilometers")
+                                .HasColumnName("OdometerUnit");
+
+                            b1.Property<string>("Volume")
+                                .IsRequired()
+                                .ValueGeneratedOnAdd()
+                                .HasMaxLength(20)
+                                .HasColumnType("TEXT")
+                                .HasDefaultValue("Liters")
+                                .HasColumnName("VolumeUnit");
+
+                            b1.HasKey("VehicleId");
+
+                            b1.ToTable("Vehicles");
+
+                            b1.WithOwner()
+                                .HasForeignKey("VehicleId");
+                        });
+
+                    b.Navigation("Units")
                         .IsRequired();
                 });
 #pragma warning restore 612, 618

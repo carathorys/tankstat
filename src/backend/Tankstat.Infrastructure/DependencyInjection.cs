@@ -6,9 +6,12 @@ using Microsoft.Extensions.Options;
 using Tankstat.Application;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Images;
+using Tankstat.Application.Odometers;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Users;
 using Tankstat.Infrastructure.Auth;
+using Tankstat.Infrastructure.Storage;
 using Tankstat.Application.Vehicles;
 using Tankstat.Infrastructure.Persistence;
 using Tankstat.Infrastructure.Persistence.Repositories;
@@ -55,6 +58,10 @@ public static class DependencyInjection
         services.AddScoped<IPasswordResetTokenRepository, PasswordResetTokenRepository>();
         services.AddScoped<IAccessGrantRepository, AccessGrantRepository>();
         services.AddScoped<IAccessSettingsRepository, AccessSettingsRepository>();
+        services.AddScoped<IResourceGrantRepository, ResourceGrantRepository>();
+        services.AddScoped<IOdometerReadingRepository, OdometerReadingRepository>();
+        services.AddScoped<IImageRepository, ImageRepository>();
+        services.AddSingleton<IImageStore, FileSystemImageStore>();
         services.AddSingleton<IPasswordHasher, IdentityPasswordHasher>();
         services.AddSingleton<IEmailSender, SmtpEmailSender>();
 

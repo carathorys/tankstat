@@ -1,0 +1,20 @@
+# Who has access to one vehicle's logs through a grant on that vehicle, and who it could still be shared with.
+query LogAccess($vehicleId: UUID!) {
+  vehicleLogAccess(vehicleId: $vehicleId) {
+    level
+    user {
+      id
+      displayName
+      avatarUrl
+    }
+  }
+  shareCandidates(vehicleId: $vehicleId) {
+    id
+    displayName
+    avatarUrl
+  }
+}
+
+mutation SetVehicleLogAccess($input: SetLogAccessInput!) {
+  setVehicleLogAccess(input: $input)
+}

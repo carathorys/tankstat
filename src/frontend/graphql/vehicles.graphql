@@ -14,9 +14,14 @@ query Vehicles(
     id
     name
     canEdit
+    pictureUrl
     licensePlate @include(if: $withLicensePlate)
     fuelType @include(if: $withFuelType)
-    ownerName @include(if: $withOwner)
+    owner @include(if: $withOwner) {
+      id
+      displayName
+      avatarUrl
+    }
     refuelingCount @include(if: $withRefuelings)
   }
   vehicleCount
@@ -35,21 +40,49 @@ query Trash(
   trash(orderBy: $orderBy, direction: $direction, skip: $skip, take: $take) {
     id
     name
+    pictureUrl
     licensePlate @include(if: $withLicensePlate)
     fuelType @include(if: $withFuelType)
-    ownerName @include(if: $withOwner)
+    owner @include(if: $withOwner) {
+      id
+      displayName
+      avatarUrl
+    }
     deletedAt @include(if: $withDeletedAt)
   }
   trashCount
+  trashDeletableCount
 }
 
-# Loaded when the edit dialog opens: the grid may not have fetched every field (columns can be hidden).
+# Everything the vehicle page needs in one request. Also loaded when the edit dialog opens: the grid may not
+# have fetched every field (columns can be hidden), so edits never start from grid rows.
 query VehicleDetails($id: UUID!) {
   vehicle(id: $id) {
     id
     name
     licensePlate
     fuelType
+    pictureUrl
+    canEdit
+    logAccess
+    refuelingCount
+    units {
+      distance
+      volume
+    }
+    owner {
+      id
+      displayName
+      avatarUrl
+    }
+  }
+}
+
+query VehicleDefaults {
+  vehicleDefaults {
+    distanceUnit
+    volumeUnit
+    currency
   }
 }
 

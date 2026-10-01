@@ -13,10 +13,10 @@ public class AccessPolicyTests
         AccessPolicy.Resolve(user, admin, owner, defaults, grants);
 
     [Fact]
-    public void Owner_HasFullAccess() => Assert.Equal(AccessLevel.Edit, Resolve(Alice, Alice));
+    public void Owner_HasFullAccess_IncludingPermanentDeletion() => Assert.Equal(AccessLevel.Delete, Resolve(Alice, Alice));
 
     [Fact]
-    public void Admin_HasFullAccessToEverything() => Assert.Equal(AccessLevel.Edit, Resolve(Bob, Alice, admin: true));
+    public void Admin_HasFullAccessToEverything_IncludingPermanentDeletion() => Assert.Equal(AccessLevel.Delete, Resolve(Bob, Alice, admin: true));
 
     [Fact]
     public void Others_GetNothingByDefault() => Assert.Equal(AccessLevel.None, Resolve(Bob, Alice));

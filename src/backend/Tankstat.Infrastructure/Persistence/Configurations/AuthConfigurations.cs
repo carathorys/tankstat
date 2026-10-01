@@ -18,6 +18,7 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         b.Property(u => u.DisplayName).HasMaxLength(100).IsRequired();
         b.Property(u => u.PasswordHash).HasMaxLength(500);
         b.HasIndex(u => new { u.Provider, u.Subject }).IsUnique();
+        b.HasIndex(u => u.AvatarImageId);
     }
 }
 
@@ -55,5 +56,22 @@ internal sealed class AccessSettingsConfiguration : IEntityTypeConfiguration<Acc
         b.HasKey(s => s.Id);
         b.Property(s => s.Id).ValueGeneratedNever();
         b.Property(s => s.DefaultLevelForOthers).HasConversion<string>().HasMaxLength(10);
+    }
+}
+
+internal sealed class ResourceGrantConfiguration : IEntityTypeConfiguration<ResourceGrant>
+{
+    public void Configure(EntityTypeBuilder<ResourceGrant> b)
+    {
+        b.ToTable("ResourceGrants");
+        b.HasKey(g => g.Id);
+        b.Property(g => g.Id).ValueGeneratedNever();
+        b.Property(g => g.ResourceType).HasConversion<string>().HasMaxLength(20);
+        b.Property(g => g.Feature).HasConversion<string>().HasMaxLength(20);
+        b.Property(g => g.Level).HasConversion<string>().HasMaxLength(10);
+        b.HasOne<User>().WithMany().HasForeignKey(g => g.GranteeId).OnDelete(DeleteBehavior.Cascade);
+        // The resource id points at different tables by type, so it has no foreign key; grants are removed with their resource in code.
+        b.HasIndex(g => new { g.ResourceType, g.ResourceId, g.GranteeId, g.Feature }).IsUnique();
+        b.HasIndex(g => new { g.GranteeId, g.ResourceType, g.Feature });
     }
 }

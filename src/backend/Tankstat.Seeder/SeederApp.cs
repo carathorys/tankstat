@@ -58,7 +58,9 @@ public static class SeederApp
 
         await using var _ = services;
         var target = Describe(services);
+        var uploads = options.UploadsPath ?? config["Storage:Path"];
         await output.WriteLineAsync($"Target database: {target}");
+        if (!string.IsNullOrWhiteSpace(uploads)) await output.WriteLineAsync($"Uploaded pictures folder (deleted too): {Path.GetFullPath(uploads)}");
         await output.WriteLineAsync($"This will DELETE it and create it again with {options.Vehicles:N0} vehicles, {options.Trashed:N0} in the trash, {options.RefuelingsPerVehicle} refuelings each.");
 
         if (!options.AssumeYes)
@@ -75,6 +77,8 @@ public static class SeederApp
         try
         {
             var watch = Stopwatch.StartNew();
+            // Pictures of the old data would be orphaned: nothing points to them once the database is recreated.
+            if (!string.IsNullOrWhiteSpace(uploads) && Directory.Exists(uploads)) Directory.Delete(uploads, recursive: true);
             var seeder = new DatabaseSeeder(services.GetRequiredService<IDbContextFactory<AppDbContext>>(), new DataGenerator(clock));
             var result = await seeder.RecreateAndSeedAsync(options, ct);
             await output.WriteLineAsync(

@@ -26,6 +26,6 @@ internal sealed class HttpCurrentUser(IHttpContextAccessor accessor, IUserReposi
         if (user.Provider == UserProvider.Local &&
             claims.FindFirstValue(SessionClaims.VersionClaim) != user.SessionVersion.ToString()) return null;
 
-        return new Principal(user.Id, user.DisplayName, user.Email, user.IsAdmin);
+        return new Principal(user.Id, user.DisplayName, user.Email, user.IsAdmin, user.AvatarImageId);
     }
 }

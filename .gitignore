@@ -514,3 +514,6 @@ out/
 *.db
 *.db-shm
 *.db-wal
+
+# Uploaded pictures (Storage:Path default)
+uploads/

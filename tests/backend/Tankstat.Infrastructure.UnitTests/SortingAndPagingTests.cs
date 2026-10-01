@@ -4,6 +4,7 @@ using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Users;
 using Tankstat.Domain.Vehicles;
+using Tankstat.TestSupport;
 
 namespace Tankstat.Infrastructure.UnitTests;
 
@@ -23,14 +24,14 @@ public class SortingAndPagingTests
 
         var vehicles = db.Get<IVehicleRepository>();
         var refuelings = db.Get<IRefuelingRepository>();
-        var beta = Vehicle.Create(people[0].Id, "Beta", "bbb-2", FuelType.Petrol);
-        var alpha = Vehicle.Create(people[1].Id, "alpha", "aaa-1", FuelType.Lpg);
-        var gamma = Vehicle.Create(people[2].Id, "Gamma", null, FuelType.Diesel);
+        var beta = TestData.Vehicle(people[0].Id, "Beta", "bbb-2", FuelType.Petrol);
+        var alpha = TestData.Vehicle(people[1].Id, "alpha", "aaa-1", FuelType.Lpg);
+        var gamma = TestData.Vehicle(people[2].Id, "Gamma", null, FuelType.Diesel);
         foreach (var v in new[] { beta, alpha, gamma }) await vehicles.AddAsync(v, default);
 
         async Task Fuel(Vehicle v, int times)
         {
-            for (var i = 0; i < times; i++) await refuelings.AddAsync(Refueling.Create(v.OwnerId, v.Id, new(2026, 9, 1 + i % 28), 10, 10, 100 + i, true), default);
+            for (var i = 0; i < times; i++) await refuelings.AddAsync(TestData.Refueling(v.OwnerId, Guid.Empty, v.Id, new(2026, 9, 1 + i % 28), 10, 10, 100 + i, true), default);
         }
         await Fuel(beta, 5);
         await Fuel(alpha, 9);
@@ -74,7 +75,7 @@ public class SortingAndPagingTests
         await using var db = new TestDatabase();
         var repo = db.Get<IVehicleRepository>();
         var owner = Guid.NewGuid();
-        for (var i = 0; i < 12; i++) await repo.AddAsync(Vehicle.Create(owner, "Same", null, FuelType.Petrol), default);
+        for (var i = 0; i < 12; i++) await repo.AddAsync(TestData.Vehicle(owner, "Same", null, FuelType.Petrol), default);
 
         var all = new List<Guid>();
         for (var skip = 0; skip < 12; skip += 5)

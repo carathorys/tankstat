@@ -49,6 +49,13 @@ Database__Provider=PostgreSql Database__ConnectionString="Host=db;Database=tanks
 
 The connection string may be omitted only for `Sqlite`. The app refuses to start if it is missing for another provider, or if the provider is unknown.
 
+Uploaded pictures (profile pictures, vehicle pictures) are stored as files; only metadata is in the database:
+
+| Setting | Environment variable | Meaning |
+| --- | --- | --- |
+| `Storage:Path` | `Storage__Path` | folder for uploaded pictures (default `uploads`, relative to the working directory; the Docker image uses `/data/uploads`) |
+| `Defaults:DistanceUnit`, `Defaults:VolumeUnit`, `Defaults:Currency` | `Defaults__...` | what a new vehicle / new log starts with (`Kilometers` / `Liters` / `EUR` unless changed) |
+
 ## Authentication and access control
 
 `Auth:Mode` selects how users are authenticated (`Auth__Mode` as an environment variable; environment variables override `appsettings.json`). The default is `None`.
@@ -92,18 +99,33 @@ Auth__ProxyHeader__EmailHeader=X-Forwarded-Email    # default, optional
 Auth__AdminEmails__0=you@example.com                # matched against e-mail or user name
 ```
 
-**Who may see and change what.** Every vehicle and refuelling belongs to a user. Owners and administrators have full access. An administrator decides what others may do with someone else's data: an instance-wide default (nothing, view, or view and edit) plus per-user grants ("Bob may edit Alice's data"). Everything goes through one access layer (`AccessService`), so new kinds of data only need to implement `IOwned`. Without authentication everyone has full access.
+**Who may see and change what.** Every vehicle and refuelling belongs to a user. Access levels are ordered `None < View < Edit < Delete`:
+
+- **Edit** creates, changes, moves to the trash and restores; **Delete** additionally deletes permanently (empties the trash). The same rule applies to every kind of data.
+- Owners and administrators implicitly have Delete. An administrator decides what others may do with someone else's data: an instance-wide default (nothing, view, edit or delete) plus per-user grants ("Bob may edit Alice's data").
+- **Sharing a vehicle's logs.** Anyone who can edit a vehicle (the owner, an administrator, or an editor) can give another user *Edit* or *Delete* access to **that vehicle's logs** only (generic `ResourceGrant`s, "Logs" feature). The grantee sees the vehicle and works with its logs, but cannot change the vehicle or anything else; nobody can give more access than they hold.
+
+Everything goes through one access layer (`AccessService`), so new kinds of data only need to implement `IOwned`. Without authentication everyone has full access.
 
 ## Using the app
 
-A top bar with a hamburger menu gives access to:
+The app is mobile-first and responsive. A navigation menu opened by the hamburger button in the top bar gives access to:
 
-- **Vehicles**: a grid with add, edit and delete (editing and deleting only appear for vehicles you may edit).
-- **Trash**: deleting moves a vehicle to the trash (it keeps a deletion timestamp). From there it can be **restored**, or the whole trash can be **emptied**, which permanently deletes the trashed vehicles you have edit access to together with their refuelings. There is no automatic clean-up yet.
-- **Account** (change password in Standalone mode) and **Administration** (administrators only), plus **Sign out**.
+- **Vehicles**: a grid with add, edit and delete (editing and deleting only appear for vehicles you may edit). A row opens the vehicle page.
+- **Vehicle page** (tabs): **Refuelings** (the logs: add, edit, move to trash; sortable, paged, selectable columns), **Details** (owner, fuel, units, the vehicle's picture) and **Sharing** (give people access to this vehicle's logs; only for those who can edit the vehicle).
+- **Trash**: deleting moves a vehicle or a refuelling to the trash. Tabs *Vehicles* and *Refuelings*: **restore**, or **empty the trash**, which permanently deletes only what you have Delete access to (the rest stays and the dialog says so).
+- **Account** (profile picture; change password in Standalone mode) and **Administration** (administrators only), plus **Sign out**.
+
+**Navigation menu.** On a desktop it is a docked sidebar, open by default; the hamburger button hides and shows it, and the choice is remembered in this browser only (`localStorage`, `tankstat.nav.open`). On a phone it is an overlay drawer, closed until the button is pressed, and closes after choosing a page.
+
+**Units and money.** Every vehicle has its own distance unit (kilometres or miles) and fuel volume unit (litres, US gallons, imperial gallons); numbers are stored exactly as entered and never converted, so the units are locked once a vehicle has logs. Every cost carries its own currency (a reusable `Cost` value: amount plus currency), and a log links to an odometer reading (a reusable `OdometerReading`, without an upper limit; the server checks a new reading against the neighbouring readings of the same vehicle, from any source).
+
+**Pictures.** Users can upload a profile picture (Account page; shown with the Radix `Avatar` wherever users appear) and a picture per vehicle (Details tab). The browser scales the picture down (and crops profile pictures square) and re-encodes it before it is sent; the server still checks the real file type (JPEG, PNG, WebP only; 2 MiB maximum). Pictures are served from `/media/{id}` (immutable, cached; only to signed-in users who may see the owner or vehicle) and uploaded with `PUT /media/me/avatar` and `PUT /media/vehicles/{id}/picture` (the only REST endpoints; everything else is GraphQL).
+
+**Accessibility.** The UI is built to be keyboard- and screen-reader friendly: landmarks and a skip link, a labelled navigation, labelled form controls with linked hints and errors, announced upload/loading status, table semantics with `aria-sort`, 44 px touch targets, dialogs with focus management, and reduced-motion support. Automated axe checks run in the frontend integration tests; colour contrast should still be reviewed by eye. The look is dim and layered: translucent blurred panels (top bar, sidebar) with soft shadows.
 
 ### Grids
-Sorting (click a column header), paging and column selection are done by the **server**: the GraphQL query gets `orderBy`, `direction`, `skip`, `take`, and one Boolean variable per optional column that drives `@include`, so hidden columns are not even fetched. The toolbar has a refresh button and a column picker (show/hide and move up/down, which works with touch). Column choices, order, page size and sorting are remembered per grid in the browser. Data is re-fetched whenever a page is opened. The layout is mobile-first: on a phone only the essential columns start visible, and the table scrolls horizontally.
+Sorting (click a column header), paging and column selection are done by the **server**: the GraphQL query gets `orderBy`, `direction`, `skip`, `take`, and one Boolean variable per optional column that drives `@include`, so hidden columns are not even fetched. The toolbar has a refresh button and a column picker (show/hide and move up/down, which works with touch). Column choices, order, page size and sorting are remembered per grid in the browser. Grid state is coordinated by TanStack Table (manual sorting and pagination: the data itself arrives sorted and paged from the server). Data is re-fetched whenever a page is opened. The layout is mobile-first: on a phone only the essential columns start visible, and the table scrolls horizontally.
 
 ### Languages
 English and Hungarian (react-i18next); the language menu in the top bar is available before sign-in, defaults to the browser language and is remembered. Every visible string is in `src/frontend/i18n/locales/<lang>.json` (typed keys; a test checks that all languages have the same messages and placeholders). API errors carry a stable `key` and `args` (e.g. `password.tooShort`, `{min: 10}`) which the UI translates; the API's English message is only a fallback. Dates and numbers use `Intl` for the selected language. To add a language: add `<lang>.json`, list it in `LANGUAGES` (`i18n/index.ts`), and the test tells you what is missing.
@@ -128,13 +150,14 @@ mise run seed -- --help
 | `--refuelings <n\|a-b>` | refuelings per vehicle, a number or a range (default 20) |
 | `--seed <n>` | same seed, same data (default 1234) |
 | `--provider`, `--connection` | override the database (otherwise `Database__*` settings; `mise run seed` targets the `dev:api` SQLite file) |
+| `--uploads <folder>` | the folder of uploaded pictures, which is deleted too because nothing would point to the pictures any more (default: `Storage:Path` if configured) |
 | `--yes` | skip the "type yes" confirmation before the database is deleted |
 
 The fuel logs are consistent: per vehicle, dates and the odometer only increase, the last fill-up is recent, litres follow the distance at a per-vehicle consumption, and prices drift slowly. Trashed vehicles keep their fuel logs.
 
 ## Data model and migrations
 
-A vehicle fuel log: `Vehicle` (name, licence plate, fuel type) and `Refueling` (date, litres, total cost, odometer, full tank), exposed via GraphQL queries `vehicles` / `vehicle(id)` and mutations `addVehicle` / `logRefueling`.
+A vehicle fuel log: `Vehicle` (name, licence plate, fuel type, units, optional picture) and `Refueling` (date, volume, a `Cost`, an `OdometerReading`, full tank, optional note, who logged it). `OdometerReading`, `Cost` and the units are shared building blocks meant to be reused by later entities (inspections, service fees). Exposed via GraphQL (`vehicles`, `vehicle(id)`, `refuelings(vehicleId, ...)`, `refuelingTrash`, `vehicleLogAccess`, `shareCandidates`, `logDefaults`; mutations such as `addVehicle`, `logRefueling`, `updateRefueling`, `deleteRefueling`, `restoreRefueling`, `setVehicleLogAccess`, `emptyTrash`, `emptyRefuelingTrash`).
 
 Pending migrations are applied automatically at startup. Each provider has its own migration project, so after changing an entity run:
 
@@ -176,7 +199,7 @@ docker run -d --name tankstat -p 8080:8080 -v tankstat-data:/data \
 ```
 
 - The app listens on port 8080 and is configured only through the environment variables described above (`Database__*`, `Auth__*`, `Smtp__*`). Without `Auth__Mode` the image uses whatever `appsettings.json` was built in, so always set it explicitly (and never bake credentials into `appsettings.json`).
-- SQLite lives in the `/data` volume (`Database__ConnectionString=Data Source=/data/tankstat.db` by default); mount a volume to keep your data. Use `Database__Provider` and `Database__ConnectionString` for PostgreSQL, SQL Server or MySQL instead.
+- SQLite and the uploaded pictures live in the `/data` volume (`Database__ConnectionString=Data Source=/data/tankstat.db` and `Storage__Path=/data/uploads` by default); mount a volume to keep your data. Use `Database__Provider` and `Database__ConnectionString` for PostgreSQL, SQL Server or MySQL instead.
 - Migrations are applied when the container starts. The container has a health check (the GraphQL endpoint).
 - `VERSION` (build argument) is what the UI shows as the API version; `REVISION` and `CREATED` become OCI image labels.
 - Terminate TLS in front of the container with your reverse proxy (see the ProxyHeader mode for proxy-based sign-in).

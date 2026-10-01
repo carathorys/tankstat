@@ -5,12 +5,16 @@
     "notFound": "Ez az oldal nem létezik."
   },
   "nav": {
-    "menu": "Menü megnyitása",
     "vehicles": "Járművek",
     "trash": "Kuka",
     "account": "Fiók",
     "admin": "Adminisztráció",
-    "signOut": "Kijelentkezés"
+    "signOut": "Kijelentkezés",
+    "main": "Főmenü",
+    "skip": "Ugrás a fő tartalomhoz",
+    "show": "Menü megjelenítése",
+    "hide": "Menü elrejtése",
+    "signedInAs": "Bejelentkezve mint {{name}}"
   },
   "language": {
     "label": "Nyelv"
@@ -37,7 +41,8 @@
   "level": {
     "NONE": "semmit",
     "VIEW": "megtekintést",
-    "EDIT": "megtekintést és szerkesztést"
+    "EDIT": "megtekintést és szerkesztést",
+    "DELETE": "megtekintést, szerkesztést és végleges törlést"
   },
   "role": {
     "admin": "Adminisztrátor",
@@ -56,7 +61,8 @@
   },
   "forms": {
     "required": "A(z) {{field}} megadása kötelező",
-    "emailInvalid": "Adj meg érvényes e-mail-címet"
+    "emailInvalid": "Adj meg érvényes e-mail-címet",
+    "numberInvalid": "Adj meg egy számot, például 12,5."
   },
   "auth": {
     "signIn": "Bejelentkezés",
@@ -82,7 +88,17 @@
     "fuelType": "Üzemanyag",
     "owner": "Tulajdonos",
     "refuelings": "Tankolások",
-    "deletedAt": "Törölve"
+    "deletedAt": "Törölve",
+    "date": "Dátum",
+    "vehicle": "Jármű",
+    "volume": "Mennyiség",
+    "cost": "Költség",
+    "price": "Egységár",
+    "odometer": "Kilométeróra",
+    "fullTank": "Teli tank",
+    "note": "Megjegyzés",
+    "createdBy": "Rögzítette",
+    "picture": "Kép"
   },
   "grid": {
     "refresh": "Frissítés",
@@ -97,7 +113,9 @@
     "previous": "Előző oldal",
     "next": "Következő oldal",
     "sortedAscending": "növekvő sorrend",
-    "sortedDescending": "csökkenő sorrend"
+    "sortedDescending": "csökkenő sorrend",
+    "caption": "{{name}}",
+    "actions": "Műveletek"
   },
   "vehicles": {
     "title": "Járművek",
@@ -115,7 +133,23 @@
     "save": "Módosítások mentése",
     "trashTitle": "Áthelyezed a(z) {{name}} járművet a kukába?",
     "trashDescription": "A kuka kiürítéséig visszaállíthatod a kukából.",
-    "trashConfirm": "Áthelyezés a kukába"
+    "trashConfirm": "Áthelyezés a kukába",
+    "open": "{{name}} megnyitása",
+    "pictureAlt": "{{name}} képe",
+    "noPicture": "Nincs kép",
+    "back": "Vissza a járművekhez",
+    "tabs": {
+      "refuelings": "Tankolások",
+      "details": "Részletek",
+      "sharing": "Megosztás"
+    },
+    "owner": "Tulajdonos",
+    "fuel": "Üzemanyag",
+    "plate": "Rendszám",
+    "logAccessNote": "A jármű naplóbejegyzéseivel dolgozhatsz, magát a járművet viszont nem módosíthatod.",
+    "notFound": "Ez a jármű nem létezik, vagy nincs hozzáférésed.",
+    "unitsInUse": "A mértékegységek rögzítettek, mert a járműnek már vannak naplóbejegyzései.",
+    "editVehicle": "Jármű szerkesztése"
   },
   "trash": {
     "title": "Kuka",
@@ -127,7 +161,18 @@
     "emptyDescription_one": "Ez véglegesen töröl {{count}} járművet és a tankolásait. A művelet nem vonható vissza.",
     "emptyDescription_other": "Ez véglegesen töröl {{count}} járművet és a tankolásaikat. A művelet nem vonható vissza.",
     "emptied_one": "Véglegesen törölve: {{count}} jármű.",
-    "emptied_other": "Véglegesen törölve: {{count}} jármű."
+    "emptied_other": "Véglegesen törölve: {{count}} jármű.",
+    "tabs": {
+      "vehicles": "Járművek",
+      "refuelings": "Tankolások"
+    },
+    "emptyPartial_one": "Ez véglegesen töröl {{count}} elemet, amelyet törölhetsz; amelyeket csak visszaállíthatsz, a kukában maradnak. A művelet nem vonható vissza.",
+    "emptyPartial_other": "Ez véglegesen töröl {{count}} elemet, amelyet törölhetsz; amelyeket csak visszaállíthatsz, a kukában maradnak. A művelet nem vonható vissza.",
+    "refuelingsEmpty": "Nincs tankolás a kukában.",
+    "emptiedRefuelings_one": "Véglegesen törölve: {{count}} tankolás.",
+    "emptiedRefuelings_other": "Véglegesen törölve: {{count}} tankolás.",
+    "refuelingDescription_one": "Ez véglegesen töröl {{count}} tankolást. A művelet nem vonható vissza.",
+    "refuelingDescription_other": "Ez véglegesen töröl {{count}} tankolást. A művelet nem vonható vissza."
   },
   "account": {
     "title": "Fiók",
@@ -135,7 +180,9 @@
     "email": "E-mail",
     "role": "Szerepkör",
     "noAuth": "A hitelesítés ki van kapcsolva, ezért nincs személyes fiók.",
-    "managed": "A jelszavadat az identitásszolgáltatód vagy a proxy kezeli."
+    "managed": "A jelszavadat az identitásszolgáltatód vagy a proxy kezeli.",
+    "avatar": "Profilkép",
+    "avatarHelp": "Más felhasználók a neved mellett látják."
   },
   "admin": {
     "title": "Adminisztráció",
@@ -165,7 +212,9 @@
     "dataOwner": "Adatok tulajdonosa",
     "level": "Szint",
     "grantAction": "Hozzáférés megadása",
-    "choose": "Válassz…"
+    "choose": "Válassz…",
+    "levelsHelp": "Véglegesen csak a Törlés szint törölhet; minden szint tartalmazza az előzőeket.",
+    "grantDelete": "{{grantee}} megtekintheti, szerkesztheti és véglegesen törölheti {{owner}} adatait"
   },
   "errors": {
     "network": "A szerver nem érhető el. Ellenőrizd a kapcsolatot, és próbáld újra.",
@@ -184,16 +233,26 @@
       "alreadyTrashed": "Ez a jármű már a kukában van.",
       "notTrashed": "Ez a jármű nincs a kukában.",
       "notFound": "Ez a jármű nem létezik.",
-      "viewOnly": "Ezt a járművet csak megtekintheted."
+      "viewOnly": "Ezt a járművet csak megtekintheted.",
+      "unitsLocked": "A mértékegységek nem módosíthatók, ha a járműnek már vannak naplóbejegyzései.",
+      "unknownUnit": "Ismeretlen mértékegység: {{value}}."
     },
     "refueling": {
       "litersPositive": "A literszámnak nullánál nagyobbnak kell lennie.",
       "costNegative": "A teljes költség nem lehet negatív.",
-      "odometerNegative": "A kilométeróra állása nem lehet negatív."
+      "odometerNegative": "A kilométeróra állása nem lehet negatív.",
+      "volumePositive": "A mennyiségnek nullánál nagyobbnak kell lennie.",
+      "dateInFuture": "A dátum nem lehet a jövőben.",
+      "noteTooLong": "A megjegyzés legfeljebb {{max}} karakter lehet.",
+      "notFound": "Ez a tankolás nem létezik.",
+      "wrongVehicle": "Az óraállásnak és a költségnek ugyanahhoz a járműhöz kell tartoznia.",
+      "trashedCannotEdit": "A kukában lévő tankolás nem szerkeszthető. Előbb állítsd vissza.",
+      "alreadyTrashed": "Ez a tankolás már a kukában van.",
+      "notTrashed": "Ez a tankolás nincs a kukában."
     },
     "access": {
       "selfGrant": "A felhasználók mindig teljes hozzáféréssel rendelkeznek a saját adataikhoz.",
-      "levelRequired": "Válaszd a megtekintés vagy a szerkesztés szintet.",
+      "levelRequired": "Válaszd a megtekintés, a szerkesztés vagy a törlés szintet.",
       "unknownLevel": "Ismeretlen hozzáférési szint: {{level}}."
     },
     "user": {
@@ -215,6 +274,118 @@
     },
     "reset": {
       "invalid": "Ez a jelszó-visszaállító link érvénytelen vagy lejárt."
+    },
+    "cost": {
+      "negative": "A költség nem lehet negatív."
+    },
+    "money": {
+      "currencyInvalid": "Adj meg háromjegyű pénznemkódot, például HUF vagy EUR."
+    },
+    "odometer": {
+      "negative": "A kilométeróra állása nem lehet negatív.",
+      "belowPrevious": "A kilométeróra állása nem lehet kisebb, mint {{previous}} ({{date}} napi állás).",
+      "aboveNext": "A kilométeróra állása nem lehet nagyobb, mint {{next}} ({{date}} napi állás)."
+    },
+    "share": {
+      "ownerHasAccess": "A tulajdonosnak mindig teljes hozzáférése van.",
+      "cannotGrantMore": "Nem adhatsz több hozzáférést, mint amennyid van.",
+      "editRequired": "A napló megosztásához szerkesztési jog kell a járműhöz.",
+      "levelRequired": "Válaszd a szerkesztési vagy a törlési hozzáférést."
+    },
+    "image": {
+      "empty": "Nem érkezett fájl.",
+      "unsupportedType": "Csak JPEG, PNG és WebP képek támogatottak.",
+      "tooLarge": "A kép legfeljebb {{maxKb}} KB lehet.",
+      "noAccount": "A profilképhez felhasználói fiók kell; a hitelesítés ki van kapcsolva."
     }
+  },
+  "a11y": {
+    "sortBy": "Rendezés: {{column}}",
+    "uploadStatus": "Feltöltés állapota"
+  },
+  "units": {
+    "distance": {
+      "KILOMETERS": "Kilométer",
+      "MILES": "Mérföld"
+    },
+    "volume": {
+      "LITERS": "Liter",
+      "US_GALLONS": "Amerikai gallon",
+      "IMPERIAL_GALLONS": "Birodalmi gallon"
+    },
+    "volumeShort": {
+      "LITERS": "l",
+      "US_GALLONS": "gal",
+      "IMPERIAL_GALLONS": "imp gal"
+    },
+    "label": "Mértékegységek",
+    "distanceLabel": "Távolság",
+    "volumeLabel": "Üzemanyag mennyisége",
+    "hint": "A számokat pontosan úgy mentjük, ahogy megadod, átváltás nélkül."
+  },
+  "refuelings": {
+    "title": "Tankolások",
+    "add": "Tankolás hozzáadása",
+    "edit": "Szerkesztés",
+    "delete": "Törlés",
+    "editAria": "A(z) {{date}} napi tankolás szerkesztése",
+    "deleteAria": "A(z) {{date}} napi tankolás törlése",
+    "empty": "Még nincs tankolás. Add hozzá az elsőt.",
+    "viewOnly": "csak megtekinthető",
+    "countLabel": "{{count}} tankolás",
+    "dialogAdd": "Tankolás hozzáadása",
+    "dialogEdit": "Tankolás szerkesztése",
+    "dialogAddDescription": "Add meg, mennyit tankoltál, és mit mutatott a kilométeróra.",
+    "dialogEditDescription": "Módosítsd ezt a tankolást.",
+    "save": "Módosítások mentése",
+    "saveAdd": "Tankolás hozzáadása",
+    "fields": {
+      "date": "Dátum",
+      "volume": "Mennyiség ({{unit}})",
+      "cost": "Teljes költség",
+      "currency": "Pénznem",
+      "odometer": "Kilométeróra ({{unit}})",
+      "fullTank": "Teli tank",
+      "note": "Megjegyzés (nem kötelező)"
+    },
+    "hints": {
+      "lastReading": "Utolsó állás: {{value}}, {{date}}",
+      "currency": "Háromjegyű kód, pl. HUF",
+      "fullTankHelp": "Részleges tankolásnál kapcsold ki."
+    },
+    "trashTitle": "Kukába helyezed ezt a tankolást?",
+    "trashDescription": "A(z) {{date}} napi tankolás visszaállítható a kukából, amíg véglegesen nem töröljük.",
+    "trashConfirm": "Áthelyezés a kukába",
+    "partial": "Részleges",
+    "full": "Teli"
+  },
+  "sharing": {
+    "title": "A jármű naplójának megosztása",
+    "description": "Akiket itt hozzáadsz, láthatják ezt a járművet, és dolgozhatnak a naplóbejegyzéseivel. A járművet magát és a többi adatodat nem módosíthatják.",
+    "none": "Még senki nem kapott hozzáférést a naplóhoz.",
+    "addTitle": "Hozzáférés adása",
+    "person": "Személy",
+    "accessLevel": "Hozzáférés",
+    "add": "Hozzáférés megadása",
+    "revoke": "Hozzáférés megvonása",
+    "revokeAria": "{{name}} hozzáférésének megvonása",
+    "levels": {
+      "EDIT": "Naplóbejegyzések hozzáadása és módosítása",
+      "DELETE": "Naplóbejegyzések hozzáadása, módosítása és végleges törlése"
+    },
+    "noCandidates": "Nincs más, akivel megoszthatnád.",
+    "choose": "Válassz személyt",
+    "changeLevel": "{{name}} hozzáférése"
+  },
+  "image": {
+    "choose": "Kép kiválasztása",
+    "change": "Kép cseréje",
+    "remove": "Kép törlése",
+    "uploading": "Feltöltés…",
+    "uploaded": "A kép elmentve.",
+    "removed": "A kép törölve.",
+    "hint": "JPEG, PNG vagy WebP. A nagy képeket automatikusan lekicsinyítjük.",
+    "unreadable": "Ezt a fájlt nem sikerült képként beolvasni.",
+    "avatarFor": "{{name}} profilképe"
   }
 }

@@ -14,7 +14,7 @@ const config: CodegenConfig = {
         enumsAsTypes: true,
         useTypeImports: true,
         skipTypename: true,
-        scalars: { UUID: 'string', DateTime: 'string', LocalDate: 'string', Decimal: 'number', Duration: 'string' },
+        scalars: { UUID: 'string', DateTime: 'string', LocalDate: 'string', Decimal: 'number', Duration: 'string', Long: 'number' },
       },
     },
   },
