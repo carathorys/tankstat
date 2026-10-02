@@ -14,6 +14,8 @@ public sealed record AddRecurringExpenseInput(
     Guid VehicleId, string Title, string? Category, string? Note, RecurrenceKind Kind, int? IntervalMonths, long? IntervalDistance,
     DateOnly? LastDoneDate, long? LastDoneOdometer, int? WarnDays, long? WarnDistance);
 
+/// <param name="WarnDays">Omit to keep the current value.</param>
+/// <param name="WarnDistance">Omit to keep the current value.</param>
 public sealed record UpdateRecurringExpenseInput(
     Guid Id, string Title, string? Category, string? Note, RecurrenceKind Kind, int? IntervalMonths, long? IntervalDistance,
     DateOnly LastDoneDate, long? LastDoneOdometer, int? WarnDays, long? WarnDistance);

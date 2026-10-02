@@ -11,8 +11,8 @@ namespace Tankstat.Application.Recurring;
 
 /// <param name="LastDoneDate">When adding, omit to start counting today; when updating, omit to keep it.</param>
 /// <param name="LastDoneOdometer">When adding a schedule that counts distance, omit to start from the vehicle's current odometer (its latest reading).</param>
-/// <param name="WarnDays">Omit for the default (30 days).</param>
-/// <param name="WarnDistance">Omit for the default (500 distance units of the vehicle).</param>
+/// <param name="WarnDays">Omit for the default (30 days) when adding, or to keep the current value when updating.</param>
+/// <param name="WarnDistance">Omit for the default (500 distance units of the vehicle) when adding, or to keep the current value when updating.</param>
 public sealed record RecurringExpenseInput(
     string Title, string? Category, string? Note, RecurrenceKind Kind, int? IntervalMonths, long? IntervalDistance,
     DateOnly? LastDoneDate, long? LastDoneOdometer, int? WarnDays, long? WarnDistance);
@@ -72,7 +72,7 @@ public sealed class RecurringExpenseService(
 
         item.Update(
             input.Title, input.Category, input.Note, input.Kind, input.IntervalMonths, input.IntervalDistance, lastDone, input.LastDoneOdometer,
-            input.WarnDays ?? RecurringExpense.DefaultWarnDays, input.WarnDistance ?? RecurringExpense.DefaultWarnDistance);
+            input.WarnDays ?? item.WarnDays, input.WarnDistance ?? item.WarnDistance);
         await items.UpdateAsync(item, ct);
         return await WithStatusAsync(item, ct);
     }

@@ -91,6 +91,17 @@ public class RecurringExpenseServiceTests
     }
 
     [Fact]
+    public async Task Update_KeepsTheWarningThresholdsWhenNoneAreGiven()
+    {
+        var s = await Setup();
+        var item = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil() with { WarnDays = 14, WarnDistance = 250 }, default)).Item;
+
+        var updated = await s.W.RecurringService.UpdateAsync(item.Id, Oil(title: "Oil and filter") with { WarnDays = null, WarnDistance = null }, default);
+
+        Assert.Equal((14, 250L), (updated.Item.WarnDays, updated.Item.WarnDistance));
+    }
+
+    [Fact]
     public async Task List_IsMostUrgentFirst_AndUsesTheLatestOdometerOfTheVehicle()
     {
         var s = await Setup();
