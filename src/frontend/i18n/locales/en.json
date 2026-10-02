@@ -357,13 +357,13 @@
     "import": {
       "unknownFormat": "This import format is not supported: {{format}}.",
       "unreadable": "This file does not look like an export of the chosen app.",
-      "nothingFound": "The file contains no fuel logs or expenses to import.",
+      "nothingFound": "The file contains no fuel logs, expenses or recurring expenses to import.",
       "tooLarge": "The file can be at most {{maxMb}} MB.",
       "expired": "This import has expired. Choose the file again.",
       "targetRequired": "Choose a vehicle or create a new one.",
       "badDate": "The date “{{value}}” cannot be read.",
       "badNumber": "The {{field}} “{{value}}” is not a valid number.",
-      "templateSkipped": "“{{title}}” is a reminder template, not a cost.",
+      "templateSkipped": "“{{title}}” is a one-off reminder, which is not imported.",
       "incomeSkipped": "“{{title}}” is income, which is not imported.",
       "titleMissing": "The row has no title or category.",
       "unitsDiffer": "The file uses other units than this vehicle. Numbers are imported as they are, without conversion."
@@ -551,7 +551,7 @@
       "none": "No file chosen",
       "upload": "Read the file",
       "reading": "Reading the file…",
-      "fuelioHint": "In Fuelio, export the vehicle (Settings, Export/Sync) and choose the .csv file here. A .zip file has to be unzipped first.",
+      "fuelioHint": "In Fuelio, export the vehicle (Settings, Export/Sync) and choose the .csv file here. A .zip file has to be unzipped first. Reminders that repeat become recurring expenses.",
       "formats": {
         "fuelio": "Fuelio (CSV)"
       }
@@ -571,8 +571,8 @@
     },
     "review": {
       "title": "What will be imported",
-      "summary": "{{fuel}} fuel logs and {{expenses}} expenses, from {{from}} to {{to}}.",
-      "duplicates": "{{fuel}} fuel logs and {{expenses}} expenses already exist in this vehicle.",
+      "summary": "{{fuel}} fuel logs, {{expenses}} expenses and {{recurring}} recurring expenses, from {{from}} to {{to}}.",
+      "duplicates": "{{fuel}} fuel logs, {{expenses}} expenses and {{recurring}} recurring expenses already exist in this vehicle.",
       "duplicateChoice": "Rows that already exist",
       "skipDuplicates": "Skip them (recommended)",
       "importDuplicates": "Import them again anyway",
@@ -587,8 +587,8 @@
     },
     "done": {
       "title": "Import finished",
-      "imported": "Imported {{fuel}} fuel logs and {{expenses}} expenses.",
-      "skipped": "Skipped {{fuel}} fuel logs and {{expenses}} expenses that already existed.",
+      "imported": "Imported {{fuel}} fuel logs, {{expenses}} expenses and {{recurring}} recurring expenses.",
+      "skipped": "Skipped {{fuel}} fuel logs, {{expenses}} expenses and {{recurring}} recurring expenses that already existed.",
       "errorsTitle": "These rows could not be imported ({{count}})",
       "open": "Open the vehicle",
       "another": "Import another file"

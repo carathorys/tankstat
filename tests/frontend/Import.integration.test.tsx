@@ -17,8 +17,10 @@ afterAll(() => server.close())
 const preview = (over: Record<string, unknown> = {}) => ({
   fuelRows: 24,
   expenseRows: 5,
+  recurringRows: 2,
   duplicateFuelRows: 0,
   duplicateExpenseRows: 0,
+  duplicateRecurringRows: 0,
   firstDate: '2024-11-03',
   lastDate: '2026-09-17',
   categories: ['Maintenance', 'Service'],
@@ -42,7 +44,7 @@ function setup(opts: { vehicles?: ReturnType<typeof fakeVehicle>[]; uploadStatus
     graphql.mutation('ConfirmImport', ({ variables }) => {
       calls.confirms.push(variables.input)
       return HttpResponse.json({
-        data: { confirmImport: { vehicleId: 'v9', fuelImported: 24, expensesImported: 5, fuelSkippedDuplicates: 0, expensesSkippedDuplicates: 0, errors: [], ...opts.result } },
+        data: { confirmImport: { vehicleId: 'v9', fuelImported: 24, expensesImported: 5, recurringImported: 2, fuelSkippedDuplicates: 0, expensesSkippedDuplicates: 0, recurringSkippedDuplicates: 0, errors: [], ...opts.result } },
       })
     }),
     http.post('/imports/:format', async ({ params, request }) => {
@@ -83,12 +85,12 @@ it('imports a file into a new vehicle that starts from what the file says', asyn
   await ui.type(screen.getByLabelText('Currency of all amounts'), 'huf')
   await ui.click(screen.getByRole('button', { name: 'What will be imported' }))
 
-  await screen.findByText(/24 fuel logs and 5 expenses, from Nov 3, 2024 to Sep 17, 2026\./)
+  await screen.findByText(/24 fuel logs, 5 expenses and 2 recurring expenses, from Nov 3, 2024 to Sep 17, 2026\./)
   expect(screen.getByText('Categories in the file: Maintenance, Service')).toBeInTheDocument()
   await ui.click(screen.getByRole('button', { name: 'Import' }))
 
   await screen.findByRole('heading', { name: 'Import finished' })
-  expect(screen.getByText('Imported 24 fuel logs and 5 expenses.')).toBeInTheDocument()
+  expect(screen.getByText('Imported 24 fuel logs, 5 expenses and 2 recurring expenses.')).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'Open the vehicle' })).toHaveAttribute('href', '/vehicles/v9')
   expect(calls.confirms).toEqual([
     { token: 'tok123', currency: 'HUF', importDuplicates: false, newVehicle: { name: 'Polo', licensePlate: 'ABC-123', fuelType: 'PETROL', units: { distance: 'KILOMETERS', volume: 'LITERS' } } },
@@ -111,18 +113,18 @@ it('uses the instance defaults for what the file does not say', async () => {
 
 it('imports into an existing vehicle, and lets the user decide about rows that already exist', async () => {
   const { ui, calls } = setup({
-    previewFor: (vehicleId) => (vehicleId ? preview({ duplicateFuelRows: 20, duplicateExpenseRows: 3 }) : preview()),
-    result: { fuelImported: 4, expensesImported: 2, fuelSkippedDuplicates: 20, expensesSkippedDuplicates: 3 },
+    previewFor: (vehicleId) => (vehicleId ? preview({ duplicateFuelRows: 20, duplicateExpenseRows: 3, duplicateRecurringRows: 1 }) : preview()),
+    result: { fuelImported: 4, expensesImported: 2, recurringImported: 1, fuelSkippedDuplicates: 20, expensesSkippedDuplicates: 3, recurringSkippedDuplicates: 1 },
   })
   await toTarget(ui)
 
   await choose(ui, 'Vehicle', 'Octavia (ABC-123)')
   await ui.click(screen.getByRole('button', { name: 'What will be imported' }))
-  await screen.findByText('20 fuel logs and 3 expenses already exist in this vehicle.')
+  await screen.findByText('20 fuel logs, 3 expenses and 1 recurring expenses already exist in this vehicle.')
   expect(screen.getByRole('radio', { name: 'Skip them (recommended)' })).toBeChecked()
   await ui.click(screen.getByRole('button', { name: 'Import' }))
 
-  await screen.findByText('Skipped 20 fuel logs and 3 expenses that already existed.')
+  await screen.findByText('Skipped 20 fuel logs, 3 expenses and 1 recurring expenses that already existed.')
   expect(calls.previews.at(-1)).toEqual({ token: 'tok123', vehicleId: 'v1' })
   expect(calls.confirms).toEqual([{ token: 'tok123', vehicleId: 'v1', currency: 'USD', importDuplicates: false }])
 })
@@ -153,7 +155,7 @@ it('lists the rows left out while reading, with translated reasons and where the
 
   await screen.findByText('Left out while reading the file (3)')
   expect(screen.getByText(/Costs, row 3/)).toBeInTheDocument()
-  expect(screen.getByText(/“Brake pads” is a reminder template, not a cost\./)).toBeInTheDocument()
+  expect(screen.getByText(/“Brake pads” is a one-off reminder, which is not imported\./)).toBeInTheDocument()
   expect(screen.getByText(/The volume “x” is not a valid number\./)).toBeInTheDocument()
   expect(screen.getByText(/The file uses other units than this vehicle/)).toBeInTheDocument()
 })
