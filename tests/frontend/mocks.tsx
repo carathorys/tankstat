@@ -7,7 +7,7 @@ import type { ReactElement } from 'react'
 import { MemoryRouter } from 'react-router'
 import { vi } from 'vitest'
 import { createApolloClient } from '../../src/frontend/apolloClient.ts'
-import type { AuthMode, SessionQuery } from '../../src/frontend/gql/generated.ts'
+import type { AuthMode, NotificationFieldsFragment, SessionQuery } from '../../src/frontend/gql/generated.ts'
 
 /** Renders with a fresh Apollo client (and cache) talking to the msw-mocked GraphQL endpoint over HTTP; animations are instant. */
 export const renderWithApollo = (ui: ReactElement, route = '/') =>
@@ -720,6 +720,71 @@ export function fakeRecurringBackend(items: FakeRecurring[] = []) {
       const i = state.items.findIndex((x) => x.id === input.id)
       state.items[i] = { ...state.items[i], lastDoneDate: input.date, lastDoneOdometer: input.odometer ?? state.items[i].lastDoneOdometer, status: upcoming() }
       return HttpResponse.json({ data: { markRecurringExpenseDone: state.items[i] } })
+    }),
+  ]
+  return { state, handlers }
+}
+
+export type FakeNotification = NotificationFieldsFragment
+
+export const fakeNotification = (over: Partial<FakeNotification> = {}): FakeNotification => ({
+  id: 'n1',
+  kind: 'LOG_ACCESS_CHANGED',
+  read: false,
+  count: 1,
+  createdAt: '2026-09-30T10:00:00Z',
+  updatedAt: '2026-09-30T10:00:00Z',
+  subject: { type: 'VEHICLE', id: 'v1' },
+  context: { type: 'VEHICLE', id: 'v1' },
+  args: [
+    { name: 'actorName', value: 'Bob' },
+    { name: 'level', value: 'EDIT' },
+    { name: 'vehicleName', value: 'Family car' },
+  ],
+  ...over,
+})
+
+/** The current user's inbox behind the notification queries and mutations, newest change first like the server. */
+export function fakeNotificationBackend(items: FakeNotification[] = []) {
+  const state = { items: [...items], calls: {} as Record<string, unknown[]> }
+  const record = (name: string, vars: unknown) => (state.calls[name] ??= []).push(vars)
+  const typed = (n: FakeNotification) => ({
+    __typename: 'NotificationInfo',
+    ...n,
+    subject: { __typename: 'NotificationRefInfo', ...n.subject },
+    context: n.context && { __typename: 'NotificationRefInfo', ...n.context },
+    args: n.args.map((a) => ({ __typename: 'NotificationArg', ...a })),
+  })
+  const sorted = () => [...state.items].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  const unread = () => state.items.filter((n) => !n.read).length
+  const handlers = [
+    graphql.query('UnreadNotificationCount', () => HttpResponse.json({ data: { notificationCount: unread() } })),
+    graphql.query('LatestNotifications', ({ variables }) =>
+      HttpResponse.json({ data: { notifications: sorted().slice(0, variables.take as number).map(typed), notificationCount: unread() } }),
+    ),
+    graphql.query('Notifications', ({ variables }) => {
+      record('Notifications', variables)
+      const v = variables as { unreadOnly: boolean; skip: number; take: number }
+      const matching = sorted().filter((n) => !v.unreadOnly || !n.read)
+      return HttpResponse.json({ data: { notifications: matching.slice(v.skip, v.skip + v.take).map(typed), notificationCount: matching.length } })
+    }),
+    graphql.mutation('MarkNotificationsRead', ({ variables }) => {
+      record('MarkNotificationsRead', variables)
+      const ids = variables.ids as string[] | null | undefined
+      const changed = state.items.filter((n) => !n.read && (!ids || ids.includes(n.id)))
+      state.items = state.items.map((n) => (changed.includes(n) ? { ...n, read: true } : n))
+      return HttpResponse.json({ data: { markNotificationsRead: changed.length } })
+    }),
+    graphql.mutation('DeleteNotification', ({ variables }) => {
+      record('DeleteNotification', variables)
+      state.items = state.items.filter((n) => n.id !== variables.id)
+      return HttpResponse.json({ data: { deleteNotification: true } })
+    }),
+    graphql.mutation('DeleteReadNotifications', () => {
+      record('DeleteReadNotifications', {})
+      const before = state.items.length
+      state.items = state.items.filter((n) => !n.read)
+      return HttpResponse.json({ data: { deleteReadNotifications: before - state.items.length } })
     }),
   ]
   return { state, handlers }

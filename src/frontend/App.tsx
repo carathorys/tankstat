@@ -22,6 +22,7 @@ const VehiclesPage = lazy(() => import('./pages/VehiclesPage.tsx').then((m) => (
 const VehiclePage = lazy(() => import('./pages/VehiclePage.tsx').then((m) => ({ default: m.VehiclePage })))
 const TrashPage = lazy(() => import('./pages/TrashPage.tsx').then((m) => ({ default: m.TrashPage })))
 const ImportPage = lazy(() => import('./pages/ImportPage.tsx').then((m) => ({ default: m.ImportPage })))
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage.tsx').then((m) => ({ default: m.NotificationsPage })))
 const AccountPage = lazy(() => import('./pages/AccountPage.tsx').then((m) => ({ default: m.AccountPage })))
 const AdminPanel = lazy(() => import('./admin/AdminPanel.tsx').then((m) => ({ default: m.AdminPanel })))
 
@@ -116,6 +117,7 @@ function Content({ data }: { data: SessionQuery }) {
         <Route path="/vehicles/:id/*" element={<VehiclePage isAdmin={isAdmin} />} />
         <Route path="/import" element={<ImportPage />} />
         <Route path="/trash" element={<TrashPage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/account" element={<AccountPage mode={mode} user={user} />} />
         <Route path="/admin" element={isAdmin ? <AdminPanel /> : <Navigate to="/" replace />} />
         <Route path="*" element={<Text as="p">{t('app.notFound')}</Text>} />

@@ -17,7 +17,8 @@
     "signedInAs": "Signed in as {{name}}",
     "close": "Close menu",
     "import": "Import",
-    "home": "Home"
+    "home": "Home",
+    "notifications": "Notifications"
   },
   "language": {
     "label": "Language"
@@ -29,6 +30,46 @@
   "notices": {
     "warning": "Warning:",
     "AUTH_DISABLED": "Authentication is disabled: anyone who can reach this app can see and change all data. This is unsafe; configure Auth:Mode."
+  },
+  "notifications": {
+    "title": "Notifications",
+    "bell": "Notifications",
+    "bellUnread_one": "Notifications, {{count}} unread",
+    "bellUnread_other": "Notifications, {{count}} unread",
+    "unreadStatus_one": "You have {{count}} unread notification.",
+    "unreadStatus_other": "You have {{count}} unread notifications.",
+    "latest": "Latest notifications",
+    "new": "New",
+    "empty": "Nothing here yet. You will be told when someone shares something with you or a recurring expense is due.",
+    "emptyUnread": "You have read everything.",
+    "markAllRead": "Mark all read",
+    "markRead": "Mark read",
+    "delete": "Delete notification",
+    "deleteRead": "Delete read ones",
+    "deleteReadTitle": "Delete the read notifications?",
+    "deleteReadDescription": "The notifications you have already read are removed. Unread ones stay.",
+    "showAll": "Show all notifications",
+    "showMore": "Show more",
+    "filter": "Show",
+    "all": "All",
+    "unread": "Unread",
+    "folded_one": "({{count}} change)",
+    "folded_other": "({{count}} changes)",
+    "kinds": {
+      "LOG_ACCESS_CHANGED": "{{actor}} gave you access to the logs of {{vehicle}}: {{level}}.",
+      "LOG_ACCESS_REVOKED": "{{actor}} removed your access to the logs of {{vehicle}}.",
+      "VEHICLE_SHARED": "{{actor}} gave {{user}} access to the logs of {{vehicle}}: {{level}}.",
+      "VEHICLE_SHARE_REVOKED": "{{actor}} removed the access of {{user}} to the logs of {{vehicle}}.",
+      "DATA_ACCESS_CHANGED": "{{actor}} let you access everything {{user}} owns: {{level}}.",
+      "DATA_ACCESS_REVOKED": "{{actor}} removed your access to the data of {{user}}.",
+      "DATA_SHARED": "{{actor}} let {{user}} access everything you own: {{level}}.",
+      "DATA_SHARE_REVOKED": "{{actor}} removed the access of {{user}} to your data.",
+      "DEFAULT_ACCESS_CHANGED": "{{actor}} changed what everyone may do with other users' data: {{level}}.",
+      "RECURRING_DUE_SOON": "{{title}} on {{vehicle}} is due soon.",
+      "RECURRING_OVERDUE": "{{title}} on {{vehicle}} is overdue.",
+      "MORE_ACTIVITY_one": "There was {{count}} more change, too many to list one by one.",
+      "MORE_ACTIVITY_other": "There were {{count}} more changes, too many to list one by one."
+    }
   },
   "status": {
     "healthy": "Healthy",

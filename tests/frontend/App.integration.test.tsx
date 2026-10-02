@@ -158,13 +158,13 @@ it('menu entries follow the user: no account/admin without a user, admin entry o
   server.use(sessionHandler('NONE', () => null), healthHandler, ...withBackend())
   const none = renderWithApollo(<App />, '/')
   await screen.findByRole('heading', { name: 'Your vehicles' })
-  expect(navLinks()).toEqual(['Home', 'Import', 'Trash']) // the full vehicle list is an administrator feature
+  expect(navLinks()).toEqual(['Home', 'Import', 'Notifications', 'Trash']) // the full vehicle list is an administrator feature
   none.unmount()
 
   server.use(sessionHandler('STANDALONE', () => user({ isAdmin: true })))
   renderWithApollo(<App />, '/vehicles')
   await screen.findByText('admin')
-  expect(navLinks()).toEqual(['Home', 'Vehicles', 'Import', 'Trash', 'Account', 'Administration'])
+  expect(navLinks()).toEqual(['Home', 'Vehicles', 'Import', 'Notifications', 'Trash', 'Account', 'Administration'])
   expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
 })
 
@@ -174,7 +174,7 @@ it('regular users get no administration entry; behind a proxy there is no sign o
   renderWithApollo(<App />, '/vehicles') // not allowed for them: back to the home page
   await screen.findByRole('heading', { name: 'Your vehicles' })
 
-  expect(navLinks()).toEqual(['Home', 'Import', 'Trash', 'Account'])
+  expect(navLinks()).toEqual(['Home', 'Import', 'Notifications', 'Trash', 'Account'])
   expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
 })
 
