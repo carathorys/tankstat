@@ -32,6 +32,7 @@ export function usePhotoQueue(): PhotoQueue {
   const urls = useRef(new Set<string>())
   // Bumped by clear(): photos that finish resizing after the dialog was closed (or emptied) must not come back into the queue.
   const generation = useRef(0)
+  const nextKey = useRef(0)
 
   useEffect(() => {
     const created = urls.current
@@ -54,7 +55,8 @@ export function usePhotoQueue(): PhotoQueue {
       const made = blobs.map((blob) => {
         const url = URL.createObjectURL(blob)
         urls.current.add(url)
-        return { key: crypto.randomUUID(), blob, url }
+        // Not crypto.randomUUID(): it only exists in secure contexts, and the app is also served over plain HTTP.
+        return { key: `photo-${nextKey.current++}`, blob, url }
       })
       setItems((current) => [...current, ...made].slice(0, MAX_LOG_PHOTOS))
     } finally {
