@@ -162,6 +162,27 @@ public class LogPhotoEndpointsTests : IDisposable
     }
 
     [Fact]
+    public async Task ListsOfLogs_ShowEachLogsOwnPhotos_AndTheTrashShowsNone()
+    {
+        var w = await Setup();
+        var second = (await w.Alice.Gql("mutation($i: AddExpenseInput!) { addExpense(input: $i) { id } }",
+            new { i = new { vehicleId = w.VehicleId, date = "2026-09-03", title = "Wash", amount = 10 } })).Data().GetProperty("addExpense").GetProperty("id").GetString()!;
+        var (first1, _) = await Uploaded(await Put(w.Alice, $"/media/expenses/{w.ExpenseId}/photos", Png(1)));
+        var (first2, _) = await Uploaded(await Put(w.Alice, $"/media/expenses/{w.ExpenseId}/photos", Png(2)));
+        var (other, _) = await Uploaded(await Put(w.Alice, $"/media/expenses/{second}/photos", Png(3)));
+
+        var list = (await w.Alice.Gql("query($v: UUID!) { expenses(vehicleId: $v) { title photos { id } } }", new { v = w.VehicleId })).Data().GetProperty("expenses");
+        var byTitle = list.EnumerateArray().ToDictionary(e => e.GetProperty("title").GetString()!, e => e.GetProperty("photos").EnumerateArray().Select(p => p.GetProperty("id").GetString()!).ToList());
+
+        Assert.Equal([first1, first2], byTitle["Tyres"]);
+        Assert.Equal([other], byTitle["Wash"]);
+
+        await w.Alice.Gql("mutation($id: UUID!) { deleteExpense(id: $id) { id } }", new { id = second });
+        var trash = (await w.Alice.Gql("query { expenseTrash { title photos { id } } }")).Data().GetProperty("expenseTrash");
+        Assert.Empty(trash.EnumerateArray().Single().GetProperty("photos").EnumerateArray()); // hidden with the log, like before
+    }
+
+    [Fact]
     public async Task PurgingAVehicle_RemovesEverythingUploadedForIt()
     {
         var w = await Setup();

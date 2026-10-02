@@ -58,6 +58,26 @@ public class LogPhotoRepositoryTests
     }
 
     [Fact]
+    public async Task ListForLogs_ReturnsThePhotosOfTheGivenLogsOfThatKindOnly()
+    {
+        await using var db = new TestDatabase();
+        var (v, one) = await AddExpense(db);
+        var (_, two) = await AddExpense(db, v);
+        var (_, three) = await AddExpense(db, v);
+        var repo = db.Get<ILogPhotoRepository>();
+        var p1 = Photo(v, LogType.Expense, one.Id);
+        var p2 = Photo(v, LogType.Expense, two.Id);
+        await repo.AddAsync(p1, default);
+        await repo.AddAsync(p2, default);
+        await repo.AddAsync(Photo(v, LogType.Expense, three.Id), default);
+        await repo.AddAsync(Photo(v, LogType.Refueling, one.Id), default); // same id, other kind
+
+        var listed = await repo.ListForLogsAsync(LogType.Expense, [one.Id, two.Id], default);
+
+        Assert.Equal(new[] { p1.ImageId, p2.ImageId }.Order(), listed.Select(p => p.ImageId).Order());
+    }
+
+    [Fact]
     public async Task AnImage_CanBeThePhotoOfOneLogOnly()
     {
         await using var db = new TestDatabase();

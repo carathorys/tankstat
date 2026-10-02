@@ -206,6 +206,8 @@ internal sealed class InMemoryLogPhotos : ILogPhotoRepository
         if (FailLists) throw new InvalidOperationException("database down");
         return Task.FromResult<IReadOnlyList<LogPhoto>>(Items.Where(p => p.LogType == logType && p.LogId == logId).OrderBy(p => p.CreatedAt).ToList());
     }
+    public Task<IReadOnlyList<LogPhoto>> ListForLogsAsync(LogType logType, IReadOnlyCollection<Guid> logIds, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<LogPhoto>>(Items.Where(p => p.LogType == logType && logIds.Contains(p.LogId)).OrderBy(p => p.CreatedAt).ToList());
     public Task<int> CountForLogAsync(LogType logType, Guid logId, CancellationToken ct) =>
         Task.FromResult(Items.Count(p => p.LogType == logType && p.LogId == logId));
     public Task<LogPhoto?> FindByImageAsync(Guid imageId, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(p => p.ImageId == imageId));
@@ -346,9 +348,9 @@ internal sealed class World
     public AuthOptions Options { get; }
 
     public AccessService Access { get; }
+    public LogAccessGuard LogGuard { get; }
     public VehicleService VehicleService { get; }
     public RefuelingService RefuelingService { get; }
-    public LogAccessGuard LogGuard { get; }
     public ExpenseService ExpenseService { get; }
     public StatsService Stats { get; }
     public ChartService ChartService { get; }
@@ -369,9 +371,9 @@ internal sealed class World
         var options = Options.Create();
 
         Access = new AccessService(Current, options, Grants, Settings, ResourceGrants);
+        LogGuard = new LogAccessGuard(Vehicles, Access);
         ImportSessions = new ImportSessionStore(Clock);
         Odometer = new OdometerService(new InMemoryReadings(Refuelings, Expenses));
-        LogGuard = new LogAccessGuard(Vehicles, Access);
         var resets = new PasswordResetService(Tokens, Users, Email, options, Clock);
         var logPhotoAccess = new LogPhotoAccess(LogGuard, Expenses, Refuelings, LogPhotos);
         ImageService = new ImageService(ImageStore, Images, Users, Vehicles, Access, logPhotoAccess, Clock);

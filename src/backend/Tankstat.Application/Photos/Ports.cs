@@ -6,6 +6,8 @@ public interface ILogPhotoRepository
 {
     /// <summary>The photos of a log, oldest first.</summary>
     Task<IReadOnlyList<LogPhoto>> ListForLogAsync(LogType logType, Guid logId, CancellationToken ct);
+    /// <summary>The photos of several logs of one kind in one query, each log's oldest first.</summary>
+    Task<IReadOnlyList<LogPhoto>> ListForLogsAsync(LogType logType, IReadOnlyCollection<Guid> logIds, CancellationToken ct);
     Task<int> CountForLogAsync(LogType logType, Guid logId, CancellationToken ct);
 
     /// <summary>The photo that shows this image, if the image is a log photo.</summary>

@@ -17,6 +17,14 @@ public sealed class LogPhotoService(
     public async Task<IReadOnlyList<LogPhoto>> ListAsync(LogType logType, Guid logId, CancellationToken ct) =>
         await logs.FindAsync(logType, logId, ct) is null ? [] : await photos.ListForLogAsync(logType, logId, ct);
 
+    /// <summary>
+    /// The photos of several logs the caller already got through the log services (and so may see) in one query, oldest first per log.
+    /// Logs in the trash have no visible photos, like <see cref="ListAsync"/>. This does not check access again: never pass ids that
+    /// did not come from an authorised log.
+    /// </summary>
+    public async Task<ILookup<Guid, LogPhoto>> ListForLogsAsync(LogType logType, IReadOnlyCollection<Guid> logIds, CancellationToken ct) =>
+        logIds.Count == 0 ? Enumerable.Empty<LogPhoto>().ToLookup(p => p.LogId) : (await photos.ListForLogsAsync(logType, logIds, ct)).ToLookup(p => p.LogId);
+
     // Uploads to one log are handled one at a time within this process, so the count check and the insert below are one step. Other
     // processes on the same database are covered by the re-check after the insert. Striped (by log id) so the locks do not pile up.
     private static readonly SemaphoreSlim[] Locks = Enumerable.Range(0, 64).Select(_ => new SemaphoreSlim(1, 1)).ToArray();

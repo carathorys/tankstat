@@ -141,6 +141,22 @@ public class LogPhotoServiceTests
     }
 
     [Fact]
+    public async Task ListForLogs_GroupsThePhotosOfSeveralLogsOfOneKind()
+    {
+        var s = await Setup();
+        var a = await s.W.Photos.AddAsync(LogType.Expense, s.Expense.Id, Jpeg(1), default);
+        var b = await s.W.Photos.AddAsync(LogType.Expense, s.Expense.Id, Jpeg(2), default);
+        var r = await s.W.Photos.AddAsync(LogType.Refueling, s.Refueling.Id, Jpeg(3), default);
+
+        var expenses = await s.W.Photos.ListForLogsAsync(LogType.Expense, [s.Expense.Id, s.Refueling.Id], default);
+
+        Assert.Equal([a, b], expenses[s.Expense.Id].Select(p => p.ImageId));
+        Assert.Empty(expenses[s.Refueling.Id]); // the refueling's photo is of the other kind
+        Assert.Empty(await s.W.Photos.ListForLogsAsync(LogType.Refueling, [], default));
+        Assert.Equal([r], (await s.W.Photos.ListForLogsAsync(LogType.Refueling, [s.Refueling.Id], default))[s.Refueling.Id].Select(p => p.ImageId));
+    }
+
+    [Fact]
     public async Task OnlyPicturesAreAccepted_AndNothingIsLeftBehind()
     {
         var s = await Setup();
