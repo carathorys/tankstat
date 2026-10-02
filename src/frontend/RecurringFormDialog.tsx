@@ -1,10 +1,11 @@
+import { useQuery } from '@apollo/client/react'
 import * as RadixForm from '@radix-ui/react-form'
-import { Button, Dialog, Flex, TextArea, TextField } from '@radix-ui/themes'
+import { Button, Dialog, Flex, Text, TextArea, TextField } from '@radix-ui/themes'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LabeledSelect } from './components/UnitSelect.tsx'
 import { Field } from './forms.tsx'
-import type { DistanceUnit, RecurrenceKind } from './gql/generated.ts'
+import { LogDefaultsDocument, type DistanceUnit, type RecurrenceKind } from './gql/generated.ts'
 import { ErrorMessage } from './messages.tsx'
 
 export interface RecurringValues {
@@ -30,15 +31,18 @@ const wholeInvalid = (message: string) => ({ message, test: (v: string) => v !==
 
 /**
  * Add a recurring expense (no `initial`) or edit one. Time, distance or both ("whichever comes first"); the fields of the kind that is
- * not chosen are hidden. It always starts counting from a day (and the odometer then, when distance counts).
+ * not chosen are hidden. A new one starts counting today, at the vehicle's current odometer (its latest reading, to be corrected if it
+ * is off); the day can be changed too, for something that was done earlier.
  */
 export function RecurringFormDialog({
   trigger,
+  vehicleId,
   unit,
   initial,
   onSubmit,
 }: {
   trigger: ReactNode
+  vehicleId: string
   unit: DistanceUnit
   initial?: RecurringValues
   onSubmit: (values: RecurringValues) => Promise<unknown>
@@ -57,25 +61,57 @@ export function RecurringFormDialog({
         </Dialog.Description>
         {/* Mounted only while open, so every opening starts from the current values. */}
         {open && (
-          <RecurringForm
-            unit={unit}
-            initial={initial}
-            onSubmit={async (values) => {
-              await onSubmit(values)
-              setOpen(false)
-            }}
-          />
+          <WithCurrentOdometer vehicleId={vehicleId} needed={!editing}>
+            {(currentOdometer) => (
+              <RecurringForm
+                unit={unit}
+                initial={initial}
+                currentOdometer={currentOdometer}
+                onSubmit={async (values) => {
+                  await onSubmit(values)
+                  setOpen(false)
+                }}
+              />
+            )}
+          </WithCurrentOdometer>
         )}
       </Dialog.Content>
     </Dialog.Root>
   )
 }
 
-function RecurringForm({ unit, initial, onSubmit }: { unit: DistanceUnit; initial?: RecurringValues; onSubmit: (values: RecurringValues) => Promise<unknown> }) {
+/** Loads the vehicle's latest odometer reading (only when adding) before the form is shown, so the field can start from it. */
+function WithCurrentOdometer({ vehicleId, needed, children }: { vehicleId: string; needed: boolean; children: (current: number | null) => ReactNode }) {
+  const { t } = useTranslation()
+  const defaults = useQuery(LogDefaultsDocument, { variables: { vehicleId }, skip: !needed, fetchPolicy: 'network-only' })
+  if (!needed) return children(null)
+  if (defaults.error) return <ErrorMessage error={defaults.error} />
+  if (!defaults.data) {
+    return (
+      <Text as="p" role="status">
+        {t('app.loading')}
+      </Text>
+    )
+  }
+  return children(defaults.data.logDefaults.lastOdometer ?? null)
+}
+
+function RecurringForm({
+  unit,
+  initial,
+  currentOdometer,
+  onSubmit,
+}: {
+  unit: DistanceUnit
+  initial?: RecurringValues
+  currentOdometer: number | null
+  onSubmit: (values: RecurringValues) => Promise<unknown>
+}) {
   const { t } = useTranslation()
   const [kind, setKind] = useState<RecurrenceKind>(initial?.kind ?? 'COMBINED')
   const [error, setError] = useState<unknown>()
   const [busy, setBusy] = useState(false)
+  const adding = initial === undefined
   const usesTime = kind !== 'ODOMETER'
   const usesDistance = kind !== 'TIME'
   const unitName = t(`units.distance.${unit}`).toLowerCase()
@@ -133,18 +169,18 @@ function RecurringForm({ unit, initial, onSubmit }: { unit: DistanceUnit; initia
             <TextField.Root required inputMode="numeric" autoComplete="off" defaultValue={initial?.intervalDistance?.toString() ?? ''} />
           </Field>
         )}
-        <Field name="lastDoneDate" label={t('recurring.fields.lastDone')} hint={t('recurring.hints.lastDone')} required>
+        <Field name="lastDoneDate" label={t('recurring.fields.lastDone')} hint={t(adding ? 'recurring.hints.startToday' : 'recurring.hints.lastDone')} required>
           <TextField.Root type="date" required max={today()} defaultValue={initial?.lastDoneDate ?? today()} />
         </Field>
         {usesDistance && (
           <Field
             name="lastDoneOdometer"
             label={t('recurring.fields.lastOdometer', { unit: unitName })}
-            hint={t('recurring.hints.lastOdometer')}
+            hint={adding ? t(currentOdometer === null ? 'recurring.hints.noReading' : 'recurring.hints.currentOdometer') : t('recurring.hints.lastOdometer')}
             required
             invalid={wholeInvalid(t('errors.odometer.negative'))}
           >
-            <TextField.Root required inputMode="numeric" autoComplete="off" defaultValue={initial?.lastDoneOdometer?.toString() ?? ''} />
+            <TextField.Root required inputMode="numeric" autoComplete="off" defaultValue={(adding ? currentOdometer : initial.lastDoneOdometer)?.toString() ?? ''} />
           </Field>
         )}
         <Flex gap="3" wrap="wrap">

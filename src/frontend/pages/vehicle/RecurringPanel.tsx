@@ -67,6 +67,7 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
       <Flex align="center" gap="3" wrap="wrap" mb="3">
         {canLog && (
           <RecurringFormDialog
+            vehicleId={vehicle.id}
             unit={unit}
             trigger={<Button size="3">{t('recurring.add')}</Button>}
             onSubmit={(input) => addItem({ variables: { input: { ...input, vehicleId: vehicle.id } } })}
@@ -135,6 +136,7 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
                             onSubmit={(input) => markDone({ variables: { input: { ...input, id: i.id } } })}
                           />
                           <RecurringFormDialog
+                            vehicleId={vehicle.id}
                             unit={unit}
                             initial={i}
                             trigger={

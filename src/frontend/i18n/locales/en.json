@@ -783,15 +783,18 @@
       "kind": "Repeats",
       "months": "Every (months)",
       "distance": "Every ({{unit}})",
-      "lastDone": "Last done",
-      "lastOdometer": "Odometer then ({{unit}})",
+      "lastDone": "Counting from",
+      "lastOdometer": "Odometer on that day ({{unit}})",
       "warnDays": "Warn me this many days before",
       "warnDistance": "Warn me this far before ({{unit}})",
       "note": "Note (optional)"
     },
     "hints": {
-      "lastDone": "Or the day to start counting from.",
-      "lastOdometer": "Needed to work out the distance."
+      "lastDone": "The day it was last done, or the day you started counting.",
+      "lastOdometer": "Needed to work out the distance.",
+      "currentOdometer": "Prefilled with the vehicle's latest reading. Change it if the odometer shows something else.",
+      "noReading": "This vehicle has no odometer reading yet: enter what it shows now.",
+      "startToday": "Today by default. Change it if it was last done earlier."
     },
     "doneTitle": "Mark as done: {{title}}",
     "doneDescription": "The next interval starts from the day and the odometer you enter.",

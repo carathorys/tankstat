@@ -25,7 +25,7 @@ export type AddRecurringExpenseInput = {
   intervalDistance?: number | null | undefined;
   intervalMonths?: number | null | undefined;
   kind: RecurrenceKind;
-  lastDoneDate: string;
+  lastDoneDate?: string | null | undefined;
   lastDoneOdometer?: number | null | undefined;
   note?: string | null | undefined;
   title: string;

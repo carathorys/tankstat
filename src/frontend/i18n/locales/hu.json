@@ -783,15 +783,18 @@
       "kind": "Ismétlődés",
       "months": "Minden (hónap)",
       "distance": "Minden ({{unit}})",
-      "lastDone": "Legutóbb ekkor",
-      "lastOdometer": "Kilométeróra akkor ({{unit}})",
+      "lastDone": "Számolás kezdete",
+      "lastOdometer": "Kilométeróra azon a napon ({{unit}})",
       "warnDays": "Ennyi nappal előtte figyelmeztess",
       "warnDistance": "Ennyivel előtte figyelmeztess ({{unit}})",
       "note": "Megjegyzés (nem kötelező)"
     },
     "hints": {
-      "lastDone": "Vagy az a nap, ahonnan a számolás indul.",
-      "lastOdometer": "A távolság kiszámításához szükséges."
+      "lastDone": "Az a nap, amikor legutóbb elvégezték, vagy amikor elkezdted a számolást.",
+      "lastOdometer": "A távolság kiszámításához szükséges.",
+      "currentOdometer": "A jármű legutóbbi kilométeróra-állásával kitöltve. Javítsd, ha az óra mást mutat.",
+      "noReading": "Ennek a járműnek még nincs kilométeróra-állása: add meg, amit most mutat.",
+      "startToday": "Alapból ma. Módosítsd, ha korábban végezték el legutóbb."
     },
     "doneTitle": "Késznek jelölés: {{title}}",
     "doneDescription": "A következő időszak az itt megadott naptól és kilométeróra-állástól indul.",

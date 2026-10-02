@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { graphql, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import { server } from './server.ts'
@@ -77,7 +78,7 @@ it('adds a schedule that counts time or distance, whichever comes first', async 
   const dialog = await screen.findByRole('dialog', { name: 'Add recurring expense' })
   await ui.type(within(dialog).getByLabelText('Title'), 'Insurance')
   await ui.type(within(dialog).getByLabelText(/^Every \(kilometers\)/), '15000')
-  await ui.type(within(dialog).getByLabelText(/^Odometer then/), '50000')
+  await ui.type(within(dialog).getByLabelText(/^Odometer on that day/), '50000')
   await ui.click(within(dialog).getByRole('button', { name: 'Add recurring expense' }))
 
   await screen.findByText('Insurance')
@@ -101,6 +102,24 @@ it('adds a schedule that counts time or distance, whichever comes first', async 
   ])
 })
 
+it('starts a new schedule from today and the latest odometer reading, both prefilled and changeable', async () => {
+  const { ui, state } = setup(fakeVehicle(), [])
+  server.use(graphql.query('LogDefaults', () => HttpResponse.json({ data: { logDefaults: { lastOdometer: 71500, lastDate: '2026-09-30', currency: 'HUF' } } })))
+  await screen.findByText(/Nothing recurring yet/)
+  await ui.click(screen.getByRole('button', { name: 'Add recurring expense' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add recurring expense' })
+  await waitFor(() => expect(within(dialog).getByLabelText(/^Odometer on that day/)).toHaveValue('71500'))
+  expect((within(dialog).getByLabelText('Counting from') as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}$/) // today, to be changed for something done earlier
+  await ui.type(within(dialog).getByLabelText('Title'), 'Tyres')
+  await ui.type(within(dialog).getByLabelText(/^Every \(kilometers\)/), '40000')
+  await ui.clear(within(dialog).getByLabelText(/^Odometer on that day/))
+  await ui.type(within(dialog).getByLabelText(/^Odometer on that day/), '71000') // the person knows better
+  await ui.click(within(dialog).getByRole('button', { name: 'Add recurring expense' }))
+
+  await screen.findByText('Tyres')
+  expect(state.calls.AddRecurringExpense).toEqual([{ input: expect.objectContaining({ title: 'Tyres', lastDoneOdometer: 71000, lastDoneDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) }) }])
+})
+
 it('shows only the fields of the chosen kind', async () => {
   const { ui, state } = setup(fakeVehicle(), [])
   await screen.findByText(/Nothing recurring yet/)
@@ -112,7 +131,7 @@ it('shows only the fields of the chosen kind', async () => {
   await ui.click(await screen.findByRole('option', { name: 'By time' }))
 
   expect(within(dialog).queryByLabelText(/^Every \(kilometers\)/)).not.toBeInTheDocument()
-  expect(within(dialog).queryByLabelText(/^Odometer then/)).not.toBeInTheDocument()
+  expect(within(dialog).queryByLabelText(/^Odometer on that day/)).not.toBeInTheDocument()
   expect(within(dialog).getByLabelText('Every (months)')).toBeInTheDocument()
   await ui.type(within(dialog).getByLabelText('Title'), 'Inspection')
   await ui.click(within(dialog).getByRole('button', { name: 'Add recurring expense' }))
@@ -128,7 +147,7 @@ it('keeps the dialog open and shows a translated message when the server refuses
   const dialog = await screen.findByRole('dialog', { name: 'Add recurring expense' })
   await ui.type(within(dialog).getByLabelText('Title'), 'x')
   await ui.type(within(dialog).getByLabelText(/^Every \(kilometers\)/), '1000')
-  await ui.type(within(dialog).getByLabelText(/^Odometer then/), '1')
+  await ui.type(within(dialog).getByLabelText(/^Odometer on that day/), '1')
 
   await ui.click(within(dialog).getByRole('button', { name: 'Add recurring expense' }))
 
