@@ -2,6 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
+import { resizeImage } from '../../src/frontend/pictures/resizeImage.ts'
 import { server } from './server.ts'
 import {
   fakeExpense,
@@ -219,4 +220,46 @@ it('adds a refueling with a photo taken in the add dialog', async () => {
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   const newId = state.logs.find((l) => l.odometer === 13000)!.id
   expect(photos.state.puts).toEqual([{ kind: 'refuelings', logId: newId, bytes: 2 }])
+})
+
+/** Makes the next photo "take a while" to be prepared, like a large camera picture; call the result to finish it. */
+function slowResize(file: Blob) {
+  let finish!: () => void
+  vi.mocked(resizeImage).mockImplementationOnce(() => new Promise<Blob>((resolve) => (finish = () => resolve(file))))
+  return () => finish()
+}
+
+it('waits for photos that are still being prepared before the expense can be saved, so none is left out', async () => {
+  const photos = fakePhotoStore()
+  const { ui, state } = setupExpenses(photos)
+  const dialog = await openAddExpense(ui)
+  await ui.type(within(dialog).getByLabelText('Title'), 'Tyres')
+  await ui.type(within(dialog).getByLabelText('Amount'), '120000')
+  const finish = slowResize(photo('big.png', [1, 2, 3]))
+
+  await ui.upload(camera(dialog), photo('big.png', [1, 2, 3]))
+
+  expect(within(dialog).getByRole('button', { name: 'Add expense' })).toBeDisabled()
+  finish()
+  await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Add expense' })).toBeEnabled())
+  await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(photos.state.puts).toEqual([{ kind: 'expenses', logId: state.expenses.find((e) => e.title === 'Tyres')!.id, bytes: 3 }])
+})
+
+it('does not bring a photo back into a dialog that was closed while it was being prepared', async () => {
+  const photos = fakePhotoStore()
+  const { ui } = setupExpenses(photos)
+  const dialog = await openAddExpense(ui)
+  const finish = slowResize(photo('big.png'))
+  await ui.upload(library(dialog), photo('big.png'))
+
+  await ui.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  finish()
+  await new Promise((resolve) => setTimeout(resolve, 20))
+
+  const again = await openAddExpense(ui)
+  expect(within(again).queryAllByRole('button', { name: /^Remove photo/ })).toHaveLength(0)
+  expect(within(again).getByText(/0 of 10 photos/)).toBeInTheDocument()
 })

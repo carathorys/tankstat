@@ -108,6 +108,7 @@ export function RefuelingFormDialog({
             units={vehicle.units}
             editing={editing}
             last={lastReading}
+            photosBusy={queue.adding}
             gallery={<PhotoGallery kind="refuelings" logId={refuelingId} photos={existing?.photos ?? []} queue={queue} onChanged={() => details.refetch()} />}
             onSubmit={async (values) => {
               const saved = await onSubmit(values)
@@ -134,6 +135,7 @@ function RefuelingForm({
   editing,
   last,
   gallery,
+  photosBusy,
   onSubmit,
 }: {
   initial: Initial
@@ -141,6 +143,8 @@ function RefuelingForm({
   editing: boolean
   last: { value: number; date: string } | null
   gallery: ReactNode
+  /** Chosen photos are still being prepared: saving now would leave them out. */
+  photosBusy: boolean
   onSubmit: (values: RefuelingValues) => Promise<unknown>
 }) {
   const { t } = useTranslation()
@@ -224,7 +228,7 @@ function RefuelingForm({
             </Button>
           </Dialog.Close>
           <RadixForm.Submit asChild>
-            <Button disabled={busy}>{editing ? t('refuelings.save') : t('refuelings.saveAdd')}</Button>
+            <Button disabled={busy || photosBusy}>{editing ? t('refuelings.save') : t('refuelings.saveAdd')}</Button>
           </RadixForm.Submit>
         </Flex>
       </Flex>

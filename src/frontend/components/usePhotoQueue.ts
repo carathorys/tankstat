@@ -16,6 +16,8 @@ export interface PhotoQueue {
   add: (files: File[]) => Promise<void>
   remove: (key: string) => void
   clear: () => void
+  /** True while chosen photos are still being made smaller; saving should wait for it, or they would be left out. */
+  adding: boolean
   /** Uploads the queued photos one by one to a log that was just saved; the ones that went through leave the queue. Resolves to the first error, if any. */
   uploadAll: (kind: LogKind, logId: string) => Promise<unknown>
 }
@@ -26,7 +28,10 @@ export interface PhotoQueue {
  */
 export function usePhotoQueue(): PhotoQueue {
   const [items, setItems] = useState<QueuedPhoto[]>([])
+  const [adding, setAdding] = useState(0)
   const urls = useRef(new Set<string>())
+  // Bumped by clear(): photos that finish resizing after the dialog was closed (or emptied) must not come back into the queue.
+  const generation = useRef(0)
 
   useEffect(() => {
     const created = urls.current
@@ -39,14 +44,22 @@ export function usePhotoQueue(): PhotoQueue {
   }
 
   const add = useCallback(async (files: File[]) => {
-    const made: QueuedPhoto[] = []
-    for (const file of files) {
-      const blob = await resizeImage(file, { maxEdge: LOG_PHOTO_EDGE })
-      const url = URL.createObjectURL(blob)
-      urls.current.add(url)
-      made.push({ key: crypto.randomUUID(), blob, url })
+    const started = generation.current
+    setAdding((n) => n + 1)
+    try {
+      const blobs: Blob[] = []
+      for (const file of files) blobs.push(await resizeImage(file, { maxEdge: LOG_PHOTO_EDGE }))
+      if (started !== generation.current) return // the queue was cleared meanwhile
+
+      const made = blobs.map((blob) => {
+        const url = URL.createObjectURL(blob)
+        urls.current.add(url)
+        return { key: crypto.randomUUID(), blob, url }
+      })
+      setItems((current) => [...current, ...made].slice(0, MAX_LOG_PHOTOS))
+    } finally {
+      setAdding((n) => n - 1)
     }
-    setItems((current) => [...current, ...made].slice(0, MAX_LOG_PHOTOS))
   }, [])
 
   const remove = useCallback(
@@ -58,6 +71,7 @@ export function usePhotoQueue(): PhotoQueue {
   )
 
   const clear = useCallback(() => {
+    generation.current++
     items.forEach(forget)
     setItems([])
   }, [items])
@@ -81,5 +95,5 @@ export function usePhotoQueue(): PhotoQueue {
     [items],
   )
 
-  return { items, add, remove, clear, uploadAll }
+  return { items, adding: adding > 0, add, remove, clear, uploadAll }
 }

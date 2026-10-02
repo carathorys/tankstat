@@ -111,6 +111,7 @@ export function ExpenseFormDialog({
             unit={vehicle.units.distance}
             editing={editing}
             categories={categories.data?.expenseCategories ?? []}
+            photosBusy={queue.adding}
             gallery={<PhotoGallery kind="expenses" logId={expenseId} photos={existing?.photos ?? []} queue={queue} onChanged={() => details.refetch()} />}
             onSubmit={async (values) => {
               const saved = await onSubmit(values)
@@ -137,6 +138,7 @@ function ExpenseForm({
   editing,
   categories,
   gallery,
+  photosBusy,
   onSubmit,
 }: {
   initial: Initial
@@ -144,6 +146,8 @@ function ExpenseForm({
   editing: boolean
   categories: string[]
   gallery: ReactNode
+  /** Chosen photos are still being prepared: saving now would leave them out. */
+  photosBusy: boolean
   onSubmit: (values: ExpenseValues) => Promise<unknown>
 }) {
   const { t } = useTranslation()
@@ -230,7 +234,7 @@ function ExpenseForm({
             </Button>
           </Dialog.Close>
           <RadixForm.Submit asChild>
-            <Button disabled={busy}>{editing ? t('expenses.save') : t('expenses.saveAdd')}</Button>
+            <Button disabled={busy || photosBusy}>{editing ? t('expenses.save') : t('expenses.saveAdd')}</Button>
           </RadixForm.Submit>
         </Flex>
       </Flex>
