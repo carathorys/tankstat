@@ -69,7 +69,7 @@ Uploaded pictures (profile pictures, vehicle pictures, photos of refuelings and 
 
 Authentication is configured through the `Auth` and `Smtp` sections. Every setting can be given in `appsettings.json` or as an **environment variable**, where `:` becomes `__` (double underscore): `Auth:Oidc:ClientId` is `Auth__Oidc__ClientId`. Environment variables override `appsettings.json`. List settings use an index: `Auth__AdminEmails__0=a@x.com`, `Auth__AdminEmails__1=b@x.com`. Names are case-insensitive, and enum values (`Auth__Mode`) are matched case-insensitively. A misconfiguration stops the app at start with a message naming the missing setting.
 
-> **The shipped `appsettings.json` sets `Auth:Mode=Standalone` with a default administrator (`admin@tankstat.com` / `Password1234!`).** Always set `Auth__Mode` explicitly and override the administrator credentials (or remove them from the file) before exposing the app. Never put real credentials in a committed file.
+> **The shipped `appsettings.json` sets `Auth:Mode=None`: there is no authentication, everyone sees and changes everything, and there is no administrator.** Always set `Auth__Mode` explicitly (and, for `Standalone`, the administrator credentials) before exposing the app. Never put real credentials in a committed file.
 
 ### Choosing the mode
 
