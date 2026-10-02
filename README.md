@@ -1,5 +1,14 @@
 # Tankstat
 
+[![CI](https://github.com/carathorys/tankstat/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/carathorys/tankstat/actions/workflows/ci.yml)
+[![Release workflow](https://github.com/carathorys/tankstat/actions/workflows/release.yml/badge.svg)](https://github.com/carathorys/tankstat/actions/workflows/release.yml)
+[![codecov](https://codecov.io/gh/carathorys/tankstat/graph/badge.svg)](https://codecov.io/gh/carathorys/tankstat)
+[![Latest release](https://img.shields.io/github/v/release/carathorys/tankstat?include_prereleases&sort=semver)](https://github.com/carathorys/tankstat/releases)
+[![License: MIT](https://img.shields.io/github/license/carathorys/tankstat)](LICENSE)
+![.NET 10](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
+![Node LTS](https://img.shields.io/badge/Node-LTS-339933?logo=nodedotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+
 Self-hosted web app: a React + TypeScript frontend (Vite) and a .NET 10 backend. They talk GraphQL (HotChocolate on the server, Apollo Client in the browser), and the backend stores data with Entity Framework Core. In production, Kestrel serves both the API and the built frontend.
 
 ## Prerequisites
@@ -274,6 +283,7 @@ mise run test              # typecheck, lint, then all test layers
 mise run test:unit         # frontend + backend unit tests
 mise run test:integration  # frontend (msw-mocked HTTP) + backend (in-process)
 mise run test:api          # contract tests against a freshly started server
+mise run test:coverage     # unit + integration tests with coverage reports in ./coverage
 ```
 
 The API tests pin the GraphQL schema the frontend relies on, so a breaking schema change fails them. They read the target from `TANKSTAT_API_URL` (default `http://localhost:5080`); `test:api` sets it for you.
@@ -310,6 +320,8 @@ The first publish creates the package as private and linked to the repository; c
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every push to `main` and every pull request, installing the toolchain from `mise.toml` so CI uses the same Node and .NET versions as developers. Jobs run in parallel: **frontend** (lint, typecheck, Vitest, production build), **backend** (build, unit and in-process integration tests), **smoke** (the real app as a process in every authentication mode, plus the black-box API contract tests), **codegen** (`schema.graphql` and the generated GraphQL types are up to date). When all pass, **build** uploads the self-hostable output (`out/`) as an artifact. Run the same things locally with `mise run test`.
+
+**Coverage.** The frontend job runs Vitest with V8 coverage (`lcov`) and the backend job runs the unit and integration tests with coverlet (`coverlet.runsettings`: the app's own code, without migrations, the seeder and the tests; Cobertura output). Both upload to [Codecov](https://codecov.io/gh/carathorys/tankstat) under the flags `frontend` and `backend`; `codecov.yml` holds the gates (project coverage may not drop by more than 1% against the base, new and changed lines need 80%) and the pull request comment. The upload needs the Codecov GitHub app and a `CODECOV_TOKEN` repository secret (`release.yml` passes secrets on to `ci.yml`); without the token the step only warns. `mise run test:coverage` writes the same reports to `coverage/` (HTML for the frontend at `coverage/frontend/index.html`).
 
 ## Building and self-hosting
 
