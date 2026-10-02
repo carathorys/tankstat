@@ -5,9 +5,20 @@ import { axe } from 'vitest-axe'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import { server } from './server.ts'
-import { fakeExpense, fakeExpenseBackend, fakeLogBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, stubViewport, user } from './mocks.tsx'
+import { fakeExpense, fakeExpenseBackend, fakeLogBackend, fakePhotoStore, fakeRefueling, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, stubViewport, user } from './mocks.tsx'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+// jsdom cannot decode pictures (the resize is covered in Media.unit.test.ts) and has no object URLs (previews of queued photos).
+vi.mock('../../src/frontend/pictures/resizeImage.ts', async (original) => ({
+  ...(await original<typeof import('../../src/frontend/pictures/resizeImage.ts')>()),
+  resizeImage: vi.fn(async (file: Blob) => file),
+}))
+
+beforeAll(() => {
+  server.listen({ onUnhandledRequest: 'error' })
+  let n = 0
+  URL.createObjectURL = () => `blob:preview-${n++}`
+  URL.revokeObjectURL = () => undefined
+})
 afterEach(() => {
   server.resetHandlers()
   vi.unstubAllGlobals()
@@ -20,10 +31,10 @@ const check = async (container: HTMLElement) => {
   expect(results.violations.map((v) => `${v.id}: ${v.help} (${v.nodes.map((n) => n.target.join(' ')).join(', ')})`)).toEqual([])
 }
 
-function setup(route: string, viewport: 'desktop' | 'phone' = 'desktop') {
+function setup(route: string, viewport: 'desktop' | 'phone' = 'desktop', photos = fakePhotoStore()) {
   stubViewport(viewport)
-  const logs = fakeLogBackend(fakeVehicle(), [fakeRefueling({ id: 'r1' }), fakeRefueling({ id: 'r2', date: '2026-08-01', note: 'Trip' })])
-  const expenseBackend = fakeExpenseBackend(fakeVehicle(), [fakeExpense({ id: 'e1' }), fakeExpense({ id: 'e2', title: 'Parking', category: null, odometer: null })])
+  const logs = fakeLogBackend(fakeVehicle(), [fakeRefueling({ id: 'r1' }), fakeRefueling({ id: 'r2', date: '2026-08-01', note: 'Trip' })], photos)
+  const expenseBackend = fakeExpenseBackend(fakeVehicle(), [fakeExpense({ id: 'e1' }), fakeExpense({ id: 'e2', title: 'Parking', category: null, odometer: null })], photos)
   expenseBackend.state.trash = [fakeExpense({ id: 'x1', title: 'Old fee', deletedAt: '2026-10-01T08:00:00Z' })]
   const vehicles = fakeVehicleBackend([fakeVehicle()], [fakeVehicle({ id: 't1', name: 'Old Fiat' })])
   server.use(
@@ -157,6 +168,42 @@ it('the edit refuelling dialog with its photos is free of violations', async () 
   await within(dialog).findByRole('group', { name: 'Photos' })
   expect(within(dialog).getByRole('button', { name: 'Take photo' })).toBeInTheDocument()
 
+  await check(document.body)
+})
+
+it('a gallery that holds photos is free of violations and its thumbnails and buttons are labelled', async () => {
+  const photos = fakePhotoStore({
+    e1: [{ id: 'p1', url: '/media/p1' }, { id: 'p2', url: '/media/p2' }],
+    e2: [{ id: 'p3', url: '/media/p3' }, { id: 'p4', url: '/media/p4' }],
+  })
+  const { ui } = setup('/vehicles/v1?tab=expenses', 'desktop', photos)
+  await screen.findByText('Oil change')
+
+  await ui.click(screen.getAllByRole('button', { name: /^Edit the expense/ })[0])
+  const dialog = await screen.findByRole('dialog', { name: 'Edit expense' })
+  expect(await within(dialog).findAllByRole('link', { name: /^Open photo/ })).toHaveLength(2)
+  expect(within(dialog).getAllByRole('button', { name: /^Remove photo/ })).toHaveLength(2)
+
+  await check(document.body)
+})
+
+it('the screen after a new entry was saved but its photos were not sent is free of violations', async () => {
+  const photos = fakePhotoStore()
+  photos.state.failWith = { key: 'photo.tooMany', args: { max: 10 } }
+  const { ui } = setup('/vehicles/v1?tab=expenses', 'desktop', photos)
+  await screen.findByText('Oil change')
+
+  await ui.click(screen.getByRole('button', { name: 'Add expense' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add expense' })
+  await within(dialog).findByText(/Used before/)
+  await ui.type(within(dialog).getByLabelText('Title'), 'Tyres')
+  await ui.type(within(dialog).getByLabelText('Amount'), '120000')
+  await ui.upload(within(dialog).getByTestId('photo-library'), new File([new Uint8Array([1, 2, 3])], 'a.png', { type: 'image/png' }))
+  await within(dialog).findAllByRole('button', { name: /^Remove photo/ })
+  await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
+
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent(/not all photos could be sent/)
+  expect(within(dialog).getByRole('button', { name: 'Try again' })).toBeInTheDocument()
   await check(document.body)
 })
 
