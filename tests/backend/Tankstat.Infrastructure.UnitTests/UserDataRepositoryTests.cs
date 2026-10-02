@@ -74,6 +74,8 @@ public class UserDataRepositoryTests
             seed.ResourceGrants.Add(ResourceGrant.Create(ResourceType.Vehicle, live.Id, bob.Id, GrantedFeature.Logs, AccessLevel.Edit));     // Bob owns it now: dropped
             seed.LogPhotos.Add(LogPhoto.Create(alice.Id, live.Id, LogType.Expense, liveExpense.Id, Guid.NewGuid(), alice.Id, Now));          // her photo on her expense
             seed.LogPhotos.Add(LogPhoto.Create(carol.Id, carols.Id, LogType.Expense, carolsExpense.Id, Guid.NewGuid(), alice.Id, Now));      // her photo on Carol's expense
+            seed.PhotoDrafts.Add(PhotoDraft.Create(Guid.NewGuid(), alice.Id, live.Id, alice.Id, Now));                                      // her draft on her vehicle
+            seed.PhotoDrafts.Add(PhotoDraft.Create(Guid.NewGuid(), carol.Id, carols.Id, alice.Id, Now));                                    // her draft on Carol's vehicle
             await seed.SaveChangesAsync();
         }
 
@@ -94,6 +96,9 @@ public class UserDataRepositoryTests
         var onCarolsLog = photos.Single(p => p.LogId == carolsExpense.Id);
         Assert.Equal((bob.Id, bob.Id), (onHers.OwnerId, onHers.CreatedById));            // the photo of a moved expense is Bob's now
         Assert.Equal((carol.Id, bob.Id), (onCarolsLog.OwnerId, onCarolsLog.CreatedById)); // someone else's expense stays theirs, the authorship follows
+        var drafts = await ctx.PhotoDrafts.ToListAsync();
+        Assert.Equal((bob.Id, bob.Id), drafts.Where(d => d.VehicleId == live.Id).Select(d => (d.OwnerId, d.CreatedById)).Single());
+        Assert.Equal((carol.Id, bob.Id), drafts.Where(d => d.VehicleId == carols.Id).Select(d => (d.OwnerId, d.CreatedById)).Single()); // drafts move like photos
         var onCarols = await ctx.Expenses.SingleAsync(e => e.Id == carolsExpense.Id);
         Assert.Equal(carol.Id, onCarols.OwnerId);   // someone else's vehicle stays theirs ...
         Assert.Equal(bob.Id, onCarols.CreatedById); // ... but the authorship follows
@@ -150,6 +155,8 @@ public class UserDataRepositoryTests
             seed.AccessGrants.Add(AccessGrant.Create(alice.Id, bob.Id, AccessLevel.View));
             seed.AccessGrants.Add(AccessGrant.Create(bob.Id, alice.Id, AccessLevel.View));
             seed.LogPhotos.Add(LogPhoto.Create(alice.Id, doomed.Id, LogType.Expense, doomedExpense.Id, Guid.NewGuid(), alice.Id, Now));
+            seed.PhotoDrafts.Add(PhotoDraft.Create(Guid.NewGuid(), alice.Id, doomed.Id, alice.Id, Now));
+            seed.PhotoDrafts.Add(PhotoDraft.Create(Guid.NewGuid(), bob.Id, kept.Id, alice.Id, Now)); // hers, on Bob's vehicle
             seed.ResourceGrants.Add(ResourceGrant.Create(ResourceType.Vehicle, doomed.Id, bob.Id, GrantedFeature.Logs, AccessLevel.Edit));
             seed.ResourceGrants.Add(ResourceGrant.Create(ResourceType.Vehicle, kept.Id, alice.Id, GrantedFeature.Logs, AccessLevel.Edit));
             await seed.SaveChangesAsync();
@@ -168,6 +175,8 @@ public class UserDataRepositoryTests
         Assert.Empty(await ctx.AccessGrants.ToListAsync());
         Assert.Empty(await ctx.ResourceGrants.ToListAsync());
         Assert.Empty(await ctx.LogPhotos.ToListAsync()); // the photo rows of the purged vehicles went with them
+        // Drafts on purged vehicles went with them; one on someone else's vehicle stays until it expires, which also removes its file.
+        Assert.Equal([kept.Id], await ctx.PhotoDrafts.Select(d => d.VehicleId).ToListAsync());
         Assert.NotNull(await ctx.Users.FindAsync(bob.Id));
         Assert.DoesNotContain(trashed.Id, await ctx.Vehicles.IgnoreQueryFilters().Select(v => v.Id).ToListAsync());
     }

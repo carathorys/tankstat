@@ -19,6 +19,12 @@ internal sealed class ImageRepository(IDbContextFactory<AppDbContext> dbFactory)
         return await db.Images.AsNoTracking().FirstOrDefaultAsync(i => i.Id == id, ct);
     }
 
+    public async Task UpdateFolderAsync(StoredImage image, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        await db.Images.Where(i => i.Id == image.Id).ExecuteUpdateAsync(s => s.SetProperty(i => i.Folder, image.Folder), ct);
+    }
+
     public async Task RemoveFolderAsync(string folder, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);

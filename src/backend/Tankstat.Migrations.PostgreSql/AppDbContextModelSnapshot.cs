@@ -359,6 +359,34 @@ namespace Tankstat.Migrations.PostgreSql
                     b.ToTable("LogPhotos", (string)null);
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Photos.PhotoDraft", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("OwnerId");
+
+                    b.HasIndex("VehicleId", "CreatedById");
+
+                    b.ToTable("PhotoDrafts", (string)null);
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Recurring.RecurringExpense", b =>
                 {
                     b.Property<Guid>("Id")
@@ -709,6 +737,15 @@ namespace Tankstat.Migrations.PostgreSql
                 });
 
             modelBuilder.Entity("Tankstat.Domain.Photos.LogPhoto", b =>
+                {
+                    b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
+                        .WithMany()
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Photos.PhotoDraft", b =>
                 {
                     b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
                         .WithMany()

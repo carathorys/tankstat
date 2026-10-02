@@ -75,6 +75,7 @@ public static class DependencyInjection
         services.AddScoped<IOdometerReadingRepository, OdometerReadingRepository>();
         services.AddScoped<IImageRepository, ImageRepository>();
         services.AddScoped<ILogPhotoRepository, LogPhotoRepository>();
+        services.AddScoped<IPhotoDraftRepository, PhotoDraftRepository>();
         services.AddSingleton<IImageStore, FileSystemImageStore>();
         services.AddSingleton<IPasswordHasher, IdentityPasswordHasher>();
         services.AddSingleton<IEmailSender, SmtpEmailSender>();

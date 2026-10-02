@@ -15,6 +15,9 @@ public static class ImageFolders
 
     public static string VehiclePicture(Guid vehicleId) => $"{Vehicle(vehicleId)}/picture";
 
+    /// <summary>Photos uploaded for logs that are not saved yet (see <c>PhotoDraft</c>); saving the log moves them to its folder.</summary>
+    public static string PhotoDrafts(Guid vehicleId) => $"{Vehicle(vehicleId)}/drafts";
+
     /// <summary>The photos of one log: <c>vehicles/&lt;id&gt;/expenses/&lt;logId&gt;</c> or <c>.../refuelings/&lt;logId&gt;</c>.</summary>
     public static string LogPhotos(Guid vehicleId, LogType logType, Guid logId) =>
         $"{Vehicle(vehicleId)}/{(logType == LogType.Expense ? "expenses" : "refuelings")}/{logId:N}";

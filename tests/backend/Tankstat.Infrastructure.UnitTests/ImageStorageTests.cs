@@ -118,6 +118,23 @@ public sealed class ImageStorageTests : IDisposable
         Assert.False(Directory.Exists(Path.Combine(_folder, "vehicles", vehicleId.ToString("N"))));
     }
 
+    [Fact]
+    public async Task MovingAFile_PutsItIntoTheOtherFolder_UnderTheSameName()
+    {
+        var store = Store();
+        var vehicleId = Guid.NewGuid();
+        var draft = Image(ImageFolders.PhotoDrafts(vehicleId));
+        await store.SaveAsync(draft, new byte[] { 7, 7 }, default);
+        var logFolder = $"{ImageFolders.Vehicle(vehicleId)}/refuelings/{Guid.NewGuid():N}";
+
+        await store.MoveAsync(draft, logFolder, default);
+
+        Assert.Null(await store.OpenReadAsync(draft, default)); // no longer in the drafts folder
+        var moved = StoredImage.Create(draft.Id, draft.ContentType, draft.SizeBytes, draft.CreatedAt, logFolder);
+        Assert.Equal(new byte[] { 7, 7 }, await ReadAll((await store.OpenReadAsync(moved, default))!));
+        Assert.True(File.Exists(Path.Combine(_folder, logFolder.Replace('/', Path.DirectorySeparatorChar), draft.Id.ToString("N"))));
+    }
+
     [Theory]
     [InlineData("../outside")]
     [InlineData("vehicles/../../x")]
@@ -128,6 +145,7 @@ public sealed class ImageStorageTests : IDisposable
     [InlineData("vehicles")] // would be every vehicle's uploads
     [InlineData("users")]
     [InlineData("vehicles/00000000000000000000000000000000/other")]
+    [InlineData("vehicles/00000000000000000000000000000000/drafts/x")] // drafts have no subfolders
     [InlineData("users/00000000000000000000000000000000\n")] // $ would let a trailing newline through
     public async Task Folders_ThatCouldEscapeTheDataFolder_AreRefused(string folder)
     {
@@ -135,6 +153,7 @@ public sealed class ImageStorageTests : IDisposable
 
         await Assert.ThrowsAsync<ArgumentException>(() => store.SaveAsync(Image(folder), new byte[] { 1 }, default));
         await Assert.ThrowsAsync<ArgumentException>(() => store.DeleteFolderAsync(folder, default));
+        await Assert.ThrowsAsync<ArgumentException>(() => store.MoveAsync(Image(), folder, default));
     }
 
     [Fact]
@@ -167,6 +186,22 @@ public sealed class ImageStorageTests : IDisposable
 
         Assert.Equal(("image/webp", 1234L, image.CreatedAt, image.Folder), (loaded.ContentType, loaded.SizeBytes, loaded.CreatedAt, loaded.Folder));
         Assert.Null(await repo.FindAsync(image.Id, default));
+    }
+
+    [Fact]
+    public async Task ImageRows_RememberANewFolder()
+    {
+        await using var db = new TestDatabase();
+        var repo = db.Get<IImageRepository>();
+        var vehicleId = Guid.NewGuid();
+        var image = StoredImage.Create(Guid.NewGuid(), "image/webp", 10, new DateTimeOffset(2026, 10, 1, 8, 0, 0, TimeSpan.Zero), ImageFolders.PhotoDrafts(vehicleId));
+        await repo.AddAsync(image, default);
+        var logFolder = $"{ImageFolders.Vehicle(vehicleId)}/expenses/{Guid.NewGuid():N}";
+
+        image.MoveTo(logFolder);
+        await repo.UpdateFolderAsync(image, default);
+
+        Assert.Equal(logFolder, (await repo.FindAsync(image.Id, default))!.Folder);
     }
 
     [Fact]

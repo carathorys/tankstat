@@ -60,6 +60,9 @@ internal sealed class UserDataRepository(IDbContextFactory<AppDbContext> dbFacto
         await db.VehicleCharts.Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to), ct);
         await db.LogPhotos.Where(x => x.OwnerId == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.OwnerId, to), ct);
         await db.LogPhotos.Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to), ct);
+        // Drafts move too rather than vanish: their files are only removed when the drafts expire (or the vehicle goes).
+        await db.PhotoDrafts.Where(x => x.OwnerId == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.OwnerId, to), ct);
+        await db.PhotoDrafts.Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to), ct);
 
         await MoveAccessGrantsAsync(db, from, to, ct);
         await MoveResourceGrantsAsync(db, from, to, ct);

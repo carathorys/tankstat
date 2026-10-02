@@ -48,6 +48,7 @@ public static class DependencyInjection
         services.AddScoped<LogAccessGuard>();
         services.AddScoped<LogPhotoAccess>();
         services.AddScoped<LogPhotoService>();
+        services.AddScoped<PhotoDraftService>();
         services.AddScoped<RefuelingService>();
         services.AddScoped<ExpenseService>();
         services.AddScoped<RecurringExpenseService>();
