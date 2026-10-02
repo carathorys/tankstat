@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { http, HttpResponse } from 'msw'
+import { graphql, http, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import { resizeImage } from '../../src/frontend/pictures/resizeImage.ts'
@@ -78,7 +78,7 @@ it('offers the phone camera and the library as two separate ways to add photos',
   expect(within(dialog).getByRole('button', { name: 'Add photos' })).toBeEnabled()
 })
 
-it('adds an expense with photos chosen in the same dialog: they are sent once the expense is saved', async () => {
+it('uploads photos picked for a new expense right away, and saving the expense attaches them', async () => {
   const photos = fakePhotoStore()
   const { ui, state } = setupExpenses(photos)
   const dialog = await openAddExpense(ui)
@@ -90,19 +90,23 @@ it('adds an expense with photos chosen in the same dialog: they are sent once th
 
   expect(await within(dialog).findAllByRole('button', { name: /^Remove photo/ })).toHaveLength(3)
   expect(within(dialog).getByText(/3 of 10 photos/)).toBeInTheDocument()
-  expect(photos.state.puts).toEqual([]) // nothing is sent before the expense exists
+  expect(photos.state.draftPuts).toEqual([
+    { vehicleId: 'v1', bytes: 3 },
+    { vehicleId: 'v1', bytes: 4 },
+    { vehicleId: 'v1', bytes: 5 },
+  ]) // on the server already, before the expense exists
+  expect(within(dialog).getByRole('status', { name: 'Upload status' })).toHaveTextContent('Photos uploaded; they are attached to the entry when you save it.')
   await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
 
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   const newId = state.expenses.find((e) => e.title === 'Tyres')!.id
-  expect(photos.state.puts).toEqual([
-    { kind: 'expenses', logId: newId, bytes: 3 },
-    { kind: 'expenses', logId: newId, bytes: 4 },
-    { kind: 'expenses', logId: newId, bytes: 5 },
-  ])
+  expect(state.calls.AddExpense).toEqual([{ input: expect.objectContaining({ title: 'Tyres', photoIds: ['draft1', 'draft2', 'draft3'] }) }])
+  expect(photos.photosOf(newId).map((p) => p.id)).toEqual(['draft1', 'draft2', 'draft3'])
+  expect(photos.state.puts).toEqual([]) // nothing is sent after the save any more
+  expect(photos.state.draftDeletes).toEqual([]) // and the attached drafts are not thrown away
 })
 
-it('removes a photo that was only chosen so far without calling the server', async () => {
+it('removing a picked photo deletes its draft', async () => {
   const photos = fakePhotoStore()
   const { ui } = setupExpenses(photos)
   const dialog = await openAddExpense(ui)
@@ -111,7 +115,23 @@ it('removes a photo that was only chosen so far without calling the server', asy
   await ui.click((await within(dialog).findAllByRole('button', { name: /^Remove photo/ }))[0])
 
   expect(within(dialog).getAllByRole('button', { name: /^Remove photo/ })).toHaveLength(1)
+  await waitFor(() => expect(photos.state.draftDeletes).toEqual(['draft1']))
   expect(photos.state.deletes).toEqual([])
+})
+
+it('closing the dialog without saving deletes the photos uploaded for it', async () => {
+  const photos = fakePhotoStore()
+  const { ui, state } = setupExpenses(photos)
+  const dialog = await openAddExpense(ui)
+  await ui.upload(library(dialog), [photo('a.png'), photo('b.png')])
+  await within(dialog).findAllByRole('button', { name: /^Remove photo/ })
+
+  await ui.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+  await waitFor(() => expect(photos.state.draftDeletes).toEqual(['draft1', 'draft2']))
+  expect(state.calls.AddExpense).toBeUndefined()
+  const again = await openAddExpense(ui)
+  expect(within(again).getByText(/0 of 10 photos/)).toBeInTheDocument()
 })
 
 it('shows the photos of an expense when editing, and adds and removes them right away', async () => {
@@ -127,6 +147,7 @@ it('shows the photos of an expense when editing, and adds and removes them right
   await ui.upload(library(dialog), photo('new.png', [9, 9]))
   await waitFor(() => expect(within(dialog).getAllByRole('link', { name: /^Open photo/ })).toHaveLength(3))
   expect(photos.state.puts).toEqual([{ kind: 'expenses', logId: 'e1', bytes: 2 }])
+  expect(photos.state.draftPuts).toEqual([]) // a saved expense takes its photos directly
   expect(within(dialog).getByRole('status', { name: 'Upload status' })).toHaveTextContent('Photos saved.')
 
   await ui.click(within(dialog).getByRole('button', { name: 'Remove photo 1' }))
@@ -152,33 +173,50 @@ it('stops at ten photos: the buttons are disabled and a bigger choice is cut off
   expect(within(dialog).getByRole('button', { name: 'Add photos' })).toBeDisabled()
 })
 
-it('keeps the saved expense and shows the photos with the error when an upload fails after saving', async () => {
+it('marks a photo that could not be uploaded, and the expense waits until it is tried again or removed', async () => {
   const photos = fakePhotoStore()
-  photos.state.failWith = { key: 'photo.tooMany', args: { max: 10 } }
+  photos.state.failWith = { key: 'photo.tooManyDrafts', args: { max: 20 } }
   const { ui, state } = setupExpenses(photos)
   const dialog = await openAddExpense(ui)
   await ui.type(within(dialog).getByLabelText('Title'), 'Tyres')
   await ui.type(within(dialog).getByLabelText('Amount'), '120000')
+
   await ui.upload(library(dialog), photo())
+
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('At most 20 photos can wait for an entry to be saved.')
+  expect(within(dialog).getByText('Not uploaded')).toBeInTheDocument()
+  expect(within(dialog).getByText(/Try them again or remove them/)).toBeInTheDocument()
+  expect(within(dialog).getByRole('button', { name: 'Add expense' })).toBeDisabled() // it would be left out silently
+
+  photos.state.failWith = undefined
+  await ui.click(within(dialog).getByRole('button', { name: 'Upload photo 1 again' }))
+
+  await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Add expense' })).toBeEnabled())
+  expect(within(dialog).queryByText('Not uploaded')).not.toBeInTheDocument()
+  expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument()
+  await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(state.calls.AddExpense).toEqual([{ input: expect.objectContaining({ photoIds: ['draft1'] }) }])
+})
+
+it('says so instead of closing when the server could not attach a photo, and the entry is not saved twice', async () => {
+  const photos = fakePhotoStore()
+  photos.state.unattachable.add('draft2')
+  const { ui, state } = setupExpenses(photos)
+  const dialog = await openAddExpense(ui)
+  await ui.type(within(dialog).getByLabelText('Title'), 'Tyres')
+  await ui.type(within(dialog).getByLabelText('Amount'), '120000')
+  await ui.upload(library(dialog), [photo('a.png'), photo('b.png')])
+  await within(dialog).findAllByRole('button', { name: /^Remove photo/ })
 
   await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
 
-  expect(await within(dialog).findByRole('alert')).toHaveTextContent('The entry was saved, but not all photos could be sent. A log can have at most 10 photos.')
-  expect(state.calls.AddExpense).toHaveLength(1) // saved exactly once
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('The entry was saved, but 1 photo could not be attached. Add it again by editing the entry.')
   expect(within(dialog).queryByLabelText('Title')).not.toBeInTheDocument() // the form is gone, so it cannot be saved a second time
-  expect(within(dialog).getByRole('group', { name: 'Photos' })).toBeInTheDocument()
-
-  expect(within(dialog).getByText('Photos not sent yet: 1.')).toBeInTheDocument() // the one that failed is kept for another try
-  photos.state.failWith = undefined
-  await ui.click(within(dialog).getByRole('button', { name: 'Try again' }))
-
-  await waitFor(() => expect(within(dialog).getAllByRole('link', { name: /^Open photo/ })).toHaveLength(1))
-  expect(within(dialog).queryByText(/Photos not sent yet/)).not.toBeInTheDocument()
-  expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument()
-  expect(photos.state.puts).toHaveLength(2) // the failed one, then the retry
   await ui.click(within(dialog).getByRole('button', { name: 'Done' }))
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(state.calls.AddExpense).toHaveLength(1)
+  expect(photos.state.draftDeletes).toEqual([]) // the left-over draft is not the dialog's to delete any more; it expires
 })
 
 it('shows a translated server error when a photo is refused while editing', async () => {
@@ -220,12 +258,14 @@ it('adds a refueling with a photo taken in the add dialog', async () => {
   await ui.clear(within(dialog).getByLabelText(/^Odometer/))
   await ui.type(within(dialog).getByLabelText(/^Odometer/), '13000')
   await ui.upload(camera(dialog), photo('pump.png', [1, 1]))
+  await within(dialog).findByRole('button', { name: 'Remove photo 1' })
 
   await ui.click(within(dialog).getByRole('button', { name: 'Add refuelling' }))
 
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   const newId = state.logs.find((l) => l.odometer === 13000)!.id
-  expect(photos.state.puts).toEqual([{ kind: 'refuelings', logId: newId, bytes: 2 }])
+  expect(photos.state.draftPuts).toEqual([{ vehicleId: 'v1', bytes: 2 }])
+  expect(photos.photosOf(newId).map((p) => p.id)).toEqual(['draft1'])
 })
 
 /** Makes the next photo "take a while" to be prepared, like a large camera picture; call the result to finish it. */
@@ -250,7 +290,34 @@ it('waits for photos that are still being prepared before the expense can be sav
   await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Add expense' })).toBeEnabled())
   await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-  expect(photos.state.puts).toEqual([{ kind: 'expenses', logId: state.expenses.find((e) => e.title === 'Tyres')!.id, bytes: 3 }])
+  expect(photos.photosOf(state.expenses.find((e) => e.title === 'Tyres')!.id)).toHaveLength(1)
+})
+
+it('waits for photos that are still being uploaded before the expense can be saved', async () => {
+  const photos = fakePhotoStore()
+  const { ui, state } = setupExpenses(photos)
+  const dialog = await openAddExpense(ui)
+  await ui.type(within(dialog).getByLabelText('Title'), 'Tyres')
+  await ui.type(within(dialog).getByLabelText('Amount'), '120000')
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => (release = resolve))
+  server.use(
+    http.put('/media/vehicles/:vehicleId/photo-drafts', async () => {
+      await gate
+      photos.state.drafts.push({ id: 'slow1', url: '/media/slow1' }) // the server has it now, so saving can attach it
+      return HttpResponse.json({ id: 'slow1', url: '/media/slow1' })
+    }),
+  )
+
+  await ui.upload(library(dialog), photo())
+
+  expect(await within(dialog).findByText('Uploading…')).toBeInTheDocument()
+  expect(within(dialog).getByRole('button', { name: 'Add expense' })).toBeDisabled()
+  release()
+  await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Add expense' })).toBeEnabled())
+  await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(state.calls.AddExpense).toEqual([{ input: expect.objectContaining({ photoIds: ['slow1'] }) }])
 })
 
 it('does not bring a photo back into a dialog that was closed while it was being prepared', async () => {
@@ -268,6 +335,28 @@ it('does not bring a photo back into a dialog that was closed while it was being
   const again = await openAddExpense(ui)
   expect(within(again).queryAllByRole('button', { name: /^Remove photo/ })).toHaveLength(0)
   expect(within(again).getByText(/0 of 10 photos/)).toBeInTheDocument()
+  expect(photos.state.draftPuts).toEqual([]) // it was never uploaded
+})
+
+it('deletes a photo whose upload finishes after its dialog was closed', async () => {
+  const photos = fakePhotoStore()
+  const { ui } = setupExpenses(photos)
+  const dialog = await openAddExpense(ui)
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => (release = resolve))
+  server.use(
+    http.put('/media/vehicles/:vehicleId/photo-drafts', async () => {
+      await gate
+      return HttpResponse.json({ id: 'late1', url: '/media/late1' })
+    }),
+  )
+  await ui.upload(library(dialog), photo())
+  await within(dialog).findByText('Uploading…')
+
+  await ui.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+  release()
+
+  await waitFor(() => expect(photos.state.draftDeletes).toEqual(['late1']))
 })
 
 it('queues photos where crypto.randomUUID does not exist (plain HTTP)', async () => {
@@ -281,7 +370,7 @@ it('queues photos where crypto.randomUUID does not exist (plain HTTP)', async ()
   expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument()
 })
 
-it('keeps the dialog open and the photos locked while the expense and its photos are being sent', async () => {
+it('keeps the dialog open and the photos locked while the expense is being saved', async () => {
   const photos = fakePhotoStore()
   const { ui } = setupExpenses(photos)
   const dialog = await openAddExpense(ui)
@@ -293,36 +382,19 @@ it('keeps the dialog open and the photos locked while the expense and its photos
   let release!: () => void
   const gate = new Promise<void>((resolve) => (release = resolve))
   server.use(
-    http.put('/media/expenses/:logId/photos', async () => {
+    graphql.mutation('AddExpense', async () => {
       await gate
-      return HttpResponse.json({ id: 'img1', url: '/media/img1' })
+      return HttpResponse.json({ data: { addExpense: { id: 'e9', photos: [{ id: 'draft1' }] } } })
     }),
   )
   await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
 
   await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Add photos' })).toBeDisabled())
-  expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled()
+  expect(within(dialog).getByRole('button', { name: 'Remove photo 1' })).toBeDisabled()
   await ui.keyboard('{Escape}')
   expect(screen.getByRole('dialog', { name: 'Add expense' })).toBeInTheDocument()
 
   release()
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-})
-
-it('lets the failed photos be retried again when the refresh after a retry fails too', async () => {
-  const photos = fakePhotoStore()
-  photos.state.failWith = { key: 'photo.tooMany', args: { max: 10 } }
-  const { ui } = setupExpenses(photos)
-  const dialog = await openAddExpense(ui)
-  await ui.type(within(dialog).getByLabelText('Title'), 'Tyres')
-  await ui.type(within(dialog).getByLabelText('Amount'), '120000')
-  await ui.upload(library(dialog), photo())
-  await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
-  await within(dialog).findByText('Photos not sent yet: 1.')
-
-  server.use(http.post('/graphql', () => new HttpResponse(null, { status: 500 })))
-  await ui.click(within(dialog).getByRole('button', { name: 'Try again' }))
-
-  await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Try again' })).toBeEnabled())
-  expect(photos.state.puts).toHaveLength(2)
+  expect(photos.state.draftDeletes).toEqual([])
 })

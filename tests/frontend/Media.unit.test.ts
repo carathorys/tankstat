@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { ApiError } from '../../src/frontend/pictures/ApiError.ts'
 import { resizeImage, UnreadableImageError } from '../../src/frontend/pictures/resizeImage.ts'
-import { avatarPath, deleteImage, LOG_PHOTO_EDGE, logPhotoPath, logPhotosPath, MAX_LOG_PHOTOS, uploadImage, vehiclePicturePath } from '../../src/frontend/pictures/upload.ts'
+import { avatarPath, deleteImage, LOG_PHOTO_EDGE, logPhotoPath, logPhotosPath, MAX_LOG_PHOTOS, photoDraftPath, photoDraftsPath, uploadImage, vehiclePicturePath } from '../../src/frontend/pictures/upload.ts'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -82,5 +82,7 @@ it('builds the endpoints of log photos and keeps the limits the server enforces'
   expect(logPhotosPath('expenses', 'e1')).toBe('/media/expenses/e1/photos')
   expect(logPhotosPath('refuelings', 'r1')).toBe('/media/refuelings/r1/photos')
   expect(logPhotoPath('expenses', 'e1', 'img9')).toBe('/media/expenses/e1/photos/img9')
+  expect(photoDraftsPath('v1')).toBe('/media/vehicles/v1/photo-drafts') // photos of a log that is not saved yet
+  expect(photoDraftPath('d1')).toBe('/media/photo-drafts/d1')
   expect([MAX_LOG_PHOTOS, LOG_PHOTO_EDGE]).toEqual([10, 1600])
 })

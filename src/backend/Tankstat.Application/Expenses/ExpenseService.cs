@@ -40,14 +40,17 @@ public sealed class ExpenseService(
         return expense is not null && await VisibleVehicleAsync(expense.VehicleId, ct) is not null ? expense : null;
     }
 
-    public async Task<Expense> AddAsync(Guid vehicleId, ExpenseInput input, CancellationToken ct)
+    /// <param name="photoDraftIds">Photos the user uploaded for this expense before saving it (see <see cref="PhotoDraftService"/>).</param>
+    public async Task<Expense> AddAsync(Guid vehicleId, ExpenseInput input, CancellationToken ct, IReadOnlyCollection<Guid>? photoDraftIds = null)
     {
         var vehicle = await EditableVehicleAsync(vehicleId, ct);
         var creator = await access.RequirePrincipalAsync(ct);
         await ValidateAsync(vehicle.Id, input, exceptReadingId: null, ct);
+        var drafts = await photos.RequireDraftsAsync(vehicle.Id, photoDraftIds, ct);
 
         var expense = Build(vehicle, creator.Id, input);
         await expenses.AddAsync(expense, ct);
+        await photos.AttachDraftsAsync(LogType.Expense, expense.Id, drafts, ct);
         return expense;
     }
 

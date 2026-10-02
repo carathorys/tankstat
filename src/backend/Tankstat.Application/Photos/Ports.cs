@@ -17,5 +17,18 @@ public interface ILogPhotoRepository
     Task RemoveAsync(LogPhoto photo, CancellationToken ct);
 }
 
+public interface IPhotoDraftRepository
+{
+    Task<PhotoDraft?> FindAsync(Guid id, CancellationToken ct);
+    Task<IReadOnlyList<PhotoDraft>> FindManyAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct);
+    Task<int> CountAsync(Guid vehicleId, Guid createdById, CancellationToken ct);
+
+    /// <summary>Every draft (anyone's, on any vehicle) created before <paramref name="before"/>.</summary>
+    Task<IReadOnlyList<PhotoDraft>> ListCreatedBeforeAsync(DateTimeOffset before, CancellationToken ct);
+
+    Task AddAsync(PhotoDraft draft, CancellationToken ct);
+    Task RemoveAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct);
+}
+
 /// <summary>The logs that were deleted for good: how many, and (only those that had photos) their vehicle and id, so their photo folders can be removed.</summary>
 public sealed record PurgedLogs(int Count, IReadOnlyList<(Guid VehicleId, Guid LogId)> WithPhotos);

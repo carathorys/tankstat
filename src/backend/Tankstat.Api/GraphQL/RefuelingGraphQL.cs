@@ -10,7 +10,9 @@ using Tankstat.Domain.Vehicles;
 namespace Tankstat.Api.GraphQL;
 
 /// <param name="Currency">ISO 4217 code of the currency paid in; omit to use the instance default.</param>
-public sealed record LogRefuelingInput(Guid VehicleId, DateOnly Date, decimal Volume, decimal TotalCost, string? Currency, long Odometer, bool IsFullTank, string? Note);
+/// <param name="PhotoIds">Photos uploaded for this log beforehand (<c>PUT /media/vehicles/{id}/photo-drafts</c>); they become its photos.</param>
+public sealed record LogRefuelingInput(
+    Guid VehicleId, DateOnly Date, decimal Volume, decimal TotalCost, string? Currency, long Odometer, bool IsFullTank, string? Note, IReadOnlyList<Guid>? PhotoIds = null);
 
 /// <param name="Currency">Omit to keep the log's currency.</param>
 public sealed record UpdateRefuelingInput(Guid Id, DateOnly Date, decimal Volume, decimal TotalCost, string? Currency, long Odometer, bool IsFullTank, string? Note);
@@ -99,7 +101,8 @@ public sealed class RefuelingMutations
     public Task<Refueling> LogRefueling(
         LogRefuelingInput input, [Service] RefuelingService refuelings, [Service] IOptions<VehicleDefaultsOptions> defaults, CancellationToken ct) =>
         refuelings.LogAsync(input.VehicleId,
-            new RefuelingInput(input.Date, input.Volume, input.TotalCost, input.Currency ?? defaults.Value.Currency, input.Odometer, input.IsFullTank, input.Note), ct);
+            new RefuelingInput(input.Date, input.Volume, input.TotalCost, input.Currency ?? defaults.Value.Currency, input.Odometer, input.IsFullTank, input.Note), ct,
+            photoDraftIds: input.PhotoIds);
 
     public Task<Refueling> UpdateRefueling(UpdateRefuelingInput input, [Service] RefuelingService refuelings, CancellationToken ct) =>
         refuelings.UpdateAsync(input.Id, new RefuelingInput(input.Date, input.Volume, input.TotalCost, input.Currency, input.Odometer, input.IsFullTank, input.Note), ct);

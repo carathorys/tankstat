@@ -198,6 +198,83 @@ public class LogPhotoEndpointsTests : IDisposable
         Assert.False(Directory.Exists(Path.Combine(_app.UploadsPath, "vehicles", Guid.Parse(w.VehicleId).ToString("N"))));
     }
 
+    // ---- drafts: photos picked before the log is saved -------------------------------------------------------
+
+    private static string DraftsPath(string vehicleId) => $"/media/vehicles/{vehicleId}/photo-drafts";
+
+    [Theory]
+    [InlineData("expense", "expenses")]
+    [InlineData("refueling", "refuelings")]
+    public async Task ADraft_IsUploadedBeforeItsLog_AndBecomesItsPhotoWhenTheLogIsSaved(string field, string segment)
+    {
+        var w = await Setup();
+        var (draft, url) = await Uploaded(await Put(w.Alice, DraftsPath(w.VehicleId), Png()));
+        var vehicleFolder = Path.Combine(_app.UploadsPath, "vehicles", Guid.Parse(w.VehicleId).ToString("N"));
+        Assert.StartsWith(Path.Combine(vehicleFolder, "drafts"), Assert.Single(FilesOnDisk()));
+        Assert.Equal(HttpStatusCode.OK, (await w.Alice.GetAsync(url)).StatusCode); // the uploader sees it right away
+
+        var saved = field == "expense"
+            ? (await w.Alice.Gql("mutation($i: AddExpenseInput!) { addExpense(input: $i) { id photos { id } } }",
+                new { i = new { vehicleId = w.VehicleId, date = "2026-09-05", title = "Wash", amount = 10, photoIds = new[] { draft } } })).Data().GetProperty("addExpense")
+            : (await w.Alice.Gql("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id photos { id } } }",
+                new { i = new { vehicleId = w.VehicleId, date = "2026-09-05", volume = 30, totalCost = 45, odometer = 1200, isFullTank = true, photoIds = new[] { draft } } })).Data().GetProperty("logRefueling");
+
+        var logId = saved.GetProperty("id").GetString()!;
+        Assert.Equal([draft], saved.GetProperty("photos").EnumerateArray().Select(p => p.GetProperty("id").GetString()));
+        Assert.Equal([(draft, url)], await Photos(w.Alice, field, logId));
+        Assert.StartsWith(Path.Combine(vehicleFolder, segment, Guid.Parse(logId).ToString("N")), Assert.Single(FilesOnDisk())); // moved, not copied
+        Assert.Equal(Png(), await (await w.Alice.GetAsync(url)).Content.ReadAsByteArrayAsync());
+    }
+
+    [Fact]
+    public async Task ADraft_IsTheUploadersAlone_AndUploadingOneNeedsEditAccess()
+    {
+        var w = await Setup();
+        Assert.Equal(HttpStatusCode.NotFound, (await Put(w.Bob, DraftsPath(w.VehicleId), Png())).StatusCode); // a stranger
+        await w.Admin.Gql("mutation($i: SetAccessGrantInput!) { setAccessGrant(input: $i) }", new { i = new { ownerId = w.AliceId, granteeId = w.BobId, level = "VIEW" } });
+        Assert.Equal(HttpStatusCode.Forbidden, (await Put(w.Bob, DraftsPath(w.VehicleId), Png())).StatusCode); // view only
+        await w.Alice.Gql("mutation($i: SetLogAccessInput!) { setVehicleLogAccess(input: $i) }", new { i = new { vehicleId = w.VehicleId, userId = w.BobId, level = "EDIT" } });
+
+        var (bobs, url) = await Uploaded(await Put(w.Bob, DraftsPath(w.VehicleId), Png()));
+
+        Assert.Equal(HttpStatusCode.NotFound, (await w.Alice.GetAsync(url)).StatusCode); // not even the owner of the vehicle sees it
+        Assert.Equal(HttpStatusCode.NotFound, (await w.Alice.DeleteAsync($"/media/photo-drafts/{bobs}")).StatusCode);
+        var taken = await w.Alice.Gql("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }",
+            new { i = new { vehicleId = w.VehicleId, date = "2026-09-05", volume = 30, totalCost = 45, odometer = 1200, isFullTank = true, photoIds = new[] { bobs } } });
+        Assert.Equal("photo.draftExpired", taken.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
+
+        Assert.Equal(HttpStatusCode.NoContent, (await w.Bob.DeleteAsync($"/media/photo-drafts/{bobs}")).StatusCode);
+        Assert.Empty(FilesOnDisk());
+        Assert.Single((await w.Alice.Gql("query($v: UUID!) { refuelings(vehicleId: $v) { id } }", new { v = w.VehicleId })).Data().GetProperty("refuelings").EnumerateArray()); // only the one from the setup
+    }
+
+    [Fact]
+    public async Task Drafts_FollowTheLimitsOfPictures_AndAnonymousUsersAreRefused()
+    {
+        var w = await Setup();
+
+        var svg = await Put(w.Alice, DraftsPath(w.VehicleId), "<svg xmlns=\"http://www.w3.org/2000/svg\"/>"u8.ToArray());
+        var huge = await Put(w.Alice, DraftsPath(w.VehicleId), [.. Png(), .. new byte[3 * 1024 * 1024]]);
+        var anonymous = await Put(_app.NewClient(), DraftsPath(w.VehicleId), Png());
+
+        Assert.Equal(HttpStatusCode.BadRequest, svg.StatusCode);
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, huge.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        Assert.Empty(FilesOnDisk());
+    }
+
+    [Fact]
+    public async Task PurgingAVehicle_RemovesItsDraftsToo()
+    {
+        var w = await Setup();
+        await Uploaded(await Put(w.Alice, DraftsPath(w.VehicleId), Png()));
+        await w.Alice.Gql("mutation($id: UUID!) { deleteVehicle(id: $id) { id } }", new { id = w.VehicleId });
+
+        await w.Alice.Gql("mutation { emptyTrash }");
+
+        Assert.Empty(FilesOnDisk());
+    }
+
     private static Task<JsonElement> DeleteUser(HttpClient admin, string userId, object input) =>
         admin.Gql("mutation($i: DeleteUserInput!) { deleteUser(input: $i) }", new { i = input });
 

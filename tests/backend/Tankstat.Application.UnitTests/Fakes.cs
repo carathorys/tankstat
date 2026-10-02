@@ -306,6 +306,19 @@ internal sealed class FakeUserData : IUserDataRepository
     }
 }
 
+internal sealed class InMemoryPhotoDrafts : IPhotoDraftRepository
+{
+    public List<PhotoDraft> Items { get; } = [];
+    public Task<PhotoDraft?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(d => d.Id == id));
+    public Task<IReadOnlyList<PhotoDraft>> FindManyAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<PhotoDraft>>(Items.Where(d => ids.Contains(d.Id)).ToList());
+    public Task<int> CountAsync(Guid vehicleId, Guid createdById, CancellationToken ct) => Task.FromResult(Items.Count(d => d.VehicleId == vehicleId && d.CreatedById == createdById));
+    public Task<IReadOnlyList<PhotoDraft>> ListCreatedBeforeAsync(DateTimeOffset before, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<PhotoDraft>>(Items.Where(d => d.CreatedAt < before).ToList());
+    public Task AddAsync(PhotoDraft draft, CancellationToken ct) { Items.Add(draft); return Task.CompletedTask; }
+    public Task RemoveAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct) { Items.RemoveAll(d => ids.Contains(d.Id)); return Task.CompletedTask; }
+}
+
 internal sealed class InMemoryImageStore : IImageStore
 {
     public Dictionary<Guid, byte[]> Files { get; } = [];
@@ -316,6 +329,13 @@ internal sealed class InMemoryImageStore : IImageStore
     public Task SaveAsync(StoredImage image, ReadOnlyMemory<byte> data, CancellationToken ct) { Files[image.Id] = data.ToArray(); Folders[image.Id] = image.Folder; return Task.CompletedTask; }
     public Task<Stream?> OpenReadAsync(StoredImage image, CancellationToken ct) => Task.FromResult<Stream?>(Files.TryGetValue(image.Id, out var d) ? new MemoryStream(d) : null);
     public Task DeleteAsync(StoredImage image, CancellationToken ct) { Files.Remove(image.Id); Folders.Remove(image.Id); return Task.CompletedTask; }
+    public bool FailMoves { get; set; }
+    public Task MoveAsync(StoredImage image, string folder, CancellationToken ct)
+    {
+        if (FailMoves) throw new IOException("disk full");
+        Folders[image.Id] = folder;
+        return Task.CompletedTask;
+    }
     public Task DeleteFolderAsync(string folder, CancellationToken ct)
     {
         foreach (var id in Folders.Where(f => f.Value == folder || (f.Value?.StartsWith(folder + "/") ?? false)).Select(f => f.Key).ToList())
@@ -339,6 +359,7 @@ internal sealed class InMemoryImages : IImageRepository
     }
     public Task<StoredImage?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.GetValueOrDefault(id));
     public Task RemoveAsync(Guid id, CancellationToken ct) { Items.Remove(id); return Task.CompletedTask; }
+    public Task UpdateFolderAsync(StoredImage image, CancellationToken ct) { Items[image.Id] = image; return Task.CompletedTask; }
     public Task RemoveFolderAsync(string folder, CancellationToken ct)
     {
         foreach (var id in Items.Where(i => i.Value.Folder == folder || (i.Value.Folder?.StartsWith(folder + "/") ?? false)).Select(i => i.Key).ToList()) Items.Remove(id);
@@ -412,6 +433,7 @@ internal sealed class World
     public InMemoryImageStore ImageStore { get; } = new();
     public InMemoryImages Images { get; } = new();
     public InMemoryLogPhotos LogPhotos { get; } = new();
+    public InMemoryPhotoDrafts PhotoDrafts { get; } = new();
     public InMemorySettings Settings { get; } = new();
     public FakeCurrentUser Current { get; } = new();
     public FakeEmail Email { get; }
@@ -434,6 +456,7 @@ internal sealed class World
     public ResourceSharingService Sharing { get; }
     public ImageService ImageService { get; }
     public LogPhotoService Photos { get; }
+    public PhotoDraftService Drafts { get; }
     public AuthService Auth { get; }
     public UserService UserService { get; }
     public AccessAdminService AccessAdmin { get; }
@@ -455,8 +478,9 @@ internal sealed class World
         Odometer = new OdometerService(new InMemoryReadings(Refuelings, Expenses));
         var resets = new PasswordResetService(Tokens, Users, Email, options, Clock);
         var logPhotoAccess = new LogPhotoAccess(LogGuard, Expenses, Refuelings, LogPhotos);
-        ImageService = new ImageService(ImageStore, Images, Users, Vehicles, Access, logPhotoAccess, Clock);
-        Photos = new LogPhotoService(logPhotoAccess, LogPhotos, ImageService, Access, Clock);
+        ImageService = new ImageService(ImageStore, Images, Users, Vehicles, Access, logPhotoAccess, PhotoDrafts, Clock);
+        Drafts = new PhotoDraftService(LogGuard, PhotoDrafts, ImageService, Access, Clock);
+        Photos = new LogPhotoService(logPhotoAccess, LogPhotos, ImageService, Drafts, Access, Clock);
         VehicleService = new VehicleService(Vehicles, Refuelings, Access, Odometer, ImageService, Clock);
         RefuelingService = new RefuelingService(Vehicles, LogGuard, Refuelings, Access, Odometer, Photos, Clock);
         ExpenseService = new ExpenseService(LogGuard, Expenses, Access, Odometer, Photos, Clock);

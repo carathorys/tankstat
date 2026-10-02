@@ -1,5 +1,5 @@
 import { Box, Button, Flex, IconButton, Text } from '@radix-ui/themes'
-import { Camera, ImagePlus, Trash2 } from 'lucide-react'
+import { Camera, ImagePlus, RotateCw, Trash2 } from 'lucide-react'
 import { useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useErrorText } from '../i18n/errors.ts'
@@ -10,8 +10,8 @@ import type { PhotoQueue } from './usePhotoQueue.ts'
 
 /**
  * The photos of a refueling or expense: thumbnails that open the full picture, "Take photo" (the phone's camera right away) and
- * "Add photos" (the library). For a saved log (`logId`) every change goes to the server at once; for a new one the photos wait in the
- * `queue` until the log is saved. Progress and results are announced to screen readers.
+ * "Add photos" (the library). For a saved log (`logId`) every change goes to the server at once; for a new one each photo is uploaded
+ * right away as a draft (the `queue`) and attached when the log is saved. Progress and results are announced to screen readers.
  */
 export function PhotoGallery({
   kind,
@@ -40,7 +40,9 @@ export function PhotoGallery({
   const [busy, setBusy] = useState(false)
 
   const saved = logId !== undefined
-  const shown = saved ? photos.map((p) => ({ key: p.id, url: p.url })) : queue.items.map((p) => ({ key: p.key, url: p.url }))
+  const shown = saved
+    ? photos.map((p) => ({ key: p.id, url: p.url, state: 'uploaded' as const }))
+    : queue.items.map((p) => ({ key: p.key, url: p.url, state: p.state }))
   const room = MAX_LOG_PHOTOS - shown.length
 
   async function run(work: () => Promise<void>, done: string) {
@@ -69,9 +71,10 @@ export function PhotoGallery({
           await onChanged() // also shows the ones that did go through when a later one failed
         }
       } else {
-        await queue.add(list)
+        const failed = await queue.add(list)
+        if (failed !== undefined) throw failed // the photo stays, marked, with a way to try again
       }
-    }, saved ? t('photos.added') : t('photos.queued'))
+    }, saved ? t('photos.added') : t('photos.ready'))
   }
 
   const input = (ref: React.RefObject<HTMLInputElement | null>, capture: boolean) => (
@@ -116,6 +119,7 @@ export function PhotoGallery({
         <Text id={hintId} size="1" color="gray">
           {t('photos.hint', { n: shown.length, max: MAX_LOG_PHOTOS })}
         </Text>
+        {!saved && queue.failed > 0 && <Text size="1">{t('photos.failedHint')}</Text>}
         {shown.length > 0 && (
           <Flex asChild gap="3" wrap="wrap">
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
@@ -127,26 +131,51 @@ export function PhotoGallery({
                         <img src={photo.url} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                       </Box>
                     </a>
-                    <IconButton
-                      type="button"
-                      size="3"
-                      variant="soft"
-                      color="red"
-                      disabled={disabled || busy}
-                      aria-label={t('photos.removeAria', { n: index + 1 })}
-                      onClick={() =>
-                        void run(async () => {
-                          if (saved) {
-                            await deleteImage(logPhotoPath(kind, logId, photo.key))
-                            await onChanged()
-                          } else {
-                            queue.remove(photo.key)
+                    {photo.state === 'uploading' && (
+                      <Text size="1" color="gray">
+                        {t('photos.uploading')}
+                      </Text>
+                    )}
+                    {photo.state === 'failed' && <Text size="1">{t('photos.uploadFailed')}</Text>}
+                    <Flex gap="2">
+                      {photo.state === 'failed' && (
+                        <IconButton
+                          type="button"
+                          size="3"
+                          variant="soft"
+                          disabled={disabled || busy}
+                          aria-label={t('photos.retryAria', { n: index + 1 })}
+                          onClick={() =>
+                            void run(async () => {
+                              const failed = await queue.retry(photo.key)
+                              if (failed !== undefined) throw failed
+                            }, t('photos.ready'))
                           }
-                        }, t('photos.removed'))
-                      }
-                    >
-                      <Trash2 size={16} aria-hidden />
-                    </IconButton>
+                        >
+                          <RotateCw size={16} aria-hidden />
+                        </IconButton>
+                      )}
+                      <IconButton
+                        type="button"
+                        size="3"
+                        variant="soft"
+                        color="red"
+                        disabled={disabled || busy}
+                        aria-label={t('photos.removeAria', { n: index + 1 })}
+                        onClick={() =>
+                          void run(async () => {
+                            if (saved) {
+                              await deleteImage(logPhotoPath(kind, logId, photo.key))
+                              await onChanged()
+                            } else {
+                              await queue.remove(photo.key)
+                            }
+                          }, t('photos.removed'))
+                        }
+                      >
+                        <Trash2 size={16} aria-hidden />
+                      </IconButton>
+                    </Flex>
                   </Flex>
                 </li>
               ))}

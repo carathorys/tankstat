@@ -13,6 +13,9 @@ public sealed class StoredImage
     /// <summary>Folder below the data folder (see <see cref="ImageFolders"/>); null for files from before folders existed, which sit directly in the data folder.</summary>
     public string? Folder { get; private set; }
 
+    /// <summary>The picture now lives in another folder (its file was moved there).</summary>
+    public void MoveTo(string folder) => Folder = folder;
+
     public static StoredImage Create(Guid id, string contentType, long sizeBytes, DateTimeOffset now, string? folder = null) =>
         new() { Id = id, ContentType = contentType, SizeBytes = sizeBytes, CreatedAt = now, Folder = folder };
 }

@@ -23,7 +23,7 @@ public sealed record ImageContent(Stream Content, string ContentType, long SizeB
 /// may see the log for its photos.
 /// </summary>
 public sealed class ImageService(
-    IImageStore store, IImageRepository images, IUserRepository users, IVehicleRepository vehicles, AccessService access, LogPhotoAccess logPhotos, TimeProvider clock)
+    IImageStore store, IImageRepository images, IUserRepository users, IVehicleRepository vehicles, AccessService access, LogPhotoAccess logPhotos, IPhotoDraftRepository drafts, TimeProvider clock)
 {
     public async Task<Guid> SetAvatarAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
     {
@@ -77,6 +77,24 @@ public sealed class ImageService(
         return new ImageContent(stream, info.ContentType, info.SizeBytes);
     }
 
+    /// <summary>Moves a picture to another folder: the file first, then its row (the file goes back if the row cannot be saved).</summary>
+    public async Task MoveAsync(Guid imageId, string folder, CancellationToken ct)
+    {
+        var image = await images.FindAsync(imageId, ct) ?? throw new InvalidOperationException($"Image {imageId} does not exist.");
+        var from = image.Folder;
+        await store.MoveAsync(image, folder, ct);
+        image.MoveTo(folder);
+        try
+        {
+            await images.UpdateFolderAsync(image, ct);
+        }
+        catch
+        {
+            if (from is not null) await store.MoveAsync(image, from, CancellationToken.None);
+            throw;
+        }
+    }
+
     /// <summary>Removes the pictures of things that were deleted for good (their files and rows).</summary>
     public async Task DeleteAsync(IEnumerable<Guid> imageIds, CancellationToken ct)
     {
@@ -127,8 +145,13 @@ public sealed class ImageService(
             if (await vehicles.FindByPictureImageAsync(image.Id, ct) is { } vehicle) return await access.VehicleLevelAsync(vehicle, ct) >= AccessLevel.View;
             if (folder is not null) return false;
         }
+        if (folder is not null && folder.EndsWith("/drafts", StringComparison.Ordinal)) return await drafts.FindAsync(image.Id, ct) is { } draft && await IsMineAsync(draft, ct);
         return await logPhotos.CanSeeImageAsync(image.Id, ct);
     }
+
+    /// <summary>A draft is shown to its uploader only, until it expires.</summary>
+    private async Task<bool> IsMineAsync(Domain.Photos.PhotoDraft draft, CancellationToken ct) =>
+        draft.CreatedById == (await access.RequirePrincipalAsync(ct)).Id && !draft.IsExpired(clock.GetUtcNow());
 
     private async Task<User> CurrentUserAsync(CancellationToken ct)
     {

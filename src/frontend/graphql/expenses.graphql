@@ -88,6 +88,9 @@ query ExpenseCategories($vehicleId: UUID!) {
 mutation AddExpense($input: AddExpenseInput!) {
   addExpense(input: $input) {
     id
+    photos {
+      id
+    }
   }
 }
 

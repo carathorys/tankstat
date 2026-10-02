@@ -13,10 +13,10 @@ namespace Tankstat.Infrastructure.Storage;
 internal sealed partial class FileSystemImageStore(IOptions<StorageOptions> options) : IImageStore
 {
     /// <summary>
-    /// Exactly the folders <see cref="ImageFolders"/> builds (a user, a vehicle, below a vehicle its picture or the photos of one log):
+    /// Exactly the folders <see cref="ImageFolders"/> builds (a user, a vehicle, below a vehicle its picture, its photo drafts or the photos of one log):
     /// no dots, no empty segments, nothing that can climb out, and never a bare "vehicles" or "users" that would take every upload.
     /// </summary>
-    [GeneratedRegex(@"^(users/[0-9a-f]{32}|vehicles/[0-9a-f]{32}(/(picture|(expenses|refuelings)/[0-9a-f]{32}))?)\z")]
+    [GeneratedRegex(@"^(users/[0-9a-f]{32}|vehicles/[0-9a-f]{32}(/(picture|drafts|(expenses|refuelings)/[0-9a-f]{32}))?)\z")]
     private static partial Regex SafeFolder();
 
     private string Root => Path.GetFullPath(options.Value.Path);
@@ -58,6 +58,15 @@ internal sealed partial class FileSystemImageStore(IOptions<StorageOptions> opti
     {
         var path = PathFor(image);
         if (File.Exists(path)) File.Delete(path);
+        return Task.CompletedTask;
+    }
+
+    public Task MoveAsync(StoredImage image, string folder, CancellationToken ct)
+    {
+        var source = PathFor(image);
+        var targetFolder = FolderPath(folder);
+        Directory.CreateDirectory(targetFolder);
+        File.Move(source, Path.Combine(targetFolder, image.Id.ToString("N")), overwrite: true);
         return Task.CompletedTask;
     }
 

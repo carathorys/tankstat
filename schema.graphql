@@ -430,6 +430,7 @@ input AddExpenseInput {
   currency: String
   odometer: Long
   note: String
+  photoIds: [UUID!]
 }
 
 input AddRecurringExpenseInput {
@@ -502,6 +503,7 @@ input LogRefuelingInput {
   odometer: Long!
   isFullTank: Boolean!
   note: String
+  photoIds: [UUID!]
 }
 
 input MarkRecurringExpenseDoneInput {
