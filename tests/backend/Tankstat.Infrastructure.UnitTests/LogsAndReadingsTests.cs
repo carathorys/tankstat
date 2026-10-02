@@ -313,7 +313,7 @@ public class LogsAndReadingsTests
         var list = await repo.ListAsync(scope, new VehicleQuery(), default);
 
         Assert.Equivalent(new[] { mine.Id, granted.Id }, list.Select(v => v.Id));
-        Assert.Equal(2, await repo.CountAsync(scope, default));
+        Assert.Equal(2, await repo.CountAsync(scope, null, default));
     }
 
     // ---- resource grants --------------------------------------------------------------------------------------

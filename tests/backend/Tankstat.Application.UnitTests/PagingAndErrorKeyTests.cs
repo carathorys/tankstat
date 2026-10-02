@@ -59,6 +59,25 @@ public class PagingTests
     }
 
     [Fact]
+    public async Task TheHomeList_IsPagedAndSearchable_ForEveryoneWithTheirOwnVehiclesOnly()
+    {
+        var w = new World();
+        var alice = w.AddUser("alice@x.co");
+        var bob = w.AddUser("bob@x.co");
+        w.Current.SignInAs(alice);
+        foreach (var name in new[] { "Golf", "Octavia", "Polo", "Passat" }) await w.VehicleService.AddAsync(name, name == "Polo" ? "xy-123" : null, FuelType.Lpg, default);
+        w.Current.SignInAs(bob);
+        await w.VehicleService.AddAsync("Polo of Bob", null, FuelType.Lpg, default);
+        w.Current.SignInAs(alice);
+
+        Assert.Equal(["Golf", "Octavia"], (await w.VehicleService.ListMineAsync(null, 0, 2, default)).Select(v => v.Name));
+        Assert.Equal(["Passat", "Polo"], (await w.VehicleService.ListMineAsync(null, 2, 2, default)).Select(v => v.Name));
+        Assert.Equal(["Polo"], (await w.VehicleService.ListMineAsync("XY", 0, 10, default)).Select(v => v.Name)); // by plate, ignoring case
+        Assert.Equal(4, await w.VehicleService.CountMineAsync(null, default)); // Bob's car is not hers
+        Assert.Equal(3, await w.VehicleService.CountMineAsync("o", default)); // Golf, Octavia, Polo (Bob's "Polo of Bob" is not hers)
+    }
+
+    [Fact]
     public async Task Counts_FollowTheAccessScope()
     {
         var w = new World();

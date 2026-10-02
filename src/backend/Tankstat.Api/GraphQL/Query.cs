@@ -14,8 +14,16 @@ public sealed class Query
     public Task<HealthReport> GetHealth([Service] HealthReporter health, CancellationToken ct) =>
         health.ReportAsync(ct);
 
-    /// <summary>The vehicles the user owns or that are shared with them, by name (the home page). Not paged: a person has a handful.</summary>
-    public Task<IReadOnlyList<Vehicle>> GetMyVehicles([Service] VehicleService vehicles, CancellationToken ct) => vehicles.ListMineAsync(ct);
+    /// <summary>
+    /// One page of the vehicles the user owns or that are shared with them, by name (the home page), optionally only those whose name or
+    /// license plate contains <c>search</c>.
+    /// </summary>
+    public Task<IReadOnlyList<Vehicle>> GetMyVehicles(
+        [Service] VehicleService vehicles, CancellationToken ct, string? search = null, int skip = 0, int take = VehicleQuery.DefaultTake) =>
+        vehicles.ListMineAsync(search, skip, take, ct);
+
+    /// <summary>How many vehicles <c>myVehicles</c> finds in all, for the same <c>search</c> (the pages add up to this).</summary>
+    public Task<int> GetMyVehicleCount([Service] VehicleService vehicles, CancellationToken ct, string? search = null) => vehicles.CountMineAsync(search, ct);
 
     /// <summary>Administrators only: one page of all the vehicles, sorted by the server.</summary>
     public Task<IReadOnlyList<Vehicle>> GetVehicles(

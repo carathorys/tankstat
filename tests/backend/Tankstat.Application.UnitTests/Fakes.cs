@@ -31,16 +31,19 @@ internal sealed class InMemoryVehicles : IVehicleRepository
     public VehicleQuery? LastQuery { get; private set; }
 
     // Sorting itself is the database's job and is tested against the real repository; the fake orders by name.
+    private static bool Matches(Vehicle v, string? search) =>
+        search is null || v.Name.Contains(search, StringComparison.OrdinalIgnoreCase) || (v.LicensePlate?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false);
+
     private IReadOnlyList<Vehicle> Page(IEnumerable<Vehicle> rows, VehicleQuery query)
     {
         LastQuery = query;
-        return rows.OrderBy(v => v.Name, StringComparer.OrdinalIgnoreCase).Skip(query.Skip).Take(query.Take).ToList();
+        return rows.Where(v => Matches(v, query.Search)).OrderBy(v => v.Name, StringComparer.OrdinalIgnoreCase).Skip(query.Skip).Take(query.Take).ToList();
     }
 
     public Task<IReadOnlyList<Vehicle>> ListAsync(OwnerScope scope, VehicleQuery query, CancellationToken ct) =>
         Task.FromResult(Page(Items.Where(v => !v.IsDeleted && scope.Contains(v.OwnerId, v.Id)), query));
-    public Task<int> CountAsync(OwnerScope scope, CancellationToken ct) =>
-        Task.FromResult(Items.Count(v => !v.IsDeleted && scope.Contains(v.OwnerId, v.Id)));
+    public Task<int> CountAsync(OwnerScope scope, string? search, CancellationToken ct) =>
+        Task.FromResult(Items.Count(v => !v.IsDeleted && scope.Contains(v.OwnerId, v.Id) && Matches(v, search)));
     public Task<IReadOnlyList<Vehicle>> ListDeletedAsync(OwnerScope scope, VehicleQuery query, CancellationToken ct) =>
         Task.FromResult(Page(Items.Where(v => v.IsDeleted && scope.Contains(v.OwnerId, v.Id)), query));
     public Task<int> CountDeletedAsync(OwnerScope scope, CancellationToken ct) =>

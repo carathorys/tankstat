@@ -5,7 +5,9 @@ schema {
 
 type Query {
   health: HealthReport! @cost(weight: "10")
-  myVehicles: [Vehicle!]! @cost(weight: "10")
+  myVehicles(search: String, skip: Int! = 0, take: Int! = 50): [Vehicle!]!
+    @cost(weight: "10")
+  myVehicleCount(search: String): Int! @cost(weight: "10")
   vehicles(
     orderBy: VehicleSortField! = NAME
     direction: SortDirection! = ASC

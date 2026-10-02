@@ -288,6 +288,25 @@ public class VehicleListAdminTests : IDisposable
     }
 
     [Fact]
+    public async Task TheHomeQuery_IsSearchableAndPaged_AndCountsTheWholeResult()
+    {
+        var admin = await Admin();
+        var tag = Guid.NewGuid().ToString("N")[..6];
+        foreach (var name in new[] { "Golf", "Octavia", "Passat", "Polo" }) await Add(admin, $"{name} {tag}", "LPG");
+        await Add(admin, "Elsewhere " + tag[..3], "LPG");
+        const string Home = "query($s: String, $skip: Int!, $take: Int!) { myVehicles(search: $s, skip: $skip, take: $take) { name } myVehicleCount(search: $s) }";
+
+        var first = (await admin.Gql(Home, new { s = tag, skip = 0, take = 3 })).Data();
+        var rest = (await admin.Gql(Home, new { s = tag.ToUpperInvariant(), skip = 3, take = 3 })).Data();
+        var none = (await admin.Gql(Home, new { s = "no-such-vehicle-" + tag, skip = 0, take = 3 })).Data();
+
+        Assert.Equal([$"Golf {tag}", $"Octavia {tag}", $"Passat {tag}"], first.GetProperty("myVehicles").EnumerateArray().Select(v => v.GetProperty("name").GetString()));
+        Assert.Equal([$"Polo {tag}"], rest.GetProperty("myVehicles").EnumerateArray().Select(v => v.GetProperty("name").GetString()));
+        Assert.Equal((4, 4), (first.GetProperty("myVehicleCount").GetInt32(), rest.GetProperty("myVehicleCount").GetInt32())); // the count ignores paging, and case
+        Assert.Equal((0, 0), (none.GetProperty("myVehicles").GetArrayLength(), none.GetProperty("myVehicleCount").GetInt32()));
+    }
+
+    [Fact]
     public async Task WithAuthenticationOff_NobodyGetsTheList_ButTheHomeQueryWorks()
     {
         using var open = new TestApp(new() { ["Auth:Mode"] = "None" });
