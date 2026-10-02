@@ -32,6 +32,13 @@ internal sealed class VehicleRepository(IDbContextFactory<AppDbContext> dbFactor
         return await db.Vehicles.IgnoreQueryFilters().Where(v => v.DeletedAt != null).InScope(scope, v => v.Id).CountAsync(ct);
     }
 
+    public async Task<IReadOnlyList<Vehicle>> ListByIdsAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct)
+    {
+        if (ids.Count == 0) return [];
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.Vehicles.AsNoTracking().Where(v => ids.Contains(v.Id)).ToListAsync(ct);
+    }
+
     /// <summary>Orders (always ending in the id, so pages are stable) and pages inside the database.</summary>
     private static IQueryable<Vehicle> Page(AppDbContext db, IQueryable<Vehicle> vehicles, VehicleQuery query)
     {

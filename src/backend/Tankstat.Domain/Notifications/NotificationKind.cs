@@ -57,6 +57,12 @@ public static class NotificationKinds
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
+    /// <summary>Topics whose notifications are derived (worked out on read from the current state) rather than sent by events.</summary>
+    public static IReadOnlySet<NotificationTopic> DerivedTopics { get; } = new HashSet<NotificationTopic> { NotificationTopic.Recurring };
+
+    /// <summary>Topics whose notifications are sent by events; only these count against the hourly limit.</summary>
+    public static IReadOnlyList<NotificationTopic> EventTopics { get; } = Enum.GetValues<NotificationTopic>().Where(t => !DerivedTopics.Contains(t)).ToList();
+
     /// <summary>How urgent a kind is within its topic: a derived notification is only raised to a more urgent kind, never lowered.</summary>
     public static int RankOf(NotificationKind kind) => kind == NotificationKind.RecurringOverdue ? 1 : 0;
 }

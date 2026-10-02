@@ -19,6 +19,9 @@ public interface IVehicleRepository
     /// <summary>Finds a vehicle that is not in the trash.</summary>
     Task<Vehicle?> FindAsync(Guid id, CancellationToken ct);
 
+    /// <summary>The (not trashed) vehicles with these ids, in no particular order; unknown ids are skipped.</summary>
+    Task<IReadOnlyList<Vehicle>> ListByIdsAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct);
+
     /// <summary>Finds a vehicle whether or not it is in the trash.</summary>
     Task<Vehicle?> FindIncludingDeletedAsync(Guid id, CancellationToken ct);
 

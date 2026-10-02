@@ -16,7 +16,8 @@ public interface INotificationRepository
     /// <summary>The recipient's notifications of the topic about any of the subjects, read or not (to find derived occurrences that already exist).</summary>
     Task<IReadOnlyList<Notification>> ListForSubjectsAsync(Guid recipientId, NotificationTopic topic, IReadOnlyCollection<Guid> subjectIds, CancellationToken ct);
 
-    Task<int> CountCreatedSinceAsync(Guid recipientId, DateTimeOffset since, CancellationToken ct);
+    /// <summary>How many notifications of the given topics the recipient got after <paramref name="since"/>.</summary>
+    Task<int> CountCreatedSinceAsync(Guid recipientId, DateTimeOffset since, IReadOnlyCollection<NotificationTopic> topics, CancellationToken ct);
 
     /// <summary>Adds it, unless the same notification (same identity) was added in the meantime: then nothing changes and it returns false.</summary>
     Task<bool> AddAsync(Notification notification, CancellationToken ct);

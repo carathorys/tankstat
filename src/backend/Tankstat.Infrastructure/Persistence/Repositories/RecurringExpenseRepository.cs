@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Tankstat.Application.Access;
 using Tankstat.Application.Recurring;
 using Tankstat.Domain.Recurring;
 
@@ -17,6 +18,15 @@ internal sealed class RecurringExpenseRepository(IDbContextFactory<AppDbContext>
         if (vehicleIds.Count == 0) return [];
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         return await db.RecurringExpenses.AsNoTracking().Where(r => vehicleIds.Contains(r.VehicleId)).OrderBy(r => r.Title).ThenBy(r => r.Id).ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<Guid>> ListVehicleIdsAsync(OwnerScope scope, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        // The vehicles' query filter leaves out the trashed ones.
+        return await db.RecurringExpenses.InScope(scope, r => r.VehicleId)
+            .Where(r => db.Vehicles.Any(v => v.Id == r.VehicleId))
+            .Select(r => r.VehicleId).Distinct().ToListAsync(ct);
     }
 
     public async Task<RecurringExpense?> FindAsync(Guid id, CancellationToken ct)

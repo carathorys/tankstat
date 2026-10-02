@@ -69,6 +69,9 @@ type Query {
   ): [Expense!]! @cost(weight: "10")
   expenseTrashCount: Int! @cost(weight: "10")
   expenseTrashDeletableCount: Int! @cost(weight: "10")
+  notifications(unreadOnly: Boolean! = false, skip: Int! = 0, take: Int! = 20): [NotificationInfo!]!
+    @cost(weight: "10")
+  notificationCount(unreadOnly: Boolean! = false): Int! @cost(weight: "10")
   importPreview(token: String!, vehicleId: UUID): ImportPreviewInfo!
     @cost(weight: "10")
   importFormats: [String!]!
@@ -118,6 +121,9 @@ type Mutation {
   deleteRecurringExpense(id: UUID!): Boolean! @cost(weight: "10")
   markRecurringExpenseDone(input: MarkRecurringExpenseDoneInput!): RecurringExpenseInfo!
     @cost(weight: "10")
+  markNotificationsRead(ids: [UUID!]): Int! @cost(weight: "10")
+  deleteNotification(id: UUID!): Boolean! @cost(weight: "10")
+  deleteReadNotifications: Int! @cost(weight: "10")
   confirmImport(input: ConfirmImportInput!): ImportResultInfo!
     @cost(weight: "10")
   saveVehicleChart(input: SaveChartInput!): VehicleChart! @cost(weight: "10")
@@ -253,6 +259,28 @@ type Notice {
   code: String!
   severity: NoticeSeverity!
   message: String!
+}
+
+type NotificationArg {
+  name: String!
+  value: String!
+}
+
+type NotificationInfo {
+  id: UUID!
+  kind: NotificationKind!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  read: Boolean!
+  count: Int!
+  subject: NotificationRefInfo!
+  context: NotificationRefInfo
+  args: [NotificationArg!]!
+}
+
+type NotificationRefInfo {
+  type: NotificationEntityType!
+  id: UUID!
 }
 
 type PasswordResetLink {
@@ -656,6 +684,24 @@ enum FuelType {
 enum NoticeSeverity {
   INFO
   WARNING
+}
+
+enum NotificationEntityType {
+  INSTANCE
+  VEHICLE
+  RECURRING_EXPENSE
+  USER
+}
+
+enum NotificationKind {
+  LOG_ACCESS_CHANGED
+  VEHICLE_SHARED
+  DATA_ACCESS_CHANGED
+  DATA_SHARED
+  DEFAULT_ACCESS_CHANGED
+  RECURRING_DUE_SOON
+  RECURRING_OVERDUE
+  MORE_ACTIVITY
 }
 
 enum RecurrenceKind {

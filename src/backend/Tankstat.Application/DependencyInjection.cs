@@ -9,6 +9,7 @@ using Tankstat.Application.Health;
 using Tankstat.Application.Images;
 using Tankstat.Application.Photos;
 using Tankstat.Application.Imports;
+using Tankstat.Application.Notifications;
 using Tankstat.Application.Odometers;
 using Tankstat.Application.Recurring;
 using Tankstat.Application.Refuelings;
@@ -25,6 +26,8 @@ public static class DependencyInjection
     {
         services.AddOptions<VehicleDefaultsOptions>().Bind(configuration.GetSection(VehicleDefaultsOptions.SectionName)).ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<VehicleDefaultsOptions>, VehicleDefaultsOptionsValidator>());
+        services.AddOptions<NotificationOptions>().Bind(configuration.GetSection(NotificationOptions.SectionName)).ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<NotificationOptions>, NotificationOptionsValidator>());
         services.AddOptions<StorageOptions>().Bind(configuration.GetSection(StorageOptions.SectionName));
         services.AddOptions<SmtpOptions>().Bind(configuration.GetSection(SmtpOptions.SectionName));
         services.AddOptions<AuthOptions>().Bind(configuration.GetSection(AuthOptions.SectionName)).ValidateOnStart();
@@ -55,6 +58,9 @@ public static class DependencyInjection
         services.AddScoped<ImportService>();
         services.AddScoped<OdometerService>();
         services.AddScoped<ResourceSharingService>();
+        services.AddScoped<Notifier>();
+        services.AddScoped<RecurringNotificationSync>();
+        services.AddScoped<NotificationService>();
         return services;
     }
 }

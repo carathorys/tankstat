@@ -42,8 +42,8 @@ public class ContractTests
     }
 
     [Theory]
-    [InlineData("Query", "health", "vehicles", "myVehicles", "myVehicleCount", "vehicle", "session", "notices", "users", "canSetUserPasswords", "accessSettings", "accessGrants", "trash", "vehicleCount", "trashCount", "trashDeletableCount", "vehicleDefaults", "refuelings", "refuelingCount", "refueling", "logDefaults", "refuelingTrash", "refuelingTrashCount", "refuelingTrashDeletableCount", "vehicleLogAccess", "shareCandidates")]
-    [InlineData("Mutation", "addVehicle", "logRefueling", "login", "logout", "changePassword", "requestPasswordReset", "resetPassword", "createUser", "issuePasswordReset", "setUserAdmin", "setUserDisabled", "updateUser", "setUserPassword", "deleteUser", "setDefaultAccess", "setAccessGrant", "updateVehicle", "deleteVehicle", "restoreVehicle", "emptyTrash", "logRefueling", "updateRefueling", "deleteRefueling", "restoreRefueling", "emptyRefuelingTrash", "setVehicleLogAccess")]
+    [InlineData("Query", "health", "vehicles", "myVehicles", "myVehicleCount", "vehicle", "session", "notices", "users", "canSetUserPasswords", "accessSettings", "accessGrants", "trash", "vehicleCount", "trashCount", "trashDeletableCount", "vehicleDefaults", "refuelings", "refuelingCount", "refueling", "logDefaults", "refuelingTrash", "refuelingTrashCount", "refuelingTrashDeletableCount", "vehicleLogAccess", "shareCandidates", "notifications", "notificationCount")]
+    [InlineData("Mutation", "addVehicle", "logRefueling", "login", "logout", "changePassword", "requestPasswordReset", "resetPassword", "createUser", "issuePasswordReset", "setUserAdmin", "setUserDisabled", "updateUser", "setUserPassword", "deleteUser", "setDefaultAccess", "setAccessGrant", "updateVehicle", "deleteVehicle", "restoreVehicle", "emptyTrash", "logRefueling", "updateRefueling", "deleteRefueling", "restoreRefueling", "emptyRefuelingTrash", "setVehicleLogAccess", "markNotificationsRead", "deleteNotification", "deleteReadNotifications")]
     [InlineData("Session", "mode", "user")]
     [InlineData("UserInfo", "id", "displayName", "email", "isAdmin")]
     [InlineData("UserAccount", "id", "provider", "email", "displayName", "isAdmin", "isDisabled")]
@@ -56,6 +56,9 @@ public class ContractTests
     [InlineData("LogAccessGrantInfo", "user", "level")]
     [InlineData("Expense", "id", "vehicleId", "createdBy", "date", "title", "category", "amount", "currency", "odometer", "note", "deletedAt", "canEdit", "canDelete", "vehicle", "photos")]
     [InlineData("LogPhotoInfo", "id", "url")]
+    [InlineData("NotificationInfo", "id", "kind", "createdAt", "updatedAt", "read", "count", "subject", "context", "args")]
+    [InlineData("NotificationRefInfo", "type", "id")]
+    [InlineData("NotificationArg", "name", "value")]
     [InlineData("ImportPreviewInfo", "sourceVehicle", "fuelRows", "expenseRows", "recurringRows", "duplicateFuelRows", "duplicateExpenseRows", "duplicateRecurringRows", "firstDate", "lastDate", "categories", "issues")]
     [InlineData("ImportResultInfo", "vehicleId", "fuelImported", "expensesImported", "recurringImported", "fuelSkippedDuplicates", "expensesSkippedDuplicates", "recurringSkippedDuplicates", "errors")]
     [InlineData("ImportIssueInfo", "section", "row", "key", "args")]
@@ -95,6 +98,8 @@ public class ContractTests
     [InlineData("ChartKind", "BAR", "LINE", "AREA", "DONUT")]
     [InlineData("ChartRange", "LAST1_MONTH", "LAST3_MONTHS", "LAST6_MONTHS", "LAST12_MONTHS", "THIS_YEAR", "LAST_YEAR", "ALL", "CUSTOM")]
     [InlineData("NoticeSeverity", "INFO", "WARNING")]
+    [InlineData("NotificationKind", "LOG_ACCESS_CHANGED", "VEHICLE_SHARED", "DATA_ACCESS_CHANGED", "DATA_SHARED", "DEFAULT_ACCESS_CHANGED", "RECURRING_DUE_SOON", "RECURRING_OVERDUE", "MORE_ACTIVITY")]
+    [InlineData("NotificationEntityType", "INSTANCE", "VEHICLE", "RECURRING_EXPENSE", "USER")]
     public async Task Schema_EnumsExposeContractValues(string type, params string[] expected)
     {
         var body = await Query($"{{ __type(name: \"{type}\") {{ enumValues {{ name }} }} }}");

@@ -117,13 +117,14 @@ public class NotificationRepositoryTests
     }
 
     [Fact]
-    public async Task CountCreatedSince_CountsTheRecipientsNewOnes()
+    public async Task CountCreatedSince_CountsTheRecipientsNewOnes_OfTheGivenTopics()
     {
         await using var db = new TestDatabase();
         var repo = db.Get<INotificationRepository>();
-        foreach (var n in new[] { Shared(Alice, Car, Now.AddHours(-2)), Shared(Alice, Car, Now.AddMinutes(-30)), Shared(Alice, Car), Shared(Bob, Car) }) await repo.AddAsync(n, default);
+        foreach (var n in new[] { Shared(Alice, Car, Now.AddHours(-2)), Shared(Alice, Car, Now.AddMinutes(-30)), Shared(Alice, Car), Shared(Bob, Car), Due(Alice, Guid.NewGuid()) })
+            await repo.AddAsync(n, default);
 
-        Assert.Equal(2, await repo.CountCreatedSinceAsync(Alice, Now.AddHours(-1), default));
+        Assert.Equal(2, await repo.CountCreatedSinceAsync(Alice, Now.AddHours(-1), [NotificationTopic.LogAccess, NotificationTopic.Digest], default));
     }
 
     [Fact]

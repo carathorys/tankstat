@@ -1,9 +1,11 @@
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Notifications;
 using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain;
 using Tankstat.Domain.Access;
+using Tankstat.Domain.Notifications;
 using Tankstat.Domain.Users;
 using Tankstat.Domain.Vehicles;
 
@@ -13,10 +15,11 @@ public sealed record LogAccessEntry(User User, AccessLevel Level);
 
 /// <summary>
 /// Lets whoever may edit a vehicle (its owner, administrators, editors) give other users access to that vehicle's logs
-/// without giving access to the rest of the owner's data. Nobody can hand out more than they hold themselves.
+/// without giving access to the rest of the owner's data. Nobody can hand out more than they hold themselves. The user whose access
+/// changed is notified, and so is the owner when someone else made the change.
 /// </summary>
 public sealed class ResourceSharingService(
-    IVehicleRepository vehicles, IResourceGrantRepository grants, IUserRepository users, AccessService access)
+    IVehicleRepository vehicles, IResourceGrantRepository grants, IUserRepository users, AccessService access, Notifier notifier)
 {
     public async Task<IReadOnlyList<LogAccessEntry>> ListLogAccessAsync(Guid vehicleId, CancellationToken ct)
     {
@@ -41,24 +44,44 @@ public sealed class ResourceSharingService(
     {
         var vehicle = await ManageableVehicleAsync(vehicleId, ct);
         if (userId == vehicle.OwnerId) throw new DomainException("share.ownerHasAccess", "The owner always has full access.");
-        if (await users.FindByIdAsync(userId, ct) is null) throw new NotFoundException("user.notFound", $"User {userId} does not exist.", new { Id = userId });
+        var grantee = await users.FindByIdAsync(userId, ct) ?? throw new NotFoundException("user.notFound", $"User {userId} does not exist.", new { Id = userId });
 
         var existing = await grants.FindAsync(ResourceType.Vehicle, vehicle.Id, userId, GrantedFeature.Logs, ct);
+        var before = existing?.Level ?? AccessLevel.None;
         if (level == AccessLevel.None)
         {
             if (existing is not null) await grants.RemoveAsync(existing, ct);
-            return;
         }
-
-        // You cannot give away more than you hold (an editor cannot hand out permanent-delete rights).
-        if (level > await access.LogLevelAsync(vehicle, ct)) throw new ForbiddenException("share.cannotGrantMore", "You cannot grant more access than you have.");
-
-        if (existing is null) await grants.AddAsync(ResourceGrant.Create(ResourceType.Vehicle, vehicle.Id, userId, GrantedFeature.Logs, level), ct);
         else
         {
-            existing.ChangeLevel(level);
-            await grants.UpdateAsync(existing, ct);
+            // You cannot give away more than you hold (an editor cannot hand out permanent-delete rights).
+            if (level > await access.LogLevelAsync(vehicle, ct)) throw new ForbiddenException("share.cannotGrantMore", "You cannot grant more access than you have.");
+
+            if (existing is null) await grants.AddAsync(ResourceGrant.Create(ResourceType.Vehicle, vehicle.Id, userId, GrantedFeature.Logs, level), ct);
+            else
+            {
+                existing.ChangeLevel(level);
+                await grants.UpdateAsync(existing, ct);
+            }
         }
+
+        if (before != level) await NotifyAsync(vehicle, grantee, before, level, ct);
+    }
+
+    private async Task NotifyAsync(Vehicle vehicle, User grantee, AccessLevel before, AccessLevel after, CancellationToken ct)
+    {
+        var actor = await access.RequirePrincipalAsync(ct);
+        var (from, to) = (NotificationArgs.Level(before), NotificationArgs.Level(after));
+        var car = NotificationRef.Vehicle(vehicle.Id);
+        List<NotificationDraft> drafts =
+        [
+            new(grantee.Id, NotificationKind.LogAccessChanged, car, car,
+                NotificationArgs.Of(("vehicleName", vehicle.Name), ("actorName", actor.DisplayName), ("level", to)), Before: from, After: to),
+        ];
+        if (actor.Id != vehicle.OwnerId)
+            drafts.Add(new(vehicle.OwnerId, NotificationKind.VehicleShared, NotificationRef.User(grantee.Id), car,
+                NotificationArgs.Of(("vehicleName", vehicle.Name), ("actorName", actor.DisplayName), ("userName", grantee.DisplayName), ("level", to)), Before: from, After: to));
+        await notifier.NotifyAsync(actor.Id, drafts, ct);
     }
 
     private async Task<Vehicle> ManageableVehicleAsync(Guid vehicleId, CancellationToken ct)

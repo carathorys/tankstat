@@ -42,10 +42,10 @@ internal sealed class NotificationRepository(IDbContextFactory<AppDbContext> dbF
         return await Of(db, recipientId, false).Where(n => n.Topic == topic && subjectIds.Contains(n.SubjectId)).ToListAsync(ct);
     }
 
-    public async Task<int> CountCreatedSinceAsync(Guid recipientId, DateTimeOffset since, CancellationToken ct)
+    public async Task<int> CountCreatedSinceAsync(Guid recipientId, DateTimeOffset since, IReadOnlyCollection<NotificationTopic> topics, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await Of(db, recipientId, false).CountAsync(n => n.CreatedAt >= since, ct);
+        return await Of(db, recipientId, false).CountAsync(n => n.CreatedAt > since && topics.Contains(n.Topic), ct);
     }
 
     public async Task<bool> AddAsync(Notification notification, CancellationToken ct)

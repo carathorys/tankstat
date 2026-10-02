@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Tankstat.Application.Access;
 using Tankstat.Application.Recurring;
 using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
@@ -43,6 +44,26 @@ public class RecurringExpenseRepositoryTests
 
         Assert.Equal(["Insurance", "Oil", "Tyres"], loaded.Select(i => i.Title));
         Assert.Empty(await repo.ListForVehiclesAsync([], default));
+    }
+
+    [Fact]
+    public async Task ListVehicleIds_FindsTheVehiclesInTheScopeWithSchedules_LeavingOutTrashedOnes()
+    {
+        await using var db = new TestDatabase();
+        var car = await AddVehicle(db);
+        var van = await AddVehicle(db);
+        var granted = await AddVehicle(db, Guid.NewGuid());
+        var foreign = await AddVehicle(db, Guid.NewGuid());
+        var empty = await AddVehicle(db);
+        var repo = db.Get<IRecurringExpenseRepository>();
+        foreach (var item in new[] { Item(car, "Oil"), Item(car, "Tyres"), Item(van, "Tax"), Item(granted, "Oil"), Item(foreign, "Oil") }) await repo.AddAsync(item, default);
+        van.MarkDeleted(Now);
+        await db.Get<IVehicleRepository>().UpdateAsync(van, default);
+
+        var ids = await repo.ListVehicleIdsAsync(OwnerScope.Of([Owner], [granted.Id]), default);
+
+        Assert.Equal(new[] { car.Id, granted.Id }.Order(), ids.Order());
+        Assert.DoesNotContain(empty.Id, await repo.ListVehicleIdsAsync(OwnerScope.All, default));
     }
 
     [Fact]
