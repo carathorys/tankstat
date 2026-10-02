@@ -1,14 +1,17 @@
 using Tankstat.Application;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Images;
+using Tankstat.Application.Photos;
 using Tankstat.Domain;
+using Tankstat.Domain.Photos;
 
 namespace Tankstat.Api.Media;
 
 /// <summary>
 /// Binary pictures cannot travel through GraphQL, so uploads and downloads are plain HTTP (the one exception to "GraphQL only").
 /// They use the same session cookie and the same access rules as everything else. An upload is the raw image as the request body
-/// (a PUT with a non-form content type, so a browser will not send it cross-site with the cookie).
+/// of a PUT or DELETE: a browser cannot send those cross-site without a CORS preflight, and no CORS policy is configured (adding
+/// one would need the uploads protected separately).
 /// </summary>
 public static class MediaEndpoints
 {
@@ -44,6 +47,18 @@ public static class MediaEndpoints
             await images.RemoveVehiclePictureAsync(vehicleId, ct);
             return Results.NoContent();
         });
+
+        // Photos of logs: PUT adds one (up to ten per log), DELETE removes one by its image id.
+        foreach (var (segment, logType) in new[] { ("expenses", LogType.Expense), ("refuelings", LogType.Refueling) })
+        {
+            media.MapPut($"/{segment}/{{logId:guid}}/photos", async (Guid logId, HttpRequest request, LogPhotoService photos, CancellationToken ct) =>
+                Uploaded(await photos.AddAsync(logType, logId, await ReadBodyAsync(request, ct), ct)));
+            media.MapDelete($"/{segment}/{{logId:guid}}/photos/{{imageId:guid}}", async (Guid logId, Guid imageId, LogPhotoService photos, CancellationToken ct) =>
+            {
+                await photos.RemoveAsync(logType, logId, imageId, ct);
+                return Results.NoContent();
+            });
+        }
     }
 
     private static IResult Uploaded(Guid id) => Results.Json(new { id, url = MediaUrls.Image(id) });

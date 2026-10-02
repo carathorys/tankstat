@@ -33,4 +33,5 @@ public interface IVehicleRepository
 }
 
 /// <summary>What a permanent deletion removed: how many vehicles, and which pictures are now orphaned and must be deleted too.</summary>
-public sealed record PurgeResult(int Count, IReadOnlyList<Guid> ImageIds);
+/// <summary>What a purge removed: the vehicles' ids (their upload folders go too) and their pictures' ids (for pictures stored before folders existed).</summary>
+public sealed record PurgeResult(int Count, IReadOnlyList<Guid> ImageIds, IReadOnlyList<Guid> VehicleIds);

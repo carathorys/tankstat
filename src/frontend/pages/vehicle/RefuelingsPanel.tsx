@@ -95,7 +95,10 @@ export function RefuelingsPanel({
               <RefuelingFormDialog
                 vehicle={vehicle}
                 trigger={<Button size="3">{t('refuelings.add')}</Button>}
-                onSubmit={(input) => logRefueling({ variables: { input: { ...input, vehicleId: vehicle.id } } })}
+                onSubmit={async (input) => {
+                  const logged = await logRefueling({ variables: { input: { ...input, vehicleId: vehicle.id } } })
+                  return logged.data ? { id: logged.data.logRefueling.id } : undefined
+                }}
               />
             )}
             <Text size="2" color="gray" aria-live="polite">
@@ -114,7 +117,7 @@ export function RefuelingsPanel({
                     <Pencil size={16} aria-hidden />
                   </IconButton>
                 }
-                onSubmit={(input) => updateRefueling({ variables: { input: { ...input, id: r.id } } })}
+                onSubmit={async (input) => void (await updateRefueling({ variables: { input: { ...input, id: r.id } } }))}
               />
               <ConfirmDialog
                 trigger={

@@ -119,7 +119,7 @@ public class ExpenseRepositoryTests
         Assert.Equal(["Kept"], (await repo.ListForVehicleAsync(car.Id, new ExpenseQuery(), default)).Select(e => e.Title));
         Assert.Equal(["Old"], (await repo.ListDeletedAsync(OwnerScope.All, new ExpenseQuery(), default)).Select(e => e.Title));
         Assert.Equal(1, await repo.CountDeletedAsync(OwnerScope.All, default));
-        Assert.Equal(1, await repo.PurgeAsync(OwnerScope.All, default));
+        Assert.Equal(1, (await repo.PurgeAsync(OwnerScope.All, default)).Count);
         Assert.Equal((1, 1), await Counts(db)); // only the kept one's cost and reading remain
         Assert.Null(await repo.FindIncludingDeletedAsync(doomed.Id, default));
     }

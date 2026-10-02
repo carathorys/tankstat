@@ -11,6 +11,7 @@ using Tankstat.Application.Images;
 using Tankstat.Application.Odometers;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Stats;
+using Tankstat.Application.Photos;
 using Tankstat.Application.Users;
 using Tankstat.Infrastructure.Auth;
 using Tankstat.Infrastructure.Storage;
@@ -67,6 +68,7 @@ public static class DependencyInjection
         services.AddScoped<IResourceGrantRepository, ResourceGrantRepository>();
         services.AddScoped<IOdometerReadingRepository, OdometerReadingRepository>();
         services.AddScoped<IImageRepository, ImageRepository>();
+        services.AddScoped<ILogPhotoRepository, LogPhotoRepository>();
         services.AddSingleton<IImageStore, FileSystemImageStore>();
         services.AddSingleton<IPasswordHasher, IdentityPasswordHasher>();
         services.AddSingleton<IEmailSender, SmtpEmailSender>();

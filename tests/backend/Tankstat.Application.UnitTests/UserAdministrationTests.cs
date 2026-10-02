@@ -214,4 +214,34 @@ public class UserAdministrationTests
 
         await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(second.Token, "another-pass-1234", default));
     }
+
+    [Fact]
+    public async Task Delete_RemovesTheUploadFoldersOfTheUserAndOfTheirPurgedVehicles()
+    {
+        var (w, _) = SignedInAdmin();
+        var alice = w.AddUser("alice@x.co");
+        var bob = w.AddUser("bob@x.co");
+        var vehicle = Guid.NewGuid();
+        w.UserData.Owners.Add(alice.Id);
+        w.UserData.PurgedVehicles.Add(vehicle);
+        Guid Put(string folder)
+        {
+            var id = Guid.NewGuid();
+            w.Images.Items[id] = StoredImage.Create(id, "image/png", 1, w.Clock.GetUtcNow(), folder);
+            w.ImageStore.Files[id] = [1];
+            w.ImageStore.Folders[id] = folder;
+            return id;
+        }
+        var avatar = Put(ImageFolders.Avatar(alice.Id));
+        alice.SetAvatar(avatar);
+        Put(ImageFolders.VehiclePicture(vehicle));
+        Put($"{ImageFolders.Vehicle(vehicle)}/expenses/{Guid.NewGuid():N}");
+        var othersAvatar = Put(ImageFolders.Avatar(bob.Id));
+        var othersVehicle = Put(ImageFolders.VehiclePicture(Guid.NewGuid()));
+
+        await w.UserService.DeleteAsync(alice.Id, UserDataDisposition.Purge, null, default);
+
+        Assert.Equivalent(new[] { othersAvatar, othersVehicle }, w.ImageStore.Files.Keys);
+        Assert.Equivalent(new[] { othersAvatar, othersVehicle }, w.Images.Items.Keys);
+    }
 }

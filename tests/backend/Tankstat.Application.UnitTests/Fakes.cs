@@ -3,6 +3,8 @@ using Microsoft.Extensions.Time.Testing;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Expenses;
+using Tankstat.Application.Photos;
+using Tankstat.Domain.Photos;
 using Tankstat.Application.Images;
 using Tankstat.Application.Imports;
 using Tankstat.Application.Odometers;
@@ -53,7 +55,7 @@ internal sealed class InMemoryVehicles : IVehicleRepository
     {
         var doomed = Items.Where(v => v.IsDeleted && scope.Contains(v.OwnerId, v.Id)).ToList();
         Items.RemoveAll(doomed.Contains);
-        return Task.FromResult(new PurgeResult(doomed.Count, doomed.Where(v => v.PictureImageId is not null).Select(v => v.PictureImageId!.Value).ToList()));
+        return Task.FromResult(new PurgeResult(doomed.Count, doomed.Where(v => v.PictureImageId is not null).Select(v => v.PictureImageId!.Value).ToList(), doomed.Select(v => v.Id).ToList()));
     }
 }
 
@@ -79,8 +81,12 @@ internal sealed class InMemoryRefuelings : IRefuelingRepository
     public Task<Refueling?> FindIncludingDeletedAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(r => r.Id == id));
     public Task AddAsync(Refueling refueling, CancellationToken ct) { Items.Add(refueling); return Task.CompletedTask; }
     public Task UpdateAsync(Refueling refueling, CancellationToken ct) => Task.CompletedTask; // entities are shared references
-    public Task<int> PurgeAsync(OwnerScope scope, CancellationToken ct) =>
-        Task.FromResult(Items.RemoveAll(r => r.IsDeleted && scope.Contains(r.OwnerId, r.VehicleId)));
+    public Task<PurgedLogs> PurgeAsync(OwnerScope scope, CancellationToken ct)
+    {
+        var doomed = Items.Where(r => r.IsDeleted && scope.Contains(r.OwnerId, r.VehicleId)).ToList();
+        Items.RemoveAll(doomed.Contains);
+        return Task.FromResult(new PurgedLogs(doomed.Count, doomed.Select(r => (r.VehicleId, r.Id)).ToList()));
+    }
 }
 
 internal sealed class InMemoryExpenses : IExpenseRepository
@@ -106,8 +112,12 @@ internal sealed class InMemoryExpenses : IExpenseRepository
     public Task<Expense?> FindIncludingDeletedAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(e => e.Id == id));
     public Task AddAsync(Expense expense, CancellationToken ct) { Items.Add(expense); return Task.CompletedTask; }
     public Task UpdateAsync(Expense expense, OdometerReading? newReading, OdometerReading? removedReading, CancellationToken ct) => Task.CompletedTask; // shared references
-    public Task<int> PurgeAsync(OwnerScope scope, CancellationToken ct) =>
-        Task.FromResult(Items.RemoveAll(e => e.IsDeleted && scope.Contains(e.OwnerId, e.VehicleId)));
+    public Task<PurgedLogs> PurgeAsync(OwnerScope scope, CancellationToken ct)
+    {
+        var doomed = Items.Where(e => e.IsDeleted && scope.Contains(e.OwnerId, e.VehicleId)).ToList();
+        Items.RemoveAll(doomed.Contains);
+        return Task.FromResult(new PurgedLogs(doomed.Count, doomed.Select(e => (e.VehicleId, e.Id)).ToList()));
+    }
 }
 
 internal sealed class InMemoryStats(InMemoryRefuelings refuelings, InMemoryExpenses expenses) : IStatsRepository
@@ -182,27 +192,69 @@ internal sealed class InMemoryUsers : IUserRepository
     public Task UpdateAsync(User user, CancellationToken ct) => Task.CompletedTask; // entities are shared references
 }
 
+internal sealed class InMemoryLogPhotos : ILogPhotoRepository
+{
+    public List<LogPhoto> Items { get; } = [];
+    public bool FailAdds { get; set; }
+    public bool FailLists { get; set; }
+
+    /// <summary>Runs right after a photo was added: lets a test put in other photos "at the same moment".</summary>
+    public Action<LogPhoto>? AfterAdd { get; set; }
+    public Task<IReadOnlyList<LogPhoto>> ListForLogAsync(LogType logType, Guid logId, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (FailLists) throw new InvalidOperationException("database down");
+        return Task.FromResult<IReadOnlyList<LogPhoto>>(Items.Where(p => p.LogType == logType && p.LogId == logId).OrderBy(p => p.CreatedAt).ToList());
+    }
+    public Task<IReadOnlyList<LogPhoto>> ListForLogsAsync(LogType logType, IReadOnlyCollection<Guid> logIds, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<LogPhoto>>(Items.Where(p => p.LogType == logType && logIds.Contains(p.LogId)).OrderBy(p => p.CreatedAt).ToList());
+    public Task<int> CountForLogAsync(LogType logType, Guid logId, CancellationToken ct) =>
+        Task.FromResult(Items.Count(p => p.LogType == logType && p.LogId == logId));
+    public Task<LogPhoto?> FindByImageAsync(Guid imageId, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(p => p.ImageId == imageId));
+    public Task AddAsync(LogPhoto photo, CancellationToken ct)
+    {
+        if (FailAdds) throw new InvalidOperationException("database down");
+        Items.Add(photo);
+        AfterAdd?.Invoke(photo);
+        return Task.CompletedTask;
+    }
+    public Task RemoveAsync(LogPhoto photo, CancellationToken ct) { Items.Remove(photo); return Task.CompletedTask; }
+}
+
 /// <summary>Records what a delete asked for; the real moving and purging is covered against SQLite in the infrastructure tests.</summary>
 internal sealed class FakeUserData : IUserDataRepository
 {
     public HashSet<Guid> Owners { get; } = [];
     public List<(Guid UserId, Guid? MoveTo)> Deleted { get; } = [];
     public List<Guid> PurgedPictures { get; } = [];
+    public List<Guid> PurgedVehicles { get; } = [];
     public Task<bool> OwnsDataAsync(Guid userId, CancellationToken ct) => Task.FromResult(Owners.Contains(userId));
-    public Task<IReadOnlyList<Guid>> DeleteUserAsync(Guid userId, Guid? moveDataTo, CancellationToken ct)
+    public Task<PurgedUserData> DeleteUserAsync(Guid userId, Guid? moveDataTo, CancellationToken ct)
     {
         Deleted.Add((userId, moveDataTo));
-        return Task.FromResult<IReadOnlyList<Guid>>(PurgedPictures.ToList());
+        return Task.FromResult(new PurgedUserData(PurgedVehicles.ToList(), PurgedPictures.ToList()));
     }
 }
 
 internal sealed class InMemoryImageStore : IImageStore
 {
     public Dictionary<Guid, byte[]> Files { get; } = [];
+
+    /// <summary>The folder each saved file went into (null: the data folder itself).</summary>
+    public Dictionary<Guid, string?> Folders { get; } = [];
     public bool FailSaves { get; set; }
-    public Task SaveAsync(Guid id, ReadOnlyMemory<byte> data, CancellationToken ct) { Files[id] = data.ToArray(); return Task.CompletedTask; }
-    public Task<Stream?> OpenReadAsync(Guid id, CancellationToken ct) => Task.FromResult<Stream?>(Files.TryGetValue(id, out var d) ? new MemoryStream(d) : null);
-    public Task DeleteAsync(Guid id, CancellationToken ct) { Files.Remove(id); return Task.CompletedTask; }
+    public Task SaveAsync(StoredImage image, ReadOnlyMemory<byte> data, CancellationToken ct) { Files[image.Id] = data.ToArray(); Folders[image.Id] = image.Folder; return Task.CompletedTask; }
+    public Task<Stream?> OpenReadAsync(StoredImage image, CancellationToken ct) => Task.FromResult<Stream?>(Files.TryGetValue(image.Id, out var d) ? new MemoryStream(d) : null);
+    public Task DeleteAsync(StoredImage image, CancellationToken ct) { Files.Remove(image.Id); Folders.Remove(image.Id); return Task.CompletedTask; }
+    public Task DeleteFolderAsync(string folder, CancellationToken ct)
+    {
+        foreach (var id in Folders.Where(f => f.Value == folder || (f.Value?.StartsWith(folder + "/") ?? false)).Select(f => f.Key).ToList())
+        {
+            Files.Remove(id);
+            Folders.Remove(id);
+        }
+        return Task.CompletedTask;
+    }
 }
 
 internal sealed class InMemoryImages : IImageRepository
@@ -217,6 +269,11 @@ internal sealed class InMemoryImages : IImageRepository
     }
     public Task<StoredImage?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.GetValueOrDefault(id));
     public Task RemoveAsync(Guid id, CancellationToken ct) { Items.Remove(id); return Task.CompletedTask; }
+    public Task RemoveFolderAsync(string folder, CancellationToken ct)
+    {
+        foreach (var id in Items.Where(i => i.Value.Folder == folder || (i.Value.Folder?.StartsWith(folder + "/") ?? false)).Select(i => i.Key).ToList()) Items.Remove(id);
+        return Task.CompletedTask;
+    }
 }
 
 internal sealed class InMemoryTokens : IPasswordResetTokenRepository
@@ -284,12 +341,14 @@ internal sealed class World
     public InMemoryResourceGrants ResourceGrants { get; } = new();
     public InMemoryImageStore ImageStore { get; } = new();
     public InMemoryImages Images { get; } = new();
+    public InMemoryLogPhotos LogPhotos { get; } = new();
     public InMemorySettings Settings { get; } = new();
     public FakeCurrentUser Current { get; } = new();
     public FakeEmail Email { get; }
     public AuthOptions Options { get; }
 
     public AccessService Access { get; }
+    public LogAccessGuard LogGuard { get; }
     public VehicleService VehicleService { get; }
     public RefuelingService RefuelingService { get; }
     public ExpenseService ExpenseService { get; }
@@ -299,6 +358,7 @@ internal sealed class World
     public OdometerService Odometer { get; }
     public ResourceSharingService Sharing { get; }
     public ImageService ImageService { get; }
+    public LogPhotoService Photos { get; }
     public AuthService Auth { get; }
     public UserService UserService { get; }
     public AccessAdminService AccessAdmin { get; }
@@ -311,13 +371,16 @@ internal sealed class World
         var options = Options.Create();
 
         Access = new AccessService(Current, options, Grants, Settings, ResourceGrants);
+        LogGuard = new LogAccessGuard(Vehicles, Access);
         ImportSessions = new ImportSessionStore(Clock);
         Odometer = new OdometerService(new InMemoryReadings(Refuelings, Expenses));
         var resets = new PasswordResetService(Tokens, Users, Email, options, Clock);
-        VehicleService = new VehicleService(Vehicles, Refuelings, Access, Odometer, ImageStore, Images, Clock);
-        ImageService = new ImageService(ImageStore, Images, Users, Vehicles, Access, Clock);
-        RefuelingService = new RefuelingService(Vehicles, Refuelings, Access, Odometer, Clock);
-        ExpenseService = new ExpenseService(Vehicles, Expenses, Access, Odometer, Clock);
+        var logPhotoAccess = new LogPhotoAccess(LogGuard, Expenses, Refuelings, LogPhotos);
+        ImageService = new ImageService(ImageStore, Images, Users, Vehicles, Access, logPhotoAccess, Clock);
+        Photos = new LogPhotoService(logPhotoAccess, LogPhotos, ImageService, Access, Clock);
+        VehicleService = new VehicleService(Vehicles, Refuelings, Access, Odometer, ImageService, Clock);
+        RefuelingService = new RefuelingService(Vehicles, LogGuard, Refuelings, Access, Odometer, Photos, Clock);
+        ExpenseService = new ExpenseService(LogGuard, Expenses, Access, Odometer, Photos, Clock);
         Imports = new ImportService([new FuelioCsvParser()], ImportSessions, Access, VehicleService, RefuelingService, ExpenseService, Refuelings, Expenses, new VehicleDefaultsOptions { Currency = "HUF" }.Create());
         Stats = new StatsService(Vehicles, new InMemoryStats(Refuelings, Expenses), Access, Clock);
         ChartService = new ChartService(Vehicles, Charts, Access, Clock);

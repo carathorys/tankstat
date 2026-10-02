@@ -7,6 +7,7 @@ using Tankstat.Application.Auth;
 using Tankstat.Application.Expenses;
 using Tankstat.Application.Health;
 using Tankstat.Application.Images;
+using Tankstat.Application.Photos;
 using Tankstat.Application.Imports;
 using Tankstat.Application.Odometers;
 using Tankstat.Application.Refuelings;
@@ -39,6 +40,9 @@ public static class DependencyInjection
         services.AddScoped<UserService>();
         services.AddScoped<VehicleService>();
         services.AddScoped<ImageService>();
+        services.AddScoped<LogAccessGuard>();
+        services.AddScoped<LogPhotoAccess>();
+        services.AddScoped<LogPhotoService>();
         services.AddScoped<RefuelingService>();
         services.AddScoped<ExpenseService>();
         services.AddScoped<StatsService>();

@@ -20,7 +20,7 @@ internal sealed class UserDataRepository(IDbContextFactory<AppDbContext> dbFacto
                || await db.Expenses.IgnoreQueryFilters().AnyAsync(e => e.OwnerId == userId, ct);
     }
 
-    public async Task<IReadOnlyList<Guid>> DeleteUserAsync(Guid userId, Guid? moveDataTo, CancellationToken ct)
+    public async Task<PurgedUserData> DeleteUserAsync(Guid userId, Guid? moveDataTo, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         await using var tx = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
@@ -30,9 +30,9 @@ internal sealed class UserDataRepository(IDbContextFactory<AppDbContext> dbFacto
         if (doomed is { IsAdmin: true, IsDisabled: false } && !await db.Users.AnyAsync(u => u.Id != userId && u.IsAdmin && !u.IsDisabled, ct))
             throw new DomainException("user.lastAdmin", "The last active administrator cannot be deleted.");
 
-        IReadOnlyList<Guid> pictures = [];
+        var purged = PurgedUserData.None;
         if (moveDataTo is { } to) await MoveAsync(db, userId, to, ct);
-        else pictures = await PurgeAsync(db, userId, ct);
+        else purged = await PurgeAsync(db, userId, ct);
 
         // Whatever grants are left (purge, or none to move) must go before the user: grantee-side access grants are Restrict.
         await db.AccessGrants.Where(g => g.OwnerId == userId || g.GranteeId == userId).ExecuteDeleteAsync(ct);
@@ -41,7 +41,7 @@ internal sealed class UserDataRepository(IDbContextFactory<AppDbContext> dbFacto
         await db.Users.Where(u => u.Id == userId).ExecuteDeleteAsync(ct);
 
         await tx.CommitAsync(ct);
-        return pictures;
+        return purged;
     }
 
     private static async Task MoveAsync(AppDbContext db, Guid from, Guid to, CancellationToken ct)
@@ -55,6 +55,8 @@ internal sealed class UserDataRepository(IDbContextFactory<AppDbContext> dbFacto
         await db.Refuelings.IgnoreQueryFilters().Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to), ct);
         await db.Expenses.IgnoreQueryFilters().Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to), ct);
         await db.VehicleCharts.Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to), ct);
+        await db.LogPhotos.Where(x => x.OwnerId == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.OwnerId, to), ct);
+        await db.LogPhotos.Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to), ct);
 
         await MoveAccessGrantsAsync(db, from, to, ct);
         await MoveResourceGrantsAsync(db, from, to, ct);
@@ -94,7 +96,7 @@ internal sealed class UserDataRepository(IDbContextFactory<AppDbContext> dbFacto
             .ExecuteDeleteAsync(ct);
     }
 
-    private static async Task<IReadOnlyList<Guid>> PurgeAsync(AppDbContext db, Guid userId, CancellationToken ct)
+    private static async Task<PurgedUserData> PurgeAsync(AppDbContext db, Guid userId, CancellationToken ct)
     {
         var vehicles = await db.Vehicles.IgnoreQueryFilters().Where(v => v.OwnerId == userId).ToListAsync(ct);
         var ids = vehicles.Select(v => v.Id).ToList();
@@ -103,8 +105,8 @@ internal sealed class UserDataRepository(IDbContextFactory<AppDbContext> dbFacto
         // Charts they made on other people's vehicles are theirs too (a move re-points them instead).
         await db.VehicleCharts.Where(c => c.CreatedById == userId).ExecuteDeleteAsync(ct);
 
-        db.Vehicles.RemoveRange(vehicles); // logs, readings, costs and charts go with them through the database's cascade
+        db.Vehicles.RemoveRange(vehicles); // logs, readings, costs, charts and photo rows go with them through the database's cascade
         await db.SaveChangesAsync(ct);
-        return vehicles.Where(v => v.PictureImageId is not null).Select(v => v.PictureImageId!.Value).ToList();
+        return new PurgedUserData(ids, vehicles.Where(v => v.PictureImageId is not null).Select(v => v.PictureImageId!.Value).ToList());
     }
 }

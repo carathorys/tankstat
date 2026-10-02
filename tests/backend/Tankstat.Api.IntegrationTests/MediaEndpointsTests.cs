@@ -52,6 +52,9 @@ public class MediaEndpointsTests : IDisposable
 
     // ---- avatars ---------------------------------------------------------------------------------------------
 
+    /// <summary>Every uploaded file, wherever below the data folder (they live in per-vehicle and per-user folders).</summary>
+    private string[] FilesOnDisk() => Directory.Exists(_app.UploadsPath) ? Directory.GetFiles(_app.UploadsPath, "*", SearchOption.AllDirectories) : [];
+
     [Fact]
     public async Task AUserUploadsAnAvatar_AndEveryoneSignedInSeesItWithSafeHeaders()
     {
@@ -95,7 +98,7 @@ public class MediaEndpointsTests : IDisposable
         Assert.NotEqual(first, second);
         Assert.Equal(HttpStatusCode.NotFound, (await u.Bob.GetAsync(first)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await u.Bob.GetAsync(second)).StatusCode);
-        Assert.Single(Directory.GetFiles(_app.UploadsPath)); // the old file is gone
+        Assert.Single(FilesOnDisk()); // the old file is gone
     }
 
     [Fact]
@@ -108,7 +111,7 @@ public class MediaEndpointsTests : IDisposable
 
         Assert.Equal(HttpStatusCode.NotFound, (await u.Bob.GetAsync(url)).StatusCode);
         Assert.Equal(JsonValueKind.Null, (await u.Alice.Gql("{ session { user { avatarUrl } } }")).Data().GetProperty("session").GetProperty("user").GetProperty("avatarUrl").ValueKind);
-        Assert.Empty(Directory.GetFiles(_app.UploadsPath));
+        Assert.Empty(FilesOnDisk());
     }
 
     [Fact]
@@ -145,7 +148,7 @@ public class MediaEndpointsTests : IDisposable
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(key, await ErrorKey(response));
-        Assert.False(Directory.Exists(_app.UploadsPath) && Directory.GetFiles(_app.UploadsPath).Length > 0);
+        Assert.Empty(FilesOnDisk());
     }
 
     [Fact]
@@ -228,10 +231,11 @@ public class MediaEndpointsTests : IDisposable
         await u.Alice.Gql("mutation($id: UUID!) { deleteVehicle(id: $id) { id } }", new { id = car });
 
         Assert.Equal(HttpStatusCode.NotFound, (await u.Alice.GetAsync(url)).StatusCode);
-        Assert.Single(Directory.GetFiles(_app.UploadsPath)); // still on disk: it can be restored
+        Assert.Single(FilesOnDisk()); // still on disk: it can be restored
+        Assert.StartsWith(Path.Combine(_app.UploadsPath, "vehicles", Guid.Parse(car!).ToString("N"), "picture"), FilesOnDisk()[0]); // in the folder of its vehicle
         await u.Alice.Gql("mutation { emptyTrash }");
 
-        Assert.Empty(Directory.GetFiles(_app.UploadsPath));
+        Assert.Empty(FilesOnDisk());
     }
 
     [Fact]

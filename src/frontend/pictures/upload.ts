@@ -23,3 +23,13 @@ export async function deleteImage(path: string): Promise<void> {
 
 export const avatarPath = '/media/me/avatar'
 export const vehiclePicturePath = (vehicleId: string) => `/media/vehicles/${vehicleId}/picture`
+
+/** The logs that can have photos (the path segment of their endpoints). */
+export type LogKind = 'expenses' | 'refuelings'
+
+/** At most this many photos per log (the server enforces it too) and the longest edge they are scaled down to in the browser. */
+export const MAX_LOG_PHOTOS = 10
+export const LOG_PHOTO_EDGE = 1600
+
+export const logPhotosPath = (kind: LogKind, logId: string) => `/media/${kind}/${logId}/photos`
+export const logPhotoPath = (kind: LogKind, logId: string, imageId: string) => `${logPhotosPath(kind, logId)}/${imageId}`

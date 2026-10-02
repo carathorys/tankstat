@@ -1,19 +1,38 @@
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Images;
+using Tankstat.Domain.Images;
 
 namespace Tankstat.Infrastructure.Storage;
 
 /// <summary>
-/// Keeps picture bytes as plain files named after the image id (a GUID, so nothing user-controlled ever reaches a path) in the
-/// data folder (<c>Storage:Path</c>, in Docker the /data volume).
+/// Keeps picture bytes as plain files named after the image id (a GUID) inside the folder the image names (see <see cref="ImageFolders"/>)
+/// in the data folder (<c>Storage:Path</c>, in Docker the /data volume). Folders are built from ids only, and are checked again here
+/// so nothing user-controlled can ever reach a path. Files from before folders existed (no folder) sit directly in the data folder.
 /// </summary>
-internal sealed class FileSystemImageStore(IOptions<StorageOptions> options) : IImageStore
+internal sealed partial class FileSystemImageStore(IOptions<StorageOptions> options) : IImageStore
 {
-    private string PathFor(Guid id) => Path.Combine(Path.GetFullPath(options.Value.Path), id.ToString("N"));
+    /// <summary>
+    /// Exactly the folders <see cref="ImageFolders"/> builds (a user, a vehicle, below a vehicle its picture or the photos of one log):
+    /// no dots, no empty segments, nothing that can climb out, and never a bare "vehicles" or "users" that would take every upload.
+    /// </summary>
+    [GeneratedRegex(@"^(users/[0-9a-f]{32}|vehicles/[0-9a-f]{32}(/(picture|(expenses|refuelings)/[0-9a-f]{32}))?)\z")]
+    private static partial Regex SafeFolder();
 
-    public async Task SaveAsync(Guid id, ReadOnlyMemory<byte> data, CancellationToken ct)
+    private string Root => Path.GetFullPath(options.Value.Path);
+
+    private string FolderPath(string? folder)
     {
-        var target = PathFor(id);
+        if (folder is null) return Root;
+        if (!SafeFolder().IsMatch(folder)) throw new ArgumentException($"Not a valid storage folder: '{folder}'.", nameof(folder));
+        return Path.Combine(Root, folder.Replace('/', Path.DirectorySeparatorChar));
+    }
+
+    private string PathFor(StoredImage image) => Path.Combine(FolderPath(image.Folder), image.Id.ToString("N"));
+
+    public async Task SaveAsync(StoredImage image, ReadOnlyMemory<byte> data, CancellationToken ct)
+    {
+        var target = PathFor(image);
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
 
         // Write beside the target and move into place, so a reader never sees a half-written picture.
@@ -29,16 +48,23 @@ internal sealed class FileSystemImageStore(IOptions<StorageOptions> options) : I
         }
     }
 
-    public Task<Stream?> OpenReadAsync(Guid id, CancellationToken ct)
+    public Task<Stream?> OpenReadAsync(StoredImage image, CancellationToken ct)
     {
-        var path = PathFor(id);
+        var path = PathFor(image);
         return Task.FromResult<Stream?>(File.Exists(path) ? new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true) : null);
     }
 
-    public Task DeleteAsync(Guid id, CancellationToken ct)
+    public Task DeleteAsync(StoredImage image, CancellationToken ct)
     {
-        var path = PathFor(id);
+        var path = PathFor(image);
         if (File.Exists(path)) File.Delete(path);
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteFolderAsync(string folder, CancellationToken ct)
+    {
+        var path = FolderPath(folder);
+        if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
         return Task.CompletedTask;
     }
 }

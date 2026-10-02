@@ -1,5 +1,6 @@
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Photos;
 using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain;
@@ -16,18 +17,19 @@ public sealed record ImageContent(Stream Content, string ContentType, long SizeB
 }
 
 /// <summary>
-/// Profile pictures and vehicle pictures. A user changes their own picture; a vehicle's picture needs edit access to the
-/// vehicle. Pictures are visible to everyone who may see their subject: any signed-in user for avatars (they show next to
-/// names), whoever can see the vehicle for vehicle pictures.
+/// Profile pictures, vehicle pictures and the file side of log photos (see <see cref="Photos.LogPhotoService"/>). A user changes
+/// their own picture; a vehicle's picture needs edit access to the vehicle. Pictures are visible to everyone who may see their
+/// subject: any signed-in user for avatars (they show next to names), whoever can see the vehicle for vehicle pictures, whoever
+/// may see the log for its photos.
 /// </summary>
 public sealed class ImageService(
-    IImageStore store, IImageRepository images, IUserRepository users, IVehicleRepository vehicles, AccessService access, TimeProvider clock)
+    IImageStore store, IImageRepository images, IUserRepository users, IVehicleRepository vehicles, AccessService access, LogPhotoAccess logPhotos, TimeProvider clock)
 {
     public async Task<Guid> SetAvatarAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
     {
         var user = await CurrentUserAsync(ct);
         var previous = user.AvatarImageId;
-        var id = await SaveAsync(data, ct);
+        var id = await StoreAsync(data, ImageFolders.Avatar(user.Id), ct);
 
         user.SetAvatar(id);
         await users.UpdateAsync(user, ct);
@@ -48,7 +50,7 @@ public sealed class ImageService(
     {
         var vehicle = await EditableVehicleAsync(vehicleId, ct);
         var previous = vehicle.PictureImageId;
-        var id = await SaveAsync(data, ct);
+        var id = await StoreAsync(data, ImageFolders.VehiclePicture(vehicle.Id), ct);
 
         vehicle.SetPicture(id);
         await vehicles.UpdateAsync(vehicle, ct);
@@ -68,11 +70,10 @@ public sealed class ImageService(
     /// <summary>The picture if the current user may see it; null for unknown pictures and for ones they may not see.</summary>
     public async Task<ImageContent?> OpenAsync(Guid imageId, CancellationToken ct)
     {
-        var principal = await access.RequirePrincipalAsync(ct);
-        if (!await CanSeeAsync(imageId, principal, ct)) return null;
-
+        await access.RequirePrincipalAsync(ct);
         var info = await images.FindAsync(imageId, ct);
-        if (info is null || await store.OpenReadAsync(imageId, ct) is not { } stream) return null;
+        if (info is null || !await CanSeeAsync(info, ct)) return null;
+        if (await store.OpenReadAsync(info, ct) is not { } stream) return null;
         return new ImageContent(stream, info.ContentType, info.SizeBytes);
     }
 
@@ -82,11 +83,51 @@ public sealed class ImageService(
         foreach (var id in imageIds) await DeleteQuietlyAsync(id, ct);
     }
 
-    private async Task<bool> CanSeeAsync(Guid imageId, Principal principal, CancellationToken ct)
+    /// <summary>
+    /// Removes everything uploaded for vehicles that were deleted for good: their whole folder (picture and log photos), plus
+    /// <paramref name="legacyImageIds"/>, pictures stored before vehicles had folders.
+    /// </summary>
+    public async Task DeleteVehicleFilesAsync(IEnumerable<Guid> vehicleIds, IEnumerable<Guid> legacyImageIds, CancellationToken ct)
     {
-        if (await users.FindByAvatarImageAsync(imageId, ct) is not null) return true;
-        if (await vehicles.FindByPictureImageAsync(imageId, ct) is not { } vehicle) return false;
-        return await access.VehicleLevelAsync(vehicle, ct) >= AccessLevel.View;
+        await DeleteAsync(legacyImageIds, ct);
+        await DeleteFoldersAsync(vehicleIds.Select(ImageFolders.Vehicle), ct);
+    }
+
+    /// <summary>
+    /// Removes folders with every file and row below them. Used after what owned them was already deleted, so a folder that cannot be
+    /// removed (permissions, a locked file) is skipped instead of failing the whole operation and leaving the other folders behind.
+    /// </summary>
+    public async Task DeleteFoldersAsync(IEnumerable<string> folders, CancellationToken ct)
+    {
+        foreach (var folder in folders)
+        {
+            await images.RemoveFolderAsync(folder, ct);
+            try
+            {
+                await store.DeleteFolderAsync(folder, ct);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // an orphaned folder is harmless; nothing can reach it any more
+            }
+        }
+    }
+
+    /// <summary>The folder says what kind of picture it is, so only that kind's owner is looked up (old files without a folder: each kind in turn).</summary>
+    private async Task<bool> CanSeeAsync(StoredImage image, CancellationToken ct)
+    {
+        var folder = image.Folder;
+        if (folder is null || folder.StartsWith("users/", StringComparison.Ordinal))
+        {
+            if (await users.FindByAvatarImageAsync(image.Id, ct) is not null) return true;
+            if (folder is not null) return false;
+        }
+        if (folder is null || folder.EndsWith("/picture", StringComparison.Ordinal))
+        {
+            if (await vehicles.FindByPictureImageAsync(image.Id, ct) is { } vehicle) return await access.VehicleLevelAsync(vehicle, ct) >= AccessLevel.View;
+            if (folder is not null) return false;
+        }
+        return await logPhotos.CanSeeImageAsync(image.Id, ct);
     }
 
     private async Task<User> CurrentUserAsync(CancellationToken ct)
@@ -106,28 +147,28 @@ public sealed class ImageService(
     }
 
     /// <summary>Validates, then writes the file first and the row second; a failure in between removes the file again.</summary>
-    private async Task<Guid> SaveAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
+    public async Task<Guid> StoreAsync(ReadOnlyMemory<byte> data, string folder, CancellationToken ct)
     {
         var contentType = ImageFormat.Detect(data.Span);
-        var id = Guid.NewGuid();
+        var image = StoredImage.Create(Guid.NewGuid(), contentType, data.Length, clock.GetUtcNow(), folder);
 
-        await store.SaveAsync(id, data, ct);
+        await store.SaveAsync(image, data, ct);
         try
         {
-            await images.AddAsync(StoredImage.Create(id, contentType, data.Length, clock.GetUtcNow()), ct);
+            await images.AddAsync(image, ct);
         }
         catch
         {
-            await store.DeleteAsync(id, ct);
+            await store.DeleteAsync(image, ct);
             throw;
         }
-        return id;
+        return image.Id;
     }
 
     private async Task DeleteQuietlyAsync(Guid? id, CancellationToken ct)
     {
-        if (id is null) return;
-        await images.RemoveAsync(id.Value, ct);
-        await store.DeleteAsync(id.Value, ct);
+        if (id is null || await images.FindAsync(id.Value, ct) is not { } image) return;
+        await images.RemoveAsync(image.Id, ct);
+        await store.DeleteAsync(image, ct);
     }
 }

@@ -1,7 +1,7 @@
 import { ApolloProvider } from '@apollo/client/react'
 import { Theme } from '@radix-ui/themes'
 import { render } from '@testing-library/react'
-import { graphql, HttpResponse } from 'msw'
+import { graphql, http, HttpResponse } from 'msw'
 import { MotionConfig } from 'motion/react'
 import type { ReactElement } from 'react'
 import { MemoryRouter } from 'react-router'
@@ -276,8 +276,44 @@ const logSorters: Record<string, (r: FakeRefueling) => string | number> = {
   DELETED_AT: (r) => r.deletedAt ?? '',
 }
 
+export interface FakePhoto {
+  id: string
+  url: string
+}
+
+/**
+ * In-memory photos of logs behind the upload endpoints (`PUT/DELETE /media/<kind>/<logId>/photos`), as the real API answers them.
+ * `failWith` makes uploads fail with a stable error key, `put` records the requests as "<logId>:<bytes>".
+ */
+export function fakePhotoStore(initial: Record<string, FakePhoto[]> = {}) {
+  const state = {
+    byLog: Object.fromEntries(Object.entries(initial).map(([k, v]) => [k, [...v]])) as Record<string, FakePhoto[]>,
+    puts: [] as { kind: string; logId: string; bytes: number }[],
+    deletes: [] as { kind: string; logId: string; imageId: string }[],
+    failWith: undefined as { key: string; status?: number; args?: Record<string, unknown> } | undefined,
+    nextId: 1,
+  }
+  const handlers = (['expenses', 'refuelings'] as const).flatMap((kind) => [
+    http.put(`/media/${kind}/:logId/photos`, async ({ params, request }) => {
+      const logId = String(params.logId)
+      state.puts.push({ kind, logId, bytes: (await request.arrayBuffer()).byteLength })
+      if (state.failWith) return HttpResponse.json({ key: state.failWith.key, args: state.failWith.args ?? {}, message: 'refused' }, { status: state.failWith.status ?? 400 })
+      const id = `img${state.nextId++}`
+      ;(state.byLog[logId] ??= []).push({ id, url: `/media/${id}` })
+      return HttpResponse.json({ id, url: `/media/${id}` })
+    }),
+    http.delete(`/media/${kind}/:logId/photos/:imageId`, ({ params }) => {
+      const logId = String(params.logId)
+      state.deletes.push({ kind, logId, imageId: String(params.imageId) })
+      state.byLog[logId] = (state.byLog[logId] ?? []).filter((p) => p.id !== params.imageId)
+      return new HttpResponse(null, { status: 204 })
+    }),
+  ])
+  return { state, handlers, photosOf: (logId: string) => state.byLog[logId] ?? [] }
+}
+
 /** A small in-memory backend for one vehicle's logs (and their trash), including the sharing list. */
-export function fakeLogBackend(vehicle: FakeVehicle, logs: FakeRefueling[] = []) {
+export function fakeLogBackend(vehicle: FakeVehicle, logs: FakeRefueling[] = [], photos = fakePhotoStore()) {
   const state = {
     vehicle,
     logs: [...logs],
@@ -318,7 +354,7 @@ export function fakeLogBackend(vehicle: FakeVehicle, logs: FakeRefueling[] = [])
     ),
     graphql.query('RefuelingDetails', ({ variables }) => {
       const r = state.logs.find((x) => x.id === variables.id)
-      return HttpResponse.json({ data: { refueling: r ?? null } })
+      return HttpResponse.json({ data: { refueling: r ? { ...r, photos: photos.photosOf(r.id) } : null } })
     }),
     graphql.query('LogDefaults', () =>
       HttpResponse.json({ data: { logDefaults: { lastOdometer: state.lastOdometer, lastDate: state.lastOdometer ? '2026-09-01' : null, currency: 'HUF' } } }),
@@ -376,7 +412,7 @@ export function fakeLogBackend(vehicle: FakeVehicle, logs: FakeRefueling[] = [])
       return HttpResponse.json({ data: { setVehicleLogAccess: true } })
     }),
   ]
-  return { state, handlers }
+  return { state, handlers: [...handlers, ...photos.handlers], photos }
 }
 
 export interface FakeExpense {
@@ -423,7 +459,7 @@ const expenseSorters: Record<string, (e: FakeExpense) => string | number> = {
 }
 
 /** A small in-memory backend for one vehicle's expenses (and their trash). */
-export function fakeExpenseBackend(vehicle: FakeVehicle, expenses: FakeExpense[] = []) {
+export function fakeExpenseBackend(vehicle: FakeVehicle, expenses: FakeExpense[] = [], photos = fakePhotoStore()) {
   const state = {
     vehicle,
     expenses: [...expenses],
@@ -453,7 +489,10 @@ export function fakeExpenseBackend(vehicle: FakeVehicle, expenses: FakeExpense[]
     graphql.query('ExpenseTrash', ({ variables }) =>
       HttpResponse.json({ data: { expenseTrash: rows(state.trash, variables as unknown as GridVars), expenseTrashCount: state.trash.length, expenseTrashDeletableCount: state.trash.length } }),
     ),
-    graphql.query('ExpenseDetails', ({ variables }) => HttpResponse.json({ data: { expense: state.expenses.find((e) => e.id === variables.id) ?? null } })),
+    graphql.query('ExpenseDetails', ({ variables }) => {
+      const e = state.expenses.find((x) => x.id === variables.id)
+      return HttpResponse.json({ data: { expense: e ? { ...e, photos: photos.photosOf(e.id) } : null } })
+    }),
     graphql.query('ExpenseCategories', () =>
       HttpResponse.json({ data: { expenseCategories: [...new Set(state.expenses.map((e) => e.category).filter((c): c is string => c !== null))].sort() } }),
     ),
@@ -493,7 +532,7 @@ export function fakeExpenseBackend(vehicle: FakeVehicle, expenses: FakeExpense[]
       return HttpResponse.json({ data: { emptyExpenseTrash: removed } })
     }),
   ]
-  return { state, handlers }
+  return { state, handlers: [...handlers, ...photos.handlers], photos }
 }
 
 export interface FakeChart {

@@ -85,6 +85,10 @@ query RefuelingDetails($id: UUID!) {
     odometer
     isFullTank
     note
+    photos {
+      id
+      url
+    }
   }
 }
 

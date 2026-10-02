@@ -240,4 +240,47 @@ public class ImageServiceTests
 
         Assert.True(s.W.ImageStore.Files.ContainsKey(id));
     }
+
+    [Fact]
+    public async Task NewPictures_GoIntoTheFolderOfTheirVehicleOrUser()
+    {
+        var s = await Setup();
+
+        var picture = await s.W.ImageService.SetVehiclePictureAsync(s.Car.Id, Jpeg(), default);
+        var avatar = await s.W.ImageService.SetAvatarAsync(Jpeg(1), default);
+
+        Assert.Equal($"vehicles/{s.Car.Id:N}/picture", s.W.ImageStore.Folders[picture]);
+        Assert.Equal($"vehicles/{s.Car.Id:N}/picture", s.W.Images.Items[picture].Folder);
+        Assert.Equal($"users/{s.Alice.Id:N}", s.W.ImageStore.Folders[avatar]);
+    }
+
+    [Fact]
+    public async Task ReplacingAPicture_RemovesTheOldFileFromTheSameFolder()
+    {
+        var s = await Setup();
+        var first = await s.W.ImageService.SetVehiclePictureAsync(s.Car.Id, Jpeg(), default);
+
+        var second = await s.W.ImageService.SetVehiclePictureAsync(s.Car.Id, Jpeg(1), default);
+
+        Assert.False(s.W.ImageStore.Files.ContainsKey(first));
+        Assert.Equal($"vehicles/{s.Car.Id:N}/picture", s.W.ImageStore.Folders[second]);
+    }
+
+    [Fact]
+    public async Task APictureFromBeforeFolders_StillWorks_AndIsDeletedWithItsVehicle()
+    {
+        var s = await Setup();
+        var legacy = Guid.NewGuid();
+        s.W.Images.Items[legacy] = Tankstat.Domain.Images.StoredImage.Create(legacy, "image/jpeg", 8, s.W.Clock.GetUtcNow()); // no folder
+        s.W.ImageStore.Files[legacy] = Jpeg();
+        s.W.ImageStore.Folders[legacy] = null;
+        s.Car.SetPicture(legacy);
+
+        Assert.NotNull(await s.W.ImageService.OpenAsync(legacy, default));
+        await s.W.VehicleService.DeleteAsync(s.Car.Id, default);
+        await s.W.VehicleService.EmptyTrashAsync(default);
+
+        Assert.Empty(s.W.ImageStore.Files);
+        Assert.Empty(s.W.Images.Items);
+    }
 }

@@ -4,6 +4,7 @@ using Tankstat.Application.Auth;
 using Tankstat.Application.Images;
 using Tankstat.Application.Imports;
 using Tankstat.Domain;
+using Tankstat.Domain.Images;
 using Tankstat.Domain.Users;
 
 namespace Tankstat.Application.Users;
@@ -126,8 +127,9 @@ public sealed class UserService(
             }
         }
 
-        var imageIds = await userData.DeleteUserAsync(userId, target, ct);
-        await images.DeleteAsync(user.AvatarImageId is { } avatar ? imageIds.Append(avatar) : imageIds, ct);
+        var purged = await userData.DeleteUserAsync(userId, target, ct);
+        await images.DeleteVehicleFilesAsync(purged.VehicleIds, user.AvatarImageId is { } avatar ? purged.PictureIds.Append(avatar) : purged.PictureIds, ct);
+        await images.DeleteFoldersAsync([ImageFolders.Avatar(userId)], ct); // the avatar's folder (and its rows) goes with the account
         importSessions.RemoveForUser(userId);
     }
 
