@@ -18,11 +18,14 @@ export function PhotoGallery({
   logId,
   photos,
   queue,
+  disabled = false,
   onChanged,
 }: {
   kind: LogKind
   /** Omit while the log is being created. */
   logId?: string
+  /** The log is being saved: the photos must not change meanwhile. */
+  disabled?: boolean
   photos: { id: string; url: string }[]
   queue: PhotoQueue
   onChanged: () => void | Promise<unknown>
@@ -101,11 +104,11 @@ export function PhotoGallery({
         {input(camera, true)}
         {input(library, false)}
         <Flex gap="2" wrap="wrap">
-          <Button type="button" size="3" variant="soft" disabled={busy || room <= 0} aria-describedby={hintId} onClick={() => camera.current?.click()}>
+          <Button type="button" size="3" variant="soft" disabled={disabled || busy || room <= 0} aria-describedby={hintId} onClick={() => camera.current?.click()}>
             <Camera size={16} aria-hidden />
             {t('photos.take')}
           </Button>
-          <Button type="button" size="3" variant="soft" disabled={busy || room <= 0} aria-describedby={hintId} onClick={() => library.current?.click()}>
+          <Button type="button" size="3" variant="soft" disabled={disabled || busy || room <= 0} aria-describedby={hintId} onClick={() => library.current?.click()}>
             <ImagePlus size={16} aria-hidden />
             {t('photos.choose')}
           </Button>
@@ -129,7 +132,7 @@ export function PhotoGallery({
                       size="3"
                       variant="soft"
                       color="red"
-                      disabled={busy}
+                      disabled={disabled || busy}
                       aria-label={t('photos.removeAria', { n: index + 1 })}
                       onClick={() =>
                         void run(async () => {

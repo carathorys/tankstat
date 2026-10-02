@@ -6,7 +6,8 @@ import { useTranslation } from 'react-i18next'
 import { OdometerField } from './components/OdometerField.tsx'
 import { PhotoGallery } from './components/PhotoGallery.tsx'
 import { PhotosAfterSave } from './components/PhotosAfterSave.tsx'
-import { usePhotoQueue, type Saved } from './components/usePhotoQueue.ts'
+import type { Saved } from './components/usePhotoQueue.ts'
+import { usePhotoSession } from './components/usePhotoSession.ts'
 import { Field } from './forms.tsx'
 import { LogDefaultsDocument, RefuelingDetailsDocument, type DistanceUnit, type VolumeUnit } from './gql/generated.ts'
 import { parseDecimal } from './i18n/format.ts'
@@ -51,10 +52,7 @@ export function RefuelingFormDialog({
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
-  const queue = usePhotoQueue()
-  // Set when a new log was saved but some of its photos could not be sent: the dialog then shows that log's photos instead of the form.
-  const [savedId, setSavedId] = useState<string>()
-  const [uploadFailure, setUploadFailure] = useState<unknown>()
+  const { queue, savedId, failure: uploadFailure, saving, submit, reset } = usePhotoSession('refuelings')
   const editing = refuelingId !== undefined
   const logId = refuelingId ?? savedId
   const details = useQuery(RefuelingDetailsDocument, { variables: { id: logId ?? '' }, skip: logId === undefined || !open, fetchPolicy: 'network-only' })
@@ -74,15 +72,16 @@ export function RefuelingFormDialog({
       open={open}
       onOpenChange={(next) => {
         setOpen(next)
-        if (!next) {
-          queue.clear()
-          setSavedId(undefined)
-          setUploadFailure(undefined)
-        }
+        if (!next) reset()
       }}
     >
       <Dialog.Trigger>{trigger}</Dialog.Trigger>
-      <Dialog.Content maxWidth="450px">
+      <Dialog.Content
+        maxWidth="450px"
+        // Closing while the log and its photos are on their way would lose track of them.
+        onEscapeKeyDown={(e) => saving && e.preventDefault()}
+        onInteractOutside={(e) => saving && e.preventDefault()}
+      >
         <Dialog.Title>{editing ? t('refuelings.dialogEdit') : t('refuelings.dialogAdd')}</Dialog.Title>
         <Dialog.Description size="2" mb="4">
           {editing ? t('refuelings.dialogEditDescription') : t('refuelings.dialogAddDescription')}
@@ -100,18 +99,12 @@ export function RefuelingFormDialog({
             editing={editing}
             last={lastReading}
             photosBusy={queue.adding}
-            gallery={<PhotoGallery kind="refuelings" logId={refuelingId} photos={existing?.photos ?? []} queue={queue} onChanged={() => details.refetch()} />}
+            gallery={<PhotoGallery kind="refuelings" logId={refuelingId} photos={existing?.photos ?? []} queue={queue} disabled={saving} onChanged={() => details.refetch()} />}
             onSubmit={async (values) => {
-              const saved = await onSubmit(values)
-              if (!editing && saved && queue.items.length > 0) {
-                const failure = await queue.uploadAll('refuelings', saved.id)
-                if (failure !== undefined) {
-                  setUploadFailure(failure)
-                  setSavedId(saved.id)
-                  return
-                }
+              if (await submit(() => onSubmit(values), editing)) {
+                setOpen(false)
+                reset()
               }
-              setOpen(false)
             }}
           />
         )}
@@ -214,7 +207,7 @@ function RefuelingForm({
         {error !== undefined && <ErrorMessage error={error} />}
         <Flex gap="3" justify="end">
           <Dialog.Close>
-            <Button type="button" variant="soft" color="gray">
+            <Button type="button" variant="soft" color="gray" disabled={busy}>
               {t('common.cancel')}
             </Button>
           </Dialog.Close>

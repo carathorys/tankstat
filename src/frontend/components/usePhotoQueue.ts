@@ -80,18 +80,19 @@ export function usePhotoQueue(): PhotoQueue {
 
   const uploadAll = useCallback(
     async (kind: LogKind, logId: string) => {
-      let remaining = items
+      const sent = new Set<string>()
       try {
         for (const photo of items) {
           await uploadImage(logPhotosPath(kind, logId), photo.blob)
           forget(photo)
-          remaining = remaining.filter((p) => p !== photo)
+          sent.add(photo.key)
         }
         return undefined
       } catch (error) {
         return error
       } finally {
-        setItems(remaining)
+        // Only the sent ones leave: anything added or removed while uploading stays as it is.
+        setItems((current) => current.filter((p) => !sent.has(p.key)))
       }
     },
     [items],

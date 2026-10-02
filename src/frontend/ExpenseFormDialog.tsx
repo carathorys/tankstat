@@ -6,7 +6,8 @@ import { useTranslation } from 'react-i18next'
 import { OdometerField } from './components/OdometerField.tsx'
 import { PhotoGallery } from './components/PhotoGallery.tsx'
 import { PhotosAfterSave } from './components/PhotosAfterSave.tsx'
-import { usePhotoQueue, type Saved } from './components/usePhotoQueue.ts'
+import type { Saved } from './components/usePhotoQueue.ts'
+import { usePhotoSession } from './components/usePhotoSession.ts'
 import { Field } from './forms.tsx'
 import { ExpenseCategoriesDocument, ExpenseDetailsDocument, LogDefaultsDocument, type DistanceUnit } from './gql/generated.ts'
 import { parseDecimal } from './i18n/format.ts'
@@ -54,10 +55,7 @@ export function ExpenseFormDialog({
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
-  const queue = usePhotoQueue()
-  // Set when a new expense was saved but some of its photos could not be sent: the dialog then shows that expense's photos instead of the form.
-  const [savedId, setSavedId] = useState<string>()
-  const [uploadFailure, setUploadFailure] = useState<unknown>()
+  const { queue, savedId, failure: uploadFailure, saving, submit, reset } = usePhotoSession('expenses')
   const editing = expenseId !== undefined
   const logId = expenseId ?? savedId
   const details = useQuery(ExpenseDetailsDocument, { variables: { id: logId ?? '' }, skip: logId === undefined || !open, fetchPolicy: 'network-only' })
@@ -73,15 +71,16 @@ export function ExpenseFormDialog({
       open={open}
       onOpenChange={(next) => {
         setOpen(next)
-        if (!next) {
-          queue.clear()
-          setSavedId(undefined)
-          setUploadFailure(undefined)
-        }
+        if (!next) reset()
       }}
     >
       <Dialog.Trigger>{trigger}</Dialog.Trigger>
-      <Dialog.Content maxWidth="450px">
+      <Dialog.Content
+        maxWidth="450px"
+        // Closing while the expense and its photos are on their way would lose track of them.
+        onEscapeKeyDown={(e) => saving && e.preventDefault()}
+        onInteractOutside={(e) => saving && e.preventDefault()}
+      >
         <Dialog.Title>{editing ? t('expenses.dialogEdit') : t('expenses.dialogAdd')}</Dialog.Title>
         <Dialog.Description size="2" mb="4">
           {editing ? t('expenses.dialogEditDescription') : t('expenses.dialogAddDescription')}
@@ -103,18 +102,12 @@ export function ExpenseFormDialog({
             editing={editing}
             categories={categories.data?.expenseCategories ?? []}
             photosBusy={queue.adding}
-            gallery={<PhotoGallery kind="expenses" logId={expenseId} photos={existing?.photos ?? []} queue={queue} onChanged={() => details.refetch()} />}
+            gallery={<PhotoGallery kind="expenses" logId={expenseId} photos={existing?.photos ?? []} queue={queue} disabled={saving} onChanged={() => details.refetch()} />}
             onSubmit={async (values) => {
-              const saved = await onSubmit(values)
-              if (!editing && saved && queue.items.length > 0) {
-                const failure = await queue.uploadAll('expenses', saved.id)
-                if (failure !== undefined) {
-                  setUploadFailure(failure)
-                  setSavedId(saved.id)
-                  return
-                }
+              if (await submit(() => onSubmit(values), editing)) {
+                setOpen(false)
+                reset()
               }
-              setOpen(false)
             }}
           />
         )}
@@ -220,7 +213,7 @@ function ExpenseForm({
         {error !== undefined && <ErrorMessage error={error} />}
         <Flex gap="3" justify="end">
           <Dialog.Close>
-            <Button type="button" variant="soft" color="gray">
+            <Button type="button" variant="soft" color="gray" disabled={busy}>
               {t('common.cancel')}
             </Button>
           </Dialog.Close>

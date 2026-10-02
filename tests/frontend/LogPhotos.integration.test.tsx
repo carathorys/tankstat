@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { http, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import { resizeImage } from '../../src/frontend/pictures/resizeImage.ts'
@@ -267,4 +268,61 @@ it('does not bring a photo back into a dialog that was closed while it was being
   const again = await openAddExpense(ui)
   expect(within(again).queryAllByRole('button', { name: /^Remove photo/ })).toHaveLength(0)
   expect(within(again).getByText(/0 of 10 photos/)).toBeInTheDocument()
+})
+
+it('queues photos where crypto.randomUUID does not exist (plain HTTP)', async () => {
+  vi.stubGlobal('crypto', { getRandomValues: crypto.getRandomValues.bind(crypto) })
+  const { ui } = setupExpenses()
+  const dialog = await openAddExpense(ui)
+
+  await ui.upload(library(dialog), [photo('a.png', [1]), photo('b.png', [1, 2])])
+
+  expect(await within(dialog).findAllByRole('button', { name: /^Remove photo/ })).toHaveLength(2)
+  expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument()
+})
+
+it('keeps the dialog open and the photos locked while the expense and its photos are being sent', async () => {
+  const photos = fakePhotoStore()
+  const { ui } = setupExpenses(photos)
+  const dialog = await openAddExpense(ui)
+  await ui.type(within(dialog).getByLabelText('Title'), 'Tyres')
+  await ui.type(within(dialog).getByLabelText('Amount'), '120000')
+  await ui.upload(library(dialog), photo('a.png', [1, 2, 3]))
+  expect(await within(dialog).findAllByRole('button', { name: /^Remove photo/ })).toHaveLength(1)
+
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => (release = resolve))
+  server.use(
+    http.put('/media/expenses/:logId/photos', async () => {
+      await gate
+      return HttpResponse.json({ id: 'img1', url: '/media/img1' })
+    }),
+  )
+  await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
+
+  await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Add photos' })).toBeDisabled())
+  expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled()
+  await ui.keyboard('{Escape}')
+  expect(screen.getByRole('dialog', { name: 'Add expense' })).toBeInTheDocument()
+
+  release()
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+})
+
+it('lets the failed photos be retried again when the refresh after a retry fails too', async () => {
+  const photos = fakePhotoStore()
+  photos.state.failWith = { key: 'photo.tooMany', args: { max: 10 } }
+  const { ui } = setupExpenses(photos)
+  const dialog = await openAddExpense(ui)
+  await ui.type(within(dialog).getByLabelText('Title'), 'Tyres')
+  await ui.type(within(dialog).getByLabelText('Amount'), '120000')
+  await ui.upload(library(dialog), photo())
+  await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
+  await within(dialog).findByText('Photos not sent yet: 1.')
+
+  server.use(http.post('/graphql', () => new HttpResponse(null, { status: 500 })))
+  await ui.click(within(dialog).getByRole('button', { name: 'Try again' }))
+
+  await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Try again' })).toBeEnabled())
+  expect(photos.state.puts).toHaveLength(2)
 })
