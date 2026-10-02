@@ -1,3 +1,5 @@
+using Tankstat.Domain.Photos;
+
 namespace Tankstat.Domain.Images;
 
 /// <summary>
@@ -12,4 +14,8 @@ public static class ImageFolders
     public static string Vehicle(Guid vehicleId) => $"vehicles/{vehicleId:N}";
 
     public static string VehiclePicture(Guid vehicleId) => $"{Vehicle(vehicleId)}/picture";
+
+    /// <summary>The photos of one log: <c>vehicles/&lt;id&gt;/expenses/&lt;logId&gt;</c> or <c>.../refuelings/&lt;logId&gt;</c>.</summary>
+    public static string LogPhotos(Guid vehicleId, LogType logType, Guid logId) =>
+        $"{Vehicle(vehicleId)}/{(logType == LogType.Expense ? "expenses" : "refuelings")}/{logId:N}";
 }

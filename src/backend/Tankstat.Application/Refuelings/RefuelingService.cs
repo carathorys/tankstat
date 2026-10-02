@@ -1,11 +1,13 @@
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Odometers;
+using Tankstat.Application.Photos;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
+using Tankstat.Domain.Photos;
 using Tankstat.Domain.Vehicles;
 
 namespace Tankstat.Application.Refuelings;
@@ -22,7 +24,7 @@ public sealed record RefuelingInput(DateOnly Date, decimal Volume, decimal Total
 /// add, change, trash and restore; only Delete may delete permanently.
 /// </summary>
 public sealed class RefuelingService(
-    IVehicleRepository vehicles, IRefuelingRepository refuelings, AccessService access, OdometerService odometer, TimeProvider clock)
+    IVehicleRepository vehicles, IRefuelingRepository refuelings, AccessService access, OdometerService odometer, LogPhotoService photos, TimeProvider clock)
 {
     /// <summary>Logs may be dated today in any time zone, but not further ahead.</summary>
     private DateOnly LatestAllowedDate => DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime).AddDays(1);
@@ -117,8 +119,12 @@ public sealed class RefuelingService(
         await refuelings.CountDeletedAsync(await access.LogScopeAsync(AccessLevel.Delete, ct), ct);
 
     /// <summary>Permanently removes the trashed logs the user has Delete access to. Returns how many were removed.</summary>
-    public async Task<int> EmptyTrashAsync(CancellationToken ct) =>
-        await refuelings.PurgeAsync(await access.LogScopeAsync(AccessLevel.Delete, ct), ct);
+    public async Task<int> EmptyTrashAsync(CancellationToken ct)
+    {
+        var purged = await refuelings.PurgeAsync(await access.LogScopeAsync(AccessLevel.Delete, ct), ct);
+        await photos.DeleteFilesAsync(LogType.Refueling, purged, ct); // their photos go with them
+        return purged.Count;
+    }
 
     /// <summary>What the current user may do with a vehicle's logs (the UI shows the matching buttons).</summary>
     public async Task<AccessLevel> LevelForVehicleAsync(Guid vehicleId, CancellationToken ct)

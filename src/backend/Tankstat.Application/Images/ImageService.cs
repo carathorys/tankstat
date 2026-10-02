@@ -1,5 +1,6 @@
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Photos;
 using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain;
@@ -21,13 +22,13 @@ public sealed record ImageContent(Stream Content, string ContentType, long SizeB
 /// names), whoever can see the vehicle for vehicle pictures.
 /// </summary>
 public sealed class ImageService(
-    IImageStore store, IImageRepository images, IUserRepository users, IVehicleRepository vehicles, AccessService access, TimeProvider clock)
+    IImageStore store, IImageRepository images, IUserRepository users, IVehicleRepository vehicles, AccessService access, LogPhotoAccess logPhotos, TimeProvider clock)
 {
     public async Task<Guid> SetAvatarAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
     {
         var user = await CurrentUserAsync(ct);
         var previous = user.AvatarImageId;
-        var id = await SaveAsync(data, ImageFolders.Avatar(user.Id), ct);
+        var id = await StoreAsync(data, ImageFolders.Avatar(user.Id), ct);
 
         user.SetAvatar(id);
         await users.UpdateAsync(user, ct);
@@ -48,7 +49,7 @@ public sealed class ImageService(
     {
         var vehicle = await EditableVehicleAsync(vehicleId, ct);
         var previous = vehicle.PictureImageId;
-        var id = await SaveAsync(data, ImageFolders.VehiclePicture(vehicle.Id), ct);
+        var id = await StoreAsync(data, ImageFolders.VehiclePicture(vehicle.Id), ct);
 
         vehicle.SetPicture(id);
         await vehicles.UpdateAsync(vehicle, ct);
@@ -89,9 +90,14 @@ public sealed class ImageService(
     public async Task DeleteVehicleFilesAsync(IEnumerable<Guid> vehicleIds, IEnumerable<Guid> legacyImageIds, CancellationToken ct)
     {
         await DeleteAsync(legacyImageIds, ct);
-        foreach (var vehicleId in vehicleIds)
+        await DeleteFoldersAsync(vehicleIds.Select(ImageFolders.Vehicle), ct);
+    }
+
+    /// <summary>Removes folders with every file and row below them.</summary>
+    public async Task DeleteFoldersAsync(IEnumerable<string> folders, CancellationToken ct)
+    {
+        foreach (var folder in folders)
         {
-            var folder = ImageFolders.Vehicle(vehicleId);
             await images.RemoveFolderAsync(folder, ct);
             await store.DeleteFolderAsync(folder, ct);
         }
@@ -100,8 +106,8 @@ public sealed class ImageService(
     private async Task<bool> CanSeeAsync(Guid imageId, Principal principal, CancellationToken ct)
     {
         if (await users.FindByAvatarImageAsync(imageId, ct) is not null) return true;
-        if (await vehicles.FindByPictureImageAsync(imageId, ct) is not { } vehicle) return false;
-        return await access.VehicleLevelAsync(vehicle, ct) >= AccessLevel.View;
+        if (await vehicles.FindByPictureImageAsync(imageId, ct) is { } vehicle) return await access.VehicleLevelAsync(vehicle, ct) >= AccessLevel.View;
+        return await logPhotos.CanSeeImageAsync(imageId, ct);
     }
 
     private async Task<User> CurrentUserAsync(CancellationToken ct)
@@ -121,7 +127,7 @@ public sealed class ImageService(
     }
 
     /// <summary>Validates, then writes the file first and the row second; a failure in between removes the file again.</summary>
-    private async Task<Guid> SaveAsync(ReadOnlyMemory<byte> data, string folder, CancellationToken ct)
+    public async Task<Guid> StoreAsync(ReadOnlyMemory<byte> data, string folder, CancellationToken ct)
     {
         var contentType = ImageFormat.Detect(data.Span);
         var image = StoredImage.Create(Guid.NewGuid(), contentType, data.Length, clock.GetUtcNow(), folder);

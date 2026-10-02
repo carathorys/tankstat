@@ -1,6 +1,8 @@
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using Tankstat.Application.Access;
+using Tankstat.Application.Photos;
+using Tankstat.Domain.Photos;
 using Tankstat.Application.Expenses;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Odometers;
@@ -82,15 +84,17 @@ internal sealed class ExpenseRepository(IDbContextFactory<AppDbContext> dbFactor
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task<int> PurgeAsync(OwnerScope scope, CancellationToken ct)
+    public async Task<PurgedLogs> PurgeAsync(OwnerScope scope, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var doomed = await Trashed(db, scope).ToListAsync(ct);
+        var ids = doomed.Select(e => e.Id).ToList();
+        db.LogPhotos.RemoveRange(await db.LogPhotos.Where(p => p.LogType == LogType.Expense && ids.Contains(p.LogId)).ToListAsync(ct));
         db.Expenses.RemoveRange(doomed);
         db.OdometerReadings.RemoveRange(doomed.Where(e => e.OdometerReading is not null).Select(e => e.OdometerReading!));
         db.Costs.RemoveRange(doomed.Select(e => e.Cost));
         await db.SaveChangesAsync(ct);
-        return doomed.Count;
+        return new PurgedLogs(doomed.Count, doomed.Select(e => (e.VehicleId, e.Id)).ToList());
     }
 
     private static IQueryable<Expense> Trashed(AppDbContext db, OwnerScope scope) =>

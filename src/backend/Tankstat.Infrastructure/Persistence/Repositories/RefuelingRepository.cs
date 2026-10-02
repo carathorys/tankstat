@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Tankstat.Application.Access;
+using Tankstat.Application.Photos;
+using Tankstat.Domain.Photos;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Vehicles;
@@ -81,15 +83,17 @@ internal sealed class RefuelingRepository(IDbContextFactory<AppDbContext> dbFact
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task<int> PurgeAsync(OwnerScope scope, CancellationToken ct)
+    public async Task<PurgedLogs> PurgeAsync(OwnerScope scope, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var doomed = await Trashed(db, scope).ToListAsync(ct);
+        var ids = doomed.Select(r => r.Id).ToList();
+        db.LogPhotos.RemoveRange(await db.LogPhotos.Where(p => p.LogType == LogType.Refueling && ids.Contains(p.LogId)).ToListAsync(ct));
         db.Refuelings.RemoveRange(doomed); // the dependents first, then the reading and cost that went with each log
         db.OdometerReadings.RemoveRange(doomed.Select(r => r.OdometerReading));
         db.Costs.RemoveRange(doomed.Select(r => r.Cost));
         await db.SaveChangesAsync(ct);
-        return doomed.Count;
+        return new PurgedLogs(doomed.Count, doomed.Select(r => (r.VehicleId, r.Id)).ToList());
     }
 
     private static IQueryable<Refueling> Trashed(AppDbContext db, OwnerScope scope) =>

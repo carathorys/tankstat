@@ -1,4 +1,5 @@
 using Tankstat.Application.Access;
+using Tankstat.Application.Photos;
 using Tankstat.Domain.Vehicles;
 
 namespace Tankstat.Application.Refuelings;
@@ -28,6 +29,6 @@ public interface IRefuelingRepository
     Task AddAsync(Refueling refueling, CancellationToken ct);
     Task UpdateAsync(Refueling refueling, CancellationToken ct);
 
-    /// <summary>Physically removes the trashed logs in scope. Returns how many.</summary>
-    Task<int> PurgeAsync(OwnerScope scope, CancellationToken ct);
+    /// <summary>Physically removes the trashed logs in scope, with their photo rows. Returns which ones, so their photo files can be removed.</summary>
+    Task<PurgedLogs> PurgeAsync(OwnerScope scope, CancellationToken ct);
 }

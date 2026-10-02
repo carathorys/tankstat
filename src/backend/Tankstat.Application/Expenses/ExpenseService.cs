@@ -1,11 +1,13 @@
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Odometers;
+using Tankstat.Application.Photos;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
+using Tankstat.Domain.Photos;
 using Tankstat.Domain.Vehicles;
 
 namespace Tankstat.Application.Expenses;
@@ -19,7 +21,7 @@ public sealed record ExpenseInput(DateOnly Date, string Title, string? Category,
 /// Edit may add, change, trash and restore; only Delete may delete permanently.
 /// </summary>
 public sealed class ExpenseService(
-    IVehicleRepository vehicles, IExpenseRepository expenses, AccessService access, OdometerService odometer, TimeProvider clock)
+    IVehicleRepository vehicles, IExpenseRepository expenses, AccessService access, OdometerService odometer, LogPhotoService photos, TimeProvider clock)
 {
     private DateOnly LatestAllowedDate => DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime).AddDays(1);
 
@@ -95,8 +97,12 @@ public sealed class ExpenseService(
         await expenses.CountDeletedAsync(await access.LogScopeAsync(AccessLevel.Delete, ct), ct);
 
     /// <summary>Permanently removes the trashed expenses the user has Delete access to. Returns how many were removed.</summary>
-    public async Task<int> EmptyTrashAsync(CancellationToken ct) =>
-        await expenses.PurgeAsync(await access.LogScopeAsync(AccessLevel.Delete, ct), ct);
+    public async Task<int> EmptyTrashAsync(CancellationToken ct)
+    {
+        var purged = await expenses.PurgeAsync(await access.LogScopeAsync(AccessLevel.Delete, ct), ct);
+        await photos.DeleteFilesAsync(LogType.Expense, purged, ct); // their photos go with them
+        return purged.Count;
+    }
 
     private async Task<Vehicle?> VisibleVehicleAsync(Guid vehicleId, CancellationToken ct)
     {

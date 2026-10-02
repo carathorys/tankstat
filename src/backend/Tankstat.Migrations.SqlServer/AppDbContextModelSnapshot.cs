@@ -248,6 +248,48 @@ namespace Tankstat.Migrations.SqlServer
                     b.ToTable("OdometerReadings", (string)null);
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Photos.LogPhoto", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ImageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("LogId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("LogType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ImageId")
+                        .IsUnique();
+
+                    b.HasIndex("OwnerId");
+
+                    b.HasIndex("VehicleId");
+
+                    b.HasIndex("LogType", "LogId");
+
+                    b.ToTable("LogPhotos", (string)null);
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Users.PasswordResetToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -528,6 +570,15 @@ namespace Tankstat.Migrations.SqlServer
                 });
 
             modelBuilder.Entity("Tankstat.Domain.Odometers.OdometerReading", b =>
+                {
+                    b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
+                        .WithMany()
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Photos.LogPhoto", b =>
                 {
                     b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
                         .WithMany()

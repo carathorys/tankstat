@@ -258,7 +258,7 @@ public class LogsAndReadingsTests
 
         var purged = await repo.PurgeAsync(OwnerScope.Of([Owner]), default);
 
-        Assert.Equal(1, purged);
+        Assert.Equal(1, purged.Count);
         Assert.Equal(kept.Id, Assert.Single(await repo.ListForVehicleAsync(car.Id, new RefuelingQuery(), default)).Id);
         await using var ctx = await db.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
         Assert.Equal([kept.OdometerReadingId], await ctx.OdometerReadings.IgnoreQueryFilters().Select(r => r.Id).ToListAsync());
@@ -275,7 +275,7 @@ public class LogsAndReadingsTests
         log.MarkDeleted(DateTimeOffset.UtcNow);
         await repo.UpdateAsync(log, default);
 
-        Assert.Equal(0, await repo.PurgeAsync(OwnerScope.Of([Guid.NewGuid()]), default));
+        Assert.Equal(0, (await repo.PurgeAsync(OwnerScope.Of([Guid.NewGuid()]), default)).Count);
         Assert.NotNull(await repo.FindIncludingDeletedAsync(log.Id, default));
     }
 
