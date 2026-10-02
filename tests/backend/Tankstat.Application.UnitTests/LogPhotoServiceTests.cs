@@ -76,6 +76,26 @@ public class LogPhotoServiceTests
     }
 
     [Fact]
+    public async Task UploadsAtTheSameMoment_CannotPushALogOverTheLimit()
+    {
+        var s = await Setup();
+        for (var i = 0; i < LogPhoto.MaxPerLog - 1; i++) await s.W.Photos.AddAsync(LogType.Expense, s.Expense.Id, Jpeg((byte)i), default);
+        // while this upload is being saved, another one gets in first: both passed the count (9), the log would end up with 11
+        s.W.LogPhotos.AfterAdd = mine =>
+        {
+            s.W.LogPhotos.AfterAdd = null;
+            s.W.LogPhotos.Items.Insert(0, LogPhoto.Create(mine.OwnerId, mine.VehicleId, LogType.Expense, mine.LogId, Guid.NewGuid(), mine.CreatedById, mine.CreatedAt.AddSeconds(-1)));
+            s.W.LogPhotos.Items.Insert(0, LogPhoto.Create(mine.OwnerId, mine.VehicleId, LogType.Expense, mine.LogId, Guid.NewGuid(), mine.CreatedById, mine.CreatedAt.AddSeconds(-1)));
+        };
+
+        var error = await Assert.ThrowsAsync<DomainException>(() => s.W.Photos.AddAsync(LogType.Expense, s.Expense.Id, Jpeg(99), default));
+
+        Assert.Equal("photo.tooMany", error.Key);
+        Assert.Equal(LogPhoto.MaxPerLog + 1, s.W.LogPhotos.Items.Count); // the two that got in first stay; ours was taken back
+        Assert.Equal(LogPhoto.MaxPerLog - 1, s.W.ImageStore.Files.Count); // and its file is gone again
+    }
+
+    [Fact]
     public async Task OnlyPicturesAreAccepted_AndNothingIsLeftBehind()
     {
         var s = await Setup();

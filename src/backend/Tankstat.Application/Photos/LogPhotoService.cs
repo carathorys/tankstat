@@ -22,13 +22,22 @@ public sealed class LogPhotoService(
     {
         var log = await logs.EditableAsync(logType, logId, ct);
         var principal = await access.RequirePrincipalAsync(ct);
-        if (await photos.CountForLogAsync(logType, logId, ct) >= LogPhoto.MaxPerLog)
-            throw new DomainException("photo.tooMany", $"A log can have at most {LogPhoto.MaxPerLog} photos.", new { Max = LogPhoto.MaxPerLog });
+        if (await photos.CountForLogAsync(logType, logId, ct) >= LogPhoto.MaxPerLog) throw TooMany();
 
         var imageId = await images.StoreAsync(data, ImageFolders.LogPhotos(log.Vehicle.Id, logType, logId), ct);
         try
         {
-            await photos.AddAsync(LogPhoto.Create(log.Vehicle.OwnerId, log.Vehicle.Id, logType, logId, imageId, principal.Id, clock.GetUtcNow()), ct);
+            var photo = LogPhoto.Create(log.Vehicle.OwnerId, log.Vehicle.Id, logType, logId, imageId, principal.Id, clock.GetUtcNow());
+            await photos.AddAsync(photo, ct);
+
+            // The count above and the insert are not one step, so uploads at the same moment can all pass the check. Look again: the first
+            // MaxPerLog photos (in the order they are listed) stay, anything after them is taken back, whichever request notices.
+            var kept = (await photos.ListForLogAsync(logType, logId, ct)).Take(LogPhoto.MaxPerLog);
+            if (kept.All(p => p.ImageId != imageId))
+            {
+                await photos.RemoveAsync(photo, ct);
+                throw TooMany();
+            }
         }
         catch
         {
@@ -37,6 +46,9 @@ public sealed class LogPhotoService(
         }
         return imageId;
     }
+
+    private static DomainException TooMany() =>
+        new("photo.tooMany", $"A log can have at most {LogPhoto.MaxPerLog} photos.", new { Max = LogPhoto.MaxPerLog });
 
     public async Task RemoveAsync(LogType logType, Guid logId, Guid imageId, CancellationToken ct)
     {
