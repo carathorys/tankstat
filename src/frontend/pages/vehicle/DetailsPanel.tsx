@@ -1,10 +1,14 @@
 import { useMutation } from '@apollo/client/react'
-import { Button, DataList, Flex, Heading } from '@radix-ui/themes'
+import { Button, DataList, Flex, Heading, Text } from '@radix-ui/themes'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router'
+import { ConfirmDialog } from '../../components/ConfirmDialog.tsx'
 import { ImagePicker } from '../../components/ImagePicker.tsx'
 import { UserChip } from '../../components/UserAvatar.tsx'
 import { VehiclePicture } from '../../components/VehiclePicture.tsx'
-import { UpdateVehicleDocument, type VehicleDetailsQuery } from '../../gql/generated.ts'
+import { DeleteVehicleDocument, UpdateVehicleDocument, type VehicleDetailsQuery } from '../../gql/generated.ts'
+import { ErrorMessage } from '../../messages.tsx'
 import { vehiclePicturePath } from '../../pictures/upload.ts'
 import { VehicleFormDialog } from '../../VehicleFormDialog.tsx'
 
@@ -14,6 +18,19 @@ export function DetailsPanel({ vehicle, onChanged }: { vehicle: Vehicle; onChang
   const { t } = useTranslation()
   const none = t('common.none')
   const [updateVehicle] = useMutation(UpdateVehicleDocument, { refetchQueries: ['VehicleDetails', 'Vehicles'], awaitRefetchQueries: true })
+  const [deleteVehicle] = useMutation(DeleteVehicleDocument, { refetchQueries: ['Welcome', 'Vehicles', 'Trash'] })
+  const navigate = useNavigate()
+  const [deleteError, setDeleteError] = useState<unknown>()
+
+  async function moveToTrash() {
+    setDeleteError(undefined)
+    try {
+      await deleteVehicle({ variables: { id: vehicle.id } })
+      void navigate('/') // the vehicle is in the trash now; its page would only say it does not exist
+    } catch (e) {
+      setDeleteError(e)
+    }
+  }
 
   return (
     <Flex direction="column" gap="5">
@@ -59,6 +76,26 @@ export function DetailsPanel({ vehicle, onChanged }: { vehicle: Vehicle; onChang
               path={vehiclePicturePath(vehicle.id)}
               maxEdge={1280}
               onChanged={onChanged}
+            />
+          </section>
+          <section aria-labelledby="trash-heading">
+            <Heading as="h2" size="4" id="trash-heading" mb="2">
+              {t('vehicles.dangerZone')}
+            </Heading>
+            <Text as="p" size="2" color="gray" mb="3">
+              {t('vehicles.trashDescription')}
+            </Text>
+            {deleteError !== undefined && <ErrorMessage error={deleteError} />}
+            <ConfirmDialog
+              trigger={
+                <Button size="3" variant="soft" color="red">
+                  {t('vehicles.moveToTrash')}
+                </Button>
+              }
+              title={t('vehicles.trashTitle', { name: vehicle.name })}
+              description={t('vehicles.trashDescription')}
+              confirmLabel={t('vehicles.trashConfirm')}
+              onConfirm={() => void moveToTrash()}
             />
           </section>
         </>

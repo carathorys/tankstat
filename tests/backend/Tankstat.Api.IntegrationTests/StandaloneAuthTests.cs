@@ -45,7 +45,7 @@ public class StandaloneAuthTests : IDisposable
         Assert.Equal(System.Text.Json.JsonValueKind.Null, session.GetProperty("session").GetProperty("user").ValueKind);
         Assert.Empty(session.GetProperty("notices").EnumerateArray());
 
-        Assert.Equal("UNAUTHENTICATED", (await c.Gql("{ vehicles { id } }")).ErrorCode());
+        Assert.Equal("UNAUTHENTICATED", (await c.Gql("{ myVehicles { id } }")).ErrorCode());
         Assert.Equal("UNAUTHENTICATED", (await c.Gql("mutation { addVehicle(input: { name: \"x\", fuelType: PETROL }) { id } }")).ErrorCode());
         Assert.Equal("UNAUTHENTICATED", (await c.Gql("{ users { id } }")).ErrorCode());
     }
@@ -57,11 +57,11 @@ public class StandaloneAuthTests : IDisposable
 
         var user = await c.LoginAs(Admin, AdminPassword);
         Assert.True(user.GetProperty("isAdmin").GetBoolean());
-        Assert.Contains("vehicles", (await c.Gql("{ vehicles { id } }")).Data().ToString());
+        Assert.Contains("myVehicles", (await c.Gql("{ myVehicles { id } }")).Data().ToString());
         Assert.Equal(Admin, (await c.Gql("{ session { user { email } } }")).Data().GetProperty("session").GetProperty("user").GetProperty("email").GetString());
 
         Assert.True((await c.Gql("mutation { logout }")).Data().GetProperty("logout").GetBoolean());
-        Assert.Equal("UNAUTHENTICATED", (await c.Gql("{ vehicles { id } }")).ErrorCode());
+        Assert.Equal("UNAUTHENTICATED", (await c.Gql("{ myVehicles { id } }")).ErrorCode());
     }
 
     [Fact]
@@ -74,7 +74,7 @@ public class StandaloneAuthTests : IDisposable
 
         Assert.Equal("INVALID_CREDENTIALS", wrong.ErrorCode());
         Assert.Equal(wrong.GetProperty("errors")[0].GetProperty("message").GetString(), unknown.GetProperty("errors")[0].GetProperty("message").GetString());
-        Assert.Equal("UNAUTHENTICATED", (await c.Gql("{ vehicles { id } }")).ErrorCode());
+        Assert.Equal("UNAUTHENTICATED", (await c.Gql("{ myVehicles { id } }")).ErrorCode());
     }
 
     [Fact]
@@ -115,13 +115,13 @@ public class StandaloneAuthTests : IDisposable
         await alice.Gql("mutation { addVehicle(input: { name: \"Alice car\", fuelType: DIESEL }) { id } }");
         await bob.Gql("mutation { addVehicle(input: { name: \"Bob car\", fuelType: PETROL }) { id } }");
 
-        Assert.Equal(["Alice car"], Names(await alice.Gql("{ vehicles { name } }")));
-        Assert.Equal(["Bob car"], Names(await bob.Gql("{ vehicles { name } }")));
-        Assert.Equal(["Alice car", "Bob car"], Names(await admin.Gql("{ vehicles { name } }")).Order());
+        Assert.Equal(["Alice car"], Names(await alice.Gql("{ myVehicles { name } }")));
+        Assert.Equal(["Bob car"], Names(await bob.Gql("{ myVehicles { name } }")));
+        Assert.Equal(["Alice car", "Bob car"], Names(await admin.Gql("{ myVehicles { name } }")).Order());
     }
 
     private static List<string> Names(System.Text.Json.JsonElement body) =>
-        body.Data().GetProperty("vehicles").EnumerateArray().Select(v => v.GetProperty("name").GetString()!).ToList();
+        body.Data().GetProperty("myVehicles").EnumerateArray().Select(v => v.GetProperty("name").GetString()!).ToList();
 
     [Fact]
     public async Task InvisibleVehicle_CannotBeReadOrChangedByID()
@@ -157,20 +157,20 @@ public class StandaloneAuthTests : IDisposable
 
         // 1. per-user grant: view only
         await admin.Gql("mutation($i: SetAccessGrantInput!) { setAccessGrant(input: $i) }", new { i = new { ownerId = aliceId, granteeId = bobId, level = "VIEW" } });
-        Assert.Equal(["Shared"], Names(await bob.Gql("{ vehicles { name } }")));
+        Assert.Equal(["Shared"], Names(await bob.Gql("{ myVehicles { name } }")));
         Assert.Equal("FORBIDDEN", (await bob.Gql(Log, input)).ErrorCode());
 
         // 2. upgrade the grant to edit
         await admin.Gql("mutation($i: SetAccessGrantInput!) { setAccessGrant(input: $i) }", new { i = new { ownerId = aliceId, granteeId = bobId, level = "EDIT" } });
         Assert.Null((await bob.Gql(Log, input)).ErrorCode());
-        var refuelingCount = (await alice.Gql("{ vehicles { refuelingCount } }")).Data().GetProperty("vehicles")[0].GetProperty("refuelingCount").GetInt32();
+        var refuelingCount = (await alice.Gql("{ myVehicles { refuelingCount } }")).Data().GetProperty("myVehicles")[0].GetProperty("refuelingCount").GetInt32();
         Assert.Equal(1, refuelingCount); // belongs to the vehicle owner, so Alice sees it
 
         // 3. revoke, then open everything for viewing through the instance default
         await admin.Gql("mutation($i: SetAccessGrantInput!) { setAccessGrant(input: $i) }", new { i = new { ownerId = aliceId, granteeId = bobId, level = "NONE" } });
-        Assert.Empty(Names(await bob.Gql("{ vehicles { name } }")));
+        Assert.Empty(Names(await bob.Gql("{ myVehicles { name } }")));
         await admin.Gql("mutation { setDefaultAccess(level: VIEW) { defaultLevelForOthers } }");
-        Assert.Equal(["Shared"], Names(await bob.Gql("{ vehicles { name } }")));
+        Assert.Equal(["Shared"], Names(await bob.Gql("{ myVehicles { name } }")));
         Assert.Equal("FORBIDDEN", (await bob.Gql(Log, input)).ErrorCode());
     }
 
@@ -190,14 +190,14 @@ public class StandaloneAuthTests : IDisposable
         var edit = new { i = new { id, name = "Bob edit", fuelType = "DIESEL" } };
 
         await admin.Gql(Grant, new { i = new { ownerId = aliceId, granteeId = bobId, level = "VIEW" } });
-        var seen = (await bob.Gql("{ vehicles { canEdit owner { displayName } } }")).Data().GetProperty("vehicles")[0];
+        var seen = (await bob.Gql("{ myVehicles { canEdit owner { displayName } } }")).Data().GetProperty("myVehicles")[0];
         Assert.False(seen.GetProperty("canEdit").GetBoolean());
         Assert.Equal("alice@example.com", seen.GetProperty("owner").GetProperty("displayName").GetString());
         Assert.Equal("FORBIDDEN", (await bob.Gql(Edit, edit)).ErrorCode());
         Assert.Equal("FORBIDDEN", (await bob.Gql(Delete, new { id })).ErrorCode());
 
         await admin.Gql(Grant, new { i = new { ownerId = aliceId, granteeId = bobId, level = "EDIT" } });
-        Assert.True((await bob.Gql("{ vehicles { canEdit } }")).Data().GetProperty("vehicles")[0].GetProperty("canEdit").GetBoolean());
+        Assert.True((await bob.Gql("{ myVehicles { canEdit } }")).Data().GetProperty("myVehicles")[0].GetProperty("canEdit").GetBoolean());
         Assert.Equal("Bob edit", (await bob.Gql(Edit, edit)).Data().GetProperty("updateVehicle").GetProperty("name").GetString());
         await bob.Gql(Delete, new { id });
 
@@ -255,8 +255,8 @@ public class StandaloneAuthTests : IDisposable
             new { i = new { currentPassword = "alice-password-1", newPassword = "alice-new-password" } });
 
         Assert.True(changed.Data().GetProperty("changePassword").GetBoolean());
-        Assert.Null((await first.Gql("{ vehicles { id } }")).ErrorCode());
-        Assert.Equal("UNAUTHENTICATED", (await second.Gql("{ vehicles { id } }")).ErrorCode());
+        Assert.Null((await first.Gql("{ myVehicles { id } }")).ErrorCode());
+        Assert.Equal("UNAUTHENTICATED", (await second.Gql("{ myVehicles { id } }")).ErrorCode());
         await _app.NewClient().LoginAs("alice@example.com", "alice-new-password");
     }
 
@@ -277,11 +277,11 @@ public class StandaloneAuthTests : IDisposable
         var admin = await AdminClient();
         var aliceId = await CreateUserWithPassword(admin, "alice@example.com", "alice-password-1");
         var alice = _app.NewClient(); await alice.LoginAs("alice@example.com", "alice-password-1");
-        Assert.Null((await alice.Gql("{ vehicles { id } }")).ErrorCode());
+        Assert.Null((await alice.Gql("{ myVehicles { id } }")).ErrorCode());
 
         await admin.Gql("mutation($id: UUID!) { setUserDisabled(userId: $id, disabled: true) { isDisabled } }", new { id = aliceId });
 
-        Assert.Equal("UNAUTHENTICATED", (await alice.Gql("{ vehicles { id } }")).ErrorCode());
+        Assert.Equal("UNAUTHENTICATED", (await alice.Gql("{ myVehicles { id } }")).ErrorCode());
         Assert.Equal("INVALID_CREDENTIALS", (await _app.NewClient().Gql("mutation($i: LoginInput!) { login(input: $i) { id } }",
             new { i = new { email = "alice@example.com", password = "alice-password-1" } })).ErrorCode());
     }

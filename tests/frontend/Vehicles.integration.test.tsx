@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import { server } from './server.ts'
-import { fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler } from './mocks.tsx'
+import { fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, adminSession } from './mocks.tsx'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => server.resetHandlers())
@@ -11,7 +11,7 @@ afterAll(() => server.close())
 
 function setup(vehicles = [fakeVehicle(), fakeVehicle({ id: 'v2', name: 'Bike', licensePlate: null, fuelType: 'PETROL' })]) {
   const backend = fakeVehicleBackend(vehicles)
-  server.use(sessionHandler('NONE', () => null), healthHandler, ...backend.handlers)
+  server.use(adminSession(), healthHandler, ...backend.handlers)
   renderWithApollo(<App />, '/vehicles')
   return { ...backend, ui: userEvent.setup() }
 }

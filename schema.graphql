@@ -5,6 +5,9 @@ schema {
 
 type Query {
   health: HealthReport! @cost(weight: "10")
+  myVehicles(search: String, skip: Int! = 0, take: Int! = 50): [Vehicle!]!
+    @cost(weight: "10")
+  myVehicleCount(search: String): Int! @cost(weight: "10")
   vehicles(
     orderBy: VehicleSortField! = NAME
     direction: SortDirection! = ASC
@@ -108,6 +111,13 @@ type Mutation {
   deleteExpense(id: UUID!): Expense! @cost(weight: "10")
   restoreExpense(id: UUID!): Expense! @cost(weight: "10")
   emptyExpenseTrash: Int! @cost(weight: "10")
+  addRecurringExpense(input: AddRecurringExpenseInput!): RecurringExpenseInfo!
+    @cost(weight: "10")
+  updateRecurringExpense(input: UpdateRecurringExpenseInput!): RecurringExpenseInfo!
+    @cost(weight: "10")
+  deleteRecurringExpense(id: UUID!): Boolean! @cost(weight: "10")
+  markRecurringExpenseDone(input: MarkRecurringExpenseDoneInput!): RecurringExpenseInfo!
+    @cost(weight: "10")
   confirmImport(input: ConfirmImportInput!): ImportResultInfo!
     @cost(weight: "10")
   saveVehicleChart(input: SaveChartInput!): VehicleChart! @cost(weight: "10")
@@ -247,6 +257,32 @@ type PasswordResetLink {
   emailSent: Boolean!
 }
 
+type RecurrenceStatusInfo {
+  state: RecurrenceState!
+  limit: RecurrenceLimit
+  dueDate: LocalDate
+  dueOdometer: Long
+  daysLeft: Int
+  distanceLeft: Long
+}
+
+type RecurringExpenseInfo {
+  id: UUID!
+  vehicleId: UUID!
+  title: String!
+  category: String
+  note: String
+  kind: RecurrenceKind!
+  intervalMonths: Int
+  intervalDistance: Long
+  lastDoneDate: LocalDate!
+  lastDoneOdometer: Long
+  warnDays: Int!
+  warnDistance: Long!
+  createdAt: DateTime!
+  status: RecurrenceStatusInfo!
+}
+
 type Refueling {
   id: UUID!
   ownerId: UUID!
@@ -313,6 +349,7 @@ type Vehicle {
   pictureUrl: String
   refuelingCount: Int! @cost(weight: "10")
   expenseCount: Int! @cost(weight: "10")
+  recurring: [RecurringExpenseInfo!]! @cost(weight: "10")
   summary: VehicleSummary @cost(weight: "10")
 }
 
@@ -360,6 +397,20 @@ input AddExpenseInput {
   currency: String
   odometer: Long
   note: String
+}
+
+input AddRecurringExpenseInput {
+  vehicleId: UUID!
+  title: String!
+  category: String
+  note: String
+  kind: RecurrenceKind!
+  intervalMonths: Int
+  intervalDistance: Long
+  lastDoneDate: LocalDate
+  lastDoneOdometer: Long
+  warnDays: Int
+  warnDistance: Long
 }
 
 input AddVehicleInput {
@@ -420,6 +471,15 @@ input LogRefuelingInput {
   note: String
 }
 
+input MarkRecurringExpenseDoneInput {
+  id: UUID!
+  date: LocalDate!
+  odometer: Long
+  createExpense: Boolean!
+  amount: Decimal
+  currency: String
+}
+
 input MeasurementUnitsInput {
   distance: DistanceUnit!
   volume: VolumeUnit!
@@ -466,6 +526,20 @@ input UpdateExpenseInput {
   currency: String
   odometer: Long
   note: String
+}
+
+input UpdateRecurringExpenseInput {
+  id: UUID!
+  title: String!
+  category: String
+  note: String
+  kind: RecurrenceKind!
+  intervalMonths: Int
+  intervalDistance: Long
+  lastDoneDate: LocalDate!
+  lastDoneOdometer: Long
+  warnDays: Int
+  warnDistance: Long
 }
 
 input UpdateRefuelingInput {
@@ -576,6 +650,23 @@ enum FuelType {
 enum NoticeSeverity {
   INFO
   WARNING
+}
+
+enum RecurrenceKind {
+  TIME
+  ODOMETER
+  COMBINED
+}
+
+enum RecurrenceLimit {
+  TIME
+  ODOMETER
+}
+
+enum RecurrenceState {
+  UPCOMING
+  DUE_SOON
+  OVERDUE
 }
 
 enum RefuelingSortField {

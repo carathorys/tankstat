@@ -11,6 +11,7 @@ using Tankstat.Application.Odometers;
 using Tankstat.Application.Sharing;
 using Tankstat.Application.Stats;
 using Tankstat.Domain.Charts;
+using Tankstat.Application.Recurring;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
@@ -18,6 +19,7 @@ using Tankstat.Domain.Access;
 using Tankstat.Domain.Images;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
+using Tankstat.Domain.Recurring;
 using Tankstat.Domain.Users;
 using Tankstat.Domain.Vehicles;
 
@@ -31,16 +33,19 @@ internal sealed class InMemoryVehicles : IVehicleRepository
     public VehicleQuery? LastQuery { get; private set; }
 
     // Sorting itself is the database's job and is tested against the real repository; the fake orders by name.
+    private static bool Matches(Vehicle v, string? search) =>
+        search is null || v.Name.Contains(search, StringComparison.OrdinalIgnoreCase) || (v.LicensePlate?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false);
+
     private IReadOnlyList<Vehicle> Page(IEnumerable<Vehicle> rows, VehicleQuery query)
     {
         LastQuery = query;
-        return rows.OrderBy(v => v.Name, StringComparer.OrdinalIgnoreCase).Skip(query.Skip).Take(query.Take).ToList();
+        return rows.Where(v => Matches(v, query.Search)).OrderBy(v => v.Name, StringComparer.OrdinalIgnoreCase).Skip(query.Skip).Take(query.Take).ToList();
     }
 
     public Task<IReadOnlyList<Vehicle>> ListAsync(OwnerScope scope, VehicleQuery query, CancellationToken ct) =>
         Task.FromResult(Page(Items.Where(v => !v.IsDeleted && scope.Contains(v.OwnerId, v.Id)), query));
-    public Task<int> CountAsync(OwnerScope scope, CancellationToken ct) =>
-        Task.FromResult(Items.Count(v => !v.IsDeleted && scope.Contains(v.OwnerId, v.Id)));
+    public Task<int> CountAsync(OwnerScope scope, string? search, CancellationToken ct) =>
+        Task.FromResult(Items.Count(v => !v.IsDeleted && scope.Contains(v.OwnerId, v.Id) && Matches(v, search)));
     public Task<IReadOnlyList<Vehicle>> ListDeletedAsync(OwnerScope scope, VehicleQuery query, CancellationToken ct) =>
         Task.FromResult(Page(Items.Where(v => v.IsDeleted && scope.Contains(v.OwnerId, v.Id)), query));
     public Task<int> CountDeletedAsync(OwnerScope scope, CancellationToken ct) =>
@@ -120,6 +125,25 @@ internal sealed class InMemoryExpenses : IExpenseRepository
     }
 }
 
+internal sealed class InMemoryRecurring : IRecurringExpenseRepository
+{
+    public List<RecurringExpense> Items { get; } = [];
+    public Task<IReadOnlyList<RecurringExpense>> ListForVehicleAsync(Guid vehicleId, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<RecurringExpense>>(Items.Where(i => i.VehicleId == vehicleId).ToList());
+    public int ListForVehiclesCalls { get; private set; }
+    public Task<IReadOnlyList<RecurringExpense>> ListForVehiclesAsync(IReadOnlyCollection<Guid> vehicleIds, CancellationToken ct)
+    {
+        ListForVehiclesCalls++;
+        return Task.FromResult<IReadOnlyList<RecurringExpense>>(Items.Where(i => vehicleIds.Contains(i.VehicleId)).ToList());
+    }
+    public Task<RecurringExpense?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(i => i.Id == id));
+    public Task AddAsync(RecurringExpense item, CancellationToken ct) { Items.Add(item); return Task.CompletedTask; }
+    /// <summary>When set, <see cref="UpdateAsync"/> throws it (a failing database).</summary>
+    public Exception? FailUpdateWith { get; set; }
+    public Task UpdateAsync(RecurringExpense item, CancellationToken ct) => FailUpdateWith is { } e ? Task.FromException(e) : Task.CompletedTask; // shared references
+    public Task RemoveAsync(RecurringExpense item, CancellationToken ct) { Items.Remove(item); return Task.CompletedTask; }
+}
+
 internal sealed class InMemoryStats(InMemoryRefuelings refuelings, InMemoryExpenses expenses) : IStatsRepository
 {
     public Task<StatsData> LoadAsync(Guid vehicleId, CancellationToken ct)
@@ -158,6 +182,10 @@ internal sealed class InMemoryReadings(InMemoryRefuelings refuelings, InMemoryEx
         Task.FromResult(Live(vehicleId).Where(r => r.Date > date && r.Id != except).OrderBy(r => r.Date).ThenBy(r => r.Value).FirstOrDefault());
     public Task<OdometerReading?> LatestAsync(Guid vehicleId, CancellationToken ct) =>
         Task.FromResult(Live(vehicleId).OrderByDescending(r => r.Date).ThenByDescending(r => r.Value).FirstOrDefault());
+    public Task<IReadOnlyDictionary<Guid, OdometerReading>> LatestForVehiclesAsync(IReadOnlyCollection<Guid> vehicleIds, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyDictionary<Guid, OdometerReading>>(vehicleIds
+            .Select(id => Live(id).OrderByDescending(r => r.Date).ThenByDescending(r => r.Value).FirstOrDefault())
+            .OfType<OdometerReading>().ToDictionary(r => r.VehicleId));
     public Task<bool> AnyAsync(Guid vehicleId, CancellationToken ct) =>
         Task.FromResult(refuelings.Items.Any(r => r.VehicleId == vehicleId) || expenses.Items.Any(e => e.VehicleId == vehicleId && e.OdometerReading is not null));
 }
@@ -353,6 +381,8 @@ internal sealed class World
     public RefuelingService RefuelingService { get; }
     public ExpenseService ExpenseService { get; }
     public StatsService Stats { get; }
+    public InMemoryRecurring Recurring { get; } = new();
+    public RecurringExpenseService RecurringService { get; }
     public ChartService ChartService { get; }
     public ImportService Imports { get; }
     public OdometerService Odometer { get; }
@@ -381,6 +411,7 @@ internal sealed class World
         VehicleService = new VehicleService(Vehicles, Refuelings, Access, Odometer, ImageService, Clock);
         RefuelingService = new RefuelingService(Vehicles, LogGuard, Refuelings, Access, Odometer, Photos, Clock);
         ExpenseService = new ExpenseService(LogGuard, Expenses, Access, Odometer, Photos, Clock);
+        RecurringService = new RecurringExpenseService(LogGuard, Recurring, Access, Odometer, ExpenseService, Clock);
         Imports = new ImportService([new FuelioCsvParser()], ImportSessions, Access, VehicleService, RefuelingService, ExpenseService, Refuelings, Expenses, new VehicleDefaultsOptions { Currency = "HUF" }.Create());
         Stats = new StatsService(Vehicles, new InMemoryStats(Refuelings, Expenses), Access, Clock);
         ChartService = new ChartService(Vehicles, Charts, Access, Clock);

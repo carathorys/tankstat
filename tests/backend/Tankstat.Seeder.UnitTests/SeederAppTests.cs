@@ -243,15 +243,13 @@ public sealed class SeederAppTests : IDisposable
         async Task<JsonElement> Gql(string query, object? variables = null) =>
             await (await client.PostAsJsonAsync("/graphql", new { query, variables })).Content.ReadFromJsonAsync<JsonElement>();
 
-        var counts = (await Gql("{ vehicleCount trashCount }")).GetProperty("data");
-        Assert.Equal(30, counts.GetProperty("vehicleCount").GetInt32());
-        Assert.Equal(4, counts.GetProperty("trashCount").GetInt32());
-
-        var page = (await Gql("{ vehicles(orderBy: REFUELING_COUNT, direction: DESC, take: 5) { refuelingCount canEdit owner { id } } }"))
-            .GetProperty("data").GetProperty("vehicles").EnumerateArray().ToList();
-        Assert.Equal(5, page.Count);
-        Assert.Equal(page.Select(v => v.GetProperty("refuelingCount").GetInt32()).OrderByDescending(x => x), page.Select(v => v.GetProperty("refuelingCount").GetInt32()));
-        Assert.All(page, v => Assert.True(v.GetProperty("canEdit").GetBoolean()));
+        // the paged list is an administrator feature (none exists without authentication), so the home query is used
+        var seeded = (await Gql("{ myVehicles { refuelingCount canEdit owner { id } } trashCount }")).GetProperty("data");
+        var vehicles = seeded.GetProperty("myVehicles").EnumerateArray().ToList();
+        Assert.Equal(30, vehicles.Count);
+        Assert.Equal(4, seeded.GetProperty("trashCount").GetInt32());
+        Assert.Contains(vehicles, v => v.GetProperty("refuelingCount").GetInt32() > 0);
+        Assert.All(vehicles, v => Assert.True(v.GetProperty("canEdit").GetBoolean()));
 
         Assert.Equal(4, (await Gql("mutation { emptyTrash }")).GetProperty("data").GetProperty("emptyTrash").GetInt32());
         Assert.Equal(0, Scalar("select count(*) from Vehicles where DeletedAt is not null"));

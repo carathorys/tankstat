@@ -1,6 +1,6 @@
-# The welcome screen: a card per vehicle the user can see, with the key figures the server calculated.
-query Welcome {
-  vehicles(orderBy: NAME, direction: ASC, skip: 0, take: 60) {
+# The home page: a page of cards (infinite scroll) for the vehicles the user owns or that are shared with them, optionally searched by name or plate, with the key figures the server calculated.
+query Welcome($search: String, $skip: Int!, $take: Int!) {
+  myVehicles(search: $search, skip: $skip, take: $take) {
     id
     name
     licensePlate
@@ -17,6 +17,19 @@ query Welcome {
       displayName
       avatarUrl
     }
+    # What needs attention on the card: the client shows the ones that are due soon or overdue.
+    recurring {
+      id
+      title
+      kind
+      status {
+        state
+        limit
+        dueDate
+        daysLeft
+        distanceLeft
+      }
+    }
     summary {
       lastFillUpDate
       latestOdometer
@@ -32,7 +45,7 @@ query Welcome {
       }
     }
   }
-  vehicleCount
+  myVehicleCount(search: $search)
 }
 
 # A vehicle's dashboard: the key figures and the saved charts (the user's own and the shared ones). Each chart loads its own data.

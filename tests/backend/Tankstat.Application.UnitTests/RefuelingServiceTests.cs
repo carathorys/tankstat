@@ -377,8 +377,8 @@ public class RefuelingServiceTests
         s.W.Current.SignInAs(s.Bob);
 
         // sees the vehicle (it shows up in their list) ...
-        Assert.Same(s.Car, Assert.Single(await s.W.VehicleService.ListAsync(new VehicleQuery(), default)));
-        Assert.Equal(1, await s.W.VehicleService.CountAsync(default));
+        Assert.Same(s.Car, Assert.Single(await s.W.VehicleService.ListMineAsync(default)));
+        Assert.Single(await s.W.VehicleService.ListMineAsync(default));
         Assert.NotNull(await s.W.VehicleService.FindAsync(s.Car.Id, default));
         // ... and its logs
         var log = await Log(s, Input(odometer: 3000));
@@ -418,7 +418,7 @@ public class RefuelingServiceTests
 
         Assert.Null(await s.W.VehicleService.FindAsync(other.Id, default));
         await Assert.ThrowsAsync<NotFoundException>(() => s.W.RefuelingService.LogAsync(other.Id, Input(), default));
-        Assert.Equal(1, await s.W.VehicleService.CountAsync(default));
+        Assert.Single(await s.W.VehicleService.ListMineAsync(default));
     }
 
     [Fact]
@@ -430,7 +430,7 @@ public class RefuelingServiceTests
         s.W.Current.SignInAs(s.Bob);
 
         Assert.Equal(AccessLevel.Delete, await s.W.RefuelingService.LevelForVehicleAsync(s.Car.Id, default)); // the higher of the two
-        Assert.Equal(1, await s.W.VehicleService.CountAsync(default)); // not listed twice
+        Assert.Single(await s.W.VehicleService.ListMineAsync(default)); // not listed twice
     }
 
     [Fact]

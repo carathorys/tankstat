@@ -1,28 +1,43 @@
 import { Badge, Box, Flex, Grid, Heading, Text } from '@radix-ui/themes'
-import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { ChevronRight } from 'lucide-react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { LazySparkline } from '../dashboard/LazySparkline.tsx'
 import type { WelcomeQuery } from '../gql/generated.ts'
 import { useMediaQuery } from '../hooks/useMediaQuery.ts'
 import { useFormat } from '../i18n/format.ts'
 import { CoverLayers } from './CoverLayers.tsx'
+import { useDueText } from '../hooks/useDueText.ts'
+import { RecurringStatusBadge } from './RecurringStatus.tsx'
 import { UserChip } from './UserAvatar.tsx'
 
-type Vehicle = WelcomeQuery['vehicles'][number]
+type Vehicle = WelcomeQuery['myVehicles'][number]
 
 /**
- * A vehicle on the welcome screen: its picture as the background, with the name on it. The key figures and the spending trend flow in on
- * hover or keyboard focus; on a touch screen a tap on the card shows them (tapping the name opens the vehicle). With a mouse the whole
- * card opens the vehicle.
+ * A vehicle on the welcome screen: its picture as the background, with the name on it. The whole card opens the vehicle. The key figures and
+ * the spending trend flow in on hover or keyboard focus; on a touch screen the first tap shows them and the second tap opens the vehicle
+ * (a tap elsewhere hides them again). Keyboard and screen-reader activation always opens it straight away.
  */
 export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
   const { t } = useTranslation()
   const format = useFormat()
   const s = v.summary
   const none = t('welcome.card.none')
+  const dueText = useDueText(v.units.distance)
+  // Only what needs attention is on the card (the vehicle's Recurring tab has the rest); overdue first, the server already sorts by urgency.
+  const attention = v.recurring.filter((r) => r.status.state !== 'UPCOMING')
   const touch = useMediaQuery('(hover: none)', false)
   const [open, setOpen] = useState(false)
+  const card = useRef<HTMLDivElement>(null)
+  const navigate = useNavigate()
+  // Touch: a tap anywhere else puts the figures away again.
+  useEffect(() => {
+    if (!open) return
+    const away = (e: PointerEvent) => !card.current?.contains(e.target as Node) && setOpen(false)
+    document.addEventListener('pointerdown', away)
+    return () => document.removeEventListener('pointerdown', away)
+  }, [open])
   // The figures slide up from below the card: the card needs to know how tall that panel is.
   const panel = useRef<HTMLDivElement>(null)
   const [panelHeight, setPanelHeight] = useState(0)
@@ -38,12 +53,24 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
 
   return (
     <Box
+      ref={card}
       className="vehicle-card"
       data-open={open ? '' : undefined}
       style={{ '--panel-h': `${panelHeight}px` } as CSSProperties}
-      // Touch only: a tap that is not on the name link shows or hides the figures. Mouse and keyboard users have hover and focus.
+      // Touch only: the first tap shows the figures instead of opening the vehicle (before the link sees it); the second one opens it.
+      // A click without a pointer (detail 0: keyboard, screen reader) goes straight through, and mouse users have hover and focus.
+      onClickCapture={(e) => {
+        if (!touch || e.detail === 0 || open) return
+        e.preventDefault()
+        e.stopPropagation()
+        setOpen(true)
+      }}
+      // A click anywhere on the card opens the vehicle (on touch: the second tap). The link's overlay alone is not enough: the chart and
+      // other positioned parts sit above it and take the click. Real links and buttons, modified clicks (new tab) and selecting text are left alone.
       onClick={(e) => {
-        if (touch && !(e.target as HTMLElement).closest('a')) setOpen((o) => !o)
+        if (e.defaultPrevented || e.detail === 0 || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+        if ((e.target as HTMLElement).closest('a, button') || window.getSelection()?.toString()) return
+        void navigate(`/vehicles/${v.id}`)
       }}
     >
       <CoverLayers pictureUrl={v.pictureUrl} id={v.id} />
@@ -52,6 +79,7 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
           <Heading as="h2" size="5" style={{ textShadow: '0 1px 6px rgba(0,0,0,0.6)' }}>
             <Link className="vehicle-card-link" to={`/vehicles/${v.id}`} aria-label={t('welcome.card.openAria', { name: v.name })}>
               {v.name}
+              <ChevronRight size={20} aria-hidden style={{ verticalAlign: 'text-bottom', marginLeft: 2 }} />
             </Link>
           </Heading>
           <Flex gap="2" align="center" wrap="wrap" mt="1">
@@ -69,6 +97,25 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
               </Badge>
             )}
           </Flex>
+          {attention.length > 0 && (
+            <Flex asChild direction="column" gap="1" mt="2">
+              <ul aria-label={t('welcome.card.recurringTitle')} style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {attention.slice(0, 3).map((r) => {
+                  const due = dueText(r.status)
+                  return (
+                    <li key={r.id}>
+                      <Flex align="center" gap="2" wrap="wrap">
+                        <RecurringStatusBadge state={r.status.state} solid />
+                        <Text size="1" style={{ color: 'white', textShadow: '0 1px 4px rgba(0,0,0,0.7)' }}>
+                          {due ? `${r.title} · ${due}` : r.title}
+                        </Text>
+                      </Flex>
+                    </li>
+                  )
+                })}
+              </ul>
+            </Flex>
+          )}
           {!v.canEdit && v.owner && (
             <Text as="p" size="1" mt="1" style={{ color: 'white' }}>
               <UserChip user={v.owner} />
@@ -115,11 +162,16 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
           {s?.currency && s.fillUpCount + s.expenseCount > 0 && (
             <Grid className="vehicle-card-sparkline" columns="1" gap="0" p="0">
               <Box style={{ gridColumn: '1 / -1' }}>
-                <LazySparkline points={s.spendTrend} currency={s.currency} height={64} />
+                <LazySparkline points={s.spendTrend} currency={s.currency} height={32} />
               </Box>
             </Grid>
           )}
         </Grid>
+        {touch && (
+          <Text as="p" size="1" align="center" style={{ opacity: 0.8, paddingBottom: 'var(--space-2)' }}>
+            {t('welcome.card.tapAgain')}
+          </Text>
+        )}
         </div>
       </Flex>
     </Box>

@@ -23,7 +23,7 @@ import { VehicleFormDialog } from '../VehicleFormDialog.tsx'
 
 type Row = VehiclesQuery['vehicles'][number]
 
-const refetch = { refetchQueries: ['Vehicles', 'Trash'], awaitRefetchQueries: true }
+const refetch = { refetchQueries: ['Vehicles', 'Trash', 'Welcome'], awaitRefetchQueries: true }
 
 export function VehiclesPage() {
   const { t } = useTranslation()

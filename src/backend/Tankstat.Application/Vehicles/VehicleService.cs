@@ -12,11 +12,31 @@ namespace Tankstat.Application.Vehicles;
 public sealed class VehicleService(
     IVehicleRepository vehicles, IRefuelingRepository refuelings, AccessService access, OdometerService odometer, ImageService images, TimeProvider clock)
 {
-    public async Task<IReadOnlyList<Vehicle>> ListAsync(VehicleQuery query, CancellationToken ct) =>
-        await vehicles.ListAsync(await access.VehicleScopeAsync(AccessLevel.View, ct), query.Normalized(), ct);
+    /// <summary>One page of the full vehicle list: an administrator feature, like the rest of the administration.</summary>
+    public async Task<IReadOnlyList<Vehicle>> ListAsync(VehicleQuery query, CancellationToken ct)
+    {
+        await access.RequireAdminAsync(ct);
+        return await vehicles.ListAsync(await access.VehicleScopeAsync(AccessLevel.View, ct), query.Normalized(), ct);
+    }
 
-    public async Task<int> CountAsync(CancellationToken ct) =>
-        await vehicles.CountAsync(await access.VehicleScopeAsync(AccessLevel.View, ct), ct);
+    public async Task<int> CountAsync(CancellationToken ct)
+    {
+        await access.RequireAdminAsync(ct);
+        return await vehicles.CountAsync(await access.VehicleScopeAsync(AccessLevel.View, ct), null, ct);
+    }
+
+    /// <summary>
+    /// One page of the vehicles the user may see (their own and the ones shared with them), by name, optionally only those whose name or
+    /// license plate contains <paramref name="search"/>: what the home page shows. Everyone may ask.
+    /// </summary>
+    public async Task<IReadOnlyList<Vehicle>> ListMineAsync(string? search, int skip, int take, CancellationToken ct) =>
+        await vehicles.ListAsync(await access.VehicleScopeAsync(AccessLevel.View, ct), new VehicleQuery(Skip: skip, Take: take, Search: search), ct);
+
+    public Task<IReadOnlyList<Vehicle>> ListMineAsync(CancellationToken ct) => ListMineAsync(null, 0, VehicleQuery.MaxTake, ct);
+
+    /// <summary>How many vehicles <see cref="ListMineAsync(string?, int, int, CancellationToken)"/> would return in all (for the pager).</summary>
+    public async Task<int> CountMineAsync(string? search, CancellationToken ct) =>
+        await vehicles.CountAsync(await access.VehicleScopeAsync(AccessLevel.View, ct), new VehicleQuery(Search: search).Normalized().Search, ct);
 
     /// <summary>Null when the vehicle does not exist or the user may not see it (existence is not revealed).</summary>
     public async Task<Vehicle?> FindAsync(Guid id, CancellationToken ct)

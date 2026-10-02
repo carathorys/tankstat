@@ -71,7 +71,7 @@ export default function App() {
             </Dialog.Content>
           </Dialog.Root>
         )}
-        <Container asChild size="3" flexGrow="1" p={{ initial: '3', sm: '4' }} minWidth="0" style={{ minWidth: 0, maxWidth: '100%' }}>
+        <Container asChild size="4" flexGrow="1" p={{ initial: '3', sm: '4' }} minWidth="0" style={{ minWidth: 0, maxWidth: '100%' }}>
           <main id="main" tabIndex={-1}>
             {error && <ErrorMessage error={error} />}
             {loading && (
@@ -95,6 +95,7 @@ function Content({ data }: { data: SessionQuery }) {
   const [params] = useSearchParams()
   const resetToken = params.get('resetToken')
   const { mode, user } = data.session
+  const isAdmin = user?.isAdmin === true // the full vehicle list and the administration are for administrators only
 
   if (mode === 'STANDALONE' && resetToken && !user) return <ResetPasswordView token={resetToken} />
   if (mode !== 'NONE' && !user) return <LoginView mode={mode} />
@@ -110,13 +111,13 @@ function Content({ data }: { data: SessionQuery }) {
         }
       >
         <Routes>
-        <Route path="/" element={<WelcomePage />} />
-        <Route path="/vehicles" element={<VehiclesPage />} />
-        <Route path="/vehicles/:id/*" element={<VehiclePage />} />
+        <Route path="/" element={<WelcomePage isAdmin={isAdmin} />} />
+        <Route path="/vehicles" element={isAdmin ? <VehiclesPage /> : <Navigate to="/" replace />} />
+        <Route path="/vehicles/:id/*" element={<VehiclePage isAdmin={isAdmin} />} />
         <Route path="/import" element={<ImportPage />} />
         <Route path="/trash" element={<TrashPage />} />
         <Route path="/account" element={<AccountPage mode={mode} user={user} />} />
-        <Route path="/admin" element={user?.isAdmin ? <AdminPanel /> : <Navigate to="/vehicles" replace />} />
+        <Route path="/admin" element={isAdmin ? <AdminPanel /> : <Navigate to="/" replace />} />
         <Route path="*" element={<Text as="p">{t('app.notFound')}</Text>} />
         </Routes>
       </Suspense>

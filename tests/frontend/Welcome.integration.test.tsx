@@ -1,9 +1,9 @@
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import { server } from './server.ts'
-import { fakeSummary, fakeVehicle, fakeVehicleBackend, healthHandler, person, renderWithApollo, sessionHandler, stubViewport } from './mocks.tsx'
+import { adminSession, fakeLogBackend, fakeSummary, fakeVehicle, fakeVehicleBackend, healthHandler, person, renderWithApollo, sessionHandler, stubViewport } from './mocks.tsx'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
@@ -12,10 +12,12 @@ afterEach(() => {
 })
 afterAll(() => server.close())
 
-function setup(vehicles = [fakeVehicle()], device: 'desktop' | 'phone' = 'desktop') {
+function setup(vehicles = [fakeVehicle()], device: 'desktop' | 'phone' = 'desktop', admin = false) {
   stubViewport(device)
-  server.use(sessionHandler('NONE', () => null), healthHandler, ...fakeVehicleBackend(vehicles).handlers)
+  const backend = fakeVehicleBackend(vehicles)
+  server.use(admin ? adminSession() : sessionHandler('NONE', () => null), healthHandler, ...backend.handlers, ...fakeLogBackend(vehicles[0] ?? fakeVehicle(), []).handlers)
   renderWithApollo(<App />, '/')
+  return { ...backend, ui: userEvent.setup() }
 }
 
 const card = async (name: string) => (await screen.findByRole('link', { name: `Open ${name}` })).closest('li')!
@@ -78,16 +80,34 @@ it('offers the next steps when there are no vehicles', async () => {
   await screen.findByText(/You have no vehicles yet/)
 
   expect(screen.getAllByRole('link', { name: 'Import logs' }).length).toBeGreaterThan(0)
-  expect(screen.getByRole('link', { name: 'Add vehicle' })).toHaveAttribute('href', '/vehicles')
+  expect(screen.getByRole('button', { name: 'Add vehicle' })).toBeInTheDocument()
 })
 
-it('has links to all vehicles and the import', async () => {
-  setup()
+it('adds a vehicle from the home page, where everyone manages their own cars', async () => {
+  const { ui, state } = setup([])
+  await screen.findByText(/You have no vehicles yet/)
 
+  await ui.click(screen.getByRole('button', { name: 'Add vehicle' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add vehicle' })
+  await ui.type(within(dialog).getByLabelText('Name'), 'Golf')
+  await ui.click(within(dialog).getByRole('button', { name: 'Add vehicle' }))
+
+  expect(await screen.findByRole('link', { name: 'Open Golf' })).toBeInTheDocument()
+  expect(state.calls.AddVehicle).toHaveLength(1)
+})
+
+it('has a link to the import, and the full vehicle list only for administrators', async () => {
+  setup()
   await screen.findByRole('heading', { name: 'Your vehicles' })
 
-  expect(screen.getByRole('link', { name: 'All vehicles' })).toHaveAttribute('href', '/vehicles')
   expect(screen.getByRole('link', { name: 'Import logs' })).toHaveAttribute('href', '/import')
+  expect(screen.queryByRole('link', { name: 'All vehicles' })).not.toBeInTheDocument()
+})
+
+it('shows administrators a link to all vehicles', async () => {
+  setup([fakeVehicle()], 'desktop', true)
+
+  expect(await screen.findByRole('link', { name: 'All vehicles' })).toHaveAttribute('href', '/vehicles')
 })
 
 const vehicleCard = async (name: string) => (await card(name)).querySelector('.vehicle-card') as HTMLElement
@@ -102,33 +122,169 @@ it('keeps the figures in the page for screen readers, hidden only visually until
   expect(within(c).getByText('Odometer')).toBeInTheDocument()
 })
 
-it('on a touch screen a tap on the card shows the figures, and another tap hides them again', async () => {
+it('on a touch screen the first tap shows the figures and the second tap opens the vehicle', async () => {
   const ui = userEvent.setup()
   setup([fakeVehicle()], 'phone')
   const c = await vehicleCard('Octavia')
 
   await ui.click(within(c).getByText('Odometer'))
   expect(c).toHaveAttribute('data-open')
+  expect(within(c).getByText('Tap again to open')).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Your vehicles' })).toBeInTheDocument() // the first tap did not navigate
+
   await ui.click(within(c).getByText('Odometer'))
-  expect(c).not.toHaveAttribute('data-open')
+
+  expect(await screen.findByRole('link', { name: 'Back to home' })).toBeInTheDocument() // the vehicle page
 })
 
-it('a tap on the name is navigation, not a reveal', async () => {
+it('a tap on the name does the same: reveal first, open on the second tap', async () => {
   const ui = userEvent.setup()
   setup([fakeVehicle()], 'phone')
   const c = await vehicleCard('Octavia')
 
   await ui.click(within(c).getByRole('link', { name: 'Open Octavia' }))
+  expect(c).toHaveAttribute('data-open')
+  expect(screen.getByRole('heading', { name: 'Your vehicles' })).toBeInTheDocument()
+
+  await ui.click(within(c).getByRole('link', { name: 'Open Octavia' }))
+  expect(await screen.findByRole('link', { name: 'Back to home' })).toBeInTheDocument()
+})
+
+it('a tap anywhere else puts the figures away again', async () => {
+  const ui = userEvent.setup()
+  setup([fakeVehicle()], 'phone')
+  const c = await vehicleCard('Octavia')
+  await ui.click(within(c).getByText('Odometer'))
+  expect(c).toHaveAttribute('data-open')
+
+  await ui.click(screen.getByRole('heading', { name: 'Your vehicles' }))
 
   expect(c).not.toHaveAttribute('data-open')
 })
 
-it('with a mouse a click on the card does not toggle anything (the whole card is the link)', async () => {
+it('the keyboard and screen readers open the vehicle straight away, even on a touch device', async () => {
+  const ui = userEvent.setup()
+  setup([fakeVehicle()], 'phone')
+  const c = await vehicleCard('Octavia')
+
+  within(c).getByRole('link', { name: 'Open Octavia' }).focus()
+  await ui.keyboard('{Enter}')
+
+  expect(await screen.findByRole('link', { name: 'Back to home' })).toBeInTheDocument()
+})
+
+it('with a mouse a click anywhere on the card opens the vehicle: the figures, the chart, the picture area', async () => {
+  const ui = userEvent.setup()
+  setup([fakeVehicle()], 'desktop')
+  const c = await vehicleCard('Octavia')
+
+  await ui.click(await within(c).findByRole('img', { name: /Spending in the last six months/ })) // the chart
+
+  expect(await screen.findByRole('link', { name: 'Back to home' })).toBeInTheDocument()
+  expect(c).not.toHaveAttribute('data-open') // and nothing was toggled on the way
+})
+
+it('a click on the figures opens the vehicle too', async () => {
   const ui = userEvent.setup()
   setup([fakeVehicle()], 'desktop')
   const c = await vehicleCard('Octavia')
 
   await ui.click(within(c).getByText('Odometer'))
 
-  expect(c).not.toHaveAttribute('data-open')
+  expect(await screen.findByRole('link', { name: 'Back to home' })).toBeInTheDocument()
+})
+
+const fleet = (n: number) =>
+  Array.from({ length: n }, (_, i) =>
+    fakeVehicle({ id: `v${i + 1}`, name: `Car ${String(i + 1).padStart(2, '0')}`, licensePlate: `PL-${String(i + 1).padStart(3, '0')}`, summary: fakeSummary({ fillUpCount: 0, expenseCount: 0 }) }),
+  )
+
+const cardCount = () => screen.getAllByRole('link', { name: /^Open Car/ }).length
+
+it('loads the cards a page at a time, says how many of them are shown, and shows more on request', async () => {
+  const { ui, state } = setup(fleet(30))
+
+  await screen.findByRole('link', { name: 'Open Car 01' })
+  expect(cardCount()).toBe(24)
+  expect(screen.getByText('Showing 24 of 30 vehicles')).toBeInTheDocument()
+  expect(screen.getByRole('list', { name: '30 vehicles' })).toBeInTheDocument()
+
+  await ui.click(screen.getByRole('button', { name: 'Show more vehicles' }))
+
+  await screen.findByRole('link', { name: 'Open Car 30' })
+  expect(cardCount()).toBe(30)
+  expect(screen.getByText('Showing 30 of 30 vehicles')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Show more vehicles' })).not.toBeInTheDocument()
+  expect(state.requests.Welcome).toEqual([
+    { search: null, skip: 0, take: 24 },
+    { search: null, skip: 24, take: 24 },
+  ])
+})
+
+it('loads the next page by itself when the end of the list scrolls into view', async () => {
+  let reveal: () => void = () => {}
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      constructor(callback: (entries: { isIntersecting: boolean }[]) => void) {
+        reveal = () => callback([{ isIntersecting: true }])
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
+  setup(fleet(30))
+  await screen.findByRole('link', { name: 'Open Car 01' })
+  expect(cardCount()).toBe(24)
+
+  reveal()
+
+  await screen.findByRole('link', { name: 'Open Car 30' })
+  expect(cardCount()).toBe(30)
+})
+
+it('searches by name on the server, and everything is back when the search is cleared', async () => {
+  const { ui, state } = setup(fleet(30))
+  await screen.findByRole('link', { name: 'Open Car 01' })
+
+  await ui.type(screen.getByRole('searchbox', { name: 'Search vehicles' }), 'car 07')
+
+  await waitFor(() => expect(cardCount()).toBe(1))
+  expect(screen.getByRole('link', { name: 'Open Car 07' })).toBeInTheDocument()
+  expect(screen.getByText('Showing 1 of 1 vehicles')).toBeInTheDocument()
+  expect(state.requests.Welcome.at(-1)).toEqual({ search: 'car 07', skip: 0, take: 24 })
+  expect(state.requests.Welcome.some((r) => r.search === 'c')).toBe(false) // not a request for every letter
+
+  await ui.clear(screen.getByRole('searchbox', { name: 'Search vehicles' }))
+  await waitFor(() => expect(cardCount()).toBe(24))
+})
+
+it('also finds a vehicle by its license plate', async () => {
+  const { ui } = setup(fleet(30))
+  await screen.findByRole('link', { name: 'Open Car 01' })
+
+  await ui.type(screen.getByRole('searchbox', { name: 'Search vehicles' }), 'PL-012')
+
+  await waitFor(() => expect(cardCount()).toBe(1))
+  expect(screen.getByRole('link', { name: 'Open Car 12' })).toBeInTheDocument()
+})
+
+it('says when nothing matches the search, and keeps the search box to change it', async () => {
+  const { ui } = setup()
+  await screen.findByRole('link', { name: 'Open Octavia' })
+
+  await ui.type(screen.getByRole('searchbox', { name: 'Search vehicles' }), 'zzz')
+
+  expect(await screen.findByText('No vehicles match "zzz".')).toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: 'Open Octavia' })).not.toBeInTheDocument()
+  expect(screen.getByRole('searchbox', { name: 'Search vehicles' })).toBeInTheDocument()
+})
+
+it('has no search box before the first vehicle exists', async () => {
+  setup([])
+
+  await screen.findByText(/You have no vehicles yet/)
+
+  expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
 })

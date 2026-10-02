@@ -35,7 +35,7 @@ public class NoAuthModeTests : IDisposable
         var two = _app.NewClient();
         await one.Gql("mutation { addVehicle(input: { name: \"Shared\", fuelType: PETROL }) { id } }");
 
-        var seen = (await two.Gql("{ vehicles { name } }")).Data().GetProperty("vehicles");
+        var seen = (await two.Gql("{ myVehicles { name } }")).Data().GetProperty("myVehicles");
 
         Assert.Equal("Shared", Assert.Single(seen.EnumerateArray()).GetProperty("name").GetString());
     }
@@ -101,7 +101,7 @@ public class ProxyHeaderModeTests : IDisposable
         var c = Client("alice", "alice@example.com");
 
         Assert.Equal("alice@example.com", await SessionEmail(c));
-        Assert.Null((await c.Gql("{ vehicles { id } }")).ErrorCode());
+        Assert.Null((await c.Gql("{ myVehicles { id } }")).ErrorCode());
     }
 
     [Fact]
@@ -110,7 +110,7 @@ public class ProxyHeaderModeTests : IDisposable
         var c = Client("alice", "alice@example.com", remoteIp: "203.0.113.9");
 
         Assert.Null(await SessionEmail(c));
-        Assert.Equal("UNAUTHENTICATED", (await c.Gql("{ vehicles { id } }")).ErrorCode());
+        Assert.Equal("UNAUTHENTICATED", (await c.Gql("{ myVehicles { id } }")).ErrorCode());
     }
 
     [Fact]
@@ -119,7 +119,7 @@ public class ProxyHeaderModeTests : IDisposable
         var c = Client(null);
 
         Assert.Null(await SessionEmail(c));
-        Assert.Equal("UNAUTHENTICATED", (await c.Gql("{ vehicles { id } }")).ErrorCode());
+        Assert.Equal("UNAUTHENTICATED", (await c.Gql("{ myVehicles { id } }")).ErrorCode());
     }
 
     [Theory]
@@ -141,8 +141,8 @@ public class ProxyHeaderModeTests : IDisposable
         await alice.Gql("mutation { addVehicle(input: { name: \"Alice car\", fuelType: PETROL }) { id } }");
         await bob.Gql("mutation { addVehicle(input: { name: \"Bob car\", fuelType: PETROL }) { id } }");
 
-        Assert.Single((await alice.Gql("{ vehicles { name } }")).Data().GetProperty("vehicles").EnumerateArray());
-        Assert.Equal(2, (await boss.Gql("{ vehicles { name } }")).Data().GetProperty("vehicles").GetArrayLength());
+        Assert.Single((await alice.Gql("{ myVehicles { name } }")).Data().GetProperty("myVehicles").EnumerateArray());
+        Assert.Equal(2, (await boss.Gql("{ myVehicles { name } }")).Data().GetProperty("myVehicles").GetArrayLength());
         Assert.Null((await boss.Gql("{ users { id } }")).ErrorCode());
         Assert.Equal("FORBIDDEN", (await alice.Gql("{ users { id } }")).ErrorCode());
     }
@@ -207,7 +207,7 @@ public class OidcModeTests : IDisposable
 
         Assert.Equal("OIDC", data.GetProperty("session").GetProperty("mode").GetString());
         Assert.Empty(data.GetProperty("notices").EnumerateArray());
-        Assert.Equal("UNAUTHENTICATED", (await c.Gql("{ vehicles { id } }")).ErrorCode());
+        Assert.Equal("UNAUTHENTICATED", (await c.Gql("{ myVehicles { id } }")).ErrorCode());
     }
 
     [Fact]

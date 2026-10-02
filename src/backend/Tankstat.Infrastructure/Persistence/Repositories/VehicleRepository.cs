@@ -13,10 +13,10 @@ internal sealed class VehicleRepository(IDbContextFactory<AppDbContext> dbFactor
         return await Page(db, db.Vehicles.AsNoTracking().InScope(scope, v => v.Id), query).ToListAsync(ct);
     }
 
-    public async Task<int> CountAsync(OwnerScope scope, CancellationToken ct)
+    public async Task<int> CountAsync(OwnerScope scope, string? search, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await db.Vehicles.InScope(scope, v => v.Id).CountAsync(ct);
+        return await Matching(db.Vehicles.InScope(scope, v => v.Id), search).CountAsync(ct);
     }
 
     public async Task<IReadOnlyList<Vehicle>> ListDeletedAsync(OwnerScope scope, VehicleQuery query, CancellationToken ct)
@@ -36,6 +36,7 @@ internal sealed class VehicleRepository(IDbContextFactory<AppDbContext> dbFactor
     private static IQueryable<Vehicle> Page(AppDbContext db, IQueryable<Vehicle> vehicles, VehicleQuery query)
     {
         var q = query.Normalized();
+        vehicles = Matching(vehicles, q.Search);
         var desc = q.Direction == SortDirection.Desc;
 
         var ordered = q.SortBy switch
@@ -48,6 +49,14 @@ internal sealed class VehicleRepository(IDbContextFactory<AppDbContext> dbFactor
             _ => Order(vehicles, v => v.Name.ToLower(), desc),
         };
         return ordered.ThenBy(v => v.Id).Skip(q.Skip).Take(q.Take);
+    }
+
+    /// <summary>Vehicles whose name or license plate contains the text, ignoring case (lower-cased on both sides, so it translates on every provider; SQLite folds accents through <see cref="SqliteUnicodeLower"/>).</summary>
+    private static IQueryable<Vehicle> Matching(IQueryable<Vehicle> vehicles, string? search)
+    {
+        if (string.IsNullOrWhiteSpace(search)) return vehicles;
+        var term = search.Trim().ToLower();
+        return vehicles.Where(v => v.Name.ToLower().Contains(term) || (v.LicensePlate != null && v.LicensePlate.ToLower().Contains(term)));
     }
 
     private static IOrderedQueryable<Vehicle> Order<TKey>(IQueryable<Vehicle> vehicles, System.Linq.Expressions.Expression<Func<Vehicle, TKey>> key, bool desc) =>

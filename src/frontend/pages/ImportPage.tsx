@@ -162,7 +162,7 @@ function TargetAndReview({ token, step, onStep, onDone }: { token: string; step:
 
   const targets = useQuery(ImportTargetsDocument, { fetchPolicy: 'network-only' })
   const defaults = useQuery(VehicleDefaultsDocument)
-  const usable = (targets.data?.vehicles ?? []).filter((v) => v.canEdit || v.logAccess === 'EDIT' || v.logAccess === 'DELETE')
+  const usable = (targets.data?.myVehicles ?? []).filter((v) => v.canEdit || v.logAccess === 'EDIT' || v.logAccess === 'DELETE')
   const preview = useQuery(ImportPreviewDocument, { variables: { token, vehicleId: target === 'existing' && vehicleId ? vehicleId : null }, fetchPolicy: 'network-only' })
   const p = preview.data?.importPreview
 

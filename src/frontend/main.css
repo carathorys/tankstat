@@ -107,6 +107,7 @@ body {
     transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .vehicle-card:hover, .vehicle-card:focus-within { transform: translateY(-2px); box-shadow: var(--shadow-5); }
+.vehicle-card { cursor: pointer; }
 .vehicle-card-link { color: inherit; text-decoration: none; }
 .vehicle-card-link::after { content: ''; position: absolute; inset: 0; } /* the whole card is the link target */
 .vehicle-card-link:focus-visible { outline: none; }
@@ -130,11 +131,6 @@ body {
     backdrop-filter: blur(10px);
 }
 
-@media (hover: none) {
-    /* Touch: a tap on the card shows the figures; only the name opens the vehicle (so a tap is never a surprise navigation). */
-    .vehicle-card-link::after { display: none; }
-    .vehicle-card-link { display: inline-block; padding-block: var(--space-2); }
-}
 @media (prefers-reduced-motion: reduce) {
     .vehicle-card, .vehicle-card .card-content { transition: none; }
     .vehicle-card:hover, .vehicle-card:focus-within { transform: none; }

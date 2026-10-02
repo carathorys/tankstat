@@ -9,7 +9,7 @@ public interface IVehicleRepository
     Task<IReadOnlyList<Vehicle>> ListAsync(OwnerScope scope, VehicleQuery query, CancellationToken ct);
 
     /// <summary>How many vehicles are not in the trash (for paging).</summary>
-    Task<int> CountAsync(OwnerScope scope, CancellationToken ct);
+    Task<int> CountAsync(OwnerScope scope, string? search, CancellationToken ct);
 
     /// <summary>One page of the vehicles in the trash, ordered by the database.</summary>
     Task<IReadOnlyList<Vehicle>> ListDeletedAsync(OwnerScope scope, VehicleQuery query, CancellationToken ct);

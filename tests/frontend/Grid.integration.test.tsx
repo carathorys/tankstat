@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import { server } from './server.ts'
-import { fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler } from './mocks.tsx'
+import { fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, adminSession } from './mocks.tsx'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
@@ -22,7 +22,7 @@ const many = (n: number) => Array.from({ length: n }, (_, i) => fakeVehicle({ id
 
 function setup(vehicles = cars, route = '/vehicles') {
   const backend = fakeVehicleBackend(vehicles)
-  server.use(sessionHandler('NONE', () => null), healthHandler, ...backend.handlers)
+  server.use(adminSession(), healthHandler, ...backend.handlers)
   const view = renderWithApollo(<App />, route)
   return { ...backend, view, ui: userEvent.setup() }
 }
@@ -268,7 +268,7 @@ it('edits with the real values even when columns are hidden (the grid did not lo
 
 it('the trash grid starts newest-deleted first and keeps its own settings', async () => {
   const backend = fakeVehicleBackend(cars, [fakeVehicle({ id: 't1', name: 'Old Fiat' })])
-  server.use(sessionHandler('NONE', () => null), healthHandler, ...backend.handlers)
+  server.use(adminSession(), healthHandler, ...backend.handlers)
   renderWithApollo(<App />, '/trash')
   await screen.findByText('Old Fiat')
 

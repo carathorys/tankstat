@@ -81,8 +81,8 @@ public class UserAdministrationTests : IDisposable
         Assert.Equal("VALIDATION_FAILED", (await admin.Gql(Delete, new { i = new { userId = aliceId, data = "MOVE" } })).ErrorCode());
         Assert.True((await admin.Gql(Delete, new { i = new { userId = aliceId, data = "MOVE", moveToUserId = bobId } })).Data().GetProperty("deleteUser").GetBoolean());
 
-        Assert.Equal(["Alice car"], Names(await bob.Gql("{ vehicles { name } }")));
-        Assert.Equal("UNAUTHENTICATED", (await alice.Gql("{ vehicles { id } }")).ErrorCode()); // their session is gone with them
+        Assert.Equal(["Alice car"], Names(await bob.Gql("{ myVehicles { name } }")));
+        Assert.Equal("UNAUTHENTICATED", (await alice.Gql("{ myVehicles { id } }")).ErrorCode()); // their session is gone with them
         Assert.DoesNotContain("alice@example.com", (await admin.Gql("{ users { email } }")).Data().ToString());
     }
 
@@ -99,7 +99,7 @@ public class UserAdministrationTests : IDisposable
         Assert.Equal("VALIDATION_FAILED", (await admin.Gql(Delete, new { i = new { userId = me } })).ErrorCode());
         Assert.True((await admin.Gql(Delete, new { i = new { userId = aliceId, data = "PURGE" } })).Data().GetProperty("deleteUser").GetBoolean());
 
-        Assert.Empty(Names(await admin.Gql("{ vehicles { name } }")));
+        Assert.Empty(Names(await admin.Gql("{ myVehicles { name } }")));
     }
 
     [Fact]
@@ -115,5 +115,5 @@ public class UserAdministrationTests : IDisposable
     }
 
     private static List<string> Names(JsonElement body) =>
-        body.Data().GetProperty("vehicles").EnumerateArray().Select(v => v.GetProperty("name").GetString()!).ToList();
+        body.Data().GetProperty("myVehicles").EnumerateArray().Select(v => v.GetProperty("name").GetString()!).ToList();
 }

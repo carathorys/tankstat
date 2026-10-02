@@ -52,11 +52,11 @@ public class StartupSmokeTests
         await using var app = await AppProcess.StartAsync(Env(("Auth__Mode", "None")));
 
         var added = (await app.Gql("mutation { addVehicle(input: { name: \"Smoke car\", fuelType: PETROL }) { id } }")).Data();
-        var list = (await app.Gql("{ vehicles { name } vehicleCount }")).Data();
+        var list = (await app.Gql("{ myVehicles { name } }")).Data();
 
         Assert.NotNull(added.GetProperty("addVehicle").GetProperty("id").GetString());
-        Assert.Equal("Smoke car", list.GetProperty("vehicles")[0].GetProperty("name").GetString());
-        Assert.Equal(1, list.GetProperty("vehicleCount").GetInt32());
+        Assert.Equal("Smoke car", list.GetProperty("myVehicles")[0].GetProperty("name").GetString());
+        Assert.Equal(1, list.GetProperty("myVehicles").GetArrayLength());
     }
 
     [Fact]
@@ -83,7 +83,7 @@ public class StartupSmokeTests
         var anonymous = (await app.Gql(Session)).Data();
         Assert.Equal("STANDALONE", anonymous.GetProperty("session").GetProperty("mode").GetString());
         Assert.Equal(System.Text.Json.JsonValueKind.Null, anonymous.GetProperty("session").GetProperty("user").ValueKind);
-        Assert.Equal("UNAUTHENTICATED", (await app.Gql("{ vehicles { id } }")).ErrorCode());
+        Assert.Equal("UNAUTHENTICATED", (await app.Gql("{ myVehicles { id } }")).ErrorCode());
 
         await app.Gql("mutation($i: LoginInput!) { login(input: $i) { id } }", new { i = new { email = "root@example.com", password = "initial-password-1" } });
         var signedIn = (await app.Gql(Session)).Data().GetProperty("session").GetProperty("user");
@@ -164,7 +164,7 @@ public class StartupSmokeTests
         var data = (await app.Gql(Session)).Data();
         Assert.Equal("OIDC", data.GetProperty("session").GetProperty("mode").GetString());
         Assert.Empty(data.GetProperty("notices").EnumerateArray());
-        Assert.Equal("UNAUTHENTICATED", (await app.Gql("{ vehicles { id } }")).ErrorCode());
+        Assert.Equal("UNAUTHENTICATED", (await app.Gql("{ myVehicles { id } }")).ErrorCode());
         Assert.NotEqual(HttpStatusCode.NotFound, (await app.GetAsync("/auth/oidc/login")).StatusCode); // the login endpoint exists in this mode
     }
 
@@ -197,7 +197,7 @@ public class StartupSmokeTests
         var boss = (await app.Gql(Session, headers: User("boss", "boss@example.com"))).Data().GetProperty("session").GetProperty("user");
         Assert.Equal("boss@example.com", boss.GetProperty("email").GetString());
         Assert.True(boss.GetProperty("isAdmin").GetBoolean());
-        Assert.Null((await app.Gql("{ vehicles { id } }", headers: User("boss", "boss@example.com"))).ErrorCode());
+        Assert.Null((await app.Gql("{ myVehicles { id } }", headers: User("boss", "boss@example.com"))).ErrorCode());
     }
 
     [Fact]
@@ -208,7 +208,7 @@ public class StartupSmokeTests
         var forged = (await app.Gql(Session, headers: User("boss", "boss@example.com"))).Data().GetProperty("session").GetProperty("user");
 
         Assert.Equal(System.Text.Json.JsonValueKind.Null, forged.ValueKind);
-        Assert.Equal("UNAUTHENTICATED", (await app.Gql("{ vehicles { id } }", headers: User("boss", "boss@example.com"))).ErrorCode());
+        Assert.Equal("UNAUTHENTICATED", (await app.Gql("{ myVehicles { id } }", headers: User("boss", "boss@example.com"))).ErrorCode());
     }
 
     [Fact]

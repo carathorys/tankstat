@@ -57,6 +57,59 @@ public class SortingAndPagingTests
         Assert.Equal(expected.Reverse(), await Names(db, field, SortDirection.Desc));
     }
 
+    [Theory]
+    [InlineData("BETA", new[] { "Beta" })]                 // case does not matter
+    [InlineData("a", new[] { "alpha", "Beta", "Gamma" })]  // a name has an a in it
+    [InlineData("aaa", new[] { "alpha" })]                 // the license plate counts too
+    [InlineData("  gam  ", new[] { "Gamma" })]             // surrounding blanks are ignored
+    [InlineData("nothing", new string[0])]
+    [InlineData("   ", new[] { "alpha", "Beta", "Gamma" })] // blank: no search
+    public async Task Search_FindsVehiclesByNameOrLicensePlate_IgnoringCase(string search, string[] expected)
+    {
+        await using var db = new TestDatabase();
+        await Seeded(db);
+        var repo = db.Get<IVehicleRepository>();
+
+        var found = await repo.ListAsync(OwnerScope.All, new VehicleQuery(Search: search), default);
+        var count = await repo.CountAsync(OwnerScope.All, new VehicleQuery(Search: search).Normalized().Search, default);
+
+        Assert.Equal(expected, found.Select(v => v.Name));
+        Assert.Equal(expected.Length, count);
+    }
+
+    [Theory]
+    [InlineData("ŐRS", "Őrs")]       // the accented capital found with capitals ...
+    [InlineData("őrs", "Őrs")]       // ... and with the lower-case letter
+    [InlineData("ÁRVÍZ", "árvíz")]   // and the other way round
+    public async Task Search_IgnoresTheCaseOfAccentedLetters(string search, string name)
+    {
+        await using var db = new TestDatabase();
+        var owner = User.CreateLocal("zoe@x.co", "Zoe", false);
+        await db.Get<IUserRepository>().AddAsync(owner, default);
+        var repo = db.Get<IVehicleRepository>();
+        await repo.AddAsync(TestData.Vehicle(owner.Id, name, null, FuelType.Petrol), default);
+        await repo.AddAsync(TestData.Vehicle(owner.Id, "Other", null, FuelType.Petrol), default);
+
+        var found = await repo.ListAsync(OwnerScope.All, new VehicleQuery(Search: search), default);
+
+        Assert.Equal([name], found.Select(v => v.Name));
+        Assert.Equal(1, await repo.CountAsync(OwnerScope.All, search, default));
+    }
+
+    [Fact]
+    public async Task Search_PagesTheMatchesOnly_AndTreatsWildcardsAsPlainText()
+    {
+        await using var db = new TestDatabase();
+        await Seeded(db);
+        var repo = db.Get<IVehicleRepository>();
+
+        var second = await repo.ListAsync(OwnerScope.All, new VehicleQuery(Skip: 1, Take: 1, Search: "a"), default);
+        var percent = await repo.ListAsync(OwnerScope.All, new VehicleQuery(Search: "%"), default);
+
+        Assert.Equal(["Beta"], second.Select(v => v.Name));
+        Assert.Empty(percent);
+    }
+
     [Fact]
     public async Task Paging_SlicesTheSortedList_AndCountIgnoresPaging()
     {
@@ -66,7 +119,7 @@ public class SortingAndPagingTests
         Assert.Equal(["alpha", "Beta"], await Names(db, VehicleSortField.Name, SortDirection.Asc, 0, 2));
         Assert.Equal(["Gamma"], await Names(db, VehicleSortField.Name, SortDirection.Asc, 2, 2));
         Assert.Empty(await Names(db, VehicleSortField.Name, SortDirection.Asc, 3, 2));
-        Assert.Equal(3, await db.Get<IVehicleRepository>().CountAsync(OwnerScope.All, default));
+        Assert.Equal(3, await db.Get<IVehicleRepository>().CountAsync(OwnerScope.All, null, default));
     }
 
     [Fact]
@@ -95,8 +148,8 @@ public class SortingAndPagingTests
         var page = await repo.ListAsync(scope, new VehicleQuery(VehicleSortField.RefuelingCount, SortDirection.Desc), default);
 
         Assert.Equal(["Beta", "Gamma"], page.Select(v => v.Name));
-        Assert.Equal(2, await repo.CountAsync(scope, default));
-        Assert.Equal(0, await repo.CountAsync(OwnerScope.Of([]), default));
+        Assert.Equal(2, await repo.CountAsync(scope, null, default));
+        Assert.Equal(0, await repo.CountAsync(OwnerScope.Of([]), null, default));
     }
 
     [Fact]
@@ -120,7 +173,7 @@ public class SortingAndPagingTests
         Assert.Equal(["Beta"], await Trash(VehicleSortField.DeletedAt, SortDirection.Desc, 1, 1));
         Assert.Equal(["alpha", "Beta", "Gamma"], await Trash(VehicleSortField.Name, SortDirection.Asc));
         Assert.Equal(3, await repo.CountDeletedAsync(OwnerScope.All, default));
-        Assert.Equal(0, await repo.CountAsync(OwnerScope.All, default));
+        Assert.Equal(0, await repo.CountAsync(OwnerScope.All, null, default));
     }
 
     [Fact]

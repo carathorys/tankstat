@@ -9,6 +9,7 @@ using Tankstat.Application.Auth;
 using Tankstat.Application.Expenses;
 using Tankstat.Application.Images;
 using Tankstat.Application.Odometers;
+using Tankstat.Application.Recurring;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Stats;
 using Tankstat.Application.Photos;
@@ -46,7 +47,9 @@ public static class DependencyInjection
             builder.ConfigureWarnings(w => w.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning));
             switch (db.Provider)
             {
-                case DatabaseProvider.Sqlite: builder.UseSqlite(db.ConnectionString!, o => o.MigrationsAssembly(migrations)); break;
+                case DatabaseProvider.Sqlite:
+                    builder.UseSqlite(db.ConnectionString!, o => o.MigrationsAssembly(migrations)).AddInterceptors(SqliteUnicodeLower.Instance);
+                    break;
                 case DatabaseProvider.PostgreSql: builder.UseNpgsql(db.ConnectionString!, o => o.MigrationsAssembly(migrations)); break;
                 case DatabaseProvider.SqlServer: builder.UseSqlServer(db.ConnectionString!, o => o.MigrationsAssembly(migrations)); break;
                 case DatabaseProvider.MySql: builder.UseMySQL(db.ConnectionString!, o => o.MigrationsAssembly(migrations)); break;
@@ -58,6 +61,7 @@ public static class DependencyInjection
         services.AddScoped<IVehicleRepository, VehicleRepository>();
         services.AddScoped<IRefuelingRepository, RefuelingRepository>();
         services.AddScoped<IExpenseRepository, ExpenseRepository>();
+        services.AddScoped<IRecurringExpenseRepository, RecurringExpenseRepository>();
         services.AddScoped<IStatsRepository, StatsRepository>();
         services.AddScoped<IVehicleChartRepository, VehicleChartRepository>();
         services.AddScoped<IUserRepository, UserRepository>();

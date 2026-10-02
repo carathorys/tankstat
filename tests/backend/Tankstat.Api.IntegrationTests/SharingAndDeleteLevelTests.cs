@@ -53,7 +53,7 @@ public class SharingAndDeleteLevelTests : IDisposable
         var car = await AddVehicle(u.Alice);
         await Log(u.Alice, car, 1000);
 
-        Assert.Equal(0, (await u.Bob.Gql("{ vehicleCount }")).Data().GetProperty("vehicleCount").GetInt32());
+        Assert.Equal(0, (await u.Bob.Gql("{ myVehicles { id } }")).Data().GetProperty("myVehicles").GetArrayLength());
         Assert.Equal(0, (await u.Bob.Gql("query($id: UUID!) { refuelings(vehicleId: $id) { id } }", new { id = car })).Data().GetProperty("refuelings").GetArrayLength());
         Assert.Equal("vehicle.notFound", Key(await Log(u.Bob, car, 2000)));
         Assert.Equal("vehicle.notFound", Key(await Share(u.Bob, car, u.CarolId, "EDIT")));
@@ -67,11 +67,10 @@ public class SharingAndDeleteLevelTests : IDisposable
         Assert.True((await Share(u.Alice, car, u.BobId, "EDIT")).Data().GetProperty("setVehicleLogAccess").GetBoolean());
 
         // Bob now sees the vehicle, as a log editor who is not allowed to edit the vehicle
-        var seen = (await u.Bob.Gql("{ vehicles { id name canEdit logAccess owner { displayName } } vehicleCount }")).Data();
-        var row = Assert.Single(seen.GetProperty("vehicles").EnumerateArray());
+        var seen = (await u.Bob.Gql("{ myVehicles { id name canEdit logAccess owner { displayName } } }")).Data();
+        var row = Assert.Single(seen.GetProperty("myVehicles").EnumerateArray());
         Assert.Equal((false, "EDIT", "alice"), (row.GetProperty("canEdit").GetBoolean(), row.GetProperty("logAccess").GetString(), row.GetProperty("owner").GetProperty("displayName").GetString()));
-        Assert.Equal(1, seen.GetProperty("vehicleCount").GetInt32());
-
+        
         // he can add, change and trash logs; the log records who made it
         var made = (await Log(u.Bob, car, 1000)).Data().GetProperty("logRefueling");
         Assert.Equal("bob", made.GetProperty("createdBy").GetProperty("displayName").GetString());
@@ -153,7 +152,7 @@ public class SharingAndDeleteLevelTests : IDisposable
 
         await Share(u.Alice, car, u.BobId, "NONE");
         Assert.Equal(0, (await u.Alice.Gql("query($id: UUID!) { vehicleLogAccess(vehicleId: $id) { level } }", new { id = car })).Data().GetProperty("vehicleLogAccess").GetArrayLength());
-        Assert.Equal(0, (await u.Bob.Gql("{ vehicleCount }")).Data().GetProperty("vehicleCount").GetInt32()); // access is gone at once
+        Assert.Equal(0, (await u.Bob.Gql("{ myVehicles { id } }")).Data().GetProperty("myVehicles").GetArrayLength()); // access is gone at once
     }
 
     [Fact]
@@ -179,7 +178,7 @@ public class SharingAndDeleteLevelTests : IDisposable
 
         Assert.Null(Key(await Log(u.Bob, shared, 100)));
         Assert.Equal("vehicle.notFound", Key(await Log(u.Bob, other, 100)));
-        Assert.Equal(1, (await u.Bob.Gql("{ vehicleCount }")).Data().GetProperty("vehicleCount").GetInt32());
+        Assert.Equal(1, (await u.Bob.Gql("{ myVehicles { id } }")).Data().GetProperty("myVehicles").GetArrayLength());
     }
 
     [Fact]

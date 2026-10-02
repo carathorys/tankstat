@@ -48,7 +48,7 @@ public class VehicleLifecycleTests
         await w.VehicleService.DeleteAsync(car.Id, default);
 
         Assert.Equal(w.Clock.GetUtcNow(), car.DeletedAt);
-        Assert.Empty(await w.VehicleService.ListAsync(new VehicleQuery(), default));
+        Assert.Empty(await w.VehicleService.ListMineAsync(default));
         Assert.Null(await w.VehicleService.FindAsync(car.Id, default));
         Assert.Same(car, Assert.Single(await w.VehicleService.ListTrashAsync(new VehicleQuery(), default)));
         Assert.Single(w.Vehicles.Items); // logical deletion only: the row is still there
@@ -62,7 +62,7 @@ public class VehicleLifecycleTests
 
         await w.VehicleService.RestoreAsync(car.Id, default);
 
-        Assert.Single(await w.VehicleService.ListAsync(new VehicleQuery(), default));
+        Assert.Single(await w.VehicleService.ListMineAsync(default));
         Assert.Empty(await w.VehicleService.ListTrashAsync(new VehicleQuery(), default));
     }
 
@@ -161,7 +161,7 @@ public class VehicleLifecycleTests
         await w.VehicleService.DeleteAsync(car.Id, default);
         await w.VehicleService.RestoreAsync(car.Id, default);
 
-        Assert.Single(await w.VehicleService.ListAsync(new VehicleQuery(), default));
+        Assert.Single(await w.VehicleService.ListMineAsync(default));
     }
 
     [Fact]

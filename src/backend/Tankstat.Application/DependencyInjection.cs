@@ -10,6 +10,7 @@ using Tankstat.Application.Images;
 using Tankstat.Application.Photos;
 using Tankstat.Application.Imports;
 using Tankstat.Application.Odometers;
+using Tankstat.Application.Recurring;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Sharing;
 using Tankstat.Application.Stats;
@@ -45,6 +46,7 @@ public static class DependencyInjection
         services.AddScoped<LogPhotoService>();
         services.AddScoped<RefuelingService>();
         services.AddScoped<ExpenseService>();
+        services.AddScoped<RecurringExpenseService>();
         services.AddScoped<StatsService>();
         services.AddScoped<ChartService>();
         services.AddSingleton<ImportSessionStore>();
