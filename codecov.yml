@@ -19,9 +19,8 @@ flags:
     paths: [src/backend/]
     carryforward: true
 
-# The Vitest report has paths relative to src/frontend.
-fixes:
-  - "::src/frontend/"
+# No global path fixes: they would be applied to the backend report as well. The Vitest lcov paths are made repo-relative by
+# `npm run test:coverage` (src/frontend/...), and the cobertura paths (Tankstat.Application/...) are unique below src/backend.
 
 ignore:
   - "tests"

@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:unit": "vitest run unit",
     "test:integration": "vitest run integration",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage && node -e \"const fs=require('fs'),f='coverage/frontend/lcov.info';fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/^SF:/gm,'SF:src/frontend/'))\"",
     "typecheck": "tsc -b",
     "codegen": "graphql-codegen --config codegen.ts"
   },
