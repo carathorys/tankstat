@@ -45,6 +45,9 @@ public sealed class StandaloneOptions
     public int MaxFailedAttempts { get; set; } = 5;
     public int LockoutMinutes { get; set; } = 15;
     public int ResetTokenMinutes { get; set; } = 60;
+
+    /// <summary>Lets administrators set a user's password directly (otherwise they can only issue reset links). Off by default.</summary>
+    public bool AllowAdminSetPassword { get; set; }
 }
 
 public sealed class OidcOptions

@@ -60,6 +60,7 @@ public static class DependencyInjection
         services.AddScoped<IStatsRepository, StatsRepository>();
         services.AddScoped<IVehicleChartRepository, VehicleChartRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IUserDataRepository, UserDataRepository>();
         services.AddScoped<IPasswordResetTokenRepository, PasswordResetTokenRepository>();
         services.AddScoped<IAccessGrantRepository, AccessGrantRepository>();
         services.AddScoped<IAccessSettingsRepository, AccessSettingsRepository>();

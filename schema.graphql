@@ -25,6 +25,7 @@ type Query {
   session: Session! @cost(weight: "10")
   notices: [Notice!]!
   users: [UserAccount!]! @cost(weight: "10")
+  canSetUserPasswords: Boolean! @cost(weight: "10")
   accessSettings: AccessSettingsInfo! @cost(weight: "10")
   accessGrants: [AccessGrantInfo!]! @cost(weight: "10")
   refuelings(
@@ -90,6 +91,10 @@ type Mutation {
     @cost(weight: "10")
   setUserDisabled(userId: UUID!, disabled: Boolean!): UserAccount!
     @cost(weight: "10")
+  updateUser(input: UpdateUserInput!): UserAccount! @cost(weight: "10")
+  setUserPassword(userId: UUID!, newPassword: String!): Boolean!
+    @cost(weight: "10")
+  deleteUser(input: DeleteUserInput!): Boolean! @cost(weight: "10")
   setDefaultAccess(level: AccessLevel!): AccessSettingsInfo! @cost(weight: "10")
   setAccessGrant(input: SetAccessGrantInput!): Boolean! @cost(weight: "10")
   logRefueling(input: LogRefuelingInput!): Refueling! @cost(weight: "10")
@@ -386,6 +391,12 @@ input CreateUserInput {
   isAdmin: Boolean!
 }
 
+input DeleteUserInput {
+  userId: UUID!
+  data: UserDataDisposition
+  moveToUserId: UUID
+}
+
 input LoginInput {
   email: String!
   password: String!
@@ -459,6 +470,12 @@ input UpdateRefuelingInput {
   odometer: Long!
   isFullTank: Boolean!
   note: String
+}
+
+input UpdateUserInput {
+  userId: UUID!
+  email: String!
+  displayName: String
 }
 
 input UpdateVehicleInput {
@@ -569,6 +586,11 @@ enum RefuelingSortField {
 enum SortDirection {
   ASC
   DESC
+}
+
+enum UserDataDisposition {
+  MOVE
+  PURGE
 }
 
 enum UserProvider {

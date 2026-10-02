@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
@@ -16,7 +16,7 @@ const users = [
   { id: 'u3', provider: 'OIDC', email: 'carol@example.com', displayName: 'Carol', isAdmin: false, isDisabled: false, avatarUrl: null },
 ]
 
-function adminServer() {
+function adminServer(canSetUserPasswords = false) {
   const calls: Record<string, unknown[]> = {}
   const record = (name: string, vars: unknown) => (calls[name] ??= []).push(vars)
   server.use(
@@ -27,6 +27,7 @@ function adminServer() {
       HttpResponse.json({
         data: {
           users,
+          canSetUserPasswords,
           accessSettings: { defaultLevelForOthers: 'NONE' },
           accessGrants: [{ id: 'g1', ownerId: 'u2', granteeId: 'u1', level: 'VIEW' }],
         },
@@ -51,6 +52,18 @@ function adminServer() {
     graphql.mutation('CreateUser', ({ variables }) => {
       record('CreateUser', variables)
       return HttpResponse.json({ data: { createUser: { user: { id: 'u9' }, reset: { token: 'tok.en', url: null, emailSent: false } } } })
+    }),
+    graphql.mutation('UpdateUser', ({ variables }) => {
+      record('UpdateUser', variables)
+      return HttpResponse.json({ data: { updateUser: { id: variables.input.userId } } })
+    }),
+    graphql.mutation('SetUserPassword', ({ variables }) => {
+      record('SetUserPassword', variables)
+      return HttpResponse.json({ data: { setUserPassword: true } })
+    }),
+    graphql.mutation('DeleteUser', ({ variables }) => {
+      record('DeleteUser', variables)
+      return HttpResponse.json({ data: { deleteUser: true } })
     }),
     graphql.mutation('IssuePasswordReset', ({ variables }) => {
       record('IssuePasswordReset', variables)
@@ -171,4 +184,101 @@ it('offers the delete level for the default and for grants, and shows people wit
   await ui.click(await screen.findByRole('combobox', { name: 'Level' }))
 
   expect(await screen.findByRole('option', { name: 'view, edit and delete permanently' })).toBeInTheDocument()
+})
+
+it('edits a local user in a dialog, prefilled, and offers it for local users only', async () => {
+  const ui = userEvent.setup()
+  const calls = adminServer()
+  renderWithApollo(<App />, '/admin')
+  const admin = await panel()
+
+  await admin.findByText('carol@example.com')
+  expect(admin.queryByRole('button', { name: 'Edit Carol' })).not.toBeInTheDocument() // OIDC user: the provider owns the profile
+  await ui.click(admin.getByRole('button', { name: 'Edit Bob' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Edit Bob' })
+  expect(within(dialog).getByLabelText('E-mail')).toHaveValue('bob@example.com')
+  await ui.clear(within(dialog).getByLabelText('E-mail'))
+  await ui.type(within(dialog).getByLabelText('E-mail'), 'robert@example.com')
+  await ui.clear(within(dialog).getByLabelText('Name'))
+  await ui.type(within(dialog).getByLabelText('Name'), 'Robert')
+  await ui.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+  expect(calls.UpdateUser).toEqual([{ input: { userId: 'u2', email: 'robert@example.com', displayName: 'Robert' } }])
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+})
+
+it('offers setting a password only when the server allows it', async () => {
+  const ui = userEvent.setup()
+  const off = adminServer(false)
+  const first = renderWithApollo(<App />, '/admin')
+  const admin = await panel()
+  await admin.findByText('bob@example.com')
+  expect(admin.queryByRole('button', { name: 'Set password for Bob' })).not.toBeInTheDocument()
+  expect(off.SetUserPassword).toBeUndefined()
+  first.unmount()
+
+  server.resetHandlers()
+  const calls = adminServer(true)
+  renderWithApollo(<App />, '/admin')
+  const allowed = await panel()
+  expect(allowed.queryByRole('button', { name: 'Set password for Carol' })).not.toBeInTheDocument() // OIDC user
+  await ui.click(await allowed.findByRole('button', { name: 'Set password for Bob' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Set password for Bob' })
+  await ui.type(within(dialog).getByLabelText('New password'), 'brand-new-pass-1')
+  await ui.click(within(dialog).getByRole('button', { name: 'Set password' }))
+
+  expect(calls.SetUserPassword).toEqual([{ userId: 'u2', newPassword: 'brand-new-pass-1' }])
+})
+
+it('deletes a user and moves their data to another user', async () => {
+  const ui = userEvent.setup()
+  const calls = adminServer()
+  renderWithApollo(<App />, '/admin')
+  const admin = await panel()
+
+  expect(await admin.findByText('bob@example.com')).toBeInTheDocument()
+  expect(admin.queryByRole('button', { name: 'Delete Alice' })).not.toBeInTheDocument() // yourself
+  await ui.click(admin.getByRole('button', { name: 'Delete Bob' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Delete Bob?' })
+  await choose(ui, 'Their data', 'Move to another user')
+  const confirm = within(dialog).getByRole('button', { name: 'Delete user' })
+  expect(confirm).toBeDisabled() // a target is needed
+  await choose(ui, 'Move everything to', 'Carol')
+  expect(screen.queryByRole('option', { name: 'Bob' })).not.toBeInTheDocument()
+  await ui.click(confirm)
+
+  expect(calls.DeleteUser).toEqual([{ input: { userId: 'u2', data: 'MOVE', moveToUserId: 'u3' } }])
+})
+
+it('deletes a user together with their data after a warning', async () => {
+  const ui = userEvent.setup()
+  const calls = adminServer()
+  renderWithApollo(<App />, '/admin')
+  const admin = await panel()
+
+  await ui.click(await admin.findByRole('button', { name: 'Delete Bob' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Delete Bob?' })
+  await choose(ui, 'Their data', 'Delete permanently')
+  expect(within(dialog).getByText(/deleted for good/)).toBeInTheDocument()
+  await ui.click(within(dialog).getByRole('button', { name: 'Delete user' }))
+
+  expect(calls.DeleteUser).toEqual([{ input: { userId: 'u2', data: 'PURGE', moveToUserId: null } }])
+})
+
+it('shows the server error inside the delete dialog when the user owns data and no choice was made', async () => {
+  const ui = userEvent.setup()
+  adminServer()
+  server.use(
+    graphql.mutation('DeleteUser', () =>
+      HttpResponse.json(gqlError('This user owns data.', 'VALIDATION_FAILED', 'user.dataChoiceRequired')),
+    ),
+  )
+  renderWithApollo(<App />, '/admin')
+  const admin = await panel()
+
+  await ui.click(await admin.findByRole('button', { name: 'Delete Bob' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Delete Bob?' })
+  await ui.click(within(dialog).getByRole('button', { name: 'Delete user' }))
+
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('choose to move it to another user or to delete it')
 })

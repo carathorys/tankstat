@@ -229,7 +229,26 @@
     "grantAction": "Hozzáférés megadása",
     "choose": "Válassz…",
     "levelsHelp": "Véglegesen csak a Törlés szint törölhet; minden szint tartalmazza az előzőeket.",
-    "grantDelete": "{{grantee}} megtekintheti, szerkesztheti és véglegesen törölheti {{owner}} adatait"
+    "grantDelete": "{{grantee}} megtekintheti, szerkesztheti és véglegesen törölheti {{owner}} adatait",
+    "edit": "{{name}} szerkesztése",
+    "editTitle": "{{name}} szerkesztése",
+    "editDescription": "Az e-mail-cím módosítása a bejelentkezés módját is megváltoztatja.",
+    "save": "Mentés",
+    "setPasswordFor": "Jelszó beállítása: {{name}}",
+    "passwordTitle": "Jelszó beállítása: {{name}}",
+    "passwordDescription": "A felhasználó mindenhol kijelentkezik, és mostantól ezt a jelszót kell használnia.",
+    "setPassword": "Jelszó beállítása",
+    "delete": "{{name}} törlése",
+    "deleteTitle": "Törlöd: {{name}}?",
+    "deleteDescription": "A fiók megszűnik, a felhasználó kijelentkezik. Ha járművek vagy naplók tartoznak hozzá, válaszd ki, mi legyen velük.",
+    "dataChoice": "Az adatai",
+    "dataChoiceNone": "Válassz (ha vannak adatai, kötelező)",
+    "dataMove": "Áthelyezés másik felhasználóhoz",
+    "dataPurge": "Végleges törlés",
+    "moveTo": "Minden áthelyezése ide:",
+    "purgeWarning": "A járművei és minden naplója, kiadása és diagramja véglegesen törlődik, a kukát is beleértve.",
+    "deleteConfirm": "Felhasználó törlése",
+    "moveGrantsNote": "A megosztások is átkerülnek: a másik felhasználó átveszi, hogy kik láthatják ennek a felhasználónak az adatait, és kinek az adatait láthatta ő."
   },
   "errors": {
     "network": "A szerver nem érhető el. Ellenőrizd a kapcsolatot, és próbáld újra.",
@@ -280,7 +299,14 @@
       "emailExists": "Már létezik felhasználó ezzel az e-mail-címmel.",
       "onlyStandalone": "Felhasználót itt csak önálló hitelesítési módban lehet létrehozni.",
       "cannotDemoteSelf": "Nem vonhatod vissza a saját adminisztrátori jogosultságodat.",
-      "cannotDisableSelf": "Nem tilthatod le a saját fiókodat."
+      "cannotDisableSelf": "Nem tilthatod le a saját fiókodat.",
+      "profileLocalOnly": "A külső szolgáltatótól érkező felhasználók nevét és e-mail-címét a szolgáltató adja.",
+      "adminPasswordDisabled": "A jelszó közvetlen beállítása ki van kapcsolva ezen a szerveren. Küldj helyette visszaállító hivatkozást.",
+      "cannotDeleteSelf": "Nem törölheted a saját fiókodat.",
+      "lastAdmin": "Az utolsó aktív adminisztrátor nem törölhető.",
+      "dataChoiceRequired": "A felhasználónak vannak adatai: válaszd ki, hogy áthelyezed másik felhasználóhoz vagy törlöd.",
+      "moveTargetRequired": "Válassz egy másik felhasználót, aki megkapja az adatokat.",
+      "deleteLocalOnly": "A külső szolgáltatótól érkező felhasználók a következő bejelentkezéskor visszatérnek. Inkább tiltsd le őket."
     },
     "password": {
       "tooShort": "A jelszónak legalább {{min}} karakter hosszúnak kell lennie.",

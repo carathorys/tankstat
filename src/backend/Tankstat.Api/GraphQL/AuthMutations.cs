@@ -64,6 +64,23 @@ public sealed class AuthMutations
     public async Task<UserAccount> SetUserDisabled(Guid userId, bool disabled, [Service] UserService users, CancellationToken ct) =>
         UserAccount.From(await users.SetDisabledAsync(userId, disabled, ct));
 
+    public async Task<UserAccount> UpdateUser(UpdateUserInput input, [Service] UserService users, CancellationToken ct) =>
+        UserAccount.From(await users.UpdateAsync(input.UserId, input.Email, input.DisplayName, ct));
+
+    /// <summary>Only works when <c>Auth:Standalone:AllowAdminSetPassword</c> is on.</summary>
+    public async Task<bool> SetUserPassword(Guid userId, string newPassword, [Service] UserService users, CancellationToken ct)
+    {
+        await users.SetPasswordAsync(userId, newPassword, ct);
+        return true;
+    }
+
+    /// <summary>Users that own data need <c>data</c>: MOVE (to <c>moveToUserId</c>) or PURGE.</summary>
+    public async Task<bool> DeleteUser(DeleteUserInput input, [Service] UserService users, CancellationToken ct)
+    {
+        await users.DeleteAsync(input.UserId, input.Data, input.MoveToUserId, ct);
+        return true;
+    }
+
     public async Task<AccessSettingsInfo> SetDefaultAccess(
         Tankstat.Domain.Access.AccessLevel level, [Service] AccessAdminService admin, CancellationToken ct) =>
         new((await admin.SetDefaultLevelAsync(level, ct)).DefaultLevelForOthers);

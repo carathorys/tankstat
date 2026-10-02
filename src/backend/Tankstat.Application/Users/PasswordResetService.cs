@@ -57,6 +57,9 @@ public sealed class PasswordResetService(
         return tokens.UpdateAsync(token, ct);
     }
 
+    /// <summary>Invalidates every link the user was ever sent; call after their password changed.</summary>
+    public Task RevokeAllAsync(Guid userId, CancellationToken ct) => tokens.RemoveForUserAsync(userId, ct);
+
     private static string Hash(string secret) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(secret)));
 
     private static string Base64Url(byte[] bytes) =>

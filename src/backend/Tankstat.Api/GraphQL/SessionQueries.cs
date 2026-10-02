@@ -20,6 +20,10 @@ public sealed class SessionQueries
     public async Task<IReadOnlyList<UserAccount>> GetUsers([Service] UserService users, CancellationToken ct) =>
         (await users.ListAsync(ct)).Select(UserAccount.From).ToList();
 
+    /// <summary>Whether administrators may set passwords directly (<c>Auth:Standalone:AllowAdminSetPassword</c>).</summary>
+    public async Task<bool> GetCanSetUserPasswords([Service] UserService users, CancellationToken ct) =>
+        await users.CanSetPasswordsAsync(ct);
+
     public async Task<AccessSettingsInfo> GetAccessSettings([Service] AccessAdminService admin, CancellationToken ct) =>
         new((await admin.GetSettingsAsync(ct)).DefaultLevelForOthers);
 
