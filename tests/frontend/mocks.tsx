@@ -296,22 +296,52 @@ export interface FakePhoto {
 }
 
 /**
- * In-memory photos of logs behind the upload endpoints (`PUT/DELETE /media/<kind>/<logId>/photos`), as the real API answers them.
- * `failWith` makes uploads fail with a stable error key, `put` records the requests as "<logId>:<bytes>".
+ * In-memory photos of logs behind the upload endpoints (`PUT/DELETE /media/<kind>/<logId>/photos`) and the drafts of logs that are not
+ * saved yet (`PUT /media/vehicles/<id>/photo-drafts`, `DELETE /media/photo-drafts/<id>`), as the real API answers them. `failWith`
+ * makes uploads (photos and drafts) fail with a stable error key; `puts`, `draftPuts` and the delete lists record the requests.
+ * `attach` is what saving a new log does with its drafts; ids in `unattachable` stay drafts (the server could not attach them).
  */
 export function fakePhotoStore(initial: Record<string, FakePhoto[]> = {}) {
   const state = {
     byLog: Object.fromEntries(Object.entries(initial).map(([k, v]) => [k, [...v]])) as Record<string, FakePhoto[]>,
+    drafts: [] as FakePhoto[],
     puts: [] as { kind: string; logId: string; bytes: number }[],
+    draftPuts: [] as { vehicleId: string; bytes: number }[],
     deletes: [] as { kind: string; logId: string; imageId: string }[],
+    draftDeletes: [] as string[],
+    unattachable: new Set<string>(),
     failWith: undefined as { key: string; status?: number; args?: Record<string, unknown> } | undefined,
     nextId: 1,
   }
-  const handlers = (['expenses', 'refuelings'] as const).flatMap((kind) => [
+  const refuse = () =>
+    state.failWith ? HttpResponse.json({ key: state.failWith.key, args: state.failWith.args ?? {}, message: 'refused' }, { status: state.failWith.status ?? 400 }) : undefined
+  const attach = (logId: string, ids: readonly string[] = []) => {
+    const taken = state.drafts.filter((d) => ids.includes(d.id) && !state.unattachable.has(d.id))
+    state.drafts = state.drafts.filter((d) => !taken.includes(d))
+    ;(state.byLog[logId] ??= []).push(...taken)
+    return taken.map((p) => ({ id: p.id }))
+  }
+  const draftHandlers = [
+    http.put('/media/vehicles/:vehicleId/photo-drafts', async ({ params, request }) => {
+      state.draftPuts.push({ vehicleId: String(params.vehicleId), bytes: (await request.arrayBuffer()).byteLength })
+      const refused = refuse()
+      if (refused) return refused
+      const id = `draft${state.nextId++}`
+      state.drafts.push({ id, url: `/media/${id}` })
+      return HttpResponse.json({ id, url: `/media/${id}` })
+    }),
+    http.delete('/media/photo-drafts/:id', ({ params }) => {
+      state.draftDeletes.push(String(params.id))
+      state.drafts = state.drafts.filter((d) => d.id !== params.id)
+      return new HttpResponse(null, { status: 204 })
+    }),
+  ]
+  const handlers = [...draftHandlers, ...(['expenses', 'refuelings'] as const).flatMap((kind) => [
     http.put(`/media/${kind}/:logId/photos`, async ({ params, request }) => {
       const logId = String(params.logId)
       state.puts.push({ kind, logId, bytes: (await request.arrayBuffer()).byteLength })
-      if (state.failWith) return HttpResponse.json({ key: state.failWith.key, args: state.failWith.args ?? {}, message: 'refused' }, { status: state.failWith.status ?? 400 })
+      const refused = refuse()
+      if (refused) return refused
       const id = `img${state.nextId++}`
       ;(state.byLog[logId] ??= []).push({ id, url: `/media/${id}` })
       return HttpResponse.json({ id, url: `/media/${id}` })
@@ -322,8 +352,8 @@ export function fakePhotoStore(initial: Record<string, FakePhoto[]> = {}) {
       state.byLog[logId] = (state.byLog[logId] ?? []).filter((p) => p.id !== params.imageId)
       return new HttpResponse(null, { status: 204 })
     }),
-  ])
-  return { state, handlers, photosOf: (logId: string) => state.byLog[logId] ?? [] }
+  ])]
+  return { state, handlers, attach, photosOf: (logId: string) => state.byLog[logId] ?? [] }
 }
 
 /** A small in-memory backend for one vehicle's logs (and their trash), including the sharing list. */
@@ -378,9 +408,10 @@ export function fakeLogBackend(vehicle: FakeVehicle, logs: FakeRefueling[] = [],
       const failure = fail()
       if (failure) return failure
       const id = `r${state.nextId++}`
-      state.logs.push(fakeRefueling({ id, vehicleId: variables.input.vehicleId, ...variables.input }))
-      state.lastOdometer = Math.max(state.lastOdometer ?? 0, variables.input.odometer)
-      return HttpResponse.json({ data: { logRefueling: { id } } })
+      const { photoIds, ...input } = variables.input
+      state.logs.push(fakeRefueling({ id, ...input }))
+      state.lastOdometer = Math.max(state.lastOdometer ?? 0, input.odometer)
+      return HttpResponse.json({ data: { logRefueling: { id, photos: photos.attach(id, photoIds) } } })
     }),
     graphql.mutation('UpdateRefueling', ({ variables }) => {
       record('UpdateRefueling', variables)
@@ -516,8 +547,9 @@ export function fakeExpenseBackend(vehicle: FakeVehicle, expenses: FakeExpense[]
       const failure = fail()
       if (failure) return failure
       const id = `e${state.nextId++}`
-      state.expenses.push(fakeExpense({ id, vehicleId: variables.input.vehicleId, ...variables.input }))
-      return HttpResponse.json({ data: { addExpense: { id } } })
+      const { photoIds, ...input } = variables.input
+      state.expenses.push(fakeExpense({ id, ...input }))
+      return HttpResponse.json({ data: { addExpense: { id, photos: photos.attach(id, photoIds) } } })
     }),
     graphql.mutation('UpdateExpense', ({ variables }) => {
       record('UpdateExpense', variables)

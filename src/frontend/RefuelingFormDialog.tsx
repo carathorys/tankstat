@@ -5,7 +5,7 @@ import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { OdometerField } from './components/OdometerField.tsx'
 import { PhotoGallery } from './components/PhotoGallery.tsx'
-import { PhotosAfterSave } from './components/PhotosAfterSave.tsx'
+import { PhotosLeftOut } from './components/PhotosLeftOut.tsx'
 import type { Saved } from './components/usePhotoQueue.ts'
 import { usePhotoSession } from './components/usePhotoSession.ts'
 import { Field } from './forms.tsx'
@@ -48,14 +48,14 @@ export function RefuelingFormDialog({
   trigger: ReactNode
   vehicle: { id: string; units: { distance: DistanceUnit; volume: VolumeUnit } }
   refuelingId?: string
-  onSubmit: (values: RefuelingValues) => Promise<Saved>
+  /** `photoIds`: the drafts uploaded for a new log (always empty when editing: a saved log takes its photos right away). */
+  onSubmit: (values: RefuelingValues, photoIds: string[]) => Promise<Saved>
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
-  const { queue, savedId, failure: uploadFailure, saving, submit, reset } = usePhotoSession('refuelings')
+  const { queue, leftOut, saving, submit, reset } = usePhotoSession(vehicle.id)
   const editing = refuelingId !== undefined
-  const logId = refuelingId ?? savedId
-  const details = useQuery(RefuelingDetailsDocument, { variables: { id: logId ?? '' }, skip: logId === undefined || !open, fetchPolicy: 'network-only' })
+  const details = useQuery(RefuelingDetailsDocument, { variables: { id: refuelingId ?? '' }, skip: !editing || !open, fetchPolicy: 'network-only' })
   const defaults = useQuery(LogDefaultsDocument, { variables: { vehicleId: vehicle.id }, skip: !open, fetchPolicy: 'network-only' })
   const error = details.error ?? defaults.error
   const ready = defaults.data && (!editing || details.data?.refueling)
@@ -78,7 +78,7 @@ export function RefuelingFormDialog({
       <Dialog.Trigger>{trigger}</Dialog.Trigger>
       <Dialog.Content
         maxWidth="450px"
-        // Closing while the log and its photos are on their way would lose track of them.
+        // Closing while the log is being saved would lose track of it.
         onEscapeKeyDown={(e) => saving && e.preventDefault()}
         onInteractOutside={(e) => saving && e.preventDefault()}
       >
@@ -89,19 +89,17 @@ export function RefuelingFormDialog({
         {error && <ErrorMessage error={error} />}
         {!error && !ready && <Text as="p" role="status">{t('app.loading')}</Text>}
         {editing && details.data && !existing && <ErrorMessage>{t('errors.refueling.notFound')}</ErrorMessage>}
-        {savedId !== undefined && (
-          <PhotosAfterSave kind="refuelings" logId={savedId} failure={uploadFailure} photos={existing?.photos ?? []} queue={queue} onChanged={() => details.refetch()} />
-        )}
-        {ready && savedId === undefined && (
+        {leftOut > 0 && <PhotosLeftOut count={leftOut} />}
+        {ready && leftOut === 0 && (
           <RefuelingForm
             initial={initial}
             units={vehicle.units}
             editing={editing}
             last={lastReading}
-            photosBusy={queue.adding}
+            photosBusy={queue.busy || queue.failed > 0}
             gallery={<PhotoGallery kind="refuelings" logId={refuelingId} photos={existing?.photos ?? []} queue={queue} disabled={saving} onChanged={() => details.refetch()} />}
             onSubmit={async (values) => {
-              if (await submit(() => onSubmit(values), editing)) {
+              if (await submit((photoIds) => onSubmit(values, photoIds), editing)) {
                 setOpen(false)
                 reset()
               }

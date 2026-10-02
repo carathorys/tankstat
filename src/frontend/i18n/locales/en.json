@@ -424,7 +424,9 @@
     "photo": {
       "tooMany": "A log can have at most {{max}} photos.",
       "notFound": "This photo does not exist.",
-      "unknownLogType": "Unknown kind of log: {{logType}}."
+      "unknownLogType": "Unknown kind of log: {{logType}}.",
+      "draftExpired": "A photo is no longer available (it was uploaded more than a day ago). Add it again.",
+      "tooManyDrafts": "At most {{max}} photos can wait for an entry to be saved. Save or cancel the open entries first."
     },
     "recurring": {
       "titleRequired": "The recurring expense needs a title.",
@@ -776,13 +778,16 @@
     "open": "Open photo {{n}}",
     "removeAria": "Remove photo {{n}}",
     "working": "Working…",
-    "queued": "Photos ready; they are saved with the entry.",
+    "ready": "Photos uploaded; they are attached to the entry when you save it.",
+    "uploading": "Uploading…",
+    "uploadFailed": "Not uploaded",
+    "retryAria": "Upload photo {{n}} again",
+    "failedHint": "Some photos could not be uploaded. Try them again or remove them to save the entry.",
     "added": "Photos saved.",
     "removed": "Photo removed.",
-    "partialFailure": "The entry was saved, but not all photos could be sent.",
     "done": "Done",
-    "unsent": "Photos not sent yet: {{n}}.",
-    "retry": "Try again"
+    "leftOut_one": "The entry was saved, but {{count}} photo could not be attached. Add it again by editing the entry.",
+    "leftOut_other": "The entry was saved, but {{count}} photos could not be attached. Add them again by editing the entry."
   },
   "recurring": {
     "title": "Recurring expenses",

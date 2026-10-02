@@ -104,6 +104,9 @@ query LogDefaults($vehicleId: UUID!) {
 mutation LogRefueling($input: LogRefuelingInput!) {
   logRefueling(input: $input) {
     id
+    photos {
+      id
+    }
   }
 }
 

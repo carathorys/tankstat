@@ -32,4 +32,7 @@ export const MAX_LOG_PHOTOS = 10
 export const LOG_PHOTO_EDGE = 1600
 
 export const logPhotosPath = (kind: LogKind, logId: string) => `/media/${kind}/${logId}/photos`
+/** Photos picked for a log that is not saved yet are uploaded here at once, as drafts that the save then attaches. */
+export const photoDraftsPath = (vehicleId: string) => `/media/vehicles/${vehicleId}/photo-drafts`
+export const photoDraftPath = (draftId: string) => `/media/photo-drafts/${draftId}`
 export const logPhotoPath = (kind: LogKind, logId: string, imageId: string) => `${logPhotosPath(kind, logId)}/${imageId}`

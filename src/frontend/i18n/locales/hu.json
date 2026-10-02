@@ -424,7 +424,9 @@
     "photo": {
       "tooMany": "Egy naplóbejegyzéshez legfeljebb {{max}} fotó tartozhat.",
       "notFound": "Ez a fotó nem létezik.",
-      "unknownLogType": "Ismeretlen naplótípus: {{logType}}."
+      "unknownLogType": "Ismeretlen naplótípus: {{logType}}.",
+      "draftExpired": "Egy fotó már nem érhető el (több mint egy napja töltötték fel). Add hozzá újra.",
+      "tooManyDrafts": "Legfeljebb {{max}} fotó várhat egy bejegyzés mentésére. Előbb mentsd vagy szakítsd meg a nyitott bejegyzéseket."
     },
     "recurring": {
       "titleRequired": "Az ismétlődő költségnek kell megnevezés.",
@@ -776,13 +778,16 @@
     "open": "{{n}}. fotó megnyitása",
     "removeAria": "{{n}}. fotó törlése",
     "working": "Folyamatban…",
-    "queued": "A fotók készen állnak, a bejegyzéssel együtt mentődnek.",
+    "ready": "A fotók feltöltve; a bejegyzés mentésekor hozzá is kerülnek.",
+    "uploading": "Feltöltés…",
+    "uploadFailed": "Nincs feltöltve",
+    "retryAria": "A(z) {{n}}. fotó újbóli feltöltése",
+    "failedHint": "Néhány fotót nem sikerült feltölteni. Próbáld újra, vagy töröld őket a bejegyzés mentéséhez.",
     "added": "Fotók mentve.",
     "removed": "Fotó törölve.",
-    "partialFailure": "A bejegyzés mentve lett, de nem sikerült minden fotót elküldeni.",
     "done": "Kész",
-    "unsent": "Még el nem küldött fotók: {{n}}.",
-    "retry": "Újrapróbálás"
+    "leftOut_one": "A bejegyzés mentve lett, de {{count}} fotót nem sikerült hozzáadni. A bejegyzés szerkesztésével újra hozzáadhatod.",
+    "leftOut_other": "A bejegyzés mentve lett, de {{count}} fotót nem sikerült hozzáadni. A bejegyzés szerkesztésével újra hozzáadhatod őket."
   },
   "recurring": {
     "title": "Ismétlődő költségek",

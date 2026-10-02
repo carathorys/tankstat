@@ -74,9 +74,9 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
               <ExpenseFormDialog
                 vehicle={vehicle}
                 trigger={<Button size="3">{t('expenses.add')}</Button>}
-                onSubmit={async (input) => {
-                  const added = await addExpense({ variables: { input: { ...input, vehicleId: vehicle.id } } })
-                  return added.data ? { id: added.data.addExpense.id } : undefined
+                onSubmit={async (input, photoIds) => {
+                  const added = await addExpense({ variables: { input: { ...input, vehicleId: vehicle.id, photoIds } } })
+                  return added.data ? { id: added.data.addExpense.id, photoCount: added.data.addExpense.photos.length } : undefined
                 }}
               />
             )}

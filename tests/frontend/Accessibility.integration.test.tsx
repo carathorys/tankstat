@@ -209,9 +209,9 @@ it('a gallery that holds photos is free of violations and its thumbnails and but
   await check(document.body)
 })
 
-it('the screen after a new entry was saved but its photos were not sent is free of violations', async () => {
+it('a photo that could not be uploaded, and the screen after a photo could not be attached, are free of violations', async () => {
   const photos = fakePhotoStore()
-  photos.state.failWith = { key: 'photo.tooMany', args: { max: 10 } }
+  photos.state.failWith = { key: 'photo.tooManyDrafts', args: { max: 20 } }
   const { ui } = setup('/vehicles/v1?tab=expenses', 'desktop', photos)
   await screen.findByText('Oil change')
 
@@ -220,12 +220,20 @@ it('the screen after a new entry was saved but its photos were not sent is free 
   await within(dialog).findByText(/Used before/)
   await ui.type(within(dialog).getByLabelText('Title'), 'Tyres')
   await ui.type(within(dialog).getByLabelText('Amount'), '120000')
-  await ui.upload(within(dialog).getByTestId('photo-library'), new File([new Uint8Array([1, 2, 3])], 'a.png', { type: 'image/png' }))
-  await within(dialog).findAllByRole('button', { name: /^Remove photo/ })
+  const file = new File([new Uint8Array([1, 2, 3])], 'a.png', { type: 'image/png' })
+  await ui.upload(within(dialog).getByTestId('photo-library'), file)
+  await within(dialog).findByRole('alert')
+  expect(within(dialog).getByRole('button', { name: 'Upload photo 1 again' })).toBeInTheDocument()
+  await check(document.body)
+
+  photos.state.failWith = undefined
+  photos.state.unattachable.add('draft1')
+  await ui.click(within(dialog).getByRole('button', { name: 'Upload photo 1 again' }))
+  await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Add expense' })).toBeEnabled())
   await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
 
-  expect(await within(dialog).findByRole('alert')).toHaveTextContent(/not all photos could be sent/)
-  expect(within(dialog).getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent(/could not be attached/)
+  expect(within(dialog).getByRole('button', { name: 'Done' })).toBeInTheDocument()
   await check(document.body)
 })
 
