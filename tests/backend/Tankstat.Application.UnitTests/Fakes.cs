@@ -480,7 +480,7 @@ internal sealed class World
         var logPhotoAccess = new LogPhotoAccess(LogGuard, Expenses, Refuelings, LogPhotos);
         ImageService = new ImageService(ImageStore, Images, Users, Vehicles, Access, logPhotoAccess, PhotoDrafts, Clock);
         Drafts = new PhotoDraftService(LogGuard, PhotoDrafts, ImageService, Access, Clock);
-        Photos = new LogPhotoService(logPhotoAccess, LogPhotos, ImageService, Access, Clock);
+        Photos = new LogPhotoService(logPhotoAccess, LogPhotos, ImageService, Drafts, Access, Clock);
         VehicleService = new VehicleService(Vehicles, Refuelings, Access, Odometer, ImageService, Clock);
         RefuelingService = new RefuelingService(Vehicles, LogGuard, Refuelings, Access, Odometer, Photos, Clock);
         ExpenseService = new ExpenseService(LogGuard, Expenses, Access, Odometer, Photos, Clock);

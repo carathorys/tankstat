@@ -52,16 +52,20 @@ public sealed class RefuelingService(
     }
 
     /// <param name="recalculateConsumption">Set to false when adding many logs in a row (an import) and call <see cref="RecalculateConsumptionAsync"/> once at the end.</param>
-    public async Task<Refueling> LogAsync(Guid vehicleId, RefuelingInput input, CancellationToken ct, bool recalculateConsumption = true)
+    /// <param name="photoDraftIds">Photos the user uploaded for this log before saving it (see <see cref="PhotoDraftService"/>).</param>
+    public async Task<Refueling> LogAsync(
+        Guid vehicleId, RefuelingInput input, CancellationToken ct, bool recalculateConsumption = true, IReadOnlyCollection<Guid>? photoDraftIds = null)
     {
         var (vehicle, _) = await EditableVehicleAsync(vehicleId, ct);
         var creator = await access.RequirePrincipalAsync(ct);
         await ValidateAsync(vehicle.Id, input, exceptReadingId: null, ct);
+        var drafts = await photos.RequireDraftsAsync(vehicle.Id, photoDraftIds, ct);
 
         var reading = OdometerReading.Create(vehicle.OwnerId, vehicle.Id, input.Date, input.Odometer);
         var cost = Cost.Create(vehicle.OwnerId, vehicle.Id, input.Date, input.TotalCost, input.Currency);
         var refueling = Refueling.Create(vehicle.OwnerId, creator.Id, vehicle.Id, input.Date, input.Volume, cost, reading, input.IsFullTank, input.Note);
         await refuelings.AddAsync(refueling, ct);
+        await photos.AttachDraftsAsync(LogType.Refueling, refueling.Id, drafts, ct);
         if (recalculateConsumption) await RecalculateConsumptionAsync(vehicle.Id, ct);
         return await refuelings.FindAsync(refueling.Id, ct) ?? refueling;
     }

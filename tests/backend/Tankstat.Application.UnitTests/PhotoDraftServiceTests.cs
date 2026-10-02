@@ -1,4 +1,6 @@
 using Tankstat.Application.Auth;
+using Tankstat.Application.Expenses;
+using Tankstat.Application.Refuelings;
 using Tankstat.Domain;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Measurements;
@@ -10,7 +12,11 @@ namespace Tankstat.Application.UnitTests;
 
 public class PhotoDraftServiceTests
 {
+    private static readonly DateOnly Day = new(2026, 9, 1);
+
     private static byte[] Jpeg(byte marker = 0) => [0xFF, 0xD8, 0xFF, 0xE0, marker, 1, 2, 3];
+
+    private static RefuelingInput Fill(long odometer = 1000) => new(Day, 40, 60, "EUR", odometer, true, null);
 
     private sealed record Scene(World W, User Alice, User Bob, Vehicle Car, Vehicle Van);
 
@@ -126,5 +132,123 @@ public class PhotoDraftServiceTests
         Assert.Equal(("photo.notFound", "photo.notFound"), (notHis.Key, unknown.Key));
         Assert.Equal([kept], s.W.PhotoDrafts.Items.Select(d => d.Id));
         Assert.Equal([kept], s.W.ImageStore.Files.Keys);
+    }
+
+    // ---- attaching on save ---------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task SavingARefueling_MakesItsDraftsItsPhotos()
+    {
+        var s = await Setup();
+        var first = await s.W.Drafts.UploadAsync(s.Car.Id, Jpeg(1), default);
+        var second = await s.W.Drafts.UploadAsync(s.Car.Id, Jpeg(2), default);
+
+        var log = await s.W.RefuelingService.LogAsync(s.Car.Id, Fill(), default, photoDraftIds: [first, second]);
+
+        var photos = await s.W.Photos.ListAsync(LogType.Refueling, log.Id, default);
+        Assert.Equal(new[] { first, second }.Order(), photos.Select(p => p.ImageId).Order());
+        Assert.All(photos, p => Assert.Equal((s.Alice.Id, s.Car.Id, s.Alice.Id), (p.OwnerId, p.VehicleId, p.CreatedById)));
+        var folder = $"vehicles/{s.Car.Id:N}/refuelings/{log.Id:N}";
+        Assert.All(new[] { first, second }, id => Assert.Equal(folder, s.W.ImageStore.Folders[id]));
+        Assert.Equal(folder, s.W.Images.Items[first].Folder);
+        Assert.Empty(s.W.PhotoDrafts.Items);
+    }
+
+    [Fact]
+    public async Task SavingAnExpense_MakesItsDraftsItsPhotos_AndTheyAreSeenLikeTheLog()
+    {
+        var s = await Setup();
+        var draft = await s.W.Drafts.UploadAsync(s.Car.Id, Jpeg(), default);
+
+        var expense = await s.W.ExpenseService.AddAsync(s.Car.Id, new ExpenseInput(Day, "Tyres", null, 300, "EUR", null, null), default, [draft]);
+
+        Assert.Equal([draft], (await s.W.Photos.ListAsync(LogType.Expense, expense.Id, default)).Select(p => p.ImageId));
+        Assert.Equal($"vehicles/{s.Car.Id:N}/expenses/{expense.Id:N}", s.W.ImageStore.Folders[draft]);
+        s.W.Grants.Items.Add(AccessGrant.Create(s.Alice.Id, s.Bob.Id, AccessLevel.View));
+        s.W.Current.SignInAs(s.Bob); // a photo of the expense now: whoever may see the expense sees it
+        await using var seen = await s.W.ImageService.OpenAsync(draft, default);
+        Assert.NotNull(seen);
+    }
+
+    [Fact]
+    public async Task Saving_WithADraftItMayNotTake_SavesNothing()
+    {
+        var s = await Setup();
+        s.W.Grants.Items.Add(AccessGrant.Create(s.Alice.Id, s.Bob.Id, AccessLevel.Edit));
+        var onTheVan = await s.W.Drafts.UploadAsync(s.Van.Id, Jpeg(1), default);
+        var old = await s.W.Drafts.UploadAsync(s.Car.Id, Jpeg(2), default);
+        s.W.Current.SignInAs(s.Bob);
+        var bobs = await s.W.Drafts.UploadAsync(s.Car.Id, Jpeg(3), default);
+        s.W.Current.SignInAs(s.Alice);
+        s.W.Clock.Advance(PhotoDraft.Lifetime);
+
+        Guid[][] attempts = [[onTheVan], [bobs], [old], [Guid.NewGuid()]];
+        foreach (var ids in attempts)
+        {
+            var error = await Assert.ThrowsAsync<DomainException>(() => s.W.RefuelingService.LogAsync(s.Car.Id, Fill(), default, photoDraftIds: ids));
+            Assert.Equal("photo.draftExpired", error.Key);
+        }
+
+        Assert.Empty(s.W.Refuelings.Items);
+        Assert.Empty(s.W.LogPhotos.Items);
+        Assert.Equal(3, s.W.PhotoDrafts.Items.Count); // nothing was taken or thrown away
+    }
+
+    [Fact]
+    public async Task Saving_TakesAtMostTenPhotos_AndTheSameDraftOnlyOnce()
+    {
+        var s = await Setup();
+        var ids = new List<Guid>();
+        for (var i = 0; i < LogPhoto.MaxPerLog + 1; i++) ids.Add(await s.W.Drafts.UploadAsync(s.Car.Id, Jpeg((byte)i), default));
+
+        var tooMany = await Assert.ThrowsAsync<DomainException>(() => s.W.RefuelingService.LogAsync(s.Car.Id, Fill(), default, photoDraftIds: ids));
+        var log = await s.W.RefuelingService.LogAsync(s.Car.Id, Fill(), default, photoDraftIds: [ids[0], ids[0], ids[1]]);
+
+        Assert.Equal("photo.tooMany", tooMany.Key);
+        Assert.Equal(2, (await s.W.Photos.ListAsync(LogType.Refueling, log.Id, default)).Count);
+    }
+
+    [Fact]
+    public async Task ARuleBrokenByTheLog_LeavesItsDraftsAsTheyWere()
+    {
+        var s = await Setup();
+        await s.W.RefuelingService.LogAsync(s.Car.Id, Fill(5000), default);
+        var draft = await s.W.Drafts.UploadAsync(s.Car.Id, Jpeg(), default);
+
+        var error = await Assert.ThrowsAsync<DomainException>(() => s.W.RefuelingService.LogAsync(s.Car.Id, Fill(4000) with { Date = Day.AddDays(1) }, default, photoDraftIds: [draft]));
+
+        Assert.Equal("odometer.belowPrevious", error.Key);
+        Assert.Equal([draft], s.W.PhotoDrafts.Items.Select(d => d.Id)); // still there for the corrected save
+        Assert.Equal($"vehicles/{s.Car.Id:N}/drafts", s.W.ImageStore.Folders[draft]);
+    }
+
+    [Fact]
+    public async Task APhotoThatCannotBeMoved_DoesNotFailTheSave_AndStaysADraft()
+    {
+        var s = await Setup();
+        var draft = await s.W.Drafts.UploadAsync(s.Car.Id, Jpeg(), default);
+        s.W.ImageStore.FailMoves = true;
+
+        var log = await s.W.RefuelingService.LogAsync(s.Car.Id, Fill(), default, photoDraftIds: [draft]);
+
+        Assert.Single(s.W.Refuelings.Items);
+        Assert.Empty(await s.W.Photos.ListAsync(LogType.Refueling, log.Id, default)); // the save went through; the photo did not make it
+        Assert.Equal([draft], s.W.PhotoDrafts.Items.Select(d => d.Id));
+        Assert.Equal($"vehicles/{s.Car.Id:N}/drafts", s.W.ImageStore.Folders[draft]);
+    }
+
+    [Fact]
+    public async Task APhotoWhoseRowCannotBeSaved_GoesBackToTheDrafts()
+    {
+        var s = await Setup();
+        var draft = await s.W.Drafts.UploadAsync(s.Car.Id, Jpeg(), default);
+        s.W.LogPhotos.FailAdds = true;
+
+        var log = await s.W.RefuelingService.LogAsync(s.Car.Id, Fill(), default, photoDraftIds: [draft]);
+
+        Assert.Empty(await s.W.Photos.ListAsync(LogType.Refueling, log.Id, default));
+        Assert.Equal($"vehicles/{s.Car.Id:N}/drafts", s.W.ImageStore.Folders[draft]); // moved back
+        Assert.Equal($"vehicles/{s.Car.Id:N}/drafts", s.W.Images.Items[draft].Folder);
+        Assert.Equal([draft], s.W.PhotoDrafts.Items.Select(d => d.Id));
     }
 }

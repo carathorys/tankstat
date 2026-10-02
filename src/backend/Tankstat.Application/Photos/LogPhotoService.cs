@@ -11,7 +11,7 @@ namespace Tankstat.Application.Photos;
 /// the vehicle's logs, adding and removing needs Edit; they are stored in the vehicle's upload folder and go away with their log.
 /// </summary>
 public sealed class LogPhotoService(
-    LogPhotoAccess logs, ILogPhotoRepository photos, ImageService images, AccessService access, TimeProvider clock)
+    LogPhotoAccess logs, ILogPhotoRepository photos, ImageService images, PhotoDraftService drafts, AccessService access, TimeProvider clock)
 {
     /// <summary>The photos of a log, oldest first; empty when the log does not exist or may not be seen.</summary>
     public async Task<IReadOnlyList<LogPhoto>> ListAsync(LogType logType, Guid logId, CancellationToken ct) =>
@@ -71,6 +71,53 @@ public sealed class LogPhotoService(
         finally
         {
             gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// The drafts a new log of the vehicle may take (see <see cref="PhotoDraftService.RequireAttachableAsync"/>); call it before saving
+    /// the log, then <see cref="AttachDraftsAsync"/> after.
+    /// </summary>
+    public Task<IReadOnlyList<PhotoDraft>> RequireDraftsAsync(Guid vehicleId, IReadOnlyCollection<Guid>? draftIds, CancellationToken ct) =>
+        drafts.RequireAttachableAsync(vehicleId, draftIds, ct);
+
+    /// <summary>
+    /// Makes the drafts photos of the log that was just saved: each picture moves into the log's folder and gets its photo row. The log
+    /// is new and the drafts were checked, so they fit; a draft that fails here stays a draft (and expires) rather than failing the save.
+    /// </summary>
+    public async Task AttachDraftsAsync(LogType logType, Guid logId, IReadOnlyList<PhotoDraft> attachable, CancellationToken ct)
+    {
+        if (attachable.Count == 0) return;
+        var attached = new List<Guid>();
+        var now = clock.GetUtcNow();
+        foreach (var draft in attachable)
+        {
+            var moved = false;
+            try
+            {
+                await images.MoveAsync(draft.Id, ImageFolders.LogPhotos(draft.VehicleId, logType, logId), CancellationToken.None);
+                moved = true;
+                await photos.AddAsync(LogPhoto.Create(draft.OwnerId, draft.VehicleId, logType, logId, draft.Id, draft.CreatedById, now), CancellationToken.None);
+                attached.Add(draft.Id);
+            }
+            catch
+            {
+                // The log is saved already: failing now would make the user save it twice. The picture goes back to the drafts.
+                if (moved) await MoveBackQuietlyAsync(draft);
+            }
+        }
+        await drafts.ForgetAsync(attached, CancellationToken.None);
+    }
+
+    private async Task MoveBackQuietlyAsync(PhotoDraft draft)
+    {
+        try
+        {
+            await images.MoveAsync(draft.Id, ImageFolders.PhotoDrafts(draft.VehicleId), CancellationToken.None);
+        }
+        catch
+        {
+            // it expires with the other drafts or goes with the vehicle
         }
     }
 
