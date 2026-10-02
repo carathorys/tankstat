@@ -6,6 +6,7 @@ using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
+using Tankstat.Domain.Photos;
 using Tankstat.Domain.Users;
 using Tankstat.Domain.Vehicles;
 using Tankstat.Infrastructure.Persistence;
@@ -71,12 +72,15 @@ public class UserDataRepositoryTests
             seed.AccessGrants.Add(AccessGrant.Create(carol.Id, alice.Id, AccessLevel.Edit));     // received: moves
             seed.ResourceGrants.Add(ResourceGrant.Create(ResourceType.Vehicle, carols.Id, alice.Id, GrantedFeature.Logs, AccessLevel.Edit)); // moves
             seed.ResourceGrants.Add(ResourceGrant.Create(ResourceType.Vehicle, live.Id, bob.Id, GrantedFeature.Logs, AccessLevel.Edit));     // Bob owns it now: dropped
+            seed.LogPhotos.Add(LogPhoto.Create(alice.Id, live.Id, LogType.Expense, liveExpense.Id, Guid.NewGuid(), alice.Id, Now));          // her photo on her expense
+            seed.LogPhotos.Add(LogPhoto.Create(carol.Id, carols.Id, LogType.Expense, carolsExpense.Id, Guid.NewGuid(), alice.Id, Now));      // her photo on Carol's expense
             await seed.SaveChangesAsync();
         }
 
-        var pictures = await db.Get<IUserDataRepository>().DeleteUserAsync(alice.Id, bob.Id, default);
+        var purged = await db.Get<IUserDataRepository>().DeleteUserAsync(alice.Id, bob.Id, default);
 
-        Assert.Empty(pictures);
+        Assert.Empty(purged.VehicleIds);
+        Assert.Empty(purged.PictureIds);
         await using var ctx = await Context(db);
         Assert.Null(await ctx.Users.FindAsync(alice.Id));
         Assert.All(await ctx.Vehicles.IgnoreQueryFilters().Where(v => v.Id == live.Id || v.Id == trashed.Id).ToListAsync(), v => Assert.Equal(bob.Id, v.OwnerId));
@@ -85,6 +89,11 @@ public class UserDataRepositoryTests
         Assert.Equal(bob.Id, expense.CreatedById);
         Assert.Equal(bob.Id, (await ctx.Costs.IgnoreQueryFilters().SingleAsync(c => c.Id == expense.CostId)).OwnerId);
         Assert.Equal(bob.Id, (await ctx.OdometerReadings.IgnoreQueryFilters().SingleAsync(r => r.Id == expense.OdometerReadingId)).OwnerId);
+        var photos = await ctx.LogPhotos.ToListAsync();
+        var onHers = photos.Single(p => p.LogId == liveExpense.Id);
+        var onCarolsLog = photos.Single(p => p.LogId == carolsExpense.Id);
+        Assert.Equal((bob.Id, bob.Id), (onHers.OwnerId, onHers.CreatedById));            // the photo of a moved expense is Bob's now
+        Assert.Equal((carol.Id, bob.Id), (onCarolsLog.OwnerId, onCarolsLog.CreatedById)); // someone else's expense stays theirs, the authorship follows
         var onCarols = await ctx.Expenses.SingleAsync(e => e.Id == carolsExpense.Id);
         Assert.Equal(carol.Id, onCarols.OwnerId);   // someone else's vehicle stays theirs ...
         Assert.Equal(bob.Id, onCarols.CreatedById); // ... but the authorship follows
@@ -130,7 +139,7 @@ public class UserDataRepositoryTests
         await using var db = new TestDatabase();
         var alice = await AddUser(db, "alice@x.co");
         var bob = await AddUser(db, "bob@x.co");
-        var (doomed, _) = await AddVehicleWithExpense(db, alice.Id, alice.Id);
+        var (doomed, doomedExpense) = await AddVehicleWithExpense(db, alice.Id, alice.Id);
         var (trashed, _) = await AddVehicleWithExpense(db, alice.Id, alice.Id, trashed: true);
         var (kept, keptExpense) = await AddVehicleWithExpense(db, bob.Id, bob.Id);
         var picture = Guid.NewGuid();
@@ -140,14 +149,16 @@ public class UserDataRepositoryTests
         {
             seed.AccessGrants.Add(AccessGrant.Create(alice.Id, bob.Id, AccessLevel.View));
             seed.AccessGrants.Add(AccessGrant.Create(bob.Id, alice.Id, AccessLevel.View));
+            seed.LogPhotos.Add(LogPhoto.Create(alice.Id, doomed.Id, LogType.Expense, doomedExpense.Id, Guid.NewGuid(), alice.Id, Now));
             seed.ResourceGrants.Add(ResourceGrant.Create(ResourceType.Vehicle, doomed.Id, bob.Id, GrantedFeature.Logs, AccessLevel.Edit));
             seed.ResourceGrants.Add(ResourceGrant.Create(ResourceType.Vehicle, kept.Id, alice.Id, GrantedFeature.Logs, AccessLevel.Edit));
             await seed.SaveChangesAsync();
         }
 
-        var pictures = await db.Get<IUserDataRepository>().DeleteUserAsync(alice.Id, null, default);
+        var purged = await db.Get<IUserDataRepository>().DeleteUserAsync(alice.Id, null, default);
 
-        Assert.Equal([picture], pictures);
+        Assert.Equal([picture], purged.PictureIds);
+        Assert.Equivalent(new[] { doomed.Id, trashed.Id }, purged.VehicleIds);
         await using var ctx = await Context(db);
         Assert.Null(await ctx.Users.FindAsync(alice.Id));
         Assert.Equal([kept.Id], await ctx.Vehicles.IgnoreQueryFilters().Select(v => v.Id).ToListAsync());
@@ -156,6 +167,7 @@ public class UserDataRepositoryTests
         Assert.Equal(1, await ctx.OdometerReadings.IgnoreQueryFilters().CountAsync());
         Assert.Empty(await ctx.AccessGrants.ToListAsync());
         Assert.Empty(await ctx.ResourceGrants.ToListAsync());
+        Assert.Empty(await ctx.LogPhotos.ToListAsync()); // the photo rows of the purged vehicles went with them
         Assert.NotNull(await ctx.Users.FindAsync(bob.Id));
         Assert.DoesNotContain(trashed.Id, await ctx.Vehicles.IgnoreQueryFilters().Select(v => v.Id).ToListAsync());
     }

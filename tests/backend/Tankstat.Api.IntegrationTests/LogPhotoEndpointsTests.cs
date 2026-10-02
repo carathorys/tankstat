@@ -176,4 +176,37 @@ public class LogPhotoEndpointsTests : IDisposable
         Assert.Empty(FilesOnDisk());
         Assert.False(Directory.Exists(Path.Combine(_app.UploadsPath, "vehicles", Guid.Parse(w.VehicleId).ToString("N"))));
     }
+
+    private static Task<JsonElement> DeleteUser(HttpClient admin, string userId, object input) =>
+        admin.Gql("mutation($i: DeleteUserInput!) { deleteUser(input: $i) }", new { i = input });
+
+    [Fact]
+    public async Task DeletingAUserAndMovingTheirData_HandsThePhotosToTheNewOwner()
+    {
+        var w = await Setup();
+        var (id, url) = await Uploaded(await Put(w.Alice, $"/media/expenses/{w.ExpenseId}/photos", Png()));
+
+        Assert.True((await DeleteUser(w.Admin, w.AliceId, new { userId = w.AliceId, data = "MOVE", moveToUserId = w.BobId })).Data().GetProperty("deleteUser").GetBoolean());
+
+        Assert.Equal(HttpStatusCode.OK, (await w.Bob.GetAsync(url)).StatusCode); // Bob owns the vehicle, so he may see its photos now
+        Assert.Equal([(id, url)], await Photos(w.Bob, "expense", w.ExpenseId));
+        Assert.Single(FilesOnDisk());
+        Assert.Equal(HttpStatusCode.NoContent, (await w.Bob.DeleteAsync($"/media/expenses/{w.ExpenseId}/photos/{id}")).StatusCode); // and change them
+    }
+
+    [Fact]
+    public async Task DeletingAUserAndTheirData_RemovesEverythingTheyUploaded()
+    {
+        var w = await Setup();
+        await Uploaded(await Put(w.Alice, $"/media/expenses/{w.ExpenseId}/photos", Png(1)));
+        await Uploaded(await Put(w.Alice, $"/media/vehicles/{w.VehicleId}/picture", Png(2)));
+        await Uploaded(await Put(w.Alice, "/media/me/avatar", Png(3)));
+        Assert.Equal(3, FilesOnDisk().Length);
+
+        await DeleteUser(w.Admin, w.AliceId, new { userId = w.AliceId, data = "PURGE" });
+
+        Assert.Empty(FilesOnDisk());
+        Assert.False(Directory.Exists(Path.Combine(_app.UploadsPath, "users", Guid.Parse(w.AliceId).ToString("N"))));
+        Assert.False(Directory.Exists(Path.Combine(_app.UploadsPath, "vehicles", Guid.Parse(w.VehicleId).ToString("N"))));
+    }
 }

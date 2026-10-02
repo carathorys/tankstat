@@ -220,11 +220,12 @@ internal sealed class FakeUserData : IUserDataRepository
     public HashSet<Guid> Owners { get; } = [];
     public List<(Guid UserId, Guid? MoveTo)> Deleted { get; } = [];
     public List<Guid> PurgedPictures { get; } = [];
+    public List<Guid> PurgedVehicles { get; } = [];
     public Task<bool> OwnsDataAsync(Guid userId, CancellationToken ct) => Task.FromResult(Owners.Contains(userId));
-    public Task<IReadOnlyList<Guid>> DeleteUserAsync(Guid userId, Guid? moveDataTo, CancellationToken ct)
+    public Task<PurgedUserData> DeleteUserAsync(Guid userId, Guid? moveDataTo, CancellationToken ct)
     {
         Deleted.Add((userId, moveDataTo));
-        return Task.FromResult<IReadOnlyList<Guid>>(PurgedPictures.ToList());
+        return Task.FromResult(new PurgedUserData(PurgedVehicles.ToList(), PurgedPictures.ToList()));
     }
 }
 

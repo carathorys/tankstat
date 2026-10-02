@@ -42,7 +42,13 @@ public interface IUserDataRepository
 
     /// <summary>
     /// Deletes the user. With <paramref name="moveDataTo"/> their data and grants are handed to that user first; without it their
-    /// vehicles are purged. Returns the pictures of purged vehicles so the caller can remove the files.
+    /// vehicles are purged. Returns what was purged so the caller can remove the files.
     /// </summary>
-    Task<IReadOnlyList<Guid>> DeleteUserAsync(Guid userId, Guid? moveDataTo, CancellationToken ct);
+    Task<PurgedUserData> DeleteUserAsync(Guid userId, Guid? moveDataTo, CancellationToken ct);
+}
+
+/// <summary>The vehicles a user's deletion purged (their upload folders go too) and those vehicles' pictures (for ones stored before folders existed).</summary>
+public sealed record PurgedUserData(IReadOnlyList<Guid> VehicleIds, IReadOnlyList<Guid> PictureIds)
+{
+    public static PurgedUserData None { get; } = new([], []);
 }
