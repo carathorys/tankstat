@@ -202,8 +202,10 @@ type ImportPreviewInfo {
   sourceVehicle: ImportedVehicleInfo
   fuelRows: Int!
   expenseRows: Int!
+  recurringRows: Int!
   duplicateFuelRows: Int!
   duplicateExpenseRows: Int!
+  duplicateRecurringRows: Int!
   firstDate: LocalDate
   lastDate: LocalDate
   categories: [String!]!
@@ -214,8 +216,10 @@ type ImportResultInfo {
   vehicleId: UUID!
   fuelImported: Int!
   expensesImported: Int!
+  recurringImported: Int!
   fuelSkippedDuplicates: Int!
   expensesSkippedDuplicates: Int!
+  recurringSkippedDuplicates: Int!
   errors: [ImportIssueInfo!]!
 }
 

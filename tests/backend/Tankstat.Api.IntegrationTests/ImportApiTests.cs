@@ -26,8 +26,9 @@ public class ImportApiTests : IDisposable
         "CostTypeID","Name"
         "1","Service"
         "## Costs"
-        "CostTitle","Date","Odo","CostTypeID","Notes","Cost","isTemplate","isIncome"
-        "Oil change","2026-07-20 09:00","1100","1","","35000.0","0","0"
+        "CostTitle","Date","Odo","CostTypeID","Notes","Cost","isTemplate","isIncome","RemindOdo","RemindDate","RepeatOdo","RepeatMonths"
+        "Oil change","2026-07-20 09:00","1100","1","","35000.0","0","0","0","2011-01-01","0","0"
+        "Insurance","2026-01-10","1000","1","","80000.0","1","0","0","2027-01-10","0","12"
         """;
 
     private static async Task<HttpResponseMessage> Upload(HttpClient c, string format, string body)
@@ -63,16 +64,16 @@ public class ImportApiTests : IDisposable
         var alice = await Alice();
         var token = await Token(await Upload(alice, "fuelio", Sample));
 
-        var preview = (await alice.Gql("query($t: String!) { importPreview(token: $t) { fuelRows expenseRows categories firstDate lastDate sourceVehicle { name licensePlate fuelType distanceUnit volumeUnit } issues { key } } }", new { t = token })).Data().GetProperty("importPreview");
-        Assert.Equal((2, 1), (preview.GetProperty("fuelRows").GetInt32(), preview.GetProperty("expenseRows").GetInt32()));
+        var preview = (await alice.Gql("query($t: String!) { importPreview(token: $t) { fuelRows expenseRows recurringRows categories firstDate lastDate sourceVehicle { name licensePlate fuelType distanceUnit volumeUnit } issues { key } } }", new { t = token })).Data().GetProperty("importPreview");
+        Assert.Equal((2, 1, 1), (preview.GetProperty("fuelRows").GetInt32(), preview.GetProperty("expenseRows").GetInt32(), preview.GetProperty("recurringRows").GetInt32()));
         Assert.Equal("Service", preview.GetProperty("categories")[0].GetString());
         Assert.Equal(("2026-07-11", "2026-09-17"), (preview.GetProperty("firstDate").GetString(), preview.GetProperty("lastDate").GetString()));
         Assert.Equal(("Polo", "PETROL", "KILOMETERS"), (preview.GetProperty("sourceVehicle").GetProperty("name").GetString(), preview.GetProperty("sourceVehicle").GetProperty("fuelType").GetString(), preview.GetProperty("sourceVehicle").GetProperty("distanceUnit").GetString()));
 
         var result = (await alice.Gql(
-            "mutation($i: ConfirmImportInput!) { confirmImport(input: $i) { vehicleId fuelImported expensesImported errors { key } } }",
+            "mutation($i: ConfirmImportInput!) { confirmImport(input: $i) { vehicleId fuelImported expensesImported recurringImported errors { key } } }",
             new { i = new { token, newVehicle = new { name = "Polo", licensePlate = "abc-123", fuelType = "PETROL", units = new { distance = "KILOMETERS", volume = "LITERS" } }, currency = "huf", importDuplicates = false } })).Data().GetProperty("confirmImport");
-        Assert.Equal((2, 1, 0), (result.GetProperty("fuelImported").GetInt32(), result.GetProperty("expensesImported").GetInt32(), result.GetProperty("errors").GetArrayLength()));
+        Assert.Equal((2, 1, 1, 0), (result.GetProperty("fuelImported").GetInt32(), result.GetProperty("expensesImported").GetInt32(), result.GetProperty("recurringImported").GetInt32(), result.GetProperty("errors").GetArrayLength()));
 
         var id = result.GetProperty("vehicleId").GetString();
         var read = (await alice.Gql("query($id: UUID!) { refuelings(vehicleId: $id) { currency totalCost odometer isFullTank note } expenses(vehicleId: $id) { title category amount currency odometer } expenseCount(vehicleId: $id) }", new { id })).Data();
@@ -80,6 +81,9 @@ public class ImportApiTests : IDisposable
         var expense = read.GetProperty("expenses")[0];
         Assert.Equal(("Oil change", "Service", 35000m, 1100L), (expense.GetProperty("title").GetString(), expense.GetProperty("category").GetString(), expense.GetProperty("amount").GetDecimal(), expense.GetProperty("odometer").GetInt64()));
         Assert.Equal(1, read.GetProperty("expenseCount").GetInt32());
+
+        var schedule = (await alice.Gql("query($id: UUID!) { vehicle(id: $id) { recurring { title kind intervalMonths lastDoneDate status { dueDate } } } }", new { id })).Data().GetProperty("vehicle").GetProperty("recurring")[0];
+        Assert.Equal(("Insurance", "TIME", 12, "2026-01-10", "2027-01-10"), (schedule.GetProperty("title").GetString(), schedule.GetProperty("kind").GetString(), schedule.GetProperty("intervalMonths").GetInt32(), schedule.GetProperty("lastDoneDate").GetString(), schedule.GetProperty("status").GetProperty("dueDate").GetString()));
     }
 
     [Fact]
@@ -90,11 +94,11 @@ public class ImportApiTests : IDisposable
         var id = (await alice.Gql("mutation($i: ConfirmImportInput!) { confirmImport(input: $i) { vehicleId } }", new { i = new { token = first, newVehicle = new { name = "Polo", fuelType = "PETROL", units = new { distance = "KILOMETERS", volume = "LITERS" } }, importDuplicates = false } })).Data().GetProperty("confirmImport").GetProperty("vehicleId").GetString();
 
         var second = await Token(await Upload(alice, "fuelio", Sample));
-        var preview = (await alice.Gql("query($t: String!, $v: UUID) { importPreview(token: $t, vehicleId: $v) { duplicateFuelRows duplicateExpenseRows } }", new { t = second, v = id })).Data().GetProperty("importPreview");
-        Assert.Equal((2, 1), (preview.GetProperty("duplicateFuelRows").GetInt32(), preview.GetProperty("duplicateExpenseRows").GetInt32()));
+        var preview = (await alice.Gql("query($t: String!, $v: UUID) { importPreview(token: $t, vehicleId: $v) { duplicateFuelRows duplicateExpenseRows duplicateRecurringRows } }", new { t = second, v = id })).Data().GetProperty("importPreview");
+        Assert.Equal((2, 1, 1), (preview.GetProperty("duplicateFuelRows").GetInt32(), preview.GetProperty("duplicateExpenseRows").GetInt32(), preview.GetProperty("duplicateRecurringRows").GetInt32()));
 
-        var result = (await alice.Gql("mutation($i: ConfirmImportInput!) { confirmImport(input: $i) { fuelImported fuelSkippedDuplicates expensesSkippedDuplicates } }", new { i = new { token = second, vehicleId = id, importDuplicates = false } })).Data().GetProperty("confirmImport");
-        Assert.Equal((0, 2, 1), (result.GetProperty("fuelImported").GetInt32(), result.GetProperty("fuelSkippedDuplicates").GetInt32(), result.GetProperty("expensesSkippedDuplicates").GetInt32()));
+        var result = (await alice.Gql("mutation($i: ConfirmImportInput!) { confirmImport(input: $i) { fuelImported fuelSkippedDuplicates expensesSkippedDuplicates recurringImported recurringSkippedDuplicates } }", new { i = new { token = second, vehicleId = id, importDuplicates = false } })).Data().GetProperty("confirmImport");
+        Assert.Equal((0, 2, 1, 0, 1), (result.GetProperty("fuelImported").GetInt32(), result.GetProperty("fuelSkippedDuplicates").GetInt32(), result.GetProperty("expensesSkippedDuplicates").GetInt32(), result.GetProperty("recurringImported").GetInt32(), result.GetProperty("recurringSkippedDuplicates").GetInt32()));
     }
 
     [Fact]

@@ -3,8 +3,10 @@ query ImportPreview($token: String!, $vehicleId: UUID) {
   importPreview(token: $token, vehicleId: $vehicleId) {
     fuelRows
     expenseRows
+    recurringRows
     duplicateFuelRows
     duplicateExpenseRows
+    duplicateRecurringRows
     firstDate
     lastDate
     categories
@@ -44,8 +46,10 @@ mutation ConfirmImport($input: ConfirmImportInput!) {
     vehicleId
     fuelImported
     expensesImported
+    recurringImported
     fuelSkippedDuplicates
     expensesSkippedDuplicates
+    recurringSkippedDuplicates
     errors {
       section
       row

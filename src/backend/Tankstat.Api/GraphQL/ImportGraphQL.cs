@@ -18,11 +18,12 @@ public sealed record ImportIssueInfo(string Section, int Row, string Key, JsonEl
 public sealed record ImportedVehicleInfo(string? Name, string? LicensePlate, FuelType? FuelType, DistanceUnit? DistanceUnit, VolumeUnit? VolumeUnit);
 
 public sealed record ImportPreviewInfo(
-    ImportedVehicleInfo? SourceVehicle, int FuelRows, int ExpenseRows, int DuplicateFuelRows, int DuplicateExpenseRows,
+    ImportedVehicleInfo? SourceVehicle, int FuelRows, int ExpenseRows, int RecurringRows, int DuplicateFuelRows, int DuplicateExpenseRows, int DuplicateRecurringRows,
     DateOnly? FirstDate, DateOnly? LastDate, IReadOnlyList<string> Categories, IReadOnlyList<ImportIssueInfo> Issues);
 
 public sealed record ImportResultInfo(
-    Guid VehicleId, int FuelImported, int ExpensesImported, int FuelSkippedDuplicates, int ExpensesSkippedDuplicates, IReadOnlyList<ImportIssueInfo> Errors);
+    Guid VehicleId, int FuelImported, int ExpensesImported, int RecurringImported,
+    int FuelSkippedDuplicates, int ExpensesSkippedDuplicates, int RecurringSkippedDuplicates, IReadOnlyList<ImportIssueInfo> Errors);
 
 public sealed record NewVehicleInput(string Name, string? LicensePlate, FuelType FuelType, MeasurementUnitsInput Units);
 
@@ -40,7 +41,7 @@ public sealed class ImportQueries
         var p = await imports.PreviewAsync(token, vehicleId, ct);
         return new ImportPreviewInfo(
             p.SourceVehicle is { } v ? new ImportedVehicleInfo(v.Name, v.LicensePlate, v.FuelType, v.Distance, v.Volume) : null,
-            p.FuelRows, p.ExpenseRows, p.DuplicateFuelRows, p.DuplicateExpenseRows, p.FirstDate, p.LastDate, p.Categories,
+            p.FuelRows, p.ExpenseRows, p.RecurringRows, p.DuplicateFuelRows, p.DuplicateExpenseRows, p.DuplicateRecurringRows, p.FirstDate, p.LastDate, p.Categories,
             p.Issues.Select(ImportIssueInfo.From).ToList());
     }
 
@@ -57,7 +58,7 @@ public sealed class ImportMutations
         var target = new ImportTarget(input.VehicleId,
             input.NewVehicle is { } n ? new NewVehicleSpec(n.Name, n.LicensePlate, n.FuelType, n.Units.ToDomain()) : null);
         var r = await imports.CommitAsync(input.Token, target, new ImportOptions(input.Currency, input.ImportDuplicates), ct);
-        return new ImportResultInfo(r.VehicleId, r.FuelImported, r.ExpensesImported, r.FuelSkippedDuplicates, r.ExpensesSkippedDuplicates,
-            r.Errors.Select(ImportIssueInfo.From).ToList());
+        return new ImportResultInfo(r.VehicleId, r.FuelImported, r.ExpensesImported, r.RecurringImported,
+            r.FuelSkippedDuplicates, r.ExpensesSkippedDuplicates, r.RecurringSkippedDuplicates, r.Errors.Select(ImportIssueInfo.From).ToList());
     }
 }

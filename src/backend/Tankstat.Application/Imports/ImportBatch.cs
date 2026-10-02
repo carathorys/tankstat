@@ -1,4 +1,5 @@
 using Tankstat.Domain.Odometers;
+using Tankstat.Domain.Recurring;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Vehicles;
 
@@ -12,6 +13,11 @@ public sealed record ImportedFuelLog(int SourceRow, DateOnly Date, long Odometer
 
 public sealed record ImportedExpense(int SourceRow, DateOnly Date, string Title, string? Category, decimal Amount, long? Odometer, string? Note);
 
+/// <summary>A repeating cost (insurance, oil change) from the file: what it repeats by and where it was last done. Its amount is not kept.</summary>
+public sealed record ImportedRecurring(
+    int SourceRow, string Title, string? Category, string? Note, RecurrenceKind Kind, int? IntervalMonths, long? IntervalDistance,
+    DateOnly LastDoneDate, long? LastDoneOdometer);
+
 /// <summary>A row that was skipped or a problem found while reading (a stable <see cref="Key"/> and its arguments, translated by the client).</summary>
 public sealed record ImportIssue(string Section, int Row, string Key, IReadOnlyDictionary<string, object?> Args);
 
@@ -21,6 +27,7 @@ public sealed record ImportBatch(
     ImportedVehicle? Vehicle,
     IReadOnlyList<ImportedFuelLog> FuelLogs,
     IReadOnlyList<ImportedExpense> Expenses,
+    IReadOnlyList<ImportedRecurring> Recurring,
     IReadOnlyList<ImportIssue> Issues);
 
 /// <summary>

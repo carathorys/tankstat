@@ -319,8 +319,8 @@ function ReviewStep({
 }) {
   const { t } = useTranslation()
   const { date } = useFormat()
-  const hasDuplicates = existing && p.duplicateFuelRows + p.duplicateExpenseRows > 0
-  const nothing = p.fuelRows + p.expenseRows === 0
+  const hasDuplicates = existing && p.duplicateFuelRows + p.duplicateExpenseRows + p.duplicateRecurringRows > 0
+  const nothing = p.fuelRows + p.expenseRows + p.recurringRows === 0
 
   return (
     <Flex direction="column" gap="4" align="start">
@@ -329,7 +329,7 @@ function ReviewStep({
       </Heading>
       <Card>
         <Text as="p">
-          {t('import.review.summary', { fuel: p.fuelRows, expenses: p.expenseRows, from: p.firstDate ? date(p.firstDate) : '–', to: p.lastDate ? date(p.lastDate) : '–' })}
+          {t('import.review.summary', { fuel: p.fuelRows, expenses: p.expenseRows, recurring: p.recurringRows, from: p.firstDate ? date(p.firstDate) : '–', to: p.lastDate ? date(p.lastDate) : '–' })}
         </Text>
         {p.categories.length > 0 && (
           <Text as="p" size="2" color="gray" mt="2">
@@ -346,7 +346,7 @@ function ReviewStep({
             </Text>
           </legend>
           <Text as="p" size="2" mb="2">
-            {t('import.review.duplicates', { fuel: p.duplicateFuelRows, expenses: p.duplicateExpenseRows })}
+            {t('import.review.duplicates', { fuel: p.duplicateFuelRows, expenses: p.duplicateExpenseRows, recurring: p.duplicateRecurringRows })}
           </Text>
           <RadioGroup.Root value={importDuplicates ? 'import' : 'skip'} onValueChange={(v) => onImportDuplicates(v === 'import')}>
             <Flex direction="column" gap="2">
@@ -417,17 +417,17 @@ function Issues({ issues, title, hint }: { issues: readonly Issue[]; title: stri
 
 function DoneStep({ result, onAnother }: { result: Result; onAnother: () => void }) {
   const { t } = useTranslation()
-  const skipped = result.fuelSkippedDuplicates + result.expensesSkippedDuplicates
+  const skipped = result.fuelSkippedDuplicates + result.expensesSkippedDuplicates + result.recurringSkippedDuplicates
 
   return (
     <Flex direction="column" gap="3" align="start">
       <Heading as="h2" size="4">
         {t('import.done.title')}
       </Heading>
-      <SuccessMessage>{t('import.done.imported', { fuel: result.fuelImported, expenses: result.expensesImported })}</SuccessMessage>
+      <SuccessMessage>{t('import.done.imported', { fuel: result.fuelImported, expenses: result.expensesImported, recurring: result.recurringImported })}</SuccessMessage>
       {skipped > 0 && (
         <Text as="p" size="2">
-          {t('import.done.skipped', { fuel: result.fuelSkippedDuplicates, expenses: result.expensesSkippedDuplicates })}
+          {t('import.done.skipped', { fuel: result.fuelSkippedDuplicates, expenses: result.expensesSkippedDuplicates, recurring: result.recurringSkippedDuplicates })}
         </Text>
       )}
       <Issues issues={result.errors} title={t('import.done.errorsTitle', { count: result.errors.length })} />

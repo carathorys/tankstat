@@ -3,6 +3,7 @@ using Tankstat.Application.Imports;
 using Tankstat.Domain;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
+using Tankstat.Domain.Recurring;
 using Tankstat.Domain.Vehicles;
 
 namespace Tankstat.Application.UnitTests;
@@ -46,6 +47,28 @@ public class FuelioCsvParserTests
         Assert.Null(expenses[1].Odometer); // "0" means not noted
         Assert.Equal("Parking", expenses[1].Category);
         Assert.Equal(("Parking", "Parking"), (expenses[2].Title, expenses[2].Category)); // no title: the category stands in
+    }
+
+    [Fact]
+    public void ReadsRepeatingTemplatesAsRecurringExpenses()
+    {
+        var recurring = Parse(FuelioSample.Csv).Recurring;
+
+        Assert.Equal(2, recurring.Count);
+        // No reminder date (2011-01-01 means none): counting starts from the row's own date and odometer.
+        Assert.Equal(new ImportedRecurring(7, "Insurance", "Parking", "yearly", RecurrenceKind.Time, 12, null, new DateOnly(2026, 1, 10), 1000), recurring[0]);
+        // A reminder that stands at 2027-02-01 / 21000 and repeats every 24 months / 15000: one interval earlier is the baseline.
+        Assert.Equal(new ImportedRecurring(8, "Tyres", "Service", null, RecurrenceKind.Combined, 24, 15000, new DateOnly(2025, 2, 1), 6000), recurring[1]);
+    }
+
+    [Fact]
+    public void ARepeatingTemplateNeedsOnlyOneOfTheIntervals()
+    {
+        var csv = FuelioSample.Csv.Replace("\"2011-01-01\",\"1\",\"0\",\"12\"", "\"2011-01-01\",\"1\",\"8000\",\"0\"");
+
+        var insurance = Parse(csv).Recurring[0];
+
+        Assert.Equal((RecurrenceKind.Odometer, (int?)null, (long?)8000), (insurance.Kind, insurance.IntervalMonths, insurance.IntervalDistance));
     }
 
     [Fact]

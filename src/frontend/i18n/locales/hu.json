@@ -357,13 +357,13 @@
     "import": {
       "unknownFormat": "Ez az importformátum nem támogatott: {{format}}.",
       "unreadable": "Ez a fájl nem a kiválasztott alkalmazás exportjának tűnik.",
-      "nothingFound": "A fájlban nincs importálható tankolás vagy költség.",
+      "nothingFound": "A fájlban nincs importálható tankolás, költség vagy ismétlődő költség.",
       "tooLarge": "A fájl legfeljebb {{maxMb}} MB lehet.",
       "expired": "Ez az importálás lejárt. Válaszd ki újra a fájlt.",
       "targetRequired": "Válassz járművet, vagy hozz létre újat.",
       "badDate": "A(z) „{{value}}” dátum nem olvasható.",
       "badNumber": "A(z) {{field}} „{{value}}” nem érvényes szám.",
-      "templateSkipped": "A(z) „{{title}}” emlékeztető sablon, nem költség.",
+      "templateSkipped": "A(z) „{{title}}” egyszeri emlékeztető, amelyet nem importálunk.",
       "incomeSkipped": "A(z) „{{title}}” bevétel, amelyet nem importálunk.",
       "titleMissing": "A sorban nincs megnevezés vagy kategória.",
       "unitsDiffer": "A fájl más mértékegységeket használ, mint ez a jármű. A számok átváltás nélkül, úgy kerülnek be, ahogy vannak."
@@ -551,7 +551,7 @@
       "none": "Nincs kiválasztott fájl",
       "upload": "Fájl beolvasása",
       "reading": "A fájl beolvasása…",
-      "fuelioHint": "A Fuelióban exportáld a járművet (Beállítások, Export/Szinkron), és itt a .csv fájlt válaszd ki. A .zip fájlt előbb ki kell csomagolni.",
+      "fuelioHint": "A Fuelióban exportáld a járművet (Beállítások, Export/Szinkron), és itt a .csv fájlt válaszd ki. A .zip fájlt előbb ki kell csomagolni. Az ismétlődő emlékeztetők ismétlődő költségek lesznek.",
       "formats": {
         "fuelio": "Fuelio (CSV)"
       }
@@ -571,8 +571,8 @@
     },
     "review": {
       "title": "Mi lesz importálva",
-      "summary": "{{fuel}} tankolás és {{expenses}} költség, {{from}} és {{to}} között.",
-      "duplicates": "{{fuel}} tankolás és {{expenses}} költség már szerepel ebben a járműben.",
+      "summary": "{{fuel}} tankolás, {{expenses}} költség és {{recurring}} ismétlődő költség, {{from}} és {{to}} között.",
+      "duplicates": "{{fuel}} tankolás, {{expenses}} költség és {{recurring}} ismétlődő költség már szerepel ebben a járműben.",
       "duplicateChoice": "Már meglévő sorok",
       "skipDuplicates": "Kihagyás (ajánlott)",
       "importDuplicates": "Importálás mégis",
@@ -587,8 +587,8 @@
     },
     "done": {
       "title": "Az importálás kész",
-      "imported": "Importálva: {{fuel}} tankolás és {{expenses}} költség.",
-      "skipped": "Kihagyva (már létezett): {{fuel}} tankolás és {{expenses}} költség.",
+      "imported": "Importálva: {{fuel}} tankolás, {{expenses}} költség és {{recurring}} ismétlődő költség.",
+      "skipped": "Kihagyva (már létezett): {{fuel}} tankolás, {{expenses}} költség és {{recurring}} ismétlődő költség.",
       "errorsTitle": "Ezeket a sorokat nem sikerült importálni ({{count}})",
       "open": "A jármű megnyitása",
       "another": "Másik fájl importálása"
