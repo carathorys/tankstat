@@ -43,7 +43,18 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm test
+      - name: Tests with coverage
+        run: npm run test:coverage
+
+      - name: Upload frontend coverage
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage/frontend/lcov.info
+          flags: frontend
+          # A missing token (no secret yet, or a fork) must not break the build; the status checks come from Codecov itself.
+          fail_ci_if_error: false
+
       - run: npm run build
 
   # Everything that needs only .NET: build, unit tests, in-process integration tests.
@@ -71,9 +82,18 @@ jobs:
         run: |
           for project in tests/backend/*.UnitTests tests/backend/Tankstat.Api.IntegrationTests; do
             echo "::group::$project"
-            dotnet test "$project" --no-build --logger "trx;LogFileName=$(basename "$project").trx" --results-directory test-results
+            dotnet test "$project" --no-build --settings coverlet.runsettings --collect:"XPlat Code Coverage" \
+              --logger "trx;LogFileName=$(basename "$project").trx" --results-directory test-results
             echo "::endgroup::"
           done
+
+      - name: Upload backend coverage
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: test-results
+          flags: backend
+          fail_ci_if_error: false
 
       - name: Upload test results
         if: failure()
