@@ -173,14 +173,25 @@ it('the keyboard and screen readers open the vehicle straight away, even on a to
   expect(await screen.findByRole('link', { name: 'Back to home' })).toBeInTheDocument()
 })
 
-it('with a mouse a click on the card does not toggle anything (the whole card is the link)', async () => {
+it('with a mouse a click anywhere on the card opens the vehicle: the figures, the chart, the picture area', async () => {
+  const ui = userEvent.setup()
+  setup([fakeVehicle()], 'desktop')
+  const c = await vehicleCard('Octavia')
+
+  await ui.click(await within(c).findByRole('img', { name: /Spending in the last six months/ })) // the chart
+
+  expect(await screen.findByRole('link', { name: 'Back to home' })).toBeInTheDocument()
+  expect(c).not.toHaveAttribute('data-open') // and nothing was toggled on the way
+})
+
+it('a click on the figures opens the vehicle too', async () => {
   const ui = userEvent.setup()
   setup([fakeVehicle()], 'desktop')
   const c = await vehicleCard('Octavia')
 
   await ui.click(within(c).getByText('Odometer'))
 
-  expect(c).not.toHaveAttribute('data-open')
+  expect(await screen.findByRole('link', { name: 'Back to home' })).toBeInTheDocument()
 })
 
 const fleet = (n: number) =>

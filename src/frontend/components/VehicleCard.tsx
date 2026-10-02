@@ -65,9 +65,12 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
         e.stopPropagation()
         setOpen(true)
       }}
-      // The second tap: normally the link's overlay catches it; this covers whatever the overlay does not (the chart, the figures).
+      // A click anywhere on the card opens the vehicle (on touch: the second tap). The link's overlay alone is not enough: the chart and
+      // other positioned parts sit above it and take the click. Real links and buttons, modified clicks (new tab) and selecting text are left alone.
       onClick={(e) => {
-        if (touch && open && e.detail !== 0 && !(e.target as HTMLElement).closest('a')) void navigate(`/vehicles/${v.id}`)
+        if (e.defaultPrevented || e.detail === 0 || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+        if ((e.target as HTMLElement).closest('a, button') || window.getSelection()?.toString()) return
+        void navigate(`/vehicles/${v.id}`)
       }}
     >
       <CoverLayers pictureUrl={v.pictureUrl} id={v.id} />
