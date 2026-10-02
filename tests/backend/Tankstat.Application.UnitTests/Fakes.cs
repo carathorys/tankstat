@@ -348,6 +348,7 @@ internal sealed class World
     public AccessService Access { get; }
     public VehicleService VehicleService { get; }
     public RefuelingService RefuelingService { get; }
+    public LogAccessGuard LogGuard { get; }
     public ExpenseService ExpenseService { get; }
     public StatsService Stats { get; }
     public ChartService ChartService { get; }
@@ -370,13 +371,14 @@ internal sealed class World
         Access = new AccessService(Current, options, Grants, Settings, ResourceGrants);
         ImportSessions = new ImportSessionStore(Clock);
         Odometer = new OdometerService(new InMemoryReadings(Refuelings, Expenses));
+        LogGuard = new LogAccessGuard(Vehicles, Access);
         var resets = new PasswordResetService(Tokens, Users, Email, options, Clock);
-        var logPhotoAccess = new LogPhotoAccess(Access, Vehicles, Expenses, Refuelings, LogPhotos);
+        var logPhotoAccess = new LogPhotoAccess(LogGuard, Expenses, Refuelings, LogPhotos);
         ImageService = new ImageService(ImageStore, Images, Users, Vehicles, Access, logPhotoAccess, Clock);
         Photos = new LogPhotoService(logPhotoAccess, LogPhotos, ImageService, Access, Clock);
         VehicleService = new VehicleService(Vehicles, Refuelings, Access, Odometer, ImageService, Clock);
-        RefuelingService = new RefuelingService(Vehicles, Refuelings, Access, Odometer, Photos, Clock);
-        ExpenseService = new ExpenseService(Vehicles, Expenses, Access, Odometer, Photos, Clock);
+        RefuelingService = new RefuelingService(Vehicles, LogGuard, Refuelings, Access, Odometer, Photos, Clock);
+        ExpenseService = new ExpenseService(LogGuard, Expenses, Access, Odometer, Photos, Clock);
         Imports = new ImportService([new FuelioCsvParser()], ImportSessions, Access, VehicleService, RefuelingService, ExpenseService, Refuelings, Expenses, new VehicleDefaultsOptions { Currency = "HUF" }.Create());
         Stats = new StatsService(Vehicles, new InMemoryStats(Refuelings, Expenses), Access, Clock);
         ChartService = new ChartService(Vehicles, Charts, Access, Clock);

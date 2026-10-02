@@ -21,7 +21,7 @@ public sealed record ExpenseInput(DateOnly Date, string Title, string? Category,
 /// Edit may add, change, trash and restore; only Delete may delete permanently.
 /// </summary>
 public sealed class ExpenseService(
-    IVehicleRepository vehicles, IExpenseRepository expenses, AccessService access, OdometerService odometer, LogPhotoService photos, TimeProvider clock)
+    LogAccessGuard guard, IExpenseRepository expenses, AccessService access, OdometerService odometer, LogPhotoService photos, TimeProvider clock)
 {
     private DateOnly LatestAllowedDate => DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime).AddDays(1);
 
@@ -104,29 +104,18 @@ public sealed class ExpenseService(
         return purged.Count;
     }
 
-    private async Task<Vehicle?> VisibleVehicleAsync(Guid vehicleId, CancellationToken ct)
-    {
-        var vehicle = await vehicles.FindAsync(vehicleId, ct);
-        return vehicle is not null && await access.LogLevelAsync(vehicle, ct) >= AccessLevel.View ? vehicle : null;
-    }
+    private async Task<Vehicle?> VisibleVehicleAsync(Guid vehicleId, CancellationToken ct) => (await guard.ForVehicleAsync(vehicleId, ct))?.Vehicle;
 
-    private async Task<Vehicle> EditableVehicleAsync(Guid vehicleId, CancellationToken ct)
-    {
-        var vehicle = await vehicles.FindAsync(vehicleId, ct);
-        var level = vehicle is null ? AccessLevel.None : await access.LogLevelAsync(vehicle, ct);
-        if (vehicle is null || level < AccessLevel.View) throw new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId });
-        if (level < AccessLevel.Edit) throw new ForbiddenException("vehicle.viewOnly", "You may only view this vehicle.");
-        return vehicle;
-    }
+    private async Task<Vehicle> EditableVehicleAsync(Guid vehicleId, CancellationToken ct) =>
+        LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(vehicleId, ct),
+            () => new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId })).Vehicle;
 
     private async Task<Expense> EditableAsync(Guid id, bool includeDeleted, CancellationToken ct)
     {
         var expense = includeDeleted ? await expenses.FindIncludingDeletedAsync(id, ct) : await expenses.FindAsync(id, ct);
-        var vehicle = expense is null ? null : await vehicles.FindAsync(expense.VehicleId, ct);
-        var level = vehicle is null ? AccessLevel.None : await access.LogLevelAsync(vehicle, ct);
-        if (expense is null || level < AccessLevel.View) throw new NotFoundException("expense.notFound", $"Expense {id} does not exist.", new { Id = id });
-        if (level < AccessLevel.Edit) throw new ForbiddenException("vehicle.viewOnly", "You may only view this vehicle.");
-        return expense;
+        LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(expense?.VehicleId, ct),
+            () => new NotFoundException("expense.notFound", $"Expense {id} does not exist.", new { Id = id }));
+        return expense!;
     }
 
     private async Task ValidateAsync(Guid vehicleId, ExpenseInput input, Guid? exceptReadingId, CancellationToken ct)

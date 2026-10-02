@@ -24,7 +24,7 @@ public sealed record RefuelingInput(DateOnly Date, decimal Volume, decimal Total
 /// add, change, trash and restore; only Delete may delete permanently.
 /// </summary>
 public sealed class RefuelingService(
-    IVehicleRepository vehicles, IRefuelingRepository refuelings, AccessService access, OdometerService odometer, LogPhotoService photos, TimeProvider clock)
+    IVehicleRepository vehicles, LogAccessGuard guard, IRefuelingRepository refuelings, AccessService access, OdometerService odometer, LogPhotoService photos, TimeProvider clock)
 {
     /// <summary>Logs may be dated today in any time zone, but not further ahead.</summary>
     private DateOnly LatestAllowedDate => DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime).AddDays(1);
@@ -133,30 +133,22 @@ public sealed class RefuelingService(
         return vehicle is null ? AccessLevel.None : await access.LogLevelAsync(vehicle, ct);
     }
 
-    private async Task<Vehicle?> VisibleVehicleAsync(Guid vehicleId, CancellationToken ct)
-    {
-        var vehicle = await vehicles.FindAsync(vehicleId, ct);
-        return vehicle is not null && await access.LogLevelAsync(vehicle, ct) >= AccessLevel.View ? vehicle : null;
-    }
+    private async Task<Vehicle?> VisibleVehicleAsync(Guid vehicleId, CancellationToken ct) => (await guard.ForVehicleAsync(vehicleId, ct))?.Vehicle;
 
     /// <summary>A visible vehicle the user may add logs to; others look missing, view-only users are forbidden.</summary>
     private async Task<(Vehicle Vehicle, AccessLevel Level)> EditableVehicleAsync(Guid vehicleId, CancellationToken ct)
     {
-        var vehicle = await vehicles.FindAsync(vehicleId, ct);
-        var level = vehicle is null ? AccessLevel.None : await access.LogLevelAsync(vehicle, ct);
-        if (vehicle is null || level < AccessLevel.View) throw new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId });
-        if (level < AccessLevel.Edit) throw new ForbiddenException("vehicle.viewOnly", "You may only view this vehicle.");
-        return (vehicle, level);
+        var context = LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(vehicleId, ct),
+            () => new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId }));
+        return (context.Vehicle, context.Level);
     }
 
     private async Task<Refueling> EditableLogAsync(Guid id, bool includeDeleted, CancellationToken ct)
     {
         var refueling = includeDeleted ? await refuelings.FindIncludingDeletedAsync(id, ct) : await refuelings.FindAsync(id, ct);
-        var vehicle = refueling is null ? null : await vehicles.FindAsync(refueling.VehicleId, ct);
-        var level = vehicle is null ? AccessLevel.None : await access.LogLevelAsync(vehicle, ct);
-        if (refueling is null || level < AccessLevel.View) throw new NotFoundException("refueling.notFound", $"Refuelling {id} does not exist.", new { Id = id });
-        if (level < AccessLevel.Edit) throw new ForbiddenException("vehicle.viewOnly", "You may only view this vehicle.");
-        return refueling;
+        LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(refueling?.VehicleId, ct),
+            () => new NotFoundException("refueling.notFound", $"Refuelling {id} does not exist.", new { Id = id }));
+        return refueling!;
     }
 
     private async Task ValidateAsync(Guid vehicleId, RefuelingInput input, Guid? exceptReadingId, CancellationToken ct)
