@@ -164,6 +164,19 @@ public class RecurringExpenseServiceTests
     }
 
     [Fact]
+    public async Task MarkDone_TrashesTheLoggedExpense_WhenTheScheduleCannotBeSaved()
+    {
+        var s = await Setup();
+        var item = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(), default)).Item;
+        s.W.Recurring.FailUpdateWith = new InvalidOperationException("database down");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            s.W.RecurringService.MarkDoneAsync(item.Id, new MarkDoneInput(new DateOnly(2026, 9, 20), 62000, true, 35000, "HUF"), default));
+
+        Assert.True(Assert.Single(s.W.Expenses.Items).IsDeleted); // no live cost is left behind to be logged twice by a retry
+    }
+
+    [Fact]
     public async Task Update_AndDelete_ChangeTheScheduleItself()
     {
         var s = await Setup();

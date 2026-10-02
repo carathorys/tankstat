@@ -88,11 +88,28 @@ public sealed class RecurringExpenseService(
             throw new DomainException("recurring.amountRequired", "The amount and currency are needed to log the expense.");
 
         item.CheckDone(input.Date, input.Odometer); // the schedule's own rules first: nothing is logged for a day it would refuse
-        if (input.CreateExpense)
-            await expenses.AddAsync(item.VehicleId, new ExpenseInput(input.Date, item.Title, item.Category, input.Amount!.Value, input.Currency, input.Odometer, item.Note), ct);
-        item.MarkDone(input.Date, input.Odometer);
-        await items.UpdateAsync(item, ct);
+        var logged = input.CreateExpense
+            ? await expenses.AddAsync(item.VehicleId, new ExpenseInput(input.Date, item.Title, item.Category, input.Amount!.Value, input.Currency, input.Odometer, item.Note), ct)
+            : null;
+        try
+        {
+            item.MarkDone(input.Date, input.Odometer);
+            await items.UpdateAsync(item, ct);
+        }
+        catch
+        {
+            // The expense and the schedule are saved separately, so undo the expense (to the trash) when the schedule could not move on:
+            // the schedule is then still due, and a second try does not log the cost twice.
+            if (logged is not null) await TryTrashAsync(logged.Id);
+            throw;
+        }
         return await WithStatusAsync(item, ct);
+    }
+
+    private async Task TryTrashAsync(Guid expenseId)
+    {
+        try { await expenses.DeleteAsync(expenseId, CancellationToken.None); }
+        catch { /* best effort: the original failure is the one to report */ }
     }
 
     private void CheckDate(DateOnly date)

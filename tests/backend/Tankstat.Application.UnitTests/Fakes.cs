@@ -132,7 +132,9 @@ internal sealed class InMemoryRecurring : IRecurringExpenseRepository
         Task.FromResult<IReadOnlyList<RecurringExpense>>(Items.Where(i => i.VehicleId == vehicleId).ToList());
     public Task<RecurringExpense?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(i => i.Id == id));
     public Task AddAsync(RecurringExpense item, CancellationToken ct) { Items.Add(item); return Task.CompletedTask; }
-    public Task UpdateAsync(RecurringExpense item, CancellationToken ct) => Task.CompletedTask; // shared references
+    /// <summary>When set, <see cref="UpdateAsync"/> throws it (a failing database).</summary>
+    public Exception? FailUpdateWith { get; set; }
+    public Task UpdateAsync(RecurringExpense item, CancellationToken ct) => FailUpdateWith is { } e ? Task.FromException(e) : Task.CompletedTask; // shared references
     public Task RemoveAsync(RecurringExpense item, CancellationToken ct) { Items.Remove(item); return Task.CompletedTask; }
 }
 
