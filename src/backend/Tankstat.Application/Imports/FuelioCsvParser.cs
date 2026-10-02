@@ -3,6 +3,7 @@ using System.Text;
 using Tankstat.Domain;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
+using Tankstat.Domain.Recurring;
 using Tankstat.Domain.Vehicles;
 
 namespace Tankstat.Application.Imports;
@@ -13,7 +14,9 @@ namespace Tankstat.Application.Imports;
 /// <list type="bullet">
 /// <item><c>## Vehicle</c>: name, plate, units (<c>DistUnit</c> 0 km / 1 miles, <c>FuelUnit</c> 0 litres / 1 US gal / 2 imperial gal) and the tank's fuel type.</item>
 /// <item><c>## Log</c>: the fill-ups. <c>Price</c> is the total paid; the currency is not in the file.</item>
-/// <item><c>## CostCategories</c> and <c>## Costs</c>: other expenses. Rows marked as templates (reminders) and income rows are skipped; odometer 0 means "not noted".</item>
+/// <item><c>## CostCategories</c> and <c>## Costs</c>: other expenses; odometer 0 means "not noted". Income rows are skipped. Rows marked as templates
+/// (reminders) that repeat (<c>RepeatMonths</c> and/or <c>RepeatOdo</c>) become recurring expenses, counting from where the reminder stands now
+/// (<c>RemindDate</c> / <c>RemindOdo</c> minus one interval, else the row's own date and odometer); a reminder that does not repeat is skipped.</item>
 /// <item>Everything else (stations, trip categories, GPS, weather) is ignored.</item>
 /// </list>
 /// </summary>
@@ -33,8 +36,8 @@ public sealed class FuelioCsvParser : IImportParser
         var vehicle = ReadVehicle(sections);
         var categories = ReadCategories(sections);
         var fuelLogs = ReadLog(sections, issues);
-        var expenses = ReadCosts(sections, categories, issues);
-        return new ImportBatch(FormatId, vehicle, fuelLogs, expenses, issues);
+        var (expenses, recurring) = ReadCosts(sections, categories, issues);
+        return new ImportBatch(FormatId, vehicle, fuelLogs, expenses, recurring, issues);
     }
 
     // ---- sections -----------------------------------------------------------------------------------------------
@@ -134,16 +137,23 @@ public sealed class FuelioCsvParser : IImportParser
 
     // ---- other costs --------------------------------------------------------------------------------------------
 
-    private static List<ImportedExpense> ReadCosts(Dictionary<string, Section> sections, Dictionary<string, string> categories, List<ImportIssue> issues)
+    private static (List<ImportedExpense> Expenses, List<ImportedRecurring> Recurring) ReadCosts(
+        Dictionary<string, Section> sections, Dictionary<string, string> categories, List<ImportIssue> issues)
     {
         var expenses = new List<ImportedExpense>();
-        if (!sections.TryGetValue("Costs", out var s)) return expenses;
+        var recurring = new List<ImportedRecurring>();
+        if (!sections.TryGetValue("Costs", out var s)) return (expenses, recurring);
 
         for (var i = 0; i < s.Rows.Count; i++)
         {
             var row = s.Rows[i];
             var n = i + 1;
-            if (s.Get(row, "isTemplate") == "1") { issues.Add(new ImportIssue("costs", n, "import.templateSkipped", new Dictionary<string, object?> { ["title"] = s.Get(row, "CostTitle") })); continue; }
+            if (s.Get(row, "isTemplate") == "1")
+            {
+                if (ReadTemplate(s, row, n, categories) is { } schedule) recurring.Add(schedule);
+                else issues.Add(new ImportIssue("costs", n, "import.templateSkipped", new Dictionary<string, object?> { ["title"] = s.Get(row, "CostTitle") }));
+                continue;
+            }
             if (s.Get(row, "isIncome") == "1") { issues.Add(new ImportIssue("costs", n, "import.incomeSkipped", new Dictionary<string, object?> { ["title"] = s.Get(row, "CostTitle") })); continue; }
             if (!TryDate(s.Get(row, "Date"), out var date)) { Skip(issues, "costs", n, "import.badDate", s.Get(row, "Date")); continue; }
             if (!TryDecimal(s.Get(row, "Cost"), out var amount) || amount < 0) { Skip(issues, "costs", n, "import.badNumber", s.Get(row, "Cost"), "cost"); continue; }
@@ -157,8 +167,36 @@ public sealed class FuelioCsvParser : IImportParser
             long? odometer = TryDecimal(s.Get(row, "Odo"), out var odo) && odo > 0 ? (long)Math.Round(odo) : null; // 0 means "not noted"
             expenses.Add(new ImportedExpense(n, date, Trim(title, Expense.MaxTitleLength), category, amount, odometer, s.Get(row, "Notes")));
         }
-        return expenses;
+        return (expenses, recurring);
     }
+
+    /// <summary>The recurring expense a repeating reminder template stands for, or null when it does not repeat or cannot be dated.</summary>
+    private static ImportedRecurring? ReadTemplate(Section s, IReadOnlyList<string> row, int n, Dictionary<string, string> categories)
+    {
+        var months = TryDecimal(s.Get(row, "RepeatMonths"), out var m) && m >= 1 ? (int)Math.Round(m) : (int?)null;
+        var distance = TryDecimal(s.Get(row, "RepeatOdo"), out var d) && d >= 1 ? (long)Math.Round(d) : (long?)null;
+        if (months is null && distance is null) return null;
+
+        var category = s.Get(row, "CostTypeID") is { } id && categories.TryGetValue(id, out var name) ? name : null;
+        var title = s.Get(row, "CostTitle") ?? category;
+        if (string.IsNullOrEmpty(title)) return null;
+
+        // Counting starts from where the reminder stands now, so the next due point is the one Fuelio shows: one interval before the reminder.
+        // A reminder without a (real) due date or odometer falls back to the row's own date and odometer; Fuelio writes 2011-01-01 / 0 for "none".
+        DateOnly? lastDone = null;
+        if (months is { } mo && TryDate(s.Get(row, "RemindDate"), out var due) && due != NoReminderDate) lastDone = due.AddMonths(-mo);
+        lastDone ??= TryDate(s.Get(row, "Date"), out var date) ? date : null;
+        if (lastDone is null) return null;
+
+        long? odometer = null;
+        if (distance is { } km && TryDecimal(s.Get(row, "RemindOdo"), out var dueOdo) && dueOdo > km) odometer = (long)Math.Round(dueOdo) - km;
+        odometer ??= TryDecimal(s.Get(row, "Odo"), out var odo) && odo > 0 ? (long)Math.Round(odo) : null;
+
+        var kind = (months, distance) switch { (not null, not null) => RecurrenceKind.Combined, (not null, null) => RecurrenceKind.Time, _ => RecurrenceKind.Odometer };
+        return new ImportedRecurring(n, Trim(title, RecurringExpense.MaxTitleLength), category, s.Get(row, "Notes"), kind, months, distance, lastDone.Value, odometer);
+    }
+
+    private static readonly DateOnly NoReminderDate = new(2011, 1, 1);
 
     // ---- values -------------------------------------------------------------------------------------------------
 

@@ -6,6 +6,7 @@ using Tankstat.Domain;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
+using Tankstat.Domain.Recurring;
 using Tankstat.Domain.Users;
 using Tankstat.Domain.Vehicles;
 
@@ -76,11 +77,11 @@ public class ImportServiceTests
 
         var preview = await s.W.Imports.PreviewAsync(upload.Token, null, default);
 
-        Assert.Equal((3, 3), (preview.FuelRows, preview.ExpenseRows));
+        Assert.Equal((3, 3, 2), (preview.FuelRows, preview.ExpenseRows, preview.RecurringRows));
         Assert.Equal((new DateOnly(2026, 6, 1), new DateOnly(2026, 9, 17)), (preview.FirstDate, preview.LastDate));
         Assert.Equal(["Parking", "Service"], preview.Categories);
         Assert.Equal("Polo", preview.SourceVehicle!.Name);
-        Assert.Equal((0, 0), (preview.DuplicateFuelRows, preview.DuplicateExpenseRows));
+        Assert.Equal((0, 0, 0), (preview.DuplicateFuelRows, preview.DuplicateExpenseRows, preview.DuplicateRecurringRows));
     }
 
     [Fact]
@@ -89,11 +90,12 @@ public class ImportServiceTests
         var s = await Setup();
         await s.W.RefuelingService.LogAsync(s.Car.Id, new Application.Refuelings.RefuelingInput(new DateOnly(2026, 7, 11), 40, 100, "EUR", 1000, true, null), default);
         await s.W.ExpenseService.AddAsync(s.Car.Id, new Application.Expenses.ExpenseInput(new DateOnly(2026, 7, 20), "OIL CHANGE", null, 35000, "EUR", null, null), default);
+        await s.W.RecurringService.AddAsync(s.Car.Id, new Application.Recurring.RecurringExpenseInput("insurance", null, null, RecurrenceKind.Time, 12, null, new DateOnly(2026, 1, 1), null, null, null), default);
         var upload = await Upload(s);
 
         var preview = await s.W.Imports.PreviewAsync(upload.Token, s.Car.Id, default);
 
-        Assert.Equal((1, 1), (preview.DuplicateFuelRows, preview.DuplicateExpenseRows)); // expenses match ignoring case
+        Assert.Equal((1, 1, 1), (preview.DuplicateFuelRows, preview.DuplicateExpenseRows, preview.DuplicateRecurringRows)); // expenses and schedules match ignoring case
         Assert.Contains(preview.Issues, i => i.Key == "import.unitsDiffer"); // the file says miles / imperial gallons
     }
 
@@ -132,12 +134,42 @@ public class ImportServiceTests
 
         var result = await s.W.Imports.CommitAsync(upload.Token, new ImportTarget(null, new NewVehicleSpec("Polo", "abc-123", FuelType.Diesel, MeasurementUnits.Create(DistanceUnit.Miles, VolumeUnit.ImperialGallons))), Options(), default);
 
-        Assert.Equal((3, 3, 0, 0), (result.FuelImported, result.ExpensesImported, result.FuelSkippedDuplicates, result.ExpensesSkippedDuplicates));
+        Assert.Equal((3, 3, 2, 0, 0, 0), (result.FuelImported, result.ExpensesImported, result.RecurringImported, result.FuelSkippedDuplicates, result.ExpensesSkippedDuplicates, result.RecurringSkippedDuplicates));
         Assert.Empty(result.Errors);
         var vehicle = s.W.Vehicles.Items.Single(v => v.Id == result.VehicleId);
         Assert.Equal(("Polo", "ABC-123", DistanceUnit.Miles, VolumeUnit.ImperialGallons), (vehicle.Name, vehicle.LicensePlate, vehicle.Units.Distance, vehicle.Units.Volume));
         Assert.Equal(3, s.W.Refuelings.Items.Count(r => r.VehicleId == result.VehicleId));
         Assert.Equal(3, s.W.Expenses.Items.Count(e => e.VehicleId == result.VehicleId));
+        var schedules = s.W.Recurring.Items.Where(r => r.VehicleId == result.VehicleId).OrderBy(r => r.Title).ToList();
+        Assert.Equal(["Insurance", "Tyres"], schedules.Select(r => r.Title));
+        Assert.Equal((RecurrenceKind.Time, new DateOnly(2026, 1, 10)), (schedules[0].Kind, schedules[0].LastDoneDate));
+        Assert.Equal((RecurrenceKind.Combined, 15000L, 6000L), (schedules[1].Kind, schedules[1].IntervalDistance, schedules[1].LastDoneOdometer));
+    }
+
+    [Fact]
+    public async Task Commit_ReportsARecurringExpenseThatBreaksARule_AndImportsTheRest()
+    {
+        var s = await Setup();
+        var upload = await Upload(s, FuelioSample.Csv.Replace("\"Insurance\",\"2026-01-10\"", "\"Insurance\",\"2030-01-10\""));
+
+        var result = await s.W.Imports.CommitAsync(upload.Token, new ImportTarget(null, new NewVehicleSpec("Polo", null, FuelType.Diesel, MeasurementUnits.Metric)), Options(), default);
+
+        Assert.Equal(1, result.RecurringImported);
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(("costs", 7, "refueling.dateInFuture"), (error.Section, error.Row, error.Key));
+    }
+
+    [Fact]
+    public async Task Commit_StartsADistanceScheduleWithoutAnOdometerFromTheImportedReadings()
+    {
+        var s = await Setup();
+        // The reminder neither says where it stands nor has an odometer of its own.
+        var upload = await Upload(s, FuelioSample.Csv.Replace("\"Tyres\",\"2026-02-01\",\"900\"", "\"Tyres\",\"2026-02-01\",\"0\"").Replace("\"21000\",\"2027-02-01\"", "\"0\",\"2011-01-01\""));
+
+        var result = await s.W.Imports.CommitAsync(upload.Token, new ImportTarget(null, new NewVehicleSpec("Polo", null, FuelType.Diesel, MeasurementUnits.Metric)), Options(), default);
+
+        Assert.Empty(result.Errors);
+        Assert.Equal(1300L, s.W.Recurring.Items.Single(r => r.Title == "Tyres").LastDoneOdometer); // the latest fill-up of the file
     }
 
     [Fact]
@@ -176,8 +208,9 @@ public class ImportServiceTests
         var again = await Upload(s);
         var skipped = await s.W.Imports.CommitAsync(again.Token, new ImportTarget(s.Car.Id, null), Options(), default);
 
-        Assert.Equal((0, 0, 3, 3), (skipped.FuelImported, skipped.ExpensesImported, skipped.FuelSkippedDuplicates, skipped.ExpensesSkippedDuplicates));
+        Assert.Equal((0, 0, 0, 3, 3, 2), (skipped.FuelImported, skipped.ExpensesImported, skipped.RecurringImported, skipped.FuelSkippedDuplicates, skipped.ExpensesSkippedDuplicates, skipped.RecurringSkippedDuplicates));
         Assert.Equal(3, s.W.Refuelings.Items.Count);
+        Assert.Equal(2, s.W.Recurring.Items.Count);
     }
 
     [Fact]

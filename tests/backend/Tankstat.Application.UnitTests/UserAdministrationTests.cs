@@ -173,7 +173,7 @@ public class UserAdministrationTests
     {
         var (w, _) = SignedInAdmin();
         var alice = w.AddUser("alice@x.co");
-        var token = w.ImportSessions.Save(alice.Id, new Imports.ImportBatch("fuelio", null, [], [], []));
+        var token = w.ImportSessions.Save(alice.Id, new Imports.ImportBatch("fuelio", null, [], [], [], []));
 
         await w.UserService.DeleteAsync(alice.Id, null, null, default);
 
