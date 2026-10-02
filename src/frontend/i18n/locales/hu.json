@@ -17,7 +17,8 @@
     "signedInAs": "Bejelentkezve mint {{name}}",
     "close": "Menü bezárása",
     "import": "Importálás",
-    "home": "Kezdőlap"
+    "home": "Kezdőlap",
+    "notifications": "Értesítések"
   },
   "language": {
     "label": "Nyelv"
@@ -29,6 +30,43 @@
   "notices": {
     "warning": "Figyelem:",
     "AUTH_DISABLED": "A hitelesítés ki van kapcsolva: aki eléri ezt az alkalmazást, az minden adatot láthat és módosíthat. Ez nem biztonságos; állítsd be az Auth:Mode értékét."
+  },
+  "notifications": {
+    "title": "Értesítések",
+    "retentionHint": "Az olvasott értesítések egy idő után maguktól törlődnek.",
+    "bell": "Értesítések",
+    "bellUnread_one": "Értesítések, {{count}} olvasatlan",
+    "bellUnread_other": "Értesítések, {{count}} olvasatlan",
+    "unreadStatus_one": "{{count}} olvasatlan értesítésed van.",
+    "unreadStatus_other": "{{count}} olvasatlan értesítésed van.",
+    "latest": "Legutóbbi értesítések",
+    "new": "Új",
+    "empty": "Még nincs itt semmi. Szólunk, ha valaki megoszt veled valamit, vagy esedékes egy rendszeres kiadás.",
+    "emptyUnread": "Mindent elolvastál.",
+    "markAllRead": "Mind olvasott",
+    "markRead": "Olvasottnak jelöl",
+    "showAll": "Összes értesítés",
+    "showMore": "Továbbiak",
+    "filter": "Mutasd",
+    "all": "Mind",
+    "unread": "Olvasatlan",
+    "folded_one": "({{count}} változás)",
+    "folded_other": "({{count}} változás)",
+    "kinds": {
+      "LOG_ACCESS_CHANGED": "{{actor}} hozzáférést adott neked a(z) {{vehicle}} naplóihoz: {{level}}.",
+      "LOG_ACCESS_REVOKED": "{{actor}} megvonta a hozzáférésedet a(z) {{vehicle}} naplóihoz.",
+      "VEHICLE_SHARED": "{{actor}} hozzáférést adott {{user}} részére a(z) {{vehicle}} naplóihoz: {{level}}.",
+      "VEHICLE_SHARE_REVOKED": "{{actor}} megvonta {{user}} hozzáférését a(z) {{vehicle}} naplóihoz.",
+      "DATA_ACCESS_CHANGED": "{{actor}} hozzáférést adott neked {{user}} összes adatához: {{level}}.",
+      "DATA_ACCESS_REVOKED": "{{actor}} megvonta a hozzáférésedet {{user}} adataihoz.",
+      "DATA_SHARED": "{{actor}} hozzáférést adott {{user}} részére az összes adatodhoz: {{level}}.",
+      "DATA_SHARE_REVOKED": "{{actor}} megvonta {{user}} hozzáférését az adataidhoz.",
+      "DEFAULT_ACCESS_CHANGED": "{{actor}} módosította, mit tehet bárki a többi felhasználó adataival: {{level}}.",
+      "RECURRING_DUE_SOON": "Hamarosan esedékes: {{title}} ({{vehicle}}).",
+      "RECURRING_OVERDUE": "Lejárt: {{title}} ({{vehicle}}).",
+      "MORE_ACTIVITY_one": "Még {{count}} változás történt, túl sok ahhoz, hogy egyenként felsoroljuk.",
+      "MORE_ACTIVITY_other": "Még {{count}} változás történt, túl sok ahhoz, hogy egyenként felsoroljuk."
+    }
   },
   "status": {
     "healthy": "Működik",

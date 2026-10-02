@@ -36,7 +36,7 @@ function setup(opts: { vehicles?: ReturnType<typeof fakeVehicle>[]; uploadStatus
     sessionHandler('NONE', () => null),
     healthHandler,
     graphql.query('ImportTargets', () => HttpResponse.json({ data: { myVehicles: opts.vehicles ?? [fakeVehicle()] } })),
-    graphql.query('VehicleDefaults', () => HttpResponse.json({ data: { vehicleDefaults: { distanceUnit: 'MILES', volumeUnit: 'US_GALLONS', currency: 'USD' } } })),
+    graphql.query('VehicleDefaults', () => HttpResponse.json({ data: { vehicleDefaults: { distanceUnit: 'MILES', volumeUnit: 'US_GALLONS', currency: 'USD', recurringWarnDays: 30, recurringWarnDistance: 500 } } })),
     graphql.query('ImportPreview', ({ variables }) => {
       calls.previews.push(variables)
       return HttpResponse.json({ data: { importPreview: (opts.previewFor ?? (() => preview()))(variables.vehicleId as string | null) } })

@@ -5,7 +5,7 @@ import { axe } from 'vitest-axe'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import { server } from './server.ts'
-import { fakeExpense, fakeExpenseBackend, fakeLogBackend, fakePhotoStore, fakeRecurring, fakeRecurringBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, stubViewport, user } from './mocks.tsx'
+import { fakeExpense, fakeExpenseBackend, fakeLogBackend, fakeNotification, fakeNotificationBackend, fakePhotoStore, fakeRecurring, fakeRecurringBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, stubViewport, user } from './mocks.tsx'
 
 // jsdom cannot decode pictures (the resize is covered in Media.unit.test.ts) and has no object URLs (previews of queued photos).
 vi.mock('../../src/frontend/pictures/resizeImage.ts', async (original) => ({
@@ -42,7 +42,13 @@ function setup(route: string, viewport: 'desktop' | 'phone' = 'desktop', photos 
   ])
   const attention = [{ id: 'rc2', title: 'Tyres', kind: 'ODOMETER', status: { state: 'OVERDUE', limit: 'ODOMETER', dueDate: null, daysLeft: null, distanceLeft: -300 } }] as never
   const vehicles = fakeVehicleBackend([fakeVehicle({ recurring: attention })], [fakeVehicle({ id: 't1', name: 'Old Fiat' })])
+  const inbox = fakeNotificationBackend([
+    fakeNotification(),
+    fakeNotification({ id: 'n2', kind: 'RECURRING_OVERDUE', read: true, args: [{ name: 'title', value: 'Tyres' }, { name: 'vehicleName', value: 'Octavia' }] }),
+    fakeNotification({ id: 'n3', kind: 'MORE_ACTIVITY', count: 4, context: null, args: [] }),
+  ])
   server.use(
+    ...inbox.handlers,
     sessionHandler('STANDALONE', () => user({ isAdmin: true })),
     healthHandler,
     ...logs.handlers,
@@ -123,6 +129,16 @@ it('the trash, account and administration pages have no violations', async () =>
     await check(view.container)
     view.unmount()
   }
+})
+
+it('the notifications page and the open bell are labelled and free of violations', async () => {
+  const { view, ui } = setup('/notifications')
+  await screen.findByRole('list', { name: 'Notifications' })
+  await check(view.container)
+
+  await ui.click(screen.getByRole('button', { name: 'Notifications, 2 unread' }))
+  await screen.findByRole('list', { name: 'Latest notifications' })
+  await check(document.body)
 })
 
 it('sortable columns announce their state and every grid is a labelled table', async () => {

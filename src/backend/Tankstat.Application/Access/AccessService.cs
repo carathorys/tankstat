@@ -42,10 +42,16 @@ public sealed class AccessService(
         await LevelAsync(ownerId, ct) >= level;
 
     /// <summary>The owners whose data the current user may access at (at least) <paramref name="level"/>.</summary>
-    public async Task<OwnerScope> ScopeAsync(AccessLevel level, CancellationToken ct)
+    public Task<OwnerScope> ScopeAsync(AccessLevel level, CancellationToken ct) => ScopeAsync(level, administration: true, ct);
+
+    /// <param name="administration">
+    /// Whether an administrator's right to everything counts. Without it, an administrator gets what any other user would (their own data,
+    /// grants and the instance default), e.g. for what concerns them personally; the anonymous user (authentication off) keeps everything.
+    /// </param>
+    private async Task<OwnerScope> ScopeAsync(AccessLevel level, bool administration, CancellationToken ct)
     {
         var principal = await RequirePrincipalAsync(ct);
-        if (principal.IsAdmin) return OwnerScope.All;
+        if (principal.IsAdmin && (administration || principal.IsAnonymous)) return OwnerScope.All;
 
         var defaults = (await settings.GetAsync(ct)).DefaultLevelForOthers;
         if (defaults >= level) return OwnerScope.All;
@@ -91,9 +97,17 @@ public sealed class AccessService(
     }
 
     /// <summary>Logs the user may access at <paramref name="level"/>: owner-based, plus the vehicles whose log grant is at least that level.</summary>
-    public async Task<OwnerScope> LogScopeAsync(AccessLevel level, CancellationToken ct)
+    public Task<OwnerScope> LogScopeAsync(AccessLevel level, CancellationToken ct) => LogScopeAsync(level, administration: true, ct);
+
+    /// <summary>
+    /// Like <see cref="LogScopeAsync(AccessLevel, CancellationToken)"/>, but an administrator's right to everything does not count: the logs
+    /// that concern the user personally (theirs, granted, or open to everyone), e.g. what they are notified about.
+    /// </summary>
+    public Task<OwnerScope> PersonalLogScopeAsync(AccessLevel level, CancellationToken ct) => LogScopeAsync(level, administration: false, ct);
+
+    private async Task<OwnerScope> LogScopeAsync(AccessLevel level, bool administration, CancellationToken ct)
     {
-        var owners = await ScopeAsync(level, ct);
+        var owners = await ScopeAsync(level, administration, ct);
         if (owners.IsAll) return owners;
         return OwnerScope.Of(owners.Owners, await GrantedVehiclesAsync(level, ct));
     }

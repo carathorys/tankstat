@@ -28,6 +28,21 @@ public class RepositoryTests
     }
 
     [Fact]
+    public async Task Vehicles_ListByIds_SkipsTrashedAndUnknownOnes()
+    {
+        await using var db = new TestDatabase();
+        var repo = db.Get<IVehicleRepository>();
+        var car = TestData.Vehicle(Owner, "Car");
+        var van = TestData.Vehicle(Owner, "Van");
+        van.MarkDeleted(DateTimeOffset.UtcNow);
+        await repo.AddAsync(car, default);
+        await repo.AddAsync(van, default);
+
+        Assert.Equal([car.Id], (await repo.ListByIdsAsync([car.Id, van.Id, Guid.NewGuid()], default)).Select(v => v.Id));
+        Assert.Empty(await repo.ListByIdsAsync([], default));
+    }
+
+    [Fact]
     public async Task Vehicles_AreFilteredByOwnerScope()
     {
         await using var db = new TestDatabase();

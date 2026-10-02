@@ -54,6 +54,10 @@ public sealed class SeederAppTests : IDisposable
         Assert.Equal(Scalar("select count(*) from Refuelings"), Scalar("select count(*) from Costs"));
         Assert.Equal(0, Scalar("select count(*) from Vehicles where OwnerId <> '00000000-0000-0000-0000-000000000000'"));
         Assert.True(Scalar("select count(*) from __EFMigrationsHistory") >= 2); // really migrated
+        Assert.Contains("15 notifications", output);
+        Assert.Equal(15, Scalar("select count(*) from Notifications where RecipientId = '00000000-0000-0000-0000-000000000000'"));
+        Assert.Equal(0, Scalar("select count(*) from RecurringExpenses r join Vehicles v on v.Id = r.VehicleId where v.DeletedAt is not null or r.OwnerId <> v.OwnerId"));
+        Assert.Equal(Scalar("select count(*) from RecurringExpenses"), long.Parse(System.Text.RegularExpressions.Regex.Match(output, @"([\d,]+) recurring expenses,").Groups[1].Value.Replace(",", "")));
     }
 
     [Fact]
@@ -250,6 +254,13 @@ public sealed class SeederAppTests : IDisposable
         Assert.Equal(4, seeded.GetProperty("trashCount").GetInt32());
         Assert.Contains(vehicles, v => v.GetProperty("refuelingCount").GetInt32() > 0);
         Assert.All(vehicles, v => Assert.True(v.GetProperty("canEdit").GetBoolean()));
+
+        // the seeded notifications, plus the reminders the app works out from the seeded schedules when they are looked at
+        var inbox = (await Gql("{ notificationCount notifications(take: 100) { kind } }")).GetProperty("data");
+        var kinds = inbox.GetProperty("notifications").EnumerateArray().Select(n => n.GetProperty("kind").GetString()).ToList();
+        Assert.True(inbox.GetProperty("notificationCount").GetInt32() > 15);
+        Assert.Contains("RECURRING_OVERDUE", kinds);
+        Assert.Contains("LOG_ACCESS_CHANGED", kinds);
 
         Assert.Equal(4, (await Gql("mutation { emptyTrash }")).GetProperty("data").GetProperty("emptyTrash").GetInt32());
         Assert.Equal(0, Scalar("select count(*) from Vehicles where DeletedAt is not null"));

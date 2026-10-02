@@ -50,6 +50,21 @@ public class RecurringGraphQLTests(ApiFixture api)
     }
 
     [Fact]
+    public async Task TheDefaultWarnings_ComeFromTheConfiguration_AndAreExposed()
+    {
+        using var app = new TestApp(new() { ["Auth:Mode"] = "None", ["Defaults:RecurringWarnDays"] = "14", ["Defaults:RecurringWarnDistance"] = "1000" });
+        var client = app.NewClient();
+        var vehicle = (await client.Gql("mutation { addVehicle(input: { name: \"Car\", fuelType: PETROL }) { id } }")).Data().GetProperty("addVehicle").GetProperty("id").GetString();
+
+        var defaults = (await client.Gql("{ vehicleDefaults { recurringWarnDays recurringWarnDistance } }")).Data().GetProperty("vehicleDefaults");
+        var added = (await client.Gql("mutation($i: AddRecurringExpenseInput!) { addRecurringExpense(input: $i) { warnDays warnDistance } }",
+            new { i = new { vehicleId = vehicle, title = "Oil change", kind = "ODOMETER", intervalDistance = 15000, lastDoneOdometer = 1000 } })).Data().GetProperty("addRecurringExpense");
+
+        Assert.Equal((14, 1000L), (defaults.GetProperty("recurringWarnDays").GetInt32(), defaults.GetProperty("recurringWarnDistance").GetInt64()));
+        Assert.Equal((14, 1000L), (added.GetProperty("warnDays").GetInt32(), added.GetProperty("warnDistance").GetInt64()));
+    }
+
+    [Fact]
     public async Task AddingWithoutAStart_CountsFromTodayAtTheCurrentOdometer()
     {
         var vehicle = await AddVehicle();

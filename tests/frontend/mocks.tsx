@@ -7,7 +7,7 @@ import type { ReactElement } from 'react'
 import { MemoryRouter } from 'react-router'
 import { vi } from 'vitest'
 import { createApolloClient } from '../../src/frontend/apolloClient.ts'
-import type { AuthMode, SessionQuery } from '../../src/frontend/gql/generated.ts'
+import type { AuthMode, NotificationFieldsFragment, SessionQuery } from '../../src/frontend/gql/generated.ts'
 
 /** Renders with a fresh Apollo client (and cache) talking to the msw-mocked GraphQL endpoint over HTTP; animations are instant. */
 export const renderWithApollo = (ui: ReactElement, route = '/') =>
@@ -184,7 +184,7 @@ export function fakeVehicleBackend(initial: FakeVehicle[] = [], trashed: FakeVeh
       })
     }),
     graphql.query('VehicleDefaults', () =>
-      HttpResponse.json({ data: { vehicleDefaults: { distanceUnit: 'KILOMETERS', volumeUnit: 'LITERS', currency: 'HUF' } } }),
+      HttpResponse.json({ data: { vehicleDefaults: { distanceUnit: 'KILOMETERS', volumeUnit: 'LITERS', currency: 'HUF', recurringWarnDays: 30, recurringWarnDistance: 500 } } }),
     ),
     graphql.mutation('AddVehicle', ({ variables }) => {
       record('AddVehicle', variables)
@@ -678,12 +678,17 @@ export function fakeRecurringBackend(items: FakeRecurring[] = []) {
     calls: {} as Record<string, unknown[]>,
     failWith: undefined as { message: string; key: string; args?: Record<string, unknown> } | undefined,
     nextId: 500,
+    /** The instance's default warnings a new schedule starts with. */
+    warnDefaults: { recurringWarnDays: 30, recurringWarnDistance: 500 },
   }
   const record = (name: string, vars: unknown) => (state.calls[name] ??= []).push(vars)
   const fail = (): Response | undefined => (state.failWith ? HttpResponse.json(gqlError(state.failWith.message, 'VALIDATION_FAILED', state.failWith.key, state.failWith.args)) : undefined)
   const upcoming = (): FakeRecurring['status'] => ({ state: 'UPCOMING', limit: 'TIME', dueDate: '2027-12-01', dueOdometer: null, daysLeft: 400, distanceLeft: null })
   const handlers = [
     graphql.query('RecurringExpenses', ({ variables }) => HttpResponse.json({ data: { vehicle: { __typename: 'Vehicle', id: variables.vehicleId, recurring: state.items } } })),
+    graphql.query('VehicleDefaults', () =>
+      HttpResponse.json({ data: { vehicleDefaults: { distanceUnit: 'KILOMETERS', volumeUnit: 'LITERS', currency: 'HUF', ...state.warnDefaults } } }),
+    ),
     graphql.mutation('AddRecurringExpense', ({ variables }) => {
       record('AddRecurringExpense', variables)
       const failed = fail()
@@ -715,6 +720,61 @@ export function fakeRecurringBackend(items: FakeRecurring[] = []) {
       const i = state.items.findIndex((x) => x.id === input.id)
       state.items[i] = { ...state.items[i], lastDoneDate: input.date, lastDoneOdometer: input.odometer ?? state.items[i].lastDoneOdometer, status: upcoming() }
       return HttpResponse.json({ data: { markRecurringExpenseDone: state.items[i] } })
+    }),
+  ]
+  return { state, handlers }
+}
+
+export type FakeNotification = NotificationFieldsFragment
+
+export const fakeNotification = (over: Partial<FakeNotification> = {}): FakeNotification => ({
+  id: 'n1',
+  kind: 'LOG_ACCESS_CHANGED',
+  read: false,
+  readAt: null,
+  count: 1,
+  createdAt: '2026-09-30T10:00:00Z',
+  updatedAt: '2026-09-30T10:00:00Z',
+  subject: { type: 'VEHICLE', id: 'v1' },
+  context: { type: 'VEHICLE', id: 'v1' },
+  args: [
+    { name: 'actorName', value: 'Bob' },
+    { name: 'level', value: 'EDIT' },
+    { name: 'vehicleName', value: 'Family car' },
+  ],
+  ...over,
+})
+
+/** The current user's inbox behind the notification queries and the mark-read mutation, newest change first like the server. */
+export function fakeNotificationBackend(items: FakeNotification[] = []) {
+  const state = { items: [...items], calls: {} as Record<string, unknown[]> }
+  const record = (name: string, vars: unknown) => (state.calls[name] ??= []).push(vars)
+  const typed = (n: FakeNotification) => ({
+    __typename: 'NotificationInfo',
+    ...n,
+    subject: { __typename: 'NotificationRefInfo', ...n.subject },
+    context: n.context && { __typename: 'NotificationRefInfo', ...n.context },
+    args: n.args.map((a) => ({ __typename: 'NotificationArg', ...a })),
+  })
+  const sorted = () => [...state.items].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  const unread = () => state.items.filter((n) => !n.read).length
+  const handlers = [
+    graphql.query('UnreadNotificationCount', () => HttpResponse.json({ data: { notificationCount: unread() } })),
+    graphql.query('LatestNotifications', ({ variables }) =>
+      HttpResponse.json({ data: { notifications: sorted().slice(0, variables.take as number).map(typed), notificationCount: unread() } }),
+    ),
+    graphql.query('Notifications', ({ variables }) => {
+      record('Notifications', variables)
+      const v = variables as { unreadOnly: boolean; skip: number; take: number }
+      const matching = sorted().filter((n) => !v.unreadOnly || !n.read)
+      return HttpResponse.json({ data: { notifications: matching.slice(v.skip, v.skip + v.take).map(typed), notificationCount: matching.length } })
+    }),
+    graphql.mutation('MarkNotificationsRead', ({ variables }) => {
+      record('MarkNotificationsRead', variables)
+      const ids = variables.ids as string[] | null | undefined
+      const changed = state.items.filter((n) => !n.read && (!ids || ids.includes(n.id))).map((n) => ({ ...n, read: true, readAt: '2026-10-01T12:00:00Z' }))
+      state.items = state.items.map((n) => changed.find((c) => c.id === n.id) ?? n)
+      return HttpResponse.json({ data: { markNotificationsRead: changed.map(typed) } })
     }),
   ]
   return { state, handlers }

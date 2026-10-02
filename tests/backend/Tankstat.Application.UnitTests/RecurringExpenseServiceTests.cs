@@ -43,6 +43,20 @@ public class RecurringExpenseServiceTests
     }
 
     [Fact]
+    public async Task Add_UsesTheConfiguredInstanceDefaults_ForWarningsThatAreNotGiven()
+    {
+        var s = await Setup();
+        s.W.Defaults.RecurringWarnDays = 14;
+        s.W.Defaults.RecurringWarnDistance = 1000;
+
+        var defaulted = await s.W.RecurringService.AddAsync(s.Car.Id, Oil(), default);
+        var given = await s.W.RecurringService.AddAsync(s.Car.Id, Oil(title: "Tyres") with { WarnDays = 7, WarnDistance = 100 }, default);
+
+        Assert.Equal((14, 1000L), (defaulted.Item.WarnDays, defaulted.Item.WarnDistance));
+        Assert.Equal((7, 100L), (given.Item.WarnDays, given.Item.WarnDistance));
+    }
+
+    [Fact]
     public async Task Add_StartsCountingTodayFromTheCurrentOdometer_WhenNoneIsGiven()
     {
         var s = await Setup();

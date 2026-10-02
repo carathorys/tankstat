@@ -216,6 +216,75 @@ namespace Tankstat.Migrations.MySql
                     b.ToTable("Costs", (string)null);
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Notifications.Notification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Args")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("varchar(4000)");
+
+                    b.Property<string>("Before")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<Guid>("ContextId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ContextType")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("Occurrence")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("RecipientId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("SubjectId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("SubjectType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("Topic")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecipientId", "ReadAt", "UpdatedAt");
+
+                    b.HasIndex("RecipientId", "Topic", "SubjectType", "SubjectId", "ContextId", "Occurrence")
+                        .IsUnique();
+
+                    b.ToTable("Notifications", (string)null);
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Odometers.OdometerReading", b =>
                 {
                     b.Property<Guid>("Id")

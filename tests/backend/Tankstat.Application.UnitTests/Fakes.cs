@@ -7,6 +7,7 @@ using Tankstat.Application.Photos;
 using Tankstat.Domain.Photos;
 using Tankstat.Application.Images;
 using Tankstat.Application.Imports;
+using Tankstat.Application.Notifications;
 using Tankstat.Application.Odometers;
 using Tankstat.Application.Sharing;
 using Tankstat.Application.Stats;
@@ -18,6 +19,7 @@ using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Images;
 using Tankstat.Domain.Measurements;
+using Tankstat.Domain.Notifications;
 using Tankstat.Domain.Odometers;
 using Tankstat.Domain.Recurring;
 using Tankstat.Domain.Users;
@@ -51,6 +53,8 @@ internal sealed class InMemoryVehicles : IVehicleRepository
     public Task<int> CountDeletedAsync(OwnerScope scope, CancellationToken ct) =>
         Task.FromResult(Items.Count(v => v.IsDeleted && scope.Contains(v.OwnerId, v.Id)));
     public Task<Vehicle?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(v => v.Id == id && !v.IsDeleted));
+    public Task<IReadOnlyList<Vehicle>> ListByIdsAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<Vehicle>>(Items.Where(v => ids.Contains(v.Id) && !v.IsDeleted).ToList());
     public Task<Vehicle?> FindIncludingDeletedAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(v => v.Id == id));
     public Task AddAsync(Vehicle vehicle, CancellationToken ct) { Items.Add(vehicle); return Task.CompletedTask; }
     public Task UpdateAsync(Vehicle vehicle, CancellationToken ct) => Task.CompletedTask; // entities are shared references
@@ -125,7 +129,7 @@ internal sealed class InMemoryExpenses : IExpenseRepository
     }
 }
 
-internal sealed class InMemoryRecurring : IRecurringExpenseRepository
+internal sealed class InMemoryRecurring(InMemoryVehicles vehicles) : IRecurringExpenseRepository
 {
     public List<RecurringExpense> Items { get; } = [];
     public Task<IReadOnlyList<RecurringExpense>> ListForVehicleAsync(Guid vehicleId, CancellationToken ct) =>
@@ -136,12 +140,50 @@ internal sealed class InMemoryRecurring : IRecurringExpenseRepository
         ListForVehiclesCalls++;
         return Task.FromResult<IReadOnlyList<RecurringExpense>>(Items.Where(i => vehicleIds.Contains(i.VehicleId)).ToList());
     }
+    public Task<IReadOnlyList<Guid>> ListVehicleIdsAsync(OwnerScope scope, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<Guid>>(Items
+            .Where(i => scope.Contains(i.OwnerId, i.VehicleId) && vehicles.Items.Any(v => v.Id == i.VehicleId && !v.IsDeleted))
+            .Select(i => i.VehicleId).Distinct().ToList());
     public Task<RecurringExpense?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(i => i.Id == id));
     public Task AddAsync(RecurringExpense item, CancellationToken ct) { Items.Add(item); return Task.CompletedTask; }
     /// <summary>When set, <see cref="UpdateAsync"/> throws it (a failing database).</summary>
     public Exception? FailUpdateWith { get; set; }
     public Task UpdateAsync(RecurringExpense item, CancellationToken ct) => FailUpdateWith is { } e ? Task.FromException(e) : Task.CompletedTask; // shared references
     public Task RemoveAsync(RecurringExpense item, CancellationToken ct) { Items.Remove(item); return Task.CompletedTask; }
+}
+
+internal sealed class InMemoryNotifications : INotificationRepository
+{
+    public List<Notification> Items { get; } = [];
+
+    private IEnumerable<Notification> Of(Guid recipient, bool unreadOnly) => Items.Where(n => n.RecipientId == recipient && (!unreadOnly || !n.IsRead));
+
+    public Task<IReadOnlyList<Notification>> ListAsync(Guid recipientId, bool unreadOnly, int skip, int take, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<Notification>>(Of(recipientId, unreadOnly).OrderByDescending(n => n.UpdatedAt).ThenBy(n => n.Id).Skip(skip).Take(take).ToList());
+    public Task<int> CountAsync(Guid recipientId, bool unreadOnly, CancellationToken ct) => Task.FromResult(Of(recipientId, unreadOnly).Count());
+    public Task<Notification?> FindOpenAsync(Guid recipientId, NotificationTopic topic, NotificationRef subject, NotificationRef? context, CancellationToken ct) =>
+        Task.FromResult(Of(recipientId, true).OrderByDescending(n => n.UpdatedAt).FirstOrDefault(n => n.Topic == topic && n.Subject == subject && n.Context == context));
+    public Task<IReadOnlyList<Notification>> ListForSubjectsAsync(Guid recipientId, NotificationTopic topic, IReadOnlyCollection<Guid> subjectIds, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<Notification>>(Of(recipientId, false).Where(n => n.Topic == topic && subjectIds.Contains(n.SubjectId)).ToList());
+    public Task<int> CountCreatedSinceAsync(Guid recipientId, DateTimeOffset since, IReadOnlyCollection<NotificationTopic> topics, CancellationToken ct) =>
+        Task.FromResult(Of(recipientId, false).Count(n => n.CreatedAt > since && topics.Contains(n.Topic)));
+    public Task<bool> AddAsync(Notification n, CancellationToken ct)
+    {
+        if (Items.Any(x => x.RecipientId == n.RecipientId && x.Topic == n.Topic && x.Subject == n.Subject && x.ContextId == n.ContextId && x.Occurrence == n.Occurrence))
+            return Task.FromResult(false);
+        Items.Add(n);
+        return Task.FromResult(true);
+    }
+    public Task UpdateAsync(Notification n, CancellationToken ct) => Task.CompletedTask; // shared references
+    public Task RemoveAsync(Notification n, CancellationToken ct) { Items.Remove(n); return Task.CompletedTask; }
+    public Task<IReadOnlyList<Notification>> MarkReadAsync(Guid recipientId, IReadOnlyCollection<Guid>? ids, DateTimeOffset at, CancellationToken ct)
+    {
+        var unread = Of(recipientId, true).Where(n => ids is null || ids.Contains(n.Id)).ToList();
+        foreach (var n in unread) n.MarkRead(at);
+        return Task.FromResult<IReadOnlyList<Notification>>(unread);
+    }
+    public Task<int> PurgeReadAsync(Guid recipientId, DateTimeOffset readBefore, IReadOnlyCollection<Guid> keepSubjectIds, CancellationToken ct) =>
+        Task.FromResult(Items.RemoveAll(n => n.RecipientId == recipientId && n.ReadAt < readBefore && !keepSubjectIds.Contains(n.SubjectId)));
 }
 
 internal sealed class InMemoryStats(InMemoryRefuelings refuelings, InMemoryExpenses expenses) : IStatsRepository
@@ -374,6 +416,7 @@ internal sealed class World
     public FakeCurrentUser Current { get; } = new();
     public FakeEmail Email { get; }
     public AuthOptions Options { get; }
+    public VehicleDefaultsOptions Defaults { get; } = new() { Currency = "HUF" };
 
     public AccessService Access { get; }
     public LogAccessGuard LogGuard { get; }
@@ -381,7 +424,9 @@ internal sealed class World
     public RefuelingService RefuelingService { get; }
     public ExpenseService ExpenseService { get; }
     public StatsService Stats { get; }
-    public InMemoryRecurring Recurring { get; } = new();
+    public InMemoryRecurring Recurring { get; }
+    public InMemoryNotifications Notifications { get; } = new();
+    public NotificationOptions NotificationOptions { get; } = new();
     public RecurringExpenseService RecurringService { get; }
     public ChartService ChartService { get; }
     public ImportService Imports { get; }
@@ -392,6 +437,8 @@ internal sealed class World
     public AuthService Auth { get; }
     public UserService UserService { get; }
     public AccessAdminService AccessAdmin { get; }
+    public Notifier Notifier { get; }
+    public NotificationService NotificationService => new(Access, Notifications, new RecurringNotificationSync(Access, Recurring, Vehicles, RecurringService, Notifier), NotificationOptions.Create(), Clock); // a new one per use, like one per request (it syncs once)
 
     public World(AuthMode mode = AuthMode.Standalone, bool smtp = false, Action<AuthOptions>? configure = null)
     {
@@ -400,7 +447,9 @@ internal sealed class World
         configure?.Invoke(Options);
         var options = Options.Create();
 
+        Recurring = new InMemoryRecurring(Vehicles);
         Access = new AccessService(Current, options, Grants, Settings, ResourceGrants);
+        Notifier = new Notifier(Notifications, NotificationOptions.Create(), Clock);
         LogGuard = new LogAccessGuard(Vehicles, Access);
         ImportSessions = new ImportSessionStore(Clock);
         Odometer = new OdometerService(new InMemoryReadings(Refuelings, Expenses));
@@ -411,14 +460,14 @@ internal sealed class World
         VehicleService = new VehicleService(Vehicles, Refuelings, Access, Odometer, ImageService, Clock);
         RefuelingService = new RefuelingService(Vehicles, LogGuard, Refuelings, Access, Odometer, Photos, Clock);
         ExpenseService = new ExpenseService(LogGuard, Expenses, Access, Odometer, Photos, Clock);
-        RecurringService = new RecurringExpenseService(LogGuard, Recurring, Access, Odometer, ExpenseService, Clock);
-        Imports = new ImportService([new FuelioCsvParser()], ImportSessions, Access, VehicleService, RefuelingService, ExpenseService, RecurringService, Refuelings, Expenses, new VehicleDefaultsOptions { Currency = "HUF" }.Create());
+        RecurringService = new RecurringExpenseService(LogGuard, Recurring, Access, Odometer, ExpenseService, Defaults.Create(), Clock);
+        Imports = new ImportService([new FuelioCsvParser()], ImportSessions, Access, VehicleService, RefuelingService, ExpenseService, RecurringService, Refuelings, Expenses, Defaults.Create());
         Stats = new StatsService(Vehicles, new InMemoryStats(Refuelings, Expenses), Access, Clock);
         ChartService = new ChartService(Vehicles, Charts, Access, Clock);
-        Sharing = new ResourceSharingService(Vehicles, ResourceGrants, Users, Access);
+        Sharing = new ResourceSharingService(Vehicles, ResourceGrants, Users, Access, Notifier);
         Auth = new AuthService(Users, new FakeHasher(), resets, Access, options, Clock);
         UserService = new UserService(Access, Users, UserData, resets, new FakeHasher(), ImageService, ImportSessions, options);
-        AccessAdmin = new AccessAdminService(Access, Settings, Grants, Users);
+        AccessAdmin = new AccessAdminService(Access, Settings, Grants, Users, Notifier);
     }
 
     public User AddUser(string email, bool admin = false, string password = "password-123456")

@@ -1,0 +1,46 @@
+fragment NotificationFields on NotificationInfo {
+  id
+  kind
+  read
+  readAt
+  count
+  createdAt
+  updatedAt
+  subject {
+    type
+    id
+  }
+  context {
+    type
+    id
+  }
+  args {
+    name
+    value
+  }
+}
+
+query UnreadNotificationCount {
+  notificationCount(unreadOnly: true)
+}
+
+query LatestNotifications($take: Int!) {
+  notifications(take: $take) {
+    ...NotificationFields
+  }
+  notificationCount(unreadOnly: true)
+}
+
+query Notifications($unreadOnly: Boolean!, $skip: Int!, $take: Int!) {
+  notifications(unreadOnly: $unreadOnly, skip: $skip, take: $take) {
+    ...NotificationFields
+  }
+  notificationCount(unreadOnly: $unreadOnly)
+}
+
+# Returns the notifications it marked, so the lists already loaded update in place.
+mutation MarkNotificationsRead($ids: [UUID!]) {
+  markNotificationsRead(ids: $ids) {
+    ...NotificationFields
+  }
+}

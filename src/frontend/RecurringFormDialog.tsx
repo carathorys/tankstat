@@ -5,7 +5,7 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LabeledSelect } from './components/UnitSelect.tsx'
 import { Field } from './forms.tsx'
-import { LogDefaultsDocument, type DistanceUnit, type RecurrenceKind } from './gql/generated.ts'
+import { LogDefaultsDocument, VehicleDefaultsDocument, type DistanceUnit, type RecurrenceKind } from './gql/generated.ts'
 import { ErrorMessage } from './messages.tsx'
 
 export interface RecurringValues {
@@ -61,50 +61,63 @@ export function RecurringFormDialog({
         </Dialog.Description>
         {/* Mounted only while open, so every opening starts from the current values. */}
         {open && (
-          <WithCurrentOdometer vehicleId={vehicleId} needed={!editing}>
-            {(currentOdometer) => (
+          <WithStartValues vehicleId={vehicleId} needed={!editing}>
+            {(start) => (
               <RecurringForm
                 unit={unit}
                 initial={initial}
-                currentOdometer={currentOdometer}
+                start={start}
                 onSubmit={async (values) => {
                   await onSubmit(values)
                   setOpen(false)
                 }}
               />
             )}
-          </WithCurrentOdometer>
+          </WithStartValues>
         )}
       </Dialog.Content>
     </Dialog.Root>
   )
 }
 
-/** Loads the vehicle's latest odometer reading (only when adding) before the form is shown, so the field can start from it. */
-function WithCurrentOdometer({ vehicleId, needed, children }: { vehicleId: string; needed: boolean; children: (current: number | null) => ReactNode }) {
+/** What a new schedule starts from: the vehicle's current odometer and the instance's default warnings. */
+interface StartValues {
+  odometer: number | null
+  warnDays: number
+  warnDistance: number
+}
+
+/**
+ * Loads the vehicle's latest odometer reading and the instance defaults (only when adding) before the form is shown, so the fields can
+ * start from them.
+ */
+function WithStartValues({ vehicleId, needed, children }: { vehicleId: string; needed: boolean; children: (start: StartValues | null) => ReactNode }) {
   const { t } = useTranslation()
-  const defaults = useQuery(LogDefaultsDocument, { variables: { vehicleId }, skip: !needed, fetchPolicy: 'network-only' })
+  const log = useQuery(LogDefaultsDocument, { variables: { vehicleId }, skip: !needed, fetchPolicy: 'network-only' })
+  const instance = useQuery(VehicleDefaultsDocument, { skip: !needed })
   if (!needed) return children(null)
-  if (defaults.error) return <ErrorMessage error={defaults.error} />
-  if (!defaults.data) {
+  const error = log.error ?? instance.error
+  if (error) return <ErrorMessage error={error} />
+  if (!log.data || !instance.data) {
     return (
       <Text as="p" role="status">
         {t('app.loading')}
       </Text>
     )
   }
-  return children(defaults.data.logDefaults?.lastOdometer ?? null)
+  const { recurringWarnDays, recurringWarnDistance } = instance.data.vehicleDefaults
+  return children({ odometer: log.data.logDefaults?.lastOdometer ?? null, warnDays: recurringWarnDays, warnDistance: recurringWarnDistance })
 }
 
 function RecurringForm({
   unit,
   initial,
-  currentOdometer,
+  start,
   onSubmit,
 }: {
   unit: DistanceUnit
   initial?: RecurringValues
-  currentOdometer: number | null
+  start: StartValues | null
   onSubmit: (values: RecurringValues) => Promise<unknown>
 }) {
   const { t } = useTranslation()
@@ -116,6 +129,10 @@ function RecurringForm({
   const usesDistance = kind !== 'TIME'
   const unitName = t(`units.distance.${unit}`).toLowerCase()
   const invalidNumber = t('forms.numberInvalid')
+  const currentOdometer = start?.odometer ?? null
+  // editing keeps the schedule's own warnings; a new one starts from the instance defaults
+  const warnDays = initial?.warnDays ?? start?.warnDays ?? 0
+  const warnDistance = initial?.warnDistance ?? start?.warnDistance ?? 0
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -134,8 +151,8 @@ function RecurringForm({
         lastDoneDate: text('lastDoneDate'),
         lastDoneOdometer: usesDistance ? whole(text('lastDoneOdometer')) : null,
         // a limit the kind does not use is not shown, so what was stored stays
-        warnDays: usesTime ? Number(text('warnDays')) : (initial?.warnDays ?? 30),
-        warnDistance: usesDistance ? Number(text('warnDistance')) : (initial?.warnDistance ?? 500),
+        warnDays: usesTime ? Number(text('warnDays')) : warnDays,
+        warnDistance: usesDistance ? Number(text('warnDistance')) : warnDistance,
       })
     } catch (err) {
       setError(err)
@@ -187,14 +204,14 @@ function RecurringForm({
           {usesTime && (
             <Flex direction="column" style={{ flex: '1 1 10rem' }}>
               <Field name="warnDays" label={t('recurring.fields.warnDays')} required invalid={wholeInvalid(invalidNumber)}>
-                <TextField.Root required inputMode="numeric" autoComplete="off" defaultValue={(initial?.warnDays ?? 30).toString()} />
+                <TextField.Root required inputMode="numeric" autoComplete="off" defaultValue={warnDays.toString()} />
               </Field>
             </Flex>
           )}
           {usesDistance && (
             <Flex direction="column" style={{ flex: '1 1 10rem' }}>
               <Field name="warnDistance" label={t('recurring.fields.warnDistance', { unit: unitName })} required invalid={wholeInvalid(invalidNumber)}>
-                <TextField.Root required inputMode="numeric" autoComplete="off" defaultValue={(initial?.warnDistance ?? 500).toString()} />
+                <TextField.Root required inputMode="numeric" autoComplete="off" defaultValue={warnDistance.toString()} />
               </Field>
             </Flex>
           )}

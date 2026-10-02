@@ -5,6 +5,7 @@ import { Link } from 'react-router'
 import { UserAvatar } from '../components/UserAvatar.tsx'
 import type { SessionQuery } from '../gql/generated.ts'
 import { LanguageMenu } from './LanguageMenu.tsx'
+import { NotificationBell } from './NotificationBell.tsx'
 
 /** Shown on every screen; the menu button appears once the visitor may use the app (signed in, or auth is off). */
 export function TopBar({
@@ -55,6 +56,7 @@ export function TopBar({
             )}
           </Flex>
         )}
+        {showMenu && <NotificationBell />}
         <LanguageMenu />
       </header>
     </Flex>
