@@ -109,12 +109,12 @@ type Mutation {
   deleteExpense(id: UUID!): Expense! @cost(weight: "10")
   restoreExpense(id: UUID!): Expense! @cost(weight: "10")
   emptyExpenseTrash: Int! @cost(weight: "10")
-  addRecurringExpense(i: AddRecurringExpenseInput!): RecurringExpenseInfo!
+  addRecurringExpense(input: AddRecurringExpenseInput!): RecurringExpenseInfo!
     @cost(weight: "10")
-  updateRecurringExpense(i: UpdateRecurringExpenseInput!): RecurringExpenseInfo!
+  updateRecurringExpense(input: UpdateRecurringExpenseInput!): RecurringExpenseInfo!
     @cost(weight: "10")
   deleteRecurringExpense(id: UUID!): Boolean! @cost(weight: "10")
-  markRecurringExpenseDone(i: MarkRecurringExpenseDoneInput!): RecurringExpenseInfo!
+  markRecurringExpenseDone(input: MarkRecurringExpenseDoneInput!): RecurringExpenseInfo!
     @cost(weight: "10")
   confirmImport(input: ConfirmImportInput!): ImportResultInfo!
     @cost(weight: "10")

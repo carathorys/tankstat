@@ -29,7 +29,7 @@ public class RecurringGraphQLTests(ApiFixture api)
             ["intervalDistance"] = 15000, ["lastDoneDate"] = "2026-01-15", ["lastDoneOdometer"] = 50000,
         };
         if (over is not null) foreach (var p in over.GetType().GetProperties()) input[p.Name] = p.GetValue(over);
-        var body = await Send($"mutation($i: AddRecurringExpenseInput!) {{ addRecurringExpense(i: $i) {{ {Fields} }} }}", new { i = input });
+        var body = await Send($"mutation($i: AddRecurringExpenseInput!) {{ addRecurringExpense(input: $i) {{ {Fields} }} }}", new { i = input });
         return body;
     }
 
@@ -54,7 +54,7 @@ public class RecurringGraphQLTests(ApiFixture api)
         var vehicle = await AddVehicle();
         var id = (await AddItem(vehicle)).GetProperty("data").GetProperty("addRecurringExpense").GetProperty("id").GetString();
 
-        var done = await Send($"mutation($i: MarkRecurringExpenseDoneInput!) {{ markRecurringExpenseDone(i: $i) {{ {Fields} }} }}",
+        var done = await Send($"mutation($i: MarkRecurringExpenseDoneInput!) {{ markRecurringExpenseDone(input: $i) {{ {Fields} }} }}",
             new { i = new { id, date = "2026-09-20", odometer = 62000, createExpense = true, amount = 35000 } });
 
         var item = done.GetProperty("data").GetProperty("markRecurringExpenseDone");
@@ -72,7 +72,7 @@ public class RecurringGraphQLTests(ApiFixture api)
         var vehicle = await AddVehicle();
         var id = (await AddItem(vehicle)).GetProperty("data").GetProperty("addRecurringExpense").GetProperty("id").GetString();
 
-        var updated = await Send($"mutation($i: UpdateRecurringExpenseInput!) {{ updateRecurringExpense(i: $i) {{ {Fields} }} }}",
+        var updated = await Send($"mutation($i: UpdateRecurringExpenseInput!) {{ updateRecurringExpense(input: $i) {{ {Fields} }} }}",
             new { i = new { id, title = "Insurance", kind = "TIME", intervalMonths = 12, lastDoneDate = "2026-03-01", warnDays = 14 } });
         var item = updated.GetProperty("data").GetProperty("updateRecurringExpense");
         Assert.Equal(("Insurance", "TIME", 14), (item.GetProperty("title").GetString(), item.GetProperty("kind").GetString(), item.GetProperty("warnDays").GetInt32()));
