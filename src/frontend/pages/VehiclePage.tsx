@@ -20,7 +20,7 @@ const TABS = ['dashboard', 'refuelings', 'expenses', 'details', 'sharing'] as co
 type Tab = (typeof TABS)[number]
 
 /** One vehicle: its logs, its details and picture, and who the logs are shared with (tabs; the choice is in the address). */
-export function VehiclePage() {
+export function VehiclePage({ isAdmin }: { isAdmin: boolean }) {
   const { t } = useTranslation()
   const { id = '' } = useParams()
   const [params, setParams] = useSearchParams()
@@ -35,9 +35,9 @@ export function VehiclePage() {
   return (
     <section aria-labelledby="page-title">
       <RadixLink asChild size="2">
-        <Link to="/vehicles" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minHeight: 44 }}>
+        <Link to={isAdmin ? '/vehicles' : '/'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minHeight: 44 }}>
           <ArrowLeft size={16} aria-hidden />
-          {t('vehicles.back')}
+          {isAdmin ? t('vehicles.back') : t('vehicles.backHome')}
         </Link>
       </RadixLink>
       {error && <ErrorMessage error={error} />}

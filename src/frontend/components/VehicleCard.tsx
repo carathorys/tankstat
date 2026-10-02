@@ -9,7 +9,7 @@ import { useFormat } from '../i18n/format.ts'
 import { CoverLayers } from './CoverLayers.tsx'
 import { UserChip } from './UserAvatar.tsx'
 
-type Vehicle = WelcomeQuery['vehicles'][number]
+type Vehicle = WelcomeQuery['myVehicles'][number]
 
 /**
  * A vehicle on the welcome screen: its picture as the background, with the name on it. The key figures and the spending trend flow in on

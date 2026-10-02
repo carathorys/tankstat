@@ -23,7 +23,7 @@ export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: Sess
     <Flex asChild direction="column" gap="1">
       <nav aria-label={t('nav.main')}>
         {link('/', t('nav.home'), <House size={18} aria-hidden />)}
-        {link('/vehicles', t('nav.vehicles'), <Car size={18} aria-hidden />)}
+        {user?.isAdmin && link('/vehicles', t('nav.vehicles'), <Car size={18} aria-hidden />)}
         {link('/import', t('nav.import'), <FileUp size={18} aria-hidden />)}
         {link('/trash', t('nav.trash'), <Trash2 size={18} aria-hidden />)}
         {user && link('/account', t('nav.account'), <Settings size={18} aria-hidden />)}

@@ -42,6 +42,9 @@ export const authWarning: Notice = {
 export const sessionHandler = (mode: AuthMode, current: () => SessionUser | null, notices: Notice[] = []) =>
   graphql.query('Session', () => HttpResponse.json({ data: { session: { mode, user: current() }, notices } }))
 
+/** A signed-in administrator: the full vehicle list and the administration are for administrators only. */
+export const adminSession = (notices: Notice[] = []) => sessionHandler('STANDALONE', () => user({ isAdmin: true }), notices)
+
 export const healthHandler = graphql.query('Health', () =>
   HttpResponse.json({ data: { health: { status: 'ok', version: '1.2.3', databaseReachable: true } } }),
 )
@@ -156,7 +159,8 @@ export function fakeVehicleBackend(initial: FakeVehicle[] = [], trashed: FakeVeh
         data: { vehicles: page(state.vehicles, variables as unknown as GridVars), vehicleCount: state.vehicles.length },
       })
     }),
-    graphql.query('Welcome', () => HttpResponse.json({ data: { vehicles: state.vehicles, vehicleCount: state.vehicles.length } })),
+    graphql.query('Welcome', () => HttpResponse.json({ data: { myVehicles: state.vehicles } })),
+    graphql.query('ImportTargets', () => HttpResponse.json({ data: { myVehicles: state.vehicles } })),
     graphql.query('Trash', ({ variables }) => {
       state.requests.Trash.push(variables)
       return HttpResponse.json({

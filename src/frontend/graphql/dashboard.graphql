@@ -1,6 +1,6 @@
-# The welcome screen: a card per vehicle the user can see, with the key figures the server calculated.
+# The home page: a card per vehicle the user owns or that is shared with them, with the key figures the server calculated.
 query Welcome {
-  vehicles(orderBy: NAME, direction: ASC, skip: 0, take: 60) {
+  myVehicles {
     id
     name
     licensePlate
@@ -32,7 +32,6 @@ query Welcome {
       }
     }
   }
-  vehicleCount
 }
 
 # A vehicle's dashboard: the key figures and the saved charts (the user's own and the shared ones). Each chart loads its own data.

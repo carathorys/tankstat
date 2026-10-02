@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import { server } from './server.ts'
-import { fakeSummary, fakeVehicle, fakeVehicleBackend, healthHandler, person, renderWithApollo, sessionHandler, stubViewport } from './mocks.tsx'
+import { adminSession, fakeSummary, fakeVehicle, fakeVehicleBackend, healthHandler, person, renderWithApollo, sessionHandler, stubViewport } from './mocks.tsx'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
@@ -12,10 +12,12 @@ afterEach(() => {
 })
 afterAll(() => server.close())
 
-function setup(vehicles = [fakeVehicle()], device: 'desktop' | 'phone' = 'desktop') {
+function setup(vehicles = [fakeVehicle()], device: 'desktop' | 'phone' = 'desktop', admin = false) {
   stubViewport(device)
-  server.use(sessionHandler('NONE', () => null), healthHandler, ...fakeVehicleBackend(vehicles).handlers)
+  const backend = fakeVehicleBackend(vehicles)
+  server.use(admin ? adminSession() : sessionHandler('NONE', () => null), healthHandler, ...backend.handlers)
   renderWithApollo(<App />, '/')
+  return { ...backend, ui: userEvent.setup() }
 }
 
 const card = async (name: string) => (await screen.findByRole('link', { name: `Open ${name}` })).closest('li')!
@@ -78,16 +80,34 @@ it('offers the next steps when there are no vehicles', async () => {
   await screen.findByText(/You have no vehicles yet/)
 
   expect(screen.getAllByRole('link', { name: 'Import logs' }).length).toBeGreaterThan(0)
-  expect(screen.getByRole('link', { name: 'Add vehicle' })).toHaveAttribute('href', '/vehicles')
+  expect(screen.getByRole('button', { name: 'Add vehicle' })).toBeInTheDocument()
 })
 
-it('has links to all vehicles and the import', async () => {
-  setup()
+it('adds a vehicle from the home page, where everyone manages their own cars', async () => {
+  const { ui, state } = setup([])
+  await screen.findByText(/You have no vehicles yet/)
 
+  await ui.click(screen.getByRole('button', { name: 'Add vehicle' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add vehicle' })
+  await ui.type(within(dialog).getByLabelText('Name'), 'Golf')
+  await ui.click(within(dialog).getByRole('button', { name: 'Add vehicle' }))
+
+  expect(await screen.findByRole('link', { name: 'Open Golf' })).toBeInTheDocument()
+  expect(state.calls.AddVehicle).toHaveLength(1)
+})
+
+it('has a link to the import, and the full vehicle list only for administrators', async () => {
+  setup()
   await screen.findByRole('heading', { name: 'Your vehicles' })
 
-  expect(screen.getByRole('link', { name: 'All vehicles' })).toHaveAttribute('href', '/vehicles')
   expect(screen.getByRole('link', { name: 'Import logs' })).toHaveAttribute('href', '/import')
+  expect(screen.queryByRole('link', { name: 'All vehicles' })).not.toBeInTheDocument()
+})
+
+it('shows administrators a link to all vehicles', async () => {
+  setup([fakeVehicle()], 'desktop', true)
+
+  expect(await screen.findByRole('link', { name: 'All vehicles' })).toHaveAttribute('href', '/vehicles')
 })
 
 const vehicleCard = async (name: string) => (await card(name)).querySelector('.vehicle-card') as HTMLElement

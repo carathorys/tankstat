@@ -57,14 +57,14 @@ it('anonymous visitors get the login form instead of data', async () => {
 it('signs in, shows the app, and signs out again', async () => {
   const ui = userEvent.setup()
   standaloneServer()
-  renderWithApollo(<App />, '/vehicles')
+  renderWithApollo(<App />, '/')
 
   await ui.type(await screen.findByLabelText('E-mail'), 'alice@example.com')
   await ui.type(screen.getByLabelText('Password'), 'alice-password-1')
   await ui.click(screen.getByRole('button', { name: 'Sign in' }))
 
   await screen.findByText('Alice')
-  await screen.findByText(/No vehicles yet/)
+  await screen.findByText(/You have no vehicles yet/)
 
   await ui.click(screen.getByRole('button', { name: 'Sign out' }))
   await screen.findByRole('heading', { name: 'Sign in' })

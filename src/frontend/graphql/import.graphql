@@ -26,7 +26,7 @@ query ImportPreview($token: String!, $vehicleId: UUID) {
 
 # Vehicles the user may import into (those whose logs they may edit).
 query ImportTargets {
-  vehicles(orderBy: NAME, direction: ASC, skip: 0, take: 200) {
+  myVehicles {
     id
     name
     licensePlate

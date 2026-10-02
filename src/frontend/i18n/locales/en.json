@@ -158,7 +158,8 @@
     "logAccessNote": "You can work with this vehicle's logs, but not change the vehicle itself.",
     "notFound": "This vehicle does not exist, or you do not have access to it.",
     "unitsInUse": "The units are fixed because this vehicle already has logs.",
-    "editVehicle": "Edit vehicle"
+    "editVehicle": "Edit vehicle",
+    "backHome": "Back to home"
   },
   "trash": {
     "title": "Trash",

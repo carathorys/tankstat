@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import { i18n } from '../../src/frontend/i18n/index.ts'
 import { server } from './server.ts'
-import { authWarning, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler } from './mocks.tsx'
+import { authWarning, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, adminSession } from './mocks.tsx'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => server.resetHandlers())
@@ -12,7 +12,7 @@ afterAll(() => server.close())
 
 function setup(route = '/vehicles', vehicles = [fakeVehicle()]) {
   const backend = fakeVehicleBackend(vehicles)
-  server.use(sessionHandler('NONE', () => null, [authWarning]), healthHandler, ...backend.handlers)
+  server.use(adminSession([authWarning]), healthHandler, ...backend.handlers)
   renderWithApollo(<App />, route)
   return { ...backend, ui: userEvent.setup() }
 }
@@ -90,7 +90,7 @@ it('falls back to the server message for an unknown error key', async () => {
 
 it('formats the deletion time with the selected language', async () => {
   const backend = fakeVehicleBackend([], [fakeVehicle({ id: 't1', name: 'Old Fiat' })])
-  server.use(sessionHandler('NONE', () => null), healthHandler, ...backend.handlers)
+  server.use(adminSession(), healthHandler, ...backend.handlers)
   renderWithApollo(<App />, '/trash')
   const ui = userEvent.setup()
   await screen.findByText('Old Fiat')

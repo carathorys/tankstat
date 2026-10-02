@@ -33,7 +33,7 @@ function setup(opts: { vehicles?: ReturnType<typeof fakeVehicle>[]; uploadStatus
   server.use(
     sessionHandler('NONE', () => null),
     healthHandler,
-    graphql.query('ImportTargets', () => HttpResponse.json({ data: { vehicles: opts.vehicles ?? [fakeVehicle()] } })),
+    graphql.query('ImportTargets', () => HttpResponse.json({ data: { myVehicles: opts.vehicles ?? [fakeVehicle()] } })),
     graphql.query('VehicleDefaults', () => HttpResponse.json({ data: { vehicleDefaults: { distanceUnit: 'MILES', volumeUnit: 'US_GALLONS', currency: 'USD' } } })),
     graphql.query('ImportPreview', ({ variables }) => {
       calls.previews.push(variables)

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import { server } from './server.ts'
-import { fakeLogBackend, fakeRefueling, fakeVehicle, healthHandler, person, renderWithApollo, sessionHandler, stubViewport } from './mocks.tsx'
+import { fakeLogBackend, fakeRefueling, fakeVehicle, adminSession, healthHandler, person, renderWithApollo, sessionHandler, stubViewport } from './mocks.tsx'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
@@ -17,10 +17,10 @@ const logs = [
   fakeRefueling({ id: 'r2', date: '2026-09-01', volume: 41.5, totalCost: 22000, odometer: 12000, isFullTank: false, note: 'Holiday' }),
 ]
 
-function setup(vehicle = fakeVehicle(), initial = logs, route = '/vehicles/v1?tab=refuelings') {
+function setup(vehicle = fakeVehicle(), initial = logs, route = '/vehicles/v1?tab=refuelings', admin = false) {
   stubViewport('desktop')
   const backend = fakeLogBackend(vehicle, initial)
-  server.use(sessionHandler('NONE', () => null), healthHandler, ...backend.handlers)
+  server.use(admin ? adminSession() : sessionHandler('NONE', () => null), healthHandler, ...backend.handlers)
   renderWithApollo(<App />, route)
   return { ...backend, ui: userEvent.setup() }
 }
@@ -38,7 +38,13 @@ it('shows the vehicle with its logs formatted in its own units', async () => {
   expect(within(row).getByText(/12,000 mi/)).toBeInTheDocument()
   expect(within(row).getByText('Partial')).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: 'Octavia' })).toBeInTheDocument()
-  expect(screen.getByRole('link', { name: 'Back to vehicles' })).toHaveAttribute('href', '/vehicles')
+  expect(screen.getByRole('link', { name: 'Back to home' })).toHaveAttribute('href', '/') // the vehicle list is for administrators
+})
+
+it('administrators go back to the full vehicle list', async () => {
+  setup(fakeVehicle(), logs, '/vehicles/v1?tab=refuelings', true)
+
+  expect(await screen.findByRole('link', { name: 'Back to vehicles' })).toHaveAttribute('href', '/vehicles')
 })
 
 it('shows the price per unit and the cost in the currency it was paid in', async () => {

@@ -158,7 +158,8 @@
     "logAccessNote": "A jármű naplóbejegyzéseivel dolgozhatsz, magát a járművet viszont nem módosíthatod.",
     "notFound": "Ez a jármű nem létezik, vagy nincs hozzáférésed.",
     "unitsInUse": "A mértékegységek rögzítettek, mert a járműnek már vannak naplóbejegyzései.",
-    "editVehicle": "Jármű szerkesztése"
+    "editVehicle": "Jármű szerkesztése",
+    "backHome": "Vissza a kezdőlapra"
   },
   "trash": {
     "title": "Kuka",
