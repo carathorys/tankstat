@@ -79,6 +79,14 @@ public sealed class RecurringExpense : IOwned
     /// <summary>Starts the next interval from the day (and odometer) it was done.</summary>
     public void MarkDone(DateOnly date, long? odometer)
     {
+        CheckDone(date, odometer);
+        LastDoneDate = date;
+        LastDoneOdometer = odometer ?? LastDoneOdometer;
+    }
+
+    /// <summary>Throws when <see cref="MarkDone"/> would refuse; changes nothing, so it can run before the expense is logged.</summary>
+    public void CheckDone(DateOnly date, long? odometer)
+    {
         if (date < LastDoneDate)
             throw new DomainException("recurring.doneBeforeLast", $"It cannot be done before {LastDoneDate:yyyy-MM-dd}, when it was last done.", new { Date = LastDoneDate.ToString("yyyy-MM-dd") });
         if (UsesDistance && odometer is null)
@@ -89,9 +97,6 @@ public sealed class RecurringExpense : IOwned
             if (LastDoneOdometer is { } last && value < last)
                 throw new DomainException("recurring.odometerBelowLast", $"The odometer cannot be lower than {last}, where it was last done.", new { Last = last });
         }
-
-        LastDoneDate = date;
-        LastDoneOdometer = odometer ?? LastDoneOdometer;
     }
 
     private void Apply(

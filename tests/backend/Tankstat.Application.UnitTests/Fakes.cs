@@ -9,6 +9,7 @@ using Tankstat.Application.Odometers;
 using Tankstat.Application.Sharing;
 using Tankstat.Application.Stats;
 using Tankstat.Domain.Charts;
+using Tankstat.Application.Recurring;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
@@ -16,6 +17,7 @@ using Tankstat.Domain.Access;
 using Tankstat.Domain.Images;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
+using Tankstat.Domain.Recurring;
 using Tankstat.Domain.Users;
 using Tankstat.Domain.Vehicles;
 
@@ -108,6 +110,17 @@ internal sealed class InMemoryExpenses : IExpenseRepository
     public Task UpdateAsync(Expense expense, OdometerReading? newReading, OdometerReading? removedReading, CancellationToken ct) => Task.CompletedTask; // shared references
     public Task<int> PurgeAsync(OwnerScope scope, CancellationToken ct) =>
         Task.FromResult(Items.RemoveAll(e => e.IsDeleted && scope.Contains(e.OwnerId, e.VehicleId)));
+}
+
+internal sealed class InMemoryRecurring : IRecurringExpenseRepository
+{
+    public List<RecurringExpense> Items { get; } = [];
+    public Task<IReadOnlyList<RecurringExpense>> ListForVehicleAsync(Guid vehicleId, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<RecurringExpense>>(Items.Where(i => i.VehicleId == vehicleId).ToList());
+    public Task<RecurringExpense?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(i => i.Id == id));
+    public Task AddAsync(RecurringExpense item, CancellationToken ct) { Items.Add(item); return Task.CompletedTask; }
+    public Task UpdateAsync(RecurringExpense item, CancellationToken ct) => Task.CompletedTask; // shared references
+    public Task RemoveAsync(RecurringExpense item, CancellationToken ct) { Items.Remove(item); return Task.CompletedTask; }
 }
 
 internal sealed class InMemoryStats(InMemoryRefuelings refuelings, InMemoryExpenses expenses) : IStatsRepository
@@ -294,6 +307,8 @@ internal sealed class World
     public RefuelingService RefuelingService { get; }
     public ExpenseService ExpenseService { get; }
     public StatsService Stats { get; }
+    public InMemoryRecurring Recurring { get; } = new();
+    public RecurringExpenseService RecurringService { get; }
     public ChartService ChartService { get; }
     public ImportService Imports { get; }
     public OdometerService Odometer { get; }
@@ -318,6 +333,7 @@ internal sealed class World
         ImageService = new ImageService(ImageStore, Images, Users, Vehicles, Access, Clock);
         RefuelingService = new RefuelingService(Vehicles, Refuelings, Access, Odometer, Clock);
         ExpenseService = new ExpenseService(Vehicles, Expenses, Access, Odometer, Clock);
+        RecurringService = new RecurringExpenseService(Vehicles, Recurring, Access, Odometer, ExpenseService, Clock);
         Imports = new ImportService([new FuelioCsvParser()], ImportSessions, Access, VehicleService, RefuelingService, ExpenseService, Refuelings, Expenses, new VehicleDefaultsOptions { Currency = "HUF" }.Create());
         Stats = new StatsService(Vehicles, new InMemoryStats(Refuelings, Expenses), Access, Clock);
         ChartService = new ChartService(Vehicles, Charts, Access, Clock);
