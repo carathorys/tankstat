@@ -83,6 +83,8 @@ query VehicleDefaults {
     distanceUnit
     volumeUnit
     currency
+    recurringWarnDays
+    recurringWarnDistance
   }
 }
 

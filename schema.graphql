@@ -378,6 +378,8 @@ type VehicleDefaults {
   distanceUnit: DistanceUnit!
   volumeUnit: VolumeUnit!
   currency: String!
+  recurringWarnDays: Int!
+  recurringWarnDistance: Long!
 }
 
 type VehicleSummary {

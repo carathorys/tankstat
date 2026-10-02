@@ -52,6 +52,7 @@ public class ContractTests
     [InlineData("MeasurementUnits", "distance", "volume")]
     [InlineData("UserRef", "id", "displayName", "avatarUrl")]
     [InlineData("LogDefaults", "lastOdometer", "lastDate", "currency")]
+    [InlineData("VehicleDefaults", "distanceUnit", "volumeUnit", "currency", "recurringWarnDays", "recurringWarnDistance")]
     [InlineData("LogAccessGrantInfo", "user", "level")]
     [InlineData("Expense", "id", "vehicleId", "createdBy", "date", "title", "category", "amount", "currency", "odometer", "note", "deletedAt", "canEdit", "canDelete", "vehicle", "photos")]
     [InlineData("LogPhotoInfo", "id", "url")]

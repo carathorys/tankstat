@@ -25,8 +25,6 @@ public sealed class RecurringExpense : IOwned
     public const int MaxNoteLength = 500;
     public const int MaxIntervalMonths = 600;
     public const int MaxWarnDays = 365;
-    public const int DefaultWarnDays = 30;
-    public const long DefaultWarnDistance = 500;
 
     private RecurringExpense() { } // EF Core
 

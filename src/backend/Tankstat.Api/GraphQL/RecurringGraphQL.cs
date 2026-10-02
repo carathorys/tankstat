@@ -9,8 +9,8 @@ namespace Tankstat.Api.GraphQL;
 
 /// <param name="LastDoneDate">Omit to start counting today.</param>
 /// <param name="LastDoneOdometer">Omit to start from the vehicle's current odometer (its latest reading); needed when the vehicle has none and distance counts.</param>
-/// <param name="WarnDays">Omit for the default (30).</param>
-/// <param name="WarnDistance">Omit for the default (500, in the vehicle's distance unit).</param>
+/// <param name="WarnDays">Omit for the instance default (<c>vehicleDefaults.recurringWarnDays</c>).</param>
+/// <param name="WarnDistance">Omit for the instance default (<c>vehicleDefaults.recurringWarnDistance</c>, in the vehicle's distance unit).</param>
 public sealed record AddRecurringExpenseInput(
     Guid VehicleId, string Title, string? Category, string? Note, RecurrenceKind Kind, int? IntervalMonths, long? IntervalDistance,
     DateOnly? LastDoneDate, long? LastDoneOdometer, int? WarnDays, long? WarnDistance);

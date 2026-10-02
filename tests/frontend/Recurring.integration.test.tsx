@@ -102,6 +102,18 @@ it('adds a schedule that counts time or distance, whichever comes first', async 
   ])
 })
 
+it('starts the warnings of a new schedule from the instance defaults', async () => {
+  const { ui, state } = setup(fakeVehicle(), [])
+  state.warnDefaults = { recurringWarnDays: 14, recurringWarnDistance: 1000 }
+  await screen.findByText(/Nothing recurring yet/)
+
+  await ui.click(screen.getByRole('button', { name: 'Add recurring expense' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add recurring expense' })
+
+  expect(await within(dialog).findByLabelText(/^Warn me this many days before/)).toHaveValue('14')
+  expect(within(dialog).getByLabelText(/^Warn me this far before \(kilometers\)/)).toHaveValue('1000')
+})
+
 it('starts a new schedule from today and the latest odometer reading, both prefilled and changeable', async () => {
   const { ui, state } = setup(fakeVehicle(), [])
   server.use(graphql.query('LogDefaults', () => HttpResponse.json({ data: { logDefaults: { lastOdometer: 71500, lastDate: '2026-09-30', currency: 'HUF' } } })))

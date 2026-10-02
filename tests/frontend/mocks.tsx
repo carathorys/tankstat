@@ -184,7 +184,7 @@ export function fakeVehicleBackend(initial: FakeVehicle[] = [], trashed: FakeVeh
       })
     }),
     graphql.query('VehicleDefaults', () =>
-      HttpResponse.json({ data: { vehicleDefaults: { distanceUnit: 'KILOMETERS', volumeUnit: 'LITERS', currency: 'HUF' } } }),
+      HttpResponse.json({ data: { vehicleDefaults: { distanceUnit: 'KILOMETERS', volumeUnit: 'LITERS', currency: 'HUF', recurringWarnDays: 30, recurringWarnDistance: 500 } } }),
     ),
     graphql.mutation('AddVehicle', ({ variables }) => {
       record('AddVehicle', variables)
@@ -678,12 +678,17 @@ export function fakeRecurringBackend(items: FakeRecurring[] = []) {
     calls: {} as Record<string, unknown[]>,
     failWith: undefined as { message: string; key: string; args?: Record<string, unknown> } | undefined,
     nextId: 500,
+    /** The instance's default warnings a new schedule starts with. */
+    warnDefaults: { recurringWarnDays: 30, recurringWarnDistance: 500 },
   }
   const record = (name: string, vars: unknown) => (state.calls[name] ??= []).push(vars)
   const fail = (): Response | undefined => (state.failWith ? HttpResponse.json(gqlError(state.failWith.message, 'VALIDATION_FAILED', state.failWith.key, state.failWith.args)) : undefined)
   const upcoming = (): FakeRecurring['status'] => ({ state: 'UPCOMING', limit: 'TIME', dueDate: '2027-12-01', dueOdometer: null, daysLeft: 400, distanceLeft: null })
   const handlers = [
     graphql.query('RecurringExpenses', ({ variables }) => HttpResponse.json({ data: { vehicle: { __typename: 'Vehicle', id: variables.vehicleId, recurring: state.items } } })),
+    graphql.query('VehicleDefaults', () =>
+      HttpResponse.json({ data: { vehicleDefaults: { distanceUnit: 'KILOMETERS', volumeUnit: 'LITERS', currency: 'HUF', ...state.warnDefaults } } }),
+    ),
     graphql.mutation('AddRecurringExpense', ({ variables }) => {
       record('AddRecurringExpense', variables)
       const failed = fail()

@@ -1,7 +1,9 @@
+using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Expenses;
 using Tankstat.Application.Odometers;
+using Tankstat.Application.Vehicles;
 using Tankstat.Domain;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Recurring;
@@ -11,8 +13,8 @@ namespace Tankstat.Application.Recurring;
 
 /// <param name="LastDoneDate">When adding, omit to start counting today; when updating, omit to keep it.</param>
 /// <param name="LastDoneOdometer">When adding a schedule that counts distance, omit to start from the vehicle's current odometer (its latest reading).</param>
-/// <param name="WarnDays">Omit for the default (30 days) when adding, or to keep the current value when updating.</param>
-/// <param name="WarnDistance">Omit for the default (500 distance units of the vehicle) when adding, or to keep the current value when updating.</param>
+/// <param name="WarnDays">Omit for the instance default (<see cref="VehicleDefaultsOptions.RecurringWarnDays"/>) when adding, or to keep the current value when updating.</param>
+/// <param name="WarnDistance">Omit for the instance default (<see cref="VehicleDefaultsOptions.RecurringWarnDistance"/>, in the vehicle's distance unit) when adding, or to keep the current value when updating.</param>
 public sealed record RecurringExpenseInput(
     string Title, string? Category, string? Note, RecurrenceKind Kind, int? IntervalMonths, long? IntervalDistance,
     DateOnly? LastDoneDate, long? LastDoneOdometer, int? WarnDays, long? WarnDistance);
@@ -29,7 +31,7 @@ public sealed record RecurringItem(RecurringExpense Item, RecurrenceStatus Statu
 /// odometer rule applies, and starts the next interval.
 /// </summary>
 public sealed class RecurringExpenseService(
-    LogAccessGuard guard, IRecurringExpenseRepository items, AccessService access, OdometerService odometer, ExpenseService expenses, TimeProvider clock)
+    LogAccessGuard guard, IRecurringExpenseRepository items, AccessService access, OdometerService odometer, ExpenseService expenses, IOptions<VehicleDefaultsOptions> defaults, TimeProvider clock)
 {
     private DateOnly Today => DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
     private DateOnly LatestAllowedDate => Today.AddDays(1); // a day ahead covers every time zone, like the expenses
@@ -81,7 +83,7 @@ public sealed class RecurringExpenseService(
 
         var item = RecurringExpense.Create(
             vehicle.OwnerId, creator.Id, vehicle.Id, input.Title, input.Category, input.Note, input.Kind, input.IntervalMonths, input.IntervalDistance,
-            start, startOdometer, input.WarnDays ?? RecurringExpense.DefaultWarnDays, input.WarnDistance ?? RecurringExpense.DefaultWarnDistance, clock.GetUtcNow());
+            start, startOdometer, input.WarnDays ?? defaults.Value.RecurringWarnDays, input.WarnDistance ?? defaults.Value.RecurringWarnDistance, clock.GetUtcNow());
         await items.AddAsync(item, ct);
         return await WithStatusAsync(item, ct);
     }

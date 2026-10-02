@@ -7,7 +7,10 @@ using Tankstat.Domain.Vehicles;
 
 namespace Tankstat.Api.GraphQL;
 
-public sealed record VehicleDefaults(DistanceUnit DistanceUnit, VolumeUnit VolumeUnit, string Currency);
+/// <summary>The instance defaults that pre-fill the forms.</summary>
+/// <param name="RecurringWarnDays">How many days before it is due a new recurring expense starts warning.</param>
+/// <param name="RecurringWarnDistance">How far before it is due (in the vehicle's distance unit) a new recurring expense starts warning.</param>
+public sealed record VehicleDefaults(DistanceUnit DistanceUnit, VolumeUnit VolumeUnit, string Currency, int RecurringWarnDays, long RecurringWarnDistance);
 
 public sealed class Query
 {
@@ -47,9 +50,9 @@ public sealed class Query
     /// <summary>How many trashed vehicles the user may delete permanently (owners, administrators and Delete grants).</summary>
     public Task<int> GetTrashDeletableCount([Service] VehicleService vehicles, CancellationToken ct) => vehicles.CountDeletableTrashAsync(ct);
 
-    /// <summary>The units suggested for a new vehicle (set per instance, e.g. miles and gallons in the US).</summary>
+    /// <summary>The units suggested for a new vehicle (set per instance, e.g. miles and gallons in the US) and the reminders a new recurring expense starts with.</summary>
     public VehicleDefaults GetVehicleDefaults([Service] IOptions<VehicleDefaultsOptions> defaults) =>
-        new(defaults.Value.DistanceUnit, defaults.Value.VolumeUnit, defaults.Value.Currency);
+        new(defaults.Value.DistanceUnit, defaults.Value.VolumeUnit, defaults.Value.Currency, defaults.Value.RecurringWarnDays, defaults.Value.RecurringWarnDistance);
 
     public Task<Vehicle?> GetVehicle(Guid id, [Service] VehicleService vehicles, CancellationToken ct) =>
         vehicles.FindAsync(id, ct);

@@ -374,6 +374,7 @@ internal sealed class World
     public FakeCurrentUser Current { get; } = new();
     public FakeEmail Email { get; }
     public AuthOptions Options { get; }
+    public VehicleDefaultsOptions Defaults { get; } = new() { Currency = "HUF" };
 
     public AccessService Access { get; }
     public LogAccessGuard LogGuard { get; }
@@ -411,8 +412,8 @@ internal sealed class World
         VehicleService = new VehicleService(Vehicles, Refuelings, Access, Odometer, ImageService, Clock);
         RefuelingService = new RefuelingService(Vehicles, LogGuard, Refuelings, Access, Odometer, Photos, Clock);
         ExpenseService = new ExpenseService(LogGuard, Expenses, Access, Odometer, Photos, Clock);
-        RecurringService = new RecurringExpenseService(LogGuard, Recurring, Access, Odometer, ExpenseService, Clock);
-        Imports = new ImportService([new FuelioCsvParser()], ImportSessions, Access, VehicleService, RefuelingService, ExpenseService, RecurringService, Refuelings, Expenses, new VehicleDefaultsOptions { Currency = "HUF" }.Create());
+        RecurringService = new RecurringExpenseService(LogGuard, Recurring, Access, Odometer, ExpenseService, Defaults.Create(), Clock);
+        Imports = new ImportService([new FuelioCsvParser()], ImportSessions, Access, VehicleService, RefuelingService, ExpenseService, RecurringService, Refuelings, Expenses, Defaults.Create());
         Stats = new StatsService(Vehicles, new InMemoryStats(Refuelings, Expenses), Access, Clock);
         ChartService = new ChartService(Vehicles, Charts, Access, Clock);
         Sharing = new ResourceSharingService(Vehicles, ResourceGrants, Users, Access);
