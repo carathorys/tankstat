@@ -139,7 +139,7 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
           {s?.currency && s.fillUpCount + s.expenseCount > 0 && (
             <Grid className="vehicle-card-sparkline" columns="1" gap="0" p="0">
               <Box style={{ gridColumn: '1 / -1' }}>
-                <LazySparkline points={s.spendTrend} currency={s.currency} height={64} />
+                <LazySparkline points={s.spendTrend} currency={s.currency} height={32} />
               </Box>
             </Grid>
           )}
