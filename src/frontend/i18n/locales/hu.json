@@ -33,6 +33,7 @@
   },
   "notifications": {
     "title": "Értesítések",
+    "retentionHint": "Az olvasott értesítések egy idő után maguktól törlődnek.",
     "bell": "Értesítések",
     "bellUnread_one": "Értesítések, {{count}} olvasatlan",
     "bellUnread_other": "Értesítések, {{count}} olvasatlan",
@@ -44,10 +45,6 @@
     "emptyUnread": "Mindent elolvastál.",
     "markAllRead": "Mind olvasott",
     "markRead": "Olvasottnak jelöl",
-    "delete": "Értesítés törlése",
-    "deleteRead": "Olvasottak törlése",
-    "deleteReadTitle": "Törlöd az olvasott értesítéseket?",
-    "deleteReadDescription": "A már elolvasott értesítések törlődnek. Az olvasatlanok megmaradnak.",
     "showAll": "Összes értesítés",
     "showMore": "Továbbiak",
     "filter": "Mutasd",

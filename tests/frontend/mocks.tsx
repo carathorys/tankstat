@@ -731,6 +731,7 @@ export const fakeNotification = (over: Partial<FakeNotification> = {}): FakeNoti
   id: 'n1',
   kind: 'LOG_ACCESS_CHANGED',
   read: false,
+  readAt: null,
   count: 1,
   createdAt: '2026-09-30T10:00:00Z',
   updatedAt: '2026-09-30T10:00:00Z',
@@ -744,7 +745,7 @@ export const fakeNotification = (over: Partial<FakeNotification> = {}): FakeNoti
   ...over,
 })
 
-/** The current user's inbox behind the notification queries and mutations, newest change first like the server. */
+/** The current user's inbox behind the notification queries and the mark-read mutation, newest change first like the server. */
 export function fakeNotificationBackend(items: FakeNotification[] = []) {
   const state = { items: [...items], calls: {} as Record<string, unknown[]> }
   const record = (name: string, vars: unknown) => (state.calls[name] ??= []).push(vars)
@@ -771,20 +772,9 @@ export function fakeNotificationBackend(items: FakeNotification[] = []) {
     graphql.mutation('MarkNotificationsRead', ({ variables }) => {
       record('MarkNotificationsRead', variables)
       const ids = variables.ids as string[] | null | undefined
-      const changed = state.items.filter((n) => !n.read && (!ids || ids.includes(n.id)))
-      state.items = state.items.map((n) => (changed.includes(n) ? { ...n, read: true } : n))
-      return HttpResponse.json({ data: { markNotificationsRead: changed.length } })
-    }),
-    graphql.mutation('DeleteNotification', ({ variables }) => {
-      record('DeleteNotification', variables)
-      state.items = state.items.filter((n) => n.id !== variables.id)
-      return HttpResponse.json({ data: { deleteNotification: true } })
-    }),
-    graphql.mutation('DeleteReadNotifications', () => {
-      record('DeleteReadNotifications', {})
-      const before = state.items.length
-      state.items = state.items.filter((n) => !n.read)
-      return HttpResponse.json({ data: { deleteReadNotifications: before - state.items.length } })
+      const changed = state.items.filter((n) => !n.read && (!ids || ids.includes(n.id))).map((n) => ({ ...n, read: true, readAt: '2026-10-01T12:00:00Z' }))
+      state.items = state.items.map((n) => changed.find((c) => c.id === n.id) ?? n)
+      return HttpResponse.json({ data: { markNotificationsRead: changed.map(typed) } })
     }),
   ]
   return { state, handlers }

@@ -1,8 +1,11 @@
 import { useTranslation } from 'react-i18next'
 import type { AccessLevel, NotificationFieldsFragment } from '../gql/generated.ts'
+import type en from '../i18n/locales/en.json'
+
+type KindText = Exclude<keyof (typeof en)['notifications']['kinds'], `${string}_one` | `${string}_other`>
 
 const LEVELS: AccessLevel[] = ['NONE', 'VIEW', 'EDIT', 'DELETE']
-const asLevel = (value: string | undefined): AccessLevel => (LEVELS as string[]).includes(value ?? '') ? (value as AccessLevel) : 'NONE'
+const asLevel = (value: string | undefined): AccessLevel => ((LEVELS as string[]).includes(value ?? '') ? (value as AccessLevel) : 'NONE')
 
 export interface NotificationText {
   /** The sentence the notification says. */
@@ -24,31 +27,28 @@ export function useNotificationText() {
     const level = asLevel(args.level)
     const revoked = level === 'NONE'
     const vehicle = n.context?.type === 'VEHICLE' ? `/vehicles/${n.context.id}` : null
-    const folded = (text: string) => (n.count > 1 ? `${text} ${t('notifications.folded', { count: n.count })}` : text)
+    // An access change: one text for a level that was given, another (if any) for access taken away; folded changes say how many.
+    const access = (granted: KindText, taken: KindText | null, levelText: string, href: string | null): NotificationText => {
+      const text = revoked && taken ? t(`notifications.kinds.${taken}`, names) : t(`notifications.kinds.${granted}`, { ...names, level: levelText })
+      return { text: n.count > 1 ? `${text} ${t('notifications.folded', { count: n.count })}` : text, href }
+    }
+    const logLevel = t(`sharing.levels.${level === 'DELETE' ? 'DELETE' : 'EDIT'}`)
+    const dataLevel = t(`level.${level}`)
 
     switch (n.kind) {
       case 'LOG_ACCESS_CHANGED':
-        return revoked
-          ? { text: folded(t('notifications.kinds.LOG_ACCESS_REVOKED', names)), href: null }
-          : { text: folded(t('notifications.kinds.LOG_ACCESS_CHANGED', { ...names, level: t(`sharing.levels.${level === 'DELETE' ? 'DELETE' : 'EDIT'}`) })), href: vehicle }
+        return access('LOG_ACCESS_CHANGED', 'LOG_ACCESS_REVOKED', logLevel, revoked ? null : vehicle)
       case 'VEHICLE_SHARED':
-        return revoked
-          ? { text: folded(t('notifications.kinds.VEHICLE_SHARE_REVOKED', names)), href: vehicle }
-          : { text: folded(t('notifications.kinds.VEHICLE_SHARED', { ...names, level: t(`sharing.levels.${level === 'DELETE' ? 'DELETE' : 'EDIT'}`) })), href: vehicle }
+        return access('VEHICLE_SHARED', 'VEHICLE_SHARE_REVOKED', logLevel, vehicle)
       case 'DATA_ACCESS_CHANGED':
-        return revoked
-          ? { text: folded(t('notifications.kinds.DATA_ACCESS_REVOKED', names)), href: null }
-          : { text: folded(t('notifications.kinds.DATA_ACCESS_CHANGED', { ...names, level: t(`level.${level}`) })), href: '/' }
+        return access('DATA_ACCESS_CHANGED', 'DATA_ACCESS_REVOKED', dataLevel, revoked ? null : '/')
       case 'DATA_SHARED':
-        return revoked
-          ? { text: folded(t('notifications.kinds.DATA_SHARE_REVOKED', names)), href: null }
-          : { text: folded(t('notifications.kinds.DATA_SHARED', { ...names, level: t(`level.${level}`) })), href: null }
+        return access('DATA_SHARED', 'DATA_SHARE_REVOKED', dataLevel, null)
       case 'DEFAULT_ACCESS_CHANGED':
-        return { text: folded(t('notifications.kinds.DEFAULT_ACCESS_CHANGED', { ...names, level: t(`level.${level}`) })), href: '/' }
+        return access('DEFAULT_ACCESS_CHANGED', null, dataLevel, '/')
       case 'RECURRING_DUE_SOON':
-        return { text: t('notifications.kinds.RECURRING_DUE_SOON', names), href: vehicle && `${vehicle}?tab=recurring` }
       case 'RECURRING_OVERDUE':
-        return { text: t('notifications.kinds.RECURRING_OVERDUE', names), href: vehicle && `${vehicle}?tab=recurring` }
+        return { text: t(`notifications.kinds.${n.kind}`, names), href: vehicle && `${vehicle}?tab=recurring` }
       case 'MORE_ACTIVITY':
         return { text: t('notifications.kinds.MORE_ACTIVITY', { count: n.count }), href: null }
     }

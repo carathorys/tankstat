@@ -1,12 +1,12 @@
-import { useMutation, useQuery } from '@apollo/client/react'
+import { useQuery } from '@apollo/client/react'
 import { Badge, Box, Button, Flex, Heading, IconButton, Popover, Text, VisuallyHidden } from '@radix-ui/themes'
 import { Bell } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Link as RouterLink } from 'react-router'
-import { LatestNotificationsDocument, MarkNotificationsReadDocument, UnreadNotificationCountDocument } from '../gql/generated.ts'
+import { LatestNotificationsDocument, UnreadNotificationCountDocument } from '../gql/generated.ts'
 import { ErrorMessage } from '../messages.tsx'
 import { NotificationItem } from '../notifications/NotificationItem.tsx'
-import { NOTIFICATION_QUERIES } from '../notifications/queries.ts'
+import { useNotificationActions } from '../notifications/useNotificationActions.ts'
 
 const POLL_MS = 60_000
 const LATEST = 5
@@ -30,6 +30,7 @@ export function NotificationBell() {
       <Popover.Root>
         <Popover.Trigger>
           <IconButton
+            size="3"
             variant="soft"
             color="gray"
             highContrast
@@ -56,7 +57,8 @@ export function NotificationBell() {
 function LatestNotifications() {
   const { t } = useTranslation()
   const { data, error } = useQuery(LatestNotificationsDocument, { variables: { take: LATEST }, fetchPolicy: 'network-only' })
-  const [markRead] = useMutation(MarkNotificationsReadDocument, { refetchQueries: NOTIFICATION_QUERIES })
+  const { markRead } = useNotificationActions()
+  const items = data?.notifications
 
   return (
     <Flex direction="column" gap="2">
@@ -64,7 +66,7 @@ function LatestNotifications() {
         <Heading as="h2" size="3">
           {t('notifications.title')}
         </Heading>
-        <Button variant="ghost" size="2" disabled={!data || data.notificationCount === 0} onClick={() => void markRead({ variables: { ids: null } })}>
+        <Button variant="soft" size="3" disabled={!data || data.notificationCount === 0} onClick={() => void markRead(null)}>
           {t('notifications.markAllRead')}
         </Button>
       </Flex>
@@ -74,21 +76,17 @@ function LatestNotifications() {
           {t('app.loading')}
         </Text>
       )}
-      {data?.notifications.length === 0 && (
+      {items?.length === 0 && (
         <Text as="p" size="2" color="gray">
           {t('notifications.empty')}
         </Text>
       )}
-      {data && data.notifications.length > 0 && (
+      {items && items.length > 0 && (
         <Box asChild m="0" p="0" style={{ listStyle: 'none' }}>
           <ul aria-label={t('notifications.latest')}>
-            {data.notifications.map((n) => (
+            {items.map((n) => (
               <li key={n.id}>
-                <NotificationItem
-                  notification={n}
-                  onOpen={() => void (!n.read && markRead({ variables: { ids: [n.id] } }))}
-                  wrapLink={(link) => <Popover.Close>{link}</Popover.Close>}
-                />
+                <NotificationItem notification={n} wrapLink={(link) => <Popover.Close>{link}</Popover.Close>} />
               </li>
             ))}
           </ul>

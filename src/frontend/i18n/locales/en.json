@@ -33,6 +33,7 @@
   },
   "notifications": {
     "title": "Notifications",
+    "retentionHint": "Read notifications are removed automatically after a while.",
     "bell": "Notifications",
     "bellUnread_one": "Notifications, {{count}} unread",
     "bellUnread_other": "Notifications, {{count}} unread",
@@ -44,10 +45,6 @@
     "emptyUnread": "You have read everything.",
     "markAllRead": "Mark all read",
     "markRead": "Mark read",
-    "delete": "Delete notification",
-    "deleteRead": "Delete read ones",
-    "deleteReadTitle": "Delete the read notifications?",
-    "deleteReadDescription": "The notifications you have already read are removed. Unread ones stay.",
     "showAll": "Show all notifications",
     "showMore": "Show more",
     "filter": "Show",

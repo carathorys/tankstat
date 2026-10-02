@@ -2,6 +2,7 @@ fragment NotificationFields on NotificationInfo {
   id
   kind
   read
+  readAt
   count
   createdAt
   updatedAt
@@ -37,14 +38,9 @@ query Notifications($unreadOnly: Boolean!, $skip: Int!, $take: Int!) {
   notificationCount(unreadOnly: $unreadOnly)
 }
 
+# Returns the notifications it marked, so the lists already loaded update in place.
 mutation MarkNotificationsRead($ids: [UUID!]) {
-  markNotificationsRead(ids: $ids)
-}
-
-mutation DeleteNotification($id: UUID!) {
-  deleteNotification(id: $id)
-}
-
-mutation DeleteReadNotifications {
-  deleteReadNotifications
+  markNotificationsRead(ids: $ids) {
+    ...NotificationFields
+  }
 }

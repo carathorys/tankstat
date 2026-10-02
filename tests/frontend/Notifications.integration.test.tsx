@@ -105,22 +105,33 @@ it('the inbox page shows everything or only what is unread', async () => {
   await waitFor(() => expect(within(screen.getByRole('list', { name: 'Notifications' })).getAllByRole('listitem')).toHaveLength(2))
 })
 
-it('notifications are marked read and deleted one by one, and the read ones all at once', async () => {
+it('notifications are marked read one by one or all at once, and cannot be deleted', async () => {
   const { ui, state } = setup(undefined, '/notifications')
   const list = await screen.findByRole('list', { name: 'Notifications' })
+  expect(screen.getByText('Read notifications are removed automatically after a while.')).toBeInTheDocument()
 
   await ui.click(within(list).getAllByRole('button', { name: 'Mark read' })[0])
-  await waitFor(() => expect(state.calls.MarkNotificationsRead).toEqual([{ ids: ['n2'] }]))
+  await waitFor(() => expect(within(list).getAllByRole('button', { name: 'Mark read' })).toHaveLength(1))
+  expect(state.calls.MarkNotificationsRead).toEqual([{ ids: ['n2'] }])
 
-  await ui.click(within(list).getAllByRole('button', { name: 'Delete notification' })[0])
-  await waitFor(() => expect(state.items.map((n) => n.id)).toEqual(['n1', 'n3']))
+  await ui.click(screen.getByRole('button', { name: 'Mark all read' }))
+  await waitFor(() => expect(within(list).queryAllByRole('button', { name: 'Mark read' })).toHaveLength(0))
+  expect(within(list).getAllByRole('listitem')).toHaveLength(3) // read, but still listed
+  expect(screen.queryByRole('button', { name: /Delete/ })).not.toBeInTheDocument()
+})
 
-  await ui.click(screen.getByRole('button', { name: 'Delete read ones' }))
-  const confirm = await screen.findByRole('alertdialog', { name: 'Delete the read notifications?' })
-  await ui.click(within(confirm).getByRole('button', { name: 'Delete read ones' }))
+it('marking read keeps the pages already loaded', async () => {
+  const many = Array.from({ length: 25 }, (_, i) => fakeNotification({ id: `m${i}`, updatedAt: `2026-09-${String(30 - i).padStart(2, '0')}T08:00:00Z` }))
+  const { ui, state } = setup(many, '/notifications')
+  await screen.findByRole('list', { name: 'Notifications' })
+  await ui.click(screen.getByRole('button', { name: 'Show more' }))
+  await waitFor(() => expect(within(screen.getByRole('list', { name: 'Notifications' })).getAllByRole('listitem')).toHaveLength(25))
 
-  await waitFor(() => expect(state.items.map((n) => n.id)).toEqual(['n1']))
-  expect(await screen.findByText(/Bob gave you access/)).toBeInTheDocument()
+  await ui.click(within(screen.getByRole('list', { name: 'Notifications' })).getAllByRole('button', { name: 'Mark read' })[24])
+
+  await waitFor(() => expect(state.items.find((n) => n.id === 'm24')?.read).toBe(true))
+  await waitFor(() => expect(within(screen.getByRole('list', { name: 'Notifications' })).getAllByRole('button', { name: 'Mark read' })).toHaveLength(24))
+  expect(within(screen.getByRole('list', { name: 'Notifications' })).getAllByRole('listitem')).toHaveLength(25)
 })
 
 it('more notifications are loaded on request', async () => {

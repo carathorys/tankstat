@@ -4,25 +4,25 @@ import { useTranslation } from 'react-i18next'
 import { Link as RouterLink } from 'react-router'
 import type { NotificationFieldsFragment } from '../gql/generated.ts'
 import { useFormat } from '../i18n/format.ts'
+import { useNotificationActions } from './useNotificationActions.ts'
 import { useNotificationText } from './useNotificationText.ts'
 
 /**
- * One notification: what happened (a link when there is something to look at), when, and whether it is new (as a word, not only bold).
- * `wrapLink` lets the bell's popover close itself when the link is followed.
+ * One notification: what happened (a link when there is something to look at; following it marks it read), when, and whether it is new
+ * (as a word, not only bold). `wrapLink` lets the bell's popover close itself when the link is followed.
  */
 export function NotificationItem({
   notification,
-  onOpen,
   wrapLink = (link) => link,
   actions,
 }: {
   notification: NotificationFieldsFragment
-  onOpen: () => void
   wrapLink?: (link: ReactNode) => ReactNode
   actions?: ReactNode
 }) {
   const { t } = useTranslation()
   const { dateTime } = useFormat()
+  const { open } = useNotificationActions()
   const { text, href } = useNotificationText()(notification)
 
   return (
@@ -37,7 +37,7 @@ export function NotificationItem({
           {href
             ? wrapLink(
                 <Link asChild>
-                  <RouterLink to={href} onClick={onOpen}>
+                  <RouterLink to={href} onClick={() => open(notification)}>
                     {text}
                   </RouterLink>
                 </Link>,
