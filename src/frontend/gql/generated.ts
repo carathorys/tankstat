@@ -16,6 +16,7 @@ export type AddExpenseInput = {
   date: string;
   note?: string | null | undefined;
   odometer?: number | null | undefined;
+  photoIds?: Array<string> | null | undefined;
   title: string;
   vehicleId: string;
 };
@@ -146,6 +147,7 @@ export type LogRefuelingInput = {
   isFullTank: boolean;
   note?: string | null | undefined;
   odometer: number;
+  photoIds?: Array<string> | null | undefined;
   totalCost: number;
   vehicleId: string;
   volume: number;

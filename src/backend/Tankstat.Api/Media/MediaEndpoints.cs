@@ -48,6 +48,15 @@ public static class MediaEndpoints
             return Results.NoContent();
         });
 
+        // Photos picked for a log that is not saved yet: stored at once as drafts of the uploader, attached when the log is saved.
+        media.MapPut("/vehicles/{vehicleId:guid}/photo-drafts", async (Guid vehicleId, HttpRequest request, PhotoDraftService drafts, CancellationToken ct) =>
+            Uploaded(await drafts.UploadAsync(vehicleId, await ReadBodyAsync(request, ct), ct)));
+        media.MapDelete("/photo-drafts/{id:guid}", async (Guid id, PhotoDraftService drafts, CancellationToken ct) =>
+        {
+            await drafts.RemoveAsync(id, ct);
+            return Results.NoContent();
+        });
+
         // Photos of logs: PUT adds one (up to ten per log), DELETE removes one by its image id.
         foreach (var (segment, logType) in new[] { ("expenses", LogType.Expense), ("refuelings", LogType.Refueling) })
         {

@@ -74,6 +74,17 @@ public class ContractTests
         foreach (var field in fields) Assert.Contains(field, names);
     }
 
+    [Theory]
+    [InlineData("LogRefuelingInput", "vehicleId", "date", "volume", "totalCost", "currency", "odometer", "isFullTank", "note", "photoIds")]
+    [InlineData("AddExpenseInput", "vehicleId", "date", "title", "category", "amount", "currency", "odometer", "note", "photoIds")]
+    public async Task Schema_InputTypeTakesContractFields(string type, params string[] fields)
+    {
+        var body = await Query($"{{ __type(name: \"{type}\") {{ inputFields {{ name }} }} }}");
+
+        var names = body.GetProperty("data").GetProperty("__type").GetProperty("inputFields").EnumerateArray().Select(f => f.GetProperty("name").GetString()).ToList();
+        foreach (var field in fields) Assert.Contains(field, names);
+    }
+
     [Fact]
     public async Task Schema_FuelTypeEnumValues()
     {

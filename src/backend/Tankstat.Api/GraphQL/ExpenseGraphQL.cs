@@ -11,7 +11,9 @@ namespace Tankstat.Api.GraphQL;
 
 /// <param name="Currency">ISO 4217 code of the currency paid in; omit to use the instance default.</param>
 /// <param name="Odometer">Omit when the odometer was not noted.</param>
-public sealed record AddExpenseInput(Guid VehicleId, DateOnly Date, string Title, string? Category, decimal Amount, string? Currency, long? Odometer, string? Note);
+/// <param name="PhotoIds">Photos uploaded for this expense beforehand (<c>PUT /media/vehicles/{id}/photo-drafts</c>); they become its photos.</param>
+public sealed record AddExpenseInput(
+    Guid VehicleId, DateOnly Date, string Title, string? Category, decimal Amount, string? Currency, long? Odometer, string? Note, IReadOnlyList<Guid>? PhotoIds = null);
 
 /// <param name="Currency">Omit to keep the expense's currency.</param>
 public sealed record UpdateExpenseInput(Guid Id, DateOnly Date, string Title, string? Category, decimal Amount, string? Currency, long? Odometer, string? Note);
@@ -86,7 +88,7 @@ public sealed class ExpenseMutations
 {
     public Task<Expense> AddExpense(AddExpenseInput input, [Service] ExpenseService expenses, [Service] IOptions<VehicleDefaultsOptions> defaults, CancellationToken ct) =>
         expenses.AddAsync(input.VehicleId,
-            new ExpenseInput(input.Date, input.Title, input.Category, input.Amount, input.Currency ?? defaults.Value.Currency, input.Odometer, input.Note), ct);
+            new ExpenseInput(input.Date, input.Title, input.Category, input.Amount, input.Currency ?? defaults.Value.Currency, input.Odometer, input.Note), ct, input.PhotoIds);
 
     public Task<Expense> UpdateExpense(UpdateExpenseInput input, [Service] ExpenseService expenses, CancellationToken ct) =>
         expenses.UpdateAsync(input.Id, new ExpenseInput(input.Date, input.Title, input.Category, input.Amount, input.Currency, input.Odometer, input.Note), ct);
