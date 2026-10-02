@@ -43,7 +43,7 @@ public class ContractTests
 
     [Theory]
     [InlineData("Query", "health", "vehicles", "myVehicles", "myVehicleCount", "vehicle", "session", "notices", "users", "canSetUserPasswords", "accessSettings", "accessGrants", "trash", "vehicleCount", "trashCount", "trashDeletableCount", "vehicleDefaults", "refuelings", "refuelingCount", "refueling", "logDefaults", "refuelingTrash", "refuelingTrashCount", "refuelingTrashDeletableCount", "vehicleLogAccess", "shareCandidates", "notifications", "notificationCount")]
-    [InlineData("Mutation", "addVehicle", "logRefueling", "login", "logout", "changePassword", "requestPasswordReset", "resetPassword", "createUser", "issuePasswordReset", "setUserAdmin", "setUserDisabled", "updateUser", "setUserPassword", "deleteUser", "setDefaultAccess", "setAccessGrant", "updateVehicle", "deleteVehicle", "restoreVehicle", "emptyTrash", "logRefueling", "updateRefueling", "deleteRefueling", "restoreRefueling", "emptyRefuelingTrash", "setVehicleLogAccess", "markNotificationsRead", "deleteNotification", "deleteReadNotifications")]
+    [InlineData("Mutation", "addVehicle", "logRefueling", "login", "logout", "changePassword", "requestPasswordReset", "resetPassword", "createUser", "issuePasswordReset", "setUserAdmin", "setUserDisabled", "updateUser", "setUserPassword", "deleteUser", "setDefaultAccess", "setAccessGrant", "updateVehicle", "deleteVehicle", "restoreVehicle", "emptyTrash", "logRefueling", "updateRefueling", "deleteRefueling", "restoreRefueling", "emptyRefuelingTrash", "setVehicleLogAccess", "markNotificationsRead")]
     [InlineData("Session", "mode", "user")]
     [InlineData("UserInfo", "id", "displayName", "email", "isAdmin")]
     [InlineData("UserAccount", "id", "provider", "email", "displayName", "isAdmin", "isDisabled")]
@@ -56,7 +56,7 @@ public class ContractTests
     [InlineData("LogAccessGrantInfo", "user", "level")]
     [InlineData("Expense", "id", "vehicleId", "createdBy", "date", "title", "category", "amount", "currency", "odometer", "note", "deletedAt", "canEdit", "canDelete", "vehicle", "photos")]
     [InlineData("LogPhotoInfo", "id", "url")]
-    [InlineData("NotificationInfo", "id", "kind", "createdAt", "updatedAt", "read", "count", "subject", "context", "args")]
+    [InlineData("NotificationInfo", "id", "kind", "createdAt", "updatedAt", "read", "readAt", "count", "subject", "context", "args")]
     [InlineData("NotificationRefInfo", "type", "id")]
     [InlineData("NotificationArg", "name", "value")]
     [InlineData("ImportPreviewInfo", "sourceVehicle", "fuelRows", "expenseRows", "recurringRows", "duplicateFuelRows", "duplicateExpenseRows", "duplicateRecurringRows", "firstDate", "lastDate", "categories", "issues")]

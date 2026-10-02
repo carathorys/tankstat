@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
 using Tankstat.Domain.Notifications;
@@ -6,9 +7,12 @@ namespace Tankstat.Application.Notifications;
 
 /// <summary>
 /// The current user's inbox. Notifications belong to their recipient alone: nobody, administrators included, sees or changes anyone
-/// else's. Reading the inbox first brings the derived notifications (recurring expenses) up to date.
+/// else's. Users only mark them read (when, is kept); the system removes them <see cref="NotificationOptions.ReadRetentionDays"/> after
+/// that. Reading the inbox first brings it up to date: the derived notifications (recurring expenses) are worked out and the expired
+/// ones removed (there is no background job).
 /// </summary>
-public sealed class NotificationService(AccessService access, INotificationRepository notifications, RecurringNotificationSync recurring, TimeProvider clock)
+public sealed class NotificationService(
+    AccessService access, INotificationRepository notifications, RecurringNotificationSync recurring, IOptions<NotificationOptions> options, TimeProvider clock)
 {
     public const int DefaultTake = 20;
     public const int MaxTake = 100;
@@ -25,32 +29,19 @@ public sealed class NotificationService(AccessService access, INotificationRepos
         return await notifications.CountAsync(me.Id, unreadOnly, ct);
     }
 
-    /// <summary>Marks the given notifications (null: all of them) read; returns how many were unread.</summary>
-    public async Task<int> MarkReadAsync(IReadOnlyCollection<Guid>? ids, CancellationToken ct)
+    /// <summary>Marks the given notifications (null: all of them) read now; returns the ones that were unread.</summary>
+    public async Task<IReadOnlyList<Notification>> MarkReadAsync(IReadOnlyCollection<Guid>? ids, CancellationToken ct)
     {
         var me = await access.RequirePrincipalAsync(ct);
         return await notifications.MarkReadAsync(me.Id, ids, clock.GetUtcNow(), ct);
     }
 
-    public async Task DeleteAsync(Guid id, CancellationToken ct)
-    {
-        var me = await access.RequirePrincipalAsync(ct);
-        var notification = await notifications.FindAsync(me.Id, id, ct)
-            ?? throw new NotFoundException("notification.notFound", $"Notification {id} does not exist.", new { Id = id });
-        await notifications.RemoveAsync(notification, ct);
-    }
-
-    /// <summary>Deletes the read notifications; returns how many.</summary>
-    public async Task<int> DeleteReadAsync(CancellationToken ct)
-    {
-        var me = await access.RequirePrincipalAsync(ct);
-        return await notifications.DeleteReadAsync(me.Id, ct);
-    }
-
     private async Task<Principal> SyncedAsync(CancellationToken ct)
     {
         var me = await access.RequirePrincipalAsync(ct);
-        await recurring.SyncAsync(ct);
+        var due = await recurring.SyncAsync(ct);
+        // A reminder of a schedule that is still due is kept, or the next look would add it again as new.
+        await notifications.PurgeReadAsync(me.Id, clock.GetUtcNow().AddDays(-options.Value.ReadRetentionDays), due, ct);
         return me;
     }
 }

@@ -234,36 +234,67 @@ public class NotificationServiceTests
     // ---- The inbox ---------------------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task TheInbox_IsTheRecipientsAlone()
+    public async Task TheInbox_IsTheRecipientsAlone_AndRemembersWhenItWasRead()
     {
         var s = await Setup();
         await s.W.Sharing.SetLogAccessAsync(s.Car.Id, s.Bob.Id, AccessLevel.Edit, default);
         var bobs = Assert.Single(Of(s.W, s.Bob));
 
-        // Alice (and administrators alike) cannot read, mark or delete Bob's notification.
+        // Alice (and administrators alike) can neither read nor mark Bob's notification.
         Assert.Empty(await s.W.NotificationService.ListAsync(false, 0, 10, default));
-        Assert.Equal(0, await s.W.NotificationService.MarkReadAsync([bobs.Id], default));
-        Assert.Equal("notification.notFound", (await Assert.ThrowsAsync<NotFoundException>(() => s.W.NotificationService.DeleteAsync(bobs.Id, default))).Key);
+        Assert.Empty(await s.W.NotificationService.MarkReadAsync([bobs.Id], default));
         Assert.False(bobs.IsRead);
 
         s.W.Current.SignInAs(s.Bob);
-        Assert.Equal(1, await s.W.NotificationService.MarkReadAsync([bobs.Id], default));
+        Assert.Equal([bobs.Id], (await s.W.NotificationService.MarkReadAsync([bobs.Id], default)).Select(n => n.Id));
+        Assert.Equal(s.W.Clock.GetUtcNow(), bobs.ReadAt);
+        Assert.Empty(await s.W.NotificationService.MarkReadAsync(null, default)); // nothing left unread
         Assert.Equal(0, await s.W.NotificationService.CountAsync(unreadOnly: true, default));
-        Assert.Equal(1, await s.W.NotificationService.DeleteReadAsync(default));
-        Assert.Empty(s.W.Notifications.Items);
     }
 
     [Fact]
-    public async Task Delete_RemovesOne_AndPagingIsClamped()
+    public async Task ReadNotifications_AreRemovedAfterTheRetentionPeriod_UnreadOnesStay()
+    {
+        var s = await Setup();
+        s.W.NotificationOptions.ReadRetentionDays = 30;
+        await s.W.Sharing.SetLogAccessAsync(s.Car.Id, s.Bob.Id, AccessLevel.Edit, default);
+        var van = await s.W.VehicleService.AddAsync("Van", null, FuelType.Diesel, default);
+        await s.W.Sharing.SetLogAccessAsync(van.Id, s.Bob.Id, AccessLevel.Edit, default);
+        s.W.Current.SignInAs(s.Bob);
+        await s.W.NotificationService.MarkReadAsync([Of(s.W, s.Bob)[0].Id], default);
+
+        s.W.Clock.Advance(TimeSpan.FromDays(30));
+        Assert.Equal(2, await s.W.NotificationService.CountAsync(false, default)); // read exactly 30 days ago: still kept
+
+        s.W.Clock.Advance(TimeSpan.FromMinutes(1));
+        var left = await s.W.NotificationService.ListAsync(false, 0, 10, default);
+        Assert.Equal(["Van"], left.Select(n => n.Args["vehicleName"])); // the unread one stays however old
+    }
+
+    [Fact]
+    public async Task AReadReminder_OfAScheduleThatIsStillDue_IsKept_SoItDoesNotComeBackAsNew()
+    {
+        var s = await Setup();
+        var item = (await s.W.RecurringService.AddAsync(s.Car.Id, Yearly(OverdueStart), default)).Item;
+        Assert.Equal(1, await s.W.NotificationService.CountAsync(true, default));
+        await s.W.NotificationService.MarkReadAsync(null, default);
+
+        s.W.Clock.Advance(TimeSpan.FromDays(60));
+        var kept = Assert.Single(await s.W.NotificationService.ListAsync(false, 0, 10, default));
+        Assert.True(kept.IsRead);
+
+        await s.W.RecurringService.MarkDoneAsync(item.Id, new MarkDoneInput(DateOnly.FromDateTime(s.W.Clock.GetUtcNow().UtcDateTime), null, false, null, null), default);
+        Assert.Empty(await s.W.NotificationService.ListAsync(false, 0, 10, default)); // done: the old reminder can go
+    }
+
+    [Fact]
+    public async Task PagingIsClamped()
     {
         var s = await Setup();
         await s.W.RecurringService.AddAsync(s.Car.Id, Yearly(OverdueStart), default);
         await s.W.RecurringService.AddAsync(s.Car.Id, Yearly(DueSoonStart, "Tax"), default);
-        var all = await s.W.NotificationService.ListAsync(false, -5, 1000, default);
-        Assert.Equal(2, all.Count);
 
-        await s.W.NotificationService.DeleteAsync(all[0].Id, default);
-
+        Assert.Equal(2, (await s.W.NotificationService.ListAsync(false, -5, 1000, default)).Count);
         Assert.Single(await s.W.NotificationService.ListAsync(false, 0, 0, default)); // at least one per page
     }
 

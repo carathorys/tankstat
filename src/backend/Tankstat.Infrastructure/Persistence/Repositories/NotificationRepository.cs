@@ -18,12 +18,6 @@ internal sealed class NotificationRepository(IDbContextFactory<AppDbContext> dbF
         return await Of(db, recipientId, unreadOnly).CountAsync(ct);
     }
 
-    public async Task<Notification?> FindAsync(Guid recipientId, Guid id, CancellationToken ct)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await Of(db, recipientId, false).FirstOrDefaultAsync(n => n.Id == id, ct);
-    }
-
     public async Task<Notification?> FindOpenAsync(Guid recipientId, NotificationTopic topic, NotificationRef subject, NotificationRef? context, CancellationToken ct)
     {
         var contextId = context?.Id ?? Guid.Empty;
@@ -85,18 +79,23 @@ internal sealed class NotificationRepository(IDbContextFactory<AppDbContext> dbF
         await db.Notifications.Where(n => n.Id == notification.Id).ExecuteDeleteAsync(ct); // already gone is fine
     }
 
-    public async Task<int> MarkReadAsync(Guid recipientId, IReadOnlyCollection<Guid>? ids, DateTimeOffset at, CancellationToken ct)
+    public async Task<IReadOnlyList<Notification>> MarkReadAsync(Guid recipientId, IReadOnlyCollection<Guid>? ids, DateTimeOffset at, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var unread = db.Notifications.Where(n => n.RecipientId == recipientId && n.ReadAt == null);
         if (ids is not null) unread = unread.Where(n => ids.Contains(n.Id));
-        return await unread.ExecuteUpdateAsync(s => s.SetProperty(n => n.ReadAt, at), ct);
+        var changed = await unread.ToListAsync(ct);
+        foreach (var n in changed) n.MarkRead(at);
+        await db.SaveChangesAsync(ct);
+        return changed;
     }
 
-    public async Task<int> DeleteReadAsync(Guid recipientId, CancellationToken ct)
+    public async Task<int> PurgeReadAsync(Guid recipientId, DateTimeOffset readBefore, IReadOnlyCollection<Guid> keepSubjectIds, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await db.Notifications.Where(n => n.RecipientId == recipientId && n.ReadAt != null).ExecuteDeleteAsync(ct);
+        var old = db.Notifications.Where(n => n.RecipientId == recipientId && n.ReadAt != null && n.ReadAt < readBefore);
+        if (keepSubjectIds.Count > 0) old = old.Where(n => !keepSubjectIds.Contains(n.SubjectId));
+        return await old.ExecuteDeleteAsync(ct);
     }
 
     private static IQueryable<Notification> Of(AppDbContext db, Guid recipientId, bool unreadOnly)

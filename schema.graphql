@@ -121,9 +121,7 @@ type Mutation {
   deleteRecurringExpense(id: UUID!): Boolean! @cost(weight: "10")
   markRecurringExpenseDone(input: MarkRecurringExpenseDoneInput!): RecurringExpenseInfo!
     @cost(weight: "10")
-  markNotificationsRead(ids: [UUID!]): Int! @cost(weight: "10")
-  deleteNotification(id: UUID!): Boolean! @cost(weight: "10")
-  deleteReadNotifications: Int! @cost(weight: "10")
+  markNotificationsRead(ids: [UUID!]): [NotificationInfo!]! @cost(weight: "10")
   confirmImport(input: ConfirmImportInput!): ImportResultInfo!
     @cost(weight: "10")
   saveVehicleChart(input: SaveChartInput!): VehicleChart! @cost(weight: "10")
@@ -272,6 +270,7 @@ type NotificationInfo {
   createdAt: DateTime!
   updatedAt: DateTime!
   read: Boolean!
+  readAt: DateTime
   count: Int!
   subject: NotificationRefInfo!
   context: NotificationRefInfo

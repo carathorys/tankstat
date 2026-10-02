@@ -161,7 +161,6 @@ internal sealed class InMemoryNotifications : INotificationRepository
     public Task<IReadOnlyList<Notification>> ListAsync(Guid recipientId, bool unreadOnly, int skip, int take, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<Notification>>(Of(recipientId, unreadOnly).OrderByDescending(n => n.UpdatedAt).ThenBy(n => n.Id).Skip(skip).Take(take).ToList());
     public Task<int> CountAsync(Guid recipientId, bool unreadOnly, CancellationToken ct) => Task.FromResult(Of(recipientId, unreadOnly).Count());
-    public Task<Notification?> FindAsync(Guid recipientId, Guid id, CancellationToken ct) => Task.FromResult(Of(recipientId, false).FirstOrDefault(n => n.Id == id));
     public Task<Notification?> FindOpenAsync(Guid recipientId, NotificationTopic topic, NotificationRef subject, NotificationRef? context, CancellationToken ct) =>
         Task.FromResult(Of(recipientId, true).OrderByDescending(n => n.UpdatedAt).FirstOrDefault(n => n.Topic == topic && n.Subject == subject && n.Context == context));
     public Task<IReadOnlyList<Notification>> ListForSubjectsAsync(Guid recipientId, NotificationTopic topic, IReadOnlyCollection<Guid> subjectIds, CancellationToken ct) =>
@@ -177,13 +176,14 @@ internal sealed class InMemoryNotifications : INotificationRepository
     }
     public Task UpdateAsync(Notification n, CancellationToken ct) => Task.CompletedTask; // shared references
     public Task RemoveAsync(Notification n, CancellationToken ct) { Items.Remove(n); return Task.CompletedTask; }
-    public Task<int> MarkReadAsync(Guid recipientId, IReadOnlyCollection<Guid>? ids, DateTimeOffset at, CancellationToken ct)
+    public Task<IReadOnlyList<Notification>> MarkReadAsync(Guid recipientId, IReadOnlyCollection<Guid>? ids, DateTimeOffset at, CancellationToken ct)
     {
         var unread = Of(recipientId, true).Where(n => ids is null || ids.Contains(n.Id)).ToList();
         foreach (var n in unread) n.MarkRead(at);
-        return Task.FromResult(unread.Count);
+        return Task.FromResult<IReadOnlyList<Notification>>(unread);
     }
-    public Task<int> DeleteReadAsync(Guid recipientId, CancellationToken ct) => Task.FromResult(Items.RemoveAll(n => n.RecipientId == recipientId && n.IsRead));
+    public Task<int> PurgeReadAsync(Guid recipientId, DateTimeOffset readBefore, IReadOnlyCollection<Guid> keepSubjectIds, CancellationToken ct) =>
+        Task.FromResult(Items.RemoveAll(n => n.RecipientId == recipientId && n.ReadAt < readBefore && !keepSubjectIds.Contains(n.SubjectId)));
 }
 
 internal sealed class InMemoryStats(InMemoryRefuelings refuelings, InMemoryExpenses expenses) : IStatsRepository
@@ -438,7 +438,7 @@ internal sealed class World
     public UserService UserService { get; }
     public AccessAdminService AccessAdmin { get; }
     public Notifier Notifier { get; }
-    public NotificationService NotificationService => new(Access, Notifications, new RecurringNotificationSync(Access, Recurring, Vehicles, RecurringService, Notifier), Clock); // a new one per use, like one per request (it syncs once)
+    public NotificationService NotificationService => new(Access, Notifications, new RecurringNotificationSync(Access, Recurring, Vehicles, RecurringService, Notifier), NotificationOptions.Create(), Clock); // a new one per use, like one per request (it syncs once)
 
     public World(AuthMode mode = AuthMode.Standalone, bool smtp = false, Action<AuthOptions>? configure = null)
     {

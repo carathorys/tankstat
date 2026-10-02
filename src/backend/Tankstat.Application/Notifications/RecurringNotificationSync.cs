@@ -17,21 +17,24 @@ namespace Tankstat.Application.Notifications;
 public sealed class RecurringNotificationSync(
     AccessService access, IRecurringExpenseRepository schedules, IVehicleRepository vehicles, RecurringExpenseService recurring, Notifier notifier)
 {
-    private readonly Lock _gate = new();
-    private Task? _sync;
-
-    /// <summary>Brings the user's recurring notifications up to date, at most once per request (scope), however often it is asked.</summary>
-    public Task SyncAsync(CancellationToken ct)
+    /// <summary>
+    /// Brings the user's recurring notifications up to date and returns the schedules that are due (whose notifications must be kept).
+    /// Runs once per request (scope), however often it is asked.
+    /// </summary>
+    public Task<IReadOnlyCollection<Guid>> SyncAsync(CancellationToken ct)
     {
         lock (_gate) return _sync ??= RunAsync(ct);
     }
 
-    private async Task RunAsync(CancellationToken ct)
+    private readonly Lock _gate = new();
+    private Task<IReadOnlyCollection<Guid>>? _sync;
+
+    private async Task<IReadOnlyCollection<Guid>> RunAsync(CancellationToken ct)
     {
         var me = await access.RequirePrincipalAsync(ct);
         var scope = await access.PersonalLogScopeAsync(AccessLevel.View, ct);
         var vehicleIds = await schedules.ListVehicleIdsAsync(scope, ct);
-        if (vehicleIds.Count == 0) return;
+        if (vehicleIds.Count == 0) return [];
 
         var visible = await vehicles.ListByIdsAsync(vehicleIds, ct);
         var names = visible.ToDictionary(v => v.Id, v => v.Name);
@@ -45,6 +48,7 @@ public sealed class RecurringNotificationSync(
                 Occurrence: Cycle(r.Item))))
             .ToList();
         await notifier.NotifyAsync(null, drafts, ct);
+        return [.. drafts.Select(d => d.Subject.Id)];
     }
 
     /// <summary>Identifies the schedule's current cycle: marking it done (or changing when it was last done) starts a new one.</summary>

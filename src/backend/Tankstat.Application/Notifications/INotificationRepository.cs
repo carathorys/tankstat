@@ -8,7 +8,6 @@ public interface INotificationRepository
     /// <summary>Most recently changed first (then by id, so pages are stable).</summary>
     Task<IReadOnlyList<Notification>> ListAsync(Guid recipientId, bool unreadOnly, int skip, int take, CancellationToken ct);
     Task<int> CountAsync(Guid recipientId, bool unreadOnly, CancellationToken ct);
-    Task<Notification?> FindAsync(Guid recipientId, Guid id, CancellationToken ct);
 
     /// <summary>The recipient's unread notification of the topic about the subject (in the context), which a new event is folded into.</summary>
     Task<Notification?> FindOpenAsync(Guid recipientId, NotificationTopic topic, NotificationRef subject, NotificationRef? context, CancellationToken ct);
@@ -24,9 +23,9 @@ public interface INotificationRepository
     Task UpdateAsync(Notification notification, CancellationToken ct);
     Task RemoveAsync(Notification notification, CancellationToken ct);
 
-    /// <summary>Marks the given (or, with null, all) unread notifications of the recipient read; returns how many changed.</summary>
-    Task<int> MarkReadAsync(Guid recipientId, IReadOnlyCollection<Guid>? ids, DateTimeOffset at, CancellationToken ct);
+    /// <summary>Marks the given (or, with null, all) unread notifications of the recipient read; returns the ones that changed.</summary>
+    Task<IReadOnlyList<Notification>> MarkReadAsync(Guid recipientId, IReadOnlyCollection<Guid>? ids, DateTimeOffset at, CancellationToken ct);
 
-    /// <summary>Deletes the recipient's read notifications; returns how many.</summary>
-    Task<int> DeleteReadAsync(Guid recipientId, CancellationToken ct);
+    /// <summary>Deletes the recipient's notifications read before <paramref name="readBefore"/>, except those about <paramref name="keepSubjectIds"/>; returns how many.</summary>
+    Task<int> PurgeReadAsync(Guid recipientId, DateTimeOffset readBefore, IReadOnlyCollection<Guid> keepSubjectIds, CancellationToken ct);
 }

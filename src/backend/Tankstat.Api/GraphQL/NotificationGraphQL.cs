@@ -14,14 +14,15 @@ public sealed record NotificationArg(string Name, string Value);
 
 /// <summary>
 /// Something the current user was told. <c>count</c> is how many events it stands for (several changes of the same thing are folded into
-/// one); <c>updatedAt</c> is when it last changed, which orders the inbox.
+/// one); <c>updatedAt</c> is when it last changed, which orders the inbox; <c>readAt</c> is when the user read it (the system removes it
+/// some time after that).
 /// </summary>
 public sealed record NotificationInfo(
-    Guid Id, NotificationKind Kind, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, bool Read, int Count,
+    Guid Id, NotificationKind Kind, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, bool Read, DateTimeOffset? ReadAt, int Count,
     NotificationRefInfo Subject, NotificationRefInfo? Context, IReadOnlyList<NotificationArg> Args)
 {
     public static NotificationInfo From(Notification n) => new(
-        n.Id, n.Kind, n.CreatedAt, n.UpdatedAt, n.IsRead, n.Count, NotificationRefInfo.From(n.Subject),
+        n.Id, n.Kind, n.CreatedAt, n.UpdatedAt, n.IsRead, n.ReadAt, n.Count, NotificationRefInfo.From(n.Subject),
         n.Context is { } context ? NotificationRefInfo.From(context) : null,
         n.Args.OrderBy(a => a.Key, StringComparer.Ordinal).Select(a => new NotificationArg(a.Key, a.Value)).ToList());
 }
@@ -42,16 +43,10 @@ public sealed class NotificationQueries
 [ExtendObjectType(OperationTypeNames.Mutation)]
 public sealed class NotificationMutations
 {
-    /// <summary>Marks the given notifications read, or all of them when <c>ids</c> is omitted; returns how many were unread.</summary>
-    public Task<int> MarkNotificationsRead([Service] NotificationService notifications, CancellationToken ct, IReadOnlyList<Guid>? ids = null) =>
-        notifications.MarkReadAsync(ids, ct);
-
-    public async Task<bool> DeleteNotification(Guid id, [Service] NotificationService notifications, CancellationToken ct)
-    {
-        await notifications.DeleteAsync(id, ct);
-        return true;
-    }
-
-    /// <summary>Deletes the read notifications; returns how many.</summary>
-    public Task<int> DeleteReadNotifications([Service] NotificationService notifications, CancellationToken ct) => notifications.DeleteReadAsync(ct);
+    /// <summary>
+    /// Marks the given notifications read now, or all of them when <c>ids</c> is omitted; returns the ones that were unread. Notifications
+    /// cannot be deleted: the system removes them a while after they were read.
+    /// </summary>
+    public async Task<IReadOnlyList<NotificationInfo>> MarkNotificationsRead([Service] NotificationService notifications, CancellationToken ct, IReadOnlyList<Guid>? ids = null) =>
+        (await notifications.MarkReadAsync(ids, ct)).Select(NotificationInfo.From).ToList();
 }

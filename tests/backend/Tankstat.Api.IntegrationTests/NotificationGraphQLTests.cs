@@ -10,7 +10,7 @@ public class NotificationGraphQLTests : IDisposable
 
     public void Dispose() => _app.Dispose();
 
-    private const string Fields = "id kind read count createdAt updatedAt subject { type id } context { type id } args { name value }";
+    private const string Fields = "id kind read readAt count createdAt updatedAt subject { type id } context { type id } args { name value }";
 
     private sealed record Users(HttpClient Admin, HttpClient Alice, HttpClient Bob, string AliceId, string BobId);
 
@@ -100,7 +100,7 @@ public class NotificationGraphQLTests : IDisposable
     }
 
     [Fact]
-    public async Task NotificationsAreRead_AndDeleted_OnlyByTheirRecipient()
+    public async Task NotificationsAreMarkedRead_OnlyByTheirRecipient_AndStayUntilTheSystemRemovesThem()
     {
         var u = await SignedInUsers();
         var car = await AddVehicle(u.Alice);
@@ -108,17 +108,17 @@ public class NotificationGraphQLTests : IDisposable
         await Share(u.Alice, car, u.BobId, "EDIT");
         await Share(u.Alice, other, u.BobId, "EDIT");
         var ids = (await Inbox(u.Bob)).Select(n => n.GetProperty("id").GetString()!).ToArray();
+        const string mark = "mutation($ids: [UUID!]) { markNotificationsRead(ids: $ids) { id read readAt } }";
 
-        Assert.Equal(0, (await u.Alice.Gql("mutation($ids: [UUID!]) { markNotificationsRead(ids: $ids) }", new { ids })).Data().GetProperty("markNotificationsRead").GetInt32());
-        Assert.Equal("NOT_FOUND", (await u.Alice.Gql("mutation($id: UUID!) { deleteNotification(id: $id) }", new { id = ids[0] })).ErrorCode());
+        Assert.Equal(0, (await u.Alice.Gql(mark, new { ids })).Data().GetProperty("markNotificationsRead").GetArrayLength());
         Assert.Equal(2, await Unread(u.Bob));
 
-        Assert.Equal(1, (await u.Bob.Gql("mutation($ids: [UUID!]) { markNotificationsRead(ids: $ids) }", new { ids = new[] { ids[0] } })).Data().GetProperty("markNotificationsRead").GetInt32());
+        var marked = Assert.Single((await u.Bob.Gql(mark, new { ids = new[] { ids[0] } })).Data().GetProperty("markNotificationsRead").EnumerateArray());
+        Assert.Equal((ids[0], true), (marked.GetProperty("id").GetString(), marked.GetProperty("read").GetBoolean()));
+        Assert.True(DateTimeOffset.UtcNow - marked.GetProperty("readAt").GetDateTimeOffset() < TimeSpan.FromMinutes(5)); // when it was read is kept
         Assert.Equal([ids[1]], (await Inbox(u.Bob, unreadOnly: true)).Select(n => n.GetProperty("id").GetString()));
-        Assert.Equal(1, (await u.Bob.Gql("mutation { markNotificationsRead }")).Data().GetProperty("markNotificationsRead").GetInt32());
-        Assert.True((await u.Bob.Gql("mutation($id: UUID!) { deleteNotification(id: $id) }", new { id = ids[0] })).Data().GetProperty("deleteNotification").GetBoolean());
-        Assert.Equal(1, (await u.Bob.Gql("mutation { deleteReadNotifications }")).Data().GetProperty("deleteReadNotifications").GetInt32());
-        Assert.Empty(await Inbox(u.Bob));
+        Assert.Equal(1, (await u.Bob.Gql("mutation { markNotificationsRead { id } }")).Data().GetProperty("markNotificationsRead").GetArrayLength());
+        Assert.Equal(2, (await Inbox(u.Bob)).Length); // read, but still there until the system removes them
     }
 
     [Fact]

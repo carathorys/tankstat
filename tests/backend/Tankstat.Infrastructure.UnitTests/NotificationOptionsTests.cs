@@ -15,12 +15,24 @@ public class NotificationOptionsTests
     }
 
     [Fact]
-    public void NothingConfigured_AllowsTwentyAnHour() => Assert.Equal(20, Resolve([]).MaxPerHour);
+    public void NothingConfigured_AllowsTwentyAnHour_AndKeepsReadOnesThirtyDays()
+    {
+        var options = Resolve([]);
+
+        Assert.Equal((20, 30), (options.MaxPerHour, options.ReadRetentionDays));
+    }
 
     [Fact]
-    public void TheHourlyLimit_CanBeConfigured() => Assert.Equal(50, Resolve(new() { ["Notifications:MaxPerHour"] = "50" }).MaxPerHour);
+    public void TheLimitAndTheRetention_CanBeConfigured()
+    {
+        var options = Resolve(new() { ["Notifications:MaxPerHour"] = "50", ["Notifications:ReadRetentionDays"] = "7" });
 
-    [Fact]
-    public void ALimitBelowOne_FailsValidation() =>
-        Assert.Throws<OptionsValidationException>(() => Resolve(new() { ["Notifications:MaxPerHour"] = "0" }));
+        Assert.Equal((50, 7), (options.MaxPerHour, options.ReadRetentionDays));
+    }
+
+    [Theory]
+    [InlineData("Notifications:MaxPerHour")]
+    [InlineData("Notifications:ReadRetentionDays")]
+    public void ValuesBelowOne_FailValidation(string key) =>
+        Assert.Throws<OptionsValidationException>(() => Resolve(new() { [key] = "0" }));
 }

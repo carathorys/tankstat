@@ -28,12 +28,12 @@ public class NotificationRepositoryTests
         var n = Due(Alice, Guid.NewGuid());
         await repo.AddAsync(n, default);
 
-        var loaded = (await repo.FindAsync(Alice, n.Id, default))!;
+        var loaded = Assert.Single(await repo.ListAsync(Alice, false, 0, 10, default));
 
         Assert.Equal((NotificationKind.RecurringDueSoon, NotificationTopic.Recurring, n.Subject, n.Context, "c1"), (loaded.Kind, loaded.Topic, loaded.Subject, loaded.Context, loaded.Occurrence));
         Assert.Equal(new Dictionary<string, string> { ["title"] = "Oil change", ["vehicleName"] = "Car" }, loaded.Args);
         Assert.Equal((1, Now, Now, (DateTimeOffset?)null), (loaded.Count, loaded.CreatedAt, loaded.UpdatedAt, loaded.ReadAt));
-        Assert.Null(await repo.FindAsync(Bob, n.Id, default)); // only for its recipient
+        Assert.Empty(await repo.ListAsync(Bob, false, 0, 10, default)); // only for its recipient
     }
 
     [Fact]
@@ -62,7 +62,7 @@ public class NotificationRepositoryTests
         n.Raise(NotificationKind.RecurringOverdue, new Dictionary<string, string> { ["title"] = "Oil" }, Now.AddDays(1));
         await repo.UpdateAsync(n, default);
 
-        var loaded = (await repo.FindAsync(Alice, n.Id, default))!;
+        var loaded = Assert.Single(await repo.ListAsync(Alice, false, 0, 10, default));
         Assert.Equal((NotificationKind.RecurringOverdue, "Oil", Now.AddDays(1)), (loaded.Kind, loaded.Args["title"], loaded.UpdatedAt));
     }
 
@@ -128,21 +128,46 @@ public class NotificationRepositoryTests
     }
 
     [Fact]
-    public async Task MarkRead_AndDeleteRead_TouchOnlyTheRecipientsOwn()
+    public async Task MarkRead_TouchesOnlyTheRecipientsOwnUnreadOnes_AndReturnsThem()
     {
         await using var db = new TestDatabase();
         var repo = db.Get<INotificationRepository>();
         var mine = Due(Alice, Guid.NewGuid());
+        var other = Due(Alice, Guid.NewGuid());
         var theirs = Due(Bob, Guid.NewGuid());
-        foreach (var n in new[] { mine, Due(Alice, Guid.NewGuid()), theirs }) await repo.AddAsync(n, default);
+        foreach (var n in new[] { mine, other, theirs }) await repo.AddAsync(n, default);
 
-        Assert.Equal(0, await repo.MarkReadAsync(Alice, [theirs.Id], Now, default));
-        Assert.Equal(1, await repo.MarkReadAsync(Alice, [mine.Id], Now, default));
-        Assert.Equal(1, await repo.MarkReadAsync(Alice, null, Now, default)); // the rest
-        Assert.Equal(0, await repo.MarkReadAsync(Alice, null, Now, default));
+        Assert.Empty(await repo.MarkReadAsync(Alice, [theirs.Id], Now, default));
+        Assert.Equal([mine.Id], (await repo.MarkReadAsync(Alice, [mine.Id], Now, default)).Select(n => n.Id));
+        var rest = Assert.Single(await repo.MarkReadAsync(Alice, null, Now.AddHours(1), default));
+        Assert.Equal((other.Id, (DateTimeOffset?)Now.AddHours(1)), (rest.Id, rest.ReadAt));
+        Assert.Empty(await repo.MarkReadAsync(Alice, null, Now, default));
 
-        Assert.Equal(2, await repo.DeleteReadAsync(Alice, default));
-        Assert.Equal((0, 1), (await repo.CountAsync(Alice, false, default), await repo.CountAsync(Bob, false, default)));
+        Assert.Equal((0, 1), (await repo.CountAsync(Alice, true, default), await repo.CountAsync(Bob, true, default)));
+        Assert.Equal(Now, (await repo.ListAsync(Alice, false, 0, 10, default)).Single(n => n.Id == mine.Id).ReadAt); // stored
+    }
+
+    [Fact]
+    public async Task PurgeRead_DeletesTheRecipientsLongReadOnes_ExceptTheKeptSubjects()
+    {
+        await using var db = new TestDatabase();
+        var repo = db.Get<INotificationRepository>();
+        var (oil, tyres) = (Guid.NewGuid(), Guid.NewGuid());
+        var oldRead = Due(Alice, Guid.NewGuid());
+        var keptSubject = Due(Alice, oil);
+        var recentRead = Due(Alice, tyres);
+        var unread = Due(Alice, Guid.NewGuid(), at: Now.AddYears(-1));
+        var bobs = Due(Bob, Guid.NewGuid());
+        foreach (var n in new[] { oldRead, keptSubject, recentRead, unread, bobs }) await repo.AddAsync(n, default);
+        await repo.MarkReadAsync(Alice, [oldRead.Id, keptSubject.Id], Now.AddDays(-40), default);
+        await repo.MarkReadAsync(Alice, [recentRead.Id], Now.AddDays(-5), default);
+        await repo.MarkReadAsync(Bob, null, Now.AddDays(-40), default);
+
+        Assert.Equal(1, await repo.PurgeReadAsync(Alice, Now.AddDays(-30), [oil], default));
+
+        Assert.Equal(new[] { keptSubject.Id, recentRead.Id, unread.Id }.Order(), (await repo.ListAsync(Alice, false, 0, 10, default)).Select(n => n.Id).Order());
+        Assert.Equal(1, await repo.CountAsync(Bob, false, default)); // only the recipient's
+        Assert.Equal(1, await repo.PurgeReadAsync(Alice, Now.AddDays(-30), [], default));
     }
 
     [Fact]
