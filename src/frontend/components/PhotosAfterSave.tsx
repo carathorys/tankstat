@@ -33,9 +33,14 @@ export function PhotosAfterSave({
 
   async function retry() {
     setBusy(true)
-    setError(await queue.uploadAll(kind, logId))
-    await onChanged()
-    setBusy(false)
+    try {
+      setError(await queue.uploadAll(kind, logId))
+      await onChanged() // also shows the ones that went through
+    } catch (e) {
+      setError(e)
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
