@@ -71,7 +71,7 @@ export default function App() {
             </Dialog.Content>
           </Dialog.Root>
         )}
-        <Container asChild size="3" flexGrow="1" p={{ initial: '3', sm: '4' }} minWidth="0" style={{ minWidth: 0, maxWidth: '100%' }}>
+        <Container asChild size="4" flexGrow="1" p={{ initial: '3', sm: '4' }} minWidth="0" style={{ minWidth: 0, maxWidth: '100%' }}>
           <main id="main" tabIndex={-1}>
             {error && <ErrorMessage error={error} />}
             {loading && (

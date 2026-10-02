@@ -125,7 +125,7 @@ export function WelcomePage({ isAdmin }: { isAdmin: boolean }) {
         </Flex>
       )}
       {vehicles.length > 0 && (
-        <Grid asChild columns={{ initial: '1', sm: '2', lg: '3' }} gap="4">
+        <Grid asChild columns={{ initial: '1', sm: '2', xl: '3' }} gap="4">
           <ul aria-label={t('welcome.countLabel', { count: total })} style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {vehicles.map((v) => (
               <li key={v.id}>
