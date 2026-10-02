@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Used with dotnet test (settings file + the XPlat Code Coverage collector) by CI and by mise run test:coverage. -->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <!-- Only the app's own code: not the tests and their support project, the per-provider migrations (generated) or the test-only seeder. -->
+          <Include>[Tankstat.*]*</Include>
+          <Exclude>[Tankstat.*Tests]*,[Tankstat.TestSupport]*,[Tankstat.Migrations.*]*,[Tankstat.Seeder]*</Exclude>
+          <ExcludeByAttribute>GeneratedCodeAttribute,CompilerGeneratedAttribute,ExcludeFromCodeCoverageAttribute</ExcludeByAttribute>
+          <SkipAutoProps>true</SkipAutoProps>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

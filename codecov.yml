@@ -1,0 +1,35 @@
+# Gates (GitHub status checks): coverage of the whole project may not drop by more than 1% against the base commit,
+# and the lines a pull request adds or changes need 80%. Reporting only: nothing here fixes a number to maintain.
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        target: 80%
+
+# One report per side, uploaded by the matching CI job; carried forward when a run only touches the other one.
+flags:
+  frontend:
+    paths: [src/frontend/]
+    carryforward: true
+  backend:
+    paths: [src/backend/]
+    carryforward: true
+
+# The Vitest report has paths relative to src/frontend.
+fixes:
+  - "::src/frontend/"
+
+ignore:
+  - "tests"
+  - "src/backend/Tankstat.Migrations.*"
+  - "src/backend/Tankstat.Seeder"
+  - "src/frontend/gql/generated.ts"
+  - "src/frontend/main.tsx"
+
+comment:
+  layout: "condensed_header, diff, flags, files"
+  require_changes: false

@@ -517,3 +517,6 @@ out/
 
 # Uploaded pictures (Storage:Path default)
 uploads/
+
+# Coverage reports (mise run test:coverage)
+coverage/

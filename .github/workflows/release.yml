@@ -27,6 +27,7 @@ jobs:
   # The same checks as every pull request, so an image is never built from a commit that does not pass them.
   ci:
     uses: ./.github/workflows/ci.yml
+    secrets: inherit # the coverage upload needs CODECOV_TOKEN
 
   image:
     needs: ci

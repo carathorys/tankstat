@@ -78,6 +78,16 @@ run = "dotnet test tests/backend/Tankstat.Api.SmokeTests"
 description = "Black-box API contract tests against a freshly started server"
 run = "scripts/test-api.sh"
 
+[tasks."test:coverage"]
+description = "Unit + integration tests with coverage reports in ./coverage (frontend/index.html, backend/*/*/coverage.cobertura.xml)"
+run = """
+rm -rf coverage
+npm run test:coverage
+for project in tests/backend/*.UnitTests tests/backend/Tankstat.Api.IntegrationTests; do
+  dotnet test "$project" --settings coverlet.runsettings --collect:"XPlat Code Coverage" --results-directory "coverage/backend/$(basename "$project")"
+done
+"""
+
 [tasks.test]
 description = "Everything: typecheck, lint, unit, integration, API"
 depends = ["lint"]
