@@ -169,6 +169,15 @@ it('the home page card lists what needs attention in a labelled list, free of vi
   await check(document.body)
 })
 
+it('the details tab with its trash button and confirmation is free of violations', async () => {
+  const { ui } = setup('/vehicles/v1?tab=details')
+  await ui.click(await screen.findByRole('button', { name: 'Move to trash' }))
+  const dialog = await screen.findByRole('alertdialog', { name: 'Move Octavia to the trash?' })
+  expect(dialog).toHaveAccessibleDescription(/restore it from the trash/)
+
+  await check(document.body)
+})
+
 it('the user administration dialogs are labelled, described and free of violations', async () => {
   const { ui } = setup('/admin')
   const table = await screen.findByRole('table')

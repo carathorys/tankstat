@@ -160,7 +160,9 @@
     "notFound": "This vehicle does not exist, or you do not have access to it.",
     "unitsInUse": "The units are fixed because this vehicle already has logs.",
     "editVehicle": "Edit vehicle",
-    "backHome": "Back to home"
+    "backHome": "Back to home",
+    "moveToTrash": "Move to trash",
+    "dangerZone": "Delete this vehicle"
   },
   "trash": {
     "title": "Trash",

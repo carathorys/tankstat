@@ -160,7 +160,9 @@
     "notFound": "Ez a jármű nem létezik, vagy nincs hozzáférésed.",
     "unitsInUse": "A mértékegységek rögzítettek, mert a járműnek már vannak naplóbejegyzései.",
     "editVehicle": "Jármű szerkesztése",
-    "backHome": "Vissza a kezdőlapra"
+    "backHome": "Vissza a kezdőlapra",
+    "moveToTrash": "Áthelyezés a kukába",
+    "dangerZone": "Jármű törlése"
   },
   "trash": {
     "title": "Kuka",

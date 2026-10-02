@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import { server } from './server.ts'
-import { fakeLogBackend, fakeRefueling, fakeVehicle, adminSession, healthHandler, person, renderWithApollo, sessionHandler, stubViewport } from './mocks.tsx'
+import { fakeLogBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, adminSession, healthHandler, person, renderWithApollo, sessionHandler, stubViewport } from './mocks.tsx'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
@@ -233,4 +233,44 @@ it('the details tab shows the units and, for editors, the picture controls', asy
   expect(screen.getByText('Miles')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Choose a picture' })).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Remove picture' })).not.toBeInTheDocument()
+})
+
+function setupDetails(vehicle = fakeVehicle()) {
+  stubViewport('desktop')
+  const vehicles = fakeVehicleBackend([vehicle])
+  server.use(sessionHandler('NONE', () => null), healthHandler, ...vehicles.handlers, ...fakeLogBackend(vehicle, logs).handlers)
+  renderWithApollo(<App />, '/vehicles/v1?tab=details')
+  return { ...vehicles, ui: userEvent.setup() }
+}
+
+it('moves the vehicle to the trash from its details, after a confirmation, and goes back home', async () => {
+  const { ui, state } = setupDetails()
+
+  await ui.click(await screen.findByRole('button', { name: 'Move to trash' }))
+  const dialog = await screen.findByRole('alertdialog', { name: 'Move Octavia to the trash?' })
+  expect(state.calls.DeleteVehicle).toBeUndefined() // nothing happens before the confirmation
+  await ui.click(within(dialog).getByRole('button', { name: 'Move to trash' }))
+
+  await screen.findByRole('heading', { name: 'Your vehicles' })
+  expect(state.calls.DeleteVehicle).toEqual([{ id: 'v1' }])
+  expect(state.trash.map((v) => v.id)).toEqual(['v1'])
+})
+
+it('keeps the vehicle when the confirmation is cancelled', async () => {
+  const { ui, state } = setupDetails()
+
+  await ui.click(await screen.findByRole('button', { name: 'Move to trash' }))
+  await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Cancel' }))
+
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  expect(state.calls.DeleteVehicle).toBeUndefined()
+  expect(screen.getByRole('heading', { name: 'Octavia' })).toBeInTheDocument()
+})
+
+it('offers no trash button to someone who may only view the vehicle', async () => {
+  setupDetails(fakeVehicle({ canEdit: false, logAccess: 'VIEW' }))
+
+  await screen.findByRole('heading', { name: 'Octavia' })
+
+  expect(screen.queryByRole('button', { name: 'Move to trash' })).not.toBeInTheDocument()
 })
