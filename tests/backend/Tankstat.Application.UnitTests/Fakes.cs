@@ -130,6 +130,12 @@ internal sealed class InMemoryRecurring : IRecurringExpenseRepository
     public List<RecurringExpense> Items { get; } = [];
     public Task<IReadOnlyList<RecurringExpense>> ListForVehicleAsync(Guid vehicleId, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<RecurringExpense>>(Items.Where(i => i.VehicleId == vehicleId).ToList());
+    public int ListForVehiclesCalls { get; private set; }
+    public Task<IReadOnlyList<RecurringExpense>> ListForVehiclesAsync(IReadOnlyCollection<Guid> vehicleIds, CancellationToken ct)
+    {
+        ListForVehiclesCalls++;
+        return Task.FromResult<IReadOnlyList<RecurringExpense>>(Items.Where(i => vehicleIds.Contains(i.VehicleId)).ToList());
+    }
     public Task<RecurringExpense?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(i => i.Id == id));
     public Task AddAsync(RecurringExpense item, CancellationToken ct) { Items.Add(item); return Task.CompletedTask; }
     /// <summary>When set, <see cref="UpdateAsync"/> throws it (a failing database).</summary>
@@ -176,6 +182,10 @@ internal sealed class InMemoryReadings(InMemoryRefuelings refuelings, InMemoryEx
         Task.FromResult(Live(vehicleId).Where(r => r.Date > date && r.Id != except).OrderBy(r => r.Date).ThenBy(r => r.Value).FirstOrDefault());
     public Task<OdometerReading?> LatestAsync(Guid vehicleId, CancellationToken ct) =>
         Task.FromResult(Live(vehicleId).OrderByDescending(r => r.Date).ThenByDescending(r => r.Value).FirstOrDefault());
+    public Task<IReadOnlyDictionary<Guid, OdometerReading>> LatestForVehiclesAsync(IReadOnlyCollection<Guid> vehicleIds, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyDictionary<Guid, OdometerReading>>(vehicleIds
+            .Select(id => Live(id).OrderByDescending(r => r.Date).ThenByDescending(r => r.Value).FirstOrDefault())
+            .OfType<OdometerReading>().ToDictionary(r => r.VehicleId));
     public Task<bool> AnyAsync(Guid vehicleId, CancellationToken ct) =>
         Task.FromResult(refuelings.Items.Any(r => r.VehicleId == vehicleId) || expenses.Items.Any(e => e.VehicleId == vehicleId && e.OdometerReading is not null));
 }

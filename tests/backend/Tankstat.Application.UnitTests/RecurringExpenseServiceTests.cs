@@ -212,6 +212,43 @@ public class RecurringExpenseServiceTests
     }
 
     [Fact]
+    public async Task ListForVehicles_GivesEachVehicleItsOwnSchedulesAndOdometer_InOneQuery()
+    {
+        var s = await Setup();
+        var van = await s.W.VehicleService.AddAsync("Van", null, FuelType.Diesel, default);
+        var bare = await s.W.VehicleService.AddAsync("Bare", null, FuelType.Diesel, default);
+        await s.W.RecurringService.AddAsync(s.Car.Id, Oil(RecurrenceKind.Odometer, "Tyres", odometer: 50000), default); // due at 65000
+        await s.W.RecurringService.AddAsync(van.Id, Oil(RecurrenceKind.Time, "Insurance", new DateOnly(2025, 6, 1)), default);
+        await s.W.RefuelingService.LogAsync(s.Car.Id, new DateOnly(2026, 9, 30), 40, 60, 64800, true, default);
+        var calls = s.W.Recurring.ListForVehiclesCalls;
+
+        var all = await s.W.RecurringService.ListForVehiclesAsync([s.Car, van, bare], default);
+
+        Assert.Equal(calls + 1, s.W.Recurring.ListForVehiclesCalls);
+        Assert.Equal(200L, Assert.Single(all[s.Car.Id]).Status.DistanceLeft);
+        Assert.Equal(RecurrenceState.Overdue, Assert.Single(all[van.Id]).Status.State);
+        Assert.Empty(all[bare.Id]);
+        Assert.Equal((await s.W.RecurringService.ListAsync(s.Car.Id, default)).Select(i => i.Item.Id), all[s.Car.Id].Select(i => i.Item.Id));
+    }
+
+    [Fact]
+    public async Task ListForVehicles_FollowsTheAccessRulesOfTheVehiclesLogs()
+    {
+        var s = await Setup();
+        await s.W.RecurringService.AddAsync(s.Car.Id, Oil(), default);
+
+        s.W.Current.SignInAs(s.Bob);
+        Assert.Empty((await s.W.RecurringService.ListForVehiclesAsync([s.Car], default))[s.Car.Id]); // a stranger sees nothing
+
+        s.W.Grants.Items.Add(AccessGrant.Create(s.Alice.Id, s.Bob.Id, AccessLevel.View));
+        Assert.Single((await s.W.RecurringService.ListForVehiclesAsync([s.Car], default))[s.Car.Id]);
+
+        s.W.Grants.Items.Clear();
+        s.W.ResourceGrants.Items.Add(ResourceGrant.Create(ResourceType.Vehicle, s.Car.Id, s.Bob.Id, GrantedFeature.Logs, AccessLevel.Edit));
+        Assert.Single((await s.W.RecurringService.ListForVehiclesAsync([s.Car], default))[s.Car.Id]); // a logs grant on that vehicle counts
+    }
+
+    [Fact]
     public async Task ATrashedVehicle_ShowsNoSchedules()
     {
         var s = await Setup();

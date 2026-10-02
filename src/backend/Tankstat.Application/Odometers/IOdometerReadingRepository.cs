@@ -14,6 +14,9 @@ public interface IOdometerReadingRepository
     /// <summary>The most recent reading (by date, then value), for pre-filling forms.</summary>
     Task<OdometerReading?> LatestAsync(Guid vehicleId, CancellationToken ct);
 
+    /// <summary>The most recent reading of each of the vehicles in one query; vehicles without a reading are missing from the result.</summary>
+    Task<IReadOnlyDictionary<Guid, OdometerReading>> LatestForVehiclesAsync(IReadOnlyCollection<Guid> vehicleIds, CancellationToken ct);
+
     /// <summary>Whether the vehicle has any reading at all, trashed ones included.</summary>
     Task<bool> AnyAsync(Guid vehicleId, CancellationToken ct);
 }

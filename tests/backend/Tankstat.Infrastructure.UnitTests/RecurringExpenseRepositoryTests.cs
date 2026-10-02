@@ -30,6 +30,22 @@ public class RecurringExpenseRepositoryTests
     private static async Task<AppDbContext> Context(TestDatabase db) => await db.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
 
     [Fact]
+    public async Task ListForVehicles_LoadsTheItemsOfTheGivenVehiclesOnly_ByTitle()
+    {
+        await using var db = new TestDatabase();
+        var car = await AddVehicle(db);
+        var van = await AddVehicle(db);
+        var other = await AddVehicle(db);
+        var repo = db.Get<IRecurringExpenseRepository>();
+        foreach (var item in new[] { Item(car, "Tyres"), Item(van, "Insurance"), Item(car, "Oil"), Item(other, "Not asked for") }) await repo.AddAsync(item, default);
+
+        var loaded = await repo.ListForVehiclesAsync([car.Id, van.Id], default);
+
+        Assert.Equal(["Insurance", "Oil", "Tyres"], loaded.Select(i => i.Title));
+        Assert.Empty(await repo.ListForVehiclesAsync([], default));
+    }
+
+    [Fact]
     public async Task AnItem_IsStoredAndLoadedBack_WithEveryField()
     {
         await using var db = new TestDatabase();

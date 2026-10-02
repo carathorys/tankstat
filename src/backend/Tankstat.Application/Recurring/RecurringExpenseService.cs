@@ -38,14 +38,36 @@ public sealed class RecurringExpenseService(
     public async Task<IReadOnlyList<RecurringItem>> ListAsync(Guid vehicleId, CancellationToken ct)
     {
         if (await VisibleVehicleAsync(vehicleId, ct) is null) return [];
-        var current = (await odometer.LatestAsync(vehicleId, ct))?.Value;
-        return (await items.ListForVehicleAsync(vehicleId, ct))
-            .Select(i => new RecurringItem(i, RecurrenceCalculator.Evaluate(i, Today, current)))
-            .OrderByDescending(r => r.Status.State)
-            .ThenBy(r => r.Status.DueDate ?? DateOnly.MaxValue)
-            .ThenBy(r => r.Item.Title, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        return Evaluate(await items.ListForVehicleAsync(vehicleId, ct), (await odometer.LatestAsync(vehicleId, ct))?.Value);
     }
+
+    /// <summary>
+    /// The recurring expenses of many (already loaded) vehicles at once, for lists of vehicles: the logs access is decided from one scope
+    /// and the schedules and latest odometers come from one query each, instead of several queries per vehicle. Vehicles whose logs may
+    /// not be seen get an empty list.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<RecurringItem>>> ListForVehiclesAsync(IReadOnlyCollection<Vehicle> vehicles, CancellationToken ct)
+    {
+        var result = vehicles.ToDictionary(v => v.Id, _ => (IReadOnlyList<RecurringItem>)[]);
+        if (vehicles.Count == 0) return result;
+
+        var scope = await access.LogScopeAsync(AccessLevel.View, ct);
+        var visible = vehicles.Where(v => scope.Contains(v.OwnerId, v.Id)).Select(v => v.Id).ToList();
+        if (visible.Count == 0) return result;
+
+        var schedules = (await items.ListForVehiclesAsync(visible, ct)).ToLookup(i => i.VehicleId);
+        var readings = schedules.Count == 0 ? new Dictionary<Guid, Domain.Odometers.OdometerReading>() : await odometer.LatestForVehiclesAsync([.. schedules.Select(g => g.Key)], ct);
+        foreach (var group in schedules)
+            result[group.Key] = Evaluate(group, readings.TryGetValue(group.Key, out var reading) ? reading.Value : null);
+        return result;
+    }
+
+    private IReadOnlyList<RecurringItem> Evaluate(IEnumerable<RecurringExpense> schedules, long? currentOdometer) => schedules
+        .Select(i => new RecurringItem(i, RecurrenceCalculator.Evaluate(i, Today, currentOdometer)))
+        .OrderByDescending(r => r.Status.State)
+        .ThenBy(r => r.Status.DueDate ?? DateOnly.MaxValue)
+        .ThenBy(r => r.Item.Title, StringComparer.OrdinalIgnoreCase)
+        .ToList();
 
     public async Task<RecurringItem> AddAsync(Guid vehicleId, RecurringExpenseInput input, CancellationToken ct)
     {

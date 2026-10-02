@@ -12,6 +12,13 @@ internal sealed class RecurringExpenseRepository(IDbContextFactory<AppDbContext>
         return await db.RecurringExpenses.AsNoTracking().Where(r => r.VehicleId == vehicleId).OrderBy(r => r.Title).ThenBy(r => r.Id).ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<RecurringExpense>> ListForVehiclesAsync(IReadOnlyCollection<Guid> vehicleIds, CancellationToken ct)
+    {
+        if (vehicleIds.Count == 0) return [];
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.RecurringExpenses.AsNoTracking().Where(r => vehicleIds.Contains(r.VehicleId)).OrderBy(r => r.Title).ThenBy(r => r.Id).ToListAsync(ct);
+    }
+
     public async Task<RecurringExpense?> FindAsync(Guid id, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);

@@ -94,6 +94,27 @@ public class LogsAndReadingsTests
     }
 
     [Fact]
+    public async Task LatestForVehicles_GivesTheLatestReadingOfEachVehicle_InOneQuery()
+    {
+        await using var db = new TestDatabase();
+        var car = await AddVehicle(db);
+        var other = await AddVehicle(db);
+        var empty = await AddVehicle(db);
+        await AddLog(db, car, new(2026, 8, 1), 1000);
+        await AddLog(db, car, new(2026, 9, 1), 2000);
+        await AddLog(db, car, new(2026, 9, 1), 2100); // same day: the higher value wins, like LatestAsync
+        await AddLog(db, other, new(2026, 7, 1), 99);
+        var readings = db.Get<IOdometerReadingRepository>();
+
+        var latest = await readings.LatestForVehiclesAsync([car.Id, other.Id, empty.Id], default);
+
+        Assert.Equal([2100, 99], [latest[car.Id].Value, latest[other.Id].Value]);
+        Assert.False(latest.ContainsKey(empty.Id));
+        Assert.Equal((await readings.LatestAsync(car.Id, default))!.Id, latest[car.Id].Id);
+        Assert.Empty(await readings.LatestForVehiclesAsync([], default));
+    }
+
+    [Fact]
     public async Task NeighbourReadings_AreFoundByDate_IgnoringTheOneBeingEdited()
     {
         await using var db = new TestDatabase();

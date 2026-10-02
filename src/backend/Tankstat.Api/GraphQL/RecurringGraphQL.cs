@@ -1,3 +1,4 @@
+using GreenDonut;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Recurring;
 using Tankstat.Application.Vehicles;
@@ -38,12 +39,23 @@ public sealed record RecurringExpenseInfo(
         new RecurrenceStatusInfo(r.Status.State, r.Status.Limit, r.Status.DueDate, r.Status.DueOdometer, r.Status.DaysLeft, r.Status.DistanceLeft));
 }
 
+/// <summary>The recurring expenses of the vehicles of a response, loaded together (one access check, one query for the schedules, one for the odometers).</summary>
+public sealed class RecurringByVehicleLoader(RecurringExpenseService recurring, IBatchScheduler scheduler, DataLoaderOptions options)
+    : BatchDataLoader<Vehicle, IReadOnlyList<RecurringItem>>(scheduler, options)
+{
+    protected override async Task<IReadOnlyDictionary<Vehicle, IReadOnlyList<RecurringItem>>> LoadBatchAsync(IReadOnlyList<Vehicle> keys, CancellationToken ct)
+    {
+        var loaded = await recurring.ListForVehiclesAsync(keys, ct);
+        return keys.ToDictionary(v => v, v => loaded[v.Id]);
+    }
+}
+
 [ExtendObjectType<Vehicle>]
 public sealed class VehicleRecurringExtensions
 {
     /// <summary>The vehicle's recurring expenses, most urgent first.</summary>
-    public async Task<IReadOnlyList<RecurringExpenseInfo>> GetRecurring([Parent] Vehicle vehicle, [Service] RecurringExpenseService recurring, CancellationToken ct) =>
-        (await recurring.ListAsync(vehicle.Id, ct)).Select(RecurringExpenseInfo.From).ToList();
+    public async Task<IReadOnlyList<RecurringExpenseInfo>> GetRecurring([Parent] Vehicle vehicle, RecurringByVehicleLoader loader, CancellationToken ct) =>
+        (await loader.LoadAsync(vehicle, ct) ?? []).Select(RecurringExpenseInfo.From).ToList();
 }
 
 [ExtendObjectType(OperationTypeNames.Mutation)]
