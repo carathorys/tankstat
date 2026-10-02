@@ -258,12 +258,16 @@ mise run seed -- --help
 | `--vehicles <n>` | vehicles to create (default 25) |
 | `--trashed <n>` | additional vehicles that are in the trash (default 0) |
 | `--refuelings <n\|a-b>` | refuelings per vehicle, a number or a range (default 20) |
+| `--recurring <n\|a-b>` | recurring expenses per vehicle, at most 5 (default 0-2) |
+| `--notifications <n>` | notifications about access changes (default 15) |
 | `--seed <n>` | same seed, same data (default 1234) |
 | `--provider`, `--connection` | override the database (otherwise `Database__*` settings; `mise run seed` targets the `dev:api` SQLite file) |
 | `--uploads <folder>` | the folder of uploaded pictures, which is deleted too because nothing would point to the pictures any more (default: `Storage:Path` if configured) |
 | `--yes` | skip the "type yes" confirmation before the database is deleted |
 
 The fuel logs are consistent: per vehicle, dates and the odometer only increase, the last fill-up is recent, litres follow the distance at a per-vehicle consumption, and prices drift slowly. Trashed vehicles keep their fuel logs.
+
+Recurring expenses (insurance, vignette, inspection, oil change, tyres; the distance ones only on vehicles with a reading) are last done so that some are overdue, some due soon and the rest upcoming; the app turns the first two into reminders when the notifications are looked at, as it always does. The access-change notifications are seeded directly for the anonymous user (there is nobody to share with without authentication), over the last two weeks, about made-up people and the first live vehicles: about a third already read, a few standing for several changes, and one "more changes" digest when there are at least ten.
 
 ## Data model and migrations
 
