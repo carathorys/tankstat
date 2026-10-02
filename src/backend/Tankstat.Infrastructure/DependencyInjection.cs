@@ -47,7 +47,9 @@ public static class DependencyInjection
             builder.ConfigureWarnings(w => w.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning));
             switch (db.Provider)
             {
-                case DatabaseProvider.Sqlite: builder.UseSqlite(db.ConnectionString!, o => o.MigrationsAssembly(migrations)); break;
+                case DatabaseProvider.Sqlite:
+                    builder.UseSqlite(db.ConnectionString!, o => o.MigrationsAssembly(migrations)).AddInterceptors(SqliteUnicodeLower.Instance);
+                    break;
                 case DatabaseProvider.PostgreSql: builder.UseNpgsql(db.ConnectionString!, o => o.MigrationsAssembly(migrations)); break;
                 case DatabaseProvider.SqlServer: builder.UseSqlServer(db.ConnectionString!, o => o.MigrationsAssembly(migrations)); break;
                 case DatabaseProvider.MySql: builder.UseMySQL(db.ConnectionString!, o => o.MigrationsAssembly(migrations)); break;

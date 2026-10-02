@@ -77,6 +77,25 @@ public class SortingAndPagingTests
         Assert.Equal(expected.Length, count);
     }
 
+    [Theory]
+    [InlineData("ŐRS", "Őrs")]       // the accented capital found with capitals ...
+    [InlineData("őrs", "Őrs")]       // ... and with the lower-case letter
+    [InlineData("ÁRVÍZ", "árvíz")]   // and the other way round
+    public async Task Search_IgnoresTheCaseOfAccentedLetters(string search, string name)
+    {
+        await using var db = new TestDatabase();
+        var owner = User.CreateLocal("zoe@x.co", "Zoe", false);
+        await db.Get<IUserRepository>().AddAsync(owner, default);
+        var repo = db.Get<IVehicleRepository>();
+        await repo.AddAsync(TestData.Vehicle(owner.Id, name, null, FuelType.Petrol), default);
+        await repo.AddAsync(TestData.Vehicle(owner.Id, "Other", null, FuelType.Petrol), default);
+
+        var found = await repo.ListAsync(OwnerScope.All, new VehicleQuery(Search: search), default);
+
+        Assert.Equal([name], found.Select(v => v.Name));
+        Assert.Equal(1, await repo.CountAsync(OwnerScope.All, search, default));
+    }
+
     [Fact]
     public async Task Search_PagesTheMatchesOnly_AndTreatsWildcardsAsPlainText()
     {

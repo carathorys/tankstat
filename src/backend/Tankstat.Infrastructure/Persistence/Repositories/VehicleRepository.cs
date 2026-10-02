@@ -51,7 +51,7 @@ internal sealed class VehicleRepository(IDbContextFactory<AppDbContext> dbFactor
         return ordered.ThenBy(v => v.Id).Skip(q.Skip).Take(q.Take);
     }
 
-    /// <summary>Vehicles whose name or license plate contains the text, ignoring case (lower-cased on both sides, so it translates on every provider).</summary>
+    /// <summary>Vehicles whose name or license plate contains the text, ignoring case (lower-cased on both sides, so it translates on every provider; SQLite folds accents through <see cref="SqliteUnicodeLower"/>).</summary>
     private static IQueryable<Vehicle> Matching(IQueryable<Vehicle> vehicles, string? search)
     {
         if (string.IsNullOrWhiteSpace(search)) return vehicles;
