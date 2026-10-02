@@ -214,6 +214,20 @@ internal sealed class InMemoryLogPhotos : ILogPhotoRepository
     public Task RemoveAsync(LogPhoto photo, CancellationToken ct) { Items.Remove(photo); return Task.CompletedTask; }
 }
 
+/// <summary>Records what a delete asked for; the real moving and purging is covered against SQLite in the infrastructure tests.</summary>
+internal sealed class FakeUserData : IUserDataRepository
+{
+    public HashSet<Guid> Owners { get; } = [];
+    public List<(Guid UserId, Guid? MoveTo)> Deleted { get; } = [];
+    public List<Guid> PurgedPictures { get; } = [];
+    public Task<bool> OwnsDataAsync(Guid userId, CancellationToken ct) => Task.FromResult(Owners.Contains(userId));
+    public Task<IReadOnlyList<Guid>> DeleteUserAsync(Guid userId, Guid? moveDataTo, CancellationToken ct)
+    {
+        Deleted.Add((userId, moveDataTo));
+        return Task.FromResult<IReadOnlyList<Guid>>(PurgedPictures.ToList());
+    }
+}
+
 internal sealed class InMemoryImageStore : IImageStore
 {
     public Dictionary<Guid, byte[]> Files { get; } = [];
@@ -260,6 +274,7 @@ internal sealed class InMemoryTokens : IPasswordResetTokenRepository
     public Task<PasswordResetToken?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(t => t.Id == id));
     public Task AddAsync(PasswordResetToken t, CancellationToken ct) { Items.Add(t); return Task.CompletedTask; }
     public Task UpdateAsync(PasswordResetToken t, CancellationToken ct) => Task.CompletedTask;
+    public Task RemoveForUserAsync(Guid userId, CancellationToken ct) { Items.RemoveAll(t => t.UserId == userId); return Task.CompletedTask; }
 }
 
 internal sealed class InMemoryGrants : IAccessGrantRepository
@@ -311,6 +326,8 @@ internal sealed class World
     public InMemoryExpenses Expenses { get; } = new();
     public InMemoryCharts Charts { get; } = new();
     public InMemoryUsers Users { get; } = new();
+    public FakeUserData UserData { get; } = new();
+    public ImportSessionStore ImportSessions { get; }
     public InMemoryTokens Tokens { get; } = new();
     public InMemoryGrants Grants { get; } = new();
     public InMemoryResourceGrants ResourceGrants { get; } = new();
@@ -345,6 +362,7 @@ internal sealed class World
         var options = Options.Create();
 
         Access = new AccessService(Current, options, Grants, Settings, ResourceGrants);
+        ImportSessions = new ImportSessionStore(Clock);
         Odometer = new OdometerService(new InMemoryReadings(Refuelings, Expenses));
         var resets = new PasswordResetService(Tokens, Users, Email, options, Clock);
         var logPhotoAccess = new LogPhotoAccess(Access, Vehicles, Expenses, Refuelings, LogPhotos);
@@ -353,12 +371,12 @@ internal sealed class World
         VehicleService = new VehicleService(Vehicles, Refuelings, Access, Odometer, ImageService, Clock);
         RefuelingService = new RefuelingService(Vehicles, Refuelings, Access, Odometer, Photos, Clock);
         ExpenseService = new ExpenseService(Vehicles, Expenses, Access, Odometer, Photos, Clock);
-        Imports = new ImportService([new FuelioCsvParser()], new ImportSessionStore(Clock), Access, VehicleService, RefuelingService, ExpenseService, Refuelings, Expenses, new VehicleDefaultsOptions { Currency = "HUF" }.Create());
+        Imports = new ImportService([new FuelioCsvParser()], ImportSessions, Access, VehicleService, RefuelingService, ExpenseService, Refuelings, Expenses, new VehicleDefaultsOptions { Currency = "HUF" }.Create());
         Stats = new StatsService(Vehicles, new InMemoryStats(Refuelings, Expenses), Access, Clock);
         ChartService = new ChartService(Vehicles, Charts, Access, Clock);
         Sharing = new ResourceSharingService(Vehicles, ResourceGrants, Users, Access);
         Auth = new AuthService(Users, new FakeHasher(), resets, Access, options, Clock);
-        UserService = new UserService(Access, Users, resets, options);
+        UserService = new UserService(Access, Users, UserData, resets, new FakeHasher(), ImageService, ImportSessions, options);
         AccessAdmin = new AccessAdminService(Access, Settings, Grants, Users);
     }
 

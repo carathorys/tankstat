@@ -34,6 +34,12 @@ public sealed class ImportSessionStore(TimeProvider clock)
 
     public void Remove(string token) => _entries.TryRemove(token, out _);
 
+    /// <summary>Drops everything the user still had pending (used when the account is deleted).</summary>
+    public void RemoveForUser(Guid userId)
+    {
+        foreach (var key in _entries.Where(e => e.Value.UserId == userId).Select(e => e.Key).ToList()) _entries.TryRemove(key, out _);
+    }
+
     private void Sweep()
     {
         var now = clock.GetUtcNow();

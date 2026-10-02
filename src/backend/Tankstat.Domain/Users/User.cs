@@ -109,6 +109,16 @@ public sealed class User
         if (!string.IsNullOrWhiteSpace(displayName)) DisplayName = displayName.Trim();
     }
 
+    /// <summary>An administrator's edit of a local user; the e-mail is also the sign-in identity, so the subject follows it.</summary>
+    public void ChangeLocalProfile(string? email, string? displayName)
+    {
+        if (Provider != UserProvider.Local) throw new DomainException("user.profileLocalOnly", "The profile of users from an external provider comes from that provider.");
+        var normalized = NormalizeEmail(email);
+        Email = normalized;
+        Subject = normalized;
+        DisplayName = Name(displayName, normalized);
+    }
+
     public void SetAdmin(bool isAdmin) => IsAdmin = isAdmin;
 
     public void SetAvatar(Guid? imageId) => AvatarImageId = imageId;

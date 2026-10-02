@@ -81,6 +81,12 @@ internal sealed class PasswordResetTokenRepository(IDbContextFactory<AppDbContex
         db.PasswordResetTokens.Update(token);
         await db.SaveChangesAsync(ct);
     }
+
+    public async Task RemoveForUserAsync(Guid userId, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        await db.PasswordResetTokens.Where(t => t.UserId == userId).ExecuteDeleteAsync(ct);
+    }
 }
 
 internal sealed class AccessGrantRepository(IDbContextFactory<AppDbContext> dbFactory) : IAccessGrantRepository

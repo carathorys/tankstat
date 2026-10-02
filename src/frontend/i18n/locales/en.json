@@ -229,7 +229,26 @@
     "grantAction": "Grant access",
     "choose": "Choose…",
     "levelsHelp": "Delete is the only level that may permanently delete; every level includes the ones before it.",
-    "grantDelete": "{{grantee}} may view, edit and delete permanently the data of {{owner}}"
+    "grantDelete": "{{grantee}} may view, edit and delete permanently the data of {{owner}}",
+    "edit": "Edit {{name}}",
+    "editTitle": "Edit {{name}}",
+    "editDescription": "Changing the e-mail changes how this user signs in.",
+    "save": "Save",
+    "setPasswordFor": "Set password for {{name}}",
+    "passwordTitle": "Set password for {{name}}",
+    "passwordDescription": "The user is signed out everywhere and must use this password from now on.",
+    "setPassword": "Set password",
+    "delete": "Delete {{name}}",
+    "deleteTitle": "Delete {{name}}?",
+    "deleteDescription": "This removes the account and signs the user out. If they own vehicles or logs, choose what happens to them.",
+    "dataChoice": "Their data",
+    "dataChoiceNone": "Choose (needed if they own data)",
+    "dataMove": "Move to another user",
+    "dataPurge": "Delete permanently",
+    "moveTo": "Move everything to",
+    "purgeWarning": "Their vehicles and all their logs, expenses and charts are deleted for good, including the trash.",
+    "deleteConfirm": "Delete user",
+    "moveGrantsNote": "Sharing moves along: the other user takes over who may see this user's data, and whose data this user could see."
   },
   "errors": {
     "network": "Cannot reach the server. Check your connection and try again.",
@@ -280,7 +299,14 @@
       "emailExists": "A user with this e-mail address already exists.",
       "onlyStandalone": "Users can only be created here in standalone authentication mode.",
       "cannotDemoteSelf": "You cannot remove your own administrator rights.",
-      "cannotDisableSelf": "You cannot disable your own account."
+      "cannotDisableSelf": "You cannot disable your own account.",
+      "profileLocalOnly": "Name and e-mail of users from an external provider come from that provider.",
+      "adminPasswordDisabled": "Setting passwords directly is turned off on this server. Send a reset link instead.",
+      "cannotDeleteSelf": "You cannot delete your own account.",
+      "lastAdmin": "The last active administrator cannot be deleted.",
+      "dataChoiceRequired": "This user owns data: choose to move it to another user or to delete it.",
+      "moveTargetRequired": "Choose another user to receive the data.",
+      "deleteLocalOnly": "Users from an external provider come back at their next sign-in. Disable them instead."
     },
     "password": {
       "tooShort": "The password must be at least {{min}} characters long.",

@@ -13,6 +13,8 @@ export interface FieldDef {
   autoComplete?: string
   /** Defaults to true: the browser-side check blocks submitting an empty field. */
   required?: boolean
+  /** Initial value, e.g. when editing. */
+  defaultValue?: string
 }
 
 /** Text fields on Radix Form (built-in validation messages) with shared busy/error handling for the async submit. */
@@ -57,7 +59,7 @@ export function FieldForm({
                 </Text>
               </RadixForm.Label>
               <RadixForm.Control asChild>
-                <TextField.Root type={f.type ?? 'text'} autoComplete={f.autoComplete} required={f.required ?? true} />
+                <TextField.Root type={f.type ?? 'text'} autoComplete={f.autoComplete} required={f.required ?? true} defaultValue={f.defaultValue} />
               </RadixForm.Control>
               <RadixForm.Message match="valueMissing" asChild>
                 <Text size="1" color="red">

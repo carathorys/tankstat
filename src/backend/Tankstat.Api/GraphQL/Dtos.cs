@@ -41,4 +41,6 @@ public sealed record LoginInput(string Email, string Password);
 public sealed record ChangePasswordInput(string CurrentPassword, string NewPassword);
 public sealed record ResetPasswordInput(string Token, string NewPassword);
 public sealed record CreateUserInput(string Email, string? DisplayName, bool IsAdmin);
+public sealed record UpdateUserInput(Guid UserId, string Email, string? DisplayName);
+public sealed record DeleteUserInput(Guid UserId, UserDataDisposition? Data, Guid? MoveToUserId);
 public sealed record SetAccessGrantInput(Guid OwnerId, Guid GranteeId, AccessLevel Level);

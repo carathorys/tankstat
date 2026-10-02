@@ -35,7 +35,11 @@ function setup(route: string, viewport: 'desktop' | 'phone' = 'desktop') {
     graphql.query('Admin', () =>
       HttpResponse.json({
         data: {
-          users: [{ id: 'u1', provider: 'LOCAL', email: 'alice@example.com', displayName: 'Alice', isAdmin: true, isDisabled: false, avatarUrl: null }],
+          users: [
+            { id: 'u1', provider: 'LOCAL', email: 'alice@example.com', displayName: 'Alice', isAdmin: true, isDisabled: false, avatarUrl: null },
+            { id: 'u2', provider: 'LOCAL', email: 'bob@example.com', displayName: 'Bob', isAdmin: false, isDisabled: false, avatarUrl: null },
+          ],
+          canSetUserPasswords: true,
           accessSettings: { defaultLevelForOthers: 'NONE' },
           accessGrants: [],
         },
@@ -154,4 +158,23 @@ it('the edit refuelling dialog with its photos is free of violations', async () 
   expect(within(dialog).getByRole('button', { name: 'Take photo' })).toBeInTheDocument()
 
   await check(document.body)
+})
+
+it('the user administration dialogs are labelled, described and free of violations', async () => {
+  const { ui } = setup('/admin')
+  const table = await screen.findByRole('table')
+  await within(table).findByText('bob@example.com')
+
+  for (const [button, dialogName] of [
+    ['Edit Bob', 'Edit Bob'],
+    ['Set password for Bob', 'Set password for Bob'],
+    ['Delete Bob', 'Delete Bob?'],
+  ] as const) {
+    await ui.click(within(table).getByRole('button', { name: button }))
+    const dialog = await screen.findByRole('dialog', { name: dialogName })
+    expect(dialog).toHaveAccessibleDescription()
+    await check(document.body)
+    await ui.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  }
 })

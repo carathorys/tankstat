@@ -69,7 +69,7 @@ Authentication is configured through the `Auth` and `Smtp` sections. Every setti
 | `Auth__Mode` value | Who authenticates | Required settings (see the tables below) | Notes |
 | --- | --- | --- | --- |
 | `None` | nobody | none | **Unsafe.** Everyone sees and changes everything; the UI shows a warning. Data belongs to an anonymous owner; there are no profile pictures, no administration. |
-| `Standalone` | the app itself | `Auth__Standalone__AdminEmail` and `Auth__Standalone__AdminPassword` on the first start (while no local administrator exists) | Login with e-mail and password, password change, one-time reset links, lockout, user management by administrators. |
+| `Standalone` | the app itself | `Auth__Standalone__AdminEmail` and `Auth__Standalone__AdminPassword` on the first start (while no local administrator exists) | Login with e-mail and password, password change, one-time reset links, lockout, user management by administrators (create, edit name and e-mail, reset link, disable, delete). |
 | `Oidc` | an OpenID Connect provider | `Auth__Oidc__Authority`, `Auth__Oidc__ClientId`, `Auth__Oidc__ClientSecret` | Server-side authorization-code flow with PKCE; the browser only gets an HttpOnly session cookie. Redirect URI to register: `https://<your-host>/auth/oidc/callback`. |
 | `ProxyHeader` | a trusted reverse proxy (Authelia, Authentik, Cloudflare Access, oauth2-proxy, ...) | `Auth__ProxyHeader__TrustedProxies__0` (at least one) | The app trusts a user header, but only from the listed proxy addresses. There is no login or logout in the app. |
 
@@ -92,6 +92,9 @@ All modes end in the same place: a user record in the database that owns data.
 | `Auth__Standalone__MaxFailedAttempts` | integer | `5` | no | Failed logins before the account is locked. |
 | `Auth__Standalone__LockoutMinutes` | integer (minutes) | `15` | no | How long a locked account stays locked. |
 | `Auth__Standalone__ResetTokenMinutes` | integer (minutes) | `60` | no | How long a password setup/reset link is valid (it can be used once). |
+| `Auth__Standalone__AllowAdminSetPassword` | `true` / `false` | `false` | no | Lets administrators set a user's password directly in the UI (the user is signed out everywhere). Off by default: administrators then only issue reset links. |
+
+Deleting a user: if they own vehicles or logs, the administrator chooses to move everything (including trashed items, authorship and sharing grants) to another user, or to delete it permanently. The last active administrator and your own account cannot be deleted. Name and e-mail of `Oidc`/`ProxyHeader` users come from the provider and are not editable.
 
 Facts that matter when configuring: passwords need 10 to 128 characters; changing or resetting a password signs out every other session; administrators create users in the UI, which issues a one-time setup link (e-mailed when `Smtp` is configured, otherwise shown to the administrator); users can request a reset link themselves (always answered the same way, so accounts cannot be discovered); the session cookie is `tankstat.session` (HttpOnly, `SameSite=Lax`, valid 14 days, sliding).
 
