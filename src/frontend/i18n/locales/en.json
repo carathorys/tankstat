@@ -612,7 +612,12 @@
       "owner": "Owner: {{name}}",
       "trend": "Spending in the last six months",
       "recurringTitle": "Needs attention"
-    }
+    },
+    "search": "Search vehicles",
+    "searchPlaceholder": "Name or license plate",
+    "showing": "Showing {{shown}} of {{total}} vehicles",
+    "more": "Show more vehicles",
+    "noMatches": "No vehicles match \"{{search}}\"."
   },
   "dashboard": {
     "kpi": {

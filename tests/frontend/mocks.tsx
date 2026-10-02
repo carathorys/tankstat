@@ -146,7 +146,7 @@ export function fakeVehicleBackend(initial: FakeVehicle[] = [], trashed: FakeVeh
     trash: trashed.map((v) => ({ ...v, deletedAt: '2026-10-01T08:00:00Z' })) as Trashed[],
     calls: {} as Record<string, unknown[]>,
     /** Variables of every Vehicles / Trash query the UI sent. */
-    requests: { Vehicles: [] as Record<string, unknown>[], Trash: [] as Record<string, unknown>[] },
+    requests: { Vehicles: [] as Record<string, unknown>[], Trash: [] as Record<string, unknown>[], Welcome: [] as Record<string, unknown>[] },
     nextId: 100,
     /** How many trashed vehicles this user may delete for good (defaults to all of them). */
     trashDeletable: undefined as number | undefined,
@@ -161,7 +161,15 @@ export function fakeVehicleBackend(initial: FakeVehicle[] = [], trashed: FakeVeh
         data: { vehicles: page(state.vehicles, variables as unknown as GridVars), vehicleCount: state.vehicles.length },
       })
     }),
-    graphql.query('Welcome', () => HttpResponse.json({ data: { myVehicles: state.vehicles } })),
+    graphql.query('Welcome', ({ variables }) => {
+      state.requests.Welcome.push(variables)
+      const term = String(variables.search ?? '').toLowerCase()
+      const found = state.vehicles
+        .filter((v) => !term || v.name.toLowerCase().includes(term) || (v.licensePlate ?? '').toLowerCase().includes(term))
+        .sort((a, b) => a.name.localeCompare(b.name))
+      const skip = Number(variables.skip ?? 0)
+      return HttpResponse.json({ data: { myVehicles: found.slice(skip, skip + Number(variables.take ?? 50)), myVehicleCount: found.length } })
+    }),
     graphql.query('ImportTargets', () => HttpResponse.json({ data: { myVehicles: state.vehicles } })),
     graphql.query('Trash', ({ variables }) => {
       state.requests.Trash.push(variables)

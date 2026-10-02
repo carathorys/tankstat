@@ -1,6 +1,6 @@
-# The home page: a card per vehicle the user owns or that is shared with them, with the key figures the server calculated.
-query Welcome {
-  myVehicles {
+# The home page: a page of cards (infinite scroll) for the vehicles the user owns or that are shared with them, optionally searched by name or plate, with the key figures the server calculated.
+query Welcome($search: String, $skip: Int!, $take: Int!) {
+  myVehicles(search: $search, skip: $skip, take: $take) {
     id
     name
     licensePlate
@@ -45,6 +45,7 @@ query Welcome {
       }
     }
   }
+  myVehicleCount(search: $search)
 }
 
 # A vehicle's dashboard: the key figures and the saved charts (the user's own and the shared ones). Each chart loads its own data.

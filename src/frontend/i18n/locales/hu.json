@@ -612,7 +612,12 @@
       "owner": "Tulajdonos: {{name}}",
       "trend": "Költés az elmúlt hat hónapban",
       "recurringTitle": "Figyelmet igényel"
-    }
+    },
+    "search": "Járművek keresése",
+    "searchPlaceholder": "Név vagy rendszám",
+    "showing": "{{shown}} látható a(z) {{total}} járműből",
+    "more": "További járművek",
+    "noMatches": "Nincs a(z) \"{{search}}\" keresésnek megfelelő jármű."
   },
   "dashboard": {
     "kpi": {
