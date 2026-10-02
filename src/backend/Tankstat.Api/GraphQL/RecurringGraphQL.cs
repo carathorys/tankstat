@@ -1,0 +1,67 @@
+using Microsoft.Extensions.Options;
+using Tankstat.Application.Recurring;
+using Tankstat.Application.Vehicles;
+using Tankstat.Domain.Recurring;
+using Tankstat.Domain.Vehicles;
+
+namespace Tankstat.Api.GraphQL;
+
+/// <param name="WarnDays">Omit for the default (30).</param>
+/// <param name="WarnDistance">Omit for the default (500, in the vehicle's distance unit).</param>
+public sealed record AddRecurringExpenseInput(
+    Guid VehicleId, string Title, string? Category, string? Note, RecurrenceKind Kind, int? IntervalMonths, long? IntervalDistance,
+    DateOnly LastDoneDate, long? LastDoneOdometer, int? WarnDays, long? WarnDistance);
+
+public sealed record UpdateRecurringExpenseInput(
+    Guid Id, string Title, string? Category, string? Note, RecurrenceKind Kind, int? IntervalMonths, long? IntervalDistance,
+    DateOnly LastDoneDate, long? LastDoneOdometer, int? WarnDays, long? WarnDistance);
+
+/// <param name="CreateExpense">Also log the cost as an expense (needs <c>amount</c>).</param>
+/// <param name="Currency">ISO 4217 code; omit to use the instance default.</param>
+public sealed record MarkRecurringExpenseDoneInput(Guid Id, DateOnly Date, long? Odometer, bool CreateExpense, decimal? Amount, string? Currency);
+
+/// <summary>Where a recurring expense stands today. The days and distance left are negative once it is overdue; null when that side does not apply.</summary>
+public sealed record RecurrenceStatusInfo(RecurrenceState State, RecurrenceLimit? Limit, DateOnly? DueDate, long? DueOdometer, int? DaysLeft, long? DistanceLeft);
+
+/// <summary>A schedule such as insurance or an oil change, with its status. Intervals and odometers are in the vehicle's distance unit.</summary>
+public sealed record RecurringExpenseInfo(
+    Guid Id, Guid VehicleId, string Title, string? Category, string? Note, RecurrenceKind Kind, int? IntervalMonths, long? IntervalDistance,
+    DateOnly LastDoneDate, long? LastDoneOdometer, int WarnDays, long WarnDistance, RecurrenceStatusInfo Status)
+{
+    public static RecurringExpenseInfo From(RecurringItem r) => new(
+        r.Item.Id, r.Item.VehicleId, r.Item.Title, r.Item.Category, r.Item.Note, r.Item.Kind, r.Item.IntervalMonths, r.Item.IntervalDistance,
+        r.Item.LastDoneDate, r.Item.LastDoneOdometer, r.Item.WarnDays, r.Item.WarnDistance,
+        new RecurrenceStatusInfo(r.Status.State, r.Status.Limit, r.Status.DueDate, r.Status.DueOdometer, r.Status.DaysLeft, r.Status.DistanceLeft));
+}
+
+[ExtendObjectType<Vehicle>]
+public sealed class VehicleRecurringExtensions
+{
+    /// <summary>The vehicle's recurring expenses, most urgent first.</summary>
+    public async Task<IReadOnlyList<RecurringExpenseInfo>> GetRecurring([Parent] Vehicle vehicle, [Service] RecurringExpenseService recurring, CancellationToken ct) =>
+        (await recurring.ListAsync(vehicle.Id, ct)).Select(RecurringExpenseInfo.From).ToList();
+}
+
+[ExtendObjectType(OperationTypeNames.Mutation)]
+public sealed class RecurringMutations
+{
+    public async Task<RecurringExpenseInfo> AddRecurringExpense(AddRecurringExpenseInput i, [Service] RecurringExpenseService recurring, CancellationToken ct) =>
+        RecurringExpenseInfo.From(await recurring.AddAsync(i.VehicleId,
+            new RecurringExpenseInput(i.Title, i.Category, i.Note, i.Kind, i.IntervalMonths, i.IntervalDistance, i.LastDoneDate, i.LastDoneOdometer, i.WarnDays, i.WarnDistance), ct));
+
+    public async Task<RecurringExpenseInfo> UpdateRecurringExpense(UpdateRecurringExpenseInput i, [Service] RecurringExpenseService recurring, CancellationToken ct) =>
+        RecurringExpenseInfo.From(await recurring.UpdateAsync(i.Id,
+            new RecurringExpenseInput(i.Title, i.Category, i.Note, i.Kind, i.IntervalMonths, i.IntervalDistance, i.LastDoneDate, i.LastDoneOdometer, i.WarnDays, i.WarnDistance), ct));
+
+    /// <summary>Removes the schedule for good (expenses already logged from it stay).</summary>
+    public async Task<bool> DeleteRecurringExpense(Guid id, [Service] RecurringExpenseService recurring, CancellationToken ct)
+    {
+        await recurring.DeleteAsync(id, ct);
+        return true;
+    }
+
+    /// <summary>Starts the next interval from the given day and odometer and, when asked, logs the cost as an expense.</summary>
+    public async Task<RecurringExpenseInfo> MarkRecurringExpenseDone(
+        MarkRecurringExpenseDoneInput i, [Service] RecurringExpenseService recurring, [Service] IOptions<VehicleDefaultsOptions> defaults, CancellationToken ct) =>
+        RecurringExpenseInfo.From(await recurring.MarkDoneAsync(i.Id, new MarkDoneInput(i.Date, i.Odometer, i.CreateExpense, i.Amount, i.Currency ?? defaults.Value.Currency), ct));
+}
