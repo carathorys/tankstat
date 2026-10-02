@@ -9,6 +9,7 @@ using Tankstat.Application.Auth;
 using Tankstat.Application.Expenses;
 using Tankstat.Application.Images;
 using Tankstat.Application.Odometers;
+using Tankstat.Application.Recurring;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Stats;
 using Tankstat.Application.Users;
@@ -57,6 +58,7 @@ public static class DependencyInjection
         services.AddScoped<IVehicleRepository, VehicleRepository>();
         services.AddScoped<IRefuelingRepository, RefuelingRepository>();
         services.AddScoped<IExpenseRepository, ExpenseRepository>();
+        services.AddScoped<IRecurringExpenseRepository, RecurringExpenseRepository>();
         services.AddScoped<IStatsRepository, StatsRepository>();
         services.AddScoped<IVehicleChartRepository, VehicleChartRepository>();
         services.AddScoped<IUserRepository, UserRepository>();

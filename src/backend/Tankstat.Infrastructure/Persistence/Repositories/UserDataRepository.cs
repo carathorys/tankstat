@@ -54,6 +54,8 @@ internal sealed class UserDataRepository(IDbContextFactory<AppDbContext> dbFacto
 
         await db.Refuelings.IgnoreQueryFilters().Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to), ct);
         await db.Expenses.IgnoreQueryFilters().Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to), ct);
+        await db.RecurringExpenses.Where(x => x.OwnerId == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.OwnerId, to), ct);
+        await db.RecurringExpenses.Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to), ct);
         await db.VehicleCharts.Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to), ct);
 
         await MoveAccessGrantsAsync(db, from, to, ct);
@@ -102,6 +104,7 @@ internal sealed class UserDataRepository(IDbContextFactory<AppDbContext> dbFacto
 
         // Charts they made on other people's vehicles are theirs too (a move re-points them instead).
         await db.VehicleCharts.Where(c => c.CreatedById == userId).ExecuteDeleteAsync(ct);
+        await db.RecurringExpenses.Where(r => r.CreatedById == userId).ExecuteDeleteAsync(ct); // likewise their schedules on other people's vehicles
 
         db.Vehicles.RemoveRange(vehicles); // logs, readings, costs and charts go with them through the database's cascade
         await db.SaveChangesAsync(ct);
