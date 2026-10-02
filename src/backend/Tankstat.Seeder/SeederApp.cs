@@ -61,7 +61,8 @@ public static class SeederApp
         var uploads = options.UploadsPath ?? config["Storage:Path"];
         await output.WriteLineAsync($"Target database: {target}");
         if (!string.IsNullOrWhiteSpace(uploads)) await output.WriteLineAsync($"Uploaded pictures folder (deleted too): {Path.GetFullPath(uploads)}");
-        await output.WriteLineAsync($"This will DELETE it and create it again with {options.Vehicles:N0} vehicles, {options.Trashed:N0} in the trash, {options.RefuelingsPerVehicle} refuelings each.");
+        await output.WriteLineAsync(
+            $"This will DELETE it and create it again with {options.Vehicles:N0} vehicles, {options.Trashed:N0} in the trash, {options.RefuelingsPerVehicle} refuelings and {options.RecurringPerVehicle} recurring expenses each, and {options.Notifications:N0} notifications.");
 
         if (!options.AssumeYes)
         {
@@ -82,7 +83,8 @@ public static class SeederApp
             var seeder = new DatabaseSeeder(services.GetRequiredService<IDbContextFactory<AppDbContext>>(), new DataGenerator(clock));
             var result = await seeder.RecreateAndSeedAsync(options, ct);
             await output.WriteLineAsync(
-                $"Done in {watch.Elapsed.TotalSeconds:F1}s: {result.Vehicles:N0} vehicles, {result.Trashed:N0} in the trash, {result.Refuelings:N0} refuelings (seed {options.RandomSeed}).");
+                $"Done in {watch.Elapsed.TotalSeconds:F1}s: {result.Vehicles:N0} vehicles, {result.Trashed:N0} in the trash, {result.Refuelings:N0} refuelings, " +
+                $"{result.Recurring:N0} recurring expenses, {result.Notifications:N0} notifications (seed {options.RandomSeed}).");
             return Success;
         }
         catch (Exception e) when (e is not OperationCanceledException)
