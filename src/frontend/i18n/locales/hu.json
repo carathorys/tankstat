@@ -150,7 +150,8 @@
       "details": "Részletek",
       "sharing": "Megosztás",
       "expenses": "Költségek",
-      "dashboard": "Áttekintés"
+      "dashboard": "Áttekintés",
+      "recurring": "Ismétlődő"
     },
     "owner": "Tulajdonos",
     "fuel": "Üzemanyag",
@@ -379,6 +380,22 @@
       "needEditToShare": "A grafikon megosztásához szerkesztési jog kell a jármű naplójához.",
       "notYours": "Ezt a grafikont csak a létrehozója módosíthatja.",
       "notFound": "Ez a grafikon nem létezik."
+    },
+    "recurring": {
+      "titleRequired": "Az ismétlődő költségnek kell megnevezés.",
+      "titleTooLong": "A megnevezés legfeljebb {{max}} karakter lehet.",
+      "categoryTooLong": "A kategória legfeljebb {{max}} karakter lehet.",
+      "noteTooLong": "A megjegyzés legfeljebb {{max}} karakter lehet.",
+      "unknownKind": "Ismeretlen fajta: {{value}}.",
+      "monthsInvalid": "Az időköz 1 és {{max}} hónap között lehet.",
+      "distanceInvalid": "A távolságköz legalább 1 kell legyen.",
+      "odometerRequired": "A következő időszak indításához kell a kilométeróra-állás.",
+      "warnDaysInvalid": "A figyelmeztetési idő 0 és {{max}} nap között lehet.",
+      "warnDistanceInvalid": "A figyelmeztetési távolság nem lehet negatív.",
+      "doneBeforeLast": "Nem végezhető el {{date}} előtt, mert akkor volt legutóbb.",
+      "odometerBelowLast": "A kilométeróra nem lehet kevesebb, mint {{last}}, ahol legutóbb elvégezték.",
+      "amountRequired": "A költség rögzítéséhez kell az összeg és a pénznem.",
+      "notFound": "Ez az ismétlődő költség nem létezik."
     }
   },
   "a11y": {
@@ -593,7 +610,8 @@
       "noFillUps": "Még nincs tankolás",
       "logAccess": "Napló: {{level}}",
       "owner": "Tulajdonos: {{name}}",
-      "trend": "Költés az elmúlt hat hónapban"
+      "trend": "Költés az elmúlt hat hónapban",
+      "recurringTitle": "Figyelmet igényel"
     }
   },
   "dashboard": {
@@ -698,5 +716,87 @@
       "ALL": "Teljes időszak",
       "CUSTOM": "Egyéni (ettől – eddig)"
     }
+  },
+  "recurring": {
+    "title": "Ismétlődő költségek",
+    "add": "Ismétlődő költség hozzáadása",
+    "empty": "Még nincs ismétlődő költség. A biztosítás, az olajcsere vagy az éves műszaki vizsga ide kerül, a kezdőlap pedig jelzi, mikor esedékes.",
+    "countLabel_one": "{{count}} ismétlődő költség",
+    "countLabel_other": "{{count}} ismétlődő költség",
+    "viewOnly": "csak megtekinthető",
+    "columns": {
+      "title": "Költség",
+      "schedule": "Ismétlődés",
+      "lastDone": "Legutóbb",
+      "nextDue": "Következő",
+      "status": "Állapot"
+    },
+    "kind": {
+      "TIME": "Idő szerint",
+      "ODOMETER": "Távolság szerint",
+      "COMBINED": "Idő vagy távolság, amelyik előbb jön"
+    },
+    "schedule": {
+      "months_one": "Havonta",
+      "months_other": "{{count}} havonta",
+      "distance": "{{distance}} után",
+      "combined": "{{time}} vagy {{distance}} után, amelyik előbb jön"
+    },
+    "nextDue": {
+      "date": "{{date}}",
+      "odometer": "{{odometer}} állásnál",
+      "both": "{{date}} vagy {{odometer}} állásnál"
+    },
+    "state": {
+      "UPCOMING": "Közelgő",
+      "DUE_SOON": "Hamarosan esedékes",
+      "OVERDUE": "Lejárt"
+    },
+    "due": {
+      "today": "ma",
+      "inDays_one": "{{count}} nap múlva",
+      "inDays_other": "{{count}} nap múlva",
+      "overdueDays_one": "{{count}} napja lejárt",
+      "overdueDays_other": "{{count}} napja lejárt",
+      "inDistance": "{{distance}} múlva",
+      "overdueDistance": "{{distance}}-rel túllépve",
+      "noOdometer": "kilométeróra-állás szükséges"
+    },
+    "done": "Kész",
+    "doneAria": "{{title}} megjelölése késznek",
+    "editAria": "{{title}} ismétlődő költség szerkesztése",
+    "deleteAria": "{{title}} ismétlődő költség törlése",
+    "dialogAdd": "Ismétlődő költség hozzáadása",
+    "dialogEdit": "Ismétlődő költség szerkesztése",
+    "dialogAddDescription": "Valami, ami újra és újra visszatér. A kezdőlap előre figyelmeztet, mielőtt esedékes.",
+    "dialogEditDescription": "Az ismétlődő költség módosítása.",
+    "save": "Módosítások mentése",
+    "saveAdd": "Ismétlődő költség hozzáadása",
+    "fields": {
+      "title": "Megnevezés",
+      "category": "Kategória (nem kötelező)",
+      "kind": "Ismétlődés",
+      "months": "Minden (hónap)",
+      "distance": "Minden ({{unit}})",
+      "lastDone": "Legutóbb ekkor",
+      "lastOdometer": "Kilométeróra akkor ({{unit}})",
+      "warnDays": "Ennyi nappal előtte figyelmeztess",
+      "warnDistance": "Ennyivel előtte figyelmeztess ({{unit}})",
+      "note": "Megjegyzés (nem kötelező)"
+    },
+    "hints": {
+      "lastDone": "Vagy az a nap, ahonnan a számolás indul.",
+      "lastOdometer": "A távolság kiszámításához szükséges."
+    },
+    "doneTitle": "Késznek jelölés: {{title}}",
+    "doneDescription": "A következő időszak az itt megadott naptól és kilométeróra-állástól indul.",
+    "doneDate": "Elvégezve ekkor",
+    "logExpense": "Rögzítse költségként is",
+    "amount": "Összeg",
+    "currency": "Pénznem",
+    "doneSave": "Késznek jelölés",
+    "deleteTitle": "Törlöd ezt az ismétlődő költséget?",
+    "deleteDescription": "A(z) {{title}} többé nem lesz nyomon követve. A belőle már rögzített költségek megmaradnak.",
+    "deleteConfirm": "Törlés"
   }
 }

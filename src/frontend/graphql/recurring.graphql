@@ -1,0 +1,53 @@
+# A vehicle's recurring expenses (schedules such as insurance or an oil change) with where each one stands. Few per vehicle, so no paging.
+fragment RecurringFields on RecurringExpenseInfo {
+  id
+  title
+  category
+  note
+  kind
+  intervalMonths
+  intervalDistance
+  lastDoneDate
+  lastDoneOdometer
+  warnDays
+  warnDistance
+  status {
+    state
+    limit
+    dueDate
+    dueOdometer
+    daysLeft
+    distanceLeft
+  }
+}
+
+query RecurringExpenses($vehicleId: UUID!) {
+  vehicle(id: $vehicleId) {
+    id
+    recurring {
+      ...RecurringFields
+    }
+  }
+}
+
+mutation AddRecurringExpense($input: AddRecurringExpenseInput!) {
+  addRecurringExpense(input: $input) {
+    ...RecurringFields
+  }
+}
+
+mutation UpdateRecurringExpense($input: UpdateRecurringExpenseInput!) {
+  updateRecurringExpense(input: $input) {
+    ...RecurringFields
+  }
+}
+
+mutation DeleteRecurringExpense($id: UUID!) {
+  deleteRecurringExpense(id: $id)
+}
+
+mutation MarkRecurringExpenseDone($input: MarkRecurringExpenseDoneInput!) {
+  markRecurringExpenseDone(input: $input) {
+    ...RecurringFields
+  }
+}

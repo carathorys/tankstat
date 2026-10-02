@@ -150,7 +150,8 @@
       "details": "Details",
       "sharing": "Sharing",
       "expenses": "Expenses",
-      "dashboard": "Dashboard"
+      "dashboard": "Dashboard",
+      "recurring": "Recurring"
     },
     "owner": "Owner",
     "fuel": "Fuel",
@@ -379,6 +380,22 @@
       "needEditToShare": "You need edit access to the vehicle's logs to share a chart.",
       "notYours": "Only the creator can change this chart.",
       "notFound": "This chart does not exist."
+    },
+    "recurring": {
+      "titleRequired": "The recurring expense needs a title.",
+      "titleTooLong": "The title can be at most {{max}} characters.",
+      "categoryTooLong": "The category can be at most {{max}} characters.",
+      "noteTooLong": "The note can be at most {{max}} characters.",
+      "unknownKind": "Unknown kind: {{value}}.",
+      "monthsInvalid": "The time interval must be between 1 and {{max}} months.",
+      "distanceInvalid": "The distance interval must be at least 1.",
+      "odometerRequired": "The odometer is needed to start the next interval.",
+      "warnDaysInvalid": "The warning time must be between 0 and {{max}} days.",
+      "warnDistanceInvalid": "The warning distance cannot be negative.",
+      "doneBeforeLast": "It cannot be done before {{date}}, when it was last done.",
+      "odometerBelowLast": "The odometer cannot be lower than {{last}}, where it was last done.",
+      "amountRequired": "The amount and currency are needed to log the expense.",
+      "notFound": "This recurring expense does not exist."
     }
   },
   "a11y": {
@@ -593,7 +610,8 @@
       "noFillUps": "No fill-ups yet",
       "logAccess": "Logs: {{level}}",
       "owner": "Owner: {{name}}",
-      "trend": "Spending in the last six months"
+      "trend": "Spending in the last six months",
+      "recurringTitle": "Needs attention"
     }
   },
   "dashboard": {
@@ -698,5 +716,87 @@
       "ALL": "All time",
       "CUSTOM": "Custom (from – to)"
     }
+  },
+  "recurring": {
+    "title": "Recurring expenses",
+    "add": "Add recurring expense",
+    "empty": "Nothing recurring yet. Insurance, an oil change or the yearly inspection: add them here and the home page tells you when they are due.",
+    "countLabel_one": "{{count}} recurring expense",
+    "countLabel_other": "{{count}} recurring expenses",
+    "viewOnly": "view only",
+    "columns": {
+      "title": "Expense",
+      "schedule": "Repeats",
+      "lastDone": "Last done",
+      "nextDue": "Next due",
+      "status": "Status"
+    },
+    "kind": {
+      "TIME": "By time",
+      "ODOMETER": "By distance",
+      "COMBINED": "Time or distance, whichever comes first"
+    },
+    "schedule": {
+      "months_one": "Every month",
+      "months_other": "Every {{count}} months",
+      "distance": "Every {{distance}}",
+      "combined": "{{time}} or {{distance}}, whichever comes first"
+    },
+    "nextDue": {
+      "date": "{{date}}",
+      "odometer": "at {{odometer}}",
+      "both": "{{date}} or at {{odometer}}"
+    },
+    "state": {
+      "UPCOMING": "Upcoming",
+      "DUE_SOON": "Due soon",
+      "OVERDUE": "Overdue"
+    },
+    "due": {
+      "today": "today",
+      "inDays_one": "in {{count}} day",
+      "inDays_other": "in {{count}} days",
+      "overdueDays_one": "{{count}} day overdue",
+      "overdueDays_other": "{{count}} days overdue",
+      "inDistance": "in {{distance}}",
+      "overdueDistance": "{{distance}} over",
+      "noOdometer": "needs an odometer reading"
+    },
+    "done": "Mark as done",
+    "doneAria": "Mark {{title}} as done",
+    "editAria": "Edit the recurring expense {{title}}",
+    "deleteAria": "Delete the recurring expense {{title}}",
+    "dialogAdd": "Add recurring expense",
+    "dialogEdit": "Edit recurring expense",
+    "dialogAddDescription": "Something that comes back again and again. The home page warns you before it is due.",
+    "dialogEditDescription": "Change this recurring expense.",
+    "save": "Save changes",
+    "saveAdd": "Add recurring expense",
+    "fields": {
+      "title": "Title",
+      "category": "Category (optional)",
+      "kind": "Repeats",
+      "months": "Every (months)",
+      "distance": "Every ({{unit}})",
+      "lastDone": "Last done",
+      "lastOdometer": "Odometer then ({{unit}})",
+      "warnDays": "Warn me this many days before",
+      "warnDistance": "Warn me this far before ({{unit}})",
+      "note": "Note (optional)"
+    },
+    "hints": {
+      "lastDone": "Or the day to start counting from.",
+      "lastOdometer": "Needed to work out the distance."
+    },
+    "doneTitle": "Mark as done: {{title}}",
+    "doneDescription": "The next interval starts from the day and the odometer you enter.",
+    "doneDate": "Done on",
+    "logExpense": "Also log it as an expense",
+    "amount": "Amount",
+    "currency": "Currency",
+    "doneSave": "Mark as done",
+    "deleteTitle": "Delete this recurring expense?",
+    "deleteDescription": "{{title}} will no longer be tracked. Expenses already logged from it stay.",
+    "deleteConfirm": "Delete"
   }
 }

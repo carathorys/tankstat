@@ -5,7 +5,7 @@ import { axe } from 'vitest-axe'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import { server } from './server.ts'
-import { fakeExpense, fakeExpenseBackend, fakeLogBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, stubViewport, user } from './mocks.tsx'
+import { fakeExpense, fakeExpenseBackend, fakeRecurring, fakeRecurringBackend, fakeLogBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, stubViewport, user } from './mocks.tsx'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
@@ -25,11 +25,17 @@ function setup(route: string, viewport: 'desktop' | 'phone' = 'desktop') {
   const logs = fakeLogBackend(fakeVehicle(), [fakeRefueling({ id: 'r1' }), fakeRefueling({ id: 'r2', date: '2026-08-01', note: 'Trip' })])
   const expenseBackend = fakeExpenseBackend(fakeVehicle(), [fakeExpense({ id: 'e1' }), fakeExpense({ id: 'e2', title: 'Parking', category: null, odometer: null })])
   expenseBackend.state.trash = [fakeExpense({ id: 'x1', title: 'Old fee', deletedAt: '2026-10-01T08:00:00Z' })]
-  const vehicles = fakeVehicleBackend([fakeVehicle()], [fakeVehicle({ id: 't1', name: 'Old Fiat' })])
+  const recurring = fakeRecurringBackend([
+    fakeRecurring({ id: 'rc2', title: 'Tyres', kind: 'ODOMETER', intervalMonths: null, status: { state: 'OVERDUE', limit: 'ODOMETER', dueDate: null, dueOdometer: 60000, daysLeft: null, distanceLeft: -300 } }),
+    fakeRecurring(),
+  ])
+  const attention = [{ id: 'rc2', title: 'Tyres', kind: 'ODOMETER', status: { state: 'OVERDUE', limit: 'ODOMETER', dueDate: null, daysLeft: null, distanceLeft: -300 } }] as never
+  const vehicles = fakeVehicleBackend([fakeVehicle({ recurring: attention })], [fakeVehicle({ id: 't1', name: 'Old Fiat' })])
   server.use(
     sessionHandler('STANDALONE', () => user({ isAdmin: true })),
     healthHandler,
     ...logs.handlers,
+    ...recurring.handlers,
     ...expenseBackend.handlers, // shares VehicleDetails and LogDefaults with the logs backend: the first handler wins, they answer alike
     ...vehicles.handlers,
     graphql.query('Admin', () =>
@@ -126,6 +132,40 @@ it('the add expense dialog is labelled, described and free of violations', async
   await within(dialog).findByText(/Used before/)
 
   expect(dialog).toHaveAccessibleDescription(/Money spent on the vehicle/)
+  await check(document.body)
+})
+
+it('the recurring expenses table and its dialogs are labelled and free of violations', async () => {
+  const { ui } = setup('/vehicles/v1?tab=recurring')
+  const table = await screen.findByRole('table', { name: 'Recurring expenses' })
+  within(table).getByText('Tyres')
+  await check(document.body)
+
+  await ui.click(screen.getByRole('button', { name: 'Add recurring expense' }))
+  const adding = await screen.findByRole('dialog', { name: 'Add recurring expense' })
+  expect(adding).toHaveAccessibleDescription(/comes back again and again/)
+  await check(document.body)
+  await ui.click(within(adding).getByRole('button', { name: 'Cancel' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+  await ui.click(screen.getByRole('button', { name: 'Edit the recurring expense Tyres' }))
+  const editing = await screen.findByRole('dialog', { name: 'Edit recurring expense' })
+  await within(editing).findByLabelText('Title')
+  await check(document.body)
+  await ui.click(within(editing).getByRole('button', { name: 'Cancel' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+  await ui.click(screen.getByRole('button', { name: 'Mark Tyres as done' }))
+  const done = await screen.findByRole('dialog', { name: 'Mark as done: Tyres' })
+  await within(done).findByLabelText('Currency')
+  await check(document.body)
+})
+
+it('the home page card lists what needs attention in a labelled list, free of violations', async () => {
+  setup('/')
+  const list = await screen.findByRole('list', { name: 'Needs attention' })
+
+  expect(within(list).getByText(/Tyres · 300 km over/)).toBeInTheDocument()
   await check(document.body)
 })
 

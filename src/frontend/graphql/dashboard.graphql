@@ -17,6 +17,19 @@ query Welcome {
       displayName
       avatarUrl
     }
+    # What needs attention on the card: the client shows the ones that are due soon or overdue.
+    recurring {
+      id
+      title
+      kind
+      status {
+        state
+        limit
+        dueDate
+        daysLeft
+        distanceLeft
+      }
+    }
     summary {
       lastFillUpDate
       latestOdometer

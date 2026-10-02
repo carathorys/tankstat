@@ -7,6 +7,8 @@ import type { WelcomeQuery } from '../gql/generated.ts'
 import { useMediaQuery } from '../hooks/useMediaQuery.ts'
 import { useFormat } from '../i18n/format.ts'
 import { CoverLayers } from './CoverLayers.tsx'
+import { useDueText } from '../hooks/useDueText.ts'
+import { RecurringStatusBadge } from './RecurringStatus.tsx'
 import { UserChip } from './UserAvatar.tsx'
 
 type Vehicle = WelcomeQuery['myVehicles'][number]
@@ -21,6 +23,9 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
   const format = useFormat()
   const s = v.summary
   const none = t('welcome.card.none')
+  const dueText = useDueText(v.units.distance)
+  // Only what needs attention is on the card (the vehicle's Recurring tab has the rest); overdue first, the server already sorts by urgency.
+  const attention = v.recurring.filter((r) => r.status.state !== 'UPCOMING')
   const touch = useMediaQuery('(hover: none)', false)
   const [open, setOpen] = useState(false)
   // The figures slide up from below the card: the card needs to know how tall that panel is.
@@ -69,6 +74,25 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
               </Badge>
             )}
           </Flex>
+          {attention.length > 0 && (
+            <Flex asChild direction="column" gap="1" mt="2">
+              <ul aria-label={t('welcome.card.recurringTitle')} style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {attention.slice(0, 3).map((r) => {
+                  const due = dueText(r.status)
+                  return (
+                    <li key={r.id}>
+                      <Flex align="center" gap="2" wrap="wrap">
+                        <RecurringStatusBadge state={r.status.state} solid />
+                        <Text size="1" style={{ color: 'white', textShadow: '0 1px 4px rgba(0,0,0,0.7)' }}>
+                          {due ? `${r.title} · ${due}` : r.title}
+                        </Text>
+                      </Flex>
+                    </li>
+                  )
+                })}
+              </ul>
+            </Flex>
+          )}
           {!v.canEdit && v.owner && (
             <Text as="p" size="1" mt="1" style={{ color: 'white' }}>
               <UserChip user={v.owner} />

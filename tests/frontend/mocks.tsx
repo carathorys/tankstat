@@ -93,6 +93,7 @@ export interface FakeVehicle {
   summary: FakeSummary
   units: { distance: 'KILOMETERS' | 'MILES'; volume: 'LITERS' | 'US_GALLONS' | 'IMPERIAL_GALLONS' }
   refuelingCount: number
+  recurring: FakeRecurring[]
 }
 
 export const person = (displayName: string, over: Partial<Person> = {}): Person => ({ id: `p-${displayName}`, displayName, avatarUrl: null, ...over })
@@ -112,6 +113,7 @@ export const fakeVehicle = (over: Partial<FakeVehicle> & { ownerName?: string | 
     summary: fakeSummary(),
     units: { distance: 'KILOMETERS', volume: 'LITERS' },
     refuelingCount: 2,
+    recurring: [],
     ...rest,
   }
 }
@@ -575,6 +577,97 @@ export function fakeDashboardBackend(vehicle: FakeVehicle, charts: FakeChart[] =
       record('DeleteChart', variables)
       state.charts = state.charts.filter((c) => c.id !== variables.id)
       return HttpResponse.json({ data: { deleteVehicleChart: true } })
+    }),
+  ]
+  return { state, handlers }
+}
+
+export interface FakeRecurring {
+  /** The fragment on RecurringExpenseInfo only matches when the type is named. */
+  __typename: 'RecurringExpenseInfo'
+  id: string
+  title: string
+  category: string | null
+  note: string | null
+  kind: 'TIME' | 'ODOMETER' | 'COMBINED'
+  intervalMonths: number | null
+  intervalDistance: number | null
+  lastDoneDate: string
+  lastDoneOdometer: number | null
+  warnDays: number
+  warnDistance: number
+  status: {
+    state: 'UPCOMING' | 'DUE_SOON' | 'OVERDUE'
+    limit: 'TIME' | 'ODOMETER' | null
+    dueDate: string | null
+    dueOdometer: number | null
+    daysLeft: number | null
+    distanceLeft: number | null
+  }
+}
+
+/** A combined (12 months or 15,000 km) schedule that is upcoming, unless the test says otherwise. */
+export const fakeRecurring = (over: Partial<FakeRecurring> = {}): FakeRecurring => ({
+  __typename: 'RecurringExpenseInfo',
+  id: 'rc1',
+  title: 'Oil change',
+  category: 'Service',
+  note: null,
+  kind: 'COMBINED',
+  intervalMonths: 12,
+  intervalDistance: 15000,
+  lastDoneDate: '2026-01-15',
+  lastDoneOdometer: 50000,
+  warnDays: 30,
+  warnDistance: 500,
+  status: { state: 'UPCOMING', limit: 'TIME', dueDate: '2027-01-15', dueOdometer: 65000, daysLeft: 106, distanceLeft: 9000 },
+  ...over,
+})
+
+/** In-memory recurring expenses of one vehicle behind the Recurring* queries and mutations; a finished item is upcoming again. */
+export function fakeRecurringBackend(items: FakeRecurring[] = []) {
+  const state = {
+    items: [...items],
+    calls: {} as Record<string, unknown[]>,
+    failWith: undefined as { message: string; key: string; args?: Record<string, unknown> } | undefined,
+    nextId: 500,
+  }
+  const record = (name: string, vars: unknown) => (state.calls[name] ??= []).push(vars)
+  const fail = (): Response | undefined => (state.failWith ? HttpResponse.json(gqlError(state.failWith.message, 'VALIDATION_FAILED', state.failWith.key, state.failWith.args)) : undefined)
+  const upcoming = (): FakeRecurring['status'] => ({ state: 'UPCOMING', limit: 'TIME', dueDate: '2027-12-01', dueOdometer: null, daysLeft: 400, distanceLeft: null })
+  const handlers = [
+    graphql.query('RecurringExpenses', ({ variables }) => HttpResponse.json({ data: { vehicle: { __typename: 'Vehicle', id: variables.vehicleId, recurring: state.items } } })),
+    graphql.mutation('AddRecurringExpense', ({ variables }) => {
+      record('AddRecurringExpense', variables)
+      const failed = fail()
+      if (failed) return failed
+      const input = variables.input as Partial<FakeRecurring>
+      const item = fakeRecurring({ ...input, id: `rc${state.nextId++}`, status: upcoming() })
+      state.items.push(item)
+      return HttpResponse.json({ data: { addRecurringExpense: item } })
+    }),
+    graphql.mutation('UpdateRecurringExpense', ({ variables }) => {
+      record('UpdateRecurringExpense', variables)
+      const failed = fail()
+      if (failed) return failed
+      const input = variables.input as Partial<FakeRecurring> & { id: string }
+      const i = state.items.findIndex((x) => x.id === input.id)
+      state.items[i] = { ...state.items[i], ...input }
+      return HttpResponse.json({ data: { updateRecurringExpense: state.items[i] } })
+    }),
+    graphql.mutation('DeleteRecurringExpense', ({ variables }) => {
+      record('DeleteRecurringExpense', variables)
+      state.items = state.items.filter((x) => x.id !== variables.id)
+      return HttpResponse.json({ data: { deleteRecurringExpense: true } })
+    }),
+    graphql.mutation('MarkRecurringExpenseDone', ({ variables }) => {
+      record('MarkRecurringExpenseDone', variables)
+      const failed = fail()
+      if (failed) return failed
+      const input = variables.input as { id: string; date: string; odometer: number | null }
+      const i = state.items.findIndex((x) => x.id === input.id)
+      state.items[i] = { ...state.items[i], lastDoneDate: input.date, lastDoneOdometer: input.odometer ?? state.items[i].lastDoneOdometer, status: upcoming() }
+      return HttpResponse.json({ data: { markRecurringExpenseDone: state.items[i] } })
     }),
   ]
   return { state, handlers }
