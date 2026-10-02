@@ -4,9 +4,12 @@ import { Button, Dialog, Flex, Text, TextArea, TextField } from '@radix-ui/theme
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { OdometerField } from './components/OdometerField.tsx'
+import { PhotoGallery } from './components/PhotoGallery.tsx'
+import { usePhotoQueue, type Saved } from './components/usePhotoQueue.ts'
 import { Field } from './forms.tsx'
 import { ExpenseCategoriesDocument, ExpenseDetailsDocument, LogDefaultsDocument, type DistanceUnit } from './gql/generated.ts'
 import { parseDecimal } from './i18n/format.ts'
+import { useErrorText } from './i18n/errors.ts'
 import { ErrorMessage } from './messages.tsx'
 
 export interface ExpenseValues {
@@ -47,12 +50,18 @@ export function ExpenseFormDialog({
   trigger: ReactNode
   vehicle: { id: string; units: { distance: DistanceUnit } }
   expenseId?: string
-  onSubmit: (values: ExpenseValues) => Promise<unknown>
+  onSubmit: (values: ExpenseValues) => Promise<Saved>
 }) {
   const { t } = useTranslation()
+  const errorText = useErrorText()
   const [open, setOpen] = useState(false)
+  const queue = usePhotoQueue()
+  // Set when a new expense was saved but some of its photos could not be sent: the dialog then shows that expense's photos instead of the form.
+  const [savedId, setSavedId] = useState<string>()
+  const [uploadFailure, setUploadFailure] = useState<unknown>()
   const editing = expenseId !== undefined
-  const details = useQuery(ExpenseDetailsDocument, { variables: { id: expenseId ?? '' }, skip: !editing || !open, fetchPolicy: 'network-only' })
+  const logId = expenseId ?? savedId
+  const details = useQuery(ExpenseDetailsDocument, { variables: { id: logId ?? '' }, skip: logId === undefined || !open, fetchPolicy: 'network-only' })
   const defaults = useQuery(LogDefaultsDocument, { variables: { vehicleId: vehicle.id }, skip: !open, fetchPolicy: 'network-only' })
   const categories = useQuery(ExpenseCategoriesDocument, { variables: { vehicleId: vehicle.id }, skip: !open, fetchPolicy: 'network-only' })
   const error = details.error ?? defaults.error
@@ -61,7 +70,17 @@ export function ExpenseFormDialog({
   const initial: Initial = existing ?? { date: today(), title: '', category: null, currency: defaults.data?.logDefaults?.currency ?? '', note: null }
 
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) {
+          queue.clear()
+          setSavedId(undefined)
+          setUploadFailure(undefined)
+        }
+      }}
+    >
       <Dialog.Trigger>{trigger}</Dialog.Trigger>
       <Dialog.Content maxWidth="450px">
         <Dialog.Title>{editing ? t('expenses.dialogEdit') : t('expenses.dialogAdd')}</Dialog.Title>
@@ -75,14 +94,34 @@ export function ExpenseFormDialog({
           </Text>
         )}
         {editing && details.data && !existing && <ErrorMessage>{t('errors.expense.notFound')}</ErrorMessage>}
-        {ready && (
+        {savedId !== undefined && (
+          <Flex direction="column" gap="3">
+            <ErrorMessage>{`${t('photos.partialFailure')} ${errorText(uploadFailure)}`}</ErrorMessage>
+            <PhotoGallery kind="expenses" logId={savedId} photos={existing?.photos ?? []} queue={queue} onChanged={() => details.refetch()} />
+            <Flex justify="end">
+              <Dialog.Close>
+                <Button type="button">{t('photos.done')}</Button>
+              </Dialog.Close>
+            </Flex>
+          </Flex>
+        )}
+        {ready && savedId === undefined && (
           <ExpenseForm
             initial={initial}
             unit={vehicle.units.distance}
             editing={editing}
             categories={categories.data?.expenseCategories ?? []}
+            gallery={<PhotoGallery kind="expenses" logId={expenseId} photos={existing?.photos ?? []} queue={queue} onChanged={() => details.refetch()} />}
             onSubmit={async (values) => {
-              await onSubmit(values)
+              const saved = await onSubmit(values)
+              if (!editing && saved && queue.items.length > 0) {
+                const failure = await queue.uploadAll('expenses', saved.id)
+                if (failure !== undefined) {
+                  setUploadFailure(failure)
+                  setSavedId(saved.id)
+                  return
+                }
+              }
               setOpen(false)
             }}
           />
@@ -97,12 +136,14 @@ function ExpenseForm({
   unit,
   editing,
   categories,
+  gallery,
   onSubmit,
 }: {
   initial: Initial
   unit: DistanceUnit
   editing: boolean
   categories: string[]
+  gallery: ReactNode
   onSubmit: (values: ExpenseValues) => Promise<unknown>
 }) {
   const { t } = useTranslation()
@@ -180,6 +221,7 @@ function ExpenseForm({
         <Field name="note" label={t('expenses.fields.note')}>
           <TextArea maxLength={500} rows={2} defaultValue={initial.note ?? ''} />
         </Field>
+        {gallery}
         {error !== undefined && <ErrorMessage error={error} />}
         <Flex gap="3" justify="end">
           <Dialog.Close>

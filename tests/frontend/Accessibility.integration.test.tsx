@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
 import { axe } from 'vitest-axe'
@@ -122,5 +122,24 @@ it('the add expense dialog is labelled, described and free of violations', async
   await within(dialog).findByText(/Used before/)
 
   expect(dialog).toHaveAccessibleDescription(/Money spent on the vehicle/)
+  await check(document.body)
+})
+
+it('the photo gallery of the expense dialogs is a labelled group and free of violations', async () => {
+  const { ui } = setup('/vehicles/v1?tab=expenses')
+  await screen.findByText('Oil change')
+
+  await ui.click(screen.getByRole('button', { name: 'Add expense' }))
+  const adding = await screen.findByRole('dialog', { name: 'Add expense' })
+  await within(adding).findByText(/Used before/)
+  expect(within(adding).getByRole('group', { name: 'Photos' })).toBeInTheDocument()
+  expect(within(adding).getByRole('button', { name: 'Take photo' })).toBeInTheDocument()
+  await check(document.body)
+  await ui.click(within(adding).getByRole('button', { name: 'Cancel' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+  await ui.click(screen.getAllByRole('button', { name: /^Edit the expense/ })[0])
+  const editing = await screen.findByRole('dialog', { name: 'Edit expense' })
+  await within(editing).findByRole('group', { name: 'Photos' })
   await check(document.body)
 })
