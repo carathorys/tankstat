@@ -170,10 +170,16 @@ namespace Tankstat.Migrations.PostgreSql
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Folder")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<long>("SizeBytes")
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Folder");
 
                     b.ToTable("Images", (string)null);
                 });

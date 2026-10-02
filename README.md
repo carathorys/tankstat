@@ -53,7 +53,7 @@ Uploaded pictures (profile pictures, vehicle pictures) are stored as files; only
 
 | Setting | Environment variable | Meaning |
 | --- | --- | --- |
-| `Storage:Path` | `Storage__Path` | folder for uploaded pictures (default `uploads`, relative to the working directory; the Docker image uses `/data/uploads`) |
+| `Storage:Path` | `Storage__Path` | folder for uploaded pictures (default `uploads`, relative to the working directory; the Docker image uses `/data/uploads`). Files are organised per owner: `users/<id>/` for avatars and `vehicles/<id>/` for everything of a vehicle (its picture and, below it, the photos of its logs), so a vehicle's files are removed with it; files from older versions stay directly in the folder and keep working |
 | `Defaults:DistanceUnit`, `Defaults:VolumeUnit`, `Defaults:Currency` | `Defaults__...` | what a new vehicle / new log starts with (`Kilometers` / `Liters` / `EUR` unless changed) |
 
 ## Authentication and access control

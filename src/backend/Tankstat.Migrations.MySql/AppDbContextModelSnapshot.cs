@@ -167,10 +167,16 @@ namespace Tankstat.Migrations.MySql
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("Folder")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
                     b.Property<long>("SizeBytes")
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Folder");
 
                     b.ToTable("Images", (string)null);
                 });

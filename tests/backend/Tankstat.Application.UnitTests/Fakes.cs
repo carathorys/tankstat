@@ -53,7 +53,7 @@ internal sealed class InMemoryVehicles : IVehicleRepository
     {
         var doomed = Items.Where(v => v.IsDeleted && scope.Contains(v.OwnerId, v.Id)).ToList();
         Items.RemoveAll(doomed.Contains);
-        return Task.FromResult(new PurgeResult(doomed.Count, doomed.Where(v => v.PictureImageId is not null).Select(v => v.PictureImageId!.Value).ToList()));
+        return Task.FromResult(new PurgeResult(doomed.Count, doomed.Where(v => v.PictureImageId is not null).Select(v => v.PictureImageId!.Value).ToList(), doomed.Select(v => v.Id).ToList()));
     }
 }
 
@@ -185,10 +185,22 @@ internal sealed class InMemoryUsers : IUserRepository
 internal sealed class InMemoryImageStore : IImageStore
 {
     public Dictionary<Guid, byte[]> Files { get; } = [];
+
+    /// <summary>The folder each saved file went into (null: the data folder itself).</summary>
+    public Dictionary<Guid, string?> Folders { get; } = [];
     public bool FailSaves { get; set; }
-    public Task SaveAsync(Guid id, ReadOnlyMemory<byte> data, CancellationToken ct) { Files[id] = data.ToArray(); return Task.CompletedTask; }
-    public Task<Stream?> OpenReadAsync(Guid id, CancellationToken ct) => Task.FromResult<Stream?>(Files.TryGetValue(id, out var d) ? new MemoryStream(d) : null);
-    public Task DeleteAsync(Guid id, CancellationToken ct) { Files.Remove(id); return Task.CompletedTask; }
+    public Task SaveAsync(StoredImage image, ReadOnlyMemory<byte> data, CancellationToken ct) { Files[image.Id] = data.ToArray(); Folders[image.Id] = image.Folder; return Task.CompletedTask; }
+    public Task<Stream?> OpenReadAsync(StoredImage image, CancellationToken ct) => Task.FromResult<Stream?>(Files.TryGetValue(image.Id, out var d) ? new MemoryStream(d) : null);
+    public Task DeleteAsync(StoredImage image, CancellationToken ct) { Files.Remove(image.Id); Folders.Remove(image.Id); return Task.CompletedTask; }
+    public Task DeleteFolderAsync(string folder, CancellationToken ct)
+    {
+        foreach (var id in Folders.Where(f => f.Value == folder || (f.Value?.StartsWith(folder + "/") ?? false)).Select(f => f.Key).ToList())
+        {
+            Files.Remove(id);
+            Folders.Remove(id);
+        }
+        return Task.CompletedTask;
+    }
 }
 
 internal sealed class InMemoryImages : IImageRepository
@@ -203,6 +215,11 @@ internal sealed class InMemoryImages : IImageRepository
     }
     public Task<StoredImage?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.GetValueOrDefault(id));
     public Task RemoveAsync(Guid id, CancellationToken ct) { Items.Remove(id); return Task.CompletedTask; }
+    public Task RemoveFolderAsync(string folder, CancellationToken ct)
+    {
+        foreach (var id in Items.Where(i => i.Value.Folder == folder || (i.Value.Folder?.StartsWith(folder + "/") ?? false)).Select(i => i.Key).ToList()) Items.Remove(id);
+        return Task.CompletedTask;
+    }
 }
 
 internal sealed class InMemoryTokens : IPasswordResetTokenRepository
@@ -296,8 +313,8 @@ internal sealed class World
         Access = new AccessService(Current, options, Grants, Settings, ResourceGrants);
         Odometer = new OdometerService(new InMemoryReadings(Refuelings, Expenses));
         var resets = new PasswordResetService(Tokens, Users, Email, options, Clock);
-        VehicleService = new VehicleService(Vehicles, Refuelings, Access, Odometer, ImageStore, Images, Clock);
         ImageService = new ImageService(ImageStore, Images, Users, Vehicles, Access, Clock);
+        VehicleService = new VehicleService(Vehicles, Refuelings, Access, Odometer, ImageService, Clock);
         RefuelingService = new RefuelingService(Vehicles, Refuelings, Access, Odometer, Clock);
         ExpenseService = new ExpenseService(Vehicles, Expenses, Access, Odometer, Clock);
         Imports = new ImportService([new FuelioCsvParser()], new ImportSessionStore(Clock), Access, VehicleService, RefuelingService, ExpenseService, Refuelings, Expenses, new VehicleDefaultsOptions { Currency = "HUF" }.Create());

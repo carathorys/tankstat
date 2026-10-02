@@ -10,7 +10,7 @@ using Tankstat.Domain.Vehicles;
 namespace Tankstat.Application.Vehicles;
 
 public sealed class VehicleService(
-    IVehicleRepository vehicles, IRefuelingRepository refuelings, AccessService access, OdometerService odometer, IImageStore imageStore, IImageRepository images, TimeProvider clock)
+    IVehicleRepository vehicles, IRefuelingRepository refuelings, AccessService access, OdometerService odometer, ImageService images, TimeProvider clock)
 {
     public async Task<IReadOnlyList<Vehicle>> ListAsync(VehicleQuery query, CancellationToken ct) =>
         await vehicles.ListAsync(await access.VehicleScopeAsync(AccessLevel.View, ct), query.Normalized(), ct);
@@ -77,11 +77,7 @@ public sealed class VehicleService(
     public async Task<int> EmptyTrashAsync(CancellationToken ct)
     {
         var purged = await vehicles.PurgeAsync(await access.ScopeAsync(AccessLevel.Delete, ct), ct);
-        foreach (var id in purged.ImageIds) // their pictures go with them
-        {
-            await images.RemoveAsync(id, ct);
-            await imageStore.DeleteAsync(id, ct);
-        }
+        await images.DeleteVehicleFilesAsync(purged.VehicleIds, purged.ImageIds, ct); // their pictures and photos go with them
         return purged.Count;
     }
 
