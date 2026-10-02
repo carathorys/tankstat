@@ -5,11 +5,11 @@ import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { OdometerField } from './components/OdometerField.tsx'
 import { PhotoGallery } from './components/PhotoGallery.tsx'
+import { PhotosAfterSave } from './components/PhotosAfterSave.tsx'
 import { usePhotoQueue, type Saved } from './components/usePhotoQueue.ts'
 import { Field } from './forms.tsx'
 import { LogDefaultsDocument, RefuelingDetailsDocument, type DistanceUnit, type VolumeUnit } from './gql/generated.ts'
 import { parseDecimal } from './i18n/format.ts'
-import { useErrorText } from './i18n/errors.ts'
 import { ErrorMessage } from './messages.tsx'
 
 export interface RefuelingValues {
@@ -50,7 +50,6 @@ export function RefuelingFormDialog({
   onSubmit: (values: RefuelingValues) => Promise<Saved>
 }) {
   const { t } = useTranslation()
-  const errorText = useErrorText()
   const [open, setOpen] = useState(false)
   const queue = usePhotoQueue()
   // Set when a new log was saved but some of its photos could not be sent: the dialog then shows that log's photos instead of the form.
@@ -92,15 +91,7 @@ export function RefuelingFormDialog({
         {!error && !ready && <Text as="p" role="status">{t('app.loading')}</Text>}
         {editing && details.data && !existing && <ErrorMessage>{t('errors.refueling.notFound')}</ErrorMessage>}
         {savedId !== undefined && (
-          <Flex direction="column" gap="3">
-            <ErrorMessage>{`${t('photos.partialFailure')} ${errorText(uploadFailure)}`}</ErrorMessage>
-            <PhotoGallery kind="refuelings" logId={savedId} photos={existing?.photos ?? []} queue={queue} onChanged={() => details.refetch()} />
-            <Flex justify="end">
-              <Dialog.Close>
-                <Button type="button">{t('photos.done')}</Button>
-              </Dialog.Close>
-            </Flex>
-          </Flex>
+          <PhotosAfterSave kind="refuelings" logId={savedId} failure={uploadFailure} photos={existing?.photos ?? []} queue={queue} onChanged={() => details.refetch()} />
         )}
         {ready && savedId === undefined && (
           <RefuelingForm

@@ -689,6 +689,8 @@
     "added": "Photos saved.",
     "removed": "Photo removed.",
     "partialFailure": "The entry was saved, but not all photos could be sent.",
-    "done": "Done"
+    "done": "Done",
+    "unsent": "Photos not sent yet: {{n}}.",
+    "retry": "Try again"
   }
 }

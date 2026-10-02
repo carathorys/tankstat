@@ -689,6 +689,8 @@
     "added": "Fotók mentve.",
     "removed": "Fotó törölve.",
     "partialFailure": "A bejegyzés mentve lett, de nem sikerült minden fotót elküldeni.",
-    "done": "Kész"
+    "done": "Kész",
+    "unsent": "Még el nem küldött fotók: {{n}}.",
+    "retry": "Újrapróbálás"
   }
 }

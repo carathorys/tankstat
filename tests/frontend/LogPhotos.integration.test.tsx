@@ -167,9 +167,14 @@ it('keeps the saved expense and shows the photos with the error when an upload f
   expect(within(dialog).queryByLabelText('Title')).not.toBeInTheDocument() // the form is gone, so it cannot be saved a second time
   expect(within(dialog).getByRole('group', { name: 'Photos' })).toBeInTheDocument()
 
+  expect(within(dialog).getByText('Photos not sent yet: 1.')).toBeInTheDocument() // the one that failed is kept for another try
   photos.state.failWith = undefined
-  await ui.upload(library(dialog), photo('again.png', [7]))
+  await ui.click(within(dialog).getByRole('button', { name: 'Try again' }))
+
   await waitFor(() => expect(within(dialog).getAllByRole('link', { name: /^Open photo/ })).toHaveLength(1))
+  expect(within(dialog).queryByText(/Photos not sent yet/)).not.toBeInTheDocument()
+  expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument()
+  expect(photos.state.puts).toHaveLength(2) // the failed one, then the retry
   await ui.click(within(dialog).getByRole('button', { name: 'Done' }))
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(state.calls.AddExpense).toHaveLength(1)
