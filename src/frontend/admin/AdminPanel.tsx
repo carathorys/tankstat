@@ -7,15 +7,20 @@ import { FieldForm } from '../forms.tsx'
 import {
   AdminDocument,
   CreateUserDocument,
+  DeleteUserDocument,
   IssuePasswordResetDocument,
+  SessionDocument,
   SetAccessGrantDocument,
   SetDefaultAccessDocument,
   SetUserAdminDocument,
   SetUserDisabledDocument,
+  SetUserPasswordDocument,
+  UpdateUserDocument,
   type AccessLevel,
   type IssuePasswordResetMutation,
 } from '../gql/generated.ts'
 import { ErrorMessage, SuccessMessage } from '../messages.tsx'
+import { DeleteUserDialog, EditUserDialog, SetPasswordDialog } from './UserDialogs.tsx'
 
 const refetch = { refetchQueries: ['Admin'], awaitRefetchQueries: true }
 
@@ -30,6 +35,11 @@ export function AdminPanel() {
   const [issueReset] = useMutation(IssuePasswordResetDocument)
   const [setAdmin] = useMutation(SetUserAdminDocument, refetch)
   const [setDisabled] = useMutation(SetUserDisabledDocument, refetch)
+  const [updateUser] = useMutation(UpdateUserDocument, refetch)
+  const [setPassword] = useMutation(SetUserPasswordDocument)
+  const [deleteUser] = useMutation(DeleteUserDocument, refetch)
+  const { data: session } = useQuery(SessionDocument)
+  const selfId = session?.session.user?.id
   const [setDefault] = useMutation(SetDefaultAccessDocument, refetch)
   const [setGrant] = useMutation(SetAccessGrantDocument, refetch)
   const [reset, setReset] = useState<ResetLink>()
@@ -101,15 +111,51 @@ export function AdminPanel() {
                         />
                       </Table.Cell>
                       <Table.Cell justify="end">
-                        {u.provider === 'LOCAL' && (
-                          <Button
-                            size="1"
-                            variant="soft"
-                            onClick={() => run(async () => setReset((await issueReset({ variables: { userId: u.id } })).data?.issuePasswordReset))}
-                          >
-                            {t('admin.resetLink', { name: u.displayName })}
-                          </Button>
-                        )}
+                        <Flex gap="2" justify="end" wrap="wrap">
+                          {u.provider === 'LOCAL' && (
+                            <EditUserDialog
+                              user={u}
+                              trigger={
+                                <Button size="1" variant="soft">
+                                  {t('admin.edit', { name: u.displayName })}
+                                </Button>
+                              }
+                              onSubmit={(input) => updateUser({ variables: { input: { userId: u.id, ...input } } })}
+                            />
+                          )}
+                          {u.provider === 'LOCAL' && (
+                            <Button
+                              size="1"
+                              variant="soft"
+                              onClick={() => run(async () => setReset((await issueReset({ variables: { userId: u.id } })).data?.issuePasswordReset))}
+                            >
+                              {t('admin.resetLink', { name: u.displayName })}
+                            </Button>
+                          )}
+                          {u.provider === 'LOCAL' && data.canSetUserPasswords && (
+                            <SetPasswordDialog
+                              name={u.displayName}
+                              trigger={
+                                <Button size="1" variant="soft">
+                                  {t('admin.setPasswordFor', { name: u.displayName })}
+                                </Button>
+                              }
+                              onSubmit={(password) => setPassword({ variables: { userId: u.id, newPassword: password } })}
+                            />
+                          )}
+                          {u.id !== selfId && u.provider === 'LOCAL' && (
+                            <DeleteUserDialog
+                              user={u}
+                              others={data.users}
+                              trigger={
+                                <Button size="1" variant="soft" color="red">
+                                  {t('admin.delete', { name: u.displayName })}
+                                </Button>
+                              }
+                              onSubmit={(input) => deleteUser({ variables: { input: { userId: u.id, ...input } } })}
+                            />
+                          )}
+                        </Flex>
                       </Table.Cell>
                     </Table.Row>
                   ))}

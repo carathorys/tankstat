@@ -8,6 +8,7 @@ query Admin {
     isDisabled
     avatarUrl
   }
+  canSetUserPasswords
   accessSettings {
     defaultLevelForOthers
   }
@@ -60,4 +61,18 @@ mutation SetDefaultAccess($level: AccessLevel!) {
 
 mutation SetAccessGrant($input: SetAccessGrantInput!) {
   setAccessGrant(input: $input)
+}
+
+mutation UpdateUser($input: UpdateUserInput!) {
+  updateUser(input: $input) {
+    id
+  }
+}
+
+mutation SetUserPassword($userId: UUID!, $newPassword: String!) {
+  setUserPassword(userId: $userId, newPassword: $newPassword)
+}
+
+mutation DeleteUser($input: DeleteUserInput!) {
+  deleteUser(input: $input)
 }

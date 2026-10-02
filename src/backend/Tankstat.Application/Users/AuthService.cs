@@ -57,6 +57,7 @@ public sealed class AuthService(
 
         user.SetPasswordHash(hasher.Hash(newPassword!));
         await users.UpdateAsync(user, ct);
+        await resets.RevokeAllAsync(user.Id, ct);
         return user;
     }
 
@@ -78,6 +79,7 @@ public sealed class AuthService(
         await resets.MarkUsedAsync(record, ct);
         user.SetPasswordHash(hasher.Hash(newPassword!));
         await users.UpdateAsync(user, ct);
+        await resets.RevokeAllAsync(user.Id, ct);
         return user;
     }
 
