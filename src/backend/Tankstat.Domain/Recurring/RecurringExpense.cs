@@ -36,6 +36,9 @@ public sealed class RecurringExpense : IOwned
     public Guid OwnerId { get; private set; }
     public Guid VehicleId { get; private set; }
     public Guid CreatedById { get; private set; }
+
+    /// <summary>When it was added (UTC).</summary>
+    public DateTimeOffset CreatedAt { get; private set; }
     public string Title { get; private set; } = "";
     public string? Category { get; private set; }
     public string? Note { get; private set; }
@@ -64,9 +67,9 @@ public sealed class RecurringExpense : IOwned
 
     public static RecurringExpense Create(
         Guid ownerId, Guid createdById, Guid vehicleId, string title, string? category, string? note, RecurrenceKind kind,
-        int? intervalMonths, long? intervalDistance, DateOnly lastDoneDate, long? lastDoneOdometer, int warnDays, long warnDistance)
+        int? intervalMonths, long? intervalDistance, DateOnly lastDoneDate, long? lastDoneOdometer, int warnDays, long warnDistance, DateTimeOffset createdAt)
     {
-        var item = new RecurringExpense { Id = Guid.NewGuid(), OwnerId = ownerId, CreatedById = createdById, VehicleId = vehicleId };
+        var item = new RecurringExpense { Id = Guid.NewGuid(), OwnerId = ownerId, CreatedById = createdById, VehicleId = vehicleId, CreatedAt = createdAt };
         item.Apply(title, category, note, kind, intervalMonths, intervalDistance, lastDoneDate, lastDoneOdometer, warnDays, warnDistance);
         return item;
     }

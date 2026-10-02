@@ -251,6 +251,9 @@ namespace Tankstat.Migrations.SqlServer
                         .HasMaxLength(60)
                         .HasColumnType("nvarchar(60)");
 
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("CreatedById")
                         .HasColumnType("uniqueidentifier");
 

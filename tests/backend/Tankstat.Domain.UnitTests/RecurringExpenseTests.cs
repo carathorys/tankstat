@@ -12,7 +12,7 @@ public class RecurringExpenseTests
     private static RecurringExpense Make(
         RecurrenceKind kind = RecurrenceKind.Combined, int? months = 12, long? distance = 15000, long? odometer = 50000, int warnDays = 30, long warnDistance = 500,
         string title = "Oil change") =>
-        RecurringExpense.Create(Owner, Owner, Car, title, "Service", null, kind, months, distance, Start, odometer, warnDays, warnDistance);
+        RecurringExpense.Create(Owner, Owner, Car, title, "Service", null, kind, months, distance, Start, odometer, warnDays, warnDistance, new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero));
 
     private static string Key(Action action) => Assert.Throws<DomainException>(action).Key;
 
@@ -25,6 +25,7 @@ public class RecurringExpenseTests
         Assert.Equal(("Insurance", 12, (long?)null), (time.Title, time.IntervalMonths, time.IntervalDistance));
         Assert.Equal(((int?)null, 15000L), (distance.IntervalMonths, distance.IntervalDistance));
         Assert.True(Make().UsesTime && Make().UsesDistance);
+        Assert.Equal(new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero), Make().CreatedAt); // when it was added is kept
     }
 
     [Theory]
@@ -91,7 +92,7 @@ public class RecurrenceCalculatorTests
     private static readonly DateOnly Start = new(2026, 1, 15);
 
     private static RecurringExpense Make(RecurrenceKind kind, int? months = 12, long? distance = 15000, long? odometer = 50000) =>
-        RecurringExpense.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Oil", null, null, kind, months, distance, Start, odometer, 30, 500);
+        RecurringExpense.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Oil", null, null, kind, months, distance, Start, odometer, 30, 500, DateTimeOffset.UnixEpoch);
 
     [Fact]
     public void Time_DueDateIsTheIntervalAfterTheLastDone_AndTheStateFollowsTheWarning()

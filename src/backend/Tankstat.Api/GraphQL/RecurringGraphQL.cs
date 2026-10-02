@@ -25,14 +25,14 @@ public sealed record MarkRecurringExpenseDoneInput(Guid Id, DateOnly Date, long?
 /// <summary>Where a recurring expense stands today. The days and distance left are negative once it is overdue; null when that side does not apply.</summary>
 public sealed record RecurrenceStatusInfo(RecurrenceState State, RecurrenceLimit? Limit, DateOnly? DueDate, long? DueOdometer, int? DaysLeft, long? DistanceLeft);
 
-/// <summary>A schedule such as insurance or an oil change, with its status. Intervals and odometers are in the vehicle's distance unit.</summary>
+/// <summary>A schedule such as insurance or an oil change, with its status and when it was added. Intervals and odometers are in the vehicle's distance unit.</summary>
 public sealed record RecurringExpenseInfo(
     Guid Id, Guid VehicleId, string Title, string? Category, string? Note, RecurrenceKind Kind, int? IntervalMonths, long? IntervalDistance,
-    DateOnly LastDoneDate, long? LastDoneOdometer, int WarnDays, long WarnDistance, RecurrenceStatusInfo Status)
+    DateOnly LastDoneDate, long? LastDoneOdometer, int WarnDays, long WarnDistance, DateTimeOffset CreatedAt, RecurrenceStatusInfo Status)
 {
     public static RecurringExpenseInfo From(RecurringItem r) => new(
         r.Item.Id, r.Item.VehicleId, r.Item.Title, r.Item.Category, r.Item.Note, r.Item.Kind, r.Item.IntervalMonths, r.Item.IntervalDistance,
-        r.Item.LastDoneDate, r.Item.LastDoneOdometer, r.Item.WarnDays, r.Item.WarnDistance,
+        r.Item.LastDoneDate, r.Item.LastDoneOdometer, r.Item.WarnDays, r.Item.WarnDistance, r.Item.CreatedAt,
         new RecurrenceStatusInfo(r.Status.State, r.Status.Limit, r.Status.DueDate, r.Status.DueOdometer, r.Status.DaysLeft, r.Status.DistanceLeft));
 }
 

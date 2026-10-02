@@ -16,6 +16,8 @@ internal sealed class RecurringExpenseConfiguration : IEntityTypeConfiguration<R
         b.Property(r => r.Category).HasMaxLength(RecurringExpense.MaxCategoryLength);
         b.Property(r => r.Note).HasMaxLength(RecurringExpense.MaxNoteLength);
         b.Property(r => r.Kind).HasConversion<string>().HasMaxLength(16);
+        // Stored as a UTC date-time so it translates on every provider (same as the other timestamps).
+        b.Property(r => r.CreatedAt).HasConversion(v => v.UtcDateTime, v => new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc)));
         b.Ignore(r => r.UsesTime);
         b.Ignore(r => r.UsesDistance);
         b.HasOne<Vehicle>().WithMany().HasForeignKey(r => r.VehicleId).OnDelete(DeleteBehavior.Cascade);

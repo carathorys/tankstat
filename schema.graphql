@@ -273,6 +273,7 @@ type RecurringExpenseInfo {
   lastDoneOdometer: Long
   warnDays: Int!
   warnDistance: Long!
+  createdAt: DateTime!
   status: RecurrenceStatusInfo!
 }
 

@@ -37,6 +37,7 @@ public class RecurringExpenseServiceTests
         var added = await s.W.RecurringService.AddAsync(s.Car.Id, Oil(), default);
 
         Assert.Equal((s.Alice.Id, s.Car.Id, 30, 500L), (added.Item.CreatedById, added.Item.VehicleId, added.Item.WarnDays, added.Item.WarnDistance));
+        Assert.Equal(s.W.Clock.GetUtcNow(), added.Item.CreatedAt); // who and when
         Assert.Equal(new DateOnly(2027, 1, 15), added.Status.DueDate);
         Assert.Equal(RecurrenceState.Upcoming, added.Status.State);
     }

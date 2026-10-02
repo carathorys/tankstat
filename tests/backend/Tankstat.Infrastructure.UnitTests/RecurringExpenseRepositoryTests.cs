@@ -25,7 +25,7 @@ public class RecurringExpenseRepositoryTests
     }
 
     private static RecurringExpense Item(Vehicle v, string title, Guid? createdBy = null, RecurrenceKind kind = RecurrenceKind.Combined) =>
-        RecurringExpense.Create(v.OwnerId, createdBy ?? v.OwnerId, v.Id, title, "Service", "note", kind, 12, 15000, Day, 50000, 30, 500);
+        RecurringExpense.Create(v.OwnerId, createdBy ?? v.OwnerId, v.Id, title, "Service", "note", kind, 12, 15000, Day, 50000, 30, 500, Now);
 
     private static async Task<AppDbContext> Context(TestDatabase db) => await db.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
 
@@ -43,6 +43,7 @@ public class RecurringExpenseRepositoryTests
         Assert.Equal(("Oil change", "Service", "note", RecurrenceKind.Combined), (loaded.Title, loaded.Category, loaded.Note, loaded.Kind));
         Assert.Equal((12, 15000L, Day, 50000L, 30, 500L), (loaded.IntervalMonths, loaded.IntervalDistance, loaded.LastDoneDate, loaded.LastDoneOdometer, loaded.WarnDays, loaded.WarnDistance));
         Assert.Equal((car.OwnerId, car.Id), (loaded.OwnerId, loaded.VehicleId));
+        Assert.Equal(Now, loaded.CreatedAt); // stored as UTC and read back as the same moment
     }
 
     [Fact]

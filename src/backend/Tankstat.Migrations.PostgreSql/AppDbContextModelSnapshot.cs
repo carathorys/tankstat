@@ -251,6 +251,9 @@ namespace Tankstat.Migrations.PostgreSql
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)");
 
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("CreatedById")
                         .HasColumnType("uuid");
 

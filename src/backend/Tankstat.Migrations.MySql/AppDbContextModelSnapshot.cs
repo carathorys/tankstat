@@ -248,6 +248,9 @@ namespace Tankstat.Migrations.MySql
                         .HasMaxLength(60)
                         .HasColumnType("varchar(60)");
 
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<Guid>("CreatedById")
                         .HasColumnType("char(36)");
 

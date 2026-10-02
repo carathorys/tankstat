@@ -60,7 +60,7 @@ public sealed class RecurringExpenseService(
 
         var item = RecurringExpense.Create(
             vehicle.OwnerId, creator.Id, vehicle.Id, input.Title, input.Category, input.Note, input.Kind, input.IntervalMonths, input.IntervalDistance,
-            start, startOdometer, input.WarnDays ?? RecurringExpense.DefaultWarnDays, input.WarnDistance ?? RecurringExpense.DefaultWarnDistance);
+            start, startOdometer, input.WarnDays ?? RecurringExpense.DefaultWarnDays, input.WarnDistance ?? RecurringExpense.DefaultWarnDistance, clock.GetUtcNow());
         await items.AddAsync(item, ct);
         return await WithStatusAsync(item, ct);
     }

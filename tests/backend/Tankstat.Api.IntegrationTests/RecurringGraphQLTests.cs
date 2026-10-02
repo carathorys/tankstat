@@ -19,7 +19,7 @@ public class RecurringGraphQLTests(ApiFixture api)
         return added.GetProperty("data").GetProperty("addVehicle").GetProperty("id").GetString()!;
     }
 
-    private const string Fields = "id title kind intervalMonths intervalDistance lastDoneDate lastDoneOdometer warnDays warnDistance status { state limit dueDate dueOdometer daysLeft distanceLeft }";
+    private const string Fields = "id title createdAt kind intervalMonths intervalDistance lastDoneDate lastDoneOdometer warnDays warnDistance status { state limit dueDate dueOdometer daysLeft distanceLeft }";
 
     private async Task<JsonElement> AddItem(string vehicleId, object? over = null)
     {
@@ -42,6 +42,7 @@ public class RecurringGraphQLTests(ApiFixture api)
 
         Assert.Equal(("COMBINED", 30, 500), (added.GetProperty("kind").GetString(), added.GetProperty("warnDays").GetInt32(), (int)added.GetProperty("warnDistance").GetInt64()));
         Assert.Equal("2027-01-15", added.GetProperty("status").GetProperty("dueDate").GetString());
+        Assert.True(DateTimeOffset.UtcNow - added.GetProperty("createdAt").GetDateTimeOffset() < TimeSpan.FromMinutes(5)); // recorded when it was added
         Assert.Equal(65000, added.GetProperty("status").GetProperty("dueOdometer").GetInt64());
 
         var listed = (await Send($"query($id: UUID!) {{ vehicle(id: $id) {{ recurring {{ {Fields} }} }} }}", new { id = vehicle })).GetProperty("data").GetProperty("vehicle").GetProperty("recurring");
