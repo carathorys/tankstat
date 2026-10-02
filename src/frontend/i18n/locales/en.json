@@ -613,7 +613,8 @@
       "logAccess": "Logs: {{level}}",
       "owner": "Owner: {{name}}",
       "trend": "Spending in the last six months",
-      "recurringTitle": "Needs attention"
+      "recurringTitle": "Needs attention",
+      "tapAgain": "Tap again to open"
     },
     "search": "Search vehicles",
     "searchPlaceholder": "Name or license plate",

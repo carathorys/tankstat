@@ -613,7 +613,8 @@
       "logAccess": "Napló: {{level}}",
       "owner": "Tulajdonos: {{name}}",
       "trend": "Költés az elmúlt hat hónapban",
-      "recurringTitle": "Figyelmet igényel"
+      "recurringTitle": "Figyelmet igényel",
+      "tapAgain": "Koppints újra a megnyitáshoz"
     },
     "search": "Járművek keresése",
     "searchPlaceholder": "Név vagy rendszám",

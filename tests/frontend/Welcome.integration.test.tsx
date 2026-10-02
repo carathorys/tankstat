@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import { server } from './server.ts'
-import { adminSession, fakeSummary, fakeVehicle, fakeVehicleBackend, healthHandler, person, renderWithApollo, sessionHandler, stubViewport } from './mocks.tsx'
+import { adminSession, fakeLogBackend, fakeSummary, fakeVehicle, fakeVehicleBackend, healthHandler, person, renderWithApollo, sessionHandler, stubViewport } from './mocks.tsx'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
@@ -15,7 +15,7 @@ afterAll(() => server.close())
 function setup(vehicles = [fakeVehicle()], device: 'desktop' | 'phone' = 'desktop', admin = false) {
   stubViewport(device)
   const backend = fakeVehicleBackend(vehicles)
-  server.use(admin ? adminSession() : sessionHandler('NONE', () => null), healthHandler, ...backend.handlers)
+  server.use(admin ? adminSession() : sessionHandler('NONE', () => null), healthHandler, ...backend.handlers, ...fakeLogBackend(vehicles[0] ?? fakeVehicle(), []).handlers)
   renderWithApollo(<App />, '/')
   return { ...backend, ui: userEvent.setup() }
 }
@@ -122,25 +122,55 @@ it('keeps the figures in the page for screen readers, hidden only visually until
   expect(within(c).getByText('Odometer')).toBeInTheDocument()
 })
 
-it('on a touch screen a tap on the card shows the figures, and another tap hides them again', async () => {
+it('on a touch screen the first tap shows the figures and the second tap opens the vehicle', async () => {
   const ui = userEvent.setup()
   setup([fakeVehicle()], 'phone')
   const c = await vehicleCard('Octavia')
 
   await ui.click(within(c).getByText('Odometer'))
   expect(c).toHaveAttribute('data-open')
+  expect(within(c).getByText('Tap again to open')).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Your vehicles' })).toBeInTheDocument() // the first tap did not navigate
+
   await ui.click(within(c).getByText('Odometer'))
-  expect(c).not.toHaveAttribute('data-open')
+
+  expect(await screen.findByRole('link', { name: 'Back to home' })).toBeInTheDocument() // the vehicle page
 })
 
-it('a tap on the name is navigation, not a reveal', async () => {
+it('a tap on the name does the same: reveal first, open on the second tap', async () => {
   const ui = userEvent.setup()
   setup([fakeVehicle()], 'phone')
   const c = await vehicleCard('Octavia')
 
   await ui.click(within(c).getByRole('link', { name: 'Open Octavia' }))
+  expect(c).toHaveAttribute('data-open')
+  expect(screen.getByRole('heading', { name: 'Your vehicles' })).toBeInTheDocument()
+
+  await ui.click(within(c).getByRole('link', { name: 'Open Octavia' }))
+  expect(await screen.findByRole('link', { name: 'Back to home' })).toBeInTheDocument()
+})
+
+it('a tap anywhere else puts the figures away again', async () => {
+  const ui = userEvent.setup()
+  setup([fakeVehicle()], 'phone')
+  const c = await vehicleCard('Octavia')
+  await ui.click(within(c).getByText('Odometer'))
+  expect(c).toHaveAttribute('data-open')
+
+  await ui.click(screen.getByRole('heading', { name: 'Your vehicles' }))
 
   expect(c).not.toHaveAttribute('data-open')
+})
+
+it('the keyboard and screen readers open the vehicle straight away, even on a touch device', async () => {
+  const ui = userEvent.setup()
+  setup([fakeVehicle()], 'phone')
+  const c = await vehicleCard('Octavia')
+
+  within(c).getByRole('link', { name: 'Open Octavia' }).focus()
+  await ui.keyboard('{Enter}')
+
+  expect(await screen.findByRole('link', { name: 'Back to home' })).toBeInTheDocument()
 })
 
 it('with a mouse a click on the card does not toggle anything (the whole card is the link)', async () => {
