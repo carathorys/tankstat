@@ -70,11 +70,10 @@ public sealed class ImageService(
     /// <summary>The picture if the current user may see it; null for unknown pictures and for ones they may not see.</summary>
     public async Task<ImageContent?> OpenAsync(Guid imageId, CancellationToken ct)
     {
-        var principal = await access.RequirePrincipalAsync(ct);
-        if (!await CanSeeAsync(imageId, principal, ct)) return null;
-
+        await access.RequirePrincipalAsync(ct);
         var info = await images.FindAsync(imageId, ct);
-        if (info is null || await store.OpenReadAsync(info, ct) is not { } stream) return null;
+        if (info is null || !await CanSeeAsync(info, ct)) return null;
+        if (await store.OpenReadAsync(info, ct) is not { } stream) return null;
         return new ImageContent(stream, info.ContentType, info.SizeBytes);
     }
 
@@ -114,11 +113,21 @@ public sealed class ImageService(
         }
     }
 
-    private async Task<bool> CanSeeAsync(Guid imageId, Principal principal, CancellationToken ct)
+    /// <summary>The folder says what kind of picture it is, so only that kind's owner is looked up (old files without a folder: each kind in turn).</summary>
+    private async Task<bool> CanSeeAsync(StoredImage image, CancellationToken ct)
     {
-        if (await users.FindByAvatarImageAsync(imageId, ct) is not null) return true;
-        if (await vehicles.FindByPictureImageAsync(imageId, ct) is { } vehicle) return await access.VehicleLevelAsync(vehicle, ct) >= AccessLevel.View;
-        return await logPhotos.CanSeeImageAsync(imageId, ct);
+        var folder = image.Folder;
+        if (folder is null || folder.StartsWith("users/", StringComparison.Ordinal))
+        {
+            if (await users.FindByAvatarImageAsync(image.Id, ct) is not null) return true;
+            if (folder is not null) return false;
+        }
+        if (folder is null || folder.EndsWith("/picture", StringComparison.Ordinal))
+        {
+            if (await vehicles.FindByPictureImageAsync(image.Id, ct) is { } vehicle) return await access.VehicleLevelAsync(vehicle, ct) >= AccessLevel.View;
+            if (folder is not null) return false;
+        }
+        return await logPhotos.CanSeeImageAsync(image.Id, ct);
     }
 
     private async Task<User> CurrentUserAsync(CancellationToken ct)
