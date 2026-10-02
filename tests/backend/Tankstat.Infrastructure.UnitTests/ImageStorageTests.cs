@@ -125,6 +125,10 @@ public sealed class ImageStorageTests : IDisposable
     [InlineData("vehicles//x")]
     [InlineData("Vehicles")]
     [InlineData("vehicles/not-an-id.png")]
+    [InlineData("vehicles")] // would be every vehicle's uploads
+    [InlineData("users")]
+    [InlineData("vehicles/00000000000000000000000000000000/other")]
+    [InlineData("users/00000000000000000000000000000000\n")] // $ would let a trailing newline through
     public async Task Folders_ThatCouldEscapeTheDataFolder_AreRefused(string folder)
     {
         var store = Store();

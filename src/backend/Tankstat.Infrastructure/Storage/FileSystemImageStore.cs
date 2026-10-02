@@ -12,8 +12,11 @@ namespace Tankstat.Infrastructure.Storage;
 /// </summary>
 internal sealed partial class FileSystemImageStore(IOptions<StorageOptions> options) : IImageStore
 {
-    /// <summary>Lower-case words and 32-digit ids joined by "/": no dots, no empty segments, nothing that can climb out.</summary>
-    [GeneratedRegex("^[a-z]+(/([a-z]+|[0-9a-f]{32}))*$")]
+    /// <summary>
+    /// Exactly the folders <see cref="ImageFolders"/> builds (a user, a vehicle, below a vehicle its picture or the photos of one log):
+    /// no dots, no empty segments, nothing that can climb out, and never a bare "vehicles" or "users" that would take every upload.
+    /// </summary>
+    [GeneratedRegex(@"^(users/[0-9a-f]{32}|vehicles/[0-9a-f]{32}(/(picture|(expenses|refuelings)/[0-9a-f]{32}))?)\z")]
     private static partial Regex SafeFolder();
 
     private string Root => Path.GetFullPath(options.Value.Path);
