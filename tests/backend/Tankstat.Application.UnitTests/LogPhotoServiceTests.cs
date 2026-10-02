@@ -91,8 +91,53 @@ public class LogPhotoServiceTests
         var error = await Assert.ThrowsAsync<DomainException>(() => s.W.Photos.AddAsync(LogType.Expense, s.Expense.Id, Jpeg(99), default));
 
         Assert.Equal("photo.tooMany", error.Key);
-        Assert.Equal(LogPhoto.MaxPerLog + 1, s.W.LogPhotos.Items.Count); // the two that got in first stay; ours was taken back
-        Assert.Equal(LogPhoto.MaxPerLog - 1, s.W.ImageStore.Files.Count); // and its file is gone again
+        Assert.Equal(LogPhoto.MaxPerLog, s.W.LogPhotos.Items.Count); // the log is back at the limit: ours and the one past the limit were taken back
+        Assert.Equal(LogPhoto.MaxPerLog - 2, s.W.ImageStore.Files.Count); // every row taken back lost its file too (the racers' rows have none)
+    }
+
+    [Fact]
+    public async Task AnUploadThatIsInsertedLate_ButStampedEarlier_StillLeavesTheLogAtTheLimit()
+    {
+        var s = await Setup();
+        for (var i = 0; i < LogPhoto.MaxPerLog - 1; i++) await s.W.Photos.AddAsync(LogType.Expense, s.Expense.Id, Jpeg((byte)i), default);
+        // another process got the tenth place with a later time stamp while this upload was still on its way to the database
+        s.W.LogPhotos.AfterAdd = mine =>
+        {
+            s.W.LogPhotos.AfterAdd = null;
+            s.W.LogPhotos.Items.Add(LogPhoto.Create(mine.OwnerId, mine.VehicleId, LogType.Expense, mine.LogId, Guid.NewGuid(), mine.CreatedById, mine.CreatedAt.AddSeconds(1)));
+        };
+
+        var id = await s.W.Photos.AddAsync(LogType.Expense, s.Expense.Id, Jpeg(99), default);
+
+        var listed = await s.W.Photos.ListAsync(LogType.Expense, s.Expense.Id, default);
+        Assert.Equal(LogPhoto.MaxPerLog, listed.Count); // never 11: the one past the limit was taken back
+        Assert.Contains(id, listed.Select(p => p.ImageId));
+    }
+
+    [Fact]
+    public async Task WhenAFailureComesAfterTheRowWasSaved_TheRowAndTheFileAreBothRemoved_EvenIfTheRequestWasCancelled()
+    {
+        var s = await Setup();
+        using var cts = new CancellationTokenSource();
+        s.W.LogPhotos.AfterAdd = _ => cts.Cancel(); // the client goes away right after the insert
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => s.W.Photos.AddAsync(LogType.Expense, s.Expense.Id, Jpeg(), cts.Token));
+
+        Assert.Empty(s.W.LogPhotos.Items);
+        Assert.Empty(s.W.ImageStore.Files);
+        Assert.Empty(s.W.Images.Items);
+    }
+
+    [Fact]
+    public async Task WhenListingAfterTheInsertFails_NoRowPointsAtARemovedImage()
+    {
+        var s = await Setup();
+        s.W.LogPhotos.AfterAdd = _ => s.W.LogPhotos.FailLists = true;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => s.W.Photos.AddAsync(LogType.Expense, s.Expense.Id, Jpeg(), default));
+
+        Assert.Empty(s.W.LogPhotos.Items);
+        Assert.Empty(s.W.ImageStore.Files);
     }
 
     [Fact]

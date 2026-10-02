@@ -196,11 +196,16 @@ internal sealed class InMemoryLogPhotos : ILogPhotoRepository
 {
     public List<LogPhoto> Items { get; } = [];
     public bool FailAdds { get; set; }
+    public bool FailLists { get; set; }
 
     /// <summary>Runs right after a photo was added: lets a test put in other photos "at the same moment".</summary>
     public Action<LogPhoto>? AfterAdd { get; set; }
-    public Task<IReadOnlyList<LogPhoto>> ListForLogAsync(LogType logType, Guid logId, CancellationToken ct) =>
-        Task.FromResult<IReadOnlyList<LogPhoto>>(Items.Where(p => p.LogType == logType && p.LogId == logId).OrderBy(p => p.CreatedAt).ToList());
+    public Task<IReadOnlyList<LogPhoto>> ListForLogAsync(LogType logType, Guid logId, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (FailLists) throw new InvalidOperationException("database down");
+        return Task.FromResult<IReadOnlyList<LogPhoto>>(Items.Where(p => p.LogType == logType && p.LogId == logId).OrderBy(p => p.CreatedAt).ToList());
+    }
     public Task<int> CountForLogAsync(LogType logType, Guid logId, CancellationToken ct) =>
         Task.FromResult(Items.Count(p => p.LogType == logType && p.LogId == logId));
     public Task<LogPhoto?> FindByImageAsync(Guid imageId, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(p => p.ImageId == imageId));

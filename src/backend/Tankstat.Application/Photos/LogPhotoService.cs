@@ -17,34 +17,66 @@ public sealed class LogPhotoService(
     public async Task<IReadOnlyList<LogPhoto>> ListAsync(LogType logType, Guid logId, CancellationToken ct) =>
         await logs.FindAsync(logType, logId, ct) is null ? [] : await photos.ListForLogAsync(logType, logId, ct);
 
+    // Uploads to one log are handled one at a time within this process, so the count check and the insert below are one step. Other
+    // processes on the same database are covered by the re-check after the insert. Striped (by log id) so the locks do not pile up.
+    private static readonly SemaphoreSlim[] Locks = Enumerable.Range(0, 64).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
+
     /// <summary>Stores the picture (JPEG, PNG or WebP) as a new photo of the log and returns its image id.</summary>
     public async Task<Guid> AddAsync(LogType logType, Guid logId, ReadOnlyMemory<byte> data, CancellationToken ct)
     {
         var log = await logs.EditableAsync(logType, logId, ct);
         var principal = await access.RequirePrincipalAsync(ct);
-        if (await photos.CountForLogAsync(logType, logId, ct) >= LogPhoto.MaxPerLog) throw TooMany();
 
-        var imageId = await images.StoreAsync(data, ImageFolders.LogPhotos(log.Vehicle.Id, logType, logId), ct);
+        var gate = Locks[(uint)logId.GetHashCode() % Locks.Length];
+        await gate.WaitAsync(ct);
         try
         {
-            var photo = LogPhoto.Create(log.Vehicle.OwnerId, log.Vehicle.Id, logType, logId, imageId, principal.Id, clock.GetUtcNow());
-            await photos.AddAsync(photo, ct);
+            if (await photos.CountForLogAsync(logType, logId, ct) >= LogPhoto.MaxPerLog) throw TooMany();
 
-            // The count above and the insert are not one step, so uploads at the same moment can all pass the check. Look again: the first
-            // MaxPerLog photos (in the order they are listed) stay, anything after them is taken back, whichever request notices.
-            var kept = (await photos.ListForLogAsync(logType, logId, ct)).Take(LogPhoto.MaxPerLog);
-            if (kept.All(p => p.ImageId != imageId))
+            var imageId = await images.StoreAsync(data, ImageFolders.LogPhotos(log.Vehicle.Id, logType, logId), ct);
+            LogPhoto? inserted = null;
+            try
             {
-                await photos.RemoveAsync(photo, ct);
-                throw TooMany();
+                var photo = LogPhoto.Create(log.Vehicle.OwnerId, log.Vehicle.Id, logType, logId, imageId, principal.Id, clock.GetUtcNow());
+                await photos.AddAsync(photo, ct);
+                inserted = photo;
+
+                // Uploads through another process can still pass the count above at the same moment. Look again: the first MaxPerLog
+                // photos (in the order they are listed) stay and every one after them is taken back, whichever request notices.
+                var extra = (await photos.ListForLogAsync(logType, logId, ct)).Skip(LogPhoto.MaxPerLog).ToList();
+                foreach (var surplus in extra)
+                {
+                    await photos.RemoveAsync(surplus, ct);
+                    if (surplus.ImageId == imageId) inserted = null;
+                    else await images.DeleteAsync([surplus.ImageId], ct);
+                }
+                if (inserted is null) throw TooMany();
             }
+            catch
+            {
+                // Best effort and not tied to the request: a client that went away must not leave the row or the file behind.
+                await CleanUpAsync(inserted, imageId);
+                throw;
+            }
+            return imageId;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private async Task CleanUpAsync(LogPhoto? row, Guid imageId)
+    {
+        try
+        {
+            if (row is not null) await photos.RemoveAsync(row, CancellationToken.None);
+            await images.DeleteAsync([imageId], CancellationToken.None);
         }
         catch
         {
-            await images.DeleteAsync([imageId], ct);
-            throw;
+            // the original error is the one to report
         }
-        return imageId;
     }
 
     private static DomainException TooMany() =>
