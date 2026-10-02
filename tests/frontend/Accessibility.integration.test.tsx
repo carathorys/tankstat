@@ -143,3 +143,15 @@ it('the photo gallery of the expense dialogs is a labelled group and free of vio
   await within(editing).findByRole('group', { name: 'Photos' })
   await check(document.body)
 })
+
+it('the edit refuelling dialog with its photos is free of violations', async () => {
+  const { ui } = setup('/vehicles/v1?tab=refuelings')
+  await screen.findByText(/Sep 1, 2026/)
+
+  await ui.click(screen.getAllByRole('button', { name: /^Edit the refuelling/ })[0])
+  const dialog = await screen.findByRole('dialog', { name: 'Edit refuelling' })
+  await within(dialog).findByRole('group', { name: 'Photos' })
+  expect(within(dialog).getByRole('button', { name: 'Take photo' })).toBeInTheDocument()
+
+  await check(document.body)
+})

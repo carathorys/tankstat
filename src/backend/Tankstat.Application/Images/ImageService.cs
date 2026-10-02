@@ -17,9 +17,10 @@ public sealed record ImageContent(Stream Content, string ContentType, long SizeB
 }
 
 /// <summary>
-/// Profile pictures and vehicle pictures. A user changes their own picture; a vehicle's picture needs edit access to the
-/// vehicle. Pictures are visible to everyone who may see their subject: any signed-in user for avatars (they show next to
-/// names), whoever can see the vehicle for vehicle pictures.
+/// Profile pictures, vehicle pictures and the file side of log photos (see <see cref="Photos.LogPhotoService"/>). A user changes
+/// their own picture; a vehicle's picture needs edit access to the vehicle. Pictures are visible to everyone who may see their
+/// subject: any signed-in user for avatars (they show next to names), whoever can see the vehicle for vehicle pictures, whoever
+/// may see the log for its photos.
 /// </summary>
 public sealed class ImageService(
     IImageStore store, IImageRepository images, IUserRepository users, IVehicleRepository vehicles, AccessService access, LogPhotoAccess logPhotos, TimeProvider clock)
