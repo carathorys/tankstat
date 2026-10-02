@@ -1,7 +1,9 @@
 using Tankstat.Application;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Images;
+using Tankstat.Application.Photos;
 using Tankstat.Domain;
+using Tankstat.Domain.Photos;
 
 namespace Tankstat.Api.Media;
 
@@ -44,6 +46,18 @@ public static class MediaEndpoints
             await images.RemoveVehiclePictureAsync(vehicleId, ct);
             return Results.NoContent();
         });
+
+        // Photos of logs: PUT adds one (up to ten per log), DELETE removes one by its image id.
+        foreach (var (segment, logType) in new[] { ("expenses", LogType.Expense), ("refuelings", LogType.Refueling) })
+        {
+            media.MapPut($"/{segment}/{{logId:guid}}/photos", async (Guid logId, HttpRequest request, LogPhotoService photos, CancellationToken ct) =>
+                Uploaded(await photos.AddAsync(logType, logId, await ReadBodyAsync(request, ct), ct)));
+            media.MapDelete($"/{segment}/{{logId:guid}}/photos/{{imageId:guid}}", async (Guid logId, Guid imageId, LogPhotoService photos, CancellationToken ct) =>
+            {
+                await photos.RemoveAsync(logType, logId, imageId, ct);
+                return Results.NoContent();
+            });
+        }
     }
 
     private static IResult Uploaded(Guid id) => Results.Json(new { id, url = MediaUrls.Image(id) });
