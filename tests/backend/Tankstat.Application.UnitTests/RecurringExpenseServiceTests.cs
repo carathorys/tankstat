@@ -42,6 +42,54 @@ public class RecurringExpenseServiceTests
     }
 
     [Fact]
+    public async Task Add_StartsCountingTodayFromTheCurrentOdometer_WhenNoneIsGiven()
+    {
+        var s = await Setup();
+        await s.W.RefuelingService.LogAsync(s.Car.Id, new DateOnly(2026, 9, 30), 40, 60, 71500, true, default);
+
+        var added = await s.W.RecurringService.AddAsync(s.Car.Id, Oil(odometer: null) with { LastDoneDate = null }, default);
+
+        Assert.Equal((Today, 71500L), (added.Item.LastDoneDate, added.Item.LastDoneOdometer));
+        Assert.Equal(86500L, added.Status.DueOdometer);
+        Assert.Equal(15000L, added.Status.DistanceLeft); // the calculations start right away
+    }
+
+    [Fact]
+    public async Task Add_KeepsAnOdometerThatWasGiven_AndDoesNotNeedOneForTimeOnlySchedules()
+    {
+        var s = await Setup();
+        await s.W.RefuelingService.LogAsync(s.Car.Id, new DateOnly(2026, 9, 30), 40, 60, 71500, true, default);
+
+        var given = await s.W.RecurringService.AddAsync(s.Car.Id, Oil(odometer: 70000) with { LastDoneDate = null }, default);
+        var timeOnly = await s.W.RecurringService.AddAsync(s.Car.Id, Oil(RecurrenceKind.Time, "Insurance", odometer: null) with { LastDoneDate = null }, default);
+
+        Assert.Equal(70000L, given.Item.LastDoneOdometer);
+        Assert.Null(timeOnly.Item.LastDoneOdometer); // not needed, so not made up
+    }
+
+    [Fact]
+    public async Task Add_NeedsAnOdometer_WhenDistanceCountsAndTheVehicleHasNoReadingYet()
+    {
+        var s = await Setup();
+
+        var error = await Assert.ThrowsAsync<DomainException>(() => s.W.RecurringService.AddAsync(s.Car.Id, Oil(odometer: null) with { LastDoneDate = null }, default));
+
+        Assert.Equal("recurring.odometerRequired", error.Key);
+        Assert.Empty(s.W.Recurring.Items);
+    }
+
+    [Fact]
+    public async Task Update_KeepsTheStartDateWhenNoneIsGiven()
+    {
+        var s = await Setup();
+        var item = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(), default)).Item;
+
+        var updated = await s.W.RecurringService.UpdateAsync(item.Id, Oil(title: "Oil and filter") with { LastDoneDate = null }, default);
+
+        Assert.Equal((new DateOnly(2026, 1, 15), "Oil and filter"), (updated.Item.LastDoneDate, updated.Item.Title));
+    }
+
+    [Fact]
     public async Task List_IsMostUrgentFirst_AndUsesTheLatestOdometerOfTheVehicle()
     {
         var s = await Setup();

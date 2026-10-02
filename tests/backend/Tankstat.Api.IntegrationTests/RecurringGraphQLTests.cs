@@ -49,6 +49,25 @@ public class RecurringGraphQLTests(ApiFixture api)
     }
 
     [Fact]
+    public async Task AddingWithoutAStart_CountsFromTodayAtTheCurrentOdometer()
+    {
+        var vehicle = await AddVehicle();
+        await Send("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }",
+            new { i = new { vehicleId = vehicle, date = "2026-10-01", volume = 40, totalCost = 60, odometer = 71500, isFullTank = true } });
+        var input = new { vehicleId = vehicle, title = "Oil change", kind = "ODOMETER", intervalDistance = 15000 };
+
+        var added = (await Send($"mutation($i: AddRecurringExpenseInput!) {{ addRecurringExpense(input: $i) {{ {Fields} }} }}", new { i = input })).GetProperty("data").GetProperty("addRecurringExpense");
+
+        Assert.Equal(71500, added.GetProperty("lastDoneOdometer").GetInt64());
+        Assert.Equal(DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd"), added.GetProperty("lastDoneDate").GetString());
+        Assert.Equal(86500, added.GetProperty("status").GetProperty("dueOdometer").GetInt64());
+
+        var bare = await AddVehicle(); // no reading at all: the odometer has to be given
+        var refused = await Send($"mutation($i: AddRecurringExpenseInput!) {{ addRecurringExpense(input: $i) {{ {Fields} }} }}", new { i = input with { vehicleId = bare } });
+        Assert.Equal("recurring.odometerRequired", refused.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
+    }
+
+    [Fact]
     public async Task MarkingItDone_LogsTheExpenseAndStartsTheNextInterval()
     {
         var vehicle = await AddVehicle();

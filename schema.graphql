@@ -399,7 +399,7 @@ input AddRecurringExpenseInput {
   kind: RecurrenceKind!
   intervalMonths: Int
   intervalDistance: Long
-  lastDoneDate: LocalDate!
+  lastDoneDate: LocalDate
   lastDoneOdometer: Long
   warnDays: Int
   warnDistance: Long
