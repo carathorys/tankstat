@@ -115,7 +115,7 @@ public class VehicleAccessTests
     {
         var (w, _, _, car) = await Setup();
 
-        Assert.Empty(await w.VehicleService.ListAsync(new VehicleQuery(), default));
+        Assert.Empty(await w.VehicleService.ListMineAsync(default));
         Assert.Null(await w.VehicleService.FindAsync(car.Id, default));
     }
 
@@ -125,7 +125,7 @@ public class VehicleAccessTests
         var (w, alice, bob, car) = await Setup();
         w.Grants.Items.Add(AccessGrant.Create(alice.Id, bob.Id, AccessLevel.View));
 
-        Assert.Single(await w.VehicleService.ListAsync(new VehicleQuery(), default));
+        Assert.Single(await w.VehicleService.ListMineAsync(default));
         Assert.NotNull(await w.VehicleService.FindAsync(car.Id, default));
         await Assert.ThrowsAsync<ForbiddenException>(() =>
             w.RefuelingService.LogAsync(car.Id, new(2026, 10, 1), 10, 10, 10, true, default));
@@ -167,7 +167,7 @@ public class VehicleAccessTests
         var (w, _, _, _) = await Setup();
         w.Current.Principal = null;
 
-        await Assert.ThrowsAsync<UnauthenticatedException>(() => w.VehicleService.ListAsync(new VehicleQuery(), default));
+        await Assert.ThrowsAsync<UnauthenticatedException>(() => w.VehicleService.ListMineAsync(default));
         await Assert.ThrowsAsync<UnauthenticatedException>(() => w.VehicleService.AddAsync("x", null, FuelType.Diesel, default));
     }
 
@@ -177,7 +177,7 @@ public class VehicleAccessTests
         var w = new World(AuthMode.None);
         await w.VehicleService.AddAsync("Shared", null, FuelType.Lpg, default);
 
-        Assert.Single(await w.VehicleService.ListAsync(new VehicleQuery(), default));
+        Assert.Single(await w.VehicleService.ListMineAsync(default));
     }
 }
 

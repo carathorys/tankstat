@@ -11,7 +11,8 @@ public class PagingTests
 {
     private static async Task<World> WorldWithVehicles(int count)
     {
-        var w = new World(AuthMode.None);
+        var w = new World(); // the paged list is an administrator feature
+        w.Current.SignInAs(w.AddUser("root@x.co", admin: true));
         for (var i = 0; i < count; i++) await w.VehicleService.AddAsync($"Car {i:D3}", null, FuelType.Petrol, default);
         return w;
     }
@@ -42,6 +43,22 @@ public class PagingTests
     }
 
     [Fact]
+    public async Task ThePagedList_IsForAdministratorsOnly_AndNeverAvailableWithoutAuthentication()
+    {
+        var w = new World();
+        var alice = w.AddUser("alice@x.co");
+        w.Current.SignInAs(alice);
+        await w.VehicleService.AddAsync("Mine", null, FuelType.Lpg, default);
+
+        await Assert.ThrowsAsync<ForbiddenException>(() => w.VehicleService.ListAsync(new VehicleQuery(), default));
+        await Assert.ThrowsAsync<ForbiddenException>(() => w.VehicleService.CountAsync(default));
+        Assert.Single(await w.VehicleService.ListMineAsync(default)); // the home page still works
+
+        var none = new World(AuthMode.None); // no real administrator exists then
+        await Assert.ThrowsAsync<ForbiddenException>(() => none.VehicleService.ListAsync(new VehicleQuery(), default));
+    }
+
+    [Fact]
     public async Task Counts_FollowTheAccessScope()
     {
         var w = new World();
@@ -52,9 +69,9 @@ public class PagingTests
         w.Current.SignInAs(bob);
         await w.VehicleService.AddAsync("B", null, FuelType.Lpg, default);
 
-        Assert.Equal(1, await w.VehicleService.CountAsync(default));
+        Assert.Single(await w.VehicleService.ListMineAsync(default));
         w.Grants.Items.Add(AccessGrant.Create(alice.Id, bob.Id, AccessLevel.View));
-        Assert.Equal(4, await w.VehicleService.CountAsync(default));
+        Assert.Equal(4, (await w.VehicleService.ListMineAsync(default)).Count);
     }
 
     [Fact]

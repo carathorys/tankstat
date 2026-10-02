@@ -39,8 +39,8 @@ public class VehicleGraphQLTests(ApiFixture api)
         Assert.Equal("EUR", refueling.GetProperty("currency").GetString()); // the instance default when none is given
         Assert.Equal(12000, refueling.GetProperty("odometer").GetInt64());
 
-        var list = await Send("{ vehicles { name } }");
-        Assert.Contains(list.GetProperty("data").GetProperty("vehicles").EnumerateArray(),
+        var list = await Send("{ myVehicles { name } }");
+        Assert.Contains(list.GetProperty("data").GetProperty("myVehicles").EnumerateArray(),
             v => v.GetProperty("name").GetString() == "Octavia");
     }
 
@@ -103,11 +103,11 @@ public class VehicleLifecycleGraphQLTests(ApiFixture api)
 
         var deleted = await Send("mutation($id: UUID!) { deleteVehicle(id: $id) { deletedAt } }", new { id });
         Assert.NotEqual(JsonValueKind.Null, deleted.GetProperty("data").GetProperty("deleteVehicle").GetProperty("deletedAt").ValueKind);
-        Assert.DoesNotContain("Renamed car", Names(await Send("{ vehicles { name } }"), "vehicles"));
+        Assert.DoesNotContain("Renamed car", Names(await Send("{ myVehicles { name } }"), "myVehicles"));
         Assert.Contains("Renamed car", Names(await Send("{ trash { name } }"), "trash"));
 
         await Send("mutation($id: UUID!) { restoreVehicle(id: $id) { id } }", new { id });
-        Assert.Contains("Renamed car", Names(await Send("{ vehicles { name } }"), "vehicles"));
+        Assert.Contains("Renamed car", Names(await Send("{ myVehicles { name } }"), "myVehicles"));
         Assert.DoesNotContain("Renamed car", Names(await Send("{ trash { name } }"), "trash"));
 
         await Send("mutation($id: UUID!) { deleteVehicle(id: $id) { id } }", new { id });
@@ -155,55 +155,6 @@ public class VehicleGridGraphQLTests(ApiFixture api)
 
     private async Task Add(string name, string fuel) =>
         await Send("mutation($i: AddVehicleInput!) { addVehicle(input: $i) { id } }", new { i = new { name, fuelType = fuel } });
-
-    private const string Page = """
-        query($orderBy: VehicleSortField!, $direction: SortDirection!, $skip: Int!, $take: Int!, $withFuel: Boolean!) {
-          vehicles(orderBy: $orderBy, direction: $direction, skip: $skip, take: $take) { name fuelType @include(if: $withFuel) }
-          vehicleCount
-        }
-        """;
-
-    [Fact]
-    public async Task Vehicles_AreSortedAndPagedByTheServer_WithAColumnSwitch()
-    {
-        var tag = Guid.NewGuid().ToString("N")[..6];
-        foreach (var (n, f) in new[] { ("Yy " + tag, "DIESEL"), ("Xx " + tag, "LPG"), ("Zz " + tag, "PETROL") }) await Add(n, f);
-
-        var asc = await Send(Page, new { orderBy = "NAME", direction = "ASC", skip = 0, take = 200, withFuel = true });
-        var ours = asc.GetProperty("data").GetProperty("vehicles").EnumerateArray().Where(v => v.GetProperty("name").GetString()!.EndsWith(tag)).ToList();
-        Assert.Equal(["Xx " + tag, "Yy " + tag, "Zz " + tag], ours.Select(v => v.GetProperty("name").GetString()));
-        Assert.Equal("LPG", ours[0].GetProperty("fuelType").GetString());
-        var total = asc.GetProperty("data").GetProperty("vehicleCount").GetInt32();
-        Assert.True(total >= 3);
-
-        var desc = await Send(Page, new { orderBy = "NAME", direction = "DESC", skip = 0, take = 1, withFuel = false });
-        var first = desc.GetProperty("data").GetProperty("vehicles")[0];
-        Assert.Equal(1, desc.GetProperty("data").GetProperty("vehicles").GetArrayLength());
-        Assert.False(first.TryGetProperty("fuelType", out _)); // switched off: not returned at all
-        Assert.Equal(total, desc.GetProperty("data").GetProperty("vehicleCount").GetInt32()); // count ignores paging
-
-        var beyond = await Send(Page, new { orderBy = "NAME", direction = "ASC", skip = total, take = 10, withFuel = true });
-        Assert.Equal(0, beyond.GetProperty("data").GetProperty("vehicles").GetArrayLength());
-    }
-
-    [Fact]
-    public async Task Defaults_ApplyWhenTheGridArgumentsAreOmitted()
-    {
-        await Add("Default order " + Guid.NewGuid().ToString("N")[..6], "PETROL");
-
-        var body = await Send("{ vehicles { name } vehicleCount trash { id } trashCount }");
-
-        Assert.False(body.TryGetProperty("errors", out _), body.ToString());
-        Assert.True(body.GetProperty("data").GetProperty("vehicleCount").GetInt32() >= 1);
-    }
-
-    [Fact]
-    public async Task OutOfRangePaging_IsClamped()
-    {
-        var body = await Send("{ vehicles(skip: -10, take: 100000) { id } }");
-
-        Assert.False(body.TryGetProperty("errors", out _), body.ToString());
-    }
 
     [Fact]
     public async Task Trash_IsSortedByDeletionTime_NewestFirst_ByDefault()
@@ -257,3 +208,93 @@ public class VehicleGridGraphQLTests(ApiFixture api)
     }
 }
 
+
+/// <summary>The full, paged vehicle list is an administrator feature (it needs real users, so not with authentication off).</summary>
+public class VehicleListAdminTests : IDisposable
+{
+    private readonly TestApp _app = TestApp.Standalone();
+
+    public void Dispose() => _app.Dispose();
+
+    private const string Page = """
+        query($orderBy: VehicleSortField!, $direction: SortDirection!, $skip: Int!, $take: Int!, $withFuel: Boolean!) {
+          vehicles(orderBy: $orderBy, direction: $direction, skip: $skip, take: $take) { name fuelType @include(if: $withFuel) }
+          vehicleCount
+        }
+        """;
+
+    private async Task<HttpClient> Admin()
+    {
+        var c = _app.NewClient();
+        await c.LoginAs("root@example.com", "initial-password-1");
+        return c;
+    }
+
+    private static Task Add(HttpClient c, string name, string fuel) =>
+        c.Gql("mutation($i: AddVehicleInput!) { addVehicle(input: $i) { id } }", new { i = new { name, fuelType = fuel } });
+
+    [Fact]
+    public async Task Vehicles_AreSortedAndPagedByTheServer_WithAColumnSwitch()
+    {
+        var admin = await Admin();
+        var tag = Guid.NewGuid().ToString("N")[..6];
+        foreach (var (n, f) in new[] { ("Yy " + tag, "DIESEL"), ("Xx " + tag, "LPG"), ("Zz " + tag, "PETROL") }) await Add(admin, n, f);
+
+        var asc = (await admin.Gql(Page, new { orderBy = "NAME", direction = "ASC", skip = 0, take = 200, withFuel = true })).Data();
+        var ours = asc.GetProperty("vehicles").EnumerateArray().Where(v => v.GetProperty("name").GetString()!.EndsWith(tag)).ToList();
+        Assert.Equal(["Xx " + tag, "Yy " + tag, "Zz " + tag], ours.Select(v => v.GetProperty("name").GetString()));
+        Assert.Equal("LPG", ours[0].GetProperty("fuelType").GetString());
+        var total = asc.GetProperty("vehicleCount").GetInt32();
+        Assert.True(total >= 3);
+
+        var desc = (await admin.Gql(Page, new { orderBy = "NAME", direction = "DESC", skip = 0, take = 1, withFuel = false })).Data();
+        Assert.Equal(1, desc.GetProperty("vehicles").GetArrayLength());
+        Assert.False(desc.GetProperty("vehicles")[0].TryGetProperty("fuelType", out _)); // switched off: not returned at all
+        Assert.Equal(total, desc.GetProperty("vehicleCount").GetInt32()); // count ignores paging
+
+        var beyond = (await admin.Gql(Page, new { orderBy = "NAME", direction = "ASC", skip = total, take = 10, withFuel = true })).Data();
+        Assert.Equal(0, beyond.GetProperty("vehicles").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Defaults_ApplyWhenTheGridArgumentsAreOmitted_AndOutOfRangePagingIsClamped()
+    {
+        var admin = await Admin();
+        await Add(admin, "Default order " + Guid.NewGuid().ToString("N")[..6], "PETROL");
+
+        var body = (await admin.Gql("{ vehicles { name } vehicleCount trash { id } trashCount }")).Data();
+        Assert.True(body.GetProperty("vehicleCount").GetInt32() >= 1);
+
+        Assert.Null((await admin.Gql("{ vehicles(skip: -10, take: 100000) { id } }")).ErrorCode());
+    }
+
+    [Fact]
+    public async Task OrdinaryUsers_GetForbidden_ButSeeTheirOwnVehiclesOnTheHomeQuery()
+    {
+        var admin = await Admin();
+        var created = (await admin.Gql("mutation($i: CreateUserInput!) { createUser(input: $i) { reset { token } } }",
+            new { i = new { email = "alice@example.com", displayName = "Alice", isAdmin = false } })).Data().GetProperty("createUser");
+        await _app.NewClient().Gql("mutation($i: ResetPasswordInput!) { resetPassword(input: $i) }",
+            new { i = new { token = created.GetProperty("reset").GetProperty("token").GetString(), newPassword = "alice-password-1" } });
+        var alice = _app.NewClient();
+        await alice.LoginAs("alice@example.com", "alice-password-1");
+        await Add(alice, "Alice car", "LPG");
+        await Add(admin, "Admin car", "LPG");
+
+        Assert.Equal("FORBIDDEN", (await alice.Gql("{ vehicles { id } }")).ErrorCode());
+        Assert.Equal("FORBIDDEN", (await alice.Gql("{ vehicleCount }")).ErrorCode());
+        var mine = (await alice.Gql("{ myVehicles { name } }")).Data().GetProperty("myVehicles").EnumerateArray().Select(v => v.GetProperty("name").GetString()).ToList();
+        Assert.Equal(["Alice car"], mine);
+    }
+
+    [Fact]
+    public async Task WithAuthenticationOff_NobodyGetsTheList_ButTheHomeQueryWorks()
+    {
+        using var open = new TestApp(new() { ["Auth:Mode"] = "None" });
+        var c = open.NewClient();
+        await Add(c, "Solo car", "LPG");
+
+        Assert.Equal("FORBIDDEN", (await c.Gql("{ vehicles { id } }")).ErrorCode());
+        Assert.Contains("Solo car", (await c.Gql("{ myVehicles { name } }")).Data().GetProperty("myVehicles").EnumerateArray().Select(v => v.GetProperty("name").GetString()));
+    }
+}

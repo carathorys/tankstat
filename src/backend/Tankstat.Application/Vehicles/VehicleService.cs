@@ -12,11 +12,22 @@ namespace Tankstat.Application.Vehicles;
 public sealed class VehicleService(
     IVehicleRepository vehicles, IRefuelingRepository refuelings, AccessService access, OdometerService odometer, IImageStore imageStore, IImageRepository images, TimeProvider clock)
 {
-    public async Task<IReadOnlyList<Vehicle>> ListAsync(VehicleQuery query, CancellationToken ct) =>
-        await vehicles.ListAsync(await access.VehicleScopeAsync(AccessLevel.View, ct), query.Normalized(), ct);
+    /// <summary>One page of the full vehicle list: an administrator feature, like the rest of the administration.</summary>
+    public async Task<IReadOnlyList<Vehicle>> ListAsync(VehicleQuery query, CancellationToken ct)
+    {
+        await access.RequireAdminAsync(ct);
+        return await vehicles.ListAsync(await access.VehicleScopeAsync(AccessLevel.View, ct), query.Normalized(), ct);
+    }
 
-    public async Task<int> CountAsync(CancellationToken ct) =>
-        await vehicles.CountAsync(await access.VehicleScopeAsync(AccessLevel.View, ct), ct);
+    public async Task<int> CountAsync(CancellationToken ct)
+    {
+        await access.RequireAdminAsync(ct);
+        return await vehicles.CountAsync(await access.VehicleScopeAsync(AccessLevel.View, ct), ct);
+    }
+
+    /// <summary>The vehicles the user may see (their own and the ones shared with them), by name: what the home page shows. Everyone may ask.</summary>
+    public async Task<IReadOnlyList<Vehicle>> ListMineAsync(CancellationToken ct) =>
+        await vehicles.ListAsync(await access.VehicleScopeAsync(AccessLevel.View, ct), new VehicleQuery(Take: VehicleQuery.MaxTake), ct);
 
     /// <summary>Null when the vehicle does not exist or the user may not see it (existence is not revealed).</summary>
     public async Task<Vehicle?> FindAsync(Guid id, CancellationToken ct)
