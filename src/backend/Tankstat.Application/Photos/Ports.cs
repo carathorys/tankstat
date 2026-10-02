@@ -15,8 +15,5 @@ public interface ILogPhotoRepository
     Task RemoveAsync(LogPhoto photo, CancellationToken ct);
 }
 
-/// <summary>The logs that were deleted for good: their vehicle and id, so their photo folders can be removed.</summary>
-public sealed record PurgedLogs(int Count, IReadOnlyList<(Guid VehicleId, Guid LogId)> Logs)
-{
-    public static PurgedLogs None { get; } = new(0, []);
-}
+/// <summary>The logs that were deleted for good: how many, and (only those that had photos) their vehicle and id, so their photo folders can be removed.</summary>
+public sealed record PurgedLogs(int Count, IReadOnlyList<(Guid VehicleId, Guid LogId)> WithPhotos);

@@ -90,9 +90,30 @@ public class LogPhotoRepositoryTests
         var purged = await expenses.PurgeAsync(OwnerScope.All, default);
 
         Assert.Equal(1, purged.Count);
-        Assert.Equal([(v.Id, doomed.Id)], purged.Logs);
+        Assert.Equal([(v.Id, doomed.Id)], purged.WithPhotos);
         await using var ctx = await Context(db);
         Assert.Equal(new[] { keptPhoto.ImageId, sameIdOtherKind.ImageId }.Order(), ctx.LogPhotos.Select(p => p.ImageId).ToList().Order());
+    }
+
+    [Fact]
+    public async Task PurgingExpenses_ReportsOnlyTheLogsThatHadPhotosForFolderCleanup()
+    {
+        await using var db = new TestDatabase();
+        var (v, withPhoto) = await AddExpense(db);
+        var (_, without) = await AddExpense(db, v);
+        await db.Get<ILogPhotoRepository>().AddAsync(Photo(v, LogType.Expense, withPhoto.Id), default);
+        var expenses = db.Get<IExpenseRepository>();
+        foreach (var id in new[] { withPhoto.Id, without.Id })
+        {
+            var loaded = (await expenses.FindAsync(id, default))!;
+            loaded.MarkDeleted(Now);
+            await expenses.UpdateAsync(loaded, null, null, default);
+        }
+
+        var purged = await expenses.PurgeAsync(OwnerScope.All, default);
+
+        Assert.Equal(2, purged.Count); // both were purged
+        Assert.Equal([(v.Id, withPhoto.Id)], purged.WithPhotos); // but only one has a folder to remove
     }
 
     [Fact]
@@ -111,7 +132,7 @@ public class LogPhotoRepositoryTests
 
         var purged = await refuelings.PurgeAsync(OwnerScope.All, default);
 
-        Assert.Equal([(v.Id, log.Id)], purged.Logs);
+        Assert.Equal([(v.Id, log.Id)], purged.WithPhotos);
         await using var ctx = await Context(db);
         Assert.Empty(ctx.LogPhotos);
     }

@@ -88,12 +88,14 @@ internal sealed class RefuelingRepository(IDbContextFactory<AppDbContext> dbFact
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var doomed = await Trashed(db, scope).ToListAsync(ct);
         var ids = doomed.Select(r => r.Id).ToList();
-        db.LogPhotos.RemoveRange(await db.LogPhotos.Where(p => p.LogType == LogType.Refueling && ids.Contains(p.LogId)).ToListAsync(ct));
+        var photos = await db.LogPhotos.Where(p => p.LogType == LogType.Refueling && ids.Contains(p.LogId)).ToListAsync(ct);
+        db.LogPhotos.RemoveRange(photos);
         db.Refuelings.RemoveRange(doomed); // the dependents first, then the reading and cost that went with each log
         db.OdometerReadings.RemoveRange(doomed.Select(r => r.OdometerReading));
         db.Costs.RemoveRange(doomed.Select(r => r.Cost));
         await db.SaveChangesAsync(ct);
-        return new PurgedLogs(doomed.Count, doomed.Select(r => (r.VehicleId, r.Id)).ToList());
+        var withPhotos = photos.Select(p => p.LogId).ToHashSet();
+        return new PurgedLogs(doomed.Count, doomed.Where(r => withPhotos.Contains(r.Id)).Select(r => (r.VehicleId, r.Id)).ToList());
     }
 
     private static IQueryable<Refueling> Trashed(AppDbContext db, OwnerScope scope) =>

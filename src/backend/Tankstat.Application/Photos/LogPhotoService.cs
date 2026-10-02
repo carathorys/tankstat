@@ -95,5 +95,5 @@ public sealed class LogPhotoService(
 
     /// <summary>Removes the files of the photos of logs that were deleted for good (their rows went with the logs).</summary>
     public Task DeleteFilesAsync(LogType logType, PurgedLogs purged, CancellationToken ct) =>
-        images.DeleteFoldersAsync(purged.Logs.Select(l => ImageFolders.LogPhotos(l.VehicleId, logType, l.LogId)), ct);
+        images.DeleteFoldersAsync(purged.WithPhotos.Select(l => ImageFolders.LogPhotos(l.VehicleId, logType, l.LogId)), ct);
 }

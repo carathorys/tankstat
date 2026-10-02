@@ -94,13 +94,23 @@ public sealed class ImageService(
         await DeleteFoldersAsync(vehicleIds.Select(ImageFolders.Vehicle), ct);
     }
 
-    /// <summary>Removes folders with every file and row below them.</summary>
+    /// <summary>
+    /// Removes folders with every file and row below them. Used after what owned them was already deleted, so a folder that cannot be
+    /// removed (permissions, a locked file) is skipped instead of failing the whole operation and leaving the other folders behind.
+    /// </summary>
     public async Task DeleteFoldersAsync(IEnumerable<string> folders, CancellationToken ct)
     {
         foreach (var folder in folders)
         {
             await images.RemoveFolderAsync(folder, ct);
-            await store.DeleteFolderAsync(folder, ct);
+            try
+            {
+                await store.DeleteFolderAsync(folder, ct);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // an orphaned folder is harmless; nothing can reach it any more
+            }
         }
     }
 

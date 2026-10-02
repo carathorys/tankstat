@@ -89,12 +89,14 @@ internal sealed class ExpenseRepository(IDbContextFactory<AppDbContext> dbFactor
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var doomed = await Trashed(db, scope).ToListAsync(ct);
         var ids = doomed.Select(e => e.Id).ToList();
-        db.LogPhotos.RemoveRange(await db.LogPhotos.Where(p => p.LogType == LogType.Expense && ids.Contains(p.LogId)).ToListAsync(ct));
+        var photos = await db.LogPhotos.Where(p => p.LogType == LogType.Expense && ids.Contains(p.LogId)).ToListAsync(ct);
+        db.LogPhotos.RemoveRange(photos);
         db.Expenses.RemoveRange(doomed);
         db.OdometerReadings.RemoveRange(doomed.Where(e => e.OdometerReading is not null).Select(e => e.OdometerReading!));
         db.Costs.RemoveRange(doomed.Select(e => e.Cost));
         await db.SaveChangesAsync(ct);
-        return new PurgedLogs(doomed.Count, doomed.Select(e => (e.VehicleId, e.Id)).ToList());
+        var withPhotos = photos.Select(p => p.LogId).ToHashSet();
+        return new PurgedLogs(doomed.Count, doomed.Where(e => withPhotos.Contains(e.Id)).Select(e => (e.VehicleId, e.Id)).ToList());
     }
 
     private static IQueryable<Expense> Trashed(AppDbContext db, OwnerScope scope) =>

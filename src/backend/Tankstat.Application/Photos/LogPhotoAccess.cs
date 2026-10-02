@@ -10,7 +10,7 @@ using Tankstat.Domain.Photos;
 namespace Tankstat.Application.Photos;
 
 /// <summary>A live log with the vehicle it belongs to and what the current user may do with the vehicle's logs.</summary>
-public sealed record LogContext(Vehicle Vehicle, LogType LogType, Guid LogId, AccessLevel Level);
+public sealed record LogContext(Vehicle Vehicle, AccessLevel Level);
 
 /// <summary>
 /// Who may see or change the photos of a log: exactly those who may see or change the log itself, i.e. the access rules of the
@@ -31,7 +31,7 @@ public sealed class LogPhotoAccess(
         if (vehicleId is null || await vehicles.FindAsync(vehicleId.Value, ct) is not { } vehicle) return null;
 
         var level = await access.LogLevelAsync(vehicle, ct);
-        return level >= AccessLevel.View ? new LogContext(vehicle, logType, logId, level) : null;
+        return level >= AccessLevel.View ? new LogContext(vehicle, level) : null;
     }
 
     /// <summary>The log for changing its photos: unseen means not found, view-only is forbidden.</summary>
