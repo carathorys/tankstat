@@ -71,16 +71,14 @@ public sealed class ResourceSharingService(
     private async Task NotifyAsync(Vehicle vehicle, User grantee, AccessLevel before, AccessLevel after, CancellationToken ct)
     {
         var actor = await access.RequirePrincipalAsync(ct);
-        var (from, to) = (NotificationArgs.Level(before), NotificationArgs.Level(after));
         var car = NotificationRef.Vehicle(vehicle.Id);
         List<NotificationDraft> drafts =
         [
-            new(grantee.Id, NotificationKind.LogAccessChanged, car, car,
-                NotificationArgs.Of(("vehicleName", vehicle.Name), ("actorName", actor.DisplayName), ("level", to)), Before: from, After: to),
+            NotificationArgs.AccessChange(grantee.Id, NotificationKind.LogAccessChanged, car, car, actor.DisplayName, before, after, ("vehicleName", vehicle.Name)),
         ];
         if (actor.Id != vehicle.OwnerId)
-            drafts.Add(new(vehicle.OwnerId, NotificationKind.VehicleShared, NotificationRef.User(grantee.Id), car,
-                NotificationArgs.Of(("vehicleName", vehicle.Name), ("actorName", actor.DisplayName), ("userName", grantee.DisplayName), ("level", to)), Before: from, After: to));
+            drafts.Add(NotificationArgs.AccessChange(vehicle.OwnerId, NotificationKind.VehicleShared, NotificationRef.User(grantee.Id), car, actor.DisplayName, before, after,
+                ("vehicleName", vehicle.Name), ("userName", grantee.DisplayName)));
         await notifier.NotifyAsync(actor.Id, drafts, ct);
     }
 

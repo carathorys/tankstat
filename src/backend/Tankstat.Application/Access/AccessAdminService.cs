@@ -1,3 +1,4 @@
+using Tankstat.Application.Auth;
 using Tankstat.Application.Notifications;
 using Tankstat.Application.Users;
 using Tankstat.Domain.Access;
@@ -27,11 +28,9 @@ public sealed class AccessAdminService(
         if (before != level)
         {
             // Administrators can access everything anyway, so only the others are affected: one notification each, nothing per vehicle.
-            var (from, to) = (NotificationArgs.Level(before), NotificationArgs.Level(level));
             var affected = (await users.ListAsync(ct)).Where(u => !u.IsAdmin && !u.IsDisabled);
-            await notifier.NotifyAsync(admin.Id, affected.Select(u => new NotificationDraft(
-                u.Id, NotificationKind.DefaultAccessChanged, NotificationRef.Instance, null,
-                NotificationArgs.Of(("actorName", admin.DisplayName), ("level", to)), Before: from, After: to)), ct);
+            await notifier.NotifyAsync(admin.Id, affected.Select(u =>
+                NotificationArgs.AccessChange(u.Id, NotificationKind.DefaultAccessChanged, NotificationRef.Instance, null, admin.DisplayName, before, level)), ct);
         }
         return current;
     }
@@ -65,18 +64,13 @@ public sealed class AccessAdminService(
             await grants.UpdateAsync(existing, ct);
         }
 
-        if (before != level) await NotifyGrantAsync(admin.DisplayName, admin.Id, owner, grantee, before, level, ct);
+        if (before != level) await NotifyGrantAsync(admin, owner, grantee, before, level, ct);
     }
 
-    private Task NotifyGrantAsync(string adminName, Guid adminId, User owner, User grantee, AccessLevel before, AccessLevel after, CancellationToken ct)
-    {
-        var (from, to) = (NotificationArgs.Level(before), NotificationArgs.Level(after));
-        return notifier.NotifyAsync(adminId,
+    private Task NotifyGrantAsync(Principal admin, User owner, User grantee, AccessLevel before, AccessLevel after, CancellationToken ct) =>
+        notifier.NotifyAsync(admin.Id,
         [
-            new(grantee.Id, NotificationKind.DataAccessChanged, NotificationRef.User(owner.Id), null,
-                NotificationArgs.Of(("actorName", adminName), ("userName", owner.DisplayName), ("level", to)), Before: from, After: to),
-            new(owner.Id, NotificationKind.DataShared, NotificationRef.User(grantee.Id), null,
-                NotificationArgs.Of(("actorName", adminName), ("userName", grantee.DisplayName), ("level", to)), Before: from, After: to),
+            NotificationArgs.AccessChange(grantee.Id, NotificationKind.DataAccessChanged, NotificationRef.User(owner.Id), null, admin.DisplayName, before, after, ("userName", owner.DisplayName)),
+            NotificationArgs.AccessChange(owner.Id, NotificationKind.DataShared, NotificationRef.User(grantee.Id), null, admin.DisplayName, before, after, ("userName", grantee.DisplayName)),
         ], ct);
-    }
 }
