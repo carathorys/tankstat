@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Tankstat.Migrations.PostgreSql
+namespace Tankstat.Migrations.MySql
 {
     /// <inheritdoc />
     public partial class AddRecurringExpenses : Migration
@@ -15,19 +15,20 @@ namespace Tankstat.Migrations.PostgreSql
                 name: "RecurringExpenses",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    OwnerId = table.Column<Guid>(type: "uuid", nullable: false),
-                    VehicleId = table.Column<Guid>(type: "uuid", nullable: false),
-                    CreatedById = table.Column<Guid>(type: "uuid", nullable: false),
-                    Title = table.Column<string>(type: "character varying(120)", maxLength: 120, nullable: false),
-                    Category = table.Column<string>(type: "character varying(60)", maxLength: 60, nullable: true),
-                    Note = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
-                    Kind = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
-                    IntervalMonths = table.Column<int>(type: "integer", nullable: true),
+                    Id = table.Column<Guid>(type: "char(36)", nullable: false),
+                    OwnerId = table.Column<Guid>(type: "char(36)", nullable: false),
+                    VehicleId = table.Column<Guid>(type: "char(36)", nullable: false),
+                    CreatedById = table.Column<Guid>(type: "char(36)", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime(6)", nullable: false),
+                    Title = table.Column<string>(type: "varchar(120)", maxLength: 120, nullable: false),
+                    Category = table.Column<string>(type: "varchar(60)", maxLength: 60, nullable: true),
+                    Note = table.Column<string>(type: "varchar(500)", maxLength: 500, nullable: true),
+                    Kind = table.Column<string>(type: "varchar(16)", maxLength: 16, nullable: false),
+                    IntervalMonths = table.Column<int>(type: "int", nullable: true),
                     IntervalDistance = table.Column<long>(type: "bigint", nullable: true),
                     LastDoneDate = table.Column<DateOnly>(type: "date", nullable: false),
                     LastDoneOdometer = table.Column<long>(type: "bigint", nullable: true),
-                    WarnDays = table.Column<int>(type: "integer", nullable: false),
+                    WarnDays = table.Column<int>(type: "int", nullable: false),
                     WarnDistance = table.Column<long>(type: "bigint", nullable: false)
                 },
                 constraints: table =>
@@ -39,7 +40,8 @@ namespace Tankstat.Migrations.PostgreSql
                         principalTable: "Vehicles",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
-                });
+                })
+                .Annotation("MySQL:Charset", "utf8mb4");
 
             migrationBuilder.CreateIndex(
                 name: "IX_RecurringExpenses_OwnerId",

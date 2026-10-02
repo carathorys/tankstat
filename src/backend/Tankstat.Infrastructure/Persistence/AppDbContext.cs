@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Charts;
 using Tankstat.Domain.Images;
+using Tankstat.Domain.Photos;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
 using Tankstat.Domain.Recurring;
@@ -25,6 +26,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<AccessGrant> AccessGrants => Set<AccessGrant>();
     public DbSet<AccessSettings> AccessSettings => Set<AccessSettings>();
     public DbSet<ResourceGrant> ResourceGrants => Set<ResourceGrant>();
+    public DbSet<LogPhoto> LogPhotos => Set<LogPhoto>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);

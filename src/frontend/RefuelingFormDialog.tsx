@@ -4,6 +4,10 @@ import { Button, Dialog, Flex, Switch, Text, TextArea, TextField } from '@radix-
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { OdometerField } from './components/OdometerField.tsx'
+import { PhotoGallery } from './components/PhotoGallery.tsx'
+import { PhotosAfterSave } from './components/PhotosAfterSave.tsx'
+import type { Saved } from './components/usePhotoQueue.ts'
+import { usePhotoSession } from './components/usePhotoSession.ts'
 import { Field } from './forms.tsx'
 import { LogDefaultsDocument, RefuelingDetailsDocument, type DistanceUnit, type VolumeUnit } from './gql/generated.ts'
 import { parseDecimal } from './i18n/format.ts'
@@ -44,12 +48,14 @@ export function RefuelingFormDialog({
   trigger: ReactNode
   vehicle: { id: string; units: { distance: DistanceUnit; volume: VolumeUnit } }
   refuelingId?: string
-  onSubmit: (values: RefuelingValues) => Promise<unknown>
+  onSubmit: (values: RefuelingValues) => Promise<Saved>
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
+  const { queue, savedId, failure: uploadFailure, saving, submit, reset } = usePhotoSession('refuelings')
   const editing = refuelingId !== undefined
-  const details = useQuery(RefuelingDetailsDocument, { variables: { id: refuelingId ?? '' }, skip: !editing || !open, fetchPolicy: 'network-only' })
+  const logId = refuelingId ?? savedId
+  const details = useQuery(RefuelingDetailsDocument, { variables: { id: logId ?? '' }, skip: logId === undefined || !open, fetchPolicy: 'network-only' })
   const defaults = useQuery(LogDefaultsDocument, { variables: { vehicleId: vehicle.id }, skip: !open, fetchPolicy: 'network-only' })
   const error = details.error ?? defaults.error
   const ready = defaults.data && (!editing || details.data?.refueling)
@@ -62,9 +68,20 @@ export function RefuelingFormDialog({
     : { date: today(), currency: defaults.data?.logDefaults?.currency ?? '', isFullTank: true, note: null }
 
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) reset()
+      }}
+    >
       <Dialog.Trigger>{trigger}</Dialog.Trigger>
-      <Dialog.Content maxWidth="450px">
+      <Dialog.Content
+        maxWidth="450px"
+        // Closing while the log and its photos are on their way would lose track of them.
+        onEscapeKeyDown={(e) => saving && e.preventDefault()}
+        onInteractOutside={(e) => saving && e.preventDefault()}
+      >
         <Dialog.Title>{editing ? t('refuelings.dialogEdit') : t('refuelings.dialogAdd')}</Dialog.Title>
         <Dialog.Description size="2" mb="4">
           {editing ? t('refuelings.dialogEditDescription') : t('refuelings.dialogAddDescription')}
@@ -72,15 +89,22 @@ export function RefuelingFormDialog({
         {error && <ErrorMessage error={error} />}
         {!error && !ready && <Text as="p" role="status">{t('app.loading')}</Text>}
         {editing && details.data && !existing && <ErrorMessage>{t('errors.refueling.notFound')}</ErrorMessage>}
-        {ready && (
+        {savedId !== undefined && (
+          <PhotosAfterSave kind="refuelings" logId={savedId} failure={uploadFailure} photos={existing?.photos ?? []} queue={queue} onChanged={() => details.refetch()} />
+        )}
+        {ready && savedId === undefined && (
           <RefuelingForm
             initial={initial}
             units={vehicle.units}
             editing={editing}
             last={lastReading}
+            photosBusy={queue.adding}
+            gallery={<PhotoGallery kind="refuelings" logId={refuelingId} photos={existing?.photos ?? []} queue={queue} disabled={saving} onChanged={() => details.refetch()} />}
             onSubmit={async (values) => {
-              await onSubmit(values)
-              setOpen(false)
+              if (await submit(() => onSubmit(values), editing)) {
+                setOpen(false)
+                reset()
+              }
             }}
           />
         )}
@@ -94,12 +118,17 @@ function RefuelingForm({
   units,
   editing,
   last,
+  gallery,
+  photosBusy,
   onSubmit,
 }: {
   initial: Initial
   units: { distance: DistanceUnit; volume: VolumeUnit }
   editing: boolean
   last: { value: number; date: string } | null
+  gallery: ReactNode
+  /** Chosen photos are still being prepared: saving now would leave them out. */
+  photosBusy: boolean
   onSubmit: (values: RefuelingValues) => Promise<unknown>
 }) {
   const { t } = useTranslation()
@@ -174,15 +203,16 @@ function RefuelingForm({
         <Field name="note" label={t('refuelings.fields.note')}>
           <TextArea maxLength={500} rows={2} defaultValue={initial.note ?? ''} />
         </Field>
+        {gallery}
         {error !== undefined && <ErrorMessage error={error} />}
         <Flex gap="3" justify="end">
           <Dialog.Close>
-            <Button type="button" variant="soft" color="gray">
+            <Button type="button" variant="soft" color="gray" disabled={busy}>
               {t('common.cancel')}
             </Button>
           </Dialog.Close>
           <RadixForm.Submit asChild>
-            <Button disabled={busy}>{editing ? t('refuelings.save') : t('refuelings.saveAdd')}</Button>
+            <Button disabled={busy || photosBusy}>{editing ? t('refuelings.save') : t('refuelings.saveAdd')}</Button>
           </RadixForm.Submit>
         </Flex>
       </Flex>

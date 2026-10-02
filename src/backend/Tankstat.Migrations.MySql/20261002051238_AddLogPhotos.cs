@@ -6,35 +6,29 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Tankstat.Migrations.MySql
 {
     /// <inheritdoc />
-    public partial class AddRecurringExpenses : Migration
+    public partial class AddLogPhotos : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.CreateTable(
-                name: "RecurringExpenses",
+                name: "LogPhotos",
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "char(36)", nullable: false),
                     OwnerId = table.Column<Guid>(type: "char(36)", nullable: false),
                     VehicleId = table.Column<Guid>(type: "char(36)", nullable: false),
+                    LogType = table.Column<string>(type: "varchar(20)", maxLength: 20, nullable: false),
+                    LogId = table.Column<Guid>(type: "char(36)", nullable: false),
+                    ImageId = table.Column<Guid>(type: "char(36)", nullable: false),
                     CreatedById = table.Column<Guid>(type: "char(36)", nullable: false),
-                    Title = table.Column<string>(type: "varchar(120)", maxLength: 120, nullable: false),
-                    Category = table.Column<string>(type: "varchar(60)", maxLength: 60, nullable: true),
-                    Note = table.Column<string>(type: "varchar(500)", maxLength: 500, nullable: true),
-                    Kind = table.Column<string>(type: "varchar(16)", maxLength: 16, nullable: false),
-                    IntervalMonths = table.Column<int>(type: "int", nullable: true),
-                    IntervalDistance = table.Column<long>(type: "bigint", nullable: true),
-                    LastDoneDate = table.Column<DateOnly>(type: "date", nullable: false),
-                    LastDoneOdometer = table.Column<long>(type: "bigint", nullable: true),
-                    WarnDays = table.Column<int>(type: "int", nullable: false),
-                    WarnDistance = table.Column<long>(type: "bigint", nullable: false)
+                    CreatedAt = table.Column<DateTime>(type: "datetime(6)", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_RecurringExpenses", x => x.Id);
+                    table.PrimaryKey("PK_LogPhotos", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_RecurringExpenses_Vehicles_VehicleId",
+                        name: "FK_LogPhotos_Vehicles_VehicleId",
                         column: x => x.VehicleId,
                         principalTable: "Vehicles",
                         principalColumn: "Id",
@@ -43,13 +37,24 @@ namespace Tankstat.Migrations.MySql
                 .Annotation("MySQL:Charset", "utf8mb4");
 
             migrationBuilder.CreateIndex(
-                name: "IX_RecurringExpenses_OwnerId",
-                table: "RecurringExpenses",
+                name: "IX_LogPhotos_ImageId",
+                table: "LogPhotos",
+                column: "ImageId",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_LogPhotos_LogType_LogId",
+                table: "LogPhotos",
+                columns: new[] { "LogType", "LogId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_LogPhotos_OwnerId",
+                table: "LogPhotos",
                 column: "OwnerId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_RecurringExpenses_VehicleId",
-                table: "RecurringExpenses",
+                name: "IX_LogPhotos_VehicleId",
+                table: "LogPhotos",
                 column: "VehicleId");
         }
 
@@ -57,7 +62,7 @@ namespace Tankstat.Migrations.MySql
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
-                name: "RecurringExpenses");
+                name: "LogPhotos");
         }
     }
 }

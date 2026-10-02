@@ -12,8 +12,8 @@ using Tankstat.Infrastructure.Persistence;
 namespace Tankstat.Migrations.PostgreSql
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261002102635_AddRecurringExpenseCreatedAt")]
-    partial class AddRecurringExpenseCreatedAt
+    [Migration("20261002105953_AddRecurringExpenses")]
+    partial class AddRecurringExpenses
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -173,10 +173,16 @@ namespace Tankstat.Migrations.PostgreSql
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Folder")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<long>("SizeBytes")
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Folder");
 
                     b.ToTable("Images", (string)null);
                 });
@@ -243,6 +249,48 @@ namespace Tankstat.Migrations.PostgreSql
                     b.HasIndex("VehicleId", "Date");
 
                     b.ToTable("OdometerReadings", (string)null);
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Photos.LogPhoto", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ImageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("LogId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("LogType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ImageId")
+                        .IsUnique();
+
+                    b.HasIndex("OwnerId");
+
+                    b.HasIndex("VehicleId");
+
+                    b.HasIndex("LogType", "LogId");
+
+                    b.ToTable("LogPhotos", (string)null);
                 });
 
             modelBuilder.Entity("Tankstat.Domain.Recurring.RecurringExpense", b =>
@@ -586,6 +634,15 @@ namespace Tankstat.Migrations.PostgreSql
                 });
 
             modelBuilder.Entity("Tankstat.Domain.Odometers.OdometerReading", b =>
+                {
+                    b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
+                        .WithMany()
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Photos.LogPhoto", b =>
                 {
                     b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
                         .WithMany()

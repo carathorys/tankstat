@@ -383,6 +383,11 @@
       "notYours": "Ezt a grafikont csak a létrehozója módosíthatja.",
       "notFound": "Ez a grafikon nem létezik."
     },
+    "photo": {
+      "tooMany": "Egy naplóbejegyzéshez legfeljebb {{max}} fotó tartozhat.",
+      "notFound": "Ez a fotó nem létezik.",
+      "unknownLogType": "Ismeretlen naplótípus: {{logType}}."
+    },
     "recurring": {
       "titleRequired": "Az ismétlődő költségnek kell megnevezés.",
       "titleTooLong": "A megnevezés legfeljebb {{max}} karakter lehet.",
@@ -724,6 +729,22 @@
       "ALL": "Teljes időszak",
       "CUSTOM": "Egyéni (ettől – eddig)"
     }
+  },
+  "photos": {
+    "title": "Fotók",
+    "take": "Fotó készítése",
+    "choose": "Fotók hozzáadása",
+    "hint": "{{n}} / {{max}} fotó. JPEG, PNG vagy WebP; a nagy fotókat a program automatikusan lekicsinyíti.",
+    "open": "{{n}}. fotó megnyitása",
+    "removeAria": "{{n}}. fotó törlése",
+    "working": "Folyamatban…",
+    "queued": "A fotók készen állnak, a bejegyzéssel együtt mentődnek.",
+    "added": "Fotók mentve.",
+    "removed": "Fotó törölve.",
+    "partialFailure": "A bejegyzés mentve lett, de nem sikerült minden fotót elküldeni.",
+    "done": "Kész",
+    "unsent": "Még el nem küldött fotók: {{n}}.",
+    "retry": "Újrapróbálás"
   },
   "recurring": {
     "title": "Ismétlődő költségek",

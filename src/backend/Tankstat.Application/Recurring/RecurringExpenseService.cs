@@ -2,7 +2,6 @@ using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Expenses;
 using Tankstat.Application.Odometers;
-using Tankstat.Application.Vehicles;
 using Tankstat.Domain;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Recurring;
@@ -30,7 +29,7 @@ public sealed record RecurringItem(RecurringExpense Item, RecurrenceStatus Statu
 /// odometer rule applies, and starts the next interval.
 /// </summary>
 public sealed class RecurringExpenseService(
-    IVehicleRepository vehicles, IRecurringExpenseRepository items, AccessService access, OdometerService odometer, ExpenseService expenses, TimeProvider clock)
+    LogAccessGuard guard, IRecurringExpenseRepository items, AccessService access, OdometerService odometer, ExpenseService expenses, TimeProvider clock)
 {
     private DateOnly Today => DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
     private DateOnly LatestAllowedDate => Today.AddDays(1); // a day ahead covers every time zone, like the expenses
@@ -104,28 +103,17 @@ public sealed class RecurringExpenseService(
     private async Task<RecurringItem> WithStatusAsync(RecurringExpense item, CancellationToken ct) =>
         new(item, RecurrenceCalculator.Evaluate(item, Today, (await odometer.LatestAsync(item.VehicleId, ct))?.Value));
 
-    private async Task<Vehicle?> VisibleVehicleAsync(Guid vehicleId, CancellationToken ct)
-    {
-        var vehicle = await vehicles.FindAsync(vehicleId, ct);
-        return vehicle is not null && await access.LogLevelAsync(vehicle, ct) >= AccessLevel.View ? vehicle : null;
-    }
+    private async Task<Vehicle?> VisibleVehicleAsync(Guid vehicleId, CancellationToken ct) => (await guard.ForVehicleAsync(vehicleId, ct))?.Vehicle;
 
-    private async Task<Vehicle> EditableVehicleAsync(Guid vehicleId, CancellationToken ct)
-    {
-        var vehicle = await vehicles.FindAsync(vehicleId, ct);
-        var level = vehicle is null ? AccessLevel.None : await access.LogLevelAsync(vehicle, ct);
-        if (vehicle is null || level < AccessLevel.View) throw new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId });
-        if (level < AccessLevel.Edit) throw new ForbiddenException("vehicle.viewOnly", "You may only view this vehicle.");
-        return vehicle;
-    }
+    private async Task<Vehicle> EditableVehicleAsync(Guid vehicleId, CancellationToken ct) =>
+        LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(vehicleId, ct),
+            () => new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId })).Vehicle;
 
     private async Task<RecurringExpense> EditableAsync(Guid id, CancellationToken ct)
     {
         var item = await items.FindAsync(id, ct);
-        var vehicle = item is null ? null : await vehicles.FindAsync(item.VehicleId, ct);
-        var level = vehicle is null ? AccessLevel.None : await access.LogLevelAsync(vehicle, ct);
-        if (item is null || level < AccessLevel.View) throw new NotFoundException("recurring.notFound", $"Recurring expense {id} does not exist.", new { Id = id });
-        if (level < AccessLevel.Edit) throw new ForbiddenException("vehicle.viewOnly", "You may only view this vehicle.");
-        return item;
+        LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(item?.VehicleId, ct),
+            () => new NotFoundException("recurring.notFound", $"Recurring expense {id} does not exist.", new { Id = id }));
+        return item!;
     }
 }

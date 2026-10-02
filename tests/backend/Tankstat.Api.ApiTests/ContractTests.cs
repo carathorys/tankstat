@@ -53,7 +53,8 @@ public class ContractTests
     [InlineData("UserRef", "id", "displayName", "avatarUrl")]
     [InlineData("LogDefaults", "lastOdometer", "lastDate", "currency")]
     [InlineData("LogAccessGrantInfo", "user", "level")]
-    [InlineData("Expense", "id", "vehicleId", "createdBy", "date", "title", "category", "amount", "currency", "odometer", "note", "deletedAt", "canEdit", "canDelete", "vehicle")]
+    [InlineData("Expense", "id", "vehicleId", "createdBy", "date", "title", "category", "amount", "currency", "odometer", "note", "deletedAt", "canEdit", "canDelete", "vehicle", "photos")]
+    [InlineData("LogPhotoInfo", "id", "url")]
     [InlineData("ImportPreviewInfo", "sourceVehicle", "fuelRows", "expenseRows", "duplicateFuelRows", "duplicateExpenseRows", "firstDate", "lastDate", "categories", "issues")]
     [InlineData("ImportResultInfo", "vehicleId", "fuelImported", "expensesImported", "fuelSkippedDuplicates", "expensesSkippedDuplicates", "errors")]
     [InlineData("ImportIssueInfo", "section", "row", "key", "args")]
@@ -61,7 +62,7 @@ public class ContractTests
     [InlineData("ChartData", "unit", "series")]
     [InlineData("ChartSeries", "kind", "currency", "points")]
     [InlineData("VehicleChart", "id", "vehicleId", "title", "metric", "grouping", "kind", "range", "rangeFrom", "rangeTo", "stacked", "isShared", "createdAt", "canEdit", "createdBy")]
-    [InlineData("Refueling", "id", "vehicleId", "createdBy", "date", "volume", "totalCost", "currency", "odometer", "pricePerUnit", "consumption", "isFullTank", "note", "deletedAt", "canEdit", "canDelete", "vehicle")]
+    [InlineData("Refueling", "id", "vehicleId", "createdBy", "date", "volume", "totalCost", "currency", "odometer", "pricePerUnit", "consumption", "isFullTank", "note", "deletedAt", "canEdit", "canDelete", "vehicle", "photos")]
     public async Task Schema_TypeExposesContractFields(string type, params string[] fields)
     {
         var names = await FieldNames(type);

@@ -93,7 +93,7 @@ function WithCurrentOdometer({ vehicleId, needed, children }: { vehicleId: strin
       </Text>
     )
   }
-  return children(defaults.data.logDefaults.lastOdometer ?? null)
+  return children(defaults.data.logDefaults?.lastOdometer ?? null)
 }
 
 function RecurringForm({

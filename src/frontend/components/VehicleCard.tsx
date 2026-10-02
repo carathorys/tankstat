@@ -168,7 +168,7 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
           )}
         </Grid>
         {touch && (
-          <Text as="p" size="1" align="center" pb="2" style={{ opacity: 0.8 }}>
+          <Text as="p" size="1" align="center" style={{ opacity: 0.8, paddingBottom: 'var(--space-2)' }}>
             {t('welcome.card.tapAgain')}
           </Text>
         )}

@@ -74,6 +74,10 @@ query ExpenseDetails($id: UUID!) {
     currency
     odometer
     note
+    photos {
+      id
+      url
+    }
   }
 }
 

@@ -87,7 +87,7 @@ internal sealed class VehicleRepository(IDbContextFactory<AppDbContext> dbFactor
         var doomed = await db.Vehicles.IgnoreQueryFilters().Where(v => v.DeletedAt != null).InScope(scope, v => v.Id).ToListAsync(ct);
         db.Vehicles.RemoveRange(doomed); // refuelings go with them through the database's cascade
         await db.SaveChangesAsync(ct);
-        return new PurgeResult(doomed.Count, doomed.Where(v => v.PictureImageId is not null).Select(v => v.PictureImageId!.Value).ToList());
+        return new PurgeResult(doomed.Count, doomed.Where(v => v.PictureImageId is not null).Select(v => v.PictureImageId!.Value).ToList(), doomed.Select(v => v.Id).ToList());
     }
 
     public async Task<Vehicle?> FindByPictureImageAsync(Guid imageId, CancellationToken ct)

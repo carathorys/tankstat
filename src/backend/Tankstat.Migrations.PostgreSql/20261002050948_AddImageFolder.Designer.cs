@@ -12,8 +12,8 @@ using Tankstat.Infrastructure.Persistence;
 namespace Tankstat.Migrations.PostgreSql
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261002100616_AddRecurringExpenses")]
-    partial class AddRecurringExpenses
+    [Migration("20261002050948_AddImageFolder")]
+    partial class AddImageFolder
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -173,10 +173,16 @@ namespace Tankstat.Migrations.PostgreSql
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Folder")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<long>("SizeBytes")
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Folder");
 
                     b.ToTable("Images", (string)null);
                 });
@@ -243,65 +249,6 @@ namespace Tankstat.Migrations.PostgreSql
                     b.HasIndex("VehicleId", "Date");
 
                     b.ToTable("OdometerReadings", (string)null);
-                });
-
-            modelBuilder.Entity("Tankstat.Domain.Recurring.RecurringExpense", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Category")
-                        .HasMaxLength(60)
-                        .HasColumnType("character varying(60)");
-
-                    b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid");
-
-                    b.Property<long?>("IntervalDistance")
-                        .HasColumnType("bigint");
-
-                    b.Property<int?>("IntervalMonths")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)");
-
-                    b.Property<DateOnly>("LastDoneDate")
-                        .HasColumnType("date");
-
-                    b.Property<long?>("LastDoneOdometer")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("Note")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<Guid>("OwnerId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(120)
-                        .HasColumnType("character varying(120)");
-
-                    b.Property<Guid>("VehicleId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("WarnDays")
-                        .HasColumnType("integer");
-
-                    b.Property<long>("WarnDistance")
-                        .HasColumnType("bigint");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OwnerId");
-
-                    b.HasIndex("VehicleId");
-
-                    b.ToTable("RecurringExpenses", (string)null);
                 });
 
             modelBuilder.Entity("Tankstat.Domain.Users.PasswordResetToken", b =>
@@ -583,15 +530,6 @@ namespace Tankstat.Migrations.PostgreSql
                 });
 
             modelBuilder.Entity("Tankstat.Domain.Odometers.OdometerReading", b =>
-                {
-                    b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
-                        .WithMany()
-                        .HasForeignKey("VehicleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Tankstat.Domain.Recurring.RecurringExpense", b =>
                 {
                     b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
                         .WithMany()

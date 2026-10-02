@@ -19,6 +19,7 @@ namespace Tankstat.Migrations.SqlServer
                     OwnerId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     VehicleId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     CreatedById = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
                     Title = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: false),
                     Category = table.Column<string>(type: "nvarchar(60)", maxLength: 60, nullable: true),
                     Note = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),

@@ -11,8 +11,8 @@ using Tankstat.Infrastructure.Persistence;
 namespace Tankstat.Migrations.MySql
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261002102641_AddRecurringExpenseCreatedAt")]
-    partial class AddRecurringExpenseCreatedAt
+    [Migration("20261002051238_AddLogPhotos")]
+    partial class AddLogPhotos
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -170,10 +170,16 @@ namespace Tankstat.Migrations.MySql
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("Folder")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
                     b.Property<long>("SizeBytes")
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Folder");
 
                     b.ToTable("Images", (string)null);
                 });
@@ -242,14 +248,10 @@ namespace Tankstat.Migrations.MySql
                     b.ToTable("OdometerReadings", (string)null);
                 });
 
-            modelBuilder.Entity("Tankstat.Domain.Recurring.RecurringExpense", b =>
+            modelBuilder.Entity("Tankstat.Domain.Photos.LogPhoto", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("char(36)");
-
-                    b.Property<string>("Category")
-                        .HasMaxLength(60)
-                        .HasColumnType("varchar(60)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
@@ -257,51 +259,35 @@ namespace Tankstat.Migrations.MySql
                     b.Property<Guid>("CreatedById")
                         .HasColumnType("char(36)");
 
-                    b.Property<long?>("IntervalDistance")
-                        .HasColumnType("bigint");
+                    b.Property<Guid>("ImageId")
+                        .HasColumnType("char(36)");
 
-                    b.Property<int?>("IntervalMonths")
-                        .HasColumnType("int");
+                    b.Property<Guid>("LogId")
+                        .HasColumnType("char(36)");
 
-                    b.Property<string>("Kind")
+                    b.Property<string>("LogType")
                         .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("varchar(16)");
-
-                    b.Property<DateOnly>("LastDoneDate")
-                        .HasColumnType("date");
-
-                    b.Property<long?>("LastDoneOdometer")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("Note")
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
 
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("char(36)");
 
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(120)
-                        .HasColumnType("varchar(120)");
-
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("char(36)");
 
-                    b.Property<int>("WarnDays")
-                        .HasColumnType("int");
-
-                    b.Property<long>("WarnDistance")
-                        .HasColumnType("bigint");
-
                     b.HasKey("Id");
+
+                    b.HasIndex("ImageId")
+                        .IsUnique();
 
                     b.HasIndex("OwnerId");
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("RecurringExpenses", (string)null);
+                    b.HasIndex("LogType", "LogId");
+
+                    b.ToTable("LogPhotos", (string)null);
                 });
 
             modelBuilder.Entity("Tankstat.Domain.Users.PasswordResetToken", b =>
@@ -591,7 +577,7 @@ namespace Tankstat.Migrations.MySql
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Tankstat.Domain.Recurring.RecurringExpense", b =>
+            modelBuilder.Entity("Tankstat.Domain.Photos.LogPhoto", b =>
                 {
                     b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
                         .WithMany()

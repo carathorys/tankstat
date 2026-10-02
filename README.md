@@ -58,11 +58,11 @@ Database__Provider=PostgreSql Database__ConnectionString="Host=db;Database=tanks
 
 The connection string may be omitted only for `Sqlite`. The app refuses to start if it is missing for another provider, or if the provider is unknown.
 
-Uploaded pictures (profile pictures, vehicle pictures) are stored as files; only metadata is in the database:
+Uploaded pictures (profile pictures, vehicle pictures, photos of refuelings and expenses) are stored as files; only metadata is in the database:
 
 | Setting | Environment variable | Meaning |
 | --- | --- | --- |
-| `Storage:Path` | `Storage__Path` | folder for uploaded pictures (default `uploads`, relative to the working directory; the Docker image uses `/data/uploads`) |
+| `Storage:Path` | `Storage__Path` | folder for uploaded pictures (default `uploads`, relative to the working directory; the Docker image uses `/data/uploads`). Files are organised per owner: `users/<id>/` for avatars and `vehicles/<id>/` for everything of a vehicle (its picture and, below it, the photos of its logs), so a vehicle's files are removed with it; files from older versions stay directly in the folder and keep working |
 | `Defaults:DistanceUnit`, `Defaults:VolumeUnit`, `Defaults:Currency` | `Defaults__...` | what a new vehicle / new log starts with (`Kilometers` / `Liters` / `EUR` unless changed) |
 
 ## Authentication and access control
@@ -222,7 +222,9 @@ The app is mobile-first and responsive. The start page (*Home*) shows a card per
 
 **Units and money.** Every vehicle has its own distance unit (kilometres or miles) and fuel volume unit (litres, US gallons, imperial gallons); numbers are stored exactly as entered and never converted, so the units are locked once a vehicle has logs. Every cost carries its own currency (a reusable `Cost` value: amount plus currency), and a log links to an odometer reading (a reusable `OdometerReading`, without an upper limit; the server checks a new reading against the neighbouring readings of the same vehicle, from any source).
 
-**Pictures.** Users can upload a profile picture (Account page; shown with the Radix `Avatar` wherever users appear) and a picture per vehicle (Details tab). The browser scales the picture down (and crops profile pictures square) and re-encodes it before it is sent; the server still checks the real file type (JPEG, PNG, WebP only; 2 MiB maximum). Pictures are served from `/media/{id}` (immutable, cached; only to signed-in users who may see the owner or vehicle) and uploaded with `PUT /media/me/avatar` and `PUT /media/vehicles/{id}/picture` (the only REST endpoints; everything else is GraphQL).
+**Pictures.** Users can upload a profile picture (Account page; shown with the Radix `Avatar` wherever users appear) and a picture per vehicle (Details tab). The browser scales the picture down (and crops profile pictures square) and re-encodes it before it is sent; the server still checks the real file type (JPEG, PNG, WebP only; 2 MiB maximum). Pictures are served from `/media/{id}` (immutable, cached; only to signed-in users who may see the owner or vehicle) and uploaded with `PUT /media/me/avatar` and `PUT /media/vehicles/{id}/picture` (removed with `DELETE` on the same paths). These, the photo endpoints below and the import upload (`POST /imports/{format}`) are the only REST endpoints; everything else is GraphQL.
+
+**Photos of refuelings and expenses.** Every refueling and expense can have up to 10 photos (receipts, the pump display, ...). In the add and edit dialogs, **Take photo** opens the phone's camera straight away and **Add photos** picks from the library; photos chosen while adding are sent as soon as the entry is saved, and while editing they are uploaded or removed at once. Photos are scaled to 1600 px in the browser (location data in them is dropped), stored in the log's folder below the vehicle's (see `Storage:Path`) and follow the access rules of the vehicle's logs: whoever may see the log may see its photos, whoever may edit it may add and remove them. They are uploaded with `PUT /media/expenses/{id}/photos` or `PUT /media/refuelings/{id}/photos`, removed with `DELETE` on `.../photos/{imageId}` and shown through `/media/{id}`. A photo disappears from view with its log in the trash and is deleted for good when the log or its vehicle is.
 
 **Accessibility.** The UI is built to be keyboard- and screen-reader friendly: landmarks and a skip link, a labelled navigation, labelled form controls with linked hints and errors, announced upload/loading status, table semantics with `aria-sort`, 44 px touch targets, dialogs with focus management, and reduced-motion support. Automated axe checks run in the frontend integration tests; colour contrast should still be reviewed by eye. The look is dim and layered: translucent blurred panels (top bar, sidebar) with soft shadows.
 

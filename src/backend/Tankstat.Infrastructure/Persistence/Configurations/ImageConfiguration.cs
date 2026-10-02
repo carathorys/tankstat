@@ -12,6 +12,8 @@ internal sealed class ImageConfiguration : IEntityTypeConfiguration<StoredImage>
         b.HasKey(i => i.Id);
         b.Property(i => i.Id).ValueGeneratedNever();
         b.Property(i => i.ContentType).HasMaxLength(50).IsRequired();
+        b.Property(i => i.Folder).HasMaxLength(200);
+        b.HasIndex(i => i.Folder);
         b.Property(i => i.CreatedAt).HasConversion(
             v => v.UtcDateTime,
             v => new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc)));

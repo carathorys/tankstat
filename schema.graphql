@@ -173,6 +173,7 @@ type Expense {
   canDelete: Boolean! @cost(weight: "10")
   createdBy: UserRef @cost(weight: "10")
   vehicle: Vehicle @cost(weight: "10")
+  photos: [LogPhotoInfo!]! @cost(weight: "10")
 }
 
 type HealthReport {
@@ -227,6 +228,11 @@ type LogDefaults {
   lastOdometer: Long
   lastDate: LocalDate
   currency: String!
+}
+
+type LogPhotoInfo {
+  id: UUID!
+  url: String!
 }
 
 type MeasurementUnits {
@@ -296,6 +302,7 @@ type Refueling {
   canDelete: Boolean! @cost(weight: "10")
   createdBy: UserRef @cost(weight: "10")
   vehicle: Vehicle @cost(weight: "10")
+  photos: [LogPhotoInfo!]! @cost(weight: "10")
 }
 
 type Session {

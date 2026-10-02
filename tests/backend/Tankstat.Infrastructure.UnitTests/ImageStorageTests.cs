@@ -23,6 +23,9 @@ public sealed class ImageStorageTests : IDisposable
 
     private FileSystemImageStore Store(string? path = null) => new(Options.Create(new StorageOptions { Path = path ?? _folder }));
 
+    private static StoredImage Image(string? folder = null) =>
+        StoredImage.Create(Guid.NewGuid(), "image/png", 1, new DateTimeOffset(2026, 10, 1, 8, 0, 0, TimeSpan.Zero), folder);
+
     private static async Task<byte[]> ReadAll(Stream stream)
     {
         await using var s = stream;
@@ -35,27 +38,27 @@ public sealed class ImageStorageTests : IDisposable
     public async Task SavesReadsAndDeletes_CreatingTheFolderOnDemand()
     {
         var store = Store(Path.Combine(_folder, "nested", "deeper"));
-        var id = Guid.NewGuid();
+        var image = Image();
         Assert.False(Directory.Exists(_folder));
 
-        await store.SaveAsync(id, new byte[] { 1, 2, 3 }, default);
+        await store.SaveAsync(image, new byte[] { 1, 2, 3 }, default);
 
-        Assert.Equal(new byte[] { 1, 2, 3 }, await ReadAll((await store.OpenReadAsync(id, default))!));
-        await store.DeleteAsync(id, default);
-        Assert.Null(await store.OpenReadAsync(id, default));
+        Assert.Equal(new byte[] { 1, 2, 3 }, await ReadAll((await store.OpenReadAsync(image, default))!));
+        await store.DeleteAsync(image, default);
+        Assert.Null(await store.OpenReadAsync(image, default));
     }
 
     [Fact]
     public async Task ReplacingAFile_IsAtomic_AndLeavesNoTemporaryFiles()
     {
         var store = Store();
-        var id = Guid.NewGuid();
-        await store.SaveAsync(id, new byte[] { 1 }, default);
+        var image = Image();
+        await store.SaveAsync(image, new byte[] { 1 }, default);
 
-        await store.SaveAsync(id, new byte[] { 2, 2 }, default);
+        await store.SaveAsync(image, new byte[] { 2, 2 }, default);
 
-        Assert.Equal(new byte[] { 2, 2 }, await ReadAll((await store.OpenReadAsync(id, default))!));
-        Assert.Equal([id.ToString("N")], Directory.GetFiles(_folder).Select(Path.GetFileName)); // named after the id, nothing else (no *.tmp)
+        Assert.Equal(new byte[] { 2, 2 }, await ReadAll((await store.OpenReadAsync(image, default))!));
+        Assert.Equal([image.Id.ToString("N")], Directory.GetFiles(_folder).Select(Path.GetFileName)); // named after the id, nothing else (no *.tmp)
     }
 
     [Fact]
@@ -63,20 +66,91 @@ public sealed class ImageStorageTests : IDisposable
     {
         var store = Store();
 
-        Assert.Null(await store.OpenReadAsync(Guid.NewGuid(), default));
-        await store.DeleteAsync(Guid.NewGuid(), default);
+        Assert.Null(await store.OpenReadAsync(Image(), default));
+        await store.DeleteAsync(Image(), default);
+        await store.DeleteFolderAsync("vehicles/" + Guid.NewGuid().ToString("N"), default);
     }
 
     [Fact]
     public async Task RelativePaths_ResolveAgainstTheWorkingDirectory_AndFilesStayInsideTheFolder()
     {
         var store = Store(_folder);
-        var ids = Enumerable.Range(0, 5).Select(_ => Guid.NewGuid()).ToList();
+        var images = Enumerable.Range(0, 5).Select(_ => Image()).ToList();
 
-        foreach (var id in ids) await store.SaveAsync(id, new byte[] { 9 }, default);
+        foreach (var image in images) await store.SaveAsync(image, new byte[] { 9 }, default);
 
         Assert.All(Directory.GetFiles(_folder), f => Assert.Equal(_folder, Path.GetDirectoryName(f)));
         Assert.Equal(5, Directory.GetFiles(_folder).Length);
+    }
+
+    [Fact]
+    public async Task Files_LiveInTheirFolder_AndALegacyFileWithoutFolderStaysInTheDataFolder()
+    {
+        var store = Store();
+        var vehicleId = Guid.NewGuid();
+        var picture = Image(ImageFolders.VehiclePicture(vehicleId));
+        var legacy = Image();
+
+        await store.SaveAsync(picture, new byte[] { 1 }, default);
+        await store.SaveAsync(legacy, new byte[] { 2 }, default);
+
+        Assert.True(File.Exists(Path.Combine(_folder, "vehicles", vehicleId.ToString("N"), "picture", picture.Id.ToString("N"))));
+        Assert.True(File.Exists(Path.Combine(_folder, legacy.Id.ToString("N"))));
+        Assert.Equal(new byte[] { 1 }, await ReadAll((await store.OpenReadAsync(picture, default))!));
+    }
+
+    [Fact]
+    public async Task DeletingAVehicleFolder_RemovesEverythingBelowIt_AndNothingElse()
+    {
+        var store = Store();
+        var vehicleId = Guid.NewGuid();
+        var other = Guid.NewGuid();
+        var picture = Image(ImageFolders.VehiclePicture(vehicleId));
+        var photo = Image($"{ImageFolders.Vehicle(vehicleId)}/expenses/{Guid.NewGuid():N}");
+        var othersPicture = Image(ImageFolders.VehiclePicture(other));
+        foreach (var image in new[] { picture, photo, othersPicture }) await store.SaveAsync(image, new byte[] { 1 }, default);
+
+        await store.DeleteFolderAsync(ImageFolders.Vehicle(vehicleId), default);
+
+        Assert.Null(await store.OpenReadAsync(picture, default));
+        Assert.Null(await store.OpenReadAsync(photo, default));
+        Assert.NotNull(await store.OpenReadAsync(othersPicture, default));
+        Assert.False(Directory.Exists(Path.Combine(_folder, "vehicles", vehicleId.ToString("N"))));
+    }
+
+    [Theory]
+    [InlineData("../outside")]
+    [InlineData("vehicles/../../x")]
+    [InlineData("/etc")]
+    [InlineData("vehicles//x")]
+    [InlineData("Vehicles")]
+    [InlineData("vehicles/not-an-id.png")]
+    [InlineData("vehicles")] // would be every vehicle's uploads
+    [InlineData("users")]
+    [InlineData("vehicles/00000000000000000000000000000000/other")]
+    [InlineData("users/00000000000000000000000000000000\n")] // $ would let a trailing newline through
+    public async Task Folders_ThatCouldEscapeTheDataFolder_AreRefused(string folder)
+    {
+        var store = Store();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => store.SaveAsync(Image(folder), new byte[] { 1 }, default));
+        await Assert.ThrowsAsync<ArgumentException>(() => store.DeleteFolderAsync(folder, default));
+    }
+
+    [Fact]
+    public async Task ImageRows_RemoveByFolder_TakesTheFolderAndEverythingBelow_Only()
+    {
+        await using var db = new TestDatabase();
+        var repo = db.Get<IImageRepository>();
+        var vehicleId = Guid.NewGuid();
+        var mine = new[] { Image(ImageFolders.VehiclePicture(vehicleId)), Image($"{ImageFolders.Vehicle(vehicleId)}/expenses/{Guid.NewGuid():N}") };
+        var others = new[] { Image(ImageFolders.VehiclePicture(Guid.NewGuid())), Image() };
+        foreach (var image in mine.Concat(others)) await repo.AddAsync(image, default);
+
+        await repo.RemoveFolderAsync(ImageFolders.Vehicle(vehicleId), default);
+
+        Assert.All(mine, i => Assert.Null(repo.FindAsync(i.Id, default).Result));
+        Assert.All(others, i => Assert.NotNull(repo.FindAsync(i.Id, default).Result));
     }
 
     [Fact]
@@ -84,14 +158,14 @@ public sealed class ImageStorageTests : IDisposable
     {
         await using var db = new TestDatabase();
         var repo = db.Get<IImageRepository>();
-        var image = StoredImage.Create(Guid.NewGuid(), "image/webp", 1234, new DateTimeOffset(2026, 10, 1, 8, 0, 0, TimeSpan.Zero));
+        var image = StoredImage.Create(Guid.NewGuid(), "image/webp", 1234, new DateTimeOffset(2026, 10, 1, 8, 0, 0, TimeSpan.Zero), "vehicles/00000000000000000000000000000001/picture");
 
         await repo.AddAsync(image, default);
         var loaded = (await repo.FindAsync(image.Id, default))!;
         await repo.RemoveAsync(image.Id, default);
         await repo.RemoveAsync(image.Id, default); // already gone: fine
 
-        Assert.Equal(("image/webp", 1234L, image.CreatedAt), (loaded.ContentType, loaded.SizeBytes, loaded.CreatedAt));
+        Assert.Equal(("image/webp", 1234L, image.CreatedAt, image.Folder), (loaded.ContentType, loaded.SizeBytes, loaded.CreatedAt, loaded.Folder));
         Assert.Null(await repo.FindAsync(image.Id, default));
     }
 
@@ -147,5 +221,6 @@ public sealed class ImageStorageTests : IDisposable
 
         Assert.Equal(2, result.Count);
         Assert.Equal([picture], result.ImageIds);
+        Assert.Equivalent(new[] { withPicture.Id, without.Id }, result.VehicleIds);
     }
 }

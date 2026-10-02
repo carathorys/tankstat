@@ -10,6 +10,9 @@ public sealed class StoredImage
     public long SizeBytes { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
 
-    public static StoredImage Create(Guid id, string contentType, long sizeBytes, DateTimeOffset now) =>
-        new() { Id = id, ContentType = contentType, SizeBytes = sizeBytes, CreatedAt = now };
+    /// <summary>Folder below the data folder (see <see cref="ImageFolders"/>); null for files from before folders existed, which sit directly in the data folder.</summary>
+    public string? Folder { get; private set; }
+
+    public static StoredImage Create(Guid id, string contentType, long sizeBytes, DateTimeOffset now, string? folder = null) =>
+        new() { Id = id, ContentType = contentType, SizeBytes = sizeBytes, CreatedAt = now, Folder = folder };
 }

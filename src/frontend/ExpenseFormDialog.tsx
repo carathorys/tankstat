@@ -4,6 +4,10 @@ import { Button, Dialog, Flex, Text, TextArea, TextField } from '@radix-ui/theme
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { OdometerField } from './components/OdometerField.tsx'
+import { PhotoGallery } from './components/PhotoGallery.tsx'
+import { PhotosAfterSave } from './components/PhotosAfterSave.tsx'
+import type { Saved } from './components/usePhotoQueue.ts'
+import { usePhotoSession } from './components/usePhotoSession.ts'
 import { Field } from './forms.tsx'
 import { ExpenseCategoriesDocument, ExpenseDetailsDocument, LogDefaultsDocument, type DistanceUnit } from './gql/generated.ts'
 import { parseDecimal } from './i18n/format.ts'
@@ -47,12 +51,14 @@ export function ExpenseFormDialog({
   trigger: ReactNode
   vehicle: { id: string; units: { distance: DistanceUnit } }
   expenseId?: string
-  onSubmit: (values: ExpenseValues) => Promise<unknown>
+  onSubmit: (values: ExpenseValues) => Promise<Saved>
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
+  const { queue, savedId, failure: uploadFailure, saving, submit, reset } = usePhotoSession('expenses')
   const editing = expenseId !== undefined
-  const details = useQuery(ExpenseDetailsDocument, { variables: { id: expenseId ?? '' }, skip: !editing || !open, fetchPolicy: 'network-only' })
+  const logId = expenseId ?? savedId
+  const details = useQuery(ExpenseDetailsDocument, { variables: { id: logId ?? '' }, skip: logId === undefined || !open, fetchPolicy: 'network-only' })
   const defaults = useQuery(LogDefaultsDocument, { variables: { vehicleId: vehicle.id }, skip: !open, fetchPolicy: 'network-only' })
   const categories = useQuery(ExpenseCategoriesDocument, { variables: { vehicleId: vehicle.id }, skip: !open, fetchPolicy: 'network-only' })
   const error = details.error ?? defaults.error
@@ -61,9 +67,20 @@ export function ExpenseFormDialog({
   const initial: Initial = existing ?? { date: today(), title: '', category: null, currency: defaults.data?.logDefaults?.currency ?? '', note: null }
 
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) reset()
+      }}
+    >
       <Dialog.Trigger>{trigger}</Dialog.Trigger>
-      <Dialog.Content maxWidth="450px">
+      <Dialog.Content
+        maxWidth="450px"
+        // Closing while the expense and its photos are on their way would lose track of them.
+        onEscapeKeyDown={(e) => saving && e.preventDefault()}
+        onInteractOutside={(e) => saving && e.preventDefault()}
+      >
         <Dialog.Title>{editing ? t('expenses.dialogEdit') : t('expenses.dialogAdd')}</Dialog.Title>
         <Dialog.Description size="2" mb="4">
           {editing ? t('expenses.dialogEditDescription') : t('expenses.dialogAddDescription')}
@@ -75,15 +92,22 @@ export function ExpenseFormDialog({
           </Text>
         )}
         {editing && details.data && !existing && <ErrorMessage>{t('errors.expense.notFound')}</ErrorMessage>}
-        {ready && (
+        {savedId !== undefined && (
+          <PhotosAfterSave kind="expenses" logId={savedId} failure={uploadFailure} photos={existing?.photos ?? []} queue={queue} onChanged={() => details.refetch()} />
+        )}
+        {ready && savedId === undefined && (
           <ExpenseForm
             initial={initial}
             unit={vehicle.units.distance}
             editing={editing}
             categories={categories.data?.expenseCategories ?? []}
+            photosBusy={queue.adding}
+            gallery={<PhotoGallery kind="expenses" logId={expenseId} photos={existing?.photos ?? []} queue={queue} disabled={saving} onChanged={() => details.refetch()} />}
             onSubmit={async (values) => {
-              await onSubmit(values)
-              setOpen(false)
+              if (await submit(() => onSubmit(values), editing)) {
+                setOpen(false)
+                reset()
+              }
             }}
           />
         )}
@@ -97,12 +121,17 @@ function ExpenseForm({
   unit,
   editing,
   categories,
+  gallery,
+  photosBusy,
   onSubmit,
 }: {
   initial: Initial
   unit: DistanceUnit
   editing: boolean
   categories: string[]
+  gallery: ReactNode
+  /** Chosen photos are still being prepared: saving now would leave them out. */
+  photosBusy: boolean
   onSubmit: (values: ExpenseValues) => Promise<unknown>
 }) {
   const { t } = useTranslation()
@@ -180,15 +209,16 @@ function ExpenseForm({
         <Field name="note" label={t('expenses.fields.note')}>
           <TextArea maxLength={500} rows={2} defaultValue={initial.note ?? ''} />
         </Field>
+        {gallery}
         {error !== undefined && <ErrorMessage error={error} />}
         <Flex gap="3" justify="end">
           <Dialog.Close>
-            <Button type="button" variant="soft" color="gray">
+            <Button type="button" variant="soft" color="gray" disabled={busy}>
               {t('common.cancel')}
             </Button>
           </Dialog.Close>
           <RadixForm.Submit asChild>
-            <Button disabled={busy}>{editing ? t('expenses.save') : t('expenses.saveAdd')}</Button>
+            <Button disabled={busy || photosBusy}>{editing ? t('expenses.save') : t('expenses.saveAdd')}</Button>
           </RadixForm.Submit>
         </Flex>
       </Flex>

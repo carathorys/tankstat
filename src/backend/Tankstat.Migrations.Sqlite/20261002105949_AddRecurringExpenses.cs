@@ -19,6 +19,7 @@ namespace Tankstat.Migrations.Sqlite
                     OwnerId = table.Column<Guid>(type: "TEXT", nullable: false),
                     VehicleId = table.Column<Guid>(type: "TEXT", nullable: false),
                     CreatedById = table.Column<Guid>(type: "TEXT", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false),
                     Title = table.Column<string>(type: "TEXT", maxLength: 120, nullable: false),
                     Category = table.Column<string>(type: "TEXT", maxLength: 60, nullable: true),
                     Note = table.Column<string>(type: "TEXT", maxLength: 500, nullable: true),
