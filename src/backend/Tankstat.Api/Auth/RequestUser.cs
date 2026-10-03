@@ -34,7 +34,7 @@ public static class RequestUserScope
                 return;
             }
             // A message with a placeholder: the console prints it as "UserId: <id>", and the JSON formatter keeps UserId as a field as well.
-            using (logger.BeginScope(new Dictionary<string, object> { ["UserId"] = id })) // MUTATION
+            using (logger.BeginScope("UserId: {UserId}", id))
                 await next(http);
         });
     }
