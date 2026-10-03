@@ -17,6 +17,8 @@ coverage
 .vscode
 .claude
 tests
+# Private photos for the photo reader evaluation, wherever they were put.
+**/eval
 Dockerfile
 Dockerfile.reader
 .dockerignore

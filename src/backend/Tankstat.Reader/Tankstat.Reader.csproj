@@ -4,6 +4,9 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- dotnet run starts the reader where the command was given (not in this folder), so a relative folder given to the
+         evaluation tools (mise run reader:eval) means what it says. -->
+    <RunWorkingDirectory>$(MSBuildStartupDirectory)</RunWorkingDirectory>
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,6 +17,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Tankstat.Reader.Core\Tankstat.Reader.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Evaluation photos and their sidecars are private: never published, even when they were put in this folder. -->
+    <Content Remove="eval\**" />
   </ItemGroup>
 
   <ItemGroup>
