@@ -149,4 +149,36 @@ public class ReceiptExtractorTests
         Assert.True(ReceiptExtractor.Fits(56.20m, 38.52m * 1.459m, 2));
         Assert.False(ReceiptExtractor.Fits(5249, 38.52m * 640.9m, 0));
     }
+
+    [Fact]
+    public void OnALitresTimesPriceLine_ThePriceIsFound_EvenWithAGarbledUnit()
+    {
+        var read = Read(DocumentKinds.FuelReceipt, "hu", null, "Benzin 100\t29 650 Ft", "48.25 1 x 614.5 Fi/t", "!ÖSSZESEN:\t29 650 Ft");
+
+        Assert.Equal(("48.25", "614.5", "29650"), (read[FieldNames.Volume], read[FieldNames.UnitPrice], read[FieldNames.Total]));
+    }
+
+    [Fact]
+    public void LitresAndPriceThatDoNotFitTheTotal_AreBelowWhatTheAppFillsIn_TheTotalIsNot()
+    {
+        var fields = Receipts.Extract(OcrFixture.Page("9,12 l x 648,1 Ft/l", "!ÖSSZESEN:\t38 316 Ft", "Bankkártya\t38 316 Ft"),
+            DocumentKinds.FuelReceipt, new ReadHints("hu", null, null, Today)).ToDictionary(f => f.Name);
+
+        Assert.True(fields[FieldNames.Volume].Confidence < 0.6);
+        Assert.True(fields[FieldNames.UnitPrice].Confidence < 0.6);
+        Assert.True(fields[FieldNames.Total].Confidence >= 0.8);
+    }
+
+    [Fact]
+    public void ANameHeadingTheReceipt_IsAFairSuggestion_AnAddressIsNoName()
+    {
+        var fields = Receipts.Extract(OcrFixture.Page("Fék Autószerviz Bt.", "7971 Budapest, Fő utca 44.", "Olajcsere\t25 000 Ft", "ÖSSZESEN\t25 000 Ft"),
+            DocumentKinds.ExpenseReceipt, new ReadHints("hu", null, null, Today));
+
+        var title = Assert.Single(fields, f => f.Name == FieldNames.Title);
+        Assert.Equal("Fék Autószerviz Bt.", title.Value);
+        Assert.True(title.Confidence >= 0.6);
+        Assert.Null(Receipts.Extract(OcrFixture.Page("7971 Budapest, Fő utca 44.", "ÖSSZESEN\t25 000 Ft"), DocumentKinds.ExpenseReceipt,
+            new ReadHints("hu", null, null, Today)).FirstOrDefault(f => f.Name == FieldNames.Title));
+    }
 }

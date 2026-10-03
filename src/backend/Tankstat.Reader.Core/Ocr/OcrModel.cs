@@ -29,7 +29,8 @@ public readonly record struct Box(int Left, int Top, int Width, int Height)
 }
 
 /// <summary>One word as the OCR read it: its text, how sure it was (0 to 100) and where it is.</summary>
-public sealed record OcrWord(string Text, double Confidence, Box Box);
+/// <param name="LineKey">The OCR's own line the word belongs to (0 when unknown); used to measure how much the photo is turned.</param>
+public sealed record OcrWord(string Text, double Confidence, Box Box, int LineKey = 0);
 
 /// <summary>Words that sit on the same visual line, left to right.</summary>
 public sealed class OcrLine
@@ -56,7 +57,8 @@ public sealed class OcrPage
         Width = width;
         Height = height;
         Words = words;
-        Lines = GroupLines(words);
+        Skew = MeasureSkew(words);
+        Lines = GroupLines(words, Skew);
         MedianWordHeight = words.Count == 0 ? 0 : words.Select(w => w.Box.Height).Order().ElementAt(words.Count / 2);
     }
 
@@ -68,30 +70,51 @@ public sealed class OcrPage
     public IReadOnlyList<OcrLine> Lines { get; }
     public int MedianWordHeight { get; }
 
+    /// <summary>How much the text rises (negative) or falls per pixel to the right: the tangent of the photo's tilt.</summary>
+    public double Skew { get; }
+
     /// <summary>
-    /// Groups words into the lines a reader would see: a word joins the line it overlaps most (by at least half of the lower height).
-    /// The OCR's own blocks are ignored on purpose: a receipt's label and its right-aligned amount often land in different blocks.
+    /// The tilt, from the OCR's own lines: the median slope of the lines that have words far enough apart. Clamped to about ±8°,
+    /// beyond which the OCR would not have found the lines anyway.
     /// </summary>
-    private static IReadOnlyList<OcrLine> GroupLines(IReadOnlyList<OcrWord> words)
+    private static double MeasureSkew(IReadOnlyList<OcrWord> words)
     {
-        var lines = new List<(List<OcrWord> Words, Box Band)>();
-        foreach (var word in words.OrderBy(w => w.Box.CenterY).ThenBy(w => w.Box.Left))
+        var slopes = words.Where(w => w.LineKey != 0)
+            .GroupBy(w => w.LineKey)
+            .Select(g => g.OrderBy(w => w.Box.Left).ToList())
+            .Where(l => l.Count >= 2 && l[^1].Box.Left - l[0].Box.Left >= 100)
+            .Select(l => (l[^1].Box.CenterY - l[0].Box.CenterY) / (l[^1].Box.Left + l[^1].Box.Width / 2.0 - (l[0].Box.Left + l[0].Box.Width / 2.0)))
+            .Order()
+            .ToList();
+        return slopes.Count == 0 ? 0 : Math.Clamp(slopes[slopes.Count / 2], -0.15, 0.15);
+    }
+
+    /// <summary>
+    /// Groups words into the lines a reader would see, with the tilt taken out: a word joins the line whose (straightened) middle is
+    /// within half a word height of its own. The OCR's own blocks are ignored on purpose: a receipt's label and its right-aligned
+    /// amount often land in different blocks, and on a turned photo at different heights.
+    /// </summary>
+    private static IReadOnlyList<OcrLine> GroupLines(IReadOnlyList<OcrWord> words, double skew)
+    {
+        double Straight(OcrWord w) => w.Box.CenterY - skew * (w.Box.Left + w.Box.Width / 2.0);
+        var lines = new List<(List<OcrWord> Words, double Middle, int Height)>();
+        foreach (var word in words.OrderBy(Straight).ThenBy(w => w.Box.Left))
         {
             var best = -1;
-            var bestOverlap = 0.5;
+            var bestDistance = double.MaxValue;
             for (var i = lines.Count - 1; i >= Math.Max(0, lines.Count - 4); i--)
             {
-                var overlap = lines[i].Band.VerticalOverlap(word.Box);
-                if (overlap >= bestOverlap)
+                var distance = Math.Abs(Straight(word) - lines[i].Middle);
+                if (distance <= 0.5 * Math.Max(1, Math.Min(word.Box.Height, lines[i].Height)) && distance < bestDistance)
                 {
                     best = i;
-                    bestOverlap = overlap;
+                    bestDistance = distance;
                 }
             }
-            // The band stays the first word's: one tall word must not make its line swallow the next one.
-            if (best < 0) lines.Add(([word], word.Box));
+            // The line keeps its first word's middle and height: one tall word must not make it swallow the next line.
+            if (best < 0) lines.Add(([word], Straight(word), word.Box.Height));
             else lines[best].Words.Add(word);
         }
-        return lines.Select(l => new OcrLine(l.Words.OrderBy(w => w.Box.Left).ToList())).OrderBy(l => l.Box.Top).ToList();
+        return lines.OrderBy(l => l.Middle).Select(l => new OcrLine(l.Words.OrderBy(w => w.Box.Left).ToList())).ToList();
     }
 }

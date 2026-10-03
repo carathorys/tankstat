@@ -24,7 +24,7 @@ public static partial class LineScan
 
     public static IReadOnlyList<NumberToken> Numbers(OcrLine line, int lineIndex, string locale, DateOnly today)
     {
-        var (text, spans) = Join(line);
+        var (text, spans) = Join(OcrRepair.Repair(line));
         var masked = new StringBuilder(text);
         foreach (var date in Dates.Find(text, today)) Blank(masked, date.Index, date.Length);
         foreach (var (index, length) in Dates.FindTimes(text)) Blank(masked, index, length);

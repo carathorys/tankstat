@@ -40,7 +40,7 @@ public class DocumentReaderTests
     }
 
     [Fact]
-    public void ADashboard_IsReadWithDigitPasses_OnThePhotoAndItsInvertedCopy()
+    public void ADashboard_IsReadWithDigitPasses_OnThePhotoItsInvertedAndItsThickenedCopies()
     {
         var ocr = new FakeOcr()
             .On(ImageVariant.Normal, 6, OcrPurpose.Text, OcrFixture.Page("12 3456"))
@@ -50,6 +50,8 @@ public class DocumentReaderTests
 
         Assert.Equal((DocumentKinds.Odometer, "123456"), (result.Kind, result.Value(FieldNames.Odometer)));
         Assert.Contains(new OcrPass(ImageVariant.Inverted, 11, OcrPurpose.Digits), ocr.Passes);
+        Assert.Contains(new OcrPass(ImageVariant.Thickened, 11, OcrPurpose.Digits), ocr.Passes);     // seven-segment digits, gaps closed
+        Assert.Contains(new OcrPass(ImageVariant.ThickenedMore, 11, OcrPurpose.Digits), ocr.Passes);
     }
 
     [Fact]

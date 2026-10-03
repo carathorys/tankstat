@@ -57,4 +57,29 @@ public class PreparerTests
 
         Assert.Equal("bad_image", error.Code);
     }
+
+    [Fact]
+    public void TheThickenedVariants_CloseTheGapsBetweenSegments_OfLightDigitsOnADarkDisplay()
+    {
+        // Two light segments 4 px apart on a dark display, like the halves of a seven-segment digit.
+        using var bitmap = new SKBitmap(1600, 1000);
+        using (var canvas = new SKCanvas(bitmap))
+        {
+            canvas.Clear(SKColors.Black);
+            using var light = new SKPaint { Color = SKColors.White };
+            canvas.DrawRect(700, 400, 20, 100, light);
+            canvas.DrawRect(700, 504, 20, 100, light);
+        }
+        using var data = SKImage.FromBitmap(bitmap).Encode(SKEncodedImageFormat.Png, 100);
+        var image = Preparer.Prepare(data.ToArray());
+
+        var inverted = image.Pixels(ImageVariant.Inverted);
+        var thickened = image.Pixels(ImageVariant.Thickened);
+        var gap = 502 * image.Width + 710;
+
+        Assert.True(inverted[gap] > 200);   // the gap is still there: light between two dark strokes
+        Assert.True(thickened[gap] < 50);   // closed: one dark stroke
+        Assert.Equal(3, image.ThickenRadius);
+        Assert.True(image.Pixels(ImageVariant.ThickenedMore)[502 * image.Width + 694] < 50); // the stronger one grows further
+    }
 }

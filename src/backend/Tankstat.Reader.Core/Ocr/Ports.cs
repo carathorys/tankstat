@@ -1,10 +1,15 @@
 namespace Tankstat.Reader.Core.Ocr;
 
-/// <summary>Ways a photo is offered to the OCR: as it is (in gray), or inverted for light digits on a dark display.</summary>
+/// <summary>
+/// Ways a photo is offered to the OCR: as it is (in gray); inverted, for light digits on a dark display; and inverted with the strokes
+/// thickened (two strengths), which closes the gaps between the segments of seven-segment digits so the OCR sees whole digits.
+/// </summary>
 public enum ImageVariant
 {
     Normal,
     Inverted,
+    Thickened,
+    ThickenedMore,
 }
 
 /// <summary>A photo the host decoded and prepared for the OCR, available as PNG in each <see cref="ImageVariant"/>.</summary>

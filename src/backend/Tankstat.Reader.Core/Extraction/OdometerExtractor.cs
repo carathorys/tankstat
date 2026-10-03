@@ -33,6 +33,7 @@ public sealed partial class OdometerExtractor(Lexicon lexicon)
         var groups = textPages.Concat(digitPages)
             .SelectMany(page => page.Lines.SelectMany(line => Groups(page, line)))
             .Where(g => g.Digits is >= 1 and <= 7 && !excluded.Contains(g.Value.ToString(CultureInfo.InvariantCulture)))
+            .Where(g => Plausible(g.Value, hints.LastOdometer))
             .ToList();
         if (groups.Count == 0) return null;
 
@@ -46,6 +47,12 @@ public sealed partial class OdometerExtractor(Lexicon lexicon)
             : new ReadField(FieldNames.Odometer, best.Group.Value.ToString(CultureInfo.InvariantCulture), Confidence.From(best.Score, best.Group.Confidence, 1.5), FieldSources.Ocr);
     }
 
+    /// <summary>
+    /// With the latest known reading, an odometer below it (it never goes back) or more than 100 000 above it (between two logs) is a
+    /// misread: no reading is better than a confident wrong one.
+    /// </summary>
+    private static bool Plausible(long value, long? last) => last is not { } l || (value >= l && value - l <= 100_000);
+
     private static double Score(Group g, bool kmOnPage, ReadHints hints)
     {
         var score = g.Digits switch { <= 1 => -2, 2 => -1.5, 3 => -0.8, 4 => 0.2, 5 => 0.8, 6 => 1.0, _ => 0.6 };
@@ -53,8 +60,8 @@ public sealed partial class OdometerExtractor(Lexicon lexicon)
         score += 0.8 * Math.Clamp(scale - 1, 0, 1.5);
         score += g.Km ? 1.0 : kmOnPage ? 0.3 : 0;
         score -= g.Trip ? 1.5 : 0;
-        if (hints.LastOdometer is { } last)
-            score += g.Value < last ? -3 : g.Value - last <= 5000 ? 2.5 : g.Value - last <= 50_000 ? 0.5 : -0.5;
+        score -= g.Digits == 4 && g.Value / 100 <= 23 && g.Value % 100 <= 59 ? 1.2 : 0; // a clock whose colon the OCR lost ("02:06" → "0206")
+        if (hints.LastOdometer is { } last) score += g.Value - last <= 5000 ? 2.5 : g.Value - last <= 50_000 ? 0.5 : -0.5;
         return score;
     }
 

@@ -51,4 +51,20 @@ public class OdometerExtractorTests
 
         Assert.True(twice.Confidence > once.Confidence);
     }
+
+    [Fact]
+    public void BelowTheLatestReading_OrFarAboveIt_ThereIsNoReading_RatherThanAWrongOne()
+    {
+        Assert.Null(Read(OcrPage.Empty, OcrFixture.Page("!99999"), last: 123000));   // an odometer never goes back
+        Assert.Null(Read(OcrPage.Empty, OcrFixture.Page("!999999"), last: 123000));  // nobody drives 877 000 km between two logs
+        Assert.Equal("123456", Read(OcrPage.Empty, OcrFixture.Page("!123456"), last: 123000));
+    }
+
+    [Fact]
+    public void AClockWhoseColonWasLost_DoesNotWinOverASmallerOdometer()
+    {
+        var digits = OcrFixture.Page("!0206", "54321", "12 3", "4"); // the clock ("02:06") drawn as large as the odometer
+
+        Assert.Equal("54321", Read(OcrPage.Empty, digits));
+    }
 }

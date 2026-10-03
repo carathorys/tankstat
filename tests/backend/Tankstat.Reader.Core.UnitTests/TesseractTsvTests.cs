@@ -47,4 +47,26 @@ public class TesseractTsvTests
         Assert.Equal(5, TesseractTsv.Parse(Sample.Replace("\n", "\r\n")).Words.Count);
         Assert.Empty(TesseractTsv.Parse("").Words);
     }
+
+    [Fact]
+    public void OnATurnedPhoto_ALabelAndItsAmount_StayOneLine_AndTheNextLineStaysApart()
+    {
+        // The text falls 5 % to the right (about 3°): the amount at the right edge sits 25 px lower than its label at the left,
+        // more than half a word height, so straight horizontal bands would split them. Tesseract's own line (key 1) shows the tilt.
+        var words = new List<OcrWord>
+        {
+            new("Benzin", 90, new Box(10, 100, 80, 20), 1), new("95", 90, new Box(110, 104, 30, 20), 1), new("x", 90, new Box(160, 106, 10, 20), 1),
+            new("24", 90, new Box(480, 124, 30, 20), 2), new("687", 90, new Box(520, 126, 40, 20), 2),
+            new("ÖSSZESEN:", 90, new Box(10, 140, 110, 20), 3), new("24", 90, new Box(480, 164, 30, 20), 4), new("687", 90, new Box(520, 166, 40, 20), 4),
+        };
+
+        var page = new OcrPage(600, 800, words);
+
+        Assert.InRange(page.Skew, 0.04, 0.06);
+        Assert.Equal(["Benzin 95 x 24 687", "ÖSSZESEN: 24 687"], page.Lines.Select(l => l.Text));
+    }
+
+    [Fact]
+    public void TesseractsLines_AreKeptOnTheWords() =>
+        Assert.Equal(TesseractTsv.Parse(Sample).Words[1].LineKey, TesseractTsv.Parse(Sample).Words[2].LineKey);
 }

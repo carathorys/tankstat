@@ -26,7 +26,8 @@ public static class TesseractTsv
             var text = cols[11].Trim();
             if (text.Length == 0) continue;
             if (!double.TryParse(cols[10], NumberStyles.Float, CultureInfo.InvariantCulture, out var confidence) || confidence < 0) continue;
-            words.Add(new OcrWord(text, confidence, new Box(Int(cols[6]), Int(cols[7]), Int(cols[8]), Int(cols[9]))));
+            var line = Int(cols[2]) * 1_000_000 + Int(cols[3]) * 1_000 + Int(cols[4]) + 1; // block, paragraph, line: never 0
+            words.Add(new OcrWord(text, confidence, new Box(Int(cols[6]), Int(cols[7]), Int(cols[8]), Int(cols[9])), line));
         }
         return new OcrPage(width, height, words);
     }

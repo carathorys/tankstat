@@ -21,6 +21,10 @@ public sealed partial class ReceiptExtractor(Lexicon lexicon, ICandidateScorer s
     [GeneratedRegex(@"[x×*@]\s?$")]
     private static partial Regex MultiplyBefore();
 
+    // "38,52 l x 640,9", "38,52 x 640,9": the first number of a "litres times price" line, even when the OCR lost the unit.
+    [GeneratedRegex(@"^\s?(?:l|ltr|liter|litre|gal)?\s?[x×*@]\s?\d")]
+    private static partial Regex MultiplyAfter();
+
     private sealed record Candidate(NumberToken Token, NumberReading Reading, string Field, double Score);
 
     public IReadOnlyList<ReadField> Extract(OcrPage page, string kind, ReadHints hints)
@@ -49,7 +53,10 @@ public sealed partial class ReceiptExtractor(Lexicon lexicon, ICandidateScorer s
         var fuel = folded.Select(lexicon.HasFuelWord).ToArray();
         var unitPriceWord = folded.Select(lexicon.HasUnitPriceWord).ToArray();
 
-        var marked = tokens.Select(t => (Token: t, Volume: VolumeUnitAfter().IsMatch(t.After), PerUnit: PerUnitAfter().IsMatch(t.After))).ToList();
+        var marked = tokens.Select(t => (Token: t, Volume: VolumeUnitAfter().IsMatch(t.After) || MultiplyAfter().IsMatch(t.After), PerUnit: PerUnitAfter().IsMatch(t.After))).ToList();
+        // On a "litres x price" line the number after the sign is the price per litre, even when its unit came out garbled ("Fi/t").
+        var litreLines = marked.Where(m => m.Volume).Select(m => m.Token.LineIndex).ToHashSet();
+        marked = marked.Select(m => m with { PerUnit = m.PerUnit || (!m.Volume && litreLines.Contains(m.Token.LineIndex) && MultiplyBefore().IsMatch(m.Token.Before)) }).ToList();
         var largest = marked.Where(m => !m.Volume && !m.PerUnit).SelectMany(m => m.Token.Readings).Select(r => r.Value).DefaultIfEmpty(0).Max();
 
         var candidates = new List<Candidate>();
@@ -125,9 +132,12 @@ public sealed partial class ReceiptExtractor(Lexicon lexicon, ICandidateScorer s
         var volumeC = volumes.FirstOrDefault(c => c.Token != total?.Token);
         var price = prices.FirstOrDefault(c => c.Token != total?.Token && c.Token != volumeC?.Token);
         var fields = new List<ReadField>();
+        // All three read but they do not fit: one of them is misread, most likely the litres or the price (the total is printed
+        // several times). Their confidence drops below what the app fills in, so the user types them rather than fixing a wrong one.
+        var misfit = total is not null && volumeC is not null && price is not null ? 0.6 : 1;
         if (total is not null) fields.Add(Field(FieldNames.Total, total, 2));
-        if (volumeC is not null) fields.Add(Field(FieldNames.Volume, volumeC, 3));
-        if (price is not null) fields.Add(Field(FieldNames.UnitPrice, price, 3));
+        if (volumeC is not null) fields.Add(Scaled(Field(FieldNames.Volume, volumeC, 3), misfit));
+        if (price is not null) fields.Add(Scaled(Field(FieldNames.UnitPrice, price, 3), misfit));
 
         // Two of the three give the third, with less confidence than either.
         double Conf(params Candidate[] from) => Math.Round(from.Min(c => Confidence.From(c.Score, c.Token.Confidence)) * 0.85, 2);
@@ -141,11 +151,13 @@ public sealed partial class ReceiptExtractor(Lexicon lexicon, ICandidateScorer s
     }
 
     /// <summary>Whether a total and litres × price per litre agree: within 1.5 %, or one and a half of the currency's smallest unit.</summary>
-    internal static bool Fits(decimal total, decimal product, int currencyDecimals)
+    public static bool Fits(decimal total, decimal product, int currencyDecimals)
     {
         var unit = currencyDecimals == 0 ? 1m : 0.01m;
         return Math.Abs(total - product) <= Math.Max(total * 0.015m, unit * 1.5m);
     }
+
+    private static ReadField Scaled(ReadField field, double factor) => factor == 1 ? field : field with { Confidence = Math.Round(field.Confidence * factor, 2) };
 
     private static ReadField Field(string name, Candidate c, int maxDecimals, double bonus = 0) =>
         new(name, Numbers.Format(c.Reading.Value, maxDecimals), Confidence.From(c.Score + bonus, c.Token.Confidence), FieldSources.Ocr);
@@ -190,20 +202,24 @@ public sealed partial class ReceiptExtractor(Lexicon lexicon, ICandidateScorer s
         var best = page.Lines
             .Select((line, index) => (Line: line, Index: index))
             .Where(x => x.Index < 6 && (x.Line.Box.Top <= topLimit || x.Index < 3) && LooksLikeName(x.Line.Text, folded[x.Index]))
-            .Select(x => (x.Line, Score: (page.MedianWordHeight > 0 ? (double)x.Line.Box.Height / page.MedianWordHeight : 1) - 0.15 * x.Index))
+            // Word height, not the line's box: on a slightly turned photo a long line spans more pixels without being any bigger.
+            .Select(x => (x.Line, x.Index, Score: (page.MedianWordHeight > 0 ? x.Line.Words.Average(w => w.Box.Height) / page.MedianWordHeight : 1) - 0.15 * x.Index))
             .OrderByDescending(x => x.Score)
             .FirstOrDefault();
         if (best.Line is null) return null;
         var text = string.Join(' ', best.Line.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries)).Trim(':', ',', '-', '*', ' ');
         if (text.Length > 120) text = text[..120].TrimEnd();
-        return text.Length < 3 ? null : new ReadField(FieldNames.Title, text, Math.Round(0.5 * (0.6 + 0.4 * best.Line.Confidence / 100), 2), FieldSources.Ocr);
+        // The shop's name heads the receipt: a name on the first lines is a fair suggestion, one further down a guess.
+        var confidence = Math.Round((best.Index <= 1 ? 0.7 : 0.5) * (0.6 + 0.4 * best.Line.Confidence / 100), 2);
+        return text.Length < 3 ? null : new ReadField(FieldNames.Title, text, confidence, FieldSources.Ocr);
     }
 
+    /// <summary>Mostly letters, hardly any digits (that is an address or a tax number), and not receipt boilerplate.</summary>
     private bool LooksLikeName(string text, string folded)
     {
         var letters = text.Count(char.IsLetter);
         var visible = text.Count(c => !char.IsWhiteSpace(c));
-        return letters >= 3 && letters >= 0.6 * visible
+        return letters >= 3 && letters >= 0.6 * visible && text.Count(char.IsDigit) < 2
             && !lexicon.IsTitleNoise(folded) && lexicon.TotalWeight(folded) == 0 && !Currencies.Find(folded).Any();
     }
 }

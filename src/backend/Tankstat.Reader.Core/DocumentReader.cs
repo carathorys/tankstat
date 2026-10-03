@@ -7,7 +7,7 @@ namespace Tankstat.Reader.Core;
 /// <summary>
 /// Reads one photo: runs the OCR passes the allowed kinds need, decides what the photo shows and extracts its values. A receipt is read
 /// as one block of text first and, if no total turns up, as sparse text; a dashboard is read as sparse text plus digit-only passes on
-/// the photo and on its inverted copy (light digits on a dark display).
+/// the photo, its inverted copy (light digits on a dark display) and two copies with thickened strokes (seven-segment digits).
 /// </summary>
 public sealed class DocumentReader(IOcrEngine ocr, Lexicon lexicon, ICandidateScorer scorer)
 {
@@ -36,9 +36,10 @@ public sealed class DocumentReader(IOcrEngine ocr, Lexicon lexicon, ICandidateSc
         if (wantsOdometer)
         {
             var sparse = await ocr.RecognizeAsync(image.Png(ImageVariant.Normal), new OcrPass(ImageVariant.Normal, 11, OcrPurpose.Text), ct);
-            var digits = await ocr.RecognizeAsync(image.Png(ImageVariant.Normal), new OcrPass(ImageVariant.Normal, 11, OcrPurpose.Digits), ct);
-            var inverted = await ocr.RecognizeAsync(image.Png(ImageVariant.Inverted), new OcrPass(ImageVariant.Inverted, 11, OcrPurpose.Digits), ct);
-            if (_odometers.Extract([block, sparse], [digits, inverted], hints) is { } odometer)
+            var digits = new List<OcrPage>();
+            foreach (var variant in new[] { ImageVariant.Normal, ImageVariant.Inverted, ImageVariant.Thickened, ImageVariant.ThickenedMore })
+                digits.Add(await ocr.RecognizeAsync(image.Png(variant), new OcrPass(variant, 11, OcrPurpose.Digits), ct));
+            if (_odometers.Extract([block, sparse], digits, hints) is { } odometer)
                 return new ReadResult(ModelVersion, DocumentKinds.Odometer, [odometer]);
         }
 

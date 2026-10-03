@@ -106,7 +106,7 @@ internal sealed class PreparedImage(int width, int height, byte[] gray) : IPrepa
     {
         lock (_png)
         {
-            if (!_png.TryGetValue(variant, out var png)) _png[variant] = png = Encode(variant == ImageVariant.Inverted ? Invert(gray) : gray);
+            if (!_png.TryGetValue(variant, out var png)) _png[variant] = png = Encode(Pixels(variant));
             return png;
         }
     }
@@ -114,7 +114,44 @@ internal sealed class PreparedImage(int width, int height, byte[] gray) : IPrepa
     /// <summary>The gray value at a point (for tests).</summary>
     public byte GrayAt(int x, int y) => gray[y * width + x];
 
+    /// <summary>How far strokes are thickened: about one segment gap of the odometer digits at this size, and twice that.</summary>
+    public int ThickenRadius => Math.Max(2, (int)Math.Round(Math.Max(width, height) / 500.0));
+
+    internal byte[] Pixels(ImageVariant variant) => variant switch
+    {
+        ImageVariant.Inverted => Invert(gray),
+        ImageVariant.Thickened => Darken(Invert(gray), ThickenRadius),
+        ImageVariant.ThickenedMore => Darken(Invert(gray), ThickenRadius * 2),
+        _ => gray,
+    };
+
     private static byte[] Invert(byte[] pixels) => pixels.Select(p => (byte)(255 - p)).ToArray();
+
+    /// <summary>
+    /// The darkest value within a square around every pixel (a minimum filter, done as two one-dimensional passes): dark strokes on a
+    /// light ground grow by <paramref name="radius"/> pixels on every side.
+    /// </summary>
+    private byte[] Darken(byte[] pixels, int radius)
+    {
+        var rows = new byte[pixels.Length];
+        for (var y = 0; y < height; y++)
+            MinLine(pixels, rows, y * width, 1, width, radius);
+        var result = new byte[pixels.Length];
+        for (var x = 0; x < width; x++)
+            MinLine(rows, result, x, width, height, radius);
+        return result;
+    }
+
+    private static void MinLine(byte[] source, byte[] target, int start, int step, int length, int radius)
+    {
+        for (var i = 0; i < length; i++)
+        {
+            var min = byte.MaxValue;
+            for (var j = Math.Max(0, i - radius); j <= Math.Min(length - 1, i + radius); j++)
+                min = Math.Min(min, source[start + j * step]);
+            target[start + i * step] = min;
+        }
+    }
 
     private byte[] Encode(byte[] pixels)
     {
