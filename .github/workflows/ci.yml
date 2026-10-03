@@ -78,9 +78,13 @@ jobs:
       - run: dotnet restore Tankstat.slnx
       - run: dotnet build Tankstat.slnx --no-restore
 
+      # The photo reader's real-OCR tests need Tesseract with the languages its image ships.
+      - name: Install Tesseract
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-hun tesseract-ocr-eng tesseract-ocr-deu
+
       - name: Unit and integration tests
         run: |
-          for project in tests/backend/*.UnitTests tests/backend/Tankstat.Api.IntegrationTests; do
+          for project in tests/backend/*.UnitTests tests/backend/Tankstat.Api.IntegrationTests tests/backend/Tankstat.Reader.IntegrationTests; do
             echo "::group::$project"
             dotnet test "$project" --no-build --settings coverlet.runsettings --collect:"XPlat Code Coverage" \
               --logger "trx;LogFileName=$(basename "$project").trx" --results-directory test-results
@@ -128,6 +132,28 @@ jobs:
       - name: API contract tests against a running server
         run: mise run test:api
 
+  # The optional photo reader's image: built for amd64 and started the way a self-hoster would (health, API key, a real reading).
+  reader-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the reader image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.reader
+          load: true
+          platforms: linux/amd64
+          tags: tankstat-reader:ci
+          cache-from: type=gha,scope=reader
+          cache-to: type=gha,mode=max,scope=reader
+
+      - name: Smoke test the reader image
+        run: scripts/docker-smoke-reader.sh tankstat-reader:ci
+
   # schema.graphql and the generated TypeScript GraphQL types must match the API and the .graphql documents.
   codegen:
     runs-on: ubuntu-latest
@@ -151,7 +177,7 @@ jobs:
 
   # The self-hostable build (API + frontend in wwwroot), kept as an artifact for pull requests and main.
   build:
-    needs: [frontend, backend, smoke, codegen]
+    needs: [frontend, backend, smoke, codegen, reader-image]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

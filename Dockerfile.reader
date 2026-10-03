@@ -1,0 +1,64 @@
+# syntax=docker/dockerfile:1
+
+# The optional photo reader: its own image (Ubuntu, because .NET 10 ships no Debian images and Tesseract wants glibc) with
+# Tesseract and its Hungarian, English and German language data. The Tankstat app calls it over HTTP; it never needs the app.
+#
+#   docker build -f Dockerfile.reader -t tankstat-reader --build-arg VERSION=1.2.3 .
+#   docker run -p 8081:8081 -e Reader__ApiKey=change-me tankstat-reader
+#
+# Multi-architecture builds work with buildx (the build stage runs natively on the build machine, never under emulation).
+
+ARG BUILDPLATFORM=linux/amd64
+
+# ---- Build: publish the reader -------------------------------------------------------------------------------
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+ARG VERSION=0.0.0-dev
+ENV DOTNET_NOLOGO=1 DOTNET_CLI_TELEMETRY_OPTOUT=1
+
+COPY src/backend/Tankstat.Reader.Core ./src/backend/Tankstat.Reader.Core
+COPY src/backend/Tankstat.Reader ./src/backend/Tankstat.Reader
+# Framework-dependent, for the exact target (glibc, amd64 or arm64): only that platform's SkiaSharp library is kept.
+ARG TARGETARCH
+RUN case "${TARGETARCH:-amd64}" in arm64) rid=linux-arm64 ;; *) rid=linux-x64 ;; esac \
+ && dotnet publish src/backend/Tankstat.Reader/Tankstat.Reader.csproj \
+      --configuration Release \
+      --runtime "$rid" --self-contained false \
+      --output /app \
+      -p:Version=${VERSION} \
+      -p:UseAppHost=false
+
+# ---- Runtime -------------------------------------------------------------------------------------------------
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+
+ARG VERSION=0.0.0-dev
+ARG REVISION=unknown
+ARG CREATED=unknown
+LABEL org.opencontainers.image.title="Tankstat photo reader" \
+      org.opencontainers.image.description="Optional service that reads odometers and receipts from photos for Tankstat" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.created="${CREATED}"
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-hun tesseract-ocr-eng tesseract-ocr-deu \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY --from=build /app ./
+
+# Every setting is a normal ASP.NET Core setting (Reader__ApiKey is required). /data will hold what the reader learns.
+ENV ASPNETCORE_URLS=http://+:8081 \
+    OMP_THREAD_LIMIT=1 \
+    Reader__DataPath=/data
+RUN mkdir /data && chown "$APP_UID:$APP_UID" /data
+VOLUME /data
+
+USER $APP_UID
+EXPOSE 8081
+
+# The image has no curl or wget: the reader checks its own health endpoint.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD ["dotnet", "Tankstat.Reader.dll", "--healthcheck"]
+
+ENTRYPOINT ["dotnet", "Tankstat.Reader.dll"]
