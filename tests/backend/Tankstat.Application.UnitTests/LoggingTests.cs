@@ -8,6 +8,7 @@ using Tankstat.Application.Refuelings;
 using Tankstat.Application.Recurring;
 using Tankstat.Application.Stats;
 using Tankstat.Application.Users;
+using Tankstat.Application.Vehicles;
 using Tankstat.Domain;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Charts;
@@ -22,9 +23,11 @@ using Tankstat.TestSupport;
 namespace Tankstat.Application.UnitTests;
 
 /// <summary>
-/// What the application says about itself in its log: not the wording of every line, but what an operator relies on. Failed sign-ins and
-/// administration show at the levels people filter on, failures that used to vanish leave a Warning, a lasting condition is reported when
-/// it changes and not on every check, and nothing a person typed (and no secret) ever shows up in a line.
+/// What the application says about itself in its log: not the wording of every line, but what an operator relies on. Notable events show at
+/// the levels people filter on, failures that used to vanish leave a Warning, a lasting condition is reported when it changes and not on
+/// every check, and nothing a person typed (and no secret) ever shows up in a line. Lines are found by their class and level and read
+/// through the values of their placeholders, so rewording a message does not break a test. (Sign-ins and administration:
+/// <see cref="AccountLoggingTests"/>.)
 /// </summary>
 public class LoggingTests
 {
@@ -35,8 +38,6 @@ public class LoggingTests
     private static ChartConfig Config() => new(ChartMetric.TotalSpend, ChartGrouping.Month, ChartKind.Bar, ChartRange.Last6Months, false);
 
     private static RecurringExpenseInput Insurance(string title = "Insurance") => new(title, null, null, RecurrenceKind.Time, 12, null, Day, null, null, null);
-
-    private static IEnumerable<LogEntry> From<T>(World w) => w.Log.Entries.Where(e => e.Category == typeof(T).FullName);
 
     private static async Task<(World W, User Alice, Vehicle Car)> SignedInOwner()
     {
@@ -62,13 +63,17 @@ public class LoggingTests
         await w.VehicleService.DeleteAsync(car.Id, default);
         await w.VehicleService.EmptyTrashAsync(default);
 
-        var information = w.Log.Entries.Where(e => e.Level >= LogLevel.Information).Select(e => e.Message).ToList();
+        var information = w.Log.From("Tankstat").Where(e => e.Level >= LogLevel.Information).ToList();
         Assert.Equal(5, information.Count); // upload, commit, three purges
-        Assert.All(information, m => Assert.Contains(alice.Id.ToString(), m));
-        Assert.Contains(information, m => m.Contains($"{result.FuelImported} fuel logs") && m.Contains(car.Id.ToString()) && m.Contains("imported"));
-        Assert.Contains(information, m => m.Contains($"{fills} refuelings"));
-        Assert.Contains(information, m => m.Contains($"{costs} expenses"));
-        Assert.Contains(information, m => m.Contains("1 vehicles") && m.Contains(car.Id.ToString()));
+        Assert.All(information, e => Assert.Equal(alice.Id, e.Values["UserId"]));
+        var commit = Assert.Single(w.Log.From<ImportService>(), e => e.Values.ContainsKey("NewVehicle"));
+        Assert.Equal<object?[]>([car.Id, false, result.FuelImported, result.ExpensesImported, result.RecurringImported],
+            [commit.Values["VehicleId"], commit.Values["NewVehicle"], commit.Values["Fuel"], commit.Values["Expenses"], commit.Values["Recurring"]]);
+        Assert.Equal(fills, Assert.Single(w.Log.From<RefuelingService>(), e => e.Level == LogLevel.Information).Values["Count"]);
+        Assert.Equal(costs, Assert.Single(w.Log.From<ExpenseService>(), e => e.Level == LogLevel.Information).Values["Count"]);
+        var vehicles = Assert.Single(w.Log.From<VehicleService>(), e => e.Level == LogLevel.Information);
+        Assert.Equal(1, vehicles.Values["Count"]);
+        Assert.Contains(car.Id.ToString(), (string)vehicles.Values["VehicleIds"]!); // what was deleted for good is on record
     }
 
     [Fact]
@@ -115,7 +120,7 @@ public class LoggingTests
         await w.VehicleService.DeleteAsync(car.Id, default);
         await w.VehicleService.RestoreAsync(car.Id, default);
 
-        var lines = w.Log.Entries.Where(e => e.Category.StartsWith("Tankstat.Application.", StringComparison.Ordinal)).ToList();
+        var lines = w.Log.From("Tankstat.Application").ToList();
         Assert.True(lines.Count > 25, "every change above should leave a line");
         Assert.All(lines, l => Assert.True(l.Level == LogLevel.Debug, $"{l.Level}: {l.Message}"));
     }
@@ -134,7 +139,7 @@ public class LoggingTests
         Assert.Equal(1, purged); // the purge itself went through
         var warning = Assert.Single(w.Log.Entries, e => e.Level == LogLevel.Warning);
         Assert.IsType<IOException>(warning.Exception);
-        Assert.Contains($"vehicles/{car.Id:N}", warning.Message);
+        Assert.Equal($"vehicles/{car.Id:N}", warning.Values["Folder"]);
     }
 
     [Fact]
@@ -148,8 +153,7 @@ public class LoggingTests
 
         var warning = Assert.Single(w.Log.Entries, e => e.Level == LogLevel.Warning);
         Assert.IsType<IOException>(warning.Exception);
-        Assert.Contains(draft.ToString(), warning.Message);
-        Assert.Contains(fill.Id.ToString(), warning.Message);
+        Assert.Equal<object?[]>([draft, fill.Id], [warning.Values["DraftId"], warning.Values["LogId"]]);
     }
 
     [Fact]
@@ -162,8 +166,7 @@ public class LoggingTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => w.RecurringService.MarkDoneAsync(schedule.Id, new MarkDoneInput(Day, null, true, 100, "EUR"), default));
 
         var warning = Assert.Single(w.Log.Entries, e => e.Level == LogLevel.Warning);
-        Assert.Contains(schedule.Id.ToString(), warning.Message);
-        Assert.Contains(w.Expenses.Items.Single().Id.ToString(), warning.Message);
+        Assert.Equal<object?[]>([schedule.Id, w.Expenses.Items.Single().Id], [warning.Values["RecurringId"], warning.Values["ExpenseId"]]);
     }
 
     [Fact]
@@ -177,10 +180,9 @@ public class LoggingTests
 
         await w.Processor.ProcessDueAsync(default);
 
-        var line = Assert.Single(w.Log.Entries, e => e.Message.Contains("cut short", StringComparison.Ordinal));
+        var line = Assert.Single(w.Log.From<PhotoReadingProcessor>());
         Assert.Equal(LogLevel.Information, line.Level);
-        Assert.Contains(id.ToString(), line.Message);
-        Assert.Contains("queued again", line.Message);
+        Assert.Equal<object?[]>([id, "queued again"], [line.Values["Id"], line.Values["Outcome"]]);
     }
 
     // ---- a condition is reported when it changes, not on every check -------------------------------------------

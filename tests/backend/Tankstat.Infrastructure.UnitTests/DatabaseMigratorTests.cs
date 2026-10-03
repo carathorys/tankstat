@@ -13,7 +13,7 @@ namespace Tankstat.Infrastructure.UnitTests;
 public class DatabaseMigratorTests
 {
     [Fact]
-    public async Task AFreshDatabase_IsMigrated_AndTheLogNamesWhatWasApplied_ThenTheNextStartSaysItIsUpToDate()
+    public async Task AFreshDatabase_IsMigrated_AndTheLogNamesWhatWasApplied_ThenTheNextStartSaysNothingWasToDo()
     {
         var path = Path.Combine(Path.GetTempPath(), $"tankstat-{Guid.NewGuid():N}.db");
         var log = new CapturedLog();
@@ -26,25 +26,26 @@ public class DatabaseMigratorTests
         try
         {
             var migrator = services.GetServices<IHostedService>().OfType<DatabaseMigrator>().Single();
-            int all;
+            string[] all;
             await using (var db = await services.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContextAsync())
-                all = db.Database.GetMigrations().Count();
+                all = db.Database.GetMigrations().ToArray();
 
             await migrator.StartAsync(default);
 
-            var ours = () => log.Entries.Where(e => e.Category == typeof(DatabaseMigrator).FullName).ToList(); // EF Core logs its own lines too (SQL, locks)
-            var applying = Assert.Single(ours(), e => e.Message.StartsWith("Applying", StringComparison.Ordinal));
-            Assert.Equal(LogLevel.Information, applying.Level);
-            Assert.Contains($"Applying {all} database migrations", applying.Message);
-            Assert.Contains("_AddRefuelingConsumption", applying.Message); // the names, so a failed upgrade can be found
-            Assert.Contains(ours(), e => e.Message.StartsWith($"Applied {all} database migrations", StringComparison.Ordinal));
+            // Two lines, and none about the consumption backfill: a new database has no vehicles for it to calculate.
+            var first = log.From<DatabaseMigrator>().ToList();
+            Assert.Equal(2, first.Count);
+            Assert.All(first, e => Assert.Equal(LogLevel.Information, e.Level));
+            Assert.Equal(all.Length, first[0].Values["Count"]);
+            Assert.All(all, name => Assert.Contains(name, (string)first[0].Values["Migrations"]!)); // every one is named, so a failed upgrade can be found
+            Assert.Equal(all.Length, first[1].Values["Count"]);
 
             log.Clear();
             await migrator.StartAsync(default);
 
-            var again = Assert.Single(ours());
+            var again = Assert.Single(log.From<DatabaseMigrator>());
             Assert.Equal(LogLevel.Information, again.Level);
-            Assert.Contains("up to date", again.Message);
+            Assert.False(again.Values.ContainsKey("Migrations")); // nothing was applied
         }
         finally
         {

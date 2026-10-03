@@ -12,14 +12,16 @@ namespace Tankstat.Api.IntegrationTests;
 /// <summary>
 /// What an operator finds in the log of the real app: the errors nobody told the client about, refusals, sign-ins, and the start. Run
 /// against the whole host (real GraphQL, real database), because the part that matters here is how HotChocolate hands its errors over.
+/// Lines are found by their class and level and read through the values of their placeholders, not through their wording.
 /// </summary>
 [Collection(ApiCollection.Name)]
 public class LoggingTests
 {
     private const string Listener = "Tankstat.Api.GraphQL.GraphQLLoggingListener";
+    private const string AuthService = "Tankstat.Application.Users.AuthService";
 
     /// <summary>What the app itself logged (the framework's lines are not what is tested here).</summary>
-    private static IEnumerable<LogEntry> Ours(TestApp app) => app.Log.Entries.Where(e => e.Category.StartsWith("Tankstat", StringComparison.Ordinal));
+    private static IEnumerable<LogEntry> Ours(TestApp app) => app.Log.From("Tankstat");
 
     private sealed class ThrowingEmail : IEmailSender
     {
@@ -28,7 +30,7 @@ public class LoggingTests
     }
 
     [Fact]
-    public async Task ABusinessError_IsOnlyADebugLine_NamingTheFieldAndTheKey()
+    public async Task ABusinessError_IsOnlyADebugLine_NamingTheKey()
     {
         using var app = new TestApp(new() { ["Auth:Mode"] = "None" });
 
@@ -36,45 +38,27 @@ public class LoggingTests
 
         Assert.Equal("VALIDATION_FAILED", body.ErrorCode());
         Assert.DoesNotContain(Ours(app), e => e.Level >= LogLevel.Warning);
-        var line = Assert.Single(Ours(app), e => e.Category == Listener && e.Message.Contains("vehicle.nameRequired"));
+        var line = Assert.Single(app.Log.From(Listener), e => e.Values.ContainsKey("Key"));
         Assert.Equal(LogLevel.Debug, line.Level);
-        Assert.Contains("addVehicle", line.Message);
-        Assert.Contains(Ours(app), e => e.Message.Contains("mutation (unnamed) finished in")); // and the request is timed, by what it ran
-
-        await app.NewClient().Gql("query Mine { myVehicles { id } }");
-
-        Assert.Contains(Ours(app), e => e.Message.Contains("query Mine finished in"));
+        Assert.Equal("vehicle.nameRequired", line.Values["Key"]);
     }
 
     [Fact]
-    public async Task AQueryThatDoesNotValidate_IsADebugLine_WithItsCodes_AndNotWhatTheClientWrote()
+    public async Task EveryRequestIsTimed_ByTheOperationItRan()
     {
         using var app = new TestApp(new() { ["Auth:Mode"] = "None" });
+        var client = app.NewClient();
 
-        var response = await app.NewClient().PostAsJsonAsync("/graphql", new { query = "{ nothingLikeThis }" });
+        await client.Gql("mutation { addVehicle(input: { name: \"Car\", fuelType: PETROL }) { id } }");
+        await client.Gql("query Mine { myVehicles { id } }");
 
-        Assert.Contains("errors", await response.Content.ReadAsStringAsync()); // the client is told what is wrong with its query...
-        Assert.DoesNotContain(Ours(app), e => e.Level >= LogLevel.Warning);
-        var line = Assert.Single(Ours(app), e => e.Message.Contains("failed validation"));
-        Assert.Equal(LogLevel.Debug, line.Level);
-        Assert.False(app.Log.Mentions("nothingLikeThis")); // ...the log only that it did not validate, and the error codes
+        var timed = app.Log.From(Listener).Where(e => e.Values.ContainsKey("Ms")).ToList();
+        Assert.All(timed, e => Assert.Equal(LogLevel.Debug, e.Level));
+        Assert.Equal<object?[]>(["mutation (unnamed)", "query Mine"], timed.Select(e => e.Values["Operation"]).ToArray());
     }
 
     [Fact]
-    public async Task AnOperationNameFromTheClient_NeverReachesTheLogUnchecked()
-    {
-        using var app = new TestApp(new() { ["Auth:Mode"] = "None" });
-        var forged = "x\nwarn: Tankstat.Application.Users.AuthService[0] User 00000000-0000-0000-0000-000000000000 signed in";
-
-        var response = await app.NewClient().PostAsJsonAsync("/graphql", new { query = "query Mine { myVehicles { id } }", operationName = forged });
-
-        Assert.Contains("errors", await response.Content.ReadAsStringAsync()); // answered with an error: there is no such operation
-        Assert.False(app.Log.Mentions("signed in"));
-        Assert.DoesNotContain(app.Log.Entries, e => e.Text.Contains('\n') && e.Category.StartsWith("Tankstat", StringComparison.Ordinal) && e.Exception is null);
-    }
-
-    [Fact]
-    public async Task ARefusal_IsAWarning_NamingTheFieldAndTheKey()
+    public async Task ARefusal_IsAWarning_NamingTheKey()
     {
         using var app = new TestApp(new() { ["Auth:Mode"] = "None" });
 
@@ -83,8 +67,8 @@ public class LoggingTests
         Assert.Equal("FORBIDDEN", body.ErrorCode());
         var warning = Assert.Single(Ours(app), e => e.Level == LogLevel.Warning);
         Assert.Equal(Listener, warning.Category);
-        Assert.Contains("refused at users", warning.Message);
-        Assert.Contains("auth.adminRequired", warning.Message);
+        Assert.Equal("auth.adminRequired", warning.Values["Key"]);
+        Assert.Equal("users", warning.Values["Path"]);
     }
 
     [Fact]
@@ -107,8 +91,9 @@ public class LoggingTests
         var error = Assert.Single(app.Log.Entries, e => e.Level == LogLevel.Error); // once, although several hooks may hear of it
         Assert.Equal(Listener, error.Category);
         Assert.Equal("smtp is down", error.Exception!.Message);
-        Assert.Contains("createUser", error.Message);
-        Assert.Contains(Ours(app), e => e.Level == LogLevel.Information && e.Message.Contains("created user")); // what was done before it failed is on record
+        Assert.Equal("createUser", error.Values["Path"]);
+        // what was done before it failed is on record
+        Assert.Contains(app.Log.From("Tankstat.Application.Users.UserService"), e => e.Level == LogLevel.Information && e.Values.ContainsKey("AdminId"));
         Assert.False(app.Log.Mentions("new.person@example.com"));
     }
 
@@ -116,7 +101,8 @@ public class LoggingTests
     public async Task SigningIn_AndOut_IsLoggedByUserId_NeverByAddressOrPassword()
     {
         using var app = TestApp.Standalone();
-        var client = app.NewClient();
+        var client = app.NewClient(); // starts the host, which says what it did at the start (another test)
+        app.Log.Clear();
 
         var wrong = await client.Gql("mutation($i: LoginInput!) { login(input: $i) { id } }", new { i = new { email = "root@example.com", password = "not-the-password-1" } });
         var admin = await client.LoginAs("root@example.com", "initial-password-1");
@@ -124,9 +110,10 @@ public class LoggingTests
         await client.Gql("mutation { logout }");
 
         Assert.Equal("INVALID_CREDENTIALS", wrong.ErrorCode());
-        Assert.Contains(Ours(app), e => e.Level == LogLevel.Warning && e.Message.Contains("wrong password") && e.Message.Contains(id));
-        Assert.Contains(Ours(app), e => e.Level == LogLevel.Information && e.Message.Contains("signed in") && e.Message.Contains(id));
-        Assert.Contains(Ours(app), e => e.Level == LogLevel.Information && e.Message.Contains("signed out") && e.Message.Contains(id));
+        var byId = (LogEntry e) => e.Values["UserId"]?.ToString() == id;
+        Assert.Single(app.Log.From(AuthService), e => e.Level == LogLevel.Warning && byId(e)); // the wrong password
+        Assert.Single(app.Log.From(AuthService), e => e.Level == LogLevel.Information && byId(e)); // the sign-in
+        Assert.Single(app.Log.From("Tankstat.Api.GraphQL.AuthMutations"), e => e.Level == LogLevel.Information && byId(e)); // the sign-out
         foreach (var secret in new[] { "root@example.com", "initial-password-1", "not-the-password-1" })
             Assert.False(app.Log.Mentions(secret), secret);
     }
@@ -159,10 +146,9 @@ public class LoggingTests
         Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
         var warning = Assert.Single(Ours(app), e => e.Level >= LogLevel.Warning);
-        Assert.Contains("PUT /media/vehicles/{vehicleId:guid}/picture", warning.Message); // the route, never the path that was asked for
-        Assert.DoesNotContain(car, warning.Message);
-        Assert.Contains("vehicle.viewOnly", warning.Message);
-        Assert.Contains(bobId, warning.Message);
+        Assert.Equal<object?[]>(["PUT", "/media/vehicles/{vehicleId:guid}/picture", "vehicle.viewOnly", bobId],
+            [warning.Values["Method"], warning.Values["Route"], warning.Values["Key"], warning.Values["UserId"]?.ToString()]);
+        Assert.DoesNotContain(car, warning.Message); // the route pattern, never the path that was asked for
         Assert.Contains($"UserId={bobId}", warning.ScopeText); // the scope of the request names the user for every line written meanwhile
     }
 
@@ -173,8 +159,37 @@ public class LoggingTests
 
         _ = app.NewClient(); // starts the host
 
-        Assert.Contains(Ours(app), e => e.Level == LogLevel.Information && e.Message.StartsWith("Applying", StringComparison.Ordinal) && e.Message.Contains("database migrations"));
-        Assert.Contains(Ours(app), e => e.Level == LogLevel.Information && e.Message.StartsWith("Created the first administrator", StringComparison.Ordinal));
+        Assert.Contains(app.Log.From("Tankstat.Infrastructure.Persistence.DatabaseMigrator"), e => e.Level == LogLevel.Information && e.Values.ContainsKey("Migrations"));
+        Assert.Contains(app.Log.From(AuthService), e => e.Level == LogLevel.Information && e.Values.ContainsKey("UserId"));
         Assert.False(app.Log.Mentions("root@example.com"));
+    }
+
+    [Fact]
+    public async Task AQueryThatDoesNotValidate_IsADebugLine_WithItsCodes_AndNotWhatTheClientWrote()
+    {
+        using var app = new TestApp(new() { ["Auth:Mode"] = "None" });
+
+        var response = await app.NewClient().PostAsJsonAsync("/graphql", new { query = "{ nothingLikeThis }" });
+
+        Assert.Contains("errors", await response.Content.ReadAsStringAsync()); // the client is told what is wrong with its query...
+        Assert.DoesNotContain(Ours(app), e => e.Level >= LogLevel.Warning);
+        var line = Assert.Single(app.Log.From(Listener), e => e.Values.ContainsKey("Codes"));
+        Assert.Equal(LogLevel.Debug, line.Level);
+        Assert.False(app.Log.Mentions("nothingLikeThis")); // ...the log only that it did not validate, and the error codes
+    }
+
+    [Fact]
+    public async Task AnOperationNameFromTheClient_NeverReachesTheLogUnchecked()
+    {
+        using var app = new TestApp(new() { ["Auth:Mode"] = "None" });
+        var forged = "x\nwarn: forged"; // short, so only the check of its characters can turn it away
+
+        var response = await app.NewClient().PostAsJsonAsync("/graphql", new { query = "query Mine { myVehicles { id } }", operationName = forged });
+
+        Assert.Contains("errors", await response.Content.ReadAsStringAsync()); // answered with an error: there is no such operation
+        Assert.DoesNotContain(Ours(app), e => e.Level >= LogLevel.Warning);
+        Assert.False(app.Log.Mentions("forged"));
+        var timed = Assert.Single(app.Log.From(Listener), e => e.Values.ContainsKey("Ms"));
+        Assert.Equal("operation (invalid name)", timed.Values["Operation"]); // the name was seen, and turned away
     }
 }

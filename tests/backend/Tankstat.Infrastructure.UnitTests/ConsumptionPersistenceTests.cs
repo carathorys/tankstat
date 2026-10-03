@@ -96,7 +96,7 @@ public class ConsumptionPersistenceTests
 
         Assert.Equal([null, 6m, null], await Stored(db, first));
         Assert.Equal([null, 6m, null], await Stored(db, second));
-        var said = Assert.Single(db.Log.Entries, e => e.Message.Contains("fuel consumption"));
-        Assert.Contains("2 vehicles", said.Message);
+        var said = Assert.Single(db.Log.From<DatabaseMigrator>());
+        Assert.Equal(2, said.Values["Vehicles"]);
     }
 }

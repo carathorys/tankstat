@@ -48,7 +48,7 @@ public class DatabaseProbeTests
         var folder = Path.Combine(Path.GetTempPath(), $"tankstat-{Guid.NewGuid():N}");
         var log = new CapturedLog();
         var probe = Probe($"Data Source={Path.Combine(folder, "x.db")}", log); // the folder is missing: the file cannot be created
-        var ours = () => log.Entries.Where(e => e.Category == typeof(Persistence.EfDatabaseProbe).FullName).ToList(); // EF Core logs its own error on every failed attempt
+        var ours = () => log.From<Persistence.EfDatabaseProbe>().ToList(); // EF Core logs its own error on every failed attempt
         try
         {
             Assert.False(await probe.IsReachableAsync(default));
