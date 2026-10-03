@@ -47,6 +47,20 @@ public class LoggingTests
     }
 
     [Fact]
+    public async Task AQueryThatDoesNotValidate_IsADebugLine_WithItsCodes_AndNotWhatTheClientWrote()
+    {
+        using var app = new TestApp(new() { ["Auth:Mode"] = "None" });
+
+        var response = await app.NewClient().PostAsJsonAsync("/graphql", new { query = "{ nothingLikeThis }" });
+
+        Assert.Contains("errors", await response.Content.ReadAsStringAsync()); // the client is told what is wrong with its query...
+        Assert.DoesNotContain(Ours(app), e => e.Level >= LogLevel.Warning);
+        var line = Assert.Single(Ours(app), e => e.Message.Contains("failed validation"));
+        Assert.Equal(LogLevel.Debug, line.Level);
+        Assert.False(app.Log.Mentions("nothingLikeThis")); // ...the log only that it did not validate, and the error codes
+    }
+
+    [Fact]
     public async Task AnOperationNameFromTheClient_NeverReachesTheLogUnchecked()
     {
         using var app = new TestApp(new() { ["Auth:Mode"] = "None" });
