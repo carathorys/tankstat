@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- The keywords of each receipt language are data, so a language can be added without code. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Lexicons\*.json" LogicalName="Tankstat.Reader.Core.Lexicons.%(Filename).json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tankstat.Reader.Core.UnitTests" />
+  </ItemGroup>
+
+</Project>

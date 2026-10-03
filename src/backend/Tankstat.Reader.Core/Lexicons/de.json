@@ -1,0 +1,11 @@
+{
+  "language": "de",
+  "total": { "summe": 1.0, "gesamt": 1.0, "gesamtbetrag": 1.0, "zu zahlen": 1.0, "zahlbetrag": 1.0, "endbetrag": 1.0, "betrag": 0.6, "total": 0.8, "ec-karte": 0.3, "karte": 0.3, "bezahlt": 0.4 },
+  "notTotal": { "zwischensumme": 1.0, "mwst": 1.0, "ust": 1.0, "netto": 0.8, "steuer": 0.8, "ruckgeld": 1.0, "gegeben": 0.8, "rabatt": 0.8 },
+  "fuel": ["super", "diesel", "benzin", "superplus", "autogas", "kraftstoff", "e10", "e5"],
+  "unitPrice": ["eur/l", "€/l", "preis/l", "literpreis", "eur/ltr", "€/ltr", "eur / l"],
+  "date": ["datum"],
+  "titleNoise": ["beleg", "rechnung", "quittung", "kassenbon", "ust-id", "steuernr", "steuernummer", "tel", "danke", "vielen", "mwst", "summe", "datum", "www"],
+  "odometer": ["km", "odo", "gesamt km"],
+  "trip": ["trip", "tageskilometer", "reichweite"]
+}
