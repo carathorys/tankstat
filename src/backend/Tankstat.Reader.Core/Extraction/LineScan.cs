@@ -25,13 +25,10 @@ public static partial class LineScan
     public static IReadOnlyList<NumberToken> Numbers(OcrLine line, int lineIndex, string locale, DateOnly today)
     {
         var (text, spans) = Join(OcrRepair.Repair(line));
-        var masked = new StringBuilder(text);
-        foreach (var date in Dates.Find(text, today)) Blank(masked, date.Index, date.Length);
-        foreach (var (index, length) in Dates.FindTimes(text)) Blank(masked, index, length);
-        foreach (Match noise in NoisePattern().Matches(text)) Blank(masked, noise.Index, noise.Length);
+        var masked = Mask(text, today);
 
         var tokens = new List<NumberToken>();
-        foreach (Match m in NumberPattern().Matches(masked.ToString()))
+        foreach (Match m in NumberPattern().Matches(masked))
         {
             var readings = Text.Numbers.Interpret(m.Value, locale);
             if (readings.Count == 0) continue;
@@ -42,6 +39,19 @@ public static partial class LineScan
             tokens.Add(new NumberToken(m.Value, readings, lineIndex, Box.Union(words.Select(w => w.Box)), words.Min(w => w.Confidence), before, after));
         }
         return tokens;
+    }
+
+    /// <summary>
+    /// The text with everything that is no amount blanked out (dates, times of day, percentages, long ids), so the text keeps its length
+    /// and every position in it. Digits that remain next to a currency marker or in a column of money are amounts.
+    /// </summary>
+    public static string Mask(string text, DateOnly today)
+    {
+        var masked = new StringBuilder(text);
+        foreach (var date in Dates.Find(text, today)) Blank(masked, date.Index, date.Length);
+        foreach (var (index, length) in Dates.FindTimes(text)) Blank(masked, index, length);
+        foreach (Match noise in NoisePattern().Matches(text)) Blank(masked, noise.Index, noise.Length);
+        return masked.ToString();
     }
 
     /// <summary>The line as one string (words joined by spaces) and where each word sits in it.</summary>

@@ -27,47 +27,58 @@ public sealed class DocumentReader(IOcrEngine ocr, Lexicon lexicon, ICandidateSc
 
         var block = wantsReceipt ? await ocr.RecognizeAsync(image.Png(ImageVariant.Normal), new OcrPass(ImageVariant.Normal, 6, OcrPurpose.Text), ct) : OcrPage.Empty;
         var receiptScore = DocumentClassifier.ReceiptScore(block, lexicon, hints.Today);
+
+        // The sparse text pass serves the receipt and the odometer alike, and each pass is a Tesseract run: it is never run twice.
+        OcrPage? sparsePage = null;
+        async Task<OcrPage> SparseAsync() =>
+            sparsePage ??= await ocr.RecognizeAsync(image.Png(ImageVariant.Normal), new OcrPass(ImageVariant.Normal, 11, OcrPurpose.Text), ct);
+
         ReadResult? receipt = null;
-        if (wantsReceipt && (receiptScore >= 1.5 || !wantsOdometer))
+        if (wantsReceipt && (receiptScore >= DocumentClassifier.ReceiptFrom || !wantsOdometer))
         {
-            receipt = await ReadReceiptAsync(image, block, request, ct);
-            // A receipt without a total may be a dashboard whose noise looked like one: the odometer is looked for before settling.
-            if (!wantsOdometer || HasTotal(receipt)) return receipt.Fields.Count > 0 ? receipt : Unknown;
+            receipt = await ReadReceiptAsync(block, request, SparseAsync);
+            // A receipt of nothing the app fills in (a stray currency, a total that is only a guess) may be a dashboard whose noise
+            // looked like one: the odometer is looked for before settling. One read with a value the app fills in is a receipt, and what
+            // else its digits might be (a receipt number, one of its amounts) is far more often read as a weak odometer than a dashboard
+            // is read as a sure receipt.
+            if (!wantsOdometer || FillsIn(receipt.Fields)) return receipt.Fields.Count > 0 ? receipt : Unknown;
         }
 
         if (wantsOdometer)
         {
-            var sparse = await ocr.RecognizeAsync(image.Png(ImageVariant.Normal), new OcrPass(ImageVariant.Normal, 11, OcrPurpose.Text), ct);
+            var sparse = await SparseAsync();
             var digits = new List<OcrPage>();
             foreach (var variant in new[] { ImageVariant.Normal, ImageVariant.Inverted, ImageVariant.Thickened, ImageVariant.ThickenedMore })
                 digits.Add(await ocr.RecognizeAsync(image.Png(variant), new OcrPass(variant, 11, OcrPurpose.Digits), ct));
+
             if (_odometers.Extract([block, sparse], digits, hints) is { } odometer)
                 return new ReadResult(ModelVersion, DocumentKinds.Odometer, [odometer]);
         }
 
         // No odometer after all: what was read of the receipt, or a weak receipt with a total, is still better than nothing.
         if (receipt is { Fields.Count: > 0 }) return receipt;
-        if (wantsReceipt && receipt is null && receiptScore >= 0.8)
+        if (wantsReceipt && receipt is null && receiptScore >= DocumentClassifier.WeakReceiptFrom)
         {
-            receipt = await ReadReceiptAsync(image, block, request, ct);
-            if (HasTotal(receipt)) return receipt;
+            receipt = await ReadReceiptAsync(block, request, SparseAsync);
+            if (HasTotal(receipt.Fields)) return receipt;
         }
         return Unknown;
     }
 
     private static ReadResult Unknown => new(ModelVersion, DocumentKinds.Unknown, []);
 
-    private static bool HasTotal(ReadResult receipt) => receipt.Fields.Any(f => f.Name == FieldNames.Total);
+    private static bool HasTotal(IReadOnlyList<ReadField> fields) => fields.Any(f => f.Name == FieldNames.Total);
 
-    private async Task<ReadResult> ReadReceiptAsync(IPreparedImage image, OcrPage block, ReadRequest request, CancellationToken ct)
+    private static bool FillsIn(IReadOnlyList<ReadField> fields) => fields.Any(f => f.Confidence >= ReadField.FillInFrom);
+
+    private async Task<ReadResult> ReadReceiptAsync(OcrPage block, ReadRequest request, Func<Task<OcrPage>> sparseText)
     {
         var kind = DocumentClassifier.ReceiptKind(block, request.Kinds, lexicon);
         var fields = _receipts.Extract(block, kind, request.Hints);
-        if (!fields.Any(f => f.Name == FieldNames.Total))
+        if (!HasTotal(fields))
         {
-            var sparse = await ocr.RecognizeAsync(image.Png(ImageVariant.Normal), new OcrPass(ImageVariant.Normal, 11, OcrPurpose.Text), ct);
-            var second = _receipts.Extract(sparse, kind, request.Hints);
-            if (second.Any(f => f.Name == FieldNames.Total) || second.Count > fields.Count) fields = second;
+            var second = _receipts.Extract(await sparseText(), kind, request.Hints);
+            if (HasTotal(second) || second.Count > fields.Count) fields = second;
         }
         return new ReadResult(ModelVersion, kind, fields);
     }

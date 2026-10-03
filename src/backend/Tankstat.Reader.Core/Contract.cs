@@ -50,7 +50,11 @@ public sealed record ReadHints(string Locale, long? LastOdometer, string? Curren
 public sealed record ReadRequest(IReadOnlySet<string> Kinds, ReadHints Hints);
 
 /// <summary>One value read from the photo, as an invariant string ("38.52", "2026-09-17", "HUF", "123456"), with a confidence from 0 to 1.</summary>
-public sealed record ReadField(string Name, string Value, double Confidence, string Source);
+public sealed record ReadField(string Name, string Value, double Confidence, string Source)
+{
+    /// <summary>The confidence from which the Tankstat app fills a value in on its own (its default): a guess has to stay below it.</summary>
+    public const double FillInFrom = 0.6;
+}
 
 /// <summary>What the photo shows and the values read from it; an unreadable photo is kind "unknown" with no fields, never an error.</summary>
 public sealed record ReadResult(string ModelVersion, string Kind, IReadOnlyList<ReadField> Fields)

@@ -135,6 +135,15 @@ public class ReceiptExtractorTests
     }
 
     [Fact]
+    public void ACurrencyPrintedNextToTwoAmounts_IsMoreCertainThanNextToOne()
+    {
+        var one = Receipts.Extract(OcrFixture.Page("Parkolás", "ÖSSZESEN\t800 Ft"), DocumentKinds.ExpenseReceipt, new ReadHints("hu", null, null, Today));
+        var two = Receipts.Extract(OcrFixture.Page("Parkolás\t800 Ft", "ÖSSZESEN\t800 Ft"), DocumentKinds.ExpenseReceipt, new ReadHints("hu", null, null, Today));
+
+        Assert.True(two.Single(f => f.Name == FieldNames.Currency).Confidence > one.Single(f => f.Name == FieldNames.Currency).Confidence);
+    }
+
+    [Fact]
     public void ACurrencyMarkerNextToNoNumber_IsAGuessTheAppDoesNotFillIn()
     {
         var lone = Receipts.Extract(OcrFixture.Page("Ár (Ft)", "Parkolás", "ÖSSZESEN\t800"), DocumentKinds.ExpenseReceipt, new ReadHints("hu", null, null, Today));
@@ -200,5 +209,74 @@ public class ReceiptExtractorTests
         Assert.True(title.Confidence >= 0.6);
         Assert.Null(Receipts.Extract(OcrFixture.Page("7971 Budapest, Fő utca 44.", "ÖSSZESEN\t25 000 Ft"), DocumentKinds.ExpenseReceipt,
             new ReadHints("hu", null, null, Today)).FirstOrDefault(f => f.Name == FieldNames.Title));
+    }
+
+    [Theory]
+    [InlineData("ÖSSZESEN\t24 687,- Ft")]
+    [InlineData("ÖSSZESEN\t24687.-Ft")]
+    [InlineData("Fizetendő Ft: 24 687")]
+    [InlineData("ÖSSZESEN (Ft) 24 687")]
+    [InlineData("ÖSSZESEN\tFt 24 687")]
+    public void AMarkerWithPunctuationBetweenItAndTheAmount_IsStillNextToTheAmount(string total)
+    {
+        var fields = Receipts.Extract(OcrFixture.Page("Parkolás", total), DocumentKinds.ExpenseReceipt, new ReadHints("hu", null, null, Today));
+
+        Assert.True(fields.Single(f => f.Name == FieldNames.Currency).Confidence >= 0.6);
+    }
+
+    [Theory]
+    [InlineData("SUMME EUR: 69,30", "EUR")]
+    [InlineData("Total (EUR): 56.20", "EUR")]
+    [InlineData("TOTAL £56.20", "GBP")]
+    public void AMarkerBeforeItsAmount_IsNextToIt(string total, string currency)
+    {
+        var fields = Receipts.Extract(OcrFixture.Page("Parking", total), DocumentKinds.ExpenseReceipt, new ReadHints("en", null, null, Today));
+
+        var read = fields.Single(f => f.Name == FieldNames.Currency);
+        Assert.Equal((currency, true), (read.Value, read.Confidence >= 0.6));
+    }
+
+    [Theory]
+    [InlineData("Ft 2026.09.17")]
+    [InlineData("18:15 Ft")]
+    [InlineData("Ft 27%")]
+    [InlineData("Ft 12345678")]
+    public void ATimeADatePercentageOrIdBesideAMarker_IsNoPrice(string line)
+    {
+        var fields = Receipts.Extract(OcrFixture.Page("Parkolás", line, "ÖSSZESEN\t800"), DocumentKinds.ExpenseReceipt, new ReadHints("hu", null, null, Today));
+
+        Assert.True(fields.Single(f => f.Name == FieldNames.Currency).Confidence < 0.6);
+    }
+
+    [Fact]
+    public void TheCurrencyMostMarkersStandNextToAnAmount_WinsOverTheMostFrequentMarker()
+    {
+        // "Kč" is printed twice in headings, "Ft" once beside the only price.
+        var fields = Receipts.Extract(OcrFixture.Page("Kč", "Kč", "Parkolás", "ÖSSZESEN\t800 Ft"), DocumentKinds.ExpenseReceipt, new ReadHints("hu", null, null, Today));
+
+        Assert.Equal("HUF", fields.Single(f => f.Name == FieldNames.Currency).Value);
+    }
+
+    [Fact]
+    public void WhatIsNoAmount_IsBlankedOut_AndTheTextKeepsItsLength()
+    {
+        const string line = "18:15 2026.09.17 27% 12345678 24 687 Ft";
+
+        var masked = LineScan.Mask(line, Today);
+
+        Assert.Equal(line.Length, masked.Length);
+        Assert.Equal("24 687 Ft", masked.Trim()); // only the amount and its sign are left
+    }
+
+    [Theory]
+    [InlineData("Gesamt", "!315193 km")]
+    [InlineData("TOTAL", "!315193 km")]
+    [InlineData("Összesen", "12,3 km")]
+    public void ANumberFollowedByADistanceUnit_IsNoTotal(string label, string line)
+    {
+        // The odometer of a dashboard under a "Total" or "Gesamt" label, the distance of a taxi ride: never an amount of money.
+        var fields = Receipts.Extract(OcrFixture.Page(label, line), DocumentKinds.ExpenseReceipt, new ReadHints("hu", null, null, Today));
+
+        Assert.DoesNotContain(fields, f => f.Name == FieldNames.Total);
     }
 }
