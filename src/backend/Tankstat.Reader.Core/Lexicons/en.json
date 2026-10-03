@@ -7,5 +7,6 @@
   "date": ["date"],
   "titleNoise": ["receipt", "invoice", "vat", "tel", "phone", "thank", "thanks", "welcome", "customer", "copy", "total", "card", "date", "www"],
   "odometer": ["km", "mi", "miles", "odo", "odometer"],
-  "trip": ["trip", "range"]
+  "trip": ["trip", "range"],
+  "countdown": ["in", "service", "inspection", "oil change", "due", "next", "remaining", "to go", "to empty"]
 }

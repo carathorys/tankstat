@@ -33,7 +33,7 @@ public sealed partial class ReceiptExtractor(Lexicon lexicon, ICandidateScorer s
         var tokens = page.Lines.SelectMany((line, i) => LineScan.Numbers(line, i, hints.Locale, hints.Today)).ToList();
         var fields = new List<ReadField>();
 
-        var currency = Currency(folded, hints);
+        var currency = Currency(page.Lines.Where(l => l.Confidence >= DocumentClassifier.SureLine).Select(l => Folding.Fold(l.Text)).ToArray(), hints);
         if (currency is not null) fields.Add(currency);
 
         var candidates = Candidates(page, folded, tokens);
@@ -162,14 +162,24 @@ public sealed partial class ReceiptExtractor(Lexicon lexicon, ICandidateScorer s
     private static ReadField Field(string name, Candidate c, int maxDecimals, double bonus = 0) =>
         new(name, Numbers.Format(c.Reading.Value, maxDecimals), Confidence.From(c.Score + bonus, c.Token.Confidence), FieldSources.Ocr);
 
+    /// <summary>
+    /// The currency the amounts are in: the marker printed next to the most of them, on lines the OCR is sure of. A marker next to
+    /// no number at all ("Ft" in a column heading, or a stray "£" the OCR made of a photo that is no receipt) is a guess the app must
+    /// not fill in on its own.
+    /// </summary>
     private static ReadField? Currency(string[] folded, ReadHints hints)
     {
-        var found = folded.SelectMany(Currencies.Find)
+        var found = folded.SelectMany(f => Currencies.Find(f).Select(c => (c.Code, NextToANumber: Currencies.NextToANumber(f, c.Index, c.Length))))
             .GroupBy(c => c.Code)
-            .OrderByDescending(g => g.Count())
+            .OrderByDescending(g => g.Count(c => c.NextToANumber))
+            .ThenByDescending(g => g.Count())
             .ThenByDescending(g => g.Key == hints.Currency)
             .FirstOrDefault();
-        if (found is not null) return new ReadField(FieldNames.Currency, found.Key, found.Count() >= 2 ? 0.9 : 0.75, FieldSources.Ocr);
+        if (found is not null)
+        {
+            var confidence = found.Count(c => c.NextToANumber) switch { >= 2 => 0.9, 1 => 0.75, _ => 0.5 };
+            return new ReadField(FieldNames.Currency, found.Key, confidence, FieldSources.Ocr);
+        }
         return hints.Currency is { Length: 3 } hint ? new ReadField(FieldNames.Currency, hint.ToUpperInvariant(), 0.45, FieldSources.Hint) : null;
     }
 

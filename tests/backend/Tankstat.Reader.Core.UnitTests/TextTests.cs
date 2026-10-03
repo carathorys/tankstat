@@ -137,6 +137,9 @@ public class LexiconTests
         Assert.True(Words.HasDateWord(Folding.Fold("Dátum: 2026.09.17")));
         Assert.True(Words.HasOdometerWord(Folding.Fold("123456 km")));
         Assert.True(Words.HasTripWord(Folding.Fold("TRIP A")));
+        Assert.True(Words.HasCountdownWord(Folding.Fold("Inspektion in 4800 km")));
+        Assert.True(Words.HasCountdownWord(Folding.Fold("Szerviz 4800 km múlva")));
+        Assert.False(Words.HasCountdownWord(Folding.Fold("123456 km")));
         Assert.False(Words.HasFuelWord(Folding.Fold("Parkolás")));
     }
 

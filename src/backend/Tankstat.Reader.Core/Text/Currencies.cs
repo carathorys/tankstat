@@ -28,6 +28,19 @@ public static partial class Currencies
     public static IEnumerable<(string Code, int Index, int Length)> Find(string folded) =>
         MarkerPattern().Matches(folded).Select(m => (Markers[m.Value], m.Index, m.Length));
 
+    /// <summary>
+    /// Whether a marker found by <see cref="Find"/> stands next to a number ("24 687 Ft", "€12.30"), as on a receipt; one on its own
+    /// may be a letter pair or a stray sign the OCR made of a photo of something else.
+    /// </summary>
+    public static bool NextToANumber(string folded, int index, int length)
+    {
+        var before = index - 1;
+        while (before >= 0 && folded[before] == ' ') before--;
+        var after = index + length;
+        while (after < folded.Length && folded[after] == ' ') after++;
+        return (before >= 0 && char.IsDigit(folded[before])) || (after < folded.Length && char.IsDigit(folded[after]));
+    }
+
     /// <summary>The minor units a currency is usually printed with (HUF receipts show whole forints).</summary>
     public static int Decimals(string code) => code is "HUF" ? 0 : 2;
 }

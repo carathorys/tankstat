@@ -135,6 +135,26 @@ public class ReceiptExtractorTests
     }
 
     [Fact]
+    public void ACurrencyMarkerNextToNoNumber_IsAGuessTheAppDoesNotFillIn()
+    {
+        var lone = Receipts.Extract(OcrFixture.Page("Ár (Ft)", "Parkolás", "ÖSSZESEN\t800"), DocumentKinds.ExpenseReceipt, new ReadHints("hu", null, null, Today));
+        var printed = Receipts.Extract(OcrFixture.Page("Parkolás", "ÖSSZESEN\t800 Ft"), DocumentKinds.ExpenseReceipt, new ReadHints("hu", null, null, Today));
+
+        Assert.Equal("HUF", lone.Single(f => f.Name == FieldNames.Currency).Value);
+        Assert.True(lone.Single(f => f.Name == FieldNames.Currency).Confidence < 0.6);
+        Assert.True(printed.Single(f => f.Name == FieldNames.Currency).Confidence >= 0.6);
+    }
+
+    [Fact]
+    public void ACurrencyOnALineTheOcrDoubts_IsNotRead_TheHintStandsIn()
+    {
+        var fields = Receipts.Extract(OcrFixture.Page(30, "e 3 €"), DocumentKinds.ExpenseReceipt, new ReadHints("hu", null, "HUF", Today));
+
+        var currency = Assert.Single(fields, f => f.Name == FieldNames.Currency);
+        Assert.Equal(("HUF", FieldSources.Hint), (currency.Value, currency.Source));
+    }
+
+    [Fact]
     public void AnEmptyPage_GivesNothingButTheCurrencyHint()
     {
         var fields = Receipts.Extract(OcrFixture.Page(), DocumentKinds.FuelReceipt, new ReadHints("hu", null, "HUF", Today));

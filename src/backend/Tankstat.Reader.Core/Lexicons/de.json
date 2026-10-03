@@ -7,5 +7,6 @@
   "date": ["datum"],
   "titleNoise": ["beleg", "rechnung", "quittung", "kassenbon", "ust-id", "steuernr", "steuernummer", "tel", "danke", "vielen", "mwst", "summe", "datum", "www"],
   "odometer": ["km", "odo", "gesamt km"],
-  "trip": ["trip", "tageskilometer", "reichweite"]
+  "trip": ["trip", "tageskilometer", "reichweite"],
+  "countdown": ["in", "nach", "service", "inspektion", "olwechsel", "restweite", "verbleibend"]
 }
