@@ -13,12 +13,6 @@ description = "Run the API with hot reload on :5080"
 dir = "src/backend/Tankstat.Api"
 run = "dotnet watch run"
 
-[tasks."dev:reader"]
-description = "Run the optional photo reader with hot reload on :5090 (API key: dev; needs tesseract installed)"
-dir = "src/backend/Tankstat.Reader"
-env = { Reader__ApiKey = "dev", ASPNETCORE_URLS = "http://localhost:5090" }
-run = "dotnet watch run --no-launch-profile"
-
 [tasks."dev:web"]
 description = "Run the Vite dev server (proxies /graphql to :5080)"
 run = "npm run dev"
@@ -45,22 +39,6 @@ run = "docker build -t tankstat:local --build-arg REVISION=$(git rev-parse --sho
 description = "Run the image built by docker:build and check it serves the web app and the API"
 run = "scripts/docker-smoke.sh tankstat:local"
 
-[tasks."docker:build:reader"]
-description = "Build the optional photo reader image as tankstat-reader:local"
-run = "docker build -f Dockerfile.reader -t tankstat-reader:local --build-arg REVISION=$(git rev-parse --short HEAD) ."
-
-[tasks."docker:smoke:reader"]
-description = "Run the image built by docker:build:reader and check it is healthy, guards its API key and reads a receipt"
-run = "scripts/docker-smoke-reader.sh tankstat-reader:local"
-
-[tasks."reader:eval"]
-description = "Measure the photo reader: mise run reader:eval -- <folder> or -- --synthetic 60 (options: --edge, --tessdata, --verbose, --json)"
-run = "dotnet run --project src/backend/Tankstat.Reader --no-launch-profile -- --eval"
-
-[tasks."reader:synth"]
-description = "Write generated photos with their expected values: mise run reader:synth -- <folder> [--count 30] [--seed 1] [--kind odometer]"
-run = "dotnet run --project src/backend/Tankstat.Reader --no-launch-profile -- --synth"
-
 [tasks."schema:export"]
 description = "Export the GraphQL schema from the API to schema.graphql (no server is started)"
 run = 'dotnet run --project src/backend/Tankstat.Api --no-launch-profile -- schema export --output "$PWD/schema.graphql"'
@@ -86,15 +64,11 @@ run = [
 
 [tasks."test:unit"]
 description = "Unit tests (web + API)"
-run = ["npm run test:unit", "dotnet test tests/backend/Tankstat.Seeder.UnitTests", "dotnet test tests/backend/Tankstat.Domain.UnitTests", "dotnet test tests/backend/Tankstat.Application.UnitTests", "dotnet test tests/backend/Tankstat.Infrastructure.UnitTests", "dotnet test tests/backend/Tankstat.Reader.Core.UnitTests"]
+run = ["npm run test:unit", "dotnet test tests/backend/Tankstat.Seeder.UnitTests", "dotnet test tests/backend/Tankstat.Domain.UnitTests", "dotnet test tests/backend/Tankstat.Application.UnitTests", "dotnet test tests/backend/Tankstat.Infrastructure.UnitTests"]
 
 [tasks."test:integration"]
 description = "Integration tests (web with mocked HTTP + API in-process)"
-run = ["npm run test:integration", "dotnet test tests/backend/Tankstat.Api.IntegrationTests", "dotnet test tests/backend/Tankstat.Reader.IntegrationTests"]
-
-[tasks."test:reader"]
-description = "Photo reader tests (unit + integration; the real-Tesseract ones are skipped where tesseract is not installed)"
-run = ["dotnet test tests/backend/Tankstat.Reader.Core.UnitTests", "dotnet test tests/backend/Tankstat.Reader.IntegrationTests"]
+run = ["npm run test:integration", "dotnet test tests/backend/Tankstat.Api.IntegrationTests"]
 
 [tasks."test:smoke"]
 description = "Start the real app as a process in every authentication mode (and with bad settings) and check it comes up"
@@ -109,7 +83,7 @@ description = "Unit + integration tests with coverage reports in ./coverage (fro
 run = """
 rm -rf coverage
 npm run test:coverage
-for project in tests/backend/*.UnitTests tests/backend/Tankstat.Api.IntegrationTests tests/backend/Tankstat.Reader.IntegrationTests; do
+for project in tests/backend/*.UnitTests tests/backend/Tankstat.Api.IntegrationTests; do
   dotnet test "$project" --settings coverlet.runsettings --collect:"XPlat Code Coverage" --results-directory "coverage/backend/$(basename "$project")"
 done
 """

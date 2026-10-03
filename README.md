@@ -36,14 +36,7 @@ tests/backend/Tankstat.Api.IntegrationTests/      in-process GraphQL tests for e
 tests/backend/Tankstat.Api.ApiTests/              black-box contract tests against a running server
 tests/frontend/                           Vitest unit (*.unit.test.*) and integration (*.integration.test.*) tests
 scripts/test-api.sh                       starts the API, runs the API tests, stops it
-src/backend/Tankstat.Reader.Core/         optional photo reader: OCR text model, number/date/currency parsing, reading rules (no native dependencies)
-src/backend/Tankstat.Reader/              photo reader service: HTTP API, image preparation (SkiaSharp), Tesseract, generated photos, evaluation tool
-tests/backend/Tankstat.Reader.Core.UnitTests/     reading rules on hand-built OCR pages, contract shape, project boundaries
-tests/backend/Tankstat.Reader.IntegrationTests/   reader HTTP API, image preparation, generator and evaluation, the real Tesseract (when installed)
-tests/backend/contracts/reader/           examples of the reader's HTTP contract
 ```
-
-The photo reader is a separate service with its own image (see [Photo reader](#photo-reader-optional-service)); it references no app project and the app references none of it.
 
 Backend dependencies point inward: Api -> Application, Infrastructure; Infrastructure -> Application; Application -> Domain. Application defines interfaces (ports) that Infrastructure implements, so Application and Domain never reference EF Core or HotChocolate.
 
@@ -297,12 +290,6 @@ mise run dev:api   # API with hot reload on http://localhost:5080 (GraphQL IDE a
 mise run dev:web   # Vite dev server, proxies /graphql and /auth to :5080
 ```
 
-The optional photo reader runs on its own (it needs `tesseract` with the `hun`, `eng` and `deu` languages installed):
-
-```sh
-mise run dev:reader   # http://localhost:5090, API key "dev"
-```
-
 ## Testing
 
 ```sh
@@ -311,10 +298,7 @@ mise run test:unit         # frontend + backend unit tests
 mise run test:integration  # frontend (msw-mocked HTTP) + backend (in-process)
 mise run test:api          # contract tests against a freshly started server
 mise run test:coverage     # unit + integration tests with coverage reports in ./coverage
-mise run test:reader       # only the photo reader's unit + integration tests
 ```
-
-The photo reader's tests that run the real Tesseract are skipped where `tesseract` is not installed (CI installs it).
 
 The API tests pin the GraphQL schema the frontend relies on, so a breaking schema change fails them. They read the target from `TANKSTAT_API_URL` (default `http://localhost:5080`); `test:api` sets it for you.
 
@@ -347,56 +331,9 @@ mise run docker:build && mise run docker:smoke      # the same smoke test, local
 
 The first publish creates the package as private and linked to the repository; change its visibility in the package settings if the image should be public.
 
-The same release publishes the optional [photo reader](#photo-reader-optional-service) as `ghcr.io/<owner>/<repo>-reader` (same version and tags, amd64 + arm64), after its own smoke test (`scripts/docker-smoke-reader.sh`: health with the three languages, the API key, a real reading of a receipt the image generates itself, non-root). Locally: `mise run docker:build:reader && mise run docker:smoke:reader`.
-
-## Photo reader (optional service)
-
-A separate service that reads values from photos: the odometer from a dashboard, the total, litres, price per litre, currency and date from a fuel receipt, and the total, currency, date and shop from other receipts (Hungarian, English and German). It reads with [Tesseract](https://github.com/tesseract-ocr/tesseract) and a set of rules, runs in its own container and needs nothing from the app.
-
-**The app does not use it yet.** A later release will read the photos picked in the log dialogs and fill in the form, always through Tankstat's own server (the browser never talks to the reader). Until then, and whenever it is not set up, nothing changes.
-
-```sh
-docker run -d --name tankstat-reader -p 8081:8081 -v tankstat-reader-data:/data \
-  -e Reader__ApiKey='a long random secret' ghcr.io/<owner>/<repo>-reader:1.2.3
-
-curl http://localhost:8081/v1/health
-curl -H 'X-Api-Key: a long random secret' -H 'Content-Type: image/jpeg' --data-binary @receipt.jpg \
-  'http://localhost:8081/v1/read?kinds=fuel-receipt,odometer&locale=hu&currency=HUF'
-```
-
-The answer names what the photo shows and the values with how sure the reader is (`{"kind":"fuel-receipt","fields":[{"name":"total","value":"24669","confidence":0.93,"source":"ocr"}, ...]}`); a photo it cannot read is `"kind":"unknown"` with no fields. The examples in `tests/backend/contracts/reader/` are the contract (v1). Optional hints make the answers better: `kinds` (what may be on the photo), `locale` (`hu`, `en` or `de`: how numbers and dates are written), `lastOdometer` (the latest known reading: lower values, or ones more than 100 000 higher, are not taken), `currency` (when the receipt shows none) and `today` (receipt dates must be close to it).
-
-| Setting | Environment variable | Meaning |
-| --- | --- | --- |
-| `Reader:ApiKey` | `Reader__ApiKey` | **required**: the secret every caller sends in the `X-Api-Key` header; the reader does not start without it |
-| `Reader:Tesseract:Languages` | `Reader__Tesseract__Languages` | receipt languages in Tesseract's form (default `hun+eng+deu`; languages that are not installed are left out, `/v1/health` lists the rest) |
-| `Reader:Tesseract:OdometerLanguages` | `Reader__Tesseract__OdometerLanguages` | the model for odometer digits (default `eng`) |
-| `Reader:Tesseract:TessdataPath` | `Reader__Tesseract__TessdataPath` | a folder with other models (for example `tessdata_best`, mounted into the container); default: the installed ones |
-| `Reader:Tesseract:TimeoutSeconds` | `Reader__Tesseract__TimeoutSeconds` | the longest a single Tesseract run may take (default `20`) |
-| `Reader:MaxConcurrent` | `Reader__MaxConcurrent` | photos read at the same time (default half the CPU cores, 1 to 4) |
-| `Reader:QueueLimit` | `Reader__QueueLimit` | photos that may wait for a free slot; beyond that the answer is `503` with `busy` (default `8`) |
-| `Reader:MaxImageBytes` | `Reader__MaxImageBytes` | the largest photo accepted (default 8 MB) |
-| `Reader:DataPath` | `Reader__DataPath` | where later versions keep what the reader learns (`/data` in the image) |
-
-- **Privacy:** photos are read in memory and never stored; the logs name the kind, the number of values and the time taken, never a value or a picture. Only callers with the key get an answer: keep the reader on a private network next to the app rather than on the internet.
-- The container listens on port 8081, runs as an unprivileged user and has a health check (it fails when Tesseract cannot run). The image is Ubuntu-based (Tesseract), unlike the app's Alpine image.
-- **How well it reads:** on generated photos, totals, currencies and dates of receipts are right 97–100 % of the time and litres and prices about 95 %; odometers only about half the time, mostly the seven-segment displays (a trained digit model is planned). Real photos will do worse: measure your own (below). Every value comes with a confidence, and the app will fill in only the ones the reader is sure of (0.6 or more), leaving the rest to you.
-
-**Measuring it.** The reader can draw photos with known values (receipts and dashboards with blur, tilt, glare and noise) and report how well it reads them, or read your own photos:
-
-```sh
-mise run reader:eval -- --synthetic 90            # generated photos, the same ones for the same --seed
-mise run reader:synth -- eval/generated           # write generated photos and their expected values to a folder
-dotnet run --project src/backend/Tankstat.Reader --no-launch-profile -- --init eval   # an empty <name>.expected.json next to every photo in eval/
-mise run reader:eval -- eval --edge 1600 --verbose   # read them (shrunk like the browser does), show what the OCR saw
-docker run --rm tankstat-reader:local --eval --synthetic 90   # the same in the image (its three languages read differently)
-```
-
-The report shows, per kind and value, how many were exact, close, wrong or missing, how sure the reader was of the right and the wrong ones, and how many the app would fill in. Keep real receipts in `eval/` (ignored by git): they never belong in the repository.
-
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every push to `main` and every pull request, installing the toolchain from `mise.toml` so CI uses the same Node and .NET versions as developers. Jobs run in parallel: **frontend** (lint, typecheck, Vitest, production build), **backend** (build, unit and in-process integration tests, including the photo reader's with a real Tesseract), **smoke** (the real app as a process in every authentication mode, plus the black-box API contract tests), **reader-image** (builds the photo reader image and runs its smoke test), **codegen** (`schema.graphql` and the generated GraphQL types are up to date). When all pass, **build** uploads the self-hostable output (`out/`) as an artifact. Run the same things locally with `mise run test`.
+`.github/workflows/ci.yml` runs on every push to `main` and every pull request, installing the toolchain from `mise.toml` so CI uses the same Node and .NET versions as developers. Jobs run in parallel: **frontend** (lint, typecheck, Vitest, production build), **backend** (build, unit and in-process integration tests), **smoke** (the real app as a process in every authentication mode, plus the black-box API contract tests), **codegen** (`schema.graphql` and the generated GraphQL types are up to date). When all pass, **build** uploads the self-hostable output (`out/`) as an artifact. Run the same things locally with `mise run test`.
 
 **Coverage.** The frontend job runs Vitest with V8 coverage (`lcov`) and the backend job runs the unit and integration tests with coverlet (`coverlet.runsettings`: the app's own code, without migrations, the seeder and the tests; Cobertura output). Both upload to [Codecov](https://codecov.io/gh/carathorys/tankstat) under the flags `frontend` and `backend`; `codecov.yml` holds the gates (project coverage may not drop by more than 1% against the base, new and changed lines need 80%) and the pull request comment. The upload needs the Codecov GitHub app and a `CODECOV_TOKEN` repository secret (`release.yml` passes secrets on to `ci.yml`); without the token the step only warns. `mise run test:coverage` writes the same reports to `coverage/` (HTML for the frontend at `coverage/frontend/index.html`).
 
