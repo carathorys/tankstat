@@ -22,7 +22,11 @@ public sealed class RecognitionService(
     private static readonly string[] Locales = ["hu", "en", "de"];
 
     /// <summary>A provider is set up and answers: the UI then waits for readings.</summary>
-    public Task<bool> IsAvailableAsync(CancellationToken ct) => availability.IsAvailableAsync(ct);
+    public async Task<bool> IsAvailableAsync(CancellationToken ct)
+    {
+        await access.RequirePrincipalAsync(ct);
+        return await availability.IsAvailableAsync(ct);
+    }
 
     /// <summary>
     /// Queues the reading of a draft the current user just uploaded, with the hints the reader needs (the background worker that reads it

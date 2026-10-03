@@ -72,6 +72,8 @@ type Query {
   notifications(unreadOnly: Boolean! = false, skip: Int! = 0, take: Int! = 20): [NotificationInfo!]!
     @cost(weight: "10")
   notificationCount(unreadOnly: Boolean! = false): Int! @cost(weight: "10")
+  recognitionStatus: RecognitionStatusInfo! @cost(weight: "10")
+  photoDrafts(ids: [UUID!]!): [PhotoDraftInfo!]! @cost(weight: "10")
   importPreview(token: String!, vehicleId: UUID): ImportPreviewInfo!
     @cost(weight: "10")
   importFormats: [String!]!
@@ -286,6 +288,28 @@ type PasswordResetLink {
   token: String!
   url: String
   emailSent: Boolean!
+}
+
+type PhotoDraftInfo {
+  id: UUID!
+  url: String!
+  reading: PhotoReadingInfo
+}
+
+type PhotoReadingInfo {
+  status: ReadingStatus!
+  kind: DocumentKind
+  values: [ReadingValueInfo!]!
+}
+
+type ReadingValueInfo {
+  name: ReadingFieldName!
+  value: String!
+  confidence: Float!
+}
+
+type RecognitionStatusInfo {
+  available: Boolean!
 }
 
 type RecurrenceStatusInfo {
@@ -665,6 +689,13 @@ enum DistanceUnit {
   MILES
 }
 
+enum DocumentKind {
+  ODOMETER
+  FUEL_RECEIPT
+  EXPENSE_RECEIPT
+  UNKNOWN
+}
+
 enum ExpenseSortField {
   DATE
   TITLE
@@ -703,6 +734,23 @@ enum NotificationKind {
   RECURRING_DUE_SOON
   RECURRING_OVERDUE
   MORE_ACTIVITY
+}
+
+enum ReadingFieldName {
+  ODOMETER
+  TOTAL
+  VOLUME
+  UNIT_PRICE
+  CURRENCY
+  DATE
+  TITLE
+}
+
+enum ReadingStatus {
+  QUEUED
+  READING
+  READ
+  FAILED
 }
 
 enum RecurrenceKind {

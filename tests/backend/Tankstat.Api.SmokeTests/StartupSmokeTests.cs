@@ -220,6 +220,45 @@ public class StartupSmokeTests
         Assert.Contains("TrustedProxies", log);
     }
 
+    // ---- Photo reading (optional: it never stops the app) ---------------------------------------------------
+
+    private const string Recognition = "{ recognitionStatus { available } }";
+
+    private static bool Available(System.Text.Json.JsonElement body) => body.Data().GetProperty("recognitionStatus").GetProperty("available").GetBoolean();
+
+    [Fact]
+    public async Task PhotoReading_IsOffByDefault_WithoutAWord()
+    {
+        await using var app = await AppProcess.StartAsync(Env(("Auth__Mode", "None")));
+
+        Assert.False(Available(await app.Gql(Recognition)));
+        Assert.DoesNotContain("Photo reading", app.Log);
+    }
+
+    [Fact]
+    public async Task PhotoReading_WithAReaderThatCannotBeReached_StartsAndSaysItIsUnavailable()
+    {
+        await using var app = await AppProcess.StartAsync(Env(
+            ("Auth__Mode", "None"),
+            ("Recognition__Provider", "Reader"),
+            ("Recognition__Reader__BaseUrl", "http://127.0.0.1:9"), // nothing listens there
+            ("Recognition__Reader__ApiKey", "smoke")));
+
+        Assert.False(Available(await app.Gql(Recognition)));
+        Assert.True(await app.LogsAsync("Photo reading uses the Reader provider"), app.Log);
+        Assert.False(app.HasExited);
+    }
+
+    [Fact]
+    public async Task PhotoReading_WithIncompleteSettings_IsTurnedOffWithAWarning_AndTheAppStarts()
+    {
+        await using var app = await AppProcess.StartAsync(Env(("Auth__Mode", "None"), ("Recognition__Provider", "Reader"), ("Recognition__MaxConcurrent", "many")));
+
+        Assert.False(Available(await app.Gql(Recognition)));
+        Assert.True(await app.LogsAsync("Photo reading is turned off"), app.Log);
+        Assert.False(app.HasExited);
+    }
+
     // ---- Misconfiguration ---------------------------------------------------------------------------------
 
     [Fact]
