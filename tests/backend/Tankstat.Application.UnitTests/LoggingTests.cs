@@ -77,6 +77,22 @@ public class LoggingTests
     }
 
     [Fact]
+    public async Task APurgeOfManyVehicles_IsStillOneShortLine()
+    {
+        var (w, _, _) = await SignedInOwner();
+        for (var i = 0; i < 24; i++) await w.VehicleService.AddAsync($"Car {i}", null, FuelType.Petrol, default);
+        foreach (var car in w.Vehicles.Items.ToList()) await w.VehicleService.DeleteAsync(car.Id, default);
+
+        await w.VehicleService.EmptyTrashAsync(default);
+
+        var line = Assert.Single(w.Log.From<VehicleService>(), e => e.Level == LogLevel.Information);
+        Assert.Equal(25, line.Values["Count"]);
+        var listed = (string)line.Values["VehicleIds"]!;
+        Assert.Equal(20, listed.Split(", ").Length); // the first twenty ids...
+        Assert.EndsWith(" and 5 more", listed);      // ...and how many more there were
+    }
+
+    [Fact]
     public async Task EmptyingATrashThatIsEmpty_SaysNothing()
     {
         var (w, _, _) = await SignedInOwner();

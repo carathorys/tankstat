@@ -155,7 +155,7 @@ public sealed class ImportService(
             catch (DomainException ex)
             {
                 errors.Add(new ImportIssue("costs", r.SourceRow, ex.Key, ex.Args));
-                logger.LogDebug("Import row {Row} (recurring) was not saved: {Key}", r.SourceRow, ex.Key);
+                logger.LogDebug("Import row {Row} ({Section}) was not saved: {Key}", r.SourceRow, "recurring", ex.Key);
             }
         }
 

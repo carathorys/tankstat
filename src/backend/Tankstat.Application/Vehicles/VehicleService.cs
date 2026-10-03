@@ -105,9 +105,12 @@ public sealed class VehicleService(
         var user = await access.RequirePrincipalAsync(ct);
         var purged = await vehicles.PurgeAsync(await access.ScopeAsync(AccessLevel.Delete, ct), ct);
         await images.DeleteVehicleFilesAsync(purged.VehicleIds, purged.ImageIds, ct); // their pictures and photos go with them
-        if (purged.Count > 0) logger.LogInformation("User {UserId} emptied the vehicle trash: {Count} vehicles deleted for good ({VehicleIds})", user.Id, purged.Count, string.Join(", ", purged.VehicleIds));
+        if (purged.Count > 0) logger.LogInformation("User {UserId} emptied the vehicle trash: {Count} vehicles deleted for good ({VehicleIds})", user.Id, purged.Count, Listed(purged.VehicleIds));
         return purged.Count;
     }
+
+    /// <summary>The first ids of a list and how many more there are: a line of the log stays a line, however much was deleted at once.</summary>
+    private static string Listed(IReadOnlyList<Guid> ids) => string.Join(", ", ids.Take(20)) + (ids.Count > 20 ? $" and {ids.Count - 20} more" : "");
 
     /// <summary>Loads a vehicle for changing; one the user cannot see looks missing, one they can only view is forbidden.</summary>
     private async Task<Vehicle> EditableAsync(Guid id, bool includeDeleted, CancellationToken ct)

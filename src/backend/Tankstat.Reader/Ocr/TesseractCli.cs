@@ -20,7 +20,7 @@ public interface IOcrStatus
 /// in parallel instead), killed when it takes too long. What is installed is probed once; after a failed probe again at most every
 /// 30 seconds, so a missing Tesseract shows in the health check instead of crash-looping the service.
 /// </summary>
-internal sealed class TesseractCli(IOptions<ReaderOptions> options, TimeProvider clock, ILogger<TesseractCli> log) : IOcrStatus
+internal sealed class TesseractCli(IOptions<ReaderOptions> options, TimeProvider clock, ILogger<TesseractCli> logger) : IOcrStatus
 {
     private readonly Lock _gate = new();
     private TesseractInfo? _info;
@@ -58,7 +58,7 @@ internal sealed class TesseractCli(IOptions<ReaderOptions> options, TimeProvider
         }
         catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or TimeoutException or IOException)
         {
-            log.LogWarning("Tesseract cannot be run ({Executable}): {Problem}", Settings.Executable, e.Message);
+            logger.LogWarning("Tesseract cannot be run ({Executable}): {Problem}", Settings.Executable, e.Message);
             return new TesseractInfo(false, null, [], "", "", e.Message);
         }
     }
@@ -126,7 +126,7 @@ internal sealed class TesseractCli(IOptions<ReaderOptions> options, TimeProvider
 /// One OCR pass with Tesseract. A pass that fails or times out reads as an empty page (and is logged): one bad pass must not lose the
 /// whole reading, and the caller gets "unknown" rather than an error for a photo Tesseract chokes on.
 /// </summary>
-internal sealed class TesseractCliEngine(TesseractCli tesseract, IOptions<ReaderOptions> options, ILogger<TesseractCliEngine> log) : IOcrEngine
+internal sealed class TesseractCliEngine(TesseractCli tesseract, IOptions<ReaderOptions> options, ILogger<TesseractCliEngine> logger) : IOcrEngine
 {
     public async Task<OcrPage> RecognizeAsync(ReadOnlyMemory<byte> png, OcrPass pass, CancellationToken ct)
     {
@@ -144,13 +144,13 @@ internal sealed class TesseractCliEngine(TesseractCli tesseract, IOptions<Reader
         {
             var (tsv, _) = await tesseract.Run(arguments, png, TimeSpan.FromSeconds(options.Value.Tesseract.TimeoutSeconds), ct);
             var page = TesseractTsv.Parse(tsv);
-            log.LogDebug("OCR pass {Variant}/psm {Psm}/{Purpose}: {Words} words in {Ms} ms", pass.Variant, pass.PageSegmentation, pass.Purpose, page.Words.Count,
+            logger.LogDebug("OCR pass {Variant}/psm {Psm}/{Purpose}: {Words} words in {Ms} ms", pass.Variant, pass.PageSegmentation, pass.Purpose, page.Words.Count,
                 Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             return page;
         }
         catch (Exception e) when (e is InvalidOperationException or TimeoutException or IOException)
         {
-            log.LogWarning("OCR pass {Variant}/psm {Psm}/{Purpose} failed: {Problem}", pass.Variant, pass.PageSegmentation, pass.Purpose, e.Message);
+            logger.LogWarning("OCR pass {Variant}/psm {Psm}/{Purpose} failed: {Problem}", pass.Variant, pass.PageSegmentation, pass.Purpose, e.Message);
             return OcrPage.Empty;
         }
     }
