@@ -82,25 +82,30 @@ The app writes its log to the console (`docker logs`, the terminal) with the sta
 | Level | What is logged |
 | --- | --- |
 | `Error` | an unexpected error, with its exception and stack trace (the client only sees "Unexpected Execution Error") |
-| `Warning` | a refused request (no access), a failed sign-in, a failed password change, a lockout, an identity provider or proxy sign-in that was refused, a database or photo reader that cannot be reached, an upload folder that could not be removed, a photo that could not be attached |
+| `Warning` | a refused request (no access), a failed sign-in, a failed password change, a lockout, a refused sign-in through an identity provider, a malformed or untrusted proxy header, a database or photo reader that cannot be used, an upload folder that could not be removed, a photo that could not be attached |
 | `Information` | start-up (database migrations applied or up to date, the first administrator), sign-ins and sign-outs, password changes and reset requests, what an administrator does to users and to access, sharing a vehicle's logs, imports, emptied trashes, a database or reader that is back |
-| `Debug` | ordinary changes (a vehicle, refueling, expense, schedule, chart, picture or photo added, changed, trashed or restored), every GraphQL request with its time and operation, errors a client causes (a validation failure, something missing), sessions that are no longer valid and why |
+| `Debug` | ordinary changes (a vehicle, refueling, expense, schedule, chart, picture or photo added, changed, trashed or restored), every GraphQL request with its time and operation, errors a client causes (a validation failure, something missing, a request the server turns down), sessions that are no longer valid and why |
 
-**Only ids, counts and reasons are logged**: users, vehicles, logs and pictures by id, never e-mail addresses, names, license plates, notes, amounts, odometer readings, passwords, reset links, API keys, the subject an identity provider sends, or values read from photos. A failed sign-in names the account by its id (or says "unknown account"), not by the address that was typed. Nothing a client sends is logged as it came: not GraphQL variables or documents, not the text of a request error, and the endpoints of the picture and import uploads appear as their route pattern, not as the path that was asked for.
+**Only ids, counts and reasons are logged** by the app's own lines: users, vehicles, logs and pictures by id, never e-mail addresses, names, license plates, notes, amounts, odometer readings, passwords, reset links, API keys, the subject an identity provider sends, or values read from photos. A failed sign-in names the account by its id (or says "unknown account"), not by the address that was typed. Nothing a client sends is logged as it came: not GraphQL variables or documents, not the text of a request error, fields are named the way the schema names them, and the endpoints of the picture and import uploads appear as their route pattern, not as the path that was asked for.
+
+That promise has an edge. The text of an unexpected error is written as the framework or the database wrote it, and a database server can quote the values of a failed statement in it (for a duplicate key, for example). Lines of the framework and its libraries (`Microsoft.*`, `System.*`) are written as they come, such as an identity provider's error description. And **do not lower `Microsoft.AspNetCore` below `Warning`**: its request lines hold the whole address of a request, which includes the token of a password reset link.
 
 Change what is shown with the usual settings (`Logging:LogLevel:...` in `appsettings.json`, or environment variables):
 
 ```sh
-Logging__LogLevel__Tankstat=Debug                      # every Debug line of the app (the default when running with mise run dev:api)
-Logging__LogLevel__Default=Warning                     # quieter: warnings and errors only
-Logging__Console__FormatterName=json                   # one JSON object per line, for a log collector
-Logging__Console__FormatterOptions__IncludeScopes=true # adds the scopes: the signed-in user's id (UserId) and the trace ids
-# single lines with the time (the console default has neither):
-Logging__Console__FormatterName=simple Logging__Console__FormatterOptions__SingleLine=true \
-  Logging__Console__FormatterOptions__TimestampFormat="yyyy-MM-dd HH:mm:ss " Logging__Console__FormatterOptions__UseUtcTimestamp=true
+Logging__LogLevel__Tankstat=Debug      # every Debug line of the app (the default when running with mise run dev:api)
+Logging__LogLevel__Tankstat=Warning    # quieter: only warnings and errors of the app ("Default" is for the framework's own categories)
+
+# How it looks: name the formatter first, its options only apply to the formatter that is named.
+Logging__Console__FormatterName=json   # one JSON object per line, for a log collector
+Logging__Console__FormatterName=simple # or the readable one, which these options adjust:
+Logging__Console__FormatterOptions__SingleLine=true                         #   one line per entry
+Logging__Console__FormatterOptions__TimestampFormat="yyyy-MM-dd HH:mm:ss "  #   with the time (there is none by default)
+Logging__Console__FormatterOptions__UseUtcTimestamp=true
+Logging__Console__FormatterOptions__IncludeScopes=true                      #   the scopes of a request, see below
 ```
 
-A narrower category works the same way, for example `Logging__LogLevel__Tankstat.Application.Users=Debug` for sign-ins and user administration only (a name with dots can be set through Docker or `env`, not through the shell's `export`). The browser has a log of its own: a failed request or a crashed page is written to the browser's console, and nothing is sent to the server.
+With scopes on, each line of a signed-in user's request carries `UserId: <id>`, next to the framework's own scopes (trace and connection ids and the **request path**, which is what the client asked for). Prefer the `json` formatter with scopes: it escapes the path. A narrower category works like the first line, for example `Logging__LogLevel__Tankstat.Application.Users=Debug` for sign-ins and user administration only (a name with dots can be set through Docker or `env`, not through the shell's `export`). The browser has a log of its own: a failed request or a crashed page is written to the browser's console, and nothing is sent to the server.
 
 ## Authentication and access control
 

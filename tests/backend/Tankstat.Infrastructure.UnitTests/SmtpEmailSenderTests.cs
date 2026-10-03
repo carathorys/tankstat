@@ -53,6 +53,20 @@ public class SmtpEmailSenderTests
         }
     }
 
+    private static int FreePort()
+    {
+        var probe = new TcpListener(IPAddress.Loopback, 0);
+        probe.Start();
+        try
+        {
+            return ((IPEndPoint)probe.LocalEndpoint).Port;
+        }
+        finally
+        {
+            probe.Stop();
+        }
+    }
+
     private static SmtpEmailSender Sender(int port) =>
         new(Options.Create(new SmtpOptions { Host = "127.0.0.1", Port = port, From = "tank@example.com", Security = "None" }));
 
@@ -72,7 +86,7 @@ public class SmtpEmailSenderTests
     [Fact]
     public async Task AMailServerThatCannotBeReached_IsAnEmailSendException_NamingTheServer()
     {
-        var port = ((IPEndPoint)new Func<EndPoint>(() => { var l = new TcpListener(IPAddress.Loopback, 0); l.Start(); var e = l.LocalEndpoint; l.Stop(); return e; })()).Port; // a port nothing listens on
+        var port = FreePort(); // nothing listens on it
 
         var error = await Assert.ThrowsAsync<EmailSendException>(() => Sender(port).SendAsync("someone@example.com", "Subject", "Body", default));
 
