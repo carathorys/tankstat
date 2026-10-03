@@ -33,6 +33,8 @@ public class StartupSmokeTests
         Assert.Contains(data.GetProperty("session").GetProperty("mode").GetString(), new[] { "NONE", "STANDALONE", "OIDC", "PROXY_HEADER" });
         Assert.Equal("ok", data.GetProperty("health").GetProperty("status").GetString());
         Assert.True(File.Exists(Path.Combine(work, "tankstat.db")), "the default SQLite database should have been created");
+        // What an operator reads after a first start: the app's own line, through the shipped logging settings (Production, no overrides).
+        Assert.True(await app.LogsAsync("database migrations"), app.Log);
     }
 
     [Fact]
@@ -105,6 +107,8 @@ public class StartupSmokeTests
         {
             await second.Gql("mutation($i: LoginInput!) { login(input: $i) { id } }", new { i = new { email = "root@example.com", password = "initial-password-1" } });
             Assert.Equal("root@example.com", (await second.Gql(Session)).Data().GetProperty("session").GetProperty("user").GetProperty("email").GetString());
+            Assert.True(await second.LogsAsync("up to date"), second.Log); // nothing to migrate this time, and the log says so
+            Assert.DoesNotContain("Applying", second.Log);
         }
         finally
         {
