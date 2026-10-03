@@ -28,6 +28,26 @@ public static partial class Currencies
     public static IEnumerable<(string Code, int Index, int Length)> Find(string folded) =>
         MarkerPattern().Matches(folded).Select(m => (Markers[m.Value], m.Index, m.Length));
 
+    /// <summary>
+    /// Whether a marker found by <see cref="Find"/> stands next to a number ("24 687 Ft", "€12.30"), as on a receipt; one on its own
+    /// may be a letter pair or a stray sign the OCR made of a photo of something else. Pass the text with the digits that are no
+    /// amounts blanked out (<c>LineScan.Mask</c>): a time of day, a date or an id beside a sign is no price.
+    /// </summary>
+    public static bool NextToANumber(string folded, int index, int length)
+    {
+        var before = index - 1;
+        while (before >= 0 && BeforeMarker(folded[before])) before--;
+        var after = index + length;
+        while (after < folded.Length && AfterMarker(folded[after])) after++;
+        return (before >= 0 && char.IsDigit(folded[before])) || (after < folded.Length && char.IsDigit(folded[after]));
+    }
+
+    /// <summary>What may stand between an amount and the marker after it: spaces and the dashes and brackets of "24 687,- Ft", "56.20/USD", "69,30 (EUR)".</summary>
+    private static bool BeforeMarker(char c) => c is ' ' or '-' or '–' or ',' or '.' or '(' or '/' or ';';
+
+    /// <summary>What may stand between a marker and the amount after it: spaces and the colon or bracket of "Ft: 24 687", "(EUR) 69,30".</summary>
+    private static bool AfterMarker(char c) => c is ' ' or ':' or ')' or '-' or '–';
+
     /// <summary>The minor units a currency is usually printed with (HUF receipts show whole forints).</summary>
     public static int Decimals(string code) => code is "HUF" ? 0 : 2;
 }

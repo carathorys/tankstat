@@ -16,7 +16,7 @@ public sealed class Lexicon
     public static Lexicon Default { get; } = Load(Languages);
 
     private readonly (Keyword Word, double Weight)[] _total, _notTotal;
-    private readonly Keyword[] _fuel, _unitPrice, _date, _titleNoise, _odometer, _trip;
+    private readonly Keyword[] _fuel, _unitPrice, _date, _titleNoise, _odometer, _trip, _countdown;
 
     private Lexicon(IEnumerable<LexiconFile> files)
     {
@@ -29,6 +29,7 @@ public sealed class Lexicon
         _titleNoise = Words(list.SelectMany(f => f.TitleNoise));
         _odometer = Words(list.SelectMany(f => f.Odometer));
         _trip = Words(list.SelectMany(f => f.Trip));
+        _countdown = Words(list.SelectMany(f => f.Countdown));
     }
 
     public static Lexicon Load(IEnumerable<string> languages) => new(languages.Select(LoadFile));
@@ -45,6 +46,9 @@ public sealed class Lexicon
     public bool IsTitleNoise(string folded) => Any(_titleNoise, folded);
     public bool HasOdometerWord(string folded) => Any(_odometer, folded);
     public bool HasTripWord(string folded) => Any(_trip, folded);
+
+    /// <summary>A service countdown or a range ("Service in 4800 km", "Szerviz 4800 km múlva"): a distance to go, not the odometer.</summary>
+    public bool HasCountdownWord(string folded) => Any(_countdown, folded);
 
     private static bool Any(Keyword[] words, string folded)
     {
@@ -110,5 +114,6 @@ public sealed class Lexicon
         public string[] TitleNoise { get; set; } = [];
         public string[] Odometer { get; set; } = [];
         public string[] Trip { get; set; } = [];
+        public string[] Countdown { get; set; } = [];
     }
 }

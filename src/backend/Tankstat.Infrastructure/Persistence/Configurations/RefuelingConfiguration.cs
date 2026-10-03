@@ -16,9 +16,12 @@ internal sealed class RefuelingConfiguration : IEntityTypeConfiguration<Refuelin
         b.HasOne<Vehicle>().WithMany().HasForeignKey(r => r.VehicleId).OnDelete(DeleteBehavior.Cascade);
         b.HasIndex(r => new { r.VehicleId, r.Date });
 
-        // The odometer reading and the cost are owned by the log (one each). Removing logs for good removes them in code.
-        b.HasOne(r => r.Cost).WithOne().HasForeignKey<Refueling>(r => r.CostId).IsRequired().OnDelete(DeleteBehavior.Restrict);
-        b.HasOne(r => r.OdometerReading).WithOne().HasForeignKey<Refueling>(r => r.OdometerReadingId).IsRequired().OnDelete(DeleteBehavior.Restrict);
+        // The odometer reading and the cost are owned by the log (one each, none while a photo of the log is still being read).
+        // Removing logs for good removes them in code.
+        b.HasOne(r => r.Cost).WithOne().HasForeignKey<Refueling>(r => r.CostId).IsRequired(false).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(r => r.OdometerReading).WithOne().HasForeignKey<Refueling>(r => r.OdometerReadingId).IsRequired(false).OnDelete(DeleteBehavior.Restrict);
+        b.Property(r => r.ReviewState).HasConversion<string>().HasMaxLength(16).HasDefaultValue(ReviewState.None);
+        b.Property(r => r.FilledFromPhoto).HasConversion<int>();
         b.HasIndex(r => r.OwnerId);
         b.Property(r => r.Note).HasMaxLength(Refueling.MaxNoteLength);
 

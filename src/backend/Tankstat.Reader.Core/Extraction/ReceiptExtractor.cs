@@ -18,6 +18,10 @@ public sealed partial class ReceiptExtractor(Lexicon lexicon, ICandidateScorer s
     [GeneratedRegex(@"^\s?(?:[a-z€$£]{0,3}\s?)/\s?(?:l|ltr|liter|litre|gal)(?![a-z])")]
     private static partial Regex PerUnitAfter();
 
+    // A distance ("315193 km", "12,3 km"): the odometer of a dashboard, never an amount of money.
+    [GeneratedRegex(@"^\s?(?:km|mi|miles?)(?![a-z])")]
+    private static partial Regex DistanceAfter();
+
     [GeneratedRegex(@"[x×*@]\s?$")]
     private static partial Regex MultiplyBefore();
 
@@ -33,7 +37,7 @@ public sealed partial class ReceiptExtractor(Lexicon lexicon, ICandidateScorer s
         var tokens = page.Lines.SelectMany((line, i) => LineScan.Numbers(line, i, hints.Locale, hints.Today)).ToList();
         var fields = new List<ReadField>();
 
-        var currency = Currency(folded, hints);
+        var currency = Currency(folded.Where((_, i) => DocumentClassifier.IsSure(page.Lines[i])).ToArray(), hints);
         if (currency is not null) fields.Add(currency);
 
         var candidates = Candidates(page, folded, tokens);
@@ -69,6 +73,7 @@ public sealed partial class ReceiptExtractor(Lexicon lexicon, ICandidateScorer s
             var vertical = page.Height > 0 ? token.Box.CenterY / page.Height : 0.5;
             var currencyAdjacent = CurrencyAdjacent(token);
             var multiply = MultiplyBefore().IsMatch(token.Before);
+            var distance = DistanceAfter().IsMatch(token.After);
 
             for (var r = 0; r < token.Readings.Count; r++)
             {
@@ -82,7 +87,7 @@ public sealed partial class ReceiptExtractor(Lexicon lexicon, ICandidateScorer s
                 var penalty = 0.3 * r;
                 var value = reading.Value;
                 candidates.Add(new(token, reading, FieldNames.Total,
-                    scorer.Score(FieldNames.Total, Features(value > 0 && value < 10_000_000 && reading.Decimals <= 2)) - penalty));
+                    scorer.Score(FieldNames.Total, Features(value > 0 && value < 10_000_000 && reading.Decimals <= 2 && !distance)) - penalty));
                 candidates.Add(new(token, reading, FieldNames.Volume,
                     scorer.Score(FieldNames.Volume, Features(value >= 0.3m && value <= 400 && reading.Decimals <= 3)) - penalty));
                 candidates.Add(new(token, reading, FieldNames.UnitPrice,
@@ -162,14 +167,28 @@ public sealed partial class ReceiptExtractor(Lexicon lexicon, ICandidateScorer s
     private static ReadField Field(string name, Candidate c, int maxDecimals, double bonus = 0) =>
         new(name, Numbers.Format(c.Reading.Value, maxDecimals), Confidence.From(c.Score + bonus, c.Token.Confidence), FieldSources.Ocr);
 
+    /// <summary>
+    /// The currency the amounts are in: the marker printed next to the most of them, on lines the OCR is sure of. A marker next to
+    /// no number at all ("Ft" in a column heading, or a stray "£" the OCR made of a photo that is no receipt) is a guess the app must
+    /// not fill in on its own.
+    /// </summary>
     private static ReadField? Currency(string[] folded, ReadHints hints)
     {
-        var found = folded.SelectMany(Currencies.Find)
+        var found = folded.SelectMany(f =>
+            {
+                var masked = LineScan.Mask(f, hints.Today); // a date, a clock or an id beside a sign is no price
+                return Currencies.Find(f).Select(c => (c.Code, NextToANumber: Currencies.NextToANumber(masked, c.Index, c.Length)));
+            })
             .GroupBy(c => c.Code)
-            .OrderByDescending(g => g.Count())
+            .OrderByDescending(g => g.Count(c => c.NextToANumber))
+            .ThenByDescending(g => g.Count())
             .ThenByDescending(g => g.Key == hints.Currency)
             .FirstOrDefault();
-        if (found is not null) return new ReadField(FieldNames.Currency, found.Key, found.Count() >= 2 ? 0.9 : 0.75, FieldSources.Ocr);
+        if (found is not null)
+        {
+            var confidence = found.Count(c => c.NextToANumber) switch { >= 2 => 0.9, 1 => 0.75, _ => 0.5 };
+            return new ReadField(FieldNames.Currency, found.Key, confidence, FieldSources.Ocr);
+        }
         return hints.Currency is { Length: 3 } hint ? new ReadField(FieldNames.Currency, hint.ToUpperInvariant(), 0.45, FieldSources.Hint) : null;
     }
 

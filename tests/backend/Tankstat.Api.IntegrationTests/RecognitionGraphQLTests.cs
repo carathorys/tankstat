@@ -31,13 +31,16 @@ public class RecognitionGraphQLTests
             new(ReadingFieldName.UnitPrice, "640.9", 0.4, ValueSource.Read), // too unsure to fill in
             new(ReadingFieldName.Currency, "HUF", 0.95, ValueSource.Hint), // only the hint coming back
         ]);
+        /// <summary>When set, a read waits until it is released (a photo that is still being read).</summary>
+        public SemaphoreSlim? Gate { get; set; }
         public string Name => "fake";
         public bool IsConfigured => true;
         public Task<bool> IsHealthyAsync(CancellationToken ct) => Task.FromResult(true);
-        public Task<RecognitionResult> ReadAsync(RecognitionRequest request, CancellationToken ct)
+        public async Task<RecognitionResult> ReadAsync(RecognitionRequest request, CancellationToken ct)
         {
             Requests.Enqueue((request, request.Image.ToArray()));
-            return Task.FromResult(Answer(request));
+            if (Gate is { } gate) await gate.WaitAsync(ct);
+            return Answer(request);
         }
     }
 
@@ -149,5 +152,63 @@ public class RecognitionGraphQLTests
         Assert.False((await admin.Gql("{ recognitionStatus { available } }")).Data().GetProperty("recognitionStatus").GetProperty("available").GetBoolean());
         var draft = Assert.Single((await Drafts(admin, id)).EnumerateArray());
         Assert.Equal(JsonValueKind.Null, draft.GetProperty("reading").ValueKind);
+    }
+
+    private const string RefuelingQuery = "query($id: UUID!) { refueling(id: $id) { odometer volume totalCost reviewState filledFromPhoto } }";
+
+    private static async Task<JsonElement> WaitForReview(HttpClient c, string id)
+    {
+        for (var i = 0; i < 100; i++)
+        {
+            var log = (await c.Gql(RefuelingQuery, new { id })).Data().GetProperty("refueling");
+            if (log.GetProperty("reviewState").GetString() != "AWAITING_PHOTOS") return log;
+            await Task.Delay(100);
+        }
+        throw new TimeoutException("The log was not filled in.");
+    }
+
+    [Fact]
+    public async Task ARefuelingSavedWhileItsPhotoIsRead_IsFilledInLater_AndWaitsForAReview()
+    {
+        var reader = new FakeReader
+        {
+            Gate = new SemaphoreSlim(0),
+            Answer = _ => new("fake-1", DocumentKind.Odometer, [new(ReadingFieldName.Odometer, "315193", 0.72, ValueSource.Read)]),
+        };
+        using var app = WithReading(reader);
+        var (admin, vehicle) = await Signed(app);
+        var photo = await UploadDraft(admin, vehicle);
+
+        var saved = (await admin.Gql("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id odometer reviewState } }",
+            new { i = new { vehicleId = vehicle, date = "2026-09-02", volume = 40, totalCost = 60, currency = "HUF", isFullTank = true, photoIds = new[] { photo } } }))
+            .Data().GetProperty("logRefueling");
+        Assert.Equal((JsonValueKind.Null, "AWAITING_PHOTOS"), (saved.GetProperty("odometer").ValueKind, saved.GetProperty("reviewState").GetString()));
+
+        reader.Gate.Release();
+        var id = saved.GetProperty("id").GetString()!;
+        var log = await WaitForReview(admin, id);
+
+        Assert.Equal((315193L, "NEEDS_REVIEW"), (log.GetProperty("odometer").GetInt64(), log.GetProperty("reviewState").GetString()));
+        Assert.Equal(["ODOMETER"], log.GetProperty("filledFromPhoto").EnumerateArray().Select(v => v.GetString()));
+        var told = (await admin.Gql("{ notifications(take: 10) { kind subject { type id } args { name value } } }")).Data().GetProperty("notifications")[0];
+        Assert.Equal(("LOG_FILLED_FROM_PHOTO", "REFUELING"), (told.GetProperty("kind").GetString(), told.GetProperty("subject").GetProperty("type").GetString()));
+
+        var checkedLog = (await admin.Gql("mutation($i: UpdateRefuelingInput!) { updateRefueling(input: $i) { reviewState filledFromPhoto } }",
+            new { i = new { id, date = "2026-09-02", volume = 40, totalCost = 60, odometer = 315193, isFullTank = true } })).Data().GetProperty("updateRefueling");
+        Assert.Equal("NONE", checkedLog.GetProperty("reviewState").GetString());
+        Assert.Empty(checkedLog.GetProperty("filledFromPhoto").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task WithoutAPhotoBeingRead_ALogNeedsEveryValue()
+    {
+        using var app = WithReading(new FakeReader());
+        var (admin, vehicle) = await Signed(app);
+
+        var body = await admin.Gql("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }",
+            new { i = new { vehicleId = vehicle, date = "2026-09-02", volume = 40, currency = "HUF", odometer = 1000, isFullTank = true } });
+
+        Assert.Equal("VALIDATION_FAILED", body.ErrorCode());
+        Assert.Contains("log.valuesRequired", body.ToString());
     }
 }

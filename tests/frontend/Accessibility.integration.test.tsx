@@ -215,6 +215,29 @@ it('the photo gallery of the expense dialogs is a labelled group and free of vio
   await check(document.body)
 })
 
+it('a refuelling waiting for a review is marked in its row, and its edit dialog says what to check, free of violations', async () => {
+  stubViewport('desktop')
+  const backend = fakeLogBackend(fakeVehicle(), [
+    fakeRefueling({ id: 'r1', odometer: 12480, reviewState: 'NEEDS_REVIEW', filledFromPhoto: ['ODOMETER'] }),
+    fakeRefueling({ id: 'r2', date: '2026-09-10', odometer: null, reviewState: 'AWAITING_PHOTOS' }),
+    fakeRefueling({ id: 'r3', date: '2026-09-20', volume: null, reviewState: 'INCOMPLETE' }),
+  ])
+  server.use(sessionHandler('NONE', () => null), healthHandler, ...backend.handlers)
+  renderWithApollo(<App />, '/vehicles/v1?tab=refuelings')
+  const ui = userEvent.setup()
+  await screen.findByText('Check values')
+  expect(screen.getByText('Reading photo…')).toBeInTheDocument()
+  expect(screen.getByText('Values missing')).toBeInTheDocument()
+  await check(document.body)
+
+  await ui.click(screen.getAllByRole('button', { name: /^Edit the refuelling/ }).at(-1)!)
+  const dialog = await screen.findByRole('dialog', { name: 'Edit refuelling' })
+  await within(dialog).findByText(/Check them and save/)
+
+  expect(within(dialog).getByLabelText(/^Odometer/)).toHaveAccessibleDescription(/Read from the photo; check it\./)
+  await check(document.body)
+})
+
 it('the edit refuelling dialog with its photos is free of violations', async () => {
   const { ui } = setup('/vehicles/v1?tab=refuelings')
   await screen.findByText(/Sep 1, 2026/)

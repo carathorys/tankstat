@@ -9,14 +9,16 @@ using Tankstat.Domain.Vehicles;
 
 namespace Tankstat.Api.GraphQL;
 
+/// <param name="Amount">May be omitted only while one of <paramref name="PhotoIds"/> is still being read: the reading fills it in later (<c>reviewState</c>).</param>
 /// <param name="Currency">ISO 4217 code of the currency paid in; omit to use the instance default.</param>
-/// <param name="Odometer">Omit when the odometer was not noted.</param>
+/// <param name="Odometer">Omit when the odometer was not noted (a photo that is still being read may fill it in).</param>
 /// <param name="PhotoIds">Photos uploaded for this expense beforehand (<c>PUT /media/vehicles/{id}/photo-drafts</c>); they become its photos.</param>
 public sealed record AddExpenseInput(
-    Guid VehicleId, DateOnly Date, string Title, string? Category, decimal Amount, string? Currency, long? Odometer, string? Note, IReadOnlyList<Guid>? PhotoIds = null);
+    Guid VehicleId, DateOnly Date, string Title, string? Category, decimal? Amount, string? Currency, long? Odometer, string? Note, IReadOnlyList<Guid>? PhotoIds = null);
 
+/// <param name="Amount">May be omitted only while a photo of the expense is still being read.</param>
 /// <param name="Currency">Omit to keep the expense's currency.</param>
-public sealed record UpdateExpenseInput(Guid Id, DateOnly Date, string Title, string? Category, decimal Amount, string? Currency, long? Odometer, string? Note);
+public sealed record UpdateExpenseInput(Guid Id, DateOnly Date, string Title, string? Category, decimal? Amount, string? Currency, long? Odometer, string? Note);
 
 /// <summary>The expense type exposes its odometer and amount as plain values; the linked reading and cost stay internal details.</summary>
 public sealed class ExpenseType : ObjectType<Expense>
@@ -28,6 +30,15 @@ public sealed class ExpenseType : ObjectType<Expense>
         descriptor.Ignore(e => e.Cost);
         descriptor.Ignore(e => e.CostId);
         descriptor.Ignore(e => e.IsDeleted);
+        descriptor.Ignore(e => e.Missing);
+        descriptor.Ignore(e => e.Fillable);
+        descriptor.Ignore(e => e.Update(default, default!, default, default, default, default, default, default));
+        descriptor.Ignore(e => e.FillFromPhoto(default!));
+        descriptor.Ignore(e => e.FinishReading(default));
+        descriptor.Field(e => e.FilledFromPhoto)
+            .Description("The values its photos filled in that nobody has checked yet.")
+            .Type<NonNullType<ListType<NonNullType<EnumType<LogValue>>>>>()
+            .Resolve(ctx => LogValueList.Of(ctx.Parent<Expense>().FilledFromPhoto));
     }
 }
 

@@ -10,19 +10,22 @@ import type { Saved } from './components/usePhotoQueue.ts'
 import { useOdometerLabel } from './components/useOdometerLabel.ts'
 import { usePhotoSession } from './components/usePhotoSession.ts'
 import { Field } from './forms.tsx'
-import { ExpenseCategoriesDocument, ExpenseDetailsDocument, LogDefaultsDocument, type DistanceUnit, type ReadingFieldName } from './gql/generated.ts'
+import { ExpenseCategoriesDocument, ExpenseDetailsDocument, LogDefaultsDocument, type DistanceUnit, type LogValue, type ReadingFieldName, type ReviewState } from './gql/generated.ts'
 import { parseDecimal } from './i18n/format.ts'
 import { ErrorMessage } from './messages.tsx'
 import { ReadNote } from './recognition/ReadNote.tsx'
 import { mergeReadings, type ReadValues } from './recognition/readValues.ts'
+import { filledFields } from './recognition/review.ts'
+import { ReviewCallout } from './recognition/ReviewState.tsx'
 import { useDraftReadings } from './recognition/useDraftReadings.ts'
 import { useReadFill } from './recognition/useReadFill.ts'
 
+/** The amount is null only when it was left for a photo that is still being read. */
 export interface ExpenseValues {
   date: string
   title: string
   category: string | null
-  amount: number
+  amount: number | null
   currency: string
   odometer: number | null
   note: string | null
@@ -32,10 +35,12 @@ interface Initial {
   date: string
   title: string
   category: string | null
-  amount?: number
+  amount?: number | null
   currency: string
   odometer?: number | null
   note: string | null
+  reviewState?: ReviewState
+  filledFromPhoto?: LogValue[]
 }
 
 const today = () => {
@@ -46,11 +51,14 @@ const today = () => {
 /** The fields of a new expense that photos can fill in (a receipt's shop becomes the title), and which read value goes into each. */
 type FillableField = 'date' | 'title' | 'amount' | 'currency' | 'odometer'
 const READ_INTO: Record<FillableField, ReadingFieldName> = { date: 'DATE', title: 'TITLE', amount: 'TOTAL', currency: 'CURRENCY', odometer: 'ODOMETER' }
+/** The values the server fills in from photos after saving, and their fields. */
+const WAITS_FOR: Partial<Record<LogValue, FillableField>> = { ODOMETER: 'odometer', TOTAL: 'amount' }
 
 /**
  * Add an expense (no `expenseId`) or edit one. Starts from today and the currency of the vehicle's latest log; the category suggests
  * what was used before (any text is fine) and the odometer may be left empty. When photo reading is on, the photos of a new expense
- * are read on the server and fill in what the user has not typed yet.
+ * are read on the server and fill in what the user has not typed yet; while one is still being read, the amount may be left empty too:
+ * the server fills in amount and odometer later and marks the expense for review (editing it then checks it).
  */
 export function ExpenseFormDialog({
   trigger,
@@ -75,7 +83,8 @@ export function ExpenseFormDialog({
   const error = details.error ?? defaults.error
   const existing = details.data?.expense
   const ready = defaults.data && (!editing || existing)
-  const initial: Initial = existing ?? { date: today(), title: '', category: null, currency: defaults.data?.logDefaults?.currency ?? '', note: null }
+  const currency = defaults.data?.logDefaults?.currency ?? ''
+  const initial: Initial = existing ? { ...existing, currency: existing.currency ?? currency } : { date: today(), title: '', category: null, currency, note: null }
 
   return (
     <Dialog.Root
@@ -113,6 +122,8 @@ export function ExpenseFormDialog({
             photosBusy={queue.busy || queue.failed > 0}
             read={mergeReadings(drafts.readings.values())}
             readingDone={drafts.done}
+            // A new expense may leave its amount to a photo that is being read; a saved one still waiting for its photos may stay so.
+            mayWait={editing ? existing?.reviewState === 'AWAITING_PHOTOS' : drafts.pending.length > 0}
             gallery={
               <PhotoGallery
                 kind="expenses"
@@ -146,6 +157,7 @@ function ExpenseForm({
   photosBusy,
   read,
   readingDone,
+  mayWait,
   onSubmit,
 }: {
   initial: Initial
@@ -158,6 +170,8 @@ function ExpenseForm({
   /** What the photos showed so far. */
   read: ReadValues
   readingDone: boolean
+  /** A photo is still being read: the amount may be left empty. */
+  mayWait: boolean
   onSubmit: (values: ExpenseValues) => Promise<unknown>
 }) {
   const { t } = useTranslation()
@@ -176,8 +190,16 @@ function ExpenseForm({
     labels,
     readingDone,
   )
+  const fromPhoto = filledFields(initial.filledFromPhoto, WAITS_FOR)
+  const amountOptional = mayWait
   const note = (field: FillableField) => (
-    <ReadNote filled={fill.isFilled(field)} offered={fill.offered(field)} field={labels[field]} onUse={() => fill.use(field)} />
+    <ReadNote
+      filled={fill.isFilled(field) || fromPhoto.has(field)}
+      offered={fill.offered(field)}
+      waiting={mayWait && (field === 'amount' || field === 'odometer') && fill.values[field].trim() === ''}
+      field={labels[field]}
+      onUse={() => fill.use(field)}
+    />
   )
   const [error, setError] = useState<unknown>()
   const [busy, setBusy] = useState(false)
@@ -194,7 +216,7 @@ function ExpenseForm({
         date: text('date'),
         title: text('title'),
         category: text('category') || null,
-        amount: parseDecimal(text('amount'))!,
+        amount: text('amount') === '' ? null : parseDecimal(text('amount'))!,
         currency: text('currency').toUpperCase(),
         odometer: text('odometer') === '' ? null : Number(text('odometer')),
         note: text('note') || null,
@@ -208,6 +230,7 @@ function ExpenseForm({
 
   return (
     <RadixForm.Root onSubmit={submit}>
+      <ReviewCallout state={initial.reviewState} />
       <Flex direction="column" gap="3">
         <Field name="date" label={labels.date} required extra={note('date')}>
           <TextField.Root type="date" required max={today()} value={fill.values.date} onChange={(e) => fill.change('date', e.target.value)} />
@@ -232,11 +255,11 @@ function ExpenseForm({
             <Field
               name="amount"
               label={labels.amount}
-              required
+              required={!amountOptional}
               invalid={{ message: t('forms.numberInvalid'), test: (v) => v !== '' && parseDecimal(v) === undefined }}
               extra={note('amount')}
             >
-              <TextField.Root required inputMode="decimal" autoComplete="off" value={fill.values.amount} onChange={(e) => fill.change('amount', e.target.value)} />
+              <TextField.Root required={!amountOptional} inputMode="decimal" autoComplete="off" value={fill.values.amount} onChange={(e) => fill.change('amount', e.target.value)} />
             </Field>
           </Flex>
           <Flex direction="column" style={{ flex: '1 1 6rem' }}>

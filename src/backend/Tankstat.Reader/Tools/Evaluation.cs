@@ -36,7 +36,7 @@ public sealed record Mismatch(string Case, string Field, string Expected, string
 public sealed class EvalReport(double showFrom = EvalReport.DefaultShowFrom)
 {
     /// <summary>The confidence from which the app fills a value in (its default <c>MinConfidence</c>): wrong values below it are never seen.</summary>
-    public const double DefaultShowFrom = 0.6;
+    public const double DefaultShowFrom = ReadField.FillInFrom;
 
     private readonly Dictionary<(string, string), FieldScore> _fields = [];
 

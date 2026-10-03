@@ -78,13 +78,12 @@ public class ExpenseTests
         var expense = Make();
         var other = new DateOnly(2026, 9, 5);
 
-        var detached = expense.Update(other, "Tyres", "Maintenance", 400, "HUF", 5200, "four", out var created);
+        var changes = expense.Update(other, "Tyres", "Maintenance", 400, "HUF", 5200, "four");
 
-        Assert.Null(detached);
-        Assert.Null(created);
+        Assert.Equal(LinkedChanges.None, changes);
         Assert.Equal((other, "Tyres", "Maintenance", 400m, "HUF", 5200L), (expense.Date, expense.Title, expense.Category, expense.Amount, expense.Currency, expense.Odometer));
         Assert.Equal(other, expense.OdometerReading!.Date);
-        Assert.Equal(other, expense.Cost.Date);
+        Assert.Equal(other, expense.Cost!.Date);
     }
 
     [Fact]
@@ -92,13 +91,13 @@ public class ExpenseTests
     {
         var expense = Make(odometer: null);
 
-        expense.Update(Day, "x", null, 1, "EUR", 777, null, out var created);
+        var created = expense.Update(Day, "x", null, 1, "EUR", 777, null).CreatedReading;
         Assert.Equal((created, 777L), (expense.OdometerReading, expense.Odometer));
         Assert.Equal(created!.Id, expense.OdometerReadingId);
 
-        var detached = expense.Update(Day, "x", null, 1, "EUR", null, null, out var none);
-        Assert.Same(created, detached);
-        Assert.Null(none);
+        var removed = expense.Update(Day, "x", null, 1, "EUR", null, null);
+        Assert.Same(created, removed.RemovedReading);
+        Assert.Null(removed.CreatedReading);
         Assert.Null(expense.OdometerReadingId);
     }
 
@@ -109,12 +108,40 @@ public class ExpenseTests
         var now = DateTimeOffset.UtcNow;
 
         expense.MarkDeleted(now);
-        Assert.True(expense.IsDeleted && expense.Cost.IsDeleted && expense.OdometerReading!.IsDeleted);
+        Assert.True(expense.IsDeleted && expense.Cost!.IsDeleted && expense.OdometerReading!.IsDeleted);
         Assert.Equal("expense.alreadyTrashed", Assert.Throws<DomainException>(() => expense.MarkDeleted(now)).Key);
-        Assert.Equal("expense.trashedCannotEdit", Assert.Throws<DomainException>(() => expense.Update(Day, "x", null, 1, "EUR", null, null, out _)).Key);
+        Assert.Equal("expense.trashedCannotEdit", Assert.Throws<DomainException>(() => expense.Update(Day, "x", null, 1, "EUR", null, null)).Key);
 
         expense.Restore();
-        Assert.False(expense.IsDeleted || expense.Cost.IsDeleted || expense.OdometerReading!.IsDeleted);
+        Assert.False(expense.IsDeleted || expense.Cost!.IsDeleted || expense.OdometerReading!.IsDeleted);
         Assert.Equal("expense.notTrashed", Assert.Throws<DomainException>(expense.Restore).Key);
+    }
+
+    [Fact]
+    public void TheAmountMayBeLeftEmpty_OnlyWhileAPhotoIsBeingRead_WhichMayAlsoFillInTheOdometer()
+    {
+        Assert.Equal("log.valuesRequired", Assert.Throws<DomainException>(() => Expense.Create(Owner, Owner, Car, Day, "Oil", null, null, null)).Key);
+
+        var expense = Expense.Create(Owner, Owner, Car, Day, "Oil", null, null, null, readingPhotos: true);
+        Assert.Equal((ReviewState.AwaitingPhotos, LogValues.Total, LogValues.Total | LogValues.Odometer), (expense.ReviewState, expense.Missing, expense.Fillable));
+
+        expense.FillFromPhoto(new PhotoValues(Odometer: 4321, Volume: 5, Total: 12.5m, Currency: "EUR"));
+        expense.FinishReading(readingPhotos: false);
+
+        Assert.Equal((12.5m, "EUR", 4321L), (expense.Amount, expense.Currency, expense.Odometer));
+        Assert.Equal((ReviewState.NeedsReview, LogValues.Total | LogValues.Odometer), (expense.ReviewState, expense.FilledFromPhoto));
+    }
+
+    [Fact]
+    public void AnExpenseWithItsAmount_WaitsOnlyForAnOptionalOdometer_AndIsDoneWithoutOne()
+    {
+        var cost = Cost.Create(Owner, Car, Day, 30, "EUR");
+        var expense = Expense.Create(Owner, Owner, Car, Day, "Wash", null, cost, null, readingPhotos: true);
+        Assert.Equal(ReviewState.AwaitingPhotos, expense.ReviewState);
+
+        expense.FillFromPhoto(new PhotoValues(null, null, 99, "EUR"));
+        expense.FinishReading(readingPhotos: false);
+
+        Assert.Equal((ReviewState.None, 30m), (expense.ReviewState, expense.Amount)); // nothing was filled in, nothing is missing
     }
 }

@@ -89,5 +89,101 @@ public class DocumentReaderTests
         Assert.True(DocumentClassifier.ReceiptScore(OcrFixture.Page(Receipt), Lexicon.Default, Today) >= 1.5);
         Assert.True(DocumentClassifier.ReceiptScore(OcrFixture.Page("!123456 km", "18:15"), Lexicon.Default, Today) < 1.5);
         Assert.Equal(0, DocumentClassifier.ReceiptScore(OcrPage.Empty, Lexicon.Default, Today));
+
+        // What the OCR makes of a dashboard photo: lines of "text" with stray signs that happen to be currency markers, but no money.
+        var noise = OcrFixture.Page("ERBEN On neo oO BoP", "saa ÄNNN IND Ale DA", "e £ ] i i A", "Kr", "e $", "Oil change and", "in 4800 km", "SENT ES SS Se s", "315193 164.6");
+        Assert.True(DocumentClassifier.ReceiptScore(noise, Lexicon.Default, Today) < 1.5);
+
+        // The same with the odd receipt word and an amount among the noise: lines the OCR itself doubts do not count.
+        var doubted = OcrFixture.Page(30, "Sales 16 AB", "e 3 €", "ERBEN On neo oO BoP", "saa ÄNNN IND Ale DA", "Oil change and", "in 4800 km", "SENT ES SS Se s", "PET £");
+        Assert.True(DocumentClassifier.ReceiptScore(doubted, Lexicon.Default, Today) < 1.5);
+        Assert.True(DocumentClassifier.ReceiptScore(OcrFixture.Page(60, Receipt), Lexicon.Default, Today) >= 1.5);
+
+        // A page the OCR doubts for the most part gets nothing for the few lines of "text" it is sure of (a weak total word, a stray "3 €").
+        var mostlyNoise = OcrFixture.Page("= £ ir u SALE. a", "Sa u 3 €", "Oil change and", "ERBEN On neo oO BoP", "saa ÄNNN IND Ale DA", "SENT ES SS Se s",
+            "?a EN er SER in 4800 2.2: 200", "?PET £", "?SSS $ A Mai ae in BEL", "?Mg [/ OLE", "?SRE We ESŐ Za ON", "?os = so essél", "?enema RETTET URN RIO");
+        Assert.True(DocumentClassifier.ReceiptScore(mostlyNoise, Lexicon.Default, Today) < 1.5);
+    }
+
+    [Fact]
+    public void ALikelyReceiptWithoutATotalAndWithoutAnythingTheAppFillsIn_DoesNotStopTheOdometerBeingLookedFor()
+    {
+        // The block pass finds a total keyword and lines of text, but no amount and no date: it may still be a dashboard behind the noise.
+        var block = OcrFixture.Page("Benzinkút Kft.", "Nyugta", "Köszönjük a vásárlást", "Viszontlátásra", "Adószám 12345678", "ÖSSZESEN: Ft");
+        var ocr = new FakeOcr().On(ImageVariant.Normal, 6, OcrPurpose.Text, block);
+        foreach (var variant in new[] { ImageVariant.Normal, ImageVariant.Inverted, ImageVariant.Thickened, ImageVariant.ThickenedMore })
+            ocr.On(variant, 11, OcrPurpose.Digits, OcrFixture.Page("!315193")); // every digit pass sees the same big number
+
+        var result = new DocumentReader(ocr).ReadAsync(new FakeImage(), Request(DocumentKinds.Odometer, DocumentKinds.FuelReceipt), default).Result;
+
+        Assert.Equal((DocumentKinds.Odometer, "315193"), (result.Kind, result.Value(FieldNames.Odometer)));
+        Assert.Single(ocr.Passes, new OcrPass(ImageVariant.Normal, 11, OcrPurpose.Text)); // the sparse text pass serves both readings
+
+        // With no odometer either, what was read of the receipt is still returned.
+        var fallback = new DocumentReader(new FakeOcr().On(ImageVariant.Normal, 6, OcrPurpose.Text, block))
+            .ReadAsync(new FakeImage(), Request(DocumentKinds.Odometer, DocumentKinds.FuelReceipt), default).Result;
+        Assert.Equal((DocumentKinds.FuelReceipt, "HUF"), (fallback.Kind, fallback.Value(FieldNames.Currency)));
+    }
+
+    [Fact]
+    public void ARealReceiptWhoseAmountWasNotRead_IsNotTurnedIntoAnOdometerByItsReceiptNumber()
+    {
+        // The amount is lost, the rest is read; the digit passes see the receipt number, which is no sure odometer.
+        var block = OcrFixture.Page("Benzinkút Kft.", "Nyugta", "Nyugtaszám: 451234", "Köszönjük a vásárlást", "Viszontlátásra", "ÖSSZESEN: Ft", "2026.09.17 18:15");
+        var ocr = new FakeOcr().On(ImageVariant.Normal, 6, OcrPurpose.Text, block).On(ImageVariant.Normal, 11, OcrPurpose.Digits, OcrFixture.Page("451234"));
+
+        var result = new DocumentReader(ocr).ReadAsync(new FakeImage(), Request(DocumentKinds.Odometer, DocumentKinds.FuelReceipt), default).Result;
+
+        Assert.Equal((DocumentKinds.FuelReceipt, "2026-09-17"), (result.Kind, result.Value(FieldNames.Date)));
+        Assert.Null(result.Value(FieldNames.Odometer));
+        Assert.DoesNotContain(ocr.Passes, p => p.Purpose == OcrPurpose.Digits); // a receipt that fills in needs no odometer passes
+    }
+
+    [Fact]
+    public void ADashboardWithADottedDate_IsNotAReceiptEither()
+    {
+        // The dotted dates of Hungarian and German receipts are no amounts of money: a date does not lift a dashboard's noise to a receipt.
+        string[] noise = ["ERBEN On neo oO BoP", "saa ÄNNN IND Ale DA", "SENT ES SS Se s", "Mo sa Tru ee Rr", "Pee aes Tee ae", "Haa LEO Pxa nnn"];
+
+        foreach (var date in new[] { "2026.09.17 18:15", "17.09.2026 18:15", "17/09/2026 18:15", "2026-09-17 18:15" })
+            Assert.True(DocumentClassifier.ReceiptScore(OcrFixture.Page([.. noise, date]), Lexicon.Default, Today) < 1.5, date);
+    }
+
+    [Fact]
+    public void ADashboardWithManyLinesADateAndATripFigure_IsReadAsAnOdometer_NotAsAReceipt()
+    {
+        // Six legible lines of noise, a date and a trip meter: no total keyword, no currency, no amount of money, so never a receipt.
+        var block = OcrFixture.Page("ERBEN On neo oO BoP", "saa ÄNNN IND Ale DA", "SENT ES SS Se s", "Mo sa Tru ee Rr", "Pee aes Tee ae", "Haa LEO Pxa nnn", "2026-09-17", "Trip\t164.6");
+        var ocr = new FakeOcr().On(ImageVariant.Normal, 6, OcrPurpose.Text, block).On(ImageVariant.Normal, 11, OcrPurpose.Digits, OcrFixture.Page("!315193"));
+
+        var result = new DocumentReader(ocr).ReadAsync(new FakeImage(), Request(DocumentKinds.Odometer, DocumentKinds.FuelReceipt), default).Result;
+
+        Assert.Equal((DocumentKinds.Odometer, "315193"), (result.Kind, result.Value(FieldNames.Odometer)));
+    }
+
+    [Fact]
+    public void AFigureWithTwoDecimals_IsNotMoney_ButTwoOfThemCanBe()
+    {
+        // A voltage on a dashboard, then a damaged receipt: no total word, no currency sign, but amounts.
+        string[] noise = ["ERBEN On neo oO BoP", "saa ÄNNN IND Ale DA", "SENT ES SS Se s", "Mo sa Tru ee Rr", "Pee aes Tee ae", "Haa LEO Pxa nnn", "Diesel"];
+
+        Assert.True(DocumentClassifier.ReceiptScore(OcrFixture.Page([.. noise, "U 13.85 V"]), Lexicon.Default, Today) < 1.5);
+        Assert.True(DocumentClassifier.ReceiptScore(OcrFixture.Page([.. noise, "38.52 L", "56.20"]), Lexicon.Default, Today) >= 1.5);
+    }
+
+    [Theory]
+    [InlineData("Gesamt km", "!315193 km")]
+    [InlineData("TOTAL", "!315193 km")]
+    public void ADashboardThatPrintsATotalLabel_IsStillReadAsAnOdometer(string label, string odometer)
+    {
+        // "Gesamt" and "Total" are total keywords, but the number beside them is a distance, so there is no total on the page.
+        var block = OcrFixture.Page(label, odometer, "18:15 21°C");
+        var ocr = new FakeOcr().On(ImageVariant.Normal, 6, OcrPurpose.Text, block);
+        foreach (var variant in new[] { ImageVariant.Normal, ImageVariant.Inverted, ImageVariant.Thickened, ImageVariant.ThickenedMore })
+            ocr.On(variant, 11, OcrPurpose.Digits, OcrFixture.Page("!315193"));
+
+        var result = new DocumentReader(ocr).ReadAsync(new FakeImage(), Request(DocumentKinds.Odometer, DocumentKinds.FuelReceipt), default).Result;
+
+        Assert.Equal((DocumentKinds.Odometer, "315193"), (result.Kind, result.Value(FieldNames.Odometer)));
     }
 }

@@ -605,7 +605,7 @@ namespace Tankstat.Migrations.Sqlite
                         .HasMaxLength(60)
                         .HasColumnType("TEXT");
 
-                    b.Property<Guid>("CostId")
+                    b.Property<Guid?>("CostId")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("CreatedById")
@@ -617,6 +617,9 @@ namespace Tankstat.Migrations.Sqlite
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("FilledFromPhoto")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Note")
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
@@ -626,6 +629,13 @@ namespace Tankstat.Migrations.Sqlite
 
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("TEXT");
+
+                    b.Property<string>("ReviewState")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("None");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -661,7 +671,7 @@ namespace Tankstat.Migrations.Sqlite
                         .HasPrecision(9, 3)
                         .HasColumnType("TEXT");
 
-                    b.Property<Guid>("CostId")
+                    b.Property<Guid?>("CostId")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("CreatedById")
@@ -673,6 +683,9 @@ namespace Tankstat.Migrations.Sqlite
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("FilledFromPhoto")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("IsFullTank")
                         .HasColumnType("INTEGER");
 
@@ -680,16 +693,23 @@ namespace Tankstat.Migrations.Sqlite
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
-                    b.Property<Guid>("OdometerReadingId")
+                    b.Property<Guid?>("OdometerReadingId")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ReviewState")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("None");
+
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("TEXT");
 
-                    b.Property<decimal>("Volume")
+                    b.Property<decimal?>("Volume")
                         .HasPrecision(9, 3)
                         .HasColumnType("TEXT");
 
@@ -850,8 +870,7 @@ namespace Tankstat.Migrations.Sqlite
                     b.HasOne("Tankstat.Domain.Measurements.Cost", "Cost")
                         .WithOne()
                         .HasForeignKey("Tankstat.Domain.Vehicles.Expense", "CostId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Tankstat.Domain.Odometers.OdometerReading", "OdometerReading")
                         .WithOne()
@@ -874,14 +893,12 @@ namespace Tankstat.Migrations.Sqlite
                     b.HasOne("Tankstat.Domain.Measurements.Cost", "Cost")
                         .WithOne()
                         .HasForeignKey("Tankstat.Domain.Vehicles.Refueling", "CostId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Tankstat.Domain.Odometers.OdometerReading", "OdometerReading")
                         .WithOne()
                         .HasForeignKey("Tankstat.Domain.Vehicles.Refueling", "OdometerReadingId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
                         .WithMany()

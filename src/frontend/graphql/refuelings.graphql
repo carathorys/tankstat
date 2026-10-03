@@ -17,6 +17,7 @@ query Refuelings(
   refuelings(vehicleId: $vehicleId, orderBy: $orderBy, direction: $direction, skip: $skip, take: $take) {
     id
     date
+    reviewState
     canEdit
     canDelete
     volume @include(if: $withVolume)
@@ -85,6 +86,8 @@ query RefuelingDetails($id: UUID!) {
     odometer
     isFullTank
     note
+    reviewState
+    filledFromPhoto
     photos {
       id
       url
@@ -104,6 +107,7 @@ query LogDefaults($vehicleId: UUID!) {
 mutation LogRefueling($input: LogRefuelingInput!) {
   logRefueling(input: $input) {
     id
+    reviewState
     photos {
       id
     }

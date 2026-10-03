@@ -66,6 +66,10 @@
       "DEFAULT_ACCESS_CHANGED": "{{actor}} changed what everyone may do with other users' data: {{level}}.",
       "RECURRING_DUE_SOON": "{{title}} on {{vehicle}} is due soon.",
       "RECURRING_OVERDUE": "{{title}} on {{vehicle}} is overdue.",
+      "LOG_FILLED_FROM_PHOTO_REFUELING": "The photo of the {{date}} refuelling of {{vehicle}} filled in: {{values}}. Check it.",
+      "LOG_FILLED_FROM_PHOTO_EXPENSE": "The photo of {{title}} ({{date}}, {{vehicle}}) filled in: {{values}}. Check it.",
+      "LOG_NOT_FILLED_REFUELING": "The photos of the {{date}} refuelling of {{vehicle}} did not show: {{values}}. Fill it in.",
+      "LOG_NOT_FILLED_EXPENSE": "The photos of {{title}} ({{date}}, {{vehicle}}) did not show: {{values}}. Fill it in.",
       "MORE_ACTIVITY_one": "There was {{count}} more change, too many to list one by one.",
       "MORE_ACTIVITY_other": "There were {{count}} more changes, too many to list one by one."
     }
@@ -445,6 +449,9 @@
       "odometerBelowLast": "The odometer cannot be lower than {{last}}, where it was last done.",
       "amountRequired": "The amount and currency are needed to log the expense.",
       "notFound": "This recurring expense does not exist."
+    },
+    "log": {
+      "valuesRequired": "Fill in every value. Only a photo that is still being read may leave them empty."
     }
   },
   "a11y": {
@@ -799,7 +806,25 @@
     "useAria": "Use {{value}} from the photo for {{field}}",
     "reading": "Reading…",
     "announce": "Filled in from the photo: {{fields}}. Check them before saving.",
-    "nothing": "Nothing could be read from the photos."
+    "nothing": "Nothing could be read from the photos.",
+    "waiting": "Leave it empty: it is filled in from the photo after saving."
+  },
+  "review": {
+    "badge": {
+      "AWAITING_PHOTOS": "Reading photo…",
+      "NEEDS_REVIEW": "Check values",
+      "INCOMPLETE": "Values missing"
+    },
+    "callout": {
+      "AWAITING_PHOTOS": "Its photos are still being read: the values left empty are filled in from them.",
+      "NEEDS_REVIEW": "Some values were read from its photos (marked below). Check them and save.",
+      "INCOMPLETE": "Its photos did not show every value. Fill in what is missing and save."
+    },
+    "values": {
+      "ODOMETER": "odometer",
+      "VOLUME": "volume",
+      "TOTAL": "total"
+    }
   },
   "recurring": {
     "title": "Recurring expenses",

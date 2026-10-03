@@ -1,0 +1,156 @@
+using System.Globalization;
+using Microsoft.Extensions.Logging;
+using Tankstat.Application.Expenses;
+using Tankstat.Application.Notifications;
+using Tankstat.Application.Photos;
+using Tankstat.Application.Refuelings;
+using Tankstat.Application.Vehicles;
+using Tankstat.Domain.Notifications;
+using Tankstat.Domain.Photos;
+using Tankstat.Domain.Recognition;
+using Tankstat.Domain.Vehicles;
+
+namespace Tankstat.Application.Recognition;
+
+/// <summary>
+/// Fills in logs that were saved while a photo of theirs was still being read (see <see cref="ReviewState"/>). It runs without a user:
+/// right after such a log is saved (readings that finished before the save) and from the background worker whenever a reading of a log
+/// photo finishes. Only values the reader was sure enough of are taken, only empty values are filled, and the person who logged it is
+/// told through a notification, both when values were filled in (to check them) and when the reading left values missing.
+/// </summary>
+public sealed class LogPhotoFiller(
+    ILogPhotoRepository photos, IPhotoReadingRepository readings, IRefuelingRepository refuelings, IExpenseRepository expenses,
+    IVehicleRepository vehicles, RecognitionSetup setup, Notifier notifier, INotificationRepository notifications, TimeProvider clock,
+    ILogger<LogPhotoFiller> logger)
+{
+    /// <summary>
+    /// How long after its upload a finished reading still lets a new log leave values empty: the dialog asks for readings every few
+    /// seconds, so the reading may have finished just before the save (it is then taken right after it).
+    /// </summary>
+    public static readonly TimeSpan JustRead = TimeSpan.FromMinutes(2);
+
+    /// <summary>Whether a new log may wait for these pictures (drafts about to be attached): one is still being read, or was just read.</summary>
+    public async Task<bool> MayWaitForDraftsAsync(IReadOnlyCollection<Guid> imageIds, CancellationToken ct)
+    {
+        if (imageIds.Count == 0) return false;
+        var recent = clock.GetUtcNow() - JustRead;
+        return (await readings.FindManyAsync(imageIds, ct)).Any(r => IsPending(r) || r.CreatedAt >= recent);
+    }
+
+    /// <summary>Whether any photo of the log is still being read.</summary>
+    public async Task<bool> AnyReadingAsync(LogType logType, Guid logId, CancellationToken ct)
+    {
+        var images = (await photos.ListForLogAsync(logType, logId, ct)).Select(p => p.ImageId).ToList();
+        return images.Count > 0 && (await readings.FindManyAsync(images, ct)).Any(IsPending);
+    }
+
+    /// <summary>The log that shows this picture, if the picture is a log photo (a draft has none yet).</summary>
+    public async Task<(LogType Type, Guid Id)?> LogOfAsync(Guid imageId, CancellationToken ct) =>
+        await photos.FindByImageAsync(imageId, ct) is { } photo ? (photo.LogType, photo.LogId) : null;
+
+    /// <summary>
+    /// Takes what the log's photos showed into the log while it waits for them, and moves it on once nothing is being read any more.
+    /// Does nothing for a log that does not wait (anymore), is in the trash or is gone.
+    /// </summary>
+    public async Task FillAsync(LogType logType, Guid logId, CancellationToken ct)
+    {
+        var images = (await photos.ListForLogAsync(logType, logId, ct)).Select(p => p.ImageId).ToList();
+        var found = images.Count == 0 ? [] : await readings.FindManyAsync(images, ct);
+        var values = ValuesOf(found);
+        var pending = found.Any(IsPending);
+
+        if (logType == LogType.Refueling)
+        {
+            if (await refuelings.FindAsync(logId, ct) is not { ReviewState: ReviewState.AwaitingPhotos } log) return;
+            var before = log.FilledFromPhoto;
+            var changes = log.FillFromPhoto(values);
+            var moved = log.FinishReading(pending);
+            if (log.FilledFromPhoto == before && !moved) return;
+            await refuelings.UpdateAsync(log, changes, ct);
+            await refuelings.SaveConsumptionsAsync(ConsumptionCalculator.Apply(await refuelings.ListAllForVehicleAsync(log.VehicleId, ct)), ct);
+            // Which values, never what they are.
+            logger.LogDebug("Refueling {RefuelingId} of vehicle {VehicleId} took {Values} from its photos and is {ReviewState}",
+                logId, log.VehicleId, Names(log.FilledFromPhoto & ~before), log.ReviewState);
+            if (moved) await NotifyAsync(NotificationRef.Refueling(logId), log.VehicleId, log.CreatedById, log.Date, log.ReviewState, log.FilledFromPhoto, log.Missing, ct);
+        }
+        else
+        {
+            if (await expenses.FindAsync(logId, ct) is not { ReviewState: ReviewState.AwaitingPhotos } log) return;
+            var before = log.FilledFromPhoto;
+            var changes = log.FillFromPhoto(values);
+            var moved = log.FinishReading(pending);
+            if (log.FilledFromPhoto == before && !moved) return;
+            await expenses.UpdateAsync(log, changes, ct);
+            logger.LogDebug("Expense {ExpenseId} of vehicle {VehicleId} took {Values} from its photos and is {ReviewState}",
+                logId, log.VehicleId, Names(log.FilledFromPhoto & ~before), log.ReviewState);
+            if (moved) await NotifyAsync(NotificationRef.Expense(logId), log.VehicleId, log.CreatedById, log.Date, log.ReviewState, log.FilledFromPhoto, log.Missing, ct, log.Title);
+        }
+    }
+
+    /// <summary>A person checked the log (saved it with every value): what they were told about its photos counts as read.</summary>
+    public async Task ReviewedAsync(LogType logType, Guid logId, Guid createdById, CancellationToken ct)
+    {
+        var told = await notifications.ListForSubjectsAsync(createdById, NotificationTopic.LogReview, [logId], ct);
+        var unread = told.Where(n => n.ReadAt is null && n.Subject.Type == EntityType(logType)).Select(n => n.Id).ToList();
+        if (unread.Count > 0) await notifications.MarkReadAsync(createdById, unread, clock.GetUtcNow(), ct);
+    }
+
+    private async Task NotifyAsync(
+        NotificationRef subject, Guid vehicleId, Guid recipientId, DateOnly date, ReviewState state, LogValues filled, LogValues missing, CancellationToken ct,
+        string? title = null)
+    {
+        var kind = state switch
+        {
+            ReviewState.NeedsReview => NotificationKind.LogFilledFromPhoto,
+            ReviewState.Incomplete => NotificationKind.LogNotFilled,
+            _ => (NotificationKind?)null,
+        };
+        if (kind is null) return;
+        var vehicle = await vehicles.FindAsync(vehicleId, ct);
+        var draft = new NotificationDraft(
+            recipientId, kind.Value, subject, NotificationRef.Vehicle(vehicleId),
+            NotificationArgs.Of(
+                ("vehicleName", vehicle?.Name),
+                ("date", date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
+                ("title", title),
+                ("values", Names(state == ReviewState.Incomplete ? missing : filled))),
+            Occurrence: "photos");
+        await notifier.NotifyAsync(null, [draft], ct);
+    }
+
+    /// <summary>The values as the API spells them (<c>ODOMETER,TOTAL</c>), so clients reuse their translations.</summary>
+    private static string Names(LogValues values) =>
+        string.Join(",", Enum.GetValues<LogValues>().Where(v => v != LogValues.None && values.HasFlag(v)).Select(v => v.ToString().ToUpperInvariant()));
+
+    private static NotificationEntityType EntityType(LogType logType) =>
+        logType == LogType.Refueling ? NotificationEntityType.Refueling : NotificationEntityType.Expense;
+
+    private static bool IsPending(PhotoReading reading) => reading.Status is ReadingStatus.Queued or ReadingStatus.Reading;
+
+    /// <summary>
+    /// The best value per field across the log's photos, among those read rather than the hint coming back and at least as sure as
+    /// <see cref="RecognitionOptions.MinConfidence"/> (a blank beats a wrong value). A total without a currency on the photo takes the
+    /// currency the reading was given as its hint (the vehicle's usual one).
+    /// </summary>
+    private PhotoValues ValuesOf(IReadOnlyList<PhotoReading> found)
+    {
+        var read = found.Where(r => r.Status == ReadingStatus.Read).ToList();
+        var best = read
+            .SelectMany(r => r.Values)
+            .Where(v => v.Source != ValueSource.Hint && v.Confidence >= setup.Options.MinConfidence)
+            .GroupBy(v => v.Name)
+            .ToDictionary(g => g.Key, g => g.MaxBy(v => v.Confidence)!.Value);
+
+        decimal? Number(ReadingFieldName name) =>
+            best.TryGetValue(name, out var text) && decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var n) ? n : null;
+
+        var odometer = Number(ReadingFieldName.Odometer) is { } o && o == decimal.Truncate(o) && o <= long.MaxValue ? (long?)o : null;
+        var total = Number(ReadingFieldName.Total);
+        var currency = (best.GetValueOrDefault(ReadingFieldName.Currency) is { } c && IsCurrency(c) ? c : null)
+            ?? read.Select(r => r.Currency).FirstOrDefault(h => h is not null && IsCurrency(h))
+            ?? found.Select(r => r.Currency).FirstOrDefault(h => h is not null && IsCurrency(h));
+        return new PhotoValues(odometer, Number(ReadingFieldName.Volume), total, currency?.ToUpperInvariant());
+    }
+
+    private static bool IsCurrency(string code) => code.Length == 3 && code.All(char.IsAsciiLetter);
+}

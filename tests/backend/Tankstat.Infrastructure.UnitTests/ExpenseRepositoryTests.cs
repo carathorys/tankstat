@@ -74,14 +74,12 @@ public class ExpenseRepositoryTests
         var saved = await Add(db, car, "Wash");
 
         var expense = (await repo.FindAsync(saved.Id, default))!;
-        expense.Update(Day, "Wash", null, 100, "EUR", 777, null, out var created);
-        await repo.UpdateAsync(expense, created, null, default);
+        await repo.UpdateAsync(expense, expense.Update(Day, "Wash", null, 100, "EUR", 777, null), default);
         Assert.Equal(777L, (await repo.FindAsync(saved.Id, default))!.Odometer);
         Assert.Equal((1, 1), await Counts(db));
 
         var again = (await repo.FindAsync(saved.Id, default))!;
-        var detached = again.Update(Day, "Wash", null, 100, "EUR", null, null, out var none);
-        await repo.UpdateAsync(again, none, detached, default);
+        await repo.UpdateAsync(again, again.Update(Day, "Wash", null, 100, "EUR", null, null), default);
         Assert.Null((await repo.FindAsync(saved.Id, default))!.Odometer);
         Assert.Equal((1, 0), await Counts(db));
     }
@@ -95,8 +93,7 @@ public class ExpenseRepositoryTests
         var saved = await Add(db, car, "Oil", odometer: 100);
 
         var expense = (await repo.FindAsync(saved.Id, default))!;
-        expense.Update(Day.AddDays(1), "Oil", null, 5, "HUF", 150, null, out var created);
-        await repo.UpdateAsync(expense, created, null, default);
+        await repo.UpdateAsync(expense, expense.Update(Day.AddDays(1), "Oil", null, 5, "HUF", 150, null), default);
 
         var loaded = (await repo.FindAsync(saved.Id, default))!;
         Assert.Equal((150L, Day.AddDays(1), "HUF"), (loaded.Odometer, loaded.OdometerReading!.Date, loaded.Currency));
@@ -114,7 +111,7 @@ public class ExpenseRepositoryTests
 
         var expense = (await repo.FindAsync(doomed.Id, default))!;
         expense.MarkDeleted(DateTimeOffset.UtcNow);
-        await repo.UpdateAsync(expense, null, null, default);
+        await repo.UpdateAsync(expense, LinkedChanges.None, default);
 
         Assert.Equal(["Kept"], (await repo.ListForVehicleAsync(car.Id, new ExpenseQuery(), default)).Select(e => e.Title));
         Assert.Equal(["Old"], (await repo.ListDeletedAsync(OwnerScope.All, new ExpenseQuery(), default)).Select(e => e.Title));

@@ -7,7 +7,8 @@ namespace Tankstat.Domain.Vehicles;
 /// <summary>
 /// A fill-up. The volume is in the vehicle's volume unit (<see cref="Vehicle.Units"/>). The odometer and the cost are not numbers of
 /// their own but links to an <see cref="OdometerReading"/> and a <see cref="Cost"/> that this log owns (they are trashed, restored and
-/// deleted with it).
+/// deleted with it). Odometer, volume and cost may be empty only while a photo of the log is still being read (see
+/// <see cref="ReviewState"/>): the reading fills them in later.
 /// </summary>
 public sealed class Refueling : IOwned, ISoftDeletable
 {
@@ -25,29 +26,29 @@ public sealed class Refueling : IOwned, ISoftDeletable
     public Guid CreatedById { get; private set; }
     public DateOnly Date { get; private set; }
 
-    /// <summary>In the vehicle's volume unit (litres or gallons).</summary>
-    public decimal Volume { get; private set; }
+    /// <summary>In the vehicle's volume unit (litres or gallons); null until a photo provides it.</summary>
+    public decimal? Volume { get; private set; }
 
-    public Guid CostId { get; private set; }
+    public Guid? CostId { get; private set; }
 
-    /// <summary>The linked cost (amount and currency); load it (Include) before reading <see cref="TotalCost"/> or <see cref="Currency"/>.</summary>
-    public Cost Cost { get; private set; } = null!;
+    /// <summary>The linked cost (amount and currency), null until known; load it (Include) before reading <see cref="TotalCost"/> or <see cref="Currency"/>.</summary>
+    public Cost? Cost { get; private set; }
 
     /// <summary>What the fill-up cost, in <see cref="Currency"/>.</summary>
-    public decimal TotalCost => Cost.Amount;
+    public decimal? TotalCost => Cost?.Amount;
 
     /// <summary>The currency this fill-up was paid in (it can differ from log to log, e.g. when travelling).</summary>
-    public string Currency => Cost.Currency;
+    public string? Currency => Cost?.Currency;
     public bool IsFullTank { get; private set; }
     public string? Note { get; private set; }
 
-    public Guid OdometerReadingId { get; private set; }
+    public Guid? OdometerReadingId { get; private set; }
 
-    /// <summary>The linked odometer reading; load it (Include) before reading <see cref="Odometer"/>.</summary>
-    public OdometerReading OdometerReading { get; private set; } = null!;
+    /// <summary>The linked odometer reading, null until known; load it (Include) before reading <see cref="Odometer"/>.</summary>
+    public OdometerReading? OdometerReading { get; private set; }
 
     /// <summary>The odometer value, in the vehicle's distance unit.</summary>
-    public long Odometer => OdometerReading.Value;
+    public long? Odometer => OdometerReading?.Value;
 
     /// <summary>
     /// Fuel used per 100 distance units, between the previous full fill-up and this one (litres per 100 km, gallons per 100 miles, ...),
@@ -59,60 +60,156 @@ public sealed class Refueling : IOwned, ISoftDeletable
     /// <summary>Only <see cref="ConsumptionCalculator"/> should call this (consumption depends on the neighbouring logs, not on this log alone).</summary>
     public void SetConsumption(decimal? value) => Consumption = value is { } v ? Math.Round(v, 3) : null;
 
+    public ReviewState ReviewState { get; private set; }
+
+    /// <summary>The values its photos filled in that nobody has checked yet.</summary>
+    public LogValues FilledFromPhoto { get; private set; }
+
+    /// <summary>The values it lacks (all of them are needed).</summary>
+    public LogValues Missing =>
+        (OdometerReading is null ? LogValues.Odometer : LogValues.None)
+        | (Volume is null ? LogValues.Volume : LogValues.None)
+        | (Cost is null ? LogValues.Total : LogValues.None);
+
     /// <summary>Set while the log is in the trash.</summary>
     public DateTimeOffset? DeletedAt { get; private set; }
 
     public bool IsDeleted => DeletedAt is not null;
 
-    /// <summary>Total cost divided by volume (derived, not stored).</summary>
-    public decimal PricePerUnit => Volume == 0 ? 0 : Math.Round(Cost.Amount / Volume, 3);
+    /// <summary>Total cost divided by volume (derived, not stored); null while either is unknown.</summary>
+    public decimal? PricePerUnit => Volume is { } volume && Cost is { } cost ? (volume == 0 ? 0 : Math.Round(cost.Amount / volume, 3)) : null;
 
     /// <param name="reading">The reading of the odometer at this fill-up; created for this log, belonging to the same vehicle.</param>
+    /// <param name="readingPhotos">A photo of the log is still being read: only then may values be left empty.</param>
     public static Refueling Create(
-        Guid ownerId, Guid createdById, Guid vehicleId, DateOnly date, decimal volume, Cost cost, OdometerReading reading, bool isFullTank, string? note = null)
+        Guid ownerId, Guid createdById, Guid vehicleId, DateOnly date, decimal? volume, Cost? cost, OdometerReading? reading, bool isFullTank,
+        string? note = null, bool readingPhotos = false)
     {
-        if (reading.VehicleId != vehicleId || cost.VehicleId != vehicleId)
+        if ((reading is not null && reading.VehicleId != vehicleId) || (cost is not null && cost.VehicleId != vehicleId))
             throw new DomainException("refueling.wrongVehicle", "The odometer reading and the cost must belong to the same vehicle as the log.");
 
         var refueling = new Refueling
         {
             Id = Guid.NewGuid(), OwnerId = ownerId, CreatedById = createdById, VehicleId = vehicleId,
-            OdometerReadingId = reading.Id, OdometerReading = reading, CostId = cost.Id, Cost = cost,
+            OdometerReadingId = reading?.Id, OdometerReading = reading, CostId = cost?.Id, Cost = cost,
         };
         refueling.Apply(date, volume, isFullTank, note);
-        reading.Update(date, reading.Value);
-        cost.Update(date, cost.Amount, cost.Currency);
+        reading?.Update(date, reading.Value);
+        cost?.Update(date, cost.Amount, cost.Currency);
+        refueling.ReviewState = LogReview.AfterSave(refueling.Missing, refueling.Missing, readingPhotos);
         return refueling;
     }
 
-    /// <summary>Changes the log and keeps its odometer reading (date and value) in step.</summary>
-    public void Update(DateOnly date, decimal volume, decimal totalCost, string currency, long odometer, bool isFullTank, string? note)
+    /// <summary>
+    /// Changes the log and keeps its odometer reading and cost (date and value) in step. A person saved it, so values read from photos
+    /// count as checked. Readings and costs that come or go are returned for the repository.
+    /// </summary>
+    /// <param name="currency">The currency of the cost; ignored without <paramref name="totalCost"/>.</param>
+    /// <param name="readingPhotos">A photo of the log is still being read: only then may values be left empty.</param>
+    public LinkedChanges Update(
+        DateOnly date, decimal? volume, decimal? totalCost, string? currency, long? odometer, bool isFullTank, string? note, bool readingPhotos = false)
     {
         if (IsDeleted) throw new DomainException("refueling.trashedCannotEdit", "A log in the trash cannot be edited; restore it first.");
         Apply(date, volume, isFullTank, note);
-        OdometerReading.Update(date, odometer);
-        Cost.Update(date, totalCost, currency);
+        var (createdReading, removedReading) = SetReading(date, odometer);
+        var (createdCost, removedCost) = SetCost(date, totalCost, currency);
+        ReviewState = LogReview.AfterSave(Missing, Missing, readingPhotos);
+        FilledFromPhoto = LogValues.None;
+        return new LinkedChanges(createdReading, removedReading, createdCost, removedCost);
+    }
+
+    /// <summary>
+    /// Fills in the empty values its photos showed, while it waits for them; values a person entered are never replaced. The reading is
+    /// not checked against the vehicle's other readings: the person who checks the log decides.
+    /// </summary>
+    public LinkedChanges FillFromPhoto(PhotoValues values)
+    {
+        if (ReviewState != ReviewState.AwaitingPhotos || IsDeleted) return LinkedChanges.None;
+        OdometerReading? createdReading = null;
+        Cost? createdCost = null;
+        if (OdometerReading is null && LogReview.UsableOdometer(values.Odometer) is { } odometer)
+        {
+            createdReading = OdometerReading.Create(OwnerId, VehicleId, Date, odometer);
+            (OdometerReading, OdometerReadingId) = (createdReading, createdReading.Id);
+            FilledFromPhoto |= LogValues.Odometer;
+        }
+        if (Volume is null && LogReview.UsableVolume(values.Volume) is { } volume)
+        {
+            Volume = volume;
+            FilledFromPhoto |= LogValues.Volume;
+        }
+        if (Cost is null && LogReview.UsableAmount(values.Total) is { } total && values.Currency is { } currency)
+        {
+            createdCost = Cost.Create(OwnerId, VehicleId, Date, total, currency);
+            (Cost, CostId) = (createdCost, createdCost.Id);
+            FilledFromPhoto |= LogValues.Total;
+        }
+        return new LinkedChanges(createdReading, null, createdCost, null);
+    }
+
+    /// <summary>Moves on once its photos were read (or while some still are); true when the state changed.</summary>
+    public bool FinishReading(bool readingPhotos)
+    {
+        var before = ReviewState;
+        ReviewState = LogReview.AfterReading(ReviewState, Missing, Missing, FilledFromPhoto, readingPhotos);
+        return ReviewState != before;
     }
 
     public void MarkDeleted(DateTimeOffset now)
     {
         if (IsDeleted) throw new DomainException("refueling.alreadyTrashed", "This log is already in the trash.");
         DeletedAt = now;
-        OdometerReading.MarkDeleted(now);
-        Cost.MarkDeleted(now);
+        OdometerReading?.MarkDeleted(now);
+        Cost?.MarkDeleted(now);
     }
 
     public void Restore()
     {
         if (!IsDeleted) throw new DomainException("refueling.notTrashed", "This log is not in the trash.");
         DeletedAt = null;
-        OdometerReading.Restore();
-        Cost.Restore();
+        OdometerReading?.Restore();
+        Cost?.Restore();
     }
 
-    private void Apply(DateOnly date, decimal volume, bool isFullTank, string? note)
+    private (OdometerReading? Created, OdometerReading? Removed) SetReading(DateOnly date, long? odometer)
     {
-        if (volume <= 0) throw new DomainException("refueling.volumePositive", "The volume must be greater than zero.");
+        if (odometer is null)
+        {
+            var removed = OdometerReading;
+            (OdometerReading, OdometerReadingId) = (null, null);
+            return (null, removed);
+        }
+        if (OdometerReading is null)
+        {
+            var created = OdometerReading.Create(OwnerId, VehicleId, date, odometer.Value);
+            (OdometerReading, OdometerReadingId) = (created, created.Id);
+            return (created, null);
+        }
+        OdometerReading.Update(date, odometer.Value);
+        return (null, null);
+    }
+
+    private (Cost? Created, Cost? Removed) SetCost(DateOnly date, decimal? amount, string? currency)
+    {
+        if (amount is null)
+        {
+            var removed = Cost;
+            (Cost, CostId) = (null, null);
+            return (null, removed);
+        }
+        if (Cost is null)
+        {
+            var created = Cost.Create(OwnerId, VehicleId, date, amount.Value, currency);
+            (Cost, CostId) = (created, created.Id);
+            return (created, null);
+        }
+        Cost.Update(date, amount.Value, currency);
+        return (null, null);
+    }
+
+    private void Apply(DateOnly date, decimal? volume, bool isFullTank, string? note)
+    {
+        if (volume is <= 0) throw new DomainException("refueling.volumePositive", "The volume must be greater than zero.");
         var trimmed = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
         if (trimmed is { Length: > MaxNoteLength })
             throw new DomainException("refueling.noteTooLong", $"The note can be at most {MaxNoteLength} characters.", new { Max = MaxNoteLength });

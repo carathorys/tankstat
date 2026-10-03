@@ -20,6 +20,8 @@ import { DataGrid, type GridColumn } from '../../grid/DataGrid.tsx'
 import { useFormat } from '../../i18n/format.ts'
 import { ErrorMessage } from '../../messages.tsx'
 import { RefuelingFormDialog } from '../../RefuelingFormDialog.tsx'
+import { anyAwaiting } from '../../recognition/review.ts'
+import { ReviewBadge } from '../../recognition/ReviewState.tsx'
 
 type Row = RefuelingsQuery['refuelings'][number]
 
@@ -43,7 +45,20 @@ export function RefuelingsPanel({
   const columns = useMemo<GridColumn<Row, RefuelingsQueryVariables, RefuelingSortField>[]>(() => {
     const none = t('common.none')
     return [
-      { id: 'date', label: 'columns.date', hideable: false, mobile: true, sortField: 'DATE', cell: (r) => format.date(r.date) },
+      {
+        id: 'date',
+        label: 'columns.date',
+        hideable: false,
+        mobile: true,
+        sortField: 'DATE',
+        // Always shown, so it also says when a log waits for its photos or for someone to check what they showed.
+        cell: (r) => (
+          <Flex direction="column" align="start" gap="1">
+            {format.date(r.date)}
+            <ReviewBadge state={r.reviewState} />
+          </Flex>
+        ),
+      },
       { id: 'volume', label: 'columns.volume', include: 'withVolume', mobile: true, sortField: 'VOLUME', cell: (r) => (r.volume == null ? none : format.volume(r.volume, units.volume)) },
       { id: 'cost', label: 'columns.cost', include: 'withCost', mobile: true, sortField: 'TOTAL_COST', cell: (r) => (r.totalCost == null || !r.currency ? none : format.money(r.totalCost, r.currency)) },
       {
@@ -89,6 +104,7 @@ export function RefuelingsPanel({
         columns={columns}
         defaultSort={{ column: 'date', direction: 'DESC' }}
         emptyText={t('refuelings.empty')}
+        pollWhile={anyAwaiting}
         toolbar={({ total }) => (
           <Flex align="center" gap="3" wrap="wrap">
             {canLog && (

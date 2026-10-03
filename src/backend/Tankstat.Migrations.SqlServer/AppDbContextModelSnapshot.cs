@@ -610,7 +610,7 @@ namespace Tankstat.Migrations.SqlServer
                         .HasMaxLength(60)
                         .HasColumnType("nvarchar(60)");
 
-                    b.Property<Guid>("CostId")
+                    b.Property<Guid?>("CostId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("CreatedById")
@@ -622,6 +622,9 @@ namespace Tankstat.Migrations.SqlServer
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<int>("FilledFromPhoto")
+                        .HasColumnType("int");
+
                     b.Property<string>("Note")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -631,6 +634,13 @@ namespace Tankstat.Migrations.SqlServer
 
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ReviewState")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasDefaultValue("None");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -643,7 +653,8 @@ namespace Tankstat.Migrations.SqlServer
                     b.HasKey("Id");
 
                     b.HasIndex("CostId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[CostId] IS NOT NULL");
 
                     b.HasIndex("DeletedAt");
 
@@ -667,7 +678,7 @@ namespace Tankstat.Migrations.SqlServer
                         .HasPrecision(9, 3)
                         .HasColumnType("decimal(9,3)");
 
-                    b.Property<Guid>("CostId")
+                    b.Property<Guid?>("CostId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("CreatedById")
@@ -679,6 +690,9 @@ namespace Tankstat.Migrations.SqlServer
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<int>("FilledFromPhoto")
+                        .HasColumnType("int");
+
                     b.Property<bool>("IsFullTank")
                         .HasColumnType("bit");
 
@@ -686,28 +700,37 @@ namespace Tankstat.Migrations.SqlServer
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
-                    b.Property<Guid>("OdometerReadingId")
+                    b.Property<Guid?>("OdometerReadingId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("ReviewState")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasDefaultValue("None");
+
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<decimal>("Volume")
+                    b.Property<decimal?>("Volume")
                         .HasPrecision(9, 3)
                         .HasColumnType("decimal(9,3)");
 
                     b.HasKey("Id");
 
                     b.HasIndex("CostId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[CostId] IS NOT NULL");
 
                     b.HasIndex("DeletedAt");
 
                     b.HasIndex("OdometerReadingId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[OdometerReadingId] IS NOT NULL");
 
                     b.HasIndex("OwnerId");
 
@@ -856,8 +879,7 @@ namespace Tankstat.Migrations.SqlServer
                     b.HasOne("Tankstat.Domain.Measurements.Cost", "Cost")
                         .WithOne()
                         .HasForeignKey("Tankstat.Domain.Vehicles.Expense", "CostId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Tankstat.Domain.Odometers.OdometerReading", "OdometerReading")
                         .WithOne()
@@ -880,14 +902,12 @@ namespace Tankstat.Migrations.SqlServer
                     b.HasOne("Tankstat.Domain.Measurements.Cost", "Cost")
                         .WithOne()
                         .HasForeignKey("Tankstat.Domain.Vehicles.Refueling", "CostId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Tankstat.Domain.Odometers.OdometerReading", "OdometerReading")
                         .WithOne()
                         .HasForeignKey("Tankstat.Domain.Vehicles.Refueling", "OdometerReadingId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
                         .WithMany()

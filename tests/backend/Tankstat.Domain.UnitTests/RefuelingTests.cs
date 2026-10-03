@@ -21,8 +21,8 @@ public class RefuelingTests
 
         Assert.Equal((Owner, Creator, vehicleId, Day), (r.OwnerId, r.CreatedById, r.VehicleId, r.Date));
         Assert.Equal((42.5m, 80.75m, "HUF", 12345L, true, "road trip"), (r.Volume, r.TotalCost, r.Currency, r.Odometer, r.IsFullTank, r.Note));
-        Assert.Equal(r.OdometerReading.Id, r.OdometerReadingId);
-        Assert.Equal(r.Cost.Id, r.CostId);
+        Assert.Equal(r.OdometerReading!.Id, r.OdometerReadingId);
+        Assert.Equal(r.Cost!.Id, r.CostId);
         Assert.Equal((vehicleId, Day, 12345L), (r.OdometerReading.VehicleId, r.OdometerReading.Date, r.OdometerReading.Value));
         Assert.Equal((vehicleId, Day, 80.75m, "HUF"), (r.Cost.VehicleId, r.Cost.Date, r.Cost.Amount, r.Cost.Currency));
     }
@@ -76,8 +76,8 @@ public class RefuelingTests
         r.Update(Day.AddDays(2), 30, 55, "USD", 2000, false, null);
 
         Assert.Equal((Day.AddDays(2), 30m, 55m, "USD", 2000L, false), (r.Date, r.Volume, r.TotalCost, r.Currency, r.Odometer, r.IsFullTank));
-        Assert.Equal((readingId, Day.AddDays(2), 2000L), (r.OdometerReading.Id, r.OdometerReading.Date, r.OdometerReading.Value));
-        Assert.Equal((costId, Day.AddDays(2), 55m, "USD"), (r.Cost.Id, r.Cost.Date, r.Cost.Amount, r.Cost.Currency));
+        Assert.Equal((readingId, Day.AddDays(2), 2000L), (r.OdometerReading!.Id, r.OdometerReading.Date, r.OdometerReading.Value));
+        Assert.Equal((costId, Day.AddDays(2), 55m, "USD"), (r.Cost!.Id, r.Cost.Date, r.Cost.Amount, r.Cost.Currency));
     }
 
     [Fact]
@@ -89,12 +89,12 @@ public class RefuelingTests
         r.MarkDeleted(now);
         Assert.True(r.IsDeleted);
         Assert.Equal(now, r.DeletedAt);
-        Assert.True(r.OdometerReading.IsDeleted);
-        Assert.True(r.Cost.IsDeleted);
+        Assert.True(r.OdometerReading!.IsDeleted);
+        Assert.True(r.Cost!.IsDeleted);
 
         r.Restore();
         Assert.False(r.IsDeleted);
-        Assert.False(r.OdometerReading.IsDeleted);
+        Assert.False(r.OdometerReading!.IsDeleted);
         Assert.False(r.Cost.IsDeleted);
     }
 
@@ -107,6 +107,85 @@ public class RefuelingTests
         r.MarkDeleted(DateTimeOffset.UtcNow);
         Assert.Equal("refueling.alreadyTrashed", Assert.Throws<DomainException>(() => r.MarkDeleted(DateTimeOffset.UtcNow)).Key);
         Assert.Equal("refueling.trashedCannotEdit", Assert.Throws<DomainException>(() => r.Update(Day, 1, 1, "EUR", 1, true, null)).Key);
+    }
+
+    private static Refueling Waiting(Guid vehicle, long? odometer = null, decimal? volume = null, decimal? total = null) =>
+        Refueling.Create(Owner, Creator, vehicle, Day, volume, total is { } t ? Cost.Create(Owner, vehicle, Day, t, "EUR") : null,
+            odometer is { } o ? OdometerReading.Create(Owner, vehicle, Day, o) : null, isFullTank: true, readingPhotos: true);
+
+    [Fact]
+    public void ValuesMayBeLeftEmpty_OnlyWhileAPhotoIsBeingRead()
+    {
+        var vehicle = Guid.NewGuid();
+
+        var error = Assert.Throws<DomainException>(() => Refueling.Create(Owner, Creator, vehicle, Day, 10, Cost.Create(Owner, vehicle, Day, 20, "EUR"), null, true));
+        var waiting = Waiting(vehicle, volume: 10, total: 20);
+        var complete = Refueling.Create(Owner, Creator, vehicle, Day, 10, Cost.Create(Owner, vehicle, Day, 20, "EUR"), OdometerReading.Create(Owner, vehicle, Day, 5), true, readingPhotos: true);
+
+        Assert.Equal("log.valuesRequired", error.Key);
+        Assert.Equal((ReviewState.AwaitingPhotos, LogValues.Odometer, (long?)null), (waiting.ReviewState, waiting.Missing, waiting.Odometer));
+        Assert.Equal(ReviewState.None, complete.ReviewState); // nothing left for the photo to fill in
+    }
+
+    [Fact]
+    public void FillFromPhoto_FillsOnlyEmptyValues_AndAsksForAReview()
+    {
+        var vehicle = Guid.NewGuid();
+        var log = Waiting(vehicle, volume: 40);
+
+        var changes = log.FillFromPhoto(new PhotoValues(Odometer: 123456, Volume: 99, Total: 80, Currency: "HUF"));
+        var moved = log.FinishReading(readingPhotos: false);
+
+        Assert.Equal((123456L, 40m, 80m, "HUF"), (log.Odometer, log.Volume, log.TotalCost, log.Currency));
+        Assert.Equal(LogValues.Odometer | LogValues.Total, log.FilledFromPhoto);
+        Assert.Same(log.OdometerReading, changes.CreatedReading);
+        Assert.Same(log.Cost, changes.CreatedCost);
+        Assert.Equal((vehicle, Day), (log.OdometerReading!.VehicleId, log.OdometerReading.Date));
+        Assert.True(moved);
+        Assert.Equal(ReviewState.NeedsReview, log.ReviewState);
+    }
+
+    [Fact]
+    public void FinishReading_WaitsWhileAPhotoIsRead_ThenTellsWhatIsStillMissing()
+    {
+        var log = Waiting(Guid.NewGuid());
+        log.FillFromPhoto(new PhotoValues(Odometer: 1000, Volume: null, Total: null, Currency: null));
+
+        Assert.False(log.FinishReading(readingPhotos: true));
+        Assert.Equal(ReviewState.AwaitingPhotos, log.ReviewState);
+
+        Assert.True(log.FinishReading(readingPhotos: false));
+        Assert.Equal((ReviewState.Incomplete, LogValues.Volume | LogValues.Total), (log.ReviewState, log.Missing));
+    }
+
+    [Fact]
+    public void FillFromPhoto_LeavesOutValuesALogCannotTake_AndDoesNothingOnceNotWaiting()
+    {
+        var log = Waiting(Guid.NewGuid());
+
+        log.FillFromPhoto(new PhotoValues(Odometer: -1, Volume: 0, Total: -3, Currency: "EUR"));
+        Assert.Equal(LogValues.None, log.FilledFromPhoto);
+
+        log.Update(Day, 10, 20, "EUR", 300, true, null);
+        Assert.Equal(LinkedChanges.None, log.FillFromPhoto(new PhotoValues(999, 99, 99, "EUR")));
+        Assert.Equal(300L, log.Odometer);
+    }
+
+    [Fact]
+    public void Update_ByAPerson_FinishesTheReview_AndCanLetGoOfValuesOnlyWhileReading()
+    {
+        var log = Waiting(Guid.NewGuid());
+        log.FillFromPhoto(new PhotoValues(500, 10, 20, "EUR"));
+        log.FinishReading(false);
+
+        var none = log.Update(Day, 10, 20, "EUR", 500, true, null);
+        Assert.Equal((ReviewState.None, LogValues.None, LinkedChanges.None), (log.ReviewState, log.FilledFromPhoto, none));
+
+        Assert.Equal("log.valuesRequired", Assert.Throws<DomainException>(() => log.Update(Day, 10, null, null, 500, true, null)).Key);
+        var cost = log.Cost;
+        var removed = log.Update(Day, 10, null, null, 500, true, null, readingPhotos: true);
+        Assert.Same(cost, removed.RemovedCost);
+        Assert.Equal(ReviewState.AwaitingPhotos, log.ReviewState);
     }
 }
 

@@ -7,5 +7,6 @@
   "date": ["datum", "kelt", "idopont"],
   "titleNoise": ["nyugta", "adoszam", "szamla", "penztar", "penztaros", "telefon", "tel", "nyugtaszam", "koszonjuk", "viszontlatasra", "bankkartya", "osszesen", "afa", "datum", "cim"],
   "odometer": ["km", "odo"],
-  "trip": ["trip", "napi", "uthossz"]
+  "trip": ["trip", "napi", "uthossz"],
+  "countdown": ["mulva", "szerviz", "olajcsere", "kovetkezo", "hatra", "hatotav", "hatotavolsag"]
 }

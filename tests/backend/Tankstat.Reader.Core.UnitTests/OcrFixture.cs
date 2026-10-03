@@ -4,7 +4,8 @@ namespace Tankstat.Reader.Core.UnitTests;
 
 /// <summary>
 /// Builds OCR pages from text laid out like a receipt: one string per line, words left to right; a tab sends the rest of the line to
-/// the right edge (right-aligned amounts); a leading "!" makes the line twice as large (bold totals, big odometer digits).
+/// the right edge (right-aligned amounts); a leading "!" makes the line twice as large (bold totals, big odometer digits); a leading
+/// "?" makes it one the OCR doubts (confidence 30).
 /// </summary>
 internal static class OcrFixture
 {
@@ -22,14 +23,16 @@ internal static class OcrFixture
         foreach (var raw in lines)
         {
             var big = raw.StartsWith('!');
+            var doubted = raw.StartsWith('?');
             var scale = big ? 2 : 1;
-            var parts = (big ? raw[1..] : raw).Split('\t');
-            Place(words, parts[0], 10, y, scale, confidence);
+            var sure = doubted ? 30 : confidence;
+            var parts = (big || doubted ? raw[1..] : raw).Split('\t');
+            Place(words, parts[0], 10, y, scale, sure);
             if (parts.Length > 1)
             {
                 var right = parts[1].Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 var width = (right.Sum(w => w.Length) + right.Length - 1) * CharWidth * scale;
-                Place(words, parts[1], Width - 10 - width, y, scale, confidence);
+                Place(words, parts[1], Width - 10 - width, y, scale, sure);
             }
             y += Height * scale + Gap;
         }
