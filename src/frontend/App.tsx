@@ -8,6 +8,7 @@ import { Navigate, Route, Routes, useLocation, useSearchParams } from 'react-rou
 import { useMediaQuery } from './hooks/useMediaQuery.ts'
 import { useStoredState } from './hooks/useStoredState.ts'
 import { SessionDocument, type SessionQuery } from './gql/generated.ts'
+import { ErrorBoundary } from './ErrorBoundary.tsx'
 import { LoginView } from './LoginView.tsx'
 import { ErrorMessage } from './messages.tsx'
 import { NoticeBanner } from './NoticeBanner.tsx'
@@ -103,26 +104,29 @@ function Content({ data }: { data: SessionQuery }) {
 
   return (
     // A short fade/slide-in on every page change (honours the user's reduced-motion setting).
+    // The key makes the boundary start fresh with every page, so one that crashed does not hold the next one hostage.
     <motion.div key={pathname} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
-      <Suspense
-        fallback={
-          <Text as="p" role="status">
-            {t('app.loading')}
-          </Text>
-        }
-      >
-        <Routes>
-        <Route path="/" element={<WelcomePage isAdmin={isAdmin} />} />
-        <Route path="/vehicles" element={isAdmin ? <VehiclesPage /> : <Navigate to="/" replace />} />
-        <Route path="/vehicles/:id/*" element={<VehiclePage isAdmin={isAdmin} />} />
-        <Route path="/import" element={<ImportPage />} />
-        <Route path="/trash" element={<TrashPage />} />
-        <Route path="/notifications" element={<NotificationsPage />} />
-        <Route path="/account" element={<AccountPage mode={mode} user={user} />} />
-        <Route path="/admin" element={isAdmin ? <AdminPanel /> : <Navigate to="/" replace />} />
-        <Route path="*" element={<Text as="p">{t('app.notFound')}</Text>} />
-        </Routes>
-      </Suspense>
+      <ErrorBoundary>
+        <Suspense
+          fallback={
+            <Text as="p" role="status">
+              {t('app.loading')}
+            </Text>
+          }
+        >
+          <Routes>
+            <Route path="/" element={<WelcomePage isAdmin={isAdmin} />} />
+            <Route path="/vehicles" element={isAdmin ? <VehiclesPage /> : <Navigate to="/" replace />} />
+            <Route path="/vehicles/:id/*" element={<VehiclePage isAdmin={isAdmin} />} />
+            <Route path="/import" element={<ImportPage />} />
+            <Route path="/trash" element={<TrashPage />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/account" element={<AccountPage mode={mode} user={user} />} />
+            <Route path="/admin" element={isAdmin ? <AdminPanel /> : <Navigate to="/" replace />} />
+            <Route path="*" element={<Text as="p">{t('app.notFound')}</Text>} />
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
     </motion.div>
   )
 }

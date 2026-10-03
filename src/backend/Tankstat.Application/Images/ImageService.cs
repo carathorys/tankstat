@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Photos;
@@ -23,7 +24,8 @@ public sealed record ImageContent(Stream Content, string ContentType, long SizeB
 /// may see the log for its photos.
 /// </summary>
 public sealed class ImageService(
-    IImageStore store, IImageRepository images, IUserRepository users, IVehicleRepository vehicles, AccessService access, LogPhotoAccess logPhotos, IPhotoDraftRepository drafts, TimeProvider clock)
+    IImageStore store, IImageRepository images, IUserRepository users, IVehicleRepository vehicles, AccessService access, LogPhotoAccess logPhotos, IPhotoDraftRepository drafts, TimeProvider clock,
+    ILogger<ImageService> logger)
 {
     public async Task<Guid> SetAvatarAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
     {
@@ -34,6 +36,7 @@ public sealed class ImageService(
         user.SetAvatar(id);
         await users.UpdateAsync(user, ct);
         await DeleteQuietlyAsync(previous, ct);
+        logger.LogDebug("User {UserId} set their avatar to image {ImageId}", user.Id, id);
         return id;
     }
 
@@ -44,6 +47,7 @@ public sealed class ImageService(
         user.SetAvatar(null);
         await users.UpdateAsync(user, ct);
         await DeleteQuietlyAsync(previous, ct);
+        logger.LogDebug("User {UserId} removed their avatar", user.Id);
     }
 
     public async Task<Guid> SetVehiclePictureAsync(Guid vehicleId, ReadOnlyMemory<byte> data, CancellationToken ct)
@@ -55,6 +59,7 @@ public sealed class ImageService(
         vehicle.SetPicture(id);
         await vehicles.UpdateAsync(vehicle, ct);
         await DeleteQuietlyAsync(previous, ct);
+        logger.LogDebug("The picture of vehicle {VehicleId} is now image {ImageId}", vehicle.Id, id);
         return id;
     }
 
@@ -65,6 +70,7 @@ public sealed class ImageService(
         vehicle.SetPicture(null);
         await vehicles.UpdateAsync(vehicle, ct);
         await DeleteQuietlyAsync(previous, ct);
+        logger.LogDebug("The picture of vehicle {VehicleId} was removed", vehicle.Id);
     }
 
     /// <summary>The picture if the current user may see it; null for unknown pictures and for ones they may not see.</summary>
@@ -126,7 +132,8 @@ public sealed class ImageService(
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
-                // an orphaned folder is harmless; nothing can reach it any more
+                // An orphaned folder is harmless, nothing can reach it any more; but it is disk space nobody frees unless someone is told.
+                logger.LogWarning(e, "The upload folder {Folder} could not be removed; its files stay behind", folder);
             }
         }
     }

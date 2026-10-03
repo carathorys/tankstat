@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Notifications;
 using Tankstat.Application.Users;
@@ -9,7 +10,7 @@ namespace Tankstat.Application.Access;
 
 /// <summary>Administrator-only management of the instance-wide default and per-user grants; the users whose access changed are notified.</summary>
 public sealed class AccessAdminService(
-    AccessService access, IAccessSettingsRepository settings, IAccessGrantRepository grants, IUserRepository users, Notifier notifier)
+    AccessService access, IAccessSettingsRepository settings, IAccessGrantRepository grants, IUserRepository users, Notifier notifier, ILogger<AccessAdminService> logger)
 {
     public async Task<AccessSettings> GetSettingsAsync(CancellationToken ct)
     {
@@ -27,6 +28,7 @@ public sealed class AccessAdminService(
 
         if (before != level)
         {
+            logger.LogInformation("Administrator {AdminId} changed the default access level from {Before} to {After}", admin.Id, before, level);
             // Administrators can access everything anyway, so only the others are affected: one notification each, nothing per vehicle.
             var affected = (await users.ListAsync(ct)).Where(u => !u.IsAdmin && !u.IsDisabled);
             await notifier.NotifyAsync(admin.Id, affected.Select(u =>
@@ -64,7 +66,9 @@ public sealed class AccessAdminService(
             await grants.UpdateAsync(existing, ct);
         }
 
-        if (before != level) await NotifyGrantAsync(admin, owner, grantee, before, level, ct);
+        if (before == level) return;
+        logger.LogInformation("Administrator {AdminId} set the access of user {GranteeId} to the data of user {OwnerId} from {Before} to {After}", admin.Id, grantee.Id, owner.Id, before, level);
+        await NotifyGrantAsync(admin, owner, grantee, before, level, ct);
     }
 
     private Task NotifyGrantAsync(Principal admin, User owner, User grantee, AccessLevel before, AccessLevel after, CancellationToken ct) =>

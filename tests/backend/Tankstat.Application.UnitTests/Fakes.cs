@@ -26,6 +26,7 @@ using Tankstat.Domain.Recognition;
 using Tankstat.Domain.Recurring;
 using Tankstat.Domain.Users;
 using Tankstat.Domain.Vehicles;
+using Tankstat.TestSupport;
 
 namespace Tankstat.Application.UnitTests;
 
@@ -346,12 +347,15 @@ internal sealed class FakeRecognitionProvider : IRecognitionProvider
 {
     public bool Configured { get; set; } = true;
     public bool Healthy { get; set; } = true;
+
+    /// <summary>When set, the health check throws it, as a provider that knows why it is not healthy does.</summary>
+    public Exception? HealthFailure { get; set; }
     public int HealthChecks { get; private set; }
     public Func<RecognitionRequest, RecognitionResult> Answer { get; set; } = _ => new RecognitionResult("fake-1", DocumentKind.Unknown, []);
     public List<RecognitionRequest> Requests { get; } = [];
     public string Name => "fake";
     public bool IsConfigured => Configured;
-    public Task<bool> IsHealthyAsync(CancellationToken ct) { HealthChecks++; return Task.FromResult(Healthy); }
+    public Task<bool> IsHealthyAsync(CancellationToken ct) { HealthChecks++; return HealthFailure is { } e ? Task.FromException<bool>(e) : Task.FromResult(Healthy); }
     public Task<RecognitionResult> ReadAsync(RecognitionRequest request, CancellationToken ct)
     {
         Requests.Add(request);
@@ -376,6 +380,7 @@ internal sealed class InMemoryImageStore : IImageStore
     public Task<Stream?> OpenReadAsync(StoredImage image, CancellationToken ct) => Task.FromResult<Stream?>(Files.TryGetValue(image.Id, out var d) ? new MemoryStream(d) : null);
     public Task DeleteAsync(StoredImage image, CancellationToken ct) { Files.Remove(image.Id); Folders.Remove(image.Id); return Task.CompletedTask; }
     public bool FailMoves { get; set; }
+    public bool FailFolderDeletes { get; set; }
     public Task MoveAsync(StoredImage image, string folder, CancellationToken ct)
     {
         if (FailMoves) throw new IOException("disk full");
@@ -384,6 +389,7 @@ internal sealed class InMemoryImageStore : IImageStore
     }
     public Task DeleteFolderAsync(string folder, CancellationToken ct)
     {
+        if (FailFolderDeletes) throw new IOException("the folder is locked");
         foreach (var id in Folders.Where(f => f.Value == folder || (f.Value?.StartsWith(folder + "/") ?? false)).Select(f => f.Key).ToList())
         {
             Files.Remove(id);
@@ -482,6 +488,9 @@ internal sealed class World
     public InMemoryPhotoDrafts PhotoDrafts { get; } = new();
     public InMemorySettings Settings { get; } = new();
     public FakeCurrentUser Current { get; } = new();
+
+    /// <summary>Everything the services logged (they all write to this one capture).</summary>
+    public CapturedLog Log { get; } = new();
     public FakeEmail Email { get; }
     public AuthOptions Options { get; }
     public VehicleDefaultsOptions Defaults { get; } = new() { Currency = "HUF" };
@@ -512,9 +521,9 @@ internal sealed class World
     public InMemoryPhotoReadings Readings { get; } = new();
     public FakeRecognitionSignal Signal { get; } = new();
     public RecognitionAvailability Availability { get; }
-    public RecognitionService Recognition => new(Availability, new RecognitionSetup(RecognitionOptions.Create()), Readings, PhotoDrafts, RefuelingService, Defaults.Create(), Signal, Access, Clock);
-    public PhotoReadingProcessor Processor => new(Recognizer, Availability, new RecognitionSetup(RecognitionOptions.Create()), Readings, Images, ImageStore, Clock);
-    public NotificationService NotificationService => new(Access, Notifications, new RecurringNotificationSync(Access, Recurring, Vehicles, RecurringService, Notifier), NotificationOptions.Create(), Clock); // a new one per use, like one per request (it syncs once)
+    public RecognitionService Recognition => new(Availability, new RecognitionSetup(RecognitionOptions.Create()), Readings, PhotoDrafts, RefuelingService, Defaults.Create(), Signal, Access, Clock, Log.For<RecognitionService>());
+    public PhotoReadingProcessor Processor => new(Recognizer, Availability, new RecognitionSetup(RecognitionOptions.Create()), Readings, Images, ImageStore, Clock, Log.For<PhotoReadingProcessor>());
+    public NotificationService NotificationService => new(Access, Notifications, new RecurringNotificationSync(Access, Recurring, Vehicles, RecurringService, Notifier), NotificationOptions.Create(), Clock, Log.For<NotificationService>()); // a new one per use, like one per request (it syncs once)
 
     public World(AuthMode mode = AuthMode.Standalone, bool smtp = false, Action<AuthOptions>? configure = null)
     {
@@ -529,23 +538,23 @@ internal sealed class World
         LogGuard = new LogAccessGuard(Vehicles, Access);
         ImportSessions = new ImportSessionStore(Clock);
         Odometer = new OdometerService(new InMemoryReadings(Refuelings, Expenses));
-        var resets = new PasswordResetService(Tokens, Users, Email, options, Clock);
+        var resets = new PasswordResetService(Tokens, Users, Email, options, Clock, Log.For<PasswordResetService>());
         var logPhotoAccess = new LogPhotoAccess(LogGuard, Expenses, Refuelings, LogPhotos);
-        ImageService = new ImageService(ImageStore, Images, Users, Vehicles, Access, logPhotoAccess, PhotoDrafts, Clock);
-        Drafts = new PhotoDraftService(LogGuard, PhotoDrafts, ImageService, Access, Clock);
-        Photos = new LogPhotoService(logPhotoAccess, LogPhotos, ImageService, Drafts, Access, Clock);
-        VehicleService = new VehicleService(Vehicles, Refuelings, Access, Odometer, ImageService, Clock);
-        RefuelingService = new RefuelingService(Vehicles, LogGuard, Refuelings, Access, Odometer, Photos, Clock);
-        ExpenseService = new ExpenseService(LogGuard, Expenses, Access, Odometer, Photos, Clock);
-        RecurringService = new RecurringExpenseService(LogGuard, Recurring, Access, Odometer, ExpenseService, Defaults.Create(), Clock);
-        Imports = new ImportService([new FuelioCsvParser()], ImportSessions, Access, VehicleService, RefuelingService, ExpenseService, RecurringService, Refuelings, Expenses, Defaults.Create());
+        ImageService = new ImageService(ImageStore, Images, Users, Vehicles, Access, logPhotoAccess, PhotoDrafts, Clock, Log.For<ImageService>());
+        Drafts = new PhotoDraftService(LogGuard, PhotoDrafts, ImageService, Access, Clock, Log.For<PhotoDraftService>());
+        Photos = new LogPhotoService(logPhotoAccess, LogPhotos, ImageService, Drafts, Access, Clock, Log.For<LogPhotoService>());
+        VehicleService = new VehicleService(Vehicles, Refuelings, Access, Odometer, ImageService, Clock, Log.For<VehicleService>());
+        RefuelingService = new RefuelingService(Vehicles, LogGuard, Refuelings, Access, Odometer, Photos, Clock, Log.For<RefuelingService>());
+        ExpenseService = new ExpenseService(LogGuard, Expenses, Access, Odometer, Photos, Clock, Log.For<ExpenseService>());
+        RecurringService = new RecurringExpenseService(LogGuard, Recurring, Access, Odometer, ExpenseService, Defaults.Create(), Clock, Log.For<RecurringExpenseService>());
+        Imports = new ImportService([new FuelioCsvParser()], ImportSessions, Access, VehicleService, RefuelingService, ExpenseService, RecurringService, Refuelings, Expenses, Defaults.Create(), Log.For<ImportService>());
         Stats = new StatsService(Vehicles, new InMemoryStats(Refuelings, Expenses), Access, Clock);
-        ChartService = new ChartService(Vehicles, Charts, Access, Clock);
-        Sharing = new ResourceSharingService(Vehicles, ResourceGrants, Users, Access, Notifier);
-        Auth = new AuthService(Users, new FakeHasher(), resets, Access, options, Clock);
-        UserService = new UserService(Access, Users, UserData, resets, new FakeHasher(), ImageService, ImportSessions, options);
-        AccessAdmin = new AccessAdminService(Access, Settings, Grants, Users, Notifier);
-        Availability = new RecognitionAvailability(Recognizer, Clock);
+        ChartService = new ChartService(Vehicles, Charts, Access, Clock, Log.For<ChartService>());
+        Sharing = new ResourceSharingService(Vehicles, ResourceGrants, Users, Access, Notifier, Log.For<ResourceSharingService>());
+        Auth = new AuthService(Users, new FakeHasher(), resets, Access, options, Clock, Log.For<AuthService>());
+        UserService = new UserService(Access, Users, UserData, resets, new FakeHasher(), ImageService, ImportSessions, options, Log.For<UserService>());
+        AccessAdmin = new AccessAdminService(Access, Settings, Grants, Users, Notifier, Log.For<AccessAdminService>());
+        Availability = new RecognitionAvailability(Recognizer, Clock, Log.For<RecognitionAvailability>());
     }
 
     public User AddUser(string email, bool admin = false, string password = "password-123456")

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Tankstat.Application.Images;
 using Tankstat.Domain.Recognition;
 
@@ -20,7 +21,7 @@ public sealed record ProcessedReading(Guid Id, ReadingOutcome Outcome, string? R
 /// </summary>
 public sealed class PhotoReadingProcessor(
     IRecognitionProvider provider, RecognitionAvailability availability, RecognitionSetup setup, IPhotoReadingRepository readings,
-    IImageRepository images, IImageStore store, TimeProvider clock)
+    IImageRepository images, IImageStore store, TimeProvider clock, ILogger<PhotoReadingProcessor> logger)
 {
     /// <summary>
     /// An attempt this old was cut short (the app stopped while reading): it is queued again. At least five minutes, and always longer than
@@ -44,6 +45,7 @@ public sealed class PhotoReadingProcessor(
         {
             stale.Abandon(now);
             await readings.SaveAsync(stale, ct);
+            logger.LogInformation("The reading of photo {Id} was cut short and is {Outcome}", stale.Id, stale.Status == ReadingStatus.Failed ? "given up after its last attempt" : "queued again");
         }
 
         var due = await readings.ListDueAsync(now, setup.Options.MaxConcurrent, ct);

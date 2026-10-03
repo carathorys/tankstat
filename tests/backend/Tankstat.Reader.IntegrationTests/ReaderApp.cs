@@ -2,9 +2,11 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Tankstat.Reader.Core.Ocr;
 using Tankstat.Reader.Core.UnitTests;
 using Tankstat.Reader.Ocr;
+using Tankstat.TestSupport;
 
 namespace Tankstat.Reader.IntegrationTests;
 
@@ -21,6 +23,7 @@ internal sealed class ReaderApp : IDisposable
         Factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(all));
+            b.ConfigureLogging(l => l.AddProvider(Log));
             b.ConfigureServices(s =>
             {
                 if (realOcr) return;
@@ -31,6 +34,9 @@ internal sealed class ReaderApp : IDisposable
     }
 
     public WebApplicationFactory<Program> Factory { get; }
+
+    /// <summary>Everything the reader logged.</summary>
+    public CapturedLog Log { get; } = new();
     public FakeOcr Ocr { get; } = new();
     public FakeStatus Status { get; } = new();
 

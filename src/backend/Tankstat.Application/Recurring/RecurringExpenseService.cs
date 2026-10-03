@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
@@ -33,7 +34,8 @@ public sealed record RecurringItem(RecurringExpense Item, RecurrenceStatus Statu
 /// odometer rule applies, and starts the next interval.
 /// </summary>
 public sealed class RecurringExpenseService(
-    LogAccessGuard guard, IRecurringExpenseRepository items, AccessService access, OdometerService odometer, ExpenseService expenses, IOptions<VehicleDefaultsOptions> defaults, TimeProvider clock)
+    LogAccessGuard guard, IRecurringExpenseRepository items, AccessService access, OdometerService odometer, ExpenseService expenses, IOptions<VehicleDefaultsOptions> defaults, TimeProvider clock,
+    ILogger<RecurringExpenseService> logger)
 {
     private DateOnly Today => DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
     private DateOnly LatestAllowedDate => Today.AddDays(1); // a day ahead covers every time zone, like the expenses
@@ -87,6 +89,7 @@ public sealed class RecurringExpenseService(
             vehicle.OwnerId, creator.Id, vehicle.Id, input.Title, input.Category, input.Note, input.Kind, input.IntervalMonths, input.IntervalDistance,
             start, startOdometer, input.WarnDays ?? defaults.Value.RecurringWarnDays, input.WarnDistance ?? defaults.Value.RecurringWarnDistance, clock.GetUtcNow());
         await items.AddAsync(item, ct);
+        logger.LogDebug("User {UserId} added recurring expense {RecurringId} for vehicle {VehicleId}", creator.Id, item.Id, vehicle.Id);
         return await WithStatusAsync(item, ct);
     }
 
@@ -100,10 +103,15 @@ public sealed class RecurringExpenseService(
             input.Title, input.Category, input.Note, input.Kind, input.IntervalMonths, input.IntervalDistance, lastDone, input.LastDoneOdometer,
             input.WarnDays ?? item.WarnDays, input.WarnDistance ?? item.WarnDistance);
         await items.UpdateAsync(item, ct);
+        logger.LogDebug("Recurring expense {RecurringId} updated", item.Id);
         return await WithStatusAsync(item, ct);
     }
 
-    public async Task DeleteAsync(Guid id, CancellationToken ct) => await items.RemoveAsync(await EditableAsync(id, ct), ct);
+    public async Task DeleteAsync(Guid id, CancellationToken ct)
+    {
+        await items.RemoveAsync(await EditableAsync(id, ct), ct);
+        logger.LogDebug("Recurring expense {RecurringId} deleted", id);
+    }
 
     /// <summary>Starts the next interval from the given day and odometer, and (when asked) logs what it cost as an expense.</summary>
     public async Task<RecurringItem> MarkDoneAsync(Guid id, MarkDoneInput input, CancellationToken ct)
@@ -127,16 +135,26 @@ public sealed class RecurringExpenseService(
         {
             // The expense and the schedule are saved separately, so undo the expense (to the trash) when the schedule could not move on:
             // the schedule is then still due, and a second try does not log the cost twice.
-            if (logged is not null) await TryTrashAsync(logged.Id);
+            if (logged is not null) await TryTrashAsync(logged.Id, item.Id);
             throw;
         }
+        logger.LogDebug("Recurring expense {RecurringId} marked done (expense logged: {ExpenseId})", item.Id, logged?.Id);
         return await WithStatusAsync(item, ct);
     }
 
-    private async Task TryTrashAsync(Guid expenseId)
+    private async Task TryTrashAsync(Guid expenseId, Guid recurringId)
     {
-        try { await expenses.DeleteAsync(expenseId, CancellationToken.None); }
-        catch { /* best effort: the original failure is the one to report */ }
+        try
+        {
+            await expenses.DeleteAsync(expenseId, CancellationToken.None);
+        }
+        catch (Exception e)
+        {
+            // best effort: the original failure is the one to report, but nobody else will ever hear that this cost stays logged
+            logger.LogWarning(e, "The expense {ExpenseId} logged for recurring expense {RecurringId} could not be moved to the trash after the schedule failed to move on", expenseId, recurringId);
+            return;
+        }
+        logger.LogWarning("Recurring expense {RecurringId} could not move on; the expense {ExpenseId} logged for it was moved to the trash", recurringId, expenseId);
     }
 
     private void CheckDate(DateOnly date)

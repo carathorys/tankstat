@@ -30,7 +30,11 @@ internal sealed class ProxyHeaderAuthenticationHandler(
 
         // A single, non-empty value only: multiple values mean the header was appended to by something else.
         var subject = user.Count == 1 ? user[0]?.Trim() : null;
-        if (string.IsNullOrEmpty(subject) || subject.Contains(',')) return AuthenticateResult.Fail("Invalid user header.");
+        if (string.IsNullOrEmpty(subject) || subject.Contains(','))
+        {
+            Logger.LogWarning("Rejected the {Header} header: it must carry exactly one user", config.UserHeader); // the name of the header, never its value
+            return AuthenticateResult.Fail("Invalid user header.");
+        }
 
         var email = string.IsNullOrEmpty(config.EmailHeader) ? null : Request.Headers[config.EmailHeader].FirstOrDefault();
         try

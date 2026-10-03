@@ -5,35 +5,19 @@ using Microsoft.Extensions.Logging;
 using Tankstat.Application;
 using Tankstat.Application.Recognition;
 using Tankstat.Infrastructure.Recognition;
+using Tankstat.TestSupport;
 
 namespace Tankstat.Infrastructure.UnitTests;
 
 /// <summary>The Recognition settings as the app binds them: photo reading is optional, so no setting may ever stop the app.</summary>
 public class RecognitionSetupTests
 {
-    private sealed class Captured : ILoggerProvider
-    {
-        public List<(LogLevel Level, string Message)> Entries { get; } = [];
-        public ILogger CreateLogger(string category) => new Logger(this);
-        public void Dispose() { }
-
-        private sealed class Logger(Captured owner) : ILogger
-        {
-            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-            public bool IsEnabled(LogLevel level) => true;
-            public void Log<TState>(LogLevel level, EventId id, TState state, Exception? error, Func<TState, Exception?, string> format)
-            {
-                lock (owner.Entries) owner.Entries.Add((level, format(state, error)));
-            }
-        }
-    }
-
-    private static (ServiceProvider Services, Captured Log) Build(Dictionary<string, string?> settings)
+    private static (ServiceProvider Services, CapturedLog Log) Build(Dictionary<string, string?> settings)
     {
         var all = new Dictionary<string, string?> { ["Database:Provider"] = "Sqlite", ["Database:ConnectionString"] = "Data Source=unused.db" };
         foreach (var (key, value) in settings) all[key] = value;
         var config = new ConfigurationBuilder().AddInMemoryCollection(all).Build();
-        var log = new Captured();
+        var log = new CapturedLog();
         var services = new ServiceCollection().AddLogging(b => b.AddProvider(log)).AddApplication(config).AddInfrastructure(config).BuildServiceProvider();
         return (services, log);
     }

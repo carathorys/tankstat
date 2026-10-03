@@ -5,7 +5,7 @@ import { graphql, http, HttpResponse } from 'msw'
 import { MotionConfig } from 'motion/react'
 import type { ReactElement } from 'react'
 import { MemoryRouter } from 'react-router'
-import { vi } from 'vitest'
+import { onTestFinished, vi } from 'vitest'
 import { createApolloClient } from '../../src/frontend/apolloClient.ts'
 import type { AuthMode, NotificationFieldsFragment, SessionQuery } from '../../src/frontend/gql/generated.ts'
 
@@ -20,6 +20,17 @@ export const renderWithApollo = (ui: ReactElement, route = '/') =>
       </Theme>
     </ApolloProvider>,
   )
+
+/**
+ * Silences `console.error` for the rest of the test and gives the spy back: React prints a component that throws, and the error link of
+ * the Apollo client prints a failed request, so a test that provokes either on purpose would fill the run with them. The console is
+ * restored when the test ends, whether it passed or not.
+ */
+export function silenceConsoleError() {
+  const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  onTestFinished(() => spy.mockRestore())
+  return spy
+}
 
 type SessionUser = NonNullable<SessionQuery['session']['user']>
 type Notice = SessionQuery['notices'][number]

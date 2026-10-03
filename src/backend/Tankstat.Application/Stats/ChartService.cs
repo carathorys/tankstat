@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Vehicles;
@@ -14,7 +15,7 @@ public sealed record ChartInput(string Title, ChartConfig Config, bool Shared);
 /// The charts users compose for a vehicle's dashboard. Anyone who can view the vehicle's logs may make charts for themselves; sharing a chart
 /// with everyone who sees the vehicle needs Edit access to its logs. A chart can be changed by its creator (and deleted by anyone with Delete access).
 /// </summary>
-public sealed class ChartService(IVehicleRepository vehicles, IVehicleChartRepository charts, AccessService access, TimeProvider clock)
+public sealed class ChartService(IVehicleRepository vehicles, IVehicleChartRepository charts, AccessService access, TimeProvider clock, ILogger<ChartService> logger)
 {
     public const int MaxPerUserAndVehicle = 30;
 
@@ -35,6 +36,7 @@ public sealed class ChartService(IVehicleRepository vehicles, IVehicleChartRepos
 
         var chart = VehicleChart.Create(vehicleId, user.Id, input.Title, input.Config, input.Shared, clock.GetUtcNow());
         await charts.AddAsync(chart, ct);
+        logger.LogDebug("User {UserId} created chart {ChartId} for vehicle {VehicleId}", user.Id, chart.Id, vehicleId);
         return chart;
     }
 
@@ -44,6 +46,7 @@ public sealed class ChartService(IVehicleRepository vehicles, IVehicleChartRepos
         RequireShareRight(input.Shared, level);
         chart.Update(input.Title, input.Config, input.Shared);
         await charts.UpdateAsync(chart, ct);
+        logger.LogDebug("Chart {ChartId} updated", chart.Id);
         return chart;
     }
 
@@ -51,6 +54,7 @@ public sealed class ChartService(IVehicleRepository vehicles, IVehicleChartRepos
     {
         var (chart, _, _) = await EditableAsync(id, ct, allowDeleteLevel: true);
         await charts.RemoveAsync(chart, ct);
+        logger.LogDebug("Chart {ChartId} deleted", chart.Id);
     }
 
     /// <summary>Whether the current user may change this chart (the UI shows the buttons accordingly).</summary>

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Tankstat.Application.Access;
 using Tankstat.Application.Images;
 using Tankstat.Domain;
@@ -10,7 +11,8 @@ using Tankstat.Domain.Vehicles;
 namespace Tankstat.Application.Vehicles;
 
 public sealed class VehicleService(
-    IVehicleRepository vehicles, IRefuelingRepository refuelings, AccessService access, OdometerService odometer, ImageService images, TimeProvider clock)
+    IVehicleRepository vehicles, IRefuelingRepository refuelings, AccessService access, OdometerService odometer, ImageService images, TimeProvider clock,
+    ILogger<VehicleService> logger)
 {
     /// <summary>One page of the full vehicle list: an administrator feature, like the rest of the administration.</summary>
     public async Task<IReadOnlyList<Vehicle>> ListAsync(VehicleQuery query, CancellationToken ct)
@@ -50,6 +52,7 @@ public sealed class VehicleService(
         var owner = await access.RequirePrincipalAsync(ct);
         var vehicle = Vehicle.Create(owner.Id, name, licensePlate, fuelType, units);
         await vehicles.AddAsync(vehicle, ct);
+        logger.LogDebug("User {UserId} added vehicle {VehicleId}", owner.Id, vehicle.Id);
         return vehicle;
     }
 
@@ -62,6 +65,7 @@ public sealed class VehicleService(
             throw new DomainException("vehicle.unitsLocked", "The units cannot be changed once the vehicle has logs.");
         vehicle.Update(name, licensePlate, fuelType, units);
         await vehicles.UpdateAsync(vehicle, ct);
+        logger.LogDebug("Vehicle {VehicleId} updated", vehicle.Id);
         return vehicle;
     }
 
@@ -71,6 +75,7 @@ public sealed class VehicleService(
         var vehicle = await EditableAsync(id, includeDeleted: false, ct);
         vehicle.MarkDeleted(clock.GetUtcNow());
         await vehicles.UpdateAsync(vehicle, ct);
+        logger.LogDebug("Vehicle {VehicleId} moved to the trash", vehicle.Id);
         return vehicle;
     }
 
@@ -79,6 +84,7 @@ public sealed class VehicleService(
         var vehicle = await EditableAsync(id, includeDeleted: true, ct);
         vehicle.Restore();
         await vehicles.UpdateAsync(vehicle, ct);
+        logger.LogDebug("Vehicle {VehicleId} restored from the trash", vehicle.Id);
         return vehicle;
     }
 
@@ -96,10 +102,15 @@ public sealed class VehicleService(
     /// <summary>Permanently removes the trashed vehicles (and their logs) the user has Delete access to. Returns how many vehicles were removed.</summary>
     public async Task<int> EmptyTrashAsync(CancellationToken ct)
     {
+        var user = await access.RequirePrincipalAsync(ct);
         var purged = await vehicles.PurgeAsync(await access.ScopeAsync(AccessLevel.Delete, ct), ct);
         await images.DeleteVehicleFilesAsync(purged.VehicleIds, purged.ImageIds, ct); // their pictures and photos go with them
+        if (purged.Count > 0) logger.LogInformation("User {UserId} emptied the vehicle trash: {Count} vehicles deleted for good ({VehicleIds})", user.Id, purged.Count, Listed(purged.VehicleIds));
         return purged.Count;
     }
+
+    /// <summary>The first ids of a list and how many more there are: a line of the log stays a line, however much was deleted at once.</summary>
+    private static string Listed(IReadOnlyList<Guid> ids) => string.Join(", ", ids.Take(20)) + (ids.Count > 20 ? $" and {ids.Count - 20} more" : "");
 
     /// <summary>Loads a vehicle for changing; one the user cannot see looks missing, one they can only view is forbidden.</summary>
     private async Task<Vehicle> EditableAsync(Guid id, bool includeDeleted, CancellationToken ct)

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
@@ -43,7 +44,7 @@ public sealed record ImportResult(
 public sealed class ImportService(
     IEnumerable<IImportParser> parsers, ImportSessionStore sessions, AccessService access,
     VehicleService vehicles, RefuelingService refuelings, ExpenseService expenses, RecurringExpenseService recurring,
-    IRefuelingRepository refuelingRepository, IExpenseRepository expenseRepository, IOptions<VehicleDefaultsOptions> defaults)
+    IRefuelingRepository refuelingRepository, IExpenseRepository expenseRepository, IOptions<VehicleDefaultsOptions> defaults, ILogger<ImportService> logger)
 {
     public IReadOnlyList<string> Formats => parsers.Select(p => p.Format).ToList();
 
@@ -55,6 +56,8 @@ public sealed class ImportService(
         var batch = parser.Parse(content);
         if (batch.FuelLogs.Count == 0 && batch.Expenses.Count == 0 && batch.Recurring.Count == 0)
             throw new DomainException("import.nothingFound", "The file contains no fuel logs, expenses or recurring expenses to import.");
+        logger.LogInformation("User {UserId} uploaded a {Format} import: {Fuel} fuel logs, {Expenses} expenses, {Recurring} recurring expenses, {Issues} issues",
+            user.Id, parser.Format, batch.FuelLogs.Count, batch.Expenses.Count, batch.Recurring.Count, batch.Issues.Count);
         return new ImportUpload(sessions.Save(user.Id, batch), parser.Format);
     }
 
@@ -74,6 +77,7 @@ public sealed class ImportService(
                 issues.Add(new ImportIssue("vehicle", 0, "import.unitsDiffer", new Dictionary<string, object?>()));
         }
 
+        logger.LogDebug("Import previewed for {Target}: {Duplicates} duplicate rows", vehicleId?.ToString() ?? "a new vehicle", duplicateFuel + duplicateExpenses + duplicateRecurring);
         var dates = batch.FuelLogs.Select(l => l.Date).Concat(batch.Expenses.Select(e => e.Date)).ToList();
         return new ImportPreview(
             batch.Vehicle, batch.FuelLogs.Count, batch.Expenses.Count, batch.Recurring.Count, duplicateFuel, duplicateExpenses, duplicateRecurring,
@@ -84,6 +88,7 @@ public sealed class ImportService(
     public async Task<ImportResult> CommitAsync(string token, ImportTarget target, ImportOptions options, CancellationToken ct)
     {
         var batch = await BatchAsync(token, ct);
+        var user = await access.RequirePrincipalAsync(ct);
         var currency = CurrencyCode.Normalize(options.Currency ?? defaults.Value.Currency);
 
         Guid vehicleId;
@@ -132,6 +137,7 @@ public sealed class ImportService(
             {
                 var (section, n) = row.Fuel is { } fl ? ("log", fl.SourceRow) : ("costs", row.Expense!.SourceRow);
                 errors.Add(new ImportIssue(section, n, ex.Key, ex.Args));
+                logger.LogDebug("Import row {Row} ({Section}) was not saved: {Key}", n, section, ex.Key);
             }
         }
 
@@ -149,10 +155,13 @@ public sealed class ImportService(
             catch (DomainException ex)
             {
                 errors.Add(new ImportIssue("costs", r.SourceRow, ex.Key, ex.Args));
+                logger.LogDebug("Import row {Row} ({Section}) was not saved: {Key}", r.SourceRow, "recurring", ex.Key);
             }
         }
 
         sessions.Remove(token);
+        logger.LogInformation("User {UserId} imported into vehicle {VehicleId} (new vehicle: {NewVehicle}): {Fuel} fuel logs, {Expenses} expenses, {Recurring} recurring expenses saved, {Skipped} duplicates skipped, {Errors} rows with errors",
+            user.Id, vehicleId, target.VehicleId is null, fuelDone, expensesDone, recurringDone, skippedFuel.Count + skippedExpenses.Count + skippedRecurring.Count, errors.Count);
         return new ImportResult(vehicleId, fuelDone, expensesDone, recurringDone, skippedFuel.Count, skippedExpenses.Count, skippedRecurring.Count, errors);
     }
 

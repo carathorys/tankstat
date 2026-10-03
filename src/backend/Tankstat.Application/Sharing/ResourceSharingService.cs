@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Notifications;
@@ -19,7 +20,7 @@ public sealed record LogAccessEntry(User User, AccessLevel Level);
 /// changed is notified, and so is the owner when someone else made the change.
 /// </summary>
 public sealed class ResourceSharingService(
-    IVehicleRepository vehicles, IResourceGrantRepository grants, IUserRepository users, AccessService access, Notifier notifier)
+    IVehicleRepository vehicles, IResourceGrantRepository grants, IUserRepository users, AccessService access, Notifier notifier, ILogger<ResourceSharingService> logger)
 {
     public async Task<IReadOnlyList<LogAccessEntry>> ListLogAccessAsync(Guid vehicleId, CancellationToken ct)
     {
@@ -65,12 +66,14 @@ public sealed class ResourceSharingService(
             }
         }
 
-        if (before != level) await NotifyAsync(vehicle, grantee, before, level, ct);
+        if (before == level) return;
+        var actor = await access.RequirePrincipalAsync(ct);
+        logger.LogInformation("User {ActorId} set the log access of user {GranteeId} to vehicle {VehicleId} from {Before} to {After}", actor.Id, grantee.Id, vehicle.Id, before, level);
+        await NotifyAsync(vehicle, grantee, actor, before, level, ct);
     }
 
-    private async Task NotifyAsync(Vehicle vehicle, User grantee, AccessLevel before, AccessLevel after, CancellationToken ct)
+    private async Task NotifyAsync(Vehicle vehicle, User grantee, Principal actor, AccessLevel before, AccessLevel after, CancellationToken ct)
     {
-        var actor = await access.RequirePrincipalAsync(ct);
         var car = NotificationRef.Vehicle(vehicle.Id);
         List<NotificationDraft> drafts =
         [

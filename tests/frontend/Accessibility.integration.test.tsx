@@ -4,8 +4,9 @@ import { graphql, HttpResponse } from 'msw'
 import { axe } from 'vitest-axe'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
+import { ErrorBoundary } from '../../src/frontend/ErrorBoundary.tsx'
 import { server } from './server.ts'
-import { fakeExpense, fakeExpenseBackend, fakeLogBackend, fakeNotification, fakeNotificationBackend, fakePhotoStore, fakeRecognition, fakeRecurring, fakeRecurringBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, stubViewport, user } from './mocks.tsx'
+import { fakeExpense, fakeExpenseBackend, fakeLogBackend, fakeNotification, fakeNotificationBackend, fakePhotoStore, fakeRecognition, fakeRecurring, fakeRecurringBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport, user } from './mocks.tsx'
 
 // jsdom cannot decode pictures (the resize is covered in Media.unit.test.ts) and has no object URLs (previews of queued photos).
 vi.mock('../../src/frontend/pictures/resizeImage.ts', async (original) => ({
@@ -72,6 +73,22 @@ function setup(route: string, viewport: 'desktop' | 'phone' = 'desktop', photos 
   const view = renderWithApollo(<App />, route)
   return { view, ui: userEvent.setup() }
 }
+
+it('the message shown when a page crashes is an alert with a reachable reload button and has no violations', async () => {
+  silenceConsoleError() // React prints the component that throws
+  const Boom = () => {
+    throw new Error('boom')
+  }
+  const view = renderWithApollo(
+    <ErrorBoundary>
+      <Boom />
+    </ErrorBoundary>,
+  )
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong while showing this page.')
+  expect(screen.getByRole('button', { name: 'Reload the page' })).toBeVisible()
+  await check(view.container)
+})
 
 it('the vehicle list has no accessibility violations (desktop)', async () => {
   const { view } = setup('/vehicles')
