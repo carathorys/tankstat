@@ -26,6 +26,7 @@ using Tankstat.Domain.Recognition;
 using Tankstat.Domain.Recurring;
 using Tankstat.Domain.Users;
 using Tankstat.Domain.Vehicles;
+using Tankstat.TestSupport;
 
 namespace Tankstat.Application.UnitTests;
 
@@ -482,6 +483,9 @@ internal sealed class World
     public InMemoryPhotoDrafts PhotoDrafts { get; } = new();
     public InMemorySettings Settings { get; } = new();
     public FakeCurrentUser Current { get; } = new();
+
+    /// <summary>Everything the services logged (they all write to this one capture).</summary>
+    public CapturedLog Log { get; } = new();
     public FakeEmail Email { get; }
     public AuthOptions Options { get; }
     public VehicleDefaultsOptions Defaults { get; } = new() { Currency = "HUF" };
@@ -529,7 +533,7 @@ internal sealed class World
         LogGuard = new LogAccessGuard(Vehicles, Access);
         ImportSessions = new ImportSessionStore(Clock);
         Odometer = new OdometerService(new InMemoryReadings(Refuelings, Expenses));
-        var resets = new PasswordResetService(Tokens, Users, Email, options, Clock);
+        var resets = new PasswordResetService(Tokens, Users, Email, options, Clock, Log.For<PasswordResetService>());
         var logPhotoAccess = new LogPhotoAccess(LogGuard, Expenses, Refuelings, LogPhotos);
         ImageService = new ImageService(ImageStore, Images, Users, Vehicles, Access, logPhotoAccess, PhotoDrafts, Clock);
         Drafts = new PhotoDraftService(LogGuard, PhotoDrafts, ImageService, Access, Clock);
@@ -541,10 +545,10 @@ internal sealed class World
         Imports = new ImportService([new FuelioCsvParser()], ImportSessions, Access, VehicleService, RefuelingService, ExpenseService, RecurringService, Refuelings, Expenses, Defaults.Create());
         Stats = new StatsService(Vehicles, new InMemoryStats(Refuelings, Expenses), Access, Clock);
         ChartService = new ChartService(Vehicles, Charts, Access, Clock);
-        Sharing = new ResourceSharingService(Vehicles, ResourceGrants, Users, Access, Notifier);
-        Auth = new AuthService(Users, new FakeHasher(), resets, Access, options, Clock);
-        UserService = new UserService(Access, Users, UserData, resets, new FakeHasher(), ImageService, ImportSessions, options);
-        AccessAdmin = new AccessAdminService(Access, Settings, Grants, Users, Notifier);
+        Sharing = new ResourceSharingService(Vehicles, ResourceGrants, Users, Access, Notifier, Log.For<ResourceSharingService>());
+        Auth = new AuthService(Users, new FakeHasher(), resets, Access, options, Clock, Log.For<AuthService>());
+        UserService = new UserService(Access, Users, UserData, resets, new FakeHasher(), ImageService, ImportSessions, options, Log.For<UserService>());
+        AccessAdmin = new AccessAdminService(Access, Settings, Grants, Users, Notifier, Log.For<AccessAdminService>());
         Availability = new RecognitionAvailability(Recognizer, Clock);
     }
 

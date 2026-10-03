@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
@@ -12,7 +13,7 @@ namespace Tankstat.Application.Users;
 /// <summary>Administrator-only user management.</summary>
 public sealed class UserService(
     AccessService access, IUserRepository users, IUserDataRepository userData, PasswordResetService resets, IPasswordHasher hasher,
-    ImageService images, ImportSessionStore importSessions, IOptions<AuthOptions> auth)
+    ImageService images, ImportSessionStore importSessions, IOptions<AuthOptions> auth, ILogger<UserService> logger)
 {
     public async Task<IReadOnlyList<User>> ListAsync(CancellationToken ct)
     {
@@ -23,22 +24,30 @@ public sealed class UserService(
     /// <summary>Creates a local user without a password and issues a setup link for them.</summary>
     public async Task<(User User, IssuedReset Reset)> CreateLocalAsync(string? email, string? displayName, bool isAdmin, CancellationToken ct)
     {
-        await access.RequireAdminAsync(ct);
+        var admin = await access.RequireAdminAsync(ct);
         if (auth.Value.Mode != AuthMode.Standalone) throw new DomainException("user.onlyStandalone", "Users are only created here in Standalone authentication mode.");
 
         var user = User.CreateLocal(email!, displayName, isAdmin);
         if (await users.FindLocalByEmailAsync(user.Email, ct) is not null) throw new DomainException("user.emailExists", "A user with this e-mail already exists.");
 
         await users.AddAsync(user, ct);
-        return (user, await resets.IssueAsync(user, sendEmail: true, ct));
+        logger.LogInformation("Administrator {AdminId} created user {UserId} (administrator: {IsAdmin})", admin.Id, user.Id, user.IsAdmin);
+        return (user, await IssueAndReportAsync(admin, user, ct));
     }
 
     public async Task<IssuedReset> IssueResetAsync(Guid userId, CancellationToken ct)
     {
-        await access.RequireAdminAsync(ct);
+        var admin = await access.RequireAdminAsync(ct);
         var user = await Find(userId, ct);
         if (user.Provider != UserProvider.Local) throw new DomainException("user.passwordsLocalOnly", "Only local users have passwords managed here.");
-        return await resets.IssueAsync(user, sendEmail: true, ct);
+        return await IssueAndReportAsync(admin, user, ct);
+    }
+
+    private async Task<IssuedReset> IssueAndReportAsync(Principal admin, User user, CancellationToken ct)
+    {
+        var issued = await resets.IssueAsync(user, sendEmail: true, ct);
+        logger.LogInformation("Administrator {AdminId} issued a password reset for user {UserId} (e-mail sent: {EmailSent})", admin.Id, user.Id, issued.EmailSent);
+        return issued;
     }
 
     public async Task<User> SetAdminAsync(Guid userId, bool isAdmin, CancellationToken ct)
@@ -48,6 +57,7 @@ public sealed class UserService(
         var user = await Find(userId, ct);
         user.SetAdmin(isAdmin);
         await users.UpdateAsync(user, ct);
+        logger.LogInformation("Administrator {AdminId} set the administrator flag of user {UserId} to {IsAdmin}", self.Id, user.Id, isAdmin);
         return user;
     }
 
@@ -58,13 +68,14 @@ public sealed class UserService(
         var user = await Find(userId, ct);
         user.SetDisabled(disabled);
         await users.UpdateAsync(user, ct);
+        logger.LogInformation("Administrator {AdminId} set user {UserId} disabled: {Disabled}", self.Id, user.Id, disabled);
         return user;
     }
 
     /// <summary>Changes name and e-mail of a local user; users from an external provider keep what the provider says.</summary>
     public async Task<User> UpdateAsync(Guid userId, string? email, string? displayName, CancellationToken ct)
     {
-        await access.RequireAdminAsync(ct);
+        var admin = await access.RequireAdminAsync(ct);
         var user = await Find(userId, ct);
         if (user.Provider != UserProvider.Local) throw new DomainException("user.profileLocalOnly", "The profile of users from an external provider comes from that provider.");
 
@@ -74,6 +85,7 @@ public sealed class UserService(
 
         user.ChangeLocalProfile(normalized, displayName);
         await users.UpdateAsync(user, ct);
+        logger.LogInformation("Administrator {AdminId} updated the profile of user {UserId}", admin.Id, user.Id);
         return user;
     }
 
@@ -89,7 +101,7 @@ public sealed class UserService(
     /// <summary>Sets a local user's password directly and signs them out everywhere. Off unless the instance allows it.</summary>
     public async Task SetPasswordAsync(Guid userId, string? newPassword, CancellationToken ct)
     {
-        await access.RequireAdminAsync(ct);
+        var admin = await access.RequireAdminAsync(ct);
         if (!AdminPasswordsAllowed) throw new DomainException("user.adminPasswordDisabled", "Setting passwords directly is turned off on this instance.");
         var user = await Find(userId, ct);
         if (user.Provider != UserProvider.Local) throw new DomainException("user.passwordsLocalOnly", "Only local users have passwords managed here.");
@@ -98,6 +110,7 @@ public sealed class UserService(
         user.SetPasswordHash(hasher.Hash(newPassword!));
         await users.UpdateAsync(user, ct);
         await resets.RevokeAllAsync(user.Id, ct);
+        logger.LogInformation("Administrator {AdminId} set the password of user {UserId}; their sessions were signed out", admin.Id, user.Id);
     }
 
     /// <summary>
@@ -114,7 +127,8 @@ public sealed class UserService(
             throw new DomainException("user.lastAdmin", "The last active administrator cannot be deleted.");
 
         Guid? target = null;
-        if (await userData.OwnsDataAsync(userId, ct))
+        var ownsData = await userData.OwnsDataAsync(userId, ct);
+        if (ownsData)
         {
             switch (data)
             {
@@ -131,6 +145,8 @@ public sealed class UserService(
         await images.DeleteVehicleFilesAsync(purged.VehicleIds, user.AvatarImageId is { } avatar ? purged.PictureIds.Append(avatar) : purged.PictureIds, ct);
         await images.DeleteFoldersAsync([ImageFolders.Avatar(userId)], ct); // the avatar's folder (and its rows) goes with the account
         importSessions.RemoveForUser(userId);
+        logger.LogInformation("Administrator {AdminId} deleted user {UserId} (data: {Data}, moved to: {TargetId}, purged vehicles: {Vehicles}, pictures: {Pictures})",
+            self.Id, userId, ownsData ? (target is null ? "purged" : "moved") : "none", target?.ToString() ?? "nobody", purged.VehicleIds.Count, purged.PictureIds.Count);
     }
 
     private async Task<User> Find(Guid id, CancellationToken ct) =>
