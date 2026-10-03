@@ -37,7 +37,7 @@ internal sealed class DatabaseMigrator(IDbContextFactory<AppDbContext> dbFactory
             await db.SaveChangesAsync(ct);
             db.ChangeTracker.Clear();
         }
-        logger.LogInformation("Calculated the fuel consumption of the existing refuelings of {Vehicles} vehicles", vehicleIds.Count);
+        if (vehicleIds.Count > 0) logger.LogInformation("Calculated the fuel consumption of the existing refuelings of {Vehicles} vehicles", vehicleIds.Count); // a new installation has none
     }
 
     public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
