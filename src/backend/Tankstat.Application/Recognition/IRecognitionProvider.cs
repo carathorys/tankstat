@@ -14,7 +14,13 @@ public interface IRecognitionProvider
     /// <summary>False when no provider is set up or its settings cannot be used: then nothing is queued or read at all.</summary>
     bool IsConfigured { get; }
 
-    /// <summary>Whether the provider answers right now (asked at most every 30 seconds, see <see cref="RecognitionAvailability"/>).</summary>
+    /// <summary>
+    /// Whether the provider answers right now (asked at most every 30 seconds, see <see cref="RecognitionAvailability"/>).
+    /// </summary>
+    /// <exception cref="RecognitionUnavailableException">
+    /// It does not, and why (unreachable, too slow, answering with an error): the reason is for the log, which would otherwise only say that
+    /// photos are waiting. Any exception counts as "not healthy"; <c>false</c> is for a provider that has nothing more to say.
+    /// </exception>
     Task<bool> IsHealthyAsync(CancellationToken ct);
 
     /// <exception cref="RecognitionUnavailableException">It cannot read now (unreachable, busy, timed out): try again later.</exception>

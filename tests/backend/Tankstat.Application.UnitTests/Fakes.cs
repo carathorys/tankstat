@@ -347,12 +347,15 @@ internal sealed class FakeRecognitionProvider : IRecognitionProvider
 {
     public bool Configured { get; set; } = true;
     public bool Healthy { get; set; } = true;
+
+    /// <summary>When set, the health check throws it, as a provider that knows why it is not healthy does.</summary>
+    public Exception? HealthFailure { get; set; }
     public int HealthChecks { get; private set; }
     public Func<RecognitionRequest, RecognitionResult> Answer { get; set; } = _ => new RecognitionResult("fake-1", DocumentKind.Unknown, []);
     public List<RecognitionRequest> Requests { get; } = [];
     public string Name => "fake";
     public bool IsConfigured => Configured;
-    public Task<bool> IsHealthyAsync(CancellationToken ct) { HealthChecks++; return Task.FromResult(Healthy); }
+    public Task<bool> IsHealthyAsync(CancellationToken ct) { HealthChecks++; return HealthFailure is { } e ? Task.FromException<bool>(e) : Task.FromResult(Healthy); }
     public Task<RecognitionResult> ReadAsync(RecognitionRequest request, CancellationToken ct)
     {
         Requests.Add(request);

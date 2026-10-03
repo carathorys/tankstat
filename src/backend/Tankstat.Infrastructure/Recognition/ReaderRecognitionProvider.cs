@@ -49,11 +49,14 @@ internal sealed class ReaderRecognitionProvider(IHttpClientFactory http, ReaderR
         try
         {
             using var response = await http.CreateClient(ClientName).GetAsync(new Uri(_base, "v1/health"), timeout.Token);
-            return response.IsSuccessStatusCode && (await response.Content.ReadFromJsonAsync<HealthBody>(Json, timeout.Token))?.Status == "ok";
+            if (!response.IsSuccessStatusCode) throw new RecognitionUnavailableException($"The reader answered {(int)response.StatusCode} to its health check.");
+            if ((await response.Content.ReadFromJsonAsync<HealthBody>(Json, timeout.Token))?.Status != "ok") throw new RecognitionUnavailableException("The reader says it is not ready.");
+            return true;
         }
         catch (Exception e) when (e is HttpRequestException or JsonException or NotSupportedException || (e is OperationCanceledException && !ct.IsCancellationRequested))
         {
-            return false;
+            // The reason goes up instead of into a bare "false": it is what the log says when photos start to wait.
+            throw new RecognitionUnavailableException(e is OperationCanceledException ? "The reader did not answer its health check in time." : "The reader could not be reached.", e);
         }
     }
 

@@ -209,6 +209,18 @@ public class LoggingTests
     }
 
     [Fact]
+    public async Task AReaderThatCannotBeUsed_IsAWarning_WithTheCauseTheProviderGives()
+    {
+        var w = new World();
+        w.Recognizer.HealthFailure = new RecognitionUnavailableException("The reader answered 503 to its health check.");
+
+        Assert.False(await w.Availability.IsAvailableAsync(default));
+
+        var warning = Assert.Single(w.Log.Entries, e => e.Level == LogLevel.Warning);
+        Assert.Same(w.Recognizer.HealthFailure, warning.Exception); // why, for whoever has to fix it
+    }
+
+    [Fact]
     public async Task WithoutAReader_NothingIsSaidAboutIt()
     {
         var w = new World();
