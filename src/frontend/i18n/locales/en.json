@@ -2,7 +2,9 @@
   "app": {
     "name": "Tankstat",
     "loading": "Loading…",
-    "notFound": "This page does not exist."
+    "notFound": "This page does not exist.",
+    "crashed": "Something went wrong while showing this page.",
+    "reload": "Reload the page"
   },
   "nav": {
     "vehicles": "Vehicles",
