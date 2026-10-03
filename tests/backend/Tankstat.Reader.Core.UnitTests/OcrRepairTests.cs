@@ -15,6 +15,10 @@ public class OcrRepairTests
     [InlineData("48.25~|1~x~614.5", "48.25 l x 614.5")]
     [InlineData("640,9~Ft/1", "640,9 Ft/l")]
     [InlineData("1,430~EUR/1l", "1,430 EUR/l")]
+    [InlineData("20,35~1x~1,935~EUR/1", "20,35 l x 1,935 EUR/l")] // the litre sign glued to the multiplication sign
+    [InlineData("57,54~Ux~691,0", "57,54 l x 691,0")]
+    [InlineData("618,5~Ft/t", "618,5 Ft/l")]
+    [InlineData("1,917~EUR/~1", "1,917 EUR/l")]
     public void TypicalOcrSlips_AreUndone(string words, string expected) => Assert.Equal(expected, Repaired(words.Split('~')));
 
     [Theory]
