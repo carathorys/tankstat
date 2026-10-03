@@ -66,6 +66,17 @@ public class RecognitionSetupTests
         Assert.Equal(0.7, services.GetRequiredService<RecognitionSetup>().Options.MinConfidence);
     }
 
+    [Fact]
+    public void TheReadersClient_LeavesTheTimeoutToTheSettings()
+    {
+        var (services, _) = Build([]);
+        using var _s = services;
+
+        // Reader:TimeoutSeconds goes up to 600; the client's own default (100 s) must not cut it short.
+        using var client = services.GetRequiredService<IHttpClientFactory>().CreateClient(ReaderRecognitionProvider.ClientName);
+        Assert.Equal(Timeout.InfiniteTimeSpan, client.Timeout);
+    }
+
     [Theory]
     [InlineData("Recognition:Reader:ApiKey", "", "ApiKey")] // a missing key
     [InlineData("Recognition:MaxConcurrent", "many", "cannot be read")] // not even a number: binding fails
