@@ -68,7 +68,21 @@ public class LoggingTests
         var warning = Assert.Single(Ours(app), e => e.Level == LogLevel.Warning);
         Assert.Equal(Listener, warning.Category);
         Assert.Equal("auth.adminRequired", warning.Values["Key"]);
-        Assert.Equal("users", warning.Values["Path"]);
+        Assert.Equal("Query.users", warning.Values["Field"]);
+    }
+
+    [Fact]
+    public async Task AFieldIsNamedAsTheSchemaNamesIt_NotByTheAliasTheClientGaveIt()
+    {
+        using var app = new TestApp(new() { ["Auth:Mode"] = "None" });
+        var alias = new string('a', 5000);
+
+        var response = await app.NewClient().PostAsJsonAsync("/graphql", new { query = $"{{ {alias}: users {{ id }} }}" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var warning = Assert.Single(Ours(app), e => e.Level == LogLevel.Warning);
+        Assert.Equal("Query.users", warning.Values["Field"]);
+        Assert.False(app.Log.Mentions("aaaa")); // one request must not be able to put 5,000 characters of its own text in the log
     }
 
     [Fact]
@@ -91,7 +105,7 @@ public class LoggingTests
         var error = Assert.Single(app.Log.Entries, e => e.Level == LogLevel.Error); // once, although several hooks may hear of it
         Assert.Equal(Listener, error.Category);
         Assert.Equal("smtp is down", error.Exception!.Message);
-        Assert.Equal("createUser", error.Values["Path"]);
+        Assert.Equal("Mutation.createUser", error.Values["Field"]);
         // what was done before it failed is on record
         Assert.Contains(app.Log.From("Tankstat.Application.Users.UserService"), e => e.Level == LogLevel.Information && e.Values.ContainsKey("AdminId"));
         Assert.False(app.Log.Mentions("new.person@example.com"));
@@ -176,6 +190,19 @@ public class LoggingTests
         var line = Assert.Single(app.Log.From(Listener), e => e.Values.ContainsKey("Codes"));
         Assert.Equal(LogLevel.Debug, line.Level);
         Assert.False(app.Log.Mentions("nothingLikeThis")); // ...the log only that it did not validate, and the error codes
+    }
+
+    [Fact]
+    public async Task ARequestTheEngineTurnsDown_ForAMissingVariable_IsADebugLine_NotAnErrorWithItsText()
+    {
+        using var app = new TestApp(new() { ["Auth:Mode"] = "None" });
+
+        // The mutation wants $i and the request sends none: the engine refuses it before anything runs, and says so in words of its own.
+        var response = await app.NewClient().PostAsJsonAsync("/graphql", new { query = "mutation($i: LoginInput!) { login(input: $i) { id } }" });
+
+        Assert.Contains("errors", await response.Content.ReadAsStringAsync());
+        Assert.DoesNotContain(Ours(app), e => e.Level >= LogLevel.Warning);
+        Assert.False(app.Log.Mentions("LoginInput")); // the engine's text names the variable and its type: the log keeps only the codes
     }
 
     [Fact]

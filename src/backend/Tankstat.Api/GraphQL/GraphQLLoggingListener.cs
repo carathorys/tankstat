@@ -16,8 +16,10 @@ namespace Tankstat.Api.GraphQL;
 /// shapes errors for the client: without this, an exception nobody expected (a mail server that is down, a bug) reaches the client as
 /// "Unexpected Execution Error" and leaves no trace anywhere. By what the error is:
 /// a refusal (<see cref="ForbiddenException"/>) is a Warning; any other business error (a validation failure, something missing, a
-/// wrong password) is the client's doing and only a Debug line; everything else is an Error with its exception, once.
-/// Never logged: variables, the document, and the text of request errors, which can quote what the client sent (a password).
+/// wrong password) and a request the engine turns down (a missing variable) is the client's doing and only a Debug line; everything else
+/// is an Error with its exception, once.
+/// Never logged: variables, the document, and the text of request errors, which can quote what the client sent (a password). A field is
+/// named the way the schema names it (<c>Mutation.addVehicle</c>), not by the alias a client gave it in its query.
 /// </summary>
 internal sealed class GraphQLLoggingListener(ILoggerFactory factory, IHttpContextAccessor http) : ExecutionDiagnosticEventListener
 {
@@ -32,53 +34,72 @@ internal sealed class GraphQLLoggingListener(ILoggerFactory factory, IHttpContex
     public override IDisposable ExecuteRequest(RequestContext context) => new RequestScope(this, context, Stopwatch.GetTimestamp());
 
     public override void ResolverError(IMiddlewareContext context, IError error) =>
-        Report(error, Describe(context.Operation.RootType.Name, context.Operation.Name), context.Path.ToString());
+        Report(error, Describe(context.Operation.RootType.Name, context.Operation.Name), Field(context.Selection));
 
     public override void ResolverError(RequestContext context, ISelection selection, IError error)
     {
         // A value that must not be null was null: no exception, and always a bug on the server (a client cannot cause it).
-        if (error.Exception is null) _logger.LogWarning("GraphQL {Operation} produced error {Code} at {Path} for user {UserId}", Operation(context), error.Code, error.Path?.ToString() ?? selection.ResponseName, UserId());
-        else Report(error, Operation(context), error.Path?.ToString() ?? selection.ResponseName);
+        if (error.Exception is null) _logger.LogWarning("GraphQL {Operation} produced error {Code} at {Field} for user {UserId}", Operation(context), error.Code, Field(selection), UserId());
+        else Report(error, Operation(context), Field(selection));
     }
 
-    public override void TaskError(IExecutionTask task, IError error) => Report(error, "task", error.Path?.ToString());
+    public override void TaskError(IExecutionTask task, IError error) => Report(error, "task", SafePath(error.Path));
 
     public override void RequestError(RequestContext context, IError error) =>
         _logger.LogDebug("GraphQL request was rejected: {Code}", error.Code); // the code only: the message of a request error can quote the request
 
-    public override void RequestError(RequestContext context, Exception exception) => ReportException(exception, Operation(context), "the request");
+    public override void RequestError(RequestContext context, Exception exception) => ReportException(exception, Operation(context), "(the request)");
 
     public override void ValidationErrors(RequestContext context, IReadOnlyList<IError> errors) =>
         _logger.LogDebug("GraphQL {Operation} failed validation with {Count} errors ({Codes})", Operation(context), errors.Count, string.Join(", ", errors.Select(e => e.Code).Distinct()));
 
-    private void Report(IError error, string operation, string? path)
+    private void Report(IError error, string operation, string field)
     {
-        if (error.Exception is { } exception) ReportException(exception, operation, path);
-        else _logger.LogDebug("GraphQL {Operation} failed at {Path}: {Code}", operation, path, error.Code); // an argument or a type the client got wrong
+        if (error.Exception is { } exception) ReportException(exception, operation, field);
+        else _logger.LogDebug("GraphQL {Operation} failed at {Field}: {Code}", operation, field, error.Code); // an argument or a type the client got wrong
     }
 
-    private void ReportException(Exception exception, string operation, string? path)
+    private void ReportException(Exception exception, string operation, string field)
     {
         if (!_reported.TryAdd(exception, Marker)) return;
         var user = UserId();
         switch (exception)
         {
             case ForbiddenException forbidden:
-                _logger.LogWarning("GraphQL {Operation} was refused at {Path} for user {UserId}: {Key}", operation, path, user, forbidden.Key);
+                _logger.LogWarning("GraphQL {Operation} was refused at {Field} for user {UserId}: {Key}", operation, field, user, forbidden.Key);
                 break;
             case KeyedException keyed:
-                _logger.LogDebug("GraphQL {Operation} failed at {Path} for user {UserId}: {Key}", operation, path, user, keyed.Key);
+                _logger.LogDebug("GraphQL {Operation} failed at {Field} for user {UserId}: {Key}", operation, field, user, keyed.Key);
+                break;
+            case GraphQLException request:
+                // The engine turning a request down (a variable that is missing or of the wrong type): the client's doing, and the message
+                // of such an error can quote what was sent, so only its codes are kept.
+                _logger.LogDebug("GraphQL {Operation} was rejected at {Field}: {Codes}", operation, field, string.Join(", ", request.Errors.Select(e => e.Code).Distinct()));
                 break;
             case OperationCanceledException:
-                _logger.LogDebug("GraphQL {Operation} was cancelled at {Path}", operation, path);
+                _logger.LogDebug("GraphQL {Operation} was cancelled at {Field}", operation, field);
                 break;
             default:
-                _logger.LogError(exception, "GraphQL {Operation} failed at {Path} for user {UserId} with an unexpected error", operation, path, user);
+                _logger.LogError(exception, "GraphQL {Operation} failed at {Field} for user {UserId} with an unexpected error", operation, field, user);
                 break;
         }
     }
 
     private string UserId() => RequestUser.Id(http.HttpContext?.User);
+
+    /// <summary>"Mutation.addVehicle": the field the way the schema names it, which is short and constant (an error's path uses the names the client gave).</summary>
+    private static string Field(ISelection selection) => $"{selection.Field.DeclaringType.Name}.{selection.Field.Name}";
+
+    /// <summary>
+    /// A response path (<c>a/0/b</c>) is made of the names a client gave its fields, so it is passed on only when it is short and holds
+    /// nothing but the characters of such names.
+    /// </summary>
+    private static string SafePath(HotChocolate.Path? path)
+    {
+        var text = path?.ToString();
+        if (string.IsNullOrEmpty(text)) return "(unknown)";
+        return text.Length <= 200 && text.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '/' or '.' or '[' or ']') ? text : "(path withheld)";
+    }
 
     /// <summary>
     /// The operation a request runs, from its parsed document: the one the client asked for by name, or the only one there is. A name that
@@ -109,8 +130,9 @@ internal sealed class GraphQLLoggingListener(ILoggerFactory factory, IHttpContex
         {
             var errors = (context.Result as OperationResult)?.Errors ?? [];
             foreach (var error in errors)
-                if (error.Exception is { } exception) owner.ReportException(exception, Operation(context), error.Path?.ToString());
-            owner._logger.LogDebug("GraphQL {Operation} finished in {Ms:0} ms with {Errors} errors", Operation(context), Stopwatch.GetElapsedTime(started).TotalMilliseconds, errors.Count);
+                if (error.Exception is { } exception) owner.ReportException(exception, Operation(context), SafePath(error.Path));
+            if (owner._logger.IsEnabled(LogLevel.Debug))
+                owner._logger.LogDebug("GraphQL {Operation} finished in {Ms:0} ms with {Errors} errors", Operation(context), Stopwatch.GetElapsedTime(started).TotalMilliseconds, errors.Count);
         }
     }
 }
