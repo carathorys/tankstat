@@ -6,6 +6,8 @@ import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '../../components/ConfirmDialog.tsx'
 import { UserChip } from '../../components/UserAvatar.tsx'
 import { ExpenseFormDialog } from '../../ExpenseFormDialog.tsx'
+import { anyAwaiting } from '../../recognition/review.ts'
+import { ReviewBadge } from '../../recognition/ReviewState.tsx'
 import {
   AddExpenseDocument,
   DeleteExpenseDocument,
@@ -36,7 +38,20 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
   const columns = useMemo<GridColumn<Row, ExpensesQueryVariables, ExpenseSortField>[]>(() => {
     const none = t('common.none')
     return [
-      { id: 'date', label: 'columns.date', hideable: false, mobile: true, sortField: 'DATE', cell: (r) => format.date(r.date) },
+      {
+        id: 'date',
+        label: 'columns.date',
+        hideable: false,
+        mobile: true,
+        sortField: 'DATE',
+        // Always shown, so it also says when an expense waits for its photos or for someone to check what they showed.
+        cell: (r) => (
+          <Flex direction="column" align="start" gap="1">
+            {format.date(r.date)}
+            <ReviewBadge state={r.reviewState} />
+          </Flex>
+        ),
+      },
       { id: 'title', label: 'columns.title', hideable: false, mobile: true, sortField: 'TITLE', cell: (r) => r.title },
       { id: 'amount', label: 'columns.amount', include: 'withAmount', mobile: true, sortField: 'AMOUNT', cell: (r) => (r.amount == null || !r.currency ? none : format.money(r.amount, r.currency)) },
       { id: 'category', label: 'columns.category', include: 'withCategory', sortField: 'CATEGORY', cell: (r) => r.category ?? none },
@@ -68,6 +83,7 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
         columns={columns}
         defaultSort={{ column: 'date', direction: 'DESC' }}
         emptyText={t('expenses.empty')}
+        pollWhile={anyAwaiting}
         toolbar={({ total }) => (
           <Flex align="center" gap="3" wrap="wrap">
             {canLog && (

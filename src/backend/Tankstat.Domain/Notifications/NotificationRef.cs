@@ -8,6 +8,8 @@ public enum NotificationEntityType
     Vehicle,
     RecurringExpense,
     User,
+    Refueling,
+    Expense,
 }
 
 /// <summary>
@@ -20,4 +22,6 @@ public readonly record struct NotificationRef(NotificationEntityType Type, Guid 
     public static NotificationRef Vehicle(Guid id) => new(NotificationEntityType.Vehicle, id);
     public static NotificationRef RecurringExpense(Guid id) => new(NotificationEntityType.RecurringExpense, id);
     public static NotificationRef User(Guid id) => new(NotificationEntityType.User, id);
+    public static NotificationRef Refueling(Guid id) => new(NotificationEntityType.Refueling, id);
+    public static NotificationRef Expense(Guid id) => new(NotificationEntityType.Expense, id);
 }

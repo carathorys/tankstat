@@ -92,7 +92,7 @@ internal sealed class InMemoryRefuelings : IRefuelingRepository
     public Task<Refueling?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(r => r.Id == id && !r.IsDeleted));
     public Task<Refueling?> FindIncludingDeletedAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(r => r.Id == id));
     public Task AddAsync(Refueling refueling, CancellationToken ct) { Items.Add(refueling); return Task.CompletedTask; }
-    public Task UpdateAsync(Refueling refueling, CancellationToken ct) => Task.CompletedTask; // entities are shared references
+    public Task UpdateAsync(Refueling refueling, LinkedChanges changes, CancellationToken ct) => Task.CompletedTask; // entities are shared references
     public Task<PurgedLogs> PurgeAsync(OwnerScope scope, CancellationToken ct)
     {
         var doomed = Items.Where(r => r.IsDeleted && scope.Contains(r.OwnerId, r.VehicleId)).ToList();
@@ -123,7 +123,7 @@ internal sealed class InMemoryExpenses : IExpenseRepository
     public Task<Expense?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(e => e.Id == id && !e.IsDeleted));
     public Task<Expense?> FindIncludingDeletedAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(e => e.Id == id));
     public Task AddAsync(Expense expense, CancellationToken ct) { Items.Add(expense); return Task.CompletedTask; }
-    public Task UpdateAsync(Expense expense, OdometerReading? newReading, OdometerReading? removedReading, CancellationToken ct) => Task.CompletedTask; // shared references
+    public Task UpdateAsync(Expense expense, LinkedChanges changes, CancellationToken ct) => Task.CompletedTask; // shared references
     public Task<PurgedLogs> PurgeAsync(OwnerScope scope, CancellationToken ct)
     {
         var doomed = Items.Where(e => e.IsDeleted && scope.Contains(e.OwnerId, e.VehicleId)).ToList();
@@ -193,12 +193,12 @@ internal sealed class InMemoryStats(InMemoryRefuelings refuelings, InMemoryExpen
 {
     public Task<StatsData> LoadAsync(Guid vehicleId, CancellationToken ct)
     {
-        var fuel = refuelings.Items.Where(r => !r.IsDeleted && r.VehicleId == vehicleId).ToList();
-        var costs = expenses.Items.Where(e => !e.IsDeleted && e.VehicleId == vehicleId).ToList();
+        var fuel = refuelings.Items.Where(r => !r.IsDeleted && r.VehicleId == vehicleId && r.Missing == LogValues.None).ToList();
+        var costs = expenses.Items.Where(e => !e.IsDeleted && e.VehicleId == vehicleId && e.Cost is not null).ToList();
         return Task.FromResult(new StatsData(
-            fuel.Select(r => new FuelPoint(r.Date, r.Volume, r.TotalCost, r.Currency, r.Odometer, r.IsFullTank, r.Consumption)).ToList(),
-            costs.Select(e => new ExpensePoint(e.Date, e.Category, e.Amount, e.Currency)).ToList(),
-            fuel.Select(r => new OdometerPoint(r.Date, r.Odometer)).Concat(costs.Where(e => e.Odometer is not null).Select(e => new OdometerPoint(e.Date, e.Odometer!.Value))).ToList()));
+            fuel.Select(r => new FuelPoint(r.Date, r.Volume!.Value, r.TotalCost!.Value, r.Currency!, r.Odometer!.Value, r.IsFullTank, r.Consumption)).ToList(),
+            costs.Select(e => new ExpensePoint(e.Date, e.Category, e.Amount!.Value, e.Currency!)).ToList(),
+            fuel.Select(r => new OdometerPoint(r.Date, r.Odometer!.Value)).Concat(costs.Where(e => e.Odometer is not null).Select(e => new OdometerPoint(e.Date, e.Odometer!.Value))).ToList()));
     }
 }
 
@@ -218,7 +218,7 @@ internal sealed class InMemoryCharts : IVehicleChartRepository
 internal sealed class InMemoryReadings(InMemoryRefuelings refuelings, InMemoryExpenses expenses) : IOdometerReadingRepository
 {
     private IEnumerable<OdometerReading> Live(Guid vehicleId) =>
-        refuelings.Items.Where(r => !r.IsDeleted && r.VehicleId == vehicleId).Select(r => r.OdometerReading)
+        refuelings.Items.Where(r => !r.IsDeleted && r.VehicleId == vehicleId && r.OdometerReading is not null).Select(r => r.OdometerReading!)
             .Concat(expenses.Items.Where(e => !e.IsDeleted && e.VehicleId == vehicleId && e.OdometerReading is not null).Select(e => e.OdometerReading!));
 
     public Task<OdometerReading?> PreviousAsync(Guid vehicleId, DateOnly date, Guid? except, CancellationToken ct) =>
@@ -232,7 +232,7 @@ internal sealed class InMemoryReadings(InMemoryRefuelings refuelings, InMemoryEx
             .Select(id => Live(id).OrderByDescending(r => r.Date).ThenByDescending(r => r.Value).FirstOrDefault())
             .OfType<OdometerReading>().ToDictionary(r => r.VehicleId));
     public Task<bool> AnyAsync(Guid vehicleId, CancellationToken ct) =>
-        Task.FromResult(refuelings.Items.Any(r => r.VehicleId == vehicleId) || expenses.Items.Any(e => e.VehicleId == vehicleId && e.OdometerReading is not null));
+        Task.FromResult(refuelings.Items.Any(r => r.VehicleId == vehicleId && r.OdometerReading is not null) || expenses.Items.Any(e => e.VehicleId == vehicleId && e.OdometerReading is not null));
 }
 
 internal sealed class InMemoryResourceGrants : IResourceGrantRepository
@@ -522,7 +522,8 @@ internal sealed class World
     public FakeRecognitionSignal Signal { get; } = new();
     public RecognitionAvailability Availability { get; }
     public RecognitionService Recognition => new(Availability, new RecognitionSetup(RecognitionOptions.Create()), Readings, PhotoDrafts, RefuelingService, Defaults.Create(), Signal, Access, Clock, Log.For<RecognitionService>());
-    public PhotoReadingProcessor Processor => new(Recognizer, Availability, new RecognitionSetup(RecognitionOptions.Create()), Readings, Images, ImageStore, Clock, Log.For<PhotoReadingProcessor>());
+    public LogPhotoFiller Filler { get; }
+    public PhotoReadingProcessor Processor => new(Recognizer, Availability, new RecognitionSetup(RecognitionOptions.Create()), Readings, Images, ImageStore, Filler, Clock, Log.For<PhotoReadingProcessor>());
     public NotificationService NotificationService => new(Access, Notifications, new RecurringNotificationSync(Access, Recurring, Vehicles, RecurringService, Notifier), NotificationOptions.Create(), Clock, Log.For<NotificationService>()); // a new one per use, like one per request (it syncs once)
 
     public World(AuthMode mode = AuthMode.Standalone, bool smtp = false, Action<AuthOptions>? configure = null)
@@ -544,8 +545,9 @@ internal sealed class World
         Drafts = new PhotoDraftService(LogGuard, PhotoDrafts, ImageService, Access, Clock, Log.For<PhotoDraftService>());
         Photos = new LogPhotoService(logPhotoAccess, LogPhotos, ImageService, Drafts, Access, Clock, Log.For<LogPhotoService>());
         VehicleService = new VehicleService(Vehicles, Refuelings, Access, Odometer, ImageService, Clock, Log.For<VehicleService>());
-        RefuelingService = new RefuelingService(Vehicles, LogGuard, Refuelings, Access, Odometer, Photos, Clock, Log.For<RefuelingService>());
-        ExpenseService = new ExpenseService(LogGuard, Expenses, Access, Odometer, Photos, Clock, Log.For<ExpenseService>());
+        Filler = new LogPhotoFiller(LogPhotos, Readings, Refuelings, Expenses, Vehicles, new RecognitionSetup(RecognitionOptions.Create()), Notifier, Notifications, Clock, Log.For<LogPhotoFiller>());
+        RefuelingService = new RefuelingService(Vehicles, LogGuard, Refuelings, Access, Odometer, Photos, Filler, Clock, Log.For<RefuelingService>());
+        ExpenseService = new ExpenseService(LogGuard, Expenses, Access, Odometer, Photos, Filler, Clock, Log.For<ExpenseService>());
         RecurringService = new RecurringExpenseService(LogGuard, Recurring, Access, Odometer, ExpenseService, Defaults.Create(), Clock, Log.For<RecurringExpenseService>());
         Imports = new ImportService([new FuelioCsvParser()], ImportSessions, Access, VehicleService, RefuelingService, ExpenseService, RecurringService, Refuelings, Expenses, Defaults.Create(), Log.For<ImportService>());
         Stats = new StatsService(Vehicles, new InMemoryStats(Refuelings, Expenses), Access, Clock);

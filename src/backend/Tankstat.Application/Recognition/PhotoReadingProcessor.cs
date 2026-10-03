@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Tankstat.Application.Images;
+using Tankstat.Domain.Photos;
 using Tankstat.Domain.Recognition;
 
 namespace Tankstat.Application.Recognition;
@@ -17,11 +18,12 @@ public sealed record ProcessedReading(Guid Id, ReadingOutcome Outcome, string? R
 
 /// <summary>
 /// The background worker's job: read the photos that are due, a few at a time, through the recognition provider, and keep what was
-/// found. Nothing is claimed while the provider is unavailable, so a stopped reader does not use up the attempts.
+/// found. Nothing is claimed while the provider is unavailable, so a stopped reader does not use up the attempts. A finished reading of
+/// a photo that already belongs to a log (saved while it was being read) is then taken into that log (<see cref="LogPhotoFiller"/>).
 /// </summary>
 public sealed class PhotoReadingProcessor(
     IRecognitionProvider provider, RecognitionAvailability availability, RecognitionSetup setup, IPhotoReadingRepository readings,
-    IImageRepository images, IImageStore store, TimeProvider clock, ILogger<PhotoReadingProcessor> logger)
+    IImageRepository images, IImageStore store, LogPhotoFiller filler, TimeProvider clock, ILogger<PhotoReadingProcessor> logger)
 {
     /// <summary>
     /// An attempt this old was cut short (the app stopped while reading): it is queued again. At least five minutes, and always longer than
@@ -41,16 +43,30 @@ public sealed class PhotoReadingProcessor(
         if (!await availability.IsAvailableAsync(ct)) return [];
 
         var now = clock.GetUtcNow();
+        var finished = new List<Guid>();
         foreach (var stale in await readings.ListStaleAsync(now - StaleAfter(setup.Options), ct))
         {
             stale.Abandon(now);
             await readings.SaveAsync(stale, ct);
             logger.LogInformation("The reading of photo {Id} was cut short and is {Outcome}", stale.Id, stale.Status == ReadingStatus.Failed ? "given up after its last attempt" : "queued again");
+            if (stale.Status == ReadingStatus.Failed) finished.Add(stale.Id);
         }
 
         var due = await readings.ListDueAsync(now, setup.Options.MaxConcurrent, ct);
-        var done = await Task.WhenAll(due.Select(id => ProcessAsync(id, ct)));
-        return done.OfType<ProcessedReading>().ToList();
+        var done = (await Task.WhenAll(due.Select(id => ProcessAsync(id, ct)))).OfType<ProcessedReading>().ToList();
+        finished.AddRange(done.Where(d => d.Outcome != ReadingOutcome.Retrying).Select(d => d.Id));
+
+        // One log at a time, after the reads: two photos of one log never fill it in at the same time.
+        foreach (var log in await LogsOfAsync(finished, ct)) await filler.FillAsync(log.Type, log.Id, ct);
+        return done;
+    }
+
+    private async Task<IReadOnlyList<(LogType Type, Guid Id)>> LogsOfAsync(IEnumerable<Guid> imageIds, CancellationToken ct)
+    {
+        var logs = new List<(LogType Type, Guid Id)>();
+        foreach (var id in imageIds)
+            if (await filler.LogOfAsync(id, ct) is { } log && !logs.Contains(log)) logs.Add(log);
+        return logs;
     }
 
     private async Task<ProcessedReading?> ProcessAsync(Guid id, CancellationToken ct)

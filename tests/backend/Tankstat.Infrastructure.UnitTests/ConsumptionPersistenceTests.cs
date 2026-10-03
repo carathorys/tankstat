@@ -75,7 +75,7 @@ public class ConsumptionPersistenceTests
 
         var page = await repo.ListForVehicleAsync(car.Id, new RefuelingQuery(field, direction), default);
 
-        Assert.Equal(expectedOdometers, page.Select(r => r.Odometer));
+        Assert.Equal(expectedOdometers, page.Select(r => r.Odometer!.Value));
     }
 
     [Fact]

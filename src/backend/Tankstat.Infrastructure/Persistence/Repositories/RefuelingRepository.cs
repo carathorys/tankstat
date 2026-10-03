@@ -76,10 +76,11 @@ internal sealed class RefuelingRepository(IDbContextFactory<AppDbContext> dbFact
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task UpdateAsync(Refueling refueling, CancellationToken ct)
+    public async Task UpdateAsync(Refueling refueling, LinkedChanges changes, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        db.Refuelings.Update(refueling);
+        db.Refuelings.Update(refueling); // marks the loaded graph (cost, reading) as modified; new and let-go rows are said so explicitly
+        db.Apply(changes);
         await db.SaveChangesAsync(ct);
     }
 
@@ -91,8 +92,8 @@ internal sealed class RefuelingRepository(IDbContextFactory<AppDbContext> dbFact
         var photos = await db.LogPhotos.Where(p => p.LogType == LogType.Refueling && ids.Contains(p.LogId)).ToListAsync(ct);
         db.LogPhotos.RemoveRange(photos);
         db.Refuelings.RemoveRange(doomed); // the dependents first, then the reading and cost that went with each log
-        db.OdometerReadings.RemoveRange(doomed.Select(r => r.OdometerReading));
-        db.Costs.RemoveRange(doomed.Select(r => r.Cost));
+        db.OdometerReadings.RemoveRange(doomed.Where(r => r.OdometerReading is not null).Select(r => r.OdometerReading!));
+        db.Costs.RemoveRange(doomed.Where(r => r.Cost is not null).Select(r => r.Cost!));
         await db.SaveChangesAsync(ct);
         var withPhotos = photos.Select(p => p.LogId).ToHashSet();
         return new PurgedLogs(doomed.Count, doomed.Where(r => withPhotos.Contains(r.Id)).Select(r => (r.VehicleId, r.Id)).ToList());
@@ -110,16 +111,16 @@ internal sealed class RefuelingRepository(IDbContextFactory<AppDbContext> dbFact
         var ordered = q.SortBy switch
         {
             RefuelingSortField.Volume => Order(refuelings, r => r.Volume, desc),
-            RefuelingSortField.TotalCost => Order(refuelings, r => r.Cost.Amount, desc),
-            RefuelingSortField.Odometer => Order(refuelings, r => r.OdometerReading.Value, desc),
+            RefuelingSortField.TotalCost => Order(refuelings, r => r.Cost == null ? 0 : r.Cost.Amount, desc),
+            RefuelingSortField.Odometer => Order(refuelings, r => r.OdometerReading == null ? 0 : r.OdometerReading.Value, desc),
             RefuelingSortField.Consumption => Order(refuelings, r => r.Consumption, desc),
-            RefuelingSortField.PricePerUnit => Order(refuelings, r => r.Cost.Amount / r.Volume, desc),
+            RefuelingSortField.PricePerUnit => Order(refuelings, r => r.Cost == null || r.Volume == null ? 0 : r.Cost.Amount / r.Volume, desc),
             RefuelingSortField.CreatedBy => Order(refuelings, r => db.Users.Where(u => u.Id == r.CreatedById).Select(u => u.DisplayName.ToLower()).FirstOrDefault(), desc),
             RefuelingSortField.Vehicle => Order(refuelings, r => db.Vehicles.IgnoreQueryFilters().Where(v => v.Id == r.VehicleId).Select(v => v.Name.ToLower()).FirstOrDefault(), desc),
             RefuelingSortField.DeletedAt => Order(refuelings, r => r.DeletedAt, desc),
             _ => Order(refuelings, r => r.Date, desc),
         };
-        return (desc ? ordered.ThenByDescending(r => r.OdometerReading.Value) : ordered.ThenBy(r => r.OdometerReading.Value))
+        return (desc ? ordered.ThenByDescending(r => r.OdometerReading == null ? 0 : r.OdometerReading.Value) : ordered.ThenBy(r => r.OdometerReading == null ? 0 : r.OdometerReading.Value))
             .ThenBy(r => r.Id).Skip(q.Skip).Take(q.Take);
     }
 

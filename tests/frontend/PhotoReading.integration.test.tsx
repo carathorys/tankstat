@@ -229,3 +229,77 @@ it('marking a schedule done without an expense keeps no photos: they are not sen
   expect(state.calls.MarkRecurringExpenseDone).toEqual([{ input: expect.objectContaining({ odometer: 62480, createExpense: false, photoIds: [] }) }])
   await waitFor(() => expect(photos.state.draftDeletes).toEqual(['draft1']))
 })
+
+it('saves a refuelling while its photo is still being read, leaving the odometer to it, and lists it as waiting', async () => {
+  const { ui, state } = setupRefuelings(fakeRecognition({ results: [[{ name: 'ODOMETER', value: '12480' }]], queuedPolls: 1000 }))
+  const dialog = await openAddRefueling(ui)
+  await ui.upload(camera(dialog), photo('dashboard.png'))
+  expect(await within(dialog).findByText('Reading…')).toBeInTheDocument()
+
+  expect(within(dialog).getByLabelText(/^Odometer/)).toHaveAccessibleDescription(/Leave it empty: it is filled in from the photo after saving\./)
+  expect(within(dialog).getByLabelText(/^Odometer/)).not.toBeRequired()
+  await ui.type(within(dialog).getByLabelText(/^Volume/), '40')
+  await ui.type(within(dialog).getByLabelText('Total cost'), '24000')
+  await ui.click(within(dialog).getByRole('button', { name: 'Add refuelling' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(state.calls.LogRefueling).toEqual([{ input: expect.objectContaining({ volume: 40, totalCost: 24000, odometer: null, photoIds: ['draft1'] }) }])
+  expect(await screen.findByText('Reading photo…')).toBeInTheDocument()
+})
+
+it('without a photo being read, every value of a refuelling is required', async () => {
+  const { ui, state } = setupRefuelings()
+  const dialog = await openAddRefueling(ui)
+
+  await ui.type(within(dialog).getByLabelText(/^Volume/), '40')
+  await ui.type(within(dialog).getByLabelText('Total cost'), '24000')
+  await ui.click(within(dialog).getByRole('button', { name: 'Add refuelling' }))
+
+  expect(await within(dialog).findByText('Odometer (kilometers) is required')).toBeInTheDocument()
+  expect(within(dialog).queryByText(/Leave it empty/)).not.toBeInTheDocument()
+  expect(state.calls.LogRefueling).toBeUndefined()
+})
+
+it('a refuelling filled in from its photo is marked in the list, and its edit dialog says what to check', async () => {
+  stubViewport('desktop')
+  const backend = fakeLogBackend(fakeVehicle(), [fakeRefueling({ id: 'r1', odometer: 12480, reviewState: 'NEEDS_REVIEW', filledFromPhoto: ['ODOMETER'] })])
+  server.use(sessionHandler('NONE', () => null), healthHandler, ...backend.handlers, ...fakeRecognition().handlers)
+  renderWithApollo(<App />, '/vehicles/v1?tab=refuelings')
+  const ui = userEvent.setup()
+
+  expect(await screen.findByText('Check values')).toBeInTheDocument()
+  await ui.click(screen.getByRole('button', { name: /^Edit the refuelling/ }))
+  const dialog = await screen.findByRole('dialog', { name: 'Edit refuelling' })
+
+  expect(await within(dialog).findByText('Some values were read from its photos (marked below). Check them and save.')).toBeInTheDocument()
+  expect(within(dialog).getByLabelText(/^Odometer/)).toHaveAccessibleDescription(/Read from the photo; check it\./)
+  expect(within(dialog).getByLabelText(/^Volume/)).not.toHaveAccessibleDescription(/Read from the photo/)
+  await ui.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(backend.state.calls.UpdateRefueling).toEqual([{ input: expect.objectContaining({ id: 'r1', odometer: 12480 }) }])
+  await waitFor(() => expect(screen.queryByText('Check values')).not.toBeInTheDocument())
+})
+
+it('saves an expense while its receipt is still being read, leaving the amount to it', async () => {
+  stubViewport('desktop')
+  const photos = fakePhotoStore()
+  const recognition = fakeRecognition({ results: [[{ name: 'TOTAL', value: '25870' }]], queuedPolls: 1000 })
+  const backend = fakeExpenseBackend(fakeVehicle(), [fakeExpense({ id: 'e1', title: 'Oil change' })], photos)
+  server.use(sessionHandler('NONE', () => null), healthHandler, ...backend.handlers, ...recognition.handlers)
+  renderWithApollo(<App />, '/vehicles/v1?tab=expenses')
+  const ui = userEvent.setup()
+  await screen.findByText('Oil change')
+  await ui.click(screen.getByRole('button', { name: 'Add expense' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add expense' })
+  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
+
+  await ui.upload(camera(dialog), photo())
+  expect(await within(dialog).findByText('Reading…')).toBeInTheDocument()
+  await ui.type(within(dialog).getByLabelText('Title'), 'Car wash')
+  await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(backend.state.calls.AddExpense).toEqual([{ input: expect.objectContaining({ title: 'Car wash', amount: null, photoIds: ['draft1'] }) }])
+  expect(await screen.findByText('Reading photo…')).toBeInTheDocument()
+})

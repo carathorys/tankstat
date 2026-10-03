@@ -1,11 +1,14 @@
 import { useTranslation } from 'react-i18next'
-import type { AccessLevel, NotificationFieldsFragment } from '../gql/generated.ts'
+import type { AccessLevel, LogValue, NotificationFieldsFragment } from '../gql/generated.ts'
+import { useFormat } from '../i18n/format.ts'
 import type en from '../i18n/locales/en.json'
 
 type KindText = Exclude<keyof (typeof en)['notifications']['kinds'], `${string}_one` | `${string}_other`>
 
 const LEVELS: AccessLevel[] = ['NONE', 'VIEW', 'EDIT', 'DELETE']
 const asLevel = (value: string | undefined): AccessLevel => ((LEVELS as string[]).includes(value ?? '') ? (value as AccessLevel) : 'NONE')
+const LOG_VALUES: LogValue[] = ['ODOMETER', 'VOLUME', 'TOTAL']
+const asLogValues = (value: string | undefined): LogValue[] => (value ?? '').split(',').filter((v): v is LogValue => (LOG_VALUES as string[]).includes(v))
 
 export interface NotificationText {
   /** The sentence the notification says. */
@@ -20,6 +23,7 @@ export interface NotificationText {
  */
 export function useNotificationText() {
   const { t } = useTranslation()
+  const { date, list } = useFormat()
 
   return (n: NotificationFieldsFragment): NotificationText => {
     const args: Record<string, string | undefined> = Object.fromEntries(n.args.map((a) => [a.name, a.value]))
@@ -49,6 +53,15 @@ export function useNotificationText() {
       case 'RECURRING_DUE_SOON':
       case 'RECURRING_OVERDUE':
         return { text: t(`notifications.kinds.${n.kind}`, names), href: vehicle && `${vehicle}?tab=recurring` }
+      case 'LOG_FILLED_FROM_PHOTO':
+      case 'LOG_NOT_FILLED': {
+        // A log whose photo was read after it was saved: what was filled in (to check) or is still missing.
+        const expense = n.subject.type === 'EXPENSE'
+        const values = list(asLogValues(args.values).map((v) => t(`review.values.${v}`)))
+        const logDate = args.date ? date(args.date) : ''
+        const text = t(`notifications.kinds.${n.kind}_${expense ? 'EXPENSE' : 'REFUELING'}`, { ...names, date: logDate, values })
+        return { text, href: vehicle && `${vehicle}?tab=${expense ? 'expenses' : 'refuelings'}` }
+      }
       case 'MORE_ACTIVITY':
         return { text: t('notifications.kinds.MORE_ACTIVITY', { count: n.count }), href: null }
     }

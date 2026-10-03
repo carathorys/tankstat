@@ -10,10 +10,12 @@ internal sealed class StatsRepository(IDbContextFactory<AppDbContext> dbFactory)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct); // the global filters already leave out the trash
 
-        var fuel = await db.Refuelings.AsNoTracking().Where(r => r.VehicleId == vehicleId)
-            .Select(r => new FuelPoint(r.Date, r.Volume, r.Cost.Amount, r.Cost.Currency, r.OdometerReading.Value, r.IsFullTank, r.Consumption)).ToListAsync(ct);
-        var expenses = await db.Expenses.AsNoTracking().Where(e => e.VehicleId == vehicleId)
-            .Select(e => new ExpensePoint(e.Date, e.Category, e.Cost.Amount, e.Cost.Currency)).ToListAsync(ct);
+        // Logs still missing values (their photos are being read, or left them out) count once they are complete.
+        var fuel = await db.Refuelings.AsNoTracking()
+            .Where(r => r.VehicleId == vehicleId && r.Volume != null && r.Cost != null && r.OdometerReading != null)
+            .Select(r => new FuelPoint(r.Date, r.Volume!.Value, r.Cost!.Amount, r.Cost.Currency, r.OdometerReading!.Value, r.IsFullTank, r.Consumption)).ToListAsync(ct);
+        var expenses = await db.Expenses.AsNoTracking().Where(e => e.VehicleId == vehicleId && e.Cost != null)
+            .Select(e => new ExpensePoint(e.Date, e.Category, e.Cost!.Amount, e.Cost.Currency)).ToListAsync(ct);
         var readings = await db.OdometerReadings.AsNoTracking().Where(r => r.VehicleId == vehicleId)
             .Select(r => new OdometerPoint(r.Date, r.Value)).ToListAsync(ct);
         return new StatsData(fuel, expenses, readings);

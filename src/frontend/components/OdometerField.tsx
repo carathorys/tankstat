@@ -17,6 +17,7 @@ export function OdometerField({
   onChange,
   last,
   optional,
+  required = !optional,
   extra,
 }: {
   unit: DistanceUnit
@@ -27,6 +28,8 @@ export function OdometerField({
   last?: { value: number; date: string } | null
   /** The reading may be left empty (an expense where the odometer was not noted). */
   optional?: boolean
+  /** Whether it must be filled in; by default unless it is optional (a reading a photo will provide may also be left empty). */
+  required?: boolean
   /** Shown under the hint, e.g. what a photo showed. */
   extra?: ReactNode
 }) {
@@ -37,15 +40,15 @@ export function OdometerField({
     <Field
       name="odometer"
       label={label}
-      required={!optional}
+      required={required}
       hint={last ? t('refuelings.hints.lastReading', { value: distance(last.value, unit), date: date(last.date) }) : undefined}
       invalid={{ message: t('errors.odometer.negative'), test: (v) => v !== '' && !/^\d+$/.test(v.trim()) }}
       extra={extra}
     >
       {value === undefined ? (
-        <TextField.Root inputMode="numeric" autoComplete="off" defaultValue={defaultValue?.toString() ?? ''} />
+        <TextField.Root required={required} inputMode="numeric" autoComplete="off" defaultValue={defaultValue?.toString() ?? ''} />
       ) : (
-        <TextField.Root inputMode="numeric" autoComplete="off" value={value} onChange={(e) => onChange?.(e.target.value)} />
+        <TextField.Root required={required} inputMode="numeric" autoComplete="off" value={value} onChange={(e) => onChange?.(e.target.value)} />
       )}
     </Field>
   )

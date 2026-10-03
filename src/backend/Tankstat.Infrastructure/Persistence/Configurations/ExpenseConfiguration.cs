@@ -18,8 +18,10 @@ internal sealed class ExpenseConfiguration : IEntityTypeConfiguration<Expense>
         b.HasIndex(e => new { e.VehicleId, e.Date });
         b.HasIndex(e => e.OwnerId);
 
-        // The cost (always) and the odometer reading (when noted) are owned by the expense; removing expenses for good removes them in code.
-        b.HasOne(e => e.Cost).WithOne().HasForeignKey<Expense>(e => e.CostId).IsRequired().OnDelete(DeleteBehavior.Restrict);
+        // The cost (once known) and the odometer reading (when noted) are owned by the expense; removing expenses for good removes them in code.
+        b.HasOne(e => e.Cost).WithOne().HasForeignKey<Expense>(e => e.CostId).IsRequired(false).OnDelete(DeleteBehavior.Restrict);
+        b.Property(e => e.ReviewState).HasConversion<string>().HasMaxLength(16).HasDefaultValue(ReviewState.None);
+        b.Property(e => e.FilledFromPhoto).HasConversion<int>();
         b.HasOne(e => e.OdometerReading).WithOne().HasForeignKey<Expense>(e => e.OdometerReadingId).IsRequired(false).OnDelete(DeleteBehavior.Restrict);
 
         b.Property(e => e.DeletedAt).HasConversion(

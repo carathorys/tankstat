@@ -9,19 +9,37 @@ using Tankstat.Domain.Vehicles;
 
 namespace Tankstat.Api.GraphQL;
 
+/// <param name="Volume">Volume, total cost and odometer may be omitted only while one of <paramref name="PhotoIds"/> is still being read: the reading fills them in later (<c>reviewState</c>).</param>
 /// <param name="Currency">ISO 4217 code of the currency paid in; omit to use the instance default.</param>
 /// <param name="PhotoIds">Photos uploaded for this log beforehand (<c>PUT /media/vehicles/{id}/photo-drafts</c>); they become its photos.</param>
 public sealed record LogRefuelingInput(
-    Guid VehicleId, DateOnly Date, decimal Volume, decimal TotalCost, string? Currency, long Odometer, bool IsFullTank, string? Note, IReadOnlyList<Guid>? PhotoIds = null);
+    Guid VehicleId, DateOnly Date, decimal? Volume, decimal? TotalCost, string? Currency, long? Odometer, bool IsFullTank, string? Note, IReadOnlyList<Guid>? PhotoIds = null);
 
+/// <param name="Volume">Volume, total cost and odometer may be omitted only while a photo of the log is still being read.</param>
 /// <param name="Currency">Omit to keep the log's currency.</param>
-public sealed record UpdateRefuelingInput(Guid Id, DateOnly Date, decimal Volume, decimal TotalCost, string? Currency, long Odometer, bool IsFullTank, string? Note);
+public sealed record UpdateRefuelingInput(Guid Id, DateOnly Date, decimal? Volume, decimal? TotalCost, string? Currency, long? Odometer, bool IsFullTank, string? Note);
 public sealed record SetLogAccessInput(Guid VehicleId, Guid UserId, AccessLevel Level);
 
 /// <summary>What the add-log form starts from.</summary>
 public sealed record LogDefaults(long? LastOdometer, DateOnly? LastDate, string Currency);
 
 public sealed record LogAccessGrantInfo(UserRef User, AccessLevel Level);
+
+/// <summary>A value of a log that a photo can provide.</summary>
+public enum LogValue
+{
+    Odometer,
+    Volume,
+    Total,
+}
+
+public static class LogValueList
+{
+    /// <summary>The flags as a list, for clients.</summary>
+    public static IReadOnlyList<LogValue> Of(LogValues values) =>
+        [.. new[] { (LogValues.Odometer, LogValue.Odometer), (LogValues.Volume, LogValue.Volume), (LogValues.Total, LogValue.Total) }
+            .Where(v => values.HasFlag(v.Item1)).Select(v => v.Item2)];
+}
 
 /// <summary>The refuelling type exposes its odometer as a plain number; the linked reading stays an internal detail.</summary>
 public sealed class RefuelingType : ObjectType<Refueling>
@@ -33,6 +51,14 @@ public sealed class RefuelingType : ObjectType<Refueling>
         descriptor.Ignore(r => r.Cost);
         descriptor.Ignore(r => r.CostId);
         descriptor.Ignore(r => r.IsDeleted);
+        descriptor.Ignore(r => r.Missing);
+        descriptor.Ignore(r => r.Update(default, default, default, default, default, default, default, default));
+        descriptor.Ignore(r => r.FillFromPhoto(default!));
+        descriptor.Ignore(r => r.FinishReading(default));
+        descriptor.Field(r => r.FilledFromPhoto)
+            .Description("The values its photos filled in that nobody has checked yet.")
+            .Type<NonNullType<ListType<NonNullType<EnumType<LogValue>>>>>()
+            .Resolve(ctx => LogValueList.Of(ctx.Parent<Refueling>().FilledFromPhoto));
     }
 }
 

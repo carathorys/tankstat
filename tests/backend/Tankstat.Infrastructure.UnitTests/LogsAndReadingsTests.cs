@@ -43,8 +43,8 @@ public class LogsAndReadingsTests
         var loaded = (await db.Get<IRefuelingRepository>().FindAsync(log.Id, default))!;
 
         Assert.Equal((12_345L, 79.9m, "HUF", 41.5m), (loaded.Odometer, loaded.TotalCost, loaded.Currency, loaded.Volume));
-        Assert.Equal(log.OdometerReadingId, loaded.OdometerReading.Id);
-        Assert.Equal(log.CostId, loaded.Cost.Id);
+        Assert.Equal(log.OdometerReadingId, loaded.OdometerReading!.Id);
+        Assert.Equal(log.CostId, loaded.Cost!.Id);
         await using var ctx = await db.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
         Assert.Equal(1, await ctx.OdometerReadings.CountAsync());
         Assert.Equal(1, await ctx.Costs.CountAsync());
@@ -59,12 +59,11 @@ public class LogsAndReadingsTests
         var repo = db.Get<IRefuelingRepository>();
 
         var loaded = (await repo.FindAsync(log.Id, default))!;
-        loaded.Update(new(2026, 9, 5), 30, 45.5m, "USD", 2000, false, "note");
-        await repo.UpdateAsync(loaded, default);
+        await repo.UpdateAsync(loaded, loaded.Update(new(2026, 9, 5), 30, 45.5m, "USD", 2000, false, "note"), default);
 
         var again = (await repo.FindAsync(log.Id, default))!;
         Assert.Equal((new DateOnly(2026, 9, 5), 30m, 45.5m, "USD", 2000L, false, "note"), (again.Date, again.Volume, again.TotalCost, again.Currency, again.Odometer, again.IsFullTank, again.Note));
-        Assert.Equal((new DateOnly(2026, 9, 5), 2000L), (again.OdometerReading.Date, again.OdometerReading.Value));
+        Assert.Equal((new DateOnly(2026, 9, 5), 2000L), (again.OdometerReading!.Date, again.OdometerReading.Value));
         await using var ctx = await db.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
         Assert.Equal(1, await ctx.OdometerReadings.CountAsync()); // updated in place, not duplicated
         Assert.Equal(1, await ctx.Costs.CountAsync());
@@ -81,7 +80,7 @@ public class LogsAndReadingsTests
 
         var loaded = (await repo.FindAsync(log.Id, default))!;
         loaded.MarkDeleted(DateTimeOffset.UtcNow);
-        await repo.UpdateAsync(loaded, default);
+        await repo.UpdateAsync(loaded, LinkedChanges.None, default);
 
         Assert.Null(await repo.FindAsync(log.Id, default));
         Assert.Null(await readings.LatestAsync(car.Id, default)); // a trashed log's reading no longer counts
@@ -89,7 +88,7 @@ public class LogsAndReadingsTests
         Assert.True(await repo.AnyForVehicleAsync(car.Id, default));
         var trashed = (await repo.FindIncludingDeletedAsync(log.Id, default))!;
         trashed.Restore();
-        await repo.UpdateAsync(trashed, default);
+        await repo.UpdateAsync(trashed, LinkedChanges.None, default);
         Assert.Equal(1000, (await readings.LatestAsync(car.Id, default))!.Value);
     }
 
@@ -255,7 +254,7 @@ public class LogsAndReadingsTests
         {
             var log = (await repo.FindAsync((await AddLog(db, v, new(2026, 9, 1), 1000)).Id, default))!;
             log.MarkDeleted(DateTimeOffset.UtcNow);
-            await repo.UpdateAsync(log, default);
+            await repo.UpdateAsync(log, LinkedChanges.None, default);
         }
 
         Assert.Equal(3, await repo.CountDeletedAsync(OwnerScope.All, default));
@@ -275,15 +274,15 @@ public class LogsAndReadingsTests
         var doomed = (await repo.FindAsync((await AddLog(db, car, new(2026, 9, 1), 1000)).Id, default))!;
         var kept = await AddLog(db, car, new(2026, 9, 2), 2000);
         doomed.MarkDeleted(DateTimeOffset.UtcNow);
-        await repo.UpdateAsync(doomed, default);
+        await repo.UpdateAsync(doomed, LinkedChanges.None, default);
 
         var purged = await repo.PurgeAsync(OwnerScope.Of([Owner]), default);
 
         Assert.Equal(1, purged.Count);
         Assert.Equal(kept.Id, Assert.Single(await repo.ListForVehicleAsync(car.Id, new RefuelingQuery(), default)).Id);
         await using var ctx = await db.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
-        Assert.Equal([kept.OdometerReadingId], await ctx.OdometerReadings.IgnoreQueryFilters().Select(r => r.Id).ToListAsync());
-        Assert.Equal([kept.CostId], await ctx.Costs.IgnoreQueryFilters().Select(c => c.Id).ToListAsync());
+        Assert.Equal([kept.OdometerReadingId!.Value], await ctx.OdometerReadings.IgnoreQueryFilters().Select(r => r.Id).ToListAsync());
+        Assert.Equal([kept.CostId!.Value], await ctx.Costs.IgnoreQueryFilters().Select(c => c.Id).ToListAsync());
     }
 
     [Fact]
@@ -294,7 +293,7 @@ public class LogsAndReadingsTests
         var repo = db.Get<IRefuelingRepository>();
         var log = (await repo.FindAsync((await AddLog(db, car, new(2026, 9, 1), 1000)).Id, default))!;
         log.MarkDeleted(DateTimeOffset.UtcNow);
-        await repo.UpdateAsync(log, default);
+        await repo.UpdateAsync(log, LinkedChanges.None, default);
 
         Assert.Equal(0, (await repo.PurgeAsync(OwnerScope.Of([Guid.NewGuid()]), default)).Count);
         Assert.NotNull(await repo.FindIncludingDeletedAsync(log.Id, default));

@@ -69,6 +69,7 @@ public static class DependencyInjection
         services.AddSingleton<RecognitionSetup>();
         services.AddSingleton<RecognitionAvailability>();
         services.AddScoped<RecognitionService>();
+        services.AddScoped<LogPhotoFiller>();
         services.AddScoped<PhotoReadingProcessor>();
         return services;
     }

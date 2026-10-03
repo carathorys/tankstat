@@ -8,7 +8,8 @@ namespace Tankstat.Domain.Vehicles;
 /// Money spent on a vehicle that is not a fill-up: service, insurance, parking, tolls, ... Like a refuelling it does not carry
 /// an amount or odometer number of its own but owns a <see cref="Cost"/> and, when the odometer was noted, an
 /// <see cref="OdometerReading"/> (they are trashed, restored and deleted with it). The category is free text, so whatever an
-/// import brings along (or the user types) is kept as is.
+/// import brings along (or the user types) is kept as is. The amount may be empty only while a photo of the expense is still being
+/// read (see <see cref="ReviewState"/>); the reading fills it in later, and the odometer too when it was not noted.
 /// </summary>
 public sealed class Expense : IOwned, ISoftDeletable
 {
@@ -31,12 +32,12 @@ public sealed class Expense : IOwned, ISoftDeletable
     public string? Category { get; private set; }
     public string? Note { get; private set; }
 
-    public Guid CostId { get; private set; }
+    public Guid? CostId { get; private set; }
 
-    /// <summary>The linked cost; load it (Include) before reading <see cref="Amount"/> or <see cref="Currency"/>.</summary>
-    public Cost Cost { get; private set; } = null!;
-    public decimal Amount => Cost.Amount;
-    public string Currency => Cost.Currency;
+    /// <summary>The linked cost, null until known; load it (Include) before reading <see cref="Amount"/> or <see cref="Currency"/>.</summary>
+    public Cost? Cost { get; private set; }
+    public decimal? Amount => Cost?.Amount;
+    public string? Currency => Cost?.Currency;
 
     public Guid? OdometerReadingId { get; private set; }
 
@@ -50,53 +51,85 @@ public sealed class Expense : IOwned, ISoftDeletable
 
     public bool IsDeleted => DeletedAt is not null;
 
+    public ReviewState ReviewState { get; private set; }
+
+    /// <summary>The values its photos filled in that nobody has checked yet (odometer and total).</summary>
+    public LogValues FilledFromPhoto { get; private set; }
+
+    /// <summary>The values it needs but lacks: only the amount (the odometer is optional).</summary>
+    public LogValues Missing => Cost is null ? LogValues.Total : LogValues.None;
+
+    /// <summary>The empty values a photo could fill in: the amount and an odometer that was not noted.</summary>
+    public LogValues Fillable => Missing | (OdometerReading is null ? LogValues.Odometer : LogValues.None);
+
+    /// <param name="readingPhotos">A photo of the expense is still being read: only then may the amount be left empty.</param>
     public static Expense Create(
-        Guid ownerId, Guid createdById, Guid vehicleId, DateOnly date, string title, string? category, Cost cost, OdometerReading? reading, string? note = null)
+        Guid ownerId, Guid createdById, Guid vehicleId, DateOnly date, string title, string? category, Cost? cost, OdometerReading? reading,
+        string? note = null, bool readingPhotos = false)
     {
-        if (cost.VehicleId != vehicleId || (reading is not null && reading.VehicleId != vehicleId))
+        if ((cost is not null && cost.VehicleId != vehicleId) || (reading is not null && reading.VehicleId != vehicleId))
             throw new DomainException("expense.wrongVehicle", "The odometer reading and the cost must belong to the same vehicle as the expense.");
 
         var expense = new Expense
         {
             Id = Guid.NewGuid(), OwnerId = ownerId, CreatedById = createdById, VehicleId = vehicleId,
-            CostId = cost.Id, Cost = cost, OdometerReadingId = reading?.Id, OdometerReading = reading,
+            CostId = cost?.Id, Cost = cost, OdometerReadingId = reading?.Id, OdometerReading = reading,
         };
         expense.Apply(date, title, category, note);
-        cost.Update(date, cost.Amount, cost.Currency);
+        cost?.Update(date, cost.Amount, cost.Currency);
         reading?.Update(date, reading.Value);
+        expense.ReviewState = LogReview.AfterSave(expense.Missing, expense.Fillable, readingPhotos);
         return expense;
     }
 
     /// <summary>
-    /// Changes the expense. <paramref name="odometer"/> null means "not noted": an existing reading is detached and returned so the
-    /// caller can delete it; a reading that has to be created for a newly noted odometer is returned through <paramref name="created"/>.
+    /// Changes the expense. <paramref name="odometer"/> null means "not noted" and <paramref name="amount"/> null "not known yet" (only
+    /// while a photo is being read): a reading or cost let go of, or one that had to be created, is returned for the repository. A person
+    /// saved it, so values read from photos count as checked.
     /// </summary>
-    public OdometerReading? Update(
-        DateOnly date, string title, string? category, decimal amount, string currency, long? odometer, string? note, out OdometerReading? created)
+    /// <param name="currency">The currency of the cost; ignored without <paramref name="amount"/>.</param>
+    public LinkedChanges Update(
+        DateOnly date, string title, string? category, decimal? amount, string? currency, long? odometer, string? note, bool readingPhotos = false)
     {
         if (IsDeleted) throw new DomainException("expense.trashedCannotEdit", "An expense in the trash cannot be edited; restore it first.");
         Apply(date, title, category, note);
-        Cost.Update(date, amount, currency);
+        var (createdCost, removedCost) = SetCost(date, amount, currency);
+        var (createdReading, removedReading) = SetReading(date, odometer);
+        ReviewState = LogReview.AfterSave(Missing, Fillable, readingPhotos);
+        FilledFromPhoto = LogValues.None;
+        return new LinkedChanges(createdReading, removedReading, createdCost, removedCost);
+    }
 
-        created = null;
-        OdometerReading? detached = null;
-        if (odometer is null)
+    /// <summary>
+    /// Fills in the empty values its photos showed (the total, and the odometer when it was not noted) while it waits for them; values a
+    /// person entered are never replaced, and the reading is not checked against the vehicle's other readings.
+    /// </summary>
+    public LinkedChanges FillFromPhoto(PhotoValues values)
+    {
+        if (ReviewState != ReviewState.AwaitingPhotos || IsDeleted) return LinkedChanges.None;
+        OdometerReading? createdReading = null;
+        Cost? createdCost = null;
+        if (OdometerReading is null && LogReview.UsableOdometer(values.Odometer) is { } odometer)
         {
-            detached = OdometerReading;
-            OdometerReading = null;
-            OdometerReadingId = null;
+            createdReading = OdometerReading.Create(OwnerId, VehicleId, Date, odometer);
+            (OdometerReading, OdometerReadingId) = (createdReading, createdReading.Id);
+            FilledFromPhoto |= LogValues.Odometer;
         }
-        else if (OdometerReading is null)
+        if (Cost is null && LogReview.UsableAmount(values.Total) is { } total && values.Currency is { } currency)
         {
-            created = OdometerReading.Create(OwnerId, VehicleId, date, odometer.Value);
-            OdometerReading = created;
-            OdometerReadingId = created.Id;
+            createdCost = Cost.Create(OwnerId, VehicleId, Date, total, currency);
+            (Cost, CostId) = (createdCost, createdCost.Id);
+            FilledFromPhoto |= LogValues.Total;
         }
-        else
-        {
-            OdometerReading.Update(date, odometer.Value);
-        }
-        return detached;
+        return new LinkedChanges(createdReading, null, createdCost, null);
+    }
+
+    /// <summary>Moves on once its photos were read (or while some still are); true when the state changed.</summary>
+    public bool FinishReading(bool readingPhotos)
+    {
+        var before = ReviewState;
+        ReviewState = LogReview.AfterReading(ReviewState, Missing, Fillable, FilledFromPhoto, readingPhotos);
+        return ReviewState != before;
     }
 
     public void MarkDeleted(DateTimeOffset now)
@@ -104,7 +137,7 @@ public sealed class Expense : IOwned, ISoftDeletable
         if (IsDeleted) throw new DomainException("expense.alreadyTrashed", "This expense is already in the trash.");
         DeletedAt = now;
         OdometerReading?.MarkDeleted(now);
-        Cost.MarkDeleted(now);
+        Cost?.MarkDeleted(now);
     }
 
     public void Restore()
@@ -112,7 +145,43 @@ public sealed class Expense : IOwned, ISoftDeletable
         if (!IsDeleted) throw new DomainException("expense.notTrashed", "This expense is not in the trash.");
         DeletedAt = null;
         OdometerReading?.Restore();
-        Cost.Restore();
+        Cost?.Restore();
+    }
+
+    private (OdometerReading? Created, OdometerReading? Removed) SetReading(DateOnly date, long? odometer)
+    {
+        if (odometer is null)
+        {
+            var removed = OdometerReading;
+            (OdometerReading, OdometerReadingId) = (null, null);
+            return (null, removed);
+        }
+        if (OdometerReading is null)
+        {
+            var created = OdometerReading.Create(OwnerId, VehicleId, date, odometer.Value);
+            (OdometerReading, OdometerReadingId) = (created, created.Id);
+            return (created, null);
+        }
+        OdometerReading.Update(date, odometer.Value);
+        return (null, null);
+    }
+
+    private (Cost? Created, Cost? Removed) SetCost(DateOnly date, decimal? amount, string? currency)
+    {
+        if (amount is null)
+        {
+            var removed = Cost;
+            (Cost, CostId) = (null, null);
+            return (null, removed);
+        }
+        if (Cost is null)
+        {
+            var created = Cost.Create(OwnerId, VehicleId, date, amount.Value, currency);
+            (Cost, CostId) = (created, created.Id);
+            return (created, null);
+        }
+        Cost.Update(date, amount.Value, currency);
+        return (null, null);
     }
 
     private void Apply(DateOnly date, string title, string? category, string? note)

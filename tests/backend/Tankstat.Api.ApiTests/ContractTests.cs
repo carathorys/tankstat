@@ -81,7 +81,8 @@ public class ContractTests
     [InlineData("ChartData", "unit", "series")]
     [InlineData("ChartSeries", "kind", "currency", "points")]
     [InlineData("VehicleChart", "id", "vehicleId", "title", "metric", "grouping", "kind", "range", "rangeFrom", "rangeTo", "stacked", "isShared", "createdAt", "canEdit", "createdBy")]
-    [InlineData("Refueling", "id", "vehicleId", "createdBy", "date", "volume", "totalCost", "currency", "odometer", "pricePerUnit", "consumption", "isFullTank", "note", "deletedAt", "canEdit", "canDelete", "vehicle", "photos")]
+    [InlineData("Refueling", "id", "vehicleId", "createdBy", "date", "volume", "totalCost", "currency", "odometer", "pricePerUnit", "consumption", "isFullTank", "note", "deletedAt", "canEdit", "canDelete", "vehicle", "photos", "reviewState", "filledFromPhoto")]
+    [InlineData("Expense", "id", "amount", "currency", "odometer", "reviewState", "filledFromPhoto")]
     public async Task Schema_TypeExposesContractFields(string type, params string[] fields)
     {
         var names = await FieldNames(type);
@@ -98,6 +99,19 @@ public class ContractTests
 
         var names = body.GetProperty("data").GetProperty("__type").GetProperty("inputFields").EnumerateArray().Select(f => f.GetProperty("name").GetString()).ToList();
         foreach (var field in fields) Assert.Contains(field, names);
+    }
+
+    [Fact]
+    public async Task Schema_LogValuesThatPhotosFillIn_AreOptional_AndTheReviewStatesAreKnown()
+    {
+        var input = await Query("{ __type(name: \"LogRefuelingInput\") { inputFields { name type { kind } } } }");
+        var kinds = input.GetProperty("data").GetProperty("__type").GetProperty("inputFields").EnumerateArray()
+            .ToDictionary(f => f.GetProperty("name").GetString()!, f => f.GetProperty("type").GetProperty("kind").GetString());
+        var states = (await Query("{ __type(name: \"ReviewState\") { enumValues { name } } }"))
+            .GetProperty("data").GetProperty("__type").GetProperty("enumValues").EnumerateArray().Select(v => v.GetProperty("name").GetString());
+
+        Assert.Equal(("SCALAR", "SCALAR", "SCALAR", "NON_NULL"), (kinds["volume"], kinds["totalCost"], kinds["odometer"], kinds["date"]));
+        Assert.Equal(["NONE", "AWAITING_PHOTOS", "NEEDS_REVIEW", "INCOMPLETE"], states);
     }
 
     [Fact]
@@ -124,8 +138,8 @@ public class ContractTests
     [InlineData("ChartKind", "BAR", "LINE", "AREA", "DONUT")]
     [InlineData("ChartRange", "LAST1_MONTH", "LAST3_MONTHS", "LAST6_MONTHS", "LAST12_MONTHS", "THIS_YEAR", "LAST_YEAR", "ALL", "CUSTOM")]
     [InlineData("NoticeSeverity", "INFO", "WARNING")]
-    [InlineData("NotificationKind", "LOG_ACCESS_CHANGED", "VEHICLE_SHARED", "DATA_ACCESS_CHANGED", "DATA_SHARED", "DEFAULT_ACCESS_CHANGED", "RECURRING_DUE_SOON", "RECURRING_OVERDUE", "MORE_ACTIVITY")]
-    [InlineData("NotificationEntityType", "INSTANCE", "VEHICLE", "RECURRING_EXPENSE", "USER")]
+    [InlineData("NotificationKind", "LOG_ACCESS_CHANGED", "VEHICLE_SHARED", "DATA_ACCESS_CHANGED", "DATA_SHARED", "DEFAULT_ACCESS_CHANGED", "RECURRING_DUE_SOON", "RECURRING_OVERDUE", "LOG_FILLED_FROM_PHOTO", "LOG_NOT_FILLED", "MORE_ACTIVITY")]
+    [InlineData("NotificationEntityType", "INSTANCE", "VEHICLE", "RECURRING_EXPENSE", "USER", "REFUELING", "EXPENSE")]
     public async Task Schema_EnumsExposeContractValues(string type, params string[] expected)
     {
         var body = await Query($"{{ __type(name: \"{type}\") {{ enumValues {{ name }} }} }}");

@@ -38,7 +38,7 @@ public class StatsRepositoryTests
         await refuelings.AddAsync(TestData.Refueling(Owner, Owner, other.Id, Day, 10, 10, 5), default);
         var loaded = (await refuelings.FindAsync(trashed.Id, default))!;
         loaded.MarkDeleted(DateTimeOffset.UtcNow);
-        await refuelings.UpdateAsync(loaded, default);
+        await refuelings.UpdateAsync(loaded, LinkedChanges.None, default);
         var expense = Expense.Create(Owner, Owner, car.Id, Day, "Oil", "Service", Cost.Create(Owner, car.Id, Day, 35, "HUF"), OdometerReading.Create(Owner, car.Id, Day, 1050));
         await db.Get<IExpenseRepository>().AddAsync(expense, default);
 

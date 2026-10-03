@@ -607,7 +607,7 @@ namespace Tankstat.Migrations.MySql
                         .HasMaxLength(60)
                         .HasColumnType("varchar(60)");
 
-                    b.Property<Guid>("CostId")
+                    b.Property<Guid?>("CostId")
                         .HasColumnType("char(36)");
 
                     b.Property<Guid>("CreatedById")
@@ -619,6 +619,9 @@ namespace Tankstat.Migrations.MySql
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<int>("FilledFromPhoto")
+                        .HasColumnType("int");
+
                     b.Property<string>("Note")
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
@@ -628,6 +631,13 @@ namespace Tankstat.Migrations.MySql
 
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("char(36)");
+
+                    b.Property<string>("ReviewState")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)")
+                        .HasDefaultValue("None");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -663,7 +673,7 @@ namespace Tankstat.Migrations.MySql
                         .HasPrecision(9, 3)
                         .HasColumnType("decimal(9,3)");
 
-                    b.Property<Guid>("CostId")
+                    b.Property<Guid?>("CostId")
                         .HasColumnType("char(36)");
 
                     b.Property<Guid>("CreatedById")
@@ -675,6 +685,9 @@ namespace Tankstat.Migrations.MySql
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<int>("FilledFromPhoto")
+                        .HasColumnType("int");
+
                     b.Property<bool>("IsFullTank")
                         .HasColumnType("tinyint(1)");
 
@@ -682,16 +695,23 @@ namespace Tankstat.Migrations.MySql
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
 
-                    b.Property<Guid>("OdometerReadingId")
+                    b.Property<Guid?>("OdometerReadingId")
                         .HasColumnType("char(36)");
 
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("char(36)");
 
+                    b.Property<string>("ReviewState")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)")
+                        .HasDefaultValue("None");
+
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("char(36)");
 
-                    b.Property<decimal>("Volume")
+                    b.Property<decimal?>("Volume")
                         .HasPrecision(9, 3)
                         .HasColumnType("decimal(9,3)");
 
@@ -852,8 +872,7 @@ namespace Tankstat.Migrations.MySql
                     b.HasOne("Tankstat.Domain.Measurements.Cost", "Cost")
                         .WithOne()
                         .HasForeignKey("Tankstat.Domain.Vehicles.Expense", "CostId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Tankstat.Domain.Odometers.OdometerReading", "OdometerReading")
                         .WithOne()
@@ -876,14 +895,12 @@ namespace Tankstat.Migrations.MySql
                     b.HasOne("Tankstat.Domain.Measurements.Cost", "Cost")
                         .WithOne()
                         .HasForeignKey("Tankstat.Domain.Vehicles.Refueling", "CostId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Tankstat.Domain.Odometers.OdometerReading", "OdometerReading")
                         .WithOne()
                         .HasForeignKey("Tankstat.Domain.Vehicles.Refueling", "OdometerReadingId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
                         .WithMany()

@@ -105,7 +105,7 @@ public class LogPhotoRepositoryTests
         var expenses = db.Get<IExpenseRepository>();
         var loaded = (await expenses.FindAsync(doomed.Id, default))!;
         loaded.MarkDeleted(Now);
-        await expenses.UpdateAsync(loaded, null, null, default);
+        await expenses.UpdateAsync(loaded, LinkedChanges.None, default);
 
         var purged = await expenses.PurgeAsync(OwnerScope.All, default);
 
@@ -127,7 +127,7 @@ public class LogPhotoRepositoryTests
         {
             var loaded = (await expenses.FindAsync(id, default))!;
             loaded.MarkDeleted(Now);
-            await expenses.UpdateAsync(loaded, null, null, default);
+            await expenses.UpdateAsync(loaded, LinkedChanges.None, default);
         }
 
         var purged = await expenses.PurgeAsync(OwnerScope.All, default);
@@ -148,7 +148,7 @@ public class LogPhotoRepositoryTests
         await db.Get<ILogPhotoRepository>().AddAsync(Photo(v, LogType.Refueling, log.Id), default);
         var loaded = (await refuelings.FindAsync(log.Id, default))!;
         loaded.MarkDeleted(Now);
-        await refuelings.UpdateAsync(loaded, default);
+        await refuelings.UpdateAsync(loaded, LinkedChanges.None, default);
 
         var purged = await refuelings.PurgeAsync(OwnerScope.All, default);
 

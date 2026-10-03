@@ -15,6 +15,7 @@ query Expenses(
     id
     date
     title
+    reviewState
     canEdit
     canDelete
     category @include(if: $withCategory)
@@ -74,6 +75,8 @@ query ExpenseDetails($id: UUID!) {
     currency
     odometer
     note
+    reviewState
+    filledFromPhoto
     photos {
       id
       url
@@ -88,6 +91,7 @@ query ExpenseCategories($vehicleId: UUID!) {
 mutation AddExpense($input: AddExpenseInput!) {
   addExpense(input: $input) {
     id
+    reviewState
     photos {
       id
     }

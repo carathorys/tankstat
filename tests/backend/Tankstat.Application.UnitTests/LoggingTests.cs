@@ -201,6 +201,23 @@ public class LoggingTests
         Assert.Equal<object?[]>([id, "queued again"], [line.Values["Id"], line.Values["Outcome"]]);
     }
 
+    [Fact]
+    public async Task ALogFilledInFromItsPhoto_IsADebugLine_NamingTheValuesButNeverWhatWasRead()
+    {
+        var (w, _, car) = await SignedInOwner();
+        var id = await w.Drafts.UploadAsync(car.Id, Jpeg(), default);
+        await w.Recognition.QueueForDraftAsync(id, ReadingPurpose.Refueling, "hu", default);
+        var log = await w.RefuelingService.LogAsync(car.Id, new RefuelingInput(Day, 40, 60, "EUR", null, true, null), default, photoDraftIds: [id]);
+        w.Recognizer.Answer = _ => new RecognitionResult("fake-1", DocumentKind.Odometer, [new(ReadingFieldName.Odometer, "987654", 0.9, ValueSource.Read)]);
+
+        await w.Processor.ProcessDueAsync(default);
+
+        var line = Assert.Single(w.Log.From<LogPhotoFiller>());
+        Assert.Equal(LogLevel.Debug, line.Level);
+        Assert.Equal<object?[]>([log.Id, car.Id, "ODOMETER", ReviewState.NeedsReview], [line.Values["RefuelingId"], line.Values["VehicleId"], line.Values["Values"], line.Values["ReviewState"]]);
+        Assert.False(w.Log.Mentions("987654"));
+    }
+
     // ---- a condition is reported when it changes, not on every check -------------------------------------------
 
     [Fact]

@@ -87,4 +87,24 @@ public class ConsumptionCalculatorTests
 
         Assert.Equal([null, 6m, null, 6.6m], values); // second interval: (8 + 25) litres over 500 km
     }
+
+    private static Refueling Waiting(int day, long? odometer, decimal? volume, bool full = true) =>
+        Refueling.Create(Owner, Owner, Car, Day.AddDays(day), volume, null,
+            odometer is { } o ? Odometers.OdometerReading.Create(Owner, Car, Day.AddDays(day), o) : null, full, readingPhotos: true);
+
+    [Fact]
+    public void AFillUpOfUnknownVolume_MakesItsIntervalUnknown_ButNotTheNextOne()
+    {
+        var values = Run(Log(0, 1000, 40), Waiting(5, 1200, null, full: false), Log(10, 1500, 20), Log(20, 2000, 30));
+
+        Assert.Equal([null, null, null, 6m], values);
+    }
+
+    [Fact]
+    public void AFullFillUpWithoutOdometer_CannotEndOrStartAnInterval()
+    {
+        var values = Run(Log(0, 1000, 40), Waiting(5, null, 30), Log(10, 1500, 30), Log(20, 2000, 30));
+
+        Assert.Equal([null, null, null, 6m], values);
+    }
 }

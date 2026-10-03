@@ -123,7 +123,7 @@ public class DataGeneratorTests
 
     private const double LitersPerUsGallon = 3.78541, LitersPerImperialGallon = 4.54609, MilesPerKm = 0.621371;
 
-    private static double Liters(GeneratedVehicle g, Refueling r) => (double)r.Volume * g.Vehicle.Units.Volume switch
+    private static double Liters(GeneratedVehicle g, Refueling r) => (double)r.Volume!.Value * g.Vehicle.Units.Volume switch
     {
         VolumeUnit.UsGallons => LitersPerUsGallon,
         VolumeUnit.ImperialGallons => LitersPerImperialGallon,
@@ -155,7 +155,7 @@ public class DataGeneratorTests
             var log = g.Refuelings;
             var kmPerUnit = g.Vehicle.Units.Distance == DistanceUnit.Miles ? 1 / MilesPerKm : 1;
             var consumption = Enumerable.Range(1, log.Count - 1)
-                .Select(i => Liters(g, log[i]) / ((log[i].Odometer - log[i - 1].Odometer) * kmPerUnit) * 100).ToList();
+                .Select(i => Liters(g, log[i]) / ((log[i].Odometer!.Value - log[i - 1].Odometer!.Value) * kmPerUnit) * 100).ToList();
 
             Assert.InRange(consumption.Min(), 3.0, 15.0);
             Assert.True(consumption.Max() / consumption.Min() < 1.6, $"{g.Vehicle.Name}: consumption varies {consumption.Min():F1}..{consumption.Max():F1}");
@@ -170,7 +170,7 @@ public class DataGeneratorTests
         Assert.Contains(all, g => g.Vehicle.Units == MeasurementUnits.Metric);
         Assert.Contains(all, g => g.Vehicle.Units.Distance == DistanceUnit.Miles && g.Vehicle.Units.Volume == VolumeUnit.UsGallons);
         Assert.Contains(all, g => g.Vehicle.Units.Distance == DistanceUnit.Miles && g.Vehicle.Units.Volume == VolumeUnit.ImperialGallons);
-        var currencies = all.SelectMany(g => g.Refuelings).Select(r => r.Currency).Distinct().Order().ToArray();
+        var currencies = all.SelectMany(g => g.Refuelings).Select(r => r.Currency!).Distinct().Order().ToArray();
         Assert.Equal(["EUR", "GBP", "HUF", "USD"], currencies);
     }
 
@@ -190,9 +190,9 @@ public class DataGeneratorTests
         foreach (var g in Generate(60, 10, new IntRange(2, 15)))
             foreach (var r in g.Refuelings)
             {
-                Assert.Equal(r.OdometerReadingId, r.OdometerReading.Id);
+                Assert.Equal(r.OdometerReadingId, r.OdometerReading!.Id);
                 Assert.Equal((g.Vehicle.Id, r.Date, r.Odometer), (r.OdometerReading.VehicleId, r.OdometerReading.Date, r.OdometerReading.Value));
-                Assert.Equal(r.CostId, r.Cost.Id);
+                Assert.Equal(r.CostId, r.Cost!.Id);
                 Assert.Equal((g.Vehicle.Id, r.Date, r.TotalCost, r.Currency), (r.Cost.VehicleId, r.Cost.Date, r.Cost.Amount, r.Cost.Currency));
                 Assert.Equal(g.Vehicle.OwnerId, r.OdometerReading.OwnerId);
                 Assert.Equal(g.Vehicle.OwnerId, r.Cost.OwnerId);

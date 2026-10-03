@@ -163,6 +163,8 @@ type CreatedUser {
 }
 
 type Expense {
+  "The values its photos filled in that nobody has checked yet."
+  filledFromPhoto: [LogValue!]! @cost(weight: "10")
   id: UUID!
   ownerId: UUID!
   vehicleId: UUID!
@@ -171,10 +173,11 @@ type Expense {
   title: String!
   category: String
   note: String
-  amount: Decimal!
-  currency: String!
+  amount: Decimal
+  currency: String
   odometer: Long
   deletedAt: DateTime
+  reviewState: ReviewState!
   canEdit: Boolean! @cost(weight: "10")
   canDelete: Boolean! @cost(weight: "10")
   createdBy: UserRef @cost(weight: "10")
@@ -339,20 +342,23 @@ type RecurringExpenseInfo {
 }
 
 type Refueling {
+  "The values its photos filled in that nobody has checked yet."
+  filledFromPhoto: [LogValue!]! @cost(weight: "10")
   id: UUID!
   ownerId: UUID!
   vehicleId: UUID!
   createdById: UUID!
   date: LocalDate!
-  volume: Decimal!
-  totalCost: Decimal!
-  currency: String!
+  volume: Decimal
+  totalCost: Decimal
+  currency: String
   isFullTank: Boolean!
   note: String
-  odometer: Long!
+  odometer: Long
   consumption: Decimal
+  reviewState: ReviewState!
   deletedAt: DateTime
-  pricePerUnit: Decimal!
+  pricePerUnit: Decimal
   canEdit: Boolean! @cost(weight: "10")
   canDelete: Boolean! @cost(weight: "10")
   createdBy: UserRef @cost(weight: "10")
@@ -450,7 +456,7 @@ input AddExpenseInput {
   date: LocalDate!
   title: String!
   category: String
-  amount: Decimal!
+  amount: Decimal
   currency: String
   odometer: Long
   note: String
@@ -521,10 +527,10 @@ input LoginInput {
 input LogRefuelingInput {
   vehicleId: UUID!
   date: LocalDate!
-  volume: Decimal!
-  totalCost: Decimal!
+  volume: Decimal
+  totalCost: Decimal
   currency: String
-  odometer: Long!
+  odometer: Long
   isFullTank: Boolean!
   note: String
   photoIds: [UUID!]
@@ -582,7 +588,7 @@ input UpdateExpenseInput {
   date: LocalDate!
   title: String!
   category: String
-  amount: Decimal!
+  amount: Decimal
   currency: String
   odometer: Long
   note: String
@@ -605,10 +611,10 @@ input UpdateRecurringExpenseInput {
 input UpdateRefuelingInput {
   id: UUID!
   date: LocalDate!
-  volume: Decimal!
-  totalCost: Decimal!
+  volume: Decimal
+  totalCost: Decimal
   currency: String
-  odometer: Long!
+  odometer: Long
   isFullTank: Boolean!
   note: String
 }
@@ -714,6 +720,12 @@ enum FuelType {
   LPG
 }
 
+enum LogValue {
+  ODOMETER
+  VOLUME
+  TOTAL
+}
+
 enum NoticeSeverity {
   INFO
   WARNING
@@ -724,6 +736,8 @@ enum NotificationEntityType {
   VEHICLE
   RECURRING_EXPENSE
   USER
+  REFUELING
+  EXPENSE
 }
 
 enum NotificationKind {
@@ -734,6 +748,8 @@ enum NotificationKind {
   DEFAULT_ACCESS_CHANGED
   RECURRING_DUE_SOON
   RECURRING_OVERDUE
+  LOG_FILLED_FROM_PHOTO
+  LOG_NOT_FILLED
   MORE_ACTIVITY
 }
 
@@ -781,6 +797,13 @@ enum RefuelingSortField {
   CREATED_BY
   VEHICLE
   DELETED_AT
+}
+
+enum ReviewState {
+  NONE
+  AWAITING_PHOTOS
+  NEEDS_REVIEW
+  INCOMPLETE
 }
 
 enum SortDirection {

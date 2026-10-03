@@ -66,6 +66,10 @@
       "DEFAULT_ACCESS_CHANGED": "{{actor}} módosította, mit tehet bárki a többi felhasználó adataival: {{level}}.",
       "RECURRING_DUE_SOON": "Hamarosan esedékes: {{title}} ({{vehicle}}).",
       "RECURRING_OVERDUE": "Lejárt: {{title}} ({{vehicle}}).",
+      "LOG_FILLED_FROM_PHOTO_REFUELING": "A(z) {{vehicle}} {{date}} tankolásának fotójáról kitöltöttük: {{values}}. Ellenőrizd.",
+      "LOG_FILLED_FROM_PHOTO_EXPENSE": "A(z) {{title}} ({{date}}, {{vehicle}}) fotójáról kitöltöttük: {{values}}. Ellenőrizd.",
+      "LOG_NOT_FILLED_REFUELING": "A(z) {{vehicle}} {{date}} tankolásának fotóin nem látszott: {{values}}. Töltsd ki.",
+      "LOG_NOT_FILLED_EXPENSE": "A(z) {{title}} ({{date}}, {{vehicle}}) fotóin nem látszott: {{values}}. Töltsd ki.",
       "MORE_ACTIVITY_one": "Még {{count}} változás történt, túl sok ahhoz, hogy egyenként felsoroljuk.",
       "MORE_ACTIVITY_other": "Még {{count}} változás történt, túl sok ahhoz, hogy egyenként felsoroljuk."
     }
@@ -445,6 +449,9 @@
       "odometerBelowLast": "A kilométeróra nem lehet kevesebb, mint {{last}}, ahol legutóbb elvégezték.",
       "amountRequired": "A költség rögzítéséhez kell az összeg és a pénznem.",
       "notFound": "Ez az ismétlődő költség nem létezik."
+    },
+    "log": {
+      "valuesRequired": "Tölts ki minden értéket. Csak egy még leolvasás alatt álló fotó miatt maradhatnak üresen."
     }
   },
   "a11y": {
@@ -799,7 +806,25 @@
     "useAria": "{{value}} átvétele a fotóról ide: {{field}}",
     "reading": "Leolvasás…",
     "announce": "A fotóról kitöltve: {{fields}}. Mentés előtt ellenőrizd őket.",
-    "nothing": "A fotókról nem sikerült semmit leolvasni."
+    "nothing": "A fotókról nem sikerült semmit leolvasni.",
+    "waiting": "Hagyhatod üresen: mentés után a fotóról töltjük ki."
+  },
+  "review": {
+    "badge": {
+      "AWAITING_PHOTOS": "Fotó leolvasása…",
+      "NEEDS_REVIEW": "Ellenőrizendő",
+      "INCOMPLETE": "Hiányos"
+    },
+    "callout": {
+      "AWAITING_PHOTOS": "A fotóit még olvassuk: az üresen hagyott értékeket róluk töltjük ki.",
+      "NEEDS_REVIEW": "Néhány értéket a fotóiról olvastunk le (lent jelölve). Ellenőrizd őket, és mentsd.",
+      "INCOMPLETE": "A fotóin nem látszott minden érték. Töltsd ki, ami hiányzik, és mentsd."
+    },
+    "values": {
+      "ODOMETER": "kilométeróra",
+      "VOLUME": "mennyiség",
+      "TOTAL": "összeg"
+    }
   },
   "recurring": {
     "title": "Ismétlődő költségek",

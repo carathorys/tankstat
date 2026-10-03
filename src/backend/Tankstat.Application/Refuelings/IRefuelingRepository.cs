@@ -27,7 +27,8 @@ public interface IRefuelingRepository
     Task<Refueling?> FindIncludingDeletedAsync(Guid id, CancellationToken ct);
 
     Task AddAsync(Refueling refueling, CancellationToken ct);
-    Task UpdateAsync(Refueling refueling, CancellationToken ct);
+    /// <param name="changes">Readings and costs this update created (they are inserted) or let go of (they are deleted).</param>
+    Task UpdateAsync(Refueling refueling, LinkedChanges changes, CancellationToken ct);
 
     /// <summary>Physically removes the trashed logs in scope, with their photo rows. Returns which ones, so their photo files can be removed.</summary>
     Task<PurgedLogs> PurgeAsync(OwnerScope scope, CancellationToken ct);

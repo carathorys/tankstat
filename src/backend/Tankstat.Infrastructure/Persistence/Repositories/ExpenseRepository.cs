@@ -75,12 +75,11 @@ internal sealed class ExpenseRepository(IDbContextFactory<AppDbContext> dbFactor
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task UpdateAsync(Expense expense, OdometerReading? newReading, OdometerReading? removedReading, CancellationToken ct)
+    public async Task UpdateAsync(Expense expense, LinkedChanges changes, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        db.Expenses.Update(expense); // marks the loaded graph (cost, reading) as modified; ids are client-generated, so new rows must be said to be new
-        if (newReading is not null) db.Entry(newReading).State = EntityState.Added;
-        if (removedReading is not null) db.Entry(removedReading).State = EntityState.Deleted;
+        db.Expenses.Update(expense); // marks the loaded graph (cost, reading) as modified; new and let-go rows are said so explicitly
+        db.Apply(changes);
         await db.SaveChangesAsync(ct);
     }
 
@@ -93,7 +92,7 @@ internal sealed class ExpenseRepository(IDbContextFactory<AppDbContext> dbFactor
         db.LogPhotos.RemoveRange(photos);
         db.Expenses.RemoveRange(doomed);
         db.OdometerReadings.RemoveRange(doomed.Where(e => e.OdometerReading is not null).Select(e => e.OdometerReading!));
-        db.Costs.RemoveRange(doomed.Select(e => e.Cost));
+        db.Costs.RemoveRange(doomed.Where(e => e.Cost is not null).Select(e => e.Cost!));
         await db.SaveChangesAsync(ct);
         var withPhotos = photos.Select(p => p.LogId).ToHashSet();
         return new PurgedLogs(doomed.Count, doomed.Where(e => withPhotos.Contains(e.Id)).Select(e => (e.VehicleId, e.Id)).ToList());
@@ -111,7 +110,7 @@ internal sealed class ExpenseRepository(IDbContextFactory<AppDbContext> dbFactor
         {
             ExpenseSortField.Title => Order(expenses, e => e.Title.ToLower(), desc),
             ExpenseSortField.Category => Order(expenses, e => e.Category == null ? "" : e.Category.ToLower(), desc),
-            ExpenseSortField.Amount => Order(expenses, e => e.Cost.Amount, desc),
+            ExpenseSortField.Amount => Order(expenses, e => e.Cost == null ? 0 : e.Cost.Amount, desc),
             ExpenseSortField.Odometer => Order(expenses, e => e.OdometerReading == null ? 0 : e.OdometerReading.Value, desc),
             ExpenseSortField.CreatedBy => Order(expenses, e => db.Users.Where(u => u.Id == e.CreatedById).Select(u => u.DisplayName.ToLower()).FirstOrDefault(), desc),
             ExpenseSortField.Vehicle => Order(expenses, e => db.Vehicles.IgnoreQueryFilters().Where(v => v.Id == e.VehicleId).Select(v => v.Name.ToLower()).FirstOrDefault(), desc),

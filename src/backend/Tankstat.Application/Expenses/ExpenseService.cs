@@ -3,6 +3,7 @@ using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Odometers;
 using Tankstat.Application.Photos;
+using Tankstat.Application.Recognition;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain;
 using Tankstat.Domain.Access;
@@ -13,17 +14,18 @@ using Tankstat.Domain.Vehicles;
 
 namespace Tankstat.Application.Expenses;
 
-/// <param name="Currency">Required when adding; when updating, omit it to keep the expense's currency.</param>
-/// <param name="Odometer">Null when the odometer was not noted.</param>
-public sealed record ExpenseInput(DateOnly Date, string Title, string? Category, decimal Amount, string? Currency, long? Odometer, string? Note);
+/// <param name="Amount">Null only while a photo of the expense is still being read: it fills the amount in later.</param>
+/// <param name="Currency">Required with an amount when adding; when updating, omit it to keep the expense's currency.</param>
+/// <param name="Odometer">Null when the odometer was not noted (a photo that is still being read may fill it in).</param>
+public sealed record ExpenseInput(DateOnly Date, string Title, string? Category, decimal? Amount, string? Currency, long? Odometer, string? Note);
 
 /// <summary>
 /// Expenses of a vehicle (service, insurance, ...). They follow the access rules of the vehicle's logs exactly like refuelings:
 /// Edit may add, change, trash and restore; only Delete may delete permanently.
 /// </summary>
 public sealed class ExpenseService(
-    LogAccessGuard guard, IExpenseRepository expenses, AccessService access, OdometerService odometer, LogPhotoService photos, TimeProvider clock,
-    ILogger<ExpenseService> logger)
+    LogAccessGuard guard, IExpenseRepository expenses, AccessService access, OdometerService odometer, LogPhotoService photos, LogPhotoFiller filler,
+    TimeProvider clock, ILogger<ExpenseService> logger)
 {
     private DateOnly LatestAllowedDate => DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime).AddDays(1);
 
@@ -49,29 +51,37 @@ public sealed class ExpenseService(
         var creator = await access.RequirePrincipalAsync(ct);
         await ValidateAsync(vehicle.Id, input, exceptReadingId: null, ct);
         var drafts = await photos.RequireDraftsAsync(vehicle.Id, photoDraftIds, ct);
+        var readingPhotos = (input.Amount is null || input.Odometer is null) && await filler.MayWaitForDraftsAsync([.. drafts.Select(d => d.Id)], ct);
 
-        var expense = Build(vehicle, creator.Id, input);
+        var expense = Build(vehicle, creator.Id, input, readingPhotos);
         await expenses.AddAsync(expense, ct);
         await photos.AttachDraftsAsync(LogType.Expense, expense.Id, drafts, ct);
         logger.LogDebug("User {UserId} added expense {ExpenseId} for vehicle {VehicleId} with {Photos} photos", creator.Id, expense.Id, vehicle.Id, drafts.Count);
-        return expense;
+        // Readings that finished before the save are taken now; a draft that could not be attached leaves nothing to wait for.
+        if (expense.ReviewState == ReviewState.AwaitingPhotos) await filler.FillAsync(LogType.Expense, expense.Id, ct);
+        return await expenses.FindAsync(expense.Id, ct) ?? expense;
     }
 
     /// <summary>Builds (without saving) an expense whose input was already validated; used by <see cref="AddAsync"/> and by imports.</summary>
-    public static Expense Build(Vehicle vehicle, Guid createdById, ExpenseInput input)
+    /// <param name="readingPhotos">A photo of the expense is still being read (only then may the amount be empty).</param>
+    public static Expense Build(Vehicle vehicle, Guid createdById, ExpenseInput input, bool readingPhotos = false)
     {
-        var cost = Cost.Create(vehicle.OwnerId, vehicle.Id, input.Date, input.Amount, input.Currency);
+        var cost = input.Amount is { } amount ? Cost.Create(vehicle.OwnerId, vehicle.Id, input.Date, amount, input.Currency) : null;
         var reading = input.Odometer is { } value ? OdometerReading.Create(vehicle.OwnerId, vehicle.Id, input.Date, value) : null;
-        return Expense.Create(vehicle.OwnerId, createdById, vehicle.Id, input.Date, input.Title, input.Category, cost, reading, input.Note);
+        return Expense.Create(vehicle.OwnerId, createdById, vehicle.Id, input.Date, input.Title, input.Category, cost, reading, input.Note, readingPhotos);
     }
 
     public async Task<Expense> UpdateAsync(Guid id, ExpenseInput input, CancellationToken ct)
     {
         var expense = await EditableAsync(id, includeDeleted: false, ct);
         await ValidateAsync(expense.VehicleId, input, exceptReadingId: expense.OdometerReadingId, ct);
+        var readingPhotos = (input.Amount is null || input.Odometer is null) && await filler.AnyReadingAsync(LogType.Expense, id, ct);
+        var waited = expense.ReviewState;
 
-        var removed = expense.Update(input.Date, input.Title, input.Category, input.Amount, input.Currency ?? expense.Currency, input.Odometer, input.Note, out var created);
-        await expenses.UpdateAsync(expense, created, removed, ct);
+        var changes = expense.Update(input.Date, input.Title, input.Category, input.Amount, input.Currency ?? expense.Currency, input.Odometer, input.Note, readingPhotos);
+        await expenses.UpdateAsync(expense, changes, ct);
+        if (waited != ReviewState.None && expense.ReviewState == ReviewState.None)
+            await filler.ReviewedAsync(LogType.Expense, id, expense.CreatedById, ct);
         logger.LogDebug("Expense {ExpenseId} of vehicle {VehicleId} updated", id, expense.VehicleId);
         return expense;
     }
@@ -81,7 +91,7 @@ public sealed class ExpenseService(
     {
         var expense = await EditableAsync(id, includeDeleted: false, ct);
         expense.MarkDeleted(clock.GetUtcNow());
-        await expenses.UpdateAsync(expense, null, null, ct);
+        await expenses.UpdateAsync(expense, LinkedChanges.None, ct);
         logger.LogDebug("Expense {ExpenseId} of vehicle {VehicleId} moved to the trash", id, expense.VehicleId);
         return expense;
     }
@@ -91,8 +101,13 @@ public sealed class ExpenseService(
         var expense = await EditableAsync(id, includeDeleted: true, ct);
         if (expense.Odometer is { } value) await odometer.ValidateAsync(expense.VehicleId, expense.Date, value, exceptReadingId: null, ct);
         expense.Restore();
-        await expenses.UpdateAsync(expense, null, null, ct);
+        await expenses.UpdateAsync(expense, LinkedChanges.None, ct);
         logger.LogDebug("Expense {ExpenseId} of vehicle {VehicleId} restored from the trash", id, expense.VehicleId);
+        if (expense.ReviewState == ReviewState.AwaitingPhotos)
+        {
+            await filler.FillAsync(LogType.Expense, id, ct); // its photos may have been read while it was in the trash
+            return await expenses.FindAsync(id, ct) ?? expense;
+        }
         return expense;
     }
 

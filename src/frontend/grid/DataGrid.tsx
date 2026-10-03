@@ -15,7 +15,7 @@ import { Box, Button, Flex, IconButton, Table, Text, VisuallyHidden } from '@rad
 import type { ParseKeys } from 'i18next'
 import { ChevronDown, ChevronUp, ChevronsUpDown, RefreshCw } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useMemo, type ReactNode } from 'react'
+import { useEffect, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ErrorMessage } from '../messages.tsx'
 import { ColumnsPopover } from './ColumnsPopover.tsx'
@@ -46,6 +46,8 @@ type Features = typeof features
 const resolve = <T,>(updater: Updater<T>, previous: T): T => (typeof updater === 'function' ? (updater as (old: T) => T)(previous) : updater)
 const MotionRow = motion.create(Table.Row)
 const NO_ROWS: never[] = []
+/** How often a grid that waits for something on the server (see `pollWhile`) asks again. */
+export const GRID_POLL_MS = 10_000
 
 /**
  * A grid whose sorting, paging and column selection are all done by the GraphQL server: the query gets the sort order, the page
@@ -66,6 +68,7 @@ export function DataGrid<TData extends object, TVars extends OperationVariables,
   actions,
   toolbar,
   emptyText,
+  pollWhile,
 }: {
   gridId: string
   /** Accessible name of the table (read by screen readers, not shown). */
@@ -81,6 +84,8 @@ export function DataGrid<TData extends object, TVars extends OperationVariables,
   /** `data` is the whole query result, for extra figures such as how many rows may be deleted. */
   toolbar?: (context: { total: number; data: TData | undefined }) => ReactNode
   emptyText: string
+  /** The rows wait for something the server does in the background (a photo being read): the grid asks again until they no longer do. */
+  pollWhile?: (rows: Row[]) => boolean
 }) {
   const { t } = useTranslation()
   const info = useMemo(() => columns.map((c) => ({ id: c.id, hideable: c.hideable ?? true, mobile: c.mobile ?? false, sortable: c.sortField !== undefined })), [columns])
@@ -99,13 +104,19 @@ export function DataGrid<TData extends object, TVars extends OperationVariables,
     ...includes,
   } as unknown as TVars
 
-  const { data, previousData, loading, error, refetch } = useQuery(query, {
+  const { data, previousData, loading, error, refetch, startPolling, stopPolling } = useQuery(query, {
     variables,
     fetchPolicy: 'cache-and-network',
     notifyOnNetworkStatusChange: true,
   })
   const shown = (data ?? previousData) as TData | undefined
   const { rows, total } = shown ? select(shown) : { rows: NO_ROWS as Row[], total: 0 }
+  const polling = pollWhile?.(rows) ?? false
+  useEffect(() => {
+    if (!polling) return
+    startPolling(GRID_POLL_MS)
+    return () => stopPolling()
+  }, [polling, startPolling, stopPolling])
 
   // ---- the table ----
   const columnDefs = useMemo<ColumnDef<Features, Row>[]>(

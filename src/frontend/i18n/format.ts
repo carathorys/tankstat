@@ -19,6 +19,8 @@ export function useFormat() {
       /** Short form for axes: 12 500 becomes 12.5K (or 12,5 E in Hungarian). */
       compact: (value: number) => new Intl.NumberFormat(language, { notation: 'compact', maximumFractionDigits: 1 }).format(value),
       dateTime: (iso: string) => new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso)),
+      /** Words joined the way the language lists them ("odometer and total"). */
+      list: (items: string[]) => new Intl.ListFormat(language, { type: 'conjunction' }).format(items),
       /** A calendar date such as "2026-09-01" (no time zone shifts it to another day). */
       date: (isoDate: string) => new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${isoDate}T00:00:00Z`)),
       /** Amount in the currency it was paid in; an unknown code falls back to "12.50 XYZ". */

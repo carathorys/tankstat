@@ -1,6 +1,5 @@
 using Tankstat.Application.Access;
 using Tankstat.Application.Photos;
-using Tankstat.Domain.Odometers;
 using Tankstat.Domain.Vehicles;
 
 namespace Tankstat.Application.Expenses;
@@ -28,9 +27,8 @@ public interface IExpenseRepository
 
     Task AddAsync(Expense expense, CancellationToken ct);
 
-    /// <param name="newReading">A reading created by this update (it is inserted).</param>
-    /// <param name="removedReading">A reading detached by this update (it is deleted).</param>
-    Task UpdateAsync(Expense expense, OdometerReading? newReading, OdometerReading? removedReading, CancellationToken ct);
+    /// <param name="changes">Readings and costs this update created (they are inserted) or let go of (they are deleted).</param>
+    Task UpdateAsync(Expense expense, LinkedChanges changes, CancellationToken ct);
 
     /// <summary>Physically removes the trashed expenses in scope, with their photo rows. Returns which ones, so their photo files can be removed.</summary>
     Task<PurgedLogs> PurgeAsync(OwnerScope scope, CancellationToken ct);

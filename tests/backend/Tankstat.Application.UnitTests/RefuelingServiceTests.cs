@@ -70,7 +70,7 @@ public class RefuelingServiceTests
         await s.W.RefuelingService.UpdateAsync(log.Id, Input(new DateOnly(2026, 9, 2), 30, 45, "USD", 2500, false, "x"), default);
 
         Assert.Equal((30m, 45m, "USD", 2500L, false), (log.Volume, log.TotalCost, log.Currency, log.Odometer, log.IsFullTank));
-        Assert.Equal((new DateOnly(2026, 9, 2), 2500L), (log.OdometerReading.Date, log.OdometerReading.Value));
+        Assert.Equal((new DateOnly(2026, 9, 2), 2500L), (log.OdometerReading!.Date, log.OdometerReading.Value));
     }
 
     [Fact]

@@ -40,3 +40,18 @@ it('counts what was too much to list', () => {
   expect(say('MORE_ACTIVITY', {}, { count: 1, context: null })).toEqual({ text: 'There was 1 more change, too many to list one by one.', href: null })
   expect(say('MORE_ACTIVITY', {}, { count: 7, context: null }).text).toBe('There were 7 more changes, too many to list one by one.')
 })
+
+it('tells what a photo filled in or left out, and leads to the right tab of the vehicle', () => {
+  const log = { vehicleName: 'Family car', date: '2026-09-30' }
+  expect(say('LOG_FILLED_FROM_PHOTO', { ...log, values: 'ODOMETER' }, { subject: { type: 'REFUELING', id: 'r1' } })).toEqual({
+    text: 'The photo of the Sep 30, 2026 refuelling of Family car filled in: odometer. Check it.',
+    href: '/vehicles/v1?tab=refuelings',
+  })
+  expect(say('LOG_NOT_FILLED', { ...log, values: 'VOLUME,TOTAL' }, { subject: { type: 'REFUELING', id: 'r1' } }).text).toBe(
+    'The photos of the Sep 30, 2026 refuelling of Family car did not show: volume and total. Fill it in.',
+  )
+  expect(say('LOG_FILLED_FROM_PHOTO', { ...log, title: 'Service', values: 'TOTAL,ODOMETER' }, { subject: { type: 'EXPENSE', id: 'e1' } })).toEqual({
+    text: 'The photo of Service (Sep 30, 2026, Family car) filled in: total and odometer. Check it.',
+    href: '/vehicles/v1?tab=expenses',
+  })
+})

@@ -24,6 +24,12 @@ public enum NotificationKind
     /// <summary>A recurring expense the recipient can see is overdue.</summary>
     RecurringOverdue,
 
+    /// <summary>To whoever logged it: values of a log saved while its photo was being read were filled in from the photo; they should check them.</summary>
+    LogFilledFromPhoto,
+
+    /// <summary>To whoever logged it: the photos of a log saved with empty values were read, but values are still missing.</summary>
+    LogNotFilled,
+
     /// <summary>More happened than the recipient should be told one by one (the hourly limit was reached); the count says how much.</summary>
     MoreActivity,
 }
@@ -40,6 +46,7 @@ public enum NotificationTopic
     DataSharing,
     DefaultAccess,
     Recurring,
+    LogReview,
     Digest,
 }
 
@@ -53,16 +60,17 @@ public static class NotificationKinds
         NotificationKind.DataShared => NotificationTopic.DataSharing,
         NotificationKind.DefaultAccessChanged => NotificationTopic.DefaultAccess,
         NotificationKind.RecurringDueSoon or NotificationKind.RecurringOverdue => NotificationTopic.Recurring,
+        NotificationKind.LogFilledFromPhoto or NotificationKind.LogNotFilled => NotificationTopic.LogReview,
         NotificationKind.MoreActivity => NotificationTopic.Digest,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
     /// <summary>Topics whose notifications are derived (worked out on read from the current state) rather than sent by events.</summary>
-    public static IReadOnlySet<NotificationTopic> DerivedTopics { get; } = new HashSet<NotificationTopic> { NotificationTopic.Recurring };
+    public static IReadOnlySet<NotificationTopic> DerivedTopics { get; } = new HashSet<NotificationTopic> { NotificationTopic.Recurring, NotificationTopic.LogReview };
 
     /// <summary>Topics whose notifications are sent by events; only these count against the hourly limit.</summary>
     public static IReadOnlyList<NotificationTopic> EventTopics { get; } = Enum.GetValues<NotificationTopic>().Where(t => !DerivedTopics.Contains(t)).ToList();
 
     /// <summary>How urgent a kind is within its topic: a derived notification is only raised to a more urgent kind, never lowered.</summary>
-    public static int RankOf(NotificationKind kind) => kind == NotificationKind.RecurringOverdue ? 1 : 0;
+    public static int RankOf(NotificationKind kind) => kind is NotificationKind.RecurringOverdue or NotificationKind.LogNotFilled ? 1 : 0;
 }
