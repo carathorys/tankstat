@@ -1,10 +1,10 @@
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import en from '../../src/frontend/i18n/locales/en.json'
 import { server } from './server.ts'
-import { fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, stubViewport } from './mocks.tsx'
+import { fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport } from './mocks.tsx'
 
 // The notifications page is the one that crashes; every other page is the real one.
 vi.mock('../../src/frontend/pages/NotificationsPage.tsx', () => ({
@@ -20,13 +20,8 @@ afterEach(() => {
 })
 afterAll(() => server.close())
 
-let consoleError: ReturnType<typeof vi.spyOn>
-beforeEach(() => {
-  consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-})
-afterEach(() => consoleError.mockRestore())
-
 it('a page that crashes shows a message, leaves the shell working, and the next page starts fresh', async () => {
+  const consoleError = silenceConsoleError()
   stubViewport('desktop') // the navigation is docked: its links are there to click
   server.use(sessionHandler('NONE', () => null), healthHandler, ...fakeVehicleBackend([]).handlers)
   renderWithApollo(<App />, '/notifications')

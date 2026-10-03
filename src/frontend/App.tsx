@@ -115,15 +115,15 @@ function Content({ data }: { data: SessionQuery }) {
           }
         >
           <Routes>
-          <Route path="/" element={<WelcomePage isAdmin={isAdmin} />} />
-          <Route path="/vehicles" element={isAdmin ? <VehiclesPage /> : <Navigate to="/" replace />} />
-          <Route path="/vehicles/:id/*" element={<VehiclePage isAdmin={isAdmin} />} />
-          <Route path="/import" element={<ImportPage />} />
-          <Route path="/trash" element={<TrashPage />} />
-          <Route path="/notifications" element={<NotificationsPage />} />
-          <Route path="/account" element={<AccountPage mode={mode} user={user} />} />
-          <Route path="/admin" element={isAdmin ? <AdminPanel /> : <Navigate to="/" replace />} />
-          <Route path="*" element={<Text as="p">{t('app.notFound')}</Text>} />
+            <Route path="/" element={<WelcomePage isAdmin={isAdmin} />} />
+            <Route path="/vehicles" element={isAdmin ? <VehiclesPage /> : <Navigate to="/" replace />} />
+            <Route path="/vehicles/:id/*" element={<VehiclePage isAdmin={isAdmin} />} />
+            <Route path="/import" element={<ImportPage />} />
+            <Route path="/trash" element={<TrashPage />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/account" element={<AccountPage mode={mode} user={user} />} />
+            <Route path="/admin" element={isAdmin ? <AdminPanel /> : <Navigate to="/" replace />} />
+            <Route path="*" element={<Text as="p">{t('app.notFound')}</Text>} />
           </Routes>
         </Suspense>
       </ErrorBoundary>

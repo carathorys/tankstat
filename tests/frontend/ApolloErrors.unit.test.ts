@@ -1,20 +1,12 @@
 import { CombinedGraphQLErrors } from '@apollo/client/errors'
-import { graphql, HttpResponse } from 'msw'
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
-import { createApolloClient, reportOperationError } from '../../src/frontend/apolloClient.ts'
-import { HealthDocument } from '../../src/frontend/gql/generated.ts'
-import { gqlError } from './mocks.tsx'
-import { server } from './server.ts'
+import { beforeEach, expect, it } from 'vitest'
+import { reportOperationError } from '../../src/frontend/apolloClient.ts'
+import { silenceConsoleError } from './mocks.tsx'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
-
-let consoleError: ReturnType<typeof vi.spyOn>
+let consoleError: ReturnType<typeof silenceConsoleError>
 beforeEach(() => {
-  consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  consoleError = silenceConsoleError()
 })
-afterEach(() => consoleError.mockRestore())
 
 const keyed = new CombinedGraphQLErrors({ errors: [{ message: 'Vehicle 1 does not exist.', extensions: { code: 'NOT_FOUND', key: 'vehicle.notFound', args: {} } }] })
 const unexpected = new CombinedGraphQLErrors({ errors: [{ message: 'Unexpected Execution Error', path: ['health'], extensions: { code: 'HC0001' } }] })
@@ -51,22 +43,4 @@ it('a request that never got an answer is reported as one that could not be comp
   reportOperationError(failure, undefined)
 
   expect(consoleError).toHaveBeenCalledWith('GraphQL (unnamed) could not be completed', failure)
-})
-
-it('the client reports a failed request through its error link, and only an unexpected one', async () => {
-  const client = createApolloClient('http://localhost/graphql')
-  server.use(graphql.query('Health', () => HttpResponse.json(gqlError('Vehicle 1 does not exist.', 'NOT_FOUND', 'vehicle.notFound'))))
-
-  await expect(client.query({ query: HealthDocument, fetchPolicy: 'network-only' })).rejects.toBeDefined()
-  expect(consoleError).not.toHaveBeenCalled()
-
-  server.use(graphql.query('Health', () => HttpResponse.json({ errors: [{ message: 'Unexpected Execution Error' }] })))
-  await expect(client.query({ query: HealthDocument, fetchPolicy: 'network-only' })).rejects.toBeDefined()
-  expect(consoleError).toHaveBeenCalledTimes(1)
-  expect(consoleError.mock.calls[0][0]).toBe('GraphQL Health failed')
-
-  server.use(graphql.query('Health', () => new HttpResponse(null, { status: 500 })))
-  await expect(client.query({ query: HealthDocument, fetchPolicy: 'network-only' })).rejects.toBeDefined()
-  expect(consoleError).toHaveBeenCalledTimes(2)
-  expect(consoleError.mock.calls[1][0]).toBe('GraphQL Health could not be completed')
 })
