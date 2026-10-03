@@ -7,8 +7,12 @@ internal static class RequestUser
 {
     public const string Anonymous = "anonymous";
 
-    /// <summary>The id of the signed-in user (the session's name identifier is always the user's id), or <see cref="Anonymous"/>.</summary>
-    public static string Id(ClaimsPrincipal? user) => user?.FindFirstValue(ClaimTypes.NameIdentifier) is { Length: > 0 } id ? id : Anonymous;
+    /// <summary>
+    /// The id of the signed-in user, or <see cref="Anonymous"/>. The session's name identifier is always the user's id; it is parsed all the
+    /// same, so that a line of the log can only ever hold an id and never text that came with a request.
+    /// </summary>
+    public static string Id(ClaimsPrincipal? user) =>
+        Guid.TryParse(user?.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id.ToString() : Anonymous;
 }
 
 public static class RequestUserScope
@@ -29,7 +33,8 @@ public static class RequestUserScope
                 await next(http);
                 return;
             }
-            using (logger.BeginScope(new Dictionary<string, object> { ["UserId"] = id })) // a key/value state, which the JSON formatter renders as such
+            // A message with a placeholder: the console prints it as "UserId: <id>", and the JSON formatter keeps UserId as a field as well.
+            using (logger.BeginScope(new Dictionary<string, object> { ["UserId"] = id })) // MUTATION
                 await next(http);
         });
     }

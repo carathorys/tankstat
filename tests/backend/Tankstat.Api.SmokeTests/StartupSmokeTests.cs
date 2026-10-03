@@ -94,6 +94,22 @@ public class StartupSmokeTests
     }
 
     [Fact]
+    public async Task WithScopesOn_TheConsoleNamesTheSignedInUser_OnTheLinesOfHisRequests()
+    {
+        // The unit and integration tests read scopes as data; only the process shows how the console prints one (a scope that is a
+        // dictionary is printed as its type name). The formatter has to be named for its options to apply.
+        await using var app = await AppProcess.StartAsync(Standalone(
+            ("Logging__LogLevel__Tankstat", "Debug"), ("Logging__Console__FormatterName", "simple"), ("Logging__Console__FormatterOptions__IncludeScopes", "true")));
+        var login = (await app.Gql("mutation($i: LoginInput!) { login(input: $i) { id } }", new { i = new { email = "root@example.com", password = "initial-password-1" } })).Data().GetProperty("login");
+        var id = login.GetProperty("id").GetString()!;
+
+        await app.Gql("{ myVehicles { id } }"); // a request of the signed-in user: the line that times it is written inside the scope
+
+        Assert.True(await app.LogsAsync($"UserId: {id}"), app.Log);
+        Assert.DoesNotContain("Dictionary", app.Log);
+    }
+
+    [Fact]
     public async Task Standalone_StartsAgainOnAnExistingDatabase_WithoutTheBootstrapSettings()
     {
         var first = await AppProcess.StartAsync(Standalone());
