@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SkiaSharp;
 using Tankstat.Reader.Core;
@@ -63,6 +64,20 @@ public class EndpointTests
         Assert.Equal(Keys(Fixture("error.json")), Keys(body));
         Assert.Equal("unauthorized", (string?)body["code"]);
         Assert.Empty(app.Ocr.Passes);
+        var warning = Assert.Single(app.Log.Entries, e => e.Level == LogLevel.Warning);
+        Assert.Contains("X-Api-Key", warning.Message);
+    }
+
+    [Fact]
+    public async Task ARefusedKey_IsLogged_WithoutTheKeyThatWasSent()
+    {
+        using var app = new ReaderApp();
+
+        var response = await app.Client("canary-secret-key").PostAsync("/v1/read", TestImages.Content(TestImages.Make()));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.False(app.Log.Mentions("canary-secret-key"));
+        Assert.False(app.Log.Mentions(ReaderApp.Key)); // nor the right one
     }
 
     [Fact]
@@ -79,6 +94,12 @@ public class EndpointTests
         var result = body.Deserialize<ReadResult>(ReaderJson.Options)!;
         Assert.Equal(("fuel-receipt", "24687", "38.52", "640.9", "HUF", "2026-09-17"),
             (result.Kind, result.Value(FieldNames.Total), result.Value(FieldNames.Volume), result.Value(FieldNames.UnitPrice), result.Value(FieldNames.Currency), result.Value(FieldNames.Date)));
+
+        // The log says that a receipt was read and how long it took: never what was on it (the user's data).
+        var read = Assert.Single(app.Log.Entries, e => e.Message.StartsWith("Read a", StringComparison.Ordinal));
+        Assert.Contains("fuel-receipt", read.Message);
+        foreach (var secret in new[] { "24687", "24 687", "38.52", "38,52", "640.9", "640,9", "2026-09-17", "2026.09.17", "Benzink", "NYUGTA" })
+            Assert.False(app.Log.Mentions(secret), secret);
     }
 
     [Fact]
@@ -118,6 +139,23 @@ public class EndpointTests
 
         Assert.Equal(status, response.StatusCode);
         Assert.Equal(code, (string?)JsonNode.Parse(await response.Content.ReadAsStringAsync())!["code"]);
+        var line = Assert.Single(app.Log.Entries, e => e.Message.StartsWith("Refused a read", StringComparison.Ordinal));
+        Assert.Equal(LogLevel.Information, line.Level); // the caller's doing, not the reader's trouble
+        Assert.Contains(code, line.Message);
+    }
+
+    [Fact]
+    public async Task ABadRequest_IsLoggedByItsCode_NotByItsMessage_WhichEchoesTheRequest()
+    {
+        using var app = new ReaderApp();
+
+        var response = await app.Client().PostAsync("/v1/read?kinds=canary-kind", TestImages.Content(TestImages.Make()));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("canary-kind", await response.Content.ReadAsStringAsync()); // the caller is told what was wrong with the request...
+        var line = Assert.Single(app.Log.Entries, e => e.Message.StartsWith("Refused a read", StringComparison.Ordinal));
+        Assert.Contains("bad_request", line.Message);
+        Assert.False(app.Log.Mentions("canary-kind")); // ...the log only that it was refused
     }
 
     [Fact]
@@ -163,6 +201,8 @@ public class EndpointTests
         Assert.Equal("busy", (string?)JsonNode.Parse(await second.Content.ReadAsStringAsync())!["code"]);
         Assert.Equal("2", second.Headers.RetryAfter?.ToString());
         Assert.Equal(HttpStatusCode.OK, (await first).StatusCode);
+        var warning = Assert.Single(app.Log.Entries, e => e.Level == LogLevel.Warning);
+        Assert.Contains("busy", warning.Message);
     }
 
     [Fact]
@@ -174,6 +214,7 @@ public class EndpointTests
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
         Assert.Equal("ocr_unavailable", (string?)JsonNode.Parse(await response.Content.ReadAsStringAsync())!["code"]);
+        Assert.Contains("Tesseract", Assert.Single(app.Log.Entries, e => e.Level == LogLevel.Warning).Message);
     }
 
     [Fact]

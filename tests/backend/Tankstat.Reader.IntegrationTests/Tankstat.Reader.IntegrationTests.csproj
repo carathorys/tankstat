@@ -26,6 +26,8 @@
   <ItemGroup>
     <!-- The same OCR page builder and fakes as the core tests. -->
     <Compile Include="..\Tankstat.Reader.Core.UnitTests\OcrFixture.cs" Link="OcrFixture.cs" />
+    <!-- The capturing logger of the other backend tests: one file, without a reference to the support project that carries the app's domain. -->
+    <Compile Include="..\Tankstat.TestSupport\CapturedLog.cs" Link="CapturedLog.cs" />
     <None Include="..\contracts\reader\**\*" LinkBase="contracts" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
