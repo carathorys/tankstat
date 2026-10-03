@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Tankstat.Api.IntegrationTests;
 
@@ -258,6 +259,9 @@ public class StandaloneAuthTests : IDisposable
         Assert.Null((await first.Gql("{ myVehicles { id } }")).ErrorCode());
         Assert.Equal("UNAUTHENTICATED", (await second.Gql("{ myVehicles { id } }")).ErrorCode());
         await _app.NewClient().LoginAs("alice@example.com", "alice-new-password");
+        // Whoever asks why the other session was signed out finds the reason in the log (Debug: the bell asks every minute).
+        Assert.Contains(_app.Log.Entries, e => e.Level == LogLevel.Debug && e.Message.Contains("signed out by a password change"));
+        Assert.Contains(_app.Log.Entries, e => e.Level == LogLevel.Information && e.Message.Contains("changed their password"));
     }
 
     [Fact]

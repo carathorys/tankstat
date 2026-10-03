@@ -1,3 +1,4 @@
+using Tankstat.Api.Auth;
 using Tankstat.Application;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Images;
@@ -111,6 +112,18 @@ public static class MediaEndpoints
     private static DomainException TooLarge() =>
         new("image.tooLarge", $"The picture can be at most {ImageFormat.MaxBytes / 1024} KB.", new { MaxKb = ImageFormat.MaxBytes / 1024 });
 
+    /// <summary>
+    /// A refusal is a Warning; everything else a client can do wrong (a missing record, a picture that is too large) a Debug line. The route
+    /// is the endpoint's own pattern, never the path of the request: the path can hold what the client typed.
+    /// </summary>
+    private static void Log(HttpContext http, KeyedException e, int status)
+    {
+        var route = (http.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText ?? "(unknown route)";
+        var logger = http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(MediaEndpoints));
+        if (e is ForbiddenException) logger.LogWarning("{Method} {Route} was refused for user {UserId}: {Key}", http.Request.Method, route, RequestUser.Id(http.User), e.Key);
+        else logger.LogDebug("{Method} {Route} failed for user {UserId}: {Key} ({Status})", http.Request.Method, route, RequestUser.Id(http.User), e.Key, status);
+    }
+
     /// <summary>The same stable keys as in GraphQL errors, as JSON with a matching HTTP status.</summary>
     internal static async ValueTask<object?> TranslateErrors(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
@@ -128,6 +141,7 @@ public static class MediaEndpoints
                 _ when e.Key.EndsWith(".tooLarge", StringComparison.Ordinal) => StatusCodes.Status413PayloadTooLarge,
                 _ => StatusCodes.Status400BadRequest,
             };
+            Log(context.HttpContext, e, status);
             return Results.Json(new { key = e.Key, args = e.Args, message = e.Message }, statusCode: status);
         }
     }

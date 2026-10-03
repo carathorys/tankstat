@@ -71,9 +71,15 @@ public static class AuthExtensions
 
     private static async Task ProvisionOidcUser(TokenValidatedContext ctx)
     {
+        var logger = ctx.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(AuthExtensions));
         var claims = ctx.Principal!;
         var subject = claims.FindFirstValue("sub");
-        if (string.IsNullOrEmpty(subject)) { ctx.Fail("The provider did not return a subject."); return; }
+        if (string.IsNullOrEmpty(subject))
+        {
+            logger.LogWarning("OIDC sign-in failed: the provider did not return a subject");
+            ctx.Fail("The provider did not return a subject.");
+            return;
+        }
 
         // Only an explicitly unverified address is withheld: it must not be able to claim an administrator e-mail.
         var email = claims.FindFirstValue("email");
@@ -85,6 +91,7 @@ public static class AuthExtensions
             var user = await ctx.HttpContext.RequestServices.GetRequiredService<AuthService>()
                 .ProvisionExternalAsync(UserProvider.Oidc, subject, email, name, ctx.HttpContext.RequestAborted);
             ctx.Principal = SessionClaims.Create(user, SessionClaims.OidcScheme);
+            logger.LogInformation("User {UserId} signed in through OIDC", user.Id); // never the subject: some providers use the e-mail address for it
         }
         catch (ForbiddenException e)
         {

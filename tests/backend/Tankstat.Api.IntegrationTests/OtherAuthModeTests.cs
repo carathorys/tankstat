@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using System.Net;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
@@ -130,6 +131,17 @@ public class ProxyHeaderModeTests : IDisposable
         var c = Client(value);
 
         Assert.Null(await SessionEmail(c));
+    }
+
+    [Fact]
+    public async Task ATwoUserHeader_IsLogged_ByItsNameAndNeverByItsValue()
+    {
+        var c = Client("alice, mallory");
+
+        Assert.Null(await SessionEmail(c));
+
+        Assert.Contains(_app.Log.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("X-Forwarded-User") && e.Message.Contains("exactly one user"));
+        Assert.False(_app.Log.Mentions("mallory"));
     }
 
     [Fact]
