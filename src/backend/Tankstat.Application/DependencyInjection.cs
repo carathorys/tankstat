@@ -11,6 +11,7 @@ using Tankstat.Application.Photos;
 using Tankstat.Application.Imports;
 using Tankstat.Application.Notifications;
 using Tankstat.Application.Odometers;
+using Tankstat.Application.Recognition;
 using Tankstat.Application.Recurring;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Sharing;
@@ -31,6 +32,9 @@ public static class DependencyInjection
         services.AddOptions<StorageOptions>().Bind(configuration.GetSection(StorageOptions.SectionName));
         services.AddOptions<SmtpOptions>().Bind(configuration.GetSection(SmtpOptions.SectionName));
         services.AddOptions<AuthOptions>().Bind(configuration.GetSection(AuthOptions.SectionName)).ValidateOnStart();
+        // Photo reading is optional: its settings are never validated on start (they would stop the app); RecognitionSetup turns
+        // reading off instead when they cannot be used.
+        services.AddOptions<RecognitionOptions>().Bind(configuration.GetSection(RecognitionOptions.SectionName));
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<AuthOptions>, AuthOptionsValidator>());
 
         services.AddSingleton(TimeProvider.System);
@@ -62,6 +66,10 @@ public static class DependencyInjection
         services.AddScoped<Notifier>();
         services.AddScoped<RecurringNotificationSync>();
         services.AddScoped<NotificationService>();
+        services.AddSingleton<RecognitionSetup>();
+        services.AddSingleton<RecognitionAvailability>();
+        services.AddScoped<RecognitionService>();
+        services.AddScoped<PhotoReadingProcessor>();
         return services;
     }
 }

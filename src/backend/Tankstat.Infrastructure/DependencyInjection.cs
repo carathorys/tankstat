@@ -17,6 +17,7 @@ using Tankstat.Application.Photos;
 using Tankstat.Application.Recognition;
 using Tankstat.Application.Users;
 using Tankstat.Infrastructure.Auth;
+using Tankstat.Infrastructure.Recognition;
 using Tankstat.Infrastructure.Storage;
 using Tankstat.Application.Vehicles;
 using Tankstat.Infrastructure.Persistence;
@@ -82,9 +83,18 @@ public static class DependencyInjection
         services.AddSingleton<IPasswordHasher, IdentityPasswordHasher>();
         services.AddSingleton<IEmailSender, SmtpEmailSender>();
 
-        // Order matters: migrate first, then create the initial administrator.
+        // Photo reading (optional): the provider the settings choose, or one that never reads (RecognitionSetup explains why).
+        services.AddHttpClient(ReaderRecognitionProvider.ClientName);
+        services.AddSingleton<IRecognitionProvider>(sp => sp.GetRequiredService<RecognitionSetup>() is { Enabled: true, Kind: RecognitionProviderKind.Reader } setup
+            ? new ReaderRecognitionProvider(sp.GetRequiredService<IHttpClientFactory>(), setup.Options.Reader)
+            : NullRecognitionProvider.Instance);
+        services.AddSingleton<RecognitionSignal>();
+        services.AddSingleton<IRecognitionSignal>(sp => sp.GetRequiredService<RecognitionSignal>());
+
+        // Order matters: migrate first, then create the initial administrator; the photo reading worker needs the migrated database.
         services.AddHostedService<DatabaseMigrator>();
         services.AddHostedService<StandaloneBootstrapper>();
+        services.AddHostedService<RecognitionWorker>();
 
         return services;
     }
