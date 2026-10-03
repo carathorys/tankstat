@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Images;
@@ -14,7 +15,7 @@ namespace Tankstat.Application.Photos;
 /// vehicle) are cleaned up whenever someone uploads a new one, so no background job is needed.
 /// </summary>
 public sealed class PhotoDraftService(
-    LogAccessGuard guard, IPhotoDraftRepository drafts, ImageService images, AccessService access, TimeProvider clock)
+    LogAccessGuard guard, IPhotoDraftRepository drafts, ImageService images, AccessService access, TimeProvider clock, ILogger<PhotoDraftService> logger)
 {
     /// <summary>Stores the picture (JPEG, PNG or WebP) as a draft for a new log of the vehicle and returns its id.</summary>
     public async Task<Guid> UploadAsync(Guid vehicleId, ReadOnlyMemory<byte> data, CancellationToken ct)
@@ -38,6 +39,7 @@ public sealed class PhotoDraftService(
             await images.DeleteAsync([imageId], CancellationToken.None);
             throw;
         }
+        logger.LogDebug("User {UserId} uploaded draft photo {ImageId} for vehicle {VehicleId}", me.Id, imageId, vehicle.Id);
         return imageId;
     }
 
@@ -47,6 +49,7 @@ public sealed class PhotoDraftService(
         var draft = await OwnDraftAsync(id, ct) ?? throw NotFound(id);
         await drafts.RemoveAsync([draft.Id], ct);
         await images.DeleteAsync([draft.Id], ct);
+        logger.LogDebug("Draft photo {ImageId} removed", draft.Id);
     }
 
     /// <summary>
@@ -84,6 +87,7 @@ public sealed class PhotoDraftService(
         var ids = expired.Select(d => d.Id).ToList();
         await drafts.RemoveAsync(ids, ct);
         await images.DeleteAsync(ids, ct);
+        logger.LogDebug("Removed {Count} expired draft photos", ids.Count);
     }
 
     private static NotFoundException NotFound(Guid id) => new("photo.notFound", $"The photo {id} does not exist.", new { Id = id });
