@@ -33,7 +33,9 @@ public class RealOcrTests(ITestOutputHelper output)
         using var app = new ReaderApp(realOcr: true);
         var reader = app.Factory.Services.GetRequiredService<DocumentReader>();
         var images = app.Factory.Services.GetRequiredService<SkiaImagePreparer>();
-        var cases = SyntheticGenerator.Generate(8, seed: 21).Where(c => c.Kind != DocumentKinds.Odometer).Select(c => new EvalCase(c.Name, c.Kind, c.Hints, c.Expected, c.Image));
+        var cases = SyntheticGenerator.Generate(4, seed: 21, kind: DocumentKinds.FuelReceipt)
+            .Concat(SyntheticGenerator.Generate(4, seed: 21, kind: DocumentKinds.ExpenseReceipt))
+            .Select(c => new EvalCase(c.Name, c.Kind, c.Hints, c.Expected, c.Image));
 
         var report = await Evaluation.RunAsync(cases, (c, image, ct) => reader.ReadAsync(images.Prepare(image), new ReadRequest(Evaluation.KindsFor(c.Kind), c.Hints), ct), null, default);
         output.WriteLine(report.Format());

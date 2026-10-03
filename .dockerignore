@@ -18,4 +18,5 @@ coverage
 .claude
 tests
 Dockerfile
+Dockerfile.reader
 .dockerignore
