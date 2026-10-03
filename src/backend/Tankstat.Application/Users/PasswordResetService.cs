@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Auth;
 using Tankstat.Domain;
@@ -12,7 +13,7 @@ public sealed record IssuedReset(string Token, string? Url, bool EmailSent);
 
 public sealed class PasswordResetService(
     IPasswordResetTokenRepository tokens, IUserRepository users, IEmailSender email,
-    IOptions<AuthOptions> auth, TimeProvider clock)
+    IOptions<AuthOptions> auth, TimeProvider clock, ILogger<PasswordResetService> logger)
 {
     public async Task<IssuedReset> IssueAsync(User user, bool sendEmail, CancellationToken ct)
     {
@@ -38,17 +39,24 @@ public sealed class PasswordResetService(
     /// <summary>Validates the token and returns it with its user; throws the same vague error for every failure.</summary>
     public async Task<(User User, PasswordResetToken Token)> ResolveAsync(string? token, CancellationToken ct)
     {
-        var invalid = new DomainException("reset.invalid", "This password reset link is invalid or has expired.");
         var parts = (token ?? "").Split('.', 2);
-        if (parts.Length != 2 || !Guid.TryParseExact(parts[0], "N", out var id)) throw invalid;
+        if (parts.Length != 2 || !Guid.TryParseExact(parts[0], "N", out var id)) throw Refuse("malformed link", null);
 
         var record = await tokens.FindAsync(id, ct);
-        if (record is null || !record.IsUsable(clock.GetUtcNow())) throw invalid;
-        if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(record.SecretHash), Encoding.UTF8.GetBytes(Hash(parts[1])))) throw invalid;
+        if (record is null) throw Refuse("unknown link", null);
+        if (!record.IsUsable(clock.GetUtcNow())) throw Refuse("expired or already used", record.UserId);
+        if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(record.SecretHash), Encoding.UTF8.GetBytes(Hash(parts[1])))) throw Refuse("wrong secret", record.UserId);
 
         var user = await users.FindByIdAsync(record.UserId, ct);
-        if (user is null || user.IsDisabled || user.Provider != UserProvider.Local) throw invalid;
+        if (user is null || user.IsDisabled || user.Provider != UserProvider.Local) throw Refuse("the account cannot sign in", record.UserId);
         return (user, record);
+    }
+
+    /// <summary>The same vague error for every cause, so a link reveals nothing; only the log line says which one (never any part of the token).</summary>
+    private DomainException Refuse(string reason, Guid? userId)
+    {
+        logger.LogInformation("Password reset link refused: {Reason} (user {UserId})", reason, userId?.ToString() ?? "unknown");
+        return new DomainException("reset.invalid", "This password reset link is invalid or has expired.");
     }
 
     public Task MarkUsedAsync(PasswordResetToken token, CancellationToken ct)

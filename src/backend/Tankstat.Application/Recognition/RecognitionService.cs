@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
 using Tankstat.Application.Photos;
@@ -17,7 +18,8 @@ public sealed record DraftReading(PhotoDraft Draft, PhotoReading? Reading);
 /// </summary>
 public sealed class RecognitionService(
     RecognitionAvailability availability, RecognitionSetup setup, IPhotoReadingRepository readings, IPhotoDraftRepository drafts,
-    RefuelingService refuelings, IOptions<VehicleDefaultsOptions> defaults, IRecognitionSignal signal, AccessService access, TimeProvider clock)
+    RefuelingService refuelings, IOptions<VehicleDefaultsOptions> defaults, IRecognitionSignal signal, AccessService access, TimeProvider clock,
+    ILogger<RecognitionService> logger)
 {
     private static readonly string[] Locales = ["hu", "en", "de"];
 
@@ -44,6 +46,7 @@ public sealed class RecognitionService(
         await readings.AddAsync(
             PhotoReading.Queue(draft.Id, purpose, Language(locale), known?.LastOdometer, known?.LastCurrency ?? defaults.Value.Currency, today, clock.GetUtcNow()), ct);
         signal.Wake();
+        logger.LogDebug("Queued photo {ImageId} to be read ({Purpose})", draft.Id, purpose);
     }
 
     /// <summary>The current user's drafts among <paramref name="ids"/>, in that order, with their readings; anyone else's look missing.</summary>

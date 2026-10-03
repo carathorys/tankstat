@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Odometers;
@@ -24,7 +25,8 @@ public sealed record RefuelingInput(DateOnly Date, decimal Volume, decimal Total
 /// add, change, trash and restore; only Delete may delete permanently.
 /// </summary>
 public sealed class RefuelingService(
-    IVehicleRepository vehicles, LogAccessGuard guard, IRefuelingRepository refuelings, AccessService access, OdometerService odometer, LogPhotoService photos, TimeProvider clock)
+    IVehicleRepository vehicles, LogAccessGuard guard, IRefuelingRepository refuelings, AccessService access, OdometerService odometer, LogPhotoService photos, TimeProvider clock,
+    ILogger<RefuelingService> logger)
 {
     /// <summary>Logs may be dated today in any time zone, but not further ahead.</summary>
     private DateOnly LatestAllowedDate => DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime).AddDays(1);
@@ -67,6 +69,7 @@ public sealed class RefuelingService(
         await refuelings.AddAsync(refueling, ct);
         await photos.AttachDraftsAsync(LogType.Refueling, refueling.Id, drafts, ct);
         if (recalculateConsumption) await RecalculateConsumptionAsync(vehicle.Id, ct);
+        logger.LogDebug("User {UserId} logged refueling {RefuelingId} for vehicle {VehicleId} with {Photos} photos", creator.Id, refueling.Id, vehicle.Id, drafts.Count);
         return await refuelings.FindAsync(refueling.Id, ct) ?? refueling;
     }
 
@@ -78,6 +81,7 @@ public sealed class RefuelingService(
         refueling.Update(input.Date, input.Volume, input.TotalCost, input.Currency ?? refueling.Currency, input.Odometer, input.IsFullTank, input.Note);
         await refuelings.UpdateAsync(refueling, ct);
         await RecalculateConsumptionAsync(refueling.VehicleId, ct);
+        logger.LogDebug("Refueling {RefuelingId} of vehicle {VehicleId} updated", id, refueling.VehicleId);
         return await refuelings.FindAsync(id, ct) ?? refueling;
     }
 
@@ -88,6 +92,7 @@ public sealed class RefuelingService(
         refueling.MarkDeleted(clock.GetUtcNow());
         await refuelings.UpdateAsync(refueling, ct);
         await RecalculateConsumptionAsync(refueling.VehicleId, ct); // the neighbours' fill-up intervals change
+        logger.LogDebug("Refueling {RefuelingId} of vehicle {VehicleId} moved to the trash", id, refueling.VehicleId);
         return refueling;
     }
 
@@ -98,6 +103,7 @@ public sealed class RefuelingService(
         refueling.Restore();
         await refuelings.UpdateAsync(refueling, ct);
         await RecalculateConsumptionAsync(refueling.VehicleId, ct);
+        logger.LogDebug("Refueling {RefuelingId} of vehicle {VehicleId} restored from the trash", id, refueling.VehicleId);
         return await refuelings.FindAsync(id, ct) ?? refueling;
     }
 
@@ -108,7 +114,9 @@ public sealed class RefuelingService(
     public async Task RecalculateConsumptionAsync(Guid vehicleId, CancellationToken ct)
     {
         var logs = await refuelings.ListAllForVehicleAsync(vehicleId, ct);
-        await refuelings.SaveConsumptionsAsync(ConsumptionCalculator.Apply(logs), ct);
+        var changed = ConsumptionCalculator.Apply(logs);
+        await refuelings.SaveConsumptionsAsync(changed, ct);
+        logger.LogDebug("Consumption of vehicle {VehicleId} recalculated: {Changed} of {Total} refuelings changed", vehicleId, changed.Count, logs.Count);
     }
 
     /// <summary>Trashed logs the user could restore.</summary>
@@ -125,8 +133,10 @@ public sealed class RefuelingService(
     /// <summary>Permanently removes the trashed logs the user has Delete access to. Returns how many were removed.</summary>
     public async Task<int> EmptyTrashAsync(CancellationToken ct)
     {
+        var user = await access.RequirePrincipalAsync(ct);
         var purged = await refuelings.PurgeAsync(await access.LogScopeAsync(AccessLevel.Delete, ct), ct);
         await photos.DeleteFilesAsync(LogType.Refueling, purged, ct); // their photos go with them
+        if (purged.Count > 0) logger.LogInformation("User {UserId} emptied the refueling trash: {Count} refuelings deleted for good ({WithPhotos} with photos)", user.Id, purged.Count, purged.WithPhotos.Count);
         return purged.Count;
     }
 

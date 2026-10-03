@@ -2,7 +2,9 @@
   "app": {
     "name": "Tankstat",
     "loading": "Betöltés…",
-    "notFound": "Ez az oldal nem létezik."
+    "notFound": "Ez az oldal nem létezik.",
+    "crashed": "Hiba történt az oldal megjelenítése közben.",
+    "reload": "Oldal újratöltése"
   },
   "nav": {
     "vehicles": "Járművek",

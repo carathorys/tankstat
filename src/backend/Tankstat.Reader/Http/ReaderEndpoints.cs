@@ -124,7 +124,24 @@ public static class ReaderEndpoints
         catch (ReaderException e)
         {
             if (e.Code == "busy") context.HttpContext.Response.Headers.RetryAfter = "2";
+            LogRefusal(context.HttpContext, e);
             return Results.Json(new ErrorResponse(e.Code, e.Message), ReaderJson.Options, statusCode: e.Status);
+        }
+    }
+
+    /// <summary>
+    /// A turned-away read, by its code: that is what tells an operator the app's key is wrong, the reader is overloaded or Tesseract is
+    /// gone. Never the key that was sent, and never the message, which can echo the request.
+    /// </summary>
+    private static void LogRefusal(HttpContext http, ReaderException e)
+    {
+        var logger = http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Tankstat.Reader.Http");
+        switch (e.Code)
+        {
+            case "unauthorized": logger.LogWarning("Refused a read from {Address}: the X-Api-Key header is missing or wrong", http.Connection.RemoteIpAddress); break;
+            case "busy": logger.LogWarning("Refused a read: the reader is busy, every slot and place in line is taken"); break;
+            case "ocr_unavailable": logger.LogWarning("Refused a read: Tesseract cannot be run"); break;
+            default: logger.LogInformation("Refused a read: {Code}", e.Code); break; // the picture or the hints were not usable: the caller's doing
         }
     }
 }

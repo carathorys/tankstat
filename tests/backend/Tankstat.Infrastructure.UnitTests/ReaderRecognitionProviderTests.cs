@@ -146,16 +146,31 @@ public class ReaderRecognitionProviderTests
     }
 
     [Fact]
-    public async Task Health_IsOkOnlyWhenTheReaderSaysSo()
+    public async Task Health_IsOkOnlyWhenTheReaderSaysSo_AndOtherwiseSaysWhy()
     {
         var (healthy, handler) = Reader((_, _) => Task.FromResult(Json(HttpStatusCode.OK, Contract("health.json"))));
         var (unavailable, _) = Reader((_, _) => Task.FromResult(Json(HttpStatusCode.ServiceUnavailable, """{ "status": "unavailable" }""")));
+        var (notReady, _) = Reader((_, _) => Task.FromResult(Json(HttpStatusCode.OK, """{ "status": "starting" }""")));
         var (unreachable, _) = Reader((_, _) => throw new HttpRequestException("connection refused"));
+        var (nonsense, _) = Reader((_, _) => Task.FromResult(Json(HttpStatusCode.OK, "not json")));
 
         Assert.True(await healthy.IsHealthyAsync(default));
-        Assert.False(await unavailable.IsHealthyAsync(default));
-        Assert.False(await unreachable.IsHealthyAsync(default));
+        var refused = await Assert.ThrowsAsync<RecognitionUnavailableException>(() => unavailable.IsHealthyAsync(default));
+        Assert.Contains("503", refused.Message); // what an operator has to go by: it answered, with an error
+        await Assert.ThrowsAsync<RecognitionUnavailableException>(() => notReady.IsHealthyAsync(default));
+        var down = await Assert.ThrowsAsync<RecognitionUnavailableException>(() => unreachable.IsHealthyAsync(default));
+        Assert.IsType<HttpRequestException>(down.InnerException); // and the cause behind "could not be reached"
+        await Assert.ThrowsAsync<RecognitionUnavailableException>(() => nonsense.IsHealthyAsync(default));
         var (request, _) = handler.Seen.Single();
         Assert.Equal(("http://reader:8081/v1/health", false), (request.RequestUri!.ToString(), request.Headers.Contains("X-Api-Key"))); // health needs no key
+    }
+
+    [Fact]
+    public async Task AHealthCheckThatIsCancelledByTheCaller_IsACancellation_NotAnUnavailableReader()
+    {
+        var (reader, _) = Reader(async (_, ct) => { await Task.Delay(TimeSpan.FromSeconds(10), ct); return Json(HttpStatusCode.OK, "{}"); });
+        using var cancelled = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => reader.IsHealthyAsync(cancelled.Token));
     }
 }

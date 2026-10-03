@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Tankstat.Application.Access;
 using Tankstat.Application.Images;
 using Tankstat.Domain;
@@ -11,7 +12,8 @@ namespace Tankstat.Application.Photos;
 /// the vehicle's logs, adding and removing needs Edit; they are stored in the vehicle's upload folder and go away with their log.
 /// </summary>
 public sealed class LogPhotoService(
-    LogPhotoAccess logs, ILogPhotoRepository photos, ImageService images, PhotoDraftService drafts, AccessService access, TimeProvider clock)
+    LogPhotoAccess logs, ILogPhotoRepository photos, ImageService images, PhotoDraftService drafts, AccessService access, TimeProvider clock,
+    ILogger<LogPhotoService> logger)
 {
     /// <summary>The photos of a log, oldest first; empty when the log does not exist or may not be seen.</summary>
     public async Task<IReadOnlyList<LogPhoto>> ListAsync(LogType logType, Guid logId, CancellationToken ct) =>
@@ -52,6 +54,7 @@ public sealed class LogPhotoService(
                 // Uploads through another process can still pass the count above at the same moment. Look again: the first MaxPerLog
                 // photos (in the order they are listed) stay and every one after them is taken back, whichever request notices.
                 var extra = (await photos.ListForLogAsync(logType, logId, ct)).Skip(LogPhoto.MaxPerLog).ToList();
+                if (extra.Count > 0) logger.LogWarning("{Count} photos over the limit of {LogType} {LogId} were taken back after concurrent uploads", extra.Count, logType, logId);
                 foreach (var surplus in extra)
                 {
                     await photos.RemoveAsync(surplus, ct);
@@ -66,6 +69,7 @@ public sealed class LogPhotoService(
                 await CleanUpAsync(inserted, imageId);
                 throw;
             }
+            logger.LogDebug("User {UserId} added photo {ImageId} to {LogType} {LogId}", principal.Id, imageId, logType, logId);
             return imageId;
         }
         finally
@@ -100,13 +104,15 @@ public sealed class LogPhotoService(
                 await photos.AddAsync(LogPhoto.Create(draft.OwnerId, draft.VehicleId, logType, logId, draft.Id, draft.CreatedById, now), CancellationToken.None);
                 attached.Add(draft.Id);
             }
-            catch
+            catch (Exception e)
             {
                 // The log is saved already: failing now would make the user save it twice. The picture goes back to the drafts.
+                logger.LogWarning(e, "Draft photo {DraftId} could not be attached to {LogType} {LogId}; it stays a draft", draft.Id, logType, logId);
                 if (moved) await MoveBackQuietlyAsync(draft);
             }
         }
         await drafts.ForgetAsync(attached, CancellationToken.None);
+        logger.LogDebug("Attached {Attached} of {Wanted} draft photos to {LogType} {LogId}", attached.Count, attachable.Count, logType, logId);
     }
 
     private async Task MoveBackQuietlyAsync(PhotoDraft draft)
@@ -115,9 +121,10 @@ public sealed class LogPhotoService(
         {
             await images.MoveAsync(draft.Id, ImageFolders.PhotoDrafts(draft.VehicleId), CancellationToken.None);
         }
-        catch
+        catch (Exception e)
         {
             // it expires with the other drafts or goes with the vehicle
+            logger.LogWarning(e, "Draft photo {DraftId} could not be moved back to the drafts", draft.Id);
         }
     }
 
@@ -128,9 +135,10 @@ public sealed class LogPhotoService(
             if (row is not null) await photos.RemoveAsync(row, CancellationToken.None);
             await images.DeleteAsync([imageId], CancellationToken.None);
         }
-        catch
+        catch (Exception e)
         {
-            // the original error is the one to report
+            // the original error is the one to report; this one only says what is left behind
+            logger.LogWarning(e, "Photo {ImageId} could not be cleaned up after a failed upload", imageId);
         }
     }
 
@@ -146,6 +154,7 @@ public sealed class LogPhotoService(
 
         await photos.RemoveAsync(photo, ct);
         await images.DeleteAsync([imageId], ct);
+        logger.LogDebug("Photo {ImageId} removed from {LogType} {LogId}", imageId, logType, logId);
     }
 
     /// <summary>Removes the files of the photos of logs that were deleted for good (their rows went with the logs).</summary>

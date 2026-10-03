@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
@@ -9,7 +10,7 @@ namespace Tankstat.Application.Users;
 /// <summary>Sign-in related use cases for every mode: local login/password handling and external user provisioning.</summary>
 public sealed class AuthService(
     IUserRepository users, IPasswordHasher hasher, PasswordResetService resets, AccessService access,
-    IOptions<AuthOptions> auth, TimeProvider clock)
+    IOptions<AuthOptions> auth, TimeProvider clock, ILogger<AuthService> logger)
 {
     // Verified against when the account does not exist, so response time does not reveal which e-mails are registered.
     private readonly Lazy<string> _decoyHash = new(() => hasher.Hash("decoy-password-for-timing"));
@@ -29,6 +30,9 @@ public sealed class AuthService(
         if (user?.PasswordHash is null || user.IsDisabled || user.IsLockedOut(now))
         {
             hasher.Verify(_decoyHash.Value, password ?? "");
+            // Never the typed e-mail: who tried is only named when the account exists, by its id.
+            if (user is null) logger.LogWarning("Sign-in failed: unknown account");
+            else logger.LogWarning("Sign-in failed for user {UserId}: {Reason}", user.Id, user.PasswordHash is null ? "no password" : user.IsDisabled ? "account disabled" : "locked out");
             throw new InvalidCredentialsException();
         }
 
@@ -36,11 +40,13 @@ public sealed class AuthService(
         {
             user.RegisterFailedLogin(now, options.MaxFailedAttempts, TimeSpan.FromMinutes(options.LockoutMinutes));
             await users.UpdateAsync(user, ct);
+            logger.LogWarning("Sign-in failed for user {UserId}: wrong password (locked out: {LockedOut})", user.Id, user.IsLockedOut(now));
             throw new InvalidCredentialsException();
         }
 
         user.RegisterSuccessfulLogin();
         await users.UpdateAsync(user, ct);
+        logger.LogInformation("User {UserId} signed in", user.Id);
         return user;
     }
 
@@ -52,12 +58,16 @@ public sealed class AuthService(
         var user = await users.FindByIdAsync(principal.Id, ct) ?? throw new UnauthenticatedException();
 
         if (user.PasswordHash is null || !hasher.Verify(user.PasswordHash, currentPassword ?? ""))
+        {
+            logger.LogWarning("Password change refused for user {UserId}: the current password is incorrect", user.Id);
             throw new DomainException("password.currentIncorrect", "The current password is not correct.");
+        }
         PasswordPolicy.Validate(newPassword);
 
         user.SetPasswordHash(hasher.Hash(newPassword!));
         await users.UpdateAsync(user, ct);
         await resets.RevokeAllAsync(user.Id, ct);
+        logger.LogInformation("User {UserId} changed their password", user.Id);
         return user;
     }
 
@@ -66,8 +76,13 @@ public sealed class AuthService(
     {
         RequireMode(AuthMode.Standalone);
         var user = await users.FindLocalByEmailAsync(User.NormalizeEmailOrEmpty(email), ct);
-        if (user is null || user.IsDisabled) return;
-        await resets.IssueAsync(user, sendEmail: true, ct);
+        if (user is null || user.IsDisabled)
+        {
+            logger.LogInformation("A password reset was requested for an unknown or disabled account");
+            return;
+        }
+        var issued = await resets.IssueAsync(user, sendEmail: true, ct);
+        logger.LogInformation("User {UserId} requested a password reset (e-mail sent: {EmailSent})", user.Id, issued.EmailSent);
     }
 
     public async Task<User> ResetPasswordAsync(string? token, string? newPassword, CancellationToken ct)
@@ -80,6 +95,7 @@ public sealed class AuthService(
         user.SetPasswordHash(hasher.Hash(newPassword!));
         await users.UpdateAsync(user, ct);
         await resets.RevokeAllAsync(user.Id, ct);
+        logger.LogInformation("User {UserId} set a new password with a reset link", user.Id);
         return user;
     }
 
@@ -96,12 +112,22 @@ public sealed class AuthService(
         {
             user = User.CreateExternal(provider, subject, email, displayName, configuredAdmin);
             await users.AddAsync(user, ct);
+            logger.LogInformation("Created user {UserId} from a {Provider} sign-in (administrator: {IsAdmin})", user.Id, provider, user.IsAdmin);
             return user;
         }
 
-        if (user.IsDisabled) throw new ForbiddenException("auth.accountDisabled", "This account has been disabled.");
+        if (user.IsDisabled)
+        {
+            // A proxy authenticates every request, so its refusals are only a Debug line: a disabled user would else fill the log.
+            logger.Log(provider == UserProvider.Proxy ? LogLevel.Debug : LogLevel.Warning, "{Provider} sign-in refused: user {UserId} is disabled", provider, user.Id);
+            throw new ForbiddenException("auth.accountDisabled", "This account has been disabled.");
+        }
         user.UpdateProfile(email, displayName);
-        if (configuredAdmin) user.SetAdmin(true); // configuration only promotes; demotion happens in the UI
+        if (configuredAdmin) // configuration only promotes; demotion happens in the UI
+        {
+            if (!user.IsAdmin) logger.LogInformation("User {UserId} was made an administrator by configuration", user.Id);
+            user.SetAdmin(true);
+        }
         await users.UpdateAsync(user, ct);
         return user;
     }
@@ -120,5 +146,6 @@ public sealed class AuthService(
         var admin = User.CreateLocal(options.AdminEmail, "Administrator", isAdmin: true);
         admin.SetPasswordHash(hasher.Hash(options.AdminPassword));
         await users.AddAsync(admin, ct);
+        logger.LogInformation("Created the first administrator {UserId}", admin.Id);
     }
 }

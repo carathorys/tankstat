@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
@@ -12,7 +13,8 @@ namespace Tankstat.Application.Notifications;
 /// ones removed (there is no background job).
 /// </summary>
 public sealed class NotificationService(
-    AccessService access, INotificationRepository notifications, RecurringNotificationSync recurring, IOptions<NotificationOptions> options, TimeProvider clock)
+    AccessService access, INotificationRepository notifications, RecurringNotificationSync recurring, IOptions<NotificationOptions> options, TimeProvider clock,
+    ILogger<NotificationService> logger)
 {
     public const int DefaultTake = 20;
     public const int MaxTake = 100;
@@ -41,7 +43,8 @@ public sealed class NotificationService(
         var me = await access.RequirePrincipalAsync(ct);
         var due = await recurring.SyncAsync(ct);
         // A reminder of a schedule that is still due is kept, or the next look would add it again as new.
-        await notifications.PurgeReadAsync(me.Id, clock.GetUtcNow().AddDays(-options.Value.ReadRetentionDays), due, ct);
+        var purged = await notifications.PurgeReadAsync(me.Id, clock.GetUtcNow().AddDays(-options.Value.ReadRetentionDays), due, ct);
+        if (purged > 0) logger.LogDebug("Purged {Count} read notifications of user {UserId}", purged, me.Id);
         return me;
     }
 }

@@ -13,6 +13,7 @@ import {
   healthHandler,
   renderWithApollo,
   sessionHandler,
+  silenceConsoleError,
   stubViewport,
   user,
 } from './mocks.tsx'
@@ -53,7 +54,8 @@ it('shows a message for unknown pages', async () => {
   await screen.findByText('This page does not exist.')
 })
 
-it('shows an alert when the API is down', async () => {
+it('shows an alert when the API is down, and says why in the console', async () => {
+  const consoleError = silenceConsoleError()
   server.use(
     sessionHandler('NONE', () => null),
     graphql.query('Health', () => new HttpResponse(null, { status: 500 })),
@@ -62,6 +64,7 @@ it('shows an alert when the API is down', async () => {
   renderWithApollo(<App />, '/vehicles')
 
   await screen.findByRole('alert')
+  expect(consoleError).toHaveBeenCalledWith('GraphQL Health could not be completed', expect.anything())
 })
 
 it('in OIDC mode an anonymous visitor only sees the provider link, no menu and no data', async () => {

@@ -19,9 +19,11 @@ public sealed class AuthMutations
         return UserInfo.From(user);
     }
 
-    public async Task<bool> Logout([Service] IHttpContextAccessor http)
+    public async Task<bool> Logout([Service] IHttpContextAccessor http, [Service] ILogger<AuthMutations> logger)
     {
+        var user = RequestUser.Id(http.HttpContext!.User);
         await http.HttpContext!.SignOutAsync(SessionClaims.CookieScheme);
+        if (user != RequestUser.Anonymous) logger.LogInformation("User {UserId} signed out", user);
         return true;
     }
 

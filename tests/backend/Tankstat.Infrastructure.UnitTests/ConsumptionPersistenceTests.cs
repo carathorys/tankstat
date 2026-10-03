@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Vehicles;
@@ -91,9 +92,11 @@ public class ConsumptionPersistenceTests
         }
         Assert.All(await Stored(db, first), c => Assert.Null(c)); // nothing calculated yet: the logs were added without the service
 
-        await new DatabaseMigrator(db.Get<IDbContextFactory<AppDbContext>>()).BackfillConsumptionAsync(default);
+        await new DatabaseMigrator(db.Get<IDbContextFactory<AppDbContext>>(), db.Get<ILogger<DatabaseMigrator>>()).BackfillConsumptionAsync(default);
 
         Assert.Equal([null, 6m, null], await Stored(db, first));
         Assert.Equal([null, 6m, null], await Stored(db, second));
+        var said = Assert.Single(db.Log.From<DatabaseMigrator>());
+        Assert.Equal(2, said.Values["Vehicles"]);
     }
 }

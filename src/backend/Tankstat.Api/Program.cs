@@ -42,11 +42,17 @@ builder.Services.AddGraphQLServer()
     .AddTypeExtension<VehicleSummaryExtensions>()
     .AddTypeExtension<DashboardQueries>()
     .AddTypeExtension<DashboardMutations>()
-    .AddErrorFilter<BusinessErrorFilter>();
+    .AddErrorFilter<BusinessErrorFilter>()
+    // HotChocolate does not log what goes wrong in a request. The listener is built from the schema's own services, so what it needs from
+    // the application is handed over.
+    .AddApplicationService<ILoggerFactory>()
+    .AddApplicationService<IHttpContextAccessor>()
+    .AddDiagnosticEventListener<GraphQLLoggingListener>();
 
 var app = builder.Build();
 
 app.UseAuthentication();
+app.UseUserLogScope();
 app.MapAuthEndpoints();
 app.MapMediaEndpoints();
 app.MapImportEndpoints();

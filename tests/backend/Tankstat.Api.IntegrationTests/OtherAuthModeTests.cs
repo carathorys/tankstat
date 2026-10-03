@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using System.Net;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
@@ -69,6 +70,8 @@ public sealed class FakeRemoteIpStartupFilter : IStartupFilter
 [Collection(ApiCollection.Name)]
 public class ProxyHeaderModeTests : IDisposable
 {
+    private const string ProxyHandler = "Tankstat.Api.Auth.ProxyHeaderAuthenticationHandler";
+
     private readonly TestApp _app = new(
         new()
         {
@@ -105,12 +108,14 @@ public class ProxyHeaderModeTests : IDisposable
     }
 
     [Fact]
-    public async Task HeaderFromAnUntrustedAddress_IsIgnored()
+    public async Task HeaderFromAnUntrustedAddress_IsIgnored_AndSaidSo()
     {
         var c = Client("alice", "alice@example.com", remoteIp: "203.0.113.9");
 
         Assert.Null(await SessionEmail(c));
         Assert.Equal("UNAUTHENTICATED", (await c.Gql("{ myVehicles { id } }")).ErrorCode());
+        Assert.Contains(_app.Log.From(ProxyHandler), e => e.Level == LogLevel.Warning && e.Values.ContainsKey("Address"));
+        Assert.False(_app.Log.Mentions("alice"));
     }
 
     [Fact]
@@ -130,6 +135,17 @@ public class ProxyHeaderModeTests : IDisposable
         var c = Client(value);
 
         Assert.Null(await SessionEmail(c));
+    }
+
+    [Fact]
+    public async Task ATwoUserHeader_IsLogged_ByItsNameAndNeverByItsValue()
+    {
+        var c = Client("alice, mallory");
+
+        Assert.Null(await SessionEmail(c));
+
+        Assert.Contains(_app.Log.From(ProxyHandler), e => e.Level == LogLevel.Warning && (string?)e.Values["Header"] == "X-Forwarded-User");
+        Assert.False(_app.Log.Mentions("mallory")); // the name of the header, never its value
     }
 
     [Fact]

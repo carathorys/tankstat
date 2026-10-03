@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Tankstat.TestSupport;
 
 namespace Tankstat.Api.IntegrationTests;
 
@@ -21,6 +23,9 @@ internal sealed class TestApp : IDisposable
 
     public WebApplicationFactory<Program> Factory { get; }
 
+    /// <summary>Everything this host logged, from its first line on.</summary>
+    public CapturedLog Log { get; } = new();
+
     public TestApp(Dictionary<string, string?> settings, Action<IServiceCollection>? services = null)
     {
         var all = new Dictionary<string, string?>
@@ -28,6 +33,7 @@ internal sealed class TestApp : IDisposable
             ["Database:Provider"] = "Sqlite",
             ["Database:ConnectionString"] = $"Data Source={_db}",
             ["Storage:Path"] = UploadsPath,
+            ["Logging:LogLevel:Tankstat"] = "Debug", // the Debug lines are part of what is tested
         };
         foreach (var (key, value) in settings) all[key] = value;
 
@@ -35,6 +41,7 @@ internal sealed class TestApp : IDisposable
         {
             b.UseEnvironment("Development"); // introspection etc.; never uses the dev appsettings of a real database
             b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(all));
+            b.ConfigureLogging(l => l.AddProvider(Log));
             b.ConfigureServices(s => services?.Invoke(s));
         });
     }

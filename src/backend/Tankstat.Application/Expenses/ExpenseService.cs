@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Odometers;
@@ -21,7 +22,8 @@ public sealed record ExpenseInput(DateOnly Date, string Title, string? Category,
 /// Edit may add, change, trash and restore; only Delete may delete permanently.
 /// </summary>
 public sealed class ExpenseService(
-    LogAccessGuard guard, IExpenseRepository expenses, AccessService access, OdometerService odometer, LogPhotoService photos, TimeProvider clock)
+    LogAccessGuard guard, IExpenseRepository expenses, AccessService access, OdometerService odometer, LogPhotoService photos, TimeProvider clock,
+    ILogger<ExpenseService> logger)
 {
     private DateOnly LatestAllowedDate => DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime).AddDays(1);
 
@@ -51,6 +53,7 @@ public sealed class ExpenseService(
         var expense = Build(vehicle, creator.Id, input);
         await expenses.AddAsync(expense, ct);
         await photos.AttachDraftsAsync(LogType.Expense, expense.Id, drafts, ct);
+        logger.LogDebug("User {UserId} added expense {ExpenseId} for vehicle {VehicleId} with {Photos} photos", creator.Id, expense.Id, vehicle.Id, drafts.Count);
         return expense;
     }
 
@@ -69,6 +72,7 @@ public sealed class ExpenseService(
 
         var removed = expense.Update(input.Date, input.Title, input.Category, input.Amount, input.Currency ?? expense.Currency, input.Odometer, input.Note, out var created);
         await expenses.UpdateAsync(expense, created, removed, ct);
+        logger.LogDebug("Expense {ExpenseId} of vehicle {VehicleId} updated", id, expense.VehicleId);
         return expense;
     }
 
@@ -78,6 +82,7 @@ public sealed class ExpenseService(
         var expense = await EditableAsync(id, includeDeleted: false, ct);
         expense.MarkDeleted(clock.GetUtcNow());
         await expenses.UpdateAsync(expense, null, null, ct);
+        logger.LogDebug("Expense {ExpenseId} of vehicle {VehicleId} moved to the trash", id, expense.VehicleId);
         return expense;
     }
 
@@ -87,6 +92,7 @@ public sealed class ExpenseService(
         if (expense.Odometer is { } value) await odometer.ValidateAsync(expense.VehicleId, expense.Date, value, exceptReadingId: null, ct);
         expense.Restore();
         await expenses.UpdateAsync(expense, null, null, ct);
+        logger.LogDebug("Expense {ExpenseId} of vehicle {VehicleId} restored from the trash", id, expense.VehicleId);
         return expense;
     }
 
@@ -102,8 +108,10 @@ public sealed class ExpenseService(
     /// <summary>Permanently removes the trashed expenses the user has Delete access to. Returns how many were removed.</summary>
     public async Task<int> EmptyTrashAsync(CancellationToken ct)
     {
+        var user = await access.RequirePrincipalAsync(ct);
         var purged = await expenses.PurgeAsync(await access.LogScopeAsync(AccessLevel.Delete, ct), ct);
         await photos.DeleteFilesAsync(LogType.Expense, purged, ct); // their photos go with them
+        if (purged.Count > 0) logger.LogInformation("User {UserId} emptied the expense trash: {Count} expenses deleted for good ({WithPhotos} with photos)", user.Id, purged.Count, purged.WithPhotos.Count);
         return purged.Count;
     }
 
