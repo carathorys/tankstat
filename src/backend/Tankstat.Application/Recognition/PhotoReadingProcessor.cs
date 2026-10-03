@@ -22,8 +22,17 @@ public sealed class PhotoReadingProcessor(
     IRecognitionProvider provider, RecognitionAvailability availability, RecognitionSetup setup, IPhotoReadingRepository readings,
     IImageRepository images, IImageStore store, TimeProvider clock)
 {
-    /// <summary>An attempt this old was cut short (the app stopped while reading): it is queued again.</summary>
-    public static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(5);
+    /// <summary>
+    /// An attempt this old was cut short (the app stopped while reading): it is queued again. At least five minutes, and always longer than
+    /// one read may take (<c>Reader:TimeoutSeconds</c>), so another instance never takes over a read that is still going on.
+    /// </summary>
+    public static TimeSpan StaleAfter(RecognitionOptions options)
+    {
+        var longestRead = TimeSpan.FromSeconds(options.Reader.TimeoutSeconds) + TimeSpan.FromMinutes(1);
+        return longestRead > MinimumStaleAfter ? longestRead : MinimumStaleAfter;
+    }
+
+    private static readonly TimeSpan MinimumStaleAfter = TimeSpan.FromMinutes(5);
 
     /// <summary>Reads the due photos, up to <see cref="RecognitionOptions.MaxConcurrent"/> at a time; empty when nothing could be done.</summary>
     public async Task<IReadOnlyList<ProcessedReading>> ProcessDueAsync(CancellationToken ct)
@@ -31,7 +40,7 @@ public sealed class PhotoReadingProcessor(
         if (!await availability.IsAvailableAsync(ct)) return [];
 
         var now = clock.GetUtcNow();
-        foreach (var stale in await readings.ListStaleAsync(now - StaleAfter, ct))
+        foreach (var stale in await readings.ListStaleAsync(now - StaleAfter(setup.Options), ct))
         {
             stale.Abandon(now);
             await readings.SaveAsync(stale, ct);

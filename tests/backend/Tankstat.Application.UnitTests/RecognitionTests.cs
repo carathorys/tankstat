@@ -210,12 +210,28 @@ public class RecognitionTests
         var s = await Setup();
         var id = await Queued(s);
         await s.W.Readings.ClaimAsync(id, s.W.Clock.GetUtcNow(), default); // the app stopped while reading it
-        s.W.Clock.Advance(PhotoReadingProcessor.StaleAfter + TimeSpan.FromSeconds(1));
+        s.W.Clock.Advance(PhotoReadingProcessor.StaleAfter(s.W.RecognitionOptions) + TimeSpan.FromSeconds(1));
 
         var done = await s.W.Processor.ProcessDueAsync(default);
 
         Assert.Equal([new ProcessedReading(id, ReadingOutcome.Read)], done);
         Assert.Equal(2, s.W.Readings.Items.Single().Attempts);
+    }
+
+    [Fact]
+    public async Task ASlowReadThatMayStillBeGoingOn_IsNotTakenOver()
+    {
+        var s = await Setup();
+        s.W.RecognitionOptions.Reader.TimeoutSeconds = 600; // allowed: one read may take ten minutes
+        var id = await Queued(s);
+        await s.W.Readings.ClaimAsync(id, s.W.Clock.GetUtcNow(), default); // another instance is reading it
+        s.W.Clock.Advance(TimeSpan.FromMinutes(10));
+
+        var done = await s.W.Processor.ProcessDueAsync(default);
+
+        Assert.Empty(done);
+        Assert.Equal(ReadingStatus.Reading, s.W.Readings.Items.Single().Status);
+        Assert.True(PhotoReadingProcessor.StaleAfter(s.W.RecognitionOptions) > TimeSpan.FromMinutes(10));
     }
 
     [Fact]
