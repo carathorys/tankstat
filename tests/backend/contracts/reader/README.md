@@ -7,4 +7,6 @@ adapter tests (later) use them as canned reader answers, so both sides fail when
 - `health.json`: `GET /v1/health` when the OCR is available.
 - `error.json`: the body of every error status (`bad_request`, `bad_image`, `unauthorized`, `too_large`, `unsupported_type`,
   `busy`, `ocr_unavailable`).
-- `fixtures/`: generated pictures (no real receipts or dashboards are ever committed).
+
+No pictures live here: tests that need one draw it with the reader's generator (`Tankstat.Reader.Synthetic`), and real receipts or
+dashboards are never committed.
