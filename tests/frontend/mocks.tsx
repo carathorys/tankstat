@@ -307,6 +307,8 @@ export function fakePhotoStore(initial: Record<string, FakePhoto[]> = {}) {
     drafts: [] as FakePhoto[],
     puts: [] as { kind: string; logId: string; bytes: number }[],
     draftPuts: [] as { vehicleId: string; bytes: number }[],
+    /** The query of each draft upload (what the photo is for and the language, for photo reading). */
+    draftQueries: [] as string[],
     deletes: [] as { kind: string; logId: string; imageId: string }[],
     draftDeletes: [] as string[],
     unattachable: new Set<string>(),
@@ -324,6 +326,7 @@ export function fakePhotoStore(initial: Record<string, FakePhoto[]> = {}) {
   const draftHandlers = [
     http.put('/media/vehicles/:vehicleId/photo-drafts', async ({ params, request }) => {
       state.draftPuts.push({ vehicleId: String(params.vehicleId), bytes: (await request.arrayBuffer()).byteLength })
+      state.draftQueries.push(new URL(request.url).search)
       const refused = refuse()
       if (refused) return refused
       const id = `draft${state.nextId++}`
@@ -354,6 +357,43 @@ export function fakePhotoStore(initial: Record<string, FakePhoto[]> = {}) {
     }),
   ])]
   return { state, handlers, attach, photosOf: (logId: string) => state.byLog[logId] ?? [] }
+}
+
+export interface FakeReadValue {
+  name: 'ODOMETER' | 'TOTAL' | 'VOLUME' | 'UNIT_PRICE' | 'CURRENCY' | 'DATE' | 'TITLE'
+  value: string
+  confidence?: number
+}
+
+/**
+ * Photo reading on the server (`recognitionStatus`, `photoDrafts`). `results[i]` is what the i-th uploaded draft (draft1, draft2, ...)
+ * shows (none: nothing could be read); each draft is answered as queued for its first `queuedPolls` polls, then as read. `asked` records
+ * the ids of every poll.
+ */
+export function fakeRecognition({ available = true, results = [] as FakeReadValue[][], queuedPolls = 1 } = {}) {
+  const state = { available, results, queuedPolls, polls: {} as Record<string, number>, asked: [] as string[][] }
+  const reading = (id: string) => {
+    const polls = (state.polls[id] = (state.polls[id] ?? 0) + 1)
+    if (polls <= state.queuedPolls) return { __typename: 'PhotoReadingInfo', status: 'QUEUED', kind: null, values: [] }
+    const values = state.results[Number(id.replace(/\D/g, '')) - 1] ?? []
+    return {
+      __typename: 'PhotoReadingInfo',
+      status: 'READ',
+      kind: values.length > 0 ? 'FUEL_RECEIPT' : 'UNKNOWN',
+      values: values.map((v) => ({ __typename: 'ReadingValueInfo', confidence: 0.9, ...v })),
+    }
+  }
+  const handlers = [
+    graphql.query('RecognitionStatus', () =>
+      HttpResponse.json({ data: { recognitionStatus: { __typename: 'RecognitionStatusInfo', available: state.available } } }),
+    ),
+    graphql.query('PhotoDraftReadings', ({ variables }) => {
+      const ids = variables.ids as string[]
+      state.asked.push(ids)
+      return HttpResponse.json({ data: { photoDrafts: ids.map((id) => ({ __typename: 'PhotoDraftInfo', id, reading: reading(id) })) } })
+    }),
+  ]
+  return { state, handlers }
 }
 
 /** A small in-memory backend for one vehicle's logs (and their trash), including the sharing list. */

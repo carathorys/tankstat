@@ -1,0 +1,22 @@
+# Photo reading (optional, on the server): whether it is on, and what was read from the drafts of the open add dialog.
+
+query RecognitionStatus {
+  recognitionStatus {
+    available
+  }
+}
+
+query PhotoDraftReadings($ids: [UUID!]!) {
+  photoDrafts(ids: $ids) {
+    id
+    reading {
+      status
+      kind
+      values {
+        name
+        value
+        confidence
+      }
+    }
+  }
+}

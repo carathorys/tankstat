@@ -447,7 +447,8 @@
   },
   "a11y": {
     "sortBy": "Sort by {{column}}",
-    "uploadStatus": "Upload status"
+    "uploadStatus": "Upload status",
+    "readingStatus": "Photo reading status"
   },
   "units": {
     "distance": {
@@ -788,6 +789,15 @@
     "done": "Done",
     "leftOut_one": "The entry was saved, but {{count}} photo could not be attached. Add it again by editing the entry.",
     "leftOut_other": "The entry was saved, but {{count}} photos could not be attached. Add them again by editing the entry."
+  },
+  "reading": {
+    "filled": "Read from the photo; check it.",
+    "differs": "The photo shows {{value}}",
+    "use": "Use it",
+    "useAria": "Use {{value}} from the photo for {{field}}",
+    "reading": "Reading…",
+    "announce": "Filled in from the photo: {{fields}}. Check them before saving.",
+    "nothing": "Nothing could be read from the photos."
   },
   "recurring": {
     "title": "Recurring expenses",

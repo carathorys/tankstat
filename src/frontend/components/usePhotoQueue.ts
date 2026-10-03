@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { resizeImage } from '../pictures/resizeImage.ts'
-import { deleteImage, LOG_PHOTO_EDGE, MAX_LOG_PHOTOS, photoDraftPath, photoDraftsPath, uploadImage } from '../pictures/upload.ts'
+import { deleteImage, LOG_PHOTO_EDGE, MAX_LOG_PHOTOS, photoDraftPath, photoDraftsPath, uploadImage, type ReadingPurpose } from '../pictures/upload.ts'
 
 /** What the add/edit dialog of a log gets back from its caller after saving a new log: its id and how many photos it ended up with. */
 export type Saved = { id: string; photoCount: number } | void
@@ -11,12 +11,14 @@ export interface QueuedPhoto {
   url: string
   state: 'uploading' | 'uploaded' | 'failed'
   error?: unknown
+  /** The draft's id once the upload went through. */
+  id?: string
+  /** When the upload went through (Date.now()). */
+  uploadedAt?: number
 }
 
 interface Entry extends QueuedPhoto {
   blob: Blob
-  /** The draft's id once the upload went through. */
-  id?: string
 }
 
 export interface PhotoQueue {
@@ -28,6 +30,8 @@ export interface PhotoQueue {
   remove: (key: string) => Promise<void>
   /** The ids of the uploaded drafts, in the order they were picked: what the save attaches. */
   ids: string[]
+  /** The uploaded drafts with when they arrived (photo reading waits a while for each). */
+  uploaded: { id: string; at: number }[]
   /** True while photos are being made smaller or uploaded; saving should wait for it, or they would be left out. */
   busy: boolean
   /** How many photos could not be uploaded (they are not attached unless tried again). */
@@ -41,8 +45,11 @@ export interface PhotoQueue {
 /**
  * Photos picked for a log that does not exist yet (the add dialog). Each one is made small and uploaded right away as a draft of the
  * vehicle, so the server has it before the log is saved and nothing is lost when saving fails; the save then attaches the drafts.
+ * With `reading`, the server also reads each photo (when photo reading is on).
  */
-export function usePhotoQueue(vehicleId: string): PhotoQueue {
+export function usePhotoQueue(vehicleId: string, reading?: { purpose: ReadingPurpose; locale: string }): PhotoQueue {
+  const purpose = reading?.purpose
+  const locale = reading?.locale
   const [items, setItems] = useState<Entry[]>([])
   const current = useRef<Entry[]>([])
   const [preparing, setPreparing] = useState(0)
@@ -74,16 +81,16 @@ export function usePhotoQueue(vehicleId: string): PhotoQueue {
     async (key: string, blob: Blob, started: number) => {
       patch(key, { state: 'uploading', error: undefined })
       try {
-        const { id } = await uploadImage(photoDraftsPath(vehicleId), blob)
+        const { id } = await uploadImage(photoDraftsPath(vehicleId, purpose && locale ? { purpose, locale } : undefined), blob)
         if (started !== generation.current || !current.current.some((e) => e.key === key)) dropDraft(id) // closed or removed meanwhile
-        else patch(key, { state: 'uploaded', id })
+        else patch(key, { state: 'uploaded', id, uploadedAt: Date.now() })
         return undefined
       } catch (error) {
         if (started === generation.current) patch(key, { state: 'failed', error })
         return error
       }
     },
-    [patch, vehicleId],
+    [patch, vehicleId, purpose, locale],
   )
 
   const add = useCallback(
@@ -146,6 +153,7 @@ export function usePhotoQueue(vehicleId: string): PhotoQueue {
     retry,
     remove,
     ids: items.flatMap((e) => (e.state === 'uploaded' && e.id ? [e.id] : [])),
+    uploaded: items.flatMap((e) => (e.state === 'uploaded' && e.id ? [{ id: e.id, at: e.uploadedAt ?? 0 }] : [])),
     busy: preparing > 0 || items.some((e) => e.state === 'uploading'),
     failed: items.filter((e) => e.state === 'failed').length,
     forget,

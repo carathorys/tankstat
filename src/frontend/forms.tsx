@@ -99,6 +99,7 @@ export function Field({
   hint,
   required,
   invalid,
+  extra,
   children,
 }: {
   name: string
@@ -106,6 +107,8 @@ export function Field({
   hint?: string
   required?: boolean
   invalid?: { message: string; test: (value: string) => boolean }
+  /** More under the hint, inside the field (its messages are linked to the control too), e.g. what a photo showed. */
+  extra?: ReactNode
   children: ReactNode
 }) {
   const { t } = useTranslation()
@@ -125,6 +128,7 @@ export function Field({
             </Text>
           </RadixForm.Message>
         )}
+        {extra}
         {required && (
           <RadixForm.Message match="valueMissing" asChild>
             <Text size="1" color="red">

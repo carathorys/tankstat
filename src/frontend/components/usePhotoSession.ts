@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { ReadingPurpose } from '../pictures/upload.ts'
 import { usePhotoQueue, type PhotoQueue, type Saved } from './usePhotoQueue.ts'
 
 export interface PhotoSession {
@@ -13,9 +15,13 @@ export interface PhotoSession {
   reset: () => void
 }
 
-/** The photo part of the add/edit dialogs of refuelings and expenses: the drafts of a new log and what became of them on save. */
-export function usePhotoSession(vehicleId: string): PhotoSession {
-  const queue = usePhotoQueue(vehicleId)
+/**
+ * The photo part of the add/edit dialogs of refuelings and expenses: the drafts of a new log and what became of them on save. With a
+ * `purpose`, the server reads the photos too (when photo reading is on), assuming numbers and dates are written as in the UI language.
+ */
+export function usePhotoSession(vehicleId: string, purpose?: ReadingPurpose): PhotoSession {
+  const { i18n } = useTranslation()
+  const queue = usePhotoQueue(vehicleId, purpose ? { purpose, locale: i18n.language } : undefined)
   const [leftOut, setLeftOut] = useState(0)
   const [saving, setSaving] = useState(false)
 
