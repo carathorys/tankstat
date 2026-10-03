@@ -32,8 +32,13 @@ internal sealed class SmtpEmailSender(IOptions<SmtpOptions> options) : IEmailSen
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            // The server's answer (and MailKit's own message) often quotes the recipient: leave the address, and the exception that holds it, out.
-            throw new EmailSendException($"Sending an e-mail through {o.Host}:{o.Port} failed ({e.GetType().Name}: {e.Message.Replace(to, "<recipient>", StringComparison.OrdinalIgnoreCase)})");
+            // What a server answers to a command (a recipient it refuses) usually quotes the address, in any form it likes, so only its
+            // status is kept. The other failures (connecting, signing in, TLS) have nothing to do with the recipient; its address is still
+            // blanked out of their text, and the exception itself is left out, since it holds the same message.
+            var why = e is SmtpCommandException command 
+                ? $"the server answered {(int)command.StatusCode} ({command.ErrorCode})"
+                : $"{e.GetType().Name}: {e.Message.Replace(to, "<recipient>", StringComparison.OrdinalIgnoreCase)}";
+            throw new EmailSendException($"Sending an e-mail through {o.Host}:{o.Port} failed ({why})");
         }
     }
 }

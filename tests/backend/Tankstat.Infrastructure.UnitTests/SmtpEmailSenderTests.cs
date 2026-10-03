@@ -65,7 +65,7 @@ public class SmtpEmailSenderTests
 
         Assert.DoesNotContain("canary", error.ToString(), StringComparison.OrdinalIgnoreCase); // not in the message, and no inner exception that holds it
         Assert.Contains($"127.0.0.1:{server.Port}", error.Message);
-        Assert.Contains("<recipient>", error.Message); // the server did quote the address: the guard replaced it
+        Assert.Contains("550", error.Message); // what the server said, without how it worded it: its answer quotes the address
         Assert.Null(error.InnerException);
     }
 
