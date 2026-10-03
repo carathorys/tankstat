@@ -43,7 +43,7 @@ tests/backend/Tankstat.Reader.IntegrationTests/   reader HTTP API, image prepara
 tests/backend/contracts/reader/           examples of the reader's HTTP contract
 ```
 
-The photo reader is a separate service with its own image (see [Photo reader](#photo-reader-optional-service)); it references no app project and the app references none of it.
+The photo reader is a separate service with its own image (see [Photo reader](#photo-reader-optional-service)); it references no app project and the app references none of it: the app talks to it over HTTP through its `IRecognitionProvider` port.
 
 Backend dependencies point inward: Api -> Application, Infrastructure; Infrastructure -> Application; Application -> Domain. Application defines interfaces (ports) that Infrastructure implements, so Application and Domain never reference EF Core or HotChocolate.
 
@@ -216,7 +216,7 @@ The app is mobile-first and responsive. The start page (*Home*) shows a card per
 - **Trash**: deleting moves a vehicle, a refuelling or an expense to the trash. Tabs *Vehicles*, *Refuelings* and *Expenses*: **restore**, or **empty the trash**, which permanently deletes only what you have Delete access to (the rest stays and the dialog says so).
 - **Account** (profile picture; change password in Standalone mode) and **Administration** (administrators only), plus **Sign out**.
 
-**Recurring expenses.** The *Recurring* tab of a vehicle holds schedules for things that come back: insurance every 12 months, an oil change every 15,000 km or every 12 months, whichever comes first. A schedule repeats by **time**, by **distance (odometer)** or **combined** (whichever is reached first), counts from the day (and odometer) it was last done, and shows when it is next due and whether it is *Upcoming*, *Due soon* (within the warning time and distance of the item; a new schedule starts from `Defaults:RecurringWarnDays` / `Defaults:RecurringWarnDistance`, 30 days and 500 distance units unless configured) or *Overdue*. The current odometer is the vehicle's latest reading from any log; without one a distance-based schedule cannot be judged yet. **Mark as done** starts the next interval from the day and odometer you enter and, unless you switch it off, logs the cost as a normal expense (so every expense and odometer rule applies). Schedules follow the access rules of the vehicle's logs (View sees them, Edit changes them) and are deleted for good, not trashed; deleting a user hands them on or removes them like the vehicle's other data. What is overdue or due soon is listed on the vehicle's card on *Home*.
+**Recurring expenses.** The *Recurring* tab of a vehicle holds schedules for things that come back: insurance every 12 months, an oil change every 15,000 km or every 12 months, whichever comes first. A schedule repeats by **time**, by **distance (odometer)** or **combined** (whichever is reached first), counts from the day (and odometer) it was last done, and shows when it is next due and whether it is *Upcoming*, *Due soon* (within the warning time and distance of the item; a new schedule starts from `Defaults:RecurringWarnDays` / `Defaults:RecurringWarnDistance`, 30 days and 500 distance units unless configured) or *Overdue*. The current odometer is the vehicle's latest reading from any log; without one a distance-based schedule cannot be judged yet. **Mark as done** starts the next interval from the day and odometer you enter and, unless you switch it off, logs the cost as a normal expense (so every expense and odometer rule applies); photos taken there (the dashboard, the invoice) become that expense's photos. Schedules follow the access rules of the vehicle's logs (View sees them, Edit changes them) and are deleted for good, not trashed; deleting a user hands them on or removes them like the vehicle's other data. What is overdue or due soon is listed on the vehicle's card on *Home*.
 
 **Notifications.** You are notified when someone gives you access to a vehicle's logs, changes or takes it away; when someone other than you shares *your* vehicle; when an administrator gives you (or someone, on your data) access to everything a user owns; when an administrator changes the default access for everyone; and when a recurring expense of a vehicle whose logs you may see becomes due soon or overdue (an administrator only for vehicles that concern them personally, not for every vehicle on the instance). Recurring reminders are worked out when you look (the bell asks every minute while the page is open), once per cycle of the schedule: one that turns from due soon to overdue is the same notification again, unread, and marking it done starts a new cycle. To avoid floods, changes to the same thing are folded into the unread notification about it ("3 changes"), a change undone before you read it disappears, and past `Notifications:MaxPerHour` notifications in an hour further ones are only counted in one "more changes" notification. You cannot delete notifications: you mark them read (when is kept), and the system removes them `Notifications:ReadRetentionDays` after that (checked when you look at them; a reminder of a schedule that is still due stays). Nobody else, administrators included, can see yours. With `Auth:Mode=None` they work for the single anonymous user.
 
@@ -238,6 +238,8 @@ The app is mobile-first and responsive. The start page (*Home*) shows a card per
 **Pictures.** Users can upload a profile picture (Account page; shown with the Radix `Avatar` wherever users appear) and a picture per vehicle (Details tab). The browser scales the picture down (and crops profile pictures square) and re-encodes it before it is sent; the server still checks the real file type (JPEG, PNG, WebP only; 2 MiB maximum). Pictures are served from `/media/{id}` (immutable, cached; only to signed-in users who may see the owner or vehicle) and uploaded with `PUT /media/me/avatar` and `PUT /media/vehicles/{id}/picture` (removed with `DELETE` on the same paths). These, the photo endpoints below and the import upload (`POST /imports/{format}`) are the only REST endpoints; everything else is GraphQL.
 
 **Photos of refuelings and expenses.** Every refueling and expense can have up to 10 photos (receipts, the pump display, ...). In the add and edit dialogs, **Take photo** opens the phone's camera straight away and **Add photos** picks from the library; photos chosen while adding are uploaded straight away as drafts and attached when the entry is saved (so a failed save loses none; a photo that could not be uploaded is marked and can be tried again), and while editing they are uploaded or removed at once. Photos are scaled to 1600 px in the browser (location data in them is dropped), stored in the log's folder below the vehicle's (see `Storage:Path`) and follow the access rules of the vehicle's logs: whoever may see the log may see its photos, whoever may edit it may add and remove them. They are uploaded with `PUT /media/expenses/{id}/photos` or `PUT /media/refuelings/{id}/photos`, removed with `DELETE` on `.../photos/{imageId}` and shown through `/media/{id}`. Drafts are uploaded with `PUT /media/vehicles/{id}/photo-drafts` (needs edit access to the vehicle's logs), removed with `DELETE /media/photo-drafts/{id}`, attached through the `photoIds` of `logRefueling` / `addExpense`, seen only by their uploader, kept in `vehicles/<id>/drafts/` and removed after a day if no entry was saved with them. A photo disappears from view with its log in the trash and is deleted for good when the log or its vehicle is.
+
+**Reading values from photos (optional).** With the [photo reader](#photo-reader-optional-service) set up, the server reads the photos picked in the add dialogs of refuelings and expenses and in *Mark as done*: a dashboard gives the odometer, a fuel receipt the date, litres, total and currency, another receipt the date, shop (as the title), amount and currency. While a photo is being read its thumbnail says *Reading…*; then the values go into the fields you have not changed (the starting values, such as today's date or the last currency, count as unchanged), marked *Read from the photo; check it*. Where you already typed something else, the photo's value is only offered (*The photo shows 38.52 · Use it*), never written over yours. Only values the reader is sure enough of are filled in (`Recognition:MinConfidence`). The page only talks to Tankstat's own server, which talks to the reader; without it the dialogs work exactly as before.
 
 **Accessibility.** The UI is built to be keyboard- and screen-reader friendly: landmarks and a skip link, a labelled navigation, labelled form controls with linked hints and errors, announced upload/loading status, table semantics with `aria-sort`, 44 px touch targets, dialogs with focus management, and reduced-motion support. Automated axe checks run in the frontend integration tests; colour contrast should still be reviewed by eye. The look is dim and layered: translucent blurred panels (top bar, sidebar) with soft shadows.
 
@@ -351,9 +353,45 @@ The same release publishes the optional [photo reader](#photo-reader-optional-se
 
 ## Photo reader (optional service)
 
-A separate service that reads values from photos: the odometer from a dashboard, the total, litres, price per litre, currency and date from a fuel receipt, and the total, currency, date and shop from other receipts (Hungarian, English and German). It reads with [Tesseract](https://github.com/tesseract-ocr/tesseract) and a set of rules, runs in its own container and needs nothing from the app.
+A separate service that reads values from photos: the odometer from a dashboard, the total, litres, price per litre, currency and date from a fuel receipt, and the total, currency, date and shop from other receipts (Hungarian, English and German). It reads with [Tesseract](https://github.com/tesseract-ocr/tesseract) and a set of rules, runs in its own container and needs nothing from the app. The app uses it to fill in the log dialogs (see *Reading values from photos* above), always from its own server: the browser never talks to the reader.
 
-**The app does not use it yet.** A later release will read the photos picked in the log dialogs and fill in the form, always through Tankstat's own server (the browser never talks to the reader). Until then, and whenever it is not set up, nothing changes.
+Run both containers on one private network and point the app at the reader (both images are built for amd64 and arm64):
+
+```yaml
+services:
+  tankstat:
+    image: ghcr.io/<owner>/<repo>:1.2.3
+    ports: ["8080:8080"]
+    volumes: [tankstat-data:/data]
+    environment:
+      Auth__Mode: Standalone
+      Auth__Standalone__AdminEmail: admin@example.com
+      Auth__Standalone__AdminPassword: a long password
+      Recognition__Provider: Reader
+      Recognition__Reader__BaseUrl: http://reader:8081
+      Recognition__Reader__ApiKey: ${READER_API_KEY}
+  reader:
+    image: ghcr.io/<owner>/<repo>-reader:1.2.3 # no published port: only the app talks to it
+    volumes: [reader-data:/data]
+    environment:
+      Reader__ApiKey: ${READER_API_KEY}
+volumes:
+  tankstat-data:
+  reader-data:
+```
+
+The app's side (photo reading is off unless `Recognition:Provider` is set; settings that cannot be used turn it off with a warning in the log, they never stop the app):
+
+| Setting | Environment variable | Meaning |
+| --- | --- | --- |
+| `Recognition:Provider` | `Recognition__Provider` | `None` (default) or `Reader` |
+| `Recognition:Reader:BaseUrl` | `Recognition__Reader__BaseUrl` | the reader's address, e.g. `http://reader:8081` (a path below it works too, behind a proxy) |
+| `Recognition:Reader:ApiKey` | `Recognition__Reader__ApiKey` | the key the reader was started with (its `Reader__ApiKey`) |
+| `Recognition:Reader:TimeoutSeconds` | `Recognition__Reader__TimeoutSeconds` | how long one photo may take before the attempt counts as failed (default `30`) |
+| `Recognition:MinConfidence` | `Recognition__MinConfidence` | values the reader is less sure of are not filled in (0 to 1, default `0.6`) |
+| `Recognition:MaxConcurrent` | `Recognition__MaxConcurrent` | photos read at the same time (default `2`) |
+
+Photos are queued as they are uploaded and read by a background worker; a busy or unreachable reader is tried again later (five attempts), so nothing is lost while it restarts. What was read is kept with the photo (the values only, never another copy of the picture) and goes away with it. The reader on its own:
 
 ```sh
 docker run -d --name tankstat-reader -p 8081:8081 -v tankstat-reader-data:/data \
@@ -380,7 +418,7 @@ The answer names what the photo shows and the values with how sure the reader is
 
 - **Privacy:** photos are read in memory and never stored; the logs name the kind, the number of values and the time taken, never a value or a picture. Only callers with the key get an answer: keep the reader on a private network next to the app rather than on the internet.
 - The container listens on port 8081, runs as an unprivileged user and has a health check (it fails when Tesseract cannot run). The image is Ubuntu-based (Tesseract), unlike the app's Alpine image.
-- **How well it reads:** on generated photos, totals, currencies and dates of receipts are right 97–100 % of the time and litres and prices about 95 %; odometers only about half the time, mostly the seven-segment displays (a trained digit model is planned). Real photos will do worse: measure your own (below). Every value comes with a confidence, and the app will fill in only the ones the reader is sure of (0.6 or more), leaving the rest to you.
+- **How well it reads:** on generated photos, totals, currencies and dates of receipts are right 97–100 % of the time and litres and prices about 95 %; odometers only about half the time, mostly the seven-segment displays (a trained digit model is planned). Real photos will do worse: measure your own (below). Every value comes with a confidence, and the app fills in only the ones the reader is sure of (`Recognition:MinConfidence`, 0.6 by default), leaving the rest to you.
 
 **Measuring it.** The reader can draw photos with known values (receipts and dashboards with blur, tilt, glare and noise) and report how well it reads them, or read your own photos:
 
