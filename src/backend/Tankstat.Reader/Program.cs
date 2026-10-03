@@ -3,6 +3,7 @@ using Tankstat.Reader.Http;
 using Tankstat.Reader.Tools;
 
 if (args is ["--healthcheck", ..]) return await HealthCheckCommand.RunAsync(args[1..]);
+if (args.Length > 0 && ToolCommands.Handles(args[0])) return await ToolCommands.RunAsync(args, Console.Out, Console.Error);
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddReader(builder.Configuration);

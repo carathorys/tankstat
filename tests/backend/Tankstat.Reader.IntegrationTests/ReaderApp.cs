@@ -13,7 +13,8 @@ internal sealed class ReaderApp : IDisposable
 {
     public const string Key = "test-key";
 
-    public ReaderApp(Dictionary<string, string?>? settings = null, IOcrEngine? ocr = null)
+    /// <param name="realOcr">Use the installed Tesseract instead of the fake (tests marked <c>[TesseractFact]</c>).</param>
+    public ReaderApp(Dictionary<string, string?>? settings = null, IOcrEngine? ocr = null, bool realOcr = false)
     {
         var all = new Dictionary<string, string?> { ["Reader:ApiKey"] = Key };
         foreach (var (key, value) in settings ?? []) all[key] = value;
@@ -22,6 +23,7 @@ internal sealed class ReaderApp : IDisposable
             b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(all));
             b.ConfigureServices(s =>
             {
+                if (realOcr) return;
                 s.AddSingleton(ocr ?? Ocr);
                 s.AddSingleton<IOcrStatus>(Status);
             });

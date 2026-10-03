@@ -20,4 +20,10 @@
     <InternalsVisibleTo Include="Tankstat.Reader.IntegrationTests" />
   </ItemGroup>
 
+  <!-- Fonts for the synthetic photos (SIL OFL 1.1); their licences travel with the published reader. -->
+  <ItemGroup>
+    <EmbeddedResource Include="third_party\fonts\*.ttf" LogicalName="Tankstat.Reader.Fonts.%(Filename)%(Extension)" />
+    <None Include="third_party\fonts\*.txt;third_party\fonts\README.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
