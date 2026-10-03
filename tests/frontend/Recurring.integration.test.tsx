@@ -197,7 +197,7 @@ it('marks a schedule as done: the odometer and the cost go along, and the next i
 
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(state.calls.MarkRecurringExpenseDone).toEqual([
-    { input: { id: 'rc1', date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), odometer: 62000, createExpense: true, amount: 35000, currency: 'HUF' } },
+    { input: { id: 'rc1', date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), odometer: 62000, createExpense: true, amount: 35000, currency: 'HUF', photoIds: [] } },
   ])
 })
 
@@ -212,7 +212,7 @@ it('can mark it done without logging an expense', async () => {
   await ui.click(within(dialog).getByRole('button', { name: 'Mark as done' }))
 
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-  expect(state.calls.MarkRecurringExpenseDone).toEqual([{ input: { id: 'rc1', date: expect.any(String), odometer: null, createExpense: false, amount: null, currency: null } }])
+  expect(state.calls.MarkRecurringExpenseDone).toEqual([{ input: { id: 'rc1', date: expect.any(String), odometer: null, createExpense: false, amount: null, currency: null, photoIds: [] } }])
 })
 
 it('deletes a schedule after a confirmation', async () => {

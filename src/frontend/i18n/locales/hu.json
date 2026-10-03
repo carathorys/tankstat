@@ -882,6 +882,7 @@
     "doneSave": "Késznek jelölés",
     "deleteTitle": "Törlöd ezt az ismétlődő költséget?",
     "deleteDescription": "A(z) {{title}} többé nem lesz nyomon követve. A belőle már rögzített költségek megmaradnak.",
-    "deleteConfirm": "Törlés"
+    "deleteConfirm": "Törlés",
+    "photosNotKept": "A fotókat csak naplózott kiadással együtt őrizzük meg."
   }
 }

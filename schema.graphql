@@ -537,6 +537,7 @@ input MarkRecurringExpenseDoneInput {
   createExpense: Boolean!
   amount: Decimal
   currency: String
+  photoIds: [UUID!]
 }
 
 input MeasurementUnitsInput {

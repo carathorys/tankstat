@@ -171,6 +171,7 @@ export type MarkRecurringExpenseDoneInput = {
   date: string;
   id: string;
   odometer?: number | null | undefined;
+  photoIds?: Array<string> | null | undefined;
 };
 
 export type MeasurementUnitsInput = {

@@ -20,7 +20,9 @@ public sealed record RecurringExpenseInput(
     DateOnly? LastDoneDate, long? LastDoneOdometer, int? WarnDays, long? WarnDistance);
 
 /// <param name="CreateExpense">Also log the cost as a normal expense (needs <paramref name="Amount"/> and <paramref name="Currency"/>).</param>
-public sealed record MarkDoneInput(DateOnly Date, long? Odometer, bool CreateExpense, decimal? Amount, string? Currency);
+/// <param name="PhotoIds">Photos uploaded beforehand as drafts (an invoice, the dashboard): they become the logged expense's photos. Without an
+/// expense there is nothing to attach them to, and they expire as drafts.</param>
+public sealed record MarkDoneInput(DateOnly Date, long? Odometer, bool CreateExpense, decimal? Amount, string? Currency, IReadOnlyCollection<Guid>? PhotoIds = null);
 
 /// <summary>A recurring expense with where it stands today.</summary>
 public sealed record RecurringItem(RecurringExpense Item, RecurrenceStatus Status);
@@ -113,7 +115,8 @@ public sealed class RecurringExpenseService(
 
         item.CheckDone(input.Date, input.Odometer); // the schedule's own rules first: nothing is logged for a day it would refuse
         var logged = input.CreateExpense
-            ? await expenses.AddAsync(item.VehicleId, new ExpenseInput(input.Date, item.Title, item.Category, input.Amount!.Value, input.Currency, input.Odometer, item.Note), ct)
+            ? await expenses.AddAsync(item.VehicleId, new ExpenseInput(input.Date, item.Title, item.Category, input.Amount!.Value, input.Currency, input.Odometer, item.Note), ct,
+                photoDraftIds: input.PhotoIds)
             : null;
         try
         {

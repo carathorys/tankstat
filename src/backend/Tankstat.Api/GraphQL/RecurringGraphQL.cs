@@ -23,7 +23,8 @@ public sealed record UpdateRecurringExpenseInput(
 
 /// <param name="CreateExpense">Also log the cost as an expense (needs <c>amount</c>).</param>
 /// <param name="Currency">ISO 4217 code; omit to use the instance default.</param>
-public sealed record MarkRecurringExpenseDoneInput(Guid Id, DateOnly Date, long? Odometer, bool CreateExpense, decimal? Amount, string? Currency);
+/// <param name="PhotoIds">Photos uploaded beforehand (<c>PUT /media/vehicles/{id}/photo-drafts</c>); they become the logged expense's photos.</param>
+public sealed record MarkRecurringExpenseDoneInput(Guid Id, DateOnly Date, long? Odometer, bool CreateExpense, decimal? Amount, string? Currency, IReadOnlyList<Guid>? PhotoIds = null);
 
 /// <summary>Where a recurring expense stands today. The days and distance left are negative once it is overdue; null when that side does not apply.</summary>
 public sealed record RecurrenceStatusInfo(RecurrenceState State, RecurrenceLimit? Limit, DateOnly? DueDate, long? DueOdometer, int? DaysLeft, long? DistanceLeft);
@@ -79,5 +80,5 @@ public sealed class RecurringMutations
     /// <summary>Starts the next interval from the given day and odometer and, when asked, logs the cost as an expense.</summary>
     public async Task<RecurringExpenseInfo> MarkRecurringExpenseDone(
         MarkRecurringExpenseDoneInput input, [Service] RecurringExpenseService recurring, [Service] IOptions<VehicleDefaultsOptions> defaults, CancellationToken ct) =>
-        RecurringExpenseInfo.From(await recurring.MarkDoneAsync(input.Id, new MarkDoneInput(input.Date, input.Odometer, input.CreateExpense, input.Amount, input.Currency ?? defaults.Value.Currency), ct));
+        RecurringExpenseInfo.From(await recurring.MarkDoneAsync(input.Id, new MarkDoneInput(input.Date, input.Odometer, input.CreateExpense, input.Amount, input.Currency ?? defaults.Value.Currency, input.PhotoIds), ct));
 }

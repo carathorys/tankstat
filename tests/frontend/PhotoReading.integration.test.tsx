@@ -9,6 +9,8 @@ import {
   fakeLogBackend,
   fakePhotoStore,
   fakeRecognition,
+  fakeRecurring,
+  fakeRecurringBackend,
   fakeRefueling,
   fakeVehicle,
   healthHandler,
@@ -163,4 +165,55 @@ it('fills a new expense from its receipt: the shop becomes the title', async () 
   expect(within(dialog).getByLabelText('Date')).toHaveValue('2026-09-25')
   expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF') // the receipt showed none: the last one stays
   expect(photos.state.draftQueries).toEqual(['?form=expense&locale=en'])
+})
+
+function setupRecurring(recognition = fakeRecognition({ results: [[{ name: 'ODOMETER', value: '62480' }, { name: 'TOTAL', value: '35000' }]], queuedPolls: 0 })) {
+  stubViewport('desktop')
+  const photos = fakePhotoStore()
+  const expenses = fakeExpenseBackend(fakeVehicle(), [], photos)
+  const recurring = fakeRecurringBackend([fakeRecurring()])
+  server.use(sessionHandler('NONE', () => null), healthHandler, ...expenses.handlers, ...recurring.handlers, ...recognition.handlers)
+  renderWithApollo(<App />, '/vehicles/v1?tab=recurring')
+  return { ...recurring, photos, ui: userEvent.setup() }
+}
+
+async function openDone(ui: ReturnType<typeof userEvent.setup>) {
+  await screen.findByRole('rowheader', { name: /Oil change/ })
+  await ui.click(screen.getByRole('button', { name: 'Mark Oil change as done' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Mark as done: Oil change' })
+  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
+  return dialog
+}
+
+it('marking a schedule done takes the odometer and cost from a photo, which goes with the logged expense', async () => {
+  const { ui, state, photos } = setupRecurring()
+  const dialog = await openDone(ui)
+
+  await ui.upload(camera(dialog), photo('dashboard.png'))
+
+  await waitFor(() => expect(within(dialog).getByLabelText(/^Odometer/)).toHaveValue('62480'), READ_WAIT)
+  expect(within(dialog).getByLabelText('Amount')).toHaveValue('35000')
+  expect(photos.state.draftQueries).toEqual(['?form=expense&locale=en'])
+  await ui.click(within(dialog).getByRole('button', { name: 'Mark as done' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(state.calls.MarkRecurringExpenseDone).toEqual([
+    { input: expect.objectContaining({ id: 'rc1', odometer: 62480, createExpense: true, amount: 35000, currency: 'HUF', photoIds: ['draft1'] }) },
+  ])
+  expect(photos.state.draftDeletes).toEqual([])
+})
+
+it('marking a schedule done without an expense keeps no photos: they are not sent and are deleted', async () => {
+  const { ui, state, photos } = setupRecurring()
+  const dialog = await openDone(ui)
+  await ui.upload(camera(dialog), photo('dashboard.png'))
+  await waitFor(() => expect(within(dialog).getByLabelText(/^Odometer/)).toHaveValue('62480'), READ_WAIT)
+
+  await ui.click(within(dialog).getByRole('switch', { name: 'Also log it as an expense' }))
+  expect(within(dialog).getByText('Photos are only kept with a logged expense.')).toBeInTheDocument()
+  await ui.click(within(dialog).getByRole('button', { name: 'Mark as done' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(state.calls.MarkRecurringExpenseDone).toEqual([{ input: expect.objectContaining({ odometer: 62480, createExpense: false, photoIds: [] }) }])
+  await waitFor(() => expect(photos.state.draftDeletes).toEqual(['draft1']))
 })
