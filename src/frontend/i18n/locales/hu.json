@@ -447,7 +447,8 @@
   },
   "a11y": {
     "sortBy": "Rendezés: {{column}}",
-    "uploadStatus": "Feltöltés állapota"
+    "uploadStatus": "Feltöltés állapota",
+    "readingStatus": "Leolvasás állapota"
   },
   "units": {
     "distance": {
@@ -789,6 +790,15 @@
     "leftOut_one": "A bejegyzés mentve lett, de {{count}} fotót nem sikerült hozzáadni. A bejegyzés szerkesztésével újra hozzáadhatod.",
     "leftOut_other": "A bejegyzés mentve lett, de {{count}} fotót nem sikerült hozzáadni. A bejegyzés szerkesztésével újra hozzáadhatod őket."
   },
+  "reading": {
+    "filled": "A fotóról olvastuk le, ellenőrizd.",
+    "differs": "A fotón ez áll: {{value}}",
+    "use": "Átveszem",
+    "useAria": "{{value}} átvétele a fotóról ide: {{field}}",
+    "reading": "Leolvasás…",
+    "announce": "A fotóról kitöltve: {{fields}}. Mentés előtt ellenőrizd őket.",
+    "nothing": "A fotókról nem sikerült semmit leolvasni."
+  },
   "recurring": {
     "title": "Ismétlődő költségek",
     "add": "Ismétlődő költség hozzáadása",
@@ -872,6 +882,7 @@
     "doneSave": "Késznek jelölés",
     "deleteTitle": "Törlöd ezt az ismétlődő költséget?",
     "deleteDescription": "A(z) {{title}} többé nem lesz nyomon követve. A belőle már rögzített költségek megmaradnak.",
-    "deleteConfirm": "Törlés"
+    "deleteConfirm": "Törlés",
+    "photosNotKept": "A fotókat csak naplózott kiadással együtt őrizzük meg."
   }
 }

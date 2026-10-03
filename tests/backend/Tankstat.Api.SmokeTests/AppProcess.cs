@@ -73,7 +73,7 @@ internal sealed class AppProcess : IAsyncDisposable
         info.ArgumentList.Add($"http://127.0.0.1:{port}");
 
         // A clean slate: nothing from the developer's own environment may leak into the run.
-        foreach (var key in info.Environment.Keys.Where(k => k.StartsWith("Auth__") || k.StartsWith("Database__") || k.StartsWith("Smtp__") || k.StartsWith("ASPNETCORE_")).ToList())
+        foreach (var key in info.Environment.Keys.Where(k => k.StartsWith("Auth__") || k.StartsWith("Database__") || k.StartsWith("Smtp__") || k.StartsWith("Recognition__") || k.StartsWith("ASPNETCORE_")).ToList())
             info.Environment.Remove(key);
         info.Environment["ASPNETCORE_CONTENTROOT"] = Path.GetDirectoryName(dll); // finds appsettings.json although the working directory is elsewhere
         info.Environment["DOTNET_NOLOGO"] = "1";
@@ -159,6 +159,18 @@ internal sealed class AppProcess : IAsyncDisposable
     }
 
     public Task<HttpResponseMessage> GetAsync(string path) => _http.GetAsync(path);
+
+    /// <summary>Waits for a line in the app's output (background work logs a little after the app starts answering).</summary>
+    public async Task<bool> LogsAsync(string text, TimeSpan? within = null)
+    {
+        var deadline = DateTime.UtcNow + (within ?? TimeSpan.FromSeconds(10));
+        while (!Log.Contains(text, StringComparison.Ordinal))
+        {
+            if (DateTime.UtcNow > deadline) return false;
+            await Task.Delay(100);
+        }
+        return true;
+    }
 
     public bool HasExited => _process.HasExited;
 

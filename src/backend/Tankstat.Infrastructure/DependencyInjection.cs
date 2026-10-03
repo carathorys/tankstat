@@ -14,8 +14,10 @@ using Tankstat.Application.Recurring;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Stats;
 using Tankstat.Application.Photos;
+using Tankstat.Application.Recognition;
 using Tankstat.Application.Users;
 using Tankstat.Infrastructure.Auth;
+using Tankstat.Infrastructure.Recognition;
 using Tankstat.Infrastructure.Storage;
 using Tankstat.Application.Vehicles;
 using Tankstat.Infrastructure.Persistence;
@@ -76,13 +78,24 @@ public static class DependencyInjection
         services.AddScoped<IImageRepository, ImageRepository>();
         services.AddScoped<ILogPhotoRepository, LogPhotoRepository>();
         services.AddScoped<IPhotoDraftRepository, PhotoDraftRepository>();
+        services.AddScoped<IPhotoReadingRepository, PhotoReadingRepository>();
         services.AddSingleton<IImageStore, FileSystemImageStore>();
         services.AddSingleton<IPasswordHasher, IdentityPasswordHasher>();
         services.AddSingleton<IEmailSender, SmtpEmailSender>();
 
-        // Order matters: migrate first, then create the initial administrator.
+        // Photo reading (optional): the provider the settings choose, or one that never reads (RecognitionSetup explains why).
+        // No client-wide timeout (its default of 100 s would cut Reader:TimeoutSeconds short): every request brings its own.
+        services.AddHttpClient(ReaderRecognitionProvider.ClientName, client => client.Timeout = Timeout.InfiniteTimeSpan);
+        services.AddSingleton<IRecognitionProvider>(sp => sp.GetRequiredService<RecognitionSetup>() is { Enabled: true, Kind: RecognitionProviderKind.Reader } setup
+            ? new ReaderRecognitionProvider(sp.GetRequiredService<IHttpClientFactory>(), setup.Options.Reader)
+            : NullRecognitionProvider.Instance);
+        services.AddSingleton<RecognitionSignal>();
+        services.AddSingleton<IRecognitionSignal>(sp => sp.GetRequiredService<RecognitionSignal>());
+
+        // Order matters: migrate first, then create the initial administrator; the photo reading worker needs the migrated database.
         services.AddHostedService<DatabaseMigrator>();
         services.AddHostedService<StandaloneBootstrapper>();
+        services.AddHostedService<RecognitionWorker>();
 
         return services;
     }

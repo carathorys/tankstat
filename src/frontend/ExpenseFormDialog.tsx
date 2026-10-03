@@ -7,11 +7,16 @@ import { OdometerField } from './components/OdometerField.tsx'
 import { PhotoGallery } from './components/PhotoGallery.tsx'
 import { PhotosLeftOut } from './components/PhotosLeftOut.tsx'
 import type { Saved } from './components/usePhotoQueue.ts'
+import { useOdometerLabel } from './components/useOdometerLabel.ts'
 import { usePhotoSession } from './components/usePhotoSession.ts'
 import { Field } from './forms.tsx'
-import { ExpenseCategoriesDocument, ExpenseDetailsDocument, LogDefaultsDocument, type DistanceUnit } from './gql/generated.ts'
+import { ExpenseCategoriesDocument, ExpenseDetailsDocument, LogDefaultsDocument, type DistanceUnit, type ReadingFieldName } from './gql/generated.ts'
 import { parseDecimal } from './i18n/format.ts'
 import { ErrorMessage } from './messages.tsx'
+import { ReadNote } from './recognition/ReadNote.tsx'
+import { mergeReadings, type ReadValues } from './recognition/readValues.ts'
+import { useDraftReadings } from './recognition/useDraftReadings.ts'
+import { useReadFill } from './recognition/useReadFill.ts'
 
 export interface ExpenseValues {
   date: string
@@ -38,9 +43,14 @@ const today = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+/** The fields of a new expense that photos can fill in (a receipt's shop becomes the title), and which read value goes into each. */
+type FillableField = 'date' | 'title' | 'amount' | 'currency' | 'odometer'
+const READ_INTO: Record<FillableField, ReadingFieldName> = { date: 'DATE', title: 'TITLE', amount: 'TOTAL', currency: 'CURRENCY', odometer: 'ODOMETER' }
+
 /**
  * Add an expense (no `expenseId`) or edit one. Starts from today and the currency of the vehicle's latest log; the category suggests
- * what was used before (any text is fine) and the odometer may be left empty.
+ * what was used before (any text is fine) and the odometer may be left empty. When photo reading is on, the photos of a new expense
+ * are read on the server and fill in what the user has not typed yet.
  */
 export function ExpenseFormDialog({
   trigger,
@@ -56,8 +66,9 @@ export function ExpenseFormDialog({
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
-  const { queue, leftOut, saving, submit, reset } = usePhotoSession(vehicle.id)
   const editing = expenseId !== undefined
+  const { queue, leftOut, saving, submit, reset } = usePhotoSession(vehicle.id, editing ? undefined : 'expense')
+  const drafts = useDraftReadings(queue.uploaded, open && !editing)
   const details = useQuery(ExpenseDetailsDocument, { variables: { id: expenseId ?? '' }, skip: !editing || !open, fetchPolicy: 'network-only' })
   const defaults = useQuery(LogDefaultsDocument, { variables: { vehicleId: vehicle.id }, skip: !open, fetchPolicy: 'network-only' })
   const categories = useQuery(ExpenseCategoriesDocument, { variables: { vehicleId: vehicle.id }, skip: !open, fetchPolicy: 'network-only' })
@@ -100,7 +111,19 @@ export function ExpenseFormDialog({
             editing={editing}
             categories={categories.data?.expenseCategories ?? []}
             photosBusy={queue.busy || queue.failed > 0}
-            gallery={<PhotoGallery kind="expenses" logId={expenseId} photos={existing?.photos ?? []} queue={queue} disabled={saving} onChanged={() => details.refetch()} />}
+            read={mergeReadings(drafts.readings.values())}
+            readingDone={drafts.done}
+            gallery={
+              <PhotoGallery
+                kind="expenses"
+                logId={expenseId}
+                photos={existing?.photos ?? []}
+                queue={queue}
+                readingIds={drafts.pending}
+                disabled={saving}
+                onChanged={() => details.refetch()}
+              />
+            }
             onSubmit={async (values) => {
               if (await submit((photoIds) => onSubmit(values, photoIds), editing)) {
                 setOpen(false)
@@ -121,6 +144,8 @@ function ExpenseForm({
   categories,
   gallery,
   photosBusy,
+  read,
+  readingDone,
   onSubmit,
 }: {
   initial: Initial
@@ -130,9 +155,30 @@ function ExpenseForm({
   gallery: ReactNode
   /** Chosen photos are still being prepared: saving now would leave them out. */
   photosBusy: boolean
+  /** What the photos showed so far. */
+  read: ReadValues
+  readingDone: boolean
   onSubmit: (values: ExpenseValues) => Promise<unknown>
 }) {
   const { t } = useTranslation()
+  const odometerLabel = useOdometerLabel(unit, true)
+  const labels: Record<FillableField, string> = {
+    date: t('expenses.fields.date'),
+    title: t('expenses.fields.title'),
+    amount: t('expenses.fields.amount'),
+    currency: t('expenses.fields.currency'),
+    odometer: odometerLabel,
+  }
+  const fill = useReadFill(
+    { date: initial.date, title: initial.title, amount: initial.amount?.toString() ?? '', currency: initial.currency, odometer: initial.odometer?.toString() ?? '' },
+    READ_INTO,
+    read,
+    labels,
+    readingDone,
+  )
+  const note = (field: FillableField) => (
+    <ReadNote filled={fill.isFilled(field)} offered={fill.offered(field)} field={labels[field]} onUse={() => fill.use(field)} />
+  )
   const [error, setError] = useState<unknown>()
   const [busy, setBusy] = useState(false)
   const listId = useId()
@@ -163,11 +209,11 @@ function ExpenseForm({
   return (
     <RadixForm.Root onSubmit={submit}>
       <Flex direction="column" gap="3">
-        <Field name="date" label={t('expenses.fields.date')} required>
-          <TextField.Root type="date" required max={today()} defaultValue={initial.date} />
+        <Field name="date" label={labels.date} required extra={note('date')}>
+          <TextField.Root type="date" required max={today()} value={fill.values.date} onChange={(e) => fill.change('date', e.target.value)} />
         </Field>
-        <Field name="title" label={t('expenses.fields.title')} required>
-          <TextField.Root required maxLength={120} autoComplete="off" defaultValue={initial.title} />
+        <Field name="title" label={labels.title} required extra={note('title')}>
+          <TextField.Root required maxLength={120} autoComplete="off" value={fill.values.title} onChange={(e) => fill.change('title', e.target.value)} />
         </Field>
         <Field
           name="category"
@@ -185,29 +231,41 @@ function ExpenseForm({
           <Flex direction="column" style={{ flex: '2 1 8rem' }}>
             <Field
               name="amount"
-              label={t('expenses.fields.amount')}
+              label={labels.amount}
               required
               invalid={{ message: t('forms.numberInvalid'), test: (v) => v !== '' && parseDecimal(v) === undefined }}
+              extra={note('amount')}
             >
-              <TextField.Root required inputMode="decimal" autoComplete="off" defaultValue={initial.amount?.toString() ?? ''} />
+              <TextField.Root required inputMode="decimal" autoComplete="off" value={fill.values.amount} onChange={(e) => fill.change('amount', e.target.value)} />
             </Field>
           </Flex>
           <Flex direction="column" style={{ flex: '1 1 6rem' }}>
             <Field
               name="currency"
-              label={t('expenses.fields.currency')}
+              label={labels.currency}
               required
               invalid={{ message: t('errors.money.currencyInvalid'), test: (v) => v !== '' && !/^[A-Za-z]{3}$/.test(v.trim()) }}
+              extra={note('currency')}
             >
-              <TextField.Root required maxLength={3} autoComplete="off" style={{ textTransform: 'uppercase' }} defaultValue={initial.currency} />
+              <TextField.Root
+                required
+                maxLength={3}
+                autoComplete="off"
+                style={{ textTransform: 'uppercase' }}
+                value={fill.values.currency}
+                onChange={(e) => fill.change('currency', e.target.value)}
+              />
             </Field>
           </Flex>
         </Flex>
-        <OdometerField unit={unit} defaultValue={initial.odometer ?? undefined} optional />
+        <OdometerField unit={unit} optional value={fill.values.odometer} onChange={(v) => fill.change('odometer', v)} extra={note('odometer')} />
         <Field name="note" label={t('expenses.fields.note')}>
           <TextArea maxLength={500} rows={2} defaultValue={initial.note ?? ''} />
         </Field>
         {gallery}
+        <div role="status" aria-label={t('a11y.readingStatus')}>
+          {fill.announcement && <Text size="2">{fill.announcement}</Text>}
+        </div>
         {error !== undefined && <ErrorMessage error={error} />}
         <Flex gap="3" justify="end">
           <Dialog.Close>

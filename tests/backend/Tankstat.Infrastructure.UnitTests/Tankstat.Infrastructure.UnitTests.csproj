@@ -19,6 +19,11 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- The photo reader's contract examples (shared with the reader's own tests): the adapter must understand exactly these. -->
+  <ItemGroup>
+    <None Include="..\contracts\reader\*.json" LinkBase="contracts" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\backend\Tankstat.Infrastructure\Tankstat.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\src\backend\Tankstat.Migrations.Sqlite\Tankstat.Migrations.Sqlite.csproj" />

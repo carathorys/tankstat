@@ -7,11 +7,16 @@ import { OdometerField } from './components/OdometerField.tsx'
 import { PhotoGallery } from './components/PhotoGallery.tsx'
 import { PhotosLeftOut } from './components/PhotosLeftOut.tsx'
 import type { Saved } from './components/usePhotoQueue.ts'
+import { useOdometerLabel } from './components/useOdometerLabel.ts'
 import { usePhotoSession } from './components/usePhotoSession.ts'
 import { Field } from './forms.tsx'
-import { LogDefaultsDocument, RefuelingDetailsDocument, type DistanceUnit, type VolumeUnit } from './gql/generated.ts'
+import { LogDefaultsDocument, RefuelingDetailsDocument, type DistanceUnit, type ReadingFieldName, type VolumeUnit } from './gql/generated.ts'
 import { parseDecimal } from './i18n/format.ts'
 import { ErrorMessage } from './messages.tsx'
+import { ReadNote } from './recognition/ReadNote.tsx'
+import { mergeReadings, type ReadValues } from './recognition/readValues.ts'
+import { useDraftReadings } from './recognition/useDraftReadings.ts'
+import { useReadFill } from './recognition/useReadFill.ts'
 
 export interface RefuelingValues {
   date: string
@@ -34,10 +39,15 @@ const today = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+/** The fields of a new log that photos can fill in, and which read value goes into each. */
+type FillableField = 'date' | 'volume' | 'totalCost' | 'currency' | 'odometer'
+const READ_INTO: Record<FillableField, ReadingFieldName> = { date: 'DATE', volume: 'VOLUME', totalCost: 'TOTAL', currency: 'CURRENCY', odometer: 'ODOMETER' }
+
 /**
  * Add a log (no `refuelingId`) or edit one. A new log starts from sensible values: today, the vehicle's latest odometer
  * reading (as a hint, so the number is never entered by accident) and the currency of the latest log. Volume and odometer are
- * entered in the vehicle's own units; the server checks the reading against the neighbouring ones.
+ * entered in the vehicle's own units; the server checks the reading against the neighbouring ones. When photo reading is on, the
+ * photos of a new log are read on the server and fill in what the user has not typed yet.
  */
 export function RefuelingFormDialog({
   trigger,
@@ -53,8 +63,9 @@ export function RefuelingFormDialog({
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
-  const { queue, leftOut, saving, submit, reset } = usePhotoSession(vehicle.id)
   const editing = refuelingId !== undefined
+  const { queue, leftOut, saving, submit, reset } = usePhotoSession(vehicle.id, editing ? undefined : 'refueling')
+  const drafts = useDraftReadings(queue.uploaded, open && !editing)
   const details = useQuery(RefuelingDetailsDocument, { variables: { id: refuelingId ?? '' }, skip: !editing || !open, fetchPolicy: 'network-only' })
   const defaults = useQuery(LogDefaultsDocument, { variables: { vehicleId: vehicle.id }, skip: !open, fetchPolicy: 'network-only' })
   const error = details.error ?? defaults.error
@@ -97,7 +108,19 @@ export function RefuelingFormDialog({
             editing={editing}
             last={lastReading}
             photosBusy={queue.busy || queue.failed > 0}
-            gallery={<PhotoGallery kind="refuelings" logId={refuelingId} photos={existing?.photos ?? []} queue={queue} disabled={saving} onChanged={() => details.refetch()} />}
+            read={mergeReadings(drafts.readings.values())}
+            readingDone={drafts.done}
+            gallery={
+              <PhotoGallery
+                kind="refuelings"
+                logId={refuelingId}
+                photos={existing?.photos ?? []}
+                queue={queue}
+                readingIds={drafts.pending}
+                disabled={saving}
+                onChanged={() => details.refetch()}
+              />
+            }
             onSubmit={async (values) => {
               if (await submit((photoIds) => onSubmit(values, photoIds), editing)) {
                 setOpen(false)
@@ -118,6 +141,8 @@ function RefuelingForm({
   last,
   gallery,
   photosBusy,
+  read,
+  readingDone,
   onSubmit,
 }: {
   initial: Initial
@@ -127,9 +152,36 @@ function RefuelingForm({
   gallery: ReactNode
   /** Chosen photos are still being prepared: saving now would leave them out. */
   photosBusy: boolean
+  /** What the photos showed so far. */
+  read: ReadValues
+  readingDone: boolean
   onSubmit: (values: RefuelingValues) => Promise<unknown>
 }) {
   const { t } = useTranslation()
+  const odometerLabel = useOdometerLabel(units.distance)
+  const labels: Record<FillableField, string> = {
+    date: t('refuelings.fields.date'),
+    volume: t('refuelings.fields.volume', { unit: t(`units.volumeShort.${units.volume}`) }),
+    totalCost: t('refuelings.fields.cost'),
+    currency: t('refuelings.fields.currency'),
+    odometer: odometerLabel,
+  }
+  const fill = useReadFill(
+    {
+      date: initial.date,
+      volume: initial.volume?.toString() ?? '',
+      totalCost: initial.totalCost?.toString() ?? '',
+      currency: initial.currency,
+      odometer: initial.odometer?.toString() ?? '',
+    },
+    READ_INTO,
+    read,
+    labels,
+    readingDone,
+  )
+  const note = (field: FillableField) => (
+    <ReadNote filled={fill.isFilled(field)} offered={fill.offered(field)} field={labels[field]} onUse={() => fill.use(field)} />
+  )
   const [full, setFull] = useState(initial.isFullTank)
   const [error, setError] = useState<unknown>()
   const [busy, setBusy] = useState(false)
@@ -162,31 +214,39 @@ function RefuelingForm({
   return (
     <RadixForm.Root onSubmit={submit}>
       <Flex direction="column" gap="3">
-        <Field name="date" label={t('refuelings.fields.date')} required>
-          <TextField.Root type="date" required max={today()} defaultValue={initial.date} />
+        <Field name="date" label={labels.date} required extra={note('date')}>
+          <TextField.Root type="date" required max={today()} value={fill.values.date} onChange={(e) => fill.change('date', e.target.value)} />
         </Field>
-        <Field name="volume" label={t('refuelings.fields.volume', { unit: t(`units.volumeShort.${units.volume}`) })} required invalid={decimalInvalid}>
-          <TextField.Root required inputMode="decimal" autoComplete="off" defaultValue={initial.volume?.toString() ?? ''} />
+        <Field name="volume" label={labels.volume} required invalid={decimalInvalid} extra={note('volume')}>
+          <TextField.Root required inputMode="decimal" autoComplete="off" value={fill.values.volume} onChange={(e) => fill.change('volume', e.target.value)} />
         </Field>
         <Flex gap="3" wrap="wrap">
           <Flex direction="column" style={{ flex: '2 1 8rem' }}>
-            <Field name="totalCost" label={t('refuelings.fields.cost')} required invalid={decimalInvalid}>
-              <TextField.Root required inputMode="decimal" autoComplete="off" defaultValue={initial.totalCost?.toString() ?? ''} />
+            <Field name="totalCost" label={labels.totalCost} required invalid={decimalInvalid} extra={note('totalCost')}>
+              <TextField.Root required inputMode="decimal" autoComplete="off" value={fill.values.totalCost} onChange={(e) => fill.change('totalCost', e.target.value)} />
             </Field>
           </Flex>
           <Flex direction="column" style={{ flex: '1 1 6rem' }}>
             <Field
               name="currency"
-              label={t('refuelings.fields.currency')}
+              label={labels.currency}
               required
               hint={t('refuelings.hints.currency')}
               invalid={{ message: t('errors.money.currencyInvalid'), test: (v) => v !== '' && !/^[A-Za-z]{3}$/.test(v.trim()) }}
+              extra={note('currency')}
             >
-              <TextField.Root required maxLength={3} autoComplete="off" style={{ textTransform: 'uppercase' }} defaultValue={initial.currency} />
+              <TextField.Root
+                required
+                maxLength={3}
+                autoComplete="off"
+                style={{ textTransform: 'uppercase' }}
+                value={fill.values.currency}
+                onChange={(e) => fill.change('currency', e.target.value)}
+              />
             </Field>
           </Flex>
         </Flex>
-        <OdometerField unit={units.distance} defaultValue={initial.odometer} last={last} />
+        <OdometerField unit={units.distance} last={last} value={fill.values.odometer} onChange={(v) => fill.change('odometer', v)} extra={note('odometer')} />
         <Flex align="center" gap="3">
           <Switch id={switchId} checked={full} onCheckedChange={setFull} size="3" />
           <Flex direction="column">
@@ -202,6 +262,9 @@ function RefuelingForm({
           <TextArea maxLength={500} rows={2} defaultValue={initial.note ?? ''} />
         </Field>
         {gallery}
+        <div role="status" aria-label={t('a11y.readingStatus')}>
+          {fill.announcement && <Text size="2">{fill.announcement}</Text>}
+        </div>
         {error !== undefined && <ErrorMessage error={error} />}
         <Flex gap="3" justify="end">
           <Dialog.Close>

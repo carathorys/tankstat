@@ -147,6 +147,33 @@ public class RecurringExpenseServiceTests
     }
 
     [Fact]
+    public async Task MarkDone_AttachesThePhotosPickedInTheDialog_ToTheLoggedExpense()
+    {
+        var s = await Setup();
+        var item = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(), default)).Item;
+        var invoice = await s.W.Drafts.UploadAsync(s.Car.Id, new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 1 }, default);
+
+        await s.W.RecurringService.MarkDoneAsync(item.Id, new MarkDoneInput(new DateOnly(2026, 9, 20), 62000, true, 35000, "HUF", [invoice]), default);
+
+        var expense = Assert.Single(s.W.Expenses.Items);
+        Assert.Equal([invoice], s.W.LogPhotos.Items.Where(p => p.LogId == expense.Id).Select(p => p.ImageId));
+        Assert.Empty(s.W.PhotoDrafts.Items);
+    }
+
+    [Fact]
+    public async Task MarkDone_WithoutAnExpense_LeavesThePhotosAsDrafts()
+    {
+        var s = await Setup();
+        var item = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(RecurrenceKind.Time), default)).Item;
+        var photo = await s.W.Drafts.UploadAsync(s.Car.Id, new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 2 }, default);
+
+        await s.W.RecurringService.MarkDoneAsync(item.Id, new MarkDoneInput(new DateOnly(2026, 9, 20), null, false, null, null, [photo]), default);
+
+        Assert.Empty(s.W.LogPhotos.Items);
+        Assert.Equal([photo], s.W.PhotoDrafts.Items.Select(d => d.Id)); // nothing to attach them to: they expire
+    }
+
+    [Fact]
     public async Task MarkDone_WithoutAnExpense_OnlyMovesTheBaseline()
     {
         var s = await Setup();

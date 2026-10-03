@@ -102,6 +102,23 @@ public class RecurringGraphQLTests(ApiFixture api)
     }
 
     [Fact]
+    public async Task MarkingDone_WithPhotos_AttachesThemToTheLoggedExpense()
+    {
+        var vehicle = await AddVehicle();
+        var id = (await AddItem(vehicle)).GetProperty("data").GetProperty("addRecurringExpense").GetProperty("id").GetString();
+        var content = new ByteArrayContent([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 7]);
+        var upload = await api.Factory.CreateClient().PutAsync($"/media/vehicles/{vehicle}/photo-drafts?form=expense&locale=en", content);
+        var draft = (await upload.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString();
+
+        var done = await Send($"mutation($i: MarkRecurringExpenseDoneInput!) {{ markRecurringExpenseDone(input: $i) {{ {Fields} }} }}",
+            new { i = new { id, date = "2026-09-20", odometer = 62000, createExpense = true, amount = 35000, photoIds = new[] { draft } } });
+
+        Assert.False(done.TryGetProperty("errors", out var errors), errors.ToString());
+        var expense = (await Send("query($v: UUID!) { expenses(vehicleId: $v) { photos { id } } }", new { v = vehicle })).GetProperty("data").GetProperty("expenses")[0];
+        Assert.Equal([draft], expense.GetProperty("photos").EnumerateArray().Select(p => p.GetProperty("id").GetString()));
+    }
+
+    [Fact]
     public async Task Updating_AndDeleting_AndErrorsCarryTranslationKeys()
     {
         var vehicle = await AddVehicle();

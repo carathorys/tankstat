@@ -22,6 +22,17 @@ public class ContractTests
     }
 
     [Fact]
+    public async Task PhotoReading_IsOffUnlessSetUp_AndUnknownDraftsAreLeftOut()
+    {
+        var body = await Query("{ recognitionStatus { available } photoDrafts(ids: [\"00000000-0000-0000-0000-000000000001\"]) { id } }");
+
+        Assert.False(body.TryGetProperty("errors", out _), body.ToString());
+        var data = body.GetProperty("data");
+        Assert.False(data.GetProperty("recognitionStatus").GetProperty("available").GetBoolean());
+        Assert.Empty(data.GetProperty("photoDrafts").EnumerateArray());
+    }
+
+    [Fact]
     public async Task Health_ExposesContractFields()
     {
         var body = await Query("{ health { status version uptime databaseReachable } }");
@@ -42,7 +53,7 @@ public class ContractTests
     }
 
     [Theory]
-    [InlineData("Query", "health", "vehicles", "myVehicles", "myVehicleCount", "vehicle", "session", "notices", "users", "canSetUserPasswords", "accessSettings", "accessGrants", "trash", "vehicleCount", "trashCount", "trashDeletableCount", "vehicleDefaults", "refuelings", "refuelingCount", "refueling", "logDefaults", "refuelingTrash", "refuelingTrashCount", "refuelingTrashDeletableCount", "vehicleLogAccess", "shareCandidates", "notifications", "notificationCount")]
+    [InlineData("Query", "health", "vehicles", "myVehicles", "myVehicleCount", "vehicle", "session", "notices", "users", "canSetUserPasswords", "accessSettings", "accessGrants", "trash", "vehicleCount", "trashCount", "trashDeletableCount", "vehicleDefaults", "refuelings", "refuelingCount", "refueling", "logDefaults", "refuelingTrash", "refuelingTrashCount", "refuelingTrashDeletableCount", "vehicleLogAccess", "shareCandidates", "notifications", "notificationCount", "recognitionStatus", "photoDrafts")]
     [InlineData("Mutation", "addVehicle", "logRefueling", "login", "logout", "changePassword", "requestPasswordReset", "resetPassword", "createUser", "issuePasswordReset", "setUserAdmin", "setUserDisabled", "updateUser", "setUserPassword", "deleteUser", "setDefaultAccess", "setAccessGrant", "updateVehicle", "deleteVehicle", "restoreVehicle", "emptyTrash", "logRefueling", "updateRefueling", "deleteRefueling", "restoreRefueling", "emptyRefuelingTrash", "setVehicleLogAccess", "markNotificationsRead")]
     [InlineData("Session", "mode", "user")]
     [InlineData("UserInfo", "id", "displayName", "email", "isAdmin")]
@@ -56,6 +67,10 @@ public class ContractTests
     [InlineData("LogAccessGrantInfo", "user", "level")]
     [InlineData("Expense", "id", "vehicleId", "createdBy", "date", "title", "category", "amount", "currency", "odometer", "note", "deletedAt", "canEdit", "canDelete", "vehicle", "photos")]
     [InlineData("LogPhotoInfo", "id", "url")]
+    [InlineData("RecognitionStatusInfo", "available")]
+    [InlineData("PhotoDraftInfo", "id", "url", "reading")]
+    [InlineData("PhotoReadingInfo", "status", "kind", "values")]
+    [InlineData("ReadingValueInfo", "name", "value", "confidence")]
     [InlineData("NotificationInfo", "id", "kind", "createdAt", "updatedAt", "read", "readAt", "count", "subject", "context", "args")]
     [InlineData("NotificationRefInfo", "type", "id")]
     [InlineData("NotificationArg", "name", "value")]

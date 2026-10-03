@@ -2,8 +2,10 @@ using Tankstat.Application;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Images;
 using Tankstat.Application.Photos;
+using Tankstat.Application.Recognition;
 using Tankstat.Domain;
 using Tankstat.Domain.Photos;
+using Tankstat.Domain.Recognition;
 
 namespace Tankstat.Api.Media;
 
@@ -48,9 +50,26 @@ public static class MediaEndpoints
             return Results.NoContent();
         });
 
-        // Photos picked for a log that is not saved yet: stored at once as drafts of the uploader, attached when the log is saved.
-        media.MapPut("/vehicles/{vehicleId:guid}/photo-drafts", async (Guid vehicleId, HttpRequest request, PhotoDraftService drafts, CancellationToken ct) =>
-            Uploaded(await drafts.UploadAsync(vehicleId, await ReadBodyAsync(request, ct), ct)));
+        // Photos picked for a log that is not saved yet: stored at once as drafts of the uploader, attached when the log is saved. With
+        // `form` (refueling or expense: what the photo may show) and `locale`, the photo is also queued for reading, when that is set up.
+        media.MapPut("/vehicles/{vehicleId:guid}/photo-drafts", async (
+            Guid vehicleId, string? form, string? locale, HttpRequest request, PhotoDraftService drafts, RecognitionService recognition, ILoggerFactory logs, CancellationToken ct) =>
+        {
+            var id = await drafts.UploadAsync(vehicleId, await ReadBodyAsync(request, ct), ct);
+            if (Enum.TryParse<ReadingPurpose>(form, ignoreCase: true, out var purpose) && Enum.IsDefined(purpose))
+            {
+                try
+                {
+                    await recognition.QueueForDraftAsync(id, purpose, locale, ct);
+                }
+                catch (Exception e) when (e is not OperationCanceledException)
+                {
+                    // Reading is a bonus: the photo is uploaded either way, and the user can still type the values.
+                    logs.CreateLogger(typeof(MediaEndpoints)).LogWarning(e, "The photo {Id} could not be queued for reading", id);
+                }
+            }
+            return Uploaded(id);
+        });
         media.MapDelete("/photo-drafts/{id:guid}", async (Guid id, PhotoDraftService drafts, CancellationToken ct) =>
         {
             await drafts.RemoveAsync(id, ct);

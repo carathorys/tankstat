@@ -384,6 +384,75 @@ namespace Tankstat.Migrations.MySql
                     b.ToTable("PhotoDrafts", (string)null);
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Recognition.PhotoReading", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ClaimedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Currency")
+                        .HasMaxLength(3)
+                        .HasColumnType("varchar(3)");
+
+                    b.Property<DateTime>("DueAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Kind")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<long?>("LastOdometer")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Locale")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("varchar(8)");
+
+                    b.Property<string>("ModelVersion")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("Provider")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
+
+                    b.Property<DateOnly>("Today")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Values")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("varchar(4000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status", "DueAt");
+
+                    b.ToTable("PhotoReadings", (string)null);
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Recurring.RecurringExpense", b =>
                 {
                     b.Property<Guid>("Id")
@@ -747,6 +816,15 @@ namespace Tankstat.Migrations.MySql
                     b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
                         .WithMany()
                         .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Recognition.PhotoReading", b =>
+                {
+                    b.HasOne("Tankstat.Domain.Images.StoredImage", null)
+                        .WithOne()
+                        .HasForeignKey("Tankstat.Domain.Recognition.PhotoReading", "Id")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

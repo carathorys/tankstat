@@ -18,6 +18,7 @@ export function PhotoGallery({
   logId,
   photos,
   queue,
+  readingIds,
   disabled = false,
   onChanged,
 }: {
@@ -28,6 +29,8 @@ export function PhotoGallery({
   disabled?: boolean
   photos: { id: string; url: string }[]
   queue: PhotoQueue
+  /** Drafts the server is reading right now (photo reading): they say so under their thumbnail. */
+  readingIds?: readonly string[]
   onChanged: () => void | Promise<unknown>
 }) {
   const { t } = useTranslation()
@@ -41,8 +44,8 @@ export function PhotoGallery({
 
   const saved = logId !== undefined
   const shown = saved
-    ? photos.map((p) => ({ key: p.id, url: p.url, state: 'uploaded' as const }))
-    : queue.items.map((p) => ({ key: p.key, url: p.url, state: p.state }))
+    ? photos.map((p) => ({ key: p.id, url: p.url, state: 'uploaded' as const, reading: false }))
+    : queue.items.map((p) => ({ key: p.key, url: p.url, state: p.state, reading: p.id !== undefined && (readingIds ?? []).includes(p.id) }))
   const room = MAX_LOG_PHOTOS - shown.length
 
   async function run(work: () => Promise<void>, done: string) {
@@ -137,6 +140,11 @@ export function PhotoGallery({
                       </Text>
                     )}
                     {photo.state === 'failed' && <Text size="1">{t('photos.uploadFailed')}</Text>}
+                    {photo.reading && (
+                      <Text size="1" color="gray">
+                        {t('reading.reading')}
+                      </Text>
+                    )}
                     <Flex gap="2">
                       {photo.state === 'failed' && (
                         <IconButton

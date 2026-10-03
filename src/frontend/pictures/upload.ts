@@ -32,7 +32,14 @@ export const MAX_LOG_PHOTOS = 10
 export const LOG_PHOTO_EDGE = 1600
 
 export const logPhotosPath = (kind: LogKind, logId: string) => `/media/${kind}/${logId}/photos`
-/** Photos picked for a log that is not saved yet are uploaded here at once, as drafts that the save then attaches. */
-export const photoDraftsPath = (vehicleId: string) => `/media/vehicles/${vehicleId}/photo-drafts`
+/** What a photo is picked for: it may show an odometer or a receipt of that kind (the server reads it when photo reading is on). */
+export type ReadingPurpose = 'refueling' | 'expense'
+
+/**
+ * Photos picked for a log that is not saved yet are uploaded here at once, as drafts that the save then attaches. With `reading`, the
+ * server also reads the photo (if that is set up) in the language the user works in.
+ */
+export const photoDraftsPath = (vehicleId: string, reading?: { purpose: ReadingPurpose; locale: string }) =>
+  `/media/vehicles/${vehicleId}/photo-drafts` + (reading ? `?form=${reading.purpose}&locale=${encodeURIComponent(reading.locale)}` : '')
 export const photoDraftPath = (draftId: string) => `/media/photo-drafts/${draftId}`
 export const logPhotoPath = (kind: LogKind, logId: string, imageId: string) => `${logPhotosPath(kind, logId)}/${imageId}`

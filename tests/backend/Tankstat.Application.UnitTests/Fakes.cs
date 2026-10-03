@@ -9,6 +9,7 @@ using Tankstat.Application.Images;
 using Tankstat.Application.Imports;
 using Tankstat.Application.Notifications;
 using Tankstat.Application.Odometers;
+using Tankstat.Application.Recognition;
 using Tankstat.Application.Sharing;
 using Tankstat.Application.Stats;
 using Tankstat.Domain.Charts;
@@ -21,6 +22,7 @@ using Tankstat.Domain.Images;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Notifications;
 using Tankstat.Domain.Odometers;
+using Tankstat.Domain.Recognition;
 using Tankstat.Domain.Recurring;
 using Tankstat.Domain.Users;
 using Tankstat.Domain.Vehicles;
@@ -319,6 +321,50 @@ internal sealed class InMemoryPhotoDrafts : IPhotoDraftRepository
     public Task RemoveAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct) { Items.RemoveAll(d => ids.Contains(d.Id)); return Task.CompletedTask; }
 }
 
+internal sealed class InMemoryPhotoReadings : IPhotoReadingRepository
+{
+    public List<PhotoReading> Items { get; } = [];
+    public Task AddAsync(PhotoReading reading, CancellationToken ct) { Items.Add(reading); return Task.CompletedTask; }
+    public Task<IReadOnlyList<PhotoReading>> FindManyAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<PhotoReading>>(Items.Where(r => ids.Contains(r.Id)).ToList());
+    public Task<IReadOnlyList<Guid>> ListDueAsync(DateTimeOffset now, int max, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<Guid>>(Items.Where(r => r.IsDue(now)).OrderBy(r => r.DueAt).ThenBy(r => r.Id).Take(max).Select(r => r.Id).ToList());
+    public Task<PhotoReading?> ClaimAsync(Guid id, DateTimeOffset now, CancellationToken ct)
+    {
+        var reading = Items.FirstOrDefault(r => r.Id == id && r.IsDue(now));
+        reading?.Claim(now);
+        return Task.FromResult(reading);
+    }
+    public Task SaveAsync(PhotoReading reading, CancellationToken ct) => Task.CompletedTask; // the same instance is kept
+    public Task<IReadOnlyList<PhotoReading>> ListStaleAsync(DateTimeOffset claimedBefore, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<PhotoReading>>(Items.Where(r => r.Status == ReadingStatus.Reading && r.ClaimedAt < claimedBefore).ToList());
+    public Task RemoveAsync(Guid id, CancellationToken ct) { Items.RemoveAll(r => r.Id == id); return Task.CompletedTask; }
+}
+
+/// <summary>A recognition provider that answers what the test says (by default: nothing recognised).</summary>
+internal sealed class FakeRecognitionProvider : IRecognitionProvider
+{
+    public bool Configured { get; set; } = true;
+    public bool Healthy { get; set; } = true;
+    public int HealthChecks { get; private set; }
+    public Func<RecognitionRequest, RecognitionResult> Answer { get; set; } = _ => new RecognitionResult("fake-1", DocumentKind.Unknown, []);
+    public List<RecognitionRequest> Requests { get; } = [];
+    public string Name => "fake";
+    public bool IsConfigured => Configured;
+    public Task<bool> IsHealthyAsync(CancellationToken ct) { HealthChecks++; return Task.FromResult(Healthy); }
+    public Task<RecognitionResult> ReadAsync(RecognitionRequest request, CancellationToken ct)
+    {
+        Requests.Add(request);
+        return Task.FromResult(Answer(request));
+    }
+}
+
+internal sealed class FakeRecognitionSignal : IRecognitionSignal
+{
+    public int Wakes { get; private set; }
+    public void Wake() => Wakes++;
+}
+
 internal sealed class InMemoryImageStore : IImageStore
 {
     public Dictionary<Guid, byte[]> Files { get; } = [];
@@ -461,6 +507,13 @@ internal sealed class World
     public UserService UserService { get; }
     public AccessAdminService AccessAdmin { get; }
     public Notifier Notifier { get; }
+    public RecognitionOptions RecognitionOptions { get; } = new() { Provider = "Reader", Reader = { BaseUrl = "http://reader:8081", ApiKey = "key" } };
+    public FakeRecognitionProvider Recognizer { get; } = new();
+    public InMemoryPhotoReadings Readings { get; } = new();
+    public FakeRecognitionSignal Signal { get; } = new();
+    public RecognitionAvailability Availability { get; }
+    public RecognitionService Recognition => new(Availability, new RecognitionSetup(RecognitionOptions.Create()), Readings, PhotoDrafts, RefuelingService, Defaults.Create(), Signal, Access, Clock);
+    public PhotoReadingProcessor Processor => new(Recognizer, Availability, new RecognitionSetup(RecognitionOptions.Create()), Readings, Images, ImageStore, Clock);
     public NotificationService NotificationService => new(Access, Notifications, new RecurringNotificationSync(Access, Recurring, Vehicles, RecurringService, Notifier), NotificationOptions.Create(), Clock); // a new one per use, like one per request (it syncs once)
 
     public World(AuthMode mode = AuthMode.Standalone, bool smtp = false, Action<AuthOptions>? configure = null)
@@ -492,6 +545,7 @@ internal sealed class World
         Auth = new AuthService(Users, new FakeHasher(), resets, Access, options, Clock);
         UserService = new UserService(Access, Users, UserData, resets, new FakeHasher(), ImageService, ImportSessions, options);
         AccessAdmin = new AccessAdminService(Access, Settings, Grants, Users, Notifier);
+        Availability = new RecognitionAvailability(Recognizer, Clock);
     }
 
     public User AddUser(string email, bool admin = false, string password = "password-123456")

@@ -5,7 +5,7 @@ import { axe } from 'vitest-axe'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import { server } from './server.ts'
-import { fakeExpense, fakeExpenseBackend, fakeLogBackend, fakeNotification, fakeNotificationBackend, fakePhotoStore, fakeRecurring, fakeRecurringBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, stubViewport, user } from './mocks.tsx'
+import { fakeExpense, fakeExpenseBackend, fakeLogBackend, fakeNotification, fakeNotificationBackend, fakePhotoStore, fakeRecognition, fakeRecurring, fakeRecurringBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, stubViewport, user } from './mocks.tsx'
 
 // jsdom cannot decode pictures (the resize is covered in Media.unit.test.ts) and has no object URLs (previews of queued photos).
 vi.mock('../../src/frontend/pictures/resizeImage.ts', async (original) => ({
@@ -118,6 +118,23 @@ it('the add refuelling dialog is labelled, described and free of violations', as
   await within(dialog).findByText(/Last reading/)
 
   expect(dialog).toHaveAccessibleDescription(/Enter what you filled up/)
+  await check(document.body)
+})
+
+it('values read from a photo, and a photo value offered next to a typed one, are linked to their fields and free of violations', async () => {
+  const { ui } = setup('/vehicles/v1?tab=refuelings')
+  server.use(...fakeRecognition({ results: [[{ name: 'TOTAL', value: '24687' }, { name: 'VOLUME', value: '38.52' }]], queuedPolls: 0 }).handlers)
+  await screen.findByText(/Sep 1, 2026/)
+  await ui.click(screen.getByRole('button', { name: 'Add refuelling' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add refuelling' })
+  await within(dialog).findByText(/Last reading/)
+  await ui.type(within(dialog).getByLabelText(/^Volume/), '40')
+
+  await ui.upload(within(dialog).getByTestId('photo-camera'), new File([new Uint8Array([1, 2, 3])], 'receipt.png', { type: 'image/png' }))
+
+  expect(await within(dialog).findByText('The photo shows 38.52', {}, { timeout: 5000 })).toBeInTheDocument()
+  expect(within(dialog).getByLabelText('Total cost')).toHaveAccessibleDescription(/Read from the photo; check it\./)
+  expect(within(dialog).getByLabelText(/^Volume/)).toHaveAccessibleDescription(/The photo shows 38\.52/)
   await check(document.body)
 })
 
