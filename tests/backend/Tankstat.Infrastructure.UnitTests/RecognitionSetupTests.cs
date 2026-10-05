@@ -69,6 +69,7 @@ public class RecognitionSetupTests
     [InlineData("Recognition:OpenAiCompatible:BaseUrl", "localhost:1234/v1", "BaseUrl")] // not an address
     [InlineData("Recognition:MaxConcurrent", "many", "cannot be read")] // not even a number: binding fails
     [InlineData("Recognition:OpenAiCompatible:ResponseFormat", "Yaml", "cannot be read")]
+    [InlineData("Recognition:OpenAiCompatible:LogTraffic", "maybe", "cannot be read")]
     public async Task SettingsThatCannotBeUsed_TurnReadingOff_WithAWarning_InsteadOfStoppingTheApp(string key, string value, string said)
     {
         var (services, log) = Build(new()
@@ -88,6 +89,51 @@ public class RecognitionSetupTests
         Assert.True(worker.ExecuteTask.IsCompletedSuccessfully);
         var warning = Assert.Single(log.Entries, e => e.Level == LogLevel.Warning);
         Assert.Contains(said, warning.Message);
+    }
+
+    private static Dictionary<string, string?> NothingListensThere(string? logTraffic) => new()
+    {
+        ["Recognition:Provider"] = "OpenAiCompatible",
+        ["Recognition:OpenAiCompatible:BaseUrl"] = "http://127.0.0.1:9/v1",
+        ["Recognition:OpenAiCompatible:Model"] = "qwen2.5-vl",
+        ["Recognition:OpenAiCompatible:LogTraffic"] = logTraffic,
+    };
+
+    /// <summary>Starts the worker, which asks the model server whether it is there (nothing listens), and waits until that has been said, then stops it.</summary>
+    private static async Task RunUntilTheModelServerWasAsked(ServiceProvider services, CapturedLog log)
+    {
+        var worker = services.GetServices<IHostedService>().OfType<RecognitionWorker>().Single();
+        await worker.StartAsync(default);
+        for (var i = 0; i < 100 && !log.Entries.Any(e => e.Message.Contains("cannot be used right now", StringComparison.Ordinal)); i++) await Task.Delay(100);
+        await worker.StopAsync(default);
+    }
+
+    [Fact]
+    public async Task LogTraffic_IsOffByDefault_SoNoRequestToTheModelServerIsWritten_AndNothingIsSaidAboutIt()
+    {
+        var (services, log) = Build(NothingListensThere(null));
+        await using var _s = services;
+
+        await RunUntilTheModelServerWasAsked(services, log);
+
+        Assert.Empty(log.From<OpenAiTrafficHandler>());
+        Assert.DoesNotContain(log.Entries, e => e.Message.Contains("LogTraffic", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task LogTraffic_WarnsAtStart_AndThenTheCallsToTheModelServerAreInTheLog()
+    {
+        var (services, log) = Build(NothingListensThere("true"));
+        await using var _s = services;
+
+        await RunUntilTheModelServerWasAsked(services, log);
+
+        var warning = Assert.Single(log.From<RecognitionWorker>(), e => e.Level == LogLevel.Warning);
+        Assert.Contains("Recognition:OpenAiCompatible:LogTraffic is on", warning.Message);
+        var traffic = log.From<OpenAiTrafficHandler>().ToList();
+        Assert.Equal(["health check"], traffic.Select(t => t.Values.GetValueOrDefault("Purpose")?.ToString()).Where(p => p is not null)); // the request; its failure carries the same number instead
+        var failure = Assert.Single(traffic, t => t.Message.Contains("failed after", StringComparison.Ordinal));
+        Assert.Equal(traffic[0].Values["Seq"], failure.Values["Seq"]);
     }
 
     [Fact]
