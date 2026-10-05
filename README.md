@@ -82,7 +82,7 @@ The app writes its log to the console (`docker logs`, the terminal) with the sta
 | `Information` | start-up (database migrations applied or up to date, the first administrator), sign-ins and sign-outs, password changes and reset requests, what an administrator does to users and to access, sharing a vehicle's logs, imports, emptied trashes, which model and server photo reading uses and where its system prompt comes from, a database or model server that is back |
 | `Debug` | ordinary changes (a vehicle, refueling, expense, schedule, chart, picture or photo added, changed, trashed or restored), every GraphQL request with its time and operation, errors a client causes (a validation failure, something missing, a request the server turns down), sessions that are no longer valid and why, and the trail of each photo a model reads (see [Reading with an OpenAI-compatible model](#reading-with-an-openai-compatible-model)) |
 
-**Only ids, counts and reasons are logged** by the app's own lines: users, vehicles, logs and pictures by id, never e-mail addresses, names, license plates, notes, amounts, odometer readings, passwords, reset links, API keys, the subject an identity provider sends, or values read from photos (why a value was dropped is logged as a code such as `OdometerBelowLatest`, never the value). A failed sign-in names the account by its id (or says "unknown account"), not by the address that was typed. Nothing a client sends is logged as it came: not GraphQL variables or documents, not the text of a request error, fields are named the way the schema names them, and the endpoints of the picture and import uploads appear as their route pattern, not as the path that was asked for.
+**Only ids, counts and reasons are logged** by the app's own lines: users, vehicles, logs and pictures by id, never e-mail addresses, names, license plates, notes, amounts, odometer readings, passwords, reset links, API keys, the subject an identity provider sends, or values read from photos (why a value was dropped is logged as a code such as `OdometerBelowLatest`, never the value). The one exception is opt-in: `Recognition__OpenAiCompatible__LogTraffic=true` also writes the prompts and what a model read, never the photo or the key, to debug a model ([details](#seeing-what-is-sent-to-the-model)). A failed sign-in names the account by its id (or says "unknown account"), not by the address that was typed. Nothing a client sends is logged as it came: not GraphQL variables or documents, not the text of a request error, fields are named the way the schema names them, and the endpoints of the picture and import uploads appear as their route pattern, not as the path that was asked for.
 
 That promise has an edge. The text of an unexpected error is written as the framework or the database wrote it, and a database server can quote the values of a failed statement in it (for a duplicate key, for example). Lines of the framework and its libraries (`Microsoft.*`, `System.*`) are written as they come, such as an identity provider's error description. And **do not lower `Microsoft.AspNetCore` below `Warning`**: its request lines hold the whole address of a request, which includes the token of a password reset link.
 
@@ -394,6 +394,7 @@ services:
 | `Recognition:OpenAiCompatible:ResponseFormat` | `Recognition__OpenAiCompatible__ResponseFormat` | how the shape of the answer is enforced: `JsonSchema` (default: OpenAI, LM Studio, Ollama, llama.cpp, vLLM), `JsonObject` (older servers; LM Studio rejects it) or `None` (the JSON is picked out of the text) |
 | `Recognition:OpenAiCompatible:Temperature` | `Recognition__OpenAiCompatible__Temperature` | sent only when set (0 to 2): `0` makes a local model read the same digits the same way every time; some paid models refuse it |
 | `Recognition:OpenAiCompatible:TimeoutSeconds` | `Recognition__OpenAiCompatible__TimeoutSeconds` | how long one photo may take before the attempt counts as failed and is tried again later (default `120`: a model on a CPU, or one Ollama has to load first, takes a while) |
+| `Recognition:OpenAiCompatible:LogTraffic` | `Recognition__OpenAiCompatible__LogTraffic` | writes every request to the model server and every answer to the log, to see what the model is sent and says (default `false`; [details](#seeing-what-is-sent-to-the-model)) |
 | `Recognition:MinConfidence` | `Recognition__MinConfidence` | values the model is less sure of are not filled in (0 to 1, default `0.6`) |
 | `Recognition:MaxConcurrent` | `Recognition__MaxConcurrent` | photos read at the same time (default `2`; `1` for a single local GPU) |
 
@@ -493,6 +494,30 @@ Read photo 3f2c0a6e-...: it shows Odometer, 0 of 0 values are sure enough to be 
 | `NoConfidence` | the model gave the value no usable confidence: it counts as 0.5 |
 
 Notes on servers. Ollama loads a model on the first request after a while idle (keep it loaded with `OLLAMA_KEEP_ALIVE`, or allow a longer `TimeoutSeconds`) and runs it with a short context by default, which a photo can exceed (`OLLAMA_CONTEXT_LENGTH=8192` or more). llama.cpp's server needs the model's projector (`--mmproj`) to take images. A reverse proxy in front of the server must accept request bodies of a few megabytes (a photo travels as base64). The health check is `GET /v1/models`: the key must be allowed to list models (an OpenAI restricted key needs "Models: Read"), though a server that answers 403 to it is taken as available and judged on the first read. While reading is on, photos picked in the add dialogs are uploaded as JPEG rather than WebP, which not every server decodes. The dialog waits a minute for a reading; a slower one lands on the saved entry later, marked for review. Measure a model on your own photos before trusting it: a wrong value the model is sure of is the one thing the checks cannot always catch.
+
+### Seeing what is sent to the model
+
+The trail above says what became of each value, not what the model said. For that, set `Recognition__OpenAiCompatible__LogTraffic=true` (it needs no Debug level). Every request to the model server and every answer is then written to the log at `Information`, one entry each, pretty-printed, with a number that pairs them and the photo's id (`health check` for the call that asks which models there are):
+
+```
+Model request 3 (photo 3f2c0a6e-...): POST http://lmstudio:1234/v1/chat/completions
+Authorization: Bearer ***
+Content-Type: application/json; charset=utf-8
+{
+  "model": "qwen2.5-vl",
+  "stream": false,
+  "messages": [
+    { "role": "system", "content": "You read photos for a vehicle fuel log ..." },
+    { "role": "user", "content": [ { "type": "image_url", "image_url": { "url": "data:image/jpeg;base64,[231 KB]" } }, ... ] }
+  ],
+  ...
+}
+Model answer 3 (photo 3f2c0a6e-...): HTTP 200 after 3412 ms
+Content-Type: application/json
+{ "choices": [ { "message": { "content": "{\"kind\":\"odometer\",\"fields\":[...]}" }, "finish_reason": "stop" } ], ... }
+```
+
+**These entries hold what no other line of the app does: the prompts and what the model read** (amounts, odometer readings, dates, shop names). The photo itself is only written as its size, the key is masked (the `Authorization` header, and the key itself wherever a server repeats it in an answer) and a body is cut after 16 000 characters. A server's own text cannot add a line to the log: line breaks in an entry come from its layout only, so with `Logging__Console__FormatterName=json` each entry stays one line for a log collector. The app warns at start while the setting is on. Switch it on while you investigate and off afterwards, since whoever collects your logs keeps them. In Kubernetes it is one more entry in the container's `env:` (`name: Recognition__OpenAiCompatible__LogTraffic`, `value: "true"`); `kubectl logs deploy/<name> -f` then shows each photo as it is read. The model server's own log shows the same from its side (LM Studio's developer log, `OLLAMA_DEBUG=1` for Ollama, `--verbose` for llama.cpp).
 
 ## Continuous integration
 

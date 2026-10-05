@@ -94,6 +94,7 @@ internal sealed partial class OpenAiCompatibleRecognitionProvider(
     {
         using var message = Message(HttpMethod.Post, "chat/completions");
         message.Content = new StringContent(Body(request).ToJsonString(), Encoding.UTF8, "application/json");
+        message.Options.Set(OpenAiTrafficHandler.Photo, request.ReadingId);
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(options.TimeoutSeconds));
