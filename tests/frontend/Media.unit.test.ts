@@ -44,6 +44,17 @@ it('encodes as WebP, or JPEG where the browser cannot make WebP', async () => {
   expect((await resizeImage(png, { maxEdge: 100 })).type).toBe('image/jpeg')
 })
 
+it('encodes as JPEG when asked to, without trying WebP first', async () => {
+  const asked: string[] = []
+  stubCanvas(10, 10, (type) => {
+    asked.push(type)
+    return new Blob(['x'], { type })
+  })
+
+  expect((await resizeImage(png, { maxEdge: 100, format: 'jpeg' })).type).toBe('image/jpeg')
+  expect(asked).toEqual(['image/jpeg'])
+})
+
 it('rejects a file the browser cannot decode', async () => {
   vi.stubGlobal('createImageBitmap', vi.fn(async () => Promise.reject(new Error('bad'))))
 

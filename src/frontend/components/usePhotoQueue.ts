@@ -100,7 +100,8 @@ export function usePhotoQueue(vehicleId: string, reading?: { purpose: ReadingPur
       setPreparing((n) => n + 1)
       try {
         for (const file of files) {
-          const blob = await resizeImage(file, { maxEdge: LOG_PHOTO_EDGE })
+          // A photo that is read on the server goes as JPEG: every model server decodes it, not all of them WebP.
+          const blob = await resizeImage(file, purpose ? { maxEdge: LOG_PHOTO_EDGE, format: 'jpeg' } : { maxEdge: LOG_PHOTO_EDGE })
           if (started !== generation.current || current.current.length >= MAX_LOG_PHOTOS) break
           const url = URL.createObjectURL(blob)
           urls.current.add(url)

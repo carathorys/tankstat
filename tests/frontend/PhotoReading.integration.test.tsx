@@ -2,6 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
+import { resizeImage } from '../../src/frontend/pictures/resizeImage.ts'
 import { server } from './server.ts'
 import {
   fakeExpense,
@@ -84,6 +85,7 @@ it('fills a new refuelling from a receipt photo read on the server, marks what i
   expect(within(dialog).queryByText('Reading…')).not.toBeInTheDocument()
   expect(photos.state.draftQueries).toEqual(['?form=refueling&locale=en'])
   expect(recognition.state.asked.at(-1)).toEqual(['draft1'])
+  expect(vi.mocked(resizeImage)).toHaveBeenCalledWith(expect.anything(), { maxEdge: 1600, format: 'jpeg' }) // a photo that is read goes as JPEG
 
   await ui.type(within(dialog).getByLabelText(/^Odometer/), '12500')
   await ui.click(within(dialog).getByRole('button', { name: 'Add refuelling' }))
