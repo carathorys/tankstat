@@ -1,4 +1,6 @@
+import { useQuery } from '@apollo/client/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { RecognitionStatusDocument } from '../gql/generated.ts'
 import { resizeImage } from '../pictures/resizeImage.ts'
 import { deleteImage, LOG_PHOTO_EDGE, MAX_LOG_PHOTOS, photoDraftPath, photoDraftsPath, uploadImage, type ReadingPurpose } from '../pictures/upload.ts'
 
@@ -50,6 +52,10 @@ export interface PhotoQueue {
 export function usePhotoQueue(vehicleId: string, reading?: { purpose: ReadingPurpose; locale: string }): PhotoQueue {
   const purpose = reading?.purpose
   const locale = reading?.locale
+  // A photo that is read on the server goes as JPEG, which every model server decodes (not all of them WebP); where the server says
+  // reading is off, the smaller WebP stays. The dialog asks the same question, so this is answered from the cache; until it is, JPEG.
+  const status = useQuery(RecognitionStatusDocument, { skip: !reading })
+  const jpeg = reading !== undefined && status.data?.recognitionStatus.available !== false
   const [items, setItems] = useState<Entry[]>([])
   const current = useRef<Entry[]>([])
   const [preparing, setPreparing] = useState(0)
@@ -100,8 +106,7 @@ export function usePhotoQueue(vehicleId: string, reading?: { purpose: ReadingPur
       setPreparing((n) => n + 1)
       try {
         for (const file of files) {
-          // A photo that is read on the server goes as JPEG: every model server decodes it, not all of them WebP.
-          const blob = await resizeImage(file, purpose ? { maxEdge: LOG_PHOTO_EDGE, format: 'jpeg' } : { maxEdge: LOG_PHOTO_EDGE })
+          const blob = await resizeImage(file, jpeg ? { maxEdge: LOG_PHOTO_EDGE, format: 'jpeg' } : { maxEdge: LOG_PHOTO_EDGE })
           if (started !== generation.current || current.current.length >= MAX_LOG_PHOTOS) break
           const url = URL.createObjectURL(blob)
           urls.current.add(url)
@@ -115,7 +120,7 @@ export function usePhotoQueue(vehicleId: string, reading?: { purpose: ReadingPur
       }
       return firstError
     },
-    [update, upload, purpose],
+    [update, upload, jpeg],
   )
 
   const retry = useCallback(

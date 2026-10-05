@@ -48,14 +48,14 @@ export async function resizeImage(file: Blob, { maxEdge, square = false, format 
   }
 }
 
-function encode(canvas: HTMLCanvasElement, format?: 'jpeg'): Promise<Blob> {
+async function encode(canvas: HTMLCanvasElement, format?: 'jpeg'): Promise<Blob> {
   const toBlob = (type: string) => new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, 0.85))
-  const jpeg = async () => {
-    const blob = await toBlob('image/jpeg')
-    if (!blob) throw new UnreadableImageError()
-    return blob
+  if (format !== 'jpeg') {
+    // Browsers that cannot encode WebP silently answer with PNG; ask for JPEG then.
+    const webp = await toBlob('image/webp')
+    if (webp?.type === 'image/webp') return webp
   }
-  if (format === 'jpeg') return jpeg()
-  // Browsers that cannot encode WebP silently answer with PNG; ask for JPEG then.
-  return toBlob('image/webp').then((webp) => (webp?.type === 'image/webp' ? webp : jpeg()))
+  const jpeg = await toBlob('image/jpeg')
+  if (!jpeg) throw new UnreadableImageError()
+  return jpeg
 }

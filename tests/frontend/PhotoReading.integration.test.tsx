@@ -96,6 +96,16 @@ it('fills a new refuelling from a receipt photo read on the server, marks what i
   ])
 })
 
+it('keeps the smaller WebP where the server says photo reading is off', async () => {
+  const { ui, recognition } = setupRefuelings(fakeRecognition({ available: false }))
+  const dialog = await openAddRefueling(ui)
+  await waitFor(() => expect(recognition.state.statusAsked).toBeGreaterThan(0)) // the dialog asked, and was told "off"
+
+  await ui.upload(camera(dialog), photo())
+
+  await waitFor(() => expect(vi.mocked(resizeImage)).toHaveBeenCalledWith(expect.anything(), { maxEdge: 1600 }))
+})
+
 it('never overwrites what the user typed: it offers the photo value, and "Use it" takes it', async () => {
   const { ui } = setupRefuelings()
   const dialog = await openAddRefueling(ui)

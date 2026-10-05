@@ -389,7 +389,7 @@ export interface FakeReadValue {
  * the ids of every poll.
  */
 export function fakeRecognition({ available = true, results = [] as FakeReadValue[][], queuedPolls = 1 } = {}) {
-  const state = { available, results, queuedPolls, polls: {} as Record<string, number>, asked: [] as string[][] }
+  const state = { available, results, queuedPolls, polls: {} as Record<string, number>, asked: [] as string[][], statusAsked: 0 }
   const reading = (id: string) => {
     const polls = (state.polls[id] = (state.polls[id] ?? 0) + 1)
     if (polls <= state.queuedPolls) return { __typename: 'PhotoReadingInfo', status: 'QUEUED', kind: null, values: [] }
@@ -402,9 +402,10 @@ export function fakeRecognition({ available = true, results = [] as FakeReadValu
     }
   }
   const handlers = [
-    graphql.query('RecognitionStatus', () =>
-      HttpResponse.json({ data: { recognitionStatus: { __typename: 'RecognitionStatusInfo', available: state.available } } }),
-    ),
+    graphql.query('RecognitionStatus', () => {
+      state.statusAsked++
+      return HttpResponse.json({ data: { recognitionStatus: { __typename: 'RecognitionStatusInfo', available: state.available } } })
+    }),
     graphql.query('PhotoDraftReadings', ({ variables }) => {
       const ids = variables.ids as string[]
       state.asked.push(ids)
