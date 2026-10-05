@@ -1,0 +1,19 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "<think>\nThe display between the gauges shows km 123789 and trip 61.5.\n</think>\n```json\n{\"kind\": \"odometer\", \"fields\": [{\"name\": \"odometer\", \"value\": 123789, \"confidence\": 0.88}]}\n```"
+      }
+    }
+  ],
+  "created": 1759650004,
+  "model": "/models/qwen2.5-vl-7b-instruct-q4_k_m.gguf",
+  "system_fingerprint": "b4000-abcdef",
+  "object": "chat.completion",
+  "usage": { "completion_tokens": 60, "prompt_tokens": 1300, "total_tokens": 1360 },
+  "id": "chatcmpl-llamacpp",
+  "timings": { "prompt_n": 1300, "predicted_n": 60 }
+}

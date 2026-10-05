@@ -24,6 +24,11 @@
     <None Include="..\contracts\reader\*.json" LinkBase="contracts" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Answers as OpenAI-compatible servers write them (no producer in this repository): in their own folder, as names repeat. -->
+  <ItemGroup>
+    <None Include="..\contracts\openai-compatible\*.json" LinkBase="contracts\openai-compatible" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\backend\Tankstat.Infrastructure\Tankstat.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\src\backend\Tankstat.Migrations.Sqlite\Tankstat.Migrations.Sqlite.csproj" />

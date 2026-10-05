@@ -1,0 +1,6 @@
+{
+  "object": "list",
+  "data": [
+    { "id": "/models/qwen2.5-vl-7b-instruct-q4_k_m.gguf", "object": "model", "created": 1700000000, "owned_by": "llamacpp", "meta": { "vocab_type": 2, "n_ctx_train": 32768 } }
+  ]
+}

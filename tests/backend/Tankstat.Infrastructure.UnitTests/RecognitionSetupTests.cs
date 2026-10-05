@@ -51,19 +51,41 @@ public class RecognitionSetupTests
     }
 
     [Fact]
-    public void TheReadersClient_LeavesTheTimeoutToTheSettings()
+    public void WithAModelServersSettings_TheModelReadsThem_WithThePromptTheOperatorGave()
+    {
+        var (services, _) = Build(new()
+        {
+            ["Recognition:Provider"] = "OpenAiCompatible",
+            ["Recognition:OpenAiCompatible:BaseUrl"] = "http://localhost:1234/v1",
+            ["Recognition:OpenAiCompatible:Model"] = "qwen2.5-vl",
+            ["Recognition:OpenAiCompatible:SystemPrompt"] = "Read it your way.",
+            ["Recognition:OpenAiCompatible:ResponseFormat"] = "JsonObject",
+        });
+        using var _s = services;
+
+        Assert.IsType<OpenAiCompatibleRecognitionProvider>(services.GetRequiredService<IRecognitionProvider>());
+        var setup = services.GetRequiredService<RecognitionSetup>();
+        Assert.Equal(("Read it your way.", OpenAiResponseFormat.JsonObject), (setup.SystemPrompt, setup.Options.OpenAiCompatible.ResponseFormat));
+    }
+
+    [Theory]
+    [InlineData(ReaderRecognitionProvider.ClientName)]
+    [InlineData(OpenAiCompatibleRecognitionProvider.ClientName)]
+    public void TheProvidersClients_LeaveTheTimeoutToTheSettings(string name)
     {
         var (services, _) = Build([]);
         using var _s = services;
 
-        // Reader:TimeoutSeconds goes up to 600; the client's own default (100 s) must not cut it short.
-        using var client = services.GetRequiredService<IHttpClientFactory>().CreateClient(ReaderRecognitionProvider.ClientName);
+        // TimeoutSeconds goes up to 600; the client's own default (100 s) must not cut it short.
+        using var client = services.GetRequiredService<IHttpClientFactory>().CreateClient(name);
         Assert.Equal(Timeout.InfiniteTimeSpan, client.Timeout);
     }
 
     [Theory]
     [InlineData("Recognition:Reader:ApiKey", "", "ApiKey")] // a missing key
     [InlineData("Recognition:MaxConcurrent", "many", "cannot be read")] // not even a number: binding fails
+    [InlineData("Recognition:Provider", "OpenAiCompatible", "Recognition:OpenAiCompatible:Model")] // the reader's settings do not make a model server
+    [InlineData("Recognition:OpenAiCompatible:ResponseFormat", "Yaml", "cannot be read")]
     public async Task SettingsThatCannotBeUsed_TurnReadingOff_WithAWarning_InsteadOfStoppingTheApp(string key, string value, string said)
     {
         var (services, log) = Build(new()

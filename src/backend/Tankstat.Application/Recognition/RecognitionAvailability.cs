@@ -56,8 +56,8 @@ public sealed class RecognitionAvailability(IRecognitionProvider provider, TimeP
     {
         if (_reported == healthy) return;
         _reported = healthy;
-        if (healthy) logger.LogInformation("The photo reader is ready; queued photos are read");
-        else logger.LogWarning(problem, "The photo reader cannot be used right now; photos wait until it can");
+        if (healthy) logger.LogInformation("The photo-reading provider is ready; queued photos are read");
+        else logger.LogWarning(problem, "The photo-reading provider cannot be used right now; photos wait until it can");
     }
 
     private Answer? Fresh() => _last is { } last && clock.GetUtcNow() - last.At < CacheFor ? last : null;

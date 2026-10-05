@@ -1,0 +1,19 @@
+{
+  "id": "chatcmpl-example",
+  "object": "chat.completion",
+  "created": 1759650000,
+  "model": "gpt-vision-example",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"kind\":\"fuel-receipt\",\"fields\":[{\"name\":\"total\",\"value\":\"24687\",\"confidence\":0.95},{\"name\":\"volume\",\"value\":\"38.52\",\"confidence\":0.9},{\"name\":\"unitPrice\",\"value\":\"640.9\",\"confidence\":0.9},{\"name\":\"currency\",\"value\":\"HUF\",\"confidence\":0.9},{\"name\":\"date\",\"value\":\"2026-09-17\",\"confidence\":0.85}]}",
+        "refusal": null
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": { "prompt_tokens": 1534, "completion_tokens": 96, "total_tokens": 1630 }
+}

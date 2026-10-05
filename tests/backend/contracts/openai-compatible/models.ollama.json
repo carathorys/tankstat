@@ -1,0 +1,7 @@
+{
+  "object": "list",
+  "data": [
+    { "id": "llama3.2-vision:latest", "object": "model", "created": 1700000000, "owned_by": "library" },
+    { "id": "qwen2.5vl:7b", "object": "model", "created": 1700000000, "owned_by": "library" }
+  ]
+}

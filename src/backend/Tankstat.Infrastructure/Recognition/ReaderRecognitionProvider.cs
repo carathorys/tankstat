@@ -18,24 +18,6 @@ internal sealed class ReaderRecognitionProvider(IHttpClientFactory http, ReaderR
     private static readonly TimeSpan HealthTimeout = TimeSpan.FromSeconds(5);
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    private static readonly Dictionary<DocumentKind, string> KindNames = new()
-    {
-        [DocumentKind.Odometer] = "odometer",
-        [DocumentKind.FuelReceipt] = "fuel-receipt",
-        [DocumentKind.ExpenseReceipt] = "expense-receipt",
-    };
-
-    private static readonly Dictionary<string, ReadingFieldName> FieldNames = new()
-    {
-        ["odometer"] = ReadingFieldName.Odometer,
-        ["total"] = ReadingFieldName.Total,
-        ["volume"] = ReadingFieldName.Volume,
-        ["unitPrice"] = ReadingFieldName.UnitPrice,
-        ["currency"] = ReadingFieldName.Currency,
-        ["date"] = ReadingFieldName.Date,
-        ["title"] = ReadingFieldName.Title,
-    };
-
     // A base address with a path (behind a proxy) keeps it: relative URIs resolve below the trailing slash.
     private readonly Uri _base = new(options.BaseUrl!.EndsWith('/') ? options.BaseUrl : options.BaseUrl + "/");
 
@@ -64,7 +46,7 @@ internal sealed class ReaderRecognitionProvider(IHttpClientFactory http, ReaderR
     {
         var query = new List<string>
         {
-            "kinds=" + string.Join(',', request.Kinds.Where(KindNames.ContainsKey).Select(k => KindNames[k]).Order(StringComparer.Ordinal)),
+            "kinds=" + string.Join(',', request.Kinds.Where(RecognitionNames.Kinds.ContainsKey).Select(k => RecognitionNames.Kinds[k]).Order(StringComparer.Ordinal)),
             "locale=" + Uri.EscapeDataString(request.Locale),
             "today=" + request.Today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
         };
@@ -101,7 +83,7 @@ internal sealed class ReaderRecognitionProvider(IHttpClientFactory http, ReaderR
                 try
                 {
                     var body = await response.Content.ReadFromJsonAsync<ReadBody>(Json, timeout.Token) ?? throw new JsonException("empty answer");
-                    return new RecognitionResult(body.ModelVersion ?? "", Kind(body.Kind), Values(body.Fields));
+                    return new RecognitionResult(body.ModelVersion ?? "", RecognitionNames.Kind(body.Kind), Values(body.Fields));
                 }
                 catch (JsonException e)
                 {
@@ -121,12 +103,9 @@ internal sealed class ReaderRecognitionProvider(IHttpClientFactory http, ReaderR
         }
     }
 
-    private static DocumentKind Kind(string? name) =>
-        KindNames.FirstOrDefault(k => k.Value == name) is { Value: not null } match ? match.Key : DocumentKind.Unknown;
-
     private static List<RecognizedValue> Values(IEnumerable<FieldBody>? fields) =>
-        (fields ?? []).Where(f => f.Name is not null && f.Value is not null && FieldNames.ContainsKey(f.Name))
-            .Select(f => new RecognizedValue(FieldNames[f.Name!], f.Value!, f.Confidence, f.Source switch
+        (fields ?? []).Where(f => f.Name is not null && f.Value is not null && RecognitionNames.Fields.ContainsKey(f.Name))
+            .Select(f => new RecognizedValue(RecognitionNames.Fields[f.Name!], f.Value!, f.Confidence, f.Source switch
             {
                 "derived" => ValueSource.Derived,
                 "hint" => ValueSource.Hint,

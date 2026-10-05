@@ -90,7 +90,7 @@ public sealed class PhotoReading
     public DateTimeOffset? ReadAt { get; private set; }
 
     public DocumentKind? Kind { get; private set; }
-    /// <summary>Who read it (<c>reader</c>, later perhaps a third-party service) and with which model, to tell readings apart later.</summary>
+    /// <summary>Who read it (<c>reader</c>, or <c>openai-compatible</c> for a model behind such an API) and with which model, to tell readings apart later.</summary>
     public string? Provider { get; private set; }
     public string? ModelVersion { get; private set; }
     public IReadOnlyList<ReadingValue> Values { get; private set; } = [];

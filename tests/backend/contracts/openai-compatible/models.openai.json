@@ -1,0 +1,7 @@
+{
+  "object": "list",
+  "data": [
+    { "id": "gpt-vision-example", "object": "model", "created": 1700000000, "owned_by": "openai" },
+    { "id": "text-embedding-example", "object": "model", "created": 1700000000, "owned_by": "openai" }
+  ]
+}

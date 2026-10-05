@@ -1,0 +1,14 @@
+{
+  "id": "chatcmpl-cutoff",
+  "object": "chat.completion",
+  "created": 1759650007,
+  "model": "gpt-vision-example",
+  "choices": [
+    {
+      "index": 0,
+      "message": { "role": "assistant", "content": "{\"kind\":\"fuel-receipt\",\"fields\":[{\"name\":\"total\",\"val", "refusal": null },
+      "finish_reason": "length"
+    }
+  ],
+  "usage": { "prompt_tokens": 1500, "completion_tokens": 16, "total_tokens": 1516 }
+}

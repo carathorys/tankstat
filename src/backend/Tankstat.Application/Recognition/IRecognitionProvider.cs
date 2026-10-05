@@ -3,8 +3,8 @@ using Tankstat.Domain.Recognition;
 namespace Tankstat.Application.Recognition;
 
 /// <summary>
-/// Port to a service that reads values from photos: the optional photo reader, later perhaps third-party services. Only the server
-/// talks to it, never the browser. Infrastructure implements it and the <c>Recognition</c> settings choose which one.
+/// Port to a service that reads values from photos: the optional photo reader, or a vision model behind an OpenAI-compatible API. Only the
+/// server talks to it, never the browser. Infrastructure implements it and the <c>Recognition</c> settings choose which one.
 /// </summary>
 public interface IRecognitionProvider
 {

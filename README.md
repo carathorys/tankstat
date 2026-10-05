@@ -41,9 +41,10 @@ src/backend/Tankstat.Reader/              photo reader service: HTTP API, image 
 tests/backend/Tankstat.Reader.Core.UnitTests/     reading rules on hand-built OCR pages, contract shape, project boundaries
 tests/backend/Tankstat.Reader.IntegrationTests/   reader HTTP API, image preparation, generator and evaluation, the real Tesseract (when installed)
 tests/backend/contracts/reader/           examples of the reader's HTTP contract
+tests/backend/contracts/openai-compatible/  answers as OpenAI-compatible model servers write them, for the app's adapter tests
 ```
 
-The photo reader is a separate service with its own image (see [Photo reader](#photo-reader-optional-service)); it references no app project and the app references none of it: the app talks to it over HTTP through its `IRecognitionProvider` port.
+The photo reader is a separate service with its own image (see [Photo reader](#photo-reader-optional-service)); it references no app project and the app references none of it: the app talks to it over HTTP through its `IRecognitionProvider` port. A vision model behind an OpenAI-compatible API is the other implementation of that port (see [Reading with a model](#reading-with-an-openai-compatible-model)).
 
 Backend dependencies point inward: Api -> Application, Infrastructure; Infrastructure -> Application; Application -> Domain. Application defines interfaces (ports) that Infrastructure implements, so Application and Domain never reference EF Core or HotChocolate.
 
@@ -82,8 +83,8 @@ The app writes its log to the console (`docker logs`, the terminal) with the sta
 | Level | What is logged |
 | --- | --- |
 | `Error` | an unexpected error, with its exception and stack trace (the client only sees "Unexpected Execution Error") |
-| `Warning` | a refused request (no access), a failed sign-in, a failed password change, a lockout, a refused sign-in through an identity provider, a malformed or untrusted proxy header, a database or photo reader that cannot be used, an upload folder that could not be removed, a photo that could not be attached |
-| `Information` | start-up (database migrations applied or up to date, the first administrator), sign-ins and sign-outs, password changes and reset requests, what an administrator does to users and to access, sharing a vehicle's logs, imports, emptied trashes, a database or reader that is back |
+| `Warning` | a refused request (no access), a failed sign-in, a failed password change, a lockout, a refused sign-in through an identity provider, a malformed or untrusted proxy header, a database or photo-reading provider (the reader, a model server) that cannot be used, an upload folder that could not be removed, a photo that could not be attached |
+| `Information` | start-up (database migrations applied or up to date, the first administrator), sign-ins and sign-outs, password changes and reset requests, what an administrator does to users and to access, sharing a vehicle's logs, imports, emptied trashes, a database or photo-reading provider that is back |
 | `Debug` | ordinary changes (a vehicle, refueling, expense, schedule, chart, picture or photo added, changed, trashed or restored), every GraphQL request with its time and operation, errors a client causes (a validation failure, something missing, a request the server turns down), sessions that are no longer valid and why |
 
 **Only ids, counts and reasons are logged** by the app's own lines: users, vehicles, logs and pictures by id, never e-mail addresses, names, license plates, notes, amounts, odometer readings, passwords, reset links, API keys, the subject an identity provider sends, or values read from photos. A failed sign-in names the account by its id (or says "unknown account"), not by the address that was typed. Nothing a client sends is logged as it came: not GraphQL variables or documents, not the text of a request error, fields are named the way the schema names them, and the endpoints of the picture and import uploads appear as their route pattern, not as the path that was asked for.
@@ -271,7 +272,7 @@ The app is mobile-first and responsive. The start page (*Home*) shows a card per
 
 **Photos of refuelings and expenses.** Every refueling and expense can have up to 10 photos (receipts, the pump display, ...). In the add and edit dialogs, **Take photo** opens the phone's camera straight away and **Add photos** picks from the library; photos chosen while adding are uploaded straight away as drafts and attached when the entry is saved (so a failed save loses none; a photo that could not be uploaded is marked and can be tried again), and while editing they are uploaded or removed at once. Photos are scaled to 1600 px in the browser (location data in them is dropped), stored in the log's folder below the vehicle's (see `Storage:Path`) and follow the access rules of the vehicle's logs: whoever may see the log may see its photos, whoever may edit it may add and remove them. They are uploaded with `PUT /media/expenses/{id}/photos` or `PUT /media/refuelings/{id}/photos`, removed with `DELETE` on `.../photos/{imageId}` and shown through `/media/{id}`. Drafts are uploaded with `PUT /media/vehicles/{id}/photo-drafts` (needs edit access to the vehicle's logs), removed with `DELETE /media/photo-drafts/{id}`, attached through the `photoIds` of `logRefueling` / `addExpense`, seen only by their uploader, kept in `vehicles/<id>/drafts/` and removed after a day if no entry was saved with them. A photo disappears from view with its log in the trash and is deleted for good when the log or its vehicle is.
 
-**Reading values from photos (optional).** With the [photo reader](#photo-reader-optional-service) set up, the server reads the photos picked in the add dialogs of refuelings and expenses and in *Mark as done*: a dashboard gives the odometer, a fuel receipt the date, litres, total and currency, another receipt the date, shop (as the title), amount and currency. While a photo is being read its thumbnail says *Reading…*; then the values go into the fields you have not changed (the starting values, such as today's date or the last currency, count as unchanged), marked *Read from the photo; check it*. Where you already typed something else, the photo's value is only offered (*The photo shows 38.52 · Use it*), never written over yours. Only values the reader is sure enough of are filled in (`Recognition:MinConfidence`). The page only talks to Tankstat's own server, which talks to the reader; without it the dialogs work exactly as before.
+**Reading values from photos (optional).** With the [photo reader](#photo-reader-optional-service) or a [vision model](#reading-with-an-openai-compatible-model) set up, the server reads the photos picked in the add dialogs of refuelings and expenses and in *Mark as done*: a dashboard gives the odometer, a fuel receipt the date, litres, total and currency, another receipt the date, shop (as the title), amount and currency. While a photo is being read its thumbnail says *Reading…*; then the values go into the fields you have not changed (the starting values, such as today's date or the last currency, count as unchanged), marked *Read from the photo; check it*. Where you already typed something else, the photo's value is only offered (*The photo shows 38.52 · Use it*), never written over yours. Only values the reader is sure enough of are filled in (`Recognition:MinConfidence`). The page only talks to Tankstat's own server, which talks to the reader or the model server; without either the dialogs work exactly as before.
 
 **Accessibility.** The UI is built to be keyboard- and screen-reader friendly: landmarks and a skip link, a labelled navigation, labelled form controls with linked hints and errors, announced upload/loading status, table semantics with `aria-sort`, 44 px touch targets, dialogs with focus management, and reduced-motion support. Automated axe checks run in the frontend integration tests; colour contrast should still be reviewed by eye. The look is dim and layered: translucent blurred panels (top bar, sidebar) with soft shadows.
 
@@ -416,7 +417,7 @@ The app's side (photo reading is off unless `Recognition:Provider` is set; setti
 
 | Setting | Environment variable | Meaning |
 | --- | --- | --- |
-| `Recognition:Provider` | `Recognition__Provider` | `None` (default) or `Reader` |
+| `Recognition:Provider` | `Recognition__Provider` | `None` (default), `Reader` or `OpenAiCompatible` (a vision model, see [below](#reading-with-an-openai-compatible-model)) |
 | `Recognition:Reader:BaseUrl` | `Recognition__Reader__BaseUrl` | the reader's address, e.g. `http://reader:8081` (a path below it works too, behind a proxy) |
 | `Recognition:Reader:ApiKey` | `Recognition__Reader__ApiKey` | the key the reader was started with (its `Reader__ApiKey`) |
 | `Recognition:Reader:TimeoutSeconds` | `Recognition__Reader__TimeoutSeconds` | how long one photo may take before the attempt counts as failed (default `30`) |
@@ -463,6 +464,48 @@ docker run --rm tankstat-reader:local --eval --synthetic 90   # the same in the 
 ```
 
 The report shows, per kind and value, how many were exact, close, wrong or missing, how sure the reader was of the right and the wrong ones, and how many the app would fill in. Keep real receipts in `eval/` (ignored by git): they never belong in the repository.
+
+## Reading with an OpenAI-compatible model
+
+Instead of the reader, the app can send each photo to a vision model behind an **OpenAI-compatible chat completions API** and have it read the odometer or the receipt; such models read dashboards, seven-segment displays included, far better than the reader's OCR. The server can be one on your own network, which keeps the photos at home: [LM Studio](https://lmstudio.ai) (`http://host:1234/v1`), [Ollama](https://ollama.com) (`http://host:11434/v1`), llama.cpp's `llama-server` (`http://host:8080/v1`) or vLLM (`http://host:8000/v1`), with a model loaded that takes images (Qwen2.5-VL, Gemma 3, Llama 3.2 Vision and the like). It can also be a paid API such as OpenAI's (`https://api.openai.com/v1`, with a key), **which then receives every photo your users pick**: receipts show shops, times and the end of a card number, dashboards show the car. Choose that knowingly and tell your users. Only the app's own server talks to the model server; the browser never does.
+
+```yaml
+services:
+  tankstat:
+    image: ghcr.io/<owner>/<repo>:1.2.3
+    environment:
+      Recognition__Provider: OpenAiCompatible
+      Recognition__OpenAiCompatible__BaseUrl: http://ollama:11434/v1
+      Recognition__OpenAiCompatible__Model: qwen2.5vl:7b
+      Recognition__MaxConcurrent: "1" # one GPU reads one photo at a time
+```
+
+| Setting | Environment variable | Meaning |
+| --- | --- | --- |
+| `Recognition:OpenAiCompatible:BaseUrl` | `Recognition__OpenAiCompatible__BaseUrl` | the API's address including its version, e.g. `http://localhost:1234/v1` (the app adds `/chat/completions` and `/models`) |
+| `Recognition:OpenAiCompatible:Model` | `Recognition__OpenAiCompatible__Model` | **required**: the model's name as `GET /v1/models` lists it (Ollama's `name:tag`, LM Studio's model id, a paid API's model name; a llama.cpp server with one model answers with it whatever is asked) |
+| `Recognition:OpenAiCompatible:ApiKey` | `Recognition__OpenAiCompatible__ApiKey` | sent as `Authorization: Bearer` when set; servers on your own network usually need none |
+| `Recognition:OpenAiCompatible:SystemPrompt` | `Recognition__OpenAiCompatible__SystemPrompt` | your own instructions to the model instead of the built-in ones (below) |
+| `Recognition:OpenAiCompatible:SystemPromptFile` | `Recognition__OpenAiCompatible__SystemPromptFile` | the same from a file (e.g. `/data/prompt.txt`, at most 16 KB; read at startup, so restart after changing it); wins over `SystemPrompt` |
+| `Recognition:OpenAiCompatible:ResponseFormat` | `Recognition__OpenAiCompatible__ResponseFormat` | how the shape of the answer is enforced: `JsonSchema` (default: OpenAI, LM Studio, Ollama, llama.cpp, vLLM), `JsonObject` (older servers; LM Studio rejects it) or `None` (the JSON is picked out of the text) |
+| `Recognition:OpenAiCompatible:Temperature` | `Recognition__OpenAiCompatible__Temperature` | sent only when set (0 to 2): `0` makes a local model read the same digits the same way every time; some paid models refuse it |
+| `Recognition:OpenAiCompatible:TimeoutSeconds` | `Recognition__OpenAiCompatible__TimeoutSeconds` | how long one photo may take before the attempt counts as failed and is tried again later (default `120`: a model on a CPU, or one Ollama has to load first, takes a while) |
+
+`Recognition:MinConfidence` and `Recognition:MaxConcurrent` apply as for the reader. A model rates its own answers, but those ratings are not to be trusted on their own, so the app checks what it can before believing a value: an odometer may not be below the vehicle's latest reading nor more than 100 000 above it, litres × price per litre must fit the total, a receipt's date must be recent and not in the future, and amounts must be within reason. A value that fails is dropped rather than filled in (a blank beats a wrong value); one that is merely unlikely (an odometer 50 000 to 100 000 above the latest reading, litres and price that do not fit the total) stays below the fill-in threshold; and the model's own rating only ever lowers the result. A refusal fails the photo; an answer that is not the JSON asked for, a cut-off one, or a server that is busy or unreachable is tried again (five attempts, the reason in the log).
+
+**What the model is told.** Two texts go with each photo. The *system prompt* says how to read a dashboard or a receipt; replace it with `SystemPrompt` or `SystemPromptFile` when your photos need other guidance (a language the built-in one does not mention, a cluster it keeps misreading). The *contract* goes with the photo whatever the prompt and cannot be changed: what this photo may show (an odometer, or the receipt of the entry being added), the exact JSON shape and value formats, and how numbers and dates are written in the language the user works in (the dialog's language: Hungarian, German or English). So a custom prompt changes how the model reads, never what the app gets back. The vehicle's latest odometer reading and the other hints the reader gets are deliberately kept from the model: given a number, a model tends to answer with it. The built-in system prompt is:
+
+> You read photos for a vehicle fuel log and answer in JSON only. A photo shows one of two things: a car's instrument cluster, or a receipt.
+>
+> Dashboards. Read the odometer: the total distance the car has driven, a whole number of 4 to 7 digits, usually labelled km or mi (or ODO) and shown on the small display between the gauges or at the bottom of the cluster. It is not the trip meter (a smaller number with one decimal, labelled trip, A or B), not a service countdown ("Oil change and inspection in 10100 km", "4800 km múlva"), not a distance or consumption since start, not the clock, the date, the outside temperature, the speed or the fuel range. If the display shows no total distance, say the photo shows no odometer. Many displays use seven-segment digits: read each digit on its own and watch the pairs that look alike (0 and 8, 6 and 8, 1 and 7, 5 and 6, 3 and 9). Give the number exactly as printed, without spaces or units.
+>
+> Fuel receipts. Read the total paid (the final amount after discounts, often the largest number, labelled TOTAL, Összesen, Fizetendő, Summe or Gesamt), the volume of fuel (litres or gallons, usually with 2 or 3 decimals next to the fuel's name: Diesel, 95, E10, benzin, gázolaj, Super), the price per litre, the currency and the date of purchase. Volume times unit price should equal the total; if they do not, re-read them before answering.
+>
+> Other receipts. Read the total paid, the currency, the date and the shop's name as the title (the name printed at the top, not its address or tax number).
+>
+> Rules. Report only what you can actually read on the photo. Leave a value out rather than guess, and never invent a value that is not printed. Rate each value with a confidence between 0 and 1: 1 when it is clearly legible and unambiguous, about 0.8 when it is readable but small or partly blurred, under 0.6 when you had to guess. Read numbers and dates in the conventions of the receipt's language (a comma may be the decimal separator) and convert them to the output format you are asked for.
+
+Notes on servers. Ollama loads a model on the first request after a while idle (keep it loaded with `OLLAMA_KEEP_ALIVE`, or allow a longer `TimeoutSeconds`) and runs it with a short context by default, which a photo can exceed (`OLLAMA_CONTEXT_LENGTH=8192` or more). llama.cpp's server needs the model's projector (`--mmproj`) to take images. A reverse proxy in front of the server must accept request bodies of a few megabytes (a photo travels as base64). Photos picked for reading are uploaded as JPEG rather than WebP, which not every server decodes. The dialog waits a minute for a reading; a slower one lands on the saved entry later, marked for review. As with the reader, measure a model on your own photos before trusting it: a wrong value the model is sure of is the one thing the checks cannot always catch.
 
 ## Continuous integration
 

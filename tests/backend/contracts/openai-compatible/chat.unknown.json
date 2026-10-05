@@ -1,0 +1,14 @@
+{
+  "id": "chatcmpl-unknown",
+  "object": "chat.completion",
+  "created": 1759650003,
+  "model": "gpt-vision-example",
+  "choices": [
+    {
+      "index": 0,
+      "message": { "role": "assistant", "content": "{\"kind\":\"unknown\",\"fields\":[]}", "refusal": null },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": { "prompt_tokens": 1500, "completion_tokens": 12, "total_tokens": 1512 }
+}

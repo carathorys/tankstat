@@ -270,6 +270,20 @@ public class StartupSmokeTests
     }
 
     [Fact]
+    public async Task PhotoReading_WithAModelServerThatCannotBeReached_StartsAndSaysItIsUnavailable()
+    {
+        await using var app = await AppProcess.StartAsync(Env(
+            ("Auth__Mode", "None"),
+            ("Recognition__Provider", "OpenAiCompatible"),
+            ("Recognition__OpenAiCompatible__BaseUrl", "http://127.0.0.1:9/v1"), // nothing listens there
+            ("Recognition__OpenAiCompatible__Model", "smoke")));
+
+        Assert.False(Available(await app.Gql(Recognition)));
+        Assert.True(await app.LogsAsync("Photo reading uses the OpenAiCompatible provider"), app.Log);
+        Assert.False(app.HasExited);
+    }
+
+    [Fact]
     public async Task PhotoReading_WithIncompleteSettings_IsTurnedOffWithAWarning_AndTheAppStarts()
     {
         await using var app = await AppProcess.StartAsync(Env(("Auth__Mode", "None"), ("Recognition__Provider", "Reader"), ("Recognition__MaxConcurrent", "many")));

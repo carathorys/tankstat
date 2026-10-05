@@ -1,0 +1,16 @@
+{
+  "id": "chatcmpl-parts",
+  "object": "chat.completion",
+  "created": 1759650005,
+  "model": "vision-example",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": [ { "type": "text", "text": "{\"kind\":\"odometer\",\"fields\":[{\"name\":\"odometer\",\"value\":\"123789\",\"confidence\":0.9}]}" } ]
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}
