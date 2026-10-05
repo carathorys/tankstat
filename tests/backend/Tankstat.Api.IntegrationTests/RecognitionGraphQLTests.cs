@@ -20,7 +20,7 @@ public class RecognitionGraphQLTests
 {
     private static byte[] Png(byte marker = 0) => [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, marker, 1, 2, 3, 4];
 
-    private const string DraftsQuery = "query($ids: [UUID!]!) { photoDrafts(ids: $ids) { id url reading { status kind values { name value confidence } } } }";
+    private const string DraftsQuery = "query($ids: [UUID!]!) { photoDrafts(ids: $ids) { id url reading { status kind values { name value confidence } issues { code field } } } }";
 
     /// <summary>Answers like a model would, without a network.</summary>
     private sealed class FakeProvider : IRecognitionProvider
@@ -102,6 +102,7 @@ public class RecognitionGraphQLTests
         var reading = draft.GetProperty("reading");
         Assert.Equal(("READ", "FUEL_RECEIPT"), (reading.GetProperty("status").GetString(), reading.GetProperty("kind").GetString()));
         Assert.Equal(["TOTAL=24687", "VOLUME=38.52"], reading.GetProperty("values").EnumerateArray().Select(v => $"{v.GetProperty("name").GetString()}={v.GetProperty("value").GetString()}"));
+        Assert.Equal(["UNSURE UNIT_PRICE"], reading.GetProperty("issues").EnumerateArray().Select(i => $"{i.GetProperty("code").GetString()} {i.GetProperty("field").GetString()}")); // the price was too unsure to be offered; the hint coming back is no one's concern
         var (request, image) = Assert.Single(provider.Requests);
         Assert.Equal(Png(), image);
         Assert.Equal(("image/png", "hu", (long?)12_345, "HUF"), (request.ContentType, request.Locale, request.LastOdometer, request.Currency));
@@ -219,7 +220,7 @@ public class RecognitionGraphQLTests
     /// <summary>Stands in for an OpenAI-compatible server behind the host's own HTTP client, so the real adapter runs from end to end.</summary>
     private sealed class FakeModelServer : HttpMessageHandler
     {
-        private const string Answer = """
+        public string Answer { get; set; } = """
             { "model": "test-vision", "choices": [ { "message": { "role": "assistant", "content": "{\"kind\":\"fuel-receipt\",\"fields\":[{\"name\":\"total\",\"value\":\"24687\",\"confidence\":0.95},{\"name\":\"volume\",\"value\":\"38.52\",\"confidence\":0.9},{\"name\":\"unitPrice\",\"value\":\"640.9\",\"confidence\":0.9},{\"name\":\"currency\",\"value\":\"HUF\",\"confidence\":0.9},{\"name\":\"date\",\"value\":\"2026-09-17\",\"confidence\":0.4}]}" }, "finish_reason": "stop" } ] }
             """;
 
@@ -317,5 +318,26 @@ public class RecognitionGraphQLTests
 
         Assert.Contains("Recognition:OpenAiCompatible:ApiKey", line.Message);
         Assert.False(app.Log.Mentions("wrong-secret-key"));
+    }
+
+    [Fact]
+    public async Task AnOdometerTheModelReadsBelowTheVehiclesLatest_IsNotOffered_AndTheDialogGetsWhy()
+    {
+        var server = new FakeModelServer
+        {
+            Answer = """{ "model": "test-vision", "choices": [ { "message": { "role": "assistant", "content": "{\"kind\":\"odometer\",\"fields\":[{\"name\":\"odometer\",\"value\":\"123456\",\"confidence\":0.95}]}" }, "finish_reason": "stop" } ] }""",
+        };
+        using var app = WithModel(server);
+        var (admin, vehicle) = await Signed(app);
+        await admin.Gql("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }",
+            new { i = new { vehicleId = vehicle, date = "2026-09-02", volume = 40, totalCost = 60, currency = "HUF", odometer = 300_000, isFullTank = true } });
+
+        var id = await UploadDraft(admin, vehicle);
+        var reading = (await ReadDraft(admin, id)).GetProperty("reading");
+
+        Assert.Equal(("READ", "ODOMETER"), (reading.GetProperty("status").GetString(), reading.GetProperty("kind").GetString())); // the photo was recognised, and nothing is offered
+        Assert.Empty(reading.GetProperty("values").EnumerateArray());
+        Assert.Equal(["ODOMETER_BELOW_LATEST ODOMETER"], reading.GetProperty("issues").EnumerateArray().Select(i => $"{i.GetProperty("code").GetString()} {i.GetProperty("field").GetString()}"));
+        Assert.False(app.Log.Mentions("123456"), "the value that was read is not in the log");
     }
 }

@@ -10,8 +10,11 @@ public sealed record RecognitionStatusInfo(bool Available);
 /// <summary>A value read from a photo: invariant text (<c>38.52</c>, <c>2026-09-17</c>, <c>HUF</c>) and how sure the provider was (0 to 1).</summary>
 public sealed record ReadingValueInfo(ReadingFieldName Name, string Value, double Confidence);
 
-/// <summary>What became of reading a photo; <c>values</c> holds only what is worth filling in.</summary>
-public sealed record PhotoReadingInfo(ReadingStatus Status, DocumentKind? Kind, IReadOnlyList<ReadingValueInfo> Values);
+/// <summary>Why a photo gave less than it might have: a value that was dropped or doubted (<c>field</c>), or something about the photo as a whole (no field).</summary>
+public sealed record ReadingIssueInfo(ReadingIssueCode Code, ReadingFieldName? Field);
+
+/// <summary>What became of reading a photo; <c>values</c> holds only what is worth filling in, <c>issues</c> says why there is less than there might be.</summary>
+public sealed record PhotoReadingInfo(ReadingStatus Status, DocumentKind? Kind, IReadOnlyList<ReadingValueInfo> Values, IReadOnlyList<ReadingIssueInfo> Issues);
 
 /// <summary>A photo uploaded for a log that is not saved yet, with its reading (none when photo reading is off).</summary>
 public sealed record PhotoDraftInfo(Guid Id, string Url, PhotoReadingInfo? Reading);
@@ -27,7 +30,8 @@ public sealed class RecognitionQueries
     public async Task<IReadOnlyList<PhotoDraftInfo>> GetPhotoDrafts(IReadOnlyList<Guid> ids, [Service] RecognitionService recognition, CancellationToken ct) =>
         (await recognition.ListDraftsAsync(ids, ct))
             .Select(d => new PhotoDraftInfo(d.Draft.Id, MediaUrls.Image(d.Draft.Id)!, d.Reading is { } reading
-                ? new PhotoReadingInfo(reading.Status, reading.Kind, recognition.UsableValues(reading).Select(v => new ReadingValueInfo(v.Name, v.Value, v.Confidence)).ToList())
+                ? new PhotoReadingInfo(reading.Status, reading.Kind, recognition.UsableValues(reading).Select(v => new ReadingValueInfo(v.Name, v.Value, v.Confidence)).ToList(),
+                    recognition.IssuesOf(reading).Select(i => new ReadingIssueInfo(i.Code, i.Field)).ToList())
                 : null))
             .ToList();
 }

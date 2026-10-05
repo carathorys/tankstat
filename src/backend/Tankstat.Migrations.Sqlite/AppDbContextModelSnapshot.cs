@@ -403,6 +403,11 @@ namespace Tankstat.Migrations.Sqlite
                     b.Property<DateTime>("DueAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Issues")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Kind")
                         .HasMaxLength(20)
                         .HasColumnType("TEXT");

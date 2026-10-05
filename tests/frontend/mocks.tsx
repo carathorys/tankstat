@@ -383,22 +383,37 @@ export interface FakeReadValue {
   confidence?: number
 }
 
+/** Why a photo gave less than it might have: about one value (`field`), or about the photo as a whole (none). */
+export interface FakeReadIssue {
+  code: string
+  field?: FakeReadValue['name']
+}
+
 /**
  * Photo reading on the server (`recognitionStatus`, `photoDrafts`). `results[i]` is what the i-th uploaded draft (draft1, draft2, ...)
- * shows (none: nothing could be read); each draft is answered as queued for its first `queuedPolls` polls, then as read. `asked` records
- * the ids of every poll.
+ * shows (none: nothing could be read) and `issues[i]` why it gave less than it might have; each draft is answered as queued for its first
+ * `queuedPolls` polls, then as read (or failed, when its number is in `failed`). `asked` records the ids of every poll.
  */
-export function fakeRecognition({ available = true, results = [] as FakeReadValue[][], queuedPolls = 1 } = {}) {
+export function fakeRecognition({
+  available = true,
+  results = [] as FakeReadValue[][],
+  queuedPolls = 1,
+  issues = [] as FakeReadIssue[][],
+  failed = [] as number[],
+} = {}) {
   const state = { available, results, queuedPolls, polls: {} as Record<string, number>, asked: [] as string[][], statusAsked: 0 }
   const reading = (id: string) => {
     const polls = (state.polls[id] = (state.polls[id] ?? 0) + 1)
-    if (polls <= state.queuedPolls) return { __typename: 'PhotoReadingInfo', status: 'QUEUED', kind: null, values: [] }
-    const values = state.results[Number(id.replace(/\D/g, '')) - 1] ?? []
+    if (polls <= state.queuedPolls) return { __typename: 'PhotoReadingInfo', status: 'QUEUED', kind: null, values: [], issues: [] }
+    const n = Number(id.replace(/\D/g, '')) - 1
+    if (failed.includes(n + 1)) return { __typename: 'PhotoReadingInfo', status: 'FAILED', kind: null, values: [], issues: [] }
+    const values = state.results[n] ?? []
     return {
       __typename: 'PhotoReadingInfo',
       status: 'READ',
       kind: values.length > 0 ? 'FUEL_RECEIPT' : 'UNKNOWN',
       values: values.map((v) => ({ __typename: 'ReadingValueInfo', confidence: 0.9, ...v })),
+      issues: (issues[n] ?? []).map((i) => ({ __typename: 'ReadingIssueInfo', field: null, ...i })),
     }
   }
   const handlers = [

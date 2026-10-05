@@ -408,6 +408,11 @@ namespace Tankstat.Migrations.SqlServer
                     b.Property<DateTime>("DueAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("Issues")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
                     b.Property<string>("Kind")
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");

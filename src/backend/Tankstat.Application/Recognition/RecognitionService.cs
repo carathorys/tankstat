@@ -63,6 +63,18 @@ public sealed class RecognitionService(
     /// <summary>The values worth filling in: ones the provider is sure enough of, and read rather than the hint it was given coming back.</summary>
     public IReadOnlyList<ReadingValue> UsableValues(PhotoReading reading) => reading.Values.Where(setup.IsSureEnough).ToList();
 
+    /// <summary>
+    /// Why the photo gave less than it might have: the reasons kept with the reading, and for each value the model was too unsure of to fill
+    /// in (unless a reason already says why) that. Codes only: the dialog words them, and knows the vehicle's latest reading itself.
+    /// </summary>
+    public IReadOnlyList<ReadingIssue> IssuesOf(PhotoReading reading) =>
+    [
+        .. reading.Issues,
+        .. reading.Values
+            .Where(v => v.Source != ValueSource.Hint && !setup.IsSureEnough(v) && reading.Issues.All(i => i.Field != v.Name))
+            .Select(v => new ReadingIssue(v.Name, ReadingIssueCode.Unsure)),
+    ];
+
     private static string Language(string? locale)
     {
         var language = (locale ?? "").Split('-', '_')[0].Trim().ToLowerInvariant();

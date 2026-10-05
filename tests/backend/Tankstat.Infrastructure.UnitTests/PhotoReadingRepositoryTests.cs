@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Tankstat.Application.Images;
 using Tankstat.Application.Recognition;
 using Tankstat.Domain.Images;
@@ -36,6 +37,30 @@ public class PhotoReadingRepositoryTests
             (loaded.Status, loaded.Kind, loaded.Provider, loaded.ModelVersion, loaded.Attempts, loaded.Locale, loaded.LastOdometer, loaded.Currency, loaded.Today));
         Assert.Equal(reading.Values, loaded.Values);
         Assert.Equal((Now.AddSeconds(2), Now), (loaded.ReadAt, loaded.ClaimedAt));
+    }
+
+    [Fact]
+    public async Task TheReasonsAPhotoGaveLess_RoundTrip_AndReadingsFromBeforeTheColumnHaveNone()
+    {
+        await using var db = new TestDatabase();
+        var repo = db.Get<IPhotoReadingRepository>();
+        var reading = (await repo.ClaimAsync((await Queue(db)).Id, Now, default))!;
+        var old = (await repo.ClaimAsync((await Queue(db)).Id, Now, default))!;
+        ReadingIssue[] issues = [new(ReadingFieldName.Odometer, ReadingIssueCode.OdometerBelowLatest), new(null, ReadingIssueCode.NothingLegible)];
+        reading.Complete("openai-compatible", "model-1", DocumentKind.Odometer, [], Now.AddSeconds(2), issues);
+        old.Complete("openai-compatible", "model-1", DocumentKind.Odometer, [], Now.AddSeconds(2));
+        await repo.SaveAsync(reading, default);
+        await repo.SaveAsync(old, default);
+        await using (var context = await db.Get<IDbContextFactory<Tankstat.Infrastructure.Persistence.AppDbContext>>().CreateDbContextAsync())
+        {
+            // what the migration gave the readings that were there: an empty text, which must read as no reasons (and not be a row we missed)
+            Assert.Equal(1, await context.Database.ExecuteSqlRawAsync($"UPDATE PhotoReadings SET Issues = '' WHERE Id = '{old.Id.ToString().ToUpperInvariant()}'"));
+        }
+
+        var loaded = (await repo.FindManyAsync([reading.Id, old.Id], default)).ToDictionary(r => r.Id);
+
+        Assert.Equal(issues, loaded[reading.Id].Issues);
+        Assert.Empty(loaded[old.Id].Issues);
     }
 
     [Fact]

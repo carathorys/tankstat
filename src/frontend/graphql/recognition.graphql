@@ -17,6 +17,10 @@ query PhotoDraftReadings($ids: [UUID!]!) {
         value
         confidence
       }
+      issues {
+        code
+        field
+      }
     }
   }
 }

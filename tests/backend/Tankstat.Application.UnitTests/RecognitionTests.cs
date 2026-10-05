@@ -136,6 +136,37 @@ public class RecognitionTests
     // ---- the worker ----------------------------------------------------------------------------------------
 
     [Fact]
+    public async Task WhyAPhotoGaveLess_IsKeptWithTheReading_AndTheValuesTooUnsureToFillIn_AreAddedWhenItIsListed()
+    {
+        var s = await Setup();
+        var id = await Queued(s);
+        s.W.Recognizer.Answer = _ => new RecognitionResult("fake-1", DocumentKind.FuelReceipt,
+            [Read(ReadingFieldName.Total, "24669", 0.93), Read(ReadingFieldName.Volume, "38.52", 0.4), Read(ReadingFieldName.UnitPrice, "640.4", 0.5), Read(ReadingFieldName.Currency, "HUF", 0.95, ValueSource.Hint)])
+        {
+            Issues = [new ReadingIssue(ReadingFieldName.UnitPrice, ReadingIssueCode.AmountsDoNotAdd)],
+        };
+        await s.W.Processor.ProcessDueAsync(default);
+
+        var reading = s.W.Readings.Items.Single(r => r.Id == id);
+        var shown = s.W.Recognition.IssuesOf(reading);
+
+        Assert.Equal([new ReadingIssue(ReadingFieldName.UnitPrice, ReadingIssueCode.AmountsDoNotAdd)], reading.Issues); // what the provider said is kept as it is
+        // The volume is under what is filled in and nothing says why: it is added. The price has its reason already, and the hint is no one's concern.
+        Assert.Equal(["UnitPrice:AmountsDoNotAdd", "Volume:Unsure"], shown.Select(i => $"{i.Field}:{i.Code}").Order());
+    }
+
+    [Fact]
+    public async Task AReadingWithNothingToExplain_HasNoIssues()
+    {
+        var s = await Setup();
+        var id = await Queued(s);
+        s.W.Recognizer.Answer = _ => new RecognitionResult("fake-1", DocumentKind.Odometer, [Read(ReadingFieldName.Odometer, "123789", 0.9)]);
+        await s.W.Processor.ProcessDueAsync(default);
+
+        Assert.Empty(s.W.Recognition.IssuesOf(s.W.Readings.Items.Single(r => r.Id == id)));
+    }
+
+    [Fact]
     public async Task AFinishedReading_SaysInCountsHowMuchOfItIsSureEnoughToBeFilledIn()
     {
         var s = await Setup();

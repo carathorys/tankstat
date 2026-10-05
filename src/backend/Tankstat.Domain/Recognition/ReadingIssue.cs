@@ -38,6 +38,9 @@ public enum ReadingIssueCode
 
     /// <summary>The model gave the value no usable confidence, so it counts as doubtful.</summary>
     NoConfidence,
+
+    /// <summary>The model rated the value under what the app fills in (<c>Recognition:MinConfidence</c>). Worked out when readings are listed, since it depends on that setting; never stored.</summary>
+    Unsure,
 }
 
 /// <param name="Field">The value concerned (none when it is about the photo as a whole).</param>

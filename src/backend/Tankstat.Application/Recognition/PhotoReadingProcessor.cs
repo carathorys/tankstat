@@ -91,7 +91,7 @@ public sealed class PhotoReadingProcessor(
             {
                 var result = await provider.ReadAsync(
                     new RecognitionRequest(data, image.ContentType, reading.AllowedKinds, reading.Locale, reading.LastOdometer, reading.Currency, reading.Today, id), ct);
-                reading.Complete(provider.Name, result.ModelVersion, result.Kind, ReadingNormaliser.Normalise(result.Values), clock.GetUtcNow());
+                reading.Complete(provider.Name, result.ModelVersion, result.Kind, ReadingNormaliser.Normalise(result.Values), clock.GetUtcNow(), result.Issues);
                 outcome = new ProcessedReading(id, ReadingOutcome.Read, Summary: new ReadingSummary(reading.Kind ?? DocumentKind.Unknown, reading.Values.Count, reading.Values.Count(setup.IsSureEnough)));
             }
             catch (RecognitionRejectedException e)

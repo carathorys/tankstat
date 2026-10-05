@@ -1,6 +1,7 @@
 import { useQuery } from '@apollo/client/react'
 import { useEffect, useState } from 'react'
 import { PhotoDraftReadingsDocument, RecognitionStatusDocument, type PhotoDraftReadingsQuery } from '../gql/generated.ts'
+import { mergeIssues, type ReadingExplanation } from './readingIssues.ts'
 
 /** How often the open dialog asks for readings that are not done yet. */
 export const READING_POLL_MS = 1500
@@ -20,6 +21,8 @@ export interface DraftReadings {
   pending: string[]
   /** Every reading the dialog waited for has finished (at least one). */
   done: boolean
+  /** Why the finished readings gave less than they might have, for the dialog to say. */
+  explanation: ReadingExplanation
 }
 
 /**
@@ -74,5 +77,6 @@ export function useDraftReadings(drafts: readonly { id: string; at: number }[], 
     const reading = readings.get(id)
     return reading?.status === 'READ' || reading?.status === 'FAILED'
   })
-  return { available, readings, pending, done: available && !polling && finished }
+  const failed = ids.some((id) => readings.get(id)?.status === 'FAILED')
+  return { available, readings, pending, done: available && !polling && finished, explanation: { issues: mergeIssues(readings.values()), failed } }
 }

@@ -11,9 +11,11 @@ import { useOdometerLabel } from './components/useOdometerLabel.ts'
 import { usePhotoSession } from './components/usePhotoSession.ts'
 import { Field } from './forms.tsx'
 import { LogDefaultsDocument, RefuelingDetailsDocument, type DistanceUnit, type LogValue, type ReadingFieldName, type ReviewState, type VolumeUnit } from './gql/generated.ts'
-import { parseDecimal } from './i18n/format.ts'
+import { parseDecimal, useFormat } from './i18n/format.ts'
 import { ErrorMessage } from './messages.tsx'
 import { ReadNote } from './recognition/ReadNote.tsx'
+import { ReadingProblems } from './recognition/ReadingProblems.tsx'
+import type { ReadingExplanation } from './recognition/readingIssues.ts'
 import { mergeReadings, type ReadValues } from './recognition/readValues.ts'
 import { filledFields } from './recognition/review.ts'
 import { ReviewCallout } from './recognition/ReviewState.tsx'
@@ -119,6 +121,7 @@ export function RefuelingFormDialog({
             photosBusy={queue.busy || queue.failed > 0}
             read={mergeReadings(drafts.readings.values())}
             readingDone={drafts.done}
+            explanation={drafts.explanation}
             // A new log may leave values to a photo that is being read; a saved one still waiting for its photos may stay so.
             mayWait={editing ? existing?.reviewState === 'AWAITING_PHOTOS' : drafts.pending.length > 0}
             gallery={
@@ -154,6 +157,7 @@ function RefuelingForm({
   photosBusy,
   read,
   readingDone,
+  explanation,
   mayWait,
   onSubmit,
 }: {
@@ -167,12 +171,15 @@ function RefuelingForm({
   /** What the photos showed so far. */
   read: ReadValues
   readingDone: boolean
+  /** Why the photos gave less than they might have. */
+  explanation: ReadingExplanation
   /** A photo is still being read: values it can provide may be left empty. */
   mayWait: boolean
   onSubmit: (values: RefuelingValues) => Promise<unknown>
 }) {
   const { t } = useTranslation()
   const odometerLabel = useOdometerLabel(units.distance)
+  const { distance } = useFormat()
   const labels: Record<FillableField, string> = {
     date: t('refuelings.fields.date'),
     volume: t('refuelings.fields.volume', { unit: t(`units.volumeShort.${units.volume}`) }),
@@ -192,6 +199,7 @@ function RefuelingForm({
     read,
     labels,
     readingDone,
+    { ...explanation, last: last ? distance(last.value, units.distance) : undefined },
   )
   const fromPhoto = filledFields(initial.filledFromPhoto, WAITS_FOR)
   const waits = new Set(Object.values(WAITS_FOR))
@@ -296,6 +304,7 @@ function RefuelingForm({
         {gallery}
         <div role="status" aria-label={t('a11y.readingStatus')}>
           {fill.announcement && <Text size="2">{fill.announcement}</Text>}
+          <ReadingProblems problems={fill.problems} />
         </div>
         {error !== undefined && <ErrorMessage error={error} />}
         <Flex gap="3" justify="end">

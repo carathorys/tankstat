@@ -807,6 +807,22 @@
     "reading": "Leolvasás…",
     "announce": "A fotóról kitöltve: {{fields}}. Mentés előtt ellenőrizd őket.",
     "nothing": "A fotókról nem sikerült semmit leolvasni.",
+    "nothingFilled": "A fotókból nem sikerült semmit kitölteni.",
+    "failed": "A fotót nem sikerült leolvasni.",
+    "issues": {
+      "UNRECOGNISED": "A fotót nem sikerült kilométeróraként vagy nyugtaként felismerni.",
+      "NOTHING_LEGIBLE": "A fotón semmit nem sikerült leolvasni.",
+      "NOT_UNDERSTOOD": "{{field}}: a fotón látható érték olyan alakú, amit az alkalmazás nem tud felhasználni, ezért nem töltöttük ki.",
+      "OUT_OF_RANGE": "{{field}}: a fotón látható érték nem hihető, ezért nem töltöttük ki.",
+      "ODOMETER_BELOW_LATEST": "A fotón látható kilométeróra-állás alacsonyabb a legutóbb naplózottnál{{last}}, ezért nem töltöttük ki.",
+      "ODOMETER_TOO_FAR_ABOVE": "A fotón látható kilométeróra-állás sokkal magasabb a legutóbb naplózottnál{{last}}: egy jármű két napló között nem tesz meg ennyit, ezért nem töltöttük ki.",
+      "ODOMETER_FAR_ABOVE": "A fotón látható kilométeróra-állás jóval magasabb a legutóbb naplózottnál{{last}}, ezért nem töltöttük ki: ellenőrizd.",
+      "DATE_TOO_OLD": "A fotón látható dátum több mint három évvel ezelőtti, ezért nem töltöttük ki.",
+      "DATE_IN_FUTURE": "A fotón látható dátum a jövőben van, ezért nem töltöttük ki.",
+      "AMOUNTS_DO_NOT_ADD": "{{field}}: a fotón látható liter és literenkénti ár szorzata nem adja ki a végösszeget, ezért nem töltöttük ki.",
+      "NO_CONFIDENCE": "{{field}}: a fotón le lehetett olvasni, de nem elég megbízhatóan ahhoz, hogy kitöltsük.",
+      "UNSURE": "{{field}}: a fotón le lehetett olvasni, de nem elég megbízhatóan ahhoz, hogy kitöltsük."
+    },
     "waiting": "Hagyhatod üresen: mentés után a fotóról töltjük ki."
   },
   "review": {
