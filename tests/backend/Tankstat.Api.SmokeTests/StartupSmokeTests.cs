@@ -272,6 +272,23 @@ public class StartupSmokeTests
     }
 
     [Fact]
+    public async Task PhotoReading_WithLogTrafficOn_WarnsAtStart_AndWritesTheCallsToTheModelServer()
+    {
+        await using var app = await AppProcess.StartAsync(Env(
+            ("Auth__Mode", "None"),
+            ("Recognition__Provider", "OpenAiCompatible"),
+            ("Recognition__OpenAiCompatible__BaseUrl", "http://127.0.0.1:9/v1"), // nothing listens there
+            ("Recognition__OpenAiCompatible__Model", "smoke"),
+            ("Recognition__OpenAiCompatible__LogTraffic", "true")));
+
+        Assert.False(Available(await app.Gql(Recognition))); // the health check goes to the model server
+        Assert.True(await app.LogsAsync("LogTraffic is on"), app.Log);
+        Assert.True(await app.LogsAsync("(health check): GET http://127.0.0.1:9/v1/models"), app.Log);
+        Assert.True(await app.LogsAsync("failed after"), app.Log);
+        Assert.False(app.HasExited);
+    }
+
+    [Fact]
     public async Task PhotoReading_WithIncompleteSettings_IsTurnedOffWithAWarning_AndTheAppStarts()
     {
         await using var app = await AppProcess.StartAsync(Env(("Auth__Mode", "None"), ("Recognition__Provider", "OpenAiCompatible"), ("Recognition__MaxConcurrent", "many")));

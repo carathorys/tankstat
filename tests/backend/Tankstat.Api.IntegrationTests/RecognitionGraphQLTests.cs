@@ -236,7 +236,7 @@ public class RecognitionGraphQLTests
         }
     }
 
-    private static TestApp WithModel(FakeModelServer server, string key = "secret-key") => new(new Dictionary<string, string?>
+    private static TestApp WithModel(FakeModelServer server, string key = "secret-key", bool logTraffic = false) => new(new Dictionary<string, string?>
     {
         ["Auth:Mode"] = "Standalone",
         ["Auth:Standalone:AdminEmail"] = "root@example.com",
@@ -246,6 +246,7 @@ public class RecognitionGraphQLTests
         ["Recognition:OpenAiCompatible:ApiKey"] = key,
         ["Recognition:OpenAiCompatible:Model"] = "test-vision",
         ["Recognition:OpenAiCompatible:SystemPrompt"] = "Custom prompt for the test.",
+        ["Recognition:OpenAiCompatible:LogTraffic"] = logTraffic ? "true" : null,
     }, s => s.ConfigureHttpClientDefaults(b => b.ConfigurePrimaryHttpMessageHandler(() => server))); // the adapter's client name is internal: every client goes to the fake
 
     private static async Task<LogEntry> WorkerSaid(TestApp app, string outcome)
@@ -304,6 +305,29 @@ public class RecognitionGraphQLTests
         Assert.Equal("Total@0.95, Volume@0.90, UnitPrice@0.90, Currency@0.90, Date@0.40", answered.Values["Kept"]);
         var summary = await Logged(app, "RecognitionWorker", "Sure");
         Assert.Equal<object?[]>([photo, DocumentKind.FuelReceipt, 5, 4], [summary.Values["Id"], summary.Values["Kind"], summary.Values["Values"], summary.Values["Sure"]]); // the date was too unsure
+    }
+
+    [Fact]
+    public async Task WithLogTrafficOn_TheLogHoldsWhatTheModelWasSentAndAnswered_ButNeverTheKeyNorThePhoto()
+    {
+        var server = new FakeModelServer();
+        using var app = WithModel(server, logTraffic: true);
+        var (admin, vehicle) = await Signed(app);
+
+        var id = await UploadDraft(admin, vehicle);
+        await ReadDraft(admin, id);
+
+        var traffic = app.Log.Entries.Where(e => e.Category.EndsWith("OpenAiTrafficHandler", StringComparison.Ordinal)).ToList();
+        var request = Assert.Single(traffic, e => e.Values.GetValueOrDefault("Method")?.ToString() == "POST");
+        var answer = Assert.Single(traffic, e => e.Values.GetValueOrDefault("Status")?.ToString() == "200" && e.Values.GetValueOrDefault("Purpose")?.ToString() == $"photo {id}");
+        Assert.Equal<object?[]>([$"photo {id}", "http://model.invalid:1234/v1/chat/completions"], [request.Values["Purpose"], request.Values["Url"]]);
+        Assert.Equal(request.Values["Seq"], answer.Values["Seq"]);
+        Assert.Contains("Custom prompt for the test.", request.Values["Body"]?.ToString()); // what the model is told, which nothing else logs
+        Assert.Contains("data:image/png;base64,[1 KB]", request.Values["Body"]?.ToString()); // the photo as its size
+        Assert.Contains("Authorization: Bearer ***", request.Values["Headers"]?.ToString());
+        Assert.Contains("24687", answer.Values["Body"]?.ToString()); // what it said
+        Assert.Contains(app.Log.Entries, e => e.Level == Microsoft.Extensions.Logging.LogLevel.Warning && e.Message.Contains("LogTraffic is on", StringComparison.Ordinal));
+        foreach (var never in new[] { "secret-key", Convert.ToBase64String(Png()) }) Assert.False(app.Log.Mentions(never), never);
     }
 
     [Fact]

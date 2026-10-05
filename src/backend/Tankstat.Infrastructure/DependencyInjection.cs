@@ -86,7 +86,8 @@ public static class DependencyInjection
 
         // Photo reading (optional): the model provider the settings choose, or one that never reads (RecognitionSetup explains why).
         // No client-wide timeout (its default of 100 s would cut OpenAiCompatible:TimeoutSeconds short): every request brings its own.
-        services.AddHttpClient(OpenAiCompatibleRecognitionProvider.ClientName, client => client.Timeout = Timeout.InfiniteTimeSpan);
+        services.AddHttpClient(OpenAiCompatibleRecognitionProvider.ClientName, client => client.Timeout = Timeout.InfiniteTimeSpan)
+            .AddHttpMessageHandler(sp => new OpenAiTrafficHandler(sp.GetRequiredService<RecognitionSetup>().Options.OpenAiCompatible, sp.GetRequiredService<ILogger<OpenAiTrafficHandler>>()));
         services.AddSingleton<IRecognitionProvider>(sp => sp.GetRequiredService<RecognitionSetup>() is { Enabled: true, Kind: RecognitionProviderKind.OpenAiCompatible } setup
             ? new OpenAiCompatibleRecognitionProvider(
                 sp.GetRequiredService<IHttpClientFactory>(), setup.Options.OpenAiCompatible, setup.SystemPrompt, sp.GetRequiredService<ILogger<OpenAiCompatibleRecognitionProvider>>())

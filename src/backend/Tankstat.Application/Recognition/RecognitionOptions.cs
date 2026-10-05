@@ -58,6 +58,12 @@ public sealed class OpenAiCompatibleRecognitionOptions
 
     /// <summary>How long one photo may take before the attempt counts as failed (and is tried again later); a model on a CPU is slow.</summary>
     public int TimeoutSeconds { get; set; } = 120;
+
+    /// <summary>
+    /// Writes every request to the model server and every answer to the log (Information), to see what the model is sent and says. That
+    /// includes the prompts and what the model read, which nothing else in the log does: the photo and the key are never written. Off by default.
+    /// </summary>
+    public bool LogTraffic { get; set; }
 }
 
 public enum OpenAiResponseFormat

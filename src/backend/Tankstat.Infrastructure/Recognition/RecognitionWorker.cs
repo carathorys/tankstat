@@ -46,6 +46,8 @@ internal sealed class RecognitionWorker(IServiceScopeFactory scopes, Recognition
         logger.LogInformation("Photo reading uses the {Provider} provider: model {Model} at {Server}", setup.Kind, model.Model, ServerAddress.Of(model.BaseUrl));
         logger.LogInformation("System prompt: {PromptSource} ({Characters} characters)",
             setup.SystemPromptSetting is { } named ? $"from {named}" : "built-in", (setup.SystemPrompt ?? OpenAiCompatiblePrompt.DefaultSystemPrompt).Length);
+        if (model.LogTraffic)
+            logger.LogWarning("Recognition:OpenAiCompatible:LogTraffic is on: every request to the model server and every answer is written to this log, prompts and what the model read included (never the photo or the key). Turn it off when you are done.");
 
         while (!stopping.IsCancellationRequested)
         {
