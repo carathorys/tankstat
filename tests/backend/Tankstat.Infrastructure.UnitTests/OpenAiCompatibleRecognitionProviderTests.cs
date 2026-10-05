@@ -135,7 +135,7 @@ public class OpenAiCompatibleRecognitionProviderTests
     public async Task AKindThePhotoMayNotShow_CountsAsUnknown_AndNamesAreReadWhateverTheirSpelling()
     {
         var (receipt, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, Contract("chat.expense-receipt.json"))));
-        var (spelled, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, Said("""{"kind": "Fuel receipt", "fields": [{"name": "unit_price", "value": "640.9", "confidence": 0.9}, {"name": "Total", "value": "24687", "confidence": 0.9}]}"""))));
+        var (spelled, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, Said("""{"kind": "FuelReceipt", "fields": [{"name": "unit_price", "value": "640.9", "confidence": 0.9}, {"name": "Total", "value": "24687", "confidence": 0.9}]}"""))));
 
         var unknown = await receipt.ReadAsync(Request(receipt: DocumentKind.FuelReceipt), default); // an expense receipt was not on the cards
         var read = await spelled.ReadAsync(Request(), default);
@@ -166,6 +166,8 @@ public class OpenAiCompatibleRecognitionProviderTests
         var (prose, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, Said("I cannot see an odometer here, the number 987654 is the trip."))));
         var (silent, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, Said(""))));
         var (noChoice, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, """{ "choices": [] }""")));
+        var (nullChoice, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, """{ "choices": [ null ] }""")));
+        var (list, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, "[]"))); // not even an object
         var (nonsense, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, "not json")));
 
         await Assert.ThrowsAsync<RecognitionRejectedException>(() => refused.ReadAsync(Request(), default));
@@ -174,12 +176,15 @@ public class OpenAiCompatibleRecognitionProviderTests
         var talked = await Assert.ThrowsAsync<RecognitionUnavailableException>(() => prose.ReadAsync(Request(), default));
         await Assert.ThrowsAsync<RecognitionUnavailableException>(() => silent.ReadAsync(Request(), default));
         await Assert.ThrowsAsync<RecognitionUnavailableException>(() => noChoice.ReadAsync(Request(), default));
+        await Assert.ThrowsAsync<RecognitionUnavailableException>(() => nullChoice.ReadAsync(Request(), default));
+        await Assert.ThrowsAsync<RecognitionUnavailableException>(() => list.ReadAsync(Request(), default));
         await Assert.ThrowsAsync<RecognitionUnavailableException>(() => nonsense.ReadAsync(Request(), default));
         Assert.DoesNotContain("987654", talked.Message); // what the model said is never repeated: it could be anything
     }
 
     [Theory]
     [InlineData(HttpStatusCode.Unauthorized, null, false, "Recognition:OpenAiCompatible:ApiKey")]
+    [InlineData(HttpStatusCode.Unauthorized, "error.array.json", false, "Recognition:OpenAiCompatible:ApiKey")] // an array around the error (Google)
     [InlineData(HttpStatusCode.Forbidden, null, false, "Recognition:OpenAiCompatible:ApiKey")]
     [InlineData(HttpStatusCode.NotFound, null, false, "/v1")]
     [InlineData(HttpStatusCode.RequestEntityTooLarge, null, true, "large")]
@@ -217,13 +222,13 @@ public class OpenAiCompatibleRecognitionProviderTests
     }
 
     [Fact]
-    public async Task TheModelsName_IsKeptAsTheVersion_CutToWhatTheDatabaseHolds_OrElseTheConfiguredOne()
+    public async Task TheModelsName_IsTheVersion_OrElseTheConfiguredOne()
     {
-        var longName = new string('m', 80);
-        var (named, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, Said("""{"kind":"unknown","fields":[]}""", model: longName))));
+        var path = "/models/" + new string('m', 70) + ".gguf"; // the reading cuts it to what its column holds
+        var (named, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, Said("""{"kind":"unknown","fields":[]}""", model: path))));
         var (unnamed, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, """{ "choices": [ { "message": { "content": "{\"kind\":\"unknown\"}" } } ] }""")));
 
-        Assert.Equal(new string('m', 64), (await named.ReadAsync(Request(), default)).ModelVersion);
+        Assert.Equal(path, (await named.ReadAsync(Request(), default)).ModelVersion);
         Assert.Equal("qwen2.5-vl", (await unnamed.ReadAsync(Request(), default)).ModelVersion);
     }
 
@@ -257,6 +262,8 @@ public class OpenAiCompatibleRecognitionProviderTests
     {
         var (keyed, handler) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, Contract("models.openai.json"))), key: "secret", model: "gpt-vision-example");
         var (refusing, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.Unauthorized, """{ "error": { "message": "Incorrect API key provided", "type": "invalid_request_error", "code": "invalid_api_key" } }""")));
+        var (scoped, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.Forbidden, """{ "error": { "message": "insufficient permissions", "type": "invalid_request_error", "code": "insufficient_permissions" } }""")));
+        var (misaddressed, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.NotFound, "<html>not found</html>")));
         var (broken, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.ServiceUnavailable, "<html>down</html>")));
         var (empty, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, """{ "object": "list", "data": [] }""")));
         var (unreachable, _) = Model((_, _) => throw new HttpRequestException("connection refused"));
@@ -268,6 +275,9 @@ public class OpenAiCompatibleRecognitionProviderTests
         var refused = await Assert.ThrowsAsync<RecognitionUnavailableException>(() => refusing.IsHealthyAsync(default));
         Assert.Contains("Recognition:OpenAiCompatible:ApiKey", refused.Message);
         Assert.DoesNotContain("Incorrect", refused.Message);
+        Assert.True(await scoped.IsHealthyAsync(default)); // a key that may not list models may still read: the first read is the judge
+        var lost = await Assert.ThrowsAsync<RecognitionUnavailableException>(() => misaddressed.IsHealthyAsync(default));
+        Assert.Contains("/v1", lost.Message); // the usual mistake: an address without the API's version
         var down = await Assert.ThrowsAsync<RecognitionUnavailableException>(() => broken.IsHealthyAsync(default));
         Assert.Contains("503", down.Message); // what an operator has to go by: it answered, with an error
         var none = await Assert.ThrowsAsync<RecognitionUnavailableException>(() => empty.IsHealthyAsync(default));

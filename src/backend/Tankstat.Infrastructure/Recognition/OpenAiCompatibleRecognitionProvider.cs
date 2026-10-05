@@ -22,11 +22,8 @@ internal sealed partial class OpenAiCompatibleRecognitionProvider(IHttpClientFac
     public const string ClientName = "recognition-openai-compatible";
     private static readonly TimeSpan HealthTimeout = TimeSpan.FromSeconds(5);
 
-    /// <summary>What the database keeps of a model's name (<c>PhotoReading.ModelVersion</c>).</summary>
-    private const int MaxModelVersionLength = 64;
-
     // An error code is a snake_case token ("invalid_api_key", "invalid_image"); anything else in that place is words, and words are never repeated.
-    [GeneratedRegex(@"^[a-z0-9_]{1,32}$")]
+    [GeneratedRegex(@"^[a-z0-9_]{1,32}\z")]
     private static partial Regex SafeToken();
 
     [GeneratedRegex(@"<think>.*?</think>", RegexOptions.Singleline)]
@@ -45,12 +42,13 @@ internal sealed partial class OpenAiCompatibleRecognitionProvider(IHttpClientFac
         timeout.CancelAfter(HealthTimeout);
         try
         {
-            using var request = Request(HttpMethod.Get, "models");
-            using var response = await http.CreateClient(ClientName).SendAsync(request, timeout.Token);
-            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden) throw Refused();
-            if (!response.IsSuccessStatusCode) throw new RecognitionUnavailableException($"The model server answered {(int)response.StatusCode} when asked for its models.");
+            using var message = Message(HttpMethod.Get, "models");
+            using var response = await http.CreateClient(ClientName).SendAsync(message, timeout.Token);
+            // A key may be allowed to chat but not to list models (OpenAI's restricted keys): then the first read is the judge of it.
+            if (response.StatusCode == HttpStatusCode.Forbidden) return true;
+            if (!response.IsSuccessStatusCode) throw await ErrorAsync(response, timeout.Token);
             using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(timeout.Token), default, timeout.Token);
-            var listed = ModelIds(document.RootElement) ?? throw new JsonException("not a list of models");
+            var listed = ModelIds(document.RootElement) ?? throw NotModels();
             if (listed.Count == 0) throw new RecognitionUnavailableException("The model server lists no models.");
             // A server with one model answers with it whatever is asked for (llama.cpp lists the file it was started with); others must know the name.
             if (listed.Count > 1 && !listed.Any(id => Matches(id, options.Model!)))
@@ -64,13 +62,13 @@ internal sealed partial class OpenAiCompatibleRecognitionProvider(IHttpClientFac
         }
         catch (Exception e) when (e is JsonException or NotSupportedException)
         {
-            throw new RecognitionUnavailableException("The model server's list of models cannot be understood: is Recognition:OpenAiCompatible:BaseUrl the API's address, ending in its version (/v1)?");
+            throw NotModels();
         }
     }
 
     public async Task<RecognitionResult> ReadAsync(RecognitionRequest request, CancellationToken ct)
     {
-        using var message = Request(HttpMethod.Post, "chat/completions");
+        using var message = Message(HttpMethod.Post, "chat/completions");
         message.Content = new StringContent(Body(request).ToJsonString(), Encoding.UTF8, "application/json");
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -99,13 +97,13 @@ internal sealed partial class OpenAiCompatibleRecognitionProvider(IHttpClientFac
             }
             catch (JsonException)
             {
-                throw new RecognitionUnavailableException("The model server's answer is not the JSON expected of a chat completion.");
+                throw NotAChatCompletion();
             }
             using (document) return Result(document.RootElement, request);
         }
     }
 
-    private HttpRequestMessage Request(HttpMethod method, string path)
+    private HttpRequestMessage Message(HttpMethod method, string path)
     {
         var message = new HttpRequestMessage(method, new Uri(_base, path));
         if (!string.IsNullOrWhiteSpace(options.ApiKey)) message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiKey);
@@ -152,93 +150,83 @@ internal sealed partial class OpenAiCompatibleRecognitionProvider(IHttpClientFac
     /// <summary>What the model said, as a reading: a refusal is final, a cut-off or unusable answer is worth another try, a kind the photo may not show counts as unknown.</summary>
     private RecognitionResult Result(JsonElement root, RecognitionRequest request)
     {
-        var version = Version(root.TryGetProperty("model", out var model) && model.ValueKind == JsonValueKind.String ? model.GetString() : null);
-        if (!root.TryGetProperty("choices", out var choices) || choices.ValueKind != JsonValueKind.Array || choices.GetArrayLength() == 0)
+        if (root.ValueKind != JsonValueKind.Object) throw NotAChatCompletion();
+        var version = StringProperty(root, "model") is { Length: > 0 } reported ? reported : options.Model ?? "";
+        if (Property(root, "choices") is not { ValueKind: JsonValueKind.Array } choices || choices.GetArrayLength() == 0 || choices[0].ValueKind != JsonValueKind.Object)
             throw new RecognitionUnavailableException("The model server answered without a choice.");
         var choice = choices[0];
-        var finish = choice.TryGetProperty("finish_reason", out var reason) && reason.ValueKind == JsonValueKind.String ? reason.GetString() : null;
-        var message = choice.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.Object ? m : default;
-        if (finish == "content_filter" || Refusal(message)) throw new RecognitionRejectedException("The model refused to read this picture.");
+        var finish = StringProperty(choice, "finish_reason");
+        var message = Property(choice, "message") ?? default;
+        if (finish == "content_filter" || !string.IsNullOrWhiteSpace(StringProperty(message, "refusal"))) throw new RecognitionRejectedException("The model refused to read this picture.");
         if (finish == "length") throw new RecognitionUnavailableException("The model's answer was cut off: the server's limit on the length of an answer is too low for it.");
         var text = Text(message);
         if (string.IsNullOrWhiteSpace(text)) throw new RecognitionUnavailableException("The model answered nothing.");
 
-        var (kind, values) = Reading(text);
+        using var answer = JsonObjectIn(text);
+        var kind = Kind(StringProperty(answer.RootElement, "kind"));
+        List<RecognizedValue> values = Property(answer.RootElement, "fields") is { ValueKind: JsonValueKind.Array } fields
+            ? fields.EnumerateArray().Select(ValueOf).OfType<RecognizedValue>().ToList()
+            : [];
         return kind != DocumentKind.Unknown && request.Kinds.Contains(kind)
             ? new RecognitionResult(version, kind, ReadingChecks.Apply(kind, values, request))
             : new RecognitionResult(version, DocumentKind.Unknown, []);
     }
 
-    private string Version(string? reported)
-    {
-        var name = string.IsNullOrWhiteSpace(reported) ? options.Model ?? "" : reported;
-        return name.Length <= MaxModelVersionLength ? name : name[..MaxModelVersionLength];
-    }
-
-    private static bool Refusal(JsonElement message) =>
-        message.ValueKind == JsonValueKind.Object && message.TryGetProperty("refusal", out var refusal) && refusal.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(refusal.GetString());
-
     /// <summary>The model's text: a string, or (some servers) the text parts of a list.</summary>
-    private static string? Text(JsonElement message)
+    private static string? Text(JsonElement message) => Property(message, "content") switch
     {
-        if (message.ValueKind != JsonValueKind.Object || !message.TryGetProperty("content", out var content)) return null;
-        return content.ValueKind switch
-        {
-            JsonValueKind.String => content.GetString(),
-            JsonValueKind.Array => string.Concat(content.EnumerateArray()
-                .Where(part => part.ValueKind == JsonValueKind.Object && part.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String)
-                .Select(part => part.GetProperty("text").GetString())),
-            _ => null,
-        };
-    }
+        { ValueKind: JsonValueKind.String } content => content.GetString(),
+        { ValueKind: JsonValueKind.Array } parts => string.Concat(parts.EnumerateArray().Select(part => StringProperty(part, "text"))),
+        _ => null,
+    };
 
-    /// <summary>The JSON object in the model's text, whatever is around it (a reasoning block, code fences, a sentence), as a kind and its values.</summary>
-    private static (DocumentKind Kind, List<RecognizedValue> Values) Reading(string text)
+    /// <summary>The JSON object in the model's text, whatever is around it (a reasoning block, code fences, a sentence).</summary>
+    private static JsonDocument JsonObjectIn(string text)
     {
         var bare = Thinking().Replace(text, "");
         var start = bare.IndexOf('{');
         var end = bare.LastIndexOf('}');
         if (start < 0 || end <= start) throw NotTheJson();
-        JsonDocument document;
         try
         {
-            document = JsonDocument.Parse(bare[start..(end + 1)]);
+            return JsonDocument.Parse(bare[start..(end + 1)]);
         }
         catch (JsonException)
         {
             throw NotTheJson();
         }
-        using (document)
-        {
-            var root = document.RootElement;
-            var kind = Kind(root.TryGetProperty("kind", out var k) && k.ValueKind == JsonValueKind.String ? k.GetString() : null);
-            var values = new List<RecognizedValue>();
-            if (root.TryGetProperty("fields", out var fields) && fields.ValueKind == JsonValueKind.Array)
-                foreach (var field in fields.EnumerateArray())
-                {
-                    if (field.ValueKind != JsonValueKind.Object) continue;
-                    if (Field(field.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString() : null) is not { } name) continue;
-                    var value = field.TryGetProperty("value", out var v) ? v.ValueKind switch { JsonValueKind.String => v.GetString(), JsonValueKind.Number => v.GetRawText(), _ => null } : null;
-                    if (string.IsNullOrWhiteSpace(value)) continue;
-                    var confidence = field.TryGetProperty("confidence", out var c) && c.ValueKind == JsonValueKind.Number && c.TryGetDouble(out var d) ? d : ReadingChecks.Doubtful;
-                    values.Add(new RecognizedValue(name, value, confidence, ValueSource.Read));
-                }
-            return (kind, values);
-        }
     }
 
-    private static RecognitionUnavailableException NotTheJson() => new("The model's answer is not the JSON it was asked for.");
-
-    // Without a schema a model may spell the names its own way ("Fuel receipt", "unit_price"): the letters decide.
-    private static DocumentKind Kind(string? name) => RecognitionNames.Kind(name?.Trim().ToLowerInvariant().Replace('_', '-').Replace(' ', '-'));
-
-    private static ReadingFieldName? Field(string? name)
+    /// <summary>One field of the answer, or null when it names no value the app knows; a confidence that is not a number counts as doubtful.</summary>
+    private static RecognizedValue? ValueOf(JsonElement field)
     {
-        var folded = Fold(name);
-        return RecognitionNames.Fields.FirstOrDefault(f => Fold(f.Key) == folded) is { Key: not null } match ? match.Value : null;
+        if (Field(StringProperty(field, "name")) is not { } name) return null;
+        var value = Property(field, "value") switch
+        {
+            { ValueKind: JsonValueKind.String } text => text.GetString(),
+            { ValueKind: JsonValueKind.Number } number => number.GetRawText(),
+            _ => null,
+        };
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var confidence = Property(field, "confidence") is { ValueKind: JsonValueKind.Number } rated && rated.TryGetDouble(out var d) ? d : ReadingChecks.Doubtful;
+        return new RecognizedValue(name, value, confidence, ValueSource.Read);
     }
+
+    // Without a schema a model may spell the names its own way ("Fuel receipt", "FuelReceipt", "unit_price"): the letters decide.
+    private static DocumentKind Kind(string? name) =>
+        RecognitionNames.Kinds.FirstOrDefault(k => Fold(k.Value) == Fold(name)) is { Value: not null } match ? match.Key : DocumentKind.Unknown;
+
+    private static ReadingFieldName? Field(string? name) =>
+        RecognitionNames.Fields.FirstOrDefault(f => Fold(f.Key) == Fold(name)) is { Key: not null } match ? match.Value : null;
 
     private static string Fold(string? name) => (name ?? "").Replace("_", "").Replace("-", "").Replace(" ", "").ToLowerInvariant();
+
+    /// <summary>A property of an object; null when the element is no object or lacks it (servers differ, and TryGetProperty throws on anything but an object).</summary>
+    private static JsonElement? Property(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) ? value : null;
+
+    private static string? StringProperty(JsonElement element, string name) =>
+        Property(element, name) is { ValueKind: JsonValueKind.String } value ? value.GetString() : null;
 
     /// <summary>
     /// Why the server said no, as an exception the worker can act on: a refused key or a wrong address is told so, a picture the server will
@@ -249,7 +237,7 @@ internal sealed partial class OpenAiCompatibleRecognitionProvider(IHttpClientFac
         var (code, aboutImage) = await ErrorInfoAsync(response, ct);
         return response.StatusCode switch
         {
-            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => Refused(),
+            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => KeyRefused(),
             HttpStatusCode.NotFound => new RecognitionUnavailableException(
                 "The model server answered 404: Recognition:OpenAiCompatible:BaseUrl must end with the API's version (/v1), and Recognition:OpenAiCompatible:Model must be a model it serves."),
             HttpStatusCode.RequestEntityTooLarge => new RecognitionRejectedException("The model server, or a proxy in front of it, does not take a request as large as this picture."),
@@ -258,24 +246,21 @@ internal sealed partial class OpenAiCompatibleRecognitionProvider(IHttpClientFac
         };
     }
 
-    private static RecognitionUnavailableException Refused() =>
-        new("The model server refused the key: Recognition:OpenAiCompatible:ApiKey must be a key it accepts (none is sent while it is empty).");
-
     /// <summary>
     /// A short code out of an error body, and whether the error is about the picture. Servers differ: OpenAI and Ollama write
-    /// <c>{"error":{"code","type","param"}}</c> with strings, llama.cpp a number for the code, LM Studio a bare string. Only a snake_case
-    /// token is taken (<see cref="SafeToken"/>), never the message.
+    /// <c>{"error":{"code","type","param"}}</c> with strings, llama.cpp a number for the code, LM Studio a bare string, and some put an
+    /// array around it all. Only a snake_case token is taken (<see cref="SafeToken"/>), never the message.
     /// </summary>
     private static async Task<(string? Code, bool AboutImage)> ErrorInfoAsync(HttpResponseMessage response, CancellationToken ct)
     {
         try
         {
             using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), default, ct);
-            if (!document.RootElement.TryGetProperty("error", out var error) || error.ValueKind != JsonValueKind.Object) return (null, false);
-            string[] told = ["code", "type", "param"];
-            var strings = told.Select(p => error.TryGetProperty(p, out var e) && e.ValueKind == JsonValueKind.String ? e.GetString() : null).ToList();
-            var code = strings.Take(2).FirstOrDefault(s => s is not null && SafeToken().IsMatch(s));
-            return (code, strings.Any(s => s?.Contains("image", StringComparison.OrdinalIgnoreCase) == true));
+            var root = document.RootElement is { ValueKind: JsonValueKind.Array } list && list.GetArrayLength() > 0 ? list[0] : document.RootElement;
+            if (Property(root, "error") is not { ValueKind: JsonValueKind.Object } error) return (null, false);
+            var code = StringProperty(error, "code") is { } token && SafeToken().IsMatch(token) ? token : null;
+            var aboutImage = new[] { "code", "param" }.Any(p => StringProperty(error, p)?.Contains("image", StringComparison.OrdinalIgnoreCase) == true);
+            return (code, aboutImage);
         }
         catch (Exception e) when (e is JsonException or NotSupportedException or HttpRequestException)
         {
@@ -283,16 +268,19 @@ internal sealed partial class OpenAiCompatibleRecognitionProvider(IHttpClientFac
         }
     }
 
-    /// <summary>The ids of <c>GET /v1/models</c> (<c>{"data":[{"id":...}]}</c>, or a bare list); null when it is not that at all.</summary>
-    private static List<string>? ModelIds(JsonElement root)
-    {
-        var list = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("data", out var data) ? data : root;
-        if (list.ValueKind != JsonValueKind.Array) return null;
-        return list.EnumerateArray()
-            .Select(model => model.ValueKind == JsonValueKind.Object && model.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String ? id.GetString() : null)
-            .OfType<string>()
-            .ToList();
-    }
+    private static RecognitionUnavailableException KeyRefused() =>
+        new("The model server refused the key: Recognition:OpenAiCompatible:ApiKey must be a key it accepts (none is sent while it is empty).");
+
+    private static RecognitionUnavailableException NotTheJson() => new("The model's answer is not the JSON it was asked for.");
+
+    private static RecognitionUnavailableException NotAChatCompletion() => new("The model server's answer is not the JSON expected of a chat completion.");
+
+    private static RecognitionUnavailableException NotModels() =>
+        new("The model server's list of models cannot be understood: is Recognition:OpenAiCompatible:BaseUrl the API's address, ending in its version (/v1)?");
+
+    /// <summary>The ids of <c>GET /v1/models</c> (<c>{"data":[{"id":...}]}</c>); null when it is not that at all.</summary>
+    private static List<string>? ModelIds(JsonElement root) =>
+        Property(root, "data") is { ValueKind: JsonValueKind.Array } models ? models.EnumerateArray().Select(m => StringProperty(m, "id")).OfType<string>().ToList() : null;
 
     /// <summary>Whether a listed name is the model wanted: case aside, with or without Ollama's ":latest", or the file name llama.cpp lists.</summary>
     private static bool Matches(string listed, string wanted)

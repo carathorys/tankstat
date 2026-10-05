@@ -254,6 +254,26 @@ public class LoggingTests
     }
 
     [Fact]
+    public async Task AProviderThatStaysUnavailable_ForAnotherReason_IsAWarningAgain()
+    {
+        var w = new World();
+        async Task Check(string? problem)
+        {
+            w.Recognizer.HealthFailure = problem is null ? null : new RecognitionUnavailableException(problem);
+            w.Clock.Advance(RecognitionAvailability.CacheFor + TimeSpan.FromSeconds(1));
+            await w.Availability.IsAvailableAsync(default);
+        }
+
+        await Check("The model server could not be reached."); // started before the server
+        await Check("The model server could not be reached.");
+        await Check("The model server does not list the model: Recognition:OpenAiCompatible:Model must be one of the names GET /v1/models shows."); // up now, but misnamed
+        await Check("The model server does not list the model: Recognition:OpenAiCompatible:Model must be one of the names GET /v1/models shows.");
+        await Check(null);
+
+        Assert.Equal([LogLevel.Warning, LogLevel.Warning, LogLevel.Information], w.Log.Entries.Select(e => e.Level));
+    }
+
+    [Fact]
     public async Task WithoutAReader_NothingIsSaidAboutIt()
     {
         var w = new World();

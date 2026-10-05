@@ -74,23 +74,32 @@ public class ReadingChecksTests
         Assert.Equal("Total=30000@0.9 Volume=38.52@0.5 UnitPrice=640.9@0.5 Currency=HUF@0.9", Shown(ReadingChecks.Apply(DocumentKind.FuelReceipt, misread, Hints())));
     }
 
-    [Fact]
-    public void HowCloseIsClose_DependsOnTheCurrency_TheReceiptsOrElseTheHint()
+    [Theory]
+    [InlineData("EUR", "HUF", 0.5)] // the receipt's currency counts: two cents off is a misread in euros
+    [InlineData(null, "HUF", 0.9)] // without one, the hint: nothing in forints, which have no cents
+    [InlineData(null, null, 0.5)]
+    public void HowCloseIsClose_DependsOnTheCurrency_TheReceiptsOrElseTheHint(string? read, string? hint, double volumeConfidence)
     {
-        // 0.5 l at 2.04 makes 1.02: two cents off a total of 1.00 is a misread in euros, nothing in forints (whole units)
-        RecognizedValue[] values = [Read(ReadingFieldName.Total, "1.00"), Read(ReadingFieldName.Volume, "0.5"), Read(ReadingFieldName.UnitPrice, "2.04")];
+        // 0.5 l at 2.04 makes 1.02 against a total of 1.00
+        List<RecognizedValue> values = [Read(ReadingFieldName.Total, "1.00"), Read(ReadingFieldName.Volume, "0.5"), Read(ReadingFieldName.UnitPrice, "2.04")];
+        if (read is not null) values.Add(Read(ReadingFieldName.Currency, read));
 
-        Assert.Equal(0.5, ReadingChecks.Apply(DocumentKind.FuelReceipt, [.. values, Read(ReadingFieldName.Currency, "EUR")], Hints()).Single(v => v.Name == ReadingFieldName.Volume).Confidence);
-        Assert.Equal(0.9, ReadingChecks.Apply(DocumentKind.FuelReceipt, values, Hints(currency: "HUF")).Single(v => v.Name == ReadingFieldName.Volume).Confidence);
-        Assert.Equal(0.5, ReadingChecks.Apply(DocumentKind.FuelReceipt, values, Hints(currency: null)).Single(v => v.Name == ReadingFieldName.Volume).Confidence);
+        var kept = ReadingChecks.Apply(DocumentKind.FuelReceipt, values, Hints(currency: hint));
+
+        Assert.Equal(volumeConfidence, kept.Single(v => v.Name == ReadingFieldName.Volume).Confidence);
     }
 
-    [Fact]
-    public void TheModelsOwnConfidence_OnlyEverLowersTheResult()
+    [Theory]
+    [InlineData("200100", 0.3, 0.3)]
+    [InlineData("260000", 0.3, 0.3)] // doubted by the checks, and the model's 0.3 is less still
+    [InlineData("200100", 95, 0.95)] // a model that rates in per cent
+    [InlineData("200100", 150, ReadingChecks.Doubtful)] // no scale makes sense of it
+    [InlineData("200100", -1, ReadingChecks.Doubtful)]
+    [InlineData("200100", double.NaN, ReadingChecks.Doubtful)]
+    public void TheModelsOwnRating_OnlyEverLowersTheResult_AndIsReadOnTheScaleItWasGivenOn(string odometer, double rated, double confidence)
     {
-        Assert.Equal(0.3, ReadingChecks.Apply(DocumentKind.Odometer, [Read(ReadingFieldName.Odometer, "200100", 0.3)], Hints()).Single().Confidence);
-        Assert.Equal(0.3, ReadingChecks.Apply(DocumentKind.Odometer, [Read(ReadingFieldName.Odometer, "260000", 0.3)], Hints()).Single().Confidence); // doubted, and the model's 0.3 is less still
-        Assert.Equal(1.0, ReadingChecks.Apply(DocumentKind.Odometer, [Read(ReadingFieldName.Odometer, "200100", 7)], Hints()).Single().Confidence);
-        Assert.Equal(ReadingChecks.Doubtful, ReadingChecks.Apply(DocumentKind.Odometer, [Read(ReadingFieldName.Odometer, "200100", double.NaN)], Hints()).Single().Confidence);
+        var kept = ReadingChecks.Apply(DocumentKind.Odometer, [Read(ReadingFieldName.Odometer, odometer, rated)], Hints());
+
+        Assert.Equal(confidence, kept.Single().Confidence);
     }
 }

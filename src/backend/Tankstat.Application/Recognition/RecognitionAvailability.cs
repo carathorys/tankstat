@@ -14,7 +14,7 @@ public sealed class RecognitionAvailability(IRecognitionProvider provider, TimeP
 
     private readonly SemaphoreSlim _gate = new(1, 1);
     private volatile Answer? _last;
-    private bool? _reported; // what the log last said about the provider; only read and written inside the gate
+    private (bool Healthy, string? Reason)? _reported; // what the log last said about the provider; only read and written inside the gate
 
     /// <summary>A provider is set up (whether or not it answers right now).</summary>
     public bool IsConfigured => provider.IsConfigured;
@@ -51,11 +51,15 @@ public sealed class RecognitionAvailability(IRecognitionProvider provider, TimeP
     /// <summary>A reading just found the provider unavailable: the next question asks it again instead of trusting the kept answer.</summary>
     public void Forget() => _last = null;
 
-    /// <summary>Says so when the provider's health changed, and the first time it is known; never on every check, or a reader that is down would fill the log.</summary>
+    /// <summary>
+    /// Says so when the provider's health changed, or why it is unhealthy changed (unreachable, then up but without the model), and the first
+    /// time it is known; never on every check, or a provider that is down would fill the log.
+    /// </summary>
     private void Report(bool healthy, Exception? problem)
     {
-        if (_reported == healthy) return;
-        _reported = healthy;
+        var state = (healthy, problem?.Message);
+        if (_reported == state) return;
+        _reported = state;
         if (healthy) logger.LogInformation("The photo-reading provider is ready; queued photos are read");
         else logger.LogWarning(problem, "The photo-reading provider cannot be used right now; photos wait until it can");
     }

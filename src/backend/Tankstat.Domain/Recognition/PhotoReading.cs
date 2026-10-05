@@ -65,6 +65,9 @@ public sealed class PhotoReading
     /// <summary>Attempts before a reading counts as failed; a busy or unreachable reader is tried again later.</summary>
     public const int MaxAttempts = 5;
 
+    /// <summary>What is kept of a model's name: a server can call one by a whole path, the column holds this much.</summary>
+    public const int MaxModelVersionLength = 64;
+
     private PhotoReading() { } // EF Core
 
     /// <summary>The id of the picture that is read.</summary>
@@ -136,7 +139,7 @@ public sealed class PhotoReading
         var allowed = kind != DocumentKind.Unknown && AllowedKinds.Contains(kind);
         Status = ReadingStatus.Read;
         Provider = provider;
-        ModelVersion = modelVersion;
+        ModelVersion = modelVersion.Length <= MaxModelVersionLength ? modelVersion : modelVersion[..MaxModelVersionLength];
         Kind = allowed ? kind : DocumentKind.Unknown;
         Values = allowed ? values.GroupBy(v => v.Name).Select(g => g.MaxBy(v => v.Confidence)!).ToList() : [];
         ReadAt = now;

@@ -8,7 +8,7 @@ namespace Tankstat.Application.Recognition;
 /// </summary>
 public interface IRecognitionProvider
 {
-    /// <summary>A short name kept with each reading (<c>reader</c>).</summary>
+    /// <summary>A short name kept with each reading (<c>reader</c>, <c>openai-compatible</c>).</summary>
     string Name { get; }
 
     /// <summary>False when no provider is set up or its settings cannot be used: then nothing is queued or read at all.</summary>

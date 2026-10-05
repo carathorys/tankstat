@@ -7,7 +7,8 @@ them shows up in the adapter's tests, not in the app.
 - `chat.*.json`: `POST /v1/chat/completions` answers in the shapes seen from OpenAI (`fuel-receipt`, `unknown`, `refusal`, `cut-off`),
   LM Studio (`odometer`), Ollama (`expense-receipt`), llama.cpp (`fenced`: a `<think>` block and code fences around the JSON, a number
   where a string was asked for) and a server that answers in text parts (`text-parts`).
-- `error.*.json`: the error bodies the same servers write. They differ: OpenAI a string `code`, llama.cpp a number, LM Studio a bare string.
+- `error.*.json`: the error bodies the same servers write. They differ: OpenAI a string `code`, llama.cpp a number, LM Studio a bare string,
+  and some (`array`: Google's OpenAI-compatible endpoint) an array around the whole thing.
 - `models.*.json`: what `GET /v1/models` lists (OpenAI many, Ollama with `:latest` tags, llama.cpp the one file it was started with, LM Studio
   the loaded ones).
 

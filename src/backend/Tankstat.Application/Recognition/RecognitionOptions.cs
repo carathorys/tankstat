@@ -114,7 +114,7 @@ public sealed class RecognitionSetup
         Options = bound ?? new RecognitionOptions();
         Kind = bound is null ? RecognitionProviderKind.None : ParseKind(Options.Provider, problems);
         if (Kind != RecognitionProviderKind.None) Check(Kind, Options, problems);
-        if (Kind == RecognitionProviderKind.OpenAiCompatible) SystemPrompt = OwnPrompt(Options.OpenAiCompatible, problems);
+        if (Kind == RecognitionProviderKind.OpenAiCompatible) SystemPrompt = OperatorPrompt(Options.OpenAiCompatible, problems);
         Problems = problems;
     }
 
@@ -169,32 +169,30 @@ public sealed class RecognitionSetup
     private static bool IsHttpUrl(string? url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var parsed) && (parsed.Scheme == Uri.UriSchemeHttp || parsed.Scheme == Uri.UriSchemeHttps);
 
-    /// <summary>The operator's prompt: the file when one is named (a missing, empty or oversized one is a problem), else the setting, else none.</summary>
-    private static string? OwnPrompt(OpenAiCompatibleRecognitionOptions o, List<string> problems)
+    /// <summary>
+    /// The operator's prompt: the file when one is named (a missing, empty or oversized one is a problem), else the setting, else none. Read
+    /// here, in the one place that turns a problem into "off with a warning": it is one small file, once, at startup.
+    /// </summary>
+    private static string? OperatorPrompt(OpenAiCompatibleRecognitionOptions o, List<string> problems)
     {
+        string? Fail(string problem)
+        {
+            problems.Add(problem); // names the setting only: never the file's content, nor the system's words about it
+            return null;
+        }
+
         if (string.IsNullOrWhiteSpace(o.SystemPromptFile)) return string.IsNullOrWhiteSpace(o.SystemPrompt) ? null : o.SystemPrompt.Trim();
         try
         {
             var file = new FileInfo(o.SystemPromptFile);
-            if (!file.Exists)
-            {
-                problems.Add("Recognition:OpenAiCompatible:SystemPromptFile does not exist (an absolute path, such as /data/prompt.txt, is safest).");
-                return null;
-            }
-            if (file.Length > MaxPromptFileBytes)
-            {
-                problems.Add($"Recognition:OpenAiCompatible:SystemPromptFile is larger than {MaxPromptFileBytes / 1024} KB: that is not a prompt.");
-                return null;
-            }
+            if (!file.Exists) return Fail("Recognition:OpenAiCompatible:SystemPromptFile does not exist (an absolute path, such as /data/prompt.txt, is safest).");
+            if (file.Length > MaxPromptFileBytes) return Fail($"Recognition:OpenAiCompatible:SystemPromptFile is larger than {MaxPromptFileBytes / 1024} KB: that is not a prompt.");
             var text = File.ReadAllText(file.FullName).Trim();
-            if (text.Length > 0) return text;
-            problems.Add("Recognition:OpenAiCompatible:SystemPromptFile is empty.");
-            return null;
+            return text.Length > 0 ? text : Fail("Recognition:OpenAiCompatible:SystemPromptFile is empty.");
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
         {
-            problems.Add("Recognition:OpenAiCompatible:SystemPromptFile cannot be read."); // never its content, nor the system's words about it
-            return null;
+            return Fail("Recognition:OpenAiCompatible:SystemPromptFile cannot be read.");
         }
     }
 }

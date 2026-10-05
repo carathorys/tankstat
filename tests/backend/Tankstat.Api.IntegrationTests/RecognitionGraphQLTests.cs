@@ -13,7 +13,7 @@ namespace Tankstat.Api.IntegrationTests;
 
 /// <summary>
 /// Photo reading through the real host: the draft upload queues the photo, the background worker reads it through the provider (a fake
-/// here, standing in for the reader service) and GraphQL hands the dialog what was found.
+/// standing in for the reader service, or the real adapter against a fake model server) and GraphQL hands the dialog what was found.
 /// </summary>
 [Collection(ApiCollection.Name)]
 public class RecognitionGraphQLTests

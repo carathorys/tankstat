@@ -23,7 +23,7 @@ internal sealed class PhotoReadingConfiguration : IEntityTypeConfiguration<Photo
         b.Property(r => r.Locale).HasMaxLength(8).IsRequired();
         b.Property(r => r.Currency).HasMaxLength(3);
         b.Property(r => r.Provider).HasMaxLength(32);
-        b.Property(r => r.ModelVersion).HasMaxLength(64);
+        b.Property(r => r.ModelVersion).HasMaxLength(PhotoReading.MaxModelVersionLength);
         // The values as one JSON array: they are only ever read together with their reading, never queried.
         b.Property(r => r.Values)
             .HasConversion(

@@ -73,6 +73,16 @@ public class PhotoReadingTests
     }
 
     [Fact]
+    public void AModelNamedByAWholePath_IsKeptAsFarAsTheColumnHolds()
+    {
+        var reading = Claimed();
+
+        reading.Complete("openai-compatible", new string('m', 80), DocumentKind.Unknown, [], Now);
+
+        Assert.Equal(new string('m', PhotoReading.MaxModelVersionLength), reading.ModelVersion);
+    }
+
+    [Fact]
     public void ConfidenceIsKeptBetweenZeroAndOne()
     {
         Assert.Equal((1.0, 0.0), (new ReadingValue(ReadingFieldName.Date, "2026-09-17", 1.7, ValueSource.Read).Confidence,
