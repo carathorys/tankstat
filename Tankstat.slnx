@@ -9,8 +9,6 @@
     <Project Path="src/backend/Tankstat.Migrations.PostgreSql/Tankstat.Migrations.PostgreSql.csproj" />
     <Project Path="src/backend/Tankstat.Migrations.Sqlite/Tankstat.Migrations.Sqlite.csproj" />
     <Project Path="src/backend/Tankstat.Migrations.SqlServer/Tankstat.Migrations.SqlServer.csproj" />
-    <Project Path="src/backend/Tankstat.Reader.Core/Tankstat.Reader.Core.csproj" />
-    <Project Path="src/backend/Tankstat.Reader/Tankstat.Reader.csproj" />
   </Folder>
   <Folder Name="/src/backend/" />
   <Folder Name="/tests/">
@@ -21,8 +19,6 @@
     <Project Path="tests/backend/Tankstat.Application.UnitTests/Tankstat.Application.UnitTests.csproj" />
     <Project Path="tests/backend/Tankstat.Seeder.UnitTests/Tankstat.Seeder.UnitTests.csproj" />
     <Project Path="tests/backend/Tankstat.Infrastructure.UnitTests/Tankstat.Infrastructure.UnitTests.csproj" />
-    <Project Path="tests/backend/Tankstat.Reader.Core.UnitTests/Tankstat.Reader.Core.UnitTests.csproj" />
-    <Project Path="tests/backend/Tankstat.Reader.IntegrationTests/Tankstat.Reader.IntegrationTests.csproj" />
   </Folder>
   <Folder Name="/tests/backend/">
     <Project Path="tests/backend/Tankstat.Domain.UnitTests/Tankstat.Domain.UnitTests.csproj" />

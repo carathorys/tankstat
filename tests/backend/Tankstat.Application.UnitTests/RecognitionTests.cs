@@ -36,7 +36,7 @@ public class RecognitionTests
     // ---- queueing ------------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task ADraft_IsQueuedWithTheHintsTheReaderNeeds_AndTheWorkerIsWoken()
+    public async Task ADraft_IsQueuedWithTheHintsTheChecksNeed_AndTheWorkerIsWoken()
     {
         var s = await Setup();
         await s.W.RefuelingService.LogAsync(s.Car.Id, new(new DateOnly(2026, 9, 20), 40, 60, "EUR", 12_345, true, null), default);
@@ -222,7 +222,7 @@ public class RecognitionTests
     public async Task ASlowReadThatMayStillBeGoingOn_IsNotTakenOver()
     {
         var s = await Setup();
-        s.W.RecognitionOptions.Reader.TimeoutSeconds = 600; // allowed: one read may take ten minutes
+        s.W.RecognitionOptions.OpenAiCompatible.TimeoutSeconds = 600; // allowed: one read may take ten minutes
         var id = await Queued(s);
         await s.W.Readings.ClaimAsync(id, s.W.Clock.GetUtcNow(), default); // another instance is reading it
         s.W.Clock.Advance(TimeSpan.FromMinutes(10));
@@ -233,6 +233,12 @@ public class RecognitionTests
         Assert.Equal(ReadingStatus.Reading, s.W.Readings.Items.Single().Status);
         Assert.True(PhotoReadingProcessor.StaleAfter(s.W.RecognitionOptions) > TimeSpan.FromMinutes(10));
     }
+
+    [Theory]
+    [InlineData(30, 5)] // the floor
+    [InlineData(600, 11)] // a read that may take ten minutes is not taken over before eleven
+    public void StaleAfter_FollowsTheReadTimeout_WithAFloorOfFiveMinutes(int timeoutSeconds, int minutes) =>
+        Assert.Equal(TimeSpan.FromMinutes(minutes), PhotoReadingProcessor.StaleAfter(ModelServer(o => o.TimeoutSeconds = timeoutSeconds)));
 
     [Fact]
     public async Task OnlyAFewPhotosAreReadAtATime()
@@ -279,6 +285,14 @@ public class RecognitionTests
 
     private static RecognitionSetup SetupOf(RecognitionOptions o) => new(Options.Create(o));
 
+    /// <summary>Usable settings for a model behind an OpenAI-compatible API, changed as the test needs.</summary>
+    private static RecognitionOptions ModelServer(Action<OpenAiCompatibleRecognitionOptions>? change = null)
+    {
+        var options = new RecognitionOptions { Provider = "OpenAiCompatible", OpenAiCompatible = { BaseUrl = "http://localhost:1234/v1", Model = "qwen2.5-vl" } };
+        change?.Invoke(options.OpenAiCompatible);
+        return options;
+    }
+
     [Fact]
     public void Settings_ByDefault_TurnNothingOn_AndNeedNoWarning()
     {
@@ -290,35 +304,84 @@ public class RecognitionTests
     }
 
     [Fact]
-    public void Settings_ForTheReader_AreUsableWhenComplete()
+    public void Settings_ForAModelServer_NeedAnAddressAndAModel_ButNoKey()
     {
-        var setup = SetupOf(new RecognitionOptions { Provider = "reader", Reader = { BaseUrl = "https://tank.example/reader", ApiKey = "k" } });
+        var setup = SetupOf(ModelServer());
 
-        Assert.Equal((RecognitionProviderKind.Reader, true), (setup.Kind, setup.Enabled));
+        Assert.Equal((RecognitionProviderKind.OpenAiCompatible, true), (setup.Kind, setup.Enabled));
+        Assert.Null(setup.SystemPrompt); // the built-in prompt
+        Assert.Equal(RecognitionProviderKind.OpenAiCompatible, SetupOf(new RecognitionOptions { Provider = "openaicompatible" }).Kind);
     }
 
     [Theory]
-    [InlineData(null, "k", "BaseUrl")]
-    [InlineData("reader:8081", "k", "BaseUrl")]
-    [InlineData("ftp://reader", "k", "BaseUrl")]
-    [InlineData("http://reader:8081", " ", "ApiKey")]
-    public void Settings_ThatCannotBeUsed_TurnReadingOff_AndSayWhy(string? url, string key, string named)
+    [InlineData(null, "m", 120, null, "BaseUrl")]
+    [InlineData("localhost:1234/v1", "m", 120, null, "BaseUrl")]
+    [InlineData("ftp://localhost/v1", "m", 120, null, "BaseUrl")]
+    [InlineData("http://localhost:1234/v1", " ", 120, null, "Model")]
+    [InlineData("http://localhost:1234/v1", "m", 0, null, "TimeoutSeconds")]
+    [InlineData("http://localhost:1234/v1", "m", 120, 2.5, "Temperature")]
+    public void ModelServerSettings_ThatCannotBeUsed_TurnReadingOff_AndSayWhy(string? url, string model, int timeout, double? temperature, string named)
     {
-        var setup = SetupOf(new RecognitionOptions { Provider = "Reader", Reader = { BaseUrl = url, ApiKey = key } });
+        var setup = SetupOf(ModelServer(o => { o.BaseUrl = url; o.Model = model; o.TimeoutSeconds = timeout; o.Temperature = temperature; }));
 
         Assert.Equal((false, true), (setup.Enabled, setup.Requested));
-        Assert.Contains(setup.Problems, p => p.Contains(named));
+        Assert.Contains("Recognition:OpenAiCompatible:" + named, Assert.Single(setup.Problems));
     }
 
     [Fact]
     public void Settings_OutOfRange_OrAnUnknownProvider_TurnReadingOff()
     {
-        var limits = SetupOf(new RecognitionOptions { Provider = "Reader", MinConfidence = 1.5, MaxConcurrent = 0, Reader = { BaseUrl = "http://r", ApiKey = "k", TimeoutSeconds = 0 } });
+        var options = ModelServer(o => o.TimeoutSeconds = 0);
+        options.MinConfidence = 1.5;
+        options.MaxConcurrent = 0;
+        var limits = SetupOf(options);
         var unknown = SetupOf(new RecognitionOptions { Provider = "Google" });
 
         Assert.Equal(3, limits.Problems.Count);
         Assert.Equal((RecognitionProviderKind.None, false, true), (unknown.Kind, unknown.Enabled, unknown.Requested));
         Assert.Contains("Google", Assert.Single(unknown.Problems));
+    }
+
+    [Fact]
+    public void ThePromptFile_WinsOverThePromptSetting_AndEitherReplacesTheBuiltInOne()
+    {
+        var file = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(file, "  From the file.\n");
+
+            Assert.Equal("From the file.", SetupOf(ModelServer(o => { o.SystemPrompt = "Inline."; o.SystemPromptFile = file; })).SystemPrompt);
+            Assert.Equal("Inline.", SetupOf(ModelServer(o => o.SystemPrompt = " Inline. ")).SystemPrompt);
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Fact]
+    public void APromptFileThatIsMissing_Empty_OrFarTooLarge_TurnsReadingOff_WithoutQuotingIt()
+    {
+        var empty = Path.GetTempFileName();
+        var huge = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(huge, new string('x', RecognitionSetup.MaxPromptFileBytes + 1));
+            foreach (var path in new[] { Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")), empty, huge })
+            {
+                var setup = SetupOf(ModelServer(o => o.SystemPromptFile = path));
+
+                Assert.False(setup.Enabled);
+                var problem = Assert.Single(setup.Problems);
+                Assert.Contains("SystemPromptFile", problem);
+                Assert.DoesNotContain("xxx", problem);
+            }
+        }
+        finally
+        {
+            File.Delete(empty);
+            File.Delete(huge);
+        }
     }
 
     // ---- normalising ---------------------------------------------------------------------------------------

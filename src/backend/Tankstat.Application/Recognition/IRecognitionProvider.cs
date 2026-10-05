@@ -3,12 +3,12 @@ using Tankstat.Domain.Recognition;
 namespace Tankstat.Application.Recognition;
 
 /// <summary>
-/// Port to a service that reads values from photos: the optional photo reader, later perhaps third-party services. Only the server
-/// talks to it, never the browser. Infrastructure implements it and the <c>Recognition</c> settings choose which one.
+/// Port to a service that reads values from photos: a vision model behind an OpenAI-compatible API. Only the server talks to it, never the
+/// browser. Infrastructure implements it and the <c>Recognition</c> settings turn it on.
 /// </summary>
 public interface IRecognitionProvider
 {
-    /// <summary>A short name kept with each reading (<c>reader</c>).</summary>
+    /// <summary>A short name kept with each reading (<c>openai-compatible</c>).</summary>
     string Name { get; }
 
     /// <summary>False when no provider is set up or its settings cannot be used: then nothing is queued or read at all.</summary>

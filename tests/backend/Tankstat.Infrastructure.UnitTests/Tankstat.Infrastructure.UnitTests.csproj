@@ -19,9 +19,9 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
-  <!-- The photo reader's contract examples (shared with the reader's own tests): the adapter must understand exactly these. -->
+  <!-- Answers as OpenAI-compatible servers write them (no producer in this repository): the adapter must understand exactly these. -->
   <ItemGroup>
-    <None Include="..\contracts\reader\*.json" LinkBase="contracts" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\contracts\openai-compatible\*.json" LinkBase="contracts\openai-compatible" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

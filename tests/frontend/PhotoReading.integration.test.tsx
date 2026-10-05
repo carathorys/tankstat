@@ -2,6 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
+import { resizeImage } from '../../src/frontend/pictures/resizeImage.ts'
 import { server } from './server.ts'
 import {
   fakeExpense,
@@ -84,6 +85,7 @@ it('fills a new refuelling from a receipt photo read on the server, marks what i
   expect(within(dialog).queryByText('Reading…')).not.toBeInTheDocument()
   expect(photos.state.draftQueries).toEqual(['?form=refueling&locale=en'])
   expect(recognition.state.asked.at(-1)).toEqual(['draft1'])
+  expect(vi.mocked(resizeImage)).toHaveBeenCalledWith(expect.anything(), { maxEdge: 1600, format: 'jpeg' }) // a photo that is read goes as JPEG
 
   await ui.type(within(dialog).getByLabelText(/^Odometer/), '12500')
   await ui.click(within(dialog).getByRole('button', { name: 'Add refuelling' }))
@@ -92,6 +94,16 @@ it('fills a new refuelling from a receipt photo read on the server, marks what i
   expect(state.calls.LogRefueling).toEqual([
     { input: expect.objectContaining({ date: '2026-09-17', volume: 38.52, totalCost: 24687, currency: 'EUR', odometer: 12500, photoIds: ['draft1'] }) },
   ])
+})
+
+it('keeps the smaller WebP where the server says photo reading is off', async () => {
+  const { ui, recognition } = setupRefuelings(fakeRecognition({ available: false }))
+  const dialog = await openAddRefueling(ui)
+  await waitFor(() => expect(recognition.state.statusAsked).toBeGreaterThan(0)) // the dialog asked, and was told "off"
+
+  await ui.upload(camera(dialog), photo())
+
+  await waitFor(() => expect(vi.mocked(resizeImage)).toHaveBeenCalledWith(expect.anything(), { maxEdge: 1600 }))
 })
 
 it('never overwrites what the user typed: it offers the photo value, and "Use it" takes it', async () => {
@@ -143,13 +155,13 @@ it('without photo reading on the server, photos are only uploaded and nothing wa
   expect(within(dialog).getByLabelText(/^Volume/)).toHaveValue('')
 })
 
-it('asks again after an upload when photo reading was off as the dialog opened, and fills in once the reader is back', async () => {
+it('asks again after an upload when photo reading was off as the dialog opened, and fills in once the provider is back', async () => {
   const { ui, recognition } = setupRefuelings(fakeRecognition({ available: false, results: [fuelReceipt], queuedPolls: 0 }))
   const dialog = await openAddRefueling(ui)
 
   await ui.upload(camera(dialog), photo())
   await within(dialog).findByRole('button', { name: 'Remove photo 1' })
-  recognition.state.available = true // the reader was only briefly unreachable; the server read the queued photo meanwhile
+  recognition.state.available = true // the provider was only briefly unreachable; the server read the queued photo meanwhile
 
   await waitFor(() => expect(within(dialog).getByLabelText(/^Volume/)).toHaveValue('38.52'), { timeout: 8000 })
   expect(recognition.state.asked.at(-1)).toEqual(['draft1'])

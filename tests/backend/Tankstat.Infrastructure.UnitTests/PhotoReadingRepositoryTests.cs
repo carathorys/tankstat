@@ -27,12 +27,12 @@ public class PhotoReadingRepositoryTests
         var repo = db.Get<IPhotoReadingRepository>();
         var reading = (await repo.ClaimAsync((await Queue(db)).Id, Now, default))!;
 
-        reading.Complete("reader", "rules-1", DocumentKind.FuelReceipt,
+        reading.Complete("openai-compatible", "model-1", DocumentKind.FuelReceipt,
             [new(ReadingFieldName.Total, "24669", 0.93, ValueSource.Read), new(ReadingFieldName.UnitPrice, "640.4", 0.5, ValueSource.Derived)], Now.AddSeconds(2));
         await repo.SaveAsync(reading, default);
         var loaded = Assert.Single(await repo.FindManyAsync([reading.Id, Guid.NewGuid()], default));
 
-        Assert.Equal((ReadingStatus.Read, DocumentKind.FuelReceipt, "reader", "rules-1", 1, "hu", (long?)123_456, "HUF", Today),
+        Assert.Equal((ReadingStatus.Read, DocumentKind.FuelReceipt, "openai-compatible", "model-1", 1, "hu", (long?)123_456, "HUF", Today),
             (loaded.Status, loaded.Kind, loaded.Provider, loaded.ModelVersion, loaded.Attempts, loaded.Locale, loaded.LastOdometer, loaded.Currency, loaded.Today));
         Assert.Equal(reading.Values, loaded.Values);
         Assert.Equal((Now.AddSeconds(2), Now), (loaded.ReadAt, loaded.ClaimedAt));
@@ -107,7 +107,7 @@ public class PhotoReadingRepositoryTests
         var gone = (await repo.ClaimAsync((await Queue(db)).Id, Now, default))!;
         var removed = await Queue(db);
         await db.Get<IImageRepository>().RemoveAsync(gone.Id, default);
-        gone.Complete("reader", "rules-1", DocumentKind.Unknown, [], Now);
+        gone.Complete("openai-compatible", "model-1", DocumentKind.Unknown, [], Now);
 
         await repo.SaveAsync(gone, default);
         await repo.RemoveAsync(removed.Id, default);

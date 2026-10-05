@@ -3,6 +3,8 @@ export interface ResizeOptions {
   maxEdge: number
   /** Crop to a centred square (profile pictures). */
   square?: boolean
+  /** Encode as JPEG instead of WebP: what every picture reader decodes (a model server may not know WebP), at a somewhat larger size. */
+  format?: 'jpeg'
 }
 
 export class UnreadableImageError extends Error {
@@ -14,9 +16,9 @@ export class UnreadableImageError extends Error {
 
 /**
  * Makes a picture small enough to upload before it leaves the browser: decoded, scaled down (never up), optionally cropped to a
- * square and re-encoded as WebP (JPEG where WebP is not available). Re-encoding also drops metadata such as GPS positions.
+ * square and re-encoded as WebP (JPEG where WebP is not available, or when asked for). Re-encoding also drops metadata such as GPS positions.
  */
-export async function resizeImage(file: Blob, { maxEdge, square = false }: ResizeOptions): Promise<Blob> {
+export async function resizeImage(file: Blob, { maxEdge, square = false, format }: ResizeOptions): Promise<Blob> {
   let bitmap: ImageBitmap
   try {
     bitmap = await createImageBitmap(file)
@@ -40,19 +42,20 @@ export async function resizeImage(file: Blob, { maxEdge, square = false }: Resiz
     if (!context) throw new UnreadableImageError()
     context.drawImage(bitmap, source.x, source.y, source.width, source.height, 0, 0, width, height)
 
-    return await encode(canvas)
+    return await encode(canvas, format)
   } finally {
     bitmap.close()
   }
 }
 
-function encode(canvas: HTMLCanvasElement): Promise<Blob> {
+async function encode(canvas: HTMLCanvasElement, format?: 'jpeg'): Promise<Blob> {
   const toBlob = (type: string) => new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, 0.85))
-  return toBlob('image/webp').then(async (webp) => {
+  if (format !== 'jpeg') {
     // Browsers that cannot encode WebP silently answer with PNG; ask for JPEG then.
+    const webp = await toBlob('image/webp')
     if (webp?.type === 'image/webp') return webp
-    const jpeg = await toBlob('image/jpeg')
-    if (!jpeg) throw new UnreadableImageError()
-    return jpeg
-  })
+  }
+  const jpeg = await toBlob('image/jpeg')
+  if (!jpeg) throw new UnreadableImageError()
+  return jpeg
 }

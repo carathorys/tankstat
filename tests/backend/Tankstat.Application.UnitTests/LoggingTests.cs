@@ -221,7 +221,7 @@ public class LoggingTests
     // ---- a condition is reported when it changes, not on every check -------------------------------------------
 
     [Fact]
-    public async Task TheReaderGoingAndComingBack_IsLoggedOnce_EachWay()
+    public async Task TheProviderGoingAndComingBack_IsLoggedOnce_EachWay()
     {
         var w = new World();
         async Task Check(bool healthy)
@@ -242,10 +242,10 @@ public class LoggingTests
     }
 
     [Fact]
-    public async Task AReaderThatCannotBeUsed_IsAWarning_WithTheCauseTheProviderGives()
+    public async Task AProviderThatCannotBeUsed_IsAWarning_WithTheCauseTheProviderGives()
     {
         var w = new World();
-        w.Recognizer.HealthFailure = new RecognitionUnavailableException("The reader answered 503 to its health check.");
+        w.Recognizer.HealthFailure = new RecognitionUnavailableException("The model server answered 503 when asked for its models.");
 
         Assert.False(await w.Availability.IsAvailableAsync(default));
 
@@ -254,7 +254,27 @@ public class LoggingTests
     }
 
     [Fact]
-    public async Task WithoutAReader_NothingIsSaidAboutIt()
+    public async Task AProviderThatStaysUnavailable_ForAnotherReason_IsAWarningAgain()
+    {
+        var w = new World();
+        async Task Check(string? problem)
+        {
+            w.Recognizer.HealthFailure = problem is null ? null : new RecognitionUnavailableException(problem);
+            w.Clock.Advance(RecognitionAvailability.CacheFor + TimeSpan.FromSeconds(1));
+            await w.Availability.IsAvailableAsync(default);
+        }
+
+        await Check("The model server could not be reached."); // started before the server
+        await Check("The model server could not be reached.");
+        await Check("The model server does not list the model: Recognition:OpenAiCompatible:Model must be one of the names GET /v1/models shows."); // up now, but misnamed
+        await Check("The model server does not list the model: Recognition:OpenAiCompatible:Model must be one of the names GET /v1/models shows.");
+        await Check(null);
+
+        Assert.Equal([LogLevel.Warning, LogLevel.Warning, LogLevel.Information], w.Log.Entries.Select(e => e.Level));
+    }
+
+    [Fact]
+    public async Task WithoutAProvider_NothingIsSaidAboutIt()
     {
         var w = new World();
         w.Recognizer.Configured = false;

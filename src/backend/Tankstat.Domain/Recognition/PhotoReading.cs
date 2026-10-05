@@ -9,11 +9,11 @@ public enum ReadingPurpose
 
 public enum ReadingStatus
 {
-    /// <summary>Waiting for the reader (again, after a failed attempt, once <see cref="PhotoReading.DueAt"/> has come).</summary>
+    /// <summary>Waiting for the provider (again, after a failed attempt, once <see cref="PhotoReading.DueAt"/> has come).</summary>
     Queued,
     Reading,
     Read,
-    /// <summary>Given up: the photo cannot be read, or the reader stayed unavailable for every attempt.</summary>
+    /// <summary>Given up: the photo cannot be read, or the provider stayed unavailable for every attempt.</summary>
     Failed,
 }
 
@@ -38,7 +38,7 @@ public enum ReadingFieldName
     Title,
 }
 
-/// <summary>Where a value came from: read on the photo, worked out from other values, or the hint the reader was given back.</summary>
+/// <summary>Where a value came from: read on the photo, worked out from other values, or the hint it was given coming back (readings made by the former photo reader hold some; they are never filled in).</summary>
 public enum ValueSource
 {
     Read,
@@ -48,7 +48,7 @@ public enum ValueSource
 
 /// <summary>
 /// One value read from a photo, normalised: invariant numbers (<c>38.52</c>), ISO dates, upper-case currency codes, trimmed titles.
-/// <see cref="Confidence"/> (0 to 1) is how sure the reader was.
+/// <see cref="Confidence"/> (0 to 1) is how sure the provider was.
 /// </summary>
 public sealed record ReadingValue(ReadingFieldName Name, string Value, double Confidence, ValueSource Source)
 {
@@ -58,12 +58,15 @@ public sealed record ReadingValue(ReadingFieldName Name, string Value, double Co
 /// <summary>
 /// The reading of one uploaded photo by the recognition provider (an optional, separate service): queued when the photo arrives,
 /// read in the background, then kept with what was found. Its id is the picture's (<c>StoredImage</c>) id, and it goes away with the
-/// picture. The hints for the reader are taken when the photo is uploaded, because the background worker has no user to ask.
+/// picture. The hints the reading is checked against are taken when the photo is uploaded, because the background worker has no user to ask.
 /// </summary>
 public sealed class PhotoReading
 {
-    /// <summary>Attempts before a reading counts as failed; a busy or unreachable reader is tried again later.</summary>
+    /// <summary>Attempts before a reading counts as failed; a busy or unreachable provider is tried again later.</summary>
     public const int MaxAttempts = 5;
+
+    /// <summary>What is kept of a model's name: a server can call one by a whole path, the column holds this much.</summary>
+    public const int MaxModelVersionLength = 64;
 
     private PhotoReading() { } // EF Core
 
@@ -90,7 +93,7 @@ public sealed class PhotoReading
     public DateTimeOffset? ReadAt { get; private set; }
 
     public DocumentKind? Kind { get; private set; }
-    /// <summary>Who read it (<c>reader</c>, later perhaps a third-party service) and with which model, to tell readings apart later.</summary>
+    /// <summary>Who read it (<c>openai-compatible</c>: a model behind such an API) and with which model, to tell readings apart later.</summary>
     public string? Provider { get; private set; }
     public string? ModelVersion { get; private set; }
     public IReadOnlyList<ReadingValue> Values { get; private set; } = [];
@@ -129,20 +132,20 @@ public sealed class PhotoReading
         ClaimedAt = now;
     }
 
-    /// <summary>The reader answered. A kind the photo may not show (a receipt in the odometer-only case) counts as unknown, without values.</summary>
+    /// <summary>The provider answered. A kind the photo may not show (a receipt in the odometer-only case) counts as unknown, without values.</summary>
     public void Complete(string provider, string modelVersion, DocumentKind kind, IEnumerable<ReadingValue> values, DateTimeOffset now)
     {
         RequireReading();
         var allowed = kind != DocumentKind.Unknown && AllowedKinds.Contains(kind);
         Status = ReadingStatus.Read;
         Provider = provider;
-        ModelVersion = modelVersion;
+        ModelVersion = modelVersion.Length <= MaxModelVersionLength ? modelVersion : modelVersion[..MaxModelVersionLength];
         Kind = allowed ? kind : DocumentKind.Unknown;
         Values = allowed ? values.GroupBy(v => v.Name).Select(g => g.MaxBy(v => v.Confidence)!).ToList() : [];
         ReadAt = now;
     }
 
-    /// <summary>The reader could not read it now (unreachable, busy, timed out): queued again a while later, or failed after the last attempt.</summary>
+    /// <summary>The provider could not read it now (unreachable, busy, timed out): queued again a while later, or failed after the last attempt.</summary>
     public void Retry(DateTimeOffset now)
     {
         RequireReading();
@@ -155,7 +158,7 @@ public sealed class PhotoReading
         DueAt = now + Backoff(Attempts);
     }
 
-    /// <summary>The photo cannot be read at all (the reader refused it): no further attempts.</summary>
+    /// <summary>The photo cannot be read at all (the provider refused it): no further attempts.</summary>
     public void Fail()
     {
         RequireReading();

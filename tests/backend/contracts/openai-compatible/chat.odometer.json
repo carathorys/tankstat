@@ -1,0 +1,17 @@
+{
+  "id": "chatcmpl-lmstudio",
+  "object": "chat.completion",
+  "created": 1759650001,
+  "model": "qwen2.5-vl-7b-instruct",
+  "choices": [
+    {
+      "index": 0,
+      "message": { "role": "assistant", "content": "{\"kind\":\"odometer\",\"fields\":[{\"name\":\"odometer\",\"value\":\"123789\",\"confidence\":0.92}]}" },
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": { "prompt_tokens": 1210, "completion_tokens": 31, "total_tokens": 1241 },
+  "stats": {},
+  "system_fingerprint": "qwen2.5-vl-7b-instruct"
+}

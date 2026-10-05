@@ -31,7 +31,7 @@ public sealed class RecognitionService(
     }
 
     /// <summary>
-    /// Queues the reading of a draft the current user just uploaded, with the hints the reader needs (the background worker that reads it
+    /// Queues the reading of a draft the current user just uploaded, with the hints the checks need (the background worker that reads it
     /// has no user to ask). Nothing happens when no provider is set up, or when the draft is not the user's.
     /// </summary>
     /// <param name="locale">The language the user works in (how numbers and dates are written); unknown ones count as English.</param>

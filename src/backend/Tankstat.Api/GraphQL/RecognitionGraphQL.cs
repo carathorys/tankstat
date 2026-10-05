@@ -4,10 +4,10 @@ using Tankstat.Domain.Recognition;
 
 namespace Tankstat.Api.GraphQL;
 
-/// <summary>Whether photos picked in the add dialogs are read on the server (the optional photo reader is set up and answers).</summary>
+/// <summary>Whether photos picked in the add dialogs are read on the server (a provider is set up and answers).</summary>
 public sealed record RecognitionStatusInfo(bool Available);
 
-/// <summary>A value read from a photo: invariant text (<c>38.52</c>, <c>2026-09-17</c>, <c>HUF</c>) and how sure the reader was (0 to 1).</summary>
+/// <summary>A value read from a photo: invariant text (<c>38.52</c>, <c>2026-09-17</c>, <c>HUF</c>) and how sure the provider was (0 to 1).</summary>
 public sealed record ReadingValueInfo(ReadingFieldName Name, string Value, double Confidence);
 
 /// <summary>What became of reading a photo; <c>values</c> holds only what is worth filling in.</summary>

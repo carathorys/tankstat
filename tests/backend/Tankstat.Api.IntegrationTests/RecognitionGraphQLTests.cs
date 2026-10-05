@@ -2,16 +2,18 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Tankstat.Application.Recognition;
 using Tankstat.Domain.Recognition;
+using Tankstat.TestSupport;
 
 namespace Tankstat.Api.IntegrationTests;
 
 /// <summary>
-/// Photo reading through the real host: the draft upload queues the photo, the background worker reads it through the provider (a fake
-/// here, standing in for the reader service) and GraphQL hands the dialog what was found.
+/// Photo reading through the real host: the draft upload queues the photo, the background worker reads it through the provider (a
+/// fake one, or the real adapter against a fake model server) and GraphQL hands the dialog what was found.
 /// </summary>
 [Collection(ApiCollection.Name)]
 public class RecognitionGraphQLTests
@@ -20,8 +22,8 @@ public class RecognitionGraphQLTests
 
     private const string DraftsQuery = "query($ids: [UUID!]!) { photoDrafts(ids: $ids) { id url reading { status kind values { name value confidence } } } }";
 
-    /// <summary>Answers like the reader would, without a network.</summary>
-    private sealed class FakeReader : IRecognitionProvider
+    /// <summary>Answers like a model would, without a network.</summary>
+    private sealed class FakeProvider : IRecognitionProvider
     {
         public ConcurrentQueue<(RecognitionRequest Request, byte[] Image)> Requests { get; } = new();
         public Func<RecognitionRequest, RecognitionResult> Answer { get; set; } = _ => new("fake-1", DocumentKind.FuelReceipt,
@@ -44,15 +46,15 @@ public class RecognitionGraphQLTests
         }
     }
 
-    private static TestApp WithReading(FakeReader reader) => new(new Dictionary<string, string?>
+    private static TestApp WithReading(FakeProvider provider) => new(new Dictionary<string, string?>
     {
         ["Auth:Mode"] = "Standalone",
         ["Auth:Standalone:AdminEmail"] = "root@example.com",
         ["Auth:Standalone:AdminPassword"] = "initial-password-1",
-        ["Recognition:Provider"] = "Reader",
-        ["Recognition:Reader:BaseUrl"] = "http://reader.invalid:8081",
-        ["Recognition:Reader:ApiKey"] = "secret",
-    }, s => s.AddSingleton<IRecognitionProvider>(reader));
+        ["Recognition:Provider"] = "OpenAiCompatible",
+        ["Recognition:OpenAiCompatible:BaseUrl"] = "http://model.invalid:1234/v1",
+        ["Recognition:OpenAiCompatible:Model"] = "test-vision",
+    }, s => s.AddSingleton<IRecognitionProvider>(provider));
 
     private static async Task<(HttpClient Admin, string VehicleId)> Signed(TestApp app)
     {
@@ -87,8 +89,8 @@ public class RecognitionGraphQLTests
     [Fact]
     public async Task APhotoPickedForARefueling_IsReadOnTheServer_AndItsSureValuesComeBack()
     {
-        var reader = new FakeReader();
-        using var app = WithReading(reader);
+        var provider = new FakeProvider();
+        using var app = WithReading(provider);
         var (admin, vehicle) = await Signed(app);
         await admin.Gql("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }",
             new { i = new { vehicleId = vehicle, date = "2026-09-02", volume = 40, totalCost = 60, currency = "HUF", odometer = 12_345, isFullTank = true } });
@@ -100,7 +102,7 @@ public class RecognitionGraphQLTests
         var reading = draft.GetProperty("reading");
         Assert.Equal(("READ", "FUEL_RECEIPT"), (reading.GetProperty("status").GetString(), reading.GetProperty("kind").GetString()));
         Assert.Equal(["TOTAL=24687", "VOLUME=38.52"], reading.GetProperty("values").EnumerateArray().Select(v => $"{v.GetProperty("name").GetString()}={v.GetProperty("value").GetString()}"));
-        var (request, image) = Assert.Single(reader.Requests);
+        var (request, image) = Assert.Single(provider.Requests);
         Assert.Equal(Png(), image);
         Assert.Equal(("image/png", "hu", (long?)12_345, "HUF"), (request.ContentType, request.Locale, request.LastOdometer, request.Currency));
         Assert.Equal([DocumentKind.Odometer, DocumentKind.FuelReceipt], request.Kinds.Order());
@@ -110,15 +112,15 @@ public class RecognitionGraphQLTests
     [Fact]
     public async Task APhotoForAnExpense_MayShowAnExpenseReceipt_AndOneUploadedWithoutAForm_IsNotRead()
     {
-        var reader = new FakeReader();
-        using var app = WithReading(reader);
+        var provider = new FakeProvider();
+        using var app = WithReading(provider);
         var (admin, vehicle) = await Signed(app);
 
         var expense = await UploadDraft(admin, vehicle, "?form=expense&locale=de");
         var plain = await UploadDraft(admin, vehicle, "");
         await ReadDraft(admin, expense);
 
-        var (request, _) = Assert.Single(reader.Requests);
+        var (request, _) = Assert.Single(provider.Requests);
         Assert.Equal([DocumentKind.Odometer, DocumentKind.ExpenseReceipt], request.Kinds.Order());
         Assert.Equal("de", request.Locale);
         Assert.Equal(JsonValueKind.Null, (await Drafts(admin, plain))[0].GetProperty("reading").ValueKind);
@@ -127,7 +129,7 @@ public class RecognitionGraphQLTests
     [Fact]
     public async Task OnlyTheUploader_SeesTheirDraftsAndReadings_AndOnlySignedInUsersAsk()
     {
-        using var app = WithReading(new FakeReader());
+        using var app = WithReading(new FakeProvider());
         var (admin, vehicle) = await Signed(app);
         var id = await UploadDraft(admin, vehicle);
         var created = (await admin.Gql("mutation($i: CreateUserInput!) { createUser(input: $i) { reset { token } } }", new { i = new { email = "bob@example.com", displayName = "Bob", isAdmin = false } })).Data();
@@ -170,12 +172,12 @@ public class RecognitionGraphQLTests
     [Fact]
     public async Task ARefuelingSavedWhileItsPhotoIsRead_IsFilledInLater_AndWaitsForAReview()
     {
-        var reader = new FakeReader
+        var provider = new FakeProvider
         {
             Gate = new SemaphoreSlim(0),
             Answer = _ => new("fake-1", DocumentKind.Odometer, [new(ReadingFieldName.Odometer, "315193", 0.72, ValueSource.Read)]),
         };
-        using var app = WithReading(reader);
+        using var app = WithReading(provider);
         var (admin, vehicle) = await Signed(app);
         var photo = await UploadDraft(admin, vehicle);
 
@@ -184,7 +186,7 @@ public class RecognitionGraphQLTests
             .Data().GetProperty("logRefueling");
         Assert.Equal((JsonValueKind.Null, "AWAITING_PHOTOS"), (saved.GetProperty("odometer").ValueKind, saved.GetProperty("reviewState").GetString()));
 
-        reader.Gate.Release();
+        provider.Gate.Release();
         var id = saved.GetProperty("id").GetString()!;
         var log = await WaitForReview(admin, id);
 
@@ -202,7 +204,7 @@ public class RecognitionGraphQLTests
     [Fact]
     public async Task WithoutAPhotoBeingRead_ALogNeedsEveryValue()
     {
-        using var app = WithReading(new FakeReader());
+        using var app = WithReading(new FakeProvider());
         var (admin, vehicle) = await Signed(app);
 
         var body = await admin.Gql("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }",
@@ -210,5 +212,85 @@ public class RecognitionGraphQLTests
 
         Assert.Equal("VALIDATION_FAILED", body.ErrorCode());
         Assert.Contains("log.valuesRequired", body.ToString());
+    }
+
+    // ---- a model behind an OpenAI-compatible API, through the real adapter ---------------------------------------
+
+    /// <summary>Stands in for an OpenAI-compatible server behind the host's own HTTP client, so the real adapter runs from end to end.</summary>
+    private sealed class FakeModelServer : HttpMessageHandler
+    {
+        private const string Answer = """
+            { "model": "test-vision", "choices": [ { "message": { "role": "assistant", "content": "{\"kind\":\"fuel-receipt\",\"fields\":[{\"name\":\"total\",\"value\":\"24687\",\"confidence\":0.95},{\"name\":\"volume\",\"value\":\"38.52\",\"confidence\":0.9},{\"name\":\"unitPrice\",\"value\":\"640.9\",\"confidence\":0.9},{\"name\":\"currency\",\"value\":\"HUF\",\"confidence\":0.9},{\"name\":\"date\",\"value\":\"2026-09-17\",\"confidence\":0.4}]}" }, "finish_reason": "stop" } ] }
+            """;
+
+        public ConcurrentQueue<(HttpRequestMessage Request, string Body)> Requests { get; } = new();
+        public HttpStatusCode ChatStatus { get; set; } = HttpStatusCode.OK;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Requests.Enqueue((request, request.Content is null ? "" : await request.Content.ReadAsStringAsync(ct)));
+            var models = request.RequestUri!.AbsolutePath.EndsWith("/models", StringComparison.Ordinal);
+            var body = models ? """{ "object": "list", "data": [ { "id": "test-vision" }, { "id": "other" } ] }""" : Answer;
+            return new HttpResponseMessage(models ? HttpStatusCode.OK : ChatStatus) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+        }
+    }
+
+    private static TestApp WithModel(FakeModelServer server, string key = "secret-key") => new(new Dictionary<string, string?>
+    {
+        ["Auth:Mode"] = "Standalone",
+        ["Auth:Standalone:AdminEmail"] = "root@example.com",
+        ["Auth:Standalone:AdminPassword"] = "initial-password-1",
+        ["Recognition:Provider"] = "OpenAiCompatible",
+        ["Recognition:OpenAiCompatible:BaseUrl"] = "http://model.invalid:1234/v1",
+        ["Recognition:OpenAiCompatible:ApiKey"] = key,
+        ["Recognition:OpenAiCompatible:Model"] = "test-vision",
+        ["Recognition:OpenAiCompatible:SystemPrompt"] = "Custom prompt for the test.",
+    }, s => s.ConfigureHttpClientDefaults(b => b.ConfigurePrimaryHttpMessageHandler(() => server))); // the adapter's client name is internal: every client goes to the fake
+
+    private static async Task<LogEntry> WorkerSaid(TestApp app, string outcome)
+    {
+        for (var i = 0; i < 100; i++)
+        {
+            var line = app.Log.Entries.FirstOrDefault(e => e.Category.EndsWith("RecognitionWorker", StringComparison.Ordinal) && e.Values.GetValueOrDefault("Outcome")?.ToString() == outcome);
+            if (line is not null) return line;
+            await Task.Delay(100);
+        }
+        throw new TimeoutException($"The worker never said a reading was {outcome}.");
+    }
+
+    [Fact]
+    public async Task AModelBehindAnOpenAiCompatibleApi_ReadsThePhoto_ThroughTheRealAdapter_AndNothingSecretReachesTheLog()
+    {
+        var server = new FakeModelServer();
+        using var app = WithModel(server);
+        var (admin, vehicle) = await Signed(app);
+
+        var id = await UploadDraft(admin, vehicle);
+        var draft = await ReadDraft(admin, id);
+
+        var reading = draft.GetProperty("reading");
+        Assert.Equal(("READ", "FUEL_RECEIPT"), (reading.GetProperty("status").GetString(), reading.GetProperty("kind").GetString()));
+        Assert.Equal(["TOTAL=24687", "VOLUME=38.52", "UNIT_PRICE=640.9", "CURRENCY=HUF"], // the date was too unsure to be offered
+            reading.GetProperty("values").EnumerateArray().Select(v => $"{v.GetProperty("name").GetString()}={v.GetProperty("value").GetString()}"));
+        var (request, body) = Assert.Single(server.Requests, r => r.Request.Method == HttpMethod.Post);
+        Assert.Equal(("http://model.invalid:1234/v1/chat/completions", "Bearer secret-key"), (request.RequestUri!.ToString(), request.Headers.Authorization!.ToString()));
+        Assert.Contains("Custom prompt for the test.", body);
+        Assert.Contains("data:image/png;base64," + Convert.ToBase64String(Png()), body);
+        Assert.Contains(server.Requests, r => r.Request.Method == HttpMethod.Get && r.Request.RequestUri!.AbsolutePath.EndsWith("/models", StringComparison.Ordinal));
+        foreach (var secret in new[] { "secret-key", "Custom prompt", "24687", "38.52", "640.9" }) Assert.False(app.Log.Mentions(secret), secret);
+    }
+
+    [Fact]
+    public async Task AKeyTheModelServerRefuses_IsSaidInTheLog_ByItsSettingsName_NeverByItsValue()
+    {
+        var server = new FakeModelServer { ChatStatus = HttpStatusCode.Unauthorized };
+        using var app = WithModel(server, key: "wrong-secret-key");
+        var (admin, vehicle) = await Signed(app);
+
+        await UploadDraft(admin, vehicle);
+        var line = await WorkerSaid(app, "Retrying");
+
+        Assert.Contains("Recognition:OpenAiCompatible:ApiKey", line.Message);
+        Assert.False(app.Log.Mentions("wrong-secret-key"));
     }
 }

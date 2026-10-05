@@ -53,10 +53,10 @@ public class PhotoReadingTests
     {
         var reading = Claimed();
 
-        reading.Complete("reader", "rules-1", DocumentKind.FuelReceipt,
+        reading.Complete("openai-compatible", "model-1", DocumentKind.FuelReceipt,
             [Value(ReadingFieldName.Total, "24669", 0.7), Value(ReadingFieldName.Total, "24699", 0.95), Value(ReadingFieldName.Volume, "38.52")], Now.AddSeconds(3));
 
-        Assert.Equal((ReadingStatus.Read, DocumentKind.FuelReceipt, "reader", "rules-1", (DateTimeOffset?)Now.AddSeconds(3), 1),
+        Assert.Equal((ReadingStatus.Read, DocumentKind.FuelReceipt, "openai-compatible", "model-1", (DateTimeOffset?)Now.AddSeconds(3), 1),
             (reading.Status, reading.Kind, reading.Provider, reading.ModelVersion, reading.ReadAt, reading.Attempts));
         Assert.Equal(["24699", "38.52"], reading.Values.Select(v => v.Value));
     }
@@ -66,10 +66,20 @@ public class PhotoReadingTests
     {
         var reading = Claimed(ReadingPurpose.Expense);
 
-        reading.Complete("reader", "rules-1", DocumentKind.FuelReceipt, [Value(ReadingFieldName.Total, "100")], Now);
+        reading.Complete("openai-compatible", "model-1", DocumentKind.FuelReceipt, [Value(ReadingFieldName.Total, "100")], Now);
 
         Assert.Equal((ReadingStatus.Read, DocumentKind.Unknown), (reading.Status, reading.Kind));
         Assert.Empty(reading.Values);
+    }
+
+    [Fact]
+    public void AModelNamedByAWholePath_IsKeptAsFarAsTheColumnHolds()
+    {
+        var reading = Claimed();
+
+        reading.Complete("openai-compatible", new string('m', 80), DocumentKind.Unknown, [], Now);
+
+        Assert.Equal(new string('m', PhotoReading.MaxModelVersionLength), reading.ModelVersion);
     }
 
     [Fact]
@@ -137,9 +147,9 @@ public class PhotoReadingTests
     {
         var queued = Queued();
         var read = Claimed();
-        read.Complete("reader", "rules-1", DocumentKind.Unknown, [], Now);
+        read.Complete("openai-compatible", "model-1", DocumentKind.Unknown, [], Now);
 
-        Assert.Throws<InvalidOperationException>(() => queued.Complete("reader", "rules-1", DocumentKind.Unknown, [], Now));
+        Assert.Throws<InvalidOperationException>(() => queued.Complete("openai-compatible", "model-1", DocumentKind.Unknown, [], Now));
         Assert.Throws<InvalidOperationException>(() => queued.Retry(Now));
         Assert.Throws<InvalidOperationException>(() => read.Claim(Now));
         Assert.Throws<InvalidOperationException>(read.Fail);

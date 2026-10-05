@@ -516,7 +516,7 @@ internal sealed class World
     public UserService UserService { get; }
     public AccessAdminService AccessAdmin { get; }
     public Notifier Notifier { get; }
-    public RecognitionOptions RecognitionOptions { get; } = new() { Provider = "Reader", Reader = { BaseUrl = "http://reader:8081", ApiKey = "key" } };
+    public RecognitionOptions RecognitionOptions { get; } = new() { Provider = "OpenAiCompatible", OpenAiCompatible = { BaseUrl = "http://localhost:1234/v1", Model = "test-model" } };
     public FakeRecognitionProvider Recognizer { get; } = new();
     public InMemoryPhotoReadings Readings { get; } = new();
     public FakeRecognitionSignal Signal { get; } = new();

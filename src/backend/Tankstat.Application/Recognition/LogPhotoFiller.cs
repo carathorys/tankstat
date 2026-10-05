@@ -15,7 +15,7 @@ namespace Tankstat.Application.Recognition;
 /// <summary>
 /// Fills in logs that were saved while a photo of theirs was still being read (see <see cref="ReviewState"/>). It runs without a user:
 /// right after such a log is saved (readings that finished before the save) and from the background worker whenever a reading of a log
-/// photo finishes. Only values the reader was sure enough of are taken, only empty values are filled, and the person who logged it is
+/// photo finishes. Only values the provider was sure enough of are taken, only empty values are filled, and the person who logged it is
 /// told through a notification, both when values were filled in (to check them) and when the reading left values missing.
 /// </summary>
 public sealed class LogPhotoFiller(
