@@ -79,10 +79,10 @@ The app writes its log to the console (`docker logs`, the terminal) with the sta
 | --- | --- |
 | `Error` | an unexpected error, with its exception and stack trace (the client only sees "Unexpected Execution Error") |
 | `Warning` | a refused request (no access), a failed sign-in, a failed password change, a lockout, a refused sign-in through an identity provider, a malformed or untrusted proxy header, a database or model server that cannot be used, an upload folder that could not be removed, a photo that could not be attached |
-| `Information` | start-up (database migrations applied or up to date, the first administrator), sign-ins and sign-outs, password changes and reset requests, what an administrator does to users and to access, sharing a vehicle's logs, imports, emptied trashes, a database or model server that is back |
-| `Debug` | ordinary changes (a vehicle, refueling, expense, schedule, chart, picture or photo added, changed, trashed or restored), every GraphQL request with its time and operation, errors a client causes (a validation failure, something missing, a request the server turns down), sessions that are no longer valid and why |
+| `Information` | start-up (database migrations applied or up to date, the first administrator), sign-ins and sign-outs, password changes and reset requests, what an administrator does to users and to access, sharing a vehicle's logs, imports, emptied trashes, which model and server photo reading uses and where its system prompt comes from, a database or model server that is back |
+| `Debug` | ordinary changes (a vehicle, refueling, expense, schedule, chart, picture or photo added, changed, trashed or restored), every GraphQL request with its time and operation, errors a client causes (a validation failure, something missing, a request the server turns down), sessions that are no longer valid and why, and the trail of each photo a model reads (see [Reading with an OpenAI-compatible model](#reading-with-an-openai-compatible-model)) |
 
-**Only ids, counts and reasons are logged** by the app's own lines: users, vehicles, logs and pictures by id, never e-mail addresses, names, license plates, notes, amounts, odometer readings, passwords, reset links, API keys, the subject an identity provider sends, or values read from photos. A failed sign-in names the account by its id (or says "unknown account"), not by the address that was typed. Nothing a client sends is logged as it came: not GraphQL variables or documents, not the text of a request error, fields are named the way the schema names them, and the endpoints of the picture and import uploads appear as their route pattern, not as the path that was asked for.
+**Only ids, counts and reasons are logged** by the app's own lines: users, vehicles, logs and pictures by id, never e-mail addresses, names, license plates, notes, amounts, odometer readings, passwords, reset links, API keys, the subject an identity provider sends, or values read from photos (why a value was dropped is logged as a code such as `OdometerBelowLatest`, never the value). A failed sign-in names the account by its id (or says "unknown account"), not by the address that was typed. Nothing a client sends is logged as it came: not GraphQL variables or documents, not the text of a request error, fields are named the way the schema names them, and the endpoints of the picture and import uploads appear as their route pattern, not as the path that was asked for.
 
 That promise has an edge. The text of an unexpected error is written as the framework or the database wrote it, and a database server can quote the values of a failed statement in it (for a duplicate key, for example). Lines of the framework and its libraries (`Microsoft.*`, `System.*`) are written as they come, such as an identity provider's error description. And **do not lower `Microsoft.AspNetCore` below `Warning`**: its request lines hold the whole address of a request, which includes the token of a password reset link.
 
@@ -412,6 +412,85 @@ A model rates its own answers, but those ratings are not to be trusted on their 
 > Other receipts. Read the total paid, the currency, the date and the shop's name as the title (the name printed at the top, not its address or tax number).
 >
 > Rules. Report only what you can actually read on the photo. Leave a value out rather than guess, and never invent a value that is not printed. Rate each value with a confidence between 0 and 1: 1 when it is clearly legible and unambiguous, about 0.8 when it is readable but small or partly blurred, under 0.6 when you had to guess. Read numbers and dates in the conventions of the receipt's language (a comma may be the decimal separator) and convert them to the output format you are asked for.
+
+**What the model is sent.** One `POST {BaseUrl}/chat/completions` per photo. The body has this shape (`temperature` only when `Temperature` is set; no token limit is sent, the timeout bounds a runaway answer):
+
+```json
+{
+  "model": "<Recognition:OpenAiCompatible:Model>",
+  "stream": false,
+  "messages": [
+    { "role": "system", "content": "<the system prompt: the built-in one above, or yours>" },
+    { "role": "user", "content": [
+      { "type": "image_url", "image_url": { "url": "data:image/jpeg;base64,<the photo>" } },
+      { "type": "text", "text": "<the contract, below>" }
+    ] }
+  ],
+  "temperature": 0,
+  "response_format": { "type": "json_schema", "json_schema": { "name": "photo_reading", "strict": true, "schema": { "...": "the schema, below" } } }
+}
+```
+
+The photo comes first, then the contract, in one user message. The photo is the browser's resized copy (at most 1600 px on the longer side), as JPEG while reading is on and as WebP while it is off. `ResponseFormat=JsonObject` sends `"response_format": { "type": "json_object" }` instead and `None` sends none, so the contract alone says what the answer looks like. The contract depends on the dialog the photo was picked in (the refuelling dialog expects an odometer or a fuel receipt, the expense and recurring-expense dialogs an odometer or a receipt) and on the language the user works in (it ends with how that language writes numbers and dates; another language gets no such sentence). The contract for a photo picked in the **refuelling** dialog, in Hungarian, is:
+
+> This photo was taken for a refuelling entry, so it shows an odometer ("odometer"), a fuel receipt ("fuel-receipt") or neither ("unknown"). Answer with JSON only, in exactly this shape: {"kind": "...", "fields": [{"name": "...", "value": "...", "confidence": 0.0}]}. The fields of each kind: odometer: odometer. fuel-receipt: total, volume, unitPrice, currency, date. Leave out a field you cannot read; with "unknown" there are no fields. Formats: odometer as digits only, without unit or separators; total, volume and unitPrice with "." as the decimal separator, no thousands separators, no currency sign; currency as an ISO 4217 code (HUF, EUR, USD); date as yyyy-MM-dd; title as the shop's name, at most 120 characters. Every value is a string. The receipt is probably Hungarian: numbers use a comma as the decimal separator and a space or a dot between thousands (1 234,5 or 1.234,5), and dates are written year first (2026.10.05.). Convert them to the formats above.
+
+The contract for a photo picked in the **expense** dialogs, in English, is:
+
+> This photo was taken for an expense entry, so it shows an odometer ("odometer"), a receipt ("expense-receipt") or neither ("unknown"). Answer with JSON only, in exactly this shape: {"kind": "...", "fields": [{"name": "...", "value": "...", "confidence": 0.0}]}. The fields of each kind: odometer: odometer. expense-receipt: total, currency, date, title. Leave out a field you cannot read; with "unknown" there are no fields. Formats: odometer as digits only, without unit or separators; total, volume and unitPrice with "." as the decimal separator, no thousands separators, no currency sign; currency as an ISO 4217 code (HUF, EUR, USD); date as yyyy-MM-dd; title as the shop's name, at most 120 characters. Every value is a string. The receipt is probably in English: numbers use a dot as the decimal separator and a comma between thousands (1,234.5); a date may be day/month/year or month/day/year, decide from the other clues on the receipt. Convert them to the formats above.
+
+The schema of `ResponseFormat=JsonSchema`, for the refuelling dialog (the expense dialogs allow `expense-receipt` instead of `fuel-receipt` as the kind and `odometer`, `total`, `currency`, `date`, `title` as the names):
+
+```json
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "fields"],
+  "properties": {
+    "kind": { "type": "string", "enum": ["odometer", "fuel-receipt", "unknown"] },
+    "fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "value", "confidence"],
+        "properties": {
+          "name": { "type": "string", "enum": ["odometer", "total", "volume", "unitPrice", "currency", "date"] },
+          "value": { "type": "string" },
+          "confidence": { "type": "number" }
+        }
+      }
+    }
+  }
+}
+```
+
+**How the answer is read.** The first `{` to the last `}` of what the model said is the JSON (a reasoning block, code fences or a sentence around it are ignored; numbers are accepted for values; names are matched whatever their spelling, `unit_price` or `Unit Price` included). A value is only filled in when its `confidence` (0 to 1) is at least `Recognition:MinConfidence` after the checks above; a missing or unusable confidence counts as 0.5.
+
+**Replaying a photo by hand** (in Open WebUI, say): put the system prompt in the chat's system prompt, attach the photo and paste the contract into the same message. What can still make an answer differ from the app's: the photo (click a thumbnail in the add dialog and save it: that is the resized copy that is sent, a phone's original is a different picture to the model), the `response_format` (a chat interface usually sends none: try `Recognition__OpenAiCompatible__ResponseFormat=None` to compare), the temperature, and any system prompt or parameters the chat interface adds on its own.
+
+**Following a photo through the log.** With `Logging__LogLevel__Tankstat=Debug` every photo leaves a trail:
+
+```
+Asking qwen2.5-vl at http://lmstudio:1234/v1 to read photo 3f2c0a6e-... (image/jpeg, 231 KB)
+qwen2.5-vl answered photo 3f2c0a6e-... in 3412 ms (HTTP 200, finish stop, 1534+96 tokens): said Odometer, listed 1, kept [], issues [Odometer:OdometerBelowLatest]
+Read photo 3f2c0a6e-...: it shows Odometer, 0 of 0 values are sure enough to be filled in (rated 0.6 or more)
+```
+
+`listed` is how many values the model gave, `kept` the ones that passed the checks with their confidence, and `issues` what became of the others, as `Field:Reason` (or just the reason when it concerns the whole photo). Never the values themselves.
+
+| Reason | Meaning |
+| --- | --- |
+| `Unrecognised` | the model took the photo for something this entry has no use for, or for nothing (`unknown`) |
+| `NothingLegible` | the model knew what the photo shows but gave no value it could read |
+| `NotUnderstood` | the value is not written the way the app takes it: an odometer must be digits only (`123 456`, `123.456` or `123456 km` are dropped), a date `yyyy-MM-dd`, an amount a plain number |
+| `OutOfRange` | an amount no fill-up, price or total can be |
+| `OdometerBelowLatest` | the odometer is lower than the vehicle's latest logged reading (it never goes back): dropped |
+| `OdometerTooFarAbove` | more than 100 000 above the latest reading: dropped |
+| `OdometerFarAbove` | 50 000 to 100 000 above it: kept, but at 0.5, under what is filled in |
+| `DateTooOld`, `DateInFuture` | a receipt date more than three years back, or after tomorrow: dropped |
+| `AmountsDoNotAdd` | litres times price do not fit the total: litres and price are kept at 0.5, the total stays |
+| `NoConfidence` | the model gave the value no usable confidence: it counts as 0.5 |
 
 Notes on servers. Ollama loads a model on the first request after a while idle (keep it loaded with `OLLAMA_KEEP_ALIVE`, or allow a longer `TimeoutSeconds`) and runs it with a short context by default, which a photo can exceed (`OLLAMA_CONTEXT_LENGTH=8192` or more). llama.cpp's server needs the model's projector (`--mmproj`) to take images. A reverse proxy in front of the server must accept request bodies of a few megabytes (a photo travels as base64). The health check is `GET /v1/models`: the key must be allowed to list models (an OpenAI restricted key needs "Models: Read"), though a server that answers 403 to it is taken as available and judged on the first read. While reading is on, photos picked in the add dialogs are uploaded as JPEG rather than WebP, which not every server decodes. The dialog waits a minute for a reading; a slower one lands on the saved entry later, marked for review. Measure a model on your own photos before trusting it: a wrong value the model is sure of is the one thing the checks cannot always catch.
 

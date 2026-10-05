@@ -266,6 +266,8 @@ public class StartupSmokeTests
 
         Assert.False(Available(await app.Gql(Recognition)));
         Assert.True(await app.LogsAsync("Photo reading uses the OpenAiCompatible provider"), app.Log);
+        Assert.True(await app.LogsAsync("model smoke at http://127.0.0.1:9/v1"), app.Log); // which model, where: what an operator looks for first
+        Assert.True(await app.LogsAsync("System prompt: built-in ("), app.Log);
         Assert.False(app.HasExited);
     }
 

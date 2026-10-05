@@ -15,15 +15,20 @@ public class ReadingChecksTests
 
     private static string Shown(IEnumerable<RecognizedValue> values) => string.Join(" ", values.Select(v => $"{v.Name}={v.Value}@{v.Confidence}"));
 
+    private static IReadOnlyList<RecognizedValue> Apply(DocumentKind kind, IEnumerable<RecognizedValue> values, RecognitionRequest hints) => ReadingChecks.Check(kind, values, hints).Kept;
+
+    private static string Why(DocumentKind kind, IEnumerable<RecognizedValue> values, RecognitionRequest hints) =>
+        string.Join(" ", ReadingChecks.Check(kind, values, hints).Issues.Select(i => $"{i.Field?.ToString() ?? "-"}:{i.Code}"));
+
     [Fact]
     public void OnlyTheValuesThatKindOfPhotoShows_AreKept_Normalised()
     {
-        var kept = ReadingChecks.Apply(DocumentKind.Odometer, [Read(ReadingFieldName.Odometer, "212345"), Read(ReadingFieldName.Total, "24687")], Hints());
+        var kept = Apply(DocumentKind.Odometer, [Read(ReadingFieldName.Odometer, "212345"), Read(ReadingFieldName.Total, "24687")], Hints());
 
         Assert.Equal("Odometer=212345@0.9", Shown(kept));
-        Assert.Empty(ReadingChecks.Apply(DocumentKind.Unknown, [Read(ReadingFieldName.Odometer, "212345")], Hints()));
-        Assert.Empty(ReadingChecks.Apply(DocumentKind.FuelReceipt, [Read(ReadingFieldName.Volume, "38,52")], Hints())); // not a number the app keeps
-        Assert.Equal("Total=24687", Shown(ReadingChecks.Apply(DocumentKind.ExpenseReceipt, [Read(ReadingFieldName.Total, "24687.00", 1)], Hints())).Split('@')[0]);
+        Assert.Empty(Apply(DocumentKind.Unknown, [Read(ReadingFieldName.Odometer, "212345")], Hints()));
+        Assert.Empty(Apply(DocumentKind.FuelReceipt, [Read(ReadingFieldName.Volume, "38,52")], Hints())); // not a number the app keeps
+        Assert.Equal("Total=24687", Shown(Apply(DocumentKind.ExpenseReceipt, [Read(ReadingFieldName.Total, "24687.00", 1)], Hints())).Split('@')[0]);
     }
 
     [Theory]
@@ -35,15 +40,38 @@ public class ReadingChecksTests
     [InlineData(300_001, null)] // more than a hundred thousand since the last log: misread
     public void AnOdometer_IsBelievedAboveTheLatestReading_AndDoubtedFarAboveIt(long value, double? confidence)
     {
-        var kept = ReadingChecks.Apply(DocumentKind.Odometer, [Read(ReadingFieldName.Odometer, value.ToString())], Hints());
+        var kept = Apply(DocumentKind.Odometer, [Read(ReadingFieldName.Odometer, value.ToString())], Hints());
 
         Assert.Equal(confidence, kept.SingleOrDefault()?.Confidence);
+    }
+
+    [Theory]
+    [InlineData(199_999, "Odometer:OdometerBelowLatest")]
+    [InlineData(200_000, "")]
+    [InlineData(250_000, "")]
+    [InlineData(250_001, "Odometer:OdometerFarAbove")]
+    [InlineData(300_000, "Odometer:OdometerFarAbove")]
+    [InlineData(300_001, "Odometer:OdometerTooFarAbove")]
+    public void AnOdometerThatIsDroppedOrDoubted_SaysWhy(long value, string issues) =>
+        Assert.Equal(issues, Why(DocumentKind.Odometer, [Read(ReadingFieldName.Odometer, value.ToString())], Hints()));
+
+    [Theory]
+    [InlineData("123 456 km")]
+    [InlineData("123.456")]
+    [InlineData("123456.7")]
+    [InlineData("-5")]
+    public void AValueNotWrittenTheWayTheAppTakesIt_IsDroppedAsNotUnderstood(string text)
+    {
+        var checks = ReadingChecks.Check(DocumentKind.Odometer, [Read(ReadingFieldName.Odometer, text)], Hints());
+
+        Assert.Empty(checks.Kept);
+        Assert.Equal([new ReadingIssue(ReadingFieldName.Odometer, ReadingIssueCode.NotUnderstood)], checks.Issues);
     }
 
     [Fact]
     public void AVehiclesFirstOdometer_HasNothingToBeCheckedAgainst_AndIsTakenAsRead()
     {
-        var kept = ReadingChecks.Apply(DocumentKind.Odometer, [Read(ReadingFieldName.Odometer, "999999", 0.8)], Hints(lastOdometer: null));
+        var kept = Apply(DocumentKind.Odometer, [Read(ReadingFieldName.Odometer, "999999", 0.8)], Hints(lastOdometer: null));
 
         Assert.Equal("Odometer=999999@0.8", Shown(kept));
     }
@@ -54,15 +82,34 @@ public class ReadingChecksTests
     [InlineData("2023-10-01", true)]
     [InlineData("2023-09-30", false)]
     public void AReceiptsDate_MustBeRecent_AndNeverInTheFuture(string date, bool kept) =>
-        Assert.Equal(kept, ReadingChecks.Apply(DocumentKind.FuelReceipt, [Read(ReadingFieldName.Date, date)], Hints()).Count == 1);
+        Assert.Equal(kept, Apply(DocumentKind.FuelReceipt, [Read(ReadingFieldName.Date, date)], Hints()).Count == 1);
+
+    [Theory]
+    [InlineData("2026-10-03", "Date:DateInFuture")]
+    [InlineData("2023-09-30", "Date:DateTooOld")]
+    [InlineData("2026-09-30", "")]
+    public void ADateThatIsDropped_SaysWhy(string date, string issues) =>
+        Assert.Equal(issues, Why(DocumentKind.FuelReceipt, [Read(ReadingFieldName.Date, date)], Hints()));
 
     [Theory]
     [InlineData(ReadingFieldName.Volume, "0.2")]
     [InlineData(ReadingFieldName.Volume, "401")]
     [InlineData(ReadingFieldName.Total, "10000000")]
     [InlineData(ReadingFieldName.UnitPrice, "100000")]
-    public void AnAmountNoFillUpHas_IsDropped(ReadingFieldName name, string value) =>
-        Assert.Empty(ReadingChecks.Apply(DocumentKind.FuelReceipt, [Read(name, value)], Hints()));
+    public void AnAmountNoFillUpHas_IsDropped_AsOutOfRange(ReadingFieldName name, string value)
+    {
+        Assert.Empty(Apply(DocumentKind.FuelReceipt, [Read(name, value)], Hints()));
+        Assert.Equal($"{name}:OutOfRange", Why(DocumentKind.FuelReceipt, [Read(name, value)], Hints()));
+    }
+
+    [Fact]
+    public void AValueTheKindOfPhotoCannotShow_IsLeftOutWithoutAReason_ButWhatIsKeptIsNot()
+    {
+        var checks = ReadingChecks.Check(DocumentKind.Odometer, [Read(ReadingFieldName.Total, "24687"), Read(ReadingFieldName.Odometer, "212345")], Hints());
+
+        Assert.Equal("Odometer=212345@0.9", Shown(checks.Kept));
+        Assert.Empty(checks.Issues); // nobody is waiting for a total from a dashboard
+    }
 
     [Fact]
     public void LitresTimesPrice_MustFitTheTotal_OrBothAreDoubted_WhileTheTotalIsKept()
@@ -70,8 +117,10 @@ public class ReadingChecksTests
         RecognizedValue[] fitting = [Read(ReadingFieldName.Total, "24687"), Read(ReadingFieldName.Volume, "38.52"), Read(ReadingFieldName.UnitPrice, "640.9"), Read(ReadingFieldName.Currency, "HUF")];
         RecognizedValue[] misread = [Read(ReadingFieldName.Total, "30000"), Read(ReadingFieldName.Volume, "38.52"), Read(ReadingFieldName.UnitPrice, "640.9"), Read(ReadingFieldName.Currency, "HUF")];
 
-        Assert.Equal("Total=24687@0.9 Volume=38.52@0.9 UnitPrice=640.9@0.9 Currency=HUF@0.9", Shown(ReadingChecks.Apply(DocumentKind.FuelReceipt, fitting, Hints())));
-        Assert.Equal("Total=30000@0.9 Volume=38.52@0.5 UnitPrice=640.9@0.5 Currency=HUF@0.9", Shown(ReadingChecks.Apply(DocumentKind.FuelReceipt, misread, Hints())));
+        Assert.Equal("Total=24687@0.9 Volume=38.52@0.9 UnitPrice=640.9@0.9 Currency=HUF@0.9", Shown(Apply(DocumentKind.FuelReceipt, fitting, Hints())));
+        Assert.Equal("Total=30000@0.9 Volume=38.52@0.5 UnitPrice=640.9@0.5 Currency=HUF@0.9", Shown(Apply(DocumentKind.FuelReceipt, misread, Hints())));
+        Assert.Equal("", Why(DocumentKind.FuelReceipt, fitting, Hints()));
+        Assert.Equal("Volume:AmountsDoNotAdd UnitPrice:AmountsDoNotAdd", Why(DocumentKind.FuelReceipt, misread, Hints()));
     }
 
     [Theory]
@@ -84,7 +133,7 @@ public class ReadingChecksTests
         List<RecognizedValue> values = [Read(ReadingFieldName.Total, "1.00"), Read(ReadingFieldName.Volume, "0.5"), Read(ReadingFieldName.UnitPrice, "2.04")];
         if (read is not null) values.Add(Read(ReadingFieldName.Currency, read));
 
-        var kept = ReadingChecks.Apply(DocumentKind.FuelReceipt, values, Hints(currency: hint));
+        var kept = Apply(DocumentKind.FuelReceipt, values, Hints(currency: hint));
 
         Assert.Equal(volumeConfidence, kept.Single(v => v.Name == ReadingFieldName.Volume).Confidence);
     }
@@ -98,8 +147,17 @@ public class ReadingChecksTests
     [InlineData("200100", double.NaN, ReadingChecks.Doubtful)]
     public void TheModelsOwnRating_OnlyEverLowersTheResult_AndIsReadOnTheScaleItWasGivenOn(string odometer, double rated, double confidence)
     {
-        var kept = ReadingChecks.Apply(DocumentKind.Odometer, [Read(ReadingFieldName.Odometer, odometer, rated)], Hints());
+        var kept = Apply(DocumentKind.Odometer, [Read(ReadingFieldName.Odometer, odometer, rated)], Hints());
 
         Assert.Equal(confidence, kept.Single().Confidence);
     }
+
+    [Theory]
+    [InlineData(0.3, "")] // a low rating is the model's own word, not a missing one
+    [InlineData(95, "")]
+    [InlineData(150, "Odometer:NoConfidence")]
+    [InlineData(-1, "Odometer:NoConfidence")]
+    [InlineData(double.NaN, "Odometer:NoConfidence")] // none given
+    public void ARatingOnNoScale_IsSaidToBeNone(double rated, string issues) =>
+        Assert.Equal(issues, Why(DocumentKind.Odometer, [Read(ReadingFieldName.Odometer, "200100", rated)], Hints()));
 }

@@ -14,7 +14,11 @@ public enum ReadingOutcome
 }
 
 /// <summary>What happened to one reading in a round of the worker (for its log; never the values themselves).</summary>
-public sealed record ProcessedReading(Guid Id, ReadingOutcome Outcome, string? Reason = null);
+/// <param name="Summary">For a reading that was read: what came of it.</param>
+public sealed record ProcessedReading(Guid Id, ReadingOutcome Outcome, string? Reason = null, ReadingSummary? Summary = null);
+
+/// <summary>What a finished reading came to, in counts: what the photo showed, how many values were kept and how many of them are sure enough to be filled in.</summary>
+public sealed record ReadingSummary(DocumentKind Kind, int Values, int Sure);
 
 /// <summary>
 /// The background worker's job: read the photos that are due, a few at a time, through the recognition provider, and keep what was
@@ -86,9 +90,9 @@ public sealed class PhotoReadingProcessor(
             try
             {
                 var result = await provider.ReadAsync(
-                    new RecognitionRequest(data, image.ContentType, reading.AllowedKinds, reading.Locale, reading.LastOdometer, reading.Currency, reading.Today), ct);
+                    new RecognitionRequest(data, image.ContentType, reading.AllowedKinds, reading.Locale, reading.LastOdometer, reading.Currency, reading.Today, id), ct);
                 reading.Complete(provider.Name, result.ModelVersion, result.Kind, ReadingNormaliser.Normalise(result.Values), clock.GetUtcNow());
-                outcome = new ProcessedReading(id, ReadingOutcome.Read);
+                outcome = new ProcessedReading(id, ReadingOutcome.Read, Summary: new ReadingSummary(reading.Kind ?? DocumentKind.Unknown, reading.Values.Count, reading.Values.Count(setup.IsSureEnough)));
             }
             catch (RecognitionRejectedException e)
             {

@@ -42,7 +42,10 @@ internal sealed class RecognitionWorker(IServiceScopeFactory scopes, Recognition
             if (setup.Requested) logger.LogWarning("Photo reading is turned off because its settings cannot be used: {Problems}", string.Join(" ", setup.Problems));
             return;
         }
-        logger.LogInformation("Photo reading uses the {Provider} provider", setup.Kind);
+        var model = setup.Options.OpenAiCompatible;
+        logger.LogInformation("Photo reading uses the {Provider} provider: model {Model} at {Server}", setup.Kind, model.Model, ServerAddress.Of(model.BaseUrl));
+        logger.LogInformation("System prompt: {PromptSource} ({Characters} characters)",
+            setup.SystemPromptSetting is { } named ? $"from {named}" : "built-in", (setup.SystemPrompt ?? OpenAiCompatiblePrompt.DefaultSystemPrompt).Length);
 
         while (!stopping.IsCancellationRequested)
         {
@@ -53,8 +56,10 @@ internal sealed class RecognitionWorker(IServiceScopeFactory scopes, Recognition
                 foreach (var done in await scope.ServiceProvider.GetRequiredService<PhotoReadingProcessor>().ProcessDueAsync(stopping))
                 {
                     worked = true;
-                    // Never the values: only which photo, what happened and why.
-                    if (done.Outcome == ReadingOutcome.Read) logger.LogDebug("Read photo {Id}", done.Id);
+                    // Never the values: only which photo, what happened and why, and in counts what came of a read.
+                    if (done is { Outcome: ReadingOutcome.Read, Summary: { } read })
+                        logger.LogDebug("Read photo {Id}: it shows {Kind}, {Sure} of {Values} values are sure enough to be filled in (rated {MinConfidence} or more)",
+                            done.Id, read.Kind, read.Sure, read.Values, setup.Options.MinConfidence);
                     else logger.LogInformation("Photo {Id}: {Outcome} ({Reason})", done.Id, done.Outcome, done.Reason);
                 }
             }

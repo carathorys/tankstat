@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Options;
@@ -87,7 +88,8 @@ public static class DependencyInjection
         // No client-wide timeout (its default of 100 s would cut OpenAiCompatible:TimeoutSeconds short): every request brings its own.
         services.AddHttpClient(OpenAiCompatibleRecognitionProvider.ClientName, client => client.Timeout = Timeout.InfiniteTimeSpan);
         services.AddSingleton<IRecognitionProvider>(sp => sp.GetRequiredService<RecognitionSetup>() is { Enabled: true, Kind: RecognitionProviderKind.OpenAiCompatible } setup
-            ? new OpenAiCompatibleRecognitionProvider(sp.GetRequiredService<IHttpClientFactory>(), setup.Options.OpenAiCompatible, setup.SystemPrompt)
+            ? new OpenAiCompatibleRecognitionProvider(
+                sp.GetRequiredService<IHttpClientFactory>(), setup.Options.OpenAiCompatible, setup.SystemPrompt, sp.GetRequiredService<ILogger<OpenAiCompatibleRecognitionProvider>>())
             : NullRecognitionProvider.Instance);
         services.AddSingleton<RecognitionSignal>();
         services.AddSingleton<IRecognitionSignal>(sp => sp.GetRequiredService<RecognitionSignal>());
