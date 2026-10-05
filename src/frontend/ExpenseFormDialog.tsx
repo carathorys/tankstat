@@ -14,6 +14,8 @@ import { ExpenseCategoriesDocument, ExpenseDetailsDocument, LogDefaultsDocument,
 import { parseDecimal } from './i18n/format.ts'
 import { ErrorMessage } from './messages.tsx'
 import { ReadNote } from './recognition/ReadNote.tsx'
+import { ReadingProblems } from './recognition/ReadingProblems.tsx'
+import type { ReadingExplanation } from './recognition/readingIssues.ts'
 import { mergeReadings, type ReadValues } from './recognition/readValues.ts'
 import { filledFields } from './recognition/review.ts'
 import { ReviewCallout } from './recognition/ReviewState.tsx'
@@ -122,6 +124,7 @@ export function ExpenseFormDialog({
             photosBusy={queue.busy || queue.failed > 0}
             read={mergeReadings(drafts.readings.values())}
             readingDone={drafts.done}
+            explanation={drafts.explanation}
             // A new expense may leave its amount to a photo that is being read; a saved one still waiting for its photos may stay so.
             mayWait={editing ? existing?.reviewState === 'AWAITING_PHOTOS' : drafts.pending.length > 0}
             gallery={
@@ -157,6 +160,7 @@ function ExpenseForm({
   photosBusy,
   read,
   readingDone,
+  explanation,
   mayWait,
   onSubmit,
 }: {
@@ -170,6 +174,8 @@ function ExpenseForm({
   /** What the photos showed so far. */
   read: ReadValues
   readingDone: boolean
+  /** Why the photos gave less than they might have. */
+  explanation: ReadingExplanation
   /** A photo is still being read: the amount may be left empty. */
   mayWait: boolean
   onSubmit: (values: ExpenseValues) => Promise<unknown>
@@ -189,6 +195,7 @@ function ExpenseForm({
     read,
     labels,
     readingDone,
+    explanation,
   )
   const fromPhoto = filledFields(initial.filledFromPhoto, WAITS_FOR)
   const amountOptional = mayWait
@@ -288,6 +295,7 @@ function ExpenseForm({
         {gallery}
         <div role="status" aria-label={t('a11y.readingStatus')}>
           {fill.announcement && <Text size="2">{fill.announcement}</Text>}
+          <ReadingProblems problems={fill.problems} />
         </div>
         {error !== undefined && <ErrorMessage error={error} />}
         <Flex gap="3" justify="end">

@@ -807,6 +807,22 @@
     "reading": "Reading…",
     "announce": "Filled in from the photo: {{fields}}. Check them before saving.",
     "nothing": "Nothing could be read from the photos.",
+    "nothingFilled": "Nothing could be filled in from the photos.",
+    "failed": "The photo could not be read.",
+    "issues": {
+      "UNRECOGNISED": "The photo could not be recognised as an odometer or a receipt.",
+      "NOTHING_LEGIBLE": "Nothing on the photo could be read.",
+      "NOT_UNDERSTOOD": "{{field}}: the value on the photo was not in a form the app can use, so it was not filled in.",
+      "OUT_OF_RANGE": "{{field}}: the value on the photo is not believable, so it was not filled in.",
+      "ODOMETER_BELOW_LATEST": "The photo shows an odometer reading that is lower than the last one logged{{last}}, so it was not filled in.",
+      "ODOMETER_TOO_FAR_ABOVE": "The photo shows an odometer reading far above the last one logged{{last}}, more than a vehicle covers between two logs, so it was not filled in.",
+      "ODOMETER_FAR_ABOVE": "The photo shows an odometer reading much higher than the last one logged{{last}}, so it was not filled in: check it.",
+      "DATE_TOO_OLD": "The photo shows a date more than three years ago, so it was not filled in.",
+      "DATE_IN_FUTURE": "The photo shows a date in the future, so it was not filled in.",
+      "AMOUNTS_DO_NOT_ADD": "{{field}}: the litres and the price per litre on the photo do not add up to the total, so it was not filled in.",
+      "NO_CONFIDENCE": "{{field}}: the photo could be read here, but not reliably enough to fill it in.",
+      "UNSURE": "{{field}}: the photo could be read here, but not reliably enough to fill it in."
+    },
     "waiting": "Leave it empty: it is filled in from the photo after saving."
   },
   "review": {

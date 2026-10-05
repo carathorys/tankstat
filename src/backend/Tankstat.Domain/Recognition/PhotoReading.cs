@@ -98,6 +98,9 @@ public sealed class PhotoReading
     public string? ModelVersion { get; private set; }
     public IReadOnlyList<ReadingValue> Values { get; private set; } = [];
 
+    /// <summary>Why the photo gave less than it might have: values dropped or doubted, or nothing to read (codes only, never what was read).</summary>
+    public IReadOnlyList<ReadingIssue> Issues { get; private set; } = [];
+
     public static PhotoReading Queue(
         Guid imageId, ReadingPurpose purpose, string locale, long? lastOdometer, string? currency, DateOnly today, DateTimeOffset now)
     {
@@ -132,8 +135,11 @@ public sealed class PhotoReading
         ClaimedAt = now;
     }
 
-    /// <summary>The provider answered. A kind the photo may not show (a receipt in the odometer-only case) counts as unknown, without values.</summary>
-    public void Complete(string provider, string modelVersion, DocumentKind kind, IEnumerable<ReadingValue> values, DateTimeOffset now)
+    /// <summary>
+    /// The provider answered. A kind the photo may not show (a receipt in the odometer-only case) counts as unknown, without values, and
+    /// is said to be so among the <paramref name="issues"/>.
+    /// </summary>
+    public void Complete(string provider, string modelVersion, DocumentKind kind, IEnumerable<ReadingValue> values, DateTimeOffset now, IEnumerable<ReadingIssue>? issues = null)
     {
         RequireReading();
         var allowed = kind != DocumentKind.Unknown && AllowedKinds.Contains(kind);
@@ -142,6 +148,9 @@ public sealed class PhotoReading
         ModelVersion = modelVersion.Length <= MaxModelVersionLength ? modelVersion : modelVersion[..MaxModelVersionLength];
         Kind = allowed ? kind : DocumentKind.Unknown;
         Values = allowed ? values.GroupBy(v => v.Name).Select(g => g.MaxBy(v => v.Confidence)!).ToList() : [];
+        var why = (issues ?? []).Distinct().ToList();
+        if (!allowed && !why.Any(i => i.Code == ReadingIssueCode.Unrecognised)) why.Add(new ReadingIssue(null, ReadingIssueCode.Unrecognised));
+        Issues = why;
         ReadAt = now;
     }
 

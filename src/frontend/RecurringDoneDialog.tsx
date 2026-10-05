@@ -9,9 +9,11 @@ import { useOdometerLabel } from './components/useOdometerLabel.ts'
 import { usePhotoSession } from './components/usePhotoSession.ts'
 import { Field } from './forms.tsx'
 import { LogDefaultsDocument, type DistanceUnit, type LogDefaultsQuery, type ReadingFieldName, type RecurrenceKind } from './gql/generated.ts'
-import { parseDecimal } from './i18n/format.ts'
+import { parseDecimal, useFormat } from './i18n/format.ts'
 import { ErrorMessage } from './messages.tsx'
 import { ReadNote } from './recognition/ReadNote.tsx'
+import { ReadingProblems } from './recognition/ReadingProblems.tsx'
+import type { ReadingExplanation } from './recognition/readingIssues.ts'
 import { mergeReadings, type ReadValues } from './recognition/readValues.ts'
 import { useDraftReadings } from './recognition/useDraftReadings.ts'
 import { useReadFill } from './recognition/useReadFill.ts'
@@ -82,6 +84,7 @@ export function RecurringDoneDialog({
             photosBusy={queue.busy || queue.failed > 0}
             read={mergeReadings(drafts.readings.values())}
             readingDone={drafts.done}
+            explanation={drafts.explanation}
             gallery={<PhotoGallery kind="expenses" photos={[]} queue={queue} readingIds={drafts.pending} disabled={saving} onChanged={() => undefined} />}
             onSubmit={async (values) => {
               // Without an expense the photos have nothing to belong to: they are not sent, and closing deletes them.
@@ -106,6 +109,7 @@ function DoneForm(props: {
   photosBusy: boolean
   read: ReadValues
   readingDone: boolean
+  explanation: ReadingExplanation
   gallery: ReactNode
   onSubmit: (values: Omit<DoneValues, 'photoIds'>) => Promise<unknown>
 }) {
@@ -122,6 +126,7 @@ function DoneFields({
   photosBusy,
   read,
   readingDone,
+  explanation,
   gallery,
   defaults: d,
   onSubmit,
@@ -132,6 +137,8 @@ function DoneFields({
   /** What the photos showed so far. */
   read: ReadValues
   readingDone: boolean
+  /** Why the photos gave less than they might have. */
+  explanation: ReadingExplanation
   gallery: ReactNode
   defaults: NonNullable<LogDefaultsQuery['logDefaults']>
   onSubmit: (values: Omit<DoneValues, 'photoIds'>) => Promise<unknown>
@@ -143,13 +150,17 @@ function DoneFields({
   const switchId = useId()
   const last = d.lastOdometer != null && d.lastDate ? { value: d.lastOdometer, date: d.lastDate } : null
   const odometerLabel = useOdometerLabel(vehicle.units.distance, !usesDistance)
+  const { distance } = useFormat()
   const labels: Record<FillableField, string> = {
     date: t('recurring.doneDate'),
     odometer: odometerLabel,
     amount: t('recurring.amount'),
     currency: t('recurring.currency'),
   }
-  const fill = useReadFill({ date: today(), odometer: d.lastOdometer?.toString() ?? '', amount: '', currency: d.currency ?? '' }, READ_INTO, read, labels, readingDone)
+  const fill = useReadFill({ date: today(), odometer: d.lastOdometer?.toString() ?? '', amount: '', currency: d.currency ?? '' }, READ_INTO, read, labels, readingDone, {
+    ...explanation,
+    last: last ? distance(last.value, vehicle.units.distance) : undefined,
+  })
   const note = (field: FillableField) => (
     <ReadNote filled={fill.isFilled(field)} offered={fill.offered(field)} field={labels[field]} onUse={() => fill.use(field)} />
   )
@@ -236,6 +247,7 @@ function DoneFields({
         )}
         <div role="status" aria-label={t('a11y.readingStatus')}>
           {fill.announcement && <Text size="2">{fill.announcement}</Text>}
+          <ReadingProblems problems={fill.problems} />
         </div>
         {error !== undefined && <ErrorMessage error={error} />}
         <Flex gap="3" justify="end">

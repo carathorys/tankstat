@@ -408,6 +408,11 @@ namespace Tankstat.Migrations.PostgreSql
                     b.Property<DateTime>("DueAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Issues")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
                     b.Property<string>("Kind")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");

@@ -142,6 +142,72 @@ it('says so when nothing could be read from the photos', async () => {
   expect(within(dialog).getByLabelText(/^Volume/)).toHaveValue('')
 })
 
+it('says why nothing was filled in: an odometer lower than the last one logged', async () => {
+  const { ui } = setupRefuelings(fakeRecognition({ results: [[]], issues: [[{ code: 'ODOMETER_BELOW_LATEST', field: 'ODOMETER' }]], queuedPolls: 0 }))
+  const dialog = await openAddRefueling(ui)
+
+  await ui.upload(camera(dialog), photo('dashboard.png'))
+
+  const status = within(dialog).getByRole('status', { name: 'Photo reading status' })
+  await waitFor(() => expect(status).toHaveTextContent('Nothing could be filled in from the photos.'), READ_WAIT)
+  expect(status).toHaveTextContent('The photo shows an odometer reading that is lower than the last one logged (12,000 km), so it was not filled in.')
+  expect(within(dialog).getByLabelText(/^Odometer/)).toHaveValue('')
+})
+
+it('says why part of a receipt was left out, next to what was filled in', async () => {
+  const { ui } = setupRefuelings(
+    fakeRecognition({
+      results: [[{ name: 'TOTAL', value: '24687' }, { name: 'CURRENCY', value: 'EUR' }]],
+      issues: [[{ code: 'UNSURE', field: 'VOLUME' }, { code: 'UNSURE', field: 'UNIT_PRICE' }]], // the dialog has no field for a unit price
+      queuedPolls: 0,
+    }),
+  )
+  const dialog = await openAddRefueling(ui)
+
+  await ui.upload(camera(dialog), photo())
+
+  const status = within(dialog).getByRole('status', { name: 'Photo reading status' })
+  await waitFor(() => expect(status).toHaveTextContent('Filled in from the photo: Total cost, Currency.'), READ_WAIT)
+  expect(status).toHaveTextContent(/Volume \(.*\): the photo could be read here, but not reliably enough to fill it in\./)
+  expect(status).not.toHaveTextContent('price per litre')
+  expect(within(dialog).getByLabelText(/^Volume/)).toHaveValue('')
+})
+
+it('says so when a photo could not be read at all', async () => {
+  const { ui } = setupRefuelings(fakeRecognition({ results: [[]], failed: [1], queuedPolls: 0 }))
+  const dialog = await openAddRefueling(ui)
+
+  await ui.upload(camera(dialog), photo())
+
+  const status = within(dialog).getByRole('status', { name: 'Photo reading status' })
+  await waitFor(() => expect(status).toHaveTextContent('Nothing could be filled in from the photos.'), READ_WAIT)
+  expect(status).toHaveTextContent('The photo could not be read.')
+})
+
+it('tells an expense photo that was no odometer or receipt, and an odometer below the last without its number (the dialog does not know it)', async () => {
+  stubViewport('desktop')
+  const recognition = fakeRecognition({
+    results: [[], []],
+    issues: [[{ code: 'UNRECOGNISED' }], [{ code: 'ODOMETER_BELOW_LATEST', field: 'ODOMETER' }]],
+    queuedPolls: 0,
+  })
+  const backend = fakeExpenseBackend(fakeVehicle(), [fakeExpense({ id: 'e1', title: 'Oil change' })], fakePhotoStore())
+  server.use(sessionHandler('NONE', () => null), healthHandler, ...backend.handlers, ...recognition.handlers)
+  renderWithApollo(<App />, '/vehicles/v1?tab=expenses')
+  const ui = userEvent.setup()
+  await screen.findByText('Oil change')
+  await ui.click(screen.getByRole('button', { name: 'Add expense' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add expense' })
+  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
+
+  await ui.upload(camera(dialog), photo())
+  await ui.upload(camera(dialog), photo('dashboard.png'))
+
+  const status = within(dialog).getByRole('status', { name: 'Photo reading status' })
+  await waitFor(() => expect(status).toHaveTextContent('The photo could not be recognised as an odometer or a receipt.'), READ_WAIT)
+  await waitFor(() => expect(status).toHaveTextContent('The photo shows an odometer reading that is lower than the last one logged, so it was not filled in.'), READ_WAIT)
+})
+
 it('without photo reading on the server, photos are only uploaded and nothing waits for readings', async () => {
   const { ui, photos, recognition } = setupRefuelings(fakeRecognition({ available: false, results: [fuelReceipt] }))
   const dialog = await openAddRefueling(ui)

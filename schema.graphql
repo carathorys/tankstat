@@ -303,6 +303,12 @@ type PhotoReadingInfo {
   status: ReadingStatus!
   kind: DocumentKind
   values: [ReadingValueInfo!]!
+  issues: [ReadingIssueInfo!]!
+}
+
+type ReadingIssueInfo {
+  code: ReadingIssueCode!
+  field: ReadingFieldName
 }
 
 type ReadingValueInfo {
@@ -761,6 +767,21 @@ enum ReadingFieldName {
   CURRENCY
   DATE
   TITLE
+}
+
+enum ReadingIssueCode {
+  UNRECOGNISED
+  NOTHING_LEGIBLE
+  NOT_UNDERSTOOD
+  OUT_OF_RANGE
+  ODOMETER_BELOW_LATEST
+  ODOMETER_TOO_FAR_ABOVE
+  ODOMETER_FAR_ABOVE
+  DATE_TOO_OLD
+  DATE_IN_FUTURE
+  AMOUNTS_DO_NOT_ADD
+  NO_CONFIDENCE
+  UNSURE
 }
 
 enum ReadingStatus {

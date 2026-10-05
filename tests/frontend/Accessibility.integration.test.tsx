@@ -155,6 +155,22 @@ it('values read from a photo, and a photo value offered next to a typed one, are
   await check(document.body)
 })
 
+it('the reasons a photo gave less than it might have are announced in the dialog and free of violations', async () => {
+  const { ui } = setup('/vehicles/v1?tab=refuelings')
+  server.use(...fakeRecognition({ results: [[{ name: 'TOTAL', value: '24687' }]], issues: [[{ code: 'UNSURE', field: 'VOLUME' }, { code: 'ODOMETER_BELOW_LATEST', field: 'ODOMETER' }]], queuedPolls: 0 }).handlers)
+  await screen.findByText(/Sep 1, 2026/)
+  await ui.click(screen.getByRole('button', { name: 'Add refuelling' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add refuelling' })
+  await within(dialog).findByText(/Last reading/)
+
+  await ui.upload(within(dialog).getByTestId('photo-camera'), new File([new Uint8Array([1, 2, 3])], 'receipt.png', { type: 'image/png' }))
+
+  const status = await within(dialog).findByRole('status', { name: 'Photo reading status' }, { timeout: 5000 })
+  await waitFor(() => expect(status).toHaveTextContent(/lower than the last one logged/), { timeout: 5000 })
+  expect(status).toHaveTextContent(/not reliably enough to fill it in/) // inside the live region, so a screen reader hears it
+  await check(document.body)
+})
+
 it('the trash, account and administration pages have no violations', async () => {
   for (const route of ['/trash', '/trash?tab=refuelings', '/trash?tab=expenses', '/account', '/admin']) {
     const { view } = setup(route)

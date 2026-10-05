@@ -73,6 +73,31 @@ public class PhotoReadingTests
     }
 
     [Fact]
+    public void Completing_KeepsWhyThePhotoGaveLess_ButOnceEach()
+    {
+        var reading = Claimed();
+        var below = new ReadingIssue(ReadingFieldName.Odometer, ReadingIssueCode.OdometerBelowLatest);
+
+        reading.Complete("openai-compatible", "model-1", DocumentKind.Odometer, [], Now, [below, below, new ReadingIssue(null, ReadingIssueCode.NothingLegible)]);
+
+        Assert.Equal([below, new ReadingIssue(null, ReadingIssueCode.NothingLegible)], reading.Issues);
+        Assert.Empty(Claimed().Issues); // nothing is said before a provider answers
+    }
+
+    [Fact]
+    public void AKindThePhotoMayNotShow_IsSaidToBeUnrecognised_WhateverTheProviderSaid_AndNotTwice()
+    {
+        var silent = Claimed(ReadingPurpose.Expense);
+        var said = Claimed(ReadingPurpose.Expense);
+
+        silent.Complete("openai-compatible", "model-1", DocumentKind.FuelReceipt, [Value(ReadingFieldName.Total, "100")], Now);
+        said.Complete("openai-compatible", "model-1", DocumentKind.FuelReceipt, [], Now, [new ReadingIssue(null, ReadingIssueCode.Unrecognised)]);
+
+        Assert.Equal([new ReadingIssue(null, ReadingIssueCode.Unrecognised)], silent.Issues);
+        Assert.Equal([new ReadingIssue(null, ReadingIssueCode.Unrecognised)], said.Issues);
+    }
+
+    [Fact]
     public void AModelNamedByAWholePath_IsKeptAsFarAsTheColumnHolds()
     {
         var reading = Claimed();

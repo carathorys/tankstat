@@ -35,6 +35,17 @@ internal sealed class PhotoReadingConfiguration : IEntityTypeConfiguration<Photo
                     v => v.ToList()))
             .HasMaxLength(4000)
             .IsRequired();
+        // Why the photo gave less than it might have, in the same way: codes only. Readings from before the column hold nothing, which reads as no issues.
+        b.Property(r => r.Issues)
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, Json),
+                v => string.IsNullOrWhiteSpace(v) ? new List<ReadingIssue>() : JsonSerializer.Deserialize<List<ReadingIssue>>(v, Json) ?? new List<ReadingIssue>(),
+                new ValueComparer<IReadOnlyList<ReadingIssue>>(
+                    (a, c) => a!.SequenceEqual(c!),
+                    v => v.Aggregate(0, (hash, issue) => HashCode.Combine(hash, issue)),
+                    v => v.ToList()))
+            .HasMaxLength(2000)
+            .IsRequired();
         // Stored as UTC date-times so comparisons translate on every provider (same as the other timestamps).
         b.Property(r => r.CreatedAt).HasConversion(v => v.UtcDateTime, v => new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc)));
         b.Property(r => r.DueAt).HasConversion(v => v.UtcDateTime, v => new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc)));
