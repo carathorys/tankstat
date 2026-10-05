@@ -192,7 +192,7 @@ public class LoggingTests
         var id = await w.Drafts.UploadAsync(car.Id, Jpeg(), default);
         await w.Recognition.QueueForDraftAsync(id, ReadingPurpose.Refueling, "hu", default);
         await w.Readings.ClaimAsync(id, w.Clock.GetUtcNow(), default); // the app stopped while reading it
-        w.Clock.Advance(PhotoReadingProcessor.StaleAfter(w.RecognitionOptions) + TimeSpan.FromSeconds(1));
+        w.Clock.Advance(PhotoReadingProcessor.StaleAfter(w.RecognitionSetup) + TimeSpan.FromSeconds(1));
 
         await w.Processor.ProcessDueAsync(default);
 

@@ -517,13 +517,15 @@ internal sealed class World
     public AccessAdminService AccessAdmin { get; }
     public Notifier Notifier { get; }
     public RecognitionOptions RecognitionOptions { get; } = new() { Provider = "Reader", Reader = { BaseUrl = "http://reader:8081", ApiKey = "key" } };
+    /// <summary>Read afresh on every use, so a test that changes <see cref="RecognitionOptions"/> is heard.</summary>
+    public RecognitionSetup RecognitionSetup => new(RecognitionOptions.Create());
     public FakeRecognitionProvider Recognizer { get; } = new();
     public InMemoryPhotoReadings Readings { get; } = new();
     public FakeRecognitionSignal Signal { get; } = new();
     public RecognitionAvailability Availability { get; }
-    public RecognitionService Recognition => new(Availability, new RecognitionSetup(RecognitionOptions.Create()), Readings, PhotoDrafts, RefuelingService, Defaults.Create(), Signal, Access, Clock, Log.For<RecognitionService>());
+    public RecognitionService Recognition => new(Availability, RecognitionSetup, Readings, PhotoDrafts, RefuelingService, Defaults.Create(), Signal, Access, Clock, Log.For<RecognitionService>());
     public LogPhotoFiller Filler { get; }
-    public PhotoReadingProcessor Processor => new(Recognizer, Availability, new RecognitionSetup(RecognitionOptions.Create()), Readings, Images, ImageStore, Filler, Clock, Log.For<PhotoReadingProcessor>());
+    public PhotoReadingProcessor Processor => new(Recognizer, Availability, RecognitionSetup, Readings, Images, ImageStore, Filler, Clock, Log.For<PhotoReadingProcessor>());
     public NotificationService NotificationService => new(Access, Notifications, new RecurringNotificationSync(Access, Recurring, Vehicles, RecurringService, Notifier), NotificationOptions.Create(), Clock, Log.For<NotificationService>()); // a new one per use, like one per request (it syncs once)
 
     public World(AuthMode mode = AuthMode.Standalone, bool smtp = false, Action<AuthOptions>? configure = null)
@@ -545,7 +547,7 @@ internal sealed class World
         Drafts = new PhotoDraftService(LogGuard, PhotoDrafts, ImageService, Access, Clock, Log.For<PhotoDraftService>());
         Photos = new LogPhotoService(logPhotoAccess, LogPhotos, ImageService, Drafts, Access, Clock, Log.For<LogPhotoService>());
         VehicleService = new VehicleService(Vehicles, Refuelings, Access, Odometer, ImageService, Clock, Log.For<VehicleService>());
-        Filler = new LogPhotoFiller(LogPhotos, Readings, Refuelings, Expenses, Vehicles, new RecognitionSetup(RecognitionOptions.Create()), Notifier, Notifications, Clock, Log.For<LogPhotoFiller>());
+        Filler = new LogPhotoFiller(LogPhotos, Readings, Refuelings, Expenses, Vehicles, RecognitionSetup, Notifier, Notifications, Clock, Log.For<LogPhotoFiller>());
         RefuelingService = new RefuelingService(Vehicles, LogGuard, Refuelings, Access, Odometer, Photos, Filler, Clock, Log.For<RefuelingService>());
         ExpenseService = new ExpenseService(LogGuard, Expenses, Access, Odometer, Photos, Filler, Clock, Log.For<ExpenseService>());
         RecurringService = new RecurringExpenseService(LogGuard, Recurring, Access, Odometer, ExpenseService, Defaults.Create(), Clock, Log.For<RecurringExpenseService>());
