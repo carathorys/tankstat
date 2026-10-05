@@ -115,7 +115,7 @@ export function usePhotoQueue(vehicleId: string, reading?: { purpose: ReadingPur
       }
       return firstError
     },
-    [update, upload],
+    [update, upload, purpose],
   )
 
   const retry = useCallback(
