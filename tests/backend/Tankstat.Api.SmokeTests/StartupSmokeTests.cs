@@ -256,20 +256,6 @@ public class StartupSmokeTests
     }
 
     [Fact]
-    public async Task PhotoReading_WithAReaderThatCannotBeReached_StartsAndSaysItIsUnavailable()
-    {
-        await using var app = await AppProcess.StartAsync(Env(
-            ("Auth__Mode", "None"),
-            ("Recognition__Provider", "Reader"),
-            ("Recognition__Reader__BaseUrl", "http://127.0.0.1:9"), // nothing listens there
-            ("Recognition__Reader__ApiKey", "smoke")));
-
-        Assert.False(Available(await app.Gql(Recognition)));
-        Assert.True(await app.LogsAsync("Photo reading uses the Reader provider"), app.Log);
-        Assert.False(app.HasExited);
-    }
-
-    [Fact]
     public async Task PhotoReading_WithAModelServerThatCannotBeReached_StartsAndSaysItIsUnavailable()
     {
         await using var app = await AppProcess.StartAsync(Env(
@@ -286,7 +272,7 @@ public class StartupSmokeTests
     [Fact]
     public async Task PhotoReading_WithIncompleteSettings_IsTurnedOffWithAWarning_AndTheAppStarts()
     {
-        await using var app = await AppProcess.StartAsync(Env(("Auth__Mode", "None"), ("Recognition__Provider", "Reader"), ("Recognition__MaxConcurrent", "many")));
+        await using var app = await AppProcess.StartAsync(Env(("Auth__Mode", "None"), ("Recognition__Provider", "OpenAiCompatible"), ("Recognition__MaxConcurrent", "many")));
 
         Assert.False(Available(await app.Gql(Recognition)));
         Assert.True(await app.LogsAsync("Photo reading is turned off"), app.Log);

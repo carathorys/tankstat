@@ -3,20 +3,18 @@ using Microsoft.Extensions.Options;
 namespace Tankstat.Application.Recognition;
 
 /// <summary>
-/// Bound from the "Recognition" section (e.g. <c>Recognition__Provider=Reader</c>, <c>Recognition__Reader__BaseUrl=http://reader:8081</c>,
-/// or <c>Recognition__Provider=OpenAiCompatible</c> with <c>Recognition__OpenAiCompatible__BaseUrl=http://localhost:1234/v1</c>).
+/// Bound from the "Recognition" section (e.g. <c>Recognition__Provider=OpenAiCompatible</c> with
+/// <c>Recognition__OpenAiCompatible__BaseUrl=http://localhost:1234/v1</c> and <c>Recognition__OpenAiCompatible__Model=qwen2.5-vl</c>).
 /// </summary>
 public sealed class RecognitionOptions
 {
     public const string SectionName = "Recognition";
 
     /// <summary>
-    /// <c>None</c> (the default: photos are not read), <c>Reader</c> (the optional photo reader service) or <c>OpenAiCompatible</c> (a vision
-    /// model behind an OpenAI-compatible API: a local server such as LM Studio, Ollama or llama.cpp, or a paid one).
+    /// <c>None</c> (the default: photos are not read) or <c>OpenAiCompatible</c> (a vision model behind an OpenAI-compatible API: a local
+    /// server such as LM Studio, Ollama or llama.cpp, or a paid one).
     /// </summary>
     public string? Provider { get; set; }
-
-    public ReaderRecognitionOptions Reader { get; set; } = new();
 
     public OpenAiCompatibleRecognitionOptions OpenAiCompatible { get; set; } = new();
 
@@ -25,18 +23,6 @@ public sealed class RecognitionOptions
 
     /// <summary>Photos read at the same time.</summary>
     public int MaxConcurrent { get; set; } = 2;
-}
-
-public sealed class ReaderRecognitionOptions
-{
-    /// <summary>Where the reader listens, e.g. <c>http://reader:8081</c> (a path below it works too, behind a proxy).</summary>
-    public string? BaseUrl { get; set; }
-
-    /// <summary>The key the reader was started with (its <c>Reader__ApiKey</c>).</summary>
-    public string? ApiKey { get; set; }
-
-    /// <summary>How long one photo may take before the attempt counts as failed (and is tried again later).</summary>
-    public int TimeoutSeconds { get; set; } = 30;
 }
 
 /// <summary>
@@ -86,13 +72,12 @@ public enum OpenAiResponseFormat
 public enum RecognitionProviderKind
 {
     None,
-    Reader,
     OpenAiCompatible,
 }
 
 /// <summary>
 /// The Recognition settings, read once. Photo reading is optional, so settings that cannot be used (an unknown provider, a missing
-/// address or key, a value that is not a number) never stop the app: they turn photo reading off, and the worker logs them as a warning.
+/// address or model, a value that is not a number) never stop the app: they turn photo reading off, and the worker logs them as a warning.
 /// </summary>
 public sealed class RecognitionSetup
 {
@@ -113,8 +98,11 @@ public sealed class RecognitionSetup
         }
         Options = bound ?? new RecognitionOptions();
         Kind = bound is null ? RecognitionProviderKind.None : ParseKind(Options.Provider, problems);
-        if (Kind != RecognitionProviderKind.None) Check(Kind, Options, problems);
-        if (Kind == RecognitionProviderKind.OpenAiCompatible) SystemPrompt = OperatorPrompt(Options.OpenAiCompatible, problems);
+        if (Kind != RecognitionProviderKind.None)
+        {
+            Check(Options, problems);
+            SystemPrompt = OperatorPrompt(Options.OpenAiCompatible, problems);
+        }
         Problems = problems;
     }
 
@@ -124,12 +112,8 @@ public sealed class RecognitionSetup
     /// <summary>Why the chosen provider cannot be used (empty when it can, or when none is chosen).</summary>
     public IReadOnlyList<string> Problems { get; }
 
-    /// <summary>The operator's own system prompt for a model (from the file, else the setting); null for the built-in one.</summary>
+    /// <summary>The operator's own system prompt for the model (from the file, else the setting); null for the built-in one.</summary>
     public string? SystemPrompt { get; }
-
-    /// <summary>How long one read may take with the chosen provider (its <c>TimeoutSeconds</c>): what a read that was cut short is measured against.</summary>
-    public TimeSpan ReadTimeout =>
-        TimeSpan.FromSeconds(Kind == RecognitionProviderKind.OpenAiCompatible ? Options.OpenAiCompatible.TimeoutSeconds : Options.Reader.TimeoutSeconds);
 
     /// <summary>A provider is chosen and its settings can be used.</summary>
     public bool Enabled => Kind != RecognitionProviderKind.None && Problems.Count == 0;
@@ -141,29 +125,19 @@ public sealed class RecognitionSetup
     {
         if (string.IsNullOrWhiteSpace(provider)) return RecognitionProviderKind.None;
         if (Enum.TryParse<RecognitionProviderKind>(provider.Trim(), ignoreCase: true, out var kind) && Enum.IsDefined(kind)) return kind;
-        problems.Add($"Recognition:Provider '{provider}' is not known (use None, Reader or OpenAiCompatible).");
+        problems.Add($"Recognition:Provider '{provider}' is not known (use None or OpenAiCompatible).");
         return RecognitionProviderKind.None;
     }
 
-    private static void Check(RecognitionProviderKind kind, RecognitionOptions o, List<string> problems)
+    private static void Check(RecognitionOptions o, List<string> problems)
     {
         if (o.MinConfidence is < 0 or > 1) problems.Add("Recognition:MinConfidence must be between 0 and 1.");
         if (o.MaxConcurrent is < 1 or > 16) problems.Add("Recognition:MaxConcurrent must be between 1 and 16.");
-        switch (kind)
-        {
-            case RecognitionProviderKind.Reader:
-                if (!IsHttpUrl(o.Reader.BaseUrl)) problems.Add("Recognition:Reader:BaseUrl must be the reader's address, such as http://reader:8081.");
-                if (string.IsNullOrWhiteSpace(o.Reader.ApiKey)) problems.Add("Recognition:Reader:ApiKey is required (the key the reader was started with, Reader__ApiKey).");
-                if (o.Reader.TimeoutSeconds is < 1 or > 600) problems.Add("Recognition:Reader:TimeoutSeconds must be between 1 and 600.");
-                break;
-            case RecognitionProviderKind.OpenAiCompatible:
-                var m = o.OpenAiCompatible;
-                if (!IsHttpUrl(m.BaseUrl)) problems.Add("Recognition:OpenAiCompatible:BaseUrl must be the API's address including its version, such as http://localhost:1234/v1.");
-                if (string.IsNullOrWhiteSpace(m.Model)) problems.Add("Recognition:OpenAiCompatible:Model is required (the model's name as the server lists it).");
-                if (m.TimeoutSeconds is < 1 or > 600) problems.Add("Recognition:OpenAiCompatible:TimeoutSeconds must be between 1 and 600.");
-                if (m.Temperature is < 0 or > 2) problems.Add("Recognition:OpenAiCompatible:Temperature must be between 0 and 2.");
-                break;
-        }
+        var m = o.OpenAiCompatible;
+        if (!IsHttpUrl(m.BaseUrl)) problems.Add("Recognition:OpenAiCompatible:BaseUrl must be the API's address including its version, such as http://localhost:1234/v1.");
+        if (string.IsNullOrWhiteSpace(m.Model)) problems.Add("Recognition:OpenAiCompatible:Model is required (the model's name as the server lists it).");
+        if (m.TimeoutSeconds is < 1 or > 600) problems.Add("Recognition:OpenAiCompatible:TimeoutSeconds must be between 1 and 600.");
+        if (m.Temperature is < 0 or > 2) problems.Add("Recognition:OpenAiCompatible:Temperature must be between 0 and 2.");
     }
 
     private static bool IsHttpUrl(string? url) =>

@@ -192,7 +192,7 @@ public class LoggingTests
         var id = await w.Drafts.UploadAsync(car.Id, Jpeg(), default);
         await w.Recognition.QueueForDraftAsync(id, ReadingPurpose.Refueling, "hu", default);
         await w.Readings.ClaimAsync(id, w.Clock.GetUtcNow(), default); // the app stopped while reading it
-        w.Clock.Advance(PhotoReadingProcessor.StaleAfter(w.RecognitionSetup) + TimeSpan.FromSeconds(1));
+        w.Clock.Advance(PhotoReadingProcessor.StaleAfter(w.RecognitionOptions) + TimeSpan.FromSeconds(1));
 
         await w.Processor.ProcessDueAsync(default);
 
@@ -221,7 +221,7 @@ public class LoggingTests
     // ---- a condition is reported when it changes, not on every check -------------------------------------------
 
     [Fact]
-    public async Task TheReaderGoingAndComingBack_IsLoggedOnce_EachWay()
+    public async Task TheProviderGoingAndComingBack_IsLoggedOnce_EachWay()
     {
         var w = new World();
         async Task Check(bool healthy)
@@ -242,10 +242,10 @@ public class LoggingTests
     }
 
     [Fact]
-    public async Task AReaderThatCannotBeUsed_IsAWarning_WithTheCauseTheProviderGives()
+    public async Task AProviderThatCannotBeUsed_IsAWarning_WithTheCauseTheProviderGives()
     {
         var w = new World();
-        w.Recognizer.HealthFailure = new RecognitionUnavailableException("The reader answered 503 to its health check.");
+        w.Recognizer.HealthFailure = new RecognitionUnavailableException("The model server answered 503 when asked for its models.");
 
         Assert.False(await w.Availability.IsAvailableAsync(default));
 
@@ -274,7 +274,7 @@ public class LoggingTests
     }
 
     [Fact]
-    public async Task WithoutAReader_NothingIsSaidAboutIt()
+    public async Task WithoutAProvider_NothingIsSaidAboutIt()
     {
         var w = new World();
         w.Recognizer.Configured = false;

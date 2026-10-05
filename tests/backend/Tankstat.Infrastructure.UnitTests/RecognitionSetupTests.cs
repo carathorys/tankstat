@@ -35,22 +35,6 @@ public class RecognitionSetupTests
     }
 
     [Fact]
-    public void WithTheReadersSettings_TheReaderReadsThem()
-    {
-        var (services, _) = Build(new()
-        {
-            ["Recognition:Provider"] = "Reader",
-            ["Recognition:Reader:BaseUrl"] = "http://reader:8081",
-            ["Recognition:Reader:ApiKey"] = "secret",
-            ["Recognition:MinConfidence"] = "0.7",
-        });
-        using var _s = services;
-
-        Assert.IsType<ReaderRecognitionProvider>(services.GetRequiredService<IRecognitionProvider>());
-        Assert.Equal(0.7, services.GetRequiredService<RecognitionSetup>().Options.MinConfidence);
-    }
-
-    [Fact]
     public void WithAModelServersSettings_TheModelReadsThem_WithThePromptTheOperatorGave()
     {
         var (services, _) = Build(new()
@@ -60,39 +44,38 @@ public class RecognitionSetupTests
             ["Recognition:OpenAiCompatible:Model"] = "qwen2.5-vl",
             ["Recognition:OpenAiCompatible:SystemPrompt"] = "Read it your way.",
             ["Recognition:OpenAiCompatible:ResponseFormat"] = "JsonObject",
+            ["Recognition:MinConfidence"] = "0.7",
         });
         using var _s = services;
 
         Assert.IsType<OpenAiCompatibleRecognitionProvider>(services.GetRequiredService<IRecognitionProvider>());
         var setup = services.GetRequiredService<RecognitionSetup>();
-        Assert.Equal(("Read it your way.", OpenAiResponseFormat.JsonObject), (setup.SystemPrompt, setup.Options.OpenAiCompatible.ResponseFormat));
+        Assert.Equal(("Read it your way.", OpenAiResponseFormat.JsonObject, 0.7), (setup.SystemPrompt, setup.Options.OpenAiCompatible.ResponseFormat, setup.Options.MinConfidence));
     }
 
-    [Theory]
-    [InlineData(ReaderRecognitionProvider.ClientName)]
-    [InlineData(OpenAiCompatibleRecognitionProvider.ClientName)]
-    public void TheProvidersClients_LeaveTheTimeoutToTheSettings(string name)
+    [Fact]
+    public void TheModelServersClient_LeavesTheTimeoutToTheSettings()
     {
         var (services, _) = Build([]);
         using var _s = services;
 
         // TimeoutSeconds goes up to 600; the client's own default (100 s) must not cut it short.
-        using var client = services.GetRequiredService<IHttpClientFactory>().CreateClient(name);
+        using var client = services.GetRequiredService<IHttpClientFactory>().CreateClient(OpenAiCompatibleRecognitionProvider.ClientName);
         Assert.Equal(Timeout.InfiniteTimeSpan, client.Timeout);
     }
 
     [Theory]
-    [InlineData("Recognition:Reader:ApiKey", "", "ApiKey")] // a missing key
+    [InlineData("Recognition:OpenAiCompatible:Model", "", "Model")] // a missing model
+    [InlineData("Recognition:OpenAiCompatible:BaseUrl", "localhost:1234/v1", "BaseUrl")] // not an address
     [InlineData("Recognition:MaxConcurrent", "many", "cannot be read")] // not even a number: binding fails
-    [InlineData("Recognition:Provider", "OpenAiCompatible", "Recognition:OpenAiCompatible:Model")] // the reader's settings do not make a model server
     [InlineData("Recognition:OpenAiCompatible:ResponseFormat", "Yaml", "cannot be read")]
     public async Task SettingsThatCannotBeUsed_TurnReadingOff_WithAWarning_InsteadOfStoppingTheApp(string key, string value, string said)
     {
         var (services, log) = Build(new()
         {
-            ["Recognition:Provider"] = "Reader",
-            ["Recognition:Reader:BaseUrl"] = "http://reader:8081",
-            ["Recognition:Reader:ApiKey"] = "secret",
+            ["Recognition:Provider"] = "OpenAiCompatible",
+            ["Recognition:OpenAiCompatible:BaseUrl"] = "http://localhost:1234/v1",
+            ["Recognition:OpenAiCompatible:Model"] = "qwen2.5-vl",
             [key] = value,
         });
         await using var _s = services;

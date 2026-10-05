@@ -36,7 +36,7 @@ public class RecognitionTests
     // ---- queueing ------------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task ADraft_IsQueuedWithTheHintsTheReaderNeeds_AndTheWorkerIsWoken()
+    public async Task ADraft_IsQueuedWithTheHintsTheChecksNeed_AndTheWorkerIsWoken()
     {
         var s = await Setup();
         await s.W.RefuelingService.LogAsync(s.Car.Id, new(new DateOnly(2026, 9, 20), 40, 60, "EUR", 12_345, true, null), default);
@@ -210,7 +210,7 @@ public class RecognitionTests
         var s = await Setup();
         var id = await Queued(s);
         await s.W.Readings.ClaimAsync(id, s.W.Clock.GetUtcNow(), default); // the app stopped while reading it
-        s.W.Clock.Advance(PhotoReadingProcessor.StaleAfter(s.W.RecognitionSetup) + TimeSpan.FromSeconds(1));
+        s.W.Clock.Advance(PhotoReadingProcessor.StaleAfter(s.W.RecognitionOptions) + TimeSpan.FromSeconds(1));
 
         var done = await s.W.Processor.ProcessDueAsync(default);
 
@@ -222,7 +222,7 @@ public class RecognitionTests
     public async Task ASlowReadThatMayStillBeGoingOn_IsNotTakenOver()
     {
         var s = await Setup();
-        s.W.RecognitionOptions.Reader.TimeoutSeconds = 600; // allowed: one read may take ten minutes
+        s.W.RecognitionOptions.OpenAiCompatible.TimeoutSeconds = 600; // allowed: one read may take ten minutes
         var id = await Queued(s);
         await s.W.Readings.ClaimAsync(id, s.W.Clock.GetUtcNow(), default); // another instance is reading it
         s.W.Clock.Advance(TimeSpan.FromMinutes(10));
@@ -231,18 +231,14 @@ public class RecognitionTests
 
         Assert.Empty(done);
         Assert.Equal(ReadingStatus.Reading, s.W.Readings.Items.Single().Status);
-        Assert.True(PhotoReadingProcessor.StaleAfter(s.W.RecognitionSetup) > TimeSpan.FromMinutes(10));
+        Assert.True(PhotoReadingProcessor.StaleAfter(s.W.RecognitionOptions) > TimeSpan.FromMinutes(10));
     }
 
-    [Fact]
-    public void StaleAfter_FollowsTheChosenProvidersTimeout_WithAFloorOfFiveMinutes()
-    {
-        Assert.Equal(TimeSpan.FromMinutes(5), PhotoReadingProcessor.StaleAfter(SetupOf(new RecognitionOptions { Provider = "Reader", Reader = { BaseUrl = "http://r", ApiKey = "k", TimeoutSeconds = 30 } })));
-        Assert.Equal(TimeSpan.FromMinutes(11), PhotoReadingProcessor.StaleAfter(SetupOf(ModelServer(o => o.TimeoutSeconds = 600))));
-        var model = ModelServer(o => o.TimeoutSeconds = 30);
-        model.Reader.TimeoutSeconds = 600; // the reader is not the chosen provider: its timeout does not count
-        Assert.Equal(TimeSpan.FromMinutes(5), PhotoReadingProcessor.StaleAfter(SetupOf(model)));
-    }
+    [Theory]
+    [InlineData(30, 5)] // the floor
+    [InlineData(600, 11)] // a read that may take ten minutes is not taken over before eleven
+    public void StaleAfter_FollowsTheReadTimeout_WithAFloorOfFiveMinutes(int timeoutSeconds, int minutes) =>
+        Assert.Equal(TimeSpan.FromMinutes(minutes), PhotoReadingProcessor.StaleAfter(ModelServer(o => o.TimeoutSeconds = timeoutSeconds)));
 
     [Fact]
     public async Task OnlyAFewPhotosAreReadAtATime()
@@ -308,43 +304,11 @@ public class RecognitionTests
     }
 
     [Fact]
-    public void Settings_ForTheReader_AreUsableWhenComplete()
-    {
-        var setup = SetupOf(new RecognitionOptions { Provider = "reader", Reader = { BaseUrl = "https://tank.example/reader", ApiKey = "k" } });
-
-        Assert.Equal((RecognitionProviderKind.Reader, true), (setup.Kind, setup.Enabled));
-    }
-
-    [Theory]
-    [InlineData(null, "k", "BaseUrl")]
-    [InlineData("reader:8081", "k", "BaseUrl")]
-    [InlineData("ftp://reader", "k", "BaseUrl")]
-    [InlineData("http://reader:8081", " ", "ApiKey")]
-    public void Settings_ThatCannotBeUsed_TurnReadingOff_AndSayWhy(string? url, string key, string named)
-    {
-        var setup = SetupOf(new RecognitionOptions { Provider = "Reader", Reader = { BaseUrl = url, ApiKey = key } });
-
-        Assert.Equal((false, true), (setup.Enabled, setup.Requested));
-        Assert.Contains(setup.Problems, p => p.Contains(named));
-    }
-
-    [Fact]
-    public void Settings_OutOfRange_OrAnUnknownProvider_TurnReadingOff()
-    {
-        var limits = SetupOf(new RecognitionOptions { Provider = "Reader", MinConfidence = 1.5, MaxConcurrent = 0, Reader = { BaseUrl = "http://r", ApiKey = "k", TimeoutSeconds = 0 } });
-        var unknown = SetupOf(new RecognitionOptions { Provider = "Google" });
-
-        Assert.Equal(3, limits.Problems.Count);
-        Assert.Equal((RecognitionProviderKind.None, false, true), (unknown.Kind, unknown.Enabled, unknown.Requested));
-        Assert.Contains("Google", Assert.Single(unknown.Problems));
-    }
-
-    [Fact]
-    public void Settings_ForAModelServer_NeedAnAddressAndAModel_ButNoKeyAndNothingOfTheReaders()
+    public void Settings_ForAModelServer_NeedAnAddressAndAModel_ButNoKey()
     {
         var setup = SetupOf(ModelServer());
 
-        Assert.Equal((RecognitionProviderKind.OpenAiCompatible, true, TimeSpan.FromSeconds(120)), (setup.Kind, setup.Enabled, setup.ReadTimeout));
+        Assert.Equal((RecognitionProviderKind.OpenAiCompatible, true), (setup.Kind, setup.Enabled));
         Assert.Null(setup.SystemPrompt); // the built-in prompt
         Assert.Equal(RecognitionProviderKind.OpenAiCompatible, SetupOf(new RecognitionOptions { Provider = "openaicompatible" }).Kind);
     }
@@ -352,6 +316,7 @@ public class RecognitionTests
     [Theory]
     [InlineData(null, "m", 120, null, "BaseUrl")]
     [InlineData("localhost:1234/v1", "m", 120, null, "BaseUrl")]
+    [InlineData("ftp://localhost/v1", "m", 120, null, "BaseUrl")]
     [InlineData("http://localhost:1234/v1", " ", 120, null, "Model")]
     [InlineData("http://localhost:1234/v1", "m", 0, null, "TimeoutSeconds")]
     [InlineData("http://localhost:1234/v1", "m", 120, 2.5, "Temperature")]
@@ -361,6 +326,20 @@ public class RecognitionTests
 
         Assert.Equal((false, true), (setup.Enabled, setup.Requested));
         Assert.Contains("Recognition:OpenAiCompatible:" + named, Assert.Single(setup.Problems));
+    }
+
+    [Fact]
+    public void Settings_OutOfRange_OrAnUnknownProvider_TurnReadingOff()
+    {
+        var options = ModelServer(o => o.TimeoutSeconds = 0);
+        options.MinConfidence = 1.5;
+        options.MaxConcurrent = 0;
+        var limits = SetupOf(options);
+        var unknown = SetupOf(new RecognitionOptions { Provider = "Google" });
+
+        Assert.Equal(3, limits.Problems.Count);
+        Assert.Equal((RecognitionProviderKind.None, false, true), (unknown.Kind, unknown.Enabled, unknown.Requested));
+        Assert.Contains("Google", Assert.Single(unknown.Problems));
     }
 
     [Fact]

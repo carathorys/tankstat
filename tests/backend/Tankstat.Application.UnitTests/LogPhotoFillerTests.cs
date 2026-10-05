@@ -122,7 +122,7 @@ public class LogPhotoFillerTests
     }
 
     [Fact]
-    public async Task OnlyValuesTheReaderIsSureOf_AreTaken_AndTheLogIsIncompleteWithoutThem()
+    public async Task OnlyValuesTheProviderIsSureOf_AreTaken_AndTheLogIsIncompleteWithoutThem()
     {
         var s = await Setup();
         var photo = await Queued(s);

@@ -6,7 +6,7 @@ import { PhotoDraftReadingsDocument, RecognitionStatusDocument, type PhotoDraftR
 export const READING_POLL_MS = 1500
 /** How long the dialog waits for one photo; the server keeps trying, but the user is not kept waiting longer. */
 export const READING_WAIT_MS = 60_000
-/** How often the dialog asks again whether photo reading is on while it reads "off" and a photo was just uploaded (the reader may be back). */
+/** How often the dialog asks again whether photo reading is on while it reads "off" and a photo was just uploaded (the provider may be back). */
 export const STATUS_RECHECK_MS = 3000
 
 export type DraftReading = NonNullable<PhotoDraftReadingsQuery['photoDrafts'][number]['reading']>
@@ -25,7 +25,7 @@ export interface DraftReadings {
 /**
  * The readings of the drafts uploaded in an open add dialog. Asks whether photo reading is on when the dialog opens and, if so, polls the
  * drafts' readings while any is still being read (for at most a minute after each upload). While it reads "off", it asks again for a minute
- * after each upload: the server queues the photo anyway and reads it once a briefly unreachable reader is back. Nothing is asked while
+ * after each upload: the server queues the photo anyway and reads it once a briefly unreachable provider is back. Nothing is asked while
  * `enabled` is false.
  */
 export function useDraftReadings(drafts: readonly { id: string; at: number }[], enabled: boolean): DraftReadings {

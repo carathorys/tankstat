@@ -83,22 +83,12 @@ public static class DependencyInjection
         services.AddSingleton<IPasswordHasher, IdentityPasswordHasher>();
         services.AddSingleton<IEmailSender, SmtpEmailSender>();
 
-        // Photo reading (optional): the provider the settings choose, or one that never reads (RecognitionSetup explains why).
-        // No client-wide timeout (its default of 100 s would cut the providers' TimeoutSeconds short): every request brings its own.
-        services.AddHttpClient(ReaderRecognitionProvider.ClientName, client => client.Timeout = Timeout.InfiniteTimeSpan);
+        // Photo reading (optional): the model provider the settings choose, or one that never reads (RecognitionSetup explains why).
+        // No client-wide timeout (its default of 100 s would cut OpenAiCompatible:TimeoutSeconds short): every request brings its own.
         services.AddHttpClient(OpenAiCompatibleRecognitionProvider.ClientName, client => client.Timeout = Timeout.InfiniteTimeSpan);
-        services.AddSingleton<IRecognitionProvider>(sp =>
-        {
-            var setup = sp.GetRequiredService<RecognitionSetup>();
-            if (!setup.Enabled) return NullRecognitionProvider.Instance;
-            var http = sp.GetRequiredService<IHttpClientFactory>();
-            return setup.Kind switch
-            {
-                RecognitionProviderKind.Reader => new ReaderRecognitionProvider(http, setup.Options.Reader),
-                RecognitionProviderKind.OpenAiCompatible => new OpenAiCompatibleRecognitionProvider(http, setup.Options.OpenAiCompatible, setup.SystemPrompt),
-                _ => (IRecognitionProvider)NullRecognitionProvider.Instance,
-            };
-        });
+        services.AddSingleton<IRecognitionProvider>(sp => sp.GetRequiredService<RecognitionSetup>() is { Enabled: true, Kind: RecognitionProviderKind.OpenAiCompatible } setup
+            ? new OpenAiCompatibleRecognitionProvider(sp.GetRequiredService<IHttpClientFactory>(), setup.Options.OpenAiCompatible, setup.SystemPrompt)
+            : NullRecognitionProvider.Instance);
         services.AddSingleton<RecognitionSignal>();
         services.AddSingleton<IRecognitionSignal>(sp => sp.GetRequiredService<RecognitionSignal>());
 

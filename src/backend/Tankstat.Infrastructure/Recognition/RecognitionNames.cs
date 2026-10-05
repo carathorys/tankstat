@@ -2,7 +2,7 @@ using Tankstat.Domain.Recognition;
 
 namespace Tankstat.Infrastructure.Recognition;
 
-/// <summary>The kinds of photo and the values as the HTTP contracts spell them: the reader's answers, and what a model is asked to answer.</summary>
+/// <summary>The kinds of photo and the values as a model is asked to spell them in its answer.</summary>
 internal static class RecognitionNames
 {
     public static readonly IReadOnlyDictionary<DocumentKind, string> Kinds = new Dictionary<DocumentKind, string>

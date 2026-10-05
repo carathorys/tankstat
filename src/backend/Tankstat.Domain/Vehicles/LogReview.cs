@@ -32,7 +32,7 @@ public enum LogValues
     Total = 4,
 }
 
-/// <summary>What the photos of one log showed, normalised (only values the reader was sure enough of).</summary>
+/// <summary>What the photos of one log showed, normalised (only values the provider was sure enough of).</summary>
 public sealed record PhotoValues(long? Odometer, decimal? Volume, decimal? Total, string? Currency);
 
 /// <summary>
@@ -72,7 +72,7 @@ public static class LogReview
         return filled != LogValues.None ? ReviewState.NeedsReview : ReviewState.None;
     }
 
-    /// <summary>A value read from a photo that the log could not take anyway (a reader's slip) is left out rather than failing.</summary>
+    /// <summary>A value read from a photo that the log could not take anyway (a misread) is left out rather than failing.</summary>
     public static long? UsableOdometer(long? value) => value is >= 0 ? value : null;
 
     public static decimal? UsableVolume(decimal? value) => value is > 0 ? value : null;

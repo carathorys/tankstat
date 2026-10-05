@@ -7,9 +7,7 @@ namespace Tankstat.Application.Recognition;
 /// What makes a value a model read believable. A model rates its own values, but those ratings are not calibrated: what the app can check
 /// decides instead (an odometer against the vehicle's latest reading, litres × price against the total, a date against today, plain
 /// ranges), and the model's rating only ever lowers the result. A value that fails a check is dropped (a blank beats a wrong value); one
-/// that is possible but unlikely is capped at <see cref="Doubtful"/>, below what the app fills in by default. The rules are the photo
-/// reader's own (<c>OdometerExtractor.Plausible</c>, <c>ReceiptExtractor.Fits</c>, <c>Dates</c>), which cannot be shared with it: the app
-/// never references the reader. The reader applies them itself, with the OCR's certainty behind them, so this is for the model providers only.
+/// that is possible but unlikely is capped at <see cref="Doubtful"/>, below what the app fills in by default.
 /// </summary>
 public static class ReadingChecks
 {

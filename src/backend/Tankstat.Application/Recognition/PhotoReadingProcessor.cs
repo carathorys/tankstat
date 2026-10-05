@@ -18,7 +18,7 @@ public sealed record ProcessedReading(Guid Id, ReadingOutcome Outcome, string? R
 
 /// <summary>
 /// The background worker's job: read the photos that are due, a few at a time, through the recognition provider, and keep what was
-/// found. Nothing is claimed while the provider is unavailable, so a stopped reader does not use up the attempts. A finished reading of
+/// found. Nothing is claimed while the provider is unavailable, so a stopped model server does not use up the attempts. A finished reading of
 /// a photo that already belongs to a log (saved while it was being read) is then taken into that log (<see cref="LogPhotoFiller"/>).
 /// </summary>
 public sealed class PhotoReadingProcessor(
@@ -27,11 +27,11 @@ public sealed class PhotoReadingProcessor(
 {
     /// <summary>
     /// An attempt this old was cut short (the app stopped while reading): it is queued again. At least five minutes, and always longer than
-    /// one read may take with the chosen provider (its <c>TimeoutSeconds</c>), so another instance never takes over a read that is still going on.
+    /// one read may take (<c>Recognition:OpenAiCompatible:TimeoutSeconds</c>), so another instance never takes over a read that is still going on.
     /// </summary>
-    public static TimeSpan StaleAfter(RecognitionSetup setup)
+    public static TimeSpan StaleAfter(RecognitionOptions options)
     {
-        var longestRead = setup.ReadTimeout + TimeSpan.FromMinutes(1);
+        var longestRead = TimeSpan.FromSeconds(options.OpenAiCompatible.TimeoutSeconds) + TimeSpan.FromMinutes(1);
         return longestRead > MinimumStaleAfter ? longestRead : MinimumStaleAfter;
     }
 
@@ -44,7 +44,7 @@ public sealed class PhotoReadingProcessor(
 
         var now = clock.GetUtcNow();
         var finished = new List<Guid>();
-        foreach (var stale in await readings.ListStaleAsync(now - StaleAfter(setup), ct))
+        foreach (var stale in await readings.ListStaleAsync(now - StaleAfter(setup.Options), ct))
         {
             stale.Abandon(now);
             await readings.SaveAsync(stale, ct);

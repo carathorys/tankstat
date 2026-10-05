@@ -521,5 +521,5 @@ uploads/
 # Coverage reports (mise run test:coverage)
 coverage/
 
-# Private photos for the photo reader evaluation (mise run reader:eval -- eval)
+# Private photos for evaluating photo reading: never committed
 eval/

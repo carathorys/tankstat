@@ -155,13 +155,13 @@ it('without photo reading on the server, photos are only uploaded and nothing wa
   expect(within(dialog).getByLabelText(/^Volume/)).toHaveValue('')
 })
 
-it('asks again after an upload when photo reading was off as the dialog opened, and fills in once the reader is back', async () => {
+it('asks again after an upload when photo reading was off as the dialog opened, and fills in once the provider is back', async () => {
   const { ui, recognition } = setupRefuelings(fakeRecognition({ available: false, results: [fuelReceipt], queuedPolls: 0 }))
   const dialog = await openAddRefueling(ui)
 
   await ui.upload(camera(dialog), photo())
   await within(dialog).findByRole('button', { name: 'Remove photo 1' })
-  recognition.state.available = true // the reader was only briefly unreachable; the server read the queued photo meanwhile
+  recognition.state.available = true // the provider was only briefly unreachable; the server read the queued photo meanwhile
 
   await waitFor(() => expect(within(dialog).getByLabelText(/^Volume/)).toHaveValue('38.52'), { timeout: 8000 })
   expect(recognition.state.asked.at(-1)).toEqual(['draft1'])

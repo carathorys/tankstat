@@ -1,7 +1,0 @@
-{
-  "modelVersion": "rules-1",
-  "kind": "odometer",
-  "fields": [
-    { "name": "odometer", "value": "123456", "confidence": 0.86, "source": "ocr" }
-  ]
-}
