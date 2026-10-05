@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Tankstat.Domain.Recognition;
 
 namespace Tankstat.Application.Recognition;
 
@@ -115,11 +116,18 @@ public sealed class RecognitionSetup
     /// <summary>The operator's own system prompt for the model (from the file, else the setting); null for the built-in one.</summary>
     public string? SystemPrompt { get; }
 
+    /// <summary>The setting <see cref="SystemPrompt"/> comes from, for the log (never its text); null for the built-in prompt.</summary>
+    public string? SystemPromptSetting => SystemPrompt is null ? null
+        : string.IsNullOrWhiteSpace(Options.OpenAiCompatible.SystemPromptFile) ? "Recognition:OpenAiCompatible:SystemPrompt" : "Recognition:OpenAiCompatible:SystemPromptFile";
+
     /// <summary>A provider is chosen and its settings can be used.</summary>
     public bool Enabled => Kind != RecognitionProviderKind.None && Problems.Count == 0;
 
     /// <summary>Photo reading was asked for (or the settings could not even be read), so problems are worth a warning.</summary>
     public bool Requested => Kind != RecognitionProviderKind.None || Problems.Count > 0;
+
+    /// <summary>Whether a value is worth filling in: read rather than the hint it was given coming back, and rated at least <see cref="RecognitionOptions.MinConfidence"/> (a blank beats a wrong value).</summary>
+    public bool IsSureEnough(ReadingValue value) => value.Source != ValueSource.Hint && value.Confidence >= Options.MinConfidence;
 
     private static RecognitionProviderKind ParseKind(string? provider, List<string> problems)
     {

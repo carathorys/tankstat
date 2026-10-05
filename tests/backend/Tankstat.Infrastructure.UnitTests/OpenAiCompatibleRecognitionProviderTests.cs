@@ -1,9 +1,11 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Tankstat.Application.Recognition;
 using Tankstat.Domain.Recognition;
 using Tankstat.Infrastructure.Recognition;
+using Tankstat.TestSupport;
 
 namespace Tankstat.Infrastructure.UnitTests;
 
@@ -39,15 +41,15 @@ public class OpenAiCompatibleRecognitionProviderTests
 
     private static (OpenAiCompatibleRecognitionProvider Provider, Handler Handler) Model(
         Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond, string url = "http://model:1234/v1", string? key = null, string? prompt = null,
-        OpenAiResponseFormat format = OpenAiResponseFormat.JsonSchema, double? temperature = null, int timeoutSeconds = 30, string model = "qwen2.5-vl")
+        OpenAiResponseFormat format = OpenAiResponseFormat.JsonSchema, double? temperature = null, int timeoutSeconds = 30, string model = "qwen2.5-vl", CapturedLog? log = null)
     {
         var handler = new Handler(respond);
         var options = new OpenAiCompatibleRecognitionOptions { BaseUrl = url, ApiKey = key, Model = model, ResponseFormat = format, Temperature = temperature, TimeoutSeconds = timeoutSeconds };
-        return (new OpenAiCompatibleRecognitionProvider(new Factory(handler), options, prompt), handler);
+        return (new OpenAiCompatibleRecognitionProvider(new Factory(handler), options, prompt, (log ?? new CapturedLog()).For<OpenAiCompatibleRecognitionProvider>()), handler);
     }
 
-    private static RecognitionRequest Request(long? lastOdometer = 123_456, string? currency = "HUF", DocumentKind receipt = DocumentKind.FuelReceipt) => new(
-        Picture, "image/webp", new HashSet<DocumentKind> { DocumentKind.Odometer, receipt }, "hu", lastOdometer, currency, new DateOnly(2026, 10, 1));
+    private static RecognitionRequest Request(long? lastOdometer = 123_456, string? currency = "HUF", DocumentKind receipt = DocumentKind.FuelReceipt, Guid? id = null) => new(
+        Picture, "image/webp", new HashSet<DocumentKind> { DocumentKind.Odometer, receipt }, "hu", lastOdometer, currency, new DateOnly(2026, 10, 1), id);
 
     private static JsonElement Body(Handler handler) => JsonDocument.Parse(handler.Seen.Single().Body).RootElement;
 
@@ -302,24 +304,134 @@ public class OpenAiCompatibleRecognitionProviderTests
     {
         const string key = "hunter2-key", prompt = "SECRET PROMPT TEXT", server = "leak-me-server-message", read = "987654";
         var problems = new List<Exception>();
+        var log = new CapturedLog();
         async Task Collect(OpenAiCompatibleRecognitionProvider model, bool health = false)
         {
             problems.Add(await Assert.ThrowsAnyAsync<Exception>(() => health ? model.IsHealthyAsync(default) : model.ReadAsync(Request(), default)));
         }
         var error = (HttpStatusCode status, string code) => Json(status, $$"""{ "error": { "message": "{{server}}", "type": "invalid_request_error", "code": "{{code}}" } }""");
 
-        await Collect(Model((_, _) => Task.FromResult(error(HttpStatusCode.Unauthorized, "invalid_api_key")), key: key, prompt: prompt).Provider);
-        await Collect(Model((_, _) => Task.FromResult(error(HttpStatusCode.BadRequest, "invalid_image")), key: key, prompt: prompt).Provider);
-        await Collect(Model((_, _) => Task.FromResult(error(HttpStatusCode.BadRequest, server)), key: key, prompt: prompt).Provider); // a "code" that is a sentence is no code
-        await Collect(Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, Said($"The odometer reads {read} km, I think."))), key: key, prompt: prompt).Provider);
-        await Collect(Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, "{" + server)), key: key, prompt: prompt).Provider);
-        await Collect(Model((_, _) => Task.FromResult(error(HttpStatusCode.Unauthorized, "invalid_api_key")), key: key, prompt: prompt).Provider, health: true);
-        await Collect(Model((_, _) => Task.FromResult(Json(HttpStatusCode.InternalServerError, server)), key: key, prompt: prompt).Provider, health: true);
-        await Collect(Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, "<html>" + server)), key: key, prompt: prompt).Provider, health: true);
+        await Collect(Model((_, _) => Task.FromResult(error(HttpStatusCode.Unauthorized, "invalid_api_key")), key: key, prompt: prompt, log: log).Provider);
+        await Collect(Model((_, _) => Task.FromResult(error(HttpStatusCode.BadRequest, "invalid_image")), key: key, prompt: prompt, log: log).Provider);
+        await Collect(Model((_, _) => Task.FromResult(error(HttpStatusCode.BadRequest, server)), key: key, prompt: prompt, log: log).Provider); // a "code" that is a sentence is no code
+        await Collect(Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, Said($"The odometer reads {read} km, I think."))), key: key, prompt: prompt, log: log).Provider);
+        await Collect(Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, "{" + server)), key: key, prompt: prompt, log: log).Provider);
+        await Collect(Model((_, _) => Task.FromResult(error(HttpStatusCode.Unauthorized, "invalid_api_key")), key: key, prompt: prompt, log: log).Provider, health: true);
+        await Collect(Model((_, _) => Task.FromResult(Json(HttpStatusCode.InternalServerError, server)), key: key, prompt: prompt, log: log).Provider, health: true);
+        await Collect(Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, "<html>" + server)), key: key, prompt: prompt, log: log).Provider, health: true);
 
         Assert.Equal(8, problems.Count);
         foreach (var text in problems.SelectMany(p => new[] { p.Message, p.InnerException?.Message ?? "" }))
             foreach (var secret in new[] { key, prompt, server, read })
                 Assert.DoesNotContain(secret, text);
+        Assert.NotEmpty(log.Entries); // the failed reads said so, and still none of it reached a line
+        foreach (var secret in new[] { key, prompt, server, read }) Assert.False(log.Mentions(secret), secret);
+    }
+
+    // ---- the trail of a photo in the log -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task EveryPhoto_LeavesATrail_FromTheQuestionToTheAnswer_WithoutWhatWasReadNorTheKeyNorThePrompt()
+    {
+        var log = new CapturedLog();
+        var id = Guid.NewGuid();
+        var (model, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, Contract("chat.fuel-receipt.json"))), key: "secret-key", prompt: "SECRET PROMPT TEXT", log: log);
+
+        await model.ReadAsync(Request(id: id), default);
+
+        var lines = log.From<OpenAiCompatibleRecognitionProvider>().ToList();
+        Assert.Equal([LogLevel.Debug, LogLevel.Debug], lines.Select(l => l.Level));
+        Assert.Equal<object?[]>([id, "qwen2.5-vl", "http://model:1234/v1", "image/webp", 1],
+            [lines[0].Values["PhotoId"], lines[0].Values["Model"], lines[0].Values["Server"], lines[0].Values["ContentType"], lines[0].Values["Kilobytes"]]);
+        Assert.Equal<object?[]>([id, 200, "stop", "1534", "96", DocumentKind.FuelReceipt, 5],
+            [lines[1].Values["PhotoId"], lines[1].Values["Status"], lines[1].Values["Finish"], lines[1].Values["PromptTokens"], lines[1].Values["CompletionTokens"], lines[1].Values["Said"], lines[1].Values["Listed"]]);
+        Assert.Equal("Total@0.95, Volume@0.90, UnitPrice@0.90, Currency@0.90, Date@0.85", lines[1].Values["Kept"]);
+        Assert.Equal("", lines[1].Values["Issues"]);
+        Assert.True(Convert.ToInt64(lines[1].Values["ElapsedMs"]) >= 0);
+        foreach (var secret in new[] { "24687", "38.52", "640.9", "2026-09-17", "secret-key", "SECRET PROMPT TEXT" }) Assert.False(log.Mentions(secret), secret);
+    }
+
+    [Fact]
+    public async Task ADroppedValue_IsInTheTrailWithItsReason_AndSoIsWhatTheModelCouldNotTell()
+    {
+        var log = new CapturedLog();
+        var (below, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, Contract("chat.odometer.json"))), log: log);
+        var (nothing, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, Said("""{"kind":"odometer","fields":[]}"""))), log: log);
+        var (unknown, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, Contract("chat.unknown.json"))), log: log);
+
+        var older = await below.ReadAsync(Request(lastOdometer: 200_000), default); // the photo shows 123789: the car has been further since
+        var blank = await nothing.ReadAsync(Request(), default);
+        var other = await unknown.ReadAsync(Request(), default);
+
+        var answers = log.From<OpenAiCompatibleRecognitionProvider>().Where(l => l.Values.ContainsKey("Issues")).ToList();
+        Assert.Equal(["Odometer:OdometerBelowLatest", "NothingLegible", "Unrecognised"], answers.Select(a => a.Values["Issues"]));
+        Assert.Equal(["", "", ""], answers.Select(a => a.Values["Kept"]));
+        Assert.Equal<object?[]>([DocumentKind.Odometer, DocumentKind.Odometer, DocumentKind.Unknown], [older.Kind, blank.Kind, other.Kind]);
+        Assert.Equal(["Odometer:OdometerBelowLatest"], older.Issues.Select(i => $"{i.Field}:{i.Code}"));
+        Assert.Equal([ReadingIssueCode.NothingLegible], blank.Issues.Select(i => i.Code));
+        Assert.Equal([ReadingIssueCode.Unrecognised], other.Issues.Select(i => i.Code));
+        Assert.False(log.Mentions("123789"));
+    }
+
+    [Fact]
+    public async Task AKindThePhotoMayNotShow_AValueNoOneUnderstands_AndAMissingRating_AreToldApart()
+    {
+        var (receipt, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, Contract("chat.expense-receipt.json"))));
+        var (spaced, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, Said("""{"kind":"odometer","fields":[{"name":"odometer","value":"123 456 km","confidence":0.9}]}"""))));
+        var (unrated, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, Said("""{"kind":"odometer","fields":[{"name":"odometer","value":"123789"}]}"""))));
+
+        var wrongKind = await receipt.ReadAsync(Request(receipt: DocumentKind.FuelReceipt), default); // an expense receipt was not on the cards
+        var notANumber = await spaced.ReadAsync(Request(), default);
+        var noRating = await unrated.ReadAsync(Request(), default);
+
+        Assert.Equal([ReadingIssueCode.Unrecognised], wrongKind.Issues.Select(i => i.Code));
+        Assert.Equal(["Odometer:NotUnderstood"], notANumber.Issues.Select(i => $"{i.Field}:{i.Code}"));
+        Assert.Empty(notANumber.Values);
+        Assert.Equal(["Odometer:NoConfidence"], noRating.Issues.Select(i => $"{i.Field}:{i.Code}"));
+        Assert.Equal("Odometer=123789@0.5", Shown(noRating)); // kept, but under what the app fills in
+    }
+
+    [Fact]
+    public async Task APhotoThatCouldNotBeRead_LeavesALine_WithTheTimeItTook_AndTheReasonStaysInTheException()
+    {
+        var log = new CapturedLog();
+        var id = Guid.NewGuid();
+        var (broken, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.InternalServerError, "leak-me-server-message")), log: log);
+
+        var error = await Assert.ThrowsAsync<RecognitionUnavailableException>(() => broken.ReadAsync(Request(id: id), default));
+
+        var lines = log.From<OpenAiCompatibleRecognitionProvider>().ToList();
+        Assert.Equal(2, lines.Count); // the question, then the failure: there is no answer to report
+        Assert.Equal<object?[]>([id, "qwen2.5-vl"], [lines[1].Values["PhotoId"], lines[1].Values["Model"]]);
+        Assert.True(Convert.ToInt64(lines[1].Values["ElapsedMs"]) >= 0);
+        Assert.Contains("500", error.Message);
+        Assert.False(log.Mentions("leak-me-server-message"));
+    }
+
+    [Fact]
+    public async Task WhyTheModelStopped_IsOnlyRepeatedWhenItIsAToken_NotWhenAServerWritesSentencesOrLineBreaks()
+    {
+        var log = new CapturedLog();
+        string Answer(string finish) => Said("""{"kind":"unknown","fields":[]}""", finish: finish);
+        var (token, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, Answer("stop"))), log: log);
+        var (words, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, Answer("stopped\nFAKE LINE: signed in as admin"))), log: log);
+
+        await token.ReadAsync(Request(), default);
+        await words.ReadAsync(Request(), default);
+
+        Assert.Equal(["stop", "other"], log.From<OpenAiCompatibleRecognitionProvider>().Where(l => l.Values.ContainsKey("Finish")).Select(l => l.Values["Finish"]));
+        Assert.False(log.Mentions("FAKE LINE"));
+    }
+
+    [Fact]
+    public async Task ACallerThatCancels_LeavesNoFailureLine()
+    {
+        var log = new CapturedLog();
+        var (model, _) = Model(async (_, ct) => { await Task.Delay(TimeSpan.FromSeconds(10), ct); return Json(HttpStatusCode.OK, "{}"); }, log: log);
+        using var cancelled = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => model.ReadAsync(Request(), cancelled.Token));
+
+        Assert.Single(log.From<OpenAiCompatibleRecognitionProvider>()); // only the question: the app was stopping, the photo is not given up on
     }
 }

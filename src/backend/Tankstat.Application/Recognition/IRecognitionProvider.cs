@@ -32,11 +32,17 @@ public interface IRecognitionProvider
 /// <param name="Locale">How numbers and dates are written (<c>hu</c>, <c>en</c>, <c>de</c>).</param>
 /// <param name="LastOdometer">The vehicle's latest reading: a lower number cannot be its odometer.</param>
 /// <param name="Currency">For receipts that show none.</param>
+/// <param name="ReadingId">The photo's id (the reading's and the picture's), so the provider's log lines can be told apart; never part of what the model is sent.</param>
 public sealed record RecognitionRequest(
-    ReadOnlyMemory<byte> Image, string ContentType, IReadOnlySet<DocumentKind> Kinds, string Locale, long? LastOdometer, string? Currency, DateOnly Today);
+    ReadOnlyMemory<byte> Image, string ContentType, IReadOnlySet<DocumentKind> Kinds, string Locale, long? LastOdometer, string? Currency, DateOnly Today,
+    Guid? ReadingId = null);
 
 /// <param name="Values">As the provider wrote them; they are normalised (<see cref="ReadingNormaliser"/>) before they are kept.</param>
-public sealed record RecognitionResult(string ModelVersion, DocumentKind Kind, IReadOnlyList<RecognizedValue> Values);
+public sealed record RecognitionResult(string ModelVersion, DocumentKind Kind, IReadOnlyList<RecognizedValue> Values)
+{
+    /// <summary>Why values the photo may hold were not taken from it, or only with doubt (see <see cref="ReadingIssue"/>); for the log and the dialog.</summary>
+    public IReadOnlyList<ReadingIssue> Issues { get; init; } = [];
+}
 
 public sealed record RecognizedValue(ReadingFieldName Name, string Value, double Confidence, ValueSource Source);
 

@@ -136,6 +136,19 @@ public class RecognitionTests
     // ---- the worker ----------------------------------------------------------------------------------------
 
     [Fact]
+    public async Task AFinishedReading_SaysInCountsHowMuchOfItIsSureEnoughToBeFilledIn()
+    {
+        var s = await Setup();
+        await Queued(s);
+        s.W.Recognizer.Answer = _ => new RecognitionResult("fake-1", DocumentKind.FuelReceipt,
+            [Read(ReadingFieldName.Total, "24669", 0.93), Read(ReadingFieldName.Volume, "38.52", 0.4), Read(ReadingFieldName.Currency, "HUF", 0.95, ValueSource.Hint)]);
+
+        var done = Assert.Single(await s.W.Processor.ProcessDueAsync(default));
+
+        Assert.Equal(new ReadingSummary(DocumentKind.FuelReceipt, 3, 1), done.Summary); // the volume is too unsure, and the currency was only the hint coming back
+    }
+
+    [Fact]
     public async Task TheWorker_ReadsDuePhotos_AndKeepsTheNormalisedValues()
     {
         var s = await Setup();
@@ -146,11 +159,11 @@ public class RecognitionTests
 
         var done = await s.W.Processor.ProcessDueAsync(default);
 
-        Assert.Equal([new ProcessedReading(id, ReadingOutcome.Read)], done);
+        Assert.Equal([new ProcessedReading(id, ReadingOutcome.Read, Summary: new ReadingSummary(DocumentKind.FuelReceipt, 3, 3))], done); // "38,52" is no number: three values kept, all of them sure
         var request = Assert.Single(s.W.Recognizer.Requests);
         Assert.Equal(Jpeg(), request.Image.ToArray());
-        Assert.Equal(("image/jpeg", "hu", (long?)12_345, "HUF", new DateOnly(2026, 10, 1)),
-            (request.ContentType, request.Locale, request.LastOdometer, request.Currency, request.Today));
+        Assert.Equal(("image/jpeg", "hu", (long?)12_345, "HUF", new DateOnly(2026, 10, 1), (Guid?)id),
+            (request.ContentType, request.Locale, request.LastOdometer, request.Currency, request.Today, request.ReadingId)); // the provider's log lines are told apart by it
         Assert.Equal([DocumentKind.Odometer, DocumentKind.FuelReceipt], request.Kinds.Order());
         var reading = s.W.Readings.Items.Single();
         Assert.Equal((ReadingStatus.Read, DocumentKind.FuelReceipt, "fake", "rules-1"), (reading.Status, reading.Kind, reading.Provider, reading.ModelVersion));
@@ -214,7 +227,7 @@ public class RecognitionTests
 
         var done = await s.W.Processor.ProcessDueAsync(default);
 
-        Assert.Equal([new ProcessedReading(id, ReadingOutcome.Read)], done);
+        Assert.Equal([new ProcessedReading(id, ReadingOutcome.Read, Summary: new ReadingSummary(DocumentKind.Unknown, 0, 0))], done);
         Assert.Equal(2, s.W.Readings.Items.Single().Attempts);
     }
 

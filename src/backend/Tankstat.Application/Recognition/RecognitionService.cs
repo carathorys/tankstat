@@ -61,8 +61,7 @@ public sealed class RecognitionService(
     }
 
     /// <summary>The values worth filling in: ones the provider is sure enough of, and read rather than the hint it was given coming back.</summary>
-    public IReadOnlyList<ReadingValue> UsableValues(PhotoReading reading) =>
-        reading.Values.Where(v => v.Source != ValueSource.Hint && v.Confidence >= setup.Options.MinConfidence).ToList();
+    public IReadOnlyList<ReadingValue> UsableValues(PhotoReading reading) => reading.Values.Where(setup.IsSureEnough).ToList();
 
     private static string Language(string? locale)
     {

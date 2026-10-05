@@ -1,9 +1,12 @@
+using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 using Tankstat.Application.Recognition;
 using Tankstat.Domain.Recognition;
 
@@ -15,8 +18,11 @@ namespace Tankstat.Infrastructure.Recognition;
 /// answers with JSON that is read tolerantly (servers and models differ); <c>GET {BaseUrl}/models</c> is the health check. The values come
 /// back through <see cref="ReadingChecks"/>, because a model's own confidence is not to be believed on its own. Exceptions carry fixed
 /// words, a status and at most a short error code: the worker logs them, and a server's message (or the model's) could hold anything.
+/// The Debug lines of each photo follow it from the question to the answer (what was kept, what was dropped and why) with ids, sizes,
+/// timings, field names and reason codes: never what the model read, the prompt or the key.
 /// </summary>
-internal sealed partial class OpenAiCompatibleRecognitionProvider(IHttpClientFactory http, OpenAiCompatibleRecognitionOptions options, string? systemPrompt)
+internal sealed partial class OpenAiCompatibleRecognitionProvider(
+    IHttpClientFactory http, OpenAiCompatibleRecognitionOptions options, string? systemPrompt, ILogger<OpenAiCompatibleRecognitionProvider> logger)
     : IRecognitionProvider
 {
     public const string ClientName = "recognition-openai-compatible";
@@ -32,6 +38,7 @@ internal sealed partial class OpenAiCompatibleRecognitionProvider(IHttpClientFac
     // A base address with a path keeps it: relative URIs resolve below the trailing slash.
     private readonly Uri _base = new(options.BaseUrl!.EndsWith('/') ? options.BaseUrl : options.BaseUrl + "/");
     private readonly string _systemPrompt = systemPrompt ?? OpenAiCompatiblePrompt.DefaultSystemPrompt;
+    private readonly string _server = ServerAddress.Of(options.BaseUrl);
 
     public string Name => "openai-compatible";
     public bool IsConfigured => true;
@@ -68,6 +75,23 @@ internal sealed partial class OpenAiCompatibleRecognitionProvider(IHttpClientFac
 
     public async Task<RecognitionResult> ReadAsync(RecognitionRequest request, CancellationToken ct)
     {
+        logger.LogDebug("Asking {Model} at {Server} to read photo {PhotoId} ({ContentType}, {Kilobytes} KB)",
+            options.Model, _server, request.ReadingId, request.ContentType, (request.Image.Length + 1023) / 1024);
+        var started = Stopwatch.GetTimestamp();
+        try
+        {
+            return await ChatAsync(request, started, ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Why is in the exception, which the worker logs; this line says it was this photo and how long it took.
+            logger.LogDebug("{Model} did not read photo {PhotoId}: gave up after {ElapsedMs} ms", options.Model, request.ReadingId, ElapsedMs(started));
+            throw;
+        }
+    }
+
+    private async Task<RecognitionResult> ChatAsync(RecognitionRequest request, long started, CancellationToken ct)
+    {
         using var message = Message(HttpMethod.Post, "chat/completions");
         message.Content = new StringContent(Body(request).ToJsonString(), Encoding.UTF8, "application/json");
 
@@ -99,7 +123,7 @@ internal sealed partial class OpenAiCompatibleRecognitionProvider(IHttpClientFac
             {
                 throw NotAChatCompletion();
             }
-            using (document) return Result(document.RootElement, request);
+            using (document) return Result(document.RootElement, request, response.StatusCode, started);
         }
     }
 
@@ -148,7 +172,7 @@ internal sealed partial class OpenAiCompatibleRecognitionProvider(IHttpClientFac
     }
 
     /// <summary>What the model said, as a reading: a refusal is final, a cut-off or unusable answer is worth another try, a kind the photo may not show counts as unknown.</summary>
-    private RecognitionResult Result(JsonElement root, RecognitionRequest request)
+    private RecognitionResult Result(JsonElement root, RecognitionRequest request, HttpStatusCode status, long started)
     {
         if (root.ValueKind != JsonValueKind.Object) throw NotAChatCompletion();
         var version = StringProperty(root, "model") is { Length: > 0 } reported ? reported : options.Model ?? "";
@@ -163,14 +187,43 @@ internal sealed partial class OpenAiCompatibleRecognitionProvider(IHttpClientFac
         if (string.IsNullOrWhiteSpace(text)) throw new RecognitionUnavailableException("The model answered nothing.");
 
         using var answer = JsonObjectIn(text);
-        var kind = Kind(StringProperty(answer.RootElement, "kind"));
+        var said = Kind(StringProperty(answer.RootElement, "kind"));
         List<RecognizedValue> values = Property(answer.RootElement, "fields") is { ValueKind: JsonValueKind.Array } fields
             ? fields.EnumerateArray().Select(ValueOf).OfType<RecognizedValue>().ToList()
             : [];
-        return kind != DocumentKind.Unknown && request.Kinds.Contains(kind)
-            ? new RecognitionResult(version, kind, ReadingChecks.Apply(kind, values, request))
-            : new RecognitionResult(version, DocumentKind.Unknown, []);
+        var result = Judge(version, said, values, request);
+        logger.LogDebug("{Model} answered photo {PhotoId} in {ElapsedMs} ms (HTTP {Status}, finish {Finish}, {PromptTokens}+{CompletionTokens} tokens): said {Said}, listed {Listed}, kept [{Kept}], issues [{Issues}]",
+            options.Model, request.ReadingId, ElapsedMs(started), (int)status, Finish(finish), Tokens(root, "prompt_tokens"), Tokens(root, "completion_tokens"),
+            said, values.Count, string.Join(", ", result.Values.Select(v => $"{v.Name}@{v.Confidence.ToString("0.00", CultureInfo.InvariantCulture)}")),
+            string.Join(", ", result.Issues.Select(i => i.Field is { } field ? $"{field}:{i.Code}" : i.Code.ToString())));
+        return result;
     }
+
+    /// <summary>
+    /// What the model's answer comes to: a kind the photo may not show counts as unknown (its values would be for something else), the
+    /// values of the others go through <see cref="ReadingChecks"/>, and a photo that gave no value at all says so.
+    /// </summary>
+    private static RecognitionResult Judge(string version, DocumentKind said, List<RecognizedValue> values, RecognitionRequest request)
+    {
+        if (said == DocumentKind.Unknown || !request.Kinds.Contains(said))
+            return new RecognitionResult(version, DocumentKind.Unknown, []) { Issues = [new ReadingIssue(null, ReadingIssueCode.Unrecognised)] };
+        var checks = ReadingChecks.Check(said, values, request);
+        return new RecognitionResult(version, said, checks.Kept)
+        {
+            Issues = checks.Kept.Count == 0 && checks.Issues.Count == 0 ? [new ReadingIssue(null, ReadingIssueCode.NothingLegible)] : checks.Issues,
+        };
+    }
+
+    /// <summary>Why the model stopped, as a log may say it: a token such as <c>stop</c> or <c>length</c>; whatever else a server writes there is not repeated.</summary>
+    private static string Finish(string? reason) => reason is null ? "none" : SafeToken().IsMatch(reason) ? reason : "other";
+
+    private static long ElapsedMs(long started) => (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+
+    /// <summary>A token count of the answer's <c>usage</c> as text (servers differ in whether they tell); "?" when it is not there.</summary>
+    private static string Tokens(JsonElement root, string name) =>
+        Property(root, "usage") is { } usage && Property(usage, name) is { ValueKind: JsonValueKind.Number } count && count.TryGetInt64(out var n)
+            ? n.ToString(CultureInfo.InvariantCulture)
+            : "?";
 
     /// <summary>The model's text: a string, or (some servers) the text parts of a list.</summary>
     private static string? Text(JsonElement message) => Property(message, "content") switch
@@ -197,7 +250,7 @@ internal sealed partial class OpenAiCompatibleRecognitionProvider(IHttpClientFac
         }
     }
 
-    /// <summary>One field of the answer, or null when it names no value the app knows; a confidence that is not a number counts as doubtful.</summary>
+    /// <summary>One field of the answer, or null when it names no value the app knows; a confidence that is not a number is NaN, which <see cref="ReadingChecks"/> counts as doubtful (and says so).</summary>
     private static RecognizedValue? ValueOf(JsonElement field)
     {
         if (Field(StringProperty(field, "name")) is not { } name) return null;
@@ -208,7 +261,7 @@ internal sealed partial class OpenAiCompatibleRecognitionProvider(IHttpClientFac
             _ => null,
         };
         if (string.IsNullOrWhiteSpace(value)) return null;
-        var confidence = Property(field, "confidence") is { ValueKind: JsonValueKind.Number } rated && rated.TryGetDouble(out var d) ? d : ReadingChecks.Doubtful;
+        var confidence = Property(field, "confidence") is { ValueKind: JsonValueKind.Number } rated && rated.TryGetDouble(out var d) ? d : double.NaN;
         return new RecognizedValue(name, value, confidence, ValueSource.Read);
     }
 

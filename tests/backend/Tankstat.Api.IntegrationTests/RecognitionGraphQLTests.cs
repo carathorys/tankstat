@@ -258,6 +258,18 @@ public class RecognitionGraphQLTests
         throw new TimeoutException($"The worker never said a reading was {outcome}.");
     }
 
+    /// <summary>A line of one of the app's classes (by the end of its category: the adapter is internal) that has the placeholder; the worker writes after the read is visible, so this waits for it.</summary>
+    private static async Task<LogEntry> Logged(TestApp app, string category, string placeholder)
+    {
+        for (var i = 0; i < 100; i++)
+        {
+            var line = app.Log.Entries.FirstOrDefault(e => e.Category.EndsWith(category, StringComparison.Ordinal) && e.Values.ContainsKey(placeholder));
+            if (line is not null) return line;
+            await Task.Delay(100);
+        }
+        throw new TimeoutException($"{category} never logged a line with {placeholder}.");
+    }
+
     [Fact]
     public async Task AModelBehindAnOpenAiCompatibleApi_ReadsThePhoto_ThroughTheRealAdapter_AndNothingSecretReachesTheLog()
     {
@@ -278,6 +290,19 @@ public class RecognitionGraphQLTests
         Assert.Contains("data:image/png;base64," + Convert.ToBase64String(Png()), body);
         Assert.Contains(server.Requests, r => r.Request.Method == HttpMethod.Get && r.Request.RequestUri!.AbsolutePath.EndsWith("/models", StringComparison.Ordinal));
         foreach (var secret in new[] { "secret-key", "Custom prompt", "24687", "38.52", "640.9" }) Assert.False(app.Log.Mentions(secret), secret);
+
+        // What an operator can follow instead: which model and prompt are in use, the photo's question and answer, and what came of the read.
+        var photo = Guid.Parse(id);
+        var started = await Logged(app, "RecognitionWorker", "Server");
+        Assert.Equal<object?[]>(["test-vision", "http://model.invalid:1234/v1"], [started.Values["Model"], started.Values["Server"]]);
+        var prompt = await Logged(app, "RecognitionWorker", "PromptSource");
+        Assert.Equal<object?[]>(["from Recognition:OpenAiCompatible:SystemPrompt", "Custom prompt for the test.".Length], [prompt.Values["PromptSource"], prompt.Values["Characters"]]);
+        var asked = await Logged(app, "OpenAiCompatibleRecognitionProvider", "Kilobytes");
+        var answered = await Logged(app, "OpenAiCompatibleRecognitionProvider", "Issues");
+        Assert.Equal<object?[]>([photo, photo], [asked.Values["PhotoId"], answered.Values["PhotoId"]]);
+        Assert.Equal("Total@0.95, Volume@0.90, UnitPrice@0.90, Currency@0.90, Date@0.40", answered.Values["Kept"]);
+        var summary = await Logged(app, "RecognitionWorker", "Sure");
+        Assert.Equal<object?[]>([photo, DocumentKind.FuelReceipt, 5, 4], [summary.Values["Id"], summary.Values["Kind"], summary.Values["Values"], summary.Values["Sure"]]); // the date was too unsure
     }
 
     [Fact]

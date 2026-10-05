@@ -128,8 +128,8 @@ public sealed class LogPhotoFiller(
     private static bool IsPending(PhotoReading reading) => reading.Status is ReadingStatus.Queued or ReadingStatus.Reading;
 
     /// <summary>
-    /// The best value per field across the log's photos, among those read rather than the hint coming back and at least as sure as
-    /// <see cref="RecognitionOptions.MinConfidence"/> (a blank beats a wrong value). A total without a currency on the photo takes the
+    /// The best value per field across the log's photos, among those sure enough (<see cref="RecognitionSetup.IsSureEnough"/>: a blank
+    /// beats a wrong value). A total without a currency on the photo takes the
     /// currency the reading was given as its hint (the vehicle's usual one).
     /// </summary>
     private PhotoValues ValuesOf(IReadOnlyList<PhotoReading> found)
@@ -137,7 +137,7 @@ public sealed class LogPhotoFiller(
         var read = found.Where(r => r.Status == ReadingStatus.Read).ToList();
         var best = read
             .SelectMany(r => r.Values)
-            .Where(v => v.Source != ValueSource.Hint && v.Confidence >= setup.Options.MinConfidence)
+            .Where(setup.IsSureEnough)
             .GroupBy(v => v.Name)
             .ToDictionary(g => g.Key, g => g.MaxBy(v => v.Confidence)!.Value);
 
