@@ -184,35 +184,125 @@ it('edits a schedule, starting from its current values', async () => {
   expect(state.calls.UpdateRecurringExpense).toEqual([{ input: expect.objectContaining({ id: 'rc1', title: 'Oil and filter', kind: 'COMBINED', intervalMonths: 12, intervalDistance: 15000 }) }])
 })
 
-it('marks a schedule as done: the odometer and the cost go along, and the next interval starts', async () => {
+const doneDialog = async (ui: ReturnType<typeof userEvent.setup>, title: string) => {
+  await ui.click(screen.getByRole('button', { name: `Mark ${title} as done` }))
+  const dialog = await screen.findByRole('dialog', { name: `Mark as done: ${title}` })
+  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
+  return dialog
+}
+
+it('marks what was done at one visit: the clicked one and the due ones start ticked, and one amount covers all of them', async () => {
   const { ui, state } = setup()
   await row('Oil change')
 
-  await ui.click(screen.getByRole('button', { name: 'Mark Oil change as done' }))
-  const dialog = await screen.findByRole('dialog', { name: 'Mark as done: Oil change' })
-  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
+  const dialog = await doneDialog(ui, 'Oil change')
+  const visit = within(within(dialog).getByRole('group', { name: 'Done at this visit' }))
+  expect(visit.getByRole('checkbox', { name: 'Oil change' })).toBeChecked()
+  expect(visit.getByRole('checkbox', { name: 'Tyres' })).toBeChecked() // overdue: probably done at the same visit
+  expect(within(dialog).getByText('2 ticked')).toBeInTheDocument()
+  expect(within(dialog).getByLabelText('Expense title')).toHaveValue('Tyres, Oil change')
+  expect(within(dialog).getByLabelText('Expense category (optional)')).toHaveValue('Service')
   await ui.type(within(dialog).getByLabelText(/^Odometer/), '62000')
-  await ui.type(within(dialog).getByLabelText('Amount'), '35000')
+  await ui.type(within(dialog).getByLabelText('Amount (optional)'), '35000')
   await ui.click(within(dialog).getByRole('button', { name: 'Mark as done' }))
 
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-  expect(state.calls.MarkRecurringExpenseDone).toEqual([
-    { input: { id: 'rc1', date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), odometer: 62000, createExpense: true, amount: 35000, currency: 'HUF', photoIds: [] } },
+  expect(state.calls.MarkRecurringExpensesDone).toEqual([
+    {
+      input: {
+        ids: ['rc2', 'rc1'],
+        date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        odometer: 62000,
+        amount: 35000,
+        currency: 'HUF',
+        title: 'Tyres, Oil change',
+        category: 'Service',
+        photoIds: [],
+      },
+    },
   ])
 })
 
-it('can mark it done without logging an expense', async () => {
-  const { ui, state } = setup(fakeVehicle(), [fakeRecurring({ kind: 'TIME', intervalDistance: null, lastDoneOdometer: null })])
+it('an unticked schedule stays as it is, and a title typed by hand is kept when the ticks change', async () => {
+  const { ui, state } = setup()
   await row('Oil change')
+  const dialog = await doneDialog(ui, 'Oil change')
 
-  await ui.click(screen.getByRole('button', { name: 'Mark Oil change as done' }))
-  const dialog = await screen.findByRole('dialog', { name: 'Mark as done: Oil change' })
-  await ui.click(await within(dialog).findByRole('switch', { name: 'Also log it as an expense' }))
-  expect(within(dialog).queryByLabelText('Amount')).not.toBeInTheDocument()
+  await ui.click(within(dialog).getByRole('checkbox', { name: 'Tyres' }))
+  expect(within(dialog).getByLabelText('Expense title')).toHaveValue('Oil change')
+  await ui.clear(within(dialog).getByLabelText('Expense title'))
+  await ui.type(within(dialog).getByLabelText('Expense title'), 'Yearly service')
+  await ui.click(within(dialog).getByRole('checkbox', { name: 'Tyres' }))
+  expect(within(dialog).getByLabelText('Expense title')).toHaveValue('Yearly service')
+  await ui.click(within(dialog).getByRole('checkbox', { name: 'Tyres' }))
+  await ui.type(within(dialog).getByLabelText(/^Odometer/), '62000')
+  await ui.type(within(dialog).getByLabelText('Amount (optional)'), '35000')
   await ui.click(within(dialog).getByRole('button', { name: 'Mark as done' }))
 
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-  expect(state.calls.MarkRecurringExpenseDone).toEqual([{ input: { id: 'rc1', date: expect.any(String), odometer: null, createExpense: false, amount: null, currency: null, photoIds: [] } }])
+  expect(state.calls.MarkRecurringExpensesDone).toEqual([{ input: expect.objectContaining({ ids: ['rc1'], title: 'Yearly service' }) }])
+})
+
+it('without an amount only the schedules move on: nothing is required beyond the day', async () => {
+  const { ui, state } = setup(fakeVehicle(), [fakeRecurring({ kind: 'TIME', intervalDistance: null, lastDoneOdometer: null })])
+  await row('Oil change')
+
+  const dialog = await doneDialog(ui, 'Oil change')
+  expect(within(dialog).queryByRole('switch')).not.toBeInTheDocument()
+  await ui.click(within(dialog).getByRole('button', { name: 'Mark as done' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(state.calls.MarkRecurringExpensesDone).toEqual([
+    { input: { ids: ['rc1'], date: expect.any(String), odometer: null, amount: null, currency: null, title: 'Oil change', category: 'Service', photoIds: [] } },
+  ])
+})
+
+it('a dialog with nothing ticked says so instead of saving', async () => {
+  const { ui, state } = setup()
+  await row('Oil change')
+  const dialog = await doneDialog(ui, 'Oil change')
+
+  await ui.click(within(dialog).getByRole('checkbox', { name: 'Tyres' }))
+  await ui.click(within(dialog).getByRole('checkbox', { name: 'Oil change' }))
+  await ui.click(within(dialog).getByRole('button', { name: 'Mark as done' }))
+
+  expect(within(dialog).getByRole('alert')).toHaveTextContent('Tick at least one recurring expense.')
+  expect(state.calls.MarkRecurringExpensesDone).toBeUndefined()
+})
+
+it('several schedules can be selected in the list and marked done together', async () => {
+  const { ui, state } = setup()
+  await row('Oil change')
+  const markSelected = () => screen.getByRole('button', { name: /selected as done/ })
+  expect(markSelected()).toBeDisabled()
+
+  await ui.click(screen.getByRole('checkbox', { name: 'Select Oil change' }))
+  expect(markSelected()).toHaveAccessibleName('Mark 1 selected as done')
+  await ui.click(markSelected())
+  const dialog = await screen.findByRole('dialog', { name: 'Mark as done' })
+  expect(within(dialog).getByRole('checkbox', { name: 'Oil change' })).toBeChecked()
+  expect(within(dialog).getByRole('checkbox', { name: 'Tyres' })).not.toBeChecked() // only what was selected
+  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
+  await ui.type(within(dialog).getByLabelText(/^Odometer/), '62000')
+  await ui.click(within(dialog).getByRole('button', { name: 'Mark as done' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(state.calls.MarkRecurringExpensesDone).toEqual([{ input: expect.objectContaining({ ids: ['rc1'], amount: null }) }])
+  await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Select Oil change' })).not.toBeChecked()) // the selection is spent
+
+  await ui.click(screen.getByRole('checkbox', { name: 'Select all recurring expenses' }))
+  expect(markSelected()).toHaveAccessibleName('Mark 2 selected as done')
+})
+
+it('a schedule that refuses names itself, and nothing is saved', async () => {
+  const { ui, state } = setup()
+  state.failWith = { message: 'Tyres: odometer too low', key: 'recurring.odometerBelowLast', args: { title: 'Tyres', last: '63,000' } }
+  await row('Oil change')
+  const dialog = await doneDialog(ui, 'Oil change')
+  await ui.type(within(dialog).getByLabelText(/^Odometer/), '62000')
+  await ui.click(within(dialog).getByRole('button', { name: 'Mark as done' }))
+
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('For Tyres the odometer cannot be lower than 63,000, where it was last done.')
 })
 
 it('deletes a schedule after a confirmation', async () => {

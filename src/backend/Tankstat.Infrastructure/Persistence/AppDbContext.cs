@@ -20,6 +20,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Refueling> Refuelings => Set<Refueling>();
     public DbSet<Expense> Expenses => Set<Expense>();
     public DbSet<RecurringExpense> RecurringExpenses => Set<RecurringExpense>();
+    public DbSet<RecurringCompletion> RecurringCompletions => Set<RecurringCompletion>();
     public DbSet<VehicleChart> VehicleCharts => Set<VehicleChart>();
     public DbSet<OdometerReading> OdometerReadings => Set<OdometerReading>();
     public DbSet<Cost> Costs => Set<Cost>();

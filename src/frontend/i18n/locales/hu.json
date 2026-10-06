@@ -166,7 +166,8 @@
     "title": "Megnevezés",
     "category": "Kategória",
     "amount": "Összeg",
-    "consumption": "Fogyasztás"
+    "consumption": "Fogyasztás",
+    "schedules": "Ismétlődő"
   },
   "grid": {
     "refresh": "Frissítés",
@@ -473,9 +474,10 @@
       "odometerRequired": "A következő időszak indításához kell a kilométeróra-állás.",
       "warnDaysInvalid": "A figyelmeztetési idő 0 és {{max}} nap között lehet.",
       "warnDistanceInvalid": "A figyelmeztetési távolság nem lehet negatív.",
-      "doneBeforeLast": "Nem végezhető el {{date}} előtt, mert akkor volt legutóbb.",
-      "odometerBelowLast": "A kilométeróra nem lehet kevesebb, mint {{last}}, ahol legutóbb elvégezték.",
-      "amountRequired": "A költség rögzítéséhez kell az összeg és a pénznem.",
+      "doneBeforeLast": "A(z) {{title}} nem végezhető el {{date}} előtt, mert akkor volt legutóbb.",
+      "odometerBelowLast": "A(z) {{title}} esetén a kilométeróra nem lehet kevesebb, mint {{last}}, ahol legutóbb elvégezték.",
+      "doneOdometerRequired": "A(z) {{title}} távolság alapján ismétlődik: a következő időszak indításához kell a kilométeróra-állás.",
+      "noneSelected": "Jelölj be legalább egy ismétlődő költséget.",
       "notFound": "Ez az ismétlődő költség nem létezik."
     },
     "log": {
@@ -963,15 +965,26 @@
       "startToday": "Alapból ma. Módosítsd, ha korábban végezték el legutóbb."
     },
     "doneTitle": "Késznek jelölés: {{title}}",
-    "doneDescription": "A következő időszak az itt megadott naptól és kilométeróra-állástól indul.",
+    "doneTitleMany": "Késznek jelölés",
+    "doneDescription": "Jelöld be, mi készült el ennél a szervizelésnél: mindegyik következő időszaka az itt megadott naptól és kilométeróra-állástól indul. Az összeg mindegyikre együtt vonatkozik, egy költségként kerül rögzítésre.",
+    "doneItems": "Ennél a szervizelésnél elvégezve",
+    "selectedCount_one": "{{count}} bejelölve",
+    "selectedCount_other": "{{count}} bejelölve",
+    "selectAria": "{{title}} kijelölése",
+    "selectAllAria": "Az összes ismétlődő költség kijelölése",
+    "doneSelected_one": "{{count}} kijelölt késznek jelölése",
+    "doneSelected_other": "{{count}} kijelölt késznek jelölése",
+    "amountOptional": "Összeg (nem kötelező)",
+    "amountHint": "Hagyd üresen, ha költség rögzítése nélkül indítanád a következő időszakokat.",
+    "expenseTitle": "A költség megnevezése",
+    "expenseCategory": "A költség kategóriája (nem kötelező)",
     "doneDate": "Elvégezve ekkor",
-    "logExpense": "Rögzítse költségként is",
     "amount": "Összeg",
     "currency": "Pénznem",
     "doneSave": "Késznek jelölés",
     "deleteTitle": "Törlöd ezt az ismétlődő költséget?",
     "deleteDescription": "A(z) {{title}} többé nem lesz nyomon követve. A belőle már rögzített költségek megmaradnak.",
     "deleteConfirm": "Törlés",
-    "photosNotKept": "A fotókat csak naplózott kiadással együtt őrizzük meg."
+    "photosNotKept": "Összeg nélkül nem rögzítünk költséget, így a fotókat sem őrizzük meg."
   }
 }

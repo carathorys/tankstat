@@ -101,3 +101,13 @@ it('saves a change once, also under StrictMode, and a second change builds on th
   expect(result.current.state.pagination.pageSize).toBe(10)
   expect(value.saveGrid).toHaveBeenLastCalledWith('g', expect.objectContaining({ hidden: ['plate'], pageSize: 10 }))
 })
+
+it('a column hidden by default stays hidden on a wide screen until the user shows it, and a saved choice wins', () => {
+  const withDetail: ColumnInfo[] = [...columns, { id: 'detail', hideable: true, mobile: false, defaultHidden: true, sortable: false }]
+  const { result } = renderHook(() => useGridSettings('d', withDetail, sort))
+  expect(result.current.state.columnVisibility).toEqual({ detail: false }) // the plate and the fuel show on a desktop
+
+  window.localStorage.setItem('tankstat.grid.e', JSON.stringify(saved({ order: ['name', 'plate', 'fuel', 'detail'], hidden: [] })))
+  const shown = renderHook(() => useGridSettings('e', withDetail, sort))
+  expect(shown.result.current.state.columnVisibility).toEqual({})
+})

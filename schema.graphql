@@ -122,7 +122,7 @@ type Mutation {
   updateRecurringExpense(input: UpdateRecurringExpenseInput!): RecurringExpenseInfo!
     @cost(weight: "10")
   deleteRecurringExpense(id: UUID!): Boolean! @cost(weight: "10")
-  markRecurringExpenseDone(input: MarkRecurringExpenseDoneInput!): RecurringExpenseInfo!
+  markRecurringExpensesDone(input: MarkRecurringExpensesDoneInput!): MarkRecurringExpensesDonePayload!
     @cost(weight: "10")
   markNotificationsRead(ids: [UUID!]): [NotificationInfo!]! @cost(weight: "10")
   confirmImport(input: ConfirmImportInput!): ImportResultInfo!
@@ -190,6 +190,7 @@ type Expense {
   createdBy: UserRef @cost(weight: "10")
   vehicle: Vehicle @cost(weight: "10")
   photos: [LogPhotoInfo!]! @cost(weight: "10")
+  schedules: [RecurringRef!]! @cost(weight: "10")
 }
 
 type GridSettingsInfo {
@@ -262,6 +263,11 @@ type LogDefaults {
 type LogPhotoInfo {
   id: UUID!
   url: String!
+}
+
+type MarkRecurringExpensesDonePayload {
+  schedules: [RecurringExpenseInfo!]!
+  expense: Expense
 }
 
 type MeasurementUnits {
@@ -361,6 +367,11 @@ type RecurringExpenseInfo {
   warnDistance: Long!
   createdAt: DateTime!
   status: RecurrenceStatusInfo!
+}
+
+type RecurringRef {
+  id: UUID!
+  title: String!
 }
 
 type Refueling {
@@ -575,13 +586,14 @@ input LogRefuelingInput {
   missedPreviousFillUp: Boolean
 }
 
-input MarkRecurringExpenseDoneInput {
-  id: UUID!
+input MarkRecurringExpensesDoneInput {
+  ids: [UUID!]!
   date: LocalDate!
   odometer: Long
-  createExpense: Boolean!
   amount: Decimal
   currency: String
+  title: String
+  category: String
   photoIds: [UUID!]
 }
 

@@ -11,6 +11,8 @@ export interface ColumnInfo {
   hideable: boolean
   /** Shown by default on narrow (phone) screens. */
   mobile: boolean
+  /** Hidden until the user shows it (on every screen). */
+  defaultHidden?: boolean
   sortable: boolean
 }
 
@@ -48,7 +50,7 @@ function defaults(columns: ColumnInfo[], sort: { column: string; desc: boolean }
   const narrow = isNarrow()
   return {
     columnOrder: columns.map((c) => c.id),
-    columnVisibility: Object.fromEntries(columns.filter((c) => c.hideable && narrow && !c.mobile).map((c) => [c.id, false])),
+    columnVisibility: Object.fromEntries(columns.filter((c) => c.hideable && (c.defaultHidden || (narrow && !c.mobile))).map((c) => [c.id, false])),
     sorting: [{ id: sort.column, desc: sort.desc }],
     pagination: { pageIndex: 0, pageSize: DEFAULT_PAGE_SIZE },
   }

@@ -69,10 +69,27 @@ public class RecurringExpenseTests
         Assert.Equal(new DateOnly(2026, 6, 1), timeOnly.LastDoneDate);
 
         var combined = Make();
-        Assert.Equal("recurring.odometerRequired", Key(() => combined.MarkDone(new DateOnly(2026, 6, 1), null)));
+        Assert.Equal("recurring.doneOdometerRequired", Key(() => combined.MarkDone(new DateOnly(2026, 6, 1), null)));
         Assert.Equal("recurring.odometerBelowLast", Key(() => combined.MarkDone(new DateOnly(2026, 6, 1), 49000)));
         Assert.Equal("recurring.doneBeforeLast", Key(() => combined.MarkDone(new DateOnly(2025, 12, 31), 51000)));
         Assert.Equal((Start, 50000L), (combined.LastDoneDate, combined.LastDoneOdometer)); // nothing changed by the failures
+    }
+
+    [Fact]
+    public void ARefusedDone_NamesTheSchedule_SoTheDialogCanSayWhichOneOfSeveral()
+    {
+        var oil = Make(title: "Oil change");
+
+        var refusals = new Action[]
+        {
+            () => oil.CheckDone(new DateOnly(2025, 12, 31), 51000),
+            () => oil.CheckDone(new DateOnly(2026, 6, 1), null),
+            () => oil.CheckDone(new DateOnly(2026, 6, 1), 49000),
+        }.Select(Assert.Throws<DomainException>).ToList();
+
+        Assert.All(refusals, e => Assert.Equal("Oil change", e.Args["title"]));
+        Assert.Equal("2026-01-15", refusals[0].Args["date"]);
+        Assert.Equal(50000L, refusals[2].Args["last"]);
     }
 
     [Fact]
@@ -162,5 +179,33 @@ public class RecurrenceCalculatorTests
         var status = RecurrenceCalculator.Evaluate(item, new DateOnly(2026, 12, 26), 64600);
 
         Assert.Equal((RecurrenceState.DueSoon, RecurrenceLimit.Odometer), (status.State, status.Limit!.Value));
+    }
+}
+
+public class RecurringDoneDefaultsTests
+{
+    private static RecurringExpense Item(string title, string? category = null, string? note = null) =>
+        RecurringExpense.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), title, category, note, RecurrenceKind.Time, 12, null, new DateOnly(2026, 1, 15), null, 30, 500, DateTimeOffset.UnixEpoch);
+
+    [Fact]
+    public void TheTitle_JoinsTheSchedules_AndIsCutToFitAnExpenseTitle()
+    {
+        Assert.Equal("Oil change", RecurringDoneDefaults.Title([Item("Oil change")]));
+        Assert.Equal("Oil change, Oil filter, Air filter", RecurringDoneDefaults.Title([Item("Oil change"), Item("Oil filter"), Item("Air filter")]));
+
+        var long_ = RecurringDoneDefaults.Title([Item(new string('a', 70)), Item(new string('b', 70))]);
+        Assert.Equal(Tankstat.Domain.Vehicles.Expense.MaxTitleLength, long_.Length);
+        Assert.EndsWith("…", long_);
+    }
+
+    [Fact]
+    public void TheCategory_IsTheCommonOne_OrTheFirstGiven_AndTheNoteGoesOnlyWithASingleSchedule()
+    {
+        Assert.Equal("Service", RecurringDoneDefaults.Category([Item("Oil", "Service"), Item("Filter", "Service")]));
+        Assert.Equal("Service", RecurringDoneDefaults.Category([Item("Wipers"), Item("Oil", "Service"), Item("Tax", "Fees")]));
+        Assert.Null(RecurringDoneDefaults.Category([Item("Wipers"), Item("Bulbs")]));
+
+        Assert.Equal("5W-30", RecurringDoneDefaults.Note([Item("Oil", note: "5W-30")]));
+        Assert.Null(RecurringDoneDefaults.Note([Item("Oil", note: "5W-30"), Item("Filter")]));
     }
 }

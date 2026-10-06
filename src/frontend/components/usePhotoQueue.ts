@@ -23,6 +23,9 @@ interface Entry extends QueuedPhoto {
   blob: Blob
 }
 
+/** What the photo session needs to know about a log that was just saved (null or undefined: nothing was logged). */
+export const savedFrom = (log: { id: string; photos: readonly unknown[] } | null | undefined): Saved => (log ? { id: log.id, photoCount: log.photos.length } : undefined)
+
 export interface PhotoQueue {
   items: QueuedPhoto[]
   /** Makes the photos smaller and uploads them one by one; resolves to the first upload error, if any (the photo stays, marked failed). */

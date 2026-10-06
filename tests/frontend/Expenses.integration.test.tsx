@@ -36,6 +36,21 @@ it('lists the expenses with their amounts in the currency they were paid in, new
   expect(state.requests.at(-1)).toMatchObject({ vehicleId: 'v1', orderBy: 'DATE', direction: 'DESC', withAmount: true })
 })
 
+it('an expense logged for a service visit names the recurring expenses it covered, in a column shown on request', async () => {
+  const { ui, state } = setup(fakeVehicle(), [fakeExpense({ id: 'e3', title: 'Yearly service', schedules: [{ id: 'rc1', title: 'Oil change' }, { id: 'rc3', title: 'Oil filter' }] })])
+  await screen.findByText('Yearly service')
+  expect(screen.queryByText('Oil change, Oil filter')).not.toBeInTheDocument()
+  expect(screen.queryByRole('columnheader', { name: 'Recurring' })).not.toBeInTheDocument()
+  expect(state.requests.at(-1)).toMatchObject({ withSchedules: false }) // hidden by default, so never asked for
+
+  await ui.click(screen.getByRole('button', { name: 'Columns' }))
+  await ui.click(within(await screen.findByRole('dialog')).getByRole('checkbox', { name: 'Show Recurring' }))
+
+  expect(await screen.findByRole('columnheader', { name: 'Recurring' })).toBeInTheDocument()
+  expect(await screen.findByText('Oil change, Oil filter')).toBeInTheDocument()
+  expect(state.requests.at(-1)).toMatchObject({ withSchedules: true })
+})
+
 it('shows a dash where the odometer was not noted', async () => {
   setup()
 

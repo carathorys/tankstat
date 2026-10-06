@@ -21,10 +21,21 @@ public sealed record UpdateRecurringExpenseInput(
     Guid Id, string Title, string? Category, string? Note, RecurrenceKind Kind, int? IntervalMonths, long? IntervalDistance,
     DateOnly LastDoneDate, long? LastDoneOdometer, int? WarnDays, long? WarnDistance);
 
-/// <param name="CreateExpense">Also log the cost as an expense (needs <c>amount</c>).</param>
+/// <param name="Ids">Schedules of one vehicle, all done on the same day at the same odometer (one service visit).</param>
+/// <param name="Amount">What the visit cost for all of them together (never split). With an amount, or with photos (one still being read may
+/// fill it in), one expense is logged and linked to every schedule; without, only the schedules move on.</param>
 /// <param name="Currency">ISO 4217 code; omit to use the instance default.</param>
+/// <param name="Title">The expense's title; omit for the schedules' titles joined.</param>
+/// <param name="Category">The expense's category; omit for the schedules' common (or first) category.</param>
 /// <param name="PhotoIds">Photos uploaded beforehand (<c>PUT /media/vehicles/{id}/photo-drafts</c>); they become the logged expense's photos.</param>
-public sealed record MarkRecurringExpenseDoneInput(Guid Id, DateOnly Date, long? Odometer, bool CreateExpense, decimal? Amount, string? Currency, IReadOnlyList<Guid>? PhotoIds = null);
+public sealed record MarkRecurringExpensesDoneInput(
+    IReadOnlyList<Guid> Ids, DateOnly Date, long? Odometer, decimal? Amount, string? Currency, string? Title, string? Category, IReadOnlyList<Guid>? PhotoIds = null);
+
+/// <summary>The schedules as they stand now, and the expense logged for them (null when none was).</summary>
+public sealed record MarkRecurringExpensesDonePayload(IReadOnlyList<RecurringExpenseInfo> Schedules, Expense? Expense);
+
+/// <summary>A recurring expense an expense covered when it was marked done.</summary>
+public sealed record RecurringRef(Guid Id, string Title);
 
 /// <summary>Where a recurring expense stands today. The days and distance left are negative once it is overdue; null when that side does not apply.</summary>
 public sealed record RecurrenceStatusInfo(RecurrenceState State, RecurrenceLimit? Limit, DateOnly? DueDate, long? DueOdometer, int? DaysLeft, long? DistanceLeft);
@@ -49,6 +60,22 @@ public sealed class RecurringByVehicleLoader(RecurringExpenseService recurring, 
         var loaded = await recurring.ListForVehiclesAsync(keys, ct);
         return keys.ToDictionary(v => v, v => loaded[v.Id]);
     }
+}
+
+/// <summary>The schedules each expense of a response covered, one query for all. Only used for expenses that were already authorised.</summary>
+public sealed class ExpenseSchedulesLoader(RecurringExpenseService recurring, IBatchScheduler scheduler, DataLoaderOptions options)
+    : GroupedDataLoader<Guid, CompletedSchedule>(scheduler, options)
+{
+    protected override async Task<ILookup<Guid, CompletedSchedule>> LoadGroupedBatchAsync(IReadOnlyList<Guid> keys, CancellationToken ct) =>
+        await recurring.ListCompletionsForExpensesAsync(keys, ct);
+}
+
+[ExtendObjectType<Expense>]
+public sealed class ExpenseRecurringExtensions
+{
+    /// <summary>The recurring expenses this expense covered when they were marked done (one visit can do several), by title.</summary>
+    public async Task<IReadOnlyList<RecurringRef>> GetSchedules([Parent] Expense expense, ExpenseSchedulesLoader loader, CancellationToken ct) =>
+        expense.IsDeleted ? [] : (await loader.LoadAsync(expense.Id, ct) ?? []).Select(c => new RecurringRef(c.RecurringExpenseId, c.Title)).ToList();
 }
 
 [ExtendObjectType<Vehicle>]
@@ -77,8 +104,15 @@ public sealed class RecurringMutations
         return true;
     }
 
-    /// <summary>Starts the next interval from the given day and odometer and, when asked, logs the cost as an expense.</summary>
-    public async Task<RecurringExpenseInfo> MarkRecurringExpenseDone(
-        MarkRecurringExpenseDoneInput input, [Service] RecurringExpenseService recurring, [Service] IOptions<VehicleDefaultsOptions> defaults, CancellationToken ct) =>
-        RecurringExpenseInfo.From(await recurring.MarkDoneAsync(input.Id, new MarkDoneInput(input.Date, input.Odometer, input.CreateExpense, input.Amount, input.Currency ?? defaults.Value.Currency, input.PhotoIds), ct));
+    /// <summary>
+    /// Marks schedules of one vehicle done on the same day and odometer (one service visit) and, with an amount or photos, logs one expense
+    /// for all of them. All or nothing: a schedule that refuses (its error names it) leaves everything as it was.
+    /// </summary>
+    public async Task<MarkRecurringExpensesDonePayload> MarkRecurringExpensesDone(
+        MarkRecurringExpensesDoneInput input, [Service] RecurringExpenseService recurring, [Service] IOptions<VehicleDefaultsOptions> defaults, CancellationToken ct)
+    {
+        var done = await recurring.MarkDoneAsync(input.Ids,
+            new MarkDoneInput(input.Date, input.Odometer, input.Amount, input.Currency ?? defaults.Value.Currency, input.Title, input.Category, input.PhotoIds), ct);
+        return new MarkRecurringExpensesDonePayload(done.Schedules.Select(RecurringExpenseInfo.From).ToList(), done.Expense);
+    }
 }

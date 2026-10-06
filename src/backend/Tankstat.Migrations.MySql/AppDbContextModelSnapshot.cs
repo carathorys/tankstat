@@ -458,6 +458,21 @@ namespace Tankstat.Migrations.MySql
                     b.ToTable("PhotoReadings", (string)null);
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Recurring.RecurringCompletion", b =>
+                {
+                    b.Property<Guid>("ExpenseId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("RecurringExpenseId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("ExpenseId", "RecurringExpenseId");
+
+                    b.HasIndex("RecurringExpenseId");
+
+                    b.ToTable("RecurringCompletions", (string)null);
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Recurring.RecurringExpense", b =>
                 {
                     b.Property<Guid>("Id")
@@ -931,6 +946,15 @@ namespace Tankstat.Migrations.MySql
                     b.HasOne("Tankstat.Domain.Images.StoredImage", null)
                         .WithOne()
                         .HasForeignKey("Tankstat.Domain.Recognition.PhotoReading", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Recurring.RecurringCompletion", b =>
+                {
+                    b.HasOne("Tankstat.Domain.Recurring.RecurringExpense", null)
+                        .WithMany()
+                        .HasForeignKey("RecurringExpenseId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

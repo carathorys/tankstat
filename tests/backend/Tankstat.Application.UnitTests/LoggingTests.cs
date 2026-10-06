@@ -120,7 +120,7 @@ public class LoggingTests
         await w.ExpenseService.RestoreAsync(cost.Id, default);
         var schedule = (await w.RecurringService.AddAsync(car.Id, Insurance(), default)).Item;
         await w.RecurringService.UpdateAsync(schedule.Id, Insurance("Insurance 2"), default);
-        await w.RecurringService.MarkDoneAsync(schedule.Id, new MarkDoneInput(Day.AddDays(10), null, true, 200, "EUR"), default);
+        await w.RecurringService.MarkDoneAsync([schedule.Id], new MarkDoneInput(Day.AddDays(10), null, 200, "EUR"), default);
         await w.RecurringService.DeleteAsync(schedule.Id, default);
         var chart = await w.ChartService.CreateAsync(car.Id, new ChartInput("Spend", Config(), false), default);
         await w.ChartService.UpdateAsync(chart.Id, new ChartInput("Spend 2", Config(), false), default);
@@ -179,10 +179,11 @@ public class LoggingTests
         var schedule = (await w.RecurringService.AddAsync(car.Id, Insurance(), default)).Item;
         w.Recurring.FailUpdateWith = new InvalidOperationException("database down");
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => w.RecurringService.MarkDoneAsync(schedule.Id, new MarkDoneInput(Day, null, true, 100, "EUR"), default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => w.RecurringService.MarkDoneAsync([schedule.Id], new MarkDoneInput(Day, null, 100, "EUR"), default));
 
         var warning = Assert.Single(w.Log.Entries, e => e.Level == LogLevel.Warning);
-        Assert.Equal<object?[]>([schedule.Id, w.Expenses.Items.Single().Id], [warning.Values["RecurringId"], warning.Values["ExpenseId"]]);
+        Assert.Equal([schedule.Id], Assert.IsAssignableFrom<IEnumerable<Guid>>(warning.Values["RecurringIds"]));
+        Assert.Equal(w.Expenses.Items.Single().Id, warning.Values["ExpenseId"]);
     }
 
     [Fact]
@@ -338,7 +339,7 @@ public class LoggingTests
         await w.RefuelingService.UpdateAsync(fill.Id, new RefuelingInput(Day, 41.37m, 98765.43m, "EUR", 123456789, true, "canary refueling note 2"), default);
         var cost = await w.ExpenseService.AddAsync(car.Id, new ExpenseInput(Day.AddDays(1), "Canary expense title", "Canary expense category", 5555.55m, "EUR", 987654321, "canary expense note"), default);
         var schedule = (await w.RecurringService.AddAsync(car.Id, new RecurringExpenseInput("Canary schedule", "Canary schedule category", "canary schedule note", RecurrenceKind.Time, 12, null, Day, null, null, null), default)).Item;
-        await w.RecurringService.MarkDoneAsync(schedule.Id, new MarkDoneInput(Day.AddDays(10), null, true, 4444.44m, "EUR"), default);
+        await w.RecurringService.MarkDoneAsync([schedule.Id], new MarkDoneInput(Day.AddDays(10), null, 4444.44m, "EUR"), default);
         await w.ChartService.CreateAsync(car.Id, new ChartInput("Canary chart title", Config(), false), default);
         var draft = await w.Drafts.UploadAsync(car.Id, Jpeg(1), default);
         var photo = await w.Photos.AddAsync(LogType.Expense, cost.Id, Jpeg(2), default);

@@ -131,19 +131,73 @@ public class RecurringExpenseServiceTests
         Assert.Equal(200L, list[1].Status.DistanceLeft);
     }
 
+    private static MarkDoneInput Done(long? odometer = 62000, decimal? amount = 35000, IReadOnlyCollection<Guid>? photos = null, DateOnly? date = null, string? title = null, string? category = null) =>
+        new(date ?? new DateOnly(2026, 9, 20), odometer, amount, amount is null ? null : "HUF", title, category, photos);
+
     [Fact]
-    public async Task MarkDone_LogsTheExpense_AndStartsTheNextInterval()
+    public async Task MarkDone_OneSchedule_LogsTheExpenseUnderItsName_AndStartsTheNextInterval()
     {
         var s = await Setup();
-        var item = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(), default)).Item;
+        var item = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil() with { Note = "5W-30" }, default)).Item;
 
-        var done = await s.W.RecurringService.MarkDoneAsync(item.Id, new MarkDoneInput(new DateOnly(2026, 9, 20), 62000, true, 35000, "HUF"), default);
+        var done = await s.W.RecurringService.MarkDoneAsync([item.Id], Done(), default);
 
         var expense = Assert.Single(s.W.Expenses.Items);
-        Assert.Equal(("Oil change", "Service", 35000m, "HUF", 62000L), (expense.Title, expense.Category, expense.Amount, expense.Currency, expense.Odometer));
-        Assert.Equal((new DateOnly(2026, 9, 20), 62000L), (done.Item.LastDoneDate, done.Item.LastDoneOdometer));
-        Assert.Equal(new DateOnly(2027, 9, 20), done.Status.DueDate);
-        Assert.Equal(77000L, done.Status.DueOdometer);
+        Assert.Same(expense, done.Expense);
+        Assert.Equal(("Oil change", "Service", "5W-30", 35000m, "HUF", 62000L), (expense.Title, expense.Category, expense.Note, expense.Amount, expense.Currency, expense.Odometer));
+        var schedule = Assert.Single(done.Schedules);
+        Assert.Equal((new DateOnly(2026, 9, 20), 62000L), (schedule.Item.LastDoneDate, schedule.Item.LastDoneOdometer));
+        Assert.Equal((new DateOnly(2027, 9, 20), 77000L), (schedule.Status.DueDate, schedule.Status.DueOdometer));
+        Assert.Equal([(expense.Id, item.Id)], s.W.Recurring.Completions.Select(c => (c.ExpenseId, c.RecurringExpenseId)));
+    }
+
+    [Fact]
+    public async Task MarkDone_SeveralSchedules_LogOneExpenseForAll_NotSplit_LinkedToEach()
+    {
+        var s = await Setup();
+        var oil = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil() with { Note = "5W-30" }, default)).Item;
+        var filter = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(title: "Oil filter"), default)).Item;
+        var air = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(RecurrenceKind.Time, "Air filter") with { Category = null }, default)).Item;
+        var fuel = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(title: "Fuel filter"), default)).Item; // not done at this visit
+
+        var done = await s.W.RecurringService.MarkDoneAsync([oil.Id, filter.Id, air.Id], Done(amount: 60000), default);
+
+        var expense = Assert.Single(s.W.Expenses.Items);
+        Assert.Equal(("Oil change, Oil filter, Air filter", "Service", (string?)null, 60000m), (expense.Title, expense.Category, expense.Note, expense.Amount));
+        Assert.Equal([oil.Id, filter.Id, air.Id], done.Schedules.Select(i => i.Item.Id)); // in the order asked for
+        Assert.All(done.Schedules, i => Assert.Equal(new DateOnly(2026, 9, 20), i.Item.LastDoneDate));
+        Assert.Equal(new DateOnly(2026, 1, 15), fuel.LastDoneDate);
+        Assert.Equal(new[] { oil.Id, filter.Id, air.Id }.Order(), s.W.Recurring.Completions.Where(c => c.ExpenseId == expense.Id).Select(c => c.RecurringExpenseId).Order());
+
+        var covered = await s.W.RecurringService.ListCompletionsForExpensesAsync([expense.Id], default);
+        Assert.Equal(["Air filter", "Oil change", "Oil filter"], covered[expense.Id].Select(c => c.Title));
+    }
+
+    [Fact]
+    public async Task MarkDone_TheTitleAndCategoryGiven_AreTheExpenses()
+    {
+        var s = await Setup();
+        var oil = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(), default)).Item;
+        var filter = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(title: "Oil filter"), default)).Item;
+
+        await s.W.RecurringService.MarkDoneAsync([oil.Id, filter.Id], Done(title: "Yearly service", category: "Workshop"), default);
+
+        Assert.Equal(("Yearly service", "Workshop"), (s.W.Expenses.Items.Single().Title, s.W.Expenses.Items.Single().Category));
+    }
+
+    [Fact]
+    public async Task MarkDone_WithoutAnAmount_OnlyMovesTheBaselines()
+    {
+        var s = await Setup();
+        var item = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(RecurrenceKind.Time), default)).Item;
+        var other = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(RecurrenceKind.Time, "Wipers"), default)).Item;
+
+        var done = await s.W.RecurringService.MarkDoneAsync([item.Id, other.Id], Done(odometer: null, amount: null), default);
+
+        Assert.Null(done.Expense);
+        Assert.Empty(s.W.Expenses.Items);
+        Assert.Empty(s.W.Recurring.Completions);
+        Assert.Equal([new DateOnly(2026, 9, 20), new DateOnly(2026, 9, 20)], new[] { item.LastDoneDate, other.LastDoneDate });
     }
 
     [Fact]
@@ -153,7 +207,7 @@ public class RecurringExpenseServiceTests
         var item = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(), default)).Item;
         var invoice = await s.W.Drafts.UploadAsync(s.Car.Id, new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 1 }, default);
 
-        await s.W.RecurringService.MarkDoneAsync(item.Id, new MarkDoneInput(new DateOnly(2026, 9, 20), 62000, true, 35000, "HUF", [invoice]), default);
+        await s.W.RecurringService.MarkDoneAsync([item.Id], Done(photos: [invoice]), default);
 
         var expense = Assert.Single(s.W.Expenses.Items);
         Assert.Equal([invoice], s.W.LogPhotos.Items.Where(p => p.LogId == expense.Id).Select(p => p.ImageId));
@@ -161,28 +215,31 @@ public class RecurringExpenseServiceTests
     }
 
     [Fact]
-    public async Task MarkDone_WithoutAnExpense_LeavesThePhotosAsDrafts()
+    public async Task MarkDone_PhotosWithoutAnAmount_ThatNobodyIsReading_AreRefused_AndNothingMoves()
     {
         var s = await Setup();
         var item = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(RecurrenceKind.Time), default)).Item;
         var photo = await s.W.Drafts.UploadAsync(s.Car.Id, new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 2 }, default);
 
-        await s.W.RecurringService.MarkDoneAsync(item.Id, new MarkDoneInput(new DateOnly(2026, 9, 20), null, false, null, null, [photo]), default);
+        var refused = await Assert.ThrowsAsync<DomainException>(() => s.W.RecurringService.MarkDoneAsync([item.Id], Done(odometer: null, amount: null, photos: [photo]), default));
 
-        Assert.Empty(s.W.LogPhotos.Items);
-        Assert.Equal([photo], s.W.PhotoDrafts.Items.Select(d => d.Id)); // nothing to attach them to: they expire
+        Assert.Equal("log.valuesRequired", refused.Key); // the expense rule: an amount, or a photo still being read that may give it
+        Assert.Empty(s.W.Expenses.Items);
+        Assert.Equal(new DateOnly(2026, 1, 15), item.LastDoneDate);
     }
 
     [Fact]
-    public async Task MarkDone_WithoutAnExpense_OnlyMovesTheBaseline()
+    public async Task MarkDone_IsAllOrNothing_AndTheRefusalNamesTheScheduleThatRefused()
     {
         var s = await Setup();
-        var item = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(RecurrenceKind.Time), default)).Item;
+        var oil = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(), default)).Item;
+        var tyres = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(RecurrenceKind.Odometer, "Tyres", odometer: 63000), default)).Item;
 
-        await s.W.RecurringService.MarkDoneAsync(item.Id, new MarkDoneInput(new DateOnly(2026, 9, 20), null, false, null, null), default);
+        var refused = await Assert.ThrowsAsync<DomainException>(() => s.W.RecurringService.MarkDoneAsync([oil.Id, tyres.Id], Done(odometer: 62000), default));
 
+        Assert.Equal(("recurring.odometerBelowLast", "Tyres"), (refused.Key, refused.Args["title"]));
         Assert.Empty(s.W.Expenses.Items);
-        Assert.Equal(new DateOnly(2026, 9, 20), item.LastDoneDate);
+        Assert.Equal((new DateOnly(2026, 1, 15), 50000L), (oil.LastDoneDate, oil.LastDoneOdometer)); // the one that would have been fine did not move either
     }
 
     [Fact]
@@ -193,28 +250,62 @@ public class RecurringExpenseServiceTests
         await s.W.RefuelingService.LogAsync(s.Car.Id, new DateOnly(2026, 9, 1), 40, 60, 60000, true, default);
         var before = (item.LastDoneDate, item.LastDoneOdometer);
 
-        var noAmount = await Assert.ThrowsAsync<DomainException>(() => s.W.RecurringService.MarkDoneAsync(item.Id, new MarkDoneInput(new DateOnly(2026, 9, 20), 62000, true, null, null), default));
-        var lowerThanARecentReading = await Assert.ThrowsAsync<DomainException>(() => s.W.RecurringService.MarkDoneAsync(item.Id, new MarkDoneInput(new DateOnly(2026, 9, 20), 55000, true, 10, "HUF"), default));
-        var noOdometer = await Assert.ThrowsAsync<DomainException>(() => s.W.RecurringService.MarkDoneAsync(item.Id, new MarkDoneInput(new DateOnly(2026, 9, 20), null, false, null, null), default));
-        var future = await Assert.ThrowsAsync<DomainException>(() => s.W.RecurringService.MarkDoneAsync(item.Id, new MarkDoneInput(new DateOnly(2026, 11, 1), 62000, false, null, null), default));
+        var lowerThanARecentReading = await Assert.ThrowsAsync<DomainException>(() => s.W.RecurringService.MarkDoneAsync([item.Id], Done(odometer: 55000, amount: 10), default));
+        var noOdometer = await Assert.ThrowsAsync<DomainException>(() => s.W.RecurringService.MarkDoneAsync([item.Id], Done(odometer: null, amount: null), default));
+        var future = await Assert.ThrowsAsync<DomainException>(() => s.W.RecurringService.MarkDoneAsync([item.Id], Done(date: new DateOnly(2026, 11, 1), amount: null), default));
+        var none = await Assert.ThrowsAsync<DomainException>(() => s.W.RecurringService.MarkDoneAsync([], Done(), default));
 
-        Assert.Equal(["recurring.amountRequired", "odometer.belowPrevious", "recurring.odometerRequired", "refueling.dateInFuture"],
-            [noAmount.Key, lowerThanARecentReading.Key, noOdometer.Key, future.Key]);
+        Assert.Equal(["odometer.belowPrevious", "recurring.doneOdometerRequired", "refueling.dateInFuture", "recurring.noneSelected"],
+            [lowerThanARecentReading.Key, noOdometer.Key, future.Key, none.Key]);
         Assert.Empty(s.W.Expenses.Items);
         Assert.Equal(before, (item.LastDoneDate, item.LastDoneOdometer));
     }
 
     [Fact]
-    public async Task MarkDone_TrashesTheLoggedExpense_WhenTheScheduleCannotBeSaved()
+    public async Task MarkDone_OnlyTakesSchedulesOfOneVisibleVehicle_AndToleratesAnIdGivenTwice()
+    {
+        var s = await Setup();
+        var van = await s.W.VehicleService.AddAsync("Van", null, FuelType.Diesel, default);
+        var oil = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(), default)).Item;
+        var vans = (await s.W.RecurringService.AddAsync(van.Id, Oil(), default)).Item;
+
+        var mixed = await Assert.ThrowsAsync<NotFoundException>(() => s.W.RecurringService.MarkDoneAsync([oil.Id, vans.Id], Done(), default));
+        var unknown = await Assert.ThrowsAsync<NotFoundException>(() => s.W.RecurringService.MarkDoneAsync([oil.Id, Guid.NewGuid()], Done(), default));
+
+        Assert.Equal(("recurring.notFound", vans.Id), (mixed.Key, mixed.Args["id"]));
+        Assert.Equal("recurring.notFound", unknown.Key);
+        Assert.Empty(s.W.Expenses.Items);
+        Assert.Equal(new DateOnly(2026, 1, 15), oil.LastDoneDate);
+
+        var done = await s.W.RecurringService.MarkDoneAsync([oil.Id, oil.Id], Done(), default);
+        Assert.Single(done.Schedules);
+        Assert.Single(s.W.Recurring.Completions);
+    }
+
+    [Fact]
+    public async Task MarkDone_TrashesTheLoggedExpense_WhenTheSchedulesCannotBeSaved()
     {
         var s = await Setup();
         var item = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(), default)).Item;
         s.W.Recurring.FailUpdateWith = new InvalidOperationException("database down");
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            s.W.RecurringService.MarkDoneAsync(item.Id, new MarkDoneInput(new DateOnly(2026, 9, 20), 62000, true, 35000, "HUF"), default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => s.W.RecurringService.MarkDoneAsync([item.Id], Done(), default));
 
         Assert.True(Assert.Single(s.W.Expenses.Items).IsDeleted); // no live cost is left behind to be logged twice by a retry
+        Assert.Empty(s.W.Recurring.Completions);
+    }
+
+    [Fact]
+    public async Task DeletingASchedule_TakesItsLinksAlong_TheExpenseStays()
+    {
+        var s = await Setup();
+        var item = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(), default)).Item;
+        var done = await s.W.RecurringService.MarkDoneAsync([item.Id], Done(), default);
+
+        await s.W.RecurringService.DeleteAsync(item.Id, default);
+
+        Assert.Empty((await s.W.RecurringService.ListCompletionsForExpensesAsync([done.Expense!.Id], default))[done.Expense.Id]);
+        Assert.False(Assert.Single(s.W.Expenses.Items).IsDeleted);
     }
 
     [Fact]
@@ -245,7 +336,7 @@ public class RecurringExpenseServiceTests
         s.W.Grants.Items.Add(AccessGrant.Create(s.Alice.Id, s.Bob.Id, AccessLevel.View)); // may look, not touch
         Assert.Single(await s.W.RecurringService.ListAsync(s.Car.Id, default));
         await Assert.ThrowsAsync<ForbiddenException>(() => s.W.RecurringService.AddAsync(s.Car.Id, Oil(), default));
-        await Assert.ThrowsAsync<ForbiddenException>(() => s.W.RecurringService.MarkDoneAsync(item.Id, new MarkDoneInput(Today, 51000, false, null, null), default));
+        await Assert.ThrowsAsync<ForbiddenException>(() => s.W.RecurringService.MarkDoneAsync([item.Id], new MarkDoneInput(Today, 51000, null, null), default));
 
         s.W.Grants.Items.Clear();
         s.W.Grants.Items.Add(AccessGrant.Create(s.Alice.Id, s.Bob.Id, AccessLevel.Edit));

@@ -150,11 +150,31 @@ internal sealed class InMemoryRecurring(InMemoryVehicles vehicles) : IRecurringE
             .Where(i => scope.Contains(i.OwnerId, i.VehicleId) && vehicles.Items.Any(v => v.Id == i.VehicleId && !v.IsDeleted))
             .Select(i => i.VehicleId).Distinct().ToList());
     public Task<RecurringExpense?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(i => i.Id == id));
+    public Task<IReadOnlyList<RecurringExpense>> FindManyAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<RecurringExpense>>(Items.Where(i => ids.Contains(i.Id)).ToList());
     public Task AddAsync(RecurringExpense item, CancellationToken ct) { Items.Add(item); return Task.CompletedTask; }
-    /// <summary>When set, <see cref="UpdateAsync"/> throws it (a failing database).</summary>
+    /// <summary>When set, <see cref="UpdateAsync"/> and <see cref="CompleteAsync"/> throw it (a failing database).</summary>
     public Exception? FailUpdateWith { get; set; }
     public Task UpdateAsync(RecurringExpense item, CancellationToken ct) => FailUpdateWith is { } e ? Task.FromException(e) : Task.CompletedTask; // shared references
-    public Task RemoveAsync(RecurringExpense item, CancellationToken ct) { Items.Remove(item); return Task.CompletedTask; }
+    public Task RemoveAsync(RecurringExpense item, CancellationToken ct)
+    {
+        Items.Remove(item);
+        Completions.RemoveAll(c => c.RecurringExpenseId == item.Id); // the cascade
+        return Task.CompletedTask;
+    }
+
+    /// <summary>The links between expenses and the schedules they covered.</summary>
+    public List<RecurringCompletion> Completions { get; } = [];
+    public Task CompleteAsync(IReadOnlyCollection<RecurringExpense> items, IReadOnlyCollection<RecurringCompletion> links, CancellationToken ct)
+    {
+        if (FailUpdateWith is { } e) return Task.FromException(e); // the schedules share references: their baselines moved anyway, the links did not
+        Completions.AddRange(links);
+        return Task.CompletedTask;
+    }
+    public Task<IReadOnlyList<CompletedSchedule>> ListCompletionsForExpensesAsync(IReadOnlyCollection<Guid> expenseIds, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<CompletedSchedule>>(Completions.Where(c => expenseIds.Contains(c.ExpenseId))
+            .Join(Items, c => c.RecurringExpenseId, i => i.Id, (c, i) => new CompletedSchedule(c.ExpenseId, i.Id, i.Title))
+            .OrderBy(c => c.Title).ToList());
 }
 
 internal sealed class InMemoryNotifications : INotificationRepository

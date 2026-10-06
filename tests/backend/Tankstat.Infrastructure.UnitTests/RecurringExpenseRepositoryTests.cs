@@ -167,4 +167,74 @@ public class RecurringExpenseRepositoryTests
         await using var after = await Context(db);
         Assert.Empty(after.RecurringExpenses);
     }
+
+    [Fact]
+    public async Task Complete_SavesTheMovedBaselinesAndTheLinksTogether_AndTheLinksListTheCoveredSchedules()
+    {
+        await using var db = new TestDatabase();
+        var car = await AddVehicle(db);
+        var repo = db.Get<IRecurringExpenseRepository>();
+        var oil = Item(car, "Oil");
+        var filter = Item(car, "Filter");
+        var other = Item(car, "Not done");
+        foreach (var i in new[] { oil, filter, other }) await repo.AddAsync(i, default);
+        var expense = Guid.NewGuid();
+
+        var loaded = await repo.FindManyAsync([oil.Id, filter.Id, Guid.NewGuid()], default);
+        Assert.Equal(new[] { oil.Id, filter.Id }.Order(), loaded.Select(i => i.Id).Order()); // an unknown id is simply absent
+        foreach (var i in loaded) i.MarkDone(new DateOnly(2026, 12, 1), 61000);
+        await repo.CompleteAsync(loaded, loaded.Select(i => RecurringCompletion.Create(expense, i.Id)).ToList(), default);
+
+        Assert.Equal(new DateOnly(2026, 12, 1), (await repo.FindAsync(oil.Id, default))!.LastDoneDate);
+        Assert.Equal(new DateOnly(2026, 12, 1), (await repo.FindAsync(filter.Id, default))!.LastDoneDate);
+        Assert.Equal(Day, (await repo.FindAsync(other.Id, default))!.LastDoneDate);
+        var covered = await repo.ListCompletionsForExpensesAsync([expense, Guid.NewGuid()], default);
+        Assert.Equal(["Filter", "Oil"], covered.Select(c => c.Title)); // by title
+        Assert.All(covered, c => Assert.Equal(expense, c.ExpenseId));
+    }
+
+    [Fact]
+    public async Task Complete_StoresNothing_WhenTheSaveFails()
+    {
+        await using var db = new TestDatabase();
+        var car = await AddVehicle(db);
+        var repo = db.Get<IRecurringExpenseRepository>();
+        var oil = Item(car, "Oil");
+        await repo.AddAsync(oil, default);
+        var moved = (await repo.FindAsync(oil.Id, default))!;
+        moved.MarkDone(new DateOnly(2026, 12, 1), 61000);
+        var expense = Guid.NewGuid();
+
+        // A link to a schedule that does not exist breaks the foreign key: the whole save is refused.
+        await Assert.ThrowsAnyAsync<DbUpdateException>(() => repo.CompleteAsync([moved], [RecurringCompletion.Create(expense, oil.Id), RecurringCompletion.Create(expense, Guid.NewGuid())], default));
+
+        Assert.Equal(Day, (await repo.FindAsync(oil.Id, default))!.LastDoneDate);
+        Assert.Empty(await repo.ListCompletionsForExpensesAsync([expense], default));
+    }
+
+    [Fact]
+    public async Task TheLinks_GoWithTheirSchedule_WhenItIsDeleted_TheVehiclePurged_OrItsCreatorPurged()
+    {
+        await using var db = new TestDatabase();
+        var users = db.Get<IUserRepository>();
+        var alice = User.CreateLocal("alice@x.co", null, false);
+        await users.AddAsync(alice, default);
+        var car = await AddVehicle(db, alice.Id);
+        var van = await AddVehicle(db);
+        var repo = db.Get<IRecurringExpenseRepository>();
+        var deleted = Item(car, "Deleted");
+        var onCar = Item(car, "On the car");
+        var onVan = Item(van, "By Alice on the van", createdBy: alice.Id);
+        foreach (var i in new[] { deleted, onCar, onVan }) await repo.AddAsync(i, default);
+        await repo.CompleteAsync([], new[] { deleted, onCar, onVan }.Select(i => RecurringCompletion.Create(Guid.NewGuid(), i.Id)).ToList(), default);
+        async Task<int> Links() { await using var ctx = await Context(db); return await ctx.RecurringCompletions.CountAsync(); }
+        Assert.Equal(3, await Links());
+
+        await repo.RemoveAsync(deleted, default);
+        Assert.Equal(2, await Links());
+
+        await db.Get<IUserDataRepository>().DeleteUserAsync(alice.Id, null, default); // purges her car and what she made on the van
+        Assert.Equal(0, await Links());
+    }
 }
+

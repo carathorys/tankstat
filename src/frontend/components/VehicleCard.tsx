@@ -11,6 +11,7 @@ import { useMediaQuery } from '../hooks/useMediaQuery.ts'
 import { useFormat } from '../i18n/format.ts'
 import { RecurringDoneDialog } from '../RecurringDoneDialog.tsx'
 import { RefuelingFormDialog } from '../RefuelingFormDialog.tsx'
+import { preselect } from '../recurringDone.ts'
 import { canLogFor } from '../vehicles.ts'
 import { cardClickOrigin, tappedAway } from './cardClicks.ts'
 import { CoverLayers } from './CoverLayers.tsx'
@@ -139,15 +140,18 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
                       {canLog && (
                         <RecurringDoneDialog
                           vehicle={v}
-                          item={r}
+                          items={v.recurring}
+                          selected={preselect(v.recurring, r.id)}
+                          openedFrom={r}
                           trigger={
                             <IconButton size="2" variant="soft" highContrast className="vehicle-card-action" data-done={r.id} aria-label={t('welcome.card.doneAria', { title: r.title, name: v.name })}>
                               <CheckCheck size={16} aria-hidden />
                             </IconButton>
                           }
-                          onSubmit={(values) => actions.done(r.id, values)}
-                          // Done, the schedule leaves this list together with its button: the focus would fall off the page, so it goes
-                          // to the card's title instead (a cancelled dialog finds its button and hands the focus back to it as usual).
+                          onSubmit={actions.done}
+                          // Done, the schedule leaves this list together with its button (and so may the others done at the same visit):
+                          // the focus would fall off the page, so it goes to the card's title instead (a cancelled dialog finds its button
+                          // and hands the focus back to it as usual).
                           onCloseAutoFocus={(e) => {
                             if (card.current?.querySelector(`[data-done="${r.id}"]`)) return
                             e.preventDefault()

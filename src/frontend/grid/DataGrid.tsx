@@ -32,6 +32,8 @@ export interface GridColumn<Row, TVars, TSort extends string> {
   hideable?: boolean
   /** Shown by default on phones. */
   mobile?: boolean
+  /** Hidden until the user shows it, on every screen (a detail few need). */
+  defaultHidden?: boolean
   /** Server-side sort key; columns without one are not sortable. */
   sortField?: TSort
   /** Name of the query's Boolean variable that switches this column's GraphQL fields on (@include). Omit for always-on fields. */
@@ -89,7 +91,7 @@ export function DataGrid<TData extends object, TVars extends OperationVariables,
   pollWhile?: (rows: Row[]) => boolean
 }) {
   const { t } = useTranslation()
-  const info = useMemo(() => columns.map((c) => ({ id: c.id, hideable: c.hideable ?? true, mobile: c.mobile ?? false, sortable: c.sortField !== undefined })), [columns])
+  const info = useMemo(() => columns.map((c) => ({ id: c.id, hideable: c.hideable ?? true, mobile: c.mobile ?? false, defaultHidden: c.defaultHidden ?? false, sortable: c.sortField !== undefined })), [columns])
   const sortDefault = useMemo(() => ({ column: defaultSort.column, desc: defaultSort.direction === 'DESC' }), [defaultSort.column, defaultSort.direction])
   const { state, update, setPagination, reset } = useGridSettings(gridId, info, sortDefault)
 

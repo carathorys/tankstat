@@ -1,14 +1,15 @@
 import { useMutation, useQuery } from '@apollo/client/react'
-import { Box, Button, Flex, IconButton, Table, Text, VisuallyHidden } from '@radix-ui/themes'
+import { Box, Button, Checkbox, Flex, IconButton, Table, Text, VisuallyHidden } from '@radix-ui/themes'
 import { CheckCheck, Pencil, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '../../components/ConfirmDialog.tsx'
 import { RecurringStatusBadge } from '../../components/RecurringStatus.tsx'
+import { savedFrom } from '../../components/usePhotoQueue.ts'
 import {
   AddRecurringExpenseDocument,
   DeleteRecurringExpenseDocument,
-  MarkRecurringExpenseDoneDocument,
+  MarkRecurringExpensesDoneDocument,
   RecurringExpensesDocument,
   UpdateRecurringExpenseDocument,
   type DistanceUnit,
@@ -17,15 +18,19 @@ import {
 import { useDueText } from '../../hooks/useDueText.ts'
 import { useFormat } from '../../i18n/format.ts'
 import { ErrorMessage } from '../../messages.tsx'
-import { RecurringDoneDialog } from '../../RecurringDoneDialog.tsx'
+import { RecurringDoneDialog, type DoneValues } from '../../RecurringDoneDialog.tsx'
+import { preselect } from '../../recurringDone.ts'
 import { RecurringFormDialog } from '../../RecurringFormDialog.tsx'
 
 type Item = NonNullable<RecurringExpensesQuery['vehicle']>['recurring'][number]
 
-// The home page shows the same schedules, and marking one done logs an expense: all of them are refreshed.
-const refetch = { refetchQueries: ['RecurringExpenses', 'Expenses', 'VehicleDetails', 'LogDefaults'], awaitRefetchQueries: true } // never Welcome: the home page asks afresh when it mounts
+// The home page shows the same schedules, and marking some done may log an expense: all of them are refreshed.
+const refetch = { refetchQueries: ['RecurringExpenses', 'Expenses', 'VehicleDetails', 'LogDefaults', 'ExpenseCategories'], awaitRefetchQueries: true } // never Welcome: the home page asks afresh when it mounts
 
-/** A vehicle's recurring expenses: what repeats, when it was last done, when it is due next, and whether it already is. */
+/**
+ * A vehicle's recurring expenses: what repeats, when it was last done, when it is due next, and whether it already is. Whoever may log can
+ * tick several and mark them done together (one service visit), or start from one row's Done button.
+ */
 export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; units: { distance: DistanceUnit } }; canLog: boolean }) {
   const { t } = useTranslation()
   const format = useFormat()
@@ -35,9 +40,28 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
   const [addItem] = useMutation(AddRecurringExpenseDocument, refetch)
   const [updateItem] = useMutation(UpdateRecurringExpenseDocument, refetch)
   const [deleteItem] = useMutation(DeleteRecurringExpenseDocument, refetch)
-  const [markDone] = useMutation(MarkRecurringExpenseDoneDocument, refetch)
+  const [markDone] = useMutation(MarkRecurringExpensesDoneDocument, refetch)
   const [actionError, setActionError] = useState<unknown>()
+  const [selection, setSelection] = useState<ReadonlySet<string>>(new Set())
   const items = data?.vehicle?.recurring ?? []
+  const chosen = items.filter((i) => selection.has(i.id)).map((i) => i.id) // a deleted schedule drops out by itself
+  const allChosen = items.length > 0 && chosen.length === items.length
+
+  const select = (ids: string[], on: boolean) =>
+    setSelection((current) => {
+      const next = new Set(current)
+      for (const id of ids) {
+        if (on) next.add(id)
+        else next.delete(id)
+      }
+      return next
+    })
+
+  async function done(values: DoneValues, photoIds: string[]) {
+    const result = await markDone({ variables: { input: { ...values, photoIds } } })
+    setSelection(new Set())
+    return savedFrom(result.data?.markRecurringExpensesDone.expense)
+  }
 
   const schedule = (i: Item) => {
     const time = i.intervalMonths != null ? t('recurring.schedule.months', { count: i.intervalMonths }) : ''
@@ -73,6 +97,20 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
             onSubmit={(input) => addItem({ variables: { input: { ...input, vehicleId: vehicle.id } } })}
           />
         )}
+        {canLog && items.length > 0 && (
+          <RecurringDoneDialog
+            vehicle={vehicle}
+            items={items}
+            selected={chosen}
+            trigger={
+              <Button size="3" variant="soft" disabled={chosen.length === 0}>
+                <CheckCheck size={16} aria-hidden />
+                {t('recurring.doneSelected', { count: chosen.length })}
+              </Button>
+            }
+            onSubmit={done}
+          />
+        )}
         <Text size="2" color="gray" aria-live="polite">
           {t('recurring.countLabel', { count: items.length })}
         </Text>
@@ -86,6 +124,18 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
             </VisuallyHidden>
             <Table.Header>
               <Table.Row>
+                {canLog && (
+                  <Table.ColumnHeaderCell scope="col">
+                    <Flex align="center" justify="center" style={{ minWidth: 44, minHeight: 44 }}>
+                      <Checkbox
+                        size="3"
+                        aria-label={t('recurring.selectAllAria')}
+                        checked={allChosen ? true : chosen.length > 0 ? 'indeterminate' : false}
+                        onCheckedChange={(c) => select(items.map((i) => i.id), c === true)}
+                      />
+                    </Flex>
+                  </Table.ColumnHeaderCell>
+                )}
                 <Table.ColumnHeaderCell scope="col">{t('recurring.columns.title')}</Table.ColumnHeaderCell>
                 <Table.ColumnHeaderCell scope="col">{t('recurring.columns.schedule')}</Table.ColumnHeaderCell>
                 <Table.ColumnHeaderCell scope="col">{t('recurring.columns.lastDone')}</Table.ColumnHeaderCell>
@@ -101,6 +151,13 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
                 const due = dueText(i.status) ?? (i.kind === 'ODOMETER' ? t('recurring.due.noOdometer') : undefined)
                 return (
                   <Table.Row key={i.id}>
+                    {canLog && (
+                      <Table.Cell>
+                        <Flex align="center" justify="center" style={{ minWidth: 44, minHeight: 44 }}>
+                          <Checkbox size="3" aria-label={t('recurring.selectAria', { title: i.title })} checked={selection.has(i.id)} onCheckedChange={(c) => select([i.id], c === true)} />
+                        </Flex>
+                      </Table.Cell>
+                    )}
                     <Table.RowHeaderCell>
                       {i.title}
                       {i.category && (
@@ -127,13 +184,15 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
                         <Flex gap="2" justify="end">
                           <RecurringDoneDialog
                             vehicle={vehicle}
-                            item={i}
+                            items={items}
+                            selected={preselect(items, i.id)}
+                            openedFrom={i}
                             trigger={
                               <IconButton size="3" variant="soft" aria-label={t('recurring.doneAria', { title: i.title })}>
                                 <CheckCheck size={16} aria-hidden />
                               </IconButton>
                             }
-                            onSubmit={(input) => markDone({ variables: { input: { ...input, id: i.id } } })}
+                            onSubmit={done}
                           />
                           <RecurringFormDialog
                             vehicleId={vehicle.id}

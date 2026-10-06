@@ -58,6 +58,8 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
       { id: 'odometer', label: 'columns.odometer', include: 'withOdometer', sortField: 'ODOMETER', cell: (r) => (r.odometer == null ? none : format.distance(r.odometer, units.distance)) },
       { id: 'note', label: 'columns.note', include: 'withNote', cell: (r) => r.note || none },
       { id: 'createdBy', label: 'columns.createdBy', include: 'withCreatedBy', sortField: 'CREATED_BY', cell: (r) => (r.createdBy ? <UserChip user={r.createdBy} /> : none) },
+      // The recurring expenses a service visit covered when they were marked done together.
+      { id: 'schedules', label: 'columns.schedules', include: 'withSchedules', defaultHidden: true, cell: (r) => (r.schedules?.length ? r.schedules.map((s) => s.title).join(', ') : none) },
     ]
   }, [t, format, units.distance])
 

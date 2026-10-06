@@ -2,9 +2,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Tankstat.Application.Access;
 using Tankstat.Application.Expenses;
+using Tankstat.Application.Recurring;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
+using Tankstat.Domain.Recurring;
 using Tankstat.Domain.Vehicles;
 using Tankstat.Domain;
 using Tankstat.Infrastructure.Persistence;
@@ -117,8 +119,15 @@ public class ExpenseRepositoryTests
         Assert.Equal(["Kept"], (await repo.ListForVehicleAsync(car.Id, new ExpenseQuery(), default)).Select(e => e.Title));
         Assert.Equal(["Old"], (await repo.ListDeletedAsync(OwnerScope.All, new ExpenseQuery(), default)).Select(e => e.Title));
         Assert.Equal(1, await repo.CountDeletedAsync(OwnerScope.All, default));
+        var schedule = RecurringExpense.Create(car.OwnerId, car.OwnerId, car.Id, "Oil", null, null, RecurrenceKind.Time, 12, null, Day, null, 30, 500, DateTimeOffset.UtcNow);
+        var schedules = db.Get<IRecurringExpenseRepository>();
+        await schedules.AddAsync(schedule, default);
+        await schedules.CompleteAsync([], [RecurringCompletion.Create(doomed.Id, schedule.Id)], default);
+
         Assert.Equal(1, (await repo.PurgeAsync(OwnerScope.All, default)).Count);
         Assert.Equal((1, 1), await Counts(db)); // only the kept one's cost and reading remain
+        Assert.Empty(await schedules.ListCompletionsForExpensesAsync([doomed.Id], default)); // its links went with it (no foreign key on that side)
+        Assert.NotNull(await schedules.FindAsync(schedule.Id, default)); // the schedule stays
         Assert.Null(await repo.FindIncludingDeletedAsync(doomed.Id, default));
     }
 
