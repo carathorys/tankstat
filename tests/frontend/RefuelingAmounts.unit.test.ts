@@ -1,0 +1,120 @@
+import { describe, expect, it } from 'vitest'
+import { applyRead, changeField, takeOffered, type FillState, type ReadValues } from '../../src/frontend/recognition/readValues.ts'
+import { keepAmountsInStep, type AmountField } from '../../src/frontend/refuelingAmounts.ts'
+
+type F = AmountField | 'currency'
+const fields = { volume: 'VOLUME', unitPrice: 'UNIT_PRICE', totalCost: 'TOTAL', currency: 'CURRENCY' } as const
+
+// The steps of the dialog (useReadFill), on the pure functions.
+
+/** The dialog opens with these values (the others empty): an edit dialog has volume and total. */
+function open(values: Partial<Record<F, string>> = {}): FillState<F> {
+  const all = { volume: '', unitPrice: '', totalCost: '', currency: 'HUF', ...values }
+  const start: FillState<F> = { values: all, touched: new Set(), filled: {}, offered: {}, calculated: new Set() }
+  return keepAmountsInStep(start, (Object.keys(all) as F[]).filter((f) => all[f] !== ''), false)
+}
+
+/** The user types a whole value into a field. */
+const type = (state: FillState<F>, field: F, value: string) => keepAmountsInStep(changeField(state, field, value), [field], true)
+
+/** A photo is read. */
+function photo(state: FillState<F>, read: Partial<Record<'VOLUME' | 'UNIT_PRICE' | 'TOTAL', string>>) {
+  const values: ReadValues = Object.fromEntries(Object.entries(read).map(([name, value]) => [name, { value, confidence: 0.9 }]))
+  const { state: next, newly } = applyRead(state, fields, values)
+  return keepAmountsInStep(next, newly, false)
+}
+
+/** "Use it" under a field. */
+const use = (state: FillState<F>, field: F) => keepAmountsInStep(takeOffered(state, field), [field], true)
+
+const amounts = ({ values }: FillState<F>) => ({ volume: values.volume, unitPrice: values.unitPrice, totalCost: values.totalCost })
+
+describe('volume, unit price and total', () => {
+  it('works out the third from any two', () => {
+    expect(amounts(type(type(open(), 'volume', '40'), 'unitPrice', '600'))).toEqual({ volume: '40', unitPrice: '600', totalCost: '24000' })
+    expect(amounts(type(type(open(), 'volume', '40'), 'totalCost', '24000'))).toEqual({ volume: '40', unitPrice: '600', totalCost: '24000' })
+    expect(amounts(type(type(open(), 'totalCost', '24000'), 'unitPrice', '600'))).toEqual({ volume: '40', unitPrice: '600', totalCost: '24000' })
+  })
+
+  it('lets the amount typed longest ago give way when all three are filled', () => {
+    let state = type(type(open(), 'volume', '40'), 'unitPrice', '600') // the total is worked out
+    expect(state.calculated).toEqual(new Set(['totalCost']))
+
+    state = type(state, 'totalCost', '24600') // the volume was typed longest ago
+    expect(amounts(state)).toEqual({ volume: '41', unitPrice: '600', totalCost: '24600' })
+
+    state = type(state, 'unitPrice', '615') // the calculated volume gives way before anything typed
+    expect(amounts(state)).toEqual({ volume: '40', unitPrice: '615', totalCost: '24600' })
+
+    state = type(state, 'volume', '41') // now the total is the oldest typing
+    expect(amounts(state)).toEqual({ volume: '41', unitPrice: '615', totalCost: '25215' })
+  })
+
+  it('works out the unit price of a saved log on opening it, and among untyped amounts changes the unit price first, then the total', () => {
+    const editing = open({ volume: '41.5', totalCost: '22000' })
+    expect(amounts(editing)).toEqual({ volume: '41.5', unitPrice: '530.12', totalCost: '22000' })
+
+    expect(amounts(type(editing, 'volume', '44'))).toEqual({ volume: '44', unitPrice: '500', totalCost: '22000' })
+    expect(amounts(type(editing, 'unitPrice', '500'))).toEqual({ volume: '41.5', unitPrice: '500', totalCost: '20750' })
+    expect(amounts(open({ totalCost: '22000' }))).toEqual({ volume: '', unitPrice: '', totalCost: '22000' }) // its volume is still being read
+  })
+
+  it('empties a calculated amount once what it came from is gone, never a typed one', () => {
+    let state = type(type(open(), 'volume', '40'), 'unitPrice', '600')
+
+    state = type(state, 'volume', '')
+    expect(amounts(state)).toEqual({ volume: '', unitPrice: '600', totalCost: '' })
+    expect(state.calculated).toEqual(new Set())
+
+    state = type(state, 'volume', '4')
+    expect(amounts(state)).toEqual({ volume: '4', unitPrice: '600', totalCost: '2400' })
+    expect(amounts(type(state, 'volume', '4.'))).toEqual({ volume: '4.', unitPrice: '600', totalCost: '' }) // half typed
+
+    expect(amounts(type(state, 'unitPrice', ''))).toEqual({ volume: '4', unitPrice: '', totalCost: '' })
+  })
+
+  it('leaves the amounts alone while what they come from is not a positive number', () => {
+    expect(amounts(type(type(open(), 'volume', '0'), 'unitPrice', '600'))).toEqual({ volume: '0', unitPrice: '600', totalCost: '' })
+    expect(amounts(type(type(open(), 'volume', 'x'), 'unitPrice', '600'))).toEqual({ volume: 'x', unitPrice: '600', totalCost: '' })
+    expect(amounts(type(type(open(), 'volume', '0.001'), 'unitPrice', '0.001'))).toEqual({ volume: '0.001', unitPrice: '0.001', totalCost: '' }) // rounds to 0
+  })
+
+  it('rounds money to the cent and the rest to the thousandth, written the way the user writes numbers', () => {
+    expect(type(type(open(), 'volume', '38,2'), 'unitPrice', '599,9').values.totalCost).toBe('22916,18')
+    expect(type(type(open(), 'totalCost', '19100'), 'unitPrice', '499.9').values.volume).toBe('38.208')
+    expect(type(type(open(), 'volume', '1'), 'unitPrice', '1.005').values.totalCost).toBe('1.01') // half up, despite 1.005 being 1.00499… in binary
+    expect(type(type(open(), 'volume', '3'), 'totalCost', '10').values.unitPrice).toBe('3.333')
+  })
+
+  it('never changes the other fields', () => {
+    expect(type(type(open(), 'volume', '40'), 'unitPrice', '600').values.currency).toBe('HUF')
+  })
+})
+
+describe('amounts read from photos', () => {
+  it('works out the amount the photos did not show', () => {
+    expect(amounts(photo(open(), { VOLUME: '38.52', TOTAL: '24687' }))).toEqual({ volume: '38.52', unitPrice: '640.888', totalCost: '24687' })
+    expect(amounts(photo(type(open(), 'unitPrice', '640'), { VOLUME: '38.5' }))).toEqual({ volume: '38.5', unitPrice: '640', totalCost: '24640' })
+  })
+
+  it('keeps all three as read when a photo shows all three', () => {
+    const state = photo(open(), { VOLUME: '38.52', UNIT_PRICE: '640.9', TOTAL: '24687' })
+
+    expect(amounts(state)).toEqual({ volume: '38.52', unitPrice: '640.9', totalCost: '24687' })
+    expect(state.calculated).toEqual(new Set())
+  })
+
+  it('never moves what the user typed, even when the amounts no longer add up', () => {
+    const typed = changeField(changeField(open(), 'unitPrice', '600'), 'totalCost', '25000')
+
+    expect(amounts(photo(typed, { VOLUME: '40' }))).toEqual({ volume: '40', unitPrice: '600', totalCost: '25000' })
+  })
+
+  it('offers a different value next to a calculated amount, and "Use it" makes the amount typed longest ago give way', () => {
+    const state = photo(type(type(open(), 'volume', '40'), 'totalCost', '24000'), { UNIT_PRICE: '599.9' })
+
+    expect(amounts(state)).toEqual({ volume: '40', unitPrice: '600', totalCost: '24000' })
+    expect(state.offered).toEqual({ unitPrice: '599.9' })
+    expect(amounts(use(state, 'unitPrice'))).toEqual({ volume: '40.007', unitPrice: '599.9', totalCost: '24000' })
+  })
+})

@@ -21,6 +21,7 @@ import { filledFields } from './recognition/review.ts'
 import { ReviewCallout } from './recognition/ReviewState.tsx'
 import { useDraftReadings } from './recognition/useDraftReadings.ts'
 import { useReadFill } from './recognition/useReadFill.ts'
+import { keepAmountsInStep } from './refuelingAmounts.ts'
 
 /** Volume, total cost and odometer are null only when they were left for a photo that is still being read. */
 export interface RefuelingValues {
@@ -47,16 +48,27 @@ const today = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-/** The fields of a new log that photos can fill in, and which read value goes into each. */
-type FillableField = 'date' | 'volume' | 'totalCost' | 'currency' | 'odometer'
-const READ_INTO: Record<FillableField, ReadingFieldName> = { date: 'DATE', volume: 'VOLUME', totalCost: 'TOTAL', currency: 'CURRENCY', odometer: 'ODOMETER' }
+/**
+ * The fields of a new log that photos can fill in, and which read value goes into each. The unit price is only a help for entering the
+ * amounts (it is never saved): volume, unit price and total follow each other (`keepAmountsInStep`).
+ */
+type FillableField = 'date' | 'volume' | 'unitPrice' | 'totalCost' | 'currency' | 'odometer'
+const READ_INTO: Record<FillableField, ReadingFieldName> = {
+  date: 'DATE',
+  volume: 'VOLUME',
+  unitPrice: 'UNIT_PRICE',
+  totalCost: 'TOTAL',
+  currency: 'CURRENCY',
+  odometer: 'ODOMETER',
+}
 /** The values the server fills in from photos after saving, and their fields. */
 const WAITS_FOR: Record<LogValue, FillableField> = { ODOMETER: 'odometer', VOLUME: 'volume', TOTAL: 'totalCost' }
 
 /**
  * Add a log (no `refuelingId`) or edit one. A new log starts from sensible values: today, the vehicle's latest odometer
  * reading (as a hint, so the number is never entered by accident) and the currency of the latest log. Volume and odometer are
- * entered in the vehicle's own units; the server checks the reading against the neighbouring ones. When photo reading is on, the
+ * entered in the vehicle's own units; the server checks the reading against the neighbouring ones. Of volume, unit price and total,
+ * any two give the third (the one typed longest ago gives way when all three are filled). When photo reading is on, the
  * photos of a new log are read on the server and fill in what the user has not typed yet; while one is still being read, volume,
  * total and odometer may be left empty: the server fills them in later and marks the log for review (editing it then checks it).
  */
@@ -183,6 +195,7 @@ function RefuelingForm({
   const labels: Record<FillableField, string> = {
     date: t('refuelings.fields.date'),
     volume: t('refuelings.fields.volume', { unit: t(`units.volumeShort.${units.volume}`) }),
+    unitPrice: t('refuelings.fields.unitPrice', { unit: t(`units.volumeShort.${units.volume}`) }),
     totalCost: t('refuelings.fields.cost'),
     currency: t('refuelings.fields.currency'),
     odometer: odometerLabel,
@@ -191,6 +204,7 @@ function RefuelingForm({
     {
       date: initial.date,
       volume: initial.volume?.toString() ?? '',
+      unitPrice: '', // worked out from the other two (keepAmountsInStep)
       totalCost: initial.totalCost?.toString() ?? '',
       currency: initial.currency ?? '',
       odometer: initial.odometer?.toString() ?? '',
@@ -200,6 +214,7 @@ function RefuelingForm({
     labels,
     readingDone,
     { ...explanation, last: last ? distance(last.value, units.distance) : undefined },
+    keepAmountsInStep,
   )
   const fromPhoto = filledFields(initial.filledFromPhoto, WAITS_FOR)
   const waits = new Set(Object.values(WAITS_FOR))
@@ -213,6 +228,7 @@ function RefuelingForm({
       onUse={() => fill.use(field)}
     />
   )
+  const calculated = (field: FillableField) => (fill.isCalculated(field) ? t('refuelings.hints.calculated') : undefined)
   const [full, setFull] = useState(initial.isFullTank)
   const [error, setError] = useState<unknown>()
   const [busy, setBusy] = useState(false)
@@ -250,12 +266,35 @@ function RefuelingForm({
         <Field name="date" label={labels.date} required extra={note('date')}>
           <TextField.Root type="date" required max={today()} value={fill.values.date} onChange={(e) => fill.change('date', e.target.value)} />
         </Field>
-        <Field name="volume" label={labels.volume} required={!optional('volume')} invalid={decimalInvalid} extra={note('volume')}>
-          <TextField.Root required={!optional('volume')} inputMode="decimal" autoComplete="off" value={fill.values.volume} onChange={(e) => fill.change('volume', e.target.value)} />
-        </Field>
+        <Flex gap="3" wrap="wrap">
+          <Flex direction="column" style={{ flex: '1 1 8rem' }}>
+            <Field
+              name="volume"
+              label={labels.volume}
+              hint={calculated('volume')}
+              required={!optional('volume')}
+              invalid={decimalInvalid}
+              extra={note('volume')}
+            >
+              <TextField.Root required={!optional('volume')} inputMode="decimal" autoComplete="off" value={fill.values.volume} onChange={(e) => fill.change('volume', e.target.value)} />
+            </Field>
+          </Flex>
+          <Flex direction="column" style={{ flex: '1 1 8rem' }}>
+            <Field name="unitPrice" label={labels.unitPrice} hint={calculated('unitPrice')} invalid={decimalInvalid} extra={note('unitPrice')}>
+              <TextField.Root inputMode="decimal" autoComplete="off" value={fill.values.unitPrice} onChange={(e) => fill.change('unitPrice', e.target.value)} />
+            </Field>
+          </Flex>
+        </Flex>
         <Flex gap="3" wrap="wrap">
           <Flex direction="column" style={{ flex: '2 1 8rem' }}>
-            <Field name="totalCost" label={labels.totalCost} required={!optional('totalCost')} invalid={decimalInvalid} extra={note('totalCost')}>
+            <Field
+              name="totalCost"
+              label={labels.totalCost}
+              hint={calculated('totalCost')}
+              required={!optional('totalCost')}
+              invalid={decimalInvalid}
+              extra={note('totalCost')}
+            >
               <TextField.Root required={!optional('totalCost')} inputMode="decimal" autoComplete="off" value={fill.values.totalCost} onChange={(e) => fill.change('totalCost', e.target.value)} />
             </Field>
           </Flex>

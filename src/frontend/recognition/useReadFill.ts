@@ -8,6 +8,8 @@ export interface ReadFill<F extends string> {
   values: Record<F, string>
   /** The field's value came from a photo (and still says what the photo showed). */
   isFilled: (field: F) => boolean
+  /** The field's value was worked out from other fields (`keepInStep`). */
+  isCalculated: (field: F) => boolean
   /** What a photo showed where it differs from what the user typed. */
   offered: (field: F) => string | undefined
   change: (field: F, value: string) => void
@@ -23,6 +25,12 @@ export interface ReadFill<F extends string> {
 export type ReadExplanation = ReadingExplanation & { last?: string }
 
 /**
+ * Keeps fields that depend on each other in step once `changed` moved, by the user (typing, "Use") or not (`byUser` false: a photo, the
+ * starting values); it works out values with `calculateField`.
+ */
+export type KeepInStep<F extends string> = (state: FillState<F>, changed: readonly F[], byUser: boolean) => FillState<F>
+
+/**
  * The fields of a form that photos can fill in: controlled values that take what the photos showed as it arrives, without ever
  * overwriting what the user typed (they get "The photo shows … · Use" instead).
  *
@@ -30,6 +38,7 @@ export type ReadExplanation = ReadingExplanation & { last?: string }
  * @param labels  the fields' labels, for the announcement
  * @param done    every reading the dialog waited for has finished (if none showed anything, that is announced)
  * @param explain why the photos gave less than they might have: told next to what was filled in, or instead of it
+ * @param keepInStep fields worked out from others (a total from volume and unit price): run after every change, and on the starting values
  */
 export function useReadFill<F extends string>(
   initial: Record<F, string>,
@@ -38,9 +47,13 @@ export function useReadFill<F extends string>(
   labels: Record<F, string>,
   done: boolean,
   explain: ReadExplanation = { issues: [], failed: false },
+  keepInStep: KeepInStep<F> = (state) => state,
 ): ReadFill<F> {
   const { t } = useTranslation()
-  const [state, setState] = useState<FillState<F>>(() => ({ values: initial, touched: new Set<F>(), filled: {}, offered: {} }))
+  const [state, setState] = useState<FillState<F>>(() => {
+    const start: FillState<F> = { values: initial, touched: new Set<F>(), filled: {}, offered: {}, calculated: new Set<F>() }
+    return keepInStep(start, (Object.keys(initial) as F[]).filter((field) => initial[field] !== ''), false)
+  })
   const [applied, setApplied] = useState('{}')
   const [announced, setAnnounced] = useState('')
 
@@ -49,13 +62,14 @@ export function useReadFill<F extends string>(
   if (key !== applied) {
     setApplied(key)
     const { state: next, newly } = applyRead(state, fields, read)
-    setState(next)
+    setState(keepInStep(next, newly, false))
     if (newly.length > 0) setAnnounced(t('reading.announce', { fields: newly.map((f) => labels[f]).join(', ') }))
   }
 
+  // A field worked out from others needs no reason why the photo did not give it.
   const labelOf = (name: ReadingFieldName) => {
     const field = (Object.keys(fields) as F[]).find((f) => fields[f] === name)
-    return field === undefined ? undefined : labels[field]
+    return field === undefined || state.calculated.has(field) ? undefined : labels[field]
   }
   const nothingFilled = key === '{}'
   const problems = [
@@ -68,9 +82,10 @@ export function useReadFill<F extends string>(
   return {
     values: state.values,
     isFilled: (field) => state.filled[field] !== undefined,
+    isCalculated: (field) => state.calculated.has(field),
     offered: (field) => state.offered[field],
-    change: (field, value) => setState((s) => changeField(s, field, value)),
-    use: (field) => setState((s) => takeOffered(s, field)),
+    change: (field, value) => setState((s) => keepInStep(changeField(s, field, value), [field], true)),
+    use: (field) => setState((s) => (s.offered[field] === undefined ? s : keepInStep(takeOffered(s, field), [field], true))),
     announcement: announced || (done && nothingFilled ? t(problems.length > 0 ? 'reading.nothingFilled' : 'reading.nothing') : ''),
     problems,
   }
