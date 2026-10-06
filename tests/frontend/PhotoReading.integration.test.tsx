@@ -205,6 +205,18 @@ it('offers the unit price on a photo next to a calculated one, and "Use it" make
   expect(within(dialog).getByLabelText('Total cost')).toHaveValue('24000')
 })
 
+it('keeps the total following the volume typed key by key next to a unit price read from a photo', async () => {
+  const { ui } = setupRefuelings(fakeRecognition({ results: [[{ name: 'UNIT_PRICE', value: '600' }]], queuedPolls: 0 }))
+  const dialog = await openAddRefueling(ui)
+
+  await ui.upload(camera(dialog), photo('pump.png'))
+  await waitFor(() => expect(within(dialog).getByLabelText('Price per L')).toHaveValue('600'), READ_WAIT)
+  await ui.type(within(dialog).getByLabelText(/^Volume/), '40')
+
+  expect(within(dialog).getByLabelText('Total cost')).toHaveValue('24000') // not the price worked out from the total after the first key
+  expect(within(dialog).getByLabelText('Price per L')).toHaveValue('600')
+})
+
 it('says so when a photo could not be read at all', async () => {
   const { ui } = setupRefuelings(fakeRecognition({ results: [[]], failed: [1], queuedPolls: 0 }))
   const dialog = await openAddRefueling(ui)

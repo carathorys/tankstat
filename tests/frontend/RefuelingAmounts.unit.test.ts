@@ -17,6 +17,10 @@ function open(values: Partial<Record<F, string>> = {}): FillState<F> {
 /** The user types a whole value into a field. */
 const type = (state: FillState<F>, field: F, value: string) => keepAmountsInStep(changeField(state, field, value), [field], true)
 
+/** The user types a value key by key, as in the dialog: every keystroke is a change. */
+const typeKeys = (state: FillState<F>, field: F, value: string) =>
+  [...value].reduce((s, _, i) => type(s, field, value.slice(0, i + 1)), changeField(state, field, ''))
+
 /** A photo is read. */
 function photo(state: FillState<F>, read: Partial<Record<'VOLUME' | 'UNIT_PRICE' | 'TOTAL', string>>) {
   const values: ReadValues = Object.fromEntries(Object.entries(read).map(([name, value]) => [name, { value, confidence: 0.9 }]))
@@ -117,4 +121,18 @@ describe('amounts read from photos', () => {
     expect(state.offered).toEqual({ unitPrice: '599.9' })
     expect(amounts(use(state, 'unitPrice'))).toEqual({ volume: '40.007', unitPrice: '599.9', totalCost: '24000' })
   })
+
+  it('works out again what it calculated before an amount a photo showed, keystroke after keystroke', () => {
+    // The total calculated after the first key must follow the next ones, not the unit price the photo showed.
+    expect(amounts(typeKeys(photo(open(), { UNIT_PRICE: '600' }), 'volume', '40'))).toEqual({ volume: '40', unitPrice: '600', totalCost: '24000' })
+    expect(amounts(typeKeys(photo(open(), { TOTAL: '24687' }), 'unitPrice', '640'))).toEqual({ volume: '38.573', unitPrice: '640', totalCost: '24687' })
+    expect(amounts(typeKeys(photo(open(), { UNIT_PRICE: '600' }), 'totalCost', '24000'))).toEqual({ volume: '40', unitPrice: '600', totalCost: '24000' })
+  })
+
+  it('keeps one calculated amount at a time', () => {
+    const state = typeKeys(photo(open(), { UNIT_PRICE: '600' }), 'volume', '40')
+
+    expect(state.calculated).toEqual(new Set(['totalCost']))
+  })
 })
+

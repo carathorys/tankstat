@@ -22,8 +22,8 @@ const DECIMALS: Record<AmountField, number> = { totalCost: 2, volume: 3, unitPri
 
 /**
  * Keeps volume, unit price and total in step once `changed` moved: the least recently typed of the other amounts is worked out from the
- * two it depends on. Amounts nobody typed (empty, loaded, read from a photo, calculated) come first, in `GIVES_WAY` order, then the ones
- * typed longest ago. A change that is not the user's (`byUser` false: a photo, the starting values) never moves what the user typed.
+ * two it depends on. The one calculated before comes first (it says nothing of its own), then the others nobody typed (empty, loaded,
+ * read from a photo) in `GIVES_WAY` order, then the ones typed longest ago. A change that is not the user's (`byUser` false: a photo, the starting values) never moves what the user typed.
  * When an amount cannot be worked out (what it depends on is empty or not a number), the next one is tried; a calculated one is emptied
  * on the way, so it never shows a value that no longer follows. What the user typed is never emptied.
  */
@@ -35,9 +35,10 @@ export function keepAmountsInStep<F extends string>(
   const moved = GIVES_WAY.filter((field) => changed.includes(field))
   if (moved.length === 0 || moved.length === GIVES_WAY.length) return state
 
-  // The amounts the user typed (and did not empty since), from the least to the most recently typed; -1 for the others.
+  // The fields the user typed in (and did not empty since), from the least to the most recently. An amount's age is its place there,
+  // -1 when nobody typed it, and -2 when it was calculated: that one is worked out again before anything else.
   const typed = [...state.touched].filter((field) => state.values[field].trim() !== '')
-  const age = (field: AmountField) => typed.indexOf(field)
+  const age = (field: AmountField) => (state.calculated.has(field) ? -2 : typed.indexOf(field))
   const candidates = GIVES_WAY.filter((field) => !moved.includes(field) && (byUser || age(field) < 0)).sort((a, b) => age(a) - age(b))
 
   let next = state
