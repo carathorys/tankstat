@@ -1,9 +1,11 @@
 import { useMutation, useQuery } from '@apollo/client/react'
 import { Box, Button, Checkbox, Flex, IconButton, Table, Text, VisuallyHidden } from '@radix-ui/themes'
 import { CheckCheck, Pencil, Trash2 } from 'lucide-react'
+import { AnimatePresence } from 'motion/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '../../components/ConfirmDialog.tsx'
+import { MotionRow, rowMotion } from '../../components/motion.ts'
 import { RecurringStatusBadge } from '../../components/RecurringStatus.tsx'
 import { savedFrom } from '../../components/usePhotoQueue.ts'
 import {
@@ -153,85 +155,87 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
               </Table.Row>
             </Table.Header>
             <Table.Body>
-              {items.map((i) => {
-                const due = dueText(i.status) ?? (i.kind === 'ODOMETER' ? t('recurring.due.noOdometer') : undefined)
-                return (
-                  <Table.Row key={i.id}>
-                    {canLog && (
-                      <Table.Cell>
-                        <Flex align="center" justify="center" style={{ minWidth: 44, minHeight: 44 }}>
-                          <Checkbox size="3" aria-label={t('recurring.selectAria', { title: i.title })} checked={selection.has(i.id)} onCheckedChange={(c) => select([i.id], c === true)} />
-                        </Flex>
-                      </Table.Cell>
-                    )}
-                    <Table.RowHeaderCell>
-                      {i.title}
-                      {i.category && (
-                        <Text as="p" size="1" color="gray">
-                          {i.category}
-                        </Text>
+              <AnimatePresence initial={false}>
+                {items.map((i) => {
+                  const due = dueText(i.status) ?? (i.kind === 'ODOMETER' ? t('recurring.due.noOdometer') : undefined)
+                  return (
+                    <MotionRow key={i.id} {...rowMotion}>
+                      {canLog && (
+                        <Table.Cell>
+                          <Flex align="center" justify="center" style={{ minWidth: 44, minHeight: 44 }}>
+                            <Checkbox size="3" aria-label={t('recurring.selectAria', { title: i.title })} checked={selection.has(i.id)} onCheckedChange={(c) => select([i.id], c === true)} />
+                          </Flex>
+                        </Table.Cell>
                       )}
-                    </Table.RowHeaderCell>
-                    <Table.Cell>{schedule(i)}</Table.Cell>
-                    <Table.Cell>{format.date(i.lastDoneDate)}</Table.Cell>
-                    <Table.Cell>{nextDue(i)}</Table.Cell>
-                    <Table.Cell>
-                      <Flex direction="column" gap="1" align="start">
-                        <RecurringStatusBadge state={i.status.state} />
-                        {due && (
-                          <Text size="1" color="gray">
-                            {due}
+                      <Table.RowHeaderCell>
+                        {i.title}
+                        {i.category && (
+                          <Text as="p" size="1" color="gray">
+                            {i.category}
                           </Text>
                         )}
-                      </Flex>
-                    </Table.Cell>
-                    <Table.Cell>
-                      {canLog ? (
-                        <Flex gap="2" justify="end">
-                          <RecurringDoneDialog
-                            vehicle={vehicle}
-                            items={items}
-                            selected={preselect(items, i.id)}
-                            openedFrom={i}
-                            trigger={
-                              <IconButton size="3" variant="soft" aria-label={t('recurring.doneAria', { title: i.title })}>
-                                <CheckCheck size={16} aria-hidden />
-                              </IconButton>
-                            }
-                            onSubmit={done}
-                          />
-                          <RecurringFormDialog
-                            vehicleId={vehicle.id}
-                            unit={unit}
-                            initial={i}
-                            trigger={
-                              <IconButton size="3" variant="soft" aria-label={t('recurring.editAria', { title: i.title })}>
-                                <Pencil size={16} aria-hidden />
-                              </IconButton>
-                            }
-                            onSubmit={(input) => updateItem({ variables: { input: { ...input, id: i.id } } })}
-                          />
-                          <ConfirmDialog
-                            trigger={
-                              <IconButton size="3" variant="soft" color="red" aria-label={t('recurring.deleteAria', { title: i.title })}>
-                                <Trash2 size={16} aria-hidden />
-                              </IconButton>
-                            }
-                            title={t('recurring.deleteTitle')}
-                            description={t('recurring.deleteDescription', { title: i.title })}
-                            confirmLabel={t('recurring.deleteConfirm')}
-                            onConfirm={() => void remove(i)}
-                          />
+                      </Table.RowHeaderCell>
+                      <Table.Cell>{schedule(i)}</Table.Cell>
+                      <Table.Cell>{format.date(i.lastDoneDate)}</Table.Cell>
+                      <Table.Cell>{nextDue(i)}</Table.Cell>
+                      <Table.Cell>
+                        <Flex direction="column" gap="1" align="start">
+                          <RecurringStatusBadge state={i.status.state} />
+                          {due && (
+                            <Text size="1" color="gray">
+                              {due}
+                            </Text>
+                          )}
                         </Flex>
-                      ) : (
-                        <Text size="2" color="gray">
-                          {t('recurring.viewOnly')}
-                        </Text>
-                      )}
-                    </Table.Cell>
-                  </Table.Row>
-                )
-              })}
+                      </Table.Cell>
+                      <Table.Cell>
+                        {canLog ? (
+                          <Flex gap="2" justify="end">
+                            <RecurringDoneDialog
+                              vehicle={vehicle}
+                              items={items}
+                              selected={preselect(items, i.id)}
+                              openedFrom={i}
+                              trigger={
+                                <IconButton size="3" variant="soft" aria-label={t('recurring.doneAria', { title: i.title })}>
+                                  <CheckCheck size={16} aria-hidden />
+                                </IconButton>
+                              }
+                              onSubmit={done}
+                            />
+                            <RecurringFormDialog
+                              vehicleId={vehicle.id}
+                              unit={unit}
+                              initial={i}
+                              trigger={
+                                <IconButton size="3" variant="soft" aria-label={t('recurring.editAria', { title: i.title })}>
+                                  <Pencil size={16} aria-hidden />
+                                </IconButton>
+                              }
+                              onSubmit={(input) => updateItem({ variables: { input: { ...input, id: i.id } } })}
+                            />
+                            <ConfirmDialog
+                              trigger={
+                                <IconButton size="3" variant="soft" color="red" aria-label={t('recurring.deleteAria', { title: i.title })}>
+                                  <Trash2 size={16} aria-hidden />
+                                </IconButton>
+                              }
+                              title={t('recurring.deleteTitle')}
+                              description={t('recurring.deleteDescription', { title: i.title })}
+                              confirmLabel={t('recurring.deleteConfirm')}
+                              onConfirm={() => void remove(i)}
+                            />
+                          </Flex>
+                        ) : (
+                          <Text size="2" color="gray">
+                            {t('recurring.viewOnly')}
+                          </Text>
+                        )}
+                      </Table.Cell>
+                    </MotionRow>
+                  )
+                })}
+              </AnimatePresence>
             </Table.Body>
           </Table.Root>
         </Box>

@@ -829,6 +829,7 @@
     }
   },
   "photos": {
+    "waitUpload": "Saving waits until the photos are uploaded.",
     "title": "Photos",
     "take": "Take photo",
     "choose": "Add photos",
@@ -848,6 +849,8 @@
     "leftOut_other": "The entry was saved, but {{count}} photos could not be attached. Add them again by editing the entry."
   },
   "reading": {
+    "progress": "Reading the photo…",
+    "saveNow": "You can save now: what you leave empty is filled in from the photo.",
     "filled": "Read from the photo; check it.",
     "differs": "The photo shows {{value}}",
     "use": "Use it",

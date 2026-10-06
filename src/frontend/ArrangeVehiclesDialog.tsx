@@ -1,10 +1,13 @@
 import { useMutation, useQuery } from '@apollo/client/react'
 import { Button, Dialog, Flex, IconButton, Text } from '@radix-ui/themes'
 import { ArrowDown, ArrowUp } from 'lucide-react'
+import { motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
+import { QUICK } from './components/motion.ts'
 import { useTranslation } from 'react-i18next'
 import { ArrangeVehiclesDocument, SetVehicleOrderDocument, type ArrangeVehiclesQuery } from './gql/generated.ts'
 import { ErrorMessage } from './messages.tsx'
+import { Loading } from './components/Loading.tsx'
 
 type Item = ArrangeVehiclesQuery['myVehicles'][number]
 
@@ -47,9 +50,7 @@ export function ArrangeVehiclesDialog() {
         </Dialog.Description>
         {error && <ErrorMessage error={error} />}
         {!error && (loading || !data) && (
-          <Text as="p" role="status">
-            {t('app.loading')}
-          </Text>
+          <Loading />
         )}
         {data && !loading && (
           <ArrangeList
@@ -110,7 +111,7 @@ function ArrangeList({ vehicles, saving, error, onSave }: { vehicles: Item[]; sa
       <Flex asChild direction="column" gap="2">
         <ol ref={list} aria-label={t('welcome.arrangeList')} style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {items.map((v, i) => (
-            <li key={v.id} data-id={v.id}>
+            <motion.li key={v.id} data-id={v.id} layout transition={QUICK}>
               <Flex align="center" gap="3">
                 <Text size="2" color="gray" style={{ minWidth: '1.5rem' }} aria-hidden>
                   {i + 1}.
@@ -132,7 +133,7 @@ function ArrangeList({ vehicles, saving, error, onSave }: { vehicles: Item[]; sa
                   <ArrowDown size={18} aria-hidden />
                 </IconButton>
               </Flex>
-            </li>
+            </motion.li>
           ))}
         </ol>
       </Flex>

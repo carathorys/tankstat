@@ -13,6 +13,7 @@ import { ChartBuilderDialog } from './ChartBuilderDialog.tsx'
 import { ChartCard } from './ChartCard.tsx'
 import { LazySparkline } from './LazySparkline.tsx'
 import { NEW_RECIPE, type ChartRecipe } from './chartFormat.ts'
+import { Loading } from '../components/Loading.tsx'
 
 type Units = { distance: DistanceUnit; volume: VolumeUnit }
 
@@ -59,9 +60,7 @@ export function DashboardPanel({ vehicle }: { vehicle: { id: string; units: Unit
   if (error) return <ErrorMessage error={error} />
   if (!data) {
     return (
-      <Text as="p" role="status">
-        {t('app.loading')}
-      </Text>
+      <Loading />
     )
   }
 

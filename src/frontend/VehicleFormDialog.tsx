@@ -15,6 +15,7 @@ import {
 } from './gql/generated.ts'
 import { ErrorMessage } from './messages.tsx'
 import { DISTANCE_UNITS, FUEL_TYPES, VOLUME_UNITS } from './vehicles.ts'
+import { Loading } from './components/Loading.tsx'
 
 export interface VehicleValues {
   name: string
@@ -63,7 +64,7 @@ export function VehicleFormDialog({
           {editing ? t('vehicles.dialogEditDescription') : t('vehicles.dialogAddDescription')}
         </Dialog.Description>
         {error && <ErrorMessage error={error} />}
-        {!error && !initial && !(editing && details.data) && <Text as="p" role="status">{t('app.loading')}</Text>}
+        {!error && !initial && !(editing && details.data) && <Loading />}
         {editing && details.data && !loaded && <ErrorMessage>{t('errors.vehicle.notFound')}</ErrorMessage>}
         {initial && (
           <VehicleForm

@@ -25,7 +25,7 @@ export function ReadNote({
   const { t } = useTranslation()
   if (offered !== undefined)
     return (
-      <Flex align="center" gap="2" wrap="wrap">
+      <Flex align="center" gap="2" wrap="wrap" className="tk-appear">
         <RadixForm.Message forceMatch asChild>
           <Text size="1">
             <ScanText size={12} aria-hidden /> {t('reading.differs', { value: offered })}
@@ -39,7 +39,7 @@ export function ReadNote({
   if (filled)
     return (
       <RadixForm.Message forceMatch asChild>
-        <Text size="1" color="blue">
+        <Text size="1" color="blue" className="tk-appear">
           <ScanText size={12} aria-hidden /> {t('reading.filled')}
         </Text>
       </RadixForm.Message>
@@ -47,8 +47,8 @@ export function ReadNote({
   if (waiting)
     return (
       <RadixForm.Message forceMatch asChild>
-        <Text size="1" color="gray">
-          <Hourglass size={12} aria-hidden /> {t('reading.waiting')}
+        <Text size="1" color="gray" className="tk-appear">
+          <Hourglass className="tk-pulse" size={12} aria-hidden /> {t('reading.waiting')}
         </Text>
       </RadixForm.Message>
     )

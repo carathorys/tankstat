@@ -16,11 +16,14 @@ import { parseDecimal, useFormat } from './i18n/format.ts'
 import { ErrorMessage } from './messages.tsx'
 import { ReadNote } from './recognition/ReadNote.tsx'
 import { ReadingProblems } from './recognition/ReadingProblems.tsx'
+import { ReadingProgress } from './recognition/ReadingProgress.tsx'
+import { SaveWait } from './components/SaveWait.tsx'
 import type { ReadingExplanation } from './recognition/readingIssues.ts'
 import { mergeReadings, type ReadValues } from './recognition/readValues.ts'
 import { useDraftReadings } from './recognition/useDraftReadings.ts'
 import { useReadFill } from './recognition/useReadFill.ts'
 import { defaultCategory, defaultTitle, MAX_EXPENSE_TITLE, usesDistance, type DoneItem } from './recurringDone.ts'
+import { Loading } from './components/Loading.tsx'
 
 /** One service visit: the schedules done, and (with an amount) the one expense logged for all of them. */
 export interface DoneValues {
@@ -143,11 +146,10 @@ interface FormProps {
 }
 
 function DoneForm(props: FormProps) {
-  const { t } = useTranslation()
   const defaults = useQuery(LogDefaultsDocument, { variables: { vehicleId: props.vehicle.id }, fetchPolicy: 'network-only' })
   const categories = useQuery(ExpenseCategoriesDocument, { variables: { vehicleId: props.vehicle.id }, fetchPolicy: 'network-only' })
   const d = defaults.data?.logDefaults
-  if (!d) return defaults.error ? <ErrorMessage error={defaults.error} /> : <Text as="p" role="status">{t('app.loading')}</Text>
+  if (!d) return defaults.error ? <ErrorMessage error={defaults.error} /> : <Loading />
   return <DoneFields {...props} defaults={d} categories={categories.data?.expenseCategories ?? []} />
 }
 
@@ -335,18 +337,22 @@ function DoneFields({
           </Text>
         )}
         <div role="status" aria-label={t('a11y.readingStatus')}>
+          <ReadingProgress active={reading} canSave={logsExpense} />
           {fill.announcement && <Text size="2">{fill.announcement}</Text>}
           <ReadingProblems problems={fill.problems} />
         </div>
         {error !== undefined && <ErrorMessage error={error} />}
-        <Flex gap="3" justify="end">
+        <Flex gap="3" justify="end" wrap="wrap">
+          <SaveWait waiting={photosBusy && !busy} />
           <Dialog.Close>
             <Button type="button" variant="soft" color="gray" disabled={busy}>
               {t('common.cancel')}
             </Button>
           </Dialog.Close>
           <RadixForm.Submit asChild>
-            <Button disabled={busy || photosBusy}>{t('recurring.doneSave')}</Button>
+            <Button loading={busy} disabled={photosBusy}>
+              {t('recurring.doneSave')}
+            </Button>
           </RadixForm.Submit>
         </Flex>
       </Flex>

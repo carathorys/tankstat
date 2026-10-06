@@ -6,8 +6,11 @@ import { mergeIssues, type ReadingExplanation } from './readingIssues.ts'
 
 /** How often the open dialog asks for readings that are not done yet. */
 export const READING_POLL_MS = 1500
-/** How long the dialog waits for one photo; the server keeps trying, but the user is not kept waiting longer. */
-export const READING_WAIT_MS = 60_000
+/**
+ * How long the dialog waits for one photo: a little under the server's `LogPhotoFiller.JustRead` (2 minutes from the upload), so while the
+ * dialog still says values may be left to the photo, the server accepts that. The server keeps trying afterwards and fills the saved log.
+ */
+export const READING_WAIT_MS = 110_000
 /** How often the dialog asks again whether photo reading is on while it reads "off" and a photo was just uploaded (the provider may be back). */
 export const STATUS_RECHECK_MS = 3000
 

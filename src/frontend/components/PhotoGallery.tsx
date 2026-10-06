@@ -1,4 +1,4 @@
-import { Box, Button, Flex, IconButton, Text } from '@radix-ui/themes'
+import { Box, Button, Flex, IconButton, Spinner, Text } from '@radix-ui/themes'
 import { Camera, ImagePlus, RotateCw, Trash2 } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -148,8 +148,13 @@ export function PhotoGallery({
                 <li key={photo.key}>
                   <Flex direction="column" gap="1" align="center">
                     <a href={photo.url} target="_blank" rel="noreferrer" aria-label={t('photos.open', { n: index + 1 })}>
-                      <Box width="96px" height="96px" overflow="hidden" style={{ borderRadius: 'var(--radius-2)' }}>
+                      <Box position="relative" width="96px" height="96px" overflow="hidden" style={{ borderRadius: 'var(--radius-2)' }}>
                         <img src={photo.url} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        {(photo.state === 'uploading' || photo.reading) && (
+                          <Flex position="absolute" inset="0" align="center" justify="center" className="tk-fade" style={{ background: 'var(--black-a6)' }}>
+                            <Spinner size="3" />
+                          </Flex>
+                        )}
                       </Box>
                     </a>
                     {photo.state === 'uploading' && (

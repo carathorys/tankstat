@@ -163,3 +163,21 @@ body {
 .cover-picture { background-size: cover; background-position: center; background-repeat: no-repeat; }
 .scrim { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0.18)); }
 .hero-content { position: relative; }
+
+/* Motion for state changes (short; under reduced motion only the change itself, no movement):
+   tk-appear: something new comes in (a message, a note under a field); tk-fade: a value swaps (a badge);
+   tk-delayed: a waiting indicator that only shows when the wait is noticeable; tk-pulse: something is still in progress;
+   tk-spin: a refresh that is running. Leaving and moving items use motion's AnimatePresence and layout (see CLAUDE.md). */
+@keyframes tk-appear { from { opacity: 0; transform: translateY(4px); } }
+@keyframes tk-fade { from { opacity: 0; } }
+@keyframes tk-pulse { 50% { opacity: 0.35; } }
+@keyframes tk-spin { to { transform: rotate(360deg); } }
+.tk-appear { animation: tk-appear 0.2s ease-out both; }
+.tk-fade { animation: tk-fade 0.2s ease-out both; }
+.tk-delayed { animation: tk-fade 0.2s ease-out 0.3s both; }
+.tk-pulse { animation: tk-pulse 1.6s ease-in-out infinite; }
+.tk-spin { animation: tk-spin 0.9s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+    .tk-appear, .tk-fade, .tk-delayed, .tk-pulse, .tk-spin { animation: none; }
+}
+
