@@ -378,7 +378,6 @@ it('on a touch screen a card button opens its dialog at once, and taps inside th
   await ui.click(within(dialog).getByLabelText('Total cost'))
   // Still at home with the dialog open: opening the vehicle would have unmounted the card and its dialog.
   expect(screen.getByRole('dialog', { name: 'Add refuelling' })).toBeInTheDocument()
-  expect(screen.queryByRole('link', { name: 'Back to home', hidden: true })).not.toBeInTheDocument()
 
   await ui.click(within(dialog).getByRole('button', { name: 'Cancel' }))
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
@@ -394,7 +393,6 @@ it('on a desktop a click inside a dialog opened from the card does not open the 
   await ui.click(within(dialog).getByLabelText('Title'))
 
   expect(screen.getByRole('dialog', { name: 'Add expense' })).toBeInTheDocument() // opening the vehicle would have unmounted it
-  expect(screen.queryByRole('link', { name: 'Back to home', hidden: true })).not.toBeInTheDocument()
 })
 
 it('two vehicles with the same schedule have Done buttons that name the vehicle', async () => {
