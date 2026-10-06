@@ -41,7 +41,8 @@ public sealed class ApiFixture : IDisposable
         Environment.SetEnvironmentVariable(ModeVar, null);
         Environment.SetEnvironmentVariable(StorageVar, null);
         if (Directory.Exists(UploadsPath)) Directory.Delete(UploadsPath, recursive: true);
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        // Only this database's pooled connections: ClearAllPools would also close the ones of tests running in parallel.
+        using (var pooled = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_path}")) Microsoft.Data.Sqlite.SqliteConnection.ClearPool(pooled);
         File.Delete(_path);
     }
 }

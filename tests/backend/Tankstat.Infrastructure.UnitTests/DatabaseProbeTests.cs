@@ -33,7 +33,8 @@ public class DatabaseProbeTests
         }
         finally
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            // Only this database's pooled connections: ClearAllPools would also close the ones of tests running in parallel.
+            using (var pooled = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={path}")) Microsoft.Data.Sqlite.SqliteConnection.ClearPool(pooled);
             File.Delete(path);
         }
     }
@@ -66,7 +67,8 @@ public class DatabaseProbeTests
         }
         finally
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            // Only this database's pooled connections: ClearAllPools would also close the ones of tests running in parallel.
+            using (var pooled = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(folder, "x.db")}")) Microsoft.Data.Sqlite.SqliteConnection.ClearPool(pooled);
             if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
         }
     }

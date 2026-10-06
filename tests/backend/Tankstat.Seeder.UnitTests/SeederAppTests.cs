@@ -16,7 +16,8 @@ public sealed class SeederAppTests : IDisposable
 
     public void Dispose()
     {
-        SqliteConnection.ClearAllPools();
+        // Only this database's pooled connections: ClearAllPools would also close the ones of tests running in parallel.
+        using (var pooled = new Microsoft.Data.Sqlite.SqliteConnection(Connection)) Microsoft.Data.Sqlite.SqliteConnection.ClearPool(pooled);
         File.Delete(_db);
     }
 

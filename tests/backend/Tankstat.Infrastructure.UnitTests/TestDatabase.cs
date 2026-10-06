@@ -41,7 +41,8 @@ internal sealed class TestDatabase : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await Services.DisposeAsync();
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        // Only this database's pooled connections: ClearAllPools would also close the ones of tests running in parallel.
+        using (var pooled = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_path}")) Microsoft.Data.Sqlite.SqliteConnection.ClearPool(pooled);
         File.Delete(_path);
     }
 }

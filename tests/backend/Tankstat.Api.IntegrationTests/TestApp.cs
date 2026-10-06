@@ -68,7 +68,8 @@ internal sealed class TestApp : IDisposable
     public void Dispose()
     {
         Factory.Dispose();
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        // Only this database's pooled connections: ClearAllPools would also close the ones of tests running in parallel.
+        using (var pooled = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_db}")) Microsoft.Data.Sqlite.SqliteConnection.ClearPool(pooled);
         File.Delete(_db);
         if (Directory.Exists(UploadsPath)) Directory.Delete(UploadsPath, recursive: true);
     }
