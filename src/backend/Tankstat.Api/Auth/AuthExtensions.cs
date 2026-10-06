@@ -44,6 +44,10 @@ public static class AuthExtensions
                 o.CallbackPath = "/auth/oidc/callback";
                 o.SignedOutCallbackPath = "/auth/oidc/signed-out";
                 o.Events.OnTokenValidated = ProvisionOidcUser;
+                // A sign-in that ends without a session (the user cancelled, the provider refused, a stale callback, a disabled account) sends
+                // the browser back to the app with a reason code; the sign-in screen explains it instead of trying again at once.
+                o.Events.OnRemoteFailure = ctx => FailSignIn(ctx, OidcFailures.Classify(ctx.Failure), ctx.Properties?.RedirectUri, ctx.Failure?.GetType().Name);
+                o.Events.OnAccessDenied = ctx => FailSignIn(ctx, OidcFailure.AccessDenied, ctx.ReturnUrl, null);
             })
             .AddScheme<AuthenticationSchemeOptions, ProxyHeaderAuthenticationHandler>(SessionClaims.ProxyScheme, null);
 
@@ -76,8 +80,7 @@ public static class AuthExtensions
         var subject = claims.FindFirstValue("sub");
         if (string.IsNullOrEmpty(subject))
         {
-            logger.LogWarning("OIDC sign-in failed: the provider did not return a subject");
-            ctx.Fail("The provider did not return a subject.");
+            ctx.Fail(new OidcSignInRefusedException(OidcFailure.NoSubject)); // the failure handler logs it
             return;
         }
 
@@ -95,8 +98,21 @@ public static class AuthExtensions
         }
         catch (ForbiddenException e)
         {
-            ctx.Fail(e.Message);
+            ctx.Fail(e); // AuthService logged the refusal with the user id; the failure handler adds the outcome
         }
+    }
+
+    /// <summary>
+    /// Ends a failed sign-in: one Warning with the reason code (never the provider's text, which is under its control) and a redirect to the
+    /// page the sign-in meant to return to, marked as failed.
+    /// </summary>
+    private static Task FailSignIn(HandleRequestContext<RemoteAuthenticationOptions> ctx, OidcFailure reason, string? returnUrl, string? failureType)
+    {
+        var logger = ctx.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(AuthExtensions));
+        logger.LogWarning("OIDC sign-in failed: {Reason} ({FailureType})", OidcFailures.Code(reason), failureType ?? "none");
+        ctx.Response.Redirect(OidcFailures.FailedUrl(reason, returnUrl));
+        ctx.HandleResponse();
+        return Task.CompletedTask;
     }
 
     public static void MapAuthEndpoints(this WebApplication app)

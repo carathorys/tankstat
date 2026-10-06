@@ -9,7 +9,7 @@
 ![Node LTS](https://img.shields.io/badge/Node-LTS-339933?logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
 
-Self-hosted web app: a React + TypeScript frontend (Vite) and a .NET 10 backend. They talk GraphQL (HotChocolate on the server, Apollo Client in the browser), and the backend stores data with Entity Framework Core. In production, Kestrel serves both the API and the built frontend.
+Self-hosted web app: a React + TypeScript frontend (Vite) and a .NET 10 backend. They talk GraphQL (HotChocolate on the server, Apollo Client in the browser), and the backend stores data with Entity Framework Core. In production, Kestrel serves both the API and the built frontend, which installs as a web app on phones and desktops (see [Install as an app](#install-as-an-app)).
 
 ## Prerequisites
 
@@ -156,6 +156,8 @@ Facts that matter when configuring: passwords need 10 to 128 characters; changin
 
 Provider-side setup: register the redirect URI `https://<your-host>/auth/oidc/callback` (and, if the provider asks, the post-logout URI `https://<your-host>/auth/oidc/signed-out`). Claims used: `sub` (required, the stable identity), `email` (ignored when `email_verified` is `false`, so an unverified address cannot claim an administrator e-mail), `name` or `preferred_username` (display name). Users are created at their first sign-in; a disabled user is refused.
 
+How the browser signs in: the app sends a visitor to the provider at once (the sign-in screen shows only a spinner and a *Continue to sign in* link in case the redirect did not happen) and brings them back to the page they opened (`/auth/oidc/login?returnUrl=...`; only same-site paths are accepted). **Sign out** ends the app's session only; the provider's session stays, so the screen after signing out waits for a click on *Sign in* (remembered per browser tab) instead of signing the user straight back in, and a fresh tab signs in silently while the provider session lasts. A sign-in that fails (cancelled at the provider, refused by it, a stale callback, a disabled account) lands on `<page>?signIn=failed&reason=<code>` with an explanation and a *Try again* button; the codes are `access_denied`, `provider_error`, `token_rejected`, `no_subject`, `account_disabled` and `callback_rejected`, and the server logs one Warning `OIDC sign-in failed: <code>` without the provider's text. A provider that cannot be reached when the sign-in starts still answers `/auth/oidc/login` with a plain server error.
+
 ### Proxy header settings (`Auth__Mode=ProxyHeader`)
 
 | Environment variable | Type | Default | Required | Meaning |
@@ -242,7 +244,7 @@ The app is mobile-first and responsive. The start page (*Home*) shows a card per
 - **Import**: bring fuel logs, other costs and recurring expenses from another app (Fuelio CSV today), see below.
 - **Notifications** (also the bell in the top bar, which shows how many are unread and the latest ones): what you were told, newest first; mark one or all read. See *Notifications* below.
 - **Trash**: deleting moves a vehicle, a refuelling or an expense to the trash. Tabs *Vehicles*, *Refuelings* and *Expenses*: **restore**, or **empty the trash**, which permanently deletes only what you have Delete access to (the rest stays and the dialog says so).
-- **Account** (profile picture; change password in Standalone mode) and **Administration** (administrators only), plus **Sign out**.
+- **Account** (profile picture; change password in Standalone mode), **Administration** (administrators only) and **Install app** (when your browser can install the web app, see *Install as an app*), plus **Sign out**.
 
 **Recurring expenses.** The *Recurring* tab of a vehicle holds schedules for things that come back: insurance every 12 months, an oil change every 15,000 km or every 12 months, whichever comes first. A schedule repeats by **time**, by **distance (odometer)** or **combined** (whichever is reached first), counts from the day (and odometer) it was last done, and shows when it is next due and whether it is *Upcoming*, *Due soon* (within the warning time and distance of the item; a new schedule starts from `Defaults:RecurringWarnDays` / `Defaults:RecurringWarnDistance`, 30 days and 500 distance units unless configured) or *Overdue*. The current odometer is the vehicle's latest reading from any log; without one a distance-based schedule cannot be judged yet. **Mark as done** starts the next interval from the day and odometer you enter and, unless you switch it off, logs the cost as a normal expense (so every expense and odometer rule applies); photos taken there (the dashboard, the invoice) become that expense's photos. Schedules follow the access rules of the vehicle's logs (View sees them, Edit changes them) and are deleted for good, not trashed; deleting a user hands them on or removes them like the vehicle's other data. What is overdue or due soon is listed on the vehicle's card on *Home*.
 
@@ -270,6 +272,16 @@ The app is mobile-first and responsive. The start page (*Home*) shows a card per
 **Reading values from photos (optional).** With a [vision model](#reading-with-an-openai-compatible-model) set up, the server reads the photos picked in the add dialogs of refuelings and expenses and in *Mark as done*: a dashboard gives the odometer, a fuel receipt the date, litres, price per litre, total and currency (whichever of the three amounts it does not show is worked out from the other two), another receipt the date, shop (as the title), amount and currency. While a photo is being read its thumbnail says *Reading…*; then the values go into the fields you have not changed (the starting values, such as today's date or the last currency, count as unchanged), marked *Read from the photo; check it*. Where you already typed something else, or the app worked the value out from what you typed, the photo's value is only offered (*The photo shows 38.52 · Use it*), never written over yours. Only values the model is sure enough of are filled in (`Recognition:MinConfidence`). The page only talks to Tankstat's own server, which talks to the model server; without one the dialogs work exactly as before.
 
 **Accessibility.** The UI is built to be keyboard- and screen-reader friendly: landmarks and a skip link, a labelled navigation, labelled form controls with linked hints and errors, announced upload/loading status, table semantics with `aria-sort`, 44 px touch targets, dialogs with focus management, and reduced-motion support. Automated axe checks run in the frontend integration tests; colour contrast should still be reviewed by eye. The look is dim and layered: translucent blurred panels (top bar, sidebar) with soft shadows.
+
+### Install as an app
+
+Tankstat is a progressive web app: served over **HTTPS** (or from `localhost`), it can be installed and opened from the home screen or the dock like any app, full screen, with its own icon.
+
+- **Android (Chrome, Edge, ...)**: the navigation menu shows **Install app** as soon as the browser allows it (Chromium decides when to make the offer; the browser's own menu has the same entry).
+- **iPhone and iPad (Safari)**: Safari makes no offer from the page, so **Install app** in the menu shows the steps instead: Share → *Add to Home Screen* → *Add*. The installed app has its own cookies: sign in once more there.
+- **Desktop (Chrome, Edge)**: the icon in the address bar or **Install app** in the menu. Firefox, and Safari on macOS, have no equivalent, so the menu entry is missing there; that is normal.
+
+What it does: a service worker keeps the built pages, scripts, styles and icons, so the app starts at once and still opens without the network (you then see the shell with the "API unreachable" footer: data, pictures and sign-in need the server). Nothing from `/graphql`, `/auth`, `/media` or `/imports` is ever cached, and those paths are never answered with `index.html` by the worker. Updates: the worker looks for a new version at every start; when there is one it takes over and the open tab reloads once. The server sends `/assets/*` (content-hashed names) as immutable and everything with a fixed name (`index.html`, `sw.js`, `manifest.webmanifest`, icons) as `no-cache`, so a release reaches every browser on its next start.
 
 ### Grids
 Sorting (click a column header), paging and column selection are done by the **server**: the GraphQL query gets `orderBy`, `direction`, `skip`, `take`, and one Boolean variable per optional column that drives `@include`, so hidden columns are not even fetched. The toolbar has a refresh button and a column picker (show/hide and move up/down, which works with touch). Column choices, order, page size and sorting are remembered per grid in the browser. Grid state is coordinated by TanStack Table (manual sorting and pagination: the data itself arrives sorted and paged from the server). Data is re-fetched whenever a page is opened. The layout is mobile-first: on a phone only the essential columns start visible, and the table scrolls horizontally.
@@ -354,7 +366,7 @@ docker run -d --name tankstat -p 8080:8080 -v tankstat-data:/data \
 - SQLite and the uploaded pictures live in the `/data` volume (`Database__ConnectionString=Data Source=/data/tankstat.db` and `Storage__Path=/data/uploads` by default); mount a volume to keep your data. Use `Database__Provider` and `Database__ConnectionString` for PostgreSQL, SQL Server or MySQL instead.
 - Migrations are applied when the container starts. The container has a health check (the GraphQL endpoint).
 - `VERSION` (build argument) is what the UI shows as the API version; `REVISION` and `CREATED` become OCI image labels.
-- Terminate TLS in front of the container with your reverse proxy (see the ProxyHeader mode for proxy-based sign-in).
+- Terminate TLS in front of the container with your reverse proxy (see the ProxyHeader mode for proxy-based sign-in). Installing the web app on a phone, and the service worker behind it, need that HTTPS; the API serves `/manifest.webmanifest` and `/sw.js` from `wwwroot` with the cache rules described under *Install as an app*, and `scripts/docker-smoke.sh` checks them.
 - The image builds for amd64 and arm64 with buildx without emulation (`docker buildx build --platform linux/amd64,linux/arm64 .`).
 
 ### Releases (container registry)
@@ -535,4 +547,4 @@ mise run build
 dotnet out/Tankstat.Api.dll --urls http://0.0.0.0:8080
 ```
 
-`out/` contains the published API with the built frontend in `wwwroot`. Unknown paths outside `/graphql` fall back to `index.html` for client-side routing.
+`out/` contains the published API with the built frontend in `wwwroot`, including the web app's `manifest.webmanifest`, `sw.js` and `workbox-*.js`. Unknown paths fall back to `index.html` for client-side routing (the service worker does the same in the browser, never for `/graphql`, `/auth`, `/media` or `/imports`); `/assets/*` is sent as immutable, everything with a fixed name as `no-cache`.

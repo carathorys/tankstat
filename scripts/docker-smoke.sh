@@ -37,9 +37,19 @@ fi
 curl -sf "${url}/" | grep -q '<title>Tankstat</title>' || { echo "FAIL: web app not served at /" >&2; exit 1; }
 curl -sf "${url}/vehicles" | grep -q '<title>Tankstat</title>' || { echo "FAIL: SPA fallback not working" >&2; exit 1; }
 
+# The web app is installable: the manifest with its content type, the service worker, and the cache rules the API adds
+# (fixed names are revalidated, hashed assets are kept for good).
+curl -sfI "${url}/manifest.webmanifest" | grep -qi '^content-type: application/manifest+json' || { echo "FAIL: manifest not served as application/manifest+json" >&2; exit 1; }
+curl -sf "${url}/manifest.webmanifest" | grep -q '"short_name"' || { echo "FAIL: manifest content" >&2; exit 1; }
+curl -sfI "${url}/sw.js" >/dev/null || { echo "FAIL: service worker not served" >&2; exit 1; }
+curl -sfI "${url}/" | grep -qi '^cache-control: no-cache' || { echo "FAIL: index.html must be no-cache" >&2; exit 1; }
+asset="$(curl -sf "${url}/" | grep -o '/assets/[^"]*\.js' | head -n 1)"
+[ -n "$asset" ] || { echo "FAIL: index.html names no script under /assets" >&2; exit 1; }
+curl -sfI "${url}${asset}" | grep -qi 'immutable' || { echo "FAIL: hashed assets must be immutable" >&2; exit 1; }
+
 gql '{"query":"mutation { addVehicle(input: { name: \"Smoke\", fuelType: PETROL }) { id } }"}' | grep -q '"id"' || { echo "FAIL: cannot write to the database" >&2; exit 1; }
 
 user="$(docker exec "$name" id -u)"
 [ "$user" != "0" ] || { echo "FAIL: the container runs as root" >&2; exit 1; }
 
-echo "OK: $image serves the web app and the API (version check: ${expected_version:-skipped}, user $user)"
+echo "OK: $image serves the web app (installable, cache rules in place) and the API (version check: ${expected_version:-skipped}, user $user)"

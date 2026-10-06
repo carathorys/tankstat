@@ -3,7 +3,9 @@ import { Button, Flex } from '@radix-ui/themes'
 import { Bell, Car, FileUp, House, LogOut, Settings, ShieldCheck, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { NavLink } from 'react-router'
+import { signedOut } from '../auth/oidc.ts'
 import { LogoutDocument, type AuthMode, type SessionQuery } from '../gql/generated.ts'
+import { InstallMenuItem } from './InstallMenuItem.tsx'
 
 /** The navigation links, shared by the docked sidebar and the phone drawer. `onNavigate` lets the drawer close itself. */
 export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: SessionQuery['session']['user']; onNavigate?: () => void }) {
@@ -29,6 +31,7 @@ export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: Sess
         {link('/trash', t('nav.trash'), <Trash2 size={18} aria-hidden />)}
         {user && link('/account', t('nav.account'), <Settings size={18} aria-hidden />)}
         {user?.isAdmin && link('/admin', t('nav.admin'), <ShieldCheck size={18} aria-hidden />)}
+        <InstallMenuItem onNavigate={onNavigate} />
         {canSignOut && (
           <Button
             variant="ghost"
@@ -38,6 +41,8 @@ export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: Sess
             onClick={async () => {
               onNavigate?.()
               await logout()
+              // Before the store resets: the sign-in screen that follows must wait for a click, not send the browser back to the provider.
+              if (mode === 'OIDC') signedOut.mark()
               await client.resetStore()
             }}
           >
