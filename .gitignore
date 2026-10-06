@@ -484,6 +484,8 @@ $RECYCLE.BIN/
 # Node / frontend
 # Logs
 logs
+# ...but not the frontend tests of the vehicles' logs (refuellings and expenses)
+!tests/frontend/vehicles/logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
