@@ -21,7 +21,7 @@ import { filledFields } from './recognition/review.ts'
 import { ReviewCallout } from './recognition/ReviewState.tsx'
 import { useDraftReadings } from './recognition/useDraftReadings.ts'
 import { useReadFill } from './recognition/useReadFill.ts'
-import { keepAmountsInStep } from './refuelingAmounts.ts'
+import { keepAmountsInStep, type AmountField } from './refuelingAmounts.ts'
 
 /** Volume, total cost and odometer are null only when they were left for a photo that is still being read. */
 export interface RefuelingValues {
@@ -228,7 +228,22 @@ function RefuelingForm({
       onUse={() => fill.use(field)}
     />
   )
-  const calculated = (field: FillableField) => (fill.isCalculated(field) ? t('refuelings.hints.calculated') : undefined)
+  /** Volume, unit price or total: a number that may be worked out from the other two (the unit price, only a help, is never required). */
+  const amount = (field: AmountField) => {
+    const required = field !== 'unitPrice' && !optional(field)
+    return (
+      <Field
+        name={field}
+        label={labels[field]}
+        hint={fill.isCalculated(field) ? t('refuelings.hints.calculated') : undefined}
+        required={required}
+        invalid={decimalInvalid}
+        extra={note(field)}
+      >
+        <TextField.Root required={required} inputMode="decimal" autoComplete="off" value={fill.values[field]} onChange={(e) => fill.change(field, e.target.value)} />
+      </Field>
+    )
+  }
   const [full, setFull] = useState(initial.isFullTank)
   const [error, setError] = useState<unknown>()
   const [busy, setBusy] = useState(false)
@@ -268,35 +283,15 @@ function RefuelingForm({
         </Field>
         <Flex gap="3" wrap="wrap">
           <Flex direction="column" style={{ flex: '1 1 8rem' }}>
-            <Field
-              name="volume"
-              label={labels.volume}
-              hint={calculated('volume')}
-              required={!optional('volume')}
-              invalid={decimalInvalid}
-              extra={note('volume')}
-            >
-              <TextField.Root required={!optional('volume')} inputMode="decimal" autoComplete="off" value={fill.values.volume} onChange={(e) => fill.change('volume', e.target.value)} />
-            </Field>
+            {amount('volume')}
           </Flex>
           <Flex direction="column" style={{ flex: '1 1 8rem' }}>
-            <Field name="unitPrice" label={labels.unitPrice} hint={calculated('unitPrice')} invalid={decimalInvalid} extra={note('unitPrice')}>
-              <TextField.Root inputMode="decimal" autoComplete="off" value={fill.values.unitPrice} onChange={(e) => fill.change('unitPrice', e.target.value)} />
-            </Field>
+            {amount('unitPrice')}
           </Flex>
         </Flex>
         <Flex gap="3" wrap="wrap">
           <Flex direction="column" style={{ flex: '2 1 8rem' }}>
-            <Field
-              name="totalCost"
-              label={labels.totalCost}
-              hint={calculated('totalCost')}
-              required={!optional('totalCost')}
-              invalid={decimalInvalid}
-              extra={note('totalCost')}
-            >
-              <TextField.Root required={!optional('totalCost')} inputMode="decimal" autoComplete="off" value={fill.values.totalCost} onChange={(e) => fill.change('totalCost', e.target.value)} />
-            </Field>
+            {amount('totalCost')}
           </Flex>
           <Flex direction="column" style={{ flex: '1 1 6rem' }}>
             <Field

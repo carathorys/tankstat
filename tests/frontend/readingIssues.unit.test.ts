@@ -4,7 +4,7 @@ import type { ReadValues } from '../../src/frontend/recognition/readValues.ts'
 
 const issue = (code: ReadingIssue['code'], field: ReadingIssue['field'] = null): ReadingIssue => ({ code, field })
 
-/** A refuelling dialog: it has a volume, a total, a currency, a date and an odometer, but no unit price. */
+/** A dialog with a volume, a total, a currency, a date and an odometer, but no field for a unit price or a title. */
 const labels: Record<string, string> = { VOLUME: 'Volume', TOTAL: 'Total cost', CURRENCY: 'Currency', DATE: 'Date', ODOMETER: 'Odometer' }
 const label = (name: string) => labels[name]
 

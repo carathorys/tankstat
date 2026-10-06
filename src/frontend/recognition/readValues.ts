@@ -49,18 +49,14 @@ export interface FillState<F extends string> {
   calculated: ReadonlySet<F>
 }
 
-/** The set with `field` moved to its end (added when missing): it keeps the order the fields were last typed in. */
-const movedToEnd = <F extends string>(set: ReadonlySet<F>, field: F) => {
-  const next = new Set(set)
-  next.delete(field)
-  return next.add(field)
-}
-
 const without = <F extends string>(set: ReadonlySet<F>, field: F) => {
   const next = new Set(set)
   next.delete(field)
   return next
 }
+
+/** The set with `field` moved to its end (added when missing): it keeps the order the fields were last typed in. */
+const movedToEnd = <F extends string>(set: ReadonlySet<F>, field: F) => without(set, field).add(field)
 
 /**
  * Puts read values into the fields the user has not changed (their starting values, such as today's date or the last currency, count as
@@ -103,19 +99,12 @@ export function changeField<F extends string>(state: FillState<F>, field: F, val
   return { values: { ...state.values, [field]: value }, touched, filled, offered, calculated: without(state.calculated, field) }
 }
 
-/** "Use": the field takes the value the photo showed, as if the user had typed it. */
+/** "Use": the field takes the value the photo showed, as if the user had typed it (and it still says what the photo showed). */
 export function takeOffered<F extends string>(state: FillState<F>, field: F): FillState<F> {
   const value = state.offered[field]
   if (value === undefined) return state
-  const offered = { ...state.offered }
-  delete offered[field]
-  return {
-    values: { ...state.values, [field]: value },
-    touched: movedToEnd(state.touched, field),
-    filled: { ...state.filled, [field]: value },
-    offered,
-    calculated: without(state.calculated, field),
-  }
+  const typed = changeField(state, field, value)
+  return { ...typed, filled: { ...typed.filled, [field]: value } }
 }
 
 /**
