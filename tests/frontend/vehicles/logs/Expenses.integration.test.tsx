@@ -1,0 +1,160 @@
+import { screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
+import App from '../../../../src/frontend/App.tsx'
+import { server } from '../../support/server.ts'
+import { fakeExpense, fakeExpenseBackend, fakeVehicle, healthHandler, renderWithApollo, sessionHandler, stubViewport } from '../../support/mocks.tsx'
+
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+afterEach(() => {
+  server.resetHandlers()
+  vi.unstubAllGlobals()
+})
+afterAll(() => server.close())
+
+const expenses = [
+  fakeExpense({ id: 'e1', date: '2026-08-01', title: 'Parking', category: 'Parking', amount: 1500, odometer: null }),
+  fakeExpense({ id: 'e2', date: '2026-09-01', title: 'Oil change', category: 'Service', amount: 35000, odometer: 12000, note: 'with filters' }),
+]
+
+function setup(vehicle = fakeVehicle(), initial = expenses, route = '/vehicles/v1?tab=expenses') {
+  stubViewport('desktop')
+  const backend = fakeExpenseBackend(vehicle, initial)
+  server.use(sessionHandler('NONE', () => null), healthHandler, ...backend.handlers)
+  renderWithApollo(<App />, route)
+  return { ...backend, ui: userEvent.setup() }
+}
+
+it('lists the expenses with their amounts in the currency they were paid in, newest first', async () => {
+  const { state } = setup()
+
+  const row = (await screen.findByText('Oil change')).closest('tr')!
+  expect(within(row).getByText(/35,000/)).toBeInTheDocument()
+  expect(within(row).getByText('Service')).toBeInTheDocument()
+  expect(within(row).getByText(/12,000 km/)).toBeInTheDocument()
+  expect(screen.getAllByRole('rowheader').map((c) => c.textContent)).toEqual(['Sep 1, 2026', 'Aug 1, 2026'])
+  expect(state.requests.at(-1)).toMatchObject({ vehicleId: 'v1', orderBy: 'DATE', direction: 'DESC', withAmount: true })
+})
+
+it('an expense logged for a service visit names the recurring expenses it covered, in a column shown on request', async () => {
+  const { ui, state } = setup(fakeVehicle(), [fakeExpense({ id: 'e3', title: 'Yearly service', schedules: [{ id: 'rc1', title: 'Oil change' }, { id: 'rc3', title: 'Oil filter' }] })])
+  await screen.findByText('Yearly service')
+  expect(screen.queryByText('Oil change, Oil filter')).not.toBeInTheDocument()
+  expect(screen.queryByRole('columnheader', { name: 'Recurring' })).not.toBeInTheDocument()
+  expect(state.requests.at(-1)).toMatchObject({ withSchedules: false }) // hidden by default, so never asked for
+
+  await ui.click(screen.getByRole('button', { name: 'Columns' }))
+  await ui.click(within(await screen.findByRole('dialog')).getByRole('checkbox', { name: 'Show Recurring' }))
+
+  expect(await screen.findByRole('columnheader', { name: 'Recurring' })).toBeInTheDocument()
+  expect(await screen.findByText('Oil change, Oil filter')).toBeInTheDocument()
+  expect(state.requests.at(-1)).toMatchObject({ withSchedules: true })
+})
+
+it('shows a dash where the odometer was not noted', async () => {
+  setup()
+
+  const row = (await screen.findAllByText('Parking'))[0].closest('tr')! // the title and the category are both "Parking"
+
+  expect(within(row).getAllByText('–').length).toBeGreaterThan(0)
+})
+
+it('adds an expense with the usual currency, an optional odometer and a category', async () => {
+  const { ui, state } = setup()
+  await screen.findByText('Oil change')
+
+  await ui.click(screen.getByRole('button', { name: 'Add expense' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add expense' })
+  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
+  await within(dialog).findByText(/Used before: Parking, Service/)
+  await ui.type(within(dialog).getByLabelText('Title'), 'Tyres')
+  await ui.type(within(dialog).getByLabelText(/^Category/), 'Maintenance')
+  await ui.type(within(dialog).getByLabelText('Amount'), '120000')
+  await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
+
+  await screen.findByText('Tyres')
+  expect(state.calls.AddExpense).toEqual([
+    { input: expect.objectContaining({ vehicleId: 'v1', title: 'Tyres', category: 'Maintenance', amount: 120000, currency: 'HUF', odometer: null, note: null }) },
+  ])
+})
+
+it('blocks a missing title or amount without calling the server', async () => {
+  const { ui, state } = setup()
+  await screen.findByText('Oil change')
+
+  await ui.click(screen.getByRole('button', { name: 'Add expense' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add expense' })
+  await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
+
+  expect(await within(dialog).findByText('Title is required')).toBeInTheDocument()
+  expect(within(dialog).getByText('Amount is required')).toBeInTheDocument()
+  expect(state.calls.AddExpense).toBeUndefined()
+})
+
+it('shows the odometer rule from the server and keeps the dialog open', async () => {
+  const { ui, state } = setup()
+  state.failWith = { message: 'too low', key: 'odometer.belowPrevious', args: { previous: '12,000 km', date: '2026-09-01' } }
+  await screen.findByText('Oil change')
+
+  await ui.click(screen.getByRole('button', { name: 'Add expense' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add expense' })
+  await ui.type(within(dialog).getByLabelText('Title'), 'Wash')
+  await ui.type(within(dialog).getByLabelText('Amount'), '1000')
+  await ui.type(within(dialog).getByLabelText(/^Odometer/), '100')
+  await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
+
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('The odometer cannot be lower than 12,000 km')
+  expect(screen.getByRole('dialog')).toBeInTheDocument()
+})
+
+it('edits an expense starting from its real values, and the odometer can be cleared', async () => {
+  const { ui, state } = setup()
+  await screen.findByText('Oil change')
+
+  await ui.click(screen.getByRole('button', { name: 'Edit the expense Oil change' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Edit expense' })
+  await waitFor(() => expect(within(dialog).getByLabelText('Title')).toHaveValue('Oil change'))
+  expect(within(dialog).getByLabelText('Amount')).toHaveValue('35000')
+  expect(within(dialog).getByLabelText(/^Odometer/)).toHaveValue('12000')
+  await ui.clear(within(dialog).getByLabelText(/^Odometer/))
+  await ui.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+  await waitFor(() => expect(state.calls.UpdateExpense).toEqual([{ input: expect.objectContaining({ id: 'e2', title: 'Oil change', amount: 35000, odometer: null, note: 'with filters' }) }]))
+})
+
+it('moves an expense to the trash after a confirmation, not before', async () => {
+  const { ui, state } = setup()
+  await screen.findByText('Oil change')
+
+  await ui.click(screen.getByRole('button', { name: 'Delete the expense Oil change' }))
+  expect(state.calls.DeleteExpense).toBeUndefined()
+  await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Move to trash' }))
+
+  await waitFor(() => expect(screen.queryByText('Oil change')).not.toBeInTheDocument())
+  expect(state.calls.DeleteExpense).toEqual([{ id: 'e2' }])
+})
+
+it('view-only access: no add button and no edit or delete', async () => {
+  setup(fakeVehicle({ canEdit: false, logAccess: 'VIEW' }), expenses.map((e) => ({ ...e, canEdit: false })))
+
+  await screen.findByText('Oil change')
+
+  expect(screen.queryByRole('button', { name: 'Add expense' })).not.toBeInTheDocument()
+  expect(screen.getAllByText('view only')).toHaveLength(2)
+})
+
+it('the trash has an expenses tab: restore and empty', async () => {
+  const { ui, state } = setup(fakeVehicle(), [], '/trash?tab=expenses')
+  state.trash = [fakeExpense({ id: 'x1', title: 'Old fee', deletedAt: '2026-10-01T08:00:00Z' }), fakeExpense({ id: 'x2', title: 'Older fee', deletedAt: '2026-10-01T08:00:00Z' })]
+  await screen.findByText('Old fee')
+
+  await ui.click(screen.getByRole('button', { name: 'Restore Old fee' }))
+  await waitFor(() => expect(state.calls.RestoreExpense).toEqual([{ id: 'x1' }]))
+  await waitFor(() => expect(screen.queryByText('Old fee')).not.toBeInTheDocument())
+
+  await ui.click(screen.getByRole('button', { name: 'Empty trash' }))
+  await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Empty trash' }))
+
+  await screen.findByText('Permanently deleted 1 expense.')
+  expect(await screen.findByText('No expenses in the trash.')).toBeInTheDocument()
+})

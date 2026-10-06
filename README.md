@@ -34,7 +34,8 @@ tests/backend/Tankstat.Application.UnitTests/     services (incl. access and aut
 tests/backend/Tankstat.Infrastructure.UnitTests/  config binding, repositories (SQLite file), migration/model consistency for every provider
 tests/backend/Tankstat.Api.IntegrationTests/      in-process GraphQL tests for every auth mode (WebApplicationFactory)
 tests/backend/Tankstat.Api.ApiTests/              black-box contract tests against a running server
-tests/frontend/                           Vitest unit (*.unit.test.*) and integration (*.integration.test.*) tests
+tests/frontend/                           Vitest unit (*.unit.test.*) and integration (*.integration.test.*) tests, a folder per feature area
+tests/frontend/support/                   shared test helpers: msw handlers (server.ts), fake backends (mocks.tsx), setup
 scripts/test-api.sh                       starts the API, runs the API tests, stops it
 tests/backend/contracts/openai-compatible/  answers as OpenAI-compatible model servers write them, for the app's adapter tests
 ```
@@ -352,6 +353,21 @@ mise run test:coverage     # unit + integration tests with coverage reports in .
 ```
 
 The API tests pin the GraphQL schema the frontend relies on, so a breaking schema change fails them. They read the target from `TANKSTAT_API_URL` (default `http://localhost:5080`); `test:api` sets it for you.
+
+Frontend tests are named `*.unit.test.ts(x)` (a function or component on its own) or `*.integration.test.ts(x)` (the app against msw-mocked GraphQL); other names are not picked up. They are grouped by feature area, unit and integration tests side by side, nested where an area has parts:
+
+```text
+tests/frontend/
+  support/                   shared helpers: msw default handlers (server.ts), fake backends (mocks.tsx), setup.ts
+  app/  app/apollo/  app/i18n/   the shell, error handling, accessibility, Apollo, translations
+  auth/  pwa/                sign-in, installing the app
+  home/                      the home page and its vehicle cards
+  vehicles/                  vehicle list and page; vehicles/logs/, vehicles/recurring/, vehicles/dashboard/ for its tabs
+  recognition/  pictures/    photo reading, pictures and uploads
+  trash/  grid/  settings/  notifications/  admin/  import/
+```
+
+A new test goes into the folder of the feature it covers; run one file with `npx vitest run tests/frontend/<area>/<file>`.
 
 ## Docker
 
