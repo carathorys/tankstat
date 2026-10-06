@@ -1,10 +1,14 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { afterEach } from 'vitest'
 import { i18n, initI18n } from '../../src/frontend/i18n/index.ts'
 import { installPrompt } from '../../src/frontend/pwa/installPrompt.ts'
 
 await initI18n('en')
+
+// Pages are lazy: the first test of a file waits for App and its page to load, which with coverage on (CI) can take
+// well over the 1 s default of findBy*/waitFor. Stays below Vitest's 5 s test timeout, so a miss still names the element.
+configure({ asyncUtilTimeout: 3000 })
 
 afterEach(async () => {
   cleanup()
