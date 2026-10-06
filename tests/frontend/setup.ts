@@ -7,7 +7,7 @@ import { installPrompt } from '../../src/frontend/pwa/installPrompt.ts'
 await initI18n('en')
 
 // Pages are lazy: the first test of a file waits for App and its page to load, which with coverage on (CI) can take
-// well over the 1 s default of findBy*/waitFor. Stays below Vitest's 5 s test timeout, so a miss still names the element.
+// well over the 1 s default of findBy*/waitFor. Stays below the test timeout (15 s, vite.config.ts), so a miss still names the element.
 configure({ asyncUtilTimeout: 3000 })
 
 afterEach(async () => {
