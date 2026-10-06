@@ -124,7 +124,8 @@ public sealed class ImportService(
             {
                 if (row.Fuel is { } f)
                 {
-                    await refuelings.LogAsync(vehicleId, new RefuelingInput(f.Date, f.Volume, f.TotalCost, currency, f.Odometer, f.IsFullTank, f.Note), ct, recalculateConsumption: false);
+                    var input = new RefuelingInput(f.Date, f.Volume, f.TotalCost, currency, f.Odometer, f.IsFullTank, f.Note, f.MissedPreviousFillUp);
+                    await refuelings.LogAsync(vehicleId, input, ct, recalculateConsumption: false);
                     fuelDone++;
                 }
                 else if (row.Expense is { } e)

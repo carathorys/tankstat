@@ -699,6 +699,9 @@ namespace Tankstat.Migrations.PostgreSql
                     b.Property<bool>("IsFullTank")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("MissedPreviousFillUp")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Note")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");

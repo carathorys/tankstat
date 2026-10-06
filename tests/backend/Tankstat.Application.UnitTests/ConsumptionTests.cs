@@ -121,4 +121,42 @@ public class ConsumptionTests
 
         Assert.Equal([null, 6m, 5m], Stored(s));
     }
+
+    [Fact]
+    public async Task MarkingAMissedFillUp_LeavesItsIntervalOut_UntilTheMarkGoes_AndAnUpdateWithoutItKeepsIt()
+    {
+        var s = await Setup();
+        await Log(s, 0, 1000, 40);
+        var middle = await Log(s, 10, 1500, 30);
+        await Log(s, 20, 2000, 25);
+
+        await s.W.RefuelingService.UpdateAsync(middle.Id, new RefuelingInput(middle.Date, 30, 50, null, 1500, true, null, MissedPreviousFillUp: true), default);
+        Assert.Equal([null, null, 5m], Stored(s)); // the fill-up before the middle one was never logged: its interval is unknown
+
+        var kept = await s.W.RefuelingService.UpdateAsync(middle.Id, new RefuelingInput(middle.Date, 30, 50, null, 1500, true, "a note"), default);
+        Assert.True(kept.MissedPreviousFillUp);
+        Assert.Equal([null, null, 5m], Stored(s));
+
+        await s.W.RefuelingService.UpdateAsync(middle.Id, new RefuelingInput(middle.Date, 30, 50, null, 1500, true, null, MissedPreviousFillUp: false), default);
+        Assert.Equal([null, 6m, 5m], Stored(s));
+    }
+
+    [Fact]
+    public async Task ImportingAFillUpThatFollowsAMissedOne_LeavesItsIntervalOut()
+    {
+        var s = await Setup();
+        const string csv = """
+            "## Log"
+            "Data","Odo (km)","Fuel (litres)","Full","Price (optional)","Missed"
+            "2026-08-01","1000","40","1","50","0"
+            "2026-08-11","2000","30","1","50","1"
+            "2026-08-21","2500","25","1","50","0"
+            """;
+        var upload = await s.W.Imports.UploadAsync("fuelio", new MemoryStream(System.Text.Encoding.UTF8.GetBytes(csv)), default);
+
+        await s.W.Imports.CommitAsync(upload.Token, new ImportTarget(s.Car.Id, null), new ImportOptions("EUR", false), default);
+
+        Assert.Equal([null, null, 5m], Stored(s));
+        Assert.Equal([false, true, false], s.W.Refuelings.Items.OrderBy(r => r.Date).Select(r => r.MissedPreviousFillUp));
+    }
 }

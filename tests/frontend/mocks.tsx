@@ -264,6 +264,8 @@ export interface FakeRefueling {
   currency: string | null
   odometer: number | null
   isFullTank: boolean
+  /** A fill-up before this one was not logged (the server then stores no consumption for it). */
+  missedPreviousFillUp: boolean
   note: string | null
   /** Fuel per 100 distance units between this and the previous full fill-up (the server calculates and stores it). */
   consumption: number | null
@@ -284,6 +286,7 @@ export const fakeRefueling = (over: Partial<FakeRefueling> = {}): FakeRefueling 
   currency: 'HUF',
   odometer: 12000,
   isFullTank: true,
+  missedPreviousFillUp: false,
   note: null,
   consumption: null,
   canEdit: true,

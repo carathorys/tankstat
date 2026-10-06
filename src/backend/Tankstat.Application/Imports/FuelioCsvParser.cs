@@ -130,7 +130,8 @@ public sealed class FuelioCsvParser : IImportParser
             if (!TryDecimal(s.Get(row, "Fuel"), out var volume) || volume <= 0) { Skip(issues, "log", n, "import.badNumber", s.Get(row, "Fuel"), "volume"); continue; }
             if (!TryDecimal(s.Get(row, "Price"), out var price) || price < 0) { Skip(issues, "log", n, "import.badNumber", s.Get(row, "Price"), "price"); continue; }
 
-            logs.Add(new ImportedFuelLog(n, date, (long)Math.Round(odometer), volume, price, s.Get(row, "Full") == "1", s.Get(row, "Notes")));
+            logs.Add(new ImportedFuelLog(
+                n, date, (long)Math.Round(odometer), volume, price, s.Get(row, "Full") == "1", s.Get(row, "Missed") == "1", s.Get(row, "Notes")));
         }
         return logs;
     }

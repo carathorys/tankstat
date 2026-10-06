@@ -31,7 +31,7 @@ public class FuelioCsvParserTests
         var logs = Parse(FuelioSample.Csv).FuelLogs;
 
         Assert.Equal(3, logs.Count);
-        Assert.Equal(new ImportedFuelLog(1, new DateOnly(2026, 9, 17), 1300, 38.5m, 24669m, true, "Holiday, \"big\" trip"), logs[0]); // quoted comma and quotes survive
+        Assert.Equal(new ImportedFuelLog(1, new DateOnly(2026, 9, 17), 1300, 38.5m, 24669m, true, false, "Holiday, \"big\" trip"), logs[0]); // quoted comma and quotes survive
         Assert.False(logs[1].IsFullTank);
         Assert.Equal(new DateOnly(2026, 6, 1), logs[2].Date); // a date without a time
         Assert.Equal((700L, 35.25m), (logs[2].Odometer, logs[2].Volume));
@@ -111,7 +111,7 @@ public class FuelioCsvParserTests
 
         var log = Assert.Single(Parse(csv).FuelLogs);
 
-        Assert.Equal(new ImportedFuelLog(1, new DateOnly(2026, 1, 2), 500, 10, 1000, true, "hi"), log);
+        Assert.Equal(new ImportedFuelLog(1, new DateOnly(2026, 1, 2), 500, 10, 1000, true, false, "hi"), log);
     }
 
     [Fact]
@@ -143,5 +143,13 @@ public class FuelioCsvParserTests
         Assert.Equal(2, rows.Count);
         Assert.Equal(["a", "b\nc", "d\"e"], rows[0]);
         Assert.Equal(["", "x", ""], rows[1]);
+    }
+
+    [Fact]
+    public void ReadsAFillUpMarkedAsFollowingAMissedOne()
+    {
+        const string csv = "\"## Log\"\n\"Data\",\"Odo (km)\",\"Fuel (litres)\",\"Full\",\"Price (optional)\",\"Missed\"\n\"2026-01-02\",\"500\",\"10\",\"1\",\"1000\",\"1\"\n";
+
+        Assert.True(Assert.Single(Parse(csv).FuelLogs).MissedPreviousFillUp); // a file without the column reads as false (see FindsColumnsByName_...)
     }
 }

@@ -274,3 +274,36 @@ it('offers no trash button to someone who may only view the vehicle', async () =
 
   expect(screen.queryByRole('button', { name: 'Move to trash' })).not.toBeInTheDocument()
 })
+
+it('marks a refuelling that follows a fill-up that was not logged', async () => {
+  const { ui, state } = setup()
+  await screen.findByText(/Sep 1, 2026/)
+
+  await ui.click(screen.getByRole('button', { name: 'Add refuelling' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add refuelling' })
+  const missed = within(dialog).getByRole('switch', { name: 'Missed fill-up before this one' })
+  expect(missed).not.toBeChecked()
+  expect(missed).toHaveAccessibleDescription(/no consumption is worked out across the gap/)
+  await ui.type(within(dialog).getByLabelText(/^Volume/), '38,2')
+  await ui.type(within(dialog).getByLabelText('Total cost'), '19100')
+  await ui.type(within(dialog).getByLabelText(/^Odometer/), '12450')
+  await ui.click(missed)
+  await ui.click(within(dialog).getByRole('button', { name: 'Add refuelling' }))
+
+  await waitFor(() => expect(state.calls.LogRefueling).toEqual([{ input: expect.objectContaining({ odometer: 12450, isFullTank: true, missedPreviousFillUp: true }) }]))
+  expect(await screen.findByText('Missed one before')).toBeInTheDocument()
+})
+
+it('shows which log follows a missed fill-up, and editing it keeps the mark', async () => {
+  const { ui, state } = setup(fakeVehicle(), [logs[0]!, { ...logs[1]!, missedPreviousFillUp: true }])
+  const row = (await screen.findByText(/Sep 1, 2026/)).closest('tr')!
+  expect(within(row).getByText('Missed one before')).toBeInTheDocument()
+  expect(within(row).getByText('Partial')).toBeInTheDocument()
+
+  await ui.click(screen.getByRole('button', { name: 'Edit the refuelling of Sep 1, 2026' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Edit refuelling' })
+  await waitFor(() => expect(within(dialog).getByRole('switch', { name: 'Missed fill-up before this one' })).toBeChecked())
+  await ui.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+  await waitFor(() => expect(state.calls.UpdateRefueling).toEqual([{ input: expect.objectContaining({ id: 'r2', missedPreviousFillUp: true }) }]))
+})

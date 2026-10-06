@@ -9,8 +9,8 @@ public class ConsumptionCalculatorTests
     private static readonly Guid Car = Guid.NewGuid();
     private static readonly DateOnly Day = new(2026, 1, 1);
 
-    private static Refueling Log(int day, long odometer, decimal volume, bool full = true) =>
-        TestData.Refueling(Owner, Owner, Car, Day.AddDays(day), volume, 10, odometer, full);
+    private static Refueling Log(int day, long odometer, decimal volume, bool full = true, bool missed = false) =>
+        TestData.Refueling(Owner, Owner, Car, Day.AddDays(day), volume, 10, odometer, full, missedPreviousFillUp: missed);
 
     private static decimal?[] Run(params Refueling[] logs)
     {
@@ -90,7 +90,7 @@ public class ConsumptionCalculatorTests
 
     private static Refueling Waiting(int day, long? odometer, decimal? volume, bool full = true) =>
         Refueling.Create(Owner, Owner, Car, Day.AddDays(day), volume, null,
-            odometer is { } o ? Odometers.OdometerReading.Create(Owner, Car, Day.AddDays(day), o) : null, full, readingPhotos: true);
+            odometer is { } o ? Odometers.OdometerReading.Create(Owner, Car, Day.AddDays(day), o) : null, full, false, readingPhotos: true);
 
     [Fact]
     public void AFillUpOfUnknownVolume_MakesItsIntervalUnknown_ButNotTheNextOne()
@@ -106,5 +106,29 @@ public class ConsumptionCalculatorTests
         var values = Run(Log(0, 1000, 40), Waiting(5, null, 30), Log(10, 1500, 30), Log(20, 2000, 30));
 
         Assert.Equal([null, null, null, 6m], values);
+    }
+
+    [Fact]
+    public void AFullFillUpAfterAMissedOne_HasNoConsumption_ButStartsTheNextInterval()
+    {
+        var values = Run(Log(0, 1000, 40), Log(10, 2000, 30, missed: true), Log(20, 2500, 30));
+
+        Assert.Equal([null, null, 6m], values); // 30 litres over 1000 km would say 3: the fuel of the fill-up that was not logged is missing
+    }
+
+    [Fact]
+    public void APartialFillUpAfterAMissedOne_LeavesItsIntervalUnknown_UntilTheNextFullOne()
+    {
+        var values = Run(Log(0, 1000, 40), Log(5, 1600, 10, full: false, missed: true), Log(10, 2000, 30), Log(20, 2500, 30));
+
+        Assert.Equal([null, null, null, 6m], values);
+    }
+
+    [Fact]
+    public void AMissedFillUpBeforeTheFirstLog_ChangesNothing()
+    {
+        var values = Run(Log(0, 1000, 40, missed: true), Log(10, 1500, 30));
+
+        Assert.Equal([null, 6m], values);
     }
 }

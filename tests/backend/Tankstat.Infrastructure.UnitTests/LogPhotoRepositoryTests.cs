@@ -142,7 +142,7 @@ public class LogPhotoRepositoryTests
         await using var db = new TestDatabase();
         var v = TestData.Vehicle(Owner, "Car");
         await db.Get<IVehicleRepository>().AddAsync(v, default);
-        var log = Refueling.Create(Owner, Owner, v.Id, Day, 40, Cost.Create(Owner, v.Id, Day, 60, "EUR"), OdometerReading.Create(Owner, v.Id, Day, 1000), true);
+        var log = Refueling.Create(Owner, Owner, v.Id, Day, 40, Cost.Create(Owner, v.Id, Day, 60, "EUR"), OdometerReading.Create(Owner, v.Id, Day, 1000), true, false);
         var refuelings = db.Get<IRefuelingRepository>();
         await refuelings.AddAsync(log, default);
         await db.Get<ILogPhotoRepository>().AddAsync(Photo(v, LogType.Refueling, log.Id), default);

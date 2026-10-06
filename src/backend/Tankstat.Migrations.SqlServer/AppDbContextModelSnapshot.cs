@@ -701,6 +701,9 @@ namespace Tankstat.Migrations.SqlServer
                     b.Property<bool>("IsFullTank")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("MissedPreviousFillUp")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Note")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");

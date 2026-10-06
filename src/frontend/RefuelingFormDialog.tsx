@@ -30,6 +30,8 @@ export interface RefuelingValues {
   currency: string
   odometer: number | null
   isFullTank: boolean
+  /** A fill-up before this one was not logged: the server works out no consumption across the gap. */
+  missedPreviousFillUp: boolean
   note: string | null
 }
 
@@ -87,7 +89,7 @@ export function RefuelingFormDialog({
   const lastReading = logDefaults?.lastOdometer != null && logDefaults.lastDate ? { value: logDefaults.lastOdometer, date: logDefaults.lastDate } : null
   const initial: Initial = existing
     ? { ...existing, currency: existing.currency ?? defaults.data?.logDefaults?.currency ?? '', note: existing.note ?? null }
-    : { date: today(), currency: defaults.data?.logDefaults?.currency ?? '', isFullTank: true, note: null }
+    : { date: today(), currency: defaults.data?.logDefaults?.currency ?? '', isFullTank: true, missedPreviousFillUp: false, note: null }
 
   return (
     <Dialog.Root
@@ -217,6 +219,8 @@ function RefuelingForm({
   const [error, setError] = useState<unknown>()
   const [busy, setBusy] = useState(false)
   const switchId = useId()
+  const [missed, setMissed] = useState(initial.missedPreviousFillUp)
+  const missedId = useId()
   const decimalInvalid = { message: t('forms.numberInvalid'), test: (v: string) => v !== '' && parseDecimal(v) === undefined }
 
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -234,6 +238,7 @@ function RefuelingForm({
         currency: text('currency').toUpperCase(),
         odometer: text('odometer') === '' ? null : Number(text('odometer')),
         isFullTank: full,
+        missedPreviousFillUp: missed,
         note: note === '' ? null : note,
       })
     } catch (err) {
@@ -295,6 +300,17 @@ function RefuelingForm({
             </Text>
             <Text size="1" color="gray">
               {t('refuelings.hints.fullTankHelp')}
+            </Text>
+          </Flex>
+        </Flex>
+        <Flex align="center" gap="3">
+          <Switch id={missedId} checked={missed} onCheckedChange={setMissed} size="3" aria-describedby={`${missedId}-hint`} />
+          <Flex direction="column">
+            <Text as="label" size="2" weight="bold" htmlFor={missedId}>
+              {t('refuelings.fields.missedPrevious')}
+            </Text>
+            <Text id={`${missedId}-hint`} size="1" color="gray">
+              {t('refuelings.hints.missedPreviousHelp')}
             </Text>
           </Flex>
         </Flex>

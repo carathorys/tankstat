@@ -12,12 +12,16 @@ namespace Tankstat.Api.GraphQL;
 /// <param name="Volume">Volume, total cost and odometer may be omitted only while one of <paramref name="PhotoIds"/> is still being read: the reading fills them in later (<c>reviewState</c>).</param>
 /// <param name="Currency">ISO 4217 code of the currency paid in; omit to use the instance default.</param>
 /// <param name="PhotoIds">Photos uploaded for this log beforehand (<c>PUT /media/vehicles/{id}/photo-drafts</c>); they become its photos.</param>
+/// <param name="MissedPreviousFillUp">A fill-up before this one was not logged: no consumption is worked out across the gap. Omit for false.</param>
 public sealed record LogRefuelingInput(
-    Guid VehicleId, DateOnly Date, decimal? Volume, decimal? TotalCost, string? Currency, long? Odometer, bool IsFullTank, string? Note, IReadOnlyList<Guid>? PhotoIds = null);
+    Guid VehicleId, DateOnly Date, decimal? Volume, decimal? TotalCost, string? Currency, long? Odometer, bool IsFullTank, string? Note, IReadOnlyList<Guid>? PhotoIds = null,
+    bool? MissedPreviousFillUp = null);
 
 /// <param name="Volume">Volume, total cost and odometer may be omitted only while a photo of the log is still being read.</param>
 /// <param name="Currency">Omit to keep the log's currency.</param>
-public sealed record UpdateRefuelingInput(Guid Id, DateOnly Date, decimal? Volume, decimal? TotalCost, string? Currency, long? Odometer, bool IsFullTank, string? Note);
+/// <param name="MissedPreviousFillUp">Omit to keep what the log says.</param>
+public sealed record UpdateRefuelingInput(
+    Guid Id, DateOnly Date, decimal? Volume, decimal? TotalCost, string? Currency, long? Odometer, bool IsFullTank, string? Note, bool? MissedPreviousFillUp = null);
 public sealed record SetLogAccessInput(Guid VehicleId, Guid UserId, AccessLevel Level);
 
 /// <summary>What the add-log form starts from.</summary>
@@ -52,7 +56,7 @@ public sealed class RefuelingType : ObjectType<Refueling>
         descriptor.Ignore(r => r.CostId);
         descriptor.Ignore(r => r.IsDeleted);
         descriptor.Ignore(r => r.Missing);
-        descriptor.Ignore(r => r.Update(default, default, default, default, default, default, default, default));
+        descriptor.Ignore(r => r.Update(default, default, default, default, default, default, default, default, default));
         descriptor.Ignore(r => r.FillFromPhoto(default!));
         descriptor.Ignore(r => r.FinishReading(default));
         descriptor.Field(r => r.FilledFromPhoto)
@@ -127,11 +131,12 @@ public sealed class RefuelingMutations
     public Task<Refueling> LogRefueling(
         LogRefuelingInput input, [Service] RefuelingService refuelings, [Service] IOptions<VehicleDefaultsOptions> defaults, CancellationToken ct) =>
         refuelings.LogAsync(input.VehicleId,
-            new RefuelingInput(input.Date, input.Volume, input.TotalCost, input.Currency ?? defaults.Value.Currency, input.Odometer, input.IsFullTank, input.Note), ct,
+            new RefuelingInput(input.Date, input.Volume, input.TotalCost, input.Currency ?? defaults.Value.Currency, input.Odometer, input.IsFullTank, input.Note, input.MissedPreviousFillUp), ct,
             photoDraftIds: input.PhotoIds);
 
     public Task<Refueling> UpdateRefueling(UpdateRefuelingInput input, [Service] RefuelingService refuelings, CancellationToken ct) =>
-        refuelings.UpdateAsync(input.Id, new RefuelingInput(input.Date, input.Volume, input.TotalCost, input.Currency, input.Odometer, input.IsFullTank, input.Note), ct);
+        refuelings.UpdateAsync(
+            input.Id, new RefuelingInput(input.Date, input.Volume, input.TotalCost, input.Currency, input.Odometer, input.IsFullTank, input.Note, input.MissedPreviousFillUp), ct);
 
     /// <summary>Moves the log to the trash (needs Edit access to the vehicle's logs).</summary>
     public Task<Refueling> DeleteRefueling(Guid id, [Service] RefuelingService refuelings, CancellationToken ct) => refuelings.DeleteAsync(id, ct);

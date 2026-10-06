@@ -6,7 +6,9 @@ namespace Tankstat.Domain.Vehicles;
 /// the distance driven, times 100. Partial fill-ups themselves have no consumption, and neither has the first full fill-up.
 /// The result depends on neighbouring logs, so it is recalculated for the whole vehicle whenever one of its logs changes.
 /// A log whose odometer or volume is not known yet (its photo is still being read) makes the interval it falls in unknown, and a full
-/// fill-up without an odometer cannot start the next one.
+/// fill-up without an odometer cannot start the next one. A log that follows a fill-up that was never logged (<see cref="Refueling.MissedPreviousFillUp"/>)
+/// breaks the chain the same way: the interval it falls in is unknown, and the chain starts again from it (when it is a full fill-up)
+/// or from the next full fill-up.
 /// </summary>
 public static class ConsumptionCalculator
 {
@@ -23,6 +25,7 @@ public static class ConsumptionCalculator
         foreach (var log in logs.OrderBy(l => l.Date).ThenBy(l => l.Odometer ?? long.MaxValue).ThenBy(l => l.Id))
         {
             decimal? value = null;
+            if (log.MissedPreviousFillUp) previousFull = null; // the fuel of the fill-up that was not logged is unknown
             if (log.IsFullTank)
             {
                 fuel += log.Volume;

@@ -27,6 +27,7 @@ query Refuelings(
     consumption @include(if: $withConsumption)
     odometer @include(if: $withOdometer)
     isFullTank @include(if: $withFullTank)
+    missedPreviousFillUp @include(if: $withFullTank)
     note @include(if: $withNote)
     createdBy @include(if: $withCreatedBy) {
       id
@@ -85,6 +86,7 @@ query RefuelingDetails($id: UUID!) {
     currency
     odometer
     isFullTank
+    missedPreviousFillUp
     note
     reviewState
     filledFromPhoto
