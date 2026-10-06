@@ -598,8 +598,6 @@ namespace Tankstat.Migrations.SqlServer
 
                     b.HasIndex("VehicleId");
 
-                    b.HasIndex("UserId", "Position");
-
                     b.ToTable("VehicleOrders", (string)null);
                 });
 

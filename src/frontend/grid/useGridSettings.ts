@@ -81,17 +81,23 @@ function merge(saved: Partial<GridSaved> | undefined, base: GridState, columns: 
 export function useGridSettings(gridId: string, columns: ColumnInfo[], defaultSort: { column: string; desc: boolean }) {
   const settings = useUiSettings()
   const [state, setState] = useState<GridState>(() => merge(settings?.grid(gridId) ?? read(gridId), defaults(columns, defaultSort), columns))
+  const latest = useRef(state) // what the next change builds on, also when two changes come before a render
   const touched = useRef(false) // the user changed this grid in this session: a later answer from the server must not undo it
   const applied = useRef(settings?.server) // the answer the state was built from
+
+  const commit = useCallback((next: GridState) => {
+    latest.current = next
+    setState(next)
+  }, [])
 
   useEffect(() => {
     if (!settings?.server || applied.current === settings.server) return
     applied.current = settings.server
     const server = settings.grid(gridId)
     if (!server || touched.current) return // nothing saved on the server keeps the browser's copy
-    setState(merge(server, defaults(columns, defaultSort), columns))
+    commit(merge(server, defaults(columns, defaultSort), columns))
     write(gridId, server)
-  }, [settings, gridId, columns, defaultSort])
+  }, [settings, gridId, columns, defaultSort, commit])
 
   const persist = useCallback(
     (next: GridState) => {
@@ -109,33 +115,33 @@ export function useGridSettings(gridId: string, columns: ColumnInfo[], defaultSo
     [gridId, defaultSort.column, settings],
   )
 
+  // Never inside a state updater: saving is a side effect, and React runs updaters twice in StrictMode.
   const update = useCallback(
-    (patch: Partial<GridState>) =>
-      setState((prev) => {
-        const next = { ...prev, ...patch }
-        persist(next)
-        return next
-      }),
-    [persist],
+    (patch: Partial<GridState>) => {
+      const next = { ...latest.current, ...patch }
+      commit(next)
+      persist(next)
+    },
+    [commit, persist],
   )
 
   /** Page changes are never stored; only the choices that describe how the user wants the grid. */
   const setPagination = useCallback(
-    (pagination: PaginationState) =>
-      setState((prev) => {
-        const next = { ...prev, pagination }
-        if (pagination.pageSize !== prev.pagination.pageSize) persist(next)
-        return next
-      }),
-    [persist],
+    (pagination: PaginationState) => {
+      const previous = latest.current
+      const next = { ...previous, pagination }
+      commit(next)
+      if (pagination.pageSize !== previous.pagination.pageSize) persist(next)
+    },
+    [commit, persist],
   )
 
   const reset = useCallback(() => {
     touched.current = true
     write(gridId, undefined)
     settings?.resetGrid(gridId)
-    setState(defaults(columns, defaultSort))
-  }, [gridId, columns, defaultSort, settings])
+    commit(defaults(columns, defaultSort))
+  }, [gridId, columns, defaultSort, settings, commit])
 
   return { state, update, setPagination, reset }
 }

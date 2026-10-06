@@ -598,8 +598,6 @@ namespace Tankstat.Migrations.PostgreSql
 
                     b.HasIndex("VehicleId");
 
-                    b.HasIndex("UserId", "Position");
-
                     b.ToTable("VehicleOrders", (string)null);
                 });
 

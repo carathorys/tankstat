@@ -593,8 +593,6 @@ namespace Tankstat.Migrations.Sqlite
 
                     b.HasIndex("VehicleId");
 
-                    b.HasIndex("UserId", "Position");
-
                     b.ToTable("VehicleOrders", (string)null);
                 });
 

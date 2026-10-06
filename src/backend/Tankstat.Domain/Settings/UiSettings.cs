@@ -8,6 +8,7 @@ namespace Tankstat.Domain.Settings;
 /// </summary>
 public sealed partial class UiSettings
 {
+    /// <summary>Width of the column; the pattern itself allows at most five characters ("en-GB").</summary>
     public const int MaxLanguageLength = 8;
 
     private UiSettings() { } // EF Core
@@ -34,7 +35,7 @@ public sealed partial class UiSettings
     public void SetLanguage(string? language, DateTimeOffset now)
     {
         var code = language?.Trim();
-        if (code is not null && (code.Length > MaxLanguageLength || !LanguagePattern().IsMatch(code)))
+        if (code is not null && !LanguagePattern().IsMatch(code))
             throw new DomainException("settings.languageInvalid", "The language code must look like en or en-GB.");
         Language = code;
         UpdatedAt = now;

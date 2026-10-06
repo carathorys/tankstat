@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Tankstat.Application.Access;
 using Tankstat.Application.Settings;
@@ -80,15 +82,79 @@ public class SettingsRepositoryTests
 
         await orders.ReplaceAsync(alice, [VehicleOrder.Create(alice, c.Id, 0), VehicleOrder.Create(alice, b.Id, 1)], default);
 
-        Assert.Equal([c.Id, b.Id], (await orders.ListAsync(alice, default)).Select(o => o.VehicleId));
-        Assert.Equal([c.Id], (await orders.ListAsync(bob, default)).Select(o => o.VehicleId)); // untouched
+        async Task<Guid[]> Positions(Guid user)
+        {
+            await using var ctx = await db.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
+            return await ctx.VehicleOrders.Where(o => o.UserId == user).OrderBy(o => o.Position).Select(o => o.VehicleId).ToArrayAsync();
+        }
+        Assert.Equal([c.Id, b.Id], await Positions(alice));
+        Assert.Equal([c.Id], await Positions(bob)); // untouched
 
         var doomed = (await vehicles.FindAsync(c.Id, default))!;
         doomed.MarkDeleted(Now);
         await vehicles.UpdateAsync(doomed, default);
         await vehicles.PurgeAsync(OwnerScope.All, default);
 
-        Assert.Equal([b.Id], (await orders.ListAsync(alice, default)).Select(o => o.VehicleId)); // the cascade took C's positions
-        Assert.Empty(await orders.ListAsync(bob, default));
+        Assert.Equal([b.Id], await Positions(alice)); // the cascade took C's positions
+        Assert.Empty(await Positions(bob));
+    }
+
+    [Fact]
+    public async Task TwoFirstSaves_AtTheSameTime_BothSucceed_TheLaterOneWins()
+    {
+        await using var db = new TestDatabase();
+        var repo = db.Get<IUiSettingsRepository>();
+        var user = Guid.NewGuid();
+        var first = UiSettings.Create(user, Now);
+        first.SetNavOpen(false, Now);
+        var second = UiSettings.Create(user, Now);
+        second.SetLanguage("hu", Now.AddSeconds(1));
+        await repo.SaveAsync(first, default); // the race as the service sees it: the second save was also built when no row existed ...
+
+        await repo.SaveAsync(second, default); // ... and still saves: the repository finds the row by now and updates it
+
+        var loaded = (await repo.FindAsync(user, default))!;
+        Assert.Equal((null, "hu"), (loaded.NavOpen, loaded.Language)); // the later row as a whole: last write wins per row
+    }
+
+    [Fact]
+    public async Task AFirstSave_ThatLosesTheInsertRace_IsRetriedAsAnUpdate()
+    {
+        var user = Guid.NewGuid();
+        var rival = UiSettings.Create(user, Now);
+        rival.SetNavOpen(false, Now);
+        var race = new RivalInsert(rival);
+        await using var db = new TestDatabase(services: s => s.ConfigureDbContext<AppDbContext>((_, o) => o.AddInterceptors(race)));
+        race.Factory = db.Get<IDbContextFactory<AppDbContext>>();
+        var repo = db.Get<IUiSettingsRepository>();
+        var mine = UiSettings.Create(user, Now.AddSeconds(1));
+        mine.SetLanguage("hu", Now.AddSeconds(1));
+
+        await repo.SaveAsync(mine, default); // no row when it looked; the rival's insert lands in between
+
+        Assert.Equal(1, race.Fired);
+        var loaded = (await repo.FindAsync(user, default))!;
+        Assert.Equal((null, "hu"), (loaded.NavOpen, loaded.Language)); // the insert failed and became an update of the whole row: the later save wins
+    }
+
+    /// <summary>Slips a row with the same key in between the repository's existence check and its INSERT: the race two first saves can run.</summary>
+    private sealed class RivalInsert(UiSettings rival) : SaveChangesInterceptor
+    {
+        private bool _done;
+        public IDbContextFactory<AppDbContext>? Factory { get; set; }
+        public int Fired { get; private set; }
+
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (!_done && Factory is not null && eventData.Context!.ChangeTracker.Entries<UiSettings>().Any(e => e.State == EntityState.Added))
+            {
+                _done = true; // the rival's own save goes through this interceptor too
+                Fired++;
+                await using var other = await Factory.CreateDbContextAsync(cancellationToken);
+                other.UiSettings.Add(rival);
+                await other.SaveChangesAsync(cancellationToken);
+            }
+            return result;
+        }
     }
 }

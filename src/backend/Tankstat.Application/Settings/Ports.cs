@@ -23,9 +23,6 @@ public interface IUiSettingsRepository
 
 public interface IVehicleOrderRepository
 {
-    /// <summary>The user's arrangement, by position.</summary>
-    Task<IReadOnlyList<VehicleOrder>> ListAsync(Guid userId, CancellationToken ct);
-
-    /// <summary>All of the user's rows go and these come, in one transaction.</summary>
+    /// <summary>All of the user's rows go and these come, in one transaction. The arrangement is only ever read as part of the vehicle list.</summary>
     Task ReplaceAsync(Guid userId, IReadOnlyList<VehicleOrder> order, CancellationToken ct);
 }

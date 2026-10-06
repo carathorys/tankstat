@@ -46,6 +46,8 @@ query Welcome($search: String, $skip: Int!, $take: Int!) {
     }
   }
   myVehicleCount(search: $search)
+  # How many there are in all: the Arrange button is for two or more vehicles, whatever a search left on the page.
+  vehicleTotal: myVehicleCount
 }
 
 # A vehicle's dashboard: the key figures and the saved charts (the user's own and the shared ones). Each chart loads its own data.

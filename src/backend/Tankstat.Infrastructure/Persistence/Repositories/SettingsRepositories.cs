@@ -12,12 +12,8 @@ internal sealed class UiSettingsRepository(IDbContextFactory<AppDbContext> dbFac
         return await db.UiSettings.AsNoTracking().FirstOrDefaultAsync(s => s.UserId == userId, ct);
     }
 
-    public async Task SaveAsync(UiSettings settings, CancellationToken ct)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        db.Entry(settings).State = await db.UiSettings.AnyAsync(s => s.UserId == settings.UserId, ct) ? EntityState.Modified : EntityState.Added;
-        await db.SaveChangesAsync(ct);
-    }
+    public Task SaveAsync(UiSettings settings, CancellationToken ct) =>
+        UpsertAsync(settings, db => db.UiSettings.AnyAsync(s => s.UserId == settings.UserId, ct), ct);
 
     public async Task<IReadOnlyList<GridSettings>> ListGridsAsync(Guid userId, CancellationToken ct)
     {
@@ -31,11 +27,28 @@ internal sealed class UiSettingsRepository(IDbContextFactory<AppDbContext> dbFac
         return await db.GridSettings.AsNoTracking().FirstOrDefaultAsync(g => g.UserId == userId && g.GridId == gridId, ct);
     }
 
-    public async Task SaveGridAsync(GridSettings grid, CancellationToken ct)
+    public Task SaveGridAsync(GridSettings grid, CancellationToken ct) =>
+        UpsertAsync(grid, db => db.GridSettings.AnyAsync(g => g.UserId == grid.UserId && g.GridId == grid.GridId, ct), ct);
+
+    /// <summary>
+    /// Adds the row or replaces it (the key is never generated). Two first saves at the same time both see no row; the one that loses the
+    /// insert becomes an update, so the later value wins instead of an error.
+    /// </summary>
+    private async Task UpsertAsync<T>(T row, Func<AppDbContext, Task<bool>> exists, CancellationToken ct) where T : class
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        db.Entry(grid).State = await db.GridSettings.AnyAsync(g => g.UserId == grid.UserId && g.GridId == grid.GridId, ct) ? EntityState.Modified : EntityState.Added;
-        await db.SaveChangesAsync(ct);
+        var isNew = !await exists(db);
+        db.Entry(row).State = isNew ? EntityState.Added : EntityState.Modified;
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException) when (isNew)
+        {
+            db.ChangeTracker.Clear();
+            db.Entry(row).State = EntityState.Modified;
+            await db.SaveChangesAsync(ct);
+        }
     }
 
     public async Task<bool> RemoveGridAsync(Guid userId, string gridId, CancellationToken ct)
@@ -47,12 +60,6 @@ internal sealed class UiSettingsRepository(IDbContextFactory<AppDbContext> dbFac
 
 internal sealed class VehicleOrderRepository(IDbContextFactory<AppDbContext> dbFactory) : IVehicleOrderRepository
 {
-    public async Task<IReadOnlyList<VehicleOrder>> ListAsync(Guid userId, CancellationToken ct)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await db.VehicleOrders.AsNoTracking().Where(o => o.UserId == userId).OrderBy(o => o.Position).ThenBy(o => o.VehicleId).ToListAsync(ct);
-    }
-
     public async Task ReplaceAsync(Guid userId, IReadOnlyList<VehicleOrder> order, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);

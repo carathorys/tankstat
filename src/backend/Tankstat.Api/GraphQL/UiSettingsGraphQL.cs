@@ -10,15 +10,23 @@ public sealed record GridSettingsInfo(string GridId, IReadOnlyList<string> Order
     public static GridSettingsInfo From(GridSettings g) => new(g.GridId, g.Order, g.Hidden, g.PageSize, g.SortColumn, g.SortDirection);
 }
 
-/// <summary>The current user's UI settings; a null value means nothing was chosen yet (the browser's own default applies).</summary>
-public sealed record UiSettingsInfo(bool? NavOpen, string? Language, IReadOnlyList<GridSettingsInfo> Grids)
+/// <summary>The current user's UI settings; a null value means nothing was chosen yet (the browser's own default applies). The grids are loaded only when selected.</summary>
+public sealed record UiSettingsInfo(bool? NavOpen, string? Language)
 {
-    public static UiSettingsInfo From(UiSettingsView v) => new(v.NavOpen, v.Language, v.Grids.Select(GridSettingsInfo.From).ToList());
+    public static UiSettingsInfo From(UiSettingsView v) => new(v.NavOpen, v.Language);
+}
+
+[ExtendObjectType<UiSettingsInfo>]
+public sealed class UiSettingsInfoExtensions
+{
+    /// <summary>How the user wants each grid they changed, by grid id.</summary>
+    public async Task<IReadOnlyList<GridSettingsInfo>> GetGrids([Service] UiSettingsService settings, CancellationToken ct) =>
+        (await settings.ListGridsAsync(ct)).Select(GridSettingsInfo.From).ToList();
 }
 
 /// <param name="NavOpen">Omit to leave it as it is.</param>
 /// <param name="Language">Omit to leave it as it is.</param>
-/// <param name="ClearLanguage">Forget the saved language (the browser's choice applies again).</param>
+/// <param name="ClearLanguage">Forget the saved language (the browser's choice applies again); wins over a language given at the same time.</param>
 public sealed record UpdateUiSettingsInput(bool? NavOpen, string? Language, bool? ClearLanguage);
 
 public sealed record GridSettingsInput(string GridId, IReadOnlyList<string> Order, IReadOnlyList<string> Hidden, int PageSize, string SortColumn, SortDirection SortDirection);

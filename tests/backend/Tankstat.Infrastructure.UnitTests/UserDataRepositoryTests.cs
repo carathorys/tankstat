@@ -122,8 +122,14 @@ public class UserDataRepositoryTests
         var carol = await AddUser(db, "carol@x.co");
         var (car, _) = await AddVehicleWithExpense(db, alice.Id, alice.Id);
         var (bobs, _) = await AddVehicleWithExpense(db, bob.Id, bob.Id);
+        var (carols, _) = await AddVehicleWithExpense(db, carol.Id, carol.Id);
         var settings = db.Get<IUiSettingsRepository>();
         var orders = db.Get<IVehicleOrderRepository>();
+        async Task<Guid[]> Positions(Guid user)
+        {
+            await using var ctx = await Context(db);
+            return await ctx.VehicleOrders.Where(o => o.UserId == user).OrderBy(o => o.Position).Select(o => o.VehicleId).ToArrayAsync();
+        }
         foreach (var who in new[] { alice.Id, bob.Id, carol.Id })
         {
             var row = UiSettings.Create(who, Now);
@@ -132,23 +138,23 @@ public class UserDataRepositoryTests
             await settings.SaveGridAsync(GridSettings.Create(who, "vehicles", new(["name"], [], 25, "name", Tankstat.Domain.SortDirection.Asc), Now), default);
         }
         await orders.ReplaceAsync(alice.Id, [VehicleOrder.Create(alice.Id, car.Id, 0), VehicleOrder.Create(alice.Id, bobs.Id, 1)], default);
-        await orders.ReplaceAsync(bob.Id, [VehicleOrder.Create(bob.Id, car.Id, 0)], default);
+        await orders.ReplaceAsync(bob.Id, [VehicleOrder.Create(bob.Id, carols.Id, 0), VehicleOrder.Create(bob.Id, car.Id, 1)], default); // Bob placed Carol's car first
         await orders.ReplaceAsync(carol.Id, [VehicleOrder.Create(carol.Id, car.Id, 0)], default);
 
         await db.Get<IUserDataRepository>().DeleteUserAsync(alice.Id, bob.Id, default); // moved to Bob
 
         Assert.Null(await settings.FindAsync(alice.Id, default));
         Assert.Empty(await settings.ListGridsAsync(alice.Id, default));
-        Assert.Empty(await orders.ListAsync(alice.Id, default));
+        Assert.Empty(await Positions(alice.Id));
         Assert.NotNull(await settings.FindAsync(bob.Id, default)); // his own, never merged with hers
         Assert.Single(await settings.ListGridsAsync(bob.Id, default));
-        Assert.Single(await orders.ListAsync(bob.Id, default));
+        Assert.Equal([carols.Id, car.Id], await Positions(bob.Id));
 
-        await db.Get<IUserDataRepository>().DeleteUserAsync(carol.Id, null, default); // purged
+        await db.Get<IUserDataRepository>().DeleteUserAsync(carol.Id, null, default); // purged, with her car
 
         Assert.Null(await settings.FindAsync(carol.Id, default));
-        Assert.Empty(await orders.ListAsync(carol.Id, default));
-        Assert.Single(await orders.ListAsync(bob.Id, default));
+        Assert.Empty(await Positions(carol.Id));
+        Assert.Equal([car.Id], await Positions(bob.Id)); // Bob's position of her car went with it
     }
 
     [Fact]

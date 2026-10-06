@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Tankstat.Migrations.SqlServer
+namespace Tankstat.Migrations.PostgreSql
 {
     /// <inheritdoc />
     public partial class AddUiSettingsAndVehicleOrder : Migration
@@ -15,14 +15,14 @@ namespace Tankstat.Migrations.SqlServer
                 name: "GridSettings",
                 columns: table => new
                 {
-                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    GridId = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: false),
-                    Order = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: false),
-                    Hidden = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: false),
-                    PageSize = table.Column<int>(type: "int", nullable: false),
-                    SortColumn = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: false),
-                    SortDirection = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    GridId = table.Column<string>(type: "character varying(40)", maxLength: 40, nullable: false),
+                    Order = table.Column<string>(type: "character varying(4000)", maxLength: 4000, nullable: false),
+                    Hidden = table.Column<string>(type: "character varying(4000)", maxLength: 4000, nullable: false),
+                    PageSize = table.Column<int>(type: "integer", nullable: false),
+                    SortColumn = table.Column<string>(type: "character varying(40)", maxLength: 40, nullable: false),
+                    SortDirection = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -33,10 +33,10 @@ namespace Tankstat.Migrations.SqlServer
                 name: "UiSettings",
                 columns: table => new
                 {
-                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    NavOpen = table.Column<bool>(type: "bit", nullable: true),
-                    Language = table.Column<string>(type: "nvarchar(8)", maxLength: 8, nullable: true),
-                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    NavOpen = table.Column<bool>(type: "boolean", nullable: true),
+                    Language = table.Column<string>(type: "character varying(8)", maxLength: 8, nullable: true),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -47,9 +47,9 @@ namespace Tankstat.Migrations.SqlServer
                 name: "VehicleOrders",
                 columns: table => new
                 {
-                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    VehicleId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    Position = table.Column<int>(type: "int", nullable: false)
+                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    VehicleId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Position = table.Column<int>(type: "integer", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -61,11 +61,6 @@ namespace Tankstat.Migrations.SqlServer
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                 });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_VehicleOrders_UserId_Position",
-                table: "VehicleOrders",
-                columns: new[] { "UserId", "Position" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_VehicleOrders_VehicleId",

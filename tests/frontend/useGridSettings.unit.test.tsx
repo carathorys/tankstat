@@ -15,8 +15,6 @@ const saved = (over: Partial<GridSaved> = {}): GridSaved => ({ order: ['plate', 
 
 /** A provider as the hook sees it; `server` is only a token whose identity says "a new answer". */
 const api = (over: Partial<UiSettingsApi> = {}): UiSettingsApi => ({
-  enabled: true,
-  ready: true,
   server: {},
   navOpen: true,
   setNavOpen: vi.fn(),
@@ -62,7 +60,7 @@ it('starts from the server copy when there is one, and tells the server about ev
 })
 
 it('adopts the server copy when it arrives after the grid mounted, unless the user changed the grid meanwhile', () => {
-  const current = { value: api({ ready: false, server: undefined }) as UiSettingsApi | null }
+  const current = { value: api({ server: undefined }) as UiSettingsApi | null }
   const { result, rerender } = hookWith(current)
   expect(result.current.state.pagination.pageSize).toBe(25)
 
@@ -80,7 +78,7 @@ it('adopts the server copy when it arrives after the grid mounted, unless the us
 
 it('an answer without a row for this grid keeps the browser copy', () => {
   window.localStorage.setItem('tankstat.grid.g', JSON.stringify(saved({ pageSize: 100 })))
-  const current = { value: api({ ready: false, server: undefined }) as UiSettingsApi | null }
+  const current = { value: api({ server: undefined }) as UiSettingsApi | null }
   const { result, rerender } = hookWith(current)
   expect(result.current.state.pagination.pageSize).toBe(100)
 
@@ -88,4 +86,18 @@ it('an answer without a row for this grid keeps the browser copy', () => {
   rerender()
 
   expect(result.current.state.pagination.pageSize).toBe(100)
+})
+
+it('saves a change once, also under StrictMode, and a second change builds on the first', () => {
+  const value = api()
+  const wrapper = ({ children }: { children: ReactNode }) => <UiSettingsContext.Provider value={value}>{children}</UiSettingsContext.Provider>
+  const { result } = renderHook(() => useGridSettings('g', columns, sort), { wrapper, reactStrictMode: true })
+
+  act(() => result.current.update({ columnVisibility: { plate: false } }))
+  act(() => result.current.setPagination({ pageIndex: 0, pageSize: 10 }))
+
+  expect(value.saveGrid).toHaveBeenCalledTimes(2) // a save inside a state updater would run twice here
+  expect(result.current.state.columnVisibility).toEqual({ plate: false })
+  expect(result.current.state.pagination.pageSize).toBe(10)
+  expect(value.saveGrid).toHaveBeenLastCalledWith('g', expect.objectContaining({ hidden: ['plate'], pageSize: 10 }))
 })

@@ -16,7 +16,8 @@ public class UiSettingsServiceTests
         w.Current.SignInAs(w.AddUser("alice@x.co"));
 
         var empty = await w.UiSettings.GetAsync(default);
-        Assert.Equal((null, null, 0), (empty.NavOpen, empty.Language, empty.Grids.Count));
+        Assert.Equal((null, null), (empty.NavOpen, empty.Language));
+        Assert.Empty(await w.UiSettings.ListGridsAsync(default));
 
         await w.UiSettings.UpdateAsync(new UiSettingsChange(NavOpen: false), default);
         var withLanguage = await w.UiSettings.UpdateAsync(new UiSettingsChange(Language: "hu"), default);
@@ -38,17 +39,17 @@ public class UiSettingsServiceTests
         await w.UiSettings.SaveGridAsync("expenses", Grid(), default);
         await w.UiSettings.SaveGridAsync("vehicles", Grid(50), default); // replaces
 
-        var mine = (await w.UiSettings.GetAsync(default)).Grids;
+        var mine = await w.UiSettings.ListGridsAsync(default);
         Assert.Equal(["expenses", "vehicles"], mine.Select(g => g.GridId));
         Assert.Equal((50, 0), (mine[1].PageSize, mine[1].Hidden.Count));
 
         w.Current.SignInAs(bob);
-        Assert.Empty((await w.UiSettings.GetAsync(default)).Grids);
+        Assert.Empty(await w.UiSettings.ListGridsAsync(default));
         Assert.False(await w.UiSettings.ResetGridAsync("vehicles", default)); // nothing of Bob's to forget
 
         w.Current.SignInAs(alice);
         Assert.True(await w.UiSettings.ResetGridAsync("vehicles", default));
-        Assert.Equal(["expenses"], (await w.UiSettings.GetAsync(default)).Grids.Select(g => g.GridId));
+        Assert.Equal(["expenses"], (await w.UiSettings.ListGridsAsync(default)).Select(g => g.GridId));
     }
 
     [Fact]
@@ -92,13 +93,27 @@ public class UiSettingsServiceTests
         var alice = w.AddUser("alice@x.co");
         w.Current.SignInAs(alice);
 
-        await w.UiSettings.UpdateAsync(new UiSettingsChange(Language: "hu"), default);
+        await w.UiSettings.UpdateAsync(new UiSettingsChange(Language: "en-GB"), default);
         await w.UiSettings.SaveGridAsync("vehicles", Grid(), default);
 
         var lines = w.Log.From<UiSettingsService>().ToList();
         Assert.Equal(2, lines.Count);
         Assert.All(lines, e => Assert.Equal(alice.Id, e.Values["UserId"]));
         Assert.Equal("vehicles", lines[1].Values["GridId"]);
-        Assert.DoesNotContain(lines, e => e.Text.Contains("hu", StringComparison.Ordinal) && !e.Text.Contains("changed", StringComparison.Ordinal));
+        Assert.DoesNotContain(lines, e => e.Values.Values.Any(v => Equals(v, "en-GB")) || e.Text.Contains("en-GB", StringComparison.Ordinal)); // a value is never a placeholder
+    }
+
+    [Fact]
+    public async Task AnEmptyChange_SavesNothing_AndClearWinsOverALanguageGivenAtTheSameTime()
+    {
+        var w = new World();
+        w.Current.SignInAs(w.AddUser("alice@x.co"));
+
+        var untouched = await w.UiSettings.UpdateAsync(new UiSettingsChange(), default);
+        Assert.Equal((null, null), (untouched.NavOpen, untouched.Language));
+        Assert.Empty(w.UiSettingsStore.Items);
+
+        var cleared = await w.UiSettings.UpdateAsync(new UiSettingsChange(Language: "hu", ClearLanguage: true), default);
+        Assert.Null(cleared.Language);
     }
 }

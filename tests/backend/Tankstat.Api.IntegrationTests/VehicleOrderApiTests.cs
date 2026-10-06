@@ -45,11 +45,16 @@ public class VehicleOrderApiTests : IDisposable
 
         var refused = await people.Alice.Gql(SetOrder, new { ids = new[] { golf, bobs } });
         var tooMany = await people.Alice.Gql(SetOrder, new { ids = Enumerable.Range(0, 201).Select(_ => Guid.NewGuid().ToString()).ToArray() });
+        await people.Alice.Gql($"mutation {{ deleteVehicle(id: \"{golf}\") {{ id }} }}");
+        var trashed = await people.Alice.Gql(SetOrder, new { ids = new[] { golf } }); // in the trash: looks non-existent too
 
         Assert.Equal("NOT_FOUND", refused.ErrorCode());
         Assert.Equal("vehicle.notFound", refused.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
         Assert.Equal("VALIDATION_FAILED", tooMany.ErrorCode());
-        Assert.Equal(["Octavia", "Golf"], await Names(people.Alice)); // unchanged
+        Assert.Equal("NOT_FOUND", trashed.ErrorCode());
+        Assert.Equal(["Octavia"], await Names(people.Alice)); // Golf is in the trash; the order itself is unchanged (restored below)
+        await people.Alice.Gql($"mutation {{ restoreVehicle(id: \"{golf}\") {{ id }} }}");
+        Assert.Equal(["Octavia", "Golf"], await Names(people.Alice));
     }
 
     [Fact]

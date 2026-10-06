@@ -82,7 +82,7 @@ export function WelcomePage({ isAdmin }: { isAdmin: boolean }) {
           <Button asChild size="3" variant="soft">
             <Link to="/import">{t('welcome.import')}</Link>
           </Button>
-          {total >= 2 && <ArrangeVehiclesDialog />}
+          {(data?.vehicleTotal ?? 0) >= 2 && <ArrangeVehiclesDialog />}
           {addButton(!isAdmin)}
           {isAdmin && (
             <Button asChild size="3">

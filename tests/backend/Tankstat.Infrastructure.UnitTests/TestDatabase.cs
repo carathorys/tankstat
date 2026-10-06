@@ -18,7 +18,8 @@ internal sealed class TestDatabase : IAsyncDisposable
     /// <summary>Everything the services of this database logged.</summary>
     public CapturedLog Log { get; } = new();
 
-    public TestDatabase(Dictionary<string, string?>? extraSettings = null)
+    /// <param name="services">Extra registrations (a test's EF interceptor, for one) applied before the provider is built.</param>
+    public TestDatabase(Dictionary<string, string?>? extraSettings = null, Action<IServiceCollection>? services = null)
     {
         var settings = new Dictionary<string, string?>
         {
@@ -27,7 +28,9 @@ internal sealed class TestDatabase : IAsyncDisposable
         };
         foreach (var (key, value) in extraSettings ?? []) settings[key] = value;
         var config = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
-        Services = new ServiceCollection().AddLogging(b => b.AddProvider(Log)).AddApplication(config).AddInfrastructure(config).BuildServiceProvider();
+        var collection = new ServiceCollection().AddLogging(b => b.AddProvider(Log)).AddApplication(config).AddInfrastructure(config);
+        services?.Invoke(collection);
+        Services = collection.BuildServiceProvider();
 
         using var db = Services.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContext();
         db.Database.Migrate();

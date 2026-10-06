@@ -1,10 +1,10 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { delay, graphql, HttpResponse } from 'msw'
-import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
+import { graphql, HttpResponse } from 'msw'
+import { afterAll, afterEach, beforeAll, expect, it, onTestFinished, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import { i18n } from '../../src/frontend/i18n/index.ts'
-import { adminSession, fakeSettingsBackend, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport } from './mocks.tsx'
+import { adminSession, fakeSettingsBackend, fakeVehicle, fakeVehicleBackend, gqlError, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport } from './mocks.tsx'
 import { server } from './server.ts'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
@@ -46,12 +46,14 @@ it('hiding the sidebar is saved with the account and shows on another device', a
 
 it('a choice made before the server answers is not undone by the answer', async () => {
   stubViewport('desktop')
-  const settings = fakeSettingsBackend({ navOpen: true })
+  const settings = fakeSettingsBackend({ navOpen: true, language: 'hu' })
+  let answer!: () => void
+  const held = new Promise<void>((resolve) => (answer = resolve))
   server.use(
     adminSession(),
     healthHandler,
     graphql.query('UiSettings', async () => {
-      await delay(300)
+      await held
       return HttpResponse.json({ data: { uiSettings: settings.state.settings } })
     }),
     ...settings.handlers,
@@ -61,10 +63,11 @@ it('a choice made before the server answers is not undone by the answer', async 
   renderWithApollo(<App />, '/vehicles')
   await screen.findByRole('heading', { name: 'Vehicles' })
 
-  await ui.click(screen.getByRole('button', { name: 'Hide menu' })) // before the slow answer ("open") lands
-  await new Promise((resolve) => setTimeout(resolve, 450))
+  await ui.click(screen.getByRole('button', { name: 'Hide menu' })) // before the answer ("open") lands
+  answer()
 
-  expect(screen.queryByRole('navigation', { name: 'Main navigation' })).not.toBeInTheDocument()
+  await screen.findByRole('heading', { name: 'Járművek' }) // the answer has arrived: its language applied ...
+  expect(screen.queryByRole('navigation', { name: 'Main navigation' })).not.toBeInTheDocument() // ... its older sidebar choice did not
   expect(settings.state.calls.UpdateUiSettings).toEqual([{ input: { navOpen: false } }])
 })
 
@@ -94,9 +97,10 @@ it("a grid's columns are saved with the account, and a browser that never saw th
 })
 
 it('page size and reset reach the server too', async () => {
-  const { settings, ui } = setup(fakeSettingsBackend({ grids: [{ gridId: 'vehicles', order: ['name', 'licensePlate', 'fuelType', 'owner', 'refuelings'], hidden: ['fuelType'], pageSize: 10, sortColumn: 'name', sortDirection: 'ASC' }] }))
+  const { settings, ui, vehicles } = setup(fakeSettingsBackend({ grids: [{ gridId: 'vehicles', order: ['name', 'licensePlate', 'fuelType', 'owner', 'refuelings'], hidden: ['fuelType'], pageSize: 10, sortColumn: 'name', sortDirection: 'ASC' }] }))
   await screen.findByText('Beta')
-  expect(headers()).toEqual(['Name', 'License plate', 'Owner', 'Refuelings']) // the server's copy, applied before the first request
+  await waitFor(() => expect(headers()).toEqual(['Name', 'License plate', 'Owner', 'Refuelings'])) // the server's copy (a device that never saw it asks once with the defaults first)
+  await waitFor(() => expect(lastRequest(vehicles.state.requests.Vehicles)).toMatchObject({ withFuelType: false, take: 10 })) // the rows were asked for accordingly
 
   await ui.click(screen.getByRole('combobox', { name: 'Rows per page' }))
   await ui.click(await screen.findByRole('option', { name: '50' }))
@@ -161,4 +165,50 @@ it('a save that fails stays in the browser and is only reported to the console',
   expect(JSON.parse(window.localStorage.getItem('tankstat.grid.vehicles')!).hidden).toEqual(['licensePlate'])
   await waitFor(() => expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('SaveGridSettings'), expect.anything()))
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
+
+it('a save the server refuses leaves a note in the console, nothing more', async () => {
+  const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  onTestFinished(() => {
+    consoleWarn.mockRestore()
+  })
+  const { ui } = setup()
+  server.use(graphql.mutation('SaveGridSettings', () => HttpResponse.json(gqlError('Page size out of range', 'VALIDATION_FAILED', 'settings.pageSizeInvalid', { min: 1, max: 500 }))))
+  await screen.findByText('Beta')
+
+  await ui.click(screen.getByRole('combobox', { name: 'Rows per page' }))
+  await ui.click(await screen.findByRole('option', { name: '50' }))
+
+  await waitFor(() => expect(consoleWarn).toHaveBeenCalledWith('A settings save was refused', ['settings.pageSizeInvalid']))
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(JSON.parse(window.localStorage.getItem('tankstat.grid.vehicles')!).pageSize).toBe(50) // the browser keeps the choice
+})
+
+it('changes made while a save is on its way are sent after it, the newest only', async () => {
+  const { settings, ui } = setup()
+  let release!: () => void
+  const held = new Promise<void>((resolve) => (release = resolve))
+  let saves = 0
+  server.use(
+    graphql.mutation('SaveGridSettings', async ({ variables }) => {
+      saves++
+      if (saves === 1) await held // the first save hangs ...
+      return HttpResponse.json({ data: { saveGridSettings: variables.input } })
+    }),
+  )
+  await screen.findByText('Beta')
+
+  await ui.click(screen.getByRole('button', { name: 'Columns' }))
+  const dialog = await screen.findByRole('dialog')
+  await ui.click(within(dialog).getByRole('checkbox', { name: 'Show License plate' })) // ... while two more changes are made
+  await ui.click(within(dialog).getByRole('checkbox', { name: 'Show Fuel' }))
+  await ui.click(within(dialog).getByRole('checkbox', { name: 'Show Owner' }))
+  expect(saves).toBe(1)
+
+  release()
+
+  await waitFor(() => expect(saves).toBe(2)) // one request for the two, with the latest value
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  expect(saves).toBe(2)
+  expect(settings.state.calls.SaveGridSettings).toBeUndefined() // the fake's own handler was replaced; the requests above are the record
 })

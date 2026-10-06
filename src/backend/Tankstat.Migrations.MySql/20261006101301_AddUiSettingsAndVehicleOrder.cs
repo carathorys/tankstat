@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Tankstat.Migrations.Sqlite
+namespace Tankstat.Migrations.MySql
 {
     /// <inheritdoc />
     public partial class AddUiSettingsAndVehicleOrder : Migration
@@ -15,41 +15,43 @@ namespace Tankstat.Migrations.Sqlite
                 name: "GridSettings",
                 columns: table => new
                 {
-                    UserId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    GridId = table.Column<string>(type: "TEXT", maxLength: 40, nullable: false),
-                    Order = table.Column<string>(type: "TEXT", maxLength: 4000, nullable: false),
-                    Hidden = table.Column<string>(type: "TEXT", maxLength: 4000, nullable: false),
-                    PageSize = table.Column<int>(type: "INTEGER", nullable: false),
-                    SortColumn = table.Column<string>(type: "TEXT", maxLength: 40, nullable: false),
-                    SortDirection = table.Column<string>(type: "TEXT", maxLength: 32, nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    UserId = table.Column<Guid>(type: "char(36)", nullable: false),
+                    GridId = table.Column<string>(type: "varchar(40)", maxLength: 40, nullable: false),
+                    Order = table.Column<string>(type: "varchar(4000)", maxLength: 4000, nullable: false),
+                    Hidden = table.Column<string>(type: "varchar(4000)", maxLength: 4000, nullable: false),
+                    PageSize = table.Column<int>(type: "int", nullable: false),
+                    SortColumn = table.Column<string>(type: "varchar(40)", maxLength: 40, nullable: false),
+                    SortDirection = table.Column<string>(type: "varchar(32)", maxLength: 32, nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime(6)", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_GridSettings", x => new { x.UserId, x.GridId });
-                });
+                })
+                .Annotation("MySQL:Charset", "utf8mb4");
 
             migrationBuilder.CreateTable(
                 name: "UiSettings",
                 columns: table => new
                 {
-                    UserId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    NavOpen = table.Column<bool>(type: "INTEGER", nullable: true),
-                    Language = table.Column<string>(type: "TEXT", maxLength: 8, nullable: true),
-                    UpdatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    UserId = table.Column<Guid>(type: "char(36)", nullable: false),
+                    NavOpen = table.Column<bool>(type: "tinyint(1)", nullable: true),
+                    Language = table.Column<string>(type: "varchar(8)", maxLength: 8, nullable: true),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime(6)", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_UiSettings", x => x.UserId);
-                });
+                })
+                .Annotation("MySQL:Charset", "utf8mb4");
 
             migrationBuilder.CreateTable(
                 name: "VehicleOrders",
                 columns: table => new
                 {
-                    UserId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    VehicleId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    Position = table.Column<int>(type: "INTEGER", nullable: false)
+                    UserId = table.Column<Guid>(type: "char(36)", nullable: false),
+                    VehicleId = table.Column<Guid>(type: "char(36)", nullable: false),
+                    Position = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -60,12 +62,8 @@ namespace Tankstat.Migrations.Sqlite
                         principalTable: "Vehicles",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_VehicleOrders_UserId_Position",
-                table: "VehicleOrders",
-                columns: new[] { "UserId", "Position" });
+                })
+                .Annotation("MySQL:Charset", "utf8mb4");
 
             migrationBuilder.CreateIndex(
                 name: "IX_VehicleOrders_VehicleId",

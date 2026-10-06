@@ -52,7 +52,8 @@ export const GRID_POLL_MS = 10_000
 /**
  * A grid whose sorting, paging and column selection are all done by the GraphQL server: the query gets the sort order, the page
  * and one Boolean variable per optional column. TanStack Table coordinates the grid state (manual sorting and pagination); the
- * column choices, order and page size are kept in the browser. Data is re-fetched every time the grid is shown and on demand.
+ * column choices, order and page size are kept with the account (`UiSettingsProvider`) and in the browser (`useGridSettings`). Data is
+ * re-fetched every time the grid is shown and on demand.
  *
  * `columns` must be memoized (stable between renders).
  */

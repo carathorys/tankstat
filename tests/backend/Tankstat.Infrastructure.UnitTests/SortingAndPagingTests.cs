@@ -171,6 +171,8 @@ public class SortingAndPagingTests
         async Task<string[]> Trash(VehicleSortField f, SortDirection d, int skip = 0, int take = 50) =>
             (await repo.ListDeletedAsync(OwnerScope.All, new VehicleQuery(f, d, skip, take), default)).Select(v => v.Name).ToArray();
 
+        await db.Get<IVehicleOrderRepository>().ReplaceAsync(seed.Zoe.Id, [VehicleOrder.Create(seed.Zoe.Id, seed.Gamma.Id, 0)], default); // the trash never follows an arrangement
+
         Assert.Equal(["alpha", "Beta", "Gamma"], await Trash(VehicleSortField.DeletedAt, SortDirection.Desc));
         Assert.Equal(["Gamma", "Beta", "alpha"], await Trash(VehicleSortField.DeletedAt, SortDirection.Asc));
         Assert.Equal(["Beta"], await Trash(VehicleSortField.DeletedAt, SortDirection.Desc, 1, 1));
@@ -196,6 +198,7 @@ public class SortingAndPagingTests
         Assert.Equal(["Gamma", "Beta", "alpha"], zoes.Select(v => v.Name));
         Assert.Equal(["alpha", "Beta", "Gamma"], bobs.Select(v => v.Name));
         Assert.Equal(["alpha", "Beta", "Gamma"], nobodys.Select(v => v.Name)); // no arrangement: by name
+        Assert.Equal(["alpha", "Beta", "Gamma"], await Names(db, VehicleSortField.Name, SortDirection.Asc)); // the sorted admin list ignores positions
     }
 
     [Fact]

@@ -10,12 +10,13 @@ type Item = ArrangeVehiclesQuery['myVehicles'][number]
 
 /**
  * The order of the vehicles on the home page: move them up and down, then save. The whole order is sent at once and the server keeps it with
- * the account, so every device shows the same. Opens from its own button (shown from two vehicles on) and asks for the list afresh each time.
+ * the account, so every device shows the same. Opens from its own button (shown from two vehicles on) and asks for the list afresh each time
+ * (at most the first 200 vehicles, the server's page limit).
  */
 export function ArrangeVehiclesDialog() {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
-  const { data, error } = useQuery(ArrangeVehiclesDocument, { skip: !open, fetchPolicy: 'network-only' })
+  const { data, error, loading } = useQuery(ArrangeVehiclesDocument, { skip: !open, fetchPolicy: 'network-only' })
   // The home page is refetched (it redraws anyway); pages loaded with "Show more" start again from the first one.
   const [setOrder] = useMutation(SetVehicleOrderDocument, { refetchQueries: ['Welcome'], awaitRefetchQueries: true })
   const [saving, setSaving] = useState(false)
@@ -26,7 +27,7 @@ export function ArrangeVehiclesDialog() {
       open={open}
       onOpenChange={(next) => {
         setOpen(next)
-        if (!next) setSaveError(undefined)
+        if (next) setSaveError(undefined) // what went wrong the last time is not this time's
       }}
     >
       <Dialog.Trigger>
@@ -34,18 +35,23 @@ export function ArrangeVehiclesDialog() {
           {t('welcome.arrange')}
         </Button>
       </Dialog.Trigger>
-      <Dialog.Content maxWidth="450px">
+      <Dialog.Content
+        maxWidth="450px"
+        // Closing while it is being saved would lose track of it (and show its error on the next opening).
+        onEscapeKeyDown={(e) => saving && e.preventDefault()}
+        onInteractOutside={(e) => saving && e.preventDefault()}
+      >
         <Dialog.Title>{t('welcome.arrangeTitle')}</Dialog.Title>
         <Dialog.Description size="2" mb="4">
           {t('welcome.arrangeDescription')}
         </Dialog.Description>
         {error && <ErrorMessage error={error} />}
-        {!data && !error && (
+        {!error && (loading || !data) && (
           <Text as="p" role="status">
             {t('app.loading')}
           </Text>
         )}
-        {data && (
+        {data && !loading && (
           <ArrangeList
             vehicles={data.myVehicles}
             saving={saving}
@@ -69,7 +75,7 @@ export function ArrangeVehiclesDialog() {
   )
 }
 
-/** The list itself is mounted only with the server's answer, so every opening starts from the order as it is. */
+/** The list is mounted only with this opening's answer (the last one is still around while it loads), so it starts from the order as it is. */
 function ArrangeList({ vehicles, saving, error, onSave }: { vehicles: Item[]; saving: boolean; error: unknown; onSave: (ids: string[]) => Promise<void> }) {
   const { t } = useTranslation()
   const [items, setItems] = useState(vehicles)

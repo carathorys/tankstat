@@ -3,10 +3,6 @@ import type { GridSaved } from './types.ts'
 
 /** The UI settings of the current user, kept by `UiSettingsProvider`: the browser's copy at once, the server's as soon as it answers. */
 export interface UiSettingsApi {
-  /** Signed in, or authentication is off: the server is asked once and told about every change. Otherwise only this browser remembers. */
-  enabled: boolean
-  /** The server has answered (always false while not enabled). */
-  ready: boolean
   /** The server's latest answer, as a token: its identity changes with every answer, so a grid knows when to look again. */
   server: object | undefined
   /** Whether the docked navigation (desktop) is open. */

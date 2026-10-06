@@ -28,11 +28,11 @@ public sealed partial class GridSettings
     public SortDirection SortDirection { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
 
-    /// <summary>The trimmed grid id (lower-case letters, digits and dashes, starting with a letter), or <c>settings.gridIdInvalid</c>.</summary>
+    /// <summary>The trimmed grid id (lower-case letters, digits and dashes, starting with a letter, at most <see cref="MaxGridIdLength"/>), or <c>settings.gridIdInvalid</c>.</summary>
     public static string CheckGridId(string? gridId)
     {
         var id = gridId?.Trim() ?? "";
-        if (id.Length == 0 || id.Length > MaxGridIdLength || !GridIdPattern().IsMatch(id))
+        if (id.Length > MaxGridIdLength || !GridIdPattern().IsMatch(id))
             throw new DomainException("settings.gridIdInvalid", "The grid name is not valid.");
         return id;
     }
@@ -71,9 +71,9 @@ public sealed partial class GridSettings
             ? id
             : throw new DomainException("settings.columnIdInvalid", "A column name is not valid.");
 
-    [GeneratedRegex("^[a-z][a-z0-9-]{0,39}$")]
+    [GeneratedRegex("^[a-z][a-z0-9-]*$")]
     private static partial Regex GridIdPattern();
 
-    [GeneratedRegex("^[A-Za-z0-9_-]{1,40}$")]
+    [GeneratedRegex("^[A-Za-z0-9_-]+$")]
     private static partial Regex ColumnIdPattern();
 }

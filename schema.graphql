@@ -397,7 +397,7 @@ type Session {
 type UiSettingsInfo {
   navOpen: Boolean
   language: String
-  grids: [GridSettingsInfo!]!
+  grids: [GridSettingsInfo!]! @cost(weight: "10")
 }
 
 type UserAccount {

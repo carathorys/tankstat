@@ -167,6 +167,11 @@ export function fakeVehicleBackend(initial: FakeVehicle[] = [], trashed: FakeVeh
     failWith: undefined as { message: string; key?: string; args?: Record<string, unknown> } | undefined,
   }
   const record = (name: string, vars: unknown) => (state.calls[name] ??= []).push(vars)
+  /** The home page order, like the server's: the user's own arrangement first, the rest by name. */
+  const ordered = (vehicles: Trashed[]) => {
+    const position = (v: { id: string }) => (state.order.includes(v.id) ? state.order.indexOf(v.id) : Number.MAX_SAFE_INTEGER)
+    return [...vehicles].sort((a, b) => position(a) - position(b) || a.name.localeCompare(b.name))
+  }
 
   const handlers = [
     graphql.query('Vehicles', ({ variables }) => {
@@ -178,19 +183,14 @@ export function fakeVehicleBackend(initial: FakeVehicle[] = [], trashed: FakeVeh
     graphql.query('Welcome', ({ variables }) => {
       state.requests.Welcome.push(variables)
       const term = String(variables.search ?? '').toLowerCase()
-      const position = (v: { id: string }) => (state.order.includes(v.id) ? state.order.indexOf(v.id) : Number.MAX_SAFE_INTEGER)
-      const found = state.vehicles
-        .filter((v) => !term || v.name.toLowerCase().includes(term) || (v.licensePlate ?? '').toLowerCase().includes(term))
-        .sort((a, b) => position(a) - position(b) || a.name.localeCompare(b.name))
+      const found = ordered(state.vehicles.filter((v) => !term || v.name.toLowerCase().includes(term) || (v.licensePlate ?? '').toLowerCase().includes(term)))
       const skip = Number(variables.skip ?? 0)
-      return HttpResponse.json({ data: { myVehicles: found.slice(skip, skip + Number(variables.take ?? 50)), myVehicleCount: found.length } })
+      return HttpResponse.json({ data: { myVehicles: found.slice(skip, skip + Number(variables.take ?? 50)), myVehicleCount: found.length, vehicleTotal: state.vehicles.length } })
     }),
     graphql.query('ImportTargets', () => HttpResponse.json({ data: { myVehicles: state.vehicles } })),
     graphql.query('ArrangeVehicles', () => {
       state.requests.ArrangeVehicles++
-      const position = (v: { id: string }) => (state.order.includes(v.id) ? state.order.indexOf(v.id) : Number.MAX_SAFE_INTEGER)
-      const ordered = [...state.vehicles].sort((a, b) => position(a) - position(b) || a.name.localeCompare(b.name))
-      return HttpResponse.json({ data: { myVehicles: ordered.map((v) => ({ id: v.id, name: v.name, licensePlate: v.licensePlate })) } })
+      return HttpResponse.json({ data: { myVehicles: ordered(state.vehicles).map((v) => ({ id: v.id, name: v.name, licensePlate: v.licensePlate })) } })
     }),
     graphql.mutation('SetVehicleOrder', ({ variables }) => {
       record('SetVehicleOrder', variables)

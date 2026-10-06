@@ -68,8 +68,8 @@ internal sealed class TestApp : IDisposable
     }
 }
 
-/// <summary>Two signed-in users of a Standalone host, created by its administrator.</summary>
-internal sealed record TwoUsers(HttpClient Alice, string AliceId, HttpClient Bob, string BobId);
+/// <summary>Two signed-in users of a Standalone host, created by its administrator, who stays signed in too.</summary>
+internal sealed record TwoUsers(HttpClient Admin, HttpClient Alice, string AliceId, HttpClient Bob, string BobId);
 
 internal static class TestAppUsers
 {
@@ -90,7 +90,7 @@ internal static class TestAppUsers
         }
         var (alice, aliceId) = await Create("alice");
         var (bob, bobId) = await Create("bob");
-        return new TwoUsers(alice, aliceId, bob, bobId);
+        return new TwoUsers(admin, alice, aliceId, bob, bobId);
     }
 }
 

@@ -58,6 +58,6 @@ internal sealed class VehicleOrderConfiguration : IEntityTypeConfiguration<Vehic
         b.ToTable("VehicleOrders");
         b.HasKey(o => new { o.UserId, o.VehicleId });
         b.HasOne<Vehicle>().WithMany().HasForeignKey(o => o.VehicleId).OnDelete(DeleteBehavior.Cascade); // a purged vehicle takes its positions along
-        b.HasIndex(o => new { o.UserId, o.Position });
+        // No further index: the home list looks positions up by the key (UserId, VehicleId), nothing reads them by position.
     }
 }

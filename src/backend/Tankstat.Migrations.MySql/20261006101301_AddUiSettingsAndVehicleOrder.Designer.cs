@@ -11,7 +11,7 @@ using Tankstat.Infrastructure.Persistence;
 namespace Tankstat.Migrations.MySql
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261006091812_AddUiSettingsAndVehicleOrder")]
+    [Migration("20261006101301_AddUiSettingsAndVehicleOrder")]
     partial class AddUiSettingsAndVehicleOrder
     {
         /// <inheritdoc />
@@ -597,8 +597,6 @@ namespace Tankstat.Migrations.MySql
                     b.HasKey("UserId", "VehicleId");
 
                     b.HasIndex("VehicleId");
-
-                    b.HasIndex("UserId", "Position");
 
                     b.ToTable("VehicleOrders", (string)null);
                 });
