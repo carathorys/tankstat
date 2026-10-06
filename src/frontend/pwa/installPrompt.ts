@@ -18,15 +18,19 @@ export const installPrompt = {
   get available(): boolean {
     return offer !== null
   },
-  /** Shows the browser's install dialog; true when the user accepted. The offer is spent either way. */
+  /** Shows the browser's install dialog; true when the user accepted. The offer is spent either way, also when the browser refuses to show it. */
   async install(): Promise<boolean> {
     const current = offer
     if (!current) return false
     offer = null
     notify()
-    await current.prompt()
-    const { outcome } = await current.userChoice
-    return outcome === 'accepted'
+    try {
+      await current.prompt()
+      return (await current.userChoice).outcome === 'accepted'
+    } catch (error) {
+      console.error('The install prompt could not be shown', error)
+      return false
+    }
   },
   subscribe(listener: () => void): () => void {
     listeners.add(listener)

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
+import { SIGNED_OUT_KEY } from '../../src/frontend/auth/oidc.ts'
 import { navigation } from '../../src/frontend/navigation.ts'
 import { fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, stubViewport, user } from './mocks.tsx'
 import { server } from './server.ts'
@@ -46,5 +47,5 @@ it('signing out of an OIDC session leads to a screen that waits; Sign in goes ba
   await ui.click(screen.getByRole('button', { name: 'Sign in' }))
   expect(replace).toHaveBeenCalledTimes(1)
   expect(replace).toHaveBeenCalledWith('/auth/oidc/login?returnUrl=%2F')
-  expect(window.sessionStorage.getItem('tankstat.auth.signedOut')).toBeNull()
+  expect(window.sessionStorage.getItem(SIGNED_OUT_KEY)).toBeNull()
 })

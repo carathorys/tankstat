@@ -46,8 +46,12 @@ it('a failed sign-in says why and tries again without the failure marker', async
   expect(replace).toHaveBeenCalledWith('/auth/oidc/login?returnUrl=%2Fvehicles%2Fabc')
 })
 
-it('an unknown failure reason gets the general explanation', () => {
+it('a cancelled or refused sign-in says so; an unknown reason gets the general explanation', () => {
   spyOnRedirect()
+  const cancelled = oidc('/?signIn=failed&reason=access_denied')
+  expect(screen.getByRole('alert')).toHaveTextContent('The sign-in was cancelled or refused by your identity provider.')
+  cancelled.unmount()
+
   oidc('/?signIn=failed&reason=whatever')
 
   expect(screen.getByRole('alert')).toHaveTextContent(/did not work/)

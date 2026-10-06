@@ -301,6 +301,10 @@ public class OidcModeTests : IDisposable
     [InlineData("/\\evil.example.com", "/")]
     [InlineData("https://evil.example.com", "/")]
     [InlineData("javascript:alert(1)", "/")]
+    [InlineData("/\t/evil.example.com", "/")]   // a browser drops the TAB and reads //evil.example.com
+    [InlineData("/\t\\evil.example.com", "/")]
+    [InlineData("/a\r\nX: y", "/")]              // would break the redirect header
+    [InlineData("/é", "/")]
     public void ReturnUrl_MustBeALocalPath(string? input, string expected) =>
         Assert.Equal(expected, AuthExtensions.LocalPathOrRoot(input));
 }

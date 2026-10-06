@@ -1,8 +1,8 @@
 namespace Tankstat.Api;
 
 /// <summary>
-/// Cache-Control for the files of the built web app, by request path. Pure, so it has a unit test (the test host serves no wwwroot);
-/// <c>Program.cs</c> applies it to the static files and to the SPA fallback.
+/// Cache-Control for the files of the built web app, by request path. Pure, so the rule has a unit test of its own; <c>Program.cs</c>
+/// applies it to the static files and to the SPA fallback (StaticFilesTests serves a web root through the test host to check that wiring).
 /// </summary>
 internal static class StaticCaching
 {

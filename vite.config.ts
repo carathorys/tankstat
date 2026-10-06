@@ -2,6 +2,7 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { SERVER_PATHS } from './src/frontend/pwa/serverPaths.ts'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -34,9 +35,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
         navigateFallback: 'index.html',
-        // Navigations the worker must leave to the server: the API, the OIDC endpoints (an index.html answer to /auth/oidc/login or
-        // /auth/oidc/callback would end sign-in once the worker is active), pictures and uploads.
-        navigateFallbackDenylist: [/^\/graphql/, /^\/auth\//, /^\/media\//, /^\/imports\//],
+        navigateFallbackDenylist: SERVER_PATHS, // the API, the OIDC endpoints, pictures and uploads (tested in ServerPaths.unit.test.ts)
         cleanupOutdatedCaches: true,
       },
     }),

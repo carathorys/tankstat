@@ -33,8 +33,8 @@
   },
   "install": {
     "title": "Install Tankstat",
-    "iosIntro": "Add it to your Home Screen from Safari:",
-    "iosShare": "Tap the Share button (the square with an arrow) in Safari's toolbar.",
+    "iosIntro": "Open this page in Safari and add it to your Home Screen:",
+    "iosShare": "Tap the Share button (the square with an arrow) in the toolbar.",
     "iosAdd": "Scroll down and choose “Add to Home Screen”.",
     "iosConfirm": "Tap “Add” in the top right."
   },

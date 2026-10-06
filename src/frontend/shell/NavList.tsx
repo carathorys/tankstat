@@ -6,6 +6,7 @@ import { NavLink } from 'react-router'
 import { signedOut } from '../auth/oidc.ts'
 import { LogoutDocument, type AuthMode, type SessionQuery } from '../gql/generated.ts'
 import { InstallMenuItem } from './InstallMenuItem.tsx'
+import { navButtonStyle } from './navStyles.ts'
 
 /** The navigation links, shared by the docked sidebar and the phone drawer. `onNavigate` lets the drawer close itself. */
 export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: SessionQuery['session']['user']; onNavigate?: () => void }) {
@@ -37,7 +38,7 @@ export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: Sess
             variant="ghost"
             color="gray"
             size="3"
-            style={{ justifyContent: 'flex-start', marginTop: 'var(--space-3)' }}
+            style={{ ...navButtonStyle, marginTop: 'var(--space-3)' }}
             onClick={async () => {
               onNavigate?.()
               await logout()

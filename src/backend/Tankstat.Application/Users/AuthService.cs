@@ -12,6 +12,9 @@ public sealed class AuthService(
     IUserRepository users, IPasswordHasher hasher, PasswordResetService resets, AccessService access,
     IOptions<AuthOptions> auth, TimeProvider clock, ILogger<AuthService> logger)
 {
+    /// <summary>The error key of a refused sign-in of a disabled user; the OIDC failure handler recognises it.</summary>
+    public const string AccountDisabledKey = "auth.accountDisabled";
+
     // Verified against when the account does not exist, so response time does not reveal which e-mails are registered.
     private readonly Lazy<string> _decoyHash = new(() => hasher.Hash("decoy-password-for-timing"));
 
@@ -120,7 +123,7 @@ public sealed class AuthService(
         {
             // A proxy authenticates every request, so its refusals are only a Debug line: a disabled user would else fill the log.
             logger.Log(provider == UserProvider.Proxy ? LogLevel.Debug : LogLevel.Warning, "{Provider} sign-in refused: user {UserId} is disabled", provider, user.Id);
-            throw new ForbiddenException("auth.accountDisabled", "This account has been disabled.");
+            throw new ForbiddenException(AccountDisabledKey, "This account has been disabled.");
         }
         user.UpdateProfile(email, displayName);
         if (configuredAdmin) // configuration only promotes; demotion happens in the UI

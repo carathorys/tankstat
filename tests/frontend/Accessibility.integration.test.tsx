@@ -5,6 +5,7 @@ import { axe } from 'vitest-axe'
 import { afterAll, afterEach, beforeAll, expect, it, onTestFinished, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import { ErrorBoundary } from '../../src/frontend/ErrorBoundary.tsx'
+import { SIGNED_OUT_KEY } from '../../src/frontend/auth/oidc.ts'
 import { navigation } from '../../src/frontend/navigation.ts'
 import { platform } from '../../src/frontend/pwa/platform.ts'
 import { server } from './server.ts'
@@ -386,7 +387,7 @@ it('the sign-in screens of every mode have no violations', async () => {
   view.unmount()
 
   // OIDC: signed out on purpose.
-  window.sessionStorage.setItem('tankstat.auth.signedOut', '1')
+  window.sessionStorage.setItem(SIGNED_OUT_KEY, '1')
   view = renderWithApollo(<App />, '/')
   await screen.findByRole('heading', { name: 'You have signed out.' })
   await check(view.container)

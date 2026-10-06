@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { oidcLoginUrl, SIGNED_OUT_KEY, signedOut, wordedReason } from '../../src/frontend/auth/oidc.ts'
+import { failureText, oidcLoginUrl, SIGNED_OUT_KEY, signedOut } from '../../src/frontend/auth/oidc.ts'
 
 it('the login URL brings the user back to the page they opened, without the failure markers', () => {
   expect(oidcLoginUrl('/', '')).toBe('/auth/oidc/login?returnUrl=%2F')
@@ -8,11 +8,12 @@ it('the login URL brings the user back to the page they opened, without the fail
   expect(oidcLoginUrl('/', '?signIn=failed')).toBe('/auth/oidc/login?returnUrl=%2F')
 })
 
-it('only the reasons with their own text are worded', () => {
-  expect(wordedReason('account_disabled')).toBe('account_disabled')
-  expect(wordedReason('access_denied')).toBe('access_denied')
-  expect(wordedReason('callback_rejected')).toBeNull()
-  expect(wordedReason(null)).toBeNull()
+it('only the reasons with a text of their own get it; the rest share the general one', () => {
+  expect(failureText('account_disabled')).toBe('errors.auth.accountDisabled')
+  expect(failureText('access_denied')).toBe('auth.failedReasons.access_denied')
+  expect(failureText('callback_rejected')).toBe('auth.failedText')
+  expect(failureText('toString')).toBe('auth.failedText') // not a key of the map, whatever the prototype says
+  expect(failureText(null)).toBe('auth.failedText')
 })
 
 it('"signed out" is remembered for the tab until it is cleared', () => {

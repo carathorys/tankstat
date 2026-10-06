@@ -1,12 +1,14 @@
 /** Marks "signed out on purpose" for this tab: the sign-in screen then waits for a click instead of going straight back to the provider. */
 export const SIGNED_OUT_KEY = 'tankstat.auth.signedOut'
 
-/** The failure reasons the sign-in screen has a specific text for (the rest get a general one); see OidcFailures on the server. */
-export type WordedReason = 'account_disabled' | 'access_denied'
+/** The failure reasons (OidcFailures on the server) that have a text of their own; every other reason gets the general one. */
+export const REASON_TEXT = {
+  account_disabled: 'errors.auth.accountDisabled',
+  access_denied: 'auth.failedReasons.access_denied',
+} as const satisfies Record<string, string>
 
-export function wordedReason(value: string | null): WordedReason | null {
-  return value === 'account_disabled' || value === 'access_denied' ? value : null
-}
+export const failureText = (reason: string | null): (typeof REASON_TEXT)[keyof typeof REASON_TEXT] | 'auth.failedText' =>
+  reason !== null && Object.hasOwn(REASON_TEXT, reason) ? REASON_TEXT[reason as keyof typeof REASON_TEXT] : 'auth.failedText' // own keys only: 'toString' is not a reason
 
 /**
  * Where the browser goes to sign in: the server's challenge endpoint, told to come back to this page (path and query) afterwards. The

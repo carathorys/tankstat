@@ -33,8 +33,8 @@
   },
   "install": {
     "title": "A Tankstat telepítése",
-    "iosIntro": "Add hozzá a kezdőképernyőhöz a Safariból:",
-    "iosShare": "Koppints a Megosztás gombra (a négyzet, amelyből nyíl mutat felfelé) a Safari eszköztárán.",
+    "iosIntro": "Nyisd meg ezt az oldalt a Safariban, és add hozzá a Főképernyőhöz:",
+    "iosShare": "Koppints a Megosztás gombra (a négyzet, amelyből nyíl mutat felfelé) az eszköztáron.",
     "iosAdd": "Görgess le, és válaszd a „Főképernyőhöz adás” lehetőséget.",
     "iosConfirm": "Koppints a jobb felső sarokban a „Hozzáadás” gombra."
   },

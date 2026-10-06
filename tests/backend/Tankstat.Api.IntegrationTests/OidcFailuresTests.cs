@@ -3,6 +3,7 @@ using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 using Tankstat.Api.Auth;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Users;
 
 namespace Tankstat.Api.IntegrationTests;
 
@@ -13,9 +14,11 @@ public class OidcFailuresTests
     public void Classify_ByTheKindOfException()
     {
         Assert.Equal(OidcFailure.NoSubject, OidcFailures.Classify(new OidcSignInRefusedException(OidcFailure.NoSubject)));
-        Assert.Equal(OidcFailure.AccountDisabled, OidcFailures.Classify(new ForbiddenException("auth.accountDisabled", "This account has been disabled.")));
+        Assert.Equal(OidcFailure.AccountDisabled, OidcFailures.Classify(new ForbiddenException(AuthService.AccountDisabledKey, "This account has been disabled.")));
         Assert.Equal(OidcFailure.CallbackRejected, OidcFailures.Classify(new ForbiddenException()));
         Assert.Equal(OidcFailure.ProviderError, OidcFailures.Classify(new OpenIdConnectProtocolException("server_error")));
+        Assert.Equal(OidcFailure.CallbackRejected, OidcFailures.Classify(new OpenIdConnectProtocolInvalidNonceException("nonce"))); // ours to check, not the provider's error
+        Assert.Equal(OidcFailure.CallbackRejected, OidcFailures.Classify(new OpenIdConnectProtocolInvalidStateException("state")));
         Assert.Equal(OidcFailure.TokenRejected, OidcFailures.Classify(new SecurityTokenException("bad signature")));
         Assert.Equal(OidcFailure.CallbackRejected, OidcFailures.Classify(new AuthenticationFailureException("Unable to unprotect the message.State.")));
         Assert.Equal(OidcFailure.CallbackRejected, OidcFailures.Classify(null));
@@ -37,6 +40,9 @@ public class OidcFailuresTests
     [InlineData("/a?b=c", "/a?b=c&signIn=failed&reason=access_denied")]
     [InlineData("//evil.example.com", "/?signIn=failed&reason=access_denied")]
     [InlineData("https://evil.example.com", "/?signIn=failed&reason=access_denied")]
+    [InlineData("/\t/evil.example.com", "/?signIn=failed&reason=access_denied")]
+    [InlineData("/vehicles/abc#top", "/vehicles/abc?signIn=failed&reason=access_denied")] // the marker never hides behind a fragment
+    [InlineData("/#x", "/?signIn=failed&reason=access_denied")]
     public void FailedUrl_StaysOnThisSite_AndMarksTheFailure(string? returnUrl, string expected) =>
         Assert.Equal(expected, OidcFailures.FailedUrl(OidcFailure.AccessDenied, returnUrl));
 }

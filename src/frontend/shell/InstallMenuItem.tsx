@@ -2,8 +2,7 @@ import { Button, Dialog, Flex, Text } from '@radix-ui/themes'
 import { Download } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useInstallPrompt } from '../pwa/useInstallPrompt.ts'
-
-const menuButton = { justifyContent: 'flex-start' } as const
+import { navButtonStyle } from './navStyles.ts'
 
 /**
  * "Install app" in the navigation menu. With a browser that offers to install (Chromium) it shows the browser's own dialog; on an iPhone
@@ -20,7 +19,7 @@ export function InstallMenuItem({ onNavigate }: { onNavigate?: () => void }) {
         variant="ghost"
         color="gray"
         size="3"
-        style={menuButton}
+        style={navButtonStyle}
         onClick={() => {
           onNavigate?.()
           void install()
@@ -36,7 +35,7 @@ export function InstallMenuItem({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <Dialog.Root>
       <Dialog.Trigger>
-        <Button variant="ghost" color="gray" size="3" style={menuButton}>
+        <Button variant="ghost" color="gray" size="3" style={navButtonStyle}>
           <Download size={18} aria-hidden />
           {t('nav.install')}
         </Button>
@@ -61,7 +60,7 @@ export function InstallMenuItem({ onNavigate }: { onNavigate?: () => void }) {
         </Flex>
         <Flex justify="end" mt="4">
           <Dialog.Close>
-            <Button variant="soft" color="gray" size="3">
+            <Button variant="soft" color="gray" size="3" style={{ minHeight: 44 }}>
               {t('common.close')}
             </Button>
           </Dialog.Close>

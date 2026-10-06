@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Users;
 
 namespace Tankstat.Api.Auth;
 
@@ -26,10 +28,15 @@ internal enum OidcFailure
     CallbackRejected,
 }
 
-/// <summary>A refusal of our own in <c>OnTokenValidated</c>, carried by code so the failure handler classifies it without reading any text.</summary>
-internal sealed class OidcSignInRefusedException(OidcFailure reason) : Exception(reason.ToString())
+/// <summary>
+/// A refusal of our own in <c>OnTokenValidated</c>, carried by code so the failure handler classifies it without reading any text. It also
+/// carries the page the sign-in meant to return to: a failure raised in that event reaches <c>OnRemoteFailure</c> without the
+/// authentication properties, so the handler could not know the page otherwise.
+/// </summary>
+internal sealed class OidcSignInRefusedException(OidcFailure reason, string? returnUrl = null, Exception? cause = null) : Exception(reason.ToString(), cause)
 {
     public OidcFailure Reason { get; } = reason;
+    public string? ReturnUrl { get; } = returnUrl;
 }
 
 internal static class OidcFailures
@@ -37,7 +44,9 @@ internal static class OidcFailures
     public static OidcFailure Classify(Exception? failure) => failure switch
     {
         OidcSignInRefusedException e => e.Reason,
-        ForbiddenException { Key: "auth.accountDisabled" } => OidcFailure.AccountDisabled,
+        ForbiddenException { Key: AuthService.AccountDisabledKey } => OidcFailure.AccountDisabled,
+        // A stale or replayed callback fails on our side (the nonce or state does not match), before anything the provider said counts.
+        OpenIdConnectProtocolInvalidNonceException or OpenIdConnectProtocolInvalidStateException => OidcFailure.CallbackRejected,
         OpenIdConnectProtocolException => OidcFailure.ProviderError,
         SecurityTokenException => OidcFailure.TokenRejected,
         _ => OidcFailure.CallbackRejected,
@@ -51,13 +60,19 @@ internal static class OidcFailures
         OidcFailure.TokenRejected => "token_rejected",
         OidcFailure.NoSubject => "no_subject",
         OidcFailure.AccountDisabled => "account_disabled",
-        _ => "callback_rejected",
+        OidcFailure.CallbackRejected => "callback_rejected",
+        _ => throw new UnreachableException($"No code for {reason}"),
     };
 
-    /// <summary>Where the browser lands: the page the sign-in meant to return to (checked again to be a same-site path), marked as failed.</summary>
+    /// <summary>
+    /// Where the browser lands: the page the sign-in meant to return to (checked again to be a same-site path, a fragment dropped), marked
+    /// as failed.
+    /// </summary>
     public static string FailedUrl(OidcFailure reason, string? returnUrl)
     {
         var path = AuthExtensions.LocalPathOrRoot(returnUrl);
+        var fragment = path.IndexOf('#');
+        if (fragment >= 0) path = fragment == 0 ? "/" : path[..fragment];
         return $"{path}{(path.Contains('?') ? '&' : '?')}signIn=failed&reason={Code(reason)}";
     }
 }

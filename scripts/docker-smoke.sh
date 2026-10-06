@@ -42,8 +42,9 @@ curl -sf "${url}/vehicles" | grep -q '<title>Tankstat</title>' || { echo "FAIL: 
 curl -sfI "${url}/manifest.webmanifest" | grep -qi '^content-type: application/manifest+json' || { echo "FAIL: manifest not served as application/manifest+json" >&2; exit 1; }
 curl -sf "${url}/manifest.webmanifest" | grep -q '"short_name"' || { echo "FAIL: manifest content" >&2; exit 1; }
 curl -sfI "${url}/sw.js" >/dev/null || { echo "FAIL: service worker not served" >&2; exit 1; }
+curl -sf "${url}/sw.js" | grep -q 'auth' || { echo "FAIL: the service worker must leave /auth to the server" >&2; exit 1; }
 curl -sfI "${url}/" | grep -qi '^cache-control: no-cache' || { echo "FAIL: index.html must be no-cache" >&2; exit 1; }
-asset="$(curl -sf "${url}/" | grep -o '/assets/[^"]*\.js' | head -n 1)"
+asset="$(curl -sf "${url}/" | grep -o '/assets/[^"]*\.js' | head -n 1 || true)"
 [ -n "$asset" ] || { echo "FAIL: index.html names no script under /assets" >&2; exit 1; }
 curl -sfI "${url}${asset}" | grep -qi 'immutable' || { echo "FAIL: hashed assets must be immutable" >&2; exit 1; }
 
