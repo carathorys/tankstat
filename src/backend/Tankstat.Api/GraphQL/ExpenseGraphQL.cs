@@ -46,17 +46,15 @@ public sealed class ExpenseType : ObjectType<Expense>
 [ExtendObjectType<Expense>]
 public sealed class ExpenseExtensions
 {
-    public async Task<bool> GetCanEdit([Parent] Expense expense, [Service] RefuelingService refuelings, CancellationToken ct) =>
-        await refuelings.LevelForVehicleAsync(expense.VehicleId, ct) >= AccessLevel.Edit;
+    public async Task<bool> GetCanEdit([Parent] Expense expense, LogLevelByVehicleLoader levels, CancellationToken ct) =>
+        await levels.LoadAsync(expense.VehicleId, ct) >= AccessLevel.Edit;
 
-    public async Task<bool> GetCanDelete([Parent] Expense expense, [Service] RefuelingService refuelings, CancellationToken ct) =>
-        await refuelings.LevelForVehicleAsync(expense.VehicleId, ct) >= AccessLevel.Delete;
+    public async Task<bool> GetCanDelete([Parent] Expense expense, LogLevelByVehicleLoader levels, CancellationToken ct) =>
+        await levels.LoadAsync(expense.VehicleId, ct) >= AccessLevel.Delete;
 
-    public async Task<UserRef?> GetCreatedBy([Parent] Expense expense, [Service] IUserRepository users, CancellationToken ct) =>
-        await users.FindByIdAsync(expense.CreatedById, ct) is { } user ? UserRef.From(user) : null;
+    public Task<UserRef?> GetCreatedBy([Parent] Expense expense, UserRefLoader users, CancellationToken ct) => users.LoadAsync(expense.CreatedById, ct);
 
-    public async Task<Vehicle?> GetVehicle([Parent] Expense expense, [Service] IVehicleRepository vehicles, CancellationToken ct) =>
-        await vehicles.FindIncludingDeletedAsync(expense.VehicleId, ct);
+    public Task<Vehicle?> GetVehicle([Parent] Expense expense, VehicleIncludingDeletedLoader vehicles, CancellationToken ct) => vehicles.LoadAsync(expense.VehicleId, ct);
 }
 
 [ExtendObjectType<Vehicle>]

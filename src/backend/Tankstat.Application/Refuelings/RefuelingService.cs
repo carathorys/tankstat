@@ -165,6 +165,13 @@ public sealed class RefuelingService(
         return vehicle is null ? AccessLevel.None : await access.LogLevelAsync(vehicle, ct);
     }
 
+    /// <summary><see cref="LevelForVehicleAsync"/> for many vehicles (trashed ones too) in a fixed number of queries; unknown ones get None.</summary>
+    public async Task<IReadOnlyDictionary<Guid, AccessLevel>> LevelsForVehiclesAsync(IReadOnlyCollection<Guid> vehicleIds, CancellationToken ct)
+    {
+        var found = await access.LogLevelsAsync(await vehicles.ListByIdsIncludingDeletedAsync(vehicleIds, ct), ct);
+        return vehicleIds.Distinct().ToDictionary(id => id, id => found.GetValueOrDefault(id, AccessLevel.None));
+    }
+
     private async Task<Vehicle?> VisibleVehicleAsync(Guid vehicleId, CancellationToken ct) => (await guard.ForVehicleAsync(vehicleId, ct))?.Vehicle;
 
     /// <summary>A visible vehicle the user may add logs to; others look missing, view-only users are forbidden.</summary>

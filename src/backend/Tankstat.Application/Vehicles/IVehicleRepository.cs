@@ -25,6 +25,9 @@ public interface IVehicleRepository
     /// <summary>Finds a vehicle whether or not it is in the trash.</summary>
     Task<Vehicle?> FindIncludingDeletedAsync(Guid id, CancellationToken ct);
 
+    /// <summary>The vehicles with these ids, trashed ones too, in one query (lists of logs: each row's vehicle).</summary>
+    Task<IReadOnlyList<Vehicle>> ListByIdsIncludingDeletedAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct);
+
     /// <summary>The (live) vehicle whose picture is the given image.</summary>
     Task<Vehicle?> FindByPictureImageAsync(Guid imageId, CancellationToken ct);
 
