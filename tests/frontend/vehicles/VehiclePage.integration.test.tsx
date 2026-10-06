@@ -34,7 +34,7 @@ const choose = async (ui: ReturnType<typeof userEvent.setup>, control: string, o
 it('shows the vehicle with its logs formatted in its own units', async () => {
   setup(fakeVehicle({ units: { distance: 'MILES', volume: 'US_GALLONS' } }))
 
-  const row = (await screen.findByText(/Sep 1, 2026/)).closest('tr')!
+  const row = (await screen.findByText(/Sep 1, 2026/)).closest<HTMLElement>('[role="row"]')!
   expect(within(row).getByText('41.5 gal')).toBeInTheDocument()
   expect(within(row).getByText(/12,000 mi/)).toBeInTheDocument()
   expect(within(row).getByText('Partial')).toBeInTheDocument()
@@ -51,7 +51,7 @@ it('administrators go back to the full vehicle list', async () => {
 it('shows the price per unit and the cost in the currency it was paid in', async () => {
   setup()
 
-  const row = (await screen.findByText(/Sep 1, 2026/)).closest('tr')!
+  const row = (await screen.findByText(/Sep 1, 2026/)).closest<HTMLElement>('[role="row"]')!
   expect(within(row).getByText(/22,000/)).toBeInTheDocument()
   expect(within(row).getByText(/530/)).toBeInTheDocument() // 22000 / 41.5 per liter
 })
@@ -62,9 +62,9 @@ it('shows the stored consumption per 100 units, and a dash where there is none',
     fakeRefueling({ id: 'r2', date: '2026-09-01', odometer: 12000, consumption: 6.667 }),
   ])
 
-  const row = (await screen.findByText(/Sep 1, 2026/)).closest('tr')!
+  const row = (await screen.findByText(/Sep 1, 2026/)).closest<HTMLElement>('[role="row"]')!
   expect(within(row).getByText('6.67 L/100 km')).toBeInTheDocument()
-  expect(within((await screen.findByText(/Aug 1, 2026/)).closest('tr')!).getAllByText('–').length).toBeGreaterThan(0)
+  expect(within((await screen.findByText(/Aug 1, 2026/)).closest<HTMLElement>('[role="row"]')!).getAllByText('–').length).toBeGreaterThan(0)
 })
 
 it('shows miles per gallon where the vehicle uses miles and gallons', async () => {
@@ -78,7 +78,7 @@ it('asks the server for the consumption and sorts by it on the server', async ()
   await screen.findByText(/Sep 1, 2026/)
   expect(state.requests.at(-1)).toMatchObject({ withConsumption: true })
 
-  await ui.click(screen.getByRole('button', { name: /^Sort by Consumption/ }))
+  await ui.click(screen.getByRole('columnheader', { name: /^Consumption/ }))
 
   await waitFor(() => expect(state.requests.at(-1)).toMatchObject({ orderBy: 'CONSUMPTION', direction: 'ASC' }))
 })
@@ -89,7 +89,7 @@ it('sorts the logs on the server, newest first by default', async () => {
   expect(screen.getAllByRole('rowheader').map((c) => c.textContent)).toEqual(['Sep 1, 2026', 'Aug 1, 2026'])
   expect(state.requests.at(-1)).toMatchObject({ vehicleId: 'v1', orderBy: 'DATE', direction: 'DESC', skip: 0 })
 
-  await ui.click(screen.getByRole('button', { name: /^Sort by Odometer/ }))
+  await ui.click(screen.getByRole('columnheader', { name: /^Odometer/ }))
 
   await waitFor(() => expect(state.requests.at(-1)).toMatchObject({ orderBy: 'ODOMETER', direction: 'ASC' }))
 })
@@ -208,8 +208,14 @@ it('moves a refuelling to the trash after a confirmation, not before', async () 
   expect(state.calls.DeleteRefueling).toBeUndefined()
   await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Move to trash' }))
 
-  await waitFor(() => expect(screen.queryByText(/Sep 1, 2026/)).not.toBeInTheDocument())
+  await waitFor(() => expect(screen.queryByRole('rowheader', { name: /Sep 1, 2026/ })).not.toBeInTheDocument())
   expect(state.calls.DeleteRefueling).toEqual([{ id: 'r2' }])
+
+  // A message says so, and Undo brings the row back.
+  expect(screen.getByText('The refuelling of Sep 1, 2026 is in the trash.')).toBeInTheDocument()
+  await ui.click(screen.getByRole('button', { name: 'Undo' }))
+  expect(await screen.findByRole('rowheader', { name: /Sep 1, 2026/ })).toBeInTheDocument()
+  expect(state.calls.RestoreRefueling).toEqual([{ id: 'r2' }])
 })
 
 it('logs only view access: no add button, no edit or delete', async () => {
@@ -413,7 +419,7 @@ it('marks a refuelling that follows a fill-up that was not logged', async () => 
 
 it('shows which log follows a missed fill-up, and editing it keeps the mark', async () => {
   const { ui, state } = setup(fakeVehicle(), [logs[0]!, { ...logs[1]!, missedPreviousFillUp: true }])
-  const row = (await screen.findByText(/Sep 1, 2026/)).closest('tr')!
+  const row = (await screen.findByText(/Sep 1, 2026/)).closest<HTMLElement>('[role="row"]')!
   expect(within(row).getByText('Missed one before')).toBeInTheDocument()
   expect(within(row).getByText('Partial')).toBeInTheDocument()
 

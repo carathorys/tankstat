@@ -197,8 +197,9 @@
     "range": "{{from}}–{{to}} of {{total}}",
     "previous": "Previous page",
     "next": "Next page",
-    "sortedAscending": "sorted ascending",
-    "sortedDescending": "sorted descending",
+    "first": "First page",
+    "last": "Last page",
+    "sort": "Sort",
     "caption": "{{name}}",
     "actions": "Actions"
   },
@@ -503,7 +504,6 @@
     }
   },
   "a11y": {
-    "sortBy": "Sort by {{column}}",
     "uploadStatus": "Upload status",
     "readingStatus": "Photo reading status"
   },

@@ -35,7 +35,7 @@ it('has a tab for vehicles and one for refuelings, and the choice is in the addr
 it('lists trashed refuelings with their vehicle and amounts in the vehicle units', async () => {
   setup()
 
-  const row = (await screen.findByText(/Sep 1, 2026/)).closest('tr')!
+  const row = (await screen.findByText(/Sep 1, 2026/)).closest<HTMLElement>('[role="row"]')!
   expect(within(row).getByText('Octavia')).toBeInTheDocument()
   expect(within(row).getByText('40.5 L')).toBeInTheDocument()
 })

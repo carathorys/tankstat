@@ -197,8 +197,9 @@
     "range": "{{from}}–{{to}} / {{total}}",
     "previous": "Előző oldal",
     "next": "Következő oldal",
-    "sortedAscending": "növekvő sorrend",
-    "sortedDescending": "csökkenő sorrend",
+    "first": "Első oldal",
+    "last": "Utolsó oldal",
+    "sort": "Rendezés",
     "caption": "{{name}}",
     "actions": "Műveletek"
   },
@@ -503,7 +504,6 @@
     }
   },
   "a11y": {
-    "sortBy": "Rendezés: {{column}}",
     "uploadStatus": "Feltöltés állapota",
     "readingStatus": "Leolvasás állapota"
   },

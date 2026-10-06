@@ -12,6 +12,7 @@ import { UserChip } from '../../components/UserAvatar.tsx'
 import {
   DeleteRefuelingDocument,
   RefuelingsDocument,
+  RestoreRefuelingDocument,
   UpdateRefuelingDocument,
   type DistanceUnit,
   type RefuelingSortField,
@@ -19,12 +20,14 @@ import {
   type RefuelingsQueryVariables,
   type VolumeUnit,
 } from '../../gql/generated.ts'
-import { DataGrid, type GridColumn } from '../../grid/DataGrid.tsx'
+import { ServerGrid, type GridColumn } from '../../grid/ServerGrid.tsx'
+import { useLeavingRows } from '../../grid/useLeavingRows.ts'
 import { useFormat } from '../../i18n/format.ts'
 import { ErrorMessage } from '../../messages.tsx'
 import { RefuelingFormDialog } from '../../RefuelingFormDialog.tsx'
 import { anyAwaiting } from '../../recognition/review.ts'
 import { ReviewBadge } from '../../recognition/ReviewState.tsx'
+import { useToast } from '../../toast/toastContext.ts'
 import { REFUELING_QUERIES, useLogMutations } from './useLogMutations.ts'
 
 type Row = RefuelingsQuery['refuelings'][number]
@@ -43,6 +46,9 @@ export function RefuelingsPanel({
   const add = useLogMutations(vehicle.id)
   const [updateRefueling] = useMutation(UpdateRefuelingDocument, refetch)
   const [deleteRefueling] = useMutation(DeleteRefuelingDocument, { ...refetch, refetchQueries: [...refetch.refetchQueries, 'RefuelingTrash'] })
+  const [restoreRefueling] = useMutation(RestoreRefuelingDocument, { ...refetch, refetchQueries: [...refetch.refetchQueries, 'RefuelingTrash'] })
+  const { leaving, leave } = useLeavingRows()
+  const { undoable } = useToast()
   const [actionError, setActionError] = useState<unknown>()
   const { units } = vehicle
 
@@ -102,7 +108,8 @@ export function RefuelingsPanel({
   async function moveToTrash(row: Row) {
     setActionError(undefined)
     try {
-      await deleteRefueling({ variables: { id: row.id } })
+      await leave(row.id, () => deleteRefueling({ variables: { id: row.id } }))
+      undoable(t('toast.refuelingTrashed', { date: format.date(row.date) }), () => restoreRefueling({ variables: { id: row.id } }))
     } catch (e) {
       setActionError(e)
     }
@@ -111,7 +118,7 @@ export function RefuelingsPanel({
   return (
     <>
       {actionError !== undefined && <ErrorMessage error={actionError} />}
-      <DataGrid
+      <ServerGrid
         gridId="refuelings"
         caption={t('refuelings.title')}
         query={RefuelingsDocument}
@@ -122,6 +129,7 @@ export function RefuelingsPanel({
         defaultSort={{ column: 'date', direction: 'DESC' }}
         emptyText={t('refuelings.empty')}
         pollWhile={anyAwaiting}
+        leaving={leaving}
         toolbar={({ total }) => (
           <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
             {canLog && <RefuelingFormDialog vehicle={vehicle} trigger={<Button size="large">{t('refuelings.add')}</Button>} onSubmit={add.refuel} />}

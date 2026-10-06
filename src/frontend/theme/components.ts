@@ -58,11 +58,14 @@ const MOTION_CLASSES: CSSObject = {
   '@keyframes tk-fade': { from: { opacity: 0 } },
   '@keyframes tk-pulse': { '50%': { opacity: 0.35 } },
   '@keyframes tk-spin': { to: { transform: 'rotate(360deg)' } },
+  '@keyframes tk-leave': { to: { opacity: 0 } },
   '.tk-appear': { animation: 'tk-appear 0.2s ease-out both' },
   '.tk-fade': { animation: 'tk-fade 0.2s ease-out both' },
   '.tk-delayed': { animation: 'tk-fade 0.2s ease-out 0.3s both' },
   '.tk-pulse': { animation: 'tk-pulse 1.6s ease-in-out infinite' },
   '.tk-spin': { animation: 'tk-spin 0.9s linear infinite' },
+  // A grid row on its way out (a confirmed trash): it fades while the server removes it.
+  '.tk-leaving': { animation: 'tk-leave 0.18s ease-out forwards', pointerEvents: 'none' },
 }
 
 /** The surface, outline and focus ring of a text field (also the date picker's and the select's). */
@@ -94,11 +97,8 @@ export const components: Components<T> = {
       ...MOTION_CLASSES,
       '@media (prefers-reduced-motion: reduce)': {
         '*': { scrollBehavior: 'auto !important' },
-        '.tk-appear, .tk-fade, .tk-delayed, .tk-pulse, .tk-spin': { animation: 'none' },
+        '.tk-appear, .tk-fade, .tk-delayed, .tk-pulse, .tk-spin, .tk-leaving': { animation: 'none' },
       },
-      // Phones: tighter cells in the grids that are still Radix tables, so the columns and the two action buttons fit without sideways
-      // scrolling. Goes with the last of them.
-      '@media (max-width: 767px)': { '.rt-TableCell, .rt-TableColumnHeaderCell': { paddingInline: 8 } },
     }),
   },
   MuiButtonBase: { defaultProps: { disableRipple: true } },
@@ -293,6 +293,27 @@ export const components: Components<T> = {
     },
   },
 
+  MuiDataGrid: {
+    styleOverrides: {
+      root: ({ theme }) => ({
+        ...glass(theme),
+        borderRadius: 9,
+        border: 0,
+        boxShadow: 'var(--tk-shadow-3)',
+        '--DataGrid-containerBackground': 'transparent',
+        '--DataGrid-rowBorderColor': theme.vars.palette.divider,
+        '& .MuiDataGrid-columnHeaderTitle': { fontWeight: 700 },
+        '& .MuiDataGrid-columnSeparator': { display: 'none' }, // columns are not resized
+        // Rows grow with their content (getRowHeight auto): the cells keep it centred, with room around it.
+        '& .MuiDataGrid-cell': { display: 'flex', alignItems: 'center', paddingTop: 10, paddingBottom: 10, lineHeight: 1.43 },
+        '& .MuiDataGrid-cell--textRight': { justifyContent: 'flex-end' },
+        // The page size on every screen, as before (MUI leaves it out on narrow ones; its label still names it there).
+        '& .MuiTablePagination-root .MuiTablePagination-input': { display: 'inline-flex' },
+        // Phones: tighter cells, so the data columns and the two action buttons fit without sideways scrolling.
+        [theme.breakpoints.down('md')]: { '& .MuiDataGrid-cell, & .MuiDataGrid-columnHeader': { paddingLeft: 8, paddingRight: 8 } },
+      }),
+    },
+  },
   MuiTableCell: {
     styleOverrides: {
       root: ({ theme }) => ({ ...theme.typography.body2, padding: 12, borderBottomColor: theme.vars.palette.divider }),

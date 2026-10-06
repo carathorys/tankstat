@@ -29,7 +29,7 @@ import {
   type TrashQueryVariables,
   type VehicleSortField,
 } from '../gql/generated.ts'
-import { DataGrid, type GridColumn } from '../grid/DataGrid.tsx'
+import { ServerGrid, type GridColumn } from '../grid/ServerGrid.tsx'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { useFormat } from '../i18n/format.ts'
 import { ErrorMessage, SuccessMessage } from '../messages.tsx'
@@ -138,7 +138,7 @@ function VehicleTrash({ run, setNotice }: Shared) {
   }, [t, dateTime])
 
   return (
-    <DataGrid
+    <ServerGrid
       gridId="trash"
       caption={t('trash.tabs.vehicles')}
       query={TrashDocument}
@@ -185,7 +185,7 @@ function RefuelingTrash({ run, setNotice }: Shared) {
   }, [t, format])
 
   return (
-    <DataGrid
+    <ServerGrid
       gridId="refueling-trash"
       caption={t('trash.tabs.refuelings')}
       query={RefuelingTrashDocument}
@@ -232,7 +232,7 @@ function ExpenseTrash({ run, setNotice }: Shared) {
   }, [t, format])
 
   return (
-    <DataGrid
+    <ServerGrid
       gridId="expense-trash"
       caption={t('trash.tabs.expenses')}
       query={ExpenseTrashDocument}

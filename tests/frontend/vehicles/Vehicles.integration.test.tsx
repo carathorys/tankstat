@@ -25,11 +25,11 @@ const choose = async (ui: ReturnType<typeof userEvent.setup>, control: string, o
 it('lists vehicles with their details', async () => {
   setup()
 
-  const row = (await screen.findByText('Octavia')).closest('tr')!
+  const row = (await screen.findByText('Octavia')).closest<HTMLElement>('[role="row"]')!
   expect(within(row).getByText('ABC-123')).toBeInTheDocument()
   expect(within(row).getByText('Diesel')).toBeInTheDocument()
   expect(within(row).getByText('Alice')).toBeInTheDocument()
-  expect(within(screen.getByText('Bike').closest('tr')!).getByText('Petrol')).toBeInTheDocument()
+  expect(within(screen.getByText('Bike').closest<HTMLElement>('[role="row"]')!).getByText('Petrol')).toBeInTheDocument()
 })
 
 it('shows a hint when there are no vehicles', async () => {
@@ -188,7 +188,7 @@ it('links every vehicle to its page', async () => {
 it('shows the owner with an avatar (initials without a picture)', async () => {
   setup()
 
-  const row = (await screen.findByText('Octavia')).closest('tr')!
+  const row = (await screen.findByText('Octavia')).closest<HTMLElement>('[role="row"]')!
   expect(within(row).getByText('Alice')).toBeInTheDocument()
   expect(await within(row).findByText('A')).toBeInTheDocument() // the avatar fallback appears right after mounting
 })

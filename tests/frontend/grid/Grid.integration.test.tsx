@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { graphql } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
 import { server } from '../support/server.ts'
@@ -27,7 +28,8 @@ function setup(vehicles = cars, route = '/vehicles') {
   return { ...backend, view, ui: userEvent.setup() }
 }
 
-const headers = () => screen.getAllByRole('columnheader').map((h) => h.textContent).filter((text) => text && text !== 'Actions')
+// Also while the Columns popover is open (it is modal: the page behind it is hidden from assistive technology meanwhile).
+const headers = () => screen.getAllByRole('columnheader', { hidden: true }).map((h) => h.textContent).filter((text) => text && text !== 'Actions')
 const names = () => screen.getAllByRole('rowheader').map((c) => c.textContent)
 const lastRequest = (reqs: Record<string, unknown>[]) => reqs[reqs.length - 1]
 
@@ -58,12 +60,12 @@ it('sorts on the server when a header is clicked, toggling the direction', async
   const { ui, state } = setup()
   await screen.findByText('Beta')
 
-  await ui.click(screen.getByRole('button', { name: /^Sort by Name/ }))
+  await ui.click(screen.getByRole('columnheader', { name: /^Name/ }))
   await waitFor(() => expect(names()).toEqual(['Gamma', 'Beta', 'alpha']))
   expect(lastRequest(state.requests.Vehicles)).toMatchObject({ orderBy: 'NAME', direction: 'DESC', skip: 0 })
   expect(screen.getByRole('columnheader', { name: /Name/ })).toHaveAttribute('aria-sort', 'descending')
 
-  await ui.click(screen.getByRole('button', { name: /^Sort by Refuelings/ }))
+  await ui.click(screen.getByRole('columnheader', { name: /^Refuelings/ }))
   await waitFor(() => expect(names()).toEqual(['Gamma', 'Beta', 'alpha']))
   expect(lastRequest(state.requests.Vehicles)).toMatchObject({ orderBy: 'REFUELING_COUNT', direction: 'ASC' })
   expect(screen.getByRole('columnheader', { name: /Refuelings/ })).toHaveAttribute('aria-sort', 'ascending')
@@ -73,7 +75,7 @@ it('sorts by owner, as the server defines it', async () => {
   const { ui, state } = setup()
   await screen.findByText('Beta')
 
-  await ui.click(screen.getByRole('button', { name: /^Sort by Owner/ }))
+  await ui.click(screen.getByRole('columnheader', { name: /^Owner/ }))
 
   await waitFor(() => expect(names()).toEqual(['Gamma', 'alpha', 'Beta']))
   expect(lastRequest(state.requests.Vehicles)).toMatchObject({ orderBy: 'OWNER', direction: 'ASC' })
@@ -179,6 +181,23 @@ it('steps back a page when the last row of the last page is deleted', async () =
 
   await screen.findByText('1–25 of 25')
   expect(screen.getByText('Car 25')).toBeInTheDocument()
+})
+
+it('a row being trashed fades out while the server removes it', async () => {
+  const { ui } = setup()
+  await screen.findByText('Beta')
+  let answer!: () => void
+  const held = new Promise<void>((resolve) => (answer = resolve))
+  server.use(graphql.mutation('DeleteVehicle', async () => void (await held))) // then on to the vehicle backend
+
+  await ui.click(screen.getByRole('button', { name: 'Delete Beta' }))
+  await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Move to trash' }))
+
+  const row = () => screen.queryByRole('rowheader', { name: /Beta/ })?.closest<HTMLElement>('[role="row"]')
+  await waitFor(() => expect(row()).toHaveClass('tk-leaving'))
+  answer()
+  await waitFor(() => expect(row()).toBeFalsy())
+  expect(document.querySelector('.tk-leaving')).toBeNull()
 })
 
 it('refreshes on demand', async () => {

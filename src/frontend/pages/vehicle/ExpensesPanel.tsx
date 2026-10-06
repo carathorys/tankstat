@@ -14,15 +14,18 @@ import { ReviewBadge } from '../../recognition/ReviewState.tsx'
 import {
   DeleteExpenseDocument,
   ExpensesDocument,
+  RestoreExpenseDocument,
   UpdateExpenseDocument,
   type DistanceUnit,
   type ExpenseSortField,
   type ExpensesQuery,
   type ExpensesQueryVariables,
 } from '../../gql/generated.ts'
-import { DataGrid, type GridColumn } from '../../grid/DataGrid.tsx'
+import { ServerGrid, type GridColumn } from '../../grid/ServerGrid.tsx'
+import { useLeavingRows } from '../../grid/useLeavingRows.ts'
 import { useFormat } from '../../i18n/format.ts'
 import { ErrorMessage } from '../../messages.tsx'
+import { useToast } from '../../toast/toastContext.ts'
 import { EXPENSE_QUERIES, useLogMutations } from './useLogMutations.ts'
 
 type Row = ExpensesQuery['expenses'][number]
@@ -35,6 +38,9 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
   const add = useLogMutations(vehicle.id)
   const [updateExpense] = useMutation(UpdateExpenseDocument, refetch)
   const [deleteExpense] = useMutation(DeleteExpenseDocument, { ...refetch, refetchQueries: [...refetch.refetchQueries, 'ExpenseTrash'] })
+  const [restoreExpense] = useMutation(RestoreExpenseDocument, { ...refetch, refetchQueries: [...refetch.refetchQueries, 'ExpenseTrash'] })
+  const { leaving, leave } = useLeavingRows()
+  const { undoable } = useToast()
   const [actionError, setActionError] = useState<unknown>()
   const { units } = vehicle
 
@@ -69,7 +75,8 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
   async function moveToTrash(row: Row) {
     setActionError(undefined)
     try {
-      await deleteExpense({ variables: { id: row.id } })
+      await leave(row.id, () => deleteExpense({ variables: { id: row.id } }))
+      undoable(t('toast.expenseTrashed', { title: row.title }), () => restoreExpense({ variables: { id: row.id } }))
     } catch (e) {
       setActionError(e)
     }
@@ -78,7 +85,7 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
   return (
     <>
       {actionError !== undefined && <ErrorMessage error={actionError} />}
-      <DataGrid
+      <ServerGrid
         gridId="expenses"
         caption={t('expenses.title')}
         query={ExpensesDocument}
@@ -89,6 +96,7 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
         defaultSort={{ column: 'date', direction: 'DESC' }}
         emptyText={t('expenses.empty')}
         pollWhile={anyAwaiting}
+        leaving={leaving}
         toolbar={({ total }) => (
           <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
             {canLog && <ExpenseFormDialog vehicle={vehicle} trigger={<Button size="large">{t('expenses.add')}</Button>} onSubmit={add.expense} />}

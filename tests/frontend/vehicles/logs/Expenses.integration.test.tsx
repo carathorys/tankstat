@@ -28,7 +28,7 @@ function setup(vehicle = fakeVehicle(), initial = expenses, route = '/vehicles/v
 it('lists the expenses with their amounts in the currency they were paid in, newest first', async () => {
   const { state } = setup()
 
-  const row = (await screen.findByText('Oil change')).closest('tr')!
+  const row = (await screen.findByText('Oil change')).closest<HTMLElement>('[role="row"]')!
   expect(within(row).getByText(/35,000/)).toBeInTheDocument()
   expect(within(row).getByText('Service')).toBeInTheDocument()
   expect(within(row).getByText(/12,000 km/)).toBeInTheDocument()
@@ -45,6 +45,7 @@ it('an expense logged for a service visit names the recurring expenses it covere
 
   await ui.click(screen.getByRole('button', { name: 'Columns' }))
   await ui.click(within(await screen.findByRole('dialog')).getByRole('checkbox', { name: 'Show Recurring' }))
+  await ui.keyboard('{Escape}') // the popover is modal: the grid is out of reach until it closes
 
   expect(await screen.findByRole('columnheader', { name: 'Recurring' })).toBeInTheDocument()
   expect(await screen.findByText('Oil change, Oil filter')).toBeInTheDocument()
@@ -54,7 +55,7 @@ it('an expense logged for a service visit names the recurring expenses it covere
 it('shows a dash where the odometer was not noted', async () => {
   setup()
 
-  const row = (await screen.findAllByText('Parking'))[0].closest('tr')! // the title and the category are both "Parking"
+  const row = (await screen.findAllByText('Parking'))[0].closest<HTMLElement>('[role="row"]')! // the title and the category are both "Parking"
 
   expect(within(row).getAllByText('–').length).toBeGreaterThan(0)
 })
@@ -133,6 +134,12 @@ it('moves an expense to the trash after a confirmation, not before', async () =>
 
   await waitFor(() => expect(screen.queryByText('Oil change')).not.toBeInTheDocument())
   expect(state.calls.DeleteExpense).toEqual([{ id: 'e2' }])
+
+  // A message says so, and Undo brings it back.
+  expect(screen.getByText('Oil change is in the trash.')).toBeInTheDocument()
+  await ui.click(screen.getByRole('button', { name: 'Undo' }))
+  expect(await screen.findByText('Oil change')).toBeInTheDocument()
+  expect(state.calls.RestoreExpense).toEqual([{ id: 'e2' }])
 })
 
 it('view-only access: no add button and no edit or delete', async () => {

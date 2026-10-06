@@ -215,11 +215,12 @@ it('the colour mode and language menus are labelled radio menus, free of violati
   await check(languages)
 })
 
-it('sortable columns announce their state and every grid is a labelled table', async () => {
+it('sortable columns announce their state and every grid is labelled, its rows named by their first cell', async () => {
   setup('/vehicles/v1?tab=refuelings')
   await screen.findByText(/Sep 1, 2026/)
 
-  expect(screen.getByRole('table', { name: 'Refuelings' })).toBeInTheDocument()
+  const grid = screen.getByRole('grid', { name: 'Refuelings' })
+  expect(within(grid).getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Sep 1, 2026', 'Aug 1, 2026'])
   expect(screen.getByRole('columnheader', { name: /Date/ })).toHaveAttribute('aria-sort', 'descending')
   expect(screen.getByRole('columnheader', { name: /Odometer/ })).toHaveAttribute('aria-sort', 'none')
 })

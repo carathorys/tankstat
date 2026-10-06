@@ -19,7 +19,7 @@ function setup(trashed = [fakeVehicle({ id: 't1', name: 'Old Fiat' }), fakeVehic
 it('lists trashed vehicles with their deletion time', async () => {
   setup()
 
-  const row = (await screen.findByText('Old Fiat')).closest('tr')!
+  const row = (await screen.findByText('Old Fiat')).closest<HTMLElement>('[role="row"]')!
   expect(within(row).getByText('ABC-123')).toBeInTheDocument()
   expect(within(row).getByText(new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date('2026-10-01T08:00:00Z')))).toBeInTheDocument()
   expect(screen.getByText('Old Opel')).toBeInTheDocument()

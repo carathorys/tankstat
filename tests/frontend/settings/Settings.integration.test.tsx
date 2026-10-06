@@ -25,7 +25,8 @@ function setup(settings = fakeSettingsBackend()) {
   return { settings, vehicles, view, ui: userEvent.setup() }
 }
 
-const headers = () => screen.getAllByRole('columnheader').map((h) => h.textContent).filter((text) => text && text !== 'Actions')
+// Also while the Columns popover is open (it is modal: the page behind it is hidden from assistive technology meanwhile).
+const headers = () => screen.getAllByRole('columnheader', { hidden: true }).map((h) => h.textContent).filter((text) => text && text !== 'Actions')
 const lastRequest = (reqs: Record<string, unknown>[]) => reqs[reqs.length - 1]
 
 it('hiding the sidebar is saved with the account and shows on another device', async () => {

@@ -21,7 +21,8 @@ import {
   type VehiclesQuery,
   type VehiclesQueryVariables,
 } from '../gql/generated.ts'
-import { DataGrid, type GridColumn } from '../grid/DataGrid.tsx'
+import { ServerGrid, type GridColumn } from '../grid/ServerGrid.tsx'
+import { useLeavingRows } from '../grid/useLeavingRows.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { ErrorMessage } from '../messages.tsx'
 import { useToast } from '../toast/toastContext.ts'
@@ -39,6 +40,7 @@ export function VehiclesPage() {
   const [updateVehicle] = useMutation(UpdateVehicleDocument, refetch)
   const [deleteVehicle] = useMutation(DeleteVehicleDocument, refetch)
   const [restoreVehicle] = useMutation(RestoreVehicleDocument, refetch)
+  const { leaving, leave } = useLeavingRows()
   const [actionError, setActionError] = useState<unknown>()
 
   const columns = useMemo<GridColumn<Row, VehiclesQueryVariables, VehicleSortField>[]>(() => {
@@ -69,7 +71,7 @@ export function VehiclesPage() {
   async function moveToTrash(vehicle: Row) {
     setActionError(undefined)
     try {
-      await deleteVehicle({ variables: { id: vehicle.id } })
+      await leave(vehicle.id, () => deleteVehicle({ variables: { id: vehicle.id } }))
       undoable(t('toast.vehicleTrashed', { name: vehicle.name }), () => restoreVehicle({ variables: { id: vehicle.id } }))
     } catch (e) {
       setActionError(e)
@@ -82,7 +84,7 @@ export function VehiclesPage() {
         {t('vehicles.title')}
       </Typography>
       {actionError !== undefined && <ErrorMessage error={actionError} />}
-      <DataGrid
+      <ServerGrid
         gridId="vehicles"
         caption={t('vehicles.title')}
         query={VehiclesDocument}
@@ -91,6 +93,7 @@ export function VehiclesPage() {
         columns={columns}
         defaultSort={{ column: 'name', direction: 'ASC' }}
         emptyText={t('vehicles.empty')}
+        leaving={leaving}
         toolbar={() => <VehicleFormDialog trigger={<Button size="large">{t('vehicles.add')}</Button>} onSubmit={(input) => addVehicle({ variables: { input } })} />}
         actions={(v) =>
           v.canEdit ? (
