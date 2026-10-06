@@ -9,16 +9,19 @@ import { onTestFinished, vi } from 'vitest'
 import { createApolloClient } from '../../../src/frontend/apolloClient.ts'
 import type { AuthMode, ColorMode, NotificationFieldsFragment, SessionQuery } from '../../../src/frontend/gql/generated.ts'
 import type { GridSaved } from '../../../src/frontend/settings/types.ts'
+import { ThemeRoot } from '../../../src/frontend/theme/ThemeRoot.tsx'
 
 /** Renders with a fresh Apollo client (and cache) talking to the msw-mocked GraphQL endpoint over HTTP; animations are instant. */
 export const renderWithApollo = (ui: ReactElement, route = '/') =>
   render(
     <ApolloProvider client={createApolloClient('http://localhost/graphql')}>
-      <Theme>
-        <MotionConfig transition={{ duration: 0 }}>
-          <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
-        </MotionConfig>
-      </Theme>
+      <ThemeRoot instant>
+        <Theme>
+          <MotionConfig transition={{ duration: 0 }}>
+            <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
+          </MotionConfig>
+        </Theme>
+      </ThemeRoot>
     </ApolloProvider>,
   )
 
@@ -329,11 +332,50 @@ export function fakeSettingsBackend(
   return { state, handlers }
 }
 
-/** Pretends to be a phone (narrow) or a desktop (wide) browser window for CSS media queries. */
-export function stubViewport(kind: 'phone' | 'desktop') {
+/** The devices a test can pretend to be: a phone is narrow with a touch screen, a desktop is wide with a mouse. */
+const DEVICES = {
+  phone: { width: 390, hover: 'none', pointer: 'coarse' },
+  desktop: { width: 1280, hover: 'hover', pointer: 'fine' },
+} as const
+
+/**
+ * Whether a media query holds on a device: width ranges, hover, pointer, a dark colour scheme and no reduced motion, joined with
+ * "and", alternatives with commas, with or without "@media" and spaces (MUI asks "(min-width:768px)"). Anything else does not match.
+ */
+export function matchesMedia(query: string, kind: keyof typeof DEVICES): boolean {
+  const device = DEVICES[kind]
+  const feature = (f: string) => {
+    const [name, value = ''] = f.replace(/[()]/g, '').split(':').map((x) => x.trim())
+    const px = Number.parseFloat(value)
+    switch (name) {
+      case 'min-width':
+        return device.width >= px
+      case 'max-width':
+        return device.width <= px
+      case 'hover':
+      case 'any-hover':
+        return value === device.hover
+      case 'pointer':
+      case 'any-pointer':
+        return value === device.pointer
+      case 'prefers-color-scheme':
+        return value === 'dark'
+      case 'prefers-reduced-motion':
+        return value === 'no-preference'
+      default:
+        return false
+    }
+  }
+  return query
+    .replace(/^@media\s*/, '')
+    .split(',')
+    .some((alternative) => alternative.split(/\band\b/).every((part) => part.trim() !== '' && feature(part.trim())))
+}
+
+/** Pretends to be a phone (narrow, touch) or a desktop (wide, mouse) browser window for media queries (CSS and useMediaQuery). */
+export function stubViewport(kind: keyof typeof DEVICES) {
   vi.stubGlobal('matchMedia', (query: string) => ({
-    // A phone is narrow and has no hover (a touch screen); a desktop is wide and has a mouse.
-    matches: kind === 'phone' ? query.includes('max-width: 767px') || query.includes('hover: none') : query.includes('min-width: 1024px'),
+    matches: matchesMedia(query, kind),
     media: query,
     onchange: null,
     addEventListener() {},
