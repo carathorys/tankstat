@@ -1,4 +1,5 @@
 import type { Components, CSSObject, Shadows, Theme } from '@mui/material/styles'
+import { SelectChevron } from './icons.tsx'
 import { shadowTokens } from './palette.ts'
 
 // How MUI's components look in Tankstat: the old Radix sizes (controls 24/32/40 px for small/medium/large, 44 px on a touch screen),
@@ -41,6 +42,19 @@ export const ghostTone = (theme: T, tone: Tone): CSSObject => ({
 })
 
 const controlHeights = { small: 24, medium: 32, large: 40 } as const
+
+/** The surface, outline and focus ring of a text field (also the date picker's and the select's). */
+const fieldSurface = (theme: T, outline: string): CSSObject => ({
+  ...theme.typography.body2,
+  borderRadius: 9999,
+  backgroundColor: 'rgba(0, 0, 0, 0.25)',
+  ...theme.applyStyles('light', { backgroundColor: 'rgba(255, 255, 255, 0.9)' }),
+  [`& .${outline}`]: { borderColor: theme.vars.palette.divider },
+  [`&:hover .${outline}`]: { borderColor: theme.vars.palette.text.disabled },
+  [`&.Mui-focused .${outline}`]: { borderColor: theme.vars.palette.primary.main, borderWidth: 2 },
+  [`&.Mui-error .${outline}`]: { borderColor: theme.vars.palette.error.main },
+  [COARSE]: { minHeight: 44 },
+})
 
 export const components: Components<T> = {
   MuiCssBaseline: {
@@ -162,13 +176,17 @@ export const components: Components<T> = {
         props: { variant: 'standard' as const, severity },
         style: ({ theme }: { theme: T }) => ({ backgroundColor: theme.vars.palette[severity].soft, color: theme.vars.palette[severity].softText }),
       })),
+      // A note in gray (no severity of its own): `color="neutral"` wins over the severity's colours.
+      {
+        props: { variant: 'standard' as const, color: 'neutral' as const },
+        style: ({ theme }: { theme: T }) => ({ backgroundColor: theme.vars.palette.neutral.soft, color: theme.vars.palette.text.primary }),
+      },
     ],
   },
 
   MuiFormLabel: {
     styleOverrides: {
       root: ({ theme }) => ({ ...theme.typography.body2, fontWeight: 700, color: theme.vars.palette.text.primary, '&.Mui-focused, &.Mui-error': { color: theme.vars.palette.text.primary } }),
-      asterisk: { display: 'none' }, // labels never had one; a missing value is said in words
     },
   },
   MuiFormHelperText: {
@@ -176,22 +194,30 @@ export const components: Components<T> = {
   },
   MuiOutlinedInput: {
     styleOverrides: {
-      root: ({ theme }) => ({
-        ...theme.typography.body2,
-        borderRadius: 9999,
-        backgroundColor: 'rgba(0, 0, 0, 0.25)',
-        ...theme.applyStyles('light', { backgroundColor: 'rgba(255, 255, 255, 0.9)' }),
-        '& .MuiOutlinedInput-notchedOutline': { borderColor: theme.vars.palette.divider },
-        '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: theme.vars.palette.text.disabled },
-        '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: theme.vars.palette.primary.main, borderWidth: 2 },
-        '&.Mui-error .MuiOutlinedInput-notchedOutline': { borderColor: theme.vars.palette.error.main },
-        [COARSE]: { minHeight: 44 },
-      }),
-      input: { padding: '6px 12px', height: '1.25rem', '&::placeholder': { opacity: 0.6 } },
-      multiline: { borderRadius: 16, padding: '6px 12px', '& .MuiOutlinedInput-input': { padding: 0, height: 'auto' } },
+      root: ({ theme }) => fieldSurface(theme, 'MuiOutlinedInput-notchedOutline'),
+      input: { padding: '6px 8px', height: '1.25rem', '&::placeholder': { opacity: 0.6 } },
+      multiline: { borderRadius: 9, padding: '8px', '& .MuiOutlinedInput-input': { padding: 0, height: 'auto' } },
     },
   },
-  MuiSelect: { styleOverrides: { icon: ({ theme }) => ({ color: theme.vars.palette.text.secondary }) } },
+  MuiSelect: {
+    defaultProps: { IconComponent: SelectChevron },
+    styleOverrides: {
+      select: { padding: '6px 32px 6px 12px', minHeight: '1.25rem' },
+      icon: ({ theme }) => ({ color: theme.vars.palette.text.secondary, right: 10, top: 'calc(50% - 8px)' }),
+    },
+  },
+  // The date picker's field looks like a text field (its sections sit where the text would). The outlined variant sets its own corners
+  // and padding after the base's, so these go on it.
+  MuiPickersOutlinedInput: {
+    styleOverrides: {
+      root: ({ theme }) => ({
+        ...fieldSurface(theme, 'MuiPickersOutlinedInput-notchedOutline'),
+        padding: '0 4px 0 8px',
+        '& .MuiInputAdornment-root': { marginLeft: 4 },
+      }),
+      sectionsContainer: { padding: '6px 0' },
+    },
+  },
 
   MuiTabs: {
     styleOverrides: {

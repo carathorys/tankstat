@@ -1,11 +1,20 @@
 import { useQuery } from '@apollo/client/react'
-import * as RadixForm from '@radix-ui/react-form'
-import { Button, Callout, Dialog, Flex, Text, TextField } from '@radix-ui/themes'
+import Alert from '@mui/material/Alert'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
 import { Info } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Loading } from './components/Loading.tsx'
 import { LabeledSelect } from './components/UnitSelect.tsx'
-import { Field } from './forms.tsx'
+import { DialogButtons, DialogCancel, DialogFrame } from './dialogs/DialogFrame.tsx'
+import { DialogTrigger } from './dialogs/DialogTrigger.tsx'
+import { useDialogState } from './dialogs/useDialogState.ts'
+import { Field } from './forms/Field.tsx'
+import { FieldInput } from './forms/FieldInput.tsx'
+import { Form } from './forms/Form.tsx'
 import {
   VehicleDefaultsDocument,
   VehicleDetailsDocument,
@@ -15,7 +24,6 @@ import {
 } from './gql/generated.ts'
 import { ErrorMessage } from './messages.tsx'
 import { DISTANCE_UNITS, FUEL_TYPES, VOLUME_UNITS } from './vehicles.ts'
-import { Loading } from './components/Loading.tsx'
 
 export interface VehicleValues {
   name: string
@@ -47,7 +55,7 @@ export function VehicleFormDialog({
   onSubmit: (values: VehicleValues) => Promise<unknown>
 }) {
   const { t } = useTranslation()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useDialogState()
   const editing = vehicleId !== undefined
   const details = useQuery(VehicleDetailsDocument, { variables: { id: vehicleId ?? '' }, skip: !editing || !open, fetchPolicy: 'network-only' })
   const defaults = useQuery(VehicleDefaultsDocument, { skip: editing || !open })
@@ -56,13 +64,14 @@ export function VehicleFormDialog({
   const error = details.error ?? defaults.error
 
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Trigger>{trigger}</Dialog.Trigger>
-      <Dialog.Content maxWidth="450px">
-        <Dialog.Title>{editing ? t('vehicles.dialogEdit') : t('vehicles.dialogAdd')}</Dialog.Title>
-        <Dialog.Description size="2" mb="4">
-          {editing ? t('vehicles.dialogEditDescription') : t('vehicles.dialogAddDescription')}
-        </Dialog.Description>
+    <>
+      <DialogTrigger trigger={trigger} open={open} onOpen={() => setOpen(true)} />
+      <DialogFrame
+        open={open}
+        onClose={() => setOpen(false)}
+        title={editing ? t('vehicles.dialogEdit') : t('vehicles.dialogAdd')}
+        description={editing ? t('vehicles.dialogEditDescription') : t('vehicles.dialogAddDescription')}
+      >
         {error && <ErrorMessage error={error} />}
         {!error && !initial && !(editing && details.data) && <Loading />}
         {editing && details.data && !loaded && <ErrorMessage>{t('errors.vehicle.notFound')}</ErrorMessage>}
@@ -76,8 +85,8 @@ export function VehicleFormDialog({
             }}
           />
         )}
-      </Dialog.Content>
-    </Dialog.Root>
+      </DialogFrame>
+    </>
   )
 }
 
@@ -106,52 +115,43 @@ function VehicleForm({ initial, editing, onSubmit }: { initial: Initial; editing
   }
 
   return (
-    <RadixForm.Root onSubmit={submit}>
-      <Flex direction="column" gap="3">
+    <Form onSubmit={submit}>
+      <Stack sx={{ gap: 1.5 }}>
         <Field name="name" label={t('fields.name')} required>
-          <TextField.Root required defaultValue={initial.name} autoFocus />
+          <FieldInput defaultValue={initial.name} autoFocus />
         </Field>
         <Field name="licensePlate" label={t('fields.licensePlateOptional')}>
-          <TextField.Root defaultValue={initial.licensePlate ?? ''} />
+          <FieldInput defaultValue={initial.licensePlate ?? ''} />
         </Field>
         <LabeledSelect label={t('fields.fuel')} value={fuel} onChange={setFuel} options={FUEL_TYPES.map((f) => ({ value: f, label: t(`fuel.${f}`) }))} />
-        <Flex asChild direction="column" gap="2">
-          <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
-            <legend>
-              <Text size="2" weight="bold">
-                {t('units.label')}
-              </Text>
-            </legend>
-            <Flex gap="3" wrap="wrap">
+        <Box component="fieldset" sx={{ border: 0, p: 0, m: 0, minWidth: 0 }}>
+          <Typography component="legend" variant="body2" sx={{ fontWeight: 700, p: 0, mb: 1 }}>
+            {t('units.label')}
+          </Typography>
+          <Stack sx={{ gap: 1 }}>
+            <Stack direction="row" sx={{ gap: 1.5, flexWrap: 'wrap' }}>
               <LabeledSelect label={t('units.distanceLabel')} value={distance} onChange={setDistance} disabled={locked} options={DISTANCE_UNITS.map((u) => ({ value: u, label: t(`units.distance.${u}`) }))} />
               <LabeledSelect label={t('units.volumeLabel')} value={volume} onChange={setVolume} disabled={locked} options={VOLUME_UNITS.map((u) => ({ value: u, label: t(`units.volume.${u}`) }))} />
-            </Flex>
+            </Stack>
             {locked ? (
-              <Callout.Root size="1" color="gray">
-                <Callout.Icon>
-                  <Info size={16} aria-hidden />
-                </Callout.Icon>
-                <Callout.Text>{t('vehicles.unitsInUse')}</Callout.Text>
-              </Callout.Root>
+              <Alert color="neutral" icon={<Info size={16} aria-hidden />}>
+                {t('vehicles.unitsInUse')}
+              </Alert>
             ) : (
-              <Text size="1" color="gray">
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                 {t('units.hint')}
-              </Text>
+              </Typography>
             )}
-          </fieldset>
-        </Flex>
+          </Stack>
+        </Box>
         {error !== undefined && <ErrorMessage error={error} />}
-        <Flex gap="3" justify="end">
-          <Dialog.Close>
-            <Button type="button" variant="soft" color="gray">
-              {t('common.cancel')}
-            </Button>
-          </Dialog.Close>
-          <RadixForm.Submit asChild>
-            <Button disabled={busy}>{editing ? t('vehicles.save') : t('vehicles.add')}</Button>
-          </RadixForm.Submit>
-        </Flex>
-      </Flex>
-    </RadixForm.Root>
+        <DialogButtons>
+          <DialogCancel />
+          <Button type="submit" disabled={busy}>
+            {editing ? t('vehicles.save') : t('vehicles.add')}
+          </Button>
+        </DialogButtons>
+      </Stack>
+    </Form>
   )
 }

@@ -1,8 +1,13 @@
-import { Button, Dialog, Flex, Text } from '@radix-ui/themes'
+import Button from '@mui/material/Button'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LabeledSelect } from '../components/UnitSelect.tsx'
-import { FieldForm } from '../forms.tsx'
+import { DialogButtons, DialogCancel, DialogFrame } from '../dialogs/DialogFrame.tsx'
+import { DialogTrigger } from '../dialogs/DialogTrigger.tsx'
+import { useDialogState } from '../dialogs/useDialogState.ts'
+import { FieldForm } from '../forms/FieldForm.tsx'
 import type { UserDataDisposition } from '../gql/generated.ts'
 import { ErrorMessage } from '../messages.tsx'
 
@@ -23,29 +28,14 @@ function UserDialog({
   description: string
   children: (close: () => void) => ReactNode
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useDialogState()
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Trigger>{trigger}</Dialog.Trigger>
-      <Dialog.Content maxWidth="450px">
-        <Dialog.Title>{title}</Dialog.Title>
-        <Dialog.Description size="2" mb="4">
-          {description}
-        </Dialog.Description>
+    <>
+      <DialogTrigger trigger={trigger} open={open} onOpen={() => setOpen(true)} />
+      <DialogFrame open={open} onClose={() => setOpen(false)} title={title} description={description}>
         {children(() => setOpen(false))}
-      </Dialog.Content>
-    </Dialog.Root>
-  )
-}
-
-function CancelButton() {
-  const { t } = useTranslation()
-  return (
-    <Dialog.Close>
-      <Button type="button" variant="soft" color="gray">
-        {t('common.cancel')}
-      </Button>
-    </Dialog.Close>
+      </DialogFrame>
+    </>
   )
 }
 
@@ -74,7 +64,7 @@ export function EditUserDialog({
             close()
           }}
         >
-          <CancelButton />
+          <DialogCancel />
         </FieldForm>
       )}
     </UserDialog>
@@ -103,7 +93,7 @@ export function SetPasswordDialog({
             close()
           }}
         >
-          <CancelButton />
+          <DialogCancel />
         </FieldForm>
       )}
     </UserDialog>
@@ -170,7 +160,7 @@ function DeleteForm({
 
   return (
     <form onSubmit={submit}>
-      <Flex direction="column" gap="3">
+      <Stack sx={{ gap: 1.5 }}>
         <LabeledSelect<DataChoice>
           label={t('admin.dataChoice')}
           value={choice}
@@ -191,23 +181,23 @@ function DeleteForm({
           />
         )}
         {choice === 'MOVE' && (
-          <Text as="p" size="2" color="gray">
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             {t('admin.moveGrantsNote')}
-          </Text>
+          </Typography>
         )}
         {choice === 'PURGE' && (
-          <Text as="p" size="2" color="red">
+          <Typography variant="body2" sx={{ color: 'error.softText' }}>
             {t('admin.purgeWarning')}
-          </Text>
+          </Typography>
         )}
         {error !== undefined && <ErrorMessage error={error} />}
-        <Flex gap="3" justify="end">
-          <CancelButton />
-          <Button type="submit" color="red" disabled={busy || incomplete}>
+        <DialogButtons>
+          <DialogCancel />
+          <Button type="submit" color="error" disabled={busy || incomplete}>
             {t('admin.deleteConfirm')}
           </Button>
-        </Flex>
-      </Flex>
+        </DialogButtons>
+      </Stack>
     </form>
   )
 }

@@ -3,7 +3,7 @@ import { Box, Button, Checkbox, Code, Flex, Heading, Select, Table, Tabs, Text, 
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { UserChip } from '../components/UserAvatar.tsx'
-import { FieldForm } from '../forms.tsx'
+import { FieldForm } from '../forms/FieldForm.tsx'
 import {
   AdminDocument,
   CreateUserDocument,

@@ -1,8 +1,10 @@
 import { useMutation } from '@apollo/client/react'
-import { Card, Heading, Link } from '@radix-ui/themes'
+import Card from '@mui/material/Card'
+import Link from '@mui/material/Link'
+import Typography from '@mui/material/Typography'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FieldForm } from './forms.tsx'
+import { FieldForm } from './forms/FieldForm.tsx'
 import { ChangePasswordDocument, ResetPasswordDocument } from './gql/generated.ts'
 import { SuccessMessage } from './messages.tsx'
 
@@ -13,9 +15,9 @@ export function ChangePasswordForm() {
 
   return (
     <section>
-      <Heading as="h2" size="4" my="3">
+      <Typography component="h2" variant="h5" sx={{ my: 1.5 }}>
         {t('auth.changeTitle')}
-      </Heading>
+      </Typography>
       {done && <SuccessMessage>{t('auth.changed')}</SuccessMessage>}
       <FieldForm
         fields={[
@@ -39,7 +41,7 @@ export function ResetPasswordView({ token }: { token: string }) {
   const [done, setDone] = useState(false)
 
   return (
-    <Card size="3" style={{ maxWidth: 420, margin: '2rem auto' }}>
+    <Card sx={{ maxWidth: 420, mx: 'auto', my: 4, p: 3 }}>
       {done ? (
         <>
           <SuccessMessage>{t('auth.setDone')}</SuccessMessage>
@@ -47,9 +49,9 @@ export function ResetPasswordView({ token }: { token: string }) {
         </>
       ) : (
         <>
-          <Heading as="h2" size="5" mb="3">
+          <Typography component="h2" variant="h4" sx={{ mb: 1.5 }}>
             {t('auth.setTitle')}
-          </Heading>
+          </Typography>
           <FieldForm
             fields={[{ name: 'password', label: 'fields.newPassword', type: 'password', autoComplete: 'new-password' }]}
             submitLabel="auth.setSubmit"

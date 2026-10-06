@@ -64,6 +64,12 @@ declare module '@mui/material/Paper' {
   }
 }
 
+declare module '@mui/material/Alert' {
+  interface AlertPropsColorOverrides {
+    neutral: true
+  }
+}
+
 declare module '@mui/material/CircularProgress' {
   interface CircularProgressPropsColorOverrides {
     neutral: true

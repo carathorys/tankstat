@@ -418,9 +418,9 @@ it('on a touch screen a card button opens its dialog at once, and taps inside th
   await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
   await ui.click(within(dialog).getByLabelText('Date'))
   const fullTank = within(dialog).getByRole('switch', { name: 'Full tank' })
-  const was = fullTank.getAttribute('aria-checked')
+  const was = (fullTank as HTMLInputElement).checked
   await ui.click(fullTank)
-  expect(fullTank).toHaveAttribute('aria-checked', was === 'true' ? 'false' : 'true') // the tap worked the control (the card did not swallow it as a reveal)
+  expect((fullTank as HTMLInputElement).checked).toBe(!was) // the tap worked the control (the card did not swallow it as a reveal)
   expect(c).not.toHaveAttribute('data-open')
   // Still at home with the dialog open: opening the vehicle would have unmounted the card and its dialog.
   expect(screen.getByRole('dialog', { name: 'Add refuelling' })).toBeInTheDocument()

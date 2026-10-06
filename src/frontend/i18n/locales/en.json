@@ -29,7 +29,11 @@
   "common": {
     "cancel": "Cancel",
     "close": "Close",
-    "none": "–"
+    "none": "–",
+    "undo": "Undo"
+  },
+  "toast": {
+    "undoFailed": "It could not be put back. Find it in the trash."
   },
   "install": {
     "title": "Install Tankstat",
@@ -118,7 +122,9 @@
   "forms": {
     "required": "{{field}} is required",
     "emailInvalid": "Enter a valid e-mail address",
-    "numberInvalid": "Enter a number, for example 12.5."
+    "numberInvalid": "Enter a number, for example 12.5.",
+    "dateIncomplete": "Enter the whole date.",
+    "dateFuture": "The date cannot be in the future."
   },
   "auth": {
     "signIn": "Sign in",

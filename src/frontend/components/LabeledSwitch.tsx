@@ -1,4 +1,6 @@
-import { Flex, Switch, Text } from '@radix-ui/themes'
+import Stack from '@mui/material/Stack'
+import Switch from '@mui/material/Switch'
+import Typography from '@mui/material/Typography'
 import { useId } from 'react'
 
 /** A Switch with its label and an optional hint next to it, both linked to the switch (the hint as its description). */
@@ -14,19 +16,20 @@ export function LabeledSwitch({
   onChange: (checked: boolean) => void
 }) {
   const id = useId()
+  const hintId = `${id}-hint`
   return (
-    <Flex align="center" gap="3">
-      <Switch id={id} checked={checked} onCheckedChange={onChange} size="3" aria-describedby={hint ? `${id}-hint` : undefined} />
-      <Flex direction="column">
-        <Text as="label" size="2" weight="bold" htmlFor={id}>
+    <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5 }}>
+      <Switch id={id} checked={checked} onChange={(event) => onChange(event.target.checked)} slotProps={{ input: { 'aria-describedby': hint ? hintId : undefined } }} />
+      <Stack>
+        <Typography component="label" htmlFor={id} variant="body2" sx={{ fontWeight: 700 }}>
           {label}
-        </Text>
+        </Typography>
         {hint && (
-          <Text id={`${id}-hint`} size="1" color="gray">
+          <Typography id={hintId} variant="caption" sx={{ color: 'text.secondary' }}>
             {hint}
-          </Text>
+          </Typography>
         )}
-      </Flex>
-    </Flex>
+      </Stack>
+    </Stack>
   )
 }

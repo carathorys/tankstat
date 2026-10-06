@@ -1,7 +1,14 @@
-import { Select, Text } from '@radix-ui/themes'
+import FormLabel from '@mui/material/FormLabel'
+import MenuItem from '@mui/material/MenuItem'
+import Select from '@mui/material/Select'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
 import { useId } from 'react'
 
-/** A labelled Select (the label is linked to the trigger), used for the unit choices. */
+/**
+ * A labelled choice (units, fuel, a chart's metric, a person): the label names the select (aria-labelledby), the options open in a list.
+ * An empty `value` shows the `placeholder`.
+ */
 export function LabeledSelect<T extends string>({
   label,
   value,
@@ -17,22 +24,26 @@ export function LabeledSelect<T extends string>({
   disabled?: boolean
   placeholder?: string
 }) {
-  const id = useId()
+  const labelId = useId()
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
-      <Text as="label" size="2" weight="bold" htmlFor={id}>
-        {label}
-      </Text>
-      <Select.Root value={value || undefined} onValueChange={(v) => onChange(v as T)} disabled={disabled}>
-        <Select.Trigger id={id} placeholder={placeholder} />
-        <Select.Content>
-          {options.map((o) => (
-            <Select.Item key={o.value} value={o.value}>
-              {o.label}
-            </Select.Item>
-          ))}
-        </Select.Content>
-      </Select.Root>
-    </div>
+    <Stack sx={{ gap: 0.5, minWidth: 0 }}>
+      <FormLabel id={labelId}>{label}</FormLabel>
+      <Select<T>
+        labelId={labelId}
+        value={value}
+        onChange={(event) => onChange(event.target.value as T)}
+        disabled={disabled}
+        displayEmpty={placeholder !== undefined}
+        renderValue={(selected) =>
+          selected ? options.find((o) => o.value === selected)?.label : <Typography component="span" variant="body2" sx={{ color: 'text.secondary' }}>{placeholder}</Typography>
+        }
+      >
+        {options.map((o) => (
+          <MenuItem key={o.value} value={o.value}>
+            {o.label}
+          </MenuItem>
+        ))}
+      </Select>
+    </Stack>
   )
 }

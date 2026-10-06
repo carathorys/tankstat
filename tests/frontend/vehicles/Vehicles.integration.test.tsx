@@ -210,7 +210,8 @@ it('locks the units once the vehicle has logs, and explains why', async () => {
   await ui.click(screen.getByRole('button', { name: 'Edit Octavia' }))
   const dialog = await screen.findByRole('dialog', { name: 'Edit vehicle' })
 
-  expect(await within(dialog).findByRole('combobox', { name: 'Distance' })).toBeDisabled()
-  expect(within(dialog).getByRole('combobox', { name: 'Fuel volume' })).toBeDisabled()
+  // A select is not a native control: disabled is said with aria-disabled.
+  expect(await within(dialog).findByRole('combobox', { name: 'Distance' })).toHaveAttribute('aria-disabled', 'true')
+  expect(within(dialog).getByRole('combobox', { name: 'Fuel volume' })).toHaveAttribute('aria-disabled', 'true')
   expect(within(dialog).getByText(/units are fixed because this vehicle already has logs/)).toBeInTheDocument()
 })

@@ -29,7 +29,11 @@
   "common": {
     "cancel": "Mégse",
     "close": "Bezárás",
-    "none": "–"
+    "none": "–",
+    "undo": "Visszavonás"
+  },
+  "toast": {
+    "undoFailed": "Nem sikerült visszaállítani. A kukában megtalálod."
   },
   "install": {
     "title": "A Tankstat telepítése",
@@ -118,7 +122,9 @@
   "forms": {
     "required": "A(z) {{field}} megadása kötelező",
     "emailInvalid": "Adj meg érvényes e-mail-címet",
-    "numberInvalid": "Adj meg egy számot, például 12,5."
+    "numberInvalid": "Adj meg egy számot, például 12,5.",
+    "dateIncomplete": "Add meg a teljes dátumot.",
+    "dateFuture": "A dátum nem lehet a jövőben."
   },
   "auth": {
     "signIn": "Bejelentkezés",

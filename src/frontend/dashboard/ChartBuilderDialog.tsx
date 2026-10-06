@@ -1,10 +1,19 @@
 import { useMutation } from '@apollo/client/react'
-import * as RadixForm from '@radix-ui/react-form'
-import { Button, Dialog, Flex, Switch, Text, TextField } from '@radix-ui/themes'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { LabeledSwitch } from '../components/LabeledSwitch.tsx'
 import { LabeledSelect } from '../components/UnitSelect.tsx'
-import { Field } from '../forms.tsx'
+import { DialogButtons, DialogCancel, DialogFrame } from '../dialogs/DialogFrame.tsx'
+import { DialogTrigger } from '../dialogs/DialogTrigger.tsx'
+import { useDialogState } from '../dialogs/useDialogState.ts'
+import { Field } from '../forms/Field.tsx'
+import { FieldDate } from '../forms/FieldDate.tsx'
+import { FieldInput } from '../forms/FieldInput.tsx'
+import { Form } from '../forms/Form.tsx'
 import { SaveChartDocument, type ChartGrouping, type ChartKind, type ChartMetric, type ChartRange, type DistanceUnit, type VolumeUnit } from '../gql/generated.ts'
 import { ErrorMessage } from '../messages.tsx'
 import { ChartCard } from './ChartCard.tsx'
@@ -40,16 +49,12 @@ export function ChartBuilderDialog({
   onSaved: () => void | Promise<unknown>
 }) {
   const { t } = useTranslation()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useDialogState()
 
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Trigger>{trigger}</Dialog.Trigger>
-      <Dialog.Content maxWidth="640px">
-        <Dialog.Title>{chart ? t('charts.dialogEdit') : t('charts.dialogAdd')}</Dialog.Title>
-        <Dialog.Description size="2" mb="4">
-          {t('charts.dialogDescription')}
-        </Dialog.Description>
+    <>
+      <DialogTrigger trigger={trigger} open={open} onOpen={() => setOpen(true)} />
+      <DialogFrame open={open} onClose={() => setOpen(false)} maxWidth={640} title={chart ? t('charts.dialogEdit') : t('charts.dialogAdd')} description={t('charts.dialogDescription')}>
         {open && (
           <BuilderForm
             vehicle={vehicle}
@@ -61,8 +66,8 @@ export function ChartBuilderDialog({
             }}
           />
         )}
-      </Dialog.Content>
-    </Dialog.Root>
+      </DialogFrame>
+    </>
   )
 }
 
@@ -72,8 +77,7 @@ function BuilderForm({ vehicle, chart, canShare, onSaved }: { vehicle: { id: str
   const [recipe, setRecipe] = useState<ChartRecipe>(chart?.recipe ?? NEW_RECIPE)
   const [shared, setShared] = useState(chart?.isShared ?? false)
   const [save, { loading, error }] = useMutation(SaveChartDocument)
-  const stackId = useId()
-  const sharedId = useId()
+  const previewId = useId()
 
   const change = (patch: Partial<ChartRecipe>) => setRecipe((r) => normalise({ ...r, ...patch }))
   const groupings: ChartGrouping[] = recipe.metric === 'EXPENSE_COST' ? ['MONTH', 'QUARTER', 'YEAR', 'CATEGORY'] : ['MONTH', 'QUARTER', 'YEAR']
@@ -93,81 +97,57 @@ function BuilderForm({ vehicle, chart, canShare, onSaved }: { vehicle: { id: str
   }
 
   return (
-    <RadixForm.Root onSubmit={submit}>
-      <Flex direction="column" gap="3">
+    <Form onSubmit={submit}>
+      <Stack sx={{ gap: 1.5 }}>
         <Field name="title" label={t('charts.fields.title')} required>
-          <TextField.Root required maxLength={80} autoComplete="off" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <FieldInput maxLength={80} autoComplete="off" value={title} onChange={(e) => setTitle(e.target.value)} />
         </Field>
-        <Flex gap="3" wrap="wrap">
+        <Stack direction="row" sx={{ gap: 1.5, flexWrap: 'wrap', '& > *': { flex: '1 1 12rem' } }}>
           <LabeledSelect label={t('charts.fields.metric')} value={recipe.metric} onChange={(metric) => change({ metric })} options={METRICS.map((m) => ({ value: m, label: t(`charts.metrics.${m}`) }))} />
           <LabeledSelect label={t('charts.fields.grouping')} value={recipe.grouping} onChange={(grouping) => change({ grouping })} options={groupings.map((g) => ({ value: g, label: t(`charts.groupings.${g}`) }))} />
           <LabeledSelect label={t('charts.fields.kind')} value={recipe.kind} onChange={(kind) => change({ kind })} options={kinds.map((k) => ({ value: k, label: t(`charts.kinds.${k}`) }))} />
           <LabeledSelect label={t('charts.fields.range')} value={recipe.range} onChange={(range) => change({ range })} options={RANGES.map((r) => ({ value: r, label: t(`charts.ranges.${r}`) }))} />
-        </Flex>
+        </Stack>
 
         {recipe.range === 'CUSTOM' && (
-          <Flex gap="3" wrap="wrap">
-            <Field name="from" label={t('charts.fields.from')} required invalid={{ message: t('errors.chart.datesReversed'), test: () => recipe.from !== null && recipe.to !== null && recipe.from > recipe.to }}>
-              <TextField.Root type="date" required value={recipe.from ?? ''} onChange={(e) => change({ from: e.target.value || null })} />
-            </Field>
-            <Field name="to" label={t('charts.fields.to')} required>
-              <TextField.Root type="date" required value={recipe.to ?? ''} onChange={(e) => change({ to: e.target.value || null })} />
-            </Field>
-          </Flex>
+          <Stack direction="row" sx={{ gap: 1.5, flexWrap: 'wrap', '& > *': { flex: '1 1 12rem' } }}>
+            <Box>
+              <Field name="from" label={t('charts.fields.from')} required invalid={{ message: t('errors.chart.datesReversed'), test: () => recipe.from !== null && recipe.to !== null && recipe.from > recipe.to }}>
+                <FieldDate value={recipe.from ?? ''} onChange={(from) => change({ from: from || null })} />
+              </Field>
+            </Box>
+            <Box>
+              <Field name="to" label={t('charts.fields.to')} required>
+                <FieldDate value={recipe.to ?? ''} onChange={(to) => change({ to: to || null })} />
+              </Field>
+            </Box>
+          </Stack>
         )}
 
-        {canStack && (
-          <Flex align="center" gap="3">
-            <Switch id={stackId} size="3" checked={recipe.stacked} onCheckedChange={(stacked) => change({ stacked })} />
-            <Flex direction="column">
-              <Text as="label" size="2" weight="bold" htmlFor={stackId}>
-                {t('charts.fields.stacked')}
-              </Text>
-              <Text size="1" color="gray">
-                {t('charts.hints.stacked')}
-              </Text>
-            </Flex>
-          </Flex>
-        )}
-        {canShare && (
-          <Flex align="center" gap="3">
-            <Switch id={sharedId} size="3" checked={shared} onCheckedChange={setShared} />
-            <Flex direction="column">
-              <Text as="label" size="2" weight="bold" htmlFor={sharedId}>
-                {t('charts.fields.shared')}
-              </Text>
-              <Text size="1" color="gray">
-                {t('charts.hints.shared')}
-              </Text>
-            </Flex>
-          </Flex>
-        )}
+        {canStack && <LabeledSwitch label={t('charts.fields.stacked')} hint={t('charts.hints.stacked')} checked={recipe.stacked} onChange={(stacked) => change({ stacked })} />}
+        {canShare && <LabeledSwitch label={t('charts.fields.shared')} hint={t('charts.hints.shared')} checked={shared} onChange={setShared} />}
 
-        <section aria-labelledby="preview-label">
-          <Text as="p" size="3" weight="bold" id="preview-label" mb="2">
+        <section aria-labelledby={previewId}>
+          <Typography id={previewId} sx={{ fontWeight: 700, mb: 1 }}>
             {t('charts.preview')}
-          </Text>
+          </Typography>
           {ready ? (
             <ChartCard vehicleId={vehicle.id} title={title.trim() || t('charts.preview')} recipe={recipe} units={vehicle.units} headingLevel={2} />
           ) : (
-            <Text as="p" size="2" color="gray">
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
               {t('errors.chart.datesRequired')}
-            </Text>
+            </Typography>
           )}
         </section>
 
         {error && <ErrorMessage error={error} />}
-        <Flex gap="3" justify="end">
-          <Dialog.Close>
-            <Button type="button" variant="soft" color="gray">
-              {t('common.cancel')}
-            </Button>
-          </Dialog.Close>
-          <RadixForm.Submit asChild>
-            <Button disabled={loading || !ready}>{t('charts.save')}</Button>
-          </RadixForm.Submit>
-        </Flex>
-      </Flex>
-    </RadixForm.Root>
+        <DialogButtons>
+          <DialogCancel />
+          <Button type="submit" disabled={loading || !ready}>
+            {t('charts.save')}
+          </Button>
+        </DialogButtons>
+      </Stack>
+    </Form>
   )
 }
