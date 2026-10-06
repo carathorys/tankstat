@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Vehicles;
+using Tankstat.Domain;
 using Tankstat.Infrastructure.Persistence;
 using Tankstat.TestSupport;
 

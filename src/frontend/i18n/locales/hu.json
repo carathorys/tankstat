@@ -319,6 +319,17 @@
       "unitsLocked": "A mértékegységek nem módosíthatók, ha a járműnek már vannak naplóbejegyzései.",
       "unknownUnit": "Ismeretlen mértékegység: {{value}}."
     },
+    "vehicleOrder": {
+      "tooMany": "Legfeljebb {{max}} jármű rendezhető sorba."
+    },
+    "settings": {
+      "gridIdInvalid": "A táblázat neve érvénytelen.",
+      "columnIdInvalid": "Egy oszlop neve érvénytelen.",
+      "tooManyColumns": "Egy táblázat legfeljebb {{max}} oszlopot jegyezhet meg.",
+      "pageSizeInvalid": "Az oldalméret {{min}} és {{max}} között lehet.",
+      "sortDirectionInvalid": "Ismeretlen rendezési irány.",
+      "languageInvalid": "A nyelv kódja en vagy en-GB alakú lehet."
+    },
     "refueling": {
       "litersPositive": "A literszámnak nullánál nagyobbnak kell lennie.",
       "costNegative": "A teljes költség nem lehet negatív.",
@@ -662,6 +673,14 @@
     "import": "Napló importálása",
     "all": "Minden jármű",
     "countLabel": "{{count}} jármű",
+    "arrange": "Sorrend",
+    "arrangeTitle": "Járművek sorrendje",
+    "arrangeDescription": "Rendezd a járműveidet abba a sorrendbe, ahogy a kezdőlapon látni szeretnéd. A sorrend a fiókodhoz tartozik, és minden eszközön érvényes.",
+    "arrangeList": "Járművek megjelenítési sorrendben",
+    "moveUp": "{{name}} feljebb",
+    "moveDown": "{{name}} lejjebb",
+    "moved": "{{name}} most a {{position}}. a(z) {{total}} közül.",
+    "arrangeSave": "Sorrend mentése",
     "card": {
       "openAria": "{{name}} megnyitása",
       "odometer": "Kilométeróra",

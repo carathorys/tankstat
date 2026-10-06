@@ -80,6 +80,7 @@ type Query {
   vehicleChartData(vehicleId: UUID!, config: ChartConfigInput!): ChartData!
     @cost(weight: "10")
   vehicleCharts(vehicleId: UUID!): [VehicleChart!]! @cost(weight: "10")
+  uiSettings: UiSettingsInfo! @cost(weight: "10")
 }
 
 type Mutation {
@@ -128,6 +129,12 @@ type Mutation {
     @cost(weight: "10")
   saveVehicleChart(input: SaveChartInput!): VehicleChart! @cost(weight: "10")
   deleteVehicleChart(id: UUID!): Boolean! @cost(weight: "10")
+  updateUiSettings(input: UpdateUiSettingsInput!): UiSettingsInfo!
+    @cost(weight: "10")
+  saveGridSettings(input: GridSettingsInput!): GridSettingsInfo!
+    @cost(weight: "10")
+  resetGridSettings(gridId: String!): Boolean! @cost(weight: "10")
+  setVehicleOrder(vehicleIds: [UUID!]!): Boolean! @cost(weight: "10")
 }
 
 type AccessGrantInfo {
@@ -183,6 +190,15 @@ type Expense {
   createdBy: UserRef @cost(weight: "10")
   vehicle: Vehicle @cost(weight: "10")
   photos: [LogPhotoInfo!]! @cost(weight: "10")
+}
+
+type GridSettingsInfo {
+  gridId: String!
+  order: [String!]!
+  hidden: [String!]!
+  pageSize: Int!
+  sortColumn: String!
+  sortDirection: SortDirection!
 }
 
 type HealthReport {
@@ -378,6 +394,12 @@ type Session {
   user: UserInfo
 }
 
+type UiSettingsInfo {
+  navOpen: Boolean
+  language: String
+  grids: [GridSettingsInfo!]!
+}
+
 type UserAccount {
   id: UUID!
   provider: UserProvider!
@@ -526,6 +548,15 @@ input DeleteUserInput {
   moveToUserId: UUID
 }
 
+input GridSettingsInput {
+  gridId: String!
+  order: [String!]!
+  hidden: [String!]!
+  pageSize: Int!
+  sortColumn: String!
+  sortDirection: SortDirection!
+}
+
 input LoginInput {
   email: String!
   password: String!
@@ -626,6 +657,12 @@ input UpdateRefuelingInput {
   isFullTank: Boolean!
   note: String
   missedPreviousFillUp: Boolean
+}
+
+input UpdateUiSettingsInput {
+  navOpen: Boolean
+  language: String
+  clearLanguage: Boolean
 }
 
 input UpdateUserInput {

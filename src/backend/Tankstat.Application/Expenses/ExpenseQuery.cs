@@ -1,4 +1,5 @@
 using Tankstat.Application.Vehicles;
+using Tankstat.Domain;
 
 namespace Tankstat.Application.Expenses;
 

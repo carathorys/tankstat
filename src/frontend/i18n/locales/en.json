@@ -319,6 +319,17 @@
       "unitsLocked": "The units cannot be changed once the vehicle has logs.",
       "unknownUnit": "Unknown unit: {{value}}."
     },
+    "vehicleOrder": {
+      "tooMany": "At most {{max}} vehicles can be arranged."
+    },
+    "settings": {
+      "gridIdInvalid": "The grid name is not valid.",
+      "columnIdInvalid": "A column name is not valid.",
+      "tooManyColumns": "A grid can remember at most {{max}} columns.",
+      "pageSizeInvalid": "The page size must be between {{min}} and {{max}}.",
+      "sortDirectionInvalid": "Unknown sort direction.",
+      "languageInvalid": "The language code must look like en or en-GB."
+    },
     "refueling": {
       "litersPositive": "Liters must be greater than zero.",
       "costNegative": "The total cost cannot be negative.",
@@ -662,6 +673,14 @@
     "import": "Import logs",
     "all": "All vehicles",
     "countLabel": "{{count}} vehicles",
+    "arrange": "Arrange",
+    "arrangeTitle": "Arrange vehicles",
+    "arrangeDescription": "Move your vehicles into the order you want on the home page. The order is saved with your account and used on every device.",
+    "arrangeList": "Vehicles in display order",
+    "moveUp": "Move {{name}} up",
+    "moveDown": "Move {{name}} down",
+    "moved": "{{name}} is now {{position}} of {{total}}.",
+    "arrangeSave": "Save order",
     "card": {
       "openAria": "Open {{name}}",
       "odometer": "Odometer",

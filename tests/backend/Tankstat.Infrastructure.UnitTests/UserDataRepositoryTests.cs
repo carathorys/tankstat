@@ -1,12 +1,14 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Tankstat.Application.Expenses;
+using Tankstat.Application.Settings;
 using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
 using Tankstat.Domain.Photos;
+using Tankstat.Domain.Settings;
 using Tankstat.Domain.Users;
 using Tankstat.Domain.Vehicles;
 using Tankstat.Infrastructure.Persistence;
@@ -109,6 +111,44 @@ public class UserDataRepositoryTests
         Assert.Equal(2, grants.Count);
         var resourceGrants = await ctx.ResourceGrants.ToListAsync();
         Assert.Equal(bob.Id, Assert.Single(resourceGrants).GranteeId);
+    }
+
+    [Fact]
+    public async Task MoveAndPurge_DeleteTheUsersSettings_AndLeaveEveryoneElses()
+    {
+        await using var db = new TestDatabase();
+        var alice = await AddUser(db, "alice@x.co");
+        var bob = await AddUser(db, "bob@x.co");
+        var carol = await AddUser(db, "carol@x.co");
+        var (car, _) = await AddVehicleWithExpense(db, alice.Id, alice.Id);
+        var (bobs, _) = await AddVehicleWithExpense(db, bob.Id, bob.Id);
+        var settings = db.Get<IUiSettingsRepository>();
+        var orders = db.Get<IVehicleOrderRepository>();
+        foreach (var who in new[] { alice.Id, bob.Id, carol.Id })
+        {
+            var row = UiSettings.Create(who, Now);
+            row.SetNavOpen(false, Now);
+            await settings.SaveAsync(row, default);
+            await settings.SaveGridAsync(GridSettings.Create(who, "vehicles", new(["name"], [], 25, "name", Tankstat.Domain.SortDirection.Asc), Now), default);
+        }
+        await orders.ReplaceAsync(alice.Id, [VehicleOrder.Create(alice.Id, car.Id, 0), VehicleOrder.Create(alice.Id, bobs.Id, 1)], default);
+        await orders.ReplaceAsync(bob.Id, [VehicleOrder.Create(bob.Id, car.Id, 0)], default);
+        await orders.ReplaceAsync(carol.Id, [VehicleOrder.Create(carol.Id, car.Id, 0)], default);
+
+        await db.Get<IUserDataRepository>().DeleteUserAsync(alice.Id, bob.Id, default); // moved to Bob
+
+        Assert.Null(await settings.FindAsync(alice.Id, default));
+        Assert.Empty(await settings.ListGridsAsync(alice.Id, default));
+        Assert.Empty(await orders.ListAsync(alice.Id, default));
+        Assert.NotNull(await settings.FindAsync(bob.Id, default)); // his own, never merged with hers
+        Assert.Single(await settings.ListGridsAsync(bob.Id, default));
+        Assert.Single(await orders.ListAsync(bob.Id, default));
+
+        await db.Get<IUserDataRepository>().DeleteUserAsync(carol.Id, null, default); // purged
+
+        Assert.Null(await settings.FindAsync(carol.Id, default));
+        Assert.Empty(await orders.ListAsync(carol.Id, default));
+        Assert.Single(await orders.ListAsync(bob.Id, default));
     }
 
     [Fact]

@@ -371,3 +371,19 @@ it('the user administration dialogs are labelled, described and free of violatio
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   }
 })
+
+it('the Arrange dialog is labelled, described and free of violations', async () => {
+  stubViewport('desktop')
+  const vehicles = fakeVehicleBackend([fakeVehicle({ id: 'a', name: 'Alpha' }), fakeVehicle({ id: 'b', name: 'Beta' })])
+  server.use(sessionHandler('NONE', () => null), healthHandler, ...vehicles.handlers, ...fakeLogBackend(fakeVehicle({ id: 'a', name: 'Alpha' }), []).handlers)
+  const ui = userEvent.setup()
+  renderWithApollo(<App />, '/')
+  await screen.findByRole('link', { name: 'Open Alpha' })
+
+  await ui.click(screen.getByRole('button', { name: 'Arrange' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Arrange vehicles' })
+  await within(dialog).findByRole('button', { name: 'Move Beta up' })
+
+  expect(dialog).toHaveAccessibleDescription(/order/)
+  await check(document.body)
+})

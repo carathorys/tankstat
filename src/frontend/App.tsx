@@ -6,14 +6,15 @@ import { lazy, Suspense, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, Route, Routes, useLocation, useSearchParams } from 'react-router'
 import { useMediaQuery } from './hooks/useMediaQuery.ts'
-import { useStoredState } from './hooks/useStoredState.ts'
-import { SessionDocument, type SessionQuery } from './gql/generated.ts'
+import { SessionDocument, type AuthMode, type SessionQuery } from './gql/generated.ts'
 import { ErrorBoundary } from './ErrorBoundary.tsx'
 import { LoginView } from './LoginView.tsx'
 import { ErrorMessage } from './messages.tsx'
 import { NoticeBanner } from './NoticeBanner.tsx'
 import { ResetPasswordView } from './PasswordForms.tsx'
 import { HealthFooter } from './shell/HealthFooter.tsx'
+import { UiSettingsProvider } from './settings/UiSettingsProvider.tsx'
+import { useUiSettings } from './settings/uiSettingsContext.ts'
 import { NavList } from './shell/NavList.tsx'
 import { TopBar } from './shell/TopBar.tsx'
 
@@ -27,22 +28,44 @@ const NotificationsPage = lazy(() => import('./pages/NotificationsPage.tsx').the
 const AccountPage = lazy(() => import('./pages/AccountPage.tsx').then((m) => ({ default: m.AccountPage })))
 const AdminPanel = lazy(() => import('./admin/AdminPanel.tsx').then((m) => ({ default: m.AdminPanel })))
 
-const isBoolean = (value: unknown): value is boolean => typeof value === 'boolean'
-
 export default function App() {
-  const { t } = useTranslation()
   const { data, error, loading } = useQuery(SessionDocument)
   const mode = data?.session.mode ?? 'NONE'
   const user = data?.session.user ?? null
   const showMenu = data !== undefined && (mode === 'NONE' || user !== null)
 
-  // Desktop: a docked sidebar, open by default; hiding it is remembered in this browser only.
-  // Phone: an overlay drawer, closed until the menu button is pressed.
+  // The UI settings follow the user: asked from the server once per session, kept per user (the key starts afresh on sign-in and sign-out).
+  return (
+    <UiSettingsProvider key={user?.id ?? mode} enabled={showMenu}>
+      <Shell data={data} error={error} loading={loading} mode={mode} user={user} showMenu={showMenu} />
+    </UiSettingsProvider>
+  )
+}
+
+function Shell({
+  data,
+  error,
+  loading,
+  mode,
+  user,
+  showMenu,
+}: {
+  data: SessionQuery | undefined
+  error: unknown
+  loading: boolean
+  mode: AuthMode
+  user: SessionQuery['session']['user']
+  showMenu: boolean
+}) {
+  const { t } = useTranslation()
+  // Desktop: a docked sidebar, open by default; hiding it is remembered (in this browser, and with the account once signed in).
+  // Phone: an overlay drawer, closed until the menu button is pressed, never remembered.
   const desktop = useMediaQuery('(min-width: 1024px)', true)
-  const [dockedOpen, setDockedOpen] = useStoredState('tankstat.nav.open', true, isBoolean)
+  const settings = useUiSettings()!
+  const dockedOpen = settings.navOpen
   const [drawerOpen, setDrawerOpen] = useState(false)
   const navOpen = desktop ? dockedOpen : drawerOpen
-  const toggleNav = () => (desktop ? setDockedOpen(!dockedOpen) : setDrawerOpen(!drawerOpen))
+  const toggleNav = () => (desktop ? settings.setNavOpen(!dockedOpen) : setDrawerOpen(!drawerOpen))
 
   return (
     <Flex direction="column" minHeight="100vh">
@@ -75,7 +98,7 @@ export default function App() {
         )}
         <Container asChild size="4" flexGrow="1" p={{ initial: '3', sm: '4' }} minWidth="0" style={{ minWidth: 0, maxWidth: '100%' }}>
           <main id="main" tabIndex={-1}>
-            {error && <ErrorMessage error={error} />}
+            {error !== undefined && <ErrorMessage error={error} />}
             {loading && (
               <Text as="p" role="status">
                 {t('app.loading')}

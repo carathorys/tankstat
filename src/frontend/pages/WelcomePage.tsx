@@ -8,6 +8,7 @@ import { VehicleCard } from '../components/VehicleCard.tsx'
 import { AddVehicleDocument, WelcomeDocument } from '../gql/generated.ts'
 import { useDebouncedValue } from '../hooks/useDebouncedValue.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
+import { ArrangeVehiclesDialog } from '../ArrangeVehiclesDialog.tsx'
 import { ErrorMessage } from '../messages.tsx'
 import { VehicleFormDialog } from '../VehicleFormDialog.tsx'
 
@@ -81,6 +82,7 @@ export function WelcomePage({ isAdmin }: { isAdmin: boolean }) {
           <Button asChild size="3" variant="soft">
             <Link to="/import">{t('welcome.import')}</Link>
           </Button>
+          {total >= 2 && <ArrangeVehiclesDialog />}
           {addButton(!isAdmin)}
           {isAdmin && (
             <Button asChild size="3">

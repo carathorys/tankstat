@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Tankstat.Application.Access;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Vehicles;
+using Tankstat.Domain;
 
 namespace Tankstat.Infrastructure.Persistence.Repositories;
 
@@ -46,15 +47,20 @@ internal sealed class VehicleRepository(IDbContextFactory<AppDbContext> dbFactor
         vehicles = Matching(vehicles, q.Search);
         var desc = q.Direction == SortDirection.Desc;
 
-        var ordered = q.SortBy switch
-        {
-            VehicleSortField.LicensePlate => Order(vehicles, v => v.LicensePlate == null ? null : v.LicensePlate.ToLower(), desc),
-            VehicleSortField.FuelType => Order(vehicles, v => v.FuelType, desc),
-            VehicleSortField.Owner => Order(vehicles, v => db.Users.Where(u => u.Id == v.OwnerId).Select(u => u.DisplayName.ToLower()).FirstOrDefault(), desc),
-            VehicleSortField.RefuelingCount => Order(vehicles, v => db.Refuelings.Count(r => r.VehicleId == v.Id), desc),
-            VehicleSortField.DeletedAt => Order(vehicles, v => v.DeletedAt, desc),
-            _ => Order(vehicles, v => v.Name.ToLower(), desc),
-        };
+        var ordered = q.OrderedFor is { } user
+            // The home list: the user's own arrangement first (vehicles without a position after the placed ones), then by name.
+            // COALESCE translates on every provider; ordering by a boolean would not.
+            ? vehicles.OrderBy(v => db.VehicleOrders.Where(o => o.UserId == user && o.VehicleId == v.Id).Select(o => (int?)o.Position).FirstOrDefault() ?? int.MaxValue)
+                .ThenBy(v => v.Name.ToLower())
+            : q.SortBy switch
+            {
+                VehicleSortField.LicensePlate => Order(vehicles, v => v.LicensePlate == null ? null : v.LicensePlate.ToLower(), desc),
+                VehicleSortField.FuelType => Order(vehicles, v => v.FuelType, desc),
+                VehicleSortField.Owner => Order(vehicles, v => db.Users.Where(u => u.Id == v.OwnerId).Select(u => u.DisplayName.ToLower()).FirstOrDefault(), desc),
+                VehicleSortField.RefuelingCount => Order(vehicles, v => db.Refuelings.Count(r => r.VehicleId == v.Id), desc),
+                VehicleSortField.DeletedAt => Order(vehicles, v => v.DeletedAt, desc),
+                _ => Order(vehicles, v => v.Name.ToLower(), desc),
+            };
         return ordered.ThenBy(v => v.Id).Skip(q.Skip).Take(q.Take);
     }
 

@@ -110,3 +110,16 @@ mutation SaveChart($input: SaveChartInput!) {
 mutation DeleteChart($id: UUID!) {
   deleteVehicleChart(id: $id)
 }
+
+# The Arrange dialog's own list: every vehicle the user may see, in the current order (asked afresh each time the dialog opens).
+query ArrangeVehicles {
+  myVehicles(take: 200) {
+    id
+    name
+    licensePlate
+  }
+}
+
+mutation SetVehicleOrder($vehicleIds: [UUID!]!) {
+  setVehicleOrder(vehicleIds: $vehicleIds)
+}

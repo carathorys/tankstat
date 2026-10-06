@@ -5,6 +5,7 @@ using Tankstat.Application.Refuelings;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Vehicles;
+using Tankstat.Domain;
 using Tankstat.TestSupport;
 using Tankstat.Infrastructure.Persistence;
 

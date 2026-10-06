@@ -6,6 +6,7 @@ using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
 using Tankstat.Domain.Vehicles;
+using Tankstat.Domain;
 using Tankstat.Infrastructure.Persistence;
 using Tankstat.TestSupport;
 

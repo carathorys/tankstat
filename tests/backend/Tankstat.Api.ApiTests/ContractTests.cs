@@ -53,8 +53,8 @@ public class ContractTests
     }
 
     [Theory]
-    [InlineData("Query", "health", "vehicles", "myVehicles", "myVehicleCount", "vehicle", "session", "notices", "users", "canSetUserPasswords", "accessSettings", "accessGrants", "trash", "vehicleCount", "trashCount", "trashDeletableCount", "vehicleDefaults", "refuelings", "refuelingCount", "refueling", "logDefaults", "refuelingTrash", "refuelingTrashCount", "refuelingTrashDeletableCount", "vehicleLogAccess", "shareCandidates", "notifications", "notificationCount", "recognitionStatus", "photoDrafts")]
-    [InlineData("Mutation", "addVehicle", "logRefueling", "login", "logout", "changePassword", "requestPasswordReset", "resetPassword", "createUser", "issuePasswordReset", "setUserAdmin", "setUserDisabled", "updateUser", "setUserPassword", "deleteUser", "setDefaultAccess", "setAccessGrant", "updateVehicle", "deleteVehicle", "restoreVehicle", "emptyTrash", "logRefueling", "updateRefueling", "deleteRefueling", "restoreRefueling", "emptyRefuelingTrash", "setVehicleLogAccess", "markNotificationsRead")]
+    [InlineData("Query", "health", "vehicles", "myVehicles", "myVehicleCount", "vehicle", "session", "notices", "users", "canSetUserPasswords", "accessSettings", "accessGrants", "trash", "vehicleCount", "trashCount", "trashDeletableCount", "vehicleDefaults", "refuelings", "refuelingCount", "refueling", "logDefaults", "refuelingTrash", "refuelingTrashCount", "refuelingTrashDeletableCount", "vehicleLogAccess", "shareCandidates", "notifications", "notificationCount", "recognitionStatus", "photoDrafts", "uiSettings")]
+    [InlineData("Mutation", "addVehicle", "logRefueling", "login", "logout", "changePassword", "requestPasswordReset", "resetPassword", "createUser", "issuePasswordReset", "setUserAdmin", "setUserDisabled", "updateUser", "setUserPassword", "deleteUser", "setDefaultAccess", "setAccessGrant", "updateVehicle", "deleteVehicle", "restoreVehicle", "emptyTrash", "logRefueling", "updateRefueling", "deleteRefueling", "restoreRefueling", "emptyRefuelingTrash", "setVehicleLogAccess", "markNotificationsRead", "updateUiSettings", "saveGridSettings", "resetGridSettings", "setVehicleOrder")]
     [InlineData("Session", "mode", "user")]
     [InlineData("UserInfo", "id", "displayName", "email", "isAdmin")]
     [InlineData("UserAccount", "id", "provider", "email", "displayName", "isAdmin", "isDisabled")]
@@ -83,6 +83,8 @@ public class ContractTests
     [InlineData("VehicleChart", "id", "vehicleId", "title", "metric", "grouping", "kind", "range", "rangeFrom", "rangeTo", "stacked", "isShared", "createdAt", "canEdit", "createdBy")]
     [InlineData("Refueling", "id", "vehicleId", "createdBy", "date", "volume", "totalCost", "currency", "odometer", "pricePerUnit", "consumption", "isFullTank", "missedPreviousFillUp", "note", "deletedAt", "canEdit", "canDelete", "vehicle", "photos", "reviewState", "filledFromPhoto")]
     [InlineData("Expense", "id", "amount", "currency", "odometer", "reviewState", "filledFromPhoto")]
+    [InlineData("UiSettingsInfo", "navOpen", "language", "grids")]
+    [InlineData("GridSettingsInfo", "gridId", "order", "hidden", "pageSize", "sortColumn", "sortDirection")]
     public async Task Schema_TypeExposesContractFields(string type, params string[] fields)
     {
         var names = await FieldNames(type);
@@ -94,6 +96,8 @@ public class ContractTests
     [InlineData("LogRefuelingInput", "vehicleId", "date", "volume", "totalCost", "currency", "odometer", "isFullTank", "note", "photoIds", "missedPreviousFillUp")]
     [InlineData("UpdateRefuelingInput", "id", "date", "volume", "totalCost", "currency", "odometer", "isFullTank", "note", "missedPreviousFillUp")]
     [InlineData("AddExpenseInput", "vehicleId", "date", "title", "category", "amount", "currency", "odometer", "note", "photoIds")]
+    [InlineData("GridSettingsInput", "gridId", "order", "hidden", "pageSize", "sortColumn", "sortDirection")]
+    [InlineData("UpdateUiSettingsInput", "navOpen", "language", "clearLanguage")]
     public async Task Schema_InputTypeTakesContractFields(string type, params string[] fields)
     {
         var body = await Query($"{{ __type(name: \"{type}\") {{ inputFields {{ name }} }} }}");
@@ -194,6 +198,29 @@ public class ContractTests
         Assert.False(read.TryGetProperty("errors", out _), read.ToString());
         Assert.Equal("HUF", Assert.Single(read.GetProperty("data").GetProperty("refuelings").EnumerateArray()).GetProperty("currency").GetString());
         Assert.Equal(1, read.GetProperty("data").GetProperty("refuelingCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task UiSettings_AndVehicleOrder_RoundTrip_AgainstRealDatabase()
+    {
+        var gridId = $"contract-{Guid.NewGuid():N}"[..20];
+        var saved = await Query($"mutation {{ saveGridSettings(input: {{ gridId: \"{gridId}\", order: [\"name\", \"owner\"], hidden: [\"owner\"], pageSize: 10, sortColumn: \"name\", sortDirection: DESC }}) {{ gridId pageSize sortDirection }} }}");
+        Assert.False(saved.TryGetProperty("errors", out _), saved.ToString());
+
+        var read = await Query("{ uiSettings { grids { gridId hidden pageSize } } }");
+        var grid = read.GetProperty("data").GetProperty("uiSettings").GetProperty("grids").EnumerateArray().Single(g => g.GetProperty("gridId").GetString() == gridId);
+        Assert.Equal(10, grid.GetProperty("pageSize").GetInt32());
+        Assert.Equal(["owner"], grid.GetProperty("hidden").EnumerateArray().Select(h => h.GetString()));
+        Assert.True((await Query($"mutation {{ resetGridSettings(gridId: \"{gridId}\") }}")).GetProperty("data").GetProperty("resetGridSettings").GetBoolean());
+
+        var tag = Guid.NewGuid().ToString("N")[..6];
+        var first = (await Query($"mutation {{ addVehicle(input: {{ name: \"Order A {tag}\", fuelType: PETROL }}) {{ id }} }}")).GetProperty("data").GetProperty("addVehicle").GetProperty("id").GetString();
+        var second = (await Query($"mutation {{ addVehicle(input: {{ name: \"Order B {tag}\", fuelType: PETROL }}) {{ id }} }}")).GetProperty("data").GetProperty("addVehicle").GetProperty("id").GetString();
+        var arranged = await Query($"mutation {{ setVehicleOrder(vehicleIds: [\"{second}\", \"{first}\"]) }}");
+        Assert.False(arranged.TryGetProperty("errors", out _), arranged.ToString());
+
+        var names = (await Query($"{{ myVehicles(search: \"{tag}\") {{ name }} }}")).GetProperty("data").GetProperty("myVehicles").EnumerateArray().Select(v => v.GetProperty("name").GetString()).ToArray();
+        Assert.Equal([$"Order B {tag}", $"Order A {tag}"], names);
     }
 
     [Fact]
