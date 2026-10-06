@@ -1,7 +1,8 @@
 import { useApolloClient, useMutation } from '@apollo/client/react'
-import { Button, Card, Heading, Link, Text } from '@radix-ui/themes'
+import { Button, Card, Heading, Text } from '@radix-ui/themes'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { OidcSignIn } from './auth/OidcSignIn.tsx'
 import { FieldForm } from './forms.tsx'
 import { LoginDocument, RequestPasswordResetDocument, type AuthMode } from './gql/generated.ts'
 import { SuccessMessage } from './messages.tsx'
@@ -69,14 +70,7 @@ export function LoginView({ mode }: { mode: AuthMode }) {
 
   return (
     <Card size="3" style={{ maxWidth: 420, margin: '2rem auto' }}>
-      {mode === 'OIDC' && (
-        <>
-          <Heading as="h2" size="5" mb="3">
-            {t('auth.signIn')}
-          </Heading>
-          <Link href="/auth/oidc/login">{t('auth.signInProvider')}</Link>
-        </>
-      )}
+      {mode === 'OIDC' && <OidcSignIn />}
       {mode === 'PROXY_HEADER' && (
         <>
           <Heading as="h2" size="5" mb="3">

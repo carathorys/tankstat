@@ -22,7 +22,7 @@ export function TopBar({
   const { t } = useTranslation()
 
   return (
-    <Flex asChild align="center" gap="3" px="4" py="2" className="glass app-topbar">
+    <Flex asChild align="center" gap="3" className="glass app-topbar">
       <header>
         {showMenu && (
           <IconButton

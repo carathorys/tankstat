@@ -1,4 +1,5 @@
 using HotChocolate.Execution;
+using Tankstat.Api;
 using Tankstat.Api.Auth;
 using Tankstat.Api.Media;
 using Tankstat.Api.GraphQL;
@@ -58,10 +59,15 @@ app.MapMediaEndpoints();
 app.MapImportEndpoints();
 app.MapGraphQL(); // POST /graphql (Banana Cake Pop UI on GET in Development)
 
-// Self-hosting: the built SPA (dist/) is copied into wwwroot and served by Kestrel.
+// Self-hosting: the built SPA (dist/) is copied into wwwroot and served by Kestrel. Hashed assets may be kept for good, everything with
+// a fixed name (index.html, the service worker, the manifest) is revalidated, so a release reaches every browser on its next start.
+var staticFiles = new StaticFileOptions
+{
+    OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = StaticCaching.HeaderFor(ctx.Context.Request.Path),
+};
 app.UseDefaultFiles();
-app.UseStaticFiles();
-app.MapFallbackToFile("index.html");
+app.UseStaticFiles(staticFiles);
+app.MapFallbackToFile("index.html", staticFiles);
 
 // `dotnet run -- schema export --output schema.graphql` writes the GraphQL schema for client code generation
 // (see `mise run schema:export`) without starting the server.

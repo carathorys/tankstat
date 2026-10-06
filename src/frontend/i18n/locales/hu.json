@@ -12,6 +12,7 @@
     "account": "Fiók",
     "admin": "Adminisztráció",
     "signOut": "Kijelentkezés",
+    "install": "Alkalmazás telepítése",
     "main": "Főmenü",
     "skip": "Ugrás a fő tartalomhoz",
     "show": "Menü megjelenítése",
@@ -27,7 +28,15 @@
   },
   "common": {
     "cancel": "Mégse",
+    "close": "Bezárás",
     "none": "–"
+  },
+  "install": {
+    "title": "A Tankstat telepítése",
+    "iosIntro": "Nyisd meg ezt az oldalt a Safariban, és add hozzá a Főképernyőhöz:",
+    "iosShare": "Koppints a Megosztás gombra (a négyzet, amelyből nyíl mutat felfelé) az eszköztáron.",
+    "iosAdd": "Görgess le, és válaszd a „Főképernyőhöz adás” lehetőséget.",
+    "iosConfirm": "Koppints a jobb felső sarokban a „Hozzáadás” gombra."
   },
   "notices": {
     "warning": "Figyelem:",
@@ -113,7 +122,15 @@
   },
   "auth": {
     "signIn": "Bejelentkezés",
-    "signInProvider": "Bejelentkezés az identitásszolgáltatóddal",
+    "redirecting": "Átirányítás az identitásszolgáltatódhoz…",
+    "signedOutTitle": "Kijelentkeztél.",
+    "signedOutHint": "Az alkalmazásbeli munkameneted véget ért. Az identitásszolgáltatódnál továbbra is bejelentkezve lehetsz.",
+    "failedTitle": "A bejelentkezés nem sikerült",
+    "failedText": "A bejelentkezés az identitásszolgáltatódon keresztül nem sikerült. Próbáld újra; ha továbbra sem megy, fordulj az adminisztrátorhoz.",
+    "failedReasons": {
+      "access_denied": "A bejelentkezést megszakítottad, vagy az identitásszolgáltatód elutasította."
+    },
+    "tryAgain": "Próbáld újra",
     "notSignedIn": "Nem vagy bejelentkezve",
     "proxyHint": "A hozzáférést a reverse proxy szabályozza. Nyisd meg az alkalmazást a proxyn keresztül, és ott jelentkezz be.",
     "forgotTitle": "Elfelejtetted a jelszavad?",

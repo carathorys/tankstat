@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Tankstat.Api.Auth;
@@ -251,6 +253,45 @@ public class OidcModeTests : IDisposable
         Assert.Equal("VALIDATION_FAILED", body.ErrorCode());
     }
 
+    [Fact]
+    public async Task ReturnUrl_TravelsInTheProtectedState()
+    {
+        var response = await _app.NewClientWithoutRedirects().GetAsync("/auth/oidc/login?returnUrl=/vehicles/abc");
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        var state = QueryHelpers.ParseQuery(response.Headers.Location!.Query)["state"].ToString();
+        var options = _app.Factory.Services.GetRequiredService<IOptionsMonitor<OpenIdConnectOptions>>().Get(SessionClaims.OidcScheme);
+        Assert.Equal("/vehicles/abc", options.StateDataFormat.Unprotect(state)!.RedirectUri);
+    }
+
+    [Fact]
+    public async Task CallbackWithGarbageState_LandsOnTheFailedScreen_WithoutEchoingIt()
+    {
+        var response = await _app.NewClientWithoutRedirects().GetAsync("/auth/oidc/callback?code=x&state=garbage-7f3a");
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/?signIn=failed&reason=callback_rejected", response.Headers.Location!.ToString());
+        var warning = Assert.Single(_app.Log.From(typeof(AuthExtensions).FullName!), e => e.Level == LogLevel.Warning);
+        Assert.Equal("callback_rejected", warning.Values["Reason"]);
+        Assert.DoesNotContain(_app.Log.From("Tankstat"), e => e.Text.Contains("garbage-7f3a")); // what a client sent never reaches the app's lines
+    }
+
+    [Theory]
+    [InlineData("access_denied", "access_denied")]
+    [InlineData("server_error", "provider_error")]
+    public async Task ProviderRefusal_LandsOnTheFailedScreen_AtThePageTheUserWanted(string error, string reason)
+    {
+        var client = _app.NewHttpsClientWithoutRedirects(); // keeps the correlation cookie the challenge sets (Secure: only sent over HTTPS)
+        var challenge = await client.GetAsync("/auth/oidc/login?returnUrl=/vehicles/abc");
+        var state = QueryHelpers.ParseQuery(challenge.Headers.Location!.Query)["state"].ToString();
+
+        var response = await client.GetAsync($"/auth/oidc/callback?error={error}&error_description=SECRET42&state={Uri.EscapeDataString(state)}");
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal($"/vehicles/abc?signIn=failed&reason={reason}", response.Headers.Location!.ToString());
+        Assert.DoesNotContain(_app.Log.From("Tankstat"), e => e.Text.Contains("SECRET42")); // the provider's text is never logged
+    }
+
     [Theory]
     [InlineData(null, "/")]
     [InlineData("", "/")]
@@ -260,6 +301,10 @@ public class OidcModeTests : IDisposable
     [InlineData("/\\evil.example.com", "/")]
     [InlineData("https://evil.example.com", "/")]
     [InlineData("javascript:alert(1)", "/")]
+    [InlineData("/\t/evil.example.com", "/")]   // a browser drops the TAB and reads //evil.example.com
+    [InlineData("/\t\\evil.example.com", "/")]
+    [InlineData("/a\r\nX: y", "/")]              // would break the redirect header
+    [InlineData("/é", "/")]
     public void ReturnUrl_MustBeALocalPath(string? input, string expected) =>
         Assert.Equal(expected, AuthExtensions.LocalPathOrRoot(input));
 }

@@ -12,6 +12,7 @@
     "account": "Account",
     "admin": "Administration",
     "signOut": "Sign out",
+    "install": "Install app",
     "main": "Main navigation",
     "skip": "Skip to main content",
     "show": "Show menu",
@@ -27,7 +28,15 @@
   },
   "common": {
     "cancel": "Cancel",
+    "close": "Close",
     "none": "–"
+  },
+  "install": {
+    "title": "Install Tankstat",
+    "iosIntro": "Open this page in Safari and add it to your Home Screen:",
+    "iosShare": "Tap the Share button (the square with an arrow) in the toolbar.",
+    "iosAdd": "Scroll down and choose “Add to Home Screen”.",
+    "iosConfirm": "Tap “Add” in the top right."
   },
   "notices": {
     "warning": "Warning:",
@@ -113,7 +122,15 @@
   },
   "auth": {
     "signIn": "Sign in",
-    "signInProvider": "Sign in with your identity provider",
+    "redirecting": "Taking you to your identity provider…",
+    "signedOutTitle": "You have signed out.",
+    "signedOutHint": "Your session in this app has ended. You may still be signed in at your identity provider.",
+    "failedTitle": "Sign-in failed",
+    "failedText": "Signing in with your identity provider did not work. Try again; if it keeps failing, contact your administrator.",
+    "failedReasons": {
+      "access_denied": "The sign-in was cancelled or refused by your identity provider."
+    },
+    "tryAgain": "Try again",
     "notSignedIn": "Not signed in",
     "proxyHint": "Access is controlled by your reverse proxy. Open this app through the proxy and sign in there.",
     "forgotTitle": "Forgot your password?",

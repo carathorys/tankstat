@@ -26,6 +26,9 @@ body {
     top: 0;
     z-index: 20;
     border-bottom: 1px solid var(--gray-a4);
+    /* Installed on a phone (viewport-fit=cover in index.html): keep the bar below the notch and the status bar. */
+    padding: calc(var(--space-2) + env(safe-area-inset-top, 0px)) calc(var(--space-4) + env(safe-area-inset-right, 0px)) var(--space-2)
+        calc(var(--space-4) + env(safe-area-inset-left, 0px));
 }
 
 .app-sidebar {
@@ -57,7 +60,7 @@ body {
     background: var(--accent-9);
     color: var(--accent-contrast);
 }
-.skip-link:focus { top: var(--space-3); }
+.skip-link:focus { top: calc(var(--space-3) + env(safe-area-inset-top, 0px)); }
 
 .drawer {
     position: fixed;
@@ -67,6 +70,18 @@ body {
     margin: 0;
     border-radius: 0;
     overflow: auto;
+    /* The content and the footer keep clear of the rounded corners and the home indicator (viewport-fit=cover applies in Safari tabs too). */
+#main { padding-left: max(var(--space-3), env(safe-area-inset-left, 0px)); padding-right: max(var(--space-3), env(safe-area-inset-right, 0px)); }
+@media (min-width: 768px) { #main { padding-left: max(var(--space-4), env(safe-area-inset-left, 0px)); padding-right: max(var(--space-4), env(safe-area-inset-right, 0px)); } }
+.app-footer {
+    padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
+    padding-right: max(var(--space-4), env(safe-area-inset-right, 0px));
+    padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
+}
+/* Installed on a phone: the drawer runs edge to edge, so its content keeps clear of the notch and the home indicator. */
+    padding-top: calc(var(--dialog-content-padding) + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(var(--dialog-content-padding) + env(safe-area-inset-bottom, 0px));
+    padding-left: calc(var(--dialog-content-padding) + env(safe-area-inset-left, 0px));
 }
 
 @media (prefers-reduced-motion: reduce) {

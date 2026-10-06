@@ -10,7 +10,7 @@ export function HealthFooter() {
   const { data, error } = useQuery(HealthDocument)
 
   return (
-    <Box asChild px="4" py="2" style={{ borderTop: '1px solid var(--gray-6)' }}>
+    <Box asChild px="4" py="2" className="app-footer" style={{ borderTop: '1px solid var(--gray-6)' }}>
       <footer>
         {error && <ErrorMessage>{t('status.unreachable', { message: error.message })}</ErrorMessage>}
         {data && (
