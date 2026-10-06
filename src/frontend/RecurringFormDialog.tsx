@@ -1,12 +1,13 @@
 import { useQuery } from '@apollo/client/react'
 import * as RadixForm from '@radix-ui/react-form'
-import { Button, Dialog, Flex, Text, TextArea, TextField } from '@radix-ui/themes'
+import { Button, Dialog, Flex, TextArea, TextField } from '@radix-ui/themes'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LabeledSelect } from './components/UnitSelect.tsx'
 import { Field } from './forms.tsx'
 import { LogDefaultsDocument, VehicleDefaultsDocument, type DistanceUnit, type RecurrenceKind } from './gql/generated.ts'
 import { ErrorMessage } from './messages.tsx'
+import { Loading } from './components/Loading.tsx'
 
 export interface RecurringValues {
   title: string
@@ -92,7 +93,6 @@ interface StartValues {
  * start from them.
  */
 function WithStartValues({ vehicleId, needed, children }: { vehicleId: string; needed: boolean; children: (start: StartValues | null) => ReactNode }) {
-  const { t } = useTranslation()
   const log = useQuery(LogDefaultsDocument, { variables: { vehicleId }, skip: !needed, fetchPolicy: 'network-only' })
   const instance = useQuery(VehicleDefaultsDocument, { skip: !needed })
   if (!needed) return children(null)
@@ -100,9 +100,7 @@ function WithStartValues({ vehicleId, needed, children }: { vehicleId: string; n
   if (error) return <ErrorMessage error={error} />
   if (!log.data || !instance.data) {
     return (
-      <Text as="p" role="status">
-        {t('app.loading')}
-      </Text>
+      <Loading />
     )
   }
   const { recurringWarnDays, recurringWarnDistance } = instance.data.vehicleDefaults

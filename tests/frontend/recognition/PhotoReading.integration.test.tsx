@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { http, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
 import { resizeImage } from '../../../src/frontend/pictures/resizeImage.ts'
@@ -418,6 +419,10 @@ it('saves an expense while its receipt is still being read, leaving the amount t
 
   await ui.upload(camera(dialog), photo())
   expect(await within(dialog).findByText('Reading…')).toBeInTheDocument()
+  // Said where the user looks before saving, inside the reading status region: saving now is fine.
+  expect(within(dialog).getByRole('status', { name: 'Photo reading status' })).toHaveTextContent(
+    'Reading the photo… You can save now: what you leave empty is filled in from the photo.',
+  )
   await ui.type(within(dialog).getByLabelText('Title'), 'Car wash')
   await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
 
@@ -500,5 +505,38 @@ it('without a photo being read, an emptied amount of a saved expense is still re
 
   expect(screen.getByRole('dialog', { name: 'Edit expense' })).toBeInTheDocument()
   expect(state.calls.UpdateExpense).toBeUndefined()
+})
+
+it('saving waits while a photo is still uploading, and says why', async () => {
+  stubViewport('desktop')
+  const photos = fakePhotoStore()
+  const recognition = fakeRecognition({ available: false })
+  const backend = fakeExpenseBackend(fakeVehicle(), [fakeExpense({ id: 'e1', title: 'Oil change' })], photos)
+  let release!: () => void
+  const held = new Promise<void>((resolve) => (release = resolve))
+  server.use(
+    sessionHandler('NONE', () => null),
+    healthHandler,
+    http.put('/media/vehicles/:vehicleId/photo-drafts', async () => {
+      await held // the upload is slow
+      return HttpResponse.json({ id: 'draft1', url: '/media/draft1' })
+    }),
+    ...backend.handlers,
+    ...recognition.handlers,
+  )
+  renderWithApollo(<App />, '/vehicles/v1?tab=expenses')
+  const ui = userEvent.setup()
+  await screen.findByText('Oil change')
+  await ui.click(screen.getByRole('button', { name: 'Add expense' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add expense' })
+  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
+
+  await ui.upload(camera(dialog), photo())
+
+  expect(await within(dialog).findByText('Saving waits until the photos are uploaded.')).toBeInTheDocument()
+  expect(within(dialog).getByRole('button', { name: 'Add expense' })).toBeDisabled()
+  release()
+  await waitFor(() => expect(within(dialog).queryByText('Saving waits until the photos are uploaded.')).not.toBeInTheDocument())
+  expect(within(dialog).getByRole('button', { name: 'Add expense' })).toBeEnabled()
 })
 

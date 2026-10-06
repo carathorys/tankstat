@@ -829,6 +829,7 @@
     }
   },
   "photos": {
+    "waitUpload": "A mentés megvárja, amíg a fotók feltöltődnek.",
     "title": "Fotók",
     "take": "Fotó készítése",
     "choose": "Fotók hozzáadása",
@@ -848,6 +849,8 @@
     "leftOut_other": "A bejegyzés mentve lett, de {{count}} fotót nem sikerült hozzáadni. A bejegyzés szerkesztésével újra hozzáadhatod őket."
   },
   "reading": {
+    "progress": "A fotó olvasása folyamatban…",
+    "saveNow": "Már most mentheted: amit üresen hagysz, a fotóból töltjük ki.",
     "filled": "A fotóról olvastuk le, ellenőrizd.",
     "differs": "A fotón ez áll: {{value}}",
     "use": "Átveszem",

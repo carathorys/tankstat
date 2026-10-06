@@ -14,7 +14,8 @@ import {
 import { Box, Button, Flex, IconButton, Table, Text, VisuallyHidden } from '@radix-ui/themes'
 import type { ParseKeys } from 'i18next'
 import { ChevronDown, ChevronUp, ChevronsUpDown, RefreshCw } from 'lucide-react'
-import { motion } from 'motion/react'
+import { AnimatePresence } from 'motion/react'
+import { MotionRow, rowMotion } from '../components/motion.ts'
 import { useEffect, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ErrorMessage } from '../messages.tsx'
@@ -46,7 +47,6 @@ const features = tableFeatures({ columnVisibilityFeature, columnOrderingFeature,
 type Features = typeof features
 
 const resolve = <T,>(updater: Updater<T>, previous: T): T => (typeof updater === 'function' ? (updater as (old: T) => T)(previous) : updater)
-const MotionRow = motion.create(Table.Row)
 const NO_ROWS: never[] = []
 /** How often a grid that waits for something on the server (see `pollWhile`) asks again. */
 export const GRID_POLL_MS = 10_000
@@ -174,7 +174,7 @@ export function DataGrid<TData extends object, TVars extends OperationVariables,
             aria-busy={loading}
             onClick={() => void refetch()}
           >
-            <RefreshCw size={18} aria-hidden />
+            <RefreshCw size={18} aria-hidden className={loading ? 'tk-spin' : undefined} />
           </IconButton>
           <ColumnsPopover
             columns={table.getAllLeafColumns().map((c) => ({
@@ -245,22 +245,24 @@ export function DataGrid<TData extends object, TVars extends OperationVariables,
               </Table.Row>
             </Table.Header>
             <Table.Body>
-              {table.getRowModel().rows.map((row) => (
-                <MotionRow key={row.id} align="center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }}>
-                  {row.getVisibleCells().map((cell, i) =>
-                    i === 0 ? (
-                      <Table.RowHeaderCell key={cell.id}>
-                        <table.FlexRender cell={cell} />
-                      </Table.RowHeaderCell>
-                    ) : (
-                      <Table.Cell key={cell.id}>
-                        <table.FlexRender cell={cell} />
-                      </Table.Cell>
-                    ),
-                  )}
-                  {actions && <Table.Cell justify="end">{actions(row.original)}</Table.Cell>}
-                </MotionRow>
-              ))}
+              <AnimatePresence>
+                {table.getRowModel().rows.map((row) => (
+                  <MotionRow key={row.id} align="center" {...rowMotion}>
+                    {row.getVisibleCells().map((cell, i) =>
+                      i === 0 ? (
+                        <Table.RowHeaderCell key={cell.id}>
+                          <table.FlexRender cell={cell} />
+                        </Table.RowHeaderCell>
+                      ) : (
+                        <Table.Cell key={cell.id}>
+                          <table.FlexRender cell={cell} />
+                        </Table.Cell>
+                      ),
+                    )}
+                    {actions && <Table.Cell justify="end">{actions(row.original)}</Table.Cell>}
+                  </MotionRow>
+                ))}
+              </AnimatePresence>
             </Table.Body>
           </Table.Root>
         </Box>

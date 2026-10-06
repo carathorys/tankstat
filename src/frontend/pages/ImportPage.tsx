@@ -24,6 +24,7 @@ import { useFormat } from '../i18n/format.ts'
 import { ErrorMessage, SuccessMessage } from '../messages.tsx'
 import { uploadImportFile } from '../pictures/uploadFile.ts'
 import { FUEL_TYPES } from '../vehicles.ts'
+import { Loading } from '../components/Loading.tsx'
 
 const FORMATS = ['fuelio'] as const
 type Format = (typeof FORMATS)[number]
@@ -170,9 +171,7 @@ function TargetAndReview({ token, step, onStep, onDone }: { token: string; step:
   if (preview.error || targets.error) return <ErrorMessage error={preview.error ?? targets.error} />
   if (!ready) {
     return (
-      <Text as="p" role="status">
-        {t('app.loading')}
-      </Text>
+      <Loading />
     )
   }
 

@@ -16,6 +16,8 @@ import { parseDecimal, useFormat } from './i18n/format.ts'
 import { ErrorMessage } from './messages.tsx'
 import { ReadNote } from './recognition/ReadNote.tsx'
 import { ReadingProblems } from './recognition/ReadingProblems.tsx'
+import { ReadingProgress } from './recognition/ReadingProgress.tsx'
+import { SaveWait } from './components/SaveWait.tsx'
 import type { ReadingExplanation } from './recognition/readingIssues.ts'
 import { mergeReadings, type ReadValues } from './recognition/readValues.ts'
 import { filledFields } from './recognition/review.ts'
@@ -23,6 +25,7 @@ import { ReviewCallout } from './recognition/ReviewState.tsx'
 import { useDraftReadings } from './recognition/useDraftReadings.ts'
 import { useReadFill } from './recognition/useReadFill.ts'
 import { keepAmountsInStep, type AmountField } from './refuelingAmounts.ts'
+import { Loading } from './components/Loading.tsx'
 
 /** Volume, total cost and odometer are null only when they were left for a photo that is still being read. */
 export interface RefuelingValues {
@@ -130,7 +133,7 @@ export function RefuelingFormDialog({
           {editing ? t('refuelings.dialogEditDescription') : t('refuelings.dialogAddDescription')}
         </Dialog.Description>
         {error && <ErrorMessage error={error} />}
-        {!error && !ready && <Text as="p" role="status">{t('app.loading')}</Text>}
+        {!error && !ready && <Loading />}
         {editing && details.data && !existing && <ErrorMessage>{t('errors.refueling.notFound')}</ErrorMessage>}
         {leftOut > 0 && <PhotosLeftOut count={leftOut} />}
         {ready && leftOut === 0 && (
@@ -145,6 +148,7 @@ export function RefuelingFormDialog({
             explanation={drafts.explanation}
             // A new log may leave values to a photo that is being read; a saved one still waiting for its photos may stay so.
             mayWait={drafts.pending.length > 0 || (editing && existing?.reviewState === 'AWAITING_PHOTOS')}
+            readingNow={drafts.pending.length > 0}
             gallery={
               <PhotoGallery
                 kind="refuelings"
@@ -183,6 +187,7 @@ function RefuelingForm({
   readingDone,
   explanation,
   mayWait,
+  readingNow,
   onSubmit,
 }: {
   initial: Initial
@@ -199,6 +204,8 @@ function RefuelingForm({
   explanation: ReadingExplanation
   /** A photo is still being read: values it can provide may be left empty. */
   mayWait: boolean
+  /** A photo is being read right now (the dialog says so near Save). */
+  readingNow: boolean
   onSubmit: (values: RefuelingValues) => Promise<unknown>
 }) {
   const { t } = useTranslation()
@@ -342,18 +349,22 @@ function RefuelingForm({
         </Field>
         {gallery}
         <div role="status" aria-label={t('a11y.readingStatus')}>
+          <ReadingProgress active={readingNow} canSave={mayWait} />
           {fill.announcement && <Text size="2">{fill.announcement}</Text>}
           <ReadingProblems problems={fill.problems} />
         </div>
         {error !== undefined && <ErrorMessage error={error} />}
-        <Flex gap="3" justify="end">
+        <Flex gap="3" justify="end" wrap="wrap">
+          <SaveWait waiting={photosBusy && !busy} />
           <Dialog.Close>
             <Button type="button" variant="soft" color="gray" disabled={busy}>
               {t('common.cancel')}
             </Button>
           </Dialog.Close>
           <RadixForm.Submit asChild>
-            <Button disabled={busy || photosBusy}>{editing ? t('refuelings.save') : t('refuelings.saveAdd')}</Button>
+            <Button loading={busy} disabled={photosBusy}>
+              {editing ? t('refuelings.save') : t('refuelings.saveAdd')}
+            </Button>
           </RadixForm.Submit>
         </Flex>
       </Flex>

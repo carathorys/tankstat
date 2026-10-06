@@ -16,8 +16,8 @@ export function ReviewBadge({ state }: { state: ReviewState | undefined }) {
   if (!state || state === 'NONE') return null
   const { color, Icon } = STYLE[state]
   return (
-    <Badge color={color} variant="soft" size="1">
-      <Icon size={12} aria-hidden />
+    <Badge key={state} color={color} variant="soft" size="1" className="tk-fade">
+      <Icon size={12} aria-hidden className={state === 'AWAITING_PHOTOS' ? 'tk-pulse' : undefined} />
       {t(`review.badge.${state}`)}
     </Badge>
   )
@@ -29,7 +29,7 @@ export function ReviewCallout({ state }: { state: ReviewState | undefined }) {
   if (!state || state === 'NONE') return null
   const { color, Icon } = STYLE[state]
   return (
-    <Callout.Root color={color} size="1" mb="3">
+    <Callout.Root color={color} size="1" mb="3" className="tk-appear">
       <Callout.Icon>
         <Icon size={16} aria-hidden />
       </Callout.Icon>

@@ -17,6 +17,7 @@ import { UiSettingsProvider } from './settings/UiSettingsProvider.tsx'
 import { useUiSettings } from './settings/uiSettingsContext.ts'
 import { NavList } from './shell/NavList.tsx'
 import { TopBar } from './shell/TopBar.tsx'
+import { Loading } from './components/Loading.tsx'
 
 // Every page is its own chunk, loaded when it is first visited: the first screen only needs the shell and the page it opens on.
 const WelcomePage = lazy(() => import('./pages/WelcomePage.tsx').then((m) => ({ default: m.WelcomePage })))
@@ -100,9 +101,7 @@ function Shell({
           <main id="main" tabIndex={-1}>
             {error !== undefined && <ErrorMessage error={error} />}
             {loading && (
-              <Text as="p" role="status">
-                {t('app.loading')}
-              </Text>
+              <Loading />
             )}
             {data && <NoticeBanner notices={data.notices} />}
             {data && <Content data={data} />}
@@ -132,9 +131,7 @@ function Content({ data }: { data: SessionQuery }) {
       <ErrorBoundary>
         <Suspense
           fallback={
-            <Text as="p" role="status">
-              {t('app.loading')}
-            </Text>
+            <Loading />
           }
         >
           <Routes>
