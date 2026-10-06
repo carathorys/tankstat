@@ -9,7 +9,7 @@ Tankstat is a self-hosted web app: React + TypeScript frontend (Vite) and a .NET
 All tooling is managed by `mise` (`mise.toml`: Node LTS, .NET 10). Prefer `mise run <task>` over calling tools directly.
 
 - `mise run install` - `npm ci` + `dotnet restore`
-- `mise run dev:api` / `mise run dev:web` - API on :5080 with hot reload; Vite dev server proxying `/graphql`, `/auth` and `/media` to it
+- `mise run dev:api` / `mise run dev:web` - API on :5080 with hot reload; Vite dev server proxying `/graphql`, `/auth/oidc/`, `/media` and `/imports` to it (only `/auth/oidc/` of `/auth`: `src/frontend/auth/` modules are served at `/auth/...`)
 - `mise run test` - typecheck, lint, then every test layer (run this before finishing a change)
 - `mise run test:unit`, `test:integration`, `test:api` - single layers
 - `mise run build` - self-hostable output in `out/` (published API + SPA in `wwwroot`)
