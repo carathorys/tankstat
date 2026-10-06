@@ -202,6 +202,52 @@ public class RecognitionGraphQLTests
         Assert.Empty(checkedLog.GetProperty("filledFromPhoto").EnumerateArray());
     }
 
+    private static async Task<string> AddLogPhoto(HttpClient c, string segment, string logId, string query)
+    {
+        var content = new ByteArrayContent(Png(7));
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        var response = await c.PutAsync($"/media/{segment}/{logId}/photos{query}", content);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+    }
+
+    [Fact]
+    public async Task APhotoAddedToASavedRefuelling_IsRead_ItsReadingIsOnThePhoto_AndAnEmptiedValueWaitsForIt()
+    {
+        var provider = new FakeProvider
+        {
+            Gate = new SemaphoreSlim(0),
+            // The receipt shows its currency: a total is only ever stored in a currency read from the photo, never in the hint.
+            Answer = _ => new("fake-1", DocumentKind.FuelReceipt,
+            [
+                new(ReadingFieldName.Total, "24687", 0.94, ValueSource.Read),
+                new(ReadingFieldName.Volume, "38.52", 0.93, ValueSource.Read),
+                new(ReadingFieldName.Currency, "HUF", 0.95, ValueSource.Read),
+            ]),
+        };
+        using var app = WithReading(provider);
+        var (admin, vehicle) = await Signed(app);
+        var id = (await admin.Gql("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }",
+            new { i = new { vehicleId = vehicle, date = "2026-09-02", volume = 40, totalCost = 60, currency = "HUF", odometer = 12_345, isFullTank = true } }))
+            .Data().GetProperty("logRefueling").GetProperty("id").GetString()!;
+        var unread = await AddLogPhoto(admin, "refuelings", id, ""); // without a form: kept, not read
+        var receipt = await AddLogPhoto(admin, "refuelings", id, "?form=refueling&locale=hu");
+
+        var saved = (await admin.Gql("mutation($i: UpdateRefuelingInput!) { updateRefueling(input: $i) { totalCost reviewState } }",
+            new { i = new { id, date = "2026-09-02", volume = 40, totalCost = (decimal?)null, odometer = 12_345, isFullTank = true } })).Data().GetProperty("updateRefueling");
+        Assert.Equal((JsonValueKind.Null, "AWAITING_PHOTOS"), (saved.GetProperty("totalCost").ValueKind, saved.GetProperty("reviewState").GetString()));
+
+        provider.Gate.Release();
+        var log = await WaitForReview(admin, id);
+        Assert.Equal((24687m, "NEEDS_REVIEW"), (log.GetProperty("totalCost").GetDecimal(), log.GetProperty("reviewState").GetString()));
+        var photos = (await admin.Gql("query($id: UUID!) { refueling(id: $id) { photos { id reading { status values { name value } } } } }", new { id }))
+            .Data().GetProperty("refueling").GetProperty("photos").EnumerateArray().ToDictionary(p => p.GetProperty("id").GetString()!);
+        Assert.Equal(JsonValueKind.Null, photos[unread].GetProperty("reading").ValueKind);
+        Assert.Equal("READ", photos[receipt].GetProperty("reading").GetProperty("status").GetString());
+        var (request, _) = Assert.Single(provider.Requests);
+        Assert.Equal(("hu", "HUF"), (request.Locale, request.Currency)); // the log's own currency
+    }
+
     [Fact]
     public async Task WithoutAPhotoBeingRead_ALogNeedsEveryValue()
     {

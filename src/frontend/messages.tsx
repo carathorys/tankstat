@@ -8,7 +8,7 @@ export function ErrorMessage({ error, children }: { error?: unknown; children?: 
   const errorText = useErrorText()
 
   return (
-    <Callout.Root color="red" role="alert" size="1" my="2">
+    <Callout.Root color="red" role="alert" size="1" my="2" className="tk-appear">
       <Callout.Icon>
         <CircleX size={16} />
       </Callout.Icon>
@@ -19,7 +19,7 @@ export function ErrorMessage({ error, children }: { error?: unknown; children?: 
 
 export function SuccessMessage({ children }: { children: ReactNode }) {
   return (
-    <Callout.Root color="green" role="status" size="1" my="2">
+    <Callout.Root color="green" role="status" size="1" my="2" className="tk-appear">
       <Callout.Icon>
         <CircleCheck size={16} />
       </Callout.Icon>

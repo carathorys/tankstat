@@ -269,6 +269,7 @@ type LogDefaults {
 type LogPhotoInfo {
   id: UUID!
   url: String!
+  reading: PhotoReadingInfo @cost(weight: "10")
 }
 
 type MarkRecurringExpensesDonePayload {

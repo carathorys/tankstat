@@ -1,16 +1,19 @@
 import { useMutation, useQuery } from '@apollo/client/react'
 import { Button, Flex, Grid, Heading, Text, TextField } from '@radix-ui/themes'
 import { Search } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 import { VehicleCard } from '../components/VehicleCard.tsx'
+import { itemMotion } from '../components/motion.ts'
 import { AddVehicleDocument, WelcomeDocument } from '../gql/generated.ts'
 import { useDebouncedValue } from '../hooks/useDebouncedValue.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { ArrangeVehiclesDialog } from '../ArrangeVehiclesDialog.tsx'
 import { ErrorMessage } from '../messages.tsx'
 import { VehicleFormDialog } from '../VehicleFormDialog.tsx'
+import { Loading } from '../components/Loading.tsx'
 
 const PAGE_SIZE = 24
 
@@ -116,9 +119,7 @@ export function WelcomePage({ isAdmin }: { isAdmin: boolean }) {
       )}
       {error && <ErrorMessage error={error} />}
       {!data && !error && (
-        <Text as="p" role="status">
-          {t('app.loading')}
-        </Text>
+        <Loading />
       )}
       {data && total === 0 && searching && <Text as="p">{t('welcome.noMatches', { search: input.trim() })}</Text>}
       {data && total === 0 && !searching && (
@@ -129,18 +130,20 @@ export function WelcomePage({ isAdmin }: { isAdmin: boolean }) {
       {vehicles.length > 0 && (
         <Grid asChild columns={{ initial: '1', sm: '2', xl: '3' }} gap="4">
           <ul aria-label={t('welcome.countLabel', { count: total })} style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {vehicles.map((v) => (
-              <li key={v.id} style={{ display: 'grid' }}>
-                <VehicleCard vehicle={v} />
-              </li>
-            ))}
+            <AnimatePresence initial={false}>
+              {vehicles.map((v) => (
+                <motion.li key={v.id} style={{ display: 'grid' }} {...itemMotion}>
+                  <VehicleCard vehicle={v} />
+                </motion.li>
+              ))}
+            </AnimatePresence>
           </ul>
         </Grid>
       )}
       {moreError !== undefined && <ErrorMessage error={moreError} />}
       {hasMore && (
         <Flex ref={sentinel} justify="center" mt="4">
-          <Button size="3" variant="soft" disabled={loadingMore} onClick={() => void loadMore()}>
+          <Button size="3" variant="soft" loading={loadingMore} onClick={() => void loadMore()}>
             {t('welcome.more')}
           </Button>
         </Flex>

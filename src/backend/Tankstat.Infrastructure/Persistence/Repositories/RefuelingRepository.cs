@@ -80,9 +80,7 @@ internal sealed class RefuelingRepository(IDbContextFactory<AppDbContext> dbFact
     public async Task UpdateAsync(Refueling refueling, LinkedChanges changes, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        db.Refuelings.Update(refueling); // marks the loaded graph (cost, reading) as modified; new and let-go rows are said so explicitly
-        db.Apply(changes);
-        await db.SaveChangesAsync(ct);
+        await db.SaveLogAsync(refueling, changes, ct);
     }
 
     public async Task<PurgedLogs> PurgeAsync(OwnerScope scope, CancellationToken ct)

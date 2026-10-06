@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { http, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
 import { resizeImage } from '../../../src/frontend/pictures/resizeImage.ts'
@@ -418,6 +419,10 @@ it('saves an expense while its receipt is still being read, leaving the amount t
 
   await ui.upload(camera(dialog), photo())
   expect(await within(dialog).findByText('Reading…')).toBeInTheDocument()
+  // Said where the user looks before saving, inside the reading status region: saving now is fine.
+  expect(within(dialog).getByRole('status', { name: 'Photo reading status' })).toHaveTextContent(
+    'Reading the photo… You can save now: what you leave empty is filled in from the photo.',
+  )
   await ui.type(within(dialog).getByLabelText('Title'), 'Car wash')
   await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
 
@@ -425,3 +430,113 @@ it('saves an expense while its receipt is still being read, leaving the amount t
   expect(backend.state.calls.AddExpense).toEqual([{ input: expect.objectContaining({ title: 'Car wash', amount: null, photoIds: ['draft1'] }) }])
   expect(await screen.findByText('Reading photo…')).toBeInTheDocument()
 })
+
+// ---- photos added to a saved log, in its edit dialog -----------------------------------------------------
+
+function setupExpenseEdit(recognitionOptions: Parameters<typeof fakeRecognition>[0] = {}) {
+  stubViewport('desktop')
+  const photos = fakePhotoStore()
+  const recognition = fakeRecognition({
+    results: [[{ name: 'TOTAL', value: '25870' }, { name: 'CURRENCY', value: 'EUR' }, { name: 'DATE', value: '2026-09-25' }]],
+    queuedPolls: 0,
+    photos,
+    ...recognitionOptions,
+  })
+  const backend = fakeExpenseBackend(fakeVehicle(), [fakeExpense({ id: 'e1', title: 'Oil change', date: '2026-09-01', amount: 35000, currency: 'HUF' })], photos)
+  server.use(sessionHandler('NONE', () => null), healthHandler, ...backend.handlers, ...recognition.handlers)
+  renderWithApollo(<App />, '/vehicles/v1?tab=expenses')
+  return { ...backend, photos, recognition, ui: userEvent.setup() }
+}
+
+async function openEditExpense(ui: ReturnType<typeof userEvent.setup>) {
+  await screen.findByText('Oil change')
+  await ui.click(screen.getByRole('button', { name: 'Edit the expense Oil change' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Edit expense' })
+  await waitFor(() => expect(within(dialog).getByLabelText(/^Amount/)).toHaveValue('35000'))
+  return dialog
+}
+
+it('a photo added to a saved expense is read: the saved values stay, the photo only offers what differs', async () => {
+  const { ui, photos } = setupExpenseEdit()
+  const dialog = await openEditExpense(ui)
+
+  await ui.upload(camera(dialog), photo())
+
+  expect(await within(dialog).findAllByText(/The photo shows/, {}, READ_WAIT)).not.toHaveLength(0)
+  expect(within(dialog).getByLabelText(/^Amount/)).toHaveValue('35000') // saved: kept
+  expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF')
+  expect(within(dialog).getByText(/The photo shows 25870/)).toBeInTheDocument()
+  expect(photos.state.putQueries).toEqual(['?form=expense&locale=en'])
+  expect(vi.mocked(resizeImage)).toHaveBeenLastCalledWith(expect.anything(), { maxEdge: 1600, format: 'jpeg' }) // a photo that is read goes as JPEG
+})
+
+it('an amount emptied in the edit dialog is filled in from the new photo', async () => {
+  const { ui } = setupExpenseEdit()
+  const dialog = await openEditExpense(ui)
+
+  await ui.clear(within(dialog).getByLabelText(/^Amount/))
+  await ui.upload(camera(dialog), photo())
+
+  await waitFor(() => expect(within(dialog).getByLabelText(/^Amount/)).toHaveValue('25870'), READ_WAIT)
+  expect(within(dialog).getByLabelText('Date')).toHaveValue('2026-09-01') // still the saved day
+})
+
+it('a saved expense can be saved with its amount emptied while its new photo is still being read', async () => {
+  const { ui, state } = setupExpenseEdit({ queuedPolls: 1000 })
+  const dialog = await openEditExpense(ui)
+
+  await ui.upload(camera(dialog), photo())
+  expect(await within(dialog).findByText('Reading…')).toBeInTheDocument()
+  await ui.clear(within(dialog).getByLabelText(/^Amount/))
+  expect(within(dialog).getByText('Leave it empty: it is filled in from the photo after saving.')).toBeInTheDocument()
+  await ui.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(state.calls.UpdateExpense).toEqual([{ input: expect.objectContaining({ id: 'e1', amount: null }) }])
+})
+
+it('without a photo being read, an emptied amount of a saved expense is still required', async () => {
+  const { ui, state } = setupExpenseEdit({ available: false })
+  const dialog = await openEditExpense(ui)
+
+  await ui.upload(camera(dialog), photo())
+  await ui.clear(within(dialog).getByLabelText(/^Amount/))
+  await ui.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+  expect(screen.getByRole('dialog', { name: 'Edit expense' })).toBeInTheDocument()
+  expect(state.calls.UpdateExpense).toBeUndefined()
+})
+
+it('saving waits while a photo is still uploading, and says why', async () => {
+  stubViewport('desktop')
+  const photos = fakePhotoStore()
+  const recognition = fakeRecognition({ available: false })
+  const backend = fakeExpenseBackend(fakeVehicle(), [fakeExpense({ id: 'e1', title: 'Oil change' })], photos)
+  let release!: () => void
+  const held = new Promise<void>((resolve) => (release = resolve))
+  server.use(
+    sessionHandler('NONE', () => null),
+    healthHandler,
+    http.put('/media/vehicles/:vehicleId/photo-drafts', async () => {
+      await held // the upload is slow
+      return HttpResponse.json({ id: 'draft1', url: '/media/draft1' })
+    }),
+    ...backend.handlers,
+    ...recognition.handlers,
+  )
+  renderWithApollo(<App />, '/vehicles/v1?tab=expenses')
+  const ui = userEvent.setup()
+  await screen.findByText('Oil change')
+  await ui.click(screen.getByRole('button', { name: 'Add expense' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add expense' })
+  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
+
+  await ui.upload(camera(dialog), photo())
+
+  expect(await within(dialog).findByText('Saving waits until the photos are uploaded.')).toBeInTheDocument()
+  expect(within(dialog).getByRole('button', { name: 'Add expense' })).toBeDisabled()
+  release()
+  await waitFor(() => expect(within(dialog).queryByText('Saving waits until the photos are uploaded.')).not.toBeInTheDocument())
+  expect(within(dialog).getByRole('button', { name: 'Add expense' })).toBeEnabled()
+})
+

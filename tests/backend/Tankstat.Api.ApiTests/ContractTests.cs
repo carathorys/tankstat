@@ -68,7 +68,7 @@ public class ContractTests
     [InlineData("Expense", "id", "vehicleId", "createdBy", "date", "title", "category", "amount", "currency", "odometer", "note", "deletedAt", "canEdit", "canDelete", "vehicle", "photos", "schedules")]
     [InlineData("MarkRecurringExpensesDonePayload", "schedules", "expense")]
     [InlineData("RecurringRef", "id", "title")]
-    [InlineData("LogPhotoInfo", "id", "url")]
+    [InlineData("LogPhotoInfo", "id", "url", "reading")]
     [InlineData("RecognitionStatusInfo", "available")]
     [InlineData("PhotoDraftInfo", "id", "url", "reading")]
     [InlineData("PhotoReadingInfo", "status", "kind", "values")]

@@ -85,13 +85,15 @@ public sealed class RefuelingService(
     {
         var refueling = await EditableLogAsync(id, includeDeleted: false, ct);
         await ValidateAsync(refueling.VehicleId, input, exceptReadingId: refueling.OdometerReadingId, ct);
-        var readingPhotos = IsIncomplete(input) && await filler.AnyReadingAsync(LogType.Refueling, id, ct);
+        var readingPhotos = IsIncomplete(input) && await filler.MayWaitForLogPhotosAsync(LogType.Refueling, id, ct);
         var waited = refueling.ReviewState;
 
         var changes = refueling.Update(
             input.Date, input.Volume, input.TotalCost, input.Currency ?? refueling.Currency, input.Odometer, input.IsFullTank,
             input.MissedPreviousFillUp ?? refueling.MissedPreviousFillUp, input.Note, readingPhotos);
         await refuelings.UpdateAsync(refueling, changes, ct);
+        // Readings that finished before the save are taken now (the worker's round may have passed while the log did not wait yet).
+        if (refueling.ReviewState == ReviewState.AwaitingPhotos) await filler.FillAsync(LogType.Refueling, id, ct);
         await RecalculateConsumptionAsync(refueling.VehicleId, ct);
         logger.LogDebug("Refueling {RefuelingId} of vehicle {VehicleId} updated", id, refueling.VehicleId);
         if (waited != ReviewState.None && refueling.ReviewState == ReviewState.None)

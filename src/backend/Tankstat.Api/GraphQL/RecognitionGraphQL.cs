@@ -1,3 +1,4 @@
+using GreenDonut;
 using Tankstat.Api.Media;
 using Tankstat.Application.Recognition;
 using Tankstat.Domain.Recognition;
@@ -14,7 +15,12 @@ public sealed record ReadingValueInfo(ReadingFieldName Name, string Value, doubl
 public sealed record ReadingIssueInfo(ReadingIssueCode Code, ReadingFieldName? Field);
 
 /// <summary>What became of reading a photo; <c>values</c> holds only what is worth filling in, <c>issues</c> says why there is less than there might be.</summary>
-public sealed record PhotoReadingInfo(ReadingStatus Status, DocumentKind? Kind, IReadOnlyList<ReadingValueInfo> Values, IReadOnlyList<ReadingIssueInfo> Issues);
+public sealed record PhotoReadingInfo(ReadingStatus Status, DocumentKind? Kind, IReadOnlyList<ReadingValueInfo> Values, IReadOnlyList<ReadingIssueInfo> Issues)
+{
+    public static PhotoReadingInfo From(PhotoReading reading, RecognitionService recognition) => new(
+        reading.Status, reading.Kind, recognition.UsableValues(reading).Select(v => new ReadingValueInfo(v.Name, v.Value, v.Confidence)).ToList(),
+        recognition.IssuesOf(reading).Select(i => new ReadingIssueInfo(i.Code, i.Field)).ToList());
+}
 
 /// <summary>A photo uploaded for a log that is not saved yet, with its reading (none when photo reading is off).</summary>
 public sealed record PhotoDraftInfo(Guid Id, string Url, PhotoReadingInfo? Reading);
@@ -29,9 +35,25 @@ public sealed class RecognitionQueries
     /// <summary>The caller's own draft photos among <c>ids</c> (in that order) with what was read from them; others' are left out.</summary>
     public async Task<IReadOnlyList<PhotoDraftInfo>> GetPhotoDrafts(IReadOnlyList<Guid> ids, [Service] RecognitionService recognition, CancellationToken ct) =>
         (await recognition.ListDraftsAsync(ids, ct))
-            .Select(d => new PhotoDraftInfo(d.Draft.Id, MediaUrls.Image(d.Draft.Id)!, d.Reading is { } reading
-                ? new PhotoReadingInfo(reading.Status, reading.Kind, recognition.UsableValues(reading).Select(v => new ReadingValueInfo(v.Name, v.Value, v.Confidence)).ToList(),
-                    recognition.IssuesOf(reading).Select(i => new ReadingIssueInfo(i.Code, i.Field)).ToList())
-                : null))
+            .Select(d => new PhotoDraftInfo(d.Draft.Id, MediaUrls.Image(d.Draft.Id)!, d.Reading is { } reading ? PhotoReadingInfo.From(reading, recognition) : null))
             .ToList();
+}
+
+/// <summary>The readings of the photos of a response, by picture id, in one query. Only used for photos of logs that were already authorised.</summary>
+public sealed class PhotoReadingsLoader(RecognitionService recognition, IBatchScheduler scheduler, DataLoaderOptions options)
+    : BatchDataLoader<Guid, PhotoReading?>(scheduler, options)
+{
+    protected override async Task<IReadOnlyDictionary<Guid, PhotoReading?>> LoadBatchAsync(IReadOnlyList<Guid> keys, CancellationToken ct)
+    {
+        var found = await recognition.ReadingsOfAsync(keys, ct);
+        return keys.ToDictionary(k => k, k => found.GetValueOrDefault(k));
+    }
+}
+
+[ExtendObjectType<LogPhotoInfo>]
+public sealed class LogPhotoReadingExtensions
+{
+    /// <summary>What was read from the photo (a photo added in the edit dialog while reading is on); null when it was never read.</summary>
+    public async Task<PhotoReadingInfo?> GetReading([Parent] LogPhotoInfo photo, PhotoReadingsLoader loader, [Service] RecognitionService recognition, CancellationToken ct) =>
+        await loader.LoadAsync(photo.Id, ct) is { } reading ? PhotoReadingInfo.From(reading, recognition) : null;
 }

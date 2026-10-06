@@ -21,7 +21,7 @@ export function RecurringStatusBadge({ state, solid = false }: { state: Recurren
   const { t } = useTranslation()
   const { color, icon: Icon } = STYLE[state]
   return (
-    <Badge color={color} variant={solid ? 'solid' : 'soft'} size="2">
+    <Badge key={state} className="tk-fade" color={color} variant={solid ? 'solid' : 'soft'} size="2">
       <Icon size={14} aria-hidden />
       {t(`recurring.state.${state}`)}
     </Badge>

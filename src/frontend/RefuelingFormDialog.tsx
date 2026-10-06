@@ -16,6 +16,8 @@ import { parseDecimal, useFormat } from './i18n/format.ts'
 import { ErrorMessage } from './messages.tsx'
 import { ReadNote } from './recognition/ReadNote.tsx'
 import { ReadingProblems } from './recognition/ReadingProblems.tsx'
+import { ReadingProgress } from './recognition/ReadingProgress.tsx'
+import { SaveWait } from './components/SaveWait.tsx'
 import type { ReadingExplanation } from './recognition/readingIssues.ts'
 import { mergeReadings, type ReadValues } from './recognition/readValues.ts'
 import { filledFields } from './recognition/review.ts'
@@ -23,6 +25,7 @@ import { ReviewCallout } from './recognition/ReviewState.tsx'
 import { useDraftReadings } from './recognition/useDraftReadings.ts'
 import { useReadFill } from './recognition/useReadFill.ts'
 import { keepAmountsInStep, type AmountField } from './refuelingAmounts.ts'
+import { Loading } from './components/Loading.tsx'
 
 /** Volume, total cost and odometer are null only when they were left for a photo that is still being read. */
 export interface RefuelingValues {
@@ -87,11 +90,14 @@ export function RefuelingFormDialog({
   /** `photoIds`: the drafts uploaded for a new log (always empty when editing: a saved log takes its photos right away). */
   onSubmit: (values: RefuelingValues, photoIds: string[]) => Promise<Saved>
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [open, setOpen] = useState(false)
   const editing = refuelingId !== undefined
   const { queue, leftOut, saving, submit, reset } = usePhotoSession(vehicle.id, editing ? undefined : 'refueling', open)
-  const drafts = useDraftReadings(queue.uploaded, open && !editing)
+  // Photos added to a saved log in this dialog (read like drafts), and whether they are still going up.
+  const [added, setAdded] = useState<{ id: string; at: number }[]>([])
+  const [adding, setAdding] = useState(false)
+  const drafts = useDraftReadings(editing ? added : queue.uploaded, open, editing ? { kind: 'refuelings', id: refuelingId } : undefined)
   const details = useQuery(RefuelingDetailsDocument, { variables: { id: refuelingId ?? '' }, skip: !editing || !open, fetchPolicy: 'network-only' })
   const defaults = useQuery(LogDefaultsDocument, { variables: { vehicleId: vehicle.id }, skip: !open, fetchPolicy: 'network-only' })
   const error = details.error ?? defaults.error
@@ -109,7 +115,10 @@ export function RefuelingFormDialog({
       open={open}
       onOpenChange={(next) => {
         setOpen(next)
-        if (!next) reset()
+        if (!next) {
+          reset()
+          setAdded([])
+        }
       }}
     >
       <Dialog.Trigger>{trigger}</Dialog.Trigger>
@@ -124,7 +133,7 @@ export function RefuelingFormDialog({
           {editing ? t('refuelings.dialogEditDescription') : t('refuelings.dialogAddDescription')}
         </Dialog.Description>
         {error && <ErrorMessage error={error} />}
-        {!error && !ready && <Text as="p" role="status">{t('app.loading')}</Text>}
+        {!error && !ready && <Loading />}
         {editing && details.data && !existing && <ErrorMessage>{t('errors.refueling.notFound')}</ErrorMessage>}
         {leftOut > 0 && <PhotosLeftOut count={leftOut} />}
         {ready && leftOut === 0 && (
@@ -133,12 +142,13 @@ export function RefuelingFormDialog({
             units={vehicle.units}
             editing={editing}
             last={lastReading}
-            photosBusy={queue.busy || queue.failed > 0}
+            photosBusy={queue.busy || queue.failed > 0 || adding}
             read={mergeReadings(drafts.readings.values())}
             readingDone={drafts.done}
             explanation={drafts.explanation}
             // A new log may leave values to a photo that is being read; a saved one still waiting for its photos may stay so.
-            mayWait={editing ? existing?.reviewState === 'AWAITING_PHOTOS' : drafts.pending.length > 0}
+            mayWait={drafts.pending.length > 0 || (editing && existing?.reviewState === 'AWAITING_PHOTOS')}
+            readingNow={drafts.pending.length > 0}
             gallery={
               <PhotoGallery
                 kind="refuelings"
@@ -146,6 +156,9 @@ export function RefuelingFormDialog({
                 photos={existing?.photos ?? []}
                 queue={queue}
                 readingIds={drafts.pending}
+                read={editing ? { purpose: 'refueling', locale: i18n.language, jpeg: !drafts.off } : undefined}
+                onAdded={(ids) => setAdded((known) => [...known, ...ids.map((id) => ({ id, at: Date.now() }))])}
+                onBusyChange={setAdding}
                 disabled={saving}
                 onChanged={() => details.refetch()}
               />
@@ -174,6 +187,7 @@ function RefuelingForm({
   readingDone,
   explanation,
   mayWait,
+  readingNow,
   onSubmit,
 }: {
   initial: Initial
@@ -190,6 +204,8 @@ function RefuelingForm({
   explanation: ReadingExplanation
   /** A photo is still being read: values it can provide may be left empty. */
   mayWait: boolean
+  /** A photo is being read right now (the dialog says so near Save). */
+  readingNow: boolean
   onSubmit: (values: RefuelingValues) => Promise<unknown>
 }) {
   const { t } = useTranslation()
@@ -218,6 +234,7 @@ function RefuelingForm({
     readingDone,
     { ...explanation, last: last ? distance(last.value, units.distance) : undefined },
     keepAmountsInStep,
+    editing,
   )
   const fromPhoto = filledFields(initial.filledFromPhoto, WAITS_FOR)
   const waits = new Set(Object.values(WAITS_FOR))
@@ -332,18 +349,22 @@ function RefuelingForm({
         </Field>
         {gallery}
         <div role="status" aria-label={t('a11y.readingStatus')}>
+          <ReadingProgress active={readingNow} canSave={mayWait} />
           {fill.announcement && <Text size="2">{fill.announcement}</Text>}
           <ReadingProblems problems={fill.problems} />
         </div>
         {error !== undefined && <ErrorMessage error={error} />}
-        <Flex gap="3" justify="end">
+        <Flex gap="3" justify="end" wrap="wrap">
+          <SaveWait waiting={photosBusy && !busy} />
           <Dialog.Close>
             <Button type="button" variant="soft" color="gray" disabled={busy}>
               {t('common.cancel')}
             </Button>
           </Dialog.Close>
           <RadixForm.Submit asChild>
-            <Button disabled={busy || photosBusy}>{editing ? t('refuelings.save') : t('refuelings.saveAdd')}</Button>
+            <Button loading={busy} disabled={photosBusy}>
+              {editing ? t('refuelings.save') : t('refuelings.saveAdd')}
+            </Button>
           </RadixForm.Submit>
         </Flex>
       </Flex>

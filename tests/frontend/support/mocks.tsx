@@ -395,6 +395,8 @@ const logSorters: Record<string, (r: FakeRefueling) => string | number> = {
 export interface FakePhoto {
   id: string
   url: string
+  /** Added to a saved log with `?form=…` (its edit dialog while photo reading is on): it is read. */
+  read?: boolean
 }
 
 /**
@@ -408,6 +410,8 @@ export function fakePhotoStore(initial: Record<string, FakePhoto[]> = {}) {
     byLog: Object.fromEntries(Object.entries(initial).map(([k, v]) => [k, [...v]])) as Record<string, FakePhoto[]>,
     drafts: [] as FakePhoto[],
     puts: [] as { kind: string; logId: string; bytes: number }[],
+    /** The query of each photo added to a saved log (what it is for and the language, for photo reading). */
+    putQueries: [] as string[],
     draftPuts: [] as { vehicleId: string; bytes: number }[],
     /** The query of each draft upload (what the photo is for and the language, for photo reading). */
     draftQueries: [] as string[],
@@ -445,10 +449,12 @@ export function fakePhotoStore(initial: Record<string, FakePhoto[]> = {}) {
     http.put(`/media/${kind}/:logId/photos`, async ({ params, request }) => {
       const logId = String(params.logId)
       state.puts.push({ kind, logId, bytes: (await request.arrayBuffer()).byteLength })
+      const query = new URL(request.url).search
+      state.putQueries.push(query)
       const refused = refuse()
       if (refused) return refused
       const id = `img${state.nextId++}`
-      ;(state.byLog[logId] ??= []).push({ id, url: `/media/${id}` })
+      ;(state.byLog[logId] ??= []).push({ id, url: `/media/${id}`, read: query.includes('form=') })
       return HttpResponse.json({ id, url: `/media/${id}` })
     }),
     http.delete(`/media/${kind}/:logId/photos/:imageId`, ({ params }) => {
@@ -484,12 +490,15 @@ export function fakeRecognition({
   queuedPolls = 1,
   issues = [] as FakeReadIssue[][],
   failed = [] as number[],
+  photos = undefined as { photosOf: (logId: string) => FakePhoto[] } | undefined,
 } = {}) {
-  const state = { available, results, queuedPolls, polls: {} as Record<string, number>, asked: [] as string[][], statusAsked: 0 }
-  const reading = (id: string) => {
+  const state = { available, results, queuedPolls, polls: {} as Record<string, number>, asked: [] as string[][], statusAsked: 0, logAsked: 0 }
+  // A saved log's photos are numbered in the order they are first asked for (a draft's number is in its id).
+  const logOrder: string[] = []
+  const reading = (id: string, nth?: number) => {
     const polls = (state.polls[id] = (state.polls[id] ?? 0) + 1)
     if (polls <= state.queuedPolls) return { __typename: 'PhotoReadingInfo', status: 'QUEUED', kind: null, values: [], issues: [] }
-    const n = Number(id.replace(/\D/g, '')) - 1
+    const n = nth ?? Number(id.replace(/\D/g, '')) - 1
     if (failed.includes(n + 1)) return { __typename: 'PhotoReadingInfo', status: 'FAILED', kind: null, values: [], issues: [] }
     const values = state.results[n] ?? []
     return {
@@ -510,6 +519,17 @@ export function fakeRecognition({
       state.asked.push(ids)
       return HttpResponse.json({ data: { photoDrafts: ids.map((id) => ({ __typename: 'PhotoDraftInfo', id, reading: reading(id) })) } })
     }),
+    ...(['Refueling', 'Expense'] as const).map((type) =>
+      graphql.query(`${type}PhotoReadings`, ({ variables }) => {
+        state.logAsked++
+        const id = String(variables.id)
+        const shown = (photos?.photosOf(id) ?? []).map((p) => {
+          if (p.read && !logOrder.includes(p.id)) logOrder.push(p.id)
+          return { __typename: 'LogPhotoInfo', id: p.id, reading: p.read ? reading(p.id, logOrder.indexOf(p.id)) : null }
+        })
+        return HttpResponse.json({ data: { [type.toLowerCase()]: { __typename: type, id, photos: shown } } })
+      }),
+    ),
   ]
   return { state, handlers }
 }

@@ -1,6 +1,7 @@
 import { useQuery } from '@apollo/client/react'
 import { Box, Button, Flex, Heading, IconButton, SegmentedControl, Separator, Text } from '@radix-ui/themes'
 import { Check } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NotificationsDocument } from '../gql/generated.ts'
@@ -8,6 +9,8 @@ import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { ErrorMessage } from '../messages.tsx'
 import { NotificationItem } from '../notifications/NotificationItem.tsx'
 import { useNotificationActions } from '../notifications/useNotificationActions.ts'
+import { Loading } from '../components/Loading.tsx'
+import { itemMotion } from '../components/motion.ts'
 
 const PAGE_SIZE = 20
 
@@ -73,9 +76,7 @@ export function NotificationsPage() {
       </Flex>
       {(error ?? actionError) !== undefined && <ErrorMessage error={error ?? actionError} />}
       {!data && !error && (
-        <Text as="p" role="status">
-          {t('app.loading')}
-        </Text>
+        <Loading />
       )}
       {data && items.length === 0 && (
         <Text as="p" color="gray">
@@ -85,29 +86,31 @@ export function NotificationsPage() {
       {items.length > 0 && (
         <Box asChild m="0" p="0" className="glass" style={{ listStyle: 'none', borderRadius: 'var(--radius-4)' }}>
           <ul aria-label={t('notifications.title')}>
-            {items.map((n, i) => (
-              <Box asChild px="3" key={n.id}>
-                <li>
-                  {i > 0 && <Separator size="4" />}
-                  <NotificationItem
-                    notification={n}
-                    actions={
-                      !n.read && (
-                        <IconButton size="3" variant="ghost" color="gray" aria-label={t('notifications.markRead')} onClick={() => void run(() => markRead([n.id]))}>
-                          <Check size={18} aria-hidden />
-                        </IconButton>
-                      )
-                    }
-                  />
-                </li>
-              </Box>
-            ))}
+            <AnimatePresence initial={false}>
+              {items.map((n, i) => (
+                <Box asChild px="3" key={n.id}>
+                  <motion.li {...itemMotion}>
+                    {i > 0 && <Separator size="4" />}
+                    <NotificationItem
+                      notification={n}
+                      actions={
+                        !n.read && (
+                          <IconButton size="3" variant="ghost" color="gray" aria-label={t('notifications.markRead')} onClick={() => void run(() => markRead([n.id]))}>
+                            <Check size={18} aria-hidden />
+                          </IconButton>
+                        )
+                      }
+                    />
+                  </motion.li>
+                </Box>
+              ))}
+            </AnimatePresence>
           </ul>
         </Box>
       )}
       {items.length < total && (
         <Flex justify="center" mt="3">
-          <Button size="3" variant="soft" disabled={loadingMore} onClick={() => void loadMore()}>
+          <Button size="3" variant="soft" loading={loadingMore} onClick={() => void loadMore()}>
             {t('notifications.showMore')}
           </Button>
         </Flex>

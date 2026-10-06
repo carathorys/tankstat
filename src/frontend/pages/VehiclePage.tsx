@@ -14,6 +14,7 @@ import { ExpensesPanel } from './vehicle/ExpensesPanel.tsx'
 import { RecurringPanel } from './vehicle/RecurringPanel.tsx'
 import { RefuelingsPanel } from './vehicle/RefuelingsPanel.tsx'
 import { SharingPanel } from './vehicle/SharingPanel.tsx'
+import { Loading } from '../components/Loading.tsx'
 
 // The dashboard brings the chart library; it is loaded with the first tab instead of with the page shell.
 const DashboardPanel = lazy(() => import('../dashboard/DashboardPanel.tsx').then((m) => ({ default: m.DashboardPanel })))
@@ -44,9 +45,7 @@ export function VehiclePage({ isAdmin }: { isAdmin: boolean }) {
       </RadixLink>
       {error && <ErrorMessage error={error} />}
       {!data && !error && (
-        <Text as="p" role="status">
-          {t('app.loading')}
-        </Text>
+        <Loading />
       )}
       {data && !vehicle && <ErrorMessage>{t('vehicles.notFound')}</ErrorMessage>}
       {vehicle && (
@@ -70,18 +69,18 @@ export function VehiclePage({ isAdmin }: { isAdmin: boolean }) {
               {vehicle.canEdit && <Tabs.Trigger value="sharing">{t('vehicles.tabs.sharing')}</Tabs.Trigger>}
             </Tabs.List>
             <Box pt="4">
-              <Tabs.Content value="dashboard">
-                <Suspense fallback={<Text as="p" role="status">{t('app.loading')}</Text>}>
+              <Tabs.Content value="dashboard" className="tk-fade">
+                <Suspense fallback={<Loading />}>
                   <DashboardPanel vehicle={vehicle} />
                 </Suspense>
               </Tabs.Content>
-              <Tabs.Content value="refuelings">
+              <Tabs.Content value="refuelings" className="tk-fade">
                 <RefuelingsPanel vehicle={vehicle} canLog={canLog} />
               </Tabs.Content>
-              <Tabs.Content value="expenses">
+              <Tabs.Content value="expenses" className="tk-fade">
                 <ExpensesPanel vehicle={vehicle} canLog={canLog} />
               </Tabs.Content>
-              <Tabs.Content value="recurring">
+              <Tabs.Content value="recurring" className="tk-fade">
                 <RecurringPanel vehicle={vehicle} canLog={canLog} />
               </Tabs.Content>
               <Tabs.Content value="details">

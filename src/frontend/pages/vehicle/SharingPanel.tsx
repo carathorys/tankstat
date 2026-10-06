@@ -6,6 +6,7 @@ import { UserChip } from '../../components/UserAvatar.tsx'
 import { LabeledSelect } from '../../components/UnitSelect.tsx'
 import { LogAccessDocument, SetVehicleLogAccessDocument, type AccessLevel } from '../../gql/generated.ts'
 import { ErrorMessage } from '../../messages.tsx'
+import { Loading } from '../../components/Loading.tsx'
 
 type Shareable = 'EDIT' | 'DELETE'
 const LEVELS: Shareable[] = ['EDIT', 'DELETE']
@@ -30,7 +31,7 @@ export function SharingPanel({ vehicleId }: { vehicleId: string }) {
   }
 
   if (error) return <ErrorMessage error={error} />
-  if (!data) return <Text as="p" role="status">{t('app.loading')}</Text>
+  if (!data) return <Loading />
 
   return (
     <Flex direction="column" gap="4">

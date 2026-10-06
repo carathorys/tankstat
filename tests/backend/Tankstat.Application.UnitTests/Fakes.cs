@@ -568,7 +568,7 @@ internal sealed class World
     public InMemoryPhotoReadings Readings { get; } = new();
     public FakeRecognitionSignal Signal { get; } = new();
     public RecognitionAvailability Availability { get; }
-    public RecognitionService Recognition => new(Availability, new RecognitionSetup(RecognitionOptions.Create()), Readings, PhotoDrafts, RefuelingService, Defaults.Create(), Signal, Access, Clock, Log.For<RecognitionService>());
+    public RecognitionService Recognition => new(Availability, new RecognitionSetup(RecognitionOptions.Create()), Readings, PhotoDrafts, LogPhotos, Refuelings, Expenses, Odometer, RefuelingService, Defaults.Create(), Signal, Access, Clock, Log.For<RecognitionService>());
     public LogPhotoFiller Filler { get; }
     public PhotoReadingProcessor Processor => new(Recognizer, Availability, new RecognitionSetup(RecognitionOptions.Create()), Readings, Images, ImageStore, Filler, Clock, Log.For<PhotoReadingProcessor>());
     public NotificationService NotificationService => new(Access, Notifications, new RecurringNotificationSync(Access, Recurring, Vehicles, RecurringService, Notifier), NotificationOptions.Create(), Clock, Log.For<NotificationService>()); // a new one per use, like one per request (it syncs once)
