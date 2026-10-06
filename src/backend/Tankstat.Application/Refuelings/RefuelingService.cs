@@ -19,7 +19,9 @@ public sealed record RefuelingDefaults(long? LastOdometer, DateOnly? LastDate, s
 
 /// <param name="Currency">Required with a total when logging; when updating, omit it to keep the log's currency.</param>
 /// <param name="Volume">Volume, total and odometer may be null only while a photo of the log is still being read: it fills them in later.</param>
-public sealed record RefuelingInput(DateOnly Date, decimal? Volume, decimal? TotalCost, string? Currency, long? Odometer, bool IsFullTank, string? Note);
+/// <param name="MissedPreviousFillUp">A fill-up before this one was not logged (see <see cref="Refueling.MissedPreviousFillUp"/>); when updating, omit it to keep what the log says.</param>
+public sealed record RefuelingInput(
+    DateOnly Date, decimal? Volume, decimal? TotalCost, string? Currency, long? Odometer, bool IsFullTank, string? Note, bool? MissedPreviousFillUp = null);
 
 /// <summary>
 /// Refuelling logs of a vehicle. Access is the one defined for a vehicle's logs: the owner-based access (owner,
@@ -68,7 +70,8 @@ public sealed class RefuelingService(
 
         var reading = input.Odometer is { } value ? OdometerReading.Create(vehicle.OwnerId, vehicle.Id, input.Date, value) : null;
         var cost = input.TotalCost is { } amount ? Cost.Create(vehicle.OwnerId, vehicle.Id, input.Date, amount, input.Currency) : null;
-        var refueling = Refueling.Create(vehicle.OwnerId, creator.Id, vehicle.Id, input.Date, input.Volume, cost, reading, input.IsFullTank, input.Note, readingPhotos);
+        var refueling = Refueling.Create(
+            vehicle.OwnerId, creator.Id, vehicle.Id, input.Date, input.Volume, cost, reading, input.IsFullTank, input.MissedPreviousFillUp ?? false, input.Note, readingPhotos);
         await refuelings.AddAsync(refueling, ct);
         await photos.AttachDraftsAsync(LogType.Refueling, refueling.Id, drafts, ct);
         // Readings that finished before the save are taken now; a draft that could not be attached leaves nothing to wait for.
@@ -85,7 +88,9 @@ public sealed class RefuelingService(
         var readingPhotos = IsIncomplete(input) && await filler.AnyReadingAsync(LogType.Refueling, id, ct);
         var waited = refueling.ReviewState;
 
-        var changes = refueling.Update(input.Date, input.Volume, input.TotalCost, input.Currency ?? refueling.Currency, input.Odometer, input.IsFullTank, input.Note, readingPhotos);
+        var changes = refueling.Update(
+            input.Date, input.Volume, input.TotalCost, input.Currency ?? refueling.Currency, input.Odometer, input.IsFullTank,
+            input.MissedPreviousFillUp ?? refueling.MissedPreviousFillUp, input.Note, readingPhotos);
         await refuelings.UpdateAsync(refueling, changes, ct);
         await RecalculateConsumptionAsync(refueling.VehicleId, ct);
         logger.LogDebug("Refueling {RefuelingId} of vehicle {VehicleId} updated", id, refueling.VehicleId);

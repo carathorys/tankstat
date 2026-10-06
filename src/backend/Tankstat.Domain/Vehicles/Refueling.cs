@@ -40,6 +40,13 @@ public sealed class Refueling : IOwned, ISoftDeletable
     /// <summary>The currency this fill-up was paid in (it can differ from log to log, e.g. when travelling).</summary>
     public string? Currency => Cost?.Currency;
     public bool IsFullTank { get; private set; }
+
+    /// <summary>
+    /// A fill-up before this one was not logged: the fuel it added is unknown, so no consumption is worked out across the gap and the
+    /// chain starts again here (see <see cref="ConsumptionCalculator"/>).
+    /// </summary>
+    public bool MissedPreviousFillUp { get; private set; }
+
     public string? Note { get; private set; }
 
     public Guid? OdometerReadingId { get; private set; }
@@ -52,7 +59,8 @@ public sealed class Refueling : IOwned, ISoftDeletable
 
     /// <summary>
     /// Fuel used per 100 distance units, between the previous full fill-up and this one (litres per 100 km, gallons per 100 miles, ...),
-    /// or null when it cannot be known: the log is not a full fill-up, no earlier full fill-up exists, or the odometer did not advance.
+    /// or null when it cannot be known: the log is not a full fill-up, no earlier full fill-up exists, a fill-up in between was not logged
+    /// (<see cref="MissedPreviousFillUp"/>), or the odometer did not advance.
     /// It is stored so it is not recalculated on every read; <see cref="ConsumptionCalculator"/> refreshes it whenever the vehicle's logs change.
     /// </summary>
     public decimal? Consumption { get; private set; }
@@ -83,7 +91,7 @@ public sealed class Refueling : IOwned, ISoftDeletable
     /// <param name="readingPhotos">A photo of the log is still being read: only then may values be left empty.</param>
     public static Refueling Create(
         Guid ownerId, Guid createdById, Guid vehicleId, DateOnly date, decimal? volume, Cost? cost, OdometerReading? reading, bool isFullTank,
-        string? note = null, bool readingPhotos = false)
+        bool missedPreviousFillUp, string? note = null, bool readingPhotos = false)
     {
         if ((reading is not null && reading.VehicleId != vehicleId) || (cost is not null && cost.VehicleId != vehicleId))
             throw new DomainException("refueling.wrongVehicle", "The odometer reading and the cost must belong to the same vehicle as the log.");
@@ -93,7 +101,7 @@ public sealed class Refueling : IOwned, ISoftDeletable
             Id = Guid.NewGuid(), OwnerId = ownerId, CreatedById = createdById, VehicleId = vehicleId,
             OdometerReadingId = reading?.Id, OdometerReading = reading, CostId = cost?.Id, Cost = cost,
         };
-        refueling.Apply(date, volume, isFullTank, note);
+        refueling.Apply(date, volume, isFullTank, missedPreviousFillUp, note);
         reading?.Update(date, reading.Value);
         cost?.Update(date, cost.Amount, cost.Currency);
         refueling.ReviewState = LogReview.AfterSave(refueling.Missing, refueling.Missing, readingPhotos);
@@ -107,10 +115,11 @@ public sealed class Refueling : IOwned, ISoftDeletable
     /// <param name="currency">The currency of the cost; ignored without <paramref name="totalCost"/>.</param>
     /// <param name="readingPhotos">A photo of the log is still being read: only then may values be left empty.</param>
     public LinkedChanges Update(
-        DateOnly date, decimal? volume, decimal? totalCost, string? currency, long? odometer, bool isFullTank, string? note, bool readingPhotos = false)
+        DateOnly date, decimal? volume, decimal? totalCost, string? currency, long? odometer, bool isFullTank, bool missedPreviousFillUp, string? note,
+        bool readingPhotos = false)
     {
         if (IsDeleted) throw new DomainException("refueling.trashedCannotEdit", "A log in the trash cannot be edited; restore it first.");
-        Apply(date, volume, isFullTank, note);
+        Apply(date, volume, isFullTank, missedPreviousFillUp, note);
         var (createdReading, removedReading) = SetReading(date, odometer);
         var (createdCost, removedCost) = SetCost(date, totalCost, currency);
         ReviewState = LogReview.AfterSave(Missing, Missing, readingPhotos);
@@ -207,7 +216,7 @@ public sealed class Refueling : IOwned, ISoftDeletable
         return (null, null);
     }
 
-    private void Apply(DateOnly date, decimal? volume, bool isFullTank, string? note)
+    private void Apply(DateOnly date, decimal? volume, bool isFullTank, bool missedPreviousFillUp, string? note)
     {
         if (volume is <= 0) throw new DomainException("refueling.volumePositive", "The volume must be greater than zero.");
         var trimmed = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
@@ -217,6 +226,7 @@ public sealed class Refueling : IOwned, ISoftDeletable
         Date = date;
         Volume = volume;
         IsFullTank = isFullTank;
+        MissedPreviousFillUp = missedPreviousFillUp;
         Note = trimmed;
     }
 }

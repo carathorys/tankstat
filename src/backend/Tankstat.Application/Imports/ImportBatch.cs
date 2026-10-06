@@ -9,7 +9,9 @@ namespace Tankstat.Application.Imports;
 public sealed record ImportedVehicle(string? Name, string? LicensePlate, FuelType? FuelType, DistanceUnit? Distance, VolumeUnit? Volume);
 
 /// <param name="SourceRow">1-based row of the record in its section of the file, for error messages.</param>
-public sealed record ImportedFuelLog(int SourceRow, DateOnly Date, long Odometer, decimal Volume, decimal TotalCost, bool IsFullTank, string? Note);
+/// <param name="MissedPreviousFillUp">The file says a fill-up before this one was not logged.</param>
+public sealed record ImportedFuelLog(
+    int SourceRow, DateOnly Date, long Odometer, decimal Volume, decimal TotalCost, bool IsFullTank, bool MissedPreviousFillUp, string? Note);
 
 public sealed record ImportedExpense(int SourceRow, DateOnly Date, string Title, string? Category, decimal Amount, long? Odometer, string? Note);
 

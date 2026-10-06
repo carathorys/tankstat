@@ -1,8 +1,9 @@
 import { useQuery } from '@apollo/client/react'
 import * as RadixForm from '@radix-ui/react-form'
-import { Button, Dialog, Flex, Switch, Text, TextArea, TextField } from '@radix-ui/themes'
-import { useId, useState, type FormEvent, type ReactNode } from 'react'
+import { Button, Dialog, Flex, Text, TextArea, TextField } from '@radix-ui/themes'
+import { useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { LabeledSwitch } from './components/LabeledSwitch.tsx'
 import { OdometerField } from './components/OdometerField.tsx'
 import { PhotoGallery } from './components/PhotoGallery.tsx'
 import { PhotosLeftOut } from './components/PhotosLeftOut.tsx'
@@ -31,6 +32,8 @@ export interface RefuelingValues {
   currency: string
   odometer: number | null
   isFullTank: boolean
+  /** A fill-up before this one was not logged: the server works out no consumption across the gap. */
+  missedPreviousFillUp: boolean
   note: string | null
 }
 
@@ -99,7 +102,7 @@ export function RefuelingFormDialog({
   const lastReading = logDefaults?.lastOdometer != null && logDefaults.lastDate ? { value: logDefaults.lastOdometer, date: logDefaults.lastDate } : null
   const initial: Initial = existing
     ? { ...existing, currency: existing.currency ?? defaults.data?.logDefaults?.currency ?? '', note: existing.note ?? null }
-    : { date: today(), currency: defaults.data?.logDefaults?.currency ?? '', isFullTank: true, note: null }
+    : { date: today(), currency: defaults.data?.logDefaults?.currency ?? '', isFullTank: true, missedPreviousFillUp: false, note: null }
 
   return (
     <Dialog.Root
@@ -247,7 +250,7 @@ function RefuelingForm({
   const [full, setFull] = useState(initial.isFullTank)
   const [error, setError] = useState<unknown>()
   const [busy, setBusy] = useState(false)
-  const switchId = useId()
+  const [missed, setMissed] = useState(initial.missedPreviousFillUp)
   const decimalInvalid = { message: t('forms.numberInvalid'), test: (v: string) => v !== '' && parseDecimal(v) === undefined }
 
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -265,6 +268,7 @@ function RefuelingForm({
         currency: text('currency').toUpperCase(),
         odometer: text('odometer') === '' ? null : Number(text('odometer')),
         isFullTank: full,
+        missedPreviousFillUp: missed,
         note: note === '' ? null : note,
       })
     } catch (err) {
@@ -321,17 +325,8 @@ function RefuelingForm({
           onChange={(v) => fill.change('odometer', v)}
           extra={note('odometer')}
         />
-        <Flex align="center" gap="3">
-          <Switch id={switchId} checked={full} onCheckedChange={setFull} size="3" />
-          <Flex direction="column">
-            <Text as="label" size="2" weight="bold" htmlFor={switchId}>
-              {t('refuelings.fields.fullTank')}
-            </Text>
-            <Text size="1" color="gray">
-              {t('refuelings.hints.fullTankHelp')}
-            </Text>
-          </Flex>
-        </Flex>
+        <LabeledSwitch label={t('refuelings.fields.fullTank')} hint={t('refuelings.hints.fullTankHelp')} checked={full} onChange={setFull} />
+        <LabeledSwitch label={t('refuelings.fields.missedPrevious')} hint={t('refuelings.hints.missedPreviousHelp')} checked={missed} onChange={setMissed} />
         <Field name="note" label={t('refuelings.fields.note')}>
           <TextArea maxLength={500} rows={2} defaultValue={initial.note ?? ''} />
         </Field>

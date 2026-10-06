@@ -59,10 +59,12 @@ public class LogsAndReadingsTests
         var repo = db.Get<IRefuelingRepository>();
 
         var loaded = (await repo.FindAsync(log.Id, default))!;
-        await repo.UpdateAsync(loaded, loaded.Update(new(2026, 9, 5), 30, 45.5m, "USD", 2000, false, "note"), default);
+        await repo.UpdateAsync(loaded, loaded.Update(new(2026, 9, 5), 30, 45.5m, "USD", 2000, false, true, "note"), default);
 
         var again = (await repo.FindAsync(log.Id, default))!;
-        Assert.Equal((new DateOnly(2026, 9, 5), 30m, 45.5m, "USD", 2000L, false, "note"), (again.Date, again.Volume, again.TotalCost, again.Currency, again.Odometer, again.IsFullTank, again.Note));
+        Assert.Equal(
+            (new DateOnly(2026, 9, 5), 30m, 45.5m, "USD", 2000L, false, true, "note"),
+            (again.Date, again.Volume, again.TotalCost, again.Currency, again.Odometer, again.IsFullTank, again.MissedPreviousFillUp, again.Note));
         Assert.Equal((new DateOnly(2026, 9, 5), 2000L), (again.OdometerReading!.Date, again.OdometerReading.Value));
         await using var ctx = await db.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
         Assert.Equal(1, await ctx.OdometerReadings.CountAsync()); // updated in place, not duplicated

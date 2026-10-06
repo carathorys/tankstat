@@ -56,6 +56,9 @@ public sealed class DataGenerator(TimeProvider clock)
     private const double LitersPerUsGallon = 3.78541;
     private const double LitersPerImperialGallon = 4.54609;
 
+    /// <summary>How often a fill-up was not logged (the next one says so).</summary>
+    private const double MissedFillUpShare = 0.03;
+
     /// <summary>Where a vehicle "lives": its units, the currency it is normally paid in (and one for the odd trip abroad) and a price level.</summary>
     private sealed record Market(MeasurementUnits Units, string HomeCurrency, double HomeRate, string AbroadCurrency, double AbroadRate)
     {
@@ -97,7 +100,8 @@ public sealed class DataGenerator(TimeProvider clock)
 
     /// <summary>
     /// A fuel log walked backwards in time from today: the dates only increase, the odometer only increases, and the litres of
-    /// each fill-up equal the distance driven since the previous one at the vehicle's consumption (give or take 10%).
+    /// each fill-up equal the distance driven since the previous one at the vehicle's consumption (give or take 10%). Now and then a
+    /// fill-up was not logged: the odometer runs on by its distance and the next log is marked (<see cref="Refueling.MissedPreviousFillUp"/>).
     /// </summary>
     private static List<Refueling> Refuelings(Random random, Vehicle vehicle, Market market, int count, DateOnly today)
     {
@@ -122,12 +126,21 @@ public sealed class DataGenerator(TimeProvider clock)
             date = date.AddDays(-gaps[i]);
         }
 
-        var odometer = (long)(random.Next(5_000, 250_000) * market.DistancePerKm);
-        for (var i = 0; i < count; i++)
+        // A fill-up: how many litres, and how far they took the car (in the vehicle's unit).
+        (double Liters, long Distance) FillUp()
         {
             var liters = tank * (0.5 + random.NextDouble() * 0.45);
             var distanceKm = liters / (consumption * (0.9 + random.NextDouble() * 0.2)) * 100;
-            odometer += Math.Max(1, (long)Math.Round(distanceKm * market.DistancePerKm)); // in the vehicle's unit
+            return (liters, Math.Max(1, (long)Math.Round(distanceKm * market.DistancePerKm)));
+        }
+
+        var odometer = (long)(random.Next(5_000, 250_000) * market.DistancePerKm);
+        for (var i = 0; i < count; i++)
+        {
+            var missed = i > 0 && random.NextDouble() < MissedFillUpShare;
+            if (missed) odometer += FillUp().Distance; // a fill-up nobody logged: only the odometer knows
+            var (liters, distance) = FillUp();
+            odometer += distance;
             pricePerLiter *= 1 + (random.NextDouble() - 0.5) * 0.02; // the price drifts slowly
 
             // Mostly paid at home; now and then abroad, in the other currency.
@@ -142,7 +155,7 @@ public sealed class DataGenerator(TimeProvider clock)
                 vehicle.OwnerId, vehicle.OwnerId, vehicle.Id, dates[i], volume,
                 Cost.Create(vehicle.OwnerId, vehicle.Id, dates[i], cost, currency),
                 OdometerReading.Create(vehicle.OwnerId, vehicle.Id, dates[i], odometer),
-                isFullTank: random.NextDouble() < 0.85));
+                isFullTank: random.NextDouble() < 0.85, missedPreviousFillUp: missed));
         }
         ConsumptionCalculator.Apply(log); // stored like the app stores it
         return log;

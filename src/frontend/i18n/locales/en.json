@@ -512,19 +512,22 @@
       "currency": "Currency",
       "odometer": "Odometer ({{unit}})",
       "fullTank": "Full tank",
+      "missedPrevious": "Missed fill-up before this one",
       "note": "Note (optional)"
     },
     "hints": {
       "calculated": "Calculated from the other two values.",
       "lastReading": "Last reading: {{value}} on {{date}}",
       "currency": "Three-letter code, e.g. EUR",
-      "fullTankHelp": "Switch off for a partial fill-up."
+      "fullTankHelp": "Switch off for a partial fill-up.",
+      "missedPreviousHelp": "Switch on if a fill-up before this one was not logged: no consumption is worked out across the gap."
     },
     "trashTitle": "Move this refuelling to the trash?",
     "trashDescription": "The refuelling of {{date}} can be restored from the trash until it is deleted permanently.",
     "trashConfirm": "Move to trash",
     "partial": "Partial",
-    "full": "Full"
+    "full": "Full",
+    "missedBefore": "Missed one before"
   },
   "sharing": {
     "title": "Share this vehicle's logs",

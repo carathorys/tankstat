@@ -76,7 +76,20 @@ export function RefuelingsPanel({
         cell: (r) => (r.consumption == null ? none : format.consumption(r.consumption, units)),
       },
       { id: 'odometer', label: 'columns.odometer', include: 'withOdometer', sortField: 'ODOMETER', cell: (r) => (r.odometer == null ? none : format.distance(r.odometer, units.distance)) },
-      { id: 'fullTank', label: 'columns.fullTank', include: 'withFullTank', cell: (r) => (r.isFullTank == null ? none : r.isFullTank ? t('refuelings.full') : <Badge color="amber">{t('refuelings.partial')}</Badge>) },
+      {
+        id: 'fullTank',
+        label: 'columns.fullTank',
+        include: 'withFullTank',
+        cell: (r) =>
+          r.isFullTank == null ? (
+            none
+          ) : (
+            <Flex direction="column" align="start" gap="1">
+              {r.isFullTank ? t('refuelings.full') : <Badge color="amber">{t('refuelings.partial')}</Badge>}
+              {r.missedPreviousFillUp && <Badge color="gray">{t('refuelings.missedBefore')}</Badge>}
+            </Flex>
+          ),
+      },
       { id: 'note', label: 'columns.note', include: 'withNote', cell: (r) => r.note || none },
       { id: 'createdBy', label: 'columns.createdBy', include: 'withCreatedBy', sortField: 'CREATED_BY', cell: (r) => (r.createdBy ? <UserChip user={r.createdBy} /> : none) },
     ]

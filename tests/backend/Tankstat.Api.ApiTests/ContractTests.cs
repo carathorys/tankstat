@@ -81,7 +81,7 @@ public class ContractTests
     [InlineData("ChartData", "unit", "series")]
     [InlineData("ChartSeries", "kind", "currency", "points")]
     [InlineData("VehicleChart", "id", "vehicleId", "title", "metric", "grouping", "kind", "range", "rangeFrom", "rangeTo", "stacked", "isShared", "createdAt", "canEdit", "createdBy")]
-    [InlineData("Refueling", "id", "vehicleId", "createdBy", "date", "volume", "totalCost", "currency", "odometer", "pricePerUnit", "consumption", "isFullTank", "note", "deletedAt", "canEdit", "canDelete", "vehicle", "photos", "reviewState", "filledFromPhoto")]
+    [InlineData("Refueling", "id", "vehicleId", "createdBy", "date", "volume", "totalCost", "currency", "odometer", "pricePerUnit", "consumption", "isFullTank", "missedPreviousFillUp", "note", "deletedAt", "canEdit", "canDelete", "vehicle", "photos", "reviewState", "filledFromPhoto")]
     [InlineData("Expense", "id", "amount", "currency", "odometer", "reviewState", "filledFromPhoto")]
     public async Task Schema_TypeExposesContractFields(string type, params string[] fields)
     {
@@ -91,7 +91,8 @@ public class ContractTests
     }
 
     [Theory]
-    [InlineData("LogRefuelingInput", "vehicleId", "date", "volume", "totalCost", "currency", "odometer", "isFullTank", "note", "photoIds")]
+    [InlineData("LogRefuelingInput", "vehicleId", "date", "volume", "totalCost", "currency", "odometer", "isFullTank", "note", "photoIds", "missedPreviousFillUp")]
+    [InlineData("UpdateRefuelingInput", "id", "date", "volume", "totalCost", "currency", "odometer", "isFullTank", "note", "missedPreviousFillUp")]
     [InlineData("AddExpenseInput", "vehicleId", "date", "title", "category", "amount", "currency", "odometer", "note", "photoIds")]
     public async Task Schema_InputTypeTakesContractFields(string type, params string[] fields)
     {

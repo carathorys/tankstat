@@ -226,4 +226,26 @@ public class LogsGraphQLTests(ApiFixture api)
 
         Assert.Equal(0, Data(await Send("query($id: UUID!) { refuelingCount(vehicleId: $id) }", new { id })).GetProperty("refuelingCount").GetInt32());
     }
+
+    [Fact]
+    public async Task AFillUpAfterAMissedOne_HasNoConsumption_AndKeepsTheMarkUnlessAnUpdateSaysOtherwise()
+    {
+        var id = await AddVehicle();
+        await Log(id, "2026-08-01", 1000, volume: 40);
+        var logged = Data(await Send("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id missedPreviousFillUp consumption } }",
+            new { i = new { vehicleId = id, date = "2026-08-11", volume = 30, totalCost = 60, currency = "EUR", odometer = 2000, isFullTank = true, missedPreviousFillUp = true } }))
+            .GetProperty("logRefueling");
+        await Log(id, "2026-08-21", 2500, volume: 30);
+
+        Assert.True(logged.GetProperty("missedPreviousFillUp").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, logged.GetProperty("consumption").ValueKind);
+        Assert.Equal([("1000", (decimal?)null), ("2000", null), ("2500", 6m)], await Consumptions(id));
+
+        var update = "mutation($i: UpdateRefuelingInput!) { updateRefueling(input: $i) { missedPreviousFillUp } }";
+        var same = new { id = logged.GetProperty("id").GetString(), date = "2026-08-11", volume = 30, totalCost = 60, odometer = 2000, isFullTank = true };
+        Assert.True(Data(await Send(update, new { i = same })).GetProperty("updateRefueling").GetProperty("missedPreviousFillUp").GetBoolean()); // omitted: kept
+        Assert.False(Data(await Send(update, new { i = new { same.id, same.date, same.volume, same.totalCost, same.odometer, same.isFullTank, missedPreviousFillUp = false } }))
+            .GetProperty("updateRefueling").GetProperty("missedPreviousFillUp").GetBoolean());
+        Assert.Equal([("1000", (decimal?)null), ("2000", 3m), ("2500", 6m)], await Consumptions(id));
+    }
 }

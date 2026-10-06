@@ -512,19 +512,22 @@
       "currency": "Pénznem",
       "odometer": "Kilométeróra ({{unit}})",
       "fullTank": "Teli tank",
+      "missedPrevious": "Kimaradt tankolás előtte",
       "note": "Megjegyzés (nem kötelező)"
     },
     "hints": {
       "calculated": "A másik két értékből számolva.",
       "lastReading": "Utolsó állás: {{value}}, {{date}}",
       "currency": "Háromjegyű kód, pl. HUF",
-      "fullTankHelp": "Részleges tankolásnál kapcsold ki."
+      "fullTankHelp": "Részleges tankolásnál kapcsold ki.",
+      "missedPreviousHelp": "Kapcsold be, ha egy korábbi tankolást nem rögzítettél: a kimaradt szakaszra nem számolunk fogyasztást."
     },
     "trashTitle": "Kukába helyezed ezt a tankolást?",
     "trashDescription": "A(z) {{date}} napi tankolás visszaállítható a kukából, amíg véglegesen nem töröljük.",
     "trashConfirm": "Áthelyezés a kukába",
     "partial": "Részleges",
-    "full": "Teli"
+    "full": "Teli",
+    "missedBefore": "Előtte kimaradt egy"
   },
   "sharing": {
     "title": "A jármű naplójának megosztása",

@@ -17,10 +17,12 @@ public class RefuelingTests
     {
         var vehicleId = Guid.NewGuid();
 
-        var r = TestData.Refueling(Owner, Creator, vehicleId, Day, volume: 42.5m, totalCost: 80.75m, odometer: 12345, isFullTank: true, currency: "huf", note: "  road trip ");
+        var r = TestData.Refueling(
+            Owner, Creator, vehicleId, Day, volume: 42.5m, totalCost: 80.75m, odometer: 12345, isFullTank: true, currency: "huf", note: "  road trip ",
+            missedPreviousFillUp: true);
 
         Assert.Equal((Owner, Creator, vehicleId, Day), (r.OwnerId, r.CreatedById, r.VehicleId, r.Date));
-        Assert.Equal((42.5m, 80.75m, "HUF", 12345L, true, "road trip"), (r.Volume, r.TotalCost, r.Currency, r.Odometer, r.IsFullTank, r.Note));
+        Assert.Equal((42.5m, 80.75m, "HUF", 12345L, true, true, "road trip"), (r.Volume, r.TotalCost, r.Currency, r.Odometer, r.IsFullTank, r.MissedPreviousFillUp, r.Note));
         Assert.Equal(r.OdometerReading!.Id, r.OdometerReadingId);
         Assert.Equal(r.Cost!.Id, r.CostId);
         Assert.Equal((vehicleId, Day, 12345L), (r.OdometerReading.VehicleId, r.OdometerReading.Date, r.OdometerReading.Value));
@@ -58,9 +60,9 @@ public class RefuelingTests
         var other = Guid.NewGuid();
 
         var wrongReading = Assert.Throws<DomainException>(() => Refueling.Create(Owner, Creator, vehicle, Day, 10,
-            Cost.Create(Owner, vehicle, Day, 1, "EUR"), OdometerReading.Create(Owner, other, Day, 1), true));
+            Cost.Create(Owner, vehicle, Day, 1, "EUR"), OdometerReading.Create(Owner, other, Day, 1), true, false));
         var wrongCost = Assert.Throws<DomainException>(() => Refueling.Create(Owner, Creator, vehicle, Day, 10,
-            Cost.Create(Owner, other, Day, 1, "EUR"), OdometerReading.Create(Owner, vehicle, Day, 1), true));
+            Cost.Create(Owner, other, Day, 1, "EUR"), OdometerReading.Create(Owner, vehicle, Day, 1), true, false));
 
         Assert.Equal("refueling.wrongVehicle", wrongReading.Key);
         Assert.Equal("refueling.wrongVehicle", wrongCost.Key);
@@ -73,9 +75,9 @@ public class RefuelingTests
         var readingId = r.OdometerReadingId;
         var costId = r.CostId;
 
-        r.Update(Day.AddDays(2), 30, 55, "USD", 2000, false, null);
+        r.Update(Day.AddDays(2), 30, 55, "USD", 2000, false, true, null);
 
-        Assert.Equal((Day.AddDays(2), 30m, 55m, "USD", 2000L, false), (r.Date, r.Volume, r.TotalCost, r.Currency, r.Odometer, r.IsFullTank));
+        Assert.Equal((Day.AddDays(2), 30m, 55m, "USD", 2000L, false, true), (r.Date, r.Volume, r.TotalCost, r.Currency, r.Odometer, r.IsFullTank, r.MissedPreviousFillUp));
         Assert.Equal((readingId, Day.AddDays(2), 2000L), (r.OdometerReading!.Id, r.OdometerReading.Date, r.OdometerReading.Value));
         Assert.Equal((costId, Day.AddDays(2), 55m, "USD"), (r.Cost!.Id, r.Cost.Date, r.Cost.Amount, r.Cost.Currency));
     }
@@ -106,21 +108,21 @@ public class RefuelingTests
 
         r.MarkDeleted(DateTimeOffset.UtcNow);
         Assert.Equal("refueling.alreadyTrashed", Assert.Throws<DomainException>(() => r.MarkDeleted(DateTimeOffset.UtcNow)).Key);
-        Assert.Equal("refueling.trashedCannotEdit", Assert.Throws<DomainException>(() => r.Update(Day, 1, 1, "EUR", 1, true, null)).Key);
+        Assert.Equal("refueling.trashedCannotEdit", Assert.Throws<DomainException>(() => r.Update(Day, 1, 1, "EUR", 1, true, false, null)).Key);
     }
 
     private static Refueling Waiting(Guid vehicle, long? odometer = null, decimal? volume = null, decimal? total = null) =>
         Refueling.Create(Owner, Creator, vehicle, Day, volume, total is { } t ? Cost.Create(Owner, vehicle, Day, t, "EUR") : null,
-            odometer is { } o ? OdometerReading.Create(Owner, vehicle, Day, o) : null, isFullTank: true, readingPhotos: true);
+            odometer is { } o ? OdometerReading.Create(Owner, vehicle, Day, o) : null, isFullTank: true, missedPreviousFillUp: false, readingPhotos: true);
 
     [Fact]
     public void ValuesMayBeLeftEmpty_OnlyWhileAPhotoIsBeingRead()
     {
         var vehicle = Guid.NewGuid();
 
-        var error = Assert.Throws<DomainException>(() => Refueling.Create(Owner, Creator, vehicle, Day, 10, Cost.Create(Owner, vehicle, Day, 20, "EUR"), null, true));
+        var error = Assert.Throws<DomainException>(() => Refueling.Create(Owner, Creator, vehicle, Day, 10, Cost.Create(Owner, vehicle, Day, 20, "EUR"), null, true, false));
         var waiting = Waiting(vehicle, volume: 10, total: 20);
-        var complete = Refueling.Create(Owner, Creator, vehicle, Day, 10, Cost.Create(Owner, vehicle, Day, 20, "EUR"), OdometerReading.Create(Owner, vehicle, Day, 5), true, readingPhotos: true);
+        var complete = Refueling.Create(Owner, Creator, vehicle, Day, 10, Cost.Create(Owner, vehicle, Day, 20, "EUR"), OdometerReading.Create(Owner, vehicle, Day, 5), true, false, readingPhotos: true);
 
         Assert.Equal("log.valuesRequired", error.Key);
         Assert.Equal((ReviewState.AwaitingPhotos, LogValues.Odometer, (long?)null), (waiting.ReviewState, waiting.Missing, waiting.Odometer));
@@ -166,7 +168,7 @@ public class RefuelingTests
         log.FillFromPhoto(new PhotoValues(Odometer: -1, Volume: 0, Total: -3, Currency: "EUR"));
         Assert.Equal(LogValues.None, log.FilledFromPhoto);
 
-        log.Update(Day, 10, 20, "EUR", 300, true, null);
+        log.Update(Day, 10, 20, "EUR", 300, true, false, null);
         Assert.Equal(LinkedChanges.None, log.FillFromPhoto(new PhotoValues(999, 99, 99, "EUR")));
         Assert.Equal(300L, log.Odometer);
     }
@@ -178,12 +180,12 @@ public class RefuelingTests
         log.FillFromPhoto(new PhotoValues(500, 10, 20, "EUR"));
         log.FinishReading(false);
 
-        var none = log.Update(Day, 10, 20, "EUR", 500, true, null);
+        var none = log.Update(Day, 10, 20, "EUR", 500, true, false, null);
         Assert.Equal((ReviewState.None, LogValues.None, LinkedChanges.None), (log.ReviewState, log.FilledFromPhoto, none));
 
-        Assert.Equal("log.valuesRequired", Assert.Throws<DomainException>(() => log.Update(Day, 10, null, null, 500, true, null)).Key);
+        Assert.Equal("log.valuesRequired", Assert.Throws<DomainException>(() => log.Update(Day, 10, null, null, 500, true, false, null)).Key);
         var cost = log.Cost;
-        var removed = log.Update(Day, 10, null, null, 500, true, null, readingPhotos: true);
+        var removed = log.Update(Day, 10, null, null, 500, true, false, null, readingPhotos: true);
         Assert.Same(cost, removed.RemovedCost);
         Assert.Equal(ReviewState.AwaitingPhotos, log.ReviewState);
     }

@@ -696,6 +696,9 @@ namespace Tankstat.Migrations.MySql
                     b.Property<bool>("IsFullTank")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<bool>("MissedPreviousFillUp")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("Note")
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");

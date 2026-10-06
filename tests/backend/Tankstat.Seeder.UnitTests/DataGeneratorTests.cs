@@ -21,7 +21,7 @@ public class DataGeneratorTests
 
         var fullOnes = logs.Where(l => l.IsFullTank && l.Consumption is not null).ToList();
         Assert.NotEmpty(fullOnes);
-        Assert.All(logs.Where(l => !l.IsFullTank), l => Assert.Null(l.Consumption));
+        Assert.All(logs.Where(l => !l.IsFullTank || l.MissedPreviousFillUp), l => Assert.Null(l.Consumption));
         Assert.All(fullOnes, l => Assert.InRange(l.Consumption!.Value, 1m, 40m)); // plausible litres (or gallons) per 100 km (or miles)
     }
 
@@ -149,12 +149,12 @@ public class DataGeneratorTests
     public void ConsumptionFollowsThePerVehicleValue_WhateverTheUnits()
     {
         // Litres per 100 km between consecutive fill-ups stay near one value per vehicle (the generator allows +-10%, plus rounding),
-        // also for vehicles that use miles and gallons.
+        // also for vehicles that use miles and gallons. A gap with a fill-up that was not logged is left out, as the app leaves it out.
         foreach (var g in Generate(80, 0, new IntRange(10, 30)))
         {
             var log = g.Refuelings;
             var kmPerUnit = g.Vehicle.Units.Distance == DistanceUnit.Miles ? 1 / MilesPerKm : 1;
-            var consumption = Enumerable.Range(1, log.Count - 1)
+            var consumption = Enumerable.Range(1, log.Count - 1).Where(i => !log[i].MissedPreviousFillUp)
                 .Select(i => Liters(g, log[i]) / ((log[i].Odometer!.Value - log[i - 1].Odometer!.Value) * kmPerUnit) * 100).ToList();
 
             Assert.InRange(consumption.Min(), 3.0, 15.0);
@@ -204,7 +204,7 @@ public class DataGeneratorTests
     {
         static string Fingerprint(List<GeneratedVehicle> all) =>
             string.Join("|", all.Select(g => $"{g.Vehicle.Name}/{g.Vehicle.LicensePlate}/{g.Vehicle.FuelType}/{g.Vehicle.IsDeleted}/" +
-                string.Join(",", g.Refuelings.Select(r => $"{r.Date:o}:{r.Volume}:{r.TotalCost}:{r.Currency}:{r.Odometer}:{r.IsFullTank}:{g.Vehicle.Units.Distance}"))));
+                string.Join(",", g.Refuelings.Select(r => $"{r.Date:o}:{r.Volume}:{r.TotalCost}:{r.Currency}:{r.Odometer}:{r.IsFullTank}:{r.MissedPreviousFillUp}:{g.Vehicle.Units.Distance}"))));
 
         Assert.Equal(Fingerprint(Generate(seed: 5)), Fingerprint(Generate(seed: 5)));
         Assert.NotEqual(Fingerprint(Generate(seed: 5)), Fingerprint(Generate(seed: 6)));
@@ -217,5 +217,17 @@ public class DataGeneratorTests
 
         var full = all.Count(r => r.IsFullTank) / (double)all.Count;
         Assert.InRange(full, 0.7, 0.95);
+    }
+
+    [Fact]
+    public void NowAndThenAFillUpWasNotLogged_TheOdometerRunsOn_AndTheNextLogSaysSo()
+    {
+        var generated = Generate(60, 0, new IntRange(20, 30));
+        var all = generated.SelectMany(g => g.Refuelings).ToList();
+
+        var missed = all.Where(r => r.MissedPreviousFillUp).ToList();
+        Assert.InRange(missed.Count / (double)all.Count, 0.005, 0.08);
+        Assert.All(missed, r => Assert.Null(r.Consumption));
+        Assert.All(generated, g => Assert.False(g.Refuelings[0].MissedPreviousFillUp)); // nothing before the first log to miss
     }
 }

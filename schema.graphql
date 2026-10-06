@@ -359,6 +359,7 @@ type Refueling {
   totalCost: Decimal
   currency: String
   isFullTank: Boolean!
+  missedPreviousFillUp: Boolean!
   note: String
   odometer: Long
   consumption: Decimal
@@ -540,6 +541,7 @@ input LogRefuelingInput {
   isFullTank: Boolean!
   note: String
   photoIds: [UUID!]
+  missedPreviousFillUp: Boolean
 }
 
 input MarkRecurringExpenseDoneInput {
@@ -623,6 +625,7 @@ input UpdateRefuelingInput {
   odometer: Long
   isFullTank: Boolean!
   note: String
+  missedPreviousFillUp: Boolean
 }
 
 input UpdateUserInput {
