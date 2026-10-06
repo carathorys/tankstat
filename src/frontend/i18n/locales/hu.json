@@ -674,7 +674,12 @@
       "owner": "Tulajdonos: {{name}}",
       "trend": "Költés az elmúlt hat hónapban",
       "recurringTitle": "Figyelmet igényel",
-      "tapAgain": "Koppints újra a megnyitáshoz"
+      "tapAgain": "Koppints újra a megnyitáshoz",
+      "refuel": "Tankolás",
+      "expense": "Költség",
+      "refuelAria": "Tankolás hozzáadása: {{name}}",
+      "expenseAria": "Költség hozzáadása: {{name}}",
+      "doneAria": "{{title}} ({{name}}) megjelölése késznek"
     },
     "search": "Járművek keresése",
     "searchPlaceholder": "Név vagy rendszám",

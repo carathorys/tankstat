@@ -674,7 +674,12 @@
       "owner": "Owner: {{name}}",
       "trend": "Spending in the last six months",
       "recurringTitle": "Needs attention",
-      "tapAgain": "Tap again to open"
+      "tapAgain": "Tap again to open",
+      "refuel": "Refuel",
+      "expense": "Expense",
+      "refuelAria": "Refuel {{name}}",
+      "expenseAria": "Expense for {{name}}",
+      "doneAria": "Mark {{title}} of {{name}} as done"
     },
     "search": "Search vehicles",
     "searchPlaceholder": "Name or license plate",

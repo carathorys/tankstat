@@ -8,6 +8,7 @@ import { VehicleHero } from '../components/VehicleHero.tsx'
 import { VehicleDetailsDocument } from '../gql/generated.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { ErrorMessage } from '../messages.tsx'
+import { canLogFor } from '../vehicles.ts'
 import { DetailsPanel } from './vehicle/DetailsPanel.tsx'
 import { ExpensesPanel } from './vehicle/ExpensesPanel.tsx'
 import { RecurringPanel } from './vehicle/RecurringPanel.tsx'
@@ -29,7 +30,7 @@ export function VehiclePage({ isAdmin }: { isAdmin: boolean }) {
   const vehicle = data?.vehicle
   usePageTitle(vehicle?.name)
 
-  const canLog = vehicle ? vehicle.canEdit || vehicle.logAccess === 'EDIT' || vehicle.logAccess === 'DELETE' : false
+  const canLog = vehicle ? canLogFor(vehicle) : false
   const requested = params.get('tab') as Tab | null
   const tab: Tab = requested && TABS.includes(requested) && (requested !== 'sharing' || vehicle?.canEdit) ? requested : 'dashboard'
 

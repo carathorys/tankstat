@@ -23,7 +23,7 @@ import { RecurringFormDialog } from '../../RecurringFormDialog.tsx'
 type Item = NonNullable<RecurringExpensesQuery['vehicle']>['recurring'][number]
 
 // The home page shows the same schedules, and marking one done logs an expense: all of them are refreshed.
-const refetch = { refetchQueries: ['RecurringExpenses', 'Welcome', 'Expenses', 'VehicleDetails', 'LogDefaults'], awaitRefetchQueries: true }
+const refetch = { refetchQueries: ['RecurringExpenses', 'Expenses', 'VehicleDetails', 'LogDefaults'], awaitRefetchQueries: true } // never Welcome: the home page asks afresh when it mounts
 
 /** A vehicle's recurring expenses: what repeats, when it was last done, when it is due next, and whether it already is. */
 export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; units: { distance: DistanceUnit } }; canLog: boolean }) {

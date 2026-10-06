@@ -93,6 +93,8 @@ export const fakeSummary = (over: Partial<FakeSummary> = {}): FakeSummary => ({
 })
 
 export interface FakeVehicle {
+  /** The card fragment only matches a typed object, and this normalises `Vehicle:<id>` like production. */
+  __typename: 'Vehicle'
   id: string
   name: string
   licensePlate: string | null
@@ -113,6 +115,7 @@ export const person = (displayName: string, over: Partial<Person> = {}): Person 
 export const fakeVehicle = (over: Partial<FakeVehicle> & { ownerName?: string | null } = {}): FakeVehicle => {
   const { ownerName, ...rest } = over
   return {
+    __typename: 'Vehicle',
     id: 'v1',
     name: 'Octavia',
     licensePlate: 'ABC-123',
@@ -153,17 +156,20 @@ function page<T extends Trashed>(rows: T[], vars: GridVars) {
 /** A small in-memory backend for vehicles and trash, so mutations show up in the refetched lists. */
 export function fakeVehicleBackend(initial: FakeVehicle[] = [], trashed: FakeVehicle[] = []) {
   const state = {
+    /** Shallow copies: `summary` and `recurring` stay the caller's objects, which the log, expense and recurring fakes change in place (hand them `state.vehicles[i]`). */
     vehicles: initial.map((v) => ({ ...v, deletedAt: '' })) as Trashed[],
     trash: trashed.map((v) => ({ ...v, deletedAt: '2026-10-01T08:00:00Z' })) as Trashed[],
     calls: {} as Record<string, unknown[]>,
-    /** Variables of every Vehicles / Trash query the UI sent. */
-    requests: { Vehicles: [] as Record<string, unknown>[], Trash: [] as Record<string, unknown>[], Welcome: [] as Record<string, unknown>[] },
+    /** Variables of every Vehicles / Trash / Welcome / VehicleCard query the UI sent. */
+    requests: { Vehicles: [] as Record<string, unknown>[], Trash: [] as Record<string, unknown>[], Welcome: [] as Record<string, unknown>[], VehicleCard: [] as Record<string, unknown>[] },
     nextId: 100,
     /** How many trashed vehicles this user may delete for good (defaults to all of them). */
     trashDeletable: undefined as number | undefined,
     failWith: undefined as { message: string; key?: string; args?: Record<string, unknown> } | undefined,
   }
   const record = (name: string, vars: unknown) => (state.calls[name] ??= []).push(vars)
+  /** What a card asks for: the schedules with their types (the card fragment reads them through typed fragments). */
+  const asCard = (v: Trashed) => ({ ...v, recurring: v.recurring.map(typedRecurring) })
 
   const handlers = [
     graphql.query('Vehicles', ({ variables }) => {
@@ -179,9 +185,14 @@ export function fakeVehicleBackend(initial: FakeVehicle[] = [], trashed: FakeVeh
         .filter((v) => !term || v.name.toLowerCase().includes(term) || (v.licensePlate ?? '').toLowerCase().includes(term))
         .sort((a, b) => a.name.localeCompare(b.name))
       const skip = Number(variables.skip ?? 0)
-      return HttpResponse.json({ data: { myVehicles: found.slice(skip, skip + Number(variables.take ?? 50)), myVehicleCount: found.length } })
+      return HttpResponse.json({ data: { myVehicles: found.slice(skip, skip + Number(variables.take ?? 50)).map(asCard), myVehicleCount: found.length } })
     }),
     graphql.query('ImportTargets', () => HttpResponse.json({ data: { myVehicles: state.vehicles } })),
+    graphql.query('VehicleCard', ({ variables }) => {
+      state.requests.VehicleCard.push(variables)
+      const found = state.vehicles.find((x) => x.id === variables.id)
+      return HttpResponse.json({ data: { vehicle: found ? asCard(found) : null } })
+    }),
     graphql.query('Trash', ({ variables }) => {
       state.requests.Trash.push(variables)
       return HttpResponse.json({
@@ -490,6 +501,9 @@ export function fakeLogBackend(vehicle: FakeVehicle, logs: FakeRefueling[] = [],
       const reviewState = input.odometer == null || input.volume == null || input.totalCost == null ? 'AWAITING_PHOTOS' : 'NONE'
       state.logs.push(fakeRefueling({ id, ...input, reviewState }))
       if (input.odometer != null) state.lastOdometer = Math.max(state.lastOdometer ?? 0, input.odometer)
+      // The server recomputes the card's summary; the fake does the minimum for a card to show the change (the summary object is shared with the vehicle fakes).
+      Object.assign(vehicle.summary, { lastFillUpDate: input.date, fillUpCount: vehicle.summary.fillUpCount + 1 })
+      if (input.odometer != null) vehicle.summary.latestOdometer = Math.max(vehicle.summary.latestOdometer ?? 0, input.odometer)
       return HttpResponse.json({ data: { logRefueling: { id, reviewState, photos: photos.attach(id, photoIds) } } })
     }),
     graphql.mutation('UpdateRefueling', ({ variables }) => {
@@ -634,6 +648,7 @@ export function fakeExpenseBackend(vehicle: FakeVehicle, expenses: FakeExpense[]
       const { photoIds, ...input } = variables.input
       const reviewState = input.amount == null ? 'AWAITING_PHOTOS' : 'NONE'
       state.expenses.push(fakeExpense({ id, ...input, reviewState }))
+      Object.assign(vehicle.summary, { expenseCount: vehicle.summary.expenseCount + 1, thisMonthSpend: vehicle.summary.thisMonthSpend + (input.amount ?? 0) }) // for the card, see LogRefueling
       return HttpResponse.json({ data: { addExpense: { id, reviewState, photos: photos.attach(id, photoIds) } } })
     }),
     graphql.mutation('UpdateExpense', ({ variables }) => {
@@ -761,6 +776,7 @@ export interface FakeRecurring {
   warnDays: number
   warnDistance: number
   status: {
+    __typename?: 'RecurrenceStatusInfo'
     state: 'UPCOMING' | 'DUE_SOON' | 'OVERDUE'
     limit: 'TIME' | 'ODOMETER' | null
     dueDate: string | null
@@ -769,6 +785,9 @@ export interface FakeRecurring {
     distanceLeft: number | null
   }
 }
+
+/** A schedule as the server answers it: its type on the status too, or the status fragment of the documents would not match it in the cache. */
+export const typedRecurring = <T extends { status: object }>(item: T) => ({ __typename: 'RecurringExpenseInfo' as const, ...item, status: { __typename: 'RecurrenceStatusInfo' as const, ...item.status } })
 
 /** A combined (12 months or 15,000 km) schedule that is upcoming, unless the test says otherwise. */
 export const fakeRecurring = (over: Partial<FakeRecurring> = {}): FakeRecurring => ({
@@ -784,12 +803,15 @@ export const fakeRecurring = (over: Partial<FakeRecurring> = {}): FakeRecurring 
   lastDoneOdometer: 50000,
   warnDays: 30,
   warnDistance: 500,
-  status: { state: 'UPCOMING', limit: 'TIME', dueDate: '2027-01-15', dueOdometer: 65000, daysLeft: 106, distanceLeft: 9000 },
+  status: { __typename: 'RecurrenceStatusInfo', state: 'UPCOMING', limit: 'TIME', dueDate: '2027-01-15', dueOdometer: 65000, daysLeft: 106, distanceLeft: 9000 },
   ...over,
 })
 
-/** In-memory recurring expenses of one vehicle behind the Recurring* queries and mutations; a finished item is upcoming again. */
-export function fakeRecurringBackend(items: FakeRecurring[] = []) {
+/**
+ * In-memory recurring expenses of one vehicle behind the Recurring* queries and mutations; a finished item is upcoming again. With a
+ * `vehicle`, its `recurring` list is kept in step (in place, the array is shared with the vehicle fakes), so a home card sees the change.
+ */
+export function fakeRecurringBackend(items: FakeRecurring[] = [], vehicle?: FakeVehicle) {
   const state = {
     items: [...items],
     calls: {} as Record<string, unknown[]>,
@@ -801,8 +823,9 @@ export function fakeRecurringBackend(items: FakeRecurring[] = []) {
   const record = (name: string, vars: unknown) => (state.calls[name] ??= []).push(vars)
   const fail = (): Response | undefined => (state.failWith ? HttpResponse.json(gqlError(state.failWith.message, 'VALIDATION_FAILED', state.failWith.key, state.failWith.args)) : undefined)
   const upcoming = (): FakeRecurring['status'] => ({ state: 'UPCOMING', limit: 'TIME', dueDate: '2027-12-01', dueOdometer: null, daysLeft: 400, distanceLeft: null })
+  const sync = () => vehicle?.recurring.splice(0, vehicle.recurring.length, ...state.items)
   const handlers = [
-    graphql.query('RecurringExpenses', ({ variables }) => HttpResponse.json({ data: { vehicle: { __typename: 'Vehicle', id: variables.vehicleId, recurring: state.items } } })),
+    graphql.query('RecurringExpenses', ({ variables }) => HttpResponse.json({ data: { vehicle: { __typename: 'Vehicle', id: variables.vehicleId, recurring: state.items.map(typedRecurring) } } })),
     graphql.query('VehicleDefaults', () =>
       HttpResponse.json({ data: { vehicleDefaults: { distanceUnit: 'KILOMETERS', volumeUnit: 'LITERS', currency: 'HUF', ...state.warnDefaults } } }),
     ),
@@ -813,7 +836,8 @@ export function fakeRecurringBackend(items: FakeRecurring[] = []) {
       const input = variables.input as Partial<FakeRecurring>
       const item = fakeRecurring({ ...input, id: `rc${state.nextId++}`, status: upcoming() })
       state.items.push(item)
-      return HttpResponse.json({ data: { addRecurringExpense: item } })
+      sync()
+      return HttpResponse.json({ data: { addRecurringExpense: typedRecurring(item) } })
     }),
     graphql.mutation('UpdateRecurringExpense', ({ variables }) => {
       record('UpdateRecurringExpense', variables)
@@ -822,21 +846,29 @@ export function fakeRecurringBackend(items: FakeRecurring[] = []) {
       const input = variables.input as Partial<FakeRecurring> & { id: string }
       const i = state.items.findIndex((x) => x.id === input.id)
       state.items[i] = { ...state.items[i], ...input }
-      return HttpResponse.json({ data: { updateRecurringExpense: state.items[i] } })
+      sync()
+      return HttpResponse.json({ data: { updateRecurringExpense: typedRecurring(state.items[i]) } })
     }),
     graphql.mutation('DeleteRecurringExpense', ({ variables }) => {
       record('DeleteRecurringExpense', variables)
       state.items = state.items.filter((x) => x.id !== variables.id)
+      sync()
       return HttpResponse.json({ data: { deleteRecurringExpense: true } })
     }),
     graphql.mutation('MarkRecurringExpenseDone', ({ variables }) => {
       record('MarkRecurringExpenseDone', variables)
       const failed = fail()
       if (failed) return failed
-      const input = variables.input as { id: string; date: string; odometer: number | null }
+      const input = variables.input as { id: string; date: string; odometer: number | null; createExpense?: boolean; amount?: number | null }
       const i = state.items.findIndex((x) => x.id === input.id)
       state.items[i] = { ...state.items[i], lastDoneDate: input.date, lastDoneOdometer: input.odometer ?? state.items[i].lastDoneOdometer, status: upcoming() }
-      return HttpResponse.json({ data: { markRecurringExpenseDone: state.items[i] } })
+      sync()
+      if (vehicle && input.createExpense !== false) {
+        // The logged expense, as the card shows it (see LogRefueling in fakeLogBackend).
+        Object.assign(vehicle.summary, { expenseCount: vehicle.summary.expenseCount + 1, thisMonthSpend: vehicle.summary.thisMonthSpend + (input.amount ?? 0) })
+        if (input.odometer != null) vehicle.summary.latestOdometer = Math.max(vehicle.summary.latestOdometer ?? 0, input.odometer)
+      }
+      return HttpResponse.json({ data: { markRecurringExpenseDone: typedRecurring(state.items[i]) } })
     }),
   ]
   return { state, handlers }

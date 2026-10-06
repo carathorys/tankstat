@@ -90,7 +90,7 @@ export function RefuelingFormDialog({
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const editing = refuelingId !== undefined
-  const { queue, leftOut, saving, submit, reset } = usePhotoSession(vehicle.id, editing ? undefined : 'refueling')
+  const { queue, leftOut, saving, submit, reset } = usePhotoSession(vehicle.id, editing ? undefined : 'refueling', open)
   const drafts = useDraftReadings(queue.uploaded, open && !editing)
   const details = useQuery(RefuelingDetailsDocument, { variables: { id: refuelingId ?? '' }, skip: !editing || !open, fetchPolicy: 'network-only' })
   const defaults = useQuery(LogDefaultsDocument, { variables: { vehicleId: vehicle.id }, skip: !open, fetchPolicy: 'network-only' })

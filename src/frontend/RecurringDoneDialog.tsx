@@ -47,15 +47,18 @@ export function RecurringDoneDialog({
   vehicle,
   item,
   onSubmit,
+  onCloseAutoFocus,
 }: {
   trigger: ReactNode
   vehicle: { id: string; units: { distance: DistanceUnit } }
   item: { title: string; kind: RecurrenceKind }
   onSubmit: (values: DoneValues) => Promise<unknown>
+  /** Where the focus goes when the dialog closes (by default back to the trigger); for a trigger that is gone by then, see `VehicleCard`. */
+  onCloseAutoFocus?: (event: Event) => void
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
-  const { queue, saving, submit, reset } = usePhotoSession(vehicle.id, 'expense')
+  const { queue, saving, submit, reset } = usePhotoSession(vehicle.id, 'expense', open)
   const drafts = useDraftReadings(queue.uploaded, open)
 
   return (
@@ -72,6 +75,7 @@ export function RecurringDoneDialog({
         // Closing while it is being saved would lose track of it.
         onEscapeKeyDown={(e) => saving && e.preventDefault()}
         onInteractOutside={(e) => saving && e.preventDefault()}
+        onCloseAutoFocus={onCloseAutoFocus}
       >
         <Dialog.Title>{t('recurring.doneTitle', { title: item.title })}</Dialog.Title>
         <Dialog.Description size="2" mb="4">
