@@ -26,7 +26,8 @@ internal sealed class TestApp : IDisposable
     /// <summary>Everything this host logged, from its first line on.</summary>
     public CapturedLog Log { get; } = new();
 
-    public TestApp(Dictionary<string, string?> settings, Action<IServiceCollection>? services = null)
+    /// <param name="host">Last word on the web host, e.g. a web root with static files to serve.</param>
+    public TestApp(Dictionary<string, string?> settings, Action<IServiceCollection>? services = null, Action<IWebHostBuilder>? host = null)
     {
         var all = new Dictionary<string, string?>
         {
@@ -43,6 +44,7 @@ internal sealed class TestApp : IDisposable
             b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(all));
             b.ConfigureLogging(l => l.AddProvider(Log));
             b.ConfigureServices(s => services?.Invoke(s));
+            host?.Invoke(b);
         });
     }
 
@@ -58,6 +60,10 @@ internal sealed class TestApp : IDisposable
 
     public HttpClient NewClientWithoutRedirects() =>
         Factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+    /// <summary>Like <see cref="NewClientWithoutRedirects"/>, over https: the OIDC correlation cookie is Secure and a browser sends it only then.</summary>
+    public HttpClient NewHttpsClientWithoutRedirects() =>
+        Factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") });
 
     public void Dispose()
     {

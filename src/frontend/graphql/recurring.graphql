@@ -1,3 +1,14 @@
+# Where a schedule stands. Every document that loads a status asks for this one selection: the cache keeps a single status object per
+# schedule, and two documents asking for different fields would write over each other's (Apollo warns about the data loss).
+fragment RecurrenceStatusFields on RecurrenceStatusInfo {
+  state
+  limit
+  dueDate
+  dueOdometer
+  daysLeft
+  distanceLeft
+}
+
 # A vehicle's recurring expenses (schedules such as insurance or an oil change) with where each one stands. Few per vehicle, so no paging.
 fragment RecurringFields on RecurringExpenseInfo {
   id
@@ -12,12 +23,7 @@ fragment RecurringFields on RecurringExpenseInfo {
   warnDays
   warnDistance
   status {
-    state
-    limit
-    dueDate
-    dueOdometer
-    daysLeft
-    distanceLeft
+    ...RecurrenceStatusFields
   }
 }
 

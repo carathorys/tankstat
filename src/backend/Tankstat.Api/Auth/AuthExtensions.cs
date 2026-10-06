@@ -44,6 +44,10 @@ public static class AuthExtensions
                 o.CallbackPath = "/auth/oidc/callback";
                 o.SignedOutCallbackPath = "/auth/oidc/signed-out";
                 o.Events.OnTokenValidated = ProvisionOidcUser;
+                // A sign-in that ends without a session (the user cancelled, the provider refused, a stale callback, a disabled account) sends
+                // the browser back to the app with a reason code; the sign-in screen explains it instead of trying again at once.
+                o.Events.OnRemoteFailure = ctx => FailSignIn(ctx, OidcFailures.Classify(ctx.Failure), ctx.Properties?.RedirectUri ?? (ctx.Failure as OidcSignInRefusedException)?.ReturnUrl, ctx.Failure?.GetType().Name);
+                o.Events.OnAccessDenied = ctx => FailSignIn(ctx, OidcFailure.AccessDenied, ctx.ReturnUrl, null);
             })
             .AddScheme<AuthenticationSchemeOptions, ProxyHeaderAuthenticationHandler>(SessionClaims.ProxyScheme, null);
 
@@ -76,8 +80,7 @@ public static class AuthExtensions
         var subject = claims.FindFirstValue("sub");
         if (string.IsNullOrEmpty(subject))
         {
-            logger.LogWarning("OIDC sign-in failed: the provider did not return a subject");
-            ctx.Fail("The provider did not return a subject.");
+            Refuse(ctx, OidcFailure.NoSubject, cause: null); // the failure handler logs it
             return;
         }
 
@@ -95,8 +98,25 @@ public static class AuthExtensions
         }
         catch (ForbiddenException e)
         {
-            ctx.Fail(e.Message);
+            Refuse(ctx, OidcFailures.Classify(e), cause: e); // AuthService logged the refusal with the user id; the failure handler adds the outcome
         }
+    }
+
+    /// <summary>
+    /// Ends a failed sign-in: one Warning with the reason code (never the provider's text, which is under its control) and a redirect to the
+    /// page the sign-in meant to return to, marked as failed.
+    /// </summary>
+    /// <summary>Ends the sign-in with a reason. The page the user wanted travels in the exception: the framework drops the properties of a failed token event.</summary>
+    private static void Refuse(TokenValidatedContext ctx, OidcFailure reason, Exception? cause) =>
+        ctx.Fail(new OidcSignInRefusedException(reason, ctx.Properties?.RedirectUri, cause));
+
+    private static Task FailSignIn(HandleRequestContext<RemoteAuthenticationOptions> ctx, OidcFailure reason, string? returnUrl, string? failureType)
+    {
+        var logger = ctx.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(AuthExtensions));
+        logger.LogWarning("OIDC sign-in failed: {Reason} ({FailureType})", OidcFailures.Code(reason), failureType ?? "none");
+        ctx.Response.Redirect(OidcFailures.FailedUrl(reason, returnUrl));
+        ctx.HandleResponse();
+        return Task.CompletedTask;
     }
 
     public static void MapAuthEndpoints(this WebApplication app)
@@ -108,8 +128,12 @@ public static class AuthExtensions
                 : Results.Challenge(new AuthenticationProperties { RedirectUri = LocalPathOrRoot(returnUrl) }, [SessionClaims.OidcScheme]));
     }
 
-    /// <summary>Only same-site paths are allowed as redirect target (no open redirect).</summary>
+    /// <summary>
+    /// Only same-site paths are allowed as redirect target (no open redirect): one leading slash, and printable ASCII only. A browser drops a
+    /// TAB before parsing, so "/\t/evil" would read as "//evil"; CR, LF and non-ASCII would make the redirect header itself invalid.
+    /// </summary>
     internal static string LocalPathOrRoot(string? returnUrl) =>
         !string.IsNullOrEmpty(returnUrl) && returnUrl[0] == '/' && (returnUrl.Length == 1 || (returnUrl[1] != '/' && returnUrl[1] != '\\'))
+        && returnUrl.All(c => c is >= ' ' and <= '~')
             ? returnUrl : "/";
 }

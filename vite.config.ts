@@ -1,11 +1,45 @@
 /// <reference types="vitest/config" />
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
+import { VitePWA } from 'vite-plugin-pwa'
+import { SERVER_PATHS } from './src/frontend/pwa/serverPaths.ts'
 
 // https://vite.dev/config/
 export default defineConfig({
   root: 'src/frontend',
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Installable web app (README "Install as an app"): the manifest, and a service worker that keeps the built shell (HTML, scripts,
+    // styles, icons) so the app starts fast and opens offline. The API, sign-in, pictures and uploads are never cached. A new build
+    // takes over as soon as the browser has it: an open tab reloads once (never at the first install).
+    VitePWA({
+      registerType: 'autoUpdate',
+      injectRegister: false, // main.tsx registers the worker through virtual:pwa-register
+      manifest: {
+        name: 'Tankstat',
+        short_name: 'Tankstat',
+        description: 'Fuel consumption and expense tracking for your vehicles',
+        start_url: '/',
+        scope: '/',
+        display: 'standalone',
+        background_color: '#1f2a6b',
+        theme_color: '#1f2a6b',
+        icons: [
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/icon-maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+          { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+        ],
+      },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+        navigateFallback: 'index.html',
+        navigateFallbackDenylist: SERVER_PATHS, // the API, the OIDC endpoints, pictures and uploads (tested in ServerPaths.unit.test.ts)
+        cleanupOutdatedCaches: true,
+      },
+    }),
+  ],
   server: { proxy: { '/graphql': 'http://localhost:5080', '/auth': 'http://localhost:5080', '/media': 'http://localhost:5080', '/imports': 'http://localhost:5080' } },
   build: { outDir: '../../dist', emptyOutDir: true },
   test: {

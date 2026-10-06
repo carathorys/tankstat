@@ -18,10 +18,11 @@ export interface PhotoSession {
 /**
  * The photo part of the add/edit dialogs of refuelings and expenses: the drafts of a new log and what became of them on save. With a
  * `purpose`, the server reads the photos too (when photo reading is on), assuming numbers and dates are written as in the UI language.
+ * While the dialog is closed (`active` false) nothing is asked of the server: a page may hold many closed dialogs (every home card has some).
  */
-export function usePhotoSession(vehicleId: string, purpose?: ReadingPurpose): PhotoSession {
+export function usePhotoSession(vehicleId: string, purpose?: ReadingPurpose, active = true): PhotoSession {
   const { i18n } = useTranslation()
-  const queue = usePhotoQueue(vehicleId, purpose ? { purpose, locale: i18n.language } : undefined)
+  const queue = usePhotoQueue(vehicleId, purpose && active ? { purpose, locale: i18n.language } : undefined)
   const [leftOut, setLeftOut] = useState(0)
   const [saving, setSaving] = useState(false)
 

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import { server } from './server.ts'
-import { adminSession, fakeLogBackend, fakeSummary, fakeVehicle, fakeVehicleBackend, healthHandler, person, renderWithApollo, sessionHandler, stubViewport } from './mocks.tsx'
+import { adminSession, fakeExpenseBackend, fakeLogBackend, fakeRecurring, fakeRecurringBackend, fakeSummary, fakeVehicle, fakeVehicleBackend, healthHandler, person, renderWithApollo, sessionHandler, stubViewport } from './mocks.tsx'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
@@ -12,13 +12,20 @@ afterEach(() => {
 })
 afterAll(() => server.close())
 
+/** The home page with the backends its quick actions talk to, for the first vehicle (the logs backend answers LogDefaults first). */
 function setup(vehicles = [fakeVehicle()], device: 'desktop' | 'phone' = 'desktop', admin = false) {
   stubViewport(device)
   const backend = fakeVehicleBackend(vehicles)
-  server.use(admin ? adminSession() : sessionHandler('NONE', () => null), healthHandler, ...backend.handlers, ...fakeLogBackend(vehicles[0] ?? fakeVehicle(), []).handlers)
+  const first = backend.state.vehicles[0] ?? fakeVehicle() // the backend's own object: what the other fakes change on it is what the card is served
+  const logs = fakeLogBackend(first, [])
+  const expenses = fakeExpenseBackend(first, [])
+  const recurring = fakeRecurringBackend(first.recurring, first)
+  server.use(admin ? adminSession() : sessionHandler('NONE', () => null), healthHandler, ...backend.handlers, ...logs.handlers, ...expenses.handlers, ...recurring.handlers)
   renderWithApollo(<App />, '/')
-  return { ...backend, ui: userEvent.setup() }
+  return { ...backend, logs, expenses, recurring, ui: userEvent.setup() }
 }
+
+const tyres = () => fakeRecurring({ id: 'rc2', title: 'Tyres', kind: 'ODOMETER', intervalMonths: null, status: { state: 'OVERDUE', limit: 'ODOMETER', dueDate: null, dueOdometer: 60000, daysLeft: null, distanceLeft: -300 } })
 
 const card = async (name: string) => (await screen.findByRole('link', { name: `Open ${name}` })).closest('li')!
 
@@ -118,6 +125,7 @@ it('keeps the figures in the page for screen readers, hidden only visually until
   const c = await vehicleCard('Octavia')
 
   expect(c.style.getPropertyValue('--panel-h')).toMatch(/px$/) // the panel's height: it sits just below the card edge until revealed (a transform, never display: none)
+  expect(c.style.getPropertyValue('--top-h')).toMatch(/px$/) // the top block's: together they are the card's least height (jsdom measures 0, the browser the real thing)
   expect(c).not.toHaveAttribute('data-open')
   expect(within(c).getByText('Odometer')).toBeInTheDocument()
 })
@@ -287,4 +295,174 @@ it('has no search box before the first vehicle exists', async () => {
   await screen.findByText(/You have no vehicles yet/)
 
   expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
+})
+
+// ---- quick actions on the cards -----------------------------------------------------------------------------
+
+it('logs a refuelling from the card; the card updates in place and the home page is not asked again', async () => {
+  const { ui, state, logs } = setup()
+  const c = within(await card('Octavia'))
+
+  await ui.click(c.getByRole('button', { name: 'Refuel Octavia' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add refuelling' })
+  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
+  await ui.type(within(dialog).getByLabelText(/^Volume/), '38,2')
+  await ui.type(within(dialog).getByLabelText('Total cost'), '19100')
+  await ui.type(within(dialog).getByLabelText(/^Odometer/), '12450')
+  await ui.click(within(dialog).getByRole('button', { name: 'Add refuelling' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(logs.state.calls.LogRefueling).toEqual([{ input: expect.objectContaining({ vehicleId: 'v1', volume: 38.2, totalCost: 19100, odometer: 12450 }) }])
+  await c.findByText(/12,450 km/)
+  expect(state.requests.VehicleCard).toEqual([{ id: 'v1' }])
+  expect(state.requests.Welcome).toHaveLength(1)
+})
+
+it('adds an expense from the card; the spending updates in place', async () => {
+  const { ui, state, expenses } = setup()
+  const c = within(await card('Octavia'))
+
+  await ui.click(c.getByRole('button', { name: 'Expense for Octavia' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add expense' })
+  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
+  await ui.type(within(dialog).getByLabelText('Title'), 'Tyres')
+  await ui.type(within(dialog).getByLabelText('Amount'), '120000')
+  await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(expenses.state.calls.AddExpense).toEqual([{ input: expect.objectContaining({ vehicleId: 'v1', title: 'Tyres', amount: 120000 }) }])
+  await c.findByText(/170,000/) // 50,000 + 120,000
+  expect(state.requests.Welcome).toHaveLength(1)
+})
+
+it('marks a due schedule done from the card: it leaves the attention list, the logged expense shows, and the focus lands on the title', async () => {
+  const { ui, state, recurring } = setup([fakeVehicle({ recurring: [tyres()] })])
+  const c = within(await card('Octavia'))
+  expect(c.getByRole('list', { name: 'Needs attention' })).toHaveTextContent('Tyres')
+
+  await ui.click(c.getByRole('button', { name: 'Mark Tyres of Octavia as done' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Mark as done: Tyres' })
+  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
+  await ui.type(within(dialog).getByLabelText(/^Odometer/), '62000')
+  await ui.type(within(dialog).getByLabelText('Amount'), '35000')
+  await ui.click(within(dialog).getByRole('button', { name: 'Mark as done' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(recurring.state.calls.MarkRecurringExpenseDone).toEqual([{ input: expect.objectContaining({ id: 'rc2', odometer: 62000, amount: 35000 }) }])
+  await waitFor(() => expect(c.queryByRole('list', { name: 'Needs attention' })).not.toBeInTheDocument())
+  await c.findByText(/85,000/) // 50,000 + 35,000: the card was asked again
+  expect(state.requests.VehicleCard).toEqual([{ id: 'v1' }])
+  await waitFor(() => expect(document.activeElement).toBe(c.getByRole('link', { name: 'Open Octavia' }))) // the Done button is gone with its row
+})
+
+it('cancelling the Done dialog hands the focus back to its button', async () => {
+  const { ui } = setup([fakeVehicle({ recurring: [tyres()] })])
+  const c = within(await card('Octavia'))
+
+  await ui.click(c.getByRole('button', { name: 'Mark Tyres of Octavia as done' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Mark as done: Tyres' })
+  await ui.click(await within(dialog).findByRole('button', { name: 'Cancel' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  await waitFor(() => expect(document.activeElement).toBe(c.getByRole('button', { name: 'Mark Tyres of Octavia as done' })))
+})
+
+it('a vehicle whose logs may only be viewed has no quick actions; one that may be edited has them', async () => {
+  setup([
+    fakeVehicle({ id: 'a', name: 'Theirs', canEdit: false, logAccess: 'VIEW', ownerName: 'Bob', recurring: [tyres()] }),
+    fakeVehicle({ id: 'b', name: 'Shared', canEdit: false, logAccess: 'EDIT', ownerName: 'Bob' }),
+  ])
+  const theirs = within(await card('Theirs'))
+  const shared = within(await card('Shared'))
+
+  expect(theirs.queryByRole('button')).not.toBeInTheDocument()
+  expect(theirs.getByRole('list', { name: 'Needs attention' })).toHaveTextContent('Tyres')
+  expect(shared.getByRole('button', { name: 'Refuel Shared' })).toBeInTheDocument()
+  expect(shared.getByRole('button', { name: 'Expense for Shared' })).toBeInTheDocument()
+})
+
+it('on a touch screen a card button opens its dialog at once, and taps inside the dialog neither open the vehicle nor close it', async () => {
+  const { ui } = setup([fakeVehicle()], 'phone')
+  const c = await vehicleCard('Octavia')
+
+  await ui.click(within(c).getByRole('button', { name: 'Refuel Octavia' }))
+
+  const dialog = await screen.findByRole('dialog', { name: 'Add refuelling' })
+  expect(c).not.toHaveAttribute('data-open') // the tap went to the button, not to the figures
+  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
+  await ui.click(within(dialog).getByLabelText('Date'))
+  const fullTank = within(dialog).getByRole('switch', { name: 'Full tank' })
+  const was = fullTank.getAttribute('aria-checked')
+  await ui.click(fullTank)
+  expect(fullTank).toHaveAttribute('aria-checked', was === 'true' ? 'false' : 'true') // the tap worked the control (the card did not swallow it as a reveal)
+  expect(c).not.toHaveAttribute('data-open')
+  // Still at home with the dialog open: opening the vehicle would have unmounted the card and its dialog.
+  expect(screen.getByRole('dialog', { name: 'Add refuelling' })).toBeInTheDocument()
+
+  await ui.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+})
+
+it('on a desktop a click inside a dialog opened from the card does not open the vehicle', async () => {
+  const { ui } = setup()
+  const c = within(await card('Octavia'))
+
+  await ui.click(c.getByRole('button', { name: 'Expense for Octavia' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add expense' })
+  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
+  await ui.click(within(dialog).getByLabelText('Title'))
+
+  expect(screen.getByRole('dialog', { name: 'Add expense' })).toBeInTheDocument() // opening the vehicle would have unmounted it
+})
+
+it('two vehicles with the same schedule have Done buttons that name the vehicle', async () => {
+  setup([fakeVehicle({ id: 'a', name: 'Octavia', recurring: [tyres()] }), fakeVehicle({ id: 'b', name: 'Golf', recurring: [fakeRecurring({ ...tyres(), id: 'rc9' })] })])
+  await card('Golf')
+
+  expect(screen.getByRole('button', { name: 'Mark Tyres of Octavia as done' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Mark Tyres of Golf as done' })).toBeInTheDocument()
+})
+
+it('on a touch screen the first tap on Done opens its dialog', async () => {
+  const { ui } = setup([fakeVehicle({ recurring: [tyres()] })], 'phone')
+  const c = await vehicleCard('Octavia')
+
+  await ui.click(within(c).getByRole('button', { name: 'Mark Tyres of Octavia as done' }))
+
+  expect(await screen.findByRole('dialog', { name: 'Mark as done: Tyres' })).toBeInTheDocument()
+  expect(c).not.toHaveAttribute('data-open')
+})
+
+it('Enter on a card button opens its dialog and does not open the vehicle', async () => {
+  const { ui } = setup()
+  const c = await vehicleCard('Octavia')
+
+  within(c).getByRole('button', { name: 'Refuel Octavia' }).focus()
+  await ui.keyboard('{Enter}')
+
+  expect(await screen.findByRole('dialog', { name: 'Add refuelling' })).toBeInTheDocument()
+  expect(c).toBeInTheDocument() // opening the vehicle would have unmounted the card
+})
+
+it('an action on a card keeps every page the home page has loaded', async () => {
+  const { ui, state, logs } = setup(fleet(30))
+  await screen.findByRole('link', { name: 'Open Car 01' })
+  await ui.click(screen.getByRole('button', { name: 'Show more vehicles' }))
+  await screen.findByRole('link', { name: 'Open Car 30' })
+  expect(cardCount()).toBe(30)
+
+  await ui.click(within(await card('Car 01')).getByRole('button', { name: 'Refuel Car 01' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add refuelling' })
+  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
+  await ui.type(within(dialog).getByLabelText(/^Volume/), '30')
+  await ui.type(within(dialog).getByLabelText('Total cost'), '15000')
+  await ui.type(within(dialog).getByLabelText(/^Odometer/), '12450')
+  await ui.click(within(dialog).getByRole('button', { name: 'Add refuelling' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(logs.state.calls.LogRefueling).toHaveLength(1)
+  await within(await card('Car 01')).findByText(/12,450 km/)
+  expect(cardCount()).toBe(30)
+  expect(state.requests.Welcome).toHaveLength(2) // the two pages, nothing more
+  expect(state.requests.VehicleCard).toEqual([{ id: 'v1' }])
 })

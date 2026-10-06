@@ -1,9 +1,10 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
-import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, expect, it, onTestFinished, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import en from '../../src/frontend/i18n/locales/en.json'
+import { navigation } from '../../src/frontend/navigation.ts'
 import { server } from './server.ts'
 import {
   adminSession,
@@ -67,11 +68,15 @@ it('shows an alert when the API is down, and says why in the console', async () 
   expect(consoleError).toHaveBeenCalledWith('GraphQL Health could not be completed', expect.anything())
 })
 
-it('in OIDC mode an anonymous visitor only sees the provider link, no menu and no data', async () => {
+it('in OIDC mode an anonymous visitor is sent to the identity provider and sees no menu and no data meanwhile', async () => {
+  const replace = vi.spyOn(navigation, 'replace').mockImplementation(() => undefined)
+  onTestFinished(() => replace.mockRestore())
   server.use(sessionHandler('OIDC', () => null), healthHandler)
   renderWithApollo(<App />, '/vehicles')
 
-  await screen.findByRole('link', { name: /identity provider/i })
+  expect(await screen.findByRole('link', { name: 'Continue to sign in' })).toHaveAttribute('href', '/auth/oidc/login?returnUrl=%2Fvehicles')
+  expect(screen.getByText('Taking you to your identity provider…')).toBeInTheDocument()
+  expect(replace).toHaveBeenCalledWith('/auth/oidc/login?returnUrl=%2Fvehicles')
   expect(screen.queryByRole('button', { name: /menu/i })).not.toBeInTheDocument()
   expect(screen.queryByText('Vehicles')).not.toBeInTheDocument()
 })

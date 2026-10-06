@@ -2,9 +2,12 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
 import { axe } from 'vitest-axe'
-import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, expect, it, onTestFinished, vi } from 'vitest'
 import App from '../../src/frontend/App.tsx'
 import { ErrorBoundary } from '../../src/frontend/ErrorBoundary.tsx'
+import { SIGNED_OUT_KEY } from '../../src/frontend/auth/oidc.ts'
+import { navigation } from '../../src/frontend/navigation.ts'
+import { platform } from '../../src/frontend/pwa/platform.ts'
 import { server } from './server.ts'
 import { fakeExpense, fakeExpenseBackend, fakeLogBackend, fakeNotification, fakeNotificationBackend, fakePhotoStore, fakeRecognition, fakeRecurring, fakeRecurringBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport, user } from './mocks.tsx'
 
@@ -41,7 +44,7 @@ function setup(route: string, viewport: 'desktop' | 'phone' = 'desktop', photos 
     fakeRecurring({ id: 'rc2', title: 'Tyres', kind: 'ODOMETER', intervalMonths: null, status: { state: 'OVERDUE', limit: 'ODOMETER', dueDate: null, dueOdometer: 60000, daysLeft: null, distanceLeft: -300 } }),
     fakeRecurring(),
   ])
-  const attention = [{ id: 'rc2', title: 'Tyres', kind: 'ODOMETER', status: { state: 'OVERDUE', limit: 'ODOMETER', dueDate: null, daysLeft: null, distanceLeft: -300 } }] as never
+  const attention = [fakeRecurring({ id: 'rc2', title: 'Tyres', kind: 'ODOMETER', intervalMonths: null, status: { state: 'OVERDUE', limit: 'ODOMETER', dueDate: null, dueOdometer: 60000, daysLeft: null, distanceLeft: -300 } })]
   const vehicles = fakeVehicleBackend([fakeVehicle({ recurring: attention })], [fakeVehicle({ id: 't1', name: 'Old Fiat' })])
   const inbox = fakeNotificationBackend([
     fakeNotification(),
@@ -385,5 +388,99 @@ it('the Arrange dialog is labelled, described and free of violations', async () 
   await within(dialog).findByRole('button', { name: 'Move Beta up' })
 
   expect(dialog).toHaveAccessibleDescription(/order/)
+  await check(document.body)
+})
+
+it('the sign-in screens of every mode have no violations', async () => {
+  const replace = vi.spyOn(navigation, 'replace').mockImplementation(() => undefined)
+  onTestFinished(() => replace.mockRestore())
+
+  // OIDC: on the way to the provider.
+  server.use(sessionHandler('OIDC', () => null), healthHandler)
+  let view = renderWithApollo(<App />, '/')
+  await screen.findByText('Taking you to your identity provider…')
+  await check(view.container)
+  view.unmount()
+
+  // OIDC: signed out on purpose.
+  window.sessionStorage.setItem(SIGNED_OUT_KEY, '1')
+  view = renderWithApollo(<App />, '/')
+  await screen.findByRole('heading', { name: 'You have signed out.' })
+  await check(view.container)
+  view.unmount()
+  window.sessionStorage.clear()
+
+  // OIDC: the sign-in failed.
+  view = renderWithApollo(<App />, '/?signIn=failed&reason=access_denied')
+  await screen.findByRole('alert')
+  await check(view.container)
+  view.unmount()
+
+  // Standalone: the password form.
+  server.use(sessionHandler('STANDALONE', () => null), healthHandler)
+  view = renderWithApollo(<App />, '/')
+  await screen.findByLabelText(/Password/)
+  await check(view.container)
+  view.unmount()
+
+  // Behind a proxy: only an explanation.
+  server.use(sessionHandler('PROXY_HEADER', () => null), healthHandler)
+  view = renderWithApollo(<App />, '/')
+  await screen.findByText(/reverse proxy/i)
+  await check(view.container)
+})
+
+it('the install how-to for iPhones is a labelled dialog without violations', async () => {
+  vi.spyOn(platform, 'isIos').mockReturnValue(true)
+  onTestFinished(() => {
+    vi.restoreAllMocks()
+  })
+  const { ui } = setup('/', 'phone')
+  await screen.findByText('Octavia')
+
+  await ui.click(screen.getByRole('button', { name: 'Show menu' }))
+  await ui.click(await screen.findByRole('button', { name: 'Install app' }))
+
+  const dialog = await screen.findByRole('dialog', { name: 'Install Tankstat' })
+  expect(dialog).toHaveAccessibleDescription(/Home Screen/)
+  await check(document.body)
+})
+
+it('the quick actions on a home card have names with the vehicle in them, on a desktop and a phone, free of violations', async () => {
+  const { view } = setup('/')
+  const card = within((await screen.findByRole('link', { name: 'Open Octavia' })).closest('li')!)
+  expect(card.getByRole('button', { name: 'Refuel Octavia' })).toBeInTheDocument()
+  expect(card.getByRole('button', { name: 'Expense for Octavia' })).toBeInTheDocument()
+  expect(card.getByRole('button', { name: 'Mark Tyres of Octavia as done' })).toBeInTheDocument()
+  await check(view.container)
+  view.unmount()
+
+  const phone = setup('/', 'phone')
+  await screen.findByRole('link', { name: 'Open Octavia' })
+  await check(phone.view.container)
+})
+
+it('the dialogs opened from a home card are labelled, described and free of violations', async () => {
+  const { ui } = setup('/')
+  const card = within((await screen.findByRole('link', { name: 'Open Octavia' })).closest('li')!)
+
+  await ui.click(card.getByRole('button', { name: 'Refuel Octavia' }))
+  let dialog = await screen.findByRole('dialog', { name: 'Add refuelling' })
+  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
+  expect(dialog).toHaveAccessibleDescription(/Enter what you filled up/)
+  await check(document.body)
+  await ui.keyboard('{Escape}')
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+  await ui.click(card.getByRole('button', { name: 'Expense for Octavia' }))
+  dialog = await screen.findByRole('dialog', { name: 'Add expense' })
+  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
+  await check(document.body)
+  await ui.keyboard('{Escape}')
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+  await ui.click(card.getByRole('button', { name: 'Mark Tyres of Octavia as done' }))
+  dialog = await screen.findByRole('dialog', { name: 'Mark as done: Tyres' })
+  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
   await check(document.body)
 })
