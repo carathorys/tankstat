@@ -3,12 +3,22 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { SERVER_PATHS } from './src/frontend/pwa/serverPaths.ts'
+import { initSchemeScript, initSchemeStyle } from './src/frontend/theme/initScheme.ts'
 
 // https://vite.dev/config/
 export default defineConfig({
   root: 'src/frontend',
   plugins: [
     react(),
+    // The colour scheme the user chose, from the first paint (theme/initScheme.ts): the theme's styles only arrive with the app's script.
+    // At the end of <head>, after the theme-color meta it sets.
+    {
+      name: 'tankstat-init-scheme',
+      transformIndexHtml: () => [
+        { tag: 'style', children: initSchemeStyle(), injectTo: 'head' },
+        { tag: 'script', children: initSchemeScript(), injectTo: 'head' },
+      ],
+    },
     // Installable web app (README "Install as an app"): the manifest, and a service worker that keeps the built shell (HTML, scripts,
     // styles, icons) so the app starts fast and opens offline. The API, sign-in, pictures and uploads are never cached. A new build
     // takes over as soon as the browser has it: an open tab reloads once (never at the first install).

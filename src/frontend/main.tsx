@@ -2,8 +2,6 @@
 import './pwa/installPrompt.ts'
 import { ApolloProvider } from '@apollo/client/react'
 import '@radix-ui/themes/styles.css'
-import './main.css'
-import { Theme } from '@radix-ui/themes'
 import { MotionConfig } from 'motion/react'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -12,6 +10,7 @@ import { registerSW } from 'virtual:pwa-register'
 import App from './App.tsx'
 import { createApolloClient } from './apolloClient.ts'
 import { initI18n } from './i18n/index.ts'
+import { RadixTheme } from './theme/RadixTheme.tsx'
 import { ThemeRoot } from './theme/ThemeRoot.tsx'
 
 // Installable web app: the service worker keeps the built shell and takes over with every release (see vite.config.ts).
@@ -23,7 +22,7 @@ await initI18n()
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeRoot>
-      <Theme accentColor="indigo" grayColor="sand" appearance="dark" radius="full" panelBackground="translucent" className="dark">
+      <RadixTheme>
         <MotionConfig reducedMotion="user">
           <ApolloProvider client={createApolloClient()}>
             <BrowserRouter>
@@ -31,7 +30,7 @@ createRoot(document.getElementById('root')!).render(
             </BrowserRouter>
           </ApolloProvider>
         </MotionConfig>
-      </Theme>
+      </RadixTheme>
     </ThemeRoot>
   </StrictMode>,
 )

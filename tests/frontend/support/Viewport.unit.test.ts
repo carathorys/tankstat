@@ -22,3 +22,9 @@ it('joins with and, offers alternatives with commas, and does not match what it 
   expect(matchesMedia('(orientation: landscape)', 'desktop')).toBe(false)
   expect(matchesMedia('(prefers-color-scheme: dark)', 'desktop')).toBe(true)
 })
+
+it('has a dark colour scheme unless the test sets the device to light', () => {
+  expect(matchesMedia('(prefers-color-scheme: light)', 'phone')).toBe(false)
+  expect(matchesMedia('(prefers-color-scheme: light)', 'phone', 'light')).toBe(true)
+  expect(matchesMedia('(prefers-color-scheme: dark)', 'desktop', 'light')).toBe(false)
+})

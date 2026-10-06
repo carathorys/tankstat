@@ -80,7 +80,8 @@ it('the bell lists the latest notifications and marks them all read', async () =
 
   await waitFor(() => expect(state.items.every((n) => n.read)).toBe(true))
   expect(state.calls.MarkNotificationsRead).toEqual([{ ids: null }])
-  expect(await screen.findByRole('button', { name: 'Notifications' })).toBeInTheDocument()
+  // The bell no longer counts any (the list is modal, so the page behind it is hidden from assistive technology while it is open).
+  expect(await screen.findByRole('button', { name: 'Notifications', hidden: true })).toBeInTheDocument()
 })
 
 it('following a notification marks it read and leads to what it is about', async () => {

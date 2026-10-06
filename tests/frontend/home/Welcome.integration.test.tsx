@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { graphql } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
 import { server } from '../support/server.ts'
@@ -28,6 +29,22 @@ function setup(vehicles = [fakeVehicle()], device: 'desktop' | 'phone' = 'deskto
 const tyres = () => fakeRecurring({ id: 'rc2', title: 'Tyres', kind: 'ODOMETER', intervalMonths: null, status: { state: 'OVERDUE', limit: 'ODOMETER', dueDate: null, dueOdometer: 60000, daysLeft: null, distanceLeft: -300 } })
 
 const card = async (name: string) => (await screen.findByRole('link', { name: `Open ${name}` })).closest('li')!
+
+it('shows the outlines of the cards while the first ones load, and says so to a screen reader', async () => {
+  let answer!: () => void
+  const held = new Promise<void>((resolve) => (answer = resolve))
+  setup()
+  server.use(graphql.query('Welcome', async () => void (await held))) // ahead of the vehicle backend, which answers once it is let go
+  await screen.findByRole('heading', { name: 'Your vehicles' })
+
+  expect(screen.getByText('Loading…')).toHaveAttribute('role', 'status')
+  expect(document.querySelectorAll('.MuiSkeleton-root')).toHaveLength(4)
+  answer()
+
+  await card('Octavia')
+  expect(screen.queryByText('Loading…')).not.toBeInTheDocument()
+  expect(document.querySelector('.MuiSkeleton-root')).toBeNull()
+})
 
 it('shows a card per vehicle with the key figures', async () => {
   setup([fakeVehicle({ summary: fakeSummary({ latestOdometer: 123456, averageConsumption: 6.25, lastFillUpDate: '2026-09-17', thisMonthSpend: 52000 }) })])

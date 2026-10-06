@@ -1,4 +1,5 @@
-import { Callout, Flex } from '@radix-ui/themes'
+import Alert from '@mui/material/Alert'
+import Stack from '@mui/material/Stack'
 import { Info, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { SessionQuery } from './gql/generated.ts'
@@ -9,22 +10,24 @@ export function NoticeBanner({ notices }: { notices: SessionQuery['notices'] }) 
   if (notices.length === 0) return null
 
   return (
-    <Flex asChild direction="column" gap="2" mb="4">
-      <aside aria-label="Notices">
-        {notices.map((n) => {
-          const warning = n.severity === 'WARNING'
-          const path = `notices.${n.code}`
-          return (
-            <Callout.Root key={n.code} role="note" data-severity={n.severity} color={warning ? 'amber' : 'blue'}>
-              <Callout.Icon>{warning ? <TriangleAlert size={16} /> : <Info size={16} />}</Callout.Icon>
-              <Callout.Text>
-                {warning && <strong>{t('notices.warning')} </strong>}
-                {i18n.exists(path) ? t(path as never) : n.message}
-              </Callout.Text>
-            </Callout.Root>
-          )
-        })}
-      </aside>
-    </Flex>
+    <Stack component="aside" aria-label="Notices" sx={{ gap: 1, mb: 2 }}>
+      {notices.map((n) => {
+        const warning = n.severity === 'WARNING'
+        const path = `notices.${n.code}`
+        return (
+          <Alert
+            key={n.code}
+            role="note"
+            data-severity={n.severity}
+            severity={warning ? 'warning' : 'info'}
+            icon={warning ? <TriangleAlert size={16} aria-hidden /> : <Info size={16} aria-hidden />}
+            sx={{ p: 2, gap: 1.5 }} // a page's notice: roomier than a message in a dialog
+          >
+            {warning && <strong>{t('notices.warning')} </strong>}
+            {i18n.exists(path) ? t(path as never) : n.message}
+          </Alert>
+        )
+      })}
+    </Stack>
   )
 }

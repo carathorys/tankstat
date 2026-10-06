@@ -1,8 +1,15 @@
-import { Badge, Box, Flex, Heading, Text } from '@radix-ui/themes'
-import { UserChip } from './UserAvatar.tsx'
+import Box from '@mui/material/Box'
+import Chip from '@mui/material/Chip'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
+import type { ReactNode } from 'react'
 import { CoverLayers } from './CoverLayers.tsx'
+import { UserChip } from './UserAvatar.tsx'
 
-/** The top of a vehicle page: the vehicle's picture as a banner (a gradient without one) with its name, plate and owner on top. */
+/**
+ * The top of a vehicle page: the vehicle's picture as a banner (a gradient without one) with its name, plate and owner on top. White text
+ * on a dark scrim in either colour scheme, so it is drawn in the dark one (the `dark` class).
+ */
 export function VehicleHero({
   id,
   name,
@@ -16,29 +23,29 @@ export function VehicleHero({
   plate?: string | null
   pictureUrl?: string | null
   owner?: { displayName: string; avatarUrl?: string | null } | null
-  badges?: React.ReactNode
+  badges?: ReactNode
 }) {
   return (
-    <Box className="hero">
+    <Box
+      className="hero dark"
+      sx={{ position: 'relative', minHeight: { xs: '9rem', md: '13rem' }, borderRadius: '12px', boxShadow: 'var(--tk-shadow-4)', overflow: 'hidden', color: 'white' }}
+    >
       <CoverLayers pictureUrl={pictureUrl} id={id} />
-      <Flex direction="column" justify="end" gap="1" className="hero-content">
-        <Heading id="page-title" size={{ initial: '6', md: '8' }} style={{ color: 'white', textShadow: '0 1px 6px rgba(0,0,0,0.6)' }}>
+      <Stack className="hero-content" sx={{ position: 'relative', height: '100%', minHeight: 'inherit', p: 2, justifyContent: 'flex-end', gap: 0.5 }}>
+        <Typography
+          id="page-title"
+          component="h1"
+          variant="h3"
+          sx={(theme) => ({ color: 'white', textShadow: '0 1px 6px rgba(0,0,0,0.6)', [theme.breakpoints.up('lg')]: theme.typography.h1 })}
+        >
           {name}
-        </Heading>
-        <Flex gap="3" align="center" wrap="wrap">
-          {plate && (
-            <Badge size="2" color="gray" variant="solid" highContrast>
-              {plate}
-            </Badge>
-          )}
-          {owner && (
-            <Text size="2" style={{ color: 'white' }}>
-              <UserChip user={owner} />
-            </Text>
-          )}
+        </Typography>
+        <Stack direction="row" sx={{ gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
+          {plate && <Chip size="medium" variant="solid" color="neutral" label={plate} />}
+          {owner && <UserChip user={owner} />}
           {badges}
-        </Flex>
-      </Flex>
+        </Stack>
+      </Stack>
     </Box>
   )
 }

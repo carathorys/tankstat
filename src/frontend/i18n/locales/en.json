@@ -26,6 +26,12 @@
   "language": {
     "label": "Language"
   },
+  "colorMode": {
+    "label": "Colour mode",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
   "common": {
     "cancel": "Cancel",
     "close": "Close",

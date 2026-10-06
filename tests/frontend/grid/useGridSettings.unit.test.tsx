@@ -19,6 +19,7 @@ const api = (over: Partial<UiSettingsApi> = {}): UiSettingsApi => ({
   navOpen: true,
   setNavOpen: vi.fn(),
   setLanguage: vi.fn(),
+  setColorMode: vi.fn(),
   grid: () => undefined,
   saveGrid: vi.fn(),
   resetGrid: vi.fn(),

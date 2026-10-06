@@ -1,4 +1,5 @@
 import { createContext, useContext } from 'react'
+import type { ColorModeChoice } from '../theme/colorMode.ts'
 import type { GridSaved } from './types.ts'
 
 /** The UI settings of the current user, kept by `UiSettingsProvider`: the browser's copy at once, the server's as soon as it answers. */
@@ -10,6 +11,8 @@ export interface UiSettingsApi {
   setNavOpen: (open: boolean) => void
   /** Tells the server about a language the user chose (the language itself is switched by i18next). */
   setLanguage: (code: string) => void
+  /** Tells the server about a colour mode the user chose (MUI switches the mode itself, and keeps the browser's copy). */
+  setColorMode: (mode: ColorModeChoice) => void
   /** A grid's settings as the server knows them (or as saved in this session); undefined when it knows none, or has not answered yet. */
   grid: (gridId: string) => GridSaved | undefined
   saveGrid: (gridId: string, saved: GridSaved) => void

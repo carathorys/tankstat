@@ -2,7 +2,7 @@ import { Table } from '@radix-ui/themes'
 import { motion, type Transition } from 'motion/react'
 
 /**
- * Motion for items that come, go and move (the CSS classes in main.css cover what only comes in). Short, and `MotionConfig
+ * Motion for items that come, go and move (the tk-* classes of the theme cover what only comes in). Short, and `MotionConfig
  * reducedMotion="user"` (main.tsx) leaves only the fade when the user asks for reduced motion. Wrap a list in `AnimatePresence` so a
  * removed item can leave (`initial={false}` there: items present on the first render do not animate in).
  */

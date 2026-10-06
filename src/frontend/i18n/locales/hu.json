@@ -26,6 +26,12 @@
   "language": {
     "label": "Nyelv"
   },
+  "colorMode": {
+    "label": "Színmód",
+    "light": "Világos",
+    "dark": "Sötét",
+    "system": "A rendszer szerint"
+  },
   "common": {
     "cancel": "Mégse",
     "close": "Bezárás",

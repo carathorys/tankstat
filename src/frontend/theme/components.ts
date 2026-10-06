@@ -19,12 +19,16 @@ export const SHADOWS = Array.from({ length: 25 }, (_, n) =>
   n === 0 ? 'none' : n <= 2 ? 'var(--tk-shadow-2)' : n <= 4 ? 'var(--tk-shadow-3)' : n <= 8 ? 'var(--tk-shadow-4)' : 'var(--tk-shadow-5)',
 ) as Shadows
 
-/** The translucent, blurred panel of the app (the old `.glass`): the top bar, the sidebar, dialogs, menus, popovers, cards. */
+/**
+ * The translucent, blurred panel of the app (the old `.glass`): the top bar, the sidebar, dialogs, menus, popovers, cards. A little
+ * denser in the light scheme, where a dark picture behind a panel would otherwise muddy it.
+ */
 export const glass = (theme: T): CSSObject => ({
   backgroundColor: `rgba(${theme.vars.palette.background.paperChannel} / 0.7)`,
   backgroundImage: 'none',
   backdropFilter: 'blur(14px) saturate(140%)',
   WebkitBackdropFilter: 'blur(14px) saturate(140%)',
+  ...theme.applyStyles('light', { backgroundColor: `rgba(${theme.vars.palette.background.paperChannel} / 0.85)` }),
 })
 
 /** A soft surface in a tone: tinted background, readable text, a little more tint under the pointer. */
@@ -43,6 +47,24 @@ export const ghostTone = (theme: T, tone: Tone): CSSObject => ({
 
 const controlHeights = { small: 24, medium: 32, large: 40 } as const
 
+/**
+ * Motion for state changes, as classes (short; under reduced motion only the change itself): tk-appear, something new comes in (a message,
+ * a note under a field); tk-fade, a value swaps (a badge); tk-delayed, a waiting indicator that only shows when the wait is noticeable;
+ * tk-pulse, something is still in progress; tk-spin, a refresh that is running. Leaving and moving items use motion's AnimatePresence and
+ * layout (components/motion.ts).
+ */
+const MOTION_CLASSES: CSSObject = {
+  '@keyframes tk-appear': { from: { opacity: 0, transform: 'translateY(4px)' } },
+  '@keyframes tk-fade': { from: { opacity: 0 } },
+  '@keyframes tk-pulse': { '50%': { opacity: 0.35 } },
+  '@keyframes tk-spin': { to: { transform: 'rotate(360deg)' } },
+  '.tk-appear': { animation: 'tk-appear 0.2s ease-out both' },
+  '.tk-fade': { animation: 'tk-fade 0.2s ease-out both' },
+  '.tk-delayed': { animation: 'tk-fade 0.2s ease-out 0.3s both' },
+  '.tk-pulse': { animation: 'tk-pulse 1.6s ease-in-out infinite' },
+  '.tk-spin': { animation: 'tk-spin 0.9s linear infinite' },
+}
+
 /** The surface, outline and focus ring of a text field (also the date picker's and the select's). */
 const fieldSurface = (theme: T, outline: string): CSSObject => ({
   ...theme.typography.body2,
@@ -58,12 +80,26 @@ const fieldSurface = (theme: T, outline: string): CSSObject => ({
 
 export const components: Components<T> = {
   MuiCssBaseline: {
-    styleOverrides: {
-      // The shadows of the default (dark) scheme at the root, the light ones with the light class (theme.ts: colorSchemeSelector).
-      ':root': shadowTokens('dark'),
+    styleOverrides: (theme) => ({
+      // The shadows of the default (dark) scheme at the root, the light ones with the light class (theme.ts: colorSchemeSelector); a part
+      // that is always dark (a vehicle's banner and cards: the `dark` class) has the dark ones in either scheme, like MUI's colours.
+      ':root, .dark': shadowTokens('dark'),
       '.light': shadowTokens('light'),
       'html, body': { height: '100%' },
-    },
+      // The dim, layered look: a soft glow of the accent and the gray behind the translucent, blurred panels.
+      body: {
+        background: `radial-gradient(1200px 600px at 10% -10%, ${theme.vars.palette.primary.soft}, transparent 60%), radial-gradient(900px 500px at 100% 0%, ${theme.vars.palette.neutral.soft}, transparent 55%), ${theme.vars.palette.background.default}`,
+        backgroundAttachment: 'fixed',
+      },
+      ...MOTION_CLASSES,
+      '@media (prefers-reduced-motion: reduce)': {
+        '*': { scrollBehavior: 'auto !important' },
+        '.tk-appear, .tk-fade, .tk-delayed, .tk-pulse, .tk-spin': { animation: 'none' },
+      },
+      // Phones: tighter cells in the grids that are still Radix tables, so the columns and the two action buttons fit without sideways
+      // scrolling. Goes with the last of them.
+      '@media (max-width: 767px)': { '.rt-TableCell, .rt-TableColumnHeaderCell': { paddingInline: 8 } },
+    }),
   },
   MuiButtonBase: { defaultProps: { disableRipple: true } },
 

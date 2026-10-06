@@ -61,13 +61,13 @@ export function DialogButtons({ children }: { children: ReactNode }) {
   return <Stack direction="row" sx={{ gap: 1.5, justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap', mt: 0.5 }}>{children}</Stack>
 }
 
-/** Cancel: closes the dialog it is in (the safe choice, so a confirmation starts on it). */
-export function DialogCancel({ disabled, autoFocus }: { disabled?: boolean; autoFocus?: boolean }) {
+/** Cancel: closes the dialog it is in (the safe choice, so a confirmation starts on it). `label` for a dialog that only informs: "Close". */
+export function DialogCancel({ disabled, autoFocus, label }: { disabled?: boolean; autoFocus?: boolean; label?: string }) {
   const { t } = useTranslation()
   const close = useDialogClose()
   return (
     <Button type="button" variant="soft" color="neutral" disabled={disabled} autoFocus={autoFocus} onClick={close}>
-      {t('common.cancel')}
+      {label ?? t('common.cancel')}
     </Button>
   )
 }

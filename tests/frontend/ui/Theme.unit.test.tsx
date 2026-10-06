@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { COLOR_MODE_KEY } from '../../../src/frontend/theme/colorMode.ts'
+import { THEME_COLOR } from '../../../src/frontend/theme/initScheme.ts'
 import { SHADOWS, TONES } from '../../../src/frontend/theme/components.ts'
 import { createTankstatTheme } from '../../../src/frontend/theme/theme.ts'
 import { ThemeRoot } from '../../../src/frontend/theme/ThemeRoot.tsx'
@@ -52,5 +53,12 @@ describe('the colour mode', () => {
     window.localStorage.setItem(COLOR_MODE_KEY, 'light')
     render(<ThemeRoot instant>app</ThemeRoot>)
     expect(document.documentElement).toHaveClass('light')
+  })
+
+  it('colours the browser bar with the scheme on screen', () => {
+    document.head.insertAdjacentHTML('beforeend', '<meta name="theme-color" content="#1f2a6b" />')
+    window.localStorage.setItem(COLOR_MODE_KEY, 'light')
+    render(<ThemeRoot instant>app</ThemeRoot>)
+    expect(document.querySelector('meta[name="theme-color"]')).toHaveAttribute('content', THEME_COLOR.light)
   })
 })

@@ -339,10 +339,11 @@ const DEVICES = {
 } as const
 
 /**
- * Whether a media query holds on a device: width ranges, hover, pointer, a dark colour scheme and no reduced motion, joined with
- * "and", alternatives with commas, with or without "@media" and spaces (MUI asks "(min-width:768px)"). Anything else does not match.
+ * Whether a media query holds on a device: width ranges, hover, pointer, its colour scheme (dark unless the test says light) and no
+ * reduced motion, joined with "and", alternatives with commas, with or without "@media" and spaces (MUI asks "(min-width:768px)").
+ * Anything else does not match.
  */
-export function matchesMedia(query: string, kind: keyof typeof DEVICES): boolean {
+export function matchesMedia(query: string, kind: keyof typeof DEVICES, scheme: 'light' | 'dark' = 'dark'): boolean {
   const device = DEVICES[kind]
   const feature = (f: string) => {
     const [name, value = ''] = f.replace(/[()]/g, '').split(':').map((x) => x.trim())
@@ -359,7 +360,7 @@ export function matchesMedia(query: string, kind: keyof typeof DEVICES): boolean
       case 'any-pointer':
         return value === device.pointer
       case 'prefers-color-scheme':
-        return value === 'dark'
+        return value === scheme
       case 'prefers-reduced-motion':
         return value === 'no-preference'
       default:
@@ -372,10 +373,13 @@ export function matchesMedia(query: string, kind: keyof typeof DEVICES): boolean
     .some((alternative) => alternative.split(/\band\b/).every((part) => part.trim() !== '' && feature(part.trim())))
 }
 
-/** Pretends to be a phone (narrow, touch) or a desktop (wide, mouse) browser window for media queries (CSS and useMediaQuery). */
-export function stubViewport(kind: keyof typeof DEVICES) {
+/**
+ * Pretends to be a phone (narrow, touch) or a desktop (wide, mouse) browser window for media queries (CSS and useMediaQuery), set to
+ * a dark colour scheme unless `scheme` says light.
+ */
+export function stubViewport(kind: keyof typeof DEVICES, { scheme = 'dark' }: { scheme?: 'light' | 'dark' } = {}) {
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: matchesMedia(query, kind),
+    matches: matchesMedia(query, kind, scheme),
     media: query,
     onchange: null,
     addEventListener() {},
