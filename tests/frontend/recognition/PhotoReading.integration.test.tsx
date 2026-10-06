@@ -425,3 +425,80 @@ it('saves an expense while its receipt is still being read, leaving the amount t
   expect(backend.state.calls.AddExpense).toEqual([{ input: expect.objectContaining({ title: 'Car wash', amount: null, photoIds: ['draft1'] }) }])
   expect(await screen.findByText('Reading photo…')).toBeInTheDocument()
 })
+
+// ---- photos added to a saved log, in its edit dialog -----------------------------------------------------
+
+function setupExpenseEdit(recognitionOptions: Parameters<typeof fakeRecognition>[0] = {}) {
+  stubViewport('desktop')
+  const photos = fakePhotoStore()
+  const recognition = fakeRecognition({
+    results: [[{ name: 'TOTAL', value: '25870' }, { name: 'CURRENCY', value: 'EUR' }, { name: 'DATE', value: '2026-09-25' }]],
+    queuedPolls: 0,
+    photos,
+    ...recognitionOptions,
+  })
+  const backend = fakeExpenseBackend(fakeVehicle(), [fakeExpense({ id: 'e1', title: 'Oil change', date: '2026-09-01', amount: 35000, currency: 'HUF' })], photos)
+  server.use(sessionHandler('NONE', () => null), healthHandler, ...backend.handlers, ...recognition.handlers)
+  renderWithApollo(<App />, '/vehicles/v1?tab=expenses')
+  return { ...backend, photos, recognition, ui: userEvent.setup() }
+}
+
+async function openEditExpense(ui: ReturnType<typeof userEvent.setup>) {
+  await screen.findByText('Oil change')
+  await ui.click(screen.getByRole('button', { name: 'Edit the expense Oil change' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Edit expense' })
+  await waitFor(() => expect(within(dialog).getByLabelText(/^Amount/)).toHaveValue('35000'))
+  return dialog
+}
+
+it('a photo added to a saved expense is read: the saved values stay, the photo only offers what differs', async () => {
+  const { ui, photos } = setupExpenseEdit()
+  const dialog = await openEditExpense(ui)
+
+  await ui.upload(camera(dialog), photo())
+
+  expect(await within(dialog).findAllByText(/The photo shows/, {}, READ_WAIT)).not.toHaveLength(0)
+  expect(within(dialog).getByLabelText(/^Amount/)).toHaveValue('35000') // saved: kept
+  expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF')
+  expect(within(dialog).getByText(/The photo shows 25870/)).toBeInTheDocument()
+  expect(photos.state.putQueries).toEqual(['?form=expense&locale=en'])
+  expect(vi.mocked(resizeImage)).toHaveBeenLastCalledWith(expect.anything(), { maxEdge: 1600, format: 'jpeg' }) // a photo that is read goes as JPEG
+})
+
+it('an amount emptied in the edit dialog is filled in from the new photo', async () => {
+  const { ui } = setupExpenseEdit()
+  const dialog = await openEditExpense(ui)
+
+  await ui.clear(within(dialog).getByLabelText(/^Amount/))
+  await ui.upload(camera(dialog), photo())
+
+  await waitFor(() => expect(within(dialog).getByLabelText(/^Amount/)).toHaveValue('25870'), READ_WAIT)
+  expect(within(dialog).getByLabelText('Date')).toHaveValue('2026-09-01') // still the saved day
+})
+
+it('a saved expense can be saved with its amount emptied while its new photo is still being read', async () => {
+  const { ui, state } = setupExpenseEdit({ queuedPolls: 1000 })
+  const dialog = await openEditExpense(ui)
+
+  await ui.upload(camera(dialog), photo())
+  expect(await within(dialog).findByText('Reading…')).toBeInTheDocument()
+  await ui.clear(within(dialog).getByLabelText(/^Amount/))
+  expect(within(dialog).getByText('Leave it empty: it is filled in from the photo after saving.')).toBeInTheDocument()
+  await ui.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(state.calls.UpdateExpense).toEqual([{ input: expect.objectContaining({ id: 'e1', amount: null }) }])
+})
+
+it('without a photo being read, an emptied amount of a saved expense is still required', async () => {
+  const { ui, state } = setupExpenseEdit({ available: false })
+  const dialog = await openEditExpense(ui)
+
+  await ui.upload(camera(dialog), photo())
+  await ui.clear(within(dialog).getByLabelText(/^Amount/))
+  await ui.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+  expect(screen.getByRole('dialog', { name: 'Edit expense' })).toBeInTheDocument()
+  expect(state.calls.UpdateExpense).toBeUndefined()
+})
+

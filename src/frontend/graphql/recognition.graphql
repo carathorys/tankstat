@@ -1,4 +1,4 @@
-# Photo reading (optional, on the server): whether it is on, and what was read from the drafts of the open add dialog.
+# Photo reading (optional, on the server): whether it is on, and what was read from the photos of the open add or edit dialog.
 
 query RecognitionStatus {
   recognitionStatus {
@@ -6,20 +6,49 @@ query RecognitionStatus {
   }
 }
 
+fragment PhotoReadingFields on PhotoReadingInfo {
+  status
+  kind
+  values {
+    name
+    value
+    confidence
+  }
+  issues {
+    code
+    field
+  }
+}
+
 query PhotoDraftReadings($ids: [UUID!]!) {
   photoDrafts(ids: $ids) {
     id
     reading {
-      status
-      kind
-      values {
-        name
-        value
-        confidence
+      ...PhotoReadingFields
+    }
+  }
+}
+
+# The readings of a saved log's photos, for its edit dialog (photos added there are read too).
+query RefuelingPhotoReadings($id: UUID!) {
+  refueling(id: $id) {
+    id
+    photos {
+      id
+      reading {
+        ...PhotoReadingFields
       }
-      issues {
-        code
-        field
+    }
+  }
+}
+
+query ExpensePhotoReadings($id: UUID!) {
+  expense(id: $id) {
+    id
+    photos {
+      id
+      reading {
+        ...PhotoReadingFields
       }
     }
   }

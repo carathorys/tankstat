@@ -1,3 +1,4 @@
+using Tankstat.Domain.Photos;
 using Tankstat.Application.Expenses;
 using Tankstat.Application.Recognition;
 using Tankstat.Application.Refuelings;
@@ -310,4 +311,90 @@ public class LogPhotoFillerTests
 
         Assert.Equal((4000L, ReviewState.NeedsReview), (restored.Odometer, restored.ReviewState));
     }
+
+    // ---- photos added to a saved log (its edit dialog) -----------------------------------------------------
+
+    private static async Task<Guid> AddedAndQueued(Scene s, LogType type, Guid logId, byte marker = 9)
+    {
+        var image = await s.W.Photos.AddAsync(type, logId, Jpeg(marker), default);
+        await s.W.Recognition.QueueForLogPhotoAsync(type, logId, image, "hu", default);
+        return image;
+    }
+
+    [Fact]
+    public async Task APhotoAddedToASavedLog_IsQueuedWithTheHintsOfThatLog()
+    {
+        var s = await Setup();
+        await s.W.RefuelingService.LogAsync(s.Car.Id, new RefuelingInput(new DateOnly(2026, 8, 1), 40, 60, "HUF", 10000, true, null), default);
+        await s.W.RefuelingService.LogAsync(s.Car.Id, new RefuelingInput(new DateOnly(2026, 9, 1), 40, 60, "HUF", 12000, true, null), default);
+        var expense = await s.W.ExpenseService.AddAsync(s.Car.Id, new ExpenseInput(new DateOnly(2026, 8, 15), "Tyres", null, 300, "EUR", null, null), default);
+
+        var image = await AddedAndQueued(s, LogType.Expense, expense.Id);
+
+        var queued = Assert.Single(s.W.Readings.Items);
+        Assert.Equal((image, ReadingPurpose.Expense, "hu"), (queued.Id, queued.Purpose, queued.Locale));
+        Assert.Equal(10000L, queued.LastOdometer); // the reading before the log's day, not the vehicle's latest (12000)
+        Assert.Equal("EUR", queued.Currency); // the log's own currency
+    }
+
+    [Fact]
+    public async Task OnlyTheOneWhoAddedThePhoto_ToThatLog_QueuesIt()
+    {
+        var s = await Setup();
+        var expense = await s.W.ExpenseService.AddAsync(s.Car.Id, new ExpenseInput(Day, "Tyres", null, 300, "EUR", null, null), default);
+        var other = await s.W.ExpenseService.AddAsync(s.Car.Id, new ExpenseInput(Day, "Wash", null, 10, "EUR", null, null), default);
+        var image = await s.W.Photos.AddAsync(LogType.Expense, expense.Id, Jpeg(), default);
+
+        await s.W.Recognition.QueueForLogPhotoAsync(LogType.Expense, other.Id, image, "en", default); // not that log's photo
+        await s.W.Recognition.QueueForLogPhotoAsync(LogType.Refueling, expense.Id, image, "en", default); // not that kind
+        s.W.Current.SignInAs(s.Bob);
+        await s.W.Recognition.QueueForLogPhotoAsync(LogType.Expense, expense.Id, image, "en", default); // not Bob's
+
+        Assert.Empty(s.W.Readings.Items);
+    }
+
+    [Fact]
+    public async Task ASavedExpense_CanHaveItsAmountEmptied_WhileANewPhotoIsRead_WhichFillsItIn()
+    {
+        var s = await Setup();
+        var expense = await s.W.ExpenseService.AddAsync(s.Car.Id, new ExpenseInput(Day, "Service", null, 100, "EUR", 1000, null), default);
+        await AddedAndQueued(s, LogType.Expense, expense.Id);
+
+        var saved = await s.W.ExpenseService.UpdateAsync(expense.Id, new ExpenseInput(Day, "Service", null, null, "EUR", 1000, null), default);
+        Assert.Equal((ReviewState.AwaitingPhotos, (decimal?)null), (saved.ReviewState, saved.Amount));
+
+        Answer(s, DocumentKind.ExpenseReceipt, Read(ReadingFieldName.Total, "245.50"), Read(ReadingFieldName.Currency, "EUR"));
+        await s.W.Processor.ProcessDueAsync(default);
+
+        var filled = s.W.Expenses.Items.Single(e => e.Id == expense.Id);
+        Assert.Equal((245.50m, "EUR", ReviewState.NeedsReview), (filled.Amount, filled.Currency, filled.ReviewState));
+    }
+
+    [Fact]
+    public async Task ANewPhotoReadJustBeforeTheSave_LetsTheValueBeEmptied_AndIsTakenRightAway()
+    {
+        var s = await Setup();
+        var expense = await s.W.ExpenseService.AddAsync(s.Car.Id, new ExpenseInput(Day, "Service", null, 100, "EUR", 1000, null), default);
+        await AddedAndQueued(s, LogType.Expense, expense.Id);
+        Answer(s, DocumentKind.ExpenseReceipt, Read(ReadingFieldName.Total, "245.50"), Read(ReadingFieldName.Currency, "EUR"));
+        await s.W.Processor.ProcessDueAsync(default); // read while the log did not wait: nothing to fill yet
+
+        var saved = await s.W.ExpenseService.UpdateAsync(expense.Id, new ExpenseInput(Day, "Service", null, null, "EUR", 1000, null), default);
+
+        Assert.Equal((245.50m, ReviewState.NeedsReview), (saved.Amount, saved.ReviewState));
+    }
+
+    [Fact]
+    public async Task ASavedRefuelling_WithoutANewPhotoBeingRead_StillNeedsEveryValue()
+    {
+        var s = await Setup();
+        var log = await s.W.RefuelingService.LogAsync(s.Car.Id, new RefuelingInput(Day, 40, 60, "EUR", 1000, true, null), default);
+        await s.W.Photos.AddAsync(LogType.Refueling, log.Id, Jpeg(), default); // added without reading
+
+        var refused = await Assert.ThrowsAsync<DomainException>(() =>
+            s.W.RefuelingService.UpdateAsync(log.Id, new RefuelingInput(Day, 40, null, "EUR", 1000, true, null), default));
+
+        Assert.Equal("log.valuesRequired", refused.Key);
+    }
 }
+

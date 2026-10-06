@@ -1,17 +1,19 @@
 import { Box, Button, Flex, IconButton, Text } from '@radix-ui/themes'
 import { Camera, ImagePlus, RotateCw, Trash2 } from 'lucide-react'
-import { useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useErrorText } from '../i18n/errors.ts'
 import { ErrorMessage } from '../messages.tsx'
 import { resizeImage } from '../pictures/resizeImage.ts'
-import { deleteImage, LOG_PHOTO_EDGE, logPhotoPath, logPhotosPath, MAX_LOG_PHOTOS, uploadImage, type LogKind } from '../pictures/upload.ts'
+import { deleteImage, LOG_PHOTO_EDGE, logPhotoPath, logPhotosPath, MAX_LOG_PHOTOS, uploadImage, type LogKind, type ReadingPurpose } from '../pictures/upload.ts'
 import type { PhotoQueue } from './usePhotoQueue.ts'
 
 /**
  * The photos of a refueling or expense: thumbnails that open the full picture, "Take photo" (the phone's camera right away) and
  * "Add photos" (the library). For a saved log (`logId`) every change goes to the server at once; for a new one each photo is uploaded
  * right away as a draft (the `queue`) and attached when the log is saved. Progress and results are announced to screen readers.
+ * With `read` (a saved log in its edit dialog while photo reading may be on), added photos are read on the server like drafts are: they
+ * go up as JPEG, which every model server decodes, and `onAdded` tells the dialog which ones to wait for.
  */
 export function PhotoGallery({
   kind,
@@ -20,6 +22,9 @@ export function PhotoGallery({
   queue,
   readingIds,
   disabled = false,
+  read,
+  onAdded,
+  onBusyChange,
   onChanged,
 }: {
   kind: LogKind
@@ -29,8 +34,14 @@ export function PhotoGallery({
   disabled?: boolean
   photos: { id: string; url: string }[]
   queue: PhotoQueue
-  /** Drafts the server is reading right now (photo reading): they say so under their thumbnail. */
+  /** Photos the server is reading right now (photo reading): they say so under their thumbnail. */
   readingIds?: readonly string[]
+  /** A saved log's added photos are read too (`jpeg`: upload them as JPEG, as long as reading is not known to be off). */
+  read?: { purpose: ReadingPurpose; locale: string; jpeg: boolean }
+  /** A saved log's photos that were just added, by picture id. */
+  onAdded?: (ids: string[]) => void
+  /** Photos of a saved log are being uploaded or removed: saving should wait for it. */
+  onBusyChange?: (busy: boolean) => void
   onChanged: () => void | Promise<unknown>
 }) {
   const { t } = useTranslation()
@@ -42,9 +53,11 @@ export function PhotoGallery({
   const [error, setError] = useState<unknown>()
   const [busy, setBusy] = useState(false)
 
+  useEffect(() => onBusyChange?.(busy), [busy, onBusyChange])
+
   const saved = logId !== undefined
   const shown = saved
-    ? photos.map((p) => ({ key: p.id, url: p.url, state: 'uploaded' as const, reading: false }))
+    ? photos.map((p) => ({ key: p.id, url: p.url, state: 'uploaded' as const, reading: (readingIds ?? []).includes(p.id) }))
     : queue.items.map((p) => ({ key: p.key, url: p.url, state: p.state, reading: p.id !== undefined && (readingIds ?? []).includes(p.id) }))
   const room = MAX_LOG_PHOTOS - shown.length
 
@@ -68,9 +81,14 @@ export function PhotoGallery({
     if (list.length === 0) return
     void run(async () => {
       if (saved) {
+        const added: string[] = []
         try {
-          for (const file of list) await uploadImage(logPhotosPath(kind, logId), await resizeImage(file, { maxEdge: LOG_PHOTO_EDGE }))
+          for (const file of list) {
+            const image = await resizeImage(file, read?.jpeg ? { maxEdge: LOG_PHOTO_EDGE, format: 'jpeg' } : { maxEdge: LOG_PHOTO_EDGE })
+            added.push((await uploadImage(logPhotosPath(kind, logId, read), image)).id)
+          }
         } finally {
+          if (added.length > 0) onAdded?.(added)
           await onChanged() // also shows the ones that did go through when a later one failed
         }
       } else {

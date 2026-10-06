@@ -47,6 +47,11 @@ export interface FillState<F extends string> {
   offered: Partial<Record<F, string>>
   /** Fields that hold a value worked out from other fields (see `calculateField`): a photo only offers its value there too. */
   calculated: ReadonlySet<F>
+  /**
+   * Fields that hold a saved value (an edit dialog): a photo only offers its value there while they are not empty. Kept apart from
+   * `touched`, which also says in which order the user typed (what gives way when amounts are kept in step).
+   */
+  kept?: ReadonlySet<F>
 }
 
 const without = <F extends string>(set: ReadonlySet<F>, field: F) => {
@@ -60,8 +65,8 @@ const movedToEnd = <F extends string>(set: ReadonlySet<F>, field: F) => without(
 
 /**
  * Puts read values into the fields the user has not changed (their starting values, such as today's date or the last currency, count as
- * unchanged); for fields the user typed in, and for calculated ones (they follow what the user typed), a different value is only offered.
- * Returns the new state and the fields filled just now.
+ * unchanged) and into fields left empty (the user cleared them, so the photo may give the value); for fields the user typed in, and for
+ * calculated ones (they follow what the user typed), a different value is only offered. Returns the new state and the fields filled just now.
  */
 export function applyRead<F extends string>(
   state: FillState<F>,
@@ -71,22 +76,25 @@ export function applyRead<F extends string>(
   const values = { ...state.values }
   const filled = { ...state.filled }
   const offered = { ...state.offered }
+  let touched = state.touched
   const newly: F[] = []
   for (const field of Object.keys(fields) as F[]) {
     const value = read[fields[field]!]?.value
     if (value === undefined) continue
-    if (state.touched.has(field) || state.calculated.has(field)) {
+    const holdsTheirs = (state.touched.has(field) || state.kept?.has(field) === true) && values[field].trim() !== ''
+    if (holdsTheirs || state.calculated.has(field)) {
       if (sameValue(values[field], value)) delete offered[field]
       else offered[field] = value
       continue
     }
+    if (touched.has(field)) touched = without(touched, field) // emptied by the user: filled like an untouched field
     if (filled[field] === value && values[field] === value) continue
     values[field] = value
     filled[field] = value
     delete offered[field]
     newly.push(field)
   }
-  return { state: { ...state, values, filled, offered }, newly }
+  return { state: { ...state, values, filled, offered, touched }, newly }
 }
 
 /** The user typed in a field: it is theirs now, and the photo's mark goes once it no longer says what the photo showed. */
@@ -96,7 +104,7 @@ export function changeField<F extends string>(state: FillState<F>, field: F, val
   if (filled[field] !== value) delete filled[field]
   if (offered[field] !== undefined && sameValue(value, offered[field])) delete offered[field]
   const touched = movedToEnd(state.touched, field)
-  return { values: { ...state.values, [field]: value }, touched, filled, offered, calculated: without(state.calculated, field) }
+  return { ...state, values: { ...state.values, [field]: value }, touched, filled, offered, calculated: without(state.calculated, field) }
 }
 
 /** "Use": the field takes the value the photo showed, as if the user had typed it (and it still says what the photo showed). */
@@ -117,7 +125,7 @@ export function calculateField<F extends string>(state: FillState<F>, field: F, 
   delete filled[field]
   if (offered[field] !== undefined && sameValue(value, offered[field])) delete offered[field]
   const calculated = new Set(state.calculated).add(field)
-  return { values: { ...state.values, [field]: value }, touched: without(state.touched, field), filled, offered, calculated }
+  return { ...state, values: { ...state.values, [field]: value }, touched: without(state.touched, field), filled, offered, calculated }
 }
 
 /** Empties a calculated field whose value can no longer be worked out (what it came from is gone), so it never shows a stale value. */

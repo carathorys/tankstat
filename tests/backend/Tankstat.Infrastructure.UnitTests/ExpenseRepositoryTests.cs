@@ -181,4 +181,40 @@ public class ExpenseRepositoryTests
 
         Assert.Equal(["Parking", "Service"], await db.Get<IExpenseRepository>().CategoriesAsync(car.Id, default));
     }
+
+    [Fact]
+    public async Task AnUpdate_ThatLetsGoOfTheCostAndTheReading_DeletesThem()
+    {
+        await using var db = new TestDatabase();
+        var car = await AddVehicle(db);
+        var repo = db.Get<IExpenseRepository>();
+        var added = await Add(db, car, "Service", odometer: 150);
+        var expense = (await repo.FindAsync(added.Id, default))!;
+
+        // Waiting for a photo that is being read: the amount and the odometer are left to it.
+        var changes = expense.Update(Day, "Service", null, null, null, null, null, readingPhotos: true);
+        await repo.UpdateAsync(expense, changes, default);
+
+        var loaded = (await repo.FindAsync(added.Id, default))!;
+        Assert.Equal(((decimal?)null, (long?)null), (loaded.Amount, loaded.Odometer));
+        Assert.Equal((0, 0), await Counts(db)); // the rows it let go of are gone, the log saved first so nothing refers to them
+    }
+
+    [Fact]
+    public async Task ARefuellingUpdate_ThatLetsGoOfItsCost_DeletesIt()
+    {
+        await using var db = new TestDatabase();
+        var car = await AddVehicle(db);
+        var repo = db.Get<Tankstat.Application.Refuelings.IRefuelingRepository>();
+        var log = Refueling.Create(car.OwnerId, Owner, car.Id, Day, 40, Cost.Create(car.OwnerId, car.Id, Day, 60, "EUR"), OdometerReading.Create(car.OwnerId, car.Id, Day, 1000), true, false, null);
+        await repo.AddAsync(log, default);
+        var loaded = (await repo.FindAsync(log.Id, default))!;
+
+        var changes = loaded.Update(Day, 40, null, null, 1000, true, false, null, readingPhotos: true);
+        await repo.UpdateAsync(loaded, changes, default);
+
+        Assert.Null((await repo.FindAsync(log.Id, default))!.TotalCost);
+        Assert.Equal((0, 1), await Counts(db)); // the cost is gone, the reading stays
+    }
 }
+
