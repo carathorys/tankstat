@@ -184,7 +184,7 @@ public class NotificationServiceTests
         await s.W.RecurringService.AddAsync(s.Car.Id, Yearly(Today, "Tax"), default); // a year away
         Assert.Equal(1, await s.W.NotificationService.CountAsync(false, default));
 
-        await s.W.RecurringService.MarkDoneAsync(item.Id, new MarkDoneInput(new DateOnly(2025, 10, 20), null, false, null, null), default); // due soon again
+        await s.W.RecurringService.MarkDoneAsync([item.Id], new MarkDoneInput(new DateOnly(2025, 10, 20), null, null, null), default); // due soon again
 
         Assert.Equal([NotificationKind.RecurringDueSoon, NotificationKind.RecurringOverdue], (await s.W.NotificationService.ListAsync(false, 0, 10, default)).Select(n => n.Kind).Order());
     }
@@ -283,7 +283,7 @@ public class NotificationServiceTests
         var kept = Assert.Single(await s.W.NotificationService.ListAsync(false, 0, 10, default));
         Assert.True(kept.IsRead);
 
-        await s.W.RecurringService.MarkDoneAsync(item.Id, new MarkDoneInput(DateOnly.FromDateTime(s.W.Clock.GetUtcNow().UtcDateTime), null, false, null, null), default);
+        await s.W.RecurringService.MarkDoneAsync([item.Id], new MarkDoneInput(DateOnly.FromDateTime(s.W.Clock.GetUtcNow().UtcDateTime), null, null, null), default);
         Assert.Empty(await s.W.NotificationService.ListAsync(false, 0, 10, default)); // done: the old reminder can go
     }
 

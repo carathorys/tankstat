@@ -45,6 +45,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['../../tests/frontend/setup.ts'],
+    // A whole test may take longer than Vitest's 5 s default on CI (coverage on, a slower runner): the first test of a file loads
+    // the lazy pages, and the photo reading tests wait for real 1.5 s polls. Missing elements still fail after 3 s (setup.ts).
+    testTimeout: 15_000,
     include: ['../../tests/frontend/**/*.{unit,integration}.test.{ts,tsx}'],
     coverage: {
       provider: 'v8',

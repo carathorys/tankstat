@@ -21,6 +21,7 @@ fragment VehicleCardFields on Vehicle {
   recurring {
     id
     title
+    category
     kind
     status {
       ...RecurrenceStatusFields

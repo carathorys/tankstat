@@ -626,6 +626,8 @@ export interface FakeExpense {
   deletedAt?: string
   reviewState: 'NONE' | 'AWAITING_PHOTOS' | 'NEEDS_REVIEW' | 'INCOMPLETE'
   filledFromPhoto: ('ODOMETER' | 'VOLUME' | 'TOTAL')[]
+  /** The recurring expenses it covered when they were marked done. */
+  schedules?: { id: string; title: string }[]
 }
 
 export const fakeExpense = (over: Partial<FakeExpense> = {}): FakeExpense => ({
@@ -674,7 +676,7 @@ export function fakeExpenseBackend(vehicle: FakeVehicle, expenses: FakeExpense[]
     const key = expenseSorters[vars.orderBy]
     const sorted = [...list].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0))
     if (vars.direction === 'DESC') sorted.reverse()
-    return sorted.slice(vars.skip, vars.skip + vars.take).map((e) => ({ ...e, vehicle: { id: state.vehicle.id, name: state.vehicle.name } }))
+    return sorted.slice(vars.skip, vars.skip + vars.take).map((e) => ({ ...e, schedules: e.schedules ?? [], vehicle: { id: state.vehicle.id, name: state.vehicle.name } }))
   }
 
   const handlers = [
@@ -911,20 +913,26 @@ export function fakeRecurringBackend(items: FakeRecurring[] = [], vehicle?: Fake
       sync()
       return HttpResponse.json({ data: { deleteRecurringExpense: true } })
     }),
-    graphql.mutation('MarkRecurringExpenseDone', ({ variables }) => {
-      record('MarkRecurringExpenseDone', variables)
+    graphql.mutation('MarkRecurringExpensesDone', ({ variables }) => {
+      record('MarkRecurringExpensesDone', variables)
       const failed = fail()
       if (failed) return failed
-      const input = variables.input as { id: string; date: string; odometer: number | null; createExpense?: boolean; amount?: number | null }
-      const i = state.items.findIndex((x) => x.id === input.id)
-      state.items[i] = { ...state.items[i], lastDoneDate: input.date, lastDoneOdometer: input.odometer ?? state.items[i].lastDoneOdometer, status: upcoming() }
+      const input = variables.input as { ids: string[]; date: string; odometer: number | null; amount?: number | null; photoIds?: string[] | null }
+      const done = input.ids.map((id) => {
+        const i = state.items.findIndex((x) => x.id === id)
+        state.items[i] = { ...state.items[i], lastDoneDate: input.date, lastDoneOdometer: input.odometer ?? state.items[i].lastDoneOdometer, status: upcoming() }
+        return state.items[i]
+      })
       sync()
-      if (vehicle && input.createExpense !== false) {
+      // Like the server: one expense for the whole visit when an amount (or a photo that may give it) came.
+      const logged = input.amount != null || (input.photoIds?.length ?? 0) > 0
+      if (vehicle && logged) {
         // The logged expense, as the card shows it (see LogRefueling in fakeLogBackend).
         Object.assign(vehicle.summary, { expenseCount: vehicle.summary.expenseCount + 1, thisMonthSpend: vehicle.summary.thisMonthSpend + (input.amount ?? 0) })
         if (input.odometer != null) vehicle.summary.latestOdometer = Math.max(vehicle.summary.latestOdometer ?? 0, input.odometer)
       }
-      return HttpResponse.json({ data: { markRecurringExpenseDone: typedRecurring(state.items[i]) } })
+      const expense = logged ? { __typename: 'Expense', id: `ex${state.nextId++}`, photos: (input.photoIds ?? []).map((id) => ({ __typename: 'LogPhotoInfo', id })) } : null
+      return HttpResponse.json({ data: { markRecurringExpensesDone: { __typename: 'MarkRecurringExpensesDonePayload', schedules: done.map(typedRecurring), expense } } })
     }),
   ]
   return { state, handlers }

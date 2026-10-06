@@ -54,7 +54,7 @@ public class ContractTests
 
     [Theory]
     [InlineData("Query", "health", "vehicles", "myVehicles", "myVehicleCount", "vehicle", "session", "notices", "users", "canSetUserPasswords", "accessSettings", "accessGrants", "trash", "vehicleCount", "trashCount", "trashDeletableCount", "vehicleDefaults", "refuelings", "refuelingCount", "refueling", "logDefaults", "refuelingTrash", "refuelingTrashCount", "refuelingTrashDeletableCount", "vehicleLogAccess", "shareCandidates", "notifications", "notificationCount", "recognitionStatus", "photoDrafts", "uiSettings")]
-    [InlineData("Mutation", "addVehicle", "logRefueling", "login", "logout", "changePassword", "requestPasswordReset", "resetPassword", "createUser", "issuePasswordReset", "setUserAdmin", "setUserDisabled", "updateUser", "setUserPassword", "deleteUser", "setDefaultAccess", "setAccessGrant", "updateVehicle", "deleteVehicle", "restoreVehicle", "emptyTrash", "logRefueling", "updateRefueling", "deleteRefueling", "restoreRefueling", "emptyRefuelingTrash", "setVehicleLogAccess", "markNotificationsRead", "updateUiSettings", "saveGridSettings", "resetGridSettings", "setVehicleOrder")]
+    [InlineData("Mutation", "addVehicle", "logRefueling", "login", "logout", "changePassword", "requestPasswordReset", "resetPassword", "createUser", "issuePasswordReset", "setUserAdmin", "setUserDisabled", "updateUser", "setUserPassword", "deleteUser", "setDefaultAccess", "setAccessGrant", "updateVehicle", "deleteVehicle", "restoreVehicle", "emptyTrash", "logRefueling", "updateRefueling", "deleteRefueling", "restoreRefueling", "emptyRefuelingTrash", "setVehicleLogAccess", "markNotificationsRead", "updateUiSettings", "saveGridSettings", "resetGridSettings", "setVehicleOrder", "addRecurringExpense", "updateRecurringExpense", "deleteRecurringExpense", "markRecurringExpensesDone")]
     [InlineData("Session", "mode", "user")]
     [InlineData("UserInfo", "id", "displayName", "email", "isAdmin")]
     [InlineData("UserAccount", "id", "provider", "email", "displayName", "isAdmin", "isDisabled")]
@@ -65,7 +65,9 @@ public class ContractTests
     [InlineData("LogDefaults", "lastOdometer", "lastDate", "currency")]
     [InlineData("VehicleDefaults", "distanceUnit", "volumeUnit", "currency", "recurringWarnDays", "recurringWarnDistance")]
     [InlineData("LogAccessGrantInfo", "user", "level")]
-    [InlineData("Expense", "id", "vehicleId", "createdBy", "date", "title", "category", "amount", "currency", "odometer", "note", "deletedAt", "canEdit", "canDelete", "vehicle", "photos")]
+    [InlineData("Expense", "id", "vehicleId", "createdBy", "date", "title", "category", "amount", "currency", "odometer", "note", "deletedAt", "canEdit", "canDelete", "vehicle", "photos", "schedules")]
+    [InlineData("MarkRecurringExpensesDonePayload", "schedules", "expense")]
+    [InlineData("RecurringRef", "id", "title")]
     [InlineData("LogPhotoInfo", "id", "url")]
     [InlineData("RecognitionStatusInfo", "available")]
     [InlineData("PhotoDraftInfo", "id", "url", "reading")]
@@ -96,6 +98,7 @@ public class ContractTests
     [InlineData("LogRefuelingInput", "vehicleId", "date", "volume", "totalCost", "currency", "odometer", "isFullTank", "note", "photoIds", "missedPreviousFillUp")]
     [InlineData("UpdateRefuelingInput", "id", "date", "volume", "totalCost", "currency", "odometer", "isFullTank", "note", "missedPreviousFillUp")]
     [InlineData("AddExpenseInput", "vehicleId", "date", "title", "category", "amount", "currency", "odometer", "note", "photoIds")]
+    [InlineData("MarkRecurringExpensesDoneInput", "ids", "date", "odometer", "amount", "currency", "title", "category", "photoIds")]
     [InlineData("GridSettingsInput", "gridId", "order", "hidden", "pageSize", "sortColumn", "sortDirection")]
     [InlineData("UpdateUiSettingsInput", "navOpen", "language", "clearLanguage")]
     public async Task Schema_InputTypeTakesContractFields(string type, params string[] fields)

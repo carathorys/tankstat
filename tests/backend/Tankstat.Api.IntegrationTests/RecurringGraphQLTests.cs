@@ -83,39 +83,92 @@ public class RecurringGraphQLTests(ApiFixture api)
         Assert.Equal("recurring.odometerRequired", refused.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
     }
 
+    private const string MarkDone = $"mutation($i: MarkRecurringExpensesDoneInput!) {{ markRecurringExpensesDone(input: $i) {{ schedules {{ {Fields} }} expense {{ id title category amount photos {{ id }} }} }} }}";
+
+    private static string Id(JsonElement added) => added.GetProperty("data").GetProperty("addRecurringExpense").GetProperty("id").GetString()!;
+
     [Fact]
     public async Task MarkingItDone_LogsTheExpenseAndStartsTheNextInterval()
     {
         var vehicle = await AddVehicle();
-        var id = (await AddItem(vehicle)).GetProperty("data").GetProperty("addRecurringExpense").GetProperty("id").GetString();
+        var id = Id(await AddItem(vehicle));
 
-        var done = await Send($"mutation($i: MarkRecurringExpenseDoneInput!) {{ markRecurringExpenseDone(input: $i) {{ {Fields} }} }}",
-            new { i = new { id, date = "2026-09-20", odometer = 62000, createExpense = true, amount = 35000 } });
+        var done = await Send(MarkDone, new { i = new { ids = new[] { id }, date = "2026-09-20", odometer = 62000, amount = 35000 } });
 
-        var item = done.GetProperty("data").GetProperty("markRecurringExpenseDone");
+        var payload = done.GetProperty("data").GetProperty("markRecurringExpensesDone");
+        var item = Assert.Single(payload.GetProperty("schedules").EnumerateArray());
         Assert.Equal(("2026-09-20", 62000L), (item.GetProperty("lastDoneDate").GetString(), item.GetProperty("lastDoneOdometer").GetInt64()));
         Assert.Equal("2027-09-20", item.GetProperty("status").GetProperty("dueDate").GetString());
-        var expenses = (await Send("query($v: UUID!) { expenses(vehicleId: $v) { title category amount currency odometer } }", new { v = vehicle })).GetProperty("data").GetProperty("expenses");
+        Assert.Equal(("Oil change", "Service", 35000m), (payload.GetProperty("expense").GetProperty("title").GetString(), payload.GetProperty("expense").GetProperty("category").GetString(), payload.GetProperty("expense").GetProperty("amount").GetDecimal()));
+        var expenses = (await Send("query($v: UUID!) { expenses(vehicleId: $v) { title category amount currency odometer schedules { id title } } }", new { v = vehicle })).GetProperty("data").GetProperty("expenses");
         var expense = Assert.Single(expenses.EnumerateArray());
-        Assert.Equal(("Oil change", "Service", 35000m, 62000L), (expense.GetProperty("title").GetString(), expense.GetProperty("category").GetString(), expense.GetProperty("amount").GetDecimal(), expense.GetProperty("odometer").GetInt64()));
+        Assert.Equal(("Oil change", 62000L), (expense.GetProperty("title").GetString(), expense.GetProperty("odometer").GetInt64()));
         Assert.False(string.IsNullOrEmpty(expense.GetProperty("currency").GetString())); // the instance default
+        Assert.Equal([id], expense.GetProperty("schedules").EnumerateArray().Select(s => s.GetProperty("id").GetString()));
+    }
+
+    [Fact]
+    public async Task OneVisit_MarksSeveralDone_WithOneExpenseThatNamesThemAll()
+    {
+        var vehicle = await AddVehicle();
+        var oil = Id(await AddItem(vehicle));
+        var filter = Id(await AddItem(vehicle, new { title = "Oil filter" }));
+        var fuel = Id(await AddItem(vehicle, new { title = "Fuel filter" }));
+
+        var done = await Send(MarkDone, new { i = new { ids = new[] { oil, filter }, date = "2026-09-20", odometer = 62000, amount = 48000 } });
+
+        Assert.False(done.TryGetProperty("errors", out var errors), errors.ToString());
+        var payload = done.GetProperty("data").GetProperty("markRecurringExpensesDone");
+        Assert.Equal([oil, filter], payload.GetProperty("schedules").EnumerateArray().Select(s => s.GetProperty("id").GetString()));
+        Assert.Equal(("Oil change, Oil filter", 48000m), (payload.GetProperty("expense").GetProperty("title").GetString(), payload.GetProperty("expense").GetProperty("amount").GetDecimal()));
+        var expense = Assert.Single((await Send("query($v: UUID!) { expenses(vehicleId: $v) { schedules { title } } }", new { v = vehicle })).GetProperty("data").GetProperty("expenses").EnumerateArray());
+        Assert.Equal(["Oil change", "Oil filter"], expense.GetProperty("schedules").EnumerateArray().Select(s => s.GetProperty("title").GetString()));
+        var list = (await Send($"query($v: UUID!) {{ vehicle(id: $v) {{ recurring {{ id lastDoneDate }} }} }}", new { v = vehicle })).GetProperty("data").GetProperty("vehicle").GetProperty("recurring");
+        Assert.Equal("2026-01-15", list.EnumerateArray().Single(r => r.GetProperty("id").GetString() == fuel).GetProperty("lastDoneDate").GetString()); // not at this visit
+    }
+
+    [Fact]
+    public async Task WithoutAnAmount_OnlyTheSchedulesMoveOn()
+    {
+        var vehicle = await AddVehicle();
+        var id = Id(await AddItem(vehicle));
+
+        var done = await Send(MarkDone, new { i = new { ids = new[] { id }, date = "2026-09-20", odometer = 62000 } });
+
+        Assert.Equal(JsonValueKind.Null, done.GetProperty("data").GetProperty("markRecurringExpensesDone").GetProperty("expense").ValueKind);
+        Assert.Empty((await Send("query($v: UUID!) { expenses(vehicleId: $v) { id } }", new { v = vehicle })).GetProperty("data").GetProperty("expenses").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task OneScheduleThatRefuses_LeavesEverythingAsItWas_AndTheErrorNamesIt()
+    {
+        var vehicle = await AddVehicle();
+        var oil = Id(await AddItem(vehicle));
+        var tyres = Id(await AddItem(vehicle, new { title = "Tyres", kind = "ODOMETER", intervalMonths = (int?)null, intervalDistance = 40000, lastDoneOdometer = 63000 }));
+
+        var refused = await Send(MarkDone, new { i = new { ids = new[] { oil, tyres }, date = "2026-09-20", odometer = 62000, amount = 48000 } });
+
+        var error = refused.GetProperty("errors")[0].GetProperty("extensions");
+        Assert.Equal(("VALIDATION_FAILED", "recurring.odometerBelowLast", "Tyres"), (error.GetProperty("code").GetString(), error.GetProperty("key").GetString(), error.GetProperty("args").GetProperty("title").GetString()));
+        Assert.Empty((await Send("query($v: UUID!) { expenses(vehicleId: $v) { id } }", new { v = vehicle })).GetProperty("data").GetProperty("expenses").EnumerateArray());
+        var list = (await Send("query($v: UUID!) { vehicle(id: $v) { recurring { lastDoneDate } } }", new { v = vehicle })).GetProperty("data").GetProperty("vehicle").GetProperty("recurring");
+        Assert.All(list.EnumerateArray(), r => Assert.Equal("2026-01-15", r.GetProperty("lastDoneDate").GetString()));
     }
 
     [Fact]
     public async Task MarkingDone_WithPhotos_AttachesThemToTheLoggedExpense()
     {
         var vehicle = await AddVehicle();
-        var id = (await AddItem(vehicle)).GetProperty("data").GetProperty("addRecurringExpense").GetProperty("id").GetString();
+        var id = Id(await AddItem(vehicle));
         var content = new ByteArrayContent([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 7]);
         var upload = await api.Factory.CreateClient().PutAsync($"/media/vehicles/{vehicle}/photo-drafts?form=expense&locale=en", content);
         var draft = (await upload.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString();
 
-        var done = await Send($"mutation($i: MarkRecurringExpenseDoneInput!) {{ markRecurringExpenseDone(input: $i) {{ {Fields} }} }}",
-            new { i = new { id, date = "2026-09-20", odometer = 62000, createExpense = true, amount = 35000, photoIds = new[] { draft } } });
+        var done = await Send(MarkDone, new { i = new { ids = new[] { id }, date = "2026-09-20", odometer = 62000, amount = 35000, photoIds = new[] { draft } } });
 
         Assert.False(done.TryGetProperty("errors", out var errors), errors.ToString());
-        var expense = (await Send("query($v: UUID!) { expenses(vehicleId: $v) { photos { id } } }", new { v = vehicle })).GetProperty("data").GetProperty("expenses")[0];
-        Assert.Equal([draft], expense.GetProperty("photos").EnumerateArray().Select(p => p.GetProperty("id").GetString()));
+        var photos = done.GetProperty("data").GetProperty("markRecurringExpensesDone").GetProperty("expense").GetProperty("photos");
+        Assert.Equal([draft], photos.EnumerateArray().Select(p => p.GetProperty("id").GetString())); // the dialog counts them
     }
 
     [Fact]

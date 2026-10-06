@@ -91,6 +91,8 @@ internal sealed class ExpenseRepository(IDbContextFactory<AppDbContext> dbFactor
         var ids = doomed.Select(e => e.Id).ToList();
         var photos = await db.LogPhotos.Where(p => p.LogType == LogType.Expense && ids.Contains(p.LogId)).ToListAsync(ct);
         db.LogPhotos.RemoveRange(photos);
+        // The schedules an expense covered are linked without a foreign key on the expense side (see RecurringCompletionConfiguration).
+        db.RecurringCompletions.RemoveRange(await db.RecurringCompletions.Where(c => ids.Contains(c.ExpenseId)).ToListAsync(ct));
         db.Expenses.RemoveRange(doomed);
         db.OdometerReadings.RemoveRange(doomed.Where(e => e.OdometerReading is not null).Select(e => e.OdometerReading!));
         db.Costs.RemoveRange(doomed.Where(e => e.Cost is not null).Select(e => e.Cost!));

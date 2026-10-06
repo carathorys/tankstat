@@ -20,18 +20,26 @@ public sealed record RecurringExpenseInput(
     string Title, string? Category, string? Note, RecurrenceKind Kind, int? IntervalMonths, long? IntervalDistance,
     DateOnly? LastDoneDate, long? LastDoneOdometer, int? WarnDays, long? WarnDistance);
 
-/// <param name="CreateExpense">Also log the cost as a normal expense (needs <paramref name="Amount"/> and <paramref name="Currency"/>).</param>
-/// <param name="PhotoIds">Photos uploaded beforehand as drafts (an invoice, the dashboard): they become the logged expense's photos. Without an
-/// expense there is nothing to attach them to, and they expire as drafts.</param>
-public sealed record MarkDoneInput(DateOnly Date, long? Odometer, bool CreateExpense, decimal? Amount, string? Currency, IReadOnlyCollection<Guid>? PhotoIds = null);
+/// <param name="Amount">
+/// What the visit cost, for all the schedules together (never split). One expense is logged exactly when it is given or photos are sent
+/// (a photo still being read may fill it in, under the expense rules); otherwise only the schedules move on.
+/// </param>
+/// <param name="Title">The logged expense's title; omit for the schedules' titles joined (<see cref="RecurringDoneDefaults"/>).</param>
+/// <param name="Category">The logged expense's category; omit for the schedules' common (or first) one.</param>
+/// <param name="PhotoIds">Photos uploaded beforehand as drafts (an invoice, the dashboard): they become the logged expense's photos.</param>
+public sealed record MarkDoneInput(
+    DateOnly Date, long? Odometer, decimal? Amount, string? Currency, string? Title = null, string? Category = null, IReadOnlyCollection<Guid>? PhotoIds = null);
+
+/// <summary>The schedules as they stand after being marked done (in the order asked for), and the expense logged for them, if any.</summary>
+public sealed record MarkedDone(IReadOnlyList<RecurringItem> Schedules, Expense? Expense);
 
 /// <summary>A recurring expense with where it stands today.</summary>
 public sealed record RecurringItem(RecurringExpense Item, RecurrenceStatus Status);
 
 /// <summary>
 /// The recurring expenses of a vehicle (schedules such as insurance or an oil change). They follow the access rules of the vehicle's
-/// logs like expenses do: View sees them, Edit changes them. Marking one done logs the cost as a normal expense, so every expense and
-/// odometer rule applies, and starts the next interval.
+/// logs like expenses do: View sees them, Edit changes them. Marking some done (one visit) starts their next intervals and, with an
+/// amount, logs one normal expense for them, so every expense and odometer rule applies.
 /// </summary>
 public sealed class RecurringExpenseService(
     LogAccessGuard guard, IRecurringExpenseRepository items, AccessService access, OdometerService odometer, ExpenseService expenses, IOptions<VehicleDefaultsOptions> defaults, TimeProvider clock,
@@ -113,36 +121,56 @@ public sealed class RecurringExpenseService(
         logger.LogDebug("Recurring expense {RecurringId} deleted", id);
     }
 
-    /// <summary>Starts the next interval from the given day and odometer, and (when asked) logs what it cost as an expense.</summary>
-    public async Task<RecurringItem> MarkDoneAsync(Guid id, MarkDoneInput input, CancellationToken ct)
+    /// <summary>
+    /// Starts the next interval of every given schedule (of one vehicle) from the same day and odometer: a service visit that did several
+    /// things at once. With an amount (or photos) it logs one expense for all of them, not split, and links it to each. All or nothing:
+    /// every schedule's own rules are checked before anything is logged, and the baselines and links are saved together.
+    /// </summary>
+    public async Task<MarkedDone> MarkDoneAsync(IReadOnlyCollection<Guid> ids, MarkDoneInput input, CancellationToken ct)
     {
-        var item = await EditableAsync(id, ct);
-        CheckDate(input.Date);
-        if (input.CreateExpense && (input.Amount is null || string.IsNullOrWhiteSpace(input.Currency)))
-            throw new DomainException("recurring.amountRequired", "The amount and currency are needed to log the expense.");
+        var wanted = ids.Distinct().ToList();
+        if (wanted.Count == 0) throw new DomainException("recurring.noneSelected", "Pick at least one recurring expense.");
+        var byId = (await items.FindManyAsync(wanted, ct)).ToDictionary(i => i.Id);
+        if (wanted.Where(id => !byId.ContainsKey(id)).Select(id => (Guid?)id).FirstOrDefault() is { } missing) throw NotFound(missing);
+        var found = wanted.Select(id => byId[id]).ToList();
 
-        item.CheckDone(input.Date, input.Odometer); // the schedule's own rules first: nothing is logged for a day it would refuse
-        var logged = input.CreateExpense
-            ? await expenses.AddAsync(item.VehicleId, new ExpenseInput(input.Date, item.Title, item.Category, input.Amount!.Value, input.Currency, input.Odometer, item.Note), ct,
-                photoDraftIds: input.PhotoIds)
+        var vehicleId = found[0].VehicleId;
+        var creator = await access.RequirePrincipalAsync(ct);
+        LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(vehicleId, ct), () => NotFound(found[0].Id));
+        // Schedules of another vehicle look non-existent: one visit is one vehicle, and access was only checked for this one.
+        if (found.FirstOrDefault(i => i.VehicleId != vehicleId) is { } stray) throw NotFound(stray.Id);
+
+        CheckDate(input.Date);
+        foreach (var item in found) item.CheckDone(input.Date, input.Odometer); // every schedule's own rules first: nothing is logged for a day one would refuse
+
+        var logged = input.Amount is not null || input.PhotoIds is { Count: > 0 }
+            ? await expenses.AddAsync(vehicleId, new ExpenseInput(
+                input.Date, input.Title ?? RecurringDoneDefaults.Title(found), input.Category ?? RecurringDoneDefaults.Category(found),
+                input.Amount, input.Currency, input.Odometer, RecurringDoneDefaults.Note(found)), ct, photoDraftIds: input.PhotoIds)
             : null;
         try
         {
-            item.MarkDone(input.Date, input.Odometer);
-            await items.UpdateAsync(item, ct);
+            foreach (var item in found) item.MarkDone(input.Date, input.Odometer);
+            var links = logged is null ? [] : found.Select(i => RecurringCompletion.Create(logged.Id, i.Id)).ToList();
+            await items.CompleteAsync(found, links, ct);
         }
         catch
         {
-            // The expense and the schedule are saved separately, so undo the expense (to the trash) when the schedule could not move on:
-            // the schedule is then still due, and a second try does not log the cost twice.
-            if (logged is not null) await TryTrashAsync(logged.Id, item.Id);
+            // The expense and the schedules are saved separately, so undo the expense (to the trash) when the schedules could not move on:
+            // they are then still due, and a second try does not log the cost twice.
+            if (logged is not null) await TryTrashAsync(logged.Id, wanted);
             throw;
         }
-        logger.LogDebug("Recurring expense {RecurringId} marked done (expense logged: {ExpenseId})", item.Id, logged?.Id);
-        return await WithStatusAsync(item, ct);
+        logger.LogDebug("User {UserId} marked recurring expenses {RecurringIds} of vehicle {VehicleId} done (expense logged: {ExpenseId})", creator.Id, wanted, vehicleId, logged?.Id);
+        var current = (await odometer.LatestAsync(vehicleId, ct))?.Value;
+        return new MarkedDone(found.Select(i => new RecurringItem(i, RecurrenceCalculator.Evaluate(i, Today, current))).ToList(), logged);
     }
 
-    private async Task TryTrashAsync(Guid expenseId, Guid recurringId)
+    /// <summary>The schedules the given (already authorised) expenses covered, for the expense's <c>schedules</c> field.</summary>
+    public async Task<ILookup<Guid, CompletedSchedule>> ListCompletionsForExpensesAsync(IReadOnlyCollection<Guid> expenseIds, CancellationToken ct) =>
+        (await items.ListCompletionsForExpensesAsync(expenseIds, ct)).ToLookup(c => c.ExpenseId);
+
+    private async Task TryTrashAsync(Guid expenseId, IReadOnlyCollection<Guid> recurringIds)
     {
         try
         {
@@ -151,11 +179,13 @@ public sealed class RecurringExpenseService(
         catch (Exception e)
         {
             // best effort: the original failure is the one to report, but nobody else will ever hear that this cost stays logged
-            logger.LogWarning(e, "The expense {ExpenseId} logged for recurring expense {RecurringId} could not be moved to the trash after the schedule failed to move on", expenseId, recurringId);
+            logger.LogWarning(e, "The expense {ExpenseId} logged for recurring expenses {RecurringIds} could not be moved to the trash after they failed to move on", expenseId, recurringIds);
             return;
         }
-        logger.LogWarning("Recurring expense {RecurringId} could not move on; the expense {ExpenseId} logged for it was moved to the trash", recurringId, expenseId);
+        logger.LogWarning("Recurring expenses {RecurringIds} could not move on; the expense {ExpenseId} logged for them was moved to the trash", recurringIds, expenseId);
     }
+
+    private static NotFoundException NotFound(Guid id) => new("recurring.notFound", $"Recurring expense {id} does not exist.", new { Id = id });
 
     private void CheckDate(DateOnly date)
     {
@@ -174,8 +204,7 @@ public sealed class RecurringExpenseService(
     private async Task<RecurringExpense> EditableAsync(Guid id, CancellationToken ct)
     {
         var item = await items.FindAsync(id, ct);
-        LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(item?.VehicleId, ct),
-            () => new NotFoundException("recurring.notFound", $"Recurring expense {id} does not exist.", new { Id = id }));
+        LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(item?.VehicleId, ct), () => NotFound(id));
         return item!;
     }
 }

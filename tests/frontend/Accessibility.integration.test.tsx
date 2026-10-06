@@ -336,6 +336,20 @@ it('the recurring expenses table and its dialogs are labelled and free of violat
   await ui.click(screen.getByRole('button', { name: 'Mark Tyres as done' }))
   const done = await screen.findByRole('dialog', { name: 'Mark as done: Tyres' })
   await within(done).findByLabelText('Currency')
+  expect(within(done).getByRole('group', { name: 'Done at this visit' })).toBeInTheDocument() // the schedules to tick, as labelled checkboxes
+  await check(document.body)
+})
+
+// Its own test: each accessibility scan takes a while on CI, and one test has 5 s.
+it('the selection column of the recurring expenses and its Mark selected as done dialog are free of violations', async () => {
+  const { ui } = setup('/vehicles/v1?tab=recurring')
+  await screen.findByRole('table', { name: 'Recurring expenses' })
+
+  await ui.click(screen.getByRole('checkbox', { name: 'Select all recurring expenses' }))
+  await check(document.body)
+  await ui.click(screen.getByRole('button', { name: /selected as done/ }))
+  const many = await screen.findByRole('dialog', { name: 'Mark as done' })
+  await within(many).findByLabelText('Currency')
   await check(document.body)
 })
 

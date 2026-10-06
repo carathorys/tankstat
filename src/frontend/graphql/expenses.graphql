@@ -10,6 +10,7 @@ query Expenses(
   $withOdometer: Boolean!
   $withNote: Boolean!
   $withCreatedBy: Boolean!
+  $withSchedules: Boolean!
 ) {
   expenses(vehicleId: $vehicleId, orderBy: $orderBy, direction: $direction, skip: $skip, take: $take) {
     id
@@ -27,6 +28,11 @@ query Expenses(
       id
       displayName
       avatarUrl
+    }
+    # The recurring expenses it covered when they were marked done.
+    schedules @include(if: $withSchedules) {
+      id
+      title
     }
   }
   expenseCount(vehicleId: $vehicleId)

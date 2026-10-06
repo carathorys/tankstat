@@ -166,7 +166,8 @@
     "title": "Title",
     "category": "Category",
     "amount": "Amount",
-    "consumption": "Consumption"
+    "consumption": "Consumption",
+    "schedules": "Recurring"
   },
   "grid": {
     "refresh": "Refresh",
@@ -473,9 +474,10 @@
       "odometerRequired": "The odometer is needed to start the next interval.",
       "warnDaysInvalid": "The warning time must be between 0 and {{max}} days.",
       "warnDistanceInvalid": "The warning distance cannot be negative.",
-      "doneBeforeLast": "It cannot be done before {{date}}, when it was last done.",
-      "odometerBelowLast": "The odometer cannot be lower than {{last}}, where it was last done.",
-      "amountRequired": "The amount and currency are needed to log the expense.",
+      "doneBeforeLast": "{{title}} cannot be done before {{date}}, when it was last done.",
+      "odometerBelowLast": "For {{title}} the odometer cannot be lower than {{last}}, where it was last done.",
+      "doneOdometerRequired": "{{title}} counts distance: the odometer is needed to start its next interval.",
+      "noneSelected": "Tick at least one recurring expense.",
       "notFound": "This recurring expense does not exist."
     },
     "log": {
@@ -963,15 +965,26 @@
       "startToday": "Today by default. Change it if it was last done earlier."
     },
     "doneTitle": "Mark as done: {{title}}",
-    "doneDescription": "The next interval starts from the day and the odometer you enter.",
+    "doneTitleMany": "Mark as done",
+    "doneDescription": "Tick what was done at this visit: the next interval of each starts from the day and the odometer you enter. An amount covers all of them together and is logged as one expense.",
+    "doneItems": "Done at this visit",
+    "selectedCount_one": "{{count}} ticked",
+    "selectedCount_other": "{{count}} ticked",
+    "selectAria": "Select {{title}}",
+    "selectAllAria": "Select all recurring expenses",
+    "doneSelected_one": "Mark {{count}} selected as done",
+    "doneSelected_other": "Mark {{count}} selected as done",
+    "amountOptional": "Amount (optional)",
+    "amountHint": "Leave it empty to start the next intervals without logging an expense.",
+    "expenseTitle": "Expense title",
+    "expenseCategory": "Expense category (optional)",
     "doneDate": "Done on",
-    "logExpense": "Also log it as an expense",
     "amount": "Amount",
     "currency": "Currency",
     "doneSave": "Mark as done",
     "deleteTitle": "Delete this recurring expense?",
     "deleteDescription": "{{title}} will no longer be tracked. Expenses already logged from it stay.",
     "deleteConfirm": "Delete",
-    "photosNotKept": "Photos are only kept with a logged expense."
+    "photosNotKept": "Without an amount no expense is logged, so the photos are not kept."
   }
 }

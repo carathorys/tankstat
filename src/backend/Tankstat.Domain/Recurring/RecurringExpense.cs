@@ -85,18 +85,21 @@ public sealed class RecurringExpense : IOwned
         LastDoneOdometer = odometer ?? LastDoneOdometer;
     }
 
-    /// <summary>Throws when <see cref="MarkDone"/> would refuse; changes nothing, so it can run before the expense is logged.</summary>
+    /// <summary>
+    /// Throws when <see cref="MarkDone"/> would refuse; changes nothing, so it can run before the expense is logged. The errors name the
+    /// schedule (<c>title</c>): several schedules can be marked done together, and the person needs to know which one refused.
+    /// </summary>
     public void CheckDone(DateOnly date, long? odometer)
     {
         if (date < LastDoneDate)
-            throw new DomainException("recurring.doneBeforeLast", $"It cannot be done before {LastDoneDate:yyyy-MM-dd}, when it was last done.", new { Date = LastDoneDate.ToString("yyyy-MM-dd") });
+            throw new DomainException("recurring.doneBeforeLast", $"{Title} cannot be done before {LastDoneDate:yyyy-MM-dd}, when it was last done.", new { Date = LastDoneDate.ToString("yyyy-MM-dd"), Title });
         if (UsesDistance && odometer is null)
-            throw new DomainException("recurring.odometerRequired", "The odometer is needed to start the next interval.");
+            throw new DomainException("recurring.doneOdometerRequired", $"{Title} counts distance: the odometer is needed to start its next interval.", new { Title });
         if (odometer is { } value)
         {
             OdometerValue.From(value);
             if (LastDoneOdometer is { } last && value < last)
-                throw new DomainException("recurring.odometerBelowLast", $"The odometer cannot be lower than {last}, where it was last done.", new { Last = last });
+                throw new DomainException("recurring.odometerBelowLast", $"For {Title} the odometer cannot be lower than {last}, where it was last done.", new { Last = last, Title });
         }
     }
 

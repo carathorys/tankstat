@@ -11,6 +11,8 @@ export interface ColumnInfo {
   hideable: boolean
   /** Shown by default on narrow (phone) screens. */
   mobile: boolean
+  /** Hidden until the user shows it (on every screen). */
+  defaultHidden?: boolean
   sortable: boolean
 }
 
@@ -48,7 +50,7 @@ function defaults(columns: ColumnInfo[], sort: { column: string; desc: boolean }
   const narrow = isNarrow()
   return {
     columnOrder: columns.map((c) => c.id),
-    columnVisibility: Object.fromEntries(columns.filter((c) => c.hideable && narrow && !c.mobile).map((c) => [c.id, false])),
+    columnVisibility: Object.fromEntries(columns.filter((c) => c.hideable && (c.defaultHidden || (narrow && !c.mobile))).map((c) => [c.id, false])),
     sorting: [{ id: sort.column, desc: sort.desc }],
     pagination: { pageIndex: 0, pageSize: DEFAULT_PAGE_SIZE },
   }
@@ -65,9 +67,11 @@ function merge(saved: Partial<GridSaved> | undefined, base: GridState, columns: 
   const desc = saved.sortDirection === 'DESC' || saved.sortDirection === 'ASC' ? saved.sortDirection === 'DESC' : base.sorting[0].desc
   const sortChanged = sortColumn === saved.sortColumn
 
+  // A column the saved settings do not list is newer than them: it starts as the defaults say (hidden by default, or on a phone).
+  const added = Array.isArray(saved.order) ? ids.filter((id) => !saved.order!.includes(id) && base.columnVisibility[id] === false) : []
   return {
     columnOrder: [...savedOrder, ...ids.filter((id) => !savedOrder.includes(id))],
-    columnVisibility: hidden ? Object.fromEntries(hidden.map((id) => [id, false])) : base.columnVisibility,
+    columnVisibility: hidden ? Object.fromEntries([...hidden, ...added].map((id) => [id, false])) : base.columnVisibility,
     sorting: [{ id: sortColumn, desc: sortChanged ? desc : base.sorting[0].desc }],
     pagination: { pageIndex: 0, pageSize: PAGE_SIZES.includes(saved.pageSize ?? 0) ? saved.pageSize! : DEFAULT_PAGE_SIZE },
   }

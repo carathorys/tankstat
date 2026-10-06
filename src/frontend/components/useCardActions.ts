@@ -1,12 +1,9 @@
 import { useApolloClient, useMutation } from '@apollo/client/react'
 import type { ExpenseValues } from '../ExpenseFormDialog.tsx'
-import { AddExpenseDocument, LogRefuelingDocument, MarkRecurringExpenseDoneDocument, VehicleCardDocument } from '../gql/generated.ts'
+import { AddExpenseDocument, LogRefuelingDocument, MarkRecurringExpensesDoneDocument, VehicleCardDocument } from '../gql/generated.ts'
 import type { DoneValues } from '../RecurringDoneDialog.tsx'
 import type { RefuelingValues } from '../RefuelingFormDialog.tsx'
-import type { Saved } from './usePhotoQueue.ts'
-
-/** What the photo session needs to know about a log that was just saved. */
-const savedFrom = (log: { id: string; photos: readonly unknown[] } | undefined): Saved => (log ? { id: log.id, photoCount: log.photos.length } : undefined)
+import { savedFrom, type Saved } from './usePhotoQueue.ts'
 
 /**
  * The quick actions of a home card. After each one this vehicle's card alone is asked again (`VehicleCard`): Apollo merges the answer into
@@ -19,7 +16,7 @@ export function useCardActions(vehicleId: string) {
   const client = useApolloClient()
   const [logRefueling] = useMutation(LogRefuelingDocument)
   const [addExpense] = useMutation(AddExpenseDocument)
-  const [markDone] = useMutation(MarkRecurringExpenseDoneDocument)
+  const [markDone] = useMutation(MarkRecurringExpensesDoneDocument)
   const refresh = () => client.query({ query: VehicleCardDocument, variables: { id: vehicleId }, fetchPolicy: 'network-only' }).then(() => undefined, () => undefined)
   return {
     refuel: async (values: RefuelingValues, photoIds: string[]): Promise<Saved> => {
@@ -32,9 +29,10 @@ export function useCardActions(vehicleId: string) {
       await refresh()
       return savedFrom(added.data?.addExpense)
     },
-    done: async (scheduleId: string, values: DoneValues) => {
-      await markDone({ variables: { input: { ...values, id: scheduleId } } })
+    done: async (values: DoneValues, photoIds: string[]): Promise<Saved> => {
+      const done = await markDone({ variables: { input: { ...values, photoIds } } })
       await refresh()
+      return savedFrom(done.data?.markRecurringExpensesDone.expense)
     },
   }
 }

@@ -326,29 +326,29 @@ it('marking a schedule done takes the odometer and cost from a photo, which goes
   await ui.upload(camera(dialog), photo('dashboard.png'))
 
   await waitFor(() => expect(within(dialog).getByLabelText(/^Odometer/)).toHaveValue('62480'), READ_WAIT)
-  expect(within(dialog).getByLabelText('Amount')).toHaveValue('35000')
+  expect(within(dialog).getByLabelText('Amount (optional)')).toHaveValue('35000')
   expect(photos.state.draftQueries).toEqual(['?form=expense&locale=en'])
   await ui.click(within(dialog).getByRole('button', { name: 'Mark as done' }))
 
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-  expect(state.calls.MarkRecurringExpenseDone).toEqual([
-    { input: expect.objectContaining({ id: 'rc1', odometer: 62480, createExpense: true, amount: 35000, currency: 'HUF', photoIds: ['draft1'] }) },
+  expect(state.calls.MarkRecurringExpensesDone).toEqual([
+    { input: expect.objectContaining({ ids: ['rc1'], odometer: 62480, amount: 35000, currency: 'HUF', photoIds: ['draft1'] }) },
   ])
   expect(photos.state.draftDeletes).toEqual([])
 })
 
-it('marking a schedule done without an expense keeps no photos: they are not sent and are deleted', async () => {
+it('marking a schedule done without an amount keeps no photos: they are not sent and are deleted', async () => {
   const { ui, state, photos } = setupRecurring()
   const dialog = await openDone(ui)
   await ui.upload(camera(dialog), photo('dashboard.png'))
   await waitFor(() => expect(within(dialog).getByLabelText(/^Odometer/)).toHaveValue('62480'), READ_WAIT)
 
-  await ui.click(within(dialog).getByRole('switch', { name: 'Also log it as an expense' }))
-  expect(within(dialog).getByText('Photos are only kept with a logged expense.')).toBeInTheDocument()
+  await ui.clear(within(dialog).getByLabelText('Amount (optional)')) // the reading is done: without an amount no expense is logged
+  expect(within(dialog).getByText('Without an amount no expense is logged, so the photos are not kept.')).toBeInTheDocument()
   await ui.click(within(dialog).getByRole('button', { name: 'Mark as done' }))
 
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-  expect(state.calls.MarkRecurringExpenseDone).toEqual([{ input: expect.objectContaining({ odometer: 62480, createExpense: false, photoIds: [] }) }])
+  expect(state.calls.MarkRecurringExpensesDone).toEqual([{ input: expect.objectContaining({ odometer: 62480, amount: null, photoIds: [] }) }])
   await waitFor(() => expect(photos.state.draftDeletes).toEqual(['draft1']))
 })
 

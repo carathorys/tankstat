@@ -52,8 +52,17 @@ mutation DeleteRecurringExpense($id: UUID!) {
   deleteRecurringExpense(id: $id)
 }
 
-mutation MarkRecurringExpenseDone($input: MarkRecurringExpenseDoneInput!) {
-  markRecurringExpenseDone(input: $input) {
-    ...RecurringFields
+# One service visit: several schedules of a vehicle done together; with an amount (or photos), one expense for all of them.
+mutation MarkRecurringExpensesDone($input: MarkRecurringExpensesDoneInput!) {
+  markRecurringExpensesDone(input: $input) {
+    schedules {
+      ...RecurringFields
+    }
+    expense {
+      id
+      photos {
+        id
+      }
+    }
   }
 }
