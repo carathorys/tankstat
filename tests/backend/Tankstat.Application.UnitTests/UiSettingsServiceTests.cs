@@ -29,6 +29,23 @@ public class UiSettingsServiceTests
     }
 
     [Fact]
+    public async Task ColorMode_IsOneMoreIndependentSetting()
+    {
+        var w = new World();
+        w.Current.SignInAs(w.AddUser("alice@x.co"));
+        Assert.Null((await w.UiSettings.GetAsync(default)).ColorMode);
+
+        await w.UiSettings.UpdateAsync(new UiSettingsChange(NavOpen: false, Language: "hu"), default);
+        var light = await w.UiSettings.UpdateAsync(new UiSettingsChange(ColorMode: ColorMode.Light), default);
+        Assert.Equal((false, "hu", ColorMode.Light), (light.NavOpen, light.Language, light.ColorMode)); // the others stayed
+
+        var other = await w.UiSettings.UpdateAsync(new UiSettingsChange(NavOpen: true), default);
+        Assert.Equal(ColorMode.Light, other.ColorMode); // and it stays when they change
+        Assert.Equal(ColorMode.Light, (await w.UiSettings.GetAsync(default)).ColorMode);
+        Assert.False(new UiSettingsChange(ColorMode: ColorMode.System).IsEmpty);
+    }
+
+    [Fact]
     public async Task Grids_AreSavedPerUserAndGrid_ListedById_AndReset()
     {
         var w = new World();
@@ -61,6 +78,7 @@ public class UiSettingsServiceTests
         Assert.Equal("settings.gridIdInvalid", (await Assert.ThrowsAsync<DomainException>(() => w.UiSettings.SaveGridAsync("Vehicles", Grid(), default))).Key);
         Assert.Equal("settings.pageSizeInvalid", (await Assert.ThrowsAsync<DomainException>(() => w.UiSettings.SaveGridAsync("vehicles", Grid(0), default))).Key);
         Assert.Equal("settings.languageInvalid", (await Assert.ThrowsAsync<DomainException>(() => w.UiSettings.UpdateAsync(new UiSettingsChange(Language: "english"), default))).Key);
+        Assert.Equal("settings.colorModeInvalid", (await Assert.ThrowsAsync<DomainException>(() => w.UiSettings.UpdateAsync(new UiSettingsChange(ColorMode: (ColorMode)9), default))).Key);
         Assert.Equal("settings.gridIdInvalid", (await Assert.ThrowsAsync<DomainException>(() => w.UiSettings.ResetGridAsync("", default))).Key);
         Assert.Empty(w.UiSettingsStore.Grids);
     }

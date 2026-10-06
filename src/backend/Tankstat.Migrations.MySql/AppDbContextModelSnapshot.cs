@@ -580,6 +580,10 @@ namespace Tankstat.Migrations.MySql
                     b.Property<Guid>("UserId")
                         .HasColumnType("char(36)");
 
+                    b.Property<string>("ColorMode")
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
+
                     b.Property<string>("Language")
                         .HasMaxLength(8)
                         .HasColumnType("varchar(8)");

@@ -346,7 +346,8 @@
       "tooManyColumns": "Egy táblázat legfeljebb {{max}} oszlopot jegyezhet meg.",
       "pageSizeInvalid": "Az oldalméret {{min}} és {{max}} között lehet.",
       "sortDirectionInvalid": "Ismeretlen rendezési irány.",
-      "languageInvalid": "A nyelv kódja en vagy en-GB alakú lehet."
+      "languageInvalid": "A nyelv kódja en vagy en-GB alakú lehet.",
+      "colorModeInvalid": "A színmód világos, sötét vagy rendszer lehet."
     },
     "refueling": {
       "litersPositive": "A literszámnak nullánál nagyobbnak kell lennie.",

@@ -346,7 +346,8 @@
       "tooManyColumns": "A grid can remember at most {{max}} columns.",
       "pageSizeInvalid": "The page size must be between {{min}} and {{max}}.",
       "sortDirectionInvalid": "Unknown sort direction.",
-      "languageInvalid": "The language code must look like en or en-GB."
+      "languageInvalid": "The language code must look like en or en-GB.",
+      "colorModeInvalid": "The colour mode must be light, dark or system."
     },
     "refueling": {
       "litersPositive": "Liters must be greater than zero.",

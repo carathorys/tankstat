@@ -7,7 +7,7 @@ import type { ReactElement } from 'react'
 import { MemoryRouter } from 'react-router'
 import { onTestFinished, vi } from 'vitest'
 import { createApolloClient } from '../../../src/frontend/apolloClient.ts'
-import type { AuthMode, NotificationFieldsFragment, SessionQuery } from '../../../src/frontend/gql/generated.ts'
+import type { AuthMode, ColorMode, NotificationFieldsFragment, SessionQuery } from '../../../src/frontend/gql/generated.ts'
 import type { GridSaved } from '../../../src/frontend/settings/types.ts'
 
 /** Renders with a fresh Apollo client (and cache) talking to the msw-mocked GraphQL endpoint over HTTP; animations are instant. */
@@ -284,9 +284,16 @@ export interface FakeGridSettings extends GridSaved {
 }
 
 /** The user's UI settings as the server keeps them: serves what is stored, stores what the UI saves, and records every call. */
-export function fakeSettingsBackend(initial: { navOpen?: boolean | null; language?: string | null; grids?: FakeGridSettings[] } = {}) {
+export function fakeSettingsBackend(
+  initial: { navOpen?: boolean | null; language?: string | null; colorMode?: ColorMode | null; grids?: FakeGridSettings[] } = {},
+) {
   const state = {
-    settings: { navOpen: initial.navOpen ?? null, language: initial.language ?? null, grids: initial.grids ?? [] } as { navOpen: boolean | null; language: string | null; grids: FakeGridSettings[] },
+    settings: { navOpen: initial.navOpen ?? null, language: initial.language ?? null, colorMode: initial.colorMode ?? null, grids: initial.grids ?? [] } as {
+      navOpen: boolean | null
+      language: string | null
+      colorMode: ColorMode | null
+      grids: FakeGridSettings[]
+    },
     calls: {} as Record<string, unknown[]>,
     requests: { UiSettings: 0 },
   }
@@ -298,11 +305,13 @@ export function fakeSettingsBackend(initial: { navOpen?: boolean | null; languag
     }),
     graphql.mutation('UpdateUiSettings', ({ variables }) => {
       record('UpdateUiSettings', variables)
-      const input = variables.input as { navOpen?: boolean | null; language?: string | null; clearLanguage?: boolean | null }
+      const input = variables.input as { navOpen?: boolean | null; language?: string | null; clearLanguage?: boolean | null; colorMode?: ColorMode | null }
       if (input.navOpen != null) state.settings.navOpen = input.navOpen
       if (input.clearLanguage) state.settings.language = null
       else if (input.language != null) state.settings.language = input.language
-      return HttpResponse.json({ data: { updateUiSettings: { navOpen: state.settings.navOpen, language: state.settings.language } } })
+      if (input.colorMode != null) state.settings.colorMode = input.colorMode
+      const { navOpen, language, colorMode } = state.settings
+      return HttpResponse.json({ data: { updateUiSettings: { navOpen, language, colorMode } } })
     }),
     graphql.mutation('SaveGridSettings', ({ variables }) => {
       record('SaveGridSettings', variables)

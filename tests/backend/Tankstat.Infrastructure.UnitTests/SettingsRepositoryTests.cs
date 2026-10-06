@@ -39,6 +39,22 @@ public class SettingsRepositoryTests
     }
 
     [Fact]
+    public async Task UiSettings_ColorMode_RoundTrips_StoredByName()
+    {
+        await using var db = new TestDatabase();
+        var repo = db.Get<IUiSettingsRepository>();
+        var user = Guid.NewGuid();
+        var settings = UiSettings.Create(user, Now);
+        settings.SetColorMode(ColorMode.System, Now);
+        await repo.SaveAsync(settings, default);
+
+        Assert.Equal(ColorMode.System, (await repo.FindAsync(user, default))!.ColorMode);
+        await using var ctx = await db.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
+        // By name, like the other enums: a reordered enum never changes what a stored row means.
+        Assert.Equal("System", await ctx.Database.SqlQueryRaw<string>("SELECT \"ColorMode\" AS \"Value\" FROM \"UiSettings\"").SingleAsync());
+    }
+
+    [Fact]
     public async Task Grids_RoundTripTheirLists_ListById_AndReportRemoval()
     {
         await using var db = new TestDatabase();

@@ -4,6 +4,7 @@ query UiSettings {
   uiSettings {
     navOpen
     language
+    colorMode
     grids {
       gridId
       order
@@ -19,6 +20,7 @@ mutation UpdateUiSettings($input: UpdateUiSettingsInput!) {
   updateUiSettings(input: $input) {
     navOpen
     language
+    colorMode
   }
 }
 

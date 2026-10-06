@@ -132,6 +132,30 @@ public class SettingsTests
         Assert.Equal(Now.AddMinutes(3), settings.UpdatedAt);
     }
 
+    [Theory]
+    [InlineData(ColorMode.Light)]
+    [InlineData(ColorMode.Dark)]
+    [InlineData(ColorMode.System)]
+    public void ColorMode_StartsUnchosen_AndTakesEveryMode(ColorMode mode)
+    {
+        var settings = UiSettings.Create(Guid.NewGuid(), Now);
+        Assert.Null(settings.ColorMode);
+
+        settings.SetColorMode(mode, Now.AddMinutes(1));
+
+        Assert.Equal(mode, settings.ColorMode);
+        Assert.Equal(Now.AddMinutes(1), settings.UpdatedAt);
+    }
+
+    [Fact]
+    public void ColorMode_ANumberThatIsNoMode_IsRefused()
+    {
+        var settings = UiSettings.Create(Guid.NewGuid(), Now);
+
+        Assert.Equal("settings.colorModeInvalid", Catch(() => settings.SetColorMode((ColorMode)7, Now)).Key);
+        Assert.Null(settings.ColorMode);
+    }
+
     [Fact]
     public void VehicleOrder_PositionsStartAtZero_ANegativeOneIsAProgrammingError()
     {

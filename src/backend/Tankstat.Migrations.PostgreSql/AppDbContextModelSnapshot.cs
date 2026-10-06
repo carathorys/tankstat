@@ -583,6 +583,10 @@ namespace Tankstat.Migrations.PostgreSql
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("ColorMode")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<string>("Language")
                         .HasMaxLength(8)
                         .HasColumnType("character varying(8)");

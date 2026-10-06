@@ -86,7 +86,7 @@ public class ContractTests
     [InlineData("VehicleChart", "id", "vehicleId", "title", "metric", "grouping", "kind", "range", "rangeFrom", "rangeTo", "stacked", "isShared", "createdAt", "canEdit", "createdBy")]
     [InlineData("Refueling", "id", "vehicleId", "createdBy", "date", "volume", "totalCost", "currency", "odometer", "pricePerUnit", "consumption", "isFullTank", "missedPreviousFillUp", "note", "deletedAt", "canEdit", "canDelete", "vehicle", "photos", "reviewState", "filledFromPhoto")]
     [InlineData("Expense", "id", "amount", "currency", "odometer", "reviewState", "filledFromPhoto")]
-    [InlineData("UiSettingsInfo", "navOpen", "language", "grids")]
+    [InlineData("UiSettingsInfo", "navOpen", "language", "colorMode", "grids")]
     [InlineData("GridSettingsInfo", "gridId", "order", "hidden", "pageSize", "sortColumn", "sortDirection")]
     public async Task Schema_TypeExposesContractFields(string type, params string[] fields)
     {
@@ -101,7 +101,7 @@ public class ContractTests
     [InlineData("AddExpenseInput", "vehicleId", "date", "title", "category", "amount", "currency", "odometer", "note", "photoIds")]
     [InlineData("MarkRecurringExpensesDoneInput", "ids", "date", "odometer", "amount", "currency", "title", "category", "photoIds")]
     [InlineData("GridSettingsInput", "gridId", "order", "hidden", "pageSize", "sortColumn", "sortDirection")]
-    [InlineData("UpdateUiSettingsInput", "navOpen", "language", "clearLanguage")]
+    [InlineData("UpdateUiSettingsInput", "navOpen", "language", "clearLanguage", "colorMode")]
     public async Task Schema_InputTypeTakesContractFields(string type, params string[] fields)
     {
         var body = await Query($"{{ __type(name: \"{type}\") {{ inputFields {{ name }} }} }}");
@@ -136,6 +136,7 @@ public class ContractTests
     [Theory]
     [InlineData("VehicleSortField", "NAME", "LICENSE_PLATE", "FUEL_TYPE", "OWNER", "REFUELING_COUNT", "DELETED_AT")]
     [InlineData("SortDirection", "ASC", "DESC")]
+    [InlineData("ColorMode", "LIGHT", "DARK", "SYSTEM")]
     [InlineData("AuthMode", "NONE", "STANDALONE", "OIDC", "PROXY_HEADER")]
     [InlineData("AccessLevel", "NONE", "VIEW", "EDIT", "DELETE")]
     [InlineData("DistanceUnit", "KILOMETERS", "MILES")]

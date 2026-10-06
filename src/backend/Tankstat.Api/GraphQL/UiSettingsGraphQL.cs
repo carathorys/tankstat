@@ -11,9 +11,9 @@ public sealed record GridSettingsInfo(string GridId, IReadOnlyList<string> Order
 }
 
 /// <summary>The current user's UI settings; a null value means nothing was chosen yet (the browser's own default applies). The grids are loaded only when selected.</summary>
-public sealed record UiSettingsInfo(bool? NavOpen, string? Language)
+public sealed record UiSettingsInfo(bool? NavOpen, string? Language, ColorMode? ColorMode)
 {
-    public static UiSettingsInfo From(UiSettingsView v) => new(v.NavOpen, v.Language);
+    public static UiSettingsInfo From(UiSettingsView v) => new(v.NavOpen, v.Language, v.ColorMode);
 }
 
 [ExtendObjectType<UiSettingsInfo>]
@@ -27,7 +27,8 @@ public sealed class UiSettingsInfoExtensions
 /// <param name="NavOpen">Omit to leave it as it is.</param>
 /// <param name="Language">Omit to leave it as it is.</param>
 /// <param name="ClearLanguage">Forget the saved language (the browser's choice applies again); wins over a language given at the same time.</param>
-public sealed record UpdateUiSettingsInput(bool? NavOpen, string? Language, bool? ClearLanguage);
+/// <param name="ColorMode">Omit to leave it as it is.</param>
+public sealed record UpdateUiSettingsInput(bool? NavOpen, string? Language, bool? ClearLanguage, ColorMode? ColorMode);
 
 public sealed record GridSettingsInput(string GridId, IReadOnlyList<string> Order, IReadOnlyList<string> Hidden, int PageSize, string SortColumn, SortDirection SortDirection);
 
@@ -43,7 +44,7 @@ public sealed class UiSettingsQueries
 public sealed class UiSettingsMutations
 {
     public async Task<UiSettingsInfo> UpdateUiSettings(UpdateUiSettingsInput input, [Service] UiSettingsService settings, CancellationToken ct) =>
-        UiSettingsInfo.From(await settings.UpdateAsync(new UiSettingsChange(input.NavOpen, input.Language, input.ClearLanguage ?? false), ct));
+        UiSettingsInfo.From(await settings.UpdateAsync(new UiSettingsChange(input.NavOpen, input.Language, input.ClearLanguage ?? false, input.ColorMode), ct));
 
     public async Task<GridSettingsInfo> SaveGridSettings(GridSettingsInput input, [Service] UiSettingsService settings, CancellationToken ct) =>
         GridSettingsInfo.From(await settings.SaveGridAsync(input.GridId, new GridSettingsValues(input.Order, input.Hidden, input.PageSize, input.SortColumn, input.SortDirection), ct));
