@@ -42,6 +42,9 @@ const NOT_SURE: ReadonlySet<ReadingIssueCode> = new Set(['NO_CONFIDENCE', 'UNSUR
 /** Reasons whose sentence starts with the field's name; the others say what they mean on their own (the odometer, the date). */
 const NAMES_THE_FIELD: ReadonlySet<ReadingIssueCode> = new Set(['NOT_UNDERSTOOD', 'OUT_OF_RANGE', 'AMOUNTS_DO_NOT_ADD', 'NO_CONFIDENCE', 'UNSURE'])
 
+/** Reasons about several values at once (the litres and the price that do not add up to the total): told once, about the first. */
+const SHARED: ReadonlySet<ReadingIssueCode> = new Set(['AMOUNTS_DO_NOT_ADD'])
+
 /** A reason to tell, with the name of its field in the dialog where the sentence starts with it. */
 export interface Problem {
   code: ReadingIssueCode
@@ -72,6 +75,6 @@ export function problemsToTell(issues: readonly ReadingIssue[], fieldLabel: (nam
     const whole = issues.find((i) => i.field === null && i.code === 'UNRECOGNISED') ?? issues.find((i) => i.field === null)
     if (whole) told.push({ code: whole.code })
   }
-  // Two fields can come to the same sentence (the amounts that do not add up concern the litres and the price, and a dialog may show both).
-  return told.filter((p, i) => told.findIndex((q) => q.code === p.code && q.field === p.field) === i)
+  // Two fields can come to the same sentence, and a reason about several values is told once even where the dialog has a field for each.
+  return told.filter((p, i) => told.findIndex((q) => q.code === p.code && (q.field === p.field || SHARED.has(p.code))) === i)
 }

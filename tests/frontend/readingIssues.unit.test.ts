@@ -67,4 +67,14 @@ describe('problemsToTell', () => {
       { code: 'AMOUNTS_DO_NOT_ADD', field: 'Volume and price' },
     ])
   })
+
+  it('tells a reason about several values once, also where the dialog has a field for each', () => {
+    const ownFields: Record<string, string> = { ...labels, VOLUME: 'Volume (L)', UNIT_PRICE: 'Price per L' }
+    const issues = [issue('AMOUNTS_DO_NOT_ADD', 'VOLUME'), issue('AMOUNTS_DO_NOT_ADD', 'UNIT_PRICE'), issue('UNSURE', 'TOTAL')]
+
+    expect(problemsToTell(issues, (name) => ownFields[name], nothing)).toEqual([
+      { code: 'AMOUNTS_DO_NOT_ADD', field: 'Volume (L)' },
+      { code: 'UNSURE', field: 'Total cost' },
+    ])
+  })
 })
