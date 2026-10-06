@@ -6,6 +6,7 @@ using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Vehicles;
+using Tankstat.Domain;
 
 namespace Tankstat.Api.GraphQL;
 

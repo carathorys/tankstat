@@ -15,6 +15,7 @@ using Tankstat.Application.Stats;
 using Tankstat.Domain.Charts;
 using Tankstat.Application.Recurring;
 using Tankstat.Application.Refuelings;
+using Tankstat.Application.Settings;
 using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Access;
@@ -24,6 +25,7 @@ using Tankstat.Domain.Notifications;
 using Tankstat.Domain.Odometers;
 using Tankstat.Domain.Recognition;
 using Tankstat.Domain.Recurring;
+using Tankstat.Domain.Settings;
 using Tankstat.Domain.Users;
 using Tankstat.Domain.Vehicles;
 using Tankstat.TestSupport;
@@ -212,6 +214,27 @@ internal sealed class InMemoryCharts : IVehicleChartRepository
     public Task AddAsync(VehicleChart chart, CancellationToken ct) { Items.Add(chart); return Task.CompletedTask; }
     public Task UpdateAsync(VehicleChart chart, CancellationToken ct) => Task.CompletedTask; // shared references
     public Task RemoveAsync(VehicleChart chart, CancellationToken ct) { Items.Remove(chart); return Task.CompletedTask; }
+}
+
+internal sealed class InMemoryUiSettings : IUiSettingsRepository
+{
+    public List<UiSettings> Items { get; } = [];
+    public List<GridSettings> Grids { get; } = [];
+    public Task<UiSettings?> FindAsync(Guid userId, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(s => s.UserId == userId));
+    public Task SaveAsync(UiSettings settings, CancellationToken ct) { if (!Items.Contains(settings)) Items.Add(settings); return Task.CompletedTask; }
+    public Task<IReadOnlyList<GridSettings>> ListGridsAsync(Guid userId, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<GridSettings>>(Grids.Where(g => g.UserId == userId).OrderBy(g => g.GridId, StringComparer.Ordinal).ToList());
+    public Task<GridSettings?> FindGridAsync(Guid userId, string gridId, CancellationToken ct) => Task.FromResult(Grids.FirstOrDefault(g => g.UserId == userId && g.GridId == gridId));
+    public Task SaveGridAsync(GridSettings grid, CancellationToken ct) { if (!Grids.Contains(grid)) Grids.Add(grid); return Task.CompletedTask; }
+    public Task<bool> RemoveGridAsync(Guid userId, string gridId, CancellationToken ct) => Task.FromResult(Grids.RemoveAll(g => g.UserId == userId && g.GridId == gridId) > 0);
+}
+
+internal sealed class InMemoryVehicleOrders : IVehicleOrderRepository
+{
+    public List<VehicleOrder> Items { get; } = [];
+    public Task<IReadOnlyList<VehicleOrder>> ListAsync(Guid userId, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<VehicleOrder>>(Items.Where(o => o.UserId == userId).OrderBy(o => o.Position).ToList());
+    public Task ReplaceAsync(Guid userId, IReadOnlyList<VehicleOrder> order, CancellationToken ct) { Items.RemoveAll(o => o.UserId == userId); Items.AddRange(order); return Task.CompletedTask; }
 }
 
 /// <summary>Readings are the ones owned by the in-memory logs and expenses (live ones only, like the real query filter).</summary>
@@ -476,6 +499,8 @@ internal sealed class World
     public InMemoryRefuelings Refuelings { get; } = new();
     public InMemoryExpenses Expenses { get; } = new();
     public InMemoryCharts Charts { get; } = new();
+    public InMemoryUiSettings UiSettingsStore { get; } = new();
+    public InMemoryVehicleOrders VehicleOrders { get; } = new();
     public InMemoryUsers Users { get; } = new();
     public FakeUserData UserData { get; } = new();
     public ImportSessionStore ImportSessions { get; }
@@ -506,6 +531,8 @@ internal sealed class World
     public NotificationOptions NotificationOptions { get; } = new();
     public RecurringExpenseService RecurringService { get; }
     public ChartService ChartService { get; }
+    public UiSettingsService UiSettings { get; }
+    public VehicleOrderService VehicleOrder { get; }
     public ImportService Imports { get; }
     public OdometerService Odometer { get; }
     public ResourceSharingService Sharing { get; }
@@ -552,6 +579,8 @@ internal sealed class World
         Imports = new ImportService([new FuelioCsvParser()], ImportSessions, Access, VehicleService, RefuelingService, ExpenseService, RecurringService, Refuelings, Expenses, Defaults.Create(), Log.For<ImportService>());
         Stats = new StatsService(Vehicles, new InMemoryStats(Refuelings, Expenses), Access, Clock);
         ChartService = new ChartService(Vehicles, Charts, Access, Clock, Log.For<ChartService>());
+        UiSettings = new UiSettingsService(UiSettingsStore, Access, Clock, Log.For<UiSettingsService>());
+        VehicleOrder = new VehicleOrderService(VehicleOrders, Vehicles, Access, Log.For<VehicleOrderService>());
         Sharing = new ResourceSharingService(Vehicles, ResourceGrants, Users, Access, Notifier, Log.For<ResourceSharingService>());
         Auth = new AuthService(Users, new FakeHasher(), resets, Access, options, Clock, Log.For<AuthService>());
         UserService = new UserService(Access, Users, UserData, resets, new FakeHasher(), ImageService, ImportSessions, options, Log.For<UserService>());

@@ -5,6 +5,7 @@ using Tankstat.Domain.Photos;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Vehicles;
+using Tankstat.Domain;
 
 namespace Tankstat.Infrastructure.Persistence.Repositories;
 

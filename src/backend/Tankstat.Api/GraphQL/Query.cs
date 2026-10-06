@@ -4,6 +4,7 @@ using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
 using Tankstat.Domain.Vehicles;
+using Tankstat.Domain;
 
 namespace Tankstat.Api.GraphQL;
 

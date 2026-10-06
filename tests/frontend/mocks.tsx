@@ -8,6 +8,7 @@ import { MemoryRouter } from 'react-router'
 import { onTestFinished, vi } from 'vitest'
 import { createApolloClient } from '../../src/frontend/apolloClient.ts'
 import type { AuthMode, NotificationFieldsFragment, SessionQuery } from '../../src/frontend/gql/generated.ts'
+import type { GridSaved } from '../../src/frontend/settings/types.ts'
 
 /** Renders with a fresh Apollo client (and cache) talking to the msw-mocked GraphQL endpoint over HTTP; animations are instant. */
 export const renderWithApollo = (ui: ReactElement, route = '/') =>
@@ -160,14 +161,21 @@ export function fakeVehicleBackend(initial: FakeVehicle[] = [], trashed: FakeVeh
     vehicles: initial.map((v) => ({ ...v, deletedAt: '' })) as Trashed[],
     trash: trashed.map((v) => ({ ...v, deletedAt: '2026-10-01T08:00:00Z' })) as Trashed[],
     calls: {} as Record<string, unknown[]>,
-    /** Variables of every Vehicles / Trash / Welcome / VehicleCard query the UI sent. */
-    requests: { Vehicles: [] as Record<string, unknown>[], Trash: [] as Record<string, unknown>[], Welcome: [] as Record<string, unknown>[], VehicleCard: [] as Record<string, unknown>[] },
+    /** Variables of every Vehicles / Trash / Welcome / VehicleCard query the UI sent, and how often the Arrange dialog asked for its list. */
+    requests: { Vehicles: [] as Record<string, unknown>[], Trash: [] as Record<string, unknown>[], Welcome: [] as Record<string, unknown>[], VehicleCard: [] as Record<string, unknown>[], ArrangeVehicles: 0 },
+    /** The user's own order of the vehicles (ids); the home page lists these first, the rest by name, like the server. */
+    order: [] as string[],
     nextId: 100,
     /** How many trashed vehicles this user may delete for good (defaults to all of them). */
     trashDeletable: undefined as number | undefined,
     failWith: undefined as { message: string; key?: string; args?: Record<string, unknown> } | undefined,
   }
   const record = (name: string, vars: unknown) => (state.calls[name] ??= []).push(vars)
+  /** The home page order, like the server's: the user's own arrangement first, the rest by name. */
+  const ordered = (vehicles: Trashed[]) => {
+    const position = (v: { id: string }) => (state.order.includes(v.id) ? state.order.indexOf(v.id) : Number.MAX_SAFE_INTEGER)
+    return [...vehicles].sort((a, b) => position(a) - position(b) || a.name.localeCompare(b.name))
+  }
   /** What a card asks for: the schedules with their types (the card fragment reads them through typed fragments). */
   const asCard = (v: Trashed) => ({ ...v, recurring: v.recurring.map(typedRecurring) })
 
@@ -181,13 +189,20 @@ export function fakeVehicleBackend(initial: FakeVehicle[] = [], trashed: FakeVeh
     graphql.query('Welcome', ({ variables }) => {
       state.requests.Welcome.push(variables)
       const term = String(variables.search ?? '').toLowerCase()
-      const found = state.vehicles
-        .filter((v) => !term || v.name.toLowerCase().includes(term) || (v.licensePlate ?? '').toLowerCase().includes(term))
-        .sort((a, b) => a.name.localeCompare(b.name))
+      const found = ordered(state.vehicles.filter((v) => !term || v.name.toLowerCase().includes(term) || (v.licensePlate ?? '').toLowerCase().includes(term)))
       const skip = Number(variables.skip ?? 0)
-      return HttpResponse.json({ data: { myVehicles: found.slice(skip, skip + Number(variables.take ?? 50)).map(asCard), myVehicleCount: found.length } })
+      return HttpResponse.json({ data: { myVehicles: found.slice(skip, skip + Number(variables.take ?? 50)).map(asCard), myVehicleCount: found.length, vehicleTotal: state.vehicles.length } })
     }),
     graphql.query('ImportTargets', () => HttpResponse.json({ data: { myVehicles: state.vehicles } })),
+    graphql.query('ArrangeVehicles', () => {
+      state.requests.ArrangeVehicles++
+      return HttpResponse.json({ data: { myVehicles: ordered(state.vehicles).map((v) => ({ id: v.id, name: v.name, licensePlate: v.licensePlate })) } })
+    }),
+    graphql.mutation('SetVehicleOrder', ({ variables }) => {
+      record('SetVehicleOrder', variables)
+      state.order = [...(variables.vehicleIds as string[])]
+      return HttpResponse.json({ data: { setVehicleOrder: true } })
+    }),
     graphql.query('VehicleCard', ({ variables }) => {
       state.requests.VehicleCard.push(variables)
       const found = state.vehicles.find((x) => x.id === variables.id)
@@ -245,6 +260,47 @@ export function fakeVehicleBackend(initial: FakeVehicle[] = [], trashed: FakeVeh
       const removed = state.trash.length
       state.trash = []
       return HttpResponse.json({ data: { emptyTrash: removed } })
+    }),
+  ]
+  return { state, handlers }
+}
+
+export interface FakeGridSettings extends GridSaved {
+  gridId: string
+}
+
+/** The user's UI settings as the server keeps them: serves what is stored, stores what the UI saves, and records every call. */
+export function fakeSettingsBackend(initial: { navOpen?: boolean | null; language?: string | null; grids?: FakeGridSettings[] } = {}) {
+  const state = {
+    settings: { navOpen: initial.navOpen ?? null, language: initial.language ?? null, grids: initial.grids ?? [] } as { navOpen: boolean | null; language: string | null; grids: FakeGridSettings[] },
+    calls: {} as Record<string, unknown[]>,
+    requests: { UiSettings: 0 },
+  }
+  const record = (name: string, vars: unknown) => (state.calls[name] ??= []).push(vars)
+  const handlers = [
+    graphql.query('UiSettings', () => {
+      state.requests.UiSettings++
+      return HttpResponse.json({ data: { uiSettings: state.settings } })
+    }),
+    graphql.mutation('UpdateUiSettings', ({ variables }) => {
+      record('UpdateUiSettings', variables)
+      const input = variables.input as { navOpen?: boolean | null; language?: string | null; clearLanguage?: boolean | null }
+      if (input.navOpen != null) state.settings.navOpen = input.navOpen
+      if (input.clearLanguage) state.settings.language = null
+      else if (input.language != null) state.settings.language = input.language
+      return HttpResponse.json({ data: { updateUiSettings: { navOpen: state.settings.navOpen, language: state.settings.language } } })
+    }),
+    graphql.mutation('SaveGridSettings', ({ variables }) => {
+      record('SaveGridSettings', variables)
+      const input = variables.input as FakeGridSettings
+      state.settings.grids = [...state.settings.grids.filter((g) => g.gridId !== input.gridId), input]
+      return HttpResponse.json({ data: { saveGridSettings: input } })
+    }),
+    graphql.mutation('ResetGridSettings', ({ variables }) => {
+      record('ResetGridSettings', variables)
+      const had = state.settings.grids.some((g) => g.gridId === variables.gridId)
+      state.settings.grids = state.settings.grids.filter((g) => g.gridId !== variables.gridId)
+      return HttpResponse.json({ data: { resetGridSettings: had } })
     }),
   ]
   return { state, handlers }

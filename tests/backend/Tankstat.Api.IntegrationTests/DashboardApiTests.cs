@@ -12,19 +12,8 @@ public class DashboardApiTests : IDisposable
 
     private async Task<(HttpClient Alice, HttpClient Bob, string BobId)> Users()
     {
-        var admin = _app.NewClient();
-        await admin.LoginAs("root@example.com", "initial-password-1");
-        async Task<(HttpClient, string)> Create(string name)
-        {
-            var created = (await admin.Gql("mutation($i: CreateUserInput!) { createUser(input: $i) { user { id } reset { token } } }", new { i = new { email = $"{name}@example.com", displayName = name, isAdmin = false } })).Data().GetProperty("createUser");
-            await _app.NewClient().Gql("mutation($i: ResetPasswordInput!) { resetPassword(input: $i) }", new { i = new { token = created.GetProperty("reset").GetProperty("token").GetString(), newPassword = name + "-password-1" } });
-            var client = _app.NewClient();
-            await client.LoginAs($"{name}@example.com", name + "-password-1");
-            return (client, created.GetProperty("user").GetProperty("id").GetString()!);
-        }
-        var (alice, _) = await Create("alice");
-        var (bob, bobId) = await Create("bob");
-        return (alice, bob, bobId);
+        var people = await _app.Users();
+        return (people.Alice, people.Bob, people.BobId);
     }
 
     private static async Task<string> CarWithLogs(HttpClient c)

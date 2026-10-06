@@ -7,6 +7,7 @@ using Tankstat.Application.Expenses;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Odometers;
 using Tankstat.Domain.Vehicles;
+using Tankstat.Domain;
 
 namespace Tankstat.Infrastructure.Persistence.Repositories;
 

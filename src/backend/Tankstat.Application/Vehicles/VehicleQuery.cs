@@ -1,10 +1,6 @@
-namespace Tankstat.Application.Vehicles;
+using Tankstat.Domain;
 
-public enum SortDirection
-{
-    Asc,
-    Desc,
-}
+namespace Tankstat.Application.Vehicles;
 
 public enum VehicleSortField
 {
@@ -22,7 +18,9 @@ public sealed record VehicleQuery(
     SortDirection Direction = SortDirection.Asc,
     int Skip = 0,
     int Take = VehicleQuery.DefaultTake,
-    string? Search = null)
+    string? Search = null,
+    /// <summary>The user whose own arrangement comes first (the home list); SortBy and Direction are not applied then. Null for the sorted admin list.</summary>
+    Guid? OrderedFor = null)
 {
     public const int DefaultTake = 50;
     public const int MaxTake = 200;

@@ -8,6 +8,7 @@ using Tankstat.Domain.Notifications;
 using Tankstat.Domain.Odometers;
 using Tankstat.Domain.Recognition;
 using Tankstat.Domain.Recurring;
+using Tankstat.Domain.Settings;
 using Tankstat.Domain.Users;
 using Tankstat.Domain.Vehicles;
 
@@ -32,6 +33,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<PhotoDraft> PhotoDrafts => Set<PhotoDraft>();
     public DbSet<PhotoReading> PhotoReadings => Set<PhotoReading>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<UiSettings> UiSettings => Set<UiSettings>();
+    public DbSet<GridSettings> GridSettings => Set<GridSettings>();
+    public DbSet<VehicleOrder> VehicleOrders => Set<VehicleOrder>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);

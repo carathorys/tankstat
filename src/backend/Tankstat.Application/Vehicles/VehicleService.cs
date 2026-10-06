@@ -28,11 +28,15 @@ public sealed class VehicleService(
     }
 
     /// <summary>
-    /// One page of the vehicles the user may see (their own and the ones shared with them), by name, optionally only those whose name or
-    /// license plate contains <paramref name="search"/>: what the home page shows. Everyone may ask.
+    /// One page of the vehicles the user may see (their own and the ones shared with them), in their own order (the ones they arranged
+    /// first, the rest by name), optionally only those whose name or license plate contains <paramref name="search"/>: what the home page
+    /// shows. Everyone may ask.
     /// </summary>
-    public async Task<IReadOnlyList<Vehicle>> ListMineAsync(string? search, int skip, int take, CancellationToken ct) =>
-        await vehicles.ListAsync(await access.VehicleScopeAsync(AccessLevel.View, ct), new VehicleQuery(Skip: skip, Take: take, Search: search), ct);
+    public async Task<IReadOnlyList<Vehicle>> ListMineAsync(string? search, int skip, int take, CancellationToken ct)
+    {
+        var user = await access.RequirePrincipalAsync(ct);
+        return await vehicles.ListAsync(await access.VehicleScopeAsync(AccessLevel.View, ct), new VehicleQuery(Skip: skip, Take: take, Search: search, OrderedFor: user.Id), ct);
+    }
 
     public Task<IReadOnlyList<Vehicle>> ListMineAsync(CancellationToken ct) => ListMineAsync(null, 0, VehicleQuery.MaxTake, ct);
 

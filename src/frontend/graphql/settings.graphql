@@ -1,0 +1,38 @@
+# What the UI remembers for the signed-in user (or for everyone, with authentication off): asked once per session by UiSettingsProvider.
+# The browser keeps a copy of every setting, so the first paint never waits for this.
+query UiSettings {
+  uiSettings {
+    navOpen
+    language
+    grids {
+      gridId
+      order
+      hidden
+      pageSize
+      sortColumn
+      sortDirection
+    }
+  }
+}
+
+mutation UpdateUiSettings($input: UpdateUiSettingsInput!) {
+  updateUiSettings(input: $input) {
+    navOpen
+    language
+  }
+}
+
+mutation SaveGridSettings($input: GridSettingsInput!) {
+  saveGridSettings(input: $input) {
+    gridId
+    order
+    hidden
+    pageSize
+    sortColumn
+    sortDirection
+  }
+}
+
+mutation ResetGridSettings($gridId: String!) {
+  resetGridSettings(gridId: $gridId)
+}

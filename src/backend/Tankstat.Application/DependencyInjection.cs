@@ -14,6 +14,7 @@ using Tankstat.Application.Odometers;
 using Tankstat.Application.Recognition;
 using Tankstat.Application.Recurring;
 using Tankstat.Application.Refuelings;
+using Tankstat.Application.Settings;
 using Tankstat.Application.Sharing;
 using Tankstat.Application.Stats;
 using Tankstat.Application.Users;
@@ -58,6 +59,8 @@ public static class DependencyInjection
         services.AddScoped<RecurringExpenseService>();
         services.AddScoped<StatsService>();
         services.AddScoped<ChartService>();
+        services.AddScoped<UiSettingsService>();
+        services.AddScoped<VehicleOrderService>();
         services.AddSingleton<ImportSessionStore>();
         services.AddSingleton<IImportParser, FuelioCsvParser>();
         services.AddScoped<ImportService>();

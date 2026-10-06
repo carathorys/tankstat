@@ -1,9 +1,12 @@
 using Tankstat.Application.Access;
 using Tankstat.Application.Refuelings;
+using Tankstat.Application.Settings;
 using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
+using Tankstat.Domain.Settings;
 using Tankstat.Domain.Users;
 using Tankstat.Domain.Vehicles;
+using Tankstat.Domain;
 using Tankstat.TestSupport;
 
 namespace Tankstat.Infrastructure.UnitTests;
@@ -168,12 +171,70 @@ public class SortingAndPagingTests
         async Task<string[]> Trash(VehicleSortField f, SortDirection d, int skip = 0, int take = 50) =>
             (await repo.ListDeletedAsync(OwnerScope.All, new VehicleQuery(f, d, skip, take), default)).Select(v => v.Name).ToArray();
 
+        await db.Get<IVehicleOrderRepository>().ReplaceAsync(seed.Zoe.Id, [VehicleOrder.Create(seed.Zoe.Id, seed.Gamma.Id, 0)], default); // the trash never follows an arrangement
+
         Assert.Equal(["alpha", "Beta", "Gamma"], await Trash(VehicleSortField.DeletedAt, SortDirection.Desc));
         Assert.Equal(["Gamma", "Beta", "alpha"], await Trash(VehicleSortField.DeletedAt, SortDirection.Asc));
         Assert.Equal(["Beta"], await Trash(VehicleSortField.DeletedAt, SortDirection.Desc, 1, 1));
         Assert.Equal(["alpha", "Beta", "Gamma"], await Trash(VehicleSortField.Name, SortDirection.Asc));
         Assert.Equal(3, await repo.CountDeletedAsync(OwnerScope.All, default));
         Assert.Equal(0, await repo.CountAsync(OwnerScope.All, null, default));
+    }
+
+    [Fact]
+    public async Task TheHomeList_PutsTheUsersOwnArrangementFirst_ThenTheRestByName()
+    {
+        await using var db = new TestDatabase();
+        var seed = await Seeded(db);
+        var repo = db.Get<IVehicleRepository>();
+        var orders = db.Get<IVehicleOrderRepository>();
+        await orders.ReplaceAsync(seed.Zoe.Id, [VehicleOrder.Create(seed.Zoe.Id, seed.Gamma.Id, 0), VehicleOrder.Create(seed.Zoe.Id, seed.Beta.Id, 1)], default);
+        await orders.ReplaceAsync(seed.Bob.Id, [VehicleOrder.Create(seed.Bob.Id, seed.Alpha.Id, 0)], default); // someone else's arrangement does not count
+
+        var zoes = await repo.ListAsync(OwnerScope.All, new VehicleQuery(OrderedFor: seed.Zoe.Id), default);
+        var bobs = await repo.ListAsync(OwnerScope.All, new VehicleQuery(OrderedFor: seed.Bob.Id), default);
+        var nobodys = await repo.ListAsync(OwnerScope.All, new VehicleQuery(OrderedFor: Guid.NewGuid()), default);
+
+        Assert.Equal(["Gamma", "Beta", "alpha"], zoes.Select(v => v.Name));
+        Assert.Equal(["alpha", "Beta", "Gamma"], bobs.Select(v => v.Name));
+        Assert.Equal(["alpha", "Beta", "Gamma"], nobodys.Select(v => v.Name)); // no arrangement: by name
+        Assert.Equal(["alpha", "Beta", "Gamma"], await Names(db, VehicleSortField.Name, SortDirection.Asc)); // the sorted admin list ignores positions
+    }
+
+    [Fact]
+    public async Task TheArrangedList_IsSearchedAndPagedLikeTheOthers()
+    {
+        await using var db = new TestDatabase();
+        var seed = await Seeded(db);
+        var repo = db.Get<IVehicleRepository>();
+        await db.Get<IVehicleOrderRepository>().ReplaceAsync(seed.Zoe.Id, [VehicleOrder.Create(seed.Zoe.Id, seed.Gamma.Id, 0)], default);
+
+        Assert.Equal(["Gamma", "alpha", "Beta"], (await repo.ListAsync(OwnerScope.All, new VehicleQuery(Search: "a", OrderedFor: seed.Zoe.Id), default)).Select(v => v.Name));
+        Assert.Equal(["Beta"], (await repo.ListAsync(OwnerScope.All, new VehicleQuery(Skip: 2, Take: 1, OrderedFor: seed.Zoe.Id), default)).Select(v => v.Name));
+        Assert.Equal(3, await repo.CountAsync(OwnerScope.All, null, default));
+    }
+
+    [Fact]
+    public async Task ArrangedPages_AreStable_WhenNamesTie()
+    {
+        await using var db = new TestDatabase();
+        var repo = db.Get<IVehicleRepository>();
+        var owner = Guid.NewGuid();
+        var same = new List<Vehicle>();
+        for (var i = 0; i < 12; i++)
+        {
+            var v = TestData.Vehicle(owner, "Same", null, FuelType.Petrol);
+            same.Add(v);
+            await repo.AddAsync(v, default);
+        }
+        await db.Get<IVehicleOrderRepository>().ReplaceAsync(owner, same.Take(3).Select((v, i) => VehicleOrder.Create(owner, v.Id, i)).ToList(), default);
+
+        var all = new List<Guid>();
+        for (var skip = 0; skip < 12; skip += 5)
+            all.AddRange((await repo.ListAsync(OwnerScope.All, new VehicleQuery(Skip: skip, Take: 5, OrderedFor: owner), default)).Select(v => v.Id));
+
+        Assert.Equal(same.Take(3).Select(v => v.Id), all.Take(3)); // the arranged ones first, in their order
+        Assert.Equal(12, all.Distinct().Count());                   // no row repeated or skipped across pages
     }
 
     [Fact]

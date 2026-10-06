@@ -74,6 +74,32 @@ internal sealed class TestApp : IDisposable
     }
 }
 
+/// <summary>Two signed-in users of a Standalone host, created by its administrator, who stays signed in too.</summary>
+internal sealed record TwoUsers(HttpClient Admin, HttpClient Alice, string AliceId, HttpClient Bob, string BobId);
+
+internal static class TestAppUsers
+{
+    /// <summary>Alice and Bob, each in their own browser session (passwords <c>alice-password-1</c> / <c>bob-password-1</c>).</summary>
+    public static async Task<TwoUsers> Users(this TestApp app)
+    {
+        var admin = app.NewClient();
+        await admin.LoginAs("root@example.com", "initial-password-1");
+        async Task<(HttpClient Client, string Id)> Create(string name)
+        {
+            var created = (await admin.Gql("mutation($i: CreateUserInput!) { createUser(input: $i) { user { id } reset { token } } }",
+                new { i = new { email = $"{name}@example.com", displayName = name, isAdmin = false } })).Data().GetProperty("createUser");
+            await app.NewClient().Gql("mutation($i: ResetPasswordInput!) { resetPassword(input: $i) }",
+                new { i = new { token = created.GetProperty("reset").GetProperty("token").GetString(), newPassword = name + "-password-1" } });
+            var client = app.NewClient();
+            await client.LoginAs($"{name}@example.com", name + "-password-1");
+            return (client, created.GetProperty("user").GetProperty("id").GetString()!);
+        }
+        var (alice, aliceId) = await Create("alice");
+        var (bob, bobId) = await Create("bob");
+        return new TwoUsers(admin, alice, aliceId, bob, bobId);
+    }
+}
+
 internal static class GraphQLClient
 {
     public static async Task<JsonElement> Gql(this HttpClient client, string query, object? variables = null)
