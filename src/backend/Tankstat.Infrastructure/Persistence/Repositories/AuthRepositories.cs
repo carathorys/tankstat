@@ -14,6 +14,13 @@ internal sealed class UserRepository(IDbContextFactory<AppDbContext> dbFactory) 
         return await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == id, ct);
     }
 
+    public async Task<IReadOnlyList<User>> ListByIdsAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct)
+    {
+        if (ids.Count == 0) return [];
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).ToListAsync(ct);
+    }
+
     public async Task<User?> FindLocalByEmailAsync(string normalizedEmail, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);

@@ -226,3 +226,45 @@ public class AccessAdminTests
             w.AccessAdmin.SetGrantAsync(admin.Id, Guid.NewGuid(), AccessLevel.View, default));
     }
 }
+
+public class LogLevelsTests
+{
+    [Fact]
+    public async Task ManyVehiclesAtOnce_GetWhatEachGetsOnItsOwn()
+    {
+        var w = new World();
+        var alice = w.AddUser("alice@x.co");
+        var bob = w.AddUser("bob@x.co");
+        var carol = w.AddUser("carol@x.co");
+        w.Current.SignInAs(alice);
+        var alices = await w.VehicleService.AddAsync("Alice car", null, FuelType.Petrol, default);
+        var trashed = await w.VehicleService.AddAsync("Alice old car", null, FuelType.Petrol, default);
+        await w.VehicleService.DeleteAsync(trashed.Id, default);
+        w.Current.SignInAs(carol);
+        var carols = await w.VehicleService.AddAsync("Carol car", null, FuelType.Diesel, default);
+        var carolsOther = await w.VehicleService.AddAsync("Carol van", null, FuelType.Diesel, default);
+        w.Current.SignInAs(bob);
+        var bobs = await w.VehicleService.AddAsync("Bob car", null, FuelType.Lpg, default);
+        w.Grants.Items.Add(AccessGrant.Create(alice.Id, bob.Id, AccessLevel.View));
+        w.ResourceGrants.Items.Add(ResourceGrant.Create(ResourceType.Vehicle, alices.Id, bob.Id, GrantedFeature.Logs, AccessLevel.Edit));
+        w.ResourceGrants.Items.Add(ResourceGrant.Create(ResourceType.Vehicle, carols.Id, bob.Id, GrantedFeature.Logs, AccessLevel.Delete));
+        var ids = new[] { alices.Id, trashed.Id, carols.Id, carolsOther.Id, bobs.Id, Guid.NewGuid() };
+
+        foreach (var principal in new Principal?[] { null, new(Guid.NewGuid(), "Admin", "admin@x.co", IsAdmin: true) })
+        {
+            if (principal is not null) w.Current.Principal = principal;
+            foreach (var defaults in new[] { AccessLevel.None, AccessLevel.View })
+            {
+                w.Settings.Value.SetDefaultLevelForOthers(defaults);
+                var together = await w.RefuelingService.LevelsForVehiclesAsync(ids, default);
+
+                Assert.Equal(ids.Length, together.Count);
+                foreach (var id in ids) Assert.Equal(await w.RefuelingService.LevelForVehicleAsync(id, default), together[id]);
+            }
+        }
+        w.Current.SignInAs(bob);
+        w.Settings.Value.SetDefaultLevelForOthers(AccessLevel.None);
+        var bobSees = await w.RefuelingService.LevelsForVehiclesAsync(ids, default);
+        Assert.Equal([AccessLevel.Edit, AccessLevel.View, AccessLevel.Delete, AccessLevel.None, AccessLevel.Delete, AccessLevel.None], ids.Select(id => bobSees[id]));
+    }
+}

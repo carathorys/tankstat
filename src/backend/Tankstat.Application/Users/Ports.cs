@@ -5,6 +5,9 @@ namespace Tankstat.Application.Users;
 public interface IUserRepository
 {
     Task<User?> FindByIdAsync(Guid id, CancellationToken ct);
+
+    /// <summary>The users with these ids in one query (lists: who logged each row); unknown ids are skipped.</summary>
+    Task<IReadOnlyList<User>> ListByIdsAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct);
     Task<User?> FindLocalByEmailAsync(string normalizedEmail, CancellationToken ct);
     Task<User?> FindExternalAsync(UserProvider provider, string subject, CancellationToken ct);
     Task<User?> FindByAvatarImageAsync(Guid imageId, CancellationToken ct);

@@ -61,6 +61,8 @@ internal sealed class InMemoryVehicles : IVehicleRepository
     public Task<IReadOnlyList<Vehicle>> ListByIdsAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<Vehicle>>(Items.Where(v => ids.Contains(v.Id) && !v.IsDeleted).ToList());
     public Task<Vehicle?> FindIncludingDeletedAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(v => v.Id == id));
+    public Task<IReadOnlyList<Vehicle>> ListByIdsIncludingDeletedAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<Vehicle>>(Items.Where(v => ids.Contains(v.Id)).ToList());
     public Task AddAsync(Vehicle vehicle, CancellationToken ct) { Items.Add(vehicle); return Task.CompletedTask; }
     public Task UpdateAsync(Vehicle vehicle, CancellationToken ct) => Task.CompletedTask; // entities are shared references
     public Task<Vehicle?> FindByPictureImageAsync(Guid imageId, CancellationToken ct) =>
@@ -296,6 +298,8 @@ internal sealed class InMemoryUsers : IUserRepository
 {
     public List<User> Items { get; } = [];
     public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(u => u.Id == id));
+    public Task<IReadOnlyList<User>> ListByIdsAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<User>>(Items.Where(u => ids.Contains(u.Id)).ToList());
     public Task<User?> FindLocalByEmailAsync(string e, CancellationToken ct) =>
         Task.FromResult(Items.FirstOrDefault(u => u.Provider == UserProvider.Local && u.Subject == e));
     public Task<User?> FindExternalAsync(UserProvider p, string s, CancellationToken ct) =>

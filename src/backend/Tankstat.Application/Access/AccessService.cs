@@ -81,6 +81,29 @@ public sealed class AccessService(
         return level == AccessLevel.Delete ? level : (AccessLevel)Math.Max((int)level, (int)await LogGrantAsync(vehicle.Id, ct));
     }
 
+    /// <summary>
+    /// <see cref="LogLevelAsync"/> for many vehicles at once, with a fixed number of queries (the settings, the user's grants and their log
+    /// grants, once each) however many there are: lists of logs say for every row what the user may do, and a page of a hundred rows asked
+    /// each on its own would run hundreds of queries at once.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<Guid, AccessLevel>> LogLevelsAsync(IReadOnlyCollection<Vehicle> vehicles, CancellationToken ct)
+    {
+        var distinct = vehicles.DistinctBy(v => v.Id).ToList();
+        if (distinct.Count == 0) return new Dictionary<Guid, AccessLevel>();
+        var principal = await RequirePrincipalAsync(ct);
+        if (principal.IsAdmin || distinct.All(v => v.OwnerId == principal.Id)) return distinct.ToDictionary(v => v.Id, _ => AccessLevel.Delete);
+
+        var defaults = (await settings.GetAsync(ct)).DefaultLevelForOthers;
+        var granted = await grants.ListForGranteeAsync(principal.Id, ct);
+        var logGrants = (await resourceGrants.ListForGranteeAsync(principal.Id, ResourceType.Vehicle, GrantedFeature.Logs, ct))
+            .GroupBy(g => g.ResourceId).ToDictionary(g => g.Key, g => g.Max(x => x.Level));
+        return distinct.ToDictionary(v => v.Id, v =>
+        {
+            var level = AccessPolicy.Resolve(principal.Id, principal.IsAdmin, v.OwnerId, defaults, granted);
+            return level == AccessLevel.Delete ? level : (AccessLevel)Math.Max((int)level, (int)logGrants.GetValueOrDefault(v.Id));
+        });
+    }
+
     private async Task<AccessLevel> LogGrantAsync(Guid vehicleId, CancellationToken ct)
     {
         var principal = await RequirePrincipalAsync(ct);

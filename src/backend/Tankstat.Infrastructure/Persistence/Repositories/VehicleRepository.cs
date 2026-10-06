@@ -87,6 +87,13 @@ internal sealed class VehicleRepository(IDbContextFactory<AppDbContext> dbFactor
         return await db.Vehicles.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(v => v.Id == id, ct);
     }
 
+    public async Task<IReadOnlyList<Vehicle>> ListByIdsIncludingDeletedAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct)
+    {
+        if (ids.Count == 0) return [];
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.Vehicles.IgnoreQueryFilters().AsNoTracking().Where(v => ids.Contains(v.Id)).ToListAsync(ct);
+    }
+
     public async Task UpdateAsync(Vehicle vehicle, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);

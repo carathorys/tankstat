@@ -70,18 +70,16 @@ public sealed class RefuelingType : ObjectType<Refueling>
 [ExtendObjectType<Refueling>]
 public sealed class RefuelingExtensions
 {
-    public async Task<bool> GetCanEdit([Parent] Refueling refueling, [Service] RefuelingService refuelings, CancellationToken ct) =>
-        await refuelings.LevelForVehicleAsync(refueling.VehicleId, ct) >= AccessLevel.Edit;
+    public async Task<bool> GetCanEdit([Parent] Refueling refueling, LogLevelByVehicleLoader levels, CancellationToken ct) =>
+        await levels.LoadAsync(refueling.VehicleId, ct) >= AccessLevel.Edit;
 
-    public async Task<bool> GetCanDelete([Parent] Refueling refueling, [Service] RefuelingService refuelings, CancellationToken ct) =>
-        await refuelings.LevelForVehicleAsync(refueling.VehicleId, ct) >= AccessLevel.Delete;
+    public async Task<bool> GetCanDelete([Parent] Refueling refueling, LogLevelByVehicleLoader levels, CancellationToken ct) =>
+        await levels.LoadAsync(refueling.VehicleId, ct) >= AccessLevel.Delete;
 
-    public async Task<UserRef?> GetCreatedBy([Parent] Refueling refueling, [Service] IUserRepository users, CancellationToken ct) =>
-        await users.FindByIdAsync(refueling.CreatedById, ct) is { } user ? UserRef.From(user) : null;
+    public Task<UserRef?> GetCreatedBy([Parent] Refueling refueling, UserRefLoader users, CancellationToken ct) => users.LoadAsync(refueling.CreatedById, ct);
 
     /// <summary>The vehicle (even a trashed one), for its name and units next to a log in the trash.</summary>
-    public async Task<Vehicle?> GetVehicle([Parent] Refueling refueling, [Service] IVehicleRepository vehicles, CancellationToken ct) =>
-        await vehicles.FindIncludingDeletedAsync(refueling.VehicleId, ct);
+    public Task<Vehicle?> GetVehicle([Parent] Refueling refueling, VehicleIncludingDeletedLoader vehicles, CancellationToken ct) => vehicles.LoadAsync(refueling.VehicleId, ct);
 }
 
 [ExtendObjectType(OperationTypeNames.Query)]
