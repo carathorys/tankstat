@@ -31,6 +31,9 @@ public sealed class OdometerService(IOdometerReadingRepository readings)
     /// <summary>The most recent reading of any kind, to suggest as the starting value of a new one.</summary>
     public Task<OdometerReading?> LatestAsync(Guid vehicleId, CancellationToken ct) => readings.LatestAsync(vehicleId, ct);
 
+    /// <summary>The vehicle's latest reading on or before <paramref name="date"/>, leaving one reading (a log's own) out.</summary>
+    public Task<OdometerReading?> PreviousAsync(Guid vehicleId, DateOnly date, Guid? exceptReadingId, CancellationToken ct) => readings.PreviousAsync(vehicleId, date, exceptReadingId, ct);
+
     /// <summary>The most recent reading of each vehicle, in one query; vehicles without a reading are missing.</summary>
     public Task<IReadOnlyDictionary<Guid, OdometerReading>> LatestForVehiclesAsync(IReadOnlyCollection<Guid> vehicleIds, CancellationToken ct) =>
         readings.LatestForVehiclesAsync(vehicleIds, ct);

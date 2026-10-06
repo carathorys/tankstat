@@ -79,9 +79,7 @@ internal sealed class ExpenseRepository(IDbContextFactory<AppDbContext> dbFactor
     public async Task UpdateAsync(Expense expense, LinkedChanges changes, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        db.Expenses.Update(expense); // marks the loaded graph (cost, reading) as modified; new and let-go rows are said so explicitly
-        db.Apply(changes);
-        await db.SaveChangesAsync(ct);
+        await db.SaveLogAsync(expense, changes, ct);
     }
 
     public async Task<PurgedLogs> PurgeAsync(OwnerScope scope, CancellationToken ct)

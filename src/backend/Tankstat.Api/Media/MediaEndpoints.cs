@@ -77,11 +77,28 @@ public static class MediaEndpoints
             return Results.NoContent();
         });
 
-        // Photos of logs: PUT adds one (up to ten per log), DELETE removes one by its image id.
+        // Photos of logs: PUT adds one (up to ten per log), DELETE removes one by its image id. With `form` (the log's kind) and `locale`,
+        // an added photo is also queued for reading, as in the add dialogs: the edit dialog fills in what is still empty from it.
         foreach (var (segment, logType) in new[] { ("expenses", LogType.Expense), ("refuelings", LogType.Refueling) })
         {
-            media.MapPut($"/{segment}/{{logId:guid}}/photos", async (Guid logId, HttpRequest request, LogPhotoService photos, CancellationToken ct) =>
-                Uploaded(await photos.AddAsync(logType, logId, await ReadBodyAsync(request, ct), ct)));
+            media.MapPut($"/{segment}/{{logId:guid}}/photos", async (
+                Guid logId, string? form, string? locale, HttpRequest request, LogPhotoService photos, RecognitionService recognition, ILoggerFactory logs, CancellationToken ct) =>
+            {
+                var id = await photos.AddAsync(logType, logId, await ReadBodyAsync(request, ct), ct);
+                if (Enum.TryParse<ReadingPurpose>(form, ignoreCase: true, out var purpose) && purpose.ToString() == logType.ToString())
+                {
+                    try
+                    {
+                        await recognition.QueueForLogPhotoAsync(logType, logId, id, locale, ct);
+                    }
+                    catch (Exception e) when (e is not OperationCanceledException)
+                    {
+                        // Reading is a bonus: the photo is added either way, and the user can still type the values.
+                        logs.CreateLogger(typeof(MediaEndpoints)).LogWarning(e, "The photo {Id} could not be queued for reading", id);
+                    }
+                }
+                return Uploaded(id);
+            });
             media.MapDelete($"/{segment}/{{logId:guid}}/photos/{{imageId:guid}}", async (Guid logId, Guid imageId, LogPhotoService photos, CancellationToken ct) =>
             {
                 await photos.RemoveAsync(logType, logId, imageId, ct);

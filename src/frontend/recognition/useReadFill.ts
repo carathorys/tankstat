@@ -39,6 +39,8 @@ export type KeepInStep<F extends string> = (state: FillState<F>, changed: readon
  * @param done    every reading the dialog waited for has finished (if none showed anything, that is announced)
  * @param explain why the photos gave less than they might have: told next to what was filled in, or instead of it
  * @param keepInStep fields worked out from others (a total from volume and unit price): run after every change, and on the starting values
+ * @param savedValuesAreTheUsers an edit dialog: the saved values count as typed by the user, so a photo only offers its value there (an
+ *   empty field is still filled)
  */
 export function useReadFill<F extends string>(
   initial: Record<F, string>,
@@ -48,10 +50,12 @@ export function useReadFill<F extends string>(
   done: boolean,
   explain: ReadExplanation = { issues: [], failed: false },
   keepInStep: KeepInStep<F> = (state) => state,
+  savedValuesAreTheUsers = false,
 ): ReadFill<F> {
   const { t } = useTranslation()
   const [state, setState] = useState<FillState<F>>(() => {
-    const start: FillState<F> = { values: initial, touched: new Set<F>(), filled: {}, offered: {}, calculated: new Set<F>() }
+    const saved = savedValuesAreTheUsers ? (Object.keys(initial) as F[]).filter((field) => initial[field] !== '') : []
+    const start: FillState<F> = { values: initial, touched: new Set<F>(), filled: {}, offered: {}, calculated: new Set<F>(), kept: new Set<F>(saved) }
     return keepInStep(start, (Object.keys(initial) as F[]).filter((field) => initial[field] !== ''), false)
   })
   const [applied, setApplied] = useState('{}')

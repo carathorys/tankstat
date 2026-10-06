@@ -37,11 +37,16 @@ public sealed class LogPhotoFiller(
         return (await readings.FindManyAsync(imageIds, ct)).Any(r => IsPending(r) || r.CreatedAt >= recent);
     }
 
-    /// <summary>Whether any photo of the log is still being read.</summary>
-    public async Task<bool> AnyReadingAsync(LogType logType, Guid logId, CancellationToken ct)
+    /// <summary>
+    /// Whether a saved log may leave values empty for its photos: one is still being read, or was just read (a photo added in the edit
+    /// dialog; the reading may have finished just before the save, and is then taken right after it). The same rule as for new logs.
+    /// </summary>
+    public async Task<bool> MayWaitForLogPhotosAsync(LogType logType, Guid logId, CancellationToken ct)
     {
         var images = (await photos.ListForLogAsync(logType, logId, ct)).Select(p => p.ImageId).ToList();
-        return images.Count > 0 && (await readings.FindManyAsync(images, ct)).Any(IsPending);
+        if (images.Count == 0) return false;
+        var recent = clock.GetUtcNow() - JustRead;
+        return (await readings.FindManyAsync(images, ct)).Any(r => IsPending(r) || r.CreatedAt >= recent);
     }
 
     /// <summary>The log that shows this picture, if the picture is a log photo (a draft has none yet).</summary>

@@ -75,7 +75,7 @@ public sealed class ExpenseService(
     {
         var expense = await EditableAsync(id, includeDeleted: false, ct);
         await ValidateAsync(expense.VehicleId, input, exceptReadingId: expense.OdometerReadingId, ct);
-        var readingPhotos = (input.Amount is null || input.Odometer is null) && await filler.AnyReadingAsync(LogType.Expense, id, ct);
+        var readingPhotos = (input.Amount is null || input.Odometer is null) && await filler.MayWaitForLogPhotosAsync(LogType.Expense, id, ct);
         var waited = expense.ReviewState;
 
         var changes = expense.Update(input.Date, input.Title, input.Category, input.Amount, input.Currency ?? expense.Currency, input.Odometer, input.Note, readingPhotos);
@@ -83,7 +83,10 @@ public sealed class ExpenseService(
         if (waited != ReviewState.None && expense.ReviewState == ReviewState.None)
             await filler.ReviewedAsync(LogType.Expense, id, expense.CreatedById, ct);
         logger.LogDebug("Expense {ExpenseId} of vehicle {VehicleId} updated", id, expense.VehicleId);
-        return expense;
+        if (expense.ReviewState != ReviewState.AwaitingPhotos) return expense;
+        // Readings that finished before the save are taken now (the worker's round may have passed while the log did not wait yet).
+        await filler.FillAsync(LogType.Expense, id, ct);
+        return await expenses.FindAsync(id, ct) ?? expense;
     }
 
     /// <summary>Moves the expense to the trash; it can be restored until it is deleted permanently.</summary>

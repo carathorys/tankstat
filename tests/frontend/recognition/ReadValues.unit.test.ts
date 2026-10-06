@@ -117,3 +117,29 @@ describe('fields worked out from others', () => {
     expect(clearCalculated(calculated, 'volume')).toBe(calculated)
   })
 })
+
+describe('a saved log in its edit dialog', () => {
+  const photo = { DATE: { value: '2026-09-17', confidence: 0.9 }, VOLUME: { value: '38.52', confidence: 0.9 }, CURRENCY: { value: 'EUR', confidence: 0.9 } }
+  const saved = (): FillState<F> => ({ ...start({ date: '2026-09-01', volume: '40', currency: '' }), kept: new Set<F>(['date', 'volume']) })
+
+  it('keeps the saved values and only offers what the photo shows; an empty field is filled', () => {
+    const { state, newly } = applyRead(saved(), fields, photo)
+
+    expect(state.values).toEqual({ date: '2026-09-01', volume: '40', currency: 'EUR' })
+    expect(state.offered).toEqual({ date: '2026-09-17', volume: '38.52' })
+    expect(newly).toEqual(['currency'])
+  })
+
+  it('fills a value the user emptied, and the saved values stay kept while the user types elsewhere', () => {
+    const cleared = changeField(saved(), 'volume', '')
+    const typed = changeField(cleared, 'currency', 'HUF')
+
+    const { state, newly } = applyRead(typed, fields, photo)
+
+    expect(state.values.volume).toBe('38.52') // emptied: the photo gives it
+    expect(state.values.date).toBe('2026-09-01') // still saved: only offered
+    expect(state.offered.date).toBe('2026-09-17')
+    expect(newly).toEqual(['volume'])
+    expect([...state.touched]).toEqual(['currency'])
+  })
+})

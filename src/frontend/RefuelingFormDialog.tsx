@@ -87,11 +87,14 @@ export function RefuelingFormDialog({
   /** `photoIds`: the drafts uploaded for a new log (always empty when editing: a saved log takes its photos right away). */
   onSubmit: (values: RefuelingValues, photoIds: string[]) => Promise<Saved>
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [open, setOpen] = useState(false)
   const editing = refuelingId !== undefined
   const { queue, leftOut, saving, submit, reset } = usePhotoSession(vehicle.id, editing ? undefined : 'refueling', open)
-  const drafts = useDraftReadings(queue.uploaded, open && !editing)
+  // Photos added to a saved log in this dialog (read like drafts), and whether they are still going up.
+  const [added, setAdded] = useState<{ id: string; at: number }[]>([])
+  const [adding, setAdding] = useState(false)
+  const drafts = useDraftReadings(editing ? added : queue.uploaded, open, editing ? { kind: 'refuelings', id: refuelingId } : undefined)
   const details = useQuery(RefuelingDetailsDocument, { variables: { id: refuelingId ?? '' }, skip: !editing || !open, fetchPolicy: 'network-only' })
   const defaults = useQuery(LogDefaultsDocument, { variables: { vehicleId: vehicle.id }, skip: !open, fetchPolicy: 'network-only' })
   const error = details.error ?? defaults.error
@@ -109,7 +112,10 @@ export function RefuelingFormDialog({
       open={open}
       onOpenChange={(next) => {
         setOpen(next)
-        if (!next) reset()
+        if (!next) {
+          reset()
+          setAdded([])
+        }
       }}
     >
       <Dialog.Trigger>{trigger}</Dialog.Trigger>
@@ -133,12 +139,12 @@ export function RefuelingFormDialog({
             units={vehicle.units}
             editing={editing}
             last={lastReading}
-            photosBusy={queue.busy || queue.failed > 0}
+            photosBusy={queue.busy || queue.failed > 0 || adding}
             read={mergeReadings(drafts.readings.values())}
             readingDone={drafts.done}
             explanation={drafts.explanation}
             // A new log may leave values to a photo that is being read; a saved one still waiting for its photos may stay so.
-            mayWait={editing ? existing?.reviewState === 'AWAITING_PHOTOS' : drafts.pending.length > 0}
+            mayWait={drafts.pending.length > 0 || (editing && existing?.reviewState === 'AWAITING_PHOTOS')}
             gallery={
               <PhotoGallery
                 kind="refuelings"
@@ -146,6 +152,9 @@ export function RefuelingFormDialog({
                 photos={existing?.photos ?? []}
                 queue={queue}
                 readingIds={drafts.pending}
+                read={editing ? { purpose: 'refueling', locale: i18n.language, jpeg: !drafts.off } : undefined}
+                onAdded={(ids) => setAdded((known) => [...known, ...ids.map((id) => ({ id, at: Date.now() }))])}
+                onBusyChange={setAdding}
                 disabled={saving}
                 onChanged={() => details.refetch()}
               />
@@ -218,6 +227,7 @@ function RefuelingForm({
     readingDone,
     { ...explanation, last: last ? distance(last.value, units.distance) : undefined },
     keepAmountsInStep,
+    editing,
   )
   const fromPhoto = filledFields(initial.filledFromPhoto, WAITS_FOR)
   const waits = new Set(Object.values(WAITS_FOR))
