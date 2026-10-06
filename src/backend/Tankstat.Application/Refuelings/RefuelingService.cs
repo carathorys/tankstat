@@ -113,9 +113,7 @@ public sealed class RefuelingService(
     public async Task<Refueling> RestoreAsync(Guid id, CancellationToken ct)
     {
         var refueling = await EditableLogAsync(id, includeDeleted: true, ct);
-        var input = new RefuelingInput(
-            refueling.Date, refueling.Volume, refueling.TotalCost, refueling.Currency, refueling.Odometer, refueling.IsFullTank, refueling.Note, refueling.MissedPreviousFillUp);
-        await ValidateAsync(refueling.VehicleId, input, exceptReadingId: null, ct);
+        await ValidateAsync(refueling.VehicleId, new RefuelingInput(refueling.Date, refueling.Volume, refueling.TotalCost, refueling.Currency, refueling.Odometer, refueling.IsFullTank, refueling.Note), exceptReadingId: null, ct);
         refueling.Restore();
         await refuelings.UpdateAsync(refueling, LinkedChanges.None, ct);
         // Its photos may have been read while it was in the trash.

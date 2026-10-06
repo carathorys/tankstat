@@ -92,6 +92,7 @@ public class ContractTests
 
     [Theory]
     [InlineData("LogRefuelingInput", "vehicleId", "date", "volume", "totalCost", "currency", "odometer", "isFullTank", "note", "photoIds", "missedPreviousFillUp")]
+    [InlineData("UpdateRefuelingInput", "id", "date", "volume", "totalCost", "currency", "odometer", "isFullTank", "note", "missedPreviousFillUp")]
     [InlineData("AddExpenseInput", "vehicleId", "date", "title", "category", "amount", "currency", "odometer", "note", "photoIds")]
     public async Task Schema_InputTypeTakesContractFields(string type, params string[] fields)
     {

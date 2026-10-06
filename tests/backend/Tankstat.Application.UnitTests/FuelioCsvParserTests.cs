@@ -150,6 +150,6 @@ public class FuelioCsvParserTests
     {
         const string csv = "\"## Log\"\n\"Data\",\"Odo (km)\",\"Fuel (litres)\",\"Full\",\"Price (optional)\",\"Missed\"\n\"2026-01-02\",\"500\",\"10\",\"1\",\"1000\",\"1\"\n";
 
-        Assert.True(Assert.Single(Parse(csv).FuelLogs).MissedPreviousFillUp); // a file without the column reads as false (see FindsColumnsByName_...)
+        Assert.True(Assert.Single(Parse(csv).FuelLogs).MissedPreviousFillUp);
     }
 }
