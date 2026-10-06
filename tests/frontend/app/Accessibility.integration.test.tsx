@@ -338,6 +338,7 @@ it('the recurring expenses table and its dialogs are labelled and free of violat
   const { ui } = setup('/vehicles/v1?tab=recurring')
   const table = await screen.findByRole('table', { name: 'Recurring expenses' })
   within(table).getByText('Tyres')
+  await waitFor(() => expect(table.querySelectorAll('[data-limit]')).toHaveLength(3)) // the gauges (one schedule has two), once their chunk is in
   await check(document.body)
 
   await ui.click(screen.getByRole('button', { name: 'Add recurring expense' }))

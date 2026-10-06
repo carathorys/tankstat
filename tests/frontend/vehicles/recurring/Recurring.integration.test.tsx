@@ -48,6 +48,31 @@ function setup(vehicle = fakeVehicle(), initial: FakeRecurring[] = items) {
 
 const row = async (title: string) => (await screen.findByRole('rowheader', { name: new RegExp(title) })).closest('tr')!
 
+it('draws a dial per limit beside the state, the one that decides at full strength; the words carry the same', async () => {
+  const combined = fakeRecurring({
+    id: 'rc3',
+    title: 'Service',
+    kind: 'COMBINED',
+    intervalMonths: 12,
+    intervalDistance: 15000,
+    lastDoneDate: '2026-01-01',
+    lastDoneOdometer: 10000,
+    status: { state: 'DUE_SOON', limit: 'ODOMETER', dueDate: '2027-01-01', dueOdometer: 25000, daysLeft: 87, distanceLeft: 400 },
+  })
+  setup(fakeVehicle(), [combined, overdue])
+  const row = (await screen.findByRole('rowheader', { name: /Service/ })).closest('tr')!
+
+  await waitFor(() => expect(row.querySelectorAll('[data-limit]')).toHaveLength(2))
+  expect([...row.querySelectorAll('[data-limit]')].map((g) => [g.getAttribute('data-limit'), g.getAttribute('data-deciding')])).toEqual([
+    ['TIME', 'false'],
+    ['ODOMETER', 'true'],
+  ])
+  expect(row.querySelector('[data-limit]')!.closest('[aria-hidden="true"]')).not.toBeNull() // a picture only
+  expect(within(row).getByText('Due soon')).toBeInTheDocument()
+  const tyres = (await screen.findByRole('rowheader', { name: /Tyres/ })).closest('tr')!
+  await waitFor(() => expect(tyres.querySelectorAll('[data-limit]')).toHaveLength(1))
+})
+
 it('lists the schedules with what repeats, when it was last done, when it is due next and where it stands', async () => {
   setup()
 

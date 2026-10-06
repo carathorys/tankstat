@@ -1,12 +1,25 @@
 import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
-import * as RadixForm from '@radix-ui/react-form'
-import { Badge, Box, Button, Callout, Card, Flex, Heading, RadioGroup, Text, TextField } from '@radix-ui/themes'
+import Alert from '@mui/material/Alert'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import Card from '@mui/material/Card'
+import FormControlLabel from '@mui/material/FormControlLabel'
+import Radio from '@mui/material/Radio'
+import RadioGroup from '@mui/material/RadioGroup'
+import Stack from '@mui/material/Stack'
+import Step from '@mui/material/Step'
+import StepLabel from '@mui/material/StepLabel'
+import Stepper from '@mui/material/Stepper'
+import Typography from '@mui/material/Typography'
 import { AlertTriangle, FileUp } from 'lucide-react'
-import { useRef, useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 import { LabeledSelect } from '../components/UnitSelect.tsx'
-import { Field } from '../forms.tsx'
+import { CurrencyInput } from '../forms/CurrencyInput.tsx'
+import { Field } from '../forms/Field.tsx'
+import { FieldInput } from '../forms/FieldInput.tsx'
+import { Form } from '../forms/Form.tsx'
 import {
   ConfirmImportDocument,
   ImportPreviewDocument,
@@ -44,25 +57,23 @@ export function ImportPage() {
   const [token, setToken] = useState<string>()
   const [result, setResult] = useState<Result>()
 
+  const current = STEPS.indexOf(step)
   return (
     <section aria-labelledby="page-title">
-      <Heading id="page-title" mb="2">
+      <Typography id="page-title" component="h1" variant="h3" sx={{ mb: 1 }}>
         {t('import.title')}
-      </Heading>
-      <Text as="p" size="2" color="gray" mb="3">
+      </Typography>
+      <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1.5 }}>
         {t('import.intro')}
-      </Text>
-      <Flex asChild gap="2" mb="4" wrap="wrap">
-        <ol aria-label={t('import.title')} style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-          {STEPS.map((s, i) => (
-            <li key={s} aria-current={s === step ? 'step' : undefined}>
-              <Badge size="2" color={s === step ? 'indigo' : 'gray'} variant={s === step ? 'solid' : 'soft'}>
-                {i + 1}. {t(`import.steps.${s}`)}
-              </Badge>
-            </li>
-          ))}
-        </ol>
-      </Flex>
+      </Typography>
+      {/* An ordered list: a screen reader hears the step's place; the current one is marked. */}
+      <Stepper activeStep={current} aria-label={t('import.title')} sx={{ mb: 2, flexWrap: 'wrap', rowGap: 1 }}>
+        {STEPS.map((s, i) => (
+          <Step key={s} completed={i < current || step === 'done'} aria-current={s === step ? 'step' : undefined}>
+            <StepLabel>{t(`import.steps.${s}`)}</StepLabel>
+          </Step>
+        ))}
+      </Stepper>
 
       {step === 'file' && (
         <FileStep
@@ -123,26 +134,26 @@ function FileStep({ onRead }: { onRead: (token: string) => void }) {
 
   return (
     <form onSubmit={submit}>
-      <Flex direction="column" gap="4" align="start">
+      <Stack sx={{ gap: 2, alignItems: 'flex-start' }}>
         <LabeledSelect label={t('import.file.format')} value={format} onChange={setFormat} options={FORMATS.map((f) => ({ value: f, label: t(`import.file.formats.${f}`) }))} />
-        <Text as="p" size="2" color="gray">
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
           {t('import.file.fuelioHint')}
-        </Text>
-        <Flex align="center" gap="3" wrap="wrap">
+        </Typography>
+        <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
           <input ref={input} type="file" accept=".csv,text/csv" hidden tabIndex={-1} aria-hidden onChange={(e) => setFile(e.target.files?.[0])} />
-          <Button type="button" size="3" variant="soft" onClick={() => input.current?.click()}>
+          <Button type="button" size="large" variant="soft" onClick={() => input.current?.click()}>
             <FileUp size={16} aria-hidden />
             {t('import.file.chooseFile')}
           </Button>
-          <Text size="2" role="status">
+          <Typography variant="body2" role="status">
             {file ? t('import.file.chosen', { name: file.name }) : t('import.file.none')}
-          </Text>
-        </Flex>
+          </Typography>
+        </Stack>
         {error !== undefined && <ErrorMessage error={error} />}
-        <Button size="3" type="submit" disabled={!file || busy}>
+        <Button size="large" type="submit" disabled={!file || busy}>
           {busy ? t('import.file.reading') : t('import.file.upload')}
         </Button>
-      </Flex>
+      </Stack>
     </form>
   )
 }
@@ -205,63 +216,54 @@ function TargetAndReview({ token, step, onStep, onDone }: { token: string; step:
 
   if (step === 'target') {
     return (
-      <RadixForm.Root
+      <Form
         onSubmit={(e) => {
           e.preventDefault()
           if (canContinue) onStep('review')
         }}
       >
-        <Flex direction="column" gap="4" align="start">
-          <Heading as="h2" size="4">
+        <Stack sx={{ gap: 2, alignItems: 'flex-start' }}>
+          <Typography component="h2" variant="h5">
             {t('import.target.title')}
-          </Heading>
-          <RadioGroup.Root value={target} onValueChange={(v) => setTarget(v as Target)} aria-label={t('import.target.title')}>
-            <Flex direction="column" gap="2">
-              <Text as="label" size="3">
-                <Flex gap="2" align="center">
-                  <RadioGroup.Item value="existing" /> {t('import.target.existing')}
-                </Flex>
-              </Text>
-              <Text as="label" size="3">
-                <Flex gap="2" align="center">
-                  <RadioGroup.Item value="new" /> {t('import.target.new')}
-                </Flex>
-              </Text>
-            </Flex>
-          </RadioGroup.Root>
+          </Typography>
+          <Choice
+            label={t('import.target.title')}
+            value={target}
+            onChange={setTarget}
+            options={[
+              { value: 'existing', label: t('import.target.existing') },
+              { value: 'new', label: t('import.target.new') },
+            ]}
+          />
 
           {target === 'existing' &&
             (usable.length === 0 ? (
-              <Text as="p" size="2" color="gray">
+              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                 {t('import.target.noVehicles')}
-              </Text>
+              </Typography>
             ) : (
               <LabeledSelect label={t('import.target.vehicle')} value={vehicleId} onChange={setVehicleId} placeholder={t('import.target.chooseVehicle')} options={usable.map((v) => ({ value: v.id, label: v.licensePlate ? `${v.name} (${v.licensePlate})` : v.name }))} />
             ))}
 
           {target === 'new' && (
-            <Flex direction="column" gap="3" asChild>
-              <fieldset style={{ border: 0, padding: 0, margin: 0, width: '100%', maxWidth: '28rem' }}>
-                <legend>
-                  <Text size="2" weight="bold">
-                    {t('import.target.newDetails')}
-                  </Text>
-                </legend>
-                <Field name="name" label={t('import.target.name')} required>
-                  <TextField.Root required value={effectiveNew.name} onChange={(e) => setNewVehicle({ ...effectiveNew, name: e.target.value })} />
-                </Field>
-                <Field name="plate" label={t('import.target.plate')}>
-                  <TextField.Root value={effectiveNew.licensePlate} onChange={(e) => setNewVehicle({ ...effectiveNew, licensePlate: e.target.value })} />
-                </Field>
-                <LabeledSelect label={t('fields.fuel')} value={effectiveNew.fuelType} onChange={(fuelType) => setNewVehicle({ ...effectiveNew, fuelType })} options={FUEL_TYPES.map((f) => ({ value: f, label: t(`fuel.${f}`) }))} />
-                <Text size="2" color="gray">
-                  {t('import.review.unitsFromFile', { distance: t(`units.distance.${effectiveNew.distance}`), volume: t(`units.volume.${effectiveNew.volume}`) })}
-                </Text>
-              </fieldset>
-            </Flex>
+            <Stack component="fieldset" sx={{ gap: 1.5, border: 0, p: 0, m: 0, width: '100%', maxWidth: '28rem', minWidth: 0 }}>
+              <Typography component="legend" variant="body2" sx={{ fontWeight: 700, p: 0, mb: 1.5 }}>
+                {t('import.target.newDetails')}
+              </Typography>
+              <Field name="name" label={t('import.target.name')} required>
+                <FieldInput value={effectiveNew.name} onChange={(e) => setNewVehicle({ ...effectiveNew, name: e.target.value })} />
+              </Field>
+              <Field name="plate" label={t('import.target.plate')}>
+                <FieldInput value={effectiveNew.licensePlate} onChange={(e) => setNewVehicle({ ...effectiveNew, licensePlate: e.target.value })} />
+              </Field>
+              <LabeledSelect label={t('fields.fuel')} value={effectiveNew.fuelType} onChange={(fuelType) => setNewVehicle({ ...effectiveNew, fuelType })} options={FUEL_TYPES.map((f) => ({ value: f, label: t(`fuel.${f}`) }))} />
+              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                {t('import.review.unitsFromFile', { distance: t(`units.distance.${effectiveNew.distance}`), volume: t(`units.volume.${effectiveNew.volume}`) })}
+              </Typography>
+            </Stack>
           )}
 
-          <Box style={{ maxWidth: '12rem' }}>
+          <Box sx={{ width: '100%', maxWidth: '16rem' }}>
             <Field
               name="currency"
               label={t('import.target.currency')}
@@ -269,17 +271,15 @@ function TargetAndReview({ token, step, onStep, onDone }: { token: string; step:
               required
               invalid={{ message: t('errors.money.currencyInvalid'), test: (v) => v !== '' && !/^[A-Za-z]{3}$/.test(v.trim()) }}
             >
-              <TextField.Root required maxLength={3} autoComplete="off" style={{ textTransform: 'uppercase' }} value={effectiveCurrency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} />
+              <CurrencyInput value={effectiveCurrency} onChange={(v) => setCurrency(v.toUpperCase())} preferred={defaults.data!.vehicleDefaults.currency} />
             </Field>
           </Box>
 
-          <RadixForm.Submit asChild>
-            <Button size="3" disabled={!canContinue}>
-              {t('import.review.title')}
-            </Button>
-          </RadixForm.Submit>
-        </Flex>
-      </RadixForm.Root>
+          <Button size="large" type="submit" disabled={!canContinue}>
+            {t('import.review.title')}
+          </Button>
+        </Stack>
+      </Form>
     )
   }
 
@@ -322,60 +322,64 @@ function ReviewStep({
   const nothing = p.fuelRows + p.expenseRows + p.recurringRows === 0
 
   return (
-    <Flex direction="column" gap="4" align="start">
-      <Heading as="h2" size="4">
+    <Stack sx={{ gap: 2, alignItems: 'flex-start' }}>
+      <Typography component="h2" variant="h5">
         {t('import.review.title')}
-      </Heading>
-      <Card>
-        <Text as="p">
+      </Typography>
+      <Card sx={{ p: 1.5 }}>
+        <Typography>
           {t('import.review.summary', { fuel: p.fuelRows, expenses: p.expenseRows, recurring: p.recurringRows, from: p.firstDate ? date(p.firstDate) : '–', to: p.lastDate ? date(p.lastDate) : '–' })}
-        </Text>
+        </Typography>
         {p.categories.length > 0 && (
-          <Text as="p" size="2" color="gray" mt="2">
+          <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
             {t('import.review.categories', { list: p.categories.join(', ') })}
-          </Text>
+          </Typography>
         )}
       </Card>
 
       {hasDuplicates && (
-        <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
-          <legend>
-            <Text size="2" weight="bold">
-              {t('import.review.duplicateChoice')}
-            </Text>
-          </legend>
-          <Text as="p" size="2" mb="2">
+        <Box component="fieldset" sx={{ border: 0, p: 0, m: 0, minWidth: 0 }}>
+          <Typography component="legend" variant="body2" sx={{ fontWeight: 700, p: 0 }}>
+            {t('import.review.duplicateChoice')}
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 1 }}>
             {t('import.review.duplicates', { fuel: p.duplicateFuelRows, expenses: p.duplicateExpenseRows, recurring: p.duplicateRecurringRows })}
-          </Text>
-          <RadioGroup.Root value={importDuplicates ? 'import' : 'skip'} onValueChange={(v) => onImportDuplicates(v === 'import')}>
-            <Flex direction="column" gap="2">
-              <Text as="label" size="2">
-                <Flex gap="2" align="center">
-                  <RadioGroup.Item value="skip" /> {t('import.review.skipDuplicates')}
-                </Flex>
-              </Text>
-              <Text as="label" size="2">
-                <Flex gap="2" align="center">
-                  <RadioGroup.Item value="import" /> {t('import.review.importDuplicates')}
-                </Flex>
-              </Text>
-            </Flex>
-          </RadioGroup.Root>
-        </fieldset>
+          </Typography>
+          <Choice
+            value={importDuplicates ? 'import' : 'skip'}
+            onChange={(v) => onImportDuplicates(v === 'import')}
+            small
+            options={[
+              { value: 'skip', label: t('import.review.skipDuplicates') },
+              { value: 'import', label: t('import.review.importDuplicates') },
+            ]}
+          />
+        </Box>
       )}
 
       <Issues issues={p.issues} title={t('import.review.issuesTitle', { count: p.issues.length })} hint={t('import.review.issuesHint')} />
       {error !== undefined && <ErrorMessage error={error} />}
 
-      <Flex gap="3" wrap="wrap">
-        <Button size="3" variant="soft" color="gray" type="button" onClick={onBack} disabled={busy}>
+      <Stack direction="row" sx={{ gap: 1.5, flexWrap: 'wrap' }}>
+        <Button size="large" variant="soft" color="neutral" type="button" onClick={onBack} disabled={busy}>
           {t('import.review.back')}
         </Button>
-        <Button size="3" onClick={onConfirm} disabled={busy || nothing} aria-busy={busy}>
+        <Button size="large" onClick={onConfirm} disabled={busy || nothing} aria-busy={busy}>
           {busy ? t('import.review.importing') : t('import.review.confirm')}
         </Button>
-      </Flex>
-    </Flex>
+      </Stack>
+    </Stack>
+  )
+}
+
+/** One of a few choices as radio buttons, one under the other; `label` names the group when no fieldset's legend does. */
+function Choice<V extends string>({ label, value, onChange, options, small }: { label?: string; value: V; onChange: (value: V) => void; options: { value: V; label: ReactNode }[]; small?: boolean }) {
+  return (
+    <RadioGroup aria-label={label} value={value} onChange={(_, next) => onChange(next as V)}>
+      {options.map((o) => (
+        <FormControlLabel key={o.value} value={o.value} control={<Radio />} label={o.label} slotProps={{ typography: { variant: small ? 'body2' : 'body1' } }} sx={{ minHeight: 44, ml: -1 }} />
+      ))}
+    </RadioGroup>
   )
 }
 
@@ -387,28 +391,29 @@ function Issues({ issues, title, hint }: { issues: readonly Issue[]; title: stri
   const shown = issues.slice(0, MAX_ISSUES_SHOWN)
 
   return (
-    <Callout.Root color="amber" size="1">
-      <Callout.Icon>
-        <AlertTriangle size={16} aria-hidden />
-      </Callout.Icon>
-      <Callout.Text>
-        <Text weight="bold">{title}</Text>
-        {hint && (
-          <Text as="p" size="1">
-            {hint}
-          </Text>
-        )}
-        <ul style={{ margin: 'var(--space-2) 0 0', paddingLeft: 'var(--space-4)' }}>
-          {shown.map((issue, i) => (
-            <li key={`${issue.section}-${issue.row}-${i}`}>
-              {issue.row > 0 && <Text color="gray">{t('import.row', { section: t(`import.sections.${issue.section as 'log' | 'costs' | 'vehicle'}`, { defaultValue: issue.section }), row: issue.row })}: </Text>}
-              {keyText(issue.key, issue.args) ?? issue.key}
-            </li>
-          ))}
-        </ul>
-        {issues.length > shown.length && <Text as="p" size="1">{t('import.review.moreIssues', { count: issues.length - shown.length })}</Text>}
-      </Callout.Text>
-    </Callout.Root>
+    <Alert severity="warning" icon={<AlertTriangle size={16} aria-hidden />} role="none">
+      <Typography variant="body2" sx={{ fontWeight: 700 }}>
+        {title}
+      </Typography>
+      {hint && <Typography variant="caption" component="p">{hint}</Typography>}
+      <Box component="ul" sx={{ mt: 1, mb: 0, pl: 2 }}>
+        {shown.map((issue, i) => (
+          <li key={`${issue.section}-${issue.row}-${i}`}>
+            {issue.row > 0 && (
+              <Box component="span" sx={{ color: 'text.secondary' }}>
+                {t('import.row', { section: t(`import.sections.${issue.section as 'log' | 'costs' | 'vehicle'}`, { defaultValue: issue.section }), row: issue.row })}:{' '}
+              </Box>
+            )}
+            {keyText(issue.key, issue.args) ?? issue.key}
+          </li>
+        ))}
+      </Box>
+      {issues.length > shown.length && (
+        <Typography variant="caption" component="p">
+          {t('import.review.moreIssues', { count: issues.length - shown.length })}
+        </Typography>
+      )}
+    </Alert>
   )
 }
 
@@ -419,25 +424,25 @@ function DoneStep({ result, onAnother }: { result: Result; onAnother: () => void
   const skipped = result.fuelSkippedDuplicates + result.expensesSkippedDuplicates + result.recurringSkippedDuplicates
 
   return (
-    <Flex direction="column" gap="3" align="start">
-      <Heading as="h2" size="4">
+    <Stack sx={{ gap: 1.5, alignItems: 'flex-start' }}>
+      <Typography component="h2" variant="h5">
         {t('import.done.title')}
-      </Heading>
+      </Typography>
       <SuccessMessage>{t('import.done.imported', { fuel: result.fuelImported, expenses: result.expensesImported, recurring: result.recurringImported })}</SuccessMessage>
       {skipped > 0 && (
-        <Text as="p" size="2">
+        <Typography variant="body2">
           {t('import.done.skipped', { fuel: result.fuelSkippedDuplicates, expenses: result.expensesSkippedDuplicates, recurring: result.recurringSkippedDuplicates })}
-        </Text>
+        </Typography>
       )}
       <Issues issues={result.errors} title={t('import.done.errorsTitle', { count: result.errors.length })} />
-      <Flex gap="3" wrap="wrap">
-        <Button size="3" asChild>
-          <Link to={`/vehicles/${result.vehicleId}`}>{t('import.done.open')}</Link>
+      <Stack direction="row" sx={{ gap: 1.5, flexWrap: 'wrap' }}>
+        <Button component={Link} to={`/vehicles/${result.vehicleId}`} size="large">
+          {t('import.done.open')}
         </Button>
-        <Button size="3" variant="soft" onClick={onAnother}>
+        <Button size="large" variant="soft" onClick={onAnother}>
           {t('import.done.another')}
         </Button>
-      </Flex>
-    </Flex>
+      </Stack>
+    </Stack>
   )
 }

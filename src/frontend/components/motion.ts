@@ -1,3 +1,4 @@
+import TableRow from '@mui/material/TableRow'
 import { Table } from '@radix-ui/themes'
 import { motion, type Transition } from 'motion/react'
 
@@ -10,6 +11,7 @@ export const QUICK: Transition = { duration: 0.18, ease: 'easeOut' }
 
 /** A table row that fades in and out. */
 export const MotionRow = motion.create(Table.Row)
+export const MotionTableRow = motion.create(TableRow)
 export const rowMotion = { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 }, transition: QUICK } as const
 
 /** A list item that fades in and out and slides to its new place when the list is reordered. */

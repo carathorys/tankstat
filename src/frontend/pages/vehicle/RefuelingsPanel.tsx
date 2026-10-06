@@ -1,13 +1,16 @@
 import { useMutation } from '@apollo/client/react'
-import { Badge, Button, Flex, IconButton, Text } from '@radix-ui/themes'
+import Button from '@mui/material/Button'
+import Chip from '@mui/material/Chip'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
 import { Pencil, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '../../components/ConfirmDialog.tsx'
+import { IconAction } from '../../components/IconAction.tsx'
 import { UserChip } from '../../components/UserAvatar.tsx'
 import {
   DeleteRefuelingDocument,
-  LogRefuelingDocument,
   RefuelingsDocument,
   UpdateRefuelingDocument,
   type DistanceUnit,
@@ -22,10 +25,11 @@ import { ErrorMessage } from '../../messages.tsx'
 import { RefuelingFormDialog } from '../../RefuelingFormDialog.tsx'
 import { anyAwaiting } from '../../recognition/review.ts'
 import { ReviewBadge } from '../../recognition/ReviewState.tsx'
+import { REFUELING_QUERIES, useLogMutations } from './useLogMutations.ts'
 
 type Row = RefuelingsQuery['refuelings'][number]
 
-const refetch = { refetchQueries: ['Refuelings', 'VehicleDetails', 'LogDefaults'], awaitRefetchQueries: true }
+const refetch = { refetchQueries: REFUELING_QUERIES, awaitRefetchQueries: true }
 
 export function RefuelingsPanel({
   vehicle,
@@ -36,7 +40,7 @@ export function RefuelingsPanel({
 }) {
   const { t } = useTranslation()
   const format = useFormat()
-  const [logRefueling] = useMutation(LogRefuelingDocument, refetch)
+  const add = useLogMutations(vehicle.id)
   const [updateRefueling] = useMutation(UpdateRefuelingDocument, refetch)
   const [deleteRefueling] = useMutation(DeleteRefuelingDocument, { ...refetch, refetchQueries: [...refetch.refetchQueries, 'RefuelingTrash'] })
   const [actionError, setActionError] = useState<unknown>()
@@ -53,10 +57,10 @@ export function RefuelingsPanel({
         sortField: 'DATE',
         // Always shown, so it also says when a log waits for its photos or for someone to check what they showed.
         cell: (r) => (
-          <Flex direction="column" align="start" gap="1">
+          <Stack sx={{ alignItems: 'flex-start', gap: 0.5 }}>
             {format.date(r.date)}
             <ReviewBadge state={r.reviewState} />
-          </Flex>
+          </Stack>
         ),
       },
       { id: 'volume', label: 'columns.volume', include: 'withVolume', mobile: true, sortField: 'VOLUME', cell: (r) => (r.volume == null ? none : format.volume(r.volume, units.volume)) },
@@ -84,10 +88,10 @@ export function RefuelingsPanel({
           r.isFullTank == null ? (
             none
           ) : (
-            <Flex direction="column" align="start" gap="1">
-              {r.isFullTank ? t('refuelings.full') : <Badge color="amber">{t('refuelings.partial')}</Badge>}
-              {r.missedPreviousFillUp && <Badge color="gray">{t('refuelings.missedBefore')}</Badge>}
-            </Flex>
+            <Stack sx={{ alignItems: 'flex-start', gap: 0.5 }}>
+              {r.isFullTank ? t('refuelings.full') : <Chip color="warning" label={t('refuelings.partial')} />}
+              {r.missedPreviousFillUp && <Chip color="neutral" label={t('refuelings.missedBefore')} />}
+            </Stack>
           ),
       },
       { id: 'note', label: 'columns.note', include: 'withNote', cell: (r) => r.note || none },
@@ -119,51 +123,42 @@ export function RefuelingsPanel({
         emptyText={t('refuelings.empty')}
         pollWhile={anyAwaiting}
         toolbar={({ total }) => (
-          <Flex align="center" gap="3" wrap="wrap">
-            {canLog && (
-              <RefuelingFormDialog
-                vehicle={vehicle}
-                trigger={<Button size="3">{t('refuelings.add')}</Button>}
-                onSubmit={async (input, photoIds) => {
-                  const logged = await logRefueling({ variables: { input: { ...input, vehicleId: vehicle.id, photoIds } } })
-                  return logged.data ? { id: logged.data.logRefueling.id, photoCount: logged.data.logRefueling.photos.length } : undefined
-                }}
-              />
-            )}
-            <Text size="2" color="gray" aria-live="polite">
+          <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+            {canLog && <RefuelingFormDialog vehicle={vehicle} trigger={<Button size="large">{t('refuelings.add')}</Button>} onSubmit={add.refuel} />}
+            <Typography variant="body2" aria-live="polite" sx={{ color: 'text.secondary' }}>
               {t('refuelings.countLabel', { count: total })}
-            </Text>
-          </Flex>
+            </Typography>
+          </Stack>
         )}
         actions={(r) =>
           r.canEdit ? (
-            <Flex gap="2" justify="end">
+            <Stack direction="row" sx={{ gap: 1, justifyContent: 'flex-end' }}>
               <RefuelingFormDialog
                 vehicle={vehicle}
                 refuelingId={r.id}
                 trigger={
-                  <IconButton size="3" variant="soft" aria-label={t('refuelings.editAria', { date: format.date(r.date) })}>
+                  <IconAction size="large" tone="primary" label={t('refuelings.editAria', { date: format.date(r.date) })}>
                     <Pencil size={16} aria-hidden />
-                  </IconButton>
+                  </IconAction>
                 }
                 onSubmit={async (input) => void (await updateRefueling({ variables: { input: { ...input, id: r.id } } }))}
               />
               <ConfirmDialog
                 trigger={
-                  <IconButton size="3" variant="soft" color="red" aria-label={t('refuelings.deleteAria', { date: format.date(r.date) })}>
+                  <IconAction size="large" tone="error" label={t('refuelings.deleteAria', { date: format.date(r.date) })}>
                     <Trash2 size={16} aria-hidden />
-                  </IconButton>
+                  </IconAction>
                 }
                 title={t('refuelings.trashTitle')}
                 description={t('refuelings.trashDescription', { date: format.date(r.date) })}
                 confirmLabel={t('refuelings.trashConfirm')}
                 onConfirm={() => void moveToTrash(r)}
               />
-            </Flex>
+            </Stack>
           ) : (
-            <Text size="2" color="gray">
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
               {t('refuelings.viewOnly')}
-            </Text>
+            </Typography>
           )
         }
       />

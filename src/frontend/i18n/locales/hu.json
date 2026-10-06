@@ -40,7 +40,10 @@
   },
   "toast": {
     "saved": "Mentve.",
-    "undoFailed": "Nem sikerült visszaállítani. A kukában megtalálod."
+    "undoFailed": "Nem sikerült visszaállítani. A kukában megtalálod.",
+    "vehicleTrashed": "{{name}} a kukába került.",
+    "refuelingTrashed": "A(z) {{date}} tankolás a kukába került.",
+    "expenseTrashed": "{{title}} a kukába került."
   },
   "install": {
     "title": "A Tankstat telepítése",
@@ -202,6 +205,7 @@
   "vehicles": {
     "title": "Járművek",
     "add": "Jármű hozzáadása",
+    "addLog": "Tankolás vagy költség hozzáadása",
     "edit": "Szerkesztés",
     "delete": "Törlés",
     "editAria": "{{name}} szerkesztése",

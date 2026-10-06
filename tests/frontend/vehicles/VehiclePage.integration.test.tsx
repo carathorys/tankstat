@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
 import { server } from '../support/server.ts'
-import { fakeLogBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, adminSession, healthHandler, person, renderWithApollo, sessionHandler, stubViewport } from '../support/mocks.tsx'
+import { fakeExpenseBackend, fakeLogBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, adminSession, healthHandler, person, renderWithApollo, sessionHandler, stubViewport } from '../support/mocks.tsx'
 import { dateValue, findDateField } from '../support/dates.ts'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
@@ -232,6 +232,77 @@ it('a log grantee works with the logs but cannot reach the vehicle settings or s
   expect(screen.getByText(/can work with this vehicle's logs, but not change the vehicle itself/)).toBeInTheDocument()
 })
 
+/** The vehicle page on a phone, with the refuelling and expense backends of the floating add button. */
+function setupPhone(vehicle = fakeVehicle(), route = '/vehicles/v1?tab=details') {
+  stubViewport('phone')
+  const backend = fakeLogBackend(vehicle, logs)
+  const expenses = fakeExpenseBackend(vehicle, [])
+  server.use(sessionHandler('NONE', () => null), healthHandler, ...backend.handlers, ...expenses.handlers)
+  renderWithApollo(<App />, route)
+  return { ...backend, expenses, ui: userEvent.setup() }
+}
+
+it('on a phone, the floating add button logs a refuelling from any tab and gives the focus back', async () => {
+  const { ui, state } = setupPhone()
+  await screen.findByRole('heading', { name: 'Octavia' })
+  const fab = screen.getByRole('button', { name: 'Add a refuelling or an expense' })
+
+  await ui.click(fab)
+  const menu = await screen.findByRole('menu', { name: 'Add a refuelling or an expense' })
+  expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Add refuelling', 'Add expense'])
+  await ui.click(within(menu).getByRole('menuitem', { name: 'Add refuelling' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add refuelling' })
+  await ui.type(within(dialog).getByLabelText(/^Volume/), '38.2')
+  await ui.type(within(dialog).getByLabelText('Total cost'), '19100')
+  await ui.type(within(dialog).getByLabelText(/^Odometer/), '12450')
+  await ui.click(within(dialog).getByRole('button', { name: 'Add refuelling' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(state.calls.LogRefueling).toEqual([{ input: expect.objectContaining({ vehicleId: 'v1', volume: 38.2, totalCost: 19100, odometer: 12450 }) }])
+  await waitFor(() => expect(fab).toHaveFocus())
+})
+
+it('on a phone, the floating add button logs an expense too', async () => {
+  const { ui, expenses } = setupPhone()
+  await screen.findByRole('heading', { name: 'Octavia' })
+
+  await ui.click(screen.getByRole('button', { name: 'Add a refuelling or an expense' }))
+  await ui.click(await screen.findByRole('menuitem', { name: 'Add expense' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add expense' })
+  await ui.type(within(dialog).getByLabelText('Title'), 'Car wash')
+  await ui.type(within(dialog).getByLabelText('Amount'), '3200')
+  await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
+
+  await waitFor(() => expect(expenses.state.calls.AddExpense).toEqual([{ input: expect.objectContaining({ vehicleId: 'v1', title: 'Car wash', amount: 3200 }) }]))
+})
+
+it('there is no floating add button on a desktop, nor for someone who may only view the logs', async () => {
+  setup()
+  await screen.findByText(/Sep 1, 2026/)
+  expect(screen.queryByRole('button', { name: 'Add a refuelling or an expense' })).not.toBeInTheDocument()
+})
+
+it('nor on a phone for someone who may only view the logs', async () => {
+  setupPhone(fakeVehicle({ canEdit: false, logAccess: 'VIEW' }))
+  await screen.findByRole('heading', { name: 'Octavia' })
+  expect(screen.queryByRole('button', { name: 'Add a refuelling or an expense' })).not.toBeInTheDocument()
+})
+
+it('every tab has its panel, but only the open one is filled', async () => {
+  const { ui } = setup(fakeVehicle(), logs, '/vehicles/v1?tab=details')
+  const details = await screen.findByRole('tab', { name: /Details/, selected: true })
+
+  const panels = screen.getAllByRole('tabpanel', { hidden: true })
+  expect(panels).toHaveLength(6)
+  for (const tab of screen.getAllByRole('tab')) expect(document.getElementById(tab.getAttribute('aria-controls')!)).toHaveAttribute('aria-labelledby', tab.id)
+  expect(panels.filter((p) => !p.hidden)).toEqual([document.getElementById(details.getAttribute('aria-controls')!)])
+  expect(panels.filter((p) => p.hidden).every((p) => p.childElementCount === 0)).toBe(true)
+
+  details.focus()
+  await ui.keyboard('{ArrowLeft}') // the arrow keys choose, as before
+  expect(await screen.findByRole('tab', { name: /Recurring/, selected: true })).toBeInTheDocument()
+})
+
 it('explains an unknown or inaccessible vehicle', async () => {
   setup(fakeVehicle(), logs, '/vehicles/nope')
 
@@ -294,6 +365,12 @@ it('moves the vehicle to the trash from its details, after a confirmation, and g
   await screen.findByRole('heading', { name: 'Your vehicles' })
   expect(state.calls.DeleteVehicle).toEqual([{ id: 'v1' }])
   expect(state.trash.map((v) => v.id)).toEqual(['v1'])
+
+  // A message says where it went, with a way back.
+  expect(await screen.findByText('Octavia is in the trash.')).toBeInTheDocument()
+  await ui.click(screen.getByRole('button', { name: 'Undo' }))
+  await waitFor(() => expect(state.calls.RestoreVehicle).toEqual([{ id: 'v1' }]))
+  expect(await screen.findByRole('link', { name: 'Open Octavia' })).toBeInTheDocument() // back on the home page
 })
 
 it('keeps the vehicle when the confirmation is cancelled', async () => {

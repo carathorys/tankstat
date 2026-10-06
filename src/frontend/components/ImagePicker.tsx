@@ -1,11 +1,13 @@
-import { Button, Flex, Text } from '@radix-ui/themes'
+import Button from '@mui/material/Button'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
 import { ImagePlus, Trash2 } from 'lucide-react'
 import { useId, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useErrorText } from '../i18n/errors.ts'
-import { deleteImage, uploadImage } from '../pictures/upload.ts'
-import { resizeImage } from '../pictures/resizeImage.ts'
 import { ErrorMessage } from '../messages.tsx'
+import { resizeImage } from '../pictures/resizeImage.ts'
+import { deleteImage, uploadImage } from '../pictures/upload.ts'
 
 /**
  * Choose, replace or remove a picture. The file is made small in the browser first (and square for profile pictures); the
@@ -53,9 +55,9 @@ export function ImagePicker({
   }
 
   return (
-    <Flex direction={{ initial: 'column', sm: 'row' }} gap="4" align={{ initial: 'start', sm: 'center' }}>
+    <Stack direction={{ xs: 'column', md: 'row' }} sx={{ gap: 2, alignItems: { xs: 'flex-start', md: 'center' } }}>
       {preview}
-      <Flex direction="column" gap="2" align="start">
+      <Stack sx={{ gap: 1, alignItems: 'flex-start' }}>
         <input
           ref={input}
           type="file"
@@ -69,26 +71,26 @@ export function ImagePicker({
             if (file) void run(async () => void (await uploadImage(path, await resizeImage(file, { maxEdge, square }))), t('image.uploaded'))
           }}
         />
-        <Flex gap="2" wrap="wrap">
-          <Button size="3" variant="soft" disabled={disabled || busy} aria-describedby={hintId} onClick={() => input.current?.click()}>
+        <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
+          <Button size="large" variant="soft" disabled={disabled || busy} aria-describedby={hintId} onClick={() => input.current?.click()}>
             <ImagePlus size={16} aria-hidden />
             {hasImage ? t('image.change') : t('image.choose')}
           </Button>
           {hasImage && (
-            <Button size="3" variant="soft" color="red" disabled={disabled || busy} onClick={() => void run(() => deleteImage(path), t('image.removed'))}>
+            <Button size="large" variant="soft" color="error" disabled={disabled || busy} onClick={() => void run(() => deleteImage(path), t('image.removed'))}>
               <Trash2 size={16} aria-hidden />
               {t('image.remove')}
             </Button>
           )}
-        </Flex>
-        <Text id={hintId} size="1" color="gray">
+        </Stack>
+        <Typography id={hintId} variant="caption" sx={{ color: 'text.secondary' }}>
           {t('image.hint')}
-        </Text>
+        </Typography>
         <div role="status" aria-label={t('a11y.uploadStatus')}>
-          {status && <Text size="2">{status}</Text>}
+          {status && <Typography variant="body2">{status}</Typography>}
         </div>
         {error !== undefined && <ErrorMessage>{errorText(error)}</ErrorMessage>}
-      </Flex>
-    </Flex>
+      </Stack>
+    </Stack>
   )
 }

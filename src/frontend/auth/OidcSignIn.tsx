@@ -1,4 +1,8 @@
-import { Button, Flex, Heading, Link, Spinner, Text } from '@radix-ui/themes'
+import Button from '@mui/material/Button'
+import CircularProgress from '@mui/material/CircularProgress'
+import Link from '@mui/material/Link'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'react-router'
@@ -36,11 +40,11 @@ export function OidcSignIn() {
   if (failed) {
     return (
       <>
-        <Heading as="h2" size="5" mb="3">
+        <Typography component="h2" variant="h4" sx={{ mb: 1.5 }}>
           {t('auth.failedTitle')}
-        </Heading>
+        </Typography>
         <ErrorMessage>{t(failureText(params.get('reason')))}</ErrorMessage>
-        <Button mt="3" size="3" style={{ minHeight: 44 }} onClick={signIn}>
+        <Button size="large" sx={{ mt: 1.5, minHeight: 44 }} onClick={signIn}>
           {t('auth.tryAgain')}
         </Button>
       </>
@@ -49,13 +53,11 @@ export function OidcSignIn() {
   if (wasSignedOut) {
     return (
       <>
-        <Heading as="h2" size="5" mb="3">
+        <Typography component="h2" variant="h4" sx={{ mb: 1.5 }}>
           {t('auth.signedOutTitle')}
-        </Heading>
-        <Text as="p" mb="3">
-          {t('auth.signedOutHint')}
-        </Text>
-        <Button size="3" style={{ minHeight: 44 }} onClick={signIn}>
+        </Typography>
+        <Typography sx={{ mb: 1.5 }}>{t('auth.signedOutHint')}</Typography>
+        <Button size="large" sx={{ minHeight: 44 }} onClick={signIn}>
           {t('auth.signIn')}
         </Button>
       </>
@@ -63,14 +65,14 @@ export function OidcSignIn() {
   }
   return (
     <>
-      <Heading as="h2" size="5" mb="3">
+      <Typography component="h2" variant="h4" sx={{ mb: 1.5 }}>
         {t('auth.signIn')}
-      </Heading>
-      <Flex align="center" gap="3" mb="3" role="status">
-        <Spinner size="3" />
-        <Text>{t('auth.redirecting')}</Text>
-      </Flex>
-      <Link href={loginUrl} style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44 }}>
+      </Typography>
+      <Stack direction="row" role="status" sx={{ alignItems: 'center', gap: 1.5, mb: 1.5 }}>
+        <CircularProgress size={20} color="inherit" aria-hidden />
+        <Typography>{t('auth.redirecting')}</Typography>
+      </Stack>
+      <Link href={loginUrl} sx={{ display: 'inline-flex', alignItems: 'center', minHeight: 44 }}>
         {t('auth.continueSignIn')}
       </Link>
     </>

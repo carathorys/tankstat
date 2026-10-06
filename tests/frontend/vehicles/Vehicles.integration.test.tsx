@@ -148,6 +148,12 @@ it('asks for confirmation, then moves the vehicle to the trash', async () => {
   expect(screen.getByText('Bike')).toBeInTheDocument()
   expect(state.calls.DeleteVehicle).toEqual([{ id: 'v1' }])
   expect(state.trash.map((v) => v.name)).toEqual(['Octavia'])
+
+  // Undo puts it back where it was.
+  expect(screen.getByText('Octavia is in the trash.')).toBeInTheDocument()
+  await ui.click(screen.getByRole('button', { name: 'Undo' }))
+  expect(await screen.findByText('Octavia')).toBeInTheDocument()
+  expect(state.calls.RestoreVehicle).toEqual([{ id: 'v1' }])
 })
 
 it('keeps the vehicle when the deletion is cancelled', async () => {

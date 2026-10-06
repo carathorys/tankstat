@@ -1,24 +1,34 @@
 import { useMutation } from '@apollo/client/react'
-import { Button, DataList, Flex, Heading, Text } from '@radix-ui/themes'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
 import { ConfirmDialog } from '../../components/ConfirmDialog.tsx'
+import { DefinitionList } from '../../components/DefinitionList.tsx'
 import { ImagePicker } from '../../components/ImagePicker.tsx'
 import { UserChip } from '../../components/UserAvatar.tsx'
 import { VehiclePicture } from '../../components/VehiclePicture.tsx'
-import { DeleteVehicleDocument, UpdateVehicleDocument, type VehicleDetailsQuery } from '../../gql/generated.ts'
+import { DeleteVehicleDocument, RestoreVehicleDocument, UpdateVehicleDocument, type VehicleDetailsQuery } from '../../gql/generated.ts'
 import { ErrorMessage } from '../../messages.tsx'
 import { vehiclePicturePath } from '../../pictures/upload.ts'
+import { useToast } from '../../toast/toastContext.ts'
 import { VehicleFormDialog } from '../../VehicleFormDialog.tsx'
 
 type Vehicle = NonNullable<VehicleDetailsQuery['vehicle']>
 
+// Where a trashed (or restored) vehicle shows: the home page, the full list and the trash.
+const LISTS = ['Welcome', 'Vehicles', 'Trash']
+
 export function DetailsPanel({ vehicle, onChanged }: { vehicle: Vehicle; onChanged: () => void | Promise<unknown> }) {
   const { t } = useTranslation()
+  const { undoable } = useToast()
   const none = t('common.none')
   const [updateVehicle] = useMutation(UpdateVehicleDocument, { refetchQueries: ['VehicleDetails', 'Vehicles'], awaitRefetchQueries: true })
-  const [deleteVehicle] = useMutation(DeleteVehicleDocument, { refetchQueries: ['Welcome', 'Vehicles', 'Trash'] })
+  const [deleteVehicle] = useMutation(DeleteVehicleDocument, { refetchQueries: LISTS })
+  const [restoreVehicle] = useMutation(RestoreVehicleDocument, { refetchQueries: LISTS })
   const navigate = useNavigate()
   const [deleteError, setDeleteError] = useState<unknown>()
 
@@ -27,49 +37,41 @@ export function DetailsPanel({ vehicle, onChanged }: { vehicle: Vehicle; onChang
     try {
       await deleteVehicle({ variables: { id: vehicle.id } })
       void navigate('/') // the vehicle is in the trash now; its page would only say it does not exist
+      undoable(t('toast.vehicleTrashed', { name: vehicle.name }), () => restoreVehicle({ variables: { id: vehicle.id } }))
     } catch (e) {
       setDeleteError(e)
     }
   }
 
   return (
-    <Flex direction="column" gap="5">
-      <DataList.Root>
-        <DataList.Item>
-          <DataList.Label>{t('vehicles.owner')}</DataList.Label>
-          <DataList.Value>{vehicle.owner ? <UserChip user={vehicle.owner} /> : none}</DataList.Value>
-        </DataList.Item>
-        <DataList.Item>
-          <DataList.Label>{t('vehicles.fuel')}</DataList.Label>
-          <DataList.Value>{t(`fuel.${vehicle.fuelType}`)}</DataList.Value>
-        </DataList.Item>
-        <DataList.Item>
-          <DataList.Label>{t('vehicles.plate')}</DataList.Label>
-          <DataList.Value>{vehicle.licensePlate ?? none}</DataList.Value>
-        </DataList.Item>
-        <DataList.Item>
-          <DataList.Label>{t('units.distanceLabel')}</DataList.Label>
-          <DataList.Value>{t(`units.distance.${vehicle.units.distance}`)}</DataList.Value>
-        </DataList.Item>
-        <DataList.Item>
-          <DataList.Label>{t('units.volumeLabel')}</DataList.Label>
-          <DataList.Value>{t(`units.volume.${vehicle.units.volume}`)}</DataList.Value>
-        </DataList.Item>
-      </DataList.Root>
+    <Stack sx={{ gap: 3 }}>
+      <DefinitionList
+        items={[
+          { label: t('vehicles.owner'), value: vehicle.owner ? <UserChip user={vehicle.owner} /> : none },
+          { label: t('vehicles.fuel'), value: t(`fuel.${vehicle.fuelType}`) },
+          { label: t('vehicles.plate'), value: vehicle.licensePlate ?? none },
+          { label: t('units.distanceLabel'), value: t(`units.distance.${vehicle.units.distance}`) },
+          { label: t('units.volumeLabel'), value: t(`units.volume.${vehicle.units.volume}`) },
+        ]}
+      />
 
       {vehicle.canEdit && (
         <>
           <div>
             <VehicleFormDialog
               vehicleId={vehicle.id}
-              trigger={<Button size="3" variant="soft">{t('vehicles.editVehicle')}</Button>}
+              trigger={
+                <Button size="large" variant="soft">
+                  {t('vehicles.editVehicle')}
+                </Button>
+              }
               onSubmit={(input) => updateVehicle({ variables: { input: { ...input, id: vehicle.id } } })}
             />
           </div>
           <section aria-labelledby="picture-heading">
-            <Heading as="h2" size="4" id="picture-heading" mb="3">
+            <Typography component="h2" variant="h5" id="picture-heading" sx={{ mb: 1.5 }}>
               {t('columns.picture')}
-            </Heading>
+            </Typography>
             <ImagePicker
               preview={<VehiclePicture url={vehicle.pictureUrl} name={vehicle.name} width="min(16rem, 100%)" ratio="16 / 10" />}
               hasImage={Boolean(vehicle.pictureUrl)}
@@ -79,27 +81,29 @@ export function DetailsPanel({ vehicle, onChanged }: { vehicle: Vehicle; onChang
             />
           </section>
           <section aria-labelledby="trash-heading">
-            <Heading as="h2" size="4" id="trash-heading" mb="2">
+            <Typography component="h2" variant="h5" id="trash-heading" sx={{ mb: 1 }}>
               {t('vehicles.dangerZone')}
-            </Heading>
-            <Text as="p" size="2" color="gray" mb="3">
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1.5 }}>
               {t('vehicles.trashDescription')}
-            </Text>
+            </Typography>
             {deleteError !== undefined && <ErrorMessage error={deleteError} />}
-            <ConfirmDialog
-              trigger={
-                <Button size="3" variant="soft" color="red">
-                  {t('vehicles.moveToTrash')}
-                </Button>
-              }
-              title={t('vehicles.trashTitle', { name: vehicle.name })}
-              description={t('vehicles.trashDescription')}
-              confirmLabel={t('vehicles.trashConfirm')}
-              onConfirm={() => void moveToTrash()}
-            />
+            <Box>
+              <ConfirmDialog
+                trigger={
+                  <Button size="large" variant="soft" color="error">
+                    {t('vehicles.moveToTrash')}
+                  </Button>
+                }
+                title={t('vehicles.trashTitle', { name: vehicle.name })}
+                description={t('vehicles.trashDescription')}
+                confirmLabel={t('vehicles.trashConfirm')}
+                onConfirm={() => void moveToTrash()}
+              />
+            </Box>
           </section>
         </>
       )}
-    </Flex>
+    </Stack>
   )
 }

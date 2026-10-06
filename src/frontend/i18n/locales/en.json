@@ -40,7 +40,10 @@
   },
   "toast": {
     "saved": "Saved.",
-    "undoFailed": "It could not be put back. Find it in the trash."
+    "undoFailed": "It could not be put back. Find it in the trash.",
+    "vehicleTrashed": "{{name}} is in the trash.",
+    "refuelingTrashed": "The refuelling of {{date}} is in the trash.",
+    "expenseTrashed": "{{title}} is in the trash."
   },
   "install": {
     "title": "Install Tankstat",
@@ -202,6 +205,7 @@
   "vehicles": {
     "title": "Vehicles",
     "add": "Add vehicle",
+    "addLog": "Add a refuelling or an expense",
     "edit": "Edit",
     "delete": "Delete",
     "editAria": "Edit {{name}}",
