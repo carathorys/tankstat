@@ -214,7 +214,17 @@ public class RecognitionGraphQLTests
     [Fact]
     public async Task APhotoAddedToASavedRefuelling_IsRead_ItsReadingIsOnThePhoto_AndAnEmptiedValueWaitsForIt()
     {
-        var provider = new FakeProvider { Gate = new SemaphoreSlim(0) };
+        var provider = new FakeProvider
+        {
+            Gate = new SemaphoreSlim(0),
+            // The receipt shows its currency: a total is only ever stored in a currency read from the photo, never in the hint.
+            Answer = _ => new("fake-1", DocumentKind.FuelReceipt,
+            [
+                new(ReadingFieldName.Total, "24687", 0.94, ValueSource.Read),
+                new(ReadingFieldName.Volume, "38.52", 0.93, ValueSource.Read),
+                new(ReadingFieldName.Currency, "HUF", 0.95, ValueSource.Read),
+            ]),
+        };
         using var app = WithReading(provider);
         var (admin, vehicle) = await Signed(app);
         var id = (await admin.Gql("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }",

@@ -7,6 +7,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { UserChip } from '../components/UserAvatar.tsx'
 import { DeleteChartDocument, VehicleDashboardDocument, type AccessLevel, type DistanceUnit, type VolumeUnit } from '../gql/generated.ts'
 import { useFormat } from '../i18n/format.ts'
+import { spentText } from '../spending.ts'
 import { ErrorMessage } from '../messages.tsx'
 import { useMutation } from '@apollo/client/react'
 import { ChartBuilderDialog } from './ChartBuilderDialog.tsx'
@@ -81,8 +82,8 @@ export function DashboardPanel({ vehicle }: { vehicle: { id: string; units: Unit
         <Grid columns={{ initial: '1', xs: '2', md: '4' }} gap="3">
           <Kpi
             label={t('dashboard.kpi.thisMonth')}
-            value={s?.currency ? format.money(s.thisMonthSpend, s.currency) : none}
-            hint={s?.currency ? t('dashboard.kpi.lastMonth', { amount: format.money(s.lastMonthSpend, s.currency) }) : undefined}
+            value={(s && spentText(s.spending, 'thisMonth', format)) ?? none}
+            hint={s && s.spending.length > 0 ? t('dashboard.kpi.lastMonth', { amount: spentText(s.spending, 'lastMonth', format) }) : undefined}
           >
             {s && s.currency && <LazySparkline points={s.spendTrend} currency={s.currency} />}
           </Kpi>

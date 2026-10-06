@@ -108,18 +108,33 @@ public class LogPhotoFillerTests
     }
 
     [Fact]
-    public async Task VolumeAndTotal_CanWaitForTheReceipt_WhichKeepsItsCurrency_OrTheHint()
+    public async Task VolumeAndTotal_CanWaitForTheReceipt_WhichKeepsItsCurrency()
     {
         var s = await Setup();
         var receipt = await Queued(s);
-        var log = await s.W.RefuelingService.LogAsync(s.Car.Id, new RefuelingInput(Day, null, null, "EUR", 1000, false, null), default, photoDraftIds: [receipt]);
-        Answer(s, DocumentKind.FuelReceipt, Read(ReadingFieldName.Total, "18990"), Read(ReadingFieldName.Volume, "31.52"));
+        var log = await s.W.RefuelingService.LogAsync(s.Car.Id, new RefuelingInput(Day, null, null, "HUF", 1000, false, null), default, photoDraftIds: [receipt]);
+        Answer(s, DocumentKind.FuelReceipt, Read(ReadingFieldName.Total, "61.40"), Read(ReadingFieldName.Volume, "31.52"), Read(ReadingFieldName.Currency, "EUR"));
 
         await s.W.Processor.ProcessDueAsync(default);
 
         var filled = s.W.Refuelings.Items.Single(r => r.Id == log.Id);
-        Assert.Equal((31.52m, 18990m, "HUF"), (filled.Volume, filled.TotalCost, filled.Currency)); // the hint: the instance's default currency
+        Assert.Equal((31.52m, 61.40m, "EUR"), (filled.Volume, filled.TotalCost, filled.Currency)); // the receipt's own currency
         Assert.Equal((ReviewState.NeedsReview, LogValues.Volume | LogValues.Total), (filled.ReviewState, filled.FilledFromPhoto));
+    }
+
+    [Fact]
+    public async Task ATotalWithoutALegibleCurrency_IsLeftForThePerson_NeverStoredInTheUsualCurrency()
+    {
+        var s = await Setup();
+        var receipt = await Queued(s);
+        var log = await s.W.RefuelingService.LogAsync(s.Car.Id, new RefuelingInput(Day, null, null, "HUF", 1000, false, null), default, photoDraftIds: [receipt]);
+        Answer(s, DocumentKind.FuelReceipt, Read(ReadingFieldName.Total, "61.40"), Read(ReadingFieldName.Volume, "31.52")); // a foreign receipt, no currency on it
+
+        await s.W.Processor.ProcessDueAsync(default);
+
+        var filled = s.W.Refuelings.Items.Single(r => r.Id == log.Id);
+        Assert.Equal((31.52m, (decimal?)null, (string?)null), (filled.Volume, filled.TotalCost, filled.Currency)); // not 61.40 HUF
+        Assert.Equal((ReviewState.Incomplete, LogValues.Volume), (filled.ReviewState, filled.FilledFromPhoto));
     }
 
     [Fact]

@@ -43,6 +43,14 @@ it('shows a card per vehicle with the key figures', async () => {
   expect(await c.findByRole('img', { name: /Spending in the last six months/ })).toBeInTheDocument() // the chart library loads on demand
 })
 
+it("a card shows this month's spending in every currency, the main one first", async () => {
+  setup([fakeVehicle({ summary: fakeSummary({ thisMonthSpend: 52000, spending: [{ currency: 'HUF', thisMonth: 52000, lastMonth: 0 }, { currency: 'EUR', thisMonth: 73.9, lastMonth: 0 }] }) })])
+
+  const c = within(await card('Octavia'))
+
+  expect(c.getByText(/52,000.* · €73\.90/)).toBeInTheDocument()
+})
+
 it('uses the uploaded picture as the card background, and a gradient without one', async () => {
   setup([fakeVehicle({ id: 'a', name: 'With picture', pictureUrl: '/media/abc' }), fakeVehicle({ id: 'b', name: 'Plain' })])
 

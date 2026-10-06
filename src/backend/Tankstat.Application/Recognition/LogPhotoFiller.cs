@@ -134,8 +134,8 @@ public sealed class LogPhotoFiller(
 
     /// <summary>
     /// The best value per field across the log's photos, among those sure enough (<see cref="RecognitionSetup.IsSureEnough"/>: a blank
-    /// beats a wrong value). A total without a currency on the photo takes the
-    /// currency the reading was given as its hint (the vehicle's usual one).
+    /// beats a wrong value). The currency comes from a photo only, never from the reading's hint (the vehicle's usual one): a foreign receipt
+    /// without a legible currency must not be stored as the home currency, so its total is left for the person (the log stays incomplete).
     /// </summary>
     private PhotoValues ValuesOf(IReadOnlyList<PhotoReading> found)
     {
@@ -151,9 +151,7 @@ public sealed class LogPhotoFiller(
 
         var odometer = Number(ReadingFieldName.Odometer) is { } o && o == decimal.Truncate(o) && o <= long.MaxValue ? (long?)o : null;
         var total = Number(ReadingFieldName.Total);
-        var currency = (best.GetValueOrDefault(ReadingFieldName.Currency) is { } c && IsCurrency(c) ? c : null)
-            ?? read.Select(r => r.Currency).FirstOrDefault(h => h is not null && IsCurrency(h))
-            ?? found.Select(r => r.Currency).FirstOrDefault(h => h is not null && IsCurrency(h));
+        var currency = best.GetValueOrDefault(ReadingFieldName.Currency) is { } c && IsCurrency(c) ? c : null;
         return new PhotoValues(odometer, Number(ReadingFieldName.Volume), total, currency?.ToUpperInvariant());
     }
 

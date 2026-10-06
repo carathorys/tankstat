@@ -222,12 +222,27 @@ public class StatsCalculatorTests
     }
 
     [Fact]
+    public void Summary_ShowsEveryCurrencySpentThisMonthOrLast_TheMainOneFirst_NothingConverted()
+    {
+        var data = Data(
+            [Fill("2026-09-10", 30, 18000, 1500), Fill("2026-10-05", 30, 21000, 2000), Fill("2026-10-06", 40, 61.40m, 2400, currency: "EUR"), Fill("2026-09-20", 10, 30, 1900, currency: "CHF")],
+            [Cost("2026-10-02", 35000), Cost("2026-10-07", 12.50m, currency: "EUR"), Cost("2026-03-01", 500, currency: "USD")]); // March: outside both months
+
+        var s = StatsCalculator.Summary(data, Today);
+
+        Assert.Equal("HUF", s.Currency);
+        Assert.Equal([new CurrencySpend("HUF", 56000m, 18000m), new CurrencySpend("EUR", 73.90m, 0m), new CurrencySpend("CHF", 0m, 30m)], s.Spending);
+        Assert.Equal(56000m, s.ThisMonthSpend); // the main currency's figures stay as they were
+    }
+
+    [Fact]
     public void Summary_OfAVehicleWithoutData_IsEmpty()
     {
         var s = StatsCalculator.Summary(Data(), Today);
 
         Assert.Equal((null, null, null, null, 0m), (s.LastFillUpDate, s.LatestOdometer, s.AverageConsumption, s.Currency, s.ThisMonthSpend));
         Assert.Equal(6, s.SpendTrend.Count);
+        Assert.Empty(s.Spending);
     }
 
     [Fact]
@@ -240,5 +255,6 @@ public class StatsCalculatorTests
         Assert.Equal(5m, s.AverageConsumption); // the two old outliers are outside the last ten
         Assert.Equal("EUR", s.Currency); // nothing in the last year, so the last used currency
         Assert.Equal(0m, s.ThisMonthSpend);
+        Assert.Equal([new CurrencySpend("EUR", 0m, 0m)], s.Spending); // the main currency is always listed, at zero when idle
     }
 }

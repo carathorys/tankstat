@@ -33,7 +33,14 @@ public sealed record ChartData(ChartUnit Unit, IReadOnlyList<ChartSeries> Series
 
 public sealed record MonthAmount(string Month, decimal Amount);
 
-/// <summary>The key figures of a vehicle, for its card and the top of its dashboard.</summary>
+/// <summary>What was spent in one currency this month and last month (fuel and other expenses together).</summary>
+public sealed record CurrencySpend(string Currency, decimal ThisMonth, decimal LastMonth);
+
+/// <summary>
+/// The key figures of a vehicle, for its card and the top of its dashboard. Money is never converted: <see cref="Currency"/> is the main
+/// currency (the one most was spent in over the last year) and the month figures and the trend are in it; <see cref="Spending"/> has this
+/// month and last month in every currency used in them, the main one first, so nothing spent in another currency goes unshown.
+/// </summary>
 public sealed record VehicleSummary(
     DateOnly? LastFillUpDate, long? LatestOdometer, decimal? AverageConsumption, string? Currency, decimal ThisMonthSpend, decimal LastMonthSpend,
-    IReadOnlyList<MonthAmount> SpendTrend, int FillUpCount, int ExpenseCount);
+    IReadOnlyList<MonthAmount> SpendTrend, int FillUpCount, int ExpenseCount, IReadOnlyList<CurrencySpend> Spending);

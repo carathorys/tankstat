@@ -78,20 +78,34 @@ export interface FakeSummary {
   fillUpCount: number
   expenseCount: number
   spendTrend: { month: string; amount: number }[]
+  spending: { currency: string; thisMonth: number; lastMonth: number }[]
 }
 
-export const fakeSummary = (over: Partial<FakeSummary> = {}): FakeSummary => ({
-  lastFillUpDate: '2026-09-17',
-  latestOdometer: 12000,
-  averageConsumption: 6.5,
-  currency: 'HUF',
-  thisMonthSpend: 50000,
-  lastMonthSpend: 40000,
-  fillUpCount: 5,
-  expenseCount: 2,
-  spendTrend: ['2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'].map((month, i) => ({ month, amount: 10000 * i })),
-  ...over,
-})
+/**
+ * Without `spending` given, it follows the main currency's figures (a getter), so the fakes that add a log to `thisMonthSpend` keep it
+ * in step; give `spending` to show other currencies too.
+ */
+export const fakeSummary = (over: Partial<FakeSummary> = {}): FakeSummary => {
+  const summary = {
+    lastFillUpDate: '2026-09-17',
+    latestOdometer: 12000,
+    averageConsumption: 6.5,
+    currency: 'HUF',
+    thisMonthSpend: 50000,
+    lastMonthSpend: 40000,
+    fillUpCount: 5,
+    expenseCount: 2,
+    spendTrend: ['2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'].map((month, i) => ({ month, amount: 10000 * i })),
+    ...over,
+  } as FakeSummary
+  if (over.spending) return summary
+  return Object.defineProperty(summary, 'spending', {
+    enumerable: true,
+    get(this: FakeSummary) {
+      return this.currency ? [{ currency: this.currency, thisMonth: this.thisMonthSpend, lastMonth: this.lastMonthSpend }] : []
+    },
+  })
+}
 
 export interface FakeVehicle {
   /** The card fragment only matches a typed object, and this normalises `Vehicle:<id>` like production. */
