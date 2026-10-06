@@ -1,51 +1,60 @@
+# What a card on the home page shows of a vehicle. `Welcome` lists them and `VehicleCard` reloads one after a quick action on it; both ask
+# for exactly these fields, so Apollo updates the normalised Vehicle in place and the card re-renders without the home page being asked again.
+fragment VehicleCardFields on Vehicle {
+  id
+  name
+  licensePlate
+  fuelType
+  pictureUrl
+  canEdit
+  logAccess
+  units {
+    distance
+    volume
+  }
+  owner {
+    id
+    displayName
+    avatarUrl
+  }
+  # What needs attention on the card: the client shows the ones that are due soon or overdue.
+  recurring {
+    id
+    title
+    kind
+    status {
+      ...RecurrenceStatusFields
+    }
+  }
+  summary {
+    lastFillUpDate
+    latestOdometer
+    averageConsumption
+    currency
+    thisMonthSpend
+    lastMonthSpend
+    fillUpCount
+    expenseCount
+    spendTrend {
+      month
+      amount
+    }
+  }
+}
+
 # The home page: a page of cards (infinite scroll) for the vehicles the user owns or that are shared with them, optionally searched by name or plate, with the key figures the server calculated.
 query Welcome($search: String, $skip: Int!, $take: Int!) {
   myVehicles(search: $search, skip: $skip, take: $take) {
-    id
-    name
-    licensePlate
-    fuelType
-    pictureUrl
-    canEdit
-    logAccess
-    units {
-      distance
-      volume
-    }
-    owner {
-      id
-      displayName
-      avatarUrl
-    }
-    # What needs attention on the card: the client shows the ones that are due soon or overdue.
-    recurring {
-      id
-      title
-      kind
-      status {
-        state
-        limit
-        dueDate
-        daysLeft
-        distanceLeft
-      }
-    }
-    summary {
-      lastFillUpDate
-      latestOdometer
-      averageConsumption
-      currency
-      thisMonthSpend
-      lastMonthSpend
-      fillUpCount
-      expenseCount
-      spendTrend {
-        month
-        amount
-      }
-    }
+    ...VehicleCardFields
   }
   myVehicleCount(search: $search)
+}
+
+# One card, asked again after a quick action on it (components/useCardActions.ts).
+query VehicleCard($id: UUID!) {
+  vehicle(id: $id) {
+    ...VehicleCardFields
+  }
 }
 
 # A vehicle's dashboard: the key figures and the saved charts (the user's own and the shared ones). Each chart loads its own data.

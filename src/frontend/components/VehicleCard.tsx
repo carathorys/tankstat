@@ -1,23 +1,34 @@
-import { Badge, Box, Flex, Grid, Heading, Text } from '@radix-ui/themes'
-import { ChevronRight } from 'lucide-react'
+import { Badge, Box, Button, Flex, Grid, Heading, IconButton, Text } from '@radix-ui/themes'
+import { CheckCheck, ChevronRight, Fuel, Receipt } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router'
 import { LazySparkline } from '../dashboard/LazySparkline.tsx'
-import type { WelcomeQuery } from '../gql/generated.ts'
+import { ExpenseFormDialog } from '../ExpenseFormDialog.tsx'
+import type { VehicleCardFieldsFragment } from '../gql/generated.ts'
+import { useDueText } from '../hooks/useDueText.ts'
 import { useMediaQuery } from '../hooks/useMediaQuery.ts'
 import { useFormat } from '../i18n/format.ts'
+import { RecurringDoneDialog } from '../RecurringDoneDialog.tsx'
+import { RefuelingFormDialog } from '../RefuelingFormDialog.tsx'
+import { cardClickOrigin, tappedAway } from './cardClicks.ts'
 import { CoverLayers } from './CoverLayers.tsx'
-import { useDueText } from '../hooks/useDueText.ts'
 import { RecurringStatusBadge } from './RecurringStatus.tsx'
+import { canLogFor, useCardActions } from './useCardActions.ts'
 import { UserChip } from './UserAvatar.tsx'
 
-type Vehicle = WelcomeQuery['myVehicles'][number]
+type Vehicle = VehicleCardFieldsFragment
 
 /**
  * A vehicle on the welcome screen: its picture as the background, with the name on it. The whole card opens the vehicle. The key figures and
  * the spending trend flow in on hover or keyboard focus; on a touch screen the first tap shows them and the second tap opens the vehicle
  * (a tap elsewhere hides them again). Keyboard and screen-reader activation always opens it straight away.
+ *
+ * Quick actions: whoever may add logs gets a Refuel and an Expense button, and a Done button next to every schedule that needs attention;
+ * they open the vehicle page's own dialogs right here. A dialog renders outside the card (a portal), yet React bubbles its events through
+ * the card, so the click handling only acts on clicks that landed in the card's own DOM (`cardClicks.ts`), and the card's buttons act on the
+ * first tap. After an action only this vehicle is asked again (`useCardActions`), so the pages the home page already loaded stay. The card
+ * is never shorter than everything shown when revealed (`--content-h`), so nothing is clipped.
  */
 export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
   const { t } = useTranslation()
@@ -27,27 +38,32 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
   const dueText = useDueText(v.units.distance)
   // Only what needs attention is on the card (the vehicle's Recurring tab has the rest); overdue first, the server already sorts by urgency.
   const attention = v.recurring.filter((r) => r.status.state !== 'UPCOMING')
+  const canLog = canLogFor(v)
+  const actions = useCardActions(v.id)
   const touch = useMediaQuery('(hover: none)', false)
   const [open, setOpen] = useState(false)
   const card = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
-  // Touch: a tap anywhere else puts the figures away again.
+  // Touch: a tap anywhere else (not in a dialog opened from here) puts the figures away again.
   useEffect(() => {
     if (!open) return
-    const away = (e: PointerEvent) => !card.current?.contains(e.target as Node) && setOpen(false)
+    const away = (e: PointerEvent) => tappedAway(card.current, e.target) && setOpen(false)
     document.addEventListener('pointerdown', away)
     return () => document.removeEventListener('pointerdown', away)
   }, [open])
-  // The figures slide up from below the card: the card needs to know how tall that panel is.
+  // The figures slide up from below the card: the card needs to know how tall that panel is, and how tall everything is once revealed.
   const panel = useRef<HTMLDivElement>(null)
-  const [panelHeight, setPanelHeight] = useState(0)
+  const content = useRef<HTMLDivElement>(null)
+  const [heights, setHeights] = useState({ panel: 0, content: 0 })
   useLayoutEffect(() => {
-    const el = panel.current
-    if (!el) return
-    const measure = () => setPanelHeight(el.offsetHeight)
+    const panelElement = panel.current
+    const contentElement = content.current
+    if (!panelElement || !contentElement) return
+    const measure = () => setHeights({ panel: panelElement.offsetHeight, content: contentElement.offsetHeight })
     measure()
     const observer = new ResizeObserver(measure)
-    observer.observe(el)
+    observer.observe(panelElement)
+    observer.observe(contentElement)
     return () => observer.disconnect()
   }, [])
 
@@ -56,25 +72,28 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
       ref={card}
       className="vehicle-card"
       data-open={open ? '' : undefined}
-      style={{ '--panel-h': `${panelHeight}px` } as CSSProperties}
+      style={{ '--panel-h': `${heights.panel}px`, '--content-h': `${heights.content}px` } as CSSProperties}
       // Touch only: the first tap shows the figures instead of opening the vehicle (before the link sees it); the second one opens it.
       // A click without a pointer (detail 0: keyboard, screen reader) goes straight through, and mouse users have hover and focus.
       onClickCapture={(e) => {
         if (!touch || e.detail === 0 || open) return
+        const origin = cardClickOrigin(card.current, e.target)
+        if (origin === 'outside' || origin === 'button') return // a dialog's own controls; the card's buttons act on the first tap
         e.preventDefault()
         e.stopPropagation()
         setOpen(true)
       }}
       // A click anywhere on the card opens the vehicle (on touch: the second tap). The link's overlay alone is not enough: the chart and
-      // other positioned parts sit above it and take the click. Real links and buttons, modified clicks (new tab) and selecting text are left alone.
+      // other positioned parts sit above it and take the click. Real links and buttons, a dialog's controls, modified clicks (new tab) and
+      // selecting text are left alone.
       onClick={(e) => {
         if (e.defaultPrevented || e.detail === 0 || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
-        if ((e.target as HTMLElement).closest('a, button') || window.getSelection()?.toString()) return
+        if (cardClickOrigin(card.current, e.target) !== 'card' || window.getSelection()?.toString()) return
         void navigate(`/vehicles/${v.id}`)
       }}
     >
       <CoverLayers pictureUrl={v.pictureUrl} id={v.id} />
-      <Flex direction="column" gap="3" className="card-content">
+      <Flex ref={content} direction="column" gap="3" className="card-content">
         <Box p="3">
           <Heading as="h2" size="5" style={{ textShadow: '0 1px 6px rgba(0,0,0,0.6)' }}>
             <Link className="vehicle-card-link" to={`/vehicles/${v.id}`} aria-label={t('welcome.card.openAria', { name: v.name })}>
@@ -104,11 +123,25 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
                   const due = dueText(r.status)
                   return (
                     <li key={r.id}>
-                      <Flex align="center" gap="2" wrap="wrap">
-                        <RecurringStatusBadge state={r.status.state} solid />
-                        <Text size="1" style={{ color: 'white', textShadow: '0 1px 4px rgba(0,0,0,0.7)' }}>
-                          {due ? `${r.title} · ${due}` : r.title}
-                        </Text>
+                      <Flex align="center" gap="2" justify="between">
+                        <Flex align="center" gap="2" wrap="wrap">
+                          <RecurringStatusBadge state={r.status.state} solid />
+                          <Text size="1" style={{ color: 'white', textShadow: '0 1px 4px rgba(0,0,0,0.7)' }}>
+                            {due ? `${r.title} · ${due}` : r.title}
+                          </Text>
+                        </Flex>
+                        {canLog && (
+                          <RecurringDoneDialog
+                            vehicle={v}
+                            item={r}
+                            trigger={
+                              <IconButton size="2" variant="soft" highContrast className="vehicle-card-action" aria-label={t('welcome.card.doneAria', { title: r.title, name: v.name })}>
+                                <CheckCheck size={16} aria-hidden />
+                              </IconButton>
+                            }
+                            onSubmit={(values) => actions.done(r.id, values)}
+                          />
+                        )}
                       </Flex>
                     </li>
                   )
@@ -120,6 +153,30 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
             <Text as="p" size="1" mt="1" style={{ color: 'white' }}>
               <UserChip user={v.owner} />
             </Text>
+          )}
+          {canLog && (
+            <Flex gap="2" mt="3" wrap="wrap">
+              <RefuelingFormDialog
+                vehicle={v}
+                onSubmit={actions.refuel}
+                trigger={
+                  <Button size="2" variant="solid" className="vehicle-card-action" aria-label={t('welcome.card.refuelAria', { name: v.name })}>
+                    <Fuel size={16} aria-hidden />
+                    {t('welcome.card.refuel')}
+                  </Button>
+                }
+              />
+              <ExpenseFormDialog
+                vehicle={v}
+                onSubmit={actions.expense}
+                trigger={
+                  <Button size="2" variant="soft" highContrast className="vehicle-card-action" aria-label={t('welcome.card.expenseAria', { name: v.name })}>
+                    <Receipt size={16} aria-hidden />
+                    {t('welcome.card.expense')}
+                  </Button>
+                }
+              />
+            </Flex>
           )}
         </Box>
 

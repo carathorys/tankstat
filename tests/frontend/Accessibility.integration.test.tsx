@@ -41,7 +41,7 @@ function setup(route: string, viewport: 'desktop' | 'phone' = 'desktop', photos 
     fakeRecurring({ id: 'rc2', title: 'Tyres', kind: 'ODOMETER', intervalMonths: null, status: { state: 'OVERDUE', limit: 'ODOMETER', dueDate: null, dueOdometer: 60000, daysLeft: null, distanceLeft: -300 } }),
     fakeRecurring(),
   ])
-  const attention = [{ id: 'rc2', title: 'Tyres', kind: 'ODOMETER', status: { state: 'OVERDUE', limit: 'ODOMETER', dueDate: null, daysLeft: null, distanceLeft: -300 } }] as never
+  const attention = [fakeRecurring({ id: 'rc2', title: 'Tyres', kind: 'ODOMETER', intervalMonths: null, status: { state: 'OVERDUE', limit: 'ODOMETER', dueDate: null, dueOdometer: 60000, daysLeft: null, distanceLeft: -300 } })]
   const vehicles = fakeVehicleBackend([fakeVehicle({ recurring: attention })], [fakeVehicle({ id: 't1', name: 'Old Fiat' })])
   const inbox = fakeNotificationBackend([
     fakeNotification(),
@@ -370,4 +370,43 @@ it('the user administration dialogs are labelled, described and free of violatio
     await ui.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   }
+})
+
+it('the quick actions on a home card have names with the vehicle in them, on a desktop and a phone, free of violations', async () => {
+  const { view } = setup('/')
+  const card = within((await screen.findByRole('link', { name: 'Open Octavia' })).closest('li')!)
+  expect(card.getByRole('button', { name: 'Add a refuelling for Octavia' })).toBeInTheDocument()
+  expect(card.getByRole('button', { name: 'Add an expense for Octavia' })).toBeInTheDocument()
+  expect(card.getByRole('button', { name: 'Mark Tyres of Octavia as done' })).toBeInTheDocument()
+  await check(view.container)
+  view.unmount()
+
+  const phone = setup('/', 'phone')
+  await screen.findByRole('link', { name: 'Open Octavia' })
+  await check(phone.view.container)
+})
+
+it('the dialogs opened from a home card are labelled, described and free of violations', async () => {
+  const { ui } = setup('/')
+  const card = within((await screen.findByRole('link', { name: 'Open Octavia' })).closest('li')!)
+
+  await ui.click(card.getByRole('button', { name: 'Add a refuelling for Octavia' }))
+  let dialog = await screen.findByRole('dialog', { name: 'Add refuelling' })
+  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
+  expect(dialog).toHaveAccessibleDescription(/Enter what you filled up/)
+  await check(document.body)
+  await ui.keyboard('{Escape}')
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+  await ui.click(card.getByRole('button', { name: 'Add an expense for Octavia' }))
+  dialog = await screen.findByRole('dialog', { name: 'Add expense' })
+  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
+  await check(document.body)
+  await ui.keyboard('{Escape}')
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+  await ui.click(card.getByRole('button', { name: 'Mark Tyres of Octavia as done' }))
+  dialog = await screen.findByRole('dialog', { name: 'Mark as done: Tyres' })
+  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
+  await check(document.body)
 })
