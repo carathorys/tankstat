@@ -160,6 +160,45 @@ it('edits a refuelling starting from its real values', async () => {
   await waitFor(() => expect(state.calls.UpdateRefueling).toEqual([{ input: expect.objectContaining({ id: 'r2', totalCost: 22500, volume: 41.5, odometer: 12000, isFullTank: false, note: 'Holiday' }) }]))
 })
 
+it('works out the third of volume, unit price and total from the other two, and saves volume and total', async () => {
+  const { ui, state } = setup()
+  await screen.findByText(/Sep 1, 2026/)
+
+  await ui.click(screen.getByRole('button', { name: 'Add refuelling' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add refuelling' })
+  await ui.type(within(dialog).getByLabelText(/^Volume/), '38,2')
+  await ui.type(within(dialog).getByLabelText('Price per L'), '599,9')
+
+  expect(within(dialog).getByLabelText('Total cost')).toHaveValue('22916,18')
+  expect(within(dialog).getByLabelText('Total cost')).toHaveAccessibleDescription(/Calculated from the other two values\./)
+  await ui.clear(within(dialog).getByLabelText('Total cost'))
+  await ui.type(within(dialog).getByLabelText('Total cost'), '24000') // all three filled: the volume, typed longest ago, gives way
+  expect(within(dialog).getByLabelText(/^Volume/)).toHaveValue('40,007')
+  expect(within(dialog).getByLabelText(/^Volume/)).toHaveAccessibleDescription(/Calculated from the other two values\./)
+  expect(within(dialog).getByLabelText('Price per L')).toHaveValue('599,9')
+  await ui.type(within(dialog).getByLabelText(/^Odometer/), '12450')
+  await ui.click(within(dialog).getByRole('button', { name: 'Add refuelling' }))
+
+  await waitFor(() => expect(state.calls.LogRefueling).toEqual([{ input: expect.objectContaining({ volume: 40.007, totalCost: 24000 }) }]))
+  expect(state.calls.LogRefueling).toEqual([{ input: expect.not.objectContaining({ unitPrice: expect.anything() }) }]) // a help for typing, never saved
+})
+
+it('shows the unit price of a saved log and keeps the amounts in step when it changes', async () => {
+  const { ui, state } = setup()
+  await screen.findByText(/Sep 1, 2026/)
+
+  await ui.click(screen.getByRole('button', { name: 'Edit the refuelling of Sep 1, 2026' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Edit refuelling' })
+  await waitFor(() => expect(within(dialog).getByLabelText('Price per L')).toHaveValue('530.12'))
+  await ui.clear(within(dialog).getByLabelText('Price per L'))
+  await ui.type(within(dialog).getByLabelText('Price per L'), '500')
+
+  expect(within(dialog).getByLabelText('Total cost')).toHaveValue('20750') // nobody typed the volume or the total: the total gives way
+  await ui.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+  await waitFor(() => expect(state.calls.UpdateRefueling).toEqual([{ input: expect.objectContaining({ id: 'r2', volume: 41.5, totalCost: 20750 }) }]))
+})
+
 it('moves a refuelling to the trash after a confirmation, not before', async () => {
   const { ui, state } = setup()
   await screen.findByText(/Sep 1, 2026/)
