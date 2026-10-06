@@ -39,17 +39,29 @@ export function sameValue(typed: string, read: string): boolean {
 
 export interface FillState<F extends string> {
   values: Record<F, string>
-  /** Fields the user typed in: a photo never overwrites them, it only offers its value. */
+  /** Fields the user typed in (or took a photo's value for), from the least to the most recently: a photo never overwrites them, it only offers its value. */
   touched: ReadonlySet<F>
   /** Fields that hold what a photo showed (until the user changes them). */
   filled: Partial<Record<F, string>>
   /** What a photo showed where it differs from what the user typed: offered with "Use". */
   offered: Partial<Record<F, string>>
+  /** Fields that hold a value worked out from other fields (see `calculateField`): a photo only offers its value there too. */
+  calculated: ReadonlySet<F>
 }
+
+const without = <F extends string>(set: ReadonlySet<F>, field: F) => {
+  const next = new Set(set)
+  next.delete(field)
+  return next
+}
+
+/** The set with `field` moved to its end (added when missing): it keeps the order the fields were last typed in. */
+const movedToEnd = <F extends string>(set: ReadonlySet<F>, field: F) => without(set, field).add(field)
 
 /**
  * Puts read values into the fields the user has not changed (their starting values, such as today's date or the last currency, count as
- * unchanged); for fields the user typed in, a different value is only offered. Returns the new state and the fields filled just now.
+ * unchanged); for fields the user typed in, and for calculated ones (they follow what the user typed), a different value is only offered.
+ * Returns the new state and the fields filled just now.
  */
 export function applyRead<F extends string>(
   state: FillState<F>,
@@ -63,7 +75,7 @@ export function applyRead<F extends string>(
   for (const field of Object.keys(fields) as F[]) {
     const value = read[fields[field]!]?.value
     if (value === undefined) continue
-    if (state.touched.has(field)) {
+    if (state.touched.has(field) || state.calculated.has(field)) {
       if (sameValue(values[field], value)) delete offered[field]
       else offered[field] = value
       continue
@@ -83,14 +95,33 @@ export function changeField<F extends string>(state: FillState<F>, field: F, val
   const offered = { ...state.offered }
   if (filled[field] !== value) delete filled[field]
   if (offered[field] !== undefined && sameValue(value, offered[field])) delete offered[field]
-  return { values: { ...state.values, [field]: value }, touched: new Set(state.touched).add(field), filled, offered }
+  const touched = movedToEnd(state.touched, field)
+  return { values: { ...state.values, [field]: value }, touched, filled, offered, calculated: without(state.calculated, field) }
 }
 
-/** "Use": the field takes the value the photo showed. */
+/** "Use": the field takes the value the photo showed, as if the user had typed it (and it still says what the photo showed). */
 export function takeOffered<F extends string>(state: FillState<F>, field: F): FillState<F> {
   const value = state.offered[field]
   if (value === undefined) return state
+  const typed = changeField(state, field, value)
+  return { ...typed, filled: { ...typed.filled, [field]: value } }
+}
+
+/**
+ * A value worked out from other fields: it is no longer the user's (nor what a photo showed), so it gives way when they change again. A
+ * photo's value that differs stays offered.
+ */
+export function calculateField<F extends string>(state: FillState<F>, field: F, value: string): FillState<F> {
+  const filled = { ...state.filled }
   const offered = { ...state.offered }
-  delete offered[field]
-  return { ...state, values: { ...state.values, [field]: value }, filled: { ...state.filled, [field]: value }, offered }
+  delete filled[field]
+  if (offered[field] !== undefined && sameValue(value, offered[field])) delete offered[field]
+  const calculated = new Set(state.calculated).add(field)
+  return { values: { ...state.values, [field]: value }, touched: without(state.touched, field), filled, offered, calculated }
+}
+
+/** Empties a calculated field whose value can no longer be worked out (what it came from is gone), so it never shows a stale value. */
+export function clearCalculated<F extends string>(state: FillState<F>, field: F): FillState<F> {
+  if (!state.calculated.has(field)) return state
+  return { ...state, values: { ...state.values, [field]: '' }, calculated: without(state.calculated, field) }
 }

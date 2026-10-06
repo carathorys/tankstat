@@ -507,6 +507,7 @@
     "fields": {
       "date": "Date",
       "volume": "Volume ({{unit}})",
+      "unitPrice": "Price per {{unit}}",
       "cost": "Total cost",
       "currency": "Currency",
       "odometer": "Odometer ({{unit}})",
@@ -515,6 +516,7 @@
       "note": "Note (optional)"
     },
     "hints": {
+      "calculated": "Calculated from the other two values.",
       "lastReading": "Last reading: {{value}} on {{date}}",
       "currency": "Three-letter code, e.g. EUR",
       "fullTankHelp": "Switch off for a partial fill-up.",

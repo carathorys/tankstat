@@ -158,7 +158,7 @@ it('says why part of a receipt was left out, next to what was filled in', async 
   const { ui } = setupRefuelings(
     fakeRecognition({
       results: [[{ name: 'TOTAL', value: '24687' }, { name: 'CURRENCY', value: 'EUR' }]],
-      issues: [[{ code: 'UNSURE', field: 'VOLUME' }, { code: 'UNSURE', field: 'UNIT_PRICE' }]], // the dialog has no field for a unit price
+      issues: [[{ code: 'UNSURE', field: 'VOLUME' }, { code: 'UNSURE', field: 'UNIT_PRICE' }]],
       queuedPolls: 0,
     }),
   )
@@ -169,8 +169,52 @@ it('says why part of a receipt was left out, next to what was filled in', async 
   const status = within(dialog).getByRole('status', { name: 'Photo reading status' })
   await waitFor(() => expect(status).toHaveTextContent('Filled in from the photo: Total cost, Currency.'), READ_WAIT)
   expect(status).toHaveTextContent(/Volume \(.*\): the photo could be read here, but not reliably enough to fill it in\./)
-  expect(status).not.toHaveTextContent('price per litre')
+  expect(status).toHaveTextContent('Price per L: the photo could be read here, but not reliably enough to fill it in.') // nor could it be worked out
   expect(within(dialog).getByLabelText(/^Volume/)).toHaveValue('')
+  expect(within(dialog).getByLabelText('Price per L')).toHaveValue('')
+})
+
+it('works out the unit price from the volume and total on a receipt, and then needs no reason why the photo did not show it', async () => {
+  const { ui } = setupRefuelings(fakeRecognition({ results: [fuelReceipt], issues: [[{ code: 'UNSURE', field: 'UNIT_PRICE' }]], queuedPolls: 0 }))
+  const dialog = await openAddRefueling(ui)
+
+  await ui.upload(camera(dialog), photo())
+
+  await waitFor(() => expect(within(dialog).getByLabelText('Price per L')).toHaveValue('640.888'), READ_WAIT)
+  expect(within(dialog).getByLabelText('Price per L')).toHaveAccessibleDescription(/Calculated from the other two values\./)
+  const status = within(dialog).getByRole('status', { name: 'Photo reading status' })
+  expect(status).toHaveTextContent('Filled in from the photo: Date, Volume (L), Total cost, Currency.')
+  expect(status).not.toHaveTextContent('Price per L')
+})
+
+it('offers the unit price on a photo next to a calculated one, and "Use it" makes the volume, typed longest ago, follow', async () => {
+  const { ui } = setupRefuelings(fakeRecognition({ results: [[{ name: 'UNIT_PRICE', value: '599.9' }]], queuedPolls: 0 }))
+  const dialog = await openAddRefueling(ui)
+  await ui.type(within(dialog).getByLabelText(/^Volume/), '40')
+  await ui.type(within(dialog).getByLabelText('Total cost'), '24000')
+  expect(within(dialog).getByLabelText('Price per L')).toHaveValue('600')
+
+  await ui.upload(camera(dialog), photo('pump.png'))
+
+  expect(await within(dialog).findByText('The photo shows 599.9', {}, READ_WAIT)).toBeInTheDocument()
+  expect(within(dialog).getByLabelText('Price per L')).toHaveValue('600') // what the user typed decides until they choose
+  await ui.click(within(dialog).getByRole('button', { name: 'Use 599.9 from the photo for Price per L' }))
+
+  expect(within(dialog).getByLabelText('Price per L')).toHaveValue('599.9')
+  expect(within(dialog).getByLabelText(/^Volume/)).toHaveValue('40.007')
+  expect(within(dialog).getByLabelText('Total cost')).toHaveValue('24000')
+})
+
+it('keeps the total following the volume typed key by key next to a unit price read from a photo', async () => {
+  const { ui } = setupRefuelings(fakeRecognition({ results: [[{ name: 'UNIT_PRICE', value: '600' }]], queuedPolls: 0 }))
+  const dialog = await openAddRefueling(ui)
+
+  await ui.upload(camera(dialog), photo('pump.png'))
+  await waitFor(() => expect(within(dialog).getByLabelText('Price per L')).toHaveValue('600'), READ_WAIT)
+  await ui.type(within(dialog).getByLabelText(/^Volume/), '40')
+
+  expect(within(dialog).getByLabelText('Total cost')).toHaveValue('24000') // not the price worked out from the total after the first key
+  expect(within(dialog).getByLabelText('Price per L')).toHaveValue('600')
 })
 
 it('says so when a photo could not be read at all', async () => {

@@ -507,6 +507,7 @@
     "fields": {
       "date": "Dátum",
       "volume": "Mennyiség ({{unit}})",
+      "unitPrice": "Egységár (/{{unit}})",
       "cost": "Teljes költség",
       "currency": "Pénznem",
       "odometer": "Kilométeróra ({{unit}})",
@@ -515,6 +516,7 @@
       "note": "Megjegyzés (nem kötelező)"
     },
     "hints": {
+      "calculated": "A másik két értékből számolva.",
       "lastReading": "Utolsó állás: {{value}}, {{date}}",
       "currency": "Háromjegyű kód, pl. HUF",
       "fullTankHelp": "Részleges tankolásnál kapcsold ki.",

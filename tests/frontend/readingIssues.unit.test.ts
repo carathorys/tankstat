@@ -4,7 +4,7 @@ import type { ReadValues } from '../../src/frontend/recognition/readValues.ts'
 
 const issue = (code: ReadingIssue['code'], field: ReadingIssue['field'] = null): ReadingIssue => ({ code, field })
 
-/** A refuelling dialog: it has a volume, a total, a currency, a date and an odometer, but no unit price. */
+/** A dialog with a volume, a total, a currency, a date and an odometer, but no field for a unit price or a title. */
 const labels: Record<string, string> = { VOLUME: 'Volume', TOTAL: 'Total cost', CURRENCY: 'Currency', DATE: 'Date', ODOMETER: 'Odometer' }
 const label = (name: string) => labels[name]
 
@@ -65,6 +65,16 @@ describe('problemsToTell', () => {
 
     expect(problemsToTell([issue('AMOUNTS_DO_NOT_ADD', 'VOLUME'), issue('AMOUNTS_DO_NOT_ADD', 'UNIT_PRICE')], twoFields, nothing)).toEqual([
       { code: 'AMOUNTS_DO_NOT_ADD', field: 'Volume and price' },
+    ])
+  })
+
+  it('tells a reason about several values once, also where the dialog has a field for each', () => {
+    const ownFields: Record<string, string> = { ...labels, VOLUME: 'Volume (L)', UNIT_PRICE: 'Price per L' }
+    const issues = [issue('AMOUNTS_DO_NOT_ADD', 'VOLUME'), issue('AMOUNTS_DO_NOT_ADD', 'UNIT_PRICE'), issue('UNSURE', 'TOTAL')]
+
+    expect(problemsToTell(issues, (name) => ownFields[name], nothing)).toEqual([
+      { code: 'AMOUNTS_DO_NOT_ADD', field: 'Volume (L)' },
+      { code: 'UNSURE', field: 'Total cost' },
     ])
   })
 })

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { applyRead, changeField, mergeReadings, sameValue, takeOffered, type FillState } from '../../src/frontend/recognition/readValues.ts'
+import { applyRead, calculateField, changeField, clearCalculated, mergeReadings, sameValue, takeOffered, type FillState } from '../../src/frontend/recognition/readValues.ts'
 
 type F = 'date' | 'volume' | 'currency'
 const fields = { date: 'DATE', volume: 'VOLUME', currency: 'CURRENCY' } as const
-const start = (values: Record<F, string>): FillState<F> => ({ values, touched: new Set(), filled: {}, offered: {} })
+const start = (values: Record<F, string>): FillState<F> => ({ values, touched: new Set(), filled: {}, offered: {}, calculated: new Set() })
 const read = (status: string, values: { name: 'DATE' | 'VOLUME' | 'CURRENCY' | 'TOTAL'; value: string; confidence: number }[]) => ({ status, values })
 
 describe('merging readings', () => {
@@ -67,5 +67,53 @@ describe('filling the form', () => {
     const once = applyRead(start({ date: '', volume: '', currency: '' }), fields, { VOLUME: { value: '38.52', confidence: 0.9 } }).state
 
     expect(applyRead(once, fields, { VOLUME: { value: '38.52', confidence: 0.9 } }).newly).toEqual([])
+  })
+})
+
+describe('fields worked out from others', () => {
+  it('keeps the order the fields were last typed in, a photo value taken with "Use" counting as typed', () => {
+    let state = changeField(start({ date: '', volume: '', currency: '' }), 'volume', '40')
+    state = changeField(state, 'date', '2026-10-01')
+    state = changeField(state, 'volume', '41')
+
+    expect([...state.touched]).toEqual(['date', 'volume'])
+    const offered = applyRead(state, fields, { DATE: { value: '2026-09-17', confidence: 0.9 } }).state
+    expect([...takeOffered(offered, 'date').touched]).toEqual(['volume', 'date'])
+  })
+
+  it('a calculated value is nobody\'s: it leaves the typed fields and loses the photo mark, a matching offer goes', () => {
+    const typed = changeField(start({ date: '', volume: '', currency: '' }), 'volume', '40')
+    const offered = applyRead(typed, fields, { VOLUME: { value: '38.52', confidence: 0.9 } }).state
+
+    const calculated = calculateField(offered, 'volume', '38,52')
+
+    expect(calculated.values.volume).toBe('38,52')
+    expect([...calculated.touched]).toEqual([])
+    expect([...calculated.calculated]).toEqual(['volume'])
+    expect(calculated.offered).toEqual({}) // the photo shows the same number
+    expect(calculateField(offered, 'volume', '39').offered).toEqual({ volume: '38.52' })
+  })
+
+  it('a photo only offers its value for a calculated field, and typing or "Use" makes the field the user\'s again', () => {
+    const calculated = calculateField(start({ date: '', volume: '', currency: '' }), 'volume', '39')
+
+    const { state, newly } = applyRead(calculated, fields, { VOLUME: { value: '38.52', confidence: 0.9 } })
+
+    expect(newly).toEqual([])
+    expect(state.values.volume).toBe('39')
+    expect(state.offered).toEqual({ volume: '38.52' })
+    const used = takeOffered(state, 'volume')
+    expect([...used.calculated]).toEqual([])
+    expect(used.values.volume).toBe('38.52')
+    expect([...changeField(calculated, 'volume', '40').calculated]).toEqual([])
+  })
+
+  it('empties a calculated field only', () => {
+    const typed = changeField(start({ date: '', volume: '', currency: '' }), 'volume', '40')
+    const calculated = calculateField(typed, 'currency', 'EUR')
+
+    expect(clearCalculated(calculated, 'currency').values.currency).toBe('')
+    expect([...clearCalculated(calculated, 'currency').calculated]).toEqual([])
+    expect(clearCalculated(calculated, 'volume')).toBe(calculated)
   })
 })
