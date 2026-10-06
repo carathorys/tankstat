@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
 import { server } from '../support/server.ts'
 import { fakeLogBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, adminSession, healthHandler, person, renderWithApollo, sessionHandler, stubViewport } from '../support/mocks.tsx'
+import { dateValue, findDateField } from '../support/dates.ts'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
@@ -101,7 +102,7 @@ it('adds a refuelling: starts from today, the last reading as a hint and the usu
   const dialog = await screen.findByRole('dialog', { name: 'Add refuelling' })
   await within(dialog).findByText(/Last reading: 12,000 km on Sep 1, 2026/)
   expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF')
-  expect(within(dialog).getByLabelText('Date')).toHaveValue(new Date().toLocaleDateString('sv-SE'))
+  expect(dateValue(await findDateField('Date', dialog))).toBe(new Date().toLocaleDateString('sv-SE'))
   await ui.type(within(dialog).getByLabelText(/^Volume/), '38,2') // a comma is fine
   await ui.type(within(dialog).getByLabelText('Total cost'), '19100')
   await ui.type(within(dialog).getByLabelText(/^Odometer/), '12450')

@@ -76,6 +76,7 @@ it('adds an expense with the usual currency, an optional odometer and a category
   expect(state.calls.AddExpense).toEqual([
     { input: expect.objectContaining({ vehicleId: 'v1', title: 'Tyres', category: 'Maintenance', amount: 120000, currency: 'HUF', odometer: null, note: null }) },
   ])
+  expect(await screen.findByText('Saved.')).toBeInTheDocument() // a short message once the dialog is gone
 })
 
 it('blocks a missing title or amount without calling the server', async () => {

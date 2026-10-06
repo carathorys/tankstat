@@ -416,7 +416,7 @@ it('on a touch screen a card button opens its dialog at once, and taps inside th
   const dialog = await screen.findByRole('dialog', { name: 'Add refuelling' })
   expect(c).not.toHaveAttribute('data-open') // the tap went to the button, not to the figures
   await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
-  await ui.click(within(dialog).getByLabelText('Date'))
+  await ui.click(within(dialog).getByLabelText(/^Volume/)) // a tap on a field of the dialog (the date would open its own picker)
   const fullTank = within(dialog).getByRole('switch', { name: 'Full tank' })
   const was = (fullTank as HTMLInputElement).checked
   await ui.click(fullTank)

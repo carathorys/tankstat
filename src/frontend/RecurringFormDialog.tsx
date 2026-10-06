@@ -16,6 +16,7 @@ import { FieldInput } from './forms/FieldInput.tsx'
 import { Form } from './forms/Form.tsx'
 import { LogDefaultsDocument, VehicleDefaultsDocument, type DistanceUnit, type RecurrenceKind } from './gql/generated.ts'
 import { ErrorMessage } from './messages.tsx'
+import { useToast } from './toast/toastContext.ts'
 
 export interface RecurringValues {
   title: string
@@ -53,6 +54,7 @@ export function RecurringFormDialog({
   onSubmit: (values: RecurringValues) => Promise<unknown>
 }) {
   const { t } = useTranslation()
+  const { toast } = useToast()
   const [open, setOpen] = useDialogState()
   const editing = initial !== undefined
 
@@ -77,6 +79,7 @@ export function RecurringFormDialog({
                 onSubmit={async (values) => {
                   await onSubmit(values)
                   setOpen(false)
+                  toast(t('toast.saved'))
                 }}
               />
             )}

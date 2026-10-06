@@ -1,6 +1,8 @@
 import { useQuery } from '@apollo/client/react'
-import * as RadixForm from '@radix-ui/react-form'
-import { Button, Dialog, Flex, Text, TextArea, TextField } from '@radix-ui/themes'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LabeledSwitch } from './components/LabeledSwitch.tsx'
@@ -10,7 +12,15 @@ import { PhotosLeftOut } from './components/PhotosLeftOut.tsx'
 import type { Saved } from './components/usePhotoQueue.ts'
 import { useOdometerLabel } from './components/useOdometerLabel.ts'
 import { usePhotoSession } from './components/usePhotoSession.ts'
-import { Field } from './forms.tsx'
+import { DialogButtons, DialogCancel, DialogFrame } from './dialogs/DialogFrame.tsx'
+import { DialogTrigger } from './dialogs/DialogTrigger.tsx'
+import { useDialogState } from './dialogs/useDialogState.ts'
+import { CurrencyInput } from './forms/CurrencyInput.tsx'
+import { todayIso } from './forms/dates.ts'
+import { Field } from './forms/Field.tsx'
+import { FieldDate } from './forms/FieldDate.tsx'
+import { FieldInput } from './forms/FieldInput.tsx'
+import { Form } from './forms/Form.tsx'
 import { LogDefaultsDocument, RefuelingDetailsDocument, type DistanceUnit, type LogValue, type ReadingFieldName, type ReviewState, type VolumeUnit } from './gql/generated.ts'
 import { parseDecimal, useFormat } from './i18n/format.ts'
 import { ErrorMessage } from './messages.tsx'
@@ -26,6 +36,7 @@ import { useDraftReadings } from './recognition/useDraftReadings.ts'
 import { useReadFill } from './recognition/useReadFill.ts'
 import { keepAmountsInStep, type AmountField } from './refuelingAmounts.ts'
 import { Loading } from './components/Loading.tsx'
+import { useToast } from './toast/toastContext.ts'
 
 /** Volume, total cost and odometer are null only when they were left for a photo that is still being read. */
 export interface RefuelingValues {
@@ -47,11 +58,6 @@ interface Initial extends Omit<RefuelingValues, 'volume' | 'totalCost' | 'odomet
   odometer?: number | null
   reviewState?: ReviewState
   filledFromPhoto?: LogValue[]
-}
-
-const today = () => {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 /**
@@ -83,15 +89,21 @@ export function RefuelingFormDialog({
   vehicle,
   refuelingId,
   onSubmit,
+  open: openProp,
+  onOpenChange,
 }: {
-  trigger: ReactNode
+  /** The button that opens it; none when something else does (`open`, e.g. the floating add button). */
+  trigger?: ReactNode
   vehicle: { id: string; units: { distance: DistanceUnit; volume: VolumeUnit } }
   refuelingId?: string
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
   /** `photoIds`: the drafts uploaded for a new log (always empty when editing: a saved log takes its photos right away). */
   onSubmit: (values: RefuelingValues, photoIds: string[]) => Promise<Saved>
 }) {
   const { t, i18n } = useTranslation()
-  const [open, setOpen] = useState(false)
+  const { toast } = useToast()
+  const [open, setOpen] = useDialogState({ open: openProp, onOpenChange })
   const editing = refuelingId !== undefined
   const { queue, leftOut, saving, submit, reset } = usePhotoSession(vehicle.id, editing ? undefined : 'refueling', open)
   // Photos added to a saved log in this dialog (read like drafts), and whether they are still going up.
@@ -108,30 +120,24 @@ export function RefuelingFormDialog({
   const lastReading = logDefaults?.lastOdometer != null && logDefaults.lastDate ? { value: logDefaults.lastOdometer, date: logDefaults.lastDate } : null
   const initial: Initial = existing
     ? { ...existing, currency: existing.currency ?? defaults.data?.logDefaults?.currency ?? '', note: existing.note ?? null }
-    : { date: today(), currency: defaults.data?.logDefaults?.currency ?? '', isFullTank: true, missedPreviousFillUp: false, note: null }
+    : { date: todayIso(), currency: defaults.data?.logDefaults?.currency ?? '', isFullTank: true, missedPreviousFillUp: false, note: null }
+  const close = () => {
+    setOpen(false)
+    reset()
+    setAdded([])
+  }
 
   return (
-    <Dialog.Root
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next)
-        if (!next) {
-          reset()
-          setAdded([])
-        }
-      }}
-    >
-      <Dialog.Trigger>{trigger}</Dialog.Trigger>
-      <Dialog.Content
-        maxWidth="450px"
-        // Closing while the log is being saved would lose track of it.
-        onEscapeKeyDown={(e) => saving && e.preventDefault()}
-        onInteractOutside={(e) => saving && e.preventDefault()}
+    <>
+      <DialogTrigger trigger={trigger} open={open} onOpen={() => setOpen(true)} />
+      {/* busy: closing while the log is being saved would lose track of it. */}
+      <DialogFrame
+        open={open}
+        onClose={close}
+        busy={saving}
+        title={editing ? t('refuelings.dialogEdit') : t('refuelings.dialogAdd')}
+        description={editing ? t('refuelings.dialogEditDescription') : t('refuelings.dialogAddDescription')}
       >
-        <Dialog.Title>{editing ? t('refuelings.dialogEdit') : t('refuelings.dialogAdd')}</Dialog.Title>
-        <Dialog.Description size="2" mb="4">
-          {editing ? t('refuelings.dialogEditDescription') : t('refuelings.dialogAddDescription')}
-        </Dialog.Description>
         {error && <ErrorMessage error={error} />}
         {!error && !ready && <Loading />}
         {editing && details.data && !existing && <ErrorMessage>{t('errors.refueling.notFound')}</ErrorMessage>}
@@ -149,6 +155,7 @@ export function RefuelingFormDialog({
             // A new log may leave values to a photo that is being read; a saved one still waiting for its photos may stay so.
             mayWait={drafts.pending.length > 0 || (editing && existing?.reviewState === 'AWAITING_PHOTOS')}
             readingNow={drafts.pending.length > 0}
+            wait={{ since: drafts.waitingSince, until: drafts.waitingUntil }}
             gallery={
               <PhotoGallery
                 kind="refuelings"
@@ -165,14 +172,14 @@ export function RefuelingFormDialog({
             }
             onSubmit={async (values) => {
               if (await submit((photoIds) => onSubmit(values, photoIds), editing)) {
-                setOpen(false)
-                reset()
+                close()
+                toast(t('toast.saved'))
               }
             }}
           />
         )}
-      </Dialog.Content>
-    </Dialog.Root>
+      </DialogFrame>
+    </>
   )
 }
 
@@ -188,6 +195,7 @@ function RefuelingForm({
   explanation,
   mayWait,
   readingNow,
+  wait,
   onSubmit,
 }: {
   initial: Initial
@@ -206,6 +214,8 @@ function RefuelingForm({
   mayWait: boolean
   /** A photo is being read right now (the dialog says so near Save). */
   readingNow: boolean
+  /** The window the dialog waits in for the photos being read (the bar near Save). */
+  wait: { since: number | null; until: number | null }
   onSubmit: (values: RefuelingValues) => Promise<unknown>
 }) {
   const { t } = useTranslation()
@@ -260,7 +270,7 @@ function RefuelingForm({
         invalid={decimalInvalid}
         extra={note(field)}
       >
-        <TextField.Root required={required} inputMode="decimal" autoComplete="off" value={fill.values[field]} onChange={(e) => fill.change(field, e.target.value)} />
+        <FieldInput inputMode="decimal" autoComplete="off" value={fill.values[field]} onChange={(e) => fill.change(field, e.target.value)} />
       </Field>
     )
   }
@@ -296,25 +306,19 @@ function RefuelingForm({
   }
 
   return (
-    <RadixForm.Root onSubmit={submit}>
+    <Form onSubmit={submit}>
       <ReviewCallout state={initial.reviewState} />
-      <Flex direction="column" gap="3">
+      <Stack sx={{ gap: 1.5 }}>
         <Field name="date" label={labels.date} required extra={note('date')}>
-          <TextField.Root type="date" required max={today()} value={fill.values.date} onChange={(e) => fill.change('date', e.target.value)} />
+          <FieldDate disableFuture value={fill.values.date} onChange={(v) => fill.change('date', v)} />
         </Field>
-        <Flex gap="3" wrap="wrap">
-          <Flex direction="column" style={{ flex: '1 1 8rem' }}>
-            {amount('volume')}
-          </Flex>
-          <Flex direction="column" style={{ flex: '1 1 8rem' }}>
-            {amount('unitPrice')}
-          </Flex>
-        </Flex>
-        <Flex gap="3" wrap="wrap">
-          <Flex direction="column" style={{ flex: '2 1 8rem' }}>
-            {amount('totalCost')}
-          </Flex>
-          <Flex direction="column" style={{ flex: '1 1 6rem' }}>
+        <Stack direction="row" sx={{ gap: 1.5, flexWrap: 'wrap' }}>
+          <Box sx={{ flex: '1 1 8rem', minWidth: 0 }}>{amount('volume')}</Box>
+          <Box sx={{ flex: '1 1 8rem', minWidth: 0 }}>{amount('unitPrice')}</Box>
+        </Stack>
+        <Stack direction="row" sx={{ gap: 1.5, flexWrap: 'wrap' }}>
+          <Box sx={{ flex: '2 1 8rem', minWidth: 0 }}>{amount('totalCost')}</Box>
+          <Box sx={{ flex: '1 1 6rem', minWidth: 0 }}>
             <Field
               name="currency"
               label={labels.currency}
@@ -323,17 +327,10 @@ function RefuelingForm({
               invalid={{ message: t('errors.money.currencyInvalid'), test: (v) => v !== '' && !/^[A-Za-z]{3}$/.test(v.trim()) }}
               extra={note('currency')}
             >
-              <TextField.Root
-                required
-                maxLength={3}
-                autoComplete="off"
-                style={{ textTransform: 'uppercase' }}
-                value={fill.values.currency}
-                onChange={(e) => fill.change('currency', e.target.value)}
-              />
+              <CurrencyInput value={fill.values.currency} onChange={(v) => fill.change('currency', v)} preferred={initial.currency} />
             </Field>
-          </Flex>
-        </Flex>
+          </Box>
+        </Stack>
         <OdometerField
           unit={units.distance}
           last={last}
@@ -345,29 +342,23 @@ function RefuelingForm({
         <LabeledSwitch label={t('refuelings.fields.fullTank')} hint={t('refuelings.hints.fullTankHelp')} checked={full} onChange={setFull} />
         <LabeledSwitch label={t('refuelings.fields.missedPrevious')} hint={t('refuelings.hints.missedPreviousHelp')} checked={missed} onChange={setMissed} />
         <Field name="note" label={t('refuelings.fields.note')}>
-          <TextArea maxLength={500} rows={2} defaultValue={initial.note ?? ''} />
+          <FieldInput multiline minRows={2} maxLength={500} defaultValue={initial.note ?? ''} />
         </Field>
         {gallery}
         <div role="status" aria-label={t('a11y.readingStatus')}>
-          <ReadingProgress active={readingNow} canSave={mayWait} />
-          {fill.announcement && <Text size="2">{fill.announcement}</Text>}
+          <ReadingProgress active={readingNow} canSave={mayWait} since={wait.since} until={wait.until} />
+          {fill.announcement && <Typography variant="body2">{fill.announcement}</Typography>}
           <ReadingProblems problems={fill.problems} />
         </div>
         {error !== undefined && <ErrorMessage error={error} />}
-        <Flex gap="3" justify="end" wrap="wrap">
+        <DialogButtons>
           <SaveWait waiting={photosBusy && !busy} />
-          <Dialog.Close>
-            <Button type="button" variant="soft" color="gray" disabled={busy}>
-              {t('common.cancel')}
-            </Button>
-          </Dialog.Close>
-          <RadixForm.Submit asChild>
-            <Button loading={busy} disabled={photosBusy}>
-              {editing ? t('refuelings.save') : t('refuelings.saveAdd')}
-            </Button>
-          </RadixForm.Submit>
-        </Flex>
-      </Flex>
-    </RadixForm.Root>
+          <DialogCancel disabled={busy} />
+          <Button type="submit" loading={busy} disabled={photosBusy}>
+            {editing ? t('refuelings.save') : t('refuelings.saveAdd')}
+          </Button>
+        </DialogButtons>
+      </Stack>
+    </Form>
   )
 }

@@ -21,6 +21,7 @@ import {
   stubViewport,
   type FakeReadValue,
 } from '../support/mocks.tsx'
+import { dateValue, findDateField } from '../support/dates.ts'
 
 // jsdom cannot decode pictures: the browser-side resize is covered in Media.unit.test.ts, here it passes the file through.
 vi.mock('../../../src/frontend/pictures/resizeImage.ts', async (original) => ({
@@ -77,7 +78,7 @@ it('fills a new refuelling from a receipt photo read on the server, marks what i
   await waitFor(() => expect(within(dialog).getByLabelText(/^Volume/)).toHaveValue('38.52'), READ_WAIT)
   expect(within(dialog).getByLabelText('Total cost')).toHaveValue('24687')
   expect(within(dialog).getByLabelText('Currency')).toHaveValue('EUR') // the receipt's currency replaces the last one used
-  expect(within(dialog).getByLabelText('Date')).toHaveValue('2026-09-17')
+  expect(dateValue(await findDateField('Date', dialog))).toBe('2026-09-17')
   expect(within(dialog).getByLabelText(/^Volume/)).toHaveAccessibleDescription(/Read from the photo; check it\./)
   expect(within(dialog).getAllByText('Read from the photo; check it.')).toHaveLength(4)
   expect(within(dialog).getByRole('status', { name: 'Photo reading status' })).toHaveTextContent(
@@ -297,7 +298,7 @@ it('fills a new expense from its receipt: the shop becomes the title', async () 
 
   await waitFor(() => expect(within(dialog).getByLabelText('Title')).toHaveValue('Csillag Autómosó Kft.'), READ_WAIT)
   expect(within(dialog).getByLabelText('Amount')).toHaveValue('25870')
-  expect(within(dialog).getByLabelText('Date')).toHaveValue('2026-09-25')
+  expect(dateValue(await findDateField('Date', dialog))).toBe('2026-09-25')
   expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF') // the receipt showed none: the last one stays
   expect(photos.state.draftQueries).toEqual(['?form=expense&locale=en'])
 })
@@ -478,7 +479,7 @@ it('an amount emptied in the edit dialog is filled in from the new photo', async
   await ui.upload(camera(dialog), photo())
 
   await waitFor(() => expect(within(dialog).getByLabelText(/^Amount/)).toHaveValue('25870'), READ_WAIT)
-  expect(within(dialog).getByLabelText('Date')).toHaveValue('2026-09-01') // still the saved day
+  expect(dateValue(await findDateField('Date', dialog))).toBe('2026-09-01') // still the saved day
 })
 
 it('a saved expense can be saved with its amount emptied while its new photo is still being read', async () => {

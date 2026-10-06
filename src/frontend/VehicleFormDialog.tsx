@@ -23,6 +23,7 @@ import {
   type VolumeUnit,
 } from './gql/generated.ts'
 import { ErrorMessage } from './messages.tsx'
+import { useToast } from './toast/toastContext.ts'
 import { DISTANCE_UNITS, FUEL_TYPES, VOLUME_UNITS } from './vehicles.ts'
 
 export interface VehicleValues {
@@ -55,6 +56,7 @@ export function VehicleFormDialog({
   onSubmit: (values: VehicleValues) => Promise<unknown>
 }) {
   const { t } = useTranslation()
+  const { toast } = useToast()
   const [open, setOpen] = useDialogState()
   const editing = vehicleId !== undefined
   const details = useQuery(VehicleDetailsDocument, { variables: { id: vehicleId ?? '' }, skip: !editing || !open, fetchPolicy: 'network-only' })
@@ -82,6 +84,7 @@ export function VehicleFormDialog({
             onSubmit={async (values) => {
               await onSubmit(values)
               setOpen(false)
+              toast(t('toast.saved'))
             }}
           />
         )}

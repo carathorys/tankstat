@@ -99,9 +99,10 @@ export const components: Components<T> = {
     defaultProps: { size: 'small', variant: 'soft' },
     styleOverrides: {
       root: { borderRadius: 9999, fontWeight: 500, maxWidth: '100%' },
-      sizeSmall: { height: 20, fontSize: '0.75rem', lineHeight: '1rem', '& .MuiChip-label': { padding: '0 6px' } },
-      sizeMedium: { height: 24, fontSize: '0.75rem', '& .MuiChip-label': { padding: '0 8px' } },
-      icon: { color: 'inherit', marginLeft: 4, marginRight: -2 },
+      // Radix Badge sizes 1 and 2; the icon as far from the edge as the text is, with Radix's gap to the text.
+      sizeSmall: { height: 20, fontSize: '0.75rem', lineHeight: '1rem', '& .MuiChip-label': { padding: '0 6px' }, '& .MuiChip-icon': { marginLeft: 6, marginRight: -2 } },
+      sizeMedium: { height: 24, fontSize: '0.75rem', '& .MuiChip-label': { padding: '0 8px' }, '& .MuiChip-icon': { marginLeft: 8, marginRight: -2 } },
+      icon: { color: 'inherit' },
     },
     variants: [
       ...TONES.map((tone) => ({
@@ -196,7 +197,24 @@ export const components: Components<T> = {
     styleOverrides: {
       root: ({ theme }) => fieldSurface(theme, 'MuiOutlinedInput-notchedOutline'),
       input: { padding: '6px 8px', height: '1.25rem', '&::placeholder': { opacity: 0.6 } },
-      multiline: { borderRadius: 9, padding: '8px', '& .MuiOutlinedInput-input': { padding: 0, height: 'auto' } },
+      // At least as tall as the Radix text area was; the text starts at the top.
+      multiline: { borderRadius: 9, padding: '8px', minHeight: 64, alignItems: 'flex-start', '& .MuiOutlinedInput-input': { padding: 0, height: 'auto' } },
+    },
+  },
+  MuiAutocomplete: {
+    styleOverrides: {
+      // The field is a plain OutlinedInput (no TextField): the same height and padding as every other field, not the autocomplete's own.
+      root: { '& .MuiOutlinedInput-root': { padding: 0, '& .MuiAutocomplete-input': { padding: '6px 8px' } } },
+      // The suggestions look like a menu.
+      paper: ({ theme }) => ({ ...glass(theme), borderRadius: 12, marginTop: 4 }),
+      listbox: { padding: 8 },
+      option: ({ theme }) => ({
+        ...theme.typography.body2,
+        borderRadius: 6,
+        // The class twice: MUI's own sizes for options come later in the page with the same weight.
+        '&.MuiAutocomplete-option': { minHeight: controlHeights.medium, padding: '0 12px' },
+        [COARSE]: { '&.MuiAutocomplete-option': { minHeight: 44 } },
+      }),
     },
   },
   MuiSelect: {
@@ -254,11 +272,12 @@ export const components: Components<T> = {
   MuiSwitch: {
     styleOverrides: {
       root: { width: 44, height: 24, padding: 0, overflow: 'visible' },
-      switchBase: {
+      switchBase: ({ theme }) => ({
         padding: 2,
         '&.Mui-checked': { transform: 'translateX(20px)', color: '#ffffff' },
-        '&.Mui-checked + .MuiSwitch-track': { opacity: 1 },
-      },
+        // Full strength when on, as the Radix switch was (MUI fades it to half; a disabled one keeps MUI's own, weightier rule).
+        '&.Mui-checked + .MuiSwitch-track': { opacity: 1, backgroundColor: theme.vars.palette.primary.main },
+      }),
       thumb: { width: 20, height: 20, boxShadow: 'none', backgroundColor: '#ffffff' },
       track: ({ theme }) => ({ borderRadius: 12, opacity: 1, backgroundColor: theme.vars.palette.action.disabledBackground }),
     },

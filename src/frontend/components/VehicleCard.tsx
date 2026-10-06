@@ -50,6 +50,8 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
   const card = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
   const titleLink = useRef<HTMLAnchorElement>(null)
+  // One Done dialog for the card, opened from the schedule's own button: a dialog per schedule would leave with its row once done.
+  const [done, setDone] = useState<{ item: Vehicle['recurring'][number]; open: boolean } | null>(null)
   // Touch: a tap anywhere else (not in a dialog opened from here) puts the figures away again.
   useEffect(() => {
     if (!open) return
@@ -139,26 +141,18 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
                         </Text>
                       </Flex>
                       {canLog && (
-                        <RecurringDoneDialog
-                          vehicle={v}
-                          items={v.recurring}
-                          selected={preselect(v.recurring, r.id)}
-                          openedFrom={r}
-                          trigger={
-                            <IconButton size="2" variant="soft" highContrast className="vehicle-card-action" data-done={r.id} aria-label={t('welcome.card.doneAria', { title: r.title, name: v.name })}>
-                              <CheckCheck size={16} aria-hidden />
-                            </IconButton>
-                          }
-                          onSubmit={actions.done}
-                          // Done, the schedule leaves this list together with its button (and so may the others done at the same visit):
-                          // the focus would fall off the page, so it goes to the card's title instead (a cancelled dialog finds its button
-                          // and hands the focus back to it as usual).
-                          onCloseAutoFocus={(e) => {
-                            if (card.current?.querySelector(`[data-done="${r.id}"]`)) return
-                            e.preventDefault()
-                            titleLink.current?.focus()
-                          }}
-                        />
+                        <IconButton
+                          size="2"
+                          variant="soft"
+                          highContrast
+                          className="vehicle-card-action"
+                          data-done={r.id}
+                          aria-haspopup="dialog"
+                          aria-label={t('welcome.card.doneAria', { title: r.title, name: v.name })}
+                          onClick={() => setDone({ item: r, open: true })}
+                        >
+                          <CheckCheck size={16} aria-hidden />
+                        </IconButton>
                       )}
                     </Flex>
                   </li>
@@ -166,6 +160,24 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
               })}
             </ul>
           </Flex>
+        )}
+        {done && (
+          <RecurringDoneDialog
+            vehicle={v}
+            items={v.recurring}
+            selected={preselect(v.recurring, done.item.id)}
+            openedFrom={done.item}
+            open={done.open}
+            onOpenChange={(next) => setDone((d) => d && { ...d, open: next })}
+            onSubmit={actions.done}
+            // Done, the schedule leaves this list together with its button (and so may the others done at the same visit): the focus
+            // would fall off the page, so it goes to the card's title instead (a cancelled dialog has handed it back to the button).
+            onClosed={() => {
+              const id = done.item.id
+              setDone(null)
+              if (!card.current?.querySelector(`[data-done="${id}"]`)) titleLink.current?.focus()
+            }}
+          />
         )}
         {!v.canEdit && v.owner && (
           <Text as="p" size="1" mt="1" style={{ color: 'white' }}>

@@ -1,7 +1,9 @@
 import { useQuery } from '@apollo/client/react'
-import * as RadixForm from '@radix-ui/react-form'
-import { Button, Dialog, Flex, Text, TextArea, TextField } from '@radix-ui/themes'
-import { useId, useState, type FormEvent, type ReactNode } from 'react'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
+import { useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { OdometerField } from './components/OdometerField.tsx'
 import { PhotoGallery } from './components/PhotoGallery.tsx'
@@ -9,7 +11,16 @@ import { PhotosLeftOut } from './components/PhotosLeftOut.tsx'
 import type { Saved } from './components/usePhotoQueue.ts'
 import { useOdometerLabel } from './components/useOdometerLabel.ts'
 import { usePhotoSession } from './components/usePhotoSession.ts'
-import { Field } from './forms.tsx'
+import { DialogButtons, DialogCancel, DialogFrame } from './dialogs/DialogFrame.tsx'
+import { DialogTrigger } from './dialogs/DialogTrigger.tsx'
+import { useDialogState } from './dialogs/useDialogState.ts'
+import { CurrencyInput } from './forms/CurrencyInput.tsx'
+import { todayIso } from './forms/dates.ts'
+import { Field } from './forms/Field.tsx'
+import { FieldAutocomplete } from './forms/FieldAutocomplete.tsx'
+import { FieldDate } from './forms/FieldDate.tsx'
+import { FieldInput } from './forms/FieldInput.tsx'
+import { Form } from './forms/Form.tsx'
 import { ExpenseCategoriesDocument, ExpenseDetailsDocument, LogDefaultsDocument, type DistanceUnit, type LogValue, type ReadingFieldName, type ReviewState } from './gql/generated.ts'
 import { parseDecimal } from './i18n/format.ts'
 import { ErrorMessage } from './messages.tsx'
@@ -24,6 +35,7 @@ import { ReviewCallout } from './recognition/ReviewState.tsx'
 import { useDraftReadings } from './recognition/useDraftReadings.ts'
 import { useReadFill } from './recognition/useReadFill.ts'
 import { Loading } from './components/Loading.tsx'
+import { useToast } from './toast/toastContext.ts'
 
 /** The amount is null only when it was left for a photo that is still being read. */
 export interface ExpenseValues {
@@ -48,11 +60,6 @@ interface Initial {
   filledFromPhoto?: LogValue[]
 }
 
-const today = () => {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
 /** The fields of a new expense that photos can fill in (a receipt's shop becomes the title), and which read value goes into each. */
 type FillableField = 'date' | 'title' | 'amount' | 'currency' | 'odometer'
 const READ_INTO: Record<FillableField, ReadingFieldName> = { date: 'DATE', title: 'TITLE', amount: 'TOTAL', currency: 'CURRENCY', odometer: 'ODOMETER' }
@@ -70,15 +77,21 @@ export function ExpenseFormDialog({
   vehicle,
   expenseId,
   onSubmit,
+  open: openProp,
+  onOpenChange,
 }: {
-  trigger: ReactNode
+  /** The button that opens it; none when something else does (`open`, e.g. the floating add button). */
+  trigger?: ReactNode
   vehicle: { id: string; units: { distance: DistanceUnit } }
   expenseId?: string
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
   /** `photoIds`: the drafts uploaded for a new expense (always empty when editing: a saved expense takes its photos right away). */
   onSubmit: (values: ExpenseValues, photoIds: string[]) => Promise<Saved>
 }) {
   const { t, i18n } = useTranslation()
-  const [open, setOpen] = useState(false)
+  const { toast } = useToast()
+  const [open, setOpen] = useDialogState({ open: openProp, onOpenChange })
   const editing = expenseId !== undefined
   const { queue, leftOut, saving, submit, reset } = usePhotoSession(vehicle.id, editing ? undefined : 'expense', open)
   // Photos added to a saved log in this dialog (read like drafts), and whether they are still going up.
@@ -92,30 +105,24 @@ export function ExpenseFormDialog({
   const existing = details.data?.expense
   const ready = defaults.data && (!editing || existing)
   const currency = defaults.data?.logDefaults?.currency ?? ''
-  const initial: Initial = existing ? { ...existing, currency: existing.currency ?? currency } : { date: today(), title: '', category: null, currency, note: null }
+  const initial: Initial = existing ? { ...existing, currency: existing.currency ?? currency } : { date: todayIso(), title: '', category: null, currency, note: null }
+  const close = () => {
+    setOpen(false)
+    reset()
+    setAdded([])
+  }
 
   return (
-    <Dialog.Root
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next)
-        if (!next) {
-          reset()
-          setAdded([])
-        }
-      }}
-    >
-      <Dialog.Trigger>{trigger}</Dialog.Trigger>
-      <Dialog.Content
-        maxWidth="450px"
-        // Closing while the expense is being saved would lose track of it.
-        onEscapeKeyDown={(e) => saving && e.preventDefault()}
-        onInteractOutside={(e) => saving && e.preventDefault()}
+    <>
+      <DialogTrigger trigger={trigger} open={open} onOpen={() => setOpen(true)} />
+      {/* busy: closing while the expense is being saved would lose track of it. */}
+      <DialogFrame
+        open={open}
+        onClose={close}
+        busy={saving}
+        title={editing ? t('expenses.dialogEdit') : t('expenses.dialogAdd')}
+        description={editing ? t('expenses.dialogEditDescription') : t('expenses.dialogAddDescription')}
       >
-        <Dialog.Title>{editing ? t('expenses.dialogEdit') : t('expenses.dialogAdd')}</Dialog.Title>
-        <Dialog.Description size="2" mb="4">
-          {editing ? t('expenses.dialogEditDescription') : t('expenses.dialogAddDescription')}
-        </Dialog.Description>
         {error && <ErrorMessage error={error} />}
         {!error && !ready && (
           <Loading />
@@ -135,6 +142,7 @@ export function ExpenseFormDialog({
             // A new expense may leave its amount to a photo that is being read; a saved one still waiting for its photos may stay so.
             mayWait={drafts.pending.length > 0 || (editing && existing?.reviewState === 'AWAITING_PHOTOS')}
             readingNow={drafts.pending.length > 0}
+            wait={{ since: drafts.waitingSince, until: drafts.waitingUntil }}
             gallery={
               <PhotoGallery
                 kind="expenses"
@@ -151,14 +159,14 @@ export function ExpenseFormDialog({
             }
             onSubmit={async (values) => {
               if (await submit((photoIds) => onSubmit(values, photoIds), editing)) {
-                setOpen(false)
-                reset()
+                close()
+                toast(t('toast.saved'))
               }
             }}
           />
         )}
-      </Dialog.Content>
-    </Dialog.Root>
+      </DialogFrame>
+    </>
   )
 }
 
@@ -174,6 +182,7 @@ function ExpenseForm({
   explanation,
   mayWait,
   readingNow,
+  wait,
   onSubmit,
 }: {
   initial: Initial
@@ -192,6 +201,8 @@ function ExpenseForm({
   mayWait: boolean
   /** A photo is being read right now (the dialog says so near Save). */
   readingNow: boolean
+  /** The window the dialog waits in for the photos being read (the bar near Save). */
+  wait: { since: number | null; until: number | null }
   onSubmit: (values: ExpenseValues) => Promise<unknown>
 }) {
   const { t } = useTranslation()
@@ -226,7 +237,6 @@ function ExpenseForm({
   )
   const [error, setError] = useState<unknown>()
   const [busy, setBusy] = useState(false)
-  const listId = useId()
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -252,29 +262,24 @@ function ExpenseForm({
   }
 
   return (
-    <RadixForm.Root onSubmit={submit}>
+    <Form onSubmit={submit}>
       <ReviewCallout state={initial.reviewState} />
-      <Flex direction="column" gap="3">
+      <Stack sx={{ gap: 1.5 }}>
         <Field name="date" label={labels.date} required extra={note('date')}>
-          <TextField.Root type="date" required max={today()} value={fill.values.date} onChange={(e) => fill.change('date', e.target.value)} />
+          <FieldDate disableFuture value={fill.values.date} onChange={(v) => fill.change('date', v)} />
         </Field>
         <Field name="title" label={labels.title} required extra={note('title')}>
-          <TextField.Root required maxLength={120} autoComplete="off" value={fill.values.title} onChange={(e) => fill.change('title', e.target.value)} />
+          <FieldInput maxLength={120} autoComplete="off" value={fill.values.title} onChange={(e) => fill.change('title', e.target.value)} />
         </Field>
         <Field
           name="category"
           label={t('expenses.fields.category')}
           hint={categories.length > 0 ? t('expenses.hints.categories', { list: categories.join(', ') }) : undefined}
         >
-          <TextField.Root maxLength={60} autoComplete="off" list={listId} defaultValue={initial.category ?? ''} />
+          <FieldAutocomplete options={categories} defaultValue={initial.category ?? ''} maxLength={60} openOnFocus />
         </Field>
-        <datalist id={listId}>
-          {categories.map((c) => (
-            <option key={c} value={c} />
-          ))}
-        </datalist>
-        <Flex gap="3" wrap="wrap">
-          <Flex direction="column" style={{ flex: '2 1 8rem' }}>
+        <Stack direction="row" sx={{ gap: 1.5, flexWrap: 'wrap' }}>
+          <Box sx={{ flex: '2 1 8rem', minWidth: 0 }}>
             <Field
               name="amount"
               label={labels.amount}
@@ -282,10 +287,10 @@ function ExpenseForm({
               invalid={{ message: t('forms.numberInvalid'), test: (v) => v !== '' && parseDecimal(v) === undefined }}
               extra={note('amount')}
             >
-              <TextField.Root required={!amountOptional} inputMode="decimal" autoComplete="off" value={fill.values.amount} onChange={(e) => fill.change('amount', e.target.value)} />
+              <FieldInput inputMode="decimal" autoComplete="off" value={fill.values.amount} onChange={(e) => fill.change('amount', e.target.value)} />
             </Field>
-          </Flex>
-          <Flex direction="column" style={{ flex: '1 1 6rem' }}>
+          </Box>
+          <Box sx={{ flex: '1 1 6rem', minWidth: 0 }}>
             <Field
               name="currency"
               label={labels.currency}
@@ -293,42 +298,29 @@ function ExpenseForm({
               invalid={{ message: t('errors.money.currencyInvalid'), test: (v) => v !== '' && !/^[A-Za-z]{3}$/.test(v.trim()) }}
               extra={note('currency')}
             >
-              <TextField.Root
-                required
-                maxLength={3}
-                autoComplete="off"
-                style={{ textTransform: 'uppercase' }}
-                value={fill.values.currency}
-                onChange={(e) => fill.change('currency', e.target.value)}
-              />
+              <CurrencyInput value={fill.values.currency} onChange={(v) => fill.change('currency', v)} preferred={initial.currency} />
             </Field>
-          </Flex>
-        </Flex>
+          </Box>
+        </Stack>
         <OdometerField unit={unit} optional value={fill.values.odometer} onChange={(v) => fill.change('odometer', v)} extra={note('odometer')} />
         <Field name="note" label={t('expenses.fields.note')}>
-          <TextArea maxLength={500} rows={2} defaultValue={initial.note ?? ''} />
+          <FieldInput multiline minRows={2} maxLength={500} defaultValue={initial.note ?? ''} />
         </Field>
         {gallery}
         <div role="status" aria-label={t('a11y.readingStatus')}>
-          <ReadingProgress active={readingNow} canSave={mayWait} />
-          {fill.announcement && <Text size="2">{fill.announcement}</Text>}
+          <ReadingProgress active={readingNow} canSave={mayWait} since={wait.since} until={wait.until} />
+          {fill.announcement && <Typography variant="body2">{fill.announcement}</Typography>}
           <ReadingProblems problems={fill.problems} />
         </div>
         {error !== undefined && <ErrorMessage error={error} />}
-        <Flex gap="3" justify="end" wrap="wrap">
+        <DialogButtons>
           <SaveWait waiting={photosBusy && !busy} />
-          <Dialog.Close>
-            <Button type="button" variant="soft" color="gray" disabled={busy}>
-              {t('common.cancel')}
-            </Button>
-          </Dialog.Close>
-          <RadixForm.Submit asChild>
-            <Button loading={busy} disabled={photosBusy}>
-              {editing ? t('expenses.save') : t('expenses.saveAdd')}
-            </Button>
-          </RadixForm.Submit>
-        </Flex>
-      </Flex>
-    </RadixForm.Root>
+          <DialogCancel disabled={busy} />
+          <Button type="submit" loading={busy} disabled={photosBusy}>
+            {editing ? t('expenses.save') : t('expenses.saveAdd')}
+          </Button>
+        </DialogButtons>
+      </Stack>
+    </Form>
   )
 }

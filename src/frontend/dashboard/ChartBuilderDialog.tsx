@@ -16,6 +16,7 @@ import { FieldInput } from '../forms/FieldInput.tsx'
 import { Form } from '../forms/Form.tsx'
 import { SaveChartDocument, type ChartGrouping, type ChartKind, type ChartMetric, type ChartRange, type DistanceUnit, type VolumeUnit } from '../gql/generated.ts'
 import { ErrorMessage } from '../messages.tsx'
+import { useToast } from '../toast/toastContext.ts'
 import { ChartCard } from './ChartCard.tsx'
 import { ADDITIVE, isReady, NEW_RECIPE, normalise, type ChartRecipe } from './chartFormat.ts'
 
@@ -49,6 +50,7 @@ export function ChartBuilderDialog({
   onSaved: () => void | Promise<unknown>
 }) {
   const { t } = useTranslation()
+  const { toast } = useToast()
   const [open, setOpen] = useDialogState()
 
   return (
@@ -63,6 +65,7 @@ export function ChartBuilderDialog({
             onSaved={async () => {
               await onSaved()
               setOpen(false)
+              toast(t('toast.saved'))
             }}
           />
         )}

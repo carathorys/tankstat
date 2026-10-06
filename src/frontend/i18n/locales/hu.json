@@ -33,6 +33,7 @@
     "undo": "Visszavonás"
   },
   "toast": {
+    "saved": "Mentve.",
     "undoFailed": "Nem sikerült visszaállítani. A kukában megtalálod."
   },
   "install": {

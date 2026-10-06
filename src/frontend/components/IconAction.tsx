@@ -32,6 +32,11 @@ export function IconAction({
       {children}
     </IconButton>
   )
-  // A disabled button gets no pointer events, so the tooltip listens on a wrapper.
-  return <Tooltip title={label}>{disabled ? <span style={{ display: 'inline-flex' }}>{button}</span> : button}</Tooltip>
+  // The tooltip listens on a wrapper (a disabled button gets no pointer events), always the same one, so the button is never remounted
+  // when it turns disabled or back (it keeps the focus). It describes the button, which its label already names.
+  return (
+    <Tooltip title={label} describeChild>
+      <span style={{ display: 'inline-flex' }}>{button}</span>
+    </Tooltip>
+  )
 }

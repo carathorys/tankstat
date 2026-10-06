@@ -1,7 +1,7 @@
-import { TextField } from '@radix-ui/themes'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Field } from '../forms.tsx'
+import { Field } from '../forms/Field.tsx'
+import { FieldInput } from '../forms/FieldInput.tsx'
 import { useFormat } from '../i18n/format.ts'
 import type { DistanceUnit } from '../gql/generated.ts'
 import { useOdometerLabel } from './useOdometerLabel.ts'
@@ -46,9 +46,9 @@ export function OdometerField({
       extra={extra}
     >
       {value === undefined ? (
-        <TextField.Root required={required} inputMode="numeric" autoComplete="off" defaultValue={defaultValue?.toString() ?? ''} />
+        <FieldInput inputMode="numeric" autoComplete="off" defaultValue={defaultValue?.toString() ?? ''} />
       ) : (
-        <TextField.Root required={required} inputMode="numeric" autoComplete="off" value={value} onChange={(e) => onChange?.(e.target.value)} />
+        <FieldInput inputMode="numeric" autoComplete="off" value={value} onChange={(e) => onChange?.(e.target.value)} />
       )}
     </Field>
   )

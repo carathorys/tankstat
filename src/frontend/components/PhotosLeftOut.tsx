@@ -1,6 +1,10 @@
-import { Button, Callout, Dialog, Flex } from '@radix-ui/themes'
+import Alert from '@mui/material/Alert'
+import Button from '@mui/material/Button'
+import Stack from '@mui/material/Stack'
 import { AlertTriangle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { DialogButtons } from '../dialogs/DialogFrame.tsx'
+import { useDialogClose } from '../dialogs/dialogContext.ts'
 
 /**
  * Shown in place of the form when a new log was saved but the server could not attach some of its photos. The log exists, so it must
@@ -8,19 +12,17 @@ import { useTranslation } from 'react-i18next'
  */
 export function PhotosLeftOut({ count }: { count: number }) {
   const { t } = useTranslation()
+  const close = useDialogClose()
   return (
-    <Flex direction="column" gap="3">
-      <Callout.Root color="amber" role="alert">
-        <Callout.Icon>
-          <AlertTriangle size={16} aria-hidden />
-        </Callout.Icon>
-        <Callout.Text>{t('photos.leftOut', { count })}</Callout.Text>
-      </Callout.Root>
-      <Flex justify="end">
-        <Dialog.Close>
-          <Button type="button">{t('photos.done')}</Button>
-        </Dialog.Close>
-      </Flex>
-    </Flex>
+    <Stack sx={{ gap: 1.5 }}>
+      <Alert severity="warning" role="alert" icon={<AlertTriangle size={16} aria-hidden />}>
+        {t('photos.leftOut', { count })}
+      </Alert>
+      <DialogButtons>
+        <Button type="button" onClick={close}>
+          {t('photos.done')}
+        </Button>
+      </DialogButtons>
+    </Stack>
   )
 }

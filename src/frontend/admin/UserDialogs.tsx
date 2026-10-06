@@ -10,13 +10,14 @@ import { useDialogState } from '../dialogs/useDialogState.ts'
 import { FieldForm } from '../forms/FieldForm.tsx'
 import type { UserDataDisposition } from '../gql/generated.ts'
 import { ErrorMessage } from '../messages.tsx'
+import { useToast } from '../toast/toastContext.ts'
 
 export interface PersonRef {
   id: string
   displayName: string
 }
 
-/** A dialog that opens from its `trigger` and closes once `children` calls the supplied `close`. */
+/** A dialog that opens from its `trigger` and closes once `children` calls `close`, or `saved` (which also says "Saved."). */
 function UserDialog({
   trigger,
   title,
@@ -26,14 +27,21 @@ function UserDialog({
   trigger: ReactNode
   title: string
   description: string
-  children: (close: () => void) => ReactNode
+  children: (done: { close: () => void; saved: () => void }) => ReactNode
 }) {
   const [open, setOpen] = useDialogState()
+  const { toast } = useToast()
+  const { t } = useTranslation()
+  const close = () => setOpen(false)
+  const saved = () => {
+    close()
+    toast(t('toast.saved'))
+  }
   return (
     <>
       <DialogTrigger trigger={trigger} open={open} onOpen={() => setOpen(true)} />
-      <DialogFrame open={open} onClose={() => setOpen(false)} title={title} description={description}>
-        {children(() => setOpen(false))}
+      <DialogFrame open={open} onClose={close} title={title} description={description}>
+        {children({ close, saved })}
       </DialogFrame>
     </>
   )
@@ -52,7 +60,7 @@ export function EditUserDialog({
   const { t } = useTranslation()
   return (
     <UserDialog trigger={trigger} title={t('admin.editTitle', { name: user.displayName })} description={t('admin.editDescription')}>
-      {(close) => (
+      {({ saved }) => (
         <FieldForm
           fields={[
             { name: 'email', label: 'fields.email', type: 'email', defaultValue: user.email },
@@ -61,7 +69,7 @@ export function EditUserDialog({
           submitLabel="admin.save"
           onSubmit={async (v) => {
             await onSubmit({ email: v.email ?? '', displayName: v.displayName?.trim() || null })
-            close()
+            saved()
           }}
         >
           <DialogCancel />
@@ -84,13 +92,13 @@ export function SetPasswordDialog({
   const { t } = useTranslation()
   return (
     <UserDialog trigger={trigger} title={t('admin.passwordTitle', { name })} description={t('admin.passwordDescription')}>
-      {(close) => (
+      {({ saved }) => (
         <FieldForm
           fields={[{ name: 'password', label: 'fields.newPassword', type: 'password', autoComplete: 'new-password' }]}
           submitLabel="admin.setPassword"
           onSubmit={async (v) => {
             await onSubmit(v.password ?? '')
-            close()
+            saved()
           }}
         >
           <DialogCancel />
@@ -117,7 +125,7 @@ export function DeleteUserDialog({
   const { t } = useTranslation()
   return (
     <UserDialog trigger={trigger} title={t('admin.deleteTitle', { name: user.displayName })} description={t('admin.deleteDescription')}>
-      {(close) => (
+      {({ close }) => (
         <DeleteForm
           others={others.filter((o) => o.id !== user.id)}
           onSubmit={async (input) => {
