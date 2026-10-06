@@ -12,6 +12,7 @@ import { useFormat } from '../i18n/format.ts'
 import { RecurringDoneDialog } from '../RecurringDoneDialog.tsx'
 import { RefuelingFormDialog } from '../RefuelingFormDialog.tsx'
 import { preselect } from '../recurringDone.ts'
+import { spentText } from '../spending.ts'
 import { canLogFor } from '../vehicles.ts'
 import { cardClickOrigin, tappedAway } from './cardClicks.ts'
 import { CoverLayers } from './CoverLayers.tsx'
@@ -229,7 +230,7 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
               {t('welcome.card.thisMonth')}
             </Text>
             <Text as="p" size="2" weight="bold">
-              {s?.currency ? format.money(s.thisMonthSpend, s.currency) : none}
+              {(s && spentText(s.spending, 'thisMonth', format)) ?? none}
             </Text>
           </Box>
         </Grid>

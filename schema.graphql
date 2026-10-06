@@ -169,6 +169,12 @@ type CreatedUser {
   reset: PasswordResetLink!
 }
 
+type CurrencySpend {
+  currency: String!
+  thisMonth: Decimal!
+  lastMonth: Decimal!
+}
+
 type Expense {
   "The values its photos filled in that nobody has checked yet."
   filledFromPhoto: [LogValue!]! @cost(weight: "10")
@@ -489,6 +495,7 @@ type VehicleSummary {
   spendTrend: [MonthAmount!]!
   fillUpCount: Int!
   expenseCount: Int!
+  spending: [CurrencySpend!]!
 }
 
 input AddExpenseInput {

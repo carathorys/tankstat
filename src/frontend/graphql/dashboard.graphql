@@ -34,6 +34,12 @@ fragment VehicleCardFields on Vehicle {
     currency
     thisMonthSpend
     lastMonthSpend
+    # Every currency spent in this month or last month, the main one first: money is never converted.
+    spending {
+      currency
+      thisMonth
+      lastMonth
+    }
     fillUpCount
     expenseCount
     spendTrend {
@@ -71,6 +77,11 @@ query VehicleDashboard($id: UUID!) {
       currency
       thisMonthSpend
       lastMonthSpend
+      spending {
+        currency
+        thisMonth
+        lastMonth
+      }
       fillUpCount
       expenseCount
       spendTrend {

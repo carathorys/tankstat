@@ -156,17 +156,29 @@ public static class StatsCalculator
             ? recent.GroupBy(r => r.Currency).OrderByDescending(g => g.Sum(r => r.Amount)).First().Key
             : data.Fuel.OrderByDescending(f => f.Date).Select(f => f.Currency).Concat(data.Expenses.OrderByDescending(e => e.Date).Select(e => e.Currency)).FirstOrDefault();
 
-        decimal MonthTotal(DateOnly month) =>
-            data.Fuel.Where(f => f.Currency == currency && MonthStart(f.Date) == month).Sum(f => f.Amount)
-            + data.Expenses.Where(e => e.Currency == currency && MonthStart(e.Date) == month).Sum(e => e.Amount);
+        decimal MonthTotal(DateOnly month, string? inCurrency = null)
+        {
+            var c = inCurrency ?? currency;
+            return data.Fuel.Where(f => f.Currency == c && MonthStart(f.Date) == month).Sum(f => f.Amount)
+                + data.Expenses.Where(e => e.Currency == c && MonthStart(e.Date) == month).Sum(e => e.Amount);
+        }
 
         var trend = Enumerable.Range(0, 6).Select(i => thisMonth.AddMonths(i - 5)).Select(m => new MonthAmount($"{m.Year}-{m.Month:00}", currency is null ? 0 : MonthTotal(m))).ToList();
         var consumptions = data.Fuel.Where(f => f.Consumption is not null).OrderByDescending(f => f.Date).ThenByDescending(f => f.Odometer).Take(10).Select(f => f.Consumption!.Value).ToList();
+
+        // Every currency spent in this month or last month, the main one first (also when nothing was spent in it), then by this month.
+        var lastMonth = thisMonth.AddMonths(-1);
+        var used = data.Fuel.Where(f => MonthStart(f.Date) >= lastMonth && MonthStart(f.Date) <= thisMonth).Select(f => f.Currency)
+            .Concat(data.Expenses.Where(e => MonthStart(e.Date) >= lastMonth && MonthStart(e.Date) <= thisMonth).Select(e => e.Currency));
+        var spending = (currency is null ? used : used.Prepend(currency)).Distinct()
+            .Select(c => new CurrencySpend(c, MonthTotal(thisMonth, c), MonthTotal(lastMonth, c)))
+            .OrderByDescending(s => s.Currency == currency).ThenByDescending(s => s.ThisMonth).ThenByDescending(s => s.LastMonth).ThenBy(s => s.Currency, StringComparer.Ordinal)
+            .ToList();
 
         return new VehicleSummary(
             data.Fuel.Count == 0 ? null : data.Fuel.Max(f => f.Date),
             data.Readings.Count == 0 ? null : data.Readings.Max(r => r.Value),
             consumptions.Count == 0 ? null : Math.Round(consumptions.Average(), 2),
-            currency, trend[^1].Amount, trend[^2].Amount, trend, data.Fuel.Count, data.Expenses.Count);
+            currency, trend[^1].Amount, trend[^2].Amount, trend, data.Fuel.Count, data.Expenses.Count, spending);
     }
 }

@@ -52,6 +52,15 @@ it('shows the key figures', async () => {
   expect(screen.getByText('5 fill-ups, 2 expenses')).toBeInTheDocument()
 })
 
+it('shows what was spent in another currency next to the main one, not dropped or relabelled', async () => {
+  setup(fakeVehicle({ summary: fakeSummary({ thisMonthSpend: 52000, lastMonthSpend: 40000, spending: [{ currency: 'HUF', thisMonth: 52000, lastMonth: 40000 }, { currency: 'EUR', thisMonth: 73.9, lastMonth: 0 }] }) }))
+
+  await screen.findByText('Spent this month')
+
+  expect(screen.getByText(/52,000.* · €73\.90/)).toBeInTheDocument()
+  expect(screen.getByText(/Last month: .*40,000/)).not.toHaveTextContent('€') // nothing in euro last month
+})
+
 it('has the ready-made charts, and each loads its own data from the server', async () => {
   const { state } = setup()
 

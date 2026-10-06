@@ -22,7 +22,8 @@ query Refuelings(
     canDelete
     volume @include(if: $withVolume)
     totalCost @include(if: $withCost)
-    currency @include(if: $withCost)
+    # Always: the price per unit is in it too, also when the cost column is hidden.
+    currency
     pricePerUnit @include(if: $withPrice)
     consumption @include(if: $withConsumption)
     odometer @include(if: $withOdometer)

@@ -34,7 +34,7 @@ public class DashboardApiTests : IDisposable
         var id = await CarWithLogs(alice);
 
         var data = (await alice.Gql(@"query($id: UUID!, $c: ChartConfigInput!, $c2: ChartConfigInput!) {
-              vehicle(id: $id) { summary { latestOdometer averageConsumption currency thisMonthSpend fillUpCount expenseCount spendTrend { month amount } } }
+              vehicle(id: $id) { summary { latestOdometer averageConsumption currency thisMonthSpend fillUpCount expenseCount spendTrend { month amount } spending { currency thisMonth lastMonth } } }
               total: vehicleChartData(vehicleId: $id, config: $c) { unit series { kind currency points { key value } } }
               byCategory: vehicleChartData(vehicleId: $id, config: $c2) { series { currency points { key value } } } }",
             new
@@ -49,6 +49,8 @@ public class DashboardApiTests : IDisposable
         Assert.Equal(52500m, summary.GetProperty("thisMonthSpend").GetDecimal()); // 17500 fuel + 35000 oil
         Assert.Equal(5.5m, summary.GetProperty("averageConsumption").GetDecimal()); // the mean of 6 (30 l / 500 km) and 5 (25 l / 500 km)
         Assert.Equal(6, summary.GetProperty("spendTrend").GetArrayLength());
+        var spent = Assert.Single(summary.GetProperty("spending").EnumerateArray());
+        Assert.Equal(("HUF", 52500m), (spent.GetProperty("currency").GetString(), spent.GetProperty("thisMonth").GetDecimal()));
 
         var total = data.GetProperty("total");
         Assert.Equal("CURRENCY", total.GetProperty("unit").GetString());
