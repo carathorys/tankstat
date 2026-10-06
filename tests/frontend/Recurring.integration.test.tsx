@@ -243,6 +243,33 @@ it('an unticked schedule stays as it is, and a title typed by hand is kept when 
   expect(state.calls.MarkRecurringExpensesDone).toEqual([{ input: expect.objectContaining({ ids: ['rc1'], title: 'Yearly service' }) }])
 })
 
+it('the prefilled category can be cleared: the expense then has none', async () => {
+  const { ui, state } = setup()
+  await row('Oil change')
+  const dialog = await doneDialog(ui, 'Oil change')
+
+  await ui.clear(within(dialog).getByLabelText('Expense category (optional)'))
+  await ui.type(within(dialog).getByLabelText(/^Odometer/), '62000')
+  await ui.type(within(dialog).getByLabelText('Amount (optional)'), '35000')
+  await ui.click(within(dialog).getByRole('button', { name: 'Mark as done' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(state.calls.MarkRecurringExpensesDone).toEqual([{ input: expect.objectContaining({ category: '' }) }])
+})
+
+it("a row's own Done leaves the selection in the list alone", async () => {
+  const { ui, state } = setup(fakeVehicle(), [fakeRecurring({ kind: 'TIME', intervalDistance: null, lastDoneOdometer: null }), fakeRecurring({ id: 'rc4', title: 'Wipers', kind: 'TIME', intervalDistance: null, lastDoneOdometer: null })])
+  await row('Oil change')
+  await ui.click(screen.getByRole('checkbox', { name: 'Select Wipers' }))
+
+  const dialog = await doneDialog(ui, 'Oil change')
+  await ui.click(within(dialog).getByRole('button', { name: 'Mark as done' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(state.calls.MarkRecurringExpensesDone).toEqual([{ input: expect.objectContaining({ ids: ['rc1'] }) }])
+  expect(screen.getByRole('checkbox', { name: 'Select Wipers' })).toBeChecked()
+})
+
 it('without an amount only the schedules move on: nothing is required beyond the day', async () => {
   const { ui, state } = setup(fakeVehicle(), [fakeRecurring({ kind: 'TIME', intervalDistance: null, lastDoneOdometer: null })])
   await row('Oil change')

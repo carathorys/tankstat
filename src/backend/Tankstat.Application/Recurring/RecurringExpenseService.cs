@@ -131,7 +131,7 @@ public sealed class RecurringExpenseService(
         var wanted = ids.Distinct().ToList();
         if (wanted.Count == 0) throw new DomainException("recurring.noneSelected", "Pick at least one recurring expense.");
         var byId = (await items.FindManyAsync(wanted, ct)).ToDictionary(i => i.Id);
-        if (wanted.FirstOrDefault(id => !byId.ContainsKey(id)) is var missing && missing != Guid.Empty) throw NotFound(missing);
+        if (wanted.Where(id => !byId.ContainsKey(id)).Select(id => (Guid?)id).FirstOrDefault() is { } missing) throw NotFound(missing);
         var found = wanted.Select(id => byId[id]).ToList();
 
         var vehicleId = found[0].VehicleId;
@@ -168,7 +168,7 @@ public sealed class RecurringExpenseService(
 
     /// <summary>The schedules the given (already authorised) expenses covered, for the expense's <c>schedules</c> field.</summary>
     public async Task<ILookup<Guid, CompletedSchedule>> ListCompletionsForExpensesAsync(IReadOnlyCollection<Guid> expenseIds, CancellationToken ct) =>
-        expenseIds.Count == 0 ? Enumerable.Empty<CompletedSchedule>().ToLookup(c => c.ExpenseId) : (await items.ListCompletionsForExpensesAsync(expenseIds, ct)).ToLookup(c => c.ExpenseId);
+        (await items.ListCompletionsForExpensesAsync(expenseIds, ct)).ToLookup(c => c.ExpenseId);
 
     private async Task TryTrashAsync(Guid expenseId, IReadOnlyCollection<Guid> recurringIds)
     {

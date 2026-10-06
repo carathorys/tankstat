@@ -26,12 +26,8 @@ public static class RecurringDoneDefaults
         return joined.Length <= Expense.MaxTitleLength ? joined : joined[..(Expense.MaxTitleLength - 1)].TrimEnd(' ', ',') + "…";
     }
 
-    /// <summary>Their common category; when they differ, the first one given; none when none has one.</summary>
-    public static string? Category(IReadOnlyList<RecurringExpense> items)
-    {
-        var categories = items.Select(i => i.Category).Where(c => !string.IsNullOrWhiteSpace(c)).ToList();
-        return categories.FirstOrDefault();
-    }
+    /// <summary>The first category any of them has (so their common one when they agree); none when none has one.</summary>
+    public static string? Category(IReadOnlyList<RecurringExpense> items) => items.Select(i => i.Category).FirstOrDefault(c => !string.IsNullOrWhiteSpace(c));
 
     /// <summary>A schedule's note says something about that one thing: it goes with the expense only when it covers that one alone.</summary>
     public static string? Note(IReadOnlyList<RecurringExpense> items) => items.Count == 1 ? items[0].Note : null;

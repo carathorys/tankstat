@@ -67,9 +67,11 @@ function merge(saved: Partial<GridSaved> | undefined, base: GridState, columns: 
   const desc = saved.sortDirection === 'DESC' || saved.sortDirection === 'ASC' ? saved.sortDirection === 'DESC' : base.sorting[0].desc
   const sortChanged = sortColumn === saved.sortColumn
 
+  // A column the saved settings do not list is newer than them: it starts as the defaults say (hidden by default, or on a phone).
+  const added = Array.isArray(saved.order) ? ids.filter((id) => !saved.order!.includes(id) && base.columnVisibility[id] === false) : []
   return {
     columnOrder: [...savedOrder, ...ids.filter((id) => !savedOrder.includes(id))],
-    columnVisibility: hidden ? Object.fromEntries(hidden.map((id) => [id, false])) : base.columnVisibility,
+    columnVisibility: hidden ? Object.fromEntries([...hidden, ...added].map((id) => [id, false])) : base.columnVisibility,
     sorting: [{ id: sortColumn, desc: sortChanged ? desc : base.sorting[0].desc }],
     pagination: { pageIndex: 0, pageSize: PAGE_SIZES.includes(saved.pageSize ?? 0) ? saved.pageSize! : DEFAULT_PAGE_SIZE },
   }

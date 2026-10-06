@@ -111,3 +111,12 @@ it('a column hidden by default stays hidden on a wide screen until the user show
   const shown = renderHook(() => useGridSettings('e', withDetail, sort))
   expect(shown.result.current.state.columnVisibility).toEqual({})
 })
+
+it('a column added after the settings were saved starts as its defaults say, while the saved choices stay', () => {
+  const withDetail: ColumnInfo[] = [...columns, { id: 'detail', hideable: true, mobile: false, defaultHidden: true, sortable: false }]
+  window.localStorage.setItem('tankstat.grid.f', JSON.stringify(saved({ order: ['name', 'plate', 'fuel'], hidden: ['fuel'] })))
+
+  const { result } = renderHook(() => useGridSettings('f', withDetail, sort))
+
+  expect(result.current.state.columnVisibility).toEqual({ fuel: false, detail: false })
+})

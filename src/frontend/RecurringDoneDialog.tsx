@@ -31,7 +31,8 @@ export interface DoneValues {
   amount: number | null
   currency: string | null
   title: string
-  category: string | null
+  /** Empty for none. */
+  category: string
 }
 
 /** The fields photos can fill in (a dashboard: the odometer; an invoice: the cost and the day), and which read value goes into each. */
@@ -233,7 +234,7 @@ function DoneFields({
           amount: hasAmount ? (parseDecimal(text('amount')) ?? null) : null,
           currency: hasAmount ? text('currency').toUpperCase() : null,
           title: titleValue.trim(),
-          category: categoryValue.trim() || null,
+          category: categoryValue.trim(), // empty: no category (null would mean "the schedules' one" to the server)
         },
         logsExpense,
       )

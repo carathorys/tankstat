@@ -59,8 +59,14 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
 
   async function done(values: DoneValues, photoIds: string[]) {
     const result = await markDone({ variables: { input: { ...values, photoIds } } })
-    setSelection(new Set())
     return savedFrom(result.data?.markRecurringExpensesDone.expense)
+  }
+
+  /** The selection is spent only by the dialog that took it, not by a row's own Done. */
+  async function doneSelected(values: DoneValues, photoIds: string[]) {
+    const saved = await done(values, photoIds)
+    setSelection(new Set())
+    return saved
   }
 
   const schedule = (i: Item) => {
@@ -108,7 +114,7 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
                 {t('recurring.doneSelected', { count: chosen.length })}
               </Button>
             }
-            onSubmit={done}
+            onSubmit={doneSelected}
           />
         )}
         <Text size="2" color="gray" aria-live="polite">

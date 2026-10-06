@@ -183,6 +183,10 @@ public class RecurringExpenseServiceTests
         await s.W.RecurringService.MarkDoneAsync([oil.Id, filter.Id], Done(title: "Yearly service", category: "Workshop"), default);
 
         Assert.Equal(("Yearly service", "Workshop"), (s.W.Expenses.Items.Single().Title, s.W.Expenses.Items.Single().Category));
+
+        var other = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(title: "Wipers"), default)).Item;
+        await s.W.RecurringService.MarkDoneAsync([other.Id], Done(category: ""), default); // an empty category is none, not "the schedule's"
+        Assert.Null(s.W.Expenses.Items.Single(e => e.Title == "Wipers").Category);
     }
 
     [Fact]
@@ -271,9 +275,11 @@ public class RecurringExpenseServiceTests
 
         var mixed = await Assert.ThrowsAsync<NotFoundException>(() => s.W.RecurringService.MarkDoneAsync([oil.Id, vans.Id], Done(), default));
         var unknown = await Assert.ThrowsAsync<NotFoundException>(() => s.W.RecurringService.MarkDoneAsync([oil.Id, Guid.NewGuid()], Done(), default));
+        var zero = await Assert.ThrowsAsync<NotFoundException>(() => s.W.RecurringService.MarkDoneAsync([Guid.Empty], Done(), default)); // the all-zero id is an id too
 
         Assert.Equal(("recurring.notFound", vans.Id), (mixed.Key, mixed.Args["id"]));
         Assert.Equal("recurring.notFound", unknown.Key);
+        Assert.Equal(("recurring.notFound", Guid.Empty), (zero.Key, zero.Args["id"]));
         Assert.Empty(s.W.Expenses.Items);
         Assert.Equal(new DateOnly(2026, 1, 15), oil.LastDoneDate);
 
