@@ -1,32 +1,40 @@
-import { useMutation } from '@apollo/client/react'
+import { useApolloClient, useMutation } from '@apollo/client/react'
 import type { ExpenseValues } from '../ExpenseFormDialog.tsx'
-import { AddExpenseDocument, LogRefuelingDocument, MarkRecurringExpenseDoneDocument, VehicleCardDocument, type AccessLevel } from '../gql/generated.ts'
+import { AddExpenseDocument, LogRefuelingDocument, MarkRecurringExpenseDoneDocument, VehicleCardDocument } from '../gql/generated.ts'
 import type { DoneValues } from '../RecurringDoneDialog.tsx'
 import type { RefuelingValues } from '../RefuelingFormDialog.tsx'
 import type { Saved } from './usePhotoQueue.ts'
 
-/** Who may add logs to a vehicle: the same rule the vehicle page applies to its tabs. */
-export const canLogFor = (v: { canEdit: boolean; logAccess: AccessLevel }) => v.canEdit || v.logAccess === 'EDIT' || v.logAccess === 'DELETE'
+/** What the photo session needs to know about a log that was just saved. */
+const savedFrom = (log: { id: string; photos: readonly unknown[] } | undefined): Saved => (log ? { id: log.id, photoCount: log.photos.length } : undefined)
 
 /**
- * The quick actions of a home card. Each one asks the server again for this vehicle's card only (`VehicleCard`): Apollo merges it into the
- * normalised `Vehicle:<id>`, so the card updates in place and the pages the infinite scroll already loaded stay. Never refetch `Welcome` from
- * a card: it reruns the first page and drops the rest. The dialogs load `LogDefaults` afresh on every opening, so nothing else is refetched.
+ * The quick actions of a home card. After each one this vehicle's card alone is asked again (`VehicleCard`): Apollo merges the answer into
+ * the normalised `Vehicle:<id>`, so the card updates in place and the pages the infinite scroll already loaded stay. Never refetch `Welcome`
+ * from a card: it reruns the first page and drops the rest. The refresh comes after the mutation settled and cannot fail it: a saved log
+ * must never look like an error in the dialog (a retry would log it twice). The dialogs load `LogDefaults` afresh on every opening, so
+ * nothing else is refetched.
  */
 export function useCardActions(vehicleId: string) {
-  const refresh = { refetchQueries: [{ query: VehicleCardDocument, variables: { id: vehicleId } }], awaitRefetchQueries: true }
-  const [logRefueling] = useMutation(LogRefuelingDocument, refresh)
-  const [addExpense] = useMutation(AddExpenseDocument, refresh)
-  const [markDone] = useMutation(MarkRecurringExpenseDoneDocument, refresh)
+  const client = useApolloClient()
+  const [logRefueling] = useMutation(LogRefuelingDocument)
+  const [addExpense] = useMutation(AddExpenseDocument)
+  const [markDone] = useMutation(MarkRecurringExpenseDoneDocument)
+  const refresh = () => client.query({ query: VehicleCardDocument, variables: { id: vehicleId }, fetchPolicy: 'network-only' }).then(() => undefined, () => undefined)
   return {
     refuel: async (values: RefuelingValues, photoIds: string[]): Promise<Saved> => {
       const logged = await logRefueling({ variables: { input: { ...values, vehicleId, photoIds } } })
-      return logged.data ? { id: logged.data.logRefueling.id, photoCount: logged.data.logRefueling.photos.length } : undefined
+      await refresh()
+      return savedFrom(logged.data?.logRefueling)
     },
     expense: async (values: ExpenseValues, photoIds: string[]): Promise<Saved> => {
       const added = await addExpense({ variables: { input: { ...values, vehicleId, photoIds } } })
-      return added.data ? { id: added.data.addExpense.id, photoCount: added.data.addExpense.photos.length } : undefined
+      await refresh()
+      return savedFrom(added.data?.addExpense)
     },
-    done: (scheduleId: string, values: DoneValues) => markDone({ variables: { input: { ...values, id: scheduleId } } }),
+    done: async (scheduleId: string, values: DoneValues) => {
+      await markDone({ variables: { input: { ...values, id: scheduleId } } })
+      await refresh()
+    },
   }
 }

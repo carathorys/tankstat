@@ -77,7 +77,7 @@ export function ExpenseFormDialog({
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const editing = expenseId !== undefined
-  const { queue, leftOut, saving, submit, reset } = usePhotoSession(vehicle.id, editing ? undefined : 'expense')
+  const { queue, leftOut, saving, submit, reset } = usePhotoSession(vehicle.id, editing ? undefined : 'expense', open)
   const drafts = useDraftReadings(queue.uploaded, open && !editing)
   const details = useQuery(ExpenseDetailsDocument, { variables: { id: expenseId ?? '' }, skip: !editing || !open, fetchPolicy: 'network-only' })
   const defaults = useQuery(LogDefaultsDocument, { variables: { vehicleId: vehicle.id }, skip: !open, fetchPolicy: 'network-only' })

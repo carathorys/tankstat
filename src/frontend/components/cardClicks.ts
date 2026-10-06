@@ -4,9 +4,12 @@
  */
 export type CardClickOrigin = 'outside' | 'button' | 'link' | 'card'
 
+/** The element a click hit (a text node's parent when the target is text). */
+const elementOf = (target: Node) => (target instanceof Element ? target : target.parentElement)
+
 export function cardClickOrigin(card: Element | null, target: EventTarget | null): CardClickOrigin {
   if (!card || !(target instanceof Node) || !card.contains(target)) return 'outside'
-  const element = target instanceof Element ? target : target.parentElement
+  const element = elementOf(target)
   if (element?.closest('button')) return 'button'
   if (element?.closest('a')) return 'link'
   return 'card'
@@ -15,6 +18,5 @@ export function cardClickOrigin(card: Element | null, target: EventTarget | null
 /** A pointer went down somewhere that should put a revealed card's figures away: outside the card and not inside an open dialog. */
 export function tappedAway(card: Element | null, target: EventTarget | null): boolean {
   if (!(target instanceof Node) || card?.contains(target)) return false
-  const element = target instanceof Element ? target : target.parentElement
-  return !element?.closest('[role="dialog"]')
+  return !elementOf(target)?.closest('[role="dialog"]')
 }

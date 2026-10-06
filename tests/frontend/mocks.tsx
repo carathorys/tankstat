@@ -156,10 +156,11 @@ function page<T extends Trashed>(rows: T[], vars: GridVars) {
 /** A small in-memory backend for vehicles and trash, so mutations show up in the refetched lists. */
 export function fakeVehicleBackend(initial: FakeVehicle[] = [], trashed: FakeVehicle[] = []) {
   const state = {
+    /** Shallow copies: `summary` and `recurring` stay the caller's objects, which the log, expense and recurring fakes change in place (hand them `state.vehicles[i]`). */
     vehicles: initial.map((v) => ({ ...v, deletedAt: '' })) as Trashed[],
     trash: trashed.map((v) => ({ ...v, deletedAt: '2026-10-01T08:00:00Z' })) as Trashed[],
     calls: {} as Record<string, unknown[]>,
-    /** Variables of every Vehicles / Trash query the UI sent. */
+    /** Variables of every Vehicles / Trash / Welcome / VehicleCard query the UI sent. */
     requests: { Vehicles: [] as Record<string, unknown>[], Trash: [] as Record<string, unknown>[], Welcome: [] as Record<string, unknown>[], VehicleCard: [] as Record<string, unknown>[] },
     nextId: 100,
     /** How many trashed vehicles this user may delete for good (defaults to all of them). */
@@ -858,10 +859,15 @@ export function fakeRecurringBackend(items: FakeRecurring[] = [], vehicle?: Fake
       record('MarkRecurringExpenseDone', variables)
       const failed = fail()
       if (failed) return failed
-      const input = variables.input as { id: string; date: string; odometer: number | null }
+      const input = variables.input as { id: string; date: string; odometer: number | null; createExpense?: boolean; amount?: number | null }
       const i = state.items.findIndex((x) => x.id === input.id)
       state.items[i] = { ...state.items[i], lastDoneDate: input.date, lastDoneOdometer: input.odometer ?? state.items[i].lastDoneOdometer, status: upcoming() }
       sync()
+      if (vehicle && input.createExpense !== false) {
+        // The logged expense, as the card shows it (see LogRefueling in fakeLogBackend).
+        Object.assign(vehicle.summary, { expenseCount: vehicle.summary.expenseCount + 1, thisMonthSpend: vehicle.summary.thisMonthSpend + (input.amount ?? 0) })
+        if (input.odometer != null) vehicle.summary.latestOdometer = Math.max(vehicle.summary.latestOdometer ?? 0, input.odometer)
+      }
       return HttpResponse.json({ data: { markRecurringExpenseDone: typedRecurring(state.items[i]) } })
     }),
   ]

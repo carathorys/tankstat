@@ -677,8 +677,8 @@
       "tapAgain": "Tap again to open",
       "refuel": "Refuel",
       "expense": "Expense",
-      "refuelAria": "Add a refuelling for {{name}}",
-      "expenseAria": "Add an expense for {{name}}",
+      "refuelAria": "Refuel {{name}}",
+      "expenseAria": "Expense for {{name}}",
       "doneAria": "Mark {{title}} of {{name}} as done"
     },
     "search": "Search vehicles",

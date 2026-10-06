@@ -128,7 +128,7 @@ export function WelcomePage({ isAdmin }: { isAdmin: boolean }) {
         <Grid asChild columns={{ initial: '1', sm: '2', xl: '3' }} gap="4">
           <ul aria-label={t('welcome.countLabel', { count: total })} style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {vehicles.map((v) => (
-              <li key={v.id}>
+              <li key={v.id} style={{ display: 'grid' }}>
                 <VehicleCard vehicle={v} />
               </li>
             ))}

@@ -375,8 +375,8 @@ it('the user administration dialogs are labelled, described and free of violatio
 it('the quick actions on a home card have names with the vehicle in them, on a desktop and a phone, free of violations', async () => {
   const { view } = setup('/')
   const card = within((await screen.findByRole('link', { name: 'Open Octavia' })).closest('li')!)
-  expect(card.getByRole('button', { name: 'Add a refuelling for Octavia' })).toBeInTheDocument()
-  expect(card.getByRole('button', { name: 'Add an expense for Octavia' })).toBeInTheDocument()
+  expect(card.getByRole('button', { name: 'Refuel Octavia' })).toBeInTheDocument()
+  expect(card.getByRole('button', { name: 'Expense for Octavia' })).toBeInTheDocument()
   expect(card.getByRole('button', { name: 'Mark Tyres of Octavia as done' })).toBeInTheDocument()
   await check(view.container)
   view.unmount()
@@ -390,7 +390,7 @@ it('the dialogs opened from a home card are labelled, described and free of viol
   const { ui } = setup('/')
   const card = within((await screen.findByRole('link', { name: 'Open Octavia' })).closest('li')!)
 
-  await ui.click(card.getByRole('button', { name: 'Add a refuelling for Octavia' }))
+  await ui.click(card.getByRole('button', { name: 'Refuel Octavia' }))
   let dialog = await screen.findByRole('dialog', { name: 'Add refuelling' })
   await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
   expect(dialog).toHaveAccessibleDescription(/Enter what you filled up/)
@@ -398,7 +398,7 @@ it('the dialogs opened from a home card are labelled, described and free of viol
   await ui.keyboard('{Escape}')
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 
-  await ui.click(card.getByRole('button', { name: 'Add an expense for Octavia' }))
+  await ui.click(card.getByRole('button', { name: 'Expense for Octavia' }))
   dialog = await screen.findByRole('dialog', { name: 'Add expense' })
   await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
   await check(document.body)
