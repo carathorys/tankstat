@@ -16,6 +16,7 @@ query Refuelings(
 ) {
   refuelings(vehicleId: $vehicleId, orderBy: $orderBy, direction: $direction, skip: $skip, take: $take) {
     id
+    version
     date
     reviewState
     canEdit
@@ -53,6 +54,7 @@ query RefuelingTrash(
 ) {
   refuelingTrash(orderBy: $orderBy, direction: $direction, skip: $skip, take: $take) {
     id
+    version
     date
     vehicle {
       id
@@ -80,6 +82,7 @@ query RefuelingTrash(
 query RefuelingDetails($id: UUID!) {
   refueling(id: $id) {
     id
+    version
     vehicleId
     date
     volume

@@ -3,6 +3,8 @@ import { savedFrom, type Saved } from '../../components/usePhotoQueue.ts'
 import type { ExpenseValues } from '../../ExpenseFormDialog.tsx'
 import { AddExpenseDocument, LogRefuelingDocument } from '../../gql/generated.ts'
 import type { RefuelingValues } from '../../RefuelingFormDialog.tsx'
+import { useLogChange } from '../../offline/useLogChange.ts'
+import { uuidV4 } from '../../offline/uuid.ts'
 
 /** What a new, changed or trashed refuelling or expense makes the vehicle page ask again (only the queries that are showing). */
 export const REFUELING_QUERIES = ['Refuelings', 'VehicleDetails', 'LogDefaults']
@@ -15,10 +17,19 @@ export const EXPENSE_QUERIES = ['Expenses', 'VehicleDetails', 'LogDefaults', 'Ex
 export function useLogMutations(vehicleId: string) {
   const [logRefueling] = useMutation(LogRefuelingDocument, { refetchQueries: REFUELING_QUERIES, awaitRefetchQueries: true })
   const [addExpense] = useMutation(AddExpenseDocument, { refetchQueries: EXPENSE_QUERIES, awaitRefetchQueries: true })
+  const refuelings = useLogChange('refuelings', vehicleId)
+  const expenses = useLogChange('expenses', vehicleId)
   return {
-    refuel: async (values: RefuelingValues, photoIds: string[]): Promise<Saved> =>
-      savedFrom((await logRefueling({ variables: { input: { ...values, vehicleId, photoIds } } })).data?.logRefueling),
-    expense: async (values: ExpenseValues, photoIds: string[]): Promise<Saved> =>
-      savedFrom((await addExpense({ variables: { input: { ...values, vehicleId, photoIds } } })).data?.addExpense),
+    // Kept on the device while the server is out of reach (`offline/submitChange.ts`); the id is the dialog's, so it never logs twice.
+    refuel: async (values: RefuelingValues, photoIds: string[]): Promise<Saved> => {
+      const input = { ...values, id: values.id ?? uuidV4(), vehicleId, photoIds }
+      const done = await refuelings.add(input.id, input, () => logRefueling({ variables: { input } }))
+      return done.queued ? { id: input.id, photoCount: photoIds.length, queued: true } : savedFrom(done.result.data?.logRefueling)
+    },
+    expense: async (values: ExpenseValues, photoIds: string[]): Promise<Saved> => {
+      const input = { ...values, id: values.id ?? uuidV4(), vehicleId, photoIds }
+      const done = await expenses.add(input.id, input, () => addExpense({ variables: { input } }))
+      return done.queued ? { id: input.id, photoCount: photoIds.length, queued: true } : savedFrom(done.result.data?.addExpense)
+    },
   }
 }

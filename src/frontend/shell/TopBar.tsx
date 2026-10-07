@@ -11,6 +11,7 @@ import type { SessionQuery } from '../gql/generated.ts'
 import { glass } from '../theme/components.ts'
 import { ColorModeMenu } from './ColorModeMenu.tsx'
 import { ConnectivityIndicator } from './ConnectivityIndicator.tsx'
+import { PendingChip } from './PendingChip.tsx'
 import { LanguageMenu } from './LanguageMenu.tsx'
 import { NotificationBell } from './NotificationBell.tsx'
 
@@ -66,6 +67,7 @@ export function TopBar({
         </Stack>
       )}
       <ConnectivityIndicator />
+      <PendingChip />
       {showMenu && <NotificationBell />}
       <ColorModeMenu />
       <LanguageMenu />
