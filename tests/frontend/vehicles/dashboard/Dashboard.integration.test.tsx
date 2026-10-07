@@ -27,7 +27,7 @@ const choose = async (ui: ReturnType<typeof userEvent.setup>, control: string, o
   await ui.click(await screen.findByRole('option', { name: option }))
 }
 
-const cardOf = async (title: string) => (await screen.findByRole('heading', { name: title })).closest('[class*="rt-Card"]') as HTMLElement
+const cardOf = async (title: string) => (await screen.findByRole('heading', { name: title })).closest('.MuiCard-root') as HTMLElement
 
 // ---- the page --------------------------------------------------------------------------------------------
 

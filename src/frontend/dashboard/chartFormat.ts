@@ -1,5 +1,5 @@
 import type { ChartDataQuery, ChartGrouping, ChartKind, ChartMetric, ChartRange } from '../gql/generated.ts'
-import { PLACEHOLDER_PAIRS } from '../theme/scales.ts'
+import { PLACEHOLDER_PAIRS, SERIES_COLORS } from '../theme/scales.ts'
 
 export type ChartData = ChartDataQuery['vehicleChartData']
 export type Series = ChartData['series'][number]
@@ -15,8 +15,8 @@ export interface ChartRecipe {
   to: string | null
 }
 
-/** Series colours: Radix scale steps that work on the dark and the light theme. */
-export const PALETTE = ['var(--indigo-9)', 'var(--cyan-9)', 'var(--amber-9)', 'var(--grass-9)', 'var(--tomato-9)', 'var(--violet-9)', 'var(--teal-9)', 'var(--pink-9)']
+/** Series colours that work on the dark and the light scheme alike. */
+export const PALETTE: readonly string[] = SERIES_COLORS
 
 export const seriesId = (s: Series) => `${s.kind}|${s.currency ?? ''}`
 

@@ -1,8 +1,18 @@
-import { Box, Flex, Table, Text, VisuallyHidden } from '@radix-ui/themes'
+import Box from '@mui/material/Box'
+import Link from '@mui/material/Link'
+import Stack from '@mui/material/Stack'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
+import Typography from '@mui/material/Typography'
+import { BarChart } from '@mui/x-charts/BarChart'
+import { LineChart } from '@mui/x-charts/LineChart'
+import { PieChart } from '@mui/x-charts/PieChart'
 import { useReducedMotion } from 'motion/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { SurfaceTable } from '../components/SurfaceTable.tsx'
 import type { DistanceUnit, VolumeUnit } from '../gql/generated.ts'
 import { useFormat } from '../i18n/format.ts'
 import { PALETTE, periodLabel, seriesId, type ChartData, type ChartRecipe, type Series } from './chartFormat.ts'
@@ -23,9 +33,9 @@ export function ChartView({ data, recipe, units, title, height = 240 }: { data: 
 
   if (noData(data)) {
     return (
-      <Text as="p" size="2" color="gray" role="status">
+      <Typography variant="body2" role="status" sx={{ color: 'text.secondary' }}>
         {t('dashboard.noData')}
-      </Text>
+      </Typography>
     )
   }
 
@@ -46,94 +56,111 @@ export function ChartView({ data, recipe, units, title, height = 240 }: { data: 
   const keys = [...new Set(data.series.flatMap((s) => s.points.map((p) => p.key)))]
   const rows: Record<string, string | number | null>[] = keys.map((key) => ({ key, label: keyLabel(key), ...Object.fromEntries(data.series.map((s) => [seriesId(s), s.points.find((p) => p.key === key)?.value ?? null])) }))
   const colour = (i: number) => PALETTE[i % PALETTE.length]
-  const seriesByName = new Map(data.series.map((s) => [name(s), s]))
-  const tooltip = (value: unknown, label: unknown) => [show(typeof value === 'number' ? value : null, seriesByName.get(String(label)) ?? data.series[0]), String(label)] as [string, string]
-
-  const cartesian = (children: React.ReactNode, Chart: typeof BarChart | typeof LineChart | typeof AreaChart) => (
-    <ResponsiveContainer width="100%" height={height} initialDimension={{ width: 320, height }}>
-      <Chart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} accessibilityLayer={false}>
-        <CartesianGrid stroke="var(--gray-a5)" vertical={false} />
-        <XAxis dataKey="label" tick={{ fill: 'var(--gray-11)', fontSize: 12 }} tickLine={false} axisLine={{ stroke: 'var(--gray-a6)' }} minTickGap={12} />
-        <YAxis tick={{ fill: 'var(--gray-11)', fontSize: 12 }} tickLine={false} axisLine={false} tickFormatter={axis} width={48} />
-        <Tooltip formatter={(value, label) => tooltip(value, label)} contentStyle={{ background: 'var(--color-panel-solid)', border: '1px solid var(--gray-a6)', borderRadius: 'var(--radius-3)', boxShadow: 'var(--shadow-4)' }} />
-        {data.series.length > 1 && <Legend />}
-        {children}
-      </Chart>
-    </ResponsiveContainer>
-  )
+  const several = data.series.length > 1
+  // The parts every cartesian chart shares: the periods along the bottom, compact values up the side, light horizontal lines.
+  const cartesian = {
+    dataset: rows,
+    height,
+    margin: { top: 8, right: 8, bottom: 0, left: 0 },
+    yAxis: [{ valueFormatter: axis, width: 48 }],
+    grid: { horizontal: true },
+    hideLegend: !several,
+    skipAnimation: reduce,
+    disableKeyboardNavigation: true,
+  }
+  const lines = (area: boolean) =>
+    data.series.map((s, i) => ({
+      dataKey: seriesId(s),
+      label: name(s),
+      color: colour(i),
+      curve: 'monotoneX' as const,
+      showMark: rows.length < 25,
+      connectNulls: true,
+      area,
+      stack: area && recipe.stacked ? (s.currency ?? 'a') : undefined,
+      valueFormatter: (value: number | null) => show(value, s),
+    }))
 
   const picture =
     recipe.kind === 'DONUT' ? (
-      <Flex gap="4" wrap="wrap" justify="center">
+      <Stack direction="row" sx={{ gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
         {data.series.map((s, i) => (
-          <Box key={seriesId(s)} style={{ width: 'min(100%, 18rem)' }}>
-            {data.series.length > 1 && (
-              <Text as="p" size="2" align="center" color="gray">
+          <Box key={seriesId(s)} sx={{ width: 'min(100%, 18rem)' }}>
+            {several && (
+              <Typography variant="body2" sx={{ color: 'text.secondary', textAlign: 'center' }}>
                 {name(s)}
-              </Text>
+              </Typography>
             )}
-            <ResponsiveContainer width="100%" height={height} initialDimension={{ width: 288, height }}>
-              <PieChart accessibilityLayer={false}>
-                <Pie data={s.points.map((p) => ({ name: keyLabel(p.key), value: p.value ?? 0 }))} dataKey="value" nameKey="name" innerRadius="55%" outerRadius="85%" paddingAngle={2} isAnimationActive={!reduce} stroke="var(--color-panel-solid)">
-                  {s.points.map((p, j) => <Cell key={p.key} fill={colour(j + i)} />)}
-                </Pie>
-                <Tooltip formatter={(value, label) => [show(typeof value === 'number' ? value : null, s), String(label)]} contentStyle={{ background: 'var(--color-panel-solid)', border: '1px solid var(--gray-a6)', borderRadius: 'var(--radius-3)' }} />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+            <PieChart
+              height={height}
+              skipAnimation={reduce}
+              disableKeyboardNavigation
+              series={[
+                {
+                  data: s.points.map((p, j) => ({ id: p.key, value: p.value ?? 0, label: keyLabel(p.key), color: colour(j + i) })),
+                  innerRadius: '55%',
+                  outerRadius: '85%',
+                  paddingAngle: 2,
+                  cornerRadius: 2,
+                  valueFormatter: (item) => show(item.value, s),
+                },
+              ]}
+            />
           </Box>
         ))}
-      </Flex>
+      </Stack>
     ) : recipe.kind === 'LINE' ? (
-      cartesian(data.series.map((s, i) => <Line key={seriesId(s)} type="monotone" dataKey={seriesId(s)} name={name(s)} stroke={colour(i)} strokeWidth={2} dot={rows.length < 25} connectNulls isAnimationActive={!reduce} />), LineChart)
+      <LineChart {...cartesian} xAxis={[{ scaleType: 'point', dataKey: 'label' }]} series={lines(false)} />
     ) : recipe.kind === 'AREA' ? (
-      cartesian(data.series.map((s, i) => <Area key={seriesId(s)} type="monotone" dataKey={seriesId(s)} name={name(s)} stroke={colour(i)} fill={colour(i)} fillOpacity={0.25} strokeWidth={2} connectNulls stackId={recipe.stacked ? (s.currency ?? 'a') : undefined} isAnimationActive={!reduce} />), AreaChart)
+      <LineChart {...cartesian} xAxis={[{ scaleType: 'point', dataKey: 'label' }]} series={lines(true)} />
     ) : (
-      cartesian(data.series.map((s, i) => <Bar key={seriesId(s)} dataKey={seriesId(s)} name={name(s)} fill={colour(i)} radius={[4, 4, 0, 0]} stackId={recipe.stacked ? (s.currency ?? 'a') : undefined} isAnimationActive={!reduce} />), BarChart)
+      <BarChart
+        {...cartesian}
+        borderRadius={4}
+        xAxis={[{ scaleType: 'band', dataKey: 'label' }]}
+        series={data.series.map((s, i) => ({ dataKey: seriesId(s), label: name(s), color: colour(i), stack: recipe.stacked ? (s.currency ?? 'a') : undefined, valueFormatter: (value: number | null) => show(value, s) }))}
+      />
     )
 
   const categories = recipe.grouping === 'CATEGORY'
   return (
-    <figure style={{ margin: 0 }}>
+    <Box component="figure" sx={{ m: 0 }}>
       <div role="img" aria-label={t('dashboard.chartLabel', { title })}>
         <div aria-hidden>{picture}</div>
       </div>
-      <Text asChild size="2">
-        <button type="button" aria-expanded={table} onClick={() => setTable(!table)} style={{ all: 'unset', cursor: 'pointer', color: 'var(--accent-11)', textDecoration: 'underline', minHeight: 24, display: 'inline-block', marginTop: 'var(--space-2)' }}>
-          {table ? t('dashboard.hideTable') : t('dashboard.showTable')}
-        </button>
-      </Text>
+      <Link component="button" type="button" variant="body2" underline="always" aria-expanded={table} onClick={() => setTable(!table)} sx={{ minHeight: 24, mt: 1 }}>
+        {table ? t('dashboard.hideTable') : t('dashboard.showTable')}
+      </Link>
       {table && (
-        <Box mt="2" style={{ overflowX: 'auto' }}>
-          <Table.Root size="1" variant="surface">
-            <VisuallyHidden asChild>
-              <caption>{title}</caption>
-            </VisuallyHidden>
-            <Table.Header>
-              <Table.Row>
-                <Table.ColumnHeaderCell scope="col">{categories ? t('dashboard.table.category') : t('dashboard.table.period')}</Table.ColumnHeaderCell>
+        <Box sx={{ mt: 1 }}>
+          <SurfaceTable caption={title}>
+            <TableHead>
+              <TableRow>
+                <TableCell>{categories ? t('dashboard.table.category') : t('dashboard.table.period')}</TableCell>
                 {data.series.map((s) => (
-                  <Table.ColumnHeaderCell key={seriesId(s)} scope="col" justify="end">
+                  <TableCell key={seriesId(s)} align="right">
                     {name(s)}
-                  </Table.ColumnHeaderCell>
+                  </TableCell>
                 ))}
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
+              </TableRow>
+            </TableHead>
+            <TableBody>
               {rows.map((row) => (
-                <Table.Row key={String(row.key)}>
-                  <Table.RowHeaderCell>{String(row.label)}</Table.RowHeaderCell>
+                <TableRow key={String(row.key)}>
+                  <TableCell component="th" scope="row">
+                    {String(row.label)}
+                  </TableCell>
                   {data.series.map((s) => (
-                    <Table.Cell key={seriesId(s)} justify="end">
+                    <TableCell key={seriesId(s)} align="right">
                       {show(typeof row[seriesId(s)] === 'number' ? (row[seriesId(s)] as number) : null, s)}
-                    </Table.Cell>
+                    </TableCell>
                   ))}
-                </Table.Row>
+                </TableRow>
               ))}
-            </Table.Body>
-          </Table.Root>
+            </TableBody>
+          </SurfaceTable>
         </Box>
       )}
-    </figure>
+    </Box>
   )
 }
