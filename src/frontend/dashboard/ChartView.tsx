@@ -19,6 +19,12 @@ import { PALETTE, periodLabel, seriesId, type ChartData, type ChartRecipe, type 
 
 type Units = { distance: DistanceUnit; volume: VolumeUnit }
 
+/**
+ * The hover tooltip goes to the page, not into the chart's own layer: the tooltip is positioned with `position: fixed`, and inside a card
+ * (whose blurred background makes it the reference of fixed children) it landed far outside the screen.
+ */
+const tooltipInPage = () => ({ tooltip: { container: document.body } })
+
 const noData = (data: ChartData) => data.series.every((s) => s.points.every((p) => !p.value))
 
 /**
@@ -67,6 +73,7 @@ export function ChartView({ data, recipe, units, title, height = 240 }: { data: 
     hideLegend: !several,
     skipAnimation: reduce,
     disableKeyboardNavigation: true,
+    slotProps: tooltipInPage(),
   }
   const lines = (area: boolean) =>
     data.series.map((s, i) => ({
@@ -95,6 +102,7 @@ export function ChartView({ data, recipe, units, title, height = 240 }: { data: 
               height={height}
               skipAnimation={reduce}
               disableKeyboardNavigation
+              slotProps={tooltipInPage()}
               series={[
                 {
                   data: s.points.map((p, j) => ({ id: p.key, value: p.value ?? 0, label: keyLabel(p.key), color: colour(j + i) })),
