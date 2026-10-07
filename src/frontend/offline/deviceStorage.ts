@@ -19,7 +19,60 @@ export interface DeviceStore {
   put(snapshot: Snapshot): Promise<void>
   /** Keeps the `keep` most recent snapshots and removes the others, never those `spare` names (they count towards `keep`). */
   prune(keep: number, spare?: (key: string) => boolean): Promise<void>
+  /** The vehicles and logs downloaded for the offline window (see `pull.ts`). */
+  readonly rows: RowStore
   close(): void
+}
+
+export type LogKind = 'refuelings' | 'expenses'
+
+/** A log as the offline feed sent it (every field the grids, the details and the trash show), and when this device took it. */
+export interface LogRow {
+  id: string
+  vehicleId: string
+  date: string
+  deletedAt?: string | null
+  /** When this device stored it (Date.now()): a full download removes what it did not bring again. */
+  pulledAt: number
+  [field: string]: unknown
+}
+
+/** A vehicle as the home list sent it: what the logs need of it (its name, units and the access to its logs). */
+export interface VehicleRow {
+  id: string
+  name: string
+  logAccess: string
+  [field: string]: unknown
+}
+
+/** How far this device got with a vehicle's download (see `pull.ts`). */
+export interface PullCursor {
+  vehicleId: string
+  /** The window's start the logs were downloaded from: null all of them, false none. */
+  from: string | null | false
+  /** The server's watermark of the last complete download: the next one asks for what changed since. */
+  watermark: string | null
+  /** A download that is not finished goes on from here. */
+  next: string | null
+  /** At least one full download finished: the device can answer for this vehicle's logs. */
+  complete: boolean
+  /** When the full download under way began: what it did not bring again is removed at its end. */
+  fullStartedAt: number | null
+}
+
+export interface RowStore {
+  logs(kind: LogKind, vehicleId: string): Promise<LogRow[]>
+  allLogs(kind: LogKind): Promise<LogRow[]>
+  log(kind: LogKind, id: string): Promise<LogRow | undefined>
+  putLogs(kind: LogKind, rows: LogRow[]): Promise<void>
+  deleteLogs(kind: LogKind, ids: string[]): Promise<void>
+  vehicles(): Promise<VehicleRow[]>
+  putVehicles(rows: VehicleRow[]): Promise<void>
+  /** The vehicle, its logs and its cursor. */
+  dropVehicle(id: string): Promise<void>
+  cursor(vehicleId: string): Promise<PullCursor | undefined>
+  cursors(): Promise<PullCursor[]>
+  putCursor(cursor: PullCursor): Promise<void>
 }
 
 export interface DeviceStorage {
@@ -52,9 +105,9 @@ export const BLOCKED_WAIT_MS = 3_000
  * left open never blocks a new one; that old tab then keeps nothing more. A tab of a build from before this rule cannot be asked: the
  * open waits `BLOCKED_WAIT_MS` for it, then fails (the app works on, keeping nothing).
  */
-function openDb(factory: IDBFactory, name: string, upgrade: (db: IDBDatabase) => void): Promise<IDBDatabase> {
-  const request = factory.open(name, 1)
-  request.onupgradeneeded = () => upgrade(request.result)
+function openDb(factory: IDBFactory, name: string, version: number, upgrade: (db: IDBDatabase, from: number) => void): Promise<IDBDatabase> {
+  const request = factory.open(name, version)
+  request.onupgradeneeded = (event) => upgrade(request.result, event.oldVersion)
   return new Promise((resolve, reject) => {
     let blocked: ReturnType<typeof setTimeout> | undefined
     let gaveUp = false
@@ -79,12 +132,27 @@ function openDb(factory: IDBFactory, name: string, upgrade: (db: IDBDatabase) =>
 }
 
 export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage {
-  const meta = () => openDb(factory, META_DB, (db) => db.createObjectStore('meta'))
+  const meta = () => openDb(factory, META_DB, 1, (db) => db.createObjectStore('meta'))
   return {
     async open(user) {
-      const db = await openDb(factory, dbName(user), (created) => created.createObjectStore('snapshots', { keyPath: 'key' }).createIndex('at', 'at'))
+      const db = await openDb(factory, dbName(user), 2, (created, from) => {
+        if (from < 1) created.createObjectStore('snapshots', { keyPath: 'key' }).createIndex('at', 'at')
+        if (from < 2) {
+          // The downloaded window (2): vehicles, their logs by vehicle, and how far each vehicle's download got.
+          created.createObjectStore('vehicles', { keyPath: 'id' })
+          created.createObjectStore('refuelings', { keyPath: 'id' }).createIndex('vehicleId', 'vehicleId')
+          created.createObjectStore('expenses', { keyPath: 'id' }).createIndex('vehicleId', 'vehicleId')
+          created.createObjectStore('cursors', { keyPath: 'vehicleId' })
+        }
+      })
       return {
         user,
+        rows: rowStore({
+          refuelings: idbTable<LogRow>(db, 'refuelings'),
+          expenses: idbTable<LogRow>(db, 'expenses'),
+          vehicles: idbTable<VehicleRow>(db, 'vehicles'),
+          cursors: idbTable<PullCursor>(db, 'cursors'),
+        }),
         // Async, so a connection closed for a newer version fails as a promise, like any other failure.
         get: async (key) => (await done(db.transaction('snapshots').objectStore('snapshots').get(key))) as Snapshot | undefined,
         async put(snapshot) {
@@ -142,13 +210,22 @@ export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage
 /** The same, in memory: for a browser that refuses IndexedDB (private windows of some browsers) and for tests. Nothing survives a reload. */
 export function memoryStorage(): DeviceStorage {
   const stores = new Map<string, Map<string, Snapshot>>()
+  const memoryTables = new Map<string, Tables>()
   let last: string | null = null
   return {
     async open(user) {
       const rows = stores.get(user) ?? new Map<string, Snapshot>()
       stores.set(user, rows)
+      const tables = memoryTables.get(user) ?? {
+        refuelings: memoryTable<LogRow>('id'),
+        expenses: memoryTable<LogRow>('id'),
+        vehicles: memoryTable<VehicleRow>('id'),
+        cursors: memoryTable<PullCursor>('vehicleId'),
+      }
+      memoryTables.set(user, tables)
       return {
         user,
+        rows: rowStore(tables),
         get: async (key) => rows.get(key),
         put: async (snapshot) => void rows.set(snapshot.key, snapshot),
         async prune(keep, spare = () => false) {
@@ -161,5 +238,97 @@ export function memoryStorage(): DeviceStorage {
     },
     lastUser: async () => last,
     setLastUser: async (user) => void (last = user),
+  }
+}
+
+/** One object store, by its key and (for logs) by vehicle. */
+interface Table<T> {
+  all(): Promise<T[]>
+  byVehicle(vehicleId: string): Promise<T[]>
+  get(key: string): Promise<T | undefined>
+  put(rows: T[]): Promise<void>
+  delete(keys: string[]): Promise<void>
+}
+
+interface Tables {
+  refuelings: Table<LogRow>
+  expenses: Table<LogRow>
+  vehicles: Table<VehicleRow>
+  cursors: Table<PullCursor>
+}
+
+function idbTable<T>(db: IDBDatabase, name: string): Table<T> {
+  const read = () => db.transaction(name).objectStore(name)
+  async function write(apply: (store: IDBObjectStore) => void) {
+    const tx = db.transaction(name, 'readwrite')
+    apply(tx.objectStore(name))
+    await committed(tx)
+  }
+  return {
+    // Async, so a connection closed for a newer version fails as a promise.
+    all: async () => (await done(read().getAll())) as T[],
+    byVehicle: async (vehicleId) => (await done(read().index('vehicleId').getAll(vehicleId))) as T[],
+    get: async (k) => (await done(read().get(k))) as T | undefined,
+    put: (rows) => (rows.length === 0 ? Promise.resolve() : write((store) => rows.forEach((row) => store.put(row)))),
+    delete: (keys) => (keys.length === 0 ? Promise.resolve() : write((store) => keys.forEach((k) => store.delete(k)))),
+  }
+}
+
+function memoryTable<T>(key: string): Table<T> {
+  const rows = new Map<string, T>()
+  const keyOf = (row: T) => (row as Record<string, string>)[key]
+  return {
+    all: async () => [...rows.values()],
+    byVehicle: async (vehicleId) => [...rows.values()].filter((row) => (row as { vehicleId?: string }).vehicleId === vehicleId),
+    get: async (k) => rows.get(k),
+    put: async (list) => list.forEach((row) => rows.set(keyOf(row), structuredClone(row))),
+    delete: async (keys) => keys.forEach((k) => rows.delete(k)),
+  }
+}
+
+/**
+ * The downloaded window over its tables, with a copy of each vehicle's logs in memory once read, so paging and sorting a grid of a few
+ * thousand rows never waits for IndexedDB; every write goes through and refreshes the copy.
+ */
+function rowStore(tables: Tables): RowStore {
+  const cache = new Map<string, LogRow[]>()
+  const cacheKey = (kind: LogKind, vehicleId: string) => `${kind}:${vehicleId}`
+  async function logs(kind: LogKind, vehicleId: string) {
+    const key = cacheKey(kind, vehicleId)
+    const cached = cache.get(key)
+    if (cached) return cached
+    const loaded = await tables[kind].byVehicle(vehicleId)
+    cache.set(key, loaded)
+    return loaded
+  }
+  const forget = (kind: LogKind, vehicleIds: Iterable<string>) => {
+    for (const id of vehicleIds) cache.delete(cacheKey(kind, id))
+  }
+  return {
+    logs,
+    allLogs: (kind) => tables[kind].all(),
+    log: (kind, id) => tables[kind].get(id),
+    async putLogs(kind, rows) {
+      await tables[kind].put(rows)
+      forget(kind, new Set(rows.map((r) => r.vehicleId)))
+    },
+    async deleteLogs(kind, ids) {
+      const gone = (await Promise.all(ids.map((id) => tables[kind].get(id)))).flatMap((row) => (row ? [row.vehicleId] : []))
+      await tables[kind].delete(ids)
+      forget(kind, new Set(gone))
+    },
+    vehicles: () => tables.vehicles.all(),
+    putVehicles: (rows) => tables.vehicles.put(rows),
+    async dropVehicle(id) {
+      for (const kind of ['refuelings', 'expenses'] as const) {
+        await tables[kind].delete((await tables[kind].byVehicle(id)).map((row) => row.id))
+        forget(kind, [id])
+      }
+      await tables.vehicles.delete([id])
+      await tables.cursors.delete([id])
+    },
+    cursor: (vehicleId) => tables.cursors.get(vehicleId),
+    cursors: () => tables.cursors.all(),
+    putCursor: (cursor) => tables.cursors.put([cursor]),
   }
 }
