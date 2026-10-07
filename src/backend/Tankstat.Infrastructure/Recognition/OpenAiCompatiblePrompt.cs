@@ -13,7 +13,7 @@ namespace Tankstat.Infrastructure.Recognition;
 /// </summary>
 internal static class OpenAiCompatiblePrompt
 {
-    /// <summary>The reading guidance the app ships (the README prints it, so an operator's own prompt can start from it).</summary>
+    /// <summary>The reading guidance the app ships (docs/photo-reading.md prints it, so an operator's own prompt can start from it).</summary>
     public const string DefaultSystemPrompt = """
         You read photos for a vehicle fuel log and answer in JSON only. A photo shows one of two things: a car's instrument cluster, or a receipt.
 
