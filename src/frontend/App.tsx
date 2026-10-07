@@ -21,6 +21,7 @@ import { UiSettingsProvider } from './settings/UiSettingsProvider.tsx'
 import { useUiSettings } from './settings/uiSettingsContext.ts'
 import { NavList } from './shell/NavList.tsx'
 import { TopBar } from './shell/TopBar.tsx'
+import { UpdateNotice } from './shell/UpdateNotice.tsx'
 import { Loading } from './components/Loading.tsx'
 import { glass } from './theme/components.ts'
 import { MEDIA } from './theme/media.ts'
@@ -145,6 +146,7 @@ function Shell({
           <Box sx={{ maxWidth: 1136, mx: 'auto' }}>
             {error !== undefined && <ErrorMessage error={error} />}
             {loading && <Loading />}
+            <UpdateNotice />
             {data && <NoticeBanner notices={data.notices} />}
             {data && <Content data={data} />}
           </Box>

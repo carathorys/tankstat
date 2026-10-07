@@ -52,6 +52,10 @@
     "iosAdd": "Görgess le, és válaszd a „Főképernyőhöz adás” lehetőséget.",
     "iosConfirm": "Koppints a jobb felső sarokban a „Hozzáadás” gombra."
   },
+  "update": {
+    "available": "Elérhető a Tankstat új verziója.",
+    "reload": "Újratöltés"
+  },
   "notices": {
     "label": "Közlemények",
     "warning": "Figyelem:",
