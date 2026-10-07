@@ -23,7 +23,7 @@ export default defineConfig({
     // styles, icons) so the app starts fast and opens offline. The API, sign-in, pictures and uploads are never cached. A new build
     // takes over as soon as the browser has it: an open tab reloads once (never at the first install).
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt', // a new version waits until the person reloads (UpdateNotice); nothing reloads by itself
       injectRegister: false, // main.tsx registers the worker through virtual:pwa-register
       manifest: {
         name: 'Tankstat',
@@ -45,6 +45,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
         navigateFallback: 'index.html',
+        clientsClaim: true, // the first worker controls the page at once; a later one waits for the person's go-ahead (skipWaiting is off)
         navigateFallbackDenylist: SERVER_PATHS, // the API, the OIDC endpoints, pictures and uploads (tested in ServerPaths.unit.test.ts)
         cleanupOutdatedCaches: true,
       },

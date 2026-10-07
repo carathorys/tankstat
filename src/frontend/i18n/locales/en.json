@@ -52,6 +52,10 @@
     "iosAdd": "Scroll down and choose “Add to Home Screen”.",
     "iosConfirm": "Tap “Add” in the top right."
   },
+  "update": {
+    "available": "A new version of Tankstat is available.",
+    "reload": "Reload"
+  },
   "notices": {
     "label": "Notices",
     "warning": "Warning:",
