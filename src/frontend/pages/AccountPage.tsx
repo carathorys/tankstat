@@ -8,6 +8,7 @@ import type { AuthMode, SessionQuery } from '../gql/generated.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { ChangePasswordForm } from '../PasswordForms.tsx'
 import { avatarPath } from '../pictures/upload.ts'
+import { OfflineDataPanel } from './account/OfflineDataPanel.tsx'
 import { SessionsPanel } from './account/SessionsPanel.tsx'
 
 export function AccountPage({ mode, user }: { mode: AuthMode; user: SessionQuery['session']['user'] }) {
@@ -56,6 +57,7 @@ export function AccountPage({ mode, user }: { mode: AuthMode; user: SessionQuery
       {user && mode === 'STANDALONE' && <ChangePasswordForm />}
       {user && mode !== 'STANDALONE' && <Typography>{t('account.managed')}</Typography>}
       {user && (mode === 'STANDALONE' || mode === 'OIDC') && <SessionsPanel mode={mode} />}
+      {(user || mode === 'NONE') && <OfflineDataPanel />}
     </section>
   )
 }
