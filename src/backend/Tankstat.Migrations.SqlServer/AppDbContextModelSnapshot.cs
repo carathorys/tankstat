@@ -523,6 +523,11 @@ namespace Tankstat.Migrations.SqlServer
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
                     b.Property<int>("WarnDays")
                         .HasColumnType("int");
 
@@ -752,6 +757,11 @@ namespace Tankstat.Migrations.SqlServer
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
                     b.HasKey("Id");
 
                     b.HasIndex("CostId")
@@ -821,6 +831,11 @@ namespace Tankstat.Migrations.SqlServer
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
                     b.Property<decimal?>("Volume")
                         .HasPrecision(9, 3)
                         .HasColumnType("decimal(9,3)");
@@ -871,6 +886,11 @@ namespace Tankstat.Migrations.SqlServer
 
                     b.Property<Guid?>("PictureImageId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
 
                     b.HasKey("Id");
 

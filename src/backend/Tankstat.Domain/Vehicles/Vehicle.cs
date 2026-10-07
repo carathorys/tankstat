@@ -24,9 +24,16 @@ public sealed class Vehicle : IOwned, ISoftDeletable
 
     public bool IsDeleted => DeletedAt is not null;
 
-    public static Vehicle Create(Guid ownerId, string name, string? licensePlate, FuelType fuelType, MeasurementUnits units)
+    /// <summary>
+    /// Counts the saves of what a client can edit (the fields, the trash), from 1: a client that edits an old copy says which version it
+    /// started from, so a change made meanwhile is noticed. The picture does not count.
+    /// </summary>
+    public int Version { get; private set; }
+
+    /// <param name="id">The id the client chose beforehand, if any (see <see cref="EntityId"/>).</param>
+    public static Vehicle Create(Guid ownerId, string name, string? licensePlate, FuelType fuelType, MeasurementUnits units, Guid? id = null)
     {
-        var vehicle = new Vehicle { Id = Guid.NewGuid(), OwnerId = ownerId };
+        var vehicle = new Vehicle { Id = EntityId.OrNew(id), OwnerId = ownerId, Version = 1 };
         vehicle.Apply(name, licensePlate, fuelType, units);
         return vehicle;
     }
@@ -35,6 +42,7 @@ public sealed class Vehicle : IOwned, ISoftDeletable
     {
         if (IsDeleted) throw new DomainException("vehicle.trashedCannotEdit", "A vehicle in the trash cannot be edited; restore it first.");
         Apply(name, licensePlate, fuelType, units);
+        Version++;
     }
 
     public void SetPicture(Guid? imageId) => PictureImageId = imageId;
@@ -43,12 +51,14 @@ public sealed class Vehicle : IOwned, ISoftDeletable
     {
         if (IsDeleted) throw new DomainException("vehicle.alreadyTrashed", "This vehicle is already in the trash.");
         DeletedAt = now;
+        Version++;
     }
 
     public void Restore()
     {
         if (!IsDeleted) throw new DomainException("vehicle.notTrashed", "This vehicle is not in the trash.");
         DeletedAt = null;
+        Version++;
     }
 
     private void Apply(string name, string? licensePlate, FuelType fuelType, MeasurementUnits units)

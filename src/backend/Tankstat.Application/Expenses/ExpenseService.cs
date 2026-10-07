@@ -4,6 +4,7 @@ using Tankstat.Application.Auth;
 using Tankstat.Application.Odometers;
 using Tankstat.Application.Photos;
 using Tankstat.Application.Recognition;
+using Tankstat.Application.Sync;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain;
 using Tankstat.Domain.Access;
@@ -45,16 +46,20 @@ public sealed class ExpenseService(
     }
 
     /// <param name="photoDraftIds">Photos the user uploaded for this expense before saving it (see <see cref="PhotoDraftService"/>).</param>
-    public async Task<Expense> AddAsync(Guid vehicleId, ExpenseInput input, CancellationToken ct, IReadOnlyCollection<Guid>? photoDraftIds = null)
+    /// <param name="id">The id the client chose; an expense it already created with this id is answered as it is (see <see cref="ClientIds"/>).</param>
+    public async Task<Expense> AddAsync(Guid vehicleId, ExpenseInput input, CancellationToken ct, IReadOnlyCollection<Guid>? photoDraftIds = null, Guid? id = null)
     {
         var vehicle = await EditableVehicleAsync(vehicleId, ct);
         var creator = await access.RequirePrincipalAsync(ct);
+        // Before any rule: what the first try saved may itself be a neighbour of this expense now.
+        if (id is { } given && await expenses.FindIncludingDeletedAsync(given, ct) is { } existing) return Repeated(existing, vehicle.Id, creator.Id);
         await ValidateAsync(vehicle.Id, input, exceptReadingId: null, ct);
         var drafts = await photos.RequireDraftsAsync(vehicle.Id, photoDraftIds, ct);
         var readingPhotos = (input.Amount is null || input.Odometer is null) && await filler.MayWaitForDraftsAsync([.. drafts.Select(d => d.Id)], ct);
 
-        var expense = Build(vehicle, creator.Id, input, readingPhotos);
-        await expenses.AddAsync(expense, ct);
+        var expense = Build(vehicle, creator.Id, input, readingPhotos, id);
+        if (!await expenses.AddAsync(expense, ct)) // the same add, sent twice at once: the other one saved it
+            return Repeated(await expenses.FindIncludingDeletedAsync(expense.Id, ct) ?? expense, vehicle.Id, creator.Id);
         await photos.AttachDraftsAsync(LogType.Expense, expense.Id, drafts, ct);
         logger.LogDebug("User {UserId} added expense {ExpenseId} for vehicle {VehicleId} with {Photos} photos", creator.Id, expense.Id, vehicle.Id, drafts.Count);
         // Readings that finished before the save are taken now; a draft that could not be attached leaves nothing to wait for.
@@ -64,16 +69,18 @@ public sealed class ExpenseService(
 
     /// <summary>Builds (without saving) an expense whose input was already validated; used by <see cref="AddAsync"/> and by imports.</summary>
     /// <param name="readingPhotos">A photo of the expense is still being read (only then may the amount be empty).</param>
-    public static Expense Build(Vehicle vehicle, Guid createdById, ExpenseInput input, bool readingPhotos = false)
+    public static Expense Build(Vehicle vehicle, Guid createdById, ExpenseInput input, bool readingPhotos = false, Guid? id = null)
     {
         var cost = input.Amount is { } amount ? Cost.Create(vehicle.OwnerId, vehicle.Id, input.Date, amount, input.Currency) : null;
         var reading = input.Odometer is { } value ? OdometerReading.Create(vehicle.OwnerId, vehicle.Id, input.Date, value) : null;
-        return Expense.Create(vehicle.OwnerId, createdById, vehicle.Id, input.Date, input.Title, input.Category, cost, reading, input.Note, readingPhotos);
+        return Expense.Create(vehicle.OwnerId, createdById, vehicle.Id, input.Date, input.Title, input.Category, cost, reading, input.Note, readingPhotos, id);
     }
 
-    public async Task<Expense> UpdateAsync(Guid id, ExpenseInput input, CancellationToken ct)
+    /// <param name="expectedVersion">The version the change was made from; refused when the expense was saved since (see <see cref="VersionCheck"/>).</param>
+    public async Task<Expense> UpdateAsync(Guid id, ExpenseInput input, CancellationToken ct, int? expectedVersion = null)
     {
         var expense = await EditableAsync(id, includeDeleted: false, ct);
+        VersionCheck.Require(expectedVersion, expense.Version);
         await ValidateAsync(expense.VehicleId, input, exceptReadingId: expense.OdometerReadingId, ct);
         var readingPhotos = (input.Amount is null || input.Odometer is null) && await filler.MayWaitForLogPhotosAsync(LogType.Expense, id, ct);
         var waited = expense.ReviewState;
@@ -90,18 +97,20 @@ public sealed class ExpenseService(
     }
 
     /// <summary>Moves the expense to the trash; it can be restored until it is deleted permanently.</summary>
-    public async Task<Expense> DeleteAsync(Guid id, CancellationToken ct)
+    public async Task<Expense> DeleteAsync(Guid id, CancellationToken ct, int? expectedVersion = null)
     {
         var expense = await EditableAsync(id, includeDeleted: false, ct);
+        VersionCheck.Require(expectedVersion, expense.Version);
         expense.MarkDeleted(clock.GetUtcNow());
         await expenses.UpdateAsync(expense, LinkedChanges.None, ct);
         logger.LogDebug("Expense {ExpenseId} of vehicle {VehicleId} moved to the trash", id, expense.VehicleId);
         return expense;
     }
 
-    public async Task<Expense> RestoreAsync(Guid id, CancellationToken ct)
+    public async Task<Expense> RestoreAsync(Guid id, CancellationToken ct, int? expectedVersion = null)
     {
         var expense = await EditableAsync(id, includeDeleted: true, ct);
+        VersionCheck.Require(expectedVersion, expense.Version);
         if (expense.Odometer is { } value) await odometer.ValidateAsync(expense.VehicleId, expense.Date, value, exceptReadingId: null, ct);
         expense.Restore();
         await expenses.UpdateAsync(expense, LinkedChanges.None, ct);
@@ -131,6 +140,14 @@ public sealed class ExpenseService(
         await photos.DeleteFilesAsync(LogType.Expense, purged, ct); // their photos go with them
         if (purged.Count > 0) logger.LogInformation("User {UserId} emptied the expense trash: {Count} expenses deleted for good ({WithPhotos} with photos)", user.Id, purged.Count, purged.WithPhotos.Count);
         return purged.Count;
+    }
+
+    /// <summary>An expense this add already created (same vehicle, same creator) is the answer; another one's id is refused.</summary>
+    private Expense Repeated(Expense existing, Guid vehicleId, Guid creatorId)
+    {
+        var same = existing.VehicleId == vehicleId && existing.CreatedById == creatorId;
+        if (same) logger.LogDebug("Expense {ExpenseId} of vehicle {VehicleId} was already added; the add came again", existing.Id, vehicleId);
+        return ClientIds.Repeat(existing, same, existing.Id);
     }
 
     private async Task<Vehicle?> VisibleVehicleAsync(Guid vehicleId, CancellationToken ct) => (await guard.ForVehicleAsync(vehicleId, ct))?.Vehicle;

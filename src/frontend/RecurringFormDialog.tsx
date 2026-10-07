@@ -8,6 +8,7 @@ import { Loading } from './components/Loading.tsx'
 import { LabeledSelect } from './components/UnitSelect.tsx'
 import { DialogButtons, DialogCancel, DialogFrame } from './dialogs/DialogFrame.tsx'
 import { DialogTrigger } from './dialogs/DialogTrigger.tsx'
+import { useClientId } from './dialogs/useClientId.ts'
 import { useDialogState } from './dialogs/useDialogState.ts'
 import { todayIso } from './forms/dates.ts'
 import { Field } from './forms/Field.tsx'
@@ -19,6 +20,8 @@ import { ErrorMessage } from './messages.tsx'
 import { useToast } from './toast/toastContext.ts'
 
 export interface RecurringValues {
+  /** A new schedule only: the id it gets on the server, the same for every Save of one opening of the dialog (see `useClientId`). */
+  id?: string
   title: string
   category: string | null
   note: string | null
@@ -57,6 +60,7 @@ export function RecurringFormDialog({
   const { toast } = useToast()
   const [open, setOpen] = useDialogState()
   const editing = initial !== undefined
+  const clientId = useClientId(open)
 
   return (
     <>
@@ -77,7 +81,7 @@ export function RecurringFormDialog({
                 initial={initial}
                 start={start}
                 onSubmit={async (values) => {
-                  await onSubmit(values)
+                  await onSubmit(editing ? values : { ...values, id: clientId })
                   setOpen(false)
                   toast(t('toast.saved'))
                 }}

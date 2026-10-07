@@ -60,22 +60,32 @@ public sealed class RecurringExpense : IOwned
     /// <summary>How much distance before the due odometer it counts as "due soon".</summary>
     public long WarnDistance { get; private set; }
 
+    /// <summary>
+    /// Counts the saves of what a client can edit (the schedule, marking it done), from 1: a client that edits an old copy says which
+    /// version it started from, so a change made meanwhile is noticed.
+    /// </summary>
+    public int Version { get; private set; }
+
     public bool UsesTime => Kind is RecurrenceKind.Time or RecurrenceKind.Combined;
     public bool UsesDistance => Kind is RecurrenceKind.Odometer or RecurrenceKind.Combined;
 
     public static RecurringExpense Create(
         Guid ownerId, Guid createdById, Guid vehicleId, string title, string? category, string? note, RecurrenceKind kind,
-        int? intervalMonths, long? intervalDistance, DateOnly lastDoneDate, long? lastDoneOdometer, int warnDays, long warnDistance, DateTimeOffset createdAt)
+        int? intervalMonths, long? intervalDistance, DateOnly lastDoneDate, long? lastDoneOdometer, int warnDays, long warnDistance, DateTimeOffset createdAt,
+        Guid? id = null)
     {
-        var item = new RecurringExpense { Id = Guid.NewGuid(), OwnerId = ownerId, CreatedById = createdById, VehicleId = vehicleId, CreatedAt = createdAt };
+        var item = new RecurringExpense { Id = EntityId.OrNew(id), Version = 1, OwnerId = ownerId, CreatedById = createdById, VehicleId = vehicleId, CreatedAt = createdAt };
         item.Apply(title, category, note, kind, intervalMonths, intervalDistance, lastDoneDate, lastDoneOdometer, warnDays, warnDistance);
         return item;
     }
 
     public void Update(
         string title, string? category, string? note, RecurrenceKind kind, int? intervalMonths, long? intervalDistance,
-        DateOnly lastDoneDate, long? lastDoneOdometer, int warnDays, long warnDistance) =>
+        DateOnly lastDoneDate, long? lastDoneOdometer, int warnDays, long warnDistance)
+    {
         Apply(title, category, note, kind, intervalMonths, intervalDistance, lastDoneDate, lastDoneOdometer, warnDays, warnDistance);
+        Version++;
+    }
 
     /// <summary>Starts the next interval from the day (and odometer) it was done.</summary>
     public void MarkDone(DateOnly date, long? odometer)
@@ -83,6 +93,7 @@ public sealed class RecurringExpense : IOwned
         CheckDone(date, odometer);
         LastDoneDate = date;
         LastDoneOdometer = odometer ?? LastDoneOdometer;
+        Version++;
     }
 
     /// <summary>
