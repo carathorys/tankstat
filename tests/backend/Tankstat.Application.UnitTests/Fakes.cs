@@ -32,6 +32,18 @@ using Tankstat.TestSupport;
 
 namespace Tankstat.Application.UnitTests;
 
+/// <summary>Shared behaviour of the in-memory repositories.</summary>
+internal static class Fake
+{
+    /// <summary>Like the database's primary key: a second row with the same id is not added (false), as when the same add arrives twice at once.</summary>
+    public static bool AddOnce<T>(List<T> items, T item, Func<T, Guid> id)
+    {
+        if (items.Any(i => id(i) == id(item))) return false;
+        items.Add(item);
+        return true;
+    }
+}
+
 internal sealed class InMemoryVehicles : IVehicleRepository
 {
     public List<Vehicle> Items { get; } = [];
@@ -63,7 +75,7 @@ internal sealed class InMemoryVehicles : IVehicleRepository
     public Task<Vehicle?> FindIncludingDeletedAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(v => v.Id == id));
     public Task<IReadOnlyList<Vehicle>> ListByIdsIncludingDeletedAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<Vehicle>>(Items.Where(v => ids.Contains(v.Id)).ToList());
-    public Task AddAsync(Vehicle vehicle, CancellationToken ct) { Items.Add(vehicle); return Task.CompletedTask; }
+    public Task<bool> AddAsync(Vehicle vehicle, CancellationToken ct) => Task.FromResult(Fake.AddOnce(Items, vehicle, v => v.Id));
     public Task UpdateAsync(Vehicle vehicle, CancellationToken ct) => Task.CompletedTask; // entities are shared references
     public Task<Vehicle?> FindByPictureImageAsync(Guid imageId, CancellationToken ct) =>
         Task.FromResult(Items.FirstOrDefault(v => v.PictureImageId == imageId && !v.IsDeleted));
@@ -95,7 +107,7 @@ internal sealed class InMemoryRefuelings : IRefuelingRepository
         Task.FromResult(Items.Count(r => r.IsDeleted && scope.Contains(r.OwnerId, r.VehicleId)));
     public Task<Refueling?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(r => r.Id == id && !r.IsDeleted));
     public Task<Refueling?> FindIncludingDeletedAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(r => r.Id == id));
-    public Task AddAsync(Refueling refueling, CancellationToken ct) { Items.Add(refueling); return Task.CompletedTask; }
+    public Task<bool> AddAsync(Refueling refueling, CancellationToken ct) => Task.FromResult(Fake.AddOnce(Items, refueling, r => r.Id));
     public Task UpdateAsync(Refueling refueling, LinkedChanges changes, CancellationToken ct) => Task.CompletedTask; // entities are shared references
     public Task<PurgedLogs> PurgeAsync(OwnerScope scope, CancellationToken ct)
     {
@@ -126,7 +138,7 @@ internal sealed class InMemoryExpenses : IExpenseRepository
         Task.FromResult<IReadOnlyList<string>>(Items.Where(e => e.VehicleId == vehicleId && e.Category is not null).Select(e => e.Category!).Distinct().Order().ToList());
     public Task<Expense?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(e => e.Id == id && !e.IsDeleted));
     public Task<Expense?> FindIncludingDeletedAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(e => e.Id == id));
-    public Task AddAsync(Expense expense, CancellationToken ct) { Items.Add(expense); return Task.CompletedTask; }
+    public Task<bool> AddAsync(Expense expense, CancellationToken ct) => Task.FromResult(Fake.AddOnce(Items, expense, e => e.Id));
     public Task UpdateAsync(Expense expense, LinkedChanges changes, CancellationToken ct) => Task.CompletedTask; // shared references
     public Task<PurgedLogs> PurgeAsync(OwnerScope scope, CancellationToken ct)
     {
@@ -154,7 +166,7 @@ internal sealed class InMemoryRecurring(InMemoryVehicles vehicles) : IRecurringE
     public Task<RecurringExpense?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(i => i.Id == id));
     public Task<IReadOnlyList<RecurringExpense>> FindManyAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<RecurringExpense>>(Items.Where(i => ids.Contains(i.Id)).ToList());
-    public Task AddAsync(RecurringExpense item, CancellationToken ct) { Items.Add(item); return Task.CompletedTask; }
+    public Task<bool> AddAsync(RecurringExpense item, CancellationToken ct) => Task.FromResult(Fake.AddOnce(Items, item, i => i.Id));
     /// <summary>When set, <see cref="UpdateAsync"/> and <see cref="CompleteAsync"/> throw it (a failing database).</summary>
     public Exception? FailUpdateWith { get; set; }
     public Task UpdateAsync(RecurringExpense item, CancellationToken ct) => FailUpdateWith is { } e ? Task.FromException(e) : Task.CompletedTask; // shared references

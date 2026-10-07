@@ -11,6 +11,7 @@ import { Loading } from './components/Loading.tsx'
 import { LabeledSelect } from './components/UnitSelect.tsx'
 import { DialogButtons, DialogCancel, DialogFrame } from './dialogs/DialogFrame.tsx'
 import { DialogTrigger } from './dialogs/DialogTrigger.tsx'
+import { useClientId } from './dialogs/useClientId.ts'
 import { useDialogState } from './dialogs/useDialogState.ts'
 import { Field } from './forms/Field.tsx'
 import { FieldInput } from './forms/FieldInput.tsx'
@@ -27,6 +28,8 @@ import { useToast } from './toast/toastContext.ts'
 import { DISTANCE_UNITS, FUEL_TYPES, VOLUME_UNITS } from './vehicles.ts'
 
 export interface VehicleValues {
+  /** A new vehicle only: the id it gets on the server, the same for every Save of one opening of the dialog (see `useClientId`). */
+  id?: string
   name: string
   licensePlate: string | null
   fuelType: FuelType
@@ -59,6 +62,7 @@ export function VehicleFormDialog({
   const { toast } = useToast()
   const [open, setOpen] = useDialogState()
   const editing = vehicleId !== undefined
+  const clientId = useClientId(open)
   const details = useQuery(VehicleDetailsDocument, { variables: { id: vehicleId ?? '' }, skip: !editing || !open, fetchPolicy: 'network-only' })
   const defaults = useQuery(VehicleDefaultsDocument, { skip: editing || !open })
   const loaded = details.data?.vehicle
@@ -82,7 +86,7 @@ export function VehicleFormDialog({
             initial={initial}
             editing={editing}
             onSubmit={async (values) => {
-              await onSubmit(values)
+              await onSubmit(editing ? values : { ...values, id: clientId })
               setOpen(false)
               toast(t('toast.saved'))
             }}

@@ -11,9 +11,10 @@ namespace Tankstat.Api.GraphQL;
 /// <param name="LastDoneOdometer">Omit to start from the vehicle's current odometer (its latest reading); needed when the vehicle has none and distance counts.</param>
 /// <param name="WarnDays">Omit for the instance default (<c>vehicleDefaults.recurringWarnDays</c>).</param>
 /// <param name="WarnDistance">Omit for the instance default (<c>vehicleDefaults.recurringWarnDistance</c>, in the vehicle's distance unit).</param>
+/// <param name="Id">An id the client chose for the new schedule; the same add sent again (a lost answer, a replay after being offline) answers with what it created. Omit to let the server choose.</param>
 public sealed record AddRecurringExpenseInput(
     Guid VehicleId, string Title, string? Category, string? Note, RecurrenceKind Kind, int? IntervalMonths, long? IntervalDistance,
-    DateOnly? LastDoneDate, long? LastDoneOdometer, int? WarnDays, long? WarnDistance);
+    DateOnly? LastDoneDate, long? LastDoneOdometer, int? WarnDays, long? WarnDistance, Guid? Id = null);
 
 /// <param name="WarnDays">Omit to keep the current value.</param>
 /// <param name="WarnDistance">Omit to keep the current value.</param>
@@ -28,8 +29,10 @@ public sealed record UpdateRecurringExpenseInput(
 /// <param name="Title">The expense's title; omit for the schedules' titles joined.</param>
 /// <param name="Category">The expense's category; omit for the schedules' common (or first) category.</param>
 /// <param name="PhotoIds">Photos uploaded beforehand (<c>PUT /media/vehicles/{id}/photo-drafts</c>); they become the logged expense's photos.</param>
+/// <param name="ExpenseId">An id the client chose for the logged expense: the same visit sent again (a lost answer, a replay after being offline) changes nothing.</param>
 public sealed record MarkRecurringExpensesDoneInput(
-    IReadOnlyList<Guid> Ids, DateOnly Date, long? Odometer, decimal? Amount, string? Currency, string? Title, string? Category, IReadOnlyList<Guid>? PhotoIds = null);
+    IReadOnlyList<Guid> Ids, DateOnly Date, long? Odometer, decimal? Amount, string? Currency, string? Title, string? Category, IReadOnlyList<Guid>? PhotoIds = null,
+    Guid? ExpenseId = null);
 
 /// <summary>The schedules as they stand now, and the expense logged for them (null when none was).</summary>
 public sealed record MarkRecurringExpensesDonePayload(IReadOnlyList<RecurringExpenseInfo> Schedules, Expense? Expense);
@@ -41,13 +44,14 @@ public sealed record RecurringRef(Guid Id, string Title);
 public sealed record RecurrenceStatusInfo(RecurrenceState State, RecurrenceLimit? Limit, DateOnly? DueDate, long? DueOdometer, int? DaysLeft, long? DistanceLeft);
 
 /// <summary>A schedule such as insurance or an oil change, with its status and when it was added. Intervals and odometers are in the vehicle's distance unit.</summary>
+/// <param name="Version">Counts its saves (edits, being marked done), from 1.</param>
 public sealed record RecurringExpenseInfo(
     Guid Id, Guid VehicleId, string Title, string? Category, string? Note, RecurrenceKind Kind, int? IntervalMonths, long? IntervalDistance,
-    DateOnly LastDoneDate, long? LastDoneOdometer, int WarnDays, long WarnDistance, DateTimeOffset CreatedAt, RecurrenceStatusInfo Status)
+    DateOnly LastDoneDate, long? LastDoneOdometer, int WarnDays, long WarnDistance, DateTimeOffset CreatedAt, int Version, RecurrenceStatusInfo Status)
 {
     public static RecurringExpenseInfo From(RecurringItem r) => new(
         r.Item.Id, r.Item.VehicleId, r.Item.Title, r.Item.Category, r.Item.Note, r.Item.Kind, r.Item.IntervalMonths, r.Item.IntervalDistance,
-        r.Item.LastDoneDate, r.Item.LastDoneOdometer, r.Item.WarnDays, r.Item.WarnDistance, r.Item.CreatedAt,
+        r.Item.LastDoneDate, r.Item.LastDoneOdometer, r.Item.WarnDays, r.Item.WarnDistance, r.Item.CreatedAt, r.Item.Version,
         new RecurrenceStatusInfo(r.Status.State, r.Status.Limit, r.Status.DueDate, r.Status.DueOdometer, r.Status.DaysLeft, r.Status.DistanceLeft));
 }
 
@@ -91,7 +95,7 @@ public sealed class RecurringMutations
 {
     public async Task<RecurringExpenseInfo> AddRecurringExpense(AddRecurringExpenseInput input, [Service] RecurringExpenseService recurring, CancellationToken ct) =>
         RecurringExpenseInfo.From(await recurring.AddAsync(input.VehicleId,
-            new RecurringExpenseInput(input.Title, input.Category, input.Note, input.Kind, input.IntervalMonths, input.IntervalDistance, input.LastDoneDate, input.LastDoneOdometer, input.WarnDays, input.WarnDistance), ct));
+            new RecurringExpenseInput(input.Title, input.Category, input.Note, input.Kind, input.IntervalMonths, input.IntervalDistance, input.LastDoneDate, input.LastDoneOdometer, input.WarnDays, input.WarnDistance), ct, input.Id));
 
     public async Task<RecurringExpenseInfo> UpdateRecurringExpense(UpdateRecurringExpenseInput input, [Service] RecurringExpenseService recurring, CancellationToken ct) =>
         RecurringExpenseInfo.From(await recurring.UpdateAsync(input.Id,
@@ -112,7 +116,7 @@ public sealed class RecurringMutations
         MarkRecurringExpensesDoneInput input, [Service] RecurringExpenseService recurring, [Service] IOptions<VehicleDefaultsOptions> defaults, CancellationToken ct)
     {
         var done = await recurring.MarkDoneAsync(input.Ids,
-            new MarkDoneInput(input.Date, input.Odometer, input.Amount, input.Currency ?? defaults.Value.Currency, input.Title, input.Category, input.PhotoIds), ct);
+            new MarkDoneInput(input.Date, input.Odometer, input.Amount, input.Currency ?? defaults.Value.Currency, input.Title, input.Category, input.PhotoIds, input.ExpenseId), ct);
         return new MarkRecurringExpensesDonePayload(done.Schedules.Select(RecurringExpenseInfo.From).ToList(), done.Expense);
     }
 }

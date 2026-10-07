@@ -62,17 +62,24 @@ public sealed class Expense : IOwned, ISoftDeletable
     /// <summary>The empty values a photo could fill in: the amount and an odometer that was not noted.</summary>
     public LogValues Fillable => Missing | (OdometerReading is null ? LogValues.Odometer : LogValues.None);
 
+    /// <summary>
+    /// Counts the saves of what a client can edit (the values, the trash, what a photo filled in), from 1: a client that edits an old copy
+    /// says which version it started from, so a change made meanwhile is noticed. The photos do not count.
+    /// </summary>
+    public int Version { get; private set; }
+
     /// <param name="readingPhotos">A photo of the expense is still being read: only then may the amount be left empty.</param>
+    /// <param name="id">The id the client chose beforehand, if any (see <see cref="EntityId"/>).</param>
     public static Expense Create(
         Guid ownerId, Guid createdById, Guid vehicleId, DateOnly date, string title, string? category, Cost? cost, OdometerReading? reading,
-        string? note = null, bool readingPhotos = false)
+        string? note = null, bool readingPhotos = false, Guid? id = null)
     {
         if ((cost is not null && cost.VehicleId != vehicleId) || (reading is not null && reading.VehicleId != vehicleId))
             throw new DomainException("expense.wrongVehicle", "The odometer reading and the cost must belong to the same vehicle as the expense.");
 
         var expense = new Expense
         {
-            Id = Guid.NewGuid(), OwnerId = ownerId, CreatedById = createdById, VehicleId = vehicleId,
+            Id = EntityId.OrNew(id), Version = 1, OwnerId = ownerId, CreatedById = createdById, VehicleId = vehicleId,
             CostId = cost?.Id, Cost = cost, OdometerReadingId = reading?.Id, OdometerReading = reading,
         };
         expense.Apply(date, title, category, note);
@@ -97,6 +104,7 @@ public sealed class Expense : IOwned, ISoftDeletable
         var (createdReading, removedReading) = SetReading(date, odometer);
         ReviewState = LogReview.AfterSave(Missing, Fillable, readingPhotos);
         FilledFromPhoto = LogValues.None;
+        Version++;
         return new LinkedChanges(createdReading, removedReading, createdCost, removedCost);
     }
 
@@ -107,6 +115,7 @@ public sealed class Expense : IOwned, ISoftDeletable
     public LinkedChanges FillFromPhoto(PhotoValues values)
     {
         if (ReviewState != ReviewState.AwaitingPhotos || IsDeleted) return LinkedChanges.None;
+        var before = FilledFromPhoto;
         OdometerReading? createdReading = null;
         Cost? createdCost = null;
         if (OdometerReading is null && LogReview.UsableOdometer(values.Odometer) is { } odometer)
@@ -121,6 +130,7 @@ public sealed class Expense : IOwned, ISoftDeletable
             (Cost, CostId) = (createdCost, createdCost.Id);
             FilledFromPhoto |= LogValues.Total;
         }
+        if (FilledFromPhoto != before) Version++; // values changed: an edit of the copy from before is stale
         return new LinkedChanges(createdReading, null, createdCost, null);
     }
 
@@ -138,6 +148,7 @@ public sealed class Expense : IOwned, ISoftDeletable
         DeletedAt = now;
         OdometerReading?.MarkDeleted(now);
         Cost?.MarkDeleted(now);
+        Version++;
     }
 
     public void Restore()
@@ -146,6 +157,7 @@ public sealed class Expense : IOwned, ISoftDeletable
         DeletedAt = null;
         OdometerReading?.Restore();
         Cost?.Restore();
+        Version++;
     }
 
     private (OdometerReading? Created, OdometerReading? Removed) SetReading(DateOnly date, long? odometer)

@@ -78,6 +78,8 @@ A new test goes into the folder of the feature it covers; run one file with `npx
 
 A vehicle fuel log: `Vehicle` (name, licence plate, fuel type, units, optional picture) and `Refueling` (date, volume, a `Cost`, an `OdometerReading`, full tank, whether a fill-up before it was missed, optional note, who logged it). `OdometerReading`, `Cost` and the units are shared building blocks meant to be reused by later entities (inspections, service fees). Exposed via GraphQL (`vehicles`, `vehicle(id)`, `refuelings(vehicleId, ...)`, `refuelingTrash`, `vehicleLogAccess`, `shareCandidates`, `logDefaults`; mutations such as `addVehicle`, `logRefueling`, `updateRefueling`, `deleteRefueling`, `restoreRefueling`, `setVehicleLogAccess`, `emptyTrash`, `emptyRefuelingTrash`).
 
+Adds can carry an id chosen by the client (`id` on `AddVehicleInput`, `LogRefuelingInput`, `AddExpenseInput`, `AddRecurringExpenseInput`; `expenseId` on `MarkRecurringExpensesDoneInput`): sending the same add again, after an answer that never arrived, answers with what the first one created instead of creating it twice (an id someone else used is refused with `sync.idTaken`). The app's add dialogs choose one per opening, so pressing Save again after a network error never logs a refuelling twice. Vehicles, refuelings, expenses and recurring expenses also count their saves (`version`, from 1); this is the groundwork for working offline and syncing later, where a change made from an old version is detected instead of silently overwriting what someone else saved.
+
 Pending migrations are applied automatically at startup. Each provider has its own migration project, so after changing an entity run:
 
 ```sh
