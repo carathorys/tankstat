@@ -138,6 +138,13 @@ internal sealed class UserSessionRepository(IDbContextFactory<AppDbContext> dbFa
         await db.UserSessions.Where(s => s.Id == id).ExecuteUpdateAsync(u => u.SetProperty(s => s.SessionVersion, sessionVersion), ct);
     }
 
+    public async Task<IReadOnlyList<UserSession>> ListUsableForUserAsync(Guid userId, DateTimeOffset now, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.UserSessions.AsNoTracking().Where(s => s.UserId == userId && s.RevokedAt == null && s.ExpiresAt > now)
+            .OrderByDescending(s => s.LastUsedAt).ThenBy(s => s.Id).ToListAsync(ct);
+    }
+
     public async Task<int> RevokeForUserAsync(Guid userId, Guid? except, DateTimeOffset now, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);

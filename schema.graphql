@@ -31,6 +31,7 @@ type Query {
   canSetUserPasswords: Boolean! @cost(weight: "10")
   accessSettings: AccessSettingsInfo! @cost(weight: "10")
   accessGrants: [AccessGrantInfo!]! @cost(weight: "10")
+  mySessions: [UserSessionInfo!]! @cost(weight: "10")
   refuelings(
     vehicleId: UUID!
     orderBy: RefuelingSortField! = DATE
@@ -106,6 +107,8 @@ type Mutation {
   deleteUser(input: DeleteUserInput!): Boolean! @cost(weight: "10")
   setDefaultAccess(level: AccessLevel!): AccessSettingsInfo! @cost(weight: "10")
   setAccessGrant(input: SetAccessGrantInput!): Boolean! @cost(weight: "10")
+  revokeSession(id: UUID!): Boolean! @cost(weight: "10")
+  revokeOtherSessions: Int! @cost(weight: "10")
   logRefueling(input: LogRefuelingInput!): Refueling! @cost(weight: "10")
   updateRefueling(input: UpdateRefuelingInput!): Refueling! @cost(weight: "10")
   deleteRefueling(id: UUID!): Refueling! @cost(weight: "10")
@@ -444,6 +447,15 @@ type UserRef {
   id: UUID!
   displayName: String!
   avatarUrl: String
+}
+
+type UserSessionInfo {
+  id: UUID!
+  client: String
+  createdAt: DateTime!
+  lastUsedAt: DateTime!
+  expiresAt: DateTime!
+  current: Boolean!
 }
 
 type Vehicle {

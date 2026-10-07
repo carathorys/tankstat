@@ -283,7 +283,23 @@
     "noAuth": "A hitelesítés ki van kapcsolva, ezért nincs személyes fiók.",
     "managed": "A jelszavadat az identitásszolgáltatód vagy a proxy kezeli.",
     "avatar": "Profilkép",
-    "avatarHelp": "Más felhasználók a neved mellett látják."
+    "avatarHelp": "Más felhasználók a neved mellett látják.",
+    "sessions": {
+      "title": "Bejelentkezett eszközök",
+      "description": "Ahol be vagy jelentkezve. Egy eszköz addig marad bejelentkezve, amíg időnként használod; itt kijelentkeztetve a munkamenete azonnal véget ér.",
+      "unknownDevice": "Ismeretlen eszköz",
+      "thisDevice": "Ez az eszköz",
+      "signedIn": "Bejelentkezve: {{time}}",
+      "lastUsed": "utoljára használva: {{time}}",
+      "signOut": "Kijelentkeztetés",
+      "signOutAria": "{{device}} kijelentkeztetése",
+      "signOutOthers": "Kijelentkeztetés minden más eszközön",
+      "signOutOthersTitle": "Kijelentkeztetsz minden más eszközt?",
+      "signOutOthersDescription": "Minden más eszközön újra be kell jelentkezni. Ez az eszköz bejelentkezve marad.",
+      "signedOutOne": "{{device}} kijelentkeztetve.",
+      "signedOutOthers_one": "{{count}} másik eszköz kijelentkeztetve.",
+      "signedOutOthers_other": "{{count}} másik eszköz kijelentkeztetve."
+    }
   },
   "admin": {
     "title": "Adminisztráció",
