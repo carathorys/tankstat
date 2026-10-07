@@ -1,4 +1,6 @@
-import { Button, Callout, Flex } from '@radix-ui/themes'
+import Alert from '@mui/material/Alert'
+import Button from '@mui/material/Button'
+import Stack from '@mui/material/Stack'
 import { TriangleAlert } from 'lucide-react'
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -7,15 +9,12 @@ import { useTranslation } from 'react-i18next'
 function CrashMessage({ onReload }: { onReload: () => void }) {
   const { t } = useTranslation()
   return (
-    <Callout.Root color="red" role="alert" my="2">
-      <Callout.Icon>
-        <TriangleAlert size={16} />
-      </Callout.Icon>
-      <Flex direction="column" align="start" gap="3">
-        <Callout.Text>{t('app.crashed')}</Callout.Text>
+    <Alert severity="error" role="alert" icon={<TriangleAlert size={16} aria-hidden />} sx={{ my: 1 }}>
+      <Stack sx={{ alignItems: 'flex-start', gap: 1.5 }}>
+        <span>{t('app.crashed')}</span>
         <Button onClick={onReload}>{t('app.reload')}</Button>
-      </Flex>
-    </Callout.Root>
+      </Stack>
+    </Alert>
   )
 }
 

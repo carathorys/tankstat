@@ -194,11 +194,58 @@ it('the notifications page and the open bell are labelled and free of violations
   await check(document.body)
 })
 
-it('sortable columns announce their state and every grid is a labelled table', async () => {
+it('the colour mode and language menus are labelled radio menus, free of violations', async () => {
+  const { ui } = setup('/')
+  await screen.findByText('Octavia')
+
+  await ui.click(screen.getByRole('button', { name: 'Colour mode' }))
+  const modes = await screen.findByRole('menu', { name: 'Colour mode' })
+  expect(within(modes).getAllByRole('menuitemradio').map((item) => [item.textContent, item.getAttribute('aria-checked')])).toEqual([
+    ['Light', 'false'],
+    ['Dark', 'true'],
+    ['System', 'false'],
+  ])
+  expect(screen.getByRole('button', { name: 'Colour mode', hidden: true })).toHaveAttribute('aria-controls', modes.id)
+  await check(modes) // the menu itself: a transient popup outside the page's landmarks, as every popup menu is
+  await ui.keyboard('{Escape}')
+
+  await ui.click(screen.getByRole('button', { name: 'Language' }))
+  const languages = await screen.findByRole('menu', { name: 'Language' })
+  expect(within(languages).getByRole('menuitemradio', { name: 'Magyar' })).toHaveAttribute('lang', 'hu')
+  await check(languages)
+})
+
+it('the floating add button of a phone and its menu are labelled and free of violations', async () => {
+  const { view, ui } = setup('/vehicles/v1?tab=refuelings', 'phone')
+  await screen.findByText(/Sep 1, 2026/)
+  const fab = screen.getByRole('button', { name: 'Add a refuelling or an expense' })
+  await check(view.container)
+
+  await ui.click(fab)
+  const menu = await screen.findByRole('menu', { name: 'Add a refuelling or an expense' })
+  expect(fab).toHaveAttribute('aria-controls', menu.id)
+  await check(menu)
+})
+
+it('the message that offers Undo after trashing is a status and free of violations', async () => {
+  const { ui } = setup('/vehicles/v1?tab=refuelings')
+  await screen.findByText(/Sep 1, 2026/)
+
+  await ui.click(screen.getByRole('button', { name: 'Delete the refuelling of Sep 1, 2026' }))
+  await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Move to trash' }))
+
+  const undo = await screen.findByRole('button', { name: 'Undo' })
+  const message = undo.closest('[role="status"]') as HTMLElement
+  expect(message).toHaveTextContent('is in the trash.')
+  await check(message)
+})
+
+it('sortable columns announce their state and every grid is labelled, its rows named by their first cell', async () => {
   setup('/vehicles/v1?tab=refuelings')
   await screen.findByText(/Sep 1, 2026/)
 
-  expect(screen.getByRole('table', { name: 'Refuelings' })).toBeInTheDocument()
+  const grid = screen.getByRole('grid', { name: 'Refuelings' })
+  expect(within(grid).getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Sep 1, 2026', 'Aug 1, 2026'])
   expect(screen.getByRole('columnheader', { name: /Date/ })).toHaveAttribute('aria-sort', 'descending')
   expect(screen.getByRole('columnheader', { name: /Odometer/ })).toHaveAttribute('aria-sort', 'none')
 })
@@ -317,6 +364,7 @@ it('the recurring expenses table and its dialogs are labelled and free of violat
   const { ui } = setup('/vehicles/v1?tab=recurring')
   const table = await screen.findByRole('table', { name: 'Recurring expenses' })
   within(table).getByText('Tyres')
+  await waitFor(() => expect(table.querySelectorAll('[data-limit]')).toHaveLength(3)) // the gauges (one schedule has two), once their chunk is in
   await check(document.body)
 
   await ui.click(screen.getByRole('button', { name: 'Add recurring expense' }))

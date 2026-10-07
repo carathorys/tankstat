@@ -1,5 +1,4 @@
 import { ApolloProvider } from '@apollo/client/react'
-import { Theme } from '@radix-ui/themes'
 import { render } from '@testing-library/react'
 import { graphql, http, HttpResponse } from 'msw'
 import { MotionConfig } from 'motion/react'
@@ -7,18 +6,19 @@ import type { ReactElement } from 'react'
 import { MemoryRouter } from 'react-router'
 import { onTestFinished, vi } from 'vitest'
 import { createApolloClient } from '../../../src/frontend/apolloClient.ts'
-import type { AuthMode, NotificationFieldsFragment, SessionQuery } from '../../../src/frontend/gql/generated.ts'
+import type { AuthMode, ColorMode, NotificationFieldsFragment, SessionQuery } from '../../../src/frontend/gql/generated.ts'
 import type { GridSaved } from '../../../src/frontend/settings/types.ts'
+import { ThemeRoot } from '../../../src/frontend/theme/ThemeRoot.tsx'
 
 /** Renders with a fresh Apollo client (and cache) talking to the msw-mocked GraphQL endpoint over HTTP; animations are instant. */
 export const renderWithApollo = (ui: ReactElement, route = '/') =>
   render(
     <ApolloProvider client={createApolloClient('http://localhost/graphql')}>
-      <Theme>
+      <ThemeRoot instant>
         <MotionConfig transition={{ duration: 0 }}>
           <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
         </MotionConfig>
-      </Theme>
+      </ThemeRoot>
     </ApolloProvider>,
   )
 
@@ -284,9 +284,16 @@ export interface FakeGridSettings extends GridSaved {
 }
 
 /** The user's UI settings as the server keeps them: serves what is stored, stores what the UI saves, and records every call. */
-export function fakeSettingsBackend(initial: { navOpen?: boolean | null; language?: string | null; grids?: FakeGridSettings[] } = {}) {
+export function fakeSettingsBackend(
+  initial: { navOpen?: boolean | null; language?: string | null; colorMode?: ColorMode | null; grids?: FakeGridSettings[] } = {},
+) {
   const state = {
-    settings: { navOpen: initial.navOpen ?? null, language: initial.language ?? null, grids: initial.grids ?? [] } as { navOpen: boolean | null; language: string | null; grids: FakeGridSettings[] },
+    settings: { navOpen: initial.navOpen ?? null, language: initial.language ?? null, colorMode: initial.colorMode ?? null, grids: initial.grids ?? [] } as {
+      navOpen: boolean | null
+      language: string | null
+      colorMode: ColorMode | null
+      grids: FakeGridSettings[]
+    },
     calls: {} as Record<string, unknown[]>,
     requests: { UiSettings: 0 },
   }
@@ -298,11 +305,13 @@ export function fakeSettingsBackend(initial: { navOpen?: boolean | null; languag
     }),
     graphql.mutation('UpdateUiSettings', ({ variables }) => {
       record('UpdateUiSettings', variables)
-      const input = variables.input as { navOpen?: boolean | null; language?: string | null; clearLanguage?: boolean | null }
+      const input = variables.input as { navOpen?: boolean | null; language?: string | null; clearLanguage?: boolean | null; colorMode?: ColorMode | null }
       if (input.navOpen != null) state.settings.navOpen = input.navOpen
       if (input.clearLanguage) state.settings.language = null
       else if (input.language != null) state.settings.language = input.language
-      return HttpResponse.json({ data: { updateUiSettings: { navOpen: state.settings.navOpen, language: state.settings.language } } })
+      if (input.colorMode != null) state.settings.colorMode = input.colorMode
+      const { navOpen, language, colorMode } = state.settings
+      return HttpResponse.json({ data: { updateUiSettings: { navOpen, language, colorMode } } })
     }),
     graphql.mutation('SaveGridSettings', ({ variables }) => {
       record('SaveGridSettings', variables)
@@ -320,11 +329,54 @@ export function fakeSettingsBackend(initial: { navOpen?: boolean | null; languag
   return { state, handlers }
 }
 
-/** Pretends to be a phone (narrow) or a desktop (wide) browser window for CSS media queries. */
-export function stubViewport(kind: 'phone' | 'desktop') {
+/** The devices a test can pretend to be: a phone is narrow with a touch screen, a desktop is wide with a mouse. */
+const DEVICES = {
+  phone: { width: 390, hover: 'none', pointer: 'coarse' },
+  desktop: { width: 1280, hover: 'hover', pointer: 'fine' },
+} as const
+
+/**
+ * Whether a media query holds on a device: width ranges, hover, pointer, its colour scheme (dark unless the test says light) and no
+ * reduced motion, joined with "and", alternatives with commas, with or without "@media" and spaces (MUI asks "(min-width:768px)").
+ * Anything else does not match.
+ */
+export function matchesMedia(query: string, kind: keyof typeof DEVICES, scheme: 'light' | 'dark' = 'dark'): boolean {
+  const device = DEVICES[kind]
+  const feature = (f: string) => {
+    const [name, value = ''] = f.replace(/[()]/g, '').split(':').map((x) => x.trim())
+    const px = Number.parseFloat(value)
+    switch (name) {
+      case 'min-width':
+        return device.width >= px
+      case 'max-width':
+        return device.width <= px
+      case 'hover':
+      case 'any-hover':
+        return value === device.hover
+      case 'pointer':
+      case 'any-pointer':
+        return value === device.pointer
+      case 'prefers-color-scheme':
+        return value === scheme
+      case 'prefers-reduced-motion':
+        return value === 'no-preference'
+      default:
+        return false
+    }
+  }
+  return query
+    .replace(/^@media\s*/, '')
+    .split(',')
+    .some((alternative) => alternative.split(/\band\b/).every((part) => part.trim() !== '' && feature(part.trim())))
+}
+
+/**
+ * Pretends to be a phone (narrow, touch) or a desktop (wide, mouse) browser window for media queries (CSS and useMediaQuery), set to
+ * a dark colour scheme unless `scheme` says light.
+ */
+export function stubViewport(kind: keyof typeof DEVICES, { scheme = 'dark' }: { scheme?: 'light' | 'dark' } = {}) {
   vi.stubGlobal('matchMedia', (query: string) => ({
-    // A phone is narrow and has no hover (a touch screen); a desktop is wide and has a mouse.
-    matches: kind === 'phone' ? query.includes('max-width: 767px') || query.includes('hover: none') : query.includes('min-width: 1024px'),
+    matches: matchesMedia(query, kind, scheme),
     media: query,
     onchange: null,
     addEventListener() {},

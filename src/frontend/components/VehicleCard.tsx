@@ -1,4 +1,9 @@
-import { Badge, Box, Button, Flex, Grid, Heading, IconButton, Text } from '@radix-ui/themes'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import Chip from '@mui/material/Chip'
+import Stack from '@mui/material/Stack'
+import type { Theme } from '@mui/material/styles'
+import Typography from '@mui/material/Typography'
 import { CheckCheck, ChevronRight, Fuel, Receipt } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -13,14 +18,62 @@ import { RecurringDoneDialog } from '../RecurringDoneDialog.tsx'
 import { RefuelingFormDialog } from '../RefuelingFormDialog.tsx'
 import { preselect } from '../recurringDone.ts'
 import { spentText } from '../spending.ts'
+import { MEDIA } from '../theme/media.ts'
 import { canLogFor } from '../vehicles.ts'
 import { cardClickOrigin, tappedAway } from './cardClicks.ts'
 import { CoverLayers } from './CoverLayers.tsx'
+import { IconAction } from './IconAction.tsx'
 import { RecurringStatusBadge } from './RecurringStatus.tsx'
 import { useCardActions } from './useCardActions.ts'
 import { UserChip } from './UserAvatar.tsx'
 
 type Vehicle = VehicleCardFieldsFragment
+
+const TEXT_SHADOW = '0 1px 4px rgba(0,0,0,0.7)'
+
+/**
+ * The card's look. It is never shorter than the top block plus the figures (the component measures --top-h and --panel-h), so revealing
+ * the figures covers nothing; the list item is a grid, so the cards of a row stretch to the tallest one and nothing moves while one
+ * reveals. The figures and the trend slide up from the bottom edge: on hover where there is a pointer, on keyboard focus anywhere in the
+ * card (:focus-visible, not :focus-within: a closing dialog hands the focus back to a card button without any keyboard) or, on a touch
+ * screen, on a tap (data-open). The panel is always full size and fully formed; while hidden it sits just below the card's edge (the card
+ * clips it) and stays in the accessibility tree, so a screen reader always reads it. Its blur and tint are static: an ancestor fading in
+ * would isolate backdrop-filter and delay the blur.
+ */
+const cardSx = (theme: Theme) => ({
+  position: 'relative',
+  display: 'flex',
+  flexDirection: 'column',
+  minHeight: 'max(17rem, calc(var(--top-h, 0px) + var(--panel-h, 0px)))',
+  borderRadius: '12px',
+  boxShadow: 'var(--tk-shadow-3)',
+  color: 'white',
+  overflow: 'hidden',
+  cursor: 'pointer',
+  transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+  '& .card-top': { position: 'relative' }, // above the cover layers; it stays put while the figures slide in below it
+  '& .vehicle-card-link': {
+    color: 'inherit',
+    textDecoration: 'none',
+    '&::after': { content: '""', position: 'absolute', inset: 0 }, // the top block is the link's target; the card's click handler opens the vehicle from everywhere else
+    '&:focus-visible': { outline: 'none' },
+  },
+  // The card's own buttons: above the link's overlay (positioned, later in the tree) and comfortable to tap.
+  '& .vehicle-card-action': { position: 'relative', minHeight: 44, minWidth: 44 },
+  '&:has(.vehicle-card-link:focus-visible)': { outline: `2px solid ${theme.vars.palette.primary.main}`, outlineOffset: 2 },
+  '& .card-panel': { position: 'absolute', inset: 'auto 0 0 0', transform: 'translateY(100%)', transition: 'transform 0.34s cubic-bezier(0.2, 0.8, 0.2, 1)' },
+  '@media (hover: hover)': {
+    '&:hover': { transform: 'translateY(-2px)', boxShadow: 'var(--tk-shadow-5)' },
+    '&:hover .card-panel': { transform: 'translateY(0)' },
+  },
+  '&:has(:focus-visible)': { transform: 'translateY(-2px)', boxShadow: 'var(--tk-shadow-5)' },
+  '&:has(:focus-visible) .card-panel, &[data-open] .card-panel': { transform: 'translateY(0)' },
+  '& .vehicle-card-stats-container': { background: 'rgba(0, 0, 0, 0.35)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' },
+  '@media (prefers-reduced-motion: reduce)': {
+    '&, & .card-panel': { transition: 'none' },
+    '&:hover, &:has(:focus-visible)': { transform: 'none' },
+  },
+})
 
 /**
  * A vehicle on the welcome screen: its picture as the background; the name, the plate, what needs attention and the quick actions at the
@@ -31,9 +84,8 @@ type Vehicle = VehicleCardFieldsFragment
  * Quick actions: whoever may add logs gets a Refuel and an Expense button, and a Done button next to every schedule that needs attention;
  * they open the vehicle page's own dialogs right here. A dialog renders outside the card (a portal), yet React bubbles its events through
  * the card, so the click handling only acts on clicks that landed in the card's own DOM (`cardClicks.ts`), and the card's buttons act on the
- * first tap. After an action only this vehicle is asked again (`useCardActions`), so the pages the home page already loaded stay. The card
- * is never shorter than the top block plus the figures (`--top-h`, `--panel-h`), so revealing them covers nothing, and the cards of a row
- * stretch to the tallest one.
+ * first tap. After an action only this vehicle is asked again (`useCardActions`), so the pages the home page already loaded stay. White
+ * text on a dark scrim in either colour scheme, so the card is drawn in the dark one (the `dark` class).
  */
 export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
   const { t } = useTranslation()
@@ -45,11 +97,13 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
   const attention = v.recurring.filter((r) => r.status.state !== 'UPCOMING')
   const canLog = canLogFor(v)
   const actions = useCardActions(v.id)
-  const touch = useMediaQuery('(hover: none)', false)
+  const touch = useMediaQuery(MEDIA.touch, false)
   const [open, setOpen] = useState(false)
   const card = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
   const titleLink = useRef<HTMLAnchorElement>(null)
+  // One Done dialog for the card, opened from the schedule's own button: a dialog per schedule would leave with its row once done.
+  const [done, setDone] = useState<{ item: Vehicle['recurring'][number]; open: boolean } | null>(null)
   // Touch: a tap anywhere else (not in a dialog opened from here) puts the figures away again.
   useEffect(() => {
     if (!open) return
@@ -79,9 +133,10 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
   return (
     <Box
       ref={card}
-      className="vehicle-card"
+      className="vehicle-card dark"
       data-open={open ? '' : undefined}
       style={{ '--top-h': `${heights.top}px`, '--panel-h': `${heights.panel}px` } as CSSProperties}
+      sx={cardSx}
       // Touch only: the first tap shows the figures instead of opening the vehicle (before the link sees it); the second one opens it.
       // A click without a pointer (detail 0: keyboard, screen reader) goes straight through, and mouse users have hover and focus.
       onClickCapture={(e) => {
@@ -102,83 +157,78 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
       }}
     >
       <CoverLayers pictureUrl={v.pictureUrl} id={v.id} />
-      <Box ref={top} p="3" className="card-top">
-        <Heading as="h2" size="5" style={{ textShadow: '0 1px 6px rgba(0,0,0,0.6)' }}>
+      <Box ref={top} className="card-top" sx={{ p: 1.5 }}>
+        <Typography component="h2" variant="h4" sx={{ textShadow: '0 1px 6px rgba(0,0,0,0.6)' }}>
           <Link ref={titleLink} className="vehicle-card-link" to={`/vehicles/${v.id}`} aria-label={t('welcome.card.openAria', { name: v.name })}>
             {v.name}
             <ChevronRight size={20} aria-hidden style={{ verticalAlign: 'text-bottom', marginLeft: 2 }} />
           </Link>
-        </Heading>
-        <Flex gap="2" align="center" wrap="wrap" mt="1">
-          {v.licensePlate && (
-            <Badge color="gray" variant="solid" highContrast>
-              {v.licensePlate}
-            </Badge>
-          )}
-          <Badge color="gray" variant="soft" highContrast>
-            {t(`fuel.${v.fuelType}`)}
-          </Badge>
-          {!v.canEdit && (
-            <Badge color="amber" variant="solid">
-              {t('welcome.card.logAccess', { level: t(`level.${v.logAccess}`) })}
-            </Badge>
-          )}
-        </Flex>
+        </Typography>
+        <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap', mt: 0.5 }}>
+          {v.licensePlate && <Chip variant="solid" color="neutral" label={v.licensePlate} />}
+          <Chip color="neutral" label={t(`fuel.${v.fuelType}`)} />
+          {!v.canEdit && <Chip variant="solid" color="warning" label={t('welcome.card.logAccess', { level: t(`level.${v.logAccess}`) })} />}
+        </Stack>
         {attention.length > 0 && (
-          <Flex asChild direction="column" gap="1" mt="2">
-            <ul aria-label={t('welcome.card.recurringTitle')} style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-              {attention.slice(0, 3).map((r) => {
-                const due = dueText(r.status)
-                return (
-                  <li key={r.id}>
-                    <Flex align="center" gap="2" justify="between">
-                      <Flex align="center" gap="2" wrap="wrap">
-                        <RecurringStatusBadge state={r.status.state} solid />
-                        <Text size="1" style={{ color: 'white', textShadow: '0 1px 4px rgba(0,0,0,0.7)' }}>
-                          {due ? `${r.title} · ${due}` : r.title}
-                        </Text>
-                      </Flex>
-                      {canLog && (
-                        <RecurringDoneDialog
-                          vehicle={v}
-                          items={v.recurring}
-                          selected={preselect(v.recurring, r.id)}
-                          openedFrom={r}
-                          trigger={
-                            <IconButton size="2" variant="soft" highContrast className="vehicle-card-action" data-done={r.id} aria-label={t('welcome.card.doneAria', { title: r.title, name: v.name })}>
-                              <CheckCheck size={16} aria-hidden />
-                            </IconButton>
-                          }
-                          onSubmit={actions.done}
-                          // Done, the schedule leaves this list together with its button (and so may the others done at the same visit):
-                          // the focus would fall off the page, so it goes to the card's title instead (a cancelled dialog finds its button
-                          // and hands the focus back to it as usual).
-                          onCloseAutoFocus={(e) => {
-                            if (card.current?.querySelector(`[data-done="${r.id}"]`)) return
-                            e.preventDefault()
-                            titleLink.current?.focus()
-                          }}
-                        />
-                      )}
-                    </Flex>
-                  </li>
-                )
-              })}
-            </ul>
-          </Flex>
+          <Stack component="ul" aria-label={t('welcome.card.recurringTitle')} sx={{ gap: 0.5, listStyle: 'none', p: 0, m: 0 }}>
+            {attention.slice(0, 3).map((r) => {
+              const due = dueText(r.status)
+              return (
+                <li key={r.id}>
+                  <Stack direction="row" sx={{ alignItems: 'center', gap: 1, justifyContent: 'space-between' }}>
+                    <Stack direction="row" sx={{ alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                      <RecurringStatusBadge state={r.status.state} solid />
+                      <Typography variant="caption" sx={{ color: 'white', textShadow: TEXT_SHADOW }}>
+                        {due ? `${r.title} · ${due}` : r.title}
+                      </Typography>
+                    </Stack>
+                    {canLog && (
+                      <IconAction
+                        className="vehicle-card-action"
+                        data-done={r.id}
+                        aria-haspopup="dialog"
+                        label={t('welcome.card.doneAria', { title: r.title, name: v.name })}
+                        onClick={() => setDone({ item: r, open: true })}
+                      >
+                        <CheckCheck size={16} aria-hidden />
+                      </IconAction>
+                    )}
+                  </Stack>
+                </li>
+              )
+            })}
+          </Stack>
+        )}
+        {done && (
+          <RecurringDoneDialog
+            vehicle={v}
+            items={v.recurring}
+            selected={preselect(v.recurring, done.item.id)}
+            openedFrom={done.item}
+            open={done.open}
+            onOpenChange={(next) => setDone((d) => d && { ...d, open: next })}
+            onSubmit={actions.done}
+            // Done, the schedule leaves this list together with its button (and so may the others done at the same visit): the focus
+            // would fall off the page, so it goes to the card's title instead (a cancelled dialog has handed it back to the button).
+            onClosed={() => {
+              const id = done.item.id
+              setDone(null)
+              if (!card.current?.querySelector(`[data-done="${id}"]`)) titleLink.current?.focus()
+            }}
+          />
         )}
         {!v.canEdit && v.owner && (
-          <Text as="p" size="1" mt="1" style={{ color: 'white' }}>
+          <Box sx={{ mt: 0.5 }}>
             <UserChip user={v.owner} />
-          </Text>
+          </Box>
         )}
         {canLog && (
-          <Flex gap="2" mt="3" wrap="wrap">
+          <Stack direction="row" sx={{ gap: 1, mt: 1.5, flexWrap: 'wrap' }}>
             <RefuelingFormDialog
               vehicle={v}
               onSubmit={actions.refuel}
               trigger={
-                <Button size="2" variant="solid" className="vehicle-card-action" aria-label={t('welcome.card.refuelAria', { name: v.name })}>
+                <Button className="vehicle-card-action" aria-label={t('welcome.card.refuelAria', { name: v.name })}>
                   <Fuel size={16} aria-hidden />
                   {t('welcome.card.refuel')}
                 </Button>
@@ -188,66 +238,50 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
               vehicle={v}
               onSubmit={actions.expense}
               trigger={
-                <Button size="2" variant="soft" highContrast className="vehicle-card-action" aria-label={t('welcome.card.expenseAria', { name: v.name })}>
+                <Button variant="soft" color="neutral" className="vehicle-card-action" aria-label={t('welcome.card.expenseAria', { name: v.name })}>
                   <Receipt size={16} aria-hidden />
                   {t('welcome.card.expense')}
                 </Button>
               }
             />
-          </Flex>
+          </Stack>
         )}
       </Box>
 
       <div ref={panel} className="card-panel">
-      <Grid className="vehicle-card-stats-container">
-        <Grid className="vehicle-card-stats" columns="2" gap="2" p="3">
-          <Box>
-            <Text as="p" size="1" style={{ opacity: 0.8 }}>
-              {t('welcome.card.odometer')}
-            </Text>
-            <Text as="p" size="2" weight="bold">
-              {s?.latestOdometer != null ? format.distance(s.latestOdometer, v.units.distance) : none}
-            </Text>
+        <Box className="vehicle-card-stats-container" sx={{ display: 'grid' }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 1, p: 1.5 }}>
+            <Figure label={t('welcome.card.odometer')} value={s?.latestOdometer != null ? format.distance(s.latestOdometer, v.units.distance) : none} />
+            <Figure label={t('welcome.card.consumption')} value={s?.averageConsumption != null ? format.consumption(s.averageConsumption, v.units) : none} />
+            <Figure label={t('welcome.card.lastFillUp')} value={s?.lastFillUpDate ? format.date(s.lastFillUpDate) : t('welcome.card.noFillUps')} />
+            <Figure label={t('welcome.card.thisMonth')} value={(s && spentText(s.spending, 'thisMonth', format)) ?? none} />
           </Box>
-          <Box>
-            <Text as="p" size="1" style={{ opacity: 0.8 }}>
-              {t('welcome.card.consumption')}
-            </Text>
-            <Text as="p" size="2" weight="bold">
-              {s?.averageConsumption != null ? format.consumption(s.averageConsumption, v.units) : none}
-            </Text>
-          </Box>
-          <Box>
-            <Text as="p" size="1" style={{ opacity: 0.8 }}>
-              {t('welcome.card.lastFillUp')}
-            </Text>
-            <Text as="p" size="2" weight="bold">
-              {s?.lastFillUpDate ? format.date(s.lastFillUpDate) : t('welcome.card.noFillUps')}
-            </Text>
-          </Box>
-          <Box>
-            <Text as="p" size="1" style={{ opacity: 0.8 }}>
-              {t('welcome.card.thisMonth')}
-            </Text>
-            <Text as="p" size="2" weight="bold">
-              {(s && spentText(s.spending, 'thisMonth', format)) ?? none}
-            </Text>
-          </Box>
-        </Grid>
-        {s?.currency && s.fillUpCount + s.expenseCount > 0 && (
-          <Grid className="vehicle-card-sparkline" columns="1" gap="0" p="0">
-            <Box style={{ gridColumn: '1 / -1' }}>
+          {s?.currency && s.fillUpCount + s.expenseCount > 0 && (
+            <Box>
               <LazySparkline points={s.spendTrend} currency={s.currency} height={32} />
             </Box>
-          </Grid>
+          )}
+        </Box>
+        {touch && (
+          <Typography variant="caption" component="p" sx={{ textAlign: 'center', opacity: 0.8, pb: 1 }}>
+            {t('welcome.card.tapAgain')}
+          </Typography>
         )}
-      </Grid>
-      {touch && (
-        <Text as="p" size="1" align="center" style={{ opacity: 0.8, paddingBottom: 'var(--space-2)' }}>
-          {t('welcome.card.tapAgain')}
-        </Text>
-      )}
       </div>
     </Box>
+  )
+}
+
+/** One key figure on the card's panel: what it is, then the value. */
+function Figure({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <Typography variant="caption" component="p" sx={{ opacity: 0.8 }}>
+        {label}
+      </Typography>
+      <Typography variant="body2" component="p" sx={{ fontWeight: 'fontWeightBold' }}>
+        {value}
+      </Typography>
+    </div>
   )
 }

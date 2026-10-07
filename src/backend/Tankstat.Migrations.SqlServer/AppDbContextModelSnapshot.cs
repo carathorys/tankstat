@@ -583,6 +583,10 @@ namespace Tankstat.Migrations.SqlServer
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("ColorMode")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
                     b.Property<string>("Language")
                         .HasMaxLength(8)
                         .HasColumnType("nvarchar(8)");

@@ -1,28 +1,37 @@
 import { useQuery } from '@apollo/client/react'
-import { Box, Link as RadixLink, Tabs, Text } from '@radix-ui/themes'
+import Box from '@mui/material/Box'
+import Link from '@mui/material/Link'
+import Typography from '@mui/material/Typography'
 import { ArrowLeft } from 'lucide-react'
 import { lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useParams, useSearchParams } from 'react-router'
+import { Link as RouterLink, useParams, useSearchParams } from 'react-router'
+import { Loading } from '../components/Loading.tsx'
+import { TabbedPanels } from '../components/TabbedPanels.tsx'
 import { VehicleHero } from '../components/VehicleHero.tsx'
 import { VehicleDetailsDocument } from '../gql/generated.ts'
+import { useMediaQuery } from '../hooks/useMediaQuery.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { ErrorMessage } from '../messages.tsx'
+import { MEDIA } from '../theme/media.ts'
 import { canLogFor } from '../vehicles.ts'
 import { DetailsPanel } from './vehicle/DetailsPanel.tsx'
-import { ExpensesPanel } from './vehicle/ExpensesPanel.tsx'
+import { LogFab } from './vehicle/LogFab.tsx'
 import { RecurringPanel } from './vehicle/RecurringPanel.tsx'
-import { RefuelingsPanel } from './vehicle/RefuelingsPanel.tsx'
 import { SharingPanel } from './vehicle/SharingPanel.tsx'
-import { Loading } from '../components/Loading.tsx'
 
-// The dashboard brings the chart library; it is loaded with the first tab instead of with the page shell.
+// The dashboard brings the chart library, the two log tabs the data grid: each is loaded with its tab instead of with the page shell.
 const DashboardPanel = lazy(() => import('../dashboard/DashboardPanel.tsx').then((m) => ({ default: m.DashboardPanel })))
+const RefuelingsPanel = lazy(() => import('./vehicle/RefuelingsPanel.tsx').then((m) => ({ default: m.RefuelingsPanel })))
+const ExpensesPanel = lazy(() => import('./vehicle/ExpensesPanel.tsx').then((m) => ({ default: m.ExpensesPanel })))
 
 const TABS = ['dashboard', 'refuelings', 'expenses', 'recurring', 'details', 'sharing'] as const
 type Tab = (typeof TABS)[number]
 
-/** One vehicle: its logs, its details and picture, and who the logs are shared with (tabs; the choice is in the address). */
+/**
+ * One vehicle: its logs, its details and picture, and who the logs are shared with (tabs; the choice is in the address). On a phone, whoever
+ * may add logs also gets a floating add button.
+ */
 export function VehiclePage({ isAdmin }: { isAdmin: boolean }) {
   const { t } = useTranslation()
   const { id = '' } = useParams()
@@ -30,71 +39,73 @@ export function VehiclePage({ isAdmin }: { isAdmin: boolean }) {
   const { data, error, refetch } = useQuery(VehicleDetailsDocument, { variables: { id }, fetchPolicy: 'cache-and-network' })
   const vehicle = data?.vehicle
   usePageTitle(vehicle?.name)
+  const narrow = useMediaQuery(MEDIA.narrow, false)
 
   const canLog = vehicle ? canLogFor(vehicle) : false
   const requested = params.get('tab') as Tab | null
   const tab: Tab = requested && TABS.includes(requested) && (requested !== 'sharing' || vehicle?.canEdit) ? requested : 'dashboard'
 
+  const fab = canLog && narrow
   return (
-    <section aria-labelledby="page-title">
-      <RadixLink asChild size="2">
-        <Link to={isAdmin ? '/vehicles' : '/'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minHeight: 44 }}>
-          <ArrowLeft size={16} aria-hidden />
-          {isAdmin ? t('vehicles.back') : t('vehicles.backHome')}
-        </Link>
-      </RadixLink>
+    // With the floating add button, the page ends a little lower, so its last row can scroll out from under the button.
+    <Box component="section" aria-labelledby="page-title" sx={{ pb: fab ? 9 : 0 }}>
+      <Link component={RouterLink} to={isAdmin ? '/vehicles' : '/'} variant="body2" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, minHeight: 44 }}>
+        <ArrowLeft size={16} aria-hidden />
+        {isAdmin ? t('vehicles.back') : t('vehicles.backHome')}
+      </Link>
       {error && <ErrorMessage error={error} />}
-      {!data && !error && (
-        <Loading />
-      )}
+      {!data && !error && <Loading />}
       {data && !vehicle && <ErrorMessage>{t('vehicles.notFound')}</ErrorMessage>}
       {vehicle && (
         <>
-          <Box my="3">
+          <Box sx={{ my: 1.5 }}>
             <VehicleHero id={vehicle.id} name={vehicle.name} plate={vehicle.licensePlate} pictureUrl={vehicle.pictureUrl} owner={vehicle.owner} />
             {!vehicle.canEdit && (
-              <Text as="p" size="1" color="gray" mt="2">
+              <Typography variant="caption" component="p" sx={{ color: 'text.secondary', mt: 1 }}>
                 {t('vehicles.logAccessNote')}
-              </Text>
+              </Typography>
             )}
           </Box>
-
-          <Tabs.Root value={tab} onValueChange={(value) => setParams(value === 'dashboard' ? {} : { tab: value }, { replace: true })}>
-            <Tabs.List aria-label={vehicle.name} size={{ initial: '2', md: '2' }} style={{ overflowX: 'auto' }}>
-              <Tabs.Trigger value="dashboard">{t('vehicles.tabs.dashboard')}</Tabs.Trigger>
-              <Tabs.Trigger value="refuelings">{t('vehicles.tabs.refuelings')}</Tabs.Trigger>
-              <Tabs.Trigger value="expenses">{t('vehicles.tabs.expenses')}</Tabs.Trigger>
-              <Tabs.Trigger value="recurring">{t('vehicles.tabs.recurring')}</Tabs.Trigger>
-              <Tabs.Trigger value="details">{t('vehicles.tabs.details')}</Tabs.Trigger>
-              {vehicle.canEdit && <Tabs.Trigger value="sharing">{t('vehicles.tabs.sharing')}</Tabs.Trigger>}
-            </Tabs.List>
-            <Box pt="4">
-              <Tabs.Content value="dashboard" className="tk-fade">
-                <Suspense fallback={<Loading />}>
-                  <DashboardPanel vehicle={vehicle} />
-                </Suspense>
-              </Tabs.Content>
-              <Tabs.Content value="refuelings" className="tk-fade">
-                <RefuelingsPanel vehicle={vehicle} canLog={canLog} />
-              </Tabs.Content>
-              <Tabs.Content value="expenses" className="tk-fade">
-                <ExpensesPanel vehicle={vehicle} canLog={canLog} />
-              </Tabs.Content>
-              <Tabs.Content value="recurring" className="tk-fade">
-                <RecurringPanel vehicle={vehicle} canLog={canLog} />
-              </Tabs.Content>
-              <Tabs.Content value="details">
-                <DetailsPanel vehicle={vehicle} onChanged={() => refetch()} />
-              </Tabs.Content>
-              {vehicle.canEdit && (
-                <Tabs.Content value="sharing">
-                  <SharingPanel vehicleId={vehicle.id} />
-                </Tabs.Content>
-              )}
-            </Box>
-          </Tabs.Root>
+          <TabbedPanels
+            label={vehicle.name}
+            value={tab}
+            onChange={(value) => setParams(value === 'dashboard' ? {} : { tab: value }, { replace: true })}
+            tabs={[
+              {
+                value: 'dashboard',
+                label: t('vehicles.tabs.dashboard'),
+                content: () => (
+                  <Suspense fallback={<Loading />}>
+                    <DashboardPanel vehicle={vehicle} />
+                  </Suspense>
+                ),
+              },
+              {
+                value: 'refuelings',
+                label: t('vehicles.tabs.refuelings'),
+                content: () => (
+                  <Suspense fallback={<Loading />}>
+                    <RefuelingsPanel vehicle={vehicle} canLog={canLog} />
+                  </Suspense>
+                ),
+              },
+              {
+                value: 'expenses',
+                label: t('vehicles.tabs.expenses'),
+                content: () => (
+                  <Suspense fallback={<Loading />}>
+                    <ExpensesPanel vehicle={vehicle} canLog={canLog} />
+                  </Suspense>
+                ),
+              },
+              { value: 'recurring', label: t('vehicles.tabs.recurring'), content: () => <RecurringPanel vehicle={vehicle} canLog={canLog} /> },
+              { value: 'details', label: t('vehicles.tabs.details'), content: () => <DetailsPanel vehicle={vehicle} onChanged={() => refetch()} /> },
+              ...(vehicle.canEdit ? [{ value: 'sharing' as const, label: t('vehicles.tabs.sharing'), content: () => <SharingPanel vehicleId={vehicle.id} /> }] : []),
+            ]}
+          />
+          {canLog && <LogFab vehicle={vehicle} shown={narrow} />}
         </>
       )}
-    </section>
+    </Box>
   )
 }

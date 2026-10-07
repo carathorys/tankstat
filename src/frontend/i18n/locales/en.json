@@ -26,10 +26,24 @@
   "language": {
     "label": "Language"
   },
+  "colorMode": {
+    "label": "Colour mode",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
   "common": {
     "cancel": "Cancel",
     "close": "Close",
-    "none": "–"
+    "none": "–",
+    "undo": "Undo"
+  },
+  "toast": {
+    "saved": "Saved.",
+    "undoFailed": "It could not be put back. Find it in the trash.",
+    "vehicleTrashed": "{{name}} is in the trash.",
+    "refuelingTrashed": "The refuelling of {{date}} is in the trash.",
+    "expenseTrashed": "{{title}} is in the trash."
   },
   "install": {
     "title": "Install Tankstat",
@@ -39,6 +53,7 @@
     "iosConfirm": "Tap “Add” in the top right."
   },
   "notices": {
+    "label": "Notices",
     "warning": "Warning:",
     "AUTH_DISABLED": "Authentication is disabled: anyone who can reach this app can see and change all data. This is unsafe; configure Auth:Mode."
   },
@@ -118,7 +133,9 @@
   "forms": {
     "required": "{{field}} is required",
     "emailInvalid": "Enter a valid e-mail address",
-    "numberInvalid": "Enter a number, for example 12.5."
+    "numberInvalid": "Enter a number, for example 12.5.",
+    "dateIncomplete": "Enter the whole date.",
+    "dateFuture": "The date cannot be in the future."
   },
   "auth": {
     "signIn": "Sign in",
@@ -181,16 +198,15 @@
     "range": "{{from}}–{{to}} of {{total}}",
     "previous": "Previous page",
     "next": "Next page",
-    "sortedAscending": "sorted ascending",
-    "sortedDescending": "sorted descending",
-    "caption": "{{name}}",
+    "first": "First page",
+    "last": "Last page",
+    "sort": "Sort",
     "actions": "Actions"
   },
   "vehicles": {
     "title": "Vehicles",
     "add": "Add vehicle",
-    "edit": "Edit",
-    "delete": "Delete",
+    "addLog": "Add a refuelling or an expense",
     "editAria": "Edit {{name}}",
     "deleteAria": "Delete {{name}}",
     "viewOnly": "view only",
@@ -346,7 +362,8 @@
       "tooManyColumns": "A grid can remember at most {{max}} columns.",
       "pageSizeInvalid": "The page size must be between {{min}} and {{max}}.",
       "sortDirectionInvalid": "Unknown sort direction.",
-      "languageInvalid": "The language code must look like en or en-GB."
+      "languageInvalid": "The language code must look like en or en-GB.",
+      "colorModeInvalid": "The colour mode must be light, dark or system."
     },
     "refueling": {
       "litersPositive": "Liters must be greater than zero.",
@@ -485,7 +502,6 @@
     }
   },
   "a11y": {
-    "sortBy": "Sort by {{column}}",
     "uploadStatus": "Upload status",
     "readingStatus": "Photo reading status"
   },
@@ -521,8 +537,6 @@
   "refuelings": {
     "title": "Refuelings",
     "add": "Add refuelling",
-    "edit": "Edit",
-    "delete": "Delete",
     "editAria": "Edit the refuelling of {{date}}",
     "deleteAria": "Delete the refuelling of {{date}}",
     "empty": "No refuelings yet. Add the first one.",
@@ -591,8 +605,6 @@
   "expenses": {
     "title": "Expenses",
     "add": "Add expense",
-    "edit": "Edit",
-    "delete": "Delete",
     "editAria": "Edit the expense {{title}}",
     "deleteAria": "Delete the expense {{title}}",
     "empty": "No expenses yet. Service, insurance, parking and other costs go here.",

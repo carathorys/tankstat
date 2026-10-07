@@ -1,9 +1,11 @@
 import { useApolloClient, useMutation } from '@apollo/client/react'
-import { Button, Card, Heading, Text } from '@radix-ui/themes'
+import Button from '@mui/material/Button'
+import Card from '@mui/material/Card'
+import Typography from '@mui/material/Typography'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { OidcSignIn } from './auth/OidcSignIn.tsx'
-import { FieldForm } from './forms.tsx'
+import { FieldForm } from './forms/FieldForm.tsx'
 import { LoginDocument, RequestPasswordResetDocument, type AuthMode } from './gql/generated.ts'
 import { SuccessMessage } from './messages.tsx'
 
@@ -18,9 +20,9 @@ function PasswordLogin() {
   if (forgot) {
     return (
       <>
-        <Heading as="h2" size="5" mb="3">
+        <Typography component="h2" variant="h4" sx={{ mb: 1.5 }}>
           {t('auth.forgotTitle')}
-        </Heading>
+        </Typography>
         {sent ? (
           <SuccessMessage>{t('auth.resetSent')}</SuccessMessage>
         ) : (
@@ -33,7 +35,7 @@ function PasswordLogin() {
             }}
           />
         )}
-        <Button mt="3" variant="ghost" onClick={() => setForgot(false)}>
+        <Button variant="ghost" color="primary" sx={{ mt: 1.5 }} onClick={() => setForgot(false)}>
           {t('auth.backToSignIn')}
         </Button>
       </>
@@ -42,9 +44,9 @@ function PasswordLogin() {
 
   return (
     <>
-      <Heading as="h2" size="5" mb="3">
+      <Typography component="h2" variant="h4" sx={{ mb: 1.5 }}>
         {t('auth.signIn')}
-      </Heading>
+      </Typography>
       <FieldForm
         fields={[
           { name: 'email', label: 'fields.email', type: 'email', autoComplete: 'username' },
@@ -56,7 +58,7 @@ function PasswordLogin() {
           await client.resetStore()
         }}
       >
-        <Button type="button" variant="ghost" onClick={() => setForgot(true)}>
+        <Button type="button" variant="ghost" color="primary" onClick={() => setForgot(true)}>
           {t('auth.forgotLink')}
         </Button>
       </FieldForm>
@@ -69,14 +71,14 @@ export function LoginView({ mode }: { mode: AuthMode }) {
   const { t } = useTranslation()
 
   return (
-    <Card size="3" style={{ maxWidth: 420, margin: '2rem auto' }}>
+    <Card sx={{ maxWidth: 420, mx: 'auto', my: 4, p: 3 }}>
       {mode === 'OIDC' && <OidcSignIn />}
       {mode === 'PROXY_HEADER' && (
         <>
-          <Heading as="h2" size="5" mb="3">
+          <Typography component="h2" variant="h4" sx={{ mb: 1.5 }}>
             {t('auth.notSignedIn')}
-          </Heading>
-          <Text as="p">{t('auth.proxyHint')}</Text>
+          </Typography>
+          <Typography>{t('auth.proxyHint')}</Typography>
         </>
       )}
       {mode !== 'OIDC' && mode !== 'PROXY_HEADER' && <PasswordLogin />}

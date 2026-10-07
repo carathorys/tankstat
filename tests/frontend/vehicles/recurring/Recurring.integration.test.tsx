@@ -16,6 +16,7 @@ import {
   stubViewport,
   type FakeRecurring,
 } from '../../support/mocks.tsx'
+import { dateValue, findDateField } from '../../support/dates.ts'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
@@ -46,6 +47,31 @@ function setup(vehicle = fakeVehicle(), initial: FakeRecurring[] = items) {
 }
 
 const row = async (title: string) => (await screen.findByRole('rowheader', { name: new RegExp(title) })).closest('tr')!
+
+it('draws a dial per limit beside the state, the one that decides at full strength; the words carry the same', async () => {
+  const combined = fakeRecurring({
+    id: 'rc3',
+    title: 'Service',
+    kind: 'COMBINED',
+    intervalMonths: 12,
+    intervalDistance: 15000,
+    lastDoneDate: '2026-01-01',
+    lastDoneOdometer: 10000,
+    status: { state: 'DUE_SOON', limit: 'ODOMETER', dueDate: '2027-01-01', dueOdometer: 25000, daysLeft: 87, distanceLeft: 400 },
+  })
+  setup(fakeVehicle(), [combined, overdue])
+  const row = (await screen.findByRole('rowheader', { name: /Service/ })).closest('tr')!
+
+  await waitFor(() => expect(row.querySelectorAll('[data-limit]')).toHaveLength(2))
+  expect([...row.querySelectorAll('[data-limit]')].map((g) => [g.getAttribute('data-limit'), g.getAttribute('data-deciding')])).toEqual([
+    ['TIME', 'false'],
+    ['ODOMETER', 'true'],
+  ])
+  expect(row.querySelector('[data-limit]')!.closest('[aria-hidden="true"]')).not.toBeNull() // a picture only
+  expect(within(row).getByText('Due soon')).toBeInTheDocument()
+  const tyres = (await screen.findByRole('rowheader', { name: /Tyres/ })).closest('tr')!
+  await waitFor(() => expect(tyres.querySelectorAll('[data-limit]')).toHaveLength(1))
+})
 
 it('lists the schedules with what repeats, when it was last done, when it is due next and where it stands', async () => {
   setup()
@@ -121,7 +147,7 @@ it('starts a new schedule from today and the latest odometer reading, both prefi
   await ui.click(screen.getByRole('button', { name: 'Add recurring expense' }))
   const dialog = await screen.findByRole('dialog', { name: 'Add recurring expense' })
   await waitFor(() => expect(within(dialog).getByLabelText(/^Odometer on that day/)).toHaveValue('71500'))
-  expect((within(dialog).getByLabelText('Counting from') as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}$/) // today, to be changed for something done earlier
+  expect(dateValue(await findDateField('Counting from', dialog))).toMatch(/^\d{4}-\d{2}-\d{2}$/) // today, to be changed for something done earlier
   await ui.type(within(dialog).getByLabelText('Title'), 'Tyres')
   await ui.type(within(dialog).getByLabelText(/^Every \(kilometers\)/), '40000')
   await ui.clear(within(dialog).getByLabelText(/^Odometer on that day/))

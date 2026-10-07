@@ -1,20 +1,25 @@
-import { useQuery } from '@apollo/client/react'
-import { Button, Card, Flex, Grid, Heading, IconButton, Text } from '@radix-ui/themes'
+import { useMutation, useQuery } from '@apollo/client/react'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import Card from '@mui/material/Card'
+import Skeleton from '@mui/material/Skeleton'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
+import { IconAction } from '../components/IconAction.tsx'
 import { UserChip } from '../components/UserAvatar.tsx'
+import { visuallyHidden } from '../components/visuallyHidden.ts'
 import { DeleteChartDocument, VehicleDashboardDocument, type AccessLevel, type DistanceUnit, type VolumeUnit } from '../gql/generated.ts'
 import { useFormat } from '../i18n/format.ts'
-import { spentText } from '../spending.ts'
 import { ErrorMessage } from '../messages.tsx'
-import { useMutation } from '@apollo/client/react'
+import { spentText } from '../spending.ts'
 import { ChartBuilderDialog } from './ChartBuilderDialog.tsx'
 import { ChartCard } from './ChartCard.tsx'
 import { LazySparkline } from './LazySparkline.tsx'
 import { NEW_RECIPE, type ChartRecipe } from './chartFormat.ts'
-import { Loading } from '../components/Loading.tsx'
 
 type Units = { distance: DistanceUnit; volume: VolumeUnit }
 
@@ -29,22 +34,44 @@ const PRESETS: { id: string; title: 'monthlyCosts' | 'consumption' | 'fuelPrice'
   { id: 'distance', title: 'distance', recipe: recipe({ metric: 'DISTANCE', kind: 'BAR' }) },
 ]
 
-function Kpi({ label, value, hint, children }: { label: string; value: string; hint?: string; children?: React.ReactNode }) {
+/** The key figures: one column on a phone, two from a small tablet, four on a desktop. */
+const kpiGrid = { display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: 1.5 } as const
+/** The charts: two side by side on a desktop. */
+const chartGrid = { display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'repeat(2, minmax(0, 1fr))' }, gap: 2 } as const
+
+function Kpi({ label, value, hint, children }: { label: string; value: string; hint?: string; children?: ReactNode }) {
   return (
-    <Card size="2" style={{ boxShadow: 'var(--shadow-3)' }}>
-      <Text as="p" size="2" color="gray">
+    <Card sx={{ p: 2 }}>
+      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
         {label}
-      </Text>
-      <Text as="p" size="6" weight="bold" my="1">
+      </Typography>
+      <Typography variant="h3" component="p" sx={{ my: 0.5 }}>
         {value}
-      </Text>
+      </Typography>
       {hint && (
-        <Text as="p" size="1" color="gray">
+        <Typography variant="caption" component="p" sx={{ color: 'text.secondary' }}>
           {hint}
-        </Text>
+        </Typography>
       )}
       {children}
     </Card>
+  )
+}
+
+/** While the figures load: their outlines, and "Loading…" for a screen reader. */
+function DashboardSkeleton() {
+  const { t } = useTranslation()
+  return (
+    <>
+      <span role="status" style={visuallyHidden}>
+        {t('app.loading')}
+      </span>
+      <Box aria-hidden className="tk-delayed" sx={kpiGrid}>
+        {[0, 1, 2, 3].map((i) => (
+          <Skeleton key={i} variant="rounded" height={112} sx={{ borderRadius: '12px' }} />
+        ))}
+      </Box>
+    </>
   )
 }
 
@@ -59,11 +86,7 @@ export function DashboardPanel({ vehicle }: { vehicle: { id: string; units: Unit
   const canShare = vehicle.logAccess === 'EDIT' || vehicle.logAccess === 'DELETE'
 
   if (error) return <ErrorMessage error={error} />
-  if (!data) {
-    return (
-      <Loading />
-    )
-  }
+  if (!data) return <DashboardSkeleton />
 
   const s = data.vehicle?.summary
   async function deleteChart(id: string) {
@@ -77,9 +100,9 @@ export function DashboardPanel({ vehicle }: { vehicle: { id: string; units: Unit
   }
 
   return (
-    <Flex direction="column" gap="5">
+    <Stack sx={{ gap: 3 }}>
       <section aria-label={t('dashboard.kpi.title')}>
-        <Grid columns={{ initial: '1', xs: '2', md: '4' }} gap="3">
+        <Box sx={kpiGrid}>
           <Kpi
             label={t('dashboard.kpi.thisMonth')}
             value={(s && spentText(s.spending, 'thisMonth', format)) ?? none}
@@ -94,44 +117,44 @@ export function DashboardPanel({ vehicle }: { vehicle: { id: string; units: Unit
             value={s?.lastFillUpDate ? format.date(s.lastFillUpDate) : none}
             hint={s ? t('dashboard.kpi.counts', { fuel: s.fillUpCount, expenses: s.expenseCount }) : undefined}
           />
-        </Grid>
+        </Box>
       </section>
 
       <section aria-labelledby="overview-charts">
-        <Heading as="h2" id="overview-charts" size="4" mb="3">
+        <Typography component="h2" variant="h5" id="overview-charts" sx={{ mb: 1.5 }}>
           {t('dashboard.overview')}
-        </Heading>
-        <Grid columns={{ initial: '1', md: '2' }} gap="4">
+        </Typography>
+        <Box sx={chartGrid}>
           {PRESETS.map((p) => (
             <ChartCard key={p.id} vehicleId={vehicle.id} title={t(`dashboard.presets.${p.title}`)} recipe={p.recipe} units={vehicle.units} />
           ))}
-        </Grid>
+        </Box>
       </section>
 
       <section aria-labelledby="your-charts">
-        <Flex justify="between" align="center" gap="3" wrap="wrap" mb="3">
-          <Heading as="h2" id="your-charts" size="4">
+        <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', mb: 1.5 }}>
+          <Typography component="h2" variant="h5" id="your-charts">
             {t('dashboard.yourCharts')}
-          </Heading>
+          </Typography>
           <ChartBuilderDialog
             vehicle={vehicle}
             canShare={canShare}
             onSaved={() => refetch()}
             trigger={
-              <Button size="3">
+              <Button size="large">
                 <Plus size={16} aria-hidden />
                 {t('dashboard.addChart')}
               </Button>
             }
           />
-        </Flex>
+        </Stack>
         {actionError !== undefined && <ErrorMessage error={actionError} />}
         {data.vehicleCharts.length === 0 ? (
-          <Text as="p" size="2" color="gray">
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             {t('dashboard.noCharts')}
-          </Text>
+          </Typography>
         ) : (
-          <Grid columns={{ initial: '1', md: '2' }} gap="4">
+          <Box sx={chartGrid}>
             {data.vehicleCharts.map((c) => {
               const r: ChartRecipe = { metric: c.metric, grouping: c.grouping, kind: c.kind, range: c.range, stacked: c.stacked, from: c.rangeFrom ?? null, to: c.rangeTo ?? null }
               return (
@@ -145,38 +168,38 @@ export function DashboardPanel({ vehicle }: { vehicle: { id: string; units: Unit
                   meta={c.createdBy && c.isShared ? <UserChip user={c.createdBy} /> : undefined}
                   actions={
                     c.canEdit ? (
-                      <Flex gap="2">
+                      <Stack direction="row" sx={{ gap: 1 }}>
                         <ChartBuilderDialog
                           vehicle={vehicle}
                           canShare={canShare}
                           chart={{ id: c.id, title: c.title, isShared: c.isShared, recipe: r }}
                           onSaved={() => refetch()}
                           trigger={
-                            <IconButton size="3" variant="soft" aria-label={t('dashboard.editChart', { title: c.title })}>
+                            <IconAction size="large" tone="primary" label={t('dashboard.editChart', { title: c.title })}>
                               <Pencil size={16} aria-hidden />
-                            </IconButton>
+                            </IconAction>
                           }
                         />
                         <ConfirmDialog
                           trigger={
-                            <IconButton size="3" variant="soft" color="red" aria-label={t('dashboard.deleteChart', { title: c.title })}>
+                            <IconAction size="large" tone="error" label={t('dashboard.deleteChart', { title: c.title })}>
                               <Trash2 size={16} aria-hidden />
-                            </IconButton>
+                            </IconAction>
                           }
                           title={t('dashboard.deleteTitle')}
                           description={t('dashboard.deleteDescription', { title: c.title })}
                           confirmLabel={t('dashboard.deleteConfirm')}
                           onConfirm={() => void deleteChart(c.id)}
                         />
-                      </Flex>
+                      </Stack>
                     ) : undefined
                   }
                 />
               )
             })}
-          </Grid>
+          </Box>
         )}
       </section>
-    </Flex>
+    </Stack>
   )
 }

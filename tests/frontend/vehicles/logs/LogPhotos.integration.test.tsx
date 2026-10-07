@@ -112,7 +112,9 @@ it('removing a picked photo deletes its draft', async () => {
   const dialog = await openAddExpense(ui)
   await ui.upload(library(dialog), [photo('a.png'), photo('b.png')])
 
-  await ui.click((await within(dialog).findAllByRole('button', { name: /^Remove photo/ }))[0])
+  const [first] = await within(dialog).findAllByRole('button', { name: /^Remove photo/ })
+  await waitFor(() => expect(first).toBeEnabled()) // not while the photos are still going up
+  await ui.click(first)
 
   expect(within(dialog).getAllByRole('button', { name: /^Remove photo/ })).toHaveLength(1)
   await waitFor(() => expect(photos.state.draftDeletes).toEqual(['draft1']))

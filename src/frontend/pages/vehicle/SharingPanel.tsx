@@ -1,5 +1,8 @@
 import { useMutation, useQuery } from '@apollo/client/react'
-import { Button, Card, Flex, Heading, Text } from '@radix-ui/themes'
+import Button from '@mui/material/Button'
+import Card from '@mui/material/Card'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { UserChip } from '../../components/UserAvatar.tsx'
@@ -34,54 +37,52 @@ export function SharingPanel({ vehicleId }: { vehicleId: string }) {
   if (!data) return <Loading />
 
   return (
-    <Flex direction="column" gap="4">
+    <Stack sx={{ gap: 2 }}>
       <div>
-        <Heading as="h2" size="4" mb="1">
+        <Typography component="h2" variant="h5" sx={{ mb: 0.5 }}>
           {t('sharing.title')}
-        </Heading>
-        <Text as="p" size="2" color="gray">
+        </Typography>
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
           {t('sharing.description')}
-        </Text>
+        </Typography>
       </div>
       {actionError !== undefined && <ErrorMessage error={actionError} />}
 
       {data.vehicleLogAccess.length === 0 ? (
-        <Text as="p">{t('sharing.none')}</Text>
+        <Typography>{t('sharing.none')}</Typography>
       ) : (
-        <Flex asChild direction="column" gap="2">
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {data.vehicleLogAccess.map((g) => (
-              <li key={g.user.id}>
-                <Card>
-                  <Flex align="center" gap="3" wrap="wrap" justify="between">
-                    <UserChip user={g.user} />
-                    <Flex align="end" gap="2" wrap="wrap">
-                      <LabeledSelect
-                        label={t('sharing.changeLevel', { name: g.user.displayName })}
-                        value={(g.level === 'DELETE' ? 'DELETE' : 'EDIT') as Shareable}
-                        onChange={(l) => void change(g.user.id, l)}
-                        options={LEVELS.map((l) => ({ value: l, label: t(`sharing.levels.${l}`) }))}
-                      />
-                      <Button color="red" variant="soft" size="3" aria-label={t('sharing.revokeAria', { name: g.user.displayName })} onClick={() => void change(g.user.id, 'NONE')}>
-                        {t('sharing.revoke')}
-                      </Button>
-                    </Flex>
-                  </Flex>
-                </Card>
-              </li>
-            ))}
-          </ul>
-        </Flex>
+        <Stack component="ul" sx={{ gap: 1, listStyle: 'none', p: 0, m: 0 }}>
+          {data.vehicleLogAccess.map((g) => (
+            <li key={g.user.id}>
+              <Card sx={{ p: 1.5 }}>
+                <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                  <UserChip user={g.user} />
+                  <Stack direction="row" sx={{ alignItems: 'flex-end', gap: 1, flexWrap: 'wrap' }}>
+                    <LabeledSelect
+                      label={t('sharing.changeLevel', { name: g.user.displayName })}
+                      value={(g.level === 'DELETE' ? 'DELETE' : 'EDIT') as Shareable}
+                      onChange={(l) => void change(g.user.id, l)}
+                      options={LEVELS.map((l) => ({ value: l, label: t(`sharing.levels.${l}`) }))}
+                    />
+                    <Button color="error" variant="soft" size="large" aria-label={t('sharing.revokeAria', { name: g.user.displayName })} onClick={() => void change(g.user.id, 'NONE')}>
+                      {t('sharing.revoke')}
+                    </Button>
+                  </Stack>
+                </Stack>
+              </Card>
+            </li>
+          ))}
+        </Stack>
       )}
 
-      <Card>
-        <Heading as="h3" size="3" mb="3">
+      <Card sx={{ p: 1.5 }}>
+        <Typography component="h3" variant="h6" sx={{ mb: 1.5 }}>
           {t('sharing.addTitle')}
-        </Heading>
+        </Typography>
         {data.shareCandidates.length === 0 ? (
-          <Text as="p" size="2" color="gray">
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             {t('sharing.noCandidates')}
-          </Text>
+          </Typography>
         ) : (
           <form
             onSubmit={(e) => {
@@ -89,7 +90,7 @@ export function SharingPanel({ vehicleId }: { vehicleId: string }) {
               if (person) void change(person, level).then(() => setPerson(''))
             }}
           >
-            <Flex gap="3" align="end" wrap="wrap">
+            <Stack direction="row" sx={{ gap: 1.5, alignItems: 'flex-end', flexWrap: 'wrap' }}>
               <LabeledSelect
                 label={t('sharing.person')}
                 value={person as string}
@@ -98,13 +99,13 @@ export function SharingPanel({ vehicleId }: { vehicleId: string }) {
                 placeholder={t('sharing.choose')}
               />
               <LabeledSelect label={t('sharing.accessLevel')} value={level} onChange={setLevel} options={LEVELS.map((l) => ({ value: l, label: t(`sharing.levels.${l}`) }))} />
-              <Button size="3" type="submit" disabled={!person}>
+              <Button size="large" type="submit" disabled={!person}>
                 {t('sharing.add')}
               </Button>
-            </Flex>
+            </Stack>
           </form>
         )}
       </Card>
-    </Flex>
+    </Stack>
   )
 }

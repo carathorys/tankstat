@@ -16,7 +16,7 @@ function setup(vehicles = [fakeVehicle(), fakeVehicle({ id: 'v2', name: 'Bike', 
   return { ...backend, ui: userEvent.setup() }
 }
 
-/** Radix Select renders its options in a portal on the document body. */
+/** A Select renders its options in a portal on the document body. */
 const choose = async (ui: ReturnType<typeof userEvent.setup>, control: string, option: string) => {
   await ui.click(screen.getByRole('combobox', { name: control }))
   await ui.click(await screen.findByRole('option', { name: option }))
@@ -25,11 +25,11 @@ const choose = async (ui: ReturnType<typeof userEvent.setup>, control: string, o
 it('lists vehicles with their details', async () => {
   setup()
 
-  const row = (await screen.findByText('Octavia')).closest('tr')!
+  const row = (await screen.findByText('Octavia')).closest<HTMLElement>('[role="row"]')!
   expect(within(row).getByText('ABC-123')).toBeInTheDocument()
   expect(within(row).getByText('Diesel')).toBeInTheDocument()
   expect(within(row).getByText('Alice')).toBeInTheDocument()
-  expect(within(screen.getByText('Bike').closest('tr')!).getByText('Petrol')).toBeInTheDocument()
+  expect(within(screen.getByText('Bike').closest<HTMLElement>('[role="row"]')!).getByText('Petrol')).toBeInTheDocument()
 })
 
 it('shows a hint when there are no vehicles', async () => {
@@ -148,6 +148,12 @@ it('asks for confirmation, then moves the vehicle to the trash', async () => {
   expect(screen.getByText('Bike')).toBeInTheDocument()
   expect(state.calls.DeleteVehicle).toEqual([{ id: 'v1' }])
   expect(state.trash.map((v) => v.name)).toEqual(['Octavia'])
+
+  // Undo puts it back where it was.
+  expect(screen.getByText('Octavia is in the trash.')).toBeInTheDocument()
+  await ui.click(screen.getByRole('button', { name: 'Undo' }))
+  expect(await screen.findByText('Octavia')).toBeInTheDocument()
+  expect(state.calls.RestoreVehicle).toEqual([{ id: 'v1' }])
 })
 
 it('keeps the vehicle when the deletion is cancelled', async () => {
@@ -182,7 +188,7 @@ it('links every vehicle to its page', async () => {
 it('shows the owner with an avatar (initials without a picture)', async () => {
   setup()
 
-  const row = (await screen.findByText('Octavia')).closest('tr')!
+  const row = (await screen.findByText('Octavia')).closest<HTMLElement>('[role="row"]')!
   expect(within(row).getByText('Alice')).toBeInTheDocument()
   expect(await within(row).findByText('A')).toBeInTheDocument() // the avatar fallback appears right after mounting
 })
@@ -210,7 +216,8 @@ it('locks the units once the vehicle has logs, and explains why', async () => {
   await ui.click(screen.getByRole('button', { name: 'Edit Octavia' }))
   const dialog = await screen.findByRole('dialog', { name: 'Edit vehicle' })
 
-  expect(await within(dialog).findByRole('combobox', { name: 'Distance' })).toBeDisabled()
-  expect(within(dialog).getByRole('combobox', { name: 'Fuel volume' })).toBeDisabled()
+  // A select is not a native control: disabled is said with aria-disabled.
+  expect(await within(dialog).findByRole('combobox', { name: 'Distance' })).toHaveAttribute('aria-disabled', 'true')
+  expect(within(dialog).getByRole('combobox', { name: 'Fuel volume' })).toHaveAttribute('aria-disabled', 'true')
   expect(within(dialog).getByText(/units are fixed because this vehicle already has logs/)).toBeInTheDocument()
 })

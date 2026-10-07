@@ -1,4 +1,5 @@
 import type { ChartDataQuery, ChartGrouping, ChartKind, ChartMetric, ChartRange } from '../gql/generated.ts'
+import { PLACEHOLDER_PAIRS, SERIES_COLORS } from '../theme/scales.ts'
 
 export type ChartData = ChartDataQuery['vehicleChartData']
 export type Series = ChartData['series'][number]
@@ -14,8 +15,8 @@ export interface ChartRecipe {
   to: string | null
 }
 
-/** Series colours: Radix scale steps that work on the dark and the light theme. */
-export const PALETTE = ['var(--indigo-9)', 'var(--cyan-9)', 'var(--amber-9)', 'var(--grass-9)', 'var(--tomato-9)', 'var(--violet-9)', 'var(--teal-9)', 'var(--pink-9)']
+/** Series colours that work on the dark and the light scheme alike. */
+export const PALETTE: readonly string[] = SERIES_COLORS
 
 export const seriesId = (s: Series) => `${s.kind}|${s.currency ?? ''}`
 
@@ -42,20 +43,11 @@ export function normalise(r: ChartRecipe): ChartRecipe {
 
 export const isReady = (r: ChartRecipe) => r.range !== 'CUSTOM' || (r.from !== null && r.to !== null && r.from <= r.to)
 
-/** A deterministic colour pair per vehicle, for the picture placeholder. */
-const PLACEHOLDERS = [
-  ['var(--indigo-8)', 'var(--cyan-8)'],
-  ['var(--teal-8)', 'var(--grass-8)'],
-  ['var(--violet-8)', 'var(--pink-8)'],
-  ['var(--orange-8)', 'var(--tomato-8)'],
-  ['var(--blue-8)', 'var(--sky-8)'],
-  ['var(--plum-8)', 'var(--crimson-8)'],
-]
 
 /** The placeholder behind a vehicle without a picture: a gradient picked from the vehicle's id. */
 export function placeholderGradient(id: string): string {
   const hash = [...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7)
-  const [a, b] = PLACEHOLDERS[hash % PLACEHOLDERS.length]
+  const [a, b] = PLACEHOLDER_PAIRS[hash % PLACEHOLDER_PAIRS.length]
   return `linear-gradient(135deg, ${a}, ${b})`
 }
 

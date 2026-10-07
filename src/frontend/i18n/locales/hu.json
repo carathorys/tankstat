@@ -26,10 +26,24 @@
   "language": {
     "label": "Nyelv"
   },
+  "colorMode": {
+    "label": "Színmód",
+    "light": "Világos",
+    "dark": "Sötét",
+    "system": "A rendszer szerint"
+  },
   "common": {
     "cancel": "Mégse",
     "close": "Bezárás",
-    "none": "–"
+    "none": "–",
+    "undo": "Visszavonás"
+  },
+  "toast": {
+    "saved": "Mentve.",
+    "undoFailed": "Nem sikerült visszaállítani. A kukában megtalálod.",
+    "vehicleTrashed": "{{name}} a kukába került.",
+    "refuelingTrashed": "A(z) {{date}} tankolás a kukába került.",
+    "expenseTrashed": "{{title}} a kukába került."
   },
   "install": {
     "title": "A Tankstat telepítése",
@@ -39,6 +53,7 @@
     "iosConfirm": "Koppints a jobb felső sarokban a „Hozzáadás” gombra."
   },
   "notices": {
+    "label": "Közlemények",
     "warning": "Figyelem:",
     "AUTH_DISABLED": "A hitelesítés ki van kapcsolva: aki eléri ezt az alkalmazást, az minden adatot láthat és módosíthat. Ez nem biztonságos; állítsd be az Auth:Mode értékét."
   },
@@ -118,7 +133,9 @@
   "forms": {
     "required": "A(z) {{field}} megadása kötelező",
     "emailInvalid": "Adj meg érvényes e-mail-címet",
-    "numberInvalid": "Adj meg egy számot, például 12,5."
+    "numberInvalid": "Adj meg egy számot, például 12,5.",
+    "dateIncomplete": "Add meg a teljes dátumot.",
+    "dateFuture": "A dátum nem lehet a jövőben."
   },
   "auth": {
     "signIn": "Bejelentkezés",
@@ -181,16 +198,15 @@
     "range": "{{from}}–{{to}} / {{total}}",
     "previous": "Előző oldal",
     "next": "Következő oldal",
-    "sortedAscending": "növekvő sorrend",
-    "sortedDescending": "csökkenő sorrend",
-    "caption": "{{name}}",
+    "first": "Első oldal",
+    "last": "Utolsó oldal",
+    "sort": "Rendezés",
     "actions": "Műveletek"
   },
   "vehicles": {
     "title": "Járművek",
     "add": "Jármű hozzáadása",
-    "edit": "Szerkesztés",
-    "delete": "Törlés",
+    "addLog": "Tankolás vagy költség hozzáadása",
     "editAria": "{{name}} szerkesztése",
     "deleteAria": "{{name}} törlése",
     "viewOnly": "csak megtekinthető",
@@ -346,7 +362,8 @@
       "tooManyColumns": "Egy táblázat legfeljebb {{max}} oszlopot jegyezhet meg.",
       "pageSizeInvalid": "Az oldalméret {{min}} és {{max}} között lehet.",
       "sortDirectionInvalid": "Ismeretlen rendezési irány.",
-      "languageInvalid": "A nyelv kódja en vagy en-GB alakú lehet."
+      "languageInvalid": "A nyelv kódja en vagy en-GB alakú lehet.",
+      "colorModeInvalid": "A színmód világos, sötét vagy rendszer lehet."
     },
     "refueling": {
       "litersPositive": "A literszámnak nullánál nagyobbnak kell lennie.",
@@ -485,7 +502,6 @@
     }
   },
   "a11y": {
-    "sortBy": "Rendezés: {{column}}",
     "uploadStatus": "Feltöltés állapota",
     "readingStatus": "Leolvasás állapota"
   },
@@ -521,8 +537,6 @@
   "refuelings": {
     "title": "Tankolások",
     "add": "Tankolás hozzáadása",
-    "edit": "Szerkesztés",
-    "delete": "Törlés",
     "editAria": "A(z) {{date}} napi tankolás szerkesztése",
     "deleteAria": "A(z) {{date}} napi tankolás törlése",
     "empty": "Még nincs tankolás. Add hozzá az elsőt.",
@@ -591,8 +605,6 @@
   "expenses": {
     "title": "Költségek",
     "add": "Költség hozzáadása",
-    "edit": "Szerkesztés",
-    "delete": "Törlés",
     "editAria": "A(z) {{title}} költség szerkesztése",
     "deleteAria": "A(z) {{title}} költség törlése",
     "empty": "Még nincs költség. A szerviz, biztosítás, parkolás és más költségek ide kerülnek.",

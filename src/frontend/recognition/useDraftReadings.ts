@@ -29,6 +29,9 @@ export interface DraftReadings {
   done: boolean
   /** Why the finished readings gave less than they might have, for the dialog to say. */
   explanation: ReadingExplanation
+  /** The window the dialog waits in for the pending readings: from the first pending upload to READING_WAIT_MS after the last one. */
+  waitingSince: number | null
+  waitingUntil: number | null
 }
 
 /**
@@ -93,5 +96,15 @@ export function useDraftReadings(drafts: readonly { id: string; at: number }[], 
   })
   const failed = ids.some((id) => readings.get(id)?.status === 'FAILED')
   const off = enabled && status.data?.recognitionStatus.available === false
-  return { available, off, readings, pending, done: available && !polling && finished, explanation: { issues: mergeIssues(readings.values()), failed } }
+  const pendingSince = drafts.filter((d) => pending.includes(d.id)).map((d) => d.at)
+  return {
+    available,
+    off,
+    readings,
+    pending,
+    done: available && !polling && finished,
+    explanation: { issues: mergeIssues(readings.values()), failed },
+    waitingSince: pendingSince.length > 0 ? Math.min(...pendingSince) : null,
+    waitingUntil: pendingSince.length > 0 ? Math.max(...pendingSince) + READING_WAIT_MS : null,
+  }
 }

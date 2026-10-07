@@ -1,4 +1,4 @@
-import { Callout } from '@radix-ui/themes'
+import Alert from '@mui/material/Alert'
 import { Info } from 'lucide-react'
 
 /**
@@ -7,11 +7,8 @@ import { Info } from 'lucide-react'
  */
 export function ReadingProblems({ problems }: { problems: readonly string[] }) {
   return problems.map((problem) => (
-    <Callout.Root key={problem} color="amber" size="1" my="2">
-      <Callout.Icon>
-        <Info size={16} aria-hidden />
-      </Callout.Icon>
-      <Callout.Text>{problem}</Callout.Text>
-    </Callout.Root>
+    <Alert key={problem} severity="warning" role="none" icon={<Info size={16} aria-hidden />} sx={{ my: 1 }}>
+      {problem}
+    </Alert>
   ))
 }

@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { graphql } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
 import { server } from '../support/server.ts'
@@ -28,6 +29,22 @@ function setup(vehicles = [fakeVehicle()], device: 'desktop' | 'phone' = 'deskto
 const tyres = () => fakeRecurring({ id: 'rc2', title: 'Tyres', kind: 'ODOMETER', intervalMonths: null, status: { state: 'OVERDUE', limit: 'ODOMETER', dueDate: null, dueOdometer: 60000, daysLeft: null, distanceLeft: -300 } })
 
 const card = async (name: string) => (await screen.findByRole('link', { name: `Open ${name}` })).closest('li')!
+
+it('shows the outlines of the cards while the first ones load, and says so to a screen reader', async () => {
+  let answer!: () => void
+  const held = new Promise<void>((resolve) => (answer = resolve))
+  setup()
+  server.use(graphql.query('Welcome', async () => void (await held))) // ahead of the vehicle backend, which answers once it is let go
+  await screen.findByRole('heading', { name: 'Your vehicles' })
+
+  expect(screen.getByText('Loading…')).toHaveAttribute('role', 'status')
+  expect(document.querySelectorAll('.MuiSkeleton-root')).toHaveLength(4)
+  answer()
+
+  await card('Octavia')
+  expect(screen.queryByText('Loading…')).not.toBeInTheDocument()
+  expect(document.querySelector('.MuiSkeleton-root')).toBeNull()
+})
 
 it('shows a card per vehicle with the key figures', async () => {
   setup([fakeVehicle({ summary: fakeSummary({ latestOdometer: 123456, averageConsumption: 6.25, lastFillUpDate: '2026-09-17', thisMonthSpend: 52000 }) })])
@@ -416,11 +433,11 @@ it('on a touch screen a card button opens its dialog at once, and taps inside th
   const dialog = await screen.findByRole('dialog', { name: 'Add refuelling' })
   expect(c).not.toHaveAttribute('data-open') // the tap went to the button, not to the figures
   await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
-  await ui.click(within(dialog).getByLabelText('Date'))
+  await ui.click(within(dialog).getByLabelText(/^Volume/)) // a tap on a field of the dialog (the date would open its own picker)
   const fullTank = within(dialog).getByRole('switch', { name: 'Full tank' })
-  const was = fullTank.getAttribute('aria-checked')
+  const was = (fullTank as HTMLInputElement).checked
   await ui.click(fullTank)
-  expect(fullTank).toHaveAttribute('aria-checked', was === 'true' ? 'false' : 'true') // the tap worked the control (the card did not swallow it as a reveal)
+  expect((fullTank as HTMLInputElement).checked).toBe(!was) // the tap worked the control (the card did not swallow it as a reveal)
   expect(c).not.toHaveAttribute('data-open')
   // Still at home with the dialog open: opening the vehicle would have unmounted the card and its dialog.
   expect(screen.getByRole('dialog', { name: 'Add refuelling' })).toBeInTheDocument()

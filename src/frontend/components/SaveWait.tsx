@@ -1,4 +1,4 @@
-import { Text } from '@radix-ui/themes'
+import Typography from '@mui/material/Typography'
 import { useTranslation } from 'react-i18next'
 
 /** Next to a Save button that waits for photos to finish uploading: says why it waits. */
@@ -6,8 +6,8 @@ export function SaveWait({ waiting }: { waiting: boolean }) {
   const { t } = useTranslation()
   if (!waiting) return null
   return (
-    <Text size="1" color="gray" className="tk-appear" style={{ marginRight: 'auto', alignSelf: 'center' }}>
+    <Typography variant="caption" className="tk-appear" sx={{ color: 'text.secondary', mr: 'auto', alignSelf: 'center' }}>
       {t('photos.waitUpload')}
-    </Text>
+    </Typography>
   )
 }

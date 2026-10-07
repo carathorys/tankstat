@@ -1,9 +1,13 @@
 import { useMutation } from '@apollo/client/react'
-import { Button, Heading, Tabs, Box } from '@radix-ui/themes'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
 import { useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
+import { TabbedPanels } from '../components/TabbedPanels.tsx'
 import { UserChip } from '../components/UserAvatar.tsx'
 import { VehiclePicture } from '../components/VehiclePicture.tsx'
 import {
@@ -26,7 +30,7 @@ import {
   type TrashQueryVariables,
   type VehicleSortField,
 } from '../gql/generated.ts'
-import { DataGrid, type GridColumn } from '../grid/DataGrid.tsx'
+import { ServerGrid, type GridColumn } from '../grid/ServerGrid.tsx'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { useFormat } from '../i18n/format.ts'
 import { ErrorMessage, SuccessMessage } from '../messages.tsx'
@@ -58,29 +62,24 @@ export function TrashPage() {
 
   return (
     <section aria-labelledby="page-title">
-      <Heading id="page-title" mb="2">
+      <Typography id="page-title" component="h1" variant="h3" sx={{ mb: 1 }}>
         {t('trash.title')}
-      </Heading>
+      </Typography>
       {actionError !== undefined && <ErrorMessage error={actionError} />}
       {notice && <SuccessMessage>{notice}</SuccessMessage>}
-      <Tabs.Root value={tab} onValueChange={(value) => { setNotice(undefined); setParams(value === 'vehicles' ? {} : { tab: value }, { replace: true }) }}>
-        <Tabs.List aria-label={t('trash.title')}>
-          <Tabs.Trigger value="vehicles">{t('trash.tabs.vehicles')}</Tabs.Trigger>
-          <Tabs.Trigger value="refuelings">{t('trash.tabs.refuelings')}</Tabs.Trigger>
-          <Tabs.Trigger value="expenses">{t('trash.tabs.expenses')}</Tabs.Trigger>
-        </Tabs.List>
-        <Box pt="4">
-          <Tabs.Content value="vehicles">
-            <VehicleTrash run={run} setNotice={setNotice} />
-          </Tabs.Content>
-          <Tabs.Content value="refuelings">
-            <RefuelingTrash run={run} setNotice={setNotice} />
-          </Tabs.Content>
-          <Tabs.Content value="expenses">
-            <ExpenseTrash run={run} setNotice={setNotice} />
-          </Tabs.Content>
-        </Box>
-      </Tabs.Root>
+      <TabbedPanels
+        label={t('trash.title')}
+        value={tab}
+        onChange={(value) => {
+          setNotice(undefined)
+          setParams(value === 'vehicles' ? {} : { tab: value }, { replace: true })
+        }}
+        tabs={[
+          { value: 'vehicles', label: t('trash.tabs.vehicles'), content: () => <VehicleTrash run={run} setNotice={setNotice} /> },
+          { value: 'refuelings', label: t('trash.tabs.refuelings'), content: () => <RefuelingTrash run={run} setNotice={setNotice} /> },
+          { value: 'expenses', label: t('trash.tabs.expenses'), content: () => <ExpenseTrash run={run} setNotice={setNotice} /> },
+        ]}
+      />
     </section>
   )
 }
@@ -97,7 +96,7 @@ function EmptyButton({ total, deletable, title, description, onConfirm }: { tota
     <Box>
       <ConfirmDialog
         trigger={
-          <Button size="3" color="red" variant="soft" disabled={deletable === 0}>
+          <Button size="large" color="error" variant="soft" disabled={deletable === 0}>
             {t('trash.emptyAction')}
           </Button>
         }
@@ -126,10 +125,10 @@ function VehicleTrash({ run, setNotice }: Shared) {
         mobile: true,
         sortField: 'NAME',
         cell: (r) => (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <Stack component="span" direction="row" sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.5 }}>
             <VehiclePicture url={r.pictureUrl} name={r.name} width={40} />
             {r.name}
-          </span>
+          </Stack>
         ),
       },
       { id: 'licensePlate', label: 'columns.licensePlate', include: 'withLicensePlate', sortField: 'LICENSE_PLATE', cell: (r) => r.licensePlate ?? none },
@@ -140,7 +139,7 @@ function VehicleTrash({ run, setNotice }: Shared) {
   }, [t, dateTime])
 
   return (
-    <DataGrid
+    <ServerGrid
       gridId="trash"
       caption={t('trash.tabs.vehicles')}
       query={TrashDocument}
@@ -159,7 +158,7 @@ function VehicleTrash({ run, setNotice }: Shared) {
         />
       )}
       actions={(v) => (
-        <Button size="2" variant="soft" aria-label={t('trash.restoreAria', { name: v.name })} onClick={() => void run(() => restore({ variables: { id: v.id } }))}>
+        <Button variant="soft" aria-label={t('trash.restoreAria', { name: v.name })} onClick={() => void run(() => restore({ variables: { id: v.id } }))}>
           {t('trash.restore')}
         </Button>
       )}
@@ -187,7 +186,7 @@ function RefuelingTrash({ run, setNotice }: Shared) {
   }, [t, format])
 
   return (
-    <DataGrid
+    <ServerGrid
       gridId="refueling-trash"
       caption={t('trash.tabs.refuelings')}
       query={RefuelingTrashDocument}
@@ -206,7 +205,7 @@ function RefuelingTrash({ run, setNotice }: Shared) {
         />
       )}
       actions={(r) => (
-        <Button size="2" variant="soft" aria-label={t('trash.restoreAria', { name: format.date(r.date) })} onClick={() => void run(() => restore({ variables: { id: r.id } }))}>
+        <Button variant="soft" aria-label={t('trash.restoreAria', { name: format.date(r.date) })} onClick={() => void run(() => restore({ variables: { id: r.id } }))}>
           {t('trash.restore')}
         </Button>
       )}
@@ -234,7 +233,7 @@ function ExpenseTrash({ run, setNotice }: Shared) {
   }, [t, format])
 
   return (
-    <DataGrid
+    <ServerGrid
       gridId="expense-trash"
       caption={t('trash.tabs.expenses')}
       query={ExpenseTrashDocument}
@@ -253,7 +252,7 @@ function ExpenseTrash({ run, setNotice }: Shared) {
         />
       )}
       actions={(r) => (
-        <Button size="2" variant="soft" aria-label={t('trash.restoreAria', { name: r.title })} onClick={() => void run(() => restore({ variables: { id: r.id } }))}>
+        <Button variant="soft" aria-label={t('trash.restoreAria', { name: r.title })} onClick={() => void run(() => restore({ variables: { id: r.id } }))}>
           {t('trash.restore')}
         </Button>
       )}

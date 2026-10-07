@@ -1,17 +1,23 @@
-import { Button, Dialog, Flex, Text } from '@radix-ui/themes'
+import Button from '@mui/material/Button'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LabeledSelect } from '../components/UnitSelect.tsx'
-import { FieldForm } from '../forms.tsx'
+import { DialogButtons, DialogCancel, DialogFrame } from '../dialogs/DialogFrame.tsx'
+import { DialogTrigger } from '../dialogs/DialogTrigger.tsx'
+import { useDialogState } from '../dialogs/useDialogState.ts'
+import { FieldForm } from '../forms/FieldForm.tsx'
 import type { UserDataDisposition } from '../gql/generated.ts'
 import { ErrorMessage } from '../messages.tsx'
+import { useToast } from '../toast/toastContext.ts'
 
 export interface PersonRef {
   id: string
   displayName: string
 }
 
-/** A dialog that opens from its `trigger` and closes once `children` calls the supplied `close`. */
+/** A dialog that opens from its `trigger` and closes once `children` calls `close`, or `saved` (which also says "Saved."). */
 function UserDialog({
   trigger,
   title,
@@ -21,31 +27,23 @@ function UserDialog({
   trigger: ReactNode
   title: string
   description: string
-  children: (close: () => void) => ReactNode
+  children: (done: { close: () => void; saved: () => void }) => ReactNode
 }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Trigger>{trigger}</Dialog.Trigger>
-      <Dialog.Content maxWidth="450px">
-        <Dialog.Title>{title}</Dialog.Title>
-        <Dialog.Description size="2" mb="4">
-          {description}
-        </Dialog.Description>
-        {children(() => setOpen(false))}
-      </Dialog.Content>
-    </Dialog.Root>
-  )
-}
-
-function CancelButton() {
+  const [open, setOpen] = useDialogState()
+  const { toast } = useToast()
   const { t } = useTranslation()
+  const close = () => setOpen(false)
+  const saved = () => {
+    close()
+    toast(t('toast.saved'))
+  }
   return (
-    <Dialog.Close>
-      <Button type="button" variant="soft" color="gray">
-        {t('common.cancel')}
-      </Button>
-    </Dialog.Close>
+    <>
+      <DialogTrigger trigger={trigger} open={open} onOpen={() => setOpen(true)} />
+      <DialogFrame open={open} onClose={close} title={title} description={description}>
+        {children({ close, saved })}
+      </DialogFrame>
+    </>
   )
 }
 
@@ -62,7 +60,7 @@ export function EditUserDialog({
   const { t } = useTranslation()
   return (
     <UserDialog trigger={trigger} title={t('admin.editTitle', { name: user.displayName })} description={t('admin.editDescription')}>
-      {(close) => (
+      {({ saved }) => (
         <FieldForm
           fields={[
             { name: 'email', label: 'fields.email', type: 'email', defaultValue: user.email },
@@ -71,10 +69,10 @@ export function EditUserDialog({
           submitLabel="admin.save"
           onSubmit={async (v) => {
             await onSubmit({ email: v.email ?? '', displayName: v.displayName?.trim() || null })
-            close()
+            saved()
           }}
         >
-          <CancelButton />
+          <DialogCancel />
         </FieldForm>
       )}
     </UserDialog>
@@ -94,16 +92,16 @@ export function SetPasswordDialog({
   const { t } = useTranslation()
   return (
     <UserDialog trigger={trigger} title={t('admin.passwordTitle', { name })} description={t('admin.passwordDescription')}>
-      {(close) => (
+      {({ saved }) => (
         <FieldForm
           fields={[{ name: 'password', label: 'fields.newPassword', type: 'password', autoComplete: 'new-password' }]}
           submitLabel="admin.setPassword"
           onSubmit={async (v) => {
             await onSubmit(v.password ?? '')
-            close()
+            saved()
           }}
         >
-          <CancelButton />
+          <DialogCancel />
         </FieldForm>
       )}
     </UserDialog>
@@ -127,7 +125,7 @@ export function DeleteUserDialog({
   const { t } = useTranslation()
   return (
     <UserDialog trigger={trigger} title={t('admin.deleteTitle', { name: user.displayName })} description={t('admin.deleteDescription')}>
-      {(close) => (
+      {({ close }) => (
         <DeleteForm
           others={others.filter((o) => o.id !== user.id)}
           onSubmit={async (input) => {
@@ -170,7 +168,7 @@ function DeleteForm({
 
   return (
     <form onSubmit={submit}>
-      <Flex direction="column" gap="3">
+      <Stack sx={{ gap: 1.5 }}>
         <LabeledSelect<DataChoice>
           label={t('admin.dataChoice')}
           value={choice}
@@ -191,23 +189,23 @@ function DeleteForm({
           />
         )}
         {choice === 'MOVE' && (
-          <Text as="p" size="2" color="gray">
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             {t('admin.moveGrantsNote')}
-          </Text>
+          </Typography>
         )}
         {choice === 'PURGE' && (
-          <Text as="p" size="2" color="red">
+          <Typography variant="body2" sx={{ color: 'error.softText' }}>
             {t('admin.purgeWarning')}
-          </Text>
+          </Typography>
         )}
         {error !== undefined && <ErrorMessage error={error} />}
-        <Flex gap="3" justify="end">
-          <CancelButton />
-          <Button type="submit" color="red" disabled={busy || incomplete}>
+        <DialogButtons>
+          <DialogCancel />
+          <Button type="submit" color="error" disabled={busy || incomplete}>
             {t('admin.deleteConfirm')}
           </Button>
-        </Flex>
-      </Flex>
+        </DialogButtons>
+      </Stack>
     </form>
   )
 }

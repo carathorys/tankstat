@@ -1,37 +1,46 @@
 import { useMutation } from '@apollo/client/react'
-import { Button, Flex, IconButton, Text } from '@radix-ui/themes'
+import Button from '@mui/material/Button'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
 import { Pencil, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '../../components/ConfirmDialog.tsx'
+import { IconAction } from '../../components/IconAction.tsx'
 import { UserChip } from '../../components/UserAvatar.tsx'
 import { ExpenseFormDialog } from '../../ExpenseFormDialog.tsx'
 import { anyAwaiting } from '../../recognition/review.ts'
 import { ReviewBadge } from '../../recognition/ReviewState.tsx'
 import {
-  AddExpenseDocument,
   DeleteExpenseDocument,
   ExpensesDocument,
+  RestoreExpenseDocument,
   UpdateExpenseDocument,
   type DistanceUnit,
   type ExpenseSortField,
   type ExpensesQuery,
   type ExpensesQueryVariables,
 } from '../../gql/generated.ts'
-import { DataGrid, type GridColumn } from '../../grid/DataGrid.tsx'
+import { ServerGrid, type GridColumn } from '../../grid/ServerGrid.tsx'
+import { useLeavingRows } from '../../grid/useLeavingRows.ts'
 import { useFormat } from '../../i18n/format.ts'
 import { ErrorMessage } from '../../messages.tsx'
+import { useToast } from '../../toast/toastContext.ts'
+import { EXPENSE_QUERIES, useLogMutations } from './useLogMutations.ts'
 
 type Row = ExpensesQuery['expenses'][number]
 
-const refetch = { refetchQueries: ['Expenses', 'VehicleDetails', 'LogDefaults', 'ExpenseCategories'], awaitRefetchQueries: true }
+const refetch = { refetchQueries: EXPENSE_QUERIES, awaitRefetchQueries: true }
 
 export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; units: { distance: DistanceUnit } }; canLog: boolean }) {
   const { t } = useTranslation()
   const format = useFormat()
-  const [addExpense] = useMutation(AddExpenseDocument, refetch)
+  const add = useLogMutations(vehicle.id)
   const [updateExpense] = useMutation(UpdateExpenseDocument, refetch)
   const [deleteExpense] = useMutation(DeleteExpenseDocument, { ...refetch, refetchQueries: [...refetch.refetchQueries, 'ExpenseTrash'] })
+  const [restoreExpense] = useMutation(RestoreExpenseDocument, { ...refetch, refetchQueries: [...refetch.refetchQueries, 'ExpenseTrash'] })
+  const { leaving, leave } = useLeavingRows()
+  const { undoable } = useToast()
   const [actionError, setActionError] = useState<unknown>()
   const { units } = vehicle
 
@@ -46,10 +55,10 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
         sortField: 'DATE',
         // Always shown, so it also says when an expense waits for its photos or for someone to check what they showed.
         cell: (r) => (
-          <Flex direction="column" align="start" gap="1">
+          <Stack sx={{ alignItems: 'flex-start', gap: 0.5 }}>
             {format.date(r.date)}
             <ReviewBadge state={r.reviewState} />
-          </Flex>
+          </Stack>
         ),
       },
       { id: 'title', label: 'columns.title', hideable: false, mobile: true, sortField: 'TITLE', cell: (r) => r.title },
@@ -66,7 +75,8 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
   async function moveToTrash(row: Row) {
     setActionError(undefined)
     try {
-      await deleteExpense({ variables: { id: row.id } })
+      await leave(row.id, () => deleteExpense({ variables: { id: row.id } }))
+      undoable(t('toast.expenseTrashed', { title: row.title }), () => restoreExpense({ variables: { id: row.id } }))
     } catch (e) {
       setActionError(e)
     }
@@ -75,7 +85,7 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
   return (
     <>
       {actionError !== undefined && <ErrorMessage error={actionError} />}
-      <DataGrid
+      <ServerGrid
         gridId="expenses"
         caption={t('expenses.title')}
         query={ExpensesDocument}
@@ -86,52 +96,44 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
         defaultSort={{ column: 'date', direction: 'DESC' }}
         emptyText={t('expenses.empty')}
         pollWhile={anyAwaiting}
+        leaving={leaving}
         toolbar={({ total }) => (
-          <Flex align="center" gap="3" wrap="wrap">
-            {canLog && (
-              <ExpenseFormDialog
-                vehicle={vehicle}
-                trigger={<Button size="3">{t('expenses.add')}</Button>}
-                onSubmit={async (input, photoIds) => {
-                  const added = await addExpense({ variables: { input: { ...input, vehicleId: vehicle.id, photoIds } } })
-                  return added.data ? { id: added.data.addExpense.id, photoCount: added.data.addExpense.photos.length } : undefined
-                }}
-              />
-            )}
-            <Text size="2" color="gray" aria-live="polite">
+          <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+            {canLog && <ExpenseFormDialog vehicle={vehicle} trigger={<Button size="large">{t('expenses.add')}</Button>} onSubmit={add.expense} />}
+            <Typography variant="body2" aria-live="polite" sx={{ color: 'text.secondary' }}>
               {t('expenses.countLabel', { count: total })}
-            </Text>
-          </Flex>
+            </Typography>
+          </Stack>
         )}
         actions={(r) =>
           r.canEdit ? (
-            <Flex gap="2" justify="end">
+            <Stack direction="row" sx={{ gap: 1, justifyContent: 'flex-end' }}>
               <ExpenseFormDialog
                 vehicle={vehicle}
                 expenseId={r.id}
                 trigger={
-                  <IconButton size="3" variant="soft" aria-label={t('expenses.editAria', { title: r.title })}>
+                  <IconAction size="large" tone="primary" label={t('expenses.editAria', { title: r.title })}>
                     <Pencil size={16} aria-hidden />
-                  </IconButton>
+                  </IconAction>
                 }
                 onSubmit={async (input) => void (await updateExpense({ variables: { input: { ...input, id: r.id } } }))}
               />
               <ConfirmDialog
                 trigger={
-                  <IconButton size="3" variant="soft" color="red" aria-label={t('expenses.deleteAria', { title: r.title })}>
+                  <IconAction size="large" tone="error" label={t('expenses.deleteAria', { title: r.title })}>
                     <Trash2 size={16} aria-hidden />
-                  </IconButton>
+                  </IconAction>
                 }
                 title={t('expenses.trashTitle')}
                 description={t('expenses.trashDescription', { title: r.title })}
                 confirmLabel={t('expenses.trashConfirm')}
                 onConfirm={() => void moveToTrash(r)}
               />
-            </Flex>
+            </Stack>
           ) : (
-            <Text size="2" color="gray">
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
               {t('expenses.viewOnly')}
-            </Text>
+            </Typography>
           )
         }
       />

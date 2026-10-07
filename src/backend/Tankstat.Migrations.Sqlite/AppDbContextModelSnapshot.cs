@@ -578,6 +578,10 @@ namespace Tankstat.Migrations.Sqlite
                     b.Property<Guid>("UserId")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ColorMode")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Language")
                         .HasMaxLength(8)
                         .HasColumnType("TEXT");

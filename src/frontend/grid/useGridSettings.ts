@@ -1,4 +1,3 @@
-import type { ColumnOrderState, PaginationState, SortingState, ColumnVisibilityState } from '@tanstack/react-table'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { GridSaved } from '../settings/types.ts'
 import { useUiSettings } from '../settings/uiSettingsContext.ts'
@@ -16,10 +15,19 @@ export interface ColumnInfo {
   sortable: boolean
 }
 
+export interface PaginationState {
+  /** Zero-based. */
+  pageIndex: number
+  pageSize: number
+}
+
 export interface GridState {
-  columnOrder: ColumnOrderState
-  columnVisibility: ColumnVisibilityState
-  sorting: SortingState
+  /** Every column's id, in the order they are shown. */
+  columnOrder: string[]
+  /** Hidden columns map to false (MUI's column visibility model); a column not named is shown. */
+  columnVisibility: Record<string, boolean>
+  /** One entry: the column the server sorts by. */
+  sorting: { id: string; desc: boolean }[]
   pagination: PaginationState
 }
 
@@ -78,7 +86,7 @@ function merge(saved: Partial<GridSaved> | undefined, base: GridState, columns: 
 }
 
 /**
- * Column visibility and order, page size and sorting of one grid, in the shape TanStack Table wants. Remembered in the browser and, through
+ * Column visibility and order, page size and sorting of one grid. Remembered in the browser and, through
  * `UiSettingsProvider`, with the account: the server's copy is taken when it is there, and adopted once more when it arrives after the grid
  * mounted, unless the user changed the grid meanwhile. Without a provider (a grid on its own) the browser alone remembers.
  */

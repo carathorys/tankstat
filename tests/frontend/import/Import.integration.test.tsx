@@ -211,12 +211,16 @@ it('only offers vehicles whose logs the user may add to, and says when there are
   expect(screen.getByRole('button', { name: 'What will be imported' })).toBeDisabled()
 })
 
-it('marks the current step for screen readers', async () => {
-  setup()
+it('lists the steps in order and marks the current one for screen readers', async () => {
+  const { ui } = setup()
+  const steps = within(await screen.findByRole('list', { name: 'Import' })).getAllByRole('listitem')
+  const current = () => steps.filter((s) => s.getAttribute('aria-current') === 'step').map((s) => s.textContent)
 
-  const current = await screen.findByText(/1\. File/)
+  expect(steps.map((s) => s.textContent)).toEqual(['1File', '2Target', '3Review', '4Done'])
+  expect(current()).toEqual(['1File'])
 
-  expect(current.closest('li')).toHaveAttribute('aria-current', 'step')
+  await toTarget(ui)
+  expect(current()).toEqual(['2Target'])
 })
 
 it('has an entry in the navigation', async () => {

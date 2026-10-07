@@ -415,6 +415,7 @@ type Session {
 type UiSettingsInfo {
   navOpen: Boolean
   language: String
+  colorMode: ColorMode
   grids: [GridSettingsInfo!]! @cost(weight: "10")
 }
 
@@ -683,6 +684,7 @@ input UpdateUiSettingsInput {
   navOpen: Boolean
   language: String
   clearLanguage: Boolean
+  colorMode: ColorMode
 }
 
 input UpdateUserInput {
@@ -755,6 +757,12 @@ enum ChartUnit {
   DISTANCE
   CONSUMPTION
   COUNT
+}
+
+enum ColorMode {
+  LIGHT
+  DARK
+  SYSTEM
 }
 
 enum DistanceUnit {

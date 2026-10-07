@@ -25,7 +25,8 @@ function setup(settings = fakeSettingsBackend()) {
   return { settings, vehicles, view, ui: userEvent.setup() }
 }
 
-const headers = () => screen.getAllByRole('columnheader').map((h) => h.textContent).filter((text) => text && text !== 'Actions')
+// Also while the Columns popover is open (it is modal: the page behind it is hidden from assistive technology meanwhile).
+const headers = () => screen.getAllByRole('columnheader', { hidden: true }).map((h) => h.textContent).filter((text) => text && text !== 'Actions')
 const lastRequest = (reqs: Record<string, unknown>[]) => reqs[reqs.length - 1]
 
 it('hiding the sidebar is saved with the account and shows on another device', async () => {
@@ -136,6 +137,69 @@ it('the language is saved with the account and applied on another device; an unk
   expect(document.documentElement.lang).toBe('en')
 })
 
+it('the colour mode is saved with the account and applied on another device', async () => {
+  const { settings, ui, view } = setup()
+  await screen.findByRole('heading', { name: 'Vehicles' })
+  expect(document.documentElement).toHaveClass('dark') // nothing chosen yet
+
+  await ui.click(screen.getByRole('button', { name: 'Colour mode' }))
+  expect(await screen.findByRole('menuitemradio', { name: 'Dark' })).toHaveAttribute('aria-checked', 'true')
+  await ui.click(screen.getByRole('menuitemradio', { name: 'Light' }))
+
+  expect(document.documentElement).toHaveClass('light')
+  expect(window.localStorage.getItem('tankstat.colorMode')).toBe('light')
+  await waitFor(() => expect(settings.state.calls.UpdateUiSettings).toEqual([{ input: { colorMode: 'LIGHT' } }]))
+
+  view.unmount()
+  window.localStorage.clear() // another device: the browser remembers nothing, the server does
+  renderWithApollo(<App />, '/vehicles')
+  await screen.findByRole('heading', { name: 'Vehicles' })
+  await waitFor(() => expect(window.localStorage.getItem('tankstat.colorMode')).toBe('light'))
+  expect(document.documentElement).toHaveClass('light')
+})
+
+it('a colour mode chosen before the server answers is not undone by the answer', async () => {
+  stubViewport('desktop')
+  const settings = fakeSettingsBackend({ colorMode: 'LIGHT', language: 'hu' })
+  let answer!: () => void
+  const held = new Promise<void>((resolve) => (answer = resolve))
+  server.use(
+    adminSession(),
+    healthHandler,
+    graphql.query('UiSettings', async () => {
+      await held
+      return HttpResponse.json({ data: { uiSettings: settings.state.settings } })
+    }),
+    ...settings.handlers,
+    ...fakeVehicleBackend(cars).handlers,
+  )
+  const ui = userEvent.setup()
+  renderWithApollo(<App />, '/vehicles')
+  await screen.findByRole('heading', { name: 'Vehicles' })
+
+  await ui.click(screen.getByRole('button', { name: 'Colour mode' }))
+  await ui.click(await screen.findByRole('menuitemradio', { name: 'System' }))
+  answer()
+
+  await screen.findByRole('heading', { name: 'Járművek' }) // the answer has arrived: its language applied ...
+  expect(window.localStorage.getItem('tankstat.colorMode')).toBe('system') // ... its older colour mode did not
+  expect(settings.state.calls.UpdateUiSettings).toEqual([{ input: { colorMode: 'SYSTEM' } }])
+})
+
+it('System follows the device: light on a device set to light', async () => {
+  stubViewport('desktop', { scheme: 'light' })
+  server.use(adminSession(), healthHandler, ...fakeSettingsBackend().handlers, ...fakeVehicleBackend(cars).handlers)
+  const ui = userEvent.setup()
+  renderWithApollo(<App />, '/vehicles')
+  await screen.findByRole('heading', { name: 'Vehicles' })
+  expect(document.documentElement).toHaveClass('dark') // the app's own default, whatever the device
+
+  await ui.click(screen.getByRole('button', { name: 'Colour mode' }))
+  await ui.click(await screen.findByRole('menuitemradio', { name: 'System' }))
+
+  expect(document.documentElement).toHaveClass('light')
+})
+
 it('a visitor who is not signed in changes only the browser', async () => {
   stubViewport('desktop')
   const settings = fakeSettingsBackend()
@@ -148,6 +212,10 @@ it('a visitor who is not signed in changes only the browser', async () => {
   await ui.click(await screen.findByRole('menuitemradio', { name: 'Magyar' }))
 
   await screen.findByRole('heading', { name: 'Bejelentkezés' })
+  await ui.click(screen.getByRole('button', { name: 'Színmód' }))
+  await ui.click(await screen.findByRole('menuitemradio', { name: 'Világos' }))
+
+  expect(document.documentElement).toHaveClass('light')
   expect(settings.state.requests.UiSettings).toBe(0)
   expect(settings.state.calls.UpdateUiSettings).toBeUndefined()
 })

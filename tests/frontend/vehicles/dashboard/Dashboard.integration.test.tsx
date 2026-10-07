@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../../src/frontend/App.tsx'
 import { server } from '../../support/server.ts'
 import { fakeChart, fakeDashboardBackend, fakeLogBackend, fakeSummary, fakeVehicle, healthHandler, person, renderWithApollo, sessionHandler, stubViewport } from '../../support/mocks.tsx'
+import { dateValue, findDateField, typeDate } from '../../support/dates.ts'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
@@ -26,7 +27,7 @@ const choose = async (ui: ReturnType<typeof userEvent.setup>, control: string, o
   await ui.click(await screen.findByRole('option', { name: option }))
 }
 
-const cardOf = async (title: string) => (await screen.findByRole('heading', { name: title })).closest('[class*="rt-Card"]') as HTMLElement
+const cardOf = async (title: string) => (await screen.findByRole('heading', { name: title })).closest('.MuiCard-root') as HTMLElement
 
 // ---- the page --------------------------------------------------------------------------------------------
 
@@ -193,9 +194,9 @@ it('a custom period needs both dates, is sent as chosen, and is previewed once i
   expect(within(dialog).getByText('Choose the first and the last day of the period.')).toBeInTheDocument()
   expect(within(dialog).getByRole('button', { name: 'Save chart' })).toBeDisabled()
   const before = state.chartRequests.length
-  await ui.type(within(dialog).getByLabelText('From'), '2026-03-01')
+  await typeDate(ui, await findDateField('From', dialog), '2026-03-01')
   expect(state.chartRequests.length).toBe(before) // not previewed until both dates are there
-  await ui.type(within(dialog).getByLabelText('To'), '2026-05-31')
+  await typeDate(ui, await findDateField('To', dialog), '2026-05-31')
   await waitFor(() => expect(state.chartRequests.at(-1)!.config).toMatchObject({ range: 'CUSTOM', from: '2026-03-01', to: '2026-05-31' }))
   await ui.click(within(dialog).getByRole('button', { name: 'Save chart' }))
 
@@ -210,8 +211,8 @@ it('does not send dates for a preset period, even after a custom one was chosen 
   const dialog = await screen.findByRole('dialog', { name: 'Add chart' })
   await ui.type(within(dialog).getByLabelText('Title'), 'Back to preset')
   await choose(ui, 'Period', 'Custom (from – to)')
-  await ui.type(within(dialog).getByLabelText('From'), '2026-03-01')
-  await ui.type(within(dialog).getByLabelText('To'), '2026-05-31')
+  await typeDate(ui, await findDateField('From', dialog), '2026-03-01')
+  await typeDate(ui, await findDateField('To', dialog), '2026-05-31')
 
   await choose(ui, 'Period', '3 months')
   await ui.click(within(dialog).getByRole('button', { name: 'Save chart' }))
@@ -297,7 +298,7 @@ it('edits a saved chart, starting from its recipe', async () => {
   expect(screen.getByRole('combobox', { name: 'What to measure' })).toHaveTextContent('Fuel volume')
   expect(screen.getByRole('combobox', { name: 'Group by' })).toHaveTextContent('Year')
   expect(screen.getByRole('combobox', { name: 'Chart type' })).toHaveTextContent('Area')
-  expect(within(dialog).getByLabelText('From')).toHaveValue('2025-01-01')
+  expect(dateValue(await findDateField('From', dialog))).toBe('2025-01-01')
   await ui.clear(within(dialog).getByLabelText('Title'))
   await ui.type(within(dialog).getByLabelText('Title'), 'New name')
   await ui.click(within(dialog).getByRole('button', { name: 'Save chart' }))

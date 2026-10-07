@@ -9,9 +9,11 @@ import { setupServer } from 'msw/node'
 export const server = setupServer(
   graphql.query('UnreadNotificationCount', () => HttpResponse.json({ data: { notificationCount: 0 } })),
   graphql.query('RecognitionStatus', () => HttpResponse.json({ data: { recognitionStatus: { available: false } } })),
-  graphql.query('UiSettings', () => HttpResponse.json({ data: { uiSettings: { navOpen: null, language: null, grids: [] } } })),
+  graphql.query('UiSettings', () => HttpResponse.json({ data: { uiSettings: { navOpen: null, language: null, colorMode: null, grids: [] } } })),
   graphql.mutation('UpdateUiSettings', ({ variables }) =>
-    HttpResponse.json({ data: { updateUiSettings: { navOpen: variables.input.navOpen ?? null, language: variables.input.language ?? null } } }),
+    HttpResponse.json({
+      data: { updateUiSettings: { navOpen: variables.input.navOpen ?? null, language: variables.input.language ?? null, colorMode: variables.input.colorMode ?? null } },
+    }),
   ),
   graphql.mutation('SaveGridSettings', ({ variables }) => HttpResponse.json({ data: { saveGridSettings: variables.input } })),
   graphql.mutation('ResetGridSettings', () => HttpResponse.json({ data: { resetGridSettings: true } })),

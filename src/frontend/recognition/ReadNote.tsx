@@ -1,7 +1,8 @@
-import * as RadixForm from '@radix-ui/react-form'
-import { Button, Flex, Text } from '@radix-ui/themes'
+import Button from '@mui/material/Button'
+import Stack from '@mui/material/Stack'
 import { Hourglass, ScanText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { FieldMessage } from '../forms/Field.tsx'
 
 /**
  * Under a field that a photo filled in: "Read from the photo; check it". Where the user typed something else: "The photo shows …" with a
@@ -23,34 +24,32 @@ export function ReadNote({
   onUse?: () => void
 }) {
   const { t } = useTranslation()
+  const icon = { verticalAlign: '-2px', marginRight: 4 }
   if (offered !== undefined)
     return (
-      <Flex align="center" gap="2" wrap="wrap" className="tk-appear">
-        <RadixForm.Message forceMatch asChild>
-          <Text size="1">
-            <ScanText size={12} aria-hidden /> {t('reading.differs', { value: offered })}
-          </Text>
-        </RadixForm.Message>
-        <Button type="button" size="2" variant="soft" style={{ minHeight: 44 }} aria-label={t('reading.useAria', { value: offered, field })} onClick={onUse}>
+      <Stack direction="row" className="tk-appear" sx={{ alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+        <FieldMessage sx={{ color: 'text.primary' }}>
+          <ScanText size={12} aria-hidden style={icon} />
+          {t('reading.differs', { value: offered })}
+        </FieldMessage>
+        <Button type="button" variant="soft" sx={{ minHeight: 44 }} aria-label={t('reading.useAria', { value: offered, field })} onClick={onUse}>
           {t('reading.use')}
         </Button>
-      </Flex>
+      </Stack>
     )
   if (filled)
     return (
-      <RadixForm.Message forceMatch asChild>
-        <Text size="1" color="blue" className="tk-appear">
-          <ScanText size={12} aria-hidden /> {t('reading.filled')}
-        </Text>
-      </RadixForm.Message>
+      <FieldMessage className="tk-appear" sx={{ color: 'info.softText' }}>
+        <ScanText size={12} aria-hidden style={icon} />
+        {t('reading.filled')}
+      </FieldMessage>
     )
   if (waiting)
     return (
-      <RadixForm.Message forceMatch asChild>
-        <Text size="1" color="gray" className="tk-appear">
-          <Hourglass className="tk-pulse" size={12} aria-hidden /> {t('reading.waiting')}
-        </Text>
-      </RadixForm.Message>
+      <FieldMessage className="tk-appear">
+        <Hourglass className="tk-pulse" size={12} aria-hidden style={icon} />
+        {t('reading.waiting')}
+      </FieldMessage>
     )
   return null
 }

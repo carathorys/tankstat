@@ -1,11 +1,15 @@
-import { Box, Button, Flex, IconButton, Spinner, Text } from '@radix-ui/themes'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import CircularProgress from '@mui/material/CircularProgress'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
 import { Camera, ImagePlus, RotateCw, Trash2 } from 'lucide-react'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useId, useRef, useState, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useErrorText } from '../i18n/errors.ts'
 import { ErrorMessage } from '../messages.tsx'
 import { resizeImage } from '../pictures/resizeImage.ts'
 import { deleteImage, LOG_PHOTO_EDGE, logPhotoPath, logPhotosPath, MAX_LOG_PHOTOS, uploadImage, type LogKind, type ReadingPurpose } from '../pictures/upload.ts'
+import { IconAction } from './IconAction.tsx'
 import type { PhotoQueue } from './usePhotoQueue.ts'
 
 /**
@@ -45,15 +49,17 @@ export function PhotoGallery({
   onChanged: () => void | Promise<unknown>
 }) {
   const { t } = useTranslation()
-  const errorText = useErrorText()
   const camera = useRef<HTMLInputElement>(null)
   const library = useRef<HTMLInputElement>(null)
   const hintId = useId()
   const [status, setStatus] = useState<string>()
   const [error, setError] = useState<unknown>()
   const [busy, setBusy] = useState(false)
-
-  useEffect(() => onBusyChange?.(busy), [busy, onBusyChange])
+  // Told right away, not from an effect: the dialog's Save comes back in the same render that says the photos are done.
+  const working = (on: boolean) => {
+    setBusy(on)
+    onBusyChange?.(on)
+  }
 
   const saved = logId !== undefined
   const shown = saved
@@ -62,7 +68,7 @@ export function PhotoGallery({
   const room = MAX_LOG_PHOTOS - shown.length
 
   async function run(work: () => Promise<void>, done: string) {
-    setBusy(true)
+    working(true)
     setError(undefined)
     setStatus(t('photos.working'))
     try {
@@ -72,7 +78,7 @@ export function PhotoGallery({
       setStatus(undefined)
       setError(e)
     } finally {
-      setBusy(false)
+      working(false)
     }
   }
 
@@ -98,7 +104,7 @@ export function PhotoGallery({
     }, saved ? t('photos.added') : t('photos.ready'))
   }
 
-  const input = (ref: React.RefObject<HTMLInputElement | null>, capture: boolean) => (
+  const input = (ref: RefObject<HTMLInputElement | null>, capture: boolean) => (
     <input
       ref={ref}
       type="file"
@@ -118,106 +124,99 @@ export function PhotoGallery({
   )
 
   return (
-    <Flex asChild direction="column" gap="2">
-      <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
-        <legend>
-          <Text size="2" weight="bold">
-            {t('photos.title')}
-          </Text>
-        </legend>
-        {input(camera, true)}
-        {input(library, false)}
-        <Flex gap="2" wrap="wrap">
-          <Button type="button" size="3" variant="soft" disabled={disabled || busy || room <= 0} aria-describedby={hintId} onClick={() => camera.current?.click()}>
-            <Camera size={16} aria-hidden />
-            {t('photos.take')}
-          </Button>
-          <Button type="button" size="3" variant="soft" disabled={disabled || busy || room <= 0} aria-describedby={hintId} onClick={() => library.current?.click()}>
-            <ImagePlus size={16} aria-hidden />
-            {t('photos.choose')}
-          </Button>
-        </Flex>
-        <Text id={hintId} size="1" color="gray">
-          {t('photos.hint', { n: shown.length, max: MAX_LOG_PHOTOS })}
-        </Text>
-        {!saved && queue.failed > 0 && <Text size="1">{t('photos.failedHint')}</Text>}
-        {shown.length > 0 && (
-          <Flex asChild gap="3" wrap="wrap">
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-              {shown.map((photo, index) => (
-                <li key={photo.key}>
-                  <Flex direction="column" gap="1" align="center">
-                    <a href={photo.url} target="_blank" rel="noreferrer" aria-label={t('photos.open', { n: index + 1 })}>
-                      <Box position="relative" width="96px" height="96px" overflow="hidden" style={{ borderRadius: 'var(--radius-2)' }}>
-                        <img src={photo.url} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                        {(photo.state === 'uploading' || photo.reading) && (
-                          <Flex position="absolute" inset="0" align="center" justify="center" className="tk-fade" style={{ background: 'var(--black-a6)' }}>
-                            <Spinner size="3" />
-                          </Flex>
-                        )}
+    <Box component="fieldset" sx={{ border: 0, p: 0, m: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <Typography component="legend" variant="body2" sx={{ fontWeight: 700, p: 0, mb: 0.5 }}>
+        {t('photos.title')}
+      </Typography>
+      {input(camera, true)}
+      {input(library, false)}
+      <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
+        <Button type="button" size="large" variant="soft" disabled={disabled || busy || room <= 0} aria-describedby={hintId} onClick={() => camera.current?.click()}>
+          <Camera size={16} aria-hidden />
+          {t('photos.take')}
+        </Button>
+        <Button type="button" size="large" variant="soft" disabled={disabled || busy || room <= 0} aria-describedby={hintId} onClick={() => library.current?.click()}>
+          <ImagePlus size={16} aria-hidden />
+          {t('photos.choose')}
+        </Button>
+      </Stack>
+      <Typography id={hintId} variant="caption" sx={{ color: 'text.secondary' }}>
+        {t('photos.hint', { n: shown.length, max: MAX_LOG_PHOTOS })}
+      </Typography>
+      {!saved && queue.failed > 0 && <Typography variant="caption">{t('photos.failedHint')}</Typography>}
+      {shown.length > 0 && (
+        <Stack component="ul" direction="row" sx={{ gap: 1.5, flexWrap: 'wrap', listStyle: 'none', p: 0, m: 0 }}>
+          {shown.map((photo, index) => (
+            <li key={photo.key}>
+              <Stack sx={{ gap: 0.5, alignItems: 'center' }}>
+                <a href={photo.url} target="_blank" rel="noreferrer" aria-label={t('photos.open', { n: index + 1 })}>
+                  <Box sx={{ position: 'relative', width: 96, height: 96, overflow: 'hidden', borderRadius: 1 / 2 }}>
+                    <img src={photo.url} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    {(photo.state === 'uploading' || photo.reading) && (
+                      <Box className="tk-fade" sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'rgba(0, 0, 0, 0.4)', color: 'common.white' }}>
+                        <CircularProgress size={24} color="inherit" aria-hidden />
                       </Box>
-                    </a>
-                    {photo.state === 'uploading' && (
-                      <Text size="1" color="gray">
-                        {t('photos.uploading')}
-                      </Text>
                     )}
-                    {photo.state === 'failed' && <Text size="1">{t('photos.uploadFailed')}</Text>}
-                    {photo.reading && (
-                      <Text size="1" color="gray">
-                        {t('reading.reading')}
-                      </Text>
-                    )}
-                    <Flex gap="2">
-                      {photo.state === 'failed' && (
-                        <IconButton
-                          type="button"
-                          size="3"
-                          variant="soft"
-                          disabled={disabled || busy}
-                          aria-label={t('photos.retryAria', { n: index + 1 })}
-                          onClick={() =>
-                            void run(async () => {
-                              const failed = await queue.retry(photo.key)
-                              if (failed !== undefined) throw failed
-                            }, t('photos.ready'))
-                          }
-                        >
-                          <RotateCw size={16} aria-hidden />
-                        </IconButton>
-                      )}
-                      <IconButton
-                        type="button"
-                        size="3"
-                        variant="soft"
-                        color="red"
-                        disabled={disabled || busy}
-                        aria-label={t('photos.removeAria', { n: index + 1 })}
-                        onClick={() =>
-                          void run(async () => {
-                            if (saved) {
-                              await deleteImage(logPhotoPath(kind, logId, photo.key))
-                              await onChanged()
-                            } else {
-                              await queue.remove(photo.key)
-                            }
-                          }, t('photos.removed'))
+                  </Box>
+                </a>
+                {photo.state === 'uploading' && (
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                    {t('photos.uploading')}
+                  </Typography>
+                )}
+                {photo.state === 'failed' && <Typography variant="caption">{t('photos.uploadFailed')}</Typography>}
+                {photo.reading && (
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                    {t('reading.reading')}
+                  </Typography>
+                )}
+                <Stack direction="row" sx={{ gap: 1 }}>
+                  {photo.state === 'failed' && (
+                    <IconAction
+                      type="button"
+                      size="large"
+                      tone="primary"
+                      disabled={disabled || busy}
+                      label={t('photos.retryAria', { n: index + 1 })}
+                      onClick={() =>
+                        void run(async () => {
+                          const failed = await queue.retry(photo.key)
+                          if (failed !== undefined) throw failed
+                        }, t('photos.ready'))
+                      }
+                    >
+                      <RotateCw size={16} aria-hidden />
+                    </IconAction>
+                  )}
+                  <IconAction
+                    type="button"
+                    size="large"
+                    tone="error"
+                    disabled={disabled || busy}
+                    label={t('photos.removeAria', { n: index + 1 })}
+                    onClick={() =>
+                      void run(async () => {
+                        if (saved) {
+                          await deleteImage(logPhotoPath(kind, logId, photo.key))
+                          await onChanged()
+                        } else {
+                          await queue.remove(photo.key)
                         }
-                      >
-                        <Trash2 size={16} aria-hidden />
-                      </IconButton>
-                    </Flex>
-                  </Flex>
-                </li>
-              ))}
-            </ul>
-          </Flex>
-        )}
-        <div role="status" aria-label={t('a11y.uploadStatus')}>
-          {status && <Text size="2">{status}</Text>}
-        </div>
-        {error !== undefined && <ErrorMessage>{errorText(error)}</ErrorMessage>}
-      </fieldset>
-    </Flex>
+                      }, t('photos.removed'))
+                    }
+                  >
+                    <Trash2 size={16} aria-hidden />
+                  </IconAction>
+                </Stack>
+              </Stack>
+            </li>
+          ))}
+        </Stack>
+      )}
+      <div role="status" aria-label={t('a11y.uploadStatus')}>
+        {status && <Typography variant="body2">{status}</Typography>}
+      </div>
+      {error !== undefined && <ErrorMessage error={error} />}
+    </Box>
   )
 }

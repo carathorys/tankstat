@@ -1,5 +1,11 @@
 import { useMutation, useQuery } from '@apollo/client/react'
-import { Button, Flex, Grid, Heading, Text, TextField } from '@radix-ui/themes'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import InputAdornment from '@mui/material/InputAdornment'
+import OutlinedInput from '@mui/material/OutlinedInput'
+import Skeleton from '@mui/material/Skeleton'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
 import { Search } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -13,9 +19,19 @@ import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { ArrangeVehiclesDialog } from '../ArrangeVehiclesDialog.tsx'
 import { ErrorMessage } from '../messages.tsx'
 import { VehicleFormDialog } from '../VehicleFormDialog.tsx'
-import { Loading } from '../components/Loading.tsx'
+import { visuallyHidden } from '../components/visuallyHidden.ts'
 
 const PAGE_SIZE = 24
+
+/** The cards: one column on a phone, two from a tablet on, three on a very wide screen. */
+const cardGrid = {
+  display: 'grid',
+  gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'repeat(2, minmax(0, 1fr))', xxl: 'repeat(3, minmax(0, 1fr))' },
+  gap: 2,
+  listStyle: 'none',
+  p: 0,
+  m: 0,
+} as const
 
 /**
  * The start page: a card for every vehicle the user owns or that is shared with them, with its picture and key figures. A search box
@@ -70,7 +86,11 @@ export function WelcomePage({ isAdmin }: { isAdmin: boolean }) {
 
   const addButton = (primary: boolean) => (
     <VehicleFormDialog
-      trigger={<Button size="3" variant={primary ? 'solid' : 'soft'}>{t('welcome.add')}</Button>}
+      trigger={
+        <Button size="large" variant={primary ? 'contained' : 'soft'}>
+          {t('welcome.add')}
+        </Button>
+      }
       onSubmit={(input) => addVehicle({ variables: { input } })}
     />
   )
@@ -79,75 +99,86 @@ export function WelcomePage({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <section aria-labelledby="page-title">
-      <Flex justify="between" align="center" gap="3" wrap="wrap" mb="4">
-        <Heading id="page-title">{t('welcome.title')}</Heading>
-        <Flex gap="2" wrap="wrap">
-          <Button asChild size="3" variant="soft">
-            <Link to="/import">{t('welcome.import')}</Link>
+      <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
+        <Typography id="page-title" component="h1" variant="h3">
+          {t('welcome.title')}
+        </Typography>
+        <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
+          <Button component={Link} to="/import" size="large" variant="soft">
+            {t('welcome.import')}
           </Button>
           {(data?.vehicleTotal ?? 0) >= 2 && <ArrangeVehiclesDialog />}
           {addButton(!isAdmin)}
           {isAdmin && (
-            <Button asChild size="3">
-              <Link to="/vehicles">{t('welcome.all')}</Link>
+            <Button component={Link} to="/vehicles" size="large">
+              {t('welcome.all')}
             </Button>
           )}
-        </Flex>
-      </Flex>
+        </Stack>
+      </Stack>
       {showSearch && (
-        <Flex direction="column" gap="1" mb="4" style={{ maxWidth: '28rem' }}>
-          <TextField.Root
+        <Stack sx={{ gap: 0.5, mb: 2, maxWidth: '28rem' }}>
+          <OutlinedInput
             type="search"
-            size="3"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            maxLength={100}
             autoComplete="off"
-            aria-label={t('welcome.search')}
             placeholder={t('welcome.searchPlaceholder')}
-          >
-            <TextField.Slot>
-              <Search size={16} aria-hidden />
-            </TextField.Slot>
-          </TextField.Root>
+            startAdornment={
+              <InputAdornment position="start">
+                <Search size={16} aria-hidden />
+              </InputAdornment>
+            }
+            inputProps={{ maxLength: 100, 'aria-label': t('welcome.search') }}
+            sx={(theme) => ({ ...theme.typography.body1, pl: 1.5, '& .MuiOutlinedInput-input': { height: '1.5rem', py: 1 } })}
+          />
           {total > 0 && (
-            <Text size="2" color="gray" role="status">
+            <Typography variant="body2" role="status" sx={{ color: 'text.secondary' }}>
               {t('welcome.showing', { shown: vehicles.length, total })}
-            </Text>
+            </Typography>
           )}
-        </Flex>
+        </Stack>
       )}
       {error && <ErrorMessage error={error} />}
-      {!data && !error && (
-        <Loading />
-      )}
-      {data && total === 0 && searching && <Text as="p">{t('welcome.noMatches', { search: input.trim() })}</Text>}
-      {data && total === 0 && !searching && (
-        <Flex direction="column" gap="3" align="start">
-          <Text as="p">{t('welcome.empty')}</Text>
-        </Flex>
-      )}
+      {!data && !error && <CardSkeletons />}
+      {data && total === 0 && searching && <Typography>{t('welcome.noMatches', { search: input.trim() })}</Typography>}
+      {data && total === 0 && !searching && <Typography>{t('welcome.empty')}</Typography>}
       {vehicles.length > 0 && (
-        <Grid asChild columns={{ initial: '1', sm: '2', xl: '3' }} gap="4">
-          <ul aria-label={t('welcome.countLabel', { count: total })} style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            <AnimatePresence initial={false}>
-              {vehicles.map((v) => (
-                <motion.li key={v.id} style={{ display: 'grid' }} {...itemMotion}>
-                  <VehicleCard vehicle={v} />
-                </motion.li>
-              ))}
-            </AnimatePresence>
-          </ul>
-        </Grid>
+        <Box component="ul" aria-label={t('welcome.countLabel', { count: total })} sx={cardGrid}>
+          <AnimatePresence initial={false}>
+            {vehicles.map((v) => (
+              <motion.li key={v.id} style={{ display: 'grid' }} {...itemMotion}>
+                <VehicleCard vehicle={v} />
+              </motion.li>
+            ))}
+          </AnimatePresence>
+        </Box>
       )}
       {moreError !== undefined && <ErrorMessage error={moreError} />}
       {hasMore && (
-        <Flex ref={sentinel} justify="center" mt="4">
-          <Button size="3" variant="soft" loading={loadingMore} onClick={() => void loadMore()}>
+        <Stack ref={sentinel} direction="row" sx={{ justifyContent: 'center', mt: 2 }}>
+          <Button size="large" variant="soft" loading={loadingMore} onClick={() => void loadMore()}>
             {t('welcome.more')}
           </Button>
-        </Flex>
+        </Stack>
       )}
     </section>
+  )
+}
+
+/** While the first cards load: their outlines (only once the wait is noticeable), and "Loading…" for a screen reader. */
+function CardSkeletons() {
+  const { t } = useTranslation()
+  return (
+    <>
+      <span role="status" style={visuallyHidden}>
+        {t('app.loading')}
+      </span>
+      <Box aria-hidden className="tk-delayed" sx={cardGrid}>
+        {[0, 1, 2, 3].map((i) => (
+          <Skeleton key={i} variant="rounded" height="17rem" sx={{ borderRadius: '12px' }} />
+        ))}
+      </Box>
+    </>
   )
 }

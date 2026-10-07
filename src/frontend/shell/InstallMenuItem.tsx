@@ -1,8 +1,13 @@
-import { Button, Dialog, Flex, Text } from '@radix-ui/themes'
+import Button from '@mui/material/Button'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
 import { Download } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { DialogButtons, DialogCancel, DialogFrame } from '../dialogs/DialogFrame.tsx'
+import { DialogTrigger } from '../dialogs/DialogTrigger.tsx'
+import { useDialogState } from '../dialogs/useDialogState.ts'
 import { useInstallPrompt } from '../pwa/useInstallPrompt.ts'
-import { navButtonStyle } from './navStyles.ts'
+import { navItemSx } from './navStyles.ts'
 
 /**
  * "Install app" in the navigation menu. With a browser that offers to install (Chromium) it shows the browser's own dialog; on an iPhone
@@ -17,9 +22,8 @@ export function InstallMenuItem({ onNavigate }: { onNavigate?: () => void }) {
     return (
       <Button
         variant="ghost"
-        color="gray"
-        size="3"
-        style={navButtonStyle}
+        color="neutral"
+        sx={navItemSx}
         onClick={() => {
           onNavigate?.()
           void install()
@@ -30,42 +34,37 @@ export function InstallMenuItem({ onNavigate }: { onNavigate?: () => void }) {
       </Button>
     )
   }
-  if (!showIosHint) return null
-  // The drawer stays open here: the dialog lives inside it and would go with it.
+  return showIosHint ? <IosInstallHint /> : null
+}
+
+/** Safari's way, step by step. The drawer stays open meanwhile: this dialog opened from it. */
+function IosInstallHint() {
+  const { t } = useTranslation()
+  const [open, setOpen] = useDialogState()
   return (
-    <Dialog.Root>
-      <Dialog.Trigger>
-        <Button variant="ghost" color="gray" size="3" style={navButtonStyle}>
-          <Download size={18} aria-hidden />
-          {t('nav.install')}
-        </Button>
-      </Dialog.Trigger>
-      <Dialog.Content maxWidth="420px">
-        <Dialog.Title>{t('install.title')}</Dialog.Title>
-        <Dialog.Description size="2" mb="3">
-          {t('install.iosIntro')}
-        </Dialog.Description>
-        <Flex asChild direction="column" gap="2">
-          <ol style={{ margin: 0, paddingLeft: 'var(--space-5)' }}>
-            <li>
-              <Text size="2">{t('install.iosShare')}</Text>
+    <>
+      <DialogTrigger
+        trigger={
+          <Button variant="ghost" color="neutral" sx={navItemSx}>
+            <Download size={18} aria-hidden />
+            {t('nav.install')}
+          </Button>
+        }
+        open={open}
+        onOpen={() => setOpen(true)}
+      />
+      <DialogFrame open={open} onClose={() => setOpen(false)} maxWidth={420} title={t('install.title')} description={t('install.iosIntro')}>
+        <Stack component="ol" sx={{ m: 0, mb: 2, pl: 3, gap: 1 }}>
+          {[t('install.iosShare'), t('install.iosAdd'), t('install.iosConfirm')].map((step) => (
+            <li key={step}>
+              <Typography variant="body2">{step}</Typography>
             </li>
-            <li>
-              <Text size="2">{t('install.iosAdd')}</Text>
-            </li>
-            <li>
-              <Text size="2">{t('install.iosConfirm')}</Text>
-            </li>
-          </ol>
-        </Flex>
-        <Flex justify="end" mt="4">
-          <Dialog.Close>
-            <Button variant="soft" color="gray" size="3" style={{ minHeight: 44 }}>
-              {t('common.close')}
-            </Button>
-          </Dialog.Close>
-        </Flex>
-      </Dialog.Content>
-    </Dialog.Root>
+          ))}
+        </Stack>
+        <DialogButtons>
+          <DialogCancel label={t('common.close')} />
+        </DialogButtons>
+      </DialogFrame>
+    </>
   )
 }

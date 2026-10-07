@@ -1,7 +1,12 @@
 import { useQuery } from '@apollo/client/react'
-import { Badge, Card, Flex, Heading, Skeleton, Text } from '@radix-ui/themes'
+import Card from '@mui/material/Card'
+import Chip from '@mui/material/Chip'
+import Skeleton from '@mui/material/Skeleton'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { visuallyHidden } from '../components/visuallyHidden.ts'
 import { ChartDataDocument, type DistanceUnit, type VolumeUnit } from '../gql/generated.ts'
 import { ErrorMessage } from '../messages.tsx'
 import { ChartView } from './ChartView.tsx'
@@ -31,26 +36,27 @@ export function ChartCard({
   const { data, error } = useQuery(ChartDataDocument, { variables: { vehicleId, config: toConfig(recipe) }, fetchPolicy: 'cache-and-network' })
 
   return (
-    <Card size="2" style={{ boxShadow: 'var(--shadow-3)' }}>
-      <Flex justify="between" align="start" gap="3" mb="3">
-        <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
-          <Heading as={`h${headingLevel}`} size="3">
+    <Card sx={{ p: 2 }}>
+      <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 1.5, mb: 1.5 }}>
+        <Stack sx={{ gap: 0.5, minWidth: 0 }}>
+          <Typography component={`h${headingLevel}`} variant="h6">
             {title}
-          </Heading>
-          <Flex gap="2" align="center" wrap="wrap">
-            {shared && <Badge color="indigo">{t('dashboard.shared')}</Badge>}
+          </Typography>
+          <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+            {shared && <Chip color="primary" label={t('dashboard.shared')} />}
             {meta}
-          </Flex>
-        </Flex>
+          </Stack>
+        </Stack>
         {actions}
-      </Flex>
+      </Stack>
       {error && <ErrorMessage error={error} />}
       {!data && !error && (
-        <Skeleton>
-          <Text as="p" style={{ height: 240 }} role="status" aria-label={t('app.loading')}>
+        <>
+          <span role="status" style={visuallyHidden}>
             {t('app.loading')}
-          </Text>
-        </Skeleton>
+          </span>
+          <Skeleton variant="rounded" height={240} aria-hidden />
+        </>
       )}
       {data && <ChartView data={data.vehicleChartData} recipe={recipe} units={units} title={title} />}
     </Card>

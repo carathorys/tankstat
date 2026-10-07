@@ -21,6 +21,9 @@ public sealed partial class UiSettings
     /// <summary>The UI language, e.g. "en" or "en-GB".</summary>
     public string? Language { get; private set; }
 
+    /// <summary>Light, dark or the device's own setting (null: never chosen, the UI's default applies).</summary>
+    public ColorMode? ColorMode { get; private set; }
+
     public DateTimeOffset UpdatedAt { get; private set; }
 
     public static UiSettings Create(Guid userId, DateTimeOffset now) => new() { UserId = userId, UpdatedAt = now };
@@ -38,6 +41,15 @@ public sealed partial class UiSettings
         if (code is not null && !LanguagePattern().IsMatch(code))
             throw new DomainException("settings.languageInvalid", "The language code must look like en or en-GB.");
         Language = code;
+        UpdatedAt = now;
+    }
+
+    /// <summary>Only the defined modes: a number cast to the enum would otherwise get through.</summary>
+    public void SetColorMode(ColorMode mode, DateTimeOffset now)
+    {
+        if (!Enum.IsDefined(mode))
+            throw new DomainException("settings.colorModeInvalid", "The colour mode must be light, dark or system.");
+        ColorMode = mode;
         UpdatedAt = now;
     }
 

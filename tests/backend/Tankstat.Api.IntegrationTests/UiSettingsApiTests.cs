@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 
 namespace Tankstat.Api.IntegrationTests;
@@ -50,6 +52,24 @@ public class UiSettingsApiTests : IDisposable
         Assert.Equal((false, "hu"), (after.GetProperty("navOpen").GetBoolean(), after.GetProperty("language").GetString()));
         Assert.Equal(JsonValueKind.Null, cleared.GetProperty("language").ValueKind);
         Assert.False(cleared.GetProperty("navOpen").GetBoolean());
+    }
+
+    [Fact]
+    public async Task ColorMode_StartsUnchosen_FollowsTheUser_AndStaysThroughOtherChanges()
+    {
+        var people = await _app.Users();
+        Assert.Equal(JsonValueKind.Null, (await people.Alice.Gql("{ uiSettings { colorMode } }")).Data().GetProperty("uiSettings").GetProperty("colorMode").ValueKind);
+
+        var light = (await people.Alice.Gql("mutation { updateUiSettings(input: { colorMode: LIGHT }) { colorMode } }")).Data().GetProperty("updateUiSettings");
+        await people.Alice.Gql("mutation { updateUiSettings(input: { navOpen: true }) { navOpen } }");
+
+        Assert.Equal("LIGHT", light.GetProperty("colorMode").GetString());
+        Assert.Equal("LIGHT", (await people.Alice.Gql("{ uiSettings { colorMode } }")).Data().GetProperty("uiSettings").GetProperty("colorMode").GetString());
+        Assert.Equal(JsonValueKind.Null, (await people.Bob.Gql("{ uiSettings { colorMode } }")).Data().GetProperty("uiSettings").GetProperty("colorMode").ValueKind);
+        // Only the three modes exist: anything else is turned down by GraphQL itself (a request error), before the service sees it.
+        var sepia = await people.Alice.PostAsJsonAsync("/graphql", new { query = "mutation { updateUiSettings(input: { colorMode: SEPIA }) { colorMode } }" });
+        Assert.Equal(HttpStatusCode.BadRequest, sepia.StatusCode);
+        Assert.Equal("LIGHT", (await people.Alice.Gql("{ uiSettings { colorMode } }")).Data().GetProperty("uiSettings").GetProperty("colorMode").GetString());
     }
 
     [Fact]

@@ -1,4 +1,4 @@
-import { Callout } from '@radix-ui/themes'
+import Alert from '@mui/material/Alert'
 import { CircleCheck, CircleX } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useErrorText } from './i18n/errors.ts'
@@ -6,24 +6,17 @@ import { useErrorText } from './i18n/errors.ts'
 /** Pass a caught/Apollo `error` (translated by its error key) or plain `children`. */
 export function ErrorMessage({ error, children }: { error?: unknown; children?: ReactNode }) {
   const errorText = useErrorText()
-
   return (
-    <Callout.Root color="red" role="alert" size="1" my="2" className="tk-appear">
-      <Callout.Icon>
-        <CircleX size={16} />
-      </Callout.Icon>
-      <Callout.Text>{children ?? errorText(error)}</Callout.Text>
-    </Callout.Root>
+    <Alert severity="error" role="alert" icon={<CircleX size={16} aria-hidden />} className="tk-appear" sx={{ my: 1 }}>
+      {children ?? errorText(error)}
+    </Alert>
   )
 }
 
 export function SuccessMessage({ children }: { children: ReactNode }) {
   return (
-    <Callout.Root color="green" role="status" size="1" my="2" className="tk-appear">
-      <Callout.Icon>
-        <CircleCheck size={16} />
-      </Callout.Icon>
-      <Callout.Text>{children}</Callout.Text>
-    </Callout.Root>
+    <Alert severity="success" role="status" icon={<CircleCheck size={16} aria-hidden />} className="tk-appear" sx={{ my: 1 }}>
+      {children}
+    </Alert>
   )
 }

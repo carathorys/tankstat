@@ -1,8 +1,16 @@
 import { useQuery } from '@apollo/client/react'
-import { Badge, Box, Button, Flex, Heading, IconButton, Popover, Text, VisuallyHidden } from '@radix-ui/themes'
+import Badge from '@mui/material/Badge'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import Popover from '@mui/material/Popover'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
 import { Bell } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link as RouterLink } from 'react-router'
+import { IconAction } from '../components/IconAction.tsx'
+import { visuallyHidden } from '../components/visuallyHidden.ts'
 import { LatestNotificationsDocument, UnreadNotificationCountDocument } from '../gql/generated.ts'
 import { ErrorMessage } from '../messages.tsx'
 import { NotificationItem } from '../notifications/NotificationItem.tsx'
@@ -23,80 +31,80 @@ export function NotificationBell() {
     fetchPolicy: 'cache-and-network',
   })
   const unread = data?.notificationCount ?? 0
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null)
+  const close = () => setAnchor(null)
 
   return (
     <>
-      <VisuallyHidden role="status">{unread > 0 ? t('notifications.unreadStatus', { count: unread }) : ''}</VisuallyHidden>
-      <Popover.Root>
-        <Popover.Trigger>
-          <IconButton
-            size="3"
-            variant="soft"
-            color="gray"
-            highContrast
-            aria-label={unread > 0 ? t('notifications.bellUnread', { count: unread }) : t('notifications.bell')}
-            style={{ position: 'relative' }}
-          >
-            <Bell size={18} aria-hidden />
-            {unread > 0 && (
-              <Badge size="1" variant="solid" color="red" radius="full" aria-hidden style={{ position: 'absolute', top: -6, right: -6 }}>
-                {unread > 99 ? '99+' : unread}
-              </Badge>
-            )}
-          </IconButton>
-        </Popover.Trigger>
-        <Popover.Content align="end" width="380px" maxWidth="calc(100vw - 32px)" aria-label={t('notifications.title')}>
-          <LatestNotifications />
-        </Popover.Content>
-      </Popover.Root>
+      <span role="status" style={visuallyHidden}>
+        {unread > 0 ? t('notifications.unreadStatus', { count: unread }) : ''}
+      </span>
+      {/* The count is in the button's name; the badge only shows it. */}
+      <Badge badgeContent={unread} max={99} color="error" slotProps={{ badge: { 'aria-hidden': true } }}>
+        <IconAction
+          label={unread > 0 ? t('notifications.bellUnread', { count: unread }) : t('notifications.bell')}
+          size="large"
+          aria-haspopup="dialog"
+          aria-expanded={anchor !== null}
+          onClick={(e) => setAnchor(e.currentTarget)}
+        >
+          <Bell size={18} aria-hidden />
+        </IconAction>
+      </Badge>
+      <Popover
+        open={anchor !== null}
+        anchorEl={anchor}
+        onClose={close}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        slotProps={{ paper: { role: 'dialog', 'aria-label': t('notifications.title'), sx: { width: 380, maxWidth: 'calc(100vw - 32px)', p: 2, mt: 1 } } }}
+      >
+        <LatestNotifications onClose={close} />
+      </Popover>
     </>
   )
 }
 
 /** Mounted only while the popover is open, so it always loads the current state. */
-function LatestNotifications() {
+function LatestNotifications({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation()
   const { data, error } = useQuery(LatestNotificationsDocument, { variables: { take: LATEST }, fetchPolicy: 'network-only' })
   const { markRead } = useNotificationActions()
   const items = data?.notifications
 
   return (
-    <Flex direction="column" gap="2">
-      <Flex justify="between" align="center" gap="3">
-        <Heading as="h2" size="3">
+    <Stack sx={{ gap: 1 }}>
+      <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', gap: 1.5 }}>
+        <Typography component="h2" variant="h6">
           {t('notifications.title')}
-        </Heading>
-        <Button variant="soft" size="3" disabled={!data || data.notificationCount === 0} onClick={() => void markRead(null)}>
+        </Typography>
+        <Button variant="soft" size="large" disabled={!data || data.notificationCount === 0} onClick={() => void markRead(null)}>
           {t('notifications.markAllRead')}
         </Button>
-      </Flex>
+      </Stack>
       {error && <ErrorMessage error={error} />}
       {!data && !error && (
-        <Text as="p" size="2" role="status">
+        <Typography variant="body2" role="status">
           {t('app.loading')}
-        </Text>
+        </Typography>
       )}
       {items?.length === 0 && (
-        <Text as="p" size="2" color="gray">
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
           {t('notifications.empty')}
-        </Text>
+        </Typography>
       )}
       {items && items.length > 0 && (
-        <Box asChild m="0" p="0" style={{ listStyle: 'none' }}>
-          <ul aria-label={t('notifications.latest')}>
-            {items.map((n) => (
-              <li key={n.id}>
-                <NotificationItem notification={n} wrapLink={(link) => <Popover.Close>{link}</Popover.Close>} />
-              </li>
-            ))}
-          </ul>
+        <Box component="ul" aria-label={t('notifications.latest')} sx={{ listStyle: 'none', m: 0, p: 0 }}>
+          {items.map((n) => (
+            <li key={n.id}>
+              <NotificationItem notification={n} onFollow={onClose} />
+            </li>
+          ))}
         </Box>
       )}
-      <Popover.Close>
-        <Button asChild variant="soft" size="3">
-          <RouterLink to="/notifications">{t('notifications.showAll')}</RouterLink>
-        </Button>
-      </Popover.Close>
-    </Flex>
+      <Button component={RouterLink} to="/notifications" variant="soft" size="large" onClick={onClose}>
+        {t('notifications.showAll')}
+      </Button>
+    </Stack>
   )
 }

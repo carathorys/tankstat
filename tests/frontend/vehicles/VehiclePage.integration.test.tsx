@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
 import { server } from '../support/server.ts'
-import { fakeLogBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, adminSession, healthHandler, person, renderWithApollo, sessionHandler, stubViewport } from '../support/mocks.tsx'
+import { fakeExpenseBackend, fakeLogBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, adminSession, healthHandler, person, renderWithApollo, sessionHandler, stubViewport } from '../support/mocks.tsx'
+import { dateValue, findDateField } from '../support/dates.ts'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
@@ -33,7 +34,7 @@ const choose = async (ui: ReturnType<typeof userEvent.setup>, control: string, o
 it('shows the vehicle with its logs formatted in its own units', async () => {
   setup(fakeVehicle({ units: { distance: 'MILES', volume: 'US_GALLONS' } }))
 
-  const row = (await screen.findByText(/Sep 1, 2026/)).closest('tr')!
+  const row = (await screen.findByText(/Sep 1, 2026/)).closest<HTMLElement>('[role="row"]')!
   expect(within(row).getByText('41.5 gal')).toBeInTheDocument()
   expect(within(row).getByText(/12,000 mi/)).toBeInTheDocument()
   expect(within(row).getByText('Partial')).toBeInTheDocument()
@@ -50,7 +51,7 @@ it('administrators go back to the full vehicle list', async () => {
 it('shows the price per unit and the cost in the currency it was paid in', async () => {
   setup()
 
-  const row = (await screen.findByText(/Sep 1, 2026/)).closest('tr')!
+  const row = (await screen.findByText(/Sep 1, 2026/)).closest<HTMLElement>('[role="row"]')!
   expect(within(row).getByText(/22,000/)).toBeInTheDocument()
   expect(within(row).getByText(/530/)).toBeInTheDocument() // 22000 / 41.5 per liter
 })
@@ -61,9 +62,9 @@ it('shows the stored consumption per 100 units, and a dash where there is none',
     fakeRefueling({ id: 'r2', date: '2026-09-01', odometer: 12000, consumption: 6.667 }),
   ])
 
-  const row = (await screen.findByText(/Sep 1, 2026/)).closest('tr')!
+  const row = (await screen.findByText(/Sep 1, 2026/)).closest<HTMLElement>('[role="row"]')!
   expect(within(row).getByText('6.67 L/100 km')).toBeInTheDocument()
-  expect(within((await screen.findByText(/Aug 1, 2026/)).closest('tr')!).getAllByText('–').length).toBeGreaterThan(0)
+  expect(within((await screen.findByText(/Aug 1, 2026/)).closest<HTMLElement>('[role="row"]')!).getAllByText('–').length).toBeGreaterThan(0)
 })
 
 it('shows miles per gallon where the vehicle uses miles and gallons', async () => {
@@ -77,7 +78,7 @@ it('asks the server for the consumption and sorts by it on the server', async ()
   await screen.findByText(/Sep 1, 2026/)
   expect(state.requests.at(-1)).toMatchObject({ withConsumption: true })
 
-  await ui.click(screen.getByRole('button', { name: /^Sort by Consumption/ }))
+  await ui.click(screen.getByRole('columnheader', { name: /^Consumption/ }))
 
   await waitFor(() => expect(state.requests.at(-1)).toMatchObject({ orderBy: 'CONSUMPTION', direction: 'ASC' }))
 })
@@ -88,7 +89,7 @@ it('sorts the logs on the server, newest first by default', async () => {
   expect(screen.getAllByRole('rowheader').map((c) => c.textContent)).toEqual(['Sep 1, 2026', 'Aug 1, 2026'])
   expect(state.requests.at(-1)).toMatchObject({ vehicleId: 'v1', orderBy: 'DATE', direction: 'DESC', skip: 0 })
 
-  await ui.click(screen.getByRole('button', { name: /^Sort by Odometer/ }))
+  await ui.click(screen.getByRole('columnheader', { name: /^Odometer/ }))
 
   await waitFor(() => expect(state.requests.at(-1)).toMatchObject({ orderBy: 'ODOMETER', direction: 'ASC' }))
 })
@@ -101,7 +102,7 @@ it('adds a refuelling: starts from today, the last reading as a hint and the usu
   const dialog = await screen.findByRole('dialog', { name: 'Add refuelling' })
   await within(dialog).findByText(/Last reading: 12,000 km on Sep 1, 2026/)
   expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF')
-  expect(within(dialog).getByLabelText('Date')).toHaveValue(new Date().toLocaleDateString('sv-SE'))
+  expect(dateValue(await findDateField('Date', dialog))).toBe(new Date().toLocaleDateString('sv-SE'))
   await ui.type(within(dialog).getByLabelText(/^Volume/), '38,2') // a comma is fine
   await ui.type(within(dialog).getByLabelText('Total cost'), '19100')
   await ui.type(within(dialog).getByLabelText(/^Odometer/), '12450')
@@ -207,8 +208,14 @@ it('moves a refuelling to the trash after a confirmation, not before', async () 
   expect(state.calls.DeleteRefueling).toBeUndefined()
   await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Move to trash' }))
 
-  await waitFor(() => expect(screen.queryByText(/Sep 1, 2026/)).not.toBeInTheDocument())
+  await waitFor(() => expect(screen.queryByRole('rowheader', { name: /Sep 1, 2026/ })).not.toBeInTheDocument())
   expect(state.calls.DeleteRefueling).toEqual([{ id: 'r2' }])
+
+  // A message says so, and Undo brings the row back.
+  expect(screen.getByText('The refuelling of Sep 1, 2026 is in the trash.')).toBeInTheDocument()
+  await ui.click(screen.getByRole('button', { name: 'Undo' }))
+  expect(await screen.findByRole('rowheader', { name: /Sep 1, 2026/ })).toBeInTheDocument()
+  expect(state.calls.RestoreRefueling).toEqual([{ id: 'r2' }])
 })
 
 it('logs only view access: no add button, no edit or delete', async () => {
@@ -229,6 +236,84 @@ it('a log grantee works with the logs but cannot reach the vehicle settings or s
   expect(screen.getByRole('button', { name: 'Add refuelling' })).toBeInTheDocument()
   expect(screen.queryByRole('tab', { name: /Sharing/ })).not.toBeInTheDocument()
   expect(screen.getByText(/can work with this vehicle's logs, but not change the vehicle itself/)).toBeInTheDocument()
+})
+
+/** The vehicle page on a phone, with the refuelling and expense backends of the floating add button. */
+function setupPhone(vehicle = fakeVehicle(), route = '/vehicles/v1?tab=details') {
+  stubViewport('phone')
+  const backend = fakeLogBackend(vehicle, logs)
+  const expenses = fakeExpenseBackend(vehicle, [])
+  server.use(sessionHandler('NONE', () => null), healthHandler, ...backend.handlers, ...expenses.handlers)
+  renderWithApollo(<App />, route)
+  return { ...backend, expenses, ui: userEvent.setup() }
+}
+
+it('on a phone, the floating add button logs a refuelling from any tab and gives the focus back', async () => {
+  const { ui, state } = setupPhone()
+  await screen.findByRole('heading', { name: 'Octavia' })
+  const fab = screen.getByRole('button', { name: 'Add a refuelling or an expense' })
+
+  await ui.click(fab)
+  const menu = await screen.findByRole('menu', { name: 'Add a refuelling or an expense' })
+  expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Add refuelling', 'Add expense'])
+  await ui.click(within(menu).getByRole('menuitem', { name: 'Add refuelling' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add refuelling' })
+  await ui.type(within(dialog).getByLabelText(/^Volume/), '38.2')
+  await ui.type(within(dialog).getByLabelText('Total cost'), '19100')
+  await ui.type(within(dialog).getByLabelText(/^Odometer/), '12450')
+  await ui.click(within(dialog).getByRole('button', { name: 'Add refuelling' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(state.calls.LogRefueling).toEqual([{ input: expect.objectContaining({ vehicleId: 'v1', volume: 38.2, totalCost: 19100, odometer: 12450 }) }])
+  await waitFor(() => expect(fab).toHaveFocus())
+})
+
+it('on a phone, the floating add button logs an expense too', async () => {
+  const { ui, expenses } = setupPhone()
+  await screen.findByRole('heading', { name: 'Octavia' })
+
+  await ui.click(screen.getByRole('button', { name: 'Add a refuelling or an expense' }))
+  await ui.click(await screen.findByRole('menuitem', { name: 'Add expense' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add expense' })
+  await ui.type(within(dialog).getByLabelText('Title'), 'Car wash')
+  await ui.type(within(dialog).getByLabelText('Amount'), '3200')
+  await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
+
+  await waitFor(() => expect(expenses.state.calls.AddExpense).toEqual([{ input: expect.objectContaining({ vehicleId: 'v1', title: 'Car wash', amount: 3200 }) }]))
+})
+
+it('there is no floating add button on a desktop, nor for someone who may only view the logs', async () => {
+  setup()
+  await screen.findByText(/Sep 1, 2026/)
+  expect(screen.queryByRole('button', { name: 'Add a refuelling or an expense' })).not.toBeInTheDocument()
+})
+
+it('the add button is only hidden, not unmounted, off a phone: a dialog opened from it survives a turn of the phone', async () => {
+  setup()
+  await screen.findByText(/Sep 1, 2026/)
+
+  expect(document.querySelector('button[aria-label="Add a refuelling or an expense"]')).not.toBeVisible() // there, out of sight
+})
+
+it('nor on a phone for someone who may only view the logs', async () => {
+  setupPhone(fakeVehicle({ canEdit: false, logAccess: 'VIEW' }))
+  await screen.findByRole('heading', { name: 'Octavia' })
+  expect(screen.queryByRole('button', { name: 'Add a refuelling or an expense' })).not.toBeInTheDocument()
+})
+
+it('every tab has its panel, but only the open one is filled', async () => {
+  const { ui } = setup(fakeVehicle(), logs, '/vehicles/v1?tab=details')
+  const details = await screen.findByRole('tab', { name: /Details/, selected: true })
+
+  const panels = screen.getAllByRole('tabpanel', { hidden: true })
+  expect(panels).toHaveLength(6)
+  for (const tab of screen.getAllByRole('tab')) expect(document.getElementById(tab.getAttribute('aria-controls')!)).toHaveAttribute('aria-labelledby', tab.id)
+  expect(panels.filter((p) => !p.hidden)).toEqual([document.getElementById(details.getAttribute('aria-controls')!)])
+  expect(panels.filter((p) => p.hidden).every((p) => p.childElementCount === 0)).toBe(true)
+
+  details.focus()
+  await ui.keyboard('{ArrowLeft}') // the arrow keys choose, as before
+  expect(await screen.findByRole('tab', { name: /Recurring/, selected: true })).toBeInTheDocument()
 })
 
 it('explains an unknown or inaccessible vehicle', async () => {
@@ -293,6 +378,12 @@ it('moves the vehicle to the trash from its details, after a confirmation, and g
   await screen.findByRole('heading', { name: 'Your vehicles' })
   expect(state.calls.DeleteVehicle).toEqual([{ id: 'v1' }])
   expect(state.trash.map((v) => v.id)).toEqual(['v1'])
+
+  // A message says where it went, with a way back.
+  expect(await screen.findByText('Octavia is in the trash.')).toBeInTheDocument()
+  await ui.click(screen.getByRole('button', { name: 'Undo' }))
+  await waitFor(() => expect(state.calls.RestoreVehicle).toEqual([{ id: 'v1' }]))
+  expect(await screen.findByRole('link', { name: 'Open Octavia' })).toBeInTheDocument() // back on the home page
 })
 
 it('keeps the vehicle when the confirmation is cancelled', async () => {
@@ -335,7 +426,7 @@ it('marks a refuelling that follows a fill-up that was not logged', async () => 
 
 it('shows which log follows a missed fill-up, and editing it keeps the mark', async () => {
   const { ui, state } = setup(fakeVehicle(), [logs[0]!, { ...logs[1]!, missedPreviousFillUp: true }])
-  const row = (await screen.findByText(/Sep 1, 2026/)).closest('tr')!
+  const row = (await screen.findByText(/Sep 1, 2026/)).closest<HTMLElement>('[role="row"]')!
   expect(within(row).getByText('Missed one before')).toBeInTheDocument()
   expect(within(row).getByText('Partial')).toBeInTheDocument()
 

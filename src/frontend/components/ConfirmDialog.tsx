@@ -1,6 +1,8 @@
-import { AlertDialog, Button, Flex } from '@radix-ui/themes'
+import Button from '@mui/material/Button'
 import type { ReactNode } from 'react'
-import { useTranslation } from 'react-i18next'
+import { DialogButtons, DialogCancel, DialogFrame } from '../dialogs/DialogFrame.tsx'
+import { DialogTrigger } from '../dialogs/DialogTrigger.tsx'
+import { useDialogState } from '../dialogs/useDialogState.ts'
 
 /** A confirmation before something hard to undo. Focus starts on Cancel (the safe choice) and returns to the trigger. */
 export function ConfirmDialog({
@@ -9,35 +11,31 @@ export function ConfirmDialog({
   description,
   confirmLabel,
   onConfirm,
-  color = 'red',
 }: {
   trigger: ReactNode
   title: string
   description: string
   confirmLabel: string
   onConfirm: () => void
-  color?: 'red' | 'blue'
 }) {
-  const { t } = useTranslation()
+  const [open, setOpen] = useDialogState()
   return (
-    <AlertDialog.Root>
-      <AlertDialog.Trigger>{trigger}</AlertDialog.Trigger>
-      <AlertDialog.Content maxWidth="450px">
-        <AlertDialog.Title>{title}</AlertDialog.Title>
-        <AlertDialog.Description size="2">{description}</AlertDialog.Description>
-        <Flex gap="3" mt="4" justify="end">
-          <AlertDialog.Cancel>
-            <Button variant="soft" color="gray">
-              {t('common.cancel')}
-            </Button>
-          </AlertDialog.Cancel>
-          <AlertDialog.Action>
-            <Button color={color} onClick={onConfirm}>
-              {confirmLabel}
-            </Button>
-          </AlertDialog.Action>
-        </Flex>
-      </AlertDialog.Content>
-    </AlertDialog.Root>
+    <>
+      <DialogTrigger trigger={trigger} open={open} onOpen={() => setOpen(true)} />
+      <DialogFrame open={open} onClose={() => setOpen(false)} title={title} description={description} role="alertdialog">
+        <DialogButtons>
+          <DialogCancel autoFocus />
+          <Button
+            color="error"
+            onClick={() => {
+              setOpen(false)
+              onConfirm()
+            }}
+          >
+            {confirmLabel}
+          </Button>
+        </DialogButtons>
+      </DialogFrame>
+    </>
   )
 }
