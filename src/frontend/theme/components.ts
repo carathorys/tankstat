@@ -101,10 +101,10 @@ export const components: Components<T> = {
       },
     }),
   },
-  MuiButtonBase: { defaultProps: { disableRipple: true } },
+  MuiButtonBase: { defaultProps: { disableRipple: false } },
 
   MuiButton: {
-    defaultProps: { variant: 'contained', disableElevation: true },
+    defaultProps: { variant: 'contained', disableElevation: false },
     styleOverrides: {
       root: { borderRadius: 9999, gap: 8, minWidth: 0, whiteSpace: 'nowrap' },
       // The touch minimum sits in each size, after its own minHeight: the size rules come later than the root's and would win otherwise.
