@@ -22,7 +22,11 @@ export function useErrorText() {
   const byKey = useKeyText()
 
   return (error: unknown): string => {
-    if (error instanceof OfflineError) return t('errors.offline')
+    if (error instanceof OfflineError) {
+      if (error.reason === 'notLoaded') return t('errors.offlineNotLoaded')
+      if (error.reason === 'onlineOnly') return t('errors.offlineOnlineOnly')
+      return t('errors.offline')
+    }
     if (error instanceof ApiError) return byKey(error.key, error.args) ?? error.message
     if (error instanceof UnreadableImageError) return t('image.unreadable')
     if (CombinedGraphQLErrors.is(error)) {

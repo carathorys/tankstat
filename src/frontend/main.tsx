@@ -8,6 +8,7 @@ import { BrowserRouter } from 'react-router'
 import { registerSW } from 'virtual:pwa-register'
 import App from './App.tsx'
 import { createApolloClient } from './apolloClient.ts'
+import { deviceData } from './offline/deviceData.ts'
 import { startOfflineRuntime } from './offline/runtime.ts'
 import { initI18n } from './i18n/index.ts'
 import { appUpdate } from './pwa/appUpdate.ts'
@@ -29,8 +30,9 @@ const updateSW = registerSW({
   },
 })
 
-// The translations are ready before the first render, so the UI never flashes untranslated.
-await initI18n()
+// The translations are ready before the first render, so the UI never flashes untranslated; the data this device kept for the last
+// user is open before the first request, so the app opens with it while the server is out of reach (see offline/deviceData.ts).
+await Promise.all([initI18n(), deviceData.boot()])
 
 // One client for the page; while the server is out of reach it is asked again now and then (see offline/connectivity.ts).
 const client = createApolloClient()

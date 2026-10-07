@@ -362,6 +362,8 @@
   "errors": {
     "network": "Cannot reach the server. Check your connection and try again.",
     "offline": "The server cannot be reached right now. This works again once you are back online.",
+    "offlineNotLoaded": "This is not on this device yet: the app keeps what you open while online, so open it once you are back online.",
+    "offlineOnlineOnly": "This needs a connection to the server. It works again once you are back online.",
     "auth": {
       "unauthenticated": "Please sign in to continue.",
       "forbidden": "You are not allowed to do this.",

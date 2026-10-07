@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { ExpensePhotoReadingsDocument, PhotoDraftReadingsDocument, RecognitionStatusDocument, RefuelingPhotoReadingsDocument, type PhotoReadingFieldsFragment } from '../gql/generated.ts'
 import type { LogKind } from '../pictures/upload.ts'
 import { mergeIssues, type ReadingExplanation } from './readingIssues.ts'
+import { useConnectivity } from '../offline/useConnectivity.ts'
 
 /** How often the open dialog asks for readings that are not done yet. */
 export const READING_POLL_MS = 1500
@@ -65,8 +66,10 @@ export function useDraftReadings(drafts: readonly { id: string; at: number }[], 
         })
         .map((d) => d.id)
     : []
-  const polling = pending.length > 0
-  const rechecking = enabled && status.data?.recognitionStatus.available === false && drafts.some(({ at }) => now - at < READING_WAIT_MS)
+  // Nothing to ask while the server is out of reach (see offline/connectivity.ts); asking resumes when it is back.
+  const { reachable } = useConnectivity()
+  const polling = pending.length > 0 && reachable
+  const rechecking = reachable && enabled && status.data?.recognitionStatus.available === false && drafts.some(({ at }) => now - at < READING_WAIT_MS)
   const { startPolling, stopPolling } = result
   const { startPolling: startStatusPolling, stopPolling: stopStatusPolling } = status
 
