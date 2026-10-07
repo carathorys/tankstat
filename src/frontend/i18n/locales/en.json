@@ -106,7 +106,14 @@
     "healthy": "Healthy",
     "degraded": "Degraded",
     "api": "API:",
-    "unreachable": "API unreachable: {{message}}"
+    "unreachable": "The server cannot be reached",
+    "offline": "You are offline",
+    "retry": "Try again"
+  },
+  "connectivity": {
+    "offline": "Offline",
+    "announceOffline": "You are offline. What was loaded stays on screen; saving needs the server.",
+    "announceOnline": "Back online."
   },
   "fuel": {
     "PETROL": "Petrol",
@@ -354,6 +361,7 @@
   },
   "errors": {
     "network": "Cannot reach the server. Check your connection and try again.",
+    "offline": "The server cannot be reached right now. This works again once you are back online.",
     "auth": {
       "unauthenticated": "Please sign in to continue.",
       "forbidden": "You are not allowed to do this.",

@@ -7,6 +7,7 @@ import App from '../../../src/frontend/App.tsx'
 import { ErrorBoundary } from '../../../src/frontend/ErrorBoundary.tsx'
 import { SIGNED_OUT_KEY } from '../../../src/frontend/auth/oidc.ts'
 import { navigation } from '../../../src/frontend/navigation.ts'
+import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
 import { platform } from '../../../src/frontend/pwa/platform.ts'
 import { server } from '../support/server.ts'
 import { fakeExpense, fakeExpenseBackend, fakeLogBackend, fakeNotification, fakeNotificationBackend, fakePhotoStore, fakeRecognition, fakeRecurring, fakeRecurringBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport, user } from '../support/mocks.tsx'
@@ -197,6 +198,17 @@ it('the signed-in devices and the confirmation to sign out the others are free o
   await ui.click(within(devices).getByRole('button', { name: 'Sign out everywhere else' }))
   await screen.findByRole('alertdialog', { name: 'Sign out everywhere else?' })
   await check(document.body)
+})
+
+it('offline, the top bar, the footer and a page that needs the server are free of violations', async () => {
+  const { view, ui } = setup('/')
+  await screen.findByRole('heading', { level: 1 })
+  connectivity.failed()
+
+  await screen.findByText('Offline')
+  await ui.click(screen.getByRole('link', { name: 'Trash' }))
+  await screen.findByText(/The server cannot be reached right now/)
+  await check(view.container)
 })
 
 it('the notifications page and the open bell are labelled and free of violations', async () => {

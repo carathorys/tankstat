@@ -10,6 +10,7 @@ import { UserAvatar } from '../components/UserAvatar.tsx'
 import type { SessionQuery } from '../gql/generated.ts'
 import { glass } from '../theme/components.ts'
 import { ColorModeMenu } from './ColorModeMenu.tsx'
+import { ConnectivityIndicator } from './ConnectivityIndicator.tsx'
 import { LanguageMenu } from './LanguageMenu.tsx'
 import { NotificationBell } from './NotificationBell.tsx'
 
@@ -64,6 +65,7 @@ export function TopBar({
           {user.isAdmin && <Chip color="neutral" label={t('role.adminBadge')} />}
         </Stack>
       )}
+      <ConnectivityIndicator />
       {showMenu && <NotificationBell />}
       <ColorModeMenu />
       <LanguageMenu />
