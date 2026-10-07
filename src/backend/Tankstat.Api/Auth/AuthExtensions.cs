@@ -19,6 +19,8 @@ public static class AuthExtensions
     {
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, HttpCurrentUser>();
+        services.AddPersistedKeyRing();
+        services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
 
         services.AddAuthentication()
             .AddCookie(SessionClaims.CookieScheme, o =>
@@ -27,8 +29,8 @@ public static class AuthExtensions
                 o.Cookie.HttpOnly = true;
                 o.Cookie.SameSite = SameSiteMode.Lax; // Lax (not Strict) so the redirect back from the OIDC provider keeps the session
                 o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest; // plain HTTP is allowed behind a TLS-terminating proxy
-                o.ExpireTimeSpan = TimeSpan.FromDays(14);
-                o.SlidingExpiration = true;
+                // Short-lived (Auth:AccessTokenMinutes, set below) and not sliding: the refresh cookie keeps a device signed in (SessionCookies).
+                o.SlidingExpiration = false;
                 // This is an API: answer with a status code instead of redirecting to a login page.
                 o.Events.OnRedirectToLogin = c => { c.Response.StatusCode = StatusCodes.Status401Unauthorized; return Task.CompletedTask; };
                 o.Events.OnRedirectToAccessDenied = c => { c.Response.StatusCode = StatusCodes.Status403Forbidden; return Task.CompletedTask; };
@@ -58,6 +60,9 @@ public static class AuthExtensions
             o.DefaultScheme = auth.Value.Mode == AuthMode.ProxyHeader ? SessionClaims.ProxyScheme : SessionClaims.CookieScheme;
             if (auth.Value.Mode == AuthMode.Oidc) o.DefaultChallengeScheme = SessionClaims.OidcScheme;
         });
+
+        services.AddOptions<CookieAuthenticationOptions>(SessionClaims.CookieScheme).Configure<IOptions<AuthOptions>>((o, auth) =>
+            o.ExpireTimeSpan = TimeSpan.FromMinutes(auth.Value.AccessTokenMinutes));
 
         services.AddOptions<OpenIdConnectOptions>(SessionClaims.OidcScheme).Configure<IOptions<AuthOptions>>((o, auth) =>
         {
@@ -93,7 +98,10 @@ public static class AuthExtensions
         {
             var user = await ctx.HttpContext.RequestServices.GetRequiredService<AuthService>()
                 .ProvisionExternalAsync(UserProvider.Oidc, subject, email, name, ctx.HttpContext.RequestAborted);
-            ctx.Principal = SessionClaims.Create(user, SessionClaims.OidcScheme);
+            // The remote handler signs this principal into the access cookie itself: only the session and its refresh cookie are made here.
+            var sessionId = await SessionCookies.IssueRefreshAsync(ctx.HttpContext, user, ctx.HttpContext.RequestAborted);
+            ctx.Principal = SessionClaims.Create(user, SessionClaims.OidcScheme, sessionId);
+            ctx.Properties!.IsPersistent = true; // like a password sign-in: closing the browser does not sign the device out
             logger.LogInformation("User {UserId} signed in through OIDC", user.Id); // never the subject: some providers use the e-mail address for it
         }
         catch (ForbiddenException e)
@@ -126,6 +134,7 @@ public static class AuthExtensions
             auth.Value.Mode != AuthMode.Oidc
                 ? Results.NotFound()
                 : Results.Challenge(new AuthenticationProperties { RedirectUri = LocalPathOrRoot(returnUrl) }, [SessionClaims.OidcScheme]));
+        app.MapTokenEndpoints();
     }
 
     /// <summary>

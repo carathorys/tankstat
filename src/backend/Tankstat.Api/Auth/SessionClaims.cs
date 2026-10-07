@@ -9,10 +9,16 @@ internal static class SessionClaims
     public const string OidcScheme = "oidc";
     public const string ProxyScheme = "ProxyHeader";
     public const string VersionClaim = "sv";
+    public const string SessionClaim = "sid";
 
-    /// <summary>The minimal identity stored in the session: who, and the session version. Everything else is read fresh from the database.</summary>
-    public static ClaimsPrincipal Create(User user, string authenticationType) =>
-        new(new ClaimsIdentity(
-            [new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()), new Claim(VersionClaim, user.SessionVersion.ToString())],
-            authenticationType));
+    /// <summary>
+    /// The minimal identity stored in the access cookie: who, the session version and the device's session (none behind a proxy, which
+    /// signs every request in itself). Everything else is read fresh from the database.
+    /// </summary>
+    public static ClaimsPrincipal Create(User user, string authenticationType, Guid? sessionId = null)
+    {
+        List<Claim> claims = [new(ClaimTypes.NameIdentifier, user.Id.ToString()), new(VersionClaim, user.SessionVersion.ToString())];
+        if (sessionId is { } id) claims.Add(new Claim(SessionClaim, id.ToString()));
+        return new ClaimsPrincipal(new ClaimsIdentity(claims, authenticationType));
+    }
 }

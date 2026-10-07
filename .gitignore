@@ -525,3 +525,7 @@ coverage/
 
 # Private photos for evaluating photo reading: never committed
 eval/
+
+# Data Protection keys that a local run of the app creates (DataProtection:KeysPath, default "keys" in the working directory).
+# They are secrets: every installation keeps its own, never in the repository.
+keys/

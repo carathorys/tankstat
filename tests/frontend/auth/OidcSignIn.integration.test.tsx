@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql, HttpResponse } from 'msw'
+import { http, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
 import { SIGNED_OUT_KEY } from '../../../src/frontend/auth/oidc.ts'
@@ -22,9 +22,9 @@ it('signing out of an OIDC session leads to a screen that waits; Sign in goes ba
   let current: ReturnType<typeof user> | null = user()
   server.use(
     sessionHandler('OIDC', () => current),
-    graphql.mutation('Logout', () => {
+    http.post('/auth/token/logout', () => {
       current = null
-      return HttpResponse.json({ data: { logout: true } })
+      return new HttpResponse(null, { status: 204 })
     }),
     healthHandler,
     ...fakeVehicleBackend([fakeVehicle()]).handlers,

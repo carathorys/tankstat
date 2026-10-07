@@ -14,10 +14,28 @@ Authentication is configured through the `Auth` and `Smtp` sections. Every setti
 | --- | --- | --- | --- |
 | `None` | nobody | none | **Unsafe.** Everyone sees and changes everything; the UI shows a warning. Data belongs to an anonymous owner; there are no profile pictures, no administration. |
 | `Standalone` | the app itself | `Auth__Standalone__AdminEmail` and `Auth__Standalone__AdminPassword` on the first start (while no local administrator exists) | Login with e-mail and password, password change, one-time reset links, lockout, user management by administrators (create, edit name and e-mail, reset link, disable, delete). |
-| `Oidc` | an OpenID Connect provider | `Auth__Oidc__Authority`, `Auth__Oidc__ClientId`, `Auth__Oidc__ClientSecret` | Server-side authorization-code flow with PKCE; the browser only gets an HttpOnly session cookie. Redirect URI to register: `https://<your-host>/auth/oidc/callback`. |
+| `Oidc` | an OpenID Connect provider | `Auth__Oidc__Authority`, `Auth__Oidc__ClientId`, `Auth__Oidc__ClientSecret` | Server-side authorization-code flow with PKCE; the browser only gets the two HttpOnly cookies of a session (see *Sessions* below). Redirect URI to register: `https://<your-host>/auth/oidc/callback`. |
 | `ProxyHeader` | a trusted reverse proxy (Authelia, Authentik, Cloudflare Access, oauth2-proxy, ...) | `Auth__ProxyHeader__TrustedProxies__0` (at least one) | The app trusts a user header, but only from the listed proxy addresses. There is no login or logout in the app. |
 
 All modes end in the same place: a user record in the database that owns data.
+
+## Sessions (Standalone and OIDC)
+
+A signed-in browser holds two HttpOnly cookies, so no script on the page ever sees a token:
+
+- **`tankstat.session`, the access cookie** (`SameSite=Lax`, Secure on HTTPS): read on every request, valid for `Auth__AccessTokenMinutes` (15 minutes), not sliding. It survives closing the browser (also after an OIDC sign-in), for those few minutes.
+- **`tankstat.refresh`, the refresh cookie** (same attributes, but only sent to `/auth/token/...`): the refresh token of the device's session, valid for `Auth__RefreshTokenDays` (90 days) from its last use.
+
+When the access cookie ran out, the app trades the refresh token at `POST /auth/token/refresh` for a new access cookie and a **new** refresh token, and sends the request again; the person notices nothing. A device that is used at least once in 90 days stays signed in, which also lets the installed app come back after weeks. Each device's session is a row of `UserSessions` that stores only a hash of its secret (and the secret encrypted with the key ring, see below).
+
+What ends a session:
+
+- **Sign out** (`POST /auth/token/logout`, or the `logout` mutation): this device's session, even after its access cookie ran out.
+- **Changing your password**: every other device; the one that changed it stays signed in. **Resetting it with a link**, an **administrator setting it**, or **disabling the user**: every device.
+- **A refresh token used again**: a token that was already traded in is accepted once more within `Auth__RefreshRotationGraceSeconds` (and answered with the current one, so tabs that refreshed at the same moment agree); used later, someone else must have a copy, so the session ends (a Warning in the log names it by id).
+- Not using the device for `Auth__RefreshTokenDays`. Ended and expired sessions are deleted a week later.
+
+The token endpoints only answer requests with the header `X-Requested-With: fetch`, which a page of another site cannot send, and do not exist in `None` and `ProxyHeader` modes (there the proxy signs every request in itself). The cookies are protected by the key ring (`DataProtection:KeysPath`, see [Configuration](configuration.md)): keep it with the data, or every restart signs everybody out.
 
 ## General settings (every mode)
 
@@ -25,6 +43,9 @@ All modes end in the same place: a user record in the database that owns data.
 | --- | --- | --- | --- | --- |
 | `Auth__Mode` | `None`, `Standalone`, `Oidc`, `ProxyHeader` | `None` | all | The authentication mode. |
 | `Auth__PublicUrl` | URL, e.g. `https://tankstat.example.com` | empty | `Standalone` | Public base URL of the app, used to build the password-setup link (`<PublicUrl>/?resetToken=...`). **Required when `Smtp__Host` and `Smtp__From` are set.** Without it, administrators get the token and hand the link over themselves. |
+| `Auth__AccessTokenMinutes` | integer (1-1440) | `15` | `Standalone`, `Oidc` | How long the access cookie lasts; a device that is still signed in gets a new one silently. |
+| `Auth__RefreshTokenDays` | integer (1-3650) | `90` | `Standalone`, `Oidc` | How long a device stays signed in **without being used**; every use starts the period again. |
+| `Auth__RefreshRotationGraceSeconds` | integer (0-3600) | `60` | `Standalone`, `Oidc` | How long a refresh token the device already traded in is still accepted (an answer that never arrived, two tabs refreshing at once). |
 | `Auth__AdminEmails__0`, `Auth__AdminEmails__1`, ... | list of e-mail addresses or user names | empty | `Oidc`, `ProxyHeader` | Identities that are made administrators when they sign in. Matched case-insensitively against the provider's subject **or** the e-mail. Configuration only promotes: demoting an administrator is done in the UI. |
 
 ## Standalone settings (`Auth__Mode=Standalone`)
@@ -40,7 +61,7 @@ All modes end in the same place: a user record in the database that owns data.
 
 Deleting a user: if they own vehicles or logs, the administrator chooses to move everything (including trashed items, authorship and sharing grants) to another user, or to delete it permanently. The last active administrator and your own account cannot be deleted. Name and e-mail of `Oidc`/`ProxyHeader` users come from the provider and are not editable.
 
-Facts that matter when configuring: passwords need 10 to 128 characters; changing or resetting a password signs out every other session; administrators create users in the UI, which issues a one-time setup link (e-mailed when `Smtp` is configured, otherwise shown to the administrator); users can request a reset link themselves (always answered the same way, so accounts cannot be discovered); the session cookie is `tankstat.session` (HttpOnly, `SameSite=Lax`, valid 14 days, sliding).
+Facts that matter when configuring: passwords need 10 to 128 characters; changing or resetting a password signs out every other session; administrators create users in the UI, which issues a one-time setup link (e-mailed when `Smtp` is configured, otherwise shown to the administrator); users can request a reset link themselves (always answered the same way, so accounts cannot be discovered); how long a device stays signed in is described under *Sessions* below.
 
 ## OpenID Connect settings (`Auth__Mode=Oidc`)
 

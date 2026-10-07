@@ -47,6 +47,7 @@ public static class DependencyInjection
         services.AddScoped<SessionService>();
         services.AddScoped<PasswordResetService>();
         services.AddScoped<AuthService>();
+        services.AddScoped<UserSessionService>();
         services.AddScoped<UserService>();
         services.AddScoped<VehicleService>();
         services.AddScoped<ImageService>();

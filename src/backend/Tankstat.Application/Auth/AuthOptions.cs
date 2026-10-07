@@ -31,6 +31,15 @@ public sealed class AuthOptions
     /// <summary>Oidc/ProxyHeader modes: identities (e-mail or user name) that are made administrators on login.</summary>
     public List<string> AdminEmails { get; set; } = [];
 
+    /// <summary>Standalone/Oidc: how long the access cookie lasts; a device that is still signed in gets a new one silently (refresh).</summary>
+    public int AccessTokenMinutes { get; set; } = 15;
+
+    /// <summary>Standalone/Oidc: how long a device stays signed in without being used; every use starts it again.</summary>
+    public int RefreshTokenDays { get; set; } = 90;
+
+    /// <summary>How long the secret a device held before its last refresh is still accepted (an answer that never arrived, two tabs at once).</summary>
+    public int RefreshRotationGraceSeconds { get; set; } = 60;
+
     public StandaloneOptions Standalone { get; set; } = new();
     public OidcOptions Oidc { get; set; } = new();
     public ProxyHeaderOptions ProxyHeader { get; set; } = new();

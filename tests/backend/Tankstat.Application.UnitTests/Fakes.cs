@@ -497,6 +497,30 @@ internal sealed class InMemoryImages : IImageRepository
     }
 }
 
+/// <summary>Stands in for the key ring: readable back, and visibly not the secret itself.</summary>
+internal sealed class FakeSecretProtector : ISecretProtector
+{
+    public string Protect(string secret) => "protected:" + new string(secret.Reverse().ToArray());
+    public string? Unprotect(string protectedSecret) =>
+        protectedSecret.StartsWith("protected:") ? new string(protectedSecret["protected:".Length..].Reverse().ToArray()) : null;
+}
+
+internal sealed class InMemorySessions : IUserSessionRepository
+{
+    public List<UserSession> Items { get; } = [];
+    public Task<UserSession?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(s => s.Id == id));
+    public Task AddAsync(UserSession session, CancellationToken ct) { Items.Add(session); return Task.CompletedTask; }
+    public Task UpdateAsync(UserSession session, CancellationToken ct) => Task.CompletedTask; // shared references
+    public Task<int> RevokeForUserAsync(Guid userId, Guid? except, DateTimeOffset now, CancellationToken ct)
+    {
+        var ending = Items.Where(s => s.UserId == userId && s.RevokedAt is null && s.Id != except).ToList();
+        ending.ForEach(s => s.Revoke(now));
+        return Task.FromResult(ending.Count);
+    }
+    public Task<int> DeleteStaleAsync(DateTimeOffset before, CancellationToken ct) =>
+        Task.FromResult(Items.RemoveAll(s => s.ExpiresAt < before || s.RevokedAt < before));
+}
+
 internal sealed class InMemoryTokens : IPasswordResetTokenRepository
 {
     public List<PasswordResetToken> Items { get; } = [];
@@ -560,6 +584,7 @@ internal sealed class World
     public FakeUserData UserData { get; } = new();
     public ImportSessionStore ImportSessions { get; }
     public InMemoryTokens Tokens { get; } = new();
+    public InMemorySessions Sessions { get; } = new();
     public InMemoryGrants Grants { get; } = new();
     public InMemoryResourceGrants ResourceGrants { get; } = new();
     public InMemoryImageStore ImageStore { get; } = new();
@@ -595,6 +620,7 @@ internal sealed class World
     public LogPhotoService Photos { get; }
     public PhotoDraftService Drafts { get; }
     public AuthService Auth { get; }
+    public UserSessionService SessionService { get; }
     public UserService UserService { get; }
     public AccessAdminService AccessAdmin { get; }
     public Notifier Notifier { get; }
@@ -637,8 +663,9 @@ internal sealed class World
         UiSettings = new UiSettingsService(UiSettingsStore, Access, Clock, Log.For<UiSettingsService>());
         VehicleOrder = new VehicleOrderService(VehicleOrders, Vehicles, Access, Log.For<VehicleOrderService>());
         Sharing = new ResourceSharingService(Vehicles, ResourceGrants, Users, Access, Notifier, Log.For<ResourceSharingService>());
-        Auth = new AuthService(Users, new FakeHasher(), resets, Access, options, Clock, Log.For<AuthService>());
-        UserService = new UserService(Access, Users, UserData, resets, new FakeHasher(), ImageService, ImportSessions, options, Log.For<UserService>());
+        SessionService = new UserSessionService(Sessions, Users, new FakeSecretProtector(), options, Clock, Log.For<UserSessionService>());
+        Auth = new AuthService(Users, new FakeHasher(), resets, SessionService, Access, options, Clock, Log.For<AuthService>());
+        UserService = new UserService(Access, Users, UserData, resets, SessionService, new FakeHasher(), ImageService, ImportSessions, options, Log.For<UserService>());
         AccessAdmin = new AccessAdminService(Access, Settings, Grants, Users, Notifier, Log.For<AccessAdminService>());
         Availability = new RecognitionAvailability(Recognizer, Clock, Log.For<RecognitionAvailability>());
     }

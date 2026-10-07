@@ -1,6 +1,6 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql, HttpResponse } from 'msw'
+import { graphql, http, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
 import type { SessionQuery } from '../../../src/frontend/gql/generated.ts'
@@ -26,9 +26,10 @@ function standaloneServer(login: (vars: { email: string; password: string }) => 
       state.current = user()
       return HttpResponse.json({ data: { login: { id: 'u1' } } })
     }),
-    graphql.mutation('Logout', () => {
+    // Signing out goes to the token endpoint, which ends the device's session even after its access cookie ran out.
+    http.post('/auth/token/logout', () => {
       state.current = null
-      return HttpResponse.json({ data: { logout: true } })
+      return new HttpResponse(null, { status: 204 })
     }),
     graphql.mutation('RequestPasswordReset', ({ variables }) => {
       record('RequestPasswordReset', variables)

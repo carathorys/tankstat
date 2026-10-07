@@ -114,6 +114,8 @@ public class StartupSmokeTests
     {
         var first = await AppProcess.StartAsync(Standalone());
         var work = first.WorkDirectory;
+        await first.Gql("mutation($i: LoginInput!) { login(input: $i) { id } }", new { i = new { email = "root@example.com", password = "initial-password-1" } });
+        var signedIn = first.CookieHeader;
         await first.StopAsync();
 
         // Second start: the administrator already exists in the database, so no bootstrap settings are needed.
@@ -121,6 +123,9 @@ public class StartupSmokeTests
         var second = await AppProcess.StartAsync(settings, workDirectory: work, useTempDatabase: false);
         try
         {
+            // The keys that protect the cookies are kept in the working directory (DataProtection:KeysPath), so a restart signs nobody out.
+            var kept = await second.Gql(Session, headers: new Dictionary<string, string> { ["Cookie"] = signedIn });
+            Assert.Equal("root@example.com", kept.Data().GetProperty("session").GetProperty("user").GetProperty("email").GetString());
             await second.Gql("mutation($i: LoginInput!) { login(input: $i) { id } }", new { i = new { email = "root@example.com", password = "initial-password-1" } });
             Assert.Equal("root@example.com", (await second.Gql(Session)).Data().GetProperty("session").GetProperty("user").GetProperty("email").GetString());
             Assert.True(await second.LogsAsync("up to date"), second.Log); // nothing to migrate this time, and the log says so
