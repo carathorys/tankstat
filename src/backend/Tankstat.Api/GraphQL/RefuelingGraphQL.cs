@@ -14,9 +14,10 @@ namespace Tankstat.Api.GraphQL;
 /// <param name="Currency">ISO 4217 code of the currency paid in; omit to use the instance default.</param>
 /// <param name="PhotoIds">Photos uploaded for this log beforehand (<c>PUT /media/vehicles/{id}/photo-drafts</c>); they become its photos.</param>
 /// <param name="MissedPreviousFillUp">A fill-up before this one was not logged: no consumption is worked out across the gap. Omit for false.</param>
+/// <param name="Id">An id the client chose for the new log; the same add sent again (a lost answer, a replay after being offline) answers with what it created. Omit to let the server choose.</param>
 public sealed record LogRefuelingInput(
     Guid VehicleId, DateOnly Date, decimal? Volume, decimal? TotalCost, string? Currency, long? Odometer, bool IsFullTank, string? Note, IReadOnlyList<Guid>? PhotoIds = null,
-    bool? MissedPreviousFillUp = null);
+    bool? MissedPreviousFillUp = null, Guid? Id = null);
 
 /// <param name="Volume">Volume, total cost and odometer may be omitted only while a photo of the log is still being read.</param>
 /// <param name="Currency">Omit to keep the log's currency.</param>
@@ -131,7 +132,7 @@ public sealed class RefuelingMutations
         LogRefuelingInput input, [Service] RefuelingService refuelings, [Service] IOptions<VehicleDefaultsOptions> defaults, CancellationToken ct) =>
         refuelings.LogAsync(input.VehicleId,
             new RefuelingInput(input.Date, input.Volume, input.TotalCost, input.Currency ?? defaults.Value.Currency, input.Odometer, input.IsFullTank, input.Note, input.MissedPreviousFillUp), ct,
-            photoDraftIds: input.PhotoIds);
+            photoDraftIds: input.PhotoIds, id: input.Id);
 
     public Task<Refueling> UpdateRefueling(UpdateRefuelingInput input, [Service] RefuelingService refuelings, CancellationToken ct) =>
         refuelings.UpdateAsync(

@@ -11,6 +11,7 @@ internal sealed class RefuelingConfiguration : IEntityTypeConfiguration<Refuelin
         b.ToTable("Refuelings");
         b.HasKey(r => r.Id);
         b.Property(r => r.Id).ValueGeneratedNever();
+        b.Property(r => r.Version).HasDefaultValue(1); // rows from before versions were counted start at 1
         b.Property(r => r.Volume).HasPrecision(9, 3);
         b.Property(r => r.Consumption).HasPrecision(9, 3);
         b.HasOne<Vehicle>().WithMany().HasForeignKey(r => r.VehicleId).OnDelete(DeleteBehavior.Cascade);

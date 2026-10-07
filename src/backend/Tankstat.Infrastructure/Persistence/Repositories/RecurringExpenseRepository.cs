@@ -62,12 +62,7 @@ internal sealed class RecurringExpenseRepository(IDbContextFactory<AppDbContext>
             .ToListAsync(ct);
     }
 
-    public async Task AddAsync(RecurringExpense item, CancellationToken ct)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        db.RecurringExpenses.Add(item);
-        await db.SaveChangesAsync(ct);
-    }
+    public Task<bool> AddAsync(RecurringExpense item, CancellationToken ct) => dbFactory.AddOnceAsync(item, item.Id, ct);
 
     public async Task UpdateAsync(RecurringExpense item, CancellationToken ct)
     {

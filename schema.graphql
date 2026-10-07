@@ -191,6 +191,7 @@ type Expense {
   odometer: Long
   deletedAt: DateTime
   reviewState: ReviewState!
+  version: Int!
   canEdit: Boolean! @cost(weight: "10")
   canDelete: Boolean! @cost(weight: "10")
   createdBy: UserRef @cost(weight: "10")
@@ -373,6 +374,7 @@ type RecurringExpenseInfo {
   warnDays: Int!
   warnDistance: Long!
   createdAt: DateTime!
+  version: Int!
   status: RecurrenceStatusInfo!
 }
 
@@ -400,6 +402,7 @@ type Refueling {
   reviewState: ReviewState!
   deletedAt: DateTime
   pricePerUnit: Decimal
+  version: Int!
   canEdit: Boolean! @cost(weight: "10")
   canDelete: Boolean! @cost(weight: "10")
   createdBy: UserRef @cost(weight: "10")
@@ -452,6 +455,7 @@ type Vehicle {
   units: MeasurementUnits!
   deletedAt: DateTime
   isDeleted: Boolean!
+  version: Int!
   canEdit: Boolean! @cost(weight: "10")
   logAccess: AccessLevel! @cost(weight: "10")
   owner: UserRef @cost(weight: "10")
@@ -510,6 +514,7 @@ input AddExpenseInput {
   odometer: Long
   note: String
   photoIds: [UUID!]
+  id: UUID
 }
 
 input AddRecurringExpenseInput {
@@ -524,6 +529,7 @@ input AddRecurringExpenseInput {
   lastDoneOdometer: Long
   warnDays: Int
   warnDistance: Long
+  id: UUID
 }
 
 input AddVehicleInput {
@@ -531,6 +537,7 @@ input AddVehicleInput {
   licensePlate: String
   fuelType: FuelType!
   units: MeasurementUnitsInput
+  id: UUID
 }
 
 input ChangePasswordInput {
@@ -593,6 +600,7 @@ input LogRefuelingInput {
   note: String
   photoIds: [UUID!]
   missedPreviousFillUp: Boolean
+  id: UUID
 }
 
 input MarkRecurringExpensesDoneInput {
@@ -604,6 +612,7 @@ input MarkRecurringExpensesDoneInput {
   title: String
   category: String
   photoIds: [UUID!]
+  expenseId: UUID
 }
 
 input MeasurementUnitsInput {

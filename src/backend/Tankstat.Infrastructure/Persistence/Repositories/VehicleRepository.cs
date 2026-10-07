@@ -116,10 +116,5 @@ internal sealed class VehicleRepository(IDbContextFactory<AppDbContext> dbFactor
         return await db.Vehicles.AsNoTracking().FirstOrDefaultAsync(v => v.PictureImageId == imageId, ct);
     }
 
-    public async Task AddAsync(Vehicle vehicle, CancellationToken ct)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        db.Vehicles.Add(vehicle);
-        await db.SaveChangesAsync(ct);
-    }
+    public Task<bool> AddAsync(Vehicle vehicle, CancellationToken ct) => dbFactory.AddOnceAsync(vehicle, vehicle.Id, ct);
 }

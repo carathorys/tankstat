@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../../src/frontend/App.tsx'
 import { server } from '../../support/server.ts'
 import { fakeExpense, fakeExpenseBackend, fakeVehicle, healthHandler, renderWithApollo, sessionHandler, stubViewport } from '../../support/mocks.tsx'
+import { UUID } from '../../support/ids.ts'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
@@ -107,6 +108,33 @@ it('shows the odometer rule from the server and keeps the dialog open', async ()
 
   expect(await within(dialog).findByRole('alert')).toHaveTextContent('The odometer cannot be lower than 12,000 km')
   expect(screen.getByRole('dialog')).toBeInTheDocument()
+})
+
+it('a new expense carries an id chosen in the browser: the same for every Save of one opening, a new one the next time', async () => {
+  const { ui, state } = setup()
+  state.failWith = { message: 'too low', key: 'odometer.belowPrevious', args: { previous: '12,000 km', date: '2026-09-01' } }
+  await screen.findByText('Oil change')
+  const add = async () => {
+    await ui.click(screen.getByRole('button', { name: 'Add expense' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Add expense' })
+    await ui.type(within(dialog).getByLabelText('Title'), 'Wash')
+    await ui.type(within(dialog).getByLabelText('Amount'), '1000')
+    return dialog
+  }
+
+  const dialog = await add()
+  await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
+  await within(dialog).findByRole('alert')
+  state.failWith = undefined
+  await ui.click(within(dialog).getByRole('button', { name: 'Add expense' })) // tried again: it must not become a second expense
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  await ui.click(within(await add()).getByRole('button', { name: 'Add expense' }))
+  await waitFor(() => expect(state.calls.AddExpense).toHaveLength(3))
+
+  const ids = (state.calls.AddExpense as { input: { id: string } }[]).map((c) => c.input.id)
+  expect(ids[0]).toMatch(UUID)
+  expect(ids[1]).toBe(ids[0])
+  expect(ids[2]).not.toBe(ids[0])
 })
 
 it('edits an expense starting from its real values, and the odometer can be cleared', async () => {

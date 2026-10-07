@@ -13,6 +13,7 @@ import { useOdometerLabel } from './components/useOdometerLabel.ts'
 import { usePhotoSession } from './components/usePhotoSession.ts'
 import { DialogButtons, DialogCancel, DialogFrame } from './dialogs/DialogFrame.tsx'
 import { DialogTrigger } from './dialogs/DialogTrigger.tsx'
+import { useClientId } from './dialogs/useClientId.ts'
 import { useDialogState } from './dialogs/useDialogState.ts'
 import { CurrencyInput } from './forms/CurrencyInput.tsx'
 import { todayIso } from './forms/dates.ts'
@@ -39,6 +40,8 @@ import { useToast } from './toast/toastContext.ts'
 
 /** The amount is null only when it was left for a photo that is still being read. */
 export interface ExpenseValues {
+  /** A new expense only: the id it gets on the server, the same for every Save of one opening of the dialog (see `useClientId`). */
+  id?: string
   date: string
   title: string
   category: string | null
@@ -92,6 +95,7 @@ export function ExpenseFormDialog({
   const { t, i18n } = useTranslation()
   const { toast } = useToast()
   const [open, setOpen] = useDialogState({ open: openProp, onOpenChange })
+  const clientId = useClientId(open)
   const editing = expenseId !== undefined
   const { queue, leftOut, saving, submit, reset } = usePhotoSession(vehicle.id, editing ? undefined : 'expense', open)
   // Photos added to a saved log in this dialog (read like drafts), and whether they are still going up.
@@ -158,7 +162,7 @@ export function ExpenseFormDialog({
               />
             }
             onSubmit={async (values) => {
-              if (await submit((photoIds) => onSubmit(values, photoIds), editing)) {
+              if (await submit((photoIds) => onSubmit(editing ? values : { ...values, id: clientId }, photoIds), editing)) {
                 close()
                 toast(t('toast.saved'))
               }

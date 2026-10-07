@@ -14,6 +14,7 @@ export type AddExpenseInput = {
   category?: string | null | undefined;
   currency?: string | null | undefined;
   date: string;
+  id?: string | null | undefined;
   note?: string | null | undefined;
   odometer?: number | null | undefined;
   photoIds?: Array<string> | null | undefined;
@@ -23,6 +24,7 @@ export type AddExpenseInput = {
 
 export type AddRecurringExpenseInput = {
   category?: string | null | undefined;
+  id?: string | null | undefined;
   intervalDistance?: number | null | undefined;
   intervalMonths?: number | null | undefined;
   kind: RecurrenceKind;
@@ -37,6 +39,7 @@ export type AddRecurringExpenseInput = {
 
 export type AddVehicleInput = {
   fuelType: FuelType;
+  id?: string | null | undefined;
   licensePlate?: string | null | undefined;
   name: string;
   units?: MeasurementUnitsInput | null | undefined;
@@ -164,6 +167,7 @@ export type GridSettingsInput = {
 export type LogRefuelingInput = {
   currency?: string | null | undefined;
   date: string;
+  id?: string | null | undefined;
   isFullTank: boolean;
   missedPreviousFillUp?: boolean | null | undefined;
   note?: string | null | undefined;
@@ -189,6 +193,7 @@ export type MarkRecurringExpensesDoneInput = {
   category?: string | null | undefined;
   currency?: string | null | undefined;
   date: string;
+  expenseId?: string | null | undefined;
   ids: Array<string>;
   odometer?: number | null | undefined;
   photoIds?: Array<string> | null | undefined;

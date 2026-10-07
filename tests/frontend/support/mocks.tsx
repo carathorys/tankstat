@@ -242,8 +242,8 @@ export function fakeVehicleBackend(initial: FakeVehicle[] = [], trashed: FakeVeh
       if (state.failWith) {
         return HttpResponse.json(gqlError(state.failWith.message, 'VALIDATION_FAILED', state.failWith.key, state.failWith.args))
       }
-      const id = `v${state.nextId++}`
-      state.vehicles.push({ ...fakeVehicle({ id, refuelingCount: 0, ...variables.input }), deletedAt: '' })
+      const id = variables.input.id ?? `v${state.nextId++}` // the browser's id, like the server
+      state.vehicles.push({ ...fakeVehicle({ ...variables.input, id, refuelingCount: 0 }), deletedAt: '' })
       return HttpResponse.json({ data: { addVehicle: { id } } })
     }),
     graphql.mutation('UpdateVehicle', ({ variables }) => {
@@ -637,11 +637,11 @@ export function fakeLogBackend(vehicle: FakeVehicle, logs: FakeRefueling[] = [],
       record('LogRefueling', variables)
       const failure = fail()
       if (failure) return failure
-      const id = `r${state.nextId++}`
+      const id = variables.input.id ?? `r${state.nextId++}` // the browser's id, like the server
       const { photoIds, ...input } = variables.input
       // Values left empty wait for the photos, like on the server (which only allows it while one is still being read).
       const reviewState = input.odometer == null || input.volume == null || input.totalCost == null ? 'AWAITING_PHOTOS' : 'NONE'
-      state.logs.push(fakeRefueling({ id, ...input, reviewState }))
+      state.logs.push(fakeRefueling({ ...input, id, reviewState }))
       if (input.odometer != null) state.lastOdometer = Math.max(state.lastOdometer ?? 0, input.odometer)
       // The server recomputes the card's summary; the fake does the minimum for a card to show the change (the summary object is shared with the vehicle fakes).
       Object.assign(vehicle.summary, { lastFillUpDate: input.date, fillUpCount: vehicle.summary.fillUpCount + 1 })
@@ -788,10 +788,10 @@ export function fakeExpenseBackend(vehicle: FakeVehicle, expenses: FakeExpense[]
       record('AddExpense', variables)
       const failure = fail()
       if (failure) return failure
-      const id = `e${state.nextId++}`
+      const id = variables.input.id ?? `e${state.nextId++}` // the browser's id, like the server
       const { photoIds, ...input } = variables.input
       const reviewState = input.amount == null ? 'AWAITING_PHOTOS' : 'NONE'
-      state.expenses.push(fakeExpense({ id, ...input, reviewState }))
+      state.expenses.push(fakeExpense({ ...input, id, reviewState }))
       Object.assign(vehicle.summary, { expenseCount: vehicle.summary.expenseCount + 1, thisMonthSpend: vehicle.summary.thisMonthSpend + (input.amount ?? 0) }) // for the card, see LogRefueling
       return HttpResponse.json({ data: { addExpense: { id, reviewState, photos: photos.attach(id, photoIds) } } })
     }),
@@ -978,7 +978,7 @@ export function fakeRecurringBackend(items: FakeRecurring[] = [], vehicle?: Fake
       const failed = fail()
       if (failed) return failed
       const input = variables.input as Partial<FakeRecurring>
-      const item = fakeRecurring({ ...input, id: `rc${state.nextId++}`, status: upcoming() })
+      const item = fakeRecurring({ ...input, id: input.id ?? `rc${state.nextId++}`, status: upcoming() })
       state.items.push(item)
       sync()
       return HttpResponse.json({ data: { addRecurringExpense: typedRecurring(item) } })
@@ -1003,7 +1003,7 @@ export function fakeRecurringBackend(items: FakeRecurring[] = [], vehicle?: Fake
       record('MarkRecurringExpensesDone', variables)
       const failed = fail()
       if (failed) return failed
-      const input = variables.input as { ids: string[]; date: string; odometer: number | null; amount?: number | null; photoIds?: string[] | null }
+      const input = variables.input as { ids: string[]; date: string; odometer: number | null; amount?: number | null; photoIds?: string[] | null; expenseId?: string | null }
       const done = input.ids.map((id) => {
         const i = state.items.findIndex((x) => x.id === id)
         state.items[i] = { ...state.items[i], lastDoneDate: input.date, lastDoneOdometer: input.odometer ?? state.items[i].lastDoneOdometer, status: upcoming() }
@@ -1017,7 +1017,7 @@ export function fakeRecurringBackend(items: FakeRecurring[] = [], vehicle?: Fake
         Object.assign(vehicle.summary, { expenseCount: vehicle.summary.expenseCount + 1, thisMonthSpend: vehicle.summary.thisMonthSpend + (input.amount ?? 0) })
         if (input.odometer != null) vehicle.summary.latestOdometer = Math.max(vehicle.summary.latestOdometer ?? 0, input.odometer)
       }
-      const expense = logged ? { __typename: 'Expense', id: `ex${state.nextId++}`, photos: (input.photoIds ?? []).map((id) => ({ __typename: 'LogPhotoInfo', id })) } : null
+      const expense = logged ? { __typename: 'Expense', id: input.expenseId ?? `ex${state.nextId++}`, photos: (input.photoIds ?? []).map((id) => ({ __typename: 'LogPhotoInfo', id })) } : null
       return HttpResponse.json({ data: { markRecurringExpensesDone: { __typename: 'MarkRecurringExpensesDonePayload', schedules: done.map(typedRecurring), expense } } })
     }),
   ]
