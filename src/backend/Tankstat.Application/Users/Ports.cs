@@ -80,6 +80,9 @@ public interface IUserSessionRepository
     /// <summary>Gives the session the user's new session version (nothing else changes).</summary>
     Task AdoptVersionAsync(Guid id, int sessionVersion, CancellationToken ct);
 
+    /// <summary>The user's sessions that are still usable at <paramref name="now"/>, most recently used first.</summary>
+    Task<IReadOnlyList<UserSession>> ListUsableForUserAsync(Guid userId, DateTimeOffset now, CancellationToken ct);
+
     /// <summary>Revokes every session of the user that is not revoked yet, except <paramref name="except"/>; returns how many.</summary>
     Task<int> RevokeForUserAsync(Guid userId, Guid? except, DateTimeOffset now, CancellationToken ct);
 
