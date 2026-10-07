@@ -91,6 +91,56 @@ public class ClientIdAndVersionTests
     }
 
     [Fact]
+    public async Task ARetryAfterAFirstTryThatFailedAfterSaving_FinishesWhatTheFirstTryLeft()
+    {
+        var s = await Setup();
+        await s.W.RefuelingService.LogAsync(s.Car.Id, Fill(1000, volume: 40), default);
+        var id = Guid.NewGuid();
+        s.W.Refuelings.FailNextConsumptions = new InvalidOperationException("database down");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => s.W.RefuelingService.LogAsync(s.Car.Id, Fill(1500, volume: 30) with { Date = Day.AddDays(10) }, default, id: id));
+        var saved = Assert.Single(s.W.Refuelings.Items, r => r.Id == id); // saved...
+        saved.SetConsumption(null); // ...but its consumption never reached the database (the fake shares the object the calculator changed)
+
+        var again = await s.W.RefuelingService.LogAsync(s.Car.Id, Fill(1500, volume: 30) with { Date = Day.AddDays(10) }, default, id: id);
+
+        Assert.Equal(6m, again.Consumption); // 30 l over 500 km
+        Assert.Equal(2, s.W.Refuelings.Items.Count);
+    }
+
+    [Fact]
+    public async Task ARetry_AttachesThePhotosTheFirstTryCouldNotAttach()
+    {
+        var s = await Setup();
+        var draft = await s.W.Drafts.UploadAsync(s.Car.Id, new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3 }, default);
+        var id = Guid.NewGuid();
+        s.W.LogPhotos.FailAdds = true; // the first try saves the expense, the photo stays a draft
+        await s.W.ExpenseService.AddAsync(s.Car.Id, new ExpenseInput(Day, "Parking", null, 5, "EUR", null, null), default, [draft], id);
+        Assert.Empty(s.W.LogPhotos.Items);
+
+        s.W.LogPhotos.FailAdds = false;
+        await s.W.ExpenseService.AddAsync(s.Car.Id, new ExpenseInput(Day, "Parking", null, 5, "EUR", null, null), default, [draft], id);
+
+        Assert.Equal(id, Assert.Single(s.W.LogPhotos.Items).LogId);
+        Assert.Single(s.W.Expenses.Items);
+    }
+
+    [Fact]
+    public async Task TheTwinThatLostTheRaceToSave_IsAnsweredWithWhatTheOtherSaved()
+    {
+        var s = await Setup();
+        var (logId, expenseId, scheduleId, vehicleId) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        s.W.Refuelings.LoseNextAdd = s.W.Expenses.LoseNextAdd = s.W.Recurring.LoseNextAdd = s.W.Vehicles.LoseNextAdd = true;
+
+        Assert.Equal(logId, (await s.W.RefuelingService.LogAsync(s.Car.Id, Fill(), default, id: logId)).Id);
+        Assert.Equal(expenseId, (await s.W.ExpenseService.AddAsync(s.Car.Id, new ExpenseInput(Day, "Parking", null, 5, "EUR", null, null), default, id: expenseId)).Id);
+        Assert.Equal(scheduleId, (await s.W.RecurringService.AddAsync(s.Car.Id, new RecurringExpenseInput("Insurance", null, null, RecurrenceKind.Time, 12, null, Day, null, null, null), default, scheduleId)).Item.Id);
+        Assert.Equal(vehicleId, (await s.W.VehicleService.AddAsync("Van", null, FuelType.Diesel, Domain.Measurements.MeasurementUnits.Metric, default, vehicleId)).Id);
+
+        Assert.Single(s.W.Refuelings.Items);
+        Assert.Single(s.W.Expenses.Items);
+    }
+
+    [Fact]
     public async Task AnEmptyId_IsRefused()
     {
         var s = await Setup();
@@ -180,6 +230,22 @@ public class ClientIdAndVersionTests
         Assert.False(s.W.Expenses.Items[0].IsDeleted);
         Assert.Single(s.W.Recurring.Completions);
         Assert.Equal((new DateOnly(2026, 9, 20), 62000L, 2), (oil.LastDoneDate, oil.LastDoneOdometer, oil.Version));
+    }
+
+    [Fact]
+    public async Task AnExpenseIdOfAnotherVisit_CannotRecordThisOne()
+    {
+        var s = await Setup();
+        var oil = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(), default)).Item;
+        var tyres = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil() with { Title = "Tyres" }, default)).Item;
+        var visit = new MarkDoneInput(new DateOnly(2026, 9, 20), 62000, 35000, "HUF", ExpenseId: Guid.NewGuid());
+        await s.W.RecurringService.MarkDoneAsync([oil.Id], visit, default);
+
+        var refused = await Refused(() => s.W.RecurringService.MarkDoneAsync([oil.Id, tyres.Id], visit, default));
+
+        Assert.Equal("sync.idTaken", refused.Key);
+        Assert.Equal(new DateOnly(2026, 1, 15), tyres.LastDoneDate); // the other schedule did not move
+        Assert.Single(s.W.Expenses.Items);
     }
 
     [Fact]

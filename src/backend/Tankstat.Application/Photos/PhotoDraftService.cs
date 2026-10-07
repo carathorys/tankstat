@@ -71,6 +71,18 @@ public sealed class PhotoDraftService(
             : throw new DomainException("photo.draftExpired", "A photo is no longer available; add it again.", new { Id = id })).ToList();
     }
 
+    /// <summary>
+    /// Of the given drafts, the ones still waiting to be attached (the current user's, for the vehicle, not expired); the others were
+    /// attached already or are gone. For an add that is sent again: it attaches what the first try did not get to.
+    /// </summary>
+    public async Task<IReadOnlyList<PhotoDraft>> StillWaitingAsync(Guid vehicleId, IReadOnlyCollection<Guid>? ids, CancellationToken ct)
+    {
+        if (ids is null || ids.Count == 0) return [];
+        var me = await access.RequirePrincipalAsync(ct);
+        var now = clock.GetUtcNow();
+        return (await drafts.FindManyAsync(ids.Distinct().ToList(), ct)).Where(d => d.CreatedById == me.Id && d.VehicleId == vehicleId && !d.IsExpired(now)).ToList();
+    }
+
     /// <summary>The drafts were attached to a log: only their rows go, the pictures live on as its photos.</summary>
     internal Task ForgetAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct) => drafts.RemoveAsync(ids, ct);
 

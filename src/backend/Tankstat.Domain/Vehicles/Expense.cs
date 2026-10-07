@@ -130,7 +130,9 @@ public sealed class Expense : IOwned, ISoftDeletable
             (Cost, CostId) = (createdCost, createdCost.Id);
             FilledFromPhoto |= LogValues.Total;
         }
-        if (FilledFromPhoto != before) Version++; // values changed: an edit of the copy from before is stale
+        // Every value a photo fills in sets its FilledFromPhoto flag, so a change of the flags is a change of the values: an edit of the copy
+        // from before is stale. A value added here later must set its flag too.
+        if (FilledFromPhoto != before) Version++;
         return new LinkedChanges(createdReading, null, createdCost, null);
     }
 
