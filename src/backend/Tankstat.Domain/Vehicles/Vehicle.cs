@@ -1,9 +1,10 @@
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Measurements;
+using Tankstat.Domain.Sync;
 
 namespace Tankstat.Domain.Vehicles;
 
-public sealed class Vehicle : IOwned, ISoftDeletable
+public sealed class Vehicle : IOwned, ISoftDeletable, ISynced
 {
     private Vehicle() { } // EF Core
 
@@ -29,6 +30,12 @@ public sealed class Vehicle : IOwned, ISoftDeletable
     /// started from, so a change made meanwhile is noticed. The picture does not count.
     /// </summary>
     public int Version { get; private set; }
+
+    /// <summary>When it was last saved (set by the persistence layer, see <see cref="ISynced"/>): a device that keeps a copy downloads it again.</summary>
+    public DateTimeOffset UpdatedAt { get; private set; }
+
+    Guid ISynced.SyncVehicleId => Id;
+    OfflineEntityType ISynced.SyncType => OfflineEntityType.Vehicle;
 
     /// <param name="id">The id the client chose beforehand, if any (see <see cref="EntityId"/>).</param>
     public static Vehicle Create(Guid ownerId, string name, string? licensePlate, FuelType fuelType, MeasurementUnits units, Guid? id = null)

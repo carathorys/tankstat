@@ -517,6 +517,11 @@ namespace Tankstat.Migrations.MySql
                         .HasMaxLength(120)
                         .HasColumnType("varchar(120)");
 
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime(6)")
+                        .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc));
+
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("char(36)");
 
@@ -536,6 +541,8 @@ namespace Tankstat.Migrations.MySql
                     b.HasIndex("OwnerId");
 
                     b.HasIndex("VehicleId");
+
+                    b.HasIndex("VehicleId", "UpdatedAt");
 
                     b.ToTable("RecurringExpenses", (string)null);
                 });
@@ -580,6 +587,45 @@ namespace Tankstat.Migrations.MySql
                     b.ToTable("GridSettings", (string)null);
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Settings.OfflineSettings", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("DefaultWindow")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("OfflineSettings", (string)null);
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Settings.OfflineVehicleSetting", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Window")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.HasKey("UserId", "VehicleId");
+
+                    b.HasIndex("VehicleId");
+
+                    b.ToTable("OfflineVehicleSettings", (string)null);
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Settings.UiSettings", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -620,6 +666,35 @@ namespace Tankstat.Migrations.MySql
                     b.HasIndex("VehicleId");
 
                     b.ToTable("VehicleOrders", (string)null);
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Sync.Tombstone", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("EntityId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime>("PurgedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PurgedAt");
+
+                    b.HasIndex("VehicleId", "PurgedAt");
+
+                    b.ToTable("Tombstones", (string)null);
                 });
 
             modelBuilder.Entity("Tankstat.Domain.Users.PasswordResetToken", b =>
@@ -804,6 +879,11 @@ namespace Tankstat.Migrations.MySql
                         .HasMaxLength(120)
                         .HasColumnType("varchar(120)");
 
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime(6)")
+                        .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc));
+
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("char(36)");
 
@@ -825,6 +905,8 @@ namespace Tankstat.Migrations.MySql
                     b.HasIndex("OwnerId");
 
                     b.HasIndex("VehicleId", "Date");
+
+                    b.HasIndex("VehicleId", "UpdatedAt");
 
                     b.ToTable("Expenses", (string)null);
                 });
@@ -876,6 +958,11 @@ namespace Tankstat.Migrations.MySql
                         .HasColumnType("varchar(16)")
                         .HasDefaultValue("None");
 
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime(6)")
+                        .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc));
+
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("char(36)");
 
@@ -901,6 +988,8 @@ namespace Tankstat.Migrations.MySql
                     b.HasIndex("OwnerId");
 
                     b.HasIndex("VehicleId", "Date");
+
+                    b.HasIndex("VehicleId", "UpdatedAt");
 
                     b.ToTable("Refuelings", (string)null);
                 });
@@ -932,6 +1021,11 @@ namespace Tankstat.Migrations.MySql
 
                     b.Property<Guid?>("PictureImageId")
                         .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime(6)")
+                        .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc));
 
                     b.Property<int>("Version")
                         .ValueGeneratedOnAdd()
@@ -1037,6 +1131,15 @@ namespace Tankstat.Migrations.MySql
                 });
 
             modelBuilder.Entity("Tankstat.Domain.Recurring.RecurringExpense", b =>
+                {
+                    b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
+                        .WithMany()
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Settings.OfflineVehicleSetting", b =>
                 {
                     b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
                         .WithMany()

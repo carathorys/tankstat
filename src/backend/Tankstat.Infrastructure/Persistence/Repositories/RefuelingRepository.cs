@@ -9,7 +9,7 @@ using Tankstat.Domain;
 
 namespace Tankstat.Infrastructure.Persistence.Repositories;
 
-internal sealed class RefuelingRepository(IDbContextFactory<AppDbContext> dbFactory) : IRefuelingRepository
+internal sealed class RefuelingRepository(IDbContextFactory<AppDbContext> dbFactory, TimeProvider clock) : IRefuelingRepository
 {
     public async Task<IReadOnlyList<Refueling>> ListForVehicleAsync(Guid vehicleId, RefuelingQuery query, CancellationToken ct)
     {
@@ -37,12 +37,14 @@ internal sealed class RefuelingRepository(IDbContextFactory<AppDbContext> dbFact
 
     public async Task SaveConsumptionsAsync(IReadOnlyList<Refueling> refuelings, CancellationToken ct)
     {
+        var now = clock.GetUtcNow();
         if (refuelings.Count == 0) return;
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         foreach (var r in refuelings)
         {
             var value = r.Consumption;
-            await db.Refuelings.Where(x => x.Id == r.Id).ExecuteUpdateAsync(s => s.SetProperty(x => x.Consumption, value), ct);
+            // Derived, so no new Version; but a device shows it, so the row is downloaded again (UpdatedAt).
+            await db.Refuelings.Where(x => x.Id == r.Id).ExecuteUpdateAsync(s => s.SetProperty(x => x.Consumption, value).SetProperty(x => x.UpdatedAt, now), ct);
         }
     }
 

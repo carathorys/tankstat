@@ -290,6 +290,23 @@ internal sealed class InMemoryVehicleOrders : IVehicleOrderRepository
     public Task ReplaceAsync(Guid userId, IReadOnlyList<VehicleOrder> order, CancellationToken ct) { Items.RemoveAll(o => o.UserId == userId); Items.AddRange(order); return Task.CompletedTask; }
 }
 
+internal sealed class InMemoryOfflineSettings : IOfflineSettingsRepository
+{
+    public List<OfflineSettings> Rows { get; } = [];
+    public List<OfflineVehicleSetting> Vehicles { get; } = [];
+    public Task<OfflineSettings?> FindAsync(Guid userId, CancellationToken ct) => Task.FromResult(Rows.FirstOrDefault(r => r.UserId == userId));
+    public Task<IReadOnlyList<OfflineVehicleSetting>> ListVehiclesAsync(Guid userId, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<OfflineVehicleSetting>>(Vehicles.Where(v => v.UserId == userId).ToList());
+    public Task ReplaceAsync(OfflineSettings settings, IReadOnlyList<OfflineVehicleSetting> vehicles, CancellationToken ct)
+    {
+        Rows.RemoveAll(r => r.UserId == settings.UserId);
+        Vehicles.RemoveAll(v => v.UserId == settings.UserId);
+        Rows.Add(settings);
+        Vehicles.AddRange(vehicles);
+        return Task.CompletedTask;
+    }
+}
+
 /// <summary>Readings are the ones owned by the in-memory logs and expenses (live ones only, like the real query filter).</summary>
 internal sealed class InMemoryReadings(InMemoryRefuelings refuelings, InMemoryExpenses expenses) : IOdometerReadingRepository
 {
@@ -615,6 +632,8 @@ internal sealed class World
     public ChartService ChartService { get; }
     public UiSettingsService UiSettings { get; }
     public VehicleOrderService VehicleOrder { get; }
+    public InMemoryOfflineSettings OfflineSettingsStore { get; } = new();
+    public OfflineSettingsService OfflineSettings { get; }
     public ImportService Imports { get; }
     public OdometerService Odometer { get; }
     public ResourceSharingService Sharing { get; }
@@ -664,6 +683,7 @@ internal sealed class World
         ChartService = new ChartService(Vehicles, Charts, Access, Clock, Log.For<ChartService>());
         UiSettings = new UiSettingsService(UiSettingsStore, Access, Clock, Log.For<UiSettingsService>());
         VehicleOrder = new VehicleOrderService(VehicleOrders, Vehicles, Access, Log.For<VehicleOrderService>());
+        OfflineSettings = new OfflineSettingsService(OfflineSettingsStore, Vehicles, Access, Clock, Log.For<OfflineSettingsService>());
         Sharing = new ResourceSharingService(Vehicles, ResourceGrants, Users, Access, Notifier, Log.For<ResourceSharingService>());
         SessionService = new UserSessionService(Sessions, Users, new FakeSecretProtector(), Access, options, Clock, Log.For<UserSessionService>());
         Auth = new AuthService(Users, new FakeHasher(), resets, SessionService, Access, options, Clock, Log.For<AuthService>());

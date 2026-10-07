@@ -82,6 +82,9 @@ type Query {
     @cost(weight: "10")
   vehicleCharts(vehicleId: UUID!): [VehicleChart!]! @cost(weight: "10")
   uiSettings: UiSettingsInfo! @cost(weight: "10")
+  offlineChanges(input: OfflineChangesInput!): OfflineChanges!
+    @cost(weight: "10")
+  offlineSettings: OfflineSettingsInfo! @cost(weight: "10")
 }
 
 type Mutation {
@@ -138,6 +141,8 @@ type Mutation {
     @cost(weight: "10")
   resetGridSettings(gridId: String!): Boolean! @cost(weight: "10")
   setVehicleOrder(vehicleIds: [UUID!]!): Boolean! @cost(weight: "10")
+  updateOfflineSettings(input: UpdateOfflineSettingsInput!): OfflineSettingsInfo!
+    @cost(weight: "10")
 }
 
 type AccessGrantInfo {
@@ -195,6 +200,7 @@ type Expense {
   deletedAt: DateTime
   reviewState: ReviewState!
   version: Int!
+  updatedAt: DateTime!
   canEdit: Boolean! @cost(weight: "10")
   canDelete: Boolean! @cost(weight: "10")
   createdBy: UserRef @cost(weight: "10")
@@ -264,6 +270,11 @@ type LogAccessGrantInfo {
   level: AccessLevel!
 }
 
+type LogCountSince {
+  refuelings: Int!
+  expenses: Int!
+}
+
 type LogDefaults {
   lastOdometer: Long
   lastDate: LocalDate
@@ -318,6 +329,27 @@ type NotificationInfo {
 type NotificationRefInfo {
   type: NotificationEntityType!
   id: UUID!
+}
+
+type OfflineChanges {
+  vehicle: Vehicle!
+  refuelings: [Refueling!]!
+  expenses: [Expense!]!
+  recurring: [RecurringExpenseInfo!]!
+  removed: [RemovedEntity!]!
+  next: String
+  watermark: DateTime!
+  resync: Boolean!
+}
+
+type OfflineSettingsInfo {
+  defaultWindow: String!
+  vehicles: [OfflineVehicleWindow!]!
+}
+
+type OfflineVehicleWindow {
+  vehicleId: UUID!
+  window: String!
 }
 
 type PasswordResetLink {
@@ -378,6 +410,7 @@ type RecurringExpenseInfo {
   warnDistance: Long!
   createdAt: DateTime!
   version: Int!
+  updatedAt: DateTime!
   status: RecurrenceStatusInfo!
 }
 
@@ -406,11 +439,17 @@ type Refueling {
   deletedAt: DateTime
   pricePerUnit: Decimal
   version: Int!
+  updatedAt: DateTime!
   canEdit: Boolean! @cost(weight: "10")
   canDelete: Boolean! @cost(weight: "10")
   createdBy: UserRef @cost(weight: "10")
   vehicle: Vehicle @cost(weight: "10")
   photos: [LogPhotoInfo!]! @cost(weight: "10")
+}
+
+type RemovedEntity {
+  type: OfflineEntityType!
+  id: UUID!
 }
 
 type Session {
@@ -468,6 +507,7 @@ type Vehicle {
   deletedAt: DateTime
   isDeleted: Boolean!
   version: Int!
+  updatedAt: DateTime!
   canEdit: Boolean! @cost(weight: "10")
   logAccess: AccessLevel! @cost(weight: "10")
   owner: UserRef @cost(weight: "10")
@@ -476,6 +516,7 @@ type Vehicle {
   expenseCount: Int! @cost(weight: "10")
   recurring: [RecurringExpenseInfo!]! @cost(weight: "10")
   summary: VehicleSummary @cost(weight: "10")
+  logCountSince(from: LocalDate): LogCountSince! @cost(weight: "10")
 }
 
 type VehicleChart {
@@ -639,6 +680,19 @@ input NewVehicleInput {
   units: MeasurementUnitsInput!
 }
 
+input OfflineChangesInput {
+  vehicleId: UUID!
+  from: LocalDate
+  since: DateTime
+  after: String
+  take: Int!
+}
+
+input OfflineVehicleWindowInput {
+  vehicleId: UUID!
+  window: String!
+}
+
 input ResetPasswordInput {
   token: String!
   newPassword: String!
@@ -673,6 +727,11 @@ input UpdateExpenseInput {
   currency: String
   odometer: Long
   note: String
+}
+
+input UpdateOfflineSettingsInput {
+  defaultWindow: String!
+  vehicles: [OfflineVehicleWindowInput!]!
 }
 
 input UpdateRecurringExpenseInput {
@@ -846,6 +905,13 @@ enum NotificationKind {
   LOG_FILLED_FROM_PHOTO
   LOG_NOT_FILLED
   MORE_ACTIVITY
+}
+
+enum OfflineEntityType {
+  VEHICLE
+  REFUELING
+  EXPENSE
+  RECURRING_EXPENSE
 }
 
 enum ReadingFieldName {
