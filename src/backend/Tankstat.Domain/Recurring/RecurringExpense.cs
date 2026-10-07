@@ -1,5 +1,6 @@
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Odometers;
+using Tankstat.Domain.Sync;
 
 namespace Tankstat.Domain.Recurring;
 
@@ -18,7 +19,7 @@ public enum RecurrenceKind
 /// <c>Expense</c> logged at that moment. The baseline odometer is the number at that moment, not a reading of its own, so it does not
 /// take part in the neighbour checks of real readings.
 /// </summary>
-public sealed class RecurringExpense : IOwned
+public sealed class RecurringExpense : IOwned, ISynced
 {
     public const int MaxTitleLength = 120;
     public const int MaxCategoryLength = 60;
@@ -65,6 +66,12 @@ public sealed class RecurringExpense : IOwned
     /// version it started from, so a change made meanwhile is noticed.
     /// </summary>
     public int Version { get; private set; }
+
+    /// <summary>When it was last saved (set by the persistence layer, see <see cref="ISynced"/>): a device that keeps a copy downloads it again.</summary>
+    public DateTimeOffset UpdatedAt { get; private set; }
+
+    Guid ISynced.SyncVehicleId => VehicleId;
+    OfflineEntityType ISynced.SyncType => OfflineEntityType.RecurringExpense;
 
     public bool UsesTime => Kind is RecurrenceKind.Time or RecurrenceKind.Combined;
     public bool UsesDistance => Kind is RecurrenceKind.Odometer or RecurrenceKind.Combined;
