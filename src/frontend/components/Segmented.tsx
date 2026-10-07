@@ -1,5 +1,6 @@
 import Box from '@mui/material/Box'
 import { useId } from 'react'
+import { COARSE } from '../theme/components.ts'
 import { visuallyHidden } from './visuallyHidden.ts'
 
 /**
@@ -22,7 +23,7 @@ export function Segmented<V extends string>({
     <Box
       role="radiogroup"
       aria-label={label}
-      sx={(theme) => ({ display: 'inline-flex', borderRadius: 9999, backgroundColor: theme.vars.palette.neutral.soft })}
+      sx={(theme) => ({ display: 'inline-flex', p: '3px', borderRadius: 9999, backgroundColor: theme.vars.palette.neutral.soft })}
     >
       {options.map((option) => (
         <Box
@@ -33,13 +34,15 @@ export function Segmented<V extends string>({
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            minHeight: 40,
+            minHeight: 36,
             minWidth: 80,
+            [COARSE]: { minHeight: 44 },
             px: 2,
             borderRadius: 9999,
             cursor: 'pointer',
             color: theme.vars.palette.text.primary,
-            '&:has(input:checked)': { backgroundColor: theme.vars.palette.neutral.soft }, // over the pill's own tint
+            // The chosen segment is raised: its own surface and shadow, and bold text, so it does not depend on a tint.
+            '&:has(input:checked)': { backgroundColor: theme.vars.palette.background.paper, boxShadow: theme.shadows[2], fontWeight: theme.typography.fontWeightBold },
             '&:has(input:focus-visible)': theme.focusVisible,
           })}
         >

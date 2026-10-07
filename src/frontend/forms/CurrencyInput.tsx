@@ -17,7 +17,6 @@ export function CurrencyInput({ value, onChange, preferred }: { value: string; o
       options={codes}
       value={value}
       onChange={onChange}
-      maxLength={3}
       uppercase
       optionLabel={(code) => (names.get(code) === code ? code : `${code} – ${names.get(code)}`)}
       filter={(code, typed) => currencyMatches(code, names.get(code) ?? code, typed)}

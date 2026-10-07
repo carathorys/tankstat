@@ -106,10 +106,11 @@ export const components: Components<T> = {
   MuiButton: {
     defaultProps: { variant: 'contained', disableElevation: true },
     styleOverrides: {
-      root: { borderRadius: 9999, gap: 8, minWidth: 0, whiteSpace: 'nowrap', [COARSE]: { minHeight: 44 } },
-      sizeSmall: { minHeight: controlHeights.small, padding: '0 8px', fontSize: '0.75rem', lineHeight: '1rem', gap: 4 },
-      sizeMedium: { minHeight: controlHeights.medium, padding: '0 12px' },
-      sizeLarge: { minHeight: controlHeights.large, padding: '0 16px', fontSize: '1rem', lineHeight: '1.5rem', gap: 12 },
+      root: { borderRadius: 9999, gap: 8, minWidth: 0, whiteSpace: 'nowrap' },
+      // The touch minimum sits in each size, after its own minHeight: the size rules come later than the root's and would win otherwise.
+      sizeSmall: { minHeight: controlHeights.small, padding: '0 8px', fontSize: '0.75rem', lineHeight: '1rem', gap: 4, [COARSE]: { minHeight: 44 } },
+      sizeMedium: { minHeight: controlHeights.medium, padding: '0 12px', [COARSE]: { minHeight: 44 } },
+      sizeLarge: { minHeight: controlHeights.large, padding: '0 16px', fontSize: '1rem', lineHeight: '1.5rem', gap: 12, [COARSE]: { minHeight: 44 } },
     },
     variants: [
       ...TONES.map((tone) => ({ props: { variant: 'soft' as const, color: tone }, style: ({ theme }: { theme: T }) => softTone(theme, tone) })),
@@ -156,10 +157,7 @@ export const components: Components<T> = {
     ],
   },
 
-  MuiPaper: {
-    styleOverrides: { root: { backgroundImage: 'none' } },
-    variants: [{ props: { variant: 'glass' as const }, style: ({ theme }: { theme: T }) => ({ ...glass(theme), boxShadow: theme.shadows[3] }) }],
-  },
+  MuiPaper: { styleOverrides: { root: { backgroundImage: 'none' } } },
   MuiCard: { styleOverrides: { root: ({ theme }) => ({ ...glass(theme), borderRadius: 12, boxShadow: theme.shadows[3] }) } },
 
   MuiDialog: {
@@ -339,8 +337,9 @@ export const components: Components<T> = {
       track: ({ theme }) => ({ borderRadius: 12, opacity: 1, backgroundColor: theme.vars.palette.action.disabledBackground }),
     },
   },
-  MuiCheckbox: { styleOverrides: { root: ({ theme }) => ({ color: theme.vars.palette.text.disabled }) } },
-  MuiRadio: { styleOverrides: { root: ({ theme }) => ({ color: theme.vars.palette.text.disabled }) } },
+  // On a touch screen the box and its padding make 44 px (the default 42, the small 40).
+  MuiCheckbox: { styleOverrides: { root: ({ theme }) => ({ color: theme.vars.palette.text.disabled, [COARSE]: { padding: 10, '&.MuiCheckbox-sizeSmall': { padding: 12 } } }) } },
+  MuiRadio: { styleOverrides: { root: ({ theme }) => ({ color: theme.vars.palette.text.disabled, [COARSE]: { padding: 10 } }) } },
 
   MuiAvatar: {
     styleOverrides: {

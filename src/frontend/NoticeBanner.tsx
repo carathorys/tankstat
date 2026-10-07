@@ -10,7 +10,7 @@ export function NoticeBanner({ notices }: { notices: SessionQuery['notices'] }) 
   if (notices.length === 0) return null
 
   return (
-    <Stack component="aside" aria-label="Notices" sx={{ gap: 1, mb: 2 }}>
+    <Stack component="aside" aria-label={t('notices.label')} sx={{ gap: 1, mb: 2 }}>
       {notices.map((n) => {
         const warning = n.severity === 'WARNING'
         const path = `notices.${n.code}`

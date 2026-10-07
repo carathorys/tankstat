@@ -4,7 +4,7 @@ import { ghostTone, softTone, type Tone } from '../theme/components.ts'
 
 /**
  * A button with only an icon: `label` is both what assistive technology announces and the tooltip sighted users see on hover or focus.
- * `variant` soft (tinted, the default), ghost (no background until hovered) or solid; `tone` its colour.
+ * `variant` soft (tinted, the default), or ghost (no background until hovered); `tone` its colour.
  */
 export function IconAction({
   label,
@@ -14,16 +14,13 @@ export function IconAction({
   disabled,
   sx,
   ...rest
-}: Omit<IconButtonProps, 'aria-label' | 'color'> & { label: string; tone?: Tone; variant?: 'soft' | 'ghost' | 'solid' }) {
+}: Omit<IconButtonProps, 'aria-label' | 'color'> & { label: string; tone?: Tone; variant?: 'soft' | 'ghost' }) {
   const button = (
     <IconButton
       aria-label={label}
       disabled={disabled}
       sx={[
-        (theme) =>
-          variant === 'soft' ? softTone(theme, tone)
-          : variant === 'ghost' ? ghostTone(theme, tone)
-          : { backgroundColor: theme.vars.palette[tone].main, color: theme.vars.palette[tone].contrastText, '&:hover': { backgroundColor: theme.vars.palette[tone].dark } },
+        (theme) => (variant === 'soft' ? softTone(theme, tone) : ghostTone(theme, tone)),
         (theme) => ({ '&.Mui-disabled': { color: theme.vars.palette.action.disabled, backgroundColor: variant === 'ghost' ? 'transparent' : theme.vars.palette.action.disabledBackground } }),
         ...(Array.isArray(sx) ? sx : [sx]),
       ]}

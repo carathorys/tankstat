@@ -12,8 +12,10 @@ type Problem = 'valueMissing' | 'typeMismatch' | { custom: string }
 
 const SLOTS = { hint: 0, note: 1, error: 2 } as const
 
-function problemOf(control: Control, custom: string | null): Problem | null {
+/** `customFirst`: the control knows better why it has no value (a day only partly typed is not "missing"). */
+function problemOf(control: Control, custom: string | null, customFirst: boolean): Problem | null {
   control.setCustomValidity(custom ?? '')
+  if (customFirst && custom !== null) return { custom }
   if (control.validity.valueMissing) return 'valueMissing'
   if (control.validity.typeMismatch) return 'typeMismatch'
   return custom === null ? null : { custom }
@@ -59,14 +61,16 @@ export function Field({
 
   const check = useCallback(() => {
     if (!control) return null
-    return problemOf(control, compositeControl.current?.problem() ?? (invalid && invalid.test(control.value) ? invalid.message : null))
+    const own = compositeControl.current?.problem() ?? null
+    return problemOf(control, own ?? (invalid && invalid.test(control.value) ? invalid.message : null), own !== null)
   }, [control, invalid])
   const latest = useRef(check)
 
-  // After every render the custom validity is current: a photo or the other amounts change values without any event.
+  // After every render the custom validity is current: a photo or the other amounts change values without any event. A message that was
+  // shown goes once the value is put right that way too: the field is told as the native control would, by a finished edit (`change`).
   useLayoutEffect(() => {
     latest.current = check
-    check()
+    if (check() === null && shown !== null) control?.dispatchEvent(new Event('change'))
   })
 
   // A failed submit (invalid) or a finished edit (change) shows the messages, typing (input) hides them until the next one.

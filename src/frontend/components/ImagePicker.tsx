@@ -4,7 +4,6 @@ import Typography from '@mui/material/Typography'
 import { ImagePlus, Trash2 } from 'lucide-react'
 import { useId, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useErrorText } from '../i18n/errors.ts'
 import { ErrorMessage } from '../messages.tsx'
 import { resizeImage } from '../pictures/resizeImage.ts'
 import { deleteImage, uploadImage } from '../pictures/upload.ts'
@@ -31,7 +30,6 @@ export function ImagePicker({
   onChanged: () => void | Promise<unknown>
 }) {
   const { t } = useTranslation()
-  const errorText = useErrorText()
   const input = useRef<HTMLInputElement>(null)
   const hintId = useId()
   const [status, setStatus] = useState<string>()
@@ -89,7 +87,7 @@ export function ImagePicker({
         <div role="status" aria-label={t('a11y.uploadStatus')}>
           {status && <Typography variant="body2">{status}</Typography>}
         </div>
-        {error !== undefined && <ErrorMessage>{errorText(error)}</ErrorMessage>}
+        {error !== undefined && <ErrorMessage error={error} />}
       </Stack>
     </Stack>
   )

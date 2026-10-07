@@ -16,14 +16,14 @@ import { ErrorMessage } from '../messages.tsx'
 import { MEDIA } from '../theme/media.ts'
 import { canLogFor } from '../vehicles.ts'
 import { DetailsPanel } from './vehicle/DetailsPanel.tsx'
-import { ExpensesPanel } from './vehicle/ExpensesPanel.tsx'
 import { LogFab } from './vehicle/LogFab.tsx'
 import { RecurringPanel } from './vehicle/RecurringPanel.tsx'
-import { RefuelingsPanel } from './vehicle/RefuelingsPanel.tsx'
 import { SharingPanel } from './vehicle/SharingPanel.tsx'
 
-// The dashboard brings the chart library; it is loaded with the first tab instead of with the page shell.
+// The dashboard brings the chart library, the two log tabs the data grid: each is loaded with its tab instead of with the page shell.
 const DashboardPanel = lazy(() => import('../dashboard/DashboardPanel.tsx').then((m) => ({ default: m.DashboardPanel })))
+const RefuelingsPanel = lazy(() => import('./vehicle/RefuelingsPanel.tsx').then((m) => ({ default: m.RefuelingsPanel })))
+const ExpensesPanel = lazy(() => import('./vehicle/ExpensesPanel.tsx').then((m) => ({ default: m.ExpensesPanel })))
 
 const TABS = ['dashboard', 'refuelings', 'expenses', 'recurring', 'details', 'sharing'] as const
 type Tab = (typeof TABS)[number]
@@ -80,14 +80,30 @@ export function VehiclePage({ isAdmin }: { isAdmin: boolean }) {
                   </Suspense>
                 ),
               },
-              { value: 'refuelings', label: t('vehicles.tabs.refuelings'), content: () => <RefuelingsPanel vehicle={vehicle} canLog={canLog} /> },
-              { value: 'expenses', label: t('vehicles.tabs.expenses'), content: () => <ExpensesPanel vehicle={vehicle} canLog={canLog} /> },
+              {
+                value: 'refuelings',
+                label: t('vehicles.tabs.refuelings'),
+                content: () => (
+                  <Suspense fallback={<Loading />}>
+                    <RefuelingsPanel vehicle={vehicle} canLog={canLog} />
+                  </Suspense>
+                ),
+              },
+              {
+                value: 'expenses',
+                label: t('vehicles.tabs.expenses'),
+                content: () => (
+                  <Suspense fallback={<Loading />}>
+                    <ExpensesPanel vehicle={vehicle} canLog={canLog} />
+                  </Suspense>
+                ),
+              },
               { value: 'recurring', label: t('vehicles.tabs.recurring'), content: () => <RecurringPanel vehicle={vehicle} canLog={canLog} /> },
               { value: 'details', label: t('vehicles.tabs.details'), content: () => <DetailsPanel vehicle={vehicle} onChanged={() => refetch()} /> },
               ...(vehicle.canEdit ? [{ value: 'sharing' as const, label: t('vehicles.tabs.sharing'), content: () => <SharingPanel vehicleId={vehicle.id} /> }] : []),
             ]}
           />
-          {fab && <LogFab vehicle={vehicle} />}
+          {canLog && <LogFab vehicle={vehicle} shown={narrow} />}
         </>
       )}
     </Box>

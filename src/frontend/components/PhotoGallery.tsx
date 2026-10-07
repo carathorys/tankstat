@@ -6,7 +6,6 @@ import Typography from '@mui/material/Typography'
 import { Camera, ImagePlus, RotateCw, Trash2 } from 'lucide-react'
 import { useId, useRef, useState, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useErrorText } from '../i18n/errors.ts'
 import { ErrorMessage } from '../messages.tsx'
 import { resizeImage } from '../pictures/resizeImage.ts'
 import { deleteImage, LOG_PHOTO_EDGE, logPhotoPath, logPhotosPath, MAX_LOG_PHOTOS, uploadImage, type LogKind, type ReadingPurpose } from '../pictures/upload.ts'
@@ -50,7 +49,6 @@ export function PhotoGallery({
   onChanged: () => void | Promise<unknown>
 }) {
   const { t } = useTranslation()
-  const errorText = useErrorText()
   const camera = useRef<HTMLInputElement>(null)
   const library = useRef<HTMLInputElement>(null)
   const hintId = useId()
@@ -218,7 +216,7 @@ export function PhotoGallery({
       <div role="status" aria-label={t('a11y.uploadStatus')}>
         {status && <Typography variant="body2">{status}</Typography>}
       </div>
-      {error !== undefined && <ErrorMessage>{errorText(error)}</ErrorMessage>}
+      {error !== undefined && <ErrorMessage error={error} />}
     </Box>
   )
 }

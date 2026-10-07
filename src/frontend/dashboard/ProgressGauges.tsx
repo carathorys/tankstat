@@ -3,10 +3,7 @@ import Stack from '@mui/material/Stack'
 import { Gauge, gaugeClasses } from '@mui/x-charts/Gauge'
 import { CalendarClock, Milestone } from 'lucide-react'
 import type { RecurrenceState } from '../gql/generated.ts'
-import type { LimitProgress } from '../recurringProgress.ts'
-
-const TONE = { UPCOMING: 'success', DUE_SOON: 'warning', OVERDUE: 'error' } as const
-export const GAUGE_SIZE = 40
+import { GAUGE_GAP, GAUGE_SIZE, RECURRENCE_TONE, type LimitProgress } from '../recurringProgress.ts'
 
 /**
  * A small dial per limit of a schedule (a calendar for time, a milestone for distance): how much of the interval has passed, in the colour
@@ -15,7 +12,7 @@ export const GAUGE_SIZE = 40
  */
 export function ProgressGauges({ progress, state }: { progress: readonly LimitProgress[]; state: RecurrenceState }) {
   return (
-    <Stack direction="row" aria-hidden sx={{ gap: 0.5 }}>
+    <Stack direction="row" aria-hidden sx={{ gap: `${GAUGE_GAP}px` }}>
       {progress.map((p) => {
         const Icon = p.limit === 'TIME' ? CalendarClock : Milestone
         return (
@@ -31,7 +28,7 @@ export function ProgressGauges({ progress, state }: { progress: readonly LimitPr
               text=""
               skipAnimation
               sx={(theme) => ({
-                [`& .${gaugeClasses.valueArc}`]: { fill: theme.vars.palette[TONE[state]].main },
+                [`& .${gaugeClasses.valueArc}`]: { fill: theme.vars.palette[RECURRENCE_TONE[state]].main },
                 [`& .${gaugeClasses.referenceArc}`]: { fill: theme.vars.palette.neutral.soft },
               })}
             />

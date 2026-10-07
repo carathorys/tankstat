@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { matchesMedia } from './mocks.tsx'
+import { matchesMedia } from '../support/mocks.tsx'
 
 // stubViewport answers real media queries, so a phone test never turns into a desktop one because a query is spelt differently.
 it('evaluates widths, with or without spaces and @media', () => {

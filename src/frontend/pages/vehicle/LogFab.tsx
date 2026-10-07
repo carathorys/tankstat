@@ -13,8 +13,9 @@ import { useLogMutations } from './useLogMutations.ts'
 /**
  * On a phone, the vehicle page's add button floats at the bottom corner, within reach of the thumb on every tab: it opens a menu (a
  * refuelling or an expense) and then that dialog. Only for someone who may add logs; clear of the home indicator of an installed app.
+ * Always mounted for them, `shown` only hides the button: turning the phone (or resizing the window) must not close a dialog that is open.
  */
-export function LogFab({ vehicle }: { vehicle: { id: string; units: { distance: DistanceUnit; volume: VolumeUnit } } }) {
+export function LogFab({ vehicle, shown }: { vehicle: { id: string; units: { distance: DistanceUnit; volume: VolumeUnit } }; shown: boolean }) {
   const { t } = useTranslation()
   const add = useLogMutations(vehicle.id)
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
@@ -40,6 +41,7 @@ export function LogFab({ vehicle }: { vehicle: { id: string; units: { distance: 
           right: 'calc(16px + env(safe-area-inset-right, 0px))',
           bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
           zIndex: theme.zIndex.fab,
+          display: shown ? undefined : 'none',
         })}
       >
         <Plus size={24} aria-hidden />

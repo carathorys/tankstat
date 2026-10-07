@@ -215,6 +215,31 @@ it('the colour mode and language menus are labelled radio menus, free of violati
   await check(languages)
 })
 
+it('the floating add button of a phone and its menu are labelled and free of violations', async () => {
+  const { view, ui } = setup('/vehicles/v1?tab=refuelings', 'phone')
+  await screen.findByText(/Sep 1, 2026/)
+  const fab = screen.getByRole('button', { name: 'Add a refuelling or an expense' })
+  await check(view.container)
+
+  await ui.click(fab)
+  const menu = await screen.findByRole('menu', { name: 'Add a refuelling or an expense' })
+  expect(fab).toHaveAttribute('aria-controls', menu.id)
+  await check(menu)
+})
+
+it('the message that offers Undo after trashing is a status and free of violations', async () => {
+  const { ui } = setup('/vehicles/v1?tab=refuelings')
+  await screen.findByText(/Sep 1, 2026/)
+
+  await ui.click(screen.getByRole('button', { name: 'Delete the refuelling of Sep 1, 2026' }))
+  await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Move to trash' }))
+
+  const undo = await screen.findByRole('button', { name: 'Undo' })
+  const message = undo.closest('[role="status"]') as HTMLElement
+  expect(message).toHaveTextContent('is in the trash.')
+  await check(message)
+})
+
 it('sortable columns announce their state and every grid is labelled, its rows named by their first cell', async () => {
   setup('/vehicles/v1?tab=refuelings')
   await screen.findByText(/Sep 1, 2026/)

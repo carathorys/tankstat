@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
 import type { RecurrenceState } from '../gql/generated.ts'
-import type { LimitProgress } from '../recurringProgress.ts'
+import { GAUGE_GAP, GAUGE_SIZE, type LimitProgress } from '../recurringProgress.ts'
 
 const ProgressGauges = lazy(() => import('./ProgressGauges.tsx').then((m) => ({ default: m.ProgressGauges })))
 
@@ -8,7 +8,7 @@ const ProgressGauges = lazy(() => import('./ProgressGauges.tsx').then((m) => ({ 
 export function LazyGauges({ progress, state }: { progress: readonly LimitProgress[]; state: RecurrenceState }) {
   if (progress.length === 0) return null
   return (
-    <Suspense fallback={<div style={{ width: progress.length * 44, height: 40 }} aria-hidden />}>
+    <Suspense fallback={<div style={{ width: progress.length * GAUGE_SIZE + (progress.length - 1) * GAUGE_GAP, height: GAUGE_SIZE }} aria-hidden />}>
       <ProgressGauges progress={progress} state={state} />
     </Suspense>
   )

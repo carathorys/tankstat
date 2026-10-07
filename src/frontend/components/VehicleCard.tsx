@@ -250,14 +250,14 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
 
       <div ref={panel} className="card-panel">
         <Box className="vehicle-card-stats-container" sx={{ display: 'grid' }}>
-          <Box className="vehicle-card-stats" sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 1, p: 1.5 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 1, p: 1.5 }}>
             <Figure label={t('welcome.card.odometer')} value={s?.latestOdometer != null ? format.distance(s.latestOdometer, v.units.distance) : none} />
             <Figure label={t('welcome.card.consumption')} value={s?.averageConsumption != null ? format.consumption(s.averageConsumption, v.units) : none} />
             <Figure label={t('welcome.card.lastFillUp')} value={s?.lastFillUpDate ? format.date(s.lastFillUpDate) : t('welcome.card.noFillUps')} />
             <Figure label={t('welcome.card.thisMonth')} value={(s && spentText(s.spending, 'thisMonth', format)) ?? none} />
           </Box>
           {s?.currency && s.fillUpCount + s.expenseCount > 0 && (
-            <Box className="vehicle-card-sparkline">
+            <Box>
               <LazySparkline points={s.spendTrend} currency={s.currency} height={32} />
             </Box>
           )}

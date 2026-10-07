@@ -1,6 +1,7 @@
 import { useQuery } from '@apollo/client/react'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
+import Card from '@mui/material/Card'
 import Divider from '@mui/material/Divider'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
@@ -17,7 +18,6 @@ import { IconAction } from '../components/IconAction.tsx'
 import { Loading } from '../components/Loading.tsx'
 import { itemMotion } from '../components/motion.ts'
 import { Segmented } from '../components/Segmented.tsx'
-import { glass } from '../theme/components.ts'
 
 const PAGE_SIZE = 20
 
@@ -92,7 +92,7 @@ export function NotificationsPage() {
         <Typography sx={{ color: 'text.secondary' }}>{filter === 'unread' ? t('notifications.emptyUnread') : t('notifications.empty')}</Typography>
       )}
       {items.length > 0 && (
-        <Box component="ul" aria-label={t('notifications.title')} sx={(theme) => ({ ...glass(theme), boxShadow: theme.shadows[3], listStyle: 'none', m: 0, p: 0, borderRadius: '12px' })}>
+        <Card component="ul" aria-label={t('notifications.title')} sx={{ listStyle: 'none', m: 0, p: 0 }}>
           <AnimatePresence initial={false}>
             {items.map((n, i) => (
               <motion.li key={n.id} {...itemMotion} style={{ paddingInline: 12 }}>
@@ -110,7 +110,7 @@ export function NotificationsPage() {
               </motion.li>
             ))}
           </AnimatePresence>
-        </Box>
+        </Card>
       )}
       {items.length < total && (
         <Stack direction="row" sx={{ justifyContent: 'center', mt: 1.5 }}>

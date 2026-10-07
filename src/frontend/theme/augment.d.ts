@@ -58,12 +58,6 @@ declare module '@mui/material/Chip' {
   }
 }
 
-declare module '@mui/material/Paper' {
-  interface PaperPropsVariantOverrides {
-    glass: true
-  }
-}
-
 declare module '@mui/material/Alert' {
   interface AlertPropsColorOverrides {
     neutral: true

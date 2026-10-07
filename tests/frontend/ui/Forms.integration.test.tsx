@@ -131,3 +131,68 @@ it('a partly typed day and a day in the future are problems the field says', asy
   await ui.click(screen.getByRole('button', { name: 'Save' }))
   expect(sent).not.toHaveBeenCalled()
 })
+
+it('a required day that is only partly typed is said to be incomplete, not missing', async () => {
+  const { ui, sent } = setup({ dateRequired: true })
+  await ui.type(screen.getByLabelText('Amount'), '3')
+  await findDateField('Day')
+
+  await ui.click(screen.getAllByRole('spinbutton')[0])
+  await ui.keyboard('03') // the month only
+  await ui.click(screen.getByRole('button', { name: 'Save' }))
+
+  expect(await screen.findByText('Enter the whole date.')).toBeInTheDocument()
+  expect(screen.queryByText('Day is required')).not.toBeInTheDocument()
+  expect(sent).not.toHaveBeenCalled()
+})
+
+it('editing a day that was already there says nothing while a part of it is being retyped', async () => {
+  render(
+    <ThemeRoot instant>
+      <Form onSubmit={(e) => e.preventDefault()}>
+        <Field name="day" label="Day" required>
+          <FieldDate defaultValue="2026-03-05" />
+        </Field>
+      </Form>
+    </ThemeRoot>,
+  )
+  const day = await findDateField('Day')
+  expect(dateValue(day)).toBe('2026-03-05')
+
+  const year = screen.getAllByRole('spinbutton').find((s) => s.getAttribute('aria-valuemax') !== '12' && s.getAttribute('aria-valuemax') !== '31')!
+  await userEvent.setup().click(year)
+  await userEvent.setup().keyboard('{Backspace}') // the year is empty for a moment
+
+  expect(screen.queryByText('Day is required')).not.toBeInTheDocument()
+  expect(screen.queryByText('Enter the whole date.')).not.toBeInTheDocument()
+})
+
+it('a message goes away when the value is put right without typing (a photo, a calculated amount, a picked option)', async () => {
+  function Demo() {
+    const [value, setValue] = useState('')
+    return (
+      <Form onSubmit={(e) => e.preventDefault()}>
+        <Field name="volume" label="Volume" required>
+          <FieldInput value={value} onChange={(e) => setValue(e.target.value)} />
+        </Field>
+        <button type="button" onClick={() => setValue('38')}>
+          Work it out
+        </button>
+        <button type="submit">Save</button>
+      </Form>
+    )
+  }
+  render(
+    <ThemeRoot instant>
+      <Demo />
+    </ThemeRoot>,
+  )
+  const ui = userEvent.setup()
+  await ui.click(screen.getByRole('button', { name: 'Save' }))
+  expect(await screen.findByText('Volume is required')).toBeInTheDocument()
+
+  await ui.click(screen.getByRole('button', { name: 'Work it out' }))
+
+  await waitFor(() => expect(screen.queryByText('Volume is required')).not.toBeInTheDocument())
+  expect(screen.getByLabelText('Volume')).not.toHaveAttribute('aria-invalid', 'true')
+})

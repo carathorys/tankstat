@@ -1,5 +1,12 @@
 import type { RecurrenceKind, RecurrenceLimit } from './gql/generated.ts'
 
+/** The colour of a schedule's state: on its badge and on its dials. */
+export const RECURRENCE_TONE = { UPCOMING: 'success', DUE_SOON: 'warning', OVERDUE: 'error' } as const
+
+/** The side of one dial, in pixels, and the gap between dials (the lazy placeholder keeps their space). */
+export const GAUGE_SIZE = 40
+export const GAUGE_GAP = 4
+
 /** What the gauges need of a schedule. */
 export interface ScheduleProgressSource {
   kind: RecurrenceKind

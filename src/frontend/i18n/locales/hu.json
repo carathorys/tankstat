@@ -53,6 +53,7 @@
     "iosConfirm": "Koppints a jobb felső sarokban a „Hozzáadás” gombra."
   },
   "notices": {
+    "label": "Közlemények",
     "warning": "Figyelem:",
     "AUTH_DISABLED": "A hitelesítés ki van kapcsolva: aki eléri ezt az alkalmazást, az minden adatot láthat és módosíthat. Ez nem biztonságos; állítsd be az Auth:Mode értékét."
   },
@@ -200,15 +201,12 @@
     "first": "Első oldal",
     "last": "Utolsó oldal",
     "sort": "Rendezés",
-    "caption": "{{name}}",
     "actions": "Műveletek"
   },
   "vehicles": {
     "title": "Járművek",
     "add": "Jármű hozzáadása",
     "addLog": "Tankolás vagy költség hozzáadása",
-    "edit": "Szerkesztés",
-    "delete": "Törlés",
     "editAria": "{{name}} szerkesztése",
     "deleteAria": "{{name}} törlése",
     "viewOnly": "csak megtekinthető",
@@ -539,8 +537,6 @@
   "refuelings": {
     "title": "Tankolások",
     "add": "Tankolás hozzáadása",
-    "edit": "Szerkesztés",
-    "delete": "Törlés",
     "editAria": "A(z) {{date}} napi tankolás szerkesztése",
     "deleteAria": "A(z) {{date}} napi tankolás törlése",
     "empty": "Még nincs tankolás. Add hozzá az elsőt.",
@@ -609,8 +605,6 @@
   "expenses": {
     "title": "Költségek",
     "add": "Költség hozzáadása",
-    "edit": "Szerkesztés",
-    "delete": "Törlés",
     "editAria": "A(z) {{title}} költség szerkesztése",
     "deleteAria": "A(z) {{title}} költség törlése",
     "empty": "Még nincs költség. A szerviz, biztosítás, parkolás és más költségek ide kerülnek.",

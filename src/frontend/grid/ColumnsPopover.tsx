@@ -54,7 +54,7 @@ export function ColumnsPopover({
             <Stack key={c.id} direction="row" sx={{ alignItems: 'center', gap: 1 }}>
               <Checkbox
                 size="small"
-                sx={{ p: 0.5, ml: -0.5, [COARSE]: { p: 1.25 } }} // compact rows; a touch screen keeps a full-size target
+                sx={{ p: 0.5, ml: -0.5, [COARSE]: { p: 1.5 } }} // compact rows; a touch screen keeps a 44 px target
                 slotProps={{ input: { 'aria-label': t('grid.showColumn', { column: t(c.label) }) } }}
                 checked={c.visible}
                 disabled={!c.hideable}

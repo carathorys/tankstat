@@ -288,6 +288,13 @@ it('there is no floating add button on a desktop, nor for someone who may only v
   expect(screen.queryByRole('button', { name: 'Add a refuelling or an expense' })).not.toBeInTheDocument()
 })
 
+it('the add button is only hidden, not unmounted, off a phone: a dialog opened from it survives a turn of the phone', async () => {
+  setup()
+  await screen.findByText(/Sep 1, 2026/)
+
+  expect(document.querySelector('button[aria-label="Add a refuelling or an expense"]')).not.toBeVisible() // there, out of sight
+})
+
 it('nor on a phone for someone who may only view the logs', async () => {
   setupPhone(fakeVehicle({ canEdit: false, logAccess: 'VIEW' }))
   await screen.findByRole('heading', { name: 'Octavia' })

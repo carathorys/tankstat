@@ -57,9 +57,13 @@ export function FieldDate({
   )
 
   // A new day in the hidden input is a finished edit, as on a native date input: the field checks it and shows what is wrong.
+  // Not while a part of the day is being retyped: the picker reports "no day" as soon as a section is cleared, and that is not yet an edit
+  // that is finished.
   const lastIso = useRef(iso)
   useEffect(() => {
     if (lastIso.current === iso) return
+    const retyping = iso === '' && [...(box.current?.querySelectorAll('[role="spinbutton"]') ?? [])].some((part) => part.hasAttribute('aria-valuenow'))
+    if (retyping) return
     lastIso.current = iso
     hidden.current?.dispatchEvent(new Event('change', { bubbles: true }))
   }, [iso])

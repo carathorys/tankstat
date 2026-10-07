@@ -11,14 +11,12 @@ export function ConfirmDialog({
   description,
   confirmLabel,
   onConfirm,
-  color = 'red',
 }: {
   trigger: ReactNode
   title: string
   description: string
   confirmLabel: string
   onConfirm: () => void
-  color?: 'red' | 'blue'
 }) {
   const [open, setOpen] = useDialogState()
   return (
@@ -28,7 +26,7 @@ export function ConfirmDialog({
         <DialogButtons>
           <DialogCancel autoFocus />
           <Button
-            color={color === 'red' ? 'error' : 'primary'}
+            color="error"
             onClick={() => {
               setOpen(false)
               onConfirm()

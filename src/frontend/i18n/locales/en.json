@@ -53,6 +53,7 @@
     "iosConfirm": "Tap “Add” in the top right."
   },
   "notices": {
+    "label": "Notices",
     "warning": "Warning:",
     "AUTH_DISABLED": "Authentication is disabled: anyone who can reach this app can see and change all data. This is unsafe; configure Auth:Mode."
   },
@@ -200,15 +201,12 @@
     "first": "First page",
     "last": "Last page",
     "sort": "Sort",
-    "caption": "{{name}}",
     "actions": "Actions"
   },
   "vehicles": {
     "title": "Vehicles",
     "add": "Add vehicle",
     "addLog": "Add a refuelling or an expense",
-    "edit": "Edit",
-    "delete": "Delete",
     "editAria": "Edit {{name}}",
     "deleteAria": "Delete {{name}}",
     "viewOnly": "view only",
@@ -539,8 +537,6 @@
   "refuelings": {
     "title": "Refuelings",
     "add": "Add refuelling",
-    "edit": "Edit",
-    "delete": "Delete",
     "editAria": "Edit the refuelling of {{date}}",
     "deleteAria": "Delete the refuelling of {{date}}",
     "empty": "No refuelings yet. Add the first one.",
@@ -609,8 +605,6 @@
   "expenses": {
     "title": "Expenses",
     "add": "Add expense",
-    "edit": "Edit",
-    "delete": "Delete",
     "editAria": "Edit the expense {{title}}",
     "deleteAria": "Delete the expense {{title}}",
     "empty": "No expenses yet. Service, insurance, parking and other costs go here.",
