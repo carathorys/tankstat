@@ -5,7 +5,7 @@ using Tankstat.Domain.Recurring;
 
 namespace Tankstat.Infrastructure.Persistence.Repositories;
 
-internal sealed class RecurringExpenseRepository(IDbContextFactory<AppDbContext> dbFactory) : IRecurringExpenseRepository
+internal sealed class RecurringExpenseRepository(IDbContextFactory<AppDbContext> dbFactory, TimeProvider clock) : IRecurringExpenseRepository
 {
     public async Task<IReadOnlyList<RecurringExpense>> ListForVehicleAsync(Guid vehicleId, CancellationToken ct)
     {
@@ -47,7 +47,10 @@ internal sealed class RecurringExpenseRepository(IDbContextFactory<AppDbContext>
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         db.RecurringExpenses.UpdateRange(items);
         db.RecurringCompletions.AddRange(links);
-        await db.SaveChangesAsync(ct); // one save, one transaction: no link without its moved schedule, and the other way round
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await db.SaveChangesAsync(ct); // one transaction: no link without its moved schedule, and the other way round
+        await db.TouchExpensesOfSchedulesAsync([.. items.Select(i => i.Id)], clock.GetUtcNow(), ct); // the expense now lists them
+        await tx.CommitAsync(ct);
     }
 
     public async Task<IReadOnlyList<CompletedSchedule>> ListCompletionsForExpensesAsync(IReadOnlyCollection<Guid> expenseIds, CancellationToken ct)
@@ -68,13 +71,19 @@ internal sealed class RecurringExpenseRepository(IDbContextFactory<AppDbContext>
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         db.RecurringExpenses.Update(item);
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db.SaveChangesAsync(ct);
+        await db.TouchExpensesOfSchedulesAsync([item.Id], clock.GetUtcNow(), ct); // they show its title
+        await tx.CommitAsync(ct);
     }
 
     public async Task RemoveAsync(RecurringExpense item, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         db.RecurringExpenses.Remove(item);
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await db.TouchExpensesOfSchedulesAsync([item.Id], clock.GetUtcNow(), ct); // before the links cascade away with it
         await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
     }
 }

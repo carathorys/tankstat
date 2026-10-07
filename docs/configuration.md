@@ -32,6 +32,7 @@ Uploaded pictures (profile pictures, vehicle pictures, photos of refuelings and 
 | `Defaults:RecurringWarnDays`, `Defaults:RecurringWarnDistance` | `Defaults__...` | how early a new recurring expense starts warning (`30` days / `500` in the vehicle's distance unit unless changed; every schedule can override it) |
 | `Notifications:MaxPerHour` | `Notifications__MaxPerHour` | how many notifications about events (such as access changes) a user gets in an hour before further ones are only counted (default `20`, at least `1`; recurring-expense reminders do not count) |
 | `Notifications:ReadRetentionDays` | `Notifications__ReadRetentionDays` | how many days a notification is kept after it was read, then it is removed (default `30`, at least `1`; unread ones are kept) |
+| `Sync:TombstoneRetentionDays` | `Sync__TombstoneRetentionDays` | how many days the server remembers what was removed for good (an emptied trash, a deleted schedule, a purged vehicle), so devices that keep data for offline use drop it too (default `90`, `1` to `3650`). A device whose last download of a vehicle is older starts that vehicle afresh. Old entries are cleared at most once an hour, when a device downloads |
 
 ## Logging
 

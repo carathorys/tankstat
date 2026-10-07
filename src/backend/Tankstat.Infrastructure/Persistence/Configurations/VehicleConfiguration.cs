@@ -11,6 +11,7 @@ internal sealed class VehicleConfiguration : IEntityTypeConfiguration<Vehicle>
     public void Configure(EntityTypeBuilder<Vehicle> b)
     {
         b.ToTable("Vehicles");
+        SyncMapping.MapUpdatedAt(b);
         b.HasKey(v => v.Id);
         b.Property(v => v.Id).ValueGeneratedNever();
         b.Property(v => v.Version).HasDefaultValue(1); // rows from before versions were counted start at 1

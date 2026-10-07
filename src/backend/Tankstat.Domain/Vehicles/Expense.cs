@@ -1,6 +1,7 @@
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
+using Tankstat.Domain.Sync;
 
 namespace Tankstat.Domain.Vehicles;
 
@@ -11,7 +12,7 @@ namespace Tankstat.Domain.Vehicles;
 /// import brings along (or the user types) is kept as is. The amount may be empty only while a photo of the expense is still being
 /// read (see <see cref="ReviewState"/>); the reading fills it in later, and the odometer too when it was not noted.
 /// </summary>
-public sealed class Expense : IOwned, ISoftDeletable
+public sealed class Expense : IOwned, ISoftDeletable, ISynced
 {
     public const int MaxTitleLength = 120;
     public const int MaxCategoryLength = 60;
@@ -67,6 +68,12 @@ public sealed class Expense : IOwned, ISoftDeletable
     /// says which version it started from, so a change made meanwhile is noticed. The photos do not count.
     /// </summary>
     public int Version { get; private set; }
+
+    /// <summary>When it was last saved (set by the persistence layer, see <see cref="ISynced"/>): a device that keeps a copy downloads it again.</summary>
+    public DateTimeOffset UpdatedAt { get; private set; }
+
+    Guid ISynced.SyncVehicleId => VehicleId;
+    OfflineEntityType ISynced.SyncType => OfflineEntityType.Expense;
 
     /// <param name="readingPhotos">A photo of the expense is still being read: only then may the amount be left empty.</param>
     /// <param name="id">The id the client chose beforehand, if any (see <see cref="EntityId"/>).</param>

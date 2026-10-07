@@ -9,6 +9,8 @@ internal sealed class RefuelingConfiguration : IEntityTypeConfiguration<Refuelin
     public void Configure(EntityTypeBuilder<Refueling> b)
     {
         b.ToTable("Refuelings");
+        SyncMapping.MapUpdatedAt(b);
+        b.HasIndex(r => new { r.VehicleId, r.UpdatedAt }); // the offline feed reads a vehicle's rows changed since a moment
         b.HasKey(r => r.Id);
         b.Property(r => r.Id).ValueGeneratedNever();
         b.Property(r => r.Version).HasDefaultValue(1); // rows from before versions were counted start at 1
