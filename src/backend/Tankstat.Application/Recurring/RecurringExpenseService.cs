@@ -152,9 +152,12 @@ public sealed class RecurringExpenseService(
         LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(vehicleId, ct), () => NotFound(found[0].Id));
         // Schedules of another vehicle look non-existent: one visit is one vehicle, and access was only checked for this one.
         if (found.FirstOrDefault(i => i.VehicleId != vehicleId) is { } stray) throw NotFound(stray.Id);
-        // The visit was already recorded (its expense is linked): the same request again changes nothing, before any rule could refuse it.
-        if (input.ExpenseId is { } expenseId && (await items.ListCompletionsForExpensesAsync([expenseId], ct)).Count > 0)
+        // The visit was already recorded (its expense is linked to every schedule asked for): the same request again changes nothing, before
+        // any rule could refuse it. An expense linked to other schedules is another visit: its id cannot be used for this one.
+        if (input.ExpenseId is { } expenseId && await items.ListCompletionsForExpensesAsync([expenseId], ct) is { Count: > 0 } recorded)
         {
+            if (!wanted.All(id => recorded.Any(l => l.RecurringExpenseId == id)))
+                throw new DomainException("sync.idTaken", $"The id {expenseId} is already in use.", new { Id = expenseId });
             logger.LogDebug("Recurring expenses {RecurringIds} of vehicle {VehicleId} were already marked done with expense {ExpenseId}; the request came again", wanted, vehicleId, expenseId);
             return await CurrentAsync(found, vehicleId, await expenses.FindAsync(expenseId, ct), ct);
         }
@@ -167,7 +170,9 @@ public sealed class RecurringExpenseService(
                 input.Date, input.Title ?? RecurringDoneDefaults.Title(found), input.Category ?? RecurringDoneDefaults.Category(found),
                 input.Amount, input.Currency, input.Odometer, RecurringDoneDefaults.Note(found)), ct, photoDraftIds: input.PhotoIds, id: input.ExpenseId)
             : null;
-        // A first try that failed moved its expense to the trash (below); this try takes it back.
+        // A first try that failed moved its expense to the trash (below); this try takes it back. Only that case gets here: once a visit
+        // completed, its expense is linked and the request returned above, so an expense a person trashed after the visit is never restored.
+        // (The expense with this id is the same creator's on this vehicle: ExpenseService refuses anyone else's with sync.idTaken.)
         if (logged is { IsDeleted: true }) logged = await expenses.RestoreAsync(logged.Id, ct);
         try
         {

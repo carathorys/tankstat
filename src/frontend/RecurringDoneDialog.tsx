@@ -135,7 +135,8 @@ export function RecurringDoneDialog({
             gallery={<PhotoGallery kind="expenses" photos={[]} queue={queue} readingIds={drafts.pending} disabled={saving} onChanged={() => undefined} />}
             onSubmit={async (values, logsExpense) => {
               // Without an expense the photos have nothing to belong to: they are not sent, and closing deletes them.
-              if (await submit((photoIds) => onSubmit({ ...values, expenseId: clientId }, photoIds), !logsExpense)) {
+              // The id is only for the expense the visit logs; without one there is nothing it could name.
+              if (await submit((photoIds) => onSubmit(logsExpense ? { ...values, expenseId: clientId } : values, photoIds), !logsExpense)) {
                 close()
                 toast(t('toast.saved'))
               }

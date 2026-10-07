@@ -85,6 +85,10 @@ public sealed class LogPhotoService(
     public Task<IReadOnlyList<PhotoDraft>> RequireDraftsAsync(Guid vehicleId, IReadOnlyCollection<Guid>? draftIds, CancellationToken ct) =>
         drafts.RequireAttachableAsync(vehicleId, draftIds, ct);
 
+    /// <summary>Of the given drafts, the ones not attached yet (see <see cref="PhotoDraftService.StillWaitingAsync"/>).</summary>
+    public Task<IReadOnlyList<PhotoDraft>> DraftsStillWaitingAsync(Guid vehicleId, IReadOnlyCollection<Guid>? draftIds, CancellationToken ct) =>
+        drafts.StillWaitingAsync(vehicleId, draftIds, ct);
+
     /// <summary>
     /// Makes the drafts photos of the log that was just saved: each picture moves into the log's folder and gets its photo row. The log
     /// is new and the drafts were checked, so they fit; a draft that fails here stays a draft (and expires) rather than failing the save.

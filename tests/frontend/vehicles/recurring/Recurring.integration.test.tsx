@@ -309,7 +309,7 @@ it('without an amount only the schedules move on: nothing is required beyond the
 
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(state.calls.MarkRecurringExpensesDone).toEqual([
-    { input: { ids: ['rc1'], date: expect.any(String), odometer: null, amount: null, currency: null, title: 'Oil change', category: 'Service', photoIds: [], expenseId: expect.stringMatching(UUID) } },
+    { input: { ids: ['rc1'], date: expect.any(String), odometer: null, amount: null, currency: null, title: 'Oil change', category: 'Service', photoIds: [] } }, // no expense is logged, so no id for one
   ])
 })
 
