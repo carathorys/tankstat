@@ -54,27 +54,32 @@ query Trash(
   trashDeletableCount
 }
 
+# What the vehicle page shows of the vehicle; the offline download asks for the same, so its answer stands in for this query offline.
+fragment VehicleDetailsFields on Vehicle {
+  id
+  name
+  licensePlate
+  fuelType
+  pictureUrl
+  canEdit
+  logAccess
+  refuelingCount
+  units {
+    distance
+    volume
+  }
+  owner {
+    id
+    displayName
+    avatarUrl
+  }
+}
+
 # Everything the vehicle page needs in one request. Also loaded when the edit dialog opens: the grid may not
 # have fetched every field (columns can be hidden), so edits never start from grid rows.
 query VehicleDetails($id: UUID!) {
   vehicle(id: $id) {
-    id
-    name
-    licensePlate
-    fuelType
-    pictureUrl
-    canEdit
-    logAccess
-    refuelingCount
-    units {
-      distance
-      volume
-    }
-    owner {
-      id
-      displayName
-      avatarUrl
-    }
+    ...VehicleDetailsFields
   }
 }
 

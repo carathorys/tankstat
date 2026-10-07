@@ -1,0 +1,100 @@
+# What a device downloads of a vehicle to show it offline (offline/pull.ts). A log carries every field the grids, the details and the
+# trash show, so the device can answer them itself (offline/localResolvers.ts); the vehicle and its schedules come in the shapes of
+# VehicleDetails and RecurringExpenses, whose answers the download keeps for those queries.
+fragment OfflineRefuelingFields on Refueling {
+  id
+  vehicleId
+  date
+  volume
+  totalCost
+  currency
+  pricePerUnit
+  consumption
+  odometer
+  isFullTank
+  missedPreviousFillUp
+  note
+  reviewState
+  filledFromPhoto
+  canEdit
+  canDelete
+  deletedAt
+  version
+  updatedAt
+  createdBy {
+    id
+    displayName
+    avatarUrl
+  }
+  photos {
+    id
+    url
+  }
+}
+
+fragment OfflineExpenseFields on Expense {
+  id
+  vehicleId
+  date
+  title
+  category
+  amount
+  currency
+  odometer
+  note
+  reviewState
+  filledFromPhoto
+  canEdit
+  canDelete
+  deletedAt
+  version
+  updatedAt
+  createdBy {
+    id
+    displayName
+    avatarUrl
+  }
+  schedules {
+    id
+    title
+  }
+  photos {
+    id
+    url
+  }
+}
+
+query OfflineChanges($input: OfflineChangesInput!) {
+  offlineChanges(input: $input) {
+    vehicle {
+      ...VehicleDetailsFields
+    }
+    refuelings {
+      ...OfflineRefuelingFields
+    }
+    expenses {
+      ...OfflineExpenseFields
+    }
+    recurring {
+      ...RecurringFields
+    }
+    removed {
+      type
+      id
+    }
+    next
+    watermark
+    resync
+  }
+}
+
+# The user's offline window: a rule for every vehicle, and the ones that differ (offline/offlineWindow.ts).
+query OfflineSettings {
+  offlineSettings {
+    defaultWindow
+    vehicles {
+      vehicleId
+      window
+    }
+  }
+}
