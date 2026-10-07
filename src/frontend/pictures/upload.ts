@@ -1,3 +1,4 @@
+import { fetchSignedIn } from '../auth/refresh.ts'
 import { ApiError } from './ApiError.ts'
 
 async function check(response: Response): Promise<Response> {
@@ -13,12 +14,12 @@ async function check(response: Response): Promise<Response> {
 
 /** Sends a picture as the raw request body (the server checks what it really is). Returns the new picture's address. */
 export async function uploadImage(path: string, image: Blob): Promise<{ id: string; url: string }> {
-  const response = await check(await fetch(path, { method: 'PUT', body: image, credentials: 'same-origin' }))
+  const response = await check(await fetchSignedIn(path, { method: 'PUT', body: image, credentials: 'same-origin' }))
   return (await response.json()) as { id: string; url: string }
 }
 
 export async function deleteImage(path: string): Promise<void> {
-  await check(await fetch(path, { method: 'DELETE', credentials: 'same-origin' }))
+  await check(await fetchSignedIn(path, { method: 'DELETE', credentials: 'same-origin' }))
 }
 
 export const avatarPath = '/media/me/avatar'

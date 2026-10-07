@@ -21,6 +21,9 @@ internal sealed class TestApp : IDisposable
     /// <summary>Where uploaded pictures of this host go.</summary>
     public string UploadsPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-uploads");
 
+    /// <summary>Where this host keeps the keys that protect its cookies.</summary>
+    public string KeysPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-keys");
+
     public WebApplicationFactory<Program> Factory { get; }
 
     /// <summary>Everything this host logged, from its first line on.</summary>
@@ -34,6 +37,7 @@ internal sealed class TestApp : IDisposable
             ["Database:Provider"] = "Sqlite",
             ["Database:ConnectionString"] = $"Data Source={_db}",
             ["Storage:Path"] = UploadsPath,
+            ["DataProtection:KeysPath"] = KeysPath, // the cookies' keys of this host only, never in the build output
             ["Logging:LogLevel:Tankstat"] = "Debug", // the Debug lines are part of what is tested
         };
         foreach (var (key, value) in settings) all[key] = value;
@@ -48,12 +52,12 @@ internal sealed class TestApp : IDisposable
         });
     }
 
-    public static TestApp Standalone(Dictionary<string, string?>? extra = null) => new(new Dictionary<string, string?>
+    public static TestApp Standalone(Dictionary<string, string?>? extra = null, Action<IServiceCollection>? services = null) => new(new Dictionary<string, string?>
     {
         ["Auth:Mode"] = "Standalone",
         ["Auth:Standalone:AdminEmail"] = "root@example.com",
         ["Auth:Standalone:AdminPassword"] = "initial-password-1",
-    }.Concat(extra ?? []).ToDictionary(kv => kv.Key, kv => kv.Value));
+    }.Concat(extra ?? []).ToDictionary(kv => kv.Key, kv => kv.Value), services);
 
     /// <summary>A client with its own cookie jar, i.e. its own browser session.</summary>
     public HttpClient NewClient() => Factory.CreateClient();
@@ -72,6 +76,7 @@ internal sealed class TestApp : IDisposable
         using (var pooled = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_db}")) Microsoft.Data.Sqlite.SqliteConnection.ClearPool(pooled);
         File.Delete(_db);
         if (Directory.Exists(UploadsPath)) Directory.Delete(UploadsPath, recursive: true);
+        if (Directory.Exists(KeysPath)) Directory.Delete(KeysPath, recursive: true);
     }
 }
 

@@ -12,7 +12,7 @@ namespace Tankstat.Application.Users;
 
 /// <summary>Administrator-only user management.</summary>
 public sealed class UserService(
-    AccessService access, IUserRepository users, IUserDataRepository userData, PasswordResetService resets, IPasswordHasher hasher,
+    AccessService access, IUserRepository users, IUserDataRepository userData, PasswordResetService resets, UserSessionService sessions, IPasswordHasher hasher,
     ImageService images, ImportSessionStore importSessions, IOptions<AuthOptions> auth, ILogger<UserService> logger)
 {
     public async Task<IReadOnlyList<User>> ListAsync(CancellationToken ct)
@@ -68,6 +68,7 @@ public sealed class UserService(
         var user = await Find(userId, ct);
         user.SetDisabled(disabled);
         await users.UpdateAsync(user, ct);
+        if (disabled) await sessions.RevokeAllAsync(user.Id, ct);
         logger.LogInformation("Administrator {AdminId} set user {UserId} disabled: {Disabled}", self.Id, user.Id, disabled);
         return user;
     }
@@ -110,6 +111,7 @@ public sealed class UserService(
         user.SetPasswordHash(hasher.Hash(newPassword!));
         await users.UpdateAsync(user, ct);
         await resets.RevokeAllAsync(user.Id, ct);
+        await sessions.RevokeAllAsync(user.Id, ct);
         logger.LogInformation("Administrator {AdminId} set the password of user {UserId}; their sessions were signed out", admin.Id, user.Id);
     }
 

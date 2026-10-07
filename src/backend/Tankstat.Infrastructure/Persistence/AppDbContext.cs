@@ -27,6 +27,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<StoredImage> Images => Set<StoredImage>();
     public DbSet<User> Users => Set<User>();
     public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
+    public DbSet<UserSession> UserSessions => Set<UserSession>();
     public DbSet<AccessGrant> AccessGrants => Set<AccessGrant>();
     public DbSet<AccessSettings> AccessSettings => Set<AccessSettings>();
     public DbSet<ResourceGrant> ResourceGrants => Set<ResourceGrant>();

@@ -13,16 +13,17 @@ public sealed class AuthMutations
         LoginInput input, [Service] AuthService auth, [Service] IHttpContextAccessor http, CancellationToken ct)
     {
         var user = await auth.LoginAsync(input.Email, input.Password, ct);
-        await http.HttpContext!.SignInAsync(
-            SessionClaims.CookieScheme, SessionClaims.Create(user, SessionClaims.CookieScheme),
-            new AuthenticationProperties { IsPersistent = true });
+        await SessionCookies.IssueAsync(http.HttpContext!, user, ct);
         return UserInfo.From(user);
     }
 
-    public async Task<bool> Logout([Service] IHttpContextAccessor http, [Service] ILogger<AuthMutations> logger)
+    /// <summary>Ends this device's session (named by its access cookie) and removes both cookies. The app itself signs out through <c>POST /auth/token/logout</c>, which also works once the access cookie ran out.</summary>
+    public async Task<bool> Logout([Service] IHttpContextAccessor http, [Service] UserSessionService sessions, [Service] ILogger<AuthMutations> logger, CancellationToken ct)
     {
-        var user = RequestUser.Id(http.HttpContext!.User);
-        await http.HttpContext!.SignOutAsync(SessionClaims.CookieScheme);
+        var context = http.HttpContext!;
+        var user = RequestUser.Id(context.User);
+        if (SessionCookies.SessionId(context.User) is { } session && Guid.TryParse(user, out var userId)) await sessions.RevokeAsync(session, userId, ct);
+        await SessionCookies.ClearAsync(context);
         if (user != RequestUser.Anonymous) logger.LogInformation("User {UserId} signed out", user);
         return true;
     }
@@ -30,11 +31,12 @@ public sealed class AuthMutations
     public async Task<bool> ChangePassword(
         ChangePasswordInput input, [Service] AuthService auth, [Service] IHttpContextAccessor http, CancellationToken ct)
     {
-        var user = await auth.ChangePasswordAsync(input.CurrentPassword, input.NewPassword, ct);
-        // Every other session is now invalid (new session version); keep this one signed in.
-        await http.HttpContext!.SignInAsync(
-            SessionClaims.CookieScheme, SessionClaims.Create(user, SessionClaims.CookieScheme),
-            new AuthenticationProperties { IsPersistent = true });
+        var context = http.HttpContext!;
+        var session = SessionCookies.SessionId(context.User);
+        var user = await auth.ChangePasswordAsync(input.CurrentPassword, input.NewPassword, ct, session);
+        // Every other session is now invalid (new session version); this one stays signed in with a fresh access cookie.
+        if (session is { } current) await SessionCookies.SignInAsync(context, user, current);
+        else await SessionCookies.IssueAsync(context, user, ct); // a cookie from before sessions: start one
         return true;
     }
 
