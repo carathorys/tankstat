@@ -80,6 +80,13 @@ A vehicle fuel log: `Vehicle` (name, licence plate, fuel type, units, optional p
 
 Adds can carry an id chosen by the client (`id` on `AddVehicleInput`, `LogRefuelingInput`, `AddExpenseInput`, `AddRecurringExpenseInput`; `expenseId` on `MarkRecurringExpensesDoneInput`): sending the same add again, after an answer that never arrived, answers with what the first one created instead of creating it twice (an id someone else used is refused with `sync.idTaken`). The app's add dialogs choose one per opening, so pressing Save again after a network error never logs a refuelling twice. Vehicles, refuelings, expenses and recurring expenses also count their saves (`version`, from 1); this is the groundwork for working offline and syncing later, where a change made from an old version is detected instead of silently overwriting what someone else saved.
 
+What a repeated add does, in detail:
+
+- It answers with **what the first save stored**: values sent again are not compared, so an edit made between a lost answer and the retry is not applied (edit the entry afterwards). Steps after the save that may not have finished (attaching the photos still waiting as drafts, taking a photo reading, recalculating the consumption) run again, since they are safe to repeat.
+- The id is looked up across the whole instance, so a user who sends an id **someone else** already used gets `sync.idTaken`; that tells them such an id exists. Ids are random UUIDs, so this cannot be used to discover anything; it is the one place where something invisible does not simply look missing.
+- *Mark as done* is a repeat only when its expense id is already linked to **every** schedule asked for; an id linked to other schedules is another visit and is refused (`sync.idTaken`). A *Mark as done* without an amount logs no expense and has no id: sending it again starts the same interval again, which changes nothing but the version.
+- `expectedVersion` is checked and then written, not atomically yet: two changes from the same version at the same moment can both pass. Nothing sends it yet; it becomes a conditional write before the offline sync relies on it (#41).
+
 Pending migrations are applied automatically at startup. Each provider has its own migration project, so after changing an entity run:
 
 ```sh

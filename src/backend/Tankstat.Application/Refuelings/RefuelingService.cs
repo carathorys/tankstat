@@ -68,7 +68,8 @@ public sealed class RefuelingService(
         var (vehicle, _) = await EditableVehicleAsync(vehicleId, ct);
         var creator = await access.RequirePrincipalAsync(ct);
         // Before any rule: what the first try saved may itself be a neighbour of this log now.
-        if (id is { } given && await refuelings.FindIncludingDeletedAsync(given, ct) is { } existing) return Repeated(existing, vehicle.Id, creator.Id);
+        if (id is { } given && await refuelings.FindIncludingDeletedAsync(given, ct) is { } existing)
+            return await FinishRepeatedAsync(Repeated(existing, vehicle.Id, creator.Id), photoDraftIds, recalculateConsumption, ct);
         await ValidateAsync(vehicle.Id, input, exceptReadingId: null, ct);
         var drafts = await photos.RequireDraftsAsync(vehicle.Id, photoDraftIds, ct);
         var readingPhotos = IsIncomplete(input) && await filler.MayWaitForDraftsAsync([.. drafts.Select(d => d.Id)], ct);
@@ -180,6 +181,21 @@ public sealed class RefuelingService(
     {
         var found = await access.LogLevelsAsync(await vehicles.ListByIdsIncludingDeletedAsync(vehicleIds, ct), ct);
         return vehicleIds.Distinct().ToDictionary(id => id, id => found.GetValueOrDefault(id, AccessLevel.None));
+    }
+
+    /// <summary>
+    /// The add came again: the first try saved the log but may have failed after that (a lost connection to the database while attaching
+    /// the photos or recalculating), and the caller cannot tell. The steps after the save are safe to repeat, so they run again: the drafts
+    /// still waiting are attached, a reading that finished is taken, and the consumption is recalculated. A log in the trash stays as it is.
+    /// The concurrent twin (<c>AddAsync</c> lost the race) does not do this: the request that won is doing it.
+    /// </summary>
+    private async Task<Refueling> FinishRepeatedAsync(Refueling existing, IReadOnlyCollection<Guid>? photoDraftIds, bool recalculateConsumption, CancellationToken ct)
+    {
+        if (existing.IsDeleted) return existing;
+        await photos.AttachDraftsAsync(LogType.Refueling, existing.Id, await photos.DraftsStillWaitingAsync(existing.VehicleId, photoDraftIds, ct), ct);
+        if (existing.ReviewState == ReviewState.AwaitingPhotos) await filler.FillAsync(LogType.Refueling, existing.Id, ct);
+        if (recalculateConsumption) await RecalculateConsumptionAsync(existing.VehicleId, ct);
+        return await refuelings.FindAsync(existing.Id, ct) ?? existing;
     }
 
     /// <summary>A log this add already created (same vehicle, same creator) is the answer; another one's id is refused.</summary>

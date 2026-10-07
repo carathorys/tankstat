@@ -52,7 +52,8 @@ public sealed class ExpenseService(
         var vehicle = await EditableVehicleAsync(vehicleId, ct);
         var creator = await access.RequirePrincipalAsync(ct);
         // Before any rule: what the first try saved may itself be a neighbour of this expense now.
-        if (id is { } given && await expenses.FindIncludingDeletedAsync(given, ct) is { } existing) return Repeated(existing, vehicle.Id, creator.Id);
+        if (id is { } given && await expenses.FindIncludingDeletedAsync(given, ct) is { } existing)
+            return await FinishRepeatedAsync(Repeated(existing, vehicle.Id, creator.Id), photoDraftIds, ct);
         await ValidateAsync(vehicle.Id, input, exceptReadingId: null, ct);
         var drafts = await photos.RequireDraftsAsync(vehicle.Id, photoDraftIds, ct);
         var readingPhotos = (input.Amount is null || input.Odometer is null) && await filler.MayWaitForDraftsAsync([.. drafts.Select(d => d.Id)], ct);
@@ -140,6 +141,19 @@ public sealed class ExpenseService(
         await photos.DeleteFilesAsync(LogType.Expense, purged, ct); // their photos go with them
         if (purged.Count > 0) logger.LogInformation("User {UserId} emptied the expense trash: {Count} expenses deleted for good ({WithPhotos} with photos)", user.Id, purged.Count, purged.WithPhotos.Count);
         return purged.Count;
+    }
+
+    /// <summary>
+    /// The add came again: the first try saved the expense but may have failed after that, and the caller cannot tell. The steps after the
+    /// save are safe to repeat, so they run again: the drafts still waiting are attached and a reading that finished is taken. An expense in
+    /// the trash stays as it is (a visit's retry restores it itself, see <c>RecurringExpenseService.MarkDoneAsync</c>).
+    /// </summary>
+    private async Task<Expense> FinishRepeatedAsync(Expense existing, IReadOnlyCollection<Guid>? photoDraftIds, CancellationToken ct)
+    {
+        if (existing.IsDeleted) return existing;
+        await photos.AttachDraftsAsync(LogType.Expense, existing.Id, await photos.DraftsStillWaitingAsync(existing.VehicleId, photoDraftIds, ct), ct);
+        if (existing.ReviewState == ReviewState.AwaitingPhotos) await filler.FillAsync(LogType.Expense, existing.Id, ct);
+        return await expenses.FindAsync(existing.Id, ct) ?? existing;
     }
 
     /// <summary>An expense this add already created (same vehicle, same creator) is the answer; another one's id is refused.</summary>
