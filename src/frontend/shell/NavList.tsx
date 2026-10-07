@@ -1,4 +1,4 @@
-import { useApolloClient, useMutation } from '@apollo/client/react'
+import { useApolloClient } from '@apollo/client/react'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Stack from '@mui/material/Stack'
@@ -7,7 +7,8 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NavLink } from 'react-router'
 import { signedOut } from '../auth/oidc.ts'
-import { LogoutDocument, type AuthMode, type SessionQuery } from '../gql/generated.ts'
+import { type AuthMode, type SessionQuery } from '../gql/generated.ts'
+import { signOutDevice } from '../auth/refresh.ts'
 import { InstallMenuItem } from './InstallMenuItem.tsx'
 import { navItemSx } from './navStyles.ts'
 
@@ -15,7 +16,6 @@ import { navItemSx } from './navStyles.ts'
 export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: SessionQuery['session']['user']; onNavigate?: () => void }) {
   const { t } = useTranslation()
   const client = useApolloClient()
-  const [logout] = useMutation(LogoutDocument)
   const canSignOut = user !== null && mode !== 'PROXY_HEADER' // behind a proxy the proxy owns the session
 
   const link = (to: string, label: string, icon: ReactNode) => (
@@ -42,7 +42,7 @@ export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: Sess
           sx={(theme) => ({ ...navItemSx(theme), mt: 1.5 })}
           onClick={async () => {
             onNavigate?.()
-            await logout()
+            await signOutDevice() // ends this device's session on the server, even after its access cookie ran out
             // Before the store resets: the sign-in screen that follows must wait for a click, not send the browser back to the provider.
             if (mode === 'OIDC') signedOut.mark()
             await client.resetStore()

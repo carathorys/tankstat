@@ -26,6 +26,7 @@ Uploaded pictures (profile pictures, vehicle pictures, photos of refuelings and 
 
 | Setting | Environment variable | Meaning |
 | --- | --- | --- |
+| `DataProtection:KeysPath` | `DataProtection__KeysPath` | folder of the keys that protect the sign-in cookies and the stored refresh secrets (default `keys`, relative to the working directory; the Docker image uses `/data/keys`). Keep it with the data and back it up with it: without it every restart signs everybody out. The framework warns at start that the keys are stored unencrypted, which is expected; protect the folder like the database |
 | `Storage:Path` | `Storage__Path` | folder for uploaded pictures (default `uploads`, relative to the working directory; the Docker image uses `/data/uploads`). Files are organised per owner: `users/<id>/` for avatars and `vehicles/<id>/` for everything of a vehicle (its picture and, below it, the photos of its logs and the photo drafts of entries not saved yet), so a vehicle's files are removed with it; files from older versions stay directly in the folder and keep working |
 | `Defaults:DistanceUnit`, `Defaults:VolumeUnit`, `Defaults:Currency` | `Defaults__...` | what a new vehicle / new log starts with (`Kilometers` / `Liters` / `EUR` unless changed) |
 | `Defaults:RecurringWarnDays`, `Defaults:RecurringWarnDistance` | `Defaults__...` | how early a new recurring expense starts warning (`30` days / `500` in the vehicle's distance unit unless changed; every schedule can override it) |

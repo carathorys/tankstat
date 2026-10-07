@@ -19,14 +19,16 @@ internal sealed class AppProcess : IAsyncDisposable
     private readonly Process _process;
     private readonly StringBuilder _log;
     private readonly HttpClient _http;
+    private readonly CookieContainer _cookies;
 
     public string WorkDirectory { get; }
     public string DatabasePath => Path.Combine(WorkDirectory, "smoke.db");
     public string Log { get { lock (_log) return _log.ToString(); } }
     public int Port { get; }
 
-    private AppProcess(Process process, StringBuilder log, int port, string workDirectory, HttpClient http)
+    private AppProcess(Process process, StringBuilder log, int port, string workDirectory, HttpClient http, CookieContainer cookies)
     {
+        _cookies = cookies;
         _process = process;
         _log = log;
         Port = port;
@@ -99,8 +101,9 @@ internal sealed class AppProcess : IAsyncDisposable
     public static async Task<AppProcess> StartAsync(IReadOnlyDictionary<string, string?> settings, string? workDirectory = null, bool useTempDatabase = true)
     {
         var (process, log, work, port) = Launch(settings, workDirectory, useTempDatabase);
-        var http = new HttpClient(new HttpClientHandler { UseCookies = true }) { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
-        var app = new AppProcess(process, log, port, work, http);
+        var cookies = new CookieContainer();
+        var http = new HttpClient(new HttpClientHandler { UseCookies = true, CookieContainer = cookies }) { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        var app = new AppProcess(process, log, port, work, http, cookies);
 
         var deadline = DateTime.UtcNow + StartupTimeout;
         while (DateTime.UtcNow < deadline)
@@ -159,6 +162,9 @@ internal sealed class AppProcess : IAsyncDisposable
     }
 
     public Task<HttpResponseMessage> GetAsync(string path) => _http.GetAsync(path);
+
+    /// <summary>The cookies this client would send to <c>/graphql</c> (the access cookie), as a Cookie header for another process.</summary>
+    public string CookieHeader => _cookies.GetCookieHeader(new Uri(_http.BaseAddress!, "/graphql"));
 
     /// <summary>Waits for a line in the app's output (background work logs a little after the app starts answering).</summary>
     public async Task<bool> LogsAsync(string text, TimeSpan? within = null)

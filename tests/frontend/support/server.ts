@@ -1,4 +1,4 @@
-import { graphql, HttpResponse } from 'msw'
+import { graphql, http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 
 // Handlers are registered per test with server.use(); unhandled requests fail the test. The defaults: the bell in the top bar asks for
@@ -15,6 +15,9 @@ export const server = setupServer(
   graphql.query('RecurringExpenses', ({ variables }) =>
     HttpResponse.json({ data: { vehicle: { __typename: 'Vehicle', id: variables.vehicleId, recurring: [] } } }),
   ),
+  // The token endpoints (auth/refresh.ts): no test has a refresh cookie, so a refresh says "sign in"; signing out always works.
+  http.post('/auth/token/refresh', () => HttpResponse.json({ key: 'auth.unauthenticated' }, { status: 401 })),
+  http.post('/auth/token/logout', () => new HttpResponse(null, { status: 204 })),
   graphql.query('UnreadNotificationCount', () => HttpResponse.json({ data: { notificationCount: 0 } })),
   graphql.query('RecognitionStatus', () => HttpResponse.json({ data: { recognitionStatus: { available: false } } })),
   graphql.query('UiSettings', () => HttpResponse.json({ data: { uiSettings: { navOpen: null, language: null, colorMode: null, grids: [] } } })),

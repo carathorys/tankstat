@@ -55,3 +55,23 @@ public sealed record PurgedUserData(IReadOnlyList<Guid> VehicleIds, IReadOnlyLis
 {
     public static PurgedUserData None { get; } = new([], []);
 }
+
+/// <summary>Encrypts a refresh token's secret for storage (the cookies' key ring); <see cref="Unprotect"/> is null when it cannot be read back.</summary>
+public interface ISecretProtector
+{
+    string Protect(string secret);
+    string? Unprotect(string protectedSecret);
+}
+
+public interface IUserSessionRepository
+{
+    Task<UserSession?> FindAsync(Guid id, CancellationToken ct);
+    Task AddAsync(UserSession session, CancellationToken ct);
+    Task UpdateAsync(UserSession session, CancellationToken ct);
+
+    /// <summary>Revokes every session of the user that is not revoked yet, except <paramref name="except"/>; returns how many.</summary>
+    Task<int> RevokeForUserAsync(Guid userId, Guid? except, DateTimeOffset now, CancellationToken ct);
+
+    /// <summary>Deletes the sessions that expired or were revoked before <paramref name="before"/>.</summary>
+    Task<int> DeleteStaleAsync(DateTimeOffset before, CancellationToken ct);
+}

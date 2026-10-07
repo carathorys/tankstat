@@ -96,6 +96,42 @@ internal sealed class PasswordResetTokenRepository(IDbContextFactory<AppDbContex
     }
 }
 
+internal sealed class UserSessionRepository(IDbContextFactory<AppDbContext> dbFactory) : IUserSessionRepository
+{
+    public async Task<UserSession?> FindAsync(Guid id, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.UserSessions.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id, ct);
+    }
+
+    public async Task AddAsync(UserSession session, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        db.UserSessions.Add(session);
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task UpdateAsync(UserSession session, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        db.UserSessions.Update(session);
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task<int> RevokeForUserAsync(Guid userId, Guid? except, DateTimeOffset now, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.UserSessions.Where(s => s.UserId == userId && s.RevokedAt == null && s.Id != except)
+            .ExecuteUpdateAsync(u => u.SetProperty(s => s.RevokedAt, now), ct);
+    }
+
+    public async Task<int> DeleteStaleAsync(DateTimeOffset before, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.UserSessions.Where(s => s.ExpiresAt < before || s.RevokedAt < before).ExecuteDeleteAsync(ct);
+    }
+}
+
 internal sealed class AccessGrantRepository(IDbContextFactory<AppDbContext> dbFactory) : IAccessGrantRepository
 {
     public async Task<IReadOnlyList<AccessGrant>> ListAsync(CancellationToken ct)

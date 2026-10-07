@@ -34,6 +34,31 @@ internal sealed class PasswordResetTokenConfiguration : IEntityTypeConfiguration
     }
 }
 
+internal sealed class UserSessionConfiguration : IEntityTypeConfiguration<UserSession>
+{
+    public void Configure(EntityTypeBuilder<UserSession> b)
+    {
+        b.ToTable("UserSessions");
+        b.HasKey(s => s.Id);
+        b.Property(s => s.Id).ValueGeneratedNever();
+        b.Property(s => s.SecretHash).HasMaxLength(128).IsRequired();
+        b.Property(s => s.PreviousSecretHash).HasMaxLength(128);
+        b.Property(s => s.ProtectedSecret).HasMaxLength(1024).IsRequired();
+        b.Property(s => s.Client).HasMaxLength(UserSession.MaxClientLength);
+        // Stored as UTC date-times so comparisons translate on every provider (same as the other timestamps).
+        b.Property(s => s.CreatedAt).HasConversion(v => v.UtcDateTime, v => new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc)));
+        b.Property(s => s.LastUsedAt).HasConversion(v => v.UtcDateTime, v => new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc)));
+        b.Property(s => s.ExpiresAt).HasConversion(v => v.UtcDateTime, v => new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc)));
+        b.Property(s => s.RotatedAt).HasConversion(
+            v => v == null ? (DateTime?)null : v.Value.UtcDateTime, v => v == null ? null : new DateTimeOffset(DateTime.SpecifyKind(v.Value, DateTimeKind.Utc)));
+        b.Property(s => s.RevokedAt).HasConversion(
+            v => v == null ? (DateTime?)null : v.Value.UtcDateTime, v => v == null ? null : new DateTimeOffset(DateTime.SpecifyKind(v.Value, DateTimeKind.Utc)));
+        b.HasOne<User>().WithMany().HasForeignKey(s => s.UserId).OnDelete(DeleteBehavior.Cascade);
+        b.HasIndex(s => new { s.UserId, s.ExpiresAt });
+        b.HasIndex(s => s.ExpiresAt);
+    }
+}
+
 internal sealed class AccessGrantConfiguration : IEntityTypeConfiguration<AccessGrant>
 {
     public void Configure(EntityTypeBuilder<AccessGrant> b)
