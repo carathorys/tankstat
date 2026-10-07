@@ -5,6 +5,7 @@ import { catchError, from, mergeMap, of, tap, throwError, type Observable } from
 import { connectivity } from './connectivity.ts'
 import { ANONYMOUS_USER, deviceData } from './deviceData.ts'
 import { classifyFailure, OfflineError } from './errors.ts'
+import { outbox } from './outbox.ts'
 import { policyFor, snapshotKey } from './snapshotPolicy.ts'
 
 /** Signing in or out: what comes back afterwards may be another account's, so nothing is kept until `Session` says whose it is. */
@@ -40,6 +41,29 @@ export function userOf(data: unknown): string | null {
 }
 
 /**
+ * Whether changes waiting on this device concern what a query asks: then the device answers it itself (when it holds the logs), so what
+ * the user changed shows, in its place, until the server has it.
+ */
+function waitingFor(name: string | undefined, variables: Record<string, unknown>): boolean {
+  if (outbox.changes.length === 0) return false
+  switch (name) {
+    case 'Refuelings':
+    case 'Expenses':
+    case 'LogDefaults':
+    case 'ExpenseCategories':
+      return outbox.vehicleIds().has(String(variables.vehicleId))
+    case 'RefuelingDetails':
+    case 'ExpenseDetails':
+      return outbox.changes.some((c) => c.targetId === variables.id)
+    case 'RefuelingTrash':
+    case 'ExpenseTrash':
+      return true
+    default:
+      return false
+  }
+}
+
+/**
  * Tells `connectivity` how every GraphQL request went, and keeps the last answer of the queries worth keeping on this device
  * (`snapshotPolicy.ts`, `deviceData.ts`). While the server is known to be unreachable nothing is sent: a kept query is answered from the
  * downloaded window when it can be (`localResolvers.ts`), else with its last answer; anything else fails at once with an `OfflineError`
@@ -71,29 +95,36 @@ export function createOfflineLink(device = deviceData): ApolloLink {
       )
     }
 
+    const fromServer = (): Observable<ApolloLink.Result> =>
+      forward(operation).pipe(
+        tap({
+          next: (result) => {
+            connectivity.succeeded()
+            if (result.errors?.length || result.data == null) return
+            if (!isQuery) {
+              if (name && SIGN_IN_MUTATIONS.has(name)) device.unconfirm()
+              return
+            }
+            if (name === 'Session') {
+              const data = result.data
+              void device.signedIn(userOf(data)).then(() => device.keep(key, data, undefined, doc)).catch(() => undefined)
+            } else if (policy === 'keep') {
+              void device.keep(key, result.data, undefined, doc).catch(() => undefined)
+            }
+          },
+          error: (error: unknown) => {
+            if (classifyFailure(error) !== 'answered') connectivity.failed()
+          },
+        }),
+        // The server went out of reach during this request: answer it like the next one would be (never for the probe itself).
+        catchError((error: unknown) => (!bypass && classifyFailure(error) !== 'answered' && isQuery && policy !== 'never' ? fromDevice() : throwError(() => error))),
+      )
+
     if (!bypass && !connectivity.reachable) return fromDevice()
-    return forward(operation).pipe(
-      tap({
-        next: (result) => {
-          connectivity.succeeded()
-          if (result.errors?.length || result.data == null) return
-          if (!isQuery) {
-            if (name && SIGN_IN_MUTATIONS.has(name)) device.unconfirm()
-            return
-          }
-          if (name === 'Session') {
-            const data = result.data
-            void device.signedIn(userOf(data)).then(() => device.keep(key, data, undefined, doc)).catch(() => undefined)
-          } else if (policy === 'keep') {
-            void device.keep(key, result.data, undefined, doc).catch(() => undefined)
-          }
-        },
-        error: (error: unknown) => {
-          if (classifyFailure(error) !== 'answered') connectivity.failed()
-        },
-      }),
-      // The server went out of reach during this request: answer it like the next one would be (never for the probe itself).
-      catchError((error: unknown) => (!bypass && classifyFailure(error) !== 'answered' && isQuery && policy !== 'never' ? fromDevice() : throwError(() => error))),
-    )
+    if (!bypass && isQuery && waitingFor(name, operation.variables)) {
+      const local = import('./localResolvers.ts').then(async ({ answerLocally }) => answerLocally(await device.rows(), name, operation.variables))
+      return from(local).pipe(mergeMap((data) => (data !== undefined ? of({ data } as ApolloLink.Result) : fromServer())))
+    }
+    return fromServer()
   })
 }

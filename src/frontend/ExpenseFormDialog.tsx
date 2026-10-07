@@ -37,6 +37,8 @@ import { useDraftReadings } from './recognition/useDraftReadings.ts'
 import { useReadFill } from './recognition/useReadFill.ts'
 import { Loading } from './components/Loading.tsx'
 import { useToast } from './toast/toastContext.ts'
+import { OfflineNote } from './components/OfflineNote.tsx'
+import { outbox } from './offline/outbox.ts'
 
 /** The amount is null only when it was left for a photo that is still being read. */
 export interface ExpenseValues {
@@ -128,6 +130,7 @@ export function ExpenseFormDialog({
         description={editing ? t('expenses.dialogEditDescription') : t('expenses.dialogAddDescription')}
       >
         {error && <ErrorMessage error={error} />}
+        <OfflineNote />
         {!error && !ready && (
           <Loading />
         )}
@@ -164,7 +167,8 @@ export function ExpenseFormDialog({
             onSubmit={async (values) => {
               if (await submit((photoIds) => onSubmit(editing ? values : { ...values, id: clientId }, photoIds), editing)) {
                 close()
-                toast(t('toast.saved'))
+                // Kept on the device for the server (the server was out of reach): the toast says so.
+                toast(outbox.markOf('expenses', editing ? expenseId! : clientId) ? t('toast.savedOnDevice') : t('toast.saved'))
               }
             }}
           />

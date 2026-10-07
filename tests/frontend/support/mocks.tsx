@@ -408,6 +408,8 @@ export interface FakeRefueling {
   deletedAt?: string
   reviewState: 'NONE' | 'AWAITING_PHOTOS' | 'NEEDS_REVIEW' | 'INCOMPLETE'
   filledFromPhoto: ('ODOMETER' | 'VOLUME' | 'TOTAL')[]
+  /** Counts its saves (from 1): a change kept on the device says which one it was made from. */
+  version: number
 }
 
 export const fakeRefueling = (over: Partial<FakeRefueling> = {}): FakeRefueling => ({
@@ -427,6 +429,7 @@ export const fakeRefueling = (over: Partial<FakeRefueling> = {}): FakeRefueling 
   createdBy: person('Alice'),
   reviewState: 'NONE',
   filledFromPhoto: [],
+  version: 1,
   ...over,
 })
 
@@ -714,6 +717,7 @@ export interface FakeExpense {
   filledFromPhoto: ('ODOMETER' | 'VOLUME' | 'TOTAL')[]
   /** The recurring expenses it covered when they were marked done. */
   schedules?: { id: string; title: string }[]
+  version: number
 }
 
 export const fakeExpense = (over: Partial<FakeExpense> = {}): FakeExpense => ({
@@ -731,6 +735,7 @@ export const fakeExpense = (over: Partial<FakeExpense> = {}): FakeExpense => ({
   createdBy: person('Alice'),
   reviewState: 'NONE',
   filledFromPhoto: [],
+  version: 1,
   ...over,
 })
 

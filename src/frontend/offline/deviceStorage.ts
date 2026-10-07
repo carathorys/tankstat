@@ -4,6 +4,8 @@
  * small one (`tankstat-offline-meta`) that remembers whose data to open at the next start. No library: IndexedDB through a few promises.
  */
 
+import type { Change } from './changes.ts'
+
 /** The last answer of one query (an operation with its variables), and when it came. */
 export interface Snapshot {
   key: string
@@ -21,7 +23,7 @@ export interface DeviceStore {
   prune(keep: number, spare?: (key: string) => boolean): Promise<void>
   /** The vehicles and logs downloaded for the offline window (see `pull.ts`). */
   readonly rows: RowStore
-  /** Everything kept for this user: the answers and the downloaded window. */
+  /** What is kept for this user: the answers and the downloaded window (never the changes waiting for the server). */
   clear(): Promise<void>
   close(): void
 }
@@ -75,6 +77,10 @@ export interface RowStore {
   cursor(vehicleId: string): Promise<PullCursor | undefined>
   cursors(): Promise<PullCursor[]>
   putCursor(cursor: PullCursor): Promise<void>
+  /** The changes waiting for the server (`outbox.ts`). */
+  changes(): Promise<Change[]>
+  putChanges(changes: Change[]): Promise<void>
+  deleteChanges(ids: string[]): Promise<void>
   clear(): Promise<void>
 }
 
@@ -138,7 +144,7 @@ export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage
   const meta = () => openDb(factory, META_DB, 1, (db) => db.createObjectStore('meta'))
   return {
     async open(user) {
-      const db = await openDb(factory, dbName(user), 2, (created, from) => {
+      const db = await openDb(factory, dbName(user), 3, (created, from) => {
         if (from < 1) created.createObjectStore('snapshots', { keyPath: 'key' }).createIndex('at', 'at')
         if (from < 2) {
           // The downloaded window (2): vehicles, their logs by vehicle, and how far each vehicle's download got.
@@ -147,12 +153,15 @@ export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage
           created.createObjectStore('expenses', { keyPath: 'id' }).createIndex('vehicleId', 'vehicleId')
           created.createObjectStore('cursors', { keyPath: 'vehicleId' })
         }
+        // The changes waiting for the server (3).
+        if (from < 3) created.createObjectStore('changes', { keyPath: 'id' })
       })
       const rows = rowStore({
         refuelings: idbTable<LogRow>(db, 'refuelings'),
         expenses: idbTable<LogRow>(db, 'expenses'),
         vehicles: idbTable<VehicleRow>(db, 'vehicles'),
         cursors: idbTable<PullCursor>(db, 'cursors'),
+        changes: idbTable<Change>(db, 'changes'),
       })
       return {
         user,
@@ -187,7 +196,7 @@ export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage
           await committed(tx)
         },
         async clear() {
-          const names = ['snapshots', 'vehicles', 'refuelings', 'expenses', 'cursors']
+          const names = ['snapshots', 'vehicles', 'refuelings', 'expenses', 'cursors'] // never the changes waiting for the server
           const tx = db.transaction(names, 'readwrite')
           names.forEach((name) => tx.objectStore(name).clear())
           await committed(tx)
@@ -232,6 +241,7 @@ export function memoryStorage(): DeviceStorage {
         expenses: memoryTable<LogRow>('id'),
         vehicles: memoryTable<VehicleRow>('id'),
         cursors: memoryTable<PullCursor>('vehicleId'),
+        changes: memoryTable<Change>('id'),
       }
       memoryTables.set(user, tables)
       const kept = rowStore(tables)
@@ -272,6 +282,7 @@ interface Tables {
   expenses: Table<LogRow>
   vehicles: Table<VehicleRow>
   cursors: Table<PullCursor>
+  changes: Table<Change>
 }
 
 function idbTable<T>(db: IDBDatabase, name: string): Table<T> {
@@ -349,8 +360,12 @@ function rowStore(tables: Tables): RowStore {
     cursor: (vehicleId) => tables.cursors.get(vehicleId),
     cursors: () => tables.cursors.all(),
     putCursor: (cursor) => tables.cursors.put([cursor]),
+    changes: async () => (await tables.changes.all()).sort((a, b) => a.seq - b.seq),
+    putChanges: (changes) => tables.changes.put(changes),
+    deleteChanges: (ids) => tables.changes.delete(ids),
     async clear() {
-      await Promise.all(Object.values(tables).map((table: Table<unknown>) => table.clear()))
+      // The downloaded window; the changes waiting for the server stay (removing them would lose what the user did).
+      await Promise.all([tables.refuelings, tables.expenses, tables.vehicles, tables.cursors].map((table: Table<unknown>) => table.clear()))
       cache.clear()
     },
   }

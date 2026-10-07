@@ -43,7 +43,8 @@
     "undoFailed": "Nem sikerült visszaállítani. A kukában megtalálod.",
     "vehicleTrashed": "{{name}} a kukába került.",
     "refuelingTrashed": "A(z) {{date}} tankolás a kukába került.",
-    "expenseTrashed": "{{title}} a kukába került."
+    "expenseTrashed": "{{title}} a kukába került.",
+    "savedOnDevice": "Elmentve ezen az eszközön · kapcsolatkor szinkronizálódik."
   },
   "install": {
     "title": "A Tankstat telepítése",
@@ -1114,5 +1115,17 @@
     "deleteDescription": "A(z) {{title}} többé nem lesz nyomon követve. A belőle már rögzített költségek megmaradnak.",
     "deleteConfirm": "Törlés",
     "photosNotKept": "Összeg nélkül nem rögzítünk költséget, így a fotókat sem őrizzük meg."
+  },
+  "offline": {
+    "pending": {
+      "new": "Új · nincs szinkronizálva",
+      "changed": "Módosítva · nincs szinkronizálva",
+      "deleted": "Törlendő · nincs szinkronizálva",
+      "restored": "Visszaállítva · nincs szinkronizálva"
+    },
+    "waiting_one": "{{count}} módosítás vár szinkronizálásra",
+    "waiting_other": "{{count}} módosítás vár szinkronizálásra",
+    "dialogNote": "Nincs kapcsolat. Amit mentesz, ezen az eszközön marad, és akkor kerül a szerverre, amikor újra van kapcsolat; a szerver akkor veti össze a többi bejegyzéssel.",
+    "discarded": "Törölve erről az eszközről; még nem került a szerverre."
   }
 }
