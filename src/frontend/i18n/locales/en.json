@@ -283,7 +283,23 @@
     "noAuth": "Authentication is disabled, so there is no personal account.",
     "managed": "Your password is managed by your identity provider or proxy.",
     "avatar": "Profile picture",
-    "avatarHelp": "Shown next to your name for other people."
+    "avatarHelp": "Shown next to your name for other people.",
+    "sessions": {
+      "title": "Signed-in devices",
+      "description": "Where you are signed in. A device stays signed in as long as it is used now and then; signing it out here ends its session at once.",
+      "unknownDevice": "Unknown device",
+      "thisDevice": "This device",
+      "signedIn": "Signed in {{time}}",
+      "lastUsed": "last used {{time}}",
+      "signOut": "Sign out",
+      "signOutAria": "Sign out of {{device}}",
+      "signOutOthers": "Sign out everywhere else",
+      "signOutOthersTitle": "Sign out everywhere else?",
+      "signOutOthersDescription": "Every other device has to sign in again. This one stays signed in.",
+      "signedOutOne": "{{device}} is signed out.",
+      "signedOutOthers_one": "{{count}} other device is signed out.",
+      "signedOutOthers_other": "{{count}} other devices are signed out."
+    }
   },
   "admin": {
     "title": "Administration",

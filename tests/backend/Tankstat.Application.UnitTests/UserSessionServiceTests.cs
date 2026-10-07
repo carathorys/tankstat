@@ -126,6 +126,49 @@ public class UserSessionServiceTests
     }
 
     [Fact]
+    public async Task APerson_SeesTheirOwnDevices_AndSignsThemOut()
+    {
+        var (w, alice, laptop) = await Setup();
+        var bob = w.AddUser("bob@x.co");
+        w.Clock.Advance(TimeSpan.FromHours(1));
+        var phone = await w.SessionService.IssueAsync(alice, "Safari on iOS", default);
+        var bobs = await w.SessionService.IssueAsync(bob, null, default);
+        var ended = await w.SessionService.IssueAsync(alice, null, default);
+        await w.SessionService.RevokeByTokenAsync(ended.Token, default);
+        w.Current.SignInAs(alice);
+
+        Assert.Equal([phone.Session.Id, laptop.Session.Id], (await w.SessionService.ListMineAsync(default)).Select(s => s.Id)); // most recently used first
+
+        Assert.False(await w.SessionService.RevokeMineAsync(bobs.Session.Id, default)); // not hers
+        Assert.True(await w.SessionService.RevokeMineAsync(phone.Session.Id, default));
+        Assert.False(await w.SessionService.RevokeMineAsync(phone.Session.Id, default)); // already ended
+        Assert.Null(bobs.Session.RevokedAt);
+        Assert.Equal([laptop.Session.Id], (await w.SessionService.ListMineAsync(default)).Select(s => s.Id));
+    }
+
+    [Fact]
+    public async Task SigningOutEverywhereElse_KeepsThisDevice()
+    {
+        var (w, alice, laptop) = await Setup();
+        await w.SessionService.IssueAsync(alice, null, default);
+        await w.SessionService.IssueAsync(alice, null, default);
+        w.Current.SignInAs(alice);
+
+        Assert.Equal(2, await w.SessionService.RevokeMyOthersAsync(laptop.Session.Id, default));
+
+        Assert.Equal([laptop.Session.Id], (await w.SessionService.ListMineAsync(default)).Select(s => s.Id));
+    }
+
+    [Fact]
+    public async Task WithoutSessions_TheListIsNotAvailable()
+    {
+        var w = new World(AuthMode.ProxyHeader);
+        w.Current.SignInAs(w.AddUser("alice@x.co"));
+
+        Assert.Equal("auth.modeUnavailable", (await Assert.ThrowsAsync<Tankstat.Domain.DomainException>(() => w.SessionService.ListMineAsync(default))).Key);
+    }
+
+    [Fact]
     public async Task EndedSessions_AreDeletedAWeekLater_WhenSomeoneRefreshes()
     {
         var (w, alice, first) = await Setup();

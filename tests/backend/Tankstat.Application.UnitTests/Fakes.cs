@@ -511,6 +511,8 @@ internal sealed class InMemorySessions : IUserSessionRepository
     public Task<UserSession?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(s => s.Id == id));
     public Task AddAsync(UserSession session, CancellationToken ct) { Items.Add(session); return Task.CompletedTask; }
     public Task UpdateAsync(UserSession session, CancellationToken ct) => Task.CompletedTask; // shared references
+    public Task<IReadOnlyList<UserSession>> ListUsableForUserAsync(Guid userId, DateTimeOffset now, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<UserSession>>(Items.Where(s => s.UserId == userId && s.IsUsable(now)).OrderByDescending(s => s.LastUsedAt).ThenBy(s => s.Id).ToList());
     public Task<int> RevokeForUserAsync(Guid userId, Guid? except, DateTimeOffset now, CancellationToken ct)
     {
         var ending = Items.Where(s => s.UserId == userId && s.RevokedAt is null && s.Id != except).ToList();
@@ -663,7 +665,7 @@ internal sealed class World
         UiSettings = new UiSettingsService(UiSettingsStore, Access, Clock, Log.For<UiSettingsService>());
         VehicleOrder = new VehicleOrderService(VehicleOrders, Vehicles, Access, Log.For<VehicleOrderService>());
         Sharing = new ResourceSharingService(Vehicles, ResourceGrants, Users, Access, Notifier, Log.For<ResourceSharingService>());
-        SessionService = new UserSessionService(Sessions, Users, new FakeSecretProtector(), options, Clock, Log.For<UserSessionService>());
+        SessionService = new UserSessionService(Sessions, Users, new FakeSecretProtector(), Access, options, Clock, Log.For<UserSessionService>());
         Auth = new AuthService(Users, new FakeHasher(), resets, SessionService, Access, options, Clock, Log.For<AuthService>());
         UserService = new UserService(Access, Users, UserData, resets, SessionService, new FakeHasher(), ImageService, ImportSessions, options, Log.For<UserService>());
         AccessAdmin = new AccessAdminService(Access, Settings, Grants, Users, Notifier, Log.For<AccessAdminService>());

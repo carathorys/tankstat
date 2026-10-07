@@ -2,7 +2,9 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
+using Tankstat.Domain;
 using Tankstat.Domain.Users;
 
 namespace Tankstat.Application.Users;
@@ -22,8 +24,8 @@ public sealed record RefreshedSession(User User, UserSession Session, string Tok
 /// administrator resets and disabling a user end the sessions, like they already end the access cookies (the session version).
 /// </summary>
 public sealed class UserSessionService(
-    IUserSessionRepository sessions, IUserRepository users, ISecretProtector protector, IOptions<AuthOptions> auth, TimeProvider clock,
-    ILogger<UserSessionService> logger)
+    IUserSessionRepository sessions, IUserRepository users, ISecretProtector protector, AccessService access, IOptions<AuthOptions> auth,
+    TimeProvider clock, ILogger<UserSessionService> logger)
 {
     /// <summary>Sessions that ended are kept this long (for whoever looks into a sign-out), then deleted.</summary>
     private static readonly TimeSpan KeepEnded = TimeSpan.FromDays(7);
@@ -37,6 +39,28 @@ public sealed class UserSessionService(
         await sessions.AddAsync(session, ct);
         logger.LogDebug("Session {SessionId} of user {UserId} started", session.Id, user.Id);
         return new IssuedSession(session, Token(session, secret));
+    }
+
+    /// <summary>The signed-in user's devices (the Account page), most recently used first.</summary>
+    public async Task<IReadOnlyList<UserSession>> ListMineAsync(CancellationToken ct)
+    {
+        var me = await MeAsync(ct);
+        return await sessions.ListUsableForUserAsync(me, clock.GetUtcNow(), ct);
+    }
+
+    /// <summary>Signs one of the user's own devices out; false when it is not theirs or already ended.</summary>
+    public async Task<bool> RevokeMineAsync(Guid sessionId, CancellationToken ct) => await RevokeAsync(sessionId, await MeAsync(ct), ct) is not null;
+
+    /// <summary>Signs every other device of the user out ("sign out everywhere else"); returns how many.</summary>
+    public async Task<int> RevokeMyOthersAsync(Guid? current, CancellationToken ct) => await RevokeOthersAsync(await MeAsync(ct), current, ct);
+
+    /// <summary>Sessions exist in Standalone and OIDC modes only (no authentication has none, a proxy signs every request in itself).</summary>
+    private async Task<Guid> MeAsync(CancellationToken ct)
+    {
+        var mode = auth.Value.Mode;
+        if (mode is not (AuthMode.Standalone or AuthMode.Oidc))
+            throw new DomainException("auth.modeUnavailable", $"This is not available in {mode} authentication mode.", new { Mode = mode.ToString() });
+        return (await access.RequirePrincipalAsync(ct)).Id;
     }
 
     /// <summary>Trades a refresh token for a new one; every refusal is the same <see cref="UnauthenticatedException"/>.</summary>
