@@ -112,7 +112,7 @@ The first `{` to the last `}` of what the model said is the JSON (a reasoning bl
 
 ## Replaying a photo by hand
 
-In Open WebUI, say: put the system prompt in the chat's system prompt, attach the photo and paste the contract into the same message. What can still make an answer differ from the app's: the photo (click a thumbnail in the add dialog and save it: that is the resized copy that is sent, a phone's original is a different picture to the model), the `response_format` (a chat interface usually sends none: try `Recognition__OpenAiCompatible__ResponseFormat=None` to compare), the temperature, and any system prompt or parameters the chat interface adds on its own.
+In a chat interface such as Open WebUI: put the system prompt in the chat's system prompt, attach the photo and paste the contract into the same message. What can still make an answer differ from the app's: the photo (click a thumbnail in the add dialog and save it: that is the resized copy that is sent, a phone's original is a different picture to the model), the `response_format` (a chat interface usually sends none: try `Recognition__OpenAiCompatible__ResponseFormat=None` to compare), the temperature, and any system prompt or parameters the chat interface adds on its own.
 
 ## Following a photo through the log
 

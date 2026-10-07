@@ -19,9 +19,9 @@ export default defineConfig({
         { tag: 'script', children: initSchemeScript(), injectTo: 'head' },
       ],
     },
-    // Installable web app (README "Install as an app"): the manifest, and a service worker that keeps the built shell (HTML, scripts,
+    // Installable web app (docs/install-as-an-app.md): the manifest, and a service worker that keeps the built shell (HTML, scripts,
     // styles, icons) so the app starts fast and opens offline. The API, sign-in, pictures and uploads are never cached. A new build
-    // takes over as soon as the browser has it: an open tab reloads once (never at the first install).
+    // is downloaded in the background and waits; UpdateNotice offers a Reload, and nothing reloads by itself.
     VitePWA({
       registerType: 'prompt', // a new version waits until the person reloads (UpdateNotice); nothing reloads by itself
       injectRegister: false, // main.tsx registers the worker through virtual:pwa-register

@@ -37,11 +37,11 @@ docker run -d --name tankstat -p 8080:8080 -v tankstat-data:/data \
   ghcr.io/carathorys/tankstat:latest
 ```
 
-Then open http://localhost:8080 and sign in with that e-mail and password. The `/data` volume holds the SQLite database and the uploaded pictures. To build the image yourself instead, run `mise run docker:build` and use `tankstat` as the image name.
+Then open http://localhost:8080 and sign in with that e-mail and password. The `/data` volume holds the SQLite database and the uploaded pictures. To build the image yourself instead, run `mise run docker:build` and use `tankstat:local` as the image name.
 
 > **Always set `Auth__Mode`.** The shipped `appsettings.json` runs without authentication: everyone sees and changes everything, and there is no administrator. Put TLS in front of the container, and never commit real credentials.
 
-Everything is configured through environment variables, see [Configuration](docs/configuration.md) and [Authentication](docs/authentication.md). Other databases, running without Docker and the release images are in [Self-hosting](docs/self-hosting.md).
+Everything is configured through environment variables, see [Configuration](docs/configuration.md) (the other databases included) and [Authentication](docs/authentication.md). Running without Docker and the release images are in [Self-hosting](docs/self-hosting.md).
 
 ## Documentation
 

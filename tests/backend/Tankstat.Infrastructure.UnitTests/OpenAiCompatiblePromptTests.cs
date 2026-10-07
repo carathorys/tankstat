@@ -63,13 +63,10 @@ public class OpenAiCompatiblePromptTests
     public void TheDocs_PrintTheBuiltInPrompt_SoAnOperatorsOwnCanStartFromIt()
     {
         var docs = DocsLines();
-        var start = Array.FindIndex(docs, line => line.Contains("The built-in system prompt is:", StringComparison.Ordinal)) + 1;
-        Assert.True(start > 0, $"{DocsPage} no longer says where the built-in prompt is");
-        var quoted = docs.Skip(start).SkipWhile(string.IsNullOrWhiteSpace).TakeWhile(line => line.StartsWith('>')).Select(line => line.TrimStart('>').Trim());
 
         Assert.Equal(
-            OpenAiCompatiblePrompt.DefaultSystemPrompt.ReplaceLineEndings("\n").Split('\n').Select(line => line.Trim()),
-            quoted);
+            string.Join("\n", OpenAiCompatiblePrompt.DefaultSystemPrompt.ReplaceLineEndings("\n").Split('\n').Select(line => line.Trim())),
+            Quoted(docs, "The built-in system prompt is:"));
     }
 
     [Fact]

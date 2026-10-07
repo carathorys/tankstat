@@ -7,10 +7,10 @@ For operators: the Docker image, the published build without Docker, and how rel
 One image contains everything: the .NET API serves GraphQL and the built web app, so a single container is the whole service. It is built from the `Dockerfile` (multi-stage: Node builds the frontend, the .NET SDK publishes the API, an Alpine ASP.NET runtime runs it as an unprivileged user).
 
 ```sh
-mise run docker:build            # or: docker build -t tankstat --build-arg VERSION=1.2.3 .
+mise run docker:build            # or: docker build -t tankstat:local --build-arg VERSION=1.2.3 .
 docker run -d --name tankstat -p 8080:8080 -v tankstat-data:/data \
   -e Auth__Mode=Standalone -e Auth__Standalone__AdminEmail=admin@example.com -e Auth__Standalone__AdminPassword='a long password' \
-  tankstat
+  tankstat:local
 ```
 
 - The app listens on port 8080 and is configured only through environment variables (`Database__*`, `Auth__*`, `Smtp__*`, ...; see [Configuration](configuration.md) and [Authentication](authentication.md)). Without `Auth__Mode` the image uses whatever `appsettings.json` was built in, so always set it explicitly (and never bake credentials into `appsettings.json`).

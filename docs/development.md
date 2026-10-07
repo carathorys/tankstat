@@ -43,7 +43,7 @@ Run both in separate terminals:
 
 ```sh
 mise run dev:api   # API with hot reload on http://localhost:5080 (GraphQL IDE at /graphql)
-mise run dev:web   # Vite dev server, proxies /graphql and /auth to :5080
+mise run dev:web   # Vite dev server, proxies /graphql, /auth/oidc/, /media and /imports to :5080
 ```
 
 ## Testing
@@ -89,6 +89,10 @@ A unit test fails if any provider's migrations are out of sync with the model.
 ## GraphQL types are generated
 
 Nothing GraphQL is typed by hand. `schema.graphql` is exported from the API (`mise run schema:export`) and, with the operations in `src/frontend/graphql/*.graphql`, GraphQL Code Generator writes `src/frontend/gql/generated.ts`. After changing the API schema or a `.graphql` document run `mise run codegen` and commit the results; `mise run test` (and an API test) fail if they are stale.
+
+## Import formats
+
+Importing lives in `Application/Imports`: one `IImportParser` per file format turns an uploaded file into an `ImportBatch` (vehicle, fuel logs, expenses, recurring reminders), and `ImportService` keeps the batch in memory for the preview and commits it row by row through the same services the dialogs use, so every rule applies and a bad row is reported rather than fatal. `FuelioCsvParser` is the first format. A new format is a new parser with its own tests, and its name added to `FORMATS` in `src/frontend/pages/ImportPage.tsx` (with the `import.file.formats.<name>` texts in both languages).
 
 ## Languages
 

@@ -2,11 +2,11 @@
 
 For operators: the database, uploaded files, defaults, notification limits and the log. Authentication has [a page of its own](authentication.md).
 
-Every setting below can be given in `appsettings.json` or as an environment variable, where `:` becomes `__` (double underscore); environment variables override the file. The same holds for the [authentication](authentication.md) and [photo reading](photo-reading.md) settings.
+Every setting below can be given in `appsettings.json` or as an environment variable, where `:` becomes `__` (double underscore); environment variables override the file (the standard ASP.NET Core order: appsettings.json < appsettings.{Environment}.json < environment variables < command line). The same holds for the [authentication](authentication.md) and [photo reading](photo-reading.md) settings.
 
 ## Database
 
-The database is chosen through the `Database` section. If nothing is configured, the app falls back to a SQLite file, `tankstat.db`, in the working directory. Values can be set in `appsettings.json` or overridden by environment variables, which take precedence (standard ASP.NET Core order: appsettings.json < appsettings.{Environment}.json < environment variables < command line).
+The database is chosen through the `Database` section. If nothing is configured, the app falls back to a SQLite file, `tankstat.db`, in the working directory.
 
 | Setting | Environment variable | Values |
 | --- | --- | --- |
