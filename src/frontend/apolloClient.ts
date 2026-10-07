@@ -3,6 +3,8 @@ import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { ErrorLink } from '@apollo/client/link/error'
 import { from, mergeMap, of } from 'rxjs'
 import { refreshSession } from './auth/refresh.ts'
+import { OfflineError } from './offline/errors.ts'
+import { createOfflineLink } from './offline/offlineLink.ts'
 
 /**
  * Writes what went wrong in a request to the browser console, for whoever has to find out why: the screen shows the user a message and
@@ -11,6 +13,7 @@ import { refreshSession } from './auth/refresh.ts'
  * without a key is not. Nothing leaves the browser, and the variables of the request (a password) are never printed.
  */
 export function reportOperationError(error: unknown, operationName: string | undefined): void {
+  if (error instanceof OfflineError) return // not sent while the server is out of reach: expected, and the screen says so
   const name = operationName ?? '(unnamed)'
   if (CombinedGraphQLErrors.is(error)) {
     const unexpected = error.errors.filter((e) => typeof e.extensions?.key !== 'string')
@@ -71,5 +74,5 @@ export const refreshLink = new ApolloLink((operation, forward) => {
 
 export function createApolloClient(uri = '/graphql') {
   const errors = new ErrorLink(({ error, operation }) => reportOperationError(error, operation.operationName))
-  return new ApolloClient({ link: ApolloLink.from([errors, refreshLink, new HttpLink({ uri })]), cache: new InMemoryCache() })
+  return new ApolloClient({ link: ApolloLink.from([errors, createOfflineLink(), refreshLink, new HttpLink({ uri })]), cache: new InMemoryCache() })
 }

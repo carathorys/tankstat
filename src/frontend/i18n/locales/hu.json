@@ -106,7 +106,14 @@
     "healthy": "Működik",
     "degraded": "Korlátozott",
     "api": "API:",
-    "unreachable": "Az API nem érhető el: {{message}}"
+    "unreachable": "A szerver nem érhető el",
+    "offline": "Nincs kapcsolat",
+    "retry": "Újra"
+  },
+  "connectivity": {
+    "offline": "Offline",
+    "announceOffline": "Nincs kapcsolat. Ami betöltődött, látható marad; a mentéshez a szerver kell.",
+    "announceOnline": "Újra van kapcsolat."
   },
   "fuel": {
     "PETROL": "Benzin",
@@ -354,6 +361,7 @@
   },
   "errors": {
     "network": "A szerver nem érhető el. Ellenőrizd a kapcsolatot, és próbáld újra.",
+    "offline": "A szerver most nem érhető el. Ez újra működik, amint visszatér a kapcsolat.",
     "auth": {
       "unauthenticated": "A folytatáshoz jelentkezz be.",
       "forbidden": "Ehhez nincs jogosultságod.",

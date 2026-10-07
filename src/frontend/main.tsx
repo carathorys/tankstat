@@ -8,6 +8,7 @@ import { BrowserRouter } from 'react-router'
 import { registerSW } from 'virtual:pwa-register'
 import App from './App.tsx'
 import { createApolloClient } from './apolloClient.ts'
+import { startOfflineRuntime } from './offline/runtime.ts'
 import { initI18n } from './i18n/index.ts'
 import { appUpdate } from './pwa/appUpdate.ts'
 import { watchForUpdates } from './pwa/watchForUpdates.ts'
@@ -31,11 +32,15 @@ const updateSW = registerSW({
 // The translations are ready before the first render, so the UI never flashes untranslated.
 await initI18n()
 
+// One client for the page; while the server is out of reach it is asked again now and then (see offline/connectivity.ts).
+const client = createApolloClient()
+startOfflineRuntime(client)
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeRoot>
       <MotionConfig reducedMotion="user">
-        <ApolloProvider client={createApolloClient()}>
+        <ApolloProvider client={client}>
           <BrowserRouter>
             <App />
           </BrowserRouter>

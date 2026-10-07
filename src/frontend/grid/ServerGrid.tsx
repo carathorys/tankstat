@@ -13,6 +13,7 @@ import { IconAction } from '../components/IconAction.tsx'
 import { visuallyHidden } from '../components/visuallyHidden.ts'
 import { ErrorMessage } from '../messages.tsx'
 import { ColumnsPopover } from './ColumnsPopover.tsx'
+import { useConnectivity } from '../offline/useConnectivity.ts'
 import { PAGE_SIZES, useGridSettings, type PaginationState } from './useGridSettings.ts'
 
 export type SortDirection = 'ASC' | 'DESC'
@@ -113,7 +114,8 @@ export function ServerGrid<TData extends object, TVars extends OperationVariable
   })
   const shown = (data ?? previousData) as TData | undefined
   const { rows, total } = shown ? select(shown) : { rows: NO_ROWS as Row[], total: 0 }
-  const polling = pollWhile?.(rows) ?? false
+  const { reachable } = useConnectivity()
+  const polling = (pollWhile?.(rows) ?? false) && reachable // no polling while the server is out of reach
   useEffect(() => {
     if (!polling) return
     startPolling(GRID_POLL_MS)

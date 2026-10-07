@@ -10,6 +10,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link as RouterLink } from 'react-router'
 import { IconAction } from '../components/IconAction.tsx'
+import { connectivity } from '../offline/connectivity.ts'
 import { visuallyHidden } from '../components/visuallyHidden.ts'
 import { LatestNotificationsDocument, UnreadNotificationCountDocument } from '../gql/generated.ts'
 import { ErrorMessage } from '../messages.tsx'
@@ -27,7 +28,7 @@ export function NotificationBell() {
   const { t } = useTranslation()
   const { data } = useQuery(UnreadNotificationCountDocument, {
     pollInterval: POLL_MS,
-    skipPollAttempt: () => document.hidden,
+    skipPollAttempt: () => document.hidden || !connectivity.reachable, // nothing to ask while the server is out of reach
     fetchPolicy: 'cache-and-network',
   })
   const unread = data?.notificationCount ?? 0
