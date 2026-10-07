@@ -25,7 +25,7 @@ Under the hood: a React + TypeScript frontend (Vite, MUI) and a .NET 10 backend 
 - **Sharing and access control**: owners, administrators, instance-wide defaults, per-user grants, and sharing a single vehicle's logs.
 - **Sign-in your way**: none, the app's own accounts, OpenID Connect, or a trusted reverse proxy (Authelia, Authentik, oauth2-proxy, ...).
 - **Your database**: SQLite (no setup), PostgreSQL, SQL Server or MySQL.
-- **Installable web app** with an offline shell, the screens you opened kept on the device for when the server is out of reach, and an update prompt that never reloads on its own.
+- **Installable web app** that works while the server is out of reach (your entries of a time window you choose are downloaded to the device and kept current), with an update prompt that never reloads on its own.
 - **Follows you**: the sidebar, grid columns, language, colour mode and the order of your vehicles are saved with your account.
 - **English and Hungarian**, dark and light mode, built for keyboards, screen readers and reduced motion.
 

@@ -98,3 +98,32 @@ query OfflineSettings {
     }
   }
 }
+
+# The Account page's Offline data section: the vehicles a window can be chosen for (the home list, up to the server's page limit).
+query OfflineVehicles {
+  myVehicles(take: 200) {
+    id
+    name
+  }
+}
+
+# How many logs a download from this day (null: all of them) would bring, per vehicle: one request per start date on the page.
+query OfflineEstimates($from: LocalDate) {
+  myVehicles(take: 200) {
+    id
+    logCountSince(from: $from) {
+      refuelings
+      expenses
+    }
+  }
+}
+
+mutation UpdateOfflineSettings($input: UpdateOfflineSettingsInput!) {
+  updateOfflineSettings(input: $input) {
+    defaultWindow
+    vehicles {
+      vehicleId
+      window
+    }
+  }
+}

@@ -93,6 +93,28 @@ it('the signed-in devices and the confirmation to sign out the others are free o
   await check(document.body)
 })
 
+it("the Offline data section, a vehicle's window dialog and the timespan fields are free of violations", async () => {
+  const { view, ui } = setup('/account')
+  server.use(
+    graphql.query('OfflineVehicles', () => HttpResponse.json({ data: { myVehicles: [{ __typename: 'Vehicle', id: 'v1', name: 'Octavia' }] } })),
+    graphql.query('OfflineEstimates', () =>
+      HttpResponse.json({ data: { myVehicles: [{ __typename: 'Vehicle', id: 'v1', logCountSince: { __typename: 'LogCountSince', refuelings: 10, expenses: 2 } }] } }),
+    ),
+  )
+  const offline = await screen.findByRole('region', { name: 'Offline data' })
+  await within(offline).findByText('≈ 12')
+  await check(view.container)
+
+  await ui.click(within(offline).getByRole('button', { name: 'Change the window of Octavia' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Window of Octavia' })
+  await check(document.body)
+
+  await ui.click(within(dialog).getByRole('combobox', { name: 'What to download' }))
+  await ui.click(screen.getByRole('option', { name: 'Since a date' }))
+  await within(dialog).findByRole('group', { name: 'Since' }) // the date field (its picker loads lazily)
+  await check(document.body)
+})
+
 it('offline, the top bar, the footer and a page that needs the server are free of violations', async () => {
   const { view, ui } = setup('/')
   await screen.findByRole('heading', { level: 1 })
