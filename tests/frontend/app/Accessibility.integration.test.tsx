@@ -207,7 +207,7 @@ it('offline, the top bar, the footer and a page that needs the server are free o
 
   await screen.findByText('Offline')
   await ui.click(screen.getByRole('link', { name: 'Trash' }))
-  await screen.findByText(/The server cannot be reached right now/)
+  await screen.findAllByText(/This needs a connection to the server/)
   await check(view.container)
 })
 

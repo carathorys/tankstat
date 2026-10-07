@@ -4,6 +4,8 @@ import { graphql, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
 import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
+import { deviceData } from '../../../src/frontend/offline/deviceData.ts'
+import { memoryStorage } from '../../../src/frontend/offline/deviceStorage.ts'
 import { server } from '../support/server.ts'
 import { fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport, user } from '../support/mocks.tsx'
 
@@ -15,8 +17,8 @@ function setup() {
   stubViewport('desktop')
   const backend = fakeVehicleBackend([fakeVehicle()])
   server.use(sessionHandler('NONE', () => null), healthHandler, ...backend.handlers)
-  renderWithApollo(<App />, '/')
-  return { ...backend, ui: userEvent.setup() }
+  const view = renderWithApollo(<App />, '/')
+  return { ...backend, ui: userEvent.setup(), unmount: view.unmount }
 }
 
 const status = () => screen.getAllByRole('status').find((s) => s.textContent?.includes('offline') || s.textContent?.includes('online'))
@@ -36,7 +38,7 @@ it('a request that gets no answer marks the app offline: the top bar and the foo
   expect(screen.getByText('Octavia')).toBeInTheDocument() // what was loaded stays
 })
 
-it('while the server is out of reach nothing is sent, and a page says so calmly instead of with an error', async () => {
+it('while the server is out of reach nothing is sent, and a page that needs it says so calmly instead of with an error', async () => {
   const { ui } = setup()
   await screen.findByText('Octavia')
   let sent = 0
@@ -45,7 +47,7 @@ it('while the server is out of reach nothing is sent, and a page says so calmly 
 
   await ui.click(screen.getByRole('link', { name: 'Trash' }))
 
-  expect(await screen.findByText('The server cannot be reached right now. This works again once you are back online.')).toBeInTheDocument()
+  expect((await screen.findAllByText('This needs a connection to the server. It works again once you are back online.')).length).toBeGreaterThan(0)
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   expect(sent).toBe(0)
 })
@@ -63,6 +65,81 @@ it('signing out while the server is out of reach says why nothing happened', asy
 
   expect(await screen.findByText('The server cannot be reached right now. This works again once you are back online.')).toBeInTheDocument()
   expect(screen.getByText('Octavia')).toBeInTheDocument() // still signed in
+})
+
+it('what was opened online opens again without the server, after a restart too, and nothing is sent', async () => {
+  const storage = memoryStorage()
+  deviceData.reset(storage)
+  const view = setup()
+  await screen.findByText('Octavia')
+  await deviceData.settled()
+  view.unmount()
+
+  // The next start: the server is out of reach from the beginning.
+  await deviceData.boot(storage)
+  connectivity.failed()
+  let sent = 0
+  server.use(graphql.query('Welcome', () => (sent++, HttpResponse.error())), graphql.query('Session', () => (sent++, HttpResponse.error())))
+  renderWithApollo(<App />, '/')
+
+  expect(await screen.findByText('Octavia')).toBeInTheDocument()
+  expect(screen.getByText('Offline')).toBeInTheDocument()
+  expect(sent).toBe(0)
+})
+
+it('a page that was never opened online says it is not on this device yet', async () => {
+  const { ui } = setup()
+  await screen.findByText('Octavia')
+  await act(() => connectivity.failed())
+
+  await ui.click(screen.getByRole('link', { name: /Octavia/ }))
+
+  expect((await screen.findAllByText(/This is not on this device yet/)).length).toBeGreaterThan(0)
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
+
+it('what the device kept for one account never shows for another, and signing out leaves nothing to open', async () => {
+  const storage = memoryStorage()
+  deviceData.reset(storage)
+  stubViewport('desktop')
+  let current: ReturnType<typeof user> | null = user({ id: 'alice', displayName: 'Alice' })
+  const alice = fakeVehicleBackend([fakeVehicle({ name: 'Alice car' })])
+  server.use(sessionHandler('STANDALONE', () => current), healthHandler, ...alice.handlers)
+  const first = renderWithApollo(<App />, '/')
+  await screen.findByText('Alice car')
+  await deviceData.settled()
+  first.unmount()
+
+  // Bob signs in on the same device.
+  await deviceData.boot(storage)
+  current = user({ id: 'bob', displayName: 'Bob' })
+  server.use(...fakeVehicleBackend([fakeVehicle({ id: 'v2', name: 'Bob car' })]).handlers)
+  const second = renderWithApollo(<App />, '/')
+  await screen.findByText('Bob car')
+  await deviceData.settled()
+  second.unmount()
+
+  await deviceData.boot(storage)
+  connectivity.failed()
+  const third = renderWithApollo(<App />, '/')
+  expect(await screen.findByText('Bob car')).toBeInTheDocument()
+  expect(screen.queryByText('Alice car')).not.toBeInTheDocument()
+  third.unmount()
+
+  // Bob signs out: the next start without the server opens nobody's data.
+  connectivity.reset()
+  await deviceData.boot(storage)
+  current = null
+  const fourth = renderWithApollo(<App />, '/')
+  await screen.findByRole('button', { name: /sign in/i })
+  await deviceData.settled()
+  fourth.unmount()
+
+  await deviceData.boot(storage)
+  connectivity.failed()
+  renderWithApollo(<App />, '/')
+  expect(await screen.findByText(/The server cannot be reached right now/)).toBeInTheDocument()
+  expect(screen.queryByText('Bob car')).not.toBeInTheDocument()
 })
 
 it('Try again in the footer asks the server, and when it answers the app is back online', async () => {
