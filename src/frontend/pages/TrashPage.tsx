@@ -1,6 +1,7 @@
 import { useMutation } from '@apollo/client/react'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
+import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import { useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -124,10 +125,10 @@ function VehicleTrash({ run, setNotice }: Shared) {
         mobile: true,
         sortField: 'NAME',
         cell: (r) => (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <Stack component="span" direction="row" sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.5 }}>
             <VehiclePicture url={r.pictureUrl} name={r.name} width={40} />
             {r.name}
-          </span>
+          </Stack>
         ),
       },
       { id: 'licensePlate', label: 'columns.licensePlate', include: 'withLicensePlate', sortField: 'LICENSE_PLATE', cell: (r) => r.licensePlate ?? none },

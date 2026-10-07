@@ -22,7 +22,7 @@ afterEach(async () => {
   await i18n.changeLanguage('en')
 })
 
-// jsdom lacks a few browser APIs that Radix primitives (Select, popper) rely on.
+// jsdom lacks a few browser APIs that MUI and MUI X (pickers, grid, charts, popovers) rely on.
 Element.prototype.hasPointerCapture ??= () => false
 Element.prototype.setPointerCapture ??= () => {}
 Element.prototype.releasePointerCapture ??= () => {}

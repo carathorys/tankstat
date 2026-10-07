@@ -1,5 +1,4 @@
 import { ApolloProvider } from '@apollo/client/react'
-import { Theme } from '@radix-ui/themes'
 import { render } from '@testing-library/react'
 import { graphql, http, HttpResponse } from 'msw'
 import { MotionConfig } from 'motion/react'
@@ -16,11 +15,9 @@ export const renderWithApollo = (ui: ReactElement, route = '/') =>
   render(
     <ApolloProvider client={createApolloClient('http://localhost/graphql')}>
       <ThemeRoot instant>
-        <Theme>
-          <MotionConfig transition={{ duration: 0 }}>
-            <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
-          </MotionConfig>
-        </Theme>
+        <MotionConfig transition={{ duration: 0 }}>
+          <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
+        </MotionConfig>
       </ThemeRoot>
     </ApolloProvider>,
   )

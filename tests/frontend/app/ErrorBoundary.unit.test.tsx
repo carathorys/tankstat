@@ -1,10 +1,10 @@
-import { Theme } from '@radix-ui/themes'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { expect, it, vi } from 'vitest'
 import { ErrorBoundary } from '../../../src/frontend/ErrorBoundary.tsx'
 import en from '../../../src/frontend/i18n/locales/en.json'
+import { ThemeRoot } from '../../../src/frontend/theme/ThemeRoot.tsx'
 import { silenceConsoleError } from '../support/mocks.tsx'
 
 function Boom(): ReactNode {
@@ -13,11 +13,11 @@ function Boom(): ReactNode {
 
 it('shows what is inside while nothing fails', () => {
   render(
-    <Theme>
+    <ThemeRoot instant>
       <ErrorBoundary>
         <p>Fine</p>
       </ErrorBoundary>
-    </Theme>,
+    </ThemeRoot>,
   )
 
   expect(screen.getByText('Fine')).toBeInTheDocument()
@@ -28,11 +28,11 @@ it('a page that fails to render is replaced by a message and a reload button, an
   const consoleError = silenceConsoleError() // React prints a failed render too
   const onReload = vi.fn()
   render(
-    <Theme>
+    <ThemeRoot instant>
       <ErrorBoundary onReload={onReload}>
         <Boom />
       </ErrorBoundary>
-    </Theme>,
+    </ThemeRoot>,
   )
 
   expect(await screen.findByRole('alert')).toHaveTextContent(en.app.crashed)

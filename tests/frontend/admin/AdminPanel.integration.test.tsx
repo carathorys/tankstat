@@ -73,7 +73,7 @@ function adminServer(canSetUserPasswords = false) {
   return calls
 }
 
-/** Radix Select renders its options in a portal on the document body. */
+/** A Select renders its options in a portal on the document body. */
 const choose = async (ui: ReturnType<typeof userEvent.setup>, control: string, option: string) => {
   await ui.click(screen.getByRole('combobox', { name: control }))
   await ui.click(await screen.findByRole('option', { name: option }))
