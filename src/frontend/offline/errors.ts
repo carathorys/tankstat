@@ -1,11 +1,19 @@
 import { ServerError, ServerParseError } from '@apollo/client/errors'
 import { ApiError } from '../pictures/ApiError.ts'
 
+/**
+ * Why the device could not answer while the server is out of reach: nothing of it is kept here yet (`notLoaded`), or it is a screen that
+ * needs the server (`onlineOnly`). Without a reason: a change, which needs the server.
+ */
+export type OfflineReason = 'notLoaded' | 'onlineOnly'
+
 /** A request that was not sent because the server is known to be unreachable (see `connectivity`); the screen says so calmly. */
 export class OfflineError extends Error {
-  constructor() {
+  readonly reason?: OfflineReason
+  constructor(reason?: OfflineReason) {
     super('The server cannot be reached.')
     this.name = 'OfflineError'
+    this.reason = reason
   }
 }
 

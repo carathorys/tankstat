@@ -4,6 +4,7 @@ import { MotionGlobalConfig } from 'motion/react'
 import { afterEach } from 'vitest'
 import { i18n, initI18n } from '../../../src/frontend/i18n/index.ts'
 import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
+import { deviceData } from '../../../src/frontend/offline/deviceData.ts'
 import { appUpdate } from '../../../src/frontend/pwa/appUpdate.ts'
 import { installPrompt } from '../../../src/frontend/pwa/installPrompt.ts'
 
@@ -24,6 +25,7 @@ afterEach(async () => {
   installPrompt.reset()
   appUpdate.reset()
   connectivity.reset()
+  deviceData.reset() // a fresh, empty device: what one test kept is never another's
   await i18n.changeLanguage('en')
 })
 
