@@ -70,12 +70,7 @@ internal sealed class RefuelingRepository(IDbContextFactory<AppDbContext> dbFact
         return await db.Refuelings.IgnoreQueryFilters().Include(r => r.OdometerReading).Include(r => r.Cost).AsNoTracking().FirstOrDefaultAsync(r => r.Id == id, ct);
     }
 
-    public async Task AddAsync(Refueling refueling, CancellationToken ct)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        db.Refuelings.Add(refueling);
-        await db.SaveChangesAsync(ct);
-    }
+    public Task<bool> AddAsync(Refueling refueling, CancellationToken ct) => dbFactory.AddOnceAsync(refueling, refueling.Id, ct);
 
     public async Task UpdateAsync(Refueling refueling, LinkedChanges changes, CancellationToken ct)
     {

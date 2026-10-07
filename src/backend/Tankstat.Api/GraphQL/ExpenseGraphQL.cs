@@ -14,8 +14,10 @@ namespace Tankstat.Api.GraphQL;
 /// <param name="Currency">ISO 4217 code of the currency paid in; omit to use the instance default.</param>
 /// <param name="Odometer">Omit when the odometer was not noted (a photo that is still being read may fill it in).</param>
 /// <param name="PhotoIds">Photos uploaded for this expense beforehand (<c>PUT /media/vehicles/{id}/photo-drafts</c>); they become its photos.</param>
+/// <param name="Id">An id the client chose for the new expense; the same add sent again (a lost answer, a replay after being offline) answers with what it created. Omit to let the server choose.</param>
 public sealed record AddExpenseInput(
-    Guid VehicleId, DateOnly Date, string Title, string? Category, decimal? Amount, string? Currency, long? Odometer, string? Note, IReadOnlyList<Guid>? PhotoIds = null);
+    Guid VehicleId, DateOnly Date, string Title, string? Category, decimal? Amount, string? Currency, long? Odometer, string? Note, IReadOnlyList<Guid>? PhotoIds = null,
+    Guid? Id = null);
 
 /// <param name="Amount">May be omitted only while a photo of the expense is still being read.</param>
 /// <param name="Currency">Omit to keep the expense's currency.</param>
@@ -98,7 +100,7 @@ public sealed class ExpenseMutations
 {
     public Task<Expense> AddExpense(AddExpenseInput input, [Service] ExpenseService expenses, [Service] IOptions<VehicleDefaultsOptions> defaults, CancellationToken ct) =>
         expenses.AddAsync(input.VehicleId,
-            new ExpenseInput(input.Date, input.Title, input.Category, input.Amount, input.Currency ?? defaults.Value.Currency, input.Odometer, input.Note), ct, input.PhotoIds);
+            new ExpenseInput(input.Date, input.Title, input.Category, input.Amount, input.Currency ?? defaults.Value.Currency, input.Odometer, input.Note), ct, input.PhotoIds, input.Id);
 
     public Task<Expense> UpdateExpense(UpdateExpenseInput input, [Service] ExpenseService expenses, CancellationToken ct) =>
         expenses.UpdateAsync(input.Id, new ExpenseInput(input.Date, input.Title, input.Category, input.Amount, input.Currency, input.Odometer, input.Note), ct);

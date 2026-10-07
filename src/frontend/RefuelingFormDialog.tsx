@@ -14,6 +14,7 @@ import { useOdometerLabel } from './components/useOdometerLabel.ts'
 import { usePhotoSession } from './components/usePhotoSession.ts'
 import { DialogButtons, DialogCancel, DialogFrame } from './dialogs/DialogFrame.tsx'
 import { DialogTrigger } from './dialogs/DialogTrigger.tsx'
+import { useClientId } from './dialogs/useClientId.ts'
 import { useDialogState } from './dialogs/useDialogState.ts'
 import { CurrencyInput } from './forms/CurrencyInput.tsx'
 import { todayIso } from './forms/dates.ts'
@@ -40,6 +41,8 @@ import { useToast } from './toast/toastContext.ts'
 
 /** Volume, total cost and odometer are null only when they were left for a photo that is still being read. */
 export interface RefuelingValues {
+  /** A new log only: the id it gets on the server, the same for every Save of one opening of the dialog (see `useClientId`). */
+  id?: string
   date: string
   volume: number | null
   totalCost: number | null
@@ -105,6 +108,7 @@ export function RefuelingFormDialog({
   const { toast } = useToast()
   const [open, setOpen] = useDialogState({ open: openProp, onOpenChange })
   const editing = refuelingId !== undefined
+  const clientId = useClientId(open)
   const { queue, leftOut, saving, submit, reset } = usePhotoSession(vehicle.id, editing ? undefined : 'refueling', open)
   // Photos added to a saved log in this dialog (read like drafts), and whether they are still going up.
   const [added, setAdded] = useState<{ id: string; at: number }[]>([])
@@ -171,7 +175,7 @@ export function RefuelingFormDialog({
               />
             }
             onSubmit={async (values) => {
-              if (await submit((photoIds) => onSubmit(values, photoIds), editing)) {
+              if (await submit((photoIds) => onSubmit(editing ? values : { ...values, id: clientId }, photoIds), editing)) {
                 close()
                 toast(t('toast.saved'))
               }

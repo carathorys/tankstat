@@ -69,12 +69,7 @@ internal sealed class ExpenseRepository(IDbContextFactory<AppDbContext> dbFactor
         return await WithLinks(db.Expenses.IgnoreQueryFilters()).AsNoTracking().FirstOrDefaultAsync(e => e.Id == id, ct);
     }
 
-    public async Task AddAsync(Expense expense, CancellationToken ct)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        db.Expenses.Add(expense);
-        await db.SaveChangesAsync(ct);
-    }
+    public Task<bool> AddAsync(Expense expense, CancellationToken ct) => dbFactory.AddOnceAsync(expense, expense.Id, ct);
 
     public async Task UpdateAsync(Expense expense, LinkedChanges changes, CancellationToken ct)
     {

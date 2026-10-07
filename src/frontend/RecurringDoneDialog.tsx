@@ -15,6 +15,7 @@ import { useOdometerLabel } from './components/useOdometerLabel.ts'
 import { usePhotoSession } from './components/usePhotoSession.ts'
 import { DialogButtons, DialogCancel, DialogFrame } from './dialogs/DialogFrame.tsx'
 import { DialogTrigger } from './dialogs/DialogTrigger.tsx'
+import { useClientId } from './dialogs/useClientId.ts'
 import { useDialogState } from './dialogs/useDialogState.ts'
 import { CurrencyInput } from './forms/CurrencyInput.tsx'
 import { todayIso } from './forms/dates.ts'
@@ -49,6 +50,8 @@ export interface DoneValues {
   title: string
   /** Empty for none. */
   category: string
+  /** The id of the expense this visit logs (if it logs one), the same for every Save of one opening of the dialog (see `useClientId`). */
+  expenseId?: string
 }
 
 /** The fields photos can fill in (a dashboard: the odometer; an invoice: the cost and the day), and which read value goes into each. */
@@ -95,6 +98,7 @@ export function RecurringDoneDialog({
   const { t } = useTranslation()
   const { toast } = useToast()
   const [open, setOpen] = useDialogState({ open: openProp, onOpenChange })
+  const clientId = useClientId(open)
   const { queue, leftOut, saving, submit, reset } = usePhotoSession(vehicle.id, 'expense', open)
   const drafts = useDraftReadings(queue.uploaded, open)
 
@@ -131,7 +135,7 @@ export function RecurringDoneDialog({
             gallery={<PhotoGallery kind="expenses" photos={[]} queue={queue} readingIds={drafts.pending} disabled={saving} onChanged={() => undefined} />}
             onSubmit={async (values, logsExpense) => {
               // Without an expense the photos have nothing to belong to: they are not sent, and closing deletes them.
-              if (await submit((photoIds) => onSubmit(values, photoIds), !logsExpense)) {
+              if (await submit((photoIds) => onSubmit({ ...values, expenseId: clientId }, photoIds), !logsExpense)) {
                 close()
                 toast(t('toast.saved'))
               }

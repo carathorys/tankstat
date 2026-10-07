@@ -31,7 +31,8 @@ public interface IVehicleRepository
     /// <summary>The (live) vehicle whose picture is the given image.</summary>
     Task<Vehicle?> FindByPictureImageAsync(Guid imageId, CancellationToken ct);
 
-    Task AddAsync(Vehicle vehicle, CancellationToken ct);
+    /// <summary>Saves a new vehicle; false when one with its id already existed (a concurrent add with the same client id won).</summary>
+    Task<bool> AddAsync(Vehicle vehicle, CancellationToken ct);
     Task UpdateAsync(Vehicle vehicle, CancellationToken ct);
 
     /// <summary>Physically removes the trashed vehicles (and their logs) in scope.</summary>
