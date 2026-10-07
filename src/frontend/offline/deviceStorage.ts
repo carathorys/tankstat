@@ -19,6 +19,8 @@ export interface DeviceStore {
   prune(keep: number): Promise<void>
   /** The vehicles and logs downloaded for the offline window (see `pull.ts`). */
   readonly rows: RowStore
+  /** Everything kept for this user: the answers and the downloaded window. */
+  clear(): Promise<void>
   close(): void
 }
 
@@ -71,6 +73,7 @@ export interface RowStore {
   cursor(vehicleId: string): Promise<PullCursor | undefined>
   cursors(): Promise<PullCursor[]>
   putCursor(cursor: PullCursor): Promise<void>
+  clear(): Promise<void>
 }
 
 export interface DeviceStorage {
@@ -119,14 +122,15 @@ export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage
           created.createObjectStore('cursors', { keyPath: 'vehicleId' })
         }
       })
+      const rows = rowStore({
+        refuelings: idbTable<LogRow>(db, 'refuelings'),
+        expenses: idbTable<LogRow>(db, 'expenses'),
+        vehicles: idbTable<VehicleRow>(db, 'vehicles'),
+        cursors: idbTable<PullCursor>(db, 'cursors'),
+      })
       return {
         user,
-        rows: rowStore({
-          refuelings: idbTable<LogRow>(db, 'refuelings'),
-          expenses: idbTable<LogRow>(db, 'expenses'),
-          vehicles: idbTable<VehicleRow>(db, 'vehicles'),
-          cursors: idbTable<PullCursor>(db, 'cursors'),
-        }),
+        rows,
         get: (key) => done(db.transaction('snapshots').objectStore('snapshots').get(key)) as Promise<Snapshot | undefined>,
         async put(snapshot) {
           const tx = db.transaction('snapshots', 'readwrite')
@@ -152,6 +156,13 @@ export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage
             }
           }
           await committed(tx)
+        },
+        async clear() {
+          const names = ['snapshots', 'vehicles', 'refuelings', 'expenses', 'cursors']
+          const tx = db.transaction(names, 'readwrite')
+          names.forEach((name) => tx.objectStore(name).clear())
+          await committed(tx)
+          await rows.clear() // its copy in memory
         },
         close: () => db.close(),
       }
@@ -194,14 +205,19 @@ export function memoryStorage(): DeviceStorage {
         cursors: memoryTable<PullCursor>('vehicleId'),
       }
       memoryTables.set(user, tables)
+      const kept = rowStore(tables)
       return {
         user,
-        rows: rowStore(tables),
+        rows: kept,
         get: async (key) => rows.get(key),
         put: async (snapshot) => void rows.set(snapshot.key, snapshot),
         async prune(keep) {
           const oldest = [...rows.values()].sort((a, b) => a.at - b.at)
           oldest.slice(0, Math.max(0, oldest.length - keep)).forEach((s) => rows.delete(s.key))
+        },
+        async clear() {
+          rows.clear()
+          await kept.clear()
         },
         close: () => undefined,
       }
@@ -218,6 +234,7 @@ interface Table<T> {
   get(key: string): Promise<T | undefined>
   put(rows: T[]): Promise<void>
   delete(keys: string[]): Promise<void>
+  clear(): Promise<void>
 }
 
 interface Tables {
@@ -240,6 +257,7 @@ function idbTable<T>(db: IDBDatabase, name: string): Table<T> {
     get: (k) => done(read().get(k)) as Promise<T | undefined>,
     put: (rows) => (rows.length === 0 ? Promise.resolve() : write((store) => rows.forEach((row) => store.put(row)))),
     delete: (keys) => (keys.length === 0 ? Promise.resolve() : write((store) => keys.forEach((k) => store.delete(k)))),
+    clear: () => write((store) => store.clear()),
   }
 }
 
@@ -252,6 +270,7 @@ function memoryTable<T>(key: string): Table<T> {
     get: async (k) => rows.get(k),
     put: async (list) => list.forEach((row) => rows.set(keyOf(row), structuredClone(row))),
     delete: async (keys) => keys.forEach((k) => rows.delete(k)),
+    clear: async () => rows.clear(),
   }
 }
 
@@ -299,5 +318,9 @@ function rowStore(tables: Tables): RowStore {
     cursor: (vehicleId) => tables.cursors.get(vehicleId),
     cursors: () => tables.cursors.all(),
     putCursor: (cursor) => tables.cursors.put([cursor]),
+    async clear() {
+      await Promise.all(Object.values(tables).map((table: Table<unknown>) => table.clear()))
+      cache.clear()
+    },
   }
 }

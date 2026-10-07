@@ -10,13 +10,18 @@ import type { PullEngine } from './pull.ts'
  * server said who is signed in, whenever the server is back, and every hour while the app is shown.
  */
 let active: { probeNow: () => Promise<void> } | null = null
-let downloads: PullEngine | null = null
+let loadEngine: (() => Promise<PullEngine>) | null = null
 
 /** How often a page that stays open downloads what changed. */
 export const PULL_EVERY_MS = 60 * 60 * 1000
 
-/** The download of the offline window, for the screens that show or start it; null until it first ran. */
-export const offlineDownload = (): PullEngine | null => downloads
+/** The download of the offline window, for the screens that show or start it (loaded on first use); null before the runtime started. */
+export const offlineDownload = (): Promise<PullEngine> | null => loadEngine?.() ?? null
+
+/** Tests: the engine the screens get, without starting the runtime's probes and timers. */
+export function provideOfflineDownload(engine: PullEngine | null) {
+  loadEngine = engine ? () => Promise.resolve(engine) : null
+}
 
 /** Asks the server at once whether it can be reached again (the footer's Try again). */
 export function probeServer(client: ApolloClient): Promise<unknown> {
@@ -31,11 +36,8 @@ export function startOfflineRuntime(client: ApolloClient) {
   })
   // The download engine is loaded when it first has something to do, not with the app's first paint.
   let pull: Promise<PullEngine> | null = null
-  const engine = () =>
-    (pull ??= import('./pull.ts').then(({ createPullEngine }) => {
-      downloads = createPullEngine({ client })
-      return downloads
-    }))
+  const engine = () => (pull ??= import('./pull.ts').then(({ createPullEngine }) => createPullEngine({ client })))
+  loadEngine = engine
   const download = () => {
     if (deviceData.user !== null && connectivity.reachable && document.visibilityState !== 'hidden') void engine().then((e) => e.run())
   }
@@ -62,7 +64,7 @@ export function startOfflineRuntime(client: ApolloClient) {
       document.removeEventListener('visibilitychange', download)
       clearInterval(hourly)
       active = null
-      downloads = null
+      loadEngine = null
     },
   }
 }

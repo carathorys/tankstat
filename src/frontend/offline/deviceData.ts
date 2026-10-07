@@ -102,6 +102,13 @@ export const deviceData = {
     return write
   },
 
+  /** Removes everything this device keeps for the signed-in user (the next download brings their window again). */
+  async removeAll(): Promise<void> {
+    await switching
+    await writes
+    if (store && confirmed) await store.clear()
+  },
+
   /** Tests: waits until the answers on their way to the device are kept. */
   async settled(): Promise<void> {
     await switching

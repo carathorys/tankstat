@@ -10,6 +10,9 @@ import { snapshotKey } from './snapshotPolicy.ts'
 
 /** Rows per table and page (the server's maximum). */
 export const PAGE_SIZE = 200
+/** Where the time of the last complete download is kept with the user's data (not an operation's answer). */
+export const LAST_PULL_KEY = 'meta:lastPull'
+
 /** The home list the download covers, like the Arrange dialog: the user's vehicles up to the server's page limit. */
 export const MAX_VEHICLES = 200
 
@@ -192,7 +195,9 @@ export function createPullEngine({ client, device = deviceData, now = () => new 
         }
       }
       await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, worker))
-      set({ status: 'idle', lastPullAt: Date.now() })
+      const finished = Date.now()
+      await device.keep(LAST_PULL_KEY, finished)
+      set({ status: 'idle', lastPullAt: finished })
     } catch (error) {
       set({ status: 'idle', interrupted: isConnectionFailure(error) })
       if (!isConnectionFailure(error)) console.warn('The offline download failed; the next one tries again.', error)
