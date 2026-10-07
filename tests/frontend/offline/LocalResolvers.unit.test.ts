@@ -116,3 +116,27 @@ describe('the same order as the server', () => {
     expect(ids(sortLogs('expenses', toRows(fixture.expenses), field, direction as 'ASC' | 'DESC', vehicles))).toEqual(expected)
   })
 })
+
+describe('the changes waiting on this device', () => {
+  it('lay over the rows: an add is a row, an update its values, a restore takes it out of the trash, a trash leaves it', async () => {
+    const { outbox } = await import('../../../src/frontend/offline/outbox.ts')
+    const { deviceData } = await import('../../../src/frontend/offline/deviceData.ts')
+    const { withChanges } = await import('../../../src/frontend/offline/localResolvers.ts')
+    deviceData.reset(memoryStorage())
+    await deviceData.signedIn('u1')
+    await outbox.reload()
+    await outbox.enqueue({ id: 'n', entity: 'refuelings', action: 'add', vehicleId: 'v1', targetId: 'n', input: { id: 'n', date: '2026-10-02', volume: 20, totalCost: 50, currency: 'EUR', odometer: 1500 } })
+    await outbox.enqueue({ id: 'u', entity: 'refuelings', action: 'update', vehicleId: 'v1', targetId: 'a', input: { id: 'a', volume: 10, totalCost: 25, date: '2026-09-01' }, expectedVersion: 1 })
+    await outbox.enqueue({ id: 'r', entity: 'refuelings', action: 'restore', vehicleId: 'v1', targetId: 't', expectedVersion: 2 })
+    await outbox.enqueue({ id: 'x', entity: 'refuelings', action: 'trash', vehicleId: 'v1', targetId: 'b', expectedVersion: 1 })
+
+    const rows = withChanges('refuelings', [refueling('a'), refueling('b'), refueling('t', { deletedAt: '2026-09-10T00:00:00Z' })], 'v1')
+    const byId = new Map(rows.map((r) => [r.id, r]))
+
+    expect(byId.get('n')).toMatchObject({ __typename: 'Refueling', volume: 20, pricePerUnit: 2.5, consumption: null, version: 0, reviewState: 'NONE' })
+    expect(byId.get('a')).toMatchObject({ volume: 10, pricePerUnit: 2.5 })
+    expect(byId.get('t')?.deletedAt).toBeNull()
+    expect(byId.get('b')?.deletedAt).toBeNull() // waiting to be trashed: still listed (marked)
+    expect(outbox.markOf('refuelings', 'b')).toBe('deleted')
+  })
+})

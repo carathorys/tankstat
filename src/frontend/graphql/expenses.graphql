@@ -14,6 +14,7 @@ query Expenses(
 ) {
   expenses(vehicleId: $vehicleId, orderBy: $orderBy, direction: $direction, skip: $skip, take: $take) {
     id
+    version
     date
     title
     reviewState
@@ -50,6 +51,7 @@ query ExpenseTrash(
 ) {
   expenseTrash(orderBy: $orderBy, direction: $direction, skip: $skip, take: $take) {
     id
+    version
     date
     title
     vehicle {
@@ -73,6 +75,7 @@ query ExpenseTrash(
 query ExpenseDetails($id: UUID!) {
   expense(id: $id) {
     id
+    version
     vehicleId
     date
     title

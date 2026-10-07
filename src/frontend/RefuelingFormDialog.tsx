@@ -38,6 +38,8 @@ import { useReadFill } from './recognition/useReadFill.ts'
 import { keepAmountsInStep, type AmountField } from './refuelingAmounts.ts'
 import { Loading } from './components/Loading.tsx'
 import { useToast } from './toast/toastContext.ts'
+import { OfflineNote } from './components/OfflineNote.tsx'
+import { outbox } from './offline/outbox.ts'
 
 /** Volume, total cost and odometer are null only when they were left for a photo that is still being read. */
 export interface RefuelingValues {
@@ -143,6 +145,7 @@ export function RefuelingFormDialog({
         description={editing ? t('refuelings.dialogEditDescription') : t('refuelings.dialogAddDescription')}
       >
         {error && <ErrorMessage error={error} />}
+        <OfflineNote />
         {!error && !ready && <Loading />}
         {editing && details.data && !existing && <ErrorMessage>{t('errors.refueling.notFound')}</ErrorMessage>}
         {leftOut > 0 && <PhotosLeftOut count={leftOut} />}
@@ -177,7 +180,8 @@ export function RefuelingFormDialog({
             onSubmit={async (values) => {
               if (await submit((photoIds) => onSubmit(editing ? values : { ...values, id: clientId }, photoIds), editing)) {
                 close()
-                toast(t('toast.saved'))
+                // Kept on the device for the server (the server was out of reach): the toast says so.
+                toast(outbox.markOf('refuelings', editing ? refuelingId! : clientId) ? t('toast.savedOnDevice') : t('toast.saved'))
               }
             }}
           />

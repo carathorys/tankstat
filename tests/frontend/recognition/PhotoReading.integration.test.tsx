@@ -61,7 +61,8 @@ function setupRefuelings(recognition = fakeRecognition({ results: [fuelReceipt] 
 }
 
 async function openAddRefueling(ui: ReturnType<typeof userEvent.setup>) {
-  await screen.findAllByRole('button', { name: /^Edit the refuelling/ })
+  // The file's first test also loads the page and the data grid for the first time, which can take longer than the usual wait.
+  await screen.findAllByRole('button', { name: /^Edit the refuelling/ }, { timeout: 10_000 })
   await ui.click(screen.getByRole('button', { name: 'Add refuelling' }))
   const dialog = await screen.findByRole('dialog', { name: 'Add refuelling' })
   await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))

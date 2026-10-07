@@ -1,4 +1,4 @@
-import { useMutation } from '@apollo/client/react'
+import { useApolloClient, useMutation } from '@apollo/client/react'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Stack from '@mui/material/Stack'
@@ -34,6 +34,9 @@ import { ServerGrid, type GridColumn } from '../grid/ServerGrid.tsx'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { useFormat } from '../i18n/format.ts'
 import { ErrorMessage, SuccessMessage } from '../messages.tsx'
+import type { LogEntity } from '../offline/changes.ts'
+import { submitChange } from '../offline/submitChange.ts'
+import { uuidV4 } from '../offline/uuid.ts'
 
 type VehicleRow = TrashQuery['trash'][number]
 type LogRow = RefuelingTrashQuery['refuelingTrash'][number]
@@ -170,6 +173,7 @@ function RefuelingTrash({ run, setNotice }: Shared) {
   const { t } = useTranslation()
   const format = useFormat()
   const [restore] = useMutation(RestoreRefuelingDocument, refetch)
+  const restoreLog = useRestoreLog()
   const [emptyTrash] = useMutation(EmptyRefuelingTrashDocument, refetch)
 
   const columns = useMemo<GridColumn<LogRow, RefuelingTrashQueryVariables, RefuelingSortField>[]>(() => {
@@ -205,7 +209,7 @@ function RefuelingTrash({ run, setNotice }: Shared) {
         />
       )}
       actions={(r) => (
-        <Button variant="soft" aria-label={t('trash.restoreAria', { name: format.date(r.date) })} onClick={() => void run(() => restore({ variables: { id: r.id } }))}>
+        <Button variant="soft" aria-label={t('trash.restoreAria', { name: format.date(r.date) })} onClick={() => void run(() => restoreLog('refuelings', r, () => restore({ variables: { id: r.id } })))}>
           {t('trash.restore')}
         </Button>
       )}
@@ -217,6 +221,7 @@ function ExpenseTrash({ run, setNotice }: Shared) {
   const { t } = useTranslation()
   const format = useFormat()
   const [restore] = useMutation(RestoreExpenseDocument, refetch)
+  const restoreLog = useRestoreLog()
   const [emptyTrash] = useMutation(EmptyExpenseTrashDocument, refetch)
 
   const columns = useMemo<GridColumn<ExpenseRow, ExpenseTrashQueryVariables, ExpenseSortField>[]>(() => {
@@ -252,10 +257,19 @@ function ExpenseTrash({ run, setNotice }: Shared) {
         />
       )}
       actions={(r) => (
-        <Button variant="soft" aria-label={t('trash.restoreAria', { name: r.title })} onClick={() => void run(() => restore({ variables: { id: r.id } }))}>
+        <Button variant="soft" aria-label={t('trash.restoreAria', { name: r.title })} onClick={() => void run(() => restoreLog('expenses', r, () => restore({ variables: { id: r.id } })))}>
           {t('trash.restore')}
         </Button>
       )}
     />
   )
+}
+
+/** Restoring a log goes through `submitChange`: kept on the device while the server is out of reach, like every change of a log. */
+function useRestoreLog() {
+  const client = useApolloClient()
+  return <T,>(entity: LogEntity, row: { id: string; version: number; vehicle: { id: string } | null }, send: () => Promise<T>) =>
+    row.vehicle
+      ? submitChange(client, { id: uuidV4(), entity, action: 'restore', vehicleId: row.vehicle.id, targetId: row.id, expectedVersion: row.version }, send)
+      : send() // a vehicle that is gone: nothing to keep it for
 }

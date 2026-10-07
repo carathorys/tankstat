@@ -26,6 +26,9 @@ import { useFormat } from '../../i18n/format.ts'
 import { ErrorMessage } from '../../messages.tsx'
 import { RefuelingFormDialog } from '../../RefuelingFormDialog.tsx'
 import { anyAwaiting } from '../../recognition/review.ts'
+import { PendingBadge } from '../../components/PendingBadge.tsx'
+import { outbox } from '../../offline/outbox.ts'
+import { useLogChange } from '../../offline/useLogChange.ts'
 import { ReviewBadge } from '../../recognition/ReviewState.tsx'
 import { useToast } from '../../toast/toastContext.ts'
 import { REFUELING_QUERIES, useLogMutations } from './useLogMutations.ts'
@@ -47,8 +50,9 @@ export function RefuelingsPanel({
   const [updateRefueling] = useMutation(UpdateRefuelingDocument, refetch)
   const [deleteRefueling] = useMutation(DeleteRefuelingDocument, { ...refetch, refetchQueries: [...refetch.refetchQueries, 'RefuelingTrash'] })
   const [restoreRefueling] = useMutation(RestoreRefuelingDocument, { ...refetch, refetchQueries: [...refetch.refetchQueries, 'RefuelingTrash'] })
+  const changes = useLogChange('refuelings', vehicle.id)
   const { leaving, leave } = useLeavingRows()
-  const { undoable } = useToast()
+  const { toast, undoable } = useToast()
   const [actionError, setActionError] = useState<unknown>()
   const { units } = vehicle
 
@@ -66,6 +70,7 @@ export function RefuelingsPanel({
           <Stack sx={{ alignItems: 'flex-start', gap: 0.5 }}>
             {format.date(r.date)}
             <ReviewBadge state={r.reviewState} />
+            <PendingBadge entity="refuelings" id={r.id} />
           </Stack>
         ),
       },
@@ -108,8 +113,12 @@ export function RefuelingsPanel({
   async function moveToTrash(row: Row) {
     setActionError(undefined)
     try {
-      await leave(row.id, () => deleteRefueling({ variables: { id: row.id } }))
-      undoable(t('toast.refuelingTrashed', { date: format.date(row.date) }), () => restoreRefueling({ variables: { id: row.id } }))
+      // Kept on the device while the server is out of reach: the row stays, marked "to be removed", and Undo takes the change back. One
+      // added on this device and never sent is simply gone: there is nothing to undo on the server.
+      const neverSent = outbox.markOf('refuelings', row.id) === 'new'
+      const done = await changes.trash(row.id, row.version, () => leave(row.id, () => deleteRefueling({ variables: { id: row.id } })))
+      if (neverSent) toast(t('offline.discarded'))
+      else undoable(t('toast.refuelingTrashed', { date: format.date(row.date) }), () => changes.restore(row.id, done.queued ? row.version : row.version + 1, () => restoreRefueling({ variables: { id: row.id } })))
     } catch (e) {
       setActionError(e)
     }
@@ -149,7 +158,7 @@ export function RefuelingsPanel({
                     <Pencil size={16} aria-hidden />
                   </IconAction>
                 }
-                onSubmit={async (input) => void (await updateRefueling({ variables: { input: { ...input, id: r.id } } }))}
+                onSubmit={async (input) => void (await changes.update(r.id, r.version, { ...input, id: r.id }, () => updateRefueling({ variables: { input: { ...input, id: r.id } } })))}
               />
               <ConfirmDialog
                 trigger={

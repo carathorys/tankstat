@@ -43,7 +43,8 @@
     "undoFailed": "It could not be put back. Find it in the trash.",
     "vehicleTrashed": "{{name}} is in the trash.",
     "refuelingTrashed": "The refuelling of {{date}} is in the trash.",
-    "expenseTrashed": "{{title}} is in the trash."
+    "expenseTrashed": "{{title}} is in the trash.",
+    "savedOnDevice": "Saved on this device · syncs when online."
   },
   "install": {
     "title": "Install Tankstat",
@@ -1107,5 +1108,17 @@
     "deleteDescription": "{{title}} will no longer be tracked. Expenses already logged from it stay.",
     "deleteConfirm": "Delete",
     "photosNotKept": "Without an amount no expense is logged, so the photos are not kept."
+  },
+  "offline": {
+    "pending": {
+      "new": "New · not synced",
+      "changed": "Changed · not synced",
+      "deleted": "To be removed · not synced",
+      "restored": "Restored · not synced"
+    },
+    "waiting_one": "{{count}} change waiting to sync",
+    "waiting_other": "{{count}} changes waiting to sync",
+    "dialogNote": "You are offline. What you save is kept on this device and sent to the server when you are back online; the server checks it against the other entries then.",
+    "discarded": "Removed from this device; it had not been sent to the server."
   }
 }

@@ -18,12 +18,15 @@ let switching: Promise<void> = Promise.resolve()
 let puts = 0
 let writes: Promise<unknown> = Promise.resolve()
 const listeners = new Set<() => void>()
+/** Told whenever another user's data (or none) is open: what is read from it must be read again (`outbox.ts`). */
+const storeListeners = new Set<() => void>()
 
 async function openFor(user: string | null) {
   if (store?.user === user) return
   store?.close()
   store = null
   if (user !== null) store = await storage.open(user)
+  storeListeners.forEach((listener) => listener())
 }
 
 /**
@@ -66,6 +69,14 @@ export const deviceData = {
     listeners.add(listener)
     return () => {
       listeners.delete(listener)
+    }
+  },
+
+  /** Told whenever another user's data (or none) is open. */
+  onStoreChange(listener: () => void): () => void {
+    storeListeners.add(listener)
+    return () => {
+      storeListeners.delete(listener)
     }
   },
 
@@ -125,6 +136,7 @@ export const deviceData = {
     writes = Promise.resolve()
     puts = 0
     listeners.clear()
+    storeListeners.forEach((listener) => listener())
   },
 }
 
