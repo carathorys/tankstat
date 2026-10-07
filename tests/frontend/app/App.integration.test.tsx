@@ -55,7 +55,7 @@ it('shows a message for unknown pages', async () => {
   await screen.findByText('This page does not exist.')
 })
 
-it('shows an alert when the API is down, and says why in the console', async () => {
+it('says in the footer when the API is down, with a way to try again, and says why in the console', async () => {
   const consoleError = silenceConsoleError()
   server.use(
     sessionHandler('NONE', () => null),
@@ -64,7 +64,9 @@ it('shows an alert when the API is down, and says why in the console', async () 
   )
   renderWithApollo(<App />, '/vehicles')
 
-  await screen.findByRole('alert')
+  const footer = await screen.findByRole('contentinfo')
+  expect(await within(footer).findByText('The server cannot be reached')).toBeInTheDocument()
+  expect(within(footer).getByRole('button', { name: 'Try again' })).toBeInTheDocument()
   expect(consoleError).toHaveBeenCalledWith('GraphQL Health could not be completed', expect.anything())
 })
 
