@@ -20,8 +20,9 @@ import { ArrangeVehiclesDialog } from '../ArrangeVehiclesDialog.tsx'
 import { ErrorMessage } from '../messages.tsx'
 import { VehicleFormDialog } from '../VehicleFormDialog.tsx'
 import { visuallyHidden } from '../components/visuallyHidden.ts'
+import { HOME_PAGE_SIZE } from '../homePaging.ts'
 
-const PAGE_SIZE = 24
+const PAGE_SIZE = HOME_PAGE_SIZE
 
 /** The cards: one column on a phone, two from a tablet on, three on a very wide screen. */
 const cardGrid = {

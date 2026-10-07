@@ -23,6 +23,7 @@
   <!-- Answers as OpenAI-compatible servers write them (no producer in this repository): the adapter must understand exactly these. -->
   <ItemGroup>
     <None Include="..\contracts\openai-compatible\*.json" LinkBase="contracts\openai-compatible" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\contracts\log-order\*.json" LinkBase="contracts\log-order" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

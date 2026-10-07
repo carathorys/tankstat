@@ -882,7 +882,7 @@ export function fakeDashboardBackend(vehicle: FakeVehicle, charts: FakeChart[] =
 
   const handlers = [
     graphql.query('VehicleDashboard', ({ variables }) =>
-      HttpResponse.json({ data: { vehicle: variables.id === state.vehicle.id ? { id: state.vehicle.id, summary: state.vehicle.summary } : null, vehicleCharts: state.charts } }),
+      HttpResponse.json({ data: { vehicle: variables.id === state.vehicle.id ? { __typename: 'Vehicle', id: state.vehicle.id, summary: state.vehicle.summary } : null, vehicleCharts: state.charts } }),
     ),
     graphql.query('ChartData', ({ variables }) => {
       state.chartRequests.push(variables as never)
