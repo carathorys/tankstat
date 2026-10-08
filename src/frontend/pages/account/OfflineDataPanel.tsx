@@ -71,13 +71,15 @@ function WindowEditor({ saved, vehicles }: { saved: { defaultWindow: string; veh
   const { t } = useTranslation()
   const format = useFormat()
   const { toast } = useToast()
-  const [draft, setDraft] = useState<Draft>(() => ({ defaultWindow: saved.defaultWindow || DEFAULT_RULE, vehicles: new Map(saved.vehicles.map((v) => [v.vehicleId, v.window])) }))
+  // Only the windows of vehicles listed here: one the user can no longer see is left out of the set saved (the server would refuse it).
+  const [own] = useState(() => saved.vehicles.filter((v) => vehicles.some((vehicle) => vehicle.id === v.vehicleId)))
+  const [draft, setDraft] = useState<Draft>(() => ({ defaultWindow: saved.defaultWindow || DEFAULT_RULE, vehicles: new Map(own.map((v) => [v.vehicleId, v.window])) }))
   const [defaultValid, setDefaultValid] = useState(true)
   // Not awaited: a refresh that fails after the save must never make the save look failed (the answer below starts the editor afresh).
   const [save, { loading: saving }] = useMutation(UpdateOfflineSettingsDocument, { refetchQueries: ['OfflineSettings'] })
   const [error, setError] = useState<unknown>()
   const describe = (rule: string) => describeWindow(rule, t, format)
-  const changed = draft.defaultWindow !== saved.defaultWindow || draft.vehicles.size !== saved.vehicles.length || saved.vehicles.some((v) => draft.vehicles.get(v.vehicleId) !== v.window)
+  const changed = draft.defaultWindow !== saved.defaultWindow || draft.vehicles.size !== own.length || own.some((v) => draft.vehicles.get(v.vehicleId) !== v.window)
 
   async function submit() {
     setError(undefined)
@@ -221,6 +223,7 @@ function DeviceSide() {
   const [lastPull, setLastPull] = useState<number | null>(null)
   const [usage, setUsage] = useState<number | null>(null)
   const [status, setStatus] = useState('')
+  const [removedAt, setRemovedAt] = useState<number | null>(null)
 
   useEffect(() => {
     let live = true
@@ -237,7 +240,8 @@ function DeviceSide() {
     () => engine?.state ?? IDLE,
   )
   const pulling = state.status === 'pulling'
-  const last = state.lastPullAt ?? lastPull
+  // A download of this page's life counts unless what it brought was removed since.
+  const last = (state.lastPullAt !== null && (removedAt === null || state.lastPullAt > removedAt) ? state.lastPullAt : null) ?? lastPull
   const progress = pulling
     ? t('account.offline.downloading', { done: state.vehiclesDone, total: state.vehiclesTotal })
     : state.interrupted
@@ -270,7 +274,8 @@ function DeviceSide() {
         )}
         <ConfirmDialog
           trigger={
-            <Button variant="soft" color="error" size="large">
+            // Not while a download runs: it would write its remaining pages (and a finished mark) into what was just removed.
+            <Button variant="soft" color="error" size="large" disabled={pulling}>
               {t('account.offline.remove')}
             </Button>
           }
@@ -280,6 +285,7 @@ function DeviceSide() {
           onConfirm={() =>
             void deviceData.removeAll().then(() => {
               setLastPull(null)
+              setRemovedAt(Date.now())
               setStatus(t('account.offline.removed'))
             })
           }
