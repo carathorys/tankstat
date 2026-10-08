@@ -142,4 +142,23 @@ describe('vehicles, schedules and visits', () => {
     expect(after[0].input).toMatchObject({ ids: ['s2'], expenseId: 'e1' })
     expect(markOf(after[0])).toBe('done')
   })
+
+  const paidVisit = (expenseId: string) => change('markDone', expenseId, { entity: 'recurring', targetIds: ['s1'], input: { ids: ['s1'], expenseId, amount: 80, currency: 'EUR', photoIds: ['local:a'] } })
+  const ofExpense = (action: Change['action'], id: string, over: Partial<Change> = {}) => change(action, id, { entity: 'expenses', ...over })
+
+  it('the expense of a visit waiting here, trashed: the visit logs none, and what was made to it goes too', () => {
+    const list = fold(paidVisit('e1'), ofExpense('update', 'e1', { input: { id: 'e1', note: 'x' }, expectedVersion: 1 }))
+    expect(list).toHaveLength(2) // an edit goes after the visit, from the version the visit leaves
+
+    const after = collapse(list, ofExpense('trash', 'e1', { expectedVersion: 1 }))
+
+    expect(after).toHaveLength(1)
+    expect(after[0]).toMatchObject({ action: 'markDone', targetIds: ['s1'], input: { amount: null, photoIds: null } })
+  })
+
+  it('a visit taken back takes what was made to its expense along', () => {
+    const list = fold(paidVisit('e1'), ofExpense('update', 'e1', { input: { id: 'e1', note: 'x' } }), ofExpense('trash', 'e7'))
+    const after = discard(list, list[0].id)
+    expect(after.map((c) => c.targetId)).toEqual(['e7'])
+  })
 })
