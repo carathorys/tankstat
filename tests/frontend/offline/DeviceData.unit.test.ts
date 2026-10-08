@@ -1,10 +1,10 @@
 import { IDBFactory } from 'fake-indexeddb'
 import type { DocumentNode } from 'graphql'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import * as documents from '../../../src/frontend/gql/generated.ts'
-import { ANONYMOUS_USER, deviceData } from '../../../src/frontend/offline/deviceData.ts'
+import { ANONYMOUS_USER, deviceData, MAX_SNAPSHOTS, TABS_CHANNEL } from '../../../src/frontend/offline/deviceData.ts'
 import { indexedDbStorage, memoryStorage } from '../../../src/frontend/offline/deviceStorage.ts'
-import { userOf } from '../../../src/frontend/offline/offlineLink.ts'
+import { documentId, userOf } from '../../../src/frontend/offline/offlineLink.ts'
 import { KNOWN_QUERIES, policyFor, snapshotKey } from '../../../src/frontend/offline/snapshotPolicy.ts'
 
 describe('indexedDbStorage', () => {
@@ -22,6 +22,22 @@ describe('indexedDbStorage', () => {
     expect(await storage.lastUser()).toBe('alice')
     await storage.setLastUser(null)
     expect(await storage.lastUser()).toBeNull()
+  })
+
+  it('a newer version of the database is not blocked by a tab that still has the old one open', async () => {
+    const factory = new IDBFactory()
+    const store = await indexedDbStorage(factory).open('alice') // the old tab
+
+    const upgraded = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = factory.open('tankstat-offline-alice', 2) // a new build, in another tab
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+      request.onblocked = () => reject(new Error('blocked'))
+    })
+
+    expect(upgraded.version).toBe(2)
+    upgraded.close()
+    await expect(store.get('Welcome:{}')).rejects.toBeDefined() // the old tab keeps nothing more, and says so as a failure
   })
 
   it('pruning keeps the most recent answers', async () => {
@@ -77,6 +93,67 @@ describe('deviceData', () => {
     await deviceData.keep('Welcome:{}', 'whose?')
 
     expect(await deviceData.read('Welcome:{}')).toBeUndefined()
+  })
+
+  it('another tab signing someone else in stops this tab keeping, and asks it whose it is', async () => {
+    const storage = memoryStorage()
+    deviceData.reset(storage)
+    await deviceData.boot(storage)
+    await deviceData.signedIn('alice')
+    const asked = vi.fn()
+    deviceData.onSignedInElsewhere(asked)
+    const otherTab = new BroadcastChannel(TABS_CHANNEL)
+    try {
+      otherTab.postMessage({ type: 'signedIn', user: 'alice' }) // the same account: nothing changes
+      otherTab.postMessage({ type: 'signedIn', user: 'bob' })
+      await vi.waitFor(() => expect(asked).toHaveBeenCalledTimes(1))
+
+      await deviceData.keep('Welcome:{}', "bob's, answered to this tab's cookies")
+      expect(await deviceData.read('Welcome:{}')).toBeUndefined()
+    } finally {
+      otherTab.close()
+    }
+  })
+
+  it('never prunes the session and the UI settings, and makes room when the storage is full', async () => {
+    const storage = memoryStorage()
+    deviceData.reset(storage)
+    await deviceData.signedIn('alice')
+    await deviceData.keep('Session:{}', 'session', 1)
+    await deviceData.keep('UiSettings:{}', 'settings', 2)
+    for (let i = 0; i < MAX_SNAPSHOTS + 25; i++) await deviceData.keep(`Welcome:{"skip":${i}}`, i, 10 + i) // pruned every 25 answers
+
+    expect((await deviceData.read('Session:{}'))?.data).toBe('session')
+    expect((await deviceData.read('UiSettings:{}'))?.data).toBe('settings')
+    expect(await deviceData.read('Welcome:{"skip":0}')).toBeUndefined() // the oldest of the others went
+
+    const store = await storage.open('alice')
+    const put = store.put.bind(store)
+    let full = true
+    store.put = async (snapshot) => {
+      if (full) {
+        full = false
+        throw new DOMException('full', 'QuotaExceededError')
+      }
+      return put(snapshot)
+    }
+    await deviceData.signedIn(null)
+    vi.spyOn(storage, 'open').mockResolvedValue(store)
+    await deviceData.signedIn('alice')
+    await deviceData.keep('Welcome:{"skip":999}', 'kept after making room', 9_999)
+    expect((await deviceData.read('Welcome:{"skip":999}'))?.data).toBe('kept after making room')
+    expect((await deviceData.read('Session:{}'))?.data).toBe('session')
+  })
+
+  it('does not answer from what was kept for another version of the query', async () => {
+    deviceData.reset(memoryStorage())
+    await deviceData.signedIn('alice')
+    await deviceData.keep('VehicleDetails:{"id":"v1"}', { vehicle: { id: 'v1' } }, Date.now(), 'old-build')
+
+    expect(await deviceData.read('VehicleDetails:{"id":"v1"}', 'new-build')).toBeUndefined()
+    expect((await deviceData.read('VehicleDetails:{"id":"v1"}', 'old-build'))?.data).toEqual({ vehicle: { id: 'v1' } })
+    expect(documentId(documents.VehicleDetailsDocument)).toBe(documentId(documents.VehicleDetailsDocument))
+    expect(documentId(documents.VehicleDetailsDocument)).not.toBe(documentId(documents.WelcomeDocument))
   })
 })
 
