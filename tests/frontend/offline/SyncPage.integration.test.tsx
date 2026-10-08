@@ -179,9 +179,10 @@ it('a parked change of anyone who works with the vehicle can be applied anyway o
   const notMine = parkedRow('c3', 'LOG_REFUELING', { id: 'c3', logRefueling: { id: 'c3', vehicleId: 'v1', date: '2026-09-25', volume: 20, totalCost: 30, currency: 'EUR', odometer: 1400 } }, 'odometer.aboveNext', { canResolve: false, targetId: 'c3' })
   let parked = [update, gone, notMine]
   let refuse = true
+  let asked = 0
   const resolved: unknown[] = []
   server.use(
-    graphql.query('ParkedChanges', () => HttpResponse.json({ data: { parkedChanges: parked } })),
+    graphql.query('ParkedChanges', () => (asked++, HttpResponse.json({ data: { parkedChanges: parked } }))),
     graphql.mutation('ResolveSyncChange', ({ variables }) => {
       const { id, action } = variables.input as { id: string; action: string }
       resolved.push(variables.input)
@@ -208,8 +209,10 @@ it('a parked change of anyone who works with the vehicle can be applied anyway o
   await ui.click(octavia.getByRole('button', { name: /^Apply anyway: Changed refuelling/ }))
   const confirm = await screen.findByRole('alertdialog', { name: 'Apply this change anyway?' })
   expect(within(confirm).getByText(/^It was not applied because: It was changed meanwhile/)).toBeInTheDocument()
+  const askedBefore = asked
   await ui.click(within(confirm).getByRole('button', { name: 'Apply anyway' }))
   expect(await screen.findByText('Still not applied: The odometer cannot be lower than 1600, the reading on 2026-09-21.')).toBeInTheDocument()
+  await waitFor(() => expect(asked).toBeGreaterThan(askedBefore)) // the list is asked afresh after a refusal too (its new reason)
 
   await ui.click(octavia.getByRole('button', { name: /^Apply anyway: Changed refuelling/ }))
   await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Apply anyway' }))
