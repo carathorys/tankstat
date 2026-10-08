@@ -16,7 +16,7 @@ import { ErrorMessage } from '../messages.tsx'
 import type { ChangeEntity } from '../offline/changes.ts'
 import { ColumnsPopover } from './ColumnsPopover.tsx'
 import { useConnectivity } from '../offline/useConnectivity.ts'
-import { useRowSyncStates } from '../offline/useRowSyncStates.ts'
+import { useRowSyncStates, type RowSyncState } from '../offline/useRowSyncStates.ts'
 import { PAGE_SIZES, useGridSettings, type PaginationState } from './useGridSettings.ts'
 
 export type SortDirection = 'ASC' | 'DESC'
@@ -60,7 +60,22 @@ export const GRID_POLL_MS = 10_000
  * `columns` must be memoized (stable between renders). Every model handed to the Data Grid keeps its identity until it changes: a new sort
  * model, even an equal one, sends it back to the first page.
  */
-export function ServerGrid<TData extends object, TVars extends OperationVariables, Row extends Record<string, unknown>, TSort extends string>({
+export function ServerGrid<TData extends object, TVars extends OperationVariables, Row extends Record<string, unknown>, TSort extends string>(
+  props: Omit<Parameters<typeof GridBody<TData, TVars, Row, TSort>>[0], 'stateOf'>,
+) {
+  // Only a grid with a sync column follows the changes waiting and the ones the server refused.
+  return props.syncState ? (
+    <WithSyncStates entity={props.syncState.entity}>{(stateOf) => <GridBody {...props} stateOf={stateOf} />}</WithSyncStates>
+  ) : (
+    <GridBody {...props} />
+  )
+}
+
+function WithSyncStates({ entity, children }: { entity: ChangeEntity; children: (stateOf: (id: string) => RowSyncState | null) => ReactNode }) {
+  return children(useRowSyncStates(entity))
+}
+
+function GridBody<TData extends object, TVars extends OperationVariables, Row extends Record<string, unknown>, TSort extends string>({
   gridId,
   caption,
   query,
@@ -75,6 +90,7 @@ export function ServerGrid<TData extends object, TVars extends OperationVariable
   pollWhile,
   leaving,
   syncState,
+  stateOf,
 }: {
   gridId: string
   /** Accessible name of the grid (read by screen readers, not shown). */
@@ -99,6 +115,8 @@ export function ServerGrid<TData extends object, TVars extends OperationVariable
    * (`SyncStateButton`), only while a row on the page has one. `name` is what the row is called in the icon's name.
    */
   syncState?: { entity: ChangeEntity; name: (row: Row) => string }
+  /** Each row's state, from `ServerGrid` when there is `syncState`. */
+  stateOf?: (id: string) => RowSyncState | null
 }) {
   const { t, i18n } = useTranslation()
   const info = useMemo(() => columns.map((c) => ({ id: c.id, hideable: c.hideable ?? true, mobile: c.mobile ?? false, defaultHidden: c.defaultHidden ?? false, sortable: c.sortField !== undefined })), [columns])
@@ -125,7 +143,6 @@ export function ServerGrid<TData extends object, TVars extends OperationVariable
   const shown = (data ?? previousData) as TData | undefined
   const { rows, total } = shown ? select(shown) : { rows: NO_ROWS as Row[], total: 0 }
   const { reachable } = useConnectivity()
-  const stateOf = useRowSyncStates(syncState?.entity)
   const polling = (pollWhile?.(rows) ?? false) && reachable // no polling while the server is out of reach
   useEffect(() => {
     if (!polling) return
@@ -145,19 +162,19 @@ export function ServerGrid<TData extends object, TVars extends OperationVariable
     return [{ field: c.id, headerName: t(c.label), sortable: c.sortField !== undefined, rowHeader: c.id === firstVisible, flex: 1, minWidth: 72, renderCell: ({ row }) => c.cell(row) }]
   })
   // Not one of the grid's own columns (never chosen, ordered or remembered), and never the row header: it is there while it says something.
-  if (syncState && rows.some((row) => stateOf(rowKey(row)))) {
+  if (syncState && stateOf && rows.some((row) => stateOf(rowKey(row)))) {
     columnDefs.unshift({
       field: SYNC,
       headerName: t('offline.state.column'),
       renderHeader: () => <SyncStateHeader />,
       sortable: false,
-      width: 56,
-      minWidth: 56,
+      width: 68, // the 44 px button and the cell's padding on either side
+      minWidth: 68,
       align: 'center',
       headerAlign: 'center',
       renderCell: ({ row }) => {
         const state = stateOf(rowKey(row))
-        return state ? <SyncStateButton state={state} name={syncState.name(row)} /> : null
+        return state ? <SyncStateButton entity={syncState.entity} state={state} name={syncState.name(row)} /> : null
       },
     })
   }

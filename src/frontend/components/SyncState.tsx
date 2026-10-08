@@ -8,7 +8,8 @@ import { Check, CloudUpload, Pencil, Plus, Trash2, TriangleAlert, Undo2, type Lu
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link as RouterLink } from 'react-router'
-import { useKeyText } from '../i18n/errors.ts'
+import { useReasonText } from '../i18n/errors.ts'
+import type { ChangeEntity } from '../offline/changes.ts'
 import type { RowSyncState } from '../offline/useRowSyncStates.ts'
 import { useConnectivity } from '../offline/useConnectivity.ts'
 import type { Tone } from '../theme/components.ts'
@@ -40,9 +41,9 @@ export function SyncStateHeader() {
  * server gave for one it could not apply. The bubble only explains and links to Waiting to sync, where the changes are decided on; a row
  * waiting to be trashed keeps its own Keep button.
  */
-export function SyncStateButton({ state, name }: { state: RowSyncState; name: string }) {
+export function SyncStateButton({ entity, state, name }: { entity: ChangeEntity; state: RowSyncState; name: string }) {
   const { t } = useTranslation()
-  const keyText = useKeyText()
+  const reasonText = useReasonText()
   const { reachable } = useConnectivity()
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
   const titleId = useId()
@@ -50,10 +51,9 @@ export function SyncStateButton({ state, name }: { state: RowSyncState; name: st
   const title = state.kind === 'parked' ? t('offline.state.parked') : t(`offline.pending.${state.kind}`)
   const reason =
     state.kind === 'parked'
-      ? state.parked.reason
-        ? (keyText(state.parked.reason.key, Object.fromEntries(state.parked.reason.args.map((a) => [a.name, a.value]))) ?? state.parked.reason.key)
-        : ''
-      : t(`offline.state.reason.${state.kind}`)
+      ? reasonText(state.parked.reason)
+      : // A schedule has no trash: deleting it is for good.
+        t(entity === 'recurring' && state.kind === 'deleted' ? 'offline.state.reason.deletedSchedule' : `offline.state.reason.${state.kind}`)
   const label = t('offline.state.aria', { state: title, name })
 
   return (

@@ -40,3 +40,13 @@ export async function keepEntry(client: ApolloClient, entity: ChangeEntity, id: 
   const trash = outbox.changes.find((c) => c.entity === entity && c.action === 'trash' && c.targetId === id)
   if (trash) await discardChange(client, trash.id)
 }
+
+/**
+ * Undo of a trash (the toast after it): one kept on this device (`queued`) is taken back, as Keep does, never answered with a restore
+ * (a restore sent for something the server never trashed, after Keep took the trash back, would only be refused); one the server has
+ * is restored.
+ */
+export async function undoTrash<T>(client: ApolloClient, entity: ChangeEntity, id: string, queued: boolean, restore: () => Promise<T>): Promise<void> {
+  if (queued) await keepEntry(client, entity, id)
+  else await restore()
+}

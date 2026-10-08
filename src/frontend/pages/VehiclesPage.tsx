@@ -27,7 +27,8 @@ import { useLeavingRows } from '../grid/useLeavingRows.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { ErrorMessage } from '../messages.tsx'
 import { outbox, type ChangeDraft } from '../offline/outbox.ts'
-import { keepEntry } from '../offline/submitChange.ts'
+import { undoTrash } from '../offline/submitChange.ts'
+import { KeepButton } from '../components/KeepButton.tsx'
 import { useConnectivity } from '../offline/useConnectivity.ts'
 import { useSubmitChange } from '../offline/useLogChange.ts'
 import { uuidV4 } from '../offline/uuid.ts'
@@ -91,8 +92,8 @@ export function VehiclesPage() {
       if (neverSent) toast(t('offline.discarded'))
       else
         undoable(t('toast.vehicleTrashed', { name: vehicle.name }), () =>
-          submit(change(vehicle.id, { action: 'restore', targetId: vehicle.id, expectedVersion: done.queued ? vehicle.version : vehicle.version + 1 }), () =>
-            restoreVehicle({ variables: { id: vehicle.id } }),
+          undoTrash(client, 'vehicles', vehicle.id, done.queued, () =>
+            submit(change(vehicle.id, { action: 'restore', targetId: vehicle.id, expectedVersion: vehicle.version + 1 }), () => restoreVehicle({ variables: { id: vehicle.id } })),
           ),
         )
     } catch (e) {
@@ -134,11 +135,7 @@ export function VehiclesPage() {
         actions={(v) =>
           // Waiting on this device to be trashed: Keep takes that back; editing it meanwhile would change nothing.
           outbox.markOf('vehicles', v.id) === 'deleted' ? (
-            <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
-              <Button variant="soft" size="large" aria-label={t('sync.keepAria', { name: v.name })} onClick={() => void keepEntry(client, 'vehicles', v.id).then(() => toast(t('sync.kept')))}>
-                {t('sync.keep')}
-              </Button>
-            </Stack>
+            <KeepButton entity="vehicles" id={v.id} name={v.name} />
           ) : v.canEdit ? (
             <Stack direction="row" sx={{ gap: 1, justifyContent: 'flex-end' }}>
               <VehicleFormDialog

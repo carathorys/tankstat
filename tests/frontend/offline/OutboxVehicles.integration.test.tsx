@@ -179,8 +179,13 @@ it('a schedule of the server deleted offline stays listed, marked, until the ser
   await ui.click(screen.getByRole('button', { name: 'Delete the recurring expense Insurance' }))
   await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }))
 
-  const row = (await screen.findByRole('button', { name: /To be removed · not synced/ })).closest('tr')!
-  expect(within(row).getByRole('rowheader', { name: /^Insurance/ })).toBeInTheDocument()
+  const state = await screen.findByRole('button', { name: 'Insurance: To be removed · not synced' })
+  expect(within(state.closest('tr')!).getByRole('rowheader', { name: /^Insurance/ })).toBeInTheDocument()
   expect(outbox.changes).toMatchObject([{ entity: 'recurring', action: 'trash', targetId: 's-v1', expectedVersion: 1 }])
   expect(sent).toEqual([])
+
+  await ui.click(state)
+  const bubble = await screen.findByRole('dialog', { name: 'To be removed · not synced' })
+  expect(bubble).toHaveTextContent('It is deleted on the server for good') // a schedule has no trash
+  expect(bubble).not.toHaveTextContent('trash')
 })

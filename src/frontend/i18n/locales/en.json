@@ -1149,6 +1149,7 @@
         "new": "Saved on this device. It is added on the server when this device next syncs.",
         "changed": "Saved on this device. The server gets the new values when this device next syncs.",
         "deleted": "Waiting on this device. It moves to the trash on the server when this device next syncs; Keep takes it back.",
+        "deletedSchedule": "Waiting on this device. It is deleted on the server for good when this device next syncs; Keep takes it back.",
         "restored": "Waiting on this device. It comes back from the trash on the server when this device next syncs.",
         "done": "Waiting on this device. The visit reaches the server when this device next syncs."
       },

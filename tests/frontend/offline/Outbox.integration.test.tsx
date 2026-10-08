@@ -1,7 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { axe } from 'vitest-axe'
 import App from '../../../src/frontend/App.tsx'
 import { createApolloClient } from '../../../src/frontend/apolloClient.ts'
@@ -133,6 +133,37 @@ it('the changes survive a restart, and while they wait the device answers for th
   expect(await screen.findByRole('button', { name: /New · not synced/ })).toBeInTheDocument()
   await waitFor(() => expect(screen.getAllByRole('row')).toHaveLength(5))
   expect(sent).toEqual([]) // the grid did not ask the server, which would not know the new refuelling
+})
+
+it('Undo after Keep queues nothing: the trash was already taken back, so there is nothing to restore', async () => {
+  const { ui } = await openRefuelings()
+  const [row] = screen.getAllByRole('button', { name: /^Delete the refuelling of/ })
+  await ui.click(row)
+  await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Move to trash' }))
+
+  await ui.click(await screen.findByRole('button', { name: /^Keep / }))
+  await waitFor(() => expect(outbox.changes).toEqual([]))
+  await ui.click(screen.getByRole('button', { name: 'Undo' })) // the toast with Undo is still shown; Kept waits behind it
+
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument())
+  expect(outbox.changes).toEqual([]) // never a restore of something the server has not trashed
+  expect(sent).toEqual([])
+})
+
+it('a Keep that fails says why, and the row stays marked', async () => {
+  const { ui } = await openRefuelings()
+  const [row] = screen.getAllByRole('button', { name: /^Delete the refuelling of/ })
+  await ui.click(row)
+  await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Move to trash' }))
+  const discard = vi.spyOn(outbox, 'discard').mockRejectedValueOnce(new Error('storage failed'))
+
+  await ui.click(await screen.findByRole('button', { name: /^Keep / }))
+
+  // An error does not wait behind the toast with Undo.
+  expect(await screen.findByText('Cannot reach the server. Check your connection and try again.')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /To be removed · not synced/ })).toBeInTheDocument()
+  expect(outbox.changes).toMatchObject([{ action: 'trash' }])
+  discard.mockRestore()
 })
 
 it('an entry added offline and then removed is gone, with nothing to undo or send', async () => {
