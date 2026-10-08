@@ -55,9 +55,8 @@ function waitingFor(name: string | undefined, variables: Record<string, unknown>
     case 'RefuelingDetails':
     case 'ExpenseDetails':
       return outbox.changes.some((c) => c.targetId === variables.id)
-    case 'RefuelingTrash':
-    case 'ExpenseTrash':
-      return true
+    // Never the trash: the device holds only what it downloaded, and Empty trash empties the server's whole trash, so while the server
+    // can be reached the trash shown is the server's (a log trashed here shows there once it is sent).
     default:
       return false
   }

@@ -139,4 +139,22 @@ describe('the changes waiting on this device', () => {
     expect(byId.get('b')?.deletedAt).toBeNull() // waiting to be trashed: still listed (marked)
     expect(outbox.markOf('refuelings', 'b')).toBe('deleted')
   })
+
+  it('a restore counts as a save, and an add the server has after all keeps what the server said of it', async () => {
+    const { outbox } = await import('../../../src/frontend/offline/outbox.ts')
+    const { deviceData } = await import('../../../src/frontend/offline/deviceData.ts')
+    const { withChanges } = await import('../../../src/frontend/offline/localResolvers.ts')
+    deviceData.reset(memoryStorage())
+    await deviceData.signedIn('u1')
+    await outbox.reload()
+    await outbox.enqueue({ id: 'r', entity: 'refuelings', action: 'restore', vehicleId: 'v1', targetId: 't', expectedVersion: 2 })
+    // The add reached the server but its answer did not come back; the next download brought the row.
+    await outbox.enqueue({ id: 'n', entity: 'refuelings', action: 'add', vehicleId: 'v1', targetId: 'n', input: { id: 'n', volume: 20 }, sent: true })
+
+    const rows = withChanges('refuelings', [refueling('t', { deletedAt: '2026-09-10T00:00:00Z', version: 2 }), refueling('n', { volume: 20, version: 3, consumption: 6.1 })], 'v1')
+    const byId = new Map(rows.map((r) => [r.id, r]))
+
+    expect(byId.get('t')).toMatchObject({ deletedAt: null, version: 3 }) // an edit made now is made from the version the restore leaves
+    expect(byId.get('n')).toMatchObject({ volume: 20, version: 3, consumption: 6.1 })
+  })
 })

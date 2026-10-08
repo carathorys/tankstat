@@ -133,9 +133,11 @@ export function withChanges(kind: LogKind, rows: readonly LogRow[], vehicleId?: 
   const byId = new Map(rows.map((r) => [r.id, r]))
   for (const change of waiting) {
     const row = byId.get(change.targetId)
-    if (change.action === 'add') byId.set(change.targetId, added(kind, change))
+    // An add the server has after all (its answer was lost, a download brought it): the row as downloaded, with the add's values.
+    if (change.action === 'add') byId.set(change.targetId, row ? withValues(kind, row, change.input) : added(kind, change))
     else if (row && change.action === 'update') byId.set(row.id, withValues(kind, row, change.input))
-    else if (row && change.action === 'restore') byId.set(row.id, { ...row, deletedAt: null })
+    // Restoring counts as a save on the server: an edit made after it is made from the version the restore leaves.
+    else if (row && change.action === 'restore') byId.set(row.id, { ...row, deletedAt: null, version: Number(row.version ?? 0) + 1 })
   }
   return [...byId.values()]
 }
