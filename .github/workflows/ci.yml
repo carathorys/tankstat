@@ -4,8 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
-  # Lets the release workflow run the very same checks before it builds an image.
+  # Lets the release workflow run the very same checks before it builds an image, and stamp the build with its version.
   workflow_call:
+    inputs:
+      version:
+        description: The version the build job publishes the API as (empty = 0.0.0-dev.<sha>)
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -21,10 +26,10 @@ env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
 
 jobs:
-  # Everything that needs only Node: lint, types, unit + integration tests (Vitest), production build.
+  # Lint, types and the production build of the web app. The build (dist/) is handed to the build job, so it is made once.
   frontend:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -33,18 +38,42 @@ jobs:
         with:
           install_args: node
           cache: true
+      - uses: ./.github/actions/node-modules
 
-      - uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: npm-${{ runner.os }}-
-
-      - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      # `vite build` only: `npm run build` would type-check again.
+      - run: npx vite build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 1
+
+  # The Vitest suite (unit + integration, with coverage) in three parallel shards: a file's tests run one after another and the
+  # integration tests are CPU-bound, so splitting the files over three machines cuts the wall time to about a third. Codecov merges the
+  # three uploads of the same commit and flag.
+  frontend-tests:
+    name: frontend tests (${{ matrix.shard }}/3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false # report every failing shard, not just the first
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+        with:
+          install_args: node
+          cache: true
+      - uses: ./.github/actions/node-modules
+
       - name: Tests with coverage
-        run: npm run test:coverage
+        run: npx vitest run --coverage --shard=${{ matrix.shard }}/3 && npm run coverage:paths
 
       - name: Upload frontend coverage
         uses: codecov/codecov-action@v5
@@ -54,8 +83,6 @@ jobs:
           flags: frontend
           # A missing token (no secret yet, or a fork) must not break the build; the status checks come from Codecov itself.
           fail_ci_if_error: false
-
-      - run: npm run build
 
   # Everything that needs only .NET: build, unit tests, in-process integration tests.
   backend:
@@ -78,14 +105,27 @@ jobs:
       - run: dotnet restore Tankstat.slnx
       - run: dotnet build Tankstat.slnx --no-restore
 
+      # The test projects run side by side (built once above): the integration tests take most of the time, the others finish next
+      # to them. Each one's output is printed, folded, once it is done.
       - name: Unit and integration tests
         run: |
+          mkdir -p test-results test-logs
+          pids=() names=()
           for project in tests/backend/*.UnitTests tests/backend/Tankstat.Api.IntegrationTests; do
-            echo "::group::$project"
+            name="$(basename "$project")"
             dotnet test "$project" --no-build --settings coverlet.runsettings --collect:"XPlat Code Coverage" \
-              --logger "trx;LogFileName=$(basename "$project").trx" --results-directory test-results
-            echo "::endgroup::"
+              --logger "trx;LogFileName=$name.trx" --results-directory test-results > "test-logs/$name.log" 2>&1 &
+            pids+=("$!") names+=("$name")
           done
+          status=0
+          for i in "${!pids[@]}"; do
+            if wait "${pids[$i]}"; then result=passed; else result=FAILED; status=1; fi
+            echo "::group::${names[$i]} ($result)"
+            cat "test-logs/${names[$i]}.log"
+            echo "::endgroup::"
+            [ "$result" = passed ] || echo "::error::${names[$i]} failed (see its group above)"
+          done
+          exit "$status"
 
       - name: Upload backend coverage
         uses: codecov/codecov-action@v5
@@ -100,7 +140,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: backend-test-results
-          path: test-results
+          path: |
+            test-results
+            test-logs
           retention-days: 7
 
   # Runs the real app as a process: once per authentication mode (startup smoke tests), and the black-box GraphQL
@@ -138,20 +180,21 @@ jobs:
       - uses: jdx/mise-action@v2
         with:
           cache: true
+      - uses: ./.github/actions/node-modules
 
       - uses: actions/cache@v4
         with:
-          path: |
-            ~/.npm
-            ~/.nuget/packages
-          key: codegen-${{ runner.os }}-${{ hashFiles('package-lock.json', '**/*.csproj') }}
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
 
-      - run: npm ci
       - run: mise run codegen:check
 
-  # The self-hostable build (API + frontend in wwwroot), kept as an artifact for pull requests and main.
+  # The self-hostable build (API + web app in wwwroot), published once: kept as an artifact for pull requests and main, and the
+  # release workflow makes its image from it. It does not wait for the tests (only for the web app's build); the release waits for
+  # this whole workflow before it publishes anything.
   build:
-    needs: [frontend, backend, smoke, codegen]
+    needs: frontend
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -159,17 +202,25 @@ jobs:
 
       - uses: jdx/mise-action@v2
         with:
+          install_args: dotnet
           cache: true
 
       - uses: actions/cache@v4
         with:
-          path: |
-            ~/.npm
-            ~/.nuget/packages
-          key: build-${{ runner.os }}-${{ hashFiles('package-lock.json', '**/*.csproj') }}
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
 
-      - run: npm ci
-      - run: mise run build
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: dist
+
+      - name: Publish the API with the web app
+        env:
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          VERSION="${REQUESTED:-0.0.0-dev.${GITHUB_SHA::7}}" mise run build:api
 
       - uses: actions/upload-artifact@v4
         with:
