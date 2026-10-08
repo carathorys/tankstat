@@ -76,3 +76,34 @@ describe('discard and markOf', () => {
     expect(markOf(change('restore'))).toBe('restored')
   })
 })
+
+describe('vehicles, schedules and visits', () => {
+  const vehicleAdd = (id = 'car') => change('add', id, { id, entity: 'vehicles', vehicleId: id, input: { id, name: 'Golf', fuelType: 'PETROL' } })
+  const scheduleAdd = (id = 's1') => change('add', id, { id, entity: 'recurring', input: { id, title: 'Oil' } })
+  const visit = (ids: string[], expenseId?: string) => change('markDone', expenseId ?? 'visit', { entity: 'recurring', targetIds: ids, input: { ids, expenseId } })
+
+  it('a vehicle added here and removed takes everything made to it along, and nothing else', () => {
+    const list = fold(vehicleAdd('car'), add('r1', { id: 'r1', vehicleId: 'car' }), change('trash', 'r9'), scheduleAdd('s1'))
+    const onCar = list.map((c) => (c.targetId === 'r1' || c.targetId === 's1' ? { ...c, vehicleId: 'car' } : c))
+
+    const after = collapse(onCar, change('trash', 'car', { entity: 'vehicles', vehicleId: 'car' }))
+
+    expect(after.map((c) => c.targetId)).toEqual(['r9'])
+  })
+
+  it('a vehicle added then edited is the add with the new values', () => {
+    const [only] = fold(vehicleAdd(), change('update', 'car', { entity: 'vehicles', vehicleId: 'car', input: { id: 'car', name: 'Golf GTI', fuelType: 'DIESEL' } }))
+    expect(only).toMatchObject({ action: 'add', input: { name: 'Golf GTI', fuelType: 'DIESEL' } })
+  })
+
+  it('visits never fold, and a schedule added here and deleted leaves the visits waiting', () => {
+    const list = fold(scheduleAdd('s1'), visit(['s1', 's2'], 'e1'), visit(['s1']))
+    expect(list.filter((c) => c.action === 'markDone')).toHaveLength(2)
+
+    const after = collapse(list, change('trash', 's1', { entity: 'recurring' }))
+
+    expect(after.map((c) => [c.action, c.targetIds])).toEqual([['markDone', ['s2']]]) // the visit of s1 alone is gone
+    expect(after[0].input).toMatchObject({ ids: ['s2'], expenseId: 'e1' })
+    expect(markOf(after[0])).toBe('done')
+  })
+})

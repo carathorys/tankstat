@@ -33,8 +33,15 @@ export function fakeFeed() {
     canDelete: true, deletedAt: null, version: 1, updatedAt: new Date(r.updatedAt).toISOString(), createdBy: null, photos: [],
   })
   const vehicle = (id: string) => ({
-    __typename: 'Vehicle', id, name: `Car ${id}`, licensePlate: null, fuelType: 'PETROL', pictureUrl: null, canEdit: true, logAccess: 'DELETE', refuelingCount: 0,
+    __typename: 'Vehicle', id, version: 3, name: `Car ${id}`, licensePlate: null, fuelType: 'PETROL', pictureUrl: null, canEdit: true, logAccess: 'DELETE', refuelingCount: 0,
     units: { __typename: 'MeasurementUnits', distance: 'KILOMETERS', volume: 'LITERS' }, owner: null,
+  })
+
+  // Every field the Recurring tab reads (RecurringFields), so the answer kept for it works offline.
+  const schedule = (vehicleId: string) => ({
+    __typename: 'RecurringExpenseInfo', id: `s-${vehicleId}`, version: 1, title: 'Insurance', category: 'Fees', note: null, kind: 'TIME', intervalMonths: 12,
+    intervalDistance: null, lastDoneDate: '2026-01-15', lastDoneOdometer: null, warnDays: 30, warnDistance: 500,
+    status: { __typename: 'RecurrenceStatusInfo', state: 'UPCOMING', limit: 'TIME', dueDate: '2027-01-15', dueOdometer: null, daysLeft: 100, distanceLeft: null },
   })
 
   const handlers = [
@@ -63,7 +70,7 @@ export function fakeFeed() {
             vehicle: vehicle(input.vehicleId),
             refuelings: pageRows.map(refueling),
             expenses: [],
-            recurring: input.after ? [] : [{ __typename: 'RecurringExpenseInfo', id: `s-${input.vehicleId}` }],
+            recurring: input.after ? [] : [schedule(input.vehicleId)],
             removed: !input.after && cursor.since !== null ? removed.filter((t) => t.vehicleId === input.vehicleId && t.at >= cursor.since! - OVERLAP).map((t) => ({ __typename: 'RemovedEntity', type: t.type, id: t.id })) : [],
             next: more ? btoa(JSON.stringify({ ...cursor, skip: cursor.skip + input.take })) : null,
             watermark: new Date(cursor.watermark).toISOString(),

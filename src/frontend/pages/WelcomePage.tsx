@@ -21,6 +21,8 @@ import { ErrorMessage } from '../messages.tsx'
 import { VehicleFormDialog } from '../VehicleFormDialog.tsx'
 import { visuallyHidden } from '../components/visuallyHidden.ts'
 import { HOME_PAGE_SIZE } from '../homePaging.ts'
+import { useSubmitChange } from '../offline/useLogChange.ts'
+import { uuidV4 } from '../offline/uuid.ts'
 
 const PAGE_SIZE = HOME_PAGE_SIZE
 
@@ -51,6 +53,7 @@ export function WelcomePage({ isAdmin }: { isAdmin: boolean }) {
   })
   const data = current ?? previousData // keep showing the last result while a new search is on its way
   const [addVehicle] = useMutation(AddVehicleDocument, { refetchQueries: ['Welcome'], awaitRefetchQueries: true })
+  const submit = useSubmitChange()
   const [loadingMore, setLoadingMore] = useState(false)
   const [moreError, setMoreError] = useState<unknown>()
   const sentinel = useRef<HTMLDivElement>(null)
@@ -92,7 +95,11 @@ export function WelcomePage({ isAdmin }: { isAdmin: boolean }) {
           {t('welcome.add')}
         </Button>
       }
-      onSubmit={(input) => addVehicle({ variables: { input } })}
+      onSubmit={(values) => {
+        // Kept on the device while the server is out of reach: the card shows at once, marked new.
+        const input = { ...values, id: values.id ?? uuidV4() }
+        return submit({ id: input.id, entity: 'vehicles', action: 'add', vehicleId: input.id, targetId: input.id, input }, () => addVehicle({ variables: { input } }))
+      }}
     />
   )
   const searching = input.trim() !== ''

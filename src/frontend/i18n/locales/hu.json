@@ -1114,7 +1114,8 @@
       "new": "Új · nincs szinkronizálva",
       "changed": "Módosítva · nincs szinkronizálva",
       "deleted": "Törlendő · nincs szinkronizálva",
-      "restored": "Visszaállítva · nincs szinkronizálva"
+      "restored": "Visszaállítva · nincs szinkronizálva",
+      "done": "Kész · nincs szinkronizálva"
     },
     "waiting_one": "{{count}} módosítás vár szinkronizálásra",
     "waiting_other": "{{count}} módosítás vár szinkronizálásra",

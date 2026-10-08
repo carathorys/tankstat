@@ -35,6 +35,11 @@ import { RecurringDoneDialog, type DoneValues } from '../../RecurringDoneDialog.
 import { preselect } from '../../recurringDone.ts'
 import { RecurringFormDialog } from '../../RecurringFormDialog.tsx'
 import { recurringProgress } from '../../recurringProgress.ts'
+import { PendingBadge } from '../../components/PendingBadge.tsx'
+import type { Saved } from '../../components/usePhotoQueue.ts'
+import { outbox, usePendingCount } from '../../offline/outbox.ts'
+import { useLogChange } from '../../offline/useLogChange.ts'
+import { uuidV4 } from '../../offline/uuid.ts'
 
 type Item = NonNullable<RecurringExpensesQuery['vehicle']>['recurring'][number]
 
@@ -56,9 +61,12 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
   const [deleteItem] = useMutation(DeleteRecurringExpenseDocument, refetch)
   const [markDone] = useMutation(MarkRecurringExpensesDoneDocument, refetch)
   const [actionError, setActionError] = useState<unknown>()
+  const changes = useLogChange('recurring', vehicle.id)
+  usePendingCount(vehicle.id) // the rows' marks follow the changes waiting
   const [selection, setSelection] = useState<ReadonlySet<string>>(new Set())
   const items = data?.vehicle?.recurring ?? []
-  const chosen = items.filter((i) => selection.has(i.id)).map((i) => i.id) // a deleted schedule drops out by itself
+  // A deleted schedule drops out by itself; one done or deleted on this device waits for the server.
+  const chosen = items.filter((i) => selection.has(i.id) && !['done', 'deleted'].includes(outbox.markOf('recurring', i.id) ?? '')).map((i) => i.id)
   const allChosen = items.length > 0 && chosen.length === items.length
 
   const select = (ids: string[], on: boolean) =>
@@ -71,9 +79,12 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
       return next
     })
 
-  async function done(values: DoneValues, photoIds: string[]) {
-    const result = await markDone({ variables: { input: { ...values, photoIds } } })
-    return savedFrom(result.data?.markRecurringExpensesDone.expense)
+  // Every change goes through `submitChange`: kept on the device while the server is out of reach, sent as always otherwise.
+  async function done(values: DoneValues, photoIds: string[]): Promise<Saved> {
+    const input = { ...values, photoIds }
+    const outcome = await changes.markDone(input, () => markDone({ variables: { input } }))
+    if (outcome.queued) return values.expenseId ? { id: values.expenseId, photoCount: photoIds.length, queued: true } : undefined
+    return savedFrom(outcome.result.data?.markRecurringExpensesDone.expense)
   }
 
   /** The selection is spent only by the dialog that took it, not by a row's own Done. */
@@ -98,7 +109,7 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
   async function remove(item: Item) {
     setActionError(undefined)
     try {
-      await deleteItem({ variables: { id: item.id } })
+      await changes.trash(item.id, item.version, () => deleteItem({ variables: { id: item.id } }))
     } catch (e) {
       setActionError(e)
     }
@@ -115,7 +126,10 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
             vehicleId={vehicle.id}
             unit={unit}
             trigger={<Button size="large">{t('recurring.add')}</Button>}
-            onSubmit={(input) => addItem({ variables: { input: { ...input, vehicleId: vehicle.id } } })}
+            onSubmit={(values) => {
+              const input = { ...values, id: values.id ?? uuidV4(), vehicleId: vehicle.id }
+              return changes.add(input.id, input, () => addItem({ variables: { input } }))
+            }}
           />
         )}
         {canLog && items.length > 0 && (
@@ -166,15 +180,18 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
             <AnimatePresence initial={false}>
               {items.map((i) => {
                 const due = dueText(i.status) ?? (i.kind === 'ODOMETER' ? t('recurring.due.noOdometer') : undefined)
+                // Done or deleted on this device and not sent yet: it cannot be done again meanwhile.
+                const settled = ['done', 'deleted'].includes(outbox.markOf('recurring', i.id) ?? '')
                 return (
                   <MotionTableRow key={i.id} {...rowMotion} sx={{ verticalAlign: 'top' }}>
                     {canLog && (
                       <TableCell padding="checkbox">
-                        <Checkbox sx={box} slotProps={{ input: { 'aria-label': t('recurring.selectAria', { title: i.title }) } }} checked={selection.has(i.id)} onChange={(e) => select([i.id], e.target.checked)} />
+                        <Checkbox sx={box} slotProps={{ input: { 'aria-label': t('recurring.selectAria', { title: i.title }) } }} checked={selection.has(i.id) && !settled} disabled={settled} onChange={(e) => select([i.id], e.target.checked)} />
                       </TableCell>
                     )}
                     <TableCell component="th" scope="row">
                       {i.title}
+                      <PendingBadge entity="recurring" id={i.id} />
                       {i.category && (
                         <Typography variant="caption" component="p" sx={{ color: 'text.secondary' }}>
                           {i.category}
@@ -200,6 +217,7 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
                     <TableCell>
                       {canLog ? (
                         <Stack direction="row" sx={{ gap: 1, justifyContent: 'flex-end' }}>
+                          {!settled && (
                           <RecurringDoneDialog
                             vehicle={vehicle}
                             items={items}
@@ -212,6 +230,7 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
                             }
                             onSubmit={done}
                           />
+                          )}
                           <RecurringFormDialog
                             vehicleId={vehicle.id}
                             unit={unit}
@@ -221,7 +240,7 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
                                 <Pencil size={16} aria-hidden />
                               </IconAction>
                             }
-                            onSubmit={(input) => updateItem({ variables: { input: { ...input, id: i.id } } })}
+                            onSubmit={(input) => changes.update(i.id, i.version, { ...input, id: i.id }, () => updateItem({ variables: { input: { ...input, id: i.id } } }))}
                           />
                           <ConfirmDialog
                             trigger={

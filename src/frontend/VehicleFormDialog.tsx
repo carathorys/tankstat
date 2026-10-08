@@ -26,6 +26,8 @@ import {
 import { ErrorMessage } from './messages.tsx'
 import { useToast } from './toast/toastContext.ts'
 import { DISTANCE_UNITS, FUEL_TYPES, VOLUME_UNITS } from './vehicles.ts'
+import { OfflineNote } from './components/OfflineNote.tsx'
+import { outbox } from './offline/outbox.ts'
 
 export interface VehicleValues {
   /** A new vehicle only: the id it gets on the server, the same for every Save of one opening of the dialog (see `useClientId`). */
@@ -79,6 +81,7 @@ export function VehicleFormDialog({
         description={editing ? t('vehicles.dialogEditDescription') : t('vehicles.dialogAddDescription')}
       >
         {error && <ErrorMessage error={error} />}
+        <OfflineNote />
         {!error && !initial && !(editing && details.data) && <Loading />}
         {editing && details.data && !loaded && <ErrorMessage>{t('errors.vehicle.notFound')}</ErrorMessage>}
         {initial && (
@@ -88,7 +91,8 @@ export function VehicleFormDialog({
             onSubmit={async (values) => {
               await onSubmit(editing ? values : { ...values, id: clientId })
               setOpen(false)
-              toast(t('toast.saved'))
+              // Kept on the device for the server (the server was out of reach): the toast says so.
+              toast(outbox.markOf('vehicles', editing ? vehicleId! : clientId) ? t('toast.savedOnDevice') : t('toast.saved'))
             }}
           />
         )}

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { collapse, discard, markOf, type Change, type LogEntity, type PendingMark } from './changes.ts'
+import { collapse, discard, markOf, type Change, type ChangeEntity, type PendingMark } from './changes.ts'
 import { deviceData } from './deviceData.ts'
 import type { RowStore } from './deviceStorage.ts'
 
@@ -69,10 +69,12 @@ export const outbox = {
     notify()
   },
 
-  /** How a log is marked while a change of it waits; null when none does. */
-  markOf(entity: LogEntity, id: string): PendingMark | null {
-    const change = changes.find((c) => c.entity === entity && c.targetId === id)
-    return change ? markOf(change) : null
+  /** How something is marked while a change of it waits (a visit marks each of its schedules done); null when none does. */
+  markOf(entity: ChangeEntity, id: string): PendingMark | null {
+    const change = changes.find((c) => c.entity === entity && (c.action === 'markDone' ? c.targetIds?.includes(id) : c.targetId === id))
+    if (change) return markOf(change)
+    // The expense a visit logs is new until the server has it.
+    return entity === 'expenses' && changes.some((c) => c.action === 'markDone' && c.targetId === id && c.input?.amount != null) ? 'new' : null
   },
 
   /** The vehicles with a change waiting: the device answers their logs itself, so what was changed shows. */
@@ -101,7 +103,7 @@ export const outbox = {
 const useVersion = () => useSyncExternalStore(outbox.subscribe, () => version)
 
 /** How a log is marked while a change of it waits (new, changed, to be removed, restored), re-rendering when it changes. */
-export function usePendingMark(entity: LogEntity, id: string): PendingMark | null {
+export function usePendingMark(entity: ChangeEntity, id: string): PendingMark | null {
   useVersion()
   return outbox.markOf(entity, id)
 }

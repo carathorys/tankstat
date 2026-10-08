@@ -1114,7 +1114,8 @@
       "new": "New · not synced",
       "changed": "Changed · not synced",
       "deleted": "To be removed · not synced",
-      "restored": "Restored · not synced"
+      "restored": "Restored · not synced",
+      "done": "Done · not synced"
     },
     "waiting_one": "{{count}} change waiting to sync",
     "waiting_other": "{{count}} changes waiting to sync",
