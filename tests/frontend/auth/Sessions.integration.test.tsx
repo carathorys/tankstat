@@ -73,6 +73,25 @@ it('signs another device out and says so', async () => {
   expect(state.signedIn).toBe(true)
 })
 
+it('a device signed out meanwhile (another tab) is not announced as signed out by this click', async () => {
+  stubViewport('desktop')
+  const ui = userEvent.setup()
+  const state = fakeSessions([device('s1', 'Firefox on Linux', true), device('s2', 'Safari on iOS')])
+  server.use(
+    graphql.mutation('RevokeSession', () => {
+      state.devices = state.devices.filter((d) => d.id !== 's2')
+      return HttpResponse.json({ data: { revokeSession: false } })
+    }),
+  )
+  renderWithApollo(<App />, '/account')
+  const list = await section()
+
+  await ui.click(within(list).getByRole('button', { name: 'Sign out of Safari on iOS' }))
+
+  await waitFor(() => expect(within(list).queryByRole('heading', { name: 'Safari on iOS' })).not.toBeInTheDocument())
+  expect(within(list).queryByText('Safari on iOS is signed out.')).not.toBeInTheDocument()
+})
+
 it('signing this device out is the normal sign-out', async () => {
   stubViewport('desktop')
   const ui = userEvent.setup()

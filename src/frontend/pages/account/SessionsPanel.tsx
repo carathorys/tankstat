@@ -50,9 +50,10 @@ export function SessionsPanel({ mode }: { mode: AuthMode }) {
         await signOut() // this device: the usual sign-out, which shows the sign-in screen
         return undefined
       }
-      await revoke({ variables: { id: s.id } })
+      const result = await revoke({ variables: { id: s.id } })
       await refetch()
-      return t('account.sessions.signedOutOne', { device: name(s) })
+      // False: it was signed out already (from another tab or device); the list, asked again, shows how things are.
+      return result.data?.revokeSession ? t('account.sessions.signedOutOne', { device: name(s) }) : undefined
     })
 
   const endOthers = () =>
