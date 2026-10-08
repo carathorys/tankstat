@@ -105,27 +105,10 @@ jobs:
       - run: dotnet restore Tankstat.slnx
       - run: dotnet build Tankstat.slnx --no-restore
 
-      # The test projects run side by side (built once above): the integration tests take most of the time, the others finish next
-      # to them. Each one's output is printed, folded, once it is done.
+      # The test projects run side by side (built once above), the integration tests in three processes (they run one after another
+      # within one); each run's output is printed, folded, once it is done.
       - name: Unit and integration tests
-        run: |
-          mkdir -p test-results test-logs
-          pids=() names=()
-          for project in tests/backend/*.UnitTests tests/backend/Tankstat.Api.IntegrationTests; do
-            name="$(basename "$project")"
-            dotnet test "$project" --no-build --settings coverlet.runsettings --collect:"XPlat Code Coverage" \
-              --logger "trx;LogFileName=$name.trx" --results-directory test-results > "test-logs/$name.log" 2>&1 &
-            pids+=("$!") names+=("$name")
-          done
-          status=0
-          for i in "${!pids[@]}"; do
-            if wait "${pids[$i]}"; then result=passed; else result=FAILED; status=1; fi
-            echo "::group::${names[$i]} ($result)"
-            cat "test-logs/${names[$i]}.log"
-            echo "::endgroup::"
-            [ "$result" = passed ] || echo "::error::${names[$i]} failed (see its group above)"
-          done
-          exit "$status"
+        run: scripts/test-backend.sh
 
       - name: Upload backend coverage
         uses: codecov/codecov-action@v5
