@@ -503,6 +503,13 @@
     },
     "log": {
       "valuesRequired": "Fill in every value. Only a photo that is still being read may leave them empty."
+    },
+    "id": {
+      "empty": "An id cannot be empty."
+    },
+    "sync": {
+      "versionMismatch": "It was changed meanwhile by someone else (or on another device), so this change was not applied.",
+      "idTaken": "This id is already in use by something else."
     }
   },
   "a11y": {
