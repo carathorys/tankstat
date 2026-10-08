@@ -329,7 +329,26 @@ internal sealed class InMemorySyncChanges : ISyncChangeRepository
     public Task<IReadOnlyDictionary<Guid, int>> CountParkedAsync(IReadOnlyCollection<Guid> vehicleIds, CancellationToken ct) =>
         Task.FromResult<IReadOnlyDictionary<Guid, int>>(Items.Where(c => c.Status == SyncChangeStatus.Parked && c.VehicleId is { } v && vehicleIds.Contains(v))
             .GroupBy(c => c.VehicleId!.Value).ToDictionary(g => g.Key, g => g.Count()));
-    public Task<bool> SettleParkedAsync(SyncChange change, CancellationToken ct) => Task.FromResult(true); // the same instance, already changed
+    /// <summary>Who is deciding about which parked change (the claim the database keeps in the row).</summary>
+    public Dictionary<Guid, (Guid By, DateTimeOffset At)> Claims { get; } = [];
+    public Task<bool> ClaimAsync(Guid id, Guid by, DateTimeOffset now, DateTimeOffset staleBefore, CancellationToken ct)
+    {
+        if (Items.FirstOrDefault(c => c.Id == id) is not { Status: SyncChangeStatus.Parked }) return Task.FromResult(false);
+        if (Claims.TryGetValue(id, out var claim) && claim.At >= staleBefore) return Task.FromResult(false);
+        Claims[id] = (by, now);
+        return Task.FromResult(true);
+    }
+    public Task ReleaseAsync(Guid id, Guid by, CancellationToken ct)
+    {
+        if (Claims.TryGetValue(id, out var claim) && claim.By == by) Claims.Remove(id);
+        return Task.CompletedTask;
+    }
+    public Task<bool> SettleParkedAsync(SyncChange change, Guid claimedBy, CancellationToken ct) // the same instance, already changed
+    {
+        if (!Claims.TryGetValue(change.Id, out var claim) || claim.By != claimedBy) return Task.FromResult(false);
+        Claims.Remove(change.Id);
+        return Task.FromResult(true);
+    }
     public Task<int> PurgeResolvedAsync(DateTimeOffset before, CancellationToken ct) =>
         Task.FromResult(Items.RemoveAll(c => c.Status != SyncChangeStatus.Parked && c.ReceivedAt < before));
 }

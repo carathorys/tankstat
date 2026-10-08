@@ -27,7 +27,7 @@ internal sealed class SyncChangeRepository(IDbContextFactory<AppDbContext> dbFac
         // The vehicles' query filter leaves out the trashed ones: their changes wait until the vehicle is back (or go with it).
         var ofVehicles = parked.Where(c => c.VehicleId != null && db.Vehicles.Any(v => v.Id == c.VehicleId)).InScope(scope, c => c.VehicleId!.Value);
         var mine = parked.Where(c => c.SubmittedById == submitterId);
-        var rows = await ofVehicles.Union(mine).ToListAsync(ct);
+        var rows = await ofVehicles.Union(mine).OrderByDescending(c => c.ReceivedAt).ThenBy(c => c.Id).Take(SyncChange.MaxParkedListed).ToListAsync(ct);
         return rows.OrderByDescending(c => c.ReceivedAt).ThenBy(c => c.Id).ToList();
     }
 
@@ -39,11 +39,26 @@ internal sealed class SyncChangeRepository(IDbContextFactory<AppDbContext> dbFac
             .GroupBy(c => c.VehicleId!.Value).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count, ct);
     }
 
-    public async Task<bool> SettleParkedAsync(SyncChange change, CancellationToken ct)
+    public async Task<bool> ClaimAsync(Guid id, Guid by, DateTimeOffset now, DateTimeOffset staleBefore, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        // A conditional write: of two people deciding at once, only the first one's decision is saved.
-        var saved = await db.SyncChanges.Where(c => c.Id == change.Id && c.Status == SyncChangeStatus.Parked).ExecuteUpdateAsync(s => s
+        // A conditional write: of two people deciding at once, only the first one takes it.
+        return await db.SyncChanges.Where(c => c.Id == id && c.Status == SyncChangeStatus.Parked && (c.ResolvedById == null || c.ResolvedAt < staleBefore))
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ResolvedById, by).SetProperty(c => c.ResolvedAt, now), ct) == 1;
+    }
+
+    public async Task ReleaseAsync(Guid id, Guid by, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        await db.SyncChanges.Where(c => c.Id == id && c.Status == SyncChangeStatus.Parked && c.ResolvedById == by)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ResolvedById, (Guid?)null).SetProperty(c => c.ResolvedAt, (DateTimeOffset?)null), ct);
+    }
+
+    public async Task<bool> SettleParkedAsync(SyncChange change, Guid claimedBy, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        // Only the decision of whoever holds the claim is saved.
+        var saved = await db.SyncChanges.Where(c => c.Id == change.Id && c.Status == SyncChangeStatus.Parked && c.ResolvedById == claimedBy).ExecuteUpdateAsync(s => s
             .SetProperty(c => c.Status, change.Status)
             .SetProperty(c => c.Payload, change.Payload)
             .SetProperty(c => c.ReasonKey, change.ReasonKey)
