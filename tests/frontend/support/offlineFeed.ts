@@ -25,6 +25,8 @@ export function fakeFeed() {
   let rule = 'span:P2M'
   let resyncNext = false
   let failAfter: number | null = null
+  let refuseCursors = false
+  let onAsk: ((n: number) => Promise<void> | void) | null = null
 
   const touch = (row: FeedRow) => (row.updatedAt = clock += 1000)
   const refueling = (r: FeedRow) => ({
@@ -39,10 +41,13 @@ export function fakeFeed() {
 
   const handlers = [
     graphql.query('OfflineSettings', () => HttpResponse.json({ data: { offlineSettings: { __typename: 'OfflineSettingsInfo', defaultWindow: rule, vehicles: [] } } })),
-    graphql.query('OfflineChanges', ({ variables }) => {
+    graphql.query('OfflineChanges', async ({ variables }) => {
       const input = variables.input as { vehicleId: string; from?: string | null; since?: string | null; after?: string | null; take: number }
       asked.push(input)
+      await onAsk?.(asked.length)
       if (failAfter !== null && asked.length > failAfter) return HttpResponse.error()
+      if (refuseCursors && input.after)
+        return HttpResponse.json({ data: null, errors: [{ message: 'Cannot continue.', extensions: { code: 'VALIDATION_FAILED', key: 'sync.cursorInvalid' } }] })
       const cursor = input.after
         ? (JSON.parse(atob(input.after)) as { from: string | null; since: number | null; watermark: number; skip: number })
         : { from: input.since ? null : (input.from ?? null), since: input.since ? Date.parse(input.since) : null, watermark: clock, skip: 0 }
@@ -97,5 +102,10 @@ export function fakeFeed() {
     setRule: (next: string) => (rule = next),
     resync: () => (resyncNext = true),
     failAfter: (requests: number | null) => (failAfter = requests),
+    /** A cursor of an older server version: refused, the device must start that download afresh. */
+    refuseCursors: () => (refuseCursors = true),
+    acceptCursors: () => (refuseCursors = false),
+    /** Runs before the n-th request is answered (something happening while a page is on its way). */
+    onAsk: (hook: (n: number) => Promise<void> | void) => (onAsk = hook),
   }
 }
