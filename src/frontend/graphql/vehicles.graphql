@@ -12,6 +12,7 @@ query Vehicles(
 ) {
   vehicles(orderBy: $orderBy, direction: $direction, skip: $skip, take: $take) {
     id
+    version
     name
     canEdit
     pictureUrl

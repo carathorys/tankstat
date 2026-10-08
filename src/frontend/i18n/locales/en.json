@@ -223,6 +223,7 @@
     "editAria": "Edit {{name}}",
     "deleteAria": "Delete {{name}}",
     "viewOnly": "view only",
+    "offlineList": "You are offline: only the vehicles kept on this device are listed. Everyone's vehicles show again when the server can be reached.",
     "empty": "No vehicles yet. Add your first vehicle to get started.",
     "dialogAdd": "Add vehicle",
     "dialogEdit": "Edit vehicle",

@@ -1,5 +1,6 @@
-import type { ExpenseSortField, RefuelingSortField, SortDirection } from '../gql/generated.ts'
+import type { ExpenseSortField, RefuelingSortField, SortDirection, VehicleSortField } from '../gql/generated.ts'
 import { keptPhotosOf, type Change } from './changes.ts'
+import { connectivity } from './connectivity.ts'
 import type { LogKind, LogRow, PullCursor, RowStore, VehicleRow } from './deviceStorage.ts'
 import { keptPhotos } from './keptPhotos.ts'
 import { outbox } from './outbox.ts'
@@ -230,10 +231,25 @@ function trash(kind: LogKind, field: string, count: string, deletable: string): 
  * highest value) and the currency of its latest refuelling. From the downloaded window with the changes waiting, so a log kept on the
  * device is where the next one starts.
  */
-const logDefaults: Resolver = async (rows, variables) => {
+/**
+ * A vehicle this device knows (on the home list it downloaded, seen on its page, or added here) but holds no logs of yet, while the
+ * server is out of reach: one added online since the last download, say. Its dialogs still open, with nothing to start from (the last
+ * answer seen, when there is one, is better), so its logs can be kept on the device like any other's.
+ */
+async function knownWithoutLogs(rows: RowStore, vehicleId: unknown, kept: Kept): Promise<boolean> {
+  if (typeof vehicleId !== 'string') return false
+  return (await rows.vehicles()).some((v) => v.id === vehicleId) || (await kept('VehicleDetails', { id: vehicleId })) !== undefined
+}
+
+const logDefaults: Resolver = async (rows, variables, kept) => {
   const refuelings = await downloaded(rows, 'refuelings', variables.vehicleId)
   const expenses = await downloaded(rows, 'expenses', variables.vehicleId)
-  if (!refuelings || !expenses) return undefined
+  if (!refuelings || !expenses) {
+    if (connectivity.reachable) return undefined // the server's answer
+    const seen = await kept('LogDefaults', variables)
+    if (seen || !(await knownWithoutLogs(rows, variables.vehicleId, kept))) return seen
+    return { logDefaults: { __typename: 'LogDefaults', lastOdometer: null, lastDate: null, currency: null } }
+  }
   const readings = [...refuelings, ...expenses].filter((r) => num(r.odometer) !== null)
   const latest = readings.sort((a, b) => compare(b.date, a.date) || compare(num(b.odometer), num(a.odometer)))[0]
   const lastRefueling = sortLogs('refuelings', refuelings, 'DATE', 'DESC', new Map())[0]
@@ -243,9 +259,13 @@ const logDefaults: Resolver = async (rows, variables) => {
 }
 
 /** The categories of the vehicle's expenses, for the expense dialog's suggestions (`ExpenseRepository.CategoriesAsync`). */
-const expenseCategories: Resolver = async (rows, variables) => {
+const expenseCategories: Resolver = async (rows, variables, kept) => {
   const expenses = await downloaded(rows, 'expenses', variables.vehicleId)
-  if (!expenses) return undefined
+  if (!expenses) {
+    if (connectivity.reachable) return undefined // the server's answer
+    const seen = await kept('ExpenseCategories', variables)
+    return seen || !(await knownWithoutLogs(rows, variables.vehicleId, kept)) ? seen : { expenseCategories: [] }
+  }
   return { expenseCategories: [...new Set(expenses.map((e) => text(e.category)).filter((c): c is string => !!c))].sort() }
 }
 
@@ -341,6 +361,46 @@ const welcome: Resolver = async (rows, variables, kept) => {
   return { ...base, myVehicles: [...listed, ...adds], myVehicleCount: Number(base.myVehicleCount ?? 0) + waiting.length, vehicleTotal: Number(base.vehicleTotal ?? 0) + waiting.length }
 }
 
+/** `VehicleRepository.Page`'s orders for the vehicle list: the field (text without regard to case), then the id. */
+function vehicleKey(field: VehicleSortField): (vehicle: Record<string, unknown>) => Key {
+  switch (field) {
+    case 'LICENSE_PLATE':
+      return (v) => lower(v.licensePlate)
+    case 'FUEL_TYPE':
+      return (v) => text(v.fuelType)
+    case 'OWNER':
+      return (v) => lower((v.owner as { displayName?: string } | null)?.displayName)
+    case 'REFUELING_COUNT':
+      return (v) => num(v.refuelingCount)
+    default:
+      return (v) => lower(v.name)
+  }
+}
+
+/**
+ * The administrators' vehicle list (`/vehicles`) while the server is out of reach. The device holds only the vehicles of its own home list
+ * (the page says so), each with the changes waiting over it: one added here is listed, an edited one has its new values, one on its way to
+ * the trash stays, marked. Any order and page; who owns one and how many refuellings it has come from its page's answer the download kept.
+ */
+const vehicleList: Resolver = async (rows, variables, kept) => {
+  const stored = await rows.vehicles()
+  const ids = [...stored.map((v) => v.id), ...outbox.changes.filter((c) => c.entity === 'vehicles' && c.action === 'add').map((c) => c.targetId)]
+  if (ids.length === 0) return undefined
+  const listed = await Promise.all(
+    [...new Set(ids)].map(async (id) => {
+      const details = (await kept('VehicleDetails', { id }))?.vehicle as Record<string, unknown> | undefined
+      const vehicle = await vehicleOf(rows, id, { ...stored.find((v) => v.id === id), ...details })
+      return vehicle && ({ ...vehicle, refuelingCount: num(vehicle.refuelingCount) ?? 0 } as Record<string, unknown>)
+    }),
+  )
+  const key = vehicleKey(String(variables.orderBy ?? 'NAME') as VehicleSortField)
+  const sign = variables.direction === 'DESC' ? -1 : 1
+  const vehicles = listed
+    .filter((v): v is Record<string, unknown> => v !== undefined)
+    .sort((a, b) => sign * compare(key(a), key(b)) || compare(String(a.id).toUpperCase(), String(b.id).toUpperCase()))
+  return { vehicles: page(vehicles, variables), vehicleCount: vehicles.length }
+}
+
 const recurringExpenses: Resolver = async (_rows, variables, kept) => {
   const vehicleId = String(variables.vehicleId)
   if (!outbox.vehicleIds().has(vehicleId)) return undefined
@@ -366,6 +426,7 @@ const RESOLVERS: Record<string, Resolver> = {
   LogDefaults: logDefaults,
   ExpenseCategories: expenseCategories,
   Welcome: welcome,
+  Vehicles: vehicleList,
   VehicleCard: vehicleCard,
   VehicleDetails: vehicleDetails,
   RecurringExpenses: recurringExpenses,

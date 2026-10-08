@@ -1,4 +1,5 @@
 import { useMutation } from '@apollo/client/react'
+import Alert from '@mui/material/Alert'
 import Button from '@mui/material/Button'
 import Link from '@mui/material/Link'
 import Stack from '@mui/material/Stack'
@@ -9,6 +10,7 @@ import { useTranslation } from 'react-i18next'
 import { Link as RouterLink } from 'react-router'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { IconAction } from '../components/IconAction.tsx'
+import { PendingBadge } from '../components/PendingBadge.tsx'
 import { UserChip } from '../components/UserAvatar.tsx'
 import { VehiclePicture } from '../components/VehiclePicture.tsx'
 import {
@@ -25,6 +27,10 @@ import { ServerGrid, type GridColumn } from '../grid/ServerGrid.tsx'
 import { useLeavingRows } from '../grid/useLeavingRows.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { ErrorMessage } from '../messages.tsx'
+import { outbox, type ChangeDraft } from '../offline/outbox.ts'
+import { useConnectivity } from '../offline/useConnectivity.ts'
+import { useSubmitChange } from '../offline/useLogChange.ts'
+import { uuidV4 } from '../offline/uuid.ts'
 import { useToast } from '../toast/toastContext.ts'
 import { VehicleFormDialog } from '../VehicleFormDialog.tsx'
 
@@ -34,12 +40,16 @@ const refetch = { refetchQueries: ['Vehicles', 'Trash', 'Welcome'], awaitRefetch
 
 export function VehiclesPage() {
   const { t } = useTranslation()
-  const { undoable } = useToast()
+  const { toast, undoable } = useToast()
   usePageTitle(t('vehicles.title'))
   const [addVehicle] = useMutation(AddVehicleDocument, refetch)
   const [updateVehicle] = useMutation(UpdateVehicleDocument, refetch)
   const [deleteVehicle] = useMutation(DeleteVehicleDocument, refetch)
   const [restoreVehicle] = useMutation(RestoreVehicleDocument, refetch)
+  // Like the home page and the Details tab: kept on the device while the server is out of reach, sent as always otherwise.
+  const submit = useSubmitChange()
+  const change = (vehicleId: string, draft: Omit<ChangeDraft, 'entity' | 'vehicleId' | 'id'>) => ({ id: uuidV4(), entity: 'vehicles' as const, vehicleId, ...draft })
+  const { reachable } = useConnectivity()
   const { leaving, leave } = useLeavingRows()
   const [actionError, setActionError] = useState<unknown>()
 
@@ -58,6 +68,7 @@ export function VehiclesPage() {
             <Link component={RouterLink} to={`/vehicles/${r.id}`} aria-label={t('vehicles.open', { name: r.name })} sx={{ fontWeight: 'fontWeightMedium' }}>
               {r.name}
             </Link>
+            <PendingBadge entity="vehicles" id={r.id} />
           </Stack>
         ),
       },
@@ -71,8 +82,19 @@ export function VehiclesPage() {
   async function moveToTrash(vehicle: Row) {
     setActionError(undefined)
     try {
-      await leave(vehicle.id, () => deleteVehicle({ variables: { id: vehicle.id } }))
-      undoable(t('toast.vehicleTrashed', { name: vehicle.name }), () => restoreVehicle({ variables: { id: vehicle.id } }))
+      // Kept on the device while the server is out of reach: the row stays, marked "to be removed", and Undo takes the change back. One
+      // added on this device and never sent is simply gone, with everything made to it.
+      const neverSent = outbox.markOf('vehicles', vehicle.id) === 'new'
+      const done = await submit(change(vehicle.id, { action: 'trash', targetId: vehicle.id, expectedVersion: vehicle.version }), () =>
+        leave(vehicle.id, () => deleteVehicle({ variables: { id: vehicle.id } })),
+      )
+      if (neverSent) toast(t('offline.discarded'))
+      else
+        undoable(t('toast.vehicleTrashed', { name: vehicle.name }), () =>
+          submit(change(vehicle.id, { action: 'restore', targetId: vehicle.id, expectedVersion: done.queued ? vehicle.version : vehicle.version + 1 }), () =>
+            restoreVehicle({ variables: { id: vehicle.id } }),
+          ),
+        )
     } catch (e) {
       setActionError(e)
     }
@@ -84,6 +106,11 @@ export function VehiclesPage() {
         {t('vehicles.title')}
       </Typography>
       {actionError !== undefined && <ErrorMessage error={actionError} />}
+      {!reachable && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          {t('vehicles.offlineList')}
+        </Alert>
+      )}
       <ServerGrid
         gridId="vehicles"
         caption={t('vehicles.title')}
@@ -94,7 +121,15 @@ export function VehiclesPage() {
         defaultSort={{ column: 'name', direction: 'ASC' }}
         emptyText={t('vehicles.empty')}
         leaving={leaving}
-        toolbar={() => <VehicleFormDialog trigger={<Button size="large">{t('vehicles.add')}</Button>} onSubmit={(input) => addVehicle({ variables: { input } })} />}
+        toolbar={() => (
+          <VehicleFormDialog
+            trigger={<Button size="large">{t('vehicles.add')}</Button>}
+            onSubmit={(values) => {
+              const input = { ...values, id: values.id ?? uuidV4() }
+              return submit({ id: input.id, entity: 'vehicles', action: 'add', vehicleId: input.id, targetId: input.id, input }, () => addVehicle({ variables: { input } }))
+            }}
+          />
+        )}
         actions={(v) =>
           v.canEdit ? (
             <Stack direction="row" sx={{ gap: 1, justifyContent: 'flex-end' }}>
@@ -105,7 +140,11 @@ export function VehiclesPage() {
                     <Pencil size={16} aria-hidden />
                   </IconAction>
                 }
-                onSubmit={(input) => updateVehicle({ variables: { input: { ...input, id: v.id } } })}
+                onSubmit={(input) =>
+                  submit(change(v.id, { action: 'update', targetId: v.id, input: { ...input, id: v.id }, expectedVersion: v.version }), () =>
+                    updateVehicle({ variables: { input: { ...input, id: v.id } } }),
+                  )
+                }
               />
               <ConfirmDialog
                 trigger={

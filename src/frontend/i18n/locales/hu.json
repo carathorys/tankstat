@@ -223,6 +223,7 @@
     "editAria": "{{name}} szerkesztése",
     "deleteAria": "{{name}} törlése",
     "viewOnly": "csak megtekinthető",
+    "offlineList": "Offline vagy: csak az ezen az eszközön tárolt járművek látszanak. Mindenki járműve újra megjelenik, ha a szerver elérhető.",
     "empty": "Még nincs jármű. Add hozzá az elsőt a kezdéshez.",
     "dialogAdd": "Jármű hozzáadása",
     "dialogEdit": "Jármű szerkesztése",

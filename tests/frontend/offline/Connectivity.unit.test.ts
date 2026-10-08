@@ -3,7 +3,11 @@ import { ServerError, ServerParseError } from '@apollo/client/errors'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { connectivity, nextDelay, watchConnectivity } from '../../../src/frontend/offline/connectivity.ts'
 import { classifyFailure, isConnectionFailure, OfflineError } from '../../../src/frontend/offline/errors.ts'
-import { PROBE_TIMEOUT_MS, REFETCH_GAP_MS, startOfflineRuntime, withDeadline } from '../../../src/frontend/offline/runtime.ts'
+import { PROBE_TIMEOUT_MS, PUSH_AFTER_MS, REFETCH_GAP_MS, startOfflineRuntime, withDeadline } from '../../../src/frontend/offline/runtime.ts'
+import { appliedMutations } from '../../../src/frontend/offline/appliedMutations.ts'
+import { deviceData } from '../../../src/frontend/offline/deviceData.ts'
+import { memoryStorage } from '../../../src/frontend/offline/deviceStorage.ts'
+import { WelcomeDocument } from '../../../src/frontend/gql/generated.ts'
 import { ApiError } from '../../../src/frontend/pictures/ApiError.ts'
 
 describe('connectivity', () => {
@@ -63,6 +67,28 @@ describe('startOfflineRuntime', () => {
       now += REFETCH_GAP_MS
       flap()
       expect(refetchQueries).toHaveBeenCalledTimes(2)
+    } finally {
+      runtime.stop()
+      vi.useRealTimers()
+    }
+  })
+
+  it('downloads soon after a vehicle came in online, so the device can answer for it offline; not after other changes', async () => {
+    deviceData.reset(memoryStorage())
+    await deviceData.signedIn('u1') // before the start: no download of its own yet
+    vi.useFakeTimers()
+    const query = vi.fn((_options: { query: unknown }) => new Promise(() => undefined))
+    const client = { query, refetchQueries: vi.fn(async () => []) } as unknown as ApolloClient
+    const runtime = startOfflineRuntime(client)
+    const downloads = () => query.mock.calls.filter(([options]) => options.query === WelcomeDocument).length
+    try {
+      appliedMutations.tell('UpdateVehicle')
+      await vi.advanceTimersByTimeAsync(PUSH_AFTER_MS)
+      expect(downloads()).toBe(0)
+
+      appliedMutations.tell('AddVehicle')
+      await vi.advanceTimersByTimeAsync(PUSH_AFTER_MS)
+      await vi.waitFor(() => expect(downloads()).toBe(1))
     } finally {
       runtime.stop()
       vi.useRealTimers()
