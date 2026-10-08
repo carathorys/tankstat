@@ -1,5 +1,7 @@
 import type { ExpenseSortField, RefuelingSortField, SortDirection } from '../gql/generated.ts'
+import type { Change } from './changes.ts'
 import type { LogKind, LogRow, PullCursor, RowStore, VehicleRow } from './deviceStorage.ts'
+import { outbox } from './outbox.ts'
 
 /**
  * Answers the log queries from the downloaded window while the server is out of reach (`offlineLink.ts`): any page and any order of a
@@ -94,6 +96,52 @@ function asAnswer(row: LogRow, vehicle: VehicleRow | undefined): Record<string, 
   return { ...fields, canEdit: atLeast(vehicle?.logAccess, 'EDIT'), canDelete: atLeast(vehicle?.logAccess, 'DELETE') }
 }
 
+/** The values an add or an update carries onto the row; the price per unit follows them, a person's save leaves nothing to review. */
+const VALUES: Record<LogKind, readonly string[]> = {
+  refuelings: ['date', 'volume', 'totalCost', 'currency', 'odometer', 'isFullTank', 'missedPreviousFillUp', 'note'],
+  expenses: ['date', 'title', 'category', 'amount', 'currency', 'odometer', 'note'],
+}
+
+function withValues(kind: LogKind, row: LogRow, input: Record<string, unknown> | undefined): LogRow {
+  const values = Object.fromEntries(VALUES[kind].filter((k) => input && k in input).map((k) => [k, input![k]]))
+  const next: LogRow = { ...row, ...values, reviewState: 'NONE', filledFromPhoto: [] }
+  if (kind === 'refuelings') next.pricePerUnit = num(next.totalCost) !== null && num(next.volume) ? Math.round(((next.totalCost as number) / (next.volume as number)) * 1000) / 1000 : null
+  return next
+}
+
+/** A log added on this device and not sent yet: what the server would answer, without what only the server works out. */
+function added(kind: LogKind, change: Change): LogRow {
+  const common = {
+    id: change.targetId, vehicleId: change.vehicleId, date: '', deletedAt: null, version: 0, updatedAt: new Date(change.createdAt).toISOString(),
+    createdBy: null, photos: [], pulledAt: 0, note: null, odometer: null, currency: null,
+  }
+  const row: LogRow =
+    kind === 'refuelings'
+      ? { __typename: 'Refueling', ...common, volume: null, totalCost: null, consumption: null, isFullTank: true, missedPreviousFillUp: false }
+      : { __typename: 'Expense', ...common, title: '', category: null, amount: null, schedules: [] }
+  return withValues(kind, row, change.input)
+}
+
+/**
+ * The rows with the changes waiting on this device laid over them, never written into them (the next download may replace a row): an add
+ * is a row of its own, an update its values, a restore takes the row out of the trash; a log waiting to be trashed stays where it is,
+ * marked (`usePendingMark`).
+ */
+export function withChanges(kind: LogKind, rows: readonly LogRow[], vehicleId?: string): LogRow[] {
+  const waiting = outbox.changes.filter((c) => c.entity === kind && (vehicleId === undefined || c.vehicleId === vehicleId))
+  if (waiting.length === 0) return [...rows]
+  const byId = new Map(rows.map((r) => [r.id, r]))
+  for (const change of waiting) {
+    const row = byId.get(change.targetId)
+    // An add the server has after all (its answer was lost, a download brought it): the row as downloaded, with the add's values.
+    if (change.action === 'add') byId.set(change.targetId, row ? withValues(kind, row, change.input) : added(kind, change))
+    else if (row && change.action === 'update') byId.set(row.id, withValues(kind, row, change.input))
+    // Restoring counts as a save on the server: an edit made after it is made from the version the restore leaves.
+    else if (row && change.action === 'restore') byId.set(row.id, { ...row, deletedAt: null, version: Number(row.version ?? 0) + 1 })
+  }
+  return [...byId.values()]
+}
+
 const page = <T>(rows: readonly T[], variables: Variables) => {
   const skip = Math.max(0, Number(variables.skip ?? 0))
   return rows.slice(skip, skip + Math.max(0, Number(variables.take ?? rows.length)))
@@ -106,10 +154,10 @@ async function vehicleMap(rows: RowStore) {
 /** A vehicle whose logs this device holds: its download finished at least once, and its window is not "none". */
 const holdsLogs = (cursor: PullCursor | undefined) => cursor?.complete === true && cursor.from !== false
 
-/** The vehicle's logs, when the device holds them. */
+/** The vehicle's logs out of the trash (with the changes waiting), when the device holds them. */
 async function downloaded(rows: RowStore, kind: LogKind, vehicleId: unknown) {
   if (typeof vehicleId !== 'string' || !holdsLogs(await rows.cursor(vehicleId))) return undefined
-  return (await rows.logs(kind, vehicleId)).filter((r) => !r.deletedAt)
+  return withChanges(kind, await rows.logs(kind, vehicleId), vehicleId).filter((r) => !r.deletedAt)
 }
 
 function list(kind: LogKind, field: 'refuelings' | 'expenses', count: string): Resolver {
@@ -124,7 +172,9 @@ function list(kind: LogKind, field: 'refuelings' | 'expenses', count: string): R
 
 function details(kind: LogKind, field: 'refueling' | 'expense'): Resolver {
   return async (rows, variables) => {
-    const row = typeof variables.id === 'string' ? await rows.log(kind, variables.id) : undefined
+    if (typeof variables.id !== 'string') return undefined
+    const stored = await rows.log(kind, variables.id)
+    const row = withChanges(kind, stored ? [stored] : []).find((r) => r.id === variables.id)
     if (!row || row.deletedAt) return undefined
     return { [field]: asAnswer(row, (await vehicleMap(rows)).get(row.vehicleId)) }
   }
@@ -136,7 +186,7 @@ function trash(kind: LogKind, field: string, count: string, deletable: string): 
     const vehicles = await vehicleMap(rows)
     const complete = new Set((await rows.cursors()).filter(holdsLogs).map((c) => c.vehicleId))
     if (complete.size === 0) return undefined
-    const trashed = (await rows.allLogs(kind)).filter((r) => r.deletedAt && complete.has(r.vehicleId) && atLeast(vehicles.get(r.vehicleId)?.logAccess, 'EDIT'))
+    const trashed = withChanges(kind, await rows.allLogs(kind)).filter((r) => r.deletedAt && complete.has(r.vehicleId) && atLeast(vehicles.get(r.vehicleId)?.logAccess, 'EDIT'))
     const sorted = sortLogs(kind, trashed, String(variables.orderBy ?? 'DELETED_AT'), (variables.direction as SortDirection) ?? 'DESC', vehicles)
     return {
       [field]: page(sorted, variables).map((r) => {
@@ -149,6 +199,30 @@ function trash(kind: LogKind, field: string, count: string, deletable: string): 
   }
 }
 
+/**
+ * What a new log starts from (`RefuelingService.DefaultsAsync`): the latest odometer reading of the vehicle's logs (the latest day, its
+ * highest value) and the currency of its latest refuelling. From the downloaded window with the changes waiting, so a log kept on the
+ * device is where the next one starts.
+ */
+const logDefaults: Resolver = async (rows, variables) => {
+  const refuelings = await downloaded(rows, 'refuelings', variables.vehicleId)
+  const expenses = await downloaded(rows, 'expenses', variables.vehicleId)
+  if (!refuelings || !expenses) return undefined
+  const readings = [...refuelings, ...expenses].filter((r) => num(r.odometer) !== null)
+  const latest = readings.sort((a, b) => compare(b.date, a.date) || compare(num(b.odometer), num(a.odometer)))[0]
+  const lastRefueling = sortLogs('refuelings', refuelings, 'DATE', 'DESC', new Map())[0]
+  return {
+    logDefaults: { __typename: 'LogDefaults', lastOdometer: latest ? latest.odometer : null, lastDate: latest ? latest.date : null, currency: lastRefueling ? (lastRefueling.currency ?? null) : null },
+  }
+}
+
+/** The categories of the vehicle's expenses, for the expense dialog's suggestions (`ExpenseRepository.CategoriesAsync`). */
+const expenseCategories: Resolver = async (rows, variables) => {
+  const expenses = await downloaded(rows, 'expenses', variables.vehicleId)
+  if (!expenses) return undefined
+  return { expenseCategories: [...new Set(expenses.map((e) => text(e.category)).filter((c): c is string => !!c))].sort() }
+}
+
 const RESOLVERS: Record<string, Resolver> = {
   Refuelings: list('refuelings', 'refuelings', 'refuelingCount'),
   Expenses: list('expenses', 'expenses', 'expenseCount'),
@@ -156,6 +230,8 @@ const RESOLVERS: Record<string, Resolver> = {
   ExpenseDetails: details('expenses', 'expense'),
   RefuelingTrash: trash('refuelings', 'refuelingTrash', 'refuelingTrashCount', 'refuelingTrashDeletableCount'),
   ExpenseTrash: trash('expenses', 'expenseTrash', 'expenseTrashCount', 'expenseTrashDeletableCount'),
+  LogDefaults: logDefaults,
+  ExpenseCategories: expenseCategories,
 }
 
 /** The device's own answer to a query, or undefined when it has none (not one of these queries, or not downloaded). */

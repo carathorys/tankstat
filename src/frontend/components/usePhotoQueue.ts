@@ -5,7 +5,8 @@ import { resizeImage } from '../pictures/resizeImage.ts'
 import { deleteImage, LOG_PHOTO_EDGE, MAX_LOG_PHOTOS, photoDraftPath, photoDraftsPath, uploadImage, type ReadingPurpose } from '../pictures/upload.ts'
 
 /** What the add/edit dialog of a log gets back from its caller after saving a new log: its id and how many photos it ended up with. */
-export type Saved = { id: string; photoCount: number } | void
+/** What a save made: the log and how many photos it took; `queued` when it was kept on the device for the server (`offline/outbox.ts`). */
+export type Saved = { id: string; photoCount: number; queued?: boolean } | void
 
 export interface QueuedPhoto {
   key: string

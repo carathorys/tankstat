@@ -10,6 +10,9 @@ import { IconAction } from '../../components/IconAction.tsx'
 import { UserChip } from '../../components/UserAvatar.tsx'
 import { ExpenseFormDialog } from '../../ExpenseFormDialog.tsx'
 import { anyAwaiting } from '../../recognition/review.ts'
+import { PendingBadge } from '../../components/PendingBadge.tsx'
+import { outbox } from '../../offline/outbox.ts'
+import { useLogChange } from '../../offline/useLogChange.ts'
 import { ReviewBadge } from '../../recognition/ReviewState.tsx'
 import {
   DeleteExpenseDocument,
@@ -39,8 +42,9 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
   const [updateExpense] = useMutation(UpdateExpenseDocument, refetch)
   const [deleteExpense] = useMutation(DeleteExpenseDocument, { ...refetch, refetchQueries: [...refetch.refetchQueries, 'ExpenseTrash'] })
   const [restoreExpense] = useMutation(RestoreExpenseDocument, { ...refetch, refetchQueries: [...refetch.refetchQueries, 'ExpenseTrash'] })
+  const changes = useLogChange('expenses', vehicle.id)
   const { leaving, leave } = useLeavingRows()
-  const { undoable } = useToast()
+  const { toast, undoable } = useToast()
   const [actionError, setActionError] = useState<unknown>()
   const { units } = vehicle
 
@@ -58,6 +62,7 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
           <Stack sx={{ alignItems: 'flex-start', gap: 0.5 }}>
             {format.date(r.date)}
             <ReviewBadge state={r.reviewState} />
+            <PendingBadge entity="expenses" id={r.id} />
           </Stack>
         ),
       },
@@ -75,8 +80,12 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
   async function moveToTrash(row: Row) {
     setActionError(undefined)
     try {
-      await leave(row.id, () => deleteExpense({ variables: { id: row.id } }))
-      undoable(t('toast.expenseTrashed', { title: row.title }), () => restoreExpense({ variables: { id: row.id } }))
+      // Kept on the device while the server is out of reach: the row stays, marked "to be removed", and Undo takes the change back. One
+      // added on this device and never sent is simply gone: there is nothing to undo on the server.
+      const neverSent = outbox.markOf('expenses', row.id) === 'new'
+      const done = await changes.trash(row.id, row.version, () => leave(row.id, () => deleteExpense({ variables: { id: row.id } })))
+      if (neverSent) toast(t('offline.discarded'))
+      else undoable(t('toast.expenseTrashed', { title: row.title }), () => changes.restore(row.id, done.queued ? row.version : row.version + 1, () => restoreExpense({ variables: { id: row.id } })))
     } catch (e) {
       setActionError(e)
     }
@@ -116,7 +125,7 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
                     <Pencil size={16} aria-hidden />
                   </IconAction>
                 }
-                onSubmit={async (input) => void (await updateExpense({ variables: { input: { ...input, id: r.id } } }))}
+                onSubmit={async (input) => void (await changes.update(r.id, r.version, { ...input, id: r.id }, () => updateExpense({ variables: { input: { ...input, id: r.id } } })))}
               />
               <ConfirmDialog
                 trigger={
