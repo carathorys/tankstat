@@ -26,7 +26,6 @@ import { useFormat } from '../../i18n/format.ts'
 import { ErrorMessage } from '../../messages.tsx'
 import { RefuelingFormDialog } from '../../RefuelingFormDialog.tsx'
 import { anyAwaiting } from '../../recognition/review.ts'
-import { PendingBadge } from '../../components/PendingBadge.tsx'
 import { outbox, usePendingCount } from '../../offline/outbox.ts'
 import { keepEntry } from '../../offline/submitChange.ts'
 import { useLogChange } from '../../offline/useLogChange.ts'
@@ -73,7 +72,6 @@ export function RefuelingsPanel({
           <Stack sx={{ alignItems: 'flex-start', gap: 0.5 }}>
             {format.date(r.date)}
             <ReviewBadge state={r.reviewState} />
-            <PendingBadge entity="refuelings" id={r.id} />
           </Stack>
         ),
       },
@@ -142,6 +140,7 @@ export function RefuelingsPanel({
         emptyText={t('refuelings.empty')}
         pollWhile={anyAwaiting}
         leaving={leaving}
+        syncState={{ entity: 'refuelings', name: (r) => format.date(r.date) }}
         toolbar={({ total }) => (
           <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
             {canLog && <RefuelingFormDialog vehicle={vehicle} trigger={<Button size="large">{t('refuelings.add')}</Button>} onSubmit={add.refuel} />}

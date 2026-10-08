@@ -72,7 +72,7 @@ it('a refuelling added offline is kept on the device, listed in its place, marke
 
   expect(await screen.findByText('Saved on this device · syncs when online.')).toBeInTheDocument()
   await waitFor(() => expect(screen.getAllByRole('row')).toHaveLength(5))
-  expect(screen.getByText('New · not synced')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /New · not synced/ })).toBeInTheDocument()
   expect(screen.getByText('1 change waiting to sync')).toBeInTheDocument()
   expect(outbox.changes).toMatchObject([{ entity: 'refuelings', action: 'add', vehicleId: 'v1', input: { volume: 30, totalCost: 90, odometer: 2000, currency: 'EUR' } }])
   expect(sent).toEqual([])
@@ -87,13 +87,13 @@ it('a refuelling moved to the trash offline stays listed, marked, until Undo tak
   await ui.click(row)
   await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Move to trash' }))
 
-  expect(await screen.findByText('To be removed · not synced')).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: /To be removed · not synced/ })).toBeInTheDocument()
   expect(screen.getAllByRole('row')).toHaveLength(4)
   expect(outbox.changes).toMatchObject([{ action: 'trash', expectedVersion: 1 }])
 
   await ui.click(await screen.findByRole('button', { name: 'Undo' }))
 
-  await waitFor(() => expect(screen.queryByText('To be removed · not synced')).not.toBeInTheDocument())
+  await waitFor(() => expect(screen.queryByRole('button', { name: /To be removed · not synced/ })).not.toBeInTheDocument())
   expect(outbox.changes).toEqual([])
   expect(screen.queryByText(/waiting to sync/)).not.toBeInTheDocument()
   expect(sent).toEqual([])
@@ -102,8 +102,8 @@ it('a refuelling moved to the trash offline stays listed, marked, until Undo tak
 it('editing a refuelling added offline changes the waiting add instead of queueing another change', async () => {
   const { ui } = await openRefuelings()
   await addOffline(ui)
-  await screen.findByText('New · not synced')
-  const newRow = screen.getByText('New · not synced').closest('[role="row"]') as HTMLElement
+  await screen.findByRole('button', { name: /New · not synced/ })
+  const newRow = screen.getByRole('button', { name: /New · not synced/ }).closest('[role="row"]') as HTMLElement
 
   await ui.click(within(newRow).getByRole('button', { name: /^Edit the refuelling of/ }))
   const dialog = await screen.findByRole('dialog', { name: /Edit refuelling/ })
@@ -121,7 +121,7 @@ it('editing a refuelling added offline changes the waiting add instead of queuei
 it('the changes survive a restart, and while they wait the device answers for the vehicle even when the server is back', async () => {
   const first = await openRefuelings()
   await addOffline(first.ui)
-  await screen.findByText('New · not synced')
+  await screen.findByRole('button', { name: /New · not synced/ })
   first.view.unmount()
 
   // The next start: the server is reachable again, but nothing has been sent yet.
@@ -130,7 +130,7 @@ it('the changes survive a restart, and while they wait the device answers for th
   await act(() => connectivity.reset())
   renderWithApollo(<App />, '/vehicles/v1?tab=refuelings')
 
-  expect(await screen.findByText('New · not synced')).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: /New · not synced/ })).toBeInTheDocument()
   await waitFor(() => expect(screen.getAllByRole('row')).toHaveLength(5))
   expect(sent).toEqual([]) // the grid did not ask the server, which would not know the new refuelling
 })
@@ -138,7 +138,7 @@ it('the changes survive a restart, and while they wait the device answers for th
 it('an entry added offline and then removed is gone, with nothing to undo or send', async () => {
   const { ui } = await openRefuelings()
   await addOffline(ui)
-  const newRow = (await screen.findByText('New · not synced')).closest('[role="row"]') as HTMLElement
+  const newRow = (await screen.findByRole('button', { name: /New · not synced/ })).closest('[role="row"]') as HTMLElement
 
   await ui.click(within(newRow).getByRole('button', { name: /^Delete the refuelling of/ }))
   await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Move to trash' }))

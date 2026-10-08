@@ -91,7 +91,7 @@ it('schedules added, done and deleted offline are marked, and one done here cann
   await ui.type(within(add).getByLabelText(/^Odometer on that day/), '1000')
   await ui.click(within(add).getByRole('button', { name: 'Add recurring expense' }))
   const oil = (await screen.findByRole('rowheader', { name: /^Oil/ })).closest('tr')!
-  expect(within(oil).getByText('New · not synced')).toBeInTheDocument()
+  expect(within(oil).getByRole('button', { name: /New · not synced/ })).toBeInTheDocument()
 
   await ui.click(screen.getByRole('button', { name: 'Mark Insurance as done' }))
   const done = await screen.findByRole('dialog')
@@ -99,7 +99,7 @@ it('schedules added, done and deleted offline are marked, and one done here cann
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 
   const insurance = screen.getByRole('rowheader', { name: /^Insurance/ }).closest('tr')!
-  expect(within(insurance).getByText('Done · not synced')).toBeInTheDocument()
+  expect(within(insurance).getByRole('button', { name: /Done · not synced/ })).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Mark Insurance as done' })).not.toBeInTheDocument()
   expect(within(insurance).getByRole('checkbox')).toBeDisabled()
   expect(outbox.changes.map((c) => `${c.entity}:${c.action}`)).toEqual(['recurring:add', 'recurring:markDone'])
@@ -179,7 +179,7 @@ it('a schedule of the server deleted offline stays listed, marked, until the ser
   await ui.click(screen.getByRole('button', { name: 'Delete the recurring expense Insurance' }))
   await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }))
 
-  const row = (await screen.findByText('To be removed · not synced')).closest('tr')!
+  const row = (await screen.findByRole('button', { name: /To be removed · not synced/ })).closest('tr')!
   expect(within(row).getByRole('rowheader', { name: /^Insurance/ })).toBeInTheDocument()
   expect(outbox.changes).toMatchObject([{ entity: 'recurring', action: 'trash', targetId: 's-v1', expectedVersion: 1 }])
   expect(sent).toEqual([])

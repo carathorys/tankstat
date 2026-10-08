@@ -10,7 +10,6 @@ import { IconAction } from '../../components/IconAction.tsx'
 import { UserChip } from '../../components/UserAvatar.tsx'
 import { ExpenseFormDialog } from '../../ExpenseFormDialog.tsx'
 import { anyAwaiting } from '../../recognition/review.ts'
-import { PendingBadge } from '../../components/PendingBadge.tsx'
 import { outbox, usePendingCount } from '../../offline/outbox.ts'
 import { keepEntry } from '../../offline/submitChange.ts'
 import { useLogChange } from '../../offline/useLogChange.ts'
@@ -65,7 +64,6 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
           <Stack sx={{ alignItems: 'flex-start', gap: 0.5 }}>
             {format.date(r.date)}
             <ReviewBadge state={r.reviewState} />
-            <PendingBadge entity="expenses" id={r.id} />
           </Stack>
         ),
       },
@@ -109,6 +107,7 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
         emptyText={t('expenses.empty')}
         pollWhile={anyAwaiting}
         leaving={leaving}
+        syncState={{ entity: 'expenses', name: (r) => r.title }}
         toolbar={({ total }) => (
           <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
             {canLog && <ExpenseFormDialog vehicle={vehicle} trigger={<Button size="large">{t('expenses.add')}</Button>} onSubmit={add.expense} />}

@@ -1141,6 +1141,20 @@
       "restored": "Restored · not synced",
       "done": "Done · not synced"
     },
+    "state": {
+      "column": "Sync state",
+      "aria": "{{name}}: {{state}}",
+      "parked": "Not applied by the server",
+      "reason": {
+        "new": "Saved on this device. It is added on the server when this device next syncs.",
+        "changed": "Saved on this device. The server gets the new values when this device next syncs.",
+        "deleted": "Waiting on this device. It moves to the trash on the server when this device next syncs; Keep takes it back.",
+        "restored": "Waiting on this device. It comes back from the trash on the server when this device next syncs.",
+        "done": "Waiting on this device. The visit reaches the server when this device next syncs."
+      },
+      "unreachable": "The server cannot be reached right now.",
+      "open": "Open Waiting to sync"
+    },
     "waiting_one": "{{count}} change waiting to sync",
     "waiting_other": "{{count}} changes waiting to sync",
     "dialogNote": "You are offline. What you save is kept on this device and sent to the server when you are back online; the server checks it against the other entries then.",

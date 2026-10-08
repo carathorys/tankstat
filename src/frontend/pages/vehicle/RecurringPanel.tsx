@@ -35,7 +35,8 @@ import { RecurringDoneDialog, type DoneValues } from '../../RecurringDoneDialog.
 import { preselect } from '../../recurringDone.ts'
 import { RecurringFormDialog } from '../../RecurringFormDialog.tsx'
 import { recurringProgress } from '../../recurringProgress.ts'
-import { PendingBadge } from '../../components/PendingBadge.tsx'
+import { SyncStateButton, SyncStateHeader } from '../../components/SyncState.tsx'
+import { useRowSyncStates } from '../../offline/useRowSyncStates.ts'
 import type { Saved } from '../../components/usePhotoQueue.ts'
 import { outbox, usePendingCount } from '../../offline/outbox.ts'
 import { keepEntry } from '../../offline/submitChange.ts'
@@ -70,6 +71,9 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
   const [selection, setSelection] = useState<ReadonlySet<string>>(new Set())
   const items = data?.vehicle?.recurring ?? []
   // A deleted schedule drops out by itself; one done or deleted on this device waits for the server.
+  // The sync column, like the grids': only while a schedule has a change waiting here or refused by the server.
+  const stateOf = useRowSyncStates('recurring')
+  const showState = items.some((i) => stateOf(i.id))
   const chosen = items.filter((i) => selection.has(i.id) && !['done', 'deleted'].includes(outbox.markOf('recurring', i.id) ?? '')).map((i) => i.id)
   const allChosen = items.length > 0 && chosen.length === items.length
 
@@ -170,6 +174,11 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
                   />
                 </TableCell>
               )}
+              {showState && (
+                <TableCell padding="checkbox" align="center">
+                  <SyncStateHeader />
+                </TableCell>
+              )}
               <TableCell>{t('recurring.columns.title')}</TableCell>
               <TableCell>{t('recurring.columns.schedule')}</TableCell>
               <TableCell>{t('recurring.columns.lastDone')}</TableCell>
@@ -193,9 +202,16 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
                         <Checkbox sx={box} slotProps={{ input: { 'aria-label': t('recurring.selectAria', { title: i.title }) } }} checked={selection.has(i.id) && !settled} disabled={settled} onChange={(e) => select([i.id], e.target.checked)} />
                       </TableCell>
                     )}
+                    {showState && (
+                      <TableCell padding="checkbox" align="center">
+                        {(() => {
+                          const state = stateOf(i.id)
+                          return state && <SyncStateButton state={state} name={i.title} />
+                        })()}
+                      </TableCell>
+                    )}
                     <TableCell component="th" scope="row">
                       {i.title}
-                      <PendingBadge entity="recurring" id={i.id} />
                       {i.category && (
                         <Typography variant="caption" component="p" sx={{ color: 'text.secondary' }}>
                           {i.category}

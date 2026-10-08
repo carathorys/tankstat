@@ -1141,6 +1141,20 @@
       "restored": "Visszaállítva · nincs szinkronizálva",
       "done": "Kész · nincs szinkronizálva"
     },
+    "state": {
+      "column": "Szinkronizálás állapota",
+      "aria": "{{name}}: {{state}}",
+      "parked": "A szerver nem tudta érvényesíteni",
+      "reason": {
+        "new": "Ezen az eszközön mentve. A következő szinkronizáláskor kerül fel a szerverre.",
+        "changed": "Ezen az eszközön mentve. A szerver a következő szinkronizáláskor kapja meg az új értékeket.",
+        "deleted": "Ezen az eszközön vár. A következő szinkronizáláskor kerül a kukába a szerveren; a Megtartás visszavonja.",
+        "restored": "Ezen az eszközön vár. A következő szinkronizáláskor kerül vissza a kukából a szerveren.",
+        "done": "Ezen az eszközön vár. A látogatás a következő szinkronizáláskor jut el a szerverre."
+      },
+      "unreachable": "A szerver most nem érhető el.",
+      "open": "Megnyitás: Szinkronizálásra vár"
+    },
     "waiting_one": "{{count}} módosítás vár szinkronizálásra",
     "waiting_other": "{{count}} módosítás vár szinkronizálásra",
     "dialogNote": "Nincs kapcsolat. Amit mentesz, ezen az eszközön marad, és akkor kerül a szerverre, amikor újra van kapcsolat; a szerver akkor veti össze a többi bejegyzéssel.",

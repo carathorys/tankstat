@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 import { collapse, discard, keptPhotosOf, markOf, type Change, type ChangeEntity, type PendingMark } from './changes.ts'
 import { deviceData } from './deviceData.ts'
 import type { RowStore } from './deviceStorage.ts'
@@ -192,6 +192,13 @@ const useVersion = () => useSyncExternalStore(outbox.subscribe, () => version)
 export function usePendingMark(entity: ChangeEntity, id: string): PendingMark | null {
   useVersion()
   return outbox.markOf(entity, id)
+}
+
+/** `usePendingMark` for every row of a list at once (one subscription): how each is marked, re-rendering when the changes do. */
+export function usePendingMarks(entity: ChangeEntity | undefined): (id: string) => PendingMark | null {
+  const current = useVersion()
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `current` stands for the changes
+  return useMemo(() => (id: string) => (entity ? outbox.markOf(entity, id) : null), [entity, current])
 }
 
 /** How many changes wait (for a vehicle, or in all). */

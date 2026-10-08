@@ -69,12 +69,12 @@ it('a vehicle moved to the trash from the list offline stays listed, marked, unt
   await ui.click(screen.getByRole('button', { name: 'Delete Car v1' }))
   await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Move to trash' }))
 
-  expect(await screen.findByText('To be removed · not synced')).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: 'Car v1: To be removed · not synced' })).toBeInTheDocument()
   expect(names()).toEqual(['Car v1', 'Car v2'])
   expect(outbox.changes).toMatchObject([{ entity: 'vehicles', action: 'trash', targetId: 'v1' }])
 
   await ui.click(await screen.findByRole('button', { name: 'Undo' }))
-  await waitFor(() => expect(screen.queryByText('To be removed · not synced')).not.toBeInTheDocument())
+  await waitFor(() => expect(screen.queryByRole('button', { name: /To be removed · not synced/ })).not.toBeInTheDocument())
   expect(outbox.changes).toEqual([])
   expect(sent).toEqual([])
 })
@@ -89,7 +89,7 @@ it('a vehicle added or renamed from the list offline is listed with its values, 
   await ui.type(within(adding).getByLabelText('Name'), 'Golf')
   await ui.click(within(adding).getByRole('button', { name: 'Add vehicle' }))
   await waitFor(() => expect(names()).toEqual(['Car v1', 'Car v2', 'Golf']))
-  expect(screen.getByText('New · not synced')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Golf: New · not synced' })).toBeInTheDocument()
 
   await ui.click(screen.getByRole('button', { name: 'Edit Car v2' }))
   const editing = await screen.findByRole('dialog', { name: /^Edit/ })
@@ -99,7 +99,7 @@ it('a vehicle added or renamed from the list offline is listed with its values, 
   await ui.click(within(editing).getByRole('button', { name: /^Save/ }))
 
   await waitFor(() => expect(names()).toEqual(['Astra Sport', 'Car v1', 'Golf']))
-  expect(screen.getByText('Changed · not synced')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Astra Sport: Changed · not synced' })).toBeInTheDocument()
   expect(outbox.changes.map((c) => [c.action, c.targetId])).toEqual([
     ['add', expect.any(String)],
     ['update', 'v2'],
