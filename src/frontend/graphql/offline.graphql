@@ -148,3 +148,46 @@ mutation SyncChanges($input: SyncChangesInput!) {
     }
   }
 }
+
+# A change sent from a device that the server parked (pages/SyncPage.tsx): `change` is the ChangeInput as it was sent, as JSON.
+fragment ParkedChangeFields on SyncChangeInfo {
+  id
+  kind
+  status
+  vehicleId
+  targetId
+  change
+  receivedAt
+  reason {
+    key
+    args {
+      name
+      value
+    }
+  }
+  vehicle {
+    id
+    name
+    distanceUnit
+    volumeUnit
+  }
+  submittedBy {
+    id
+    displayName
+  }
+  canResolve
+}
+
+# The parked changes the user may see: of the vehicles they may see, and those they sent (the top bar and Waiting to sync).
+query ParkedChanges {
+  parkedChanges {
+    ...ParkedChangeFields
+  }
+}
+
+# Applies a parked change anyway, or discards it; a refusal keeps it parked and is this mutation's error.
+mutation ResolveSyncChange($input: ResolveSyncChangeInput!) {
+  resolveSyncChange(input: $input) {
+    ...ParkedChangeFields
+  }
+}

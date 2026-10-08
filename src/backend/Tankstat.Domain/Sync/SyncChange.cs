@@ -40,6 +40,9 @@ public sealed class SyncChange : IOwned
 {
     public const int MaxBatch = 200;
     public const int MaxPayloadLength = 4000;
+
+    /// <summary>The most parked changes a list (and the notifications made from it) holds, newest first.</summary>
+    public const int MaxParkedListed = 200;
     public const int MaxReasonKeyLength = 80;
     public const int MaxReasonArgs = 10;
 
@@ -75,6 +78,47 @@ public sealed class SyncChange : IOwned
     public string? ReasonKey { get; private set; }
 
     public IReadOnlyDictionary<string, string> ReasonArgs { get; private set; } = new Dictionary<string, string>();
+
+    /// <summary>Who applied or discarded a parked change, and when; while it is parked, who is deciding about it right now (the claim).</summary>
+    public Guid? ResolvedById { get; private set; }
+
+    public DateTimeOffset? ResolvedAt { get; private set; }
+
+    /// <summary>A person edited the parked change before applying it: the change they apply instead (same kind, same target).</summary>
+    public void Replace(string payload)
+    {
+        RequireParked();
+        if (payload.Length > MaxPayloadLength)
+            throw new DomainException("sync.payloadTooLarge", $"A change may hold at most {MaxPayloadLength} characters.", new { Max = MaxPayloadLength });
+        Payload = payload;
+    }
+
+    /// <summary>Applying it was tried again and refused again: it stays parked, with the new reason.</summary>
+    public void ParkAgain(string reasonKey, IReadOnlyDictionary<string, string> reasonArgs)
+    {
+        RequireParked();
+        Settle(SyncChangeStatus.Parked, null, null, reasonKey, reasonArgs);
+        (ResolvedById, ResolvedAt) = (null, null); // nobody decided: free for the next decision
+    }
+
+    public void MarkApplied(Guid resolvedById, DateTimeOffset now, Guid? resultId, int? resultVersion)
+    {
+        RequireParked();
+        Settle(SyncChangeStatus.Applied, resultId, resultVersion, null, null);
+        (ResolvedById, ResolvedAt) = (resolvedById, now);
+    }
+
+    public void MarkDiscarded(Guid resolvedById, DateTimeOffset now)
+    {
+        RequireParked();
+        Status = SyncChangeStatus.Discarded;
+        (ResolvedById, ResolvedAt) = (resolvedById, now);
+    }
+
+    private void RequireParked()
+    {
+        if (Status != SyncChangeStatus.Parked) throw new DomainException("sync.notParked", "This change is not parked: someone has decided about it already.");
+    }
 
     public static SyncChange Applied(
         Guid id, Guid ownerId, Guid submittedById, Guid? vehicleId, Guid? targetId, SyncChangeKind kind, int? expectedVersion, string payload,

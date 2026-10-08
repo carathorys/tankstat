@@ -85,6 +85,7 @@ type Query {
   offlineChanges(input: OfflineChangesInput!): OfflineChanges!
     @cost(weight: "10")
   offlineSettings: OfflineSettingsInfo! @cost(weight: "10")
+  parkedChanges: [SyncChangeInfo!]! @cost(weight: "10")
 }
 
 type Mutation {
@@ -144,6 +145,8 @@ type Mutation {
   updateOfflineSettings(input: UpdateOfflineSettingsInput!): OfflineSettingsInfo!
     @cost(weight: "10")
   syncChanges(input: SyncChangesInput!): SyncResultInfo! @cost(weight: "10")
+  resolveSyncChange(input: ResolveSyncChangeInput!): SyncChangeInfo!
+    @cost(weight: "10")
 }
 
 type AccessGrantInfo {
@@ -458,6 +461,25 @@ type Session {
   user: UserInfo
 }
 
+type SyncChangeInfo {
+  id: UUID!
+  kind: SyncChangeKind!
+  status: SyncChangeStatus!
+  vehicleId: UUID
+  targetId: UUID
+  expectedVersion: Int
+  change: String!
+  receivedAt: DateTime!
+  reason: SyncReasonInfo
+  submittedById: UUID!
+  resolvedAt: DateTime
+  entityId: UUID
+  version: Int
+  submittedBy: UserRef @cost(weight: "10")
+  vehicle: SyncVehicleRef @cost(weight: "10")
+  canResolve: Boolean! @cost(weight: "10")
+}
+
 type SyncChangeResultInfo {
   id: UUID!
   status: SyncChangeStatus!
@@ -480,6 +502,13 @@ type SyncResultInfo {
   results: [SyncChangeResultInfo!]!
   applied: Int!
   parked: Int!
+}
+
+type SyncVehicleRef {
+  id: UUID!
+  name: String!
+  distanceUnit: DistanceUnit!
+  volumeUnit: VolumeUnit!
 }
 
 type UiSettingsInfo {
@@ -541,6 +570,7 @@ type Vehicle {
   expenseCount: Int! @cost(weight: "10")
   recurring: [RecurringExpenseInfo!]! @cost(weight: "10")
   summary: VehicleSummary @cost(weight: "10")
+  parkedChangeCount: Int! @cost(weight: "10")
   logCountSince(from: LocalDate): LogCountSince! @cost(weight: "10")
 }
 
@@ -744,6 +774,12 @@ input ResetPasswordInput {
   newPassword: String!
 }
 
+input ResolveSyncChangeInput {
+  id: UUID!
+  action: SyncResolveAction!
+  change: ChangeInput
+}
+
 input SaveChartInput {
   id: UUID
   vehicleId: UUID!
@@ -942,6 +978,7 @@ enum NotificationEntityType {
   USER
   REFUELING
   EXPENSE
+  SYNC_CHANGE
 }
 
 enum NotificationKind {
@@ -954,6 +991,7 @@ enum NotificationKind {
   RECURRING_OVERDUE
   LOG_FILLED_FROM_PHOTO
   LOG_NOT_FILLED
+  SYNC_CHANGE_PARKED
   MORE_ACTIVITY
 }
 
@@ -1037,10 +1075,34 @@ enum SortDirection {
   DESC
 }
 
+enum SyncChangeKind {
+  LOG_REFUELING
+  UPDATE_REFUELING
+  DELETE_REFUELING
+  RESTORE_REFUELING
+  ADD_EXPENSE
+  UPDATE_EXPENSE
+  DELETE_EXPENSE
+  RESTORE_EXPENSE
+  ADD_RECURRING_EXPENSE
+  UPDATE_RECURRING_EXPENSE
+  DELETE_RECURRING_EXPENSE
+  MARK_RECURRING_EXPENSES_DONE
+  ADD_VEHICLE
+  UPDATE_VEHICLE
+  DELETE_VEHICLE
+  RESTORE_VEHICLE
+}
+
 enum SyncChangeStatus {
   APPLIED
   PARKED
   DISCARDED
+}
+
+enum SyncResolveAction {
+  APPLY
+  DISCARD
 }
 
 enum UserDataDisposition {

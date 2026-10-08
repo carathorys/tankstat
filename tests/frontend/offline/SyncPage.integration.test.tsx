@@ -128,20 +128,31 @@ it('signing out with changes waiting asks first, and they stay on the device for
   expect(outbox.changes).toHaveLength(1) // it waited for them
 })
 
-it('Sync now sends what waits; what the server could not apply is listed with its reason, and the top bar says so', async () => {
+/** A change the server parked, as `ParkedChanges` answers it: of Octavia, sent by `by`. */
+function parkedRow(id: string, kind: string, change: object, reason: string, over: Record<string, unknown> = {}) {
+  return {
+    __typename: 'SyncChangeInfo', id, kind, status: 'PARKED', vehicleId: 'v1', targetId: (change as { id?: string }).id ?? null, change: JSON.stringify(change), receivedAt: '2026-10-06T09:00:00Z',
+    reason: { __typename: 'SyncReasonInfo', key: reason, args: [] }, vehicle: { __typename: 'SyncVehicleRef', id: 'v1', name: 'Octavia', distanceUnit: 'KILOMETERS', volumeUnit: 'LITERS' },
+    submittedBy: { __typename: 'UserRef', id: 'u2', displayName: 'Bob' }, canResolve: true, ...over,
+  }
+}
+
+it('Sync now sends what waits; what the server could not apply is listed from the server with its reason, and the top bar says so', async () => {
   await downloaded()
   await outbox.enqueue({ id: 'n1', entity: 'refuelings', action: 'add', vehicleId: 'v1', targetId: 'n1', input: { id: 'n1', vehicleId: 'v1', date: '2026-10-05', volume: 30, totalCost: 90, currency: 'EUR', odometer: 2000 } })
   await outbox.enqueue({ id: 't1', entity: 'refuelings', action: 'trash', vehicleId: 'v1', targetId: 'a', expectedVersion: 1 })
   connectivity.reset()
+  const parked: object[] = []
   server.use(
     graphql.mutation('SyncChanges', ({ variables }) => {
-      const results = (variables.input.changes as { id: string }[]).map((c) =>
-        c.id === 't1'
-          ? { __typename: 'SyncChangeResultInfo', id: c.id, status: 'PARKED', entityId: null, version: null, reason: { __typename: 'SyncReasonInfo', key: 'sync.versionMismatch', args: [] } }
-          : { __typename: 'SyncChangeResultInfo', id: c.id, status: 'APPLIED', entityId: c.id, version: 1, reason: null },
-      )
+      const results = (variables.input.changes as { id: string }[]).map((c) => {
+        if (c.id !== 't1') return { __typename: 'SyncChangeResultInfo', id: c.id, status: 'APPLIED', entityId: c.id, version: 1, reason: null }
+        parked.push(parkedRow('t1', 'DELETE_REFUELING', { id: 't1', expectedVersion: 1, deleteRefueling: 'a' }, 'sync.versionMismatch', { targetId: 'a', submittedBy: { __typename: 'UserRef', id: 'u1', displayName: 'Anonymous' } }))
+        return { __typename: 'SyncChangeResultInfo', id: c.id, status: 'PARKED', entityId: null, version: null, reason: { __typename: 'SyncReasonInfo', key: 'sync.versionMismatch', args: [] } }
+      })
       return HttpResponse.json({ data: { syncChanges: { __typename: 'SyncResultInfo', applied: 1, parked: 1, results } } })
     }),
+    graphql.query('ParkedChanges', () => HttpResponse.json({ data: { parkedChanges: parked } })),
   )
   provideOfflineSync(createPushEngine({ client: createApolloClient('http://localhost/graphql'), pull: async () => undefined }))
   renderWithApollo(<App />, '/sync')
@@ -151,10 +162,73 @@ it('Sync now sends what waits; what the server could not apply is listed with it
 
   expect(await screen.findByText(/^Last synced .*: 1 applied, 1 not applied\.$/)).toBeInTheDocument()
   const notApplied = within(await screen.findByRole('region', { name: 'Not applied' }))
-  expect(notApplied.getByRole('heading', { name: 'Refuelling to the trash' })).toBeInTheDocument()
+  expect(await notApplied.findByRole('heading', { name: 'Refuelling to the trash' })).toBeInTheDocument()
   expect(notApplied.getByText(/^It was changed meanwhile by someone else/)).toBeInTheDocument()
+  expect(notApplied.getByText(/^Sent by Anonymous /)).toBeInTheDocument()
   expect(notApplied.queryByRole('button', { name: /^Remove the change/ })).not.toBeInTheDocument() // the server has it now
   expect(screen.getByRole('link', { name: '1 change could not be applied' })).toBeInTheDocument()
   expect(await screen.findByText('Nothing is waiting: everything made on this device is on the server.')).toBeInTheDocument()
   expect(outbox.changes).toEqual([])
+})
+
+it('a parked change of anyone who works with the vehicle can be applied anyway or discarded, by those who may', async () => {
+  await downloaded()
+  connectivity.reset()
+  const update = parkedRow('c1', 'UPDATE_REFUELING', { id: 'c1', expectedVersion: 1, updateRefueling: { id: 'b', date: '2026-09-20', volume: 45, totalCost: 70, currency: 'EUR', odometer: 1500, isFullTank: true } }, 'sync.versionMismatch', { targetId: 'b' })
+  const gone = parkedRow('c2', 'DELETE_EXPENSE', { id: 'c2', expectedVersion: 2, deleteExpense: 'x9' }, 'expense.notFound', { targetId: 'x9' })
+  const notMine = parkedRow('c3', 'LOG_REFUELING', { id: 'c3', logRefueling: { id: 'c3', vehicleId: 'v1', date: '2026-09-25', volume: 20, totalCost: 30, currency: 'EUR', odometer: 1400 } }, 'odometer.aboveNext', { canResolve: false, targetId: 'c3' })
+  let parked = [update, gone, notMine]
+  let refuse = true
+  let asked = 0
+  const resolved: unknown[] = []
+  server.use(
+    graphql.query('ParkedChanges', () => (asked++, HttpResponse.json({ data: { parkedChanges: parked } }))),
+    graphql.mutation('ResolveSyncChange', ({ variables }) => {
+      const { id, action } = variables.input as { id: string; action: string }
+      resolved.push(variables.input)
+      if (action === 'APPLY' && refuse) {
+        refuse = false
+        return HttpResponse.json({ data: null, errors: [{ message: 'Below.', extensions: { code: 'VALIDATION_FAILED', key: 'odometer.belowPrevious', args: { previous: '1600', date: '2026-09-21' } } }] })
+      }
+      const row = parked.find((p) => p.id === id)!
+      parked = parked.filter((p) => p.id !== id)
+      return HttpResponse.json({ data: { resolveSyncChange: { ...row, status: action === 'APPLY' ? 'APPLIED' : 'DISCARDED' } } })
+    }),
+  )
+  renderWithApollo(<App />, '/sync')
+  const ui = userEvent.setup()
+
+  const region = within(await screen.findByRole('region', { name: 'Not applied' }))
+  const octavia = within(await region.findByRole('region', { name: /^Octavia/ }))
+  expect(octavia.getByText('3 changes')).toBeInTheDocument()
+  expect(octavia.getByText(/45 L · €70\.00$/)).toBeInTheDocument() // what the change carries
+  expect(octavia.queryByRole('button', { name: /New refuelling/ })).not.toBeInTheDocument() // may not decide about it
+  expect(octavia.queryByRole('button', { name: /^Apply anyway: Expense to the trash/ })).not.toBeInTheDocument() // what it changes is gone
+  expect((await axe(document.body, { rules: { 'color-contrast': { enabled: false } } })).violations.map((v) => v.id)).toEqual([])
+
+  await ui.click(octavia.getByRole('button', { name: /^Apply anyway: Changed refuelling/ }))
+  const confirm = await screen.findByRole('alertdialog', { name: 'Apply this change anyway?' })
+  expect(within(confirm).getByText(/^It was not applied because: It was changed meanwhile/)).toBeInTheDocument()
+  const askedBefore = asked
+  await ui.click(within(confirm).getByRole('button', { name: 'Apply anyway' }))
+  expect(await screen.findByText('Still not applied: The odometer cannot be lower than 1600, the reading on 2026-09-21.')).toBeInTheDocument()
+  await waitFor(() => expect(asked).toBeGreaterThan(askedBefore)) // the list is asked afresh after a refusal too (its new reason)
+
+  await ui.click(octavia.getByRole('button', { name: /^Apply anyway: Changed refuelling/ }))
+  await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Apply anyway' }))
+  expect(await screen.findByText('Applied.')).toBeInTheDocument()
+  await waitFor(() => expect(octavia.queryByRole('heading', { name: 'Changed refuelling' })).not.toBeInTheDocument())
+
+  await ui.click(octavia.getByRole('button', { name: /^Discard: Expense to the trash/ }))
+  await ui.click(within(await screen.findByRole('alertdialog', { name: 'Discard this change?' })).getByRole('button', { name: 'Discard' }))
+  expect(await screen.findByText('Discarded: it will not be applied.')).toBeInTheDocument()
+  expect(resolved).toEqual([{ id: 'c1', action: 'APPLY' }, { id: 'c1', action: 'APPLY' }, { id: 'c2', action: 'DISCARD' }])
+  expect(screen.getByRole('heading', { name: 'Waiting to sync', level: 1 })).toHaveFocus()
+})
+
+it('offline, it says the changes the server could not apply are shown once it can be reached', async () => {
+  await downloaded()
+  renderWithApollo(<App />, '/sync')
+
+  expect(await screen.findByText('Changes the server could not apply are shown here when it can be reached again.')).toBeInTheDocument()
 })

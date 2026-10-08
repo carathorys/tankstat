@@ -75,6 +75,7 @@ public static class DependencyInjection
         services.AddScoped<ResourceSharingService>();
         services.AddScoped<Notifier>();
         services.AddScoped<RecurringNotificationSync>();
+        services.AddScoped<SyncNotificationSync>();
         services.AddScoped<NotificationService>();
         services.AddSingleton<RecognitionSetup>();
         services.AddSingleton<RecognitionAvailability>();

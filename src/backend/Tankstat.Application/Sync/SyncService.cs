@@ -2,8 +2,10 @@ using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
+using Tankstat.Application.Auth;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain;
+using Tankstat.Domain.Access;
 using Tankstat.Domain.Sync;
 
 namespace Tankstat.Application.Sync;
@@ -32,8 +34,34 @@ public interface ISyncChangeRepository
 {
     Task<IReadOnlyList<SyncChange>> FindManyAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct);
 
+    Task<SyncChange?> FindAsync(Guid id, CancellationToken ct);
+
+    /// <summary>
+    /// The parked changes of the vehicles in the scope (live vehicles only), and those the submitter sent, newest first: at most
+    /// <see cref="SyncChange.MaxParkedListed"/> (a device that keeps sending what cannot be applied must not grow every list and inbox).
+    /// </summary>
+    Task<IReadOnlyList<SyncChange>> ListParkedAsync(OwnerScope scope, Guid submitterId, CancellationToken ct);
+
+    /// <summary>How many parked changes each of the vehicles has.</summary>
+    Task<IReadOnlyDictionary<Guid, int>> CountParkedAsync(IReadOnlyCollection<Guid> vehicleIds, CancellationToken ct);
+
     /// <summary>Records a change; false when a change with its id is recorded already (the same batch on another server at the same moment).</summary>
     Task<bool> AddAsync(SyncChange change, CancellationToken ct);
+
+    /// <summary>
+    /// Takes a parked change for one person's decision: false when it is not parked, or someone else's claim is newer than
+    /// <paramref name="staleBefore"/>. While parked, the claim is <c>ResolvedById</c>/<c>ResolvedAt</c>.
+    /// </summary>
+    Task<bool> ClaimAsync(Guid id, Guid by, DateTimeOffset now, DateTimeOffset staleBefore, CancellationToken ct);
+
+    /// <summary>Gives a claim back without a decision (the apply failed for want of the person's own access, or unexpectedly).</summary>
+    Task ReleaseAsync(Guid id, Guid by, CancellationToken ct);
+
+    /// <summary>
+    /// Saves what was decided about a parked change only while it is still parked and claimed by <paramref name="claimedBy"/>; false when
+    /// someone else took it meanwhile. Parked again, it is saved unclaimed.
+    /// </summary>
+    Task<bool> SettleParkedAsync(SyncChange change, Guid claimedBy, CancellationToken ct);
 
     /// <summary>Removes the applied (and discarded) rows received before the moment; parked ones stay.</summary>
     Task<int> PurgeResolvedAsync(DateTimeOffset before, CancellationToken ct);
@@ -99,6 +127,115 @@ public sealed class SyncService(
             gate.Release();
         }
     }
+
+    /// <summary>
+    /// The parked changes the user may see: those of every vehicle whose logs they may view (everyone who works with the vehicle decides
+    /// about them), and those they sent themselves (a vehicle they added, which the server never took, has none). An administrator sees
+    /// every vehicle's here, as in every list; the notifications only go to those who work with the vehicle themselves
+    /// (<see cref="Notifications.SyncNotificationSync"/>), deliberately.
+    /// </summary>
+    public async Task<IReadOnlyList<SyncChange>> ListParkedAsync(CancellationToken ct)
+    {
+        var me = await access.RequirePrincipalAsync(ct);
+        return await ledger.ListParkedAsync(await access.LogScopeAsync(AccessLevel.View, ct), me.Id, ct);
+    }
+
+    /// <summary>For vehicles the caller already got through an access check (a resolver of the vehicle).</summary>
+    public Task<IReadOnlyDictionary<Guid, int>> CountParkedAsync(IReadOnlyCollection<Guid> vehicleIds, CancellationToken ct) => ledger.CountParkedAsync(vehicleIds, ct);
+
+    /// <summary>
+    /// Whoever sent it decides about a parked change, and whoever may make the same change: Edit on the vehicle's logs for a change of a log
+    /// or a schedule, Edit on the vehicle itself for a change of the vehicle (a log grant does not let anyone rename someone's car).
+    /// </summary>
+    public Task<bool> CanResolveAsync(SyncChange change, CancellationToken ct) => CanResolveAsync(change.SubmittedById, change.VehicleId, change.Kind, ct);
+
+    public async Task<bool> CanResolveAsync(Guid submitterId, Guid? vehicleId, SyncChangeKind kind, CancellationToken ct)
+    {
+        var me = await access.RequirePrincipalAsync(ct);
+        if (submitterId == me.Id) return true;
+        if (vehicleId is not { } id || await vehicles.FindAsync(id, ct) is not { } vehicle) return false;
+        var level = IsVehicleChange(kind) ? await access.VehicleLevelAsync(vehicle, ct) : await access.LogLevelAsync(vehicle, ct);
+        return level >= AccessLevel.Edit;
+    }
+
+    public static bool IsVehicleChange(SyncChangeKind kind) => kind is SyncChangeKind.AddVehicle or SyncChangeKind.UpdateVehicle or SyncChangeKind.DeleteVehicle or SyncChangeKind.RestoreVehicle;
+
+    /// <summary>The parked change, when the caller may see it; anything else looks non-existent, whatever it is.</summary>
+    public async Task<SyncChange> FindVisibleAsync(Guid id, CancellationToken ct)
+    {
+        var me = await access.RequirePrincipalAsync(ct);
+        var change = await ledger.FindAsync(id, ct);
+        return change is not null && await VisibleAsync(change, me.Id, ct) ? change : throw new NotFoundException("sync.notFound", "Change not found.", new { Id = id });
+    }
+
+    /// <summary>A decision taken and not finished within this long (a server that stopped meanwhile) no longer holds the change.</summary>
+    public static readonly TimeSpan ClaimTimeout = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// A person decides about a parked change: discard it (it is never applied), or apply it anyway, as they would online (every rule and
+    /// access check; the version it was made from no longer counts: they saw what is there now). <paramref name="apply"/> applies the
+    /// stored change, or the edited one in <paramref name="replacement"/> (stored first, so it is kept if it is refused again). A refusal
+    /// keeps it parked with the new reason, and is thrown so the person sees it.
+    /// </summary>
+    public async Task<SyncChange> ResolveAsync(Guid id, bool discard, Func<CancellationToken, Task<AppliedChange>>? apply, string? replacement, CancellationToken ct)
+    {
+        var me = await access.RequirePrincipalAsync(ct);
+        var change = await FindVisibleAsync(id, ct);
+        if (change.Status != SyncChangeStatus.Parked) throw NotParked();
+        if (!await CanResolveAsync(change, ct)) throw new ForbiddenException("sync.cannotResolve", "Only whoever sent it, or may change the vehicle's logs, decides about it.");
+
+        // One decision at a time: the change is claimed before anything is applied, so a discard or a second apply at the same moment is
+        // refused, never the data changed while the ledger says the change was discarded.
+        var now = clock.GetUtcNow();
+        if (!await ledger.ClaimAsync(change.Id, me.Id, now, now - ClaimTimeout, ct)) throw NotParked();
+        var settled = false;
+        async Task SettleAsync()
+        {
+            settled = true;
+            if (!await ledger.SettleParkedAsync(change, me.Id, CancellationToken.None)) throw NotParked(); // the claim ran out and someone took it
+        }
+        try
+        {
+            if (discard)
+            {
+                change.MarkDiscarded(me.Id, now);
+                await SettleAsync();
+                logger.LogInformation("User {UserId} discarded parked change {ChangeId} of vehicle {VehicleId}", me.Id, change.Id, change.VehicleId);
+                return change;
+            }
+            if (replacement is not null) change.Replace(replacement);
+            try
+            {
+                var applied = await apply!(ct);
+                change.MarkApplied(me.Id, now, applied.EntityId, applied.Version);
+                await SettleAsync();
+                logger.LogInformation("User {UserId} applied parked change {ChangeId} of vehicle {VehicleId}", me.Id, change.Id, change.VehicleId);
+                return change;
+            }
+            catch (KeyedException refused) when (change.SubmittedById != me.Id && refused is NotFoundException or ForbiddenException)
+            {
+                // Refused for what this person may not do: why the change was parked for the others stays as it was.
+                throw;
+            }
+            catch (KeyedException refused)
+            {
+                change.ParkAgain(refused.Key, refused.Args.ToDictionary(a => a.Key, a => Convert.ToString(a.Value, CultureInfo.InvariantCulture) ?? ""));
+                await SettleAsync(); // parked again, and the claim given back with it
+                logger.LogDebug("Parked change {ChangeId} was refused again: {Key}", change.Id, refused.Key);
+                throw;
+            }
+        }
+        finally
+        {
+            if (!settled) await ledger.ReleaseAsync(change.Id, me.Id, CancellationToken.None);
+        }
+    }
+
+    private static DomainException NotParked() => new("sync.notParked", "This change is not parked: someone has decided about it already.");
+
+    private async Task<bool> VisibleAsync(SyncChange change, Guid me, CancellationToken ct) =>
+        change.SubmittedById == me
+        || (change.VehicleId is { } id && await vehicles.FindAsync(id, ct) is { } vehicle && await access.LogLevelAsync(vehicle, ct) >= AccessLevel.View);
 
     /// <summary>Applies one change; a refusal of the server's (a keyed error) parks it with the reason, anything else is unexpected and stops the batch.</summary>
     private async Task<SyncChange> ApplyAsync(SyncChangeRequest change, Guid submitter, CancellationToken ct)

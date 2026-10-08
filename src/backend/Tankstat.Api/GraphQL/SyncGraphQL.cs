@@ -1,14 +1,20 @@
-using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json;
+using GreenDonut;
 using Microsoft.Extensions.Options;
+using Tankstat.Application.Access;
 using Tankstat.Application.Expenses;
 using Tankstat.Application.Recurring;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Sync;
 using Tankstat.Application.Vehicles;
-using Tankstat.Domain;
+using Tankstat.Application;
+using Tankstat.Domain.Access;
 using Tankstat.Domain.Measurements;
+using Tankstat.Domain.Odometers;
 using Tankstat.Domain.Sync;
+using Tankstat.Domain.Vehicles;
+using Tankstat.Domain;
 
 namespace Tankstat.Api.GraphQL;
 
@@ -38,12 +44,90 @@ public sealed record SyncChangeResultInfo(Guid Id, SyncChangeStatus Status, Guid
 
 public sealed record SyncResultInfo(IReadOnlyList<SyncChangeResultInfo> Results, int Applied, int Parked);
 
+/// <summary>
+/// A change sent from a device that the server parked (or that someone decided about): what it is, the change itself as the device sent it
+/// (`change`, JSON of a <c>ChangeInput</c>), why it was parked, and who sent it and when.
+/// </summary>
+public sealed record SyncChangeInfo(
+    Guid Id, SyncChangeKind Kind, SyncChangeStatus Status, Guid? VehicleId, Guid? TargetId, int? ExpectedVersion, string Change, DateTimeOffset ReceivedAt,
+    SyncReasonInfo? Reason, Guid SubmittedById, DateTimeOffset? ResolvedAt, Guid? EntityId, int? Version)
+{
+    public static SyncChangeInfo From(SyncChange c) => new(
+        c.Id, c.Kind, c.Status, c.VehicleId, c.TargetId, c.ExpectedVersion, c.Payload, c.ReceivedAt,
+        c.ReasonKey is null ? null : new SyncReasonInfo(c.ReasonKey, c.ReasonArgs.Select(a => new SyncReasonArg(a.Key, a.Value)).ToList()),
+        c.SubmittedById, c.ResolvedAt, c.ResultId, c.ResultVersion);
+}
+
+[ExtendObjectType<SyncChangeInfo>]
+public sealed class SyncChangeInfoExtensions
+{
+    public Task<UserRef?> GetSubmittedBy([Parent] SyncChangeInfo change, UserRefLoader users, CancellationToken ct) => users.LoadAsync(change.SubmittedById, ct);
+
+    /// <summary>
+    /// The vehicle's name and units, to show the change by (even a trashed vehicle, or one the sender no longer has access to: they saw it
+    /// when they made the change). Null for a vehicle the server never took.
+    /// </summary>
+    public async Task<SyncVehicleRef?> GetVehicle([Parent] SyncChangeInfo change, VehicleIncludingDeletedLoader vehicles, CancellationToken ct) =>
+        change.VehicleId is { } id && await vehicles.LoadAsync(id, ct) is { } v ? new SyncVehicleRef(v.Id, v.Name, v.Units.Distance, v.Units.Volume) : null;
+
+    /// <summary>
+    /// Whether the current user may apply or discard it: whoever sent it, or may make the same change (Edit on the vehicle's logs; on the
+    /// vehicle itself for a change of the vehicle).
+    /// </summary>
+    public async Task<bool> GetCanResolve(
+        [Parent] SyncChangeInfo change, [Service] AccessService access, [Service] SyncService sync, LogLevelByVehicleLoader levels, CancellationToken ct)
+    {
+        if (change.SubmittedById == (await access.RequirePrincipalAsync(ct)).Id) return true;
+        if (SyncService.IsVehicleChange(change.Kind)) return await sync.CanResolveAsync(change.SubmittedById, change.VehicleId, change.Kind, ct);
+        return change.VehicleId is { } id && await levels.LoadAsync(id, ct) >= AccessLevel.Edit;
+    }
+}
+
+/// <summary>Just enough of a vehicle to name a change of it; nothing else of the vehicle is shown through a change.</summary>
+public sealed record SyncVehicleRef(Guid Id, string Name, DistanceUnit DistanceUnit, VolumeUnit VolumeUnit);
+
+/// <summary>APPLY: apply it anyway (the version it was made from no longer counts). DISCARD: it is never applied.</summary>
+public enum SyncResolveAction
+{
+    Apply,
+    Discard,
+}
+
+/// <param name="Change">For APPLY: the change as edited before applying (same kind); omit to apply it as it was sent.</param>
+public sealed record ResolveSyncChangeInput(Guid Id, SyncResolveAction Action, ChangeInput? Change = null);
+
+[ExtendObjectType(OperationTypeNames.Query)]
+public sealed class SyncQueries
+{
+    /// <summary>The changes the server parked that the current user may see: of every vehicle whose logs they may view, and those they sent; newest first.</summary>
+    public async Task<IReadOnlyList<SyncChangeInfo>> GetParkedChanges([Service] SyncService sync, CancellationToken ct) =>
+        (await sync.ListParkedAsync(ct)).Select(SyncChangeInfo.From).ToList();
+}
+
+/// <summary>How many parked changes the vehicles of a response have, one query for all (for a vehicle the resolver already authorised).</summary>
+public sealed class ParkedChangeCountLoader(SyncService sync, IBatchScheduler scheduler, DataLoaderOptions options) : BatchDataLoader<Guid, int>(scheduler, options)
+{
+    protected override async Task<IReadOnlyDictionary<Guid, int>> LoadBatchAsync(IReadOnlyList<Guid> keys, CancellationToken ct)
+    {
+        var counts = await sync.CountParkedAsync(keys, ct);
+        return keys.ToDictionary(k => k, k => counts.GetValueOrDefault(k));
+    }
+}
+
+[ExtendObjectType<Vehicle>]
+public sealed class VehicleSyncExtensions
+{
+    /// <summary>How many changes sent from devices the server parked for this vehicle, waiting for someone to decide.</summary>
+    public async Task<int> GetParkedChangeCount([Parent] Vehicle vehicle, ParkedChangeCountLoader loader, CancellationToken ct) => await loader.LoadAsync(vehicle.Id, ct);
+}
+
 [ExtendObjectType(OperationTypeNames.Mutation)]
 public sealed class SyncMutations
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
-        Converters = { new JsonStringEnumConverter() },
+        // Enums as the API spells them (PETROL, US_GALLONS), so a stored change is a ChangeInput a client can read back as it is.
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseUpper) },
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
@@ -72,6 +156,41 @@ public sealed class SyncMutations
         public Func<CancellationToken, Task<Guid?>> Refueling(Guid id) => async ct => (await Refuelings.FindIncludingDeletedAsync(id, ct))?.VehicleId;
         public Func<CancellationToken, Task<Guid?>> Expense(Guid id) => async ct => (await Expenses.FindIncludingDeletedAsync(id, ct))?.VehicleId;
         public Func<CancellationToken, Task<Guid?>> Schedule(Guid id) => async ct => (await Schedules.FindAsync(id, ct))?.VehicleId;
+    }
+
+    /// <summary>
+    /// Applies a parked change anyway (as edited, when <c>change</c> is given) or discards it. Applying is the person's own change: every
+    /// rule and access check applies, the version it was made from does not (they saw what is there now), and photos waiting since are
+    /// not attached (they may be gone). A refusal keeps it parked with the new reason and is the error of this mutation.
+    /// </summary>
+    public async Task<SyncChangeInfo> ResolveSyncChange(
+        ResolveSyncChangeInput input, [Service] SyncService sync, [Service] VehicleService vehicles,
+        [Service] RefuelingService refuelings, [Service] ExpenseService expenses, [Service] RecurringExpenseService recurring,
+        [Service] IOptions<VehicleDefaultsOptions> defaults, [Service] IRefuelingRepository refuelingRows, [Service] IExpenseRepository expenseRows,
+        [Service] IRecurringExpenseRepository scheduleRows, CancellationToken ct)
+    {
+        if (input.Action == SyncResolveAction.Discard) return SyncChangeInfo.From(await sync.ResolveAsync(input.Id, discard: true, null, null, ct));
+
+        // Who may not see it learns nothing of it (not even its kind) from what follows.
+        var stored = await sync.FindVisibleAsync(input.Id, ct);
+        var change = input.Change ?? JsonSerializer.Deserialize<ChangeInput>(stored.Payload, Json)!;
+        // A visit whose expense would only have come from its photos logs none without them: say so instead of moving the schedules alone.
+        if (change.MarkRecurringExpensesDone is { ExpenseId: not null, Amount: null, PhotoIds.Count: > 0 })
+            throw new DomainException("log.valuesRequired", "Fill in every value. Only a photo that is still being read may leave them empty.");
+        // The same change (its id, so the ledger row is the same), from now on: no version to keep to, no photos that may be gone.
+        change = change with
+        {
+            Id = stored.Id, ExpectedVersion = null,
+            LogRefueling = change.LogRefueling is { } lr ? lr with { PhotoIds = null } : null,
+            AddExpense = change.AddExpense is { } ae ? ae with { PhotoIds = null } : null,
+            MarkRecurringExpensesDone = change.MarkRecurringExpensesDone is { } md ? md with { PhotoIds = null } : null,
+        };
+        var request = Request(change, vehicles, refuelings, expenses, recurring, defaults.Value, new VehicleFinder(refuelingRows, expenseRows, scheduleRows));
+        // The same change of the same thing: the ledger row stays filed under what it concerns.
+        if (request.Kind != stored.Kind || request.TargetId != stored.TargetId || (request.VehicleIdHint is { } vehicle && stored.VehicleId is { } filed && vehicle != filed))
+            throw new DomainException("sync.kindMismatch", "An edited change does the same as the one parked.");
+        var replacement = input.Change is null ? null : JsonSerializer.Serialize(change, Json);
+        return SyncChangeInfo.From(await sync.ResolveAsync(input.Id, discard: false, request.Apply, replacement, ct));
     }
 
     private static SyncChangeRequest Request(

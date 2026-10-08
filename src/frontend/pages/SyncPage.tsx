@@ -1,4 +1,4 @@
-import { useApolloClient } from '@apollo/client/react'
+import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
 import Card from '@mui/material/Card'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
@@ -7,15 +7,17 @@ import { useTranslation } from 'react-i18next'
 import Button from '@mui/material/Button'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { Loading } from '../components/Loading.tsx'
-import type { VolumeUnit } from '../gql/generated.ts'
+import { ResolveSyncChangeDocument, SessionDocument, type ParkedChangeFieldsFragment, type SyncResolveAction, type VolumeUnit } from '../gql/generated.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { useFormat } from '../i18n/format.ts'
+import { unblockAdd } from '../offline/push.ts'
 import { discardChange } from '../offline/submitChange.ts'
-import type { ParkedChange } from '../offline/push.ts'
+import { canForce, fromParked } from '../offline/syncKinds.ts'
+import { useParkedChanges } from '../offline/useParkedChanges.ts'
 import { useConnectivity } from '../offline/useConnectivity.ts'
 import { usePushState } from '../offline/usePushState.ts'
 import { useDescribed, useWaitingChanges, type WaitingChange } from '../offline/waitingChanges.ts'
-import { useKeyText } from '../i18n/errors.ts'
+import { useErrorText, useKeyText } from '../i18n/errors.ts'
 
 /**
  * Waiting to sync: the changes made on this device that have not reached the server, per vehicle, in the order they were made, each with
@@ -32,8 +34,13 @@ export function SyncPage() {
   const heading = useRef<HTMLHeadingElement>(null)
   const [status, setStatus] = useState('')
   const last = state.last
-  const notApplied = useDescribed(last?.parked.map((p) => p.change) ?? [], last?.at)
-  const reasons = new Map(last?.parked.map((p) => [p.change.id, p]) ?? [])
+  const { parked } = useParkedChanges()
+  const parkedById = new Map(parked?.map((p) => [p.id, p]) ?? [])
+  const notApplied = useDescribed(parked?.map(fromParked) ?? [], parked)
+  const resolved = (message: string) => {
+    setStatus(message)
+    heading.current?.focus() // the item may be gone, its buttons with it
+  }
 
   return (
     <section aria-labelledby="page-title">
@@ -78,20 +85,37 @@ export function SyncPage() {
       <Typography variant="body2" role="status" sx={{ mt: 2 }}>
         {status}
       </Typography>
-      {notApplied && notApplied.length > 0 && (
-        <Stack component="section" aria-labelledby="not-applied" sx={{ gap: 1.5, mt: 3 }}>
-          <div>
-            <Typography id="not-applied" component="h2" variant="h5">
-              {t('sync.notApplied')}
-            </Typography>
-            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              {t('sync.notAppliedHint')}
-            </Typography>
-          </div>
-          {notApplied.map((group) => (
-            <Group key={group.vehicleId} name={group.vehicleName ?? t('sync.unknownVehicle')} volumeUnit={group.volumeUnit as VolumeUnit | null} items={group.items} reasons={reasons} />
-          ))}
-        </Stack>
+      {!reachable ? (
+        <Typography variant="body2" sx={{ color: 'text.secondary', mt: 3 }}>
+          {t('sync.parkedOffline')}
+        </Typography>
+      ) : (
+        parked && parked.length > 0 && (
+          <Stack component="section" aria-labelledby="not-applied" sx={{ gap: 1.5, mt: 3 }}>
+            <div>
+              <Typography id="not-applied" component="h2" variant="h5">
+                {t('sync.notApplied')}
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                {t('sync.notAppliedHint')}
+              </Typography>
+            </div>
+            {notApplied?.map((group) => {
+              // The server names the vehicle (the device may never have downloaded it).
+              const vehicle = group.items.map((i) => parkedById.get(i.change.id)?.vehicle).find(Boolean)
+              return (
+                <Group
+                  key={group.vehicleId}
+                  name={vehicle?.name ?? group.vehicleName ?? t('sync.unknownVehicle')}
+                  volumeUnit={(vehicle?.volumeUnit ?? group.volumeUnit) as VolumeUnit | null}
+                  items={group.items}
+                  parked={parkedById}
+                  onResolved={resolved}
+                />
+              )
+            })}
+          </Stack>
+        )
       )}
     </section>
   )
@@ -102,14 +126,16 @@ function Group({
   volumeUnit,
   items,
   onRemoved,
-  reasons,
+  parked,
+  onResolved,
 }: {
   name: string
   volumeUnit: VolumeUnit | null
   items: WaitingChange[]
   onRemoved?: () => void
-  /** Changes the server did not apply, with why: listed with the reason instead of Remove. */
-  reasons?: Map<string, ParkedChange>
+  /** Changes the server parked: listed with why, who sent them, and Apply anyway / Discard instead of Remove. */
+  parked?: Map<string, Parked>
+  onResolved?: (message: string) => void
 }) {
   const { t } = useTranslation()
   const id = useId()
@@ -123,16 +149,28 @@ function Group({
       </Typography>
       <Stack component="ul" sx={{ gap: 1, listStyle: 'none', p: 0, m: 0 }}>
         {items.map((item) => (
-          <Item key={item.change.id} item={item} volumeUnit={volumeUnit} onRemoved={onRemoved} parked={reasons?.get(item.change.id)} />
+          <Item key={item.change.id} item={item} volumeUnit={volumeUnit} onRemoved={onRemoved} parked={parked?.get(item.change.id)} onResolved={onResolved} />
         ))}
       </Stack>
     </Stack>
   )
 }
 
-function Item({ item, volumeUnit, onRemoved, parked }: { item: WaitingChange; volumeUnit: VolumeUnit | null; onRemoved?: () => void; parked?: ParkedChange }) {
+function Item({
+  item,
+  volumeUnit,
+  onRemoved,
+  parked,
+  onResolved,
+}: {
+  item: WaitingChange
+  volumeUnit: VolumeUnit | null
+  onRemoved?: () => void
+  parked?: Parked
+  onResolved?: (message: string) => void
+}) {
   const { t } = useTranslation()
-  const keyText = useKeyText()
+  const reasonText = useReasonText()
   const format = useFormat()
   const client = useApolloClient()
   const { change } = item
@@ -158,16 +196,19 @@ function Item({ item, volumeUnit, onRemoved, parked }: { item: WaitingChange; vo
               {kind}
             </Typography>
             {parts.length > 0 && <Typography variant="body2">{parts.join(' · ')}</Typography>}
-            {parked && (
+            {parked?.reason && (
               // The same words as the refusal would have had online.
               <Typography variant="body2" sx={{ color: 'warning.main' }}>
-                {keyText(parked.key, parked.args) ?? parked.key}
+                {reasonText(parked)}
               </Typography>
             )}
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              {t('sync.savedAt', { time: format.dateTime(new Date(change.createdAt).toISOString()) })}
+              {parked
+                ? t('sync.sentBy', { name: parked.submittedBy?.displayName ?? t('sync.someone'), time: format.dateTime(parked.receivedAt) })
+                : t('sync.savedAt', { time: format.dateTime(new Date(change.createdAt).toISOString()) })}
             </Typography>
           </div>
+          {parked && onResolved && <ParkedActions parked={parked} label={parts.length ? `${kind}, ${parts.join(', ')}` : kind} onResolved={onResolved} />}
           {onRemoved && (
           <ConfirmDialog
             trigger={
@@ -184,5 +225,73 @@ function Item({ item, volumeUnit, onRemoved, parked }: { item: WaitingChange; vo
         </Stack>
       </Card>
     </li>
+  )
+}
+
+type Parked = ParkedChangeFieldsFragment
+
+/** A parked change's reason in the words of the refusal online (its arguments too). */
+function useReasonText() {
+  const keyText = useKeyText()
+  return (parked: Parked) =>
+    parked.reason ? (keyText(parked.reason.key, Object.fromEntries(parked.reason.args.map((a) => [a.name, a.value]))) ?? parked.reason.key) : ''
+}
+
+/**
+ * Deciding about a parked change: apply it anyway (as the person would online: every rule applies, the version it was made from does
+ * not), or discard it. Only for whoever sent it or may change the vehicle; Apply only where it can work (what it changes still exists).
+ */
+function ParkedActions({ parked, label, onResolved }: { parked: Parked; label: string; onResolved: (message: string) => void }) {
+  const { t } = useTranslation()
+  const reasonText = useReasonText()
+  const errorText = useErrorText()
+  const [resolve] = useMutation(ResolveSyncChangeDocument)
+  const client = useApolloClient()
+  const { data: session } = useQuery(SessionDocument, { fetchPolicy: 'cache-only' })
+  if (!parked.canResolve) return null
+  // Without sign-in every visitor is the anonymous user, the sender of every change.
+  const me = session?.session.user?.id
+  const bySender = !me || parked.submittedBy?.id === me
+
+  const run = async (action: SyncResolveAction) => {
+    try {
+      await resolve({ variables: { input: { id: parked.id, action } }, refetchQueries: ['ParkedChanges'], awaitRefetchQueries: true })
+      // Decided: what was made on it here (when it was an add) may go to the server now.
+      void unblockAdd(parked.targetId ?? '').catch(() => undefined)
+      onResolved(t(action === 'APPLY' ? 'sync.appliedNow' : 'sync.discarded'))
+    } catch (error) {
+      // Refused again: it stays, with the new reason, or someone decided meanwhile; either way the list is asked afresh.
+      void client.refetchQueries({ include: ['ParkedChanges'] }).catch(() => undefined)
+      onResolved(t('sync.stillNotApplied', { reason: errorText(error) }))
+    }
+  }
+
+  return (
+    <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
+      {canForce(parked.reason?.key, bySender) && (
+        <ConfirmDialog
+          trigger={
+            <Button variant="soft" size="large" aria-label={t('sync.applyAria', { change: label })}>
+              {t('sync.apply')}
+            </Button>
+          }
+          title={t('sync.applyTitle')}
+          description={t('sync.applyDescription', { reason: reasonText(parked) })}
+          confirmLabel={t('sync.apply')}
+          onConfirm={() => void run('APPLY')}
+        />
+      )}
+      <ConfirmDialog
+        trigger={
+          <Button variant="soft" color="error" size="large" aria-label={t('sync.discardAria', { change: label })}>
+            {t('sync.discard')}
+          </Button>
+        }
+        title={t('sync.discardTitle')}
+        description={t('sync.discardDescription')}
+        confirmLabel={t('sync.discard')}
+        onConfirm={() => void run('DISCARD')}
+      />
+    </Stack>
   )
 }

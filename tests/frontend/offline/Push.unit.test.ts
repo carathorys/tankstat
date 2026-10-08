@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Change } from '../../../src/frontend/offline/changes.ts'
+import type { SyncChangeKind } from '../../../src/frontend/gql/generated.ts'
 import { batches, toChangeInput } from '../../../src/frontend/offline/push.ts'
+import { canForce, fromParked, SYNC_KINDS } from '../../../src/frontend/offline/syncKinds.ts'
 
 let seq = 0
 const change = (over: Partial<Change>): Change => ({ id: `c${++seq}`, seq, createdAt: seq, entity: 'refuelings', action: 'add', vehicleId: 'v1', targetId: `t${seq}`, ...over })
@@ -35,5 +37,53 @@ describe('batches', () => {
   it('cuts requests at the size given', () => {
     const many = Array.from({ length: 5 }, () => change({ action: 'trash' }))
     expect(batches(many, 2).map((b) => b.length)).toEqual([2, 2, 1])
+  })
+})
+
+describe('fromParked', () => {
+  const kindOf = (c: Change) => (Object.keys(SYNC_KINDS) as SyncChangeKind[]).find((k) => SYNC_KINDS[k][0] === c.entity && SYNC_KINDS[k][1] === c.action)!
+  // What the server keeps: the ChangeInput as sent, with nulls for what was left out (an edited change is written back by the server).
+  const asKept = (c: Change, nulls: boolean) => JSON.stringify(toChangeInput(c), (_, v: unknown) => (v === undefined ? (nulls ? null : undefined) : v))
+
+  it.each([false, true])('reads every kind of change the server parked back as a change of this device (nulls kept: %s)', (nulls) => {
+    const all: Change[] = [
+      change({ id: 'r1', action: 'add', targetId: 'r1', input: { id: 'r1', vehicleId: 'v1', date: '2026-10-01', volume: 40, totalCost: 60, currency: 'EUR', odometer: 1200, isFullTank: true } }),
+      change({ id: 'u1', action: 'update', targetId: 'r1', expectedVersion: 2, input: { id: 'r1', date: '2026-10-01', volume: 41, totalCost: 60, currency: 'EUR', odometer: 1200, isFullTank: true } }),
+      ...(['trash', 'restore'] as const).flatMap((action) => [
+        change({ id: `r-${action}`, action, targetId: 'r9', expectedVersion: 3 }),
+        change({ id: `e-${action}`, entity: 'expenses', action, targetId: 'e9', expectedVersion: 3 }),
+        change({ id: `v-${action}`, entity: 'vehicles', action, vehicleId: 'v2', targetId: 'v2', expectedVersion: 3 }),
+      ]),
+      change({ id: 'e1', entity: 'expenses', action: 'add', targetId: 'e1', input: { id: 'e1', vehicleId: 'v1', date: '2026-10-02', title: 'Oil', amount: 30, currency: 'EUR' } }),
+      change({ id: 'e2', entity: 'expenses', action: 'update', targetId: 'e1', expectedVersion: 1, input: { id: 'e1', date: '2026-10-02', title: 'Oil', amount: 35, currency: 'EUR' } }),
+      change({ id: 'g', entity: 'vehicles', action: 'add', vehicleId: 'g', targetId: 'g', input: { id: 'g', name: 'Golf', fuelType: 'PETROL' } }),
+      change({ id: 'g2', entity: 'vehicles', action: 'update', vehicleId: 'g', targetId: 'g', expectedVersion: 1, input: { id: 'g', name: 'Golf GTI', fuelType: 'PETROL' } }),
+      change({ id: 's1', entity: 'recurring', action: 'add', targetId: 's1', input: { id: 's1', vehicleId: 'v1', title: 'Service', kind: 'TIME', intervalMonths: 12 } }),
+      change({ id: 's2', entity: 'recurring', action: 'update', targetId: 's1', expectedVersion: 1, input: { id: 's1', title: 'Service', kind: 'TIME', intervalMonths: 6 } }),
+      change({ id: 's3', entity: 'recurring', action: 'trash', targetId: 's1' }),
+      change({ id: 'd', entity: 'recurring', action: 'markDone', targetId: 'x1', targetIds: ['s1', 's2'], input: { ids: ['s1', 's2'], date: '2026-10-02', amount: 50, currency: 'EUR', expenseId: 'x1' } }),
+    ]
+    expect(new Set(all.map(kindOf)).size).toBe(16)
+
+    for (const c of all) {
+      const back = fromParked({ id: c.id, kind: kindOf(c), vehicleId: c.vehicleId, targetId: c.targetId, change: asKept(c, nulls), receivedAt: '2026-10-03T08:00:00Z' })
+      expect(back).toMatchObject({ id: c.id, entity: c.entity, action: c.action, vehicleId: c.vehicleId, targetId: c.targetId, expectedVersion: c.expectedVersion ?? null })
+      expect(toChangeInput(back)).toEqual(toChangeInput(c)) // sent again, it would be the same change
+    }
+  })
+
+  it('a vehicle the server never took has no vehicle id of its own: its changes are named by the add', () => {
+    const add = change({ id: 'g', entity: 'vehicles', action: 'add', vehicleId: 'g', targetId: 'g', input: { id: 'g', name: 'Golf', fuelType: 'PETROL' } })
+    expect(fromParked({ id: 'g', kind: 'ADD_VEHICLE', vehicleId: null, targetId: 'g', change: asKept(add, true), receivedAt: '2026-10-03T08:00:00Z' }).vehicleId).toBe('g')
+  })
+
+  it('offers Apply anyway unless what the change is about is gone or the person may not', () => {
+    expect(['sync.versionMismatch', 'odometer.belowPrevious', 'log.valuesRequired'].every((key) => canForce(key))).toBe(true)
+    expect(['refueling.notFound', 'vehicle.notFound', 'auth.forbidden', null].some((key) => canForce(key))).toBe(false)
+  })
+
+  it('to someone other than the sender, "not found" is no reason not to try: the sender may only have lost access', () => {
+    expect(canForce('vehicle.notFound', false)).toBe(true)
+    expect(canForce('auth.forbidden', false)).toBe(false)
   })
 })

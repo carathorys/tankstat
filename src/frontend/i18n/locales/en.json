@@ -100,7 +100,8 @@
       "LOG_NOT_FILLED_REFUELING": "The photos of the {{date}} refuelling of {{vehicle}} did not show: {{values}}. Fill it in.",
       "LOG_NOT_FILLED_EXPENSE": "The photos of {{title}} ({{date}}, {{vehicle}}) did not show: {{values}}. Fill it in.",
       "MORE_ACTIVITY_one": "There was {{count}} more change, too many to list one by one.",
-      "MORE_ACTIVITY_other": "There were {{count}} more changes, too many to list one by one."
+      "MORE_ACTIVITY_other": "There were {{count}} more changes, too many to list one by one.",
+      "SYNC_CHANGE_PARKED": "{{change}} of {{vehicle}}, sent by {{submitter}}, could not be applied: {{reason}} Decide about it on Waiting to sync."
     }
   },
   "status": {
@@ -619,7 +620,11 @@
       "duplicateChange": "A change was sent twice in one sync.",
       "payloadTooLarge": "A change is too large to keep (at most {{max}} characters).",
       "oneOperationRequired": "A change must do exactly one thing.",
-      "entityIdRequired": "A new entry sent from a device must carry its id."
+      "entityIdRequired": "A new entry sent from a device must carry its id.",
+      "notFound": "This change is not there any more, or you may not see it.",
+      "notParked": "Someone has decided about this change already.",
+      "cannotResolve": "Only whoever sent it, or may change the vehicle's entries, decides about it.",
+      "kindMismatch": "An edited change must do the same as the one that was not applied."
     }
   },
   "a11y": {
@@ -1191,6 +1196,20 @@
     "lastSync": "Last synced {{time}}: {{applied}} applied, {{parked}} not applied.",
     "interrupted": "The sync stopped because the server cannot be reached; what is left goes when it is back.",
     "notApplied": "Not applied",
-    "notAppliedHint": "The server could not apply these changes and keeps them, with the reason, for someone who may change the vehicle to decide. Nothing of them is on this device any more."
+    "notAppliedHint": "The server could not apply these changes and keeps them, with the reason, until someone decides: whoever sent one, or may change the vehicle, can apply it anyway (every rule applies, only not that it was changed meanwhile) or discard it.",
+    "parkedOffline": "Changes the server could not apply are shown here when it can be reached again.",
+    "sentBy": "Sent by {{name}} {{time}}",
+    "someone": "someone",
+    "apply": "Apply anyway",
+    "applyAria": "Apply anyway: {{change}}",
+    "applyTitle": "Apply this change anyway?",
+    "applyDescription": "It was not applied because: {{reason}} Applied now, it replaces what is on the server, as if you saved it yourself.",
+    "discard": "Discard",
+    "discardAria": "Discard: {{change}}",
+    "discardTitle": "Discard this change?",
+    "discardDescription": "It is never applied; what is on the server stays as it is.",
+    "appliedNow": "Applied.",
+    "discarded": "Discarded: it will not be applied.",
+    "stillNotApplied": "Still not applied: {{reason}}"
   }
 }
