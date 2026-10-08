@@ -281,4 +281,37 @@ public class ConditionalWriteAndLedgerTests
         await db.Get<IVehicleRepository>().PurgeAsync(OwnerScope.All, default);
         Assert.Empty(await ledger.FindManyAsync([parked.Id], default));
     }
+
+    [Fact]
+    public async Task AParkedChange_IsListedByVehicleAndSender_AndOnlyTheFirstDecisionIsSaved()
+    {
+        await using var db = new TestDatabase();
+        var car = TestData.Vehicle(Owner);
+        await db.Get<IVehicleRepository>().AddAsync(car, default);
+        var ledger = db.Get<ISyncChangeRepository>();
+        var at = new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+        var sender = Guid.NewGuid();
+        var ofCar = SyncChange.Parked(Guid.NewGuid(), Owner, sender, car.Id, Guid.NewGuid(), SyncChangeKind.UpdateRefueling, 3, "{}", at, "sync.versionMismatch",
+            new Dictionary<string, string> { ["expected"] = "3" });
+        var noVehicle = SyncChange.Parked(Guid.NewGuid(), sender, sender, null, Guid.NewGuid(), SyncChangeKind.AddVehicle, null, "{}", at.AddMinutes(1), "vehicle.nameRequired",
+            new Dictionary<string, string>());
+        await ledger.AddAsync(ofCar, default);
+        await ledger.AddAsync(noVehicle, default);
+
+        Assert.Equal([ofCar.Id], (await ledger.ListParkedAsync(OwnerScope.Of([Owner]), Owner, default)).Select(c => c.Id));
+        Assert.Equal([noVehicle.Id, ofCar.Id], (await ledger.ListParkedAsync(OwnerScope.Of([Guid.NewGuid()]), sender, default)).Select(c => c.Id)); // the sender's own
+        Assert.Equal(1, (await ledger.CountParkedAsync([car.Id], default))[car.Id]);
+
+        var first = (await ledger.FindAsync(ofCar.Id, default))!;
+        var second = (await ledger.FindAsync(ofCar.Id, default))!;
+        first.Replace("{\"b\":2}");
+        first.MarkApplied(Owner, at.AddHours(1), Guid.NewGuid(), 4);
+        second.MarkDiscarded(sender, at.AddHours(1));
+        Assert.True(await ledger.SettleParkedAsync(first, default));
+        Assert.False(await ledger.SettleParkedAsync(second, default));
+
+        var saved = (await ledger.FindAsync(ofCar.Id, default))!;
+        Assert.Equal((SyncChangeStatus.Applied, Owner, "{\"b\":2}", 4), (saved.Status, saved.ResolvedById!.Value, saved.Payload, saved.ResultVersion!.Value));
+        Assert.Empty(await ledger.CountParkedAsync([car.Id], default));
+    }
 }

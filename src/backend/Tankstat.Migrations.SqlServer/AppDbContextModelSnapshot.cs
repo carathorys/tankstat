@@ -705,6 +705,12 @@ namespace Tankstat.Migrations.SqlServer
                     b.Property<DateTime>("ReceivedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ResolvedById")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid?>("ResultId")
                         .HasColumnType("uniqueidentifier");
 

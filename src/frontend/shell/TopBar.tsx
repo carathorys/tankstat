@@ -67,7 +67,7 @@ export function TopBar({
         </Stack>
       )}
       <ConnectivityIndicator />
-      <PendingChip />
+      <PendingChip parked={showMenu} />
       {showMenu && <NotificationBell />}
       <ColorModeMenu />
       <LanguageMenu />

@@ -88,6 +88,8 @@ internal sealed class SyncChangeConfiguration : IEntityTypeConfiguration<SyncCha
             .HasMaxLength(4000)
             .IsRequired();
         b.Property(c => c.ReceivedAt).HasConversion(v => v.UtcDateTime, v => new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc)));
+        b.Property(c => c.ResolvedAt).HasConversion(
+            v => v.HasValue ? v.Value.UtcDateTime : (DateTime?)null, v => v.HasValue ? new DateTimeOffset(DateTime.SpecifyKind(v.Value, DateTimeKind.Utc)) : null);
         // A purged vehicle takes its changes along; the user columns have no foreign key, as everywhere.
         b.HasOne<Vehicle>().WithMany().HasForeignKey(c => c.VehicleId).OnDelete(DeleteBehavior.Cascade);
         b.HasIndex(c => new { c.VehicleId, c.Status });

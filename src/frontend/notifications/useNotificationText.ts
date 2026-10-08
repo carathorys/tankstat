@@ -1,6 +1,8 @@
 import { useTranslation } from 'react-i18next'
 import type { AccessLevel, LogValue, NotificationFieldsFragment } from '../gql/generated.ts'
+import { useKeyText } from '../i18n/errors.ts'
 import { useFormat } from '../i18n/format.ts'
+import { kindKeyOf } from '../offline/syncKinds.ts'
 import type en from '../i18n/locales/en.json'
 
 type KindText = Exclude<keyof (typeof en)['notifications']['kinds'], `${string}_one` | `${string}_other`>
@@ -8,6 +10,14 @@ type KindText = Exclude<keyof (typeof en)['notifications']['kinds'], `${string}_
 const LEVELS: AccessLevel[] = ['NONE', 'VIEW', 'EDIT', 'DELETE']
 const asLevel = (value: string | undefined): AccessLevel => ((LEVELS as string[]).includes(value ?? '') ? (value as AccessLevel) : 'NONE')
 const LOG_VALUES: LogValue[] = ['ODOMETER', 'VOLUME', 'TOTAL']
+/** A reason's arguments, sent as one JSON object. */
+const parseArgs = (json: string | undefined): Record<string, string> => {
+  try {
+    return json ? (JSON.parse(json) as Record<string, string>) : {}
+  } catch {
+    return {}
+  }
+}
 const asLogValues = (value: string | undefined): LogValue[] => (value ?? '').split(',').filter((v): v is LogValue => (LOG_VALUES as string[]).includes(v))
 
 export interface NotificationText {
@@ -24,6 +34,7 @@ export interface NotificationText {
 export function useNotificationText() {
   const { t } = useTranslation()
   const { date, list } = useFormat()
+  const keyText = useKeyText()
 
   return (n: NotificationFieldsFragment): NotificationText => {
     const args: Record<string, string | undefined> = Object.fromEntries(n.args.map((a) => [a.name, a.value]))
@@ -61,6 +72,12 @@ export function useNotificationText() {
         const logDate = args.date ? date(args.date) : ''
         const text = t(`notifications.kinds.${n.kind}_${expense ? 'EXPENSE' : 'REFUELING'}`, { ...names, date: logDate, values })
         return { text, href: vehicle && `${vehicle}?tab=${expense ? 'expenses' : 'refuelings'}` }
+      }
+      case 'SYNC_CHANGE_PARKED': {
+        // A change sent from a device that the server could not apply: what it was, why, and where to decide about it.
+        const kind = kindKeyOf(args.change ?? '')
+        const reason = keyText(args.reason, parseArgs(args.reasonArgs)) ?? args.reason ?? ''
+        return { text: t('notifications.kinds.SYNC_CHANGE_PARKED', { ...names, change: kind ? t(kind) : '', submitter: args.submitterName ?? '', reason }), href: '/sync' }
       }
       case 'MORE_ACTIVITY':
         return { text: t('notifications.kinds.MORE_ACTIVITY', { count: n.count }), href: null }

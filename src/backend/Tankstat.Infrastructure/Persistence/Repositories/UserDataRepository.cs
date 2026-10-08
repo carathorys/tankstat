@@ -75,6 +75,7 @@ internal sealed class UserDataRepository(IDbContextFactory<AppDbContext> dbFacto
         await db.PhotoDrafts.Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to), ct);
         await db.SyncChanges.Where(x => x.OwnerId == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.OwnerId, to), ct);
         await db.SyncChanges.Where(x => x.SubmittedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.SubmittedById, to), ct);
+        await db.SyncChanges.Where(x => x.ResolvedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.ResolvedById, to), ct);
 
         await MoveAccessGrantsAsync(db, from, to, ct);
         await MoveResourceGrantsAsync(db, from, to, ct);

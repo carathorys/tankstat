@@ -42,6 +42,7 @@ const POLICIES: Record<string, SnapshotPolicy> = {
   ImportPreview: 'onlineOnly',
   MySessions: 'onlineOnly',
   OfflineEstimates: 'onlineOnly',
+  ParkedChanges: 'onlineOnly', // deciding about them needs the server anyway
   Health: 'never',
   PhotoDraftReadings: 'never',
   RefuelingPhotoReadings: 'never',
