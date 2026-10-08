@@ -1,5 +1,6 @@
 import { ApolloLink } from '@apollo/client'
-import { getMainDefinition } from '@apollo/client/utilities'
+import { getMainDefinition, print } from '@apollo/client/utilities'
+import type { DocumentNode } from 'graphql'
 import { catchError, from, mergeMap, of, tap, throwError, type Observable } from 'rxjs'
 import { connectivity } from './connectivity.ts'
 import { ANONYMOUS_USER, deviceData } from './deviceData.ts'
@@ -11,6 +12,23 @@ const SIGN_IN_MUTATIONS = new Set(['Login', 'Logout', 'ResetPassword'])
 
 interface SessionAnswer {
   session?: { mode?: string; user?: { id?: string } | null }
+}
+
+const documentIds = new WeakMap<DocumentNode, string>()
+
+/**
+ * A short fingerprint of a query's document (FNV-1a of its printed text): an answer kept for another version of the query (an older build,
+ * before a field was added) is not answered from, since it may lack what the screen now reads.
+ */
+export function documentId(query: DocumentNode): string {
+  let id = documentIds.get(query)
+  if (id === undefined) {
+    let hash = 0x811c9dc5
+    for (const char of print(query)) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193)
+    id = (hash >>> 0).toString(36)
+    documentIds.set(query, id)
+  }
+  return id
 }
 
 /** Whose data a `Session` answer is: the user's, the anonymous user's when sign-in is off, or nobody's. */
@@ -35,11 +53,12 @@ export function createOfflineLink(device = deviceData): ApolloLink {
     const name = operation.operationName
     const policy = isQuery ? policyFor(name) : 'never'
     const key = snapshotKey(name ?? '', operation.variables)
+    const doc = policy === 'never' ? undefined : documentId(operation.query)
 
     const fromDevice = (): Observable<ApolloLink.Result> => {
       if (policy === 'onlineOnly') return throwError(() => new OfflineError('onlineOnly'))
       if (policy === 'never') return throwError(() => new OfflineError())
-      return from(device.read(key)).pipe(
+      return from(device.read(key, doc)).pipe(
         // Nobody's session kept (signed out, or never signed in here): the sign-in screen needs the server, nothing is "not loaded".
         mergeMap((kept) => (kept ? of({ data: kept.data } as ApolloLink.Result) : throwError(() => new OfflineError(name === 'Session' ? undefined : 'notLoaded')))),
       )
@@ -57,9 +76,9 @@ export function createOfflineLink(device = deviceData): ApolloLink {
           }
           if (name === 'Session') {
             const data = result.data
-            void device.signedIn(userOf(data)).then(() => device.keep(key, data)).catch(() => undefined)
+            void device.signedIn(userOf(data)).then(() => device.keep(key, data, undefined, doc)).catch(() => undefined)
           } else if (policy === 'keep') {
-            void device.keep(key, result.data).catch(() => undefined)
+            void device.keep(key, result.data, undefined, doc).catch(() => undefined)
           }
         },
         error: (error: unknown) => {

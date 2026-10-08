@@ -1,6 +1,7 @@
 import type { ApolloClient } from '@apollo/client'
 import { HealthDocument } from '../gql/generated.ts'
 import { connectivity, watchConnectivity } from './connectivity.ts'
+import { deviceData } from './deviceData.ts'
 
 /**
  * Started once by main.tsx: asks the server again while it is out of reach, and when it is back every query on the screen is asked again
@@ -41,12 +42,15 @@ export function startOfflineRuntime(client: ApolloClient, now: () => number = Da
     }
     wasReachable = connectivity.reachable
   })
+  // Another tab signed someone else in (or out): this tab asks whose it is, so the screen and the offline data follow.
+  const offElsewhere = deviceData.onSignedInElsewhere(() => void client.refetchQueries({ include: ['Session'] }).catch(() => undefined))
   active = watch
   return {
     probeNow: watch.probeNow,
     stop() {
       watch.stop()
       unsubscribe()
+      offElsewhere()
       active = null
     },
   }
