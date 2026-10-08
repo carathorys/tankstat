@@ -1,5 +1,6 @@
 import type { ApolloClient } from '@apollo/client'
 import { HealthDocument } from '../gql/generated.ts'
+import { appliedMutations } from './appliedMutations.ts'
 import { connectivity, watchConnectivity } from './connectivity.ts'
 import { deviceData } from './deviceData.ts'
 import { outbox } from './outbox.ts'
@@ -11,7 +12,7 @@ import { inOneTab, keepStorage } from './tabLock.ts'
  * Started once by main.tsx: asks the server again while it is out of reach, and when it is back every query on the screen is asked again
  * (what was shown may be stale, and what failed meanwhile is filled in). It also sends the changes kept on this device (`push.ts`) and
  * keeps the offline window downloaded (`pull.ts`): once the server said who is signed in, whenever the server is back, every hour while
- * the app is shown, and soon after a change is kept while the server is reachable.
+ * the app is shown, soon after a change is kept while the server is reachable, and soon after a vehicle came in (`DOWNLOAD_AFTER`).
  */
 let active: { probeNow: () => Promise<void> } | null = null
 let loadEngine: (() => Promise<PullEngine>) | null = null
@@ -19,6 +20,12 @@ let loadPush: (() => Promise<PushEngine>) | null = null
 
 /** How soon after a change is kept (while the server is reachable) it is sent. */
 export const PUSH_AFTER_MS = 1000
+
+/**
+ * Mutations after which the window is downloaded again soon (`PUSH_AFTER_MS`): a vehicle came in, added or back from the trash. Until
+ * the device holds it, it could not answer for it offline (its logs, its dialogs' starting values).
+ */
+export const DOWNLOAD_AFTER: ReadonlySet<string> = new Set(['AddVehicle', 'RestoreVehicle'])
 
 /** How soon changes kept here are looked at again when another tab was syncing. */
 export const LOCK_RETRY_MS = 30_000
@@ -101,6 +108,13 @@ export function startOfflineRuntime(client: ApolloClient, now: () => number = Da
     clearTimeout(soon)
     if (outbox.changes.length > 0 && connectivity.reachable) soon = setTimeout(download, PUSH_AFTER_MS)
   })
+  // A vehicle came in online: downloaded soon, so the device can answer for it once the server is out of reach.
+  let cameIn: ReturnType<typeof setTimeout> | undefined
+  const unsubscribeApplied = appliedMutations.subscribe((operation) => {
+    if (!DOWNLOAD_AFTER.has(operation)) return
+    clearTimeout(cameIn)
+    cameIn = setTimeout(download, PUSH_AFTER_MS)
+  })
   let wasReachable = connectivity.reachable
   let refetchedAt = Number.NEGATIVE_INFINITY
   const unsubscribe = connectivity.subscribe(() => {
@@ -127,7 +141,9 @@ export function startOfflineRuntime(client: ApolloClient, now: () => number = Da
       offElsewhere()
       unsubscribeUser()
       unsubscribeOutbox()
+      unsubscribeApplied()
       clearTimeout(soon)
+      clearTimeout(cameIn)
       clearTimeout(retry)
       document.removeEventListener('visibilitychange', onShown)
       clearInterval(hourly)

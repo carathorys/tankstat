@@ -2,6 +2,7 @@ import { ApolloLink } from '@apollo/client'
 import { getMainDefinition, print } from '@apollo/client/utilities'
 import type { DocumentNode } from 'graphql'
 import { catchError, from, mergeMap, of, tap, throwError, type Observable } from 'rxjs'
+import { appliedMutations } from './appliedMutations.ts'
 import { connectivity } from './connectivity.ts'
 import { ANONYMOUS_USER, deviceData } from './deviceData.ts'
 import { classifyFailure, OfflineError } from './errors.ts'
@@ -114,6 +115,7 @@ export function createOfflineLink(device = deviceData): ApolloLink {
             if (result.errors?.length || result.data == null) return
             if (!isQuery) {
               if (name && SIGN_IN_MUTATIONS.has(name)) device.unconfirm()
+              if (name) appliedMutations.tell(name)
               return
             }
             if (name === 'Session') {
