@@ -51,6 +51,78 @@ it('when the device has to sign in again the answer stands, and the session is a
   subscription.unsubscribe()
 })
 
+it('a refresh that does not get through leaves the answer as it is, without asking the session again', async () => {
+  let sessions = 0
+  server.use(
+    graphql.query('Health', () => HttpResponse.json(signInFirst())),
+    graphql.query('Session', () => {
+      sessions++
+      return HttpResponse.json({ data: { session: { mode: 'STANDALONE', user: null }, notices: [] } })
+    }),
+    http.post('/auth/token/refresh', () => HttpResponse.error()),
+  )
+  const client = createApolloClient('http://localhost/graphql')
+
+  await expect(client.query({ query: HealthDocument, fetchPolicy: 'network-only' })).rejects.toBeDefined()
+
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  expect(sessions).toBe(0)
+})
+
+it.each(['STANDALONE', 'OIDC'])('the app opened again after its access cookie ran out (%s) refreshes before it says nobody is signed in', async (mode) => {
+  let signedIn = false
+  let refreshes = 0
+  const user = { __typename: 'UserInfo', id: 'u1', email: 'a@x.co', displayName: 'A', isAdmin: false, avatarUrl: null }
+  server.use(
+    graphql.query('Session', () => HttpResponse.json({ data: { session: { __typename: 'Session', mode, user: signedIn ? user : null }, notices: [] } })),
+    http.post('/auth/token/refresh', () => {
+      refreshes++
+      signedIn = true
+      return new HttpResponse(null, { status: 204 })
+    }),
+  )
+  const client = createApolloClient('http://localhost/graphql')
+
+  const result = await client.query({ query: SessionDocument, fetchPolicy: 'network-only' })
+
+  expect(result.data?.session.user?.id).toBe('u1')
+  expect(refreshes).toBe(1)
+})
+
+it.each(['NONE', 'PROXY_HEADER'])('without a refresh cookie (%s) nobody signed in is the answer at once', async (mode) => {
+  let refreshes = 0
+  server.use(
+    graphql.query('Session', () => HttpResponse.json({ data: { session: { __typename: 'Session', mode, user: null }, notices: [] } })),
+    http.post('/auth/token/refresh', () => {
+      refreshes++
+      return new HttpResponse(null, { status: 204 })
+    }),
+  )
+  const client = createApolloClient('http://localhost/graphql')
+
+  const result = await client.query({ query: SessionDocument, fetchPolicy: 'network-only' })
+
+  expect(result.data?.session.user).toBeNull()
+  expect(refreshes).toBe(0)
+})
+
+it('a session nobody can refresh stays signed out after one try', async () => {
+  let refreshes = 0
+  server.use(
+    graphql.query('Session', () => HttpResponse.json({ data: { session: { __typename: 'Session', mode: 'STANDALONE', user: null }, notices: [] } })),
+    http.post('/auth/token/refresh', () => {
+      refreshes++
+      return new HttpResponse(null, { status: 401 })
+    }),
+  )
+  const client = createApolloClient('http://localhost/graphql')
+
+  const result = await client.query({ query: SessionDocument, fetchPolicy: 'network-only' })
+
+  expect(result.data?.session.user).toBeNull()
+  expect(refreshes).toBe(1)
+})
+
 it('the sign-in operations themselves are never refreshed for', async () => {
   let refreshes = 0
   server.use(
