@@ -31,6 +31,7 @@ const WelcomePage = lazy(() => import('./pages/WelcomePage.tsx').then((m) => ({ 
 const VehiclesPage = lazy(() => import('./pages/VehiclesPage.tsx').then((m) => ({ default: m.VehiclesPage })))
 const VehiclePage = lazy(() => import('./pages/VehiclePage.tsx').then((m) => ({ default: m.VehiclePage })))
 const TrashPage = lazy(() => import('./pages/TrashPage.tsx').then((m) => ({ default: m.TrashPage })))
+const SyncPage = lazy(() => import('./pages/SyncPage.tsx').then((m) => ({ default: m.SyncPage })))
 const ImportPage = lazy(() => import('./pages/ImportPage.tsx').then((m) => ({ default: m.ImportPage })))
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage.tsx').then((m) => ({ default: m.NotificationsPage })))
 const AccountPage = lazy(() => import('./pages/AccountPage.tsx').then((m) => ({ default: m.AccountPage })))
@@ -210,6 +211,7 @@ function Content({ data }: { data: SessionQuery }) {
             <Route path="/vehicles/:id/*" element={<VehiclePage isAdmin={isAdmin} />} />
             <Route path="/import" element={<ImportPage />} />
             <Route path="/trash" element={<TrashPage />} />
+            <Route path="/sync" element={<SyncPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/account" element={<AccountPage mode={mode} user={user} />} />
             <Route path="/admin" element={isAdmin ? <AdminPanel /> : <Navigate to="/" replace />} />

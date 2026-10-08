@@ -1128,5 +1128,54 @@
     "waiting_other": "{{count}} changes waiting to sync",
     "dialogNote": "You are offline. What you save is kept on this device and sent to the server when you are back online; the server checks it against the other entries then.",
     "discarded": "Removed from this device; it had not been sent to the server."
+  },
+  "sync": {
+    "title": "Waiting to sync",
+    "description": "Changes made on this device while the server could not be reached. They are sent to the server when it can be reached again, in the order they were made; until then they show on this device, marked \"not synced\".",
+    "empty": "Nothing is waiting: everything made on this device is on the server.",
+    "unknownVehicle": "A vehicle not downloaded to this device",
+    "groupCount_one": "{{count}} change",
+    "groupCount_other": "{{count}} changes",
+    "savedAt": "Saved on this device {{time}}",
+    "kinds": {
+      "refuelings": {
+        "add": "New refuelling",
+        "update": "Changed refuelling",
+        "trash": "Refuelling to the trash",
+        "restore": "Refuelling back from the trash"
+      },
+      "expenses": {
+        "add": "New expense",
+        "update": "Changed expense",
+        "trash": "Expense to the trash",
+        "restore": "Expense back from the trash"
+      },
+      "vehicles": {
+        "add": "New vehicle",
+        "update": "Changed vehicle",
+        "trash": "Vehicle to the trash",
+        "restore": "Vehicle back from the trash"
+      },
+      "recurring": {
+        "add": "New recurring expense",
+        "update": "Changed recurring expense",
+        "trash": "Recurring expense to delete",
+        "markDone": "Marked as done"
+      }
+    },
+    "remove": "Remove the change",
+    "removeAria": "Remove the change: {{change}}",
+    "removeTitle": "Remove this change?",
+    "removeDescription": "It will not be sent to the server, and what it changed shows as the server has it.",
+    "removeVehicleDescription": "It will not be sent to the server, and neither will anything waiting for this vehicle: its entries go with it.",
+    "removed": "The change is removed; it will not be sent.",
+    "keep": "Keep",
+    "keepAria": "Keep {{name}}: take back moving it to the trash",
+    "kept": "Kept: it will not be moved to the trash.",
+    "signOutTitle": "Sign out with changes waiting?",
+    "signOutDescription_one": "{{count}} change made on this device has not reached the server yet. It stays on this device and is sent when this account signs in here again.",
+    "signOutDescription_other": "{{count}} changes made on this device have not reached the server yet. They stay on this device and are sent when this account signs in here again.",
+    "signOutConfirm": "Sign out",
+    "nav": "Waiting to sync"
   }
 }
