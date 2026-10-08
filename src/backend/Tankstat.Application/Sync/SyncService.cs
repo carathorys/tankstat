@@ -32,7 +32,8 @@ public interface ISyncChangeRepository
 {
     Task<IReadOnlyList<SyncChange>> FindManyAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct);
 
-    Task AddAsync(SyncChange change, CancellationToken ct);
+    /// <summary>Records a change; false when a change with its id is recorded already (the same batch on another server at the same moment).</summary>
+    Task<bool> AddAsync(SyncChange change, CancellationToken ct);
 
     /// <summary>Removes the applied (and discarded) rows received before the moment; parked ones stay.</summary>
     Task<int> PurgeResolvedAsync(DateTimeOffset before, CancellationToken ct);
@@ -78,7 +79,10 @@ public sealed class SyncService(
                     continue;
                 }
                 var row = await ApplyAsync(change, me.Id, ct);
-                await ledger.AddAsync(row, ct);
+                // Recorded whatever the request does now: what was applied must be in the ledger, or the same change sent again (the device
+                // never heard back) would be applied a second time, or parked as a version mismatch with itself.
+                if (!await ledger.AddAsync(row, CancellationToken.None))
+                    row = (await ledger.FindManyAsync([row.Id], CancellationToken.None)).Single(); // another server took the same batch first
                 results.Add(SyncChangeResult.From(row));
                 logger.LogDebug("Change {ChangeId} ({Kind}) of vehicle {VehicleId}: {Status} {Key}", row.Id, row.Kind, row.VehicleId, row.Status, row.ReasonKey);
             }
@@ -103,20 +107,24 @@ public sealed class SyncService(
         try
         {
             var applied = await change.Apply(ct);
-            var vehicleId = applied.VehicleId ?? change.VehicleIdHint;
-            return SyncChange.Applied(change.Id, await OwnerOfAsync(vehicleId, submitter, ct), submitter, vehicleId, applied.EntityId ?? change.TargetId, change.Kind,
+            var (vehicleId, ownerId) = await FiledUnderAsync(applied.VehicleId ?? change.VehicleIdHint, submitter, ct);
+            return SyncChange.Applied(change.Id, ownerId, submitter, vehicleId, applied.EntityId ?? change.TargetId, change.Kind,
                 change.ExpectedVersion, change.Payload, now, applied.EntityId, applied.Version);
         }
         catch (KeyedException refused)
         {
             var args = refused.Args.ToDictionary(a => a.Key, a => Convert.ToString(a.Value, CultureInfo.InvariantCulture) ?? "");
-            var vehicleId = change.VehicleIdHint ?? (change.VehicleOf is { } find ? await find(ct) : null);
-            return SyncChange.Parked(change.Id, await OwnerOfAsync(vehicleId, submitter, ct), submitter, vehicleId, change.TargetId, change.Kind,
+            var (vehicleId, ownerId) = await FiledUnderAsync(change.VehicleIdHint ?? (change.VehicleOf is { } find ? await find(ct) : null), submitter, ct);
+            return SyncChange.Parked(change.Id, ownerId, submitter, vehicleId, change.TargetId, change.Kind,
                 change.ExpectedVersion, change.Payload, now, refused.Key, args);
         }
     }
 
-    /// <summary>The vehicle's owner, whoever may see it (the ledger row is filed with the vehicle); the submitter when it is unknown.</summary>
-    private async Task<Guid> OwnerOfAsync(Guid? vehicleId, Guid submitter, CancellationToken ct) =>
-        vehicleId is { } id && await vehicles.FindIncludingDeletedAsync(id, ct) is { } vehicle ? vehicle.OwnerId : submitter;
+    /// <summary>
+    /// The vehicle a change is filed under and its owner (whoever may see the vehicle sees the change). A vehicle that does not exist (purged
+    /// meanwhile, or the one an add the server refused would have added) files it with the sender alone: the ledger's vehicle has a foreign
+    /// key, and a batch must never fail on a change it parks.
+    /// </summary>
+    private async Task<(Guid? VehicleId, Guid OwnerId)> FiledUnderAsync(Guid? vehicleId, Guid submitter, CancellationToken ct) =>
+        vehicleId is { } id && await vehicles.FindIncludingDeletedAsync(id, ct) is { } vehicle ? (vehicle.Id, vehicle.OwnerId) : (null, submitter);
 }

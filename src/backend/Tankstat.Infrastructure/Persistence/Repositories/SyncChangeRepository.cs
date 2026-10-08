@@ -13,12 +13,7 @@ internal sealed class SyncChangeRepository(IDbContextFactory<AppDbContext> dbFac
         return await db.SyncChanges.AsNoTracking().Where(c => ids.Contains(c.Id)).ToListAsync(ct);
     }
 
-    public async Task AddAsync(SyncChange change, CancellationToken ct)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        db.SyncChanges.Add(change);
-        await db.SaveChangesAsync(ct);
-    }
+    public Task<bool> AddAsync(SyncChange change, CancellationToken ct) => dbFactory.AddOnceAsync(change, change.Id, ct);
 
     public async Task<int> PurgeResolvedAsync(DateTimeOffset before, CancellationToken ct)
     {

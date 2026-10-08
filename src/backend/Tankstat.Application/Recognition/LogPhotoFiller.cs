@@ -5,6 +5,7 @@ using Tankstat.Application.Notifications;
 using Tankstat.Application.Photos;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Vehicles;
+using Tankstat.Domain;
 using Tankstat.Domain.Notifications;
 using Tankstat.Domain.Photos;
 using Tankstat.Domain.Recognition;
@@ -58,6 +59,28 @@ public sealed class LogPhotoFiller(
     /// Does nothing for a log that does not wait (anymore), is in the trash or is gone.
     /// </summary>
     public async Task FillAsync(LogType logType, Guid logId, CancellationToken ct)
+    {
+        // A log is only saved on the version it was read in: a person (or a device sending its changes) saving it at the same moment wins.
+        // The fill reads it again once; if it was changed again, it is left as it is (the next round or the person's save sees to it).
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await FillOnceAsync(logType, logId, ct);
+                return;
+            }
+            catch (KeyedException e) when (e.Key == "sync.versionMismatch")
+            {
+                if (attempt == 2)
+                {
+                    logger.LogDebug("{LogType} {LogId} was saved meanwhile while it was filled from its photos; left as it is", logType, logId);
+                    return;
+                }
+            }
+        }
+    }
+
+    private async Task FillOnceAsync(LogType logType, Guid logId, CancellationToken ct)
     {
         var images = (await photos.ListForLogAsync(logType, logId, ct)).Select(p => p.ImageId).ToList();
         var found = images.Count == 0 ? [] : await readings.FindManyAsync(images, ct);
