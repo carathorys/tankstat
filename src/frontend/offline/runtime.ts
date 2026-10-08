@@ -5,6 +5,7 @@ import { deviceData } from './deviceData.ts'
 import { outbox } from './outbox.ts'
 import type { PullEngine } from './pull.ts'
 import type { PushEngine } from './push.ts'
+import { inOneTab, keepStorage } from './tabLock.ts'
 
 /**
  * Started once by main.tsx: asks the server again while it is out of reach, and when it is back every query on the screen is asked again
@@ -59,7 +60,9 @@ export function startOfflineRuntime(client: ApolloClient) {
   loadPush = pusher
   const download = () => {
     if (deviceData.user === null || !connectivity.reachable || document.visibilityState === 'hidden') return
-    void (outbox.changes.length > 0 ? pusher().then((e) => e.run()) : engine().then((e) => e.run()))
+    keepStorage() // an account's data is on this device now
+    // One tab at a time: every open tab would otherwise sync at start, when the server is back and hourly.
+    void inOneTab('tankstat-sync', () => (outbox.changes.length > 0 ? pusher().then((e) => e.run()) : engine().then((e) => e.run())))
   }
   // A change kept while the server is reachable (its vehicle had changes waiting, or a request failed) goes soon after.
   let soon: ReturnType<typeof setTimeout> | undefined

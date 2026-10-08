@@ -18,6 +18,7 @@ import { Form } from './forms/Form.tsx'
 import { LogDefaultsDocument, VehicleDefaultsDocument, type DistanceUnit, type RecurrenceKind } from './gql/generated.ts'
 import { ErrorMessage } from './messages.tsx'
 import { useToast } from './toast/toastContext.ts'
+import type { ChangeEdit } from './dialogs/changeEdit.ts'
 import { outbox } from './offline/outbox.ts'
 
 export interface RecurringValues {
@@ -48,18 +49,22 @@ export function RecurringFormDialog({
   trigger,
   vehicleId,
   unit,
-  initial,
+  initial: saved,
+  change,
   onSubmit,
 }: {
   trigger: ReactNode
   vehicleId: string
   unit: DistanceUnit
   initial?: RecurringValues
+  /** Edits a change instead of a schedule (Waiting to sync; see `ChangeEdit`): its values stand for `initial`. */
+  change?: ChangeEdit<RecurringValues>
   onSubmit: (values: RecurringValues) => Promise<unknown>
 }) {
   const { t } = useTranslation()
   const { toast } = useToast()
   const [open, setOpen] = useDialogState()
+  const initial = change ? (change.initial as RecurringValues) : saved
   const editing = initial !== undefined
   const clientId = useClientId(open)
 
@@ -70,7 +75,7 @@ export function RecurringFormDialog({
         open={open}
         onClose={() => setOpen(false)}
         maxWidth={480}
-        title={editing ? t('recurring.dialogEdit') : t('recurring.dialogAdd')}
+        title={change?.title ?? (editing ? t('recurring.dialogEdit') : t('recurring.dialogAdd'))}
         description={editing ? t('recurring.dialogEditDescription') : t('recurring.dialogAddDescription')}
       >
         {/* Mounted only while open, so every opening starts from the current values. */}
@@ -81,9 +86,11 @@ export function RecurringFormDialog({
                 unit={unit}
                 initial={initial}
                 start={start}
+                submitLabel={change?.submitLabel}
                 onSubmit={async (values) => {
                   await onSubmit(editing ? values : { ...values, id: clientId })
                   setOpen(false)
+                  if (change) return // the caller tells what came of it
                   // Kept on the device for the server (the server was out of reach): the toast says so.
                   toast(outbox.markOf('recurring', (editing ? initial?.id : clientId) ?? '') ? t('toast.savedOnDevice') : t('toast.saved'))
                 }}
@@ -122,11 +129,14 @@ function RecurringForm({
   unit,
   initial,
   start,
+  submitLabel,
   onSubmit,
 }: {
   unit: DistanceUnit
   initial?: RecurringValues
   start: StartValues | null
+  /** The Save button's text, when it is not the add or edit one. */
+  submitLabel?: string
   onSubmit: (values: RecurringValues) => Promise<unknown>
 }) {
   const { t } = useTranslation()
@@ -227,7 +237,7 @@ function RecurringForm({
         <DialogButtons>
           <DialogCancel />
           <Button type="submit" disabled={busy}>
-            {initial ? t('recurring.save') : t('recurring.saveAdd')}
+            {submitLabel ?? (initial ? t('recurring.save') : t('recurring.saveAdd'))}
           </Button>
         </DialogButtons>
       </Stack>

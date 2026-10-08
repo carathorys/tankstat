@@ -229,3 +229,57 @@ it('offline, it says the changes the server could not apply are shown once it ca
 
   expect(await screen.findByText('Changes the server could not apply are shown here when it can be reached again.')).toBeInTheDocument()
 })
+
+it('Edit, on a change waiting here, opens its entry’s dialog with what it carries, and saving keeps the change, edited', async () => {
+  await downloaded()
+  await outbox.enqueue({ id: 'n1', entity: 'refuelings', action: 'add', vehicleId: 'v1', targetId: 'n1', input: { id: 'n1', vehicleId: 'v1', date: '2026-10-05', volume: 30, totalCost: 90, currency: 'EUR', odometer: 2000, isFullTank: true, missedPreviousFillUp: false, note: null, photoIds: ['local:kept'] } })
+  renderWithApollo(<App />, '/sync')
+  const ui = userEvent.setup()
+
+  await ui.click(await screen.findByRole('button', { name: /^Edit the change: New refuelling/ }, { timeout: 10_000 }))
+  const dialog = await screen.findByRole('dialog', { name: 'Edit the change' })
+  await waitFor(() => expect(within(dialog).getByLabelText(/^Volume/)).toHaveValue('30'))
+  expect(within(dialog).queryByRole('group', { name: 'Photos' })).not.toBeInTheDocument()
+  await ui.clear(within(dialog).getByLabelText(/^Volume/))
+  await ui.type(within(dialog).getByLabelText(/^Volume/), '32')
+  await ui.click(within(dialog).getByRole('button', { name: 'Save the change' }))
+
+  expect(await screen.findByText('The change is saved on this device; it is sent when the server can be reached.')).toBeInTheDocument()
+  expect(outbox.changes).toHaveLength(1)
+  expect(outbox.changes[0]).toMatchObject({ id: 'n1', action: 'add', input: { id: 'n1', volume: 32, photoIds: ['local:kept'] } }) // still one add, with its photo
+})
+
+it('Edit and apply sends the change as edited; a refusal stays in the dialog with its reason, and the change stays parked', async () => {
+  await downloaded()
+  connectivity.reset()
+  const row = parkedRow('c1', 'UPDATE_REFUELING', { id: 'c1', expectedVersion: 1, updateRefueling: { id: 'b', date: '2026-09-20', volume: 45, totalCost: 70, currency: 'EUR', odometer: 1500, isFullTank: true } }, 'sync.versionMismatch', { targetId: 'b' })
+  let parked = [row]
+  const sent: unknown[] = []
+  server.use(
+    graphql.query('ParkedChanges', () => HttpResponse.json({ data: { parkedChanges: parked } })),
+    graphql.query('LogDefaults', () => HttpResponse.json({ data: { logDefaults: { lastOdometer: 1500, lastDate: '2026-09-20', currency: 'EUR' } } })),
+    graphql.mutation('ResolveSyncChange', ({ variables }) => {
+      sent.push(variables.input)
+      if (sent.length === 1) return HttpResponse.json({ data: null, errors: [{ message: 'Below.', extensions: { code: 'VALIDATION_FAILED', key: 'odometer.belowPrevious', args: { previous: '1600', date: '2026-09-21' } } }] })
+      parked = []
+      return HttpResponse.json({ data: { resolveSyncChange: { ...row, status: 'APPLIED' } } })
+    }),
+  )
+  renderWithApollo(<App />, '/sync')
+  const ui = userEvent.setup()
+
+  await ui.click(await screen.findByRole('button', { name: /^Edit and apply: Changed refuelling/ }, { timeout: 10_000 }))
+  const dialog = await screen.findByRole('dialog', { name: 'Edit and apply the change' })
+  await waitFor(() => expect(within(dialog).getByLabelText(/^Volume/)).toHaveValue('45'))
+  await ui.clear(within(dialog).getByLabelText(/^Volume/))
+  await ui.type(within(dialog).getByLabelText(/^Volume/), '44')
+  await ui.click(within(dialog).getByRole('button', { name: 'Apply' }))
+
+  expect(await within(dialog).findByText('The odometer cannot be lower than 1600, the reading on 2026-09-21.')).toBeInTheDocument()
+  await ui.click(within(dialog).getByRole('button', { name: 'Apply' }))
+
+  expect(await screen.findByText('Applied.')).toBeInTheDocument()
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(sent).toHaveLength(2)
+  expect(sent[1]).toMatchObject({ id: 'c1', action: 'APPLY', change: { id: 'c1', updateRefueling: { id: 'b', volume: 44, odometer: 1500 } } })
+})

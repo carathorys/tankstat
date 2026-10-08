@@ -27,6 +27,7 @@ import { ErrorMessage } from './messages.tsx'
 import { useToast } from './toast/toastContext.ts'
 import { DISTANCE_UNITS, FUEL_TYPES, VOLUME_UNITS } from './vehicles.ts'
 import { OfflineNote } from './components/OfflineNote.tsx'
+import type { ChangeEdit } from './dialogs/changeEdit.ts'
 import { outbox } from './offline/outbox.ts'
 
 export interface VehicleValues {
@@ -54,21 +55,27 @@ interface Initial {
 export function VehicleFormDialog({
   trigger,
   vehicleId,
+  change,
   onSubmit,
 }: {
   trigger: ReactNode
   vehicleId?: string
+  /** Edits a change instead of a vehicle (Waiting to sync; see `ChangeEdit`); the units are never locked here, the server checks them. */
+  change?: ChangeEdit<VehicleValues>
   onSubmit: (values: VehicleValues) => Promise<unknown>
 }) {
   const { t } = useTranslation()
   const { toast } = useToast()
   const [open, setOpen] = useDialogState()
-  const editing = vehicleId !== undefined
+  const editing = vehicleId !== undefined || change !== undefined
   const clientId = useClientId(open)
-  const details = useQuery(VehicleDetailsDocument, { variables: { id: vehicleId ?? '' }, skip: !editing || !open, fetchPolicy: 'network-only' })
-  const defaults = useQuery(VehicleDefaultsDocument, { skip: editing || !open })
+  const details = useQuery(VehicleDetailsDocument, { variables: { id: vehicleId ?? '' }, skip: !vehicleId || !!change || !open, fetchPolicy: 'network-only' })
+  const defaults = useQuery(VehicleDefaultsDocument, { skip: (editing && !change) || !open })
   const loaded = details.data?.vehicle
-  const initial: Initial | undefined = loaded ?? (defaults.data ? { name: '', fuelType: 'PETROL', refuelingCount: 0, units: { distance: defaults.data.vehicleDefaults.distanceUnit, volume: defaults.data.vehicleDefaults.volumeUnit } } : undefined)
+  const fresh: Initial | undefined = defaults.data
+    ? { name: '', fuelType: 'PETROL', refuelingCount: 0, units: { distance: defaults.data.vehicleDefaults.distanceUnit, volume: defaults.data.vehicleDefaults.volumeUnit } }
+    : undefined
+  const initial: Initial | undefined = change ? fresh && { ...fresh, ...change.initial } : (loaded ?? fresh)
   const error = details.error ?? defaults.error
 
   return (
@@ -77,20 +84,22 @@ export function VehicleFormDialog({
       <DialogFrame
         open={open}
         onClose={() => setOpen(false)}
-        title={editing ? t('vehicles.dialogEdit') : t('vehicles.dialogAdd')}
+        title={change?.title ?? (editing ? t('vehicles.dialogEdit') : t('vehicles.dialogAdd'))}
         description={editing ? t('vehicles.dialogEditDescription') : t('vehicles.dialogAddDescription')}
       >
         {error && <ErrorMessage error={error} />}
-        <OfflineNote />
-        {!error && !initial && !(editing && details.data) && <Loading />}
-        {editing && details.data && !loaded && <ErrorMessage>{t('errors.vehicle.notFound')}</ErrorMessage>}
+        {!change && <OfflineNote />}
+        {!error && !initial && !(vehicleId && details.data) && <Loading />}
+        {vehicleId && details.data && !loaded && <ErrorMessage>{t('errors.vehicle.notFound')}</ErrorMessage>}
         {initial && (
           <VehicleForm
             initial={initial}
             editing={editing}
+            submitLabel={change?.submitLabel}
             onSubmit={async (values) => {
               await onSubmit(editing ? values : { ...values, id: clientId })
               setOpen(false)
+              if (change) return // the caller tells what came of it
               // Kept on the device for the server (the server was out of reach): the toast says so.
               toast(outbox.markOf('vehicles', editing ? vehicleId! : clientId) ? t('toast.savedOnDevice') : t('toast.saved'))
             }}
@@ -101,7 +110,18 @@ export function VehicleFormDialog({
   )
 }
 
-function VehicleForm({ initial, editing, onSubmit }: { initial: Initial; editing: boolean; onSubmit: (values: VehicleValues) => Promise<unknown> }) {
+function VehicleForm({
+  initial,
+  editing,
+  submitLabel,
+  onSubmit,
+}: {
+  initial: Initial
+  editing: boolean
+  /** The Save button's text, when it is not the add or edit one. */
+  submitLabel?: string
+  onSubmit: (values: VehicleValues) => Promise<unknown>
+}) {
   const { t } = useTranslation()
   const [fuel, setFuel] = useState<FuelType>(initial.fuelType)
   const [distance, setDistance] = useState(initial.units.distance)
@@ -159,7 +179,7 @@ function VehicleForm({ initial, editing, onSubmit }: { initial: Initial; editing
         <DialogButtons>
           <DialogCancel />
           <Button type="submit" disabled={busy}>
-            {editing ? t('vehicles.save') : t('vehicles.add')}
+            {submitLabel ?? (editing ? t('vehicles.save') : t('vehicles.add'))}
           </Button>
         </DialogButtons>
       </Stack>
