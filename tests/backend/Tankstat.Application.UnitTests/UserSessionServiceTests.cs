@@ -54,6 +54,19 @@ public class UserSessionServiceTests
     }
 
     [Fact]
+    public async Task ARefreshThatLostTheRaceToRotate_IsAnsweredWithTheSecretTheOtherSaved()
+    {
+        var (w, _, first) = await Setup();
+        w.Sessions.TwinRotatesNext = true; // another tab, presenting the same secret, rotated it a moment before this one saved
+
+        var refreshed = await w.SessionService.RefreshAsync(first.Token, default);
+
+        Assert.Null(first.Session.RevokedAt);
+        var next = await w.SessionService.RefreshAsync(refreshed.Token, default); // what this tab got works
+        Assert.Equal(first.Session.Id, next.Session.Id);
+    }
+
+    [Fact]
     public async Task AnExpiredSession_AWrongSecret_OrRubbish_AreRefused_AllAlike()
     {
         var (w, _, first) = await Setup();

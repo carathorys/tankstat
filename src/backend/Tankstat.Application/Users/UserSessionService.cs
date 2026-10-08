@@ -63,21 +63,33 @@ public sealed class UserSessionService(
             if (session.RotatedAt is not { } rotated || now - rotated > grace)
             {
                 logger.LogWarning("Session {SessionId} of user {UserId} ended: a refresh token it had already traded in came back (a copy may be in someone else's hands)", session.Id, session.UserId);
-                session.Revoke(now);
-                await sessions.UpdateAsync(session, ct);
+                await sessions.RevokeAsync(session.Id, now, ct);
                 throw new UnauthenticatedException();
             }
-            // Within the grace: the current secret again, not a new one, so tabs that refreshed at once all hold the same secret.
-            var current = protector.Unprotect(session.ProtectedSecret) ?? throw Refused(session, "its secret cannot be read back (the key ring changed)");
-            logger.LogDebug("Session {SessionId} of user {UserId} refreshed again within the grace", session.Id, session.UserId);
-            return new RefreshedSession(user, session, Token(session, current));
+            return Again(user, session);
         }
 
         var next = NewSecret();
         session.Rotate(Hash(next), protector.Protect(next), now, Lifetime);
-        await sessions.UpdateAsync(session, ct);
+        if (!await sessions.RotateAsync(session, hash, ct))
+        {
+            // Another refresh with the same secret rotated it a moment before (tabs refreshing at once), or it ended meanwhile: the answer
+            // is the one for the session as it is now.
+            var current = await sessions.FindAsync(id, ct);
+            if (current is null || !current.IsUsable(now) || current.PreviousSecretHash is null || !Matches(current.PreviousSecretHash, hash))
+                throw Refused(current, "it changed while it was being refreshed");
+            return Again(user, current);
+        }
         logger.LogDebug("Session {SessionId} of user {UserId} refreshed", session.Id, session.UserId);
         return new RefreshedSession(user, session, Token(session, next));
+    }
+
+    /// <summary>Within the grace: the current secret again, not a new one, so tabs that refreshed at once all hold the same secret.</summary>
+    private RefreshedSession Again(User user, UserSession session)
+    {
+        var current = protector.Unprotect(session.ProtectedSecret) ?? throw Refused(session, "its secret cannot be read back (the key ring changed)");
+        logger.LogDebug("Session {SessionId} of user {UserId} refreshed again within the grace", session.Id, session.UserId);
+        return new RefreshedSession(user, session, Token(session, current));
     }
 
     /// <summary>Signs a device out: its session ends (only when the token is the device's own).</summary>
@@ -107,23 +119,19 @@ public sealed class UserSessionService(
     public async Task AdoptVersionAsync(Guid sessionId, User user, CancellationToken ct)
     {
         if (await sessions.FindAsync(sessionId, ct) is not { } session || session.UserId != user.Id) return;
-        session.AdoptVersion(user.SessionVersion);
-        await sessions.UpdateAsync(session, ct);
+        await sessions.AdoptVersionAsync(session.Id, user.SessionVersion, ct);
     }
 
     private async Task<Guid?> RevokeAsync(UserSession session, CancellationToken ct)
     {
-        if (session.RevokedAt is not null) return null;
-        session.Revoke(clock.GetUtcNow());
-        await sessions.UpdateAsync(session, ct);
+        if (session.RevokedAt is not null || !await sessions.RevokeAsync(session.Id, clock.GetUtcNow(), ct)) return null;
         logger.LogInformation("Session {SessionId} of user {UserId} signed out", session.Id, session.UserId);
         return session.Id;
     }
 
     private async Task<UnauthenticatedException> EndAsync(UserSession session, DateTimeOffset now, string reason, CancellationToken ct)
     {
-        session.Revoke(now);
-        await sessions.UpdateAsync(session, ct);
+        await sessions.RevokeAsync(session.Id, now, ct);
         return Refused(session, reason);
     }
 

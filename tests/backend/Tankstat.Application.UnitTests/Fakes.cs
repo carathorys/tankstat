@@ -517,7 +517,24 @@ internal sealed class InMemorySessions : IUserSessionRepository
     public List<UserSession> Items { get; } = [];
     public Task<UserSession?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(s => s.Id == id));
     public Task AddAsync(UserSession session, CancellationToken ct) { Items.Add(session); return Task.CompletedTask; }
-    public Task UpdateAsync(UserSession session, CancellationToken ct) => Task.CompletedTask; // shared references
+
+    /// <summary>When set, another refresh with the same secret rotates the session just before the next rotation is saved.</summary>
+    public bool TwinRotatesNext { get; set; }
+
+    // Shared references: the rotated session is the stored one already (a twin's rotation looks the same from here: it is refused).
+    public Task<bool> RotateAsync(UserSession rotated, string presentedHash, CancellationToken ct) =>
+        Task.FromResult(!(TwinRotatesNext && !(TwinRotatesNext = false)) && rotated.RevokedAt is null);
+    public Task<bool> RevokeAsync(Guid id, DateTimeOffset now, CancellationToken ct)
+    {
+        if (Items.FirstOrDefault(s => s.Id == id) is not { RevokedAt: null } session) return Task.FromResult(false);
+        session.Revoke(now);
+        return Task.FromResult(true);
+    }
+    public Task AdoptVersionAsync(Guid id, int sessionVersion, CancellationToken ct)
+    {
+        Items.FirstOrDefault(s => s.Id == id)?.AdoptVersion(sessionVersion);
+        return Task.CompletedTask;
+    }
     public Task<int> RevokeForUserAsync(Guid userId, Guid? except, DateTimeOffset now, CancellationToken ct)
     {
         var ending = Items.Where(s => s.UserId == userId && s.RevokedAt is null && s.Id != except).ToList();

@@ -67,7 +67,18 @@ public interface IUserSessionRepository
 {
     Task<UserSession?> FindAsync(Guid id, CancellationToken ct);
     Task AddAsync(UserSession session, CancellationToken ct);
-    Task UpdateAsync(UserSession session, CancellationToken ct);
+
+    /// <summary>
+    /// Saves a rotation (<see cref="UserSession.Rotate"/>) only while the session still holds <paramref name="presentedHash"/> and is
+    /// not revoked: false when another refresh rotated it first or it ended meanwhile. Only the rotation's columns are written.
+    /// </summary>
+    Task<bool> RotateAsync(UserSession rotated, string presentedHash, CancellationToken ct);
+
+    /// <summary>Ends the session unless it ended already; false when it had.</summary>
+    Task<bool> RevokeAsync(Guid id, DateTimeOffset now, CancellationToken ct);
+
+    /// <summary>Gives the session the user's new session version (nothing else changes).</summary>
+    Task AdoptVersionAsync(Guid id, int sessionVersion, CancellationToken ct);
 
     /// <summary>Revokes every session of the user that is not revoked yet, except <paramref name="except"/>; returns how many.</summary>
     Task<int> RevokeForUserAsync(Guid userId, Guid? except, DateTimeOffset now, CancellationToken ct);

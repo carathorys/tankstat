@@ -111,11 +111,31 @@ internal sealed class UserSessionRepository(IDbContextFactory<AppDbContext> dbFa
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task UpdateAsync(UserSession session, CancellationToken ct)
+    // Targeted, conditional writes rather than saving the whole row: two refreshes, a refresh and a sign-out, or a refresh and a password
+    // change can run at the same moment, and a row saved whole would put back what the other one changed.
+    public async Task<bool> RotateAsync(UserSession rotated, string presentedHash, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        db.UserSessions.Update(session);
-        await db.SaveChangesAsync(ct);
+        return await db.UserSessions.Where(s => s.Id == rotated.Id && s.SecretHash == presentedHash && s.RevokedAt == null)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(s => s.PreviousSecretHash, rotated.PreviousSecretHash)
+                .SetProperty(s => s.SecretHash, rotated.SecretHash)
+                .SetProperty(s => s.ProtectedSecret, rotated.ProtectedSecret)
+                .SetProperty(s => s.RotatedAt, rotated.RotatedAt)
+                .SetProperty(s => s.LastUsedAt, rotated.LastUsedAt)
+                .SetProperty(s => s.ExpiresAt, rotated.ExpiresAt), ct) == 1;
+    }
+
+    public async Task<bool> RevokeAsync(Guid id, DateTimeOffset now, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.UserSessions.Where(s => s.Id == id && s.RevokedAt == null).ExecuteUpdateAsync(u => u.SetProperty(s => s.RevokedAt, now), ct) == 1;
+    }
+
+    public async Task AdoptVersionAsync(Guid id, int sessionVersion, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        await db.UserSessions.Where(s => s.Id == id).ExecuteUpdateAsync(u => u.SetProperty(s => s.SessionVersion, sessionVersion), ct);
     }
 
     public async Task<int> RevokeForUserAsync(Guid userId, Guid? except, DateTimeOffset now, CancellationToken ct)
