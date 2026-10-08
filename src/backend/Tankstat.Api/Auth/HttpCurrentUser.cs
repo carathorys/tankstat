@@ -7,9 +7,12 @@ namespace Tankstat.Api.Auth;
 
 /// <summary>
 /// Resolves the signed-in user of the current request. The cookie/proxy identity only names the user;
-/// admin rights, disabled state and password-change invalidation are always checked against the database.
+/// admin rights, disabled state and password-change invalidation are always checked against the database, and so is the device's
+/// session the access cookie names: a device signed out (from itself, from another device, or because its refresh token came back)
+/// is out at once, not when its access cookie runs out.
 /// </summary>
-internal sealed class HttpCurrentUser(IHttpContextAccessor accessor, IUserRepository users, ILogger<HttpCurrentUser> logger) : ICurrentUser
+internal sealed class HttpCurrentUser(
+    IHttpContextAccessor accessor, IUserRepository users, IUserSessionRepository sessions, ILogger<HttpCurrentUser> logger) : ICurrentUser
 {
     private Task<Principal?>? _cached;
 
@@ -37,6 +40,13 @@ internal sealed class HttpCurrentUser(IHttpContextAccessor accessor, IUserReposi
             claims.FindFirstValue(SessionClaims.VersionClaim) != user.SessionVersion.ToString())
         {
             logger.LogDebug("Session of user {UserId} rejected: it was signed out by a password change or an administrator", id);
+            return null;
+        }
+        // A proxy's identity names no device session; an access cookie does (Standalone and OIDC).
+        if (SessionCookies.SessionId(claims) is { } sessionId && await sessions.FindAsync(sessionId, ct) is var session
+            && (session is null || session.RevokedAt is not null || session.UserId != id))
+        {
+            logger.LogDebug("Session {SessionId} of user {UserId} rejected: the device was signed out", sessionId, id);
             return null;
         }
 

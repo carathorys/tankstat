@@ -123,6 +123,25 @@ public sealed class SessionTokenTests : IDisposable
     }
 
     [Fact]
+    public async Task AnEndedSession_EndsItsAccessCookieAtOnce()
+    {
+        var c = _app.NewClient();
+        var login = await c.PostAsJsonAsync("/graphql", new
+        {
+            query = "mutation($i: LoginInput!) { login(input: $i) { id } }",
+            variables = new { i = new { email = Admin, password = AdminPassword } },
+        });
+        var header = Assert.Single(login.Headers.GetValues("Set-Cookie"), h => h.StartsWith("tankstat.session="));
+        var copy = WithoutCookies();
+        copy.DefaultRequestHeaders.Add("Cookie", header[..header.IndexOf(';')]); // the access cookie, kept by someone
+        Assert.True(await SignedIn(copy));
+
+        await Post(c, "/auth/token/logout");
+
+        Assert.Equal("UNAUTHENTICATED", (await copy.Gql("{ myVehicles { id } }")).ErrorCode()); // not only after it runs out
+    }
+
+    [Fact]
     public async Task TheGraphQLSignOut_EndsTheSessionToo()
     {
         var (c, token) = await SignIn();
