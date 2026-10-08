@@ -8,6 +8,7 @@ using Tankstat.Application.Recurring;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Settings;
 using Tankstat.Application.Sync;
+using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
@@ -113,6 +114,24 @@ public class SyncPersistenceTests
         Assert.Equal(_clock.GetUtcNow(), await ExpenseSaved()); // it no longer lists it
         var removed = await db.Get<IOfflineFeedRepository>().RemovedSinceAsync(car.Id, _clock.GetUtcNow(), default);
         Assert.Equal([new RemovedEntity(OfflineEntityType.RecurringExpense, oil.Id)], removed);
+    }
+
+    [Fact]
+    public async Task DeletingAUser_MarksTheExpensesThatListedTheirSchedulesOnOtherPeoplesVehicles()
+    {
+        await using var db = Database();
+        var car = await Car(db);
+        var expense = await AddExpense(db, car);
+        var repo = db.Get<IRecurringExpenseRepository>();
+        var someone = Guid.NewGuid(); // shares the car, made a schedule on it and marked it done with the owner's expense
+        var wash = RecurringExpense.Create(Owner, someone, car.Id, "Wash", null, null, RecurrenceKind.Time, 1, null, Day, null, 30, 500, _clock.GetUtcNow());
+        await repo.AddAsync(wash, default);
+        await repo.CompleteAsync([wash], [RecurringCompletion.Create(expense.Id, wash.Id)], default);
+
+        _clock.Advance(TimeSpan.FromMinutes(5));
+        await db.Get<IUserDataRepository>().DeleteUserAsync(someone, null, default);
+
+        Assert.Equal(_clock.GetUtcNow(), (await db.Get<IExpenseRepository>().FindAsync(expense.Id, default))!.UpdatedAt); // it no longer lists it
     }
 
     [Fact]
