@@ -33,4 +33,7 @@ public interface ISynced
     /// (a conditional write), so two changes made from the same version cannot both be saved.
     /// </summary>
     int SavedVersion { get; }
+
+    /// <summary>The persistence layer saved it: what it holds now is what is stored, so its next save starts from this version.</summary>
+    void Saved();
 }
