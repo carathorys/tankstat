@@ -625,6 +625,11 @@ input AddExpenseInput {
   id: UUID
 }
 
+input AddLogPhotoInput {
+  logId: UUID!
+  draftId: UUID!
+}
+
 input AddRecurringExpenseInput {
   vehicleId: UUID!
   title: String!
@@ -667,6 +672,10 @@ input ChangeInput {
   updateVehicle: UpdateVehicleInput
   deleteVehicle: UUID
   restoreVehicle: UUID
+  addRefuelingPhoto: AddLogPhotoInput
+  removeRefuelingPhoto: RemoveLogPhotoInput
+  addExpensePhoto: AddLogPhotoInput
+  removeExpensePhoto: RemoveLogPhotoInput
 }
 
 input ChangePasswordInput {
@@ -767,6 +776,11 @@ input OfflineChangesInput {
 input OfflineVehicleWindowInput {
   vehicleId: UUID!
   window: String!
+}
+
+input RemoveLogPhotoInput {
+  logId: UUID!
+  imageId: UUID!
 }
 
 input ResetPasswordInput {
@@ -1092,6 +1106,10 @@ enum SyncChangeKind {
   UPDATE_VEHICLE
   DELETE_VEHICLE
   RESTORE_VEHICLE
+  ADD_REFUELING_PHOTO
+  REMOVE_REFUELING_PHOTO
+  ADD_EXPENSE_PHOTO
+  REMOVE_EXPENSE_PHOTO
 }
 
 enum SyncChangeStatus {

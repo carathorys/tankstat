@@ -1,9 +1,10 @@
 import type { ApolloClient } from '@apollo/client'
 import { SyncChangesDocument, type ChangeInput, type SyncChangesMutation } from '../gql/generated.ts'
-import type { Change } from './changes.ts'
+import { isKept, keptPhotosOf, type Change } from './changes.ts'
 import { connectivity } from './connectivity.ts'
 import { deviceData } from './deviceData.ts'
 import { isConnectionFailure } from './errors.ts'
+import { keptPhotos } from './keptPhotos.ts'
 import { outbox } from './outbox.ts'
 
 /** Changes per request (the server takes at most 200). */
@@ -20,8 +21,11 @@ export interface ParkedChange {
 
 export interface PushState {
   status: 'idle' | 'syncing'
-  /** What the last sync did (in this page's life). */
-  last: { at: number; applied: number; parked: ParkedChange[]; interrupted: boolean } | null
+  /**
+   * What the last sync did (in this page's life). `photosLeftOut`: photos that were no longer on this device, their changes sent without
+   * them. `photosWaiting`: photos the server would not take as drafts this time (full, refused): their changes were not sent, they wait.
+   */
+  last: { at: number; applied: number; parked: ParkedChange[]; interrupted: boolean; photosLeftOut: number; photosWaiting: number } | null
 }
 
 export interface PushDeps {
@@ -48,10 +52,17 @@ const FIELDS = {
 const pick = (input: Record<string, unknown> | undefined, keys: readonly string[], extra: Record<string, unknown> = {}) =>
   Object.fromEntries(Object.entries({ ...input, ...extra }).filter(([k, v]) => keys.includes(k) && v !== undefined))
 
-/** A waiting change as the server's `ChangeInput`: its id, the version it was made from, and its one operation. */
-export function toChangeInput(c: Change): ChangeInput {
+/**
+ * A waiting change as the server's `ChangeInput`: its id, the version it was made from, and its one operation. Photos kept on this device
+ * are sent as the drafts they were uploaded as (`drafts`: key to draft id); one without a draft is left out.
+ */
+export function toChangeInput(c: Change, drafts: ReadonlyMap<string, string> = new Map()): ChangeInput {
   const base = { id: c.id, expectedVersion: c.expectedVersion ?? null }
-  const op = (name: keyof typeof FIELDS, extra: Record<string, unknown> = {}) => ({ ...base, [name]: pick(c.input, FIELDS[name], extra) }) as ChangeInput
+  const photoIds = Array.isArray(c.input?.photoIds)
+    ? { photoIds: (c.input.photoIds as string[]).flatMap((id) => (isKept(id) ? (drafts.has(id) ? [drafts.get(id)!] : []) : [id])) }
+    : {}
+  const op = (name: keyof typeof FIELDS, extra: Record<string, unknown> = {}) => ({ ...base, [name]: pick(c.input, FIELDS[name], { ...photoIds, ...extra }) }) as ChangeInput
+  const log = c.entity === 'expenses' ? 'Expense' : 'Refueling'
   switch (`${c.entity}:${c.action}`) {
     case 'refuelings:add': return op('logRefueling', { id: c.targetId, vehicleId: c.vehicleId })
     case 'refuelings:update': return op('updateRefueling', { id: c.targetId })
@@ -69,6 +80,12 @@ export function toChangeInput(c: Change): ChangeInput {
     case 'recurring:update': return op('updateRecurringExpense', { id: c.targetId })
     case 'recurring:trash': return { ...base, deleteRecurringExpense: c.targetId }
     case 'recurring:markDone': return op('markRecurringExpensesDone', { ids: c.targetIds ?? [] })
+    case 'refuelings:addPhoto':
+    case 'expenses:addPhoto':
+      return { ...base, [`add${log}Photo`]: { logId: c.targetId, draftId: drafts.get(String(c.input?.key)) ?? c.input?.draftId } } as ChangeInput
+    case 'refuelings:removePhoto':
+    case 'expenses:removePhoto':
+      return { ...base, [`remove${log}Photo`]: { logId: c.targetId, imageId: c.input?.imageId } } as ChangeInput
     default: throw new Error(`A change of ${c.entity} cannot ${c.action}.`)
   }
 }
@@ -115,6 +132,26 @@ export function batches(changes: readonly Change[], size = CHUNK_SIZE): Change[]
 }
 
 /**
+ * A request's changes: a change that carries kept photos goes on its own, as its photos go up as drafts right before it and the server
+ * keeps at most 20 drafts per person and vehicle; the others go together, in order.
+ */
+export function withPhotosAlone(changes: readonly Change[]): Change[][] {
+  const out: Change[][] = []
+  let current: Change[] = []
+  for (const change of changes) {
+    if (keptPhotosOf(change).length === 0) {
+      current.push(change)
+      continue
+    }
+    if (current.length > 0) out.push(current)
+    out.push([change])
+    current = []
+  }
+  if (current.length > 0) out.push(current)
+  return out
+}
+
+/**
  * Sends the changes kept on this device (`outbox.ts`) once the server can be reached, in order (`batches`), with `syncChanges`. The
  * server applies each through the same rules as online, or parks it with the reason; either way it has it, so it leaves the device (the
  * parked ones are listed with their reason until the next sync, and on the server for everyone who may see the vehicle). A change made on
@@ -140,14 +177,39 @@ export function createPushEngine({ client, device = deviceData, pull, chunkSize 
     // Adds the server parked, in this run or an earlier one: what depends on them waits (sent, it could only fail).
     const blocked = new Set<string>(await parkedAdds(device))
     let interrupted = false
+    let photosLeftOut = 0
+    let photosWaiting = 0
 
+    // One request. Its kept photos go up as drafts first (a draft is only ever uploaded for a change that is sent right after); the
+    // changes are marked sent before they go: from there the server may have them, so nothing folds into them any more (`collapse`), and
+    // removing them once answered never takes a later edit along.
     const send = async (group: Change[]) => {
-      // As the change is now (an edit may have folded into it since the run began), marked sent first: from here on the server may have
-      // it, so nothing folds into it any more (`collapse`), and removing it once answered never takes a later edit along.
-      await outbox.markSent(group.map((c) => c.id))
-      const { data } = await client.mutate({ mutation: SyncChangesDocument, variables: { input: { changes: group.map(toChangeInput) } } })
+      const drafts = new Map<string, string>()
+      for (const key of group.flatMap(keptPhotosOf)) {
+        try {
+          const id = await keptPhotos.asDraft(key)
+          if (id) drafts.set(key, id)
+          else photosLeftOut++ // no longer on this device
+        } catch (error) {
+          if (isConnectionFailure(error)) throw error
+          // Not taken this time (the drafts are full, a server error): the change is not sent, so its photos are not lost; it waits.
+          console.warn('A photo kept on this device was not taken as a draft; its change waits for the next sync.', error)
+          photosWaiting++
+          return
+        }
+      }
+      // A photo added to a saved log that is gone from the device has nothing left to send: it is done with.
+      const nothing = group.filter((c) => c.action === 'addPhoto' && !drafts.has(String(c.input?.key)))
+      const sendable = group.filter((c) => !nothing.includes(c))
+      if (sendable.length === 0) {
+        answered.push(...nothing.map((c) => c.id))
+        return
+      }
+      await outbox.markSent(sendable.map((c) => c.id))
+      const { data } = await client.mutate({ mutation: SyncChangesDocument, variables: { input: { changes: sendable.map((c) => toChangeInput(c, drafts)) } } })
+      answered.push(...nothing.map((c) => c.id))
       const results = new Map<string, Result>((data?.syncChanges.results ?? []).map((r) => [r.id, r]))
-      for (const change of group) {
+      for (const change of sendable) {
         const result = results.get(change.id)
         if (!result) continue
         answered.push(change.id)
@@ -158,23 +220,31 @@ export function createPushEngine({ client, device = deviceData, pull, chunkSize 
       }
     }
 
+    // A change the server refuses as a whole (one it cannot take at all) waits, shown on the Sync page where it can be removed.
+    const refused = (error: unknown) => console.warn('A change kept on this device was refused; it waits on the Sync page.', error)
+
     try {
       for (const chunk of batches(outbox.changes, chunkSize)) {
+        // As the changes are now: an edit may have folded into one since the run began.
         const current = new Map(outbox.changes.map((c) => [c.id, c]))
-        const sendable = chunk.flatMap((c) => current.get(c.id) ?? []).filter((c) => !needs(c).some((id) => blocked.has(id)))
-        if (sendable.length === 0) continue
-        try {
-          await send(sendable)
-        } catch (error) {
-          if (isConnectionFailure(error) || sendable.length === 1) throw error
-          // The server refused the request as a whole (one change it cannot take at all): one at a time, so the others still go and
-          // only that one waits, shown on the Sync page where it can be removed.
-          for (const change of sendable) {
-            try {
-              await send([change])
-            } catch (single) {
-              if (isConnectionFailure(single)) throw single
-              console.warn('A change kept on this device was refused; it waits on the Sync page.', single)
+        const live = chunk.flatMap((c) => current.get(c.id) ?? []).filter((c) => !needs(c).some((id) => blocked.has(id)))
+        for (const group of withPhotosAlone(live)) {
+          try {
+            await send(group)
+          } catch (error) {
+            if (isConnectionFailure(error)) throw error
+            if (group.length === 1) {
+              refused(error)
+              continue
+            }
+            // The request was refused as a whole: one at a time, so the others still go and only the one it cannot take waits.
+            for (const change of group) {
+              try {
+                await send([change])
+              } catch (single) {
+                if (isConnectionFailure(single)) throw single
+                refused(single)
+              }
             }
           }
         }
@@ -192,7 +262,7 @@ export function createPushEngine({ client, device = deviceData, pull, chunkSize 
     // Remembered while anything waiting still needs one of them (until the parked add is applied or discarded on the Sync page).
     const stillNeeded = new Set(outbox.changes.flatMap(needs))
     await device.keep(PARKED_ADDS_KEY, [...blocked].filter((id) => stillNeeded.has(id))).catch(() => undefined)
-    set({ status: 'idle', last: { at: Date.now(), applied: answered.length - parked.length, parked, interrupted } })
+    set({ status: 'idle', last: { at: Date.now(), applied: answered.length - parked.length, parked, interrupted, photosLeftOut, photosWaiting } })
   }
 
   return {

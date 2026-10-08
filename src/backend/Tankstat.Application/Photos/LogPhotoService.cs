@@ -147,6 +147,44 @@ public sealed class LogPhotoService(
         logger.LogDebug("Attached {Attached} of {Wanted} draft photos to {LogType} {LogId}", attached.Count, attachable.Count, logType, logId);
     }
 
+    /// <summary>
+    /// Makes one of the user's drafts a photo of a saved log (a photo added while offline, uploaded as a draft when the device synced):
+    /// Edit on the log's vehicle, a draft of that vehicle that has not expired, and room on the log. A draft that is already this log's
+    /// photo is answered with its id. Returns the image id.
+    /// </summary>
+    public async Task<Guid> AttachDraftAsync(LogType logType, Guid logId, Guid draftId, CancellationToken ct)
+    {
+        var log = await logs.EditableAsync(logType, logId, ct);
+        if (await photos.FindByImageAsync(draftId, ct) is { } attached && attached.LogType == logType && attached.LogId == logId) return draftId;
+        var draft = (await drafts.RequireAttachableAsync(log.Vehicle.Id, [draftId], ct)).Single();
+
+        var gate = Locks[(uint)logId.GetHashCode() % Locks.Length];
+        await gate.WaitAsync(ct);
+        try
+        {
+            // Looked at again under the lock: the same draft sent twice at once (a change sent again) must not have its file moved back.
+            if (await photos.FindByImageAsync(draftId, ct) is { } meanwhile && meanwhile.LogType == logType && meanwhile.LogId == logId) return draftId;
+            if (await photos.CountForLogAsync(logType, logId, ct) >= LogPhoto.MaxPerLog) throw TooMany();
+            await images.MoveAsync(draft.Id, ImageFolders.LogPhotos(draft.VehicleId, logType, logId), CancellationToken.None);
+            try
+            {
+                await photos.AddAsync(LogPhoto.Create(draft.OwnerId, draft.VehicleId, logType, logId, draft.Id, draft.CreatedById, clock.GetUtcNow()), CancellationToken.None);
+            }
+            catch
+            {
+                await MoveBackQuietlyAsync(draft);
+                throw;
+            }
+            await drafts.ForgetAsync([draft.Id], CancellationToken.None);
+            logger.LogDebug("Attached draft photo {DraftId} to {LogType} {LogId}", draft.Id, logType, logId);
+            return draft.Id;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
     private async Task MoveBackQuietlyAsync(PhotoDraft draft)
     {
         try

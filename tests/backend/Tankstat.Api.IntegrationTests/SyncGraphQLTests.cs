@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using System.Text.Json;
 
 namespace Tankstat.Api.IntegrationTests;
@@ -167,5 +168,41 @@ public class SyncGraphQLTests : IDisposable
         Assert.Equal("sync.kindMismatch", otherKind.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
         Assert.Equal("DISCARDED", discarded.GetProperty("status").GetString());
         Assert.Equal("UNAUTHENTICATED", (await stranger.Gql(Parked)).ErrorCode());
+    }
+
+    private static async Task<string> UploadDraft(HttpClient c, string vehicleId)
+    {
+        var content = new ByteArrayContent([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 4]);
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
+        var response = await c.PutAsync($"/media/vehicles/{vehicleId}/photo-drafts", content);
+        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+        return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+    }
+
+    private static async Task<string[]> Photos(HttpClient c, string refuelingId) =>
+        [.. (await c.Gql($"{{ refueling(id: \"{refuelingId}\") {{ photos {{ id }} }} }}")).Data().GetProperty("refueling").GetProperty("photos").EnumerateArray().Select(p => p.GetProperty("id").GetString()!)];
+
+    [Fact]
+    public async Task APhotoAddedOrRemovedOffline_OnASavedLog_IsAppliedOnce_AndARemovedOneIsParked()
+    {
+        var people = await _app.Users();
+        var car = (await people.Alice.Gql("mutation { addVehicle(input: { name: \"Golf\", fuelType: PETROL }) { id } }")).Data().GetProperty("addVehicle").GetProperty("id").GetString()!;
+        var log = (await people.Alice.Gql("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }",
+            new { i = new { vehicleId = car, date = "2026-09-01", volume = 40, totalCost = 60, currency = "EUR", odometer = 1000, isFullTank = true } })).Data().GetProperty("logRefueling").GetProperty("id").GetString()!;
+        var draft = await UploadDraft(people.Alice, car);
+        var add = new { id = Guid.NewGuid(), addRefuelingPhoto = new { logId = log, draftId = draft } };
+
+        var added = await Send(people.Alice, add);
+        var again = await Send(people.Alice, add);
+        var removed = await Send(people.Alice, new { id = Guid.NewGuid(), removeRefuelingPhoto = new { logId = log, imageId = draft } });
+        var gone = await Send(people.Alice, new { id = Guid.NewGuid(), removeRefuelingPhoto = new { logId = log, imageId = draft } });
+
+        Assert.Equal(("APPLIED", draft), (added.GetProperty("results")[0].GetProperty("status").GetString(), added.GetProperty("results")[0].GetProperty("entityId").GetString()));
+        Assert.Equal(added.GetRawText(), again.GetRawText());
+        Assert.Equal("APPLIED", removed.GetProperty("results")[0].GetProperty("status").GetString());
+        Assert.Equal(("PARKED", "photo.notFound"), (gone.GetProperty("results")[0].GetProperty("status").GetString(), gone.GetProperty("results")[0].GetProperty("reason").GetProperty("key").GetString()));
+        Assert.Empty(await Photos(people.Alice, log));
+        var parked = Assert.Single((await people.Alice.Gql("{ parkedChanges { kind vehicleId } }")).Data().GetProperty("parkedChanges").EnumerateArray());
+        Assert.Equal(("REMOVE_REFUELING_PHOTO", car), (parked.GetProperty("kind").GetString(), parked.GetProperty("vehicleId").GetString()));
     }
 }

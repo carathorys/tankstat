@@ -982,6 +982,9 @@
     "failedHint": "Some photos could not be uploaded. Try them again or remove them to save the entry.",
     "added": "Photos saved.",
     "removed": "Photo removed.",
+    "kept": "On this device: uploaded when synced",
+    "keptAdded": "Kept on this device: the photos are added when it syncs.",
+    "removeKept": "The photo is removed when it syncs.",
     "done": "Done",
     "leftOut_one": "The entry was saved, but {{count}} photo could not be attached. Add it again by editing the entry.",
     "leftOut_other": "The entry was saved, but {{count}} photos could not be attached. Add them again by editing the entry."
@@ -1012,7 +1015,8 @@
       "NO_CONFIDENCE": "{{field}}: the photo could be read here, but not reliably enough to fill it in.",
       "UNSURE": "{{field}}: the photo could be read here, but not reliably enough to fill it in."
     },
-    "waiting": "Leave it empty: it is filled in from the photo after saving."
+    "waiting": "Leave it empty: it is filled in from the photo after saving.",
+    "later": "The photos are read once this reaches the server. What they show can be left empty: it is filled in then, and you are told."
   },
   "review": {
     "badge": {
@@ -1156,13 +1160,17 @@
         "add": "New refuelling",
         "update": "Changed refuelling",
         "trash": "Refuelling to the trash",
-        "restore": "Refuelling back from the trash"
+        "restore": "Refuelling back from the trash",
+        "addPhoto": "Photo added to a refuelling",
+        "removePhoto": "Photo removed from a refuelling"
       },
       "expenses": {
         "add": "New expense",
         "update": "Changed expense",
         "trash": "Expense to the trash",
-        "restore": "Expense back from the trash"
+        "restore": "Expense back from the trash",
+        "addPhoto": "Photo added to an expense",
+        "removePhoto": "Photo removed from an expense"
       },
       "vehicles": {
         "add": "New vehicle",
@@ -1194,6 +1202,10 @@
     "syncNow": "Sync now",
     "syncing": "Syncing…",
     "lastSync": "Last synced {{time}}: {{applied}} applied, {{parked}} not applied.",
+    "photosWaiting_one": "A photo could not be sent this time; its entry waits for the next sync.",
+    "photosWaiting_other": "{{count}} photos could not be sent this time; their entries wait for the next sync.",
+    "photosLeftOut_one": "A photo was no longer on this device and was left out.",
+    "photosLeftOut_other": "{{count}} photos were no longer on this device and were left out.",
     "interrupted": "The sync stopped because the server cannot be reached; what is left goes when it is back.",
     "notApplied": "Not applied",
     "notAppliedHint": "The server could not apply these changes and keeps them, with the reason, until someone decides: whoever sent one, or may change the vehicle, can apply it anyway (every rule applies, only not that it was changed meanwhile) or discard it.",

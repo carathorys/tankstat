@@ -37,7 +37,7 @@ import { useDraftReadings } from './recognition/useDraftReadings.ts'
 import { useReadFill } from './recognition/useReadFill.ts'
 import { Loading } from './components/Loading.tsx'
 import { useToast } from './toast/toastContext.ts'
-import { OfflineNote } from './components/OfflineNote.tsx'
+import { OfflineNote, ReadLaterNote } from './components/OfflineNote.tsx'
 import { outbox } from './offline/outbox.ts'
 
 /** The amount is null only when it was left for a photo that is still being read. */
@@ -109,6 +109,8 @@ export function ExpenseFormDialog({
   const categories = useQuery(ExpenseCategoriesDocument, { variables: { vehicleId: vehicle.id }, skip: !open, fetchPolicy: 'network-only' })
   const error = details.error ?? defaults.error
   const existing = details.data?.expense
+  // Photos kept on this device are read once the expense is synced (photo reading on, as last heard): its amount may be left empty.
+  const readLater = !editing && queue.kept > 0 && drafts.available
   const ready = defaults.data && (!editing || existing)
   const currency = defaults.data?.logDefaults?.currency ?? ''
   const initial: Initial = existing ? { ...existing, currency: existing.currency ?? currency } : { date: todayIso(), title: '', category: null, currency, note: null }
@@ -131,6 +133,7 @@ export function ExpenseFormDialog({
       >
         {error && <ErrorMessage error={error} />}
         <OfflineNote />
+        {readLater && <ReadLaterNote />}
         {!error && !ready && (
           <Loading />
         )}
@@ -147,13 +150,14 @@ export function ExpenseFormDialog({
             readingDone={drafts.done}
             explanation={drafts.explanation}
             // A new expense may leave its amount to a photo that is being read; a saved one still waiting for its photos may stay so.
-            mayWait={drafts.pending.length > 0 || (editing && existing?.reviewState === 'AWAITING_PHOTOS')}
+            mayWait={drafts.pending.length > 0 || readLater || (editing && existing?.reviewState === 'AWAITING_PHOTOS')}
             readingNow={drafts.pending.length > 0}
             wait={{ since: drafts.waitingSince, until: drafts.waitingUntil }}
             gallery={
               <PhotoGallery
                 kind="expenses"
                 logId={expenseId}
+                vehicleId={vehicle.id}
                 photos={existing?.photos ?? []}
                 queue={queue}
                 readingIds={drafts.pending}

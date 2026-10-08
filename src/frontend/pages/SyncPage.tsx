@@ -64,6 +64,8 @@ export function SyncPage() {
                 ? t('sync.interrupted')
                 : t('sync.lastSync', { time: dateTime(new Date(last.at).toISOString()), applied: last.applied, parked: last.parked.length })
               : ''}
+          {state.status !== 'syncing' && last && last.photosWaiting > 0 && ` ${t('sync.photosWaiting', { count: last.photosWaiting })}`}
+          {state.status !== 'syncing' && last && last.photosLeftOut > 0 && ` ${t('sync.photosLeftOut', { count: last.photosLeftOut })}`}
         </Typography>
       </Stack>
       {!groups && <Loading />}
