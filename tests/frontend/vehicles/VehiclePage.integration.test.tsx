@@ -34,7 +34,8 @@ const choose = async (ui: ReturnType<typeof userEvent.setup>, control: string, o
 it('shows the vehicle with its logs formatted in its own units', async () => {
   setup(fakeVehicle({ units: { distance: 'MILES', volume: 'US_GALLONS' } }))
 
-  const row = (await screen.findByText(/Sep 1, 2026/)).closest<HTMLElement>('[role="row"]')!
+  // The vehicle page and its data grid load for the first time in this file, which can take longer than the usual wait.
+  const row = (await screen.findByText(/Sep 1, 2026/, {}, { timeout: 10_000 })).closest<HTMLElement>('[role="row"]')!
   expect(within(row).getByText('41.5 gal')).toBeInTheDocument()
   expect(within(row).getByText(/12,000 mi/)).toBeInTheDocument()
   expect(within(row).getByText('Partial')).toBeInTheDocument()

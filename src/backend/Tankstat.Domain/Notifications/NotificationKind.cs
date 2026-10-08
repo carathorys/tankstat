@@ -30,6 +30,11 @@ public enum NotificationKind
     /// <summary>To whoever logged it: the photos of a log saved with empty values were read, but values are still missing.</summary>
     LogNotFilled,
 
+    /// <summary>A change sent from a device that the server could not apply waits for someone to apply or discard it (the recipient sent it or may see the vehicle).</summary>
+
+    SyncChangeParked,
+
+
     /// <summary>More happened than the recipient should be told one by one (the hourly limit was reached); the count says how much.</summary>
     MoreActivity,
 }
@@ -47,6 +52,7 @@ public enum NotificationTopic
     DefaultAccess,
     Recurring,
     LogReview,
+    Sync,
     Digest,
 }
 
@@ -61,12 +67,13 @@ public static class NotificationKinds
         NotificationKind.DefaultAccessChanged => NotificationTopic.DefaultAccess,
         NotificationKind.RecurringDueSoon or NotificationKind.RecurringOverdue => NotificationTopic.Recurring,
         NotificationKind.LogFilledFromPhoto or NotificationKind.LogNotFilled => NotificationTopic.LogReview,
+        NotificationKind.SyncChangeParked => NotificationTopic.Sync,
         NotificationKind.MoreActivity => NotificationTopic.Digest,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
     /// <summary>Topics whose notifications are derived (worked out on read from the current state) rather than sent by events.</summary>
-    public static IReadOnlySet<NotificationTopic> DerivedTopics { get; } = new HashSet<NotificationTopic> { NotificationTopic.Recurring, NotificationTopic.LogReview };
+    public static IReadOnlySet<NotificationTopic> DerivedTopics { get; } = new HashSet<NotificationTopic> { NotificationTopic.Recurring, NotificationTopic.LogReview, NotificationTopic.Sync };
 
     /// <summary>Topics whose notifications are sent by events; only these count against the hourly limit.</summary>
     public static IReadOnlyList<NotificationTopic> EventTopics { get; } = Enum.GetValues<NotificationTopic>().Where(t => !DerivedTopics.Contains(t)).ToList();

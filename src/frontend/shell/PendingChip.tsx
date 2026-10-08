@@ -3,16 +3,16 @@ import { CloudAlert, CloudUpload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 import { usePendingCount } from '../offline/outbox.ts'
-import { usePushState } from '../offline/usePushState.ts'
+import { useParkedChanges } from '../offline/useParkedChanges.ts'
 
 /**
- * In the top bar while changes wait on this device for the server: how many, as a link to the page that lists them; after a sync the
- * server could not apply some of, how many (until the next sync). Gone otherwise.
+ * In the top bar while changes wait on this device for the server: how many, as a link to the page that lists them; otherwise, while the
+ * server keeps changes it could not apply that the user may see (`parked`: only for someone whose data is open), how many. Gone otherwise.
  */
-export function PendingChip() {
+export function PendingChip({ parked: askParked }: { parked: boolean }) {
   const { t } = useTranslation()
   const count = usePendingCount()
-  const notApplied = usePushState().state.last?.parked.length ?? 0
+  const notApplied = useParkedChanges(askParked).parked?.length ?? 0
   if (count === 0 && notApplied === 0) return null
   const waiting = count > 0
   return (

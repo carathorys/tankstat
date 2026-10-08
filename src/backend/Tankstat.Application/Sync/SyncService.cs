@@ -2,8 +2,10 @@ using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
+using Tankstat.Application.Auth;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain;
+using Tankstat.Domain.Access;
 using Tankstat.Domain.Sync;
 
 namespace Tankstat.Application.Sync;
@@ -32,8 +34,22 @@ public interface ISyncChangeRepository
 {
     Task<IReadOnlyList<SyncChange>> FindManyAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct);
 
+    Task<SyncChange?> FindAsync(Guid id, CancellationToken ct);
+
+    /// <summary>The parked changes of the vehicles in the scope (live vehicles only), and those the submitter sent, newest first.</summary>
+    Task<IReadOnlyList<SyncChange>> ListParkedAsync(OwnerScope scope, Guid submitterId, CancellationToken ct);
+
+    /// <summary>How many parked changes each of the vehicles has.</summary>
+    Task<IReadOnlyDictionary<Guid, int>> CountParkedAsync(IReadOnlyCollection<Guid> vehicleIds, CancellationToken ct);
+
     /// <summary>Records a change; false when a change with its id is recorded already (the same batch on another server at the same moment).</summary>
     Task<bool> AddAsync(SyncChange change, CancellationToken ct);
+
+    /// <summary>
+    /// Saves what was decided about a parked change only if it is still parked (two people may decide at once); false when someone else was
+    /// first.
+    /// </summary>
+    Task<bool> SettleParkedAsync(SyncChange change, CancellationToken ct);
 
     /// <summary>Removes the applied (and discarded) rows received before the moment; parked ones stay.</summary>
     Task<int> PurgeResolvedAsync(DateTimeOffset before, CancellationToken ct);
@@ -99,6 +115,75 @@ public sealed class SyncService(
             gate.Release();
         }
     }
+
+    /// <summary>
+    /// The parked changes the user may see: those of every vehicle whose logs they may view (everyone who works with the vehicle decides
+    /// about them), and those they sent themselves (a vehicle they added, which the server never took, has none). An administrator sees
+    /// every vehicle's here, as in every list; the notifications only go to those who work with the vehicle themselves
+    /// (<see cref="Notifications.SyncNotificationSync"/>), deliberately.
+    /// </summary>
+    public async Task<IReadOnlyList<SyncChange>> ListParkedAsync(CancellationToken ct)
+    {
+        var me = await access.RequirePrincipalAsync(ct);
+        return await ledger.ListParkedAsync(await access.LogScopeAsync(AccessLevel.View, ct), me.Id, ct);
+    }
+
+    /// <summary>For vehicles the caller already got through an access check (a resolver of the vehicle).</summary>
+    public Task<IReadOnlyDictionary<Guid, int>> CountParkedAsync(IReadOnlyCollection<Guid> vehicleIds, CancellationToken ct) => ledger.CountParkedAsync(vehicleIds, ct);
+
+    /// <summary>Whoever sent it, or may change the vehicle's logs, decides about a parked change.</summary>
+    public async Task<bool> CanResolveAsync(SyncChange change, CancellationToken ct)
+    {
+        var me = await access.RequirePrincipalAsync(ct);
+        if (change.SubmittedById == me.Id) return true;
+        return change.VehicleId is { } id && await vehicles.FindAsync(id, ct) is { } vehicle && await access.LogLevelAsync(vehicle, ct) >= AccessLevel.Edit;
+    }
+
+    /// <summary>
+    /// A person decides about a parked change: discard it (it is never applied), or apply it anyway, as they would online (every rule and
+    /// access check; the version it was made from no longer counts: they saw what is there now). <paramref name="apply"/> applies the
+    /// stored change, or the edited one in <paramref name="replacement"/> (stored first, so it is kept if it is refused again). A refusal
+    /// keeps it parked with the new reason, and is thrown so the person sees it.
+    /// </summary>
+    public async Task<SyncChange> ResolveAsync(Guid id, bool discard, Func<CancellationToken, Task<AppliedChange>>? apply, string? replacement, CancellationToken ct)
+    {
+        var me = await access.RequirePrincipalAsync(ct);
+        var change = await ledger.FindAsync(id, ct);
+        if (change is null || !await VisibleAsync(change, me.Id, ct)) throw new NotFoundException("sync.notFound", "Change not found.", new { Id = id });
+        if (change.Status != SyncChangeStatus.Parked) throw NotParked();
+        if (!await CanResolveAsync(change, ct)) throw new ForbiddenException("sync.cannotResolve", "Only whoever sent it, or may change the vehicle's logs, decides about it.");
+
+        var now = clock.GetUtcNow();
+        if (discard)
+        {
+            change.MarkDiscarded(me.Id, now);
+            if (!await ledger.SettleParkedAsync(change, ct)) throw NotParked();
+            logger.LogInformation("User {UserId} discarded parked change {ChangeId} of vehicle {VehicleId}", me.Id, change.Id, change.VehicleId);
+            return change;
+        }
+        if (replacement is not null) change.Replace(replacement);
+        try
+        {
+            var applied = await apply!(ct);
+            change.MarkApplied(me.Id, now, applied.EntityId, applied.Version);
+            if (!await ledger.SettleParkedAsync(change, ct)) throw NotParked(); // someone else decided meanwhile (applying it again changed nothing new)
+            logger.LogInformation("User {UserId} applied parked change {ChangeId} of vehicle {VehicleId}", me.Id, change.Id, change.VehicleId);
+            return change;
+        }
+        catch (KeyedException refused)
+        {
+            change.ParkAgain(refused.Key, refused.Args.ToDictionary(a => a.Key, a => Convert.ToString(a.Value, CultureInfo.InvariantCulture) ?? ""));
+            if (!await ledger.SettleParkedAsync(change, ct)) throw NotParked();
+            logger.LogDebug("Parked change {ChangeId} was refused again: {Key}", change.Id, refused.Key);
+            throw;
+        }
+    }
+
+    private static DomainException NotParked() => new("sync.notParked", "This change is not parked: someone has decided about it already.");
+
+    private async Task<bool> VisibleAsync(SyncChange change, Guid me, CancellationToken ct) =>
+        change.SubmittedById == me
+        || (change.VehicleId is { } id && await vehicles.FindAsync(id, ct) is { } vehicle && await access.LogLevelAsync(vehicle, ct) >= AccessLevel.View);
 
     /// <summary>Applies one change; a refusal of the server's (a keyed error) parks it with the reason, anything else is unexpected and stops the batch.</summary>
     private async Task<SyncChange> ApplyAsync(SyncChangeRequest change, Guid submitter, CancellationToken ct)

@@ -10,6 +10,7 @@ public enum NotificationEntityType
     User,
     Refueling,
     Expense,
+    SyncChange,
 }
 
 /// <summary>
@@ -24,4 +25,5 @@ public readonly record struct NotificationRef(NotificationEntityType Type, Guid 
     public static NotificationRef User(Guid id) => new(NotificationEntityType.User, id);
     public static NotificationRef Refueling(Guid id) => new(NotificationEntityType.Refueling, id);
     public static NotificationRef Expense(Guid id) => new(NotificationEntityType.Expense, id);
+    public static NotificationRef SyncChange(Guid id) => new(NotificationEntityType.SyncChange, id);
 }

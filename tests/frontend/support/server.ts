@@ -2,7 +2,8 @@ import { graphql, http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 
 // Handlers are registered per test with server.use(); unhandled requests fail the test. The defaults: the bell in the top bar asks for
-// the unread count on every screen (an empty inbox; notification tests override it with fakeNotificationBackend), the add dialogs ask
+// the unread count on every screen (an empty inbox; notification tests override it with fakeNotificationBackend), the top bar and the
+// navigation ask for the changes the server could not apply (none; sync tests answer ParkedChanges themselves), the add dialogs ask
 // whether photos are read on the server (they are not; photo reading tests override it with fakeRecognition), and the app asks for the
 // user's UI settings once and tells the server about every change (nothing saved, every save echoed; settings tests use
 // fakeSettingsBackend). The echoes answer exactly the fields the documents select, or Apollo warns about missing fields in every test.
@@ -21,6 +22,7 @@ export const server = setupServer(
     }),
   ),
   graphql.query('UnreadNotificationCount', () => HttpResponse.json({ data: { notificationCount: 0 } })),
+  graphql.query('ParkedChanges', () => HttpResponse.json({ data: { parkedChanges: [] } })),
   graphql.query('RecognitionStatus', () => HttpResponse.json({ data: { recognitionStatus: { available: false } } })),
   graphql.query('UiSettings', () => HttpResponse.json({ data: { uiSettings: { navOpen: null, language: null, colorMode: null, grids: [] } } })),
   // The Account page's Offline data section: the default window, no vehicles of its own (tests with vehicles answer these themselves).

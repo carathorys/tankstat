@@ -185,6 +185,34 @@ it('the trash, account and administration pages have no violations', async () =>
   }
 })
 
+it('the changes the server could not apply, and the confirmations to apply or discard one, are labelled and free of violations', async () => {
+  const { ui } = setup('/sync')
+  server.use(
+    graphql.query('ParkedChanges', () =>
+      HttpResponse.json({
+        data: {
+          parkedChanges: [{
+            __typename: 'SyncChangeInfo', id: 'c1', kind: 'DELETE_REFUELING', status: 'PARKED', vehicleId: 'v1', targetId: 'r1', change: '{"id":"c1","expectedVersion":1,"deleteRefueling":"r1"}',
+            receivedAt: '2026-10-06T09:00:00Z', reason: { __typename: 'SyncReasonInfo', key: 'sync.versionMismatch', args: [] },
+            vehicle: { __typename: 'SyncVehicleRef', id: 'v1', name: 'Octavia', distanceUnit: 'KILOMETERS', volumeUnit: 'LITERS' },
+            submittedBy: { __typename: 'UserRef', id: 'u2', displayName: 'Bob' }, canResolve: true,
+          }],
+        },
+      }),
+    ),
+  )
+  const region = await screen.findByRole('region', { name: 'Not applied' })
+  await check(document.body)
+
+  for (const [button, title] of [[/^Apply anyway: Refuelling to the trash/, 'Apply this change anyway?'], [/^Discard: Refuelling to the trash/, 'Discard this change?']] as const) {
+    await ui.click(await within(region).findByRole('button', { name: button }))
+    const dialog = await screen.findByRole('alertdialog', { name: title })
+    expect(dialog).toHaveAccessibleDescription(/./)
+    await check(document.body)
+    await ui.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+  }
+})
+
 it('the signed-in devices and the confirmation to sign out the others are free of violations', async () => {
   const { view, ui } = setup('/account')
   const at = (id: string, client: string | null, current: boolean) => ({

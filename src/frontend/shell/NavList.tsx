@@ -11,6 +11,7 @@ import { useSignOut } from '../auth/useSignOut.ts'
 import { DialogButtons, DialogCancel, DialogFrame } from '../dialogs/DialogFrame.tsx'
 import { OfflineError } from '../offline/errors.ts'
 import { outbox, usePendingCount } from '../offline/outbox.ts'
+import { useParkedChanges } from '../offline/useParkedChanges.ts'
 import { useToast } from '../toast/toastContext.ts'
 import { InstallMenuItem } from './InstallMenuItem.tsx'
 import { navItemSx } from './navStyles.ts'
@@ -22,6 +23,7 @@ export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: Sess
   const { toast } = useToast()
   const canSignOut = user !== null && mode !== 'PROXY_HEADER' // behind a proxy the proxy owns the session
   const waiting = usePendingCount()
+  const parked = useParkedChanges().parked?.length ?? 0
   const [confirmSignOut, setConfirmSignOut] = useState(false)
   const leave = async () => {
     onNavigate?.()
@@ -48,11 +50,15 @@ export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: Sess
       {link('/import', t('nav.import'), <FileUp size={18} aria-hidden />)}
       {link('/notifications', t('nav.notifications'), <Bell size={18} aria-hidden />)}
       {link('/trash', t('nav.trash'), <Trash2 size={18} aria-hidden />)}
-      {waiting > 0 && (
+      {(waiting > 0 || parked > 0) && (
         <Box component={NavLink} to="/sync" sx={navItemSx} onClick={onNavigate}>
           <CloudUpload size={18} aria-hidden />
           {t('sync.nav')}
-          <Chip size="small" color="neutral" label={waiting} aria-label={t('offline.waiting', { count: waiting })} sx={{ ml: 'auto' }} />
+          {waiting > 0 ? (
+            <Chip size="small" color="neutral" label={waiting} aria-label={t('offline.waiting', { count: waiting })} sx={{ ml: 'auto' }} />
+          ) : (
+            <Chip size="small" color="warning" label={parked} aria-label={t('offline.notApplied', { count: parked })} sx={{ ml: 'auto' }} />
+          )}
         </Box>
       )}
       {user && link('/account', t('nav.account'), <Settings size={18} aria-hidden />)}

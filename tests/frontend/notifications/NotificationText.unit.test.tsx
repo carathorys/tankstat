@@ -55,3 +55,11 @@ it('tells what a photo filled in or left out, and leads to the right tab of the 
     href: '/vehicles/v1?tab=expenses',
   })
 })
+
+it('tells what change could not be applied and why, in the words of the refusal, and leads to Waiting to sync', () => {
+  const parked = { change: 'LOG_REFUELING', vehicleName: 'Family car', submitterName: 'Bob', reason: 'odometer.belowPrevious', reasonArgs: '{"previous":"12,000 km","date":"Sep 30, 2026"}' }
+  expect(say('SYNC_CHANGE_PARKED', parked, { subject: { type: 'SYNC_CHANGE', id: 'c1' } })).toEqual({
+    text: 'New refuelling of Family car, sent by Bob, could not be applied: The odometer cannot be lower than 12,000 km, the reading on Sep 30, 2026. Decide about it on Waiting to sync.',
+    href: '/sync',
+  })
+})
