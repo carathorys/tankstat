@@ -205,4 +205,47 @@ public class SyncGraphQLTests : IDisposable
         var parked = Assert.Single((await people.Alice.Gql("{ parkedChanges { kind vehicleId } }")).Data().GetProperty("parkedChanges").EnumerateArray());
         Assert.Equal(("REMOVE_REFUELING_PHOTO", car), (parked.GetProperty("kind").GetString(), parked.GetProperty("vehicleId").GetString()));
     }
+
+    [Fact]
+    public async Task EveryKindOfChange_IsAppliedThroughSync_InTheOrderItWasMade()
+    {
+        var alice = (await _app.Users()).Alice;
+        var (car, refueling, expense, schedule, visit) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var fill = new { date = "2026-09-01", volume = 40, totalCost = 60, currency = "EUR", odometer = 1000, isFullTank = true };
+        var cost = new { date = "2026-09-05", title = "Parking", amount = 5, currency = "EUR" };
+        var cycle = new { title = "Service", kind = "TIME", intervalMonths = 12, lastDoneDate = "2026-01-01" };
+
+        // Each change as the device sends it: its own id and one operation (an add's id is the id of what it adds).
+        var vehicle = await Send(alice, new { id = car, addVehicle = new { id = car, name = "Golf", fuelType = "PETROL" } });
+        var (refuelingPhoto, expensePhoto) = (await UploadDraft(alice, car.ToString()), await UploadDraft(alice, car.ToString()));
+        var rest = await Send(alice,
+            new { id = refueling, logRefueling = new { id = refueling, vehicleId = car, fill.date, fill.volume, fill.totalCost, fill.currency, fill.odometer, fill.isFullTank } },
+            new { id = expense, addExpense = new { id = expense, vehicleId = car, cost.date, cost.title, cost.amount, cost.currency } },
+            new { id = schedule, addRecurringExpense = new { id = schedule, vehicleId = car, cycle.title, cycle.kind, cycle.intervalMonths, cycle.lastDoneDate } },
+            new { id = Guid.NewGuid(), updateRefueling = new { id = refueling, fill.date, volume = 41, fill.totalCost, fill.currency, fill.odometer, fill.isFullTank } },
+            new { id = Guid.NewGuid(), updateExpense = new { id = expense, cost.date, title = "Parking at the station", cost.amount, cost.currency } },
+            new { id = Guid.NewGuid(), updateRecurringExpense = new { id = schedule, title = "Yearly service", cycle.kind, cycle.intervalMonths, cycle.lastDoneDate } },
+            new { id = Guid.NewGuid(), updateVehicle = new { id = car, name = "Golf GTI", fuelType = "PETROL" } },
+            new { id = visit, markRecurringExpensesDone = new { ids = new[] { schedule }, date = "2026-09-10", odometer = 1100, amount = 120, currency = "EUR", expenseId = visit } },
+            new { id = Guid.NewGuid(), addRefuelingPhoto = new { logId = refueling, draftId = refuelingPhoto } },
+            new { id = Guid.NewGuid(), removeRefuelingPhoto = new { logId = refueling, imageId = refuelingPhoto } },
+            new { id = Guid.NewGuid(), addExpensePhoto = new { logId = expense, draftId = expensePhoto } },
+            new { id = Guid.NewGuid(), removeExpensePhoto = new { logId = expense, imageId = expensePhoto } },
+            new { id = Guid.NewGuid(), deleteRefueling = refueling },
+            new { id = Guid.NewGuid(), restoreRefueling = refueling },
+            new { id = Guid.NewGuid(), deleteExpense = expense },
+            new { id = Guid.NewGuid(), restoreExpense = expense },
+            new { id = Guid.NewGuid(), deleteRecurringExpense = schedule },
+            new { id = Guid.NewGuid(), deleteVehicle = car },
+            new { id = Guid.NewGuid(), restoreVehicle = car });
+
+        var results = vehicle.GetProperty("results").EnumerateArray().Concat(rest.GetProperty("results").EnumerateArray()).ToList();
+        Assert.Equal(20, results.Count);
+        Assert.All(results, r => Assert.Equal("APPLIED", r.GetProperty("status").GetString()));
+        var now = (await alice.Gql($"{{ vehicle(id: \"{car}\") {{ name }} refueling(id: \"{refueling}\") {{ volume deletedAt photos {{ id }} }} expense(id: \"{visit}\") {{ amount }} }}")).Data();
+        Assert.Equal(("Golf GTI", 41m, true, 0, 120m),
+            (now.GetProperty("vehicle").GetProperty("name").GetString(), now.GetProperty("refueling").GetProperty("volume").GetDecimal(),
+             now.GetProperty("refueling").GetProperty("deletedAt").ValueKind == JsonValueKind.Null, now.GetProperty("refueling").GetProperty("photos").GetArrayLength(),
+             now.GetProperty("expense").GetProperty("amount").GetDecimal()));
+    }
 }

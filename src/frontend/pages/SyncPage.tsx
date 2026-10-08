@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next'
 import Button from '@mui/material/Button'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { Loading } from '../components/Loading.tsx'
-import { ResolveSyncChangeDocument, SessionDocument, type ParkedChangeFieldsFragment, type SyncResolveAction, type VolumeUnit } from '../gql/generated.ts'
+import { ResolveSyncChangeDocument, SessionDocument, type DistanceUnit, type ParkedChangeFieldsFragment, type SyncResolveAction, type VolumeUnit } from '../gql/generated.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { useFormat } from '../i18n/format.ts'
 import { unblockAdd } from '../offline/push.ts'
@@ -18,6 +18,8 @@ import { useConnectivity } from '../offline/useConnectivity.ts'
 import { usePushState } from '../offline/usePushState.ts'
 import { useDescribed, useWaitingChanges, type WaitingChange } from '../offline/waitingChanges.ts'
 import { useErrorText, useKeyText } from '../i18n/errors.ts'
+import { canEdit } from '../offline/changes.ts'
+import { EditChange } from './sync/EditChange.tsx'
 
 /**
  * Waiting to sync: the changes made on this device that have not reached the server, per vehicle, in the order they were made, each with
@@ -75,8 +77,9 @@ export function SyncPage() {
           <Group
             key={group.vehicleId}
             name={group.vehicleName ?? t('sync.unknownVehicle')}
-            volumeUnit={group.volumeUnit as VolumeUnit | null}
+            units={{ distance: group.distanceUnit as DistanceUnit | null, volume: group.volumeUnit as VolumeUnit | null }}
             items={group.items}
+            onEdited={() => setStatus(t('sync.edited'))}
             onRemoved={() => {
               setStatus(t('sync.removed'))
               heading.current?.focus() // the button that had the focus is gone
@@ -109,7 +112,10 @@ export function SyncPage() {
                 <Group
                   key={group.vehicleId}
                   name={vehicle?.name ?? group.vehicleName ?? t('sync.unknownVehicle')}
-                  volumeUnit={(vehicle?.volumeUnit ?? group.volumeUnit) as VolumeUnit | null}
+                  units={{
+                    distance: (vehicle?.distanceUnit ?? group.distanceUnit) as DistanceUnit | null,
+                    volume: (vehicle?.volumeUnit ?? group.volumeUnit) as VolumeUnit | null,
+                  }}
                   items={group.items}
                   parked={parkedById}
                   onResolved={resolved}
@@ -125,15 +131,17 @@ export function SyncPage() {
 
 function Group({
   name,
-  volumeUnit,
+  units,
   items,
+  onEdited,
   onRemoved,
   parked,
   onResolved,
 }: {
   name: string
-  volumeUnit: VolumeUnit | null
+  units: Units
   items: WaitingChange[]
+  onEdited?: () => void
   onRemoved?: () => void
   /** Changes the server parked: listed with why, who sent them, and Apply anyway / Discard instead of Remove. */
   parked?: Map<string, Parked>
@@ -151,7 +159,7 @@ function Group({
       </Typography>
       <Stack component="ul" sx={{ gap: 1, listStyle: 'none', p: 0, m: 0 }}>
         {items.map((item) => (
-          <Item key={item.change.id} item={item} volumeUnit={volumeUnit} onRemoved={onRemoved} parked={parked?.get(item.change.id)} onResolved={onResolved} />
+          <Item key={item.change.id} item={item} units={units} onEdited={onEdited} onRemoved={onRemoved} parked={parked?.get(item.change.id)} onResolved={onResolved} />
         ))}
       </Stack>
     </Stack>
@@ -160,13 +168,15 @@ function Group({
 
 function Item({
   item,
-  volumeUnit,
+  units,
+  onEdited,
   onRemoved,
   parked,
   onResolved,
 }: {
   item: WaitingChange
-  volumeUnit: VolumeUnit | null
+  units: Units
+  onEdited?: () => void
   onRemoved?: () => void
   parked?: Parked
   onResolved?: (message: string) => void
@@ -185,7 +195,7 @@ function Item({
     item.date ? format.date(item.date) : null,
     item.name ?? item.title ?? null,
     item.titles?.filter(Boolean).length ? format.list(item.titles.filter(Boolean)) : null,
-    item.volume != null && volumeUnit ? format.volume(item.volume, volumeUnit) : null,
+    item.volume != null && units.volume ? format.volume(item.volume, units.volume) : null,
     money(item.totalCost) ?? money(item.amount),
   ].filter((p): p is string => !!p)
 
@@ -210,6 +220,16 @@ function Item({
                 : t('sync.savedAt', { time: format.dateTime(new Date(change.createdAt).toISOString()) })}
             </Typography>
           </div>
+          <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
+          {canEdit(change) && units.distance && (parked ? parked.canResolve && onResolved : onEdited) && (
+            <EditChange
+              change={change}
+              units={{ distance: units.distance, volume: units.volume ?? 'LITERS' }}
+              label={parts.length ? `${kind}, ${parts.join(', ')}` : kind}
+              parked={parked}
+              onDone={(message) => (parked ? onResolved!(message) : onEdited!())}
+            />
+          )}
           {parked && onResolved && <ParkedActions parked={parked} label={parts.length ? `${kind}, ${parts.join(', ')}` : kind} onResolved={onResolved} />}
           {onRemoved && (
           <ConfirmDialog
@@ -224,6 +244,7 @@ function Item({
             onConfirm={() => void discardChange(client, change.id).then(onRemoved)}
           />
           )}
+          </Stack>
         </Stack>
       </Card>
     </li>
@@ -231,6 +252,9 @@ function Item({
 }
 
 type Parked = ParkedChangeFieldsFragment
+
+/** The vehicle's units, as far as the device or the server knows them. */
+type Units = { distance: DistanceUnit | null; volume: VolumeUnit | null }
 
 /** A parked change's reason in the words of the refusal online (its arguments too). */
 function useReasonText() {
