@@ -25,6 +25,25 @@ public sealed class SyncInterceptor(TimeProvider clock) : SaveChangesInterceptor
         return ValueTask.FromResult(result);
     }
 
+    public override int SavedChanges(SaveChangesCompletedEventData eventData, int result)
+    {
+        Saved(eventData.Context);
+        return result;
+    }
+
+    public override ValueTask<int> SavedChangesAsync(SaveChangesCompletedEventData eventData, int result, CancellationToken cancellationToken = default)
+    {
+        Saved(eventData.Context);
+        return ValueTask.FromResult(result);
+    }
+
+    /// <summary>What was saved is what is stored now: an entity saved again (the same instance) starts from the version it has.</summary>
+    private static void Saved(DbContext? context)
+    {
+        if (context is null) return;
+        foreach (var entry in context.ChangeTracker.Entries<ISynced>()) entry.Entity.Saved();
+    }
+
     private void Stamp(DbContext? context)
     {
         if (context is null) return;

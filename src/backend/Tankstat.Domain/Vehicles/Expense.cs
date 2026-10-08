@@ -77,6 +77,8 @@ public sealed class Expense : IOwned, ISoftDeletable, ISynced
 
     private int? _loadedVersion;
 
+    void ISynced.Saved() => _loadedVersion = null;
+
     private void Bump()
     {
         _loadedVersion ??= Version;
