@@ -162,6 +162,8 @@ public sealed class LogPhotoService(
         await gate.WaitAsync(ct);
         try
         {
+            // Looked at again under the lock: the same draft sent twice at once (a change sent again) must not have its file moved back.
+            if (await photos.FindByImageAsync(draftId, ct) is { } meanwhile && meanwhile.LogType == logType && meanwhile.LogId == logId) return draftId;
             if (await photos.CountForLogAsync(logType, logId, ct) >= LogPhoto.MaxPerLog) throw TooMany();
             await images.MoveAsync(draft.Id, ImageFolders.LogPhotos(draft.VehicleId, logType, logId), CancellationToken.None);
             try
