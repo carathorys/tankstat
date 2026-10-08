@@ -14,7 +14,7 @@ dir = "src/backend/Tankstat.Api"
 run = "dotnet watch run"
 
 [tasks."dev:web"]
-description = "Run the Vite dev server (proxies /graphql to :5080)"
+description = "Run the Vite dev server (proxies /graphql, /auth/oidc/, /media and /imports to :5080)"
 run = "npm run dev"
 
 [tasks."db:migration"]

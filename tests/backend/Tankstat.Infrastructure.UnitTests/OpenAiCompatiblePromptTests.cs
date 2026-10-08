@@ -56,44 +56,46 @@ public class OpenAiCompatiblePromptTests
         Assert.DoesNotContain("minimum", schema.ToJsonString()); // bounds and patterns are not portable across servers
     }
 
+    /// <summary>The page that prints what the model is told, relative to the repository root.</summary>
+    private const string DocsPage = "docs/photo-reading.md";
+
     [Fact]
-    public void TheReadme_PrintsTheBuiltInPrompt_SoAnOperatorsOwnCanStartFromIt()
+    public void TheDocs_PrintTheBuiltInPrompt_SoAnOperatorsOwnCanStartFromIt()
     {
-        var readme = File.ReadAllLines(Path.Combine(RepoRoot(), "README.md"));
-        var start = Array.FindIndex(readme, line => line.Contains("The built-in system prompt is:", StringComparison.Ordinal)) + 1;
-        Assert.True(start > 0, "the README no longer says where the built-in prompt is");
-        var quoted = readme.Skip(start).SkipWhile(string.IsNullOrWhiteSpace).TakeWhile(line => line.StartsWith('>')).Select(line => line.TrimStart('>').Trim());
+        var docs = DocsLines();
 
         Assert.Equal(
-            OpenAiCompatiblePrompt.DefaultSystemPrompt.ReplaceLineEndings("\n").Split('\n').Select(line => line.Trim()),
-            quoted);
+            string.Join("\n", OpenAiCompatiblePrompt.DefaultSystemPrompt.ReplaceLineEndings("\n").Split('\n').Select(line => line.Trim())),
+            Quoted(docs, "The built-in system prompt is:"));
     }
 
     [Fact]
-    public void TheReadme_PrintsTheContractsAndTheSchema_ExactlyAsTheModelGetsThem()
+    public void TheDocs_PrintTheContractsAndTheSchema_ExactlyAsTheModelGetsThem()
     {
-        var readme = File.ReadAllLines(Path.Combine(RepoRoot(), "README.md"));
+        var docs = DocsLines();
 
-        Assert.Equal(OpenAiCompatiblePrompt.Contract(Refuelling, "hu"), Quoted(readme, "The contract for a photo picked in the **refuelling** dialog, in Hungarian, is:"));
-        Assert.Equal(OpenAiCompatiblePrompt.Contract(Expense, "en"), Quoted(readme, "The contract for a photo picked in the **expense** dialogs, in English, is:"));
-        var schema = JsonNode.Parse(Fenced(readme, "The schema of `ResponseFormat=JsonSchema`, for the refuelling dialog"));
-        Assert.True(JsonNode.DeepEquals(OpenAiCompatiblePrompt.Schema(Refuelling), schema), "the README's schema is not the one that is sent");
+        Assert.Equal(OpenAiCompatiblePrompt.Contract(Refuelling, "hu"), Quoted(docs, "The contract for a photo picked in the **refuelling** dialog, in Hungarian, is:"));
+        Assert.Equal(OpenAiCompatiblePrompt.Contract(Expense, "en"), Quoted(docs, "The contract for a photo picked in the **expense** dialogs, in English, is:"));
+        var schema = JsonNode.Parse(Fenced(docs, "The schema of `ResponseFormat=JsonSchema`, for the refuelling dialog"));
+        Assert.True(JsonNode.DeepEquals(OpenAiCompatiblePrompt.Schema(Refuelling), schema), $"the schema in {DocsPage} is not the one that is sent");
     }
 
-    private static string[] After(string[] readme, string marker)
+    private static string[] DocsLines() => File.ReadAllLines(Path.Combine(RepoRoot(), DocsPage));
+
+    private static string[] After(string[] docs, string marker)
     {
-        var at = Array.FindIndex(readme, line => line.Contains(marker, StringComparison.Ordinal));
-        Assert.True(at >= 0, $"the README no longer says: {marker}");
-        return readme[(at + 1)..];
+        var at = Array.FindIndex(docs, line => line.Contains(marker, StringComparison.Ordinal));
+        Assert.True(at >= 0, $"{DocsPage} no longer says: {marker}");
+        return docs[(at + 1)..];
     }
 
     /// <summary>The block quote after a line: its text as the paragraph it is.</summary>
-    private static string Quoted(string[] readme, string marker) =>
-        string.Join("\n", After(readme, marker).SkipWhile(string.IsNullOrWhiteSpace).TakeWhile(line => line.StartsWith('>')).Select(line => line.TrimStart('>').Trim()));
+    private static string Quoted(string[] docs, string marker) =>
+        string.Join("\n", After(docs, marker).SkipWhile(string.IsNullOrWhiteSpace).TakeWhile(line => line.StartsWith('>')).Select(line => line.TrimStart('>').Trim()));
 
     /// <summary>The code block after a line, without its fences.</summary>
-    private static string Fenced(string[] readme, string marker) =>
-        string.Join("\n", After(readme, marker).SkipWhile(line => !line.StartsWith("```", StringComparison.Ordinal)).Skip(1).TakeWhile(line => !line.StartsWith("```", StringComparison.Ordinal)));
+    private static string Fenced(string[] docs, string marker) =>
+        string.Join("\n", After(docs, marker).SkipWhile(line => !line.StartsWith("```", StringComparison.Ordinal)).Skip(1).TakeWhile(line => !line.StartsWith("```", StringComparison.Ordinal)));
 
     private static string RepoRoot()
     {
