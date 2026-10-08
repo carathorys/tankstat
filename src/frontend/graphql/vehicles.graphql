@@ -57,6 +57,7 @@ query Trash(
 # What the vehicle page shows of the vehicle; the offline download asks for the same, so its answer stands in for this query offline.
 fragment VehicleDetailsFields on Vehicle {
   id
+  version
   name
   licensePlate
   fuelType

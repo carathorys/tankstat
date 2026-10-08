@@ -18,6 +18,7 @@ import { Form } from './forms/Form.tsx'
 import { LogDefaultsDocument, VehicleDefaultsDocument, type DistanceUnit, type RecurrenceKind } from './gql/generated.ts'
 import { ErrorMessage } from './messages.tsx'
 import { useToast } from './toast/toastContext.ts'
+import { outbox } from './offline/outbox.ts'
 
 export interface RecurringValues {
   /** A new schedule only: the id it gets on the server, the same for every Save of one opening of the dialog (see `useClientId`). */
@@ -83,7 +84,8 @@ export function RecurringFormDialog({
                 onSubmit={async (values) => {
                   await onSubmit(editing ? values : { ...values, id: clientId })
                   setOpen(false)
-                  toast(t('toast.saved'))
+                  // Kept on the device for the server (the server was out of reach): the toast says so.
+                  toast(outbox.markOf('recurring', (editing ? initial?.id : clientId) ?? '') ? t('toast.savedOnDevice') : t('toast.saved'))
                 }}
               />
             )}

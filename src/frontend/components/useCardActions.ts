@@ -21,6 +21,7 @@ export function useCardActions(vehicleId: string) {
   const [markDone] = useMutation(MarkRecurringExpensesDoneDocument)
   const refuelings = useLogChange('refuelings', vehicleId)
   const expenses = useLogChange('expenses', vehicleId)
+  const schedules = useLogChange('recurring', vehicleId)
   const refresh = () => client.query({ query: VehicleCardDocument, variables: { id: vehicleId }, fetchPolicy: 'network-only' }).then(() => undefined, () => undefined)
   return {
     // Kept on the device while the server is out of reach (`offline/submitChange.ts`); the card's figures are the server's, so a kept log
@@ -40,9 +41,11 @@ export function useCardActions(vehicleId: string) {
       return savedFrom(done.result.data?.addExpense)
     },
     done: async (values: DoneValues, photoIds: string[]): Promise<Saved> => {
-      const done = await markDone({ variables: { input: { ...values, photoIds } } })
+      const input = { ...values, photoIds }
+      const done = await schedules.markDone(input, () => markDone({ variables: { input } }))
+      if (done.queued) return values.expenseId ? { id: values.expenseId, photoCount: photoIds.length, queued: true } : undefined
       await refresh()
-      return savedFrom(done.data?.markRecurringExpensesDone.expense)
+      return savedFrom(done.result.data?.markRecurringExpensesDone.expense)
     },
   }
 }
