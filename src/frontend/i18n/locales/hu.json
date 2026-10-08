@@ -362,6 +362,8 @@
   "errors": {
     "network": "A szerver nem érhető el. Ellenőrizd a kapcsolatot, és próbáld újra.",
     "offline": "A szerver most nem érhető el. Ez újra működik, amint visszatér a kapcsolat.",
+    "offlineNotLoaded": "Ez még nincs ezen az eszközön: az alkalmazás azt őrzi meg, amit online megnyitsz, ezért nyisd meg, amint újra van kapcsolat.",
+    "offlineOnlineOnly": "Ehhez kapcsolat kell a szerverrel. Újra működik, amint visszatér a kapcsolat.",
     "auth": {
       "unauthenticated": "A folytatáshoz jelentkezz be.",
       "forbidden": "Ehhez nincs jogosultságod.",
