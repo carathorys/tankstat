@@ -12,6 +12,7 @@ fragment RecurrenceStatusFields on RecurrenceStatusInfo {
 # A vehicle's recurring expenses (schedules such as insurance or an oil change) with where each one stands. Few per vehicle, so no paging.
 fragment RecurringFields on RecurringExpenseInfo {
   id
+  version
   title
   category
   note

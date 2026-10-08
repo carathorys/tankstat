@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { collapse, discard, markOf, type Change, type LogEntity, type PendingMark } from './changes.ts'
+import { collapse, discard, markOf, type Change, type ChangeEntity, type PendingMark } from './changes.ts'
 import { deviceData } from './deviceData.ts'
 import type { RowStore } from './deviceStorage.ts'
 
@@ -44,7 +44,7 @@ async function persist(before: readonly Change[], after: readonly Change[]) {
 
 export type ChangeDraft = Omit<Change, 'seq' | 'createdAt'>
 
-const MARK_ORDER: readonly PendingMark[] = ['deleted', 'new', 'restored', 'changed']
+const MARK_ORDER: readonly PendingMark[] = ['deleted', 'done', 'new', 'restored', 'changed']
 
 export const outbox = {
   /** The changes waiting, oldest first. */
@@ -72,12 +72,16 @@ export const outbox = {
   },
 
   /**
-   * How a log is marked while a change of it waits; null when none does. With several (one sent already, one made after it) the one that
-   * says most wins: on its way to the trash, else new, else restored, else changed.
+   * How something is marked while a change of it waits (a visit marks each of its schedules done); null when none does. With several (an
+   * edit and a visit, one sent already and one made after it) the one that says most wins: on its way to the trash, done, new, restored,
+   * changed.
    */
-  markOf(entity: LogEntity, id: string): PendingMark | null {
-    const marks = changes.filter((c) => c.entity === entity && c.targetId === id).map(markOf)
-    return MARK_ORDER.find((mark) => marks.includes(mark)) ?? null
+  markOf(entity: ChangeEntity, id: string): PendingMark | null {
+    const marks = changes.filter((c) => c.entity === entity && (c.action === 'markDone' ? c.targetIds?.includes(id) : c.targetId === id)).map(markOf)
+    const mark = MARK_ORDER.find((m) => marks.includes(m))
+    if (mark) return mark
+    // The expense a visit logs is new until the server has it.
+    return entity === 'expenses' && changes.some((c) => c.action === 'markDone' && c.targetId === id && c.input?.amount != null) ? 'new' : null
   },
 
   /** The vehicles with a change waiting: the device answers their logs itself, so what was changed shows. */
@@ -106,7 +110,7 @@ export const outbox = {
 const useVersion = () => useSyncExternalStore(outbox.subscribe, () => version)
 
 /** How a log is marked while a change of it waits (new, changed, to be removed, restored), re-rendering when it changes. */
-export function usePendingMark(entity: LogEntity, id: string): PendingMark | null {
+export function usePendingMark(entity: ChangeEntity, id: string): PendingMark | null {
   useVersion()
   return outbox.markOf(entity, id)
 }

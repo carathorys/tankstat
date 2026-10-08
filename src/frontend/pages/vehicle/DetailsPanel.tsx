@@ -14,6 +14,8 @@ import { VehiclePicture } from '../../components/VehiclePicture.tsx'
 import { DeleteVehicleDocument, RestoreVehicleDocument, UpdateVehicleDocument, type VehicleDetailsQuery } from '../../gql/generated.ts'
 import { ErrorMessage } from '../../messages.tsx'
 import { vehiclePicturePath } from '../../pictures/upload.ts'
+import { outbox } from '../../offline/outbox.ts'
+import { useLogChange } from '../../offline/useLogChange.ts'
 import { useToast } from '../../toast/toastContext.ts'
 import { VehicleFormDialog } from '../../VehicleFormDialog.tsx'
 
@@ -24,7 +26,8 @@ const LISTS = ['Welcome', 'Vehicles', 'Trash']
 
 export function DetailsPanel({ vehicle, onChanged }: { vehicle: Vehicle; onChanged: () => void | Promise<unknown> }) {
   const { t } = useTranslation()
-  const { undoable } = useToast()
+  const { toast, undoable } = useToast()
+  const changes = useLogChange('vehicles', vehicle.id)
   const none = t('common.none')
   const [updateVehicle] = useMutation(UpdateVehicleDocument, { refetchQueries: ['VehicleDetails', 'Vehicles'], awaitRefetchQueries: true })
   const [deleteVehicle] = useMutation(DeleteVehicleDocument, { refetchQueries: LISTS })
@@ -35,9 +38,12 @@ export function DetailsPanel({ vehicle, onChanged }: { vehicle: Vehicle; onChang
   async function moveToTrash() {
     setDeleteError(undefined)
     try {
-      await deleteVehicle({ variables: { id: vehicle.id } })
+      // Kept on the device while the server is out of reach; one added here and never sent goes, with everything made to it.
+      const neverSent = outbox.markOf('vehicles', vehicle.id) === 'new'
+      const done = await changes.trash(vehicle.id, vehicle.version, () => deleteVehicle({ variables: { id: vehicle.id } }))
       void navigate('/') // the vehicle is in the trash now; its page would only say it does not exist
-      undoable(t('toast.vehicleTrashed', { name: vehicle.name }), () => restoreVehicle({ variables: { id: vehicle.id } }))
+      if (neverSent) toast(t('offline.discarded'))
+      else undoable(t('toast.vehicleTrashed', { name: vehicle.name }), () => changes.restore(vehicle.id, done.queued ? vehicle.version : vehicle.version + 1, () => restoreVehicle({ variables: { id: vehicle.id } })))
     } catch (e) {
       setDeleteError(e)
     }
@@ -65,7 +71,7 @@ export function DetailsPanel({ vehicle, onChanged }: { vehicle: Vehicle; onChang
                   {t('vehicles.editVehicle')}
                 </Button>
               }
-              onSubmit={(input) => updateVehicle({ variables: { input: { ...input, id: vehicle.id } } })}
+              onSubmit={(input) => changes.update(vehicle.id, vehicle.version, { ...input, id: vehicle.id }, () => updateVehicle({ variables: { input: { ...input, id: vehicle.id } } }))}
             />
           </div>
           <section aria-labelledby="picture-heading">

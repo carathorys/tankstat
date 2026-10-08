@@ -158,3 +158,24 @@ describe('the changes waiting on this device', () => {
     expect(byId.get('n')).toMatchObject({ volume: 20, version: 3, consumption: 6.1 })
   })
 })
+
+describe('a visit waiting on this device', () => {
+  it('with an amount shows its expense, new, in the vehicle\'s expenses', async () => {
+    const { outbox } = await import('../../../src/frontend/offline/outbox.ts')
+    const { deviceData } = await import('../../../src/frontend/offline/deviceData.ts')
+    const { withChanges } = await import('../../../src/frontend/offline/localResolvers.ts')
+    deviceData.reset(memoryStorage())
+    await deviceData.signedIn('u1')
+    await outbox.reload()
+    const input = { ids: ['s1', 's2'], date: '2026-10-05', amount: 120, currency: 'EUR', title: 'Oil, Filter', category: '', odometer: 1500, expenseId: 'e9', photoIds: [] }
+    await outbox.enqueue({ id: 'visit', entity: 'recurring', action: 'markDone', vehicleId: 'v1', targetId: 'e9', targetIds: input.ids, input })
+    await outbox.enqueue({ id: 'visit2', entity: 'recurring', action: 'markDone', vehicleId: 'v1', targetId: 'visit2', targetIds: ['s3'], input: { ids: ['s3'], date: '2026-10-05', amount: null } })
+
+    const rows = withChanges('expenses', [], 'v1')
+
+    expect(rows).toHaveLength(1) // a visit without an amount logs no expense
+    expect(rows[0]).toMatchObject({ __typename: 'Expense', id: 'e9', title: 'Oil, Filter', amount: 120, category: null, version: 0 })
+    expect(outbox.markOf('expenses', 'e9')).toBe('new')
+    expect(outbox.markOf('recurring', 's2')).toBe('done')
+  })
+})

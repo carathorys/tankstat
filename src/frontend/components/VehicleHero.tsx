@@ -5,6 +5,7 @@ import Typography from '@mui/material/Typography'
 import type { ReactNode } from 'react'
 import { CoverLayers } from './CoverLayers.tsx'
 import { UserChip } from './UserAvatar.tsx'
+import { PendingBadge } from './PendingBadge.tsx'
 
 /**
  * The top of a vehicle page: the vehicle's picture as a banner (a gradient without one) with its name, plate and owner on top. White text
@@ -42,6 +43,7 @@ export function VehicleHero({
         </Typography>
         <Stack direction="row" sx={{ gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
           {plate && <Chip size="medium" variant="solid" color="neutral" label={plate} />}
+          <PendingBadge entity="vehicles" id={id} />
           {owner && <UserChip user={owner} />}
           {badges}
         </Stack>

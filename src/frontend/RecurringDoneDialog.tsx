@@ -38,6 +38,7 @@ import { useReadFill } from './recognition/useReadFill.ts'
 import { defaultCategory, defaultTitle, MAX_EXPENSE_TITLE, usesDistance, type DoneItem } from './recurringDone.ts'
 import { Loading } from './components/Loading.tsx'
 import { useToast } from './toast/toastContext.ts'
+import { outbox } from './offline/outbox.ts'
 
 /** One service visit: the schedules done, and (with an amount) the one expense logged for all of them. */
 export interface DoneValues {
@@ -138,7 +139,8 @@ export function RecurringDoneDialog({
               // The id is only for the expense the visit logs; without one there is nothing it could name.
               if (await submit((photoIds) => onSubmit(logsExpense ? { ...values, expenseId: clientId } : values, photoIds), !logsExpense)) {
                 close()
-                toast(t('toast.saved'))
+                // Kept on the device for the server (the server was out of reach): the toast says so.
+                toast(outbox.markOf('recurring', values.ids[0]) === 'done' ? t('toast.savedOnDevice') : t('toast.saved'))
               }
             }}
           />
