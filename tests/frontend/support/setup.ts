@@ -8,9 +8,10 @@ import { installPrompt } from '../../../src/frontend/pwa/installPrompt.ts'
 
 await initI18n('en')
 
-// Pages are lazy: the first test of a file waits for App and its page to load, which with coverage on (CI) can take
-// well over the 1 s default of findBy*/waitFor. Stays below the test timeout (15 s, vite.config.ts), so a miss still names the element.
-configure({ asyncUtilTimeout: 3000 })
+// Pages are lazy: the first test of a file waits for App and its page to load, which with coverage on and the CPU shared with other
+// test files (CI) can take well over the 1 s default of findBy*/waitFor; 3 s still missed now and then there. Stays well below the
+// test timeout (15 s, vite.config.ts), so a miss still names the element. Only a failing test waits this long.
+configure({ asyncUtilTimeout: 5000 })
 
 // Motion would keep a leaving item in the DOM while it animates out: tests check the outcome, not the animation.
 MotionGlobalConfig.skipAnimations = true

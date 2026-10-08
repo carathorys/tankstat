@@ -58,7 +58,14 @@ run = "npm run lint"
 description = "Produce a self-hostable build in ./out (API + SPA in wwwroot)"
 run = [
   "npm run build",
-  "dotnet publish src/backend/Tankstat.Api -c Release -o out",
+  "mise run build:api",
+]
+
+# CI's build job runs this on the SPA the frontend job built, and the release image is made from its ./out (Dockerfile, target release).
+[tasks."build:api"]
+description = "Publish the API into ./out (framework-dependent, every platform; VERSION=1.2.3 sets its version) and put ./dist in wwwroot"
+run = [
+  'dotnet publish src/backend/Tankstat.Api -c Release -o out -p:UseAppHost=false ${VERSION:+-p:Version=$VERSION}',
   "rm -rf out/wwwroot && cp -r dist out/wwwroot",
 ]
 

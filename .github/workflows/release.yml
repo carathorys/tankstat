@@ -3,6 +3,10 @@ name: Release
 # Publishing a GitHub release (tag vMAJOR.MINOR.PATCH[-prerelease]) builds the single-container image
 # (API + web app) and pushes it to the GitHub Container Registry as ghcr.io/<owner>/<repo>.
 # "Run workflow" builds and smoke-tests the image from any branch; it pushes (as a dev-<sha> tag) only if asked to.
+#
+# Nothing is compiled twice: CI's build job publishes the app once, stamped with this release's version, and the image is made from
+# that build (Dockerfile target `release`). It is built once for both platforms, pushed under its digest only, smoke-tested as pulled,
+# and only then tagged, so the image the tags point at is the one that passed.
 on:
   release:
     types: [published]
@@ -24,28 +28,21 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  # The same checks as every pull request, so an image is never built from a commit that does not pass them.
-  ci:
-    uses: ./.github/workflows/ci.yml
-    secrets: inherit # the coverage upload needs CODECOV_TOKEN
-
-  image:
-    needs: ci
+  info:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    permissions:
-      contents: read
-      packages: write # push to ghcr.io with the workflow's own token
-      id-token: write # keyless signing of the provenance attestation
-      attestations: write
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.info.outputs.version }}
+      image: ${{ steps.info.outputs.image }}
+      created: ${{ steps.info.outputs.created }}
+      publish: ${{ steps.info.outputs.publish }}
     steps:
-      - uses: actions/checkout@v4
-
       - name: Work out the version and image name
         id: info
         env:
           EVENT: ${{ github.event_name }}
           TAG: ${{ github.event.release.tag_name }}
+          PUSH: ${{ inputs.push }}
         run: |
           set -euo pipefail
           if [ "$EVENT" = "release" ]; then
@@ -61,78 +58,142 @@ jobs:
           # Registry repository names must be lowercase.
           echo "image=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
           echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT" = "release" ] || [ "$PUSH" = "true" ]; then publish=true; else publish=false; fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
 
-      # Needed only for the few RUN steps of the runtime stage on arm64; the build stages run natively on amd64.
+  # The same checks as every pull request, so an image is never built from a commit that does not pass them; its build job publishes
+  # the app (the artifact tankstat-<sha>) with this release's version.
+  ci:
+    needs: info
+    uses: ./.github/workflows/ci.yml
+    with:
+      version: ${{ needs.info.outputs.version }}
+    secrets: inherit # the coverage upload needs CODECOV_TOKEN
+
+  image:
+    needs: [info, ci]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write # push to ghcr.io with the workflow's own token
+      id-token: write # keyless signing of the provenance attestation
+      attestations: write
+    env:
+      VERSION: ${{ needs.info.outputs.version }}
+      IMAGE: ${{ needs.info.outputs.image }}
+      PUBLISH: ${{ needs.info.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The app as CI's build job published it (API + web app in wwwroot).
+      - uses: actions/download-artifact@v4
+        with:
+          name: tankstat-${{ github.sha }}
+          path: out
+
+      # Needed only for the few RUN steps of the runtime base on arm64; everything else runs natively on amd64.
       - uses: docker/setup-qemu-action@v3
+        if: needs.info.outputs.publish == 'true'
       - uses: docker/setup-buildx-action@v3
 
       - name: Tags and labels
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ steps.info.outputs.image }}
+          images: ${{ needs.info.outputs.image }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}},enable=${{ !startsWith(github.event.release.tag_name, 'v0.') }}
             type=raw,value=dev-${{ github.sha }},enable=${{ github.event_name == 'workflow_dispatch' }}
 
-      # Build the amd64 image, load it into the local daemon and run it before anything is published.
-      - name: Build for testing
+      # Not publishing: the amd64 image into the local daemon, smoke-tested there.
+      - name: Build for testing (amd64)
+        if: needs.info.outputs.publish != 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
+          target: release
+          build-contexts: app=./out
           load: true
           platforms: linux/amd64
           tags: tankstat:smoke
           build-args: |
-            VERSION=${{ steps.info.outputs.version }}
+            VERSION=${{ needs.info.outputs.version }}
             REVISION=${{ github.sha }}
-            CREATED=${{ steps.info.outputs.created }}
+            CREATED=${{ needs.info.outputs.created }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Smoke test the image
-        run: scripts/docker-smoke.sh tankstat:smoke "${{ steps.info.outputs.version }}"
+        if: needs.info.outputs.publish != 'true'
+        run: scripts/docker-smoke.sh tankstat:smoke "$VERSION"
 
       - name: Log in to the registry
-        if: github.event_name == 'release' || inputs.push
+        if: needs.info.outputs.publish == 'true'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Reuses the layers built above (cache), adds arm64, and pushes.
-      - name: Build and push (amd64 + arm64)
+      # Built once for both platforms and pushed under its digest only: no tag points at it until it passed the smoke test below.
+      - name: Build and push by digest (amd64 + arm64)
         id: push
-        if: github.event_name == 'release' || inputs.push
+        if: needs.info.outputs.publish == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
+          target: release
+          build-contexts: app=./out
           platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ needs.info.outputs.image }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
-            VERSION=${{ steps.info.outputs.version }}
+            VERSION=${{ needs.info.outputs.version }}
             REVISION=${{ github.sha }}
-            CREATED=${{ steps.info.outputs.created }}
+            CREATED=${{ needs.info.outputs.created }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: mode=max
           sbom: true
 
+      # The very image just pushed (its amd64 variant), as a self-hoster would pull it.
+      - name: Smoke test the pushed image
+        if: needs.info.outputs.publish == 'true'
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          docker pull --platform linux/amd64 "$IMAGE@$DIGEST"
+          scripts/docker-smoke.sh "$IMAGE@$DIGEST" "$VERSION"
+
+      # The tags point at the tested digest: the same index (both platforms, provenance and SBOM), nothing rebuilt.
+      - name: Tag the tested image
+        if: needs.info.outputs.publish == 'true'
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          args=()
+          while IFS= read -r tag; do args+=(-t "$tag"); done < <(jq -r '.tags[]' <<<"$DOCKER_METADATA_OUTPUT_JSON")
+          docker buildx imagetools create "${args[@]}" "$IMAGE@$DIGEST"
+          first="$(jq -r '.tags[0]' <<<"$DOCKER_METADATA_OUTPUT_JSON")"
+          tagged="$(docker buildx imagetools inspect "$first" --format '{{json .Manifest}}' | jq -r .digest)"
+          if [ "$tagged" != "$DIGEST" ]; then
+            echo "::error::$first points at $tagged, not at the tested $DIGEST."
+            exit 1
+          fi
+
       - name: Attest build provenance
-        if: github.event_name == 'release' || inputs.push
+        if: needs.info.outputs.publish == 'true'
         uses: actions/attest-build-provenance@v2
         with:
-          subject-name: ${{ steps.info.outputs.image }}
+          subject-name: ${{ needs.info.outputs.image }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
       - name: Summary
-        if: github.event_name == 'release' || inputs.push
+        if: needs.info.outputs.publish == 'true'
         env:
           TAGS: ${{ steps.meta.outputs.tags }}
           DIGEST: ${{ steps.push.outputs.digest }}

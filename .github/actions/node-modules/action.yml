@@ -1,0 +1,24 @@
+name: node_modules
+description: Restores node_modules for this lockfile and Node version from the cache, and runs npm ci only when there is none. Node must be installed first (mise).
+
+runs:
+  using: composite
+  steps:
+    - name: Node version
+      id: node
+      shell: bash
+      run: echo "version=$(node --version)" >> "$GITHUB_OUTPUT"
+
+    # node_modules itself, not ~/.npm: a hit skips npm ci altogether (45-70 s per job). The Node version is part of the key because
+    # mise.toml asks for the current LTS, which moves on.
+    - name: Cache node_modules
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: node_modules
+        key: node-modules-${{ runner.os }}-${{ steps.node.outputs.version }}-${{ hashFiles('package-lock.json') }}
+
+    - name: npm ci
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci --no-audit --no-fund

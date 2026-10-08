@@ -1,81 +1,18 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql, HttpResponse } from 'msw'
-import { axe } from 'vitest-axe'
-import { afterAll, afterEach, beforeAll, expect, it, onTestFinished, vi } from 'vitest'
+import { expect, it, onTestFinished, vi } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
 import { ErrorBoundary } from '../../../src/frontend/ErrorBoundary.tsx'
 import { SIGNED_OUT_KEY } from '../../../src/frontend/auth/oidc.ts'
 import { navigation } from '../../../src/frontend/navigation.ts'
 import { platform } from '../../../src/frontend/pwa/platform.ts'
+import { check, setup, setupAccessibilityTests } from '../support/accessibility.tsx'
 import { server } from '../support/server.ts'
-import { fakeExpense, fakeExpenseBackend, fakeLogBackend, fakeNotification, fakeNotificationBackend, fakePhotoStore, fakeRecognition, fakeRecurring, fakeRecurringBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport, user } from '../support/mocks.tsx'
+import { fakeLogBackend, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport } from '../support/mocks.tsx'
 
-// jsdom cannot decode pictures (the resize is covered in Media.unit.test.ts) and has no object URLs (previews of queued photos).
-vi.mock('../../../src/frontend/pictures/resizeImage.ts', async (original) => ({
-  ...(await original<typeof import('../../../src/frontend/pictures/resizeImage.ts')>()),
-  resizeImage: vi.fn(async (file: Blob) => file),
-}))
-
-beforeAll(() => {
-  server.listen({ onUnhandledRequest: 'error' })
-  let n = 0
-  URL.createObjectURL = () => `blob:preview-${n++}`
-  URL.revokeObjectURL = () => undefined
-})
-afterEach(() => {
-  server.resetHandlers()
-  vi.unstubAllGlobals()
-})
-afterAll(() => server.close())
-
-// Colour contrast cannot be computed without a real renderer; everything else axe knows is checked.
-const check = async (container: HTMLElement) => {
-  const results = await axe(container, { rules: { 'color-contrast': { enabled: false } } })
-  expect(results.violations.map((v) => `${v.id}: ${v.help} (${v.nodes.map((n) => n.target.join(' ')).join(', ')})`)).toEqual([])
-}
-
-function setup(route: string, viewport: 'desktop' | 'phone' = 'desktop', photos = fakePhotoStore()) {
-  stubViewport(viewport)
-  const logs = fakeLogBackend(fakeVehicle(), [fakeRefueling({ id: 'r1' }), fakeRefueling({ id: 'r2', date: '2026-08-01', note: 'Trip' })], photos)
-  const expenseBackend = fakeExpenseBackend(fakeVehicle(), [fakeExpense({ id: 'e1' }), fakeExpense({ id: 'e2', title: 'Parking', category: null, odometer: null })], photos)
-  expenseBackend.state.trash = [fakeExpense({ id: 'x1', title: 'Old fee', deletedAt: '2026-10-01T08:00:00Z' })]
-  const recurring = fakeRecurringBackend([
-    fakeRecurring({ id: 'rc2', title: 'Tyres', kind: 'ODOMETER', intervalMonths: null, status: { state: 'OVERDUE', limit: 'ODOMETER', dueDate: null, dueOdometer: 60000, daysLeft: null, distanceLeft: -300 } }),
-    fakeRecurring(),
-  ])
-  const attention = [fakeRecurring({ id: 'rc2', title: 'Tyres', kind: 'ODOMETER', intervalMonths: null, status: { state: 'OVERDUE', limit: 'ODOMETER', dueDate: null, dueOdometer: 60000, daysLeft: null, distanceLeft: -300 } })]
-  const vehicles = fakeVehicleBackend([fakeVehicle({ recurring: attention })], [fakeVehicle({ id: 't1', name: 'Old Fiat' })])
-  const inbox = fakeNotificationBackend([
-    fakeNotification(),
-    fakeNotification({ id: 'n2', kind: 'RECURRING_OVERDUE', read: true, args: [{ name: 'title', value: 'Tyres' }, { name: 'vehicleName', value: 'Octavia' }] }),
-    fakeNotification({ id: 'n3', kind: 'MORE_ACTIVITY', count: 4, context: null, args: [] }),
-  ])
-  server.use(
-    ...inbox.handlers,
-    sessionHandler('STANDALONE', () => user({ isAdmin: true })),
-    healthHandler,
-    ...logs.handlers,
-    ...recurring.handlers,
-    ...expenseBackend.handlers, // shares VehicleDetails and LogDefaults with the logs backend: the first handler wins, they answer alike
-    ...vehicles.handlers,
-    graphql.query('Admin', () =>
-      HttpResponse.json({
-        data: {
-          users: [
-            { id: 'u1', provider: 'LOCAL', email: 'alice@example.com', displayName: 'Alice', isAdmin: true, isDisabled: false, avatarUrl: null },
-            { id: 'u2', provider: 'LOCAL', email: 'bob@example.com', displayName: 'Bob', isAdmin: false, isDisabled: false, avatarUrl: null },
-          ],
-          canSetUserPasswords: true,
-          accessSettings: { defaultLevelForOthers: 'NONE' },
-          accessGrants: [],
-        },
-      }),
-    ),
-  )
-  const view = renderWithApollo(<App />, route)
-  return { view, ui: userEvent.setup() }
-}
+// The pages, the shell and the sign-in screens. The log dialogs and photos are in AccessibilityLogs, the recurring expenses and the home
+// cards in AccessibilityRecurring (split so the files run side by side).
+setupAccessibilityTests()
 
 it('the message shown when a page crashes is an alert with a reachable reload button and has no violations', async () => {
   silenceConsoleError() // React prints the component that throws
@@ -127,51 +64,6 @@ it('the vehicle page and its tabs have no violations', async () => {
   await ui.click(screen.getByRole('tab', { name: /Sharing/ }))
   await screen.findByText('Nobody has been given access to the logs yet.')
   await check(view.container)
-})
-
-it('the add refuelling dialog is labelled, described and free of violations', async () => {
-  const { ui } = setup('/vehicles/v1?tab=refuelings')
-  await screen.findByText(/Sep 1, 2026/)
-
-  await ui.click(screen.getByRole('button', { name: 'Add refuelling' }))
-  const dialog = await screen.findByRole('dialog', { name: 'Add refuelling' })
-  await within(dialog).findByText(/Last reading/)
-
-  expect(dialog).toHaveAccessibleDescription(/Enter what you filled up/)
-  await check(document.body)
-})
-
-it('values read from a photo, and a photo value offered next to a typed one, are linked to their fields and free of violations', async () => {
-  const { ui } = setup('/vehicles/v1?tab=refuelings')
-  server.use(...fakeRecognition({ results: [[{ name: 'TOTAL', value: '24687' }, { name: 'VOLUME', value: '38.52' }]], queuedPolls: 0 }).handlers)
-  await screen.findByText(/Sep 1, 2026/)
-  await ui.click(screen.getByRole('button', { name: 'Add refuelling' }))
-  const dialog = await screen.findByRole('dialog', { name: 'Add refuelling' })
-  await within(dialog).findByText(/Last reading/)
-  await ui.type(within(dialog).getByLabelText(/^Volume/), '40')
-
-  await ui.upload(within(dialog).getByTestId('photo-camera'), new File([new Uint8Array([1, 2, 3])], 'receipt.png', { type: 'image/png' }))
-
-  expect(await within(dialog).findByText('The photo shows 38.52', {}, { timeout: 5000 })).toBeInTheDocument()
-  expect(within(dialog).getByLabelText('Total cost')).toHaveAccessibleDescription(/Read from the photo; check it\./)
-  expect(within(dialog).getByLabelText(/^Volume/)).toHaveAccessibleDescription(/The photo shows 38\.52/)
-  await check(document.body)
-})
-
-it('the reasons a photo gave less than it might have are announced in the dialog and free of violations', async () => {
-  const { ui } = setup('/vehicles/v1?tab=refuelings')
-  server.use(...fakeRecognition({ results: [[{ name: 'TOTAL', value: '24687' }]], issues: [[{ code: 'UNSURE', field: 'VOLUME' }, { code: 'ODOMETER_BELOW_LATEST', field: 'ODOMETER' }]], queuedPolls: 0 }).handlers)
-  await screen.findByText(/Sep 1, 2026/)
-  await ui.click(screen.getByRole('button', { name: 'Add refuelling' }))
-  const dialog = await screen.findByRole('dialog', { name: 'Add refuelling' })
-  await within(dialog).findByText(/Last reading/)
-
-  await ui.upload(within(dialog).getByTestId('photo-camera'), new File([new Uint8Array([1, 2, 3])], 'receipt.png', { type: 'image/png' }))
-
-  const status = await within(dialog).findByRole('status', { name: 'Photo reading status' }, { timeout: 5000 })
-  await waitFor(() => expect(status).toHaveTextContent(/lower than the last one logged/), { timeout: 5000 })
-  expect(status).toHaveTextContent(/not reliably enough to fill it in/) // inside the live region, so a screen reader hears it
-  await check(document.body)
 })
 
 it('the trash, account and administration pages have no violations', async () => {
@@ -248,165 +140,6 @@ it('sortable columns announce their state and every grid is labelled, its rows n
   expect(within(grid).getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Sep 1, 2026', 'Aug 1, 2026'])
   expect(screen.getByRole('columnheader', { name: /Date/ })).toHaveAttribute('aria-sort', 'descending')
   expect(screen.getByRole('columnheader', { name: /Odometer/ })).toHaveAttribute('aria-sort', 'none')
-})
-
-it('the add expense dialog is labelled, described and free of violations', async () => {
-  const { ui } = setup('/vehicles/v1?tab=expenses')
-  await screen.findByText('Oil change')
-
-  await ui.click(screen.getByRole('button', { name: 'Add expense' }))
-  const dialog = await screen.findByRole('dialog', { name: 'Add expense' })
-  await within(dialog).findByText(/Used before/)
-
-  expect(dialog).toHaveAccessibleDescription(/Money spent on the vehicle/)
-  await check(document.body)
-})
-
-it('the photo gallery of the expense dialogs is a labelled group and free of violations', async () => {
-  const { ui } = setup('/vehicles/v1?tab=expenses')
-  await screen.findByText('Oil change')
-
-  await ui.click(screen.getByRole('button', { name: 'Add expense' }))
-  const adding = await screen.findByRole('dialog', { name: 'Add expense' })
-  await within(adding).findByText(/Used before/)
-  expect(within(adding).getByRole('group', { name: 'Photos' })).toBeInTheDocument()
-  expect(within(adding).getByRole('button', { name: 'Take photo' })).toBeInTheDocument()
-  await check(document.body)
-  await ui.click(within(adding).getByRole('button', { name: 'Cancel' }))
-  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-
-  await ui.click(screen.getAllByRole('button', { name: /^Edit the expense/ })[0])
-  const editing = await screen.findByRole('dialog', { name: 'Edit expense' })
-  await within(editing).findByRole('group', { name: 'Photos' })
-  await check(document.body)
-})
-
-it('a refuelling waiting for a review is marked in its row, and its edit dialog says what to check, free of violations', async () => {
-  stubViewport('desktop')
-  const backend = fakeLogBackend(fakeVehicle(), [
-    fakeRefueling({ id: 'r1', odometer: 12480, reviewState: 'NEEDS_REVIEW', filledFromPhoto: ['ODOMETER'] }),
-    fakeRefueling({ id: 'r2', date: '2026-09-10', odometer: null, reviewState: 'AWAITING_PHOTOS' }),
-    fakeRefueling({ id: 'r3', date: '2026-09-20', volume: null, reviewState: 'INCOMPLETE' }),
-  ])
-  server.use(sessionHandler('NONE', () => null), healthHandler, ...backend.handlers)
-  renderWithApollo(<App />, '/vehicles/v1?tab=refuelings')
-  const ui = userEvent.setup()
-  await screen.findByText('Check values')
-  expect(screen.getByText('Reading photo…')).toBeInTheDocument()
-  expect(screen.getByText('Values missing')).toBeInTheDocument()
-  await check(document.body)
-
-  await ui.click(screen.getAllByRole('button', { name: /^Edit the refuelling/ }).at(-1)!)
-  const dialog = await screen.findByRole('dialog', { name: 'Edit refuelling' })
-  await within(dialog).findByText(/Check them and save/)
-
-  expect(within(dialog).getByLabelText(/^Odometer/)).toHaveAccessibleDescription(/Read from the photo; check it\./)
-  await check(document.body)
-})
-
-it('the edit refuelling dialog with its photos is free of violations', async () => {
-  const { ui } = setup('/vehicles/v1?tab=refuelings')
-  await screen.findByText(/Sep 1, 2026/)
-
-  await ui.click(screen.getAllByRole('button', { name: /^Edit the refuelling/ })[0])
-  const dialog = await screen.findByRole('dialog', { name: 'Edit refuelling' })
-  await within(dialog).findByRole('group', { name: 'Photos' })
-  expect(within(dialog).getByRole('button', { name: 'Take photo' })).toBeInTheDocument()
-
-  await check(document.body)
-})
-
-it('a gallery that holds photos is free of violations and its thumbnails and buttons are labelled', async () => {
-  const photos = fakePhotoStore({
-    e1: [{ id: 'p1', url: '/media/p1' }, { id: 'p2', url: '/media/p2' }],
-    e2: [{ id: 'p3', url: '/media/p3' }, { id: 'p4', url: '/media/p4' }],
-  })
-  const { ui } = setup('/vehicles/v1?tab=expenses', 'desktop', photos)
-  await screen.findByText('Oil change')
-
-  await ui.click(screen.getAllByRole('button', { name: /^Edit the expense/ })[0])
-  const dialog = await screen.findByRole('dialog', { name: 'Edit expense' })
-  expect(await within(dialog).findAllByRole('link', { name: /^Open photo/ })).toHaveLength(2)
-  expect(within(dialog).getAllByRole('button', { name: /^Remove photo/ })).toHaveLength(2)
-
-  await check(document.body)
-})
-
-it('a photo that could not be uploaded, and the screen after a photo could not be attached, are free of violations', async () => {
-  const photos = fakePhotoStore()
-  photos.state.failWith = { key: 'photo.tooManyDrafts', args: { max: 20 } }
-  const { ui } = setup('/vehicles/v1?tab=expenses', 'desktop', photos)
-  await screen.findByText('Oil change')
-
-  await ui.click(screen.getByRole('button', { name: 'Add expense' }))
-  const dialog = await screen.findByRole('dialog', { name: 'Add expense' })
-  await within(dialog).findByText(/Used before/)
-  await ui.type(within(dialog).getByLabelText('Title'), 'Tyres')
-  await ui.type(within(dialog).getByLabelText('Amount'), '120000')
-  const file = new File([new Uint8Array([1, 2, 3])], 'a.png', { type: 'image/png' })
-  await ui.upload(within(dialog).getByTestId('photo-library'), file)
-  await within(dialog).findByRole('alert')
-  expect(within(dialog).getByRole('button', { name: 'Upload photo 1 again' })).toBeInTheDocument()
-  await check(document.body)
-
-  photos.state.failWith = undefined
-  photos.state.unattachable.add('draft1')
-  await ui.click(within(dialog).getByRole('button', { name: 'Upload photo 1 again' }))
-  await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Add expense' })).toBeEnabled())
-  await ui.click(within(dialog).getByRole('button', { name: 'Add expense' }))
-
-  expect(await within(dialog).findByRole('alert')).toHaveTextContent(/could not be attached/)
-  expect(within(dialog).getByRole('button', { name: 'Done' })).toBeInTheDocument()
-  await check(document.body)
-})
-
-it('the recurring expenses table and its dialogs are labelled and free of violations', async () => {
-  const { ui } = setup('/vehicles/v1?tab=recurring')
-  const table = await screen.findByRole('table', { name: 'Recurring expenses' })
-  within(table).getByText('Tyres')
-  await waitFor(() => expect(table.querySelectorAll('[data-limit]')).toHaveLength(3)) // the gauges (one schedule has two), once their chunk is in
-  await check(document.body)
-
-  await ui.click(screen.getByRole('button', { name: 'Add recurring expense' }))
-  const adding = await screen.findByRole('dialog', { name: 'Add recurring expense' })
-  expect(adding).toHaveAccessibleDescription(/comes back again and again/)
-  await check(document.body)
-  await ui.click(within(adding).getByRole('button', { name: 'Cancel' }))
-  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-
-  await ui.click(screen.getByRole('button', { name: 'Edit the recurring expense Tyres' }))
-  const editing = await screen.findByRole('dialog', { name: 'Edit recurring expense' })
-  await within(editing).findByLabelText('Title')
-  await check(document.body)
-  await ui.click(within(editing).getByRole('button', { name: 'Cancel' }))
-  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-
-  await ui.click(screen.getByRole('button', { name: 'Mark Tyres as done' }))
-  const done = await screen.findByRole('dialog', { name: 'Mark as done: Tyres' })
-  await within(done).findByLabelText('Currency')
-  expect(within(done).getByRole('group', { name: 'Done at this visit' })).toBeInTheDocument() // the schedules to tick, as labelled checkboxes
-  await check(document.body)
-})
-
-// Its own test: each accessibility scan takes a while on CI, and one test has 5 s.
-it('the selection column of the recurring expenses and its Mark selected as done dialog are free of violations', async () => {
-  const { ui } = setup('/vehicles/v1?tab=recurring')
-  await screen.findByRole('table', { name: 'Recurring expenses' })
-
-  await ui.click(screen.getByRole('checkbox', { name: 'Select all recurring expenses' }))
-  await check(document.body)
-  await ui.click(screen.getByRole('button', { name: /selected as done/ }))
-  const many = await screen.findByRole('dialog', { name: 'Mark as done' })
-  await within(many).findByLabelText('Currency')
-  await check(document.body)
-})
-
-it('the home page card lists what needs attention in a labelled list, free of violations', async () => {
-  setup('/')
-  const list = await screen.findByRole('list', { name: 'Needs attention' })
-
-  expect(within(list).getByText(/Tyres · 300 km over/)).toBeInTheDocument()
-  await check(document.body)
 })
 
 it('the details tab with its trash button and confirmation is free of violations', async () => {
@@ -505,44 +238,5 @@ it('the install how-to for iPhones is a labelled dialog without violations', asy
 
   const dialog = await screen.findByRole('dialog', { name: 'Install Tankstat' })
   expect(dialog).toHaveAccessibleDescription(/Home Screen/)
-  await check(document.body)
-})
-
-it('the quick actions on a home card have names with the vehicle in them, on a desktop and a phone, free of violations', async () => {
-  const { view } = setup('/')
-  const card = within((await screen.findByRole('link', { name: 'Open Octavia' })).closest('li')!)
-  expect(card.getByRole('button', { name: 'Refuel Octavia' })).toBeInTheDocument()
-  expect(card.getByRole('button', { name: 'Expense for Octavia' })).toBeInTheDocument()
-  expect(card.getByRole('button', { name: 'Mark Tyres of Octavia as done' })).toBeInTheDocument()
-  await check(view.container)
-  view.unmount()
-
-  const phone = setup('/', 'phone')
-  await screen.findByRole('link', { name: 'Open Octavia' })
-  await check(phone.view.container)
-})
-
-it('the dialogs opened from a home card are labelled, described and free of violations', async () => {
-  const { ui } = setup('/')
-  const card = within((await screen.findByRole('link', { name: 'Open Octavia' })).closest('li')!)
-
-  await ui.click(card.getByRole('button', { name: 'Refuel Octavia' }))
-  let dialog = await screen.findByRole('dialog', { name: 'Add refuelling' })
-  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
-  expect(dialog).toHaveAccessibleDescription(/Enter what you filled up/)
-  await check(document.body)
-  await ui.keyboard('{Escape}')
-  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-
-  await ui.click(card.getByRole('button', { name: 'Expense for Octavia' }))
-  dialog = await screen.findByRole('dialog', { name: 'Add expense' })
-  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
-  await check(document.body)
-  await ui.keyboard('{Escape}')
-  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-
-  await ui.click(card.getByRole('button', { name: 'Mark Tyres of Octavia as done' }))
-  dialog = await screen.findByRole('dialog', { name: 'Mark as done: Tyres' })
-  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
   await check(document.body)
 })
