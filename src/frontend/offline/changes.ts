@@ -95,8 +95,12 @@ function withoutDependents(list: readonly Change[], removed: Change): Change[] {
   })
 }
 
-/** Takes back one waiting change (Keep, Remove on the Sync page). */
-export const discard = (existing: readonly Change[], id: string): Change[] => existing.filter((c) => c.id !== id)
+/** Takes back one waiting change (Keep, Remove on the Sync page); an add taken back takes what was made to it along, as a trash would. */
+export function discard(existing: readonly Change[], id: string): Change[] {
+  const removed = existing.find((c) => c.id === id)
+  const rest = existing.filter((c) => c.id !== id)
+  return removed?.action === 'add' ? withoutDependents(rest, removed) : rest
+}
 
 const replace = (list: readonly Change[], old: Change, next: Change) => list.map((c) => (c === old ? next : c))
 

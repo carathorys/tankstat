@@ -1,4 +1,4 @@
-import { useMutation } from '@apollo/client/react'
+import { useApolloClient, useMutation } from '@apollo/client/react'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
 import Stack from '@mui/material/Stack'
@@ -27,7 +27,8 @@ import { ErrorMessage } from '../../messages.tsx'
 import { RefuelingFormDialog } from '../../RefuelingFormDialog.tsx'
 import { anyAwaiting } from '../../recognition/review.ts'
 import { PendingBadge } from '../../components/PendingBadge.tsx'
-import { outbox } from '../../offline/outbox.ts'
+import { outbox, usePendingCount } from '../../offline/outbox.ts'
+import { keepEntry } from '../../offline/submitChange.ts'
 import { useLogChange } from '../../offline/useLogChange.ts'
 import { ReviewBadge } from '../../recognition/ReviewState.tsx'
 import { useToast } from '../../toast/toastContext.ts'
@@ -50,6 +51,8 @@ export function RefuelingsPanel({
   const [updateRefueling] = useMutation(UpdateRefuelingDocument, refetch)
   const [deleteRefueling] = useMutation(DeleteRefuelingDocument, { ...refetch, refetchQueries: [...refetch.refetchQueries, 'RefuelingTrash'] })
   const [restoreRefueling] = useMutation(RestoreRefuelingDocument, { ...refetch, refetchQueries: [...refetch.refetchQueries, 'RefuelingTrash'] })
+  const client = useApolloClient()
+  usePendingCount(vehicle.id) // the rows' actions follow the changes waiting
   const changes = useLogChange('refuelings', vehicle.id)
   const { leaving, leave } = useLeavingRows()
   const { toast, undoable } = useToast()
@@ -148,7 +151,14 @@ export function RefuelingsPanel({
           </Stack>
         )}
         actions={(r) =>
-          r.canEdit ? (
+          // Waiting on this device to be trashed: Keep takes that back; editing it meanwhile would change nothing.
+          outbox.markOf('refuelings', r.id) === 'deleted' ? (
+            <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
+              <Button variant="soft" size="large" aria-label={t('sync.keepAria', { name: format.date(r.date) })} onClick={() => void keepEntry(client, 'refuelings', r.id).then(() => toast(t('sync.kept')))}>
+                {t('sync.keep')}
+              </Button>
+            </Stack>
+          ) : r.canEdit ? (
             <Stack direction="row" sx={{ gap: 1, justifyContent: 'flex-end' }}>
               <RefuelingFormDialog
                 vehicle={vehicle}

@@ -1,4 +1,4 @@
-import { useMutation } from '@apollo/client/react'
+import { useApolloClient, useMutation } from '@apollo/client/react'
 import Button from '@mui/material/Button'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
@@ -11,7 +11,8 @@ import { UserChip } from '../../components/UserAvatar.tsx'
 import { ExpenseFormDialog } from '../../ExpenseFormDialog.tsx'
 import { anyAwaiting } from '../../recognition/review.ts'
 import { PendingBadge } from '../../components/PendingBadge.tsx'
-import { outbox } from '../../offline/outbox.ts'
+import { outbox, usePendingCount } from '../../offline/outbox.ts'
+import { keepEntry } from '../../offline/submitChange.ts'
 import { useLogChange } from '../../offline/useLogChange.ts'
 import { ReviewBadge } from '../../recognition/ReviewState.tsx'
 import {
@@ -42,6 +43,8 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
   const [updateExpense] = useMutation(UpdateExpenseDocument, refetch)
   const [deleteExpense] = useMutation(DeleteExpenseDocument, { ...refetch, refetchQueries: [...refetch.refetchQueries, 'ExpenseTrash'] })
   const [restoreExpense] = useMutation(RestoreExpenseDocument, { ...refetch, refetchQueries: [...refetch.refetchQueries, 'ExpenseTrash'] })
+  const client = useApolloClient()
+  usePendingCount(vehicle.id) // the rows' actions follow the changes waiting
   const changes = useLogChange('expenses', vehicle.id)
   const { leaving, leave } = useLeavingRows()
   const { toast, undoable } = useToast()
@@ -115,7 +118,14 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
           </Stack>
         )}
         actions={(r) =>
-          r.canEdit ? (
+          // Waiting on this device to be trashed: Keep takes that back; editing it meanwhile would change nothing.
+          outbox.markOf('expenses', r.id) === 'deleted' ? (
+            <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
+              <Button variant="soft" size="large" aria-label={t('sync.keepAria', { name: r.title })} onClick={() => void keepEntry(client, 'expenses', r.id).then(() => toast(t('sync.kept')))}>
+                {t('sync.keep')}
+              </Button>
+            </Stack>
+          ) : r.canEdit ? (
             <Stack direction="row" sx={{ gap: 1, justifyContent: 'flex-end' }}>
               <ExpenseFormDialog
                 vehicle={vehicle}

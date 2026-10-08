@@ -176,7 +176,7 @@ it('the reasons a photo gave less than it might have are announced in the dialog
 })
 
 it('the trash, account and administration pages have no violations', async () => {
-  for (const route of ['/trash', '/trash?tab=refuelings', '/trash?tab=expenses', '/account', '/admin']) {
+  for (const route of ['/trash', '/trash?tab=refuelings', '/trash?tab=expenses', '/account', '/admin', '/sync']) {
     const { view } = setup(route)
     await screen.findByRole('main')
     await screen.findByRole('heading', { level: 1 })
@@ -409,6 +409,7 @@ it('a photo that could not be uploaded, and the screen after a photo could not b
   await check(document.body)
 })
 
+// Several dialogs, each checked by axe: under coverage (CI) this takes close to the 15 s default, so it gets more.
 it('the recurring expenses table and its dialogs are labelled and free of violations', async () => {
   const { ui } = setup('/vehicles/v1?tab=recurring')
   const table = await screen.findByRole('table', { name: 'Recurring expenses' })
@@ -435,7 +436,7 @@ it('the recurring expenses table and its dialogs are labelled and free of violat
   await within(done).findByLabelText('Currency')
   expect(within(done).getByRole('group', { name: 'Done at this visit' })).toBeInTheDocument() // the schedules to tick, as labelled checkboxes
   await check(document.body)
-})
+}, 30_000)
 
 // Its own test: each accessibility scan takes a while on CI, and one test has 5 s.
 it('the selection column of the recurring expenses and its Mark selected as done dialog are free of violations', async () => {
