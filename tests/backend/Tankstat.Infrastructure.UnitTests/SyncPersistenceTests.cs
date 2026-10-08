@@ -212,3 +212,74 @@ public class SyncPersistenceTests
         Assert.Equal([new RemovedEntity(OfflineEntityType.Vehicle, car.Id)], await db.Get<IOfflineFeedRepository>().RemovedSinceAsync(car.Id, _clock.GetUtcNow(), default));
     }
 }
+
+/// <summary>Saves are conditional on the version an entity was loaded with, and the ledger keeps what devices sent.</summary>
+public class ConditionalWriteAndLedgerTests
+{
+    private static readonly Guid Owner = Guid.NewGuid();
+
+    [Fact]
+    public async Task TwoChangesMadeFromTheSameVersion_CannotBothBeSaved()
+    {
+        await using var db = new TestDatabase();
+        var vehicles = db.Get<IVehicleRepository>();
+        var car = TestData.Vehicle(Owner);
+        await vehicles.AddAsync(car, default);
+        var mine = (await vehicles.FindAsync(car.Id, default))!;
+        var theirs = (await vehicles.FindAsync(car.Id, default))!;
+
+        theirs.Update("Theirs", null, FuelType.Petrol, MeasurementUnits.Metric);
+        await vehicles.UpdateAsync(theirs, default);
+        mine.Update("Mine", null, FuelType.Petrol, MeasurementUnits.Metric);
+        var e = await Assert.ThrowsAsync<Tankstat.Domain.DomainException>(() => vehicles.UpdateAsync(mine, default));
+
+        Assert.Equal("sync.versionMismatch", e.Key);
+        Assert.Equal("Theirs", (await vehicles.FindAsync(car.Id, default))!.Name);
+        Assert.Equal(2, (await vehicles.FindAsync(car.Id, default))!.Version);
+    }
+
+    [Fact]
+    public async Task AnEntitySavedTwiceByOneInstance_IsNotRefusedByItsOwnFirstSave()
+    {
+        await using var db = new TestDatabase();
+        var vehicles = db.Get<IVehicleRepository>();
+        var car = TestData.Vehicle(Owner);
+        await vehicles.AddAsync(car, default);
+        var loaded = (await vehicles.FindAsync(car.Id, default))!;
+
+        loaded.Update("One", null, FuelType.Petrol, MeasurementUnits.Metric);
+        await vehicles.UpdateAsync(loaded, default);
+        var again = (await vehicles.FindAsync(car.Id, default))!; // the next change starts from what was saved
+        again.Update("Two", null, FuelType.Petrol, MeasurementUnits.Metric);
+        await vehicles.UpdateAsync(again, default);
+
+        Assert.Equal((3, "Two"), ((await vehicles.FindAsync(car.Id, default))!.Version, (await vehicles.FindAsync(car.Id, default))!.Name));
+    }
+
+    [Fact]
+    public async Task TheLedger_RoundTrips_AndPurgingKeepsParkedChanges_AndAPurgedVehicleTakesItsChanges()
+    {
+        await using var db = new TestDatabase();
+        var car = TestData.Vehicle(Owner);
+        await db.Get<IVehicleRepository>().AddAsync(car, default);
+        var ledger = db.Get<ISyncChangeRepository>();
+        var at = new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+        var applied = SyncChange.Applied(Guid.NewGuid(), Owner, Owner, car.Id, Guid.NewGuid(), SyncChangeKind.LogRefueling, null, "{\"a\":1}", at, Guid.NewGuid(), 1);
+        var parked = SyncChange.Parked(Guid.NewGuid(), Owner, Owner, car.Id, Guid.NewGuid(), SyncChangeKind.UpdateRefueling, 3, "{}", at, "sync.versionMismatch",
+            new Dictionary<string, string> { ["expected"] = "3" });
+        await ledger.AddAsync(applied, default);
+        await ledger.AddAsync(parked, default);
+
+        var read = (await ledger.FindManyAsync([applied.Id, parked.Id], default)).ToDictionary(c => c.Id);
+        Assert.Equal("{\"a\":1}", read[applied.Id].Payload);
+        Assert.Equal("3", read[parked.Id].ReasonArgs["expected"]);
+        Assert.Equal(1, await ledger.PurgeResolvedAsync(at.AddDays(1), default));
+        Assert.Equal([parked.Id], (await ledger.FindManyAsync([applied.Id, parked.Id], default)).Select(c => c.Id));
+
+        var loaded = (await db.Get<IVehicleRepository>().FindAsync(car.Id, default))!;
+        loaded.MarkDeleted(at);
+        await db.Get<IVehicleRepository>().UpdateAsync(loaded, default);
+        await db.Get<IVehicleRepository>().PurgeAsync(OwnerScope.All, default);
+        Assert.Empty(await ledger.FindManyAsync([parked.Id], default));
+    }
+}

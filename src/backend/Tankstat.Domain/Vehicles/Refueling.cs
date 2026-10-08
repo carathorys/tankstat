@@ -98,6 +98,17 @@ public sealed class Refueling : IOwned, ISoftDeletable, ISynced
     /// <summary>When it was last saved (set by the persistence layer, see <see cref="ISynced"/>): a device that keeps a copy downloads it again.</summary>
     public DateTimeOffset UpdatedAt { get; private set; }
 
+    /// <summary>The version it was loaded with, before this instance counted any save: the save is made only if nobody saved it meanwhile.</summary>
+    public int SavedVersion => _loadedVersion ?? Version;
+
+    private int? _loadedVersion;
+
+    private void Bump()
+    {
+        _loadedVersion ??= Version;
+        Version++;
+    }
+
     Guid ISynced.SyncVehicleId => VehicleId;
     OfflineEntityType ISynced.SyncType => OfflineEntityType.Refueling;
 
@@ -139,7 +150,7 @@ public sealed class Refueling : IOwned, ISoftDeletable, ISynced
         var (createdCost, removedCost) = SetCost(date, totalCost, currency);
         ReviewState = LogReview.AfterSave(Missing, Missing, readingPhotos);
         FilledFromPhoto = LogValues.None;
-        Version++;
+        Bump();
         return new LinkedChanges(createdReading, removedReading, createdCost, removedCost);
     }
 
@@ -172,7 +183,7 @@ public sealed class Refueling : IOwned, ISoftDeletable, ISynced
         }
         // Every value a photo fills in sets its FilledFromPhoto flag, so a change of the flags is a change of the values: an edit of the copy
         // from before is stale. A value added here later must set its flag too.
-        if (FilledFromPhoto != before) Version++;
+        if (FilledFromPhoto != before) Bump();
         return new LinkedChanges(createdReading, null, createdCost, null);
     }
 
@@ -190,7 +201,7 @@ public sealed class Refueling : IOwned, ISoftDeletable, ISynced
         DeletedAt = now;
         OdometerReading?.MarkDeleted(now);
         Cost?.MarkDeleted(now);
-        Version++;
+        Bump();
     }
 
     public void Restore()
@@ -199,7 +210,7 @@ public sealed class Refueling : IOwned, ISoftDeletable, ISynced
         DeletedAt = null;
         OdometerReading?.Restore();
         Cost?.Restore();
-        Version++;
+        Bump();
     }
 
     private (OdometerReading? Created, OdometerReading? Removed) SetReading(DateOnly date, long? odometer)

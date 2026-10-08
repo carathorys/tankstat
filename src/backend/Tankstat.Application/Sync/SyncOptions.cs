@@ -12,12 +12,18 @@ public sealed class SyncOptions
     /// that is told to download it afresh.
     /// </summary>
     public int TombstoneRetentionDays { get; set; } = 90;
+
+    /// <summary>How many days the server remembers the changes it applied (so a device sending a batch again gets the same answer); parked ones stay.</summary>
+    public int RetentionDays { get; set; } = 30;
 }
 
 public sealed class SyncOptionsValidator : IValidateOptions<SyncOptions>
 {
-    public ValidateOptionsResult Validate(string? name, SyncOptions o) =>
-        o.TombstoneRetentionDays is >= 1 and <= 3650
-            ? ValidateOptionsResult.Success
-            : ValidateOptionsResult.Fail("Sync:TombstoneRetentionDays must be between 1 and 3650.");
+    public ValidateOptionsResult Validate(string? name, SyncOptions o)
+    {
+        var errors = new List<string>();
+        if (o.TombstoneRetentionDays is < 1 or > 3650) errors.Add("Sync:TombstoneRetentionDays must be between 1 and 3650.");
+        if (o.RetentionDays is < 1 or > 3650) errors.Add("Sync:RetentionDays must be between 1 and 3650.");
+        return errors.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(errors);
+    }
 }

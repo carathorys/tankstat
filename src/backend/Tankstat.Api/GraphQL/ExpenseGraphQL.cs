@@ -29,6 +29,7 @@ public sealed class ExpenseType : ObjectType<Expense>
     protected override void Configure(IObjectTypeDescriptor<Expense> descriptor)
     {
         descriptor.Ignore(e => e.OdometerReading);
+        descriptor.Ignore(e => e.SavedVersion); // the persistence layer's, not a client's
         descriptor.Ignore(e => e.OdometerReadingId);
         descriptor.Ignore(e => e.Cost);
         descriptor.Ignore(e => e.CostId);
