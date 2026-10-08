@@ -18,6 +18,7 @@ const GATEWAY = new Set([502, 503, 504])
 export function classifyFailure(error: unknown): FailureKind {
   if (error instanceof OfflineError) return 'answered' // nothing was sent: it says nothing new
   if (error instanceof TypeError) return 'network' // fetch rejects with a TypeError when nothing answered
+  if ((error as { name?: unknown } | null)?.name === 'TimeoutError') return 'network' // nothing answered in time (`timedFetch`)
   if (ServerParseError.is(error)) return 'network' // a page that is not our API (a captive portal, a login wall)
   if (ServerError.is(error) && GATEWAY.has(error.statusCode)) return 'gateway'
   if (error instanceof ApiError && GATEWAY.has(error.status)) return 'gateway'

@@ -7,6 +7,8 @@ import { useTranslation } from 'react-i18next'
 import { NavLink } from 'react-router'
 import { type AuthMode, type SessionQuery } from '../gql/generated.ts'
 import { useSignOut } from '../auth/useSignOut.ts'
+import { OfflineError } from '../offline/errors.ts'
+import { useToast } from '../toast/toastContext.ts'
 import { InstallMenuItem } from './InstallMenuItem.tsx'
 import { navItemSx } from './navStyles.ts'
 
@@ -14,6 +16,7 @@ import { navItemSx } from './navStyles.ts'
 export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: SessionQuery['session']['user']; onNavigate?: () => void }) {
   const { t } = useTranslation()
   const signOut = useSignOut(mode)
+  const { toast } = useToast()
   const canSignOut = user !== null && mode !== 'PROXY_HEADER' // behind a proxy the proxy owns the session
 
   const link = (to: string, label: string, icon: ReactNode) => (
@@ -40,7 +43,13 @@ export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: Sess
           sx={(theme) => ({ ...navItemSx(theme), mt: 1.5 })}
           onClick={async () => {
             onNavigate?.()
-            await signOut()
+            try {
+              await signOut()
+            } catch (error) {
+              // Signing out ends the session on the server: without it the device stays signed in, so say why nothing happened.
+              if (error instanceof OfflineError) toast(t('errors.offline'))
+              else throw error
+            }
           }}
         >
           <LogOut size={18} aria-hidden />

@@ -72,7 +72,21 @@ export const refreshLink = new ApolloLink((operation, forward) => {
   )
 })
 
+/**
+ * A request with no answer at all for this long counts as the server being out of reach (`classifyFailure`), instead of waiting for the
+ * operating system to give up on a server that never answers (a LAN address seen from mobile data: often two minutes).
+ */
+export const REQUEST_TIMEOUT_MS = 30_000
+
+/** `fetch` that gives up after `REQUEST_TIMEOUT_MS` (where the browser can combine signals; elsewhere as before). */
+export const timedFetch: typeof fetch = (input, init) => {
+  if (typeof AbortSignal.timeout !== 'function' || typeof AbortSignal.any !== 'function') return fetch(input, init)
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+  return fetch(input, { ...init, signal: init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout })
+}
+
 export function createApolloClient(uri = '/graphql') {
   const errors = new ErrorLink(({ error, operation }) => reportOperationError(error, operation.operationName))
-  return new ApolloClient({ link: ApolloLink.from([errors, createOfflineLink(), refreshLink, new HttpLink({ uri })]), cache: new InMemoryCache() })
+  const http = new HttpLink({ uri, fetch: timedFetch })
+  return new ApolloClient({ link: ApolloLink.from([errors, createOfflineLink(), refreshLink, http]), cache: new InMemoryCache() })
 }
