@@ -1,3 +1,4 @@
+using Tankstat.Application.Auth;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Sync;
 using Tankstat.Domain;
@@ -201,6 +202,58 @@ public class SyncServiceTests
         Assert.Equal(1200, (await s.W.RefuelingService.FindAsync(log, default))!.OdometerReading!.Value);
         var twice = await Assert.ThrowsAsync<DomainException>(() => s.W.Sync.ResolveAsync(parked, discard: true, null, null, default));
         Assert.Equal("sync.notParked", twice.Key);
+    }
+
+    [Fact]
+    public async Task WhileSomeoneDecides_NobodyElseCan_AndAnApplyThatFailsUnexpectedlyGivesTheChangeBack()
+    {
+        var (s, carol, parked, _) = await ParkedByCarol();
+        s.W.Current.SignInAs(s.Alice);
+        var applied = 0;
+        var refusedMeanwhile = (DomainException?)null;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => s.W.Sync.ResolveAsync(parked, discard: false, async ct =>
+        {
+            // While Alice applies it, Carol discards it.
+            s.W.Current.SignInAs(carol);
+            refusedMeanwhile = await Assert.ThrowsAsync<DomainException>(() => s.W.Sync.ResolveAsync(parked, discard: true, null, null, ct));
+            s.W.Current.SignInAs(s.Alice);
+            applied++;
+            throw new InvalidOperationException("database down");
+        }, null, default));
+
+        Assert.Equal("sync.notParked", refusedMeanwhile!.Key); // the data never changes while the ledger says something else
+        Assert.Equal(1, applied);
+        Assert.Equal(SyncChangeStatus.Parked, s.W.SyncLedger.Items.Single(c => c.Id == parked).Status);
+        Assert.Empty(s.W.SyncLedger.Claims); // given back: someone can decide now
+        s.W.Current.SignInAs(carol);
+        Assert.Equal(SyncChangeStatus.Discarded, (await s.W.Sync.ResolveAsync(parked, discard: true, null, null, default)).Status);
+    }
+
+    [Fact]
+    public async Task ARefusalForWhatTheDeciderMayNotDo_KeepsTheReasonTheChangeWasParkedFor()
+    {
+        var (s, _, parked, _) = await ParkedByCarol();
+        s.W.Current.SignInAs(s.Alice);
+
+        await Assert.ThrowsAsync<NotFoundException>(() => s.W.Sync.ResolveAsync(parked, discard: false,
+            _ => throw new NotFoundException("vehicle.notFound", "Vehicle not found.", new { Id = s.Car.Id }), null, default));
+
+        Assert.Equal("sync.versionMismatch", s.W.SyncLedger.Items.Single(c => c.Id == parked).ReasonKey);
+        Assert.Empty(s.W.SyncLedger.Claims);
+    }
+
+    [Fact]
+    public async Task AChangeOfTheVehicleItself_IsDecidedBySomeoneWhoMayChangeTheVehicle_NotALogEditor()
+    {
+        var (s, carol, _, _) = await ParkedByCarol();
+        var update = SyncChange.Parked(Guid.NewGuid(), s.Alice.Id, s.Alice.Id, s.Car.Id, s.Car.Id, SyncChangeKind.UpdateVehicle, 1, "{}", DateTimeOffset.UtcNow,
+            "sync.versionMismatch", new Dictionary<string, string>());
+        await s.W.SyncLedger.AddAsync(update, default);
+        s.W.Current.SignInAs(carol); // may edit the car's logs, not the car
+
+        Assert.False(await s.W.Sync.CanResolveAsync(update, default));
+        await Assert.ThrowsAsync<ForbiddenException>(() => s.W.Sync.ResolveAsync(update.Id, discard: true, null, null, default));
     }
 
     [Fact]

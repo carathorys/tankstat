@@ -302,16 +302,40 @@ public class ConditionalWriteAndLedgerTests
         Assert.Equal([noVehicle.Id, ofCar.Id], (await ledger.ListParkedAsync(OwnerScope.Of([Guid.NewGuid()]), sender, default)).Select(c => c.Id)); // the sender's own
         Assert.Equal(1, (await ledger.CountParkedAsync([car.Id], default))[car.Id]);
 
+        // Two people decide at once: the first to claim it decides; the other cannot claim it while the claim is fresh.
         var first = (await ledger.FindAsync(ofCar.Id, default))!;
         var second = (await ledger.FindAsync(ofCar.Id, default))!;
+        Assert.True(await ledger.ClaimAsync(ofCar.Id, Owner, at.AddHours(1), at, default));
+        Assert.False(await ledger.ClaimAsync(ofCar.Id, sender, at.AddHours(1), at, default));
         first.Replace("{\"b\":2}");
         first.MarkApplied(Owner, at.AddHours(1), Guid.NewGuid(), 4);
         second.MarkDiscarded(sender, at.AddHours(1));
-        Assert.True(await ledger.SettleParkedAsync(first, default));
-        Assert.False(await ledger.SettleParkedAsync(second, default));
+        Assert.False(await ledger.SettleParkedAsync(second, sender, default)); // not theirs to decide
+        Assert.True(await ledger.SettleParkedAsync(first, Owner, default));
 
         var saved = (await ledger.FindAsync(ofCar.Id, default))!;
         Assert.Equal((SyncChangeStatus.Applied, Owner, "{\"b\":2}", 4), (saved.Status, saved.ResolvedById!.Value, saved.Payload, saved.ResultVersion!.Value));
         Assert.Empty(await ledger.CountParkedAsync([car.Id], default));
+    }
+
+    [Fact]
+    public async Task AClaimGivenBack_OrRunOut_LetsSomeoneElseDecide()
+    {
+        await using var db = new TestDatabase();
+        var car = TestData.Vehicle(Owner);
+        await db.Get<IVehicleRepository>().AddAsync(car, default);
+        var ledger = db.Get<ISyncChangeRepository>();
+        var at = new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+        var change = SyncChange.Parked(Guid.NewGuid(), Owner, Owner, car.Id, Guid.NewGuid(), SyncChangeKind.UpdateRefueling, 3, "{}", at, "sync.versionMismatch",
+            new Dictionary<string, string>());
+        await ledger.AddAsync(change, default);
+        var (alice, bob, carol) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+
+        Assert.True(await ledger.ClaimAsync(change.Id, alice, at, at.AddMinutes(-5), default));
+        await ledger.ReleaseAsync(change.Id, alice, default); // her apply failed: given back
+        Assert.True(await ledger.ClaimAsync(change.Id, bob, at.AddMinutes(1), at.AddMinutes(-4), default));
+        // Bob's server stopped while applying: ten minutes later his claim has run out.
+        Assert.True(await ledger.ClaimAsync(change.Id, carol, at.AddMinutes(11), at.AddMinutes(6), default));
+        Assert.Equal(carol, (await ledger.FindAsync(change.Id, default))!.ResolvedById);
     }
 }

@@ -40,6 +40,9 @@ public sealed class SyncChange : IOwned
 {
     public const int MaxBatch = 200;
     public const int MaxPayloadLength = 4000;
+
+    /// <summary>The most parked changes a list (and the notifications made from it) holds, newest first.</summary>
+    public const int MaxParkedListed = 200;
     public const int MaxReasonKeyLength = 80;
     public const int MaxReasonArgs = 10;
 
@@ -76,7 +79,7 @@ public sealed class SyncChange : IOwned
 
     public IReadOnlyDictionary<string, string> ReasonArgs { get; private set; } = new Dictionary<string, string>();
 
-    /// <summary>Who applied or discarded a parked change, and when.</summary>
+    /// <summary>Who applied or discarded a parked change, and when; while it is parked, who is deciding about it right now (the claim).</summary>
     public Guid? ResolvedById { get; private set; }
 
     public DateTimeOffset? ResolvedAt { get; private set; }
@@ -95,6 +98,7 @@ public sealed class SyncChange : IOwned
     {
         RequireParked();
         Settle(SyncChangeStatus.Parked, null, null, reasonKey, reasonArgs);
+        (ResolvedById, ResolvedAt) = (null, null); // nobody decided: free for the next decision
     }
 
     public void MarkApplied(Guid resolvedById, DateTimeOffset now, Guid? resultId, int? resultVersion)

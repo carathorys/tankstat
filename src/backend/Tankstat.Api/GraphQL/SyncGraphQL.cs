@@ -70,9 +70,17 @@ public sealed class SyncChangeInfoExtensions
     public async Task<SyncVehicleRef?> GetVehicle([Parent] SyncChangeInfo change, VehicleIncludingDeletedLoader vehicles, CancellationToken ct) =>
         change.VehicleId is { } id && await vehicles.LoadAsync(id, ct) is { } v ? new SyncVehicleRef(v.Id, v.Name, v.Units.Distance, v.Units.Volume) : null;
 
-    /// <summary>Whether the current user may apply or discard it: whoever sent it, or may change the vehicle's logs.</summary>
-    public async Task<bool> GetCanResolve([Parent] SyncChangeInfo change, [Service] AccessService access, LogLevelByVehicleLoader levels, CancellationToken ct) =>
-        change.SubmittedById == (await access.RequirePrincipalAsync(ct)).Id || (change.VehicleId is { } id && await levels.LoadAsync(id, ct) >= AccessLevel.Edit);
+    /// <summary>
+    /// Whether the current user may apply or discard it: whoever sent it, or may make the same change (Edit on the vehicle's logs; on the
+    /// vehicle itself for a change of the vehicle).
+    /// </summary>
+    public async Task<bool> GetCanResolve(
+        [Parent] SyncChangeInfo change, [Service] AccessService access, [Service] SyncService sync, LogLevelByVehicleLoader levels, CancellationToken ct)
+    {
+        if (change.SubmittedById == (await access.RequirePrincipalAsync(ct)).Id) return true;
+        if (SyncService.IsVehicleChange(change.Kind)) return await sync.CanResolveAsync(change.SubmittedById, change.VehicleId, change.Kind, ct);
+        return change.VehicleId is { } id && await levels.LoadAsync(id, ct) >= AccessLevel.Edit;
+    }
 }
 
 /// <summary>Just enough of a vehicle to name a change of it; nothing else of the vehicle is shown through a change.</summary>
@@ -156,15 +164,19 @@ public sealed class SyncMutations
     /// not attached (they may be gone). A refusal keeps it parked with the new reason and is the error of this mutation.
     /// </summary>
     public async Task<SyncChangeInfo> ResolveSyncChange(
-        ResolveSyncChangeInput input, [Service] SyncService sync, [Service] ISyncChangeRepository ledger, [Service] VehicleService vehicles,
+        ResolveSyncChangeInput input, [Service] SyncService sync, [Service] VehicleService vehicles,
         [Service] RefuelingService refuelings, [Service] ExpenseService expenses, [Service] RecurringExpenseService recurring,
         [Service] IOptions<VehicleDefaultsOptions> defaults, [Service] IRefuelingRepository refuelingRows, [Service] IExpenseRepository expenseRows,
         [Service] IRecurringExpenseRepository scheduleRows, CancellationToken ct)
     {
         if (input.Action == SyncResolveAction.Discard) return SyncChangeInfo.From(await sync.ResolveAsync(input.Id, discard: true, null, null, ct));
 
-        var stored = await ledger.FindAsync(input.Id, ct) ?? throw new NotFoundException("sync.notFound", "Change not found.", new { input.Id });
+        // Who may not see it learns nothing of it (not even its kind) from what follows.
+        var stored = await sync.FindVisibleAsync(input.Id, ct);
         var change = input.Change ?? JsonSerializer.Deserialize<ChangeInput>(stored.Payload, Json)!;
+        // A visit whose expense would only have come from its photos logs none without them: say so instead of moving the schedules alone.
+        if (change.MarkRecurringExpensesDone is { ExpenseId: not null, Amount: null, PhotoIds.Count: > 0 })
+            throw new DomainException("log.valuesRequired", "Fill in every value. Only a photo that is still being read may leave them empty.");
         // The same change (its id, so the ledger row is the same), from now on: no version to keep to, no photos that may be gone.
         change = change with
         {
@@ -174,7 +186,9 @@ public sealed class SyncMutations
             MarkRecurringExpensesDone = change.MarkRecurringExpensesDone is { } md ? md with { PhotoIds = null } : null,
         };
         var request = Request(change, vehicles, refuelings, expenses, recurring, defaults.Value, new VehicleFinder(refuelingRows, expenseRows, scheduleRows));
-        if (request.Kind != stored.Kind) throw new DomainException("sync.kindMismatch", "An edited change does the same as the one parked.");
+        // The same change of the same thing: the ledger row stays filed under what it concerns.
+        if (request.Kind != stored.Kind || request.TargetId != stored.TargetId || (request.VehicleIdHint is { } vehicle && stored.VehicleId is { } filed && vehicle != filed))
+            throw new DomainException("sync.kindMismatch", "An edited change does the same as the one parked.");
         var replacement = input.Change is null ? null : JsonSerializer.Serialize(change, Json);
         return SyncChangeInfo.From(await sync.ResolveAsync(input.Id, discard: false, request.Apply, replacement, ct));
     }
