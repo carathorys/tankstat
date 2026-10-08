@@ -85,6 +85,14 @@ run = "dotnet test tests/backend/Tankstat.Api.SmokeTests"
 description = "Black-box API contract tests against a freshly started server"
 run = "scripts/test-api.sh"
 
+[tasks."test:durations"]
+description = "Measure how long each frontend test file takes into tests/frontend/durations.json (CI balances its shards by it); rerun when files were added or got much slower"
+run = [
+  # The report's path is from Vitest's root (src/frontend). On a small machine add -- --maxWorkers=4 to the vitest line by hand.
+  "npx vitest run --coverage --reporter=json --outputFile=../../coverage/vitest-report.json",
+  "node scripts/frontend-durations.mjs coverage/vitest-report.json",
+]
+
 [tasks."test:coverage"]
 description = "Unit + integration tests with coverage reports in ./coverage (frontend/index.html, backend/*/*/coverage.cobertura.xml)"
 run = """

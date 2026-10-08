@@ -16,6 +16,12 @@ namespace Tankstat.Api.IntegrationTests;
 /// </summary>
 internal sealed class TestApp : IDisposable
 {
+    /// <summary>
+    /// A database with every migration applied, made once per test run (by a host of its own) and copied for each host: a host would
+    /// otherwise apply all of them to its new file, which was most of the time a test took. The hosts find it up to date and start at once.
+    /// </summary>
+    private static readonly Lazy<string> Template = new(CreateTemplate);
+
     private readonly string _db = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}.db");
 
     /// <summary>Where uploaded pictures of this host go.</summary>
@@ -30,8 +36,10 @@ internal sealed class TestApp : IDisposable
     public CapturedLog Log { get; } = new();
 
     /// <param name="host">Last word on the web host, e.g. a web root with static files to serve.</param>
-    public TestApp(Dictionary<string, string?> settings, Action<IServiceCollection>? services = null, Action<IWebHostBuilder>? host = null)
+    /// <param name="migrated">False: a new, empty database, so the host applies every migration itself (the template is made that way).</param>
+    public TestApp(Dictionary<string, string?> settings, Action<IServiceCollection>? services = null, Action<IWebHostBuilder>? host = null, bool migrated = true)
     {
+        if (migrated) File.Copy(Template.Value, _db);
         var all = new Dictionary<string, string?>
         {
             ["Database:Provider"] = "Sqlite",
@@ -77,6 +85,22 @@ internal sealed class TestApp : IDisposable
         File.Delete(_db);
         if (Directory.Exists(UploadsPath)) Directory.Delete(UploadsPath, recursive: true);
         if (Directory.Exists(KeysPath)) Directory.Delete(KeysPath, recursive: true);
+    }
+
+    /// <summary>Starts a host on a new database (no auth, nothing else to set up), lets it migrate, and keeps the file until the run ends.</summary>
+    private static string CreateTemplate()
+    {
+        string path;
+        using (var app = new TestApp(new Dictionary<string, string?> { ["Auth:Mode"] = "None" }, migrated: false))
+        {
+            _ = app.Factory.Services; // starts the host: the migrations run as it starts
+            path = Path.Combine(Path.GetTempPath(), $"tankstat-it-template-{Guid.NewGuid():N}.db");
+            app.Factory.Dispose();
+            using (var pooled = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={app._db}")) Microsoft.Data.Sqlite.SqliteConnection.ClearPool(pooled);
+            File.Copy(app._db, path);
+        }
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => File.Delete(path);
+        return path;
     }
 }
 
