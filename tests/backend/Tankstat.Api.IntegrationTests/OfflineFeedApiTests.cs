@@ -160,6 +160,28 @@ public class OfflineFeedApiTests : IDisposable
         Assert.Equal("sync.takeInvalid", tooMany.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
     }
 
+    [Fact]
+    public async Task WhoMayOnlyViewTheLogs_GetsTheTrashAsRemoved_NeverItsValues()
+    {
+        var people = await _app.Users();
+        var golf = await Car(people.Alice);
+        var kept = await Refuel(people.Alice, golf, 20, 1000);
+        var trashedLog = await Refuel(people.Alice, golf, 10, 1500);
+        var trashedExpense = await Expense(people.Alice, golf, 5);
+        await people.Alice.Gql($"mutation {{ deleteRefueling(id: \"{trashedLog}\") {{ id }} }}");
+        await people.Alice.Gql($"mutation {{ deleteExpense(id: \"{trashedExpense}\") {{ id }} }}");
+        await people.Admin.Gql("mutation { setDefaultAccess(level: VIEW) { defaultLevelForOthers } }"); // Bob may only view the logs
+
+        var page = await Page(people.Bob, new { vehicleId = golf, take = 50 });
+
+        Assert.Equal([kept], Ids(page, "refuelings"));
+        Assert.Empty(Ids(page, "expenses"));
+        var removed = page.GetProperty("removed").EnumerateArray().Select(r => (r.GetProperty("type").GetString(), r.GetProperty("id").GetString())).ToList();
+        Assert.Contains(("REFUELING", trashedLog), removed);
+        Assert.Contains(("EXPENSE", trashedExpense), removed);
+        Assert.Equal(2, Ids(await Page(people.Alice, new { vehicleId = golf, take = 50 }), "refuelings").Count()); // the owner keeps the trash
+    }
+
     /// <summary>HotChocolate weighs a query by its shape, not by the rows it returns: an empty vehicle shows whether 200 full rows may be asked.</summary>
     [Fact]
     public async Task AskingForAFullPageOfTwoHundredRows_IsWithinTheCostLimit()
