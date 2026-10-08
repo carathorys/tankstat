@@ -169,7 +169,13 @@ public class LoggingTests
     [Fact]
     public async Task AStart_LogsTheMigrationsAndTheFirstAdministrator()
     {
-        using var app = TestApp.Standalone();
+        // A new, empty database (not the migrated copy the other hosts start from), so this start applies the migrations itself.
+        using var app = new TestApp(new Dictionary<string, string?>
+        {
+            ["Auth:Mode"] = "Standalone",
+            ["Auth:Standalone:AdminEmail"] = "root@example.com",
+            ["Auth:Standalone:AdminPassword"] = "initial-password-1",
+        }, migrated: false);
 
         _ = app.NewClient(); // starts the host
 

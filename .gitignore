@@ -423,6 +423,9 @@ autom4te.cache/
 *.tar.gz
 tarballs/
 test-results/
+# scripts/test-backend.sh: each run's output, and the integration tests' copies of their build
+test-logs/
+test-shards/
 
 # content below from: https://github.com/github/gitignore/blob/main/Global/macOS.gitignore
 # General
