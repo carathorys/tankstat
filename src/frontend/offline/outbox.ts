@@ -44,6 +44,8 @@ async function persist(before: readonly Change[], after: readonly Change[]) {
 
 export type ChangeDraft = Omit<Change, 'seq' | 'createdAt'>
 
+const MARK_ORDER: readonly PendingMark[] = ['deleted', 'new', 'restored', 'changed']
+
 export const outbox = {
   /** The changes waiting, oldest first. */
   get changes(): readonly Change[] {
@@ -69,10 +71,13 @@ export const outbox = {
     notify()
   },
 
-  /** How a log is marked while a change of it waits; null when none does. */
+  /**
+   * How a log is marked while a change of it waits; null when none does. With several (one sent already, one made after it) the one that
+   * says most wins: on its way to the trash, else new, else restored, else changed.
+   */
   markOf(entity: LogEntity, id: string): PendingMark | null {
-    const change = changes.find((c) => c.entity === entity && c.targetId === id)
-    return change ? markOf(change) : null
+    const marks = changes.filter((c) => c.entity === entity && c.targetId === id).map(markOf)
+    return MARK_ORDER.find((mark) => marks.includes(mark)) ?? null
   },
 
   /** The vehicles with a change waiting: the device answers their logs itself, so what was changed shows. */

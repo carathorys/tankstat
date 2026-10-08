@@ -67,6 +67,42 @@ describe('collapse', () => {
   })
 })
 
+describe('collapse, keeping what was edited', () => {
+  it('an edit, a trash and a restore leave the edit (Undo after trashing an edited log)', () => {
+    const update = change('update', 'r1', { input: { volume: 41 }, expectedVersion: 3 })
+    const [trashed] = fold(update, change('trash'))
+    expect(trashed).toMatchObject({ action: 'trash', expectedVersion: 3 })
+
+    const [back, ...rest] = collapse([trashed], change('restore'))
+    expect(rest).toEqual([])
+    expect(back).toMatchObject({ id: update.id, action: 'update', input: { volume: 41 }, expectedVersion: 3 })
+  })
+
+  it('taking back a trash that took the place of an edit (Keep, Remove) leaves the edit', () => {
+    const [trashed] = fold(change('update', 'r1', { input: { volume: 41 }, expectedVersion: 3 }), change('trash'))
+
+    expect(discard([trashed], trashed.id)).toEqual([expect.objectContaining({ action: 'update', input: { volume: 41 } })])
+  })
+})
+
+describe('collapse, after a change that was sent', () => {
+  it('never folds into it: an answer that was lost would make the server answer "done" for what folded in', () => {
+    const sent = change('update', 'r1', { input: { volume: 41 }, expectedVersion: 3, sent: true })
+    const list = fold(sent, change('update', 'r1', { input: { volume: 42 }, expectedVersion: 3 }))
+
+    expect(list).toHaveLength(2)
+    expect(list[0]).toEqual(sent)
+    expect(list[1]).toMatchObject({ action: 'update', input: { volume: 42 }, expectedVersion: 4 }) // from the version the first leaves
+  })
+
+  it('an add that was sent is not taken back by a trash, and what follows it does not check a version', () => {
+    const sentAdd = { ...add(), sent: true }
+    const list = fold(sentAdd, change('update', 'r1', { input: { volume: 2 }, expectedVersion: 0 }), change('trash', 'r1', { expectedVersion: 0 }))
+
+    expect(list).toEqual([sentAdd, expect.objectContaining({ action: 'trash', expectedVersion: null, input: { volume: 2 } })])
+  })
+})
+
 describe('discard and markOf', () => {
   it('takes back one change, and says how its log is marked', () => {
     const list = fold(add('r1'), change('trash', 'r2'))

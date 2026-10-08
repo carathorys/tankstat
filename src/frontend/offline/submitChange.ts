@@ -12,16 +12,17 @@ export type Submitted<T> = { queued: true } | { queued: false; result: T }
  * the server gave is the caller's to show. A kept change makes the screen ask again, so the device's own answers show it (`offlineLink.ts`).
  */
 export async function submitChange<T>(client: ApolloClient, change: ChangeDraft, send: () => Promise<T>): Promise<Submitted<T>> {
-  const keep = async (): Promise<Submitted<T>> => {
-    await outbox.enqueue(change)
+  const keep = async (kept: ChangeDraft = change): Promise<Submitted<T>> => {
+    await outbox.enqueue(kept)
     void client.refetchQueries({ include: 'active' }).catch(() => undefined)
     return { queued: true }
   }
-  if (!connectivity.reachable || outbox.vehicleIds().has(change.vehicleId)) return keep()
+  if (!connectivity.reachable || outbox.vehicleIds().has(change.vehicleId)) return keep(change)
   try {
     return { queued: false, result: await send() }
   } catch (error) {
-    if (isConnectionFailure(error)) return keep()
+    // The request may have reached the server (only the answer was lost): kept as sent, so nothing later folds into it.
+    if (isConnectionFailure(error)) return keep({ ...change, sent: true })
     throw error
   }
 }
