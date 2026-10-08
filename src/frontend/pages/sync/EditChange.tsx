@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import type { ChangeEdit } from '../../dialogs/changeEdit.ts'
 import { ExpenseFormDialog, type ExpenseValues } from '../../ExpenseFormDialog.tsx'
 import { ResolveSyncChangeDocument, type DistanceUnit, type ParkedChangeFieldsFragment, type VolumeUnit } from '../../gql/generated.ts'
-import type { Change } from '../../offline/changes.ts'
+import { keptPhotosOf, type Change } from '../../offline/changes.ts'
 import { outbox } from '../../offline/outbox.ts'
 import { toChangeInput } from '../../offline/push.ts'
 import { uuidV4 } from '../../offline/uuid.ts'
@@ -25,9 +25,11 @@ export function EditChange({
   units,
   label,
   parked,
+  disabled,
   onDone,
 }: {
   change: Change
+  disabled?: boolean
   units: { distance: DistanceUnit; volume: VolumeUnit }
   /** What the change does and carries, for the button's name. */
   label: string
@@ -65,9 +67,10 @@ export function EditChange({
     initial: change.input as never,
     title: parked ? t('sync.editApplyTitle') : t('sync.editTitle'),
     submitLabel: parked ? t('sync.applyEdited') : t('sync.saveChange'),
+    mayWait: !parked && change.action === 'add' && keptPhotosOf(change).length > 0,
   }
   const trigger = (
-    <Button variant="soft" size="large" aria-label={parked ? t('sync.editApplyAria', { change: label }) : t('sync.editAria', { change: label })}>
+    <Button variant="soft" size="large" disabled={disabled} aria-label={parked ? t('sync.editApplyAria', { change: label }) : t('sync.editAria', { change: label })}>
       {parked ? t('sync.editApply') : t('sync.edit')}
     </Button>
   )

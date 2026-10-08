@@ -36,6 +36,48 @@ deviceData.onStoreChange(() => {
 })
 loading = load()
 
+/** What changed the outbox in one tab tells the others, so what they show (and would send) follows. */
+const tabs = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('tankstat-outbox')
+if (tabs) tabs.onmessage = () => void exclusive(async () => notify())
+
+/** Reads the changes as stored now: another tab of the same account may have changed them since this one last looked. */
+async function fresh() {
+  if (!rows) return
+  try {
+    changes = await rows.changes()
+    nextSeq = changes.reduce((max, c) => Math.max(max, c.seq), nextSeq - 1) + 1
+  } catch {
+    // What this tab holds stays the best it knows.
+  }
+}
+
+let tail: Promise<unknown> = Promise.resolve()
+
+/**
+ * One change of the outbox at a time, in this tab and (Web Locks) across the tabs of this site, each starting from what is stored: a
+ * change kept in one tab while another sends never folds into a copy that tab has already sent, and nothing is written over a newer one.
+ */
+function exclusive<T>(work: () => Promise<T>): Promise<T> {
+  const run = async () => {
+    await loading
+    const locks = globalThis.navigator?.locks
+    const step = async () => {
+      await fresh()
+      return work()
+    }
+    return locks ? (locks.request('tankstat-outbox', step) as Promise<T>) : step()
+  }
+  const result = tail.then(run, run)
+  tail = result.catch(() => undefined)
+  return result
+}
+
+/** After a change of the outbox: this tab's screens, and the other tabs. */
+function changed() {
+  notify()
+  tabs?.postMessage('changed')
+}
+
 /**
  * Writes what differs between two lists of changes, and removes the kept photos no change carries any more (a change folded away, taken
  * back or answered by the server; `incoming` is a new change that may have folded into nothing).
@@ -62,42 +104,50 @@ export const outbox = {
   },
 
   /** Keeps a change on the device; it folds into the ones waiting for the same log. */
-  async enqueue(draft: ChangeDraft): Promise<void> {
-    await loading
-    if (!rows) throw new Error('No user data is open on this device.')
-    const incoming = { ...draft, seq: nextSeq++, createdAt: Date.now() }
-    const next = collapse(changes, incoming)
-    await persist(changes, next, incoming)
-    changes = next
-    notify()
+  enqueue(draft: ChangeDraft): Promise<void> {
+    return exclusive(async () => {
+      if (!rows) throw new Error('No user data is open on this device.')
+      const incoming = { ...draft, seq: nextSeq++, createdAt: Date.now() }
+      const next = collapse(changes, incoming)
+      await persist(changes, next, incoming)
+      changes = next
+      changed()
+    })
   },
 
   /** Takes back one waiting change. */
-  async discard(id: string): Promise<void> {
-    await loading
-    const next = discard(changes, id)
-    await persist(changes, next)
-    changes = next
-    notify()
+  discard(id: string): Promise<void> {
+    return exclusive(async () => {
+      const next = discard(changes, id)
+      await persist(changes, next)
+      changes = next
+      changed()
+    })
   },
 
   /** The changes the server has answered: they leave the device as they are (what depends on them stays and goes next). */
-  async remove(ids: readonly string[]): Promise<void> {
-    await loading
-    const gone = new Set(ids)
-    const next = changes.filter((c) => !gone.has(c.id))
-    await persist(changes, next)
-    changes = next
-    notify()
+  remove(ids: readonly string[]): Promise<void> {
+    return exclusive(async () => {
+      const gone = new Set(ids)
+      const next = changes.filter((c) => !gone.has(c.id))
+      await persist(changes, next)
+      changes = next
+      changed()
+    })
   },
 
-  /** About to be sent: from now on the server may have them, so nothing folds into them (`collapse`). */
-  async markSent(ids: readonly string[]): Promise<void> {
-    await loading
-    const sending = new Set(ids)
-    const next = changes.map((c) => (sending.has(c.id) && !c.sent ? { ...c, sent: true } : c))
-    await persist(changes, next)
-    changes = next
+  /**
+   * About to be sent: from now on the server may have them, so nothing folds into them (`collapse`). Returns them as they are now, which
+   * is what goes (an edit may have folded into one since the sender looked; one taken back meanwhile is not among them).
+   */
+  markSent(ids: readonly string[]): Promise<Change[]> {
+    return exclusive(async () => {
+      const sending = new Set(ids)
+      const next = changes.map((c) => (sending.has(c.id) && !c.sent ? { ...c, sent: true } : c))
+      await persist(changes, next)
+      changes = next // nothing shows it, and the other tabs read it when they next change something
+      return next.filter((c) => sending.has(c.id))
+    })
   },
 
   /**

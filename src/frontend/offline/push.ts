@@ -205,11 +205,16 @@ export function createPushEngine({ client, device = deviceData, pull, chunkSize 
         answered.push(...nothing.map((c) => c.id))
         return
       }
-      await outbox.markSent(sendable.map((c) => c.id))
-      const { data } = await client.mutate({ mutation: SyncChangesDocument, variables: { input: { changes: sendable.map((c) => toChangeInput(c, drafts)) } } })
+      // What goes is the changes as kept now (another tab or this one's Sync page may have folded an edit into one since the run looked);
+      // one whose photos changed meanwhile (one added to a waiting add) goes next time, with its new photos uploaded first.
+      const looked = new Set(group.flatMap(keptPhotosOf))
+      const marked = await outbox.markSent(sendable.map((c) => c.id))
+      const sent = marked.filter((c) => keptPhotosOf(c).every((key) => looked.has(key)))
       answered.push(...nothing.map((c) => c.id))
+      if (sent.length === 0) return
+      const { data } = await client.mutate({ mutation: SyncChangesDocument, variables: { input: { changes: sent.map((c) => toChangeInput(c, drafts)) } } })
       const results = new Map<string, Result>((data?.syncChanges.results ?? []).map((r) => [r.id, r]))
-      for (const change of sendable) {
+      for (const change of sent) {
         const result = results.get(change.id)
         if (!result) continue
         answered.push(change.id)

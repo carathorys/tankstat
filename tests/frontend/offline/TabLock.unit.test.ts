@@ -33,6 +33,28 @@ describe('inOneTab', () => {
     expect(runs).toEqual(['first', 'other', 'third'])
   })
 
+  it('says whether the work ran here, so a run another tab kept from going can be tried again', async () => {
+    const locks = fakeLocks()
+    let release!: () => void
+    const first = inOneTab('sync', () => new Promise<void>((resolve) => (release = resolve)), locks)
+    expect(await inOneTab('sync', async () => undefined, locks)).toBe(false)
+    release()
+    expect(await first).toBe(true)
+  })
+
+  it('lets the other tabs go after a while, even when the work never ends', async () => {
+    vi.useFakeTimers()
+    try {
+      const locks = fakeLocks()
+      const hung = inOneTab('sync', () => new Promise<void>(() => undefined), locks, 1000) // a request that never answers
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(await hung).toBe(true)
+      expect(await inOneTab('sync', async () => undefined, locks)).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('simply runs where the browser has no Web Locks', async () => {
     const work = vi.fn(async () => undefined)
     await inOneTab('sync', work, undefined)

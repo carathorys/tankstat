@@ -7,4 +7,6 @@ export interface ChangeEdit<T> {
   initial: Partial<T>
   title: string
   submitLabel: string
+  /** A waiting add whose amounts were left for its kept photos to fill: they may stay empty in the edit too. */
+  mayWait?: boolean
 }

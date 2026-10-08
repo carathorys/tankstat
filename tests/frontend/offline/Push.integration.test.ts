@@ -227,3 +227,34 @@ it('a photo the server will not take this time keeps its change waiting with the
   expect(outbox.changes.map((c) => c.id)).toEqual(['r2'])
   expect(await keptPhotos.get(later!)).toBeDefined()
 })
+
+it('sends a change as it is stored now: another tab may have folded an edit into it since this one looked', async () => {
+  const sync = fakeSync()
+  await keep(log('r1'))
+  const rows = (await deviceData.rows())!
+  const [stored] = await rows.changes()
+  await rows.putChanges([{ ...stored, input: { ...stored.input, volume: 45 } }]) // the other tab's edit
+
+  await engine().run()
+
+  expect(sync.requests[0][0]).toMatchObject({ id: stored.id, logRefueling: { volume: 45 } })
+  expect(outbox.changes).toEqual([])
+})
+
+it('keeps an edit made while its change is on its way as a change of its own, after the one sent', async () => {
+  await keep(log('r1'))
+  let editDuring: Promise<void> | null = null
+  server.use(
+    graphql.mutation('SyncChanges', ({ variables }) => {
+      const changes = variables.input.changes as Sent[]
+      editDuring ??= keep({ id: 'e1', entity: 'refuelings', action: 'update', vehicleId: 'v1', targetId: 'r1', input: { id: 'r1', volume: 50 } })
+      const results = changes.map((c) => ({ __typename: 'SyncChangeResultInfo', id: c.id, status: 'APPLIED', entityId: null, version: 1, reason: null }))
+      return HttpResponse.json({ data: { syncChanges: { __typename: 'SyncResultInfo', applied: results.length, parked: 0, results } } })
+    }),
+  )
+
+  await engine().run()
+  await editDuring
+
+  expect(outbox.changes).toMatchObject([{ id: 'e1', action: 'update', input: { volume: 50 } }])
+})
