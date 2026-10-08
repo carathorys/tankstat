@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
 import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
 import { server } from '../support/server.ts'
-import { fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport } from '../support/mocks.tsx'
+import { fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport, user } from '../support/mocks.tsx'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => server.resetHandlers())
@@ -48,6 +48,21 @@ it('while the server is out of reach nothing is sent, and a page says so calmly 
   expect(await screen.findByText('The server cannot be reached right now. This works again once you are back online.')).toBeInTheDocument()
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   expect(sent).toBe(0)
+})
+
+it('signing out while the server is out of reach says why nothing happened', async () => {
+  stubViewport('desktop')
+  const backend = fakeVehicleBackend([fakeVehicle()])
+  server.use(sessionHandler('STANDALONE', () => user()), healthHandler, ...backend.handlers)
+  renderWithApollo(<App />, '/')
+  const ui = userEvent.setup()
+  await screen.findByText('Octavia')
+  await act(() => connectivity.failed())
+
+  await ui.click(screen.getByRole('button', { name: 'Sign out' }))
+
+  expect(await screen.findByText('The server cannot be reached right now. This works again once you are back online.')).toBeInTheDocument()
+  expect(screen.getByText('Octavia')).toBeInTheDocument() // still signed in
 })
 
 it('Try again in the footer asks the server, and when it answers the app is back online', async () => {
