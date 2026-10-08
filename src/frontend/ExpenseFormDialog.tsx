@@ -38,6 +38,7 @@ import { useReadFill } from './recognition/useReadFill.ts'
 import { Loading } from './components/Loading.tsx'
 import { useToast } from './toast/toastContext.ts'
 import { OfflineNote, ReadLaterNote } from './components/OfflineNote.tsx'
+import type { ChangeEdit } from './dialogs/changeEdit.ts'
 import { outbox } from './offline/outbox.ts'
 
 /** The amount is null only when it was left for a photo that is still being read. */
@@ -81,6 +82,7 @@ export function ExpenseFormDialog({
   trigger,
   vehicle,
   expenseId,
+  change,
   onSubmit,
   open: openProp,
   onOpenChange,
@@ -89,6 +91,8 @@ export function ExpenseFormDialog({
   trigger?: ReactNode
   vehicle: { id: string; units: { distance: DistanceUnit } }
   expenseId?: string
+  /** Edits a change instead of an expense (Waiting to sync; see `ChangeEdit`). */
+  change?: ChangeEdit<ExpenseValues>
   open?: boolean
   onOpenChange?: (open: boolean) => void
   /** `photoIds`: the drafts uploaded for a new expense (always empty when editing: a saved expense takes its photos right away). */
@@ -98,22 +102,23 @@ export function ExpenseFormDialog({
   const { toast } = useToast()
   const [open, setOpen] = useDialogState({ open: openProp, onOpenChange })
   const clientId = useClientId(open)
-  const editing = expenseId !== undefined
-  const { queue, leftOut, saving, submit, reset } = usePhotoSession(vehicle.id, editing ? undefined : 'expense', open)
+  const editing = expenseId !== undefined || change !== undefined
+  const { queue, leftOut, saving, submit, reset } = usePhotoSession(vehicle.id, editing ? undefined : 'expense', open && !change)
   // Photos added to a saved log in this dialog (read like drafts), and whether they are still going up.
   const [added, setAdded] = useState<{ id: string; at: number }[]>([])
   const [adding, setAdding] = useState(false)
-  const drafts = useDraftReadings(editing ? added : queue.uploaded, open, editing ? { kind: 'expenses', id: expenseId } : undefined)
-  const details = useQuery(ExpenseDetailsDocument, { variables: { id: expenseId ?? '' }, skip: !editing || !open, fetchPolicy: 'network-only' })
+  const drafts = useDraftReadings(editing ? added : queue.uploaded, open && !change, expenseId ? { kind: 'expenses', id: expenseId } : undefined)
+  const details = useQuery(ExpenseDetailsDocument, { variables: { id: expenseId ?? '' }, skip: !expenseId || !!change || !open, fetchPolicy: 'network-only' })
   const defaults = useQuery(LogDefaultsDocument, { variables: { vehicleId: vehicle.id }, skip: !open, fetchPolicy: 'network-only' })
   const categories = useQuery(ExpenseCategoriesDocument, { variables: { vehicleId: vehicle.id }, skip: !open, fetchPolicy: 'network-only' })
   const error = details.error ?? defaults.error
   const existing = details.data?.expense
   // Photos kept on this device are read once the expense is synced (photo reading on, as last heard): its amount may be left empty.
   const readLater = !editing && queue.kept > 0 && drafts.available
-  const ready = defaults.data && (!editing || existing)
+  const ready = defaults.data && (!expenseId || change || existing)
   const currency = defaults.data?.logDefaults?.currency ?? ''
-  const initial: Initial = existing ? { ...existing, currency: existing.currency ?? currency } : { date: todayIso(), title: '', category: null, currency, note: null }
+  const fresh: Initial = { date: todayIso(), title: '', category: null, currency, note: null }
+  const initial: Initial = change ? { ...fresh, ...change.initial } : existing ? { ...existing, currency: existing.currency ?? currency } : fresh
   const close = () => {
     setOpen(false)
     reset()
@@ -128,16 +133,16 @@ export function ExpenseFormDialog({
         open={open}
         onClose={close}
         busy={saving}
-        title={editing ? t('expenses.dialogEdit') : t('expenses.dialogAdd')}
+        title={change?.title ?? (editing ? t('expenses.dialogEdit') : t('expenses.dialogAdd'))}
         description={editing ? t('expenses.dialogEditDescription') : t('expenses.dialogAddDescription')}
       >
         {error && <ErrorMessage error={error} />}
-        <OfflineNote />
+        {!change && <OfflineNote />}
         {readLater && <ReadLaterNote />}
         {!error && !ready && (
           <Loading />
         )}
-        {editing && details.data && !existing && <ErrorMessage>{t('errors.expense.notFound')}</ErrorMessage>}
+        {expenseId && details.data && !existing && <ErrorMessage>{t('errors.expense.notFound')}</ErrorMessage>}
         {leftOut > 0 && <PhotosLeftOut count={leftOut} />}
         {ready && leftOut === 0 && (
           <ExpenseForm
@@ -153,8 +158,9 @@ export function ExpenseFormDialog({
             mayWait={drafts.pending.length > 0 || readLater || (editing && existing?.reviewState === 'AWAITING_PHOTOS')}
             readingNow={drafts.pending.length > 0}
             wait={{ since: drafts.waitingSince, until: drafts.waitingUntil }}
+            submitLabel={change?.submitLabel}
             gallery={
-              <PhotoGallery
+              !change && <PhotoGallery
                 kind="expenses"
                 logId={expenseId}
                 vehicleId={vehicle.id}
@@ -169,6 +175,11 @@ export function ExpenseFormDialog({
               />
             }
             onSubmit={async (values) => {
+              if (change) {
+                await onSubmit(values, []) // the caller tells what came of it
+                close()
+                return
+              }
               if (await submit((photoIds) => onSubmit(editing ? values : { ...values, id: clientId }, photoIds), editing)) {
                 close()
                 // Kept on the device for the server (the server was out of reach): the toast says so.
@@ -195,8 +206,11 @@ function ExpenseForm({
   mayWait,
   readingNow,
   wait,
+  submitLabel,
   onSubmit,
 }: {
+  /** The Save button's text, when it is not the add or edit one. */
+  submitLabel?: string
   initial: Initial
   unit: DistanceUnit
   editing: boolean
@@ -329,7 +343,7 @@ function ExpenseForm({
           <SaveWait waiting={photosBusy && !busy} />
           <DialogCancel disabled={busy} />
           <Button type="submit" loading={busy} disabled={photosBusy}>
-            {editing ? t('expenses.save') : t('expenses.saveAdd')}
+            {submitLabel ?? (editing ? t('expenses.save') : t('expenses.saveAdd'))}
           </Button>
         </DialogButtons>
       </Stack>

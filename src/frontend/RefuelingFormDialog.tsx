@@ -39,6 +39,7 @@ import { keepAmountsInStep, type AmountField } from './refuelingAmounts.ts'
 import { Loading } from './components/Loading.tsx'
 import { useToast } from './toast/toastContext.ts'
 import { OfflineNote, ReadLaterNote } from './components/OfflineNote.tsx'
+import type { ChangeEdit } from './dialogs/changeEdit.ts'
 import { outbox } from './offline/outbox.ts'
 
 /** Volume, total cost and odometer are null only when they were left for a photo that is still being read. */
@@ -93,6 +94,7 @@ export function RefuelingFormDialog({
   trigger,
   vehicle,
   refuelingId,
+  change,
   onSubmit,
   open: openProp,
   onOpenChange,
@@ -101,6 +103,11 @@ export function RefuelingFormDialog({
   trigger?: ReactNode
   vehicle: { id: string; units: { distance: DistanceUnit; volume: VolumeUnit } }
   refuelingId?: string
+  /**
+   * Edits a change instead of a log (Waiting to sync): the values it carries, its own title and Save label. Nothing is loaded and no
+   * photos are offered; an error `onSubmit` throws stays in the dialog.
+   */
+  change?: ChangeEdit<RefuelingValues>
   open?: boolean
   onOpenChange?: (open: boolean) => void
   /** `photoIds`: the drafts uploaded for a new log (always empty when editing: a saved log takes its photos right away). */
@@ -109,26 +116,29 @@ export function RefuelingFormDialog({
   const { t, i18n } = useTranslation()
   const { toast } = useToast()
   const [open, setOpen] = useDialogState({ open: openProp, onOpenChange })
-  const editing = refuelingId !== undefined
+  const editing = refuelingId !== undefined || change !== undefined
   const clientId = useClientId(open)
-  const { queue, leftOut, saving, submit, reset } = usePhotoSession(vehicle.id, editing ? undefined : 'refueling', open)
+  const { queue, leftOut, saving, submit, reset } = usePhotoSession(vehicle.id, editing ? undefined : 'refueling', open && !change)
   // Photos added to a saved log in this dialog (read like drafts), and whether they are still going up.
   const [added, setAdded] = useState<{ id: string; at: number }[]>([])
   const [adding, setAdding] = useState(false)
-  const drafts = useDraftReadings(editing ? added : queue.uploaded, open, editing ? { kind: 'refuelings', id: refuelingId } : undefined)
-  const details = useQuery(RefuelingDetailsDocument, { variables: { id: refuelingId ?? '' }, skip: !editing || !open, fetchPolicy: 'network-only' })
+  const drafts = useDraftReadings(editing ? added : queue.uploaded, open && !change, refuelingId ? { kind: 'refuelings', id: refuelingId } : undefined)
+  const details = useQuery(RefuelingDetailsDocument, { variables: { id: refuelingId ?? '' }, skip: !refuelingId || !!change || !open, fetchPolicy: 'network-only' })
   const defaults = useQuery(LogDefaultsDocument, { variables: { vehicleId: vehicle.id }, skip: !open, fetchPolicy: 'network-only' })
   const error = details.error ?? defaults.error
-  const ready = defaults.data && (!editing || details.data?.refueling)
+  const ready = defaults.data && (!refuelingId || change || details.data?.refueling)
 
   const existing = details.data?.refueling
   // Photos kept on this device are read once the log is synced (photo reading on, as last heard): what they show may be left empty.
   const readLater = !editing && queue.kept > 0 && drafts.available
   const logDefaults = defaults.data?.logDefaults
   const lastReading = logDefaults?.lastOdometer != null && logDefaults.lastDate ? { value: logDefaults.lastOdometer, date: logDefaults.lastDate } : null
-  const initial: Initial = existing
-    ? { ...existing, currency: existing.currency ?? defaults.data?.logDefaults?.currency ?? '', note: existing.note ?? null }
-    : { date: todayIso(), currency: defaults.data?.logDefaults?.currency ?? '', isFullTank: true, missedPreviousFillUp: false, note: null }
+  const fresh: Initial = { date: todayIso(), currency: defaults.data?.logDefaults?.currency ?? '', isFullTank: true, missedPreviousFillUp: false, note: null }
+  const initial: Initial = change
+    ? { ...fresh, ...change.initial }
+    : existing
+      ? { ...existing, currency: existing.currency ?? defaults.data?.logDefaults?.currency ?? '', note: existing.note ?? null }
+      : fresh
   const close = () => {
     setOpen(false)
     reset()
@@ -143,14 +153,14 @@ export function RefuelingFormDialog({
         open={open}
         onClose={close}
         busy={saving}
-        title={editing ? t('refuelings.dialogEdit') : t('refuelings.dialogAdd')}
+        title={change?.title ?? (editing ? t('refuelings.dialogEdit') : t('refuelings.dialogAdd'))}
         description={editing ? t('refuelings.dialogEditDescription') : t('refuelings.dialogAddDescription')}
       >
         {error && <ErrorMessage error={error} />}
-        <OfflineNote />
+        {!change && <OfflineNote />}
         {readLater && <ReadLaterNote />}
         {!error && !ready && <Loading />}
-        {editing && details.data && !existing && <ErrorMessage>{t('errors.refueling.notFound')}</ErrorMessage>}
+        {refuelingId && details.data && !existing && <ErrorMessage>{t('errors.refueling.notFound')}</ErrorMessage>}
         {leftOut > 0 && <PhotosLeftOut count={leftOut} />}
         {ready && leftOut === 0 && (
           <RefuelingForm
@@ -166,8 +176,9 @@ export function RefuelingFormDialog({
             mayWait={drafts.pending.length > 0 || readLater || (editing && existing?.reviewState === 'AWAITING_PHOTOS')}
             readingNow={drafts.pending.length > 0}
             wait={{ since: drafts.waitingSince, until: drafts.waitingUntil }}
+            submitLabel={change?.submitLabel}
             gallery={
-              <PhotoGallery
+              !change && <PhotoGallery
                 kind="refuelings"
                 logId={refuelingId}
                 vehicleId={vehicle.id}
@@ -182,6 +193,11 @@ export function RefuelingFormDialog({
               />
             }
             onSubmit={async (values) => {
+              if (change) {
+                await onSubmit(values, []) // the caller tells what came of it
+                close()
+                return
+              }
               if (await submit((photoIds) => onSubmit(editing ? values : { ...values, id: clientId }, photoIds), editing)) {
                 close()
                 // Kept on the device for the server (the server was out of reach): the toast says so.
@@ -208,11 +224,14 @@ function RefuelingForm({
   mayWait,
   readingNow,
   wait,
+  submitLabel,
   onSubmit,
 }: {
   initial: Initial
   units: { distance: DistanceUnit; volume: VolumeUnit }
   editing: boolean
+  /** The Save button's text, when it is not the add or edit one. */
+  submitLabel?: string
   last: { value: number; date: string } | null
   gallery: ReactNode
   /** Chosen photos are still being prepared: saving now would leave them out. */
@@ -367,7 +386,7 @@ function RefuelingForm({
           <SaveWait waiting={photosBusy && !busy} />
           <DialogCancel disabled={busy} />
           <Button type="submit" loading={busy} disabled={photosBusy}>
-            {editing ? t('refuelings.save') : t('refuelings.saveAdd')}
+            {submitLabel ?? (editing ? t('refuelings.save') : t('refuelings.saveAdd'))}
           </Button>
         </DialogButtons>
       </Stack>

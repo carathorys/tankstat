@@ -84,7 +84,7 @@ it('a photo picked for a new refuelling offline is kept on this device and saved
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 
   const [add] = outbox.changes
-  const [key] = add.input?.photoIds as string[]
+  const [key] = (add.input?.photoIds ?? []) as string[]
   expect(isKept(key)).toBe(true)
   expect(await keptPhotos.get(key)).toMatchObject({ vehicleId: 'v1', type: 'image/png', reading: { purpose: 'refueling' } })
   expect(uploads).toEqual([])
