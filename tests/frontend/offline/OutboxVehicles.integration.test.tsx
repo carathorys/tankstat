@@ -161,7 +161,9 @@ it('a vehicle of the server moved to the trash offline stays on the home page, m
   await ui.click(await screen.findByRole('button', { name: /^Move to trash/ }))
   await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: /^Move to trash/ }))
 
-  expect(await screen.findByText('To be removed · not synced')).toBeInTheDocument() // back on the home page, the card marked
+  // Back on the home page (the vehicle page, marked too, leaves first): the card is marked.
+  const card = (await screen.findByRole('link', { name: 'Open Octavia' })).closest('li')!
+  expect(await within(card).findByText('To be removed · not synced')).toBeInTheDocument()
   expect(outbox.changes).toMatchObject([{ entity: 'vehicles', action: 'trash', targetId: 'v1', expectedVersion: 3 }])
   await ui.click(await screen.findByRole('button', { name: 'Undo' }))
   await waitFor(() => expect(outbox.changes).toEqual([]))
