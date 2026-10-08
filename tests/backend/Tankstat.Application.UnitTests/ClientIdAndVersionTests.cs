@@ -249,6 +249,23 @@ public class ClientIdAndVersionTests
     }
 
     [Fact]
+    public async Task AVisitWhoseTwinRecordedItFirst_KeepsTheExpense_AndIsAnsweredLikeAVisitSentAgain()
+    {
+        var s = await Setup();
+        var oil = (await s.W.RecurringService.AddAsync(s.Car.Id, Oil(), default)).Item;
+        var visit = new MarkDoneInput(new DateOnly(2026, 9, 20), 62000, 35000, "HUF", ExpenseId: Guid.NewGuid());
+        s.W.Recurring.TwinCompletesNext = true; // both tries logged the expense; the twin saved the links first
+
+        var done = await s.W.RecurringService.MarkDoneAsync([oil.Id], visit, default);
+
+        var expense = Assert.Single(s.W.Expenses.Items);
+        Assert.False(expense.IsDeleted);
+        Assert.Equal(expense.Id, done.Expense!.Id);
+        Assert.Equal(oil.Id, Assert.Single(done.Schedules).Item.Id);
+        Assert.Equal([(expense.Id, oil.Id)], s.W.Recurring.Completions.Select(c => (c.ExpenseId, c.RecurringExpenseId)));
+    }
+
+    [Fact]
     public async Task AVisitTriedAgainAfterItFailed_TakesItsExpenseBackFromTheTrash()
     {
         var s = await Setup();

@@ -182,6 +182,14 @@ public sealed class RecurringExpenseService(
         }
         catch
         {
+            // A twin of this request (the same visit sent again while the first was still on its way) recorded it meanwhile: this save only
+            // failed on what the twin saved, so the visit is done and its expense stays. Answered like any visit sent again.
+            if (logged is not null && await RecordedMeanwhileAsync(logged.Id, wanted, ct))
+            {
+                logger.LogDebug("Recurring expenses {RecurringIds} of vehicle {VehicleId} were marked done with expense {ExpenseId} by a twin of this request", wanted, vehicleId, logged.Id);
+                var current = (await items.FindManyAsync(wanted, ct)).ToDictionary(i => i.Id);
+                return await CurrentAsync([.. wanted.Select(id => current[id])], vehicleId, await expenses.FindAsync(logged.Id, ct), ct);
+            }
             // The expense and the schedules are saved separately, so undo the expense (to the trash) when the schedules could not move on:
             // they are then still due, and a second try does not log the cost twice.
             if (logged is not null) await TryTrashAsync(logged.Id, wanted);
@@ -208,6 +216,21 @@ public sealed class RecurringExpenseService(
     /// <summary>The schedules the given (already authorised) expenses covered, for the expense's <c>schedules</c> field.</summary>
     public async Task<ILookup<Guid, CompletedSchedule>> ListCompletionsForExpensesAsync(IReadOnlyCollection<Guid> expenseIds, CancellationToken ct) =>
         (await items.ListCompletionsForExpensesAsync(expenseIds, ct)).ToLookup(c => c.ExpenseId);
+
+    /// <summary>Whether the expense is linked to every one of the schedules by now; false when that cannot be told (the original failure stands).</summary>
+    private async Task<bool> RecordedMeanwhileAsync(Guid expenseId, IReadOnlyCollection<Guid> recurringIds, CancellationToken ct)
+    {
+        try
+        {
+            var recorded = await items.ListCompletionsForExpensesAsync([expenseId], ct);
+            return recurringIds.All(id => recorded.Any(l => l.RecurringExpenseId == id));
+        }
+        catch (Exception e)
+        {
+            logger.LogWarning(e, "Could not tell whether the expense {ExpenseId} was recorded for recurring expenses {RecurringIds} meanwhile", expenseId, recurringIds);
+            return false;
+        }
+    }
 
     private async Task TryTrashAsync(Guid expenseId, IReadOnlyCollection<Guid> recurringIds)
     {

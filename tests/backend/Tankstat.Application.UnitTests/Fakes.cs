@@ -198,8 +198,15 @@ internal sealed class InMemoryRecurring(InMemoryVehicles vehicles) : IRecurringE
 
     /// <summary>The links between expenses and the schedules they covered.</summary>
     public List<RecurringCompletion> Completions { get; } = [];
+    /// <summary>When set, a twin of the next visit saves it first: its links are in, and this save then fails on them (a duplicate key).</summary>
+    public bool TwinCompletesNext { get; set; }
     public Task CompleteAsync(IReadOnlyCollection<RecurringExpense> items, IReadOnlyCollection<RecurringCompletion> links, CancellationToken ct)
     {
+        if (TwinCompletesNext && !(TwinCompletesNext = false))
+        {
+            Completions.AddRange(links);
+            return Task.FromException(new InvalidOperationException("duplicate key"));
+        }
         if (FailUpdateWith is { } e) return Task.FromException(e); // the schedules share references: their baselines moved anyway, the links did not
         Completions.AddRange(links);
         return Task.CompletedTask;
