@@ -1,4 +1,4 @@
-import { useMutation } from '@apollo/client/react'
+import { useApolloClient, useMutation } from '@apollo/client/react'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Stack from '@mui/material/Stack'
@@ -15,6 +15,7 @@ import { DeleteVehicleDocument, RestoreVehicleDocument, UpdateVehicleDocument, t
 import { ErrorMessage } from '../../messages.tsx'
 import { vehiclePicturePath } from '../../pictures/upload.ts'
 import { outbox } from '../../offline/outbox.ts'
+import { undoTrash } from '../../offline/submitChange.ts'
 import { useLogChange } from '../../offline/useLogChange.ts'
 import { useToast } from '../../toast/toastContext.ts'
 import { VehicleFormDialog } from '../../VehicleFormDialog.tsx'
@@ -28,6 +29,7 @@ export function DetailsPanel({ vehicle, onChanged }: { vehicle: Vehicle; onChang
   const { t } = useTranslation()
   const { toast, undoable } = useToast()
   const changes = useLogChange('vehicles', vehicle.id)
+  const client = useApolloClient()
   const none = t('common.none')
   const [updateVehicle] = useMutation(UpdateVehicleDocument, { refetchQueries: ['VehicleDetails', 'Vehicles'], awaitRefetchQueries: true })
   const [deleteVehicle] = useMutation(DeleteVehicleDocument, { refetchQueries: LISTS })
@@ -43,7 +45,10 @@ export function DetailsPanel({ vehicle, onChanged }: { vehicle: Vehicle; onChang
       const done = await changes.trash(vehicle.id, vehicle.version, () => deleteVehicle({ variables: { id: vehicle.id } }))
       void navigate('/') // the vehicle is in the trash now; its page would only say it does not exist
       if (neverSent) toast(t('offline.discarded'))
-      else undoable(t('toast.vehicleTrashed', { name: vehicle.name }), () => changes.restore(vehicle.id, done.queued ? vehicle.version : vehicle.version + 1, () => restoreVehicle({ variables: { id: vehicle.id } })))
+      else
+        undoable(t('toast.vehicleTrashed', { name: vehicle.name }), () =>
+          undoTrash(client, 'vehicles', vehicle.id, done.queued, () => changes.restore(vehicle.id, vehicle.version + 1, () => restoreVehicle({ variables: { id: vehicle.id } }))),
+        )
     } catch (e) {
       setDeleteError(e)
     }

@@ -26,9 +26,9 @@ import { useFormat } from '../../i18n/format.ts'
 import { ErrorMessage } from '../../messages.tsx'
 import { RefuelingFormDialog } from '../../RefuelingFormDialog.tsx'
 import { anyAwaiting } from '../../recognition/review.ts'
-import { PendingBadge } from '../../components/PendingBadge.tsx'
 import { outbox, usePendingCount } from '../../offline/outbox.ts'
-import { keepEntry } from '../../offline/submitChange.ts'
+import { undoTrash } from '../../offline/submitChange.ts'
+import { KeepButton } from '../../components/KeepButton.tsx'
 import { useLogChange } from '../../offline/useLogChange.ts'
 import { ReviewBadge } from '../../recognition/ReviewState.tsx'
 import { useToast } from '../../toast/toastContext.ts'
@@ -73,7 +73,6 @@ export function RefuelingsPanel({
           <Stack sx={{ alignItems: 'flex-start', gap: 0.5 }}>
             {format.date(r.date)}
             <ReviewBadge state={r.reviewState} />
-            <PendingBadge entity="refuelings" id={r.id} />
           </Stack>
         ),
       },
@@ -121,7 +120,10 @@ export function RefuelingsPanel({
       const neverSent = outbox.markOf('refuelings', row.id) === 'new'
       const done = await changes.trash(row.id, row.version, () => leave(row.id, () => deleteRefueling({ variables: { id: row.id } })))
       if (neverSent) toast(t('offline.discarded'))
-      else undoable(t('toast.refuelingTrashed', { date: format.date(row.date) }), () => changes.restore(row.id, done.queued ? row.version : row.version + 1, () => restoreRefueling({ variables: { id: row.id } })))
+      else
+        undoable(t('toast.refuelingTrashed', { date: format.date(row.date) }), () =>
+          undoTrash(client, 'refuelings', row.id, done.queued, () => changes.restore(row.id, row.version + 1, () => restoreRefueling({ variables: { id: row.id } }))),
+        )
     } catch (e) {
       setActionError(e)
     }
@@ -142,6 +144,7 @@ export function RefuelingsPanel({
         emptyText={t('refuelings.empty')}
         pollWhile={anyAwaiting}
         leaving={leaving}
+        syncState={{ entity: 'refuelings', name: (r) => format.date(r.date) }}
         toolbar={({ total }) => (
           <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
             {canLog && <RefuelingFormDialog vehicle={vehicle} trigger={<Button size="large">{t('refuelings.add')}</Button>} onSubmit={add.refuel} />}
@@ -153,11 +156,7 @@ export function RefuelingsPanel({
         actions={(r) =>
           // Waiting on this device to be trashed: Keep takes that back; editing it meanwhile would change nothing.
           outbox.markOf('refuelings', r.id) === 'deleted' ? (
-            <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
-              <Button variant="soft" size="large" aria-label={t('sync.keepAria', { name: format.date(r.date) })} onClick={() => void keepEntry(client, 'refuelings', r.id).then(() => toast(t('sync.kept')))}>
-                {t('sync.keep')}
-              </Button>
-            </Stack>
+            <KeepButton entity="refuelings" id={r.id} name={format.date(r.date)} />
           ) : r.canEdit ? (
             <Stack direction="row" sx={{ gap: 1, justifyContent: 'flex-end' }}>
               <RefuelingFormDialog

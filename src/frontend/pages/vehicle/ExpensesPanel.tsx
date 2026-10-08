@@ -10,9 +10,9 @@ import { IconAction } from '../../components/IconAction.tsx'
 import { UserChip } from '../../components/UserAvatar.tsx'
 import { ExpenseFormDialog } from '../../ExpenseFormDialog.tsx'
 import { anyAwaiting } from '../../recognition/review.ts'
-import { PendingBadge } from '../../components/PendingBadge.tsx'
 import { outbox, usePendingCount } from '../../offline/outbox.ts'
-import { keepEntry } from '../../offline/submitChange.ts'
+import { undoTrash } from '../../offline/submitChange.ts'
+import { KeepButton } from '../../components/KeepButton.tsx'
 import { useLogChange } from '../../offline/useLogChange.ts'
 import { ReviewBadge } from '../../recognition/ReviewState.tsx'
 import {
@@ -65,7 +65,6 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
           <Stack sx={{ alignItems: 'flex-start', gap: 0.5 }}>
             {format.date(r.date)}
             <ReviewBadge state={r.reviewState} />
-            <PendingBadge entity="expenses" id={r.id} />
           </Stack>
         ),
       },
@@ -88,7 +87,10 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
       const neverSent = outbox.markOf('expenses', row.id) === 'new'
       const done = await changes.trash(row.id, row.version, () => leave(row.id, () => deleteExpense({ variables: { id: row.id } })))
       if (neverSent) toast(t('offline.discarded'))
-      else undoable(t('toast.expenseTrashed', { title: row.title }), () => changes.restore(row.id, done.queued ? row.version : row.version + 1, () => restoreExpense({ variables: { id: row.id } })))
+      else
+        undoable(t('toast.expenseTrashed', { title: row.title }), () =>
+          undoTrash(client, 'expenses', row.id, done.queued, () => changes.restore(row.id, row.version + 1, () => restoreExpense({ variables: { id: row.id } }))),
+        )
     } catch (e) {
       setActionError(e)
     }
@@ -109,6 +111,7 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
         emptyText={t('expenses.empty')}
         pollWhile={anyAwaiting}
         leaving={leaving}
+        syncState={{ entity: 'expenses', name: (r) => r.title }}
         toolbar={({ total }) => (
           <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
             {canLog && <ExpenseFormDialog vehicle={vehicle} trigger={<Button size="large">{t('expenses.add')}</Button>} onSubmit={add.expense} />}
@@ -120,11 +123,7 @@ export function ExpensesPanel({ vehicle, canLog }: { vehicle: { id: string; unit
         actions={(r) =>
           // Waiting on this device to be trashed: Keep takes that back; editing it meanwhile would change nothing.
           outbox.markOf('expenses', r.id) === 'deleted' ? (
-            <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
-              <Button variant="soft" size="large" aria-label={t('sync.keepAria', { name: r.title })} onClick={() => void keepEntry(client, 'expenses', r.id).then(() => toast(t('sync.kept')))}>
-                {t('sync.keep')}
-              </Button>
-            </Stack>
+            <KeepButton entity="expenses" id={r.id} name={r.title} />
           ) : r.canEdit ? (
             <Stack direction="row" sx={{ gap: 1, justifyContent: 'flex-end' }}>
               <ExpenseFormDialog

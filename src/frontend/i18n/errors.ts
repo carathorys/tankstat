@@ -17,6 +17,16 @@ export function useKeyText() {
   }
 }
 
+/**
+ * How the reason the server gave for a change it could not apply reads: the text of its error key with its arguments, else the key
+ * itself. One rule for Waiting to sync and the lists' sync column, so both say the same.
+ */
+export function useReasonText() {
+  const keyText = useKeyText()
+  return (reason: { key: string; args: readonly { name: string; value: string }[] } | null | undefined): string =>
+    reason ? (keyText(reason.key, Object.fromEntries(reason.args.map((a) => [a.name, a.value]))) ?? reason.key) : ''
+}
+
 export function useErrorText() {
   const { t } = useTranslation()
   const byKey = useKeyText()

@@ -17,7 +17,7 @@ import { useParkedChanges } from '../offline/useParkedChanges.ts'
 import { useConnectivity } from '../offline/useConnectivity.ts'
 import { usePushState } from '../offline/usePushState.ts'
 import { useDescribed, useWaitingChanges, type WaitingChange } from '../offline/waitingChanges.ts'
-import { useErrorText, useKeyText } from '../i18n/errors.ts'
+import { useErrorText, useReasonText } from '../i18n/errors.ts'
 import { canEdit } from '../offline/changes.ts'
 import { EditChange } from './sync/EditChange.tsx'
 
@@ -217,7 +217,7 @@ function Item({
             {parked?.reason && (
               // The same words as the refusal would have had online.
               <Typography variant="body2" sx={{ color: 'warning.main' }}>
-                {reasonText(parked)}
+                {reasonText(parked.reason)}
               </Typography>
             )}
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
@@ -263,12 +263,6 @@ type Parked = ParkedChangeFieldsFragment
 /** The vehicle's units, as far as the device or the server knows them. */
 type Units = { distance: DistanceUnit | null; volume: VolumeUnit | null }
 
-/** A parked change's reason in the words of the refusal online (its arguments too). */
-function useReasonText() {
-  const keyText = useKeyText()
-  return (parked: Parked) =>
-    parked.reason ? (keyText(parked.reason.key, Object.fromEntries(parked.reason.args.map((a) => [a.name, a.value]))) ?? parked.reason.key) : ''
-}
 
 /**
  * Deciding about a parked change: apply it anyway (as the person would online: every rule applies, the version it was made from does
@@ -309,7 +303,7 @@ function ParkedActions({ parked, label, onResolved }: { parked: Parked; label: s
             </Button>
           }
           title={t('sync.applyTitle')}
-          description={t('sync.applyDescription', { reason: reasonText(parked) })}
+          description={t('sync.applyDescription', { reason: reasonText(parked.reason) })}
           confirmLabel={t('sync.apply')}
           onConfirm={() => void run('APPLY')}
         />

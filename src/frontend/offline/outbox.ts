@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 import { collapse, discard, keptPhotosOf, markOf, type Change, type ChangeEntity, type PendingMark } from './changes.ts'
 import { deviceData } from './deviceData.ts'
 import type { RowStore } from './deviceStorage.ts'
@@ -155,6 +155,21 @@ export const outbox = {
    * edit and a visit, one sent already and one made after it) the one that says most wins: on its way to the trash, done, new, restored,
    * changed.
    */
+  /** `markOf` for every row of an entity that has a mark, worked out in one pass over the changes (a list asks for each of its rows). */
+  marksOf(entity: ChangeEntity): Map<string, PendingMark> {
+    const ids = new Set<string>()
+    for (const c of changes) {
+      if (c.entity === entity) for (const id of c.action === 'markDone' ? (c.targetIds ?? []) : [c.targetId]) ids.add(id)
+      if (entity === 'expenses' && c.action === 'markDone') ids.add(c.targetId)
+    }
+    const marks = new Map<string, PendingMark>()
+    for (const id of ids) {
+      const mark = this.markOf(entity, id)
+      if (mark) marks.set(id, mark)
+    }
+    return marks
+  },
+
   markOf(entity: ChangeEntity, id: string): PendingMark | null {
     const marks = changes.filter((c) => c.entity === entity && (c.action === 'markDone' ? c.targetIds?.includes(id) : c.targetId === id)).map(markOf)
     const mark = MARK_ORDER.find((m) => marks.includes(m))
@@ -192,6 +207,17 @@ const useVersion = () => useSyncExternalStore(outbox.subscribe, () => version)
 export function usePendingMark(entity: ChangeEntity, id: string): PendingMark | null {
   useVersion()
   return outbox.markOf(entity, id)
+}
+
+/**
+ * `usePendingMark` for every row of a list at once (one subscription, one table per change of the outbox): how each is marked,
+ * re-rendering when the changes do.
+ */
+export function usePendingMarks(entity: ChangeEntity): (id: string) => PendingMark | null {
+  const current = useVersion()
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `current` stands for the changes
+  const marks = useMemo(() => outbox.marksOf(entity), [entity, current])
+  return useMemo(() => (id: string) => marks.get(id) ?? null, [marks])
 }
 
 /** How many changes wait (for a vehicle, or in all). */
