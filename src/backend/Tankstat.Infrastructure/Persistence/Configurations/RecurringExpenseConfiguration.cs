@@ -12,6 +12,7 @@ internal sealed class RecurringExpenseConfiguration : IEntityTypeConfiguration<R
         b.ToTable("RecurringExpenses");
         b.HasKey(r => r.Id);
         b.Property(r => r.Id).ValueGeneratedNever();
+        b.Property(r => r.Version).HasDefaultValue(1); // rows from before versions were counted start at 1
         b.Property(r => r.Title).HasMaxLength(RecurringExpense.MaxTitleLength).IsRequired();
         b.Property(r => r.Category).HasMaxLength(RecurringExpense.MaxCategoryLength);
         b.Property(r => r.Note).HasMaxLength(RecurringExpense.MaxNoteLength);

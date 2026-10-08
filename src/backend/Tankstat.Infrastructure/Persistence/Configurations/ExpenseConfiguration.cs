@@ -11,6 +11,7 @@ internal sealed class ExpenseConfiguration : IEntityTypeConfiguration<Expense>
         b.ToTable("Expenses");
         b.HasKey(e => e.Id);
         b.Property(e => e.Id).ValueGeneratedNever();
+        b.Property(e => e.Version).HasDefaultValue(1); // rows from before versions were counted start at 1
         b.Property(e => e.Title).HasMaxLength(Expense.MaxTitleLength).IsRequired();
         b.Property(e => e.Category).HasMaxLength(Expense.MaxCategoryLength);
         b.Property(e => e.Note).HasMaxLength(Expense.MaxNoteLength);

@@ -4,6 +4,7 @@ using Tankstat.Application.Auth;
 using Tankstat.Application.Odometers;
 using Tankstat.Application.Photos;
 using Tankstat.Application.Recognition;
+using Tankstat.Application.Sync;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain;
 using Tankstat.Domain.Access;
@@ -59,11 +60,16 @@ public sealed class RefuelingService(
 
     /// <param name="recalculateConsumption">Set to false when adding many logs in a row (an import) and call <see cref="RecalculateConsumptionAsync"/> once at the end.</param>
     /// <param name="photoDraftIds">Photos the user uploaded for this log before saving it (see <see cref="PhotoDraftService"/>).</param>
+    /// <param name="id">The id the client chose; a log it already created with this id is answered as it is (see <see cref="ClientIds"/>).</param>
     public async Task<Refueling> LogAsync(
-        Guid vehicleId, RefuelingInput input, CancellationToken ct, bool recalculateConsumption = true, IReadOnlyCollection<Guid>? photoDraftIds = null)
+        Guid vehicleId, RefuelingInput input, CancellationToken ct, bool recalculateConsumption = true, IReadOnlyCollection<Guid>? photoDraftIds = null,
+        Guid? id = null)
     {
         var (vehicle, _) = await EditableVehicleAsync(vehicleId, ct);
         var creator = await access.RequirePrincipalAsync(ct);
+        // Before any rule: what the first try saved may itself be a neighbour of this log now.
+        if (id is { } given && await refuelings.FindIncludingDeletedAsync(given, ct) is { } existing)
+            return await FinishRepeatedAsync(Repeated(existing, vehicle.Id, creator.Id), photoDraftIds, recalculateConsumption, ct);
         await ValidateAsync(vehicle.Id, input, exceptReadingId: null, ct);
         var drafts = await photos.RequireDraftsAsync(vehicle.Id, photoDraftIds, ct);
         var readingPhotos = IsIncomplete(input) && await filler.MayWaitForDraftsAsync([.. drafts.Select(d => d.Id)], ct);
@@ -71,8 +77,9 @@ public sealed class RefuelingService(
         var reading = input.Odometer is { } value ? OdometerReading.Create(vehicle.OwnerId, vehicle.Id, input.Date, value) : null;
         var cost = input.TotalCost is { } amount ? Cost.Create(vehicle.OwnerId, vehicle.Id, input.Date, amount, input.Currency) : null;
         var refueling = Refueling.Create(
-            vehicle.OwnerId, creator.Id, vehicle.Id, input.Date, input.Volume, cost, reading, input.IsFullTank, input.MissedPreviousFillUp ?? false, input.Note, readingPhotos);
-        await refuelings.AddAsync(refueling, ct);
+            vehicle.OwnerId, creator.Id, vehicle.Id, input.Date, input.Volume, cost, reading, input.IsFullTank, input.MissedPreviousFillUp ?? false, input.Note, readingPhotos, id);
+        if (!await refuelings.AddAsync(refueling, ct)) // the same add, sent twice at once: the other one saved it
+            return Repeated(await refuelings.FindIncludingDeletedAsync(refueling.Id, ct) ?? refueling, vehicle.Id, creator.Id);
         await photos.AttachDraftsAsync(LogType.Refueling, refueling.Id, drafts, ct);
         // Readings that finished before the save are taken now; a draft that could not be attached leaves nothing to wait for.
         if (readingPhotos) await filler.FillAsync(LogType.Refueling, refueling.Id, ct);
@@ -81,9 +88,11 @@ public sealed class RefuelingService(
         return await refuelings.FindAsync(refueling.Id, ct) ?? refueling;
     }
 
-    public async Task<Refueling> UpdateAsync(Guid id, RefuelingInput input, CancellationToken ct)
+    /// <param name="expectedVersion">The version the change was made from; refused when the log was saved since (see <see cref="VersionCheck"/>).</param>
+    public async Task<Refueling> UpdateAsync(Guid id, RefuelingInput input, CancellationToken ct, int? expectedVersion = null)
     {
         var refueling = await EditableLogAsync(id, includeDeleted: false, ct);
+        VersionCheck.Require(expectedVersion, refueling.Version);
         await ValidateAsync(refueling.VehicleId, input, exceptReadingId: refueling.OdometerReadingId, ct);
         var readingPhotos = IsIncomplete(input) && await filler.MayWaitForLogPhotosAsync(LogType.Refueling, id, ct);
         var waited = refueling.ReviewState;
@@ -102,9 +111,10 @@ public sealed class RefuelingService(
     }
 
     /// <summary>Moves the log to the trash; it can be restored until it is deleted permanently.</summary>
-    public async Task<Refueling> DeleteAsync(Guid id, CancellationToken ct)
+    public async Task<Refueling> DeleteAsync(Guid id, CancellationToken ct, int? expectedVersion = null)
     {
         var refueling = await EditableLogAsync(id, includeDeleted: false, ct);
+        VersionCheck.Require(expectedVersion, refueling.Version);
         refueling.MarkDeleted(clock.GetUtcNow());
         await refuelings.UpdateAsync(refueling, LinkedChanges.None, ct);
         await RecalculateConsumptionAsync(refueling.VehicleId, ct); // the neighbours' fill-up intervals change
@@ -112,9 +122,10 @@ public sealed class RefuelingService(
         return refueling;
     }
 
-    public async Task<Refueling> RestoreAsync(Guid id, CancellationToken ct)
+    public async Task<Refueling> RestoreAsync(Guid id, CancellationToken ct, int? expectedVersion = null)
     {
         var refueling = await EditableLogAsync(id, includeDeleted: true, ct);
+        VersionCheck.Require(expectedVersion, refueling.Version);
         await ValidateAsync(refueling.VehicleId, new RefuelingInput(refueling.Date, refueling.Volume, refueling.TotalCost, refueling.Currency, refueling.Odometer, refueling.IsFullTank, refueling.Note), exceptReadingId: null, ct);
         refueling.Restore();
         await refuelings.UpdateAsync(refueling, LinkedChanges.None, ct);
@@ -170,6 +181,29 @@ public sealed class RefuelingService(
     {
         var found = await access.LogLevelsAsync(await vehicles.ListByIdsIncludingDeletedAsync(vehicleIds, ct), ct);
         return vehicleIds.Distinct().ToDictionary(id => id, id => found.GetValueOrDefault(id, AccessLevel.None));
+    }
+
+    /// <summary>
+    /// The add came again: the first try saved the log but may have failed after that (a lost connection to the database while attaching
+    /// the photos or recalculating), and the caller cannot tell. The steps after the save are safe to repeat, so they run again: the drafts
+    /// still waiting are attached, a reading that finished is taken, and the consumption is recalculated. A log in the trash stays as it is.
+    /// The concurrent twin (<c>AddAsync</c> lost the race) does not do this: the request that won is doing it.
+    /// </summary>
+    private async Task<Refueling> FinishRepeatedAsync(Refueling existing, IReadOnlyCollection<Guid>? photoDraftIds, bool recalculateConsumption, CancellationToken ct)
+    {
+        if (existing.IsDeleted) return existing;
+        await photos.AttachDraftsAsync(LogType.Refueling, existing.Id, await photos.DraftsStillWaitingAsync(existing.VehicleId, photoDraftIds, ct), ct);
+        if (existing.ReviewState == ReviewState.AwaitingPhotos) await filler.FillAsync(LogType.Refueling, existing.Id, ct);
+        if (recalculateConsumption) await RecalculateConsumptionAsync(existing.VehicleId, ct);
+        return await refuelings.FindAsync(existing.Id, ct) ?? existing;
+    }
+
+    /// <summary>A log this add already created (same vehicle, same creator) is the answer; another one's id is refused.</summary>
+    private Refueling Repeated(Refueling existing, Guid vehicleId, Guid creatorId)
+    {
+        var same = existing.VehicleId == vehicleId && existing.CreatedById == creatorId;
+        if (same) logger.LogDebug("Refueling {RefuelingId} of vehicle {VehicleId} was already logged; the add came again", existing.Id, vehicleId);
+        return ClientIds.Repeat(existing, same, existing.Id);
     }
 
     private async Task<Vehicle?> VisibleVehicleAsync(Guid vehicleId, CancellationToken ct) => (await guard.ForVehicleAsync(vehicleId, ct))?.Vehicle;

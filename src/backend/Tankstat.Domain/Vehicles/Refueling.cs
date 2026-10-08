@@ -87,18 +87,26 @@ public sealed class Refueling : IOwned, ISoftDeletable
     /// <summary>Total cost divided by volume (derived, not stored); null while either is unknown.</summary>
     public decimal? PricePerUnit => Volume is { } volume && Cost is { } cost ? (volume == 0 ? 0 : Math.Round(cost.Amount / volume, 3)) : null;
 
+    /// <summary>
+    /// Counts the saves of what a client can edit (the values, the trash, what a photo filled in), from 1: a client that edits an old copy
+    /// says which version it started from, so a change made meanwhile is noticed.
+    /// The consumption (derived from the neighbours) and the photos do not count.
+    /// </summary>
+    public int Version { get; private set; }
+
     /// <param name="reading">The reading of the odometer at this fill-up; created for this log, belonging to the same vehicle.</param>
     /// <param name="readingPhotos">A photo of the log is still being read: only then may values be left empty.</param>
+    /// <param name="id">The id the client chose beforehand, if any (see <see cref="EntityId"/>).</param>
     public static Refueling Create(
         Guid ownerId, Guid createdById, Guid vehicleId, DateOnly date, decimal? volume, Cost? cost, OdometerReading? reading, bool isFullTank,
-        bool missedPreviousFillUp, string? note = null, bool readingPhotos = false)
+        bool missedPreviousFillUp, string? note = null, bool readingPhotos = false, Guid? id = null)
     {
         if ((reading is not null && reading.VehicleId != vehicleId) || (cost is not null && cost.VehicleId != vehicleId))
             throw new DomainException("refueling.wrongVehicle", "The odometer reading and the cost must belong to the same vehicle as the log.");
 
         var refueling = new Refueling
         {
-            Id = Guid.NewGuid(), OwnerId = ownerId, CreatedById = createdById, VehicleId = vehicleId,
+            Id = EntityId.OrNew(id), Version = 1, OwnerId = ownerId, CreatedById = createdById, VehicleId = vehicleId,
             OdometerReadingId = reading?.Id, OdometerReading = reading, CostId = cost?.Id, Cost = cost,
         };
         refueling.Apply(date, volume, isFullTank, missedPreviousFillUp, note);
@@ -124,6 +132,7 @@ public sealed class Refueling : IOwned, ISoftDeletable
         var (createdCost, removedCost) = SetCost(date, totalCost, currency);
         ReviewState = LogReview.AfterSave(Missing, Missing, readingPhotos);
         FilledFromPhoto = LogValues.None;
+        Version++;
         return new LinkedChanges(createdReading, removedReading, createdCost, removedCost);
     }
 
@@ -134,6 +143,7 @@ public sealed class Refueling : IOwned, ISoftDeletable
     public LinkedChanges FillFromPhoto(PhotoValues values)
     {
         if (ReviewState != ReviewState.AwaitingPhotos || IsDeleted) return LinkedChanges.None;
+        var before = FilledFromPhoto;
         OdometerReading? createdReading = null;
         Cost? createdCost = null;
         if (OdometerReading is null && LogReview.UsableOdometer(values.Odometer) is { } odometer)
@@ -153,6 +163,9 @@ public sealed class Refueling : IOwned, ISoftDeletable
             (Cost, CostId) = (createdCost, createdCost.Id);
             FilledFromPhoto |= LogValues.Total;
         }
+        // Every value a photo fills in sets its FilledFromPhoto flag, so a change of the flags is a change of the values: an edit of the copy
+        // from before is stale. A value added here later must set its flag too.
+        if (FilledFromPhoto != before) Version++;
         return new LinkedChanges(createdReading, null, createdCost, null);
     }
 
@@ -170,6 +183,7 @@ public sealed class Refueling : IOwned, ISoftDeletable
         DeletedAt = now;
         OdometerReading?.MarkDeleted(now);
         Cost?.MarkDeleted(now);
+        Version++;
     }
 
     public void Restore()
@@ -178,6 +192,7 @@ public sealed class Refueling : IOwned, ISoftDeletable
         DeletedAt = null;
         OdometerReading?.Restore();
         Cost?.Restore();
+        Version++;
     }
 
     private (OdometerReading? Created, OdometerReading? Removed) SetReading(DateOnly date, long? odometer)

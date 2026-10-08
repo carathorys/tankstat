@@ -16,6 +16,7 @@ import {
   stubViewport,
   type FakeRecurring,
 } from '../../support/mocks.tsx'
+import { UUID } from '../../support/ids.ts'
 import { dateValue, findDateField } from '../../support/dates.ts'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
@@ -112,6 +113,7 @@ it('adds a schedule that counts time or distance, whichever comes first', async 
   expect(state.calls.AddRecurringExpense).toEqual([
     {
       input: {
+        id: expect.stringMatching(UUID),
         vehicleId: 'v1',
         title: 'Insurance',
         category: null,
@@ -244,6 +246,7 @@ it('marks what was done at one visit: the clicked one and the due ones start tic
         title: 'Tyres, Oil change',
         category: 'Service',
         photoIds: [],
+        expenseId: expect.stringMatching(UUID),
       },
     },
   ])
@@ -306,7 +309,7 @@ it('without an amount only the schedules move on: nothing is required beyond the
 
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(state.calls.MarkRecurringExpensesDone).toEqual([
-    { input: { ids: ['rc1'], date: expect.any(String), odometer: null, amount: null, currency: null, title: 'Oil change', category: 'Service', photoIds: [] } },
+    { input: { ids: ['rc1'], date: expect.any(String), odometer: null, amount: null, currency: null, title: 'Oil change', category: 'Service', photoIds: [] } }, // no expense is logged, so no id for one
   ])
 })
 

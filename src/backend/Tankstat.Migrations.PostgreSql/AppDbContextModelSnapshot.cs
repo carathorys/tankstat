@@ -523,6 +523,11 @@ namespace Tankstat.Migrations.PostgreSql
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
+
                     b.Property<int>("WarnDays")
                         .HasColumnType("integer");
 
@@ -752,6 +757,11 @@ namespace Tankstat.Migrations.PostgreSql
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
+
                     b.HasKey("Id");
 
                     b.HasIndex("CostId")
@@ -819,6 +829,11 @@ namespace Tankstat.Migrations.PostgreSql
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
+
                     b.Property<decimal?>("Volume")
                         .HasPrecision(9, 3)
                         .HasColumnType("numeric(9,3)");
@@ -867,6 +882,11 @@ namespace Tankstat.Migrations.PostgreSql
 
                     b.Property<Guid?>("PictureImageId")
                         .HasColumnType("uuid");
+
+                    b.Property<int>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
 
                     b.HasKey("Id");
 

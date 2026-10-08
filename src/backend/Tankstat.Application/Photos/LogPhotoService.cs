@@ -85,31 +85,63 @@ public sealed class LogPhotoService(
     public Task<IReadOnlyList<PhotoDraft>> RequireDraftsAsync(Guid vehicleId, IReadOnlyCollection<Guid>? draftIds, CancellationToken ct) =>
         drafts.RequireAttachableAsync(vehicleId, draftIds, ct);
 
+    /// <summary>Of the given drafts, the ones not attached yet (see <see cref="PhotoDraftService.StillWaitingAsync"/>).</summary>
+    public Task<IReadOnlyList<PhotoDraft>> DraftsStillWaitingAsync(Guid vehicleId, IReadOnlyCollection<Guid>? draftIds, CancellationToken ct) =>
+        drafts.StillWaitingAsync(vehicleId, draftIds, ct);
+
     /// <summary>
-    /// Makes the drafts photos of the log that was just saved: each picture moves into the log's folder and gets its photo row. The log
-    /// is new and the drafts were checked, so they fit; a draft that fails here stays a draft (and expires) rather than failing the save.
+    /// Makes the drafts photos of the log that was just saved: each picture moves into the log's folder and gets its photo row. A draft
+    /// that fails here stays a draft (and expires) rather than failing the save. An add sent again attaches what its first try left, so
+    /// the log may have photos already: never more than <see cref="LogPhoto.MaxPerLog"/> (the rest stay drafts), and a draft a twin of
+    /// this request attached meanwhile counts as attached.
     /// </summary>
     public async Task AttachDraftsAsync(LogType logType, Guid logId, IReadOnlyList<PhotoDraft> attachable, CancellationToken ct)
     {
         if (attachable.Count == 0) return;
         var attached = new List<Guid>();
         var now = clock.GetUtcNow();
-        foreach (var draft in attachable)
+        // One log at a time, like uploads: the count, the "attached already?" look and the insert are one step within this process.
+        var gate = Locks[(uint)logId.GetHashCode() % Locks.Length];
+        await gate.WaitAsync(CancellationToken.None);
+        try
         {
-            var moved = false;
-            try
+            var room = LogPhoto.MaxPerLog - await photos.CountForLogAsync(logType, logId, CancellationToken.None);
+            foreach (var draft in attachable)
             {
-                await images.MoveAsync(draft.Id, ImageFolders.LogPhotos(draft.VehicleId, logType, logId), CancellationToken.None);
-                moved = true;
-                await photos.AddAsync(LogPhoto.Create(draft.OwnerId, draft.VehicleId, logType, logId, draft.Id, draft.CreatedById, now), CancellationToken.None);
-                attached.Add(draft.Id);
+                var moved = false;
+                try
+                {
+                    if (await photos.FindByImageAsync(draft.Id, CancellationToken.None) is { } photo)
+                    {
+                        if (photo.LogType == logType && photo.LogId == logId) attached.Add(draft.Id); // a twin attached it: its file is in place
+                        continue;
+                    }
+                    if (room <= 0)
+                    {
+                        logger.LogWarning("Draft photo {DraftId} was not attached to {LogType} {LogId}, which has {Max} photos already; it stays a draft", draft.Id, logType, logId, LogPhoto.MaxPerLog);
+                        continue;
+                    }
+                    await images.MoveAsync(draft.Id, ImageFolders.LogPhotos(draft.VehicleId, logType, logId), CancellationToken.None);
+                    moved = true;
+                    await photos.AddAsync(LogPhoto.Create(draft.OwnerId, draft.VehicleId, logType, logId, draft.Id, draft.CreatedById, now), CancellationToken.None);
+                    attached.Add(draft.Id);
+                    room--;
+                }
+                catch (Exception e)
+                {
+                    // The log is saved already: failing now would make the user save it twice. The picture goes back to the drafts.
+                    logger.LogWarning(e, "Draft photo {DraftId} could not be attached to {LogType} {LogId}; it stays a draft", draft.Id, logType, logId);
+                    if (moved) await MoveBackQuietlyAsync(draft);
+                }
             }
-            catch (Exception e)
-            {
-                // The log is saved already: failing now would make the user save it twice. The picture goes back to the drafts.
-                logger.LogWarning(e, "Draft photo {DraftId} could not be attached to {LogType} {LogId}; it stays a draft", draft.Id, logType, logId);
-                if (moved) await MoveBackQuietlyAsync(draft);
-            }
+        }
+        catch (Exception e)
+        {
+            logger.LogWarning(e, "The draft photos of {LogType} {LogId} could not be attached; they stay drafts", logType, logId);
+        }
+        finally
+        {
+            gate.Release();
         }
         await drafts.ForgetAsync(attached, CancellationToken.None);
         logger.LogDebug("Attached {Attached} of {Wanted} draft photos to {LogType} {LogId}", attached.Count, attachable.Count, logType, logId);

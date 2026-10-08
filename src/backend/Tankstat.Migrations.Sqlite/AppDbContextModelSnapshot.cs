@@ -518,6 +518,11 @@ namespace Tankstat.Migrations.Sqlite
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(1);
+
                     b.Property<int>("WarnDays")
                         .HasColumnType("INTEGER");
 
@@ -747,6 +752,11 @@ namespace Tankstat.Migrations.Sqlite
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(1);
+
                     b.HasKey("Id");
 
                     b.HasIndex("CostId")
@@ -814,6 +824,11 @@ namespace Tankstat.Migrations.Sqlite
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(1);
+
                     b.Property<decimal?>("Volume")
                         .HasPrecision(9, 3)
                         .HasColumnType("TEXT");
@@ -862,6 +877,11 @@ namespace Tankstat.Migrations.Sqlite
 
                     b.Property<Guid?>("PictureImageId")
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(1);
 
                     b.HasKey("Id");
 

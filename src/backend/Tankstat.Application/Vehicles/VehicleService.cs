@@ -5,6 +5,7 @@ using Tankstat.Domain;
 using Tankstat.Application.Odometers;
 using Tankstat.Domain.Access;
 using Tankstat.Application.Refuelings;
+using Tankstat.Application.Sync;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Vehicles;
 
@@ -51,18 +52,24 @@ public sealed class VehicleService(
         return vehicle is not null && await access.VehicleLevelAsync(vehicle, ct) >= AccessLevel.View ? vehicle : null;
     }
 
-    public async Task<Vehicle> AddAsync(string name, string? licensePlate, FuelType fuelType, MeasurementUnits units, CancellationToken ct)
+    /// <param name="id">The id the client chose; a vehicle it already added with this id is answered as it is (see <see cref="ClientIds"/>).</param>
+    public async Task<Vehicle> AddAsync(string name, string? licensePlate, FuelType fuelType, MeasurementUnits units, CancellationToken ct, Guid? id = null)
     {
         var owner = await access.RequirePrincipalAsync(ct);
-        var vehicle = Vehicle.Create(owner.Id, name, licensePlate, fuelType, units);
-        await vehicles.AddAsync(vehicle, ct);
+        if (id is { } given && await vehicles.FindIncludingDeletedAsync(given, ct) is { } existing) return Repeated(existing, owner.Id);
+        var vehicle = Vehicle.Create(owner.Id, name, licensePlate, fuelType, units, id);
+        if (!await vehicles.AddAsync(vehicle, ct)) // the same add, sent twice at once: the other one saved it
+            return Repeated(await vehicles.FindIncludingDeletedAsync(vehicle.Id, ct) ?? vehicle, owner.Id);
         logger.LogDebug("User {UserId} added vehicle {VehicleId}", owner.Id, vehicle.Id);
         return vehicle;
     }
 
-    public async Task<Vehicle> UpdateAsync(Guid id, string name, string? licensePlate, FuelType fuelType, MeasurementUnits? newUnits, CancellationToken ct)
+    /// <param name="expectedVersion">The version the change was made from; refused when the vehicle was saved since (see <see cref="VersionCheck"/>).</param>
+    public async Task<Vehicle> UpdateAsync(
+        Guid id, string name, string? licensePlate, FuelType fuelType, MeasurementUnits? newUnits, CancellationToken ct, int? expectedVersion = null)
     {
         var vehicle = await EditableAsync(id, includeDeleted: false, ct);
+        VersionCheck.Require(expectedVersion, vehicle.Version);
         // Numbers are stored as entered, so the units may only change while the vehicle has no logs (otherwise old numbers would silently change meaning).
         var units = newUnits ?? vehicle.Units;
         if (units != vehicle.Units && (await odometer.HasReadingsAsync(vehicle.Id, ct) || await refuelings.AnyForVehicleAsync(vehicle.Id, ct)))
@@ -74,18 +81,20 @@ public sealed class VehicleService(
     }
 
     /// <summary>Moves the vehicle to the trash; it can be restored until it is purged.</summary>
-    public async Task<Vehicle> DeleteAsync(Guid id, CancellationToken ct)
+    public async Task<Vehicle> DeleteAsync(Guid id, CancellationToken ct, int? expectedVersion = null)
     {
         var vehicle = await EditableAsync(id, includeDeleted: false, ct);
+        VersionCheck.Require(expectedVersion, vehicle.Version);
         vehicle.MarkDeleted(clock.GetUtcNow());
         await vehicles.UpdateAsync(vehicle, ct);
         logger.LogDebug("Vehicle {VehicleId} moved to the trash", vehicle.Id);
         return vehicle;
     }
 
-    public async Task<Vehicle> RestoreAsync(Guid id, CancellationToken ct)
+    public async Task<Vehicle> RestoreAsync(Guid id, CancellationToken ct, int? expectedVersion = null)
     {
         var vehicle = await EditableAsync(id, includeDeleted: true, ct);
+        VersionCheck.Require(expectedVersion, vehicle.Version);
         vehicle.Restore();
         await vehicles.UpdateAsync(vehicle, ct);
         logger.LogDebug("Vehicle {VehicleId} restored from the trash", vehicle.Id);
@@ -115,6 +124,14 @@ public sealed class VehicleService(
 
     /// <summary>The first ids of a list and how many more there are: a line of the log stays a line, however much was deleted at once.</summary>
     private static string Listed(IReadOnlyList<Guid> ids) => string.Join(", ", ids.Take(20)) + (ids.Count > 20 ? $" and {ids.Count - 20} more" : "");
+
+    /// <summary>A vehicle this user already added with the id is the answer; another one's id is refused.</summary>
+    private Vehicle Repeated(Vehicle existing, Guid ownerId)
+    {
+        var same = existing.OwnerId == ownerId;
+        if (same) logger.LogDebug("Vehicle {VehicleId} was already added; the add came again", existing.Id);
+        return ClientIds.Repeat(existing, same, existing.Id);
+    }
 
     /// <summary>Loads a vehicle for changing; one the user cannot see looks missing, one they can only view is forbidden.</summary>
     private async Task<Vehicle> EditableAsync(Guid id, bool includeDeleted, CancellationToken ct)

@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
 import { server } from '../support/server.ts'
 import { fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, adminSession } from '../support/mocks.tsx'
+import { UUID } from '../support/ids.ts'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => server.resetHandlers())
@@ -51,7 +52,7 @@ it('adds a vehicle through the dialog', async () => {
 
   await screen.findByText('Golf')
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-  expect(state.calls.AddVehicle).toEqual([{ input: { name: 'Golf', licensePlate: 'xy-99', fuelType: 'LPG', units: { distance: 'KILOMETERS', volume: 'LITERS' } } }])
+  expect(state.calls.AddVehicle).toEqual([{ input: { id: expect.stringMatching(UUID), name: 'Golf', licensePlate: 'xy-99', fuelType: 'LPG', units: { distance: 'KILOMETERS', volume: 'LITERS' } } }])
 })
 
 it('sends an empty plate as null', async () => {
@@ -63,7 +64,7 @@ it('sends an empty plate as null', async () => {
   await ui.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Add vehicle' }))
 
   await screen.findByText('Scooter')
-  expect(state.calls.AddVehicle).toEqual([{ input: { name: 'Scooter', licensePlate: null, fuelType: 'PETROL', units: { distance: 'KILOMETERS', volume: 'LITERS' } } }])
+  expect(state.calls.AddVehicle).toEqual([{ input: { id: expect.stringMatching(UUID), name: 'Scooter', licensePlate: null, fuelType: 'PETROL', units: { distance: 'KILOMETERS', volume: 'LITERS' } } }])
 })
 
 it('blocks an empty name in the form, without calling the server', async () => {
@@ -206,7 +207,7 @@ it('a new vehicle starts with the installation default units, which can be chang
   await ui.click(within(dialog).getByRole('button', { name: 'Add vehicle' }))
 
   await screen.findByText('Mustang')
-  expect(state.calls.AddVehicle).toEqual([{ input: { name: 'Mustang', licensePlate: null, fuelType: 'PETROL', units: { distance: 'MILES', volume: 'US_GALLONS' } } }])
+  expect(state.calls.AddVehicle).toEqual([{ input: { id: expect.stringMatching(UUID), name: 'Mustang', licensePlate: null, fuelType: 'PETROL', units: { distance: 'MILES', volume: 'US_GALLONS' } } }])
 })
 
 it('locks the units once the vehicle has logs, and explains why', async () => {

@@ -503,6 +503,13 @@
     },
     "log": {
       "valuesRequired": "Tölts ki minden értéket. Csak egy még leolvasás alatt álló fotó miatt maradhatnak üresen."
+    },
+    "id": {
+      "empty": "Az azonosító nem lehet üres."
+    },
+    "sync": {
+      "versionMismatch": "Időközben valaki más (vagy egy másik eszköz) módosította, ezért ez a módosítás nem került érvényesítésre.",
+      "idTaken": "Ez az azonosító már másnál foglalt."
     }
   },
   "a11y": {

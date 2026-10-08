@@ -25,7 +25,8 @@ public interface IExpenseRepository
     Task<Expense?> FindAsync(Guid id, CancellationToken ct);
     Task<Expense?> FindIncludingDeletedAsync(Guid id, CancellationToken ct);
 
-    Task AddAsync(Expense expense, CancellationToken ct);
+    /// <summary>Saves a new expense; false when one with its id already existed (a concurrent add with the same client id won).</summary>
+    Task<bool> AddAsync(Expense expense, CancellationToken ct);
 
     /// <param name="changes">Readings and costs this update created (they are inserted) or let go of (they are deleted).</param>
     Task UpdateAsync(Expense expense, LinkedChanges changes, CancellationToken ct);

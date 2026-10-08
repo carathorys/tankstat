@@ -13,6 +13,7 @@ internal sealed class VehicleConfiguration : IEntityTypeConfiguration<Vehicle>
         b.ToTable("Vehicles");
         b.HasKey(v => v.Id);
         b.Property(v => v.Id).ValueGeneratedNever();
+        b.Property(v => v.Version).HasDefaultValue(1); // rows from before versions were counted start at 1
         b.HasIndex(v => v.OwnerId);
 
         // The units of the vehicle's distance and volume, stored as two columns of the vehicle row.

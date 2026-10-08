@@ -13,7 +13,8 @@ public sealed record MeasurementUnitsInput(DistanceUnit Distance, VolumeUnit Vol
 }
 
 /// <param name="Units">Omit to use the instance defaults (see <c>vehicleDefaults</c>).</param>
-public sealed record AddVehicleInput(string Name, string? LicensePlate, FuelType FuelType, MeasurementUnitsInput? Units);
+/// <param name="Id">An id the client chose for the new vehicle; the same add sent again (a lost answer, a replay after being offline) answers with what it created. Omit to let the server choose.</param>
+public sealed record AddVehicleInput(string Name, string? LicensePlate, FuelType FuelType, MeasurementUnitsInput? Units, Guid? Id = null);
 
 /// <param name="Units">Omit to keep the vehicle's units. They can only change while it has no logs.</param>
 public sealed record UpdateVehicleInput(Guid Id, string Name, string? LicensePlate, FuelType FuelType, MeasurementUnitsInput? Units);
@@ -23,7 +24,7 @@ public sealed class Mutation
     public Task<Vehicle> AddVehicle(
         AddVehicleInput input, [Service] VehicleService vehicles, [Service] IOptions<VehicleDefaultsOptions> defaults, CancellationToken ct) =>
         vehicles.AddAsync(input.Name, input.LicensePlate, input.FuelType,
-            input.Units?.ToDomain() ?? MeasurementUnits.Create(defaults.Value.DistanceUnit, defaults.Value.VolumeUnit), ct);
+            input.Units?.ToDomain() ?? MeasurementUnits.Create(defaults.Value.DistanceUnit, defaults.Value.VolumeUnit), ct, input.Id);
 
     public Task<Vehicle> UpdateVehicle(UpdateVehicleInput input, [Service] VehicleService vehicles, CancellationToken ct) =>
         vehicles.UpdateAsync(input.Id, input.Name, input.LicensePlate, input.FuelType, input.Units?.ToDomain(), ct);
