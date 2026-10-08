@@ -31,6 +31,13 @@ export const server = setupServer(
   graphql.query('UnreadNotificationCount', () => HttpResponse.json({ data: { notificationCount: 0 } })),
   graphql.query('RecognitionStatus', () => HttpResponse.json({ data: { recognitionStatus: { available: false } } })),
   graphql.query('UiSettings', () => HttpResponse.json({ data: { uiSettings: { navOpen: null, language: null, colorMode: null, grids: [] } } })),
+  // The Account page's Offline data section: the default window, no vehicles of its own (tests with vehicles answer these themselves).
+  graphql.query('OfflineSettings', () => HttpResponse.json({ data: { offlineSettings: { __typename: 'OfflineSettingsInfo', defaultWindow: 'span:P2M', vehicles: [] } } })),
+  graphql.query('OfflineVehicles', () => HttpResponse.json({ data: { myVehicles: [] } })),
+  graphql.query('OfflineEstimates', () => HttpResponse.json({ data: { myVehicles: [] } })),
+  graphql.mutation('UpdateOfflineSettings', ({ variables }) =>
+    HttpResponse.json({ data: { updateOfflineSettings: { __typename: 'OfflineSettingsInfo', ...variables.input, vehicles: variables.input.vehicles.map((v: object) => ({ __typename: 'OfflineVehicleWindow', ...v })) } } }),
+  ),
   graphql.mutation('UpdateUiSettings', ({ variables }) =>
     HttpResponse.json({
       data: { updateUiSettings: { navOpen: variables.input.navOpen ?? null, language: variables.input.language ?? null, colorMode: variables.input.colorMode ?? null } },

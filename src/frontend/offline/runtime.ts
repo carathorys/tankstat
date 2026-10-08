@@ -10,7 +10,7 @@ import type { PullEngine } from './pull.ts'
  * server said who is signed in, whenever the server is back, and every hour while the app is shown.
  */
 let active: { probeNow: () => Promise<void> } | null = null
-let downloads: PullEngine | null = null
+let loadEngine: (() => Promise<PullEngine>) | null = null
 
 /** How often a page that stays open downloads what changed. */
 export const PULL_EVERY_MS = 60 * 60 * 1000
@@ -18,8 +18,13 @@ export const PULL_EVERY_MS = 60 * 60 * 1000
 /** Showing the tab again downloads only when the last download is at least this old. */
 export const SHOWN_GAP_MS = 15 * 60 * 1000
 
-/** The download of the offline window, for the screens that show or start it; null until it first ran. */
-export const offlineDownload = (): PullEngine | null => downloads
+/** The download of the offline window, for the screens that show or start it (loaded on first use); null before the runtime started. */
+export const offlineDownload = (): Promise<PullEngine> | null => loadEngine?.() ?? null
+
+/** Tests: the engine the screens get, without starting the runtime's probes and timers. */
+export function provideOfflineDownload(engine: PullEngine | null) {
+  loadEngine = engine ? () => Promise.resolve(engine) : null
+}
 
 /** The promise, or a failure once `ms` passed without it settling (the request itself may go on; nobody waits for it). */
 export function withDeadline<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -47,11 +52,8 @@ export function startOfflineRuntime(client: ApolloClient, now: () => number = Da
   )
   // The download engine is loaded when it first has something to do, not with the app's first paint.
   let pull: Promise<PullEngine> | null = null
-  const engine = () =>
-    (pull ??= import('./pull.ts').then(({ createPullEngine }) => {
-      downloads = createPullEngine({ client })
-      return downloads
-    }))
+  const engine = () => (pull ??= import('./pull.ts').then(({ createPullEngine }) => createPullEngine({ client })))
+  loadEngine = engine
   let downloadedAt = Number.NEGATIVE_INFINITY
   const download = () => {
     if (deviceData.user === null || !connectivity.reachable || document.visibilityState === 'hidden') return
@@ -90,7 +92,7 @@ export function startOfflineRuntime(client: ApolloClient, now: () => number = Da
       document.removeEventListener('visibilitychange', onShown)
       clearInterval(hourly)
       active = null
-      downloads = null
+      loadEngine = null
     },
   }
 }
