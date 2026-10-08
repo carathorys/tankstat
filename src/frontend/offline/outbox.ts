@@ -81,6 +81,15 @@ export const outbox = {
     notify()
   },
 
+  /** About to be sent: from now on the server may have them, so nothing folds into them (`collapse`). */
+  async markSent(ids: readonly string[]): Promise<void> {
+    await loading
+    const sending = new Set(ids)
+    const next = changes.map((c) => (sending.has(c.id) && !c.sent ? { ...c, sent: true } : c))
+    await persist(changes, next)
+    changes = next
+  },
+
   /**
    * How something is marked while a change of it waits (a visit marks each of its schedules done); null when none does. With several (an
    * edit and a visit, one sent already and one made after it) the one that says most wins: on its way to the trash, done, new, restored,
