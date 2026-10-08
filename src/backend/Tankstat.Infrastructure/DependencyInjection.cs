@@ -77,6 +77,7 @@ public static class DependencyInjection
         services.AddScoped<IVehicleOrderRepository, VehicleOrderRepository>();
         services.AddScoped<IOfflineSettingsRepository, OfflineSettingsRepository>();
         services.AddScoped<IOfflineFeedRepository, OfflineFeedRepository>();
+        services.AddScoped<ISyncChangeRepository, SyncChangeRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IUserDataRepository, UserDataRepository>();
         services.AddScoped<IPasswordResetTokenRepository, PasswordResetTokenRepository>();

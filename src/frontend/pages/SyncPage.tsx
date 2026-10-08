@@ -11,7 +11,11 @@ import type { VolumeUnit } from '../gql/generated.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { useFormat } from '../i18n/format.ts'
 import { discardChange } from '../offline/submitChange.ts'
-import { useWaitingChanges, type WaitingChange } from '../offline/waitingChanges.ts'
+import type { ParkedChange } from '../offline/push.ts'
+import { useConnectivity } from '../offline/useConnectivity.ts'
+import { usePushState } from '../offline/usePushState.ts'
+import { useDescribed, useWaitingChanges, type WaitingChange } from '../offline/waitingChanges.ts'
+import { useKeyText } from '../i18n/errors.ts'
 
 /**
  * Waiting to sync: the changes made on this device that have not reached the server, per vehicle, in the order they were made, each with
@@ -20,10 +24,16 @@ import { useWaitingChanges, type WaitingChange } from '../offline/waitingChanges
  */
 export function SyncPage() {
   const { t } = useTranslation()
+  const { dateTime } = useFormat()
   usePageTitle(t('sync.title'))
   const groups = useWaitingChanges()
+  const { reachable } = useConnectivity()
+  const { engine, state } = usePushState()
   const heading = useRef<HTMLHeadingElement>(null)
   const [status, setStatus] = useState('')
+  const last = state.last
+  const notApplied = useDescribed(last?.parked.map((p) => p.change) ?? [], last?.at)
+  const reasons = new Map(last?.parked.map((p) => [p.change.id, p]) ?? [])
 
   return (
     <section aria-labelledby="page-title">
@@ -33,6 +43,22 @@ export function SyncPage() {
       <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
         {t('sync.description')}
       </Typography>
+      <Stack direction="row" sx={{ gap: 1.5, alignItems: 'center', flexWrap: 'wrap', mb: 2 }}>
+        {engine && (
+          <Button size="large" loading={state.status === 'syncing'} disabled={!reachable || !groups?.length} onClick={() => void engine.run()}>
+            {t('sync.syncNow')}
+          </Button>
+        )}
+        <Typography variant="body2" role="status">
+          {state.status === 'syncing'
+            ? t('sync.syncing')
+            : last
+              ? last.interrupted
+                ? t('sync.interrupted')
+                : t('sync.lastSync', { time: dateTime(new Date(last.at).toISOString()), applied: last.applied, parked: last.parked.length })
+              : ''}
+        </Typography>
+      </Stack>
       {!groups && <Loading />}
       {groups?.length === 0 && <Typography>{t('sync.empty')}</Typography>}
       <Stack sx={{ gap: 3 }}>
@@ -52,11 +78,39 @@ export function SyncPage() {
       <Typography variant="body2" role="status" sx={{ mt: 2 }}>
         {status}
       </Typography>
+      {notApplied && notApplied.length > 0 && (
+        <Stack component="section" aria-labelledby="not-applied" sx={{ gap: 1.5, mt: 3 }}>
+          <div>
+            <Typography id="not-applied" component="h2" variant="h5">
+              {t('sync.notApplied')}
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              {t('sync.notAppliedHint')}
+            </Typography>
+          </div>
+          {notApplied.map((group) => (
+            <Group key={group.vehicleId} name={group.vehicleName ?? t('sync.unknownVehicle')} volumeUnit={group.volumeUnit as VolumeUnit | null} items={group.items} reasons={reasons} />
+          ))}
+        </Stack>
+      )}
     </section>
   )
 }
 
-function Group({ name, volumeUnit, items, onRemoved }: { name: string; volumeUnit: VolumeUnit | null; items: WaitingChange[]; onRemoved: () => void }) {
+function Group({
+  name,
+  volumeUnit,
+  items,
+  onRemoved,
+  reasons,
+}: {
+  name: string
+  volumeUnit: VolumeUnit | null
+  items: WaitingChange[]
+  onRemoved?: () => void
+  /** Changes the server did not apply, with why: listed with the reason instead of Remove. */
+  reasons?: Map<string, ParkedChange>
+}) {
   const { t } = useTranslation()
   const id = useId()
   return (
@@ -69,15 +123,16 @@ function Group({ name, volumeUnit, items, onRemoved }: { name: string; volumeUni
       </Typography>
       <Stack component="ul" sx={{ gap: 1, listStyle: 'none', p: 0, m: 0 }}>
         {items.map((item) => (
-          <Item key={item.change.id} item={item} volumeUnit={volumeUnit} onRemoved={onRemoved} />
+          <Item key={item.change.id} item={item} volumeUnit={volumeUnit} onRemoved={onRemoved} parked={reasons?.get(item.change.id)} />
         ))}
       </Stack>
     </Stack>
   )
 }
 
-function Item({ item, volumeUnit, onRemoved }: { item: WaitingChange; volumeUnit: VolumeUnit | null; onRemoved: () => void }) {
+function Item({ item, volumeUnit, onRemoved, parked }: { item: WaitingChange; volumeUnit: VolumeUnit | null; onRemoved?: () => void; parked?: ParkedChange }) {
   const { t } = useTranslation()
+  const keyText = useKeyText()
   const format = useFormat()
   const client = useApolloClient()
   const { change } = item
@@ -103,10 +158,17 @@ function Item({ item, volumeUnit, onRemoved }: { item: WaitingChange; volumeUnit
               {kind}
             </Typography>
             {parts.length > 0 && <Typography variant="body2">{parts.join(' · ')}</Typography>}
+            {parked && (
+              // The same words as the refusal would have had online.
+              <Typography variant="body2" sx={{ color: 'warning.main' }}>
+                {keyText(parked.key, parked.args) ?? parked.key}
+              </Typography>
+            )}
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               {t('sync.savedAt', { time: format.dateTime(new Date(change.createdAt).toISOString()) })}
             </Typography>
           </div>
+          {onRemoved && (
           <ConfirmDialog
             trigger={
               <Button variant="soft" color="error" size="large" aria-label={t('sync.removeAria', { change: parts.length ? `${kind}, ${parts.join(', ')}` : kind })}>
@@ -118,6 +180,7 @@ function Item({ item, volumeUnit, onRemoved }: { item: WaitingChange; volumeUnit
             confirmLabel={t('sync.remove')}
             onConfirm={() => void discardChange(client, change.id).then(onRemoved)}
           />
+          )}
         </Stack>
       </Card>
     </li>

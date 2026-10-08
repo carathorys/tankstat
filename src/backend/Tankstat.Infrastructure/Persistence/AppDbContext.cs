@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Tankstat.Domain;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Charts;
 using Tankstat.Domain.Images;
@@ -17,6 +18,40 @@ namespace Tankstat.Infrastructure.Persistence;
 
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
+    /// <summary>
+    /// Someone saved the entity after it was loaded (<see cref="SyncInterceptor"/> makes every update conditional on the loaded version):
+    /// the same refusal as a version a client named that no longer holds.
+    /// </summary>
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException e) when (OfSynced(e) is { } synced)
+        {
+            throw ChangedMeanwhile(synced);
+        }
+    }
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        try
+        {
+            return base.SaveChanges(acceptAllChangesOnSuccess);
+        }
+        catch (DbUpdateConcurrencyException e) when (OfSynced(e) is { } synced)
+        {
+            throw ChangedMeanwhile(synced);
+        }
+    }
+
+    /// <summary>A versioned entity that was saved meanwhile; other entities' concurrency failures (a row gone) are their repositories' business.</summary>
+    private static ISynced? OfSynced(DbUpdateConcurrencyException e) => e.Entries.Select(x => x.Entity).OfType<ISynced>().FirstOrDefault();
+
+    private static DomainException ChangedMeanwhile(ISynced entity) =>
+        new("sync.versionMismatch", "It was changed meanwhile.", new { Expected = entity.SavedVersion });
+
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
     public DbSet<Refueling> Refuelings => Set<Refueling>();
     public DbSet<Expense> Expenses => Set<Expense>();
@@ -40,6 +75,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<GridSettings> GridSettings => Set<GridSettings>();
     public DbSet<VehicleOrder> VehicleOrders => Set<VehicleOrder>();
     public DbSet<Tombstone> Tombstones => Set<Tombstone>();
+    public DbSet<SyncChange> SyncChanges => Set<SyncChange>();
     public DbSet<OfflineSettings> OfflineSettings => Set<OfflineSettings>();
     public DbSet<OfflineVehicleSetting> OfflineVehicleSettings => Set<OfflineVehicleSetting>();
 
