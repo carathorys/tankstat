@@ -606,6 +606,17 @@
     },
     "log": {
       "valuesRequired": "Tölts ki minden értéket. Csak egy még leolvasás alatt álló fotó miatt maradhatnak üresen."
+    },
+    "sync": {
+      "versionMismatch": "Időközben valaki más (vagy egy másik eszköz) módosította, ezért ez a módosítás nem került érvényesítésre.",
+      "idTaken": "Ez az azonosító már másnál foglalt.",
+      "cursorInvalid": "Ez a letöltés nem folytatható; újrakezdődik.",
+      "takeInvalid": "Egy letöltési oldal 1–{{max}} sort tartalmaz.",
+      "tooManyChanges": "Egy szinkronizálás 1–{{max}} módosítást tartalmaz.",
+      "duplicateChange": "Egy módosítás kétszer szerepelt egy szinkronizálásban.",
+      "payloadTooLarge": "Egy módosítás túl nagy a megőrzéshez (legfeljebb {{max}} karakter).",
+      "oneOperationRequired": "Egy módosításnak pontosan egy dolgot kell tennie.",
+      "entityIdRequired": "Egy eszközről küldött új bejegyzésnek az azonosítóját is hoznia kell."
     }
   },
   "a11y": {
@@ -1120,7 +1131,9 @@
     "waiting_one": "{{count}} módosítás vár szinkronizálásra",
     "waiting_other": "{{count}} módosítás vár szinkronizálásra",
     "dialogNote": "Nincs kapcsolat. Amit mentesz, ezen az eszközön marad, és akkor kerül a szerverre, amikor újra van kapcsolat; a szerver akkor veti össze a többi bejegyzéssel.",
-    "discarded": "Törölve erről az eszközről; még nem került a szerverre."
+    "discarded": "Törölve erről az eszközről; még nem került a szerverre.",
+    "notApplied_one": "{{count}} módosítást nem sikerült érvényesíteni",
+    "notApplied_other": "{{count}} módosítást nem sikerült érvényesíteni"
   },
   "sync": {
     "title": "Szinkronizálásra vár",
@@ -1169,6 +1182,12 @@
     "signOutDescription_one": "{{count}} ezen az eszközön végzett módosítás még nem jutott el a szerverre. Ezen az eszközön marad, és akkor kerül a szerverre, amikor ez a fiók itt újra bejelentkezik.",
     "signOutDescription_other": "{{count}} ezen az eszközön végzett módosítás még nem jutott el a szerverre. Ezen az eszközön maradnak, és akkor kerülnek a szerverre, amikor ez a fiók itt újra bejelentkezik.",
     "signOutConfirm": "Kijelentkezés",
-    "nav": "Szinkronizálásra vár"
+    "nav": "Szinkronizálásra vár",
+    "syncNow": "Szinkronizálás most",
+    "syncing": "Szinkronizálás…",
+    "lastSync": "Utolsó szinkronizálás: {{time}}: {{applied}} érvényesítve, {{parked}} nem.",
+    "interrupted": "A szinkronizálás megállt, mert a szerver nem érhető el; ami maradt, akkor megy, amikor újra elérhető.",
+    "notApplied": "Nem érvényesített módosítások",
+    "notAppliedHint": "A szerver nem tudta érvényesíteni ezeket a módosításokat, és megőrzi őket az okkal együtt, hogy valaki, aki módosíthatja a járművet, döntsön róluk. Ezen az eszközön már nincsenek meg."
   }
 }

@@ -606,6 +606,17 @@
     },
     "log": {
       "valuesRequired": "Fill in every value. Only a photo that is still being read may leave them empty."
+    },
+    "sync": {
+      "versionMismatch": "It was changed meanwhile by someone else (or on another device), so this change was not applied.",
+      "idTaken": "This id is already in use by something else.",
+      "cursorInvalid": "This download cannot be continued; it starts again.",
+      "takeInvalid": "A download page holds 1 to {{max}} rows.",
+      "tooManyChanges": "One sync holds 1 to {{max}} changes.",
+      "duplicateChange": "A change was sent twice in one sync.",
+      "payloadTooLarge": "A change is too large to keep (at most {{max}} characters).",
+      "oneOperationRequired": "A change must do exactly one thing.",
+      "entityIdRequired": "A new entry sent from a device must carry its id."
     }
   },
   "a11y": {
@@ -1120,7 +1131,9 @@
     "waiting_one": "{{count}} change waiting to sync",
     "waiting_other": "{{count}} changes waiting to sync",
     "dialogNote": "You are offline. What you save is kept on this device and sent to the server when you are back online; the server checks it against the other entries then.",
-    "discarded": "Removed from this device; it had not been sent to the server."
+    "discarded": "Removed from this device; it had not been sent to the server.",
+    "notApplied_one": "{{count}} change could not be applied",
+    "notApplied_other": "{{count}} changes could not be applied"
   },
   "sync": {
     "title": "Waiting to sync",
@@ -1169,6 +1182,12 @@
     "signOutDescription_one": "{{count}} change made on this device has not reached the server yet. It stays on this device and is sent when this account signs in here again.",
     "signOutDescription_other": "{{count}} changes made on this device have not reached the server yet. They stay on this device and are sent when this account signs in here again.",
     "signOutConfirm": "Sign out",
-    "nav": "Waiting to sync"
+    "nav": "Waiting to sync",
+    "syncNow": "Sync now",
+    "syncing": "Syncing…",
+    "lastSync": "Last synced {{time}}: {{applied}} applied, {{parked}} not applied.",
+    "interrupted": "The sync stopped because the server cannot be reached; what is left goes when it is back.",
+    "notApplied": "Not applied",
+    "notAppliedHint": "The server could not apply these changes and keeps them, with the reason, for someone who may change the vehicle to decide. Nothing of them is on this device any more."
   }
 }

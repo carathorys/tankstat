@@ -1,3 +1,5 @@
+using Tankstat.Application.Sync;
+using Tankstat.Domain.Sync;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Tankstat.Application.Access;
@@ -288,6 +290,20 @@ internal sealed class InMemoryVehicleOrders : IVehicleOrderRepository
     public Task<IReadOnlyList<VehicleOrder>> ListAsync(Guid userId, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<VehicleOrder>>(Items.Where(o => o.UserId == userId).OrderBy(o => o.Position).ToList());
     public Task ReplaceAsync(Guid userId, IReadOnlyList<VehicleOrder> order, CancellationToken ct) { Items.RemoveAll(o => o.UserId == userId); Items.AddRange(order); return Task.CompletedTask; }
+}
+
+internal sealed class InMemorySyncChanges : ISyncChangeRepository
+{
+    public List<SyncChange> Items { get; } = [];
+    public Task<IReadOnlyList<SyncChange>> FindManyAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<SyncChange>>(Items.Where(c => ids.Contains(c.Id)).ToList());
+    public Task AddAsync(SyncChange change, CancellationToken ct)
+    {
+        Items.Add(change);
+        return Task.CompletedTask;
+    }
+    public Task<int> PurgeResolvedAsync(DateTimeOffset before, CancellationToken ct) =>
+        Task.FromResult(Items.RemoveAll(c => c.Status != SyncChangeStatus.Parked && c.ReceivedAt < before));
 }
 
 internal sealed class InMemoryOfflineSettings : IOfflineSettingsRepository
@@ -634,6 +650,8 @@ internal sealed class World
     public VehicleOrderService VehicleOrder { get; }
     public InMemoryOfflineSettings OfflineSettingsStore { get; } = new();
     public OfflineSettingsService OfflineSettings { get; }
+    public InMemorySyncChanges SyncLedger { get; } = new();
+    public SyncService Sync => new(SyncLedger, Vehicles, Access, Microsoft.Extensions.Options.Options.Create(new SyncOptions()), Clock, Log.For<SyncService>());
     public ImportService Imports { get; }
     public OdometerService Odometer { get; }
     public ResourceSharingService Sharing { get; }

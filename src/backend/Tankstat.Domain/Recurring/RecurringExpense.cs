@@ -70,6 +70,17 @@ public sealed class RecurringExpense : IOwned, ISynced
     /// <summary>When it was last saved (set by the persistence layer, see <see cref="ISynced"/>): a device that keeps a copy downloads it again.</summary>
     public DateTimeOffset UpdatedAt { get; private set; }
 
+    /// <summary>The version it was loaded with, before this instance counted any save: the save is made only if nobody saved it meanwhile.</summary>
+    public int SavedVersion => _loadedVersion ?? Version;
+
+    private int? _loadedVersion;
+
+    private void Bump()
+    {
+        _loadedVersion ??= Version;
+        Version++;
+    }
+
     Guid ISynced.SyncVehicleId => VehicleId;
     OfflineEntityType ISynced.SyncType => OfflineEntityType.RecurringExpense;
 
@@ -91,7 +102,7 @@ public sealed class RecurringExpense : IOwned, ISynced
         DateOnly lastDoneDate, long? lastDoneOdometer, int warnDays, long warnDistance)
     {
         Apply(title, category, note, kind, intervalMonths, intervalDistance, lastDoneDate, lastDoneOdometer, warnDays, warnDistance);
-        Version++;
+        Bump();
     }
 
     /// <summary>Starts the next interval from the day (and odometer) it was done.</summary>
@@ -100,7 +111,7 @@ public sealed class RecurringExpense : IOwned, ISynced
         CheckDone(date, odometer);
         LastDoneDate = date;
         LastDoneOdometer = odometer ?? LastDoneOdometer;
-        Version++;
+        Bump();
     }
 
     /// <summary>

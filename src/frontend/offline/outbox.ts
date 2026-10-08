@@ -7,7 +7,7 @@ import type { RowStore } from './deviceStorage.ts'
  * The changes this device keeps until the server can take them, in the open user's database (`deviceStorage.ts`), so they survive a
  * restart and another account signing in never sees them. A new change folds into the waiting ones (`collapse`). Changes are made by the
  * user on screen, so they are kept in whichever user's data is open, before the server confirmed who it is too (an offline start).
- * Nothing sends them yet.
+ * The push engine (`push.ts`) sends them when the server is reachable.
  */
 let changes: Change[] = []
 let rows: RowStore | null = null
@@ -64,6 +64,16 @@ export const outbox = {
   async discard(id: string): Promise<void> {
     await loading
     const next = discard(changes, id)
+    await persist(changes, next)
+    changes = next
+    notify()
+  },
+
+  /** The changes the server has answered: they leave the device as they are (what depends on them stays and goes next). */
+  async remove(ids: readonly string[]): Promise<void> {
+    await loading
+    const gone = new Set(ids)
+    const next = changes.filter((c) => !gone.has(c.id))
     await persist(changes, next)
     changes = next
     notify()
