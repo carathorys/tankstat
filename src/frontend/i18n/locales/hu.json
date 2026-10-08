@@ -1128,5 +1128,54 @@
     "waiting_other": "{{count}} módosítás vár szinkronizálásra",
     "dialogNote": "Nincs kapcsolat. Amit mentesz, ezen az eszközön marad, és akkor kerül a szerverre, amikor újra van kapcsolat; a szerver akkor veti össze a többi bejegyzéssel.",
     "discarded": "Törölve erről az eszközről; még nem került a szerverre."
+  },
+  "sync": {
+    "title": "Szinkronizálásra vár",
+    "description": "Az ezen az eszközön végzett módosítások, amíg a szerver nem volt elérhető. Amint újra elérhető, a szerverre kerülnek, abban a sorrendben, ahogy készültek; addig ezen az eszközön látszanak, „nincs szinkronizálva” jelöléssel.",
+    "empty": "Semmi sem vár: minden, ami ezen az eszközön készült, a szerveren van.",
+    "unknownVehicle": "Egy erre az eszközre le nem töltött jármű",
+    "groupCount_one": "{{count}} módosítás",
+    "groupCount_other": "{{count}} módosítás",
+    "savedAt": "Ezen az eszközön mentve: {{time}}",
+    "kinds": {
+      "refuelings": {
+        "add": "Új tankolás",
+        "update": "Módosított tankolás",
+        "trash": "Lomtárba kerülő tankolás",
+        "restore": "Lomtárból visszaállított tankolás"
+      },
+      "expenses": {
+        "add": "Új kiadás",
+        "update": "Módosított kiadás",
+        "trash": "Lomtárba kerülő kiadás",
+        "restore": "Lomtárból visszaállított kiadás"
+      },
+      "vehicles": {
+        "add": "Új jármű",
+        "update": "Módosított jármű",
+        "trash": "Lomtárba kerülő jármű",
+        "restore": "Lomtárból visszaállított jármű"
+      },
+      "recurring": {
+        "add": "Új ismétlődő kiadás",
+        "update": "Módosított ismétlődő kiadás",
+        "trash": "Törlendő ismétlődő kiadás",
+        "markDone": "Elvégzettnek jelölve"
+      }
+    },
+    "remove": "Módosítás eltávolítása",
+    "removeAria": "Módosítás eltávolítása: {{change}}",
+    "removeTitle": "Eltávolítod ezt a módosítást?",
+    "removeDescription": "Nem kerül a szerverre, és amit módosított, úgy látszik, ahogy a szerveren van.",
+    "removeVehicleDescription": "Nem kerül a szerverre, és ami erre a járműre vár, az sem: a bejegyzései vele mennek.",
+    "removed": "A módosítás eltávolítva; nem kerül a szerverre.",
+    "keep": "Megtartás",
+    "keepAria": "{{name}} megtartása: a lomtárba helyezés visszavonása",
+    "kept": "Megtartva: nem kerül a lomtárba.",
+    "signOutTitle": "Kijelentkezel, miközben módosítások várnak?",
+    "signOutDescription_one": "{{count}} ezen az eszközön végzett módosítás még nem jutott el a szerverre. Ezen az eszközön marad, és akkor kerül a szerverre, amikor ez a fiók itt újra bejelentkezik.",
+    "signOutDescription_other": "{{count}} ezen az eszközön végzett módosítás még nem jutott el a szerverre. Ezen az eszközön maradnak, és akkor kerülnek a szerverre, amikor ez a fiók itt újra bejelentkezik.",
+    "signOutConfirm": "Kijelentkezés",
+    "nav": "Szinkronizálásra vár"
   }
 }

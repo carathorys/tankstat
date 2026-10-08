@@ -105,13 +105,17 @@ const versionAfter = (sent: Change) => (sent.action === 'add' || sent.expectedVe
 /** A trash that took the place of an edit, taken back: the edit again. */
 const asEdit = (trash: Change): Change => ({ ...trash, action: 'update' })
 
-/** Takes back one waiting change (Keep, Remove on the Sync page); a trash that took the place of an edit leaves the edit. */
+/**
+ * Takes back one waiting change (Keep, Remove on the Sync page): an add taken back takes what was made to it along, as a trash would; a
+ * trash that took the place of an edit leaves the edit.
+ */
 export function discard(existing: readonly Change[], id: string): Change[] {
-  const change = existing.find((c) => c.id === id)
-  if (change?.action === 'trash' && change.input) return replace(existing, change, asEdit(change))
+  const removed = existing.find((c) => c.id === id)
+  if (removed?.action === 'trash' && removed.input) return replace(existing, removed, asEdit(removed))
   // A visit taken back logs no expense: what was made to that expense here goes with it.
-  if (change && isVisitOf(change, change.targetId)) return existing.filter((c) => c.id !== id && !(c.entity === 'expenses' && c.targetId === change.targetId))
-  return existing.filter((c) => c.id !== id)
+  if (removed && isVisitOf(removed, removed.targetId)) return existing.filter((c) => c.id !== id && !(c.entity === 'expenses' && c.targetId === removed.targetId))
+  const rest = existing.filter((c) => c.id !== id)
+  return removed?.action === 'add' ? withoutDependents(rest, removed) : rest
 }
 
 /** A visit that logs the expense `expenseId` (one with an amount; its expense id is its target). */
