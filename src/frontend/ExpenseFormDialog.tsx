@@ -155,7 +155,7 @@ export function ExpenseFormDialog({
             readingDone={drafts.done}
             explanation={drafts.explanation}
             // A new expense may leave its amount to a photo that is being read; a saved one still waiting for its photos may stay so.
-            mayWait={drafts.pending.length > 0 || readLater || (editing && existing?.reviewState === 'AWAITING_PHOTOS')}
+            mayWait={drafts.pending.length > 0 || readLater || (editing && existing?.reviewState === 'AWAITING_PHOTOS') || !!change?.mayWait}
             readingNow={drafts.pending.length > 0}
             wait={{ since: drafts.waitingSince, until: drafts.waitingUntil }}
             submitLabel={change?.submitLabel}

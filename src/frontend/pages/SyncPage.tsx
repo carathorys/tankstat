@@ -79,6 +79,7 @@ export function SyncPage() {
             name={group.vehicleName ?? t('sync.unknownVehicle')}
             units={{ distance: group.distanceUnit as DistanceUnit | null, volume: group.volumeUnit as VolumeUnit | null }}
             items={group.items}
+            editable={state.status !== 'syncing'}
             onEdited={() => setStatus(t('sync.edited'))}
             onRemoved={() => {
               setStatus(t('sync.removed'))
@@ -133,6 +134,7 @@ function Group({
   name,
   units,
   items,
+  editable = true,
   onEdited,
   onRemoved,
   parked,
@@ -141,6 +143,8 @@ function Group({
   name: string
   units: Units
   items: WaitingChange[]
+  /** False while a sync runs: what is being sent is not edited meanwhile. */
+  editable?: boolean
   onEdited?: () => void
   onRemoved?: () => void
   /** Changes the server parked: listed with why, who sent them, and Apply anyway / Discard instead of Remove. */
@@ -159,7 +163,7 @@ function Group({
       </Typography>
       <Stack component="ul" sx={{ gap: 1, listStyle: 'none', p: 0, m: 0 }}>
         {items.map((item) => (
-          <Item key={item.change.id} item={item} units={units} onEdited={onEdited} onRemoved={onRemoved} parked={parked?.get(item.change.id)} onResolved={onResolved} />
+          <Item key={item.change.id} item={item} units={units} editable={editable} onEdited={onEdited} onRemoved={onRemoved} parked={parked?.get(item.change.id)} onResolved={onResolved} />
         ))}
       </Stack>
     </Stack>
@@ -169,6 +173,7 @@ function Group({
 function Item({
   item,
   units,
+  editable,
   onEdited,
   onRemoved,
   parked,
@@ -176,6 +181,7 @@ function Item({
 }: {
   item: WaitingChange
   units: Units
+  editable: boolean
   onEdited?: () => void
   onRemoved?: () => void
   parked?: Parked
@@ -227,6 +233,7 @@ function Item({
               units={{ distance: units.distance, volume: units.volume ?? 'LITERS' }}
               label={parts.length ? `${kind}, ${parts.join(', ')}` : kind}
               parked={parked}
+              disabled={!editable}
               onDone={(message) => (parked ? onResolved!(message) : onEdited!())}
             />
           )}

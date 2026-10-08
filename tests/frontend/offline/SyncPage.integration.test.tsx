@@ -286,3 +286,34 @@ it('Edit and apply sends the change as edited; a refusal stays in the dialog wit
   expect(sent).toHaveLength(2)
   expect(sent[1]).toMatchObject({ id: 'c1', action: 'APPLY', change: { id: 'c1', updateRefueling: { id: 'b', volume: 44, odometer: 1500 } } })
 })
+
+it('Edit, on an add whose amounts wait for its kept photos, saves without them', async () => {
+  await downloaded()
+  await outbox.enqueue({ id: 'n1', entity: 'refuelings', action: 'add', vehicleId: 'v1', targetId: 'n1', input: { id: 'n1', vehicleId: 'v1', date: '2026-10-05', volume: null, totalCost: null, currency: 'EUR', odometer: null, isFullTank: true, missedPreviousFillUp: false, note: null, photoIds: ['local:kept'] } })
+  renderWithApollo(<App />, '/sync')
+  const ui = userEvent.setup()
+
+  await ui.click(await screen.findByRole('button', { name: /^Edit the change: New refuelling/ }, { timeout: 10_000 }))
+  const dialog = await screen.findByRole('dialog', { name: 'Edit the change' })
+  await ui.type(within(dialog).getByLabelText(/^Note/), 'Motorway')
+  await ui.click(within(dialog).getByRole('button', { name: 'Save the change' }))
+
+  expect(await screen.findByText('The change is saved on this device; it is sent when the server can be reached.')).toBeInTheDocument()
+  expect(outbox.changes[0]).toMatchObject({ id: 'n1', action: 'add', input: { note: 'Motorway', photoIds: ['local:kept'] } })
+})
+
+it('a change waiting here cannot be edited while it is being sent', async () => {
+  await downloaded()
+  await someChanges()
+  let answer!: () => void
+  provideOfflineSync(createPushEngine({ client: createApolloClient('http://localhost/graphql') }))
+  server.use(graphql.mutation('SyncChanges', () => new Promise<never>((_, reject) => (answer = () => reject(new Error('stop'))))))
+  connectivity.reset()
+  renderWithApollo(<App />, '/sync')
+  const ui = userEvent.setup()
+
+  const edit = await screen.findByRole('button', { name: /^Edit the change: New refuelling/ }, { timeout: 10_000 })
+  await ui.click(screen.getByRole('button', { name: 'Sync now' }))
+  await waitFor(() => expect(edit).toBeDisabled())
+  answer()
+})
