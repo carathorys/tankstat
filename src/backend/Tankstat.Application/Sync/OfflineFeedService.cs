@@ -3,6 +3,8 @@ using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
 using Tankstat.Application.Recurring;
 using Tankstat.Domain;
+using Tankstat.Domain.Access;
+using Tankstat.Domain.Sync;
 
 namespace Tankstat.Application.Sync;
 
@@ -36,7 +38,8 @@ public sealed class OfflineFeedService(
 
         var first = after is null;
         var cursor = first ? new OfflineCursor(vehicleId, since is null ? from : null, since, now, null, false, null, false) : OfflineCursor.Decode(after!, vehicleId);
-        if (cursor.Since is { } old && old < now - Retention)
+        // The tombstones are read from the overlap before `since`: those must still be kept, or a removal could be missed.
+        if (cursor.Since is { } old && old - Overlap < now - Retention)
         {
             logger.LogDebug("The last download of vehicle {VehicleId} is older than the tombstones kept: the device starts afresh", vehicleId);
             return new OfflinePage(context.Vehicle, [], [], [], [], null, now, Resync: true);
@@ -61,6 +64,16 @@ public sealed class OfflineFeedService(
             : null;
         var schedules = first ? await recurring.ListAsync(vehicleId, ct) : [];
         var removed = first && cursor.Since is { } moment ? await feed.RemovedSinceAsync(vehicleId, moment - Overlap, ct) : [];
+        // The trash is shown to those who may change the logs (Edit), like online: to anyone else a log in the trash is gone, so it is
+        // sent as removed (a device that had it drops it), never with its values. Paging above went by every row, the trash included.
+        if (context.Level < AccessLevel.Edit)
+        {
+            removed = [.. removed,
+                .. sentRefuelings.Where(r => r.IsDeleted).Select(r => new RemovedEntity(OfflineEntityType.Refueling, r.Id)),
+                .. sentExpenses.Where(e => e.IsDeleted).Select(e => new RemovedEntity(OfflineEntityType.Expense, e.Id))];
+            sentRefuelings = [.. sentRefuelings.Where(r => !r.IsDeleted)];
+            sentExpenses = [.. sentExpenses.Where(e => !e.IsDeleted)];
+        }
 
         logger.LogDebug("Sent {Refuelings} refuelings, {Expenses} expenses and {Removed} removals of vehicle {VehicleId} ({Kind} download, {More})",
             sentRefuelings.Count, sentExpenses.Count, removed.Count, vehicleId, cursor.Since is null ? "full" : "later", next is null ? "complete" : "more to come");
