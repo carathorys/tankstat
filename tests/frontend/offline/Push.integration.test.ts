@@ -83,6 +83,59 @@ it('what the server parks leaves the device with its reason; what was made on a 
   expect(outbox.changes.map((c) => c.id)).toEqual(['g1']) // made on the vehicle the server did not take: not sent, it waits
 })
 
+it('what was made on a parked add still waits in the next sync', async () => {
+  const sync = fakeSync((c) => (c.id === 'golf' ? 'vehicle.nameRequired' : null))
+  await keep({ id: 'golf', entity: 'vehicles', action: 'add', vehicleId: 'golf', targetId: 'golf', input: { id: 'golf', name: '', fuelType: 'PETROL' } })
+  await keep(log('g1', 'golf'))
+
+  await engine().run()
+  await engine().run() // a new run (the add left the device in the first)
+
+  expect(sync.requests.flat().map((c) => c.id)).toEqual(['golf'])
+  expect(outbox.changes.map((c) => c.id)).toEqual(['g1'])
+})
+
+it('an edit made while a change is on its way is not taken along when the change is answered', async () => {
+  let editedMeanwhile = false
+  server.use(
+    graphql.mutation('SyncChanges', async ({ variables }) => {
+      const changes = variables.input.changes as Sent[]
+      if (!editedMeanwhile) {
+        editedMeanwhile = true
+        await keep({ id: 'e1', entity: 'refuelings', action: 'update', vehicleId: 'v1', targetId: 'r1', input: { id: 'r1', volume: 31 } })
+      }
+      const results = changes.map((c) => ({ __typename: 'SyncChangeResultInfo', id: c.id, status: 'APPLIED', entityId: null, version: 1, reason: null }))
+      return HttpResponse.json({ data: { syncChanges: { __typename: 'SyncResultInfo', applied: results.length, parked: 0, results } } })
+    }),
+  )
+  await keep(log('r1'))
+
+  await engine().run()
+
+  expect(outbox.changes).toEqual([expect.objectContaining({ id: 'e1', action: 'update', input: { id: 'r1', volume: 31 }, expectedVersion: null })])
+})
+
+it('a request the server refuses as a whole is sent again one change at a time, and only the change it cannot take waits', async () => {
+  const sent: string[][] = []
+  server.use(
+    graphql.mutation('SyncChanges', ({ variables }) => {
+      const changes = variables.input.changes as Sent[]
+      sent.push(changes.map((c) => c.id))
+      if (changes.some((c) => c.id === 'bad'))
+        return HttpResponse.json({ errors: [{ message: 'too large', extensions: { code: 'VALIDATION_FAILED', key: 'sync.payloadTooLarge' } }], data: null })
+      const results = changes.map((c) => ({ __typename: 'SyncChangeResultInfo', id: c.id, status: 'APPLIED', entityId: null, version: 1, reason: null }))
+      return HttpResponse.json({ data: { syncChanges: { __typename: 'SyncResultInfo', applied: results.length, parked: 0, results } } })
+    }),
+  )
+  for (const id of ['a', 'bad', 'c']) await keep(log(id))
+
+  await engine().run()
+
+  expect(sent).toEqual([['a', 'bad', 'c'], ['a'], ['bad'], ['c']])
+  expect(outbox.changes.map((c) => c.id)).toEqual(['bad'])
+  expect(pulls).toHaveLength(1) // the download still ran
+})
+
 it('a lost connection ends the sync: what the server answered leaves, the rest waits for the next one', async () => {
   const sync = fakeSync()
   sync.dropFrom(1)

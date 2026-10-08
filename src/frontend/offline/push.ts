@@ -73,6 +73,20 @@ export function toChangeInput(c: Change): ChangeInput {
   }
 }
 
+/** Where the device remembers the adds the server parked (the ids of what they add). */
+export const PARKED_ADDS_KEY = 'push:parkedAdds'
+
+/** The adds the server parked, as remembered on this device. */
+export async function parkedAdds(device: typeof deviceData): Promise<string[]> {
+  const kept = (await device.read(PARKED_ADDS_KEY))?.data
+  return Array.isArray(kept) ? kept.filter((id): id is string => typeof id === 'string') : []
+}
+
+/** Forgets that an add was parked (it was applied or discarded on the Sync page): what depends on it is sent again. */
+export async function unblockAdd(id: string, device: typeof deviceData = deviceData): Promise<void> {
+  await device.keep(PARKED_ADDS_KEY, (await parkedAdds(device)).filter((kept) => kept !== id))
+}
+
 /** What a change needs the server to have first: the vehicle it was made on, or the schedule it changes or marks done, when added here. */
 const needs = (c: Change): string[] => [c.vehicleId, ...(c.entity === 'recurring' ? [c.targetId, ...(c.targetIds ?? [])] : [])]
 
@@ -123,21 +137,45 @@ export function createPushEngine({ client, device = deviceData, pull, chunkSize 
     set({ status: 'syncing' })
     const answered: string[] = []
     const parked: ParkedChange[] = []
-    const blocked = new Set<string>() // adds the server parked: what depends on them waits
+    // Adds the server parked, in this run or an earlier one: what depends on them waits (sent, it could only fail).
+    const blocked = new Set<string>(await parkedAdds(device))
     let interrupted = false
+
+    const send = async (group: Change[]) => {
+      // As the change is now (an edit may have folded into it since the run began), marked sent first: from here on the server may have
+      // it, so nothing folds into it any more (`collapse`), and removing it once answered never takes a later edit along.
+      await outbox.markSent(group.map((c) => c.id))
+      const { data } = await client.mutate({ mutation: SyncChangesDocument, variables: { input: { changes: group.map(toChangeInput) } } })
+      const results = new Map<string, Result>((data?.syncChanges.results ?? []).map((r) => [r.id, r]))
+      for (const change of group) {
+        const result = results.get(change.id)
+        if (!result) continue
+        answered.push(change.id)
+        if (result.status === 'PARKED') {
+          parked.push({ change, key: result.reason?.key ?? '', args: Object.fromEntries((result.reason?.args ?? []).map((a) => [a.name, a.value])) })
+          if (change.action === 'add') blocked.add(change.targetId)
+        }
+      }
+    }
+
     try {
       for (const chunk of batches(outbox.changes, chunkSize)) {
-        const sendable = chunk.filter((c) => !needs(c).some((id) => blocked.has(id)))
+        const current = new Map(outbox.changes.map((c) => [c.id, c]))
+        const sendable = chunk.flatMap((c) => current.get(c.id) ?? []).filter((c) => !needs(c).some((id) => blocked.has(id)))
         if (sendable.length === 0) continue
-        const { data } = await client.mutate({ mutation: SyncChangesDocument, variables: { input: { changes: sendable.map(toChangeInput) } } })
-        const results = new Map<string, Result>((data?.syncChanges.results ?? []).map((r) => [r.id, r]))
-        for (const change of sendable) {
-          const result = results.get(change.id)
-          if (!result) continue
-          answered.push(change.id)
-          if (result.status === 'PARKED') {
-            parked.push({ change, key: result.reason?.key ?? '', args: Object.fromEntries((result.reason?.args ?? []).map((a) => [a.name, a.value])) })
-            if (change.action === 'add') blocked.add(change.targetId)
+        try {
+          await send(sendable)
+        } catch (error) {
+          if (isConnectionFailure(error) || sendable.length === 1) throw error
+          // The server refused the request as a whole (one change it cannot take at all): one at a time, so the others still go and
+          // only that one waits, shown on the Sync page where it can be removed.
+          for (const change of sendable) {
+            try {
+              await send([change])
+            } catch (single) {
+              if (isConnectionFailure(single)) throw single
+              console.warn('A change kept on this device was refused; it waits on the Sync page.', single)
+            }
           }
         }
       }
@@ -145,11 +183,15 @@ export function createPushEngine({ client, device = deviceData, pull, chunkSize 
       if (!isConnectionFailure(error)) console.warn('Sending the changes kept on this device failed; the next sync tries again.', error)
       interrupted = true
     }
+    // The download runs after every sync, whatever was answered: a change that waits must never keep the device from the server's rows.
+    await pull?.().catch(() => undefined) // the server's rows first...
     if (answered.length > 0) {
-      await pull?.().catch(() => undefined) // the server's rows first...
       await outbox.remove(answered) // ...then the kept changes leave
       void client.refetchQueries({ include: 'active' }).catch(() => undefined)
     }
+    // Remembered while anything waiting still needs one of them (until the parked add is applied or discarded on the Sync page).
+    const stillNeeded = new Set(outbox.changes.flatMap(needs))
+    await device.keep(PARKED_ADDS_KEY, [...blocked].filter((id) => stillNeeded.has(id))).catch(() => undefined)
     set({ status: 'idle', last: { at: Date.now(), applied: answered.length - parked.length, parked, interrupted } })
   }
 
