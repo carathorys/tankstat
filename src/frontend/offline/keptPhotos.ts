@@ -7,6 +7,9 @@ import { uuidV4 } from './uuid.ts'
 /** A draft uploaded for a kept photo is used again within this time: the server lets drafts expire after a day. */
 export const DRAFT_REUSE_MS = 20 * 60 * 60 * 1000
 
+/** A kept photo no change refers to is removed once it is this old (nothing could still be about to use it). */
+export const GC_GRACE_MS = 24 * 60 * 60 * 1000
+
 const urls = new Map<string, string>()
 
 /**
@@ -64,10 +67,13 @@ export const keptPhotos = {
     return id
   },
 
-  /** Removes the kept photos no change refers to any more (at start: nothing else can hold one then). */
-  async gc(live: ReadonlySet<string>): Promise<void> {
+  /**
+   * Removes the kept photos no change refers to any more (the app closed between keeping a photo and keeping its change). Only those kept
+   * longer than `GC_GRACE_MS` ago: a dialog open in another tab may hold one that is not in a change yet.
+   */
+  async gc(live: ReadonlySet<string>, now = Date.now()): Promise<void> {
     const rows = await deviceData.rows()
     if (!rows) return
-    await keptPhotos.remove((await rows.photos()).map((p) => p.key).filter((key) => !live.has(key)))
+    await keptPhotos.remove((await rows.photos()).filter((p) => !live.has(p.key) && now - p.createdAt > GC_GRACE_MS).map((p) => p.key))
   },
 }

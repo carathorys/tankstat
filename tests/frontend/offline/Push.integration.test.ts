@@ -197,7 +197,7 @@ it('photos kept on this device go up as drafts right before their change, which 
   expect(await keptPhotos.get(second!)).toBeUndefined()
 })
 
-it('a photo the server will not take as a draft is left out, its change goes without it; a lost connection keeps both for next time', async () => {
+it('a photo the server will not take this time keeps its change waiting with the photo; one gone from the device is left out', async () => {
   const order: string[] = []
   fakeDrafts(order, new Set([1]))
   const sent = fakeSync()
@@ -205,13 +205,17 @@ it('a photo the server will not take as a draft is left out, its change goes wit
   await keep({ id: 'p1', entity: 'refuelings', action: 'addPhoto', vehicleId: 'v1', targetId: 'saved', input: { key: refused } })
   const kept = await keptPhotos.keep(new Blob([new Uint8Array([2])]), 'v1')
   await keep({ ...log('r1'), input: { ...log('r1').input, photoIds: [kept] } })
+  await keep({ ...log('r3'), input: { ...log('r3').input, photoIds: ['local:gone'] } }) // its photo no longer on the device
 
   const push = engine()
   await push.run()
 
-  expect(sent.requests.map((r) => r.map((c) => c.id))).toEqual([['r1']]) // the photo change had nothing left to send
-  expect(push.state.last).toMatchObject({ photosLeftOut: 1, interrupted: false })
-  expect(outbox.changes).toEqual([])
+  expect(sent.requests.map((r) => r.map((c) => c.id))).toEqual([['r1'], ['r3']])
+  expect(sent.requests[1][0].logRefueling).not.toHaveProperty('photoIds.0')
+  expect(push.state.last).toMatchObject({ photosWaiting: 1, photosLeftOut: 1, interrupted: false })
+  expect(outbox.changes.map((c) => c.id)).toEqual(['p1']) // not sent, so not lost
+  expect(await keptPhotos.get(refused!)).toBeDefined()
+  await outbox.remove(['p1'])
 
   server.use(http.put('/media/vehicles/:vehicleId/photo-drafts', () => HttpResponse.error()))
   const later = await keptPhotos.keep(new Blob([new Uint8Array([3])]), 'v1')
