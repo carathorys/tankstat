@@ -12,7 +12,9 @@ import { outbox } from './outbox.ts'
  * the last answer seen.
  */
 type Variables = Record<string, unknown>
-type Resolver = (rows: RowStore, variables: Variables) => Promise<Record<string, unknown> | undefined>
+/** The last answer seen of a query (an operation and its variables), or undefined. */
+type Kept = (operationName: string, variables: Variables) => Promise<Record<string, unknown> | undefined>
+type Resolver = (rows: RowStore, variables: Variables, kept: Kept) => Promise<Record<string, unknown> | undefined>
 
 const LEVELS = ['NONE', 'VIEW', 'EDIT', 'DELETE']
 const atLeast = (access: string | undefined, level: 'EDIT' | 'DELETE') => LEVELS.indexOf(access ?? 'NONE') >= LEVELS.indexOf(level)
@@ -129,8 +131,15 @@ function added(kind: LogKind, change: Change): LogRow {
  */
 export function withChanges(kind: LogKind, rows: readonly LogRow[], vehicleId?: string): LogRow[] {
   const waiting = outbox.changes.filter((c) => c.entity === kind && (vehicleId === undefined || c.vehicleId === vehicleId))
-  if (waiting.length === 0) return [...rows]
+  const visits = kind === 'expenses' && outbox.changes.some((c) => c.action === 'markDone')
+  if (waiting.length === 0 && !visits) return [...rows]
   const byId = new Map(rows.map((r) => [r.id, r]))
+  if (kind === 'expenses') {
+    // A visit with an amount logs an expense: it is a row of its own until the server has it (its id is the visit's expense id).
+    for (const visit of outbox.changes.filter((c) => c.action === 'markDone' && c.input?.amount != null && (vehicleId === undefined || c.vehicleId === vehicleId)))
+      // Version 1, as the server will create it: an edit or trash of it made here goes after the visit, from that version.
+      byId.set(visit.targetId, { ...added('expenses', { ...visit, input: { ...visit.input, category: visit.input?.category || null, note: null } }), version: 1 })
+  }
   for (const change of waiting) {
     const row = byId.get(change.targetId)
     // An add the server has after all (its answer was lost, a download brought it): the row as downloaded, with the add's values.
@@ -154,9 +163,12 @@ async function vehicleMap(rows: RowStore) {
 /** A vehicle whose logs this device holds: its download finished at least once, and its window is not "none". */
 const holdsLogs = (cursor: PullCursor | undefined) => cursor?.complete === true && cursor.from !== false
 
-/** The vehicle's logs out of the trash (with the changes waiting), when the device holds them. */
+/** A vehicle added on this device and not sent yet. */
+const addedVehicle = (id: unknown) => outbox.changes.find((c) => c.entity === 'vehicles' && c.action === 'add' && c.targetId === id)
+
+/** The vehicle's logs out of the trash (with the changes waiting), when the device holds them (all of them, for a vehicle it added). */
 async function downloaded(rows: RowStore, kind: LogKind, vehicleId: unknown) {
-  if (typeof vehicleId !== 'string' || !holdsLogs(await rows.cursor(vehicleId))) return undefined
+  if (typeof vehicleId !== 'string' || !(addedVehicle(vehicleId) || holdsLogs(await rows.cursor(vehicleId)))) return undefined
   return withChanges(kind, await rows.logs(kind, vehicleId), vehicleId).filter((r) => !r.deletedAt)
 }
 
@@ -223,6 +235,113 @@ const expenseCategories: Resolver = async (rows, variables) => {
   return { expenseCategories: [...new Set(expenses.map((e) => text(e.category)).filter((c): c is string => !!c))].sort() }
 }
 
+/** A change's values over an object the server sent (a vehicle, a schedule): only the fields the change carries. */
+const over = <T extends Record<string, unknown>>(base: T, input: Record<string, unknown> | undefined, fields: readonly string[]): T => ({
+  ...base,
+  ...Object.fromEntries(fields.filter((f) => input && f in input && f !== 'units').map((f) => [f, input![f]])),
+  ...(input?.units ? { units: { __typename: 'MeasurementUnits', ...(base.units as object | undefined), ...(input.units as object) } } : {}),
+})
+
+const VEHICLE_FIELDS = ['name', 'licensePlate', 'fuelType', 'units']
+
+/** Today on this device's calendar (a schedule added without a last-done day starts today, as on the server). */
+const localToday = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+const SCHEDULE_FIELDS = ['title', 'category', 'note', 'kind', 'intervalMonths', 'intervalDistance', 'lastDoneDate', 'lastDoneOdometer', 'warnDays', 'warnDistance']
+
+/** A vehicle as the device knows it: the server's (details, or its card from the home list) with the changes waiting, or one added here. */
+async function vehicleOf(rows: RowStore, id: unknown, base: Record<string, unknown> | undefined) {
+  const add = addedVehicle(id)
+  const fresh = add && {
+    __typename: 'Vehicle', id, version: 0, licensePlate: null, pictureUrl: null, canEdit: true, logAccess: 'DELETE', refuelingCount: 0, owner: null,
+    summary: null, recurring: [], units: { __typename: 'MeasurementUnits', distance: 'KILOMETERS', volume: 'LITERS' },
+  }
+  const start = fresh ?? base ?? (await rows.vehicles()).find((v) => v.id === id)
+  if (!start) return undefined
+  const updates = outbox.changes.filter((c) => c.entity === 'vehicles' && c.targetId === id && (c.action === 'update' || c.action === 'add'))
+  return updates.reduce<Record<string, unknown>>((v, c) => over(v, c.input, VEHICLE_FIELDS), start)
+}
+
+/** The schedules of a vehicle with the changes waiting: an added one is upcoming (the server works out where it stands). */
+function schedulesOf(vehicleId: string, base: readonly Record<string, unknown>[]) {
+  const byId = new Map(base.map((s) => [s.id as string, s]))
+  for (const change of outbox.changes.filter((c) => (c.entity === 'recurring' || c.action === 'markDone') && c.vehicleId === vehicleId)) {
+    if (change.action === 'markDone') {
+      // A visit moves its schedules on as the server will (baseline and version), so they are no longer offered as due and an edit made
+      // after it goes from where it leaves them; where they stand next is the server's to work out.
+      for (const id of change.targetIds ?? []) {
+        const schedule = byId.get(id)
+        if (!schedule) continue
+        byId.set(id, {
+          ...schedule,
+          lastDoneDate: change.input?.date ?? schedule.lastDoneDate,
+          lastDoneOdometer: change.input?.odometer ?? schedule.lastDoneOdometer,
+          version: Number(schedule.version ?? 0) > 0 ? Number(schedule.version) + 1 : schedule.version,
+          status: { ...(schedule.status as Record<string, unknown>), state: 'UPCOMING', limit: null, dueDate: null, dueOdometer: null, daysLeft: null, distanceLeft: null },
+        })
+      }
+    } else if (change.action === 'add')
+      byId.set(change.targetId, over({
+        __typename: 'RecurringExpenseInfo', id: change.targetId, version: 0, category: null, note: null, intervalMonths: null, intervalDistance: null,
+        lastDoneOdometer: null, warnDays: 30, warnDistance: 500, lastDoneDate: localToday(),
+        status: { __typename: 'RecurrenceStatusInfo', state: 'UPCOMING', limit: null, dueDate: null, dueOdometer: null, daysLeft: null, distanceLeft: null },
+      }, change.input, SCHEDULE_FIELDS))
+    else if (change.action === 'update' && byId.has(change.targetId)) byId.set(change.targetId, over(byId.get(change.targetId)!, change.input, SCHEDULE_FIELDS))
+  }
+  return [...byId.values()]
+}
+
+const vehicleDetails: Resolver = async (rows, variables, kept) => {
+  if (!outbox.changes.some((c) => c.entity === 'vehicles' && c.targetId === variables.id)) return undefined
+  const vehicle = await vehicleOf(rows, variables.id, (await kept('VehicleDetails', variables))?.vehicle as Record<string, unknown> | undefined)
+  return vehicle && { vehicle }
+}
+
+const vehicleCard: Resolver = async (rows, variables, kept) => {
+  if (!outbox.changes.some((c) => c.vehicleId === variables.id)) return undefined
+  const base = (await kept('VehicleCard', variables))?.vehicle as Record<string, unknown> | undefined
+  const vehicle = await vehicleOf(rows, variables.id, base)
+  return vehicle && { vehicle: { ...vehicle, recurring: schedulesOf(String(variables.id), (vehicle.recurring as Record<string, unknown>[] | undefined) ?? []) } }
+}
+
+/** The home list: the last answer seen, with the vehicles' changes over it and the vehicles added here at the end of the first page. */
+const welcome: Resolver = async (rows, variables, kept) => {
+  const base = await kept('Welcome', variables)
+  if (!base) return undefined
+  const search = typeof variables.search === 'string' ? variables.search.trim().toLowerCase() : ''
+  const listed = await Promise.all((base.myVehicles as Record<string, unknown>[]).map(async (v) => {
+    const vehicle = (await vehicleOf(rows, v.id, v)) ?? v
+    return { ...vehicle, recurring: schedulesOf(String(v.id), (v.recurring as Record<string, unknown>[] | undefined) ?? []) }
+  }))
+  // Counted on every page, listed at the end of the last one only: the next page is asked from how many cards are shown, so the server's
+  // own pages must stay where they are until the last. One the server lists already (its answer was lost, a download brought it) is not
+  // added again.
+  const shown = new Set((base.myVehicles as Record<string, unknown>[]).map((v) => String(v.id)))
+  const waiting = outbox.changes
+    .filter((c) => c.entity === 'vehicles' && c.action === 'add' && !shown.has(c.targetId))
+    .filter((c) => !search || String(c.input?.name ?? '').toLowerCase().includes(search) || String(c.input?.licensePlate ?? '').toLowerCase().includes(search))
+  const lastPage = Number(variables.skip ?? 0) + listed.length >= Number(base.myVehicleCount ?? 0)
+  const adds = !lastPage ? [] : await Promise.all(waiting.map(async (c) => ({ ...(await vehicleOf(rows, c.targetId, undefined)), recurring: schedulesOf(c.targetId, []) })))
+  return { ...base, myVehicles: [...listed, ...adds], myVehicleCount: Number(base.myVehicleCount ?? 0) + waiting.length, vehicleTotal: Number(base.vehicleTotal ?? 0) + waiting.length }
+}
+
+const recurringExpenses: Resolver = async (_rows, variables, kept) => {
+  const vehicleId = String(variables.vehicleId)
+  if (!outbox.vehicleIds().has(vehicleId)) return undefined
+  const base = (await kept('RecurringExpenses', variables))?.vehicle as Record<string, unknown> | undefined
+  if (!base && !addedVehicle(vehicleId)) return undefined
+  return { vehicle: { __typename: 'Vehicle', id: vehicleId, ...base, recurring: schedulesOf(vehicleId, (base?.recurring as Record<string, unknown>[] | undefined) ?? []) } }
+}
+
+/** A vehicle added here has no figures or charts until the server has it. */
+const vehicleDashboard: Resolver = async (_rows, variables) =>
+  addedVehicle(variables.id) ? { vehicle: { __typename: 'Vehicle', id: variables.id, summary: null }, vehicleCharts: [] } : undefined
+
+const chartData: Resolver = async (_rows, variables) =>
+  addedVehicle(variables.vehicleId) ? { vehicleChartData: { __typename: 'ChartData', unit: 'COUNT', series: [] } } : undefined
+
 const RESOLVERS: Record<string, Resolver> = {
   Refuelings: list('refuelings', 'refuelings', 'refuelingCount'),
   Expenses: list('expenses', 'expenses', 'expenseCount'),
@@ -232,11 +351,19 @@ const RESOLVERS: Record<string, Resolver> = {
   ExpenseTrash: trash('expenses', 'expenseTrash', 'expenseTrashCount', 'expenseTrashDeletableCount'),
   LogDefaults: logDefaults,
   ExpenseCategories: expenseCategories,
+  Welcome: welcome,
+  VehicleCard: vehicleCard,
+  VehicleDetails: vehicleDetails,
+  RecurringExpenses: recurringExpenses,
+  VehicleDashboard: vehicleDashboard,
+  ChartData: chartData,
 }
 
 /** The device's own answer to a query, or undefined when it has none (not one of these queries, or not downloaded). */
-export async function answerLocally(rows: RowStore | null, operationName: string | undefined, variables: Variables): Promise<Record<string, unknown> | undefined> {
+export async function answerLocally(
+  rows: RowStore | null, operationName: string | undefined, variables: Variables, kept: Kept = async () => undefined,
+): Promise<Record<string, unknown> | undefined> {
   const resolver = RESOLVERS[operationName ?? '']
   if (!rows || !resolver) return undefined
-  return resolver(rows, variables)
+  return resolver(rows, variables, kept)
 }

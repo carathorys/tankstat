@@ -112,3 +112,53 @@ describe('discard and markOf', () => {
     expect(markOf(change('restore'))).toBe('restored')
   })
 })
+
+describe('vehicles, schedules and visits', () => {
+  const vehicleAdd = (id = 'car') => change('add', id, { id, entity: 'vehicles', vehicleId: id, input: { id, name: 'Golf', fuelType: 'PETROL' } })
+  const scheduleAdd = (id = 's1') => change('add', id, { id, entity: 'recurring', input: { id, title: 'Oil' } })
+  const visit = (ids: string[], expenseId?: string) => change('markDone', expenseId ?? 'visit', { entity: 'recurring', targetIds: ids, input: { ids, expenseId } })
+
+  it('a vehicle added here and removed takes everything made to it along, and nothing else', () => {
+    const list = fold(vehicleAdd('car'), add('r1', { id: 'r1', vehicleId: 'car' }), change('trash', 'r9'), scheduleAdd('s1'))
+    const onCar = list.map((c) => (c.targetId === 'r1' || c.targetId === 's1' ? { ...c, vehicleId: 'car' } : c))
+
+    const after = collapse(onCar, change('trash', 'car', { entity: 'vehicles', vehicleId: 'car' }))
+
+    expect(after.map((c) => c.targetId)).toEqual(['r9'])
+  })
+
+  it('a vehicle added then edited is the add with the new values', () => {
+    const [only] = fold(vehicleAdd(), change('update', 'car', { entity: 'vehicles', vehicleId: 'car', input: { id: 'car', name: 'Golf GTI', fuelType: 'DIESEL' } }))
+    expect(only).toMatchObject({ action: 'add', input: { name: 'Golf GTI', fuelType: 'DIESEL' } })
+  })
+
+  it('visits never fold, and a schedule added here and deleted leaves the visits waiting', () => {
+    const list = fold(scheduleAdd('s1'), visit(['s1', 's2'], 'e1'), visit(['s1']))
+    expect(list.filter((c) => c.action === 'markDone')).toHaveLength(2)
+
+    const after = collapse(list, change('trash', 's1', { entity: 'recurring' }))
+
+    expect(after.map((c) => [c.action, c.targetIds])).toEqual([['markDone', ['s2']]]) // the visit of s1 alone is gone
+    expect(after[0].input).toMatchObject({ ids: ['s2'], expenseId: 'e1' })
+    expect(markOf(after[0])).toBe('done')
+  })
+
+  const paidVisit = (expenseId: string) => change('markDone', expenseId, { entity: 'recurring', targetIds: ['s1'], input: { ids: ['s1'], expenseId, amount: 80, currency: 'EUR', photoIds: ['local:a'] } })
+  const ofExpense = (action: Change['action'], id: string, over: Partial<Change> = {}) => change(action, id, { entity: 'expenses', ...over })
+
+  it('the expense of a visit waiting here, trashed: the visit logs none, and what was made to it goes too', () => {
+    const list = fold(paidVisit('e1'), ofExpense('update', 'e1', { input: { id: 'e1', note: 'x' }, expectedVersion: 1 }))
+    expect(list).toHaveLength(2) // an edit goes after the visit, from the version the visit leaves
+
+    const after = collapse(list, ofExpense('trash', 'e1', { expectedVersion: 1 }))
+
+    expect(after).toHaveLength(1)
+    expect(after[0]).toMatchObject({ action: 'markDone', targetIds: ['s1'], input: { amount: null, photoIds: null } })
+  })
+
+  it('a visit taken back takes what was made to its expense along', () => {
+    const list = fold(paidVisit('e1'), ofExpense('update', 'e1', { input: { id: 'e1', note: 'x' } }), ofExpense('trash', 'e7'))
+    const after = discard(list, list[0].id)
+    expect(after.map((c) => c.targetId)).toEqual(['e7'])
+  })
+})

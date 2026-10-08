@@ -1,5 +1,5 @@
 import type { ApolloClient } from '@apollo/client'
-import { OfflineChangesDocument, OfflineSettingsDocument, WelcomeDocument, type OfflineChangesQuery } from '../gql/generated.ts'
+import { OfflineChangesDocument, OfflineSettingsDocument, VehicleDefaultsDocument, WelcomeDocument, type OfflineChangesQuery } from '../gql/generated.ts'
 import { HOME_PAGE_SIZE } from '../homePaging.ts'
 import { connectivity } from './connectivity.ts'
 import { deviceData } from './deviceData.ts'
@@ -10,6 +10,12 @@ import { snapshotKey } from './snapshotPolicy.ts'
 
 /** Rows per table and page (the server's maximum). */
 export const PAGE_SIZE = 200
+/**
+ * The download asks the server, never the device: while changes wait, the link would answer some of these queries itself (the home list
+ * with the vehicles added here), and storing that as the server's would duplicate them. Their answers are still kept as usual.
+ */
+const SERVER = { offline: 'bypass' }
+
 /** Where the time of the last complete download is kept with the user's data (not an operation's answer). */
 export const LAST_PULL_KEY = 'meta:lastPull'
 
@@ -41,7 +47,8 @@ export interface PullDeps {
  * Downloads the user's offline window and keeps it current (`offlineChanges` on the server, `offline-download` in the docs):
  * 1. the home list (one request): the vehicles are kept, the ones no longer listed are dropped with everything below them (access lost,
  *    trashed or purged by someone else), and its pages are kept for the home page;
- * 2. the window rules (`offlineSettings`), turned into a start date per vehicle on this device's clock;
+ * 2. the defaults a new vehicle or schedule starts from (kept for adding offline), and the window rules (`offlineSettings`), turned into a
+ *    start date per vehicle on this device's clock;
  * 3. per vehicle, two at a time: a **full** download the first time, when the window grew or the server says the last one is too old
  *    (`resync`); otherwise only **what changed** since the last one's watermark, whatever its date, plus what was removed for good. A
  *    window that shrank drops the older logs here and downloads nothing again. Each page is stored before the next is asked, and a full
@@ -103,7 +110,7 @@ export function createPullEngine({ client, device = deviceData, now = () => new 
   }
 
   const ask = (input: Record<string, unknown>) =>
-    query(() => client.query({ query: OfflineChangesDocument, variables: { input: input as never }, fetchPolicy: 'no-cache' })).then((d) => d.offlineChanges)
+    query(() => client.query({ query: OfflineChangesDocument, variables: { input: input as never }, fetchPolicy: 'no-cache', context: SERVER })).then((d) => d.offlineChanges)
 
   async function full(rows: RowStore, cursor: PullCursor): Promise<void> {
     const from = cursor.from === false ? null : cursor.from
@@ -184,7 +191,7 @@ export function createPullEngine({ client, device = deviceData, now = () => new 
     account = device.user
     set({ status: 'pulling', vehiclesDone: 0, vehiclesTotal: 0, interrupted: false })
     try {
-      const home = await query(() => client.query({ query: WelcomeDocument, variables: { search: null, skip: 0, take: MAX_VEHICLES }, fetchPolicy: 'network-only' }))
+      const home = await query(() => client.query({ query: WelcomeDocument, variables: { search: null, skip: 0, take: MAX_VEHICLES }, fetchPolicy: 'network-only', context: SERVER }))
       const vehicles = home.myVehicles as unknown as VehicleRow[]
       await rows.putVehicles(vehicles)
       await keepHomePages(vehicles, home.vehicleTotal)
@@ -192,7 +199,9 @@ export function createPullEngine({ client, device = deviceData, now = () => new 
         const listed = new Set(vehicles.map((v) => v.id))
         for (const gone of (await rows.vehicles()).filter((v) => !listed.has(v.id))) await rows.dropVehicle(gone.id)
       }
-      const settings = (await query(() => client.query({ query: OfflineSettingsDocument, fetchPolicy: 'network-only' }))).offlineSettings
+      // What a new vehicle or schedule starts from: kept (the link keeps its answer), so they can be added offline too.
+      await client.query({ query: VehicleDefaultsDocument, fetchPolicy: 'network-only', context: SERVER })
+      const settings = (await query(() => client.query({ query: OfflineSettingsDocument, fetchPolicy: 'network-only', context: SERVER }))).offlineSettings
       const rules = new Map(settings.vehicles.map((v) => [v.vehicleId, v.window]))
       set({ vehiclesTotal: vehicles.length })
       const queue = [...vehicles]

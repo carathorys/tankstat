@@ -26,6 +26,8 @@ import { IconAction } from './IconAction.tsx'
 import { RecurringStatusBadge } from './RecurringStatus.tsx'
 import { useCardActions } from './useCardActions.ts'
 import { UserChip } from './UserAvatar.tsx'
+import { outbox, usePendingCount } from '../offline/outbox.ts'
+import { PendingBadge } from './PendingBadge.tsx'
 
 type Vehicle = VehicleCardFieldsFragment
 
@@ -91,6 +93,7 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
   const { t } = useTranslation()
   const format = useFormat()
   const s = v.summary
+  usePendingCount(v.id) // the marks follow the changes waiting
   const none = t('welcome.card.none')
   const dueText = useDueText(v.units.distance)
   // Only what needs attention is on the card (the vehicle's Recurring tab has the rest); overdue first, the server already sorts by urgency.
@@ -168,11 +171,14 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
           {v.licensePlate && <Chip variant="solid" color="neutral" label={v.licensePlate} />}
           <Chip color="neutral" label={t(`fuel.${v.fuelType}`)} />
           {!v.canEdit && <Chip variant="solid" color="warning" label={t('welcome.card.logAccess', { level: t(`level.${v.logAccess}`) })} />}
+          <PendingBadge entity="vehicles" id={v.id} />
         </Stack>
         {attention.length > 0 && (
           <Stack component="ul" aria-label={t('welcome.card.recurringTitle')} sx={{ gap: 0.5, listStyle: 'none', p: 0, m: 0 }}>
             {attention.slice(0, 3).map((r) => {
               const due = dueText(r.status)
+              // Done on this device and not sent yet: marked, and not to be done again meanwhile.
+              const doneHere = outbox.markOf('recurring', r.id) === 'done'
               return (
                 <li key={r.id}>
                   <Stack direction="row" sx={{ alignItems: 'center', gap: 1, justifyContent: 'space-between' }}>
@@ -182,7 +188,8 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
                         {due ? `${r.title} · ${due}` : r.title}
                       </Typography>
                     </Stack>
-                    {canLog && (
+                    {doneHere && <PendingBadge entity="recurring" id={r.id} />}
+                    {canLog && !doneHere && (
                       <IconAction
                         className="vehicle-card-action"
                         data-done={r.id}

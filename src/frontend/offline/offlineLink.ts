@@ -40,6 +40,10 @@ export function userOf(data: unknown): string | null {
   return session.mode === 'NONE' ? ANONYMOUS_USER : null
 }
 
+/** The last answer the device kept of a query, for the device's own answers to build on (a vehicle's page, the home list). */
+const keptBy = (device: typeof deviceData) => async (operationName: string, variables: Record<string, unknown>) =>
+  (await device.read(snapshotKey(operationName, variables)))?.data as Record<string, unknown> | undefined
+
 /**
  * Whether changes waiting on this device concern what a query asks: then the device answers it itself (when it holds the logs), so what
  * the user changed shows, in its place, until the server has it.
@@ -51,10 +55,18 @@ function waitingFor(name: string | undefined, variables: Record<string, unknown>
     case 'Expenses':
     case 'LogDefaults':
     case 'ExpenseCategories':
+    case 'RecurringExpenses':
+    case 'ChartData':
       return outbox.vehicleIds().has(String(variables.vehicleId))
+    case 'VehicleDetails':
+    case 'VehicleCard':
+    case 'VehicleDashboard':
+      return outbox.vehicleIds().has(String(variables.id))
+    case 'Welcome':
+      return outbox.changes.some((c) => c.entity === 'vehicles' || c.entity === 'recurring')
     case 'RefuelingDetails':
     case 'ExpenseDetails':
-      return outbox.changes.some((c) => c.targetId === variables.id)
+      return outbox.changes.some((c) => c.targetId === variables.id || c.input?.expenseId === variables.id)
     // Never the trash: the device holds only what it downloaded, and Empty trash empties the server's whole trash, so while the server
     // can be reached the trash shown is the server's (a log trashed here shows there once it is sent).
     default:
@@ -86,7 +98,7 @@ export function createOfflineLink(device = deviceData): ApolloLink {
       // Loaded when first needed (not with the app's first paint); the service worker keeps it for offline starts.
       const answer = async () => {
         const { answerLocally } = await import('./localResolvers.ts')
-        return (await answerLocally(await device.rows(), name, operation.variables)) ?? (await device.read(key, doc))?.data
+        return (await answerLocally(await device.rows(), name, operation.variables, keptBy(device))) ?? (await device.read(key, doc))?.data
       }
       return from(answer()).pipe(
         // Nobody's session kept (signed out, or never signed in here): the sign-in screen needs the server, nothing is "not loaded".
@@ -121,7 +133,7 @@ export function createOfflineLink(device = deviceData): ApolloLink {
 
     if (!bypass && !connectivity.reachable) return fromDevice()
     if (!bypass && isQuery && waitingFor(name, operation.variables)) {
-      const local = import('./localResolvers.ts').then(async ({ answerLocally }) => answerLocally(await device.rows(), name, operation.variables))
+      const local = import('./localResolvers.ts').then(async ({ answerLocally }) => answerLocally(await device.rows(), name, operation.variables, keptBy(device)))
       return from(local).pipe(mergeMap((data) => (data !== undefined ? of({ data } as ApolloLink.Result) : fromServer())))
     }
     return fromServer()

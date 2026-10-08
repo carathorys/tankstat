@@ -111,6 +111,8 @@ export interface FakeVehicle {
   /** The card fragment only matches a typed object, and this normalises `Vehicle:<id>` like production. */
   __typename: 'Vehicle'
   id: string
+  /** Counts its saves (from 1): a change kept on the device says which one it was made from. */
+  version: number
   name: string
   licensePlate: string | null
   fuelType: 'PETROL' | 'DIESEL' | 'LPG'
@@ -131,6 +133,7 @@ export const fakeVehicle = (over: Partial<FakeVehicle> & { ownerName?: string | 
   const { ownerName, ...rest } = over
   return {
     __typename: 'Vehicle',
+    version: 1,
     id: 'v1',
     name: 'Octavia',
     licensePlate: 'ABC-123',
@@ -911,6 +914,7 @@ export function fakeDashboardBackend(vehicle: FakeVehicle, charts: FakeChart[] =
 }
 
 export interface FakeRecurring {
+  version?: number
   /** The fragment on RecurringExpenseInfo only matches when the type is named. */
   __typename: 'RecurringExpenseInfo'
   id: string
@@ -941,6 +945,7 @@ export const typedRecurring = <T extends { status: object }>(item: T) => ({ __ty
 /** A combined (12 months or 15,000 km) schedule that is upcoming, unless the test says otherwise. */
 export const fakeRecurring = (over: Partial<FakeRecurring> = {}): FakeRecurring => ({
   __typename: 'RecurringExpenseInfo',
+  version: 1,
   id: 'rc1',
   title: 'Oil change',
   category: 'Service',

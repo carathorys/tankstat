@@ -158,3 +158,65 @@ describe('the changes waiting on this device', () => {
     expect(byId.get('n')).toMatchObject({ volume: 20, version: 3, consumption: 6.1 })
   })
 })
+
+describe('vehicles added on this device', () => {
+  it('are counted on every page of the home list but listed at the end of the last only, and never twice', async () => {
+    const { outbox } = await import('../../../src/frontend/offline/outbox.ts')
+    const { deviceData } = await import('../../../src/frontend/offline/deviceData.ts')
+    deviceData.reset(memoryStorage())
+    await deviceData.signedIn('u1')
+    await outbox.reload()
+    const card = (id: string) => ({ __typename: 'Vehicle', id, name: id, recurring: [] })
+    const pages: Record<number, Record<string, unknown>> = {
+      0: { myVehicles: Array.from({ length: 2 }, (_, i) => card(`v${i}`)), myVehicleCount: 3, vehicleTotal: 3 },
+      2: { myVehicles: [card('v2'), card('lost')], myVehicleCount: 4, vehicleTotal: 4 }, // the server has one whose answer was lost
+    }
+    for (const id of ['golf', 'lost']) await outbox.enqueue({ id, entity: 'vehicles', action: 'add', vehicleId: id, targetId: id, input: { id, name: id, fuelType: 'PETROL' } })
+    const welcome = async (skip: number) =>
+      (await answerLocally(await deviceData.rows(), 'Welcome', { search: null, skip, take: 2 }, async () => pages[skip])) as { myVehicles: { id: string }[]; myVehicleCount: number }
+
+    const first = await welcome(0)
+    expect(first.myVehicles.map((v) => v.id)).toEqual(['v0', 'v1']) // the next page is asked with skip 2, the server's own
+    expect(first.myVehicleCount).toBe(5)
+    expect((await welcome(2)).myVehicles.map((v) => v.id)).toEqual(['v2', 'lost', 'golf'])
+  })
+})
+
+describe('a visit waiting on this device', () => {
+  it('with an amount shows its expense, new, in the vehicle\'s expenses', async () => {
+    const { outbox } = await import('../../../src/frontend/offline/outbox.ts')
+    const { deviceData } = await import('../../../src/frontend/offline/deviceData.ts')
+    const { withChanges } = await import('../../../src/frontend/offline/localResolvers.ts')
+    deviceData.reset(memoryStorage())
+    await deviceData.signedIn('u1')
+    await outbox.reload()
+    const input = { ids: ['s1', 's2'], date: '2026-10-05', amount: 120, currency: 'EUR', title: 'Oil, Filter', category: '', odometer: 1500, expenseId: 'e9', photoIds: [] }
+    await outbox.enqueue({ id: 'visit', entity: 'recurring', action: 'markDone', vehicleId: 'v1', targetId: 'e9', targetIds: input.ids, input })
+    await outbox.enqueue({ id: 'visit2', entity: 'recurring', action: 'markDone', vehicleId: 'v1', targetId: 'visit2', targetIds: ['s3'], input: { ids: ['s3'], date: '2026-10-05', amount: null } })
+
+    const rows = withChanges('expenses', [], 'v1')
+
+    expect(rows).toHaveLength(1) // a visit without an amount logs no expense
+    expect(rows[0]).toMatchObject({ __typename: 'Expense', id: 'e9', title: 'Oil, Filter', amount: 120, category: null, version: 1 }) // as the server will create it
+    expect(outbox.markOf('expenses', 'e9')).toBe('new')
+    expect(outbox.markOf('recurring', 's2')).toBe('done')
+  })
+
+  it('moves its schedules on as the server will: no longer due, the new baseline, one version more', async () => {
+    const { outbox } = await import('../../../src/frontend/offline/outbox.ts')
+    const { deviceData } = await import('../../../src/frontend/offline/deviceData.ts')
+    deviceData.reset(memoryStorage())
+    await deviceData.signedIn('u1')
+    await outbox.reload()
+    const status = { __typename: 'RecurrenceStatusInfo', state: 'OVERDUE', limit: 'TIME', dueDate: '2026-09-01', dueOdometer: null, daysLeft: -30, distanceLeft: null }
+    const schedule = (id: string) => ({ __typename: 'RecurringExpenseInfo', id, version: 3, title: id, lastDoneDate: '2025-09-01', lastDoneOdometer: 1000, status })
+    const seen = { vehicle: { __typename: 'Vehicle', id: 'v1', recurring: [schedule('s1'), schedule('s2')] } }
+    await outbox.enqueue({ id: 'visit', entity: 'recurring', action: 'markDone', vehicleId: 'v1', targetId: 'visit', targetIds: ['s1'], input: { ids: ['s1'], date: '2026-10-05', odometer: 1500 } })
+
+    const answer = await answerLocally(await deviceData.rows(), 'RecurringExpenses', { vehicleId: 'v1' }, async (name) => (name === 'RecurringExpenses' ? seen : undefined))
+    const [s1, s2] = (answer!.vehicle as { recurring: Record<string, unknown>[] }).recurring
+
+    expect(s1).toMatchObject({ lastDoneDate: '2026-10-05', lastDoneOdometer: 1500, version: 4, status: { state: 'UPCOMING' } }) // not preselected again
+    expect(s2).toMatchObject({ lastDoneDate: '2025-09-01', version: 3, status: { state: 'OVERDUE' } })
+  })
+})
