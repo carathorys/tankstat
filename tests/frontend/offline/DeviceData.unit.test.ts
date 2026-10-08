@@ -29,13 +29,13 @@ describe('indexedDbStorage', () => {
     const store = await indexedDbStorage(factory).open('alice') // the old tab
 
     const upgraded = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = factory.open('tankstat-offline-alice', 2) // a new build, in another tab
+      const request = factory.open('tankstat-offline-alice', 99) // a new build, in another tab
       request.onsuccess = () => resolve(request.result)
       request.onerror = () => reject(request.error)
       request.onblocked = () => reject(new Error('blocked'))
     })
 
-    expect(upgraded.version).toBe(2)
+    expect(upgraded.version).toBe(99)
     upgraded.close()
     await expect(store.get('Welcome:{}')).rejects.toBeDefined() // the old tab keeps nothing more, and says so as a failure
   })

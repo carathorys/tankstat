@@ -1,4 +1,4 @@
-import { indexedDbStorage, memoryStorage, type DeviceStorage, type DeviceStore, type Snapshot } from './deviceStorage.ts'
+import { indexedDbStorage, memoryStorage, type DeviceStorage, type DeviceStore, type RowStore, type Snapshot } from './deviceStorage.ts'
 
 /** Whose data the device keeps when sign-in is off (`Auth:Mode=None`): every visitor is the same anonymous user. */
 export const ANONYMOUS_USER = 'anonymous'
@@ -25,6 +25,7 @@ let puts = 0
 let writes: Promise<unknown> = Promise.resolve()
 let tabs: BroadcastChannel | null = null
 const elsewhere = new Set<() => void>()
+const listeners = new Set<() => void>()
 
 async function openFor(user: string | null) {
   if (store?.user === user) return
@@ -69,12 +70,39 @@ export const deviceData = {
   /** The server said who is signed in (null: nobody): their data from now on, and at the next start. */
   signedIn(user: string | null): Promise<void> {
     switching = switching.then(async () => {
+      const before = confirmed ? store?.user : undefined
       await openFor(user)
       confirmed = true
       await storage.setLastUser(user)
+      if (before !== store?.user) listeners.forEach((listener) => listener())
     }).catch((error) => console.warn('Offline data cannot be switched to the signed-in user.', error))
     tabs?.postMessage({ type: 'signedIn', user })
     return switching
+  },
+
+  /** The confirmed user's id, once a `Session` answer of this page said who it is. */
+  get user(): string | null {
+    return confirmed ? (store?.user ?? null) : null
+  },
+
+  /** Told when the server confirmed another user (or nobody): the download starts for them. */
+  subscribe(listener: () => void): () => void {
+    listeners.add(listener)
+    return () => {
+      listeners.delete(listener)
+    }
+  },
+
+  /** The downloaded window, to answer from (the last user's too, before the server confirmed them). */
+  async rows(): Promise<RowStore | null> {
+    await switching
+    return store?.rows ?? null
+  },
+
+  /** The downloaded window, to download into: only the confirmed user's. */
+  async writableRows(): Promise<RowStore | null> {
+    await switching
+    return confirmed ? (store?.rows ?? null) : null
   },
 
   /** Someone is signing in or out: until the server says who it is, nothing is kept. */
@@ -134,6 +162,7 @@ export const deviceData = {
     switching = Promise.resolve()
     writes = Promise.resolve()
     puts = 0
+    listeners.clear()
   },
 }
 

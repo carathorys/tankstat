@@ -6,6 +6,9 @@ import App from '../../../src/frontend/App.tsx'
 import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
 import { deviceData } from '../../../src/frontend/offline/deviceData.ts'
 import { memoryStorage } from '../../../src/frontend/offline/deviceStorage.ts'
+import { createPullEngine } from '../../../src/frontend/offline/pull.ts'
+import { createApolloClient } from '../../../src/frontend/apolloClient.ts'
+import { fakeFeed, now } from '../support/offlineFeed.ts'
 import { server } from '../support/server.ts'
 import { fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport, user } from '../support/mocks.tsx'
 
@@ -152,4 +155,27 @@ it('Try again in the footer asks the server, and when it answers the app is back
   await waitFor(() => expect(screen.queryByText('Offline')).not.toBeInTheDocument())
   expect(status()?.textContent).toBe('Back online.')
   expect(within(screen.getByRole('contentinfo')).getByText(/API:/)).toBeInTheDocument()
+})
+
+it('a vehicle downloaded for offline use opens without the server, its logs paged and sorted on the device', async () => {
+  deviceData.reset(memoryStorage())
+  stubViewport('desktop')
+  const backend = fakeVehicleBackend([fakeVehicle()])
+  const feed = fakeFeed()
+  for (const [id, date] of [['a', '2026-09-01'], ['b', '2026-09-15'], ['c', '2026-10-01']]) feed.add(id, date)
+  server.use(sessionHandler('NONE', () => null), healthHandler, ...backend.handlers, ...feed.handlers)
+  const online = renderWithApollo(<App />, '/')
+  await screen.findByText('Octavia')
+  await deviceData.settled()
+  await createPullEngine({ client: createApolloClient('http://localhost/graphql'), now }).run()
+  online.unmount()
+
+  connectivity.failed()
+  let sent = 0
+  server.use(graphql.query('Refuelings', () => (sent++, HttpResponse.error())))
+  renderWithApollo(<App />, '/vehicles/v1?tab=refuelings')
+
+  expect(await screen.findByRole('heading', { name: 'Car v1', level: 1 })).toBeInTheDocument() // the page, from the download's answer
+  await waitFor(() => expect(screen.getAllByRole('row')).toHaveLength(4)) // a header and three logs, from the device
+  expect(sent).toBe(0)
 })

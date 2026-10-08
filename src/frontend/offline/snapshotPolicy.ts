@@ -31,6 +31,7 @@ const POLICIES: Record<string, SnapshotPolicy> = {
   UnreadNotificationCount: 'keep',
   LatestNotifications: 'keep',
   Notifications: 'keep',
+  OfflineSettings: 'keep',
   Admin: 'onlineOnly',
   Vehicles: 'onlineOnly',
   Trash: 'onlineOnly',
@@ -43,6 +44,7 @@ const POLICIES: Record<string, SnapshotPolicy> = {
   PhotoDraftReadings: 'never',
   RefuelingPhotoReadings: 'never',
   ExpensePhotoReadings: 'never',
+  OfflineChanges: 'never', // the download itself: what it brings is kept row by row (pull.ts)
 }
 
 export const KNOWN_QUERIES: readonly string[] = Object.keys(POLICIES)
