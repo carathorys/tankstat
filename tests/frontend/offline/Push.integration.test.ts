@@ -1,9 +1,10 @@
-import { graphql, HttpResponse } from 'msw'
+import { graphql, http, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest'
 import { createApolloClient } from '../../../src/frontend/apolloClient.ts'
 import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
 import { deviceData } from '../../../src/frontend/offline/deviceData.ts'
 import { memoryStorage } from '../../../src/frontend/offline/deviceStorage.ts'
+import { keptPhotos } from '../../../src/frontend/offline/keptPhotos.ts'
 import { outbox, type ChangeDraft } from '../../../src/frontend/offline/outbox.ts'
 import { createPushEngine } from '../../../src/frontend/offline/push.ts'
 import { server } from '../support/server.ts'
@@ -18,7 +19,7 @@ interface Sent {
 }
 
 /** The server's syncChanges in memory: applies everything, except the changes `park` names (with its reason), or drops the connection. */
-function fakeSync(park: (change: Sent) => string | null = () => null) {
+function fakeSync(park: (change: Sent) => string | null = () => null, order?: string[]) {
   const requests: Sent[][] = []
   let failFrom: number | null = null
   server.use(
@@ -26,6 +27,7 @@ function fakeSync(park: (change: Sent) => string | null = () => null) {
       const changes = variables.input.changes as Sent[]
       if (failFrom !== null && requests.length >= failFrom) return HttpResponse.error()
       requests.push(changes)
+      order?.push(`sync ${changes.map((c) => c.id).join(',')}`)
       const results = changes.map((c) => {
         const key = park(c)
         return key
@@ -107,4 +109,64 @@ it('sends nothing while the server is out of reach, for nobody confirmed, or whe
 
   expect(sync.requests).toEqual([])
   expect(outbox.changes).toHaveLength(1)
+})
+
+/** The draft upload of the server: each photo gets a draft id, or (`refuse`) a 4xx; records what came in which order. */
+function fakeDrafts(order: string[], refuse = new Set<number>()) {
+  let n = 0
+  server.use(
+    http.put('/media/vehicles/:vehicleId/photo-drafts', ({ request }) => {
+      const nth = ++n
+      order.push(`draft ${nth}${new URL(request.url).search}`)
+      return refuse.has(nth) ? HttpResponse.json({ key: 'photo.tooMany' }, { status: 400 }) : HttpResponse.json({ id: `draft-${nth}`, url: `/media/draft-${nth}` })
+    }),
+  )
+}
+
+it('photos kept on this device go up as drafts right before their change, which sends the drafts instead; then they leave the device', async () => {
+  const order: string[] = []
+  fakeDrafts(order)
+  const sent = fakeSync(undefined, order)
+  const first = await keptPhotos.keep(new Blob([new Uint8Array([1])], { type: 'image/jpeg' }), 'v1', { purpose: 'refueling', locale: 'en' })
+  const second = await keptPhotos.keep(new Blob([new Uint8Array([2])], { type: 'image/jpeg' }), 'v1')
+  await keep(log('before'))
+  await keep({ ...log('r1'), input: { ...log('r1').input, photoIds: [first] } })
+  await keep({ id: 'p1', entity: 'refuelings', action: 'addPhoto', vehicleId: 'v1', targetId: 'saved', input: { key: second } })
+
+  await engine().run()
+
+  expect(order).toEqual(['sync before', 'draft 1?form=refueling&locale=en', 'sync r1', 'draft 2', 'sync p1'])
+  expect(sent.requests.map((r) => r.map((c) => c.id))).toEqual([['before'], ['r1'], ['p1']]) // a change with photos goes on its own
+  expect(sent.requests[1][0].logRefueling).toMatchObject({ id: 'r1', photoIds: ['draft-1'] })
+  expect(sent.requests[2][0]).toMatchObject({ addRefuelingPhoto: { logId: 'saved', draftId: 'draft-2' } })
+  expect(outbox.changes).toEqual([])
+  expect(await keptPhotos.get(first!)).toBeUndefined()
+  expect(await keptPhotos.get(second!)).toBeUndefined()
+})
+
+it('a photo the server will not take as a draft is left out, its change goes without it; a lost connection keeps both for next time', async () => {
+  const order: string[] = []
+  fakeDrafts(order, new Set([1]))
+  const sent = fakeSync()
+  const refused = await keptPhotos.keep(new Blob([new Uint8Array([1])]), 'v1')
+  await keep({ id: 'p1', entity: 'refuelings', action: 'addPhoto', vehicleId: 'v1', targetId: 'saved', input: { key: refused } })
+  const kept = await keptPhotos.keep(new Blob([new Uint8Array([2])]), 'v1')
+  await keep({ ...log('r1'), input: { ...log('r1').input, photoIds: [kept] } })
+
+  const push = engine()
+  await push.run()
+
+  expect(sent.requests.map((r) => r.map((c) => c.id))).toEqual([['r1']]) // the photo change had nothing left to send
+  expect(push.state.last).toMatchObject({ photosLeftOut: 1, interrupted: false })
+  expect(outbox.changes).toEqual([])
+
+  server.use(http.put('/media/vehicles/:vehicleId/photo-drafts', () => HttpResponse.error()))
+  const later = await keptPhotos.keep(new Blob([new Uint8Array([3])]), 'v1')
+  await keep({ ...log('r2'), input: { ...log('r2').input, photoIds: [later] } })
+  connectivity.reset()
+  await push.run()
+
+  expect(push.state.last).toMatchObject({ interrupted: true })
+  expect(outbox.changes.map((c) => c.id)).toEqual(['r2'])
+  expect(await keptPhotos.get(later!)).toBeDefined()
 })

@@ -5,8 +5,11 @@
 export type LogEntity = 'refuelings' | 'expenses'
 /** What a change can concern: the logs, a vehicle, a recurring expense (schedule). */
 export type ChangeEntity = LogEntity | 'vehicles' | 'recurring'
-/** `trash` of a schedule deletes it for good (schedules have no trash); `markDone` is a service visit of one or more schedules. */
-export type ChangeAction = 'add' | 'update' | 'trash' | 'restore' | 'markDone'
+/**
+ * `trash` of a schedule deletes it for good (schedules have no trash); `markDone` is a service visit of one or more schedules; `addPhoto`
+ * and `removePhoto` change the photos of a saved log (input `{ key }`, a photo kept on this device, or `{ imageId }`).
+ */
+export type ChangeAction = 'add' | 'update' | 'trash' | 'restore' | 'markDone' | 'addPhoto' | 'removePhoto'
 
 export interface Change {
   /** The change's own id; for an add, the id of what it adds (the client chose it, the server keeps it). */
@@ -30,8 +33,22 @@ export interface Change {
 /** How the device marks something with a change waiting. */
 export type PendingMark = 'new' | 'changed' | 'deleted' | 'restored' | 'done'
 
-const MARKS: Record<ChangeAction, PendingMark> = { add: 'new', update: 'changed', trash: 'deleted', restore: 'restored', markDone: 'done' }
+const MARKS: Record<ChangeAction, PendingMark> = {
+  add: 'new', update: 'changed', trash: 'deleted', restore: 'restored', markDone: 'done', addPhoto: 'changed', removePhoto: 'changed',
+}
 export const markOf = (change: Change): PendingMark => MARKS[change.action]
+
+/** The prefix of a photo kept on this device (`keptPhotos.ts`) where a draft's id would be. */
+export const KEPT = 'local:'
+export const isKept = (id: unknown): id is string => typeof id === 'string' && id.startsWith(KEPT)
+
+/** The photos kept on this device that a change carries: those picked for a new log or a visit, or one added to a saved log. */
+export function keptPhotosOf(change: Change): string[] {
+  const ids = Array.isArray(change.input?.photoIds) ? (change.input.photoIds as unknown[]) : []
+  return [...ids, change.action === 'addPhoto' ? change.input?.key : undefined].filter(isKept)
+}
+
+const isPhoto = (c: Change) => c.action === 'addPhoto' || c.action === 'removePhoto'
 
 /** The fields an update carries over onto an add that is still waiting (the add's own id and vehicle stay). */
 const UPDATABLE: Record<ChangeEntity, readonly string[]> = {
@@ -52,7 +69,8 @@ const UPDATABLE: Record<ChangeEntity, readonly string[]> = {
 export function collapse(existing: readonly Change[], incoming: Change): Change[] {
   // A visit never folds: each one is a visit of its own.
   if (incoming.action === 'markDone') return [...existing, incoming]
-  const sameLog = (c: Change) => c.action !== 'markDone' && c.entity === incoming.entity && c.targetId === incoming.targetId
+  const sameLog = (c: Change) => c.action !== 'markDone' && !isPhoto(c) && c.entity === incoming.entity && c.targetId === incoming.targetId
+  const photosOfLog = (c: Change) => isPhoto(c) && c.entity === incoming.entity && c.targetId === incoming.targetId
   const waiting = existing.filter(sameLog)
   const others = existing.filter((c) => !sameLog(c))
   const add = waiting.find((c) => c.action === 'add')
@@ -61,6 +79,22 @@ export function collapse(existing: readonly Change[], incoming: Change): Change[
   const restore = waiting.find((c) => c.action === 'restore')
 
   switch (incoming.action) {
+    case 'addPhoto': {
+      if (trash) return [...existing] // on its way to the trash: a photo could not be added to it
+      const key = incoming.input?.key
+      if (add) return replace(existing, add, { ...add, input: { ...add.input, photoIds: [...((add.input?.photoIds as string[] | undefined) ?? []), key] } })
+      return [...existing, incoming]
+    }
+    case 'removePhoto': {
+      const imageId = incoming.input?.imageId
+      if (isKept(imageId)) {
+        // A photo kept here never reached the server: taking it back is enough.
+        if (add) return replace(existing, add, { ...add, input: { ...add.input, photoIds: ((add.input?.photoIds as string[] | undefined) ?? []).filter((id) => id !== imageId) } })
+        return existing.filter((c) => !(photosOfLog(c) && c.action === 'addPhoto' && c.input?.key === imageId))
+      }
+      if (trash || existing.some((c) => photosOfLog(c) && c.action === 'removePhoto' && c.input?.imageId === imageId)) return [...existing]
+      return [...existing, incoming]
+    }
     case 'add':
       return [...existing, incoming]
     case 'update':
@@ -68,12 +102,15 @@ export function collapse(existing: readonly Change[], incoming: Change): Change[
       if (add) return replace(existing, add, { ...add, input: { ...add.input, ...pick(incoming.input, UPDATABLE[incoming.entity]) } })
       if (update) return replace(existing, update, { ...incoming, id: update.id, seq: update.seq, createdAt: update.createdAt, expectedVersion: update.expectedVersion })
       return [...existing, incoming]
-    case 'trash':
+    case 'trash': {
       if (trash) return [...existing] // already waiting to go
-      if (add) return withoutDependents(others, incoming) // never sent: nothing to take back, nor anything made to it
-      if (restore) return existing.filter((c) => c !== restore)
-      if (update) return replace(existing, update, { ...incoming, id: update.id, seq: update.seq, createdAt: update.createdAt, expectedVersion: update.expectedVersion })
-      return [...existing, incoming]
+      if (add) return withoutDependents(others, incoming).filter((c) => !photosOfLog(c)) // never sent: nothing to take back, nor anything made to it
+      // Photos of a log in the trash can be neither added nor removed: those changes go (a restore does not bring them back).
+      const kept = existing.filter((c) => !photosOfLog(c))
+      if (restore) return kept.filter((c) => c !== restore)
+      if (update) return replace(kept, update, { ...incoming, id: update.id, seq: update.seq, createdAt: update.createdAt, expectedVersion: update.expectedVersion })
+      return [...kept, incoming]
+    }
     case 'restore':
       if (trash) return existing.filter((c) => c !== trash)
       if (restore) return [...existing] // already waiting to come back

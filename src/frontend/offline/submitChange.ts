@@ -1,7 +1,7 @@
 import type { ApolloClient } from '@apollo/client'
 import { connectivity } from './connectivity.ts'
 import { isConnectionFailure } from './errors.ts'
-import type { ChangeEntity } from './changes.ts'
+import { keptPhotosOf, type ChangeEntity } from './changes.ts'
 import { outbox, type ChangeDraft } from './outbox.ts'
 
 export type Submitted<T> = { queued: true } | { queued: false; result: T }
@@ -18,7 +18,8 @@ export async function submitChange<T>(client: ApolloClient, change: ChangeDraft,
     void client.refetchQueries({ include: 'active' }).catch(() => undefined)
     return { queued: true }
   }
-  if (!connectivity.reachable || outbox.vehicleIds().has(change.vehicleId)) return keep()
+  // A change with photos kept on this device waits too: they reach the server as drafts right before it (`push.ts`).
+  if (!connectivity.reachable || outbox.vehicleIds().has(change.vehicleId) || keptPhotosOf({ ...change, seq: 0, createdAt: 0 }).length > 0) return keep()
   try {
     return { queued: false, result: await send() }
   } catch (error) {

@@ -38,7 +38,7 @@ import { useReadFill } from './recognition/useReadFill.ts'
 import { keepAmountsInStep, type AmountField } from './refuelingAmounts.ts'
 import { Loading } from './components/Loading.tsx'
 import { useToast } from './toast/toastContext.ts'
-import { OfflineNote } from './components/OfflineNote.tsx'
+import { OfflineNote, ReadLaterNote } from './components/OfflineNote.tsx'
 import { outbox } from './offline/outbox.ts'
 
 /** Volume, total cost and odometer are null only when they were left for a photo that is still being read. */
@@ -122,6 +122,8 @@ export function RefuelingFormDialog({
   const ready = defaults.data && (!editing || details.data?.refueling)
 
   const existing = details.data?.refueling
+  // Photos kept on this device are read once the log is synced (photo reading on, as last heard): what they show may be left empty.
+  const readLater = !editing && queue.kept > 0 && drafts.available
   const logDefaults = defaults.data?.logDefaults
   const lastReading = logDefaults?.lastOdometer != null && logDefaults.lastDate ? { value: logDefaults.lastOdometer, date: logDefaults.lastDate } : null
   const initial: Initial = existing
@@ -146,6 +148,7 @@ export function RefuelingFormDialog({
       >
         {error && <ErrorMessage error={error} />}
         <OfflineNote />
+        {readLater && <ReadLaterNote />}
         {!error && !ready && <Loading />}
         {editing && details.data && !existing && <ErrorMessage>{t('errors.refueling.notFound')}</ErrorMessage>}
         {leftOut > 0 && <PhotosLeftOut count={leftOut} />}
@@ -160,13 +163,14 @@ export function RefuelingFormDialog({
             readingDone={drafts.done}
             explanation={drafts.explanation}
             // A new log may leave values to a photo that is being read; a saved one still waiting for its photos may stay so.
-            mayWait={drafts.pending.length > 0 || (editing && existing?.reviewState === 'AWAITING_PHOTOS')}
+            mayWait={drafts.pending.length > 0 || readLater || (editing && existing?.reviewState === 'AWAITING_PHOTOS')}
             readingNow={drafts.pending.length > 0}
             wait={{ since: drafts.waitingSince, until: drafts.waitingUntil }}
             gallery={
               <PhotoGallery
                 kind="refuelings"
                 logId={refuelingId}
+                vehicleId={vehicle.id}
                 photos={existing?.photos ?? []}
                 queue={queue}
                 readingIds={drafts.pending}

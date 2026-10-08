@@ -62,6 +62,22 @@ export interface PullCursor {
   fullStartedAt: number | null
 }
 
+/**
+ * A photo kept on this device until the server can take it (picked while it was out of reach): the resized picture as bytes (a `Blob`
+ * does not survive every IndexedDB), and, once uploaded as a draft for the change it belongs to, which draft and when (drafts expire).
+ */
+export interface KeptPhoto {
+  key: string
+  vehicleId: string
+  type: string
+  bytes: ArrayBuffer
+  createdAt: number
+  /** Read on the server when uploaded (the add dialogs' photos). */
+  reading?: { purpose: string; locale: string }
+  draftId?: string
+  draftAt?: number
+}
+
 export interface RowStore {
   logs(kind: LogKind, vehicleId: string): Promise<LogRow[]>
   allLogs(kind: LogKind): Promise<LogRow[]>
@@ -79,6 +95,11 @@ export interface RowStore {
   changes(): Promise<Change[]>
   putChanges(changes: Change[]): Promise<void>
   deleteChanges(ids: string[]): Promise<void>
+  /** The photos kept for the changes waiting (`keptPhotos.ts`). */
+  photo(key: string): Promise<KeptPhoto | undefined>
+  photos(): Promise<KeptPhoto[]>
+  putPhoto(photo: KeptPhoto): Promise<void>
+  deletePhotos(keys: string[]): Promise<void>
   clear(): Promise<void>
 }
 
@@ -118,7 +139,7 @@ export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage
   const meta = () => openDb(factory, META_DB, 1, (db) => db.createObjectStore('meta'))
   return {
     async open(user) {
-      const db = await openDb(factory, dbName(user), 3, (created, from) => {
+      const db = await openDb(factory, dbName(user), 4, (created, from) => {
         if (from < 1) created.createObjectStore('snapshots', { keyPath: 'key' }).createIndex('at', 'at')
         if (from < 2) {
           // The downloaded window (2): vehicles, their logs by vehicle, and how far each vehicle's download got.
@@ -129,6 +150,8 @@ export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage
         }
         // The changes waiting for the server (3).
         if (from < 3) created.createObjectStore('changes', { keyPath: 'id' })
+        // The photos kept for them (4).
+        if (from < 4) created.createObjectStore('photos', { keyPath: 'key' })
       })
       const rows = rowStore({
         refuelings: idbTable<LogRow>(db, 'refuelings'),
@@ -136,6 +159,7 @@ export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage
         vehicles: idbTable<VehicleRow>(db, 'vehicles'),
         cursors: idbTable<PullCursor>(db, 'cursors'),
         changes: idbTable<Change>(db, 'changes'),
+        photos: idbTable<KeptPhoto>(db, 'photos'),
       })
       return {
         user,
@@ -167,7 +191,7 @@ export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage
           await committed(tx)
         },
         async clear() {
-          const names = ['snapshots', 'vehicles', 'refuelings', 'expenses', 'cursors'] // never the changes waiting for the server
+          const names = ['snapshots', 'vehicles', 'refuelings', 'expenses', 'cursors'] // never the changes waiting for the server, nor their photos
           const tx = db.transaction(names, 'readwrite')
           names.forEach((name) => tx.objectStore(name).clear())
           await committed(tx)
@@ -213,6 +237,7 @@ export function memoryStorage(): DeviceStorage {
         vehicles: memoryTable<VehicleRow>('id'),
         cursors: memoryTable<PullCursor>('vehicleId'),
         changes: memoryTable<Change>('id'),
+        photos: memoryTable<KeptPhoto>('key'),
       }
       memoryTables.set(user, tables)
       const kept = rowStore(tables)
@@ -253,6 +278,7 @@ interface Tables {
   vehicles: Table<VehicleRow>
   cursors: Table<PullCursor>
   changes: Table<Change>
+  photos: Table<KeptPhoto>
 }
 
 function idbTable<T>(db: IDBDatabase, name: string): Table<T> {
@@ -332,8 +358,12 @@ function rowStore(tables: Tables): RowStore {
     changes: async () => (await tables.changes.all()).sort((a, b) => a.seq - b.seq),
     putChanges: (changes) => tables.changes.put(changes),
     deleteChanges: (ids) => tables.changes.delete(ids),
+    photo: (key) => tables.photos.get(key),
+    photos: () => tables.photos.all(),
+    putPhoto: (photo) => tables.photos.put([photo]),
+    deletePhotos: (keys) => tables.photos.delete(keys),
     async clear() {
-      // The downloaded window; the changes waiting for the server stay (removing them would lose what the user did).
+      // The downloaded window; the changes waiting for the server and their photos stay (removing them would lose what the user did).
       await Promise.all([tables.refuelings, tables.expenses, tables.vehicles, tables.cursors].map((table: Table<unknown>) => table.clear()))
       cache.clear()
     },

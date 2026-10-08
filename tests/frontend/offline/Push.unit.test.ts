@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Change } from '../../../src/frontend/offline/changes.ts'
 import type { SyncChangeKind } from '../../../src/frontend/gql/generated.ts'
-import { batches, toChangeInput } from '../../../src/frontend/offline/push.ts'
+import { batches, toChangeInput, withPhotosAlone } from '../../../src/frontend/offline/push.ts'
 import { canForce, fromParked, SYNC_KINDS } from '../../../src/frontend/offline/syncKinds.ts'
 
 let seq = 0
@@ -20,6 +20,25 @@ describe('toChangeInput', () => {
     expect(toChangeInput(change({ id: 'd', entity: 'recurring', action: 'markDone', targetId: 'e1', targetIds: ['s1', 's2'], input: { ids: ['s1'], date: '2026-10-02', amount: 50, currency: 'EUR', title: 'Oil', category: '', expenseId: 'e1', photoIds: [] } })))
       .toEqual({ id: 'd', expectedVersion: null, markRecurringExpensesDone: { ids: ['s1', 's2'], date: '2026-10-02', amount: 50, currency: 'EUR', title: 'Oil', category: '', expenseId: 'e1', photoIds: [] } })
     expect(toChangeInput(change({ id: 's', entity: 'recurring', action: 'trash', targetId: 's3' }))).toEqual({ id: 's', expectedVersion: null, deleteRecurringExpense: 's3' })
+  })
+})
+
+describe('photos kept on this device', () => {
+  const drafts = new Map([['local:a', 'draft-a'], ['local:b', 'draft-b']])
+
+  it('are sent as the drafts they went up as; one without a draft is left out', () => {
+    const add = change({ id: 'r1', targetId: 'r1', input: { id: 'r1', vehicleId: 'v1', date: '2026-10-01', photoIds: ['local:a', 'local:gone', 'srv1'] } })
+    expect(toChangeInput(add, drafts).logRefueling).toMatchObject({ photoIds: ['draft-a', 'srv1'] })
+    expect(toChangeInput(change({ id: 'p', entity: 'expenses', action: 'addPhoto', targetId: 'e1', input: { key: 'local:b' } }), drafts))
+      .toEqual({ id: 'p', expectedVersion: null, addExpensePhoto: { logId: 'e1', draftId: 'draft-b' } })
+    expect(toChangeInput(change({ id: 'q', action: 'removePhoto', targetId: 'r1', input: { imageId: 'img9' } })))
+      .toEqual({ id: 'q', expectedVersion: null, removeRefuelingPhoto: { logId: 'r1', imageId: 'img9' } })
+  })
+
+  it('a change that carries some goes in a request of its own; the others stay together, in order', () => {
+    const plain = (id: string) => change({ id })
+    const withPhoto = change({ id: 'x', input: { photoIds: ['local:a'] } })
+    expect(withPhotosAlone([plain('1'), plain('2'), withPhoto, plain('3')]).map((g) => g.map((c) => c.id))).toEqual([['1', '2'], ['x'], ['3']])
   })
 })
 

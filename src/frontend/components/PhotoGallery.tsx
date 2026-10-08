@@ -7,6 +7,12 @@ import { Camera, ImagePlus, RotateCw, Trash2 } from 'lucide-react'
 import { useId, useRef, useState, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ErrorMessage } from '../messages.tsx'
+import { isKept } from '../offline/changes.ts'
+import { connectivity } from '../offline/connectivity.ts'
+import { isConnectionFailure, OfflineError } from '../offline/errors.ts'
+import { keptPhotos } from '../offline/keptPhotos.ts'
+import { outbox } from '../offline/outbox.ts'
+import { uuidV4 } from '../offline/uuid.ts'
 import { resizeImage } from '../pictures/resizeImage.ts'
 import { deleteImage, LOG_PHOTO_EDGE, logPhotoPath, logPhotosPath, MAX_LOG_PHOTOS, uploadImage, type LogKind, type ReadingPurpose } from '../pictures/upload.ts'
 import { IconAction } from './IconAction.tsx'
@@ -22,6 +28,7 @@ import type { PhotoQueue } from './usePhotoQueue.ts'
 export function PhotoGallery({
   kind,
   logId,
+  vehicleId,
   photos,
   queue,
   readingIds,
@@ -34,6 +41,8 @@ export function PhotoGallery({
   kind: LogKind
   /** Omit while the log is being created. */
   logId?: string
+  /** The log's vehicle: photos of a saved log are kept on this device while it cannot reach the server (or has changes waiting). */
+  vehicleId?: string
   /** The log is being saved: the photos must not change meanwhile. */
   disabled?: boolean
   photos: { id: string; url: string }[]
@@ -63,17 +72,17 @@ export function PhotoGallery({
 
   const saved = logId !== undefined
   const shown = saved
-    ? photos.map((p) => ({ key: p.id, url: p.url, state: 'uploaded' as const, reading: (readingIds ?? []).includes(p.id) }))
-    : queue.items.map((p) => ({ key: p.key, url: p.url, state: p.state, reading: p.id !== undefined && (readingIds ?? []).includes(p.id) }))
+    ? photos.map((p) => ({ key: p.id, url: p.url, state: 'uploaded' as const, kept: isKept(p.id), reading: (readingIds ?? []).includes(p.id) }))
+    : queue.items.map((p) => ({ key: p.key, url: p.url, state: p.state, kept: p.state === 'kept', reading: p.id !== undefined && (readingIds ?? []).includes(p.id) }))
   const room = MAX_LOG_PHOTOS - shown.length
 
-  async function run(work: () => Promise<void>, done: string) {
+  async function run(work: () => Promise<void>, done: string | (() => string)) {
     working(true)
     setError(undefined)
     setStatus(t('photos.working'))
     try {
       await work()
-      setStatus(done)
+      setStatus(typeof done === 'function' ? done() : done)
     } catch (e) {
       setStatus(undefined)
       setError(e)
@@ -82,16 +91,40 @@ export function PhotoGallery({
     }
   }
 
+  // A saved log's photos are kept on this device, to be added or removed when it syncs, while the server is out of reach or the vehicle
+  // has changes waiting (they keep their order). A photo kept here is not read: there is no dialog left to offer its values to.
+  const keepsHere = () => vehicleId !== undefined && (!connectivity.reachable || outbox.vehicleIds().has(vehicleId))
+  const keptSome = useRef(false) // the work under way was kept on this device: its status says so
+  const keepChange = async (action: 'addPhoto' | 'removePhoto', input: Record<string, unknown>) => {
+    await outbox.enqueue({ id: uuidV4(), entity: kind, action, vehicleId: vehicleId!, targetId: logId!, input })
+    keptSome.current = true
+  }
+  const keepAdded = async (image: Blob) => {
+    const key = await keptPhotos.keep(image, vehicleId!)
+    if (key === null) throw new OfflineError() // no account's data is open to keep it in
+    await keepChange('addPhoto', { key })
+  }
+
   function chosen(files: File[]) {
     const list = files.slice(0, Math.max(room, 0))
     if (list.length === 0) return
+    keptSome.current = false
     void run(async () => {
       if (saved) {
         const added: string[] = []
         try {
           for (const file of list) {
             const image = await resizeImage(file, read?.jpeg ? { maxEdge: LOG_PHOTO_EDGE, format: 'jpeg' } : { maxEdge: LOG_PHOTO_EDGE })
-            added.push((await uploadImage(logPhotosPath(kind, logId, read), image)).id)
+            if (keepsHere()) {
+              await keepAdded(image)
+              continue
+            }
+            try {
+              added.push((await uploadImage(logPhotosPath(kind, logId, read), image)).id)
+            } catch (error) {
+              if (vehicleId === undefined || !isConnectionFailure(error)) throw error
+              await keepAdded(image)
+            }
           }
         } finally {
           if (added.length > 0) onAdded?.(added)
@@ -101,7 +134,21 @@ export function PhotoGallery({
         const failed = await queue.add(list)
         if (failed !== undefined) throw failed // the photo stays, marked, with a way to try again
       }
-    }, saved ? t('photos.added') : t('photos.ready'))
+    }, () => (saved ? (keptSome.current ? t('photos.keptAdded') : t('photos.added')) : t('photos.ready')))
+  }
+
+  async function removeSaved(imageId: string) {
+    // A photo kept here, or a removal while the server is out of reach, waits on this device.
+    if (isKept(imageId) || keepsHere()) await keepChange('removePhoto', { imageId })
+    else {
+      try {
+        await deleteImage(logPhotoPath(kind, logId!, imageId))
+      } catch (error) {
+        if (vehicleId === undefined || !isConnectionFailure(error)) throw error
+        await keepChange('removePhoto', { imageId })
+      }
+    }
+    await onChanged()
   }
 
   const input = (ref: RefObject<HTMLInputElement | null>, capture: boolean) => (
@@ -165,6 +212,11 @@ export function PhotoGallery({
                   </Typography>
                 )}
                 {photo.state === 'failed' && <Typography variant="caption">{t('photos.uploadFailed')}</Typography>}
+                {photo.kept && (
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                    {t('photos.kept')}
+                  </Typography>
+                )}
                 {photo.reading && (
                   <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                     {t('reading.reading')}
@@ -194,16 +246,13 @@ export function PhotoGallery({
                     tone="error"
                     disabled={disabled || busy}
                     label={t('photos.removeAria', { n: index + 1 })}
-                    onClick={() =>
+                    onClick={() => {
+                      keptSome.current = false
                       void run(async () => {
-                        if (saved) {
-                          await deleteImage(logPhotoPath(kind, logId, photo.key))
-                          await onChanged()
-                        } else {
-                          await queue.remove(photo.key)
-                        }
-                      }, t('photos.removed'))
-                    }
+                        if (saved) await removeSaved(photo.key)
+                        else await queue.remove(photo.key)
+                      }, () => (keptSome.current ? t('photos.removeKept') : t('photos.removed')))
+                    }}
                   >
                     <Trash2 size={16} aria-hidden />
                   </IconAction>

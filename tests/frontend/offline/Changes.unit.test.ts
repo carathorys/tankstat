@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { collapse, discard, markOf, type Change } from '../../../src/frontend/offline/changes.ts'
+import { collapse, discard, keptPhotosOf, markOf, type Change } from '../../../src/frontend/offline/changes.ts'
 
 let seq = 0
 const change = (action: Change['action'], targetId = 'r1', over: Partial<Change> = {}): Change => ({
@@ -105,5 +105,38 @@ describe('vehicles, schedules and visits', () => {
     expect(after.map((c) => [c.action, c.targetIds])).toEqual([['markDone', ['s2']]]) // the visit of s1 alone is gone
     expect(after[0].input).toMatchObject({ ids: ['s2'], expenseId: 'e1' })
     expect(markOf(after[0])).toBe('done')
+  })
+})
+
+describe('photos of a log', () => {
+  const addPhoto = (key: string, log = 'r1') => change('addPhoto', log, { input: { key } })
+  const removePhoto = (imageId: string, log = 'r1') => change('removePhoto', log, { input: { imageId } })
+
+  it('a photo added to a log that waits to be added joins its photos; taken back, it leaves them', () => {
+    const [only, ...rest] = fold(add('r1', { id: 'r1', vehicleId: 'v1', photoIds: ['local:a'] }), addPhoto('local:b'))
+    expect(rest).toEqual([])
+    expect(only.input?.photoIds).toEqual(['local:a', 'local:b'])
+    expect(keptPhotosOf(only)).toEqual(['local:a', 'local:b'])
+
+    expect(collapse([only], removePhoto('local:a'))[0].input?.photoIds).toEqual(['local:b'])
+  })
+
+  it('on a saved log: a kept photo added then removed is nothing; a server photo removed twice waits once', () => {
+    expect(fold(addPhoto('local:a'), removePhoto('local:a'))).toEqual([])
+    const removed = fold(removePhoto('img1'), removePhoto('img1'))
+    expect(removed.map((c) => [c.action, c.input?.imageId])).toEqual([['removePhoto', 'img1']])
+    expect(markOf(removed[0])).toBe('changed')
+  })
+
+  it('a log on its way to the trash takes its photo changes along, and gets none after; a restore does not bring them back', () => {
+    const trashed = fold(addPhoto('local:a'), removePhoto('img1'), change('trash'))
+    expect(trashed.map((c) => c.action)).toEqual(['trash'])
+    expect(collapse(trashed, addPhoto('local:b')).map((c) => c.action)).toEqual(['trash'])
+    expect(collapse(trashed, change('restore'))).toEqual([])
+  })
+
+  it('photo changes of one log never fold into another log’s, nor into its edits', () => {
+    const list = fold(change('update', 'r1', { input: { volume: 2 } }), addPhoto('local:a'), addPhoto('local:b', 'r2'))
+    expect(list.map((c) => [c.action, c.targetId])).toEqual([['update', 'r1'], ['addPhoto', 'r1'], ['addPhoto', 'r2']])
   })
 })

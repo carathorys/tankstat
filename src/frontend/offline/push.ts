@@ -1,9 +1,10 @@
 import type { ApolloClient } from '@apollo/client'
 import { SyncChangesDocument, type ChangeInput, type SyncChangesMutation } from '../gql/generated.ts'
-import type { Change } from './changes.ts'
+import { isKept, keptPhotosOf, type Change } from './changes.ts'
 import { connectivity } from './connectivity.ts'
 import { deviceData } from './deviceData.ts'
 import { isConnectionFailure } from './errors.ts'
+import { keptPhotos } from './keptPhotos.ts'
 import { outbox } from './outbox.ts'
 
 /** Changes per request (the server takes at most 200). */
@@ -20,8 +21,11 @@ export interface ParkedChange {
 
 export interface PushState {
   status: 'idle' | 'syncing'
-  /** What the last sync did (in this page's life). */
-  last: { at: number; applied: number; parked: ParkedChange[]; interrupted: boolean } | null
+  /**
+   * What the last sync did (in this page's life). `photosLeftOut`: photos kept on this device the server would not take as drafts (or
+   * that were gone), sent without them.
+   */
+  last: { at: number; applied: number; parked: ParkedChange[]; interrupted: boolean; photosLeftOut: number } | null
 }
 
 export interface PushDeps {
@@ -48,10 +52,17 @@ const FIELDS = {
 const pick = (input: Record<string, unknown> | undefined, keys: readonly string[], extra: Record<string, unknown> = {}) =>
   Object.fromEntries(Object.entries({ ...input, ...extra }).filter(([k, v]) => keys.includes(k) && v !== undefined))
 
-/** A waiting change as the server's `ChangeInput`: its id, the version it was made from, and its one operation. */
-export function toChangeInput(c: Change): ChangeInput {
+/**
+ * A waiting change as the server's `ChangeInput`: its id, the version it was made from, and its one operation. Photos kept on this device
+ * are sent as the drafts they were uploaded as (`drafts`: key to draft id); one without a draft is left out.
+ */
+export function toChangeInput(c: Change, drafts: ReadonlyMap<string, string> = new Map()): ChangeInput {
   const base = { id: c.id, expectedVersion: c.expectedVersion ?? null }
-  const op = (name: keyof typeof FIELDS, extra: Record<string, unknown> = {}) => ({ ...base, [name]: pick(c.input, FIELDS[name], extra) }) as ChangeInput
+  const photoIds = Array.isArray(c.input?.photoIds)
+    ? { photoIds: (c.input.photoIds as string[]).flatMap((id) => (isKept(id) ? (drafts.has(id) ? [drafts.get(id)!] : []) : [id])) }
+    : {}
+  const op = (name: keyof typeof FIELDS, extra: Record<string, unknown> = {}) => ({ ...base, [name]: pick(c.input, FIELDS[name], { ...photoIds, ...extra }) }) as ChangeInput
+  const log = c.entity === 'expenses' ? 'Expense' : 'Refueling'
   switch (`${c.entity}:${c.action}`) {
     case 'refuelings:add': return op('logRefueling', { id: c.targetId, vehicleId: c.vehicleId })
     case 'refuelings:update': return op('updateRefueling', { id: c.targetId })
@@ -69,6 +80,12 @@ export function toChangeInput(c: Change): ChangeInput {
     case 'recurring:update': return op('updateRecurringExpense', { id: c.targetId })
     case 'recurring:trash': return { ...base, deleteRecurringExpense: c.targetId }
     case 'recurring:markDone': return op('markRecurringExpensesDone', { ids: c.targetIds ?? [] })
+    case 'refuelings:addPhoto':
+    case 'expenses:addPhoto':
+      return { ...base, [`add${log}Photo`]: { logId: c.targetId, draftId: drafts.get(String(c.input?.key)) ?? c.input?.draftId } } as ChangeInput
+    case 'refuelings:removePhoto':
+    case 'expenses:removePhoto':
+      return { ...base, [`remove${log}Photo`]: { logId: c.targetId, imageId: c.input?.imageId } } as ChangeInput
     default: throw new Error(`A change of ${c.entity} cannot ${c.action}.`)
   }
 }
@@ -101,6 +118,26 @@ export function batches(changes: readonly Change[], size = CHUNK_SIZE): Change[]
 }
 
 /**
+ * A request's changes: a change that carries kept photos goes on its own, as its photos go up as drafts right before it and the server
+ * keeps at most 20 drafts per person and vehicle; the others go together, in order.
+ */
+export function withPhotosAlone(changes: readonly Change[]): Change[][] {
+  const out: Change[][] = []
+  let current: Change[] = []
+  for (const change of changes) {
+    if (keptPhotosOf(change).length === 0) {
+      current.push(change)
+      continue
+    }
+    if (current.length > 0) out.push(current)
+    out.push([change])
+    current = []
+  }
+  if (current.length > 0) out.push(current)
+  return out
+}
+
+/**
  * Sends the changes kept on this device (`outbox.ts`) once the server can be reached, in order (`batches`), with `syncChanges`. The
  * server applies each through the same rules as online, or parks it with the reason; either way it has it, so it leaves the device (the
  * parked ones are listed with their reason until the next sync, and on the server for everyone who may see the vehicle). A change made on
@@ -125,19 +162,38 @@ export function createPushEngine({ client, device = deviceData, pull, chunkSize 
     const parked: ParkedChange[] = []
     const blocked = new Set<string>() // adds the server parked: what depends on them waits
     let interrupted = false
+    let photosLeftOut = 0
     try {
       for (const chunk of batches(outbox.changes, chunkSize)) {
-        const sendable = chunk.filter((c) => !needs(c).some((id) => blocked.has(id)))
-        if (sendable.length === 0) continue
-        const { data } = await client.mutate({ mutation: SyncChangesDocument, variables: { input: { changes: sendable.map(toChangeInput) } } })
-        const results = new Map<string, Result>((data?.syncChanges.results ?? []).map((r) => [r.id, r]))
-        for (const change of sendable) {
-          const result = results.get(change.id)
-          if (!result) continue
-          answered.push(change.id)
-          if (result.status === 'PARKED') {
-            parked.push({ change, key: result.reason?.key ?? '', args: Object.fromEntries((result.reason?.args ?? []).map((a) => [a.name, a.value])) })
-            if (change.action === 'add') blocked.add(change.targetId)
+        for (const group of withPhotosAlone(chunk.filter((c) => !needs(c).some((id) => blocked.has(id))))) {
+          // Its kept photos go up as drafts first (a draft is only ever uploaded for a change that is sent right after).
+          const drafts = new Map<string, string>()
+          for (const key of group.flatMap(keptPhotosOf)) {
+            try {
+              const id = await keptPhotos.asDraft(key)
+              if (id) drafts.set(key, id)
+              else photosLeftOut++
+            } catch (error) {
+              if (isConnectionFailure(error)) throw error
+              console.warn('A photo kept on this device was not taken as a draft; its change is sent without it.', error)
+              photosLeftOut++
+            }
+          }
+          // A photo added to a saved log that did not make it has nothing left to send: it is done with.
+          const nothing = group.filter((c) => c.action === 'addPhoto' && !drafts.has(String(c.input?.key)))
+          answered.push(...nothing.map((c) => c.id))
+          const sendable = group.filter((c) => !nothing.includes(c))
+          if (sendable.length === 0) continue
+          const { data } = await client.mutate({ mutation: SyncChangesDocument, variables: { input: { changes: sendable.map((c) => toChangeInput(c, drafts)) } } })
+          const results = new Map<string, Result>((data?.syncChanges.results ?? []).map((r) => [r.id, r]))
+          for (const change of sendable) {
+            const result = results.get(change.id)
+            if (!result) continue
+            answered.push(change.id)
+            if (result.status === 'PARKED') {
+              parked.push({ change, key: result.reason?.key ?? '', args: Object.fromEntries((result.reason?.args ?? []).map((a) => [a.name, a.value])) })
+              if (change.action === 'add') blocked.add(change.targetId)
+            }
           }
         }
       }
@@ -150,7 +206,7 @@ export function createPushEngine({ client, device = deviceData, pull, chunkSize 
       await outbox.remove(answered) // ...then the kept changes leave
       void client.refetchQueries({ include: 'active' }).catch(() => undefined)
     }
-    set({ status: 'idle', last: { at: Date.now(), applied: answered.length - parked.length, parked, interrupted } })
+    set({ status: 'idle', last: { at: Date.now(), applied: answered.length - parked.length, parked, interrupted, photosLeftOut } })
   }
 
   return {

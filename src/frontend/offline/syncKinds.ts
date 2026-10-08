@@ -19,6 +19,10 @@ export const SYNC_KINDS: Record<SyncChangeKind, [ChangeEntity, ChangeAction]> = 
   UPDATE_VEHICLE: ['vehicles', 'update'],
   DELETE_VEHICLE: ['vehicles', 'trash'],
   RESTORE_VEHICLE: ['vehicles', 'restore'],
+  ADD_REFUELING_PHOTO: ['refuelings', 'addPhoto'],
+  REMOVE_REFUELING_PHOTO: ['refuelings', 'removePhoto'],
+  ADD_EXPENSE_PHOTO: ['expenses', 'addPhoto'],
+  REMOVE_EXPENSE_PHOTO: ['expenses', 'removePhoto'],
 }
 
 /** The ChangeInput field of each kind (LOG_REFUELING: logRefueling). */

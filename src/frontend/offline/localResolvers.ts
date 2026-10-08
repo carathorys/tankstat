@@ -1,6 +1,7 @@
 import type { ExpenseSortField, RefuelingSortField, SortDirection } from '../gql/generated.ts'
-import type { Change } from './changes.ts'
+import { keptPhotosOf, type Change } from './changes.ts'
 import type { LogKind, LogRow, PullCursor, RowStore, VehicleRow } from './deviceStorage.ts'
+import { keptPhotos } from './keptPhotos.ts'
 import { outbox } from './outbox.ts'
 
 /**
@@ -185,8 +186,21 @@ function details(kind: LogKind, field: 'refueling' | 'expense'): Resolver {
     const stored = await rows.log(kind, variables.id)
     const row = withChanges(kind, stored ? [stored] : []).find((r) => r.id === variables.id)
     if (!row || row.deletedAt) return undefined
-    return { [field]: asAnswer(row, (await vehicleMap(rows)).get(row.vehicleId)) }
+    return { [field]: { ...asAnswer(row, (await vehicleMap(rows)).get(row.vehicleId)), photos: await photosWithChanges(kind, row) } }
   }
+}
+
+/**
+ * A log's photos with the photo changes waiting laid over them: one to be removed is gone, one kept on this device (picked for the add, or
+ * added to the saved log) is there, at an address on the device (`keptPhotos.url`).
+ */
+async function photosWithChanges(kind: LogKind, row: LogRow): Promise<{ __typename: 'LogPhotoInfo'; id: string; url: string }[]> {
+  const mine = outbox.changes.filter((c) => c.entity === kind && c.targetId === row.id)
+  const removed = new Set(mine.filter((c) => c.action === 'removePhoto').map((c) => c.input?.imageId))
+  const server = ((row.photos as { id: string; url: string }[] | undefined) ?? []).filter((p) => !removed.has(p.id))
+  const keys = mine.flatMap(keptPhotosOf)
+  const kept = await Promise.all(keys.map(async (id) => ({ id, url: await keptPhotos.url(id) })))
+  return [...server, ...kept.flatMap((p) => (p.url ? [{ id: p.id, url: p.url }] : []))].map((p) => ({ __typename: 'LogPhotoInfo' as const, ...p }))
 }
 
 /** The trash of the downloaded vehicles whose logs the user may edit; the deletable count, of those they may delete. */
