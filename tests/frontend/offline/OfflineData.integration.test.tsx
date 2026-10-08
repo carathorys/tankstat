@@ -22,6 +22,10 @@ afterAll(() => server.close())
 function fakeEngine() {
   let state: PullState = { status: 'idle', vehiclesDone: 0, vehiclesTotal: 0, lastPullAt: null, interrupted: false }
   const listeners = new Set<() => void>()
+  const set = (next: Partial<PullState>) => {
+    state = { ...state, ...next }
+    listeners.forEach((l) => l())
+  }
   const engine = {
     get state() {
       return state
@@ -30,10 +34,8 @@ function fakeEngine() {
       listeners.add(listener)
       return () => void listeners.delete(listener)
     },
-    run: vi.fn(async () => {
-      state = { ...state, status: 'idle', lastPullAt: Date.now() }
-      listeners.forEach((l) => l())
-    }),
+    run: vi.fn(async () => set({ status: 'idle', lastPullAt: Date.now() })),
+    set,
   }
   provideOfflineDownload(engine as unknown as PullEngine)
   return engine
@@ -106,6 +108,42 @@ it('a vehicle can have a window of its own; Save sends the whole set and the dev
   await waitFor(() => expect(sent).toEqual([{ defaultWindow: 'span:P2M', vehicles: [{ vehicleId: 'v2', window: 'all' }] }]))
   expect(await screen.findByText('Saved. This device downloads the new window now.')).toBeInTheDocument()
   await waitFor(() => expect(engine.run).toHaveBeenCalled())
+})
+
+it('the window of a vehicle no longer listed (unshared, trashed) is not sent back with a save', async () => {
+  const { sent, ui } = setup({ defaultWindow: 'span:P2M', vehicles: [{ vehicleId: 'v1', window: 'all' }, { vehicleId: 'gone', window: 'none' }] })
+  const panel = await section()
+  await panel.findByRole('rowheader', { name: 'Golf' })
+  expect(panel.queryByText('Changes not saved yet.')).not.toBeInTheDocument()
+
+  await ui.type(panel.getByRole('spinbutton', { name: 'Months' }), '1') // 2 → 21
+  await ui.click(panel.getByRole('button', { name: 'Save' }))
+
+  await waitFor(() => expect(sent).toEqual([{ defaultWindow: 'span:P21M', vehicles: [{ vehicleId: 'v1', window: 'all' }] }]))
+})
+
+it('removing what the device keeps waits until a running download is over', async () => {
+  const engine = fakeEngine()
+  let finish = () => undefined as void
+  engine.run.mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        engine.set({ status: 'pulling', vehiclesTotal: 2 })
+        finish = () => {
+          engine.set({ status: 'idle', lastPullAt: Date.now() })
+          resolve()
+        }
+      }),
+  )
+  const { ui } = setup()
+  const panel = await section()
+  const remove = panel.getByRole('button', { name: 'Remove offline data from this device' })
+
+  await ui.click(await panel.findByRole('button', { name: 'Download now' }))
+  expect(remove).toBeDisabled()
+
+  await act(async () => finish())
+  expect(remove).toBeEnabled()
 })
 
 it('a timespan is typed in years down to seconds, and an empty one cannot be saved', async () => {
