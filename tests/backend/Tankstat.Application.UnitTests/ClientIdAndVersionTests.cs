@@ -3,6 +3,7 @@ using Tankstat.Application.Recurring;
 using Tankstat.Application.Refuelings;
 using Tankstat.Domain;
 using Tankstat.Domain.Access;
+using Tankstat.Domain.Images;
 using Tankstat.Domain.Recurring;
 using Tankstat.Domain.Users;
 using Tankstat.Domain.Vehicles;
@@ -122,6 +123,42 @@ public class ClientIdAndVersionTests
 
         Assert.Equal(id, Assert.Single(s.W.LogPhotos.Items).LogId);
         Assert.Single(s.W.Expenses.Items);
+    }
+
+    [Fact]
+    public async Task AnAddSentAgainWithOtherPhotos_NeverTakesTheLogPastItsPhotoLimit()
+    {
+        var s = await Setup();
+        async Task<List<Guid>> Drafts(int count)
+        {
+            var ids = new List<Guid>();
+            for (var i = 0; i < count; i++) ids.Add(await s.W.Drafts.UploadAsync(s.Car.Id, new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 1, 2, (byte)i }, default));
+            return ids;
+        }
+        var id = Guid.NewGuid();
+        var input = new ExpenseInput(Day, "Parking", null, 5, "EUR", null, null);
+        await s.W.ExpenseService.AddAsync(s.Car.Id, input, default, await Drafts(Domain.Photos.LogPhoto.MaxPerLog), id);
+
+        var more = await Drafts(3);
+        await s.W.ExpenseService.AddAsync(s.Car.Id, input, default, more, id);
+
+        Assert.Equal(Domain.Photos.LogPhoto.MaxPerLog, s.W.LogPhotos.Items.Count(p => p.LogId == id));
+        Assert.All(more, draft => Assert.Contains(s.W.PhotoDrafts.Items, d => d.Id == draft)); // still drafts, they expire
+    }
+
+    [Fact]
+    public async Task ADraftATwinAttachedMeanwhile_CountsAsAttached_AndItsFileStaysWithTheLog()
+    {
+        var s = await Setup();
+        var draftId = await s.W.Drafts.UploadAsync(s.Car.Id, new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3 }, default);
+        var expense = await s.W.ExpenseService.AddAsync(s.Car.Id, new ExpenseInput(Day, "Parking", null, 5, "EUR", null, null), default, id: Guid.NewGuid());
+        var draft = Assert.Single(s.W.PhotoDrafts.Items);
+        await s.W.Photos.AttachDraftsAsync(Domain.Photos.LogType.Expense, expense.Id, [draft], default); // the twin
+
+        await s.W.Photos.AttachDraftsAsync(Domain.Photos.LogType.Expense, expense.Id, [draft], default); // this request, a moment later
+
+        Assert.Equal(draftId, Assert.Single(s.W.LogPhotos.Items).ImageId);
+        Assert.Equal(ImageFolders.LogPhotos(s.Car.Id, Domain.Photos.LogType.Expense, expense.Id), s.W.ImageStore.Folders[draftId]);
     }
 
     [Fact]
