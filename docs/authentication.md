@@ -26,9 +26,9 @@ A signed-in browser holds two HttpOnly cookies, so no script on the page ever se
 - **`tankstat.session`, the access cookie** (`SameSite=Lax`, Secure on HTTPS): read on every request, valid for `Auth__AccessTokenMinutes` (15 minutes), not sliding. It survives closing the browser (also after an OIDC sign-in), for those few minutes.
 - **`tankstat.refresh`, the refresh cookie** (same attributes, but only sent to `/auth/token/...`): the refresh token of the device's session, valid for `Auth__RefreshTokenDays` (90 days) from its last use.
 
-When the access cookie ran out, the app trades the refresh token at `POST /auth/token/refresh` for a new access cookie and a **new** refresh token, and sends the request again; the person notices nothing. A device that is used at least once in 90 days stays signed in, which also lets the installed app come back after weeks. Each device's session is a row of `UserSessions` that stores only a hash of its secret (and the secret encrypted with the key ring, see below).
+When the access cookie ran out, the app trades the refresh token at `POST /auth/token/refresh` for a new access cookie and a **new** refresh token, and sends the request again; the person notices nothing (also when the app is opened again later: before it shows the sign-in screen it tries the refresh cookie once). A device that is used at least once in 90 days stays signed in, which also lets the installed app come back after weeks. Each device's session is a row of `UserSessions` that stores only a hash of its secret (and the secret encrypted with the key ring, see below).
 
-What ends a session:
+What ends a session (at once: the access cookie names its session, which is checked on every request like the user is):
 
 - **Sign out** (`POST /auth/token/logout`, or the `logout` mutation): this device's session, even after its access cookie ran out.
 - **Changing your password**: every other device; the one that changed it stays signed in. **Resetting it with a link**, an **administrator setting it**, or **disabling the user**: every device.
