@@ -79,6 +79,35 @@ public class SyncServiceTests
     }
 
     [Fact]
+    public async Task AChangeOfAVehicleThatIsNoMore_IsParkedWithTheSender_NotUnderTheVehicle()
+    {
+        var s = await Setup();
+        var gone = Guid.NewGuid(); // purged meanwhile, or an add the server refused
+        var change = Guid.NewGuid();
+        var request = new SyncChangeRequest(change, SyncChangeKind.LogRefueling, Guid.NewGuid(), gone, null, "{}",
+            _ => throw new NotFoundException("vehicle.notFound", "Vehicle not found.", new { Id = gone }));
+
+        var outcome = await s.W.Sync.SyncAsync([request], default);
+
+        Assert.Equal(SyncChangeStatus.Parked, Assert.Single(outcome.Results).Status);
+        var row = s.W.SyncLedger.Items.Single(c => c.Id == change);
+        Assert.Equal(((Guid?)null, s.Alice.Id), (row.VehicleId, row.OwnerId)); // no row under a vehicle that is not there (a foreign key)
+    }
+
+    [Fact]
+    public async Task AChangeAnotherServerRecordedFirst_IsAnsweredWithWhatThatServerRecorded()
+    {
+        var s = await Setup();
+        var id = Guid.NewGuid();
+        var twin = SyncChange.Applied(id, s.Alice.Id, s.Alice.Id, s.Car.Id, id, SyncChangeKind.LogRefueling, null, "{}", DateTimeOffset.UtcNow, id, 1);
+        s.W.SyncLedger.TwinRecordsNext = twin;
+
+        var outcome = await s.W.Sync.SyncAsync([Log(s, id, 1000)], default);
+
+        Assert.Equal(SyncChangeResult.From(twin), Assert.Single(outcome.Results));
+    }
+
+    [Fact]
     public async Task ABatchThatIsNotWellFormed_AppliesNothing()
     {
         var s = await Setup();

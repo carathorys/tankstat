@@ -249,9 +249,8 @@ public class ConditionalWriteAndLedgerTests
 
         loaded.Update("One", null, FuelType.Petrol, MeasurementUnits.Metric);
         await vehicles.UpdateAsync(loaded, default);
-        var again = (await vehicles.FindAsync(car.Id, default))!; // the next change starts from what was saved
-        again.Update("Two", null, FuelType.Petrol, MeasurementUnits.Metric);
-        await vehicles.UpdateAsync(again, default);
+        loaded.Update("Two", null, FuelType.Petrol, MeasurementUnits.Metric); // the same instance again: its first save is not "someone else"
+        await vehicles.UpdateAsync(loaded, default);
 
         Assert.Equal((3, "Two"), ((await vehicles.FindAsync(car.Id, default))!.Version, (await vehicles.FindAsync(car.Id, default))!.Name));
     }

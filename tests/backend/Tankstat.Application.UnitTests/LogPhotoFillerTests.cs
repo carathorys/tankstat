@@ -108,6 +108,19 @@ public class LogPhotoFillerTests
     }
 
     [Fact]
+    public async Task ALogSavedMeanwhile_IsReadAgain_InsteadOfStoppingTheRound()
+    {
+        var s = await Setup();
+        var log = await LogWithoutOdometer(s, await Queued(s));
+        Answer(s, DocumentKind.Odometer, Read(ReadingFieldName.Odometer, "315193", 0.72));
+        s.W.Refuelings.SavedMeanwhileOnNext = 1; // someone saved the log while it was filled
+
+        await s.W.Processor.ProcessDueAsync(default); // does not throw
+
+        Assert.Equal(315193L, s.W.Refuelings.Items.Single(r => r.Id == log.Id).Odometer); // the second try took it
+    }
+
+    [Fact]
     public async Task VolumeAndTotal_CanWaitForTheReceipt_WhichKeepsItsCurrency()
     {
         var s = await Setup();

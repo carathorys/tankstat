@@ -71,6 +71,23 @@ public class SyncGraphQLTests : IDisposable
     }
 
     [Fact]
+    public async Task AVehicleAddTheServerRefuses_AndALogOfAVehicleThatIsGone_AreParked_AndTheRestOfTheBatchGoesOn()
+    {
+        var people = await _app.Users();
+        var refused = Guid.NewGuid().ToString(); // an add the server refuses: that vehicle never exists
+        var purged = Guid.NewGuid().ToString(); // as if purged meanwhile
+        var car = Guid.NewGuid().ToString();
+
+        var result = await Send(people.Alice,
+            new { id = Guid.NewGuid(), addVehicle = new { id = refused, name = "", fuelType = "PETROL" } },
+            new { id = Guid.NewGuid(), logRefueling = new { id = Guid.NewGuid(), vehicleId = purged, date = "2026-09-01", volume = 40, totalCost = 60, currency = "EUR", odometer = 1000, isFullTank = true } },
+            new { id = Guid.NewGuid(), addVehicle = new { id = car, name = "Golf", fuelType = "PETROL" } });
+
+        var statuses = result.GetProperty("results").EnumerateArray().Select(r => r.GetProperty("status").GetString()).ToList();
+        Assert.Equal(["PARKED", "PARKED", "APPLIED"], statuses); // filed with the sender: there is no vehicle row to file them under
+    }
+
+    [Fact]
     public async Task AChangeWithoutExactlyOneOperation_OrAnAddWithoutItsId_RefusesTheBatch()
     {
         var people = await _app.Users();
