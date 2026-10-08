@@ -1,6 +1,7 @@
 import type { ApolloClient } from '@apollo/client'
 import { connectivity } from './connectivity.ts'
 import { isConnectionFailure } from './errors.ts'
+import type { ChangeEntity } from './changes.ts'
 import { outbox, type ChangeDraft } from './outbox.ts'
 
 export type Submitted<T> = { queued: true } | { queued: false; result: T }
@@ -25,4 +26,16 @@ export async function submitChange<T>(client: ApolloClient, change: ChangeDraft,
     if (isConnectionFailure(error)) return keep({ ...change, sent: true })
     throw error
   }
+}
+
+/** Takes a waiting change back (it is never sent), and the screen shows what the server has again. */
+export async function discardChange(client: ApolloClient, id: string): Promise<void> {
+  await outbox.discard(id)
+  void client.refetchQueries({ include: 'active' }).catch(() => undefined)
+}
+
+/** Keep: takes back the trash (or deletion) waiting for something, so it stays. */
+export async function keepEntry(client: ApolloClient, entity: ChangeEntity, id: string): Promise<void> {
+  const trash = outbox.changes.find((c) => c.entity === entity && c.action === 'trash' && c.targetId === id)
+  if (trash) await discardChange(client, trash.id)
 }

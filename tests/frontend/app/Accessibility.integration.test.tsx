@@ -69,7 +69,7 @@ it('the vehicle page and its tabs have no violations', async () => {
 })
 
 it('the trash, account and administration pages have no violations', async () => {
-  for (const route of ['/trash', '/trash?tab=refuelings', '/trash?tab=expenses', '/account', '/admin']) {
+  for (const route of ['/trash', '/trash?tab=refuelings', '/trash?tab=expenses', '/account', '/admin', '/sync']) {
     const { view } = setup(route)
     await screen.findByRole('main')
     await screen.findByRole('heading', { level: 1 })

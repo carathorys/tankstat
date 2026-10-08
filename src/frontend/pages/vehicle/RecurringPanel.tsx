@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@apollo/client/react'
+import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
 import Button from '@mui/material/Button'
 import Checkbox from '@mui/material/Checkbox'
 import Stack from '@mui/material/Stack'
@@ -38,7 +38,9 @@ import { recurringProgress } from '../../recurringProgress.ts'
 import { PendingBadge } from '../../components/PendingBadge.tsx'
 import type { Saved } from '../../components/usePhotoQueue.ts'
 import { outbox, usePendingCount } from '../../offline/outbox.ts'
+import { keepEntry } from '../../offline/submitChange.ts'
 import { useLogChange } from '../../offline/useLogChange.ts'
+import { useToast } from '../../toast/toastContext.ts'
 import { uuidV4 } from '../../offline/uuid.ts'
 
 type Item = NonNullable<RecurringExpensesQuery['vehicle']>['recurring'][number]
@@ -62,6 +64,8 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
   const [markDone] = useMutation(MarkRecurringExpensesDoneDocument, refetch)
   const [actionError, setActionError] = useState<unknown>()
   const changes = useLogChange('recurring', vehicle.id)
+  const client = useApolloClient()
+  const { toast } = useToast()
   usePendingCount(vehicle.id) // the rows' marks follow the changes waiting
   const [selection, setSelection] = useState<ReadonlySet<string>>(new Set())
   const items = data?.vehicle?.recurring ?? []
@@ -215,7 +219,14 @@ export function RecurringPanel({ vehicle, canLog }: { vehicle: { id: string; uni
                       </Stack>
                     </TableCell>
                     <TableCell>
-                      {canLog ? (
+                      {canLog && outbox.markOf('recurring', i.id) === 'deleted' ? (
+                        // Waiting on this device to be deleted: Keep takes that back.
+                        <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
+                          <Button variant="soft" size="large" aria-label={t('sync.keepAria', { name: i.title })} onClick={() => void keepEntry(client, 'recurring', i.id).then(() => toast(t('sync.kept')))}>
+                            {t('sync.keep')}
+                          </Button>
+                        </Stack>
+                      ) : canLog ? (
                         <Stack direction="row" sx={{ gap: 1, justifyContent: 'flex-end' }}>
                           {!settled && (
                           <RecurringDoneDialog
