@@ -1,4 +1,4 @@
-import { useApolloClient, useMutation } from '@apollo/client/react'
+import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
 import Card from '@mui/material/Card'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
@@ -7,9 +7,10 @@ import { useTranslation } from 'react-i18next'
 import Button from '@mui/material/Button'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { Loading } from '../components/Loading.tsx'
-import { ResolveSyncChangeDocument, type ParkedChangeFieldsFragment, type SyncResolveAction, type VolumeUnit } from '../gql/generated.ts'
+import { ResolveSyncChangeDocument, SessionDocument, type ParkedChangeFieldsFragment, type SyncResolveAction, type VolumeUnit } from '../gql/generated.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { useFormat } from '../i18n/format.ts'
+import { unblockAdd } from '../offline/push.ts'
 import { discardChange } from '../offline/submitChange.ts'
 import { canForce, fromParked } from '../offline/syncKinds.ts'
 import { useParkedChanges } from '../offline/useParkedChanges.ts'
@@ -245,21 +246,29 @@ function ParkedActions({ parked, label, onResolved }: { parked: Parked; label: s
   const reasonText = useReasonText()
   const errorText = useErrorText()
   const [resolve] = useMutation(ResolveSyncChangeDocument)
+  const client = useApolloClient()
+  const { data: session } = useQuery(SessionDocument, { fetchPolicy: 'cache-only' })
   if (!parked.canResolve) return null
+  // Without sign-in every visitor is the anonymous user, the sender of every change.
+  const me = session?.session.user?.id
+  const bySender = !me || parked.submittedBy?.id === me
 
   const run = async (action: SyncResolveAction) => {
     try {
       await resolve({ variables: { input: { id: parked.id, action } }, refetchQueries: ['ParkedChanges'], awaitRefetchQueries: true })
+      // Decided: what was made on it here (when it was an add) may go to the server now.
+      void unblockAdd(parked.targetId ?? '').catch(() => undefined)
       onResolved(t(action === 'APPLY' ? 'sync.appliedNow' : 'sync.discarded'))
     } catch (error) {
-      // Refused again: it stays, with the new reason (asked afresh).
+      // Refused again: it stays, with the new reason, or someone decided meanwhile; either way the list is asked afresh.
+      void client.refetchQueries({ include: ['ParkedChanges'] }).catch(() => undefined)
       onResolved(t('sync.stillNotApplied', { reason: errorText(error) }))
     }
   }
 
   return (
     <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
-      {canForce(parked.reason?.key) && (
+      {canForce(parked.reason?.key, bySender) && (
         <ConfirmDialog
           trigger={
             <Button variant="soft" size="large" aria-label={t('sync.applyAria', { change: label })}>

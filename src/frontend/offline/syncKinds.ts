@@ -60,7 +60,10 @@ export function fromParked(parked: Pick<ParkedChangeFieldsFragment, 'id' | 'kind
 }
 
 /**
- * Whether applying a parked change anyway can work: not when what it changes is gone, or the person may not (those can only be
- * discarded). Everything else is tried as they would online; a rule that still refuses says so.
+ * Whether applying a parked change anyway can work: not when the sender's own try found what it changes gone, or they may not (those can
+ * only be discarded). Someone else deciding (the owner of the vehicle) is not the sender: what the sender could no longer see (their
+ * access ended) may well be there for them, so the server decides. Everything else is tried as they would online; a rule that still
+ * refuses says so.
  */
-export const canForce = (reasonKey: string | null | undefined) => !!reasonKey && !reasonKey.endsWith('.notFound') && !reasonKey.startsWith('auth.')
+export const canForce = (reasonKey: string | null | undefined, bySender = true) =>
+  !!reasonKey && !reasonKey.startsWith('auth.') && (!bySender || !reasonKey.endsWith('.notFound'))

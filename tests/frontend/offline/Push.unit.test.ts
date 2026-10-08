@@ -78,7 +78,12 @@ describe('fromParked', () => {
   })
 
   it('offers Apply anyway unless what the change is about is gone or the person may not', () => {
-    expect(['sync.versionMismatch', 'odometer.belowPrevious', 'log.valuesRequired'].every(canForce)).toBe(true)
-    expect(['refueling.notFound', 'vehicle.notFound', 'auth.forbidden', null].some(canForce)).toBe(false)
+    expect(['sync.versionMismatch', 'odometer.belowPrevious', 'log.valuesRequired'].every((key) => canForce(key))).toBe(true)
+    expect(['refueling.notFound', 'vehicle.notFound', 'auth.forbidden', null].some((key) => canForce(key))).toBe(false)
+  })
+
+  it('to someone other than the sender, "not found" is no reason not to try: the sender may only have lost access', () => {
+    expect(canForce('vehicle.notFound', false)).toBe(true)
+    expect(canForce('auth.forbidden', false)).toBe(false)
   })
 })
