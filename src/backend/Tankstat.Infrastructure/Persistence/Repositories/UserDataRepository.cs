@@ -38,6 +38,7 @@ internal sealed class UserDataRepository(IDbContextFactory<AppDbContext> dbFacto
         await db.AccessGrants.Where(g => g.OwnerId == userId || g.GranteeId == userId).ExecuteDeleteAsync(ct);
         await db.ResourceGrants.Where(g => g.GranteeId == userId).ExecuteDeleteAsync(ct);
         await db.PasswordResetTokens.Where(t => t.UserId == userId).ExecuteDeleteAsync(ct);
+        await db.UserSessions.Where(s => s.UserId == userId).ExecuteDeleteAsync(ct); // their devices are signed out with them
         await db.Notifications.Where(n => n.RecipientId == userId).ExecuteDeleteAsync(ct); // a user's inbox is theirs alone, never moved
         // What the UI remembered for them is theirs alone too (other users' positions on purged vehicles went through the cascade).
         await db.UiSettings.Where(s => s.UserId == userId).ExecuteDeleteAsync(ct);

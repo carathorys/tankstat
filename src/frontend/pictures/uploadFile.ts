@@ -1,8 +1,9 @@
+import { fetchSignedIn } from '../auth/refresh.ts'
 import { ApiError } from './ApiError.ts'
 
 /** Sends a file to import as the raw request body; the answer is a token that stands for the parsed file on the server. */
 export async function uploadImportFile(format: string, file: Blob): Promise<{ token: string }> {
-  const response = await fetch(`/imports/${encodeURIComponent(format)}`, { method: 'POST', body: file, credentials: 'same-origin' })
+  const response = await fetchSignedIn(`/imports/${encodeURIComponent(format)}`, { method: 'POST', body: file, credentials: 'same-origin' })
   if (!response.ok) {
     let body: { key?: string; args?: Record<string, unknown>; message?: string } = {}
     try {

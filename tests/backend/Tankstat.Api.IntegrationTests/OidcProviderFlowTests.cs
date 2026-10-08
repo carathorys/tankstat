@@ -83,6 +83,10 @@ public class OidcProviderFlowTests : IDisposable
 
         Assert.Equal(HttpStatusCode.Redirect, back.StatusCode);
         Assert.Equal("/vehicles/abc", back.Headers.Location!.ToString());
+        // Like a password sign-in: a persistent access cookie, and the refresh cookie that keeps the device signed in.
+        var cookies = back.Headers.GetValues("Set-Cookie").ToList();
+        Assert.Contains(cookies, c => c.StartsWith("tankstat.session=") && c.Contains("expires=", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(cookies, c => c.StartsWith("tankstat.refresh=") && c.Contains("path=/auth/token", StringComparison.OrdinalIgnoreCase));
         var user = (await signIn.Browser.Gql("{ session { user { email displayName } } }")).Data().GetProperty("session").GetProperty("user");
         Assert.Equal(("alice@example.com", "Alice"), (user.GetProperty("email").GetString(), user.GetProperty("displayName").GetString()));
         Assert.Empty(Outcomes());

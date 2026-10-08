@@ -51,8 +51,16 @@ export default defineConfig({
       },
     }),
   ],
-  // The API's endpoints. Only /auth/oidc/ of /auth: the frontend's own modules live in src/frontend/auth/ (served at /auth/...).
-  server: { proxy: { '/graphql': 'http://localhost:5080', '/auth/oidc/': 'http://localhost:5080', '/media': 'http://localhost:5080', '/imports': 'http://localhost:5080' } },
+  // The API's endpoints. Only /auth/oidc/ and /auth/token/ of /auth: the frontend's own modules live in src/frontend/auth/ (served at /auth/...).
+  server: {
+    proxy: {
+      '/graphql': 'http://localhost:5080',
+      '/auth/oidc/': 'http://localhost:5080',
+      '/auth/token/': 'http://localhost:5080',
+      '/media': 'http://localhost:5080',
+      '/imports': 'http://localhost:5080',
+    },
+  },
   build: { outDir: '../../dist', emptyOutDir: true },
   test: {
     environment: 'jsdom',

@@ -9,7 +9,7 @@ namespace Tankstat.Application.Users;
 
 /// <summary>Sign-in related use cases for every mode: local login/password handling and external user provisioning.</summary>
 public sealed class AuthService(
-    IUserRepository users, IPasswordHasher hasher, PasswordResetService resets, AccessService access,
+    IUserRepository users, IPasswordHasher hasher, PasswordResetService resets, UserSessionService sessions, AccessService access,
     IOptions<AuthOptions> auth, TimeProvider clock, ILogger<AuthService> logger)
 {
     /// <summary>The error key of a refused sign-in of a disabled user; the OIDC failure handler recognises it.</summary>
@@ -53,8 +53,11 @@ public sealed class AuthService(
         return user;
     }
 
-    /// <summary>Changes the signed-in user's password; the returned user carries the new session version.</summary>
-    public async Task<User> ChangePasswordAsync(string? currentPassword, string? newPassword, CancellationToken ct)
+    /// <summary>
+    /// Changes the signed-in user's password; the returned user carries the new session version. Every other device is signed out; the
+    /// one that asked (<paramref name="currentSessionId"/>) stays signed in.
+    /// </summary>
+    public async Task<User> ChangePasswordAsync(string? currentPassword, string? newPassword, CancellationToken ct, Guid? currentSessionId = null)
     {
         RequireMode(AuthMode.Standalone);
         var principal = await access.RequirePrincipalAsync(ct);
@@ -70,6 +73,9 @@ public sealed class AuthService(
         user.SetPasswordHash(hasher.Hash(newPassword!));
         await users.UpdateAsync(user, ct);
         await resets.RevokeAllAsync(user.Id, ct);
+        // First this device takes the new version, then the others end: its next refresh must not find a stale version.
+        if (currentSessionId is { } keep) await sessions.AdoptVersionAsync(keep, user, ct);
+        await sessions.RevokeOthersAsync(user.Id, currentSessionId, ct);
         logger.LogInformation("User {UserId} changed their password", user.Id);
         return user;
     }
@@ -98,6 +104,7 @@ public sealed class AuthService(
         user.SetPasswordHash(hasher.Hash(newPassword!));
         await users.UpdateAsync(user, ct);
         await resets.RevokeAllAsync(user.Id, ct);
+        await sessions.RevokeAllAsync(user.Id, ct);
         logger.LogInformation("User {UserId} set a new password with a reset link", user.Id);
         return user;
     }

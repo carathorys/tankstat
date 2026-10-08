@@ -76,12 +76,13 @@ ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 
 WORKDIR /app
 
-# The SQLite database and the uploaded pictures live in a volume the unprivileged user can write to. Every setting is a normal ASP.NET Core
+# The SQLite database, the uploaded pictures and the keys that protect the sign-in cookies live in a volume the unprivileged user can write to. Every setting is a normal ASP.NET Core
 # setting and can be overridden at run time (Database__Provider, Database__ConnectionString, Auth__Mode, ...).
 ENV ASPNETCORE_URLS=http://+:8080 \
     Database__Provider=Sqlite \
     Database__ConnectionString="Data Source=/data/tankstat.db" \
-    Storage__Path=/data/uploads
+    Storage__Path=/data/uploads \
+    DataProtection__KeysPath=/data/keys
 RUN mkdir /data && chown "$APP_UID:$APP_UID" /data
 VOLUME /data
 
