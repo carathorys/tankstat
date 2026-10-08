@@ -22,10 +22,10 @@ export interface ParkedChange {
 export interface PushState {
   status: 'idle' | 'syncing'
   /**
-   * What the last sync did (in this page's life). `photosLeftOut`: photos kept on this device the server would not take as drafts (or
-   * that were gone), sent without them.
+   * What the last sync did (in this page's life). `photosLeftOut`: photos that were no longer on this device, their changes sent without
+   * them. `photosWaiting`: photos the server would not take as drafts this time (full, refused): their changes were not sent, they wait.
    */
-  last: { at: number; applied: number; parked: ParkedChange[]; interrupted: boolean; photosLeftOut: number } | null
+  last: { at: number; applied: number; parked: ParkedChange[]; interrupted: boolean; photosLeftOut: number; photosWaiting: number } | null
 }
 
 export interface PushDeps {
@@ -178,6 +178,7 @@ export function createPushEngine({ client, device = deviceData, pull, chunkSize 
     const blocked = new Set<string>(await parkedAdds(device))
     let interrupted = false
     let photosLeftOut = 0
+    let photosWaiting = 0
 
     // One request. Its kept photos go up as drafts first (a draft is only ever uploaded for a change that is sent right after); the
     // changes are marked sent before they go: from there the server may have them, so nothing folds into them any more (`collapse`), and
@@ -188,20 +189,25 @@ export function createPushEngine({ client, device = deviceData, pull, chunkSize 
         try {
           const id = await keptPhotos.asDraft(key)
           if (id) drafts.set(key, id)
-          else photosLeftOut++
+          else photosLeftOut++ // no longer on this device
         } catch (error) {
           if (isConnectionFailure(error)) throw error
-          console.warn('A photo kept on this device was not taken as a draft; its change is sent without it.', error)
-          photosLeftOut++
+          // Not taken this time (the drafts are full, a server error): the change is not sent, so its photos are not lost; it waits.
+          console.warn('A photo kept on this device was not taken as a draft; its change waits for the next sync.', error)
+          photosWaiting++
+          return
         }
       }
-      // A photo added to a saved log that did not make it has nothing left to send: it is done with.
+      // A photo added to a saved log that is gone from the device has nothing left to send: it is done with.
       const nothing = group.filter((c) => c.action === 'addPhoto' && !drafts.has(String(c.input?.key)))
-      answered.push(...nothing.map((c) => c.id))
       const sendable = group.filter((c) => !nothing.includes(c))
-      if (sendable.length === 0) return
+      if (sendable.length === 0) {
+        answered.push(...nothing.map((c) => c.id))
+        return
+      }
       await outbox.markSent(sendable.map((c) => c.id))
       const { data } = await client.mutate({ mutation: SyncChangesDocument, variables: { input: { changes: sendable.map((c) => toChangeInput(c, drafts)) } } })
+      answered.push(...nothing.map((c) => c.id))
       const results = new Map<string, Result>((data?.syncChanges.results ?? []).map((r) => [r.id, r]))
       for (const change of sendable) {
         const result = results.get(change.id)
@@ -256,7 +262,7 @@ export function createPushEngine({ client, device = deviceData, pull, chunkSize 
     // Remembered while anything waiting still needs one of them (until the parked add is applied or discarded on the Sync page).
     const stillNeeded = new Set(outbox.changes.flatMap(needs))
     await device.keep(PARKED_ADDS_KEY, [...blocked].filter((id) => stillNeeded.has(id))).catch(() => undefined)
-    set({ status: 'idle', last: { at: Date.now(), applied: answered.length - parked.length, parked, interrupted, photosLeftOut } })
+    set({ status: 'idle', last: { at: Date.now(), applied: answered.length - parked.length, parked, interrupted, photosLeftOut, photosWaiting } })
   }
 
   return {
