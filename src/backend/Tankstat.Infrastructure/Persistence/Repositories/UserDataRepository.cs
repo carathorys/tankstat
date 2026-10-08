@@ -32,7 +32,7 @@ internal sealed class UserDataRepository(IDbContextFactory<AppDbContext> dbFacto
 
         var purged = PurgedUserData.None;
         if (moveDataTo is { } to) await MoveAsync(db, userId, to, clock.GetUtcNow(), ct);
-        else purged = await PurgeAsync(db, userId, ct);
+        else purged = await PurgeAsync(db, userId, clock.GetUtcNow(), ct);
 
         // Whatever grants are left (purge, or none to move) must go before the user: grantee-side access grants are Restrict.
         await db.AccessGrants.Where(g => g.OwnerId == userId || g.GranteeId == userId).ExecuteDeleteAsync(ct);
@@ -110,7 +110,7 @@ internal sealed class UserDataRepository(IDbContextFactory<AppDbContext> dbFacto
             .ExecuteDeleteAsync(ct);
     }
 
-    private static async Task<PurgedUserData> PurgeAsync(AppDbContext db, Guid userId, CancellationToken ct)
+    private static async Task<PurgedUserData> PurgeAsync(AppDbContext db, Guid userId, DateTimeOffset now, CancellationToken ct)
     {
         var vehicles = await db.Vehicles.IgnoreQueryFilters().Where(v => v.OwnerId == userId).ToListAsync(ct);
         var ids = vehicles.Select(v => v.Id).ToList();
@@ -119,7 +119,9 @@ internal sealed class UserDataRepository(IDbContextFactory<AppDbContext> dbFacto
         // Charts they made on other people's vehicles are theirs too (a move re-points them instead).
         await db.VehicleCharts.Where(c => c.CreatedById == userId).ExecuteDeleteAsync(ct);
         // Likewise their schedules on other people's vehicles; removed through the change tracker, so devices get their tombstones.
-        db.RecurringExpenses.RemoveRange(await db.RecurringExpenses.Where(r => r.CreatedById == userId && !ids.Contains(r.VehicleId)).ToListAsync(ct));
+        var schedules = await db.RecurringExpenses.Where(r => r.CreatedById == userId && !ids.Contains(r.VehicleId)).ToListAsync(ct);
+        await db.TouchExpensesOfSchedulesAsync([.. schedules.Select(r => r.Id)], now, ct); // the expenses that list them, before the links cascade away
+        db.RecurringExpenses.RemoveRange(schedules);
 
         db.Vehicles.RemoveRange(vehicles); // logs, readings, costs, charts and photo rows go with them through the database's cascade
         await db.SaveChangesAsync(ct);
