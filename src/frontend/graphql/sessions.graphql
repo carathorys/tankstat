@@ -1,0 +1,19 @@
+# The devices the signed-in user is signed in on (Account page; Standalone and OIDC only).
+query MySessions {
+  mySessions {
+    id
+    client
+    createdAt
+    lastUsedAt
+    expiresAt
+    current
+  }
+}
+
+mutation RevokeSession($id: UUID!) {
+  revokeSession(id: $id)
+}
+
+mutation RevokeOtherSessions {
+  revokeOtherSessions
+}

@@ -175,6 +175,53 @@ public sealed class SessionTokenTests : IDisposable
         Assert.Equal(HttpStatusCode.Unauthorized, (await Post(users.Alice, "/auth/token/refresh")).StatusCode);
     }
 
+    private const string MySessions = "{ mySessions { id client current createdAt lastUsedAt expiresAt } }";
+
+    [Fact]
+    public async Task TheAccountPage_ListsTheDevices_AndMarksThisOne()
+    {
+        var (laptop, _) = await SignIn();
+        var (phone, _) = await SignIn();
+
+        var listed = (await laptop.Gql(MySessions)).Data().GetProperty("mySessions").EnumerateArray().ToList();
+
+        Assert.Equal(2, listed.Count);
+        Assert.Single(listed, s => s.GetProperty("current").GetBoolean());
+        Assert.True(await SignedIn(phone));
+    }
+
+    [Fact]
+    public async Task SigningAnotherDeviceOut_EndsItsSession_AndSigningOutThisOne_RemovesTheCookies()
+    {
+        var (laptop, _) = await SignIn();
+        var (phone, phoneToken) = await SignIn();
+        var sessions = (await laptop.Gql(MySessions)).Data().GetProperty("mySessions").EnumerateArray().ToList();
+        var phoneId = sessions.Single(s => !s.GetProperty("current").GetBoolean()).GetProperty("id").GetString();
+        var laptopId = sessions.Single(s => s.GetProperty("current").GetBoolean()).GetProperty("id").GetString();
+
+        Assert.True((await laptop.Gql("mutation($id: UUID!) { revokeSession(id: $id) }", new { id = phoneId })).Data().GetProperty("revokeSession").GetBoolean());
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Post(WithoutCookies(), "/auth/token/refresh", phoneToken)).StatusCode);
+
+        var response = await laptop.PostAsJsonAsync("/graphql", new { query = "mutation($id: UUID!) { revokeSession(id: $id) }", variables = new { id = laptopId } });
+        Assert.Contains(response.Headers.GetValues("Set-Cookie"), h => h.StartsWith("tankstat.refresh=;"));
+        Assert.False(await SignedIn(laptop));
+    }
+
+    [Fact]
+    public async Task SigningOutEverywhereElse_KeepsThisDevice()
+    {
+        var (laptop, _) = await SignIn();
+        var (phone, _) = await SignIn();
+        var (tablet, _) = await SignIn();
+
+        Assert.Equal(2, (await laptop.Gql("mutation { revokeOtherSessions }")).Data().GetProperty("revokeOtherSessions").GetInt32());
+        _clock.Advance(TimeSpan.FromMinutes(16));
+
+        Assert.Equal(HttpStatusCode.NoContent, (await Post(laptop, "/auth/token/refresh")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Post(phone, "/auth/token/refresh")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Post(tablet, "/auth/token/refresh")).StatusCode);
+    }
+
     [Fact]
     public async Task WithoutAuthentication_ThereAreNoTokenEndpoints()
     {

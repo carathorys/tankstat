@@ -18,6 +18,16 @@ export const server = setupServer(
   // The token endpoints (auth/refresh.ts): no test has a refresh cookie, so a refresh says "sign in"; signing out always works.
   http.post('/auth/token/refresh', () => HttpResponse.json({ key: 'auth.unauthenticated' }, { status: 401 })),
   http.post('/auth/token/logout', () => new HttpResponse(null, { status: 204 })),
+  // The Account page lists the devices the user is signed in on (Standalone and OIDC): by default only this one.
+  graphql.query('MySessions', () =>
+    HttpResponse.json({
+      data: {
+        mySessions: [
+          { id: 's-this', client: 'Firefox on Linux', createdAt: '2026-09-01T08:00:00Z', lastUsedAt: '2026-10-01T08:00:00Z', expiresAt: '2026-12-30T08:00:00Z', current: true },
+        ],
+      },
+    }),
+  ),
   graphql.query('UnreadNotificationCount', () => HttpResponse.json({ data: { notificationCount: 0 } })),
   graphql.query('RecognitionStatus', () => HttpResponse.json({ data: { recognitionStatus: { available: false } } })),
   graphql.query('UiSettings', () => HttpResponse.json({ data: { uiSettings: { navOpen: null, language: null, colorMode: null, grids: [] } } })),

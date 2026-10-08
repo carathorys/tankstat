@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { graphql, HttpResponse } from 'msw'
 import { expect, it, onTestFinished, vi } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
 import { ErrorBoundary } from '../../../src/frontend/ErrorBoundary.tsx'
@@ -74,6 +75,21 @@ it('the trash, account and administration pages have no violations', async () =>
     await check(view.container)
     view.unmount()
   }
+})
+
+it('the signed-in devices and the confirmation to sign out the others are free of violations', async () => {
+  const { view, ui } = setup('/account')
+  const at = (id: string, client: string | null, current: boolean) => ({
+    id, client, current, createdAt: '2026-09-01T08:00:00Z', lastUsedAt: '2026-10-01T08:00:00Z', expiresAt: '2026-12-30T08:00:00Z',
+  })
+  server.use(graphql.query('MySessions', () => HttpResponse.json({ data: { mySessions: [at('s1', 'Firefox on Linux', true), at('s2', null, false)] } })))
+  const devices = await screen.findByRole('region', { name: 'Signed-in devices' })
+  await within(devices).findByText('Unknown device')
+  await check(view.container)
+
+  await ui.click(within(devices).getByRole('button', { name: 'Sign out everywhere else' }))
+  await screen.findByRole('alertdialog', { name: 'Sign out everywhere else?' })
+  await check(document.body)
 })
 
 it('the notifications page and the open bell are labelled and free of violations', async () => {
