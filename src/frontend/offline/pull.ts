@@ -62,7 +62,14 @@ export function createPullEngine({ client, device = deviceData, now = () => new 
     return data
   }
 
+  let account: string | null = null
+  /** Stops the run when the server has named another account since it began (a sign-in elsewhere, in this tab or another). */
+  const sameAccount = () => {
+    if (device.user !== account) throw new AccountChanged()
+  }
+
   async function keepHomePages(vehicles: readonly VehicleRow[], total: number) {
+    sameAccount()
     for (let skip = 0; skip === 0 || skip < vehicles.length; skip += HOME_PAGE_SIZE) {
       const key = snapshotKey('Welcome', { search: null, skip, take: HOME_PAGE_SIZE })
       await device.keep(key, { myVehicles: vehicles.slice(skip, skip + HOME_PAGE_SIZE), myVehicleCount: total, vehicleTotal: total })
@@ -70,12 +77,14 @@ export function createPullEngine({ client, device = deviceData, now = () => new 
   }
 
   async function keepVehicleAnswers(vehicleId: string, page: Page) {
+    sameAccount()
     await device.keep(snapshotKey('VehicleDetails', { id: vehicleId }), { vehicle: page.vehicle })
     await device.keep(snapshotKey('RecurringExpenses', { vehicleId }), { vehicle: { __typename: 'Vehicle', id: vehicleId, recurring: page.recurring } })
   }
 
   /** Stores a page's logs; one that moved out of the window (dated before its start) is removed instead. */
   async function ingest(rows: RowStore, kind: LogKind, list: readonly Record<string, unknown>[], from: string | null, stamp: number) {
+    sameAccount()
     const inside: LogRow[] = []
     const outside: string[] = []
     for (const row of list as readonly LogRow[]) {
@@ -136,7 +145,10 @@ export function createPullEngine({ client, device = deviceData, now = () => new 
   }
 
   async function restart(rows: RowStore, cursor: PullCursor | undefined, from: string | null = cursor?.from === false ? null : (cursor?.from ?? null)) {
-    const fresh: PullCursor = { vehicleId: cursor!.vehicleId, from, watermark: null, next: null, complete: cursor?.complete ?? false, fullStartedAt: Date.now() }
+    // A vehicle that held its logs keeps answering from them while they download again; one that held none (window "none") does not
+    // until the download is through: a first page alone is not the list.
+    const complete = cursor?.from === false ? false : (cursor?.complete ?? false)
+    const fresh: PullCursor = { vehicleId: cursor!.vehicleId, from, watermark: null, next: null, complete, fullStartedAt: Date.now() }
     await rows.putCursor(fresh)
     return fresh
   }
@@ -165,6 +177,8 @@ export function createPullEngine({ client, device = deviceData, now = () => new 
   async function runOnce() {
     const rows = await device.writableRows()
     if (!rows || !connectivity.reachable) return
+    // A run belongs to the account it started for: once the server names someone else, nothing more of it lands anywhere.
+    account = device.user
     set({ status: 'pulling', vehiclesDone: 0, vehiclesTotal: 0, interrupted: false })
     try {
       const home = await query(() => client.query({ query: WelcomeDocument, variables: { search: null, skip: 0, take: MAX_VEHICLES }, fetchPolicy: 'network-only' }))
@@ -184,8 +198,10 @@ export function createPullEngine({ client, device = deviceData, now = () => new 
           try {
             await pullVehicle(rows, vehicle.id, rules.get(vehicle.id) ?? settings.defaultWindow ?? DEFAULT_RULE)
           } catch (error) {
-            if (isConnectionFailure(error)) throw error
+            if (isConnectionFailure(error) || error instanceof AccountChanged) throw error
             if (keyOf(error) === 'vehicle.notFound') await rows.dropVehicle(vehicle.id) // access lost meanwhile
+            // A download that cannot be continued (the server no longer reads where it stopped): the next one starts it afresh.
+            else if (keyOf(error) === 'sync.cursorInvalid') await restart(rows, await rows.cursor(vehicle.id))
             else console.warn('The offline download of a vehicle failed; the next one tries again.', error)
           }
           set({ vehiclesDone: state.vehiclesDone + 1 })
@@ -195,7 +211,7 @@ export function createPullEngine({ client, device = deviceData, now = () => new 
       set({ status: 'idle', lastPullAt: Date.now() })
     } catch (error) {
       set({ status: 'idle', interrupted: isConnectionFailure(error) })
-      if (!isConnectionFailure(error)) console.warn('The offline download failed; the next one tries again.', error)
+      if (!isConnectionFailure(error) && !(error instanceof AccountChanged)) console.warn('The offline download failed; the next one tries again.', error)
     }
   }
 
@@ -229,6 +245,9 @@ export function createPullEngine({ client, device = deviceData, now = () => new 
 }
 
 export type PullEngine = ReturnType<typeof createPullEngine>
+
+/** The server named another account during a run: it stops, keeping nothing more. */
+class AccountChanged extends Error {}
 
 function keyOf(error: unknown): string | undefined {
   const errors = (error as { errors?: readonly { extensions?: { key?: unknown } }[] } | null)?.errors

@@ -15,6 +15,9 @@ let downloads: PullEngine | null = null
 /** How often a page that stays open downloads what changed. */
 export const PULL_EVERY_MS = 60 * 60 * 1000
 
+/** Showing the tab again downloads only when the last download is at least this old. */
+export const SHOWN_GAP_MS = 15 * 60 * 1000
+
 /** The download of the offline window, for the screens that show or start it; null until it first ran. */
 export const offlineDownload = (): PullEngine | null => downloads
 
@@ -49,8 +52,15 @@ export function startOfflineRuntime(client: ApolloClient, now: () => number = Da
       downloads = createPullEngine({ client })
       return downloads
     }))
+  let downloadedAt = Number.NEGATIVE_INFINITY
   const download = () => {
-    if (deviceData.user !== null && connectivity.reachable && document.visibilityState !== 'hidden') void engine().then((e) => e.run())
+    if (deviceData.user === null || !connectivity.reachable || document.visibilityState === 'hidden') return
+    downloadedAt = now()
+    void engine().then((e) => e.run())
+  }
+  // Shown again (an app switched back to on a phone): only when the last download is a while ago, not on every switch.
+  const onShown = () => {
+    if (now() - downloadedAt >= SHOWN_GAP_MS) download()
   }
   let wasReachable = connectivity.reachable
   let refetchedAt = Number.NEGATIVE_INFINITY
@@ -66,7 +76,7 @@ export function startOfflineRuntime(client: ApolloClient, now: () => number = Da
   const offElsewhere = deviceData.onSignedInElsewhere(() => void client.refetchQueries({ include: ['Session'] }).catch(() => undefined))
   const unsubscribeUser = deviceData.subscribe(download)
   // A start in a tab that was not shown downloads once it is.
-  document.addEventListener('visibilitychange', download)
+  document.addEventListener('visibilitychange', onShown)
   const hourly = setInterval(download, PULL_EVERY_MS)
   active = watch
   return {
@@ -77,7 +87,7 @@ export function startOfflineRuntime(client: ApolloClient, now: () => number = Da
       unsubscribe()
       offElsewhere()
       unsubscribeUser()
-      document.removeEventListener('visibilitychange', download)
+      document.removeEventListener('visibilitychange', onShown)
       clearInterval(hourly)
       active = null
       downloads = null

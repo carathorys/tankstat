@@ -131,6 +131,53 @@ it('a lost connection ends the run, and the next one goes on where the full down
   expect(await localIds()).toEqual(['a', 'b', 'c', 'd', 'e'])
 })
 
+it('a window going from nothing to something answers nothing offline until its first download is through', async () => {
+  for (const [id, date] of [['a', '2026-09-01'], ['b', '2026-09-02'], ['c', '2026-09-03']]) feed.add(id, date)
+  feed.setRule('none')
+  const pull = engine(2)
+  await pull.run()
+
+  feed.later()
+  feed.setRule('all')
+  feed.failAfter(1) // the second page does not come
+  await pull.run()
+
+  expect(await localIds()).toEqual(['a', 'b'])
+  expect(await answerLocally(await deviceData.rows(), 'Refuelings', { vehicleId: 'v1' })).toBeUndefined() // a first page is not the list
+})
+
+it('a download the server can no longer continue starts afresh the next time', async () => {
+  for (const [id, date] of [['a', '2026-09-01'], ['b', '2026-09-02'], ['c', '2026-09-03']]) feed.add(id, date)
+  const pull = engine(2)
+  feed.failAfter(1)
+  await pull.run()
+  connectivity.reset()
+  feed.failAfter(null)
+  feed.refuseCursors() // a new server version reads its cursors differently
+  const before = feed.asked.length
+
+  await pull.run()
+  feed.acceptCursors()
+  await pull.run()
+
+  expect(feed.asked[before]).toMatchObject({ after: expect.any(String) }) // where it stopped: refused
+  expect(feed.asked[before + 1]).not.toHaveProperty('after') // the next run starts from the window again
+  expect(await localIds()).toEqual(['a', 'b', 'c'])
+})
+
+it('a run stops keeping anything once the server names another account', async () => {
+  for (const [id, date] of [['a', '2026-09-01'], ['b', '2026-09-02'], ['c', '2026-09-03']]) feed.add(id, date)
+  const pull = engine(2)
+  feed.onAsk(async (n) => {
+    if (n === 1) await deviceData.signedIn('u2') // someone else signed in while the first page was on its way
+  })
+
+  await pull.run()
+
+  await deviceData.signedIn('u1')
+  expect(await localIds()).toEqual([])
+})
+
 it('downloads nothing for someone the server did not confirm', async () => {
   deviceData.reset(memoryStorage())
   feed.add('a', '2026-09-01')
