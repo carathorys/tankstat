@@ -8,6 +8,7 @@ import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { OdometerField } from './components/OdometerField.tsx'
 import { PhotoGallery } from './components/PhotoGallery.tsx'
+import { ReadLaterNote } from './components/OfflineNote.tsx'
 import { PhotosLeftOut } from './components/PhotosLeftOut.tsx'
 import { RecurringStatusBadge } from './components/RecurringStatus.tsx'
 import type { Saved } from './components/usePhotoQueue.ts'
@@ -102,6 +103,8 @@ export function RecurringDoneDialog({
   const clientId = useClientId(open)
   const { queue, leftOut, saving, submit, reset } = usePhotoSession(vehicle.id, 'expense', open)
   const drafts = useDraftReadings(queue.uploaded, open)
+  // Photos kept on this device are read once the visit is synced (photo reading on, as last heard): the amount may be left to them.
+  const readLater = queue.kept > 0 && drafts.available
 
   const close = () => {
     setOpen(false)
@@ -121,6 +124,7 @@ export function RecurringDoneDialog({
         description={t('recurring.doneDescription')}
       >
         {leftOut > 0 && <PhotosLeftOut count={leftOut} />}
+        {readLater && <ReadLaterNote />}
         {open && leftOut === 0 && (
           <DoneForm
             vehicle={vehicle}
@@ -131,6 +135,7 @@ export function RecurringDoneDialog({
             read={mergeReadings(drafts.readings.values())}
             readingDone={drafts.done}
             reading={drafts.pending.length > 0}
+            readLater={readLater}
             wait={{ since: drafts.waitingSince, until: drafts.waitingUntil }}
             explanation={drafts.explanation}
             gallery={<PhotoGallery kind="expenses" photos={[]} queue={queue} readingIds={drafts.pending} disabled={saving} onChanged={() => undefined} />}
@@ -161,6 +166,8 @@ interface FormProps {
   readingDone: boolean
   /** A photo is still being read: the amount may be left to it. */
   reading: boolean
+  /** Photos kept on this device are read once the visit is synced: the amount may be left to them too. */
+  readLater: boolean
   /** The window the dialog waits in for the photos being read (the bar near Save). */
   wait: { since: number | null; until: number | null }
   /** Why the photos gave less than they might have. */
@@ -186,6 +193,7 @@ function DoneFields({
   read,
   readingDone,
   reading,
+  readLater,
   wait,
   explanation,
   gallery,
@@ -218,14 +226,14 @@ function DoneFields({
     last: last ? formatDistance(last.value, vehicle.units.distance) : undefined,
   })
   const hasAmount = fill.values.amount.trim() !== ''
-  const logsExpense = hasAmount || reading
+  const logsExpense = hasAmount || reading || readLater
   const titleValue = title ?? defaultTitle(done)
   const categoryValue = category ?? defaultCategory(done)
   const note = (field: FillableField) => (
     <ReadNote
       filled={fill.isFilled(field)}
       offered={fill.offered(field)}
-      waiting={reading && field === 'amount' && !hasAmount}
+      waiting={(reading || readLater) && field === 'amount' && !hasAmount}
       field={labels[field]}
       onUse={() => fill.use(field)}
     />

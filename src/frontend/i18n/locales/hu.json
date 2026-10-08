@@ -982,6 +982,9 @@
     "failedHint": "Néhány fotót nem sikerült feltölteni. Próbáld újra, vagy töröld őket a bejegyzés mentéséhez.",
     "added": "Fotók mentve.",
     "removed": "Fotó törölve.",
+    "kept": "Ezen az eszközön: szinkronizáláskor töltődik fel",
+    "keptAdded": "Ezen az eszközön tárolva: a fotók szinkronizáláskor kerülnek fel.",
+    "removeKept": "A fotó szinkronizáláskor törlődik.",
     "done": "Kész",
     "leftOut_one": "A bejegyzés mentve lett, de {{count}} fotót nem sikerült hozzáadni. A bejegyzés szerkesztésével újra hozzáadhatod.",
     "leftOut_other": "A bejegyzés mentve lett, de {{count}} fotót nem sikerült hozzáadni. A bejegyzés szerkesztésével újra hozzáadhatod őket."
@@ -1012,7 +1015,8 @@
       "NO_CONFIDENCE": "{{field}}: a fotón le lehetett olvasni, de nem elég megbízhatóan ahhoz, hogy kitöltsük.",
       "UNSURE": "{{field}}: a fotón le lehetett olvasni, de nem elég megbízhatóan ahhoz, hogy kitöltsük."
     },
-    "waiting": "Hagyhatod üresen: mentés után a fotóról töltjük ki."
+    "waiting": "Hagyhatod üresen: mentés után a fotóról töltjük ki.",
+    "later": "A fotókat akkor olvassuk be, amikor ez a szerverre kerül. Amit mutatnak, hagyhatod üresen: akkor töltjük ki, és szólunk róla."
   },
   "review": {
     "badge": {
@@ -1156,13 +1160,17 @@
         "add": "Új tankolás",
         "update": "Módosított tankolás",
         "trash": "Lomtárba kerülő tankolás",
-        "restore": "Lomtárból visszaállított tankolás"
+        "restore": "Lomtárból visszaállított tankolás",
+        "addPhoto": "Tankoláshoz hozzáadott fotó",
+        "removePhoto": "Tankolásról törölt fotó"
       },
       "expenses": {
         "add": "Új kiadás",
         "update": "Módosított kiadás",
         "trash": "Lomtárba kerülő kiadás",
-        "restore": "Lomtárból visszaállított kiadás"
+        "restore": "Lomtárból visszaállított kiadás",
+        "addPhoto": "Kiadáshoz hozzáadott fotó",
+        "removePhoto": "Kiadásról törölt fotó"
       },
       "vehicles": {
         "add": "Új jármű",

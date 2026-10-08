@@ -21,6 +21,10 @@ public enum SyncChangeKind
     UpdateVehicle,
     DeleteVehicle,
     RestoreVehicle,
+    AddRefuelingPhoto,
+    RemoveRefuelingPhoto,
+    AddExpensePhoto,
+    RemoveExpensePhoto,
 }
 
 /// <summary>Applied: the server has it. Parked: the server could not apply it and keeps it (with why) for a person to decide.</summary>

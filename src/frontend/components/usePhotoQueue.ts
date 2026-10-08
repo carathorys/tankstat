@@ -2,6 +2,11 @@ import { useQuery } from '@apollo/client/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { RecognitionStatusDocument } from '../gql/generated.ts'
 import { resizeImage } from '../pictures/resizeImage.ts'
+import { isKept } from '../offline/changes.ts'
+import { connectivity } from '../offline/connectivity.ts'
+import { isConnectionFailure } from '../offline/errors.ts'
+import { keptPhotos } from '../offline/keptPhotos.ts'
+import { outbox } from '../offline/outbox.ts'
 import { deleteImage, LOG_PHOTO_EDGE, MAX_LOG_PHOTOS, photoDraftPath, photoDraftsPath, uploadImage, type ReadingPurpose } from '../pictures/upload.ts'
 
 /** What the add/edit dialog of a log gets back from its caller after saving a new log: its id and how many photos it ended up with. */
@@ -12,9 +17,10 @@ export interface QueuedPhoto {
   key: string
   /** A preview of the resized picture (it stays on screen while it is uploaded and after). */
   url: string
-  state: 'uploading' | 'uploaded' | 'failed'
+  /** `kept`: kept on this device (`offline/keptPhotos.ts`) while the server is out of reach; it goes up when the log is sent. */
+  state: 'uploading' | 'uploaded' | 'failed' | 'kept'
   error?: unknown
-  /** The draft's id once the upload went through. */
+  /** The draft's id once the upload went through; for a kept photo, its `local:` key. */
   id?: string
   /** When the upload went through (Date.now()). */
   uploadedAt?: number
@@ -34,8 +40,10 @@ export interface PhotoQueue {
   /** Uploads a failed photo again; resolves to the error if it fails again. */
   retry: (key: string) => Promise<unknown>
   remove: (key: string) => Promise<void>
-  /** The ids of the uploaded drafts, in the order they were picked: what the save attaches. */
+  /** The ids of the uploaded drafts and kept photos, in the order they were picked: what the save attaches. */
   ids: string[]
+  /** How many photos are kept on this device for the server (the save is then kept too, and they go up with it). */
+  kept: number
   /** The uploaded drafts with when they arrived (photo reading waits a while for each). */
   uploaded: { id: string; at: number }[]
   /** True while photos are being made smaller or uploaded; saving should wait for it, or they would be left out. */
@@ -86,9 +94,25 @@ export function usePhotoQueue(vehicleId: string, reading?: { purpose: ReadingPur
   }
 
   const dropDraft = (id: string) => void deleteImage(photoDraftPath(id)).catch(() => undefined) // a draft left behind expires on its own
+  const drop = (id: string) => (isKept(id) ? void keptPhotos.remove([id]).catch(() => undefined) : dropDraft(id))
+
+  /** Keeps the photo on this device instead; false when no account's data is open to keep it in. */
+  const keep = useCallback(
+    async (key: string, blob: Blob, started: number) => {
+      const id = await keptPhotos.keep(blob, vehicleId, purpose && locale ? { purpose, locale } : undefined).catch(() => null)
+      if (id === null) return false
+      if (started !== generation.current || !current.current.some((e) => e.key === key)) drop(id) // closed or removed meanwhile
+      else patch(key, { state: 'kept', id, error: undefined })
+      return true
+    },
+    [patch, vehicleId, purpose, locale],
+  )
 
   const upload = useCallback(
     async (key: string, blob: Blob, started: number) => {
+      // Kept on the device while the server is out of reach, or while the vehicle has changes waiting: the log is kept then too, and a
+      // draft would expire before it is sent.
+      if ((!connectivity.reachable || outbox.vehicleIds().has(vehicleId)) && (await keep(key, blob, started))) return undefined
       patch(key, { state: 'uploading', error: undefined })
       try {
         const { id } = await uploadImage(photoDraftsPath(vehicleId, purpose && locale ? { purpose, locale } : undefined), blob)
@@ -96,11 +120,12 @@ export function usePhotoQueue(vehicleId: string, reading?: { purpose: ReadingPur
         else patch(key, { state: 'uploaded', id, uploadedAt: Date.now() })
         return undefined
       } catch (error) {
+        if (isConnectionFailure(error) && (await keep(key, blob, started))) return undefined
         if (started === generation.current) patch(key, { state: 'failed', error })
         return error
       }
     },
-    [patch, vehicleId, purpose, locale],
+    [patch, keep, vehicleId, purpose, locale],
   )
 
   const add = useCallback(
@@ -141,7 +166,7 @@ export function usePhotoQueue(vehicleId: string, reading?: { purpose: ReadingPur
       if (!entry) return
       update((entries) => entries.filter((e) => e.key !== key))
       release(entry)
-      if (entry.id) dropDraft(entry.id) // one still uploading is dropped when its upload finishes
+      if (entry.id) drop(entry.id) // one still uploading is dropped when its upload finishes
     },
     [update],
   )
@@ -153,7 +178,7 @@ export function usePhotoQueue(vehicleId: string, reading?: { purpose: ReadingPur
   }, [update])
 
   const discard = useCallback(() => {
-    current.current.forEach((e) => e.id && dropDraft(e.id))
+    current.current.forEach((e) => e.id && drop(e.id))
     forget()
   }, [forget])
 
@@ -162,7 +187,8 @@ export function usePhotoQueue(vehicleId: string, reading?: { purpose: ReadingPur
     add,
     retry,
     remove,
-    ids: items.flatMap((e) => (e.state === 'uploaded' && e.id ? [e.id] : [])),
+    ids: items.flatMap((e) => ((e.state === 'uploaded' || e.state === 'kept') && e.id ? [e.id] : [])),
+    kept: items.filter((e) => e.state === 'kept').length,
     uploaded: items.flatMap((e) => (e.state === 'uploaded' && e.id ? [{ id: e.id, at: e.uploadedAt ?? 0 }] : [])),
     busy: preparing > 0 || items.some((e) => e.state === 'uploading'),
     failed: items.filter((e) => e.state === 'failed').length,

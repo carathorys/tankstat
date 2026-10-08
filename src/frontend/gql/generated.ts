@@ -22,6 +22,11 @@ export type AddExpenseInput = {
   vehicleId: string;
 };
 
+export type AddLogPhotoInput = {
+  draftId: string;
+  logId: string;
+};
+
 export type AddRecurringExpenseInput = {
   category?: string | null | undefined;
   id?: string | null | undefined;
@@ -53,7 +58,9 @@ export type AuthMode =
 
 export type ChangeInput = {
   addExpense?: AddExpenseInput | null | undefined;
+  addExpensePhoto?: AddLogPhotoInput | null | undefined;
   addRecurringExpense?: AddRecurringExpenseInput | null | undefined;
+  addRefuelingPhoto?: AddLogPhotoInput | null | undefined;
   addVehicle?: AddVehicleInput | null | undefined;
   deleteExpense?: string | null | undefined;
   deleteRecurringExpense?: string | null | undefined;
@@ -63,6 +70,8 @@ export type ChangeInput = {
   id: string;
   logRefueling?: LogRefuelingInput | null | undefined;
   markRecurringExpensesDone?: MarkRecurringExpensesDoneInput | null | undefined;
+  removeExpensePhoto?: RemoveLogPhotoInput | null | undefined;
+  removeRefuelingPhoto?: RemoveLogPhotoInput | null | undefined;
   restoreExpense?: string | null | undefined;
   restoreRefueling?: string | null | undefined;
   restoreVehicle?: string | null | undefined;
@@ -332,6 +341,11 @@ export type RefuelingSortField =
   | 'VEHICLE'
   | 'VOLUME';
 
+export type RemoveLogPhotoInput = {
+  imageId: string;
+  logId: string;
+};
+
 export type ResetPasswordInput = {
   newPassword: string;
   token: string;
@@ -375,7 +389,9 @@ export type SortDirection =
 
 export type SyncChangeKind =
   | 'ADD_EXPENSE'
+  | 'ADD_EXPENSE_PHOTO'
   | 'ADD_RECURRING_EXPENSE'
+  | 'ADD_REFUELING_PHOTO'
   | 'ADD_VEHICLE'
   | 'DELETE_EXPENSE'
   | 'DELETE_RECURRING_EXPENSE'
@@ -383,6 +399,8 @@ export type SyncChangeKind =
   | 'DELETE_VEHICLE'
   | 'LOG_REFUELING'
   | 'MARK_RECURRING_EXPENSES_DONE'
+  | 'REMOVE_EXPENSE_PHOTO'
+  | 'REMOVE_REFUELING_PHOTO'
   | 'RESTORE_EXPENSE'
   | 'RESTORE_REFUELING'
   | 'RESTORE_VEHICLE'
