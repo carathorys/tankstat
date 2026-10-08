@@ -1,5 +1,6 @@
 using Tankstat.Application.Sync;
 using Tankstat.Domain;
+using Tankstat.Domain.Access;
 using Tankstat.Domain.Settings;
 using Tankstat.Domain.Vehicles;
 
@@ -108,6 +109,31 @@ public class OfflineSettingsServiceTests
 
         w.Current.SignInAs(bob);
         Assert.Equal(OfflineWindow.Default, (await w.OfflineSettings.GetAsync(default)).DefaultWindow);
+    }
+
+    [Fact]
+    public async Task AVehicleNoLongerSeen_IsNotListed_SoSavingTheListAgainWorks_AndDropsIt()
+    {
+        var w = new World();
+        var alice = w.AddUser("alice@x.co");
+        var bob = w.AddUser("bob@x.co");
+        w.Current.SignInAs(alice);
+        var shared = await w.VehicleService.AddAsync("Shared", null, FuelType.Petrol, default);
+        var trashed = await w.VehicleService.AddAsync("Trashed", null, FuelType.Petrol, default);
+        await w.Sharing.SetLogAccessAsync(shared.Id, bob.Id, AccessLevel.Edit, default);
+        await w.Sharing.SetLogAccessAsync(trashed.Id, bob.Id, AccessLevel.Edit, default);
+        w.Current.SignInAs(bob);
+        await w.OfflineSettings.SetAsync("all", [(shared.Id, "none"), (trashed.Id, "thisYear")], default);
+
+        w.Current.SignInAs(alice);
+        await w.Sharing.SetLogAccessAsync(shared.Id, bob.Id, AccessLevel.None, default); // unshared
+        await w.VehicleService.DeleteAsync(trashed.Id, default); // in the trash
+        w.Current.SignInAs(bob);
+
+        var listed = await w.OfflineSettings.GetAsync(default);
+        Assert.Empty(listed.Vehicles);
+        await w.OfflineSettings.SetAsync("thisYear", [.. listed.Vehicles.Select(v => (v.VehicleId, v.Window))], default);
+        Assert.DoesNotContain(w.OfflineSettingsStore.Vehicles, v => v.UserId == bob.Id);
     }
 
     [Fact]

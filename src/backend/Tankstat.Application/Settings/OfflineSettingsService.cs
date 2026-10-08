@@ -19,11 +19,18 @@ public sealed class OfflineSettingsService(
 {
     public const int MaxVehicles = VehicleQuery.MaxTake;
 
+    /// <summary>
+    /// The user's windows. A vehicle's own window is only listed while the user may see the vehicle: one that was unshared or trashed
+    /// since keeps its row (it comes back with the vehicle) but is not listed, so the set a device sends back holds only vehicles that
+    /// <see cref="SetAsync"/> accepts, and saving it drops the stale row.
+    /// </summary>
     public async Task<OfflineSettingsView> GetAsync(CancellationToken ct)
     {
         var user = await access.RequirePrincipalAsync(ct);
         var row = await settings.FindAsync(user.Id, ct);
-        return new OfflineSettingsView(row?.DefaultWindow ?? OfflineWindow.Default, await settings.ListVehiclesAsync(user.Id, ct));
+        var own = await settings.ListVehiclesAsync(user.Id, ct);
+        var visible = await VisibleAsync([.. own.Select(v => v.VehicleId)], ct);
+        return new OfflineSettingsView(row?.DefaultWindow ?? OfflineWindow.Default, [.. own.Where(v => visible.Contains(v.VehicleId))]);
     }
 
     /// <summary>
@@ -39,14 +46,21 @@ public sealed class OfflineSettingsService(
         var row = OfflineSettings.Create(user.Id, defaultWindow, clock.GetUtcNow()); // checks the default
         var rows = distinct.Select(v => OfflineVehicleSetting.Create(user.Id, v.VehicleId, v.Window)).ToList(); // checks each window
 
-        var scope = await access.VehicleScopeAsync(AccessLevel.View, ct);
         var ids = rows.Select(r => r.VehicleId).ToList();
-        var visible = (await vehicles.ListByIdsAsync(ids, ct)).Where(v => scope.Contains(v.OwnerId, v.Id)).Select(v => v.Id).ToHashSet();
+        var visible = await VisibleAsync(ids, ct);
         if (ids.Where(id => !visible.Contains(id)).Cast<Guid?>().FirstOrDefault() is { } unknown)
             throw new NotFoundException("vehicle.notFound", "Vehicle not found.", new { Id = unknown });
 
         await settings.ReplaceAsync(row, rows, ct);
         logger.LogDebug("User {UserId} set their offline window, {Count} vehicles with their own", user.Id, rows.Count);
         return new OfflineSettingsView(row.DefaultWindow, rows);
+    }
+
+    /// <summary>Of these vehicles, the ones the user may see (not trashed).</summary>
+    private async Task<HashSet<Guid>> VisibleAsync(IReadOnlyList<Guid> ids, CancellationToken ct)
+    {
+        if (ids.Count == 0) return [];
+        var scope = await access.VehicleScopeAsync(AccessLevel.View, ct);
+        return [.. (await vehicles.ListByIdsAsync(ids, ct)).Where(v => scope.Contains(v.OwnerId, v.Id)).Select(v => v.Id)];
     }
 }
