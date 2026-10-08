@@ -137,7 +137,8 @@ export function withChanges(kind: LogKind, rows: readonly LogRow[], vehicleId?: 
   if (kind === 'expenses') {
     // A visit with an amount logs an expense: it is a row of its own until the server has it (its id is the visit's expense id).
     for (const visit of outbox.changes.filter((c) => c.action === 'markDone' && c.input?.amount != null && (vehicleId === undefined || c.vehicleId === vehicleId)))
-      byId.set(visit.targetId, added('expenses', { ...visit, input: { ...visit.input, category: visit.input?.category || null, note: null } }))
+      // Version 1, as the server will create it: an edit or trash of it made here goes after the visit, from that version.
+      byId.set(visit.targetId, { ...added('expenses', { ...visit, input: { ...visit.input, category: visit.input?.category || null, note: null } }), version: 1 })
   }
   for (const change of waiting) {
     const row = byId.get(change.targetId)
@@ -266,8 +267,22 @@ async function vehicleOf(rows: RowStore, id: unknown, base: Record<string, unkno
 /** The schedules of a vehicle with the changes waiting: an added one is upcoming (the server works out where it stands). */
 function schedulesOf(vehicleId: string, base: readonly Record<string, unknown>[]) {
   const byId = new Map(base.map((s) => [s.id as string, s]))
-  for (const change of outbox.changes.filter((c) => c.entity === 'recurring' && c.vehicleId === vehicleId)) {
-    if (change.action === 'add')
+  for (const change of outbox.changes.filter((c) => (c.entity === 'recurring' || c.action === 'markDone') && c.vehicleId === vehicleId)) {
+    if (change.action === 'markDone') {
+      // A visit moves its schedules on as the server will (baseline and version), so they are no longer offered as due and an edit made
+      // after it goes from where it leaves them; where they stand next is the server's to work out.
+      for (const id of change.targetIds ?? []) {
+        const schedule = byId.get(id)
+        if (!schedule) continue
+        byId.set(id, {
+          ...schedule,
+          lastDoneDate: change.input?.date ?? schedule.lastDoneDate,
+          lastDoneOdometer: change.input?.odometer ?? schedule.lastDoneOdometer,
+          version: Number(schedule.version ?? 0) > 0 ? Number(schedule.version) + 1 : schedule.version,
+          status: { ...(schedule.status as Record<string, unknown>), state: 'UPCOMING', limit: null, dueDate: null, dueOdometer: null, daysLeft: null, distanceLeft: null },
+        })
+      }
+    } else if (change.action === 'add')
       byId.set(change.targetId, over({
         __typename: 'RecurringExpenseInfo', id: change.targetId, version: 0, category: null, note: null, intervalMonths: null, intervalDistance: null,
         lastDoneOdometer: null, warnDays: 30, warnDistance: 500, lastDoneDate: localToday(),
@@ -300,13 +315,16 @@ const welcome: Resolver = async (rows, variables, kept) => {
     const vehicle = (await vehicleOf(rows, v.id, v)) ?? v
     return { ...vehicle, recurring: schedulesOf(String(v.id), (v.recurring as Record<string, unknown>[] | undefined) ?? []) }
   }))
-  const adds = Number(variables.skip ?? 0) > 0 ? [] : await Promise.all(
-    outbox.changes
-      .filter((c) => c.entity === 'vehicles' && c.action === 'add')
-      .filter((c) => !search || String(c.input?.name ?? '').toLowerCase().includes(search) || String(c.input?.licensePlate ?? '').toLowerCase().includes(search))
-      .map(async (c) => ({ ...(await vehicleOf(rows, c.targetId, undefined)), recurring: schedulesOf(c.targetId, []) })),
-  )
-  return { ...base, myVehicles: [...listed, ...adds], myVehicleCount: Number(base.myVehicleCount ?? 0) + adds.length, vehicleTotal: Number(base.vehicleTotal ?? 0) + adds.length }
+  // Counted on every page, listed at the end of the last one only: the next page is asked from how many cards are shown, so the server's
+  // own pages must stay where they are until the last. One the server lists already (its answer was lost, a download brought it) is not
+  // added again.
+  const shown = new Set((base.myVehicles as Record<string, unknown>[]).map((v) => String(v.id)))
+  const waiting = outbox.changes
+    .filter((c) => c.entity === 'vehicles' && c.action === 'add' && !shown.has(c.targetId))
+    .filter((c) => !search || String(c.input?.name ?? '').toLowerCase().includes(search) || String(c.input?.licensePlate ?? '').toLowerCase().includes(search))
+  const lastPage = Number(variables.skip ?? 0) + listed.length >= Number(base.myVehicleCount ?? 0)
+  const adds = !lastPage ? [] : await Promise.all(waiting.map(async (c) => ({ ...(await vehicleOf(rows, c.targetId, undefined)), recurring: schedulesOf(c.targetId, []) })))
+  return { ...base, myVehicles: [...listed, ...adds], myVehicleCount: Number(base.myVehicleCount ?? 0) + waiting.length, vehicleTotal: Number(base.vehicleTotal ?? 0) + waiting.length }
 }
 
 const recurringExpenses: Resolver = async (_rows, variables, kept) => {

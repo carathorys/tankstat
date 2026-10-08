@@ -62,7 +62,13 @@ const UPDATABLE: Record<ChangeEntity, readonly string[]> = {
 export function collapse(existing: readonly Change[], incoming: Change): Change[] {
   // A visit never folds: each one is a visit of its own.
   if (incoming.action === 'markDone') return [...existing, incoming]
-  const sameLog = (c: Change) => c.action !== 'markDone' && c.entity === incoming.entity && c.targetId === incoming.targetId
+  // The expense a visit waiting here would log, trashed: the visit logs none (its schedules are still done), and nothing else of it waits.
+  const visit = incoming.entity === 'expenses' && incoming.action === 'trash' ? existing.find((c) => isVisitOf(c, incoming.targetId) && !c.sent) : undefined
+  if (visit) {
+    const without = { ...visit, input: { ...visit.input, amount: null, currency: null, photoIds: null } }
+    return existing.filter((c) => !(c.entity === 'expenses' && c.targetId === incoming.targetId)).map((c) => (c === visit ? without : c))
+  }
+  const sameLog =(c: Change) => c.action !== 'markDone' && c.entity === incoming.entity && c.targetId === incoming.targetId
   const waiting = existing.filter((c) => sameLog(c) && !c.sent)
   const sentBefore = existing.filter((c) => sameLog(c) && c.sent).at(-1)
   const others = existing.filter((c) => !waiting.includes(c))
@@ -103,8 +109,13 @@ const asEdit = (trash: Change): Change => ({ ...trash, action: 'update' })
 export function discard(existing: readonly Change[], id: string): Change[] {
   const change = existing.find((c) => c.id === id)
   if (change?.action === 'trash' && change.input) return replace(existing, change, asEdit(change))
+  // A visit taken back logs no expense: what was made to that expense here goes with it.
+  if (change && isVisitOf(change, change.targetId)) return existing.filter((c) => c.id !== id && !(c.entity === 'expenses' && c.targetId === change.targetId))
   return existing.filter((c) => c.id !== id)
 }
+
+/** A visit that logs the expense `expenseId` (one with an amount; its expense id is its target). */
+const isVisitOf = (c: Change, expenseId: string) => c.action === 'markDone' && c.targetId === expenseId && c.input?.amount != null
 
 /**
  * What else goes with an add that is taken back: a vehicle's logs, schedules and visits (they were made to a vehicle that never reached the
