@@ -29,7 +29,7 @@ You are notified when someone gives you access to a vehicle's logs, changes or t
 
 ## Colour mode
 
-The sun/moon button in the top bar (next to the language menu) switches between *Light*, *Dark* (the default) and *System* (follows your device). It is available before sign-in and saved with your account once you are signed in. The browser's own copy is applied before the first paint, so there is no flash; on a device that has never seen your choice it switches as soon as the account's setting arrives. Vehicle cards and banners stay dark in either mode, since their white text sits on a dark scrim.
+The sun/moon button in the top bar (next to the language menu; on a phone both are at the bottom of the navigation menu, where there is room) switches between *Light*, *Dark* (the default) and *System* (follows your device). It is available before sign-in and saved with your account once you are signed in. The browser's own copy is applied before the first paint, so there is no flash; on a device that has never seen your choice it switches as soon as the account's setting arrives. Vehicle cards and banners stay dark in either mode, since their white text sits on a dark scrim.
 
 ## Saved, undone, added from anywhere
 
@@ -73,4 +73,4 @@ Sorting (click a column header), paging and column selection are done by the **s
 
 ## Languages
 
-English and Hungarian; the language menu in the top bar is available before sign-in, defaults to the browser language and is remembered in the browser and, once signed in, with your account (so your other devices switch too; a code the app does not know is ignored). Dates and numbers follow the selected language. Adding a language is described in [Development](development.md#languages).
+English and Hungarian; the language menu in the top bar (on a phone, at the bottom of the navigation menu once signed in) is available before sign-in, defaults to the browser language and is remembered in the browser and, once signed in, with your account (so your other devices switch too; a code the app does not know is ignored). Dates and numbers follow the selected language. Adding a language is described in [Development](development.md#languages).
