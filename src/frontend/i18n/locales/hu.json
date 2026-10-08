@@ -100,7 +100,8 @@
       "LOG_NOT_FILLED_REFUELING": "A(z) {{vehicle}} {{date}} tankolásának fotóin nem látszott: {{values}}. Töltsd ki.",
       "LOG_NOT_FILLED_EXPENSE": "A(z) {{title}} ({{date}}, {{vehicle}}) fotóin nem látszott: {{values}}. Töltsd ki.",
       "MORE_ACTIVITY_one": "Még {{count}} változás történt, túl sok ahhoz, hogy egyenként felsoroljuk.",
-      "MORE_ACTIVITY_other": "Még {{count}} változás történt, túl sok ahhoz, hogy egyenként felsoroljuk."
+      "MORE_ACTIVITY_other": "Még {{count}} változás történt, túl sok ahhoz, hogy egyenként felsoroljuk.",
+      "SYNC_CHANGE_PARKED": "{{vehicle}}: {{change}} ({{submitter}} küldte) nem érvényesíthető: {{reason}} Dönts róla a Szinkronizálásra vár oldalon."
     }
   },
   "status": {
@@ -616,7 +617,11 @@
       "duplicateChange": "Egy módosítás kétszer szerepelt egy szinkronizálásban.",
       "payloadTooLarge": "Egy módosítás túl nagy a megőrzéshez (legfeljebb {{max}} karakter).",
       "oneOperationRequired": "Egy módosításnak pontosan egy dolgot kell tennie.",
-      "entityIdRequired": "Egy eszközről küldött új bejegyzésnek az azonosítóját is hoznia kell."
+      "entityIdRequired": "Egy eszközről küldött új bejegyzésnek az azonosítóját is hoznia kell.",
+      "notFound": "Ez a módosítás már nincs meg, vagy nem láthatod.",
+      "notParked": "Erről a módosításról valaki már döntött.",
+      "cannotResolve": "Csak az dönthet róla, aki küldte, vagy aki módosíthatja a jármű bejegyzéseit.",
+      "kindMismatch": "A szerkesztett módosításnak ugyanazt kell tennie, mint a nem érvényesítettnek."
     }
   },
   "a11y": {
@@ -1188,6 +1193,20 @@
     "lastSync": "Utolsó szinkronizálás: {{time}}: {{applied}} érvényesítve, {{parked}} nem.",
     "interrupted": "A szinkronizálás megállt, mert a szerver nem érhető el; ami maradt, akkor megy, amikor újra elérhető.",
     "notApplied": "Nem érvényesített módosítások",
-    "notAppliedHint": "A szerver nem tudta érvényesíteni ezeket a módosításokat, és megőrzi őket az okkal együtt, hogy valaki, aki módosíthatja a járművet, döntsön róluk. Ezen az eszközön már nincsenek meg."
+    "notAppliedHint": "Ezeket a módosításokat a szerver nem tudta érvényesíteni, és az okkal együtt megőrzi, amíg valaki dönt róluk: aki küldte, vagy aki módosíthatja a járművet, mégis érvényesítheti (minden szabály érvényes, csak az nem, hogy közben megváltozott), vagy elvetheti.",
+    "parkedOffline": "A szerver által nem érvényesíthető módosítások itt jelennek meg, ha a szerver újra elérhető.",
+    "sentBy": "Küldte: {{name}}, {{time}}",
+    "someone": "valaki",
+    "apply": "Érvényesítés mégis",
+    "applyAria": "Érvényesítés mégis: {{change}}",
+    "applyTitle": "Mégis érvényesíted ezt a módosítást?",
+    "applyDescription": "Nem lett érvényesítve, mert: {{reason}} Ha most érvényesíted, felülírja azt, ami a szerveren van, mintha te mentetted volna.",
+    "discard": "Elvetés",
+    "discardAria": "Elvetés: {{change}}",
+    "discardTitle": "Elveted ezt a módosítást?",
+    "discardDescription": "Soha nem lesz érvényesítve; ami a szerveren van, úgy marad.",
+    "appliedNow": "Érvényesítve.",
+    "discarded": "Elvetve: nem lesz érvényesítve.",
+    "stillNotApplied": "Továbbra sem érvényesíthető: {{reason}}"
   }
 }

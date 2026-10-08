@@ -705,6 +705,12 @@ namespace Tankstat.Migrations.PostgreSql
                     b.Property<DateTime>("ReceivedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ResolvedById")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid?>("ResultId")
                         .HasColumnType("uuid");
 

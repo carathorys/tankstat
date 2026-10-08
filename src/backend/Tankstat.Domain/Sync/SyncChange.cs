@@ -76,6 +76,46 @@ public sealed class SyncChange : IOwned
 
     public IReadOnlyDictionary<string, string> ReasonArgs { get; private set; } = new Dictionary<string, string>();
 
+    /// <summary>Who applied or discarded a parked change, and when.</summary>
+    public Guid? ResolvedById { get; private set; }
+
+    public DateTimeOffset? ResolvedAt { get; private set; }
+
+    /// <summary>A person edited the parked change before applying it: the change they apply instead (same kind, same target).</summary>
+    public void Replace(string payload)
+    {
+        RequireParked();
+        if (payload.Length > MaxPayloadLength)
+            throw new DomainException("sync.payloadTooLarge", $"A change may hold at most {MaxPayloadLength} characters.", new { Max = MaxPayloadLength });
+        Payload = payload;
+    }
+
+    /// <summary>Applying it was tried again and refused again: it stays parked, with the new reason.</summary>
+    public void ParkAgain(string reasonKey, IReadOnlyDictionary<string, string> reasonArgs)
+    {
+        RequireParked();
+        Settle(SyncChangeStatus.Parked, null, null, reasonKey, reasonArgs);
+    }
+
+    public void MarkApplied(Guid resolvedById, DateTimeOffset now, Guid? resultId, int? resultVersion)
+    {
+        RequireParked();
+        Settle(SyncChangeStatus.Applied, resultId, resultVersion, null, null);
+        (ResolvedById, ResolvedAt) = (resolvedById, now);
+    }
+
+    public void MarkDiscarded(Guid resolvedById, DateTimeOffset now)
+    {
+        RequireParked();
+        Status = SyncChangeStatus.Discarded;
+        (ResolvedById, ResolvedAt) = (resolvedById, now);
+    }
+
+    private void RequireParked()
+    {
+        if (Status != SyncChangeStatus.Parked) throw new DomainException("sync.notParked", "This change is not parked: someone has decided about it already.");
+    }
+
     public static SyncChange Applied(
         Guid id, Guid ownerId, Guid submittedById, Guid? vehicleId, Guid? targetId, SyncChangeKind kind, int? expectedVersion, string payload,
         DateTimeOffset now, Guid? resultId, int? resultVersion) =>

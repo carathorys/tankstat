@@ -82,4 +82,73 @@ public class SyncGraphQLTests : IDisposable
         Assert.Equal("sync.entityIdRequired", noId.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
         Assert.Equal("UNAUTHENTICATED", signedOut.ErrorCode());
     }
+
+    private const string Parked = "{ parkedChanges { id kind status change reason { key } submittedBy { displayName } canResolve vehicleId } }";
+    private const string Resolve = "mutation($i: ResolveSyncChangeInput!) { resolveSyncChange(input: $i) { id status entityId version } }";
+
+    /// <summary>Bob (an editor of Alice's car) renames it from an old version on a device: parked, filed with the car.</summary>
+    private static async Task<(TwoUsers People, string Car, string ChangeId)> ParkedByBob(TestApp app)
+    {
+        var people = await app.Users();
+        var car = (await people.Alice.Gql("mutation { addVehicle(input: { name: \"Golf\", fuelType: PETROL }) { id } }")).Data().GetProperty("addVehicle").GetProperty("id").GetString()!;
+        var log = (await people.Alice.Gql("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }",
+            new { i = new { vehicleId = car, date = "2026-09-01", volume = 40, totalCost = 60, currency = "EUR", odometer = 1000, isFullTank = true } })).Data().GetProperty("logRefueling").GetProperty("id").GetString()!;
+        await people.Alice.Gql("mutation($i: SetLogAccessInput!) { setVehicleLogAccess(input: $i) }", new { i = new { vehicleId = car, userId = people.BobId, level = "EDIT" } });
+        await people.Alice.Gql("mutation($i: UpdateRefuelingInput!) { updateRefueling(input: $i) { id } }",
+            new { i = new { id = log, date = "2026-09-01", volume = 41, totalCost = 60, currency = "EUR", odometer = 1000, isFullTank = true } }); // version 2
+        var changeId = Guid.NewGuid().ToString();
+        await Send(people.Bob, new { id = changeId, expectedVersion = 1, updateRefueling = new { id = log, date = "2026-09-01", volume = 45, totalCost = 60, currency = "EUR", odometer = 1000, isFullTank = true } });
+        return (people, car, changeId);
+    }
+
+    [Fact]
+    public async Task AParkedChange_IsListedForTheOwnerAndTheSender_CountedOnTheVehicle_AndNotified()
+    {
+        var (people, car, changeId) = await ParkedByBob(_app);
+
+        var alices = (await people.Alice.Gql(Parked)).Data().GetProperty("parkedChanges");
+        var only = Assert.Single(alices.EnumerateArray());
+        Assert.Equal((changeId, "UPDATE_REFUELING", "sync.versionMismatch", "bob", true, car),
+            (only.GetProperty("id").GetString(), only.GetProperty("kind").GetString(), only.GetProperty("reason").GetProperty("key").GetString(),
+             only.GetProperty("submittedBy").GetProperty("displayName").GetString(), only.GetProperty("canResolve").GetBoolean(), only.GetProperty("vehicleId").GetString()));
+        Assert.Contains("\"volume\":45", only.GetProperty("change").GetString());
+        Assert.Single((await people.Bob.Gql(Parked)).Data().GetProperty("parkedChanges").EnumerateArray());
+        Assert.Equal(1, (await people.Alice.Gql($"{{ vehicle(id: \"{car}\") {{ parkedChangeCount }} }}")).Data().GetProperty("vehicle").GetProperty("parkedChangeCount").GetInt32());
+
+        var inbox = (await people.Alice.Gql("{ notifications(unreadOnly: true) { kind subject { type id } args { name value } } }")).Data().GetProperty("notifications");
+        var note = inbox.EnumerateArray().Single(n => n.GetProperty("kind").GetString() == "SYNC_CHANGE_PARKED");
+        Assert.Equal(("SYNC_CHANGE", changeId), (note.GetProperty("subject").GetProperty("type").GetString(), note.GetProperty("subject").GetProperty("id").GetString()));
+    }
+
+    [Fact]
+    public async Task AParkedChange_IsAppliedAnywayAsEdited_OrDiscarded_OnceOnly()
+    {
+        var (people, car, changeId) = await ParkedByBob(_app);
+        var log = (await people.Alice.Gql($"{{ refuelings(vehicleId: \"{car}\", orderBy: DATE, direction: DESC, skip: 0, take: 5) {{ id }} }}"))
+            .Data().GetProperty("refuelings")[0].GetProperty("id").GetString()!;
+
+        var applied = (await people.Alice.Gql(Resolve, new { i = new { id = changeId, action = "APPLY", change = new { id = changeId,
+            updateRefueling = new { id = log, date = "2026-09-01", volume = 44, totalCost = 60, currency = "EUR", odometer = 1000, isFullTank = true } } } })).Data().GetProperty("resolveSyncChange");
+        var twice = await people.Alice.Gql(Resolve, new { i = new { id = changeId, action = "DISCARD" } });
+
+        Assert.Equal(("APPLIED", 3), (applied.GetProperty("status").GetString(), applied.GetProperty("version").GetInt32()));
+        Assert.Equal("sync.notParked", twice.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
+        Assert.Empty((await people.Alice.Gql(Parked)).Data().GetProperty("parkedChanges").EnumerateArray());
+        Assert.Equal(44, (await people.Alice.Gql($"{{ refueling(id: \"{log}\") {{ volume }} }}")).Data().GetProperty("refueling").GetProperty("volume").GetDecimal());
+    }
+
+    [Fact]
+    public async Task OnlyThoseWhoMaySeeIt_FindAParkedChange_AndAnEditMustDoTheSame()
+    {
+        var (people, _, changeId) = await ParkedByBob(_app);
+        var stranger = _app.NewClient();
+        await people.Admin.Gql("mutation($i: CreateUserInput!) { createUser(input: $i) { user { id } } }", new { i = new { email = "eve@example.com", displayName = "eve", isAdmin = false } });
+
+        var otherKind = await people.Alice.Gql(Resolve, new { i = new { id = changeId, action = "APPLY", change = new { id = changeId, deleteRefueling = Guid.NewGuid() } } });
+        var discarded = (await people.Bob.Gql(Resolve, new { i = new { id = changeId, action = "DISCARD" } })).Data().GetProperty("resolveSyncChange");
+
+        Assert.Equal("sync.kindMismatch", otherKind.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
+        Assert.Equal("DISCARDED", discarded.GetProperty("status").GetString());
+        Assert.Equal("UNAUTHENTICATED", (await stranger.Gql(Parked)).ErrorCode());
+    }
 }

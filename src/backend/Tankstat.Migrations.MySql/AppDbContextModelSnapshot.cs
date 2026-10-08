@@ -702,6 +702,12 @@ namespace Tankstat.Migrations.MySql
                     b.Property<DateTime>("ReceivedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("ResolvedById")
+                        .HasColumnType("char(36)");
+
                     b.Property<Guid?>("ResultId")
                         .HasColumnType("char(36)");
 

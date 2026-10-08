@@ -1,6 +1,8 @@
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Sync;
 using Tankstat.Domain;
+using Tankstat.Domain.Access;
+using Tankstat.Domain.Notifications;
 using Tankstat.Domain.Sync;
 using Tankstat.Domain.Users;
 using Tankstat.Domain.Vehicles;
@@ -117,5 +119,75 @@ public class SyncServiceTests
         await s.W.Sync.SyncAsync([Log(s, Guid.NewGuid(), 1200, Day.AddDays(2))], default);
 
         Assert.Equal([SyncChangeStatus.Parked, SyncChangeStatus.Applied], s.W.SyncLedger.Items.Select(c => c.Status)); // the old applied one went
+    }
+
+    /// <summary>Carol (an editor of Alice's car) sent an update from an old version: parked, filed with the car.</summary>
+    private static async Task<(Scene S, User Carol, Guid Parked, Guid Log)> ParkedByCarol()
+    {
+        var s = await Setup();
+        var carol = s.W.AddUser("carol@x.co");
+        await s.W.Sharing.SetLogAccessAsync(s.Car.Id, carol.Id, AccessLevel.Edit, default);
+        var log = await s.W.RefuelingService.LogAsync(s.Car.Id, Fill(1000), default, id: Guid.NewGuid());
+        await s.W.RefuelingService.UpdateAsync(log.Id, Fill(1100), default);
+        s.W.Current.SignInAs(carol);
+        var id = Guid.NewGuid();
+        await s.W.Sync.SyncAsync([Update(s, id, log.Id, 1, 1200)], default);
+        return (s, carol, id, log.Id);
+    }
+
+    [Fact]
+    public async Task AParkedChange_IsSeenByEveryoneWhoMaySeeTheVehicle_AndDecidedByWhoeverMayChangeItOrSentIt()
+    {
+        var (s, carol, parked, _) = await ParkedByCarol();
+        var dave = s.W.AddUser("dave@x.co");
+
+        Assert.Equal([parked], (await s.W.Sync.ListParkedAsync(default)).Select(c => c.Id)); // Carol, who sent it
+        s.W.Current.SignInAs(s.Alice);
+        var seen = Assert.Single(await s.W.Sync.ListParkedAsync(default)); // the owner
+        Assert.True(await s.W.Sync.CanResolveAsync(seen, default));
+        s.W.Current.SignInAs(s.Bob);
+        Assert.Empty(await s.W.Sync.ListParkedAsync(default)); // a stranger
+        await Assert.ThrowsAsync<NotFoundException>(() => s.W.Sync.ResolveAsync(parked, discard: true, null, null, default));
+        s.W.Current.SignInAs(dave);
+        Assert.Empty(await s.W.Sync.ListParkedAsync(default));
+    }
+
+    [Fact]
+    public async Task ApplyingAParkedChange_IgnoresTheOldVersion_AndARefusalKeepsItParkedWithTheNewReason()
+    {
+        var (s, _, parked, log) = await ParkedByCarol();
+        s.W.Current.SignInAs(s.Alice);
+
+        await Assert.ThrowsAnyAsync<KeyedException>(() => s.W.Sync.ResolveAsync(parked, discard: false, _ => throw new DomainException("odometer.belowPrevious", "x"), "{}", default));
+        var again = s.W.SyncLedger.Items.Single(c => c.Id == parked);
+        Assert.Equal((SyncChangeStatus.Parked, "odometer.belowPrevious", "{}"), (again.Status, again.ReasonKey, again.Payload)); // the edited change is kept
+
+        var applied = await s.W.Sync.ResolveAsync(parked, discard: false, async ct =>
+        {
+            var r = await s.W.RefuelingService.UpdateAsync(log, Fill(1200), ct); // as the person: no version to keep to
+            return new AppliedChange(r.Id, r.Version, r.VehicleId);
+        }, null, default);
+
+        Assert.Equal((SyncChangeStatus.Applied, s.Alice.Id, 3), (applied.Status, applied.ResolvedById!.Value, applied.ResultVersion!.Value));
+        Assert.Equal(1200, (await s.W.RefuelingService.FindAsync(log, default))!.OdometerReading!.Value);
+        var twice = await Assert.ThrowsAsync<DomainException>(() => s.W.Sync.ResolveAsync(parked, discard: true, null, null, default));
+        Assert.Equal("sync.notParked", twice.Key);
+    }
+
+    [Fact]
+    public async Task EveryoneWhoMaySeeAParkedChange_IsNotifiedOnce_UntilSomeoneDecides()
+    {
+        var (s, carol, parked, _) = await ParkedByCarol();
+
+        Assert.Single(await s.W.NotificationService.ListAsync(unreadOnly: true, 0, 20, default), n => n.Kind == NotificationKind.SyncChangeParked); // Carol
+        s.W.Current.SignInAs(s.Alice);
+        var alices = Assert.Single(await s.W.NotificationService.ListAsync(unreadOnly: true, 0, 20, default), n => n.Kind == NotificationKind.SyncChangeParked);
+        Assert.Equal(("UPDATE_REFUELING", "Golf", "carol@x.co", "sync.versionMismatch"),
+            (alices.Args["change"], alices.Args["vehicleName"], alices.Args["submitterName"], alices.Args["reason"]));
+        Assert.Single(await s.W.NotificationService.ListAsync(unreadOnly: true, 0, 20, default), n => n.Kind == NotificationKind.SyncChangeParked); // still one
+
+        await s.W.Sync.ResolveAsync(parked, discard: true, null, null, default);
+        s.W.Current.SignInAs(s.Bob);
+        Assert.DoesNotContain(await s.W.NotificationService.ListAsync(unreadOnly: true, 0, 20, default), n => n.Kind == NotificationKind.SyncChangeParked);
     }
 }
