@@ -10,7 +10,7 @@ namespace Tankstat.Infrastructure.Persistence.Repositories;
 /// no foreign key to the users, so everything is updated here, and trashed rows are included (<c>IgnoreQueryFilters</c>).
 /// Same-table collision checks load ids first instead of using a subquery, because MySQL does not allow those in updates.
 /// </summary>
-internal sealed class UserDataRepository(IDbContextFactory<AppDbContext> dbFactory) : IUserDataRepository
+internal sealed class UserDataRepository(IDbContextFactory<AppDbContext> dbFactory, TimeProvider clock) : IUserDataRepository
 {
     public async Task<bool> OwnsDataAsync(Guid userId, CancellationToken ct)
     {
@@ -31,8 +31,8 @@ internal sealed class UserDataRepository(IDbContextFactory<AppDbContext> dbFacto
             throw new DomainException("user.lastAdmin", "The last active administrator cannot be deleted.");
 
         var purged = PurgedUserData.None;
-        if (moveDataTo is { } to) await MoveAsync(db, userId, to, ct);
-        else purged = await PurgeAsync(db, userId, ct);
+        if (moveDataTo is { } to) await MoveAsync(db, userId, to, clock.GetUtcNow(), ct);
+        else purged = await PurgeAsync(db, userId, clock.GetUtcNow(), ct);
 
         // Whatever grants are left (purge, or none to move) must go before the user: grantee-side access grants are Restrict.
         await db.AccessGrants.Where(g => g.OwnerId == userId || g.GranteeId == userId).ExecuteDeleteAsync(ct);
@@ -44,24 +44,27 @@ internal sealed class UserDataRepository(IDbContextFactory<AppDbContext> dbFacto
         await db.UiSettings.Where(s => s.UserId == userId).ExecuteDeleteAsync(ct);
         await db.GridSettings.Where(g => g.UserId == userId).ExecuteDeleteAsync(ct);
         await db.VehicleOrders.Where(o => o.UserId == userId).ExecuteDeleteAsync(ct);
+        await db.OfflineSettings.Where(o => o.UserId == userId).ExecuteDeleteAsync(ct);
+        await db.OfflineVehicleSettings.Where(o => o.UserId == userId).ExecuteDeleteAsync(ct);
         await db.Users.Where(u => u.Id == userId).ExecuteDeleteAsync(ct);
 
         await tx.CommitAsync(ct);
         return purged;
     }
 
-    private static async Task MoveAsync(AppDbContext db, Guid from, Guid to, CancellationToken ct)
+    /// <param name="now">The moved vehicles, logs and schedules show their new owner or creator: devices download them again.</param>
+    private static async Task MoveAsync(AppDbContext db, Guid from, Guid to, DateTimeOffset now, CancellationToken ct)
     {
-        await db.Vehicles.IgnoreQueryFilters().Where(x => x.OwnerId == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.OwnerId, to), ct);
-        await db.Refuelings.IgnoreQueryFilters().Where(x => x.OwnerId == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.OwnerId, to), ct);
-        await db.Expenses.IgnoreQueryFilters().Where(x => x.OwnerId == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.OwnerId, to), ct);
+        await db.Vehicles.IgnoreQueryFilters().Where(x => x.OwnerId == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.OwnerId, to).SetProperty(x => x.UpdatedAt, now), ct);
+        await db.Refuelings.IgnoreQueryFilters().Where(x => x.OwnerId == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.OwnerId, to).SetProperty(x => x.UpdatedAt, now), ct);
+        await db.Expenses.IgnoreQueryFilters().Where(x => x.OwnerId == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.OwnerId, to).SetProperty(x => x.UpdatedAt, now), ct);
         await db.OdometerReadings.IgnoreQueryFilters().Where(x => x.OwnerId == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.OwnerId, to), ct);
         await db.Costs.IgnoreQueryFilters().Where(x => x.OwnerId == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.OwnerId, to), ct);
 
-        await db.Refuelings.IgnoreQueryFilters().Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to), ct);
-        await db.Expenses.IgnoreQueryFilters().Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to), ct);
-        await db.RecurringExpenses.Where(x => x.OwnerId == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.OwnerId, to), ct);
-        await db.RecurringExpenses.Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to), ct);
+        await db.Refuelings.IgnoreQueryFilters().Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to).SetProperty(x => x.UpdatedAt, now), ct);
+        await db.Expenses.IgnoreQueryFilters().Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to).SetProperty(x => x.UpdatedAt, now), ct);
+        await db.RecurringExpenses.Where(x => x.OwnerId == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.OwnerId, to).SetProperty(x => x.UpdatedAt, now), ct);
+        await db.RecurringExpenses.Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to).SetProperty(x => x.UpdatedAt, now), ct);
         await db.VehicleCharts.Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to), ct);
         await db.LogPhotos.Where(x => x.OwnerId == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.OwnerId, to), ct);
         await db.LogPhotos.Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to), ct);
@@ -107,7 +110,7 @@ internal sealed class UserDataRepository(IDbContextFactory<AppDbContext> dbFacto
             .ExecuteDeleteAsync(ct);
     }
 
-    private static async Task<PurgedUserData> PurgeAsync(AppDbContext db, Guid userId, CancellationToken ct)
+    private static async Task<PurgedUserData> PurgeAsync(AppDbContext db, Guid userId, DateTimeOffset now, CancellationToken ct)
     {
         var vehicles = await db.Vehicles.IgnoreQueryFilters().Where(v => v.OwnerId == userId).ToListAsync(ct);
         var ids = vehicles.Select(v => v.Id).ToList();
@@ -115,7 +118,10 @@ internal sealed class UserDataRepository(IDbContextFactory<AppDbContext> dbFacto
 
         // Charts they made on other people's vehicles are theirs too (a move re-points them instead).
         await db.VehicleCharts.Where(c => c.CreatedById == userId).ExecuteDeleteAsync(ct);
-        await db.RecurringExpenses.Where(r => r.CreatedById == userId).ExecuteDeleteAsync(ct); // likewise their schedules on other people's vehicles
+        // Likewise their schedules on other people's vehicles; removed through the change tracker, so devices get their tombstones.
+        var schedules = await db.RecurringExpenses.Where(r => r.CreatedById == userId && !ids.Contains(r.VehicleId)).ToListAsync(ct);
+        await db.TouchExpensesOfSchedulesAsync([.. schedules.Select(r => r.Id)], now, ct); // the expenses that list them, before the links cascade away
+        db.RecurringExpenses.RemoveRange(schedules);
 
         db.Vehicles.RemoveRange(vehicles); // logs, readings, costs, charts and photo rows go with them through the database's cascade
         await db.SaveChangesAsync(ct);

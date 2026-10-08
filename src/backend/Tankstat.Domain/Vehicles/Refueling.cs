@@ -1,6 +1,7 @@
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
+using Tankstat.Domain.Sync;
 
 namespace Tankstat.Domain.Vehicles;
 
@@ -10,7 +11,7 @@ namespace Tankstat.Domain.Vehicles;
 /// deleted with it). Odometer, volume and cost may be empty only while a photo of the log is still being read (see
 /// <see cref="ReviewState"/>): the reading fills them in later.
 /// </summary>
-public sealed class Refueling : IOwned, ISoftDeletable
+public sealed class Refueling : IOwned, ISoftDeletable, ISynced
 {
     public const int MaxNoteLength = 500;
 
@@ -93,6 +94,12 @@ public sealed class Refueling : IOwned, ISoftDeletable
     /// The consumption (derived from the neighbours) and the photos do not count.
     /// </summary>
     public int Version { get; private set; }
+
+    /// <summary>When it was last saved (set by the persistence layer, see <see cref="ISynced"/>): a device that keeps a copy downloads it again.</summary>
+    public DateTimeOffset UpdatedAt { get; private set; }
+
+    Guid ISynced.SyncVehicleId => VehicleId;
+    OfflineEntityType ISynced.SyncType => OfflineEntityType.Refueling;
 
     /// <param name="reading">The reading of the odometer at this fill-up; created for this log, belonging to the same vehicle.</param>
     /// <param name="readingPhotos">A photo of the log is still being read: only then may values be left empty.</param>

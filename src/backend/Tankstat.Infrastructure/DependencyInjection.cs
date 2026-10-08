@@ -14,6 +14,7 @@ using Tankstat.Application.Odometers;
 using Tankstat.Application.Recurring;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Settings;
+using Tankstat.Application.Sync;
 using Tankstat.Application.Stats;
 using Tankstat.Application.Photos;
 using Tankstat.Application.Recognition;
@@ -50,6 +51,8 @@ public static class DependencyInjection
             var migrations = $"Tankstat.Migrations.{db.Provider}";
             // Refuelings only ever load through their (query-filtered) vehicle, so the filter on the required end is intended.
             builder.ConfigureWarnings(w => w.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning));
+            // What devices download for offline use: UpdatedAt on every save, a tombstone for every removal (see SyncInterceptor).
+            builder.AddInterceptors(new SyncInterceptor(sp.GetService<TimeProvider>() ?? TimeProvider.System));
             switch (db.Provider)
             {
                 case DatabaseProvider.Sqlite:
@@ -72,6 +75,8 @@ public static class DependencyInjection
         services.AddScoped<IVehicleChartRepository, VehicleChartRepository>();
         services.AddScoped<IUiSettingsRepository, UiSettingsRepository>();
         services.AddScoped<IVehicleOrderRepository, VehicleOrderRepository>();
+        services.AddScoped<IOfflineSettingsRepository, OfflineSettingsRepository>();
+        services.AddScoped<IOfflineFeedRepository, OfflineFeedRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IUserDataRepository, UserDataRepository>();
         services.AddScoped<IPasswordResetTokenRepository, PasswordResetTokenRepository>();

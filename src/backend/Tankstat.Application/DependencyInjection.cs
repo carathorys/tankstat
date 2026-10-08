@@ -15,6 +15,7 @@ using Tankstat.Application.Recognition;
 using Tankstat.Application.Recurring;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Settings;
+using Tankstat.Application.Sync;
 using Tankstat.Application.Sharing;
 using Tankstat.Application.Stats;
 using Tankstat.Application.Users;
@@ -30,6 +31,8 @@ public static class DependencyInjection
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<VehicleDefaultsOptions>, VehicleDefaultsOptionsValidator>());
         services.AddOptions<NotificationOptions>().Bind(configuration.GetSection(NotificationOptions.SectionName)).ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<NotificationOptions>, NotificationOptionsValidator>());
+        services.AddOptions<SyncOptions>().Bind(configuration.GetSection(SyncOptions.SectionName)).ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<SyncOptions>, SyncOptionsValidator>());
         services.AddOptions<StorageOptions>().Bind(configuration.GetSection(StorageOptions.SectionName));
         services.AddOptions<SmtpOptions>().Bind(configuration.GetSection(SmtpOptions.SectionName));
         services.AddOptions<AuthOptions>().Bind(configuration.GetSection(AuthOptions.SectionName)).ValidateOnStart();
@@ -62,6 +65,8 @@ public static class DependencyInjection
         services.AddScoped<ChartService>();
         services.AddScoped<UiSettingsService>();
         services.AddScoped<VehicleOrderService>();
+        services.AddScoped<OfflineSettingsService>();
+        services.AddScoped<OfflineFeedService>();
         services.AddSingleton<ImportSessionStore>();
         services.AddSingleton<IImportParser, FuelioCsvParser>();
         services.AddScoped<ImportService>();

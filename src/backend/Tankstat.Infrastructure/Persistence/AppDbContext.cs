@@ -9,6 +9,7 @@ using Tankstat.Domain.Odometers;
 using Tankstat.Domain.Recognition;
 using Tankstat.Domain.Recurring;
 using Tankstat.Domain.Settings;
+using Tankstat.Domain.Sync;
 using Tankstat.Domain.Users;
 using Tankstat.Domain.Vehicles;
 
@@ -38,6 +39,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<UiSettings> UiSettings => Set<UiSettings>();
     public DbSet<GridSettings> GridSettings => Set<GridSettings>();
     public DbSet<VehicleOrder> VehicleOrders => Set<VehicleOrder>();
+    public DbSet<Tombstone> Tombstones => Set<Tombstone>();
+    public DbSet<OfflineSettings> OfflineSettings => Set<OfflineSettings>();
+    public DbSet<OfflineVehicleSetting> OfflineVehicleSettings => Set<OfflineVehicleSetting>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);

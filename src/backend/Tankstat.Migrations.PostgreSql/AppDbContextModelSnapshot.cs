@@ -520,6 +520,11 @@ namespace Tankstat.Migrations.PostgreSql
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
 
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc));
+
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("uuid");
 
@@ -539,6 +544,8 @@ namespace Tankstat.Migrations.PostgreSql
                     b.HasIndex("OwnerId");
 
                     b.HasIndex("VehicleId");
+
+                    b.HasIndex("VehicleId", "UpdatedAt");
 
                     b.ToTable("RecurringExpenses", (string)null);
                 });
@@ -583,6 +590,45 @@ namespace Tankstat.Migrations.PostgreSql
                     b.ToTable("GridSettings", (string)null);
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Settings.OfflineSettings", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DefaultWindow")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("OfflineSettings", (string)null);
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Settings.OfflineVehicleSetting", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Window")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.HasKey("UserId", "VehicleId");
+
+                    b.HasIndex("VehicleId");
+
+                    b.ToTable("OfflineVehicleSettings", (string)null);
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Settings.UiSettings", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -623,6 +669,35 @@ namespace Tankstat.Migrations.PostgreSql
                     b.HasIndex("VehicleId");
 
                     b.ToTable("VehicleOrders", (string)null);
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Sync.Tombstone", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EntityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("PurgedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PurgedAt");
+
+                    b.HasIndex("VehicleId", "PurgedAt");
+
+                    b.ToTable("Tombstones", (string)null);
                 });
 
             modelBuilder.Entity("Tankstat.Domain.Users.PasswordResetToken", b =>
@@ -807,6 +882,11 @@ namespace Tankstat.Migrations.PostgreSql
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
 
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc));
+
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("uuid");
 
@@ -828,6 +908,8 @@ namespace Tankstat.Migrations.PostgreSql
                     b.HasIndex("OwnerId");
 
                     b.HasIndex("VehicleId", "Date");
+
+                    b.HasIndex("VehicleId", "UpdatedAt");
 
                     b.ToTable("Expenses", (string)null);
                 });
@@ -879,6 +961,11 @@ namespace Tankstat.Migrations.PostgreSql
                         .HasColumnType("character varying(16)")
                         .HasDefaultValue("None");
 
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc));
+
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("uuid");
 
@@ -904,6 +991,8 @@ namespace Tankstat.Migrations.PostgreSql
                     b.HasIndex("OwnerId");
 
                     b.HasIndex("VehicleId", "Date");
+
+                    b.HasIndex("VehicleId", "UpdatedAt");
 
                     b.ToTable("Refuelings", (string)null);
                 });
@@ -935,6 +1024,11 @@ namespace Tankstat.Migrations.PostgreSql
 
                     b.Property<Guid?>("PictureImageId")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc));
 
                     b.Property<int>("Version")
                         .ValueGeneratedOnAdd()
@@ -1040,6 +1134,15 @@ namespace Tankstat.Migrations.PostgreSql
                 });
 
             modelBuilder.Entity("Tankstat.Domain.Recurring.RecurringExpense", b =>
+                {
+                    b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
+                        .WithMany()
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Settings.OfflineVehicleSetting", b =>
                 {
                     b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
                         .WithMany()

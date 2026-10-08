@@ -45,13 +45,14 @@ public sealed record RecurrenceStatusInfo(RecurrenceState State, RecurrenceLimit
 
 /// <summary>A schedule such as insurance or an oil change, with its status and when it was added. Intervals and odometers are in the vehicle's distance unit.</summary>
 /// <param name="Version">Counts its saves (edits, being marked done), from 1.</param>
+/// <param name="UpdatedAt">When it was last saved; a device that keeps a copy downloads it again.</param>
 public sealed record RecurringExpenseInfo(
     Guid Id, Guid VehicleId, string Title, string? Category, string? Note, RecurrenceKind Kind, int? IntervalMonths, long? IntervalDistance,
-    DateOnly LastDoneDate, long? LastDoneOdometer, int WarnDays, long WarnDistance, DateTimeOffset CreatedAt, int Version, RecurrenceStatusInfo Status)
+    DateOnly LastDoneDate, long? LastDoneOdometer, int WarnDays, long WarnDistance, DateTimeOffset CreatedAt, int Version, DateTimeOffset UpdatedAt, RecurrenceStatusInfo Status)
 {
     public static RecurringExpenseInfo From(RecurringItem r) => new(
         r.Item.Id, r.Item.VehicleId, r.Item.Title, r.Item.Category, r.Item.Note, r.Item.Kind, r.Item.IntervalMonths, r.Item.IntervalDistance,
-        r.Item.LastDoneDate, r.Item.LastDoneOdometer, r.Item.WarnDays, r.Item.WarnDistance, r.Item.CreatedAt, r.Item.Version,
+        r.Item.LastDoneDate, r.Item.LastDoneOdometer, r.Item.WarnDays, r.Item.WarnDistance, r.Item.CreatedAt, r.Item.Version, r.Item.UpdatedAt,
         new RecurrenceStatusInfo(r.Status.State, r.Status.Limit, r.Status.DueDate, r.Status.DueOdometer, r.Status.DaysLeft, r.Status.DistanceLeft));
 }
 

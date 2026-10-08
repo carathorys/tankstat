@@ -9,6 +9,8 @@ internal sealed class ExpenseConfiguration : IEntityTypeConfiguration<Expense>
     public void Configure(EntityTypeBuilder<Expense> b)
     {
         b.ToTable("Expenses");
+        SyncMapping.MapUpdatedAt(b);
+        b.HasIndex(e => new { e.VehicleId, e.UpdatedAt }); // the offline feed reads a vehicle's rows changed since a moment
         b.HasKey(e => e.Id);
         b.Property(e => e.Id).ValueGeneratedNever();
         b.Property(e => e.Version).HasDefaultValue(1); // rows from before versions were counted start at 1

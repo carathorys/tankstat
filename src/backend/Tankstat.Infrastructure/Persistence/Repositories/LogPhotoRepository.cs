@@ -4,7 +4,7 @@ using Tankstat.Domain.Photos;
 
 namespace Tankstat.Infrastructure.Persistence.Repositories;
 
-internal sealed class LogPhotoRepository(IDbContextFactory<AppDbContext> dbFactory) : ILogPhotoRepository
+internal sealed class LogPhotoRepository(IDbContextFactory<AppDbContext> dbFactory, TimeProvider clock) : ILogPhotoRepository
 {
     public async Task<IReadOnlyList<LogPhoto>> ListForLogAsync(LogType logType, Guid logId, CancellationToken ct)
     {
@@ -34,13 +34,19 @@ internal sealed class LogPhotoRepository(IDbContextFactory<AppDbContext> dbFacto
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         db.LogPhotos.Add(photo);
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db.SaveChangesAsync(ct);
+        await db.TouchLogAsync(photo.LogType, photo.LogId, clock.GetUtcNow(), ct); // a device shows the log with its photos
+        await tx.CommitAsync(ct);
     }
 
     public async Task RemoveAsync(LogPhoto photo, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         db.LogPhotos.Remove(photo);
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db.SaveChangesAsync(ct);
+        await db.TouchLogAsync(photo.LogType, photo.LogId, clock.GetUtcNow(), ct);
+        await tx.CommitAsync(ct);
     }
 }
