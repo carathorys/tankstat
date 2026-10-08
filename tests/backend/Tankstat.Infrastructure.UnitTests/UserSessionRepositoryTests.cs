@@ -25,11 +25,70 @@ public class UserSessionRepositoryTests
         await repo.AddAsync(session, default);
 
         session.Rotate("NEW", "SEALED-NEW", Now.AddDays(1), Lifetime);
-        await repo.UpdateAsync(session, default);
+        Assert.True(await repo.RotateAsync(session, "HASH", default));
         var loaded = (await repo.FindAsync(session.Id, default))!;
 
         Assert.Equal(("NEW", "SEALED-NEW", "HASH", 2, "Firefox on Linux"), (loaded.SecretHash, loaded.ProtectedSecret, loaded.PreviousSecretHash, loaded.SessionVersion, loaded.Client));
         Assert.Equal((Now.AddDays(1), Now.AddDays(91)), (loaded.RotatedAt!.Value, loaded.ExpiresAt));
+    }
+
+    [Fact]
+    public async Task TwoRotationsFromTheSameSecret_OnlyTheFirstIsSaved()
+    {
+        await using var db = new TestDatabase();
+        var repo = db.Get<IUserSessionRepository>();
+        var alice = await AddUser(db, "alice@x.co");
+        var issued = UserSession.Issue(alice.Id, 0, "S0", "SEALED-0", null, Now, Lifetime);
+        await repo.AddAsync(issued, default);
+        var id = issued.Id;
+        // Two tabs loaded the session at once, both presenting S0.
+        var first = (await repo.FindAsync(id, default))!;
+        var second = (await repo.FindAsync(id, default))!;
+        first.Rotate("S1", "SEALED-1", Now.AddMinutes(20), Lifetime);
+        second.Rotate("S2", "SEALED-2", Now.AddMinutes(20), Lifetime);
+
+        Assert.True(await repo.RotateAsync(first, "S0", default));
+        Assert.False(await repo.RotateAsync(second, "S0", default));
+
+        var saved = (await repo.FindAsync(id, default))!;
+        Assert.Equal(("S1", "SEALED-1", "S0"), (saved.SecretHash, saved.ProtectedSecret, saved.PreviousSecretHash));
+    }
+
+    [Fact]
+    public async Task ARefreshSavedAfterASignOut_NeitherRotatesNorUndoesIt()
+    {
+        await using var db = new TestDatabase();
+        var repo = db.Get<IUserSessionRepository>();
+        var alice = await AddUser(db, "alice@x.co");
+        var session = UserSession.Issue(alice.Id, 0, "S0", "SEALED-0", null, Now, Lifetime);
+        await repo.AddAsync(session, default);
+        var refreshing = (await repo.FindAsync(session.Id, default))!; // loaded by a refresh...
+
+        Assert.True(await repo.RevokeAsync(session.Id, Now.AddMinutes(1), default)); // ...then signed out...
+        Assert.False(await repo.RevokeAsync(session.Id, Now.AddMinutes(2), default)); // (once)
+        refreshing.Rotate("S1", "SEALED-1", Now.AddMinutes(3), Lifetime);
+        Assert.False(await repo.RotateAsync(refreshing, "S0", default)); // ...then the refresh saves
+
+        var saved = (await repo.FindAsync(session.Id, default))!;
+        Assert.Equal((Now.AddMinutes(1), "S0"), (saved.RevokedAt, saved.SecretHash));
+    }
+
+    [Fact]
+    public async Task AdoptingAVersion_ChangesNothingElse()
+    {
+        await using var db = new TestDatabase();
+        var repo = db.Get<IUserSessionRepository>();
+        var alice = await AddUser(db, "alice@x.co");
+        var session = UserSession.Issue(alice.Id, 1, "S0", "SEALED-0", null, Now, Lifetime);
+        await repo.AddAsync(session, default);
+        var stale = (await repo.FindAsync(session.Id, default))!;
+        stale.Rotate("S1", "SEALED-1", Now.AddMinutes(1), Lifetime);
+        Assert.True(await repo.RotateAsync(stale, "S0", default)); // another tab refreshed meanwhile
+
+        await repo.AdoptVersionAsync(session.Id, 2, default);
+
+        var saved = (await repo.FindAsync(session.Id, default))!;
+        Assert.Equal((2, "S1"), (saved.SessionVersion, saved.SecretHash));
     }
 
     [Fact]
