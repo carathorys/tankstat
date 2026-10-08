@@ -251,4 +251,45 @@ public class PhotoDraftServiceTests
         Assert.Equal($"vehicles/{s.Car.Id:N}/drafts", s.W.Images.Items[draft].Folder);
         Assert.Equal([draft], s.W.PhotoDrafts.Items.Select(d => d.Id));
     }
+
+    // ---- a draft as a photo of a saved log (a photo added offline) ---------------------------------------------
+
+    [Fact]
+    public async Task ADraft_BecomesAPhotoOfASavedLog_OnceOnly()
+    {
+        var s = await Setup();
+        var log = await s.W.RefuelingService.LogAsync(s.Car.Id, Fill(), default);
+        var draft = await s.W.Drafts.UploadAsync(s.Car.Id, Jpeg(), default);
+
+        var first = await s.W.Photos.AttachDraftAsync(LogType.Refueling, log.Id, draft, default);
+        var again = await s.W.Photos.AttachDraftAsync(LogType.Refueling, log.Id, draft, default);
+
+        Assert.Equal((draft, draft), (first, again));
+        Assert.Equal([draft], (await s.W.Photos.ListAsync(LogType.Refueling, log.Id, default)).Select(p => p.ImageId));
+        Assert.Empty(s.W.PhotoDrafts.Items);
+        Assert.Equal($"vehicles/{s.Car.Id:N}/refuelings/{log.Id:N}", s.W.ImageStore.Folders[draft]);
+        Assert.Equal(1, (await s.W.RefuelingService.FindAsync(log.Id, default))!.Version); // photos are not part of the log's version
+    }
+
+    [Fact]
+    public async Task ADraft_OfAnotherVehicleOrUser_OrALogWithoutRoom_IsNotAttached()
+    {
+        var s = await Setup();
+        var log = await s.W.RefuelingService.LogAsync(s.Car.Id, Fill(), default);
+        var vans = await s.W.Drafts.UploadAsync(s.Van.Id, Jpeg(), default);
+
+        var other = await Assert.ThrowsAsync<DomainException>(() => s.W.Photos.AttachDraftAsync(LogType.Refueling, log.Id, vans, default));
+        for (byte i = 0; i < LogPhoto.MaxPerLog; i++) await s.W.Photos.AddAsync(LogType.Refueling, log.Id, Jpeg(i), default);
+        var full = await Assert.ThrowsAsync<DomainException>(async () =>
+            await s.W.Photos.AttachDraftAsync(LogType.Refueling, log.Id, await s.W.Drafts.UploadAsync(s.Car.Id, Jpeg(), default), default));
+        s.W.Grants.Items.Add(AccessGrant.Create(s.Alice.Id, s.Bob.Id, AccessLevel.Edit));
+        var bobs = await Assert.ThrowsAsync<DomainException>(async () =>
+        {
+            var logTwo = await s.W.RefuelingService.LogAsync(s.Car.Id, Fill(2000), default);
+            s.W.Current.SignInAs(s.Bob);
+            await s.W.Photos.AttachDraftAsync(LogType.Refueling, logTwo.Id, vans, default); // Alice's draft
+        });
+
+        Assert.Equal(("photo.draftExpired", "photo.tooMany", "photo.draftExpired"), (other.Key, full.Key, bobs.Key));
+    }
 }
