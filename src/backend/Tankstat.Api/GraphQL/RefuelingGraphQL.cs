@@ -53,6 +53,7 @@ public sealed class RefuelingType : ObjectType<Refueling>
     protected override void Configure(IObjectTypeDescriptor<Refueling> descriptor)
     {
         descriptor.Ignore(r => r.OdometerReading);
+        descriptor.Ignore(r => r.SavedVersion); // the persistence layer's, not a client's
         descriptor.Ignore(r => r.OdometerReadingId);
         descriptor.Ignore(r => r.Cost);
         descriptor.Ignore(r => r.CostId);

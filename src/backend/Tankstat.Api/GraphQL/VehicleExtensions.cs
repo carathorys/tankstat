@@ -10,7 +10,11 @@ namespace Tankstat.Api.GraphQL;
 /// <summary>The vehicle type hides the internal picture id; clients use <c>pictureUrl</c>.</summary>
 public sealed class VehicleType : ObjectType<Vehicle>
 {
-    protected override void Configure(IObjectTypeDescriptor<Vehicle> descriptor) => descriptor.Ignore(v => v.PictureImageId);
+    protected override void Configure(IObjectTypeDescriptor<Vehicle> descriptor)
+    {
+        descriptor.Ignore(v => v.PictureImageId);
+        descriptor.Ignore(v => v.SavedVersion); // the persistence layer's, not a client's
+    }
 }
 
 /// <summary>Fields of <c>Vehicle</c> that depend on who is asking, or that live in other aggregates.</summary>

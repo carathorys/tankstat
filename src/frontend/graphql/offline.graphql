@@ -127,3 +127,24 @@ mutation UpdateOfflineSettings($input: UpdateOfflineSettingsInput!) {
     }
   }
 }
+
+# Sends the changes kept on this device (offline/push.ts): in order; each is applied, or parked with the reason the server gave.
+mutation SyncChanges($input: SyncChangesInput!) {
+  syncChanges(input: $input) {
+    applied
+    parked
+    results {
+      id
+      status
+      entityId
+      version
+      reason {
+        key
+        args {
+          name
+          value
+        }
+      }
+    }
+  }
+}

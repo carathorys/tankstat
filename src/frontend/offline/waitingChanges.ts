@@ -32,14 +32,20 @@ export interface WaitingGroup {
  */
 export function useWaitingChanges(): WaitingGroup[] | null {
   const count = usePendingCount()
+  return useDescribed(outbox.changes, count)
+}
+
+/** Any changes (those the server parked in the last sync too), named and grouped the same way; `version` says when to read again. */
+export function useDescribed(changes: readonly Change[], version: unknown): WaitingGroup[] | null {
   const [groups, setGroups] = useState<WaitingGroup[] | null>(null)
   useEffect(() => {
     let live = true
-    void describe(outbox.changes).then((g) => live && setGroups(g))
+    void describe(changes).then((g) => live && setGroups(g))
     return () => {
       live = false
     }
-  }, [count])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `version` stands for the changes
+  }, [version])
   return groups
 }
 

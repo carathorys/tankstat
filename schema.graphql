@@ -143,6 +143,7 @@ type Mutation {
   setVehicleOrder(vehicleIds: [UUID!]!): Boolean! @cost(weight: "10")
   updateOfflineSettings(input: UpdateOfflineSettingsInput!): OfflineSettingsInfo!
     @cost(weight: "10")
+  syncChanges(input: SyncChangesInput!): SyncResultInfo! @cost(weight: "10")
 }
 
 type AccessGrantInfo {
@@ -457,6 +458,30 @@ type Session {
   user: UserInfo
 }
 
+type SyncChangeResultInfo {
+  id: UUID!
+  status: SyncChangeStatus!
+  entityId: UUID
+  version: Int
+  reason: SyncReasonInfo
+}
+
+type SyncReasonArg {
+  name: String!
+  value: String!
+}
+
+type SyncReasonInfo {
+  key: String!
+  args: [SyncReasonArg!]!
+}
+
+type SyncResultInfo {
+  results: [SyncChangeResultInfo!]!
+  applied: Int!
+  parked: Int!
+}
+
 type UiSettingsInfo {
   navOpen: Boolean
   language: String
@@ -593,6 +618,27 @@ input AddVehicleInput {
   id: UUID
 }
 
+input ChangeInput {
+  id: UUID!
+  expectedVersion: Int
+  logRefueling: LogRefuelingInput
+  updateRefueling: UpdateRefuelingInput
+  deleteRefueling: UUID
+  restoreRefueling: UUID
+  addExpense: AddExpenseInput
+  updateExpense: UpdateExpenseInput
+  deleteExpense: UUID
+  restoreExpense: UUID
+  addRecurringExpense: AddRecurringExpenseInput
+  updateRecurringExpense: UpdateRecurringExpenseInput
+  deleteRecurringExpense: UUID
+  markRecurringExpensesDone: MarkRecurringExpensesDoneInput
+  addVehicle: AddVehicleInput
+  updateVehicle: UpdateVehicleInput
+  deleteVehicle: UUID
+  restoreVehicle: UUID
+}
+
 input ChangePasswordInput {
   currentPassword: String!
   newPassword: String!
@@ -716,6 +762,10 @@ input SetLogAccessInput {
   vehicleId: UUID!
   userId: UUID!
   level: AccessLevel!
+}
+
+input SyncChangesInput {
+  changes: [ChangeInput!]!
 }
 
 input UpdateExpenseInput {
@@ -985,6 +1035,12 @@ enum ReviewState {
 enum SortDirection {
   ASC
   DESC
+}
+
+enum SyncChangeStatus {
+  APPLIED
+  PARKED
+  DISCARDED
 }
 
 enum UserDataDisposition {

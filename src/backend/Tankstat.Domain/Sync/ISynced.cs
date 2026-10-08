@@ -24,4 +24,16 @@ public interface ISynced
     OfflineEntityType SyncType { get; }
 
     DateTimeOffset UpdatedAt { get; }
+
+    /// <summary>Counts the saves of what a writer can conflict with.</summary>
+    int Version { get; }
+
+    /// <summary>
+    /// The version as it was loaded, before this instance counted a save: the persistence layer saves only if the stored row still has it
+    /// (a conditional write), so two changes made from the same version cannot both be saved.
+    /// </summary>
+    int SavedVersion { get; }
+
+    /// <summary>The persistence layer saved it: what it holds now is what is stored, so its next save starts from this version.</summary>
+    void Saved();
 }

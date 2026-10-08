@@ -10,12 +10,17 @@ import { deviceData } from '../../../src/frontend/offline/deviceData.ts'
 import { memoryStorage } from '../../../src/frontend/offline/deviceStorage.ts'
 import { outbox } from '../../../src/frontend/offline/outbox.ts'
 import { createPullEngine } from '../../../src/frontend/offline/pull.ts'
+import { createPushEngine } from '../../../src/frontend/offline/push.ts'
+import { provideOfflineSync } from '../../../src/frontend/offline/runtime.ts'
 import { fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, stubViewport, user } from '../support/mocks.tsx'
 import { fakeFeed, now } from '../support/offlineFeed.ts'
 import { server } from '../support/server.ts'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
+afterEach(() => {
+  server.resetHandlers()
+  provideOfflineSync(null)
+})
 afterAll(() => server.close())
 
 /** Octavia (v1) with two refuellings downloaded for offline use, for `who` (sign-in off by default); then the server goes out of reach. */
@@ -121,4 +126,35 @@ it('signing out with changes waiting asks first, and they stay on the device for
   await deviceData.signedIn(user().id) // the same account signs in here again
   await outbox.reload()
   expect(outbox.changes).toHaveLength(1) // it waited for them
+})
+
+it('Sync now sends what waits; what the server could not apply is listed with its reason, and the top bar says so', async () => {
+  await downloaded()
+  await outbox.enqueue({ id: 'n1', entity: 'refuelings', action: 'add', vehicleId: 'v1', targetId: 'n1', input: { id: 'n1', vehicleId: 'v1', date: '2026-10-05', volume: 30, totalCost: 90, currency: 'EUR', odometer: 2000 } })
+  await outbox.enqueue({ id: 't1', entity: 'refuelings', action: 'trash', vehicleId: 'v1', targetId: 'a', expectedVersion: 1 })
+  connectivity.reset()
+  server.use(
+    graphql.mutation('SyncChanges', ({ variables }) => {
+      const results = (variables.input.changes as { id: string }[]).map((c) =>
+        c.id === 't1'
+          ? { __typename: 'SyncChangeResultInfo', id: c.id, status: 'PARKED', entityId: null, version: null, reason: { __typename: 'SyncReasonInfo', key: 'sync.versionMismatch', args: [] } }
+          : { __typename: 'SyncChangeResultInfo', id: c.id, status: 'APPLIED', entityId: c.id, version: 1, reason: null },
+      )
+      return HttpResponse.json({ data: { syncChanges: { __typename: 'SyncResultInfo', applied: 1, parked: 1, results } } })
+    }),
+  )
+  provideOfflineSync(createPushEngine({ client: createApolloClient('http://localhost/graphql'), pull: async () => undefined }))
+  renderWithApollo(<App />, '/sync')
+  const ui = userEvent.setup()
+
+  await ui.click(await screen.findByRole('button', { name: 'Sync now' }))
+
+  expect(await screen.findByText(/^Last synced .*: 1 applied, 1 not applied\.$/)).toBeInTheDocument()
+  const notApplied = within(await screen.findByRole('region', { name: 'Not applied' }))
+  expect(notApplied.getByRole('heading', { name: 'Refuelling to the trash' })).toBeInTheDocument()
+  expect(notApplied.getByText(/^It was changed meanwhile by someone else/)).toBeInTheDocument()
+  expect(notApplied.queryByRole('button', { name: /^Remove the change/ })).not.toBeInTheDocument() // the server has it now
+  expect(screen.getByRole('link', { name: '1 change could not be applied' })).toBeInTheDocument()
+  expect(await screen.findByText('Nothing is waiting: everything made on this device is on the server.')).toBeInTheDocument()
+  expect(outbox.changes).toEqual([])
 })

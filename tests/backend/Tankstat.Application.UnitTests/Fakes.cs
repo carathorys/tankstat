@@ -1,3 +1,5 @@
+using Tankstat.Application.Sync;
+using Tankstat.Domain.Sync;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Tankstat.Application.Access;
@@ -125,7 +127,12 @@ internal sealed class InMemoryRefuelings : IRefuelingRepository
     public Task<Refueling?> FindIncludingDeletedAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(r => r.Id == id));
     public bool LoseNextAdd { get; set; }
     public Task<bool> AddAsync(Refueling refueling, CancellationToken ct) => Task.FromResult(Fake.AddOnce(Items, refueling, r => r.Id, LoseNextAdd && !(LoseNextAdd = false)));
-    public Task UpdateAsync(Refueling refueling, LinkedChanges changes, CancellationToken ct) => Task.CompletedTask; // entities are shared references
+    /// <summary>How many of the next saves find the log saved meanwhile by someone else (the database's conditional write).</summary>
+    public int SavedMeanwhileOnNext { get; set; }
+    public Task UpdateAsync(Refueling refueling, LinkedChanges changes, CancellationToken ct) => // entities are shared references
+        SavedMeanwhileOnNext > 0 && SavedMeanwhileOnNext-- > 0
+            ? Task.FromException(new Domain.DomainException("sync.versionMismatch", "It was changed meanwhile.", new { Expected = refueling.Version }))
+            : Task.CompletedTask;
     public Task<PurgedLogs> PurgeAsync(OwnerScope scope, CancellationToken ct)
     {
         var doomed = Items.Where(r => r.IsDeleted && scope.Contains(r.OwnerId, r.VehicleId)).ToList();
@@ -295,6 +302,28 @@ internal sealed class InMemoryVehicleOrders : IVehicleOrderRepository
     public Task<IReadOnlyList<VehicleOrder>> ListAsync(Guid userId, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<VehicleOrder>>(Items.Where(o => o.UserId == userId).OrderBy(o => o.Position).ToList());
     public Task ReplaceAsync(Guid userId, IReadOnlyList<VehicleOrder> order, CancellationToken ct) { Items.RemoveAll(o => o.UserId == userId); Items.AddRange(order); return Task.CompletedTask; }
+}
+
+internal sealed class InMemorySyncChanges : ISyncChangeRepository
+{
+    public List<SyncChange> Items { get; } = [];
+    public Task<IReadOnlyList<SyncChange>> FindManyAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<SyncChange>>(Items.Where(c => ids.Contains(c.Id)).ToList());
+    /// <summary>When set, another server records the next change first (the same batch at the same moment): its row is in, and this add is lost.</summary>
+    public SyncChange? TwinRecordsNext { get; set; }
+    public Task<bool> AddAsync(SyncChange change, CancellationToken ct)
+    {
+        if (TwinRecordsNext is { } twin)
+        {
+            TwinRecordsNext = null;
+            Items.Add(twin);
+            return Task.FromResult(false);
+        }
+        Items.Add(change);
+        return Task.FromResult(true);
+    }
+    public Task<int> PurgeResolvedAsync(DateTimeOffset before, CancellationToken ct) =>
+        Task.FromResult(Items.RemoveAll(c => c.Status != SyncChangeStatus.Parked && c.ReceivedAt < before));
 }
 
 internal sealed class InMemoryOfflineSettings : IOfflineSettingsRepository
@@ -658,6 +687,8 @@ internal sealed class World
     public VehicleOrderService VehicleOrder { get; }
     public InMemoryOfflineSettings OfflineSettingsStore { get; } = new();
     public OfflineSettingsService OfflineSettings { get; }
+    public InMemorySyncChanges SyncLedger { get; } = new();
+    public SyncService Sync => new(SyncLedger, Vehicles, Access, Microsoft.Extensions.Options.Options.Create(new SyncOptions()), Clock, Log.For<SyncService>());
     public ImportService Imports { get; }
     public OdometerService Odometer { get; }
     public ResourceSharingService Sharing { get; }

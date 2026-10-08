@@ -34,6 +34,19 @@ public sealed class Vehicle : IOwned, ISoftDeletable, ISynced
     /// <summary>When it was last saved (set by the persistence layer, see <see cref="ISynced"/>): a device that keeps a copy downloads it again.</summary>
     public DateTimeOffset UpdatedAt { get; private set; }
 
+    /// <summary>The version it was loaded with, before this instance counted any save: the save is made only if nobody saved it meanwhile.</summary>
+    public int SavedVersion => _loadedVersion ?? Version;
+
+    private int? _loadedVersion;
+
+    void ISynced.Saved() => _loadedVersion = null;
+
+    private void Bump()
+    {
+        _loadedVersion ??= Version;
+        Version++;
+    }
+
     Guid ISynced.SyncVehicleId => Id;
     OfflineEntityType ISynced.SyncType => OfflineEntityType.Vehicle;
 
@@ -49,7 +62,7 @@ public sealed class Vehicle : IOwned, ISoftDeletable, ISynced
     {
         if (IsDeleted) throw new DomainException("vehicle.trashedCannotEdit", "A vehicle in the trash cannot be edited; restore it first.");
         Apply(name, licensePlate, fuelType, units);
-        Version++;
+        Bump();
     }
 
     public void SetPicture(Guid? imageId) => PictureImageId = imageId;
@@ -58,14 +71,14 @@ public sealed class Vehicle : IOwned, ISoftDeletable, ISynced
     {
         if (IsDeleted) throw new DomainException("vehicle.alreadyTrashed", "This vehicle is already in the trash.");
         DeletedAt = now;
-        Version++;
+        Bump();
     }
 
     public void Restore()
     {
         if (!IsDeleted) throw new DomainException("vehicle.notTrashed", "This vehicle is not in the trash.");
         DeletedAt = null;
-        Version++;
+        Bump();
     }
 
     private void Apply(string name, string? licensePlate, FuelType fuelType, MeasurementUnits units)
