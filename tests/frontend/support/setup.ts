@@ -3,6 +3,7 @@ import { cleanup, configure } from '@testing-library/react'
 import { MotionGlobalConfig } from 'motion/react'
 import { afterEach } from 'vitest'
 import { i18n, initI18n } from '../../../src/frontend/i18n/index.ts'
+import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
 import { appUpdate } from '../../../src/frontend/pwa/appUpdate.ts'
 import { installPrompt } from '../../../src/frontend/pwa/installPrompt.ts'
 
@@ -22,6 +23,7 @@ afterEach(async () => {
   window.sessionStorage.clear()
   installPrompt.reset()
   appUpdate.reset()
+  connectivity.reset()
   await i18n.changeLanguage('en')
 })
 

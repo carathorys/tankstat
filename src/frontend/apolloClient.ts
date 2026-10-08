@@ -3,6 +3,8 @@ import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { ErrorLink } from '@apollo/client/link/error'
 import { from, mergeMap, of } from 'rxjs'
 import { refreshSession } from './auth/refresh.ts'
+import { OfflineError } from './offline/errors.ts'
+import { createOfflineLink } from './offline/offlineLink.ts'
 
 /**
  * Writes what went wrong in a request to the browser console, for whoever has to find out why: the screen shows the user a message and
@@ -11,6 +13,7 @@ import { refreshSession } from './auth/refresh.ts'
  * without a key is not. Nothing leaves the browser, and the variables of the request (a password) are never printed.
  */
 export function reportOperationError(error: unknown, operationName: string | undefined): void {
+  if (error instanceof OfflineError) return // not sent while the server is out of reach: expected, and the screen says so
   const name = operationName ?? '(unnamed)'
   if (CombinedGraphQLErrors.is(error)) {
     const unexpected = error.errors.filter((e) => typeof e.extensions?.key !== 'string')
@@ -69,7 +72,21 @@ export const refreshLink = new ApolloLink((operation, forward) => {
   )
 })
 
+/**
+ * A request with no answer at all for this long counts as the server being out of reach (`classifyFailure`), instead of waiting for the
+ * operating system to give up on a server that never answers (a LAN address seen from mobile data: often two minutes).
+ */
+export const REQUEST_TIMEOUT_MS = 30_000
+
+/** `fetch` that gives up after `REQUEST_TIMEOUT_MS` (where the browser can combine signals; elsewhere as before). */
+export const timedFetch: typeof fetch = (input, init) => {
+  if (typeof AbortSignal.timeout !== 'function' || typeof AbortSignal.any !== 'function') return fetch(input, init)
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+  return fetch(input, { ...init, signal: init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout })
+}
+
 export function createApolloClient(uri = '/graphql') {
   const errors = new ErrorLink(({ error, operation }) => reportOperationError(error, operation.operationName))
-  return new ApolloClient({ link: ApolloLink.from([errors, refreshLink, new HttpLink({ uri })]), cache: new InMemoryCache() })
+  const http = new HttpLink({ uri, fetch: timedFetch })
+  return new ApolloClient({ link: ApolloLink.from([errors, createOfflineLink(), refreshLink, http]), cache: new InMemoryCache() })
 }

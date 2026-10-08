@@ -1,5 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { ApiError } from '../../../src/frontend/pictures/ApiError.ts'
+import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
+import { OfflineError } from '../../../src/frontend/offline/errors.ts'
 import { resizeImage, UnreadableImageError } from '../../../src/frontend/pictures/resizeImage.ts'
 import { avatarPath, deleteImage, LOG_PHOTO_EDGE, logPhotoPath, logPhotosPath, MAX_LOG_PHOTOS, photoDraftPath, photoDraftsPath, uploadImage, vehiclePicturePath } from '../../../src/frontend/pictures/upload.ts'
 
@@ -82,7 +84,10 @@ it('turns an error answer into an ApiError with the translation key and argument
 it('copes with an error answer that is not JSON, and deletes pictures', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>bad gateway</html>', { status: 502, statusText: 'Bad Gateway' })))
   await expect(deleteImage(avatarPath)).rejects.toMatchObject({ key: undefined, status: 502, message: 'Bad Gateway' })
+  expect(connectivity.reachable).toBe(false) // a gateway answering for the app means the app is down: nothing more is sent
+  await expect(deleteImage(avatarPath)).rejects.toBeInstanceOf(OfflineError)
 
+  connectivity.succeeded() // the reachability probe found the server again
   const ok = vi.fn(async () => new Response(null, { status: 204 }))
   vi.stubGlobal('fetch', ok)
   await deleteImage(vehiclePicturePath('v1'))

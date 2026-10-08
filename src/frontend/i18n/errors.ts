@@ -2,6 +2,7 @@ import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { useTranslation } from 'react-i18next'
 import { UnreadableImageError } from '../pictures/resizeImage.ts'
 import { ApiError } from '../pictures/ApiError.ts'
+import { OfflineError } from '../offline/errors.ts'
 
 /**
  * Turns a failed request into text in the UI language. The API sends a stable `key` (e.g. "vehicle.nameRequired")
@@ -21,6 +22,7 @@ export function useErrorText() {
   const byKey = useKeyText()
 
   return (error: unknown): string => {
+    if (error instanceof OfflineError) return t('errors.offline')
     if (error instanceof ApiError) return byKey(error.key, error.args) ?? error.message
     if (error instanceof UnreadableImageError) return t('image.unreadable')
     if (CombinedGraphQLErrors.is(error)) {
