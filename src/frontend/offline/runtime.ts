@@ -5,6 +5,7 @@ import { deviceData } from './deviceData.ts'
 import { outbox } from './outbox.ts'
 import type { PullEngine } from './pull.ts'
 import type { PushEngine } from './push.ts'
+import { inOneTab, keepStorage } from './tabLock.ts'
 
 /**
  * Started once by main.tsx: asks the server again while it is out of reach, and when it is back every query on the screen is asked again
@@ -18,6 +19,9 @@ let loadPush: (() => Promise<PushEngine>) | null = null
 
 /** How soon after a change is kept (while the server is reachable) it is sent. */
 export const PUSH_AFTER_MS = 1000
+
+/** How soon changes kept here are looked at again when another tab was syncing. */
+export const LOCK_RETRY_MS = 30_000
 
 /** Sending the changes kept on this device, for the screens that show or start it (loaded on first use); null before the runtime started. */
 export const offlineSync = (): Promise<PushEngine> | null => loadPush?.() ?? null
@@ -77,8 +81,16 @@ export function startOfflineRuntime(client: ApolloClient, now: () => number = Da
   const download = () => {
     if (deviceData.user === null || !connectivity.reachable || document.visibilityState === 'hidden') return
     downloadedAt = now()
-    void (outbox.changes.length > 0 ? pusher().then((e) => e.run()) : engine().then((e) => e.run()))
+    keepStorage() // an account's data is on this device now
+    // One tab at a time: every open tab would otherwise sync at start, when the server is back and hourly. When another tab is at it, the
+    // changes kept here are looked at again a little later (that tab may well have sent them by then: it reads them as stored).
+    void inOneTab('tankstat-sync', () => (outbox.changes.length > 0 ? pusher().then((e) => e.run()) : engine().then((e) => e.run()))).then((ran) => {
+      if (ran) return
+      clearTimeout(retry)
+      retry = setTimeout(() => outbox.changes.length > 0 && download(), LOCK_RETRY_MS)
+    })
   }
+  let retry: ReturnType<typeof setTimeout> | undefined
   // Shown again (an app switched back to on a phone): only when the last download is a while ago, not on every switch.
   const onShown = () => {
     if (now() - downloadedAt >= SHOWN_GAP_MS) download()
@@ -116,6 +128,7 @@ export function startOfflineRuntime(client: ApolloClient, now: () => number = Da
       unsubscribeUser()
       unsubscribeOutbox()
       clearTimeout(soon)
+      clearTimeout(retry)
       document.removeEventListener('visibilitychange', onShown)
       clearInterval(hourly)
       active = null

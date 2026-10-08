@@ -23,6 +23,7 @@ export interface WaitingGroup {
   /** Null when the device knows nothing of it (it was never downloaded). */
   vehicleName: string | null
   volumeUnit: string | null
+  distanceUnit: string | null
   items: WaitingChange[]
 }
 
@@ -88,9 +89,15 @@ async function describe(changes: readonly Change[]): Promise<WaitingGroup[]> {
   const groups = new Map<string, WaitingGroup>()
   for (const item of items) {
     const id = item.change.vehicleId
-    const vehicle = vehicles.get(id) as { units?: { volume?: string } } | undefined
-    const added = changes.find((c) => c.entity === 'vehicles' && c.action === 'add' && c.targetId === id)?.input?.units as { volume?: string } | undefined
-    const group = groups.get(id) ?? { vehicleId: id, vehicleName: names.get(id) ?? null, volumeUnit: vehicle?.units?.volume ?? added?.volume ?? null, items: [] }
+    const vehicle = vehicles.get(id) as { units?: { volume?: string; distance?: string } } | undefined
+    const added = changes.find((c) => c.entity === 'vehicles' && c.action === 'add' && c.targetId === id)?.input?.units as { volume?: string; distance?: string } | undefined
+    const group = groups.get(id) ?? {
+      vehicleId: id,
+      vehicleName: names.get(id) ?? null,
+      volumeUnit: vehicle?.units?.volume ?? added?.volume ?? null,
+      distanceUnit: vehicle?.units?.distance ?? added?.distance ?? null,
+      items: [],
+    }
     group.items.push(item)
     groups.set(id, group)
   }
