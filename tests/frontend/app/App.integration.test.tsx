@@ -1,10 +1,14 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it, onTestFinished, vi } from 'vitest'
+import { axe } from 'vitest-axe'
 import App from '../../../src/frontend/App.tsx'
 import en from '../../../src/frontend/i18n/locales/en.json'
 import { navigation } from '../../../src/frontend/navigation.ts'
+import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
+import { deviceData } from '../../../src/frontend/offline/deviceData.ts'
+import { outbox } from '../../../src/frontend/offline/outbox.ts'
 import { server } from '../support/server.ts'
 import {
   adminSession,
@@ -149,6 +153,45 @@ it('on a phone the menu is a closed overlay that opens from the button and close
   await screen.findByRole('heading', { name: 'Trash' })
   await waitFor(() => expect(screen.queryByRole('navigation', { name: 'Main navigation' })).not.toBeInTheDocument())
   expect(window.localStorage.getItem('tankstat.nav.open')).toBeNull() // the phone drawer is never remembered
+})
+
+it('on a phone the top bar fits: badges shrink to their icons and the colour mode and language menus are in the drawer', async () => {
+  const ui = userEvent.setup()
+  stubViewport('phone')
+  server.use(adminSession(), healthHandler, ...withBackend())
+  renderWithApollo(<App />, '/')
+  await screen.findByText('Octavia')
+  await deviceData.settled()
+  await outbox.enqueue({ id: 'c1', entity: 'refuelings', action: 'trash', vehicleId: 'v1', targetId: 'r1', expectedVersion: 1 })
+  act(() => connectivity.failed())
+
+  const bar = screen.getByRole('banner')
+  const pending = await within(bar).findByRole('link', { name: '1 change waiting to sync' }) // the whole sentence, for screen readers
+  expect(pending).toHaveTextContent(/^1$/) // only the number shows
+  expect(within(bar).getByText('Offline')).toBeInTheDocument() // there for screen readers, only the icon shows
+  expect(within(bar).queryByText('admin')).not.toBeInTheDocument()
+  expect(within(bar).queryByRole('button', { name: 'Colour mode' })).not.toBeInTheDocument()
+  expect((await axe(bar, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([])
+
+  await ui.click(within(bar).getByRole('button', { name: 'Show menu' }))
+  const drawer = await screen.findByRole('dialog')
+  expect(within(drawer).getByRole('button', { name: 'Colour mode' })).toBeInTheDocument()
+  expect(within(drawer).getByRole('button', { name: 'Language' })).toBeInTheDocument()
+})
+
+it('on a desktop the top bar keeps every badge in words, and the menus', async () => {
+  stubViewport('desktop')
+  server.use(adminSession(), healthHandler, ...withBackend())
+  renderWithApollo(<App />, '/')
+  await screen.findByText('Octavia')
+  await deviceData.settled()
+  await outbox.enqueue({ id: 'c1', entity: 'refuelings', action: 'trash', vehicleId: 'v1', targetId: 'r1', expectedVersion: 1 })
+  act(() => connectivity.failed())
+
+  const bar = screen.getByRole('banner')
+  expect(await within(bar).findByRole('link', { name: '1 change waiting to sync' })).toHaveTextContent('1 change waiting to sync')
+  expect(within(bar).getByText('admin')).toBeVisible()
+  expect(within(bar).getByRole('button', { name: 'Colour mode' })).toBeInTheDocument()
 })
 
 it('has a skip link, the landmarks and a labelled navigation', async () => {

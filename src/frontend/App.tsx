@@ -20,7 +20,7 @@ import { HealthFooter } from './shell/HealthFooter.tsx'
 import { UiSettingsProvider } from './settings/UiSettingsProvider.tsx'
 import { useUiSettings } from './settings/uiSettingsContext.ts'
 import { NavList } from './shell/NavList.tsx'
-import { TopBar } from './shell/TopBar.tsx'
+import { DrawerSettings, TopBar } from './shell/TopBar.tsx'
 import { UpdateNotice } from './shell/UpdateNotice.tsx'
 import { Loading } from './components/Loading.tsx'
 import { glass } from './theme/components.ts'
@@ -129,6 +129,7 @@ function Shell({
               </IconAction>
             </Stack>
             <NavList mode={mode} user={user} onNavigate={() => setDrawerOpen(false)} />
+            <DrawerSettings />
           </Drawer>
         )}
         {/* The page column (at most 1136 px, centred), clear of a phone's rounded corners in landscape. */}
