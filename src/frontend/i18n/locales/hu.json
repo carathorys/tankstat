@@ -1212,7 +1212,9 @@
         "add": "Új jármű",
         "update": "Módosított jármű",
         "trash": "Kukába kerülő jármű",
-        "restore": "Kukából visszaállított jármű"
+        "restore": "Kukából visszaállított jármű",
+        "setPicture": "Jármű új képe",
+        "removePicture": "Jármű képének törlése"
       },
       "recurring": {
         "add": "Új ismétlődő kiadás",

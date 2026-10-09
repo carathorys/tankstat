@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
 using Tankstat.Application.Expenses;
+using Tankstat.Application.Images;
 using Tankstat.Application.Photos;
 using Tankstat.Application.Recurring;
 using Tankstat.Application.Refuelings;
@@ -23,7 +24,7 @@ namespace Tankstat.Api.GraphQL;
 
 /// <summary>
 /// One change a device kept while the server was out of reach: its own id, the version of what it changes it was made from, and exactly
-/// one operation, with the same input as the single mutation (an add carries the id the device gave it). <c>Base</c> is the values the
+/// one operation (the last two set or remove a vehicle's picture), with the same input as the single mutation (an add carries the id the device gave it). <c>Base</c> is the values the
 /// change was made from (JSON in the shape of its input, as the device knew them), kept with it if it is parked so whoever decides can
 /// merge it; the server never reads it.
 /// </summary>
@@ -35,13 +36,17 @@ public sealed record ChangeInput(
     MarkRecurringExpensesDoneInput? MarkRecurringExpensesDone = null,
     AddVehicleInput? AddVehicle = null, UpdateVehicleInput? UpdateVehicle = null, Guid? DeleteVehicle = null, Guid? RestoreVehicle = null,
     AddLogPhotoInput? AddRefuelingPhoto = null, RemoveLogPhotoInput? RemoveRefuelingPhoto = null,
-    AddLogPhotoInput? AddExpensePhoto = null, RemoveLogPhotoInput? RemoveExpensePhoto = null, string? Base = null);
+    AddLogPhotoInput? AddExpensePhoto = null, RemoveLogPhotoInput? RemoveExpensePhoto = null,
+    SetVehiclePictureInput? SetVehiclePicture = null, Guid? RemoveVehiclePicture = null, string? Base = null);
 
 /// <summary>A photo added to a saved log while offline: uploaded as a draft of the log's vehicle (<c>PUT /media/vehicles/{id}/photo-drafts</c>) just before.</summary>
 public sealed record AddLogPhotoInput(Guid LogId, Guid DraftId);
 
 /// <summary>A photo of a saved log removed while offline.</summary>
 public sealed record RemoveLogPhotoInput(Guid LogId, Guid ImageId);
+
+/// <summary>A vehicle's picture chosen while offline: uploaded as a draft of the vehicle (<c>PUT /media/vehicles/{id}/photo-drafts</c>) just before.</summary>
+public sealed record SetVehiclePictureInput(Guid VehicleId, Guid DraftId);
 
 /// <param name="Changes">In the order they were made (1 to 200).</param>
 public sealed record SyncChangesInput(IReadOnlyList<ChangeInput> Changes);
@@ -311,6 +316,7 @@ public sealed class SyncMutations
             c.LogRefueling, c.UpdateRefueling, c.DeleteRefueling, c.RestoreRefueling, c.AddExpense, c.UpdateExpense, c.DeleteExpense, c.RestoreExpense,
             c.AddRecurringExpense, c.UpdateRecurringExpense, c.DeleteRecurringExpense, c.MarkRecurringExpensesDone, c.AddVehicle, c.UpdateVehicle,
             c.DeleteVehicle, c.RestoreVehicle, c.AddRefuelingPhoto, c.RemoveRefuelingPhoto, c.AddExpensePhoto, c.RemoveExpensePhoto,
+            c.SetVehiclePicture, c.RemoveVehiclePicture,
         }.Count(o => o is not null);
         if (set != 1) throw new DomainException("sync.oneOperationRequired", "A change carries exactly one operation.", new { c.Id });
         var payload = JsonSerializer.Serialize(c with { Base = null }, Json);
@@ -411,6 +417,17 @@ public sealed class SyncMutations
         if (c.AddExpensePhoto is { } aep) return AddPhoto(SyncChangeKind.AddExpensePhoto, LogType.Expense, aep, find.Expense);
         if (c.RemoveExpensePhoto is { } rep) return RemovePhoto(SyncChangeKind.RemoveExpensePhoto, LogType.Expense, rep, find.Expense);
 
+        // A vehicle's picture is not versioned (the last one wins, as online): nothing is checked against a version.
+        if (c.SetVehiclePicture is { } svp)
+            return Make(SyncChangeKind.SetVehiclePicture, svp.VehicleId, svp.VehicleId, async ct =>
+                new AppliedChange(await services.Images.SetVehiclePictureFromDraftAsync(svp.VehicleId, svp.DraftId, ct), null, svp.VehicleId));
+        if (c.RemoveVehiclePicture is { } rvp)
+            return Make(SyncChangeKind.RemoveVehiclePicture, rvp, rvp, async ct =>
+            {
+                await services.Images.RemoveVehiclePictureAsync(rvp, ct);
+                return new AppliedChange(rvp, null, rvp);
+            });
+
         var rv = c.RestoreVehicle!.Value;
         return Make(SyncChangeKind.RestoreVehicle, rv, rv, async ct => Of(await vehicles.RestoreAsync(rv, ct, version), v => v.Id, v => v.Version, v => v.Id));
     }
@@ -421,9 +438,10 @@ public sealed class SyncMutations
 /// what a change concerns, whoever may see it (a parked change is filed with it).
 /// </summary>
 public sealed class SyncChangeServices(
-    VehicleService vehicles, RefuelingService refuelings, ExpenseService expenses, RecurringExpenseService recurring, LogPhotoService photos,
+    VehicleService vehicles, RefuelingService refuelings, ExpenseService expenses, RecurringExpenseService recurring, LogPhotoService photos, ImageService images,
     IOptions<VehicleDefaultsOptions> defaults, IRefuelingRepository refuelingRows, IExpenseRepository expenseRows, IRecurringExpenseRepository scheduleRows)
 {
+    public ImageService Images => images;
     public VehicleService Vehicles => vehicles;
     public RefuelingService Refuelings => refuelings;
     public ExpenseService Expenses => expenses;

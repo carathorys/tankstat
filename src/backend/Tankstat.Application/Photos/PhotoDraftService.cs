@@ -66,7 +66,7 @@ public sealed class PhotoDraftService(
         var me = await access.RequirePrincipalAsync(ct);
         var now = clock.GetUtcNow();
         var found = (await drafts.FindManyAsync(wanted, ct)).ToDictionary(d => d.Id);
-        return wanted.Select(id => found.GetValueOrDefault(id) is { } d && d.CreatedById == me.Id && d.VehicleId == vehicleId && !d.IsExpired(now)
+        return wanted.Select(id => found.GetValueOrDefault(id) is { } d && d.UsableBy(me.Id, vehicleId, now)
             ? d
             : throw new DomainException("photo.draftExpired", "A photo is no longer available; add it again.", new { Id = id })).ToList();
     }
@@ -80,7 +80,7 @@ public sealed class PhotoDraftService(
         if (ids is null || ids.Count == 0) return [];
         var me = await access.RequirePrincipalAsync(ct);
         var now = clock.GetUtcNow();
-        return (await drafts.FindManyAsync(ids.Distinct().ToList(), ct)).Where(d => d.CreatedById == me.Id && d.VehicleId == vehicleId && !d.IsExpired(now)).ToList();
+        return (await drafts.FindManyAsync(ids.Distinct().ToList(), ct)).Where(d => d.UsableBy(me.Id, vehicleId, now)).ToList();
     }
 
     /// <summary>The drafts were attached to a log: only their rows go, the pictures live on as its photos.</summary>

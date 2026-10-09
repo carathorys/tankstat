@@ -181,6 +181,37 @@ describe('vehicles, schedules and visits', () => {
   })
 })
 
+describe('a vehicle\'s picture', () => {
+  const picture = (action: 'setPicture' | 'removePicture', vehicle = 'v1', over: Partial<Change> = {}) =>
+    change(action, vehicle, { entity: 'vehicles', vehicleId: vehicle, ...(action === 'setPicture' ? { input: { key: `local:${seq + 1}` } } : {}), ...over })
+
+  it('only the last change counts: a picture replaces the one waiting, a removal takes its place, a new picture after a removal is the picture', () => {
+    const first = picture('setPicture')
+    const second = picture('setPicture')
+    expect(fold(first, second)).toEqual([second])
+    const removed = picture('removePicture')
+    expect(fold(first, removed)).toEqual([removed])
+    expect(fold(removed, second)).toEqual([second])
+    expect(keptPhotosOf(second)).toEqual([second.input!.key])
+    expect(markOf(second)).toBe('changed')
+  })
+
+  it('never folds into the vehicle\'s other changes, nor into another vehicle\'s picture, nor into one that was sent', () => {
+    const edit = change('update', 'v1', { entity: 'vehicles', input: { name: 'Golf' }, expectedVersion: 2 })
+    const set = picture('setPicture')
+    const other = picture('setPicture', 'v2')
+    const sent = picture('setPicture', 'v1', { sent: true })
+    expect(fold(edit, set, other)).toEqual([edit, set, other])
+    expect(fold(sent, set)).toEqual([sent, set])
+    expect(fold(set, change('update', 'v1', { entity: 'vehicles', input: { name: 'Polo' } }))).toHaveLength(2)
+  })
+
+  it('a vehicle added here and taken back takes its picture along', () => {
+    const golf = change('add', 'g', { entity: 'vehicles', vehicleId: 'g', id: 'g', input: { id: 'g', name: 'Golf' } })
+    expect(fold(golf, picture('setPicture', 'g'), change('trash', 'g', { entity: 'vehicles', vehicleId: 'g' }))).toEqual([])
+  })
+})
+
 describe('photos of a log', () => {
   const addPhoto = (key: string, log = 'r1') => change('addPhoto', log, { input: { key } })
   const removePhoto = (imageId: string, log = 'r1') => change('removePhoto', log, { input: { imageId } })

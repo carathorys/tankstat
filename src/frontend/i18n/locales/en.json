@@ -1212,7 +1212,9 @@
         "add": "New vehicle",
         "update": "Changed vehicle",
         "trash": "Vehicle to the trash",
-        "restore": "Vehicle back from the trash"
+        "restore": "Vehicle back from the trash",
+        "setPicture": "New picture of a vehicle",
+        "removePicture": "Picture of a vehicle removed"
       },
       "recurring": {
         "add": "New recurring expense",

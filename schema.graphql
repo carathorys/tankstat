@@ -708,6 +708,8 @@ input ChangeInput {
   removeRefuelingPhoto: RemoveLogPhotoInput
   addExpensePhoto: AddLogPhotoInput
   removeExpensePhoto: RemoveLogPhotoInput
+  setVehiclePicture: SetVehiclePictureInput
+  removeVehiclePicture: UUID
   base: String
 }
 
@@ -846,6 +848,11 @@ input SetLogAccessInput {
   vehicleId: UUID!
   userId: UUID!
   level: AccessLevel!
+}
+
+input SetVehiclePictureInput {
+  vehicleId: UUID!
+  draftId: UUID!
 }
 
 input SyncChangesInput {
@@ -1160,6 +1167,8 @@ enum SyncChangeKind {
   REMOVE_REFUELING_PHOTO
   ADD_EXPENSE_PHOTO
   REMOVE_EXPENSE_PHOTO
+  SET_VEHICLE_PICTURE
+  REMOVE_VEHICLE_PICTURE
 }
 
 enum SyncChangeStatus {

@@ -29,4 +29,7 @@ public sealed class PhotoDraft : IOwned
         new() { Id = imageId, OwnerId = ownerId, VehicleId = vehicleId, CreatedById = createdById, CreatedAt = now };
 
     public bool IsExpired(DateTimeOffset now) => now - CreatedAt >= Lifetime;
+
+    /// <summary>The uploader's draft for this vehicle, not expired: what may be made a photo or a picture of it.</summary>
+    public bool UsableBy(Guid userId, Guid vehicleId, DateTimeOffset now) => CreatedById == userId && VehicleId == vehicleId && !IsExpired(now);
 }

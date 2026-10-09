@@ -73,9 +73,11 @@ export type ChangeInput = {
   markRecurringExpensesDone?: MarkRecurringExpensesDoneInput | null | undefined;
   removeExpensePhoto?: RemoveLogPhotoInput | null | undefined;
   removeRefuelingPhoto?: RemoveLogPhotoInput | null | undefined;
+  removeVehiclePicture?: string | null | undefined;
   restoreExpense?: string | null | undefined;
   restoreRefueling?: string | null | undefined;
   restoreVehicle?: string | null | undefined;
+  setVehiclePicture?: SetVehiclePictureInput | null | undefined;
   updateExpense?: UpdateExpenseInput | null | undefined;
   updateRecurringExpense?: UpdateRecurringExpenseInput | null | undefined;
   updateRefueling?: UpdateRefuelingInput | null | undefined;
@@ -393,6 +395,11 @@ export type SetLogAccessInput = {
   vehicleId: string;
 };
 
+export type SetVehiclePictureInput = {
+  draftId: string;
+  vehicleId: string;
+};
+
 export type SortDirection =
   | 'ASC'
   | 'DESC';
@@ -416,9 +423,11 @@ export type SyncChangeKind =
   | 'MARK_RECURRING_EXPENSES_DONE'
   | 'REMOVE_EXPENSE_PHOTO'
   | 'REMOVE_REFUELING_PHOTO'
+  | 'REMOVE_VEHICLE_PICTURE'
   | 'RESTORE_EXPENSE'
   | 'RESTORE_REFUELING'
   | 'RESTORE_VEHICLE'
+  | 'SET_VEHICLE_PICTURE'
   | 'UPDATE_EXPENSE'
   | 'UPDATE_RECURRING_EXPENSE'
   | 'UPDATE_REFUELING'

@@ -7,9 +7,10 @@ export type LogEntity = 'refuelings' | 'expenses'
 export type ChangeEntity = LogEntity | 'vehicles' | 'recurring'
 /**
  * `trash` of a schedule deletes it for good (schedules have no trash); `markDone` is a service visit of one or more schedules; `addPhoto`
- * and `removePhoto` change the photos of a saved log (input `{ key }`, a photo kept on this device, or `{ imageId }`).
+ * and `removePhoto` change the photos of a saved log (input `{ key }`, a photo kept on this device, or `{ imageId }`); `setPicture` (input
+ * `{ key }`, a picture kept on this device) and `removePicture` change a vehicle's picture.
  */
-export type ChangeAction = 'add' | 'update' | 'trash' | 'restore' | 'markDone' | 'addPhoto' | 'removePhoto'
+export type ChangeAction = 'add' | 'update' | 'trash' | 'restore' | 'markDone' | 'addPhoto' | 'removePhoto' | 'setPicture' | 'removePicture'
 
 export interface Change {
   /** The change's own id; for an add, the id of what it adds (the client chose it, the server keeps it). */
@@ -48,6 +49,7 @@ export type PendingMark = 'new' | 'changed' | 'deleted' | 'restored' | 'done'
 
 const MARKS: Record<ChangeAction, PendingMark> = {
   add: 'new', update: 'changed', trash: 'deleted', restore: 'restored', markDone: 'done', addPhoto: 'changed', removePhoto: 'changed',
+  setPicture: 'changed', removePicture: 'changed',
 }
 export const markOf = (change: Change): PendingMark => MARKS[change.action]
 
@@ -55,10 +57,10 @@ export const markOf = (change: Change): PendingMark => MARKS[change.action]
 export const KEPT = 'local:'
 export const isKept = (id: unknown): id is string => typeof id === 'string' && id.startsWith(KEPT)
 
-/** The photos kept on this device that a change carries: those picked for a new log or a visit, or one added to a saved log. */
+/** The photos kept on this device that a change carries: those picked for a new log or a visit, one added to a saved log, a vehicle's picture. */
 export function keptPhotosOf(change: Change): string[] {
   const ids = Array.isArray(change.input?.photoIds) ? (change.input.photoIds as unknown[]) : []
-  return [...ids, change.action === 'addPhoto' ? change.input?.key : undefined].filter(isKept)
+  return [...ids, change.action === 'addPhoto' || change.action === 'setPicture' ? change.input?.key : undefined].filter(isKept)
 }
 
 /**
@@ -68,6 +70,7 @@ export function keptPhotosOf(change: Change): string[] {
 export const canEdit = (change: Change) => change.action === 'add' || change.action === 'update'
 
 const isPhoto = (c: Change) => c.action === 'addPhoto' || c.action === 'removePhoto'
+const isPicture = (c: Change) => c.action === 'setPicture' || c.action === 'removePicture'
 
 /** The fields an update sets (and carries over onto an add that is still waiting: the add's own id and vehicle stay). */
 export const UPDATABLE: Record<ChangeEntity, readonly string[]> = {
@@ -96,7 +99,7 @@ export function collapse(existing: readonly Change[], incoming: Change): Change[
     const without = { ...visit, input: { ...visit.input, amount: null, currency: null, photoIds: null } }
     return existing.filter((c) => !(c.entity === 'expenses' && c.targetId === incoming.targetId)).map((c) => (c === visit ? without : c))
   }
-  const sameLog = (c: Change) => c.action !== 'markDone' && !isPhoto(c) && c.entity === incoming.entity && c.targetId === incoming.targetId
+  const sameLog = (c: Change) => c.action !== 'markDone' && !isPhoto(c) && !isPicture(c) && c.entity === incoming.entity && c.targetId === incoming.targetId
   const photosOfLog = (c: Change) => isPhoto(c) && c.entity === incoming.entity && c.targetId === incoming.targetId && !c.sent
   const waiting = existing.filter((c) => sameLog(c) && !c.sent)
   const sentBefore = existing.filter((c) => sameLog(c) && c.sent).at(-1)
@@ -108,6 +111,11 @@ export function collapse(existing: readonly Change[], incoming: Change): Change[
   const next = sentBefore ? { ...incoming, expectedVersion: versionAfter(sentBefore) } : incoming
 
   switch (incoming.action) {
+    case 'setPicture':
+    case 'removePicture':
+      // A vehicle's picture: only the last one counts, so it takes the place of the picture change waiting for the vehicle (one sent
+      // already stays: it may be on the server). Its kept picture goes with it (the outbox removes the photos of what folds away).
+      return [...existing.filter((c) => !(isPicture(c) && c.targetId === incoming.targetId && !c.sent)), incoming]
     case 'addPhoto': {
       if (trash) return [...existing] // on its way to the trash: a photo could not be added to it
       const key = incoming.input?.key

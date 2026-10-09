@@ -159,7 +159,8 @@ public sealed class SyncService(
         return level >= AccessLevel.Edit;
     }
 
-    public static bool IsVehicleChange(SyncChangeKind kind) => kind is SyncChangeKind.AddVehicle or SyncChangeKind.UpdateVehicle or SyncChangeKind.DeleteVehicle or SyncChangeKind.RestoreVehicle;
+    public static bool IsVehicleChange(SyncChangeKind kind) => kind is SyncChangeKind.AddVehicle or SyncChangeKind.UpdateVehicle or SyncChangeKind.DeleteVehicle or SyncChangeKind.RestoreVehicle
+        or SyncChangeKind.SetVehiclePicture or SyncChangeKind.RemoveVehiclePicture;
 
     /// <summary>The parked change, when the caller may see it; anything else looks non-existent, whatever it is.</summary>
     public async Task<SyncChange> FindVisibleAsync(Guid id, CancellationToken ct)
