@@ -24,6 +24,9 @@ public sealed partial class UiSettings
     /// <summary>Light, dark or the device's own setting (null: never chosen, the UI's default applies).</summary>
     public ColorMode? ColorMode { get; private set; }
 
+    /// <summary>Glossy, transparent or opaque surfaces (null: never chosen, glossy).</summary>
+    public SurfaceStyle? Surface { get; private set; }
+
     public DateTimeOffset UpdatedAt { get; private set; }
 
     public static UiSettings Create(Guid userId, DateTimeOffset now) => new() { UserId = userId, UpdatedAt = now };
@@ -50,6 +53,15 @@ public sealed partial class UiSettings
         if (!Enum.IsDefined(mode))
             throw new DomainException("settings.colorModeInvalid", "The colour mode must be light, dark or system.");
         ColorMode = mode;
+        UpdatedAt = now;
+    }
+
+    /// <summary>Only the defined styles, like the colour mode.</summary>
+    public void SetSurface(SurfaceStyle surface, DateTimeOffset now)
+    {
+        if (!Enum.IsDefined(surface))
+            throw new DomainException("settings.surfaceInvalid", "The surface style must be glossy, transparent or opaque.");
+        Surface = surface;
         UpdatedAt = now;
     }
 

@@ -515,6 +515,7 @@ type UiSettingsInfo {
   navOpen: Boolean
   language: String
   colorMode: ColorMode
+  surface: SurfaceStyle
   grids: [GridSettingsInfo!]! @cost(weight: "10")
 }
 
@@ -865,6 +866,7 @@ input UpdateUiSettingsInput {
   language: String
   clearLanguage: Boolean
   colorMode: ColorMode
+  surface: SurfaceStyle
 }
 
 input UpdateUserInput {
@@ -1087,6 +1089,12 @@ enum ReviewState {
 enum SortDirection {
   ASC
   DESC
+}
+
+enum SurfaceStyle {
+  GLOSSY
+  TRANSPARENT
+  OPAQUE
 }
 
 enum SyncChangeKind {

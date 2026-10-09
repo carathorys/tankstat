@@ -26,6 +26,15 @@
   "language": {
     "label": "Language"
   },
+  "appearance": {
+    "label": "Appearance"
+  },
+  "surface": {
+    "label": "Surfaces",
+    "glossy": "Glossy",
+    "transparent": "Transparent",
+    "opaque": "Opaque"
+  },
   "colorMode": {
     "label": "Colour mode",
     "light": "Light",
@@ -472,7 +481,8 @@
       "pageSizeInvalid": "The page size must be between {{min}} and {{max}}.",
       "sortDirectionInvalid": "Unknown sort direction.",
       "languageInvalid": "The language code must look like en or en-GB.",
-      "colorModeInvalid": "The colour mode must be light, dark or system."
+      "colorModeInvalid": "The colour mode must be light, dark or system.",
+      "surfaceInvalid": "The surface style must be glossy, transparent or opaque."
     },
     "refueling": {
       "litersPositive": "Liters must be greater than zero.",

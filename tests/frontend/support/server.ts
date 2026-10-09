@@ -32,7 +32,7 @@ export const server = setupServer(
   graphql.query('UnreadNotificationCount', () => HttpResponse.json({ data: { notificationCount: 0 } })),
   graphql.query('ParkedChanges', () => HttpResponse.json({ data: { parkedChanges: [] } })),
   graphql.query('RecognitionStatus', () => HttpResponse.json({ data: { recognitionStatus: { available: false } } })),
-  graphql.query('UiSettings', () => HttpResponse.json({ data: { uiSettings: { navOpen: null, language: null, colorMode: null, grids: [] } } })),
+  graphql.query('UiSettings', () => HttpResponse.json({ data: { uiSettings: { navOpen: null, language: null, colorMode: null, surface: null, grids: [] } } })),
   // The Account page's Offline data section: the default window, no vehicles of its own (tests with vehicles answer these themselves).
   graphql.query('OfflineSettings', () => HttpResponse.json({ data: { offlineSettings: { __typename: 'OfflineSettingsInfo', defaultWindow: 'span:P2M', vehicles: [] } } })),
   graphql.query('OfflineVehicles', () => HttpResponse.json({ data: { myVehicles: [] } })),
@@ -42,7 +42,7 @@ export const server = setupServer(
   ),
   graphql.mutation('UpdateUiSettings', ({ variables }) =>
     HttpResponse.json({
-      data: { updateUiSettings: { navOpen: variables.input.navOpen ?? null, language: variables.input.language ?? null, colorMode: variables.input.colorMode ?? null } },
+      data: { updateUiSettings: { navOpen: variables.input.navOpen ?? null, language: variables.input.language ?? null, colorMode: variables.input.colorMode ?? null, surface: variables.input.surface ?? null } },
     }),
   ),
   graphql.mutation('SaveGridSettings', ({ variables }) => HttpResponse.json({ data: { saveGridSettings: variables.input } })),

@@ -142,9 +142,9 @@ it('the colour mode is saved with the account and applied on another device', as
   await screen.findByRole('heading', { name: 'Vehicles' })
   expect(document.documentElement).toHaveClass('dark') // nothing chosen yet
 
-  await ui.click(screen.getByRole('button', { name: 'Colour mode' }))
-  expect(await screen.findByRole('menuitemradio', { name: 'Dark' })).toHaveAttribute('aria-checked', 'true')
-  await ui.click(screen.getByRole('menuitemradio', { name: 'Light' }))
+  await ui.click(screen.getByRole('button', { name: 'Appearance' }))
+  expect(await screen.findByRole('menuitemradio', { name: 'Colour mode: Dark' })).toHaveAttribute('aria-checked', 'true')
+  await ui.click(screen.getByRole('menuitemradio', { name: 'Colour mode: Light' }))
 
   expect(document.documentElement).toHaveClass('light')
   expect(window.localStorage.getItem('tankstat.colorMode')).toBe('light')
@@ -156,6 +156,58 @@ it('the colour mode is saved with the account and applied on another device', as
   await screen.findByRole('heading', { name: 'Vehicles' })
   await waitFor(() => expect(window.localStorage.getItem('tankstat.colorMode')).toBe('light'))
   expect(document.documentElement).toHaveClass('light')
+})
+
+it('the surface style is switched at once, saved with the account and applied on another device', async () => {
+  const { settings, ui, view } = setup()
+  await screen.findByRole('heading', { name: 'Vehicles' })
+  expect(document.documentElement).not.toHaveClass('surface-opaque') // glossy: no class
+
+  await ui.click(screen.getByRole('button', { name: 'Appearance' }))
+  expect(await screen.findByRole('menuitemradio', { name: 'Surfaces: Glossy' })).toHaveAttribute('aria-checked', 'true')
+  await ui.click(screen.getByRole('menuitemradio', { name: 'Surfaces: Opaque' }))
+
+  expect(document.documentElement).toHaveClass('surface-opaque')
+  expect(document.documentElement).toHaveClass('dark') // the colour mode is untouched
+  expect(window.localStorage.getItem('tankstat.surface')).toBe('opaque')
+  await waitFor(() => expect(settings.state.calls.UpdateUiSettings).toEqual([{ input: { surface: 'OPAQUE' } }]))
+
+  view.unmount()
+  window.localStorage.clear() // another device: the browser remembers nothing, the server does
+  document.documentElement.classList.remove('surface-opaque')
+  renderWithApollo(<App />, '/vehicles')
+  await screen.findByRole('heading', { name: 'Vehicles' })
+  await waitFor(() => expect(document.documentElement).toHaveClass('surface-opaque'))
+  expect(window.localStorage.getItem('tankstat.surface')).toBe('opaque')
+})
+
+it('a surface style chosen before the server answers is not undone by the answer', async () => {
+  stubViewport('desktop')
+  const settings = fakeSettingsBackend({ surface: 'OPAQUE', language: 'hu' })
+  let answer!: () => void
+  const held = new Promise<void>((resolve) => (answer = resolve))
+  server.use(
+    adminSession(),
+    healthHandler,
+    graphql.query('UiSettings', async () => {
+      await held
+      return HttpResponse.json({ data: { uiSettings: settings.state.settings } })
+    }),
+    ...settings.handlers,
+    ...fakeVehicleBackend(cars).handlers,
+  )
+  const ui = userEvent.setup()
+  renderWithApollo(<App />, '/vehicles')
+  await screen.findByRole('heading', { name: 'Vehicles' })
+
+  await ui.click(screen.getByRole('button', { name: 'Appearance' }))
+  await ui.click(await screen.findByRole('menuitemradio', { name: 'Surfaces: Transparent' }))
+  answer()
+
+  await screen.findByRole('heading', { name: 'Járművek' }) // the answer has arrived: its language applied ...
+  expect(document.documentElement).toHaveClass('surface-transparent') // ... its older surface style did not
+  expect(settings.state.calls.UpdateUiSettings).toEqual([{ input: { surface: 'TRANSPARENT' } }])
+  expect(document.documentElement).not.toHaveClass('surface-opaque')
 })
 
 it('a colour mode chosen before the server answers is not undone by the answer', async () => {
@@ -177,8 +229,8 @@ it('a colour mode chosen before the server answers is not undone by the answer',
   renderWithApollo(<App />, '/vehicles')
   await screen.findByRole('heading', { name: 'Vehicles' })
 
-  await ui.click(screen.getByRole('button', { name: 'Colour mode' }))
-  await ui.click(await screen.findByRole('menuitemradio', { name: 'System' }))
+  await ui.click(screen.getByRole('button', { name: 'Appearance' }))
+  await ui.click(await screen.findByRole('menuitemradio', { name: 'Colour mode: System' }))
   answer()
 
   await screen.findByRole('heading', { name: 'Járművek' }) // the answer has arrived: its language applied ...
@@ -194,8 +246,8 @@ it('System follows the device: light on a device set to light', async () => {
   await screen.findByRole('heading', { name: 'Vehicles' })
   expect(document.documentElement).toHaveClass('dark') // the app's own default, whatever the device
 
-  await ui.click(screen.getByRole('button', { name: 'Colour mode' }))
-  await ui.click(await screen.findByRole('menuitemradio', { name: 'System' }))
+  await ui.click(screen.getByRole('button', { name: 'Appearance' }))
+  await ui.click(await screen.findByRole('menuitemradio', { name: 'Colour mode: System' }))
 
   expect(document.documentElement).toHaveClass('light')
 })
@@ -212,8 +264,8 @@ it('a visitor who is not signed in changes only the browser', async () => {
   await ui.click(await screen.findByRole('menuitemradio', { name: 'Magyar' }))
 
   await screen.findByRole('heading', { name: 'Bejelentkezés' })
-  await ui.click(screen.getByRole('button', { name: 'Színmód' }))
-  await ui.click(await screen.findByRole('menuitemradio', { name: 'Világos' }))
+  await ui.click(screen.getByRole('button', { name: 'Megjelenés' }))
+  await ui.click(await screen.findByRole('menuitemradio', { name: 'Színmód: Világos' }))
 
   expect(document.documentElement).toHaveClass('light')
   expect(settings.state.requests.UiSettings).toBe(0)

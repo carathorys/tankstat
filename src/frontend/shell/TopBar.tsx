@@ -11,7 +11,7 @@ import type { SessionQuery } from '../gql/generated.ts'
 import { useMediaQuery } from '../hooks/useMediaQuery.ts'
 import { glass } from '../theme/components.ts'
 import { MEDIA } from '../theme/media.ts'
-import { ColorModeMenu } from './ColorModeMenu.tsx'
+import { AppearanceMenu } from './AppearanceMenu.tsx'
 import { ConnectivityIndicator } from './ConnectivityIndicator.tsx'
 import { PendingChip } from './PendingChip.tsx'
 import { LanguageMenu } from './LanguageMenu.tsx'
@@ -34,7 +34,7 @@ export function TopBar({
 }) {
   const { t } = useTranslation()
   // A phone has no room for everything in one row: the badges shrink to their icons (their names stay for screen readers), and the
-  // colour mode and language menus move into the navigation drawer (`DrawerSettings`) while there is one to open.
+  // appearance and language menus move into the navigation drawer (`DrawerSettings`) while there is one to open.
   const compact = useMediaQuery(MEDIA.narrow, false)
   const menusInDrawer = compact && showMenu
 
@@ -81,7 +81,7 @@ export function TopBar({
       {showMenu && <NotificationBell />}
       {!menusInDrawer && (
         <>
-          <ColorModeMenu />
+          <AppearanceMenu />
           <LanguageMenu />
         </>
       )}
@@ -89,13 +89,13 @@ export function TopBar({
   )
 }
 
-/** The colour mode and language menus in the navigation drawer, on a phone, where the top bar has no room for them. */
+/** The appearance and language menus in the navigation drawer, on a phone, where the top bar has no room for them. */
 export function DrawerSettings() {
   const compact = useMediaQuery(MEDIA.narrow, false)
   if (!compact) return null
   return (
     <Stack direction="row" sx={{ gap: 1, mt: 2 }}>
-      <ColorModeMenu />
+      <AppearanceMenu />
       <LanguageMenu />
     </Stack>
   )

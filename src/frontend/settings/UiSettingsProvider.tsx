@@ -3,10 +3,12 @@ import { useMutation, useQuery } from '@apollo/client/react'
 import { useColorScheme } from '@mui/material/styles'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ResetGridSettingsDocument, SaveGridSettingsDocument, UiSettingsDocument, UpdateUiSettingsDocument, type ColorMode } from '../gql/generated.ts'
+import { ResetGridSettingsDocument, SaveGridSettingsDocument, UiSettingsDocument, UpdateUiSettingsDocument, type ColorMode, type SurfaceStyle } from '../gql/generated.ts'
 import { useStoredState } from '../hooks/useStoredState.ts'
 import { LANGUAGES } from '../i18n/index.ts'
 import type { ColorModeChoice } from '../theme/colorMode.ts'
+import type { SurfaceChoice } from '../theme/surface.ts'
+import { setSurface as applySurface } from '../theme/surfaceStore.ts'
 import type { GridSaved } from './types.ts'
 import { UiSettingsContext, type UiSettingsApi } from './uiSettingsContext.ts'
 
@@ -15,6 +17,8 @@ const isBoolean = (value: unknown): value is boolean => typeof value === 'boolea
 /** The server's colour modes and MUI's. */
 const FROM_SERVER: Record<ColorMode, ColorModeChoice> = { LIGHT: 'light', DARK: 'dark', SYSTEM: 'system' }
 const TO_SERVER: Record<ColorModeChoice, ColorMode> = { light: 'LIGHT', dark: 'DARK', system: 'SYSTEM' }
+const SURFACE_FROM_SERVER: Record<SurfaceStyle, SurfaceChoice> = { GLOSSY: 'glossy', TRANSPARENT: 'transparent', OPAQUE: 'opaque' }
+const SURFACE_TO_SERVER: Record<SurfaceChoice, SurfaceStyle> = { glossy: 'GLOSSY', transparent: 'TRANSPARENT', opaque: 'OPAQUE' }
 
 /**
  * A settings save never bothers the user: the browser's copy applies whatever became of it. A request that failed is written to the console
@@ -57,7 +61,7 @@ function useSerialSaves() {
 }
 
 /**
- * What the UI remembers for the user (the sidebar, each grid, the language, the colour mode), on every device. The browser keeps a copy of everything
+ * What the UI remembers for the user (the sidebar, each grid, the language, the colour mode, the surfaces), on every device. The browser keeps a copy of everything
  * (localStorage, as before), so the first paint never waits; the server is asked once per session and wins when it answers, except for a
  * setting the user changed meanwhile. Nothing the server does not know about is pushed to it unprompted, and a failed save stays in the
  * browser only. Mount it with a `key` per user, so a newly signed-in user's settings win over what a visitor chose on the login screen.
@@ -71,6 +75,7 @@ export function UiSettingsProvider({ enabled, children }: { enabled: boolean; ch
   const navTouched = useRef(false) // changed in this session: the server's older value must not undo it
   const languageTouched = useRef(false)
   const colorModeTouched = useRef(false)
+  const surfaceTouched = useRef(false)
   const { data } = useQuery(UiSettingsDocument, { skip: !enabled, fetchPolicy: 'network-only' }) // never another user's cached answer
   const send = useSerialSaves()
   const [updateUi] = useMutation(UpdateUiSettingsDocument)
@@ -96,6 +101,10 @@ export function UiSettingsProvider({ enabled, children }: { enabled: boolean; ch
   useEffect(() => {
     if (server?.colorMode && !colorModeTouched.current) setMode(FROM_SERVER[server.colorMode])
   }, [server, setMode])
+  // ... and the surfaces (the class on <html> and the browser's copy).
+  useEffect(() => {
+    if (server?.surface && !surfaceTouched.current) applySurface(SURFACE_FROM_SERVER[server.surface])
+  }, [server])
 
   const setNavOpen = useCallback(
     (open: boolean) => {
@@ -116,6 +125,13 @@ export function UiSettingsProvider({ enabled, children }: { enabled: boolean; ch
     (mode: ColorModeChoice) => {
       colorModeTouched.current = true
       if (enabled) send('colorMode', () => updateUi({ variables: { input: { colorMode: TO_SERVER[mode] } } }))
+    },
+    [enabled, updateUi, send],
+  )
+  const setSurface = useCallback(
+    (surface: SurfaceChoice) => {
+      surfaceTouched.current = true
+      if (enabled) send('surface', () => updateUi({ variables: { input: { surface: SURFACE_TO_SERVER[surface] } } }))
     },
     [enabled, updateUi, send],
   )
@@ -144,8 +160,8 @@ export function UiSettingsProvider({ enabled, children }: { enabled: boolean; ch
   )
 
   const value = useMemo<UiSettingsApi>(
-    () => ({ server, navOpen, setNavOpen, setLanguage, setColorMode, grid, saveGrid, resetGrid }),
-    [server, navOpen, setNavOpen, setLanguage, setColorMode, grid, saveGrid, resetGrid],
+    () => ({ server, navOpen, setNavOpen, setLanguage, setColorMode, setSurface, grid, saveGrid, resetGrid }),
+    [server, navOpen, setNavOpen, setLanguage, setColorMode, setSurface, grid, saveGrid, resetGrid],
   )
   return <UiSettingsContext.Provider value={value}>{children}</UiSettingsContext.Provider>
 }

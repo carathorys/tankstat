@@ -70,7 +70,8 @@ const cardSx = (theme: Theme) => ({
   },
   '&:has(:focus-visible)': { transform: 'translateY(-2px)', boxShadow: 'var(--tk-shadow-5)' },
   '&:has(:focus-visible) .card-panel, &[data-open] .card-panel': { transform: 'translateY(0)' },
-  '& .vehicle-card-stats-container': { background: 'rgba(0, 0, 0, 0.35)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' },
+  // The figures over the picture: a dark scrim drawn as the surfaces are (theme/components.ts SURFACE_TOKENS).
+  '& .vehicle-card-stats-container': { background: 'var(--tk-scrim)', backdropFilter: 'var(--tk-scrim-filter)', WebkitBackdropFilter: 'var(--tk-scrim-filter)' },
   '@media (prefers-reduced-motion: reduce)': {
     '&, & .card-panel': { transition: 'none' },
     '&:hover, &:has(:focus-visible)': { transform: 'none' },

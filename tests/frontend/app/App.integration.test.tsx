@@ -170,12 +170,12 @@ it('on a phone the top bar fits: badges shrink to their icons and the colour mod
   expect(pending).toHaveTextContent(/^1$/) // only the number shows
   expect(within(bar).getByText('Offline')).toBeInTheDocument() // there for screen readers, only the icon shows
   expect(within(bar).queryByText('admin')).not.toBeInTheDocument()
-  expect(within(bar).queryByRole('button', { name: 'Colour mode' })).not.toBeInTheDocument()
+  expect(within(bar).queryByRole('button', { name: 'Appearance' })).not.toBeInTheDocument()
   expect((await axe(bar, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([])
 
   await ui.click(within(bar).getByRole('button', { name: 'Show menu' }))
   const drawer = await screen.findByRole('dialog')
-  expect(within(drawer).getByRole('button', { name: 'Colour mode' })).toBeInTheDocument()
+  expect(within(drawer).getByRole('button', { name: 'Appearance' })).toBeInTheDocument()
   expect(within(drawer).getByRole('button', { name: 'Language' })).toBeInTheDocument()
 })
 
@@ -191,7 +191,7 @@ it('on a desktop the top bar keeps every badge in words, and the menus', async (
   const bar = screen.getByRole('banner')
   expect(await within(bar).findByRole('link', { name: '1 change waiting to sync' })).toHaveTextContent('1 change waiting to sync')
   expect(within(bar).getByText('admin')).toBeVisible()
-  expect(within(bar).getByRole('button', { name: 'Colour mode' })).toBeInTheDocument()
+  expect(within(bar).getByRole('button', { name: 'Appearance' })).toBeInTheDocument()
 })
 
 it('has a skip link, the landmarks and a labelled navigation', async () => {
