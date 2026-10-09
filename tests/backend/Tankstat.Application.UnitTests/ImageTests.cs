@@ -255,6 +255,32 @@ public class ImageServiceTests
     }
 
     [Fact]
+    public async Task TwoPictureChangesOfAVehicleAtOnce_TakeTurns_SoNoPictureIsLeftBehind()
+    {
+        var s = await Setup();
+        await s.W.ImageService.SetVehiclePictureAsync(s.Car.Id, Jpeg(), default);
+        var saving = new TaskCompletionSource();
+        var held = new TaskCompletionSource();
+        s.W.ImageStore.BeforeSave = () =>
+        {
+            s.W.ImageStore.BeforeSave = null;
+            saving.SetResult();
+            return held.Task;
+        };
+
+        var first = s.W.ImageService.SetVehiclePictureAsync(s.Car.Id, Jpeg(1), default); // held while its file is saved
+        await saving.Task;
+        var second = s.W.ImageService.SetVehiclePictureAsync(s.Car.Id, Jpeg(2), default);
+        held.SetResult();
+        await Task.WhenAll(first, second);
+
+        var picture = (await s.W.Vehicles.FindAsync(s.Car.Id, default))!.PictureImageId;
+        Assert.Equal(second.Result, picture);
+        Assert.Equal([picture!.Value], s.W.ImageStore.Files.Keys); // the first one's file went when the second replaced it
+        Assert.Equal([picture.Value], s.W.Images.Items.Keys);
+    }
+
+    [Fact]
     public async Task ReplacingAPicture_RemovesTheOldFileFromTheSameFolder()
     {
         var s = await Setup();

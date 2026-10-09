@@ -27,7 +27,8 @@ public sealed class ImageService(
     IImageStore store, IImageRepository images, IUserRepository users, IVehicleRepository vehicles, AccessService access, LogPhotoAccess logPhotos, IPhotoDraftRepository drafts, TimeProvider clock,
     ILogger<ImageService> logger)
 {
-    // One picture change of a vehicle at a time (a change from a device and the same one sent again).
+    // One picture change of a vehicle at a time within this process (an upload, a removal, a change from a device and the same one sent
+    // again): each reads the picture it replaces and deletes it, and the picture is not versioned, so nothing else would catch a race.
     private static readonly StripedLocks PictureLocks = new();
 
     public async Task<Guid> SetAvatarAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
@@ -53,7 +54,7 @@ public sealed class ImageService(
         logger.LogDebug("User {UserId} removed their avatar", user.Id);
     }
 
-    public async Task<Guid> SetVehiclePictureAsync(Guid vehicleId, ReadOnlyMemory<byte> data, CancellationToken ct)
+    public Task<Guid> SetVehiclePictureAsync(Guid vehicleId, ReadOnlyMemory<byte> data, CancellationToken ct) => OnePictureChangeAsync(vehicleId, ct, async () =>
     {
         var vehicle = await EditableVehicleAsync(vehicleId, ct);
         var previous = vehicle.PictureImageId;
@@ -64,7 +65,7 @@ public sealed class ImageService(
         await DeleteQuietlyAsync(previous, ct);
         logger.LogDebug("The picture of vehicle {VehicleId} is now image {ImageId}", vehicle.Id, id);
         return id;
-    }
+    });
 
     /// <summary>
     /// Makes one of the user's drafts (uploaded for this vehicle: <c>PUT /media/vehicles/{id}/photo-drafts</c>) the vehicle's picture: how a
@@ -72,44 +73,34 @@ public sealed class ImageService(
     /// changes nothing (a change sent again); a draft that is not the user's, is of another vehicle or expired is refused. The previous
     /// picture is deleted, as when a picture is uploaded.
     /// </summary>
-    public async Task<Guid> SetVehiclePictureFromDraftAsync(Guid vehicleId, Guid draftId, CancellationToken ct)
+    public Task<Guid> SetVehiclePictureFromDraftAsync(Guid vehicleId, Guid draftId, CancellationToken ct) => OnePictureChangeAsync(vehicleId, ct, async () =>
     {
-        if ((await EditableVehicleAsync(vehicleId, ct)).PictureImageId == draftId) return draftId;
-        var gate = PictureLocks.For(vehicleId);
-        await gate.WaitAsync(ct);
+        // Looked at under the lock: the same draft sent twice at once must not have its file moved back.
+        var vehicle = await EditableVehicleAsync(vehicleId, ct);
+        if (vehicle.PictureImageId == draftId) return draftId;
+        var me = await access.RequirePrincipalAsync(ct);
+        if (await drafts.FindAsync(draftId, ct) is not { } draft || !draft.UsableBy(me.Id, vehicle.Id, clock.GetUtcNow()))
+            throw new DomainException("photo.draftExpired", "A photo is no longer available; add it again.", new { Id = draftId });
+
+        var previous = vehicle.PictureImageId;
+        await MoveAsync(draft.Id, ImageFolders.VehiclePicture(vehicle.Id), CancellationToken.None);
         try
         {
-            // Looked at again under the lock: the same draft sent twice at once must not have its file moved back.
-            var vehicle = await EditableVehicleAsync(vehicleId, ct);
-            if (vehicle.PictureImageId == draftId) return draftId;
-            var me = await access.RequirePrincipalAsync(ct);
-            if (await drafts.FindAsync(draftId, ct) is not { } draft || !draft.UsableBy(me.Id, vehicle.Id, clock.GetUtcNow()))
-                throw new DomainException("photo.draftExpired", "A photo is no longer available; add it again.", new { Id = draftId });
-
-            var previous = vehicle.PictureImageId;
-            await MoveAsync(draft.Id, ImageFolders.VehiclePicture(vehicle.Id), CancellationToken.None);
-            try
-            {
-                vehicle.SetPicture(draft.Id);
-                await vehicles.UpdateAsync(vehicle, CancellationToken.None);
-            }
-            catch
-            {
-                await MoveBackQuietlyAsync(draft.Id, ImageFolders.PhotoDrafts(vehicle.Id));
-                throw;
-            }
-            await drafts.RemoveAsync([draft.Id], CancellationToken.None); // its row only: the file lives on as the picture
-            await DeleteQuietlyAsync(previous, CancellationToken.None);
-            logger.LogDebug("The picture of vehicle {VehicleId} is now draft {ImageId}", vehicle.Id, draft.Id);
-            return draft.Id;
+            vehicle.SetPicture(draft.Id);
+            await vehicles.UpdateAsync(vehicle, CancellationToken.None);
         }
-        finally
+        catch
         {
-            gate.Release();
+            await MoveBackQuietlyAsync(draft.Id, ImageFolders.PhotoDrafts(vehicle.Id));
+            throw;
         }
-    }
+        await drafts.RemoveAsync([draft.Id], CancellationToken.None); // its row only: the file lives on as the picture
+        await DeleteQuietlyAsync(previous, CancellationToken.None);
+        logger.LogDebug("The picture of vehicle {VehicleId} is now draft {ImageId}", vehicle.Id, draft.Id);
+        return draft.Id;
+    });
 
-    public async Task RemoveVehiclePictureAsync(Guid vehicleId, CancellationToken ct)
+    public Task RemoveVehiclePictureAsync(Guid vehicleId, CancellationToken ct) => OnePictureChangeAsync(vehicleId, ct, async () =>
     {
         var vehicle = await EditableVehicleAsync(vehicleId, ct);
         var previous = vehicle.PictureImageId;
@@ -117,7 +108,8 @@ public sealed class ImageService(
         await vehicles.UpdateAsync(vehicle, ct);
         await DeleteQuietlyAsync(previous, ct);
         logger.LogDebug("The picture of vehicle {VehicleId} was removed", vehicle.Id);
-    }
+        return true;
+    });
 
     /// <summary>The picture if the current user may see it; null for unknown pictures and for ones they may not see.</summary>
     public async Task<ImageContent?> OpenAsync(Guid imageId, CancellationToken ct)
@@ -220,6 +212,20 @@ public sealed class ImageService(
         if (vehicle is null || level < AccessLevel.View) throw new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId });
         if (level < AccessLevel.Edit) throw new ForbiddenException("vehicle.viewOnly", "You may only view this vehicle.");
         return vehicle;
+    }
+
+    private static async Task<T> OnePictureChangeAsync<T>(Guid vehicleId, CancellationToken ct, Func<Task<T>> change)
+    {
+        var gate = PictureLocks.For(vehicleId);
+        await gate.WaitAsync(ct);
+        try
+        {
+            return await change();
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     /// <summary>Validates, then writes the file first and the row second; a failure in between removes the file again.</summary>
