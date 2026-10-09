@@ -71,9 +71,10 @@ public sealed class ImageService(
     /// Makes one of the user's drafts (uploaded for this vehicle: <c>PUT /media/vehicles/{id}/photo-drafts</c>) the vehicle's picture: how a
     /// picture chosen while the server was out of reach reaches it (<c>syncChanges</c>, <c>setVehiclePicture</c>). The same draft again
     /// changes nothing (a change sent again); a draft that is not the user's, is of another vehicle or expired is refused. The previous
-    /// picture is deleted, as when a picture is uploaded.
+    /// picture is deleted, as when a picture is uploaded. A parked change applied by someone else (Edit on the vehicle) names its sender as
+    /// <paramref name="uploadedBy"/>, whose draft it is.
     /// </summary>
-    public Task<Guid> SetVehiclePictureFromDraftAsync(Guid vehicleId, Guid draftId, CancellationToken ct) => OnePictureChangeAsync(vehicleId, ct, async () =>
+    public Task<Guid> SetVehiclePictureFromDraftAsync(Guid vehicleId, Guid draftId, CancellationToken ct, Guid? uploadedBy = null) => OnePictureChangeAsync(vehicleId, ct, async () =>
     {
         // Looked at under the lock: the same draft sent twice at once must not have its file moved back.
         var vehicle = await EditableVehicleAsync(vehicleId, ct);
@@ -82,8 +83,8 @@ public sealed class ImageService(
             await drafts.RemoveAsync([draftId], CancellationToken.None); // a row the first try may have left behind
             return draftId;
         }
-        var me = await access.RequirePrincipalAsync(ct);
-        if (await drafts.FindAsync(draftId, ct) is not { } draft || !draft.UsableBy(me.Id, vehicle.Id, clock.GetUtcNow()))
+        var uploader = uploadedBy ?? (await access.RequirePrincipalAsync(ct)).Id;
+        if (await drafts.FindAsync(draftId, ct) is not { } draft || !draft.UsableBy(uploader, vehicle.Id, clock.GetUtcNow()))
             throw new DomainException("photo.draftExpired", "A photo is no longer available; add it again.", new { Id = draftId });
 
         var previous = vehicle.PictureImageId;

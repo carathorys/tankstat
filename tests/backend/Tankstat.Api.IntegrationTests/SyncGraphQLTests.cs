@@ -230,6 +230,23 @@ public class SyncGraphQLTests : IDisposable
     }
 
     [Fact]
+    public async Task APhotoParkedForItsSender_IsAttachedFromTheSendersDraft_WhenSomeoneWhoMayEditTheLogsAppliesIt()
+    {
+        var (people, car, log) = await SharedLog(_app);
+        var draft = await UploadDraft(people.Bob, car);
+        await people.Alice.Gql("mutation($id: UUID!) { deleteRefueling(id: $id) { id } }", new { id = log });
+        var change = Guid.NewGuid();
+        var sent = await Send(people.Bob, new { id = change, addRefuelingPhoto = new { logId = log, draftId = draft } }); // to a log in the trash
+        Assert.Equal("PARKED", sent.GetProperty("results")[0].GetProperty("status").GetString());
+        await people.Alice.Gql("mutation($id: UUID!) { restoreRefueling(id: $id) { id } }", new { id = log });
+
+        var applied = await people.Alice.Gql(Resolve, new { i = new { id = change, action = "APPLY" } });
+
+        Assert.Equal("APPLIED", applied.Data().GetProperty("resolveSyncChange").GetProperty("status").GetString());
+        Assert.Equal([draft], await Photos(people.Alice, log));
+    }
+
+    [Fact]
     public async Task EveryKindOfChange_IsAppliedThroughSync_InTheOrderItWasMade()
     {
         var alice = (await _app.Users()).Alice;
@@ -388,7 +405,7 @@ public class SyncGraphQLTests : IDisposable
     }
 
     [Fact]
-    public async Task AVehiclesPictureChosenOffline_IsSetFromItsDraftOnce_RemovedLater_AndRefusedForWhoeverMayNotChangeTheVehicle()
+    public async Task AVehiclesPictureChosenOffline_IsSetFromItsDraftOnce_RemovedLater_AndParkedForWhoeverMayNotChangeTheVehicle_UntilTheOwnerAppliesIt()
     {
         var people = await _app.Users();
         var car = (await people.Alice.Gql("mutation { addVehicle(input: { name: \"Golf\", fuelType: PETROL }) { id } }")).Data().GetProperty("addVehicle").GetProperty("id").GetString()!;
@@ -407,9 +424,15 @@ public class SyncGraphQLTests : IDisposable
 
         // Bob may edit the car's logs (and so upload drafts), not the car: his picture is parked with the reason.
         await people.Alice.Gql("mutation($i: SetLogAccessInput!) { setVehicleLogAccess(input: $i) }", new { i = new { vehicleId = car, userId = people.BobId, level = "EDIT" } });
-        var bobs = await Send(people.Bob, new { id = Guid.NewGuid(), setVehiclePicture = new { vehicleId = car, draftId = await UploadDraft(people.Bob, car) } });
+        var (bobsChange, bobsDraft) = (Guid.NewGuid(), await UploadDraft(people.Bob, car));
+        var bobs = await Send(people.Bob, new { id = bobsChange, setVehiclePicture = new { vehicleId = car, draftId = bobsDraft } });
         Assert.Equal(("PARKED", "vehicle.viewOnly"),
             (bobs.GetProperty("results")[0].GetProperty("status").GetString(), bobs.GetProperty("results")[0].GetProperty("reason").GetProperty("key").GetString()));
+
+        // Alice, who may change the car, applies it anyway: it takes Bob's draft.
+        var applied = await people.Alice.Gql(Resolve, new { i = new { id = bobsChange, action = "APPLY" } });
+        Assert.Equal("APPLIED", applied.Data().GetProperty("resolveSyncChange").GetProperty("status").GetString());
+        Assert.Equal($"/media/{Guid.Parse(bobsDraft):N}", await Picture());
 
         var removed = await Send(people.Alice, new { id = Guid.NewGuid(), removeVehiclePicture = car });
         Assert.Equal("APPLIED", removed.GetProperty("results")[0].GetProperty("status").GetString());

@@ -53,20 +53,21 @@ public sealed class PhotoDraftService(
     }
 
     /// <summary>
-    /// The drafts to attach to a new log of the vehicle: each must be the current user's, for that vehicle and not expired, and together
-    /// they must fit on one log. Checked before the log is saved, so a bad list saves nothing.
+    /// The drafts to attach to a new log of the vehicle: each must be the current user's (or <paramref name="uploadedBy"/>'s: a parked
+    /// change applied by someone else takes its sender's), for that vehicle and not expired, and together they must fit on one log.
+    /// Checked before the log is saved, so a bad list saves nothing.
     /// </summary>
-    public async Task<IReadOnlyList<PhotoDraft>> RequireAttachableAsync(Guid vehicleId, IReadOnlyCollection<Guid>? ids, CancellationToken ct)
+    public async Task<IReadOnlyList<PhotoDraft>> RequireAttachableAsync(Guid vehicleId, IReadOnlyCollection<Guid>? ids, CancellationToken ct, Guid? uploadedBy = null)
     {
         if (ids is null || ids.Count == 0) return [];
         var wanted = ids.Distinct().ToList();
         if (wanted.Count > LogPhoto.MaxPerLog)
             throw new DomainException("photo.tooMany", $"A log can have at most {LogPhoto.MaxPerLog} photos.", new { Max = LogPhoto.MaxPerLog });
 
-        var me = await access.RequirePrincipalAsync(ct);
+        var uploader = uploadedBy ?? (await access.RequirePrincipalAsync(ct)).Id;
         var now = clock.GetUtcNow();
         var found = (await drafts.FindManyAsync(wanted, ct)).ToDictionary(d => d.Id);
-        return wanted.Select(id => found.GetValueOrDefault(id) is { } d && d.UsableBy(me.Id, vehicleId, now)
+        return wanted.Select(id => found.GetValueOrDefault(id) is { } d && d.UsableBy(uploader, vehicleId, now)
             ? d
             : throw new DomainException("photo.draftExpired", "A photo is no longer available; add it again.", new { Id = id })).ToList();
     }

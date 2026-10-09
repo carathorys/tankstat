@@ -150,13 +150,14 @@ public sealed class LogPhotoService(
     /// <summary>
     /// Makes one of the user's drafts a photo of a saved log (a photo added while offline, uploaded as a draft when the device synced):
     /// Edit on the log's vehicle, a draft of that vehicle that has not expired, and room on the log. A draft that is already this log's
-    /// photo is answered with its id. Returns the image id.
+    /// photo is answered with its id. Returns the image id. A parked change applied by someone else names its sender as
+    /// <paramref name="uploadedBy"/>, whose draft it is.
     /// </summary>
-    public async Task<Guid> AttachDraftAsync(LogType logType, Guid logId, Guid draftId, CancellationToken ct)
+    public async Task<Guid> AttachDraftAsync(LogType logType, Guid logId, Guid draftId, CancellationToken ct, Guid? uploadedBy = null)
     {
         var log = await logs.EditableAsync(logType, logId, ct);
         if (await photos.FindByImageAsync(draftId, ct) is { } attached && attached.LogType == logType && attached.LogId == logId) return draftId;
-        var draft = (await drafts.RequireAttachableAsync(log.Vehicle.Id, [draftId], ct)).Single();
+        var draft = (await drafts.RequireAttachableAsync(log.Vehicle.Id, [draftId], ct, uploadedBy)).Single();
 
         var gate = Locks.For(logId);
         await gate.WaitAsync(ct);
