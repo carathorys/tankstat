@@ -28,7 +28,7 @@ public sealed class ImageService(
     ILogger<ImageService> logger)
 {
     // One picture change of a vehicle at a time (a change from a device and the same one sent again).
-    private static readonly SemaphoreSlim[] PictureLocks = Enumerable.Range(0, 64).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
+    private static readonly StripedLocks PictureLocks = new();
 
     public async Task<Guid> SetAvatarAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
     {
@@ -75,7 +75,7 @@ public sealed class ImageService(
     public async Task<Guid> SetVehiclePictureFromDraftAsync(Guid vehicleId, Guid draftId, CancellationToken ct)
     {
         if ((await EditableVehicleAsync(vehicleId, ct)).PictureImageId == draftId) return draftId;
-        var gate = PictureLocks[(uint)vehicleId.GetHashCode() % PictureLocks.Length];
+        var gate = PictureLocks.For(vehicleId);
         await gate.WaitAsync(ct);
         try
         {

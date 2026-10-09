@@ -29,7 +29,7 @@ public sealed class LogPhotoService(
 
     // Uploads to one log are handled one at a time within this process, so the count check and the insert below are one step. Other
     // processes on the same database are covered by the re-check after the insert. Striped (by log id) so the locks do not pile up.
-    private static readonly SemaphoreSlim[] Locks = Enumerable.Range(0, 64).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
+    private static readonly StripedLocks Locks = new();
 
     /// <summary>Stores the picture (JPEG, PNG or WebP) as a new photo of the log and returns its image id.</summary>
     public async Task<Guid> AddAsync(LogType logType, Guid logId, ReadOnlyMemory<byte> data, CancellationToken ct)
@@ -37,7 +37,7 @@ public sealed class LogPhotoService(
         var log = await logs.EditableAsync(logType, logId, ct);
         var principal = await access.RequirePrincipalAsync(ct);
 
-        var gate = Locks[(uint)logId.GetHashCode() % Locks.Length];
+        var gate = Locks.For(logId);
         await gate.WaitAsync(ct);
         try
         {
@@ -101,7 +101,7 @@ public sealed class LogPhotoService(
         var attached = new List<Guid>();
         var now = clock.GetUtcNow();
         // One log at a time, like uploads: the count, the "attached already?" look and the insert are one step within this process.
-        var gate = Locks[(uint)logId.GetHashCode() % Locks.Length];
+        var gate = Locks.For(logId);
         await gate.WaitAsync(CancellationToken.None);
         try
         {
@@ -158,7 +158,7 @@ public sealed class LogPhotoService(
         if (await photos.FindByImageAsync(draftId, ct) is { } attached && attached.LogType == logType && attached.LogId == logId) return draftId;
         var draft = (await drafts.RequireAttachableAsync(log.Vehicle.Id, [draftId], ct)).Single();
 
-        var gate = Locks[(uint)logId.GetHashCode() % Locks.Length];
+        var gate = Locks.For(logId);
         await gate.WaitAsync(ct);
         try
         {
