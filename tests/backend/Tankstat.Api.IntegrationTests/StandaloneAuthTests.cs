@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Tankstat.Application.Auth;
 
 namespace Tankstat.Api.IntegrationTests;
 
@@ -316,6 +317,34 @@ public class StandaloneAuthTests : IDisposable
 
         Assert.True(known.Data().GetProperty("requestPasswordReset").GetBoolean());
         Assert.True(unknown.Data().GetProperty("requestPasswordReset").GetBoolean());
+    }
+
+    private sealed class RecordingEmail : IEmailSender
+    {
+        public List<string> To { get; } = [];
+        public bool IsConfigured => true;
+        public Task SendAsync(string to, string subject, string body, CancellationToken ct) { lock (To) To.Add(to); return Task.CompletedTask; }
+    }
+
+    [Fact]
+    public async Task PasswordReset_AskedAgainWithinTheCooldown_AnswersTheSame_ButSendsNothing()
+    {
+        var email = new RecordingEmail();
+        using var app = TestApp.Standalone(new() { ["Auth:PublicUrl"] = "https://tank.test" }, s => s.AddSingleton<IEmailSender>(email));
+        var c = app.NewClient();
+        await c.Gql("{ health { status } }");
+        app.Log.Clear(); // the start-up lines (the first administrator) are not what is tested
+
+        var first = await c.Gql("mutation { requestPasswordReset(email: \"root@example.com\") }");
+        var again = await c.Gql("mutation { requestPasswordReset(email: \"root@example.com\") }");
+
+        Assert.True(first.Data().GetProperty("requestPasswordReset").GetBoolean());
+        Assert.True(again.Data().GetProperty("requestPasswordReset").GetBoolean());
+        Assert.Equal(["root@example.com"], email.To);
+        var lines = app.Log.From("Tankstat.Application.Users.AuthService")
+            .Where(e => e.Values.ContainsKey("UserId") && e.Level == LogLevel.Information).ToList();
+        Assert.Single(lines, e => e.Values.ContainsKey("EmailSent"));
+        Assert.Single(lines, e => !e.Values.ContainsKey("EmailSent"));
     }
 
     [Fact]

@@ -11,8 +11,11 @@ public sealed class PasswordResetToken
     public DateTimeOffset ExpiresAt { get; private set; }
     public DateTimeOffset? UsedAt { get; private set; }
 
+    /// <summary>When it was issued: a self-service request within the cool-down after it issues nothing, and old rows are purged by it.</summary>
+    public DateTimeOffset IssuedAt { get; private set; }
+
     public static PasswordResetToken Issue(Guid userId, string secretHash, DateTimeOffset now, TimeSpan lifetime) =>
-        new() { Id = Guid.NewGuid(), UserId = userId, SecretHash = secretHash, ExpiresAt = now + lifetime };
+        new() { Id = Guid.NewGuid(), UserId = userId, SecretHash = secretHash, IssuedAt = now, ExpiresAt = now + lifetime };
 
     public bool IsUsable(DateTimeOffset now) => UsedAt is null && ExpiresAt > now;
 

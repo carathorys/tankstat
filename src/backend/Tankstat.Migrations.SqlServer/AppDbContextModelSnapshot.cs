@@ -799,6 +799,11 @@ namespace Tankstat.Migrations.SqlServer
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<DateTime>("IssuedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc));
+
                     b.Property<string>("SecretHash")
                         .IsRequired()
                         .HasMaxLength(128)
@@ -811,6 +816,8 @@ namespace Tankstat.Migrations.SqlServer
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("IssuedAt");
 
                     b.HasIndex("UserId");
 

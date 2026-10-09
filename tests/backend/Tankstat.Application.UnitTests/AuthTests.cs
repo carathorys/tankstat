@@ -1,8 +1,11 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tankstat.Application;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Users;
 using Tankstat.Domain;
 using Tankstat.Domain.Users;
+using Tankstat.TestSupport;
 
 namespace Tankstat.Application.UnitTests;
 
@@ -134,7 +137,7 @@ public class PasswordTests
 
         var mail = Assert.Single(w.Email.Sent);
         Assert.Equal("alice@x.co", mail.To);
-        var token = mail.Body.Split("resetToken=")[1].Split('\n')[0];
+        var token = LinkIn(mail);
         Assert.StartsWith("https://tank.test/?resetToken=", mail.Body[mail.Body.IndexOf("https", StringComparison.Ordinal)..]);
 
         await w.Auth.ResetPasswordAsync(token, "brand-new-password", default);
@@ -151,6 +154,171 @@ public class PasswordTests
         await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
 
         Assert.Empty(w.Email.Sent);
+        Assert.Empty(w.Tokens.Items); // a link nobody receives is not issued
+    }
+
+    [Fact]
+    public async Task RequestReset_WithoutSmtp_LeavesAnAdministratorsLinkAlone()
+    {
+        var w = new World(smtp: false);
+        var token = await IssueToken(w, "alice@x.co");
+        w.Clock.Advance(TimeSpan.FromMinutes(10)); // past the cool-down
+
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+
+        await w.Auth.ResetPasswordAsync(token, "brand-new-password", default);
+    }
+
+    private static string LinkIn((string To, string Subject, string Body) mail) => mail.Body.Split("resetToken=")[1].Split('\n')[0];
+
+    /// <summary>The lines about <paramref name="user"/>'s own requests that issued nothing (they carry no <c>EmailSent</c>).</summary>
+    private static List<LogEntry> Withheld(World w, User user) => w.Log.From<AuthService>()
+        .Where(e => Equals(e.Values.GetValueOrDefault("UserId"), user.Id) && !e.Values.ContainsKey("EmailSent")).ToList();
+
+    [Fact]
+    public async Task RequestReset_WithinCooldown_SendsNothingAndIssuesNothing()
+    {
+        var w = new World(smtp: true);
+        var alice = w.AddUser("alice@x.co");
+
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+        w.Clock.Advance(TimeSpan.FromMinutes(4));
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+        await w.Auth.RequestPasswordResetAsync("ALICE@x.co", default);
+
+        Assert.Single(w.Email.Sent);
+        Assert.Single(w.Tokens.Items);
+        var lines = Withheld(w, alice);
+        Assert.Equal(2, lines.Count);
+        Assert.All(lines, l => Assert.Equal(LogLevel.Information, l.Level));
+        await w.Auth.ResetPasswordAsync(LinkIn(w.Email.Sent[0]), "brand-new-password", default); // the first link still works
+    }
+
+    [Fact]
+    public async Task RequestReset_AfterCooldown_ReplacesTheOlderLink()
+    {
+        var w = new World(smtp: true);
+        w.AddUser("alice@x.co");
+
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+        w.Clock.Advance(TimeSpan.FromMinutes(5));
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+
+        Assert.Equal(2, w.Email.Sent.Count);
+        Assert.Single(w.Tokens.Items);
+        var refused = await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(LinkIn(w.Email.Sent[0]), "brand-new-password", default));
+        Assert.Equal("reset.invalid", refused.Key);
+        await w.Auth.ResetPasswordAsync(LinkIn(w.Email.Sent[1]), "brand-new-password", default);
+    }
+
+    [Fact]
+    public async Task AdminIssuedReset_IsNeverThrottled_AndReplacesOlderLinks()
+    {
+        var w = new World(smtp: true);
+        var alice = w.AddUser("alice@x.co");
+        w.Current.SignInAs(w.AddUser("root@x.co", admin: true));
+
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+        var first = await w.UserService.IssueResetAsync(alice.Id, default);
+        var second = await w.UserService.IssueResetAsync(alice.Id, default);
+
+        Assert.Equal(3, w.Email.Sent.Count);
+        Assert.Single(w.Tokens.Items);
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(LinkIn(w.Email.Sent[0]), "brand-new-password", default));
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(first.Token, "brand-new-password", default));
+        await w.Auth.ResetPasswordAsync(second.Token, "brand-new-password", default);
+    }
+
+    [Fact]
+    public async Task ExpiredTokens_ArePurgedOnTheNextIssue()
+    {
+        var w = new World(smtp: true);
+        var bob = w.AddUser("bob@x.co");
+        var carol = w.AddUser("carol@x.co");
+        w.AddUser("alice@x.co");
+
+        await w.Auth.RequestPasswordResetAsync("bob@x.co", default);
+        w.Clock.Advance(TimeSpan.FromHours(23)); // carol's link expires, but less than a day ago by the end
+        await w.Auth.RequestPasswordResetAsync("carol@x.co", default);
+        w.Clock.Advance(TimeSpan.FromHours(3)); // bob's expired more than a day ago
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+
+        Assert.DoesNotContain(w.Tokens.Items, t => t.UserId == bob.Id);
+        Assert.Contains(w.Tokens.Items, t => t.UserId == carol.Id);
+        Assert.Equal(2, w.Tokens.Items.Count);
+    }
+
+    [Fact]
+    public async Task ResetCooldownZero_TurnsItOff()
+    {
+        var w = new World(smtp: true, configure: o => o.Standalone.ResetCooldownMinutes = 0);
+        w.AddUser("alice@x.co");
+
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+
+        Assert.Equal(2, w.Email.Sent.Count);
+        Assert.Single(w.Tokens.Items); // still one live link
+    }
+
+    [Fact]
+    public async Task RequestReset_AfterTheMailServerFailed_TheNextRequestSendsALink()
+    {
+        var w = new World(smtp: true);
+        w.AddUser("alice@x.co");
+        w.Email.FailNext = 1;
+
+        await Assert.ThrowsAsync<EmailSendException>(() => w.Auth.RequestPasswordResetAsync("alice@x.co", default));
+        Assert.Empty(w.Tokens.Items); // the link that never went out is taken back, so it starts no cool-down
+        w.Clock.Advance(TimeSpan.FromMinutes(1));
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+
+        var mail = Assert.Single(w.Email.Sent);
+        await w.Auth.ResetPasswordAsync(LinkIn(mail), "brand-new-password", default);
+    }
+
+    [Fact]
+    public async Task RequestReset_ManyAtTheSameMoment_SendOneMail()
+    {
+        var w = new World(smtp: true);
+        w.AddUser("alice@x.co");
+        w.Tokens.Latency = TimeSpan.FromMilliseconds(10);
+
+        await Task.WhenAll(Enumerable.Range(0, 10).Select(_ => w.Auth.RequestPasswordResetAsync("alice@x.co", default)));
+
+        Assert.Single(w.Email.Sent);
+        Assert.Single(w.Tokens.Items);
+    }
+
+    [Fact]
+    public async Task RequestReset_ACooldownLongerThanALink_EndsWhenTheLinkExpires()
+    {
+        var w = new World(smtp: true, configure: o => o.Standalone.ResetCooldownMinutes = 1440);
+        w.AddUser("alice@x.co");
+
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+        w.Clock.Advance(TimeSpan.FromMinutes(59));
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default); // the 60-minute link still works: nothing is sent
+        w.Clock.Advance(TimeSpan.FromMinutes(2));
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default); // it expired: a new one
+
+        Assert.Equal(2, w.Email.Sent.Count);
+        await w.Auth.ResetPasswordAsync(LinkIn(w.Email.Sent[1]), "brand-new-password", default);
+    }
+
+    [Fact]
+    public async Task ResetPassword_RevokesTheUsersOtherLinks()
+    {
+        // One live link per user, but rows from before it, or two issues at once in two processes, can still leave two.
+        var w = new World();
+        var first = await IssueToken(w, "alice@x.co");
+        var earlier = w.Tokens.Items.Single();
+        var second = await w.UserService.IssueResetAsync(earlier.UserId, default);
+        w.Tokens.Items.Add(earlier);
+
+        await w.Auth.ResetPasswordAsync(second.Token, "brand-new-password", default);
+
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(first, "another-password-1", default));
     }
 
     private static async Task<string> IssueToken(World w, string email)
@@ -439,6 +607,22 @@ public class NoticeAndOptionsTests
             Oidc = { Authority = "https://id.test", ClientId = "c", ClientSecret = "s" },
         }).Succeeded);
     }
+
+    [Theory]
+    [InlineData(-1, false)]
+    [InlineData(0, true)]
+    [InlineData(1440, true)]
+    [InlineData(1441, false)]
+    public void Validation_LimitsTheResetCooldown(int minutes, bool valid) =>
+        Assert.Equal(valid, Validate(new AuthOptions { Standalone = { ResetCooldownMinutes = minutes } }).Succeeded);
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, true)]
+    [InlineData(43200, true)]
+    [InlineData(43201, false)]
+    public void Validation_LimitsTheResetLinkLifetime(int minutes, bool valid) =>
+        Assert.Equal(valid, Validate(new AuthOptions { Standalone = { ResetTokenMinutes = minutes } }).Succeeded);
 
     [Fact]
     public void Validation_RequiresTrustedProxies_ForProxyMode()

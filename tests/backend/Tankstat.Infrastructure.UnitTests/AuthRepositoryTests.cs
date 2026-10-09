@@ -85,6 +85,31 @@ public class AuthRepositoryTests
     }
 
     [Fact]
+    public async Task ResetTokens_KnowWhenTheyWereIssued_AndTheStaleOnesAreDeleted()
+    {
+        await using var db = new TestDatabase();
+        var alice = User.CreateLocal("a@x.co", null, false);
+        var bob = User.CreateLocal("b@x.co", null, false);
+        await db.Get<IUserRepository>().AddAsync(alice, default);
+        await db.Get<IUserRepository>().AddAsync(bob, default);
+        var repo = db.Get<IPasswordResetTokenRepository>();
+        var now = new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+        var old = PasswordResetToken.Issue(alice.Id, "hash", now.AddDays(-3), TimeSpan.FromHours(1));
+        var recent = PasswordResetToken.Issue(alice.Id, "hash", now.AddMinutes(-2), TimeSpan.FromHours(1));
+        var bobs = PasswordResetToken.Issue(bob.Id, "hash", now.AddHours(-2), TimeSpan.FromHours(1));
+        foreach (var t in new[] { old, recent, bobs }) await repo.AddAsync(t, default);
+
+        Assert.Equal(recent.IssuedAt, (await repo.FindAsync(recent.Id, default))!.IssuedAt);
+        Assert.Equal(recent.IssuedAt, await repo.LatestIssuedAtAsync(alice.Id, default));
+        Assert.Null(await repo.LatestIssuedAtAsync(Guid.NewGuid(), default));
+
+        Assert.Equal(1, await repo.DeleteStaleAsync(now.AddDays(-1), default));
+        Assert.Null(await repo.FindAsync(old.Id, default));
+        Assert.NotNull(await repo.FindAsync(recent.Id, default));
+        Assert.NotNull(await repo.FindAsync(bobs.Id, default));
+    }
+
+    [Fact]
     public async Task Grants_RoundTrip_AreUniquePerPair_AndRemovable()
     {
         await using var db = new TestDatabase();

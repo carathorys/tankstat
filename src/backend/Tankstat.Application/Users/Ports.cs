@@ -23,8 +23,14 @@ public interface IPasswordResetTokenRepository
     Task AddAsync(PasswordResetToken token, CancellationToken ct);
     Task UpdateAsync(PasswordResetToken token, CancellationToken ct);
 
-    /// <summary>Deletes every outstanding token of the user (a new password makes earlier links worthless).</summary>
+    /// <summary>Deletes every outstanding token of the user (a new password makes earlier links worthless, a new link replaces them).</summary>
     Task RemoveForUserAsync(Guid userId, CancellationToken ct);
+
+    /// <summary>When the user's most recent token was issued, or null when they have none.</summary>
+    Task<DateTimeOffset?> LatestIssuedAtAsync(Guid userId, CancellationToken ct);
+
+    /// <summary>Deletes every token issued before <paramref name="before"/>, whoever it belongs to; returns how many.</summary>
+    Task<int> DeleteStaleAsync(DateTimeOffset before, CancellationToken ct);
 }
 
 /// <summary>What happens to the data a deleted user owns.</summary>

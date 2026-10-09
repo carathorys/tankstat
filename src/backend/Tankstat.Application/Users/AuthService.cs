@@ -80,7 +80,10 @@ public sealed class AuthService(
         return user;
     }
 
-    /// <summary>Always succeeds from the caller's view, whether or not the e-mail is registered.</summary>
+    /// <summary>
+    /// Always succeeds from the caller's view, whether or not the e-mail is registered. E-mails a link only when SMTP is set up and the
+    /// account's latest link is older than the cool-down (or expired), so the endpoint cannot be used to flood a mailbox.
+    /// </summary>
     public async Task RequestPasswordResetAsync(string? email, CancellationToken ct)
     {
         RequireMode(AuthMode.Standalone);
@@ -90,7 +93,19 @@ public sealed class AuthService(
             logger.LogInformation("A password reset was requested for an unknown or disabled account");
             return;
         }
-        var issued = await resets.IssueAsync(user, sendEmail: true, ct);
+        // Answered the same way as every other request, so the caller learns nothing; only the log says why nothing went out.
+        if (!resets.CanEmail)
+        {
+            // A link nobody receives would only replace one an administrator handed over.
+            logger.LogInformation("User {UserId} requested a password reset, but no e-mail can be sent; nothing was issued", user.Id);
+            return;
+        }
+        var issued = await resets.IssueUnlessCoolingDownAsync(user, ct);
+        if (issued is null)
+        {
+            logger.LogInformation("User {UserId} requested a password reset within the cool-down of their latest link; nothing was sent", user.Id);
+            return;
+        }
         logger.LogInformation("User {UserId} requested a password reset (e-mail sent: {EmailSent})", user.Id, issued.EmailSent);
     }
 

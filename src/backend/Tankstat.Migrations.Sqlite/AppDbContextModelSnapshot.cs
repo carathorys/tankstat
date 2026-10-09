@@ -794,6 +794,11 @@ namespace Tankstat.Migrations.Sqlite
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime>("IssuedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc));
+
                     b.Property<string>("SecretHash")
                         .IsRequired()
                         .HasMaxLength(128)
@@ -806,6 +811,8 @@ namespace Tankstat.Migrations.Sqlite
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("IssuedAt");
 
                     b.HasIndex("UserId");
 

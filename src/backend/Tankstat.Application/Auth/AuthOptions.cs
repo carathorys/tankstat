@@ -55,6 +55,9 @@ public sealed class StandaloneOptions
     public int LockoutMinutes { get; set; } = 15;
     public int ResetTokenMinutes { get; set; } = 60;
 
+    /// <summary>How long after a link was issued a user's own request for another one sends nothing (0 = no limit).</summary>
+    public int ResetCooldownMinutes { get; set; } = 5;
+
     /// <summary>Lets administrators set a user's password directly (otherwise they can only issue reset links). Off by default.</summary>
     public bool AllowAdminSetPassword { get; set; }
 }
