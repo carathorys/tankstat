@@ -1,10 +1,20 @@
 import type { ApolloClient } from '@apollo/client'
-import { OfflineChangesDocument, OfflineSettingsDocument, VehicleDefaultsDocument, WelcomeDocument, type OfflineChangesQuery } from '../gql/generated.ts'
+import { fetchSignedIn } from '../auth/refresh.ts'
+import {
+  OfflineChangesDocument,
+  OfflineSettingsDocument,
+  SessionDocument,
+  VehicleDefaultsDocument,
+  WelcomeDocument,
+  type OfflineChangesQuery,
+  type SessionQuery,
+} from '../gql/generated.ts'
 import { HOME_PAGE_SIZE } from '../homePaging.ts'
 import { connectivity } from './connectivity.ts'
 import { deviceData } from './deviceData.ts'
 import type { LogKind, LogRow, PullCursor, RowStore, VehicleRow } from './deviceStorage.ts'
 import { isConnectionFailure } from './errors.ts'
+import { keptPictures, pictureIdOf } from './keptPictures.ts'
 import { DEFAULT_RULE, fromDate, narrower } from './offlineWindow.ts'
 import { snapshotKey } from './snapshotPolicy.ts'
 
@@ -21,6 +31,9 @@ export const LAST_PULL_KEY = 'meta:lastPull'
 
 /** The home list the download covers, like the Arrange dialog: the user's vehicles up to the server's page limit. */
 export const MAX_VEHICLES = 200
+
+/** How many pictures download at the same time. */
+const PICTURE_CONCURRENCY = 2
 
 type Page = OfflineChangesQuery['offlineChanges']
 
@@ -41,6 +54,10 @@ export interface PullDeps {
   pageSize?: number
   /** How many vehicles download at the same time. */
   concurrency?: number
+  /** Asks the server for a picture (`/media/<id>`): signed in, so a request after the access cookie ran out is sent again after a refresh. */
+  fetchPicture?: (url: string) => Promise<Response>
+  /** Told when the pictures kept changed (the screens show the new ones). */
+  onPictures?: () => void
 }
 
 /**
@@ -53,10 +70,19 @@ export interface PullDeps {
  *    (`resync`); otherwise only **what changed** since the last one's watermark, whatever its date, plus what was removed for good. A
  *    window that shrank drops the older logs here and downloads nothing again. Each page is stored before the next is asked, and a full
  *    download goes on from where it stopped; at its end the logs it did not bring again are removed. The vehicle's details and schedules
- *    come with the first page and are kept as the answers of `VehicleDetails` and `RecurringExpenses`.
+ *    come with the first page and are kept as the answers of `VehicleDetails` and `RecurringExpenses`;
+ * 4. the pictures the screens show of it (`keepPictures`), last because they matter least.
  * One run at a time; a run asked for meanwhile follows it. A lost connection ends the run (the next one goes on from the cursors).
  */
-export function createPullEngine({ client, device = deviceData, now = () => new Date(), pageSize = PAGE_SIZE, concurrency = 2 }: PullDeps) {
+export function createPullEngine({
+  client,
+  device = deviceData,
+  now = () => new Date(),
+  pageSize = PAGE_SIZE,
+  concurrency = 2,
+  fetchPicture = (url) => fetchSignedIn(url, { credentials: 'same-origin' }),
+  onPictures = keptPictures.refresh,
+}: PullDeps) {
   let state: PullState = { status: 'idle', vehiclesDone: 0, vehiclesTotal: 0, lastPullAt: null, interrupted: false }
   const listeners = new Set<() => void>()
   const set = (next: Partial<PullState>) => {
@@ -163,6 +189,66 @@ export function createPullEngine({ client, device = deviceData, now = () => new 
     return fresh
   }
 
+  /** The signed-in user's avatar, from the answer that named them (none when sign-in is off). */
+  async function ownAvatar(): Promise<unknown> {
+    try {
+      const cached = client.readQuery({ query: SessionDocument })
+      if (cached) return cached.session.user?.avatarUrl
+    } catch {
+      // Not in the cache in a shape that can be read: the answer kept on the device says the same.
+    }
+    return ((await device.read(snapshotKey('Session', undefined)))?.data as SessionQuery | undefined)?.session.user?.avatarUrl
+  }
+
+  /**
+   * Keeps the pictures the screens show of what was downloaded, for offline use (`keptPictures.ts`): the vehicles' pictures, their owners'
+   * avatars and the user's own. An image never changes under its id, so one kept is never asked for again; those no longer shown go (a
+   * vehicle dropped from the list takes its picture along). A picture the server does not give is left out until the next run; a lost
+   * connection or a full storage ends this step, never the download: the logs are what matter offline.
+   */
+  async function keepPictures(rows: RowStore) {
+    sameAccount()
+    const wanted = new Set<string>()
+    const want = (url: unknown) => {
+      const id = typeof url === 'string' ? pictureIdOf(url) : null
+      if (id) wanted.add(id)
+    }
+    for (const vehicle of await rows.vehicles()) {
+      want(vehicle.pictureUrl)
+      want((vehicle.owner as { avatarUrl?: unknown } | null | undefined)?.avatarUrl)
+    }
+    want(await ownAvatar())
+    const kept = new Set(await rows.pictureIds())
+    const unused = [...kept].filter((id) => !wanted.has(id))
+    const queue = [...wanted].filter((id) => !kept.has(id))
+    if (unused.length === 0 && queue.length === 0) return
+    let full = false
+    const worker = async () => {
+      for (let id = queue.shift(); id && !full; id = queue.shift()) {
+        const response = await fetchPicture(`/media/${id}`)
+        if (!response.ok) continue // gone, or no longer to be seen: asked again next time
+        const blob = await response.blob()
+        sameAccount()
+        try {
+          await rows.putPicture({ id, type: blob.type || response.headers.get('Content-Type') || '', bytes: await blob.arrayBuffer(), keptAt: Date.now() })
+        } catch (error) {
+          if ((error as { name?: unknown } | null)?.name !== 'QuotaExceededError') throw error
+          full = true
+          console.warn('The device has no room for more pictures; the others show when the server can be reached.')
+        }
+      }
+    }
+    try {
+      await rows.deletePictures(unused)
+      await Promise.all(Array.from({ length: Math.min(PICTURE_CONCURRENCY, queue.length) }, worker))
+    } catch (error) {
+      if (error instanceof AccountChanged) throw error
+      if (!isConnectionFailure(error)) console.warn('Keeping the pictures for offline use failed; the next download tries again.', error)
+    } finally {
+      onPictures()
+    }
+  }
+
   async function pullVehicle(rows: RowStore, vehicleId: string, rule: string) {
     const from = fromDate(rule, now())
     const cursor = await rows.cursor(vehicleId)
@@ -222,7 +308,9 @@ export function createPullEngine({ client, device = deviceData, now = () => new 
       await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, worker))
       const finished = Date.now()
       await device.keep(LAST_PULL_KEY, finished)
-      set({ status: 'idle', lastPullAt: finished })
+      set({ lastPullAt: finished })
+      await keepPictures(rows)
+      set({ status: 'idle' })
     } catch (error) {
       set({ status: 'idle', interrupted: isConnectionFailure(error) })
       if (!isConnectionFailure(error) && !(error instanceof AccountChanged)) console.warn('The offline download failed; the next one tries again.', error)

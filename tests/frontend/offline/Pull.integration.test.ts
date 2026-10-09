@@ -1,4 +1,5 @@
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest'
+import { http, HttpResponse } from 'msw'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApolloClient } from '../../../src/frontend/apolloClient.ts'
 import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
 import { deviceData } from '../../../src/frontend/offline/deviceData.ts'
@@ -6,7 +7,7 @@ import { memoryStorage } from '../../../src/frontend/offline/deviceStorage.ts'
 import { answerLocally } from '../../../src/frontend/offline/localResolvers.ts'
 import { createPullEngine } from '../../../src/frontend/offline/pull.ts'
 import { snapshotKey } from '../../../src/frontend/offline/snapshotPolicy.ts'
-import { fakeVehicle, fakeVehicleBackend } from '../support/mocks.tsx'
+import { fakeVehicle, fakeVehicleBackend, person } from '../support/mocks.tsx'
 import { fakeFeed, now } from '../support/offlineFeed.ts'
 import { server } from '../support/server.ts'
 
@@ -185,4 +186,118 @@ it('downloads nothing for someone the server did not confirm', async () => {
   await engine().run()
 
   expect(feed.asked).toEqual([])
+})
+
+describe('pictures', () => {
+  const PICTURE = '1'.repeat(32)
+  const OWNER = '2'.repeat(32)
+  const ME = '3'.repeat(32)
+  let asked: string[]
+  /** The server's pictures: each answers with its id as bytes, or the status given. */
+  const media = (answer: (id: string) => Response | undefined = () => undefined) =>
+    http.get('*/media/:id', ({ params }) => {
+      const id = String(params.id)
+      asked.push(id)
+      return answer(id) ?? new HttpResponse(new TextEncoder().encode(id), { headers: { 'Content-Type': 'image/webp' } })
+    })
+  const kept = async () => (await (await deviceData.rows())!.pictureIds()).sort()
+
+  beforeEach(async () => {
+    asked = []
+    vehicles = fakeVehicleBackend([
+      fakeVehicle({ id: 'v1', name: 'Octavia', pictureUrl: `/media/${PICTURE}`, owner: person('Alice', { avatarUrl: `/media/${OWNER}` }) }),
+    ])
+    server.use(...vehicles.handlers)
+    await deviceData.keep(snapshotKey('Session', undefined), { session: { mode: 'STANDALONE', user: { id: 'u1', avatarUrl: `/media/${ME}` } } })
+  })
+
+  it('keeps the downloaded vehicles\' pictures, their owners\' avatars and the user\'s own, and never asks for one twice', async () => {
+    server.use(media())
+    const pull = engine()
+
+    await pull.run()
+
+    expect(await kept()).toEqual([PICTURE, OWNER, ME].sort())
+    const picture = await (await deviceData.rows())!.picture(PICTURE)
+    expect(picture?.type).toBe('image/webp')
+    expect(new TextDecoder().decode(picture!.bytes)).toBe(PICTURE)
+
+    await pull.run()
+    expect(asked.sort()).toEqual([PICTURE, OWNER, ME].sort()) // an image never changes under its id
+  })
+
+  it('a picture no longer shown goes, and one the server does not give is left out until the next download', async () => {
+    const NEW = '4'.repeat(32)
+    server.use(media((id) => (id === NEW ? new HttpResponse(null, { status: 404 }) : undefined)))
+    const pull = engine()
+    await pull.run()
+
+    vehicles.state.vehicles[0]!.pictureUrl = `/media/${NEW}` // changed on another device
+    await pull.run()
+
+    expect(await kept()).toEqual([OWNER, ME].sort())
+    expect(pull.state).toMatchObject({ status: 'idle', interrupted: false })
+  })
+
+  it('a picture asked for after the access cookie ran out is asked again after a refresh', async () => {
+    let refreshed = false
+    server.use(
+      http.post('/auth/token/refresh', () => {
+        refreshed = true
+        return new HttpResponse(null, { status: 204 })
+      }),
+      media(() => (refreshed ? undefined : new HttpResponse(null, { status: 401 }))),
+    )
+
+    await engine().run()
+
+    expect(refreshed).toBe(true)
+    expect(await kept()).toEqual([PICTURE, OWNER, ME].sort())
+  })
+
+  it('a full storage ends the pictures, never the download', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const rows = (await deviceData.rows())!
+    vi.spyOn(rows, 'putPicture').mockRejectedValue(Object.assign(new Error('full'), { name: 'QuotaExceededError' }))
+    feed.add('a', '2026-09-01')
+    server.use(media())
+    const pull = engine()
+
+    await pull.run()
+
+    expect(await localIds()).toEqual(['a'])
+    expect(pull.state).toMatchObject({ status: 'idle', interrupted: false, lastPullAt: expect.any(Number) })
+    expect(asked.length).toBeLessThan(3) // stops after the pictures already on their way (two at a time), never asks for the third
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('no room'))
+    warn.mockRestore()
+  })
+
+  it('a lost connection ends the pictures quietly, after the logs are kept', async () => {
+    feed.add('a', '2026-09-01')
+    server.use(http.get('*/media/:id', () => HttpResponse.error()))
+    const pull = engine()
+
+    await pull.run()
+
+    expect(await localIds()).toEqual(['a'])
+    expect(await kept()).toEqual([])
+    expect(pull.state).toMatchObject({ status: 'idle', lastPullAt: expect.any(Number) })
+    expect(connectivity.reachable).toBe(false)
+  })
+
+  it('keeps no picture once the server names another account', async () => {
+    server.use(
+      media(() => {
+        void deviceData.signedIn('u2') // someone else signed in while the picture was on its way
+        return undefined
+      }),
+    )
+
+    await engine().run()
+
+    expect(asked.length).toBeGreaterThan(0)
+    expect(await kept()).toEqual([])
+    await deviceData.signedIn('u1')
+    expect(await kept()).toEqual([])
+  })
 })
