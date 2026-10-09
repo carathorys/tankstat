@@ -113,6 +113,7 @@ export function collapse(existing: readonly Change[], incoming: Change): Change[
   switch (incoming.action) {
     case 'setPicture':
     case 'removePicture':
+      if (trash) return [...existing] // on its way to the trash: the picture could not be changed after it
       // A vehicle's picture: only the last one counts, so it takes the place of the picture change waiting for the vehicle (one sent
       // already stays: it may be on the server). Its kept picture goes with it (the outbox removes the photos of what folds away).
       return [...existing.filter((c) => !(isPicture(c) && c.targetId === incoming.targetId && !c.sent)), incoming]

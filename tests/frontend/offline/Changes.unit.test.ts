@@ -206,6 +206,12 @@ describe('a vehicle\'s picture', () => {
     expect(fold(set, change('update', 'v1', { entity: 'vehicles', input: { name: 'Polo' } }))).toHaveLength(2)
   })
 
+  it('a picture changed while the vehicle waits to be trashed is left out: it could not be applied after the trash', () => {
+    const trash = change('trash', 'v1', { entity: 'vehicles', vehicleId: 'v1', expectedVersion: 2 })
+    expect(fold(trash, picture('setPicture'))).toEqual([trash])
+    expect(fold(trash, picture('removePicture'))).toEqual([trash])
+  })
+
   it('a vehicle added here and taken back takes its picture along', () => {
     const golf = change('add', 'g', { entity: 'vehicles', vehicleId: 'g', id: 'g', input: { id: 'g', name: 'Golf' } })
     expect(fold(golf, picture('setPicture', 'g'), change('trash', 'g', { entity: 'vehicles', vehicleId: 'g' }))).toEqual([])
