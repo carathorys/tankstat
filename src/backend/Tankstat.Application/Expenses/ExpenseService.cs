@@ -86,7 +86,7 @@ public sealed class ExpenseService(
         var readingPhotos = (input.Amount is null || input.Odometer is null) && await filler.MayWaitForLogPhotosAsync(LogType.Expense, id, ct);
         var waited = expense.ReviewState;
 
-        var changes = expense.Update(input.Date, input.Title, input.Category, input.Amount, input.Currency ?? expense.Currency, input.Odometer, input.Note, readingPhotos);
+        var changes = expense.Update(input.Date, input.Title, input.Category, input.Amount, input.Currency ?? expense.Currency, input.Odometer, input.Note, readingPhotos, (await access.RequirePrincipalAsync(ct)).Id);
         await expenses.UpdateAsync(expense, changes, ct);
         if (waited != ReviewState.None && expense.ReviewState == ReviewState.None)
             await filler.ReviewedAsync(LogType.Expense, id, expense.CreatedById, ct);
@@ -102,7 +102,7 @@ public sealed class ExpenseService(
     {
         var expense = await EditableAsync(id, includeDeleted: false, ct);
         VersionCheck.Require(expectedVersion, expense.Version);
-        expense.MarkDeleted(clock.GetUtcNow());
+        expense.MarkDeleted(clock.GetUtcNow(), (await access.RequirePrincipalAsync(ct)).Id);
         await expenses.UpdateAsync(expense, LinkedChanges.None, ct);
         logger.LogDebug("Expense {ExpenseId} of vehicle {VehicleId} moved to the trash", id, expense.VehicleId);
         return expense;
@@ -113,7 +113,7 @@ public sealed class ExpenseService(
         var expense = await EditableAsync(id, includeDeleted: true, ct);
         VersionCheck.Require(expectedVersion, expense.Version);
         if (expense.Odometer is { } value) await odometer.ValidateAsync(expense.VehicleId, expense.Date, value, exceptReadingId: null, ct);
-        expense.Restore();
+        expense.Restore((await access.RequirePrincipalAsync(ct)).Id);
         await expenses.UpdateAsync(expense, LinkedChanges.None, ct);
         logger.LogDebug("Expense {ExpenseId} of vehicle {VehicleId} restored from the trash", id, expense.VehicleId);
         if (expense.ReviewState == ReviewState.AwaitingPhotos)

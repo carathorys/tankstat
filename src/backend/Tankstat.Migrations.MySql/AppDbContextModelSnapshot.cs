@@ -482,6 +482,12 @@ namespace Tankstat.Migrations.MySql
                         .HasMaxLength(60)
                         .HasColumnType("varchar(60)");
 
+                    b.Property<DateTime?>("ChangedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("ChangedById")
+                        .HasColumnType("char(36)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
@@ -498,6 +504,10 @@ namespace Tankstat.Migrations.MySql
                         .IsRequired()
                         .HasMaxLength(16)
                         .HasColumnType("varchar(16)");
+
+                    b.Property<string>("LastChange")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
 
                     b.Property<DateOnly>("LastDoneDate")
                         .HasColumnType("date");
@@ -919,6 +929,12 @@ namespace Tankstat.Migrations.MySql
                         .HasMaxLength(60)
                         .HasColumnType("varchar(60)");
 
+                    b.Property<DateTime?>("ChangedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("ChangedById")
+                        .HasColumnType("char(36)");
+
                     b.Property<Guid?>("CostId")
                         .HasColumnType("char(36)");
 
@@ -933,6 +949,10 @@ namespace Tankstat.Migrations.MySql
 
                     b.Property<int>("FilledFromPhoto")
                         .HasColumnType("int");
+
+                    b.Property<string>("LastChange")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
 
                     b.Property<string>("Note")
                         .HasMaxLength(500)
@@ -994,6 +1014,12 @@ namespace Tankstat.Migrations.MySql
                     b.Property<Guid>("Id")
                         .HasColumnType("char(36)");
 
+                    b.Property<DateTime?>("ChangedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("ChangedById")
+                        .HasColumnType("char(36)");
+
                     b.Property<decimal?>("Consumption")
                         .HasPrecision(9, 3)
                         .HasColumnType("decimal(9,3)");
@@ -1015,6 +1041,10 @@ namespace Tankstat.Migrations.MySql
 
                     b.Property<bool>("IsFullTank")
                         .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("LastChange")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
 
                     b.Property<bool>("MissedPreviousFillUp")
                         .HasColumnType("tinyint(1)");
@@ -1078,11 +1108,21 @@ namespace Tankstat.Migrations.MySql
                     b.Property<Guid>("Id")
                         .HasColumnType("char(36)");
 
+                    b.Property<DateTime?>("ChangedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("ChangedById")
+                        .HasColumnType("char(36)");
+
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("FuelType")
                         .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("LastChange")
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 

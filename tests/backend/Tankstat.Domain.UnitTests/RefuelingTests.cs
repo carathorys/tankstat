@@ -104,7 +104,7 @@ public class RefuelingTests
     public void Trash_Rules()
     {
         var r = TestData.Refueling(Owner, Creator, Guid.NewGuid(), Day);
-        Assert.Equal("refueling.notTrashed", Assert.Throws<DomainException>(r.Restore).Key);
+        Assert.Equal("refueling.notTrashed", Assert.Throws<DomainException>(() => r.Restore()).Key);
 
         r.MarkDeleted(DateTimeOffset.UtcNow);
         Assert.Equal("refueling.alreadyTrashed", Assert.Throws<DomainException>(() => r.MarkDeleted(DateTimeOffset.UtcNow)).Key);

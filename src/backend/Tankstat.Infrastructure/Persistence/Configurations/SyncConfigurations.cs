@@ -17,7 +17,8 @@ internal static class SyncMapping
     /// <summary>
     /// <c>UpdatedAt</c> is stored as a UTC date-time, like <c>DeletedAt</c>, so comparisons translate on every provider. <c>Version</c> is a
     /// concurrency token: every update or delete is made only if the row still has the version the entity was loaded with
-    /// (<see cref="SyncInterceptor"/> supplies it), else <c>sync.versionMismatch</c> (<see cref="AppDbContext"/>).
+    /// (<see cref="SyncInterceptor"/> supplies it), else <c>sync.versionMismatch</c> (<see cref="AppDbContext"/>). Who made the last
+    /// change of a version, when and what it did are kept beside it (null for older rows; the user has no foreign key, as everywhere).
     /// </summary>
     public static void MapUpdatedAt<T>(EntityTypeBuilder<T> b) where T : class, ISynced
     {
@@ -26,6 +27,9 @@ internal static class SyncMapping
             .HasDefaultValue(Epoch);
         b.Property<int>(nameof(ISynced.Version)).IsConcurrencyToken();
         b.Ignore(nameof(ISynced.SavedVersion));
+        b.Property<DateTimeOffset?>(nameof(ISynced.ChangedAt)).HasConversion(
+            v => v.HasValue ? v.Value.UtcDateTime : (DateTime?)null, v => v.HasValue ? new DateTimeOffset(DateTime.SpecifyKind(v.Value, DateTimeKind.Utc)) : null);
+        b.Property<EntityChange?>(nameof(ISynced.LastChange)).HasConversion<string>().HasMaxLength(20);
     }
 }
 

@@ -101,6 +101,29 @@ public class SyncGraphQLTests : IDisposable
         Assert.Equal("UNAUTHENTICATED", signedOut.ErrorCode());
     }
 
+    [Fact]
+    public async Task WhatWasChangedLast_SaysWhoDidItWhatAndWhen()
+    {
+        var people = await _app.Users();
+        var car = (await people.Alice.Gql("mutation { addVehicle(input: { name: \"Golf\", fuelType: PETROL }) { id } }")).Data().GetProperty("addVehicle").GetProperty("id").GetString()!;
+        var log = (await people.Alice.Gql("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }",
+            new { i = new { vehicleId = car, date = "2026-09-01", volume = 40, totalCost = 60, currency = "EUR", odometer = 1000, isFullTank = true } })).Data().GetProperty("logRefueling").GetProperty("id").GetString()!;
+        await people.Alice.Gql("mutation($i: SetLogAccessInput!) { setVehicleLogAccess(input: $i) }", new { i = new { vehicleId = car, userId = people.BobId, level = "EDIT" } });
+        const string Last = "query($id: UUID!) { refueling(id: $id) { lastChange changedAt changedBy { displayName } } }";
+        var logged = (await people.Alice.Gql(Last, new { id = log })).Data().GetProperty("refueling");
+        Assert.Equal(("CREATED", "alice"), (logged.GetProperty("lastChange").GetString(), logged.GetProperty("changedBy").GetProperty("displayName").GetString()));
+        Assert.NotEqual(JsonValueKind.Null, logged.GetProperty("changedAt").ValueKind);
+
+        await people.Bob.Gql("mutation($i: UpdateRefuelingInput!) { updateRefueling(input: $i) { id } }",
+            new { i = new { id = log, date = "2026-09-01", volume = 41, totalCost = 60, currency = "EUR", odometer = 1000, isFullTank = true } });
+        var edited = (await people.Alice.Gql(Last, new { id = log })).Data().GetProperty("refueling");
+        Assert.Equal(("EDITED", "bob"), (edited.GetProperty("lastChange").GetString(), edited.GetProperty("changedBy").GetProperty("displayName").GetString()));
+
+        await Send(people.Alice, new { id = Guid.NewGuid(), deleteVehicle = car }); // through a sync too
+        var trashed = (await people.Alice.Gql("{ trash { lastChange changedBy { displayName } } }")).Data().GetProperty("trash").EnumerateArray().Single();
+        Assert.Equal(("TRASHED", "alice"), (trashed.GetProperty("lastChange").GetString(), trashed.GetProperty("changedBy").GetProperty("displayName").GetString()));
+    }
+
     private const string Parked = "{ parkedChanges { id kind status change reason { key } submittedBy { displayName } canResolve vehicleId } }";
     private const string Resolve = "mutation($i: ResolveSyncChangeInput!) { resolveSyncChange(input: $i) { id status entityId version } }";
 

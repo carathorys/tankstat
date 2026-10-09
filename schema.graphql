@@ -205,9 +205,13 @@ type Expense {
   reviewState: ReviewState!
   version: Int!
   updatedAt: DateTime!
+  changedAt: DateTime
+  changedById: UUID
+  lastChange: EntityChange
   canEdit: Boolean! @cost(weight: "10")
   canDelete: Boolean! @cost(weight: "10")
   createdBy: UserRef @cost(weight: "10")
+  changedBy: UserRef @cost(weight: "10")
   vehicle: Vehicle @cost(weight: "10")
   photos: [LogPhotoInfo!]! @cost(weight: "10")
   schedules: [RecurringRef!]! @cost(weight: "10")
@@ -416,6 +420,10 @@ type RecurringExpenseInfo {
   version: Int!
   updatedAt: DateTime!
   status: RecurrenceStatusInfo!
+  changedAt: DateTime
+  changedById: UUID
+  lastChange: EntityChange
+  changedBy: UserRef @cost(weight: "10")
 }
 
 type RecurringRef {
@@ -444,9 +452,13 @@ type Refueling {
   pricePerUnit: Decimal
   version: Int!
   updatedAt: DateTime!
+  changedAt: DateTime
+  changedById: UUID
+  lastChange: EntityChange
   canEdit: Boolean! @cost(weight: "10")
   canDelete: Boolean! @cost(weight: "10")
   createdBy: UserRef @cost(weight: "10")
+  changedBy: UserRef @cost(weight: "10")
   vehicle: Vehicle @cost(weight: "10")
   photos: [LogPhotoInfo!]! @cost(weight: "10")
 }
@@ -563,9 +575,13 @@ type Vehicle {
   isDeleted: Boolean!
   version: Int!
   updatedAt: DateTime!
+  changedAt: DateTime
+  changedById: UUID
+  lastChange: EntityChange
   canEdit: Boolean! @cost(weight: "10")
   logAccess: AccessLevel! @cost(weight: "10")
   owner: UserRef @cost(weight: "10")
+  changedBy: UserRef @cost(weight: "10")
   pictureUrl: String
   refuelingCount: Int! @cost(weight: "10")
   expenseCount: Int! @cost(weight: "10")
@@ -957,6 +973,15 @@ enum DocumentKind {
   FUEL_RECEIPT
   EXPENSE_RECEIPT
   UNKNOWN
+}
+
+enum EntityChange {
+  CREATED
+  EDITED
+  TRASHED
+  RESTORED
+  DONE
+  FILLED_FROM_PHOTO
 }
 
 enum ExpenseSortField {

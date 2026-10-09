@@ -43,7 +43,7 @@ public sealed class DataGenerator(TimeProvider clock)
             var market = PickMarket(random);
             var vehicle = Vehicle.Create(NoAuthOwner, UniqueName(random, names), random.NextDouble() < 0.1 ? null : Plate(random), fuel, market.Units);
 
-            if (i >= options.Vehicles) vehicle.MarkDeleted(clock.GetUtcNow() - TimeSpan.FromDays(random.Next(1, 61)) - TimeSpan.FromMinutes(random.Next(0, 1440)));
+            if (i >= options.Vehicles) vehicle.MarkDeleted(clock.GetUtcNow() - TimeSpan.FromDays(random.Next(1, 61)) - TimeSpan.FromMinutes(random.Next(0, 1440)), vehicle.OwnerId);
 
             var count = random.Next(options.RefuelingsPerVehicle.Min, options.RefuelingsPerVehicle.Max + 1);
             var log = Refuelings(random, vehicle, market, count, today);
