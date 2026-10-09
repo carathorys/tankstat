@@ -4,6 +4,8 @@
     "loading": "Loading…",
     "notFound": "This page does not exist.",
     "crashed": "Something went wrong while showing this page.",
+    "notOfflineYet": "This page is not available offline yet. It will open once you are back online.",
+    "offlineReady": "Tankstat can now be used offline.",
     "reload": "Reload the page"
   },
   "nav": {
@@ -64,6 +66,7 @@
   },
   "update": {
     "available": "A new version of Tankstat is available.",
+    "finish": "Tankstat was updated in another tab. Reload to finish updating.",
     "reload": "Reload"
   },
   "notices": {
@@ -386,6 +389,8 @@
       "device": "On this device",
       "storage": "This site uses about {{size}} on this device.",
       "lastDownloaded": "Last downloaded {{time}}.",
+      "appReady": "The app itself is kept on this device: every page opens without the server.",
+      "appStoring": "The app is still being stored on this device. Until it is, pages you have not opened yet need the server.",
       "neverDownloaded": "Nothing downloaded on this device yet.",
       "downloadNow": "Download now",
       "downloading": "Downloading… {{done}} of {{total}} vehicles",

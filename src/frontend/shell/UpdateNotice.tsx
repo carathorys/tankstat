@@ -4,10 +4,13 @@ import { RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAppUpdate } from '../pwa/useAppUpdate.ts'
 
-/** Above the page while a new version of the app is ready: say so and let the person choose when to reload (nothing reloads by itself). */
+/**
+ * Above the page while a new version of the app is ready: say so and let the person choose when to reload (nothing reloads by itself).
+ * When another tab already switched to it, this page still runs the old one: a reload finishes the update.
+ */
 export function UpdateNotice() {
   const { t } = useTranslation()
-  const { ready, reload } = useAppUpdate()
+  const { ready, finishing, reload } = useAppUpdate()
   if (!ready) return null
   return (
     <Alert
@@ -22,7 +25,7 @@ export function UpdateNotice() {
         </Button>
       }
     >
-      {t('update.available')}
+      {finishing ? t('update.finish') : t('update.available')}
     </Alert>
   )
 }

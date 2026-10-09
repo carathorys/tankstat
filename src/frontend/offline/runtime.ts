@@ -33,9 +33,9 @@ export const LOCK_RETRY_MS = 30_000
 /** Sending the changes kept on this device, for the screens that show or start it (loaded on first use); null before the runtime started. */
 export const offlineSync = (): Promise<PushEngine> | null => loadPush?.() ?? null
 
-/** Tests: the sync engine the screens get, without starting the runtime. */
-export function provideOfflineSync(engine: PushEngine | null) {
-  loadPush = engine ? () => Promise.resolve(engine) : null
+/** Tests: the sync engine the screens get, without starting the runtime; a function to load it (one that fails, say). */
+export function provideOfflineSync(engine: PushEngine | (() => Promise<PushEngine>) | null) {
+  loadPush = typeof engine === 'function' ? engine : engine ? () => Promise.resolve(engine) : null
 }
 
 /** How often a page that stays open downloads what changed. */
@@ -47,9 +47,9 @@ export const SHOWN_GAP_MS = 15 * 60 * 1000
 /** The download of the offline window, for the screens that show or start it (loaded on first use); null before the runtime started. */
 export const offlineDownload = (): Promise<PullEngine> | null => loadEngine?.() ?? null
 
-/** Tests: the engine the screens get, without starting the runtime's probes and timers. */
-export function provideOfflineDownload(engine: PullEngine | null) {
-  loadEngine = engine ? () => Promise.resolve(engine) : null
+/** Tests: the engine the screens get, without starting the runtime's probes and timers; a function to load it (one that fails, say). */
+export function provideOfflineDownload(engine: PullEngine | (() => Promise<PullEngine>) | null) {
+  loadEngine = typeof engine === 'function' ? engine : engine ? () => Promise.resolve(engine) : null
 }
 
 /** The promise, or a failure once `ms` passed without it settling (the request itself may go on; nobody waits for it). */
@@ -78,11 +78,24 @@ export function startOfflineRuntime(client: ApolloClient, now: () => number = Da
   )
   // The download engine is loaded when it first has something to do, not with the app's first paint.
   let pull: Promise<PullEngine> | null = null
-  const engine = () => (pull ??= import('./pull.ts').then(({ createPullEngine }) => createPullEngine({ client })))
+  // A module that cannot be loaded (the app not kept on this device yet, offline) is forgotten, so a later run asks for it again.
+  const engine = () =>
+    (pull ??= import('./pull.ts')
+      .then(({ createPullEngine }) => createPullEngine({ client }))
+      .catch((error: unknown) => {
+        pull = null
+        throw error
+      }))
   loadEngine = engine
   // Sending goes before downloading (it ends with a download of its own): what was changed here reaches the server first.
   let push: Promise<PushEngine> | null = null
-  const pusher = () => (push ??= import('./push.ts').then(({ createPushEngine }) => createPushEngine({ client, pull: () => engine().then((e) => e.run()) })))
+  const pusher = () =>
+    (push ??= import('./push.ts')
+      .then(({ createPushEngine }) => createPushEngine({ client, pull: () => engine().then((e) => e.run()) }))
+      .catch((error: unknown) => {
+        push = null
+        throw error
+      }))
   loadPush = pusher
   let downloadedAt = Number.NEGATIVE_INFINITY
   const download = () => {
@@ -91,11 +104,13 @@ export function startOfflineRuntime(client: ApolloClient, now: () => number = Da
     keepStorage() // an account's data is on this device now
     // One tab at a time: every open tab would otherwise sync at start, when the server is back and hourly. When another tab is at it, the
     // changes kept here are looked at again a little later (that tab may well have sent them by then: it reads them as stored).
-    void inOneTab('tankstat-sync', () => (outbox.changes.length > 0 ? pusher().then((e) => e.run()) : engine().then((e) => e.run()))).then((ran) => {
-      if (ran) return
-      clearTimeout(retry)
-      retry = setTimeout(() => outbox.changes.length > 0 && download(), LOCK_RETRY_MS)
-    })
+    void inOneTab('tankstat-sync', () => (outbox.changes.length > 0 ? pusher().then((e) => e.run()) : engine().then((e) => e.run())))
+      .then((ran) => {
+        if (ran) return
+        clearTimeout(retry)
+        retry = setTimeout(() => outbox.changes.length > 0 && download(), LOCK_RETRY_MS)
+      })
+      .catch((error: unknown) => console.warn('The offline sync could not be loaded (the app is not kept on this device yet); the next one tries again.', error))
   }
   let retry: ReturnType<typeof setTimeout> | undefined
   // Shown again (an app switched back to on a phone): only when the last download is a while ago, not on every switch.

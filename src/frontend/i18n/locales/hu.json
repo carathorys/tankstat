@@ -4,6 +4,8 @@
     "loading": "Betöltés…",
     "notFound": "Ez az oldal nem létezik.",
     "crashed": "Hiba történt az oldal megjelenítése közben.",
+    "notOfflineYet": "Ez az oldal még nem érhető el kapcsolat nélkül. Megnyílik, ha újra van kapcsolat.",
+    "offlineReady": "A Tankstat mostantól kapcsolat nélkül is használható.",
     "reload": "Oldal újratöltése"
   },
   "nav": {
@@ -64,6 +66,7 @@
   },
   "update": {
     "available": "Elérhető a Tankstat új verziója.",
+    "finish": "A Tankstat egy másik lapon frissült. A frissítés befejezéséhez töltsd újra.",
     "reload": "Újratöltés"
   },
   "notices": {
@@ -386,6 +389,8 @@
       "device": "Ezen az eszközön",
       "storage": "Az oldal nagyjából {{size}} helyet foglal ezen az eszközön.",
       "lastDownloaded": "Utolsó letöltés: {{time}}.",
+      "appReady": "Maga az alkalmazás is ezen az eszközön van: minden oldal megnyílik a szerver nélkül.",
+      "appStoring": "Az alkalmazás tárolása ezen az eszközön még folyamatban van. Addig a még meg nem nyitott oldalakhoz a szerver kell.",
       "neverDownloaded": "Ezen az eszközön még nem töltődött le semmi.",
       "downloadNow": "Letöltés most",
       "downloading": "Letöltés… {{done}} / {{total}} jármű",

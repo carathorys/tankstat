@@ -21,6 +21,7 @@ import { UiSettingsProvider } from './settings/UiSettingsProvider.tsx'
 import { useUiSettings } from './settings/uiSettingsContext.ts'
 import { NavList } from './shell/NavList.tsx'
 import { DrawerSettings, TopBar } from './shell/TopBar.tsx'
+import { OfflineReadyNotice } from './shell/OfflineReadyNotice.tsx'
 import { UpdateNotice } from './shell/UpdateNotice.tsx'
 import { Loading } from './components/Loading.tsx'
 import { glass } from './theme/components.ts'
@@ -149,6 +150,7 @@ function Shell({
             {error !== undefined && <ErrorMessage error={error} />}
             {loading && <Loading />}
             <UpdateNotice />
+            <OfflineReadyNotice />
             {data && <NoticeBanner notices={data.notices} />}
             {data && <Content data={data} />}
           </Box>

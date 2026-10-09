@@ -43,3 +43,16 @@ it('is a status without accessibility violations', async () => {
   const message = (await screen.findByText('A new version of Tankstat is available.')).closest('[role="status"]') as HTMLElement
   expect((await axe(message, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([])
 })
+
+it('after another tab took the new version, says a reload finishes the update', async () => {
+  const ui = setup()
+  await screen.findByText('Octavia')
+  const reload = vi.fn()
+
+  act(() => appUpdate.offer(reload, { finishing: true }))
+
+  expect(await screen.findByText('Tankstat was updated in another tab. Reload to finish updating.')).toBeInTheDocument()
+  expect(screen.queryByText('A new version of Tankstat is available.')).not.toBeInTheDocument()
+  await ui.click(screen.getByRole('button', { name: 'Reload' }))
+  expect(reload).toHaveBeenCalledTimes(1)
+})

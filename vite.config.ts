@@ -26,7 +26,7 @@ export default defineConfig({
     // is downloaded in the background and waits; UpdateNotice offers a Reload, and nothing reloads by itself.
     VitePWA({
       registerType: 'prompt', // a new version waits until the person reloads (UpdateNotice); nothing reloads by itself
-      injectRegister: false, // main.tsx registers the worker through virtual:pwa-register
+      injectRegister: false, // main.tsx registers the worker itself (pwa/registerApp.ts)
       manifest: {
         name: 'Tankstat',
         short_name: 'Tankstat',

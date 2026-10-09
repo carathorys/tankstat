@@ -18,6 +18,7 @@ import { DialogTrigger } from '../../dialogs/DialogTrigger.tsx'
 import { useDialogState } from '../../dialogs/useDialogState.ts'
 import { OfflineEstimatesDocument, OfflineSettingsDocument, OfflineVehiclesDocument, UpdateOfflineSettingsDocument } from '../../gql/generated.ts'
 import { useFormat } from '../../i18n/format.ts'
+import { useOfflineReady } from '../../pwa/offlineReady.ts'
 import { ErrorMessage } from '../../messages.tsx'
 import { deviceData } from '../../offline/deviceData.ts'
 import { DEFAULT_RULE, fromDate } from '../../offline/offlineWindow.ts'
@@ -86,7 +87,9 @@ function WindowEditor({ saved, vehicles }: { saved: { defaultWindow: string; veh
     try {
       await save({ variables: { input: { defaultWindow: draft.defaultWindow, vehicles: [...draft.vehicles].map(([vehicleId, window]) => ({ vehicleId, window })) } } })
       toast(t('account.offline.saved'))
-      void offlineDownload()?.then((engine) => engine.run()) // the vehicles whose window changed download now
+      void offlineDownload()
+        ?.then((engine) => engine.run()) // the vehicles whose window changed download now
+        .catch((error: unknown) => console.warn('The offline download could not be loaded; the next one brings the new window.', error))
     } catch (e) {
       setError(e)
     }
@@ -219,6 +222,7 @@ function DeviceSide() {
   const { dateTime, number } = useFormat()
   const heading = useId()
   const { reachable } = useConnectivity()
+  const appKept = useOfflineReady()
   const [engine, setEngine] = useState<PullEngine | null>(null)
   const [lastPull, setLastPull] = useState<number | null>(null)
   const [usage, setUsage] = useState<number | null>(null)
@@ -227,7 +231,9 @@ function DeviceSide() {
 
   useEffect(() => {
     let live = true
-    void offlineDownload()?.then((e) => live && setEngine(e))
+    void offlineDownload()
+      ?.then((e) => live && setEngine(e))
+      .catch(() => undefined) // not loaded (not kept on this device yet, offline): no Download now until it is
     void deviceData.read(LAST_PULL_KEY).then((kept) => live && setLastPull(typeof kept?.data === 'number' ? kept.data : null))
     void navigator.storage?.estimate?.().then((e) => live && setUsage(e.usage ?? null)).catch(() => undefined)
     return () => {
@@ -257,6 +263,8 @@ function DeviceSide() {
         <Typography variant="body2">{t('account.offline.storage', { size: number(usage / 1_000_000, { style: 'unit', unit: 'megabyte', maximumFractionDigits: 1 }) })}</Typography>
       )}
       <Typography variant="body2">{last ? t('account.offline.lastDownloaded', { time: dateTime(new Date(last).toISOString()) }) : t('account.offline.neverDownloaded')}</Typography>
+      {appKept === 'ready' && <Typography variant="body2">{t('account.offline.appReady')}</Typography>}
+      {appKept === 'storing' && <Typography variant="body2">{t('account.offline.appStoring')}</Typography>}
       <Stack direction="row" sx={{ gap: 1.5, flexWrap: 'wrap' }}>
         {engine && (
           <Button
