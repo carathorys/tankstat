@@ -20,10 +20,25 @@ let generation = 0
 let version = 0
 const listeners = new Set<() => void>()
 
+let notifying: ReturnType<typeof setTimeout> | null = null
+
+/** Tells the screens once for everything that changed in this task and the next (each picture read arrives in a task of its own). */
 function changed() {
   version++
-  listeners.forEach((listener) => listener())
+  notifying ??= setTimeout(() => {
+    notifying = null
+    listeners.forEach((listener) => listener())
+  }, 0)
 }
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
+  }
+}
+
+const currentVersion = () => version
 
 function revoke(ids: Iterable<string>) {
   for (const id of ids) {
@@ -119,15 +134,7 @@ export const keptPictures = {
  * holds a copy, and when there is no picture.
  */
 export function usePictureSrc(url: string | null | undefined): { src: string | null; waiting: boolean } {
-  const seen = useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener)
-      return () => {
-        listeners.delete(listener)
-      }
-    },
-    () => version,
-  )
+  const seen = useSyncExternalStore(subscribe, currentVersion)
   const resolved = resolve(url)
   useEffect(() => ensure(url), [url, seen]) // again after every change: the ids read, a picture read, another account's data
   return { src: resolved ?? null, waiting: resolved === undefined }
