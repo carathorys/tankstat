@@ -275,6 +275,22 @@ public class PasswordTests
     }
 
     [Fact]
+    public async Task RequestReset_ACooldownLongerThanALink_EndsWhenTheLinkExpires()
+    {
+        var w = new World(smtp: true, configure: o => o.Standalone.ResetCooldownMinutes = 1440);
+        w.AddUser("alice@x.co");
+
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+        w.Clock.Advance(TimeSpan.FromMinutes(59));
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default); // the 60-minute link still works: nothing is sent
+        w.Clock.Advance(TimeSpan.FromMinutes(2));
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default); // it expired: a new one
+
+        Assert.Equal(2, w.Email.Sent.Count);
+        await w.Auth.ResetPasswordAsync(LinkIn(w.Email.Sent[1]), "brand-new-password", default);
+    }
+
+    [Fact]
     public async Task ResetPassword_RevokesTheUsersOtherLinks()
     {
         // One live link per user, but rows from before it, or two issues at once in two processes, can still leave two.

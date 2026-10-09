@@ -33,10 +33,14 @@ public sealed class PasswordResetService(
 
     /// <summary>
     /// A user's own request: like <see cref="IssueAsync(User, bool, CancellationToken)"/>, but issues and sends nothing (null) while the
-    /// user's latest link was issued less than <c>Auth:Standalone:ResetCooldownMinutes</c> ago.
+    /// user's latest link was issued less than <c>Auth:Standalone:ResetCooldownMinutes</c> ago and has not expired yet.
     /// </summary>
-    public Task<IssuedReset?> IssueUnlessCoolingDownAsync(User user, CancellationToken ct) =>
-        IssueAsync(user, sendEmail: true, TimeSpan.FromMinutes(auth.Value.Standalone.ResetCooldownMinutes), ct);
+    public Task<IssuedReset?> IssueUnlessCoolingDownAsync(User user, CancellationToken ct)
+    {
+        var standalone = auth.Value.Standalone;
+        // Never longer than a link lasts: once the latest one expired, the user may ask for another.
+        return IssueAsync(user, sendEmail: true, TimeSpan.FromMinutes(Math.Min(standalone.ResetCooldownMinutes, standalone.ResetTokenMinutes)), ct);
+    }
 
     private async Task<IssuedReset?> IssueAsync(User user, bool sendEmail, TimeSpan cooldown, CancellationToken ct)
     {

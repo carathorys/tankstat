@@ -82,7 +82,7 @@ public sealed class AuthService(
 
     /// <summary>
     /// Always succeeds from the caller's view, whether or not the e-mail is registered. E-mails a link only when SMTP is set up and the
-    /// account's latest link is older than the cool-down, so the endpoint cannot be used to flood a mailbox.
+    /// account's latest link is older than the cool-down (or expired), so the endpoint cannot be used to flood a mailbox.
     /// </summary>
     public async Task RequestPasswordResetAsync(string? email, CancellationToken ct)
     {
