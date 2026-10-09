@@ -113,6 +113,27 @@ it('a vehicle can have a window of its own; Save sends the whole set and the dev
   await waitFor(() => expect(engine.run).toHaveBeenCalled())
 })
 
+it('when the download cannot be loaded (the app not kept on this device yet), the panel still works and a save still saves', async () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  onTestFinished(() => warn.mockRestore())
+  provideOfflineDownload(() => Promise.reject(new TypeError('Failed to fetch dynamically imported module: /assets/pull-abc.js')))
+  const { sent, ui } = setup()
+  const panel = await section()
+  await panel.findByRole('rowheader', { name: 'Golf' })
+  expect(panel.queryByRole('button', { name: 'Download now' })).not.toBeInTheDocument() // nothing to start yet
+
+  await ui.click(panel.getByRole('button', { name: 'Change the window of Golf' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Window of Golf' })
+  await ui.click(within(dialog).getByRole('combobox', { name: 'What to download' }))
+  await ui.click(screen.getByRole('option', { name: 'Everything' }))
+  await ui.click(within(dialog).getByRole('button', { name: 'Apply' }))
+  await ui.click(panel.getByRole('button', { name: 'Save' }))
+
+  await waitFor(() => expect(sent).toHaveLength(1))
+  expect(await screen.findByText('Saved. This device downloads the new window now.')).toBeInTheDocument()
+  await waitFor(() => expect(warn).toHaveBeenCalledWith(expect.stringContaining('could not be loaded'), expect.any(TypeError)))
+})
+
 it('the window of a vehicle no longer listed (unshared, trashed) is not sent back with a save', async () => {
   const { sent, ui } = setup({ defaultWindow: 'span:P2M', vehicles: [{ vehicleId: 'v1', window: 'all' }, { vehicleId: 'gone', window: 'none' }] })
   const panel = await section()

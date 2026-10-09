@@ -9,7 +9,10 @@ export function usePushState(): { engine: PushEngine | null; state: PushState } 
   const [engine, setEngine] = useState<PushEngine | null>(null)
   useEffect(() => {
     let live = true
-    void offlineSync()?.then((e) => live && setEngine(e))
+    // Not loaded (the app is not kept on this device yet, offline): nothing to follow until a later page asks again.
+    void offlineSync()
+      ?.then((e) => live && setEngine(e))
+      .catch(() => undefined)
     return () => {
       live = false
     }

@@ -87,7 +87,9 @@ function WindowEditor({ saved, vehicles }: { saved: { defaultWindow: string; veh
     try {
       await save({ variables: { input: { defaultWindow: draft.defaultWindow, vehicles: [...draft.vehicles].map(([vehicleId, window]) => ({ vehicleId, window })) } } })
       toast(t('account.offline.saved'))
-      void offlineDownload()?.then((engine) => engine.run()) // the vehicles whose window changed download now
+      void offlineDownload()
+        ?.then((engine) => engine.run()) // the vehicles whose window changed download now
+        .catch((error: unknown) => console.warn('The offline download could not be loaded; the next one brings the new window.', error))
     } catch (e) {
       setError(e)
     }
@@ -229,7 +231,9 @@ function DeviceSide() {
 
   useEffect(() => {
     let live = true
-    void offlineDownload()?.then((e) => live && setEngine(e))
+    void offlineDownload()
+      ?.then((e) => live && setEngine(e))
+      .catch(() => undefined) // not loaded (not kept on this device yet, offline): no Download now until it is
     void deviceData.read(LAST_PULL_KEY).then((kept) => live && setLastPull(typeof kept?.data === 'number' ? kept.data : null))
     void navigator.storage?.estimate?.().then((e) => live && setUsage(e.usage ?? null)).catch(() => undefined)
     return () => {
