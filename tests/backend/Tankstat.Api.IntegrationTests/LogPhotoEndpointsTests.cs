@@ -205,6 +205,22 @@ public class LogPhotoEndpointsTests : IDisposable
     }
 
     [Fact]
+    public async Task PhotosAnOlderVersionKeptWithThePictures_MoveToThePhotosRoot_WhenTheAppStarts()
+    {
+        using var app = new TestApp(new() { ["Auth:Mode"] = "None" });
+        var folder = Path.Combine("vehicles", Guid.NewGuid().ToString("N"), "refuelings", Guid.NewGuid().ToString("N"));
+        var old = Path.Combine(app.UploadsPath, folder, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.GetDirectoryName(old)!);
+        await File.WriteAllBytesAsync(old, Png());
+
+        using var client = app.NewClient(); // starts the host
+
+        Assert.False(File.Exists(old));
+        Assert.Equal(Png(), await File.ReadAllBytesAsync(Path.Combine(app.PhotosPath, folder, Path.GetFileName(old))));
+        Assert.Contains(app.Log.From("Tankstat.Infrastructure.Storage.PhotosMove"), e => e.Level == Microsoft.Extensions.Logging.LogLevel.Information);
+    }
+
+    [Fact]
     public async Task APhotoAnOlderVersionLeftWithThePictures_IsStillServed_AndRemoved()
     {
         var w = await Setup();

@@ -105,8 +105,10 @@ public static class DependencyInjection
         services.AddSingleton<RecognitionSignal>();
         services.AddSingleton<IRecognitionSignal>(sp => sp.GetRequiredService<RecognitionSignal>());
 
-        // Order matters: migrate first, then create the initial administrator; the photo reading worker needs the migrated database.
+        // Order matters: migrate first, then move the photos an older version kept with the pictures, then create the initial
+        // administrator; the photo reading worker needs the migrated database.
         services.AddHostedService<DatabaseMigrator>();
+        services.AddHostedService<PhotosMove>();
         services.AddHostedService<StandaloneBootstrapper>();
         services.AddHostedService<RecognitionWorker>();
 
