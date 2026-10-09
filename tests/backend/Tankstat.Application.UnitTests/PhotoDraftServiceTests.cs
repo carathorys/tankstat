@@ -31,6 +31,88 @@ public class PhotoDraftServiceTests
         return new Scene(w, alice, bob, car, van);
     }
 
+    // ---- a draft made the vehicle's picture (a picture chosen offline) ----------------------------------------
+
+    [Fact]
+    public async Task ADraft_BecomesTheVehiclesPicture_ReplacingTheOldOne_AndTheSameDraftAgainChangesNothing()
+    {
+        var s = await Setup();
+        var old = await s.W.ImageService.SetVehiclePictureAsync(s.Car.Id, Jpeg(1), default);
+        var draft = await s.W.Drafts.UploadAsync(s.Car.Id, Jpeg(2), default);
+
+        var set = await s.W.ImageService.SetVehiclePictureFromDraftAsync(s.Car.Id, draft, default);
+        var again = await s.W.ImageService.SetVehiclePictureFromDraftAsync(s.Car.Id, draft, default); // a change sent again
+
+        Assert.Equal((draft, draft), (set, again));
+        Assert.Equal(draft, (await s.W.Vehicles.FindAsync(s.Car.Id, default))!.PictureImageId);
+        Assert.Equal($"vehicles/{s.Car.Id:N}/picture", s.W.ImageStore.Folders[draft]);
+        Assert.Empty(s.W.PhotoDrafts.Items); // no longer a draft: its file is the picture now
+        Assert.False(s.W.ImageStore.Folders.ContainsKey(old)); // the old picture is gone, as with an upload
+    }
+
+    [Fact]
+    public async Task ADraftRowLeftBehind_ByAPictureThatWasSet_NeverTakesThePictureWithIt()
+    {
+        var s = await Setup();
+        var draft = await s.W.Drafts.UploadAsync(s.Car.Id, Jpeg(), default);
+        var row = s.W.PhotoDrafts.Items.Single(d => d.Id == draft);
+        await s.W.ImageService.SetVehiclePictureFromDraftAsync(s.Car.Id, draft, default);
+        s.W.PhotoDrafts.Items.Add(row); // its removal failed after the vehicle was saved
+
+        s.W.Clock.Advance(PhotoDraft.Lifetime + TimeSpan.FromMinutes(1));
+        await s.W.Drafts.UploadAsync(s.Van.Id, Jpeg(1), default); // sweeps the expired drafts
+
+        Assert.DoesNotContain(s.W.PhotoDrafts.Items, d => d.Id == draft);
+        Assert.Equal($"vehicles/{s.Car.Id:N}/picture", s.W.ImageStore.Folders[draft]); // still the picture
+        Assert.True(s.W.Images.Items.ContainsKey(draft));
+    }
+
+    [Fact]
+    public async Task TheSameChangeSentAgain_RemovesADraftRowTheFirstTryLeftBehind()
+    {
+        var s = await Setup();
+        var draft = await s.W.Drafts.UploadAsync(s.Car.Id, Jpeg(), default);
+        var row = s.W.PhotoDrafts.Items.Single(d => d.Id == draft);
+        await s.W.ImageService.SetVehiclePictureFromDraftAsync(s.Car.Id, draft, default);
+        s.W.PhotoDrafts.Items.Add(row);
+
+        Assert.Equal(draft, await s.W.ImageService.SetVehiclePictureFromDraftAsync(s.Car.Id, draft, default));
+
+        Assert.Empty(s.W.PhotoDrafts.Items);
+        Assert.Equal($"vehicles/{s.Car.Id:N}/picture", s.W.ImageStore.Folders[draft]);
+    }
+
+    [Fact]
+    public async Task ADraftThatIsNotTheUsers_OfAnotherVehicle_OrExpired_IsRefused_AndChangesNothing()
+    {
+        var s = await Setup();
+        s.W.Grants.Items.Add(AccessGrant.Create(s.Alice.Id, s.Bob.Id, AccessLevel.Edit));
+        var vans = await s.W.Drafts.UploadAsync(s.Van.Id, Jpeg(), default);
+        s.W.Current.SignInAs(s.Bob);
+        var bobs = await s.W.Drafts.UploadAsync(s.Car.Id, Jpeg(), default);
+        s.W.Current.SignInAs(s.Alice);
+        var expired = await s.W.Drafts.UploadAsync(s.Car.Id, Jpeg(), default);
+        s.W.Clock.Advance(PhotoDraft.Lifetime);
+
+        foreach (var draft in new[] { vans, bobs, expired, Guid.NewGuid() })
+            Assert.Equal("photo.draftExpired", (await Assert.ThrowsAsync<DomainException>(() => s.W.ImageService.SetVehiclePictureFromDraftAsync(s.Car.Id, draft, default))).Key);
+        Assert.Null((await s.W.Vehicles.FindAsync(s.Car.Id, default))!.PictureImageId);
+    }
+
+    [Fact]
+    public async Task MakingADraftThePicture_NeedsEditOnTheVehicleItself()
+    {
+        var s = await Setup();
+        s.W.ResourceGrants.Items.Add(ResourceGrant.Create(ResourceType.Vehicle, s.Car.Id, s.Bob.Id, GrantedFeature.Logs, AccessLevel.Edit));
+        s.W.Current.SignInAs(s.Bob);
+        var draft = await s.W.Drafts.UploadAsync(s.Car.Id, Jpeg(), default); // a log editor may upload drafts ...
+
+        var refused = await Assert.ThrowsAsync<ForbiddenException>(() => s.W.ImageService.SetVehiclePictureFromDraftAsync(s.Car.Id, draft, default)); // ... not change the picture
+
+        Assert.Equal("vehicle.viewOnly", refused.Key);
+        Assert.Single(s.W.PhotoDrafts.Items);
+    }
+
     // ---- uploading -----------------------------------------------------------------------------------------
 
     [Fact]

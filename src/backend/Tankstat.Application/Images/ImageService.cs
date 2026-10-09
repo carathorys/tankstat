@@ -27,6 +27,10 @@ public sealed class ImageService(
     IImageStore store, IImageRepository images, IUserRepository users, IVehicleRepository vehicles, AccessService access, LogPhotoAccess logPhotos, IPhotoDraftRepository drafts, TimeProvider clock,
     ILogger<ImageService> logger)
 {
+    // One picture change of a vehicle at a time within this process (an upload, a removal, a change from a device and the same one sent
+    // again): each reads the picture it replaces and deletes it, and the picture is not versioned, so nothing else would catch a race.
+    private static readonly StripedLocks PictureLocks = new();
+
     public async Task<Guid> SetAvatarAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
     {
         var user = await CurrentUserAsync(ct);
@@ -50,7 +54,7 @@ public sealed class ImageService(
         logger.LogDebug("User {UserId} removed their avatar", user.Id);
     }
 
-    public async Task<Guid> SetVehiclePictureAsync(Guid vehicleId, ReadOnlyMemory<byte> data, CancellationToken ct)
+    public Task<Guid> SetVehiclePictureAsync(Guid vehicleId, ReadOnlyMemory<byte> data, CancellationToken ct) => OnePictureChangeAsync(vehicleId, ct, async () =>
     {
         var vehicle = await EditableVehicleAsync(vehicleId, ct);
         var previous = vehicle.PictureImageId;
@@ -61,9 +65,47 @@ public sealed class ImageService(
         await DeleteQuietlyAsync(previous, ct);
         logger.LogDebug("The picture of vehicle {VehicleId} is now image {ImageId}", vehicle.Id, id);
         return id;
-    }
+    });
 
-    public async Task RemoveVehiclePictureAsync(Guid vehicleId, CancellationToken ct)
+    /// <summary>
+    /// Makes one of the user's drafts (uploaded for this vehicle: <c>PUT /media/vehicles/{id}/photo-drafts</c>) the vehicle's picture: how a
+    /// picture chosen while the server was out of reach reaches it (<c>syncChanges</c>, <c>setVehiclePicture</c>). The same draft again
+    /// changes nothing (a change sent again); a draft that is not the user's, is of another vehicle or expired is refused. The previous
+    /// picture is deleted, as when a picture is uploaded. A parked change applied by someone else (Edit on the vehicle) names its sender as
+    /// <paramref name="uploadedBy"/>, whose draft it is.
+    /// </summary>
+    public Task<Guid> SetVehiclePictureFromDraftAsync(Guid vehicleId, Guid draftId, CancellationToken ct, Guid? uploadedBy = null) => OnePictureChangeAsync(vehicleId, ct, async () =>
+    {
+        // Looked at under the lock: the same draft sent twice at once must not have its file moved back.
+        var vehicle = await EditableVehicleAsync(vehicleId, ct);
+        if (vehicle.PictureImageId == draftId)
+        {
+            await drafts.RemoveAsync([draftId], CancellationToken.None); // a row the first try may have left behind
+            return draftId;
+        }
+        var uploader = uploadedBy ?? (await access.RequirePrincipalAsync(ct)).Id;
+        if (await drafts.FindAsync(draftId, ct) is not { } draft || !draft.UsableBy(uploader, vehicle.Id, clock.GetUtcNow()))
+            throw PhotoDraftService.Expired(draftId);
+
+        var previous = vehicle.PictureImageId;
+        await MoveAsync(draft.Id, ImageFolders.VehiclePicture(vehicle.Id), CancellationToken.None);
+        try
+        {
+            vehicle.SetPicture(draft.Id);
+            await vehicles.UpdateAsync(vehicle, CancellationToken.None);
+        }
+        catch
+        {
+            await MoveBackToDraftsQuietlyAsync(draft);
+            throw;
+        }
+        await drafts.RemoveAsync([draft.Id], CancellationToken.None); // its row only: the file lives on as the picture
+        await DeleteQuietlyAsync(previous, CancellationToken.None);
+        logger.LogDebug("The picture of vehicle {VehicleId} is now draft {ImageId}", vehicle.Id, draft.Id);
+        return draft.Id;
+    });
+
+    public Task RemoveVehiclePictureAsync(Guid vehicleId, CancellationToken ct) => OnePictureChangeAsync(vehicleId, ct, async () =>
     {
         var vehicle = await EditableVehicleAsync(vehicleId, ct);
         var previous = vehicle.PictureImageId;
@@ -71,7 +113,8 @@ public sealed class ImageService(
         await vehicles.UpdateAsync(vehicle, ct);
         await DeleteQuietlyAsync(previous, ct);
         logger.LogDebug("The picture of vehicle {VehicleId} was removed", vehicle.Id);
-    }
+        return true;
+    });
 
     /// <summary>The picture if the current user may see it; null for unknown pictures and for ones they may not see.</summary>
     public async Task<ImageContent?> OpenAsync(Guid imageId, CancellationToken ct)
@@ -105,6 +148,25 @@ public sealed class ImageService(
     public async Task DeleteAsync(IEnumerable<Guid> imageIds, CancellationToken ct)
     {
         foreach (var id in imageIds) await DeleteQuietlyAsync(id, ct);
+    }
+
+    /// <summary>
+    /// Removes the pictures of drafts whose rows are gone or going: only those still in their vehicle's draft folder. A picture moved out
+    /// is a photo or the vehicle's picture now, even if its draft row stayed behind (a failure after the move), and stays.
+    /// </summary>
+    public async Task DeleteDraftPicturesAsync(IEnumerable<Domain.Photos.PhotoDraft> unused, CancellationToken ct)
+    {
+        foreach (var draft in unused)
+        {
+            if (await images.FindAsync(draft.Id, ct) is not { } image) continue;
+            if (image.Folder != ImageFolders.PhotoDrafts(draft.VehicleId))
+            {
+                logger.LogDebug("Draft photo {DraftId} was used meanwhile; only its row was removed", draft.Id);
+                continue;
+            }
+            await images.RemoveAsync(image.Id, ct);
+            await store.DeleteAsync(image, ct);
+        }
     }
 
     /// <summary>
@@ -176,6 +238,20 @@ public sealed class ImageService(
         return vehicle;
     }
 
+    private static async Task<T> OnePictureChangeAsync<T>(Guid vehicleId, CancellationToken ct, Func<Task<T>> change)
+    {
+        var gate = PictureLocks.For(vehicleId);
+        await gate.WaitAsync(ct);
+        try
+        {
+            return await change();
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
     /// <summary>Validates, then writes the file first and the row second; a failure in between removes the file again.</summary>
     public async Task<Guid> StoreAsync(ReadOnlyMemory<byte> data, string folder, CancellationToken ct)
     {
@@ -193,6 +269,20 @@ public sealed class ImageService(
             throw;
         }
         return image.Id;
+    }
+
+    /// <summary>Puts a draft's picture back among the drafts after what was to take it could not be saved; a failure is only logged.</summary>
+    public async Task MoveBackToDraftsQuietlyAsync(Domain.Photos.PhotoDraft draft)
+    {
+        try
+        {
+            await MoveAsync(draft.Id, ImageFolders.PhotoDrafts(draft.VehicleId), CancellationToken.None);
+        }
+        catch (Exception e)
+        {
+            // it expires with the other drafts or goes with the vehicle
+            logger.LogWarning(e, "Draft photo {DraftId} could not be moved back to the drafts", draft.Id);
+        }
     }
 
     private async Task DeleteQuietlyAsync(Guid? id, CancellationToken ct)

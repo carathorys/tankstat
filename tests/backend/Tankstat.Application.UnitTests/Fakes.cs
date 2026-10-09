@@ -538,7 +538,15 @@ internal sealed class InMemoryImageStore : IImageStore
     /// <summary>The folder each saved file went into (null: the data folder itself).</summary>
     public Dictionary<Guid, string?> Folders { get; } = [];
     public bool FailSaves { get; set; }
-    public Task SaveAsync(StoredImage image, ReadOnlyMemory<byte> data, CancellationToken ct) { Files[image.Id] = data.ToArray(); Folders[image.Id] = image.Folder; return Task.CompletedTask; }
+
+    /// <summary>Awaited before a file is saved: lets a test hold a save while something else runs.</summary>
+    public Func<Task>? BeforeSave { get; set; }
+    public async Task SaveAsync(StoredImage image, ReadOnlyMemory<byte> data, CancellationToken ct)
+    {
+        if (BeforeSave is { } wait) await wait();
+        Files[image.Id] = data.ToArray();
+        Folders[image.Id] = image.Folder;
+    }
     public Task<Stream?> OpenReadAsync(StoredImage image, CancellationToken ct) => Task.FromResult<Stream?>(Files.TryGetValue(image.Id, out var d) ? new MemoryStream(d) : null);
     public Task DeleteAsync(StoredImage image, CancellationToken ct) { Files.Remove(image.Id); Folders.Remove(image.Id); return Task.CompletedTask; }
     public bool FailMoves { get; set; }

@@ -1,7 +1,9 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { http, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
+import { outbox } from '../../../src/frontend/offline/outbox.ts'
 import { server } from '../support/server.ts'
 import { fakeExpenseBackend, fakeLogBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, adminSession, healthHandler, person, renderWithApollo, sessionHandler, stubViewport } from '../support/mocks.tsx'
 import { dateValue, findDateField } from '../support/dates.ts'
@@ -358,6 +360,18 @@ it('the details tab shows the units and, for editors, the picture controls', asy
   expect(screen.getByText('Miles')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Choose a picture' })).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Remove picture' })).not.toBeInTheDocument()
+})
+
+it('removes the picture on the server at once while it answers, and says so', async () => {
+  const { ui } = setupDetails(fakeVehicle({ pictureUrl: '/media/p1' }))
+  const deleted: string[] = []
+  server.use(http.delete('/media/*', ({ request }) => (deleted.push(new URL(request.url).pathname), new HttpResponse(null, { status: 204 }))))
+
+  await ui.click(await screen.findByRole('button', { name: 'Remove picture' }))
+
+  expect(await screen.findByText('Picture removed.')).toBeInTheDocument() // not "on this device": it went
+  expect(deleted).toEqual(['/media/vehicles/v1/picture'])
+  expect(outbox.changes).toEqual([])
 })
 
 function setupDetails(vehicle = fakeVehicle()) {

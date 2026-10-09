@@ -117,7 +117,8 @@ public class ContractTests
     [InlineData("MarkRecurringExpensesDoneInput", "ids", "date", "odometer", "amount", "currency", "title", "category", "photoIds", "expenseId")]
     [InlineData("GridSettingsInput", "gridId", "order", "hidden", "pageSize", "sortColumn", "sortDirection")]
     [InlineData("UpdateUiSettingsInput", "navOpen", "language", "clearLanguage", "colorMode", "surface")]
-    [InlineData("ChangeInput", "id", "expectedVersion", "base")]
+    [InlineData("ChangeInput", "id", "expectedVersion", "base", "setVehiclePicture", "removeVehiclePicture")]
+    [InlineData("SetVehiclePictureInput", "vehicleId", "draftId")]
     [InlineData("ResolveSyncChangeInput", "id", "action", "change", "restoreFirst")]
     public async Task Schema_InputTypeTakesContractFields(string type, params string[] fields)
     {
@@ -168,7 +169,7 @@ public class ContractTests
     [InlineData("NoticeSeverity", "INFO", "WARNING")]
     [InlineData("NotificationKind", "LOG_ACCESS_CHANGED", "VEHICLE_SHARED", "DATA_ACCESS_CHANGED", "DATA_SHARED", "DEFAULT_ACCESS_CHANGED", "RECURRING_DUE_SOON", "RECURRING_OVERDUE", "LOG_FILLED_FROM_PHOTO", "LOG_NOT_FILLED", "SYNC_CHANGE_PARKED", "MORE_ACTIVITY")]
     [InlineData("NotificationEntityType", "INSTANCE", "VEHICLE", "RECURRING_EXPENSE", "USER", "REFUELING", "EXPENSE", "SYNC_CHANGE")]
-    [InlineData("SyncChangeKind", "LOG_REFUELING", "UPDATE_REFUELING", "DELETE_REFUELING", "RESTORE_REFUELING", "ADD_EXPENSE", "UPDATE_EXPENSE", "DELETE_EXPENSE", "RESTORE_EXPENSE", "ADD_RECURRING_EXPENSE", "UPDATE_RECURRING_EXPENSE", "DELETE_RECURRING_EXPENSE", "MARK_RECURRING_EXPENSES_DONE", "ADD_VEHICLE", "UPDATE_VEHICLE", "DELETE_VEHICLE", "RESTORE_VEHICLE", "ADD_REFUELING_PHOTO", "REMOVE_REFUELING_PHOTO", "ADD_EXPENSE_PHOTO", "REMOVE_EXPENSE_PHOTO")]
+    [InlineData("SyncChangeKind", "LOG_REFUELING", "UPDATE_REFUELING", "DELETE_REFUELING", "RESTORE_REFUELING", "ADD_EXPENSE", "UPDATE_EXPENSE", "DELETE_EXPENSE", "RESTORE_EXPENSE", "ADD_RECURRING_EXPENSE", "UPDATE_RECURRING_EXPENSE", "DELETE_RECURRING_EXPENSE", "MARK_RECURRING_EXPENSES_DONE", "ADD_VEHICLE", "UPDATE_VEHICLE", "DELETE_VEHICLE", "RESTORE_VEHICLE", "ADD_REFUELING_PHOTO", "REMOVE_REFUELING_PHOTO", "ADD_EXPENSE_PHOTO", "REMOVE_EXPENSE_PHOTO", "SET_VEHICLE_PICTURE", "REMOVE_VEHICLE_PICTURE")]
     [InlineData("SyncResolveAction", "APPLY", "DISCARD")]
     public async Task Schema_EnumsExposeContractValues(string type, params string[] expected)
     {

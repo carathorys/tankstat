@@ -83,6 +83,10 @@ export function toChangeInput(c: Change, drafts: ReadonlyMap<string, string> = n
     case 'refuelings:addPhoto':
     case 'expenses:addPhoto':
       return { ...envelope, [`add${log}Photo`]: { logId: c.targetId, draftId: drafts.get(String(c.input?.key)) ?? c.input?.draftId } } as ChangeInput
+    case 'vehicles:setPicture':
+      return { ...envelope, setVehiclePicture: { vehicleId: c.targetId, draftId: drafts.get(String(c.input?.key)) ?? c.input?.draftId } } as ChangeInput
+    case 'vehicles:removePicture':
+      return { ...envelope, removeVehiclePicture: c.targetId }
     case 'refuelings:removePhoto':
     case 'expenses:removePhoto':
       return { ...envelope, [`remove${log}Photo`]: { logId: c.targetId, imageId: c.input?.imageId } } as ChangeInput
@@ -198,8 +202,8 @@ export function createPushEngine({ client, device = deviceData, pull, chunkSize 
           return
         }
       }
-      // A photo added to a saved log that is gone from the device has nothing left to send: it is done with.
-      const nothing = group.filter((c) => c.action === 'addPhoto' && !drafts.has(String(c.input?.key)))
+      // A photo added to a saved log, or a vehicle's picture, that is gone from the device has nothing left to send: it is done with.
+      const nothing = group.filter((c) => (c.action === 'addPhoto' || c.action === 'setPicture') && !drafts.has(String(c.input?.key)))
       const sendable = group.filter((c) => !nothing.includes(c))
       if (sendable.length === 0) {
         answered.push(...nothing.map((c) => c.id))

@@ -29,6 +29,14 @@ describe('toChangeInput', () => {
     expect(toChangeInput(change({ id: 'q', entity: 'expenses', action: 'removePhoto', targetId: 'e1' }))).toEqual({ id: 'q', expectedVersion: null, removeExpensePhoto: { logId: 'e1', imageId: undefined } })
   })
 
+  it('sets a vehicle\'s picture by the draft its kept picture went up as, and removes it by the vehicle', () => {
+    const drafts = new Map([['local:pic', 'draft-pic']])
+    expect(toChangeInput(change({ id: 'p', entity: 'vehicles', action: 'setPicture', vehicleId: 'v2', targetId: 'v2', input: { key: 'local:pic' } }), drafts))
+      .toEqual({ id: 'p', expectedVersion: null, setVehiclePicture: { vehicleId: 'v2', draftId: 'draft-pic' } })
+    expect(toChangeInput(change({ id: 'r', entity: 'vehicles', action: 'removePicture', vehicleId: 'v2', targetId: 'v2' })))
+      .toEqual({ id: 'r', expectedVersion: null, removeVehiclePicture: 'v2' })
+  })
+
   it('refuses a change no operation of the server stands for', () => {
     expect(() => toChangeInput(change({ entity: 'vehicles', action: 'markDone' }))).toThrow('A change of vehicles cannot markDone.')
   })
@@ -98,8 +106,11 @@ describe('fromParked', () => {
       change({ id: 's2', entity: 'recurring', action: 'update', targetId: 's1', expectedVersion: 1, input: { id: 's1', title: 'Service', kind: 'TIME', intervalMonths: 6 } }),
       change({ id: 's3', entity: 'recurring', action: 'trash', targetId: 's1' }),
       change({ id: 'd', entity: 'recurring', action: 'markDone', targetId: 'x1', targetIds: ['s1', 's2'], input: { ids: ['s1', 's2'], date: '2026-10-02', amount: 50, currency: 'EUR', expenseId: 'x1' } }),
+      // A picture as the server keeps it: by the draft it went up as.
+      change({ id: 'p1', entity: 'vehicles', action: 'setPicture', vehicleId: 'v2', targetId: 'v2', input: { draftId: 'draft-p' } }),
+      change({ id: 'p2', entity: 'vehicles', action: 'removePicture', vehicleId: 'v2', targetId: 'v2' }),
     ]
-    expect(new Set(all.map(kindOf)).size).toBe(16)
+    expect(new Set(all.map(kindOf)).size).toBe(18)
 
     for (const c of all) {
       const back = fromParked({ id: c.id, kind: kindOf(c), vehicleId: c.vehicleId, targetId: c.targetId, change: asKept(c, nulls), receivedAt: '2026-10-03T08:00:00Z' })

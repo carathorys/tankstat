@@ -77,7 +77,7 @@ public interface ISyncChangeRepository
 public sealed class SyncService(
     ISyncChangeRepository ledger, IVehicleRepository vehicles, AccessService access, IOptions<SyncOptions> options, TimeProvider clock, ILogger<SyncService> logger)
 {
-    private static readonly SemaphoreSlim[] Locks = Enumerable.Range(0, 64).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
+    private static readonly StripedLocks Locks = new();
 
     public async Task<SyncOutcome> SyncAsync(IReadOnlyList<SyncChangeRequest> changes, CancellationToken ct)
     {
@@ -89,7 +89,7 @@ public sealed class SyncService(
         if (changes.FirstOrDefault(c => c.Payload.Length > SyncChange.MaxPayloadLength || c.Base?.Length > SyncChange.MaxPayloadLength) is { } large)
             throw new DomainException("sync.payloadTooLarge", $"A change may hold at most {SyncChange.MaxPayloadLength} characters.", new { large.Id, Max = SyncChange.MaxPayloadLength });
 
-        var gate = Locks[(uint)me.Id.GetHashCode() % Locks.Length];
+        var gate = Locks.For(me.Id);
         await gate.WaitAsync(ct);
         try
         {
@@ -159,7 +159,8 @@ public sealed class SyncService(
         return level >= AccessLevel.Edit;
     }
 
-    public static bool IsVehicleChange(SyncChangeKind kind) => kind is SyncChangeKind.AddVehicle or SyncChangeKind.UpdateVehicle or SyncChangeKind.DeleteVehicle or SyncChangeKind.RestoreVehicle;
+    public static bool IsVehicleChange(SyncChangeKind kind) => kind is SyncChangeKind.AddVehicle or SyncChangeKind.UpdateVehicle or SyncChangeKind.DeleteVehicle or SyncChangeKind.RestoreVehicle
+        or SyncChangeKind.SetVehiclePicture or SyncChangeKind.RemoveVehiclePicture;
 
     /// <summary>The parked change, when the caller may see it; anything else looks non-existent, whatever it is.</summary>
     public async Task<SyncChange> FindVisibleAsync(Guid id, CancellationToken ct)

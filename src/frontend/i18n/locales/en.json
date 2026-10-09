@@ -745,7 +745,10 @@
     "hint": "JPEG, PNG or WebP. Large pictures are made smaller automatically.",
     "needsServer": "Changing the picture needs the server. It works again once you are back online.",
     "unreadable": "This file could not be read as a picture.",
-    "avatarFor": "Profile picture of {{name}}"
+    "avatarFor": "Profile picture of {{name}}",
+    "keptOnDevice": "Picture saved on this device · syncs when online.",
+    "removedOnDevice": "Picture removed on this device · syncs when online.",
+    "keptHint": "You are offline: a picture you choose is saved on this device and syncs when online."
   },
   "expenses": {
     "title": "Expenses",
@@ -1212,7 +1215,9 @@
         "add": "New vehicle",
         "update": "Changed vehicle",
         "trash": "Vehicle to the trash",
-        "restore": "Vehicle back from the trash"
+        "restore": "Vehicle back from the trash",
+        "setPicture": "New picture of a vehicle",
+        "removePicture": "Picture of a vehicle removed"
       },
       "recurring": {
         "add": "New recurring expense",

@@ -29,7 +29,7 @@ public sealed class LogPhotoService(
 
     // Uploads to one log are handled one at a time within this process, so the count check and the insert below are one step. Other
     // processes on the same database are covered by the re-check after the insert. Striped (by log id) so the locks do not pile up.
-    private static readonly SemaphoreSlim[] Locks = Enumerable.Range(0, 64).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
+    private static readonly StripedLocks Locks = new();
 
     /// <summary>Stores the picture (JPEG, PNG or WebP) as a new photo of the log and returns its image id.</summary>
     public async Task<Guid> AddAsync(LogType logType, Guid logId, ReadOnlyMemory<byte> data, CancellationToken ct)
@@ -37,7 +37,7 @@ public sealed class LogPhotoService(
         var log = await logs.EditableAsync(logType, logId, ct);
         var principal = await access.RequirePrincipalAsync(ct);
 
-        var gate = Locks[(uint)logId.GetHashCode() % Locks.Length];
+        var gate = Locks.For(logId);
         await gate.WaitAsync(ct);
         try
         {
@@ -101,7 +101,7 @@ public sealed class LogPhotoService(
         var attached = new List<Guid>();
         var now = clock.GetUtcNow();
         // One log at a time, like uploads: the count, the "attached already?" look and the insert are one step within this process.
-        var gate = Locks[(uint)logId.GetHashCode() % Locks.Length];
+        var gate = Locks.For(logId);
         await gate.WaitAsync(CancellationToken.None);
         try
         {
@@ -131,7 +131,7 @@ public sealed class LogPhotoService(
                 {
                     // The log is saved already: failing now would make the user save it twice. The picture goes back to the drafts.
                     logger.LogWarning(e, "Draft photo {DraftId} could not be attached to {LogType} {LogId}; it stays a draft", draft.Id, logType, logId);
-                    if (moved) await MoveBackQuietlyAsync(draft);
+                    if (moved) await images.MoveBackToDraftsQuietlyAsync(draft);
                 }
             }
         }
@@ -150,15 +150,16 @@ public sealed class LogPhotoService(
     /// <summary>
     /// Makes one of the user's drafts a photo of a saved log (a photo added while offline, uploaded as a draft when the device synced):
     /// Edit on the log's vehicle, a draft of that vehicle that has not expired, and room on the log. A draft that is already this log's
-    /// photo is answered with its id. Returns the image id.
+    /// photo is answered with its id. Returns the image id. A parked change applied by someone else names its sender as
+    /// <paramref name="uploadedBy"/>, whose draft it is.
     /// </summary>
-    public async Task<Guid> AttachDraftAsync(LogType logType, Guid logId, Guid draftId, CancellationToken ct)
+    public async Task<Guid> AttachDraftAsync(LogType logType, Guid logId, Guid draftId, CancellationToken ct, Guid? uploadedBy = null)
     {
         var log = await logs.EditableAsync(logType, logId, ct);
         if (await photos.FindByImageAsync(draftId, ct) is { } attached && attached.LogType == logType && attached.LogId == logId) return draftId;
-        var draft = (await drafts.RequireAttachableAsync(log.Vehicle.Id, [draftId], ct)).Single();
+        var draft = (await drafts.RequireAttachableAsync(log.Vehicle.Id, [draftId], ct, uploadedBy)).Single();
 
-        var gate = Locks[(uint)logId.GetHashCode() % Locks.Length];
+        var gate = Locks.For(logId);
         await gate.WaitAsync(ct);
         try
         {
@@ -172,7 +173,7 @@ public sealed class LogPhotoService(
             }
             catch
             {
-                await MoveBackQuietlyAsync(draft);
+                await images.MoveBackToDraftsQuietlyAsync(draft);
                 throw;
             }
             await drafts.ForgetAsync([draft.Id], CancellationToken.None);
@@ -182,19 +183,6 @@ public sealed class LogPhotoService(
         finally
         {
             gate.Release();
-        }
-    }
-
-    private async Task MoveBackQuietlyAsync(PhotoDraft draft)
-    {
-        try
-        {
-            await images.MoveAsync(draft.Id, ImageFolders.PhotoDrafts(draft.VehicleId), CancellationToken.None);
-        }
-        catch (Exception e)
-        {
-            // it expires with the other drafts or goes with the vehicle
-            logger.LogWarning(e, "Draft photo {DraftId} could not be moved back to the drafts", draft.Id);
         }
     }
 

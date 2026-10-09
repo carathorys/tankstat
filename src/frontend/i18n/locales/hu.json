@@ -745,7 +745,10 @@
     "hint": "JPEG, PNG vagy WebP. A nagy képeket automatikusan lekicsinyítjük.",
     "needsServer": "A kép cseréjéhez a szerver kell. Ha újra van kapcsolat, ismét működik.",
     "unreadable": "Ezt a fájlt nem sikerült képként beolvasni.",
-    "avatarFor": "{{name}} profilképe"
+    "avatarFor": "{{name}} profilképe",
+    "keptOnDevice": "A kép elmentve ezen az eszközön · kapcsolatkor szinkronizálódik.",
+    "removedOnDevice": "A kép törölve ezen az eszközön · kapcsolatkor szinkronizálódik.",
+    "keptHint": "Nincs kapcsolat: a kiválasztott kép ezen az eszközön marad, és kapcsolatkor szinkronizálódik."
   },
   "expenses": {
     "title": "Költségek",
@@ -1212,7 +1215,9 @@
         "add": "Új jármű",
         "update": "Módosított jármű",
         "trash": "Kukába kerülő jármű",
-        "restore": "Kukából visszaállított jármű"
+        "restore": "Kukából visszaállított jármű",
+        "setPicture": "Jármű új képe",
+        "removePicture": "Jármű képének törlése"
       },
       "recurring": {
         "add": "Új ismétlődő kiadás",

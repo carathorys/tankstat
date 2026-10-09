@@ -48,27 +48,28 @@ public sealed class PhotoDraftService(
     {
         var draft = await OwnDraftAsync(id, ct) ?? throw NotFound(id);
         await drafts.RemoveAsync([draft.Id], ct);
-        await images.DeleteAsync([draft.Id], ct);
+        await images.DeleteDraftPicturesAsync([draft], ct);
         logger.LogDebug("Draft photo {ImageId} removed", draft.Id);
     }
 
     /// <summary>
-    /// The drafts to attach to a new log of the vehicle: each must be the current user's, for that vehicle and not expired, and together
-    /// they must fit on one log. Checked before the log is saved, so a bad list saves nothing.
+    /// The drafts to attach to a new log of the vehicle: each must be the current user's (or <paramref name="uploadedBy"/>'s: a parked
+    /// change applied by someone else takes its sender's), for that vehicle and not expired, and together they must fit on one log.
+    /// Checked before the log is saved, so a bad list saves nothing.
     /// </summary>
-    public async Task<IReadOnlyList<PhotoDraft>> RequireAttachableAsync(Guid vehicleId, IReadOnlyCollection<Guid>? ids, CancellationToken ct)
+    public async Task<IReadOnlyList<PhotoDraft>> RequireAttachableAsync(Guid vehicleId, IReadOnlyCollection<Guid>? ids, CancellationToken ct, Guid? uploadedBy = null)
     {
         if (ids is null || ids.Count == 0) return [];
         var wanted = ids.Distinct().ToList();
         if (wanted.Count > LogPhoto.MaxPerLog)
             throw new DomainException("photo.tooMany", $"A log can have at most {LogPhoto.MaxPerLog} photos.", new { Max = LogPhoto.MaxPerLog });
 
-        var me = await access.RequirePrincipalAsync(ct);
+        var uploader = uploadedBy ?? (await access.RequirePrincipalAsync(ct)).Id;
         var now = clock.GetUtcNow();
         var found = (await drafts.FindManyAsync(wanted, ct)).ToDictionary(d => d.Id);
-        return wanted.Select(id => found.GetValueOrDefault(id) is { } d && d.CreatedById == me.Id && d.VehicleId == vehicleId && !d.IsExpired(now)
+        return wanted.Select(id => found.GetValueOrDefault(id) is { } d && d.UsableBy(uploader, vehicleId, now)
             ? d
-            : throw new DomainException("photo.draftExpired", "A photo is no longer available; add it again.", new { Id = id })).ToList();
+            : throw Expired(id)).ToList();
     }
 
     /// <summary>
@@ -80,7 +81,7 @@ public sealed class PhotoDraftService(
         if (ids is null || ids.Count == 0) return [];
         var me = await access.RequirePrincipalAsync(ct);
         var now = clock.GetUtcNow();
-        return (await drafts.FindManyAsync(ids.Distinct().ToList(), ct)).Where(d => d.CreatedById == me.Id && d.VehicleId == vehicleId && !d.IsExpired(now)).ToList();
+        return (await drafts.FindManyAsync(ids.Distinct().ToList(), ct)).Where(d => d.UsableBy(me.Id, vehicleId, now)).ToList();
     }
 
     /// <summary>The drafts were attached to a log: only their rows go, the pictures live on as its photos.</summary>
@@ -98,9 +99,12 @@ public sealed class PhotoDraftService(
         if (expired.Count == 0) return;
         var ids = expired.Select(d => d.Id).ToList();
         await drafts.RemoveAsync(ids, ct);
-        await images.DeleteAsync(ids, ct);
+        await images.DeleteDraftPicturesAsync(expired, ct);
         logger.LogDebug("Removed {Count} expired draft photos", ids.Count);
     }
+
+    /// <summary>A draft that cannot be used (gone, expired, someone else's or another vehicle's): the user adds the photo again.</summary>
+    internal static DomainException Expired(Guid id) => new("photo.draftExpired", "A photo is no longer available; add it again.", new { Id = id });
 
     private static NotFoundException NotFound(Guid id) => new("photo.notFound", $"The photo {id} does not exist.", new { Id = id });
 }
