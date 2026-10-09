@@ -164,18 +164,23 @@ it('the notifications page and the open bell are labelled and free of violations
   await check(document.body)
 })
 
-it('the colour mode and language menus are labelled radio menus, free of violations', async () => {
+it('the appearance and language menus are labelled radio menus, free of violations', async () => {
   const { ui } = setup('/')
   await screen.findByText('Octavia')
 
-  await ui.click(screen.getByRole('button', { name: 'Colour mode' }))
-  const modes = await screen.findByRole('menu', { name: 'Colour mode' })
-  expect(within(modes).getAllByRole('menuitemradio').map((item) => [item.textContent, item.getAttribute('aria-checked')])).toEqual([
-    ['Light', 'false'],
-    ['Dark', 'true'],
-    ['System', 'false'],
+  await ui.click(screen.getByRole('button', { name: 'Appearance' }))
+  const modes = await screen.findByRole('menu', { name: 'Appearance' })
+  // Two sets of radios, split by a separator; each item's name says its set.
+  expect(within(modes).getAllByRole('menuitemradio').map((item) => [item.getAttribute('aria-label'), item.getAttribute('aria-checked')])).toEqual([
+    ['Colour mode: Light', 'false'],
+    ['Colour mode: Dark', 'true'],
+    ['Colour mode: System', 'false'],
+    ['Surfaces: Glossy', 'true'],
+    ['Surfaces: Transparent', 'false'],
+    ['Surfaces: Opaque', 'false'],
   ])
-  expect(screen.getByRole('button', { name: 'Colour mode', hidden: true })).toHaveAttribute('aria-controls', modes.id)
+  expect(within(modes).getByRole('separator')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Appearance', hidden: true })).toHaveAttribute('aria-controls', modes.id)
   await check(modes) // the menu itself: a transient popup outside the page's landmarks, as every popup menu is
   await ui.keyboard('{Escape}')
 

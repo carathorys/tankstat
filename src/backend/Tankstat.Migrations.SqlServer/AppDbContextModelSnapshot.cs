@@ -646,6 +646,10 @@ namespace Tankstat.Migrations.SqlServer
                     b.Property<bool?>("NavOpen")
                         .HasColumnType("bit");
 
+                    b.Property<string>("Surface")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 

@@ -641,6 +641,10 @@ namespace Tankstat.Migrations.Sqlite
                     b.Property<bool?>("NavOpen")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Surface")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 

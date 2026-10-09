@@ -73,6 +73,24 @@ public class UiSettingsApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Surface_StartsUnchosen_FollowsTheUser_AndStaysThroughOtherChanges()
+    {
+        var people = await _app.Users();
+        Assert.Equal(JsonValueKind.Null, (await people.Alice.Gql("{ uiSettings { surface } }")).Data().GetProperty("uiSettings").GetProperty("surface").ValueKind);
+
+        var opaque = (await people.Alice.Gql("mutation { updateUiSettings(input: { surface: OPAQUE }) { surface } }")).Data().GetProperty("updateUiSettings");
+        await people.Alice.Gql("mutation { updateUiSettings(input: { colorMode: DARK }) { colorMode } }");
+
+        Assert.Equal("OPAQUE", opaque.GetProperty("surface").GetString());
+        Assert.Equal("OPAQUE", (await people.Alice.Gql("{ uiSettings { surface } }")).Data().GetProperty("uiSettings").GetProperty("surface").GetString());
+        Assert.Equal(JsonValueKind.Null, (await people.Bob.Gql("{ uiSettings { surface } }")).Data().GetProperty("uiSettings").GetProperty("surface").ValueKind);
+        // Only the three styles exist: anything else is a request error, before the service sees it.
+        var matte = await people.Alice.PostAsJsonAsync("/graphql", new { query = "mutation { updateUiSettings(input: { surface: MATTE }) { surface } }" });
+        Assert.Equal(HttpStatusCode.BadRequest, matte.StatusCode);
+        Assert.Equal("OPAQUE", (await people.Alice.Gql("{ uiSettings { surface } }")).Data().GetProperty("uiSettings").GetProperty("surface").GetString());
+    }
+
+    [Fact]
     public async Task InvalidSettings_AreValidationErrorsWithKeys()
     {
         var people = await _app.Users();

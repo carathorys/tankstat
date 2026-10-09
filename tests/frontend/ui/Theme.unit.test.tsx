@@ -2,7 +2,7 @@ import { render } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { COLOR_MODE_KEY } from '../../../src/frontend/theme/colorMode.ts'
 import { THEME_COLOR } from '../../../src/frontend/theme/initScheme.ts'
-import { SHADOWS, TONES } from '../../../src/frontend/theme/components.ts'
+import { components, glass, SHADOWS, TONES } from '../../../src/frontend/theme/components.ts'
 import { createTankstatTheme } from '../../../src/frontend/theme/theme.ts'
 import { ThemeRoot } from '../../../src/frontend/theme/ThemeRoot.tsx'
 
@@ -40,6 +40,29 @@ describe('the theme keeps the old look', () => {
 
   it('draws elevations with the soft shadows of the scheme', () => {
     expect([SHADOWS[0], SHADOWS[1], SHADOWS[8], SHADOWS[24]]).toEqual(['none', 'var(--tk-shadow-2)', 'var(--tk-shadow-4)', 'var(--tk-shadow-5)'])
+  })
+})
+
+describe('the surfaces', () => {
+  const baseline = (components.MuiCssBaseline!.styleOverrides as (t: typeof theme) => Record<string, Record<string, string>>)(theme)
+
+  it('draw every floating panel from the same variables, solid paper when opaque', () => {
+    const panel = glass(theme)
+    expect(panel.backgroundColor).toMatch(/\/ var\(--tk-glass-alpha\)\)$/)
+    expect([panel.backdropFilter, panel.WebkitBackdropFilter]).toEqual(['var(--tk-glass-filter)', 'var(--tk-glass-filter)'])
+    // In the panel's own scheme: an always-dark card stays dark and solid on a light page.
+    expect(panel['.surface-opaque &']).toEqual({ backgroundColor: theme.vars.palette.background.paper })
+  })
+
+  it('are glossy by default: see-through per scheme and blurred, the card scrim too', () => {
+    expect([baseline[':root, .dark']['--tk-glass-alpha'], baseline['.light']['--tk-glass-alpha']]).toEqual(['0.7', '0.85'])
+    expect(baseline[':root, .dark']['--tk-shadow-2']).toBeDefined() // merged with the shadows, not replacing them
+    expect(baseline[':root']).toMatchObject({ '--tk-glass-filter': 'blur(14px) saturate(140%)', '--tk-scrim-filter': 'blur(10px)' })
+  })
+
+  it('lose the blur when transparent or opaque, and the card scrim turns darker, then solid', () => {
+    expect(baseline[':root.surface-transparent']).toEqual({ '--tk-glass-filter': 'none', '--tk-scrim': 'rgba(0, 0, 0, 0.55)', '--tk-scrim-filter': 'none' })
+    expect(baseline[':root.surface-opaque']).toEqual({ '--tk-glass-filter': 'none', '--tk-scrim': 'rgb(17, 17, 16)', '--tk-scrim-filter': 'none' })
   })
 })
 

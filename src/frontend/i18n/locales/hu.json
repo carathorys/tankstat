@@ -26,6 +26,15 @@
   "language": {
     "label": "Nyelv"
   },
+  "appearance": {
+    "label": "Megjelenés"
+  },
+  "surface": {
+    "label": "Felületek",
+    "glossy": "Üveghatású",
+    "transparent": "Átlátszó",
+    "opaque": "Átlátszatlan"
+  },
   "colorMode": {
     "label": "Színmód",
     "light": "Világos",
@@ -472,7 +481,8 @@
       "pageSizeInvalid": "Az oldalméret {{min}} és {{max}} között lehet.",
       "sortDirectionInvalid": "Ismeretlen rendezési irány.",
       "languageInvalid": "A nyelv kódja en vagy en-GB alakú lehet.",
-      "colorModeInvalid": "A színmód világos, sötét vagy rendszer lehet."
+      "colorModeInvalid": "A színmód világos, sötét vagy rendszer lehet.",
+      "surfaceInvalid": "A felület üveghatású, átlátszó vagy átlátszatlan lehet."
     },
     "refueling": {
       "litersPositive": "A literszámnak nullánál nagyobbnak kell lennie.",

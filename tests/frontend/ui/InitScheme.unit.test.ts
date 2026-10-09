@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { COLOR_MODE_KEY } from '../../../src/frontend/theme/colorMode.ts'
 import { initSchemeScript, initSchemeStyle, THEME_COLOR } from '../../../src/frontend/theme/initScheme.ts'
+import { SURFACE_KEY } from '../../../src/frontend/theme/surface.ts'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -30,6 +31,21 @@ it('applies a light choice before anything paints, the browser bar too', () => {
 it('follows the device when the choice is system', () => {
   expect(start('system', 'light')).toEqual({ scheme: 'light', bar: THEME_COLOR.light })
   expect(start('system', 'dark')).toEqual({ scheme: 'dark', bar: THEME_COLOR.dark })
+})
+
+it('puts the surface style the browser keeps on <html> before anything paints, alongside the scheme', () => {
+  window.localStorage.setItem(SURFACE_KEY, 'opaque')
+  expect(start('light').scheme).toBe('light surface-opaque')
+  window.localStorage.setItem(SURFACE_KEY, 'transparent')
+  expect(start('dark').scheme).toBe('dark surface-transparent')
+})
+
+it('leaves the surfaces glossy (no class) when nothing or nothing it knows is kept', () => {
+  expect(start(null).scheme).toBe('dark')
+  for (const stored of ['glossy', 'matte', 'toString', '__proto__', 'constructor']) {
+    window.localStorage.setItem(SURFACE_KEY, stored)
+    expect(start(null).scheme).toBe('dark')
+  }
 })
 
 it('never breaks the page when the browser keeps nothing (storage blocked)', () => {

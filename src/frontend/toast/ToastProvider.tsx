@@ -4,6 +4,7 @@ import Snackbar from '@mui/material/Snackbar'
 import { CircleCheck, CircleX, Info, TriangleAlert } from 'lucide-react'
 import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { glass } from '../theme/components.ts'
 import { ToastContext, type Toast, type ToastApi } from './toastContext.ts'
 
 const SHORT_MS = 4_000
@@ -62,7 +63,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             role="status"
             severity={severity}
             icon={<Icon size={16} aria-hidden />}
-            sx={{ boxShadow: 4, alignItems: 'center' }}
+            // It floats over whatever the page shows, so it is a surface of its own (glossy, transparent or opaque, as the user chose), its
+            // kind's tint over it, in the text colour: the icon and a hairline say the kind, never a see-through tint alone (#63).
+            sx={(theme) => ({
+              ...glass(theme),
+              backgroundImage: `linear-gradient(${theme.vars.palette[severity].soft}, ${theme.vars.palette[severity].soft})`,
+              color: 'text.primary',
+              boxShadow: `0 0 0 1px color-mix(in srgb, ${theme.vars.palette[severity].main} 55%, transparent), ${theme.shadows[9]}`,
+              alignItems: 'center',
+              '& .MuiAlert-icon': { color: theme.vars.palette[severity].softText },
+            })}
             action={
               current.action && (
                 <Button

@@ -55,6 +55,21 @@ public class SettingsRepositoryTests
     }
 
     [Fact]
+    public async Task UiSettings_Surface_RoundTrips_StoredByName()
+    {
+        await using var db = new TestDatabase();
+        var repo = db.Get<IUiSettingsRepository>();
+        var user = Guid.NewGuid();
+        var settings = UiSettings.Create(user, Now);
+        settings.SetSurface(SurfaceStyle.Transparent, Now);
+        await repo.SaveAsync(settings, default);
+
+        Assert.Equal(SurfaceStyle.Transparent, (await repo.FindAsync(user, default))!.Surface);
+        await using var ctx = await db.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
+        Assert.Equal("Transparent", await ctx.Database.SqlQueryRaw<string>("SELECT \"Surface\" AS \"Value\" FROM \"UiSettings\"").SingleAsync());
+    }
+
+    [Fact]
     public async Task Grids_RoundTripTheirLists_ListById_AndReportRemoval()
     {
         await using var db = new TestDatabase();
