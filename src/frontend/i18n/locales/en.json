@@ -64,6 +64,7 @@
   },
   "update": {
     "available": "A new version of Tankstat is available.",
+    "finish": "Tankstat was updated in another tab. Reload to finish updating.",
     "reload": "Reload"
   },
   "notices": {

@@ -64,6 +64,7 @@
   },
   "update": {
     "available": "Elérhető a Tankstat új verziója.",
+    "finish": "A Tankstat egy másik lapon frissült. A frissítés befejezéséhez töltsd újra.",
     "reload": "Újratöltés"
   },
   "notices": {

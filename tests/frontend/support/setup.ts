@@ -7,6 +7,7 @@ import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
 import { deviceData } from '../../../src/frontend/offline/deviceData.ts'
 import { appUpdate } from '../../../src/frontend/pwa/appUpdate.ts'
 import { installPrompt } from '../../../src/frontend/pwa/installPrompt.ts'
+import { offlineReady } from '../../../src/frontend/pwa/offlineReady.ts'
 
 await initI18n('en')
 
@@ -25,6 +26,7 @@ afterEach(async () => {
   document.documentElement.classList.remove('surface-transparent', 'surface-opaque') // glossy again: the surface style lives on <html>
   installPrompt.reset()
   appUpdate.reset()
+  offlineReady.reset()
   connectivity.reset()
   deviceData.reset() // a fresh, empty device: what one test kept is never another's
   await i18n.changeLanguage('en')
