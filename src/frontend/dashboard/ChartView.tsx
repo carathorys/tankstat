@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next'
 import { SurfaceTable } from '../components/SurfaceTable.tsx'
 import type { DistanceUnit, VolumeUnit } from '../gql/generated.ts'
 import { useFormat } from '../i18n/format.ts'
+import { validLocale } from '../i18n/locale.ts'
 import { PALETTE, periodLabel, seriesId, type ChartData, type ChartRecipe, type Series } from './chartFormat.ts'
 
 type Units = { distance: DistanceUnit; volume: VolumeUnit }
@@ -45,7 +46,7 @@ export function ChartView({ data, recipe, units, title, height = 240 }: { data: 
     )
   }
 
-  const keyLabel = (key: string) => (key === '' ? t('dashboard.uncategorised') : periodLabel(key, i18n.language))
+  const keyLabel = (key: string) => (key === '' ? t('dashboard.uncategorised') : periodLabel(key, validLocale(i18n.language, i18n.resolvedLanguage)))
   const name = (s: Series) => `${t(`dashboard.series.${s.kind as 'total' | 'fuel' | 'expenses'}`, { defaultValue: t('dashboard.series.value') })}${s.currency ? ` · ${s.currency}` : ''}`
   const show = (value: number | null | undefined, s: Series) => {
     if (value == null) return t('common.none')

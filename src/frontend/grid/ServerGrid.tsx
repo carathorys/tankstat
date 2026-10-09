@@ -15,6 +15,7 @@ import { visuallyHidden } from '../components/visuallyHidden.ts'
 import { ErrorMessage } from '../messages.tsx'
 import type { ChangeEntity } from '../offline/changes.ts'
 import { ColumnsPopover } from './ColumnsPopover.tsx'
+import { validLocale } from '../i18n/locale.ts'
 import { useConnectivity } from '../offline/useConnectivity.ts'
 import { useRowSyncStates, type RowSyncState } from '../offline/useRowSyncStates.ts'
 import { PAGE_SIZES, useGridSettings, type PaginationState } from './useGridSettings.ts'
@@ -193,7 +194,7 @@ function GridBody<TData extends object, TVars extends OperationVariables, Row ex
   const sortModel = useMemo<GridSortModel>(() => state.sorting.map((s) => ({ field: s.id, sort: s.desc ? 'desc' : 'asc' })), [state.sorting])
   const paginationModel = useMemo<GridPaginationModel>(() => ({ page: state.pagination.pageIndex, pageSize: state.pagination.pageSize }), [state.pagination])
   const localeText = useMemo<Partial<GridLocaleText>>(() => {
-    const number = new Intl.NumberFormat(i18n.language)
+    const number = new Intl.NumberFormat(validLocale(i18n.language, i18n.resolvedLanguage))
     const page = { first: t('grid.first'), last: t('grid.last'), previous: t('grid.previous'), next: t('grid.next') }
     return {
       ...(i18n.resolvedLanguage === 'hu' ? huHU.components.MuiDataGrid.defaultProps.localeText : {}),

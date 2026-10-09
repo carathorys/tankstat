@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { DistanceUnit, VolumeUnit } from '../gql/generated.ts'
+import { validLocale } from './locale.ts'
 
 const DISTANCE_UNITS: Record<DistanceUnit, 'kilometer' | 'mile'> = { KILOMETERS: 'kilometer', MILES: 'mile' }
 
@@ -10,7 +11,8 @@ const DISTANCE_UNITS: Record<DistanceUnit, 'kilometer' | 'mile'> = { KILOMETERS:
  */
 export function useFormat() {
   const { i18n, t } = useTranslation()
-  const language = i18n.language
+  // The tag Intl takes: a language odd enough to make it throw would take every page with a number down (validLocale).
+  const language = validLocale(i18n.language, i18n.resolvedLanguage)
 
   return useMemo(() => {
     const number = (value: number, options?: Intl.NumberFormatOptions) => new Intl.NumberFormat(language, options).format(value)
