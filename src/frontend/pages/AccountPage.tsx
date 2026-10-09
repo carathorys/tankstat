@@ -4,6 +4,7 @@ import Typography from '@mui/material/Typography'
 import { useTranslation } from 'react-i18next'
 import { DefinitionList } from '../components/DefinitionList.tsx'
 import { ImagePicker } from '../components/ImagePicker.tsx'
+import { usePictureSrc } from '../offline/keptPictures.ts'
 import type { AuthMode, SessionQuery } from '../gql/generated.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { ChangePasswordForm } from '../PasswordForms.tsx'
@@ -13,6 +14,7 @@ import { SessionsPanel } from './account/SessionsPanel.tsx'
 
 export function AccountPage({ mode, user }: { mode: AuthMode; user: SessionQuery['session']['user'] }) {
   const { t } = useTranslation()
+  const avatar = usePictureSrc(user?.avatarUrl)
   const client = useApolloClient()
   usePageTitle(t('account.title'))
 
@@ -39,7 +41,7 @@ export function AccountPage({ mode, user }: { mode: AuthMode; user: SessionQuery
           </Typography>
           <ImagePicker
             preview={
-              <Avatar src={user.avatarUrl ?? undefined} alt={t('image.avatarFor', { name: user.displayName })} sx={{ width: 96, height: 96, fontSize: 36 }}>
+              <Avatar src={avatar.src ?? undefined} alt={t('image.avatarFor', { name: user.displayName })} sx={{ width: 96, height: 96, fontSize: 36 }}>
                 {user.displayName.slice(0, 1).toUpperCase()}
               </Avatar>
             }
