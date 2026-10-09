@@ -230,7 +230,7 @@ export function createPullEngine({
         const blob = await response.blob()
         sameAccount()
         try {
-          await rows.putPicture({ id, type: blob.type || response.headers.get('Content-Type') || '', bytes: await blob.arrayBuffer(), keptAt: Date.now() })
+          await rows.putPicture({ id, type: blob.type, bytes: await blob.arrayBuffer(), keptAt: Date.now() }) // the type is the answer's Content-Type
         } catch (error) {
           if ((error as { name?: unknown } | null)?.name !== 'QuotaExceededError') throw error
           full = true

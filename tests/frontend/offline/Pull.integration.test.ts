@@ -2,13 +2,14 @@ import type { ApolloClient } from '@apollo/client'
 import { graphql, http, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { createApolloClient } from '../../../src/frontend/apolloClient.ts'
+import { SessionDocument } from '../../../src/frontend/gql/generated.ts'
 import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
 import { deviceData } from '../../../src/frontend/offline/deviceData.ts'
 import { memoryStorage } from '../../../src/frontend/offline/deviceStorage.ts'
 import { answerLocally } from '../../../src/frontend/offline/localResolvers.ts'
 import { createPullEngine, PAGE_SIZE } from '../../../src/frontend/offline/pull.ts'
 import { snapshotKey } from '../../../src/frontend/offline/snapshotPolicy.ts'
-import { fakeVehicle, fakeVehicleBackend, gqlError, person, silenceConsoleError } from '../support/mocks.tsx'
+import { fakeVehicle, fakeVehicleBackend, gqlError, person, sessionHandler, silenceConsoleError, user } from '../support/mocks.tsx'
 import { fakeFeed, now } from '../support/offlineFeed.ts'
 import { server } from '../support/server.ts'
 
@@ -409,6 +410,32 @@ describe('pictures', () => {
 
     expect(refreshed).toBe(true)
     expect(await kept()).toEqual([PICTURE, OWNER, ME].sort())
+  })
+
+  it('takes the user\'s own avatar from the answer the app already has', async () => {
+    const CURRENT = '5'.repeat(32) // what the server says now; the answer kept on the device is older
+    server.use(media(), sessionHandler('STANDALONE', () => user({ avatarUrl: `/media/${CURRENT}` })))
+    const client = createApolloClient('http://localhost/graphql')
+    await client.query({ query: SessionDocument })
+
+    await createPullEngine({ client, now }).run()
+
+    expect(await kept()).toEqual([PICTURE, OWNER, CURRENT].sort())
+  })
+
+  it('a picture the device cannot store is left out, and the download still ends well', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.spyOn((await deviceData.rows())!, 'putPicture').mockRejectedValue(new Error('broken'))
+    feed.add('a', '2026-09-01')
+    server.use(media())
+    const pull = engine()
+
+    await pull.run()
+
+    expect(await localIds()).toEqual(['a'])
+    expect(pull.state).toMatchObject({ status: 'idle', interrupted: false, lastPullAt: expect.any(Number) })
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Keeping the pictures for offline use failed'), expect.any(Error))
+    warn.mockRestore()
   })
 
   it('a full storage ends the pictures, never the download', async () => {
