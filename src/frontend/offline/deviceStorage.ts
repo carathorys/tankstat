@@ -23,7 +23,7 @@ export interface DeviceStore {
   prune(keep: number, spare?: (key: string) => boolean): Promise<void>
   /** The vehicles and logs downloaded for the offline window (see `pull.ts`). */
   readonly rows: RowStore
-  /** What is kept for this user: the answers and the downloaded window (never the changes waiting for the server). */
+  /** What is kept for this user: the answers, the downloaded window and its pictures (never the changes waiting for the server). */
   clear(): Promise<void>
   close(): void
 }
@@ -80,6 +80,17 @@ export interface KeptPhoto {
   draftAt?: number
 }
 
+/**
+ * A picture kept for offline use (`keptPictures.ts`): a downloaded vehicle's picture, its owner's avatar or the user's own, by the image id
+ * of its `/media/<id>` address. An image never changes under its id (a new picture gets a new one), so a kept copy is never out of date.
+ */
+export interface KeptPicture {
+  id: string
+  type: string
+  bytes: ArrayBuffer
+  keptAt: number
+}
+
 export interface RowStore {
   logs(kind: LogKind, vehicleId: string): Promise<LogRow[]>
   allLogs(kind: LogKind): Promise<LogRow[]>
@@ -102,6 +113,12 @@ export interface RowStore {
   photos(): Promise<KeptPhoto[]>
   putPhoto(photo: KeptPhoto): Promise<void>
   deletePhotos(keys: string[]): Promise<void>
+  /** The pictures kept for offline use (`keptPictures.ts`). */
+  picture(id: string): Promise<KeptPicture | undefined>
+  /** Which pictures are kept, without reading them. */
+  pictureIds(): Promise<string[]>
+  putPicture(picture: KeptPicture): Promise<void>
+  deletePictures(ids: string[]): Promise<void>
   clear(): Promise<void>
 }
 
@@ -165,7 +182,7 @@ export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage
   const meta = () => openDb(factory, META_DB, 1, (db) => db.createObjectStore('meta'))
   return {
     async open(user) {
-      const db = await openDb(factory, dbName(user), 4, (created, from) => {
+      const db = await openDb(factory, dbName(user), 5, (created, from) => {
         if (from < 1) created.createObjectStore('snapshots', { keyPath: 'key' }).createIndex('at', 'at')
         if (from < 2) {
           // The downloaded window (2): vehicles, their logs by vehicle, and how far each vehicle's download got.
@@ -178,6 +195,8 @@ export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage
         if (from < 3) created.createObjectStore('changes', { keyPath: 'id' })
         // The photos kept for them (4).
         if (from < 4) created.createObjectStore('photos', { keyPath: 'key' })
+        // The pictures kept for offline use (5).
+        if (from < 5) created.createObjectStore('pictures', { keyPath: 'id' })
       })
       const rows = rowStore({
         refuelings: idbTable<LogRow>(db, 'refuelings'),
@@ -186,6 +205,7 @@ export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage
         cursors: idbTable<PullCursor>(db, 'cursors'),
         changes: idbTable<Change>(db, 'changes'),
         photos: idbTable<KeptPhoto>(db, 'photos'),
+        pictures: idbTable<KeptPicture>(db, 'pictures'),
       })
       return {
         user,
@@ -220,7 +240,7 @@ export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage
           await committed(tx)
         },
         async clear() {
-          const names = ['snapshots', 'vehicles', 'refuelings', 'expenses', 'cursors'] // never the changes waiting for the server, nor their photos
+          const names = ['snapshots', 'vehicles', 'refuelings', 'expenses', 'cursors', 'pictures'] // never the changes waiting for the server, nor their photos
           const tx = db.transaction(names, 'readwrite')
           names.forEach((name) => tx.objectStore(name).clear())
           await committed(tx)
@@ -267,6 +287,7 @@ export function memoryStorage(): DeviceStorage {
         cursors: memoryTable<PullCursor>('vehicleId'),
         changes: memoryTable<Change>('id'),
         photos: memoryTable<KeptPhoto>('key'),
+        pictures: memoryTable<KeptPicture>('id'),
       }
       memoryTables.set(user, tables)
       const kept = rowStore(tables)
@@ -297,6 +318,7 @@ interface Table<T> {
   all(): Promise<T[]>
   byVehicle(vehicleId: string): Promise<T[]>
   get(key: string): Promise<T | undefined>
+  keys(): Promise<string[]>
   put(rows: T[]): Promise<void>
   delete(keys: string[]): Promise<void>
   clear(): Promise<void>
@@ -309,6 +331,7 @@ interface Tables {
   cursors: Table<PullCursor>
   changes: Table<Change>
   photos: Table<KeptPhoto>
+  pictures: Table<KeptPicture>
 }
 
 function idbTable<T>(db: IDBDatabase, name: string): Table<T> {
@@ -323,6 +346,7 @@ function idbTable<T>(db: IDBDatabase, name: string): Table<T> {
     all: async () => (await done(read().getAll())) as T[],
     byVehicle: async (vehicleId) => (await done(read().index('vehicleId').getAll(vehicleId))) as T[],
     get: async (k) => (await done(read().get(k))) as T | undefined,
+    keys: async () => (await done(read().getAllKeys())).map(String),
     put: (rows) => (rows.length === 0 ? Promise.resolve() : write((store) => rows.forEach((row) => store.put(row)))),
     delete: (keys) => (keys.length === 0 ? Promise.resolve() : write((store) => keys.forEach((k) => store.delete(k)))),
     clear: () => write((store) => store.clear()),
@@ -336,6 +360,7 @@ function memoryTable<T>(key: string): Table<T> {
     all: async () => [...rows.values()],
     byVehicle: async (vehicleId) => [...rows.values()].filter((row) => (row as { vehicleId?: string }).vehicleId === vehicleId),
     get: async (k) => rows.get(k),
+    keys: async () => [...rows.keys()],
     put: async (list) => list.forEach((row) => rows.set(keyOf(row), structuredClone(row))),
     delete: async (keys) => keys.forEach((k) => rows.delete(k)),
     clear: async () => rows.clear(),
@@ -393,9 +418,16 @@ function rowStore(tables: Tables): RowStore {
     photos: () => tables.photos.all(),
     putPhoto: (photo) => tables.photos.put([photo]),
     deletePhotos: (keys) => tables.photos.delete(keys),
+    picture: (id) => tables.pictures.get(id),
+    pictureIds: () => tables.pictures.keys(),
+    putPicture: (picture) => tables.pictures.put([picture]),
+    deletePictures: (ids) => tables.pictures.delete(ids),
     async clear() {
-      // The downloaded window; the changes waiting for the server and their photos stay (removing them would lose what the user did).
-      await Promise.all([tables.refuelings, tables.expenses, tables.vehicles, tables.cursors].map((table: Table<unknown>) => table.clear()))
+      // The downloaded window and its pictures; the changes waiting for the server and their photos stay (removing them would lose what the
+      // user did).
+      await Promise.all(
+        [tables.refuelings, tables.expenses, tables.vehicles, tables.cursors, tables.pictures].map((table: Table<unknown>) => table.clear()),
+      )
       cache.clear()
     },
   }
