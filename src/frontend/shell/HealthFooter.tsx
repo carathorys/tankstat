@@ -5,14 +5,16 @@ import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import { CloudOff } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { APP_VERSION } from '../appVersion.ts'
 import { HealthDocument } from '../gql/generated.ts'
 import { probeServer } from '../offline/runtime.ts'
 import { useConnectivity } from '../offline/useConnectivity.ts'
 import { StatusBadge } from '../StatusBadge.tsx'
 
 /**
- * The API's health and version at the foot of every screen, clear of the rounded corners and the home indicator of an installed app.
- * While the server is out of reach it says so (offline, or the server is down) with a way to try again at once.
+ * The web app's version and the API's health and version at the foot of every screen, clear of the rounded corners and the home
+ * indicator of an installed app. The app's version is always there (it comes with the build); while the server is out of reach the API's
+ * part gives way to saying so (offline, or the server is down) with a way to try again at once.
  */
 export function HealthFooter() {
   const { t } = useTranslation()
@@ -31,23 +33,28 @@ export function HealthFooter() {
         pb: 'calc(8px + env(safe-area-inset-bottom, 0px))',
       })}
     >
-      {!reachable || error ? (
-        <Stack direction="row" sx={{ alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-          <CloudOff size={14} aria-hidden />
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-            {navigator.onLine ? t('status.unreachable') : t('status.offline')}
-          </Typography>
-          <Button size="small" variant="ghost" onClick={() => void probeServer(client)}>
-            {t('status.retry')}
-          </Button>
-        </Stack>
-      ) : (
-        data && (
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-            {t('status.api')} <StatusBadge status={data.health.status} /> (v{data.health.version})
-          </Typography>
-        )
-      )}
+      <Stack direction="row" sx={{ alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          {t('status.app', { version: APP_VERSION })}
+        </Typography>
+        {!reachable || error ? (
+          <>
+            <CloudOff size={14} aria-hidden />
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              {navigator.onLine ? t('status.unreachable') : t('status.offline')}
+            </Typography>
+            <Button size="small" variant="ghost" onClick={() => void probeServer(client)}>
+              {t('status.retry')}
+            </Button>
+          </>
+        ) : (
+          data && (
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              {t('status.api')} <StatusBadge status={data.health.status} /> (v{data.health.version})
+            </Typography>
+          )
+        )}
+      </Stack>
     </Box>
   )
 }
