@@ -8,6 +8,7 @@ import { deviceData } from '../../../src/frontend/offline/deviceData.ts'
 import { memoryStorage } from '../../../src/frontend/offline/deviceStorage.ts'
 import { LAST_PULL_KEY, type PullEngine, type PullState } from '../../../src/frontend/offline/pull.ts'
 import { provideOfflineDownload } from '../../../src/frontend/offline/runtime.ts'
+import { offlineReady } from '../../../src/frontend/pwa/offlineReady.ts'
 import { dateValue, findDateField } from '../support/dates.ts'
 import { gqlError, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport } from '../support/mocks.tsx'
 import { server } from '../support/server.ts'
@@ -181,6 +182,27 @@ it('offline, choosing needs the server, but the device side still works: removin
 
   expect(await panel.findByText('The offline data of your account is removed from this device.')).toBeInTheDocument()
   expect(await deviceData.read('Welcome:{}')).toBeUndefined()
+})
+
+it('says whether the app itself is kept on this device, and once, as it happens, that it can be used offline now', async () => {
+  setup()
+  const panel = await section()
+  const storing = 'The app is still being stored on this device. Until it is, pages you have not opened yet need the server.'
+  const ready = 'The app itself is kept on this device: every page opens without the server.'
+  expect(panel.queryByText(storing)).not.toBeInTheDocument() // no service worker here (tests, the development server): nothing to say
+  expect(panel.queryByText(ready)).not.toBeInTheDocument()
+
+  act(() => offlineReady.set('storing'))
+  expect(await panel.findByText(storing)).toBeInTheDocument()
+
+  act(() => offlineReady.set('ready', { justNow: true }))
+  expect(await panel.findByText(ready)).toBeInTheDocument()
+  expect(await screen.findByText('Tankstat can now be used offline.')).toBeInTheDocument()
+
+  act(() => offlineReady.set('storing'))
+  act(() => offlineReady.set('ready')) // a page that opens with the app kept already: nothing new to announce
+  expect(await panel.findByText(ready)).toBeInTheDocument()
+  expect(screen.getAllByText('Tankstat can now be used offline.')).toHaveLength(1)
 })
 
 it('Download now runs the download and says when it is done', async () => {

@@ -1,3 +1,5 @@
+import { useSyncExternalStore } from 'react'
+
 /**
  * Whether the app itself (its pages, scripts and styles) is kept on this device, so it opens and every page loads without the server:
  * `storing` until the first service worker has stored it all, `ready` once it has, `unsupported` where there is no service worker (the
@@ -40,4 +42,9 @@ export const offlineReady = {
     untold = false
     listeners.forEach((listener) => listener())
   },
+}
+
+/** Whether the app is kept on this device for offline use, re-rendering when that changes. */
+export function useOfflineReady(): OfflineReadiness {
+  return useSyncExternalStore(offlineReady.subscribe, () => offlineReady.state, () => 'unsupported')
 }

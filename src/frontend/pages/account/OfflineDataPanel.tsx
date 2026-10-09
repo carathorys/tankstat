@@ -18,6 +18,7 @@ import { DialogTrigger } from '../../dialogs/DialogTrigger.tsx'
 import { useDialogState } from '../../dialogs/useDialogState.ts'
 import { OfflineEstimatesDocument, OfflineSettingsDocument, OfflineVehiclesDocument, UpdateOfflineSettingsDocument } from '../../gql/generated.ts'
 import { useFormat } from '../../i18n/format.ts'
+import { useOfflineReady } from '../../pwa/offlineReady.ts'
 import { ErrorMessage } from '../../messages.tsx'
 import { deviceData } from '../../offline/deviceData.ts'
 import { DEFAULT_RULE, fromDate } from '../../offline/offlineWindow.ts'
@@ -219,6 +220,7 @@ function DeviceSide() {
   const { dateTime, number } = useFormat()
   const heading = useId()
   const { reachable } = useConnectivity()
+  const appKept = useOfflineReady()
   const [engine, setEngine] = useState<PullEngine | null>(null)
   const [lastPull, setLastPull] = useState<number | null>(null)
   const [usage, setUsage] = useState<number | null>(null)
@@ -257,6 +259,8 @@ function DeviceSide() {
         <Typography variant="body2">{t('account.offline.storage', { size: number(usage / 1_000_000, { style: 'unit', unit: 'megabyte', maximumFractionDigits: 1 }) })}</Typography>
       )}
       <Typography variant="body2">{last ? t('account.offline.lastDownloaded', { time: dateTime(new Date(last).toISOString()) }) : t('account.offline.neverDownloaded')}</Typography>
+      {appKept === 'ready' && <Typography variant="body2">{t('account.offline.appReady')}</Typography>}
+      {appKept === 'storing' && <Typography variant="body2">{t('account.offline.appStoring')}</Typography>}
       <Stack direction="row" sx={{ gap: 1.5, flexWrap: 'wrap' }}>
         {engine && (
           <Button
