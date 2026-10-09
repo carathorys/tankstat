@@ -26,7 +26,10 @@ let writes: Promise<unknown> = Promise.resolve()
 let tabs: BroadcastChannel | null = null
 const elsewhere = new Set<() => void>()
 const listeners = new Set<() => void>()
-/** Told whenever another user's data (or none) is open: what is read from it must be read again (`outbox.ts`). */
+/**
+ * Told whenever another user's data (or none) is open, or what it held was removed: what is read from it must be read again (`outbox.ts`,
+ * `keptPictures.ts`).
+ */
 const storeListeners = new Set<() => void>()
 
 async function openFor(user: string | null) {
@@ -96,7 +99,7 @@ export const deviceData = {
     }
   },
 
-  /** Told whenever another user's data (or none) is open. */
+  /** Told whenever another user's data (or none) is open, or what it held was removed (`removeAll`). */
   onStoreChange(listener: () => void): () => void {
     storeListeners.add(listener)
     return () => {
@@ -155,11 +158,16 @@ export const deviceData = {
     return write
   },
 
-  /** Removes everything this device keeps for the signed-in user (the next download brings their window again). */
+  /**
+   * Removes everything this device keeps for the signed-in user (the next download brings their window again), and tells what read from it
+   * (the pictures on screen are its own until then).
+   */
   async removeAll(): Promise<void> {
     await switching
     await writes
-    if (store && confirmed) await store.clear()
+    if (!store || !confirmed) return
+    await store.clear()
+    storeListeners.forEach((listener) => listener())
   },
 
   /** Tests: waits until the answers on their way to the device are kept. */

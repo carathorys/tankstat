@@ -5,12 +5,16 @@ import { ImagePlus, Trash2 } from 'lucide-react'
 import { useId, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ErrorMessage } from '../messages.tsx'
+import { isConnectionFailure, OfflineError } from '../offline/errors.ts'
+import { useConnectivity } from '../offline/useConnectivity.ts'
 import { resizeImage } from '../pictures/resizeImage.ts'
 import { deleteImage, uploadImage } from '../pictures/upload.ts'
 
 /**
  * Choose, replace or remove a picture. The file is made small in the browser first (and square for profile pictures); the
- * server still checks what it really is. Progress and results are announced to screen readers.
+ * server still checks what it really is. Progress and results are announced to screen readers. A picture is sent at once, so while the
+ * server is out of reach the buttons are off and say why (nothing is kept to send later), and an upload that loses the connection says so
+ * calmly.
  */
 export function ImagePicker({
   preview,
@@ -35,6 +39,8 @@ export function ImagePicker({
   const [status, setStatus] = useState<string>()
   const [error, setError] = useState<unknown>()
   const [busy, setBusy] = useState(false)
+  const { reachable } = useConnectivity()
+  const off = disabled || busy || !reachable
 
   async function run(work: () => Promise<void>, done: string) {
     setBusy(true)
@@ -46,7 +52,7 @@ export function ImagePicker({
       setStatus(done)
     } catch (e) {
       setStatus(undefined)
-      setError(e)
+      setError(isConnectionFailure(e) ? new OfflineError() : e) // the request got no answer: the same calm note as when it was known
     } finally {
       setBusy(false)
     }
@@ -70,19 +76,19 @@ export function ImagePicker({
           }}
         />
         <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
-          <Button size="large" variant="soft" disabled={disabled || busy} aria-describedby={hintId} onClick={() => input.current?.click()}>
+          <Button size="large" variant="soft" disabled={off} aria-describedby={hintId} onClick={() => input.current?.click()}>
             <ImagePlus size={16} aria-hidden />
             {hasImage ? t('image.change') : t('image.choose')}
           </Button>
           {hasImage && (
-            <Button size="large" variant="soft" color="error" disabled={disabled || busy} onClick={() => void run(() => deleteImage(path), t('image.removed'))}>
+            <Button size="large" variant="soft" color="error" disabled={off} aria-describedby={hintId} onClick={() => void run(() => deleteImage(path), t('image.removed'))}>
               <Trash2 size={16} aria-hidden />
               {t('image.remove')}
             </Button>
           )}
         </Stack>
         <Typography id={hintId} variant="caption" sx={{ color: 'text.secondary' }}>
-          {t('image.hint')}
+          {reachable ? t('image.hint') : t('image.needsServer')}
         </Typography>
         <div role="status" aria-label={t('a11y.uploadStatus')}>
           {status && <Typography variant="body2">{status}</Typography>}

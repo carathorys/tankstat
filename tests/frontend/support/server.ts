@@ -19,6 +19,8 @@ export const server = setupServer(
   // The token endpoints (auth/refresh.ts): no test has a refresh cookie, so a refresh says "sign in"; signing out always works.
   http.post('/auth/token/refresh', () => HttpResponse.json({ key: 'auth.unauthenticated' }, { status: 401 })),
   http.post('/auth/token/logout', () => new HttpResponse(null, { status: 204 })),
+  // The pictures (`/media/<id>`), which the offline download keeps: any id is a tiny image; picture tests answer them themselves.
+  http.get('*/media/:id', () => new HttpResponse(new Uint8Array([1]), { headers: { 'Content-Type': 'image/webp' } })),
   // The Account page lists the devices the user is signed in on (Standalone and OIDC): by default only this one.
   graphql.query('MySessions', () =>
     HttpResponse.json({

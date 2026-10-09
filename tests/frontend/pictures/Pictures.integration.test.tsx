@@ -1,8 +1,9 @@
-import { screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
+import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
 import { server } from '../support/server.ts'
 import { fakeLogBackend, fakeVehicle, healthHandler, renderWithApollo, sessionHandler, stubViewport, user } from '../support/mocks.tsx'
 
@@ -55,6 +56,46 @@ it('uploads a profile picture and shows it right away', async () => {
   expect(uploads).toEqual(['PUT'])
   await screen.findByRole('button', { name: 'Change picture' })
   expect(screen.getByRole('status', { name: 'Upload status' })).toHaveTextContent('Picture saved.')
+})
+
+it('while the server is out of reach the picture cannot be changed, and says why, instead of throwing the file away', async () => {
+  const { uploads } = setupAccount({ avatarUrl: '/media/0123456789abcdef0123456789abcdef' })
+  await screen.findByRole('heading', { name: 'Profile picture' })
+
+  await act(() => connectivity.failed())
+
+  const change = screen.getByRole('button', { name: 'Change picture' })
+  expect(change).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Remove picture' })).toBeDisabled()
+  expect(change).toHaveAccessibleDescription('Changing the picture needs the server. It works again once you are back online.')
+  expect(uploads).toEqual([])
+
+  await act(() => connectivity.succeeded())
+  expect(screen.getByRole('button', { name: 'Change picture' })).toBeEnabled()
+})
+
+it('an upload that loses the connection says so calmly, not as an error', async () => {
+  const { ui } = setupAccount({ avatarUrl: null })
+  server.use(http.put('/media/me/avatar', () => HttpResponse.error()))
+  await screen.findByRole('heading', { name: 'Profile picture' })
+
+  await ui.upload(chooseFile(), file())
+
+  expect(await screen.findByText('The server cannot be reached right now. This works again once you are back online.')).toBeInTheDocument()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
+
+it('the button opens the file chooser, and closing it without a file sends nothing', async () => {
+  const { ui, uploads } = setupAccount({ avatarUrl: null })
+  await screen.findByRole('heading', { name: 'Profile picture' })
+  const opened = vi.spyOn(chooseFile(), 'click').mockImplementation(() => undefined) // jsdom opens no dialog
+
+  await ui.click(screen.getByRole('button', { name: 'Choose a picture' }))
+  fireEvent.change(chooseFile(), { target: { files: [] } })
+
+  expect(opened).toHaveBeenCalledOnce()
+  expect(uploads).toEqual([])
+  expect(screen.getByRole('status', { name: 'Upload status' })).toBeEmptyDOMElement()
 })
 
 it('removes the profile picture', async () => {

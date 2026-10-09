@@ -10,7 +10,7 @@ import { createPullEngine } from '../../../src/frontend/offline/pull.ts'
 import { createApolloClient } from '../../../src/frontend/apolloClient.ts'
 import { fakeFeed, now } from '../support/offlineFeed.ts'
 import { server } from '../support/server.ts'
-import { fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport, user } from '../support/mocks.tsx'
+import { fakeVehicle, fakeVehicleBackend, healthHandler, person, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport, user } from '../support/mocks.tsx'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => server.resetHandlers())
@@ -178,4 +178,30 @@ it('a vehicle downloaded for offline use opens without the server, its logs page
   expect(await screen.findByRole('heading', { name: 'Car v1', level: 1 })).toBeInTheDocument() // the page, from the download's answer
   await waitFor(() => expect(screen.getAllByRole('row')).toHaveLength(4)) // a header and three logs, from the device
   expect(sent).toBe(0)
+})
+
+it('the pictures downloaded for offline use show without the server: the card\'s picture and the owner\'s avatar', async () => {
+  const PICTURE = '1'.repeat(32)
+  const AVATAR = '2'.repeat(32)
+  let n = 0
+  URL.createObjectURL = () => `blob:kept-${n++}`
+  URL.revokeObjectURL = () => undefined
+  deviceData.reset(memoryStorage())
+  stubViewport('desktop')
+  const shared = fakeVehicle({ pictureUrl: `/media/${PICTURE}`, canEdit: false, owner: person('Alice', { avatarUrl: `/media/${AVATAR}` }) })
+  const backend = fakeVehicleBackend([shared])
+  server.use(sessionHandler('NONE', () => null), healthHandler, ...backend.handlers, ...fakeFeed().handlers)
+  const online = renderWithApollo(<App />, '/')
+  await screen.findByText('Octavia')
+  await deviceData.settled()
+  await createPullEngine({ client: createApolloClient('http://localhost/graphql'), now }).run()
+  online.unmount()
+
+  connectivity.failed()
+  renderWithApollo(<App />, '/')
+
+  await screen.findByText('Octavia')
+  await waitFor(() => expect((document.querySelector('.cover-picture') as HTMLElement | null)?.style.backgroundImage).toMatch(/^url\("blob:kept-\d+"\)$/))
+  await waitFor(() => expect(document.querySelector('img[src^="blob:kept-"]')).not.toBeNull()) // Alice's avatar on the card
+  expect(document.querySelector(`[style*="/media/"], img[src*="/media/"]`)).toBeNull() // nothing from the server
 })

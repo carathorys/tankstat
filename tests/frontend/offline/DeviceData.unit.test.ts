@@ -50,6 +50,68 @@ describe('indexedDbStorage', () => {
     expect(await store.get('k4')).toBeDefined()
     for (const gone of ['k1', 'k2', 'k3']) expect(await store.get(gone)).toBeUndefined()
   })
+
+  it('opens a database of the version before with its data, and a place for the pictures', async () => {
+    const factory = new IDBFactory()
+    const old = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = factory.open('tankstat-offline-alice', 4) // as the build before kept it
+      request.onupgradeneeded = () => {
+        const db = request.result
+        db.createObjectStore('snapshots', { keyPath: 'key' }).createIndex('at', 'at')
+        db.createObjectStore('vehicles', { keyPath: 'id' })
+        db.createObjectStore('refuelings', { keyPath: 'id' }).createIndex('vehicleId', 'vehicleId')
+        db.createObjectStore('expenses', { keyPath: 'id' }).createIndex('vehicleId', 'vehicleId')
+        db.createObjectStore('cursors', { keyPath: 'vehicleId' })
+        db.createObjectStore('changes', { keyPath: 'id' })
+        db.createObjectStore('photos', { keyPath: 'key' })
+        request.transaction!.objectStore('vehicles').put({ id: 'v1', name: 'Octavia', logAccess: 'DELETE' })
+      }
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    old.close()
+
+    const store = await indexedDbStorage(factory).open('alice')
+
+    expect(await store.rows.vehicles()).toEqual([{ id: 'v1', name: 'Octavia', logAccess: 'DELETE' }])
+    await store.rows.putPicture({ id: 'a'.repeat(32), type: 'image/webp', bytes: new Uint8Array([1]).buffer, keptAt: 1 })
+    expect(await store.rows.pictureIds()).toEqual(['a'.repeat(32)])
+  })
+})
+
+describe.each([
+  ['indexedDbStorage', () => indexedDbStorage(new IDBFactory())],
+  ['memoryStorage', () => memoryStorage()],
+])('pictures in %s', (_, storage) => {
+  const picture = (id: string) => ({ id, type: 'image/webp', bytes: new Uint8Array([1, 2, 3]).buffer, keptAt: 1 })
+
+  it('keeps them per user, lists them without reading them, and removes them', async () => {
+    const device = storage()
+    const alice = await device.open('alice')
+    const bob = await device.open('bob')
+    await alice.rows.putPicture(picture('a'.repeat(32)))
+    await alice.rows.putPicture(picture('b'.repeat(32)))
+
+    expect((await alice.rows.pictureIds()).sort()).toEqual(['a'.repeat(32), 'b'.repeat(32)])
+    expect(new Uint8Array((await alice.rows.picture('a'.repeat(32)))!.bytes)).toEqual(new Uint8Array([1, 2, 3]))
+    expect(await bob.rows.pictureIds()).toEqual([]) // another account never sees them
+
+    await alice.rows.deletePictures(['a'.repeat(32)])
+    expect(await alice.rows.pictureIds()).toEqual(['b'.repeat(32)])
+  })
+
+  it('Remove offline data takes them too, but never the changes waiting for the server nor their photos', async () => {
+    const alice = await storage().open('alice')
+    await alice.rows.putPicture(picture('a'.repeat(32)))
+    await alice.rows.putChanges([{ id: 'c1', seq: 1 } as never])
+    await alice.rows.putPhoto({ key: 'local:1', vehicleId: 'v1', type: 'image/webp', bytes: new Uint8Array([1]).buffer, createdAt: 1 })
+
+    await alice.clear()
+
+    expect(await alice.rows.pictureIds()).toEqual([])
+    expect(await alice.rows.changes()).toHaveLength(1)
+    expect(await alice.rows.photo('local:1')).toBeDefined()
+  })
 })
 
 describe('deviceData', () => {
