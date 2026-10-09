@@ -63,3 +63,26 @@ it('tells what change could not be applied and why, in the words of the refusal,
     href: '/sync',
   })
 })
+
+it('leaves out values it does not know and a missing date, and leads nowhere without a vehicle', () => {
+  expect(say('LOG_NOT_FILLED', { vehicleName: 'Family car', values: 'VOLUME,COLOUR' }, { subject: { type: 'REFUELING', id: 'r1' }, context: null })).toEqual({
+    text: 'The photos of the  refuelling of Family car did not show: volume. Fill it in.',
+    href: null,
+  })
+  expect(say('LOG_NOT_FILLED', { vehicleName: 'Family car' }, { subject: { type: 'REFUELING', id: 'r1' } }).text).toBe(
+    'The photos of the  refuelling of Family car did not show: . Fill it in.',
+  )
+})
+
+it('shows the key of a refusal it cannot word, and does not trip over arguments it cannot read', () => {
+  const parked = { vehicleName: 'Family car', reason: 'brand.newReason' }
+  expect(say('SYNC_CHANGE_PARKED', parked, { subject: { type: 'SYNC_CHANGE', id: 'c1' } }).text).toBe(
+    ' of Family car, sent by , could not be applied: brand.newReason Decide about it on Waiting to sync.',
+  )
+  expect(say('SYNC_CHANGE_PARKED', { ...parked, change: 'SOMETHING_NEW', reason: 'sync.versionMismatch', reasonArgs: '{not json' }).text).toBe(
+    ' of Family car, sent by , could not be applied: It was changed meanwhile by someone else (or on another device), so this change was not applied. Decide about it on Waiting to sync.',
+  )
+  expect(say('SYNC_CHANGE_PARKED', { vehicleName: 'Family car', change: 'LOG_REFUELING', submitterName: 'Bob' }).text).toBe(
+    'New refuelling of Family car, sent by Bob, could not be applied:  Decide about it on Waiting to sync.',
+  )
+})

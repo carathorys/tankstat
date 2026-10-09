@@ -1,6 +1,8 @@
+import { ApolloClient, ApolloLink, InMemoryCache } from '@apollo/client'
 import { graphql, http, HttpResponse } from 'msw'
-import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
-import { createApolloClient } from '../../../../src/frontend/apolloClient.ts'
+import { of } from 'rxjs'
+import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
+import { createApolloClient, refreshLink } from '../../../../src/frontend/apolloClient.ts'
 import { HealthDocument, SessionDocument } from '../../../../src/frontend/gql/generated.ts'
 import { gqlError } from '../../support/mocks.tsx'
 import { server } from '../../support/server.ts'
@@ -136,5 +138,32 @@ it('the sign-in operations themselves are never refreshed for', async () => {
 
   await expect(client.query({ query: SessionDocument, fetchPolicy: 'network-only' })).rejects.toBeDefined()
 
+  expect(refreshes).toBe(0)
+})
+
+it('when the device has to sign in again and the session cannot be asked again, the answer still stands', async () => {
+  server.use(
+    graphql.query('Health', () => HttpResponse.json(signInFirst())),
+    http.post('/auth/token/refresh', () => new HttpResponse(null, { status: 401 })),
+  )
+  const client = createApolloClient('http://localhost/graphql')
+  const again = vi.spyOn(client, 'refetchQueries').mockRejectedValue(new Error('The session query failed.'))
+
+  await expect(client.query({ query: HealthDocument, fetchPolicy: 'network-only' })).rejects.toMatchObject({ errors: [{ extensions: { code: 'UNAUTHENTICATED' } }] })
+
+  expect(again).toHaveBeenCalledWith({ include: ['Session'] })
+})
+
+it('a session answer that names no session, or no mode, is taken as it is, without a refresh', async () => {
+  let refreshes = 0
+  server.use(http.post('/auth/token/refresh', () => (refreshes++, new HttpResponse(null, { status: 204 }))))
+  const answers = [{ session: null }, { session: { user: null } }]
+  const client = new ApolloClient({ link: ApolloLink.from([refreshLink, new ApolloLink(() => of({ data: answers.shift() }))]), cache: new InMemoryCache() })
+
+  const none = await client.query({ query: SessionDocument, fetchPolicy: 'no-cache' })
+  const modeless = await client.query({ query: SessionDocument, fetchPolicy: 'no-cache' })
+
+  expect(none.data).toEqual({ session: null })
+  expect(modeless.data).toEqual({ session: { user: null } })
   expect(refreshes).toBe(0)
 })

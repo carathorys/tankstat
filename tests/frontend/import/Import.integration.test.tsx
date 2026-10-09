@@ -5,7 +5,7 @@ import { axe } from 'vitest-axe'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
 import { server } from '../support/server.ts'
-import { fakeVehicle, healthHandler, renderWithApollo, sessionHandler, stubViewport } from '../support/mocks.tsx'
+import { fakeVehicle, gqlError, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport } from '../support/mocks.tsx'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
@@ -193,6 +193,83 @@ it('shows the server’s reason when the file cannot be read, and stays on the f
 
   expect(await screen.findByRole('alert')).toHaveTextContent('This file does not look like an export of the chosen app.')
   expect(screen.getByRole('button', { name: 'Read the file' })).toBeInTheDocument()
+})
+
+it('Choose file opens the browser’s file picker for CSV files', async () => {
+  const { ui } = setup()
+  await screen.findByRole('heading', { name: 'Import', level: 1 })
+  const picker = vi.spyOn(fileInput(), 'click')
+
+  await ui.click(screen.getByRole('button', { name: 'Choose file' }))
+
+  expect(picker).toHaveBeenCalledTimes(1)
+  expect(fileInput()).toHaveAttribute('accept', '.csv,text/csv')
+})
+
+it('says why when the file read earlier can no longer be previewed', async () => {
+  silenceConsoleError()
+  const { ui } = setup()
+  server.use(graphql.query('ImportPreview', () => HttpResponse.json(gqlError('Expired', 'VALIDATION_FAILED', 'import.expired'))))
+  await screen.findByRole('heading', { name: 'Import', level: 1 })
+
+  await ui.upload(fileInput(), csv())
+  await ui.click(screen.getByRole('button', { name: 'Read the file' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('This import has expired. Choose the file again.')
+  expect(screen.queryByRole('heading', { name: 'Where should the data go?' })).not.toBeInTheDocument()
+})
+
+it('says why when the vehicles to import into cannot be listed', async () => {
+  silenceConsoleError()
+  const { ui } = setup()
+  server.use(graphql.query('ImportTargets', () => HttpResponse.json(gqlError('Not allowed', 'FORBIDDEN', 'auth.forbidden'))))
+  await screen.findByRole('heading', { name: 'Import', level: 1 })
+
+  await ui.upload(fileInput(), csv())
+  await ui.click(screen.getByRole('button', { name: 'Read the file' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('You are not allowed to do this.')
+  expect(screen.queryByRole('heading', { name: 'Where should the data go?' })).not.toBeInTheDocument()
+})
+
+it('a new vehicle can get another license plate, none at all, and another fuel than the file says', async () => {
+  const { ui, calls } = setup()
+  await toTarget(ui)
+  await ui.click(screen.getByRole('radio', { name: 'A new vehicle' }))
+
+  await ui.clear(screen.getByLabelText(/^License plate/))
+  await choose(ui, 'Fuel', 'Diesel')
+  await ui.click(screen.getByRole('button', { name: 'What will be imported' }))
+  await ui.click(await screen.findByRole('button', { name: 'Import' }))
+
+  await screen.findByRole('heading', { name: 'Import finished' })
+  expect(calls.confirms[0]).toMatchObject({ newVehicle: { name: 'Polo', licensePlate: null, fuelType: 'DIESEL' } })
+})
+
+it('Back on the review returns to the target with the choices kept', async () => {
+  const { ui, calls } = setup()
+  await toTarget(ui)
+  await ui.click(screen.getByRole('radio', { name: 'A new vehicle' }))
+  await ui.clear(screen.getByLabelText('Name'))
+  await ui.type(screen.getByLabelText('Name'), 'Family car')
+  await ui.click(screen.getByRole('button', { name: 'What will be imported' }))
+
+  await ui.click(await screen.findByRole('button', { name: 'Back' }))
+
+  await screen.findByRole('heading', { name: 'Where should the data go?' })
+  expect(screen.getByRole('radio', { name: 'A new vehicle' })).toBeChecked()
+  expect(screen.getByLabelText('Name')).toHaveValue('Family car')
+  expect(calls.confirms).toEqual([])
+})
+
+it('a vehicle without a license plate is offered by its name alone', async () => {
+  const { ui } = setup({ vehicles: [fakeVehicle({ licensePlate: null })] })
+  await toTarget(ui)
+
+  await choose(ui, 'Vehicle', 'Octavia')
+
+  expect(screen.getByRole('combobox', { name: 'Vehicle' })).toHaveTextContent('Octavia')
+  expect(screen.getByRole('button', { name: 'What will be imported' })).toBeEnabled()
 })
 
 it('cannot read before a file is chosen', async () => {

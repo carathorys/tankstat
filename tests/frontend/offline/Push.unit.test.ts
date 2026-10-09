@@ -21,6 +21,17 @@ describe('toChangeInput', () => {
       .toEqual({ id: 'd', expectedVersion: null, markRecurringExpensesDone: { ids: ['s1', 's2'], date: '2026-10-02', amount: 50, currency: 'EUR', title: 'Oil', category: '', expenseId: 'e1', photoIds: [] } })
     expect(toChangeInput(change({ id: 's', entity: 'recurring', action: 'trash', targetId: 's3' }))).toEqual({ id: 's', expectedVersion: null, deleteRecurringExpense: 's3' })
   })
+
+  it('a visit that names no schedules marks none, and a photo change whose photo did not go up names no draft', () => {
+    expect(toChangeInput(change({ id: 'd', entity: 'recurring', action: 'markDone', targetId: 'e1', input: { date: '2026-10-02' } })))
+      .toEqual({ id: 'd', expectedVersion: null, markRecurringExpensesDone: { ids: [], date: '2026-10-02' } })
+    expect(toChangeInput(change({ id: 'p', action: 'addPhoto', targetId: 'r1' }))).toEqual({ id: 'p', expectedVersion: null, addRefuelingPhoto: { logId: 'r1', draftId: undefined } })
+    expect(toChangeInput(change({ id: 'q', entity: 'expenses', action: 'removePhoto', targetId: 'e1' }))).toEqual({ id: 'q', expectedVersion: null, removeExpensePhoto: { logId: 'e1', imageId: undefined } })
+  })
+
+  it('refuses a change no operation of the server stands for', () => {
+    expect(() => toChangeInput(change({ entity: 'vehicles', action: 'markDone' }))).toThrow('A change of vehicles cannot markDone.')
+  })
 })
 
 describe('photos kept on this device', () => {
@@ -56,6 +67,12 @@ describe('batches', () => {
   it('cuts requests at the size given', () => {
     const many = Array.from({ length: 5 }, () => change({ action: 'trash' }))
     expect(batches(many, 2).map((b) => b.length)).toEqual([2, 2, 1])
+  })
+
+  it('vehicles added here alone make their own requests and nothing after them', () => {
+    const golf = change({ id: 'golf', entity: 'vehicles', action: 'add', vehicleId: 'golf', targetId: 'golf' })
+    expect(batches([golf]).map((b) => b.map((c) => c.id))).toEqual([['golf']])
+    expect(batches([])).toEqual([])
   })
 })
 
