@@ -23,15 +23,31 @@ public class RecognitionSetupTests
     }
 
     [Fact]
-    public void WithoutSettings_PhotosAreNotRead()
+    public async Task WithoutSettings_PhotosAreNotRead()
     {
         var (services, _) = Build([]);
-        using var _s = services;
+        await using var _s = services;
 
         var provider = services.GetRequiredService<IRecognitionProvider>();
 
         Assert.IsType<NullRecognitionProvider>(provider);
-        Assert.False(provider.IsConfigured);
+        Assert.Equal(("none", false), (provider.Name, provider.IsConfigured));
+        Assert.False(await provider.IsHealthyAsync(default)); // so nothing is ever claimed for reading
+        var request = new RecognitionRequest(new byte[] { 1 }, "image/jpeg", new HashSet<Tankstat.Domain.Recognition.DocumentKind> { Tankstat.Domain.Recognition.DocumentKind.Odometer }, "en", null, null, new DateOnly(2026, 10, 1));
+        await Assert.ThrowsAsync<RecognitionUnavailableException>(() => provider.ReadAsync(request, default));
+    }
+
+    [Fact]
+    public async Task WakingTheWorker_TwiceBeforeItLooks_WakesItOnce()
+    {
+        var signal = new RecognitionSignal();
+
+        signal.Wake();
+        signal.Wake(); // already woken: not an error
+
+        await signal.WaitAsync(Timeout.InfiniteTimeSpan, default).WaitAsync(TimeSpan.FromSeconds(10)); // woken
+        using var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => signal.WaitAsync(Timeout.InfiniteTimeSpan, stop.Token)); // the second wake queued no other round
     }
 
     [Fact]

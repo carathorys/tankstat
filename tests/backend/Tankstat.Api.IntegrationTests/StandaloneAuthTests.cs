@@ -366,7 +366,7 @@ public class StandaloneStartupTests
 
         var e = Assert.ThrowsAny<Exception>(() => app.NewClient());
 
-        Assert.Contains("Auth:Standalone:AdminEmail", e.ToString());
+        AssertMentions(e, "Auth:Standalone:AdminEmail");
     }
 
     [Fact]
@@ -376,7 +376,7 @@ public class StandaloneStartupTests
 
         var e = Assert.ThrowsAny<Exception>(() => app.NewClient());
 
-        Assert.Contains("Auth:Oidc:Authority", e.ToString());
+        AssertMentions(e, "Auth:Oidc:Authority");
     }
 
     [Fact]
@@ -386,6 +386,16 @@ public class StandaloneStartupTests
 
         var e = Assert.ThrowsAny<Exception>(() => app.NewClient());
 
-        Assert.Contains("TrustedProxies", e.ToString());
+        AssertMentions(e, "TrustedProxies");
+    }
+
+    /// <summary>
+    /// The startup failure names the missing setting. Failing, it prints the whole exception: Assert.Contains shows its first 40 characters
+    /// only, and a rare CI failure (an ObjectDisposedException instead of the validation error) left nothing to go on.
+    /// </summary>
+    private static void AssertMentions(Exception e, string setting)
+    {
+        var text = e.ToString();
+        Assert.True(text.Contains(setting, StringComparison.Ordinal), $"Expected the startup failure to mention {setting}, got:\n{text}");
     }
 }

@@ -67,6 +67,19 @@ public class UserTests
         Assert.Throws<DomainException>(() => User.CreateExternal(UserProvider.Oidc, "s", null, null, false).SetPasswordHash("x"));
 
     [Fact]
+    public void ExternalUsers_ProfileComesFromTheirProvider_NotFromAnAdministrator()
+    {
+        var u = User.CreateExternal(UserProvider.Oidc, "s", "a@b.co", "Ann", false);
+
+        Assert.Equal("user.profileLocalOnly", Assert.Throws<DomainException>(() => u.ChangeLocalProfile("other@b.co", "Other")).Key);
+        Assert.Equal(("a@b.co", "Ann"), (u.Email, u.DisplayName));
+
+        var local = User.CreateLocal("a@b.co", "Ann", false);
+        local.ChangeLocalProfile(" Other@B.co ", "Other");
+        Assert.Equal(("other@b.co", "other@b.co", "Other"), (local.Email, local.Subject, local.DisplayName)); // the sign-in identity follows the e-mail
+    }
+
+    [Fact]
     public void Disabling_InvalidatesSessions()
     {
         var u = User.CreateLocal("a@b.co", null, false);

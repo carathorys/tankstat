@@ -92,6 +92,30 @@ public class ClientIdAndVersionTests
     }
 
     [Fact]
+    public async Task AnIdAlreadyUsed_ForAnotherVehicle_OrBySomeoneElse_IsRefused()
+    {
+        var s = await Setup();
+        var van = await s.W.VehicleService.AddAsync("Alice van", null, FuelType.Diesel, default);
+        var (logId, expenseId, scheduleId) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var expense = new ExpenseInput(Day, "Parking", null, 5, "EUR", null, null);
+        var schedule = new RecurringExpenseInput("Insurance", null, null, RecurrenceKind.Time, 12, null, Day, null, null, null);
+        await s.W.RefuelingService.LogAsync(s.Car.Id, Fill(), default, id: logId);
+        await s.W.ExpenseService.AddAsync(s.Car.Id, expense, default, id: expenseId);
+        await s.W.RecurringService.AddAsync(s.Car.Id, schedule, default, scheduleId);
+
+        // The same person, but the other vehicle: not the add that made it.
+        Assert.Equal("sync.idTaken", (await Refused(() => s.W.RefuelingService.LogAsync(van.Id, Fill(), default, id: logId))).Key);
+        Assert.Equal("sync.idTaken", (await Refused(() => s.W.ExpenseService.AddAsync(van.Id, expense, default, id: expenseId))).Key);
+        Assert.Equal("sync.idTaken", (await Refused(() => s.W.RecurringService.AddAsync(van.Id, schedule, default, scheduleId))).Key);
+        // The same vehicle, but someone else who may add to it.
+        s.W.Current.SignInAs(s.Bob);
+        Assert.Equal("sync.idTaken", (await Refused(() => s.W.ExpenseService.AddAsync(s.Car.Id, expense, default, id: expenseId))).Key);
+        Assert.Equal("sync.idTaken", (await Refused(() => s.W.RecurringService.AddAsync(s.Car.Id, schedule, default, scheduleId))).Key);
+
+        Assert.Equal((1, 1, 1), (s.W.Refuelings.Items.Count, s.W.Expenses.Items.Count, s.W.Recurring.Items.Count));
+    }
+
+    [Fact]
     public async Task ARetryAfterAFirstTryThatFailedAfterSaving_FinishesWhatTheFirstTryLeft()
     {
         var s = await Setup();

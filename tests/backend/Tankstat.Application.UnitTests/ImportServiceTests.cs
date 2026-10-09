@@ -306,6 +306,52 @@ public class ImportServiceTests
         await Assert.ThrowsAsync<NotFoundException>(() => s.W.Imports.PreviewAsync(upload.Token, null, default));
     }
 
+    private static ImportBatch Batch() => new("fuelio", null, [], [], [], []);
+
+    [Fact]
+    public void AUserKeepsTheirTenNewestUploads_AndSomeoneElsesAreNotTouched()
+    {
+        var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var store = new ImportSessionStore(clock);
+        var alice = Guid.NewGuid();
+        var bob = Guid.NewGuid();
+        var bobs = store.Save(bob, Batch());
+        var tokens = new List<string>();
+        for (var i = 0; i < 12; i++)
+        {
+            clock.Advance(TimeSpan.FromSeconds(1));
+            tokens.Add(store.Save(alice, Batch()));
+        }
+
+        Assert.All(tokens[..2], t => Assert.Null(store.Find(alice, t))); // the oldest made room
+        Assert.All(tokens[2..], t => Assert.NotNull(store.Find(alice, t)));
+        Assert.NotNull(store.Find(bob, bobs));
+        Assert.Null(store.Find(bob, tokens[^1])); // a batch belongs to the one who uploaded it
+    }
+
+    /// <summary>A clock that can be set back, to tell an upload that was dropped from one that is only past its time.</summary>
+    private sealed class SettableClock : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; } = new(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    [Fact]
+    public void ExpiredUploads_AreDroppedWhenTheNextOneComes_NotOnlyRefused()
+    {
+        var clock = new SettableClock();
+        var store = new ImportSessionStore(clock);
+        var alice = Guid.NewGuid();
+        var expired = store.Save(alice, Batch());
+        var start = clock.Now;
+
+        clock.Now = start.AddMinutes(31);
+        store.Save(Guid.NewGuid(), Batch()); // anyone's upload clears what ran out
+        clock.Now = start.AddMinutes(1);
+
+        Assert.Null(store.Find(alice, expired)); // gone, not merely past its time
+    }
+
     [Fact]
     public async Task Commit_RejectsAnInvalidCurrency_BeforeCreatingAnything()
     {

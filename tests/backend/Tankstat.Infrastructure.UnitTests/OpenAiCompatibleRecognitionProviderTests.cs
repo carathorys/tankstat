@@ -232,6 +232,77 @@ public class OpenAiCompatibleRecognitionProviderTests
 
         Assert.Equal(path, (await named.ReadAsync(Request(), default)).ModelVersion);
         Assert.Equal("qwen2.5-vl", (await unnamed.ReadAsync(Request(), default)).ModelVersion);
+        var (blank, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, Said("""{"kind":"unknown","fields":[]}""", model: ""))));
+        Assert.Equal("qwen2.5-vl", (await blank.ReadAsync(Request(), default)).ModelVersion);
+    }
+
+    [Fact]
+    public async Task FieldsThatNameNoValueTheAppKnows_OrHoldNoText_AreLeftOut()
+    {
+        var (model, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, Said("""
+            {"kind":"odometer","fields":[
+              {"name":"colour","value":"red","confidence":0.9},
+              {"value":"123000","confidence":0.9},
+              "odometer",
+              {"name":"odometer","value":true,"confidence":0.9},
+              {"name":"odometer","value":null,"confidence":0.9},
+              {"name":"odometer","value":"   ","confidence":0.9},
+              {"name":"odometer","value":"123789","confidence":0.9}
+            ]}
+            """))));
+
+        var result = await model.ReadAsync(Request(), default);
+
+        Assert.Equal("Odometer=123789@0.9", Shown(result));
+    }
+
+    [Theory]
+    [InlineData("""{ "choices": [ { "message": { "content": null }, "finish_reason": "stop" } ] }""")] // no text
+    [InlineData("""{ "choices": [ { "message": { "content": 5 }, "finish_reason": "stop" } ] }""")] // neither text nor parts
+    [InlineData("""{ "choices": [ { "finish_reason": "stop" } ] }""")] // no message at all
+    [InlineData("""{ "choices": [ { "message": { "content": "{ kind: odometer, fields: [ }" }, "finish_reason": "stop" } ] }""")] // braces, but not JSON
+    public async Task AnAnswerWithoutTextOrWithoutItsJson_IsWorthAnotherTry(string answer)
+    {
+        var (model, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, answer)));
+
+        var error = await Assert.ThrowsAsync<RecognitionUnavailableException>(() => model.ReadAsync(Request(), default));
+
+        Assert.DoesNotContain("kind:", error.Message);
+    }
+
+    [Fact]
+    public async Task Health_FindsTheModelByTheFileNameAServerLists_AndPassesOverEntriesWithoutAnId()
+    {
+        const string listed = """{ "object": "list", "data": [ { "id": "/models/other.gguf" }, { "object": "model" }, { "id": "C:\\models\\qwen2.5-vl.GGUF" } ] }""";
+        var (model, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, listed)), model: "qwen2.5-vl");
+        var (missing, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, listed)), model: "llava");
+
+        Assert.True(await model.IsHealthyAsync(default));
+        await Assert.ThrowsAsync<RecognitionUnavailableException>(() => missing.IsHealthyAsync(default));
+    }
+
+    [Theory]
+    [InlineData("http://user:secret@model:1234/v1/?key=abc", "http://model:1234/v1")] // neither user info nor a query: either can carry a key
+    [InlineData("not an address", "(no usable address)")]
+    [InlineData(null, "(no usable address)")]
+    public void TheServer_IsNamedInTheLogWithoutWhatCouldCarryAKey(string? url, string shown) => Assert.Equal(shown, ServerAddress.Of(url));
+
+    [Theory]
+    [InlineData("odometer", DocumentKind.Odometer)]
+    [InlineData("fuel-receipt", DocumentKind.FuelReceipt)]
+    [InlineData("expense-receipt", DocumentKind.ExpenseReceipt)]
+    [InlineData("unknown", DocumentKind.Unknown)]
+    [InlineData(null, DocumentKind.Unknown)]
+    public void AKindsName_IsReadBack_AndAnyOtherNameIsUnknown(string? name, DocumentKind kind) => Assert.Equal(kind, RecognitionNames.Kind(name));
+
+    [Fact]
+    public async Task Health_AListThatIsNoList_IsNotUnderstood()
+    {
+        var (model, _) = Model((_, _) => Task.FromResult(Json(HttpStatusCode.OK, """{ "object": "list", "data": "qwen2.5-vl" }""")));
+
+        var error = await Assert.ThrowsAsync<RecognitionUnavailableException>(() => model.IsHealthyAsync(default));
+
+        Assert.Contains("Recognition:OpenAiCompatible:BaseUrl", error.Message);
     }
 
     [Theory]

@@ -45,6 +45,20 @@ public class LogsGraphQLTests(ApiFixture api)
     }
 
     [Fact]
+    public async Task AVehicleCountsItsExpenses_AndSuggestsTheCategoriesAlreadyUsed()
+    {
+        var id = await AddVehicle();
+        foreach (var (title, category) in new[] { ("Wash", "Care"), ("Toll", "Road"), ("Wax", "Care"), ("Gift", (string?)null) })
+            Data(await Send("mutation($i: AddExpenseInput!) { addExpense(input: $i) { id } }",
+                new { i = new { vehicleId = id, date = "2026-08-01", title, category, amount = 5, currency = "EUR" } }));
+
+        var data = Data(await Send("query($id: UUID!) { vehicle(id: $id) { expenseCount } expenseCategories(vehicleId: $id) }", new { id }));
+
+        Assert.Equal(4, data.GetProperty("vehicle").GetProperty("expenseCount").GetInt32());
+        Assert.Equal(["Care", "Road"], data.GetProperty("expenseCategories").EnumerateArray().Select(c => c.GetString()));
+    }
+
+    [Fact]
     public async Task TheConsumptionBetweenFullFillUps_IsStored_AndFollowsEveryChange()
     {
         var id = await AddVehicle();

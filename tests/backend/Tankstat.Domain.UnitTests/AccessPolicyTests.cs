@@ -56,6 +56,27 @@ public class AccessGrantTests
         Assert.Throws<DomainException>(() => AccessGrant.Create(Guid.NewGuid(), Guid.NewGuid(), AccessLevel.None));
 
     [Fact]
+    public void Create_RejectsALevelThatDoesNotExist()
+    {
+        var e = Assert.Throws<DomainException>(() => AccessGrant.Create(Guid.NewGuid(), Guid.NewGuid(), (AccessLevel)42));
+
+        Assert.Equal(("access.unknownLevel", (object?)"42"), (e.Key, e.Args["level"]));
+    }
+
+    [Fact]
+    public void ChangeLevel_TakesAnyRealLevel_ButNeverNone()
+    {
+        var grant = AccessGrant.Create(Guid.NewGuid(), Guid.NewGuid(), AccessLevel.View);
+
+        grant.ChangeLevel(AccessLevel.Delete);
+        Assert.Equal(AccessLevel.Delete, grant.Level);
+
+        Assert.Equal("access.levelRequired", Assert.Throws<DomainException>(() => grant.ChangeLevel(AccessLevel.None)).Key);
+        Assert.Equal("access.levelRequired", Assert.Throws<DomainException>(() => grant.ChangeLevel((AccessLevel)42)).Key);
+        Assert.Equal(AccessLevel.Delete, grant.Level);
+    }
+
+    [Fact]
     public void Settings_DefaultToNoAccessForOthers()
     {
         var settings = AccessSettings.Default();
