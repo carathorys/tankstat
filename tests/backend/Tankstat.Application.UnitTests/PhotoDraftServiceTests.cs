@@ -51,6 +51,38 @@ public class PhotoDraftServiceTests
     }
 
     [Fact]
+    public async Task ADraftRowLeftBehind_ByAPictureThatWasSet_NeverTakesThePictureWithIt()
+    {
+        var s = await Setup();
+        var draft = await s.W.Drafts.UploadAsync(s.Car.Id, Jpeg(), default);
+        var row = s.W.PhotoDrafts.Items.Single(d => d.Id == draft);
+        await s.W.ImageService.SetVehiclePictureFromDraftAsync(s.Car.Id, draft, default);
+        s.W.PhotoDrafts.Items.Add(row); // its removal failed after the vehicle was saved
+
+        s.W.Clock.Advance(PhotoDraft.Lifetime + TimeSpan.FromMinutes(1));
+        await s.W.Drafts.UploadAsync(s.Van.Id, Jpeg(1), default); // sweeps the expired drafts
+
+        Assert.DoesNotContain(s.W.PhotoDrafts.Items, d => d.Id == draft);
+        Assert.Equal($"vehicles/{s.Car.Id:N}/picture", s.W.ImageStore.Folders[draft]); // still the picture
+        Assert.True(s.W.Images.Items.ContainsKey(draft));
+    }
+
+    [Fact]
+    public async Task TheSameChangeSentAgain_RemovesADraftRowTheFirstTryLeftBehind()
+    {
+        var s = await Setup();
+        var draft = await s.W.Drafts.UploadAsync(s.Car.Id, Jpeg(), default);
+        var row = s.W.PhotoDrafts.Items.Single(d => d.Id == draft);
+        await s.W.ImageService.SetVehiclePictureFromDraftAsync(s.Car.Id, draft, default);
+        s.W.PhotoDrafts.Items.Add(row);
+
+        Assert.Equal(draft, await s.W.ImageService.SetVehiclePictureFromDraftAsync(s.Car.Id, draft, default));
+
+        Assert.Empty(s.W.PhotoDrafts.Items);
+        Assert.Equal($"vehicles/{s.Car.Id:N}/picture", s.W.ImageStore.Folders[draft]);
+    }
+
+    [Fact]
     public async Task ADraftThatIsNotTheUsers_OfAnotherVehicle_OrExpired_IsRefused_AndChangesNothing()
     {
         var s = await Setup();

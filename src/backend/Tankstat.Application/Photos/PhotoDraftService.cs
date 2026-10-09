@@ -48,7 +48,7 @@ public sealed class PhotoDraftService(
     {
         var draft = await OwnDraftAsync(id, ct) ?? throw NotFound(id);
         await drafts.RemoveAsync([draft.Id], ct);
-        await images.DeleteAsync([draft.Id], ct);
+        await images.DeleteDraftPicturesAsync([draft], ct);
         logger.LogDebug("Draft photo {ImageId} removed", draft.Id);
     }
 
@@ -98,7 +98,7 @@ public sealed class PhotoDraftService(
         if (expired.Count == 0) return;
         var ids = expired.Select(d => d.Id).ToList();
         await drafts.RemoveAsync(ids, ct);
-        await images.DeleteAsync(ids, ct);
+        await images.DeleteDraftPicturesAsync(expired, ct);
         logger.LogDebug("Removed {Count} expired draft photos", ids.Count);
     }
 

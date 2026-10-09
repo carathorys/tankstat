@@ -77,7 +77,11 @@ public sealed class ImageService(
     {
         // Looked at under the lock: the same draft sent twice at once must not have its file moved back.
         var vehicle = await EditableVehicleAsync(vehicleId, ct);
-        if (vehicle.PictureImageId == draftId) return draftId;
+        if (vehicle.PictureImageId == draftId)
+        {
+            await drafts.RemoveAsync([draftId], CancellationToken.None); // a row the first try may have left behind
+            return draftId;
+        }
         var me = await access.RequirePrincipalAsync(ct);
         if (await drafts.FindAsync(draftId, ct) is not { } draft || !draft.UsableBy(me.Id, vehicle.Id, clock.GetUtcNow()))
             throw new DomainException("photo.draftExpired", "A photo is no longer available; add it again.", new { Id = draftId });
@@ -143,6 +147,25 @@ public sealed class ImageService(
     public async Task DeleteAsync(IEnumerable<Guid> imageIds, CancellationToken ct)
     {
         foreach (var id in imageIds) await DeleteQuietlyAsync(id, ct);
+    }
+
+    /// <summary>
+    /// Removes the pictures of drafts whose rows are gone or going: only those still in their vehicle's draft folder. A picture moved out
+    /// is a photo or the vehicle's picture now, even if its draft row stayed behind (a failure after the move), and stays.
+    /// </summary>
+    public async Task DeleteDraftPicturesAsync(IEnumerable<Domain.Photos.PhotoDraft> unused, CancellationToken ct)
+    {
+        foreach (var draft in unused)
+        {
+            if (await images.FindAsync(draft.Id, ct) is not { } image) continue;
+            if (image.Folder != ImageFolders.PhotoDrafts(draft.VehicleId))
+            {
+                logger.LogDebug("Draft photo {DraftId} was used meanwhile; only its row was removed", draft.Id);
+                continue;
+            }
+            await images.RemoveAsync(image.Id, ct);
+            await store.DeleteAsync(image, ct);
+        }
     }
 
     /// <summary>
