@@ -131,7 +131,7 @@ public sealed class LogPhotoService(
                 {
                     // The log is saved already: failing now would make the user save it twice. The picture goes back to the drafts.
                     logger.LogWarning(e, "Draft photo {DraftId} could not be attached to {LogType} {LogId}; it stays a draft", draft.Id, logType, logId);
-                    if (moved) await MoveBackQuietlyAsync(draft);
+                    if (moved) await images.MoveBackToDraftsQuietlyAsync(draft);
                 }
             }
         }
@@ -173,7 +173,7 @@ public sealed class LogPhotoService(
             }
             catch
             {
-                await MoveBackQuietlyAsync(draft);
+                await images.MoveBackToDraftsQuietlyAsync(draft);
                 throw;
             }
             await drafts.ForgetAsync([draft.Id], CancellationToken.None);
@@ -183,19 +183,6 @@ public sealed class LogPhotoService(
         finally
         {
             gate.Release();
-        }
-    }
-
-    private async Task MoveBackQuietlyAsync(PhotoDraft draft)
-    {
-        try
-        {
-            await images.MoveAsync(draft.Id, ImageFolders.PhotoDrafts(draft.VehicleId), CancellationToken.None);
-        }
-        catch (Exception e)
-        {
-            // it expires with the other drafts or goes with the vehicle
-            logger.LogWarning(e, "Draft photo {DraftId} could not be moved back to the drafts", draft.Id);
         }
     }
 

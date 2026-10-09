@@ -69,7 +69,7 @@ public sealed class PhotoDraftService(
         var found = (await drafts.FindManyAsync(wanted, ct)).ToDictionary(d => d.Id);
         return wanted.Select(id => found.GetValueOrDefault(id) is { } d && d.UsableBy(uploader, vehicleId, now)
             ? d
-            : throw new DomainException("photo.draftExpired", "A photo is no longer available; add it again.", new { Id = id })).ToList();
+            : throw Expired(id)).ToList();
     }
 
     /// <summary>
@@ -102,6 +102,9 @@ public sealed class PhotoDraftService(
         await images.DeleteDraftPicturesAsync(expired, ct);
         logger.LogDebug("Removed {Count} expired draft photos", ids.Count);
     }
+
+    /// <summary>A draft that cannot be used (gone, expired, someone else's or another vehicle's): the user adds the photo again.</summary>
+    internal static DomainException Expired(Guid id) => new("photo.draftExpired", "A photo is no longer available; add it again.", new { Id = id });
 
     private static NotFoundException NotFound(Guid id) => new("photo.notFound", $"The photo {id} does not exist.", new { Id = id });
 }

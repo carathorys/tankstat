@@ -85,7 +85,7 @@ public sealed class ImageService(
         }
         var uploader = uploadedBy ?? (await access.RequirePrincipalAsync(ct)).Id;
         if (await drafts.FindAsync(draftId, ct) is not { } draft || !draft.UsableBy(uploader, vehicle.Id, clock.GetUtcNow()))
-            throw new DomainException("photo.draftExpired", "A photo is no longer available; add it again.", new { Id = draftId });
+            throw PhotoDraftService.Expired(draftId);
 
         var previous = vehicle.PictureImageId;
         await MoveAsync(draft.Id, ImageFolders.VehiclePicture(vehicle.Id), CancellationToken.None);
@@ -96,7 +96,7 @@ public sealed class ImageService(
         }
         catch
         {
-            await MoveBackQuietlyAsync(draft.Id, ImageFolders.PhotoDrafts(vehicle.Id));
+            await MoveBackToDraftsQuietlyAsync(draft);
             throw;
         }
         await drafts.RemoveAsync([draft.Id], CancellationToken.None); // its row only: the file lives on as the picture
@@ -271,15 +271,17 @@ public sealed class ImageService(
         return image.Id;
     }
 
-    private async Task MoveBackQuietlyAsync(Guid imageId, string folder)
+    /// <summary>Puts a draft's picture back among the drafts after what was to take it could not be saved; a failure is only logged.</summary>
+    public async Task MoveBackToDraftsQuietlyAsync(Domain.Photos.PhotoDraft draft)
     {
         try
         {
-            await MoveAsync(imageId, folder, CancellationToken.None);
+            await MoveAsync(draft.Id, ImageFolders.PhotoDrafts(draft.VehicleId), CancellationToken.None);
         }
         catch (Exception e)
         {
-            logger.LogWarning(e, "Image {ImageId} could not be moved back to {Folder} after its vehicle could not be saved", imageId, folder);
+            // it expires with the other drafts or goes with the vehicle
+            logger.LogWarning(e, "Draft photo {DraftId} could not be moved back to the drafts", draft.Id);
         }
     }
 
