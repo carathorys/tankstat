@@ -94,6 +94,18 @@ internal sealed class PasswordResetTokenRepository(IDbContextFactory<AppDbContex
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         await db.PasswordResetTokens.Where(t => t.UserId == userId).ExecuteDeleteAsync(ct);
     }
+
+    public async Task<DateTimeOffset?> LatestIssuedAtAsync(Guid userId, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.PasswordResetTokens.Where(t => t.UserId == userId).MaxAsync(t => (DateTimeOffset?)t.IssuedAt, ct);
+    }
+
+    public async Task<int> DeleteStaleAsync(DateTimeOffset before, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.PasswordResetTokens.Where(t => t.IssuedAt < before).ExecuteDeleteAsync(ct);
+    }
 }
 
 internal sealed class UserSessionRepository(IDbContextFactory<AppDbContext> dbFactory) : IUserSessionRepository

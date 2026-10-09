@@ -639,6 +639,9 @@ internal sealed class InMemoryTokens : IPasswordResetTokenRepository
     public Task AddAsync(PasswordResetToken t, CancellationToken ct) { Items.Add(t); return Task.CompletedTask; }
     public Task UpdateAsync(PasswordResetToken t, CancellationToken ct) => Task.CompletedTask;
     public Task RemoveForUserAsync(Guid userId, CancellationToken ct) { Items.RemoveAll(t => t.UserId == userId); return Task.CompletedTask; }
+    public Task<DateTimeOffset?> LatestIssuedAtAsync(Guid userId, CancellationToken ct) =>
+        Task.FromResult(Items.Where(t => t.UserId == userId).Max(t => (DateTimeOffset?)t.IssuedAt));
+    public Task<int> DeleteStaleAsync(DateTimeOffset before, CancellationToken ct) => Task.FromResult(Items.RemoveAll(t => t.IssuedAt < before));
 }
 
 internal sealed class InMemoryGrants : IAccessGrantRepository

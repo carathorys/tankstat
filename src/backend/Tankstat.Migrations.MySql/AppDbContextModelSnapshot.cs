@@ -796,6 +796,11 @@ namespace Tankstat.Migrations.MySql
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("datetime");
 
+                    b.Property<DateTime>("IssuedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime(6)")
+                        .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc));
+
                     b.Property<string>("SecretHash")
                         .IsRequired()
                         .HasMaxLength(128)
@@ -808,6 +813,8 @@ namespace Tankstat.Migrations.MySql
                         .HasColumnType("char(36)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("IssuedAt");
 
                     b.HasIndex("UserId");
 

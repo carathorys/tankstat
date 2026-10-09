@@ -30,7 +30,12 @@ internal sealed class PasswordResetTokenConfiguration : IEntityTypeConfiguration
         b.HasKey(t => t.Id);
         b.Property(t => t.Id).ValueGeneratedNever();
         b.Property(t => t.SecretHash).HasMaxLength(128).IsRequired();
+        // A UTC date-time so comparisons translate on every provider; rows from before it existed count as issued long ago.
+        b.Property(t => t.IssuedAt)
+            .HasConversion(v => v.UtcDateTime, v => new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc)))
+            .HasDefaultValue(SyncMapping.Epoch);
         b.HasOne<User>().WithMany().HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
+        b.HasIndex(t => t.IssuedAt);
     }
 }
 
