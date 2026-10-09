@@ -26,10 +26,13 @@ env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
 
 jobs:
-  # Lint, types and the production build of the web app. The build (dist/) is handed to the build job, so it is made once.
+  # Lint, types and the production build of the web app. The build (dist/) is handed to the build job, so it is made once; so is the
+  # version both are stamped with (the web app shows its own in the footer, next to the API's).
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -42,8 +45,16 @@ jobs:
 
       - run: npm run lint
       - run: npm run typecheck
+      - name: Work out the version
+        id: version
+        env:
+          REQUESTED: ${{ inputs.version }}
+        run: echo "version=${REQUESTED:-0.0.0-dev.${GITHUB_SHA::7}}" >> "$GITHUB_OUTPUT"
+
       # `vite build` only: `npm run build` would type-check again.
       - run: npx vite build
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -201,9 +212,8 @@ jobs:
 
       - name: Publish the API with the web app
         env:
-          REQUESTED: ${{ inputs.version }}
-        run: |
-          VERSION="${REQUESTED:-0.0.0-dev.${GITHUB_SHA::7}}" mise run build:api
+          VERSION: ${{ needs.frontend.outputs.version }}
+        run: mise run build:api
 
       - uses: actions/upload-artifact@v4
         with:
