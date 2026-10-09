@@ -52,10 +52,15 @@ export class ErrorBoundary extends Component<{ children: ReactNode; onReload?: (
   }
 
   componentDidCatch(error: unknown, info: ErrorInfo) {
-    const recovery = this.state.chunk ? recoverFromChunkError({ reload: this.props.onReload }) : 'failed'
-    if (this.state.chunk) this.setState({ recovery })
-    if (recovery === 'failed') console.error('Rendering a page failed', error, info.componentStack)
-    else console.warn(recovery === 'reloading' ? 'A page\'s code could not be loaded; reloading for the current version.' : 'A page is not kept on this device yet.', error)
+    if (!this.state.chunk) {
+      console.error('Rendering a page failed', error, info.componentStack)
+      return
+    }
+    void recoverFromChunkError({ reload: this.props.onReload }).then((recovery) => {
+      this.setState({ recovery })
+      if (recovery === 'failed') console.error('Rendering a page failed', error, info.componentStack)
+      else console.warn(recovery === 'reloading' ? 'A page\'s code could not be loaded; reloading for the current version.' : 'A page is not kept on this device yet.', error)
+    })
   }
 
   render() {

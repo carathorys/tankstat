@@ -1,12 +1,17 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { lazy, type ReactNode } from 'react'
-import { expect, it, vi } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { ErrorBoundary } from '../../../src/frontend/ErrorBoundary.tsx'
 import en from '../../../src/frontend/i18n/locales/en.json'
 import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
 import { ThemeRoot } from '../../../src/frontend/theme/ThemeRoot.tsx'
 import { silenceConsoleError } from '../support/mocks.tsx'
+
+afterEach(() => vi.unstubAllGlobals())
+
+/** The server answers the check made before a reload (`serverAnswers`). */
+const serverUp = () => vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 200 })))
 
 function Boom(): ReactNode {
   throw new Error('boom')
@@ -58,6 +63,7 @@ function renderMissingPage(onReload: () => void) {
 it('a page whose code cannot be loaded is reloaded once for the current version, without an error on screen', async () => {
   silenceConsoleError()
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  serverUp()
   const onReload = vi.fn()
 
   renderMissingPage(onReload)
@@ -71,6 +77,7 @@ it('a page whose code cannot be loaded is reloaded once for the current version,
 it('when that reload did not help, the page shows the ordinary error with its reload button', async () => {
   silenceConsoleError()
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  serverUp()
   sessionStorage.setItem('tankstat.chunkReload', JSON.stringify({ url: window.location.pathname + window.location.search, at: Date.now() }))
   const onReload = vi.fn()
 
@@ -89,7 +96,8 @@ it('offline, a page not kept on this device yet says so calmly instead of crashi
 
   renderMissingPage(onReload)
 
-  expect(await screen.findByRole('status')).toHaveTextContent(en.app.notOfflineYet)
+  expect(await screen.findByText(en.app.notOfflineYet)).toBeInTheDocument() // after a moment's Loading…
+  expect(screen.getByRole('status')).toHaveTextContent(en.app.notOfflineYet)
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   expect(onReload).not.toHaveBeenCalled()
   warn.mockRestore()

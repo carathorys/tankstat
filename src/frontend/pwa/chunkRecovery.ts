@@ -22,9 +22,28 @@ export const CHUNK_RELOAD_GUARD_MS = 60_000
 
 export type ChunkRecovery = 'reloading' | 'notOfflineYet' | 'failed'
 
+/** How long the check whether the server answers may take before the page counts as offline. */
+export const PROBE_TIMEOUT_MS = 4_000
+
+/**
+ * Whether a reload would reach the server: `sw.js` is never answered from the service worker's cache, so any answer (but a gateway's that
+ * the server is down) means the network and the server are there. Not when the app already knows it is offline: a reload there would
+ * show the browser's own offline page.
+ */
+export async function serverAnswers(): Promise<boolean> {
+  if (!connectivity.reachable || globalThis.navigator?.onLine === false) return false
+  try {
+    const response = await fetch('/sw.js', { method: 'HEAD', cache: 'no-store', signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
+    return ![502, 503, 504].includes(response.status)
+  } catch {
+    return false
+  }
+}
+
 export interface ChunkRecoveryDeps {
   reload?: () => void
-  reachable?: boolean
+  /** Whether a reload would reach the server (`serverAnswers`). */
+  probe?: () => Promise<boolean>
   behind?: boolean
   url?: string
   now?: number
@@ -36,18 +55,19 @@ export interface ChunkRecoveryDeps {
  * (another tab took the update, whose cache no longer holds the old code) or than the server (which no longer has it). Then a reload
  * of the same address loads the current version, offline too when the newer worker is the one answering: the person just asked for
  * this page, so nothing on screen is lost (the rule that nothing reloads by itself is about pages someone may be typing in). Once per
- * page and minute (`CHUNK_RELOAD_KEY`), so a reload that does not help ends in the ordinary error. Offline without a newer worker, the
- * page simply has not been kept on this device yet.
+ * page and minute (`CHUNK_RELOAD_KEY`), so a reload that does not help ends in the ordinary error. Without a newer worker the reload
+ * needs the server, which is asked first: offline, the page simply has not been kept on this device yet (a reload would only show the
+ * browser's offline page).
  */
-export function recoverFromChunkError({
+export async function recoverFromChunkError({
   reload = () => window.location.reload(),
-  reachable = connectivity.reachable,
+  probe = serverAnswers,
   behind = appUpdate.behind,
   url = window.location.pathname + window.location.search,
   now = Date.now(),
   storage = globalThis.sessionStorage,
-}: ChunkRecoveryDeps = {}): ChunkRecovery {
-  if (!reachable && !behind) return 'notOfflineYet'
+}: ChunkRecoveryDeps = {}): Promise<ChunkRecovery> {
+  if (!behind && !(await probe())) return 'notOfflineYet'
   let last: { url?: string; at?: number } = {}
   try {
     last = JSON.parse(storage.getItem(CHUNK_RELOAD_KEY) ?? '{}') as typeof last
