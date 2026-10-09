@@ -1185,24 +1185,24 @@
       "refuelings": {
         "add": "Új tankolás",
         "update": "Módosított tankolás",
-        "trash": "Lomtárba kerülő tankolás",
-        "restore": "Lomtárból visszaállított tankolás",
+        "trash": "Kukába kerülő tankolás",
+        "restore": "Kukából visszaállított tankolás",
         "addPhoto": "Tankoláshoz hozzáadott fotó",
         "removePhoto": "Tankolásról törölt fotó"
       },
       "expenses": {
         "add": "Új kiadás",
         "update": "Módosított kiadás",
-        "trash": "Lomtárba kerülő kiadás",
-        "restore": "Lomtárból visszaállított kiadás",
+        "trash": "Kukába kerülő kiadás",
+        "restore": "Kukából visszaállított kiadás",
         "addPhoto": "Kiadáshoz hozzáadott fotó",
         "removePhoto": "Kiadásról törölt fotó"
       },
       "vehicles": {
         "add": "Új jármű",
         "update": "Módosított jármű",
-        "trash": "Lomtárba kerülő jármű",
-        "restore": "Lomtárból visszaállított jármű"
+        "trash": "Kukába kerülő jármű",
+        "restore": "Kukából visszaállított jármű"
       },
       "recurring": {
         "add": "Új ismétlődő kiadás",
