@@ -18,35 +18,55 @@ public sealed class PasswordResetService(
     /// <summary>How long a link is kept after it expired, so following it still says why it was refused.</summary>
     private static readonly TimeSpan KeepExpired = TimeSpan.FromDays(1);
 
+    // Issuing for one user is one step within this process: the look at the latest link (the cool-down) and the replacement of the
+    // earlier ones happen under that user's lock, so a burst of requests cannot all pass the cool-down and two issues at once leave one
+    // link. The e-mail goes out after it, so a slow mail server holds nobody else up. Other processes on the same database are not held
+    // back by it. Striped (by user id) so the locks do not pile up.
+    private static readonly StripedLocks Locks = new();
+
     /// <summary>Whether an issued link can reach the user by e-mail (SMTP and the public address are set up).</summary>
     public bool CanEmail => email.IsConfigured && !string.IsNullOrWhiteSpace(auth.Value.PublicUrl);
 
-    /// <summary>Whether the user's latest link was issued less than <c>Auth:Standalone:ResetCooldownMinutes</c> ago (never with 0).</summary>
-    public async Task<bool> IsCoolingDownAsync(Guid userId, CancellationToken ct)
-    {
-        var cooldown = TimeSpan.FromMinutes(auth.Value.Standalone.ResetCooldownMinutes);
-        if (cooldown <= TimeSpan.Zero) return false;
-        return await tokens.LatestIssuedAtAsync(userId, ct) is { } latest && latest > clock.GetUtcNow() - cooldown;
-    }
-
     /// <summary>Issues a new link that replaces the user's earlier ones (one live link per user) and e-mails it when it can.</summary>
-    public async Task<IssuedReset> IssueAsync(User user, bool sendEmail, CancellationToken ct)
+    public async Task<IssuedReset> IssueAsync(User user, bool sendEmail, CancellationToken ct) =>
+        (await IssueAsync(user, sendEmail, TimeSpan.Zero, ct))!;
+
+    /// <summary>
+    /// A user's own request: like <see cref="IssueAsync(User, bool, CancellationToken)"/>, but issues and sends nothing (null) while the
+    /// user's latest link was issued less than <c>Auth:Standalone:ResetCooldownMinutes</c> ago.
+    /// </summary>
+    public Task<IssuedReset?> IssueUnlessCoolingDownAsync(User user, CancellationToken ct) =>
+        IssueAsync(user, sendEmail: true, TimeSpan.FromMinutes(auth.Value.Standalone.ResetCooldownMinutes), ct);
+
+    private async Task<IssuedReset?> IssueAsync(User user, bool sendEmail, TimeSpan cooldown, CancellationToken ct)
     {
         var options = auth.Value;
         var now = clock.GetUtcNow();
         var lifetime = TimeSpan.FromMinutes(options.Standalone.ResetTokenMinutes);
-        await tokens.DeleteStaleAsync(now - lifetime - KeepExpired, ct); // lazily, like the other clean-ups: no background job
-        await tokens.RemoveForUserAsync(user.Id, ct);
-
         var secret = Base64Url(RandomNumberGenerator.GetBytes(32));
         var record = PasswordResetToken.Issue(user.Id, Hash(secret), now, lifetime);
-        await tokens.AddAsync(record, ct);
+
+        var gate = Locks.For(user.Id);
+        await gate.WaitAsync(ct);
+        try
+        {
+            if (cooldown > TimeSpan.Zero && await tokens.LatestIssuedAtAsync(user.Id, ct) is { } latest && latest > now - cooldown) return null;
+            // Lazily, like the other clean-ups: no background job.
+            await tokens.DeleteStaleAsync(now - lifetime - KeepExpired, ct);
+            // Once the earlier links go, the new one is stored whatever becomes of the request.
+            await tokens.RemoveForUserAsync(user.Id, CancellationToken.None);
+            await tokens.AddAsync(record, CancellationToken.None);
+        }
+        finally
+        {
+            gate.Release();
+        }
 
         var token = $"{record.Id:N}.{secret}";
         var url = string.IsNullOrWhiteSpace(options.PublicUrl) ? null : $"{options.PublicUrl.TrimEnd('/')}/?resetToken={token}";
 
         var sent = false;
-        if (sendEmail && email.IsConfigured && url is not null && user.Email.Length > 0)
+        if (sendEmail && CanEmail && user.Email.Length > 0)
         {
             await email.SendAsync(user.Email, "Set your Tankstat password",
                 $"Hello {user.DisplayName},\n\nUse this link to set your password (valid for {options.Standalone.ResetTokenMinutes} minutes, one use):\n{url}\n\nIf you did not expect this, ignore this message.", ct);

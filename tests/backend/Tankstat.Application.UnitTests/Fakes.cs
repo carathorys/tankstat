@@ -639,8 +639,16 @@ internal sealed class InMemoryTokens : IPasswordResetTokenRepository
     public Task AddAsync(PasswordResetToken t, CancellationToken ct) { Items.Add(t); return Task.CompletedTask; }
     public Task UpdateAsync(PasswordResetToken t, CancellationToken ct) => Task.CompletedTask;
     public Task RemoveForUserAsync(Guid userId, CancellationToken ct) { Items.RemoveAll(t => t.UserId == userId); return Task.CompletedTask; }
-    public Task<DateTimeOffset?> LatestIssuedAtAsync(Guid userId, CancellationToken ct) =>
-        Task.FromResult(Items.Where(t => t.UserId == userId).Max(t => (DateTimeOffset?)t.IssuedAt));
+
+    /// <summary>How long a look at the latest link takes, so that requests at the same moment overlap as they do against a database.</summary>
+    public TimeSpan Latency { get; set; }
+
+    public async Task<DateTimeOffset?> LatestIssuedAtAsync(Guid userId, CancellationToken ct)
+    {
+        var latest = Items.Where(t => t.UserId == userId).Max(t => (DateTimeOffset?)t.IssuedAt);
+        if (Latency > TimeSpan.Zero) await Task.Delay(Latency, ct);
+        return latest;
+    }
     public Task<int> DeleteStaleAsync(DateTimeOffset before, CancellationToken ct) => Task.FromResult(Items.RemoveAll(t => t.IssuedAt < before));
 }
 

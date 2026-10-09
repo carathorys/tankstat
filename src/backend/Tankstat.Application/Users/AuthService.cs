@@ -100,12 +100,12 @@ public sealed class AuthService(
             logger.LogInformation("User {UserId} requested a password reset, but no e-mail can be sent; nothing was issued", user.Id);
             return;
         }
-        if (await resets.IsCoolingDownAsync(user.Id, ct))
+        var issued = await resets.IssueUnlessCoolingDownAsync(user, ct);
+        if (issued is null)
         {
-            logger.LogInformation("User {UserId} requested a password reset again within the cool-down; nothing was sent", user.Id);
+            logger.LogInformation("User {UserId} requested a password reset within the cool-down of their latest link; nothing was sent", user.Id);
             return;
         }
-        var issued = await resets.IssueAsync(user, sendEmail: true, ct);
         logger.LogInformation("User {UserId} requested a password reset (e-mail sent: {EmailSent})", user.Id, issued.EmailSent);
     }
 

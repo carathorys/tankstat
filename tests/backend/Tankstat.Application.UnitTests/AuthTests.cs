@@ -262,6 +262,19 @@ public class PasswordTests
     }
 
     [Fact]
+    public async Task RequestReset_ManyAtTheSameMoment_SendOneMail()
+    {
+        var w = new World(smtp: true);
+        w.AddUser("alice@x.co");
+        w.Tokens.Latency = TimeSpan.FromMilliseconds(10);
+
+        await Task.WhenAll(Enumerable.Range(0, 10).Select(_ => w.Auth.RequestPasswordResetAsync("alice@x.co", default)));
+
+        Assert.Single(w.Email.Sent);
+        Assert.Single(w.Tokens.Items);
+    }
+
+    [Fact]
     public async Task ResetPassword_RevokesTheUsersOtherLinks()
     {
         // One live link per user, but rows from before it, or two issues at once in two processes, can still leave two.
