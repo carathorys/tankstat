@@ -23,9 +23,9 @@ The argument is an issue number.
 Every fix, feature or other piece of work gets a **new git worktree**, so the main checkout stays untouched and tasks never mix.
 
 1. **Clear the previous task's worktree first** (see section 8): `git worktree list`; a worktree of a task that is finished (its PR is ready or merged) is removed now, before the new one is made. One with uncommitted changes is never removed without asking.
-2. **Latest main from the remote:** `git fetch origin main` (or `git checkout main && git pull --ff-only origin main` in the main checkout).
-3. **Create the worktree with the branch in one go**, from that main, as a sibling folder named after the branch:
-   `git worktree add ../<repo>-<kebab> -b fix/<kebab> origin/main` (`feature/<kebab>` for a feature; CLAUDE.md or memory may hold stricter naming; follow them).
+2. **The base, fresh from the remote.** By default the latest `main`: `git fetch origin main`. **When the user names another branch** (a stacked PR built on an open one, a release branch), that branch is the base instead: `git fetch origin <base>`, and the PR targets it. Never choose another base on your own.
+3. **Create the worktree with the branch in one go**, from that base, as a sibling folder named after the branch:
+   `git worktree add ../<repo>-<kebab> -b fix/<kebab> origin/<base>` (`feature/<kebab>` for a feature; CLAUDE.md or memory may hold stricter naming; follow them).
 4. **Set the worktree up as the repository needs** (CLAUDE.md: e.g. `mise run install`); a worktree has no `node_modules` or build output of its own.
 5. **Work only inside it:** run every command from the worktree (`cd` into it) and edit files by their absolute path under it. Never edit the main checkout, never work on `main`.
 
