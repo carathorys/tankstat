@@ -6,6 +6,8 @@ Tankstat is a self-hosted web app: React + TypeScript frontend (Vite) and a .NET
 
 The README is short on purpose (what it is, the features by name, a quick start, the development commands, links). The user and operator documentation is in `docs/`, one file per topic: `configuration.md` (database, files, defaults, notifications, logging), `authentication.md` (modes, settings, access control), `user-guide.md`, `importing.md`, `install-as-an-app.md`, `photo-reading.md`, `self-hosting.md` and `development.md`. When a change alters behaviour or a setting that a docs file describes, update that file (and the README only when a feature's one-line summary changes). `docs/photo-reading.md` prints the built-in system prompt, both contracts and the JSON schema, pinned to the code by `OpenAiCompatiblePromptTests`.
 
+Pull request descriptions never carry the claude.ai session link (no `https://claude.ai/code/session_...` line); the "Generated with Claude Code" line stays. Commit trailers are unchanged.
+
 ## Toolchain and commands
 
 All tooling is managed by `mise` (`mise.toml`: Node LTS, .NET 10). Prefer `mise run <task>` over calling tools directly.
