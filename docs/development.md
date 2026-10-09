@@ -140,6 +140,7 @@ mise run seed -- --help
 | `--seed <n>` | same seed, same data (default 1234) |
 | `--provider`, `--connection` | override the database (otherwise `Database__*` settings; `mise run seed` targets the `dev:api` SQLite file) |
 | `--uploads <folder>` | the folder of uploaded pictures, which is deleted too because nothing would point to the pictures any more (default: `Storage:Path` if configured) |
+| `--photos <folder>` | the folder of the photos of logs, deleted too for the same reason, when they have one of their own (default: `Storage:PhotosPath` if set; unset, they are in the uploads folder) |
 | `--yes` | skip the "type yes" confirmation before the database is deleted |
 
 The fuel logs are consistent: per vehicle, dates and the odometer only increase, the last fill-up is recent, litres follow the distance at a per-vehicle consumption (now and then a fill-up was not logged: the odometer runs on and the next log is marked), and prices drift slowly. Trashed vehicles keep their fuel logs.

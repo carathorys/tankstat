@@ -147,20 +147,24 @@ public sealed class SeederAppTests : IDisposable
         Assert.Contains(photos, output);
     }
 
-    [Fact]
-    public async Task ThePhotosFolder_IsTheAppsOwn_PhotosNextToThePictures_WhenNotGiven()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")] // blank counts as unset, as in the app
+    public async Task WithoutAPhotosFolderOfTheirOwn_ThePhotosGoWithThePictures_AndNoOtherFolderIsTouched(string? configured)
     {
         var parent = Path.Combine(Path.GetTempPath(), $"tankstat-seed-{Guid.NewGuid():N}");
         var (uploads, photos) = (Path.Combine(parent, "uploads"), Path.Combine(parent, "photos"));
         Directory.CreateDirectory(uploads);
-        Directory.CreateDirectory(photos);
+        Directory.CreateDirectory(photos); // a folder next to it that is not the app's
+        var env = configured is null ? null : new Dictionary<string, string?> { ["Storage:PhotosPath"] = configured };
         try
         {
-            var (code, output) = await Run(["--vehicles", "1", "--uploads", uploads, "--yes"]);
+            var (code, output) = await Run(["--vehicles", "1", "--uploads", uploads, "--yes"], env: env);
 
             Assert.Equal(SeederApp.Success, code);
-            Assert.False(Directory.Exists(photos));
-            Assert.Contains(photos, output);
+            Assert.False(Directory.Exists(uploads));
+            Assert.True(Directory.Exists(photos));
+            Assert.DoesNotContain("Photos of logs folder", output);
         }
         finally
         {
@@ -172,17 +176,21 @@ public sealed class SeederAppTests : IDisposable
     public async Task LeavesPicturesAloneWhenTheUserDeclines_OrNoFolderIsKnown()
     {
         var uploads = Path.Combine(Path.GetTempPath(), $"tankstat-seed-uploads-{Guid.NewGuid():N}");
+        var photos = uploads + "-photos";
         Directory.CreateDirectory(uploads);
+        Directory.CreateDirectory(photos);
         try
         {
-            await Run(["--vehicles", "2", "--uploads", uploads, "--photos", uploads + "-photos"], input: "no\n");
+            await Run(["--vehicles", "2", "--uploads", uploads, "--photos", photos], input: "no\n");
             await Run(["--vehicles", "2", "--yes"]); // no folder given or configured: nothing is deleted
 
             Assert.True(Directory.Exists(uploads));
+            Assert.True(Directory.Exists(photos));
         }
         finally
         {
             Directory.Delete(uploads, recursive: true);
+            Directory.Delete(photos, recursive: true);
         }
     }
 
@@ -273,6 +281,8 @@ public sealed class SeederAppTests : IDisposable
             ["Database:Provider"] = "Sqlite",
             ["Database:ConnectionString"] = Connection,
             ["Auth:Mode"] = "None",
+            // a folder that does not exist, never a developer's Storage__Path: the app moves photos at start
+            ["Storage:Path"] = Path.Combine(Path.GetTempPath(), $"tankstat-seed-app-{Guid.NewGuid():N}", "uploads"),
         })));
         var client = factory.CreateClient();
         async Task<JsonElement> Gql(string query, object? variables = null) =>

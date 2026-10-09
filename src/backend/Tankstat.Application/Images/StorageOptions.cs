@@ -11,19 +11,17 @@ public sealed class StorageOptions
     public string Path { get; set; } = "uploads";
 
     /// <summary>
-    /// Folder for the photos of logs (refuellings, expenses and their drafts), which grow without limit: kept apart, so a backup or a disk of
-    /// their own can take them as a whole. Unset: <c>photos</c> next to <see cref="Path"/>. It may be the same folder as <see cref="Path"/>,
-    /// never one inside the other.
+    /// Folder for the photos of logs (refuellings, expenses and their drafts), which grow without limit. Opt-in: unset (or blank), they stay
+    /// in <see cref="Path"/> with the pictures and nothing ever moves. Set, they live apart (a backup or a disk of their own can take them as
+    /// a whole), and the photos already in <see cref="Path"/> move there at the next start. Never one folder inside the other.
     /// </summary>
     public string? PhotosPath { get; set; }
 
     /// <summary><see cref="Path"/> in full, without a trailing separator.</summary>
     public string PicturesRoot => Full(Path);
 
-    /// <summary><see cref="PhotosPath"/> in full, without a trailing separator; unset, <c>photos</c> next to <see cref="PicturesRoot"/>.</summary>
-    public string PhotosRoot => string.IsNullOrWhiteSpace(PhotosPath)
-        ? System.IO.Path.Combine(System.IO.Path.GetDirectoryName(PicturesRoot) ?? PicturesRoot, "photos")
-        : Full(PhotosPath);
+    /// <summary><see cref="PhotosPath"/> in full, without a trailing separator; unset, the very folder of the pictures.</summary>
+    public string PhotosRoot => string.IsNullOrWhiteSpace(PhotosPath) ? PicturesRoot : Full(PhotosPath);
 
     /// <summary>Pictures and photos in one folder: nothing is ever moved between them.</summary>
     public bool OneRoot => string.Equals(PicturesRoot, PhotosRoot, PathComparison);
@@ -41,7 +39,9 @@ public sealed class StorageOptions
 
 public sealed class StorageOptionsValidator : IValidateOptions<StorageOptions>
 {
-    public ValidateOptionsResult Validate(string? name, StorageOptions o) => o.RootsNested
-        ? ValidateOptionsResult.Fail("Storage:PhotosPath and Storage:Path must be the same folder or two separate ones, not one inside the other.")
+    // An empty Storage:Path first: the roots cannot be worked out from it (Path.GetFullPath throws), and a validator must not throw.
+    public ValidateOptionsResult Validate(string? name, StorageOptions o) =>
+        string.IsNullOrWhiteSpace(o.Path) ? ValidateOptionsResult.Fail("Storage:Path must not be empty.")
+        : o.RootsNested ? ValidateOptionsResult.Fail("Storage:PhotosPath and Storage:Path must be the same folder or two separate ones, not one inside the other.")
         : ValidateOptionsResult.Success;
 }

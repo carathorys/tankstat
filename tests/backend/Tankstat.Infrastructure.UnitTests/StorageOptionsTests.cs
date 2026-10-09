@@ -10,12 +10,17 @@ public class StorageOptionsTests
 {
     private static readonly string Data = Path.Combine(Path.GetTempPath(), "tankstat-options");
 
-    [Fact]
-    public void UnsetPhotosPath_IsPhotosNextToThePicturesFolder_WhereverThatIs()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")] // Storage__PhotosPath= left blank in a compose file
+    public void UnsetPhotosPath_KeepsThePhotosWithThePictures_SoNothingMoves(string? photos)
     {
-        Assert.Equal(Path.Combine(Data, "photos"), new StorageOptions { Path = Path.Combine(Data, "uploads") }.PhotosRoot);
-        Assert.Equal(Path.Combine(Data, "photos"), new StorageOptions { Path = Path.Combine(Data, "uploads") + Path.DirectorySeparatorChar }.PhotosRoot); // never inside it
-        Assert.Equal(Path.GetFullPath("photos"), new StorageOptions().PhotosRoot); // the defaults: uploads and photos side by side
+        var options = new StorageOptions { Path = Path.Combine(Data, "uploads"), PhotosPath = photos };
+
+        Assert.Equal(Path.Combine(Data, "uploads"), options.PhotosRoot);
+        Assert.Equal((true, false), (options.OneRoot, options.RootsNested));
+        Assert.True(new StorageOptions { Path = Path.GetPathRoot(Path.GetTempPath())! }.OneRoot); // also at the root of a disk
     }
 
     [Fact]
@@ -28,7 +33,7 @@ public class StorageOptionsTests
     }
 
     [Theory]
-    [InlineData("uploads", null, false, false)]
+    [InlineData("uploads", null, true, false)] // unset: with the pictures
     [InlineData("uploads", "uploads", true, false)] // one folder for both: allowed
     [InlineData("uploads", "uploads/", true, false)]
     [InlineData("uploads", "uploads/photos", false, true)]
@@ -54,6 +59,19 @@ public class StorageOptionsTests
         var refused = Assert.Throws<OptionsValidationException>(() => services.GetRequiredService<IOptions<StorageOptions>>().Value);
 
         Assert.Contains("Storage:PhotosPath", refused.Message);
+        Assert.Contains("Storage:Path", refused.Message);
+    }
+
+    [Theory]
+    [InlineData("")] // Storage__Path= in the environment, say a compose file's ${UPLOADS} left unset
+    [InlineData("  ")]
+    public void AnEmptyPicturesFolder_IsRefusedAtStart_WithAMessageThatNamesTheSetting(string path)
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Storage:Path"] = path }).Build();
+        using var services = new ServiceCollection().AddLogging().AddApplication(config).BuildServiceProvider();
+
+        var refused = Assert.Throws<OptionsValidationException>(() => services.GetRequiredService<IOptions<StorageOptions>>().Value);
+
         Assert.Contains("Storage:Path", refused.Message);
     }
 }

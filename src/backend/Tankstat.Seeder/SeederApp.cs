@@ -3,7 +3,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Tankstat.Application;
-using Tankstat.Application.Images;
 using Tankstat.Infrastructure;
 using Tankstat.Infrastructure.Persistence;
 
@@ -60,9 +59,8 @@ public static class SeederApp
         await using var _ = services;
         var target = Describe(services);
         var uploads = options.UploadsPath ?? config["Storage:Path"];
-        // The photos of logs: where the app keeps them (unset, photos next to the pictures), only when a folder is known.
-        var photos = options.PhotosPath ?? config["Storage:PhotosPath"]
-            ?? (string.IsNullOrWhiteSpace(uploads) ? null : new StorageOptions { Path = uploads }.PhotosRoot);
+        // The photos of logs, when they have a folder of their own; unset or blank, they are with the pictures, as in the app.
+        var photos = new[] { options.PhotosPath, config["Storage:PhotosPath"] }.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p));
         await output.WriteLineAsync($"Target database: {target}");
         if (!string.IsNullOrWhiteSpace(uploads)) await output.WriteLineAsync($"Uploaded pictures folder (deleted too): {Path.GetFullPath(uploads)}");
         if (!string.IsNullOrWhiteSpace(photos)) await output.WriteLineAsync($"Photos of logs folder (deleted too): {Path.GetFullPath(photos)}");
