@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using HotChocolate;
 using HotChocolate.Execution;
 using HotChocolate.Execution.Instrumentation;
+using HotChocolate.Execution.Processing;
 using HotChocolate.Language;
 using HotChocolate.Resolvers;
 using Tankstat.Api.Auth;
@@ -17,7 +18,8 @@ namespace Tankstat.Api.GraphQL;
 /// "Unexpected Execution Error" and leaves no trace anywhere. By what the error is:
 /// a refusal (<see cref="ForbiddenException"/>) is a Warning; any other business error (a validation failure, something missing, a
 /// wrong password) and a request the engine turns down (a missing variable) is the client's doing and only a Debug line; everything else
-/// is an Error with its exception, once.
+/// is an Error with its exception, once. A value that must not be null but was (<c>HC0018</c>) is always the server's bug, a Warning:
+/// no hook tells about it, so it is found in the result when the request ends.
 /// Never logged: variables, the document, and the text of request errors, which can quote what the client sent (a password). A field is
 /// named the way the schema names it (<c>Mutation.addVehicle</c>), not by the alias a client gave it in its query.
 /// </summary>
@@ -35,13 +37,6 @@ internal sealed class GraphQLLoggingListener(ILoggerFactory factory, IHttpContex
 
     public override void ResolverError(IMiddlewareContext context, IError error) =>
         Report(error, Describe(context.Operation.RootType.Name, context.Operation.Name), Field(context.Selection));
-
-    public override void ResolverError(RequestContext context, ISelection selection, IError error)
-    {
-        // A value that must not be null was null: no exception, and always a bug on the server (a client cannot cause it).
-        if (error.Exception is null) _logger.LogWarning("GraphQL {Operation} produced error {Code} at {Field} for user {UserId}", Operation(context), error.Code, Field(selection), UserId());
-        else Report(error, Operation(context), Field(selection));
-    }
 
     public override void TaskError(IExecutionTask task, IError error) => Report(error, "task", SafePath(error.Path));
 
@@ -91,6 +86,40 @@ internal sealed class GraphQLLoggingListener(ILoggerFactory factory, IHttpContex
     private static string Field(ISelection selection) => $"{selection.Field.DeclaringType.Name}.{selection.Field.Name}";
 
     /// <summary>
+    /// The field at a response path the way the schema names it ("Holder.nullNested"), found through the operation the request ran: the
+    /// path holds the names the client gave. Null when it cannot be told; a logging helper never throws.
+    /// </summary>
+    private static string? SchemaField(RequestContext context, HotChocolate.Path? path)
+    {
+        try
+        {
+            if (path is null || !context.TryGetOperation(out var operation)) return null;
+            var names = new List<string>();
+            for (var segment = path; segment is not null && !segment.IsRoot; segment = segment.Parent)
+                if (segment is NamePathSegment name) names.Add(name.Name);
+            names.Reverse();
+
+            IEnumerable<SelectionSet> sets = [operation.RootSelectionSet];
+            Selection? found = null;
+            foreach (var name in names)
+            {
+                if (found is not null) // the field the last name led to: its selections, for each type it can be (an interface or a union)
+                {
+                    var parent = found;
+                    sets = operation.GetPossibleTypes(parent).Select(type => operation.GetSelectionSet(parent, type));
+                }
+                found = sets.SelectMany(set => set.Selections.ToArray()).FirstOrDefault(selection => selection.ResponseName == name);
+                if (found is null) return null;
+            }
+            return found is null ? null : Field(found);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// A response path (<c>a/0/b</c>) is made of the names a client gave its fields, so it is passed on only when it is short and holds
     /// nothing but the characters of such names.
     /// </summary>
@@ -123,14 +152,24 @@ internal sealed class GraphQLLoggingListener(ILoggerFactory factory, IHttpContex
         return rootType is null ? $"operation {safe}" : $"{rootType.ToLowerInvariant()} {safe}";
     }
 
-    /// <summary>Times the request for the Debug line, and checks its result for errors no hook told about (their exceptions are logged once).</summary>
+    /// <summary>
+    /// Times the request for the Debug line, and checks its result for errors no hook told about: their exceptions (logged once), and a
+    /// non-null field that was null.
+    /// </summary>
     private sealed class RequestScope(GraphQLLoggingListener owner, RequestContext context, long started) : IDisposable
     {
         public void Dispose()
         {
             var errors = (context.Result as OperationResult)?.Errors ?? [];
             foreach (var error in errors)
+            {
                 if (error.Exception is { } exception) owner.ReportException(exception, Operation(context), SafePath(error.Path));
+                else if (error.Code == ErrorCodes.Execution.NonNullViolation && error.Path is { IsRoot: false })
+                    // A field that must not be null was null: always a bug on the server (a client cannot cause it), and no hook tells. The
+                    // same code without a path is a required variable the client left out (the client's doing, logged as a request error).
+                    owner._logger.LogWarning("GraphQL {Operation} returned null for non-null field {Field} ({Code}) for user {UserId}",
+                        Operation(context), SchemaField(context, error.Path) ?? SafePath(error.Path), error.Code, owner.UserId());
+            }
             if (owner._logger.IsEnabled(LogLevel.Debug))
                 owner._logger.LogDebug("GraphQL {Operation} finished in {Ms:0} ms with {Errors} errors", Operation(context), Stopwatch.GetElapsedTime(started).TotalMilliseconds, errors.Count);
         }
