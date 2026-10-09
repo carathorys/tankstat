@@ -156,6 +156,30 @@ public class SettingsTests
         Assert.Null(settings.ColorMode);
     }
 
+    [Theory]
+    [InlineData(SurfaceStyle.Glossy)]
+    [InlineData(SurfaceStyle.Transparent)]
+    [InlineData(SurfaceStyle.Opaque)]
+    public void Surface_StartsUnchosen_AndTakesEveryStyle(SurfaceStyle surface)
+    {
+        var settings = UiSettings.Create(Guid.NewGuid(), Now);
+        Assert.Null(settings.Surface);
+
+        settings.SetSurface(surface, Now.AddMinutes(1));
+
+        Assert.Equal(surface, settings.Surface);
+        Assert.Equal(Now.AddMinutes(1), settings.UpdatedAt);
+    }
+
+    [Fact]
+    public void Surface_ANumberThatIsNoStyle_IsRefused()
+    {
+        var settings = UiSettings.Create(Guid.NewGuid(), Now);
+
+        Assert.Equal("settings.surfaceInvalid", Catch(() => settings.SetSurface((SurfaceStyle)7, Now)).Key);
+        Assert.Null(settings.Surface);
+    }
+
     [Fact]
     public void VehicleOrder_PositionsStartAtZero_ANegativeOneIsAProgrammingError()
     {

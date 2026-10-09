@@ -20,16 +20,31 @@ export const SHADOWS = Array.from({ length: 25 }, (_, n) =>
 ) as Shadows
 
 /**
- * The translucent, blurred panel of the app (the old `.glass`): the top bar, the sidebar, dialogs, menus, popovers, cards. A little
- * denser in the light scheme, where a dark picture behind a panel would otherwise muddy it.
+ * The floating panel of the app (the old `.glass`): the top bar, the sidebar, dialogs, menus, popovers, cards, tables, toasts. Drawn as
+ * the user chose (theme/surface.ts, a class on <html>): glossy, see-through and blurred (a little denser in the light scheme, where a
+ * dark picture behind a panel would otherwise muddy it); transparent, the same without the blur; or opaque. The variables are set in
+ * `MuiCssBaseline` below (`SURFACE_TOKENS`).
  */
 export const glass = (theme: T): CSSObject => ({
-  backgroundColor: `rgba(${theme.vars.palette.background.paperChannel} / 0.7)`,
+  backgroundColor: `rgba(${theme.vars.palette.background.paperChannel} / var(--tk-glass-alpha))`,
   backgroundImage: 'none',
-  backdropFilter: 'blur(14px) saturate(140%)',
-  WebkitBackdropFilter: 'blur(14px) saturate(140%)',
-  ...theme.applyStyles('light', { backgroundColor: `rgba(${theme.vars.palette.background.paperChannel} / 0.85)` }),
+  backdropFilter: 'var(--tk-glass-filter)',
+  WebkitBackdropFilter: 'var(--tk-glass-filter)',
+  // Solid in the panel's own scheme: a part that is always dark (the `dark` class) stays dark and solid in a light page.
+  '.surface-opaque &': { backgroundColor: theme.vars.palette.background.paper },
 })
+
+/**
+ * The surfaces' variables: the opacity per scheme (the always-dark parts have the dark one), the blur, and the scrim of a vehicle card's
+ * figures over its picture; switched by the class on <html> (theme/surface.ts `SURFACE_CLASS`). The scrim stays a little see-through
+ * in the transparent style but darker, since it loses the blur that kept white text legible over a picture.
+ */
+const SURFACE_ALPHA = { dark: { '--tk-glass-alpha': '0.7' }, light: { '--tk-glass-alpha': '0.85' } }
+const SURFACE_TOKENS = {
+  ':root': { '--tk-glass-filter': 'blur(14px) saturate(140%)', '--tk-scrim': 'rgba(0, 0, 0, 0.35)', '--tk-scrim-filter': 'blur(10px)' },
+  ':root.surface-transparent': { '--tk-glass-filter': 'none', '--tk-scrim': 'rgba(0, 0, 0, 0.55)', '--tk-scrim-filter': 'none' },
+  ':root.surface-opaque': { '--tk-glass-filter': 'none', '--tk-scrim': 'rgb(17, 17, 16)', '--tk-scrim-filter': 'none' },
+}
 
 /** A soft surface in a tone: tinted background, readable text, a little more tint under the pointer. */
 export const softTone = (theme: T, tone: Tone): CSSObject => ({
@@ -86,8 +101,9 @@ export const components: Components<T> = {
     styleOverrides: (theme) => ({
       // The shadows of the default (dark) scheme at the root, the light ones with the light class (theme.ts: colorSchemeSelector); a part
       // that is always dark (a vehicle's banner and cards: the `dark` class) has the dark ones in either scheme, like MUI's colours.
-      ':root, .dark': shadowTokens('dark'),
-      '.light': shadowTokens('light'),
+      ':root, .dark': { ...shadowTokens('dark'), ...SURFACE_ALPHA.dark },
+      '.light': { ...shadowTokens('light'), ...SURFACE_ALPHA.light },
+      ...SURFACE_TOKENS,
       'html, body': { height: '100%' },
       // The dim, layered look: a soft glow of the accent and the gray behind the translucent, blurred panels.
       body: {

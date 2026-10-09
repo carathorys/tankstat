@@ -643,6 +643,10 @@ namespace Tankstat.Migrations.MySql
                     b.Property<bool?>("NavOpen")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<string>("Surface")
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");
 

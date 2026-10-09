@@ -5,23 +5,26 @@ using Tankstat.Domain.Settings;
 namespace Tankstat.Application.Settings;
 
 /// <summary>The current user's UI settings (the grids are listed separately); nulls mean nothing was chosen, so the browser's default applies.</summary>
-public sealed record UiSettingsView(bool? NavOpen, string? Language, ColorMode? ColorMode)
+public sealed record UiSettingsView(bool? NavOpen, string? Language, ColorMode? ColorMode, SurfaceStyle? Surface)
 {
-    public static UiSettingsView Of(UiSettings? row) => new(row?.NavOpen, row?.Language, row?.ColorMode);
+    public static UiSettingsView Of(UiSettings? row) => new(row?.NavOpen, row?.Language, row?.ColorMode, row?.Surface);
 }
 
 /// <summary>
 /// A change to the settings: a null member leaves that setting as it is; <see cref="ClearLanguage"/> forgets the saved language and wins over
 /// a <see cref="Language"/> given at the same time. A colour mode is never forgotten, only changed (System is the device's own choice).
+/// Nor is a surface style.
 /// </summary>
-public sealed record UiSettingsChange(bool? NavOpen = null, string? Language = null, bool ClearLanguage = false, ColorMode? ColorMode = null)
+public sealed record UiSettingsChange(
+    bool? NavOpen = null, string? Language = null, bool ClearLanguage = false, ColorMode? ColorMode = null, SurfaceStyle? Surface = null)
 {
-    public bool IsEmpty => NavOpen is null && Language is null && !ClearLanguage && ColorMode is null;
+    public bool IsEmpty => NavOpen is null && Language is null && !ClearLanguage && ColorMode is null && Surface is null;
 }
 
 /// <summary>
-/// What the UI remembers for a user on every device (the sidebar, each grid, the language, the colour mode): stored per user, read by the
-/// browser once per session. With authentication off everything belongs to the anonymous user, that is to everyone on the instance.
+/// What the UI remembers for a user on every device (the sidebar, each grid, the language, the colour mode, the surfaces): stored per user,
+/// read by the browser once per session. With authentication off everything belongs to the anonymous user, that is to everyone on the
+/// instance.
 /// </summary>
 public sealed class UiSettingsService(IUiSettingsRepository settings, AccessService access, TimeProvider clock, ILogger<UiSettingsService> logger)
 {
@@ -49,6 +52,7 @@ public sealed class UiSettingsService(IUiSettingsRepository settings, AccessServ
         if (change.ClearLanguage) row.SetLanguage(null, now);
         else if (change.Language is not null) row.SetLanguage(change.Language, now);
         if (change.ColorMode is { } mode) row.SetColorMode(mode, now);
+        if (change.Surface is { } surface) row.SetSurface(surface, now);
         await settings.SaveAsync(row, ct);
         logger.LogDebug("User {UserId} changed their UI settings", user.Id);
         return UiSettingsView.Of(row);

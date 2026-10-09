@@ -98,7 +98,7 @@ public class ContractTests
     [InlineData("VehicleChart", "id", "vehicleId", "title", "metric", "grouping", "kind", "range", "rangeFrom", "rangeTo", "stacked", "isShared", "createdAt", "canEdit", "createdBy")]
     [InlineData("Refueling", "id", "vehicleId", "createdBy", "date", "volume", "totalCost", "currency", "odometer", "pricePerUnit", "consumption", "isFullTank", "missedPreviousFillUp", "note", "deletedAt", "canEdit", "canDelete", "vehicle", "photos", "reviewState", "filledFromPhoto", "version", "updatedAt")]
     [InlineData("Expense", "id", "amount", "currency", "odometer", "reviewState", "filledFromPhoto")]
-    [InlineData("UiSettingsInfo", "navOpen", "language", "colorMode", "grids")]
+    [InlineData("UiSettingsInfo", "navOpen", "language", "colorMode", "surface", "grids")]
     [InlineData("GridSettingsInfo", "gridId", "order", "hidden", "pageSize", "sortColumn", "sortDirection")]
     public async Task Schema_TypeExposesContractFields(string type, params string[] fields)
     {
@@ -115,7 +115,7 @@ public class ContractTests
     [InlineData("AddRecurringExpenseInput", "vehicleId", "title", "kind", "intervalMonths", "intervalDistance", "lastDoneDate", "lastDoneOdometer", "id")]
     [InlineData("MarkRecurringExpensesDoneInput", "ids", "date", "odometer", "amount", "currency", "title", "category", "photoIds", "expenseId")]
     [InlineData("GridSettingsInput", "gridId", "order", "hidden", "pageSize", "sortColumn", "sortDirection")]
-    [InlineData("UpdateUiSettingsInput", "navOpen", "language", "clearLanguage", "colorMode")]
+    [InlineData("UpdateUiSettingsInput", "navOpen", "language", "clearLanguage", "colorMode", "surface")]
     public async Task Schema_InputTypeTakesContractFields(string type, params string[] fields)
     {
         var body = await Query($"{{ __type(name: \"{type}\") {{ inputFields {{ name }} }} }}");
@@ -151,6 +151,7 @@ public class ContractTests
     [InlineData("VehicleSortField", "NAME", "LICENSE_PLATE", "FUEL_TYPE", "OWNER", "REFUELING_COUNT", "DELETED_AT")]
     [InlineData("SortDirection", "ASC", "DESC")]
     [InlineData("ColorMode", "LIGHT", "DARK", "SYSTEM")]
+    [InlineData("SurfaceStyle", "GLOSSY", "TRANSPARENT", "OPAQUE")]
     [InlineData("AuthMode", "NONE", "STANDALONE", "OIDC", "PROXY_HEADER")]
     [InlineData("AccessLevel", "NONE", "VIEW", "EDIT", "DELETE")]
     [InlineData("DistanceUnit", "KILOMETERS", "MILES")]

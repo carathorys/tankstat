@@ -22,6 +22,7 @@ afterEach(async () => {
   cleanup()
   window.localStorage.clear()
   window.sessionStorage.clear()
+  document.documentElement.classList.remove('surface-transparent', 'surface-opaque') // glossy again: the surface style lives on <html>
   installPrompt.reset()
   appUpdate.reset()
   connectivity.reset()
