@@ -50,6 +50,26 @@ public class LoggingTests
     }
 
     [Fact]
+    public async Task ANullInANonNullField_IsAWarning_NamingTheSchemaField_NeverTheClientsAliasOrTheMessage()
+    {
+        // A resolver that returns null for a field that must not be null: always the server's bug, and no hook of HotChocolate's tells.
+        using var app = new TestApp(new() { ["Auth:Mode"] = "None" }, s => s.AddGraphQLServer().AddTypeExtension<NullQueries>());
+        var client = app.NewClient();
+
+        var root = await client.Gql("query Root { nullRoot }");
+        var nested = await client.Gql("query Nested { x: nullHolder { y: nullNested } }");
+
+        Assert.Equal(("HC0018", "HC0018"), (root.ErrorCode(), nested.ErrorCode()));
+        var warnings = app.Log.From(Listener).Where(e => e.Level == LogLevel.Warning).ToList();
+        Assert.Equal(2, warnings.Count);
+        Assert.Equal(["Query.nullRoot", "NullHolder.nullNested"], warnings.Select(e => e.Values["Field"])); // by the schema, never the aliases x and y
+        Assert.All(warnings, e => Assert.Equal(("HC0018", "anonymous"), (e.Values["Code"], e.Values["UserId"])));
+        Assert.Equal(["query Root", "query Nested"], warnings.Select(e => e.Values["Operation"]));
+        Assert.DoesNotContain(Ours(app), e => e.Level >= LogLevel.Error); // no exception to attach
+        Assert.False(app.Log.Mentions("Cannot return null")); // never the message
+    }
+
+    [Fact]
     public void AUserIsNamedInTheLogByTheirIdOnly_AndAnythingElseIsAnonymous()
     {
         var id = Guid.NewGuid();
@@ -282,4 +302,18 @@ public sealed class FaultyQueries
     public string Cancelled() => throw new OperationCanceledException();
 
     public string Refused() => throw new HotChocolate.GraphQLException(HotChocolate.ErrorBuilder.New().SetMessage("the words of the error").SetCode("TEST_REFUSED").Build());
+}
+
+/// <summary>Fields only <see cref="LoggingTests"/> add to the schema: values that must not be null but are, at the root and nested.</summary>
+[HotChocolate.Types.ExtendObjectType(HotChocolate.Types.OperationTypeNames.Query)]
+public sealed class NullQueries
+{
+    public string NullRoot() => null!;
+
+    public NullHolder NullHolder() => new();
+}
+
+public sealed class NullHolder
+{
+    public string NullNested() => null!;
 }
