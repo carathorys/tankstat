@@ -131,3 +131,47 @@ it('a photo added to a saved refuelling offline waits on this device, shows in t
   expect(await keptPhotos.get(key)).toBeUndefined()
   expect(uploads).toEqual([])
 })
+
+async function openDetails() {
+  renderWithApollo(<App />, '/vehicles/v1?tab=details')
+  await screen.findByRole('heading', { name: 'Picture' }, { timeout: 10_000 })
+  return userEvent.setup()
+}
+
+const chooseFile = () => document.querySelector('#main input[type=file]') as HTMLInputElement
+
+it('a vehicle picture chosen offline is kept on this device and shown at once; removed, only the removal waits', async () => {
+  const ui = await openDetails()
+  const choose = screen.getByRole('button', { name: 'Choose a picture' })
+  expect(choose).toBeEnabled() // a vehicle's picture can wait for the server (a profile picture cannot)
+  expect(choose).toHaveAccessibleDescription('You are offline: a picture you choose is saved on this device and syncs when online.')
+
+  await ui.upload(chooseFile(), photo())
+
+  expect(await screen.findByText('Picture saved on this device · syncs when online.')).toBeInTheDocument()
+  expect(outbox.changes).toMatchObject([{ entity: 'vehicles', action: 'setPicture', vehicleId: 'v1', targetId: 'v1' }])
+  const key = String(outbox.changes[0].input?.key)
+  expect(isKept(key)).toBe(true)
+  expect(await keptPhotos.get(key)).toBeDefined()
+  expect(await screen.findByRole('img', { name: /^Picture of / })).toHaveAttribute('src', expect.stringMatching(/^blob:/)) // from the device
+  expect(uploads).toEqual([])
+  expect((await axe(document.body, { rules: { 'color-contrast': { enabled: false } } })).violations.map((v) => v.id)).toEqual([])
+
+  await ui.click(await screen.findByRole('button', { name: 'Remove picture' }))
+
+  expect(await screen.findByText('Picture removed on this device · syncs when online.')).toBeInTheDocument()
+  expect(outbox.changes).toMatchObject([{ entity: 'vehicles', action: 'removePicture', targetId: 'v1' }]) // only the last change counts
+  await waitFor(async () => expect(await keptPhotos.get(key)).toBeUndefined()) // the picture it replaced is gone from the device
+  expect(await screen.findByRole('img', { name: 'No picture' })).toBeInTheDocument()
+})
+
+it('a vehicle picture whose upload loses the connection is kept for the next sync, not lost', async () => {
+  const ui = await openDetails()
+  connectivity.reset() // as far as the app knows, the server is there: it uploads, and the connection fails (every upload here does)
+
+  await ui.upload(chooseFile(), photo())
+
+  expect(await screen.findByText('Picture saved on this device · syncs when online.')).toBeInTheDocument()
+  expect(uploads).toEqual(['/media/vehicles/v1/picture'])
+  expect(outbox.changes).toMatchObject([{ entity: 'vehicles', action: 'setPicture', targetId: 'v1' }])
+})

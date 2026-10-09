@@ -88,6 +88,7 @@ export function DetailsPanel({ vehicle, onChanged }: { vehicle: Vehicle; onChang
               hasImage={Boolean(vehicle.pictureUrl)}
               path={vehiclePicturePath(vehicle.id)}
               maxEdge={1280}
+              keep={{ vehicleId: vehicle.id }}
               onChanged={onChanged}
             />
           </section>

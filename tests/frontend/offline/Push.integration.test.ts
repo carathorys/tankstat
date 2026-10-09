@@ -197,6 +197,34 @@ it('photos kept on this device go up as drafts right before their change, which 
   expect(await keptPhotos.get(second!)).toBeUndefined()
 })
 
+it('a vehicle added here with a picture: the add goes first, then the picture as a draft (never read), then the change that makes it the picture', async () => {
+  const order: string[] = []
+  fakeDrafts(order)
+  const sent = fakeSync(undefined, order)
+  await keep({ id: 'g', entity: 'vehicles', action: 'add', vehicleId: 'g', targetId: 'g', input: { id: 'g', name: 'Golf', fuelType: 'PETROL' } })
+  const picture = await keptPhotos.keep(new Blob([new Uint8Array([1])], { type: 'image/jpeg' }), 'g')
+  await keep({ id: 'pic', entity: 'vehicles', action: 'setPicture', vehicleId: 'g', targetId: 'g', input: { key: picture } })
+
+  await engine().run()
+
+  expect(order).toEqual(['sync g', 'draft 1', 'sync pic'])
+  expect(sent.requests[1][0]).toMatchObject({ id: 'pic', setVehiclePicture: { vehicleId: 'g', draftId: 'draft-1' } })
+  expect(outbox.changes).toEqual([])
+  expect(await keptPhotos.get(picture!)).toBeUndefined()
+})
+
+it('a vehicle picture gone from the device is done with, without asking the server; a removal goes as it is', async () => {
+  const sent = fakeSync()
+  await keep({ id: 'pic', entity: 'vehicles', action: 'setPicture', vehicleId: 'v1', targetId: 'v1', input: { key: 'local:gone' } })
+  await keep({ id: 'rm', entity: 'vehicles', action: 'removePicture', vehicleId: 'v2', targetId: 'v2' })
+
+  await engine().run()
+
+  expect(sent.requests.flat().map((c) => c.id)).toEqual(['rm'])
+  expect(sent.requests[0][0]).toMatchObject({ removeVehiclePicture: 'v2' })
+  expect(outbox.changes).toEqual([])
+})
+
 it('a photo the server will not take this time keeps its change waiting with the photo; one gone from the device is left out', async () => {
   const order: string[] = []
   fakeDrafts(order, new Set([1]))

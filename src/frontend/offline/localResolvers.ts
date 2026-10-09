@@ -285,7 +285,10 @@ const localToday = () => {
 }
 const SCHEDULE_FIELDS = ['title', 'category', 'note', 'kind', 'intervalMonths', 'intervalDistance', 'lastDoneDate', 'lastDoneOdometer', 'warnDays', 'warnDistance']
 
-/** A vehicle as the device knows it: the server's (details, or its card from the home list) with the changes waiting, or one added here. */
+/**
+ * A vehicle as the device knows it: the server's (details, or its card from the home list) with the changes waiting, or one added here.
+ * A picture chosen here shows from the device (`keptPhotos.url`), one removed here is gone.
+ */
 async function vehicleOf(rows: RowStore, id: unknown, base: Record<string, unknown> | undefined) {
   const add = addedVehicle(id)
   const fresh = add && {
@@ -295,7 +298,11 @@ async function vehicleOf(rows: RowStore, id: unknown, base: Record<string, unkno
   const start = fresh ?? base ?? (await rows.vehicles()).find((v) => v.id === id)
   if (!start) return undefined
   const updates = outbox.changes.filter((c) => c.entity === 'vehicles' && c.targetId === id && (c.action === 'update' || c.action === 'add'))
-  return updates.reduce<Record<string, unknown>>((v, c) => over(v, c.input, VEHICLE_FIELDS), start)
+  const vehicle = updates.reduce<Record<string, unknown>>((v, c) => over(v, c.input, VEHICLE_FIELDS), start)
+  const picture = outbox.changes.findLast((c) => c.entity === 'vehicles' && c.targetId === id && (c.action === 'setPicture' || c.action === 'removePicture'))
+  if (!picture) return vehicle
+  if (picture.action === 'removePicture') return { ...vehicle, pictureUrl: null }
+  return { ...vehicle, pictureUrl: (await keptPhotos.url(String(picture.input?.key))) ?? vehicle.pictureUrl }
 }
 
 /** The schedules of a vehicle with the changes waiting: an added one is upcoming (the server works out where it stands). */
