@@ -137,7 +137,7 @@ public class PasswordTests
 
         var mail = Assert.Single(w.Email.Sent);
         Assert.Equal("alice@x.co", mail.To);
-        var token = mail.Body.Split("resetToken=")[1].Split('\n')[0];
+        var token = LinkIn(mail);
         Assert.StartsWith("https://tank.test/?resetToken=", mail.Body[mail.Body.IndexOf("https", StringComparison.Ordinal)..]);
 
         await w.Auth.ResetPasswordAsync(token, "brand-new-password", default);
@@ -259,6 +259,21 @@ public class PasswordTests
 
         Assert.Equal(2, w.Email.Sent.Count);
         Assert.Single(w.Tokens.Items); // still one live link
+    }
+
+    [Fact]
+    public async Task ResetPassword_RevokesTheUsersOtherLinks()
+    {
+        // One live link per user, but rows from before it, or two issues at once in two processes, can still leave two.
+        var w = new World();
+        var first = await IssueToken(w, "alice@x.co");
+        var earlier = w.Tokens.Items.Single();
+        var second = await w.UserService.IssueResetAsync(earlier.UserId, default);
+        w.Tokens.Items.Add(earlier);
+
+        await w.Auth.ResetPasswordAsync(second.Token, "brand-new-password", default);
+
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(first, "another-password-1", default));
     }
 
     private static async Task<string> IssueToken(World w, string email)
