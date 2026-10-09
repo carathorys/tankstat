@@ -116,6 +116,7 @@
   "status": {
     "healthy": "Healthy",
     "degraded": "Degraded",
+    "app": "App v{{version}}",
     "api": "API:",
     "unreachable": "The server cannot be reached",
     "offline": "You are offline",

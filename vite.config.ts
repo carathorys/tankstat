@@ -1,12 +1,15 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { appVersion } from './src/frontend/appVersion.ts'
 import { SERVER_PATHS } from './src/frontend/pwa/serverPaths.ts'
 import { initSchemeScript, initSchemeStyle } from './src/frontend/theme/initScheme.ts'
 
 // https://vite.dev/config/
 export default defineConfig({
   root: 'src/frontend',
+  // The web app's version (appVersion.ts), from the build's VERSION like the API's: the footer shows it even while the server is out of reach.
+  define: { __APP_VERSION__: JSON.stringify(appVersion(process.env.VERSION)) },
   plugins: [
     react(),
     // The colour scheme the user chose, from the first paint (theme/initScheme.ts): the theme's styles only arrive with the app's script.
