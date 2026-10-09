@@ -57,7 +57,7 @@ The token endpoints only answer requests with the header `X-Requested-With: fetc
 | `Auth__Standalone__AdminPassword` | string, 10-128 characters | empty | on the first start | Password of the first administrator (the normal password rules apply). The app refuses to start if no administrator exists and these two are missing. |
 | `Auth__Standalone__MaxFailedAttempts` | integer | `5` | no | Failed logins before the account is locked. |
 | `Auth__Standalone__LockoutMinutes` | integer (minutes) | `15` | no | How long a locked account stays locked. |
-| `Auth__Standalone__ResetTokenMinutes` | integer (minutes) | `60` | no | How long a password setup/reset link is valid (it can be used once). |
+| `Auth__Standalone__ResetTokenMinutes` | integer (minutes), 1-43200 | `60` | no | How long a password setup/reset link is valid (it can be used once). At most 30 days; the app does not start with a larger value. |
 | `Auth__Standalone__ResetCooldownMinutes` | integer (minutes), 0-1440 | `5` | no | After a link was issued to an account, a request for another one through *Forgot your password?* sends nothing for this long (the answer looks the same), so nobody can flood a mailbox with reset mails. `0` turns the limit off. Links an administrator issues are never held back. |
 | `Auth__Standalone__AllowAdminSetPassword` | `true` / `false` | `false` | no | Lets administrators set a user's password directly in the UI (the user is signed out everywhere). Off by default: administrators then only issue reset links. |
 

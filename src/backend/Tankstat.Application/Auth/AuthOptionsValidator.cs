@@ -11,6 +11,7 @@ public sealed class AuthOptionsValidator(IOptions<SmtpOptions> smtp) : IValidate
         if (o.AccessTokenMinutes is < 1 or > 1440) errors.Add("Auth:AccessTokenMinutes must be between 1 and 1440.");
         if (o.RefreshTokenDays is < 1 or > 3650) errors.Add("Auth:RefreshTokenDays must be between 1 and 3650.");
         if (o.RefreshRotationGraceSeconds is < 0 or > 3600) errors.Add("Auth:RefreshRotationGraceSeconds must be between 0 and 3600.");
+        if (o.Standalone.ResetTokenMinutes is < 1 or > 43200) errors.Add("Auth:Standalone:ResetTokenMinutes must be between 1 and 43200.");
         if (o.Standalone.ResetCooldownMinutes is < 0 or > 1440) errors.Add("Auth:Standalone:ResetCooldownMinutes must be between 0 and 1440.");
 
         if (o.Mode == AuthMode.Oidc)

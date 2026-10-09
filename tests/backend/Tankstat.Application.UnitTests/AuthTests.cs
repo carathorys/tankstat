@@ -556,6 +556,14 @@ public class NoticeAndOptionsTests
     public void Validation_LimitsTheResetCooldown(int minutes, bool valid) =>
         Assert.Equal(valid, Validate(new AuthOptions { Standalone = { ResetCooldownMinutes = minutes } }).Succeeded);
 
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, true)]
+    [InlineData(43200, true)]
+    [InlineData(43201, false)]
+    public void Validation_LimitsTheResetLinkLifetime(int minutes, bool valid) =>
+        Assert.Equal(valid, Validate(new AuthOptions { Standalone = { ResetTokenMinutes = minutes } }).Succeeded);
+
     [Fact]
     public void Validation_RequiresTrustedProxies_ForProxyMode()
     {
