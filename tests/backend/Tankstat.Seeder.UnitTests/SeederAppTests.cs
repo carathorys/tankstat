@@ -129,17 +129,43 @@ public sealed class SeederAppTests : IDisposable
     }
 
     [Fact]
-    public async Task ClearsTheUploadedPictures_WhenAFolderIsGiven()
+    public async Task ClearsTheUploadedPicturesAndPhotos_WhenTheFoldersAreGiven()
     {
         var uploads = Path.Combine(Path.GetTempPath(), $"tankstat-seed-uploads-{Guid.NewGuid():N}");
+        var photos = Path.Combine(Path.GetTempPath(), $"tankstat-seed-photos-{Guid.NewGuid():N}");
         Directory.CreateDirectory(uploads);
+        Directory.CreateDirectory(photos);
         File.WriteAllText(Path.Combine(uploads, "old-picture"), "x");
+        File.WriteAllText(Path.Combine(photos, "old-photo"), "x");
 
-        var (code, output) = await Run(["--vehicles", "2", "--uploads", uploads, "--yes"]);
+        var (code, output) = await Run(["--vehicles", "2", "--uploads", uploads, "--photos", photos, "--yes"]);
 
         Assert.Equal(SeederApp.Success, code);
         Assert.False(Directory.Exists(uploads));
+        Assert.False(Directory.Exists(photos));
         Assert.Contains(uploads, output); // told the user before deleting
+        Assert.Contains(photos, output);
+    }
+
+    [Fact]
+    public async Task ThePhotosFolder_IsTheAppsOwn_PhotosNextToThePictures_WhenNotGiven()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), $"tankstat-seed-{Guid.NewGuid():N}");
+        var (uploads, photos) = (Path.Combine(parent, "uploads"), Path.Combine(parent, "photos"));
+        Directory.CreateDirectory(uploads);
+        Directory.CreateDirectory(photos);
+        try
+        {
+            var (code, output) = await Run(["--vehicles", "1", "--uploads", uploads, "--yes"]);
+
+            Assert.Equal(SeederApp.Success, code);
+            Assert.False(Directory.Exists(photos));
+            Assert.Contains(photos, output);
+        }
+        finally
+        {
+            Directory.Delete(parent, recursive: true);
+        }
     }
 
     [Fact]
@@ -149,7 +175,7 @@ public sealed class SeederAppTests : IDisposable
         Directory.CreateDirectory(uploads);
         try
         {
-            await Run(["--vehicles", "2", "--uploads", uploads], input: "no\n");
+            await Run(["--vehicles", "2", "--uploads", uploads, "--photos", uploads + "-photos"], input: "no\n");
             await Run(["--vehicles", "2", "--yes"]); // no folder given or configured: nothing is deleted
 
             Assert.True(Directory.Exists(uploads));
@@ -166,9 +192,13 @@ public sealed class SeederAppTests : IDisposable
         var uploads = Path.Combine(Path.GetTempPath(), $"tankstat-seed-uploads-{Guid.NewGuid():N}");
         Directory.CreateDirectory(uploads);
 
-        await Run(["--vehicles", "1", "--yes"], env: new Dictionary<string, string?> { ["Storage:Path"] = uploads });
+        var photos = uploads.Replace("-uploads-", "-photos-");
+        Directory.CreateDirectory(photos);
+
+        await Run(["--vehicles", "1", "--yes"], env: new Dictionary<string, string?> { ["Storage:Path"] = uploads, ["Storage:PhotosPath"] = photos });
 
         Assert.False(Directory.Exists(uploads));
+        Assert.False(Directory.Exists(photos));
     }
 
     [Fact]

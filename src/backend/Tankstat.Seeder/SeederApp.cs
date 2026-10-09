@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Tankstat.Application;
+using Tankstat.Application.Images;
 using Tankstat.Infrastructure;
 using Tankstat.Infrastructure.Persistence;
 
@@ -59,8 +60,12 @@ public static class SeederApp
         await using var _ = services;
         var target = Describe(services);
         var uploads = options.UploadsPath ?? config["Storage:Path"];
+        // The photos of logs: where the app keeps them (unset, photos next to the pictures), only when a folder is known.
+        var photos = options.PhotosPath ?? config["Storage:PhotosPath"]
+            ?? (string.IsNullOrWhiteSpace(uploads) ? null : new StorageOptions { Path = uploads }.PhotosRoot);
         await output.WriteLineAsync($"Target database: {target}");
         if (!string.IsNullOrWhiteSpace(uploads)) await output.WriteLineAsync($"Uploaded pictures folder (deleted too): {Path.GetFullPath(uploads)}");
+        if (!string.IsNullOrWhiteSpace(photos)) await output.WriteLineAsync($"Photos of logs folder (deleted too): {Path.GetFullPath(photos)}");
         await output.WriteLineAsync(
             $"This will DELETE it and create it again with {options.Vehicles:N0} vehicles, {options.Trashed:N0} in the trash, {options.RefuelingsPerVehicle} refuelings and {options.RecurringPerVehicle} recurring expenses each, and {options.Notifications:N0} notifications.");
 
@@ -79,7 +84,8 @@ public static class SeederApp
         {
             var watch = Stopwatch.StartNew();
             // Pictures of the old data would be orphaned: nothing points to them once the database is recreated.
-            if (!string.IsNullOrWhiteSpace(uploads) && Directory.Exists(uploads)) Directory.Delete(uploads, recursive: true);
+            foreach (var folder in new[] { uploads, photos })
+                if (!string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
             var seeder = new DatabaseSeeder(services.GetRequiredService<IDbContextFactory<AppDbContext>>(), new DataGenerator(clock));
             var result = await seeder.RecreateAndSeedAsync(options, ct);
             await output.WriteLineAsync(

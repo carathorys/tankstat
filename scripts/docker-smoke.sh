@@ -52,9 +52,20 @@ if [ -n "$expected_version" ]; then
   curl -sf "${url}${asset}" | grep -qF "$expected_version" || { echo "FAIL: expected web app version ${expected_version}" >&2; exit 1; }
 fi
 
-gql '{"query":"mutation { addVehicle(input: { name: \"Smoke\", fuelType: PETROL }) { id } }"}' | grep -q '"id"' || { echo "FAIL: cannot write to the database" >&2; exit 1; }
+car="$(gql '{"query":"mutation { addVehicle(input: { name: \"Smoke\", fuelType: PETROL }) { id } }"}' | sed -nE 's/.*"id":"([^"]+)".*/\1/p')"
+[ -n "$car" ] || { echo "FAIL: cannot write to the database" >&2; exit 1; }
+
+# A vehicle's picture goes to the pictures (/data/uploads), the photo of a refuelling to the photos of logs (/data/photos).
+log="$(gql "{\"query\":\"mutation { logRefueling(input: { vehicleId: \\\"$car\\\", date: \\\"2026-01-01\\\", volume: 40, totalCost: 60, currency: \\\"EUR\\\", odometer: 1000, isFullTank: true }) { id } }\"}" | sed -nE 's/.*"id":"([^"]+)".*/\1/p')"
+[ -n "$log" ] || { echo "FAIL: cannot log a refuelling" >&2; exit 1; }
+jpeg() { printf '\xff\xd8\xff\xe0smoke'; }
+jpeg | curl -sf -X PUT -H 'Content-Type: image/jpeg' --data-binary @- "${url}/media/vehicles/${car}/picture" >/dev/null || { echo "FAIL: cannot upload a vehicle picture" >&2; exit 1; }
+jpeg | curl -sf -X PUT -H 'Content-Type: image/jpeg' --data-binary @- "${url}/media/refuelings/${log}/photos" >/dev/null || { echo "FAIL: cannot upload the photo of a refuelling" >&2; exit 1; }
+files="$(docker exec "$name" find /data/uploads /data/photos -type f)"
+grep -q '^/data/uploads/vehicles/[0-9a-f]*/picture/' <<<"$files" || { echo "FAIL: the vehicle picture is not under /data/uploads" >&2; echo "$files" >&2; exit 1; }
+grep -q '^/data/photos/vehicles/[0-9a-f]*/refuelings/' <<<"$files" || { echo "FAIL: the photo of a refuelling is not under /data/photos" >&2; echo "$files" >&2; exit 1; }
 
 user="$(docker exec "$name" id -u)"
 [ "$user" != "0" ] || { echo "FAIL: the container runs as root" >&2; exit 1; }
 
-echo "OK: $image serves the web app (installable, cache rules in place) and the API (version check of both: ${expected_version:-skipped}, user $user)"
+echo "OK: $image serves the web app (installable, cache rules in place) and the API (version check of both: ${expected_version:-skipped}, user $user), pictures and photos in their folders"
