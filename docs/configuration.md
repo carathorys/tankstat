@@ -22,12 +22,22 @@ The connection string may be omitted only for `Sqlite`. The app refuses to start
 
 ## Files, defaults and notifications
 
-Uploaded pictures (profile pictures, vehicle pictures, photos of refuelings and expenses) are stored as files; only metadata is in the database:
+Uploaded pictures (profile pictures, vehicle pictures, photos of refuelings and expenses) are stored as files; only metadata is in the database. They live in two folders: the **pictures** (profile and vehicle pictures: few and small) and the **photos of logs** (the photos of refuellings and expenses, and the drafts of entries not saved yet: they grow without limit), so a backup or a disk of their own can take the photos as a whole:
+
+| What | Folder below it |
+| --- | --- |
+| profile pictures | `Storage:Path` / `users/<id>/` |
+| vehicle pictures | `Storage:Path` / `vehicles/<id>/picture/` |
+| files from older versions (no folder) | `Storage:Path` itself |
+| photos of refuellings and expenses | `Storage:PhotosPath` / `vehicles/<id>/refuelings/<log id>/`, `.../expenses/<log id>/` |
+| photos picked for an entry not saved yet | `Storage:PhotosPath` / `vehicles/<id>/drafts/` |
+
 
 | Setting | Environment variable | Meaning |
 | --- | --- | --- |
 | `DataProtection:KeysPath` | `DataProtection__KeysPath` | folder of the keys that protect the sign-in cookies and the stored refresh secrets (default `keys`, relative to the working directory; the Docker image uses `/data/keys`). Keep it with the data and back it up with it: without it every restart signs everybody out. The framework warns at start that the keys are stored unencrypted, which is expected; protect the folder like the database |
-| `Storage:Path` | `Storage__Path` | folder for uploaded pictures (default `uploads`, relative to the working directory; the Docker image uses `/data/uploads`). Files are organised per owner: `users/<id>/` for avatars and `vehicles/<id>/` for everything of a vehicle (its picture and, below it, the photos of its logs and the photo drafts of entries not saved yet), so a vehicle's files are removed with it; files from older versions stay directly in the folder and keep working |
+| `Storage:Path` | `Storage__Path` | folder for the pictures (default `uploads`, relative to the working directory; the Docker image uses `/data/uploads`). Files are organised per owner (table above), so a vehicle's files are removed with it; files from older versions stay directly in the folder and keep working |
+| `Storage:PhotosPath` | `Storage__PhotosPath` | folder for the photos of logs (default: `photos` next to the `Storage:Path` folder; the Docker image uses `/data/photos`). It may be a disk or volume of its own. It may also be the same folder as `Storage:Path` (everything in one place, as before), but never one inside the other: the app refuses to start then. Photos an older version kept in `Storage:Path` are moved here when the app starts (one by one, so it also works between two disks; one that cannot be moved stays where it was, is still shown, and is logged as a warning) |
 | `Defaults:DistanceUnit`, `Defaults:VolumeUnit`, `Defaults:Currency` | `Defaults__...` | what a new vehicle / new log starts with (`Kilometers` / `Liters` / `EUR` unless changed) |
 | `Defaults:RecurringWarnDays`, `Defaults:RecurringWarnDistance` | `Defaults__...` | how early a new recurring expense starts warning (`30` days / `500` in the vehicle's distance unit unless changed; every schedule can override it) |
 | `Notifications:MaxPerHour` | `Notifications__MaxPerHour` | how many notifications about events (such as access changes) a user gets in an hour before further ones are only counted (default `20`, at least `1`; recurring-expense reminders do not count) |
