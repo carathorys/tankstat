@@ -15,21 +15,23 @@ export type Submitted<T> = { queued: true } | { queued: false; result: T }
  * A kept edit or trash takes along the values the entry had at the version it was made from (`base`), should the server park it.
  */
 export async function submitChange<T>(client: ApolloClient, change: ChangeDraft, send: () => Promise<T>): Promise<Submitted<T>> {
-  const keep = async (kept: ChangeDraft = change): Promise<Submitted<T>> => {
-    const base = (kept.action === 'update' || kept.action === 'trash') && !kept.base ? baseOf(client, kept.entity, kept.targetId, kept.expectedVersion) : undefined
-    await outbox.enqueue(base ? { ...kept, base } : kept)
-    void client.refetchQueries({ include: 'active' }).catch(() => undefined)
-    return { queued: true }
-  }
   // A change with photos kept on this device waits too: they reach the server as drafts right before it (`push.ts`).
-  if (!connectivity.reachable || outbox.vehicleIds().has(change.vehicleId) || keptPhotosOf({ ...change, seq: 0, createdAt: 0 }).length > 0) return keep(change)
+  if (!connectivity.reachable || outbox.vehicleIds().has(change.vehicleId) || keptPhotosOf({ ...change, seq: 0, createdAt: 0 }).length > 0) return keepChange(client, change)
   try {
     return { queued: false, result: await send() }
   } catch (error) {
     // The request may have reached the server (only the answer was lost): kept as sent, so nothing later folds into it.
-    if (isConnectionFailure(error)) return keep({ ...change, sent: true })
+    if (isConnectionFailure(error)) return keepChange(client, { ...change, sent: true })
     throw error
   }
+}
+
+/** Keeps the change on this device whatever the connection: what `submitChange` does when it cannot send, and for a change that always waits. */
+export async function keepChange(client: ApolloClient, change: ChangeDraft): Promise<{ queued: true }> {
+  const base = (change.action === 'update' || change.action === 'trash') && !change.base ? baseOf(client, change.entity, change.targetId, change.expectedVersion) : undefined
+  await outbox.enqueue(base ? { ...change, base } : change)
+  void client.refetchQueries({ include: 'active' }).catch(() => undefined)
+  return { queued: true }
 }
 
 /** Takes a waiting change back (it is never sent), and the screen shows what the server has again. */

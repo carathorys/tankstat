@@ -10,7 +10,7 @@ import { connectivity } from '../offline/connectivity.ts'
 import { isConnectionFailure, OfflineError } from '../offline/errors.ts'
 import { keptPhotos } from '../offline/keptPhotos.ts'
 import { outbox } from '../offline/outbox.ts'
-import { submitChange } from '../offline/submitChange.ts'
+import { keepChange, submitChange } from '../offline/submitChange.ts'
 import { useConnectivity } from '../offline/useConnectivity.ts'
 import { uuidV4 } from '../offline/uuid.ts'
 import { resizeImage } from '../pictures/resizeImage.ts'
@@ -20,7 +20,7 @@ import { deleteImage, uploadImage } from '../pictures/upload.ts'
  * Choose, replace or remove a picture. The file is made small in the browser first (and square for profile pictures); the
  * server still checks what it really is. Progress and results are announced to screen readers. A picture is sent at once. A vehicle's
  * (`keep`) is kept on this device instead while the server is out of reach, while the vehicle has changes waiting (they keep their
- * order: one added here is sent first) or when the upload loses the connection, and goes when the device syncs; for anything else the
+ * order: one added here is sent first) or when sending it loses the connection, and goes when the device syncs; for anything else the
  * buttons are off while the server is out of reach and say why, and an upload that loses the connection says so calmly.
  */
 export function ImagePicker({
@@ -53,17 +53,8 @@ export function ImagePicker({
   const client = useApolloClient()
   const off = disabled || busy || (!reachable && !keep)
 
-  /** The change waits on this device rather than going now: the server is out of reach, or the vehicle's earlier changes have not gone yet. */
+  /** The picture waits on this device rather than going now: the server is out of reach, or the vehicle's earlier changes have not gone yet. */
   const waits = (vehicleId: string) => !connectivity.reachable || outbox.vehicleIds().has(vehicleId)
-
-  /** Keeps the change of a vehicle's picture on this device (a picture: the file too); the screen shows it at once. */
-  async function kept(vehicleId: string, change: { action: 'setPicture'; key: string } | { action: 'removePicture' }) {
-    const input = change.action === 'setPicture' ? { key: change.key } : undefined
-    await submitChange(client, { id: uuidV4(), entity: 'vehicles', action: change.action, vehicleId, targetId: vehicleId, ...(input ? { input } : {}) }, () =>
-      change.action === 'setPicture' ? Promise.reject(new OfflineError()) : deleteImage(path),
-    )
-    return t(change.action === 'setPicture' ? 'image.keptOnDevice' : 'image.removedOnDevice')
-  }
 
   async function choose(file: File) {
     const picture = await resizeImage(file, { maxEdge, square })
@@ -77,16 +68,22 @@ export function ImagePicker({
     }
   }
 
+  /** Keeps a vehicle's new picture on this device, the file too (a change with a kept photo always waits); the screen shows it at once. */
   async function keepPicture(vehicleId: string, picture: Blob) {
     const key = await keptPhotos.keep(picture, vehicleId)
     if (!key) throw new OfflineError() // no account's data is open on this device: nothing can be kept
-    return kept(vehicleId, { action: 'setPicture', key })
+    await keepChange(client, { id: uuidV4(), entity: 'vehicles', action: 'setPicture', vehicleId, targetId: vehicleId, input: { key } })
+    return t('image.keptOnDevice')
   }
 
   async function remove() {
-    if (keep && waits(keep.vehicleId)) return kept(keep.vehicleId, { action: 'removePicture' })
-    await deleteImage(path)
-    return t('image.removed')
+    if (!keep) {
+      await deleteImage(path)
+      return t('image.removed')
+    }
+    const { vehicleId } = keep
+    const done = await submitChange(client, { id: uuidV4(), entity: 'vehicles', action: 'removePicture', vehicleId, targetId: vehicleId }, () => deleteImage(path))
+    return t(done.queued ? 'image.removedOnDevice' : 'image.removed')
   }
 
   async function run(work: () => Promise<string>) {
