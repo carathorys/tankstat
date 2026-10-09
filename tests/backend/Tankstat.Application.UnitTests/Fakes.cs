@@ -689,7 +689,20 @@ internal sealed class FakeEmail(bool configured = false) : IEmailSender
 {
     public bool IsConfigured { get; } = configured;
     public List<(string To, string Subject, string Body)> Sent { get; } = [];
-    public Task SendAsync(string to, string subject, string body, CancellationToken ct) { Sent.Add((to, subject, body)); return Task.CompletedTask; }
+
+    /// <summary>How many of the next mails fail, as when the mail server cannot be reached.</summary>
+    public int FailNext { get; set; }
+
+    public Task SendAsync(string to, string subject, string body, CancellationToken ct)
+    {
+        if (FailNext > 0)
+        {
+            FailNext--;
+            throw new EmailSendException("Sending an e-mail through smtp.test:25 failed (the server cannot be reached)");
+        }
+        Sent.Add((to, subject, body));
+        return Task.CompletedTask;
+    }
 }
 
 /// <summary>Wires the real application services to in-memory ports.</summary>

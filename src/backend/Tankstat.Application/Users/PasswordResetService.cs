@@ -72,8 +72,17 @@ public sealed class PasswordResetService(
         var sent = false;
         if (sendEmail && CanEmail && user.Email.Length > 0)
         {
-            await email.SendAsync(user.Email, "Set your Tankstat password",
-                $"Hello {user.DisplayName},\n\nUse this link to set your password (valid for {options.Standalone.ResetTokenMinutes} minutes, one use):\n{url}\n\nIf you did not expect this, ignore this message.", ct);
+            try
+            {
+                await email.SendAsync(user.Email, "Set your Tankstat password",
+                    $"Hello {user.DisplayName},\n\nUse this link to set your password (valid for {options.Standalone.ResetTokenMinutes} minutes, one use):\n{url}\n\nIf you did not expect this, ignore this message.", ct);
+            }
+            catch
+            {
+                // Nobody received it, so it is taken back: as the latest link it would make the cool-down hold back the next request.
+                await tokens.RemoveForUserAsync(user.Id, CancellationToken.None);
+                throw;
+            }
             sent = true;
         }
 

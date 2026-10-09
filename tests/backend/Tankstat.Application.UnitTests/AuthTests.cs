@@ -262,6 +262,22 @@ public class PasswordTests
     }
 
     [Fact]
+    public async Task RequestReset_AfterTheMailServerFailed_TheNextRequestSendsALink()
+    {
+        var w = new World(smtp: true);
+        w.AddUser("alice@x.co");
+        w.Email.FailNext = 1;
+
+        await Assert.ThrowsAsync<EmailSendException>(() => w.Auth.RequestPasswordResetAsync("alice@x.co", default));
+        Assert.Empty(w.Tokens.Items); // the link that never went out is taken back, so it starts no cool-down
+        w.Clock.Advance(TimeSpan.FromMinutes(1));
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+
+        var mail = Assert.Single(w.Email.Sent);
+        await w.Auth.ResetPasswordAsync(LinkIn(mail), "brand-new-password", default);
+    }
+
+    [Fact]
     public async Task RequestReset_ManyAtTheSameMoment_SendOneMail()
     {
         var w = new World(smtp: true);
