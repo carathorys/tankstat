@@ -11,7 +11,7 @@ The argument is an issue number.
 
 `gh issue view N --json labels,state`.
 - If the `triaged` label is missing (or the issue is closed): **stop at once**, tell the user that the issue has not been triaged yet, and offer `/triage N`. Do nothing else.
-- If the issue carries `in progress`, another agent is implementing it right now: **stop and say so**, unless the user named this issue explicitly knowing that (then say you are taking it over).
+- If the issue carries `in progress`, another agent is implementing it right now. **Do not start.** Tell the user, and **ask what to do**: take it over anyway, or leave it. Only when the user has already said they know it is in progress and want it taken over (e.g. "take over #80") is there nothing to ask; say you are taking it over. Never assume.
 
 ## 0b. Claim it
 
