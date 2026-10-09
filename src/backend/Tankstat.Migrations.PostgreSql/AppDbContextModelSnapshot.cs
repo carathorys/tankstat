@@ -691,6 +691,10 @@ namespace Tankstat.Migrations.PostgreSql
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Base")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
                     b.Property<int?>("ExpectedVersion")
                         .HasColumnType("integer");
 

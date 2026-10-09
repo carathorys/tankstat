@@ -635,7 +635,8 @@
       "notFound": "This change is not there any more, or you may not see it.",
       "notParked": "Someone has decided about this change already.",
       "cannotResolve": "Only whoever sent it, or may change the vehicle's entries, decides about it.",
-      "kindMismatch": "An edited change must do the same as the one that was not applied."
+      "kindMismatch": "An edited change must do the same as the one that was not applied.",
+      "cannotRestoreFirst": "Only an edit of a refuelling, an expense or a vehicle can bring it back from the trash."
     }
   },
   "a11y": {

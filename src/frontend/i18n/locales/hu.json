@@ -635,7 +635,8 @@
       "notFound": "Ez a módosítás már nincs meg, vagy nem láthatod.",
       "notParked": "Erről a módosításról valaki már döntött.",
       "cannotResolve": "Csak az dönthet róla, aki küldte, vagy aki módosíthatja a jármű bejegyzéseit.",
-      "kindMismatch": "A szerkesztett módosításnak ugyanazt kell tennie, mint a nem érvényesítettnek."
+      "kindMismatch": "A szerkesztett módosításnak ugyanazt kell tennie, mint a nem érvényesítettnek.",
+      "cannotRestoreFirst": "Csak egy tankolás, kiadás vagy jármű módosítása hozhatja vissza a kukából."
     }
   },
   "a11y": {

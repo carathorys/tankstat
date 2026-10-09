@@ -122,6 +122,14 @@ public sealed class RefuelingService(
         return refueling;
     }
 
+    /// <summary>
+    /// The log when it is in the trash and the user may edit it (restore it), else null: a trash a device sends for what is already in the
+    /// trash has nothing left to do.
+    /// </summary>
+    public async Task<Refueling?> InTrashAsync(Guid id, CancellationToken ct) =>
+        await refuelings.FindIncludingDeletedAsync(id, ct) is { IsDeleted: true } refueling
+        && await guard.ForVehicleAsync(refueling.VehicleId, ct) is { Level: >= AccessLevel.Edit } ? refueling : null;
+
     public async Task<Refueling> RestoreAsync(Guid id, CancellationToken ct, int? expectedVersion = null)
     {
         var refueling = await EditableLogAsync(id, includeDeleted: true, ct);

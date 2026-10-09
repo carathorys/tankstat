@@ -691,6 +691,10 @@ namespace Tankstat.Migrations.SqlServer
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("Base")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
                     b.Property<int?>("ExpectedVersion")
                         .HasColumnType("int");
 

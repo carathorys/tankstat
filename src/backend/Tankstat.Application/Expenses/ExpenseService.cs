@@ -108,6 +108,11 @@ public sealed class ExpenseService(
         return expense;
     }
 
+    /// <summary>The expense when it is in the trash and the user may edit it (restore it), else null (see <see cref="RefuelingService.InTrashAsync"/>).</summary>
+    public async Task<Expense?> InTrashAsync(Guid id, CancellationToken ct) =>
+        await expenses.FindIncludingDeletedAsync(id, ct) is { IsDeleted: true } expense
+        && await guard.ForVehicleAsync(expense.VehicleId, ct) is { Level: >= AccessLevel.Edit } ? expense : null;
+
     public async Task<Expense> RestoreAsync(Guid id, CancellationToken ct, int? expectedVersion = null)
     {
         var expense = await EditableAsync(id, includeDeleted: true, ct);

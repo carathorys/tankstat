@@ -272,4 +272,53 @@ public class SyncServiceTests
         s.W.Current.SignInAs(s.Bob);
         Assert.DoesNotContain(await s.W.NotificationService.ListAsync(unreadOnly: true, 0, 20, default), n => n.Kind == NotificationKind.SyncChangeParked);
     }
+
+    [Fact]
+    public async Task WhatAChangeConcernsNow_IsToldOnlyToWhoeverMaySeeIt_AndWhatIsInTheTrashOnlyToWhoeverMayRestoreIt()
+    {
+        var s = await Setup();
+        var log = await s.W.RefuelingService.LogAsync(s.Car.Id, Fill(1000), default);
+        var schedule = await s.W.RecurringService.AddAsync(s.Car.Id, new Recurring.RecurringExpenseInput("Insurance", null, null, Domain.Recurring.RecurrenceKind.Time, 12, null, Day, null, null, null), default);
+        SyncTargetKey[] keys =
+        [
+            new(OfflineEntityType.Refueling, log.Id), new(OfflineEntityType.RecurringExpense, schedule.Item.Id), new(OfflineEntityType.Vehicle, s.Car.Id),
+            new(OfflineEntityType.Expense, Guid.NewGuid()), // gone
+        ];
+
+        var alices = await s.W.SyncTargets.CurrentAsync(keys, default);
+        Assert.Equal(3, alices.Count);
+        Assert.Equal((EntityChange.Created, s.Alice.Id), (alices[keys[0]].Entity.LastChange!.Value, alices[keys[0]].Entity.ChangedById!.Value));
+        Assert.NotNull(alices[keys[1]].Schedule);
+
+        s.W.Current.SignInAs(s.Bob);
+        Assert.Empty(await s.W.SyncTargets.CurrentAsync(keys, default)); // nothing of Alice's
+
+        s.W.Current.SignInAs(s.Alice);
+        await s.W.Sharing.SetLogAccessAsync(s.Car.Id, s.Bob.Id, AccessLevel.Edit, default);
+        await s.W.RefuelingService.DeleteAsync(log.Id, default);
+        await s.W.VehicleService.DeleteAsync(s.Car.Id, default);
+        var trashed = await s.W.SyncTargets.CurrentAsync(keys, default);
+        Assert.True(trashed[keys[2]].Trashed);
+        Assert.False(trashed.ContainsKey(keys[0])); // a log of a vehicle in the trash: not told
+
+        s.W.Current.SignInAs(s.Bob);
+        Assert.Empty(await s.W.SyncTargets.CurrentAsync(keys, default)); // a log grant restores no vehicle
+    }
+
+    [Fact]
+    public async Task ALogInTheTrash_IsToldToAnEditorOfTheVehiclesLogs()
+    {
+        var s = await Setup();
+        var log = await s.W.RefuelingService.LogAsync(s.Car.Id, Fill(1000), default);
+        await s.W.Sharing.SetLogAccessAsync(s.Car.Id, s.Bob.Id, AccessLevel.Edit, default);
+        await s.W.RefuelingService.DeleteAsync(log.Id, default);
+        var key = new SyncTargetKey(OfflineEntityType.Refueling, log.Id);
+
+        s.W.Current.SignInAs(s.Bob);
+        var told = await s.W.SyncTargets.CurrentAsync([key], default);
+
+        Assert.True(told[key].Trashed);
+        Assert.Equal((EntityChange.Trashed, s.Alice.Id), (told[key].Entity.LastChange!.Value, told[key].Entity.ChangedById!.Value));
+        Assert.NotNull(await s.W.RefuelingService.InTrashAsync(log.Id, default));
+    }
 }

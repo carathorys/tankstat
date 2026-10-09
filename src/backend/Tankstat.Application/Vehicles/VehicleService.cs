@@ -91,6 +91,10 @@ public sealed class VehicleService(
         return vehicle;
     }
 
+    /// <summary>The vehicle when it is in the trash and the user may edit it (restore it), else null (see <see cref="Refuelings.RefuelingService.InTrashAsync"/>).</summary>
+    public async Task<Vehicle?> InTrashAsync(Guid id, CancellationToken ct) =>
+        await vehicles.FindIncludingDeletedAsync(id, ct) is { IsDeleted: true } vehicle && await access.VehicleLevelAsync(vehicle, ct) >= AccessLevel.Edit ? vehicle : null;
+
     public async Task<Vehicle> RestoreAsync(Guid id, CancellationToken ct, int? expectedVersion = null)
     {
         var vehicle = await EditableAsync(id, includeDeleted: true, ct);

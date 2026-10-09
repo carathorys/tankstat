@@ -688,6 +688,10 @@ namespace Tankstat.Migrations.MySql
                     b.Property<Guid>("Id")
                         .HasColumnType("char(36)");
 
+                    b.Property<string>("Base")
+                        .HasMaxLength(4000)
+                        .HasColumnType("varchar(4000)");
+
                     b.Property<int?>("ExpectedVersion")
                         .HasColumnType("int");
 

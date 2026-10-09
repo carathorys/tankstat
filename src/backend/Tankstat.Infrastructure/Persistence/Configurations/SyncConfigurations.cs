@@ -79,6 +79,7 @@ internal sealed class SyncChangeConfiguration : IEntityTypeConfiguration<SyncCha
         b.Property(c => c.Kind).HasConversion<string>().HasMaxLength(32);
         b.Property(c => c.Status).HasConversion<string>().HasMaxLength(16);
         b.Property(c => c.Payload).HasMaxLength(SyncChange.MaxPayloadLength).IsRequired();
+        b.Property(c => c.Base).HasMaxLength(SyncChange.MaxPayloadLength);
         b.Property(c => c.ReasonKey).HasMaxLength(SyncChange.MaxReasonKeyLength);
         // The reason's arguments as one JSON object, like a notification's: only ever read together.
         b.Property(c => c.ReasonArgs)

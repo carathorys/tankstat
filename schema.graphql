@@ -487,8 +487,10 @@ type SyncChangeInfo {
   resolvedAt: DateTime
   entityId: UUID
   version: Int
+  base: String
   submittedBy: UserRef @cost(weight: "10")
   vehicle: SyncVehicleRef @cost(weight: "10")
+  current: SyncCurrent @cost(weight: "10")
   canResolve: Boolean! @cost(weight: "10")
 }
 
@@ -498,6 +500,19 @@ type SyncChangeResultInfo {
   entityId: UUID
   version: Int
   reason: SyncReasonInfo
+}
+
+type SyncCurrent {
+  state: SyncTargetState!
+  version: Int!
+  changedAt: DateTime
+  changedById: UUID
+  lastChange: EntityChange
+  vehicle: Vehicle
+  refueling: Refueling
+  expense: Expense
+  schedule: RecurringExpenseInfo
+  changedBy: UserRef @cost(weight: "10")
 }
 
 type SyncReasonArg {
@@ -693,6 +708,7 @@ input ChangeInput {
   removeRefuelingPhoto: RemoveLogPhotoInput
   addExpensePhoto: AddLogPhotoInput
   removeExpensePhoto: RemoveLogPhotoInput
+  base: String
 }
 
 input ChangePasswordInput {
@@ -809,6 +825,7 @@ input ResolveSyncChangeInput {
   id: UUID!
   action: SyncResolveAction!
   change: ChangeInput
+  restoreFirst: Boolean! = false
 }
 
 input SaveChartInput {
@@ -1154,6 +1171,11 @@ enum SyncChangeStatus {
 enum SyncResolveAction {
   APPLY
   DISCARD
+}
+
+enum SyncTargetState {
+  LIVE
+  TRASHED
 }
 
 enum UserDataDisposition {

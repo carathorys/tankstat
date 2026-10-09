@@ -271,4 +271,110 @@ public class SyncGraphQLTests : IDisposable
              now.GetProperty("refueling").GetProperty("deletedAt").ValueKind == JsonValueKind.Null, now.GetProperty("refueling").GetProperty("photos").GetArrayLength(),
              now.GetProperty("expense").GetProperty("amount").GetDecimal()));
     }
+
+    /// <summary>Alice's car with one log (version 1), Bob an editor of its logs.</summary>
+    private static async Task<(TwoUsers People, string Car, string Log)> SharedLog(TestApp app)
+    {
+        var people = await app.Users();
+        var car = (await people.Alice.Gql("mutation { addVehicle(input: { name: \"Golf\", fuelType: PETROL }) { id } }")).Data().GetProperty("addVehicle").GetProperty("id").GetString()!;
+        var log = (await people.Alice.Gql("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }",
+            new { i = new { vehicleId = car, date = "2026-09-01", volume = 40, totalCost = 60, currency = "EUR", odometer = 1000, isFullTank = true } })).Data().GetProperty("logRefueling").GetProperty("id").GetString()!;
+        await people.Alice.Gql("mutation($i: SetLogAccessInput!) { setVehicleLogAccess(input: $i) }", new { i = new { vehicleId = car, userId = people.BobId, level = "EDIT" } });
+        return (people, car, log);
+    }
+
+    private static object Edit(string log, decimal volume, string? note = null) =>
+        new { id = log, date = "2026-09-01", volume, totalCost = 60, currency = "EUR", odometer = 1000, isFullTank = true, note };
+
+    private const string Current = "{ parkedChanges { id base current { state version lastChange changedAt changedBy { displayName } refueling { volume note } vehicle { name } } } }";
+
+    private static string? Key(JsonElement response) =>
+        response.TryGetProperty("errors", out var errors) ? errors[0].GetProperty("extensions").GetProperty("key").GetString() : null;
+
+    [Fact]
+    public async Task AParkedEdit_CarriesTheValuesItWasMadeFrom_AndWhatIsOnTheServerNow_ForWhoeverMaySeeIt()
+    {
+        var (people, car, log) = await SharedLog(_app);
+        await people.Alice.Gql("mutation($i: UpdateRefuelingInput!) { updateRefueling(input: $i) { id } }", new { i = Edit(log, 41, "Alice's") }); // version 2
+        var made = """{"volume":40,"note":null}""";
+        var change = Guid.NewGuid().ToString();
+
+        var sent = await Send(people.Bob, new { id = change, expectedVersion = 1, updateRefueling = Edit(log, 45), @base = made });
+
+        Assert.Equal("PARKED", sent.GetProperty("results")[0].GetProperty("status").GetString());
+        var parked = (await people.Alice.Gql(Current)).Data().GetProperty("parkedChanges")[0];
+        Assert.Equal(made, parked.GetProperty("base").GetString());
+        var now = parked.GetProperty("current");
+        Assert.Equal(("LIVE", 2, "EDITED", "alice", 41m, "Alice's"),
+            (now.GetProperty("state").GetString(), now.GetProperty("version").GetInt32(), now.GetProperty("lastChange").GetString(),
+             now.GetProperty("changedBy").GetProperty("displayName").GetString(), now.GetProperty("refueling").GetProperty("volume").GetDecimal(),
+             now.GetProperty("refueling").GetProperty("note").GetString()));
+        Assert.Equal(JsonValueKind.Null, now.GetProperty("vehicle").ValueKind);
+        Assert.DoesNotContain("base", (await people.Alice.Gql(Parked)).Data().GetProperty("parkedChanges")[0].GetProperty("change").GetString()); // kept apart
+
+        // Bob's access ends: his change is still listed for him, but nothing of what is there now.
+        await people.Alice.Gql("mutation($i: SetLogAccessInput!) { setVehicleLogAccess(input: $i) }", new { i = new { vehicleId = car, userId = people.BobId, level = "NONE" } });
+        var his = Assert.Single((await people.Bob.Gql(Current)).Data().GetProperty("parkedChanges").EnumerateArray());
+        Assert.Equal(JsonValueKind.Null, his.GetProperty("current").ValueKind);
+    }
+
+    [Fact]
+    public async Task AMergedEdit_IsAppliedAgainstTheVersionItWasMergedWith_AndParkedAgainWhenItWasChangedOnceMore()
+    {
+        var (people, _, log) = await SharedLog(_app);
+        await people.Alice.Gql("mutation($i: UpdateRefuelingInput!) { updateRefueling(input: $i) { id } }", new { i = Edit(log, 41) }); // version 2
+        var change = Guid.NewGuid().ToString();
+        await Send(people.Bob, new { id = change, expectedVersion = 1, updateRefueling = Edit(log, 45) });
+        await people.Alice.Gql("mutation($i: UpdateRefuelingInput!) { updateRefueling(input: $i) { id } }", new { i = Edit(log, 42) }); // version 3, after Bob looked
+
+        var stale = await people.Bob.Gql(Resolve, new { i = new { id = change, action = "APPLY", change = new { id = change, expectedVersion = 2, updateRefueling = Edit(log, 43) } } });
+        var merged = await people.Bob.Gql(Resolve, new { i = new { id = change, action = "APPLY", change = new { id = change, expectedVersion = 3, updateRefueling = Edit(log, 43) } } });
+
+        Assert.Equal("sync.versionMismatch", Key(stale));
+        Assert.Equal(("APPLIED", 4), (merged.Data().GetProperty("resolveSyncChange").GetProperty("status").GetString(), merged.Data().GetProperty("resolveSyncChange").GetProperty("version").GetInt32()));
+        Assert.Equal(43, (await people.Alice.Gql($"{{ refueling(id: \"{log}\") {{ volume }} }}")).Data().GetProperty("refueling").GetProperty("volume").GetDecimal());
+    }
+
+    [Fact]
+    public async Task AnEditOfWhatWasTrashedMeanwhile_CanBeRestoredWithIt_AndARefusedEditPutsItBack()
+    {
+        var (people, _, log) = await SharedLog(_app);
+        await people.Alice.Gql("mutation($id: UUID!) { deleteRefueling(id: $id) { id } }", new { id = log }); // version 2, in the trash
+        var change = Guid.NewGuid().ToString();
+        var sent = await Send(people.Bob, new { id = change, expectedVersion = 1, updateRefueling = Edit(log, 45) });
+        Assert.Equal("refueling.notFound", sent.GetProperty("results")[0].GetProperty("reason").GetProperty("key").GetString());
+        Assert.Equal("TRASHED", (await people.Bob.Gql(Current)).Data().GetProperty("parkedChanges")[0].GetProperty("current").GetProperty("state").GetString());
+
+        var refused = await people.Bob.Gql(Resolve, new { i = new { id = change, action = "APPLY", restoreFirst = true, change = new { id = change, expectedVersion = 2, updateRefueling = Edit(log, -1) } } });
+        Assert.NotNull(Key(refused));
+        Assert.Equal(JsonValueKind.Null, (await people.Alice.Gql($"{{ refueling(id: \"{log}\") {{ id }} }}")).Data().GetProperty("refueling").ValueKind); // back in the trash
+
+        var trashedAgain = (await people.Bob.Gql(Current)).Data().GetProperty("parkedChanges")[0].GetProperty("current").GetProperty("version").GetInt32();
+        var restored = await people.Bob.Gql(Resolve, new { i = new { id = change, action = "APPLY", restoreFirst = true, change = new { id = change, expectedVersion = trashedAgain, updateRefueling = Edit(log, 45) } } });
+        Assert.Equal("APPLIED", restored.Data().GetProperty("resolveSyncChange").GetProperty("status").GetString());
+        Assert.Equal(45, (await people.Alice.Gql($"{{ refueling(id: \"{log}\") {{ volume }} }}")).Data().GetProperty("refueling").GetProperty("volume").GetDecimal());
+
+        var notAnEdit = Guid.NewGuid().ToString();
+        await people.Alice.Gql("mutation($id: UUID!) { deleteRefueling(id: $id) { id } }", new { id = log });
+        await Send(people.Bob, new { id = notAnEdit, expectedVersion = 1, restoreRefueling = log }); // parked: changed meanwhile
+        Assert.Equal("sync.cannotRestoreFirst", Key(await people.Bob.Gql(Resolve, new { i = new { id = notAnEdit, action = "APPLY", restoreFirst = true } })));
+    }
+
+    [Fact]
+    public async Task ATrashOfWhatIsAlreadyInTheTrash_IsApplied_ButNotForWhoeverMayNoLongerChangeIt()
+    {
+        var (people, car, log) = await SharedLog(_app);
+        await people.Alice.Gql("mutation($id: UUID!) { deleteRefueling(id: $id) { id } }", new { id = log });
+
+        var bobs = await Send(people.Bob, new { id = Guid.NewGuid(), expectedVersion = 1, deleteRefueling = log });
+        Assert.Equal("APPLIED", bobs.GetProperty("results")[0].GetProperty("status").GetString());
+
+        await people.Alice.Gql("mutation($i: SetLogAccessInput!) { setVehicleLogAccess(input: $i) }", new { i = new { vehicleId = car, userId = people.BobId, level = "NONE" } });
+        var outsider = await Send(people.Bob, new { id = Guid.NewGuid(), expectedVersion = 1, deleteRefueling = log });
+        Assert.Equal(("PARKED", "refueling.notFound"),
+            (outsider.GetProperty("results")[0].GetProperty("status").GetString(), outsider.GetProperty("results")[0].GetProperty("reason").GetProperty("key").GetString()));
+
+        var vehicle = await Send(people.Alice, new { id = Guid.NewGuid(), deleteVehicle = car }, new { id = Guid.NewGuid(), expectedVersion = 1, deleteVehicle = car });
+        Assert.Equal(2, vehicle.GetProperty("applied").GetInt32());
+    }
 }

@@ -62,6 +62,7 @@ export type ChangeInput = {
   addRecurringExpense?: AddRecurringExpenseInput | null | undefined;
   addRefuelingPhoto?: AddLogPhotoInput | null | undefined;
   addVehicle?: AddVehicleInput | null | undefined;
+  base?: string | null | undefined;
   deleteExpense?: string | null | undefined;
   deleteRecurringExpense?: string | null | undefined;
   deleteRefueling?: string | null | undefined;
@@ -355,6 +356,7 @@ export type ResolveSyncChangeInput = {
   action: SyncResolveAction;
   change?: ChangeInput | null | undefined;
   id: string;
+  restoreFirst?: boolean;
 };
 
 export type ReviewState =

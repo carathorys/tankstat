@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using System.Text.Json;
 using GreenDonut;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
 using Tankstat.Application.Expenses;
@@ -22,7 +23,9 @@ namespace Tankstat.Api.GraphQL;
 
 /// <summary>
 /// One change a device kept while the server was out of reach: its own id, the version of what it changes it was made from, and exactly
-/// one operation, with the same input as the single mutation (an add carries the id the device gave it).
+/// one operation, with the same input as the single mutation (an add carries the id the device gave it). <c>Base</c> is the values the
+/// change was made from (JSON in the shape of its input, as the device knew them), kept with it if it is parked so whoever decides can
+/// merge it; the server never reads it.
 /// </summary>
 public sealed record ChangeInput(
     Guid Id, int? ExpectedVersion = null,
@@ -32,7 +35,7 @@ public sealed record ChangeInput(
     MarkRecurringExpensesDoneInput? MarkRecurringExpensesDone = null,
     AddVehicleInput? AddVehicle = null, UpdateVehicleInput? UpdateVehicle = null, Guid? DeleteVehicle = null, Guid? RestoreVehicle = null,
     AddLogPhotoInput? AddRefuelingPhoto = null, RemoveLogPhotoInput? RemoveRefuelingPhoto = null,
-    AddLogPhotoInput? AddExpensePhoto = null, RemoveLogPhotoInput? RemoveExpensePhoto = null);
+    AddLogPhotoInput? AddExpensePhoto = null, RemoveLogPhotoInput? RemoveExpensePhoto = null, string? Base = null);
 
 /// <summary>A photo added to a saved log while offline: uploaded as a draft of the log's vehicle (<c>PUT /media/vehicles/{id}/photo-drafts</c>) just before.</summary>
 public sealed record AddLogPhotoInput(Guid LogId, Guid DraftId);
@@ -56,16 +59,55 @@ public sealed record SyncResultInfo(IReadOnlyList<SyncChangeResultInfo> Results,
 
 /// <summary>
 /// A change sent from a device that the server parked (or that someone decided about): what it is, the change itself as the device sent it
-/// (`change`, JSON of a <c>ChangeInput</c>), why it was parked, and who sent it and when.
+/// (`change`, JSON of a <c>ChangeInput</c>), the values it was made from (`base`, JSON, when the device knew them), why it was parked, and
+/// who sent it and when.
 /// </summary>
 public sealed record SyncChangeInfo(
     Guid Id, SyncChangeKind Kind, SyncChangeStatus Status, Guid? VehicleId, Guid? TargetId, int? ExpectedVersion, string Change, DateTimeOffset ReceivedAt,
-    SyncReasonInfo? Reason, Guid SubmittedById, DateTimeOffset? ResolvedAt, Guid? EntityId, int? Version)
+    SyncReasonInfo? Reason, Guid SubmittedById, DateTimeOffset? ResolvedAt, Guid? EntityId, int? Version, string? Base)
 {
     public static SyncChangeInfo From(SyncChange c) => new(
         c.Id, c.Kind, c.Status, c.VehicleId, c.TargetId, c.ExpectedVersion, c.Payload, c.ReceivedAt,
         c.ReasonKey is null ? null : new SyncReasonInfo(c.ReasonKey, c.ReasonArgs.Select(a => new SyncReasonArg(a.Key, a.Value)).ToList()),
-        c.SubmittedById, c.ResolvedAt, c.ResultId, c.ResultVersion);
+        c.SubmittedById, c.ResolvedAt, c.ResultId, c.ResultVersion, c.Base);
+}
+
+/// <summary>LIVE: there to be changed. TRASHED: in the trash (it can be restored).</summary>
+public enum SyncTargetState
+{
+    Live,
+    Trashed,
+}
+
+/// <summary>
+/// What a parked change concerns, as it is on the server now (exactly one of the entities is set), with its version and what changed it
+/// last: who (<c>changedBy</c>), when and how. A change made from an older version can be merged with it and applied against this version.
+/// </summary>
+public sealed record SyncCurrent(
+    SyncTargetState State, int Version, DateTimeOffset? ChangedAt, Guid? ChangedById, EntityChange? LastChange,
+    Vehicle? Vehicle, Refueling? Refueling, Expense? Expense, RecurringExpenseInfo? Schedule)
+{
+    public static SyncCurrent From(SyncTarget t) => new(
+        t.Trashed ? SyncTargetState.Trashed : SyncTargetState.Live, t.Entity.Version, t.Entity.ChangedAt, t.Entity.ChangedById, t.Entity.LastChange,
+        t.Entity as Vehicle, t.Entity as Refueling, t.Entity as Expense, t.Schedule is { } s ? RecurringExpenseInfo.From(s) : null);
+}
+
+[ExtendObjectType<SyncCurrent>]
+public sealed class SyncCurrentExtensions
+{
+    public async Task<UserRef?> GetChangedBy([Parent] SyncCurrent current, UserRefLoader users, CancellationToken ct) =>
+        current.ChangedById is { } id ? await users.LoadAsync(id, ct) : null;
+}
+
+/// <summary>What the parked changes of a response concern, as it is now: one query per kind of target, however many changes are listed.</summary>
+public sealed class SyncCurrentLoader(SyncTargetService targets, IBatchScheduler scheduler, DataLoaderOptions options)
+    : BatchDataLoader<SyncTargetKey, SyncCurrent?>(scheduler, options)
+{
+    protected override async Task<IReadOnlyDictionary<SyncTargetKey, SyncCurrent?>> LoadBatchAsync(IReadOnlyList<SyncTargetKey> keys, CancellationToken ct)
+    {
+        var found = await targets.CurrentAsync(keys, ct);
+        return keys.ToDictionary(k => k, k => found.TryGetValue(k, out var t) ? SyncCurrent.From(t) : null);
+    }
 }
 
 [ExtendObjectType<SyncChangeInfo>]
@@ -79,6 +121,14 @@ public sealed class SyncChangeInfoExtensions
     /// </summary>
     public async Task<SyncVehicleRef?> GetVehicle([Parent] SyncChangeInfo change, VehicleIncludingDeletedLoader vehicles, CancellationToken ct) =>
         change.VehicleId is { } id && await vehicles.LoadAsync(id, ct) is { } v ? new SyncVehicleRef(v.Id, v.Name, v.Units.Distance, v.Units.Volume) : null;
+
+    /// <summary>
+    /// What it concerns as it is now, for a change of one thing someone else could have changed meanwhile (an edit, a trash, a restore).
+    /// Null when that is gone (purged, a schedule deleted), or the current user may not see it (whoever sent the change included), and for
+    /// adds, visits and photos.
+    /// </summary>
+    public async Task<SyncCurrent?> GetCurrent([Parent] SyncChangeInfo change, SyncCurrentLoader loader, CancellationToken ct) =>
+        SyncTargetService.TargetOf(change.Kind) is { } type && change.TargetId is { } id ? await loader.LoadAsync(new SyncTargetKey(type, id), ct) : null;
 
     /// <summary>
     /// Whether the current user may apply or discard it: whoever sent it, or may make the same change (Edit on the vehicle's logs; on the
@@ -103,8 +153,15 @@ public enum SyncResolveAction
     Discard,
 }
 
-/// <param name="Change">For APPLY: the change as edited before applying (same kind); omit to apply it as it was sent.</param>
-public sealed record ResolveSyncChangeInput(Guid Id, SyncResolveAction Action, ChangeInput? Change = null);
+/// <param name="Change">
+/// For APPLY: the change as edited before applying (same kind); omit to apply it as it was sent. Its <c>expectedVersion</c> counts (the
+/// version the person merged with: changed again meanwhile, it stays parked); without one it is applied over whatever is there.
+/// </param>
+/// <param name="RestoreFirst">
+/// For APPLY of an edit of a log or a vehicle that is in the trash now: restore it (from the change's <c>expectedVersion</c>, when given),
+/// then apply the edit; an edit refused after the restore puts it back in the trash.
+/// </param>
+public sealed record ResolveSyncChangeInput(Guid Id, SyncResolveAction Action, ChangeInput? Change = null, bool RestoreFirst = false);
 
 [ExtendObjectType(OperationTypeNames.Query)]
 public sealed class SyncQueries
@@ -162,7 +219,7 @@ public sealed class SyncMutations
     /// not attached (they may be gone). A refusal keeps it parked with the new reason and is the error of this mutation.
     /// </summary>
     public async Task<SyncChangeInfo> ResolveSyncChange(
-        ResolveSyncChangeInput input, [Service] SyncService sync, [Service] SyncChangeServices services, CancellationToken ct)
+        ResolveSyncChangeInput input, [Service] SyncService sync, [Service] SyncChangeServices services, [Service] ILogger<SyncMutations> logger, CancellationToken ct)
     {
         if (input.Action == SyncResolveAction.Discard) return SyncChangeInfo.From(await sync.ResolveAsync(input.Id, discard: true, null, null, ct));
 
@@ -172,10 +229,14 @@ public sealed class SyncMutations
         // A visit whose expense would only have come from its photos logs none without them: say so instead of moving the schedules alone.
         if (change.MarkRecurringExpensesDone is { ExpenseId: not null, Amount: null, PhotoIds.Count: > 0 })
             throw new DomainException("log.valuesRequired", "Fill in every value. Only a photo that is still being read may leave them empty.");
-        // The same change (its id, so the ledger row is the same), from now on: no version to keep to, no photos that may be gone.
+        if (input.RestoreFirst && stored.Kind is not (SyncChangeKind.UpdateRefueling or SyncChangeKind.UpdateExpense or SyncChangeKind.UpdateVehicle))
+            throw new DomainException("sync.cannotRestoreFirst", "Only an edit of a log or a vehicle can restore it first.");
+        // The same change (its id, so the ledger row is the same), from now on: the version the person merged with, if they did (else none
+        // to keep to), no photos that may be gone. Restored first, the edit follows the restore's version.
+        var restoreFrom = input.RestoreFirst ? input.Change?.ExpectedVersion : null;
         change = change with
         {
-            Id = stored.Id, ExpectedVersion = null,
+            Id = stored.Id, ExpectedVersion = input.RestoreFirst ? restoreFrom + 1 : input.Change?.ExpectedVersion, Base = null,
             LogRefueling = change.LogRefueling is { } lr ? lr with { PhotoIds = null } : null,
             AddExpense = change.AddExpense is { } ae ? ae with { PhotoIds = null } : null,
             MarkRecurringExpensesDone = change.MarkRecurringExpensesDone is { } md ? md with { PhotoIds = null } : null,
@@ -185,7 +246,60 @@ public sealed class SyncMutations
         if (request.Kind != stored.Kind || request.TargetId != stored.TargetId || (request.VehicleIdHint is { } vehicle && stored.VehicleId is { } filed && vehicle != filed))
             throw new DomainException("sync.kindMismatch", "An edited change does the same as the one parked.");
         var replacement = input.Change is null ? null : JsonSerializer.Serialize(change, Json);
-        return SyncChangeInfo.From(await sync.ResolveAsync(input.Id, discard: false, request.Apply, replacement, ct));
+        var apply = input.RestoreFirst ? RestoredFirst(stored.Kind, stored.TargetId!.Value, restoreFrom, request.Apply, services, logger) : request.Apply;
+        return SyncChangeInfo.From(await sync.ResolveAsync(input.Id, discard: false, apply, replacement, ct));
+    }
+
+    /// <summary>An edit of something in the trash, applied after restoring it; refused after the restore, it goes back to the trash.</summary>
+    private static Func<CancellationToken, Task<AppliedChange>> RestoredFirst(
+        SyncChangeKind kind, Guid id, int? version, Func<CancellationToken, Task<AppliedChange>> edit, SyncChangeServices services, ILogger logger) => async ct =>
+    {
+        Func<CancellationToken, Task> trash;
+        switch (kind)
+        {
+            case SyncChangeKind.UpdateRefueling:
+                await services.Refuelings.RestoreAsync(id, ct, version);
+                trash = c => services.Refuelings.DeleteAsync(id, c);
+                break;
+            case SyncChangeKind.UpdateExpense:
+                await services.Expenses.RestoreAsync(id, ct, version);
+                trash = c => services.Expenses.DeleteAsync(id, c);
+                break;
+            default:
+                await services.Vehicles.RestoreAsync(id, ct, version);
+                trash = c => services.Vehicles.DeleteAsync(id, c);
+                break;
+        }
+        try
+        {
+            return await edit(ct);
+        }
+        catch (KeyedException)
+        {
+            try
+            {
+                await trash(CancellationToken.None);
+            }
+            catch (Exception e)
+            {
+                logger.LogWarning(e, "Change {Kind} of {EntityId} was refused after restoring it, and it could not be put back in the trash", kind, id);
+            }
+            throw;
+        }
+    };
+
+    /// <summary>A trash of something already in the trash has nothing left to do: applied, as long as the sender may restore it.</summary>
+    private static async Task<AppliedChange> TrashOnce(Func<CancellationToken, Task<AppliedChange>> trash, Func<CancellationToken, Task<AppliedChange?>> inTrash, CancellationToken ct)
+    {
+        try
+        {
+            return await trash(ct);
+        }
+        catch (NotFoundException)
+        {
+            if (await inTrash(ct) is { } already) return already;
+            throw;
+        }
     }
 
     private static SyncChangeRequest Request(ChangeInput c, SyncChangeServices services)
@@ -199,7 +313,7 @@ public sealed class SyncMutations
             c.DeleteVehicle, c.RestoreVehicle, c.AddRefuelingPhoto, c.RemoveRefuelingPhoto, c.AddExpensePhoto, c.RemoveExpensePhoto,
         }.Count(o => o is not null);
         if (set != 1) throw new DomainException("sync.oneOperationRequired", "A change carries exactly one operation.", new { c.Id });
-        var payload = JsonSerializer.Serialize(c, Json);
+        var payload = JsonSerializer.Serialize(c with { Base = null }, Json);
         var version = c.ExpectedVersion;
 
         static Guid Required(Guid? id, Guid change) =>
@@ -208,7 +322,7 @@ public sealed class SyncMutations
 
         SyncChangeRequest Make(
             SyncChangeKind kind, Guid? target, Guid? vehicleHint, Func<CancellationToken, Task<AppliedChange>> apply, Func<CancellationToken, Task<Guid?>>? vehicleOf = null) =>
-            new(c.Id, kind, target, vehicleHint, version, payload, apply, vehicleOf);
+            new(c.Id, kind, target, vehicleHint, version, payload, apply, vehicleOf, c.Base);
 
         if (c.LogRefueling is { } lr)
         {
@@ -222,7 +336,9 @@ public sealed class SyncMutations
                 new RefuelingInput(ur.Date, ur.Volume, ur.TotalCost, ur.Currency, ur.Odometer, ur.IsFullTank, ur.Note, ur.MissedPreviousFillUp), ct, version),
                 r => r.Id, r => r.Version, r => r.VehicleId), find.Refueling(ur.Id));
         if (c.DeleteRefueling is { } dr)
-            return Make(SyncChangeKind.DeleteRefueling, dr, null, async ct => Of(await refuelings.DeleteAsync(dr, ct, version), r => r.Id, r => r.Version, r => r.VehicleId), find.Refueling(dr));
+            return Make(SyncChangeKind.DeleteRefueling, dr, null, ct => TrashOnce(
+                async ct => Of(await refuelings.DeleteAsync(dr, ct, version), r => r.Id, r => r.Version, r => r.VehicleId),
+                async ct => await refuelings.InTrashAsync(dr, ct) is { } r ? Of(r, r => r.Id, r => r.Version, r => r.VehicleId) : null, ct), find.Refueling(dr));
         if (c.RestoreRefueling is { } rr)
             return Make(SyncChangeKind.RestoreRefueling, rr, null, async ct => Of(await refuelings.RestoreAsync(rr, ct, version), r => r.Id, r => r.Version, r => r.VehicleId), find.Refueling(rr));
 
@@ -237,7 +353,9 @@ public sealed class SyncMutations
             return Make(SyncChangeKind.UpdateExpense, ue.Id, null, async ct => Of(await expenses.UpdateAsync(ue.Id,
                 new ExpenseInput(ue.Date, ue.Title, ue.Category, ue.Amount, ue.Currency, ue.Odometer, ue.Note), ct, version), e => e.Id, e => e.Version, e => e.VehicleId), find.Expense(ue.Id));
         if (c.DeleteExpense is { } de)
-            return Make(SyncChangeKind.DeleteExpense, de, null, async ct => Of(await expenses.DeleteAsync(de, ct, version), e => e.Id, e => e.Version, e => e.VehicleId), find.Expense(de));
+            return Make(SyncChangeKind.DeleteExpense, de, null, ct => TrashOnce(
+                async ct => Of(await expenses.DeleteAsync(de, ct, version), e => e.Id, e => e.Version, e => e.VehicleId),
+                async ct => await expenses.InTrashAsync(de, ct) is { } e ? Of(e, e => e.Id, e => e.Version, e => e.VehicleId) : null, ct), find.Expense(de));
         if (c.RestoreExpense is { } re)
             return Make(SyncChangeKind.RestoreExpense, re, null, async ct => Of(await expenses.RestoreAsync(re, ct, version), e => e.Id, e => e.Version, e => e.VehicleId), find.Expense(re));
 
@@ -276,7 +394,9 @@ public sealed class SyncMutations
             return Make(SyncChangeKind.UpdateVehicle, uv.Id, uv.Id, async ct => Of(await vehicles.UpdateAsync(uv.Id, uv.Name, uv.LicensePlate, uv.FuelType, uv.Units?.ToDomain(), ct, version),
                 v => v.Id, v => v.Version, v => v.Id));
         if (c.DeleteVehicle is { } dv)
-            return Make(SyncChangeKind.DeleteVehicle, dv, dv, async ct => Of(await vehicles.DeleteAsync(dv, ct, version), v => v.Id, v => v.Version, v => v.Id));
+            return Make(SyncChangeKind.DeleteVehicle, dv, dv, ct => TrashOnce(
+                async ct => Of(await vehicles.DeleteAsync(dv, ct, version), v => v.Id, v => v.Version, v => v.Id),
+                async ct => await vehicles.InTrashAsync(dv, ct) is { } v ? Of(v, v => v.Id, v => v.Version, v => v.Id) : null, ct));
         // Photos of saved logs: the log's version does not move (photo rows are not part of it), so nothing is checked against one.
         SyncChangeRequest AddPhoto(SyncChangeKind kind, LogType type, AddLogPhotoInput a, Func<Guid, Func<CancellationToken, Task<Guid?>>> vehicleOf) =>
             Make(kind, a.LogId, null, async ct => new AppliedChange(await photos.AttachDraftAsync(type, a.LogId, a.DraftId, ct), null, await vehicleOf(a.LogId)(ct)), vehicleOf(a.LogId));
