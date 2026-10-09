@@ -985,6 +985,8 @@
     "removed": "Fotó törölve.",
     "kept": "Ezen az eszközön: szinkronizáláskor töltődik fel",
     "keptAdded": "Ezen az eszközön tárolva: a fotók szinkronizáláskor kerülnek fel.",
+    "keptReady": "Ezen az eszközön tárolva: a fotók a bejegyzéssel együtt kerülnek fel szinkronizáláskor.",
+    "keptNote": "Az ilyen jelölésű fotók ezen az eszközön várnak, és szinkronizáláskor töltődnek fel.",
     "removeKept": "A fotó szinkronizáláskor törlődik.",
     "done": "Kész",
     "leftOut_one": "A bejegyzés mentve lett, de {{count}} fotót nem sikerült hozzáadni. A bejegyzés szerkesztésével újra hozzáadhatod.",

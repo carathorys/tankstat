@@ -74,7 +74,12 @@ it('a photo picked for a new refuelling offline is kept on this device and saved
 
   await ui.upload(within(dialog).getByTestId('photo-library'), photo())
 
-  expect(await within(dialog).findByText('On this device: uploaded when synced')).toBeInTheDocument()
+  // The photo says it is kept (to screen readers in its own item; on screen by a mark on it), one note says what the mark means, and
+  // the status says what happened: kept, not uploaded.
+  const [item] = await within(dialog).findAllByRole('listitem')
+  expect(item).toHaveTextContent('On this device: uploaded when synced')
+  expect(within(dialog).getByText('Photos with this mark are kept on this device and uploaded when it syncs.')).toBeInTheDocument()
+  expect(within(dialog).getByRole('status', { name: 'Upload status' })).toHaveTextContent('Kept on this device: the photos go up with the entry when it syncs.')
   expect((await axe(dialog, { rules: { 'color-contrast': { enabled: false } } })).violations.map((v) => v.id)).toEqual([])
   await ui.type(within(dialog).getByLabelText(/^Volume/), '30')
   await ui.type(within(dialog).getByLabelText('Total cost'), '90')
