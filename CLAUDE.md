@@ -8,7 +8,7 @@ The README is short on purpose (what it is, the features by name, a quick start,
 
 Pull request descriptions never carry the claude.ai session link (no `https://claude.ai/code/session_...` line); the "Generated with Claude Code" line stays. Commit trailers are unchanged.
 
-Issue workflow (`.claude/skills/`, usable by any agent): `/triage N` claims an issue with the `triaging` label (and skips issues carrying it unless named), analyses, reproduces and plans it, posts the handoff on it, labels it `triaged` and removes `triaging`, never fixes; `/dev N` implements a `triaged` issue (refuses one that is not) in a git worktree of its own on a branch off the freshly pulled `main` (the previous task's finished worktree is removed when the next task starts; an unrelated request asks first): targeted tests while working, the full suite before every commit and/or push, a draft PR labelled `WIP` until finished, then ready to merge without waiting for CI.
+Issue workflow (`.claude/skills/`, usable by any agent): `/triage N` claims an issue with the `triaging` label (and skips issues carrying it unless named), analyses, reproduces and plans it, posts the handoff on it, labels it `triaged` and removes `triaging`, never fixes; `/dev N` implements a `triaged` issue (refuses one that is not, or one another agent has `in progress`; claims it with `in progress` first) in a git worktree of its own on a branch off the freshly pulled `main` (the previous task's finished worktree is removed when the next task starts; an unrelated request asks first): targeted tests while working, the full suite before every commit and/or push, a draft PR labelled `WIP` until finished, then ready to merge without waiting for CI.
 
 ## Toolchain and commands
 
