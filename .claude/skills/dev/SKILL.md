@@ -1,15 +1,21 @@
 ---
 name: dev
-description: Implement a triaged GitHub issue - refuse one that is not `triaged`, read its handoff and links, work in a fresh git worktree on a branch off the freshly pulled main, targeted tests while working, the full suite before every commit, a draft PR labelled `WIP` until done, then ready to merge without waiting for CI; the worktree stays until the next task replaces it. Use when asked to implement, fix, work on or pick up an issue (`/dev 80`).
+description: Implement a triaged GitHub issue - refuse one that is not `triaged` or that another agent has `in progress`, claim it with the `in progress` label, read its handoff and links, work in a fresh git worktree on a branch off the freshly pulled main, targeted tests while working, the full suite before every commit, a draft PR labelled `WIP` until done, then ready to merge without waiting for CI; the worktree stays until the next task replaces it. Use when asked to implement, fix, work on or pick up an issue (`/dev 80`).
 ---
 
 # Implement an issue
 
 The argument is an issue number.
 
-## 0. Gate: is it triaged?
+## 0. Gate: is it triaged, and is it free?
 
-`gh issue view N --json labels,state`. If the `triaged` label is missing (or the issue is closed): **stop at once**, tell the user that the issue has not been triaged yet, and offer `/triage N`. Do nothing else.
+`gh issue view N --json labels,state`.
+- If the `triaged` label is missing (or the issue is closed): **stop at once**, tell the user that the issue has not been triaged yet, and offer `/triage N`. Do nothing else.
+- If the issue carries `in progress`, another agent is implementing it right now. **Do not start.** Tell the user, and **ask what to do**: take it over anyway, or leave it. Only when the user has already said they know it is in progress and want it taken over (e.g. "take over #80") is there nothing to ask; say you are taking it over. Never assume.
+
+## 0b. Claim it
+
+**As soon as the gate passes, before reading or coding:** `gh issue edit N --add-label "in progress"`, so no other agent picks it up meanwhile. The label stays on until the issue is closed (the PR's `Closes #N` does that on merge). If you abandon the work, remove it and say so on the issue.
 
 ## 1. Read everything
 
@@ -49,7 +55,7 @@ Every fix, feature or other piece of work gets a **new git worktree**, so the ma
 ## 6. The pull request
 
 - **Not finished yet** (more commits to come): the PR is a **draft** with the `WIP` label (`gh pr create --draft --label WIP`, or `gh pr ready --undo` + `gh pr edit --add-label WIP` on an existing one). Keep pushing commits to it, each with the full suite before it.
-- **Finished** (plan done, acceptance criteria met, tests added, docs updated, full suite green): `gh pr edit N --remove-label WIP`, `gh pr ready N`, and bring the description up to date. **Do not wait for CI**; mark it ready at once.
+- **Finished** (plan done, acceptance criteria met, tests added, docs updated, full suite green): `gh pr edit N --remove-label WIP`, `gh pr ready N`, and bring the description up to date. **Do not wait for CI**; mark it ready at once. The issue keeps `in progress` until the merge closes it; comment on the issue with the PR link.
 - The description: what changed and why, how it works, the tests run (with figures), what is left out and why, `Closes #N`. Follow CLAUDE.md on attribution lines (e.g. no session link in PR descriptions).
 
 ## 7. Report
