@@ -32,6 +32,11 @@ export interface Change {
   /** The log's version this change was made from (`version` on the server): a change made meanwhile is noticed at upload. */
   expectedVersion?: number | null
   /**
+   * The values the entry had at that version (an edit's or a trash's, as this screen held them; `conflicts.ts` `baseOf`): should the
+   * server park the change, whoever decides can tell what this device changed from what was changed meanwhile, and merge the two.
+   */
+  base?: Record<string, unknown>
+  /**
    * Sent to the server at least once, so it may have been applied with the answer lost: nothing folds into it any more (it would be answered
    * as already done, and what folded in lost); a later change of the same log follows it as a change of its own.
    */
@@ -64,8 +69,8 @@ export const canEdit = (change: Change) => change.action === 'add' || change.act
 
 const isPhoto = (c: Change) => c.action === 'addPhoto' || c.action === 'removePhoto'
 
-/** The fields an update carries over onto an add that is still waiting (the add's own id and vehicle stay). */
-const UPDATABLE: Record<ChangeEntity, readonly string[]> = {
+/** The fields an update sets (and carries over onto an add that is still waiting: the add's own id and vehicle stay). */
+export const UPDATABLE: Record<ChangeEntity, readonly string[]> = {
   refuelings: ['date', 'volume', 'totalCost', 'currency', 'odometer', 'isFullTank', 'missedPreviousFillUp', 'note'],
   expenses: ['date', 'title', 'category', 'amount', 'currency', 'odometer', 'note'],
   vehicles: ['name', 'licensePlate', 'fuelType', 'units'],
@@ -75,8 +80,8 @@ const UPDATABLE: Record<ChangeEntity, readonly string[]> = {
 /**
  * The changes waiting after `incoming` joins them. Changes of one log fold into one:
  * - an add then an update is the add with the new values; an add then a trash is nothing at all;
- * - an update then an update is the last one, from the first one's version; an update then a trash is the trash, from that version,
- *   keeping the edit's values so that taking the trash back brings the edit back;
+ * - an update then an update is the last one, from the first one's version (and values, `base`); an update then a trash is the trash,
+ *   from that version, keeping the edit's values so that taking the trash back brings the edit back;
  * - a trash then a restore, or a restore then a trash, is nothing (back where the server is, or the edit the trash took the place of);
  * - a second trash or restore of the same log, or an edit of one on its way to the trash, changes nothing.
  * A change that was sent already (`sent`) is never folded into: what follows it waits as a change of its own, from the version the log has
@@ -124,7 +129,7 @@ export function collapse(existing: readonly Change[], incoming: Change): Change[
     case 'update':
       if (trash) return [...existing] // on its way to the trash: nothing to edit
       if (add) return replace(existing, add, { ...add, input: { ...add.input, ...pick(incoming.input, UPDATABLE[incoming.entity]) } })
-      if (update) return replace(existing, update, { ...incoming, id: update.id, seq: update.seq, createdAt: update.createdAt, expectedVersion: update.expectedVersion })
+      if (update) return replace(existing, update, { ...from(update, incoming), id: update.id, seq: update.seq, createdAt: update.createdAt })
       return [...existing, next]
     case 'trash': {
       if (trash) return [...existing] // already waiting to go
@@ -132,7 +137,7 @@ export function collapse(existing: readonly Change[], incoming: Change): Change[
       // Photos of a log in the trash can be neither added nor removed: those changes go (a restore does not bring them back).
       const kept = existing.filter((c) => !photosOfLog(c))
       if (restore) return kept.filter((c) => c !== restore)
-      if (update) return replace(kept, update, { ...incoming, id: update.id, seq: update.seq, createdAt: update.createdAt, expectedVersion: update.expectedVersion, input: update.input })
+      if (update) return replace(kept, update, { ...from(update, incoming), id: update.id, seq: update.seq, createdAt: update.createdAt, input: update.input })
       return [...kept, next]
     }
     case 'restore':
@@ -140,6 +145,14 @@ export function collapse(existing: readonly Change[], incoming: Change): Change[
       if (restore) return [...existing] // already waiting to come back
       return [...existing, next]
   }
+}
+
+/** `incoming` as made from where `first` started: its version and the values it had then (none known: none). */
+const from = (first: Change, incoming: Change): Change => {
+  const made: Change = { ...incoming, expectedVersion: first.expectedVersion }
+  if (first.base) made.base = first.base
+  else delete made.base
+  return made
 }
 
 /** The version a log has once a change sent before is applied: an add's is the server's to say (no check), any other one is one more. */

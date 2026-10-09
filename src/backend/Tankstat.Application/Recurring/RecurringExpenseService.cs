@@ -120,7 +120,7 @@ public sealed class RecurringExpenseService(
 
         item.Update(
             input.Title, input.Category, input.Note, input.Kind, input.IntervalMonths, input.IntervalDistance, lastDone, input.LastDoneOdometer,
-            input.WarnDays ?? item.WarnDays, input.WarnDistance ?? item.WarnDistance);
+            input.WarnDays ?? item.WarnDays, input.WarnDistance ?? item.WarnDistance, (await access.RequirePrincipalAsync(ct)).Id);
         await items.UpdateAsync(item, ct);
         logger.LogDebug("Recurring expense {RecurringId} updated", item.Id);
         return await WithStatusAsync(item, ct);
@@ -176,7 +176,7 @@ public sealed class RecurringExpenseService(
         if (logged is { IsDeleted: true }) logged = await expenses.RestoreAsync(logged.Id, ct);
         try
         {
-            foreach (var item in found) item.MarkDone(input.Date, input.Odometer);
+            foreach (var item in found) item.MarkDone(input.Date, input.Odometer, creator.Id);
             var links = logged is null ? [] : found.Select(i => RecurringCompletion.Create(logged.Id, i.Id)).ToList();
             await items.CompleteAsync(found, links, ct);
         }

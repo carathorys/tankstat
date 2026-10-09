@@ -72,6 +72,15 @@ public sealed class Expense : IOwned, ISoftDeletable, ISynced
     /// <summary>When it was last saved (set by the persistence layer, see <see cref="ISynced"/>): a device that keeps a copy downloads it again.</summary>
     public DateTimeOffset UpdatedAt { get; private set; }
 
+    /// <inheritdoc cref="ISynced.ChangedAt"/>
+    public DateTimeOffset? ChangedAt { get; private set; }
+
+    /// <inheritdoc cref="ISynced.ChangedById"/>
+    public Guid? ChangedById { get; private set; }
+
+    /// <inheritdoc cref="ISynced.LastChange"/>
+    public EntityChange? LastChange { get; private set; }
+
     /// <summary>The version it was loaded with, before this instance counted any save: the save is made only if nobody saved it meanwhile.</summary>
     public int SavedVersion => _loadedVersion ?? Version;
 
@@ -79,10 +88,11 @@ public sealed class Expense : IOwned, ISoftDeletable, ISynced
 
     void ISynced.Saved() => _loadedVersion = null;
 
-    private void Bump()
+    private void Bump(EntityChange what, Guid? by)
     {
         _loadedVersion ??= Version;
         Version++;
+        (LastChange, ChangedById) = (what, by);
     }
 
     Guid ISynced.SyncVehicleId => VehicleId;
@@ -99,7 +109,7 @@ public sealed class Expense : IOwned, ISoftDeletable, ISynced
 
         var expense = new Expense
         {
-            Id = EntityId.OrNew(id), Version = 1, OwnerId = ownerId, CreatedById = createdById, VehicleId = vehicleId,
+            Id = EntityId.OrNew(id), Version = 1, OwnerId = ownerId, CreatedById = createdById, LastChange = EntityChange.Created, ChangedById = createdById, VehicleId = vehicleId,
             CostId = cost?.Id, Cost = cost, OdometerReadingId = reading?.Id, OdometerReading = reading,
         };
         expense.Apply(date, title, category, note);
@@ -114,9 +124,10 @@ public sealed class Expense : IOwned, ISoftDeletable, ISynced
     /// while a photo is being read): a reading or cost let go of, or one that had to be created, is returned for the repository. A person
     /// saved it, so values read from photos count as checked.
     /// </summary>
+    /// <param name="by">Who changed it (see <see cref="ChangedById"/>).</param>
     /// <param name="currency">The currency of the cost; ignored without <paramref name="amount"/>.</param>
     public LinkedChanges Update(
-        DateOnly date, string title, string? category, decimal? amount, string? currency, long? odometer, string? note, bool readingPhotos = false)
+        DateOnly date, string title, string? category, decimal? amount, string? currency, long? odometer, string? note, bool readingPhotos = false, Guid? by = null)
     {
         if (IsDeleted) throw new DomainException("expense.trashedCannotEdit", "An expense in the trash cannot be edited; restore it first.");
         Apply(date, title, category, note);
@@ -124,7 +135,7 @@ public sealed class Expense : IOwned, ISoftDeletable, ISynced
         var (createdReading, removedReading) = SetReading(date, odometer);
         ReviewState = LogReview.AfterSave(Missing, Fillable, readingPhotos);
         FilledFromPhoto = LogValues.None;
-        Bump();
+        Bump(EntityChange.Edited, by);
         return new LinkedChanges(createdReading, removedReading, createdCost, removedCost);
     }
 
@@ -152,7 +163,7 @@ public sealed class Expense : IOwned, ISoftDeletable, ISynced
         }
         // Every value a photo fills in sets its FilledFromPhoto flag, so a change of the flags is a change of the values: an edit of the copy
         // from before is stale. A value added here later must set its flag too.
-        if (FilledFromPhoto != before) Bump();
+        if (FilledFromPhoto != before) Bump(EntityChange.FilledFromPhoto, null);
         return new LinkedChanges(createdReading, null, createdCost, null);
     }
 
@@ -164,22 +175,22 @@ public sealed class Expense : IOwned, ISoftDeletable, ISynced
         return ReviewState != before;
     }
 
-    public void MarkDeleted(DateTimeOffset now)
+    public void MarkDeleted(DateTimeOffset now, Guid? by = null)
     {
         if (IsDeleted) throw new DomainException("expense.alreadyTrashed", "This expense is already in the trash.");
         DeletedAt = now;
         OdometerReading?.MarkDeleted(now);
         Cost?.MarkDeleted(now);
-        Bump();
+        Bump(EntityChange.Trashed, by);
     }
 
-    public void Restore()
+    public void Restore(Guid? by = null)
     {
         if (!IsDeleted) throw new DomainException("expense.notTrashed", "This expense is not in the trash.");
         DeletedAt = null;
         OdometerReading?.Restore();
         Cost?.Restore();
-        Bump();
+        Bump(EntityChange.Restored, by);
     }
 
     private (OdometerReading? Created, OdometerReading? Removed) SetReading(DateOnly date, long? odometer)

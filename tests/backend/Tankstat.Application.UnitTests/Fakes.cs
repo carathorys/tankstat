@@ -125,6 +125,8 @@ internal sealed class InMemoryRefuelings : IRefuelingRepository
         Task.FromResult(Items.Count(r => r.IsDeleted && scope.Contains(r.OwnerId, r.VehicleId)));
     public Task<Refueling?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(r => r.Id == id && !r.IsDeleted));
     public Task<Refueling?> FindIncludingDeletedAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(r => r.Id == id));
+    public Task<IReadOnlyList<Refueling>> ListByIdsIncludingDeletedAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<Refueling>>(Items.Where(r => ids.Contains(r.Id)).ToList());
     public bool LoseNextAdd { get; set; }
     public Task<bool> AddAsync(Refueling refueling, CancellationToken ct) => Task.FromResult(Fake.AddOnce(Items, refueling, r => r.Id, LoseNextAdd && !(LoseNextAdd = false)));
     /// <summary>How many of the next saves find the log saved meanwhile by someone else (the database's conditional write).</summary>
@@ -162,6 +164,8 @@ internal sealed class InMemoryExpenses : IExpenseRepository
         Task.FromResult<IReadOnlyList<string>>(Items.Where(e => e.VehicleId == vehicleId && e.Category is not null).Select(e => e.Category!).Distinct().Order().ToList());
     public Task<Expense?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(e => e.Id == id && !e.IsDeleted));
     public Task<Expense?> FindIncludingDeletedAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(e => e.Id == id));
+    public Task<IReadOnlyList<Expense>> ListByIdsIncludingDeletedAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<Expense>>(Items.Where(e => ids.Contains(e.Id)).ToList());
     public bool LoseNextAdd { get; set; }
     public Task<bool> AddAsync(Expense expense, CancellationToken ct) => Task.FromResult(Fake.AddOnce(Items, expense, e => e.Id, LoseNextAdd && !(LoseNextAdd = false)));
     public Task UpdateAsync(Expense expense, LinkedChanges changes, CancellationToken ct) => Task.CompletedTask; // shared references
@@ -716,6 +720,7 @@ internal sealed class World
     public OfflineSettingsService OfflineSettings { get; }
     public InMemorySyncChanges SyncLedger { get; } = new();
     public SyncService Sync => new(SyncLedger, Vehicles, Access, Microsoft.Extensions.Options.Options.Create(new SyncOptions()), Clock, Log.For<SyncService>());
+    public SyncTargetService SyncTargets => new(Vehicles, Refuelings, Expenses, Recurring, RecurringService, Access);
     public ImportService Imports { get; }
     public OdometerService Odometer { get; }
     public ResourceSharingService Sharing { get; }

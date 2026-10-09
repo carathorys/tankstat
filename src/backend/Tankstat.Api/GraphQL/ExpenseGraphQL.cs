@@ -57,6 +57,10 @@ public sealed class ExpenseExtensions
 
     public Task<UserRef?> GetCreatedBy([Parent] Expense expense, UserRefLoader users, CancellationToken ct) => users.LoadAsync(expense.CreatedById, ct);
 
+    /// <summary>Who made its last change that counted (see <c>changedAt</c>, <c>lastChange</c>); null when nobody did (a photo) or no longer exists.</summary>
+    public async Task<UserRef?> GetChangedBy([Parent] Expense expense, UserRefLoader users, CancellationToken ct) =>
+        expense.ChangedById is { } id ? await users.LoadAsync(id, ct) : null;
+
     public Task<Vehicle?> GetVehicle([Parent] Expense expense, VehicleIncludingDeletedLoader vehicles, CancellationToken ct) => vehicles.LoadAsync(expense.VehicleId, ct);
 }
 

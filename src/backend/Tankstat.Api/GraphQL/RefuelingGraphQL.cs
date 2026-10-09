@@ -80,6 +80,10 @@ public sealed class RefuelingExtensions
 
     public Task<UserRef?> GetCreatedBy([Parent] Refueling refueling, UserRefLoader users, CancellationToken ct) => users.LoadAsync(refueling.CreatedById, ct);
 
+    /// <summary>Who made its last change that counted (see <c>changedAt</c>, <c>lastChange</c>); null when nobody did (a photo) or no longer exists.</summary>
+    public async Task<UserRef?> GetChangedBy([Parent] Refueling refueling, UserRefLoader users, CancellationToken ct) =>
+        refueling.ChangedById is { } id ? await users.LoadAsync(id, ct) : null;
+
     /// <summary>The vehicle (even a trashed one), for its name and units next to a log in the trash.</summary>
     public Task<Vehicle?> GetVehicle([Parent] Refueling refueling, VehicleIncludingDeletedLoader vehicles, CancellationToken ct) => vehicles.LoadAsync(refueling.VehicleId, ct);
 }

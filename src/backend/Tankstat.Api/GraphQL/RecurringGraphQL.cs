@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Tankstat.Application.Recurring;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Recurring;
+using Tankstat.Domain.Sync;
 using Tankstat.Domain.Vehicles;
 
 namespace Tankstat.Api.GraphQL;
@@ -48,12 +49,22 @@ public sealed record RecurrenceStatusInfo(RecurrenceState State, RecurrenceLimit
 /// <param name="UpdatedAt">When it was last saved; a device that keeps a copy downloads it again.</param>
 public sealed record RecurringExpenseInfo(
     Guid Id, Guid VehicleId, string Title, string? Category, string? Note, RecurrenceKind Kind, int? IntervalMonths, long? IntervalDistance,
-    DateOnly LastDoneDate, long? LastDoneOdometer, int WarnDays, long WarnDistance, DateTimeOffset CreatedAt, int Version, DateTimeOffset UpdatedAt, RecurrenceStatusInfo Status)
+    DateOnly LastDoneDate, long? LastDoneOdometer, int WarnDays, long WarnDistance, DateTimeOffset CreatedAt, int Version, DateTimeOffset UpdatedAt, RecurrenceStatusInfo Status,
+    DateTimeOffset? ChangedAt, Guid? ChangedById, EntityChange? LastChange)
 {
     public static RecurringExpenseInfo From(RecurringItem r) => new(
         r.Item.Id, r.Item.VehicleId, r.Item.Title, r.Item.Category, r.Item.Note, r.Item.Kind, r.Item.IntervalMonths, r.Item.IntervalDistance,
         r.Item.LastDoneDate, r.Item.LastDoneOdometer, r.Item.WarnDays, r.Item.WarnDistance, r.Item.CreatedAt, r.Item.Version, r.Item.UpdatedAt,
-        new RecurrenceStatusInfo(r.Status.State, r.Status.Limit, r.Status.DueDate, r.Status.DueOdometer, r.Status.DaysLeft, r.Status.DistanceLeft));
+        new RecurrenceStatusInfo(r.Status.State, r.Status.Limit, r.Status.DueDate, r.Status.DueOdometer, r.Status.DaysLeft, r.Status.DistanceLeft),
+        r.Item.ChangedAt, r.Item.ChangedById, r.Item.LastChange);
+}
+
+[ExtendObjectType<RecurringExpenseInfo>]
+public sealed class RecurringExpenseInfoExtensions
+{
+    /// <summary>Who made its last change that counted (see <c>changedAt</c>, <c>lastChange</c>); null when nobody did (a photo) or no longer exists.</summary>
+    public async Task<UserRef?> GetChangedBy([Parent] RecurringExpenseInfo item, UserRefLoader users, CancellationToken ct) =>
+        item.ChangedById is { } id ? await users.LoadAsync(id, ct) : null;
 }
 
 /// <summary>The recurring expenses of the vehicles of a response, loaded together (one access check, one query for the schedules, one for the odometers).</summary>

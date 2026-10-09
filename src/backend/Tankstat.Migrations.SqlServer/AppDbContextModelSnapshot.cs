@@ -485,6 +485,12 @@ namespace Tankstat.Migrations.SqlServer
                         .HasMaxLength(60)
                         .HasColumnType("nvarchar(60)");
 
+                    b.Property<DateTime?>("ChangedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ChangedById")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -501,6 +507,10 @@ namespace Tankstat.Migrations.SqlServer
                         .IsRequired()
                         .HasMaxLength(16)
                         .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("LastChange")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<DateOnly>("LastDoneDate")
                         .HasColumnType("date");
@@ -680,6 +690,10 @@ namespace Tankstat.Migrations.SqlServer
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Base")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
 
                     b.Property<int?>("ExpectedVersion")
                         .HasColumnType("int");
@@ -922,6 +936,12 @@ namespace Tankstat.Migrations.SqlServer
                         .HasMaxLength(60)
                         .HasColumnType("nvarchar(60)");
 
+                    b.Property<DateTime?>("ChangedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ChangedById")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid?>("CostId")
                         .HasColumnType("uniqueidentifier");
 
@@ -936,6 +956,10 @@ namespace Tankstat.Migrations.SqlServer
 
                     b.Property<int>("FilledFromPhoto")
                         .HasColumnType("int");
+
+                    b.Property<string>("LastChange")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("Note")
                         .HasMaxLength(500)
@@ -999,6 +1023,12 @@ namespace Tankstat.Migrations.SqlServer
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("ChangedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ChangedById")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<decimal?>("Consumption")
                         .HasPrecision(9, 3)
                         .HasColumnType("decimal(9,3)");
@@ -1020,6 +1050,10 @@ namespace Tankstat.Migrations.SqlServer
 
                     b.Property<bool>("IsFullTank")
                         .HasColumnType("bit");
+
+                    b.Property<string>("LastChange")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<bool>("MissedPreviousFillUp")
                         .HasColumnType("bit");
@@ -1085,11 +1119,21 @@ namespace Tankstat.Migrations.SqlServer
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("ChangedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ChangedById")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("FuelType")
                         .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("LastChange")
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 

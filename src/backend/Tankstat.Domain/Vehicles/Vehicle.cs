@@ -34,6 +34,15 @@ public sealed class Vehicle : IOwned, ISoftDeletable, ISynced
     /// <summary>When it was last saved (set by the persistence layer, see <see cref="ISynced"/>): a device that keeps a copy downloads it again.</summary>
     public DateTimeOffset UpdatedAt { get; private set; }
 
+    /// <inheritdoc cref="ISynced.ChangedAt"/>
+    public DateTimeOffset? ChangedAt { get; private set; }
+
+    /// <inheritdoc cref="ISynced.ChangedById"/>
+    public Guid? ChangedById { get; private set; }
+
+    /// <inheritdoc cref="ISynced.LastChange"/>
+    public EntityChange? LastChange { get; private set; }
+
     /// <summary>The version it was loaded with, before this instance counted any save: the save is made only if nobody saved it meanwhile.</summary>
     public int SavedVersion => _loadedVersion ?? Version;
 
@@ -41,10 +50,11 @@ public sealed class Vehicle : IOwned, ISoftDeletable, ISynced
 
     void ISynced.Saved() => _loadedVersion = null;
 
-    private void Bump()
+    private void Bump(EntityChange what, Guid? by)
     {
         _loadedVersion ??= Version;
         Version++;
+        (LastChange, ChangedById) = (what, by);
     }
 
     Guid ISynced.SyncVehicleId => Id;
@@ -53,32 +63,33 @@ public sealed class Vehicle : IOwned, ISoftDeletable, ISynced
     /// <param name="id">The id the client chose beforehand, if any (see <see cref="EntityId"/>).</param>
     public static Vehicle Create(Guid ownerId, string name, string? licensePlate, FuelType fuelType, MeasurementUnits units, Guid? id = null)
     {
-        var vehicle = new Vehicle { Id = EntityId.OrNew(id), OwnerId = ownerId, Version = 1 };
+        var vehicle = new Vehicle { Id = EntityId.OrNew(id), OwnerId = ownerId, Version = 1, LastChange = EntityChange.Created, ChangedById = ownerId };
         vehicle.Apply(name, licensePlate, fuelType, units);
         return vehicle;
     }
 
-    public void Update(string name, string? licensePlate, FuelType fuelType, MeasurementUnits units)
+    /// <param name="by">Who changed it (see <see cref="ChangedById"/>).</param>
+    public void Update(string name, string? licensePlate, FuelType fuelType, MeasurementUnits units, Guid? by = null)
     {
         if (IsDeleted) throw new DomainException("vehicle.trashedCannotEdit", "A vehicle in the trash cannot be edited; restore it first.");
         Apply(name, licensePlate, fuelType, units);
-        Bump();
+        Bump(EntityChange.Edited, by);
     }
 
     public void SetPicture(Guid? imageId) => PictureImageId = imageId;
 
-    public void MarkDeleted(DateTimeOffset now)
+    public void MarkDeleted(DateTimeOffset now, Guid? by = null)
     {
         if (IsDeleted) throw new DomainException("vehicle.alreadyTrashed", "This vehicle is already in the trash.");
         DeletedAt = now;
-        Bump();
+        Bump(EntityChange.Trashed, by);
     }
 
-    public void Restore()
+    public void Restore(Guid? by = null)
     {
         if (!IsDeleted) throw new DomainException("vehicle.notTrashed", "This vehicle is not in the trash.");
         DeletedAt = null;
-        Bump();
+        Bump(EntityChange.Restored, by);
     }
 
     private void Apply(string name, string? licensePlate, FuelType fuelType, MeasurementUnits units)

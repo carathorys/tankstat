@@ -78,7 +78,7 @@ it('the trash, account and administration pages have no violations', async () =>
   }
 })
 
-it('the changes the server could not apply, and the confirmations to apply or discard one, are labelled and free of violations', async () => {
+it('the changes the server could not apply, what happened to them on each side, and the confirmations of a choice, are labelled and free of violations', async () => {
   const { ui } = setup('/sync')
   server.use(
     graphql.query('ParkedChanges', () =>
@@ -88,7 +88,12 @@ it('the changes the server could not apply, and the confirmations to apply or di
             __typename: 'SyncChangeInfo', id: 'c1', kind: 'DELETE_REFUELING', status: 'PARKED', vehicleId: 'v1', targetId: 'r1', change: '{"id":"c1","expectedVersion":1,"deleteRefueling":"r1"}',
             receivedAt: '2026-10-06T09:00:00Z', reason: { __typename: 'SyncReasonInfo', key: 'sync.versionMismatch', args: [] },
             vehicle: { __typename: 'SyncVehicleRef', id: 'v1', name: 'Octavia', distanceUnit: 'KILOMETERS', volumeUnit: 'LITERS' },
-            submittedBy: { __typename: 'UserRef', id: 'u2', displayName: 'Bob' }, canResolve: true,
+            submittedBy: { __typename: 'UserRef', id: 'u2', displayName: 'Bob' }, canResolve: true, base: '{"volume":40}',
+            current: {
+              __typename: 'SyncCurrent', state: 'LIVE', version: 2, lastChange: 'EDITED', changedAt: '2026-10-06T08:00:00Z', changedBy: { __typename: 'UserRef', id: 'u3', displayName: 'Anna' },
+              vehicle: null, expense: null, schedule: null,
+              refueling: { __typename: 'Refueling', version: 2, date: '2026-09-01', volume: 41, totalCost: 60, currency: 'EUR', odometer: 1000, isFullTank: true, missedPreviousFillUp: false, note: null },
+            },
           }],
         },
       }),
@@ -97,7 +102,8 @@ it('the changes the server could not apply, and the confirmations to apply or di
   const region = await screen.findByRole('region', { name: 'Not applied' })
   await check(document.body)
 
-  for (const [button, title] of [[/^Apply anyway: Refuelling to the trash/, 'Apply this change anyway?'], [/^Discard: Refuelling to the trash/, 'Discard this change?']] as const) {
+  expect(within(region).getByRole('link', { name: /^Open it as it is now: Refuelling to the trash/ })).toBeInTheDocument()
+  for (const [button, title] of [[/^Move it to the trash anyway: Refuelling to the trash/, 'Move it to the trash anyway?'], [/^Keep it: Refuelling to the trash/, 'Keep it?']] as const) {
     await ui.click(await within(region).findByRole('button', { name: button }))
     const dialog = await screen.findByRole('alertdialog', { name: title })
     expect(dialog).toHaveAccessibleDescription(/./)

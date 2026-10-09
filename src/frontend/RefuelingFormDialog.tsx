@@ -39,7 +39,8 @@ import { keepAmountsInStep, type AmountField } from './refuelingAmounts.ts'
 import { Loading } from './components/Loading.tsx'
 import { useToast } from './toast/toastContext.ts'
 import { OfflineNote, ReadLaterNote } from './components/OfflineNote.tsx'
-import type { ChangeEdit } from './dialogs/changeEdit.ts'
+import type { ChangeEdit, MergeInfo } from './dialogs/changeEdit.ts'
+import { useMergeFields } from './dialogs/useMergeFields.tsx'
 import { outbox } from './offline/outbox.ts'
 
 /** Volume, total cost and odometer are null only when they were left for a photo that is still being read. */
@@ -177,6 +178,7 @@ export function RefuelingFormDialog({
             readingNow={drafts.pending.length > 0}
             wait={{ since: drafts.waitingSince, until: drafts.waitingUntil }}
             submitLabel={change?.submitLabel}
+            merge={change?.merge}
             gallery={
               !change && <PhotoGallery
                 kind="refuelings"
@@ -225,6 +227,7 @@ function RefuelingForm({
   readingNow,
   wait,
   submitLabel,
+  merge,
   onSubmit,
 }: {
   initial: Initial
@@ -232,6 +235,8 @@ function RefuelingForm({
   editing: boolean
   /** The Save button's text, when it is not the add or edit one. */
   submitLabel?: string
+  /** Merging a parked edit with what is on the server now: what to say (and offer) under each field. */
+  merge?: MergeInfo
   last: { value: number; date: string } | null
   gallery: ReactNode
   /** Chosen photos are still being prepared: saving now would leave them out. */
@@ -277,17 +282,21 @@ function RefuelingForm({
     keepAmountsInStep,
     editing,
   )
+  const merging = useMergeFields(merge)
   const fromPhoto = filledFields(initial.filledFromPhoto, WAITS_FOR)
   const waits = new Set(Object.values(WAITS_FOR))
   const optional = (field: FillableField) => mayWait && waits.has(field)
   const note = (field: FillableField) => (
-    <ReadNote
-      filled={fill.isFilled(field) || fromPhoto.has(field)}
-      offered={fill.offered(field)}
-      waiting={optional(field) && fill.values[field].trim() === ''}
-      field={labels[field]}
-      onUse={() => fill.use(field)}
-    />
+    <>
+      <ReadNote
+        filled={fill.isFilled(field) || fromPhoto.has(field)}
+        offered={fill.offered(field)}
+        waiting={optional(field) && fill.values[field].trim() === ''}
+        field={labels[field]}
+        onUse={() => fill.use(field)}
+      />
+      {merging.note(field, labels[field], (value) => fill.change(field, value == null ? '' : String(value)))}
+    </>
   )
   /** Volume, unit price or total: a number that may be worked out from the other two (the unit price, only a help, is never required). */
   const amount = (field: AmountField) => {
@@ -371,9 +380,11 @@ function RefuelingForm({
           extra={note('odometer')}
         />
         <LabeledSwitch label={t('refuelings.fields.fullTank')} hint={t('refuelings.hints.fullTankHelp')} checked={full} onChange={setFull} />
+        {merging.note('isFullTank', t('refuelings.fields.fullTank'), (value) => setFull(!!value))}
         <LabeledSwitch label={t('refuelings.fields.missedPrevious')} hint={t('refuelings.hints.missedPreviousHelp')} checked={missed} onChange={setMissed} />
-        <Field name="note" label={t('refuelings.fields.note')}>
-          <FieldInput multiline minRows={2} maxLength={500} defaultValue={initial.note ?? ''} />
+        {merging.note('missedPreviousFillUp', t('refuelings.fields.missedPrevious'), (value) => setMissed(!!value))}
+        <Field name="note" label={t('refuelings.fields.note')} extra={merging.note('note', t('refuelings.fields.note'))}>
+          <FieldInput key={merging.key('note')} multiline minRows={2} maxLength={500} defaultValue={merging.value('note', initial.note) ?? ''} />
         </Field>
         {gallery}
         <div role="status" aria-label={t('a11y.readingStatus')}>

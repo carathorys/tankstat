@@ -18,7 +18,8 @@ import { Form } from './forms/Form.tsx'
 import { LogDefaultsDocument, VehicleDefaultsDocument, type DistanceUnit, type RecurrenceKind } from './gql/generated.ts'
 import { ErrorMessage } from './messages.tsx'
 import { useToast } from './toast/toastContext.ts'
-import type { ChangeEdit } from './dialogs/changeEdit.ts'
+import type { ChangeEdit, MergeInfo } from './dialogs/changeEdit.ts'
+import { useMergeFields } from './dialogs/useMergeFields.tsx'
 import { outbox } from './offline/outbox.ts'
 
 export interface RecurringValues {
@@ -87,6 +88,7 @@ export function RecurringFormDialog({
                 initial={initial}
                 start={start}
                 submitLabel={change?.submitLabel}
+                merge={change?.merge}
                 onSubmit={async (values) => {
                   await onSubmit(editing ? values : { ...values, id: clientId })
                   setOpen(false)
@@ -125,11 +127,15 @@ function WithStartValues({ vehicleId, needed, children }: { vehicleId: string; n
   return children({ odometer: log.data.logDefaults?.lastOdometer ?? null, warnDays: recurringWarnDays, warnDistance: recurringWarnDistance })
 }
 
+/** What a text field shows of a value: nothing for none. */
+const text = (value: unknown) => (value == null ? '' : String(value))
+
 function RecurringForm({
   unit,
   initial,
   start,
   submitLabel,
+  merge,
   onSubmit,
 }: {
   unit: DistanceUnit
@@ -137,9 +143,14 @@ function RecurringForm({
   start: StartValues | null
   /** The Save button's text, when it is not the add or edit one. */
   submitLabel?: string
+  /** Merging a parked edit with what is on the server now: what to say (and offer) under each field. */
+  merge?: MergeInfo
   onSubmit: (values: RecurringValues) => Promise<unknown>
 }) {
   const { t } = useTranslation()
+  const merging = useMergeFields(merge)
+  /** Where an uncontrolled field starts: a value taken for it while merging, else its own (`merging.key` starts it again). */
+  const own = (field: string, value: unknown) => text(merging.value(field, value))
   const [kind, setKind] = useState<RecurrenceKind>(initial?.kind ?? 'COMBINED')
   const [error, setError] = useState<unknown>()
   const [busy, setBusy] = useState(false)
@@ -183,25 +194,38 @@ function RecurringForm({
   return (
     <Form onSubmit={submit}>
       <Stack sx={{ gap: 1.5 }}>
-        <Field name="title" label={t('recurring.fields.title')} required>
-          <FieldInput maxLength={120} autoComplete="off" defaultValue={initial?.title ?? ''} />
+        <Field name="title" label={t('recurring.fields.title')} required extra={merging.note('title', t('recurring.fields.title'))}>
+          <FieldInput maxLength={120} autoComplete="off" key={merging.key('title')} defaultValue={own('title', initial?.title)} />
         </Field>
-        <Field name="category" label={t('recurring.fields.category')}>
-          <FieldInput maxLength={60} autoComplete="off" defaultValue={initial?.category ?? ''} />
+        <Field name="category" label={t('recurring.fields.category')} extra={merging.note('category', t('recurring.fields.category'))}>
+          <FieldInput maxLength={60} autoComplete="off" key={merging.key('category')} defaultValue={own('category', initial?.category)} />
         </Field>
         <LabeledSelect label={t('recurring.fields.kind')} value={kind} options={KINDS.map((k) => ({ value: k, label: t(`recurring.kind.${k}`) }))} onChange={setKind} />
+        {merging.note('kind', t('recurring.fields.kind'), (value) => setKind(value as RecurrenceKind))}
         {usesTime && (
-          <Field name="intervalMonths" label={t('recurring.fields.months')} required invalid={wholeInvalid(invalidNumber)}>
-            <FieldInput inputMode="numeric" autoComplete="off" defaultValue={initial?.intervalMonths?.toString() ?? '12'} />
+          <Field name="intervalMonths" label={t('recurring.fields.months')} required invalid={wholeInvalid(invalidNumber)} extra={merging.note('intervalMonths', t('recurring.fields.months'))}>
+            <FieldInput inputMode="numeric" autoComplete="off" key={merging.key('intervalMonths')} defaultValue={own('intervalMonths', initial?.intervalMonths ?? 12)} />
           </Field>
         )}
         {usesDistance && (
-          <Field name="intervalDistance" label={t('recurring.fields.distance', { unit: unitName })} required invalid={wholeInvalid(invalidNumber)}>
-            <FieldInput inputMode="numeric" autoComplete="off" defaultValue={initial?.intervalDistance?.toString() ?? ''} />
+          <Field
+            name="intervalDistance"
+            label={t('recurring.fields.distance', { unit: unitName })}
+            required
+            invalid={wholeInvalid(invalidNumber)}
+            extra={merging.note('intervalDistance', t('recurring.fields.distance', { unit: unitName }))}
+          >
+            <FieldInput inputMode="numeric" autoComplete="off" key={merging.key('intervalDistance')} defaultValue={own('intervalDistance', initial?.intervalDistance)} />
           </Field>
         )}
-        <Field name="lastDoneDate" label={t('recurring.fields.lastDone')} hint={t(adding ? 'recurring.hints.startToday' : 'recurring.hints.lastDone')} required>
-          <FieldDate disableFuture defaultValue={initial?.lastDoneDate ?? todayIso()} />
+        <Field
+          name="lastDoneDate"
+          label={t('recurring.fields.lastDone')}
+          hint={t(adding ? 'recurring.hints.startToday' : 'recurring.hints.lastDone')}
+          required
+          extra={merging.note('lastDoneDate', t('recurring.fields.lastDone'))}
+        >
+          <FieldDate disableFuture key={merging.key('lastDoneDate')} defaultValue={own('lastDoneDate', initial?.lastDoneDate ?? todayIso())} />
         </Field>
         {usesDistance && (
           <Field
@@ -210,28 +234,35 @@ function RecurringForm({
             hint={adding ? t(currentOdometer === null ? 'recurring.hints.noReading' : 'recurring.hints.currentOdometer') : t('recurring.hints.lastOdometer')}
             required
             invalid={wholeInvalid(t('errors.odometer.negative'))}
+            extra={merging.note('lastDoneOdometer', t('recurring.fields.lastOdometer', { unit: unitName }))}
           >
-            <FieldInput inputMode="numeric" autoComplete="off" defaultValue={(adding ? currentOdometer : initial.lastDoneOdometer)?.toString() ?? ''} />
+            <FieldInput inputMode="numeric" autoComplete="off" key={merging.key('lastDoneOdometer')} defaultValue={own('lastDoneOdometer', adding ? currentOdometer : initial.lastDoneOdometer)} />
           </Field>
         )}
         <Stack direction="row" sx={{ gap: 1.5, flexWrap: 'wrap', '& > *': { flex: '1 1 10rem' } }}>
           {usesTime && (
             <Box>
-              <Field name="warnDays" label={t('recurring.fields.warnDays')} required invalid={wholeInvalid(invalidNumber)}>
-                <FieldInput inputMode="numeric" autoComplete="off" defaultValue={warnDays.toString()} />
+              <Field name="warnDays" label={t('recurring.fields.warnDays')} required invalid={wholeInvalid(invalidNumber)} extra={merging.note('warnDays', t('recurring.fields.warnDays'))}>
+                <FieldInput inputMode="numeric" autoComplete="off" key={merging.key('warnDays')} defaultValue={own('warnDays', warnDays)} />
               </Field>
             </Box>
           )}
           {usesDistance && (
             <Box>
-              <Field name="warnDistance" label={t('recurring.fields.warnDistance', { unit: unitName })} required invalid={wholeInvalid(invalidNumber)}>
-                <FieldInput inputMode="numeric" autoComplete="off" defaultValue={warnDistance.toString()} />
+              <Field
+                name="warnDistance"
+                label={t('recurring.fields.warnDistance', { unit: unitName })}
+                required
+                invalid={wholeInvalid(invalidNumber)}
+                extra={merging.note('warnDistance', t('recurring.fields.warnDistance', { unit: unitName }))}
+              >
+                <FieldInput inputMode="numeric" autoComplete="off" key={merging.key('warnDistance')} defaultValue={own('warnDistance', warnDistance)} />
               </Field>
             </Box>
           )}
         </Stack>
-        <Field name="note" label={t('recurring.fields.note')}>
-          <FieldInput multiline minRows={2} maxLength={500} defaultValue={initial?.note ?? ''} />
+        <Field name="note" label={t('recurring.fields.note')} extra={merging.note('note', t('recurring.fields.note'))}>
+          <FieldInput multiline minRows={2} maxLength={500} key={merging.key('note')} defaultValue={own('note', initial?.note)} />
         </Field>
         {error !== undefined && <ErrorMessage error={error} />}
         <DialogButtons>

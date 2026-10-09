@@ -33,6 +33,10 @@ public sealed class VehicleExtensions
     public async Task<UserRef?> GetOwner([Parent] Vehicle vehicle, [Service] IUserRepository users, CancellationToken ct) =>
         await users.FindByIdAsync(vehicle.OwnerId, ct) is { } owner ? UserRef.From(owner) : null;
 
+    /// <summary>Who made its last change that counted (see <c>changedAt</c>, <c>lastChange</c>); null when nobody did (a photo) or no longer exists.</summary>
+    public async Task<UserRef?> GetChangedBy([Parent] Vehicle vehicle, UserRefLoader users, CancellationToken ct) =>
+        vehicle.ChangedById is { } id ? await users.LoadAsync(id, ct) : null;
+
     /// <summary>Address of the vehicle's picture, if it has one.</summary>
     public string? GetPictureUrl([Parent] Vehicle vehicle) => MediaUrls.Image(vehicle.PictureImageId);
 

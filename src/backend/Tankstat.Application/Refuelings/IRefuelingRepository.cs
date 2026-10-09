@@ -26,6 +26,9 @@ public interface IRefuelingRepository
     Task<Refueling?> FindAsync(Guid id, CancellationToken ct);
     Task<Refueling?> FindIncludingDeletedAsync(Guid id, CancellationToken ct);
 
+    /// <summary>The logs with these ids, trashed ones included (what parked sync changes concern), in one query.</summary>
+    Task<IReadOnlyList<Refueling>> ListByIdsIncludingDeletedAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct);
+
     /// <summary>Saves a new log; false when one with its id already existed (a concurrent add with the same client id won).</summary>
     Task<bool> AddAsync(Refueling refueling, CancellationToken ct);
     /// <param name="changes">Readings and costs this update created (they are inserted) or let go of (they are deleted).</param>

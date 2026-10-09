@@ -6,7 +6,8 @@ namespace Tankstat.Infrastructure.Persistence;
 
 /// <summary>
 /// Keeps what devices download for offline use current, in one place: every save of an <see cref="ISynced"/> entity sets its
-/// <c>UpdatedAt</c> (the repositories save detached graphs with <c>Update</c>, so any save counts), and removing one for good leaves a
+/// <c>UpdatedAt</c> (the repositories save detached graphs with <c>Update</c>, so any save counts), a save of a new version also its
+/// <c>ChangedAt</c> (who and what the entity stamped itself), and removing one for good leaves a
 /// <see cref="Tombstone"/> in the same save. Updates and deletes are conditional on the version the entity was loaded with (a concurrency
 /// token), so two changes made from the same version cannot both be saved. Writes that bypass the change tracker (<c>ExecuteUpdate</c>,
 /// <c>ExecuteDelete</c>) set the column or write the tombstones themselves.
@@ -55,9 +56,12 @@ public sealed class SyncInterceptor(TimeProvider clock) : SaveChangesInterceptor
             {
                 case EntityState.Added:
                     entry.Property(e => e.UpdatedAt).CurrentValue = now;
+                    entry.Property(e => e.ChangedAt).CurrentValue = now;
                     break;
                 case EntityState.Modified:
                     entry.Property(e => e.UpdatedAt).CurrentValue = now;
+                    // A new version (an edit, a trash, ...), not a save of what does not count (the consumption, the picture).
+                    if (entry.Entity.Version != entry.Entity.SavedVersion) entry.Property(e => e.ChangedAt).CurrentValue = now;
                     // A conditional write: only if the stored row still has the version this entity was loaded with (the repositories
                     // save detached entities, so EF's own original value would be the new one).
                     entry.Property(e => e.Version).OriginalValue = entry.Entity.SavedVersion;

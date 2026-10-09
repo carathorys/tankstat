@@ -205,9 +205,13 @@ type Expense {
   reviewState: ReviewState!
   version: Int!
   updatedAt: DateTime!
+  changedAt: DateTime
+  changedById: UUID
+  lastChange: EntityChange
   canEdit: Boolean! @cost(weight: "10")
   canDelete: Boolean! @cost(weight: "10")
   createdBy: UserRef @cost(weight: "10")
+  changedBy: UserRef @cost(weight: "10")
   vehicle: Vehicle @cost(weight: "10")
   photos: [LogPhotoInfo!]! @cost(weight: "10")
   schedules: [RecurringRef!]! @cost(weight: "10")
@@ -416,6 +420,10 @@ type RecurringExpenseInfo {
   version: Int!
   updatedAt: DateTime!
   status: RecurrenceStatusInfo!
+  changedAt: DateTime
+  changedById: UUID
+  lastChange: EntityChange
+  changedBy: UserRef @cost(weight: "10")
 }
 
 type RecurringRef {
@@ -444,9 +452,13 @@ type Refueling {
   pricePerUnit: Decimal
   version: Int!
   updatedAt: DateTime!
+  changedAt: DateTime
+  changedById: UUID
+  lastChange: EntityChange
   canEdit: Boolean! @cost(weight: "10")
   canDelete: Boolean! @cost(weight: "10")
   createdBy: UserRef @cost(weight: "10")
+  changedBy: UserRef @cost(weight: "10")
   vehicle: Vehicle @cost(weight: "10")
   photos: [LogPhotoInfo!]! @cost(weight: "10")
 }
@@ -475,8 +487,10 @@ type SyncChangeInfo {
   resolvedAt: DateTime
   entityId: UUID
   version: Int
+  base: String
   submittedBy: UserRef @cost(weight: "10")
   vehicle: SyncVehicleRef @cost(weight: "10")
+  current: SyncCurrent @cost(weight: "10")
   canResolve: Boolean! @cost(weight: "10")
 }
 
@@ -486,6 +500,19 @@ type SyncChangeResultInfo {
   entityId: UUID
   version: Int
   reason: SyncReasonInfo
+}
+
+type SyncCurrent {
+  state: SyncTargetState!
+  version: Int!
+  changedAt: DateTime
+  changedById: UUID
+  lastChange: EntityChange
+  vehicle: Vehicle
+  refueling: Refueling
+  expense: Expense
+  schedule: RecurringExpenseInfo
+  changedBy: UserRef @cost(weight: "10")
 }
 
 type SyncReasonArg {
@@ -563,9 +590,13 @@ type Vehicle {
   isDeleted: Boolean!
   version: Int!
   updatedAt: DateTime!
+  changedAt: DateTime
+  changedById: UUID
+  lastChange: EntityChange
   canEdit: Boolean! @cost(weight: "10")
   logAccess: AccessLevel! @cost(weight: "10")
   owner: UserRef @cost(weight: "10")
+  changedBy: UserRef @cost(weight: "10")
   pictureUrl: String
   refuelingCount: Int! @cost(weight: "10")
   expenseCount: Int! @cost(weight: "10")
@@ -677,6 +708,7 @@ input ChangeInput {
   removeRefuelingPhoto: RemoveLogPhotoInput
   addExpensePhoto: AddLogPhotoInput
   removeExpensePhoto: RemoveLogPhotoInput
+  base: String
 }
 
 input ChangePasswordInput {
@@ -793,6 +825,7 @@ input ResolveSyncChangeInput {
   id: UUID!
   action: SyncResolveAction!
   change: ChangeInput
+  restoreFirst: Boolean! = false
 }
 
 input SaveChartInput {
@@ -957,6 +990,15 @@ enum DocumentKind {
   FUEL_RECEIPT
   EXPENSE_RECEIPT
   UNKNOWN
+}
+
+enum EntityChange {
+  CREATED
+  EDITED
+  TRASHED
+  RESTORED
+  DONE
+  FILLED_FROM_PHOTO
 }
 
 enum ExpenseSortField {
@@ -1129,6 +1171,11 @@ enum SyncChangeStatus {
 enum SyncResolveAction {
   APPLY
   DISCARD
+}
+
+enum SyncTargetState {
+  LIVE
+  TRASHED
 }
 
 enum UserDataDisposition {

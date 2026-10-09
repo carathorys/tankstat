@@ -70,6 +70,15 @@ public sealed class RecurringExpense : IOwned, ISynced
     /// <summary>When it was last saved (set by the persistence layer, see <see cref="ISynced"/>): a device that keeps a copy downloads it again.</summary>
     public DateTimeOffset UpdatedAt { get; private set; }
 
+    /// <inheritdoc cref="ISynced.ChangedAt"/>
+    public DateTimeOffset? ChangedAt { get; private set; }
+
+    /// <inheritdoc cref="ISynced.ChangedById"/>
+    public Guid? ChangedById { get; private set; }
+
+    /// <inheritdoc cref="ISynced.LastChange"/>
+    public EntityChange? LastChange { get; private set; }
+
     /// <summary>The version it was loaded with, before this instance counted any save: the save is made only if nobody saved it meanwhile.</summary>
     public int SavedVersion => _loadedVersion ?? Version;
 
@@ -77,10 +86,11 @@ public sealed class RecurringExpense : IOwned, ISynced
 
     void ISynced.Saved() => _loadedVersion = null;
 
-    private void Bump()
+    private void Bump(EntityChange what, Guid? by)
     {
         _loadedVersion ??= Version;
         Version++;
+        (LastChange, ChangedById) = (what, by);
     }
 
     Guid ISynced.SyncVehicleId => VehicleId;
@@ -94,26 +104,28 @@ public sealed class RecurringExpense : IOwned, ISynced
         int? intervalMonths, long? intervalDistance, DateOnly lastDoneDate, long? lastDoneOdometer, int warnDays, long warnDistance, DateTimeOffset createdAt,
         Guid? id = null)
     {
-        var item = new RecurringExpense { Id = EntityId.OrNew(id), Version = 1, OwnerId = ownerId, CreatedById = createdById, VehicleId = vehicleId, CreatedAt = createdAt };
+        var item = new RecurringExpense { Id = EntityId.OrNew(id), Version = 1, OwnerId = ownerId, CreatedById = createdById, VehicleId = vehicleId, CreatedAt = createdAt,
+            LastChange = EntityChange.Created, ChangedById = createdById };
         item.Apply(title, category, note, kind, intervalMonths, intervalDistance, lastDoneDate, lastDoneOdometer, warnDays, warnDistance);
         return item;
     }
 
+    /// <param name="by">Who changed it (see <see cref="ChangedById"/>).</param>
     public void Update(
         string title, string? category, string? note, RecurrenceKind kind, int? intervalMonths, long? intervalDistance,
-        DateOnly lastDoneDate, long? lastDoneOdometer, int warnDays, long warnDistance)
+        DateOnly lastDoneDate, long? lastDoneOdometer, int warnDays, long warnDistance, Guid? by = null)
     {
         Apply(title, category, note, kind, intervalMonths, intervalDistance, lastDoneDate, lastDoneOdometer, warnDays, warnDistance);
-        Bump();
+        Bump(EntityChange.Edited, by);
     }
 
     /// <summary>Starts the next interval from the day (and odometer) it was done.</summary>
-    public void MarkDone(DateOnly date, long? odometer)
+    public void MarkDone(DateOnly date, long? odometer, Guid? by = null)
     {
         CheckDone(date, odometer);
         LastDoneDate = date;
         LastDoneOdometer = odometer ?? LastDoneOdometer;
-        Bump();
+        Bump(EntityChange.Done, by);
     }
 
     /// <summary>
