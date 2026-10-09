@@ -87,6 +87,20 @@ public class ImportApiTests : IDisposable
     }
 
     [Fact]
+    public async Task ThePreview_SaysWhichRowWasSkippedAndWhy_WithTheArgumentsToWordIt()
+    {
+        var alice = await Alice();
+        var token = await Token(await Upload(alice, "fuelio", Sample.Replace("\"2026-07-11 18:37\"", "\"not-a-date\"")));
+
+        var preview = (await alice.Gql("query($t: String!) { importPreview(token: $t) { fuelRows issues { section row key args } } }", new { t = token })).Data().GetProperty("importPreview");
+
+        Assert.Equal(1, preview.GetProperty("fuelRows").GetInt32());
+        var issue = Assert.Single(preview.GetProperty("issues").EnumerateArray());
+        Assert.Equal(("log", 2, "import.badDate"), (issue.GetProperty("section").GetString(), issue.GetProperty("row").GetInt32(), issue.GetProperty("key").GetString()));
+        Assert.Equal("not-a-date", issue.GetProperty("args").GetProperty("value").GetString());
+    }
+
+    [Fact]
     public async Task ImportingAgain_IntoTheSameVehicle_ReportsAndSkipsDuplicates()
     {
         var alice = await Alice();

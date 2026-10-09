@@ -145,6 +145,115 @@ public class FuelioCsvParserTests
         Assert.Equal(["", "x", ""], rows[1]);
     }
 
+    /// <summary>One section of an export: its marker line, its header and its rows.</summary>
+    private static string Section(string name, string header, params string[] rows) => $"\"## {name}\"\n{header}\n{string.Join("\n", rows)}\n";
+
+    [Theory]
+    [InlineData("0", "0", "100", DistanceUnit.Kilometers, VolumeUnit.Liters, FuelType.Petrol)]
+    [InlineData("1", "1", "310", DistanceUnit.Miles, VolumeUnit.UsGallons, FuelType.Lpg)]
+    [InlineData("2", "2", "200", null, VolumeUnit.ImperialGallons, FuelType.Diesel)]
+    [InlineData("7", "9", "500", null, null, null)] // values Fuelio may add later: left for the person to choose
+    [InlineData("", "", "none", null, null, null)]
+    public void ReadsTheUnitsAndFuelTypesFuelioWrites_AndLeavesTheRestOpen(string dist, string fuel, string tank, DistanceUnit? distance, VolumeUnit? volume, FuelType? type)
+    {
+        var csv = Section("Vehicle", "Name,DistUnit,FuelUnit,Tank1Type", $"Car,{dist},{fuel},{tank}") + Section("Log", "Data,Odo,Fuel,Price");
+
+        var vehicle = Parse(csv).Vehicle!;
+
+        Assert.Equal((distance, volume, type), (vehicle.Distance, vehicle.Volume, vehicle.FuelType));
+    }
+
+    [Fact]
+    public void AnExportWithOnlyOtherCosts_HasNoVehicleAndNoFillUps()
+    {
+        var batch = Parse(Section("Costs", "CostTitle,Date,Cost", "Parking,2026-01-02,5"));
+
+        Assert.Null(batch.Vehicle);
+        Assert.Empty(batch.FuelLogs);
+        Assert.Equal("Parking", Assert.Single(batch.Expenses).Title);
+    }
+
+    [Fact]
+    public void ReportsEveryKindOfBadFillUp_NamingTheField()
+    {
+        var csv = Section("Log", "Data,Odo,Fuel,Price",
+            ",100,10,1000", // no date
+            "2026-01-02,abc,10,1000",
+            "2026-01-03,-5,10,1000",
+            "2026-01-04,100,,1000", // no volume
+            "2026-01-05,100,10,abc",
+            "2026-01-06,100,10,-1",
+            "2026-01-07,100,10,0"); // a free fill-up is still one
+
+        var batch = Parse(csv);
+
+        Assert.Equal(7, Assert.Single(batch.FuelLogs).SourceRow);
+        Assert.Equal(
+            [("import.badDate", ""), ("import.badNumber", "odometer"), ("import.badNumber", "odometer"), ("import.badNumber", "volume"), ("import.badNumber", "price"), ("import.badNumber", "price")],
+            batch.Issues.Select(i => (i.Key, (string)i.Args["field"]!)));
+        Assert.Equal([1, 2, 3, 4, 5, 6], batch.Issues.Select(i => i.Row));
+        Assert.All(batch.Issues, i => Assert.Equal("log", i.Section));
+    }
+
+    [Fact]
+    public void ReportsBadCosts_AndNamesACategoryOnlyWhenTheExportDefinesIt()
+    {
+        var csv = Section("CostCategories", "CostTypeID,Name", "1,Service", ",Nameless", "2,") +
+            Section("Costs", "CostTitle,Date,Odo,CostTypeID,Cost",
+                "Wash,2026-01-02,0,9,10", // a category the export does not define
+                "Toll,2026-01-03,0,,5", // no category at all
+                "Tax,2026-01-04,0,2,7", // a category without a name
+                ",2026-01-05,0,9,7", // no title, and no category to stand in for it
+                "Fee,2026-01-06,0,1,abc",
+                "Fee,2026-01-07,0,1,-3",
+                "Oil,2026-01-08,,1,20"); // the odometer left empty: not noted
+
+        var batch = Parse(csv);
+
+        Assert.Equal([("Wash", null), ("Toll", null), ("Tax", null), ("Oil", "Service")], batch.Expenses.Select(e => (e.Title, e.Category)));
+        Assert.Null(batch.Expenses[^1].Odometer);
+        Assert.Equal(["import.titleMissing", "import.badNumber", "import.badNumber"], batch.Issues.Select(i => i.Key));
+        Assert.Equal([4, 5, 6], batch.Issues.Select(i => i.Row));
+        Assert.Equal("", batch.Issues[0].Args["value"]); // nothing to quote
+        Assert.Equal("cost", batch.Issues[1].Args["field"]);
+    }
+
+    [Fact]
+    public void ReadsTemplates_ThatLackATitleOrADate_AsFarAsTheyCanBeRead()
+    {
+        var csv = Section("CostCategories", "CostTypeID,Name", "1,Service") +
+            Section("Costs", "CostTitle,Date,Odo,CostTypeID,isTemplate,RepeatMonths,RepeatOdo,RemindDate,RemindOdo",
+                ",2026-01-01,100,9,1,12,0,2011-01-01,0", // no title, and a category the export does not define: skipped
+                ",2026-01-01,100,1,1,12,0,2011-01-01,0", // no title: its category names it
+                "Inspection,bad,100,,1,12,0,2011-01-01,0", // no reminder date and no date of its own: nothing to count from
+                "Inspection,bad,100,,1,12,0,2027-05-01,0", // a reminder date: one interval before it
+                "Chain,2026-02-01,0,,1,0,5000,,3000"); // by distance, with a reminder below one interval and no odometer of its own
+
+        var batch = Parse(csv);
+
+        Assert.Equal(
+            [
+                new ImportedRecurring(2, "Service", "Service", null, RecurrenceKind.Time, 12, null, new DateOnly(2026, 1, 1), 100),
+                new ImportedRecurring(4, "Inspection", null, null, RecurrenceKind.Time, 12, null, new DateOnly(2026, 5, 1), 100),
+                new ImportedRecurring(5, "Chain", null, null, RecurrenceKind.Odometer, null, 5000, new DateOnly(2026, 2, 1), null),
+            ],
+            batch.Recurring);
+        Assert.Equal([1, 3], batch.Issues.Select(i => i.Row));
+        Assert.All(batch.Issues, i => Assert.Equal("import.templateSkipped", i.Key));
+    }
+
+    [Fact]
+    public void ATitleLongerThanTheAppTakes_IsCut()
+    {
+        var title = new string('t', 300);
+        var csv = Section("Costs", "CostTitle,Date,Cost,isTemplate,RepeatMonths", $"{title},2026-01-02,5,0,0", $"{title},2026-01-02,5,1,12");
+
+        var batch = Parse(csv);
+
+        Assert.Equal(Expense.MaxTitleLength, Assert.Single(batch.Expenses).Title.Length);
+        Assert.Equal(RecurringExpense.MaxTitleLength, Assert.Single(batch.Recurring).Title.Length);
+    }
+
     [Fact]
     public void ReadsAFillUpMarkedAsFollowingAMissedOne()
     {

@@ -1,10 +1,26 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql } from 'msw'
+import { graphql, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
 import { server } from '../support/server.ts'
-import { adminSession, fakeExpenseBackend, fakeLogBackend, fakeRecurring, fakeRecurringBackend, fakeSummary, fakeVehicle, fakeVehicleBackend, healthHandler, person, renderWithApollo, sessionHandler, stubViewport } from '../support/mocks.tsx'
+import {
+  adminSession,
+  fakeExpenseBackend,
+  fakeLogBackend,
+  fakeRecurring,
+  fakeRecurringBackend,
+  fakeSummary,
+  fakeVehicle,
+  fakeVehicleBackend,
+  gqlError,
+  healthHandler,
+  person,
+  renderWithApollo,
+  sessionHandler,
+  silenceConsoleError,
+  stubViewport,
+} from '../support/mocks.tsx'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
@@ -275,6 +291,66 @@ it('loads the next page by itself when the end of the list scrolls into view', a
 
   await screen.findByRole('link', { name: 'Open Car 30' })
   expect(cardCount()).toBe(30)
+})
+
+it('asks for the next page once, even when the end of the list comes into view again while it is on its way', async () => {
+  let reveal: () => void = () => {}
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      constructor(callback: (entries: { isIntersecting: boolean }[]) => void) {
+        reveal = () => callback([{ isIntersecting: true }])
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
+  const { state } = setup(fleet(30))
+  await screen.findByRole('link', { name: 'Open Car 01' })
+  let answer!: () => void
+  const held = new Promise<void>((resolve) => (answer = resolve))
+  const first = graphql.query('Welcome', async ({ variables }) => {
+    if (Number(variables.skip) === 0) return undefined // the first page as always
+    state.requests.Welcome.push(variables)
+    await held
+    const page = state.vehicles.slice(24, 48).map((v) => ({ ...v, recurring: [] }))
+    return HttpResponse.json({ data: { myVehicles: page, myVehicleCount: 30, vehicleTotal: 30 } })
+  })
+  server.use(first)
+
+  reveal()
+  await waitFor(() => expect(state.requests.Welcome.filter((r) => r.skip === 24)).toHaveLength(1))
+  await waitFor(() => expect(screen.getByRole('button', { name: /Show more vehicles/ })).toBeDisabled()) // loading
+  reveal() // scrolled into view again while the page is loading
+  answer()
+
+  await screen.findByRole('link', { name: 'Open Car 30' })
+  expect(state.requests.Welcome.filter((r) => r.skip === 24)).toHaveLength(1)
+})
+
+it('says when the next page cannot be loaded, and Show more tries again', async () => {
+  silenceConsoleError()
+  const { ui, state } = setup(fleet(30))
+  await screen.findByRole('link', { name: 'Open Car 01' })
+  let refuse = true
+  server.use(
+    graphql.query('Welcome', ({ variables }) => {
+      if (Number(variables.skip) === 0 || !refuse) return undefined
+      state.requests.Welcome.push(variables)
+      return HttpResponse.json(gqlError('Busy', 'INTERNAL_ERROR', 'server.busy'))
+    }),
+  )
+
+  await ui.click(screen.getByRole('button', { name: 'Show more vehicles' }))
+
+  expect(await screen.findByRole('alert')).toBeInTheDocument()
+  expect(cardCount()).toBe(24)
+  refuse = false
+  await ui.click(screen.getByRole('button', { name: 'Show more vehicles' }))
+
+  await screen.findByRole('link', { name: 'Open Car 30' })
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })
 
 it('searches by name on the server, and everything is back when the search is cleared', async () => {

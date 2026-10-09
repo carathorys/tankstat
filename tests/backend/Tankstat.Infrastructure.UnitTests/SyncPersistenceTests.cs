@@ -263,6 +263,50 @@ public class ConditionalWriteAndLedgerTests
     }
 
     [Fact]
+    public async Task ASynchronousSave_IsStampedAndConditional_AndLeavesATombstone_LikeAnAsynchronousOne()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero));
+        await using var db = new TestDatabase(services: s => s.AddSingleton<TimeProvider>(clock));
+        var factory = db.Get<IDbContextFactory<AppDbContext>>();
+        var car = TestData.Vehicle(Owner);
+        using (var context = factory.CreateDbContext())
+        {
+            context.Vehicles.Add(car);
+            context.SaveChanges();
+        }
+        using var mine = factory.CreateDbContext();
+        using var theirs = factory.CreateDbContext();
+        var myCopy = mine.Vehicles.Single(v => v.Id == car.Id);
+        var theirCopy = theirs.Vehicles.Single(v => v.Id == car.Id);
+
+        clock.Advance(TimeSpan.FromMinutes(5));
+        theirCopy.Update("Theirs", null, FuelType.Petrol, MeasurementUnits.Metric);
+        theirs.SaveChanges();
+        theirCopy.Update("Theirs again", null, FuelType.Petrol, MeasurementUnits.Metric); // its own save is not "someone else"
+        theirs.SaveChanges();
+        myCopy.Update("Mine", null, FuelType.Petrol, MeasurementUnits.Metric);
+        var e = Assert.Throws<Tankstat.Domain.DomainException>(() => mine.SaveChanges());
+
+        Assert.Equal("sync.versionMismatch", e.Key);
+        using (var context = factory.CreateDbContext())
+        {
+            var stored = context.Vehicles.AsNoTracking().Single(v => v.Id == car.Id);
+            Assert.Equal(("Theirs again", 3, clock.GetUtcNow()), (stored.Name, stored.Version, stored.UpdatedAt));
+            context.Vehicles.Remove(context.Vehicles.Single(v => v.Id == car.Id));
+            context.SaveChanges();
+        }
+        using (var context = factory.CreateDbContext())
+        {
+            var tombstone = context.Tombstones.Single(t => t.EntityId == car.Id);
+            Assert.Equal((OfflineEntityType.Vehicle, clock.GetUtcNow()), (tombstone.EntityType, tombstone.PurgedAt));
+
+            // Another entity's lost row stays its own business: not turned into a version mismatch.
+            context.Remove(OfflineSettings.Create(Guid.NewGuid(), OfflineWindow.Default, clock.GetUtcNow()));
+            Assert.Throws<DbUpdateConcurrencyException>(() => context.SaveChanges());
+        }
+    }
+
+    [Fact]
     public async Task AnEntitySavedTwiceByOneInstance_IsNotRefusedByItsOwnFirstSave()
     {
         await using var db = new TestDatabase();

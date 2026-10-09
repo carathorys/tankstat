@@ -3,7 +3,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Tankstat.Application.Access;
 using Tankstat.Application.Expenses;
 using Tankstat.Application.Recurring;
+using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
+using Tankstat.Domain.Users;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
 using Tankstat.Domain.Recurring;
@@ -167,6 +169,39 @@ public class ExpenseRepositoryTests
         Assert.Equal(expected, page.Select(e => e.Title));
         var second = await db.Get<IExpenseRepository>().ListForVehicleAsync(car.Id, new ExpenseQuery(field, direction, Skip: 1, Take: 1), default);
         Assert.Equal(expected[1], Assert.Single(second).Title);
+    }
+
+    [Fact]
+    public async Task TheTrash_IsSortedByWhoLoggedIt_ByVehicle_CaseInsensitively_AndByWhenItWasTrashed()
+    {
+        await using var db = new TestDatabase();
+        var users = db.Get<IUserRepository>();
+        var zoe = User.CreateLocal("zoe@x.co", "Zoe", false);
+        var amy = User.CreateLocal("amy@x.co", "amy", false);
+        await users.AddAsync(zoe, default);
+        await users.AddAsync(amy, default);
+        var van = TestData.Vehicle(Owner, "Van");
+        var bus = TestData.Vehicle(Owner, "bus");
+        await db.Get<IVehicleRepository>().AddAsync(van, default);
+        await db.Get<IVehicleRepository>().AddAsync(bus, default);
+        var repo = db.Get<IExpenseRepository>();
+        var trashed = new DateTimeOffset(2026, 9, 10, 8, 0, 0, TimeSpan.Zero);
+        foreach (var (title, car, by, hoursLater) in new[] { ("one", van, amy, 2), ("two", bus, zoe, 1) })
+        {
+            var expense = Expense.Create(Owner, by.Id, car.Id, Day, title, null, Cost.Create(Owner, car.Id, Day, 10, "EUR"), null);
+            expense.MarkDeleted(trashed.AddHours(hoursLater));
+            await repo.AddAsync(expense, default);
+        }
+
+        var byCreator = await repo.ListDeletedAsync(OwnerScope.All, new ExpenseQuery(ExpenseSortField.CreatedBy, SortDirection.Asc), default);
+        var byVehicle = await repo.ListDeletedAsync(OwnerScope.All, new ExpenseQuery(ExpenseSortField.Vehicle, SortDirection.Asc), default);
+        var byVehicleDown = await repo.ListDeletedAsync(OwnerScope.All, new ExpenseQuery(ExpenseSortField.Vehicle, SortDirection.Desc), default);
+
+        Assert.Equal(["one", "two"], byCreator.Select(e => e.Title)); // amy before Zoe
+        Assert.Equal(["two", "one"], byVehicle.Select(e => e.Title)); // bus before Van
+        Assert.Equal(["one", "two"], byVehicleDown.Select(e => e.Title));
+        var byTrashed = await repo.ListDeletedAsync(OwnerScope.All, new ExpenseQuery(ExpenseSortField.DeletedAt, SortDirection.Asc), default);
+        Assert.Equal(["two", "one"], byTrashed.Select(e => e.Title)); // trashed first
     }
 
     [Fact]

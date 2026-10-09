@@ -1,6 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Claims;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Tankstat.Api.Auth;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 
@@ -107,6 +110,75 @@ public sealed class SessionTokenTests : IDisposable
         Assert.Equal(HttpStatusCode.Unauthorized, thief.StatusCode);
         Assert.Contains("auth.unauthenticated", await thief.Content.ReadAsStringAsync());
         Assert.Equal(HttpStatusCode.Unauthorized, (await Post(c, "/auth/token/refresh")).StatusCode);
+    }
+
+    [Fact]
+    public async Task TabsRefreshingWithTheSameToken_WithinTheGrace_AllGetTheCurrentToken_WithoutANewRotation()
+    {
+        var (_, first) = await SignIn();
+        var rotated = await Post(WithoutCookies(), "/auth/token/refresh", first); // one tab trades the token in
+        var current = RefreshToken(rotated);
+
+        _clock.Advance(TimeSpan.FromSeconds(30)); // another tab, a moment later, with the token the first one traded in
+        var late = await Post(WithoutCookies(), "/auth/token/refresh", first);
+
+        Assert.Equal((HttpStatusCode.NoContent, HttpStatusCode.NoContent), (rotated.StatusCode, late.StatusCode));
+        Assert.NotEqual(first, current);
+        Assert.Equal(current, RefreshToken(late)); // the same secret again: the tabs converge on one token
+        Assert.Equal(HttpStatusCode.NoContent, (await Post(WithoutCookies(), "/auth/token/refresh", current)).StatusCode);
+    }
+
+    [Fact]
+    public async Task ASessionIsNamedByItsBrowserAndSystem_NeverByTheRawUserAgent()
+    {
+        var c = _app.NewClient();
+        c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0");
+        await c.LoginAs(Admin, AdminPassword);
+
+        var body = await c.Gql(MySessions);
+
+        Assert.Equal("Firefox on Linux", Assert.Single(body.Data().GetProperty("mySessions").EnumerateArray()).GetProperty("client").GetString());
+        Assert.DoesNotContain("rv:131.0", body.GetRawText());
+    }
+
+    [Theory]
+    [InlineData("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36 Edg/120.0", "Edge on Windows")]
+    [InlineData("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36 OPR/106.0", "Opera on macOS")]
+    [InlineData("Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0", "Firefox on Linux")]
+    [InlineData("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36", "Chrome on Android")]
+    [InlineData("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/120.0 Mobile/15E148 Safari/604.1", "Chrome on iOS")]
+    [InlineData("Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", "Safari on iOS")]
+    [InlineData("Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15", "Safari on macOS")]
+    [InlineData("Firefox/131.0", "Firefox")] // a browser on a system it does not name
+    [InlineData("SomeApp/1.0 (Windows NT 10.0)", "Windows")] // a system, and no browser it knows
+    [InlineData("curl/8.5.0", null)]
+    [InlineData(" ", null)]
+    [InlineData(null, null)]
+    public void ClientLabel_IsACoarseNameForTheDevice(string? userAgent, string? label) => Assert.Equal(label, ClientLabel.Of(userAgent));
+
+    [Fact]
+    public void AStoredSecret_CannotBeReadBack_OnceTheKeyRingIsReplaced()
+    {
+        var before = new DataProtectionSecretProtector(new EphemeralDataProtectionProvider());
+        var after = new DataProtectionSecretProtector(new EphemeralDataProtectionProvider());
+
+        var stored = before.Protect("the-secret");
+
+        Assert.NotEqual("the-secret", stored);
+        Assert.Equal("the-secret", before.Unprotect(stored));
+        Assert.Null(after.Unprotect(stored)); // the device signs in again, nothing throws
+    }
+
+    [Fact]
+    public void TheSessionOfAnAccessCookie_IsItsSidClaim_AndNoneForACookieFromBeforeSessions()
+    {
+        var id = Guid.NewGuid();
+        ClaimsPrincipal With(params Claim[] claims) => new(new ClaimsIdentity(claims, "test"));
+
+        Assert.Equal(id, SessionCookies.SessionId(With(new Claim(SessionClaims.SessionClaim, id.ToString()))));
+        Assert.Null(SessionCookies.SessionId(With(new Claim(SessionClaims.SessionClaim, "not-a-guid"))));
+        Assert.Null(SessionCookies.SessionId(With()));
+        Assert.Null(SessionCookies.SessionId(null));
     }
 
     [Fact]

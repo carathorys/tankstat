@@ -133,6 +133,48 @@ public class ExpenseTests
     }
 
     [Fact]
+    public void AnExpenseWithoutItsAmount_HasNoCurrency_GoesToTheTrashAndBack_AndGetsItsAmountFromAPerson()
+    {
+        var expense = Expense.Create(Owner, Owner, Car, Day, "Oil", null, null, null, readingPhotos: true);
+        Assert.Equal((null, null), (expense.Amount, expense.Currency));
+
+        expense.MarkDeleted(DateTimeOffset.UtcNow);
+        expense.Restore();
+        Assert.False(expense.IsDeleted);
+
+        var changes = expense.Update(Day, "Oil", null, 45, "EUR", null, null);
+
+        Assert.Same(expense.Cost, changes.CreatedCost);
+        Assert.Equal((45m, "EUR", expense.Cost!.Id), (expense.Amount, expense.Currency, expense.CostId));
+        Assert.Equal(ReviewState.None, expense.ReviewState);
+        Assert.Equal(LinkedChanges.None, expense.FillFromPhoto(new PhotoValues(4321, null, 99, "EUR"))); // no longer waiting for a photo
+        Assert.False(expense.FinishReading(readingPhotos: false)); // a reading that ends now changes nothing either
+        Assert.Equal(ReviewState.None, expense.ReviewState);
+        Assert.Equal((45m, (long?)null), (expense.Amount, expense.Odometer));
+    }
+
+    [Fact]
+    public void APhotoNeverReplacesTheOdometerAPersonNoted_NorFillsAnExpenseInTheTrash()
+    {
+        var reading = OdometerReading.Create(Owner, Car, Day, 5000);
+        var noted = Expense.Create(Owner, Owner, Car, Day, "Oil", null, null, reading, readingPhotos: true);
+        var trashed = Expense.Create(Owner, Owner, Car, Day, "Oil", null, null, null, readingPhotos: true);
+        trashed.MarkDeleted(DateTimeOffset.UtcNow);
+
+        var filled = noted.FillFromPhoto(new PhotoValues(Odometer: 9999, Volume: null, Total: 20, Currency: "EUR"));
+        var nothing = trashed.FillFromPhoto(new PhotoValues(Odometer: 9999, Volume: null, Total: 20, Currency: "EUR"));
+
+        Assert.Equal((5000L, 20m, LogValues.Total), (noted.Odometer, noted.Amount, noted.FilledFromPhoto));
+        Assert.Null(filled.CreatedReading);
+        Assert.Equal(LinkedChanges.None, nothing);
+        Assert.Null(trashed.Cost);
+    }
+
+    [Fact]
+    public void ATitleIsRequired_EvenWhenNoneIsGivenAtAll() =>
+        Assert.Equal("expense.titleRequired", Assert.Throws<DomainException>(() => Make(title: null!)).Key);
+
+    [Fact]
     public void AnExpenseWithItsAmount_WaitsOnlyForAnOptionalOdometer_AndIsDoneWithoutOne()
     {
         var cost = Cost.Create(Owner, Car, Day, 30, "EUR");

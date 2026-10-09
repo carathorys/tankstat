@@ -160,6 +160,27 @@ public class OpenAiTrafficHandlerTests
     }
 
     [Fact]
+    public async Task AKeyWithoutAScheme_IsHiddenWhole_APhotoInAList_IsItsSize_AndAnAnswerOfNull_IsWrittenAsItCame()
+    {
+        var (client, log, _) = Setup(_ => Task.FromResult(Json(HttpStatusCode.OK, "null")));
+        var request = new HttpRequestMessage(HttpMethod.Post, "http://model:1234/v1/chat/completions")
+        {
+            Content = new StringContent($$"""{ "images": [ "data:image/png;base64,{{new string('A', 2000)}}", "data:text/plain,hello", 5 ] }""", Encoding.UTF8, "application/json"),
+        };
+        request.Headers.TryAddWithoutValidation("Authorization", Key); // a bare key, as some servers want it
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Contains("Authorization: ***", Value(log.Entries[0], "Headers"));
+        var body = Value(log.Entries[0], "Body");
+        Assert.Contains("\"data:image/png;base64,[2 KB]\"", body);
+        Assert.Contains("\"data:text/plain,hello\"", body); // a data URL, but no photo in it
+        Assert.DoesNotContain("AAAA", body);
+        Assert.Equal("null", Value(log.Entries[1], "Body"));
+        Assert.False(log.Mentions(Key));
+    }
+
+    [Fact]
     public async Task AFailedCall_IsWrittenWithItsTime_AndStillThrown()
     {
         var (client, log, _) = Setup(_ => throw new HttpRequestException($"Connection refused (model:1234) {Key}"));

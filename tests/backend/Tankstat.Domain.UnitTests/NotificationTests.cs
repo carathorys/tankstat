@@ -48,6 +48,18 @@ public class NotificationTests
         Assert.Throws<ArgumentException>(() => Notification.Create(Recipient, NotificationKind.RecurringDueSoon, Oil, null, "c", Args(("t", new string('x', 201))), null, Now));
         var many = Enumerable.Range(0, 11).Select(i => ($"a{i}", "x")).ToArray();
         Assert.Throws<ArgumentException>(() => Notification.Create(Recipient, NotificationKind.RecurringDueSoon, Oil, null, "c", Args(many), null, Now));
+        Assert.Throws<ArgumentException>(() => Notification.Create(Recipient, NotificationKind.RecurringDueSoon, Oil, null, new string('c', Notification.MaxOccurrenceLength + 1), Args(), null, Now));
+        Assert.Throws<ArgumentException>(() => Notification.Create(Recipient, NotificationKind.LogAccessChanged, Car, null, "c", Args(), new string('b', Notification.MaxValueLength + 1), Now));
+        Assert.Throws<ArgumentException>(() => Notification.Create(Recipient, NotificationKind.RecurringDueSoon, Oil, null, "c", Args((" ", "x")), null, Now));
+        Assert.Throws<ArgumentException>(() => Notification.Create(Recipient, NotificationKind.RecurringDueSoon, Oil, null, "c", Args((new string('n', Notification.MaxArgNameLength + 1), "x")), null, Now));
+    }
+
+    [Fact]
+    public void EveryKind_HasATopic_AndAnUnknownOneIsRefused()
+    {
+        Assert.All(Enum.GetValues<NotificationKind>(), kind => Assert.True(Enum.IsDefined(NotificationKinds.TopicOf(kind))));
+        Assert.Equal(NotificationTopic.LogReview, NotificationKinds.TopicOf(NotificationKind.LogNotFilled));
+        Assert.Throws<ArgumentOutOfRangeException>(() => NotificationKinds.TopicOf((NotificationKind)99));
     }
 
     [Fact]
@@ -127,6 +139,17 @@ public class NotificationTests
 
         Assert.Same(open, Assert.IsType<NotificationChange.Update>(change).Notification);
         Assert.Equal(("DELETE", 2, "NONE"), (open.Args["level"], open.Count, open.Before));
+    }
+
+    [Fact]
+    public void AnEventWithoutAValueToCompare_IsAlwaysFoldedIn_NeverTakenForAnUndo()
+    {
+        var open = Added(Decide(new NotificationDraft(Recipient, NotificationKind.VehicleShared, Car, null, Args(("vehicle", "Polo")))));
+
+        var change = Decide(new NotificationDraft(Recipient, NotificationKind.VehicleShared, Car, null, Args(("vehicle", "Golf"))), open);
+
+        Assert.Same(open, Assert.IsType<NotificationChange.Update>(change).Notification);
+        Assert.Equal(("Golf", 2), (open.Args["vehicle"], open.Count));
     }
 
     [Fact]

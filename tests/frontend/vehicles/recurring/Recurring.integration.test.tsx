@@ -10,9 +10,11 @@ import {
   fakeRecurringBackend,
   fakeVehicle,
   fakeVehicleBackend,
+  gqlError,
   healthHandler,
   renderWithApollo,
   sessionHandler,
+  silenceConsoleError,
   stubViewport,
   type FakeRecurring,
 } from '../../support/mocks.tsx'
@@ -359,6 +361,55 @@ it('a schedule that refuses names itself, and nothing is saved', async () => {
   await ui.click(within(dialog).getByRole('button', { name: 'Mark as done' }))
 
   expect(await within(dialog).findByRole('alert')).toHaveTextContent('For Tyres the odometer cannot be lower than 63,000, where it was last done.')
+})
+
+it('a schedule ticked by mistake can be unticked again', async () => {
+  const { ui } = setup()
+  await row('Oil change')
+  const markSelected = () => screen.getByRole('button', { name: /selected as done/ })
+
+  await ui.click(screen.getByRole('checkbox', { name: 'Select Oil change' }))
+  expect(markSelected()).toBeEnabled()
+  await ui.click(screen.getByRole('checkbox', { name: 'Select Oil change' }))
+
+  expect(screen.getByRole('checkbox', { name: 'Select Oil change' })).not.toBeChecked()
+  expect(markSelected()).toBeDisabled()
+
+  await ui.click(screen.getByRole('checkbox', { name: 'Select all recurring expenses' }))
+  await ui.click(screen.getByRole('checkbox', { name: 'Select all recurring expenses' }))
+  expect(markSelected()).toHaveAccessibleName('Mark 0 selected as done')
+})
+
+it('a delete the server refuses says why, and the schedule stays', async () => {
+  silenceConsoleError()
+  const { ui, state } = setup()
+  server.use(graphql.mutation('DeleteRecurringExpense', () => HttpResponse.json(gqlError('Not yours', 'FORBIDDEN', 'auth.forbidden'))))
+  await row('Oil change')
+
+  await ui.click(screen.getByRole('button', { name: 'Delete the recurring expense Oil change' }))
+  await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('You are not allowed to do this.')
+  expect(screen.getByRole('rowheader', { name: /Oil change/ })).toBeInTheDocument()
+  expect(state.items.map((i) => i.id)).toContain('rc1')
+})
+
+it('a schedule whose distance is not known yet is due by its date alone, without a note on how far off it is', async () => {
+  const noReading = fakeRecurring({
+    lastDoneOdometer: null,
+    status: { state: 'UPCOMING', limit: null, dueDate: '2027-01-15', dueOdometer: null, daysLeft: null, distanceLeft: null },
+  })
+  const blank = fakeRecurring({ id: 'rc5', title: 'Wipers', kind: 'TIME', intervalDistance: null, lastDoneOdometer: null, status: { state: 'UPCOMING', limit: null, dueDate: null, dueOdometer: null, daysLeft: null, distanceLeft: null } })
+  const tyres = fakeRecurring({ id: 'rc6', title: 'Tyres', kind: 'ODOMETER', intervalMonths: null, lastDoneOdometer: null, status: { state: 'UPCOMING', limit: null, dueDate: null, dueOdometer: null, daysLeft: null, distanceLeft: null } })
+  setup(fakeVehicle(), [noReading, blank, tyres])
+
+  const oil = within(await row('Oil change'))
+  expect(oil.getByText('Jan 15, 2027')).toBeInTheDocument()
+  expect(oil.getByText('Upcoming')).toBeInTheDocument()
+  expect(oil.queryByText(/^in |overdue|over$|needs an odometer reading/)).not.toBeInTheDocument()
+  const wipers = within(await row('Wipers'))
+  expect(wipers.getAllByRole('cell').map((c) => c.textContent)).toContain('–') // nothing to say when it is due
+  expect(within(await row('Tyres')).getByText('needs an odometer reading')).toBeInTheDocument() // counted by distance alone: it says what it lacks
 })
 
 it('deletes a schedule after a confirmation', async () => {

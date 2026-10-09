@@ -41,6 +41,9 @@ public class HealthReporterTests
     }
 
     [Fact]
+    public void Version_WithNothingToGoBy_IsZero() => Assert.Equal("0.0.0", HealthReporter.VersionOf(null, null));
+
+    [Fact]
     public async Task Report_UptimeTracksClock()
     {
         var clock = new FakeTimeProvider();
