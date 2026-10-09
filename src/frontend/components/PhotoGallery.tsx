@@ -3,7 +3,7 @@ import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
-import { Camera, ImagePlus, RotateCw, Trash2 } from 'lucide-react'
+import { Camera, CloudOff, ImagePlus, RotateCw, Trash2 } from 'lucide-react'
 import { useId, useRef, useState, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ErrorMessage } from '../messages.tsx'
@@ -16,7 +16,11 @@ import { uuidV4 } from '../offline/uuid.ts'
 import { resizeImage } from '../pictures/resizeImage.ts'
 import { deleteImage, LOG_PHOTO_EDGE, logPhotoPath, logPhotosPath, MAX_LOG_PHOTOS, uploadImage, type LogKind, type ReadingPurpose } from '../pictures/upload.ts'
 import { IconAction } from './IconAction.tsx'
+import { visuallyHidden } from './visuallyHidden.ts'
 import type { PhotoQueue } from './usePhotoQueue.ts'
+
+/** A thumbnail's edge, in pixels; each photo's column is as wide. */
+const THUMB = 96
 
 /**
  * The photos of a refueling or expense: thumbnails that open the full picture, "Take photo" (the phone's camera right away) and
@@ -131,10 +135,11 @@ export function PhotoGallery({
           await onChanged() // also shows the ones that did go through when a later one failed
         }
       } else {
-        const failed = await queue.add(list)
-        if (failed !== undefined) throw failed // the photo stays, marked, with a way to try again
+        const { error, kept } = await queue.add(list)
+        if (kept > 0) keptSome.current = true
+        if (error !== undefined) throw error // the photo stays, marked, with a way to try again
       }
-    }, () => (saved ? (keptSome.current ? t('photos.keptAdded') : t('photos.added')) : t('photos.ready')))
+    }, () => (saved ? (keptSome.current ? t('photos.keptAdded') : t('photos.added')) : keptSome.current ? t('photos.keptReady') : t('photos.ready')))
   }
 
   async function removeSaved(imageId: string) {
@@ -195,13 +200,20 @@ export function PhotoGallery({
         <Stack component="ul" direction="row" sx={{ gap: 1.5, flexWrap: 'wrap', listStyle: 'none', p: 0, m: 0 }}>
           {shown.map((photo, index) => (
             <li key={photo.key}>
-              <Stack sx={{ gap: 0.5, alignItems: 'center' }}>
+              {/* As wide as the thumbnail, so the photos sit side by side: a caption wraps instead of widening its photo. */}
+              <Stack sx={{ gap: 0.5, alignItems: 'center', width: THUMB, textAlign: 'center' }}>
                 <a href={photo.url} target="_blank" rel="noreferrer" aria-label={t('photos.open', { n: index + 1 })}>
-                  <Box sx={{ position: 'relative', width: 96, height: 96, overflow: 'hidden', borderRadius: 1 / 2 }}>
+                  <Box sx={{ position: 'relative', width: THUMB, height: THUMB, overflow: 'hidden', borderRadius: 1 / 2 }}>
                     <img src={photo.url} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                     {(photo.state === 'uploading' || photo.reading) && (
                       <Box className="tk-fade" sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'rgba(0, 0, 0, 0.4)', color: 'common.white' }}>
                         <CircularProgress size={24} color="inherit" aria-hidden />
+                      </Box>
+                    )}
+                    {photo.kept && (
+                      // The mark of a photo kept on this device; the note under the list says what it means.
+                      <Box className="tk-fade" sx={{ position: 'absolute', top: 4, right: 4, width: 24, height: 24, borderRadius: '50%', display: 'grid', placeItems: 'center', bgcolor: 'rgba(0, 0, 0, 0.6)', color: 'common.white' }}>
+                        <CloudOff size={14} aria-hidden />
                       </Box>
                     )}
                   </Box>
@@ -212,11 +224,7 @@ export function PhotoGallery({
                   </Typography>
                 )}
                 {photo.state === 'failed' && <Typography variant="caption">{t('photos.uploadFailed')}</Typography>}
-                {photo.kept && (
-                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                    {t('photos.kept')}
-                  </Typography>
-                )}
+                {photo.kept && <span style={visuallyHidden}>{t('photos.kept')}</span>}
                 {photo.reading && (
                   <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                     {t('reading.reading')}
@@ -230,12 +238,14 @@ export function PhotoGallery({
                       tone="primary"
                       disabled={disabled || busy}
                       label={t('photos.retryAria', { n: index + 1 })}
-                      onClick={() =>
+                      onClick={() => {
+                        keptSome.current = false
                         void run(async () => {
-                          const failed = await queue.retry(photo.key)
-                          if (failed !== undefined) throw failed
-                        }, t('photos.ready'))
-                      }
+                          const { error, kept } = await queue.retry(photo.key)
+                          if (kept > 0) keptSome.current = true
+                          if (error !== undefined) throw error
+                        }, () => (keptSome.current ? t('photos.keptReady') : t('photos.ready')))
+                      }}
                     >
                       <RotateCw size={16} aria-hidden />
                     </IconAction>
@@ -261,6 +271,12 @@ export function PhotoGallery({
             </li>
           ))}
         </Stack>
+      )}
+      {shown.some((p) => p.kept) && (
+        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <CloudOff size={14} aria-hidden />
+          {t('photos.keptNote')}
+        </Typography>
       )}
       <div role="status" aria-label={t('a11y.uploadStatus')}>
         {status && <Typography variant="body2">{status}</Typography>}
