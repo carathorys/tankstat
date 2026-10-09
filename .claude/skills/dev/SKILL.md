@@ -1,6 +1,6 @@
 ---
 name: dev
-description: Implement a triaged GitHub issue - refuse one that is not `triaged`, read its handoff and links, branch, fix it with targeted tests while working, the full suite before every commit, a draft PR labelled `WIP` until done, then ready to merge without waiting for CI. Use when asked to implement, fix, work on or pick up an issue (`/dev 80`).
+description: Implement a triaged GitHub issue - refuse one that is not `triaged`, read its handoff and links, work in a fresh git worktree on a branch off the freshly pulled main, targeted tests while working, the full suite before every commit, a draft PR labelled `WIP` until done, then ready to merge without waiting for CI; the worktree stays until the next task replaces it. Use when asked to implement, fix, work on or pick up an issue (`/dev 80`).
 ---
 
 # Implement an issue
@@ -18,9 +18,16 @@ The argument is an issue number.
 - Check the code map against current `main`: triage may predate later changes. Note what moved.
 - If the plan no longer fits, say so before coding and adjust it; record the deviation in the PR and in a comment on the issue.
 
-## 2. Branch
+## 2. A worktree of its own, on a branch off the latest main
 
-`git fetch origin` and branch off `origin/main`: `fix/<kebab>` for a bug, `feature/<kebab>` for a feature (CLAUDE.md or memory may hold stricter naming; follow them). Never work on `main`.
+Every fix, feature or other piece of work gets a **new git worktree**, so the main checkout stays untouched and tasks never mix.
+
+1. **Clear the previous task's worktree first** (see section 8): `git worktree list`; a worktree of a task that is finished (its PR is ready or merged) is removed now, before the new one is made. One with uncommitted changes is never removed without asking.
+2. **The base, fresh from the remote.** By default the latest `main`: `git fetch origin main`. **When the user names another branch** (a stacked PR built on an open one, a release branch), that branch is the base instead: `git fetch origin <base>`, and the PR targets it. Never choose another base on your own.
+3. **Create the worktree with the branch in one go**, from that base, as a sibling folder named after the branch:
+   `git worktree add ../<repo>-<kebab> -b fix/<kebab> origin/<base>` (`feature/<kebab>` for a feature; CLAUDE.md or memory may hold stricter naming; follow them).
+4. **Set the worktree up as the repository needs** (CLAUDE.md: e.g. `mise run install`); a worktree has no `node_modules` or build output of its own.
+5. **Work only inside it:** run every command from the worktree (`cd` into it) and edit files by their absolute path under it. Never edit the main checkout, never work on `main`.
 
 ## 3. Implement
 
@@ -47,4 +54,10 @@ The argument is an issue number.
 
 ## 7. Report
 
-Summarise in chat what was done, what was verified and how, what deviates from the plan, and the PR link, with its state (draft + WIP, or ready).
+Summarise in chat what was done, what was verified and how, what deviates from the plan, and the PR link, with its state (draft + WIP, or ready). Name the worktree that holds the work.
+
+## 8. The worktree afterwards
+
+- **Finished work stays in its worktree for now.** Do not remove it right after the PR is ready: the user may want to look, and the branch may still get review fixes.
+- **Remove it when you start the next issue or task** (section 2, step 1): `git worktree remove ../<repo>-<kebab>` and `git worktree prune`. Only a worktree whose work is finished and committed and pushed; one with uncommitted changes is kept and reported.
+- **A request that is something else entirely** (not the next issue: a question, a quick change elsewhere, an unrelated task): **ask the user first** what to do with the worktree, i.e. keep it for later or remove it, before starting on the new request. Never remove it silently.

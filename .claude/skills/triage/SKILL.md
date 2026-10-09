@@ -1,11 +1,17 @@
 ---
 name: triage
-description: Triage a GitHub issue - understand it, reproduce it, find the cause, write a fix plan another agent can pick up, post it on the issue and label it `triaged`. Use when asked to triage, analyse or investigate an issue (`/triage 80`, "triage the next untriaged issue"). Never implements the fix.
+description: Triage a GitHub issue - claim it with the `triaging` label, understand it, reproduce it, find the cause, write a fix plan another agent can pick up, post it on the issue, label it `triaged` and release the claim. Skips issues another agent is triaging unless the user names one. Use when asked to triage, analyse or investigate an issue (`/triage 80`, "triage the next untriaged issue"). Never implements the fix.
 ---
 
 # Triage an issue
 
-The argument is an issue number, or `next` (pick the oldest open issue without the `triaged` label; say which one you picked and why). Everything you learn goes **on the issue**, so that anyone, human or agent, can start the fix without re-deriving it. The `dev` skill refuses an issue that is not `triaged`.
+The argument is an issue number, or `next` (pick the oldest open issue that has neither the `triaged` nor the `triaging` label; say which one you picked and why). Everything you learn goes **on the issue**, so that anyone, human or agent, can start the fix without re-deriving it. The `dev` skill refuses an issue that is not `triaged`.
+
+## Claiming the issue
+
+- `triaging` means another agent is on it right now. **Skip such issues by default**; take one only when the user names it explicitly (`/triage 80` on an issue labelled `triaging` is such a request; `next` never is).
+- **As soon as you have picked an issue**, before any analysis: `gh issue edit N --add-label triaging`, so no other agent picks it up meanwhile.
+- The label comes off again at the end (step 7), after `triaged` went on. If you abandon the triage, remove it too and say so on the issue.
 
 ## Steps
 
@@ -16,7 +22,7 @@ The argument is an issue number, or `next` (pick the oldest open issue without t
 5. **Plan the fix.** Numbered steps, each with an acceptance criterion; the tests to add (unit / integration / real browser); docs to update; what is out of scope; related issues.
 6. **Write the handoff comment** on the issue, in this order: the problem in one paragraph; verified facts (a table if there are several cases); code map; plan with acceptance criteria; tests; how to reproduce it (commands and scripts verbatim, in a `<details>` block when long); pitfalls you hit; related issues. State the commit of `main` it was checked against.
 7. **Bookkeeping.**
-   - `gh issue edit N --add-label triaged`.
+   - `gh issue edit N --add-label triaged --remove-label triaging`: the handoff is posted, the issue is ready for `dev`, and the claim is released.
    - A duplicate: keep the one with the better discussion, close the other with `gh issue close M --duplicate-of N` plus the `duplicate` label, and carry anything the kept one lacks into its handoff.
    - A separate bug found on the way: file it (`gh issue create --label bug`) with what you know; do not fix it.
 8. **Report** in chat: a short summary of the cause, the plan and the link to the comment. No code was changed; say so.
