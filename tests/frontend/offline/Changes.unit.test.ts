@@ -85,6 +85,24 @@ describe('collapse, keeping what was edited', () => {
   })
 })
 
+describe('collapse, keeping what a change was made from', () => {
+  it('folded edits keep the first one’s base, and so does the trash that takes their place, and the edit it gives back', () => {
+    const first = change('update', 'r1', { input: { volume: 1 }, expectedVersion: 3, base: { volume: 40, note: null } })
+    const [edited] = fold(first, change('update', 'r1', { input: { volume: 2 }, expectedVersion: 4, base: { volume: 1 } }))
+    expect(edited).toMatchObject({ input: { volume: 2 }, expectedVersion: 3, base: { volume: 40, note: null } })
+
+    const [trash] = fold(first, change('trash', 'r1', { expectedVersion: 4, base: { volume: 1 } }))
+    expect(trash).toMatchObject({ action: 'trash', expectedVersion: 3, base: { volume: 40, note: null } })
+    expect(fold(first, change('trash', 'r1', { expectedVersion: 4 }), change('restore'))[0]).toMatchObject({ action: 'update', base: { volume: 40, note: null } })
+  })
+
+  it('an edit without a base folded into another stays without one, and an add never has one', () => {
+    const [edited] = fold(change('update', 'r1', { input: { volume: 1 } }), change('update', 'r1', { input: { volume: 2 }, base: { volume: 1 } }))
+    expect(edited.base).toBeUndefined()
+    expect(fold(add(), change('update', 'r1', { input: { volume: 2 }, base: { volume: 40 } }))[0].base).toBeUndefined()
+  })
+})
+
 describe('collapse, after a change that was sent', () => {
   it('never folds into it: an answer that was lost would make the server answer "done" for what folded in', () => {
     const sent = change('update', 'r1', { input: { volume: 41 }, expectedVersion: 3, sent: true })

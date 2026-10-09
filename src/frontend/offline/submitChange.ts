@@ -2,6 +2,7 @@ import type { ApolloClient } from '@apollo/client'
 import { connectivity } from './connectivity.ts'
 import { isConnectionFailure } from './errors.ts'
 import { keptPhotosOf, type ChangeEntity } from './changes.ts'
+import { baseOf } from './conflicts.ts'
 import { outbox, type ChangeDraft } from './outbox.ts'
 
 export type Submitted<T> = { queued: true } | { queued: false; result: T }
@@ -11,10 +12,12 @@ export type Submitted<T> = { queued: true } | { queued: false; result: T }
  * vehicle already has changes waiting (they keep their order), or when the request fails for want of the server (with the same id: should
  * the server have saved it after all, the add sent again later is answered with what it saved); otherwise sent as always, and an error
  * the server gave is the caller's to show. A kept change makes the screen ask again, so the device's own answers show it (`offlineLink.ts`).
+ * A kept edit or trash takes along the values the entry had at the version it was made from (`base`), should the server park it.
  */
 export async function submitChange<T>(client: ApolloClient, change: ChangeDraft, send: () => Promise<T>): Promise<Submitted<T>> {
   const keep = async (kept: ChangeDraft = change): Promise<Submitted<T>> => {
-    await outbox.enqueue(kept)
+    const base = (kept.action === 'update' || kept.action === 'trash') && !kept.base ? baseOf(client, kept.entity, kept.targetId, kept.expectedVersion) : undefined
+    await outbox.enqueue(base ? { ...kept, base } : kept)
     void client.refetchQueries({ include: 'active' }).catch(() => undefined)
     return { queued: true }
   }

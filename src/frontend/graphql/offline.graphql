@@ -149,7 +149,8 @@ mutation SyncChanges($input: SyncChangesInput!) {
   }
 }
 
-# A change sent from a device that the server parked (pages/SyncPage.tsx): `change` is the ChangeInput as it was sent, as JSON.
+# A change sent from a device that the server parked (pages/SyncPage.tsx): `change` is the ChangeInput as it was sent, as JSON, `base`
+# the values it was made from (JSON, when the device knew them).
 fragment ParkedChangeFields on SyncChangeInfo {
   id
   kind
@@ -157,6 +158,7 @@ fragment ParkedChangeFields on SyncChangeInfo {
   vehicleId
   targetId
   change
+  base
   receivedAt
   reason {
     key
