@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import App from '../../../../src/frontend/App.tsx'
 import { i18n } from '../../../../src/frontend/i18n/index.ts'
 import { server } from '../../support/server.ts'
-import { authWarning, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, adminSession } from '../../support/mocks.tsx'
+import { authWarning, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, adminSession, sessionHandler } from '../../support/mocks.tsx'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => server.resetHandlers())
@@ -101,4 +101,17 @@ it('formats the deletion time with the selected language', async () => {
   await switchToHungarian(ui)
 
   expect(await screen.findByText(format('hu'))).toBeInTheDocument()
+})
+
+it('a language Intl cannot take (a POSIX locale a browser reported) never takes a page down', async () => {
+  // As if it got past detection: the guard where the language meets Intl (validLocale) keeps the grid and the dates working.
+  await i18n.changeLanguage('en-US@posix')
+  const backend = fakeVehicleBackend([fakeVehicle()], [fakeVehicle({ id: 't1', name: 'Old Fiat' })])
+  server.use(sessionHandler('NONE', () => null), healthHandler, ...backend.handlers)
+  renderWithApollo(<App />, '/trash')
+
+  const row = (await screen.findByText('Old Fiat')).closest<HTMLElement>('[role="row"]')!
+  expect(within(row).getByText(new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date('2026-10-01T08:00:00Z')))).toBeInTheDocument()
+  expect(screen.queryByText('Something went wrong while showing this page.')).not.toBeInTheDocument()
+  expect(document.documentElement.lang).toBe('en-US')
 })
