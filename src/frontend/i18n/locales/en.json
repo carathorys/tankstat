@@ -116,6 +116,7 @@
   "status": {
     "healthy": "Healthy",
     "degraded": "Degraded",
+    "app": "App v{{version}}",
     "api": "API:",
     "unreachable": "The server cannot be reached",
     "offline": "You are offline",
@@ -996,6 +997,8 @@
     "removed": "Photo removed.",
     "kept": "On this device: uploaded when synced",
     "keptAdded": "Kept on this device: the photos are added when it syncs.",
+    "keptReady": "Kept on this device: the photos go up with the entry when it syncs.",
+    "keptNote": "Photos with this mark are kept on this device and uploaded when it syncs.",
     "removeKept": "The photo is removed when it syncs.",
     "done": "Done",
     "leftOut_one": "The entry was saved, but {{count}} photo could not be attached. Add it again by editing the entry.",

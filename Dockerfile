@@ -26,7 +26,9 @@ RUN npm ci
 # `vite build` only: type checking, linting and tests are CI's job (the tests are not part of this build context).
 COPY vite.config.ts ./
 COPY src/frontend ./src/frontend
-RUN npx vite build            # -> /src/dist
+# The web app's version, shown in its footer (also while the API is out of reach); declared here so only this layer changes with it.
+ARG VERSION=0.0.0-dev
+RUN npx vite build            # -> /src/dist (ARG VERSION is in its environment)
 
 # ---- Backend: publish the API ------------------------------------------------------------------------------
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS backend
@@ -37,7 +39,7 @@ ENV DOTNET_NOLOGO=1 DOTNET_CLI_TELEMETRY_OPTOUT=1
 COPY src/backend ./src/backend
 # Framework-dependent, but for the exact target (musl libc, amd64 or arm64): this keeps only the native libraries that
 # image needs (SQLite, SQL Server client, ...) instead of every OS/CPU combination. VERSION is what the UI shows as the
-# API version. buildx sets TARGETARCH; the classic builder does not, hence the default.
+# API's version (and, from the frontend stage, as the web app's). buildx sets TARGETARCH; the classic builder does not, hence the default.
 ARG TARGETARCH
 RUN case "${TARGETARCH:-amd64}" in arm64) rid=linux-musl-arm64 ;; *) rid=linux-musl-x64 ;; esac \
  && dotnet publish src/backend/Tankstat.Api/Tankstat.Api.csproj \

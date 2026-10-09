@@ -33,12 +33,21 @@ interface Entry extends QueuedPhoto {
 /** What the photo session needs to know about a log that was just saved (null or undefined: nothing was logged). */
 export const savedFrom = (log: { id: string; photos: readonly unknown[] } | null | undefined): Saved => (log ? { id: log.id, photoCount: log.photos.length } : undefined)
 
+/**
+ * How adding (or trying again) went: the first upload error, if any (that photo stays, marked failed), and how many of the photos were
+ * kept on this device instead of uploaded (they go up with the log), so the dialog says which happened.
+ */
+export interface PhotosAdded {
+  error?: unknown
+  kept: number
+}
+
 export interface PhotoQueue {
   items: QueuedPhoto[]
-  /** Makes the photos smaller and uploads them one by one; resolves to the first upload error, if any (the photo stays, marked failed). */
-  add: (files: File[]) => Promise<unknown>
-  /** Uploads a failed photo again; resolves to the error if it fails again. */
-  retry: (key: string) => Promise<unknown>
+  /** Makes the photos smaller and uploads (or keeps) them one by one. */
+  add: (files: File[]) => Promise<PhotosAdded>
+  /** Uploads a failed photo again (or keeps it, when the server cannot be reached). */
+  retry: (key: string) => Promise<PhotosAdded>
   remove: (key: string) => Promise<void>
   /** The ids of the uploaded drafts and kept photos, in the order they were picked: what the save attaches. */
   ids: string[]
@@ -88,6 +97,9 @@ export function usePhotoQueue(vehicleId: string, reading?: { purpose: ReadingPur
 
   const patch = useCallback((key: string, values: Partial<Entry>) => update((entries) => entries.map((e) => (e.key === key ? { ...e, ...values } : e))), [update])
 
+  // Read from the entries as they are now (`current` follows every change at once), not from the last render.
+  const keptAmong = (keys: string[]) => current.current.filter((e) => keys.includes(e.key) && e.state === 'kept').length
+
   const release = (entry: Entry) => {
     URL.revokeObjectURL(entry.url)
     urls.current.delete(entry.url)
@@ -132,6 +144,7 @@ export function usePhotoQueue(vehicleId: string, reading?: { purpose: ReadingPur
     async (files: File[]) => {
       const started = generation.current
       let firstError: unknown
+      const keys: string[] = []
       setPreparing((n) => n + 1)
       try {
         for (const file of files) {
@@ -142,12 +155,13 @@ export function usePhotoQueue(vehicleId: string, reading?: { purpose: ReadingPur
           // Not crypto.randomUUID(): it only exists in secure contexts, and the app is also served over plain HTTP.
           const key = `photo-${nextKey.current++}`
           update((entries) => [...entries, { key, url, blob, state: 'uploading' }])
+          keys.push(key)
           firstError ??= await upload(key, blob, started)
         }
       } finally {
         setPreparing((n) => n - 1)
       }
-      return firstError
+      return { error: firstError, kept: keptAmong(keys) }
     },
     [update, upload, jpeg],
   )
@@ -155,7 +169,9 @@ export function usePhotoQueue(vehicleId: string, reading?: { purpose: ReadingPur
   const retry = useCallback(
     async (key: string) => {
       const entry = current.current.find((e) => e.key === key)
-      return entry ? upload(key, entry.blob, generation.current) : undefined
+      if (!entry) return { kept: 0 }
+      const error = await upload(key, entry.blob, generation.current)
+      return { error, kept: keptAmong([key]) }
     },
     [upload],
   )

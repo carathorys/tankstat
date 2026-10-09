@@ -4,6 +4,7 @@ import { graphql, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it, onTestFinished, vi } from 'vitest'
 import { axe } from 'vitest-axe'
 import App from '../../../src/frontend/App.tsx'
+import { APP_VERSION } from '../../../src/frontend/appVersion.ts'
 import en from '../../../src/frontend/i18n/locales/en.json'
 import { navigation } from '../../../src/frontend/navigation.ts'
 import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
@@ -32,15 +33,17 @@ afterAll(() => server.close())
 
 const withBackend = (vehicles = [fakeVehicle()]) => fakeVehicleBackend(vehicles).handlers
 
-it('without authentication shows the warning, the top bar, the data and the API status', async () => {
+it('without authentication shows the warning, the top bar, the data, the app version and the API status', async () => {
   server.use(sessionHandler('NONE', () => null, [authWarning]), healthHandler, ...withBackend())
   renderWithApollo(<App />, '/vehicles')
 
   await screen.findByText(en.notices.AUTH_DISABLED)
   expect(screen.getByRole('banner')).toHaveTextContent('Tankstat')
   await screen.findByText('Octavia')
-  await screen.findByText('Healthy')
-  await screen.findByText(/v1\.2\.3/)
+  const footer = screen.getByRole('contentinfo')
+  expect(within(footer).getByText(`App v${APP_VERSION}`)).toBeInTheDocument()
+  await within(footer).findByText('Healthy')
+  expect(footer).toHaveTextContent('API: Healthy (v1.2.3)')
   expect(screen.queryByRole('button', { name: /sign in/i })).not.toBeInTheDocument()
 })
 
@@ -71,7 +74,26 @@ it('says in the footer when the API is down, with a way to try again, and says w
   const footer = await screen.findByRole('contentinfo')
   expect(await within(footer).findByText('The server cannot be reached')).toBeInTheDocument()
   expect(within(footer).getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+  expect(within(footer).getByText(`App v${APP_VERSION}`)).toBeInTheDocument() // the app's own version needs no server
+  expect(footer).not.toHaveTextContent('API:')
   expect(consoleError).toHaveBeenCalledWith('GraphQL Health could not be completed', expect.anything())
+})
+
+it('offline the footer keeps the app version and says the device is offline instead of the API status', async () => {
+  server.use(sessionHandler('NONE', () => null), healthHandler, ...withBackend())
+  renderWithApollo(<App />, '/vehicles')
+  const footer = await screen.findByRole('contentinfo')
+  await within(footer).findByText('Healthy')
+
+  const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+  onTestFinished(() => onLine.mockRestore())
+  act(() => connectivity.failed())
+
+  expect(await within(footer).findByText('You are offline')).toBeInTheDocument()
+  expect(within(footer).getByText(`App v${APP_VERSION}`)).toBeInTheDocument()
+  expect(within(footer).getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+  expect(footer).not.toHaveTextContent('API:')
+  expect(within(footer).queryByText('Healthy')).not.toBeInTheDocument()
 })
 
 it('in OIDC mode an anonymous visitor is sent to the identity provider and sees no menu and no data meanwhile', async () => {

@@ -47,10 +47,14 @@ curl -sfI "${url}/" | grep -qi '^cache-control: no-cache' || { echo "FAIL: index
 asset="$(curl -sf "${url}/" | grep -o '/assets/[^"]*\.js' | head -n 1 || true)"
 [ -n "$asset" ] || { echo "FAIL: index.html names no script under /assets" >&2; exit 1; }
 curl -sfI "${url}${asset}" | grep -qi 'immutable' || { echo "FAIL: hashed assets must be immutable" >&2; exit 1; }
+# The web app carries its own version (shown in the footer, also while the API is out of reach); the entry script holds it.
+if [ -n "$expected_version" ]; then
+  curl -sf "${url}${asset}" | grep -qF "$expected_version" || { echo "FAIL: expected web app version ${expected_version}" >&2; exit 1; }
+fi
 
 gql '{"query":"mutation { addVehicle(input: { name: \"Smoke\", fuelType: PETROL }) { id } }"}' | grep -q '"id"' || { echo "FAIL: cannot write to the database" >&2; exit 1; }
 
 user="$(docker exec "$name" id -u)"
 [ "$user" != "0" ] || { echo "FAIL: the container runs as root" >&2; exit 1; }
 
-echo "OK: $image serves the web app (installable, cache rules in place) and the API (version check: ${expected_version:-skipped}, user $user)"
+echo "OK: $image serves the web app (installable, cache rules in place) and the API (version check of both: ${expected_version:-skipped}, user $user)"
