@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
@@ -83,6 +83,19 @@ it('an upload that loses the connection says so calmly, not as an error', async 
 
   expect(await screen.findByText('The server cannot be reached right now. This works again once you are back online.')).toBeInTheDocument()
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
+
+it('the button opens the file chooser, and closing it without a file sends nothing', async () => {
+  const { ui, uploads } = setupAccount({ avatarUrl: null })
+  await screen.findByRole('heading', { name: 'Profile picture' })
+  const opened = vi.spyOn(chooseFile(), 'click').mockImplementation(() => undefined) // jsdom opens no dialog
+
+  await ui.click(screen.getByRole('button', { name: 'Choose a picture' }))
+  fireEvent.change(chooseFile(), { target: { files: [] } })
+
+  expect(opened).toHaveBeenCalledOnce()
+  expect(uploads).toEqual([])
+  expect(screen.getByRole('status', { name: 'Upload status' })).toBeEmptyDOMElement()
 })
 
 it('removes the profile picture', async () => {
