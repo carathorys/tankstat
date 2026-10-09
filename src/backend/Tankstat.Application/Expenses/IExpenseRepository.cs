@@ -25,6 +25,9 @@ public interface IExpenseRepository
     Task<Expense?> FindAsync(Guid id, CancellationToken ct);
     Task<Expense?> FindIncludingDeletedAsync(Guid id, CancellationToken ct);
 
+    /// <summary>The expenses with these ids, trashed ones included (what parked sync changes concern), in one query.</summary>
+    Task<IReadOnlyList<Expense>> ListByIdsIncludingDeletedAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct);
+
     /// <summary>Saves a new expense; false when one with its id already existed (a concurrent add with the same client id won).</summary>
     Task<bool> AddAsync(Expense expense, CancellationToken ct);
 

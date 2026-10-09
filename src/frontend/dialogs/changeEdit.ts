@@ -9,4 +9,19 @@ export interface ChangeEdit<T> {
   submitLabel: string
   /** A waiting add whose amounts were left for its kept photos to fill: they may stay empty in the edit too. */
   mayWait?: boolean
+  /** Merging a parked edit with what is on the server now (`initial` is the merged values): what to say under each field. */
+  merge?: MergeInfo
+}
+
+/** One value of a field changed on both sides: as the change's input has it, and in words. */
+export interface MergeSide {
+  value: unknown
+  text: string
+}
+
+export interface MergeInfo {
+  /** Per field changed on both sides: this device's value (where it starts) and the server's, each one offered while it is not there. */
+  conflicts: Record<string, { mine: MergeSide; theirs: MergeSide }>
+  /** Per field changed on one side only, which side its value came from. */
+  merged: Record<string, 'mine' | 'theirs'>
 }

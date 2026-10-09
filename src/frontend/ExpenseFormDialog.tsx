@@ -38,7 +38,8 @@ import { useReadFill } from './recognition/useReadFill.ts'
 import { Loading } from './components/Loading.tsx'
 import { useToast } from './toast/toastContext.ts'
 import { OfflineNote, ReadLaterNote } from './components/OfflineNote.tsx'
-import type { ChangeEdit } from './dialogs/changeEdit.ts'
+import type { ChangeEdit, MergeInfo } from './dialogs/changeEdit.ts'
+import { useMergeFields } from './dialogs/useMergeFields.tsx'
 import { outbox } from './offline/outbox.ts'
 
 /** The amount is null only when it was left for a photo that is still being read. */
@@ -159,6 +160,7 @@ export function ExpenseFormDialog({
             readingNow={drafts.pending.length > 0}
             wait={{ since: drafts.waitingSince, until: drafts.waitingUntil }}
             submitLabel={change?.submitLabel}
+            merge={change?.merge}
             gallery={
               !change && <PhotoGallery
                 kind="expenses"
@@ -207,10 +209,13 @@ function ExpenseForm({
   readingNow,
   wait,
   submitLabel,
+  merge,
   onSubmit,
 }: {
   /** The Save button's text, when it is not the add or edit one. */
   submitLabel?: string
+  /** Merging a parked edit with what is on the server now: what to say (and offer) under each field. */
+  merge?: MergeInfo
   initial: Initial
   unit: DistanceUnit
   editing: boolean
@@ -250,16 +255,20 @@ function ExpenseForm({
     undefined,
     editing,
   )
+  const merging = useMergeFields(merge)
   const fromPhoto = filledFields(initial.filledFromPhoto, WAITS_FOR)
   const amountOptional = mayWait
   const note = (field: FillableField) => (
-    <ReadNote
-      filled={fill.isFilled(field) || fromPhoto.has(field)}
-      offered={fill.offered(field)}
-      waiting={mayWait && (field === 'amount' || field === 'odometer') && fill.values[field].trim() === ''}
-      field={labels[field]}
-      onUse={() => fill.use(field)}
-    />
+    <>
+      <ReadNote
+        filled={fill.isFilled(field) || fromPhoto.has(field)}
+        offered={fill.offered(field)}
+        waiting={mayWait && (field === 'amount' || field === 'odometer') && fill.values[field].trim() === ''}
+        field={labels[field]}
+        onUse={() => fill.use(field)}
+      />
+      {merging.note(field, labels[field], (value) => fill.change(field, value == null ? '' : String(value)))}
+    </>
   )
   const [error, setError] = useState<unknown>()
   const [busy, setBusy] = useState(false)
@@ -301,8 +310,9 @@ function ExpenseForm({
           name="category"
           label={t('expenses.fields.category')}
           hint={categories.length > 0 ? t('expenses.hints.categories', { list: categories.join(', ') }) : undefined}
+          extra={merging.note('category', t('expenses.fields.category'))}
         >
-          <FieldAutocomplete options={categories} defaultValue={initial.category ?? ''} maxLength={60} openOnFocus />
+          <FieldAutocomplete key={merging.key('category')} options={categories} defaultValue={merging.value('category', initial.category) ?? ''} maxLength={60} openOnFocus />
         </Field>
         <Stack direction="row" sx={{ gap: 1.5, flexWrap: 'wrap' }}>
           <Box sx={{ flex: '2 1 8rem', minWidth: 0 }}>
@@ -329,8 +339,8 @@ function ExpenseForm({
           </Box>
         </Stack>
         <OdometerField unit={unit} optional value={fill.values.odometer} onChange={(v) => fill.change('odometer', v)} extra={note('odometer')} />
-        <Field name="note" label={t('expenses.fields.note')}>
-          <FieldInput multiline minRows={2} maxLength={500} defaultValue={initial.note ?? ''} />
+        <Field name="note" label={t('expenses.fields.note')} extra={merging.note('note', t('expenses.fields.note'))}>
+          <FieldInput key={merging.key('note')} multiline minRows={2} maxLength={500} defaultValue={merging.value('note', initial.note) ?? ''} />
         </Field>
         {gallery}
         <div role="status" aria-label={t('a11y.readingStatus')}>

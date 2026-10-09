@@ -114,7 +114,7 @@ public class ExpenseTests
 
         expense.Restore();
         Assert.False(expense.IsDeleted || expense.Cost!.IsDeleted || expense.OdometerReading!.IsDeleted);
-        Assert.Equal("expense.notTrashed", Assert.Throws<DomainException>(expense.Restore).Key);
+        Assert.Equal("expense.notTrashed", Assert.Throws<DomainException>(() => expense.Restore()).Key);
     }
 
     [Fact]

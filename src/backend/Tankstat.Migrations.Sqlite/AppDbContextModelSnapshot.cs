@@ -480,6 +480,12 @@ namespace Tankstat.Migrations.Sqlite
                         .HasMaxLength(60)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("ChangedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ChangedById")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
@@ -495,6 +501,10 @@ namespace Tankstat.Migrations.Sqlite
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastChange")
+                        .HasMaxLength(20)
                         .HasColumnType("TEXT");
 
                     b.Property<DateOnly>("LastDoneDate")
@@ -674,6 +684,10 @@ namespace Tankstat.Migrations.Sqlite
             modelBuilder.Entity("Tankstat.Domain.Sync.SyncChange", b =>
                 {
                     b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Base")
+                        .HasMaxLength(4000)
                         .HasColumnType("TEXT");
 
                     b.Property<int?>("ExpectedVersion")
@@ -917,6 +931,12 @@ namespace Tankstat.Migrations.Sqlite
                         .HasMaxLength(60)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("ChangedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ChangedById")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid?>("CostId")
                         .HasColumnType("TEXT");
 
@@ -931,6 +951,10 @@ namespace Tankstat.Migrations.Sqlite
 
                     b.Property<int>("FilledFromPhoto")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("LastChange")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Note")
                         .HasMaxLength(500)
@@ -992,6 +1016,12 @@ namespace Tankstat.Migrations.Sqlite
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("ChangedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ChangedById")
+                        .HasColumnType("TEXT");
+
                     b.Property<decimal?>("Consumption")
                         .HasPrecision(9, 3)
                         .HasColumnType("TEXT");
@@ -1013,6 +1043,10 @@ namespace Tankstat.Migrations.Sqlite
 
                     b.Property<bool>("IsFullTank")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("LastChange")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
 
                     b.Property<bool>("MissedPreviousFillUp")
                         .HasColumnType("INTEGER");
@@ -1076,11 +1110,21 @@ namespace Tankstat.Migrations.Sqlite
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("ChangedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ChangedById")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("FuelType")
                         .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastChange")
                         .HasMaxLength(20)
                         .HasColumnType("TEXT");
 

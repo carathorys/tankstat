@@ -74,7 +74,7 @@ public sealed class VehicleService(
         var units = newUnits ?? vehicle.Units;
         if (units != vehicle.Units && (await odometer.HasReadingsAsync(vehicle.Id, ct) || await refuelings.AnyForVehicleAsync(vehicle.Id, ct)))
             throw new DomainException("vehicle.unitsLocked", "The units cannot be changed once the vehicle has logs.");
-        vehicle.Update(name, licensePlate, fuelType, units);
+        vehicle.Update(name, licensePlate, fuelType, units, (await access.RequirePrincipalAsync(ct)).Id);
         await vehicles.UpdateAsync(vehicle, ct);
         logger.LogDebug("Vehicle {VehicleId} updated", vehicle.Id);
         return vehicle;
@@ -85,17 +85,21 @@ public sealed class VehicleService(
     {
         var vehicle = await EditableAsync(id, includeDeleted: false, ct);
         VersionCheck.Require(expectedVersion, vehicle.Version);
-        vehicle.MarkDeleted(clock.GetUtcNow());
+        vehicle.MarkDeleted(clock.GetUtcNow(), (await access.RequirePrincipalAsync(ct)).Id);
         await vehicles.UpdateAsync(vehicle, ct);
         logger.LogDebug("Vehicle {VehicleId} moved to the trash", vehicle.Id);
         return vehicle;
     }
 
+    /// <summary>The vehicle when it is in the trash and the user may edit it (restore it), else null (see <see cref="Refuelings.RefuelingService.InTrashAsync"/>).</summary>
+    public async Task<Vehicle?> InTrashAsync(Guid id, CancellationToken ct) =>
+        await vehicles.FindIncludingDeletedAsync(id, ct) is { IsDeleted: true } vehicle && await access.VehicleLevelAsync(vehicle, ct) >= AccessLevel.Edit ? vehicle : null;
+
     public async Task<Vehicle> RestoreAsync(Guid id, CancellationToken ct, int? expectedVersion = null)
     {
         var vehicle = await EditableAsync(id, includeDeleted: true, ct);
         VersionCheck.Require(expectedVersion, vehicle.Version);
-        vehicle.Restore();
+        vehicle.Restore((await access.RequirePrincipalAsync(ct)).Id);
         await vehicles.UpdateAsync(vehicle, ct);
         logger.LogDebug("Vehicle {VehicleId} restored from the trash", vehicle.Id);
         return vehicle;

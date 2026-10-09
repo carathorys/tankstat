@@ -99,6 +99,29 @@ it('a refuelling moved to the trash offline stays listed, marked, until Undo tak
   expect(sent).toEqual([])
 })
 
+it('an edit and a trash kept on the device take along the values the refuelling had, so a conflict can be merged later', async () => {
+  const { ui } = await openRefuelings()
+  const [edit] = screen.getAllByRole('button', { name: /^Edit the refuelling of/ })
+
+  await ui.click(edit)
+  const dialog = await screen.findByRole('dialog', { name: /Edit refuelling/ })
+  await waitFor(() => expect(within(dialog).getByLabelText(/^Volume/)).toHaveValue('40'))
+  await ui.clear(within(dialog).getByLabelText(/^Volume/))
+  await ui.type(within(dialog).getByLabelText(/^Volume/), '41')
+  await ui.click(within(dialog).getByRole('button', { name: /^Save/ }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+  const base = { date: expect.any(String), volume: 40, totalCost: 100, currency: 'EUR', odometer: 1000, isFullTank: true, missedPreviousFillUp: false, note: null }
+  expect(outbox.changes).toMatchObject([{ action: 'update', expectedVersion: 1, input: { volume: 41 }, base }])
+
+  const [trash] = screen.getAllByRole('button', { name: /^Delete the refuelling of/ }).slice(-1)
+  await ui.click(trash)
+  await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Move to trash' }))
+  await waitFor(() => expect(outbox.changes).toHaveLength(2))
+  expect(outbox.changes[1]).toMatchObject({ action: 'trash', base: { volume: 40 } }) // what the list holds of it
+  expect(sent).toEqual([])
+})
+
 it('editing a refuelling added offline changes the waiting add instead of queueing another change', async () => {
   const { ui } = await openRefuelings()
   await addOffline(ui)

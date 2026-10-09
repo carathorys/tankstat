@@ -57,35 +57,35 @@ const pick = (input: Record<string, unknown> | undefined, keys: readonly string[
  * are sent as the drafts they were uploaded as (`drafts`: key to draft id); one without a draft is left out.
  */
 export function toChangeInput(c: Change, drafts: ReadonlyMap<string, string> = new Map()): ChangeInput {
-  const base = { id: c.id, expectedVersion: c.expectedVersion ?? null }
+  const envelope = { id: c.id, expectedVersion: c.expectedVersion ?? null, ...(c.base ? { base: JSON.stringify(c.base) } : {}) }
   const photoIds = Array.isArray(c.input?.photoIds)
     ? { photoIds: (c.input.photoIds as string[]).flatMap((id) => (isKept(id) ? (drafts.has(id) ? [drafts.get(id)!] : []) : [id])) }
     : {}
-  const op = (name: keyof typeof FIELDS, extra: Record<string, unknown> = {}) => ({ ...base, [name]: pick(c.input, FIELDS[name], { ...photoIds, ...extra }) }) as ChangeInput
+  const op = (name: keyof typeof FIELDS, extra: Record<string, unknown> = {}) => ({ ...envelope, [name]: pick(c.input, FIELDS[name], { ...photoIds, ...extra }) }) as ChangeInput
   const log = c.entity === 'expenses' ? 'Expense' : 'Refueling'
   switch (`${c.entity}:${c.action}`) {
     case 'refuelings:add': return op('logRefueling', { id: c.targetId, vehicleId: c.vehicleId })
     case 'refuelings:update': return op('updateRefueling', { id: c.targetId })
-    case 'refuelings:trash': return { ...base, deleteRefueling: c.targetId }
-    case 'refuelings:restore': return { ...base, restoreRefueling: c.targetId }
+    case 'refuelings:trash': return { ...envelope, deleteRefueling: c.targetId }
+    case 'refuelings:restore': return { ...envelope, restoreRefueling: c.targetId }
     case 'expenses:add': return op('addExpense', { id: c.targetId, vehicleId: c.vehicleId })
     case 'expenses:update': return op('updateExpense', { id: c.targetId })
-    case 'expenses:trash': return { ...base, deleteExpense: c.targetId }
-    case 'expenses:restore': return { ...base, restoreExpense: c.targetId }
+    case 'expenses:trash': return { ...envelope, deleteExpense: c.targetId }
+    case 'expenses:restore': return { ...envelope, restoreExpense: c.targetId }
     case 'vehicles:add': return op('addVehicle', { id: c.targetId })
     case 'vehicles:update': return op('updateVehicle', { id: c.targetId })
-    case 'vehicles:trash': return { ...base, deleteVehicle: c.targetId }
-    case 'vehicles:restore': return { ...base, restoreVehicle: c.targetId }
+    case 'vehicles:trash': return { ...envelope, deleteVehicle: c.targetId }
+    case 'vehicles:restore': return { ...envelope, restoreVehicle: c.targetId }
     case 'recurring:add': return op('addRecurringExpense', { id: c.targetId, vehicleId: c.vehicleId })
     case 'recurring:update': return op('updateRecurringExpense', { id: c.targetId })
-    case 'recurring:trash': return { ...base, deleteRecurringExpense: c.targetId }
+    case 'recurring:trash': return { ...envelope, deleteRecurringExpense: c.targetId }
     case 'recurring:markDone': return op('markRecurringExpensesDone', { ids: c.targetIds ?? [] })
     case 'refuelings:addPhoto':
     case 'expenses:addPhoto':
-      return { ...base, [`add${log}Photo`]: { logId: c.targetId, draftId: drafts.get(String(c.input?.key)) ?? c.input?.draftId } } as ChangeInput
+      return { ...envelope, [`add${log}Photo`]: { logId: c.targetId, draftId: drafts.get(String(c.input?.key)) ?? c.input?.draftId } } as ChangeInput
     case 'refuelings:removePhoto':
     case 'expenses:removePhoto':
-      return { ...base, [`remove${log}Photo`]: { logId: c.targetId, imageId: c.input?.imageId } } as ChangeInput
+      return { ...envelope, [`remove${log}Photo`]: { logId: c.targetId, imageId: c.input?.imageId } } as ChangeInput
     default: throw new Error(`A change of ${c.entity} cannot ${c.action}.`)
   }
 }

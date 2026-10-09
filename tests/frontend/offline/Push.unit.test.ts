@@ -108,6 +108,17 @@ describe('fromParked', () => {
     }
   })
 
+  it('reads back the values a change was made from, sent beside it, and none from what is not an object', () => {
+    const edit = change({ id: 'u', action: 'update', targetId: 'r1', expectedVersion: 2, input: { id: 'r1', volume: 41 }, base: { volume: 40, note: null } })
+    const sent = toChangeInput(edit)
+    expect(sent.base).toBe('{"volume":40,"note":null}')
+    const parked = { id: 'u', kind: 'UPDATE_REFUELING' as const, vehicleId: 'v1', targetId: 'r1', change: JSON.stringify({ ...sent, base: undefined }), receivedAt: '2026-10-03T08:00:00Z' }
+    expect(fromParked({ ...parked, base: sent.base }).base).toEqual({ volume: 40, note: null })
+    expect(fromParked({ ...parked, base: '[1]' }).base).toBeUndefined()
+    expect(fromParked({ ...parked, base: 'not json' }).base).toBeUndefined()
+    expect(toChangeInput(change({ id: 't', action: 'trash', targetId: 'r1' }))).not.toHaveProperty('base')
+  })
+
   it('a vehicle the server never took has no vehicle id of its own: its changes are named by the add', () => {
     const add = change({ id: 'g', entity: 'vehicles', action: 'add', vehicleId: 'g', targetId: 'g', input: { id: 'g', name: 'Golf', fuelType: 'PETROL' } })
     expect(fromParked({ id: 'g', kind: 'ADD_VEHICLE', vehicleId: null, targetId: 'g', change: asKept(add, true), receivedAt: '2026-10-03T08:00:00Z' }).vehicleId).toBe('g')
@@ -121,5 +132,11 @@ describe('fromParked', () => {
   it('to someone other than the sender, "not found" is no reason not to try: the sender may only have lost access', () => {
     expect(canForce('vehicle.notFound', false)).toBe(true)
     expect(canForce('auth.forbidden', false)).toBe(false)
+  })
+
+  it('to the sender, "not found" is no reason either while the server shows what it concerns (moved to the trash meanwhile)', () => {
+    expect(canForce('refueling.notFound', true, { state: 'TRASHED' })).toBe(true)
+    expect(canForce('refueling.notFound', true, null)).toBe(false)
+    expect(canForce('auth.forbidden', true, { state: 'LIVE' })).toBe(false)
   })
 })

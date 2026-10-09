@@ -70,7 +70,9 @@ it('Edit and apply, on a vehicle change the server parked, opens the vehicle dia
 
   expect(await screen.findByText('Applied.')).toBeInTheDocument()
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-  expect(sent).toEqual([{ id: 'c2', action: 'APPLY', change: expect.objectContaining({ id: 'c2', expectedVersion: 2, updateVehicle: expect.objectContaining({ id: 'v1', name: 'Octavia vRS' }) }) }])
+  // Applied against the version shown of what is on the server now (`current`; none shown here: over whatever is there), never the
+  // version the device made it from, which is why it was parked.
+  expect(sent).toEqual([{ id: 'c2', action: 'APPLY', change: expect.objectContaining({ id: 'c2', expectedVersion: null, updateVehicle: expect.objectContaining({ id: 'v1', name: 'Octavia vRS' }) }) }])
   await waitFor(() => expect(counts().bellAnswers).toBeGreaterThan(state.failBellAfter))
 })
 

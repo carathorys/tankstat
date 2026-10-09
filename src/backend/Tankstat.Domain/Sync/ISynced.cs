@@ -9,6 +9,21 @@ public enum OfflineEntityType
     RecurringExpense,
 }
 
+/// <summary>What the last change that counted (one that moved <see cref="ISynced.Version"/>) did to an entity.</summary>
+public enum EntityChange
+{
+    Created,
+    Edited,
+    Trashed,
+    Restored,
+
+    /// <summary>A schedule marked done (a service visit).</summary>
+    Done,
+
+    /// <summary>Its photos filled in values (nobody did it: <see cref="ISynced.ChangedById"/> is null).</summary>
+    FilledFromPhoto,
+}
+
 /// <summary>
 /// An entity a device keeps a copy of. <see cref="UpdatedAt"/> marks anything a reader must download again: it is set on every save by the
 /// persistence layer (and by the few writes that bypass it), unlike <c>Version</c>, which only counts what a writer can conflict with.
@@ -27,6 +42,18 @@ public interface ISynced
 
     /// <summary>Counts the saves of what a writer can conflict with.</summary>
     int Version { get; }
+
+    /// <summary>
+    /// When <see cref="Version"/> last moved (set by the persistence layer when it saves a new version): what a person who made a change
+    /// from an older version is told happened meanwhile. Null for rows saved before it was recorded.
+    /// </summary>
+    DateTimeOffset? ChangedAt { get; }
+
+    /// <summary>Who made the last change that moved <see cref="Version"/>; null when nobody did (a photo filled it in) or before it was recorded.</summary>
+    Guid? ChangedById { get; }
+
+    /// <summary>What that change did; null before it was recorded.</summary>
+    EntityChange? LastChange { get; }
 
     /// <summary>
     /// The version as it was loaded, before this instance counted a save: the persistence layer saves only if the stored row still has it

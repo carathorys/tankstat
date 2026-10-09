@@ -70,6 +70,13 @@ public sealed class SyncChange : IOwned
     /// <summary>The change as the device sent it (JSON), kept so a parked change can be shown and applied later.</summary>
     public string Payload { get; private set; } = "";
 
+    /// <summary>
+    /// The values the change was made from, as the device sent them (JSON in the shape of its input; never read by the server), kept with a
+    /// parked change so whoever decides can tell what the device changed from what was changed on the server meanwhile. Null when the
+    /// device knew none, and on applied changes.
+    /// </summary>
+    public string? Base { get; private set; }
+
     public DateTimeOffset ReceivedAt { get; private set; }
     public SyncChangeStatus Status { get; private set; }
 
@@ -92,8 +99,7 @@ public sealed class SyncChange : IOwned
     public void Replace(string payload)
     {
         RequireParked();
-        if (payload.Length > MaxPayloadLength)
-            throw new DomainException("sync.payloadTooLarge", $"A change may hold at most {MaxPayloadLength} characters.", new { Max = MaxPayloadLength });
+        CheckLength(payload);
         Payload = payload;
     }
 
@@ -131,8 +137,20 @@ public sealed class SyncChange : IOwned
 
     public static SyncChange Parked(
         Guid id, Guid ownerId, Guid submittedById, Guid? vehicleId, Guid? targetId, SyncChangeKind kind, int? expectedVersion, string payload,
-        DateTimeOffset now, string reasonKey, IReadOnlyDictionary<string, string> reasonArgs) =>
-        Create(id, ownerId, submittedById, vehicleId, targetId, kind, expectedVersion, payload, now).Settle(SyncChangeStatus.Parked, null, null, reasonKey, reasonArgs);
+        DateTimeOffset now, string reasonKey, IReadOnlyDictionary<string, string> reasonArgs, string? baseValues = null)
+    {
+        CheckLength(baseValues);
+        var change = Create(id, ownerId, submittedById, vehicleId, targetId, kind, expectedVersion, payload, now).Settle(SyncChangeStatus.Parked, null, null, reasonKey, reasonArgs);
+        change.Base = baseValues;
+        return change;
+    }
+
+    /// <summary>A payload, or the values a change was made from, fits the column.</summary>
+    public static void CheckLength(string? json)
+    {
+        if (json?.Length > MaxPayloadLength)
+            throw new DomainException("sync.payloadTooLarge", $"A change may hold at most {MaxPayloadLength} characters.", new { Max = MaxPayloadLength });
+    }
 
     private SyncChange Settle(SyncChangeStatus status, Guid? resultId, int? resultVersion, string? reasonKey, IReadOnlyDictionary<string, string>? reasonArgs)
     {
@@ -149,8 +167,7 @@ public sealed class SyncChange : IOwned
     {
         if (id == Guid.Empty) throw new DomainException("id.empty", "An id may not be empty.");
         if (!Enum.IsDefined(kind)) throw new DomainException("sync.unknownKind", $"Unknown change kind '{kind}'.");
-        if (payload.Length > MaxPayloadLength)
-            throw new DomainException("sync.payloadTooLarge", $"A change may hold at most {MaxPayloadLength} characters.", new { Max = MaxPayloadLength });
+        CheckLength(payload);
         return new SyncChange
         {
             Id = id, OwnerId = ownerId, SubmittedById = submittedById, VehicleId = vehicleId, TargetId = targetId, Kind = kind, ExpectedVersion = expectedVersion,

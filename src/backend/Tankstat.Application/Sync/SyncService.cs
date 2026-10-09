@@ -19,9 +19,10 @@ public sealed record AppliedChange(Guid? EntityId, int? Version, Guid? VehicleId
 /// </summary>
 /// <param name="VehicleOf">Finds the vehicle of what it changes, whoever may see it (a parked change is filed with its vehicle, also when it was
 /// parked because the access is gone); needed when <paramref name="VehicleIdHint"/> is not known from the change itself.</param>
+/// <param name="Base">The values the change was made from (JSON, as the device sent them), kept with it when it is parked.</param>
 public sealed record SyncChangeRequest(
     Guid Id, SyncChangeKind Kind, Guid? TargetId, Guid? VehicleIdHint, int? ExpectedVersion, string Payload, Func<CancellationToken, Task<AppliedChange>> Apply,
-    Func<CancellationToken, Task<Guid?>>? VehicleOf = null);
+    Func<CancellationToken, Task<Guid?>>? VehicleOf = null, string? Base = null);
 
 public sealed record SyncChangeResult(Guid Id, SyncChangeStatus Status, Guid? EntityId, int? Version, string? ReasonKey, IReadOnlyDictionary<string, string> ReasonArgs)
 {
@@ -85,7 +86,7 @@ public sealed class SyncService(
             throw new DomainException("sync.tooManyChanges", $"A batch holds 1 to {SyncChange.MaxBatch} changes.", new { Max = SyncChange.MaxBatch });
         if (changes.GroupBy(c => c.Id).FirstOrDefault(g => g.Count() > 1) is { } twice)
             throw new DomainException("sync.duplicateChange", "A change is in the batch twice.", new { Id = twice.Key });
-        if (changes.FirstOrDefault(c => c.Payload.Length > SyncChange.MaxPayloadLength) is { } large)
+        if (changes.FirstOrDefault(c => c.Payload.Length > SyncChange.MaxPayloadLength || c.Base?.Length > SyncChange.MaxPayloadLength) is { } large)
             throw new DomainException("sync.payloadTooLarge", $"A change may hold at most {SyncChange.MaxPayloadLength} characters.", new { large.Id, Max = SyncChange.MaxPayloadLength });
 
         var gate = Locks[(uint)me.Id.GetHashCode() % Locks.Length];
@@ -253,7 +254,7 @@ public sealed class SyncService(
             var args = refused.Args.ToDictionary(a => a.Key, a => Convert.ToString(a.Value, CultureInfo.InvariantCulture) ?? "");
             var (vehicleId, ownerId) = await FiledUnderAsync(change.VehicleIdHint ?? (change.VehicleOf is { } find ? await find(ct) : null), submitter, ct);
             return SyncChange.Parked(change.Id, ownerId, submitter, vehicleId, change.TargetId, change.Kind,
-                change.ExpectedVersion, change.Payload, now, refused.Key, args);
+                change.ExpectedVersion, change.Payload, now, refused.Key, args, change.Base);
         }
     }
 

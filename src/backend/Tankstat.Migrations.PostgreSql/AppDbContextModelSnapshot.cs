@@ -485,6 +485,12 @@ namespace Tankstat.Migrations.PostgreSql
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)");
 
+                    b.Property<DateTime?>("ChangedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ChangedById")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -501,6 +507,10 @@ namespace Tankstat.Migrations.PostgreSql
                         .IsRequired()
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
+
+                    b.Property<string>("LastChange")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.Property<DateOnly>("LastDoneDate")
                         .HasColumnType("date");
@@ -680,6 +690,10 @@ namespace Tankstat.Migrations.PostgreSql
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Base")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
 
                     b.Property<int?>("ExpectedVersion")
                         .HasColumnType("integer");
@@ -922,6 +936,12 @@ namespace Tankstat.Migrations.PostgreSql
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)");
 
+                    b.Property<DateTime?>("ChangedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ChangedById")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid?>("CostId")
                         .HasColumnType("uuid");
 
@@ -936,6 +956,10 @@ namespace Tankstat.Migrations.PostgreSql
 
                     b.Property<int>("FilledFromPhoto")
                         .HasColumnType("integer");
+
+                    b.Property<string>("LastChange")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.Property<string>("Note")
                         .HasMaxLength(500)
@@ -997,6 +1021,12 @@ namespace Tankstat.Migrations.PostgreSql
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("ChangedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ChangedById")
+                        .HasColumnType("uuid");
+
                     b.Property<decimal?>("Consumption")
                         .HasPrecision(9, 3)
                         .HasColumnType("numeric(9,3)");
@@ -1018,6 +1048,10 @@ namespace Tankstat.Migrations.PostgreSql
 
                     b.Property<bool>("IsFullTank")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("LastChange")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.Property<bool>("MissedPreviousFillUp")
                         .HasColumnType("boolean");
@@ -1081,11 +1115,21 @@ namespace Tankstat.Migrations.PostgreSql
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("ChangedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ChangedById")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("FuelType")
                         .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("LastChange")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 

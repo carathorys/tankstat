@@ -636,7 +636,8 @@
       "notFound": "Ez a módosítás már nincs meg, vagy nem láthatod.",
       "notParked": "Erről a módosításról valaki már döntött.",
       "cannotResolve": "Csak az dönthet róla, aki küldte, vagy aki módosíthatja a jármű bejegyzéseit.",
-      "kindMismatch": "A szerkesztett módosításnak ugyanazt kell tennie, mint a nem érvényesítettnek."
+      "kindMismatch": "A szerkesztett módosításnak ugyanazt kell tennie, mint a nem érvényesítettnek.",
+      "cannotRestoreFirst": "Csak egy tankolás, kiadás vagy jármű módosítása hozhatja vissza a kukából."
     }
   },
   "a11y": {
@@ -1189,24 +1190,24 @@
       "refuelings": {
         "add": "Új tankolás",
         "update": "Módosított tankolás",
-        "trash": "Lomtárba kerülő tankolás",
-        "restore": "Lomtárból visszaállított tankolás",
+        "trash": "Kukába kerülő tankolás",
+        "restore": "Kukából visszaállított tankolás",
         "addPhoto": "Tankoláshoz hozzáadott fotó",
         "removePhoto": "Tankolásról törölt fotó"
       },
       "expenses": {
         "add": "Új kiadás",
         "update": "Módosított kiadás",
-        "trash": "Lomtárba kerülő kiadás",
-        "restore": "Lomtárból visszaállított kiadás",
+        "trash": "Kukába kerülő kiadás",
+        "restore": "Kukából visszaállított kiadás",
         "addPhoto": "Kiadáshoz hozzáadott fotó",
         "removePhoto": "Kiadásról törölt fotó"
       },
       "vehicles": {
         "add": "Új jármű",
         "update": "Módosított jármű",
-        "trash": "Lomtárba kerülő jármű",
-        "restore": "Lomtárból visszaállított jármű"
+        "trash": "Kukába kerülő jármű",
+        "restore": "Kukából visszaállított jármű"
       },
       "recurring": {
         "add": "Új ismétlődő kiadás",
@@ -1261,6 +1262,106 @@
     "discardDescription": "Soha nem lesz érvényesítve; ami a szerveren van, úgy marad.",
     "appliedNow": "Érvényesítve.",
     "discarded": "Elvetve: nem lesz érvényesítve.",
-    "stillNotApplied": "Továbbra sem érvényesíthető: {{reason}}"
+    "stillNotApplied": "Továbbra sem érvényesíthető: {{reason}}",
+    "fields": {
+      "date": "Dátum",
+      "volume": "Mennyiség",
+      "totalCost": "Teljes költség",
+      "currency": "Pénznem",
+      "odometer": "Kilométeróra",
+      "isFullTank": "Teli tank",
+      "missedPreviousFillUp": "Kimaradt tankolás előtte",
+      "note": "Megjegyzés",
+      "title": "Megnevezés",
+      "category": "Kategória",
+      "amount": "Összeg",
+      "name": "Név",
+      "licensePlate": "Rendszám",
+      "fuelType": "Üzemanyag",
+      "units": "Mértékegységek",
+      "kind": "Ismétlődés",
+      "intervalMonths": "Gyakoriság (hónap)",
+      "intervalDistance": "Gyakoriság (távolság)",
+      "lastDoneDate": "Számolás kezdete",
+      "lastDoneOdometer": "Kilométeróra azon a napon",
+      "warnDays": "Figyelmeztetés előtte (nap)",
+      "warnDistance": "Figyelmeztetés előtte (távolság)"
+    },
+    "value": {
+      "empty": "nincs",
+      "yes": "igen",
+      "no": "nem",
+      "months_one": "{{count}} hónap",
+      "months_other": "{{count}} hónap",
+      "days_one": "{{count}} nap",
+      "days_other": "{{count}} nap"
+    },
+    "conflict": {
+      "server": {
+        "CREATED": "A szerveren: {{who}} hozzáadta ({{when}}).",
+        "EDITED": "A szerveren: {{who}} módosította ({{when}}).",
+        "TRASHED": "A szerveren: {{who}} a kukába tette ({{when}}).",
+        "RESTORED": "A szerveren: {{who}} visszahozta a kukából ({{when}}).",
+        "DONE": "A szerveren: {{who}} elvégzettnek jelölte ({{when}}).",
+        "FILLED_FROM_PHOTO": "A szerveren: a fotói kitöltöttek értékeket ({{when}}).",
+        "unknown": "A szerveren: módosult ({{when}})."
+      },
+      "earlier": "korábban",
+      "changedThere": "Ott módosult: {{fields}}.",
+      "fieldValue": "{{field}}: {{value}}",
+      "offline": {
+        "trash": "Egy eszközről: {{who}} a kukába tette.",
+        "delete": "Egy eszközről: {{who}} végleg törölte.",
+        "update": "Egy eszközről: {{who}} módosította."
+      },
+      "alreadyTrashed": "A szerveren már a kukában van, így nincs miről dönteni.",
+      "gone": "Már nincs a szerveren, vagy már nem látod.",
+      "goneSchedule": "A szerveren végleg törölték, vagy már nem látod.",
+      "trashedMeanwhile": "A szerveren most a kukában van.",
+      "open": "Megnyitás",
+      "openAria": "Megnyitás, ahogy most van: {{change}}",
+      "actionAria": "{{action}}: {{change}}",
+      "confirmTitle": "{{action}}?",
+      "done": "Kész",
+      "trashAnyway": "Mégis a kukába",
+      "trashAgain": "Újra a kukába",
+      "trashAnywayDescription": "Úgy kerül a kukába, ahogy most a szerveren van, az ott végzett módosításokkal együtt; onnan még visszaállítható.",
+      "deleteAnyway": "Mégis törlés",
+      "deleteAnywayDescription": "Végleg törlődik, a szerveren végzett módosításokkal együtt.",
+      "keep": "Maradjon",
+      "keepDescription": "Úgy marad, ahogy a szerveren van; ez a módosítás végleg elvész.",
+      "restoreWithChange": "Visszaállítás a módosításoddal",
+      "restoreWithChangeDescription": "Visszakerül a kukából, ennek a módosításnak az értékeivel.",
+      "leaveInTrash": "Maradjon a kukában",
+      "leaveInTrashDescription": "A kukában marad; ez a módosítás végleg elvész."
+    },
+    "merge": {
+      "bothChanged": "Mindkét helyen módosult.",
+      "onServer": "A szerveren: {{value}}",
+      "yours": "A tiéd: {{value}}",
+      "use": "Átveszem",
+      "useAria": "Átveszem ide: {{field}}: {{value}}",
+      "fromServer": "Csak a szerveren módosult: annak az értéke marad.",
+      "fromMine": "Csak ez a módosítás változtatta: az értéke marad.",
+      "state": {
+        "both": "Mindkét helyen módosult",
+        "mine": "Csak ez a módosítás változtatta",
+        "theirs": "Csak a szerveren módosult",
+        "same": "Ugyanaz"
+      },
+      "caption": "Ez a módosítás és ami most a szerveren van, mezőnként",
+      "field": "Mező",
+      "mine": "Ez a módosítás",
+      "theirs": "Most a szerveren",
+      "how": "Összefésülve",
+      "open": "Összefésülés…",
+      "openAria": "Összefésülés: {{change}}",
+      "title": "A módosítás összefésülése és érvényesítése",
+      "apply": "Érvényesítés",
+      "useMine": "Mindenhol az enyém",
+      "useMineDescription": "Ennek a módosításnak az értékei felülírják azokat, amelyeket közben a szerveren beállítottak, ott is, ahol csak a szerveren módosultak; amit nem állít be, az úgy marad, ahogy ott van.",
+      "keepServers": "Maradjon a szerveré",
+      "keepServersDescription": "Ami a szerveren van, úgy marad; ez a módosítás végleg elvész."
+    }
   }
 }

@@ -22,7 +22,7 @@ public class ErrorKeyTests
         var fuel = Catch(() => TestData.Vehicle(owner, "Car", null, (FuelType)99));
         Assert.Equal("vehicle.unknownFuelType", fuel.Key);
         Assert.Equal("99", fuel.Args["value"]);
-        Assert.Equal("vehicle.notTrashed", Catch(vehicle.Restore).Key);
+        Assert.Equal("vehicle.notTrashed", Catch(() => vehicle.Restore()).Key);
         vehicle.MarkDeleted(DateTimeOffset.UtcNow);
         Assert.Equal("vehicle.alreadyTrashed", Catch(() => vehicle.MarkDeleted(DateTimeOffset.UtcNow)).Key);
         Assert.Equal("vehicle.trashedCannotEdit", Catch(() => vehicle.Update("x", null, FuelType.Lpg, MeasurementUnits.Metric)).Key);

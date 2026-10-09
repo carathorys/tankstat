@@ -67,6 +67,11 @@ internal sealed class UserDataRepository(IDbContextFactory<AppDbContext> dbFacto
         await db.Expenses.IgnoreQueryFilters().Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to).SetProperty(x => x.UpdatedAt, now), ct);
         await db.RecurringExpenses.Where(x => x.OwnerId == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.OwnerId, to).SetProperty(x => x.UpdatedAt, now), ct);
         await db.RecurringExpenses.Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to).SetProperty(x => x.UpdatedAt, now), ct);
+        // Who changed them last (not downloaded: no UpdatedAt).
+        await db.Vehicles.IgnoreQueryFilters().Where(x => x.ChangedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.ChangedById, to), ct);
+        await db.Refuelings.IgnoreQueryFilters().Where(x => x.ChangedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.ChangedById, to), ct);
+        await db.Expenses.IgnoreQueryFilters().Where(x => x.ChangedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.ChangedById, to), ct);
+        await db.RecurringExpenses.Where(x => x.ChangedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.ChangedById, to), ct);
         await db.VehicleCharts.Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to), ct);
         await db.LogPhotos.Where(x => x.OwnerId == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.OwnerId, to), ct);
         await db.LogPhotos.Where(x => x.CreatedById == from).ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedById, to), ct);

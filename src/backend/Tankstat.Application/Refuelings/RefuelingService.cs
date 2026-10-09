@@ -99,7 +99,7 @@ public sealed class RefuelingService(
 
         var changes = refueling.Update(
             input.Date, input.Volume, input.TotalCost, input.Currency ?? refueling.Currency, input.Odometer, input.IsFullTank,
-            input.MissedPreviousFillUp ?? refueling.MissedPreviousFillUp, input.Note, readingPhotos);
+            input.MissedPreviousFillUp ?? refueling.MissedPreviousFillUp, input.Note, readingPhotos, (await access.RequirePrincipalAsync(ct)).Id);
         await refuelings.UpdateAsync(refueling, changes, ct);
         // Readings that finished before the save are taken now (the worker's round may have passed while the log did not wait yet).
         if (refueling.ReviewState == ReviewState.AwaitingPhotos) await filler.FillAsync(LogType.Refueling, id, ct);
@@ -115,19 +115,27 @@ public sealed class RefuelingService(
     {
         var refueling = await EditableLogAsync(id, includeDeleted: false, ct);
         VersionCheck.Require(expectedVersion, refueling.Version);
-        refueling.MarkDeleted(clock.GetUtcNow());
+        refueling.MarkDeleted(clock.GetUtcNow(), (await access.RequirePrincipalAsync(ct)).Id);
         await refuelings.UpdateAsync(refueling, LinkedChanges.None, ct);
         await RecalculateConsumptionAsync(refueling.VehicleId, ct); // the neighbours' fill-up intervals change
         logger.LogDebug("Refueling {RefuelingId} of vehicle {VehicleId} moved to the trash", id, refueling.VehicleId);
         return refueling;
     }
 
+    /// <summary>
+    /// The log when it is in the trash and the user may edit it (restore it), else null: a trash a device sends for what is already in the
+    /// trash has nothing left to do.
+    /// </summary>
+    public async Task<Refueling?> InTrashAsync(Guid id, CancellationToken ct) =>
+        await refuelings.FindIncludingDeletedAsync(id, ct) is { IsDeleted: true } refueling
+        && await guard.ForVehicleAsync(refueling.VehicleId, ct) is { Level: >= AccessLevel.Edit } ? refueling : null;
+
     public async Task<Refueling> RestoreAsync(Guid id, CancellationToken ct, int? expectedVersion = null)
     {
         var refueling = await EditableLogAsync(id, includeDeleted: true, ct);
         VersionCheck.Require(expectedVersion, refueling.Version);
         await ValidateAsync(refueling.VehicleId, new RefuelingInput(refueling.Date, refueling.Volume, refueling.TotalCost, refueling.Currency, refueling.Odometer, refueling.IsFullTank, refueling.Note), exceptReadingId: null, ct);
-        refueling.Restore();
+        refueling.Restore((await access.RequirePrincipalAsync(ct)).Id);
         await refuelings.UpdateAsync(refueling, LinkedChanges.None, ct);
         // Its photos may have been read while it was in the trash.
         if (refueling.ReviewState == ReviewState.AwaitingPhotos) await filler.FillAsync(LogType.Refueling, id, ct);

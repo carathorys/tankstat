@@ -1,6 +1,7 @@
 using Tankstat.Domain;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Recurring;
+using Tankstat.Domain.Sync;
 using Tankstat.Domain.Vehicles;
 using Tankstat.TestSupport;
 
@@ -95,6 +96,42 @@ public class VersionAndIdTests
         var waiting = Expense(readingPhotos: true);
         waiting.FillFromPhoto(new PhotoValues(Odometer: null, Volume: null, Total: 30, Currency: "EUR"));
         Assert.Equal(2, waiting.Version);
+    }
+
+    [Fact]
+    public void EveryCountedChange_SaysWhoMadeItAndWhatItDid_AndAPhotoIsNobody()
+    {
+        var anna = Guid.NewGuid();
+        var v = TestData.Vehicle(Owner);
+        Assert.Equal((EntityChange.Created, Owner), (v.LastChange!.Value, v.ChangedById!.Value));
+        v.Update("New", null, FuelType.Diesel, MeasurementUnits.Metric, anna);
+        Assert.Equal((EntityChange.Edited, anna), (v.LastChange!.Value, v.ChangedById!.Value));
+        v.SetPicture(Guid.NewGuid()); // does not count
+        Assert.Equal(EntityChange.Edited, v.LastChange);
+        v.MarkDeleted(Now, Owner);
+        Assert.Equal((EntityChange.Trashed, Owner), (v.LastChange!.Value, v.ChangedById!.Value));
+        v.Restore(anna);
+        Assert.Equal((EntityChange.Restored, anna), (v.LastChange!.Value, v.ChangedById!.Value));
+
+        var log = TestData.Refueling(Owner, anna, Guid.NewGuid(), Day);
+        Assert.Equal((EntityChange.Created, anna), (log.LastChange!.Value, log.ChangedById!.Value));
+        log.SetConsumption(6.5m);
+        Assert.Equal(EntityChange.Created, log.LastChange);
+        log.Update(Day, 41, 61, "EUR", 1001, true, false, null, by: Owner);
+        Assert.Equal((EntityChange.Edited, Owner), (log.LastChange!.Value, log.ChangedById!.Value));
+
+        var waiting = Waiting(Guid.NewGuid());
+        waiting.FillFromPhoto(new PhotoValues(Odometer: 1200, Volume: null, Total: null, Currency: null));
+        Assert.Equal(EntityChange.FilledFromPhoto, waiting.LastChange);
+        Assert.Null(waiting.ChangedById);
+
+        var e = Expense();
+        e.MarkDeleted(Now, anna);
+        Assert.Equal((EntityChange.Trashed, anna), (e.LastChange!.Value, e.ChangedById!.Value));
+
+        var s = Schedule();
+        s.MarkDone(Day.AddDays(1), null, anna);
+        Assert.Equal((EntityChange.Done, anna), (s.LastChange!.Value, s.ChangedById!.Value));
     }
 
     [Fact]

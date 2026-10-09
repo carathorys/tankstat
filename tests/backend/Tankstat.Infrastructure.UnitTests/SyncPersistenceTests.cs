@@ -73,6 +73,30 @@ public class SyncPersistenceTests
     }
 
     [Fact]
+    public async Task ANewVersion_SetsChangedAt_AndWhoAndWhatAreKept_ButASaveThatDoesNotCountLeavesThemAlone()
+    {
+        await using var db = Database();
+        var vehicles = db.Get<IVehicleRepository>();
+        var car = await Car(db);
+        var created = _clock.GetUtcNow();
+        var stored = (await vehicles.FindAsync(car.Id, default))!;
+        Assert.Equal((created, Owner, EntityChange.Created), (stored.ChangedAt!.Value, stored.ChangedById!.Value, stored.LastChange!.Value));
+
+        _clock.Advance(TimeSpan.FromMinutes(5));
+        stored.SetPicture(Guid.NewGuid()); // saved, downloaded again, but not a change anyone could conflict with
+        await vehicles.UpdateAsync(stored, default);
+        stored = (await vehicles.FindAsync(car.Id, default))!;
+        Assert.Equal((_clock.GetUtcNow(), created), (stored.UpdatedAt, stored.ChangedAt!.Value));
+
+        _clock.Advance(TimeSpan.FromMinutes(5));
+        var anna = Guid.NewGuid();
+        stored.Update("Golf GTI", null, FuelType.Petrol, MeasurementUnits.Metric, anna);
+        await vehicles.UpdateAsync(stored, default);
+        stored = (await vehicles.FindAsync(car.Id, default))!;
+        Assert.Equal((_clock.GetUtcNow(), anna, EntityChange.Edited), (stored.ChangedAt!.Value, stored.ChangedById!.Value, stored.LastChange!.Value));
+    }
+
+    [Fact]
     public async Task APhotoAddedOrRemoved_MarksItsLogForDownload()
     {
         await using var db = Database();

@@ -1,0 +1,51 @@
+# The values a change of an entry can set (offline/changes.ts UPDATABLE) and the version they belong to: what a change kept on this device
+# was made from (read from the cache when it is kept, offline/conflicts.ts), and what is on the server now when it was parked
+# (ParkedChangeFields `current`), so the two can be merged. No `id`: what the server has now stays with the parked change, never in the
+# cache's entry of the entity (which a list may be showing with this device's own changes laid over it).
+fragment RefuelingChangeValues on Refueling {
+  version
+  date
+  volume
+  totalCost
+  currency
+  odometer
+  isFullTank
+  missedPreviousFillUp
+  note
+}
+
+fragment ExpenseChangeValues on Expense {
+  version
+  date
+  title
+  category
+  amount
+  currency
+  odometer
+  note
+}
+
+fragment VehicleChangeValues on Vehicle {
+  version
+  name
+  licensePlate
+  fuelType
+  units {
+    distance
+    volume
+  }
+}
+
+fragment ScheduleChangeValues on RecurringExpenseInfo {
+  version
+  title
+  category
+  note
+  kind
+  intervalMonths
+  intervalDistance
+  lastDoneDate
+  lastDoneOdometer
+  warnDays
+  warnDistance
+}

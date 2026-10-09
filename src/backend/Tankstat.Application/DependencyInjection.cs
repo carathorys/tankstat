@@ -68,6 +68,7 @@ public static class DependencyInjection
         services.AddScoped<OfflineSettingsService>();
         services.AddScoped<OfflineFeedService>();
         services.AddScoped<SyncService>();
+        services.AddScoped<SyncTargetService>();
         services.AddSingleton<ImportSessionStore>();
         services.AddSingleton<IImportParser, FuelioCsvParser>();
         services.AddScoped<ImportService>();
