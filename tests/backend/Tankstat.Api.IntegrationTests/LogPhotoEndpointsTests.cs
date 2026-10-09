@@ -22,7 +22,11 @@ public class LogPhotoEndpointsTests : IDisposable
         return await c.PutAsync(path, content);
     }
 
-    private string[] FilesOnDisk() => Directory.Exists(_app.UploadsPath) ? Directory.GetFiles(_app.UploadsPath, "*", SearchOption.AllDirectories) : [];
+    /// <summary>Every uploaded file of this host, pictures and photos.</summary>
+    private string[] FilesOnDisk() =>
+        [.. new[] { _app.UploadsPath, _app.PhotosPath }.Where(Directory.Exists).SelectMany(root => Directory.GetFiles(root, "*", SearchOption.AllDirectories))];
+
+    private static string VehicleFolder(string root, string vehicleId) => Path.Combine(root, "vehicles", Guid.Parse(vehicleId).ToString("N"));
 
     private sealed record World(HttpClient Admin, HttpClient Alice, HttpClient Bob, string AliceId, string BobId, string VehicleId, string ExpenseId, string RefuelingId);
 
@@ -77,7 +81,7 @@ public class LogPhotoEndpointsTests : IDisposable
         Assert.Equal("image/png", served.Content.Headers.ContentType?.MediaType);
         Assert.Equal(Png(), await served.Content.ReadAsByteArrayAsync());
         var file = Assert.Single(FilesOnDisk());
-        Assert.StartsWith(Path.Combine(_app.UploadsPath, "vehicles", Guid.Parse(w.VehicleId).ToString("N"), segment, Guid.Parse(logId).ToString("N")), file);
+        Assert.StartsWith(Path.Combine(VehicleFolder(_app.PhotosPath, w.VehicleId), segment, Guid.Parse(logId).ToString("N")), file); // the photos' own root
 
         Assert.Equal(HttpStatusCode.NoContent, (await w.Alice.DeleteAsync($"/media/{segment}/{logId}/photos/{id}")).StatusCode);
 
@@ -189,13 +193,31 @@ public class LogPhotoEndpointsTests : IDisposable
         await Uploaded(await Put(w.Alice, $"/media/expenses/{w.ExpenseId}/photos", Png(1)));
         await Uploaded(await Put(w.Alice, $"/media/refuelings/{w.RefuelingId}/photos", Png(2)));
         await Uploaded(await Put(w.Alice, $"/media/vehicles/{w.VehicleId}/picture", Png(3)));
-        Assert.Equal(3, FilesOnDisk().Length);
+        Assert.Single(Directory.GetFiles(VehicleFolder(_app.UploadsPath, w.VehicleId), "*", SearchOption.AllDirectories)); // the picture
+        Assert.Equal(2, Directory.GetFiles(VehicleFolder(_app.PhotosPath, w.VehicleId), "*", SearchOption.AllDirectories).Length); // the photos
         await w.Alice.Gql("mutation($id: UUID!) { deleteVehicle(id: $id) { id } }", new { id = w.VehicleId });
 
         await w.Alice.Gql("mutation { emptyTrash }");
 
         Assert.Empty(FilesOnDisk());
-        Assert.False(Directory.Exists(Path.Combine(_app.UploadsPath, "vehicles", Guid.Parse(w.VehicleId).ToString("N"))));
+        Assert.False(Directory.Exists(VehicleFolder(_app.UploadsPath, w.VehicleId)));
+        Assert.False(Directory.Exists(VehicleFolder(_app.PhotosPath, w.VehicleId)));
+    }
+
+    [Fact]
+    public async Task APhotoAnOlderVersionLeftWithThePictures_IsStillServed_AndRemoved()
+    {
+        var w = await Setup();
+        var (id, url) = await Uploaded(await Put(w.Alice, $"/media/refuelings/{w.RefuelingId}/photos", Png(4)));
+        var file = Assert.Single(FilesOnDisk());
+        var old = Path.Combine(_app.UploadsPath, Path.GetRelativePath(_app.PhotosPath, file)); // where it lay before the photos had a root
+        Directory.CreateDirectory(Path.GetDirectoryName(old)!);
+        File.Move(file, old);
+
+        Assert.Equal(Png(4), await (await w.Alice.GetAsync(url)).Content.ReadAsByteArrayAsync());
+        Assert.Equal(HttpStatusCode.NoContent, (await w.Alice.DeleteAsync($"/media/refuelings/{w.RefuelingId}/photos/{id}")).StatusCode);
+
+        Assert.Empty(FilesOnDisk());
     }
 
     // ---- drafts: photos picked before the log is saved -------------------------------------------------------
@@ -209,7 +231,7 @@ public class LogPhotoEndpointsTests : IDisposable
     {
         var w = await Setup();
         var (draft, url) = await Uploaded(await Put(w.Alice, DraftsPath(w.VehicleId), Png()));
-        var vehicleFolder = Path.Combine(_app.UploadsPath, "vehicles", Guid.Parse(w.VehicleId).ToString("N"));
+        var vehicleFolder = VehicleFolder(_app.PhotosPath, w.VehicleId);
         Assert.StartsWith(Path.Combine(vehicleFolder, "drafts"), Assert.Single(FilesOnDisk()));
         Assert.Equal(HttpStatusCode.OK, (await w.Alice.GetAsync(url)).StatusCode); // the uploader sees it right away
 
@@ -305,6 +327,7 @@ public class LogPhotoEndpointsTests : IDisposable
 
         Assert.Empty(FilesOnDisk());
         Assert.False(Directory.Exists(Path.Combine(_app.UploadsPath, "users", Guid.Parse(w.AliceId).ToString("N"))));
-        Assert.False(Directory.Exists(Path.Combine(_app.UploadsPath, "vehicles", Guid.Parse(w.VehicleId).ToString("N"))));
+        Assert.False(Directory.Exists(VehicleFolder(_app.UploadsPath, w.VehicleId)));
+        Assert.False(Directory.Exists(VehicleFolder(_app.PhotosPath, w.VehicleId)));
     }
 }

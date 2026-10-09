@@ -37,4 +37,18 @@ public class LogPhotoTests
         Assert.Equal("vehicles/22222222222222222222222222222222/refuelings/33333333333333333333333333333333", ImageFolders.LogPhotos(vehicle, LogType.Refueling, log));
         Assert.StartsWith(ImageFolders.Vehicle(vehicle) + "/", ImageFolders.LogPhotos(vehicle, LogType.Expense, log));
     }
+
+    [Fact]
+    public void EveryFolder_SaysWhichRootItLivesUnder()
+    {
+        var (user, vehicle, log) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+
+        Assert.Equal(ImageRoots.Pictures, ImageFolders.RootsOf(null)); // a file from before folders
+        Assert.Equal(ImageRoots.Pictures, ImageFolders.RootsOf(ImageFolders.Avatar(user)));
+        Assert.Equal(ImageRoots.Pictures, ImageFolders.RootsOf(ImageFolders.VehiclePicture(vehicle)));
+        Assert.Equal(ImageRoots.Photos, ImageFolders.RootsOf(ImageFolders.PhotoDrafts(vehicle)));
+        Assert.Equal(ImageRoots.Photos, ImageFolders.RootsOf(ImageFolders.LogPhotos(vehicle, LogType.Expense, log)));
+        Assert.Equal(ImageRoots.Photos, ImageFolders.RootsOf(ImageFolders.LogPhotos(vehicle, LogType.Refueling, log)));
+        Assert.Equal(ImageRoots.Pictures | ImageRoots.Photos, ImageFolders.RootsOf(ImageFolders.Vehicle(vehicle))); // its picture and its photos
+    }
 }

@@ -17,10 +17,13 @@ public sealed class ApiFixture : IDisposable
     private const string ConnectionVar = "Database__ConnectionString";
     private const string ModeVar = "Auth__Mode";
     private const string StorageVar = "Storage__Path";
+    private const string PhotosVar = "Storage__PhotosPath";
 
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}.db");
 
     public string UploadsPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-uploads");
+
+    public string PhotosPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-photos");
 
     public WebApplicationFactory<Program> Factory { get; }
 
@@ -30,6 +33,7 @@ public sealed class ApiFixture : IDisposable
         Environment.SetEnvironmentVariable(ConnectionVar, $"Data Source={_path}");
         Environment.SetEnvironmentVariable(ModeVar, "None"); // these tests are about no-auth; appsettings.json may say otherwise
         Environment.SetEnvironmentVariable(StorageVar, UploadsPath);
+        Environment.SetEnvironmentVariable(PhotosVar, PhotosPath);
         Factory = new WebApplicationFactory<Program>();
     }
 
@@ -40,7 +44,9 @@ public sealed class ApiFixture : IDisposable
         Environment.SetEnvironmentVariable(ConnectionVar, null);
         Environment.SetEnvironmentVariable(ModeVar, null);
         Environment.SetEnvironmentVariable(StorageVar, null);
-        if (Directory.Exists(UploadsPath)) Directory.Delete(UploadsPath, recursive: true);
+        Environment.SetEnvironmentVariable(PhotosVar, null);
+        foreach (var folder in new[] { UploadsPath, PhotosPath })
+            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
         // Only this database's pooled connections: ClearAllPools would also close the ones of tests running in parallel.
         using (var pooled = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_path}")) Microsoft.Data.Sqlite.SqliteConnection.ClearPool(pooled);
         File.Delete(_path);

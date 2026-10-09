@@ -27,6 +27,9 @@ internal sealed class TestApp : IDisposable
     /// <summary>Where uploaded pictures of this host go.</summary>
     public string UploadsPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-uploads");
 
+    /// <summary>Where the photos of logs (and their drafts) of this host go.</summary>
+    public string PhotosPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-photos");
+
     /// <summary>Where this host keeps the keys that protect its cookies.</summary>
     public string KeysPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-keys");
 
@@ -45,6 +48,7 @@ internal sealed class TestApp : IDisposable
             ["Database:Provider"] = "Sqlite",
             ["Database:ConnectionString"] = $"Data Source={_db}",
             ["Storage:Path"] = UploadsPath,
+            ["Storage:PhotosPath"] = PhotosPath,
             ["DataProtection:KeysPath"] = KeysPath, // the cookies' keys of this host only, never in the build output
             ["Logging:LogLevel:Tankstat"] = "Debug", // the Debug lines are part of what is tested
         };
@@ -84,6 +88,7 @@ internal sealed class TestApp : IDisposable
         using (var pooled = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_db}")) Microsoft.Data.Sqlite.SqliteConnection.ClearPool(pooled);
         File.Delete(_db);
         if (Directory.Exists(UploadsPath)) Directory.Delete(UploadsPath, recursive: true);
+        if (Directory.Exists(PhotosPath)) Directory.Delete(PhotosPath, recursive: true);
         if (Directory.Exists(KeysPath)) Directory.Delete(KeysPath, recursive: true);
     }
 

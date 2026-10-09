@@ -5,6 +5,7 @@ using Tankstat.Application.Images;
 using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Images;
+using Tankstat.Domain.Photos;
 using Tankstat.Domain.Users;
 using Tankstat.Domain.Vehicles;
 using Tankstat.Infrastructure.Storage;
@@ -16,12 +17,20 @@ public sealed class ImageStorageTests : IDisposable
 {
     private readonly string _folder = Path.Combine(Path.GetTempPath(), $"tankstat-store-{Guid.NewGuid():N}");
 
+    /// <summary>The photos of logs: a root of their own (unset, it would be the shared <c>photos</c> next to every test's folder).</summary>
+    private readonly string _photos = Path.Combine(Path.GetTempPath(), $"tankstat-store-{Guid.NewGuid():N}-photos");
+
     public void Dispose()
     {
-        if (Directory.Exists(_folder)) Directory.Delete(_folder, recursive: true);
+        foreach (var folder in new[] { _folder, _photos })
+            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
     }
 
-    private FileSystemImageStore Store(string? path = null) => new(Options.Create(new StorageOptions { Path = path ?? _folder }));
+    private FileSystemImageStore Store(string? path = null, string? photos = null) =>
+        new(Options.Create(new StorageOptions { Path = path ?? _folder, PhotosPath = photos ?? _photos }));
+
+    private static string In(string root, string folder, StoredImage image) =>
+        Path.Combine(root, folder.Replace('/', Path.DirectorySeparatorChar), image.Id.ToString("N"));
 
     private static StoredImage Image(string? folder = null) =>
         StoredImage.Create(Guid.NewGuid(), "image/png", 1, new DateTimeOffset(2026, 10, 1, 8, 0, 0, TimeSpan.Zero), folder);
@@ -116,6 +125,8 @@ public sealed class ImageStorageTests : IDisposable
         Assert.Null(await store.OpenReadAsync(photo, default));
         Assert.NotNull(await store.OpenReadAsync(othersPicture, default));
         Assert.False(Directory.Exists(Path.Combine(_folder, "vehicles", vehicleId.ToString("N"))));
+        Assert.False(Directory.Exists(Path.Combine(_photos, "vehicles", vehicleId.ToString("N")))); // its photos' tree too
+        Assert.True(Directory.Exists(Path.Combine(_folder, "vehicles", other.ToString("N"))));
     }
 
     [Fact]
@@ -132,7 +143,89 @@ public sealed class ImageStorageTests : IDisposable
         Assert.Null(await store.OpenReadAsync(draft, default)); // no longer in the drafts folder
         var moved = StoredImage.Create(draft.Id, draft.ContentType, draft.SizeBytes, draft.CreatedAt, logFolder);
         Assert.Equal(new byte[] { 7, 7 }, await ReadAll((await store.OpenReadAsync(moved, default))!));
-        Assert.True(File.Exists(Path.Combine(_folder, logFolder.Replace('/', Path.DirectorySeparatorChar), draft.Id.ToString("N"))));
+        Assert.True(File.Exists(In(_photos, logFolder, draft)));
+    }
+
+    [Fact]
+    public async Task PicturesAndThePhotosOfLogs_LiveUnderRootsOfTheirOwn_WithTheSameLayout()
+    {
+        var store = Store();
+        var (vehicleId, userId) = (Guid.NewGuid(), Guid.NewGuid());
+        var picture = Image(ImageFolders.VehiclePicture(vehicleId));
+        var avatar = Image(ImageFolders.Avatar(userId));
+        var draft = Image(ImageFolders.PhotoDrafts(vehicleId));
+        var photo = Image(ImageFolders.LogPhotos(vehicleId, LogType.Expense, Guid.NewGuid()));
+
+        foreach (var image in new[] { picture, avatar, draft, photo }) await store.SaveAsync(image, new byte[] { 1 }, default);
+
+        Assert.True(File.Exists(In(_folder, picture.Folder!, picture)));
+        Assert.True(File.Exists(In(_folder, avatar.Folder!, avatar)));
+        Assert.True(File.Exists(In(_photos, draft.Folder!, draft)));
+        Assert.True(File.Exists(In(_photos, photo.Folder!, photo)));
+        Assert.False(Directory.Exists(Path.Combine(_folder, "vehicles", vehicleId.ToString("N"), "drafts")));
+    }
+
+    [Fact]
+    public async Task ADraftMadeTheVehiclesPicture_MovesToThePicturesRoot_AndBackToTheDrafts()
+    {
+        var store = Store();
+        var vehicleId = Guid.NewGuid();
+        var draft = Image(ImageFolders.PhotoDrafts(vehicleId));
+        await store.SaveAsync(draft, new byte[] { 4, 2 }, default);
+        var asPicture = StoredImage.Create(draft.Id, draft.ContentType, draft.SizeBytes, draft.CreatedAt, ImageFolders.VehiclePicture(vehicleId));
+
+        await store.MoveAsync(draft, ImageFolders.VehiclePicture(vehicleId), default);
+
+        Assert.True(File.Exists(In(_folder, ImageFolders.VehiclePicture(vehicleId), draft)));
+        Assert.False(File.Exists(In(_photos, ImageFolders.PhotoDrafts(vehicleId), draft)));
+        Assert.Equal(new byte[] { 4, 2 }, await ReadAll((await store.OpenReadAsync(asPicture, default))!));
+
+        await store.MoveAsync(asPicture, ImageFolders.PhotoDrafts(vehicleId), default); // the vehicle could not be saved: back to the drafts
+
+        Assert.True(File.Exists(In(_photos, ImageFolders.PhotoDrafts(vehicleId), draft)));
+        Assert.Null(await store.OpenReadAsync(asPicture, default));
+    }
+
+    [Fact]
+    public async Task APhotoAnOlderVersionLeftInThePicturesRoot_IsStillRead_Moved_AndDeleted()
+    {
+        var store = Store();
+        var vehicleId = Guid.NewGuid();
+        var draft = Image(ImageFolders.PhotoDrafts(vehicleId));
+        var photo = Image(ImageFolders.LogPhotos(vehicleId, LogType.Refueling, Guid.NewGuid()));
+        foreach (var (image, bytes) in new[] { (draft, new byte[] { 1 }), (photo, new byte[] { 2 }) })
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(In(_folder, image.Folder!, image))!);
+            await File.WriteAllBytesAsync(In(_folder, image.Folder!, image), bytes); // where everything lived before the photos had a root
+        }
+
+        Assert.Equal(new byte[] { 2 }, await ReadAll((await store.OpenReadAsync(photo, default))!));
+
+        var logFolder = ImageFolders.LogPhotos(vehicleId, LogType.Expense, Guid.NewGuid());
+        await store.MoveAsync(draft, logFolder, default); // attached to a log: it lands where it belongs
+        Assert.True(File.Exists(In(_photos, logFolder, draft)));
+        Assert.False(File.Exists(In(_folder, draft.Folder!, draft)));
+
+        await store.DeleteAsync(photo, default);
+        Assert.False(File.Exists(In(_folder, photo.Folder!, photo)));
+        Assert.Null(await store.OpenReadAsync(photo, default));
+    }
+
+    [Fact]
+    public async Task WithOneFolderForBoth_EverythingStaysInIt()
+    {
+        var store = Store(photos: _folder);
+        var vehicleId = Guid.NewGuid();
+        var picture = Image(ImageFolders.VehiclePicture(vehicleId));
+        var photo = Image(ImageFolders.LogPhotos(vehicleId, LogType.Refueling, Guid.NewGuid()));
+        foreach (var image in new[] { picture, photo }) await store.SaveAsync(image, new byte[] { 1 }, default);
+
+        Assert.True(File.Exists(In(_folder, photo.Folder!, photo)));
+        await store.DeleteAsync(photo, default);
+        Assert.Null(await store.OpenReadAsync(photo, default));
+        await store.DeleteFolderAsync(ImageFolders.Vehicle(vehicleId), default);
+        Assert.False(Directory.Exists(Path.Combine(_folder, "vehicles", vehicleId.ToString("N"))));
+        Assert.False(Directory.Exists(_photos));
     }
 
     [Theory]
