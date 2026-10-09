@@ -76,6 +76,7 @@ public class ChartTests
         VehicleChart Make(string title, ChartConfig? config = null) => VehicleChart.Create(vehicle, vehicle, title, config ?? Config(), false, DateTimeOffset.UtcNow);
 
         Assert.Equal("chart.titleRequired", Key(() => Make(" ")));
+        Assert.Equal("chart.titleRequired", Key(() => Make(null!)));
         Assert.Equal("chart.titleTooLong", Key(() => Make(new string('x', VehicleChart.MaxTitleLength + 1))));
         Assert.Equal("chart.categoryNeedsExpenses", Key(() => Make("x", Config(ChartMetric.FuelCost, ChartGrouping.Category))));
     }

@@ -49,6 +49,21 @@ public class RecurringExpenseTests
         Assert.Equal("recurring.warnDaysInvalid", Key(() => Make(warnDays: -1)));
         Assert.Equal("recurring.warnDaysInvalid", Key(() => Make(warnDays: 366)));
         Assert.Equal("recurring.warnDistanceInvalid", Key(() => Make(warnDistance: -1)));
+        Assert.Equal("recurring.titleRequired", Key(() => Make(title: null!)));
+        Assert.Equal("recurring.categoryTooLong", Key(() => Make().Update("Oil", new string('c', RecurringExpense.MaxCategoryLength + 1), null, RecurrenceKind.Time, 12, null, Start, null, 30, 500)));
+        Assert.Equal("recurring.noteTooLong", Key(() => Make().Update("Oil", null, new string('n', RecurringExpense.MaxNoteLength + 1), RecurrenceKind.Time, 12, null, Start, null, 30, 500)));
+    }
+
+    [Fact]
+    public void ATimeScheduleWithoutABaselineOdometer_TakesTheOneItIsDoneAt()
+    {
+        var item = Make(RecurrenceKind.Time, 12, null, null);
+
+        item.MarkDone(new DateOnly(2026, 6, 1), 1000);
+        Assert.Equal(1000L, item.LastDoneOdometer);
+
+        item.MarkDone(new DateOnly(2026, 7, 1), 1000); // the same reading again is not going backwards
+        Assert.Equal((new DateOnly(2026, 7, 1), 1000L), (item.LastDoneDate, item.LastDoneOdometer));
     }
 
     [Fact]

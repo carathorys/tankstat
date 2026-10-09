@@ -60,6 +60,10 @@ public class RecognitionTests
 
         var reading = Assert.Single(s.W.Readings.Items);
         Assert.Equal((ReadingPurpose.Expense, "en", (long?)null, "HUF"), (reading.Purpose, reading.Locale, reading.LastOdometer, reading.Currency));
+
+        var unsaid = await s.W.Drafts.UploadAsync(s.Car.Id, Jpeg(), default);
+        await s.W.Recognition.QueueForDraftAsync(unsaid, ReadingPurpose.Expense, null, default); // a client that names no language
+        Assert.Equal("en", s.W.Readings.Items.Single(r => r.Id == unsaid).Locale);
     }
 
     [Fact]
@@ -394,8 +398,14 @@ public class RecognitionTests
         {
             File.WriteAllText(file, "  From the file.\n");
 
-            Assert.Equal("From the file.", SetupOf(ModelServer(o => { o.SystemPrompt = "Inline."; o.SystemPromptFile = file; })).SystemPrompt);
-            Assert.Equal("Inline.", SetupOf(ModelServer(o => o.SystemPrompt = " Inline. ")).SystemPrompt);
+            var fromFile = SetupOf(ModelServer(o => { o.SystemPrompt = "Inline."; o.SystemPromptFile = file; }));
+            var fromSetting = SetupOf(ModelServer(o => o.SystemPrompt = " Inline. "));
+            Assert.Equal("From the file.", fromFile.SystemPrompt);
+            Assert.Equal("Inline.", fromSetting.SystemPrompt);
+            // The log names where the prompt came from, never its text.
+            Assert.Equal("Recognition:OpenAiCompatible:SystemPromptFile", fromFile.SystemPromptSetting);
+            Assert.Equal("Recognition:OpenAiCompatible:SystemPrompt", fromSetting.SystemPromptSetting);
+            Assert.Null(SetupOf(ModelServer()).SystemPromptSetting);
         }
         finally
         {
@@ -404,14 +414,14 @@ public class RecognitionTests
     }
 
     [Fact]
-    public void APromptFileThatIsMissing_Empty_OrFarTooLarge_TurnsReadingOff_WithoutQuotingIt()
+    public void APromptFileThatIsMissing_Empty_FarTooLarge_OrUnreadable_TurnsReadingOff_WithoutQuotingIt()
     {
         var empty = Path.GetTempFileName();
         var huge = Path.GetTempFileName();
         try
         {
             File.WriteAllText(huge, new string('x', RecognitionSetup.MaxPromptFileBytes + 1));
-            foreach (var path in new[] { Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")), empty, huge })
+            foreach (var path in new[] { Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")), empty, huge, "prompt\0.txt" }) // the last is no path at all
             {
                 var setup = SetupOf(ModelServer(o => o.SystemPromptFile = path));
 
@@ -448,7 +458,9 @@ public class RecognitionTests
     [InlineData(ReadingFieldName.Date, "2026-02-30", null)]
     [InlineData(ReadingFieldName.Title, "  Shell   Kft. ", "Shell Kft.")]
     [InlineData(ReadingFieldName.Title, " ", null)]
-    public void Values_AreNormalised_OrDropped(ReadingFieldName name, string raw, string? expected) =>
+    [InlineData(ReadingFieldName.Total, null, null)]
+    [InlineData((ReadingFieldName)99, "42", null)] // a value of no field the app knows
+    public void Values_AreNormalised_OrDropped(ReadingFieldName name, string? raw, string? expected) =>
         Assert.Equal(expected, ReadingNormaliser.Normalise(name, raw));
 
     [Fact]

@@ -174,6 +174,33 @@ public class RefuelingTests
     }
 
     [Fact]
+    public void ALogStillWaitingForItsValues_HasNoPricePerUnit_AndGoesToTheTrashAndBackWithoutThem()
+    {
+        var vehicle = Guid.NewGuid();
+        var noVolume = Waiting(vehicle, total: 20);
+        var noCost = Waiting(vehicle, volume: 10);
+
+        Assert.Equal(((decimal?)null, (decimal?)null), (noVolume.PricePerUnit, noCost.PricePerUnit));
+
+        noCost.MarkDeleted(DateTimeOffset.UtcNow);
+        Assert.True(noCost.IsDeleted);
+        noCost.Restore();
+        Assert.Equal((false, (Cost?)null, (OdometerReading?)null), (noCost.IsDeleted, noCost.Cost, noCost.OdometerReading));
+    }
+
+    [Fact]
+    public void Update_WhileAPhotoIsRead_CanLetGoOfTheOdometer_AndHandsTheReadingBack()
+    {
+        var log = TestData.Refueling(Owner, Creator, Guid.NewGuid(), Day);
+        var reading = log.OdometerReading;
+
+        var changes = log.Update(Day, 40, 60, "EUR", null, true, false, null, readingPhotos: true);
+
+        Assert.Same(reading, changes.RemovedReading);
+        Assert.Equal(((long?)null, (Guid?)null, ReviewState.AwaitingPhotos), (log.Odometer, log.OdometerReadingId, log.ReviewState));
+    }
+
+    [Fact]
     public void Update_ByAPerson_FinishesTheReview_AndCanLetGoOfValuesOnlyWhileReading()
     {
         var log = Waiting(Guid.NewGuid());
@@ -198,6 +225,7 @@ public class OdometerCostAndUnitsTests
     {
         Assert.Equal(0, OdometerValue.From(0).Value);
         Assert.Equal(long.MaxValue, OdometerValue.From(long.MaxValue).Value);
+        Assert.Equal("123456", OdometerValue.From(123456).ToString()); // shown as the plain number
         Assert.Equal("odometer.negative", Assert.Throws<DomainException>(() => OdometerValue.From(-1)).Key);
     }
 

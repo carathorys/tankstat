@@ -456,6 +456,29 @@ public class NoticeAndOptionsTests
         Assert.True(Validate(new AuthOptions { Mode = AuthMode.Standalone, PublicUrl = "https://t.co" }, smtp).Succeeded);
     }
 
+    [Theory]
+    [InlineData((AuthMode)99, 15, 90, 60, "Auth:Mode")]
+    [InlineData(AuthMode.Standalone, 0, 90, 60, "Auth:AccessTokenMinutes")]
+    [InlineData(AuthMode.Standalone, 1441, 90, 60, "Auth:AccessTokenMinutes")]
+    [InlineData(AuthMode.Standalone, 15, 0, 60, "Auth:RefreshTokenDays")]
+    [InlineData(AuthMode.Standalone, 15, 3651, 60, "Auth:RefreshTokenDays")]
+    [InlineData(AuthMode.Standalone, 15, 90, -1, "Auth:RefreshRotationGraceSeconds")]
+    [InlineData(AuthMode.Standalone, 15, 90, 3601, "Auth:RefreshRotationGraceSeconds")]
+    public void Validation_KeepsTheModeAndTheSessionLifetimesInRange(AuthMode mode, int accessMinutes, int refreshDays, int graceSeconds, string named)
+    {
+        var result = Validate(new AuthOptions { Mode = mode, AccessTokenMinutes = accessMinutes, RefreshTokenDays = refreshDays, RefreshRotationGraceSeconds = graceSeconds });
+
+        Assert.StartsWith(named + " ", Assert.Single(result.Failures!));
+    }
+
+    [Fact]
+    public void Validation_RequiresTheUserHeader_ForProxyMode()
+    {
+        var result = Validate(new AuthOptions { Mode = AuthMode.ProxyHeader, ProxyHeader = { UserHeader = " ", TrustedProxies = ["10.0.0.0/8"] } });
+
+        Assert.Contains("Auth:ProxyHeader:UserHeader", Assert.Single(result.Failures!));
+    }
+
     [Fact]
     public void Validation_AcceptsNoAuthAndPlainStandalone()
     {

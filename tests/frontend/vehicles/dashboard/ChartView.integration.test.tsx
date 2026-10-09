@@ -51,3 +51,49 @@ it('says so instead of drawing an empty chart', () => {
   expect(screen.getByRole('status')).toHaveTextContent('No data for this period yet.')
   expect(screen.queryByRole('img')).not.toBeInTheDocument()
 })
+
+const tableOf = async (data: ChartData) => {
+  const ui = userEvent.setup()
+  view(data, 'LINE')
+  await ui.click(screen.getByRole('button', { name: 'Show the data as a table' }))
+  return screen.getByRole('table', { name: 'Monthly costs' })
+}
+
+it.each([
+  ['VOLUME', 42.5, '42.5 L'],
+  ['DISTANCE', 1234, '1,234 km'],
+  ['CONSUMPTION', 6.75, '6.75 L/100 km'],
+  ['COUNT', 3, '3'],
+] as const)('writes %s values in the vehicle\'s units in the table', async (unit, value, text) => {
+  const table = await tableOf({ unit, series: [{ kind: 'total', currency: null, points: [{ key: '2026-09', value }] }] })
+
+  expect(within(table).getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Period', 'Total'])
+  expect(within(table).getByRole('rowheader', { name: 'Sep 2026' }).closest('tr')).toHaveTextContent(`Sep 2026${text}`)
+})
+
+it('lists a chart by category with the expenses that have none as Uncategorised', async () => {
+  const ui = userEvent.setup()
+  render(
+    <ThemeRoot instant>
+      <ChartView
+        data={{ unit: 'CURRENCY', series: [{ kind: 'expenses', currency: 'HUF', points: [{ key: 'Service', value: 35000 }, { key: '', value: 1500 }] }] }}
+        recipe={{ kind: 'DONUT', metric: 'EXPENSE_COST', grouping: 'CATEGORY', stacked: false }}
+        units={units}
+        title="Expenses by category"
+      />
+    </ThemeRoot>,
+  )
+
+  await ui.click(screen.getByRole('button', { name: 'Show the data as a table' }))
+
+  const table = screen.getByRole('table', { name: 'Expenses by category' })
+  expect(within(table).getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Category', 'Expenses · HUF'])
+  expect(within(table).getAllByRole('rowheader').map((h) => h.textContent)).toEqual(['Service', 'Uncategorised'])
+})
+
+it('names a series of a kind it does not know plainly, and writes an amount without a currency as a bare number', async () => {
+  const table = await tableOf({ unit: 'CURRENCY', series: [{ kind: 'price', currency: null, points: [{ key: '2026-09', value: 12000 }] }] })
+
+  expect(within(table).getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Period', 'Value'])
+  expect(within(table).getByRole('rowheader', { name: 'Sep 2026' }).closest('tr')).toHaveTextContent('Sep 202612,000.00')
+})

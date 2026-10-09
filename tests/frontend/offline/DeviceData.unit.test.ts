@@ -1,6 +1,6 @@
 import { IDBFactory } from 'fake-indexeddb'
 import type { DocumentNode } from 'graphql'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as documents from '../../../src/frontend/gql/generated.ts'
 import { ANONYMOUS_USER, deviceData, MAX_SNAPSHOTS, TABS_CHANNEL } from '../../../src/frontend/offline/deviceData.ts'
 import { indexedDbStorage, memoryStorage } from '../../../src/frontend/offline/deviceStorage.ts'
@@ -252,5 +252,171 @@ describe('snapshotPolicy', () => {
     )
     expect(snapshotKey('Refuelings', { vehicleId: 'v1' })).not.toBe(snapshotKey('Refuelings', { vehicleId: 'v2' }))
     expect(snapshotKey('Session', undefined)).toBe('Session:{}')
+  })
+})
+
+describe('deviceData, when things go wrong or change', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('keeps the data in IndexedDB where the browser has it, and only in memory where it has not', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.stubGlobal('indexedDB', undefined)
+    await deviceData.boot()
+    await deviceData.signedIn('alice')
+    await deviceData.keep('Welcome:{}', 'in memory')
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('no IndexedDB'))
+    expect((await deviceData.read('Welcome:{}'))?.data).toBe('in memory')
+
+    const factory = new IDBFactory()
+    vi.stubGlobal('indexedDB', factory)
+    deviceData.reset()
+    await deviceData.boot()
+    await deviceData.signedIn('alice')
+    await deviceData.keep('Welcome:{}', 'in IndexedDB')
+    expect(await indexedDbStorage(factory).lastUser()).toBe('alice') // remembered for the next start
+    expect((await (await indexedDbStorage(factory).open('alice')).get('Welcome:{}'))?.data).toBe('in IndexedDB')
+  })
+
+  it('works on, keeping nothing, when the data cannot be opened at start or for the user signing in', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const storage = memoryStorage()
+    vi.spyOn(storage, 'lastUser').mockRejectedValue(new Error('broken'))
+    await deviceData.boot(storage)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('cannot be opened'), expect.any(Error))
+    expect(await deviceData.rows()).toBeNull()
+
+    const failing = memoryStorage()
+    vi.spyOn(failing, 'open').mockRejectedValue(new Error('broken'))
+    deviceData.reset(failing)
+    await expect(deviceData.signedIn('alice')).resolves.toBeUndefined()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('cannot be switched'), expect.any(Error))
+    expect(deviceData.user).toBeNull()
+  })
+
+  it('tells the download only when another user is confirmed, and the outbox whenever other data is open', async () => {
+    deviceData.reset(memoryStorage())
+    const confirmed = vi.fn()
+    const opened = vi.fn()
+    const stopConfirmed = deviceData.subscribe(confirmed)
+    const stopOpened = deviceData.onStoreChange(opened)
+
+    await deviceData.signedIn('alice')
+    await deviceData.signedIn('alice')
+    expect(confirmed).toHaveBeenCalledTimes(1)
+    expect(opened).toHaveBeenCalledTimes(1)
+    expect(deviceData.user).toBe('alice')
+
+    stopOpened()
+    await deviceData.signedIn('bob')
+    expect(confirmed).toHaveBeenCalledTimes(2)
+    expect(opened).toHaveBeenCalledTimes(1) // no longer listening
+
+    await deviceData.signedIn(null)
+    expect(deviceData.user).toBeNull()
+    expect(confirmed).toHaveBeenCalledTimes(3)
+
+    stopConfirmed()
+    await deviceData.signedIn('carol')
+    expect(confirmed).toHaveBeenCalledTimes(3)
+  })
+
+  it('downloads only into the data of a confirmed user', async () => {
+    const storage = memoryStorage()
+    await storage.setLastUser('alice')
+    deviceData.reset(storage)
+    expect(await deviceData.writableRows()).toBeNull() // nothing open
+
+    await deviceData.boot(storage)
+    expect(await deviceData.rows()).not.toBeNull() // the last user's, to answer from
+    expect(await deviceData.writableRows()).toBeNull() // but not to write into before the server said whose it is
+
+    await deviceData.signedIn('alice')
+    expect(await deviceData.writableRows()).toBe(await deviceData.rows())
+
+    await deviceData.signedIn(null) // confirmed: nobody
+    expect(await deviceData.writableRows()).toBeNull()
+  })
+
+  it('removing the data waits for the answers on their way and empties the confirmed user\'s', async () => {
+    deviceData.reset(memoryStorage())
+    await deviceData.signedIn('alice')
+    await (await deviceData.rows())!.putVehicles([{ id: 'v1', name: 'Octavia', logAccess: 'DELETE' }])
+    void deviceData.keep('Welcome:{}', 'on its way')
+
+    await deviceData.removeAll()
+    await deviceData.settled()
+
+    expect(await deviceData.read('Welcome:{}')).toBeUndefined()
+    expect(await (await deviceData.rows())!.vehicles()).toEqual([])
+  })
+
+  it('works without other tabs to hear from where the browser has no BroadcastChannel', async () => {
+    vi.stubGlobal('BroadcastChannel', undefined)
+    const storage = memoryStorage()
+    await storage.setLastUser('alice')
+    deviceData.reset(storage)
+
+    await deviceData.boot(storage)
+    await deviceData.signedIn('alice')
+    await deviceData.keep('Welcome:{}', 'kept')
+
+    expect(deviceData.user).toBe('alice')
+    expect((await deviceData.read('Welcome:{}'))?.data).toBe('kept')
+  })
+
+  it('answers nothing when a kept answer cannot be read, and says so when one cannot be written', async () => {
+    const storage = memoryStorage()
+    const store = await storage.open('alice')
+    vi.spyOn(storage, 'open').mockResolvedValue(store)
+    deviceData.reset(storage)
+    await deviceData.signedIn('alice')
+    await deviceData.keep('Welcome:{}', 'kept')
+
+    vi.spyOn(store, 'get').mockRejectedValue(new Error('broken'))
+    expect(await deviceData.read('Welcome:{}')).toBeUndefined()
+
+    vi.spyOn(store, 'put').mockRejectedValue(new Error('disk failure'))
+    await expect(deviceData.keep('Welcome:{"skip":1}', 'lost')).rejects.toThrow('disk failure')
+  })
+
+  it('removes nothing while the server has not said whose the data is', async () => {
+    const storage = memoryStorage()
+    deviceData.reset(storage)
+    await deviceData.removeAll() // nothing open: nothing to do
+    await deviceData.signedIn('alice')
+    await deviceData.keep('Welcome:{}', 'kept')
+    deviceData.unconfirm()
+
+    await deviceData.removeAll()
+
+    expect((await (await storage.open('alice')).get('Welcome:{}'))?.data).toBe('kept')
+  })
+
+  it('pays no heed to other messages of other tabs, nor to one naming whoever is signed in here', async () => {
+    deviceData.reset(memoryStorage())
+    await deviceData.boot(memoryStorage())
+    const asked = vi.fn()
+    const stop = deviceData.onSignedInElsewhere(asked)
+    const otherTab = new BroadcastChannel(TABS_CHANNEL)
+    try {
+      otherTab.postMessage(null)
+      otherTab.postMessage({ type: 'somethingElse', user: 'bob' })
+      otherTab.postMessage({ type: 'signedIn' })
+      otherTab.postMessage({ type: 'signedIn', user: null }) // nobody, as here
+      otherTab.postMessage({ type: 'signedIn', user: 'carol' })
+      await vi.waitFor(() => expect(asked).toHaveBeenCalledTimes(1)) // carol only
+
+      stop()
+      const later = vi.fn()
+      deviceData.onSignedInElsewhere(later)
+      otherTab.postMessage({ type: 'signedIn', user: 'dave' })
+      await vi.waitFor(() => expect(later).toHaveBeenCalledTimes(1))
+      expect(asked).toHaveBeenCalledTimes(1) // no longer listening
+    } finally {
+      otherTab.close()
+    }
   })
 })

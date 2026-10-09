@@ -53,6 +53,27 @@ public class UserSessionServiceTests
         Assert.Contains(w.Log.From<UserSessionService>(), e => e.Level == LogLevel.Warning && e.Values["SessionId"]?.ToString() == first.Session.Id.ToString());
     }
 
+    /// <summary>A key ring that cannot read what the one before it protected.</summary>
+    private sealed class ReplacedKeyRing : ISecretProtector
+    {
+        public string Protect(string secret) => "new-ring:" + secret;
+        public string? Unprotect(string protectedSecret) => null;
+    }
+
+    [Fact]
+    public async Task TheTokenItHadBefore_AfterTheKeyRingWasReplaced_IsRefused_SoTheDeviceSignsInAgain()
+    {
+        var (w, _, first) = await Setup();
+        await w.SessionService.RefreshAsync(first.Token, default);
+        var afterRestart = new UserSessionService(w.Sessions, w.Users, new ReplacedKeyRing(), w.Access, w.Options.Create(), w.Clock, w.Log.For<UserSessionService>());
+
+        w.Clock.Advance(TimeSpan.FromSeconds(30)); // within the grace, but the current secret cannot be read back to answer with it
+        await Assert.ThrowsAsync<UnauthenticatedException>(() => afterRestart.RefreshAsync(first.Token, default));
+
+        Assert.Null(first.Session.RevokedAt); // nobody misused it: refused, not ended
+        Assert.Contains(w.Log.From<UserSessionService>(), e => e.Level == LogLevel.Debug && e.Values.GetValueOrDefault("SessionId")?.ToString() == first.Session.Id.ToString());
+    }
+
     [Fact]
     public async Task ARefreshThatLostTheRaceToRotate_IsAnsweredWithTheSecretTheOtherSaved()
     {

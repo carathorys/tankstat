@@ -308,9 +308,8 @@ export function createPullEngine({
       await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, worker))
       const finished = Date.now()
       await device.keep(LAST_PULL_KEY, finished)
-      set({ lastPullAt: finished })
       await keepPictures(rows)
-      set({ status: 'idle' })
+      set({ status: 'idle', lastPullAt: finished })
     } catch (error) {
       set({ status: 'idle', interrupted: isConnectionFailure(error) })
       if (!isConnectionFailure(error) && !(error instanceof AccountChanged)) console.warn('The offline download failed; the next one tries again.', error)
