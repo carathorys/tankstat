@@ -70,3 +70,14 @@ it('a picture the download no longer keeps is shown from the server again', asyn
   await waitFor(() => expect(result.current).toEqual({ src: `/media/${KEPT}`, waiting: false }))
   expect(revoked).toEqual(['blob:kept-0'])
 })
+
+it('Remove offline data lets go of the pictures on screen too', async () => {
+  const { result } = renderHook(() => usePictureSrc(`/media/${KEPT}`))
+  await waitFor(() => expect(result.current.src).toBe('blob:kept-0'))
+
+  await act(() => deviceData.removeAll())
+
+  expect(revoked).toEqual(['blob:kept-0'])
+  await waitFor(() => expect(result.current).toEqual({ src: `/media/${KEPT}`, waiting: false }))
+  expect(await (await deviceData.rows())!.pictureIds()).toEqual([])
+})
