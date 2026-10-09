@@ -4,6 +4,7 @@
     "loading": "Loading…",
     "notFound": "This page does not exist.",
     "crashed": "Something went wrong while showing this page.",
+    "notOfflineYet": "This page is not available offline yet. It will open once you are back online.",
     "reload": "Reload the page"
   },
   "nav": {

@@ -4,6 +4,7 @@
     "loading": "Betöltés…",
     "notFound": "Ez az oldal nem létezik.",
     "crashed": "Hiba történt az oldal megjelenítése közben.",
+    "notOfflineYet": "Ez az oldal még nem érhető el kapcsolat nélkül. Megnyílik, ha újra van kapcsolat.",
     "reload": "Oldal újratöltése"
   },
   "nav": {
