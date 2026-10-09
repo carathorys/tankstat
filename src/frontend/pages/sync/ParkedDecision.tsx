@@ -63,7 +63,8 @@ export function ParkedAccount({ parked, change, units, label }: { parked: Parked
             who: who(current.changedBy?.displayName),
             when: current.changedAt ? format.dateTime(current.changedAt) : t('sync.conflict.earlier'),
           })}
-          {changed.length > 0 && ` ${t('sync.conflict.changedThere', { fields: format.list(changed.map((f) => fields.pair(f, theirs))) })}`}
+          {/* An edit to merge shows every field in its table. */}
+          {changed.length > 0 && situation !== 'edited' && ` ${t('sync.conflict.changedThere', { fields: format.list(changed.map((f) => fields.pair(f, theirs))) })}`}
         </Typography>
       )}
       <Typography variant="body2">{t(`sync.conflict.offline.${offline}`, { who: who(parked.submittedBy?.displayName) })}</Typography>

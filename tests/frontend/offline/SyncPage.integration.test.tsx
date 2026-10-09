@@ -456,6 +456,7 @@ it('an edit changed on the server meanwhile is merged: the card compares both si
   expect(row('Date').getByText('Changed only on the server')).toBeInTheDocument()
   expect(row('Total cost').getByText('Changed only by this change')).toBeInTheDocument()
   expect(row('Odometer').getByText('The same')).toBeInTheDocument()
+  expect(region.queryByText(/Changed there:/)).not.toBeInTheDocument() // the table says it
   expect(region.queryByRole('button', { name: /^Edit and apply/ })).not.toBeInTheDocument() // merged instead
   expect(region.getByRole('button', { name: /^Use mine everywhere: Changed refuelling/ })).toBeInTheDocument()
   expect(region.getByRole('button', { name: /^Keep the server's: Changed refuelling/ })).toBeInTheDocument()
