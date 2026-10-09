@@ -286,7 +286,16 @@ public class SyncGraphQLTests : IDisposable
     private static object Edit(string log, decimal volume, string? note = null) =>
         new { id = log, date = "2026-09-01", volume, totalCost = 60, currency = "EUR", odometer = 1000, isFullTank = true, note };
 
-    private const string Current = "{ parkedChanges { id base current { state version lastChange changedAt changedBy { displayName } refueling { volume note } vehicle { name } } } }";
+    /// <summary>The selection the app's ParkedChangeFields makes of it (graphql/offline.graphql, conflicts.graphql), so the cost analysis is the app's.</summary>
+    private const string Current = """
+        { parkedChanges { id kind status vehicleId targetId change base receivedAt reason { key args { name value } } vehicle { id name distanceUnit volumeUnit }
+          submittedBy { id displayName } canResolve
+          current { state version changedAt lastChange changedBy { id displayName }
+            vehicle { version name licensePlate fuelType units { distance volume } }
+            refueling { version date volume totalCost currency odometer isFullTank missedPreviousFillUp note }
+            expense { version date title category amount currency odometer note }
+            schedule { version title category note kind intervalMonths intervalDistance lastDoneDate lastDoneOdometer warnDays warnDistance } } } }
+        """;
 
     private static string? Key(JsonElement response) =>
         response.TryGetProperty("errors", out var errors) ? errors[0].GetProperty("extensions").GetProperty("key").GetString() : null;

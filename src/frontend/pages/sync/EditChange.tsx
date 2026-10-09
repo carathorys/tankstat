@@ -17,8 +17,8 @@ type Values = RefuelingValues | ExpenseValues | VehicleValues | RecurringValues
 /**
  * Edit, on Waiting to sync, in the dialog of the entry the change concerns, starting from the values the change carries:
  * - a change waiting on this device stays on it, as an edit that folds into it (an add keeps its id and its photos);
- * - a change the server parked (`parked`) is applied with the edited values, as the person would online; a refusal stays in the dialog
- *   with its reason (and the change stays parked with it).
+ * - a change the server parked (`parked`) is applied with the edited values, as the person would online, against the version shown of what
+ *   is there now (`current`); a refusal stays in the dialog with its reason (and the change stays parked with it).
  */
 export function EditChange({
   change,
@@ -51,7 +51,8 @@ export function EditChange({
     }
     try {
       await resolve({
-        variables: { input: { id: parked.id, action: 'APPLY', change: toChangeInput({ ...change, input }) } },
+        // Applied over what the person sees now: changed once more meanwhile, it stays parked (none seen: over whatever is there).
+        variables: { input: { id: parked.id, action: 'APPLY', change: toChangeInput({ ...change, input, expectedVersion: parked.current?.version ?? null, base: undefined }) } },
         refetchQueries: ['ParkedChanges'],
         awaitRefetchQueries: true,
       })

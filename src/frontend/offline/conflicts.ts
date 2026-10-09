@@ -4,8 +4,9 @@ import {
   RefuelingChangeValuesFragmentDoc,
   ScheduleChangeValuesFragmentDoc,
   VehicleChangeValuesFragmentDoc,
+  type ParkedChangeFieldsFragment,
 } from '../gql/generated.ts'
-import { UPDATABLE, type ChangeEntity } from './changes.ts'
+import { UPDATABLE, type Change, type ChangeEntity } from './changes.ts'
 
 /** The type and the fragment of the values a change of each entity can set (`graphql/conflicts.graphql`). */
 const SHAPES: Record<ChangeEntity, { typename: string; fragment: DocumentNode }> = {
@@ -47,4 +48,77 @@ export function baseOf(client: ApolloClient, entity: ChangeEntity, id: string, v
   if (!loaded || loaded.version !== version) return undefined
   const values = valuesOf(entity, loaded)
   return Object.keys(values).length > 0 ? values : undefined
+}
+
+/** What a parked change concerns as it is on the server now (`ParkedChangeFields` `current`); null when it is gone or not to be seen. */
+export type Current = ParkedChangeFieldsFragment['current']
+
+/** The values of what is on the server now, in the shape of the change's input. */
+export const currentValues = (entity: ChangeEntity, current: Current): ChangeValues =>
+  current ? valuesOf(entity, current.refueling ?? current.expense ?? current.vehicle ?? current.schedule) : {}
+
+/**
+ * The fields an edit leaves as they are when it carries null for them (the server keeps what is there: `?? existing` in the services), so
+ * a null there is "not touched", never a change and never a clear. Elsewhere null clears the value (a note, a category, a plate).
+ */
+export const KEEP_WHEN_NULL: Record<ChangeEntity, readonly string[]> = {
+  refuelings: ['currency', 'missedPreviousFillUp'],
+  expenses: ['currency'],
+  vehicles: ['units'],
+  recurring: ['lastDoneDate', 'warnDays', 'warnDistance'],
+}
+
+/** Whether two values of a field are the same value: blank and null alike, "40" and 40 alike, objects by their fields. */
+export function same(a: unknown, b: unknown): boolean {
+  const x = normalise(a)
+  const y = normalise(b)
+  if (x && y && typeof x === 'object' && typeof y === 'object') {
+    const keys = new Set([...Object.keys(x), ...Object.keys(y)].filter((k) => k !== '__typename'))
+    return [...keys].every((k) => same((x as Record<string, unknown>)[k], (y as Record<string, unknown>)[k]))
+  }
+  return x === y
+}
+
+const normalise = (value: unknown): unknown => {
+  if (value === undefined || value === null) return null
+  if (typeof value === 'string') {
+    const text = value.trim()
+    if (text === '') return null
+    const number = Number(text)
+    return /^-?\d+(\.\d+)?$/.test(text) && Number.isFinite(number) ? number : text
+  }
+  return value
+}
+
+/**
+ * The fields what is on the server now has changed since the values a change was made from (its `base`): only fields both know. None
+ * without a base.
+ */
+export function changedOnServer(entity: ChangeEntity, base: ChangeValues | undefined, current: Current): string[] {
+  if (!base || !current) return []
+  const theirs = currentValues(entity, current)
+  return UPDATABLE[entity].filter((field) => field in base && field in theirs && !same(base[field], theirs[field]))
+}
+
+/**
+ * Where a parked edit or trash stands, against what is on the server now:
+ * - a trash: `changed` (still there, changed meanwhile), `restored` (trashed and brought back meanwhile), `alreadyTrashed` (nothing left to
+ *   do), `gone` (purged, deleted for good, or not to be seen);
+ * - an edit: `trashedMeanwhile` (it can come back with the edit), `gone`, or `edited` (changed meanwhile: to be merged);
+ * - null for anything else (adds, restores, visits, photos, an edit a rule refused), which is decided as it always was.
+ */
+export type Situation = 'changed' | 'restored' | 'alreadyTrashed' | 'gone' | 'trashedMeanwhile' | 'edited'
+
+export function situationOf(change: Pick<Change, 'action' | 'entity'>, current: Current, reasonKey: string | null | undefined): Situation | null {
+  if (change.action === 'trash') {
+    if (!current) return 'gone'
+    if (current.state === 'TRASHED') return 'alreadyTrashed'
+    return current.lastChange === 'RESTORED' ? 'restored' : 'changed'
+  }
+  if (change.action === 'update') {
+    if (!current) return reasonKey?.endsWith('.notFound') ? 'gone' : null
+    if (current.state === 'TRASHED') return 'trashedMeanwhile'
+    return reasonKey === 'sync.versionMismatch' ? 'edited' : null
+  }
+  return null
 }

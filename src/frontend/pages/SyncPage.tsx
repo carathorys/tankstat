@@ -1,4 +1,4 @@
-import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
+import { useApolloClient } from '@apollo/client/react'
 import Card from '@mui/material/Card'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
@@ -7,19 +7,21 @@ import { useTranslation } from 'react-i18next'
 import Button from '@mui/material/Button'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { Loading } from '../components/Loading.tsx'
-import { ResolveSyncChangeDocument, SessionDocument, type DistanceUnit, type ParkedChangeFieldsFragment, type SyncResolveAction, type VolumeUnit } from '../gql/generated.ts'
+import type { DistanceUnit, ParkedChangeFieldsFragment, VolumeUnit } from '../gql/generated.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { useFormat } from '../i18n/format.ts'
-import { unblockAdd } from '../offline/push.ts'
 import { discardChange } from '../offline/submitChange.ts'
-import { canForce, fromParked } from '../offline/syncKinds.ts'
+import { situationOf } from '../offline/conflicts.ts'
+import { fromParked } from '../offline/syncKinds.ts'
 import { useParkedChanges } from '../offline/useParkedChanges.ts'
 import { useConnectivity } from '../offline/useConnectivity.ts'
 import { usePushState } from '../offline/usePushState.ts'
 import { useDescribed, useWaitingChanges, type WaitingChange } from '../offline/waitingChanges.ts'
-import { useErrorText, useReasonText } from '../i18n/errors.ts'
+import { useReasonText } from '../i18n/errors.ts'
 import { canEdit } from '../offline/changes.ts'
 import { EditChange } from './sync/EditChange.tsx'
+import { ParkedAccount, ParkedActions } from './sync/ParkedDecision.tsx'
+import type { Units } from './sync/useFieldText.ts'
 
 /**
  * Waiting to sync: the changes made on this device that have not reached the server, per vehicle, in the order they were made, each with
@@ -204,6 +206,9 @@ function Item({
     item.volume != null && units.volume ? format.volume(item.volume, units.volume) : null,
     money(item.totalCost) ?? money(item.amount),
   ].filter((p): p is string => !!p)
+  const label = parts.length ? `${kind}, ${parts.join(', ')}` : kind
+  // An edit of what is in the trash now, or gone, is not applied as edited: it comes back with its change, or is discarded.
+  const editableAsParked = (p: Parked) => !['trashedMeanwhile', 'gone'].includes(situationOf(change, p.current, p.reason?.key) ?? '')
 
   return (
     <li>
@@ -220,6 +225,7 @@ function Item({
                 {reasonText(parked.reason)}
               </Typography>
             )}
+            {parked && <ParkedAccount parked={parked} change={change} units={units} label={label} />}
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               {parked
                 ? t('sync.sentBy', { name: parked.submittedBy?.displayName ?? t('sync.someone'), time: format.dateTime(parked.receivedAt) })
@@ -227,21 +233,21 @@ function Item({
             </Typography>
           </div>
           <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
-          {canEdit(change) && units.distance && (parked ? parked.canResolve && onResolved : onEdited) && (
+          {canEdit(change) && units.distance && (parked ? parked.canResolve && onResolved && editableAsParked(parked) : onEdited) && (
             <EditChange
               change={change}
               units={{ distance: units.distance, volume: units.volume ?? 'LITERS' }}
-              label={parts.length ? `${kind}, ${parts.join(', ')}` : kind}
+              label={label}
               parked={parked}
               disabled={!editable}
               onDone={(message) => (parked ? onResolved!(message) : onEdited!())}
             />
           )}
-          {parked && onResolved && <ParkedActions parked={parked} label={parts.length ? `${kind}, ${parts.join(', ')}` : kind} onResolved={onResolved} />}
+          {parked && onResolved && <ParkedActions parked={parked} change={change} label={label} onResolved={onResolved} />}
           {onRemoved && (
           <ConfirmDialog
             trigger={
-              <Button variant="soft" color="error" size="large" aria-label={t('sync.removeAria', { change: parts.length ? `${kind}, ${parts.join(', ')}` : kind })}>
+              <Button variant="soft" color="error" size="large" aria-label={t('sync.removeAria', { change: label })}>
                 {t('sync.remove')}
               </Button>
             }
@@ -260,65 +266,4 @@ function Item({
 
 type Parked = ParkedChangeFieldsFragment
 
-/** The vehicle's units, as far as the device or the server knows them. */
-type Units = { distance: DistanceUnit | null; volume: VolumeUnit | null }
 
-
-/**
- * Deciding about a parked change: apply it anyway (as the person would online: every rule applies, the version it was made from does
- * not), or discard it. Only for whoever sent it or may change the vehicle; Apply only where it can work (what it changes still exists).
- */
-function ParkedActions({ parked, label, onResolved }: { parked: Parked; label: string; onResolved: (message: string) => void }) {
-  const { t } = useTranslation()
-  const reasonText = useReasonText()
-  const errorText = useErrorText()
-  const [resolve] = useMutation(ResolveSyncChangeDocument)
-  const client = useApolloClient()
-  const { data: session } = useQuery(SessionDocument, { fetchPolicy: 'cache-only' })
-  if (!parked.canResolve) return null
-  // Without sign-in every visitor is the anonymous user, the sender of every change.
-  const me = session?.session.user?.id
-  const bySender = !me || parked.submittedBy?.id === me
-
-  const run = async (action: SyncResolveAction) => {
-    try {
-      await resolve({ variables: { input: { id: parked.id, action } }, refetchQueries: ['ParkedChanges'], awaitRefetchQueries: true })
-      // Decided: what was made on it here (when it was an add) may go to the server now.
-      void unblockAdd(parked.targetId ?? '').catch(() => undefined)
-      onResolved(t(action === 'APPLY' ? 'sync.appliedNow' : 'sync.discarded'))
-    } catch (error) {
-      // Refused again: it stays, with the new reason, or someone decided meanwhile; either way the list is asked afresh.
-      void client.refetchQueries({ include: ['ParkedChanges'] }).catch(() => undefined)
-      onResolved(t('sync.stillNotApplied', { reason: errorText(error) }))
-    }
-  }
-
-  return (
-    <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
-      {canForce(parked.reason?.key, bySender) && (
-        <ConfirmDialog
-          trigger={
-            <Button variant="soft" size="large" aria-label={t('sync.applyAria', { change: label })}>
-              {t('sync.apply')}
-            </Button>
-          }
-          title={t('sync.applyTitle')}
-          description={t('sync.applyDescription', { reason: reasonText(parked.reason) })}
-          confirmLabel={t('sync.apply')}
-          onConfirm={() => void run('APPLY')}
-        />
-      )}
-      <ConfirmDialog
-        trigger={
-          <Button variant="soft" color="error" size="large" aria-label={t('sync.discardAria', { change: label })}>
-            {t('sync.discard')}
-          </Button>
-        }
-        title={t('sync.discardTitle')}
-        description={t('sync.discardDescription')}
-        confirmLabel={t('sync.discard')}
-        onConfirm={() => void run('DISCARD')}
-      />
-    </Stack>
-  )
-}

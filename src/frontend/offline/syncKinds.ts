@@ -79,8 +79,9 @@ function baseOfParked(json: string | null | undefined): Record<string, unknown> 
 /**
  * Whether applying a parked change anyway can work: not when the sender's own try found what it changes gone, or they may not (those can
  * only be discarded). Someone else deciding (the owner of the vehicle) is not the sender: what the sender could no longer see (their
- * access ended) may well be there for them, so the server decides. Everything else is tried as they would online; a rule that still
- * refuses says so.
+ * access ended) may well be there for them, so the server decides. "Not found" is not final either when the server shows what the change
+ * concerns (`current`: it was moved to the trash meanwhile, and can come back). Everything else is tried as they would online; a rule
+ * that still refuses says so.
  */
-export const canForce = (reasonKey: string | null | undefined, bySender = true) =>
-  !!reasonKey && !reasonKey.startsWith('auth.') && (!bySender || !reasonKey.endsWith('.notFound'))
+export const canForce = (reasonKey: string | null | undefined, bySender = true, current: unknown = null) =>
+  !!reasonKey && !reasonKey.startsWith('auth.') && (!bySender || !!current || !reasonKey.endsWith('.notFound'))

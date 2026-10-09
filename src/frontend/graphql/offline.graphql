@@ -178,6 +178,29 @@ fragment ParkedChangeFields on SyncChangeInfo {
     displayName
   }
   canResolve
+  # What it concerns as it is on the server now (an edit's, a trash's, a restore's), when the user may see it.
+  current {
+    state
+    version
+    changedAt
+    lastChange
+    changedBy {
+      id
+      displayName
+    }
+    vehicle {
+      ...VehicleChangeValues
+    }
+    refueling {
+      ...RefuelingChangeValues
+    }
+    expense {
+      ...ExpenseChangeValues
+    }
+    schedule {
+      ...ScheduleChangeValues
+    }
+  }
 }
 
 # The parked changes the user may see: of the vehicles they may see, and those they sent (the top bar and Waiting to sync).

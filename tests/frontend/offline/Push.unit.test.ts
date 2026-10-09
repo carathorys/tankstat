@@ -116,4 +116,10 @@ describe('fromParked', () => {
     expect(canForce('vehicle.notFound', false)).toBe(true)
     expect(canForce('auth.forbidden', false)).toBe(false)
   })
+
+  it('to the sender, "not found" is no reason either while the server shows what it concerns (moved to the trash meanwhile)', () => {
+    expect(canForce('refueling.notFound', true, { state: 'TRASHED' })).toBe(true)
+    expect(canForce('refueling.notFound', true, null)).toBe(false)
+    expect(canForce('auth.forbidden', true, { state: 'LIVE' })).toBe(false)
+  })
 })
