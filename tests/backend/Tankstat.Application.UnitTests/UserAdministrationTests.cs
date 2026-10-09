@@ -204,14 +204,14 @@ public class UserAdministrationTests
     }
 
     [Fact]
-    public async Task ResetPassword_RevokesTheOtherLinksOfThatUser()
+    public async Task ANewLink_ReplacesTheUsersEarlierOnes()
     {
         var (w, _) = SignedInAdmin();
         var (user, first) = await w.UserService.CreateLocalAsync("new@x.co", null, false, default);
         var second = await w.UserService.IssueResetAsync(user.Id, default);
 
-        await w.Auth.ResetPasswordAsync(first.Token, "chosen-password-1", default);
-
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(first.Token, "chosen-password-1", default));
+        await w.Auth.ResetPasswordAsync(second.Token, "chosen-password-1", default);
         await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(second.Token, "another-pass-1234", default));
     }
 

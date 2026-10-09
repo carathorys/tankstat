@@ -320,6 +320,8 @@ public class LoggingTests
 
         // The user asks for a link herself, changes her password, and mistypes things.
         w.Current.SignInAs(alice);
+        await w.Auth.RequestPasswordResetAsync("canary.renamed@canary-mail.example", default); // within the cool-down of the link above
+        w.Clock.Advance(TimeSpan.FromMinutes(10));
         await w.Auth.RequestPasswordResetAsync("canary.renamed@canary-mail.example", default);
         foreach (var mail in w.Email.Sent) canaries.Add(mail.Body.Split("resetToken=")[1].Split('\n')[0]);
         await w.Auth.ChangePasswordAsync("canary-alice-pass-1", "canary-alice-pass-2", default);

@@ -15,11 +15,31 @@ public sealed class PasswordResetService(
     IPasswordResetTokenRepository tokens, IUserRepository users, IEmailSender email,
     IOptions<AuthOptions> auth, TimeProvider clock, ILogger<PasswordResetService> logger)
 {
+    /// <summary>How long a link is kept after it expired, so following it still says why it was refused.</summary>
+    private static readonly TimeSpan KeepExpired = TimeSpan.FromDays(1);
+
+    /// <summary>Whether an issued link can reach the user by e-mail (SMTP and the public address are set up).</summary>
+    public bool CanEmail => email.IsConfigured && !string.IsNullOrWhiteSpace(auth.Value.PublicUrl);
+
+    /// <summary>Whether the user's latest link was issued less than <c>Auth:Standalone:ResetCooldownMinutes</c> ago (never with 0).</summary>
+    public async Task<bool> IsCoolingDownAsync(Guid userId, CancellationToken ct)
+    {
+        var cooldown = TimeSpan.FromMinutes(auth.Value.Standalone.ResetCooldownMinutes);
+        if (cooldown <= TimeSpan.Zero) return false;
+        return await tokens.LatestIssuedAtAsync(userId, ct) is { } latest && latest > clock.GetUtcNow() - cooldown;
+    }
+
+    /// <summary>Issues a new link that replaces the user's earlier ones (one live link per user) and e-mails it when it can.</summary>
     public async Task<IssuedReset> IssueAsync(User user, bool sendEmail, CancellationToken ct)
     {
         var options = auth.Value;
+        var now = clock.GetUtcNow();
+        var lifetime = TimeSpan.FromMinutes(options.Standalone.ResetTokenMinutes);
+        await tokens.DeleteStaleAsync(now - lifetime - KeepExpired, ct); // lazily, like the other clean-ups: no background job
+        await tokens.RemoveForUserAsync(user.Id, ct);
+
         var secret = Base64Url(RandomNumberGenerator.GetBytes(32));
-        var record = PasswordResetToken.Issue(user.Id, Hash(secret), clock.GetUtcNow(), TimeSpan.FromMinutes(options.Standalone.ResetTokenMinutes));
+        var record = PasswordResetToken.Issue(user.Id, Hash(secret), now, lifetime);
         await tokens.AddAsync(record, ct);
 
         var token = $"{record.Id:N}.{secret}";
