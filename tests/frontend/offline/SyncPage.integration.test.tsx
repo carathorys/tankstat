@@ -267,7 +267,8 @@ it('Edit, on a change waiting here, opens its entry’s dialog with what it carr
 it('Edit and apply sends the change as edited; a refusal stays in the dialog with its reason, and the change stays parked', async () => {
   await downloaded()
   connectivity.reset()
-  const row = parkedRow('c1', 'UPDATE_REFUELING', { id: 'c1', expectedVersion: 1, updateRefueling: { id: 'b', date: '2026-09-20', volume: 45, totalCost: 70, currency: 'EUR', odometer: 1500, isFullTank: true } }, 'sync.versionMismatch',
+  // Refused by a rule (not changed meanwhile: that one is merged), so it is edited and applied.
+  const row = parkedRow('c1', 'UPDATE_REFUELING', { id: 'c1', expectedVersion: 1, updateRefueling: { id: 'b', date: '2026-09-20', volume: 45, totalCost: 70, currency: 'EUR', odometer: 1500, isFullTank: true } }, 'odometer.belowPrevious',
     { targetId: 'b', current: serverNow('LIVE', 3, 'EDITED', refuelingNow({ version: 3 })) })
   let parked = [row]
   const sent: unknown[] = []
@@ -423,4 +424,103 @@ it('a deletion of a schedule that is gone can only be discarded, and says it is 
   expect(region.getByRole('button', { name: /^Discard:/ })).toBeInTheDocument()
   expect(region.queryByRole('button', { name: /^(Apply anyway|Delete it anyway|Keep it)/ })).not.toBeInTheDocument()
   expect(region.queryByRole('link', { name: /^Open it/ })).not.toBeInTheDocument()
+})
+
+it('an edit changed on the server meanwhile is merged: the card compares both sides, Merge… offers the other value under each field changed on both', async () => {
+  await downloaded()
+  connectivity.reset()
+  const mine = { id: 'b', date: '2026-09-20', volume: 45, totalCost: 70, currency: 'EUR', odometer: 1500, isFullTank: true, missedPreviousFillUp: false, note: 'Motorway' }
+  const edit = parkedRow('u1', 'UPDATE_REFUELING', { id: 'u1', expectedVersion: 1, updateRefueling: mine }, 'sync.versionMismatch', {
+    targetId: 'b',
+    base: JSON.stringify({ date: '2026-09-20', volume: 40, totalCost: 60, currency: 'EUR', odometer: 1500, isFullTank: true, missedPreviousFillUp: false, note: null }),
+    current: serverNow('LIVE', 3, 'EDITED', refuelingNow({ version: 3, date: '2026-09-21', volume: 41, totalCost: 60, note: 'Fleet card' })),
+  })
+  let parked = [edit]
+  const resolved: Record<string, unknown>[] = []
+  server.use(
+    graphql.query('ParkedChanges', () => HttpResponse.json({ data: { parkedChanges: parked } })),
+    graphql.query('LogDefaults', () => HttpResponse.json({ data: { logDefaults: { lastOdometer: 1500, lastDate: '2026-09-20', currency: 'EUR' } } })),
+    graphql.mutation('ResolveSyncChange', ({ variables }) => {
+      resolved.push(variables.input as Record<string, unknown>)
+      parked = []
+      return HttpResponse.json({ data: { resolveSyncChange: { ...edit, status: 'APPLIED' } } })
+    }),
+  )
+  renderWithApollo(<App />, '/sync')
+  const ui = userEvent.setup()
+
+  const region = within(await screen.findByRole('region', { name: 'Not applied' }))
+  const table = within(await region.findByRole('table', { name: 'This change and what is on the server now, field by field' }))
+  const row = (name: string) => within(table.getByRole('rowheader', { name }).closest('tr') as HTMLElement)
+  expect(row('Volume').getByText('Changed on both sides')).toBeInTheDocument()
+  expect(row('Date').getByText('Changed only on the server')).toBeInTheDocument()
+  expect(row('Total cost').getByText('Changed only by this change')).toBeInTheDocument()
+  expect(row('Odometer').getByText('The same')).toBeInTheDocument()
+  expect(region.queryByRole('button', { name: /^Edit and apply/ })).not.toBeInTheDocument() // merged instead
+  expect(region.getByRole('button', { name: /^Use mine everywhere: Changed refuelling/ })).toBeInTheDocument()
+  expect(region.getByRole('button', { name: /^Keep the server's: Changed refuelling/ })).toBeInTheDocument()
+
+  await ui.click(region.getByRole('button', { name: /^Merge: Changed refuelling/ }))
+  const dialog = await screen.findByRole('dialog', { name: 'Merge and apply the change' })
+  await waitFor(() => expect(within(dialog).getByLabelText(/^Volume/)).toHaveValue('45'))
+  expect(within(dialog).getByLabelText('Note (optional)')).toHaveValue('Motorway')
+  expect(within(dialog).getByText('Changed only on the server: its value is taken.')).toBeInTheDocument()
+  expect((await axe(dialog, { rules: { 'color-contrast': { enabled: false } } })).violations.map((v) => v.id)).toEqual([])
+
+  // The server's volume, then back to this change's; the server's note; and a total of the person's own.
+  await ui.click(within(dialog).getByRole('button', { name: 'Use it for Volume (L): 41 L' }))
+  expect(within(dialog).getByLabelText(/^Volume/)).toHaveValue('41')
+  await ui.click(within(dialog).getByRole('button', { name: 'Use it for Volume (L): 45 L' }))
+  expect(within(dialog).getByLabelText(/^Volume/)).toHaveValue('45')
+  await ui.click(within(dialog).getByRole('button', { name: 'Use it for Note (optional): Fleet card' }))
+  expect(within(dialog).getByLabelText('Note (optional)')).toHaveValue('Fleet card')
+  await ui.clear(within(dialog).getByLabelText('Total cost'))
+  await ui.type(within(dialog).getByLabelText('Total cost'), '72')
+  await ui.click(within(dialog).getByRole('button', { name: 'Apply' }))
+
+  expect(await screen.findByText('Applied.')).toBeInTheDocument()
+  expect(resolved).toHaveLength(1)
+  expect(resolved[0]).toMatchObject({
+    id: 'u1', action: 'APPLY',
+    change: { id: 'u1', expectedVersion: 3, updateRefueling: { id: 'b', date: '2026-09-21', volume: 45, totalCost: 72, note: 'Fleet card', odometer: 1500 } },
+  })
+})
+
+it('merging a vehicle takes the other value into a text field and a choice alike, and keeps what was typed elsewhere', async () => {
+  await downloaded()
+  connectivity.reset()
+  const units = { distance: 'KILOMETERS', volume: 'LITERS' }
+  const edit = parkedRow('u2', 'UPDATE_VEHICLE', { id: 'u2', expectedVersion: 1, updateVehicle: { id: 'v1', name: 'Octavia RS', licensePlate: 'ABC-123', fuelType: 'DIESEL', units } }, 'sync.versionMismatch', {
+    targetId: 'v1',
+    base: JSON.stringify({ name: 'Octavia', licensePlate: null, fuelType: 'PETROL', units }),
+    current: serverNow('LIVE', 2, 'EDITED', { vehicle: { __typename: 'Vehicle', version: 2, name: 'Octavia Combi', licensePlate: null, fuelType: 'LPG', units: { __typename: 'MeasurementUnits', ...units } } }),
+  })
+  const resolved: Record<string, unknown>[] = []
+  server.use(
+    graphql.query('ParkedChanges', () => HttpResponse.json({ data: { parkedChanges: resolved.length ? [] : [edit] } })),
+    graphql.mutation('ResolveSyncChange', ({ variables }) => {
+      resolved.push(variables.input as Record<string, unknown>)
+      return HttpResponse.json({ data: { resolveSyncChange: { ...edit, status: 'APPLIED' } } })
+    }),
+  )
+  renderWithApollo(<App />, '/sync')
+  const ui = userEvent.setup()
+
+  const region = within(await screen.findByRole('region', { name: 'Not applied' }))
+  await ui.click(await region.findByRole('button', { name: /^Merge: Changed vehicle/ }))
+  const dialog = await screen.findByRole('dialog', { name: 'Merge and apply the change' })
+  expect(within(dialog).getByLabelText('Name')).toHaveValue('Octavia RS')
+  expect(within(dialog).getByText('Changed only by this change: its value is kept.')).toBeInTheDocument() // the plate
+
+  await ui.clear(within(dialog).getByLabelText(/^Licen[cs]e plate/))
+  await ui.type(within(dialog).getByLabelText(/^Licen[cs]e plate/), 'XYZ-987')
+  await ui.click(within(dialog).getByRole('button', { name: 'Use it for Name: Octavia Combi' }))
+  await ui.click(within(dialog).getByRole('button', { name: 'Use it for Fuel: LPG' }))
+
+  expect(within(dialog).getByLabelText('Name')).toHaveValue('Octavia Combi')
+  expect(within(dialog).getByLabelText(/^Licen[cs]e plate/)).toHaveValue('XYZ-987') // the field next to it kept what was typed
+  await ui.click(within(dialog).getByRole('button', { name: 'Apply' }))
+
+  expect(await screen.findByText('Applied.')).toBeInTheDocument()
+  expect(resolved[0]).toMatchObject({ action: 'APPLY', change: { expectedVersion: 2, updateVehicle: { id: 'v1', name: 'Octavia Combi', licensePlate: 'XYZ-987', fuelType: 'LPG' } } })
 })

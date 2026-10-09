@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createApolloClient } from '../../../src/frontend/apolloClient.ts'
-import { baseOf, changedOnServer, same, situationOf, valuesOf, type Current } from '../../../src/frontend/offline/conflicts.ts'
+import { baseOf, changedOnServer, merge, same, situationOf, valuesOf, type Current } from '../../../src/frontend/offline/conflicts.ts'
 import { RefuelingChangeValuesFragmentDoc, type RefuelingChangeValuesFragment } from '../../../src/frontend/gql/generated.ts'
 
 const now = (state: 'LIVE' | 'TRASHED', lastChange: string | null, entity: Record<string, unknown> = {}): NonNullable<Current> =>
@@ -73,5 +73,35 @@ describe('baseOf', () => {
     expect(baseOf(client, 'refuelings', 'r1', 1)).toBeUndefined() // another version: its values are not known
     expect(baseOf(client, 'refuelings', 'r2', 2)).toBeUndefined()
     expect(baseOf(client, 'refuelings', 'r1', null)).toBeUndefined()
+  })
+})
+
+describe('merge', () => {
+  const base = { date: '2026-09-20', volume: 40, totalCost: 60, currency: 'EUR', odometer: 1500, isFullTank: true, missedPreviousFillUp: false, note: null }
+
+  it('takes a field changed on one side from that side, and starts one changed on both with this device’s', () => {
+    const mine = { ...base, volume: 45, totalCost: 70, note: 'Motorway' }
+    const theirs = { ...base, date: '2026-09-21', volume: 41, note: 'Fleet card' }
+    const { values, fields } = merge('refuelings', base, mine, theirs)
+
+    expect(values).toMatchObject({ date: '2026-09-21', volume: 45, totalCost: 70, note: 'Motorway', odometer: 1500 })
+    expect(Object.fromEntries(fields.map((f) => [f.field, f.as]))).toEqual({
+      date: 'theirs', volume: 'both', totalCost: 'mine', currency: 'same', odometer: 'same', isFullTank: 'same', missedPreviousFillUp: 'same', note: 'both',
+    })
+  })
+
+  it('without a base, every field that differs is changed on both sides; a partial base decides only what it knows', () => {
+    const mine = { volume: 45, note: 'x', odometer: 1500 }
+    const theirs = { volume: 41, note: null, odometer: 1500 }
+    expect(merge('refuelings', undefined, mine, theirs).fields).toEqual([{ field: 'volume', as: 'both' }, { field: 'odometer', as: 'same' }, { field: 'note', as: 'both' }])
+    expect(merge('refuelings', { note: null }, mine, theirs).fields.find((f) => f.field === 'note')).toEqual({ field: 'note', as: 'mine' })
+  })
+
+  it('a null the server keeps its own value for is no change: the server’s stays, unlisted; typed and stored numbers, blank and none, are alike', () => {
+    const merged = merge('refuelings', { volume: 40, note: null }, { volume: '40', note: '', currency: null, missedPreviousFillUp: null }, { volume: 40, note: null, currency: 'HUF', missedPreviousFillUp: true })
+    expect(merged.values).toMatchObject({ currency: 'HUF', missedPreviousFillUp: true })
+    expect(merged.fields).toEqual([{ field: 'volume', as: 'same' }, { field: 'note', as: 'same' }])
+    // A null that clears (a note) is a change like any other.
+    expect(merge('expenses', { note: 'Old' }, { note: null }, { note: 'Old' }).fields).toEqual([{ field: 'note', as: 'mine' }])
   })
 })

@@ -2,15 +2,20 @@ import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
 import Button from '@mui/material/Button'
 import Link from '@mui/material/Link'
 import Stack from '@mui/material/Stack'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
 import Typography from '@mui/material/Typography'
 import { useTranslation } from 'react-i18next'
 import { Link as RouterLink } from 'react-router'
 import { ConfirmDialog } from '../../components/ConfirmDialog.tsx'
+import { SurfaceTable } from '../../components/SurfaceTable.tsx'
 import { ResolveSyncChangeDocument, SessionDocument, type ParkedChangeFieldsFragment, type ResolveSyncChangeInput } from '../../gql/generated.ts'
 import { useFormat } from '../../i18n/format.ts'
 import { useErrorText, useReasonText } from '../../i18n/errors.ts'
 import type { Change } from '../../offline/changes.ts'
-import { changedOnServer, currentValues, situationOf, type Current } from '../../offline/conflicts.ts'
+import { changedOnServer, currentValues, merge, situationOf, type Current } from '../../offline/conflicts.ts'
 import { toChangeInput, unblockAdd } from '../../offline/push.ts'
 import { canForce } from '../../offline/syncKinds.ts'
 import { useFieldText, type Units } from './useFieldText.ts'
@@ -63,12 +68,49 @@ export function ParkedAccount({ parked, change, units, label }: { parked: Parked
       )}
       <Typography variant="body2">{t(`sync.conflict.offline.${offline}`, { who: who(parked.submittedBy?.displayName) })}</Typography>
       {state && <Typography variant="body2">{state}</Typography>}
+      {situation === 'edited' && <MergeTable change={change} current={current} units={units} />}
       {current && (
         <Link component={RouterLink} to={placeOf(change, current)} variant="body2" aria-label={t('sync.conflict.openAria', { change: label })} sx={{ alignSelf: 'flex-start' }}>
           {t('sync.conflict.open')}
         </Link>
       )}
     </Stack>
+  )
+}
+
+/**
+ * A parked edit next to what is on the server now, every field it sets, and how each came together (changed on both sides, on one, or
+ * the same): what Merge… starts from. The words carry the state, never the colour alone.
+ */
+function MergeTable({ change, current, units }: { change: Change; current: Current; units: Units }) {
+  const { t } = useTranslation()
+  const fields = useFieldText(units)
+  const mine = change.input ?? {}
+  const theirs = currentValues(change.entity, current)
+  const { fields: rows } = merge(change.entity, change.base, mine, theirs)
+  return (
+    <SurfaceTable caption={t('sync.merge.caption')}>
+      <TableHead>
+        <TableRow>
+          <TableCell>{t('sync.merge.field')}</TableCell>
+          <TableCell>{t('sync.merge.mine')}</TableCell>
+          <TableCell>{t('sync.merge.theirs')}</TableCell>
+          <TableCell>{t('sync.merge.how')}</TableCell>
+        </TableRow>
+      </TableHead>
+      <TableBody>
+        {rows.map(({ field, as }) => (
+          <TableRow key={field}>
+            <TableCell component="th" scope="row">
+              {fields.label(field)}
+            </TableCell>
+            <TableCell>{fields.value(field, mine)}</TableCell>
+            <TableCell>{fields.value(field, theirs)}</TableCell>
+            <TableCell sx={as === 'both' ? { color: 'warning.main', fontWeight: 600 } : { color: 'text.secondary' }}>{t(`sync.merge.state.${as}`)}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </SurfaceTable>
   )
 }
 
@@ -172,8 +214,14 @@ export function ParkedActions({ parked, change, label, onResolved }: { parked: P
     case 'gone':
       buttons = [discard()]
       break
+    case 'edited':
+      // Merge… (next to these, `EditChange`) or one side as a whole.
+      buttons = [
+        action(t('sync.merge.useMine'), t('sync.merge.useMineDescription'), { action: 'APPLY' }),
+        keep(t('sync.merge.keepServers'), t('sync.merge.keepServersDescription')),
+      ]
+      break
     default: {
-      const edited = situation === 'edited'
       buttons = [
         canForce(parked.reason?.key, bySender, parked.current) && (
           <ConfirmDialog
@@ -184,12 +232,12 @@ export function ParkedActions({ parked, change, label, onResolved }: { parked: P
               </Button>
             }
             title={t('sync.applyTitle')}
-            description={edited ? t('sync.conflict.applyEditDescription') : t('sync.applyDescription', { reason: reasonText(parked.reason) })}
+            description={t('sync.applyDescription', { reason: reasonText(parked.reason) })}
             confirmLabel={t('sync.apply')}
             onConfirm={() => void run({ action: 'APPLY' })}
           />
         ),
-        discard(edited ? t('sync.conflict.discardEditDescription') : undefined),
+        discard(),
       ]
     }
   }

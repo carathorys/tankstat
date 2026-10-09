@@ -1329,9 +1329,35 @@
       "restoreWithChange": "Visszaállítás a módosításoddal",
       "restoreWithChangeDescription": "Visszakerül a kukából, ennek a módosításnak az értékeivel.",
       "leaveInTrash": "Maradjon a kukában",
-      "leaveInTrashDescription": "A kukában marad; ez a módosítás végleg elvész.",
-      "applyEditDescription": "Ennek a módosításnak az értékei felülírják azokat, amelyeket közben a szerveren beállítottak; amit nem állít be, az úgy marad, ahogy ott van.",
-      "discardEditDescription": "Ami a szerveren van, úgy marad; ez a módosítás végleg elvész."
+      "leaveInTrashDescription": "A kukában marad; ez a módosítás végleg elvész."
+    },
+    "merge": {
+      "bothChanged": "Mindkét helyen módosult.",
+      "onServer": "A szerveren: {{value}}",
+      "yours": "A tiéd: {{value}}",
+      "use": "Átveszem",
+      "useAria": "Átveszem ide: {{field}}: {{value}}",
+      "fromServer": "Csak a szerveren módosult: annak az értéke marad.",
+      "fromMine": "Csak ez a módosítás változtatta: az értéke marad.",
+      "state": {
+        "both": "Mindkét helyen módosult",
+        "mine": "Csak ez a módosítás változtatta",
+        "theirs": "Csak a szerveren módosult",
+        "same": "Ugyanaz"
+      },
+      "caption": "Ez a módosítás és ami most a szerveren van, mezőnként",
+      "field": "Mező",
+      "mine": "Ez a módosítás",
+      "theirs": "Most a szerveren",
+      "how": "Összefésülve",
+      "open": "Összefésülés…",
+      "openAria": "Összefésülés: {{change}}",
+      "title": "A módosítás összefésülése és érvényesítése",
+      "apply": "Érvényesítés",
+      "useMine": "Mindenhol az enyém",
+      "useMineDescription": "Ennek a módosításnak az értékei felülírják azokat, amelyeket közben a szerveren beállítottak, ott is, ahol csak a szerveren módosultak; amit nem állít be, az úgy marad, ahogy ott van.",
+      "keepServers": "Maradjon a szerveré",
+      "keepServersDescription": "Ami a szerveren van, úgy marad; ez a módosítás végleg elvész."
     }
   }
 }

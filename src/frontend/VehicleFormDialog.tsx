@@ -27,7 +27,8 @@ import { ErrorMessage } from './messages.tsx'
 import { useToast } from './toast/toastContext.ts'
 import { DISTANCE_UNITS, FUEL_TYPES, VOLUME_UNITS } from './vehicles.ts'
 import { OfflineNote } from './components/OfflineNote.tsx'
-import type { ChangeEdit } from './dialogs/changeEdit.ts'
+import type { ChangeEdit, MergeInfo } from './dialogs/changeEdit.ts'
+import { useMergeFields } from './dialogs/useMergeFields.tsx'
 import { outbox } from './offline/outbox.ts'
 
 export interface VehicleValues {
@@ -96,6 +97,7 @@ export function VehicleFormDialog({
             initial={initial}
             editing={editing}
             submitLabel={change?.submitLabel}
+            merge={change?.merge}
             onSubmit={async (values) => {
               await onSubmit(editing ? values : { ...values, id: clientId })
               setOpen(false)
@@ -114,15 +116,19 @@ function VehicleForm({
   initial,
   editing,
   submitLabel,
+  merge,
   onSubmit,
 }: {
   initial: Initial
   editing: boolean
   /** The Save button's text, when it is not the add or edit one. */
   submitLabel?: string
+  /** Merging a parked edit with what is on the server now: what to say (and offer) under each field. */
+  merge?: MergeInfo
   onSubmit: (values: VehicleValues) => Promise<unknown>
 }) {
   const { t } = useTranslation()
+  const merging = useMergeFields(merge)
   const [fuel, setFuel] = useState<FuelType>(initial.fuelType)
   const [distance, setDistance] = useState(initial.units.distance)
   const [volume, setVolume] = useState(initial.units.volume)
@@ -148,13 +154,14 @@ function VehicleForm({
   return (
     <Form onSubmit={submit}>
       <Stack sx={{ gap: 1.5 }}>
-        <Field name="name" label={t('fields.name')} required>
-          <FieldInput defaultValue={initial.name} autoFocus />
+        <Field name="name" label={t('fields.name')} required extra={merging.note('name', t('fields.name'))}>
+          <FieldInput key={merging.key('name')} defaultValue={merging.value('name', initial.name)} autoFocus />
         </Field>
-        <Field name="licensePlate" label={t('fields.licensePlateOptional')}>
-          <FieldInput defaultValue={initial.licensePlate ?? ''} />
+        <Field name="licensePlate" label={t('fields.licensePlateOptional')} extra={merging.note('licensePlate', t('fields.licensePlateOptional'))}>
+          <FieldInput key={merging.key('licensePlate')} defaultValue={merging.value('licensePlate', initial.licensePlate) ?? ''} />
         </Field>
         <LabeledSelect label={t('fields.fuel')} value={fuel} onChange={setFuel} options={FUEL_TYPES.map((f) => ({ value: f, label: t(`fuel.${f}`) }))} />
+        {merging.note('fuelType', t('fields.fuel'), (value) => setFuel(value as FuelType))}
         <Box component="fieldset" sx={{ border: 0, p: 0, m: 0, minWidth: 0 }}>
           <Typography component="legend" variant="body2" sx={{ fontWeight: 700, p: 0, mb: 1 }}>
             {t('units.label')}
@@ -164,6 +171,11 @@ function VehicleForm({
               <LabeledSelect label={t('units.distanceLabel')} value={distance} onChange={setDistance} disabled={locked} options={DISTANCE_UNITS.map((u) => ({ value: u, label: t(`units.distance.${u}`) }))} />
               <LabeledSelect label={t('units.volumeLabel')} value={volume} onChange={setVolume} disabled={locked} options={VOLUME_UNITS.map((u) => ({ value: u, label: t(`units.volume.${u}`) }))} />
             </Stack>
+            {merging.note('units', t('units.label'), (value) => {
+              const units = value as { distance: typeof distance; volume: typeof volume }
+              setDistance(units.distance)
+              setVolume(units.volume)
+            })}
             {locked ? (
               <Alert color="neutral" icon={<Info size={16} aria-hidden />}>
                 {t('vehicles.unitsInUse')}

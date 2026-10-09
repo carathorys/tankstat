@@ -1,16 +1,18 @@
 import { useApolloClient, useMutation } from '@apollo/client/react'
 import Button from '@mui/material/Button'
 import { useTranslation } from 'react-i18next'
-import type { ChangeEdit } from '../../dialogs/changeEdit.ts'
+import type { ChangeEdit, MergeInfo } from '../../dialogs/changeEdit.ts'
 import { ExpenseFormDialog, type ExpenseValues } from '../../ExpenseFormDialog.tsx'
 import { ResolveSyncChangeDocument, type DistanceUnit, type ParkedChangeFieldsFragment, type VolumeUnit } from '../../gql/generated.ts'
 import { keptPhotosOf, type Change } from '../../offline/changes.ts'
+import { currentValues, merge, situationOf, type Current } from '../../offline/conflicts.ts'
 import { outbox } from '../../offline/outbox.ts'
 import { toChangeInput } from '../../offline/push.ts'
 import { uuidV4 } from '../../offline/uuid.ts'
 import { RecurringFormDialog, type RecurringValues } from '../../RecurringFormDialog.tsx'
 import { RefuelingFormDialog, type RefuelingValues } from '../../RefuelingFormDialog.tsx'
 import { VehicleFormDialog, type VehicleValues } from '../../VehicleFormDialog.tsx'
+import { useFieldText } from './useFieldText.ts'
 
 type Values = RefuelingValues | ExpenseValues | VehicleValues | RecurringValues
 
@@ -39,6 +41,7 @@ export function EditChange({
   const { t } = useTranslation()
   const client = useApolloClient()
   const [resolve] = useMutation(ResolveSyncChangeDocument)
+  const fields = useFieldText(units)
 
   const save = async (values: Values) => {
     // The values replace the change's own (the add's id and vehicle stay); photos are never part of an edit.
@@ -64,13 +67,22 @@ export function EditChange({
     onDone(t('sync.appliedNow'))
   }
 
-  const edit: ChangeEdit<never> = {
-    initial: change.input as never,
-    title: parked ? t('sync.editApplyTitle') : t('sync.editTitle'),
-    submitLabel: parked ? t('sync.applyEdited') : t('sync.saveChange'),
-    mayWait: !parked && change.action === 'add' && keptPhotosOf(change).length > 0,
-  }
-  const trigger = (
+  // A parked edit of what was changed meanwhile is merged: the dialog starts from the merged values and says, under each field, what the
+  // other side has.
+  const merging = parked && situationOf(change, parked.current, parked.reason?.key) === 'edited' ? mergeInfo(change, parked.current, fields) : null
+  const edit: ChangeEdit<never> = merging
+    ? { initial: { ...change.input, ...merging.values } as never, title: t('sync.merge.title'), submitLabel: t('sync.merge.apply'), merge: merging.info }
+    : {
+        initial: change.input as never,
+        title: parked ? t('sync.editApplyTitle') : t('sync.editTitle'),
+        submitLabel: parked ? t('sync.applyEdited') : t('sync.saveChange'),
+        mayWait: !parked && change.action === 'add' && keptPhotosOf(change).length > 0,
+      }
+  const trigger = merging ? (
+    <Button variant="soft" size="large" disabled={disabled} aria-label={t('sync.merge.openAria', { change: label })}>
+      {t('sync.merge.open')}
+    </Button>
+  ) : (
     <Button variant="soft" size="large" disabled={disabled} aria-label={parked ? t('sync.editApplyAria', { change: label }) : t('sync.editAria', { change: label })}>
       {parked ? t('sync.editApply') : t('sync.edit')}
     </Button>
@@ -87,4 +99,18 @@ export function EditChange({
     case 'recurring':
       return <RecurringFormDialog trigger={trigger} vehicleId={change.vehicleId} unit={units.distance} change={edit} onSubmit={save} />
   }
+}
+
+/** The merged values of a parked edit and what the dialog says under each field: both sides of a field changed on both, in words. */
+function mergeInfo(change: Change, current: Current, fields: ReturnType<typeof useFieldText>): { values: Record<string, unknown>; info: MergeInfo } {
+  const mine = change.input ?? {}
+  const theirs = currentValues(change.entity, current)
+  const merged = merge(change.entity, change.base, mine, theirs)
+  const info: MergeInfo = { conflicts: {}, merged: {} }
+  for (const { field, as } of merged.fields) {
+    if (as === 'both')
+      info.conflicts[field] = { mine: { value: mine[field], text: fields.value(field, mine) }, theirs: { value: theirs[field], text: fields.value(field, theirs) } }
+    else if (as === 'mine' || as === 'theirs') info.merged[field] = as
+  }
+  return { values: merged.values, info }
 }

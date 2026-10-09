@@ -122,3 +122,50 @@ export function situationOf(change: Pick<Change, 'action' | 'entity'>, current: 
   }
   return null
 }
+
+/** How a field of an edit and what is on the server now came together. */
+export type MergedAs = 'both' | 'mine' | 'theirs' | 'same'
+
+export interface Merged {
+  /** The merged values: the one side's where only one changed, this device's where both did (the person picks), the shared one else. */
+  values: ChangeValues
+  /** Per field the edit sets, in `UPDATABLE` order, how it came together (fields the edit leaves as they are are not listed). */
+  fields: { field: string; as: MergedAs }[]
+}
+
+/**
+ * Merges an edit made on this device (`mine`, its input) with what is on the server now (`theirs`), from the values it was made from
+ * (`base`): a field changed on one side only takes that side's value; one changed on both sides (or whose starting value is unknown) is
+ * `both` and starts with this device's, for the person to decide. A null on a field the server keeps when it gets null
+ * (`KEEP_WHEN_NULL`) is no change at all: it stays as the server has it.
+ */
+export function merge(entity: ChangeEntity, base: ChangeValues | undefined, mine: ChangeValues, theirs: ChangeValues): Merged {
+  const values: ChangeValues = {}
+  const fields: Merged['fields'] = []
+  for (const field of UPDATABLE[entity]) {
+    if (!(field in mine)) {
+      if (field in theirs) values[field] = theirs[field]
+      continue
+    }
+    const m = mine[field]
+    if (!(field in theirs)) {
+      values[field] = m
+      continue
+    }
+    const th = theirs[field]
+    if (m == null && KEEP_WHEN_NULL[entity].includes(field)) {
+      values[field] = th
+      continue
+    }
+    let as: MergedAs
+    if (same(m, th)) as = 'same'
+    else if (base && field in base) {
+      const mineChanged = !same(m, base[field])
+      const theirsChanged = !same(th, base[field])
+      as = mineChanged && !theirsChanged ? 'mine' : !mineChanged && theirsChanged ? 'theirs' : 'both'
+    } else as = 'both'
+    values[field] = as === 'theirs' ? th : m
+    fields.push({ field, as })
+  }
+  return { values, fields }
+}

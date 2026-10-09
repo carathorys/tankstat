@@ -1329,9 +1329,35 @@
       "restoreWithChange": "Restore it with your change",
       "restoreWithChangeDescription": "It comes back from the trash with the values of this change.",
       "leaveInTrash": "Leave it in the trash",
-      "leaveInTrashDescription": "It stays in the trash; this change is dropped for good.",
-      "applyEditDescription": "The values of this change replace the ones set on the server meanwhile; what it does not set stays as it is there.",
-      "discardEditDescription": "What is on the server stays as it is; this change is dropped for good."
+      "leaveInTrashDescription": "It stays in the trash; this change is dropped for good."
+    },
+    "merge": {
+      "bothChanged": "Changed on both sides.",
+      "onServer": "On the server: {{value}}",
+      "yours": "Yours: {{value}}",
+      "use": "Use it",
+      "useAria": "Use it for {{field}}: {{value}}",
+      "fromServer": "Changed only on the server: its value is taken.",
+      "fromMine": "Changed only by this change: its value is kept.",
+      "state": {
+        "both": "Changed on both sides",
+        "mine": "Changed only by this change",
+        "theirs": "Changed only on the server",
+        "same": "The same"
+      },
+      "caption": "This change and what is on the server now, field by field",
+      "field": "Field",
+      "mine": "This change",
+      "theirs": "On the server now",
+      "how": "Merged",
+      "open": "Merge…",
+      "openAria": "Merge: {{change}}",
+      "title": "Merge and apply the change",
+      "apply": "Apply",
+      "useMine": "Use mine everywhere",
+      "useMineDescription": "The values of this change replace the ones set on the server meanwhile, also where only the server changed them; what it does not set stays as it is there.",
+      "keepServers": "Keep the server's",
+      "keepServersDescription": "What is on the server stays as it is; this change is dropped for good."
     }
   }
 }
