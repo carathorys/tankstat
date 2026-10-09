@@ -737,6 +737,7 @@
     "uploaded": "Picture saved.",
     "removed": "Picture removed.",
     "hint": "JPEG, PNG or WebP. Large pictures are made smaller automatically.",
+    "needsServer": "Changing the picture needs the server. It works again once you are back online.",
     "unreadable": "This file could not be read as a picture.",
     "avatarFor": "Profile picture of {{name}}"
   },

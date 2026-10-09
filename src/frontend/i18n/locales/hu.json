@@ -737,6 +737,7 @@
     "uploaded": "A kép elmentve.",
     "removed": "A kép törölve.",
     "hint": "JPEG, PNG vagy WebP. A nagy képeket automatikusan lekicsinyítjük.",
+    "needsServer": "A kép cseréjéhez a szerver kell. Ha újra van kapcsolat, ismét működik.",
     "unreadable": "Ezt a fájlt nem sikerült képként beolvasni.",
     "avatarFor": "{{name}} profilképe"
   },
