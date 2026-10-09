@@ -116,6 +116,7 @@
   "status": {
     "healthy": "Működik",
     "degraded": "Korlátozott",
+    "app": "Alkalmazás v{{version}}",
     "api": "API:",
     "unreachable": "A szerver nem érhető el",
     "offline": "Nincs kapcsolat",
