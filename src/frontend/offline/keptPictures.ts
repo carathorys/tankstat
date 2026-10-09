@@ -40,10 +40,11 @@ function subscribe(listener: () => void): () => void {
 
 const currentVersion = () => version
 
-function revoke(ids: Iterable<string>) {
-  for (const id of ids) {
-    const url = urls.get(id)
-    if (url) URL.revokeObjectURL(url)
+/** Lets go of the object URLs of the pictures `gone` names (all of them without it). */
+function revoke(gone: (id: string) => boolean = () => true) {
+  for (const [id, url] of urls) {
+    if (!gone(id)) continue
+    URL.revokeObjectURL(url)
     urls.delete(id)
   }
 }
@@ -59,7 +60,7 @@ function loadKnown() {
     const ids = new Set(rows ? await rows.pictureIds().catch(() => []) : [])
     if (gen !== generation || read !== reads) return
     known = ids
-    revoke([...urls.keys()].filter((id) => !ids.has(id))) // removed by a download since they were shown
+    revoke((id) => !ids.has(id)) // removed by a download since they were shown
     changed()
   })()
 }
@@ -105,7 +106,7 @@ function ensure(url: string | null | undefined) {
 // Another account's data, or none (signed out): its pictures are no longer shown, and nothing of the one before is kept in memory.
 deviceData.onStoreChange(() => {
   generation++
-  revoke([...urls.keys()])
+  revoke()
   known = null
   knownLoad = null
   pending.clear()

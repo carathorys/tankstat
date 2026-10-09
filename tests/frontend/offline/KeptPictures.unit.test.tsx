@@ -81,3 +81,84 @@ it('Remove offline data lets go of the pictures on screen too', async () => {
   await waitFor(() => expect(result.current).toEqual({ src: `/media/${KEPT}`, waiting: false }))
   expect(await (await deviceData.rows())!.pictureIds()).toEqual([])
 })
+
+it('with no account\'s data open, pictures come from the server', async () => {
+  deviceData.reset(memoryStorage()) // nobody signed in on this device yet
+
+  const { result } = renderHook(() => usePictureSrc(`/media/${KEPT}`))
+
+  await waitFor(() => expect(result.current).toEqual({ src: `/media/${KEPT}`, waiting: false }))
+})
+
+it('when the device cannot say which pictures it keeps, they come from the server', async () => {
+  vi.spyOn((await deviceData.rows())!, 'pictureIds').mockRejectedValue(new Error('broken'))
+
+  const { result } = renderHook(() => usePictureSrc(`/media/${KEPT}`))
+
+  await waitFor(() => expect(result.current).toEqual({ src: `/media/${KEPT}`, waiting: false }))
+})
+
+it('a picture listed as kept but gone when read (another tab\'s download removed it) comes from the server', async () => {
+  const other = renderHook(() => usePictureSrc(`/media/${OTHER}`)) // reads which pictures are kept
+  await waitFor(() => expect(other.result.current.waiting).toBe(false))
+  await (await deviceData.rows())!.deletePictures([KEPT])
+
+  const { result } = renderHook(() => usePictureSrc(`/media/${KEPT}`))
+
+  await waitFor(() => expect(result.current).toEqual({ src: `/media/${KEPT}`, waiting: false }))
+  expect(created).toEqual([])
+})
+
+it('a picture that cannot be read comes from the server', async () => {
+  vi.spyOn((await deviceData.rows())!, 'picture').mockRejectedValue(new Error('broken'))
+
+  const { result } = renderHook(() => usePictureSrc(`/media/${KEPT}`))
+
+  await waitFor(() => expect(result.current).toEqual({ src: `/media/${KEPT}`, waiting: false }))
+  expect(created).toEqual([])
+})
+
+it('a picture still being read when another account signs in is never shown', async () => {
+  let finish!: () => void
+  const rows = (await deviceData.rows())!
+  const stored = await rows.picture(KEPT)
+  vi.spyOn(rows, 'picture').mockImplementation(() => new Promise((resolve) => (finish = () => resolve(stored))))
+  const { result } = renderHook(() => usePictureSrc(`/media/${KEPT}`))
+  await waitFor(() => expect(rows.picture).toHaveBeenCalled())
+
+  await act(() => deviceData.signedIn('bob'))
+  await act(async () => finish())
+
+  await waitFor(() => expect(result.current).toEqual({ src: `/media/${KEPT}`, waiting: false })) // bob keeps no copy
+  expect(created).toEqual([])
+})
+
+it('a download that removes one picture leaves the others on screen as they are', async () => {
+  await (await deviceData.rows())!.putPicture({ id: OTHER, type: 'image/webp', bytes: new Uint8Array([3]).buffer, keptAt: 1 })
+  const kept = renderHook(() => usePictureSrc(`/media/${KEPT}`))
+  const other = renderHook(() => usePictureSrc(`/media/${OTHER}`))
+  await waitFor(() => expect([kept.result.current.src, other.result.current.src].sort()).toEqual(['blob:kept-0', 'blob:kept-1']))
+  const otherUrl = other.result.current.src
+
+  await (await deviceData.rows())!.deletePictures([KEPT])
+  act(() => keptPictures.refresh())
+
+  await waitFor(() => expect(kept.result.current.src).toBe(`/media/${KEPT}`))
+  expect(other.result.current.src).toBe(otherUrl)
+  expect(revoked).not.toContain(otherUrl)
+})
+
+it('a read that fails after another account signed in changes nothing for the new one', async () => {
+  let fail!: () => void
+  const rows = (await deviceData.rows())!
+  vi.spyOn(rows, 'picture').mockImplementation(() => new Promise((_, reject) => (fail = () => reject(new Error('broken')))))
+  const { result } = renderHook(() => usePictureSrc(`/media/${KEPT}`))
+  await waitFor(() => expect(rows.picture).toHaveBeenCalled())
+
+  await act(() => deviceData.signedIn('bob'))
+  await (await deviceData.rows())!.putPicture({ id: KEPT, type: 'image/webp', bytes: new Uint8Array([4]).buffer, keptAt: 1 }) // bob keeps it too
+  act(() => keptPictures.refresh())
+  await act(async () => fail())
+
+  await waitFor(() => expect(result.current.src).toMatch(/^blob:kept-/)) // alice's failed read did not mark it missing for bob
+})
