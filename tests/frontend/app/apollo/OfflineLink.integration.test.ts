@@ -1,10 +1,15 @@
+import { ApolloClient, ApolloLink, HttpLink, InMemoryCache } from '@apollo/client'
+import { parse } from 'graphql'
 import { graphql, http, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import { createApolloClient } from '../../../../src/frontend/apolloClient.ts'
-import { AdminDocument, HealthDocument, LoginDocument, SessionDocument, VehicleDefaultsDocument } from '../../../../src/frontend/gql/generated.ts'
+import { AdminDocument, HealthDocument, LoginDocument, RefuelingDetailsDocument, SessionDocument, VehicleDefaultsDocument } from '../../../../src/frontend/gql/generated.ts'
+import { appliedMutations } from '../../../../src/frontend/offline/appliedMutations.ts'
 import { connectivity } from '../../../../src/frontend/offline/connectivity.ts'
 import { deviceData } from '../../../../src/frontend/offline/deviceData.ts'
 import { OfflineError } from '../../../../src/frontend/offline/errors.ts'
+import { createOfflineLink } from '../../../../src/frontend/offline/offlineLink.ts'
+import { outbox } from '../../../../src/frontend/offline/outbox.ts'
 import { trackedFetch } from '../../../../src/frontend/offline/trackedFetch.ts'
 import { silenceConsoleError } from '../../support/mocks.tsx'
 import { server } from '../../support/server.ts'
@@ -133,4 +138,69 @@ it('signing in stops keeping until the server says who is signed in', async () =
   connectivity.failed()
   const error = await client.query({ query: VehicleDefaultsDocument, fetchPolicy: 'network-only' }).catch((e: unknown) => e)
   expect((error as OfflineError).reason).toBe('notLoaded')
+})
+
+it('an operation without a name goes to the server as it is: nothing is kept of it, and no screen hears it applied', async () => {
+  server.use(
+    http.post('http://localhost/graphql', async ({ request }) => {
+      const { query } = (await request.json()) as { query: string }
+      return HttpResponse.json({ data: query.trimStart().startsWith('mutation') ? { logout: true } : health })
+    }),
+  )
+  const applied: string[] = []
+  const stop = appliedMutations.subscribe((name) => applied.push(name))
+  const client = createApolloClient('http://localhost/graphql')
+  await signedIn(client)
+
+  const { data } = await client.query({ query: parse('{ health { status version databaseReachable } }'), fetchPolicy: 'network-only' })
+  await client.mutate({ mutation: parse('mutation { logout }') })
+  await deviceData.settled()
+  stop()
+
+  expect(data).toEqual(health)
+  expect(applied).toEqual([])
+  connectivity.failed()
+  await expect(client.query({ query: parse('{ health { status version databaseReachable } }'), fetchPolicy: 'network-only' })).rejects.toBeInstanceOf(OfflineError)
+})
+
+it('while a change of a log waits, its details are answered by the device even though the server can be reached', async () => {
+  let asked = 0
+  server.use(graphql.query('RefuelingDetails', () => (asked++, HttpResponse.json({ data: { refueling: null } }))))
+  await deviceData.signedIn('u1')
+  await outbox.reload()
+  const rows = (await deviceData.rows())!
+  await rows.putLogs('refuelings', [{
+    __typename: 'Refueling', id: 'r1', vehicleId: 'v1', date: '2026-10-01', volume: 40, totalCost: 100, currency: 'EUR', odometer: 1000, isFullTank: true,
+    missedPreviousFillUp: false, note: null, reviewState: 'NONE', filledFromPhoto: [], version: 2, deletedAt: null, photos: [], pulledAt: 1,
+  } as never])
+  await outbox.enqueue({ id: 't1', entity: 'refuelings', action: 'trash', vehicleId: 'v1', targetId: 'other' })
+  await outbox.enqueue({ id: 'd1', entity: 'recurring', action: 'markDone', vehicleId: 'v1', targetId: 'e9', targetIds: ['s1'], input: { expenseId: 'e9' } })
+  await outbox.enqueue({ id: 'u1', entity: 'refuelings', action: 'update', vehicleId: 'v1', targetId: 'r1', expectedVersion: 2, input: { id: 'r1', volume: 31 } })
+  const client = createApolloClient('http://localhost/graphql')
+
+  const { data } = await client.query({ query: RefuelingDetailsDocument, variables: { id: 'r1' }, fetchPolicy: 'network-only' })
+  const other = await client.query({ query: RefuelingDetailsDocument, variables: { id: 'r2' }, fetchPolicy: 'network-only' })
+
+  expect(data?.refueling).toMatchObject({ id: 'r1', volume: 31 })
+  expect(other.data?.refueling).toBeNull() // nothing waits for that one: the server answered
+  expect(asked).toBe(1)
+})
+
+it('an answer the device cannot keep (its storage is full) still reaches the screen', async () => {
+  const faulty = Object.assign(Object.create(deviceData) as typeof deviceData, { keep: () => Promise.reject(new Error('The storage is full.')) })
+  server.use(
+    graphql.query('Session', () => HttpResponse.json({ data: session })),
+    graphql.query('VehicleDefaults', () => HttpResponse.json({ data: defaults })),
+  )
+  const client = new ApolloClient({ link: ApolloLink.from([createOfflineLink(faulty), new HttpLink({ uri: 'http://localhost/graphql' })]), cache: new InMemoryCache() })
+
+  const signed = await client.query({ query: SessionDocument, fetchPolicy: 'network-only' })
+  const { data } = await client.query({ query: VehicleDefaultsDocument, fetchPolicy: 'network-only' })
+  await deviceData.settled()
+
+  expect(signed.data?.session.mode).toBe('NONE')
+  expect(data?.vehicleDefaults.currency).toBe('EUR')
+  connectivity.failed()
+  const error = await client.query({ query: VehicleDefaultsDocument, fetchPolicy: 'network-only' }).catch((e: unknown) => e)
+  expect((error as OfflineError).reason).toBe('notLoaded') // nothing was kept
 })

@@ -1,9 +1,10 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { graphql, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../../src/frontend/App.tsx'
 import { server } from '../../support/server.ts'
-import { fakeExpense, fakeExpenseBackend, fakeVehicle, healthHandler, renderWithApollo, sessionHandler, stubViewport } from '../../support/mocks.tsx'
+import { fakeExpense, fakeExpenseBackend, fakeVehicle, gqlError, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport } from '../../support/mocks.tsx'
 import { UUID } from '../../support/ids.ts'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
@@ -168,6 +169,32 @@ it('moves an expense to the trash after a confirmation, not before', async () =>
   await ui.click(screen.getByRole('button', { name: 'Undo' }))
   expect(await screen.findByText('Oil change')).toBeInTheDocument()
   expect(state.calls.RestoreExpense).toEqual([{ id: 'e2' }])
+})
+
+it('a move to the trash the server refuses says why, and the expense stays listed', async () => {
+  silenceConsoleError()
+  const { ui } = setup()
+  server.use(graphql.mutation('DeleteExpense', () => HttpResponse.json(gqlError('Already gone', 'VALIDATION_FAILED', 'expense.alreadyTrashed'))))
+  await screen.findByText('Oil change')
+
+  await ui.click(screen.getByRole('button', { name: 'Delete the expense Oil change' }))
+  await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Move to trash' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('This expense is already in the trash.')
+  expect(screen.getByText('Oil change')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+})
+
+it('an expense whose creator is no longer known shows a dash for who logged it, the amount it waits for too', async () => {
+  setup(fakeVehicle(), [fakeExpense({ id: 'e3', title: 'Car wash', category: 'Care', amount: null, currency: null, odometer: 12000, createdBy: null as never, reviewState: 'AWAITING_PHOTOS' })])
+
+  const row = (await screen.findByText('Car wash')).closest<HTMLElement>('[role="row"]')!
+  const byColumn = Object.fromEntries(
+    within(row)
+      .getAllByRole('gridcell')
+      .map((cell) => [cell.getAttribute('data-field'), cell.textContent]),
+  )
+  expect(byColumn).toMatchObject({ amount: '–', createdBy: '–', category: 'Care' })
 })
 
 it('view-only access: no add button and no edit or delete', async () => {

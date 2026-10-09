@@ -36,7 +36,9 @@ public class OfflineWindowTests
     [InlineData("span:P101Y")]
     [InlineData("span:P99Y13M")]
     [InlineData("span:2M")]
-    public void AnythingElse_IsRefused(string rule)
+    [InlineData(null)]
+    [InlineData("from:2024-02-29xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")] // longer than any rule
+    public void AnythingElse_IsRefused(string? rule)
     {
         var e = Assert.Throws<DomainException>(() => OfflineWindow.Require(rule));
         Assert.Equal("settings.offlineWindowInvalid", e.Key);
@@ -44,6 +46,37 @@ public class OfflineWindowTests
 
     [Fact]
     public void WithoutAChoice_ItIsTheLastTwoMonths() => Assert.Equal("span:P2M", OfflineSettings.Create(Guid.NewGuid(), OfflineWindow.Default, DateTimeOffset.UtcNow).DefaultWindow);
+
+    [Fact]
+    public void ANewDefault_IsCheckedLikeTheFirst_AndARefusedOneChangesNothing()
+    {
+        var created = new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+        var settings = OfflineSettings.Create(Guid.NewGuid(), OfflineWindow.Default, created);
+
+        settings.SetDefault(" thisYear ", created.AddDays(1));
+        Assert.Equal(("thisYear", created.AddDays(1)), (settings.DefaultWindow, settings.UpdatedAt));
+
+        Assert.Equal("settings.offlineWindowInvalid", Assert.Throws<DomainException>(() => settings.SetDefault("forever", created.AddDays(2))).Key);
+        Assert.Equal(("thisYear", created.AddDays(1)), (settings.DefaultWindow, settings.UpdatedAt));
+    }
+}
+
+public class SyncOptionsTests
+{
+    [Theory]
+    [InlineData(1, 1, null)]
+    [InlineData(3650, 3650, null)]
+    [InlineData(0, 30, "Sync:TombstoneRetentionDays")]
+    [InlineData(3651, 30, "Sync:TombstoneRetentionDays")]
+    [InlineData(30, 0, "Sync:RetentionDays")]
+    [InlineData(30, 3651, "Sync:RetentionDays")]
+    public void TheRetentions_StayWithinTenYears(int tombstoneDays, int retentionDays, string? named)
+    {
+        var result = new SyncOptionsValidator().Validate(null, new SyncOptions { TombstoneRetentionDays = tombstoneDays, RetentionDays = retentionDays });
+
+        if (named is null) Assert.True(result.Succeeded);
+        else Assert.StartsWith(named + " ", Assert.Single(result.Failures!));
+    }
 }
 
 public class OfflineCursorTests
@@ -69,6 +102,32 @@ public class OfflineCursorTests
     public void ACursorThisServerDidNotMake_IsRefused(string encoded)
     {
         var e = Assert.Throws<DomainException>(() => OfflineCursor.Decode(encoded, Vehicle));
+        Assert.Equal("sync.cursorInvalid", e.Key);
+    }
+
+    [Fact]
+    public void AFirstPageCursor_WithoutAWindowAndWithNothingSentYet_ComesBackAsItWas()
+    {
+        var cursor = new OfflineCursor(Vehicle, null, null, new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero), null, false, null, false);
+
+        Assert.Equal(cursor, OfflineCursor.Decode(cursor.Encode(), Vehicle));
+    }
+
+    /// <summary>A cursor as a device could forge one: the right shape, the right vehicle, something wrong inside.</summary>
+    private static string Forged(string watermark, string refuelings = "-", string from = "-") =>
+        Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes($"1|{Vehicle:N}|{from}|-|{watermark}|{refuelings}|-")).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    [Theory]
+    [InlineData("not-a-number", "-", "-")]
+    [InlineData("99999999999999999999999", "-", "-")] // more than a number of ticks can be
+    [InlineData("9223372036854775807", "-", "-")] // a number, but no moment
+    [InlineData("0", "5", "-")] // a row key without its id
+    [InlineData("0", "0:not-a-guid", "-")]
+    [InlineData("0", "-", "2026-02-30")]
+    public void AForgedCursor_IsRefusedLikeAnyOther(string watermark, string refuelings, string from)
+    {
+        var e = Assert.Throws<DomainException>(() => OfflineCursor.Decode(Forged(watermark, refuelings, from), Vehicle));
+
         Assert.Equal("sync.cursorInvalid", e.Key);
     }
 

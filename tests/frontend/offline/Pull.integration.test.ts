@@ -1,12 +1,14 @@
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest'
+import type { ApolloClient } from '@apollo/client'
+import { graphql, HttpResponse } from 'msw'
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, onTestFinished, vi } from 'vitest'
 import { createApolloClient } from '../../../src/frontend/apolloClient.ts'
 import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
 import { deviceData } from '../../../src/frontend/offline/deviceData.ts'
 import { memoryStorage } from '../../../src/frontend/offline/deviceStorage.ts'
 import { answerLocally } from '../../../src/frontend/offline/localResolvers.ts'
-import { createPullEngine } from '../../../src/frontend/offline/pull.ts'
+import { createPullEngine, PAGE_SIZE } from '../../../src/frontend/offline/pull.ts'
 import { snapshotKey } from '../../../src/frontend/offline/snapshotPolicy.ts'
-import { fakeVehicle, fakeVehicleBackend } from '../support/mocks.tsx'
+import { fakeVehicle, fakeVehicleBackend, gqlError, silenceConsoleError } from '../support/mocks.tsx'
 import { fakeFeed, now } from '../support/offlineFeed.ts'
 import { server } from '../support/server.ts'
 
@@ -185,4 +187,159 @@ it('downloads nothing for someone the server did not confirm', async () => {
   await engine().run()
 
   expect(feed.asked).toEqual([])
+})
+
+it('by default it pages by the server maximum and tells its listeners how far it got; a run asked for meanwhile follows the one under way', async () => {
+  feed.setRule('all') // the window does not depend on the device's real clock
+  feed.add('a', '2026-09-01')
+  const pull = createPullEngine({ client: createApolloClient('http://localhost/graphql') })
+  const seen: string[] = []
+  const stop = pull.subscribe(() => seen.push(`${pull.state.status} ${pull.state.vehiclesDone}/${pull.state.vehiclesTotal}`))
+  let during: Promise<void> | null = null
+  feed.onAsk((n) => {
+    if (n === 1) during = pull.run()
+  })
+
+  const first = pull.run()
+  await first
+
+  expect(during).toBe(first) // the same promise: it covers the run that followed
+  expect(feed.asked).toEqual([{ vehicleId: 'v1', from: null, take: PAGE_SIZE }, { vehicleId: 'v1', since: expect.any(String), take: PAGE_SIZE }])
+  expect(seen).toEqual(['pulling 0/0', 'pulling 0/1', 'pulling 1/1', 'idle 1/1', 'pulling 0/0', 'pulling 0/1', 'pulling 1/1', 'idle 1/1'])
+  expect(pull.state.lastPullAt).toEqual(expect.any(Number))
+
+  stop()
+  await pull.run()
+  expect(seen).toHaveLength(8) // no longer told
+})
+
+it('a window of nothing removes the logs the device held, and asks the server for none', async () => {
+  feed.add('a', '2026-09-01')
+  const pull = engine(50)
+  await pull.run()
+  expect(await localIds()).toEqual(['a'])
+
+  feed.setRule('none')
+  feed.asked.length = 0
+  await pull.run()
+
+  expect(await localIds()).toEqual([])
+  expect(feed.asked).toEqual([])
+  expect(await (await deviceData.rows())!.cursor('v1')).toMatchObject({ from: false, complete: true })
+
+  await pull.run() // still nothing: nothing to remove or ask
+  expect(feed.asked).toEqual([])
+  expect(await (await deviceData.rows())!.cursor('v1')).toMatchObject({ from: false, complete: true })
+})
+
+it('a vehicle of its own rule follows it; one without, the default, and with no default the last two months', async () => {
+  vehicles.state.vehicles.push({ ...fakeVehicle({ id: 'v2', name: 'Superb' }), deletedAt: '' })
+  feed.add('old', '2026-03-01')
+  feed.add('old2', '2026-03-01', 'v2')
+  server.use(
+    graphql.query('OfflineSettings', () =>
+      HttpResponse.json({ data: { offlineSettings: { __typename: 'OfflineSettingsInfo', defaultWindow: null, vehicles: [{ __typename: 'OfflineVehicleSettingsInfo', vehicleId: 'v1', window: 'all' }] } } }),
+    ),
+  )
+
+  await engine(50).run()
+
+  expect(await localIds('v1')).toEqual(['old'])
+  expect(await localIds('v2')).toEqual([])
+  expect(feed.asked).toEqual(expect.arrayContaining([{ vehicleId: 'v1', from: null, take: 50 }, { vehicleId: 'v2', from: '2026-08-07', take: 50 }]))
+})
+
+it('a later download that changed more than a page goes on page by page, and applies what was removed once', async () => {
+  for (const id of ['a', 'b', 'c', 'd']) feed.add(id, '2026-09-01')
+  const pull = engine(2)
+  await pull.run()
+  feed.later()
+  feed.asked.length = 0
+
+  for (const id of ['a', 'b', 'c']) feed.edit(id, { volume: 50 })
+  feed.purge('d')
+  await pull.run()
+
+  expect(feed.asked).toEqual([{ vehicleId: 'v1', since: expect.any(String), take: 2 }, { vehicleId: 'v1', after: expect.any(String), take: 2 }])
+  expect(await localIds()).toEqual(['a', 'b', 'c'])
+  const rows = (await deviceData.rows())!
+  expect((await rows.logs('refuelings', 'v1')).map((r) => r.volume)).toEqual([50, 50, 50])
+})
+
+const refused = (key?: string) =>
+  gqlError('Refused.', key ? 'NOT_FOUND' : 'INTERNAL', key)
+
+it('a vehicle the user lost access to since the home list was asked is dropped from the device', async () => {
+  feed.add('a', '2026-09-01')
+  const pull = engine(50)
+  await pull.run()
+
+  server.use(graphql.query('OfflineChanges', () => HttpResponse.json(refused('vehicle.notFound'))))
+  await pull.run()
+
+  expect(await localIds()).toEqual([])
+  expect(await (await deviceData.rows())!.cursor('v1')).toBeUndefined()
+  expect(pull.state).toMatchObject({ status: 'idle', interrupted: false, vehiclesDone: 1 })
+})
+
+it('a vehicle whose download fails for another reason keeps what it had, and the next run tries again', async () => {
+  silenceConsoleError()
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  onTestFinished(() => warn.mockRestore())
+  feed.add('a', '2026-09-01')
+  const pull = engine(50)
+  await pull.run()
+
+  server.use(graphql.query('OfflineChanges', () => HttpResponse.json(refused())))
+  await pull.run()
+
+  expect(warn).toHaveBeenCalledWith(expect.stringContaining('download of a vehicle failed'), expect.anything())
+  expect(await localIds()).toEqual(['a'])
+  expect(pull.state).toMatchObject({ status: 'idle', interrupted: false, vehiclesDone: 1 })
+
+  server.use(...feed.handlers) // the server answers again
+  feed.add('b', '2026-09-02')
+  await pull.run()
+  expect(await localIds()).toEqual(['a', 'b'])
+})
+
+it('a download that fails before the vehicles is warned about, not taken for a lost connection', async () => {
+  silenceConsoleError()
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  onTestFinished(() => warn.mockRestore())
+  server.use(graphql.query('OfflineSettings', () => HttpResponse.json(refused())))
+  const pull = engine()
+
+  await pull.run()
+
+  expect(warn).toHaveBeenCalledWith(expect.stringContaining('The offline download failed'), expect.anything())
+  expect(pull.state).toMatchObject({ status: 'idle', interrupted: false, lastPullAt: null })
+  expect(feed.asked).toEqual([])
+})
+
+it('a home list answered without data is a failed download', async () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  onTestFinished(() => warn.mockRestore())
+  const client = { query: vi.fn(async () => ({ data: undefined })) } as unknown as ApolloClient
+
+  const pull = createPullEngine({ client, now })
+  await pull.run()
+
+  expect(warn).toHaveBeenCalledWith(expect.stringContaining('The offline download failed'), new Error('The server sent no data.'))
+  expect(pull.state).toMatchObject({ status: 'idle', interrupted: false, lastPullAt: null })
+})
+
+it('with more vehicles than the download lists, one missing from the list stays on the device', async () => {
+  vehicles.state.vehicles.push({ ...fakeVehicle({ id: 'v2', name: 'Superb' }), deletedAt: '' })
+  feed.add('a', '2026-09-01', 'v2')
+  const pull = engine(50)
+  await pull.run()
+  expect(await localIds('v2')).toEqual(['a'])
+
+  // The list stops before v2 (as it would past its 200 vehicles): not seeing it says nothing about it.
+  server.use(graphql.query('Welcome', () => HttpResponse.json({ data: { myVehicles: [{ ...vehicles.state.vehicles[0], recurring: [] }], myVehicleCount: 2, vehicleTotal: 2 } })))
+  await pull.run()
+
+  expect(await localIds('v2')).toEqual(['a'])
+  expect((await (await deviceData.rows())!.vehicles()).map((v) => v.id).sort()).toEqual(['v1', 'v2'])
 })

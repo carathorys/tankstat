@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest'
-import { memoryStorage, type LogRow, type VehicleRow } from '../../../src/frontend/offline/deviceStorage.ts'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
+import { deviceData } from '../../../src/frontend/offline/deviceData.ts'
+import { memoryStorage, type LogRow, type RowStore, type VehicleRow } from '../../../src/frontend/offline/deviceStorage.ts'
+import { keptPhotos } from '../../../src/frontend/offline/keptPhotos.ts'
 import { answerLocally, sortLogs } from '../../../src/frontend/offline/localResolvers.ts'
+import { outbox, type ChangeDraft } from '../../../src/frontend/offline/outbox.ts'
 import fixture from '../../backend/contracts/log-order/log-order.json'
 
 const vehicles = new Map<string, VehicleRow>([
@@ -218,5 +222,252 @@ describe('a visit waiting on this device', () => {
 
     expect(s1).toMatchObject({ lastDoneDate: '2026-10-05', lastDoneOdometer: 1500, version: 4, status: { state: 'UPCOMING' } }) // not preselected again
     expect(s2).toMatchObject({ lastDoneDate: '2025-09-01', version: 3, status: { state: 'OVERDUE' } })
+  })
+})
+
+describe('more of the repositories\' orders', () => {
+  it('orders by who logged it (nobody first), by vehicle and by when it went to the trash, refuelings and expenses alike', () => {
+    const rows = [
+      refueling('a', { createdBy: { displayName: 'bob' } }),
+      refueling('b', { createdBy: null }),
+      refueling('c', { createdBy: { displayName: 'Alice' } }),
+    ]
+    expect(ids(sortLogs('refuelings', rows, 'CREATED_BY', 'ASC', vehicles))).toEqual(['b', 'c', 'a'])
+    expect(ids(sortLogs('expenses', rows, 'CREATED_BY', 'DESC', vehicles))).toEqual(['a', 'c', 'b'])
+
+    const expenses = [refueling('a', { vehicleId: 'v1' }), refueling('b', { vehicleId: 'v2' })]
+    expect(ids(sortLogs('expenses', expenses, 'VEHICLE', 'ASC', vehicles))).toEqual(['b', 'a'])
+
+    const trashed = [refueling('a', { deletedAt: '2026-09-10T00:00:00Z' }), refueling('b', { deletedAt: '2026-09-11T00:00:00Z' })]
+    expect(ids(sortLogs('expenses', trashed, 'DELETED_AT', 'DESC', vehicles))).toEqual(['b', 'a'])
+  })
+})
+
+describe('answering offline, the device\'s own data', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  /** A fresh device for user u1, with vehicles v1 (downloaded) and v2 (known, its logs not downloaded). */
+  async function device(): Promise<RowStore> {
+    deviceData.reset(memoryStorage())
+    await deviceData.signedIn('u1')
+    await outbox.reload()
+    const rows = (await deviceData.rows())!
+    await rows.putVehicles([...vehicles.values()])
+    await rows.putCursor({ vehicleId: 'v1', from: null, watermark: 'w', next: null, complete: true, fullStartedAt: null })
+    return rows
+  }
+  const enqueue = (draft: ChangeDraft) => outbox.enqueue(draft)
+  const expense = (id: string, fields: Partial<LogRow> = {}): LogRow => ({ __typename: 'Expense', id, vehicleId: 'v1', date: '2026-09-01', title: id, category: null, odometer: null, deletedAt: null, pulledAt: 1, ...fields })
+
+  it('a list asked without an order or a page is the newest first, all of it; an unnamed query gets nothing', async () => {
+    const rows = await device()
+    await rows.putLogs('refuelings', [refueling('old', { date: '2026-08-01' }), refueling('new', { date: '2026-09-15' })])
+
+    const answer = await answerLocally(rows, 'Refuelings', { vehicleId: 'v1' })
+
+    expect(ids(answer!.refuelings as LogRow[])).toEqual(['new', 'old'])
+    expect(await answerLocally(rows, undefined, { vehicleId: 'v1' })).toBeUndefined()
+  })
+
+  it('a refuelling kept before its photo is read has no price per unit yet', async () => {
+    const rows = await device()
+    await enqueue({ id: 'n', entity: 'refuelings', action: 'add', vehicleId: 'v1', targetId: 'n', input: { id: 'n', date: '2026-10-01', photoIds: ['local:receipt'] } })
+
+    const [row] = (await answerLocally(rows, 'Refuelings', { vehicleId: 'v1' }))!.refuelings as LogRow[]
+
+    expect(row).toMatchObject({ id: 'n', volume: null, totalCost: null, pricePerUnit: null })
+  })
+
+  it('a log\'s details show its photos with the photo changes waiting: one removed is gone, one kept on the device is there', async () => {
+    URL.createObjectURL = vi.fn(() => 'blob:kept-photo')
+    const rows = await device()
+    await rows.putLogs('refuelings', [refueling('a', { photos: [{ __typename: 'LogPhotoInfo', id: 'p1', url: '/media/p1' }, { __typename: 'LogPhotoInfo', id: 'p2', url: '/media/p2' }] })])
+    await rows.putLogs('expenses', [expense('e')])
+    const key = (await keptPhotos.keep(new Blob([new Uint8Array([1])], { type: 'image/jpeg' }), 'v1'))!
+    await enqueue({ id: 'rm', entity: 'refuelings', action: 'removePhoto', vehicleId: 'v1', targetId: 'a', input: { imageId: 'p1' } })
+    await enqueue({ id: 'add', entity: 'refuelings', action: 'addPhoto', vehicleId: 'v1', targetId: 'a', input: { key } })
+    await enqueue({ id: 'lost', entity: 'refuelings', action: 'addPhoto', vehicleId: 'v1', targetId: 'a', input: { key: 'local:no-longer-on-the-device' } })
+
+    const answer = await answerLocally(rows, 'RefuelingDetails', { id: 'a' })
+
+    expect((answer!.refueling as { photos: unknown[] }).photos).toEqual([
+      { __typename: 'LogPhotoInfo', id: 'p2', url: '/media/p2' },
+      { __typename: 'LogPhotoInfo', id: key, url: 'blob:kept-photo' },
+    ])
+    expect((await answerLocally(rows, 'ExpenseDetails', { id: 'e' }))?.expense).toMatchObject({ id: 'e', photos: [] }) // the feed sent none
+    expect(await answerLocally(rows, 'ExpenseDetails', { id: null })).toBeUndefined()
+  })
+
+  it('a log of a vehicle the device no longer holds may be looked at, not changed', async () => {
+    const rows = await device()
+    await rows.putLogs('refuelings', [refueling('far', { vehicleId: 'elsewhere' })])
+
+    expect((await answerLocally(rows, 'RefuelingDetails', { id: 'far' }))?.refueling).toMatchObject({ id: 'far', canEdit: false, canDelete: false })
+  })
+
+  it('the trash needs a vehicle downloaded, and is the most recently trashed first when asked without an order', async () => {
+    const rows = await device()
+    await rows.putLogs('refuelings', [refueling('t1', { deletedAt: '2026-09-10T00:00:00Z' }), refueling('t2', { deletedAt: '2026-09-12T00:00:00Z' })])
+
+    expect(ids((await answerLocally(rows, 'RefuelingTrash', {}))!.refuelingTrash as LogRow[])).toEqual(['t2', 't1'])
+
+    await rows.putCursor({ vehicleId: 'v1', from: null, watermark: null, next: 'p2', complete: false, fullStartedAt: 1 })
+    expect(await answerLocally(rows, 'RefuelingTrash', {})).toBeUndefined()
+  })
+
+  it('a new log starts from the latest reading of the downloaded logs and the latest refuelling\'s currency', async () => {
+    const rows = await device()
+    await rows.putLogs('refuelings', [
+      refueling('a', { date: '2026-09-01', odometer: 1000, currency: 'EUR' }),
+      refueling('b', { date: '2026-09-20', odometer: 1500, currency: 'HUF' }),
+    ])
+    await rows.putLogs('expenses', [
+      expense('e1', { date: '2026-09-20', odometer: 1520, category: 'Tyres' }), // the same day, further on
+      expense('e2', { date: '2026-09-21', category: 'wash' }), // no reading
+      expense('e3', { category: 'Tyres' }),
+    ])
+
+    expect((await answerLocally(rows, 'LogDefaults', { vehicleId: 'v1' }))?.logDefaults).toEqual({
+      __typename: 'LogDefaults', lastOdometer: 1520, lastDate: '2026-09-20', currency: 'HUF',
+    })
+    expect(await answerLocally(rows, 'ExpenseCategories', { vehicleId: 'v1' })).toEqual({ expenseCategories: ['Tyres', 'wash'] })
+
+    await rows.deleteLogs('refuelings', ['a', 'b'])
+    expect((await answerLocally(rows, 'LogDefaults', { vehicleId: 'v1' }))?.logDefaults).toMatchObject({ lastOdometer: 1520, currency: null }) // no refuelling yet
+  })
+
+  it('for a vehicle not downloaded, the defaults and categories are the server\'s while it can be reached', async () => {
+    const rows = await device()
+    const kept = vi.fn(async () => ({ logDefaults: { lastOdometer: 1 } }))
+
+    expect(await answerLocally(rows, 'LogDefaults', { vehicleId: 'v2' }, kept)).toBeUndefined()
+    expect(await answerLocally(rows, 'ExpenseCategories', { vehicleId: 'v2' }, kept)).toBeUndefined()
+    expect(kept).not.toHaveBeenCalled()
+  })
+
+  it('out of reach, a vehicle not downloaded starts from the last answer seen, else from nothing when the device knows the vehicle', async () => {
+    const rows = await device()
+    connectivity.failed()
+    const seenDefaults = { logDefaults: { __typename: 'LogDefaults', lastOdometer: 800, lastDate: '2026-08-01', currency: 'EUR' } }
+    const keptAnswers = (answers: Record<string, unknown>) => async (name: string, variables: Record<string, unknown>) =>
+      answers[`${name}:${String(variables.vehicleId ?? variables.id)}`] as Record<string, unknown> | undefined
+
+    // The last answer seen.
+    const seen = keptAnswers({ 'LogDefaults:v2': seenDefaults, 'ExpenseCategories:v2': { expenseCategories: ['Oil'] } })
+    expect(await answerLocally(rows, 'LogDefaults', { vehicleId: 'v2' }, seen)).toBe(seenDefaults)
+    expect(await answerLocally(rows, 'ExpenseCategories', { vehicleId: 'v2' }, seen)).toEqual({ expenseCategories: ['Oil'] })
+
+    // None, but the vehicle is on the home list the device downloaded, or its page was seen.
+    const empty = { logDefaults: { __typename: 'LogDefaults', lastOdometer: null, lastDate: null, currency: null } }
+    expect(await answerLocally(rows, 'LogDefaults', { vehicleId: 'v2' }, keptAnswers({}))).toEqual(empty)
+    expect(await answerLocally(rows, 'ExpenseCategories', { vehicleId: 'v2' }, keptAnswers({}))).toEqual({ expenseCategories: [] })
+    const pageSeen = keptAnswers({ 'VehicleDetails:v9': { vehicle: { id: 'v9' } } })
+    expect(await answerLocally(rows, 'LogDefaults', { vehicleId: 'v9' }, pageSeen)).toEqual(empty)
+
+    // A vehicle the device knows nothing of.
+    expect(await answerLocally(rows, 'LogDefaults', { vehicleId: 'unknown' }, keptAnswers({}))).toBeUndefined()
+    expect(await answerLocally(rows, 'ExpenseCategories', { vehicleId: 'unknown' }, keptAnswers({}))).toBeUndefined()
+    expect(await answerLocally(rows, 'LogDefaults', {}, keptAnswers({}))).toBeUndefined()
+  })
+
+  it('a vehicle with a change waiting is the device\'s: the stored vehicle with the change over it, or nothing when it knows none', async () => {
+    const rows = await device()
+    expect(await answerLocally(rows, 'VehicleDetails', { id: 'v1' })).toBeUndefined() // nothing waits: the server's (or the last seen)
+
+    await enqueue({ id: 'u1', entity: 'vehicles', action: 'update', vehicleId: 'v1', targetId: 'v1', input: { id: 'v1', name: 'Octavia RS', units: { volume: 'GALLONS' } }, expectedVersion: 2 })
+    await enqueue({ id: 'u2', entity: 'vehicles', action: 'update', vehicleId: 'ghost', targetId: 'ghost', input: { id: 'ghost', name: 'Ghost' }, expectedVersion: 1 })
+
+    expect((await answerLocally(rows, 'VehicleDetails', { id: 'v1' }))?.vehicle).toMatchObject({
+      id: 'v1', name: 'Octavia RS', logAccess: 'DELETE', units: { __typename: 'MeasurementUnits', volume: 'GALLONS' },
+    })
+    expect(await answerLocally(rows, 'VehicleDetails', { id: 'ghost' })).toBeUndefined()
+  })
+
+  it('a home card with a change waiting shows the schedules with the changes over them', async () => {
+    const rows = await device()
+    const card = { __typename: 'Vehicle', id: 'v1', name: 'Octavia', recurring: [{ __typename: 'RecurringExpenseInfo', id: 's1', title: 'Oil', version: 2 }] }
+    const kept = async (name: string) => (name === 'VehicleCard' ? { vehicle: card } : undefined)
+    expect(await answerLocally(rows, 'VehicleCard', { id: 'v1' }, kept)).toBeUndefined() // nothing waits
+
+    await enqueue({ id: 's2', entity: 'recurring', action: 'add', vehicleId: 'v1', targetId: 's2', input: { id: 's2', title: 'Tyres', kind: 'TIME', intervalMonths: 6 } })
+    const answer = await answerLocally(rows, 'VehicleCard', { id: 'v1' }, kept)
+
+    expect((answer!.vehicle as { recurring: { id: string; title: string }[] }).recurring.map((s) => [s.id, s.title])).toEqual([['s1', 'Oil'], ['s2', 'Tyres']])
+    // A card never seen, of a vehicle the home list brought: its schedules are the changes'.
+    expect((await answerLocally(rows, 'VehicleCard', { id: 'v1' }))?.vehicle).toMatchObject({ name: 'Octavia', recurring: [{ id: 's2', status: { state: 'UPCOMING' } }] })
+  })
+
+  it('the Recurring tab lays edits and visits over the schedules seen, and leaves alone those it does not know', async () => {
+    const rows = await device()
+    const status = { __typename: 'RecurrenceStatusInfo', state: 'DUE_SOON' }
+    const seen = { vehicle: { __typename: 'Vehicle', id: 'v1', recurring: [{ __typename: 'RecurringExpenseInfo', id: 's1', title: 'Oil', version: 0, lastDoneDate: '2026-01-01', status }] } }
+    const kept = async (name: string) => (name === 'RecurringExpenses' ? seen : undefined)
+    await enqueue({ id: 'e1', entity: 'recurring', action: 'update', vehicleId: 'v1', targetId: 's1', input: { id: 's1', title: 'Oil and filter' }, expectedVersion: 0 })
+    await enqueue({ id: 'e2', entity: 'recurring', action: 'update', vehicleId: 'v1', targetId: 'unknown', input: { id: 'unknown', title: 'Whatever' }, expectedVersion: 1 })
+    await enqueue({ id: 'visit', entity: 'recurring', action: 'markDone', vehicleId: 'v1', targetId: 'visit', targetIds: ['s1', 'gone'], input: { ids: ['s1', 'gone'] } })
+    await enqueue({ id: 'odd', entity: 'recurring', action: 'markDone', vehicleId: 'v1', targetId: 'odd', input: {} }) // names no schedule
+
+    const [s1, ...others] = ((await answerLocally(rows, 'RecurringExpenses', { vehicleId: 'v1' }, kept))!.vehicle as { recurring: Record<string, unknown>[] }).recurring
+
+    expect(others).toEqual([])
+    // A visit without a date or a reading keeps the baseline; a version of 0 (never saved on the server) stays.
+    expect(s1).toMatchObject({ title: 'Oil and filter', lastDoneDate: '2026-01-01', version: 0, status: { state: 'UPCOMING' } })
+
+    expect(await answerLocally(rows, 'RecurringExpenses', { vehicleId: 'v1' })).toBeUndefined() // nothing seen: the server's
+    expect(await answerLocally(rows, 'RecurringExpenses', { vehicleId: 'v2' }, kept)).toBeUndefined() // nothing waits for v2
+  })
+
+  it('a vehicle added here has its schedules, no figures and no charts until the server has it', async () => {
+    const rows = await device()
+    await enqueue({ id: 'golf', entity: 'vehicles', action: 'add', vehicleId: 'golf', targetId: 'golf', input: { id: 'golf', name: 'Golf', fuelType: 'PETROL' } })
+    await enqueue({ id: 's1', entity: 'recurring', action: 'add', vehicleId: 'golf', targetId: 's1', input: { id: 's1', title: 'Oil' } })
+
+    expect(await answerLocally(rows, 'RecurringExpenses', { vehicleId: 'golf' })).toMatchObject({ vehicle: { __typename: 'Vehicle', id: 'golf', recurring: [{ id: 's1', title: 'Oil' }] } })
+    expect(await answerLocally(rows, 'VehicleDashboard', { id: 'golf' })).toEqual({ vehicle: { __typename: 'Vehicle', id: 'golf', summary: null }, vehicleCharts: [] })
+    expect(await answerLocally(rows, 'ChartData', { vehicleId: 'golf' })).toEqual({ vehicleChartData: { __typename: 'ChartData', unit: 'COUNT', series: [] } })
+    expect(await answerLocally(rows, 'VehicleDashboard', { id: 'v1' })).toBeUndefined()
+    expect(await answerLocally(rows, 'ChartData', { vehicleId: 'v1' })).toBeUndefined()
+  })
+
+  it('a search on the home list finds the vehicles added here by name or licence plate', async () => {
+    const rows = await device()
+    const base = { myVehicles: [{ __typename: 'Vehicle', id: 'v1', name: 'Octavia' }], myVehicleCount: 1, vehicleTotal: 3 }
+    await enqueue({ id: 'golf', entity: 'vehicles', action: 'add', vehicleId: 'golf', targetId: 'golf', input: { id: 'golf', name: 'Golf', fuelType: 'PETROL' } })
+    await enqueue({ id: 'van', entity: 'vehicles', action: 'add', vehicleId: 'van', targetId: 'van', input: { id: 'van', name: 'Van', licensePlate: 'GOL-123', fuelType: 'DIESEL' } })
+    await enqueue({ id: 'bike', entity: 'vehicles', action: 'add', vehicleId: 'bike', targetId: 'bike', input: { id: 'bike', name: 'Bike', fuelType: 'ELECTRIC' } })
+
+    const answer = (await answerLocally(rows, 'Welcome', { search: ' gol ', skip: 0, take: 10 }, async () => base)) as { myVehicles: { id: string; recurring: unknown[] }[]; myVehicleCount: number; vehicleTotal: number }
+
+    expect(answer.myVehicles.map((v) => v.id)).toEqual(['v1', 'golf', 'van'])
+    expect(answer.myVehicles[0].recurring).toEqual([]) // a card without schedules
+    expect(answer.myVehicleCount).toBe(3)
+    expect(answer.vehicleTotal).toBe(5)
+  })
+
+  it('the administrators\' list offline holds the device\'s vehicles, in any order and page', async () => {
+    deviceData.reset(memoryStorage())
+    await deviceData.signedIn('u1')
+    await outbox.reload()
+    expect(await answerLocally((await deviceData.rows())!, 'Vehicles', {})).toBeUndefined() // a device that holds no vehicle
+
+    const fresh = await device()
+    await fresh.putVehicles([
+      { id: 'v1', name: 'Octavia', logAccess: 'DELETE', licensePlate: 'ABC', fuelType: 'PETROL', owner: { displayName: 'Zoe' } },
+      { id: 'v2', name: 'astra', logAccess: 'EDIT', licensePlate: null, fuelType: 'DIESEL', owner: { displayName: 'adam' } },
+    ])
+    await enqueue({ id: 'golf', entity: 'vehicles', action: 'add', vehicleId: 'golf', targetId: 'golf', input: { id: 'golf', name: 'Golf', licensePlate: 'abc', fuelType: 'ELECTRIC' } })
+    const kept = async (name: string, variables: Record<string, unknown>) =>
+      name === 'VehicleDetails' && variables.id === 'v1' ? { vehicle: { id: 'v1', refuelingCount: 3 } } : undefined
+    const order = async (variables: Record<string, unknown>) =>
+      ((await answerLocally(fresh, 'Vehicles', variables, kept))!.vehicles as { id: string }[]).map((v) => v.id)
+
+    expect(await order({ orderBy: 'LICENSE_PLATE', direction: 'ASC' })).toEqual(['v2', 'golf', 'v1']) // the same plate: by id
+    expect(await order({ orderBy: 'FUEL_TYPE', direction: 'ASC' })).toEqual(['v2', 'golf', 'v1'])
+    expect(await order({ orderBy: 'OWNER', direction: 'ASC' })).toEqual(['golf', 'v2', 'v1'])
+    expect(await order({ orderBy: 'REFUELING_COUNT', direction: 'DESC' })).toEqual(['v1', 'golf', 'v2'])
+    expect(await order({ skip: 1, take: 1 })).toEqual(['golf']) // by name: astra, Golf, Octavia
+    expect((await answerLocally(fresh, 'Vehicles', {}, kept))?.vehicleCount).toBe(3)
   })
 })

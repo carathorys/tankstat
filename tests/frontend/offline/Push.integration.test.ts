@@ -1,12 +1,12 @@
 import { graphql, http, HttpResponse } from 'msw'
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, onTestFinished, vi } from 'vitest'
 import { createApolloClient } from '../../../src/frontend/apolloClient.ts'
 import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
 import { deviceData } from '../../../src/frontend/offline/deviceData.ts'
 import { memoryStorage } from '../../../src/frontend/offline/deviceStorage.ts'
 import { keptPhotos } from '../../../src/frontend/offline/keptPhotos.ts'
 import { outbox, type ChangeDraft } from '../../../src/frontend/offline/outbox.ts'
-import { createPushEngine } from '../../../src/frontend/offline/push.ts'
+import { createPushEngine, PARKED_ADDS_KEY, parkedAdds, unblockAdd } from '../../../src/frontend/offline/push.ts'
 import { server } from '../support/server.ts'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
@@ -257,4 +257,166 @@ it('keeps an edit made while its change is on its way as a change of its own, af
   await editDuring
 
   expect(outbox.changes).toMatchObject([{ id: 'e1', action: 'update', input: { volume: 50 } }])
+})
+
+it('once a parked add is applied or discarded on the Sync page, what was made on it goes with the next sync', async () => {
+  const sync = fakeSync((c) => (c.id === 'golf' ? 'vehicle.nameRequired' : null))
+  await keep({ id: 'golf', entity: 'vehicles', action: 'add', vehicleId: 'golf', targetId: 'golf', input: { id: 'golf', name: '', fuelType: 'PETROL' } })
+  await keep(log('g1', 'golf'))
+  await engine().run()
+  expect(await parkedAdds(deviceData)).toEqual(['golf'])
+
+  await unblockAdd('golf')
+  await engine().run()
+
+  expect(await parkedAdds(deviceData)).toEqual([])
+  expect(sync.requests.map((r) => r.map((c) => c.id))).toEqual([['golf'], ['g1']])
+  expect(outbox.changes).toEqual([])
+})
+
+it('a photo added to a saved log that is gone from the device is done with, without asking the server', async () => {
+  const sync = fakeSync()
+  await keep({ id: 'p1', entity: 'refuelings', action: 'addPhoto', vehicleId: 'v1', targetId: 'saved', input: { key: 'local:gone' } })
+
+  const push = engine()
+  await push.run()
+
+  expect(sync.requests).toEqual([])
+  expect(outbox.changes).toEqual([])
+  expect(push.state.last).toMatchObject({ applied: 1, photosLeftOut: 1, interrupted: false })
+})
+
+it('a waiting add another tab gave a photo since this one looked waits for the next sync, to go up with its photo', async () => {
+  const order: string[] = []
+  fakeDrafts(order)
+  const sync = fakeSync(undefined, order)
+  await keep(log('r1'))
+  const photo = await keptPhotos.keep(new Blob([new Uint8Array([1])], { type: 'image/jpeg' }), 'v1')
+  const rows = (await deviceData.rows())!
+  const [stored] = await rows.changes()
+  await rows.putChanges([{ ...stored, input: { ...stored.input, photoIds: [photo] } }]) // the other tab's photo
+
+  const push = engine()
+  await push.run()
+
+  expect(sync.requests).toEqual([])
+  expect(outbox.changes).toMatchObject([{ id: 'r1', sent: true, input: { photoIds: [photo] } }])
+  expect(push.state.last).toMatchObject({ applied: 0, interrupted: false })
+
+  await push.run()
+
+  expect(order).toEqual(['draft 1', 'sync r1'])
+  expect(sync.requests[0][0].logRefueling).toMatchObject({ photoIds: ['draft-1'] })
+  expect(outbox.changes).toEqual([])
+})
+
+it('a change the server did not answer stays; one parked without a reason is listed with none', async () => {
+  server.use(
+    graphql.mutation('SyncChanges', () =>
+      HttpResponse.json({
+        data: {
+          syncChanges: {
+            __typename: 'SyncResultInfo', applied: 0, parked: 1,
+            results: [{ __typename: 'SyncChangeResultInfo', id: 'a', status: 'PARKED', entityId: null, version: null, reason: null }],
+          },
+        },
+      }),
+    ),
+  )
+  await keep(log('a'))
+  await keep(log('b'))
+
+  const push = engine()
+  await push.run()
+
+  expect(push.state.last?.parked).toEqual([{ change: expect.objectContaining({ id: 'a' }), key: '', args: {} }])
+  expect(outbox.changes.map((c) => c.id)).toEqual(['b'])
+})
+
+it('an answer without data leaves every change waiting', async () => {
+  server.use(graphql.mutation('SyncChanges', () => HttpResponse.json({ data: null })))
+  await keep(log('a'))
+
+  const push = engine()
+  await push.run()
+
+  expect(outbox.changes.map((c) => c.id)).toEqual(['a'])
+  expect(push.state.last).toMatchObject({ applied: 0, parked: [], interrupted: false })
+})
+
+it('a lost connection while a refused request goes one change at a time ends the sync', async () => {
+  const sent: string[][] = []
+  server.use(
+    graphql.mutation('SyncChanges', ({ variables }) => {
+      const changes = variables.input.changes as Sent[]
+      sent.push(changes.map((c) => c.id))
+      if (sent.length === 1) return HttpResponse.json({ errors: [{ message: 'too large', extensions: { code: 'VALIDATION_FAILED', key: 'sync.payloadTooLarge' } }], data: null })
+      return HttpResponse.error()
+    }),
+  )
+  for (const id of ['a', 'b']) await keep(log(id))
+
+  const push = engine()
+  await push.run()
+
+  expect(sent).toEqual([['a', 'b'], ['a']]) // b never went
+  expect(outbox.changes.map((c) => c.id)).toEqual(['a', 'b'])
+  expect(push.state.last).toMatchObject({ applied: 0, interrupted: true })
+})
+
+it('the answered changes leave the device even when the download, the screen refresh or remembering parked adds fails, or there is no download', async () => {
+  fakeSync()
+  const client = createApolloClient('http://localhost/graphql')
+  const refetch = vi.spyOn(client, 'refetchQueries').mockRejectedValue(new Error('A screen failed to refresh.'))
+  const remember = vi.spyOn(deviceData, 'keep').mockRejectedValue(new Error('Storage is full.'))
+  onTestFinished(() => remember.mockRestore())
+  await keep(log('a'))
+
+  const failing = createPushEngine({ client, pull: () => Promise.reject(new Error('The download failed.')) })
+  await failing.run()
+
+  expect(outbox.changes).toEqual([])
+  expect(refetch).toHaveBeenCalledWith({ include: 'active' })
+  expect(remember).toHaveBeenCalledWith(PARKED_ADDS_KEY, [])
+  expect(failing.state).toMatchObject({ status: 'idle', last: { applied: 1, interrupted: false } })
+
+  await keep(log('b'))
+  const alone = createPushEngine({ client })
+  await alone.run()
+  expect(outbox.changes).toEqual([])
+  expect(alone.state.last).toMatchObject({ applied: 1 })
+})
+
+it('tells its listeners when it syncs; a sync asked for meanwhile follows the one under way with what was kept since', async () => {
+  const push = engine()
+  const seen: string[] = []
+  const stop = push.subscribe(() => seen.push(push.state.status))
+  const requests: string[][] = []
+  let during: Promise<void> | null = null
+  server.use(
+    graphql.mutation('SyncChanges', async ({ variables }) => {
+      const changes = variables.input.changes as Sent[]
+      requests.push(changes.map((c) => c.id))
+      if (!during) {
+        await keep(log('b'))
+        during = push.run()
+      }
+      const results = changes.map((c) => ({ __typename: 'SyncChangeResultInfo', id: c.id, status: 'APPLIED', entityId: null, version: 1, reason: null }))
+      return HttpResponse.json({ data: { syncChanges: { __typename: 'SyncResultInfo', applied: results.length, parked: 0, results } } })
+    }),
+  )
+  await keep(log('a'))
+
+  const first = push.run()
+  await first
+
+  expect(during).toBe(first)
+  expect(requests).toEqual([['a'], ['b']])
+  expect(outbox.changes).toEqual([])
+  expect(seen).toEqual(['syncing', 'idle', 'syncing', 'idle'])
+
+  stop()
+  await keep(log('c'))
+  await push.run()
+  expect(seen).toHaveLength(4)
 })

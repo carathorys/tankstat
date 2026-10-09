@@ -30,6 +30,38 @@ public class LoggingTests
     }
 
     [Fact]
+    public async Task ACancelledField_AndAnErrorWithoutAnException_AreDebugLines_NamingTheFieldAndTheCode()
+    {
+        // Two fields only this test adds to the schema: what a resolver does when the request is aborted, and an error it reports by code.
+        using var app = new TestApp(new() { ["Auth:Mode"] = "None" }, s => s.AddGraphQLServer().AddTypeExtension<FaultyQueries>());
+        var client = app.NewClient();
+
+        var cancelled = await client.PostAsJsonAsync("/graphql", new { query = "{ cancelled }" });
+        var refused = await client.PostAsJsonAsync("/graphql", new { query = "{ refused }" });
+
+        Assert.Contains("errors", await cancelled.Content.ReadAsStringAsync());
+        Assert.Contains("TEST_REFUSED", await refused.Content.ReadAsStringAsync());
+        Assert.DoesNotContain(Ours(app), e => e.Level >= LogLevel.Warning); // neither is an error of the server's
+        var stopped = Assert.Single(app.Log.From(Listener), e => e.Values.GetValueOrDefault("Field") as string == "Query.cancelled");
+        var coded = Assert.Single(app.Log.From(Listener), e => e.Values.GetValueOrDefault("Field") as string == "Query.refused");
+        Assert.Equal((LogLevel.Debug, LogLevel.Debug), (stopped.Level, coded.Level));
+        Assert.Equal("TEST_REFUSED", coded.Values["Code"]);
+        Assert.False(app.Log.Mentions("the words of the error")); // its code only, never its message
+    }
+
+    [Fact]
+    public void AUserIsNamedInTheLogByTheirIdOnly_AndAnythingElseIsAnonymous()
+    {
+        var id = Guid.NewGuid();
+        System.Security.Claims.ClaimsPrincipal With(string value) =>
+            new(new System.Security.Claims.ClaimsIdentity([new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, value)], "test"));
+
+        Assert.Equal(id.ToString(), Tankstat.Api.Auth.RequestUser.Id(With(id.ToString("N")))); // one spelling of an id
+        Assert.Equal("anonymous", Tankstat.Api.Auth.RequestUser.Id(With("alice@example.com\nwarn: forged")));
+        Assert.Equal("anonymous", Tankstat.Api.Auth.RequestUser.Id(null));
+    }
+
+    [Fact]
     public async Task ABusinessError_IsOnlyADebugLine_NamingTheKey()
     {
         using var app = new TestApp(new() { ["Auth:Mode"] = "None" });
@@ -212,6 +244,22 @@ public class LoggingTests
     }
 
     [Fact]
+    public async Task TheOperation_IsTheOneAskedForByName_AndUnnamed_WhenTheRequestDoesNotSayWhichOfSeveral()
+    {
+        using var app = new TestApp(new() { ["Auth:Mode"] = "None" });
+        var client = app.NewClient();
+        const string two = "query Mine { myVehicles { id } } query Count { myVehicleCount }";
+
+        await client.PostAsJsonAsync("/graphql", new { query = two, operationName = "Count" });
+        var unsaid = await client.PostAsJsonAsync("/graphql", new { query = two }); // which of the two?
+
+        Assert.Contains("errors", await unsaid.Content.ReadAsStringAsync());
+        var timed = app.Log.From(Listener).Where(e => e.Values.ContainsKey("Ms")).Select(e => e.Values["Operation"]).ToArray();
+        Assert.Equal<object?[]>(["query Count", "operation (unnamed)"], timed);
+        Assert.DoesNotContain(Ours(app), e => e.Level >= LogLevel.Warning); // the client's doing
+    }
+
+    [Fact]
     public async Task AnOperationNameFromTheClient_NeverReachesTheLogUnchecked()
     {
         using var app = new TestApp(new() { ["Auth:Mode"] = "None" });
@@ -225,4 +273,13 @@ public class LoggingTests
         var timed = Assert.Single(app.Log.From(Listener), e => e.Values.ContainsKey("Ms"));
         Assert.Equal("operation (invalid name)", timed.Values["Operation"]); // the name was seen, and turned away
     }
+}
+
+/// <summary>Fields only <see cref="LoggingTests"/> add to the schema (never the app's): a resolver whose request was aborted, and one that reports an error by its code.</summary>
+[HotChocolate.Types.ExtendObjectType(HotChocolate.Types.OperationTypeNames.Query)]
+public sealed class FaultyQueries
+{
+    public string Cancelled() => throw new OperationCanceledException();
+
+    public string Refused() => throw new HotChocolate.GraphQLException(HotChocolate.ErrorBuilder.New().SetMessage("the words of the error").SetCode("TEST_REFUSED").Build());
 }

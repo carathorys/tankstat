@@ -92,6 +92,17 @@ public class StatsCalculatorTests
         Assert.Empty(StatsCalculator.Chart(Config(range: ChartRange.All), Data(), Today).Series);
     }
 
+    [Fact]
+    public void AllRange_ReachesALogDatedAfterToday()
+    {
+        var data = Data([Fill("2026-09-20", 40, 100, 1000), Fill("2026-11-02", 40, 200, 1100)]); // a device whose clock is ahead
+
+        var chart = StatsCalculator.Chart(Config(range: ChartRange.All), data, Today);
+
+        Assert.Equal(["2026-09", "2026-10", "2026-11"], chart.Series.Single().Points.Select(p => p.Key));
+        Assert.Equal([100m, 0m, 200m], Values(chart.Series.Single()));
+    }
+
     // ---- metrics -------------------------------------------------------------------------------------------
 
     [Fact]

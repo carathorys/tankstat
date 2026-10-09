@@ -29,6 +29,16 @@ public class OpenAiCompatiblePromptTests
     }
 
     [Fact]
+    public void APhotoThatCanOnlyShowTheOdometer_IsForALogEntry_AndOnlyTheOdometerIsOffered()
+    {
+        var contract = OpenAiCompatiblePrompt.Contract(new HashSet<DocumentKind> { DocumentKind.Odometer, DocumentKind.Unknown }, "fr");
+
+        Assert.Contains("taken for a log entry, so it shows an odometer (\"odometer\") or neither", contract);
+        Assert.Contains("odometer: odometer.", contract);
+        Assert.DoesNotContain("receipt", contract);
+    }
+
+    [Fact]
     public void TheSchema_IsOneStrictModeTakes_EveryPropertyRequiredAndNothingElseAllowed()
     {
         var schema = OpenAiCompatiblePrompt.Schema(Expense);

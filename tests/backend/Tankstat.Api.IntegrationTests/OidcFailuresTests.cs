@@ -33,6 +33,10 @@ public class OidcFailuresTests
     [InlineData("CallbackRejected", "callback_rejected")]
     public void Codes_AreStableSnakeCase(string reason, string code) => Assert.Equal(code, OidcFailures.Code(Enum.Parse<OidcFailure>(reason)));
 
+    [Fact]
+    public void AReasonWithoutACode_IsABug_NeverAnEmptyCodeInTheUrl() =>
+        Assert.Throws<System.Diagnostics.UnreachableException>(() => OidcFailures.Code((OidcFailure)99));
+
     [Theory]
     [InlineData(null, "/?signIn=failed&reason=access_denied")]
     [InlineData("/", "/?signIn=failed&reason=access_denied")]

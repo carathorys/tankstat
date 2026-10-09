@@ -113,6 +113,26 @@ it('page size and reset reach the server too', async () => {
   await waitFor(() => expect(headers()).toEqual(['Name', 'License plate', 'Fuel', 'Owner', 'Refuelings']))
 })
 
+it('a grid reset in this session opens with the defaults again, not with the server’s older copy', async () => {
+  const { ui } = setup(fakeSettingsBackend({ grids: [{ gridId: 'vehicles', order: ['name', 'licensePlate', 'fuelType', 'owner', 'refuelings'], hidden: ['fuelType'], pageSize: 10, sortColumn: 'name', sortDirection: 'ASC' }] }))
+  await screen.findByText('Beta')
+  await waitFor(() => expect(headers()).toEqual(['Name', 'License plate', 'Owner', 'Refuelings']))
+
+  await ui.click(screen.getByRole('button', { name: 'Columns' }))
+  await ui.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Reset to defaults' }))
+  await ui.keyboard('{Escape}')
+  await waitFor(() => expect(headers()).toEqual(['Name', 'License plate', 'Fuel', 'Owner', 'Refuelings']))
+
+  // Away and back: the grid starts afresh from what this session knows.
+  const nav = screen.getByRole('navigation', { name: 'Main navigation' })
+  await ui.click(within(nav).getByRole('link', { name: 'Home' }))
+  await screen.findByRole('heading', { name: 'Your vehicles' })
+  await ui.click(within(screen.getByRole('navigation', { name: 'Main navigation' })).getByRole('link', { name: 'Vehicles' }))
+  await screen.findByText('Beta')
+
+  expect(headers()).toEqual(['Name', 'License plate', 'Fuel', 'Owner', 'Refuelings'])
+})
+
 it('the language is saved with the account and applied on another device; an unknown code is ignored', async () => {
   const { settings, ui, view } = setup()
   await screen.findByRole('heading', { name: 'Vehicles' })
@@ -268,6 +288,24 @@ it('a visitor who is not signed in changes only the browser', async () => {
   await ui.click(await screen.findByRole('menuitemradio', { name: 'Színmód: Világos' }))
 
   expect(document.documentElement).toHaveClass('light')
+  expect(settings.state.requests.UiSettings).toBe(0)
+  expect(settings.state.calls.UpdateUiSettings).toBeUndefined()
+})
+
+it('a surface style a visitor chooses on the sign-in screen stays in the browser', async () => {
+  stubViewport('desktop')
+  const settings = fakeSettingsBackend()
+  server.use(sessionHandler('STANDALONE', () => null), healthHandler, ...settings.handlers)
+  onTestFinished(() => document.documentElement.classList.remove('surface-opaque'))
+  const ui = userEvent.setup()
+  renderWithApollo(<App />, '/')
+  await screen.findByRole('heading', { name: 'Sign in' })
+
+  await ui.click(screen.getByRole('button', { name: 'Appearance' }))
+  await ui.click(await screen.findByRole('menuitemradio', { name: 'Surfaces: Opaque' }))
+
+  expect(document.documentElement).toHaveClass('surface-opaque')
+  expect(window.localStorage.getItem('tankstat.surface')).toBe('opaque')
   expect(settings.state.requests.UiSettings).toBe(0)
   expect(settings.state.calls.UpdateUiSettings).toBeUndefined()
 })

@@ -21,6 +21,17 @@ public class AccessServiceTests
     }
 
     [Fact]
+    public void AScope_HoldsItsOwners_AndTheResourcesGrantedOneByOne()
+    {
+        var (alice, bob, car) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var scope = OwnerScope.Of([alice], [car]);
+
+        Assert.True(OwnerScope.All.Contains(bob) && OwnerScope.All.Contains(bob, Guid.NewGuid()));
+        Assert.Equal((true, false), (scope.Contains(alice), scope.Contains(bob)));
+        Assert.Equal((true, true, false), (scope.Contains(alice, Guid.NewGuid()), scope.Contains(bob, car), scope.Contains(bob, Guid.NewGuid())));
+    }
+
+    [Fact]
     public async Task NoAuth_HasNoAdministratorFeatures()
     {
         var w = new World(AuthMode.None);
