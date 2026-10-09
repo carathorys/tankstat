@@ -17,7 +17,7 @@ public sealed class ImageStorageTests : IDisposable
 {
     private readonly string _folder = Path.Combine(Path.GetTempPath(), $"tankstat-store-{Guid.NewGuid():N}");
 
-    /// <summary>The photos of logs: a root of their own (unset, it would be the shared <c>photos</c> next to every test's folder).</summary>
+    /// <summary>The photos of logs: a root of their own (unset, they would share the pictures' folder).</summary>
     private readonly string _photos = Path.Combine(Path.GetTempPath(), $"tankstat-store-{Guid.NewGuid():N}-photos");
 
     public void Dispose()
@@ -144,6 +144,31 @@ public sealed class ImageStorageTests : IDisposable
         var moved = StoredImage.Create(draft.Id, draft.ContentType, draft.SizeBytes, draft.CreatedAt, logFolder);
         Assert.Equal(new byte[] { 7, 7 }, await ReadAll((await store.OpenReadAsync(moved, default))!));
         Assert.True(File.Exists(In(_photos, logFolder, draft)));
+    }
+
+    [Fact]
+    public async Task DeletingAVehicleFolder_CleansTheOtherRoot_EvenWhenOneCannotBeRemoved()
+    {
+        if (OperatingSystem.IsWindows()) return; // the folder below is made read-only the Unix way
+        var store = Store();
+        var vehicleId = Guid.NewGuid();
+        var picture = Image(ImageFolders.VehiclePicture(vehicleId));
+        var photo = Image(ImageFolders.LogPhotos(vehicleId, LogType.Refueling, Guid.NewGuid()));
+        foreach (var image in new[] { picture, photo }) await store.SaveAsync(image, new byte[] { 1 }, default);
+        var stuck = Path.GetDirectoryName(In(_photos, photo.Folder!, photo))!;
+        File.SetUnixFileMode(stuck, UnixFileMode.UserRead | UnixFileMode.UserExecute); // its photo cannot be removed
+        try
+        {
+            var failure = await Record.ExceptionAsync(() => store.DeleteFolderAsync(ImageFolders.Vehicle(vehicleId), default));
+            if (failure is null) return; // root may remove anything: nothing to show here
+
+            Assert.True(failure is IOException or UnauthorizedAccessException, failure.ToString()); // still told
+            Assert.False(File.Exists(In(_folder, picture.Folder!, picture))); // the photos root went first, and the picture all the same
+        }
+        finally
+        {
+            File.SetUnixFileMode(stuck, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
     }
 
     [Fact]

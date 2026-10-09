@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Images;
@@ -8,9 +9,9 @@ namespace Tankstat.Infrastructure.Storage;
 /// <summary>
 /// Keeps picture bytes as plain files named after the image id (a GUID) inside the folder the image names (see <see cref="ImageFolders"/>),
 /// below one of two roots: the pictures (<c>Storage:Path</c>, in Docker /data/uploads) or the photos of logs (<c>Storage:PhotosPath</c>,
-/// /data/photos), which <see cref="ImageFolders.RootsOf"/> tells apart. Folders are built from ids only, and are checked again here so
+/// opt-in; unset, the same folder), which <see cref="ImageFolders.RootsOf"/> tells apart. Folders are built from ids only, and are checked again here so
 /// nothing user-controlled can ever reach a path. Files from before folders existed (no folder) sit directly in the pictures root. Photos
-/// an older version left in the pictures root are still found there: read, deleted and moved.
+/// still in the pictures root (kept there before <c>Storage:PhotosPath</c> was set, not moved yet) are found there: read, deleted and moved.
 /// </summary>
 internal sealed partial class FileSystemImageStore(IOptions<StorageOptions> options) : IImageStore
 {
@@ -38,12 +39,34 @@ internal sealed partial class FileSystemImageStore(IOptions<StorageOptions> opti
         return Path.Combine(root, folder.Replace('/', Path.DirectorySeparatorChar));
     }
 
-    /// <summary>Where an image belongs (what is written goes there).</summary>
-    private string PathFor(StoredImage image) => Path.Combine(FolderPath(RootsOf(image.Folder).First(), image.Folder), image.Id.ToString("N"));
+    private static string FilePath(string root, StoredImage image) => Path.Combine(FolderPath(root, image.Folder), image.Id.ToString("N"));
 
-    /// <summary>Where an image is: where it belongs, else where an older version left it; null when it is nowhere.</summary>
-    private string? ExistingPathFor(StoredImage image) =>
-        RootsOf(image.Folder).Select(root => Path.Combine(FolderPath(root, image.Folder), image.Id.ToString("N"))).FirstOrDefault(File.Exists);
+    /// <summary>Where an image belongs (what is written goes there).</summary>
+    private string PathFor(StoredImage image) => FilePath(RootsOf(image.Folder).First(), image);
+
+    /// <summary>Where an image is: where it belongs, else in the pictures root (not moved yet); null when it is nowhere.</summary>
+    private string? ExistingPathFor(StoredImage image) => RootsOf(image.Folder).Select(root => FilePath(root, image)).FirstOrDefault(File.Exists);
+
+    /// <summary>
+    /// Removes under every root the folder may be found under: one that fails (a locked file, a disk gone read-only) does not keep the
+    /// other root from being cleaned, and its error is thrown once both were tried.
+    /// </summary>
+    private void RemoveUnderEveryRoot(string? folder, Action<string> remove)
+    {
+        Exception? failure = null;
+        foreach (var root in RootsOf(folder))
+        {
+            try
+            {
+                remove(root);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                failure ??= e;
+            }
+        }
+        if (failure is not null) ExceptionDispatchInfo.Throw(failure);
+    }
 
     public async Task SaveAsync(StoredImage image, ReadOnlyMemory<byte> data, CancellationToken ct)
     {
@@ -71,11 +94,11 @@ internal sealed partial class FileSystemImageStore(IOptions<StorageOptions> opti
 
     public Task DeleteAsync(StoredImage image, CancellationToken ct)
     {
-        foreach (var root in RootsOf(image.Folder))
+        RemoveUnderEveryRoot(image.Folder, root =>
         {
-            var path = Path.Combine(FolderPath(root, image.Folder), image.Id.ToString("N"));
+            var path = FilePath(root, image);
             if (File.Exists(path)) File.Delete(path);
-        }
+        });
         return Task.CompletedTask;
     }
 
@@ -92,11 +115,11 @@ internal sealed partial class FileSystemImageStore(IOptions<StorageOptions> opti
     /// <summary>Under every root the folder may be found under: a vehicle's folder goes from both.</summary>
     public Task DeleteFolderAsync(string folder, CancellationToken ct)
     {
-        foreach (var root in RootsOf(folder))
+        RemoveUnderEveryRoot(folder, root =>
         {
             var path = FolderPath(root, folder);
             if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
-        }
+        });
         return Task.CompletedTask;
     }
 }

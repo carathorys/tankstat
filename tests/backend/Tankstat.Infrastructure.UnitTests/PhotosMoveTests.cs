@@ -88,6 +88,82 @@ public sealed class PhotosMoveTests : IDisposable
     }
 
     [Fact]
+    public void AFolderThatCannotBeRead_IsLogged_AndTheOtherVehiclesStillMove()
+    {
+        if (OperatingSystem.IsWindows()) return; // the folder below is locked the Unix way
+        var cars = Enumerable.Range(0, 3).Select(_ => Guid.NewGuid()).ToList();
+        var drafts = cars.Select(car => Old(ImageFolders.PhotoDrafts(car))).ToList();
+        var locked = Path.GetDirectoryName(Old(ImageFolders.LogPhotos(cars[1], LogType.Expense, Guid.NewGuid())))!;
+        File.SetUnixFileMode(locked, UnixFileMode.None); // left by another user, say: the app cannot look inside
+        try
+        {
+            if (CanList(locked)) return; // root reads everything: nothing to show here
+
+            Assert.Equal((3, 1), Move().Run());
+
+            Assert.All(drafts, d => Assert.True(File.Exists(Moved(d))));
+            Assert.Single(_log.From<PhotosMove>(), e => e.Level == LogLevel.Warning);
+            Assert.Equal(3, _log.From<PhotosMove>().Last().Values["Moved"]); // the counts are still told
+        }
+        finally
+        {
+            File.SetUnixFileMode(locked, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
+
+    [Fact]
+    public void ACopyCutShort_LeavesNoPartOfThePhotoWhereTheStoreLooksFirst()
+    {
+        if (OperatingSystem.IsWindows()) return; // the folder below is made read-only the Unix way
+        var photo = Old(ImageFolders.LogPhotos(Guid.NewGuid(), LogType.Refueling, Guid.NewGuid()));
+        Directory.CreateDirectory(Path.GetDirectoryName(Moved(photo))!);
+        File.WriteAllBytes(Moved(photo), [1]); // what a copy between two disks leaves when the disk fills up
+        var folder = Path.GetDirectoryName(photo)!;
+        File.SetUnixFileMode(folder, UnixFileMode.UserRead | UnixFileMode.UserExecute); // and this time the move fails
+        try
+        {
+            if (CanWriteIn(folder)) return; // root may write anywhere: the move would just work
+
+            Assert.Equal((0, 1), Move().Run());
+
+            Assert.False(File.Exists(Moved(photo))); // so the store finds the whole photo where it was
+            Assert.Equal([1, 2, 3], File.ReadAllBytes(photo));
+        }
+        finally
+        {
+            File.SetUnixFileMode(folder, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
+
+    private static bool CanList(string folder)
+    {
+        try
+        {
+            _ = Directory.EnumerateFileSystemEntries(folder).Any();
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static bool CanWriteIn(string folder)
+    {
+        var probe = Path.Combine(folder, "probe");
+        try
+        {
+            File.WriteAllBytes(probe, []);
+            File.Delete(probe);
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    [Fact]
     public async Task Starting_NeverFails_EvenWhenThePhotosRootCannotBeCreated()
     {
         Old(ImageFolders.PhotoDrafts(Guid.NewGuid()));
