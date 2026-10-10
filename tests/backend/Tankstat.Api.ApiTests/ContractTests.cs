@@ -59,6 +59,7 @@ public class ContractTests
     [InlineData("UserInfo", "id", "displayName", "email", "isAdmin")]
     [InlineData("UserSessionInfo", "id", "client", "createdAt", "lastUsedAt", "expiresAt", "current")]
     [InlineData("UserAccount", "id", "provider", "email", "displayName", "isAdmin", "isDisabled")]
+    [InlineData("PasswordResetLink", "token", "url", "emailSent", "emailFailed")]
     [InlineData("Notice", "code", "severity", "message")]
     [InlineData("Vehicle", "id", "ownerId", "name", "licensePlate", "fuelType", "units", "deletedAt", "canEdit", "logAccess", "owner", "refuelingCount", "version", "updatedAt", "logCountSince", "parkedChangeCount", "changedAt", "changedBy", "lastChange")]
     [InlineData("MeasurementUnits", "distance", "volume")]
