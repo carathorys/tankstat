@@ -4,6 +4,7 @@ using Tankstat.Domain;
 using Tankstat.Domain.Images;
 using Tankstat.Domain.Users;
 
+using Microsoft.Extensions.Logging;
 namespace Tankstat.Application.UnitTests;
 
 public class UserAdministrationTests
@@ -213,6 +214,43 @@ public class UserAdministrationTests
         await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(first.Token, "chosen-password-1", default));
         await w.Auth.ResetPasswordAsync(second.Token, "chosen-password-1", default);
         await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(second.Token, "another-pass-1234", default));
+    }
+
+    [Fact]
+    public async Task CreateUser_WhenTheEmailFails_AnswersTheLink_AndKeepsIt()
+    {
+        var w = new World(smtp: true);
+        w.Current.SignInAs(w.AddUser("root@x.co", admin: true));
+        w.Email.FailNext = 1; // the mail server is down
+
+        var (user, reset) = await w.UserService.CreateLocalAsync("new@x.co", "New Person", false, default);
+
+        Assert.False(reset.EmailSent);
+        Assert.True(reset.EmailFailed);
+        Assert.StartsWith("https://tank.test/?resetToken=", reset.Url);
+        Assert.Empty(w.Email.Sent);
+        Assert.Single(w.Tokens.Items, t => t.UserId == user.Id); // kept, for the administrator to hand over
+        var warning = Assert.Single(w.Log.From<PasswordResetService>(), e => e.Level == LogLevel.Warning);
+        Assert.Equal(user.Id, warning.Values["UserId"]);
+        Assert.IsType<EmailSendException>(warning.Exception);
+        Assert.Contains(w.Log.From<UserService>(), e => e.Level == LogLevel.Information && e.Values.GetValueOrDefault("EmailSent") is false);
+        await w.Auth.ResetPasswordAsync(reset.Token, "chosen-password-1", default); // and it works
+    }
+
+    [Fact]
+    public async Task IssueReset_WhenTheEmailFails_KeepsTheNewLink_WhichReplacedTheEarlierOne()
+    {
+        var w = new World(smtp: true);
+        w.Current.SignInAs(w.AddUser("root@x.co", admin: true));
+        var (user, first) = await w.UserService.CreateLocalAsync("new@x.co", null, false, default);
+        w.Email.FailNext = 1;
+
+        var second = await w.UserService.IssueResetAsync(user.Id, default);
+
+        Assert.True(second.EmailFailed);
+        Assert.Single(w.Tokens.Items, t => t.UserId == user.Id); // one live link: the new one
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(first.Token, "chosen-password-1", default));
+        await w.Auth.ResetPasswordAsync(second.Token, "chosen-password-1", default);
     }
 
     [Fact]

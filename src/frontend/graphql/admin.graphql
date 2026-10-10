@@ -29,6 +29,7 @@ mutation CreateUser($input: CreateUserInput!) {
       token
       url
       emailSent
+      emailFailed
     }
   }
 }
@@ -38,6 +39,7 @@ mutation IssuePasswordReset($userId: UUID!) {
     token
     url
     emailSent
+    emailFailed
   }
 }
 
