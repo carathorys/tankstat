@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -53,6 +55,34 @@ public class NoAuthModeTests : IDisposable
         Assert.Equal("FORBIDDEN", (await c.Gql("{ users { id } }")).ErrorCode());
         Assert.Equal("FORBIDDEN", (await c.Gql("mutation { setDefaultAccess(level: EDIT) { defaultLevelForOthers } }")).ErrorCode());
     }
+
+    [Fact]
+    public async Task CookiesFromAnotherMode_CountForNothing()
+    {
+        using var data = new SharedData();
+        var cookies = await data.StandaloneAdminCookiesAsync(); // an administrator signed in before the restart in mode None
+        using var none = data.Host(new() { ["Auth:Mode"] = "None" });
+        var client = none.Factory.CreateDefaultClient();
+        async Task<HttpResponseMessage> Send(string query)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, "/graphql") { Content = JsonContent.Create(new { query }) };
+            request.Headers.Add("Cookie", cookies);
+            return await client.SendAsync(request);
+        }
+        async Task<JsonElement> Ask(string query) => await (await Send(query)).Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(JsonValueKind.Null, (await Ask("{ session { user { id } } }")).Data().GetProperty("session").GetProperty("user").ValueKind);
+        Assert.Equal("FORBIDDEN", (await Ask("{ users { id } }")).ErrorCode());
+        Assert.Equal("FORBIDDEN", (await Ask("{ vehicles { id } }")).ErrorCode());
+        var added = (await Ask("mutation { addVehicle(input: { name: \"Leftover\", fuelType: PETROL }) { ownerId } }")).Data();
+        Assert.Equal(Guid.Empty.ToString(), added.GetProperty("addVehicle").GetProperty("ownerId").GetString()); // the anonymous owner's
+
+        var logout = await Send("mutation { logout }"); // still the way to be rid of them
+        var deleted = logout.Headers.GetValues("Set-Cookie").Where(c => c.Contains("1970")).Select(c => c.Split('=')[0]).ToList();
+        Assert.Contains("tankstat.session", deleted);
+        Assert.Contains("tankstat.refresh", deleted);
+        Assert.DoesNotContain(none.Log.Entries, e => e.ScopeText.Contains("UserId=")); // no request ran as the administrator
+    }
 }
 
 public sealed class FakeRemoteIpStartupFilter : IStartupFilter
@@ -98,6 +128,33 @@ public class ProxyHeaderModeTests : IDisposable
     {
         var user = (await c.Gql("{ session { user { email displayName } } }")).Data().GetProperty("session").GetProperty("user");
         return user.ValueKind == System.Text.Json.JsonValueKind.Null ? null : user.GetProperty("email").GetString();
+    }
+
+    [Fact]
+    public async Task CookiesFromAnotherMode_AreNeverRead_TheProxysUserCounts()
+    {
+        using var data = new SharedData();
+        var cookies = await data.StandaloneAdminCookiesAsync(); // an administrator signed in before the restart in ProxyHeader mode
+        using var proxied = data.Host(new()
+        {
+            ["Auth:Mode"] = "ProxyHeader",
+            ["Auth:ProxyHeader:TrustedProxies:0"] = "10.0.0.0/8",
+        }, s => s.AddSingleton<IStartupFilter, FakeRemoteIpStartupFilter>());
+        async Task<string?> EmailOf(string? user)
+        {
+            var c = proxied.Factory.CreateDefaultClient();
+            c.DefaultRequestHeaders.Add("X-Test-Remote-Ip", "10.1.2.3");
+            c.DefaultRequestHeaders.Add("Cookie", cookies);
+            if (user is not null)
+            {
+                c.DefaultRequestHeaders.Add("X-Forwarded-User", user);
+                c.DefaultRequestHeaders.Add("X-Forwarded-Email", $"{user}@example.com");
+            }
+            return await SessionEmail(c);
+        }
+
+        Assert.Equal("alice@example.com", await EmailOf("alice"));
+        Assert.Null(await EmailOf(null)); // the cookies alone name nobody
     }
 
     [Fact]
