@@ -8,8 +8,11 @@ using Tankstat.Domain.Users;
 
 namespace Tankstat.Application.Users;
 
-/// <summary>What was issued: the one-time token (shown once to the administrator) and how it reached the user.</summary>
-public sealed record IssuedReset(string Token, string? Url, bool EmailSent);
+/// <summary>
+/// What was issued: the one-time token (shown once to the administrator) and how it reached the user, or that the e-mail could not be sent
+/// (<see cref="EmailFailed"/>: the link is kept for the administrator to hand over).
+/// </summary>
+public sealed record IssuedReset(string Token, string? Url, bool EmailSent, bool EmailFailed);
 
 public sealed class PasswordResetService(
     IPasswordResetTokenRepository tokens, IUserRepository users, IEmailSender email,
@@ -27,9 +30,12 @@ public sealed class PasswordResetService(
     /// <summary>Whether an issued link can reach the user by e-mail (SMTP and the public address are set up).</summary>
     public bool CanEmail => email.IsConfigured && !string.IsNullOrWhiteSpace(auth.Value.PublicUrl);
 
-    /// <summary>Issues a new link that replaces the user's earlier ones (one live link per user) and e-mails it when it can.</summary>
+    /// <summary>
+    /// An administrator's issue: a new link that replaces the user's earlier ones (one live link per user), e-mailed when it can be. When the
+    /// e-mail cannot be sent the link is kept and answered with <see cref="IssuedReset.EmailFailed"/>, so the administrator hands it over.
+    /// </summary>
     public async Task<IssuedReset> IssueAsync(User user, bool sendEmail, CancellationToken ct) =>
-        (await IssueAsync(user, sendEmail, TimeSpan.Zero, ct))!;
+        (await IssueAsync(user, sendEmail, TimeSpan.Zero, keepUnsent: true, ct))!;
 
     /// <summary>
     /// A user's own request: like <see cref="IssueAsync(User, bool, CancellationToken)"/>, but issues and sends nothing (null) while the
@@ -38,11 +44,12 @@ public sealed class PasswordResetService(
     public Task<IssuedReset?> IssueUnlessCoolingDownAsync(User user, CancellationToken ct)
     {
         var standalone = auth.Value.Standalone;
-        // Never longer than a link lasts: once the latest one expired, the user may ask for another.
-        return IssueAsync(user, sendEmail: true, TimeSpan.FromMinutes(Math.Min(standalone.ResetCooldownMinutes, standalone.ResetTokenMinutes)), ct);
+        // Never longer than a link lasts: once the latest one expired, the user may ask for another. A link nobody received is taken back
+        // whatever the cool-down setting: only an administrator keeps one to hand over.
+        return IssueAsync(user, sendEmail: true, TimeSpan.FromMinutes(Math.Min(standalone.ResetCooldownMinutes, standalone.ResetTokenMinutes)), keepUnsent: false, ct);
     }
 
-    private async Task<IssuedReset?> IssueAsync(User user, bool sendEmail, TimeSpan cooldown, CancellationToken ct)
+    private async Task<IssuedReset?> IssueAsync(User user, bool sendEmail, TimeSpan cooldown, bool keepUnsent, CancellationToken ct)
     {
         var options = auth.Value;
         var now = clock.GetUtcNow();
@@ -70,12 +77,21 @@ public sealed class PasswordResetService(
         var url = string.IsNullOrWhiteSpace(options.PublicUrl) ? null : $"{options.PublicUrl.TrimEnd('/')}/?resetToken={token}";
 
         var sent = false;
+        var failed = false;
         if (sendEmail && CanEmail && user.Email.Length > 0)
         {
             try
             {
                 await email.SendAsync(user.Email, "Set your Tankstat password",
                     $"Hello {user.DisplayName},\n\nUse this link to set your password (valid for {options.Standalone.ResetTokenMinutes} minutes, one use):\n{url}\n\nIf you did not expect this, ignore this message.", ct);
+                sent = true;
+            }
+            catch (EmailSendException e) when (keepUnsent)
+            {
+                // The administrator gets the link to hand over instead of an error; why the mail server refused is in the log (the message
+                // names the server and the status, never the address). Any other exception is the server's own and escapes below.
+                logger.LogWarning(e, "The link for user {UserId} was issued, but the e-mail could not be sent", user.Id);
+                failed = true;
             }
             catch
             {
@@ -83,10 +99,9 @@ public sealed class PasswordResetService(
                 await tokens.RemoveForUserAsync(user.Id, CancellationToken.None);
                 throw;
             }
-            sent = true;
         }
 
-        return new IssuedReset(token, url, sent);
+        return new IssuedReset(token, url, sent, failed);
     }
 
     /// <summary>Validates the token and returns it with its user; throws the same vague error for every failure.</summary>

@@ -278,6 +278,19 @@ public class PasswordTests
     }
 
     [Fact]
+    public async Task RequestReset_WithTheCooldownOff_StillTakesBackALinkThatCouldNotBeSent()
+    {
+        // Only an administrator keeps a link whose e-mail failed; a user's own request takes it back whatever the cool-down setting.
+        var w = new World(smtp: true, configure: o => o.Standalone.ResetCooldownMinutes = 0);
+        w.AddUser("alice@x.co");
+        w.Email.FailNext = 1;
+
+        await Assert.ThrowsAsync<EmailSendException>(() => w.Auth.RequestPasswordResetAsync("alice@x.co", default));
+
+        Assert.Empty(w.Tokens.Items);
+    }
+
+    [Fact]
     public async Task RequestReset_ManyAtTheSameMoment_SendOneMail()
     {
         var w = new World(smtp: true);
