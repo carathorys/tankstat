@@ -16,7 +16,7 @@ const users = [
   { id: 'u3', provider: 'OIDC', email: 'carol@example.com', displayName: 'Carol', isAdmin: false, isDisabled: false, avatarUrl: null },
 ]
 
-function adminServer(canSetUserPasswords = false) {
+function adminServer(canSetUserPasswords = false, emailFailed = false) {
   const calls: Record<string, unknown[]> = {}
   const record = (name: string, vars: unknown) => (calls[name] ??= []).push(vars)
   server.use(
@@ -51,7 +51,7 @@ function adminServer(canSetUserPasswords = false) {
     }),
     graphql.mutation('CreateUser', ({ variables }) => {
       record('CreateUser', variables)
-      return HttpResponse.json({ data: { createUser: { user: { id: 'u9' }, reset: { token: 'tok.en', url: null, emailSent: false } } } })
+      return HttpResponse.json({ data: { createUser: { user: { id: 'u9' }, reset: { token: 'tok.en', url: null, emailSent: false, emailFailed } } } })
     }),
     graphql.mutation('UpdateUser', ({ variables }) => {
       record('UpdateUser', variables)
@@ -67,7 +67,7 @@ function adminServer(canSetUserPasswords = false) {
     }),
     graphql.mutation('IssuePasswordReset', ({ variables }) => {
       record('IssuePasswordReset', variables)
-      return HttpResponse.json({ data: { issuePasswordReset: { token: 'reset.tok', url: 'https://tank.test/?resetToken=reset.tok', emailSent: false } } })
+      return HttpResponse.json({ data: { issuePasswordReset: { token: 'reset.tok', url: 'https://tank.test/?resetToken=reset.tok', emailSent: false, emailFailed } } })
     }),
   )
   return calls
@@ -143,6 +143,21 @@ it('creates a user and shows the one-time setup link when no e-mail was sent', a
   expect(await admin.findByText(/Hand this one-time link/)).toBeInTheDocument()
   expect(admin.getByText(/resetToken=tok\.en/)).toBeInTheDocument()
   expect(calls.CreateUser).toEqual([{ input: { email: 'dave@example.com', displayName: 'Dave', isAdmin: false } }])
+})
+
+it('says that the e-mail could not be sent, and still shows the link, when the mail server refused it', async () => {
+  const ui = userEvent.setup()
+  adminServer(false, true)
+  renderWithApollo(<App />, '/admin')
+  const admin = await panel()
+
+  await ui.type(await admin.findByLabelText('E-mail'), 'dave@example.com')
+  await ui.type(admin.getByLabelText('Name'), 'Dave')
+  await ui.click(admin.getByRole('button', { name: 'Create user' }))
+
+  expect(await admin.findByText(/The e-mail could not be sent/)).toBeInTheDocument()
+  expect(admin.getByText(/resetToken=tok\.en/)).toBeInTheDocument()
+  expect(admin.queryByText(/The link was e-mailed/)).not.toBeInTheDocument()
 })
 
 it('issues a reset link only for local users', async () => {

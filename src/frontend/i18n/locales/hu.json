@@ -416,6 +416,7 @@
     "resetLink": "Visszaállító link: {{name}}",
     "addUser": "Felhasználó hozzáadása",
     "createUser": "Felhasználó létrehozása",
+    "linkEmailFailed": "Az e-mailt nem sikerült elküldeni (az okát a szerver naplója mondja). Add át a felhasználónak ezt az egyszer használható linket:",
     "linkEmailed": "A linket e-mailben elküldtük.",
     "linkHandOver": "Add át a felhasználónak ezt az egyszer használható linket:",
     "accessTitle": "Hozzáférés mások adataihoz",

@@ -416,6 +416,7 @@
     "resetLink": "Reset link for {{name}}",
     "addUser": "Add user",
     "createUser": "Create user",
+    "linkEmailFailed": "The e-mail could not be sent (the server log says why). Hand this one-time link to the user:",
     "linkEmailed": "The link was e-mailed.",
     "linkHandOver": "Hand this one-time link to the user:",
     "accessTitle": "Access to other people's data",

@@ -220,7 +220,7 @@ export function AdminPanel() {
       {actionError !== undefined && <ErrorMessage error={actionError} />}
       {reset && (
         <SuccessMessage>
-          {reset.emailSent ? t('admin.linkEmailed') : t('admin.linkHandOver')}{' '}
+          {reset.emailSent ? t('admin.linkEmailed') : reset.emailFailed ? t('admin.linkEmailFailed') : t('admin.linkHandOver')}{' '}
           <Box component="code" sx={(theme) => ({ fontFamily: 'monospace', fontSize: '0.9em', px: 0.5, borderRadius: '4px', backgroundColor: theme.vars.palette.primary.soft, wordBreak: 'break-all' })}>
             {linkFor(reset)}
           </Box>
