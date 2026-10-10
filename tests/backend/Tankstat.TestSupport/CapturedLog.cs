@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 
 namespace Tankstat.TestSupport;
@@ -22,7 +23,7 @@ public sealed record LogEntry(LogLevel Level, string Category, string Message, E
 /// Keeps what is logged, for tests: a provider for hosts (<c>AddLogging(b =&gt; b.AddProvider(log))</c>) and, through <see cref="For{T}"/>,
 /// loggers for services that tests build by hand. Thread-safe, because the app logs from background work too.
 /// </summary>
-public sealed class CapturedLog : ILoggerProvider, ISupportExternalScope
+public sealed partial class CapturedLog : ILoggerProvider, ISupportExternalScope
 {
     private readonly object _gate = new();
     private readonly List<LogEntry> _entries = [];
@@ -49,9 +50,32 @@ public sealed class CapturedLog : ILoggerProvider, ISupportExternalScope
 
     /// <summary>
     /// Whether any line (message, exception or scope) contains <paramref name="text"/>, ignoring case. This is what the privacy tests ask:
-    /// nothing a user typed, and no secret, may ever show up in a log line.
+    /// nothing a user typed, and no secret, may ever show up in a log line. A find strictly inside one of the random ids a line may hold
+    /// (<see cref="RandomIds"/>) does not count, because an id can spell a short needle such as <c>24687</c> or <c>aaaa</c> by chance; the
+    /// whole id, and a find that runs past one, still count.
     /// </summary>
-    public bool Mentions(string text) => Entries.Any(e => e.Text.Contains(text, StringComparison.OrdinalIgnoreCase) || e.ScopeText.Contains(text, StringComparison.OrdinalIgnoreCase));
+    public bool Mentions(string text)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(text);
+        return Entries.Any(e => Holds(e.Text, text) || Holds(e.ScopeText, text));
+    }
+
+    private static bool Holds(string line, string text)
+    {
+        var at = line.IndexOf(text, StringComparison.OrdinalIgnoreCase);
+        if (at < 0) return false;
+        var ids = RandomIds().Matches(line);
+        for (; at >= 0; at = line.IndexOf(text, at + 1, StringComparison.OrdinalIgnoreCase))
+            if (!ids.Any(id => id.Index <= at && at + text.Length <= id.Index + id.Length && text.Length < id.Length)) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// The random ids a line may hold, each as a whole token: a GUID (also in braces), 32 hex characters (a GUID without hyphens, a trace id),
+    /// 16 (a span or parent id), and the request id ASP.NET Core makes from the clock's ticks (13 characters of 0-9A-V, 0H... until about 2056).
+    /// </summary>
+    [GeneratedRegex("(?<![0-9A-Za-z])(?:[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}|[0-9A-Fa-f]{32}|[0-9A-Fa-f]{16}|0H[0-9A-V]{11})(?![0-9A-Za-z])")]
+    private static partial Regex RandomIds();
 
     public void Clear()
     {
