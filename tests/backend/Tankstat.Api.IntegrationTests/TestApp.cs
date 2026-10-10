@@ -22,6 +22,9 @@ internal sealed class TestApp : IDisposable
     /// </summary>
     private static readonly Lazy<string> Template = new(CreateTemplate);
 
+    /// <summary>A migrated database at <paramref name="path"/>, from the template every host starts from.</summary>
+    public static void CopyMigratedDatabase(string path) => File.Copy(Template.Value, path);
+
     private readonly string _db = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}.db");
 
     /// <summary>Where uploaded pictures of this host go.</summary>
@@ -106,6 +109,63 @@ internal sealed class TestApp : IDisposable
         }
         AppDomain.CurrentDomain.ProcessExit += (_, _) => File.Delete(path);
         return path;
+    }
+}
+
+/// <summary>
+/// One database and one key ring for several hosts in turn: the same instance restarted with other settings (another auth mode, say). The
+/// database starts as a copy of the migrated template, and every host gets the shared paths over its own settings. Start the next host only
+/// after disposing the one before and <see cref="Release"/>.
+/// </summary>
+internal sealed class SharedData : IDisposable
+{
+    public string DatabasePath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-shared.db");
+    public string KeysPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-shared-keys");
+
+    public SharedData() => TestApp.CopyMigratedDatabase(DatabasePath);
+
+    public TestApp Host(Dictionary<string, string?> settings, Action<IServiceCollection>? services = null) =>
+        new(new Dictionary<string, string?>(settings) { ["Database:ConnectionString"] = $"Data Source={DatabasePath}", ["DataProtection:KeysPath"] = KeysPath },
+            services, migrated: false);
+
+    /// <summary>
+    /// Signs the bootstrap administrator in on a Standalone host over this data and gives back what the browser then holds, as a
+    /// <c>Cookie</c> header: a sign-in made before the instance was restarted in another mode.
+    /// </summary>
+    public async Task<string> StandaloneAdminCookiesAsync()
+    {
+        string cookies;
+        using (var standalone = Host(new()
+               {
+                   ["Auth:Mode"] = "Standalone",
+                   ["Auth:Standalone:AdminEmail"] = "root@example.com",
+                   ["Auth:Standalone:AdminPassword"] = "initial-password-1",
+               }))
+        {
+            var login = await standalone.Factory.CreateDefaultClient().PostAsJsonAsync("/graphql", new // no cookie jar: Set-Cookie stays visible
+            {
+                query = "mutation($i: LoginInput!) { login(input: $i) { id } }",
+                variables = new { i = new { email = "root@example.com", password = "initial-password-1" } },
+            });
+            (await login.Content.ReadFromJsonAsync<JsonElement>()).Data();
+            cookies = string.Join("; ", login.Headers.GetValues("Set-Cookie").Select(c => c.Split(';')[0]));
+        }
+        Release();
+        return cookies;
+    }
+
+    /// <summary>Lets go of the database file: the pooled connections of the hosts before.</summary>
+    public void Release()
+    {
+        using var pooled = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={DatabasePath}");
+        Microsoft.Data.Sqlite.SqliteConnection.ClearPool(pooled);
+    }
+
+    public void Dispose()
+    {
+        Release();
+        File.Delete(DatabasePath);
+        if (Directory.Exists(KeysPath)) Directory.Delete(KeysPath, recursive: true);
     }
 }
 
