@@ -12,7 +12,7 @@ Authentication is configured through the `Auth` and `Smtp` sections. Every setti
 
 | `Auth__Mode` value | Who authenticates | Required settings (see the tables below) | Notes |
 | --- | --- | --- | --- |
-| `None` | nobody | none | **Unsafe.** Everyone sees and changes everything; the UI shows a warning. Data belongs to an anonymous owner; there are no profile pictures, no administration. |
+| `None` | nobody | none | **Unsafe.** Everyone sees and changes everything; the UI shows a warning. Data belongs to an anonymous owner; there are no profile pictures, no administration. A sign-in left over from another mode (a browser still holding its cookies after the switch) counts for nothing: every visitor is the anonymous owner. |
 | `Standalone` | the app itself | `Auth__Standalone__AdminEmail` and `Auth__Standalone__AdminPassword` on the first start (while no local administrator exists) | Login with e-mail and password, password change, one-time reset links, lockout, user management by administrators (create, edit name and e-mail, reset link, disable, delete). |
 | `Oidc` | an OpenID Connect provider | `Auth__Oidc__Authority`, `Auth__Oidc__ClientId`, `Auth__Oidc__ClientSecret` | Server-side authorization-code flow with PKCE; the browser only gets the two HttpOnly cookies of a session (see *Sessions* below). Redirect URI to register: `https://<your-host>/auth/oidc/callback`. |
 | `ProxyHeader` | a trusted reverse proxy (Authelia, Authentik, Cloudflare Access, oauth2-proxy, ...) | `Auth__ProxyHeader__TrustedProxies__0` (at least one) | The app trusts a user header, but only from the listed proxy addresses. There is no login or logout in the app. |
