@@ -33,7 +33,8 @@ public static class DependencyInjection
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<NotificationOptions>, NotificationOptionsValidator>());
         services.AddOptions<SyncOptions>().Bind(configuration.GetSection(SyncOptions.SectionName)).ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<SyncOptions>, SyncOptionsValidator>());
-        services.AddOptions<StorageOptions>().Bind(configuration.GetSection(StorageOptions.SectionName));
+        services.AddOptions<StorageOptions>().Bind(configuration.GetSection(StorageOptions.SectionName)).ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<StorageOptions>, StorageOptionsValidator>());
         services.AddOptions<SmtpOptions>().Bind(configuration.GetSection(SmtpOptions.SectionName));
         services.AddOptions<AuthOptions>().Bind(configuration.GetSection(AuthOptions.SectionName)).ValidateOnStart();
         // Photo reading is optional: its settings are never validated on start (they would stop the app); RecognitionSetup turns

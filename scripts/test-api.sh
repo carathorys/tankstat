@@ -13,9 +13,12 @@ export Auth__Mode=None
 # Throwaway DB so the run never touches a developer database.
 db="$(mktemp -u -t tankstat-api-XXXXXX.db)"
 export Database__ConnectionString="Data Source=${db}"
+# Throwaway upload folders too: the app moves photos between them at start, so it must never be pointed at a developer's own.
+files="$(mktemp -d -t tankstat-api-files-XXXXXX)"
+export Storage__Path="${files}/uploads" Storage__PhotosPath="${files}/photos"
 dotnet src/backend/Tankstat.Api/bin/Release/net10.0/Tankstat.Api.dll --urls "$TANKSTAT_API_URL" &
 pid=$!
-trap 'kill "$pid" 2>/dev/null || true; rm -f "$db"' EXIT
+trap 'kill "$pid" 2>/dev/null || true; rm -f "$db"; rm -rf "$files"' EXIT
 
 for _ in $(seq 1 50); do
   curl -sf -H 'Content-Type: application/json' -d '{"query":"{ __typename }"}' "$TANKSTAT_API_URL/graphql" >/dev/null && break

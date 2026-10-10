@@ -15,7 +15,8 @@ public sealed record SeedOptions(
     string? ConnectionString,
     string? UploadsPath = null,
     IntRange RecurringPerVehicle = default,
-    int Notifications = 0);
+    int Notifications = 0,
+    string? PhotosPath = null);
 
 public sealed class SeedOptionsException(string message) : Exception(message);
 
@@ -48,6 +49,8 @@ public static class SeedOptionsParser
                                                                                       else Data Source=tankstat.db)
           --uploads <folder>     the folder of uploaded pictures to delete too (default: Storage:Path
                                                                                       if set; nothing is deleted otherwise)
+          --photos <folder>      the folder of the photos of logs to delete too (default: Storage:PhotosPath
+                                                                                      if set, else photos next to the pictures)
           --yes                  do not ask for confirmation before deleting the database
           --help                 show this text
 
@@ -63,7 +66,7 @@ public static class SeedOptionsParser
         var recurring = new IntRange(0, 2);
         var notifications = 15;
         var yes = false;
-        string? provider = null, connection = null, uploads = null;
+        string? provider = null, connection = null, uploads = null, photos = null;
 
         for (var i = 0; i < args.Count; i++)
         {
@@ -92,12 +95,13 @@ public static class SeedOptionsParser
                 case "--provider": provider = Value(); break;
                 case "--connection": connection = Value(); break;
                 case "--uploads": uploads = Value(); break;
+                case "--photos": photos = Value(); break;
                 default: throw new SeedOptionsException($"Unknown option '{arg}'. Use --help.");
             }
         }
 
         if ((long)vehicles + trashed > MaxVehicles) throw new SeedOptionsException($"At most {MaxVehicles:N0} vehicles in total.");
-        return new SeedOptions(vehicles, trashed, refuelings, seed, yes, provider, connection, uploads, recurring, notifications);
+        return new SeedOptions(vehicles, trashed, refuelings, seed, yes, provider, connection, uploads, recurring, notifications, photos);
     }
 
     private static int Count(string name, string text, int max)
