@@ -23,7 +23,7 @@ All modes end in the same place: a user record in the database that owns data.
 
 A signed-in browser holds two HttpOnly cookies, so no script on the page ever sees a token:
 
-- **`tankstat.session`, the access cookie** (`SameSite=Lax`, Secure on HTTPS): read on every request, valid for `Auth__AccessTokenMinutes` (15 minutes), not sliding. It survives closing the browser (also after an OIDC sign-in), for those few minutes.
+- **`tankstat.session`, the access cookie** (`SameSite=Lax`, Secure on HTTPS): read on every request in these two modes, valid for `Auth__AccessTokenMinutes` (15 minutes), not sliding. It survives closing the browser (also after an OIDC sign-in), for those few minutes. After a switch to `None` or `ProxyHeader` a cookie still in the browser is never read and names nobody (in `None` every visitor is the anonymous owner, in `ProxyHeader` only the proxy's header names a user).
 - **`tankstat.refresh`, the refresh cookie** (same attributes, but only sent to `/auth/token/...`): the refresh token of the device's session, valid for `Auth__RefreshTokenDays` (90 days) from its last use.
 
 When the access cookie ran out, the app trades the refresh token at `POST /auth/token/refresh` for a new access cookie and a **new** refresh token, and sends the request again; the person notices nothing (also when the app is opened again later: before it shows the sign-in screen it tries the refresh cookie once). A device that is used at least once in 90 days stays signed in, which also lets the installed app come back after weeks. Each device's session is a row of `UserSessions` that stores only a hash of its secret (and the secret encrypted with the key ring, see below).

@@ -55,9 +55,11 @@ public static class AuthExtensions
 
         services.AddSingleton<IAuthenticationSchemeProvider, ModeAwareSchemeProvider>();
 
-        // The default scheme follows the mode, like the schemes ModeAwareSchemeProvider shows: the proxy's headers in ProxyHeader mode, the
-        // cookie in Standalone and OIDC, and none in mode None, so a sign-in cookie left over from another mode never names a user there
-        // (every visitor is the anonymous owner, as the mode promises). Nothing may then authenticate or challenge without naming a scheme.
+        // The default scheme follows the mode: the proxy's headers in ProxyHeader mode, the cookie in Standalone and OIDC, and none in mode
+        // None, so a sign-in cookie left over from another mode never names a user there (every visitor is the anonymous owner, as the mode
+        // promises). "None" holds only because the three schemes above stay registered in every mode: the framework makes a lone registered
+        // scheme the default by itself. The schemes stay available too (logout still signs the cookie out by name), and nothing may
+        // authenticate or challenge without naming its scheme.
         services.AddOptions<AuthenticationOptions>().Configure<IOptions<AuthOptions>>((o, auth) =>
         {
             o.DefaultScheme = auth.Value.Mode switch
