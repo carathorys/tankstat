@@ -17,7 +17,7 @@ public sealed class AuthMutations
         return UserInfo.From(user);
     }
 
-    /// <summary>Ends this device's session (named by its access cookie) and removes both cookies. The app itself signs out through <c>POST /auth/token/logout</c>, which also works once the access cookie ran out.</summary>
+    /// <summary>Ends this device's session (named by its access cookie; in None and ProxyHeader modes no request names one) and removes both cookies. The app itself signs out through <c>POST /auth/token/logout</c>, which also works once the access cookie ran out.</summary>
     public async Task<bool> Logout([Service] IHttpContextAccessor http, [Service] UserSessionService sessions, [Service] ILogger<AuthMutations> logger, CancellationToken ct)
     {
         var context = http.HttpContext!;

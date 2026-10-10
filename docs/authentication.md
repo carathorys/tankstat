@@ -12,7 +12,7 @@ Authentication is configured through the `Auth` and `Smtp` sections. Every setti
 
 | `Auth__Mode` value | Who authenticates | Required settings (see the tables below) | Notes |
 | --- | --- | --- | --- |
-| `None` | nobody | none | **Unsafe.** Everyone sees and changes everything; the UI shows a warning. Data belongs to an anonymous owner; there are no profile pictures, no administration. |
+| `None` | nobody | none | **Unsafe.** Everyone sees and changes everything; the UI shows a warning. Data belongs to an anonymous owner; there are no profile pictures, no administration. A sign-in left over from another mode (a browser still holding its cookies after the switch) counts for nothing: every visitor is the anonymous owner. |
 | `Standalone` | the app itself | `Auth__Standalone__AdminEmail` and `Auth__Standalone__AdminPassword` on the first start (while no local administrator exists) | Login with e-mail and password, password change, one-time reset links, lockout, user management by administrators (create, edit name and e-mail, reset link, disable, delete). |
 | `Oidc` | an OpenID Connect provider | `Auth__Oidc__Authority`, `Auth__Oidc__ClientId`, `Auth__Oidc__ClientSecret` | Server-side authorization-code flow with PKCE; the browser only gets the two HttpOnly cookies of a session (see *Sessions* below). Redirect URI to register: `https://<your-host>/auth/oidc/callback`. |
 | `ProxyHeader` | a trusted reverse proxy (Authelia, Authentik, Cloudflare Access, oauth2-proxy, ...) | `Auth__ProxyHeader__TrustedProxies__0` (at least one) | The app trusts a user header, but only from the listed proxy addresses. There is no login or logout in the app. |
@@ -23,7 +23,7 @@ All modes end in the same place: a user record in the database that owns data.
 
 A signed-in browser holds two HttpOnly cookies, so no script on the page ever sees a token:
 
-- **`tankstat.session`, the access cookie** (`SameSite=Lax`, Secure on HTTPS): read on every request, valid for `Auth__AccessTokenMinutes` (15 minutes), not sliding. It survives closing the browser (also after an OIDC sign-in), for those few minutes.
+- **`tankstat.session`, the access cookie** (`SameSite=Lax`, Secure on HTTPS): read on every request in these two modes, valid for `Auth__AccessTokenMinutes` (15 minutes), not sliding. It survives closing the browser (also after an OIDC sign-in), for those few minutes. After a switch to `None` or `ProxyHeader` a cookie still in the browser is never read and names nobody (in `None` every visitor is the anonymous owner, in `ProxyHeader` only the proxy's header names a user).
 - **`tankstat.refresh`, the refresh cookie** (same attributes, but only sent to `/auth/token/...`): the refresh token of the device's session, valid for `Auth__RefreshTokenDays` (90 days) from its last use.
 
 When the access cookie ran out, the app trades the refresh token at `POST /auth/token/refresh` for a new access cookie and a **new** refresh token, and sends the request again; the person notices nothing (also when the app is opened again later: before it shows the sign-in screen it tries the refresh cookie once). A device that is used at least once in 90 days stays signed in, which also lets the installed app come back after weeks. Each device's session is a row of `UserSessions` that stores only a hash of its secret (and the secret encrypted with the key ring, see below).

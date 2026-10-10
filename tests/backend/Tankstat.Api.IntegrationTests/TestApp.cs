@@ -22,6 +22,9 @@ internal sealed class TestApp : IDisposable
     /// </summary>
     private static readonly Lazy<string> Template = new(CreateTemplate);
 
+    /// <summary>A migrated database at <paramref name="path"/>, from the template every host starts from.</summary>
+    public static void CopyMigratedDatabase(string path) => File.Copy(Template.Value, path);
+
     private readonly string _db = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}.db");
 
     /// <summary>Where uploaded pictures of this host go.</summary>
@@ -30,7 +33,7 @@ internal sealed class TestApp : IDisposable
     /// <summary>Where the photos of logs (and their drafts) of this host go.</summary>
     public string PhotosPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-photos");
 
-    /// <summary>Where this host keeps the keys that protect its cookies.</summary>
+    /// <summary>Where this host keeps the keys that protect its cookies, unless its settings name another folder (<see cref="SharedData"/>).</summary>
     public string KeysPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-keys");
 
     public WebApplicationFactory<Program> Factory { get; }
@@ -38,11 +41,12 @@ internal sealed class TestApp : IDisposable
     /// <summary>Everything this host logged, from its first line on.</summary>
     public CapturedLog Log { get; } = new();
 
+    /// <param name="settings">Over the host's own; a <c>Database:ConnectionString</c> among them is the database to use, nothing is copied then.</param>
     /// <param name="host">Last word on the web host, e.g. a web root with static files to serve.</param>
     /// <param name="migrated">False: a new, empty database, so the host applies every migration itself (the template is made that way).</param>
     public TestApp(Dictionary<string, string?> settings, Action<IServiceCollection>? services = null, Action<IWebHostBuilder>? host = null, bool migrated = true)
     {
-        if (migrated) File.Copy(Template.Value, _db);
+        if (migrated && !settings.ContainsKey("Database:ConnectionString")) CopyMigratedDatabase(_db);
         var all = new Dictionary<string, string?>
         {
             ["Database:Provider"] = "Sqlite",
@@ -64,12 +68,24 @@ internal sealed class TestApp : IDisposable
         });
     }
 
-    public static TestApp Standalone(Dictionary<string, string?>? extra = null, Action<IServiceCollection>? services = null) => new(new Dictionary<string, string?>
+    /// <summary>The bootstrap administrator of a Standalone host (<see cref="StandaloneSettings"/>).</summary>
+    public const string AdminEmail = "root@example.com";
+    public const string AdminPassword = "initial-password-1";
+
+    /// <summary>The settings of a Standalone host with the bootstrap administrator, <paramref name="extra"/> over them.</summary>
+    public static Dictionary<string, string?> StandaloneSettings(Dictionary<string, string?>? extra = null)
     {
-        ["Auth:Mode"] = "Standalone",
-        ["Auth:Standalone:AdminEmail"] = "root@example.com",
-        ["Auth:Standalone:AdminPassword"] = "initial-password-1",
-    }.Concat(extra ?? []).ToDictionary(kv => kv.Key, kv => kv.Value), services);
+        var settings = new Dictionary<string, string?>
+        {
+            ["Auth:Mode"] = "Standalone",
+            ["Auth:Standalone:AdminEmail"] = AdminEmail,
+            ["Auth:Standalone:AdminPassword"] = AdminPassword,
+        };
+        foreach (var (key, value) in extra ?? []) settings[key] = value;
+        return settings;
+    }
+
+    public static TestApp Standalone(Dictionary<string, string?>? extra = null, Action<IServiceCollection>? services = null) => new(StandaloneSettings(extra), services);
 
     /// <summary>A client with its own cookie jar, i.e. its own browser session.</summary>
     public HttpClient NewClient() => Factory.CreateClient();
@@ -81,11 +97,25 @@ internal sealed class TestApp : IDisposable
     public HttpClient NewHttpsClientWithoutRedirects() =>
         Factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") });
 
+    /// <summary>A client without a jar that sends <paramref name="cookies"/> (a <c>Cookie</c> header) with every request: a browser still holding the cookies of an earlier sign-in.</summary>
+    public HttpClient NewClientHolding(string cookies)
+    {
+        var c = Factory.CreateDefaultClient();
+        c.DefaultRequestHeaders.Add("Cookie", cookies);
+        return c;
+    }
+
+    /// <summary>Closes the pooled connections to the database at <paramref name="path"/>, so the file can go. Only that database's: ClearAllPools would also close the ones of tests running in parallel.</summary>
+    public static void ReleaseDatabase(string path)
+    {
+        using var pooled = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={path}");
+        Microsoft.Data.Sqlite.SqliteConnection.ClearPool(pooled);
+    }
+
     public void Dispose()
     {
         Factory.Dispose();
-        // Only this database's pooled connections: ClearAllPools would also close the ones of tests running in parallel.
-        using (var pooled = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_db}")) Microsoft.Data.Sqlite.SqliteConnection.ClearPool(pooled);
+        ReleaseDatabase(_db);
         File.Delete(_db);
         if (Directory.Exists(UploadsPath)) Directory.Delete(UploadsPath, recursive: true);
         if (Directory.Exists(PhotosPath)) Directory.Delete(PhotosPath, recursive: true);
@@ -101,11 +131,65 @@ internal sealed class TestApp : IDisposable
             _ = app.Factory.Services; // starts the host: the migrations run as it starts
             path = Path.Combine(Path.GetTempPath(), $"tankstat-it-template-{Guid.NewGuid():N}.db");
             app.Factory.Dispose();
-            using (var pooled = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={app._db}")) Microsoft.Data.Sqlite.SqliteConnection.ClearPool(pooled);
+            ReleaseDatabase(app._db);
             File.Copy(app._db, path);
         }
         AppDomain.CurrentDomain.ProcessExit += (_, _) => File.Delete(path);
         return path;
+    }
+}
+
+/// <summary>
+/// One database, one key ring and one set of upload folders for several hosts in turn: the same instance restarted with other settings (another
+/// auth mode, say). The database starts as a copy of the migrated template, every host gets the shared paths over its own settings, and starting
+/// a host lets go of the connections the host before held, so dispose that one first.
+/// </summary>
+internal sealed class SharedData : IDisposable
+{
+    private readonly string _root = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-shared");
+
+    public string DatabasePath => _root + ".db";
+    public string KeysPath => _root + "-keys";
+    public string UploadsPath => _root + "-uploads";
+    public string PhotosPath => _root + "-photos";
+
+    public SharedData() => TestApp.CopyMigratedDatabase(DatabasePath);
+
+    public TestApp Host(Dictionary<string, string?> settings, Action<IServiceCollection>? services = null, Action<IWebHostBuilder>? host = null)
+    {
+        TestApp.ReleaseDatabase(DatabasePath); // the pooled connections of the host before
+        return new(new Dictionary<string, string?>(settings)
+        {
+            ["Database:ConnectionString"] = $"Data Source={DatabasePath}",
+            ["DataProtection:KeysPath"] = KeysPath,
+            ["Storage:Path"] = UploadsPath,
+            ["Storage:PhotosPath"] = PhotosPath,
+        }, services, host);
+    }
+
+    /// <summary>
+    /// Signs the bootstrap administrator in on a Standalone host over this data and gives back what the browser then holds, as a
+    /// <c>Cookie</c> header with both cookies (what a browser sends to <c>/auth/token/...</c>; <c>/graphql</c> reads the access cookie only):
+    /// a sign-in made before the instance was restarted in another mode.
+    /// </summary>
+    public async Task<string> StandaloneAdminCookiesAsync()
+    {
+        using var standalone = Host(TestApp.StandaloneSettings());
+        var login = await standalone.Factory.CreateDefaultClient().PostAsJsonAsync("/graphql", new // the cookies are read off the response: no jar needed
+        {
+            query = "mutation($i: LoginInput!) { login(input: $i) { id } }",
+            variables = new { i = new { email = TestApp.AdminEmail, password = TestApp.AdminPassword } },
+        });
+        (await login.Content.ReadFromJsonAsync<JsonElement>()).Data().GetProperty("login"); // signed in
+        return string.Join("; ", login.Headers.GetValues("Set-Cookie").Select(c => c.Split(';')[0]));
+    }
+
+    public void Dispose()
+    {
+        TestApp.ReleaseDatabase(DatabasePath);
+        File.Delete(DatabasePath);
+        foreach (var folder in new[] { KeysPath, UploadsPath, PhotosPath })
+            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
     }
 }
 
