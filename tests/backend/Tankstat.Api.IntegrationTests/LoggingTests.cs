@@ -127,14 +127,14 @@ public class LoggingTests
     public async Task AFieldIsNamedAsTheSchemaNamesIt_NotByTheAliasTheClientGaveIt()
     {
         using var app = new TestApp(new() { ["Auth:Mode"] = "None" });
-        var alias = new string('a', 5000);
+        var alias = new string('z', 5000); // a letter no id shape holds (CapturedLog.Mentions skips a find inside one)
 
         var response = await app.NewClient().PostAsJsonAsync("/graphql", new { query = $"{{ {alias}: users {{ id }} }}" });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var warning = Assert.Single(Ours(app), e => e.Level == LogLevel.Warning);
         Assert.Equal("Query.users", warning.Values["Field"]);
-        Assert.False(app.Log.Mentions("aaaa")); // one request must not be able to put 5,000 characters of its own text in the log
+        Assert.False(app.Log.Mentions("zzzz")); // one request must not be able to put 5,000 characters of its own text in the log
     }
 
     [Fact]
