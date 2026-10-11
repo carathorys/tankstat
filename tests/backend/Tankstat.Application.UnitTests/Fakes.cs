@@ -1,4 +1,5 @@
 using Tankstat.Application.Sync;
+using Tankstat.Application.SystemSettings;
 using Tankstat.Domain.Sync;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
@@ -628,6 +629,12 @@ internal sealed class InMemorySessions : IUserSessionRepository
         ending.ForEach(s => s.Revoke(now));
         return Task.FromResult(ending.Count);
     }
+    public Task<int> RevokeAllAsync(DateTimeOffset now, CancellationToken ct)
+    {
+        var ending = Items.Where(s => s.RevokedAt is null).ToList();
+        ending.ForEach(s => s.Revoke(now));
+        return Task.FromResult(ending.Count);
+    }
     public Task<int> DeleteStaleAsync(DateTimeOffset before, CancellationToken ct) =>
         Task.FromResult(Items.RemoveAll(s => s.ExpiresAt < before || s.RevokedAt < before));
 }
@@ -789,6 +796,13 @@ internal sealed class World
     public InMemoryPhotoDrafts PhotoDrafts { get; } = new();
     public InMemorySettings Settings { get; } = new();
     public FakeCurrentUser Current { get; } = new();
+    public FakeSystemConfiguration SystemConfiguration { get; } = new();
+    public InMemorySettingsFile SettingsFile { get; } = new();
+    public FakeOidcDiscovery Discovery { get; } = new();
+    public FakeServerRestart Restart { get; } = new();
+    public InMemoryInstanceState Instance { get; } = new();
+    public SystemSettingsService SystemSettings { get; }
+    public InstanceStartService InstanceStart { get; }
 
     /// <summary>Everything the services logged (they all write to this one capture).</summary>
     public CapturedLog Log { get; } = new();
@@ -874,6 +888,8 @@ internal sealed class World
         UserService = new UserService(Access, Users, UserData, resets, SessionService, new FakeHasher(), ImageService, ImportSessions, options, Log.For<UserService>());
         AccessAdmin = new AccessAdminService(Access, Settings, Grants, Users, Notifier, Log.For<AccessAdminService>());
         Availability = new RecognitionAvailability(Recognizer, Clock, Log.For<RecognitionAvailability>());
+        SystemSettings = new SystemSettingsService(Access, SystemConfiguration, SettingsFile, Users, Discovery, Restart, Log.For<SystemSettingsService>());
+        InstanceStart = new InstanceStartService(Instance, Sessions, options, Clock, Log.For<InstanceStartService>());
     }
 
     public User AddUser(string email, bool admin = false, string password = "password-123456")

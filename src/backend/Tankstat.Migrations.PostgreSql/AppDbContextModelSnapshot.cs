@@ -184,6 +184,23 @@ namespace Tankstat.Migrations.PostgreSql
                     b.ToTable("Images", (string)null);
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Instance.InstanceState", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("LastStartMode")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("LastStartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("InstanceState", (string)null);
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Measurements.Cost", b =>
                 {
                     b.Property<Guid>("Id")

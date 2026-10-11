@@ -181,6 +181,23 @@ namespace Tankstat.Migrations.MySql
                     b.ToTable("Images", (string)null);
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Instance.InstanceState", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<string>("LastStartMode")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime?>("LastStartedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("InstanceState", (string)null);
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Measurements.Cost", b =>
                 {
                     b.Property<Guid>("Id")

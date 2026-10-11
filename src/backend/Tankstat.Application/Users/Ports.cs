@@ -125,6 +125,9 @@ public interface IUserSessionRepository
     /// <summary>Revokes every session of the user that is not revoked yet, except <paramref name="except"/>; returns how many.</summary>
     Task<int> RevokeForUserAsync(Guid userId, Guid? except, DateTimeOffset now, CancellationToken ct);
 
+    /// <summary>Revokes every session of every user that is not revoked yet (the instance changed its authentication mode); returns how many.</summary>
+    Task<int> RevokeAllAsync(DateTimeOffset now, CancellationToken ct);
+
     /// <summary>Deletes the sessions that expired or were revoked before <paramref name="before"/>.</summary>
     Task<int> DeleteStaleAsync(DateTimeOffset before, CancellationToken ct);
 }

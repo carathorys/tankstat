@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Tankstat.Application.SystemSettings;
 using Tankstat.TestSupport;
 
 namespace Tankstat.Api.IntegrationTests;
@@ -48,6 +49,9 @@ internal sealed class TestApp : IDisposable
     /// <summary>Everything this host logged, from its first line on.</summary>
     public CapturedLog Log { get; } = new();
 
+    /// <summary>What <c>restartServer</c> reaches on this host: a real restart would stop it (and Program.cs's loop would start a real server), so it only counts.</summary>
+    public FakeServerRestart Restarts { get; } = new();
+
     /// <param name="settings">Over the host's own; a <c>Database:ConnectionString</c> among them is the database to use, nothing is copied then.</param>
     /// <param name="host">Last word on the web host, e.g. a web root with static files to serve.</param>
     /// <param name="migrated">False: a new, empty database, so the host applies every migration itself (the template is made that way).</param>
@@ -73,7 +77,11 @@ internal sealed class TestApp : IDisposable
             b.UseSetting("Settings:Path", SettingsPath); // read before the host is built: a command-line argument, see the class comment
             b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(all));
             b.ConfigureLogging(l => l.AddProvider(Log));
-            b.ConfigureServices(s => services?.Invoke(s));
+            b.ConfigureServices(s =>
+            {
+                s.AddSingleton<IServerRestart>(Restarts); // the app registers its own with a plain Add, so this later one wins
+                services?.Invoke(s);
+            });
             host?.Invoke(b);
         });
     }
@@ -210,6 +218,13 @@ internal sealed class SharedData : IDisposable
         foreach (var folder in new[] { KeysPath, UploadsPath, PhotosPath })
             if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
     }
+}
+
+internal sealed class FakeServerRestart : IServerRestart
+{
+    public int Count { get; private set; }
+
+    public void Restart() => Count++;
 }
 
 /// <summary>Two signed-in users of a Standalone host, created by its administrator, who stays signed in too.</summary>

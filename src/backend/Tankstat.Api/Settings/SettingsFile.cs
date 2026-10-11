@@ -1,37 +1,41 @@
 using Microsoft.Extensions.Configuration.EnvironmentVariables;
 using Microsoft.Extensions.Configuration.Json;
-using Microsoft.Extensions.Configuration.Memory;
 using Tankstat.Application.SystemSettings;
 
 namespace Tankstat.Api.Settings;
 
-/// <summary>
-/// Where the app's own settings file sits among the configuration sources: below it the shipped <c>appsettings</c> files, above it the
-/// environment variables and the command line, which therefore keep winning. Kept so a candidate configuration (the same sources with other
-/// file values) can be built and checked before the file is written.
-/// </summary>
-public sealed class SettingsSources(IReadOnlyList<IConfigurationSource> below, IReadOnlyList<IConfigurationSource> above, IDictionary<string, object> properties)
+/// <summary>Helpers over the configuration sources: where the settings file sits among them, and a configuration with other values in its place.</summary>
+public static class ConfigurationSources
 {
-    public IReadOnlyList<IConfigurationSource> Below { get; } = below;
-    public IReadOnlyList<IConfigurationSource> Above { get; } = above;
-
-    /// <summary>The whole configuration as it would be with <paramref name="file"/> as the settings file's content.</summary>
-    public IConfigurationRoot With(IConfigurationSource file)
+    /// <summary>Right before the last environment variables source without a prefix (the one every <c>Section__Key</c> variable comes through).</summary>
+    public static int IndexOfEnvironment(IList<IConfigurationSource> sources)
     {
-        var builder = new ConfigurationBuilder();
-        foreach (var (key, value) in properties) builder.Properties[key] = value; // the content root's file provider, which the appsettings sources resolve against
-        foreach (var source in Below) builder.Add(source);
-        builder.Add(file);
-        foreach (var source in Above) builder.Add(source);
-        return builder.Build();
+        for (var i = sources.Count - 1; i >= 0; i--)
+            if (sources[i] is EnvironmentVariablesConfigurationSource { Prefix: null or "" }) return i;
+        return sources.Count;
     }
 
-    /// <summary>The whole configuration with <paramref name="values"/> in the settings file's place.</summary>
-    public IConfigurationRoot With(IReadOnlyDictionary<string, string?> values) => With(new MemoryConfigurationSource { InitialData = values });
+    /// <summary>
+    /// A configuration built from <paramref name="original"/>'s sources with <paramref name="replacement"/> at <paramref name="at"/>, in place of the
+    /// source there (<paramref name="replacing"/>) or inserted before it. The builder's properties come along: the content root's file provider,
+    /// which the <c>appsettings</c> sources resolve against.
+    /// </summary>
+    public static IConfigurationRoot With(IConfigurationBuilder original, IConfigurationSource replacement, int at, bool replacing)
+    {
+        var builder = new ConfigurationBuilder();
+        foreach (var (key, value) in original.Properties) builder.Properties[key] = value;
+        for (var i = 0; i < original.Sources.Count; i++)
+        {
+            if (i == at) builder.Add(replacement);
+            if (i != at || !replacing) builder.Add(original.Sources[i]);
+        }
+        if (at >= original.Sources.Count) builder.Add(replacement);
+        return builder.Build();
+    }
 }
 
-/// <summary>The settings file as this process started: its status and its place among the sources.</summary>
-public sealed record SettingsFile(SettingsFileStatus Status, SettingsSources Sources)
+/// <summary>The settings file as this process started: its status and the source that is (or would have been) its place among the sources.</summary>
+public sealed record SettingsFile(SettingsFileStatus Status, JsonConfigurationSource Source)
 {
     public const string PathSetting = "Settings:Path";
     public const string DefaultPath = "settings.json";
@@ -47,40 +51,30 @@ public sealed record SettingsFile(SettingsFileStatus Status, SettingsSources Sou
     {
         var path = System.IO.Path.GetFullPath(builder.Configuration[PathSetting] is { } configured && !string.IsNullOrWhiteSpace(configured) ? configured : DefaultPath);
         var configuration = (IConfigurationBuilder)builder.Configuration;
-        var sources = configuration.Sources;
-        var at = IndexOfEnvironment(sources);
-        var placement = new SettingsSources([.. sources.Take(at)], [.. sources.Skip(at)], configuration.Properties);
+        var at = ConfigurationSources.IndexOfEnvironment(configuration.Sources);
         var file = new JsonConfigurationSource { Path = path, Optional = true, ReloadOnChange = false }; // nothing reloads: every change waits for a restart
         file.ResolveFileProvider();
 
-        if (!File.Exists(path)) return new(SettingsFileStatus.Used(path, exists: false), placement);
-        var problems = Problems(placement, file);
+        if (!File.Exists(path)) return new(SettingsFileStatus.Used(path, exists: false), file);
+        var problems = Problems(configuration, file, at);
         if (problems.Count == 0 || SettingsCheck.Check(builder.Configuration).Count > 0)
         {
             // The file is fine, or the environment is wrong on its own (the start fails as it always did, on the environment's settings).
-            sources.Insert(at, file);
-            return new(SettingsFileStatus.Used(path, exists: true), placement);
+            configuration.Sources.Insert(at, file);
+            return new(SettingsFileStatus.Used(path, exists: true), file);
         }
-        return new(SettingsFileStatus.LeftOut(path, problems), placement);
+        return new(SettingsFileStatus.LeftOut(path, problems), file);
     }
 
-    private static IReadOnlyList<string> Problems(SettingsSources placement, JsonConfigurationSource file)
+    private static IReadOnlyList<string> Problems(IConfigurationBuilder configuration, JsonConfigurationSource file, int at)
     {
         try
         {
-            return SettingsCheck.Check(placement.With(file));
+            return SettingsCheck.Check(ConfigurationSources.With(configuration, file, at, replacing: false));
         }
         catch (Exception e) when (e is FormatException or InvalidDataException or IOException)
         {
             return ["The file is not valid JSON."]; // the parser's text would quote the file
         }
-    }
-
-    /// <summary>Right before the last environment variables source without a prefix (the one every <c>Section__Key</c> variable comes through).</summary>
-    private static int IndexOfEnvironment(IList<IConfigurationSource> sources)
-    {
-        for (var i = sources.Count - 1; i >= 0; i--)
-            if (sources[i] is EnvironmentVariablesConfigurationSource { Prefix: null or "" }) return i;
-        return sources.Count;
     }
 }

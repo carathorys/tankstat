@@ -22,6 +22,8 @@ public sealed class SettingsFileStore(string path) : ISettingsFileStore
 
     public string BackupPath => Path + ".bak";
 
+    public bool Exists => File.Exists(Path);
+
     public Task<IReadOnlyDictionary<string, string?>> ReadAsync(CancellationToken ct) => Task.FromResult(Read(Path));
 
     /// <summary>The leaf values of the JSON file at <paramref name="path"/> by configuration key; empty when there is no file.</summary>

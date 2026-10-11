@@ -1,0 +1,175 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Tankstat.Application.Access;
+using Tankstat.Application.Auth;
+using Tankstat.Application.Users;
+using Tankstat.Domain;
+
+namespace Tankstat.Application.SystemSettings;
+
+/// <summary>One change an administrator asks for: a new value, or the setting cleared (back to what the lower sources say). A blank value clears a setting too, except a secret, which a blank keeps.</summary>
+public sealed record SettingChange(string Key, string? Value, bool Clear = false);
+
+/// <param name="Value">What the settings file and the sources below it give (the value after a restart); null for a secret.</param>
+/// <param name="IsSet">Whether there is a value at all (the one thing said about a secret).</param>
+/// <param name="Editable">Whether the page may change it: only when no environment variable or command-line argument holds it.</param>
+/// <param name="RestartPending">The file's value is not the one running: it takes effect at the next start.</param>
+public sealed record SettingView(SettingDefinition Definition, string? Value, bool IsSet, SettingSource Source, bool Editable, bool RestartPending);
+
+public sealed record SettingsGroupView(SettingsGroup Group, IReadOnlyList<SettingView> Settings);
+
+public sealed record SystemSettingsView(SettingsFileStatus File, IReadOnlyList<SettingsGroupView> Groups)
+{
+    public bool RestartPending => Groups.Any(g => g.Settings.Any(s => s.RestartPending));
+}
+
+/// <summary>
+/// The system settings an administrator manages: every setting of the catalog with its source, the changes written into the app's own
+/// settings file (after the whole resulting configuration passed the same checks the start runs, and the rules only a running app can
+/// check: an OIDC authority that answers, a Standalone mode with an administrator to sign in), and the restart that makes them count.
+/// </summary>
+public sealed class SystemSettingsService(
+    AccessService access, ISystemConfiguration configuration, ISettingsFileStore store, IUserRepository users, IOidcDiscovery discovery,
+    IServerRestart restart, ILogger<SystemSettingsService> logger)
+{
+    public async Task<SystemSettingsView> GetAsync(CancellationToken ct)
+    {
+        await access.RequireAdminAsync(ct);
+        return await ViewAsync(ct);
+    }
+
+    public async Task<SystemSettingsView> UpdateAsync(IReadOnlyList<SettingChange> changes, CancellationToken ct)
+    {
+        var admin = await access.RequireAdminAsync(ct);
+        var definitions = new Dictionary<string, SettingDefinition>(StringComparer.OrdinalIgnoreCase);
+        foreach (var change in changes)
+        {
+            var definition = SettingsCatalog.Find(change.Key) ?? throw new DomainException("settings.unknownKey", $"{change.Key} is not a setting the page manages.", new { Key = change.Key });
+            if (configuration.SourceOf(definition.Key) == SettingSource.Environment)
+                throw new DomainException("settings.readOnly", $"{definition.Key} is set by the environment, which wins over the settings file.", new { Key = definition.Key });
+            definitions[definition.Key] = definition;
+        }
+        if (definitions.Count == 0) return await ViewAsync(ct);
+
+        var values = new Dictionary<string, string?>(await ReadFileAsync(ct), StringComparer.OrdinalIgnoreCase);
+        var problems = new List<string>();
+        foreach (var change in changes) Apply(definitions[change.Key], change, values, problems);
+        if (problems.Count > 0) throw Invalid(problems);
+
+        var candidate = configuration.With(values);
+        problems.AddRange(configuration.Check(candidate));
+        if (problems.Count > 0) throw Invalid(problems);
+        await CheckRulesOnlyARunningAppKnowsAsync(candidate, definitions.Keys, ct);
+
+        try
+        {
+            await store.WriteAsync(values, ct);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            logger.LogError(e, "The settings file {Path} could not be written", store.Path);
+            throw new DomainException("settings.fileNotWritable", "The settings file could not be written; see the server log.", new { Path = store.Path });
+        }
+        logger.LogInformation("Administrator {AdminId} changed system settings {Keys}", admin.Id, string.Join(", ", definitions.Keys));
+        return await ViewAsync(ct);
+    }
+
+    public async Task RestartAsync(CancellationToken ct)
+    {
+        var admin = await access.RequireAdminAsync(ct);
+        logger.LogInformation("Administrator {AdminId} restarted the server", admin.Id);
+        restart.Restart();
+    }
+
+    private static void Apply(SettingDefinition definition, SettingChange change, Dictionary<string, string?> values, List<string> problems)
+    {
+        var value = change.Value?.Trim();
+        var blank = string.IsNullOrEmpty(value);
+        if (definition.IsSecret && blank && !change.Clear) return; // the page never shows a secret, so an empty field means "keep it"
+        if (definition.IsList)
+        {
+            foreach (var key in values.Keys.Where(k => k.StartsWith(definition.Key + ":", StringComparison.OrdinalIgnoreCase)).ToList()) values.Remove(key);
+            if (change.Clear || blank) return;
+            var items = value!.Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            for (var i = 0; i < items.Length; i++) values[$"{definition.Key}:{i}"] = items[i];
+            return;
+        }
+        values.Remove(definition.Key);
+        if (change.Clear || blank) return;
+        if (SettingsCatalog.Validate(definition, value!) is { } problem) problems.Add(problem);
+        else values[definition.Key] = value;
+    }
+
+    /// <summary>The start's checks pass, but a running app knows more: the mode change must be one it can start into, and an OIDC authority must answer.</summary>
+    private async Task CheckRulesOnlyARunningAppKnowsAsync(IConfiguration candidate, IEnumerable<string> changed, CancellationToken ct)
+    {
+        var mode = candidate["Auth:Mode"];
+        if (Is(mode, AuthMode.Standalone) && !await users.AnyLocalAdminAsync(ct)
+            && (string.IsNullOrWhiteSpace(candidate["Auth:Standalone:AdminEmail"]) || string.IsNullOrWhiteSpace(candidate["Auth:Standalone:AdminPassword"])))
+            throw new DomainException("settings.standaloneNeedsAdministrator",
+                "Standalone mode needs an administrator: none exists yet, and the first one is created from Auth:Standalone:AdminEmail and Auth:Standalone:AdminPassword in the environment at the next start.");
+
+        if (Is(mode, AuthMode.Oidc) && changed.Any(k => k.Equals("Auth:Mode", StringComparison.OrdinalIgnoreCase) || k.Equals("Auth:Oidc:Authority", StringComparison.OrdinalIgnoreCase)))
+        {
+            var authority = candidate["Auth:Oidc:Authority"] ?? "";
+            var answer = await discovery.ProbeAsync(authority, ct);
+            if (!answer.Reachable)
+                throw new DomainException("settings.oidcUnreachable", $"{authority} does not answer with an OpenID Connect discovery document ({answer.Reason}).", new { Authority = authority, Reason = answer.Reason });
+            if (!SameIssuer(authority, answer.Issuer!))
+                throw new DomainException("settings.oidcIssuerMismatch", $"{authority} names another issuer, {answer.Issuer}: enter the authority as the provider names it.", new { Authority = authority, Issuer = answer.Issuer });
+        }
+    }
+
+    private static bool Is(string? mode, AuthMode expected) => Enum.TryParse<AuthMode>(mode, ignoreCase: true, out var parsed) && parsed == expected;
+
+    /// <summary>The same place, written either way: a trailing slash or the case of the scheme and host make no difference.</summary>
+    public static bool SameIssuer(string authority, string issuer) =>
+        Uri.TryCreate(authority.TrimEnd('/'), UriKind.Absolute, out var a) && Uri.TryCreate(issuer.TrimEnd('/'), UriKind.Absolute, out var b)
+            ? a.Scheme.Equals(b.Scheme, StringComparison.OrdinalIgnoreCase) && a.Authority.Equals(b.Authority, StringComparison.OrdinalIgnoreCase) && a.AbsolutePath == b.AbsolutePath
+            : authority.TrimEnd('/') == issuer.TrimEnd('/');
+
+    private static DomainException Invalid(List<string> problems) =>
+        new("settings.invalid", $"The settings cannot be used as they are: {string.Join(" ", problems)}", new { Problems = problems });
+
+    /// <summary>The file as it is; a file that cannot be read (not JSON) counts as empty: the status says it was left out, and a save replaces it (the previous file is kept as .bak).</summary>
+    private async Task<IReadOnlyDictionary<string, string?>> ReadFileAsync(CancellationToken ct)
+    {
+        try
+        {
+            return await store.ReadAsync(ct);
+        }
+        catch (Exception e) when (e is FormatException or InvalidDataException or IOException)
+        {
+            logger.LogWarning("The settings file {Path} cannot be read; the page treats it as empty", store.Path);
+            return new Dictionary<string, string?>();
+        }
+    }
+
+    private async Task<SystemSettingsView> ViewAsync(CancellationToken ct)
+    {
+        var candidate = configuration.With(await ReadFileAsync(ct));
+        var groups = new List<SettingsGroupView>();
+        foreach (var group in SettingsCatalog.Groups)
+        {
+            var settings = new List<SettingView>();
+            foreach (var definition in SettingsCatalog.Of(group))
+            {
+                var source = configuration.SourceOf(definition.Key);
+                var editable = source != SettingSource.Environment;
+                var next = ValueOf(candidate, definition);
+                var running = ValueOf(configuration.Running, definition);
+                settings.Add(new SettingView(definition, definition.IsSecret ? null : next, !string.IsNullOrEmpty(next), source, editable, editable && !string.Equals(next, running, StringComparison.Ordinal)));
+            }
+            groups.Add(new SettingsGroupView(group, settings));
+        }
+        return new SystemSettingsView(configuration.File with { Exists = store.Exists }, groups);
+    }
+
+    /// <summary>A setting's value in a configuration; a list as its items, one per line.</summary>
+    public static string? ValueOf(IConfiguration configuration, SettingDefinition definition)
+    {
+        if (!definition.IsList) return configuration[definition.Key];
+        var items = configuration.GetSection(definition.Key).GetChildren().Select(c => c.Value).Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
+        return items.Count == 0 ? null : string.Join("\n", items);
+    }
+}

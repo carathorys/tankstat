@@ -15,12 +15,14 @@ using Tankstat.Application.Recurring;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Settings;
 using Tankstat.Application.Sync;
+using Tankstat.Application.SystemSettings;
 using Tankstat.Application.Stats;
 using Tankstat.Application.Photos;
 using Tankstat.Application.Recognition;
 using Tankstat.Application.Users;
 using Tankstat.Infrastructure.Auth;
 using Tankstat.Infrastructure.Recognition;
+using Tankstat.Infrastructure.Settings;
 using Tankstat.Infrastructure.Storage;
 using Tankstat.Application.Vehicles;
 using Tankstat.Infrastructure.Persistence;
@@ -84,6 +86,7 @@ public static class DependencyInjection
         services.AddScoped<IUserSessionRepository, UserSessionRepository>();
         services.AddScoped<IAccessGrantRepository, AccessGrantRepository>();
         services.AddScoped<IAccessSettingsRepository, AccessSettingsRepository>();
+        services.AddScoped<IInstanceStateRepository, InstanceStateRepository>();
         services.AddScoped<IResourceGrantRepository, ResourceGrantRepository>();
         services.AddScoped<IOdometerReadingRepository, OdometerReadingRepository>();
         services.AddScoped<IImageRepository, ImageRepository>();
@@ -108,9 +111,14 @@ public static class DependencyInjection
         services.AddSingleton<RecognitionSignal>();
         services.AddSingleton<IRecognitionSignal>(sp => sp.GetRequiredService<RecognitionSignal>());
 
-        // Order matters: migrate first, then move the photos kept with the pictures once they have a folder of their own, then create the initial
-        // administrator; the photo reading worker needs the migrated database.
+        // The discovery document of an OIDC authority an administrator typed: a short wait, no redirects (the handler follows none either), a small answer.
+        services.AddHttpClient<IOidcDiscovery, OidcDiscovery>(client => client.Timeout = OidcDiscovery.Timeout)
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
+
+        // Order matters: migrate first, then sign everybody out when the authentication mode changed since the last start, then move the photos kept
+        // with the pictures once they have a folder of their own, then create the initial administrator; the photo reading worker needs the migrated database.
         services.AddHostedService<DatabaseMigrator>();
+        services.AddHostedService<ModeChangeSignOut>();
         services.AddHostedService<PhotosMove>();
         services.AddHostedService<StandaloneBootstrapper>();
         services.AddHostedService<RecognitionWorker>();

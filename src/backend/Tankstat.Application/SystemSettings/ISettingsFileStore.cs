@@ -9,6 +9,9 @@ public interface ISettingsFileStore
     /// <summary>The file, in full.</summary>
     string Path { get; }
 
+    /// <summary>Whether the file is there now (the status of the start says whether it was there then).</summary>
+    bool Exists { get; }
+
     /// <summary>The file's values by configuration key (sections left out); empty when there is no file.</summary>
     Task<IReadOnlyDictionary<string, string?>> ReadAsync(CancellationToken ct);
 

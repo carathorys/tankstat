@@ -17,6 +17,7 @@ using Tankstat.Application.Refuelings;
 using Tankstat.Application.Settings;
 using Tankstat.Application.Sync;
 using Tankstat.Application.Sharing;
+using Tankstat.Application.SystemSettings;
 using Tankstat.Application.Stats;
 using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
@@ -70,6 +71,8 @@ public static class DependencyInjection
         services.AddScoped<OfflineFeedService>();
         services.AddScoped<SyncService>();
         services.AddScoped<SyncTargetService>();
+        services.AddScoped<SystemSettingsService>();
+        services.AddScoped<InstanceStartService>();
         services.AddSingleton<ImportSessionStore>();
         services.AddSingleton<IImportParser, FuelioCsvParser>();
         services.AddScoped<ImportService>();

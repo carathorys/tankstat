@@ -19,6 +19,8 @@ Authentication is configured through the `Auth` and `Smtp` sections. Every setti
 
 All modes end in the same place: a user record in the database that owns data.
 
+The mode can also be changed from inside the app, by an administrator through the system settings (written into [the app's own settings file](configuration.md#the-apps-own-settings-file); the environment keeps winning, so `Auth__Mode` set in a compose file shows as read-only there). The change takes effect at the next restart, which signs every device out (see *Sessions*). Two things are checked before it is saved, because a mistake there would lock everybody out: an OpenID Connect authority must answer with its discovery document and name itself as the issuer, and `Standalone` is refused while no administrator exists unless `Auth__Standalone__AdminEmail` and `Auth__Standalone__AdminPassword` are set for the first start. The way back is always the environment: `Auth__Mode` beats the file, so set it and restart. In mode `None` there is no administrator, so a `None` instance changes its mode through the environment.
+
 ## Sessions (Standalone and OIDC)
 
 A signed-in browser holds two HttpOnly cookies, so no script on the page ever sees a token:
@@ -34,6 +36,7 @@ What ends a session (at once: the access cookie names its session, which is chec
 - **The Account page's *Signed-in devices*** (`mySessions`, `revokeSession(id)`, `revokeOtherSessions`): you see every device you are signed in on (a coarse name worked out from the browser, such as "Firefox on Linux", never the raw User-Agent; when it signed in and was last used) and sign out one of them, or every one but this.
 - **Changing your password**: every other device; the one that changed it stays signed in. **Resetting it with a link**, an **administrator setting it**, or **disabling the user**: every device.
 - **A refresh token used again**: a token that was already traded in is accepted once more within `Auth__RefreshRotationGraceSeconds` (and answered with the current one, so tabs that refreshed at the same moment agree); used later, someone else must have a copy, so the session ends (a Warning in the log names it by id).
+- **The instance starting in another authentication mode** than the one it last started in (from `Standalone` to `Oidc`, or back): every device of every user is signed out at that start, so a session issued in one mode never works in the next (the log says how many were signed out). A restart in the same mode signs nobody out.
 - Not using the device for `Auth__RefreshTokenDays`. Ended and expired sessions are deleted a week later.
 
 The token endpoints only answer requests with the header `X-Requested-With: fetch`, which a page of another site cannot send, and do not exist in `None` and `ProxyHeader` modes (there the proxy signs every request in itself). The cookies are protected by the key ring (`DataProtection:KeysPath`, see [Configuration](configuration.md)): keep it with the data, or every restart signs everybody out.
@@ -69,7 +72,7 @@ Facts that matter when configuring: passwords need 10 to 128 characters; changin
 
 | Environment variable | Type | Default | Required | Meaning |
 | --- | --- | --- | --- | --- |
-| `Auth__Oidc__Authority` | URL of the issuer, e.g. `https://id.example.com` | empty | yes | The provider's issuer URL (its `/.well-known/openid-configuration` is read from here). A non-HTTPS authority is accepted for local development only. |
+| `Auth__Oidc__Authority` | URL of the issuer, e.g. `https://id.example.com` | empty | yes | The provider's issuer URL (its `/.well-known/openid-configuration` is read from here). A non-HTTPS authority is accepted for local development only. Before the system settings save an authority, the app reads that document (within 10 seconds, without following a redirect) and refuses one that does not answer or names another issuer, since the sign-in would fail at the next start. |
 | `Auth__Oidc__ClientId` | string | empty | yes | Client id registered at the provider. |
 | `Auth__Oidc__ClientSecret` | string | empty | yes | Client secret (confidential client). |
 | `Auth__Oidc__Scopes__0`, `Auth__Oidc__Scopes__1`, ... | list of scopes | `openid`, `profile`, `email` | no | Scopes requested. The default three are always requested; values given here are **added** to them (listing a default again is harmless), so only give extra scopes such as `groups`. The defaults can only be changed in code. |
