@@ -269,4 +269,79 @@ public sealed class RestoreTests : IDisposable
         var late = (await clientB.Gql(Sync, new { i = new { changes = new object[] { new { id = Guid.NewGuid(), expectedVersion = 2, updateVehicle = new { id = carId, name = "Polo", fuelType = "PETROL" } } } } })).Data().GetProperty("syncChanges");
         Assert.Equal(1, late.GetProperty("parked").GetInt32()); // the device's version is from the history the restore replaced
     }
+
+    /// <summary>A disk that cannot take the safety net.</summary>
+    private sealed class UnwritableBackups : IBackupWriter
+    {
+        public Task<BackupResult> WriteAsync(BackupRequest request, CancellationToken ct) => throw new IOException("There is no room left on the device.");
+    }
+
+    [Fact]
+    public async Task ARestoreWhoseSafetyNetCannotBeWritten_IsRefused_AndTheDataStaysExactlyAsItWas()
+    {
+        using var a = Host("a", migrated: true);
+        await AddVehicle(a, "Golf");
+        var backup = await Backup(a);
+        var folderB = Folder("b-backups");
+        using var shared = new SharedData();
+        var first = shared.Host(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = folderB });
+        await AddVehicle(first, "Own car");
+        var (generation, _) = await InstanceOf(first);
+        first.Dispose();
+        Stage(folderB, backup.Path);
+
+        using var restarted = shared.Host(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = folderB }, services: s => s.AddSingleton<IBackupWriter, UnwritableBackups>());
+
+        Assert.Equal(["Own car"], await Vehicles(restarted)); // nothing was replaced
+        Assert.Equal(generation, (await InstanceOf(restarted)).Generation);
+        Assert.False(File.Exists(RestoreMarker.PathIn(folderB)));
+        Assert.Single(Directory.GetFiles(folderB, "restore.refused.*"));
+        var refusal = Assert.Single(restarted.Log.From("Tankstat.Infrastructure.Backups.RestoreStep").Where(e => e.Level == LogLevel.Error));
+        Assert.Contains("safety-net", (string)refusal.Values["Reason"]!);
+    }
+
+    [Fact]
+    public async Task AFailureAfterTheTablesWereLoaded_RenamesTheMarkerToFailed_AndTheHostServesWhatWasLoaded()
+    {
+        using var a = Host("a", migrated: true);
+        await AddVehicle(a, "Golf");
+        var backup = await Backup(a);
+        var folderB = Folder("b-backups");
+        using var shared = new SharedData();
+        var first = shared.Host(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = folderB });
+        await AddVehicle(first, "Own car");
+        var (generation, _) = await InstanceOf(first);
+        first.Dispose();
+        Stage(folderB, backup.Path);
+        // The pictures folder is a file: the tables load, then the files cannot be put in place.
+        if (Directory.Exists(shared.UploadsPath)) Directory.Delete(shared.UploadsPath, recursive: true);
+        await File.WriteAllTextAsync(shared.UploadsPath, "not a folder");
+
+        using var restarted = shared.Host(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = folderB });
+
+        Assert.Equal(["Golf"], await Vehicles(restarted)); // the database was replaced, in its one transaction
+        Assert.NotEqual(generation, (await InstanceOf(restarted)).Generation);
+        Assert.False(File.Exists(RestoreMarker.PathIn(folderB)));
+        Assert.Single(Directory.GetFiles(folderB, "restore.failed.*"));
+        Assert.Empty(Directory.GetFiles(folderB, "restore.refused.*"));
+        var failure = Assert.Single(restarted.Log.From("Tankstat.Infrastructure.Backups.RestoreStep").Where(e => e.Level == LogLevel.Error));
+        Assert.NotNull(failure.Exception);
+        Assert.True(Directory.GetFiles(folderB, "tankstat-backup-*").Length >= 2, "the safety net is the way back"); // the backup staged, and the safety net
+    }
+
+    [Fact]
+    public async Task AMarkerThatCannotBeRead_IsRefused_AndTheHostStartsWithItsOwnData()
+    {
+        var folderB = Folder("b-backups");
+        Directory.CreateDirectory(folderB);
+        await File.WriteAllTextAsync(RestoreMarker.PathIn(folderB), "this is { not json");
+
+        using var b = Host("b", migrated: true, backups: folderB);
+        await AddVehicle(b, "Own car");
+
+        Assert.Equal(["Own car"], await Vehicles(b));
+        Assert.Single(Directory.GetFiles(folderB, "restore.refused.*"));
+        var refusal = Assert.Single(b.Log.From("Tankstat.Infrastructure.Backups.RestoreStep").Where(e => e.Level == LogLevel.Error));
+        Assert.Contains("marker cannot be read", (string)refusal.Values["Reason"]!);
+    }
 }

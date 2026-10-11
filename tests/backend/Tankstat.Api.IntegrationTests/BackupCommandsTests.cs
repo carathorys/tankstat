@@ -124,4 +124,52 @@ public sealed class BackupCommandsTests : IDisposable
         Assert.Equal(1, damaged.Code);
         Assert.Contains("damaged", damaged.Error);
     }
+
+    [Theory]
+    [InlineData("decrypt")]
+    [InlineData("decrypt x.zip")]
+    [InlineData("decrypt --output out")]
+    [InlineData("decrypt x.zip --output")]
+    [InlineData("decrypt x.zip --output out --identity i.txt --passphrase-stdin")]
+    [InlineData("decrypt x.zip --output out --nope")]
+    [InlineData("backup --output")]
+    [InlineData("backup --nope")]
+    [InlineData("backup keygen")]
+    [InlineData("backup keygen --passphrase-stdin --photos")]
+    [InlineData("restore")]
+    [InlineData("restore --yes")]
+    [InlineData("restore x.zip --nope")]
+    [InlineData("restore x.zip --identity i.txt --passphrase-stdin")]
+    [InlineData("restore x.zip --identity")]
+    public async Task WrongArguments_PrintTheUsage_AndExitWithOne_BeforeAnythingIsDone(string commandLine)
+    {
+        using var app = new TestApp(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = _folder });
+
+        var run = await RunAsync(app, "secret\n", commandLine.Split(' '));
+
+        Assert.Equal(1, run.Code);
+        Assert.StartsWith("Usage:", run.Error);
+        Assert.Equal("", run.Out);
+        Assert.False(Directory.Exists(_folder)); // no file, no marker, not even the folder
+    }
+
+    [Fact]
+    public void OnlyTheBackupCommandsAreTheirs()
+    {
+        Assert.All(new[] { "backup", "decrypt", "restore" }, command => Assert.True(BackupCommands.Handles([command, "anything"])));
+        Assert.False(BackupCommands.Handles(["schema", "export"]));
+        Assert.False(BackupCommands.Handles([]));
+        Assert.False(BackupCommands.Handles(["--urls", "http://127.0.0.1:1"]));
+    }
+
+    [Fact]
+    public async Task TheBackupLine_SaysWhereThePhotosWent_ForEachWayTheyCanBeKept()
+    {
+        using var apart = new TestApp(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = _folder }); // a root of their own: the test host's default
+        using var together = new TestApp(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = _folder, ["Storage:PhotosPath"] = null });
+
+        Assert.Contains("photos left out (Backups:Photos is off)", (await RunAsync(apart, "", "backup")).Out);
+        Assert.Contains("photos 0 bytes", (await RunAsync(apart, "", "backup", "--photos")).Out);
+        Assert.Contains("photos with the pictures", (await RunAsync(together, "", "backup", "--photos")).Out);
+    }
 }

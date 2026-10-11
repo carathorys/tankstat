@@ -137,4 +137,47 @@ public sealed class RestoreRequestTests : IDisposable
         Assert.Equal(["Before"], (await client.Gql("{ myVehicles { name } }")).Data().GetProperty("myVehicles").EnumerateArray().Select(v => v.GetProperty("name").GetString()!));
         Assert.False(app.Log.Mentions("zzcanary"));
     }
+
+    [Fact]
+    public async Task TheIdentityInPlaceOfThePassphrase_Works_AMalformedOneIsTheWrongKey_AndNamesThatAreNoBackupAreNotFound()
+    {
+        using var app = TestApp.Standalone(new() { ["Backups:Path"] = _folder });
+        var file = await Backup(app);
+        var client = app.NewClient();
+        await client.LoginAs(TestApp.AdminEmail, TestApp.AdminPassword);
+
+        Assert.Equal("backup.wrongKey", (await client.Gql(Restore, new { i = new { file, identity = "AGE-SECRET-KEY-1NOTAKEYATALL" } })).ErrorKey());
+        Assert.Equal("backup.wrongKey", (await client.Gql(Restore, new { i = new { file, identity = "" , passphrase = "wrong" } })).ErrorKey()); // an empty identity is none: the passphrase is looked at
+        Assert.Equal("backup.notFound", (await client.Gql(Restore, new { i = new { file = "", passphrase = Passphrase } })).ErrorKey());
+        Assert.Equal("backup.notFound", (await client.Gql(Restore, new { i = new { file = ".hidden.zip", passphrase = Passphrase } })).ErrorKey());
+        Assert.Equal("backup.notFound", (await client.Gql(Restore, new { i = new { file = "sub/" + file, passphrase = Passphrase } })).ErrorKey());
+        Assert.False(File.Exists(RestoreMarker.PathIn(_folder)));
+
+        var stopping = Stopping(app);
+        (await client.Gql(Restore, new { i = new { file, identity = AgeKeys.FormatIdentity(Identity).ToLowerInvariant() } })).Data(); // either case is the same key
+        Assert.Equal(AgeKeys.FormatIdentity(Identity), RestoreMarker.Read(RestoreMarker.PathIn(_folder)).Identity);
+        Assert.True(await stopping);
+        Assert.False(app.Log.Mentions(AgeKeys.FormatIdentity(Identity)));
+    }
+
+    [Fact]
+    public async Task TheRestoreCommand_TakesAnIdentityFile_AndRefusesOneThatHoldsNone()
+    {
+        using var app = new TestApp(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = _folder });
+        var file = await Backup(app);
+        var empty = Path.Combine(_folder, "empty-identity.txt");
+        await File.WriteAllTextAsync(empty, "# only a comment\n\n");
+        var good = Path.Combine(_folder, "identity.txt");
+        await File.WriteAllTextAsync(good, "# created by the test\n" + AgeKeys.FormatIdentity(Identity) + "\n");
+        var (output, error) = (new StringWriter(), new StringWriter());
+
+        var none = await BackupCommands.RunAsync(["restore", file, "--yes", "--identity", empty], app.Factory.Services, new StringReader(""), output, error);
+        Assert.Equal(1, none);
+        Assert.Contains("holds no identity", error.ToString());
+        Assert.False(File.Exists(RestoreMarker.PathIn(_folder)));
+
+        var ok = await BackupCommands.RunAsync(["restore", file, "--yes", "--identity", good], app.Factory.Services, new StringReader(""), output, error);
+        Assert.Equal(0, ok);
+        Assert.Equal(AgeKeys.FormatIdentity(Identity), RestoreMarker.Read(RestoreMarker.PathIn(_folder)).Identity);
+    }
 }
