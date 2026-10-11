@@ -261,8 +261,12 @@ public class UserAdministrationTests
         w.Email.FailNext = 1;
 
         // No e-mail arrived, so the user asks for one: it cannot be sent either, and takes back only its own link.
-        await Assert.ThrowsAsync<EmailSendException>(() => w.Auth.RequestPasswordResetAsync("new@x.co", default));
+        await w.Auth.RequestPasswordResetAsync("new@x.co", default);
+        await w.ResetQueue.DrainAsync();
 
+        // Two Warnings by her id: the administrator's e-mail, then her own.
+        Assert.Equal(2, w.Log.From<PasswordResetService>().Count(e =>
+            e.Level == LogLevel.Warning && e.Exception is EmailSendException && Equals(e.Values.GetValueOrDefault("UserId"), user.Id)));
         var left = Assert.Single(w.Tokens.Items, t => t.UserId == user.Id);
         Assert.StartsWith($"{left.Id:N}.", kept.Token);
         await w.Auth.ResetPasswordAsync(kept.Token, "chosen-password-1", default); // the link the administrator handed over still works
@@ -274,13 +278,14 @@ public class UserAdministrationTests
         var (w, _) = SignedInAdmin(smtp: true);
         var user = w.AddUser("new@x.co");
         var hanging = new TaskCompletionSource();
-        w.Email.HoldNext = hanging; // the user's own request waits on a mail server that does not answer
+        w.Email.HoldNext = hanging; // the e-mail of the user's own request waits on a mail server that does not answer
 
-        var request = w.Auth.RequestPasswordResetAsync("new@x.co", default);
+        await w.Auth.RequestPasswordResetAsync("new@x.co", default);
+        var sending = w.ResetQueue.DrainAsync();
         w.Email.FailNext = 1;
         var issued = await w.UserService.IssueResetAsync(user.Id, default); // meanwhile the administrator issues one, and keeps it
         hanging.SetException(new EmailSendException("Sending an e-mail through smtp.test:25 failed (no answer)"));
-        await Assert.ThrowsAsync<EmailSendException>(() => request);
+        await sending; // its failure is a Warning, not an exception
 
         Assert.True(issued.EmailFailed);
         var left = Assert.Single(w.Tokens.Items, t => t.UserId == user.Id);

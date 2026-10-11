@@ -36,9 +36,10 @@ public sealed class PasswordResetService(
     private static readonly TimeSpan KeepExpired = TimeSpan.FromDays(1);
 
     // Issuing for one user is one step within this process: the look at the latest link (the cool-down), the storing of the new one and
-    // the note of which links were there before it happen under that user's lock, so a burst of requests cannot all pass the cool-down
-    // and each issue knows exactly the links it replaces. The e-mail goes out after it, so a slow mail server holds nobody else up. Other
-    // processes on the same database are not held back by it. Striped (by user id) so the locks do not pile up.
+    // the note of which links were there before it happen under that user's lock, so the mailer serving a user's own request and an
+    // administrator's issue at the same moment cannot both pass the cool-down, and each issue knows exactly the links it replaces (a burst
+    // of the user's own requests never gets this far: the queue holds a user once). The e-mail goes out after it, so a slow mail server
+    // holds nobody else up. Other processes on the same database are not held back by it. Striped (by user id) so the locks do not pile up.
     private static readonly StripedLocks Locks = new();
 
     /// <summary>Whether an issued link can reach the user by e-mail (SMTP and the public address are set up).</summary>
@@ -58,12 +59,51 @@ public sealed class PasswordResetService(
     /// e-mail could not be sent is taken back, the earlier ones stay and the <see cref="EmailSendException"/> escapes (never
     /// <see cref="EmailOutcome.Failed"/>).
     /// </summary>
-    public Task<IssuedReset?> IssueUnlessCoolingDownAsync(User user, CancellationToken ct)
+    private Task<IssuedReset?> IssueUnlessCoolingDownAsync(User user, CancellationToken ct)
     {
         var standalone = auth.Value.Standalone;
         // Never longer than a link lasts: once the latest one expired, the user may ask for another. A link nobody received is taken back
         // whatever the cool-down setting: only an administrator keeps one to hand over.
         return IssueAsync(user, sendEmail: true, TimeSpan.FromMinutes(Math.Min(standalone.ResetCooldownMinutes, standalone.ResetTokenMinutes)), keepUnsent: false, ct);
+    }
+
+    /// <summary>
+    /// Serves a request the user made through <i>Forgot your password?</i>, after it was answered (<see cref="IPasswordResetQueue"/>). Looks
+    /// at the account again, since it may have been disabled or the mail settings changed meanwhile, then e-mails a link unless the cool-down
+    /// holds it back (<see cref="IssueUnlessCoolingDownAsync"/>). A mail server's failure is a Warning: the link is taken back, so the user
+    /// can simply ask again. Anything else escapes to the worker, a cancellation included (the link is taken back then too).
+    /// </summary>
+    public async Task SendRequestedAsync(Guid userId, CancellationToken ct)
+    {
+        var user = await users.FindByIdAsync(userId, ct);
+        if (user is null || user.IsDisabled || user.Provider != UserProvider.Local)
+        {
+            logger.LogInformation("The password reset requested by user {UserId} was not sent: the account no longer signs in with a password", userId);
+            return;
+        }
+        if (!CanEmail)
+        {
+            logger.LogInformation("The password reset requested by user {UserId} was not sent: no e-mail can be sent", userId);
+            return;
+        }
+
+        IssuedReset? issued;
+        try
+        {
+            issued = await IssueUnlessCoolingDownAsync(user, ct);
+        }
+        catch (EmailSendException e)
+        {
+            // Its text names the server and the status, never the address.
+            logger.LogWarning(e, "The password reset e-mail requested by user {UserId} could not be sent; its link was taken back", userId);
+            return;
+        }
+        if (issued is null)
+        {
+            logger.LogInformation("User {UserId} requested a password reset within the cool-down of their latest link; nothing was sent", userId);
+            return;
+        }
+        logger.LogInformation("The password reset requested by user {UserId} was issued (e-mail: {Email})", userId, issued.Email);
     }
 
     private async Task<IssuedReset?> IssueAsync(User user, bool sendEmail, TimeSpan cooldown, bool keepUnsent, CancellationToken ct)

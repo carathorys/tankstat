@@ -17,6 +17,29 @@ public interface IUserRepository
     Task UpdateAsync(User user, CancellationToken ct);
 }
 
+/// <summary>What became of a self-service reset request handed to the <see cref="IPasswordResetQueue"/>.</summary>
+public enum ResetRequestQueueing
+{
+    Queued,
+
+    /// <summary>A request of the same user is still waiting; it serves this one too.</summary>
+    AlreadyWaiting,
+
+    /// <summary>The queue is full; nothing was queued.</summary>
+    QueueFull,
+}
+
+/// <summary>
+/// The self-service reset requests whose e-mail goes out after the answer, so the answer takes the same time for every address and a mail
+/// server's failure never reaches the caller. A background worker serves them through <see cref="PasswordResetService.SendRequestedAsync"/>;
+/// a request still waiting when the app stops is lost (the user asks again).
+/// </summary>
+public interface IPasswordResetQueue
+{
+    /// <summary>Queues the user's request. One still waiting is not queued twice, so the backlog is bounded by accounts, not by requests.</summary>
+    ResetRequestQueueing Enqueue(Guid userId);
+}
+
 public interface IPasswordResetTokenRepository
 {
     Task<PasswordResetToken?> FindAsync(Guid id, CancellationToken ct);

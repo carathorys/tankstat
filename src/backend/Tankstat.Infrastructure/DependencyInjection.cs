@@ -93,6 +93,9 @@ public static class DependencyInjection
         services.AddSingleton<IImageStore, FileSystemImageStore>();
         services.AddSingleton<IPasswordHasher, IdentityPasswordHasher>();
         services.AddSingleton<IEmailSender, SmtpEmailSender>();
+        // Self-service reset mails go out after the answer (PasswordResetMailer below), so the answer tells no accounts apart.
+        services.AddSingleton(_ => new PasswordResetQueue(PasswordResetQueue.DefaultCapacity));
+        services.AddSingleton<IPasswordResetQueue>(sp => sp.GetRequiredService<PasswordResetQueue>());
 
         // Photo reading (optional): the model provider the settings choose, or one that never reads (RecognitionSetup explains why).
         // No client-wide timeout (its default of 100 s would cut OpenAiCompatible:TimeoutSeconds short): every request brings its own.
@@ -111,6 +114,7 @@ public static class DependencyInjection
         services.AddHostedService<PhotosMove>();
         services.AddHostedService<StandaloneBootstrapper>();
         services.AddHostedService<RecognitionWorker>();
+        services.AddHostedService<PasswordResetMailer>();
 
         return services;
     }

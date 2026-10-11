@@ -686,6 +686,33 @@ internal sealed class FakeCurrentUser : ICurrentUser
     public void SignInAs(User user) => Principal = new Principal(user.Id, user.DisplayName, user.Email, user.IsAdmin);
 }
 
+/// <summary>
+/// The self-service reset requests waiting to be sent, like the app's queue (a user at most once), but served only when a test calls
+/// <see cref="DrainAsync"/>, so it decides when the mails go out and nothing has to wait.
+/// </summary>
+internal sealed class FakeResetQueue(PasswordResetService resets) : IPasswordResetQueue
+{
+    public List<Guid> Waiting { get; } = [];
+
+    public ResetRequestQueueing Enqueue(Guid userId)
+    {
+        if (Waiting.Contains(userId)) return ResetRequestQueueing.AlreadyWaiting;
+        Waiting.Add(userId);
+        return ResetRequestQueueing.Queued;
+    }
+
+    /// <summary>Serves every waiting request in order, as the app's worker does after the answer; an exception escapes to the test.</summary>
+    public async Task DrainAsync(CancellationToken ct = default)
+    {
+        while (Waiting.Count > 0)
+        {
+            var userId = Waiting[0];
+            Waiting.RemoveAt(0);
+            await resets.SendRequestedAsync(userId, ct);
+        }
+    }
+}
+
 internal sealed class FakeHasher : IPasswordHasher
 {
     public string Hash(string password) => "hash:" + password;
@@ -782,6 +809,9 @@ internal sealed class World
     public LogPhotoService Photos { get; }
     public PhotoDraftService Drafts { get; }
     public AuthService Auth { get; }
+
+    /// <summary>Self-service reset requests: <c>await w.ResetQueue.DrainAsync()</c> sends what the requests queued.</summary>
+    public FakeResetQueue ResetQueue { get; }
     public UserSessionService SessionService { get; }
     public UserService UserService { get; }
     public AccessAdminService AccessAdmin { get; }
@@ -827,7 +857,8 @@ internal sealed class World
         OfflineSettings = new OfflineSettingsService(OfflineSettingsStore, Vehicles, Access, Clock, Log.For<OfflineSettingsService>());
         Sharing = new ResourceSharingService(Vehicles, ResourceGrants, Users, Access, Notifier, Log.For<ResourceSharingService>());
         SessionService = new UserSessionService(Sessions, Users, new FakeSecretProtector(), Access, options, Clock, Log.For<UserSessionService>());
-        Auth = new AuthService(Users, new FakeHasher(), resets, SessionService, Access, options, Clock, Log.For<AuthService>());
+        ResetQueue = new FakeResetQueue(resets);
+        Auth = new AuthService(Users, new FakeHasher(), resets, ResetQueue, SessionService, Access, options, Clock, Log.For<AuthService>());
         UserService = new UserService(Access, Users, UserData, resets, SessionService, new FakeHasher(), ImageService, ImportSessions, options, Log.For<UserService>());
         AccessAdmin = new AccessAdminService(Access, Settings, Grants, Users, Notifier, Log.For<AccessAdminService>());
         Availability = new RecognitionAvailability(Recognizer, Clock, Log.For<RecognitionAvailability>());

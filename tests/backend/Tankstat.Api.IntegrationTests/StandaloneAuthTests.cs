@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Tankstat.Application.Auth;
+using Tankstat.Infrastructure.Auth;
 
 namespace Tankstat.Api.IntegrationTests;
 
@@ -346,16 +347,42 @@ public class StandaloneAuthTests : IDisposable
         app.Log.Clear(); // the start-up lines (the first administrator) are not what is tested
 
         var first = await c.Gql("mutation { requestPasswordReset(email: \"root@example.com\") }");
+        await MailsSent(app);
         var again = await c.Gql("mutation { requestPasswordReset(email: \"root@example.com\") }");
+        await MailsSent(app);
 
         Assert.True(first.Data().GetProperty("requestPasswordReset").GetBoolean());
         Assert.True(again.Data().GetProperty("requestPasswordReset").GetBoolean());
         Assert.Equal(["root@example.com"], email.To);
-        var lines = app.Log.From("Tankstat.Application.Users.AuthService")
+        var lines = app.Log.From("Tankstat.Application.Users.PasswordResetService")
             .Where(e => e.Values.ContainsKey("UserId") && e.Level == LogLevel.Information).ToList();
-        Assert.Single(lines, e => e.Values.ContainsKey("EmailSent"));
-        Assert.Single(lines, e => !e.Values.ContainsKey("EmailSent"));
+        Assert.Single(lines, e => e.Values.ContainsKey("Email")); // sent
+        Assert.Single(lines, e => !e.Values.ContainsKey("Email")); // held back by the cool-down
     }
+
+    [Fact]
+    public async Task PasswordReset_WhenTheMailServerIsDown_AnswersAsForAnyAddress_WithAWarning_NotAnError()
+    {
+        using var app = TestApp.Standalone(new() { ["Auth:PublicUrl"] = "https://tank.test" }, s => s.AddSingleton<IEmailSender>(new RecordingEmail { Unreachable = true }));
+        var c = app.NewClient();
+        await c.Gql("{ health { status } }");
+        app.Log.Clear(); // the start-up lines are not what is tested
+
+        var known = await c.Gql("mutation { requestPasswordReset(email: \"root@example.com\") }");
+        var unknown = await c.Gql("mutation { requestPasswordReset(email: \"ghost@example.com\") }");
+        await MailsSent(app);
+
+        Assert.True(known.Data().GetProperty("requestPasswordReset").GetBoolean());
+        Assert.True(unknown.Data().GetProperty("requestPasswordReset").GetBoolean());
+        Assert.DoesNotContain(app.Log.Entries, e => e.Level == LogLevel.Error);
+        var warning = Assert.Single(app.Log.From("Tankstat.Application.Users.PasswordResetService"), e => e.Level == LogLevel.Warning);
+        Assert.True(warning.Values.ContainsKey("UserId"));
+        Assert.False(app.Log.Mentions("root@example.com"));
+    }
+
+    /// <summary>Waits until the reset mails of the requests so far went out: they go after the answer.</summary>
+    private static Task MailsSent(TestApp app) =>
+        app.Factory.Services.GetRequiredService<PasswordResetQueue>().WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(30));
 
     [Fact]
     public async Task CreateUser_WhenTheMailServerIsDown_AnswersTheLinkToHandOver_WithAWarning_NotAnError()
