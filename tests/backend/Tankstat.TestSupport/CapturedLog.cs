@@ -50,9 +50,10 @@ public sealed partial class CapturedLog : ILoggerProvider, ISupportExternalScope
 
     /// <summary>
     /// Whether any line (message, exception or scope) contains <paramref name="text"/>, ignoring case. This is what the privacy tests ask:
-    /// nothing a user typed, and no secret, may ever show up in a log line. A find strictly inside one of the random ids a line may hold
-    /// (<see cref="RandomIds"/>) does not count, because an id can spell a short needle such as <c>24687</c> or <c>aaaa</c> by chance; the
-    /// whole id, and a find that runs past one, still count.
+    /// nothing a user typed, and no secret, may ever show up in a log line. A find strictly inside a token shaped like one of the random ids a
+    /// line may hold (<see cref="RandomIds"/>) does not count, because an id can spell a short needle such as <c>24687</c> by chance; the whole
+    /// token, and a find that runs past one, still count. The rule goes by shape, not by who wrote the token, so a canary searches a whole
+    /// value (or a piece no id shape can hold), never a piece of one that could be logged in such a shape.
     /// </summary>
     public bool Mentions(string text)
     {
@@ -62,11 +63,9 @@ public sealed partial class CapturedLog : ILoggerProvider, ISupportExternalScope
 
     private static bool Holds(string line, string text)
     {
-        var at = line.IndexOf(text, StringComparison.OrdinalIgnoreCase);
-        if (at < 0) return false;
-        var ids = RandomIds().Matches(line);
-        for (; at >= 0; at = line.IndexOf(text, at + 1, StringComparison.OrdinalIgnoreCase))
-            if (!ids.Any(id => id.Index <= at && at + text.Length <= id.Index + id.Length && text.Length < id.Length)) return true;
+        MatchCollection? ids = null;
+        for (var at = 0; (at = line.IndexOf(text, at, StringComparison.OrdinalIgnoreCase)) >= 0; at++)
+            if (!(ids ??= RandomIds().Matches(line)).Any(id => id.Index <= at && at + text.Length <= id.Index + id.Length && text.Length < id.Length)) return true;
         return false;
     }
 
