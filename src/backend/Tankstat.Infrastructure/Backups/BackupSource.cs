@@ -11,8 +11,8 @@ namespace Tankstat.Infrastructure.Backups;
 /// <summary>
 /// One consistent read of the whole database for a dump: SQLite is copied with its backup API (safe on a live database, unlike copying the
 /// file) and the copy is read; the server databases are read inside one transaction at an isolation level that gives one snapshot
-/// (PostgreSQL and MySQL <c>REPEATABLE READ</c>; SQL Server <c>SNAPSHOT</c>, and <c>SERIALIZABLE</c> where that is not allowed on the
-/// database, which makes writers wait while the dump runs).
+/// (PostgreSQL and MySQL <c>REPEATABLE READ</c>; SQL Server <c>SNAPSHOT</c> where the database allows it, else <c>SERIALIZABLE</c>, which
+/// makes writers wait while the dump runs).
 /// </summary>
 internal sealed class BackupSource : IAsyncDisposable
 {
@@ -42,16 +42,8 @@ internal sealed class BackupSource : IAsyncDisposable
 
         var connection = db.Database.GetDbConnection();
         await db.Database.OpenConnectionAsync(ct);
-        IDbContextTransaction transaction;
-        try
-        {
-            transaction = await db.Database.BeginTransactionAsync(provider == DatabaseProvider.SqlServer ? IsolationLevel.Snapshot : IsolationLevel.RepeatableRead, ct);
-        }
-        catch (Microsoft.Data.SqlClient.SqlException e) when (provider == DatabaseProvider.SqlServer && e.Number == 3952)
-        {
-            logger.LogInformation("Snapshot isolation is not allowed on the database (ALLOW_SNAPSHOT_ISOLATION is off); the backup reads under SERIALIZABLE and writers wait meanwhile");
-            transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
-        }
+        var level = provider == DatabaseProvider.SqlServer ? await SqlServerLevelAsync(connection, logger, ct) : IsolationLevel.RepeatableRead;
+        var transaction = await db.Database.BeginTransactionAsync(level, ct);
         return new BackupSource(connection, transaction.GetDbTransaction(), async () =>
         {
             await transaction.RollbackAsync(CancellationToken.None); // nothing was written; this frees the snapshot
@@ -59,6 +51,23 @@ internal sealed class BackupSource : IAsyncDisposable
             await db.Database.CloseConnectionAsync();
         });
     }
+
+    /// <summary>
+    /// <c>SNAPSHOT</c> where the database allows it (<c>ALLOW_SNAPSHOT_ISOLATION ON</c>, which is not the default), else <c>SERIALIZABLE</c>, which
+    /// makes writers wait while the dump runs. A database that does not allow snapshots is only reported at the first statement inside the
+    /// transaction, not when it begins, so it is asked first.
+    /// </summary>
+    private static async Task<IsolationLevel> SqlServerLevelAsync(DbConnection connection, ILogger logger, CancellationToken ct)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT snapshot_isolation_state FROM sys.databases WHERE database_id = DB_ID()";
+        if (Convert.ToInt32(await command.ExecuteScalarAsync(ct)) == SnapshotIsolationOn) return IsolationLevel.Snapshot;
+        logger.LogInformation("Snapshot isolation is not allowed on the database (ALLOW_SNAPSHOT_ISOLATION is off); the backup reads under SERIALIZABLE and writers wait meanwhile");
+        return IsolationLevel.Serializable;
+    }
+
+    /// <summary><c>sys.databases.snapshot_isolation_state</c>: 1 is ON (0 off, 2 and 3 on their way).</summary>
+    private const int SnapshotIsolationOn = 1;
 
     /// <summary>
     /// The copy is a plain database: it is made in a temporary folder of its own (never in the backups folder, which is meant to be safe to

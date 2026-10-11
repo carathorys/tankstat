@@ -121,6 +121,10 @@ internal static class TableDump
         // Some mappings name a method of the provider's own reader class; the reader is cast to it then.
         var target = method.DeclaringType!.IsAssignableFrom(typeof(DbDataReader)) ? (Expression)reader : Expression.Convert(reader, method.DeclaringType);
         var call = Expression.Convert(Expression.Call(target, method, ordinal), typeof(object));
-        return Expression.Lambda<Func<DbDataReader, int, object>>(call, reader, ordinal).Compile();
+        var read = Expression.Lambda<Func<DbDataReader, int, object>>(call, reader, ordinal).Compile();
+        if (providerType != typeof(DateOnly)) return read;
+        // Oracle's MySQL connector hands a `date` column back as a DateTime however it is asked (GetFieldValue<DateOnly> throws an
+        // InvalidCastException, which also keeps the app itself from reading a log there): such a value is turned into the date it is.
+        return (r, i) => r.GetValue(i) is DateTime dateTime ? DateOnly.FromDateTime(dateTime) : read(r, i);
     }
 }
