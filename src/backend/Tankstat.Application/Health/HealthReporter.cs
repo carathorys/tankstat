@@ -4,7 +4,8 @@ namespace Tankstat.Application.Health;
 
 public sealed class HealthReporter(TimeProvider clock, IDatabaseProbe database)
 {
-    private static readonly string AppVersion = VersionOf(
+    /// <summary>The version this build was released as (see <see cref="VersionOf"/>).</summary>
+    public static string AppVersion { get; } = VersionOf(
         Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion,
         Assembly.GetExecutingAssembly().GetName().Version);
 

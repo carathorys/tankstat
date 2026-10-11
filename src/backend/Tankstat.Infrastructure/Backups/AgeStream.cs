@@ -69,6 +69,15 @@ internal static class AgeStream
 
         public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));
 
+        // The chunks are sealed in memory; only full ones reach the output, through its own Write.
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            Write(buffer.Span);
+            return ValueTask.CompletedTask;
+        }
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => WriteAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
         private void Seal(bool last)
         {
             _cipher.Encrypt(AgeFormat.ChunkNonce(_counter++, last), _chunk.AsSpan(0, _filled), _sealed.AsSpan(0, _filled), _sealed.AsSpan(_filled, AgeFormat.TagLength));
@@ -199,6 +208,10 @@ internal static class AgeStream
         }
 
         public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => new(Read(buffer.Span));
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => Task.FromResult(Read(buffer.AsSpan(offset, count)));
 
         protected override void Dispose(bool disposing)
         {

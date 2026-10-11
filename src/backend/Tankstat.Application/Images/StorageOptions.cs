@@ -24,17 +24,12 @@ public sealed class StorageOptions
     public string PhotosRoot => string.IsNullOrWhiteSpace(PhotosPath) ? PicturesRoot : Full(PhotosPath);
 
     /// <summary>Pictures and photos in one folder: nothing is ever moved between them.</summary>
-    public bool OneRoot => string.Equals(PicturesRoot, PhotosRoot, PathComparison);
+    public bool OneRoot => Folders.Same(PicturesRoot, PhotosRoot);
 
     /// <summary>One root inside the other: a backup or a disk could not take one without the other, so it is refused at start.</summary>
-    public bool RootsNested => !OneRoot && (Inside(PhotosRoot, PicturesRoot) || Inside(PicturesRoot, PhotosRoot));
+    public bool RootsNested => !OneRoot && (Folders.Inside(PhotosRoot, PicturesRoot) || Folders.Inside(PicturesRoot, PhotosRoot));
 
-    private static readonly StringComparison PathComparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-
-    private static string Full(string path) => System.IO.Path.TrimEndingDirectorySeparator(System.IO.Path.GetFullPath(path));
-
-    private static bool Inside(string inner, string outer) =>
-        inner.StartsWith(System.IO.Path.EndsInDirectorySeparator(outer) ? outer : outer + System.IO.Path.DirectorySeparatorChar, PathComparison);
+    private static string Full(string path) => Folders.Full(path);
 }
 
 public sealed class StorageOptionsValidator : IValidateOptions<StorageOptions>
