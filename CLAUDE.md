@@ -24,6 +24,8 @@ Single tests:
 - Frontend: `npx vitest run tests/frontend/<area>/<file>` (add `-t "<name>"` to filter)
 - Backend: `dotnet test tests/backend/<Project> --filter "FullyQualifiedName~<Name>"`
 
+Code lookups (who uses a symbol, where it is defined, a file's symbols) go through the LSP tool (csharp-ls, typescript-language-server), with grep as the fallback. Check first that it answers for a symbol you know: csharp-ls can index a stale copy of the solution or answer nothing once its worktree is gone, and the TypeScript server's first `findReferences` after it starts can return only the declaration (ask once more before believing "no references"). When the LSP does not work, say so to the user: when it first fails, and again now and then while it stays broken, not on every call.
+
 ## Project structure rules
 
 ### Layout and layers
