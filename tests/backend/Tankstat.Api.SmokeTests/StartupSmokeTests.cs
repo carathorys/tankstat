@@ -266,7 +266,8 @@ public class StartupSmokeTests
         Assert.True(opened == 0, openLog);
         Assert.Contains("Smoke car", await File.ReadAllTextAsync(Path.Combine(work, "restored", "tables", "Vehicles.jsonl")));
         Assert.NotEmpty(Directory.GetFiles(Path.Combine(work, "restored", "keys"), "*.xml")); // the keys of the instance, in an encrypted backup
-        Assert.DoesNotContain("backup", app.Log, StringComparison.OrdinalIgnoreCase); // the server said nothing about backups at start
+        Assert.DoesNotContain("Wrote backup", app.Log); // the server wrote none at start
+        Assert.Contains("one-time restore code", app.Log); // sign-in is off: the code that guards a restore asked for from the app is in the log
     }
 
     // ---- Photo reading (optional: it never stops the app) ---------------------------------------------------

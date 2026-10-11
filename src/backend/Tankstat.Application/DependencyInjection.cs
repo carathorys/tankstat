@@ -55,6 +55,7 @@ public static class DependencyInjection
         services.AddSingleton<HealthReporter>();
         services.AddSingleton<NoticeService>();
         services.AddSingleton<InstanceState>();
+        services.AddSingleton<RestoreCode>();
 
         services.AddScoped<AccessService>();
         services.AddScoped<AccessAdminService>();
