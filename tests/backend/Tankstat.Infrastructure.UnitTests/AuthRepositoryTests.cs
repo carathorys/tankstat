@@ -110,6 +110,32 @@ public class AuthRepositoryTests
     }
 
     [Fact]
+    public async Task ResetTokens_AreListedByUser_AndRemovedById()
+    {
+        await using var db = new TestDatabase();
+        var alice = User.CreateLocal("a@x.co", null, false);
+        var bob = User.CreateLocal("b@x.co", null, false);
+        await db.Get<IUserRepository>().AddAsync(alice, default);
+        await db.Get<IUserRepository>().AddAsync(bob, default);
+        var repo = db.Get<IPasswordResetTokenRepository>();
+        var now = new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+        var first = PasswordResetToken.Issue(alice.Id, "hash", now, TimeSpan.FromHours(1));
+        var second = PasswordResetToken.Issue(alice.Id, "hash", now, TimeSpan.FromHours(1));
+        var bobs = PasswordResetToken.Issue(bob.Id, "hash", now, TimeSpan.FromHours(1));
+        foreach (var t in new[] { first, second, bobs }) await repo.AddAsync(t, default);
+
+        Assert.Equal(new[] { first.Id, second.Id }.Order(), (await repo.IdsForUserAsync(alice.Id, default)).Order());
+        Assert.Empty(await repo.IdsForUserAsync(Guid.NewGuid(), default));
+
+        await repo.RemoveAsync([first.Id, Guid.NewGuid()], default);
+        await repo.RemoveAsync([], default);
+
+        Assert.Null(await repo.FindAsync(first.Id, default));
+        Assert.NotNull(await repo.FindAsync(second.Id, default));
+        Assert.NotNull(await repo.FindAsync(bobs.Id, default));
+    }
+
+    [Fact]
     public async Task Grants_RoundTrip_AreUniquePerPair_AndRemovable()
     {
         await using var db = new TestDatabase();

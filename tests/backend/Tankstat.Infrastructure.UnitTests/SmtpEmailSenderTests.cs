@@ -94,6 +94,26 @@ public class SmtpEmailSenderTests
     }
 
     [Fact]
+    public async Task AMailServerThatNeverAnswers_IsAnEmailSendException_WithinTheTimeout()
+    {
+        using var silent = new TcpListener(IPAddress.Loopback, 0); // takes the connection, never says a word
+        silent.Start();
+        var port = ((IPEndPoint)silent.LocalEndpoint).Port;
+        var sender = new SmtpEmailSender(Options.Create(new SmtpOptions { Host = "127.0.0.1", Port = port, From = "tank@example.com", Security = "None" }))
+        {
+            Timeout = TimeSpan.FromMilliseconds(300),
+        };
+
+        var started = DateTime.UtcNow;
+        var error = await Assert.ThrowsAsync<EmailSendException>(() => sender.SendAsync("canary.person@canary-mail.example", "Subject", "Body", default));
+
+        Assert.True(DateTime.UtcNow - started < TimeSpan.FromSeconds(10));
+        Assert.Contains($"127.0.0.1:{port}", error.Message);
+        Assert.DoesNotContain("canary", error.ToString(), StringComparison.OrdinalIgnoreCase);
+        Assert.True(SmtpEmailSender.SendTimeout < TimeSpan.FromSeconds(30)); // within the GraphQL request's own limit
+    }
+
+    [Fact]
     public async Task CancellingASend_IsStillACancellation()
     {
         using var cancelled = new CancellationTokenSource();

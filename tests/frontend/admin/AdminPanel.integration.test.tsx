@@ -16,7 +16,8 @@ const users = [
   { id: 'u3', provider: 'OIDC', email: 'carol@example.com', displayName: 'Carol', isAdmin: false, isDisabled: false, avatarUrl: null },
 ]
 
-function adminServer(canSetUserPasswords = false) {
+/** `emailFailed`: the server tried to e-mail the link and could not (which needs SMTP and the public address, so the link has a URL). */
+function adminServer({ canSetUserPasswords = false, emailFailed = false }: { canSetUserPasswords?: boolean; emailFailed?: boolean } = {}) {
   const calls: Record<string, unknown[]> = {}
   const record = (name: string, vars: unknown) => (calls[name] ??= []).push(vars)
   server.use(
@@ -51,7 +52,7 @@ function adminServer(canSetUserPasswords = false) {
     }),
     graphql.mutation('CreateUser', ({ variables }) => {
       record('CreateUser', variables)
-      return HttpResponse.json({ data: { createUser: { user: { id: 'u9' }, reset: { token: 'tok.en', url: null, emailSent: false } } } })
+      return HttpResponse.json({ data: { createUser: { user: { id: 'u9' }, reset: { token: 'tok.en', url: emailFailed ? 'https://tank.test/?resetToken=tok.en' : null, emailSent: false, emailFailed } } } })
     }),
     graphql.mutation('UpdateUser', ({ variables }) => {
       record('UpdateUser', variables)
@@ -67,7 +68,7 @@ function adminServer(canSetUserPasswords = false) {
     }),
     graphql.mutation('IssuePasswordReset', ({ variables }) => {
       record('IssuePasswordReset', variables)
-      return HttpResponse.json({ data: { issuePasswordReset: { token: 'reset.tok', url: 'https://tank.test/?resetToken=reset.tok', emailSent: false } } })
+      return HttpResponse.json({ data: { issuePasswordReset: { token: 'reset.tok', url: 'https://tank.test/?resetToken=reset.tok', emailSent: false, emailFailed } } })
     }),
   )
   return calls
@@ -145,6 +146,36 @@ it('creates a user and shows the one-time setup link when no e-mail was sent', a
   expect(calls.CreateUser).toEqual([{ input: { email: 'dave@example.com', displayName: 'Dave', isAdmin: false } }])
 })
 
+it('says that the e-mail could not be sent, and still shows the link, when the mail server refused it', async () => {
+  const ui = userEvent.setup()
+  adminServer({ emailFailed: true })
+  renderWithApollo(<App />, '/admin')
+  const admin = await panel()
+
+  await ui.type(await admin.findByLabelText('E-mail'), 'dave@example.com')
+  await ui.type(admin.getByLabelText('Name'), 'Dave')
+  await ui.click(admin.getByRole('button', { name: 'Create user' }))
+
+  // A warning, not a success: the link still has to be handed over.
+  const warning = await admin.findByRole('alert')
+  expect(warning).toHaveTextContent('The e-mail could not be sent (the server log says why). Hand this one-time link to the user:')
+  expect(warning).toHaveTextContent('https://tank.test/?resetToken=tok.en')
+  expect(admin.queryByText(/The link was e-mailed/)).not.toBeInTheDocument()
+})
+
+it('says the same when the e-mail with a reset link could not be sent', async () => {
+  const ui = userEvent.setup()
+  adminServer({ emailFailed: true })
+  renderWithApollo(<App />, '/admin')
+  const admin = await panel()
+
+  await ui.click(await admin.findByRole('button', { name: 'Reset link for Bob' }))
+
+  const warning = await admin.findByRole('alert')
+  expect(warning).toHaveTextContent('The e-mail could not be sent')
+  expect(warning).toHaveTextContent('https://tank.test/?resetToken=reset.tok')
+})
+
 it('issues a reset link only for local users', async () => {
   const ui = userEvent.setup()
   const calls = adminServer()
@@ -209,7 +240,7 @@ it('edits a local user in a dialog, prefilled, and offers it for local users onl
 
 it('offers setting a password only when the server allows it', async () => {
   const ui = userEvent.setup()
-  const off = adminServer(false)
+  const off = adminServer({ canSetUserPasswords: false })
   const first = renderWithApollo(<App />, '/admin')
   const admin = await panel()
   await admin.findByText('bob@example.com')
@@ -218,7 +249,7 @@ it('offers setting a password only when the server allows it', async () => {
   first.unmount()
 
   server.resetHandlers()
-  const calls = adminServer(true)
+  const calls = adminServer({ canSetUserPasswords: true })
   renderWithApollo(<App />, '/admin')
   const allowed = await panel()
   expect(allowed.queryByRole('button', { name: 'Set password for Carol' })).not.toBeInTheDocument() // OIDC user

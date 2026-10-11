@@ -16,7 +16,7 @@ public class StandaloneAuthTests : IDisposable
     public void Dispose() => _app.Dispose();
 
     private const string CreateUser =
-        "mutation($i: CreateUserInput!) { createUser(input: $i) { user { id email } reset { token url emailSent } } }";
+        "mutation($i: CreateUserInput!) { createUser(input: $i) { user { id email } reset { token url emailSent emailFailed } } }";
     private const string ResetPassword = "mutation($i: ResetPasswordInput!) { resetPassword(input: $i) }";
 
     /// <summary>Creates a user as the administrator and completes the setup link; returns their id.</summary>
@@ -319,11 +319,21 @@ public class StandaloneAuthTests : IDisposable
         Assert.True(unknown.Data().GetProperty("requestPasswordReset").GetBoolean());
     }
 
+    /// <summary>What <c>SmtpEmailSender</c> throws when the mail server refuses or cannot be reached: an address-free message.</summary>
     private sealed class RecordingEmail : IEmailSender
     {
         public List<string> To { get; } = [];
         public bool IsConfigured => true;
-        public Task SendAsync(string to, string subject, string body, CancellationToken ct) { lock (To) To.Add(to); return Task.CompletedTask; }
+
+        /// <summary>Every mail fails as the real sender fails when the mail server cannot be reached (a message without the address).</summary>
+        public bool Unreachable { get; init; }
+
+        public Task SendAsync(string to, string subject, string body, CancellationToken ct)
+        {
+            if (Unreachable) throw new EmailSendException("Sending an e-mail through smtp.test:25 failed (SocketException: Connection refused)");
+            lock (To) To.Add(to);
+            return Task.CompletedTask;
+        }
     }
 
     [Fact]
@@ -345,6 +355,32 @@ public class StandaloneAuthTests : IDisposable
             .Where(e => e.Values.ContainsKey("UserId") && e.Level == LogLevel.Information).ToList();
         Assert.Single(lines, e => e.Values.ContainsKey("EmailSent"));
         Assert.Single(lines, e => !e.Values.ContainsKey("EmailSent"));
+    }
+
+    [Fact]
+    public async Task CreateUser_WhenTheMailServerIsDown_AnswersTheLinkToHandOver_WithAWarning_NotAnError()
+    {
+        using var app = TestApp.Standalone(new() { ["Auth:PublicUrl"] = "https://tank.test" }, s => s.AddSingleton<IEmailSender>(new RecordingEmail { Unreachable = true }));
+        var admin = app.NewClient();
+        await admin.LoginAs(Admin, AdminPassword);
+        app.Log.Clear(); // the start-up lines are not what is tested
+
+        var body = await admin.Gql(CreateUser, new { i = new { email = "new.person@example.com", displayName = "New Person", isAdmin = false } });
+
+        var reset = body.Data().GetProperty("createUser").GetProperty("reset");
+        Assert.False(reset.GetProperty("emailSent").GetBoolean());
+        Assert.True(reset.GetProperty("emailFailed").GetBoolean());
+        Assert.StartsWith("https://tank.test/?resetToken=", reset.GetProperty("url").GetString());
+        Assert.DoesNotContain(app.Log.From("Tankstat"), e => e.Level == LogLevel.Error); // handled: no "unexpected error"
+        var warning = Assert.Single(app.Log.From("Tankstat.Application.Users.PasswordResetService"), e => e.Level == LogLevel.Warning);
+        Assert.True(warning.Values.ContainsKey("UserId"));
+        Assert.False(app.Log.Mentions("new.person@example.com"));
+
+        // The link the administrator hands over works.
+        var token = reset.GetProperty("token").GetString();
+        await app.NewClient().Gql(ResetPassword, new { i = new { token, newPassword = "second-password-1" } });
+        var person = app.NewClient();
+        await person.LoginAs("new.person@example.com", "second-password-1");
     }
 
     [Fact]

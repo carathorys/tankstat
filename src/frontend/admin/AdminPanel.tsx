@@ -31,7 +31,7 @@ import {
   type AccessLevel,
   type IssuePasswordResetMutation,
 } from '../gql/generated.ts'
-import { ErrorMessage, SuccessMessage } from '../messages.tsx'
+import { ErrorMessage, SuccessMessage, WarningMessage } from '../messages.tsx'
 import { DeleteUserDialog, EditUserDialog, SetPasswordDialog } from './UserDialogs.tsx'
 
 const refetch = { refetchQueries: ['Admin'], awaitRefetchQueries: true }
@@ -39,6 +39,27 @@ const refetch = { refetchQueries: ['Admin'], awaitRefetchQueries: true }
 type ResetLink = IssuePasswordResetMutation['issuePasswordReset']
 
 const linkFor = (reset: ResetLink) => reset.url ?? `${window.location.origin}/?resetToken=${reset.token}`
+
+/** The issued link: e-mailed (a success), or to hand over, as a warning when the e-mail could not be sent. */
+function ResetLinkMessage({ reset }: { reset: ResetLink }) {
+  const { t } = useTranslation()
+  const link = (
+    <Box component="code" sx={(theme) => ({ fontFamily: 'monospace', fontSize: '0.9em', px: 0.5, borderRadius: '4px', backgroundColor: theme.vars.palette.primary.soft, wordBreak: 'break-all' })}>
+      {linkFor(reset)}
+    </Box>
+  )
+  if (reset.emailFailed)
+    return (
+      <WarningMessage>
+        {t('admin.linkEmailFailed')} {t('admin.linkHandOver')} {link}
+      </WarningMessage>
+    )
+  return (
+    <SuccessMessage>
+      {reset.emailSent ? t('admin.linkEmailed') : t('admin.linkHandOver')} {link}
+    </SuccessMessage>
+  )
+}
 
 export function AdminPanel() {
   const { t } = useTranslation()
@@ -218,14 +239,7 @@ export function AdminPanel() {
         {t('admin.title')}
       </Typography>
       {actionError !== undefined && <ErrorMessage error={actionError} />}
-      {reset && (
-        <SuccessMessage>
-          {reset.emailSent ? t('admin.linkEmailed') : t('admin.linkHandOver')}{' '}
-          <Box component="code" sx={(theme) => ({ fontFamily: 'monospace', fontSize: '0.9em', px: 0.5, borderRadius: '4px', backgroundColor: theme.vars.palette.primary.soft, wordBreak: 'break-all' })}>
-            {linkFor(reset)}
-          </Box>
-        </SuccessMessage>
-      )}
+      {reset && <ResetLinkMessage reset={reset} />}
       <TabbedPanels
         label={t('admin.title')}
         value={tab}

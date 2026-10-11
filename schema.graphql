@@ -364,6 +364,7 @@ type PasswordResetLink {
   token: String!
   url: String
   emailSent: Boolean!
+  emailFailed: Boolean!
 }
 
 type PhotoDraftInfo {

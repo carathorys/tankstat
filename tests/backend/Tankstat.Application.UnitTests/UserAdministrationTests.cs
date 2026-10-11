@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Users;
 using Tankstat.Domain;
@@ -8,9 +9,9 @@ namespace Tankstat.Application.UnitTests;
 
 public class UserAdministrationTests
 {
-    private static (World W, User Admin) SignedInAdmin(Action<AuthOptions>? configure = null)
+    private static (World W, User Admin) SignedInAdmin(Action<AuthOptions>? configure = null, bool smtp = false)
     {
-        var w = new World(configure: configure);
+        var w = new World(smtp: smtp, configure: configure);
         var admin = w.AddUser("root@x.co", admin: true);
         w.Current.SignInAs(admin);
         return (w, admin);
@@ -213,6 +214,93 @@ public class UserAdministrationTests
         await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(first.Token, "chosen-password-1", default));
         await w.Auth.ResetPasswordAsync(second.Token, "chosen-password-1", default);
         await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(second.Token, "another-pass-1234", default));
+    }
+
+    [Fact]
+    public async Task CreateUser_WhenTheEmailFails_AnswersTheLink_AndKeepsIt()
+    {
+        var (w, _) = SignedInAdmin(smtp: true);
+        w.Email.FailNext = 1; // the mail server is down
+
+        var (user, reset) = await w.UserService.CreateLocalAsync("new@x.co", "New Person", false, default);
+
+        Assert.False(reset.EmailSent);
+        Assert.True(reset.EmailFailed);
+        Assert.StartsWith("https://tank.test/?resetToken=", reset.Url);
+        Assert.Empty(w.Email.Sent);
+        Assert.Single(w.Tokens.Items, t => t.UserId == user.Id); // kept, for the administrator to hand over
+        var warning = Assert.Single(w.Log.From<PasswordResetService>(), e => e.Level == LogLevel.Warning);
+        Assert.Equal(user.Id, warning.Values["UserId"]);
+        Assert.IsType<EmailSendException>(warning.Exception);
+        Assert.Contains(w.Log.From<UserService>(), e => e.Level == LogLevel.Information && e.Values.GetValueOrDefault("EmailSent") is false);
+        await w.Auth.ResetPasswordAsync(reset.Token, "chosen-password-1", default); // and it works
+    }
+
+    [Fact]
+    public async Task IssueReset_WhenTheEmailFails_KeepsTheNewLink_WhichReplacedTheEarlierOne()
+    {
+        var (w, _) = SignedInAdmin(smtp: true);
+        var (user, first) = await w.UserService.CreateLocalAsync("new@x.co", null, false, default);
+        w.Email.FailNext = 1;
+
+        var second = await w.UserService.IssueResetAsync(user.Id, default);
+
+        Assert.Equal(EmailOutcome.Failed, second.Email);
+        Assert.Single(w.Tokens.Items, t => t.UserId == user.Id); // one live link: the new one
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(first.Token, "chosen-password-1", default));
+        await w.Auth.ResetPasswordAsync(second.Token, "chosen-password-1", default);
+    }
+
+    [Fact]
+    public async Task AKeptLink_SurvivesTheUsersOwnRequest_WhileTheMailServerIsStillDown()
+    {
+        var (w, _) = SignedInAdmin(smtp: true);
+        w.Email.FailNext = 1;
+        var (user, kept) = await w.UserService.CreateLocalAsync("new@x.co", null, false, default);
+        w.Clock.Advance(TimeSpan.FromMinutes(6)); // past the cool-down
+        w.Email.FailNext = 1;
+
+        // No e-mail arrived, so the user asks for one: it cannot be sent either, and takes back only its own link.
+        await Assert.ThrowsAsync<EmailSendException>(() => w.Auth.RequestPasswordResetAsync("new@x.co", default));
+
+        var left = Assert.Single(w.Tokens.Items, t => t.UserId == user.Id);
+        Assert.StartsWith($"{left.Id:N}.", kept.Token);
+        await w.Auth.ResetPasswordAsync(kept.Token, "chosen-password-1", default); // the link the administrator handed over still works
+    }
+
+    [Fact]
+    public async Task AKeptLink_SurvivesARequestWhoseEmailWasStillOnItsWay_AndFailedLater()
+    {
+        var (w, _) = SignedInAdmin(smtp: true);
+        var user = w.AddUser("new@x.co");
+        var hanging = new TaskCompletionSource();
+        w.Email.HoldNext = hanging; // the user's own request waits on a mail server that does not answer
+
+        var request = w.Auth.RequestPasswordResetAsync("new@x.co", default);
+        w.Email.FailNext = 1;
+        var issued = await w.UserService.IssueResetAsync(user.Id, default); // meanwhile the administrator issues one, and keeps it
+        hanging.SetException(new EmailSendException("Sending an e-mail through smtp.test:25 failed (no answer)"));
+        await Assert.ThrowsAsync<EmailSendException>(() => request);
+
+        Assert.True(issued.EmailFailed);
+        var left = Assert.Single(w.Tokens.Items, t => t.UserId == user.Id);
+        Assert.StartsWith($"{left.Id:N}.", issued.Token);
+        await w.Auth.ResetPasswordAsync(issued.Token, "chosen-password-1", default);
+    }
+
+    [Fact]
+    public async Task IssueReset_WhenSomethingElseThanTheMailServerFails_TakesBackOnlyTheNewLink_AndFails()
+    {
+        var (w, _) = SignedInAdmin(smtp: true);
+        var (user, first) = await w.UserService.CreateLocalAsync("new@x.co", null, false, default);
+        w.Email.ThrowNext = new InvalidOperationException("not a mail server failure");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => w.UserService.IssueResetAsync(user.Id, default));
+
+        var left = Assert.Single(w.Tokens.Items, t => t.UserId == user.Id);
+        Assert.StartsWith($"{left.Id:N}.", first.Token);
+        Assert.DoesNotContain(w.Log.From<PasswordResetService>(), e => e.Level == LogLevel.Warning);
+        await w.Auth.ResetPasswordAsync(first.Token, "chosen-password-1", default); // the earlier link was not replaced
     }
 
     [Fact]

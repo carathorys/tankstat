@@ -317,6 +317,9 @@ public class LoggingTests
         await w.UserService.SetDisabledAsync(alice.Id, false, default);
         var reissued = await w.UserService.IssueResetAsync(alice.Id, default);
         canaries.AddRange(["canary.renamed@canary-mail.example", "Canary Renamed", reissued.Token, reissued.Url!]);
+        w.Email.FailNext = 1; // the mail server is down: the link is kept for the administrator, and the Warning must not name the address
+        var unsent = await w.UserService.IssueResetAsync(alice.Id, default);
+        canaries.AddRange([unsent.Token, unsent.Url!]);
 
         // The user asks for a link herself, changes her password, and mistypes things.
         w.Current.SignInAs(alice);

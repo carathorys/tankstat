@@ -26,9 +26,9 @@ public sealed record UserAccount(Guid Id, UserProvider Provider, string Email, s
     public static UserAccount From(User u) => new(u.Id, u.Provider, u.Email, u.DisplayName, u.IsAdmin, u.IsDisabled, MediaUrls.Image(u.AvatarImageId));
 }
 
-public sealed record PasswordResetLink(string Token, string? Url, bool EmailSent)
+public sealed record PasswordResetLink(string Token, string? Url, bool EmailSent, bool EmailFailed)
 {
-    public static PasswordResetLink From(IssuedReset r) => new(r.Token, r.Url, r.EmailSent);
+    public static PasswordResetLink From(IssuedReset r) => new(r.Token, r.Url, r.EmailSent, r.EmailFailed);
 }
 
 public sealed record CreatedUser(UserAccount User, PasswordResetLink Reset);
