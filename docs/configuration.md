@@ -2,7 +2,7 @@
 
 For operators: the database, uploaded files, defaults, notification limits, the app's own settings file and the log. Authentication has [a page of its own](authentication.md).
 
-Every setting below can be given in `appsettings.json`, in [the app's own settings file](#the-apps-own-settings-file) or as an environment variable, where `:` becomes `__` (double underscore). The order is the standard ASP.NET Core one with that file added, lowest first: `appsettings.json` < `appsettings.{Environment}.json` < the app's own settings file (`Settings:Path`) < environment variables < command line; a setting given higher up wins, so an environment variable always overrides both files. The same holds for the [authentication](authentication.md) and [photo reading](photo-reading.md) settings.
+Every setting below can be given in `appsettings.json`, in [the app's own settings file](#the-apps-own-settings-file) or as an environment variable, where `:` becomes `__` (double underscore). The order is the standard ASP.NET Core one with that file added, lowest first: `appsettings.json` < `appsettings.{Environment}.json` < the app's own settings file (`Settings:Path`) < environment variables < command line; a setting given higher up wins, so an environment variable (`Section__Key`) always overrides both files. The same holds for the [authentication](authentication.md) and [photo reading](photo-reading.md) settings.
 
 ## Database
 
@@ -52,19 +52,23 @@ Besides `appsettings.json` and the environment, the app reads one JSON file of i
 
 ```json
 {
-  "Auth": { "Mode": "Standalone", "AdminEmails": ["owner@example.com"] },
+  "Auth": { "Mode": "Standalone", "PublicUrl": "https://tankstat.example.com" },
   "Smtp": { "Host": "mail.example.com", "From": "tankstat@example.com", "Password": "..." },
   "Defaults": { "Currency": "HUF" },
   "Logging": { "LogLevel": { "Tankstat": "Debug" } }
 }
 ```
 
+Switching an instance that has no administrator yet to `Standalone` also needs the first administrator for that start, `Auth__Standalone__AdminEmail` and `Auth__Standalone__AdminPassword` ([Authentication](authentication.md)); without them the app does not start, as when the mode comes from the environment.
+
 What to know about it:
 
-- **The environment wins.** The file sits below the environment variables and the command line and above the `appsettings` files, so a value you set in the environment (`Auth__Mode` in a compose file, say) is what runs, whatever the file says. Keep the database (`Database:*`), the folders (`Storage:*`), the key ring (`DataProtection:*`) and the file's own path in the environment: the app needs them before it can read anything, and the Docker image sets them there.
+- **The environment wins.** The file sits below the environment variables and the command line and above the `appsettings` files, so a value you set in the environment (`Auth__Mode` in a compose file, say) is what runs, whatever the file says. That holds for the `Section__Key` variables; the `ASPNETCORE_`-prefixed ones rank below both files, as in any ASP.NET Core app (a `urls` key in the file would beat the image's `ASPNETCORE_URLS`). A list is merged item by item: `Auth__AdminEmails__0` in the environment replaces only the file's first address, and the file's other addresses still count (the same goes for `Auth__ProxyHeader__TrustedProxies__*`); to override a list from the environment, remove it from the file. Keep the database (`Database:*`), the folders (`Storage:*`), the key ring (`DataProtection:*`), the listen address (`urls`, `Kestrel:*`) and the file's own path in the environment: the app needs them before it can read anything, and the Docker image sets them there.
 - **Secrets are stored in plain text** (an SMTP password, an OIDC client secret, a model API key). The app writes the file readable by its owner only (`0600`, the previous file is kept beside it as `settings.json.bak` with the same mode); keep a file you write yourself as private, and keep it out of version control.
-- **A broken file never stops the app.** Before the server starts, the app checks that it could start with the file: a file that is not valid JSON, a value of the wrong shape (`"Port": "abc"`), a rule broken (the OIDC mode without an authority, a log level that does not exist, a retention of `0` days) means the file is left out as a whole. The app then starts without it, writes one `Error` line naming the settings at fault (never the values written in them), and shows a warning notice (`SETTINGS_FILE_IGNORED`) to every visitor until the next start. Fix the file and restart. This is deliberate and only for this file: a wrong environment variable stops the app at start as it always did, so a mistake in the file can never lock you out of an instance the environment runs.
+- **A broken file does not stop the app.** Before the server starts, the app checks that it could start with the file: a file it cannot read (the app's user must be able to read it) or that is not valid JSON, a value of the wrong shape (`"Port": "abc"`), a rule broken (the OIDC mode without an authority, a log level that does not exist, a console logging option that cannot be read, a retention of `0` days) means the file is left out as a whole. The app then starts without it, writes one `Error` line naming the settings at fault (never the values written in them), and shows a warning notice (`SETTINGS_FILE_IGNORED`) to every visitor until the next start. Fix the file and restart. Everything in the file is left out with the mistake, an `Auth:Mode` set there too, so until then the app runs in the mode the environment or `appsettings.json` sets. One case is refused instead of left out: when that mode is `None` (the shipped one: no authentication, every visitor can see and change everything) while the file sets a sign-in mode, or cannot be read, the app does not start, and says why; fix the file, or set `Auth__Mode` in the environment, which wins over the file. Photo reading's settings never leave the file out (a wrong one turns photo reading off, as it does anywhere). This is deliberate and only for this file: a wrong environment variable stops the app at start as it always did, and what the environment gets wrong on its own is not held against the file, so a mistake in the file does not lock you out of an instance the environment runs. The check covers what the app checks before it starts, not what it only finds once running: a switch to `Standalone` without a first administrator (see above), or a database it cannot reach, still stops the start.
 - **Nothing is reloaded.** The file is read once, at start; a change to it takes effect at the next start.
+
+## Logging
 
 The app writes its log to the console (`docker logs`, the terminal) with the standard .NET logger; there is nothing to install. The shipped `Logging` settings in `appsettings.json` keep the app's own lines (category `Tankstat`) at `Information` and silence what used to drown them: Entity Framework's SQL commands and the HTTP client's per-request lines.
 
