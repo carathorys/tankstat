@@ -356,8 +356,8 @@ public class StandaloneAuthTests : IDisposable
         Assert.Equal(["root@example.com"], email.To);
         var lines = app.Log.From("Tankstat.Application.Users.PasswordResetService")
             .Where(e => e.Values.ContainsKey("UserId") && e.Level == LogLevel.Information).ToList();
-        Assert.Single(lines, e => e.Values.ContainsKey("Email")); // sent
-        Assert.Single(lines, e => !e.Values.ContainsKey("Email")); // held back by the cool-down
+        Assert.Single(lines, e => e.Values.ContainsKey("EmailSent")); // sent
+        Assert.Single(lines, e => !e.Values.ContainsKey("EmailSent")); // held back by the cool-down
     }
 
     [Fact]

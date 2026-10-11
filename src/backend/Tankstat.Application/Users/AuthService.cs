@@ -111,7 +111,7 @@ public sealed class AuthService(
             case ResetRequestQueueing.AlreadyWaiting:
                 logger.LogInformation("User {UserId} requested a password reset while an earlier request was still waiting to be sent", user.Id);
                 break;
-            default:
+            case ResetRequestQueueing.QueueFull:
                 logger.LogWarning("User {UserId} requested a password reset, but too many requests are waiting to be sent; nothing was queued", user.Id);
                 break;
         }

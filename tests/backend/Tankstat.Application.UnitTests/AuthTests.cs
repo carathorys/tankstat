@@ -178,9 +178,9 @@ public class PasswordTests
         await w.ResetQueue.DrainAsync(ct);
     }
 
-    /// <summary>The lines about <paramref name="user"/>'s own requests that issued nothing (they carry no <c>Email</c> outcome).</summary>
+    /// <summary>The lines about <paramref name="user"/>'s own requests that issued nothing (they carry no <c>EmailSent</c>).</summary>
     private static List<LogEntry> Withheld(World w, User user) => w.Log.From<PasswordResetService>()
-        .Where(e => Equals(e.Values.GetValueOrDefault("UserId"), user.Id) && !e.Values.ContainsKey("Email")).ToList();
+        .Where(e => Equals(e.Values.GetValueOrDefault("UserId"), user.Id) && !e.Values.ContainsKey("EmailSent")).ToList();
 
     [Fact]
     public async Task RequestReset_WithinCooldown_SendsNothingAndIssuesNothing()
