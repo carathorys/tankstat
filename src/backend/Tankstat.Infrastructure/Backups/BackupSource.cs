@@ -36,10 +36,9 @@ internal sealed class BackupSource : IAsyncDisposable
         return command;
     }
 
-    /// <param name="scratchFolder">Where SQLite's copy is made (next to the backup, so it has the room the backup has).</param>
-    public static async Task<BackupSource> OpenAsync(AppDbContext db, DatabaseProvider provider, string scratchFolder, ILogger logger, CancellationToken ct)
+    public static async Task<BackupSource> OpenAsync(AppDbContext db, DatabaseProvider provider, ILogger logger, CancellationToken ct)
     {
-        if (provider == DatabaseProvider.Sqlite) return await CopySqliteAsync(db, scratchFolder, ct);
+        if (provider == DatabaseProvider.Sqlite) return await CopySqliteAsync(db, ct);
 
         var connection = db.Database.GetDbConnection();
         await db.Database.OpenConnectionAsync(ct);
@@ -61,10 +60,14 @@ internal sealed class BackupSource : IAsyncDisposable
         });
     }
 
-    private static async Task<BackupSource> CopySqliteAsync(AppDbContext db, string scratchFolder, CancellationToken ct)
+    /// <summary>
+    /// The copy is a plain database: it is made in a temporary folder of its own (never in the backups folder, which is meant to be safe to
+    /// copy anywhere, and would keep it after a crash), and removed with the folder once the dump is done.
+    /// </summary>
+    private static async Task<BackupSource> CopySqliteAsync(AppDbContext db, CancellationToken ct)
     {
-        var copyPath = Path.Combine(scratchFolder, $"tankstat-{Guid.NewGuid():N}.db-copy");
-        var copy = new SqliteConnection($"Data Source={copyPath};Pooling=False");
+        var scratch = Directory.CreateTempSubdirectory("tankstat-backup-");
+        var copy = new SqliteConnection($"Data Source={Path.Combine(scratch.FullName, "copy.db")};Pooling=False");
         try
         {
             await using (var live = new SqliteConnection(db.Database.GetConnectionString()))
@@ -76,13 +79,13 @@ internal sealed class BackupSource : IAsyncDisposable
             return new BackupSource(copy, null, async () =>
             {
                 await copy.DisposeAsync();
-                File.Delete(copyPath);
+                scratch.Delete(recursive: true);
             });
         }
         catch
         {
             await copy.DisposeAsync();
-            if (File.Exists(copyPath)) File.Delete(copyPath);
+            scratch.Delete(recursive: true);
             throw;
         }
     }

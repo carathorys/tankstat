@@ -21,7 +21,7 @@ namespace Tankstat.Infrastructure.Backups;
 /// from one consistent read (<see cref="BackupSource"/>), <c>files/pictures/...</c> (everything under <c>Storage:Path</c> but the drafts),
 /// <c>files/photos/...</c> (a photos root of its own, only when asked for) and, in an encrypted backup only, <c>keys/*.xml</c> (the Data
 /// Protection keys, which are secrets in plain). Everything is streamed, the file is written under a temporary name and renamed when
-/// complete, so the folder never holds a half backup.
+/// complete, so the folder never holds a half backup (and never the database's plain copy, see <see cref="BackupSource"/>).
 /// </summary>
 internal sealed class BackupWriter(
     IDbContextFactory<AppDbContext> dbFactory,
@@ -47,7 +47,7 @@ internal sealed class BackupWriter(
         var partial = output + Partial;
         try
         {
-            var manifest = await WriteAsync(partial, folder, createdAt, encryption, photos, request.SafetyNet, ct);
+            var manifest = await WriteAsync(partial, createdAt, encryption, photos, request.SafetyNet, ct);
             File.Move(partial, output);
             logger.LogInformation("Wrote backup {File}: {Tables} tables with {Rows} rows, {Bytes} bytes of files, {Encryption}",
                 Path.GetFileName(output), manifest.Contents.Tables.Count, manifest.Contents.Tables.Values.Sum(), manifest.Sizes.Pictures + manifest.Sizes.Photos,
@@ -61,14 +61,14 @@ internal sealed class BackupWriter(
         }
     }
 
-    private async Task<BackupManifest> WriteAsync(string partial, string folder, DateTimeOffset createdAt, BackupEncryption? encryption, BackupPhotos photos, bool safetyNet, CancellationToken ct)
+    private async Task<BackupManifest> WriteAsync(string partial, DateTimeOffset createdAt, BackupEncryption? encryption, BackupPhotos photos, bool safetyNet, CancellationToken ct)
     {
         var roots = storage.Value;
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var migration = (await db.Database.GetAppliedMigrationsAsync(ct)).LastOrDefault();
         var tables = TableDump.Tables(db.Model);
         var sql = db.GetService<ISqlGenerationHelper>();
-        await using var source = await BackupSource.OpenAsync(db, database.Value.Provider, folder, logger, ct);
+        await using var source = await BackupSource.OpenAsync(db, database.Value.Provider, logger, ct);
 
         var rows = new Dictionary<string, long>();
         long tableBytes = 0, pictureBytes = 0, photoBytes = 0, keyBytes = 0;

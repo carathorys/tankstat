@@ -202,6 +202,26 @@ public sealed class BackupWriterTests : IDisposable
     }
 
     [Fact]
+    public async Task EveryColumnOfEveryTable_IsInTheDump_AsTheDatabaseNamesIt()
+    {
+        await using var db = Database();
+        await using var context = await db.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
+        var connection = (Microsoft.Data.Sqlite.SqliteConnection)context.Database.GetDbConnection();
+        await connection.OpenAsync();
+
+        foreach (var table in TableDump.Tables(context.Model))
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"PRAGMA table_info(\"{table.Name}\")";
+            var columns = new List<string>();
+            await using (var reader = await command.ExecuteReaderAsync())
+                while (await reader.ReadAsync()) columns.Add(reader.GetString(1));
+            Assert.NotEmpty(columns);
+            Assert.Equal(columns.Order(), table.Columns.Select(c => c.Name).Order()); // a column the model knows but the dump would drop shows up here
+        }
+    }
+
+    [Fact]
     public async Task AnEncryptedBackup_HoldsTheKeys_IsOpenedByTheIdentityOnly_AndItsManifestNamesTheRecipientAndTheSalt()
     {
         var identity = BackupKeys.Identity("correct horse battery staple", Encoding.ASCII.GetBytes("tankstat-salt-01"), new Argon2idParameters(256, 1, 1));

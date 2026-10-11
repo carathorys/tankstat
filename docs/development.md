@@ -56,7 +56,7 @@ mise run test:api          # contract tests against a freshly started server
 mise run test:coverage     # unit + integration tests with coverage reports in ./coverage
 ```
 
-The backup encryption is the age format: `tests/backend/contracts/age/` holds files written by age 1.3.2 (see its README), which the reader must open, and `AgeStreamTests.TheRealTool_OpensWhatTheWriterWrote` runs `age -d` on the writer's file when `age` runs here (`age` on the `PATH`, or `mise exec age@1.3.2`); without it that one check passes with a line saying it was skipped (`mise use -g age@1.3.2` makes it run).
+The backup encryption is the age format: `tests/backend/contracts/age/` holds files written by age 1.3.2 (see its README), which the reader must open, and `AgeStreamTests.TheRealTool_OpensWhatTheWriterWrote` runs `age -d` on the writer's file when `age` runs here (`age` on the `PATH`, or mise's installed copy: `mise install age@1.3.2`; the test runs mise offline, so it never fetches or installs anything); without it that one check passes with a line saying it was skipped.
 
 The API tests pin the GraphQL schema the frontend relies on, so a breaking schema change fails them. They read the target from `TANKSTAT_API_URL` (default `http://localhost:5080`); `test:api` sets it for you.
 

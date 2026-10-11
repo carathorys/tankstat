@@ -151,7 +151,10 @@ public sealed class AgeStreamTests(ITestOutputHelper output)
         }
     }
 
-    /// <summary>The command that runs age here: <c>age</c> itself, or mise's copy; null when neither answers <c>--version</c>.</summary>
+    /// <summary>
+    /// The command that runs age here: <c>age</c> itself, or mise's copy when that is installed (offline, so mise never fetches or installs
+    /// anything for a test); null when neither answers <c>--version</c>.
+    /// </summary>
     private static string[]? AgeCommand()
     {
         foreach (var command in new[] { new[] { "age" }, new[] { "mise", "exec", "age@1.3.2", "--", "age" } })
@@ -171,6 +174,7 @@ public sealed class AgeStreamTests(ITestOutputHelper output)
     private static async Task<(int Code, string Log)> Run(string[] command, string[] args, string workingDirectory)
     {
         var info = new ProcessStartInfo(command[0]) { WorkingDirectory = workingDirectory, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+        info.Environment["MISE_OFFLINE"] = "1";
         foreach (var part in command.Skip(1).Concat(args)) info.ArgumentList.Add(part);
         using var process = Process.Start(info)!;
         var log = await process.StandardOutput.ReadToEndAsync() + await process.StandardError.ReadToEndAsync();
