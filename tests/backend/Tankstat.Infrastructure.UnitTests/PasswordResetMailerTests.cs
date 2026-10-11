@@ -159,6 +159,55 @@ public class PasswordResetMailerTests
         Assert.Empty(email.To);
         Assert.Empty(await db.Get<IPasswordResetTokenRepository>().IdsForUserAsync(alice.Id, default));
         Assert.DoesNotContain(db.Log.Entries, e => e.Level == LogLevel.Error);
+        Assert.Contains(db.Log.From<PasswordResetMailer>(), e => e.Level == LogLevel.Information && Equals(e.Values.GetValueOrDefault("UserId"), alice.Id));
+    }
+
+    [Fact]
+    public async Task AStopThatTheSenderReportsAsAnotherFailure_IsNoError()
+    {
+        // Not every provider reports a cancelled call as an OperationCanceledException (SqlClient has its own exception for it).
+        var email = new ScriptedEmail
+        {
+            Next = async ct =>
+            {
+                try { await Task.Delay(Timeout.Infinite, ct); }
+                catch (OperationCanceledException) { throw new InvalidOperationException("the connection was closed"); }
+            },
+        };
+        await using var db = Database(email);
+        var alice = await AddUser(db, "alice@example.com");
+        using var mailer = Mailer(db);
+        await mailer.StartAsync(default);
+
+        db.Get<IPasswordResetQueue>().Enqueue(alice.Id, alice.SessionVersion);
+        await email.Started.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        await mailer.StopAsync(default);
+
+        Assert.DoesNotContain(db.Log.Entries, e => e.Level == LogLevel.Error);
+        Assert.Empty(await db.Get<IPasswordResetTokenRepository>().IdsForUserAsync(alice.Id, default));
+        Assert.Contains(db.Log.From<PasswordResetMailer>(), e => e.Level == LogLevel.Information && Equals(e.Values.GetValueOrDefault("UserId"), alice.Id));
+    }
+
+    [Fact]
+    public async Task RequestsStillWaitingAtStop_AreNamedInTheLog()
+    {
+        var email = new ScriptedEmail { Next = ct => Task.Delay(Timeout.Infinite, ct) }; // alice's send hangs, bob waits behind it
+        await using var db = Database(email);
+        var alice = await AddUser(db, "alice@example.com");
+        var bob = await AddUser(db, "bob@example.com");
+        using var mailer = Mailer(db);
+        await mailer.StartAsync(default);
+
+        db.Get<IPasswordResetQueue>().Enqueue(alice.Id, alice.SessionVersion);
+        db.Get<IPasswordResetQueue>().Enqueue(bob.Id, bob.SessionVersion);
+        await email.Started.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        await mailer.StopAsync(default);
+
+        var lines = db.Log.From<PasswordResetMailer>().Where(e => e.Level == LogLevel.Information).ToList();
+        Assert.Contains(lines, e => Equals(e.Values.GetValueOrDefault("UserId"), alice.Id));
+        Assert.Contains(lines, e => Equals(e.Values.GetValueOrDefault("UserId"), bob.Id));
+        Assert.True(db.Get<PasswordResetQueue>().WhenIdleAsync().IsCompleted);
+        Assert.Empty(email.To);
     }
 
     [Fact]

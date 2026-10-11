@@ -54,9 +54,18 @@ internal sealed class PasswordResetQueue : IPasswordResetQueue
     }
 
     /// <summary>The next request, with the session version of the user's latest request; from now on a new request of that user is queued again.</summary>
-    internal async ValueTask<(Guid UserId, int SessionVersion)> TakeAsync(CancellationToken ct)
+    internal async ValueTask<(Guid UserId, int SessionVersion)> TakeAsync(CancellationToken ct) => Taken(await _channel.Reader.ReadAsync(ct));
+
+    /// <summary>Like <see cref="TakeAsync"/>, but only a request already waiting (at stop, to say whose were lost).</summary>
+    internal bool TryTake(out (Guid UserId, int SessionVersion) request)
     {
-        var userId = await _channel.Reader.ReadAsync(ct);
+        var any = _channel.Reader.TryRead(out var userId);
+        request = any ? Taken(userId) : default;
+        return any;
+    }
+
+    private (Guid UserId, int SessionVersion) Taken(Guid userId)
+    {
         lock (_gate)
         {
             _waiting.Remove(userId, out var sessionVersion);
@@ -64,7 +73,7 @@ internal sealed class PasswordResetQueue : IPasswordResetQueue
         }
     }
 
-    /// <summary>A request taken by <see cref="TakeAsync"/> was served (or failed).</summary>
+    /// <summary>A request taken by <see cref="TakeAsync"/> or <see cref="TryTake"/> was served (or failed, or was dropped at stop).</summary>
     internal void Done()
     {
         lock (_gate)
@@ -83,13 +92,14 @@ internal sealed class PasswordResetQueue : IPasswordResetQueue
 /// <summary>
 /// Sends the e-mails of self-service reset requests after they were answered, one at a time, through
 /// <see cref="PasswordResetService.SendRequestedAsync"/> in a scope of its own. A request that fails unexpectedly is an Error, and the next
-/// one is still served; a mail server's failure is the service's Warning. Says nothing at start.
+/// one is still served; a mail server's failure is the service's Warning. Says nothing at start. At stop, the request it is serving and the
+/// ones still waiting are lost (the users ask again), each an Information line by user id, so a mail that never came can be explained.
 /// </summary>
 internal sealed class PasswordResetMailer(IServiceScopeFactory scopes, PasswordResetQueue queue, ILogger<PasswordResetMailer> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stopping)
     {
-        while (true)
+        while (!stopping.IsCancellationRequested)
         {
             Guid userId;
             int sessionVersion;
@@ -99,7 +109,7 @@ internal sealed class PasswordResetMailer(IServiceScopeFactory scopes, PasswordR
             }
             catch (OperationCanceledException)
             {
-                return;
+                break;
             }
 
             try
@@ -107,9 +117,11 @@ internal sealed class PasswordResetMailer(IServiceScopeFactory scopes, PasswordR
                 await using var scope = scopes.CreateAsyncScope();
                 await scope.ServiceProvider.GetRequiredService<PasswordResetService>().SendRequestedAsync(userId, sessionVersion, stopping);
             }
-            catch (OperationCanceledException) when (stopping.IsCancellationRequested)
+            catch (Exception) when (stopping.IsCancellationRequested)
             {
-                return; // stopping: the link of a send cut short was taken back
+                // Stopping, whatever the database or the mail server made of the cancellation (not every provider reports it as an
+                // OperationCanceledException): a link already stored for it was taken back.
+                logger.LogInformation("The password reset requested by user {UserId} was not sent: the app is stopping", userId);
             }
             catch (Exception e)
             {
@@ -119,6 +131,12 @@ internal sealed class PasswordResetMailer(IServiceScopeFactory scopes, PasswordR
             {
                 queue.Done();
             }
+        }
+
+        while (queue.TryTake(out var left))
+        {
+            logger.LogInformation("The password reset requested by user {UserId} was not sent: the app stopped before its turn", left.UserId);
+            queue.Done();
         }
     }
 }
