@@ -365,6 +365,39 @@ public class PasswordTests
     }
 
     [Fact]
+    public async Task RequestReset_StillWaitingWhenThePasswordIsReset_SendsNothing()
+    {
+        var w = new World(smtp: true);
+        var token = await IssueToken(w, "alice@x.co"); // a link she already has
+        var alice = w.Users.Items.Single(u => u.Email == "alice@x.co");
+        w.Clock.Advance(TimeSpan.FromMinutes(10)); // past the cool-down
+
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default); // waits to be sent
+        await w.Auth.ResetPasswordAsync(token, "brand-new-password", default); // meanwhile she uses the link she has, which revokes every link
+        await w.ResetQueue.DrainAsync();
+
+        Assert.Empty(w.Tokens.Items); // no link outlives the new password
+        Assert.Single(w.Email.Sent); // the administrator's only
+        Assert.Contains(w.Log.From<PasswordResetService>(), e => e.Level == LogLevel.Information && Equals(e.Values.GetValueOrDefault("UserId"), alice.Id));
+    }
+
+    [Fact]
+    public async Task RequestReset_AskedAgainAfterThePasswordWasReset_WhileTheFirstWaits_IsSent()
+    {
+        var w = new World(smtp: true);
+        var token = await IssueToken(w, "alice@x.co");
+        w.Clock.Advance(TimeSpan.FromMinutes(10)); // past the cool-down
+
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+        await w.Auth.ResetPasswordAsync(token, "brand-new-password", default);
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default); // asked again since: the waiting request serves this one
+        await w.ResetQueue.DrainAsync();
+
+        Assert.Equal(2, w.Email.Sent.Count);
+        await w.Auth.ResetPasswordAsync(LinkIn(w.Email.Sent[1]), "another-password-1", default);
+    }
+
+    [Fact]
     public async Task RequestReset_AskedAgainWhileWaiting_IsQueuedOnce()
     {
         var w = new World(smtp: true, configure: o => o.Standalone.ResetCooldownMinutes = 0);

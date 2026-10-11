@@ -70,15 +70,22 @@ public sealed class PasswordResetService(
     /// <summary>
     /// Serves a request the user made through <i>Forgot your password?</i>, after it was answered (<see cref="IPasswordResetQueue"/>). Looks
     /// at the account again, since it may have been disabled or the mail settings changed meanwhile, then e-mails a link unless the cool-down
-    /// holds it back (<see cref="IssueUnlessCoolingDownAsync"/>). A mail server's failure is a Warning: the link is taken back, so the user
-    /// can simply ask again. Anything else escapes to the worker, a cancellation included (the link is taken back then too).
+    /// holds it back (<see cref="IssueUnlessCoolingDownAsync"/>). Sends nothing when the user's <see cref="User.SessionVersion"/> is no
+    /// longer <paramref name="sessionVersion"/>, the one the request was made with: a new password since then revoked every link (and so
+    /// did disabling the account), and a link issued now would outlive that. A mail server's failure is a Warning: the link is taken back,
+    /// so the user can simply ask again. Anything else escapes to the worker, a cancellation included (the link is taken back then too).
     /// </summary>
-    public async Task SendRequestedAsync(Guid userId, CancellationToken ct)
+    public async Task SendRequestedAsync(Guid userId, int sessionVersion, CancellationToken ct)
     {
         var user = await users.FindByIdAsync(userId, ct);
         if (user is null || user.IsDisabled || user.Provider != UserProvider.Local)
         {
             logger.LogInformation("The password reset requested by user {UserId} was not sent: the account no longer signs in with a password", userId);
+            return;
+        }
+        if (user.SessionVersion != sessionVersion)
+        {
+            logger.LogInformation("The password reset requested by user {UserId} was not sent: the password was set or the account disabled after the request", userId);
             return;
         }
         if (!CanEmail)

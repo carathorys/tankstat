@@ -687,15 +687,18 @@ internal sealed class FakeCurrentUser : ICurrentUser
 }
 
 /// <summary>
-/// The self-service reset requests waiting to be sent, like the app's queue (a user at most once), but served only when a test calls
-/// <see cref="DrainAsync"/>, so it decides when the mails go out and nothing has to wait.
+/// The self-service reset requests waiting to be sent, like the app's queue (a user at most once, with the session version of their latest
+/// request), but served only when a test calls <see cref="DrainAsync"/>, so it decides when the mails go out and nothing has to wait.
 /// </summary>
 internal sealed class FakeResetQueue(PasswordResetService resets) : IPasswordResetQueue
 {
+    private readonly Dictionary<Guid, int> _sessionVersions = [];
+
     public List<Guid> Waiting { get; } = [];
 
-    public ResetRequestQueueing Enqueue(Guid userId)
+    public ResetRequestQueueing Enqueue(Guid userId, int sessionVersion)
     {
+        _sessionVersions[userId] = sessionVersion;
         if (Waiting.Contains(userId)) return ResetRequestQueueing.AlreadyWaiting;
         Waiting.Add(userId);
         return ResetRequestQueueing.Queued;
@@ -708,7 +711,8 @@ internal sealed class FakeResetQueue(PasswordResetService resets) : IPasswordRes
         {
             var userId = Waiting[0];
             Waiting.RemoveAt(0);
-            await resets.SendRequestedAsync(userId, ct);
+            _sessionVersions.Remove(userId, out var sessionVersion);
+            await resets.SendRequestedAsync(userId, sessionVersion, ct);
         }
     }
 }

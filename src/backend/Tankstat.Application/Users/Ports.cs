@@ -22,7 +22,7 @@ public enum ResetRequestQueueing
 {
     Queued,
 
-    /// <summary>A request of the same user is still waiting; it serves this one too.</summary>
+    /// <summary>A request of the same user is still waiting; it serves this one too, with this one's session version.</summary>
     AlreadyWaiting,
 
     /// <summary>The queue is full; nothing was queued.</summary>
@@ -36,8 +36,12 @@ public enum ResetRequestQueueing
 /// </summary>
 public interface IPasswordResetQueue
 {
-    /// <summary>Queues the user's request. One still waiting is not queued twice, so the backlog is bounded by accounts, not by requests.</summary>
-    ResetRequestQueueing Enqueue(Guid userId);
+    /// <summary>
+    /// Queues the user's request, made while their <see cref="User.SessionVersion"/> was <paramref name="sessionVersion"/>: a new password
+    /// or disabling the account moves it, and a request from before that sends nothing. One still waiting is not queued twice, so the
+    /// backlog is bounded by accounts, not by requests; it takes the later request's session version instead.
+    /// </summary>
+    ResetRequestQueueing Enqueue(Guid userId, int sessionVersion);
 }
 
 public interface IPasswordResetTokenRepository

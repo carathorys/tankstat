@@ -49,11 +49,23 @@ public class PasswordResetMailerTests
         var queue = new PasswordResetQueue(capacity: 2);
         var (a, b, c) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
 
-        Assert.Equal(ResetRequestQueueing.Queued, queue.Enqueue(a));
-        Assert.Equal(ResetRequestQueueing.AlreadyWaiting, queue.Enqueue(a));
-        Assert.Equal(ResetRequestQueueing.Queued, queue.Enqueue(b));
-        Assert.Equal(ResetRequestQueueing.QueueFull, queue.Enqueue(c));
+        Assert.Equal(ResetRequestQueueing.Queued, queue.Enqueue(a, 0));
+        Assert.Equal(ResetRequestQueueing.AlreadyWaiting, queue.Enqueue(a, 0));
+        Assert.Equal(ResetRequestQueueing.Queued, queue.Enqueue(b, 0));
+        Assert.Equal(ResetRequestQueueing.QueueFull, queue.Enqueue(c, 0));
         Assert.False(queue.WhenIdleAsync().IsCompleted);
+    }
+
+    [Fact]
+    public async Task AUserAskingAgainWhileWaiting_IsServedWithTheSessionVersionOfTheLaterRequest()
+    {
+        var queue = new PasswordResetQueue(capacity: 10);
+        var a = Guid.NewGuid();
+
+        queue.Enqueue(a, 1);
+        Assert.Equal(ResetRequestQueueing.AlreadyWaiting, queue.Enqueue(a, 2)); // asked again after a new password
+
+        Assert.Equal((a, 2), await queue.TakeAsync(default));
     }
 
     [Fact]
@@ -62,11 +74,11 @@ public class PasswordResetMailerTests
         var queue = new PasswordResetQueue(capacity: 10);
         var a = Guid.NewGuid();
         Assert.True(queue.WhenIdleAsync().IsCompleted);
-        queue.Enqueue(a);
+        queue.Enqueue(a, 0);
 
-        Assert.Equal(a, await queue.TakeAsync(default));
-        Assert.Equal(ResetRequestQueueing.Queued, queue.Enqueue(a)); // the waiting one was taken: the cool-down decides from here
-        Assert.Equal(a, await queue.TakeAsync(default));
+        Assert.Equal(a, (await queue.TakeAsync(default)).UserId);
+        Assert.Equal(ResetRequestQueueing.Queued, queue.Enqueue(a, 0)); // the waiting one was taken: the cool-down decides from here
+        Assert.Equal(a, (await queue.TakeAsync(default)).UserId);
         queue.Done();
         Assert.False(queue.WhenIdleAsync().IsCompleted);
         queue.Done();
@@ -82,7 +94,7 @@ public class PasswordResetMailerTests
         using var mailer = Mailer(db);
         await mailer.StartAsync(default);
 
-        db.Get<IPasswordResetQueue>().Enqueue(alice.Id);
+        db.Get<IPasswordResetQueue>().Enqueue(alice.Id, alice.SessionVersion);
         await db.Get<PasswordResetQueue>().WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(30));
 
         Assert.Equal(["alice@example.com"], email.To);
@@ -100,8 +112,8 @@ public class PasswordResetMailerTests
         using var mailer = Mailer(db);
         await mailer.StartAsync(default);
 
-        db.Get<IPasswordResetQueue>().Enqueue(alice.Id);
-        db.Get<IPasswordResetQueue>().Enqueue(bob.Id);
+        db.Get<IPasswordResetQueue>().Enqueue(alice.Id, alice.SessionVersion);
+        db.Get<IPasswordResetQueue>().Enqueue(bob.Id, bob.SessionVersion);
         await db.Get<PasswordResetQueue>().WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(30));
 
         Assert.Equal(["bob@example.com"], email.To);
@@ -121,7 +133,7 @@ public class PasswordResetMailerTests
         using var mailer = Mailer(db);
         await mailer.StartAsync(default);
 
-        db.Get<IPasswordResetQueue>().Enqueue(alice.Id);
+        db.Get<IPasswordResetQueue>().Enqueue(alice.Id, alice.SessionVersion);
         await db.Get<PasswordResetQueue>().WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(30));
 
         Assert.DoesNotContain(db.Log.Entries, e => e.Level == LogLevel.Error);
@@ -140,12 +152,31 @@ public class PasswordResetMailerTests
         using var mailer = Mailer(db);
         await mailer.StartAsync(default);
 
-        db.Get<IPasswordResetQueue>().Enqueue(alice.Id);
+        db.Get<IPasswordResetQueue>().Enqueue(alice.Id, alice.SessionVersion);
         await email.Started.Task.WaitAsync(TimeSpan.FromSeconds(30));
         await mailer.StopAsync(default);
 
         Assert.Empty(email.To);
         Assert.Empty(await db.Get<IPasswordResetTokenRepository>().IdsForUserAsync(alice.Id, default));
         Assert.DoesNotContain(db.Log.Entries, e => e.Level == LogLevel.Error);
+    }
+
+    [Fact]
+    public async Task ARequestMadeBeforeANewPassword_SendsNothing()
+    {
+        var email = new ScriptedEmail();
+        await using var db = Database(email);
+        var alice = await AddUser(db, "alice@example.com");
+        db.Get<IPasswordResetQueue>().Enqueue(alice.Id, alice.SessionVersion);
+        alice.SetPasswordHash("a-new-hash"); // set before the mailer got to the request (it revoked every link)
+        await db.Get<IUserRepository>().UpdateAsync(alice, default);
+        using var mailer = Mailer(db);
+        await mailer.StartAsync(default);
+
+        await db.Get<PasswordResetQueue>().WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.Empty(email.To);
+        Assert.Empty(await db.Get<IPasswordResetTokenRepository>().IdsForUserAsync(alice.Id, default));
+        await mailer.StopAsync(default);
     }
 }

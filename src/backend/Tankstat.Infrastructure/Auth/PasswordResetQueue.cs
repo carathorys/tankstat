@@ -8,15 +8,19 @@ namespace Tankstat.Infrastructure.Auth;
 
 /// <summary>
 /// The self-service reset requests waiting for <see cref="PasswordResetMailer"/>, in memory: a request still waiting when the app stops is
-/// lost, and the user asks again. A user is in it at most once (a later request of theirs is served by the waiting one), so the backlog is
-/// bounded by accounts, not by requests; once the mailer takes a request, a new one of that user is queued again and the cool-down decides.
+/// lost, and the user asks again. A user is in it at most once (a later request of theirs is served by the waiting one, with the later
+/// request's session version), so the backlog is bounded by accounts, not by requests; once the mailer takes a request, a new one of that
+/// user is queued again and the cool-down decides.
 /// </summary>
 internal sealed class PasswordResetQueue : IPasswordResetQueue
 {
     public const int DefaultCapacity = 1000;
 
     private readonly Channel<Guid> _channel;
-    private readonly HashSet<Guid> _waiting = [];
+
+    // The users waiting, with the session version of their latest request. A user is in it from before their id is written until the
+    // mailer takes the id, both under _gate, so the mailer always finds the version of the id it read.
+    private readonly Dictionary<Guid, int> _waiting = [];
     private readonly Lock _gate = new();
 
     // Requests queued or being served, and a task that completes when there are none (for tests: no sleeping until the mail went out).
@@ -29,24 +33,35 @@ internal sealed class PasswordResetQueue : IPasswordResetQueue
         _idle.SetResult();
     }
 
-    public ResetRequestQueueing Enqueue(Guid userId)
+    public ResetRequestQueueing Enqueue(Guid userId, int sessionVersion)
     {
         lock (_gate)
         {
-            if (_waiting.Contains(userId)) return ResetRequestQueueing.AlreadyWaiting;
-            if (!_channel.Writer.TryWrite(userId)) return ResetRequestQueueing.QueueFull;
-            _waiting.Add(userId);
+            if (_waiting.ContainsKey(userId))
+            {
+                _waiting[userId] = sessionVersion; // the waiting request serves this one, as the account stands now
+                return ResetRequestQueueing.AlreadyWaiting;
+            }
+            _waiting.Add(userId, sessionVersion);
+            if (!_channel.Writer.TryWrite(userId))
+            {
+                _waiting.Remove(userId);
+                return ResetRequestQueueing.QueueFull;
+            }
             if (_pending++ == 0) _idle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             return ResetRequestQueueing.Queued;
         }
     }
 
-    /// <summary>The next request; from now on a new request of that user is queued again.</summary>
-    internal async ValueTask<Guid> TakeAsync(CancellationToken ct)
+    /// <summary>The next request, with the session version of the user's latest request; from now on a new request of that user is queued again.</summary>
+    internal async ValueTask<(Guid UserId, int SessionVersion)> TakeAsync(CancellationToken ct)
     {
         var userId = await _channel.Reader.ReadAsync(ct);
-        lock (_gate) _waiting.Remove(userId);
-        return userId;
+        lock (_gate)
+        {
+            _waiting.Remove(userId, out var sessionVersion);
+            return (userId, sessionVersion);
+        }
     }
 
     /// <summary>A request taken by <see cref="TakeAsync"/> was served (or failed).</summary>
@@ -77,9 +92,10 @@ internal sealed class PasswordResetMailer(IServiceScopeFactory scopes, PasswordR
         while (true)
         {
             Guid userId;
+            int sessionVersion;
             try
             {
-                userId = await queue.TakeAsync(stopping);
+                (userId, sessionVersion) = await queue.TakeAsync(stopping);
             }
             catch (OperationCanceledException)
             {
@@ -89,7 +105,7 @@ internal sealed class PasswordResetMailer(IServiceScopeFactory scopes, PasswordR
             try
             {
                 await using var scope = scopes.CreateAsyncScope();
-                await scope.ServiceProvider.GetRequiredService<PasswordResetService>().SendRequestedAsync(userId, stopping);
+                await scope.ServiceProvider.GetRequiredService<PasswordResetService>().SendRequestedAsync(userId, sessionVersion, stopping);
             }
             catch (OperationCanceledException) when (stopping.IsCancellationRequested)
             {

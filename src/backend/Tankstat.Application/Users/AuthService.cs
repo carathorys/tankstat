@@ -102,7 +102,8 @@ public sealed class AuthService(
             logger.LogInformation("User {UserId} requested a password reset, but no e-mail can be sent; nothing was issued", user.Id);
             return;
         }
-        switch (resetQueue.Enqueue(user.Id))
+        // With the session version as it is now: a new password before the request is served revokes every link, so it sends nothing then.
+        switch (resetQueue.Enqueue(user.Id, user.SessionVersion))
         {
             case ResetRequestQueueing.Queued:
                 logger.LogInformation("User {UserId} requested a password reset; the e-mail goes out after the answer", user.Id);
