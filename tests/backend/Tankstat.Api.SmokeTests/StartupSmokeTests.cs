@@ -245,6 +245,30 @@ public class StartupSmokeTests
         Assert.Contains("TrustedProxies", log);
     }
 
+    // ---- Backups (the command next to the server) -----------------------------------------------------------
+
+    [Fact]
+    public async Task TheBackupCommand_WritesAFileOfTheInstance_WhichTheDecryptCommandOpens()
+    {
+        var work = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"tankstat-smoke-{Guid.NewGuid():N}")).FullName;
+        var settings = Env(("Auth__Mode", "None"));
+        await using var app = await AppProcess.StartAsync(settings, workDirectory: work); // migrates the database and takes a vehicle
+        await app.Gql("mutation { addVehicle(input: { name: \"Smoke car\", fuelType: PETROL }) { id } }");
+        await app.StopAsync();
+
+        var (code, log) = await AppProcess.RunCommandAsync(settings, work, "smoke passphrase\n", "backup", "--passphrase-stdin");
+
+        Assert.True(code == 0, log);
+        var file = Assert.Single(Directory.GetFiles(Path.Combine(work, "backups"), "tankstat-backup-*.zip")); // Backups:Path defaults to the working directory, like the database
+        Assert.Contains("encrypted for age1", log);
+        Assert.DoesNotContain("smoke passphrase", log);
+        var (opened, openLog) = await AppProcess.RunCommandAsync(settings, work, "smoke passphrase\n", "decrypt", file, "--output", Path.Combine(work, "restored"), "--passphrase-stdin");
+        Assert.True(opened == 0, openLog);
+        Assert.Contains("Smoke car", await File.ReadAllTextAsync(Path.Combine(work, "restored", "tables", "Vehicles.jsonl")));
+        Assert.NotEmpty(Directory.GetFiles(Path.Combine(work, "restored", "keys"), "*.xml")); // the keys of the instance, in an encrypted backup
+        Assert.DoesNotContain("backup", app.Log, StringComparison.OrdinalIgnoreCase); // the server said nothing about backups at start
+    }
+
     // ---- Photo reading (optional: it never stops the app) ---------------------------------------------------
 
     private const string Recognition = "{ recognitionStatus { available } }";

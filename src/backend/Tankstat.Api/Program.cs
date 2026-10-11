@@ -1,6 +1,7 @@
 using HotChocolate.Execution;
 using Tankstat.Api;
 using Tankstat.Api.Auth;
+using Tankstat.Api.Backups;
 using Tankstat.Api.Media;
 using Tankstat.Api.GraphQL;
 using Tankstat.Api.Settings;
@@ -122,6 +123,13 @@ do
         var output = args is [_, _, "--output", var path, ..] ? path : "schema.graphql";
         var executor = await app.Services.GetRequiredService<IRequestExecutorProvider>().GetExecutorAsync();
         await File.WriteAllTextAsync(output, executor.Schema.ToString() + Environment.NewLine);
+        return;
+    }
+
+    // `dotnet Tankstat.Api.dll backup ...` and `decrypt ...` write and open backups the same way (see BackupCommands and docs/backup-and-restore.md).
+    if (BackupCommands.Handles(args))
+    {
+        Environment.ExitCode = await BackupCommands.RunAsync(args, app.Services, Console.In, Console.Out, Console.Error);
         return;
     }
 

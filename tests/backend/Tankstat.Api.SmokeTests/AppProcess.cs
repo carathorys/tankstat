@@ -56,8 +56,9 @@ internal sealed class AppProcess : IAsyncDisposable
         return port;
     }
 
+    /// <param name="command">A command instead of the server (<c>backup</c>, say): the process runs it and exits.</param>
     private static (Process Process, StringBuilder Log, string WorkDirectory, int Port) Launch(
-        IReadOnlyDictionary<string, string?> settings, string? workDirectory, bool useTempDatabase)
+        IReadOnlyDictionary<string, string?> settings, string? workDirectory, bool useTempDatabase, string[]? command = null)
     {
         var dll = ApiDll();
         var work = workDirectory ?? Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"tankstat-smoke-{Guid.NewGuid():N}")).FullName;
@@ -68,14 +69,22 @@ internal sealed class AppProcess : IAsyncDisposable
             WorkingDirectory = work,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = true,
             UseShellExecute = false,
         };
         info.ArgumentList.Add(dll);
-        info.ArgumentList.Add("--urls");
-        info.ArgumentList.Add($"http://127.0.0.1:{port}");
+        if (command is null)
+        {
+            info.ArgumentList.Add("--urls");
+            info.ArgumentList.Add($"http://127.0.0.1:{port}");
+        }
+        else
+        {
+            foreach (var arg in command) info.ArgumentList.Add(arg);
+        }
 
         // A clean slate: nothing from the developer's own environment may leak into the run.
-        foreach (var key in info.Environment.Keys.Where(k => k.StartsWith("Auth__") || k.StartsWith("Database__") || k.StartsWith("Smtp__") || k.StartsWith("Recognition__") || k.StartsWith("Storage__") || k.StartsWith("Settings__") || k.StartsWith("ASPNETCORE_")).ToList())
+        foreach (var key in info.Environment.Keys.Where(k => k.StartsWith("Auth__") || k.StartsWith("Database__") || k.StartsWith("Smtp__") || k.StartsWith("Recognition__") || k.StartsWith("Storage__") || k.StartsWith("Settings__") || k.StartsWith("Backups__") || k.StartsWith("ASPNETCORE_")).ToList())
             info.Environment.Remove(key);
         info.Environment["ASPNETCORE_CONTENTROOT"] = Path.GetDirectoryName(dll); // finds appsettings.json although the working directory is elsewhere
         info.Environment["DOTNET_NOLOGO"] = "1";
@@ -149,6 +158,26 @@ internal sealed class AppProcess : IAsyncDisposable
         finally
         {
             Cleanup(work);
+        }
+    }
+
+    /// <summary>Runs a command of the executable (<c>backup</c>, <c>decrypt</c>) in a work directory, with <paramref name="stdin"/> on its standard input, until it exits.</summary>
+    public static async Task<(int ExitCode, string Log)> RunCommandAsync(IReadOnlyDictionary<string, string?> settings, string workDirectory, string stdin, params string[] command)
+    {
+        var (process, log, _, _) = Launch(settings, workDirectory, useTempDatabase: true, command);
+        try
+        {
+            await process.StandardInput.WriteAsync(stdin);
+            process.StandardInput.Close();
+            using var cts = new CancellationTokenSource(StartupTimeout);
+            await process.WaitForExitAsync(cts.Token);
+            process.WaitForExit(); // flush the output readers
+            lock (log) return (process.ExitCode, log.ToString());
+        }
+        catch (OperationCanceledException)
+        {
+            process.Kill(entireProcessTree: true);
+            lock (log) throw new TimeoutException($"The command did not finish.\n{log}");
         }
     }
 
