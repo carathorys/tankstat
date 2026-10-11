@@ -13,7 +13,7 @@ import { policyFor, snapshotKey } from './snapshotPolicy.ts'
 const SIGN_IN_MUTATIONS = new Set(['Login', 'Logout', 'ResetPassword'])
 
 interface SessionAnswer {
-  session?: { mode?: string; user?: { id?: string } | null }
+  session?: { mode?: string; user?: { id?: string } | null; instance?: { generation?: string } | null }
 }
 
 const documentIds = new WeakMap<DocumentNode, string>()
@@ -39,6 +39,12 @@ export function userOf(data: unknown): string | null {
   if (!session) return null
   if (session.user?.id) return session.user.id
   return session.mode === 'NONE' ? ANONYMOUS_USER : null
+}
+
+/** Which history the server's data belongs to, as a `Session` answer says it (none from an older server or an older kept answer). */
+export function generationOf(data: unknown): string | undefined {
+  const generation = (data as SessionAnswer | null)?.session?.instance?.generation
+  return typeof generation === 'string' && generation ? generation : undefined
 }
 
 /** The last answer the device kept of a query, for the device's own answers to build on (a vehicle's page, the home list). */
@@ -120,7 +126,8 @@ export function createOfflineLink(device = deviceData): ApolloLink {
             }
             if (name === 'Session') {
               const data = result.data
-              void device.signedIn(userOf(data)).then(() => device.keep(key, data, undefined, doc)).catch(() => undefined)
+              // Whose data, then which history (a change drops every kept answer, so this answer is kept after that).
+              void device.signedIn(userOf(data)).then(() => device.generationSeen(generationOf(data))).then(() => device.keep(key, data, undefined, doc)).catch(() => undefined)
             } else if (policy === 'keep') {
               void device.keep(key, result.data, undefined, doc).catch(() => undefined)
             }

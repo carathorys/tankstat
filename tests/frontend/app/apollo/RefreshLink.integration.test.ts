@@ -4,7 +4,7 @@ import { of } from 'rxjs'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import { createApolloClient, refreshLink } from '../../../../src/frontend/apolloClient.ts'
 import { HealthDocument, SessionDocument } from '../../../../src/frontend/gql/generated.ts'
-import { gqlError } from '../../support/mocks.tsx'
+import { fakeInstance, gqlError } from '../../support/mocks.tsx'
 import { server } from '../../support/server.ts'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
@@ -76,7 +76,7 @@ it.each(['STANDALONE', 'OIDC'])('the app opened again after its access cookie ra
   let refreshes = 0
   const user = { __typename: 'UserInfo', id: 'u1', email: 'a@x.co', displayName: 'A', isAdmin: false, avatarUrl: null }
   server.use(
-    graphql.query('Session', () => HttpResponse.json({ data: { session: { __typename: 'Session', mode, user: signedIn ? user : null }, notices: [] } })),
+    graphql.query('Session', () => HttpResponse.json({ data: { session: { __typename: 'Session', mode, user: signedIn ? user : null , instance: fakeInstance() }, notices: [] } })),
     http.post('/auth/token/refresh', () => {
       refreshes++
       signedIn = true
@@ -94,7 +94,7 @@ it.each(['STANDALONE', 'OIDC'])('the app opened again after its access cookie ra
 it.each(['NONE', 'PROXY_HEADER'])('without a refresh cookie (%s) nobody signed in is the answer at once', async (mode) => {
   let refreshes = 0
   server.use(
-    graphql.query('Session', () => HttpResponse.json({ data: { session: { __typename: 'Session', mode, user: null }, notices: [] } })),
+    graphql.query('Session', () => HttpResponse.json({ data: { session: { __typename: 'Session', mode, user: null , instance: fakeInstance() }, notices: [] } })),
     http.post('/auth/token/refresh', () => {
       refreshes++
       return new HttpResponse(null, { status: 204 })
@@ -111,7 +111,7 @@ it.each(['NONE', 'PROXY_HEADER'])('without a refresh cookie (%s) nobody signed i
 it('a session nobody can refresh stays signed out after one try', async () => {
   let refreshes = 0
   server.use(
-    graphql.query('Session', () => HttpResponse.json({ data: { session: { __typename: 'Session', mode: 'STANDALONE', user: null }, notices: [] } })),
+    graphql.query('Session', () => HttpResponse.json({ data: { session: { __typename: 'Session', mode: 'STANDALONE', user: null , instance: fakeInstance() }, notices: [] } })),
     http.post('/auth/token/refresh', () => {
       refreshes++
       return new HttpResponse(null, { status: 401 })

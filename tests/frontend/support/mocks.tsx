@@ -51,8 +51,11 @@ export const authWarning: Notice = {
   message: 'Authentication is disabled: anyone can see and change all data.',
 }
 
-export const sessionHandler = (mode: AuthMode, current: () => SessionUser | null, notices: Notice[] = []) =>
-  graphql.query('Session', () => HttpResponse.json({ data: { session: { mode, user: current() }, notices } }))
+/** Which history the server's data belongs to (`Session.instance`); a device starts afresh when it changes (a restore). */
+export const fakeInstance = (generation = 'gen-1', restorePoint: string | null = null) => ({ __typename: 'InstanceInfo', generation, restorePoint })
+
+export const sessionHandler = (mode: AuthMode, current: () => SessionUser | null, notices: Notice[] = [], instance = fakeInstance()) =>
+  graphql.query('Session', () => HttpResponse.json({ data: { session: { mode, user: current(), instance }, notices } }))
 
 /** A signed-in administrator: the full vehicle list and the administration are for administrators only. */
 export const adminSession = (notices: Notice[] = []) => sessionHandler('STANDALONE', () => user({ isAdmin: true }), notices)

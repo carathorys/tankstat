@@ -7,8 +7,11 @@ export const ANONYMOUS_USER = 'anonymous'
 export const MAX_SNAPSHOTS = 300
 const PRUNE_EVERY = 25
 
+/** Which history the server's data belonged to when this device downloaded it (`Session.instance.generation`); kept with the answers. */
+export const GENERATION_KEY = 'meta:generation'
+
 /** Asked once per page load and needed to open the app offline: never pruned, however old. */
-const spared = (key: string) => key.startsWith('Session:') || key.startsWith('UiSettings:')
+const spared = (key: string) => key.startsWith('Session:') || key.startsWith('UiSettings:') || key === GENERATION_KEY
 
 /** The tabs of this site tell each other who the server said is signed in (the cookies, and so the account, are shared). */
 export const TABS_CHANNEL = 'tankstat-offline'
@@ -31,6 +34,9 @@ const listeners = new Set<() => void>()
  * `keptPictures.ts`).
  */
 const storeListeners = new Set<() => void>()
+/** Told when the server's history changed: before the device drops what it holds (to set it aside), and after (to download afresh). */
+type GenerationListener = (phase: 'before' | 'after', change: { from: string; to: string }) => Promise<void> | void
+const generationListeners = new Set<GenerationListener>()
 
 async function openFor(user: string | null) {
   if (store?.user === user) return
@@ -159,15 +165,50 @@ export const deviceData = {
   },
 
   /**
-   * Removes everything this device keeps for the signed-in user (the next download brings their window again), and tells what read from it
-   * (the pictures on screen are its own until then).
+   * Removes everything this device keeps for the signed-in user (the next download brings their window again), the rows set aside when
+   * the server's history changed too, and tells what read from it (the pictures on screen are its own until then).
    */
   async removeAll(): Promise<void> {
     await switching
     await writes
     if (!store || !confirmed) return
     await store.clear()
+    await store.rows.clearFound()
     storeListeners.forEach((listener) => listener())
+  },
+
+  /**
+   * The server said which history its data belongs to (every `Session` answer): the first one seen is adopted as it is; another one than
+   * the one kept means a restore replaced the data, so what this device downloaded refers to ids and versions of another history. Then the
+   * listeners set it aside, everything downloaded and every kept answer goes (never the changes waiting, their photos, nor the rows set
+   * aside), the new generation is kept, and the listeners download afresh. Two tabs may see the same answer: the second finds the new
+   * generation kept and does nothing.
+   */
+  async generationSeen(generation: string | undefined): Promise<'same' | 'adopted' | 'changed'> {
+    if (!generation) return 'same'
+    await switching
+    if (!store || !confirmed) return 'same'
+    const kept = (await store.get(GENERATION_KEY).catch(() => undefined))?.data
+    if (kept === generation) return 'same'
+    if (typeof kept !== 'string') {
+      await store.put({ key: GENERATION_KEY, data: generation, at: Date.now() })
+      return 'adopted'
+    }
+    const change = { from: kept, to: generation }
+    for (const listener of generationListeners) await listener('before', change)
+    await writes
+    await store.clear()
+    await store.put({ key: GENERATION_KEY, data: generation, at: Date.now() })
+    storeListeners.forEach((listener) => listener())
+    for (const listener of generationListeners) await listener('after', change)
+    return 'changed'
+  },
+
+  onGenerationChange(listener: GenerationListener): () => void {
+    generationListeners.add(listener)
+    return () => {
+      generationListeners.delete(listener)
+    }
   },
 
   /** Tests: waits until the answers on their way to the device are kept. */
@@ -189,6 +230,7 @@ export const deviceData = {
     writes = Promise.resolve()
     puts = 0
     listeners.clear()
+    generationListeners.clear()
     storeListeners.forEach((listener) => listener())
   },
 }

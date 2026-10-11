@@ -308,6 +308,8 @@ export function createPullEngine({
       await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, worker))
       const finished = Date.now()
       await device.keep(LAST_PULL_KEY, finished)
+      // Rows set aside when the server's history changed: the ones it has again leave the list (`foundRows.ts`).
+      await (await import('./foundRows.ts')).foundRows.reconcile(rows, async (operationName, variables) => (await device.read(snapshotKey(operationName, variables)))?.data as Record<string, unknown> | undefined)
       await keepPictures(rows)
       set({ status: 'idle', lastPullAt: finished })
     } catch (error) {

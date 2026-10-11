@@ -11,7 +11,7 @@ import { OfflineError } from '../../../../src/frontend/offline/errors.ts'
 import { createOfflineLink } from '../../../../src/frontend/offline/offlineLink.ts'
 import { outbox } from '../../../../src/frontend/offline/outbox.ts'
 import { trackedFetch } from '../../../../src/frontend/offline/trackedFetch.ts'
-import { silenceConsoleError } from '../../support/mocks.tsx'
+import { fakeInstance, silenceConsoleError } from '../../support/mocks.tsx'
 import { server } from '../../support/server.ts'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
@@ -61,7 +61,7 @@ it('the REST requests report their outcome too', async () => {
 })
 
 const defaults = { vehicleDefaults: { __typename: 'VehicleDefaults', distanceUnit: 'KILOMETRES', volumeUnit: 'LITRES', currency: 'EUR', recurringWarnDays: 14, recurringWarnDistance: 500 } }
-const session = { session: { __typename: 'Session', mode: 'NONE', user: null }, notices: [] }
+const session = { session: { __typename: 'Session', mode: 'NONE', user: null, instance: fakeInstance() }, notices: [] }
 
 async function signedIn(client: ReturnType<typeof createApolloClient>) {
   server.use(graphql.query('Session', () => HttpResponse.json({ data: session })))

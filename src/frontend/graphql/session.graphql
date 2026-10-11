@@ -8,6 +8,10 @@ query Session {
       isAdmin
       avatarUrl
     }
+    instance {
+      generation
+      restorePoint
+    }
   }
   notices {
     code
