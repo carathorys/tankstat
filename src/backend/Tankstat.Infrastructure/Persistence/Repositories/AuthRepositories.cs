@@ -95,6 +95,19 @@ internal sealed class PasswordResetTokenRepository(IDbContextFactory<AppDbContex
         await db.PasswordResetTokens.Where(t => t.UserId == userId).ExecuteDeleteAsync(ct);
     }
 
+    public async Task<IReadOnlyList<Guid>> IdsForUserAsync(Guid userId, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.PasswordResetTokens.Where(t => t.UserId == userId).Select(t => t.Id).ToListAsync(ct);
+    }
+
+    public async Task RemoveAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct)
+    {
+        if (ids.Count == 0) return;
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        await db.PasswordResetTokens.Where(t => ids.Contains(t.Id)).ExecuteDeleteAsync(ct);
+    }
+
     public async Task<DateTimeOffset?> LatestIssuedAtAsync(Guid userId, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);

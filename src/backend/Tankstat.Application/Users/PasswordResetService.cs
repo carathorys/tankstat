@@ -8,11 +8,25 @@ using Tankstat.Domain.Users;
 
 namespace Tankstat.Application.Users;
 
-/// <summary>
-/// What was issued: the one-time token (shown once to the administrator) and how it reached the user, or that the e-mail could not be sent
-/// (<see cref="EmailFailed"/>: the link is kept for the administrator to hand over).
-/// </summary>
-public sealed record IssuedReset(string Token, string? Url, bool EmailSent, bool EmailFailed);
+/// <summary>What became of the e-mail with an issued link.</summary>
+public enum EmailOutcome
+{
+    /// <summary>None was tried: no SMTP or public address, no e-mail address, or none was asked for.</summary>
+    NotTried,
+
+    /// <summary>The mail server took it.</summary>
+    Sent,
+
+    /// <summary>It could not be sent (<see cref="EmailSendException"/>); the link is kept for the administrator to hand over.</summary>
+    Failed,
+}
+
+/// <summary>What was issued: the one-time token (shown once to the administrator) and what became of the e-mail that carries it.</summary>
+public sealed record IssuedReset(string Token, string? Url, EmailOutcome Email)
+{
+    public bool EmailSent => Email == EmailOutcome.Sent;
+    public bool EmailFailed => Email == EmailOutcome.Failed;
+}
 
 public sealed class PasswordResetService(
     IPasswordResetTokenRepository tokens, IUserRepository users, IEmailSender email,
@@ -21,10 +35,10 @@ public sealed class PasswordResetService(
     /// <summary>How long a link is kept after it expired, so following it still says why it was refused.</summary>
     private static readonly TimeSpan KeepExpired = TimeSpan.FromDays(1);
 
-    // Issuing for one user is one step within this process: the look at the latest link (the cool-down) and the replacement of the
-    // earlier ones happen under that user's lock, so a burst of requests cannot all pass the cool-down and two issues at once leave one
-    // link. The e-mail goes out after it, so a slow mail server holds nobody else up. Other processes on the same database are not held
-    // back by it. Striped (by user id) so the locks do not pile up.
+    // Issuing for one user is one step within this process: the look at the latest link (the cool-down), the storing of the new one and
+    // the note of which links were there before it happen under that user's lock, so a burst of requests cannot all pass the cool-down
+    // and each issue knows exactly the links it replaces. The e-mail goes out after it, so a slow mail server holds nobody else up. Other
+    // processes on the same database are not held back by it. Striped (by user id) so the locks do not pile up.
     private static readonly StripedLocks Locks = new();
 
     /// <summary>Whether an issued link can reach the user by e-mail (SMTP and the public address are set up).</summary>
@@ -32,14 +46,17 @@ public sealed class PasswordResetService(
 
     /// <summary>
     /// An administrator's issue: a new link that replaces the user's earlier ones (one live link per user), e-mailed when it can be. When the
-    /// e-mail cannot be sent the link is kept and answered with <see cref="IssuedReset.EmailFailed"/>, so the administrator hands it over.
+    /// e-mail cannot be sent the link is kept and answered with <see cref="EmailOutcome.Failed"/>, so the administrator hands it over; any
+    /// other failure takes the new link back, leaves the earlier ones and escapes.
     /// </summary>
     public async Task<IssuedReset> IssueAsync(User user, bool sendEmail, CancellationToken ct) =>
         (await IssueAsync(user, sendEmail, TimeSpan.Zero, keepUnsent: true, ct))!;
 
     /// <summary>
     /// A user's own request: like <see cref="IssueAsync(User, bool, CancellationToken)"/>, but issues and sends nothing (null) while the
-    /// user's latest link was issued less than <c>Auth:Standalone:ResetCooldownMinutes</c> ago and has not expired yet.
+    /// user's latest link was issued less than <c>Auth:Standalone:ResetCooldownMinutes</c> ago and has not expired yet; and a link whose
+    /// e-mail could not be sent is taken back, the earlier ones stay and the <see cref="EmailSendException"/> escapes (never
+    /// <see cref="EmailOutcome.Failed"/>).
     /// </summary>
     public Task<IssuedReset?> IssueUnlessCoolingDownAsync(User user, CancellationToken ct)
     {
@@ -52,20 +69,24 @@ public sealed class PasswordResetService(
     private async Task<IssuedReset?> IssueAsync(User user, bool sendEmail, TimeSpan cooldown, bool keepUnsent, CancellationToken ct)
     {
         var options = auth.Value;
-        var now = clock.GetUtcNow();
         var lifetime = TimeSpan.FromMinutes(options.Standalone.ResetTokenMinutes);
         var secret = Base64Url(RandomNumberGenerator.GetBytes(32));
-        var record = PasswordResetToken.Issue(user.Id, Hash(secret), now, lifetime);
 
+        PasswordResetToken record;
+        IReadOnlyList<Guid> earlier;
         var gate = Locks.For(user.Id);
         await gate.WaitAsync(ct);
         try
         {
+            var now = clock.GetUtcNow();
             if (cooldown > TimeSpan.Zero && await tokens.LatestIssuedAtAsync(user.Id, ct) is { } latest && latest > now - cooldown) return null;
             // Lazily, like the other clean-ups: no background job.
             await tokens.DeleteStaleAsync(now - lifetime - KeepExpired, ct);
-            // Once the earlier links go, the new one is stored whatever becomes of the request.
-            await tokens.RemoveForUserAsync(user.Id, CancellationToken.None);
+            // The links there before this one, which it replaces once it reached the user (or was kept for the administrator); a link
+            // issued after it is not among them, so two issues at once never remove each other's.
+            earlier = await tokens.IdsForUserAsync(user.Id, ct);
+            record = PasswordResetToken.Issue(user.Id, Hash(secret), now, lifetime);
+            // Stored whatever becomes of the request from here on.
             await tokens.AddAsync(record, CancellationToken.None);
         }
         finally
@@ -76,32 +97,33 @@ public sealed class PasswordResetService(
         var token = $"{record.Id:N}.{secret}";
         var url = string.IsNullOrWhiteSpace(options.PublicUrl) ? null : $"{options.PublicUrl.TrimEnd('/')}/?resetToken={token}";
 
-        var sent = false;
-        var failed = false;
+        var outcome = EmailOutcome.NotTried;
         if (sendEmail && CanEmail && user.Email.Length > 0)
         {
             try
             {
                 await email.SendAsync(user.Email, "Set your Tankstat password",
                     $"Hello {user.DisplayName},\n\nUse this link to set your password (valid for {options.Standalone.ResetTokenMinutes} minutes, one use):\n{url}\n\nIf you did not expect this, ignore this message.", ct);
-                sent = true;
+                outcome = EmailOutcome.Sent;
             }
             catch (EmailSendException e) when (keepUnsent)
             {
                 // The administrator gets the link to hand over instead of an error; why the mail server refused is in the log (the message
                 // names the server and the status, never the address). Any other exception is the server's own and escapes below.
                 logger.LogWarning(e, "The link for user {UserId} was issued, but the e-mail could not be sent", user.Id);
-                failed = true;
+                outcome = EmailOutcome.Failed;
             }
             catch
             {
-                // Nobody received it, so it is taken back: as the latest link it would make the cool-down hold back the next request.
-                await tokens.RemoveForUserAsync(user.Id, CancellationToken.None);
+                // Nobody received it, so it is taken back (as the latest link it would make the cool-down hold back the next request), and
+                // only it: the earlier links stay, a link handed over by an administrator among them, and so does one issued meanwhile.
+                await tokens.RemoveAsync([record.Id], CancellationToken.None);
                 throw;
             }
         }
 
-        return new IssuedReset(token, url, sent, failed);
+        await tokens.RemoveAsync(earlier, CancellationToken.None);
+        return new IssuedReset(token, url, outcome);
     }
 
     /// <summary>Validates the token and returns it with its user; throws the same vague error for every failure.</summary>

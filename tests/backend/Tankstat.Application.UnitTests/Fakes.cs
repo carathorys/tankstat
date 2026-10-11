@@ -639,6 +639,13 @@ internal sealed class InMemoryTokens : IPasswordResetTokenRepository
     public Task AddAsync(PasswordResetToken t, CancellationToken ct) { Items.Add(t); return Task.CompletedTask; }
     public Task UpdateAsync(PasswordResetToken t, CancellationToken ct) => Task.CompletedTask;
     public Task RemoveForUserAsync(Guid userId, CancellationToken ct) { Items.RemoveAll(t => t.UserId == userId); return Task.CompletedTask; }
+    public Task<IReadOnlyList<Guid>> IdsForUserAsync(Guid userId, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<Guid>>(Items.Where(t => t.UserId == userId).Select(t => t.Id).ToList());
+    public Task RemoveAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct)
+    {
+        if (ids.Count > 0) Items.RemoveAll(t => ids.Contains(t.Id));
+        return Task.CompletedTask;
+    }
 
     /// <summary>How long a look at the latest link takes, so that requests at the same moment overlap as they do against a database.</summary>
     public TimeSpan Latency { get; set; }
@@ -693,15 +700,30 @@ internal sealed class FakeEmail(bool configured = false) : IEmailSender
     /// <summary>How many of the next mails fail, as when the mail server cannot be reached.</summary>
     public int FailNext { get; set; }
 
-    public Task SendAsync(string to, string subject, string body, CancellationToken ct)
+    /// <summary>Thrown by the next mail instead of sending it, as when something else than the mail server fails.</summary>
+    public Exception? ThrowNext { get; set; }
+
+    /// <summary>The next mail waits for this, as on a mail server that does not answer: completed, it is sent; faulted, it fails.</summary>
+    public TaskCompletionSource? HoldNext { get; set; }
+
+    public async Task SendAsync(string to, string subject, string body, CancellationToken ct)
     {
-        if (FailNext > 0)
+        if (HoldNext is { } hold)
+        {
+            HoldNext = null;
+            await hold.Task;
+        }
+        else if (ThrowNext is { } error)
+        {
+            ThrowNext = null;
+            throw error;
+        }
+        else if (FailNext > 0)
         {
             FailNext--;
             throw new EmailSendException("Sending an e-mail through smtp.test:25 failed (the server cannot be reached)");
         }
         Sent.Add((to, subject, body));
-        return Task.CompletedTask;
     }
 }
 
