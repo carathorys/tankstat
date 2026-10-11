@@ -696,11 +696,19 @@ internal sealed class FakeResetQueue(PasswordResetService resets) : IPasswordRes
 
     public List<Guid> Waiting { get; } = [];
 
+    /// <summary>Full, as when too many requests wait: a user not waiting yet is not queued.</summary>
+    public bool Full { get; set; }
+
     public ResetRequestQueueing Enqueue(Guid userId, int sessionVersion)
     {
-        _sessionVersions[userId] = sessionVersion;
-        if (Waiting.Contains(userId)) return ResetRequestQueueing.AlreadyWaiting;
+        if (Waiting.Contains(userId))
+        {
+            _sessionVersions[userId] = sessionVersion;
+            return ResetRequestQueueing.AlreadyWaiting;
+        }
+        if (Full) return ResetRequestQueueing.QueueFull;
         Waiting.Add(userId);
+        _sessionVersions[userId] = sessionVersion;
         return ResetRequestQueueing.Queued;
     }
 
@@ -754,7 +762,7 @@ internal sealed class FakeEmail(bool configured = false) : IEmailSender
             FailNext--;
             throw new EmailSendException("Sending an e-mail through smtp.test:25 failed (the server cannot be reached)");
         }
-        Sent.Add((to, subject, body));
+        lock (Sent) Sent.Add((to, subject, body)); // two issues at once may send at the same moment
     }
 }
 

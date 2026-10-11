@@ -36,10 +36,11 @@ public sealed class PasswordResetService(
     private static readonly TimeSpan KeepExpired = TimeSpan.FromDays(1);
 
     // Issuing for one user is one step within this process: the look at the latest link (the cool-down), the storing of the new one and
-    // the note of which links were there before it happen under that user's lock, so the mailer serving a user's own request and an
-    // administrator's issue at the same moment cannot both pass the cool-down, and each issue knows exactly the links it replaces (a burst
-    // of the user's own requests never gets this far: the queue holds a user once). The e-mail goes out after it, so a slow mail server
-    // holds nobody else up. Other processes on the same database are not held back by it. Striped (by user id) so the locks do not pile up.
+    // the note of which links were there before it happen under that user's lock, so the mailer serving a user's own request never stores
+    // its link after an administrator's that its look at the cool-down did not see (an administrator's issue has no cool-down), and each
+    // issue knows exactly the links it replaces (a burst of the user's own requests never gets this far: the queue holds a user once). The
+    // e-mail goes out after it, so a slow mail server holds nobody else up. Other processes on the same database are not held back by it.
+    // Striped (by user id) so the locks do not pile up.
     private static readonly StripedLocks Locks = new();
 
     /// <summary>Whether an issued link can reach the user by e-mail (SMTP and the public address are set up).</summary>

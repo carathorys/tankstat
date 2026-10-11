@@ -294,6 +294,24 @@ public class UserAdministrationTests
     }
 
     [Fact]
+    public async Task AnAdministratorsIssue_WhileTheUsersOwnRequestIsBeingServed_WaitsForIt_AndItsLinkIsTheOneLeft()
+    {
+        var (w, _) = SignedInAdmin(smtp: true);
+        var user = w.AddUser("new@x.co");
+        w.Tokens.Latency = TimeSpan.FromMilliseconds(10); // the look at her latest link takes a while, as against a database
+
+        await w.Auth.RequestPasswordResetAsync("new@x.co", default);
+        var sending = w.ResetQueue.DrainAsync(); // the mailer looks at her latest link (none yet), under her lock
+        var issued = await w.UserService.IssueResetAsync(user.Id, default); // meanwhile the administrator issues one
+        await sending;
+
+        // Her lock made the administrator's issue wait until the mailer's link was stored, and then replace it. Without it, the mailer
+        // would pass the cool-down before the administrator's link existed, store its own after it, and replace the link just issued.
+        var left = Assert.Single(w.Tokens.Items, t => t.UserId == user.Id);
+        Assert.StartsWith($"{left.Id:N}.", issued.Token);
+    }
+
+    [Fact]
     public async Task IssueReset_WhenSomethingElseThanTheMailServerFails_TakesBackOnlyTheNewLink_AndFails()
     {
         var (w, _) = SignedInAdmin(smtp: true);

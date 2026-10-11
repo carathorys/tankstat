@@ -294,6 +294,7 @@ public class PasswordTests
 
         await RequestAsync(w, "alice@x.co", default);
 
+        Assert.IsType<EmailSendException>(Assert.Single(w.Log.From<PasswordResetService>(), e => e.Level == LogLevel.Warning).Exception); // it was tried
         Assert.Empty(w.Tokens.Items);
     }
 
@@ -302,7 +303,6 @@ public class PasswordTests
     {
         var w = new World(smtp: true, configure: o => o.Standalone.ResetCooldownMinutes = 0); // not the cool-down: one request waits for them all
         w.AddUser("alice@x.co");
-        w.Tokens.Latency = TimeSpan.FromMilliseconds(10);
 
         await Task.WhenAll(Enumerable.Range(0, 10).Select(_ => w.Auth.RequestPasswordResetAsync("alice@x.co", default)));
         await w.ResetQueue.DrainAsync();
@@ -395,6 +395,22 @@ public class PasswordTests
 
         Assert.Equal(2, w.Email.Sent.Count);
         await w.Auth.ResetPasswordAsync(LinkIn(w.Email.Sent[1]), "another-password-1", default);
+    }
+
+    [Fact]
+    public async Task RequestReset_WhenTooManyAreWaiting_IsAnsweredAsAlways_WithAWarning_AndSendsNothing()
+    {
+        var w = new World(smtp: true);
+        var alice = w.AddUser("alice@x.co");
+        w.ResetQueue.Full = true;
+
+        await RequestAsync(w, "alice@x.co", default); // no exception: the answer is the same as for any address
+
+        var warning = Assert.Single(w.Log.From<AuthService>(), e => e.Level == LogLevel.Warning);
+        Assert.Equal(alice.Id, warning.Values["UserId"]);
+        Assert.False(w.Log.Mentions("alice@x.co"));
+        Assert.Empty(w.Email.Sent);
+        Assert.Empty(w.Tokens.Items);
     }
 
     [Fact]
