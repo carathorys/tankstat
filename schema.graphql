@@ -112,6 +112,8 @@ type Mutation {
   deleteUser(input: DeleteUserInput!): Boolean! @cost(weight: "10")
   setDefaultAccess(level: AccessLevel!): AccessSettingsInfo! @cost(weight: "10")
   setAccessGrant(input: SetAccessGrantInput!): Boolean! @cost(weight: "10")
+  restoreBackup(input: RestoreBackupInput!): RestorePendingInfo!
+    @cost(weight: "10")
   revokeSession(id: UUID!): Boolean! @cost(weight: "10")
   revokeOtherSessions: Int! @cost(weight: "10")
   logRefueling(input: LogRefuelingInput!): Refueling! @cost(weight: "10")
@@ -476,6 +478,11 @@ type Refueling {
 type RemovedEntity {
   type: OfflineEntityType!
   id: UUID!
+}
+
+type RestorePendingInfo {
+  file: String!
+  restorePoint: DateTime!
 }
 
 type Session {
@@ -871,6 +878,13 @@ input ResolveSyncChangeInput {
   action: SyncResolveAction!
   change: ChangeInput
   restoreFirst: Boolean! = false
+}
+
+input RestoreBackupInput {
+  file: String!
+  passphrase: String
+  identity: String
+  code: String
 }
 
 input SaveChartInput {

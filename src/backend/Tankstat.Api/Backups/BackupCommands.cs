@@ -14,7 +14,7 @@ namespace Tankstat.Api.Backups;
 /// </summary>
 internal static class BackupCommands
 {
-    public static bool Handles(string[] args) => args is ["backup", ..] or ["decrypt", ..];
+    public static bool Handles(string[] args) => args is ["backup", ..] or ["decrypt", ..] or ["restore", ..];
 
     public static async Task<int> RunAsync(string[] args, IServiceProvider services, TextReader input, TextWriter output, TextWriter error)
     {
@@ -25,6 +25,7 @@ internal static class BackupCommands
                 ["backup", "keygen", .. var rest] => Keygen(rest, input, output),
                 ["backup", .. var rest] => await BackupAsync(rest, services, input, output),
                 ["decrypt", .. var rest] => Decrypt(rest, input, output),
+                ["restore", .. var rest] => await RestoreAsync(rest, services, input, output),
                 _ => throw new UsageException(),
             };
         }
@@ -47,6 +48,10 @@ internal static class BackupCommands
                                                                  write a backup (encrypted for Backups:Encryption:Recipient, or for the passphrase read from the standard input)
           decrypt <file> --output <folder> (--identity <file> | --passphrase-stdin)
                                                                  unpack a backup into a folder
+          restore <file> [--yes] [--now] [--identity <file> | --passphrase-stdin]
+                                                                 replace ALL data with a backup of the backups folder (by file name) at the next start of the
+                                                                 server, or right away with --now while the server is NOT running; --yes skips the question
+                                                                 (asked on the standard input, before the passphrase line)
         """;
 
     private static int Keygen(string[] args, TextReader input, TextWriter output)
@@ -126,6 +131,59 @@ internal static class BackupCommands
         else if (passphrase) identity = BackupFile.IdentityOf(manifest, Passphrase(input));
         BackupFile.Extract(file, manifest, identity, folder);
         output.WriteLine($"Unpacked {file} into {System.IO.Path.GetFullPath(folder)}: {manifest.Contents.Tables.Count} tables, written by Tankstat {manifest.AppVersion} on {manifest.CreatedAt:u} ({manifest.Provider}, {manifest.Migration})");
+        return 0;
+    }
+
+    private static async Task<int> RestoreAsync(string[] args, IServiceProvider services, TextReader input, TextWriter output)
+    {
+        if (args.Length == 0 || args[0].StartsWith("--")) throw new UsageException();
+        var file = args[0];
+        string? identityFile = null;
+        var (passphrase, yes, now) = (false, false, false);
+        for (var i = 1; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--identity" when i + 1 < args.Length: identityFile = args[++i]; break;
+                case "--passphrase-stdin": passphrase = true; break;
+                case "--yes": yes = true; break;
+                case "--now": now = true; break;
+                default: throw new UsageException();
+            }
+        }
+        if (identityFile is not null && passphrase) throw new UsageException();
+        var store = services.GetRequiredService<IBackupStore>();
+        var manifest = store.ReadManifest(file); // a file of the backups folder, by name
+        if (!yes)
+        {
+            output.WriteLine($"This replaces ALL data of this instance (every table, the pictures{(manifest.Contents.Photos == BackupPhotos.Separate ? ", the photos" : "")}{(manifest.Contents.Keys ? ", the keys" : "")}) with the backup {file},");
+            output.WriteLine($"written by Tankstat {manifest.AppVersion} on {manifest.CreatedAt:u} ({manifest.Provider}, {manifest.Migration}). A backup of the current data is written first. Type yes to continue:");
+            if (input.ReadLine()?.Trim().ToLowerInvariant() != "yes")
+            {
+                output.WriteLine("Nothing was changed.");
+                return 1;
+            }
+        }
+        var identity = identityFile is not null
+            ? File.ReadLines(identityFile).FirstOrDefault(l => !l.StartsWith('#') && l.Trim().Length > 0) ?? throw new FormatException("The identity file holds no identity.")
+            : null;
+        var opened = store.IdentityFor(manifest, passphrase ? Passphrase(input) : null, identity); // refused here when it does not open
+        store.RequestRestore(new RestoreMarker(file, Guid.Empty, DateTimeOffset.UtcNow, opened));
+        if (!now)
+        {
+            output.WriteLine($"The restore of {file} is applied at the next start of the server (the app's own data is backed up first). Restart it now; a running server shows a notice until then.");
+            return 0;
+        }
+        // Right away, as the server would at its start: the migrations, then the restore. A refusal renames the marker, and the log says why.
+        var root = services.GetRequiredService<Microsoft.Extensions.Options.IOptions<BackupOptions>>().Value.Root;
+        var before = Directory.GetFiles(root, "restore.*").ToHashSet();
+        await StartupSteps.MigrateAndRestoreAsync(services, CancellationToken.None);
+        if (store.RestorePending || Directory.GetFiles(root, "restore.*").Any(f => !before.Contains(f)))
+        {
+            output.WriteLine("The restore was not applied; the log above says why.");
+            return 1;
+        }
+        output.WriteLine($"Restored {file}.");
         return 0;
     }
 

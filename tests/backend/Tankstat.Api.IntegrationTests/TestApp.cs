@@ -262,6 +262,10 @@ internal static class GraphQLClient
         return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 
+    /// <summary>The translation key of the first error (<c>extensions.key</c>), or null without errors.</summary>
+    public static string? ErrorKey(this JsonElement body) =>
+        body.TryGetProperty("errors", out var errors) && errors[0].GetProperty("extensions").TryGetProperty("key", out var key) ? key.GetString() : null;
+
     public static string? ErrorCode(this JsonElement body) =>
         body.TryGetProperty("errors", out var errors)
             ? errors[0].GetProperty("extensions").GetProperty("code").GetString()

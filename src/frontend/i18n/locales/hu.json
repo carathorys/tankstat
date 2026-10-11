@@ -679,6 +679,18 @@
       "cannotResolve": "Csak az dönthet róla, aki küldte, vagy aki módosíthatja a jármű bejegyzéseit.",
       "kindMismatch": "A szerkesztett módosításnak ugyanazt kell tennie, mint a nem érvényesítettnek.",
       "cannotRestoreFirst": "Csak egy tankolás, kiadás vagy jármű módosítása hozhatja vissza a kukából."
+    },
+    "backup": {
+      "notFound": "Nincs ilyen biztonsági mentés a mentések mappájában.",
+      "wrongKey": "A jelmondat (vagy a kulcs) nem nyitja ezt a mentést.",
+      "keyRequired": "A mentés titkosított: a jelmondata vagy a kulcsa kell hozzá.",
+      "corrupt": "A fájl sérült, vagy nem Tankstat-mentés.",
+      "passphraseEncrypted": "A fájl az age saját jelmondatos módjával van titkosítva, nem egy címzettnek; a Tankstat nem tudja megnyitni.",
+      "notEncrypted": "A mentés nincs titkosítva; nem nyitja jelmondat.",
+      "newerFormat": "A mentést egy újabb kiadás írta (Tankstat {{appVersion}}); előbb frissíts.",
+      "otherMigration": "A mentés az adatbázis másik verziójánál készült ({{backup}}), mint amin ez áll ({{database}}); azzal a kiadással állítsd vissza, amelyik írta.",
+      "codeRequired": "A kiszolgáló naplójából az egyszer használatos visszaállítási kód kell hozzá.",
+      "passphraseRequired": "Jelmondatot vár."
     }
   },
   "a11y": {

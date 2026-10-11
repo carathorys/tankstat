@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Tankstat.Application.Backups;
 using Tankstat.Application.SystemSettings;
 
 namespace Tankstat.Application.Auth;
@@ -13,7 +14,7 @@ public enum NoticeSeverity
 public sealed record Notice(string Code, NoticeSeverity Severity, string Message);
 
 /// <param name="settingsFile">The app's own settings file as this process started; null where the host did not decide about one (tests, tools).</param>
-public sealed class NoticeService(IOptions<AuthOptions> auth, SettingsFileStatus? settingsFile = null)
+public sealed class NoticeService(IOptions<AuthOptions> auth, IBackupStore backups, SettingsFileStatus? settingsFile = null)
 {
     public IReadOnlyList<Notice> GetNotices()
     {
@@ -27,6 +28,9 @@ public sealed class NoticeService(IOptions<AuthOptions> auth, SettingsFileStatus
             notices.Add(new Notice(
                 "SETTINGS_FILE_IGNORED", NoticeSeverity.Warning,
                 "The settings file could not be used and was left out; the app runs without it until the next start. See the server log for the reason."));
+        // Someone asked for a restore and the restart has not happened (no restart policy, or a server started by hand).
+        if (backups.RestorePending)
+            notices.Add(new Notice("RESTORE_PENDING", NoticeSeverity.Warning, "A restore is waiting for a restart of the app: it replaces all data when the app starts next."));
         return notices;
     }
 }

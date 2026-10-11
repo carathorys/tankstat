@@ -58,6 +58,7 @@ public static class DependencyInjection
         services.AddSingleton<RestoreCode>();
 
         services.AddScoped<AccessService>();
+        services.AddScoped<RestoreService>();
         services.AddScoped<AccessAdminService>();
         services.AddScoped<SessionService>();
         services.AddScoped<PasswordResetService>();

@@ -679,6 +679,18 @@
       "cannotResolve": "Only whoever sent it, or may change the vehicle's entries, decides about it.",
       "kindMismatch": "An edited change must do the same as the one that was not applied.",
       "cannotRestoreFirst": "Only an edit of a refuelling, an expense or a vehicle can bring it back from the trash."
+    },
+    "backup": {
+      "notFound": "There is no such backup in the backups folder.",
+      "wrongKey": "The passphrase (or identity) does not open this backup.",
+      "keyRequired": "The backup is encrypted: its passphrase or identity is needed.",
+      "corrupt": "The file is damaged or is not a Tankstat backup.",
+      "passphraseEncrypted": "The file is encrypted with age's own passphrase mode, not for a recipient; Tankstat cannot open it.",
+      "notEncrypted": "The backup is not encrypted; no passphrase opens it.",
+      "newerFormat": "The backup was written by a newer release (Tankstat {{appVersion}}); upgrade first.",
+      "otherMigration": "The backup was made at another version of the database ({{backup}}) than this one is at ({{database}}); restore it with the release that wrote it.",
+      "codeRequired": "The one-time restore code from the server's log is needed.",
+      "passphraseRequired": "A passphrase is expected."
     }
   },
   "a11y": {
