@@ -1,7 +1,9 @@
 using Microsoft.Extensions.Configuration.EnvironmentVariables;
 using Microsoft.Extensions.Configuration.Json;
 using Microsoft.Extensions.Configuration.Memory;
+using Tankstat.Application.Auth;
 using Tankstat.Application.SystemSettings;
+using Tankstat.Infrastructure.Settings;
 
 namespace Tankstat.Api.Settings;
 
@@ -15,19 +17,43 @@ public sealed class SettingsSources(IReadOnlyList<IConfigurationSource> below, I
     public IReadOnlyList<IConfigurationSource> Below { get; } = below;
     public IReadOnlyList<IConfigurationSource> Above { get; } = above;
 
-    /// <summary>The whole configuration as it would be with <paramref name="file"/> as the settings file's content.</summary>
+    /// <summary>
+    /// The whole configuration as it would be with <paramref name="file"/> as the settings file's content. It is checked and thrown away, so
+    /// its JSON files are read once: a copy that reloaded on change would watch the content root for as long as the host runs.
+    /// </summary>
     public IConfigurationRoot With(IConfigurationSource file)
     {
         var builder = new ConfigurationBuilder();
         foreach (var (key, value) in properties) builder.Properties[key] = value; // the content root's file provider, which the appsettings sources resolve against
-        foreach (var source in Below) builder.Add(source);
+        foreach (var source in Below) builder.Add(ReadOnce(source));
         builder.Add(file);
-        foreach (var source in Above) builder.Add(source);
+        foreach (var source in Above) builder.Add(ReadOnce(source));
         return builder.Build();
     }
 
     /// <summary>The whole configuration with <paramref name="values"/> in the settings file's place.</summary>
     public IConfigurationRoot With(IReadOnlyDictionary<string, string?> values) => With(new MemoryConfigurationSource { InitialData = values });
+
+    /// <summary>Whether a source above the file (the environment, the command line) holds <paramref name="key"/>: then the file never decides it.</summary>
+    public bool AboveHolds(string key)
+    {
+        var builder = new ConfigurationBuilder();
+        foreach (var (name, value) in properties) builder.Properties[name] = value;
+        foreach (var source in Above) builder.Add(ReadOnce(source));
+        var root = builder.Build();
+        try
+        {
+            return root[key] is not null;
+        }
+        finally
+        {
+            (root as IDisposable)?.Dispose();
+        }
+    }
+
+    private static IConfigurationSource ReadOnce(IConfigurationSource source) => source is JsonConfigurationSource { ReloadOnChange: true, Path: { } path } json
+        ? new JsonConfigurationSource { FileProvider = json.FileProvider, Path = path, Optional = json.Optional, OnLoadException = json.OnLoadException, ReloadOnChange = false }
+        : source;
 }
 
 /// <summary>The settings file as this process started: its status and its place among the sources.</summary>
@@ -38,41 +64,88 @@ public sealed record SettingsFile(SettingsFileStatus Status, SettingsSources Sou
 
     /// <summary>
     /// Puts the app's own settings file (<c>Settings:Path</c>, default <c>settings.json</c> in the working directory) among the sources of
-    /// <paramref name="builder"/>, right below the environment variables, unless the app could not start with it: then it is left out and the
-    /// status says so (an Error line and a public notice follow once the host runs). A file the environment cannot be started without either
-    /// is left out too, and the start fails on the environment as it always did. The path comes from the sources already there (the
+    /// <paramref name="builder"/>, right below the environment variables, unless the app could not start with it: a file that cannot be read,
+    /// is not valid JSON, or brings problems the sources without it do not have is left out, and the status says so (an Error line and a public
+    /// notice follow once the host runs). What the environment gets wrong on its own is not the file's doing: it neither keeps a broken file
+    /// in nor leaves a good one out. The one exception: an environment the host would not start with at all (<see cref="SettingsCheck.Starts"/>)
+    /// fails the start whatever becomes of the file, so a readable file stays in and the host names its mistakes too, the file's possibly
+    /// first. A file left out never takes the authentication with it: when the app would then run in mode None although the file asks for a
+    /// sign-in mode, the start stops instead (<see cref="SettingsFileRefusedException"/>). The path comes from the sources already there (the
     /// environment, the command line, the appsettings files), never from the file itself.
     /// </summary>
-    public static SettingsFile Prepare(WebApplicationBuilder builder)
+    public static SettingsFile Prepare(WebApplicationBuilder builder) => Prepare(builder.Configuration);
+
+    /// <inheritdoc cref="Prepare(WebApplicationBuilder)"/>
+    public static SettingsFile Prepare(ConfigurationManager configuration)
     {
-        var path = System.IO.Path.GetFullPath(builder.Configuration[PathSetting] is { } configured && !string.IsNullOrWhiteSpace(configured) ? configured : DefaultPath);
-        var configuration = (IConfigurationBuilder)builder.Configuration;
-        var sources = configuration.Sources;
+        var path = System.IO.Path.GetFullPath(configuration[PathSetting] is { } configured && !string.IsNullOrWhiteSpace(configured) ? configured : DefaultPath);
+        var builder = (IConfigurationBuilder)configuration;
+        var sources = builder.Sources;
         var at = IndexOfEnvironment(sources);
-        var placement = new SettingsSources([.. sources.Take(at)], [.. sources.Skip(at)], configuration.Properties);
-        var file = new JsonConfigurationSource { Path = path, Optional = true, ReloadOnChange = false }; // nothing reloads: every change waits for a restart
-        file.ResolveFileProvider();
+        var placement = new SettingsSources([.. sources.Take(at)], [.. sources.Skip(at)], builder.Properties);
+        var file = SettingsFileStore.SourceFor(path); // read once: every change waits for a restart
 
         if (!File.Exists(path)) return new(SettingsFileStatus.Used(path, exists: false), placement);
-        var problems = Problems(placement, file);
-        if (problems.Count == 0 || SettingsCheck.Check(builder.Configuration).Count > 0)
+        var problems = Problems(placement, file, configuration);
+        if (problems.Count == 0)
         {
-            // The file is fine, or the environment is wrong on its own (the start fails as it always did, on the environment's settings).
             sources.Insert(at, file);
             return new(SettingsFileStatus.Used(path, exists: true), placement);
         }
+        if (TurnsAuthenticationOff(placement, configuration, path)) throw new SettingsFileRefusedException(path, problems);
         return new(SettingsFileStatus.LeftOut(path, problems), placement);
     }
 
-    private static IReadOnlyList<string> Problems(SettingsSources placement, JsonConfigurationSource file)
+    private const string ModeSetting = "Auth:Mode";
+
+    /// <summary>
+    /// Whether leaving the file out would turn authentication off although the file turns it on: without the file the mode is None (the
+    /// shipped default: every visitor is the anonymous owner of all data), no source above the file holds the mode (so the file decides it),
+    /// and the file names a sign-in mode, or cannot be read, so it may.
+    /// </summary>
+    private static bool TurnsAuthenticationOff(SettingsSources placement, IConfiguration without, string path)
     {
+        if (SignsIn(without[ModeSetting]) || placement.AboveHolds(ModeSetting)) return false;
         try
         {
-            return SettingsCheck.Check(placement.With(file));
+            return SignsIn(SettingsFileStore.Read(path).GetValueOrDefault(ModeSetting));
         }
-        catch (Exception e) when (e is FormatException or InvalidDataException or IOException)
+        catch (Exception e) when (e is FormatException or InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            return true; // what it holds cannot be told: it may name a mode
+        }
+    }
+
+    /// <summary>A mode in which the app asks who is there: anything but None, a value it cannot read too (it was meant to be a mode).</summary>
+    private static bool SignsIn(string? mode) => !string.IsNullOrWhiteSpace(mode) && !mode.Trim().Equals(nameof(AuthMode.None), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>What the configuration with <paramref name="file"/> gets wrong that the one <paramref name="without"/> it does not.</summary>
+    private static IReadOnlyList<string> Problems(SettingsSources placement, JsonConfigurationSource file, IConfiguration without)
+    {
+        IConfigurationRoot with;
+        try
+        {
+            with = placement.With(file);
+        }
+        catch (Exception e) when (e is FormatException or InvalidDataException)
         {
             return ["The file is not valid JSON."]; // the parser's text would quote the file
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return ["The file cannot be read."]; // the app's user may not read it, say: opening it is not the parser's business
+        }
+        try
+        {
+            var added = SettingsCheck.Check(with).Count == 0 ? [] : SettingsCheck.Added(with, without);
+            // An environment the host would not start with on its own fails the start whatever becomes of the file, so the file goes in: the
+            // host then names what is wrong with it in place, the file's own mistakes too (the environment may lean on it: an OIDC mode
+            // whose authority only the file holds, say).
+            return added.Count > 0 && !SettingsCheck.Starts(without) ? [] : added;
+        }
+        finally
+        {
+            (with as IDisposable)?.Dispose();
         }
     }
 
@@ -83,4 +156,16 @@ public sealed record SettingsFile(SettingsFileStatus Status, SettingsSources Sou
             if (sources[i] is EnvironmentVariablesConfigurationSource { Prefix: null or "" }) return i;
         return sources.Count;
     }
+}
+
+/// <summary>
+/// The settings file could not be used, and leaving it out would run the app without authentication although the file asks for a sign-in
+/// mode: the start stops instead, as it does for a wrong environment. The message names the file and the settings at fault, never a value.
+/// </summary>
+public sealed class SettingsFileRefusedException(string path, IReadOnlyList<string> problems) : InvalidOperationException(
+    $"The settings file {path} could not be used ({string.Join(" ", problems)}), and the app does not start without it: Auth:Mode would then be None, "
+    + "which lets every visitor in as the owner of all data, while the file asks for a sign-in mode. Fix the file, or set Auth__Mode in the environment "
+    + "(it wins over the file).")
+{
+    public IReadOnlyList<string> Problems { get; } = problems;
 }
