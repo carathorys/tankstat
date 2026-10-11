@@ -23,6 +23,7 @@ Administrators also get an **Administration** group at the end of the menu (neve
 - **People** (`/admin/people`): the users (add, edit, reset links, administrator rights, disabling, deleting) and the access to other people's data, in two tabs.
 - **Vehicles** (`/admin/vehicles`): the grid of all vehicles of everyone, sorted and paged by the server, with edit and delete.
 - **Server settings** (`/admin/settings`, see below).
+- **Backups** (`/admin/backups`): back up now, upload, download and restore backups, see [Backup and restore](backup-and-restore.md#on-the-administration-page).
 
 The older addresses still work: `/vehicles` leads to the vehicle grid, and `/admin?tab=access` to the access tab.
 
