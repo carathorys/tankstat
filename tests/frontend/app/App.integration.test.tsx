@@ -239,7 +239,7 @@ it('menu entries follow the user: no account/admin without a user, admin entry o
   server.use(sessionHandler('STANDALONE', () => user({ isAdmin: true })))
   renderWithApollo(<App />, '/vehicles')
   await screen.findByText('admin')
-  expect(navLinks()).toEqual(['Home', 'Vehicles', 'Import', 'Notifications', 'Trash', 'Account', 'Administration'])
+  expect(navLinks()).toEqual(['Home', 'Vehicles', 'Import', 'Notifications', 'Trash', 'Account', 'Administration', 'System settings'])
   expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
 })
 

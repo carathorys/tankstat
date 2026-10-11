@@ -243,6 +243,7 @@ describe('snapshotPolicy', () => {
     expect(policyFor('Health')).toBe('never')
     expect(policyFor('SomethingNew')).toBe('never')
     expect(policyFor('Admin')).toBe('onlineOnly')
+    expect(policyFor('SystemSettings')).toBe('onlineOnly')
     expect(policyFor('Welcome')).toBe('keep')
   })
 

@@ -37,6 +37,7 @@ const ImportPage = lazy(() => import('./pages/ImportPage.tsx').then((m) => ({ de
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage.tsx').then((m) => ({ default: m.NotificationsPage })))
 const AccountPage = lazy(() => import('./pages/AccountPage.tsx').then((m) => ({ default: m.AccountPage })))
 const AdminPanel = lazy(() => import('./admin/AdminPanel.tsx').then((m) => ({ default: m.AdminPanel })))
+const SystemSettingsPage = lazy(() => import('./admin/SystemSettingsPage.tsx').then((m) => ({ default: m.SystemSettingsPage })))
 
 export default function App() {
   const { data, error, loading } = useQuery(SessionDocument)
@@ -218,6 +219,7 @@ function Content({ data }: { data: SessionQuery }) {
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/account" element={<AccountPage mode={mode} user={user} />} />
             <Route path="/admin" element={isAdmin ? <AdminPanel /> : <Navigate to="/" replace />} />
+            <Route path="/admin/settings" element={isAdmin ? <SystemSettingsPage /> : <Navigate to="/" replace />} />
             <Route path="*" element={<Typography>{t('app.notFound')}</Typography>} />
           </Routes>
         </Suspense>

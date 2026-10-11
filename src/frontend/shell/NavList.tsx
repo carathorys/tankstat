@@ -2,7 +2,7 @@ import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Stack from '@mui/material/Stack'
 import Chip from '@mui/material/Chip'
-import { Bell, Car, CloudUpload, FileUp, House, LogOut, Settings, ShieldCheck, Trash2 } from 'lucide-react'
+import { Bell, Car, CloudUpload, FileUp, House, LogOut, Settings, ShieldCheck, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NavLink } from 'react-router'
@@ -37,7 +37,7 @@ export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: Sess
   }
 
   const link = (to: string, label: string, icon: ReactNode) => (
-    <Box component={NavLink} to={to} end={to === '/'} sx={navItemSx} onClick={onNavigate}>
+    <Box component={NavLink} to={to} end={to === '/' || to === '/admin'} sx={navItemSx} onClick={onNavigate}>
       {icon}
       {label}
     </Box>
@@ -63,6 +63,7 @@ export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: Sess
       )}
       {user && link('/account', t('nav.account'), <Settings size={18} aria-hidden />)}
       {user?.isAdmin && link('/admin', t('nav.admin'), <ShieldCheck size={18} aria-hidden />)}
+      {user?.isAdmin && link('/admin/settings', t('nav.systemSettings'), <SlidersHorizontal size={18} aria-hidden />)}
       <InstallMenuItem onNavigate={onNavigate} />
       {canSignOut && (
         <Button

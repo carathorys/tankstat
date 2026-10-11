@@ -1,0 +1,43 @@
+fragment SystemSettingFields on SystemSetting {
+  key
+  kind
+  choices
+  value
+  isSet
+  isSecret
+  source
+  editable
+  restartPending
+}
+
+fragment SystemSettingsFields on SystemSettingsInfo {
+  file {
+    path
+    exists
+    ignored
+    problems
+  }
+  restartPending
+  groups {
+    name
+    settings {
+      ...SystemSettingFields
+    }
+  }
+}
+
+query SystemSettings {
+  systemSettings {
+    ...SystemSettingsFields
+  }
+}
+
+mutation UpdateSystemSettings($changes: [SystemSettingChangeInput!]!) {
+  updateSystemSettings(changes: $changes) {
+    ...SystemSettingsFields
+  }
+}
+
+mutation RestartServer {
+  restartServer
+}

@@ -4,4 +4,6 @@
  */
 export const navigation = {
   replace: (url: string): void => window.location.replace(url),
+  /** The same page afresh (after the server restarted: the session may have ended, the settings have changed). */
+  reload: (): void => window.location.reload(),
 }

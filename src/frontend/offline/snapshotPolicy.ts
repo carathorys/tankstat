@@ -36,6 +36,7 @@ const POLICIES: Record<string, SnapshotPolicy> = {
   // The administrators' vehicle list: offline, the device lists the vehicles it holds itself (localResolvers.ts), and the page says so.
   Vehicles: 'keep',
   Admin: 'onlineOnly',
+  SystemSettings: 'onlineOnly', // a stale copy of the server's configuration must never be shown
   Trash: 'onlineOnly',
   ArrangeVehicles: 'onlineOnly',
   LogAccess: 'onlineOnly',

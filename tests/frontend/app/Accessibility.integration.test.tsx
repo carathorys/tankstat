@@ -69,7 +69,7 @@ it('the vehicle page and its tabs have no violations', async () => {
 })
 
 it('the trash, account and administration pages have no violations', async () => {
-  for (const route of ['/trash', '/trash?tab=refuelings', '/trash?tab=expenses', '/account', '/admin', '/sync']) {
+  for (const route of ['/trash', '/trash?tab=refuelings', '/trash?tab=expenses', '/account', '/admin', '/admin/settings', '/sync']) {
     const { view } = setup(route)
     await screen.findByRole('main')
     await screen.findByRole('heading', { level: 1 })
@@ -257,6 +257,19 @@ it('the user administration dialogs are labelled, described and free of violatio
     await ui.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   }
+})
+
+it('the system settings confirmations are labelled, described and free of violations', async () => {
+  const { ui } = setup('/admin/settings')
+  const page = within(await screen.findByRole('region', { name: 'System settings' }))
+  await page.findByText('/data/settings.json')
+
+  await ui.click(page.getByRole('button', { name: 'Restart server' }))
+  const restart = await screen.findByRole('alertdialog', { name: 'Restart the server?' })
+  expect(restart).toHaveAccessibleDescription()
+  await check(document.body)
+  await ui.click(within(restart).getByRole('button', { name: 'Cancel' }))
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
 })
 
 it('the Arrange dialog is labelled, described and free of violations', async () => {
