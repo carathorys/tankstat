@@ -17,6 +17,10 @@ public sealed class RestoreServiceTests
         public BackupManifest ReadManifest(string fileName) => Plain;
         public string? IdentityFor(BackupManifest manifest, string? passphrase, string? identity) => throw new NotSupportedException();
         public void RequestRestore(RestoreMarker marker) => Marker = marker;
+        public IReadOnlyList<RestorePoint> List() => [];
+        public string Folder => "backups";
+        public Task<RestorePoint> SaveUploadAsync(Stream content, string? fileName, long maxBytes, CancellationToken ct) => throw new NotSupportedException();
+        public Stream OpenRead(string fileName) => throw new NotSupportedException();
     }
 
     private static (World World, OneBackup Store, RestoreService Service) Admin()

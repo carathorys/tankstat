@@ -98,6 +98,10 @@ public static class DependencyInjection
         services.AddSingleton<IImageStore, FileSystemImageStore>();
         services.AddSingleton<IBackupWriter, BackupWriter>();
         services.AddSingleton<IBackupStore, FileBackupStore>();
+        services.AddSingleton<IBackupRunner, BackupRunner>();
+        services.AddSingleton<IBackupKeyMaker, BackupKeyMaker>();
+        services.AddSingleton<IDatabaseFacts, EfDatabaseFacts>();
+        services.AddSingleton<IStorageUsage, StorageUsage>();
         services.AddSingleton<IPasswordHasher, IdentityPasswordHasher>();
         services.AddSingleton<IEmailSender, SmtpEmailSender>();
         // Self-service reset mails go out after the answer (PasswordResetMailer below), so the answer tells no accounts apart.
