@@ -9,19 +9,30 @@ namespace Tankstat.Infrastructure.UnitTests;
 
 public class SmtpEmailSenderTests
 {
-    /// <summary>A mail server that turns every recipient away, quoting the address in its answer, as real servers do.</summary>
-    private sealed class RejectingServer : IDisposable
+    /// <summary>
+    /// A mail server that turns every recipient away, quoting the address in its answer, as real servers do; or, with
+    /// <c>acceptButIgnoreGoodbye</c>, one that takes the message and then never answers QUIT.
+    /// </summary>
+    private sealed class TestServer : IDisposable
     {
         private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
+        private readonly bool _accept;
         private readonly Task _serving;
 
-        public RejectingServer()
+        public TestServer(bool acceptButIgnoreGoodbye = false)
         {
+            _accept = acceptButIgnoreGoodbye;
             _listener.Start();
             _serving = Task.Run(ServeAsync);
         }
 
         public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
+
+        /// <summary>Whether a whole message came in.</summary>
+        public bool Received { get; private set; }
+
+        /// <summary>Completes when the client said QUIT.</summary>
+        public TaskCompletionSource Goodbye { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         private async Task ServeAsync()
         {
@@ -35,8 +46,21 @@ public class SmtpEmailSenderTests
                 while (await reader.ReadLineAsync() is { } line)
                 {
                     if (line.StartsWith("EHLO", StringComparison.OrdinalIgnoreCase) || line.StartsWith("HELO", StringComparison.OrdinalIgnoreCase)) await writer.WriteLineAsync("250 test");
-                    else if (line.StartsWith("RCPT TO:", StringComparison.OrdinalIgnoreCase)) await writer.WriteLineAsync($"550 5.1.1 {line["RCPT TO:".Length..].Trim()}: Recipient address rejected: User unknown");
-                    else if (line.StartsWith("QUIT", StringComparison.OrdinalIgnoreCase)) { await writer.WriteLineAsync("221 Bye"); break; }
+                    else if (line.StartsWith("RCPT TO:", StringComparison.OrdinalIgnoreCase) && !_accept) await writer.WriteLineAsync($"550 5.1.1 {line["RCPT TO:".Length..].Trim()}: Recipient address rejected: User unknown");
+                    else if (line.StartsWith("DATA", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await writer.WriteLineAsync("354 Go ahead");
+                        while (await reader.ReadLineAsync() is { } body && body != ".") { }
+                        Received = true;
+                        await writer.WriteLineAsync("250 Queued");
+                    }
+                    else if (line.StartsWith("QUIT", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Goodbye.TrySetResult();
+                        if (_accept) continue; // says nothing; the client gives up and closes
+                        await writer.WriteLineAsync("221 Bye");
+                        break;
+                    }
                     else await writer.WriteLineAsync("250 Ok");
                 }
             }
@@ -73,7 +97,7 @@ public class SmtpEmailSenderTests
     [Fact]
     public async Task AMailServerThatRejectsTheRecipient_DoesNotPutTheAddressInTheException()
     {
-        using var server = new RejectingServer();
+        using var server = new TestServer();
 
         var error = await Assert.ThrowsAsync<EmailSendException>(() => Sender(server.Port).SendAsync("canary.person@canary-mail.example", "Subject", "Body", default));
 
@@ -81,6 +105,22 @@ public class SmtpEmailSenderTests
         Assert.Contains($"127.0.0.1:{server.Port}", error.Message);
         Assert.Contains("550", error.Message); // what the server said, without how it worded it: its answer quotes the address
         Assert.Null(error.InnerException);
+    }
+
+    [Fact]
+    public async Task AMessageTheServerTook_IsSent_EvenWhenTheSendIsCancelledDuringTheGoodbye()
+    {
+        // The app stopping while the server keeps the goodbye waiting: the message is out, so the link it carries must not be taken back.
+        // MailKit's DisconnectAsync swallows what goes wrong with QUIT, a cancellation included; this keeps an upgrade from changing that.
+        using var server = new TestServer(acceptButIgnoreGoodbye: true);
+        using var stopping = new CancellationTokenSource();
+
+        var send = Sender(server.Port).SendAsync("someone@example.com", "Subject", "Body", stopping.Token);
+        await server.Goodbye.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await stopping.CancelAsync();
+
+        await send.WaitAsync(TimeSpan.FromSeconds(10)); // neither a cancellation nor an EmailSendException
+        Assert.True(server.Received);
     }
 
     [Fact]
