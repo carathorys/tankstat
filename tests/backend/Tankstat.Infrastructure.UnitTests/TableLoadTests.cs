@@ -1,7 +1,10 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Tankstat.Application.Backups;
 using Tankstat.Application.Vehicles;
+using Tankstat.Domain;
 using Tankstat.Infrastructure.Backups;
 using Tankstat.Infrastructure.Persistence;
 using Tankstat.TestSupport;
@@ -117,5 +120,121 @@ public sealed class TableLoadTests : IDisposable
             TableLoad.LoadAsync(context, Path.Combine(inner, "tables"), backup.Manifest.Contents.Tables, DateTimeOffset.UtcNow, backup.Manifest.CreatedAt, b.Log.For<TableLoadTests>(), default));
 
         Assert.NotNull(await b.Get<IVehicleRepository>().FindAsync(own.Vehicle, default)); // rolled back
+    }
+
+    [Fact]
+    public async Task ATableWhoseFileIsMissing_IsEmptyWhenTheManifestSaysNoRows_AndFailsTheLoadWhenItSaysRows()
+    {
+        await using var a = Database("a");
+        await BackupSeed.SeedAsync(a, Path.Combine(_data, "a", "uploads"), Path.Combine(_data, "a", "uploads"), Path.Combine(_data, "a", "keys"));
+        var backup = await a.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
+        var inner = Inner(backup.Path);
+        Assert.Equal(0, backup.Manifest.Contents.Tables["Instance"]); // a bare test database has no generation row
+        File.Delete(Path.Combine(inner, "tables", "Instance.jsonl"));
+        await using var b = Database("b");
+        var own = await BackupSeed.SeedAsync(b, Path.Combine(_data, "b", "uploads"), Path.Combine(_data, "b", "uploads"), Path.Combine(_data, "b", "keys"));
+
+        await using (var context = await Context(b))
+            await TableLoad.LoadAsync(context, Path.Combine(inner, "tables"), backup.Manifest.Contents.Tables, DateTimeOffset.UtcNow, backup.Manifest.CreatedAt, b.Log.For<TableLoadTests>(), default); // fine: it had none
+
+        // The vehicles file went missing from the backup: loading on would empty a table that had a row.
+        File.Delete(Path.Combine(inner, "tables", "Vehicles.jsonl"));
+        await using var c = Database("c");
+        var other = await BackupSeed.SeedAsync(c, Path.Combine(_data, "c", "uploads"), Path.Combine(_data, "c", "uploads"), Path.Combine(_data, "c", "keys"));
+        await using (var context = await Context(c))
+        {
+            var refused = await Assert.ThrowsAsync<DomainException>(() =>
+                TableLoad.LoadAsync(context, Path.Combine(inner, "tables"), backup.Manifest.Contents.Tables, DateTimeOffset.UtcNow, backup.Manifest.CreatedAt, c.Log.For<TableLoadTests>(), default));
+            Assert.Equal("backup.corrupt", refused.Key);
+            Assert.Equal(("Vehicles", 1L, 0L), (refused.Args["table"], refused.Args["expected"], refused.Args["actual"]));
+        }
+        Assert.NotNull(await c.Get<IVehicleRepository>().FindAsync(other.Vehicle, default)); // rolled back: nothing was emptied
+        Assert.Null(await b.Get<IVehicleRepository>().FindAsync(own.Vehicle, default)); // b was loaded the first time: its own vehicle is gone
+    }
+
+    [Fact]
+    public async Task ATableTheModelDoesNotKnow_IsWarnedAboutAndLeftOut()
+    {
+        await using var a = Database("a");
+        await BackupSeed.SeedAsync(a, Path.Combine(_data, "a", "uploads"), Path.Combine(_data, "a", "uploads"), Path.Combine(_data, "a", "keys"));
+        var backup = await a.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
+        var inner = Inner(backup.Path);
+        var expected = new Dictionary<string, long>(backup.Manifest.Contents.Tables) { ["FromTheFuture"] = 3 };
+        await using var b = Database("b");
+
+        await using (var context = await Context(b))
+            await TableLoad.LoadAsync(context, Path.Combine(inner, "tables"), expected, DateTimeOffset.UtcNow, backup.Manifest.CreatedAt, b.Log.For<TableLoadTests>(), default);
+
+        var warning = Assert.Single(b.Log.From<TableLoadTests>().Where(e => e.Level == LogLevel.Warning));
+        Assert.Equal("FromTheFuture", warning.Values["Table"]);
+    }
+
+    [Fact]
+    public void TablesThatReferToEachOther_AreRefusedInsteadOfLoopingForever()
+    {
+        DumpTable Table(string name, params string[] dependsOn) => new(name, null, [], [], new HashSet<string>(dependsOn));
+
+        var cycle = Assert.Throws<InvalidOperationException>(() => TableLoad.InLoadOrder([Table("A", "B"), Table("B", "C"), Table("C", "A"), Table("D")]));
+
+        Assert.Contains("A, B, C", cycle.Message);
+        Assert.Equal(["Roots", "Leaf"], TableLoad.InLoadOrder([Table("Leaf", "Roots"), Table("Roots")]).Select(t => t.Name));
+    }
+
+    private static object RoundTrip(object value, Type type)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream)) TableDump.WriteValue(writer, value);
+        using var document = JsonDocument.Parse(stream.ToArray());
+        return TableLoad.Parse(document.RootElement, type);
+    }
+
+    public static TheoryData<object, Type> Values => new()
+    {
+        { "text with \"quotes\" and ünïcode", typeof(string) },
+        { Guid.Parse("0b2f6bd4-5c1e-4a3a-8f1e-3c2d1a0b9e8f"), typeof(Guid) },
+        { true, typeof(bool) },
+        { -42, typeof(int) },
+        { long.MaxValue, typeof(long) },
+        { (short)-7, typeof(short) },
+        { (byte)200, typeof(byte) },
+        { 1234567.8901m, typeof(decimal) },
+        { 0.1 + 0.2, typeof(double) },
+        { 2.25f, typeof(float) },
+        { new DateTime(2026, 10, 11, 12, 30, 45, DateTimeKind.Utc).AddTicks(1234567), typeof(DateTime) },
+        { new DateOnly(2026, 2, 28), typeof(DateOnly) },
+        { new TimeOnly(23, 59, 58).Add(TimeSpan.FromTicks(1234567)), typeof(TimeOnly) },
+        { TimeSpan.FromTicks(-9876543210), typeof(TimeSpan) },
+        { new byte[] { 0, 1, 2, 254, 255 }, typeof(byte[]) },
+    };
+
+    [Theory]
+    [MemberData(nameof(Values))]
+    public void EveryTypeAColumnCanHold_WritesAndParsesBackToItself(object value, Type type) => Assert.Equal(value, RoundTrip(value, type));
+
+    [Fact]
+    public void ADateTime_IsDumpedAsUtc_WhateverItsKind_AndAnOffsetBecomesTheSameInstant()
+    {
+        var local = new DateTime(2026, 10, 11, 12, 0, 0, DateTimeKind.Local);
+        var unspecified = new DateTime(2026, 10, 11, 12, 0, 0, DateTimeKind.Unspecified);
+        var offset = new DateTimeOffset(2026, 10, 11, 12, 0, 0, TimeSpan.FromHours(2));
+
+        Assert.Equal(local.ToUniversalTime(), RoundTrip(local, typeof(DateTime)));
+        Assert.Equal(DateTime.SpecifyKind(unspecified, DateTimeKind.Utc), RoundTrip(unspecified, typeof(DateTime))); // the app stores UTC: a kind-less value is that
+        Assert.Equal(DateTimeKind.Utc, ((DateTime)RoundTrip(local, typeof(DateTime))).Kind); // what Npgsql's timestamptz demands
+        Assert.Equal(offset, RoundTrip(offset, typeof(DateTimeOffset)));
+        Assert.Equal(TimeSpan.Zero, ((DateTimeOffset)RoundTrip(offset, typeof(DateTimeOffset))).Offset);
+    }
+
+    [Fact]
+    public void AValueThatIsNotWhatTheColumnHolds_IsACorruptBackup_AndATypeNoColumnHolds_IsRefusedBothWays()
+    {
+        static JsonElement Json(string text) => JsonDocument.Parse(text).RootElement;
+
+        foreach (var (text, type) in new[] { ("\"not a guid\"", typeof(Guid)), ("\"x\"", typeof(DateTime)), ("\"28/02/2026\"", typeof(DateOnly)), ("\"~\"", typeof(byte[])), ("12.5", typeof(int)), ("\"x\"", typeof(TimeSpan)) })
+            Assert.Equal("backup.corrupt", Assert.Throws<DomainException>(() => TableLoad.Parse(Json(text), type)).Key);
+        Assert.Throws<NotSupportedException>(() => TableLoad.Parse(Json("1"), typeof(object)));
+        using var stream = new MemoryStream();
+        using var writer = new Utf8JsonWriter(stream);
+        Assert.Throws<NotSupportedException>(() => TableDump.WriteValue(writer, new object()));
     }
 }

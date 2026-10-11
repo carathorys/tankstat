@@ -69,15 +69,11 @@ internal static class TableLoad
         foreach (var table in tables)
         {
             var file = Path.Combine(tablesFolder, table.Name + ".jsonl");
-            if (!File.Exists(file))
-            {
-                logger.LogInformation("The backup has no rows for {Table}; the table is empty now", table.Name);
-                loaded[table.Name] = 0;
-                continue;
-            }
-            loaded[table.Name] = await InsertAsync(connection, dbTransaction, sql, table, file, ct);
+            // A table the backup has no file for is empty, unless the manifest says it had rows: then the file went missing, and loading
+            // on would silently empty the table.
+            loaded[table.Name] = File.Exists(file) ? await InsertAsync(connection, dbTransaction, sql, table, file, ct) : 0;
             if (expected.TryGetValue(table.Name, out var count) && count != loaded[table.Name])
-                throw new InvalidOperationException($"The backup's manifest says {count} rows of {table.Name}, the file holds {loaded[table.Name]}.");
+                throw new DomainException("backup.corrupt", $"The backup's manifest says {count} rows of {table.Name}, the file holds {loaded[table.Name]}.", new { Table = table.Name, Expected = count, Actual = loaded[table.Name] });
         }
 
         // The generation is this instance's own, never the backup's: stamped after the rows, inside the transaction.
@@ -154,7 +150,7 @@ internal static class TableLoad
         return mapping.Converter is { } converter ? converter.ConvertFromProvider(value) ?? value : value;
     }
 
-    private static object Parse(JsonElement e, Type type)
+    internal static object Parse(JsonElement e, Type type)
     {
         try
         {

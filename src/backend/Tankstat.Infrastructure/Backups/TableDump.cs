@@ -85,7 +85,7 @@ internal static class TableDump
         return (rows, bytes);
     }
 
-    private static void WriteValue(Utf8JsonWriter writer, object value)
+    internal static void WriteValue(Utf8JsonWriter writer, object value)
     {
         switch (value)
         {
