@@ -46,6 +46,13 @@ interface Run {
   error: string | null
 }
 
+interface Schedule {
+  every: string | null
+  nextRun: string | null
+  keep: number | null
+  keepDays: number | null
+}
+
 const idle: Run = { __typename: 'BackupRunInfo', running: false, startedAt: null, finishedAt: null, file: null, bytes: null, error: null }
 
 /** The password field of a dialog: the radios that choose between passphrase and identity carry those words too. */
@@ -55,7 +62,7 @@ const secretField = (dialog: HTMLElement, label: RegExp) => within(dialog).getBy
 function backupsServer({ points = [point()], run = idle, restoreAnswer }: { points?: unknown[]; run?: Run; restoreAnswer?: () => Response } = {}) {
   const calls: Record<string, unknown[]> = {}
   const record = (name: string, value: unknown) => (calls[name] ??= []).push(value)
-  const state = { points, run, generation: 'gen-1', pending: false, polls: [] as unknown[] }
+  const state = { points, run, generation: 'gen-1', pending: false, polls: [] as unknown[], schedule: { every: null, nextRun: null, keep: null, keepDays: null } as Schedule }
   server.use(
     graphql.query('Session', () =>
       HttpResponse.json({
@@ -77,7 +84,7 @@ function backupsServer({ points = [point()], run = idle, restoreAnswer }: { poin
             folder: '/data/backups',
             migration: 'AddInstance',
             run: state.run,
-            settings: { __typename: 'BackupSettingsInfo', recipient: RECIPIENT, photosApart: true, photos: true, maxUploadMb: 1024 },
+            settings: { __typename: 'BackupSettingsInfo', recipient: RECIPIENT, photosApart: true, photos: true, maxUploadMb: 1024, ...state.schedule },
             sizes: { __typename: 'StorageSizesInfo', database: 5_300_000, pictures: 12_000_000, photos: 340_000_000 },
             restorePoints: state.points,
           },
@@ -281,6 +288,25 @@ it('makes a key set, shows it once with the two settings to set, and is done onl
   await ui.click(within(dialog).getByRole('checkbox', { name: 'I have kept the passphrase in a safe place' }))
   await ui.click(done)
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+})
+
+it('shows the schedule with the next run and what retention keeps, or that neither is set', async () => {
+  const { state } = backupsServer()
+  state.schedule = { every: '02:00', nextRun: '2026-10-12T02:00:00Z', keep: 14, keepDays: 30 }
+  await openBackups()
+
+  const overview = within(screen.getByRole('region', { name: 'This server' }))
+  expect(overview.getByText(/^Every day at 02:00 · next Oct 12, 2026/)).toBeInTheDocument()
+  expect(overview.getByText('After each backup the app writes, it keeps the newest 14 and none older than 30 days; the newest always stays')).toBeInTheDocument()
+})
+
+it('says when nothing is scheduled and every backup is kept', async () => {
+  backupsServer()
+  await openBackups()
+
+  const overview = within(screen.getByRole('region', { name: 'This server' }))
+  expect(overview.getByText('Not scheduled (set Backups:Every to a time of day, such as 02:00)')).toBeInTheDocument()
+  expect(overview.getByText('Every backup is kept (set Backups:Keep or Backups:KeepDays to remove old ones)')).toBeInTheDocument()
 })
 
 it('a server without backups says how to make the first one', async () => {

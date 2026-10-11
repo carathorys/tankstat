@@ -33,7 +33,7 @@ export interface NotificationText {
  */
 export function useNotificationText() {
   const { t } = useTranslation()
-  const { date, list } = useFormat()
+  const { date, dateTime, list } = useFormat()
   const keyText = useKeyText()
 
   return (n: NotificationFieldsFragment): NotificationText => {
@@ -81,6 +81,11 @@ export function useNotificationText() {
       }
       case 'MORE_ACTIVITY':
         return { text: t('notifications.kinds.MORE_ACTIVITY', { count: n.count }), href: null }
+      case 'BACKUP_FAILED': {
+        // A backup the app was to write failed: when, and why in words (the reason is an error key).
+        const reason = keyText(args.error, {}) ?? args.error ?? ''
+        return { text: t('notifications.kinds.BACKUP_FAILED', { time: args.startedAt ? dateTime(args.startedAt) : '', reason }), href: '/admin/backups' }
+      }
     }
   }
 }
