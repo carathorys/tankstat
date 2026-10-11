@@ -2,7 +2,7 @@
 
 For operators: how users sign in (none, standalone, OpenID Connect or a trusted proxy), every setting of each mode, e-mail for password links, and who may see and change what.
 
-Authentication is configured through the `Auth` and `Smtp` sections. Every setting can be given in `appsettings.json` or as an **environment variable**, where `:` becomes `__` (double underscore): `Auth:Oidc:ClientId` is `Auth__Oidc__ClientId`. Environment variables override `appsettings.json`. List settings use an index: `Auth__AdminEmails__0=a@x.com`, `Auth__AdminEmails__1=b@x.com`. Names are case-insensitive, and enum values (`Auth__Mode`) are matched case-insensitively. A misconfiguration stops the app at start with a message naming the missing setting.
+Authentication is configured through the `Auth` and `Smtp` sections. Every setting can be given in `appsettings.json`, in [the app's own settings file](configuration.md#the-apps-own-settings-file) or as an **environment variable**, where `:` becomes `__` (double underscore): `Auth:Oidc:ClientId` is `Auth__Oidc__ClientId`. Environment variables override both files. List settings use an index: `Auth__AdminEmails__0=a@x.com`, `Auth__AdminEmails__1=b@x.com`. Names are case-insensitive, and enum values (`Auth__Mode`) are matched case-insensitively. A misconfiguration in the environment stops the app at start with a message naming the missing setting; one in the app's own settings file leaves that file out instead (the app starts without it, with the `SETTINGS_FILE_IGNORED` notice and an `Error` line naming the setting).
 
 > **The shipped `appsettings.json` sets `Auth:Mode=None`: there is no authentication, everyone sees and changes everything, and there is no administrator.** Always set `Auth__Mode` explicitly (and, for `Standalone`, the administrator credentials) before exposing the app. Never put real credentials in a committed file.
 
@@ -145,7 +145,7 @@ Auth__AdminEmails__0=you@example.com
 2. Set every setting marked *required* in the table of that mode; the app tells you at start which one is missing.
 3. Behind a TLS-terminating proxy keep `Auth__PublicUrl` and the OIDC redirect URI on the public `https://` address (the session cookie accepts plain HTTP behind the proxy).
 4. For `Standalone` with e-mail, set `Auth__PublicUrl` together with `Smtp__Host` and `Smtp__From`.
-5. Check the result: `{ session { mode user { email isAdmin } } }` at `/graphql` answers the active mode (and `notices` carries the `AUTH_DISABLED` warning when authentication is off).
+5. Check the result: `{ session { mode user { email isAdmin } } }` at `/graphql` answers the active mode (and `notices` carries the `AUTH_DISABLED` warning when authentication is off, or `SETTINGS_FILE_IGNORED` when the app's own settings file was left out at start).
 
 ## Access control
 

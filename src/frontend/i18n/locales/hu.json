@@ -72,7 +72,8 @@
   "notices": {
     "label": "Közlemények",
     "warning": "Figyelem:",
-    "AUTH_DISABLED": "A hitelesítés ki van kapcsolva: aki eléri ezt az alkalmazást, az minden adatot láthat és módosíthat. Ez nem biztonságos; állítsd be az Auth:Mode értékét."
+    "AUTH_DISABLED": "A hitelesítés ki van kapcsolva: aki eléri ezt az alkalmazást, az minden adatot láthat és módosíthat. Ez nem biztonságos; állítsd be az Auth:Mode értékét.",
+    "SETTINGS_FILE_IGNORED": "Az alkalmazás saját beállításfájlja nem volt használható, ezért kimaradt; az alkalmazás nélküle fut a következő indításig. Az okot a kiszolgáló naplója tartalmazza."
   },
   "notifications": {
     "title": "Értesítések",

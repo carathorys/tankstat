@@ -1,8 +1,8 @@
 # Configuration
 
-For operators: the database, uploaded files, defaults, notification limits and the log. Authentication has [a page of its own](authentication.md).
+For operators: the database, uploaded files, defaults, notification limits, the app's own settings file and the log. Authentication has [a page of its own](authentication.md).
 
-Every setting below can be given in `appsettings.json` or as an environment variable, where `:` becomes `__` (double underscore); environment variables override the file (the standard ASP.NET Core order: appsettings.json < appsettings.{Environment}.json < environment variables < command line). The same holds for the [authentication](authentication.md) and [photo reading](photo-reading.md) settings.
+Every setting below can be given in `appsettings.json`, in [the app's own settings file](#the-apps-own-settings-file) or as an environment variable, where `:` becomes `__` (double underscore). The order is the standard ASP.NET Core one with that file added, lowest first: `appsettings.json` < `appsettings.{Environment}.json` < the app's own settings file (`Settings:Path`) < environment variables < command line; a setting given higher up wins, so an environment variable always overrides both files. The same holds for the [authentication](authentication.md) and [photo reading](photo-reading.md) settings.
 
 ## Database
 
@@ -44,19 +44,38 @@ Uploaded pictures (profile pictures, vehicle pictures, photos of refuelings and 
 | `Notifications:ReadRetentionDays` | `Notifications__ReadRetentionDays` | how many days a notification is kept after it was read, then it is removed (default `30`, at least `1`; unread ones are kept) |
 | `Sync:RetentionDays` | `Sync__RetentionDays` | how many days the server remembers the changes devices sent and it applied, so a device that sends the same changes again (an answer it never got) is answered with what happened instead of applying them twice (default `30`, `1` to `3650`). Changes it could not apply (parked) are kept until someone decides |
 | `Sync:TombstoneRetentionDays` | `Sync__TombstoneRetentionDays` | how many days the server remembers what was removed for good (an emptied trash, a deleted schedule, a purged vehicle), so devices that keep data for offline use drop it too (default `90`, `1` to `3650`). A device whose last download of a vehicle is older starts that vehicle afresh. Old entries are cleared at most once an hour, when a device downloads |
+| `Settings:Path` | `Settings__Path` | the app's own settings file (default `settings.json`, relative to the working directory; the Docker image uses `/data/settings.json`, in the volume with the database). See the next section |
 
-## Logging
+## The app's own settings file
+
+Besides `appsettings.json` and the environment, the app reads one JSON file of its own at start: `Settings:Path`. It is the file the app itself writes, where the settings an administrator changes from inside the app are kept, so it lives with the data (the Docker image puts it in the `/data` volume), it belongs in a backup, and it is never part of the image or of the repository. You can also write it by hand. It has the shape of `appsettings.json`: the same names, nested, a list as an array:
+
+```json
+{
+  "Auth": { "Mode": "Standalone", "AdminEmails": ["owner@example.com"] },
+  "Smtp": { "Host": "mail.example.com", "From": "tankstat@example.com", "Password": "..." },
+  "Defaults": { "Currency": "HUF" },
+  "Logging": { "LogLevel": { "Tankstat": "Debug" } }
+}
+```
+
+What to know about it:
+
+- **The environment wins.** The file sits below the environment variables and the command line and above the `appsettings` files, so a value you set in the environment (`Auth__Mode` in a compose file, say) is what runs, whatever the file says. Keep the database (`Database:*`), the folders (`Storage:*`), the key ring (`DataProtection:*`) and the file's own path in the environment: the app needs them before it can read anything, and the Docker image sets them there.
+- **Secrets are stored in plain text** (an SMTP password, an OIDC client secret, a model API key). The app writes the file readable by its owner only (`0600`, the previous file is kept beside it as `settings.json.bak` with the same mode); keep a file you write yourself as private, and keep it out of version control.
+- **A broken file never stops the app.** Before the server starts, the app checks that it could start with the file: a file that is not valid JSON, a value of the wrong shape (`"Port": "abc"`), a rule broken (the OIDC mode without an authority, a log level that does not exist, a retention of `0` days) means the file is left out as a whole. The app then starts without it, writes one `Error` line naming the settings at fault (never the values written in them), and shows a warning notice (`SETTINGS_FILE_IGNORED`) to every visitor until the next start. Fix the file and restart. This is deliberate and only for this file: a wrong environment variable stops the app at start as it always did, so a mistake in the file can never lock you out of an instance the environment runs.
+- **Nothing is reloaded.** The file is read once, at start; a change to it takes effect at the next start.
 
 The app writes its log to the console (`docker logs`, the terminal) with the standard .NET logger; there is nothing to install. The shipped `Logging` settings in `appsettings.json` keep the app's own lines (category `Tankstat`) at `Information` and silence what used to drown them: Entity Framework's SQL commands and the HTTP client's per-request lines.
 
 | Level | What is logged |
 | --- | --- |
-| `Error` | an unexpected error, with its exception and stack trace (the client only sees "Unexpected Execution Error") |
+| `Error` | an unexpected error, with its exception and stack trace (the client only sees "Unexpected Execution Error"); the app's own settings file left out at start, naming the settings at fault |
 | `Warning` | a refused request (no access), a failed sign-in, a failed password change, a lockout, a refused sign-in through an identity provider, a malformed or untrusted proxy header, a database or model server that cannot be used, a setup or reset link whose e-mail could not be sent (an administrator gets the link to hand over; a link a user asked for is taken back, so they can ask again), too many reset requests waiting to be sent, an upload folder that could not be removed, a photo of a log that could not be moved to the photos folder at start, a photo that could not be attached, a field the server answered with nothing although it must have a value (a bug of the server's: the request fails for the client) |
-| `Information` | start-up (database migrations applied or up to date, the photos of logs moved to their own folder, the first administrator), sign-ins and sign-outs, password changes and reset requests, what an administrator does to users and to access, sharing a vehicle's logs, imports, emptied trashes, which model and server photo reading uses and where its system prompt comes from, a database or model server that is back |
+| `Information` | start-up (database migrations applied or up to date, the app's own settings file in use, the photos of logs moved to their own folder, the first administrator), sign-ins and sign-outs, password changes and reset requests, what an administrator does to users and to access, sharing a vehicle's logs, imports, emptied trashes, which model and server photo reading uses and where its system prompt comes from, a database or model server that is back |
 | `Debug` | ordinary changes (a vehicle, refueling, expense, schedule, chart, picture or photo added, changed, trashed or restored), every GraphQL request with its time and operation, errors a client causes (a validation failure, something missing, a request the server turns down), sessions that are no longer valid and why, and the trail of each photo a model reads (see [Reading photos with an OpenAI-compatible model](photo-reading.md#following-a-photo-through-the-log)) |
 
-**Only ids, counts and reasons are logged** by the app's own lines: users, vehicles, logs and pictures by id, never e-mail addresses, names, license plates, notes, amounts, odometer readings, passwords, reset links, API keys, the subject an identity provider sends, or values read from photos (why a value was dropped is logged as a code such as `OdometerBelowLatest`, never the value). The one exception is opt-in: `Recognition__OpenAiCompatible__LogTraffic=true` also writes the prompts and what a model read, never the photo or the key, to debug a model ([details](photo-reading.md#seeing-what-is-sent-to-the-model)). A failed sign-in names the account by its id (or says "unknown account"), not by the address that was typed. Nothing a client sends is logged as it came: not GraphQL variables or documents, not the text of a request error, fields are named the way the schema names them, and the endpoints of the picture and import uploads appear as their route pattern, not as the path that was asked for.
+**Only ids, counts and reasons are logged** by the app's own lines: users, vehicles, logs and pictures by id, never e-mail addresses, names, license plates, notes, amounts, odometer readings, passwords, reset links, API keys, the subject an identity provider sends, or values read from photos (why a value was dropped is logged as a code such as `OdometerBelowLatest`, never the value). The one exception is opt-in: `Recognition__OpenAiCompatible__LogTraffic=true` also writes the prompts and what a model read, never the photo or the key, to debug a model ([details](photo-reading.md#seeing-what-is-sent-to-the-model)). A failed sign-in names the account by its id (or says "unknown account"), not by the address that was typed. A settings file left out at start is described by the names of the settings at fault, never by what was written in them. Nothing a client sends is logged as it came: not GraphQL variables or documents, not the text of a request error, fields are named the way the schema names them, and the endpoints of the picture and import uploads appear as their route pattern, not as the path that was asked for.
 
 That promise has an edge. The text of an unexpected error is written as the framework or the database wrote it, and a database server can quote the values of a failed statement in it (for a duplicate key, for example). Lines of the framework and its libraries (`Microsoft.*`, `System.*`) are written as they come, such as an identity provider's error description. And **do not lower `Microsoft.AspNetCore` below `Warning`**: its request lines hold the whole address of a request, which includes the token of a password reset link.
 

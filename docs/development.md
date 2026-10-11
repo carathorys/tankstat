@@ -122,7 +122,7 @@ The UI is in English and Hungarian (react-i18next). Every visible string is in `
 
 ## Test data (seeder)
 
-`Tankstat.Seeder` is a standalone console tool that does only one thing: **deletes the database, creates it, migrates it and fills it with random, consistent test data**. For the no-authentication setup only: it creates no users (everything belongs to the anonymous owner) and refuses to run when `Auth__Mode` is anything but `None`.
+`Tankstat.Seeder` is a standalone console tool that does only one thing: **deletes the database, creates it, migrates it and fills it with random, consistent test data**. For the no-authentication setup only: it creates no users (everything belongs to the anonymous owner) and refuses to run when `Auth:Mode` is anything but `None`, wherever it is set: in the environment or in the app's own settings file, which it reads below the environment as the app does (`--settings`, else `Settings__Path`, else `settings.json` in the working directory).
 
 ```sh
 mise run seed                                                       # 25 vehicles, 20 refuelings each, into the dev:api database
@@ -141,6 +141,7 @@ mise run seed -- --help
 | `--provider`, `--connection` | override the database (otherwise `Database__*` settings; `mise run seed` targets the `dev:api` SQLite file) |
 | `--uploads <folder>` | the folder of uploaded pictures, which is deleted too because nothing would point to the pictures any more (default: `Storage:Path` if configured) |
 | `--photos <folder>` | the folder of the photos of logs, deleted too for the same reason, when they have one of their own (default: `Storage:PhotosPath` if set; unset, they are in the uploads folder) |
+| `--settings <file>` | the app's own settings file to read, for its `Auth:Mode` and folders (default: `Settings:Path`, else `settings.json` in the working directory; `mise run seed` names the `dev:api` file) |
 | `--yes` | skip the "type yes" confirmation before the database is deleted |
 
 The fuel logs are consistent: per vehicle, dates and the odometer only increase, the last fill-up is recent, litres follow the distance at a per-vehicle consumption (now and then a fill-up was not logged: the odometer runs on and the next log is marked), and prices drift slowly. Trashed vehicles keep their fuel logs.

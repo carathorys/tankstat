@@ -3,10 +3,16 @@ using Tankstat.Api;
 using Tankstat.Api.Auth;
 using Tankstat.Api.Media;
 using Tankstat.Api.GraphQL;
+using Tankstat.Api.Settings;
 using Tankstat.Application;
 using Tankstat.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
+// The app's own settings file joins the configuration below the environment variables, unless the app could not start with it (see SettingsFile).
+var settingsFile = SettingsFile.Prepare(builder);
+builder.Services.AddSingleton(settingsFile.Status);
+builder.Services.AddSingleton(settingsFile.Sources);
+builder.Services.AddHostedService<SettingsFileReporter>();
 builder.Services.AddApplication(builder.Configuration);
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddAuthModes();

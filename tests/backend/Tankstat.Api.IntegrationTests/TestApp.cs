@@ -12,7 +12,9 @@ namespace Tankstat.Api.IntegrationTests;
 
 /// <summary>
 /// A host with its own settings and throwaway SQLite database. Settings are passed in memory (they outrank
-/// appsettings.json and environment variables), so several hosts with different auth modes can be tested.
+/// appsettings.json and environment variables), so several hosts with different auth modes can be tested. The one exception is
+/// <c>Settings:Path</c>: Program.cs decides about the settings file before the host is built, where the in-memory settings do not exist yet,
+/// so it travels as a command-line argument (<see cref="IWebHostBuilder.UseSetting"/>) and every host gets a throwaway file of its own.
 /// </summary>
 internal sealed class TestApp : IDisposable
 {
@@ -36,6 +38,11 @@ internal sealed class TestApp : IDisposable
     /// <summary>Where this host keeps the keys that protect its cookies, unless its settings name another folder (<see cref="SharedData"/>).</summary>
     public string KeysPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-keys");
 
+    /// <summary>The app's own settings file of this host (none unless a test writes one), unless its settings name another (<see cref="SharedData"/>, a test's file).</summary>
+    public string SettingsPath { get; }
+
+    private readonly bool _ownSettingsFile;
+
     public WebApplicationFactory<Program> Factory { get; }
 
     /// <summary>Everything this host logged, from its first line on.</summary>
@@ -57,10 +64,13 @@ internal sealed class TestApp : IDisposable
             ["Logging:LogLevel:Tankstat"] = "Debug", // the Debug lines are part of what is tested
         };
         foreach (var (key, value) in settings) all[key] = value;
+        _ownSettingsFile = settings.GetValueOrDefault("Settings:Path") is null;
+        SettingsPath = settings.GetValueOrDefault("Settings:Path") ?? Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-settings.json");
 
         Factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Development"); // introspection etc.; never uses the dev appsettings of a real database
+            b.UseSetting("Settings:Path", SettingsPath); // read before the host is built: a command-line argument, see the class comment
             b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(all));
             b.ConfigureLogging(l => l.AddProvider(Log));
             b.ConfigureServices(s => services?.Invoke(s));
@@ -120,6 +130,11 @@ internal sealed class TestApp : IDisposable
         if (Directory.Exists(UploadsPath)) Directory.Delete(UploadsPath, recursive: true);
         if (Directory.Exists(PhotosPath)) Directory.Delete(PhotosPath, recursive: true);
         if (Directory.Exists(KeysPath)) Directory.Delete(KeysPath, recursive: true);
+        if (_ownSettingsFile)
+        {
+            File.Delete(SettingsPath);
+            File.Delete(SettingsPath + ".bak");
+        }
     }
 
     /// <summary>Starts a host on a new database (no auth, nothing else to set up), lets it migrate, and keeps the file until the run ends.</summary>
@@ -152,6 +167,7 @@ internal sealed class SharedData : IDisposable
     public string KeysPath => _root + "-keys";
     public string UploadsPath => _root + "-uploads";
     public string PhotosPath => _root + "-photos";
+    public string SettingsPath => _root + "-settings.json";
 
     public SharedData() => TestApp.CopyMigratedDatabase(DatabasePath);
 
@@ -164,6 +180,7 @@ internal sealed class SharedData : IDisposable
             ["DataProtection:KeysPath"] = KeysPath,
             ["Storage:Path"] = UploadsPath,
             ["Storage:PhotosPath"] = PhotosPath,
+            ["Settings:Path"] = SettingsPath,
         }, services, host);
     }
 
@@ -188,6 +205,8 @@ internal sealed class SharedData : IDisposable
     {
         TestApp.ReleaseDatabase(DatabasePath);
         File.Delete(DatabasePath);
+        File.Delete(SettingsPath);
+        File.Delete(SettingsPath + ".bak");
         foreach (var folder in new[] { KeysPath, UploadsPath, PhotosPath })
             if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
     }

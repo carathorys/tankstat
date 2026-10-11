@@ -72,7 +72,8 @@
   "notices": {
     "label": "Notices",
     "warning": "Warning:",
-    "AUTH_DISABLED": "Authentication is disabled: anyone who can reach this app can see and change all data. This is unsafe; configure Auth:Mode."
+    "AUTH_DISABLED": "Authentication is disabled: anyone who can reach this app can see and change all data. This is unsafe; configure Auth:Mode.",
+    "SETTINGS_FILE_IGNORED": "The app's own settings file could not be used and was left out; the app runs without it until the next start. See the server log for the reason."
   },
   "notifications": {
     "title": "Notifications",

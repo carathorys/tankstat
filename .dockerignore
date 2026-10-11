@@ -11,6 +11,9 @@ coverage
 **/*.db
 **/*.db-shm
 **/*.db-wal
+# The app's own settings file of a local run (secrets); the Web SDK would publish any *.json of the API project.
+**/settings.json
+**/settings.json.bak
 **/TestResults
 **/.vs
 .idea

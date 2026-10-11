@@ -16,7 +16,8 @@ public sealed record SeedOptions(
     string? UploadsPath = null,
     IntRange RecurringPerVehicle = default,
     int Notifications = 0,
-    string? PhotosPath = null);
+    string? PhotosPath = null,
+    string? SettingsPath = null);
 
 public sealed class SeedOptionsException(string message) : Exception(message);
 
@@ -51,11 +52,14 @@ public static class SeedOptionsParser
                                                                                       if set; nothing is deleted otherwise)
           --photos <folder>      the folder of the photos of logs to delete too (default: Storage:PhotosPath
                                                                                       if set, else photos next to the pictures)
+          --settings <file>      the app's own settings file to read (default: Settings:Path, else settings.json
+                                                                                      in the working directory)
           --yes                  do not ask for confirmation before deleting the database
           --help                 show this text
 
         The database settings can also come from the usual environment variables (Database__Provider,
-        Database__ConnectionString). The seeder refuses to run when Auth__Mode is anything but None.
+        Database__ConnectionString) or from the app's own settings file, which the environment overrides as in the
+        app. The seeder refuses to run when Auth:Mode (wherever it is set) is anything but None.
         """;
 
     /// <summary>Returns null when help was requested.</summary>
@@ -66,7 +70,7 @@ public static class SeedOptionsParser
         var recurring = new IntRange(0, 2);
         var notifications = 15;
         var yes = false;
-        string? provider = null, connection = null, uploads = null, photos = null;
+        string? provider = null, connection = null, uploads = null, photos = null, settingsFile = null;
 
         for (var i = 0; i < args.Count; i++)
         {
@@ -96,12 +100,13 @@ public static class SeedOptionsParser
                 case "--connection": connection = Value(); break;
                 case "--uploads": uploads = Value(); break;
                 case "--photos": photos = Value(); break;
+                case "--settings": settingsFile = Value(); break;
                 default: throw new SeedOptionsException($"Unknown option '{arg}'. Use --help.");
             }
         }
 
         if ((long)vehicles + trashed > MaxVehicles) throw new SeedOptionsException($"At most {MaxVehicles:N0} vehicles in total.");
-        return new SeedOptions(vehicles, trashed, refuelings, seed, yes, provider, connection, uploads, recurring, notifications, photos);
+        return new SeedOptions(vehicles, trashed, refuelings, seed, yes, provider, connection, uploads, recurring, notifications, photos, settingsFile);
     }
 
     private static int Count(string name, string text, int max)

@@ -129,6 +129,33 @@ public sealed class SeederAppTests : IDisposable
     }
 
     [Fact]
+    public async Task TheAppsOwnSettingsFile_Counts_BelowTheEnvironment()
+    {
+        var file = Path.Combine(Path.GetTempPath(), $"tankstat-seed-settings-{Guid.NewGuid():N}.json");
+        await File.WriteAllTextAsync(file, """{ "Auth": { "Mode": "Standalone" } }""");
+        try
+        {
+            // a mode set on the settings page (Settings:Path from the environment, or --settings) refuses the seeder
+            var (byPath, output) = await Run(["--vehicles", "2", "--yes"], env: new Dictionary<string, string?> { ["Settings:Path"] = file });
+            Assert.Equal(SeederApp.Refused, byPath);
+            Assert.Contains("authentication mode None only", output);
+            Assert.Equal(SeederApp.Refused, (await Run(["--vehicles", "2", "--yes", "--settings", file])).Code);
+
+            // the environment wins over the file, as in the app
+            Assert.Equal(SeederApp.Success, (await Run(["--vehicles", "2", "--yes"], env: new Dictionary<string, string?> { ["Settings:Path"] = file, ["Auth:Mode"] = "None" })).Code);
+
+            await File.WriteAllTextAsync(file, "{ not json");
+            var (broken, said) = await Run(["--vehicles", "2", "--yes", "--settings", file]);
+            Assert.Equal(SeederApp.Refused, broken);
+            Assert.Contains("settings file", said);
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Fact]
     public async Task ClearsTheUploadedPicturesAndPhotos_WhenTheFoldersAreGiven()
     {
         var uploads = Path.Combine(Path.GetTempPath(), $"tankstat-seed-uploads-{Guid.NewGuid():N}");
@@ -276,14 +303,19 @@ public sealed class SeederAppTests : IDisposable
     {
         await Run(["--vehicles", "30", "--trashed", "4", "--refuelings", "5-12", "--yes"]);
 
-        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(new Dictionary<string, string?>
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
-            ["Database:Provider"] = "Sqlite",
-            ["Database:ConnectionString"] = Connection,
-            ["Auth:Mode"] = "None",
-            // a folder that does not exist, never a developer's Storage__Path: the app moves photos at start
-            ["Storage:Path"] = Path.Combine(Path.GetTempPath(), $"tankstat-seed-app-{Guid.NewGuid():N}", "uploads"),
-        })));
+            // a settings file that does not exist, never a developer's: it is read before the host is built, so it goes as an argument
+            b.UseSetting("Settings:Path", Path.Combine(Path.GetTempPath(), $"tankstat-seed-app-{Guid.NewGuid():N}-settings.json"));
+            b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Database:Provider"] = "Sqlite",
+                ["Database:ConnectionString"] = Connection,
+                ["Auth:Mode"] = "None",
+                // a folder that does not exist, never a developer's Storage__Path: the app moves photos at start
+                ["Storage:Path"] = Path.Combine(Path.GetTempPath(), $"tankstat-seed-app-{Guid.NewGuid():N}", "uploads"),
+            }));
+        });
         var client = factory.CreateClient();
         async Task<JsonElement> Gql(string query, object? variables = null) =>
             await (await client.PostAsJsonAsync("/graphql", new { query, variables })).Content.ReadFromJsonAsync<JsonElement>();
