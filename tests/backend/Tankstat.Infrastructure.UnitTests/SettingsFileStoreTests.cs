@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Tankstat.Infrastructure.Settings;
 
 namespace Tankstat.Infrastructure.UnitTests;
@@ -61,6 +62,16 @@ public sealed class SettingsFileStoreTests : IDisposable
         Assert.True(read.ContainsKey("auth:mode")); // keys as the configuration: case does not matter
         Assert.False(File.Exists(store.BackupPath)); // nothing was there before
         Assert.False(File.Exists(FilePath + ".tmp"));
+    }
+
+    [Fact]
+    public async Task AFileWhoseNameStartsWithADot_IsReadLikeAnyOther()
+    {
+        var store = new SettingsFileStore(Path.Combine(_folder, ".settings.json")); // the provider AddJsonFile makes would hide it and call it missing
+        await store.WriteAsync(new Dictionary<string, string?> { ["Defaults:Currency"] = "HUF" }, default);
+
+        Assert.Equal("HUF", (await store.ReadAsync(default))["Defaults:Currency"]);
+        Assert.Equal("HUF", new ConfigurationBuilder().Add(SettingsFileStore.SourceFor(store.Path)).Build()["Defaults:Currency"]); // the source the app starts with
     }
 
     [Fact]
