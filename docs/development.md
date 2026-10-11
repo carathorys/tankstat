@@ -58,6 +58,21 @@ mise run test:coverage     # unit + integration tests with coverage reports in .
 
 The backup encryption is the age format: `tests/backend/contracts/age/` holds files written by age 1.3.2 (see its README), which the reader must open, and `AgeStreamTests.TheRealTool_OpensWhatTheWriterWrote` runs `age -d` on the writer's file when `age` runs here (`age` on the `PATH`, or mise's installed copy: `mise install age@1.3.2`; the test runs mise offline, so it never fetches or installs anything); without it that one check passes with a line saying it was skipped.
 
+CI has no database servers, so the dump and the load are also checked against real ones by `ProviderRoundTripTests` (Infrastructure unit tests), which run for a provider when a connection string for it is in the environment, `{db}` standing for a database name the test makes and drops, and otherwise pass with a line saying they were skipped. For example, with throwaway containers:
+
+```sh
+docker run -d --name tk-pg -e POSTGRES_PASSWORD=secret -p 55432:5432 postgres:17-alpine
+docker run -d --name tk-mysql -e MYSQL_ROOT_PASSWORD=secret -p 53306:3306 mysql:8.4
+docker run -d --name tk-mssql -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD='Str0ng!Passw0rd' -p 51433:1433 mcr.microsoft.com/mssql/server:2022-latest
+
+TANKSTAT_TEST_POSTGRESQL='Host=localhost;Port=55432;Database={db};Username=postgres;Password=secret' \
+TANKSTAT_TEST_MYSQL='Server=localhost;Port=53306;Database={db};User=root;Password=secret' \
+TANKSTAT_TEST_SQLSERVER='Server=localhost,51433;Database={db};User Id=sa;Password=Str0ng!Passw0rd;TrustServerCertificate=True;Encrypt=False' \
+  dotnet test tests/backend/Tankstat.Infrastructure.UnitTests --filter FullyQualifiedName~ProviderRoundTripTests
+```
+
+Each provider's tests back up a seeded database, load the backup into another, and compare the two backups line for line; and move a backup from SQLite to the server and back, comparing the values (numbers without trailing zeros, timestamps to the microsecond). Run them after changing the dump or the load, a database driver or EF Core.
+
 The API tests pin the GraphQL schema the frontend relies on, so a breaking schema change fails them. They read the target from `TANKSTAT_API_URL` (default `http://localhost:5080`); `test:api` sets it for you.
 
 Frontend tests are named `*.unit.test.ts(x)` (a function or component on its own) or `*.integration.test.ts(x)` (the app against msw-mocked GraphQL); other names are not picked up. They are grouped by feature area, unit and integration tests side by side, nested where an area has parts:
