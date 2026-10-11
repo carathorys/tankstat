@@ -1,6 +1,6 @@
 ---
 name: review
-description: Review a GitHub pull request - only one that carries neither `reviewing` nor `reviewed`, claim it with the `reviewing` label, review it with the built-in `code-review` skill (its effort levels, `--fix` and `--max-findings` passed on) and post the findings on the PR, then label it `reviewed` and release the claim. Use when asked to review a PR (`/review 99`, `/review next max --fix`, "review the next PR"). Changes the PR's code only with `--fix`, in a worktree of its own.
+description: Review a GitHub pull request - only one that carries neither `reviewing` nor `reviewed`, claim it with the `reviewing` label, review it with the built-in `code-review` skill (its effort levels, `--fix` and `--max-findings` passed on) and post the findings on the PR (in one summary comment; inline too with `--comment`), then label it `reviewed` and release the claim. Use when asked to review a PR (`/review 99`, `/review next max --fix`, "review the next PR"). Changes the PR's code only with `--fix`, in a worktree of its own.
 ---
 
 # Review a pull request
@@ -16,11 +16,11 @@ description: Review a GitHub pull request - only one that carries neither `revie
 | `low` `medium` `high` `xhigh` `max` | The effort level, passed on to `code-review`. Without one, `code-review` reuses the level typed last. |
 | `--max-findings <n>` / `all` / `default` | Passed on to `code-review` as given (it remembers the choice until `default`). |
 | `--fix` | After the review, apply the findings to the PR's branch and push them (section 3b). Without it the PR's code is never changed. |
-| `--comment` | Accepted and ignored: `/review` always posts the findings on the PR. |
+| `--comment` | Passed on to `code-review`, which then also posts each finding as an inline PR comment. Without it there are no inline comments: the findings go in the summary comment (section 3). |
 
 Not available: `ultra` (and with it `--post` / `--no-post`). It is billed and only the user can launch it; if asked for, say so and offer `/code-review ultra N` for them to type. Any other argument: ask what is meant instead of guessing.
 
-The findings go **on the PR**, so the author, human or agent, can act on them without this conversation.
+The findings go **on the PR** either way, so the author, human or agent, can act on them without this conversation.
 
 ## 0. Gate: is it open and free?
 
@@ -45,9 +45,9 @@ The label comes off again at the end (step 4), after `reviewed` went on. If you 
 
 ## 3. Review
 
-Invoke the built-in `code-review` skill on the PR with its findings posted as inline PR comments: `code-review` with the arguments `N --comment`, plus the level, `--max-findings` and `--fix` exactly as the user gave them. It does the review itself; follow its instructions. With `--fix`, set up the worktree of section 3b **first** and invoke it from there, so the fixes land in the PR's branch and nowhere else.
+Invoke the built-in `code-review` skill on the PR: `code-review` with the argument `N`, plus the level, `--max-findings`, `--fix` and `--comment` exactly as the user gave them (`--comment` only when the user typed it). It does the review itself; follow its instructions. With `--fix`, set up the worktree of section 3b **first** and invoke it from there, so the fixes land in the PR's branch and nowhere else.
 
-Then add one summary comment on the PR (`gh pr comment N`): the head commit reviewed, the level, how many findings and of what kind, anything checked by hand (and how), whether you see something blocking, and with `--fix` which findings were fixed (the commits) and which were left and why. When there are no findings, say so; the comment is what tells the author the review happened.
+Then add one summary comment on the PR (`gh pr comment N`): the head commit reviewed, the level, how many findings and of what kind, anything checked by hand (and how), whether you see something blocking, without `--comment` every finding itself (file:line, what goes wrong and when, its severity), and with `--fix` which findings were fixed (the commits) and which were left and why. When there are no findings, say so; the comment is what tells the author the review happened.
 
 Without `--fix`, **never change the PR's code**: no commits, no pushes. Applying the findings is then a separate task (the author's, or `/dev`).
 
