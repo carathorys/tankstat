@@ -29,10 +29,7 @@ internal sealed class HashingStream(Stream inner, bool leaveOpen = false) : Stre
         Written += buffer.Length;
     }
 
-    public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => WriteAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
-
     public override void Flush() => inner.Flush();
-    public override Task FlushAsync(CancellationToken cancellationToken) => inner.FlushAsync(cancellationToken);
 
     protected override void Dispose(bool disposing)
     {
