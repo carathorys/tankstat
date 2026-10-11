@@ -1,5 +1,5 @@
 import Alert from '@mui/material/Alert'
-import { CircleCheck, CircleX, CloudOff } from 'lucide-react'
+import { AlertTriangle, CircleCheck, CircleX, CloudOff } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useErrorText } from './i18n/errors.ts'
 import { OfflineError } from './offline/errors.ts'
@@ -17,6 +17,15 @@ export function ErrorMessage({ error, children }: { error?: unknown; children?: 
   return (
     <Alert severity="error" role="alert" icon={<CircleX size={16} aria-hidden />} className="tk-appear" sx={{ my: 1 }}>
       {children ?? errorText(error)}
+    </Alert>
+  )
+}
+
+/** Done, but a part of it failed and the user has to act on it (say, hand a link over that could not be e-mailed). */
+export function WarningMessage({ children }: { children: ReactNode }) {
+  return (
+    <Alert severity="warning" role="alert" icon={<AlertTriangle size={16} aria-hidden />} className="tk-appear" sx={{ my: 1 }}>
+      {children}
     </Alert>
   )
 }
