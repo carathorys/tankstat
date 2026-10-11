@@ -9,25 +9,38 @@ namespace Tankstat.Infrastructure.UnitTests;
 
 public class PasswordResetMailerTests
 {
-    /// <summary>Sends to a list; <see cref="Next"/> decides what the next send does instead (throw, or wait until the send is cancelled).</summary>
+    /// <summary>
+    /// Sends to a list; a script for an address decides what a send to it does instead (throw, or wait until the send is cancelled). By
+    /// address, not by turn: the mailer serves several requests at once, in no fixed order.
+    /// </summary>
     private sealed class ScriptedEmail : IEmailSender
     {
+        private readonly SemaphoreSlim _starts = new(0);
+
         public List<string> To { get; } = [];
-        public Func<CancellationToken, Task>? Next { get; set; }
-        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Dictionary<string, Func<CancellationToken, Task>> Scripts { get; } = [];
         public bool IsConfigured => true;
 
         public async Task SendAsync(string to, string subject, string body, CancellationToken ct)
         {
-            Started.TrySetResult();
-            if (Next is { } next)
-            {
-                Next = null;
-                await next(ct);
-            }
+            _starts.Release();
+            if (Scripts.TryGetValue(to, out var script)) await script(ct);
             lock (To) To.Add(to);
         }
+
+        /// <summary>Waits until this many sends have started (in all, counting from the first).</summary>
+        public async Task StartedAsync(int count = 1)
+        {
+            for (var i = 0; i < count; i++) Assert.True(await _starts.WaitAsync(TimeSpan.FromSeconds(30)));
+        }
+
+        public string[] Sent()
+        {
+            lock (To) return [.. To];
+        }
     }
+
+    private static Task Hang(CancellationToken ct) => Task.Delay(Timeout.Infinite, ct); // a mail server that never answers
 
     private static TestDatabase Database(ScriptedEmail email) => new(
         new() { ["Auth:Mode"] = "Standalone", ["Auth:PublicUrl"] = "https://tank.test", ["Auth:Standalone:ResetCooldownMinutes"] = "0" },
@@ -105,7 +118,7 @@ public class PasswordResetMailerTests
     [Fact]
     public async Task AFailingRequest_IsLogged_AndTheNextOneIsStillServed()
     {
-        var email = new ScriptedEmail { Next = _ => throw new InvalidOperationException("the sender is broken") };
+        var email = new ScriptedEmail { Scripts = { ["alice@example.com"] = _ => throw new InvalidOperationException("the sender is broken") } };
         await using var db = Database(email);
         var alice = await AddUser(db, "alice@example.com");
         var bob = await AddUser(db, "bob@example.com");
@@ -127,7 +140,7 @@ public class PasswordResetMailerTests
     [Fact]
     public async Task AMailServerFailure_IsAWarning_NotAnError()
     {
-        var email = new ScriptedEmail { Next = _ => throw new EmailSendException("Sending an e-mail through smtp.test:25 failed (refused)") };
+        var email = new ScriptedEmail { Scripts = { ["alice@example.com"] = _ => throw new EmailSendException("Sending an e-mail through smtp.test:25 failed (refused)") } };
         await using var db = Database(email);
         var alice = await AddUser(db, "alice@example.com");
         using var mailer = Mailer(db);
@@ -146,14 +159,14 @@ public class PasswordResetMailerTests
     [Fact]
     public async Task StoppingDuringASend_LeavesNoLinkThatNobodyReceived()
     {
-        var email = new ScriptedEmail { Next = ct => Task.Delay(Timeout.Infinite, ct) }; // a mail server that never answers
+        var email = new ScriptedEmail { Scripts = { ["alice@example.com"] = Hang } };
         await using var db = Database(email);
         var alice = await AddUser(db, "alice@example.com");
         using var mailer = Mailer(db);
         await mailer.StartAsync(default);
 
         db.Get<IPasswordResetQueue>().Enqueue(alice.Id, alice.SessionVersion);
-        await email.Started.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        await email.StartedAsync();
         await mailer.StopAsync(default);
 
         Assert.Empty(email.To);
@@ -168,10 +181,13 @@ public class PasswordResetMailerTests
         // Not every provider reports a cancelled call as an OperationCanceledException (SqlClient has its own exception for it).
         var email = new ScriptedEmail
         {
-            Next = async ct =>
+            Scripts =
             {
-                try { await Task.Delay(Timeout.Infinite, ct); }
-                catch (OperationCanceledException) { throw new InvalidOperationException("the connection was closed"); }
+                ["alice@example.com"] = async ct =>
+                {
+                    try { await Task.Delay(Timeout.Infinite, ct); }
+                    catch (OperationCanceledException) { throw new InvalidOperationException("the connection was closed"); }
+                },
             },
         };
         await using var db = Database(email);
@@ -180,7 +196,7 @@ public class PasswordResetMailerTests
         await mailer.StartAsync(default);
 
         db.Get<IPasswordResetQueue>().Enqueue(alice.Id, alice.SessionVersion);
-        await email.Started.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        await email.StartedAsync();
         await mailer.StopAsync(default);
 
         Assert.DoesNotContain(db.Log.Entries, e => e.Level == LogLevel.Error);
@@ -189,9 +205,9 @@ public class PasswordResetMailerTests
     }
 
     [Fact]
-    public async Task RequestsStillWaitingAtStop_AreNamedInTheLog()
+    public async Task AMailServerThatDoesNotAnswerOneSend_HoldsNoOtherUsersMailBack()
     {
-        var email = new ScriptedEmail { Next = ct => Task.Delay(Timeout.Infinite, ct) }; // alice's send hangs, bob waits behind it
+        var email = new ScriptedEmail { Scripts = { ["alice@example.com"] = Hang } };
         await using var db = Database(email);
         var alice = await AddUser(db, "alice@example.com");
         var bob = await AddUser(db, "bob@example.com");
@@ -199,15 +215,39 @@ public class PasswordResetMailerTests
         await mailer.StartAsync(default);
 
         db.Get<IPasswordResetQueue>().Enqueue(alice.Id, alice.SessionVersion);
-        db.Get<IPasswordResetQueue>().Enqueue(bob.Id, bob.SessionVersion);
-        await email.Started.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        await email.StartedAsync();
+        db.Get<IPasswordResetQueue>().Enqueue(bob.Id, bob.SessionVersion); // asked after alice's send stuck
+
+        await email.StartedAsync(); // bob's send started while alice's still hangs
+        await mailer.StopAsync(default);
+
+        Assert.Equal(["bob@example.com"], email.Sent());
+        Assert.Single(await db.Get<IPasswordResetTokenRepository>().IdsForUserAsync(bob.Id, default));
+    }
+
+    [Fact]
+    public async Task RequestsStillWaitingAtStop_AreNamedInTheLog()
+    {
+        // Every sender hangs on a request of its own, so the last request is still waiting when the app stops.
+        var email = new ScriptedEmail();
+        await using var db = Database(email);
+        var users = new List<User>();
+        for (var i = 0; i <= PasswordResetMailer.Senders; i++)
+        {
+            users.Add(await AddUser(db, $"user{i}@example.com"));
+            email.Scripts[$"user{i}@example.com"] = Hang;
+        }
+        using var mailer = Mailer(db);
+        await mailer.StartAsync(default);
+
+        foreach (var user in users) db.Get<IPasswordResetQueue>().Enqueue(user.Id, user.SessionVersion);
+        await email.StartedAsync(PasswordResetMailer.Senders);
         await mailer.StopAsync(default);
 
         var lines = db.Log.From<PasswordResetMailer>().Where(e => e.Level == LogLevel.Information).ToList();
-        Assert.Contains(lines, e => Equals(e.Values.GetValueOrDefault("UserId"), alice.Id));
-        Assert.Contains(lines, e => Equals(e.Values.GetValueOrDefault("UserId"), bob.Id));
+        Assert.All(users, user => Assert.Contains(lines, e => Equals(e.Values.GetValueOrDefault("UserId"), user.Id)));
         Assert.True(db.Get<PasswordResetQueue>().WhenIdleAsync().IsCompleted);
-        Assert.Empty(email.To);
+        Assert.Empty(email.Sent());
     }
 
     [Fact]

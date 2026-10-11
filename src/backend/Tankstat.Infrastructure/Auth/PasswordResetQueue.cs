@@ -29,7 +29,7 @@ internal sealed class PasswordResetQueue : IPasswordResetQueue
 
     public PasswordResetQueue(int capacity)
     {
-        _channel = Channel.CreateBounded<Guid>(new BoundedChannelOptions(capacity) { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
+        _channel = Channel.CreateBounded<Guid>(new BoundedChannelOptions(capacity) { SingleReader = false, FullMode = BoundedChannelFullMode.Wait });
         _idle.SetResult();
     }
 
@@ -90,14 +90,34 @@ internal sealed class PasswordResetQueue : IPasswordResetQueue
 }
 
 /// <summary>
-/// Sends the e-mails of self-service reset requests after they were answered, one at a time, through
+/// Sends the e-mails of self-service reset requests after they were answered, <see cref="Senders"/> at a time, each through
 /// <see cref="PasswordResetService.SendRequestedAsync"/> in a scope of its own. A request that fails unexpectedly is an Error, and the next
-/// one is still served; a mail server's failure is the service's Warning. Says nothing at start. At stop, the request it is serving and the
+/// one is still served; a mail server's failure is the service's Warning. Says nothing at start. At stop, the requests it is serving and the
 /// ones still waiting are lost (the users ask again), each an Information line by user id, so a mail that never came can be explained.
 /// </summary>
 internal sealed class PasswordResetMailer(IServiceScopeFactory scopes, PasswordResetQueue queue, ILogger<PasswordResetMailer> logger) : BackgroundService
 {
+    /// <summary>
+    /// How many requests are served at once. Several, so a mail server that does not answer holds one sender for up to
+    /// <see cref="SmtpEmailSender.SendTimeout"/> instead of the whole line, and one user's send seldom delays another's (which an account
+    /// holder timing their own mail could read as "this other address is registered"); few, so a burst of requests for many accounts does
+    /// not open a connection to the mail server each. Two requests of one user served at once (one taken, then asked again) are settled by
+    /// <see cref="PasswordResetService"/>'s per-user lock and the cool-down, as a request and an administrator's issue are.
+    /// </summary>
+    internal const int Senders = 4;
+
     protected override async Task ExecuteAsync(CancellationToken stopping)
+    {
+        await Task.WhenAll(Enumerable.Range(0, Senders).Select(_ => Task.Run(() => SendAsync(stopping), CancellationToken.None)));
+
+        while (queue.TryTake(out var left))
+        {
+            logger.LogInformation("The password reset requested by user {UserId} was not sent: the app stopped before its turn", left.UserId);
+            queue.Done();
+        }
+    }
+
+    private async Task SendAsync(CancellationToken stopping)
     {
         while (!stopping.IsCancellationRequested)
         {
@@ -131,12 +151,6 @@ internal sealed class PasswordResetMailer(IServiceScopeFactory scopes, PasswordR
             {
                 queue.Done();
             }
-        }
-
-        while (queue.TryTake(out var left))
-        {
-            logger.LogInformation("The password reset requested by user {UserId} was not sent: the app stopped before its turn", left.UserId);
-            queue.Done();
         }
     }
 }
