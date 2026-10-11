@@ -25,6 +25,7 @@ Under the hood: a React + TypeScript frontend (Vite, MUI) and a .NET 10 backend 
 - **Sharing and access control**: owners, administrators, instance-wide defaults, per-user grants, and sharing a single vehicle's logs.
 - **Sign-in your way**: none, the app's own accounts, OpenID Connect, or a trusted reverse proxy (Authelia, Authentik, oauth2-proxy, ...).
 - **Your database**: SQLite (no setup), PostgreSQL, SQL Server or MySQL.
+- **Backups**: one encrypted file with every table, the pictures and the keys, written by a command next to the server and readable with `age` without Tankstat; restoring it from the app is on its way.
 - **Installable web app** that works while the server is out of reach: your entries of a time window you choose are downloaded to the device and kept current, what you add, change or remove (photos included) is kept on the device and synced when the server is back, and changes the server could not apply wait for someone who may change the vehicle to apply or discard them. An update prompt never reloads on its own.
 - **Follows you**: the sidebar, grid columns, language, colour mode and the order of your vehicles are saved with your account.
 - **English and Hungarian**, dark and light mode, built for keyboards, screen readers and reduced motion.
@@ -51,6 +52,7 @@ Everything is configured through environment variables, or by an administrator o
 - [Configuration](docs/configuration.md): database, uploaded files, defaults, notifications, the app's own settings file and logging.
 - [Authentication and access control](docs/authentication.md): the four sign-in modes, every setting, and who may see what.
 - [Reading photos with an OpenAI-compatible model](docs/photo-reading.md): setting up a vision model, what it is told, and following a photo through the log.
+- [Backup and restore](docs/backup-and-restore.md): what is in a backup, encrypting it with a passphrase, opening it again.
 - [Self-hosting](docs/self-hosting.md): the Docker image, running the published build, releases.
 - [Development](docs/development.md): toolchain, layout, running, testing, migrations, test data, CI.
 
