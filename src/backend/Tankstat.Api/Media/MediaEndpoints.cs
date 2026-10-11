@@ -1,6 +1,9 @@
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.Extensions.Options;
 using Tankstat.Api.Auth;
 using Tankstat.Application;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Backups;
 using Tankstat.Application.Images;
 using Tankstat.Application.Photos;
 using Tankstat.Application.Recognition;
@@ -75,6 +78,25 @@ public static class MediaEndpoints
         {
             await drafts.RemoveAsync(id, ct);
             return Results.NoContent();
+        });
+
+        // Backups (administrators): a backup file uploaded into the backups folder, streamed to disk; a restore point downloaded. Under /media
+        // so the service worker and the dev proxy leave them to the server, like the pictures.
+        media.MapPut("/backups", async (string? name, HttpRequest request, BackupAdminService backups, IOptions<BackupOptions> options, CancellationToken ct) =>
+        {
+            var max = options.Value.MaxUploadBytes;
+            if (request.ContentLength > max) throw new DomainException("backup.tooLarge", "The backup is larger than an upload may be.", new { MaxMb = options.Value.MaxUploadMb });
+            // Kestrel's own limit (30 MB) is raised before anything is read, a little above ours, so ours is the one that answers.
+            if (request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit) limit.MaxRequestBodySize = max + 1;
+            var point = await backups.UploadAsync(request.Body, name, ct);
+            return Results.Json(new { file = point.File, bytes = point.Bytes });
+        });
+        media.MapGet("/backups/{file}", async (string file, BackupAdminService backups, HttpContext http, CancellationToken ct) =>
+        {
+            var content = await backups.DownloadAsync(file, ct);
+            http.Response.Headers.CacheControl = "no-store";
+            http.Response.Headers.XContentTypeOptions = "nosniff";
+            return Results.Stream(content, "application/zip", fileDownloadName: file);
         });
 
         // Photos of logs: PUT adds one (up to ten per log), DELETE removes one by its image id. With `form` (the log's kind) and `locale`,

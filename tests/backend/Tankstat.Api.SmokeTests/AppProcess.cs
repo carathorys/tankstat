@@ -192,6 +192,9 @@ internal sealed class AppProcess : IAsyncDisposable
 
     public Task<HttpResponseMessage> GetAsync(string path) => _http.GetAsync(path);
 
+    /// <summary>Any request, with this client's cookies (a signed-in user's upload, say).</summary>
+    public Task<HttpResponseMessage> SendAsync(HttpRequestMessage request) => _http.SendAsync(request);
+
     /// <summary>The cookies this client would send to <c>/graphql</c> (the access cookie), as a Cookie header for another process.</summary>
     public string CookieHeader => _cookies.GetCookieHeader(new Uri(_http.BaseAddress!, "/graphql"));
 
