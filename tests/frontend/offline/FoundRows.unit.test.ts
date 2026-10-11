@@ -1,5 +1,5 @@
 import { IDBFactory } from 'fake-indexeddb'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { deviceData, GENERATION_KEY } from '../../../src/frontend/offline/deviceData.ts'
 import { indexedDbStorage, memoryStorage } from '../../../src/frontend/offline/deviceStorage.ts'
 import { compare, foundRows, inSendOrder, type FoundRow } from '../../../src/frontend/offline/foundRows.ts'
@@ -80,6 +80,58 @@ describe('deviceData.generationSeen', () => {
     expect(await store.rows.found()).toHaveLength(1)
     await store.rows.clearFound()
     expect(await store.rows.found()).toEqual([])
+  })
+})
+
+describe('deviceData.generationSeen, when answers arrive together or too early', () => {
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, 'locks')
+    vi.restoreAllMocks()
+  })
+
+  it('keeps nothing, and drops nothing, until the server said whose data this is', async () => {
+    deviceData.reset(memoryStorage())
+    const seen: string[] = []
+    deviceData.onGenerationChange((phase) => void seen.push(phase))
+
+    expect(await deviceData.generationSeen('g1')).toBe('same') // nobody confirmed yet: an answer may be someone else's
+    await deviceData.signedIn('alice')
+    expect(await deviceData.read(GENERATION_KEY)).toBeUndefined()
+    expect(seen).toEqual([])
+  })
+
+  it('two answers of the new history at once wipe once: the second finds the new generation kept', async () => {
+    deviceData.reset(memoryStorage())
+    await deviceData.signedIn('alice')
+    await deviceData.generationSeen('g1')
+    const rows = (await deviceData.writableRows())!
+    await rows.putVehicles([{ id: 'v1', name: 'Octavia', logAccess: 'DELETE', version: 1 }])
+    const phases: string[] = []
+    deviceData.onGenerationChange(async (phase) => {
+      phases.push(phase)
+      if (phase === 'before') await new Promise((resolve) => setTimeout(resolve, 20)) // slow enough for the second answer to arrive meanwhile
+      if (phase === 'after') await rows.putVehicles([{ id: 'v1', name: 'Octavia', logAccess: 'DELETE', version: 7 }]) // the download of the new history
+    })
+
+    const results = await Promise.all([deviceData.generationSeen('g2'), deviceData.generationSeen('g2')])
+
+    expect(results).toEqual(['changed', 'same'])
+    expect(phases).toEqual(['before', 'after'])
+    expect(await rows.vehicles()).toEqual([{ id: 'v1', name: 'Octavia', logAccess: 'DELETE', version: 7 }]) // not wiped again after the download
+  })
+
+  it('asks for the lock the tabs share, when the browser has Web Locks', async () => {
+    const asked: string[] = []
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: { request: async (name: string, work: () => Promise<unknown>) => (asked.push(name), work()) },
+    })
+    deviceData.reset(memoryStorage())
+    await deviceData.signedIn('alice')
+
+    expect(await deviceData.generationSeen('g1')).toBe('adopted')
+
+    expect(asked).toEqual(['tankstat-generation'])
   })
 })
 

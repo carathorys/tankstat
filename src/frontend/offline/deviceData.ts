@@ -38,6 +38,19 @@ const storeListeners = new Set<() => void>()
 type GenerationListener = (phase: 'before' | 'after', change: { from: string; to: string }) => Promise<void> | void
 const generationListeners = new Set<GenerationListener>()
 
+let generationTail: Promise<unknown> = Promise.resolve()
+
+/** One check of the server's history at a time: in this tab by chaining, across the tabs of this site by a Web Lock (where there is one). */
+function oneGenerationCheckAtATime<T>(work: () => Promise<T>): Promise<T> {
+  const run = () => {
+    const locks = globalThis.navigator?.locks
+    return locks ? (locks.request('tankstat-generation', work) as Promise<T>) : work()
+  }
+  const result = generationTail.then(run, run)
+  generationTail = result.catch(() => undefined)
+  return result
+}
+
 async function openFor(user: string | null) {
   if (store?.user === user) return
   store?.close()
@@ -181,27 +194,30 @@ export const deviceData = {
    * The server said which history its data belongs to (every `Session` answer): the first one seen is adopted as it is; another one than
    * the one kept means a restore replaced the data, so what this device downloaded refers to ids and versions of another history. Then the
    * listeners set it aside, everything downloaded and every kept answer goes (never the changes waiting, their photos, nor the rows set
-   * aside), the new generation is kept, and the listeners download afresh. Two tabs may see the same answer: the second finds the new
-   * generation kept and does nothing.
+   * aside), the new generation is kept, and the listeners download afresh. One check at a time, in this tab and across the tabs (a
+   * `Session` answer reaches every open tab at about the same time): each reads the kept generation inside its turn, so the second finds
+   * the new one kept and does nothing, and never wipes what the first just downloaded.
    */
-  async generationSeen(generation: string | undefined): Promise<'same' | 'adopted' | 'changed'> {
-    if (!generation) return 'same'
-    await switching
-    if (!store || !confirmed) return 'same'
-    const kept = (await store.get(GENERATION_KEY).catch(() => undefined))?.data
-    if (kept === generation) return 'same'
-    if (typeof kept !== 'string') {
+  generationSeen(generation: string | undefined): Promise<'same' | 'adopted' | 'changed'> {
+    if (!generation) return Promise.resolve('same')
+    return oneGenerationCheckAtATime(async () => {
+      await switching
+      if (!store || !confirmed) return 'same'
+      const kept = (await store.get(GENERATION_KEY).catch(() => undefined))?.data
+      if (kept === generation) return 'same'
+      if (typeof kept !== 'string') {
+        await store.put({ key: GENERATION_KEY, data: generation, at: Date.now() })
+        return 'adopted'
+      }
+      const change = { from: kept, to: generation }
+      for (const listener of generationListeners) await listener('before', change)
+      await writes
+      await store.clear()
       await store.put({ key: GENERATION_KEY, data: generation, at: Date.now() })
-      return 'adopted'
-    }
-    const change = { from: kept, to: generation }
-    for (const listener of generationListeners) await listener('before', change)
-    await writes
-    await store.clear()
-    await store.put({ key: GENERATION_KEY, data: generation, at: Date.now() })
-    storeListeners.forEach((listener) => listener())
-    for (const listener of generationListeners) await listener('after', change)
-    return 'changed'
+      storeListeners.forEach((listener) => listener())
+      for (const listener of generationListeners) await listener('after', change)
+      return 'changed'
+    })
   },
 
   onGenerationChange(listener: GenerationListener): () => void {

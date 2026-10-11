@@ -83,3 +83,26 @@ it('sends a whole vehicle at once, the vehicle before its entries', async () => 
   expect(outbox.changes.map((c) => c.id)).toEqual(['gone', 'r1', 'r2'])
   expect(screen.getByText('3 entries are waiting to be sent.')).toBeInTheDocument()
 })
+
+it('forgets a single row after asking, and Remove offline data empties the list', async () => {
+  const section = await setUp([
+    row({ id: 'r1', date: '2026-09-01', values: { date: '2026-09-01', totalCost: 60, currency: 'EUR' } }),
+    row({ id: 'r2', date: '2026-09-02', title: 'Night fill', values: { date: '2026-09-02', totalCost: 50, currency: 'EUR' } }),
+  ])
+  const ui = userEvent.setup()
+  const octavia = within(section.getByRole('region', { name: 'Octavia' }))
+
+  await ui.click(octavia.getByRole('button', { name: 'Forget: Refuelling, Sep 1, 2026, €60.00' }))
+  const confirm = await screen.findByRole('alertdialog', { name: 'Forget what was found on this device?' })
+  expect(within(confirm).getByText('The entry is removed from this device; it is not on the server, so it is gone.')).toBeInTheDocument()
+  await ui.click(within(confirm).getByRole('button', { name: 'Forget' }))
+
+  await waitFor(() => expect(octavia.queryByText('Refuelling, Sep 1, 2026, €60.00')).not.toBeInTheDocument())
+  expect(octavia.getByText('Refuelling, Sep 2, 2026, Night fill, €50.00')).toBeInTheDocument() // the other stays
+  expect(screen.getByText('1 entry forgotten.')).toBeInTheDocument()
+  expect(outbox.changes).toEqual([])
+
+  await deviceData.removeAll() // Remove offline data on the Account page
+  await waitFor(() => expect(screen.queryByRole('region', { name: 'Found on this device' })).not.toBeInTheDocument())
+  expect(await (await deviceData.rows())!.found()).toEqual([])
+})
