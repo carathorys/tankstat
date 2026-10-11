@@ -23,10 +23,14 @@ public class LoggingTests
     /// <summary>What the app itself logged (the framework's lines are not what is tested here).</summary>
     private static IEnumerable<LogEntry> Ours(TestApp app) => app.Log.From("Tankstat");
 
-    private sealed class ThrowingEmail : IEmailSender
+    /// <summary>
+    /// A sender with a bug of its own: not an <see cref="EmailSendException"/> (a mail server that is down is one, and gets the administrator
+    /// the link to hand over, see <c>StandaloneAuthTests</c>), so it is the server's unexpected error.
+    /// </summary>
+    private sealed class BrokenEmail : IEmailSender
     {
         public bool IsConfigured => true;
-        public Task SendAsync(string to, string subject, string body, CancellationToken ct) => throw new InvalidOperationException("smtp is down");
+        public Task SendAsync(string to, string subject, string body, CancellationToken ct) => throw new InvalidOperationException("the sender is broken");
     }
 
     [Fact]
@@ -146,7 +150,7 @@ public class LoggingTests
             ["Auth:Standalone:AdminEmail"] = "root@example.com",
             ["Auth:Standalone:AdminPassword"] = "initial-password-1",
             ["Auth:PublicUrl"] = "https://tank.test",
-        }, s => s.AddSingleton<IEmailSender>(new ThrowingEmail())); // the last registration wins: sending the setup link fails
+        }, s => s.AddSingleton<IEmailSender>(new BrokenEmail())); // the last registration wins: sending the setup link fails unexpectedly
         var admin = app.NewClient();
         await admin.LoginAs("root@example.com", "initial-password-1");
 
@@ -156,7 +160,7 @@ public class LoggingTests
         Assert.Equal("Unexpected Execution Error", body.GetProperty("errors")[0].GetProperty("message").GetString());
         var error = Assert.Single(app.Log.Entries, e => e.Level == LogLevel.Error); // once, although several hooks may hear of it
         Assert.Equal(Listener, error.Category);
-        Assert.Equal("smtp is down", error.Exception!.Message);
+        Assert.Equal("the sender is broken", error.Exception!.Message);
         Assert.Equal("Mutation.createUser", error.Values["Field"]);
         // what was done before it failed is on record
         Assert.Contains(app.Log.From("Tankstat.Application.Users.UserService"), e => e.Level == LogLevel.Information && e.Values.ContainsKey("AdminId"));

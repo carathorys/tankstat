@@ -16,7 +16,7 @@ public class StandaloneAuthTests : IDisposable
     public void Dispose() => _app.Dispose();
 
     private const string CreateUser =
-        "mutation($i: CreateUserInput!) { createUser(input: $i) { user { id email } reset { token url emailSent } } }";
+        "mutation($i: CreateUserInput!) { createUser(input: $i) { user { id email } reset { token url emailSent emailFailed } } }";
     private const string ResetPassword = "mutation($i: ResetPasswordInput!) { resetPassword(input: $i) }";
 
     /// <summary>Creates a user as the administrator and completes the setup link; returns their id.</summary>
@@ -320,18 +320,20 @@ public class StandaloneAuthTests : IDisposable
     }
 
     /// <summary>What <c>SmtpEmailSender</c> throws when the mail server refuses or cannot be reached: an address-free message.</summary>
-    private sealed class UnreachableMailServer : IEmailSender
-    {
-        public bool IsConfigured => true;
-        public Task SendAsync(string to, string subject, string body, CancellationToken ct) =>
-            throw new EmailSendException("Sending an e-mail through smtp.test:25 failed (SocketException: Connection refused)");
-    }
-
     private sealed class RecordingEmail : IEmailSender
     {
         public List<string> To { get; } = [];
         public bool IsConfigured => true;
-        public Task SendAsync(string to, string subject, string body, CancellationToken ct) { lock (To) To.Add(to); return Task.CompletedTask; }
+
+        /// <summary>Every mail fails as the real sender fails when the mail server cannot be reached (a message without the address).</summary>
+        public bool Unreachable { get; init; }
+
+        public Task SendAsync(string to, string subject, string body, CancellationToken ct)
+        {
+            if (Unreachable) throw new EmailSendException("Sending an e-mail through smtp.test:25 failed (SocketException: Connection refused)");
+            lock (To) To.Add(to);
+            return Task.CompletedTask;
+        }
     }
 
     [Fact]
@@ -358,13 +360,12 @@ public class StandaloneAuthTests : IDisposable
     [Fact]
     public async Task CreateUser_WhenTheMailServerIsDown_AnswersTheLinkToHandOver_WithAWarning_NotAnError()
     {
-        using var app = TestApp.Standalone(new() { ["Auth:PublicUrl"] = "https://tank.test" }, s => s.AddSingleton<IEmailSender>(new UnreachableMailServer()));
+        using var app = TestApp.Standalone(new() { ["Auth:PublicUrl"] = "https://tank.test" }, s => s.AddSingleton<IEmailSender>(new RecordingEmail { Unreachable = true }));
         var admin = app.NewClient();
         await admin.LoginAs(Admin, AdminPassword);
         app.Log.Clear(); // the start-up lines are not what is tested
 
-        var body = await admin.Gql("mutation($i: CreateUserInput!) { createUser(input: $i) { user { id } reset { token url emailSent emailFailed } } }",
-            new { i = new { email = "new.person@example.com", displayName = "New Person", isAdmin = false } });
+        var body = await admin.Gql(CreateUser, new { i = new { email = "new.person@example.com", displayName = "New Person", isAdmin = false } });
 
         var reset = body.Data().GetProperty("createUser").GetProperty("reset");
         Assert.False(reset.GetProperty("emailSent").GetBoolean());
