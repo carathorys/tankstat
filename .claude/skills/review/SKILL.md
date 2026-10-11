@@ -1,6 +1,6 @@
 ---
 name: review
-description: Review a GitHub pull request - only one that carries neither `reviewing` nor `reviewed`, claim it with the `reviewing` label, review it with the built-in `code-review` skill (its effort levels, `--fix` and `--max-findings` passed on) and post the findings on the PR (in one summary comment; inline too with `--comment`), then label it `reviewed` and release the claim. Use when asked to review a PR (`/review 99`, `/review next max --fix`, "review the next PR"). Changes the PR's code only with `--fix`, in a worktree of its own.
+description: Review a GitHub pull request - only one that carries neither `reviewing` nor `reviewed`, claim it with the `reviewing` label, review it with the built-in `code-review` skill (its effort levels, `--fix` and `--max-findings` passed on) and report the findings to the user (posted on the PR only with `--comment`, inline, or `--summarize`, one summary comment), then label it `reviewed` and release the claim. Use when asked to review a PR (`/review 99`, `/review next max --fix`, "review the next PR"). Changes the PR's code only with `--fix`, in a worktree of its own.
 ---
 
 # Review a pull request
@@ -16,11 +16,12 @@ description: Review a GitHub pull request - only one that carries neither `revie
 | `low` `medium` `high` `xhigh` `max` | The effort level, passed on to `code-review`. Without one, `code-review` reuses the level typed last. |
 | `--max-findings <n>` / `all` / `default` | Passed on to `code-review` as given (it remembers the choice until `default`). |
 | `--fix` | After the review, apply the findings to the PR's branch and push them (section 3b). Without it the PR's code is never changed. |
-| `--comment` | Passed on to `code-review`, which then also posts each finding as an inline PR comment. Without it there are no inline comments: the findings go in the summary comment (section 3). |
+| `--comment` | Passed on to `code-review`, which then posts each finding as an inline PR comment. |
+| `--summarize` | After the review, post one summary comment on the PR (section 3). |
 
 Not available: `ultra` (and with it `--post` / `--no-post`). It is billed and only the user can launch it; if asked for, say so and offer `/code-review ultra N` for them to type. Any other argument: ask what is meant instead of guessing.
 
-The findings go **on the PR** either way, so the author, human or agent, can act on them without this conversation.
+By default **nothing is posted on the PR**: the findings are reported to the user in this session (step 5), and the PR only gets its labels (and with `--fix` the commits). `--comment` and `--summarize` (either or both) put the findings on the PR, for an author who does not see this conversation.
 
 ## 0. Gate: is it open and free?
 
@@ -35,7 +36,7 @@ The findings go **on the PR** either way, so the author, human or agent, can act
 
 **As soon as the gate passes, before reading the PR:** `gh pr edit N --add-label reviewing` (with `--remove-label reviewed` on a new review), so no other agent picks it up meanwhile. If the label is missing on the repository, create it first: `gh label create reviewing --description "Being reviewed right now by an agent; others skip it unless asked" --color D4C5F9 --force`.
 
-The label comes off again at the end (step 4), after `reviewed` went on. If you abandon the review, remove it too and say so on the PR.
+The label comes off again at the end (step 4), after `reviewed` went on. If you abandon the review, remove it too and tell the user; with `--comment` or `--summarize`, say so on the PR as well.
 
 ## 2. Read the context
 
@@ -47,7 +48,7 @@ The label comes off again at the end (step 4), after `reviewed` went on. If you 
 
 Invoke the built-in `code-review` skill on the PR: `code-review` with the argument `N`, plus the level, `--max-findings`, `--fix` and `--comment` exactly as the user gave them (`--comment` only when the user typed it). It does the review itself; follow its instructions. With `--fix`, set up the worktree of section 3b **first** and invoke it from there, so the fixes land in the PR's branch and nowhere else.
 
-Then add one summary comment on the PR (`gh pr comment N`): the head commit reviewed, the level, how many findings and of what kind, anything checked by hand (and how), whether you see something blocking, without `--comment` every finding itself (file:line, what goes wrong and when, its severity), and with `--fix` which findings were fixed (the commits) and which were left and why. When there are no findings, say so; the comment is what tells the author the review happened.
+With `--summarize`, then add one summary comment on the PR (`gh pr comment N`): the head commit reviewed, the level, how many findings and of what kind, anything checked by hand (and how), whether you see something blocking, without `--comment` every finding itself (file:line, what goes wrong and when, its severity), and with `--fix` which findings were fixed (the commits) and which were left and why. When there are no findings, say so. Without `--summarize`, post no comment of your own.
 
 Without `--fix`, **never change the PR's code**: no commits, no pushes. Applying the findings is then a separate task (the author's, or `/dev`).
 
@@ -63,11 +64,11 @@ Without `--fix`, **never change the PR's code**: no commits, no pushes. Applying
 
 ## 4. Bookkeeping
 
-`gh pr edit N --add-label reviewed --remove-label reviewing`: the findings are posted (and with `--fix` the fixes pushed) and the claim is released. The PR's other labels (`WIP` and the like) are not yours to change.
+`gh pr edit N --add-label reviewed --remove-label reviewing`: the review is done (and with `--fix` the fixes pushed) and the claim is released. The PR's other labels (`WIP` and the like) are not yours to change.
 
 ## 5. Report
 
-In chat: the PR reviewed (link, head commit, level), the findings in a few lines (or none), the summary comment's link, and the labels it now carries. Without `--fix`: no code was changed; say so. With `--fix`: what was fixed and pushed (commits), what was left, the full suite's result, and the worktree that holds the work.
+In chat: the PR reviewed (link, head commit, level), every finding (file:line, what goes wrong and when, its severity; or none), anything checked by hand, whether something blocks, what was posted on the PR (inline comments, the summary comment's link, or nothing), and the labels it now carries. Without `--fix`: no code was changed; say so. With `--fix`: what was fixed and pushed (commits), what was left, the full suite's result, and the worktree that holds the work.
 
 ## Rules
 
