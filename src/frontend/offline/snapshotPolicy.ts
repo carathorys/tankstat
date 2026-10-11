@@ -38,6 +38,8 @@ const POLICIES: Record<string, SnapshotPolicy> = {
   Admin: 'onlineOnly',
   AdminOverview: 'onlineOnly', // what needs attention now: a stale copy would say the wrong thing
   SystemSettings: 'onlineOnly', // a stale copy of the server's configuration must never be shown
+  Backups: 'onlineOnly',
+  BackupRun: 'onlineOnly',
   Trash: 'onlineOnly',
   ArrangeVehicles: 'onlineOnly',
   LogAccess: 'onlineOnly',

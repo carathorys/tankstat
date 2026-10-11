@@ -1,0 +1,77 @@
+# The backups tab of the administration page. `run` is polled while a backup is being written (BackupRun selects only what costs nothing).
+
+fragment BackupRunFields on BackupRunInfo {
+  running
+  startedAt
+  finishedAt
+  file
+  bytes
+  error
+}
+
+query Backups {
+  backups {
+    folder
+    migration
+    run {
+      ...BackupRunFields
+    }
+    settings {
+      recipient
+      photosApart
+      photos
+      maxUploadMb
+    }
+    sizes {
+      database
+      pictures
+      photos
+    }
+    restorePoints {
+      file
+      bytes
+      createdAt
+      appVersion
+      provider
+      migration
+      sameMigration
+      safetyNet
+      uploaded
+      encrypted
+      recipient
+      currentRecipient
+      photos
+      keys
+      rows
+    }
+  }
+}
+
+query BackupRun {
+  backups {
+    run {
+      ...BackupRunFields
+    }
+  }
+}
+
+mutation RunBackup {
+  runBackup
+}
+
+mutation PrepareBackupEncryption($passphrase: String) {
+  prepareBackupEncryption(passphrase: $passphrase) {
+    passphrase
+    generated
+    identity
+    recipient
+    salt
+  }
+}
+
+mutation RestoreBackup($input: RestoreBackupInput!) {
+  restoreBackup(input: $input) {
+    file
+    restorePoint
+  }
+}

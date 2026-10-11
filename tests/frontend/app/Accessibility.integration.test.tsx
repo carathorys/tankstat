@@ -273,6 +273,50 @@ it('the system settings page and its confirmation are labelled, described and fr
   await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
 })
 
+it('the backups tab, its restore and its key set dialogs are labelled, described and free of violations', async () => {
+  const { ui } = setup('/admin')
+  const run = { __typename: 'BackupRunInfo', running: false, startedAt: '2026-10-11T08:00:00Z', finishedAt: '2026-10-11T08:00:05Z', file: 'tankstat-backup-20261011T080000Z.zip', bytes: 3_100_000, error: null }
+  const point = {
+    __typename: 'RestorePointInfo', file: 'tankstat-backup-20261011T080000Z.zip', bytes: 3_100_000, createdAt: '2026-10-11T08:00:00Z', appVersion: '0.13.0', provider: 'Sqlite',
+    migration: 'AddInstance', sameMigration: true, safetyNet: false, uploaded: false, encrypted: true, recipient: 'age1abc', currentRecipient: true, photos: 'SEPARATE', keys: true, rows: 120,
+  }
+  server.use(
+    graphql.query('Backups', () =>
+      HttpResponse.json({
+        data: {
+          backups: {
+            __typename: 'BackupOverviewInfo', folder: '/data/backups', migration: 'AddInstance', run,
+            settings: { __typename: 'BackupSettingsInfo', recipient: null, photosApart: false, photos: false, maxUploadMb: 1024 },
+            sizes: { __typename: 'StorageSizesInfo', database: 5_300_000, pictures: 12_000_000, photos: null },
+            restorePoints: [point, { ...point, file: 'uploaded-old.zip', sameMigration: false, uploaded: true, encrypted: false, recipient: null, currentRecipient: false }],
+          },
+        },
+      }),
+    ),
+    graphql.mutation('PrepareBackupEncryption', () =>
+      HttpResponse.json({ data: { prepareBackupEncryption: { __typename: 'BackupKeySetInfo', passphrase: 'K7QM-4XWD-PL2N-ZR8A-HJ3T', generated: true, identity: 'AGE-SECRET-KEY-1QQQ', recipient: 'age1abc', salt: 'c2FsdA==' } } }),
+    ),
+  )
+  await ui.click(await screen.findByRole('tab', { name: 'Backups' }))
+  await screen.findByRole('table')
+  await check(document.body)
+
+  await ui.click(screen.getByRole('button', { name: /^Restore the backup of/ }))
+  const restore = await screen.findByRole('alertdialog')
+  expect(restore).toHaveAccessibleName(/^Restore the backup of/)
+  expect(restore).toHaveAccessibleDescription(/All data on this server is replaced/)
+  await check(restore)
+  await ui.click(within(restore).getByRole('button', { name: 'Cancel' }))
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+
+  await ui.click(screen.getByRole('button', { name: 'Make a key set…' }))
+  const keys = await screen.findByRole('dialog', { name: 'A key set for encrypted backups' })
+  expect(keys).toHaveAccessibleDescription()
+  await ui.click(within(keys).getByRole('button', { name: 'Make the keys' }))
+  await within(keys).findByText('K7QM-4XWD-PL2N-ZR8A-HJ3T')
+  await check(keys)
+})
+
 it('the Arrange dialog is labelled, described and free of violations', async () => {
   stubViewport('desktop')
   const vehicles = fakeVehicleBackend([fakeVehicle({ id: 'a', name: 'Alpha' }), fakeVehicle({ id: 'b', name: 'Beta' })])
