@@ -99,6 +99,25 @@ namespace Tankstat.Migrations.SqlServer
                     b.ToTable("ResourceGrants", (string)null);
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Backups.Instance", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("Generation")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("RestorePoint")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("RestoredAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Instance", (string)null);
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Charts.VehicleChart", b =>
                 {
                     b.Property<Guid>("Id")

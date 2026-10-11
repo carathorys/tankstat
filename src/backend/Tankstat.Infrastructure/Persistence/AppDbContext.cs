@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Tankstat.Domain;
 using Tankstat.Domain.Access;
+using Tankstat.Domain.Backups;
 using Tankstat.Domain.Instance;
 using Tankstat.Domain.Charts;
 using Tankstat.Domain.Images;
@@ -80,6 +81,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<SyncChange> SyncChanges => Set<SyncChange>();
     public DbSet<OfflineSettings> OfflineSettings => Set<OfflineSettings>();
     public DbSet<OfflineVehicleSetting> OfflineVehicleSettings => Set<OfflineVehicleSetting>();
+    public DbSet<Instance> Instance => Set<Instance>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);

@@ -277,6 +277,11 @@ type ImportResultInfo {
   errors: [ImportIssueInfo!]!
 }
 
+type InstanceInfo {
+  generation: UUID!
+  restorePoint: DateTime
+}
+
 type LogAccessGrantInfo {
   user: UserRef!
   level: AccessLevel!
@@ -476,6 +481,7 @@ type RemovedEntity {
 type Session {
   mode: AuthMode!
   user: UserInfo
+  instance: InstanceInfo!
 }
 
 type SettingsFileInfo {

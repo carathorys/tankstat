@@ -94,6 +94,25 @@ namespace Tankstat.Migrations.Sqlite
                     b.ToTable("ResourceGrants", (string)null);
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Backups.Instance", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("Generation")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RestorePoint")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RestoredAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Instance", (string)null);
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Charts.VehicleChart", b =>
                 {
                     b.Property<Guid>("Id")

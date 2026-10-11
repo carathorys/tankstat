@@ -1,5 +1,6 @@
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Backups;
 using Tankstat.Application.Users;
 
 namespace Tankstat.Api.GraphQL;
@@ -8,10 +9,10 @@ namespace Tankstat.Api.GraphQL;
 public sealed class SessionQueries
 {
     /// <summary>Public: lets the UI decide between login screen and app.</summary>
-    public async Task<Session> GetSession([Service] SessionService sessions, CancellationToken ct)
+    public async Task<Session> GetSession([Service] SessionService sessions, [Service] InstanceState instance, CancellationToken ct)
     {
         var s = await sessions.GetAsync(ct);
-        return new Session(s.Mode, s.User is { IsAnonymous: false } u ? UserInfo.From(u) : null);
+        return new Session(s.Mode, s.User is { IsAnonymous: false } u ? UserInfo.From(u) : null, instance.Current);
     }
 
     /// <summary>Public messages the UI must show (e.g. the "authentication disabled" warning).</summary>

@@ -144,8 +144,9 @@ public sealed class BackupWriterTests : IDisposable
         {
             Assert.Equal(context.Database.GetMigrations().Last(), manifest.Migration); // the migration the database is at
             var tables = context.Model.GetEntityTypes().Select(e => e.GetTableName()).Where(t => t is not null).Distinct().ToList();
-            Assert.True(tables.Count >= 26, "the model's tables");
+            Assert.True(tables.Count >= 27, "the model's tables");
             Assert.Equal(tables.Append(TableDump.MigrationsHistory).Order(), manifest.Contents.Tables.Keys.Order());
+            Assert.Contains("Instance", manifest.Contents.Tables.Keys); // the generation row (made at start, so none here), which a restore stamps anew after loading
             Assert.Equal(context.Database.GetMigrations().Count(), manifest.Contents.Tables[TableDump.MigrationsHistory]);
         }
         Assert.Equal((1L, 1L, 1L, 1L, 4L, 2L), (manifest.Contents.Tables["Users"], manifest.Contents.Tables["Vehicles"], manifest.Contents.Tables["Refuelings"],

@@ -124,10 +124,13 @@ public static class DependencyInjection
             })
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
 
-        // Order matters: migrate first, then move the photos kept with the pictures once they have a folder of their own, then create the initial
-        // administrator, then sign everybody out when the authentication mode changed since the last start (after what can still fail the start,
-        // so a start that never served a request records no mode; still before the server listens); the photo reading worker needs the migrated database.
+        // Order matters: migrate first, then the restore step (a restore replaces the data as a whole, so it comes before anything looks at it,
+        // and the bootstrapper finds the restored users), then move the photos kept with the pictures once they have a folder of their own, then
+        // create the initial administrator, then sign everybody out when the authentication mode changed since the last start (after what can
+        // still fail the start, so a start that never served a request records no mode, and after the restore, so sessions a backup of another
+        // mode brought back end at this start; still before the server listens); the photo reading worker needs the migrated database.
         services.AddHostedService<DatabaseMigrator>();
+        services.AddHostedService<RestoreStep>();
         services.AddHostedService<PhotosMove>();
         services.AddHostedService<StandaloneBootstrapper>();
         services.AddHostedService<ModeChangeSignOut>();
