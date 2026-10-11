@@ -36,9 +36,12 @@ public sealed class PasswordResetService(
     private static readonly TimeSpan KeepExpired = TimeSpan.FromDays(1);
 
     // Issuing for one user is one step within this process: the look at the latest link (the cool-down), the storing of the new one and
-    // the note of which links were there before it happen under that user's lock, so a burst of requests cannot all pass the cool-down
-    // and each issue knows exactly the links it replaces. The e-mail goes out after it, so a slow mail server holds nobody else up. Other
-    // processes on the same database are not held back by it. Striped (by user id) so the locks do not pile up.
+    // the note of which links were there before it happen under that user's lock, so the mailer serving a user's own request never stores
+    // its link after an administrator's that its look at the cool-down did not see (an administrator's issue has no cool-down), two of the
+    // user's own requests served at once (the mailer has several senders) do not both pass the cool-down, and each issue knows exactly the
+    // links it replaces (a burst of the user's own requests never gets this far: the queue holds a waiting user once). The e-mail goes out
+    // after it, so a slow mail server holds nobody else up. Other processes on the same database are not held back by it. Striped (by user
+    // id) so the locks do not pile up.
     private static readonly StripedLocks Locks = new();
 
     /// <summary>Whether an issued link can reach the user by e-mail (SMTP and the public address are set up).</summary>
@@ -53,17 +56,58 @@ public sealed class PasswordResetService(
         (await IssueAsync(user, sendEmail, TimeSpan.Zero, keepUnsent: true, ct))!;
 
     /// <summary>
-    /// A user's own request: like <see cref="IssueAsync(User, bool, CancellationToken)"/>, but issues and sends nothing (null) while the
-    /// user's latest link was issued less than <c>Auth:Standalone:ResetCooldownMinutes</c> ago and has not expired yet; and a link whose
-    /// e-mail could not be sent is taken back, the earlier ones stay and the <see cref="EmailSendException"/> escapes (never
-    /// <see cref="EmailOutcome.Failed"/>).
+    /// Serves a request the user made through <i>Forgot your password?</i>, after it was answered (<see cref="IPasswordResetQueue"/>): like
+    /// <see cref="IssueAsync(User, bool, CancellationToken)"/>, but issues and sends nothing while the user's latest link was issued less than
+    /// <c>Auth:Standalone:ResetCooldownMinutes</c> ago and has not expired yet, and a link whose e-mail could not be sent is taken back (the
+    /// earlier ones stay). Looks at the account again first, since it may have been disabled or deleted meanwhile, and sends nothing when the
+    /// user's <see cref="User.SessionVersion"/> is no longer <paramref name="sessionVersion"/>, the one the request was made with: a new
+    /// password since then revoked every link (and so did disabling the account), and a link issued now would outlive that. A mail server's
+    /// failure is a Warning, so the user can simply ask again. Anything else escapes to the worker, a cancellation included (the link is
+    /// taken back then too).
     /// </summary>
-    public Task<IssuedReset?> IssueUnlessCoolingDownAsync(User user, CancellationToken ct)
+    public async Task SendRequestedAsync(Guid userId, int sessionVersion, CancellationToken ct)
     {
-        var standalone = auth.Value.Standalone;
+        var user = await users.FindByIdAsync(userId, ct);
+        if (user is null || user.IsDisabled || user.Provider != UserProvider.Local)
+        {
+            logger.LogInformation("The password reset requested by user {UserId} was not sent: the account no longer signs in with a password", userId);
+            return;
+        }
+        if (user.SessionVersion != sessionVersion)
+        {
+            logger.LogInformation("The password reset requested by user {UserId} was not sent: the password was set or the account disabled after the request", userId);
+            return;
+        }
+        // Only queued when an e-mail could be sent, and the settings do not change while the app runs; still, a link nobody receives must
+        // never replace one an administrator handed over.
+        if (!CanEmail)
+        {
+            logger.LogInformation("The password reset requested by user {UserId} was not sent: no e-mail can be sent", userId);
+            return;
+        }
+
         // Never longer than a link lasts: once the latest one expired, the user may ask for another. A link nobody received is taken back
         // whatever the cool-down setting: only an administrator keeps one to hand over.
-        return IssueAsync(user, sendEmail: true, TimeSpan.FromMinutes(Math.Min(standalone.ResetCooldownMinutes, standalone.ResetTokenMinutes)), keepUnsent: false, ct);
+        var standalone = auth.Value.Standalone;
+        var cooldown = TimeSpan.FromMinutes(Math.Min(standalone.ResetCooldownMinutes, standalone.ResetTokenMinutes));
+        IssuedReset? issued;
+        try
+        {
+            issued = await IssueAsync(user, sendEmail: true, cooldown, keepUnsent: false, ct);
+        }
+        catch (EmailSendException e)
+        {
+            // Its text names the server and the status, never the address.
+            logger.LogWarning(e, "The password reset e-mail requested by user {UserId} could not be sent; its link was taken back", userId);
+            return;
+        }
+        if (issued is null)
+        {
+            logger.LogInformation("User {UserId} requested a password reset within the cool-down of their latest link; nothing was sent", userId);
+            return;
+        }
+        // As the administrator's issue says it (UserService); a link whose e-mail failed was taken back above.
+        logger.LogInformation("The password reset requested by user {UserId} was issued (e-mail sent: {EmailSent})", userId, issued.EmailSent);
     }
 
     private async Task<IssuedReset?> IssueAsync(User user, bool sendEmail, TimeSpan cooldown, bool keepUnsent, CancellationToken ct)

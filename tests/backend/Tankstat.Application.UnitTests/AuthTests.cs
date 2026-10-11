@@ -120,8 +120,8 @@ public class PasswordTests
     {
         var w = new World(smtp: true);
 
-        await w.Auth.RequestPasswordResetAsync("ghost@x.co", default);
-        await w.Auth.RequestPasswordResetAsync("garbage", default);
+        await RequestAsync(w, "ghost@x.co", default);
+        await RequestAsync(w, "garbage", default);
 
         Assert.Empty(w.Email.Sent);
         Assert.Empty(w.Tokens.Items);
@@ -133,7 +133,7 @@ public class PasswordTests
         var w = new World(smtp: true);
         var alice = w.AddUser("alice@x.co");
 
-        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+        await RequestAsync(w, "alice@x.co", default);
 
         var mail = Assert.Single(w.Email.Sent);
         Assert.Equal("alice@x.co", mail.To);
@@ -151,7 +151,7 @@ public class PasswordTests
         var w = new World(smtp: false);
         w.AddUser("alice@x.co");
 
-        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+        await RequestAsync(w, "alice@x.co", default);
 
         Assert.Empty(w.Email.Sent);
         Assert.Empty(w.Tokens.Items); // a link nobody receives is not issued
@@ -164,15 +164,22 @@ public class PasswordTests
         var token = await IssueToken(w, "alice@x.co");
         w.Clock.Advance(TimeSpan.FromMinutes(10)); // past the cool-down
 
-        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+        await RequestAsync(w, "alice@x.co", default);
 
         await w.Auth.ResetPasswordAsync(token, "brand-new-password", default);
     }
 
     private static string LinkIn((string To, string Subject, string Body) mail) => mail.Body.Split("resetToken=")[1].Split('\n')[0];
 
+    /// <summary>A user's own request, and its e-mail sent as the app sends it: after the answer.</summary>
+    private static async Task RequestAsync(World w, string email, CancellationToken ct)
+    {
+        await w.Auth.RequestPasswordResetAsync(email, ct);
+        await w.ResetQueue.DrainAsync(ct);
+    }
+
     /// <summary>The lines about <paramref name="user"/>'s own requests that issued nothing (they carry no <c>EmailSent</c>).</summary>
-    private static List<LogEntry> Withheld(World w, User user) => w.Log.From<AuthService>()
+    private static List<LogEntry> Withheld(World w, User user) => w.Log.From<PasswordResetService>()
         .Where(e => Equals(e.Values.GetValueOrDefault("UserId"), user.Id) && !e.Values.ContainsKey("EmailSent")).ToList();
 
     [Fact]
@@ -181,10 +188,10 @@ public class PasswordTests
         var w = new World(smtp: true);
         var alice = w.AddUser("alice@x.co");
 
-        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+        await RequestAsync(w, "alice@x.co", default);
         w.Clock.Advance(TimeSpan.FromMinutes(4));
-        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
-        await w.Auth.RequestPasswordResetAsync("ALICE@x.co", default);
+        await RequestAsync(w, "alice@x.co", default);
+        await RequestAsync(w, "ALICE@x.co", default);
 
         Assert.Single(w.Email.Sent);
         Assert.Single(w.Tokens.Items);
@@ -200,9 +207,9 @@ public class PasswordTests
         var w = new World(smtp: true);
         w.AddUser("alice@x.co");
 
-        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+        await RequestAsync(w, "alice@x.co", default);
         w.Clock.Advance(TimeSpan.FromMinutes(5));
-        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+        await RequestAsync(w, "alice@x.co", default);
 
         Assert.Equal(2, w.Email.Sent.Count);
         Assert.Single(w.Tokens.Items);
@@ -218,7 +225,7 @@ public class PasswordTests
         var alice = w.AddUser("alice@x.co");
         w.Current.SignInAs(w.AddUser("root@x.co", admin: true));
 
-        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+        await RequestAsync(w, "alice@x.co", default);
         var first = await w.UserService.IssueResetAsync(alice.Id, default);
         var second = await w.UserService.IssueResetAsync(alice.Id, default);
 
@@ -237,11 +244,11 @@ public class PasswordTests
         var carol = w.AddUser("carol@x.co");
         w.AddUser("alice@x.co");
 
-        await w.Auth.RequestPasswordResetAsync("bob@x.co", default);
+        await RequestAsync(w, "bob@x.co", default);
         w.Clock.Advance(TimeSpan.FromHours(23)); // carol's link expires, but less than a day ago by the end
-        await w.Auth.RequestPasswordResetAsync("carol@x.co", default);
+        await RequestAsync(w, "carol@x.co", default);
         w.Clock.Advance(TimeSpan.FromHours(3)); // bob's expired more than a day ago
-        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+        await RequestAsync(w, "alice@x.co", default);
 
         Assert.DoesNotContain(w.Tokens.Items, t => t.UserId == bob.Id);
         Assert.Contains(w.Tokens.Items, t => t.UserId == carol.Id);
@@ -254,8 +261,8 @@ public class PasswordTests
         var w = new World(smtp: true, configure: o => o.Standalone.ResetCooldownMinutes = 0);
         w.AddUser("alice@x.co");
 
-        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
-        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+        await RequestAsync(w, "alice@x.co", default);
+        await RequestAsync(w, "alice@x.co", default);
 
         Assert.Equal(2, w.Email.Sent.Count);
         Assert.Single(w.Tokens.Items); // still one live link
@@ -268,10 +275,10 @@ public class PasswordTests
         w.AddUser("alice@x.co");
         w.Email.FailNext = 1;
 
-        await Assert.ThrowsAsync<EmailSendException>(() => w.Auth.RequestPasswordResetAsync("alice@x.co", default));
+        await RequestAsync(w, "alice@x.co", default); // answered as always; the mail server's failure is only in the log
         Assert.Empty(w.Tokens.Items); // the link that never went out is taken back, so it starts no cool-down
         w.Clock.Advance(TimeSpan.FromMinutes(1));
-        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+        await RequestAsync(w, "alice@x.co", default);
 
         var mail = Assert.Single(w.Email.Sent);
         await w.Auth.ResetPasswordAsync(LinkIn(mail), "brand-new-password", default);
@@ -285,22 +292,139 @@ public class PasswordTests
         w.AddUser("alice@x.co");
         w.Email.FailNext = 1;
 
-        await Assert.ThrowsAsync<EmailSendException>(() => w.Auth.RequestPasswordResetAsync("alice@x.co", default));
+        await RequestAsync(w, "alice@x.co", default);
 
+        Assert.IsType<EmailSendException>(Assert.Single(w.Log.From<PasswordResetService>(), e => e.Level == LogLevel.Warning).Exception); // it was tried
         Assert.Empty(w.Tokens.Items);
     }
 
     [Fact]
     public async Task RequestReset_ManyAtTheSameMoment_SendOneMail()
     {
-        var w = new World(smtp: true);
+        var w = new World(smtp: true, configure: o => o.Standalone.ResetCooldownMinutes = 0); // not the cool-down: one request waits for them all
         w.AddUser("alice@x.co");
-        w.Tokens.Latency = TimeSpan.FromMilliseconds(10);
 
         await Task.WhenAll(Enumerable.Range(0, 10).Select(_ => w.Auth.RequestPasswordResetAsync("alice@x.co", default)));
+        await w.ResetQueue.DrainAsync();
 
         Assert.Single(w.Email.Sent);
         Assert.Single(w.Tokens.Items);
+    }
+
+    [Fact]
+    public async Task RequestReset_IsAnsweredBeforeItsEmailGoesOut_AndTheSameForEveryAddress()
+    {
+        var w = new World(smtp: true);
+        w.AddUser("alice@x.co");
+        var hold = new TaskCompletionSource();
+        w.Email.HoldNext = hold; // a mail server that takes its time
+
+        var known = w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+        var unknown = w.Auth.RequestPasswordResetAsync("nobody@x.co", default);
+
+        Assert.True(known.IsCompletedSuccessfully);
+        Assert.True(unknown.IsCompletedSuccessfully);
+        Assert.Empty(w.Tokens.Items); // nothing issued on the request path
+        var draining = w.ResetQueue.DrainAsync();
+        Assert.False(draining.IsCompleted); // the send waits for the mail server, after the answer
+        hold.SetResult();
+        await draining;
+        Assert.Single(w.Email.Sent);
+    }
+
+    [Fact]
+    public async Task RequestReset_WhenTheMailServerFails_IsAnsweredAsAlways_AndTheFailureIsAWarning()
+    {
+        var w = new World(smtp: true);
+        var alice = w.AddUser("alice@x.co");
+        w.Email.FailNext = 1;
+
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default); // no exception: the answer is the same as for any address
+        await w.ResetQueue.DrainAsync();
+
+        var warning = Assert.Single(w.Log.From<PasswordResetService>(), e => e.Level == LogLevel.Warning);
+        Assert.Equal(alice.Id, warning.Values["UserId"]);
+        Assert.IsType<EmailSendException>(warning.Exception);
+        Assert.DoesNotContain(w.Log.Entries, e => e.Level == LogLevel.Error);
+        Assert.Empty(w.Tokens.Items);
+    }
+
+    [Fact]
+    public async Task RequestReset_ForAnAccountDisabledBeforeItsTurn_SendsNothing()
+    {
+        var w = new World(smtp: true);
+        var alice = w.AddUser("alice@x.co");
+
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+        alice.SetDisabled(true);
+        await w.ResetQueue.DrainAsync();
+
+        Assert.Empty(w.Email.Sent);
+        Assert.Empty(w.Tokens.Items);
+        Assert.Contains(w.Log.From<PasswordResetService>(), e => e.Level == LogLevel.Information && Equals(e.Values.GetValueOrDefault("UserId"), alice.Id));
+    }
+
+    [Fact]
+    public async Task RequestReset_StillWaitingWhenThePasswordIsReset_SendsNothing()
+    {
+        var w = new World(smtp: true);
+        var token = await IssueToken(w, "alice@x.co"); // a link she already has
+        var alice = w.Users.Items.Single(u => u.Email == "alice@x.co");
+        w.Clock.Advance(TimeSpan.FromMinutes(10)); // past the cool-down
+
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default); // waits to be sent
+        await w.Auth.ResetPasswordAsync(token, "brand-new-password", default); // meanwhile she uses the link she has, which revokes every link
+        await w.ResetQueue.DrainAsync();
+
+        Assert.Empty(w.Tokens.Items); // no link outlives the new password
+        Assert.Single(w.Email.Sent); // the administrator's only
+        Assert.Contains(w.Log.From<PasswordResetService>(), e => e.Level == LogLevel.Information && Equals(e.Values.GetValueOrDefault("UserId"), alice.Id));
+    }
+
+    [Fact]
+    public async Task RequestReset_AskedAgainAfterThePasswordWasReset_WhileTheFirstWaits_IsSent()
+    {
+        var w = new World(smtp: true);
+        var token = await IssueToken(w, "alice@x.co");
+        w.Clock.Advance(TimeSpan.FromMinutes(10)); // past the cool-down
+
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+        await w.Auth.ResetPasswordAsync(token, "brand-new-password", default);
+        await w.Auth.RequestPasswordResetAsync("alice@x.co", default); // asked again since: the waiting request serves this one
+        await w.ResetQueue.DrainAsync();
+
+        Assert.Equal(2, w.Email.Sent.Count);
+        await w.Auth.ResetPasswordAsync(LinkIn(w.Email.Sent[1]), "another-password-1", default);
+    }
+
+    [Fact]
+    public async Task RequestReset_WhenTooManyAreWaiting_IsAnsweredAsAlways_WithAWarning_AndSendsNothing()
+    {
+        var w = new World(smtp: true);
+        var alice = w.AddUser("alice@x.co");
+        w.ResetQueue.Full = true;
+
+        await RequestAsync(w, "alice@x.co", default); // no exception: the answer is the same as for any address
+
+        var warning = Assert.Single(w.Log.From<AuthService>(), e => e.Level == LogLevel.Warning);
+        Assert.Equal(alice.Id, warning.Values["UserId"]);
+        Assert.False(w.Log.Mentions("alice@x.co"));
+        Assert.Empty(w.Email.Sent);
+        Assert.Empty(w.Tokens.Items);
+    }
+
+    [Fact]
+    public async Task RequestReset_AskedAgainWhileWaiting_IsQueuedOnce()
+    {
+        var w = new World(smtp: true, configure: o => o.Standalone.ResetCooldownMinutes = 0);
+        var alice = w.AddUser("alice@x.co");
+
+        for (var i = 0; i < 5; i++) await w.Auth.RequestPasswordResetAsync("ALICE@x.co", default);
+
+        Assert.Equal([alice.Id], w.ResetQueue.Waiting);
+        Assert.Equal(5, w.Log.From<AuthService>().Count(e => e.Level == LogLevel.Information && Equals(e.Values.GetValueOrDefault("UserId"), alice.Id)));
+        await w.ResetQueue.DrainAsync();
+        Assert.Single(w.Email.Sent);
     }
 
     [Fact]
@@ -309,11 +433,11 @@ public class PasswordTests
         var w = new World(smtp: true, configure: o => o.Standalone.ResetCooldownMinutes = 1440);
         w.AddUser("alice@x.co");
 
-        await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
+        await RequestAsync(w, "alice@x.co", default);
         w.Clock.Advance(TimeSpan.FromMinutes(59));
-        await w.Auth.RequestPasswordResetAsync("alice@x.co", default); // the 60-minute link still works: nothing is sent
+        await RequestAsync(w, "alice@x.co", default); // the 60-minute link still works: nothing is sent
         w.Clock.Advance(TimeSpan.FromMinutes(2));
-        await w.Auth.RequestPasswordResetAsync("alice@x.co", default); // it expired: a new one
+        await RequestAsync(w, "alice@x.co", default); // it expired: a new one
 
         Assert.Equal(2, w.Email.Sent.Count);
         await w.Auth.ResetPasswordAsync(LinkIn(w.Email.Sent[1]), "brand-new-password", default);

@@ -26,6 +26,8 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Tankstat.Infrastructure.UnitTests" />
+    <!-- PasswordResetQueue.WhenIdleAsync: the API tests wait for the self-service reset mails without sleeping. -->
+    <InternalsVisibleTo Include="Tankstat.Api.IntegrationTests" />
   </ItemGroup>
 
 </Project>

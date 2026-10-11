@@ -26,7 +26,7 @@ internal sealed class RecognitionSignal : IRecognitionSignal
 }
 
 /// <summary>
-/// Reads queued photos in the background (the app's only long-running job). It is always registered but returns at once when photo
+/// Reads queued photos in the background (one of the app's two long-running jobs, with <c>PasswordResetMailer</c>). It is always registered but returns at once when photo
 /// reading is not set up; settings that cannot be used are logged as a warning, never thrown. Queued readings live in the database,
 /// so they survive a restart, and the periodic look also picks up retries and attempts cut short.
 /// </summary>

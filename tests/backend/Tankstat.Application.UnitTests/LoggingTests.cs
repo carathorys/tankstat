@@ -324,8 +324,13 @@ public class LoggingTests
         // The user asks for a link herself, changes her password, and mistypes things.
         w.Current.SignInAs(alice);
         await w.Auth.RequestPasswordResetAsync("canary.renamed@canary-mail.example", default); // within the cool-down of the link above
+        await w.ResetQueue.DrainAsync();
         w.Clock.Advance(TimeSpan.FromMinutes(10));
+        w.Email.FailNext = 1; // her own request while the mail server is down: a Warning that must not name the address either
         await w.Auth.RequestPasswordResetAsync("canary.renamed@canary-mail.example", default);
+        await w.ResetQueue.DrainAsync();
+        await w.Auth.RequestPasswordResetAsync("canary.renamed@canary-mail.example", default);
+        await w.ResetQueue.DrainAsync();
         foreach (var mail in w.Email.Sent) canaries.Add(mail.Body.Split("resetToken=")[1].Split('\n')[0]);
         await w.Auth.ChangePasswordAsync("canary-alice-pass-1", "canary-alice-pass-2", default);
         await Assert.ThrowsAsync<DomainException>(() => w.Auth.ChangePasswordAsync("canary-wrong-current-1", "canary-alice-pass-3", default));

@@ -9,8 +9,8 @@ namespace Tankstat.Application.Users;
 
 /// <summary>Sign-in related use cases for every mode: local login/password handling and external user provisioning.</summary>
 public sealed class AuthService(
-    IUserRepository users, IPasswordHasher hasher, PasswordResetService resets, UserSessionService sessions, AccessService access,
-    IOptions<AuthOptions> auth, TimeProvider clock, ILogger<AuthService> logger)
+    IUserRepository users, IPasswordHasher hasher, PasswordResetService resets, IPasswordResetQueue resetQueue, UserSessionService sessions,
+    AccessService access, IOptions<AuthOptions> auth, TimeProvider clock, ILogger<AuthService> logger)
 {
     /// <summary>The error key of a refused sign-in of a disabled user; the OIDC failure handler recognises it.</summary>
     public const string AccountDisabledKey = "auth.accountDisabled";
@@ -81,8 +81,10 @@ public sealed class AuthService(
     }
 
     /// <summary>
-    /// Always succeeds from the caller's view, whether or not the e-mail is registered. E-mails a link only when SMTP is set up and the
-    /// account's latest link is older than the cool-down (or expired), so the endpoint cannot be used to flood a mailbox.
+    /// Always succeeds from the caller's view, whether or not the e-mail is registered, with the same work for every address: one lookup,
+    /// and for a known account a request queued for <see cref="PasswordResetService.SendRequestedAsync"/>, which e-mails a link after the
+    /// answer when SMTP is set up and the account's latest link is older than the cool-down (or expired), so the endpoint cannot be used to
+    /// flood a mailbox. Neither how long the answer takes nor a mail server's failure tells registered addresses apart.
     /// </summary>
     public async Task RequestPasswordResetAsync(string? email, CancellationToken ct)
     {
@@ -100,13 +102,19 @@ public sealed class AuthService(
             logger.LogInformation("User {UserId} requested a password reset, but no e-mail can be sent; nothing was issued", user.Id);
             return;
         }
-        var issued = await resets.IssueUnlessCoolingDownAsync(user, ct);
-        if (issued is null)
+        // With the session version as it is now: a new password before the request is served revokes every link, so it sends nothing then.
+        switch (resetQueue.Enqueue(user.Id, user.SessionVersion))
         {
-            logger.LogInformation("User {UserId} requested a password reset within the cool-down of their latest link; nothing was sent", user.Id);
-            return;
+            case ResetRequestQueueing.Queued:
+                logger.LogInformation("User {UserId} requested a password reset; the e-mail goes out after the answer", user.Id);
+                break;
+            case ResetRequestQueueing.AlreadyWaiting:
+                logger.LogInformation("User {UserId} requested a password reset while an earlier request was still waiting to be sent", user.Id);
+                break;
+            case ResetRequestQueueing.QueueFull:
+                logger.LogWarning("User {UserId} requested a password reset, but too many requests are waiting to be sent; nothing was queued", user.Id);
+                break;
         }
-        logger.LogInformation("User {UserId} requested a password reset (e-mail sent: {EmailSent})", user.Id, issued.EmailSent);
     }
 
     public async Task<User> ResetPasswordAsync(string? token, string? newPassword, CancellationToken ct)
