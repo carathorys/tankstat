@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using MailKit.Security;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Auth;
+using Tankstat.Application.SystemSettings;
 using Tankstat.Infrastructure.Auth;
 
 namespace Tankstat.Infrastructure.UnitTests;
@@ -93,6 +95,17 @@ public class SmtpEmailSenderTests
 
     private static SmtpEmailSender Sender(int port) =>
         new(Options.Create(new SmtpOptions { Host = "127.0.0.1", Port = port, From = "tank@example.com", Security = "None" }));
+
+    [Fact]
+    public void TheSettingsCatalog_OffersTheSecurityNamesTheSenderUnderstands()
+    {
+        var security = SettingsCatalog.Find("Smtp:Security")!;
+
+        Assert.Equal(Enum.GetNames<SecureSocketOptions>().Order(), security.Choices!.Order()); // the sender parses MailKit's names
+        // "Ssl", which the documentation used to list, is none of them (the sender runs it as Auto): still accepted, so a file holding it starts, never offered.
+        Assert.Equal(["Ssl"], security.AlsoAccepted);
+        Assert.False(Enum.TryParse<SecureSocketOptions>("Ssl", ignoreCase: true, out _));
+    }
 
     [Fact]
     public async Task AMailServerThatRejectsTheRecipient_DoesNotPutTheAddressInTheException()

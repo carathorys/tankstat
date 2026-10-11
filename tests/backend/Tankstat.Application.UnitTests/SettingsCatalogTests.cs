@@ -50,6 +50,11 @@ public class SettingsCatalogTests
     public void ChoicesAreThere_ExactlyForChoices_AndSecretsAreTheThree()
     {
         Assert.All(SettingsCatalog.All, d => Assert.Equal(d.Kind == SettingKind.Choice, d.Choices is { Count: > 0 }));
+        Assert.All(SettingsCatalog.All.Where(d => d.AlsoAccepted is not null), d =>
+        {
+            Assert.Equal(SettingKind.Choice, d.Kind);
+            Assert.Empty(d.AlsoAccepted!.Intersect(d.Choices!, StringComparer.OrdinalIgnoreCase)); // accepted besides the choices, never offered twice
+        });
         Assert.Equal(
             ["Auth:Oidc:ClientSecret", "Smtp:Password", "Recognition:OpenAiCompatible:ApiKey"],
             SettingsCatalog.All.Where(d => d.IsSecret).Select(d => d.Key));
@@ -71,6 +76,9 @@ public class SettingsCatalogTests
     [InlineData("Auth:Mode", "standalone", null)]
     [InlineData("Auth:Mode", "Kerberos", "None, Standalone, Oidc, ProxyHeader")]
     [InlineData("Smtp:Security", "starttls", null)]
+    [InlineData("Smtp:Security", "SslOnConnect", null)]
+    [InlineData("Smtp:Security", "ssl", null)] // the old spelling: accepted (the sender runs it as Auto), never offered
+    [InlineData("Smtp:Security", "zzzz", "Auto, None, StartTls, StartTlsWhenAvailable, SslOnConnect")]
     [InlineData("Logging:LogLevel:Default", "Trace", null)]
     [InlineData("Logging:LogLevel:Default", "Verbose", "Trace, Debug")]
     [InlineData("Logging:LogLevel:Microsoft.AspNetCore", "Warning", null)]
@@ -103,7 +111,7 @@ public class SettingsCatalogTests
         Assert.Equal(below, SettingsCatalog.IsBelowLogLevelFloor(key, value));
 
     [Fact]
-    public void Problems_NamesEveryWrongValue_AndSkipsListsAndUnsetSettings()
+    public void Problems_NamesEveryWrongShape_AndSkipsListsUnsetSettingsPhotoReadingAndTheFloor()
     {
         var values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
         {
@@ -111,11 +119,15 @@ public class SettingsCatalogTests
             ["Notifications:MaxPerHour"] = "0", // the shape is right; the range is the validator's business
             ["Auth:AdminEmails"] = "not a list, but lists are never checked here",
             ["Auth:Mode"] = "Kerberos",
+            ["Recognition:MinConfidence"] = "zzzz", // photo reading never stops the app: RecognitionSetup turns it off instead
+            ["Logging:LogLevel:Microsoft.AspNetCore"] = "Information", // the floor is a rule for what the page writes, not for the start
         };
 
         var problems = SettingsCatalog.Problems(key => values.GetValueOrDefault(key));
 
         Assert.Equal(["Auth:Mode", "Smtp:Port"], problems.Select(p => p.Split(' ')[0]));
+        Assert.NotNull(SettingsCatalog.Validate(SettingsCatalog.Find("Logging:LogLevel:Microsoft.AspNetCore")!, "Information")); // the page still refuses it
+        Assert.NotNull(SettingsCatalog.Validate(SettingsCatalog.Find("Recognition:MinConfidence")!, "zzzz"));
     }
 
     private static IEnumerable<(string Key, SettingKind Kind, string[]? Choices)> Keys(Type type, string prefix)
