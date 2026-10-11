@@ -247,6 +247,7 @@ export const deviceData = {
     puts = 0
     listeners.clear()
     generationListeners.clear()
+    generationTail = Promise.resolve()
     storeListeners.forEach((listener) => listener())
   },
 }
