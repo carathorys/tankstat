@@ -98,6 +98,18 @@ internal sealed class FileBackupStore(IOptions<BackupOptions> options) : IBackup
 
     public Stream OpenRead(string fileName) => new FileStream(PathOf(fileName), FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true);
 
+    public void Delete(string fileName)
+    {
+        try
+        {
+            File.Delete(PathOf(fileName));
+        }
+        catch (NotFoundException)
+        {
+            // gone already: nothing to remove (a name that is not a bare one never gets here: List only hands out bare names)
+        }
+    }
+
     /// <summary>A backup of the folder by its bare name; <c>backup.notFound</c> for anything else (a path, a hidden file, one not there).</summary>
     private string PathOf(string fileName)
     {

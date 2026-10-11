@@ -98,7 +98,8 @@ public static class DependencyInjection
         services.AddSingleton<IImageStore, FileSystemImageStore>();
         services.AddSingleton<IBackupWriter, BackupWriter>();
         services.AddSingleton<IBackupStore, FileBackupStore>();
-        services.AddSingleton<IBackupRunner, BackupRunner>();
+        services.AddSingleton<BackupRunner>();
+        services.AddSingleton<IBackupRunner>(sp => sp.GetRequiredService<BackupRunner>());
         services.AddSingleton<IBackupKeyMaker, BackupKeyMaker>();
         services.AddSingleton<IDatabaseFacts, EfDatabaseFacts>();
         services.AddSingleton<IStorageUsage, StorageUsage>();
@@ -141,6 +142,7 @@ public static class DependencyInjection
         services.AddHostedService<ModeChangeSignOut>();
         services.AddHostedService<RecognitionWorker>();
         services.AddHostedService<PasswordResetMailer>();
+        services.AddHostedService<BackupWorker>();
 
         return services;
     }

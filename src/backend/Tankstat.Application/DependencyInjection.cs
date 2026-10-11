@@ -60,6 +60,7 @@ public static class DependencyInjection
         services.AddScoped<AccessService>();
         services.AddScoped<RestoreService>();
         services.AddScoped<BackupAdminService>();
+        services.AddScoped<BackupFailureNotifier>();
         services.AddScoped<AccessAdminService>();
         services.AddScoped<SessionService>();
         services.AddScoped<PasswordResetService>();

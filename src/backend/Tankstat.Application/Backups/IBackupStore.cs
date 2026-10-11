@@ -33,6 +33,9 @@ public interface IBackupStore
 
     /// <summary>A backup of the folder by its bare file name, to download; <c>backup.notFound</c> otherwise.</summary>
     Stream OpenRead(string fileName);
+
+    /// <summary>Removes a backup of the folder by its bare file name (retention); one already gone is nothing to do.</summary>
+    void Delete(string fileName);
 }
 
 /// <summary>A backup in the folder: its file name, its size on disk and what its manifest says.</summary>
