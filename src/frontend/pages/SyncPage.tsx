@@ -20,6 +20,7 @@ import { useDescribed, useWaitingChanges, type WaitingChange } from '../offline/
 import { useReasonText } from '../i18n/errors.ts'
 import { canEdit } from '../offline/changes.ts'
 import { EditChange } from './sync/EditChange.tsx'
+import { FoundOnDevice } from './sync/FoundOnDevice.tsx'
 import { ParkedAccount, ParkedActions } from './sync/ParkedDecision.tsx'
 import type { Units } from './sync/useFieldText.ts'
 
@@ -93,6 +94,7 @@ export function SyncPage() {
       <Typography variant="body2" role="status" sx={{ mt: 2 }}>
         {status}
       </Typography>
+      <FoundOnDevice onDone={resolved} />
       {!reachable ? (
         <Typography variant="body2" sx={{ color: 'text.secondary', mt: 3 }}>
           {t('sync.parkedOffline')}

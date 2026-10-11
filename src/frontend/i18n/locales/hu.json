@@ -1420,6 +1420,36 @@
       "useMineDescription": "Ennek a módosításnak az értékei felülírják azokat, amelyeket közben a szerveren beállítottak, ott is, ahol csak a szerveren módosultak; amit nem állít be, az úgy marad, ahogy ott van.",
       "keepServers": "Maradjon a szerveré",
       "keepServersDescription": "Ami a szerveren van, úgy marad; ez a módosítás végleg elvész."
+    },
+    "found": {
+      "title": "Ezen az eszközön talált bejegyzések",
+      "hint": "A kiszolgálót visszaállították egy biztonsági mentésből, és ezek a bejegyzések ezen az eszközön megvoltak, de a kiszolgálón már nincsenek meg (vagy régebbiek). Semmi sem megy magától: küldd el, aminek a kiszolgálón a helye, a többit felejtsd el.",
+      "count_one": "{{count}} bejegyzés",
+      "count_other": "{{count}} bejegyzés",
+      "kinds": {
+        "refuelings": "Tankolás",
+        "expenses": "Kiadás",
+        "vehicles": "Jármű",
+        "recurring": "Ismétlődő kiadás"
+      },
+      "missingOnServer": "Nincs a kiszolgálón",
+      "olderOnServer": "A kiszolgálón egy régebbi változata van",
+      "send": "Küldés a kiszolgálóra",
+      "sendAria": "Küldés a kiszolgálóra: {{row}}",
+      "sendAll": "Mind küldése",
+      "sendAllAria": "{{vehicle}} minden bejegyzésének küldése a kiszolgálóra",
+      "forget": "Elfelejtés",
+      "forgetAria": "Elfelejtés: {{row}}",
+      "forgetAll": "Mind elfelejtése",
+      "forgetAllAria": "{{vehicle}} minden bejegyzésének elfelejtése",
+      "forgetTitle": "Elfelejted, amit ezen az eszközön találtunk?",
+      "forgetDescription": "A bejegyzés törlődik erről az eszközről; a kiszolgálón nincs meg, így elvész.",
+      "forgetAllDescription_one": "{{vehicle}} {{count}} bejegyzése törlődik erről az eszközről; a kiszolgálón nincs meg, így elvész.",
+      "forgetAllDescription_other": "{{vehicle}} {{count}} bejegyzése törlődik erről az eszközről; a kiszolgálón nincsenek meg, így elvesznek.",
+      "sent_one": "{{count}} bejegyzés vár küldésre.",
+      "sent_other": "{{count}} bejegyzés vár küldésre.",
+      "forgotten_one": "{{count}} bejegyzés elfelejtve.",
+      "forgotten_other": "{{count}} bejegyzés elfelejtve."
     }
   },
   "systemSettings": {
