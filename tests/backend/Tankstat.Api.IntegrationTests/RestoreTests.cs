@@ -198,6 +198,25 @@ public sealed class RestoreTests : IDisposable
     }
 
     [Fact]
+    public async Task ABackupOfAnotherProvider_StampedWithItsOwnTimestampsForTheSameMigrations_IsRestored()
+    {
+        // Each provider's migrations carry their own timestamps (SQLite's 20261001054544_InitialCreate is PostgreSQL's 20261001054547_...):
+        // a backup is compared by the name of its last migration, which is what lets it move from one provider to another.
+        using var a = Host("a", migrated: true);
+        await AddVehicle(a, "Golf");
+        var backup = await Backup(a);
+        var folderB = Folder("b-backups");
+        var staged = Stage(folderB, backup.Path);
+        RewriteManifest(staged, json => json.Replace(backup.Manifest.Migration!, "20990101000000_" + MigrationNames.Of(backup.Manifest.Migration)));
+        Assert.NotEqual(backup.Manifest.Migration, BackupFile.ReadManifest(staged).Migration);
+
+        using var b = Host("b", migrated: false, backups: folderB);
+
+        Assert.Equal(["Golf"], await Vehicles(b));
+        Assert.Empty(Directory.GetFiles(folderB, "restore.refused.*"));
+    }
+
+    [Fact]
     public async Task ABackupWithoutThePhotos_RestoredWhereTheyLiveWithThePictures_LeavesThePhotosOnDiskAlone()
     {
         // A keeps its photos apart and backs up without them; B keeps everything in one folder, where the operator put the photos back by hand.

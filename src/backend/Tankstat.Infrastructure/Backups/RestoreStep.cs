@@ -90,7 +90,8 @@ internal sealed class RestoreStep(
             await using (var db = await dbFactory.CreateDbContextAsync(ct))
             {
                 var applied = (await db.Database.GetAppliedMigrationsAsync(ct)).LastOrDefault();
-                if (!string.Equals(applied, manifest.Migration, StringComparison.Ordinal))
+                // By name: each provider stamps the same migration with its own timestamp, and a backup may come from another provider.
+                if (!MigrationNames.Same(applied, manifest.Migration))
                     throw new DomainException("backup.otherMigration", "The backup was made at another migration than the database is at.", new { Backup = manifest.Migration, Database = applied });
             }
             BackupFile.VerifyChecksum(file, manifest);
