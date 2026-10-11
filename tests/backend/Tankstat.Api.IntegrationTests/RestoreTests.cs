@@ -197,6 +197,41 @@ public sealed class RestoreTests : IDisposable
         Assert.Contains(how switch { "otherMigration" => "otherMigration", "wrongIdentity" => "wrongKey", "damaged" => "corrupt", _ => "cannot be read" }, (string)refusal.Values["Reason"]!);
     }
 
+    [Fact]
+    public async Task ABackupWithoutThePhotos_RestoredWhereTheyLiveWithThePictures_LeavesThePhotosOnDiskAlone()
+    {
+        // A keeps its photos apart and backs up without them; B keeps everything in one folder, where the operator put the photos back by hand.
+        using var a = Host("a", migrated: true);
+        var clientA = a.NewClient();
+        var car = await AddVehicle(a, "Golf");
+        var log = (await clientA.Gql("mutation($v: UUID!) { logRefueling(input: { vehicleId: $v, date: \"2026-09-01\", volume: 40, totalCost: 60, currency: \"EUR\", odometer: 1000, isFullTank: true }) { id } }", new { v = car }))
+            .Data().GetProperty("logRefueling").GetProperty("id").GetString()!;
+        var jpeg = () => new ByteArrayContent([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]) { Headers = { ContentType = new("image/jpeg") } };
+        Assert.Equal(HttpStatusCode.OK, (await clientA.PutAsync($"/media/vehicles/{car}/picture", jpeg())).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await clientA.PutAsync($"/media/refuelings/{log}/photos", jpeg())).StatusCode);
+        var urls = (await clientA.Gql("query($v: UUID!) { myVehicles { pictureUrl } refuelings(vehicleId: $v) { photos { url } } }", new { v = car })).Data();
+        var pictureUrl = urls.GetProperty("myVehicles")[0].GetProperty("pictureUrl").GetString()!;
+        var photoUrl = urls.GetProperty("refuelings")[0].GetProperty("photos")[0].GetProperty("url").GetString()!;
+        var backup = await Backup(a);
+        Assert.Equal(BackupPhotos.LeftOut, backup.Manifest.Contents.Photos);
+
+        var folderB = Folder("b-backups");
+        Stage(folderB, backup.Path);
+        var picturesB = Folder("b-uploads");
+        foreach (var file in Directory.EnumerateFiles(Folder("a-photos"), "*", SearchOption.AllDirectories))
+        {
+            var target = Path.Combine(picturesB, Path.GetRelativePath(Folder("a-photos"), file));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(file, target);
+        }
+        using var b = new TestApp(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = folderB, ["Storage:Path"] = picturesB, ["Storage:PhotosPath"] = null, ["DataProtection:KeysPath"] = Folder("b-keys") }, migrated: false);
+        var clientB = b.NewClient();
+
+        Assert.Equal(HttpStatusCode.OK, (await clientB.GetAsync(pictureUrl)).StatusCode); // from the backup
+        Assert.Equal(HttpStatusCode.OK, (await clientB.GetAsync(photoUrl)).StatusCode); // not in the backup: the file on disk stayed and matches its log
+        Assert.Contains(b.Log.From("Tankstat.Infrastructure.Backups.RestoreStep"), e => e.Values.TryGetValue("Kept", out var kept) && ((string?)kept)?.Length > 0);
+    }
+
     /// <summary>Changes the plain manifest of a backup file (the checksum covers the inner archive only).</summary>
     private static void RewriteManifest(string file, Func<string, string> change)
     {

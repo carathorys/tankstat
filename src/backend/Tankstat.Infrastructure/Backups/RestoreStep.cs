@@ -8,6 +8,7 @@ using Tankstat.Application.Backups;
 using Tankstat.Application.Images;
 using Tankstat.Domain;
 using Tankstat.Domain.Backups;
+using Tankstat.Domain.Images;
 using Tankstat.Infrastructure.Persistence;
 
 namespace Tankstat.Infrastructure.Backups;
@@ -122,7 +123,10 @@ internal sealed class RestoreStep(
                 instance = await TableLoad.LoadAsync(db, Path.Combine(scratch.FullName, "tables"), manifest.Contents.Tables, clock.GetUtcNow(), manifest.CreatedAt, logger, ct);
             loaded = true;
             var roots = storage.Value;
-            if (manifest.Contents.Pictures) ReplaceContents(roots.PicturesRoot, Path.Combine(scratch.FullName, "files", "pictures"), "pictures");
+            // A backup without the photos (made where they had a root of their own) restored where they live with the pictures: the photos
+            // on disk keep matching their logs' ids and stay; everything else of the root is the backup's.
+            var keepPhotos = manifest.Contents.Photos == BackupPhotos.LeftOut && roots.OneRoot;
+            if (manifest.Contents.Pictures) ReplaceContents(roots.PicturesRoot, Path.Combine(scratch.FullName, "files", "pictures"), "pictures", keepPhotos);
             if (manifest.Contents.Photos == BackupPhotos.Separate)
             {
                 // Their own root now too: replaced; one root now: they join the pictures just restored.
@@ -174,17 +178,33 @@ internal sealed class RestoreStep(
         }
     }
 
-    /// <summary>Everything inside a root replaced by the backup's (the folder itself stays: it may be a mount point).</summary>
-    private void ReplaceContents(string root, string source, string what)
+    /// <summary>
+    /// Everything inside a root replaced by the backup's (the folder itself stays: it may be a mount point); with <paramref name="keepPhotos"/>
+    /// the photos of logs below the vehicles (<c>vehicles/&lt;id&gt;/refuelings|expenses</c>) stay, the drafts go like the rest.
+    /// </summary>
+    private void ReplaceContents(string root, string source, string what, bool keepPhotos = false)
     {
         Directory.CreateDirectory(root);
+        var photoFolders = ImageFolders.PhotoKinds.Where(kind => kind != ImageFolders.PhotoDrafts(Guid.Empty).Split('/')[2]).ToHashSet(StringComparer.Ordinal);
         foreach (var entry in Directory.EnumerateFileSystemEntries(root).ToList())
         {
-            if (Directory.Exists(entry)) Directory.Delete(entry, recursive: true);
-            else File.Delete(entry);
+            if (keepPhotos && Directory.Exists(entry) && Path.GetFileName(entry) == "vehicles")
+            {
+                foreach (var vehicle in Directory.EnumerateDirectories(entry))
+                    foreach (var below in Directory.EnumerateFileSystemEntries(vehicle).ToList())
+                        if (!(Directory.Exists(below) && photoFolders.Contains(Path.GetFileName(below)))) Delete(below);
+                continue;
+            }
+            Delete(entry);
         }
         var count = CopyContents(source, root);
-        logger.LogInformation("Restored {Count} files of the {What}", count, what);
+        logger.LogInformation("Restored {Count} files of the {What}{Kept}", count, what, keepPhotos ? "; the photos of logs on disk stayed" : "");
+    }
+
+    private static void Delete(string entry)
+    {
+        if (Directory.Exists(entry)) Directory.Delete(entry, recursive: true);
+        else File.Delete(entry);
     }
 
     private static int CopyContents(string source, string target)
