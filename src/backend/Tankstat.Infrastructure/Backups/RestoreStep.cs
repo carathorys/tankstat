@@ -15,7 +15,7 @@ namespace Tankstat.Infrastructure.Backups;
 
 /// <summary>
 /// At start, after the database migrations and before anything else touches the data: applies a restore that waits in the backups
-/// folder (<see cref="RestoreMarker"/>), and gives a fresh instance its generation; <see cref="InstanceState"/> then knows which generation
+/// folder (<see cref="RestoreMarker"/>), and gives a fresh instance its generation; <see cref="InstanceGeneration"/> then knows which generation
 /// the data has, for every session answer.
 /// <para>
 /// A restore replaces the instance's data as a whole, never merges: the manifest and the checksum are checked, the backup's migration must
@@ -35,7 +35,7 @@ internal sealed class RestoreStep(
     IOptions<StorageOptions> storage,
     IOptions<KeyRingOptions> keyRing,
     IOptions<AuthOptions> auth,
-    InstanceState state,
+    InstanceGeneration state,
     RestoreCode code,
     TimeProvider clock,
     ILogger<RestoreStep> logger) : IHostedService

@@ -9,7 +9,7 @@ namespace Tankstat.Api.GraphQL;
 public sealed class SessionQueries
 {
     /// <summary>Public: lets the UI decide between login screen and app.</summary>
-    public async Task<Session> GetSession([Service] SessionService sessions, [Service] InstanceState instance, CancellationToken ct)
+    public async Task<Session> GetSession([Service] SessionService sessions, [Service] InstanceGeneration instance, CancellationToken ct)
     {
         var s = await sessions.GetAsync(ct);
         return new Session(s.Mode, s.User is { IsAnonymous: false } u ? UserInfo.From(u) : null, instance.Current);
