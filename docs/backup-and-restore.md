@@ -122,6 +122,8 @@ The **Backups** page of the administration (`/admin/backups`, in the menu's Admi
 
 ## Settings
 
+Every one of them but the folder can be changed on the *Server settings* page too (its **Backups** tab, linked from the Backups page) and applies at once: a new time of day is planned as soon as it is saved, and the next backup takes the new encryption, photos and retention; a backup missed while the app was down is caught up only at its start. *Make a key set* on the Backups page saves its recipient and salt there with one button. An environment variable wins over the page, which then shows the setting read-only.
+
 | Setting | Environment variable | Meaning |
 | --- | --- | --- |
 | `Backups:Every` | `Backups__Every` | a time of day (`HH:mm`, the server's local time) to write a backup every day; unset, nothing is scheduled |
