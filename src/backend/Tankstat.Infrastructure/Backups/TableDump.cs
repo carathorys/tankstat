@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Data.Common;
+using System.Globalization;
 using System.Linq.Expressions;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
@@ -92,11 +93,13 @@ internal static class TableDump
             case decimal m: writer.WriteNumberValue(m); break;
             case double d: writer.WriteNumberValue(d); break;
             case float f: writer.WriteNumberValue(f); break;
-            case DateTime dt: writer.WriteStringValue(Utc(dt).ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'")); break;
-            case DateTimeOffset dto: writer.WriteStringValue(dto.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'")); break;
-            case DateOnly date: writer.WriteStringValue(date.ToString("yyyy-MM-dd")); break;
-            case TimeOnly time: writer.WriteStringValue(time.ToString("HH:mm:ss.fffffff")); break;
-            case TimeSpan span: writer.WriteStringValue(span.ToString("c")); break;
+            // Invariant, whatever the process's culture: a custom pattern takes the culture's calendar (th-TH writes the year 2569) and its
+            // time separator for ':' (fi-FI and da-DK write 12.34.56), and the dump promises ISO 8601.
+            case DateTime dt: writer.WriteStringValue(Utc(dt).ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", CultureInfo.InvariantCulture)); break;
+            case DateTimeOffset dto: writer.WriteStringValue(dto.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", CultureInfo.InvariantCulture)); break;
+            case DateOnly date: writer.WriteStringValue(date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)); break;
+            case TimeOnly time: writer.WriteStringValue(time.ToString("HH:mm:ss.fffffff", CultureInfo.InvariantCulture)); break;
+            case TimeSpan span: writer.WriteStringValue(span.ToString("c", CultureInfo.InvariantCulture)); break;
             case byte[] bytes: writer.WriteBase64StringValue(bytes); break;
             default: throw new NotSupportedException($"A backup cannot hold a value of type {value.GetType().Name}.");
         }

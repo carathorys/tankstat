@@ -46,9 +46,21 @@ internal sealed class BackupSource : IAsyncDisposable
         var transaction = await db.Database.BeginTransactionAsync(level, ct);
         return new BackupSource(connection, transaction.GetDbTransaction(), async () =>
         {
-            await transaction.RollbackAsync(CancellationToken.None); // nothing was written; this frees the snapshot
-            await transaction.DisposeAsync();
-            await db.Database.CloseConnectionAsync();
+            try
+            {
+                await transaction.RollbackAsync(CancellationToken.None); // nothing was written; this frees the snapshot
+            }
+            catch (Exception e) when (e is DbException or InvalidOperationException)
+            {
+                // The connection broke after or while the tables were read (a restart, an idle-in-transaction timeout), and the transaction
+                // went with it. What was read is whole, and an error of the read itself is already on its way out: this one replaces neither.
+                logger.LogWarning(e, "The backup's read transaction could not be rolled back; its connection is closed instead");
+            }
+            finally
+            {
+                await transaction.DisposeAsync();
+                await db.Database.CloseConnectionAsync();
+            }
         });
     }
 
@@ -75,11 +87,15 @@ internal sealed class BackupSource : IAsyncDisposable
     /// </summary>
     private static async Task<BackupSource> CopySqliteAsync(AppDbContext db, CancellationToken ct)
     {
+        // The live database is opened as it is and never created: run from another working directory than the server's (the default Data
+        // Source is relative), the command fails instead of leaving an empty database there.
+        var source = new SqliteConnectionStringBuilder(db.Database.GetConnectionString()) { Pooling = false }; // opened once, closed with the copy made
+        if (source.Mode == SqliteOpenMode.ReadWriteCreate) source.Mode = SqliteOpenMode.ReadWrite;
         var scratch = Directory.CreateTempSubdirectory("tankstat-backup-");
         var copy = new SqliteConnection($"Data Source={Path.Combine(scratch.FullName, "copy.db")};Pooling=False");
         try
         {
-            await using (var live = new SqliteConnection(db.Database.GetConnectionString()))
+            await using (var live = new SqliteConnection(source.ToString()))
             {
                 await live.OpenAsync(ct);
                 await copy.OpenAsync(ct);
