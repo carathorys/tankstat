@@ -130,10 +130,10 @@ internal sealed class AppProcess : IAsyncDisposable
         throw new TimeoutException($"The app did not answer within {StartupTimeout.TotalSeconds:F0}s.\n{app.Log}");
     }
 
-    /// <summary>For configurations that must be rejected: runs the app until it exits by itself.</summary>
-    public static async Task<(int ExitCode, string Log)> RunUntilExitAsync(IReadOnlyDictionary<string, string?> settings, bool useTempDatabase = true)
+    /// <summary>For configurations that must be rejected: runs the app until it exits by itself (in <paramref name="workDirectory"/>, which it removes afterwards, when given).</summary>
+    public static async Task<(int ExitCode, string Log)> RunUntilExitAsync(IReadOnlyDictionary<string, string?> settings, bool useTempDatabase = true, string? workDirectory = null)
     {
-        var (process, log, work, _) = Launch(settings, null, useTempDatabase);
+        var (process, log, work, _) = Launch(settings, workDirectory, useTempDatabase);
         try
         {
             using var cts = new CancellationTokenSource(StartupTimeout);

@@ -36,7 +36,8 @@ public enum SettingKind
 }
 
 /// <summary>One setting the app manages in its own settings file; <see cref="SettingsCatalog"/> lists them all.</summary>
-public sealed record SettingDefinition(SettingsGroup Group, string Key, SettingKind Kind, IReadOnlyList<string>? Choices = null)
+/// <param name="AlsoAccepted">For a choice: spellings a value may still have and the app still runs with (older documentation listed them), never offered.</param>
+public sealed record SettingDefinition(SettingsGroup Group, string Key, SettingKind Kind, IReadOnlyList<string>? Choices = null, IReadOnlyList<string>? AlsoAccepted = null)
 {
     public bool IsSecret => Kind == SettingKind.Secret;
     public bool IsList => Kind == SettingKind.List;
@@ -97,7 +98,9 @@ public static class SettingsCatalog
         new(SettingsGroup.Smtp, "Smtp:Username", SettingKind.Text),
         new(SettingsGroup.Smtp, "Smtp:Password", SettingKind.Secret),
         new(SettingsGroup.Smtp, "Smtp:From", SettingKind.Text),
-        new(SettingsGroup.Smtp, "Smtp:Security", SettingKind.Choice, ["Auto", "None", "StartTls", "Ssl"]),
+        // MailKit's names, which the sender parses (pinned by SmtpEmailSenderTests); "Ssl", which the documentation used to list, is no name of
+        // MailKit's and runs as Auto: a file holding it still starts, but it is not offered.
+        new(SettingsGroup.Smtp, "Smtp:Security", SettingKind.Choice, ["Auto", "None", "StartTls", "StartTlsWhenAvailable", "SslOnConnect"], AlsoAccepted: ["Ssl"]),
 
         new(SettingsGroup.Defaults, "Defaults:DistanceUnit", SettingKind.Choice, Enum.GetNames<DistanceUnit>()),
         new(SettingsGroup.Defaults, "Defaults:VolumeUnit", SettingKind.Choice, Enum.GetNames<VolumeUnit>()),
@@ -145,7 +148,12 @@ public static class SettingsCatalog
     /// Why <paramref name="value"/> is not a value for <paramref name="setting"/> (null when it is): the shape its kind needs, a choice among the
     /// choices, and the log levels' floor. The message names the setting and the rule, never the value: it goes into the log.
     /// </summary>
-    public static string? Validate(SettingDefinition setting, string value)
+    public static string? Validate(SettingDefinition setting, string value) =>
+        ShapeProblem(setting, value)
+        ?? (IsBelowLogLevelFloor(setting.Key, value) ? $"{setting.Key} must not be below {LogLevelFloor}: the request lines of ASP.NET Core hold the tokens of password reset links." : null);
+
+    /// <summary>The shape <paramref name="setting"/>'s kind needs, a choice among the choices (or a spelling still accepted); no rule beyond that.</summary>
+    private static string? ShapeProblem(SettingDefinition setting, string value)
     {
         switch (setting.Kind)
         {
@@ -159,8 +167,9 @@ public static class SettingsCatalog
                 if (!bool.TryParse(value, out _)) return $"{setting.Key} must be true or false.";
                 break;
             case SettingKind.Choice:
-                if (!setting.Choices!.Contains(value.Trim(), StringComparer.OrdinalIgnoreCase)) return $"{setting.Key} must be one of {string.Join(", ", setting.Choices!)}.";
-                if (IsBelowLogLevelFloor(setting.Key, value)) return $"{setting.Key} must not be below {LogLevelFloor}: the request lines of ASP.NET Core hold the tokens of password reset links.";
+                var choice = value.Trim();
+                if (!setting.Choices!.Contains(choice, StringComparer.OrdinalIgnoreCase) && setting.AlsoAccepted?.Contains(choice, StringComparer.OrdinalIgnoreCase) != true)
+                    return $"{setting.Key} must be one of {string.Join(", ", setting.Choices!)}.";
                 break;
         }
         return null;
@@ -177,16 +186,21 @@ public static class SettingsCatalog
         return floored && Enum.TryParse<LogLevel>(value.Trim(), ignoreCase: true, out var level) && level < LogLevelFloor;
     }
 
-    /// <summary>The problems of every managed setting that <paramref name="valueOf"/> has a value for (lists are not checked: every string is one).</summary>
+    /// <summary>
+    /// The wrong shapes among the managed settings that <paramref name="valueOf"/> has a value for, as the start sees them: only what the app
+    /// could not start with, named by its setting. Lists are not checked (every string is one); photo reading is not either, because its
+    /// settings never stop the app (RecognitionSetup turns reading off and says why); nor is the log levels' floor, a rule for what the page
+    /// writes (<see cref="Validate"/>), not something the app refuses to start with.
+    /// </summary>
     public static IReadOnlyList<string> Problems(Func<string, string?> valueOf)
     {
         var problems = new List<string>();
         foreach (var setting in All)
         {
-            if (setting.IsList) continue;
+            if (setting.IsList || setting.Group == SettingsGroup.PhotoReading) continue;
             var value = valueOf(setting.Key);
             if (value is null) continue;
-            if (Validate(setting, value) is { } problem) problems.Add(problem);
+            if (ShapeProblem(setting, value) is { } problem) problems.Add(problem);
         }
         return problems;
     }

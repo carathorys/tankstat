@@ -53,16 +53,19 @@ public class SettingsFileSmokeTests
     public async Task AFileTheAppCouldNotStartWith_IsLeftOut_AndTheAppStarts()
     {
         var work = WorkDirectory();
-        await File.WriteAllTextAsync(Path.Combine(work, "settings.json"), """{ "Auth": { "Mode": "Oidc" } }"""); // no authority: a mistake that would stop the start
+        // An authentication setting every mode checks, out of range: a mistake that would stop the start. The mode comes from the test's own
+        // environment, never from what appsettings.json happens to set (and a file whose loss would turn authentication off is refused
+        // instead of left out: SettingsFileTests).
+        await File.WriteAllTextAsync(Path.Combine(work, "settings.json"), """{ "Auth": { "AccessTokenMinutes": "0" } }""");
 
-        await using var app = await AppProcess.StartAsync(new Dictionary<string, string?>(), workDirectory: work);
+        await using var app = await AppProcess.StartAsync(new Dictionary<string, string?> { ["Auth__Mode"] = "None" }, workDirectory: work);
 
         var data = (await app.Gql(Session)).Data();
-        Assert.Equal("NONE", data.GetProperty("session").GetProperty("mode").GetString()); // the shipped mode: the file counts for nothing
+        Assert.Equal("NONE", data.GetProperty("session").GetProperty("mode").GetString());
         var codes = data.GetProperty("notices").EnumerateArray().Select(n => n.GetProperty("code").GetString()).ToList();
         Assert.Equal(["AUTH_DISABLED", "SETTINGS_FILE_IGNORED"], codes);
         Assert.True(await app.LogsAsync("left out"), app.Log);
-        Assert.Contains("Auth:Oidc:Authority", app.Log);
+        Assert.Contains("Auth:AccessTokenMinutes", app.Log);
         Assert.Contains("fail: ", app.Log); // an Error line, as the console writes it
     }
 
@@ -70,8 +73,9 @@ public class SettingsFileSmokeTests
     public async Task TheEnvironment_StillStopsTheApp_WhenItIsWrong_WhateverTheFileSays()
     {
         var work = WorkDirectory();
-        await File.WriteAllTextAsync(Path.Combine(work, "settings.json"), StandaloneFile);
-        var (exitCode, log) = await AppProcess.RunUntilExitAsync(new Dictionary<string, string?> { ["Auth__Mode"] = "Kerberos" });
+        await File.WriteAllTextAsync(Path.Combine(work, "settings.json"), StandaloneFile); // read by the process: its working directory, the default place
+
+        var (exitCode, log) = await AppProcess.RunUntilExitAsync(new Dictionary<string, string?> { ["Auth__Mode"] = "Kerberos" }, workDirectory: work); // removes the folder
 
         Assert.NotEqual(0, exitCode);
         Assert.Contains("Auth:Mode", log, StringComparison.OrdinalIgnoreCase);
