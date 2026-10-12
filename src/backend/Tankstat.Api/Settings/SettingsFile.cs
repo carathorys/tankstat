@@ -53,7 +53,8 @@ public static class ConfigurationSources
         }
     }
 
-    private static IConfigurationSource ReadOnce(IConfigurationSource source) => source is JsonConfigurationSource { ReloadOnChange: true, Path: { } path } json
+    /// <summary>A JSON source that reloads on change as a copy that reads its file once; any other source as it is.</summary>
+    public static IConfigurationSource ReadOnce(IConfigurationSource source) => source is JsonConfigurationSource { ReloadOnChange: true, Path: { } path } json
         ? new JsonConfigurationSource { FileProvider = json.FileProvider, Path = path, Optional = json.Optional, OnLoadException = json.OnLoadException, ReloadOnChange = false }
         : source;
 }

@@ -196,6 +196,28 @@ public class SystemSettingsServiceTests
         Assert.Equal("Standalone", w.SettingsFile.Values["Auth:Mode"]);
     }
 
+    [Theory]
+    [InlineData("root@x.co", "changeme", "password")] // under the policy's 10 characters: the first start would throw password.tooShort
+    [InlineData("root", "initial-password-1", "email")] // not an address
+    [InlineData("taken@x.co", "initial-password-1", "taken")] // a local account (here a user, as a disabled administrator would) holds it: the new one could not be added
+    public async Task SwitchingToStandalone_NeedsCredentialsTheFirstStartCanUse(string email, string password, string reason)
+    {
+        var w = new World(AuthMode.Oidc, configure: o => o.Mode = AuthMode.Oidc);
+        var external = User.CreateExternal(UserProvider.Oidc, "sub-1", "owner@x.co", "Owner", isAdmin: true);
+        w.Users.Items.Add(external);
+        w.Current.SignInAs(external);
+        w.AddUser("taken@x.co");
+        w.SystemConfiguration.FileAtStart["Auth:Mode"] = "Oidc";
+        w.SettingsFile.Values["Auth:Mode"] = "Oidc";
+        w.SystemConfiguration.Environment["Auth:Standalone:AdminEmail"] = email;
+        w.SystemConfiguration.Environment["Auth:Standalone:AdminPassword"] = password;
+
+        var refused = await Assert.ThrowsAsync<DomainException>(() => w.SystemSettings.UpdateAsync([Set("Auth:Mode", "Standalone")], default));
+
+        Assert.Equal(("settings.standaloneNeedsAdministrator", reason), (refused.Key, refused.Args["reason"]));
+        Assert.Equal(0, w.SettingsFile.Writes);
+    }
+
     [Fact]
     public async Task SwitchingToOidc_ChecksThatTheAuthorityAnswers_WithThatIssuer()
     {
@@ -220,10 +242,32 @@ public class SystemSettingsServiceTests
         Assert.Equal(["https://id.example.com/", "https://id.example.com/", "https://id.example.com/"], w.Discovery.Probed);
         Assert.Equal("Oidc", w.SettingsFile.Values["Auth:Mode"]);
 
-        w.SystemConfiguration.FileAtStart["Auth:Mode"] = "Oidc"; // restarted in OIDC mode
+        foreach (var (key, value) in w.SettingsFile.Values) w.SystemConfiguration.FileAtStart[key] = value; // restarted: the file runs, in OIDC mode
         await w.SystemSettings.UpdateAsync([Set("Smtp:Host", "mail.x.co"), Set("Smtp:From", "t@x.co"), Set("Auth:PublicUrl", "https://tank.test")], default);
-        Assert.Equal(3, w.Discovery.Probed.Count); // a change that does not touch the mode or the authority asks nothing
+        Assert.Equal(3, w.Discovery.Probed.Count); // the mode and the authority the next start takes up run already: nothing is asked
         Assert.False(w.Log.Mentions("s-zzzz"));
+    }
+
+    [Fact]
+    public async Task ASaveThatLeadsTheNextStartIntoOidc_ProbesTheAuthority_WhateverItChanged()
+    {
+        var w = AdminWorld(w =>
+        {
+            w.SystemConfiguration.Shipped["Auth:Mode"] = "Standalone";
+            w.SystemConfiguration.File = SettingsFileStatus.LeftOut("/data/settings.json", ["Notifications:MaxPerHour must be at least 1."]);
+            w.SettingsFile.Values["Auth:Mode"] = "Oidc"; // left out at start with the rest of the file: the app runs Standalone
+            w.SettingsFile.Values["Auth:Oidc:Authority"] = "https://id.example.cmo";
+            w.SettingsFile.Values["Auth:Oidc:ClientId"] = "tankstat";
+            w.SettingsFile.Values["Auth:Oidc:ClientSecret"] = "s-zzzz";
+            w.SettingsFile.Values["Notifications:MaxPerHour"] = "0";
+        });
+        w.Discovery.Answer = OidcDiscoveryResult.Failed("unreachable");
+
+        var refused = await Assert.ThrowsAsync<DomainException>(() => w.SystemSettings.UpdateAsync([Set("Notifications:MaxPerHour", "30")], default));
+
+        Assert.Equal("settings.oidcUnreachable", refused.Key); // fixing the one mistake would have the next start sign in through a mistyped authority
+        Assert.Equal(["https://id.example.cmo"], w.Discovery.Probed);
+        Assert.Equal(0, w.SettingsFile.Writes);
     }
 
     [Theory]
@@ -241,7 +285,7 @@ public class SystemSettingsServiceTests
         var w = AdminWorld(w =>
         {
             w.SystemConfiguration.File = SettingsFileStatus.LeftOut("/data/settings.json", ["The file is not valid JSON."]);
-            w.SettingsFile.FailRead = new FormatException("Could not parse the JSON file.");
+            w.SettingsFile.FailRead = new InvalidDataException("Failed to load configuration from file."); // what the JSON provider throws for a file it cannot parse
         });
 
         var view = await w.SystemSettings.GetAsync(default);
@@ -254,6 +298,98 @@ public class SystemSettingsServiceTests
     }
 
     [Fact]
+    public async Task AFileNotLeftOut_ThatCannotBeReadNow_IsNotWrittenOver()
+    {
+        var w = AdminWorld(w =>
+        {
+            w.SystemConfiguration.File = SettingsFileStatus.Used("/data/settings.json", exists: true); // what it held runs, its sign-in mode too
+            w.SettingsFile.FailRead = new InvalidDataException("Failed to load configuration from file."); // broken by hand since the start
+        });
+
+        var refused = await Assert.ThrowsAsync<DomainException>(() => w.SystemSettings.UpdateAsync([Set("Defaults:Currency", "HUF")], default));
+
+        Assert.Equal("settings.invalid", refused.Key); // a save would have kept only the currency, and the next start would run without the file's Auth:Mode
+        Assert.Equal(0, w.SettingsFile.Writes);
+        Assert.False(Setting(await w.SystemSettings.GetAsync(default), "Defaults:Currency").IsSet); // the page still opens
+    }
+
+    [Fact]
+    public async Task AFileTheAppMayNotOpen_CountsAsEmptyToo()
+    {
+        var w = AdminWorld(w =>
+        {
+            w.SystemConfiguration.File = SettingsFileStatus.LeftOut("/data/settings.json", ["The file cannot be read."]);
+            w.SettingsFile.FailRead = new UnauthorizedAccessException("Access to the path is denied."); // EACCES, which is no IOException
+        });
+
+        var view = await w.SystemSettings.GetAsync(default);
+
+        Assert.True(view.File.Ignored);
+        Assert.False(Setting(view, "Defaults:Currency").IsSet);
+        Assert.Single(w.Log.From<SystemSettingsService>(), e => e.Level == LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task ASecret_IsStoredAsTyped()
+    {
+        var w = AdminWorld();
+
+        await w.SystemSettings.UpdateAsync([Set("Smtp:Password", " pass word "), Set("Defaults:Currency", " HUF ")], default);
+
+        Assert.Equal((" pass word ", "HUF"), (w.SettingsFile.Values["Smtp:Password"], w.SettingsFile.Values["Defaults:Currency"])); // only what is not a secret is trimmed
+    }
+
+    [Fact]
+    public async Task AMistakeOfTheEnvironmentsOwn_TheAppRunsWith_HoldsNoSaveBack()
+    {
+        var w = AdminWorld(w => w.SystemConfiguration.Environment["Smtp:Security"] = "Tls"); // no name of MailKit's: the sender runs it as Auto, so the app starts
+
+        await w.SystemSettings.UpdateAsync([Set("Defaults:Currency", "HUF")], default);
+        Assert.Equal("HUF", w.SettingsFile.Values["Defaults:Currency"]);
+
+        var added = await Assert.ThrowsAsync<DomainException>(() => w.SystemSettings.UpdateAsync([Set("Notifications:MaxPerHour", "0")], default));
+        Assert.Contains((IEnumerable<string>)added.Args["problems"]!, p => p.Contains("Notifications:MaxPerHour")); // what the file adds still counts
+    }
+
+    [Fact]
+    public async Task AnEnvironmentThatLeansOnTheFile_StillNeedsWhatTheFileGives()
+    {
+        var w = AdminWorld(w =>
+        {
+            w.SystemConfiguration.Environment["Auth:Mode"] = "Oidc"; // the authority only the file holds
+            foreach (var (key, value) in new Dictionary<string, string?> { ["Auth:Oidc:Authority"] = "https://id.example.com", ["Auth:Oidc:ClientId"] = "tankstat", ["Auth:Oidc:ClientSecret"] = "s-zzzz" })
+            {
+                w.SystemConfiguration.FileAtStart[key] = value;
+                w.SettingsFile.Values[key] = value;
+            }
+        });
+
+        var refused = await Assert.ThrowsAsync<DomainException>(() => w.SystemSettings.UpdateAsync([new SettingChange("Auth:Oidc:Authority", null, Clear: true)], default));
+
+        Assert.Contains((IEnumerable<string>)refused.Args["problems"]!, p => p.Contains("Auth:Oidc:Authority")); // the environment lacks it too, but the host would not start
+        Assert.Equal(0, w.SettingsFile.Writes);
+    }
+
+    [Fact]
+    public async Task TwoSavesAtOnce_BothLand()
+    {
+        var w = AdminWorld(w =>
+        {
+            w.SystemConfiguration.FileAtStart["Auth:Mode"] = "Standalone";
+            w.SettingsFile.Values["Auth:Mode"] = "Standalone";
+        });
+        w.Discovery.Hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously); // an authority that takes its time
+
+        var toOidc = w.SystemSettings.UpdateAsync([Set("Auth:Mode", "Oidc"), Set("Auth:Oidc:Authority", "https://id.example.com"), Set("Auth:Oidc:ClientId", "tankstat"), Set("Auth:Oidc:ClientSecret", "s-zzzz")], default);
+        await w.Discovery.Asked.Task; // the first save read the file and waits for the authority
+        var currency = w.SystemSettings.UpdateAsync([Set("Defaults:Currency", "HUF")], default); // another group's form, meanwhile
+        w.Discovery.Hold.SetResult();
+        await Task.WhenAll(toOidc, currency);
+
+        Assert.Equal(("Oidc", "HUF"), (w.SettingsFile.Values["Auth:Mode"], w.SettingsFile.Values["Defaults:Currency"]));
+    }
+
+    [Fact]
     public async Task AFileThatCannotBeWritten_IsAKeyedError_WithTheExceptionInTheLog()
     {
         var w = AdminWorld(w => w.SettingsFile.FailWrite = new IOException("disk full"));
@@ -261,8 +397,9 @@ public class SystemSettingsServiceTests
         var refused = await Assert.ThrowsAsync<DomainException>(() => w.SystemSettings.UpdateAsync([Set("Defaults:Currency", "HUF")], default));
 
         Assert.Equal("settings.fileNotWritable", refused.Key);
-        var error = Assert.Single(w.Log.From<SystemSettingsService>(), e => e.Level == LogLevel.Error);
-        Assert.IsType<IOException>(error.Exception);
+        var warning = Assert.Single(w.Log.From<SystemSettingsService>(), e => e.Level == LogLevel.Warning); // handled, so no Error
+        Assert.IsType<IOException>(warning.Exception);
+        Assert.DoesNotContain(w.Log.From<SystemSettingsService>(), e => e.Level >= LogLevel.Error);
     }
 
     [Fact]
@@ -275,6 +412,39 @@ public class SystemSettingsServiceTests
         Assert.Equal(1, w.Restart.Count);
         var line = Assert.Single(w.Log.From<SystemSettingsService>(), e => e.Level == LogLevel.Information);
         Assert.Equal(w.Current.Principal!.Id, line.Values["AdminId"]);
+    }
+
+    [Fact]
+    public async Task ARestartTheNextStartWouldRefuse_IsRefused_ForAStartThatFailsEndsTheProcess()
+    {
+        var w = AdminWorld();
+        w.SystemConfiguration.NextStartRefusal = ["Notifications:MaxPerHour must be at least 1."]; // a file hand-edited since the start
+
+        var refused = await Assert.ThrowsAsync<DomainException>(() => w.SystemSettings.RestartAsync(default));
+
+        Assert.Equal("settings.restartWouldFail", refused.Key);
+        Assert.Contains("Notifications:MaxPerHour", refused.Message);
+        Assert.Equal(0, w.Restart.Count);
+        Assert.DoesNotContain(w.Log.From<SystemSettingsService>(), e => e.Level == LogLevel.Information); // no restart to log
+    }
+
+    [Fact]
+    public async Task ARestartIntoStandalone_WithNoAdministratorItCouldCreate_IsRefused()
+    {
+        var w = new World(AuthMode.Oidc, configure: o => o.Mode = AuthMode.Oidc);
+        var external = User.CreateExternal(UserProvider.Oidc, "sub-1", "owner@x.co", "Owner", isAdmin: true);
+        w.Users.Items.Add(external);
+        w.Current.SignInAs(external); // no local administrator exists
+        w.SystemConfiguration.FileAtNextStart = new(StringComparer.OrdinalIgnoreCase) { ["Auth:Mode"] = "Standalone" }; // written by hand since
+
+        var refused = await Assert.ThrowsAsync<DomainException>(() => w.SystemSettings.RestartAsync(default));
+        Assert.Equal("settings.standaloneNeedsAdministrator", refused.Key);
+        Assert.Equal(0, w.Restart.Count);
+
+        w.SystemConfiguration.Environment["Auth:Standalone:AdminEmail"] = "root@x.co";
+        w.SystemConfiguration.Environment["Auth:Standalone:AdminPassword"] = "initial-password-1";
+        await w.SystemSettings.RestartAsync(default); // the next start creates the administrator from these
+        Assert.Equal(1, w.Restart.Count);
     }
 }
 

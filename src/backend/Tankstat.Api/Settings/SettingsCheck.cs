@@ -14,8 +14,9 @@ namespace Tankstat.Api.Settings;
 /// host itself refuses, through a throwaway container with the app's own registrations: the logging set-up <c>Build()</c> makes (the filter,
 /// the console's options and its formatters'), every option class the app validates at start (<see cref="IStartupValidator"/>), plus
 /// <c>Smtp</c>, which the app binds without validating. <see cref="Check"/> answers for one configuration, <see cref="Added"/> for what a
-/// source adds to the others, <see cref="Starts"/> whether the host alone would start. The problems name settings and rules, never values:
-/// the binder quotes a value in its exception, so only the path is taken from it.
+/// source adds to the others, <see cref="Starts"/> whether the host alone would start, <see cref="AgainstFile"/> what the next start would
+/// hold against a settings file (the system settings page's question). The problems name settings and rules, never values: the binder
+/// quotes a value in its exception, so only the path is taken from it.
 /// </summary>
 public static class SettingsCheck
 {
@@ -41,6 +42,19 @@ public static class SettingsCheck
     /// validates at start), none of the stricter rules the check adds for the settings file (the shapes, <c>Smtp</c> bound in every mode).
     /// </summary>
     public static bool Starts(IConfiguration configuration) => Refusals(configuration, smtp: false).Count == 0;
+
+    /// <summary>
+    /// What the next start would hold against a settings file, <paramref name="with"/> being the whole configuration with its values in the
+    /// file's place and <paramref name="without"/> the same sources with no file: the problems the file adds (the start would leave it out,
+    /// or fail with it), else what the host itself would refuse with it (the environment may lean on the file: an OIDC mode whose authority
+    /// only the file holds). A mistake of the environment's own that the host starts with anyway is not the file's, as at start
+    /// (<see cref="SettingsFile.Prepare(ConfigurationManager)"/>): it leaves no file out, so it holds no save back either.
+    /// </summary>
+    public static IReadOnlyList<string> AgainstFile(IConfiguration with, IConfiguration without)
+    {
+        var added = Added(with, without);
+        return added.Count > 0 ? added : Refusals(with, smtp: false);
+    }
 
     private static List<string> Shapes(IConfiguration configuration) =>
         [.. SettingsCatalog.Problems(key => configuration[key]), .. LoggingProblems(configuration)];

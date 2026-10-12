@@ -274,6 +274,28 @@ public class SettingsFileTests
         WithFile("{ not json", path => Assert.True(LeftOut(path, null, "--Auth:Mode=None")));
     }
 
+    [Fact]
+    public void TheNextStart_ReadsTheFileAfresh_AndSaysWhenItWouldRefuseIt()
+    {
+        WithFile("""{ "Defaults": { "Currency": "HUF" } }""", path =>
+        {
+            var running = Shipped(path);
+            var system = new SystemConfiguration(SettingsFile.Prepare(running), running);
+
+            File.WriteAllText(path, """{ "Defaults": { "Currency": "USD" } }""");
+            using (var next = system.PrepareNextStart())
+                Assert.Equal("USD", next.Configuration!["Defaults:Currency"]); // read afresh, as a restart reads it
+            Assert.Equal("HUF", running["Defaults:Currency"]); // what runs stays what the start read
+
+            File.WriteAllText(path, """{ "Auth": { "Mode": "Standalone" }, "Notifications": { "MaxPerHour": "0" } }""");
+            using (var next = system.PrepareNextStart())
+            {
+                Assert.Null(next.Configuration); // the next start would stop: a restart must not be asked for
+                Assert.Equal(["Notifications:MaxPerHour must be at least 1."], next.Refusal);
+            }
+        });
+    }
+
     /// <summary>
     /// The configuration the app starts with before its settings file joins, built by hand: <paramref name="shipped"/> (by default the mode
     /// the shipped appsettings.json sets, None) as the only source, so neither the process's environment nor the real appsettings.json plays a
