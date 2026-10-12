@@ -1,0 +1,165 @@
+# Changelog
+
+Every release of Tankstat, newest first. Each one is a Docker image, `ghcr.io/carathorys/tankstat:<version>`, and a [GitHub release](https://github.com/carathorys/tankstat/releases). The numbers in brackets are the pull requests. Pre-releases (the previews) are not listed: their changes are in the release that followed them.
+
+## 0.14.0 (2026-10-12)
+
+### Added
+
+- **Server settings for administrators** (Administration, then Server settings): every setting with where its value comes from (the environment, the settings file, `appsettings.json` or the built-in default), a tab per group, and changes saved into the app's own settings file. Defaults, notifications, offline sync and logging apply at once; sign-in, e-mail and photo reading after *Restart server*, which restarts the server in its own process, so the container keeps running. A setting the environment holds is read-only there, and a secret is never shown back (#106, #108, #114).
+- **The app's own settings file**, `Settings:Path` (`/data/settings.json` in the image): a configuration source below the environment variables and above `appsettings.json`. A file the app could not start with is left out at start, with an `Error` line naming the settings at fault and a public notice (#105).
+- **An Administration group** in the navigation: an Overview of what needs an administrator, People (users and access), Vehicles (the full list, moved out of the main navigation) and Server settings (#114).
+- **The photos of logs under a root of their own**, `Storage:PhotosPath` (opt-in; nothing moves unless it is set) (#95).
+
+### Changed
+
+- A start in another sign-in mode than the previous one signs every device out (#106).
+- Self-service password resets are throttled, with one live link per user (#94), and their e-mail goes out after the answer, so the answer tells no accounts apart (#104).
+- `Smtp:Security` takes MailKit's names: `Auto`, `None`, `StartTls`, `StartTlsWhenAvailable`, `SslOnConnect`. The `Ssl` the docs used to list was never one of them and runs as `Auto`, as it always did (#105).
+
+### Fixed
+
+- In mode `None`, a sign-in cookie left over from another mode no longer names a user (#98).
+- An administrator keeps the setup link to hand over when its e-mail cannot be sent (#99).
+
+### Upgrading
+
+- Nothing to do: the image reads `/data/settings.json` from the data volume, and the file appears with the first change saved on the Server settings page. Environment variables still win over it.
+- A settings file that would leave the instance without sign-in when left out stops the start instead: that is a file that sets the sign-in mode while the environment does not, over the shipped `None`. Fix the file, or set `Auth__Mode` in the environment.
+- For TLS from the first byte to the mail server, set `Smtp__Security=SslOnConnect`.
+- The old addresses keep working: `/admin?tab=users` and `?tab=access` lead to People, `/vehicles` to Administration, then Vehicles.
+
+### For developers
+
+- The review skill: a PR is claimed with `reviewing` and labelled `reviewed` when done (#101).
+- A log canary ignores a needle that a random id spells by chance (#102).
+- Code lookups go through the LSP (#103).
+
+## 0.13.0 (2026-10-09)
+
+- Let each user choose how surfaces are drawn: glossy, transparent or opaque (toasts readable again) (#70)
+- Keep photos kept on the device side by side, marked on the thumbnail, and say they were kept, not uploaded (#71)
+- Show the web app's version in the footer, also while the server is out of reach (#74)
+- Collect the integration tests' coverage again (#73)
+- Raise test coverage: frontend 89 % to 95.7 %, backend 93.4 % to 99 % (#75)
+- Conflicts on sync: merge edits, and say plainly what happened on each side of a trash or delete (#77)
+- Log a null in a non-null GraphQL field as a Warning, naming the field by the schema (#79)
+- Keep pictures offline for use without the server (#76)
+- Add the triage and dev skills: one issue workflow for every agent (#82)
+- Add service worker registration and chunk recovery for PWA (#83)
+- Clean an invalid browser language (en-US@posix) to a valid tag, so no page crashes formatting a number (#81)
+- Skills: triage claims issues with `triaging`; dev works in a git worktree per task off the latest main (#84)
+- Dev skill: claim an issue with the `in progress` label, refuse one another agent has claimed (#86)
+- Change a vehicle's picture offline: keep it on the device and send it when the device syncs (#87)
+
+## 0.12.1 (2026-10-08)
+
+- Balance the CI test jobs: integration tests in three processes, frontend shards by measured time (#59)
+- Keep the top bar within a phone's width, so the page no longer scrolls sideways (#60)
+- Show a row's sync state in a narrow column of the lists, with a coloured bubble that says why (#61)
+
+## 0.12.0 (2026-10-08)
+
+- Split the README into docs/ pages and keep it short (#34)
+- Add the caveman rule files for the other coding agents (#52)
+- Report the released version, pre-release label included, in health (#56)
+- Build once and reuse it: faster CI, release image from CI's build, steadier frontend tests (#57)
+- Offline sync 1/16: client-chosen ids and entity versions (#37)
+- Offline sync 2/16: access and refresh tokens (#38)
+- Offline sync 3/16: signed-in devices on the Account page (#39)
+- Offline sync 4/16: know when the server is out of reach (#42)
+- Offline sync 5/16: keep what was opened on the device (#43)
+- Offline sync 6/16: the server's download side (feed, tombstones, offline window) (#44)
+- Offline sync 7/16: download the offline window, and answer the log lists from it offline (#46)
+- Offline sync 8/16: choose what is downloaded for offline use (Account page) (#47)
+- Offline sync 9/16: keep changes of refuellings and expenses on the device (#48)
+- Offline sync 10/16: keep changes of vehicles and recurring expenses on the device (#49)
+- Offline sync 11/16: the Waiting to sync page, Keep, and asking before signing out (#50)
+- Offline sync 12/16: send the changes kept on the device (syncChanges, ledger, conditional writes) (#51)
+- Offline sync 13/16: decide about the changes the server could not apply (parked changes) (#53)
+- Offline sync 14/16: photos offline (kept on the device, sent right before their entries) (#54)
+- Offline sync 15/16: edit a waiting or parked change, one tab syncs, offline docs (#55)
+- Offline sync 16/16: fixes from trying it out (a new vehicle offline, the vehicle list offline) (#58)
+
+## 0.11.0 (2026-10-07)
+
+- Notify about a new version and let the user reload (#33)
+
+## 0.10.1 (2026-10-07)
+
+- Fix: the chart hover tooltip showed nothing (it was placed outside the screen) (#32)
+
+## 0.10.0 (2026-10-07)
+
+- Move the frontend from Radix to MUI v9 and MUI X, with a saved colour mode (#31)
+
+## 0.9.1 (2026-10-06)
+
+- Fix: a full page of logs fails on canDelete (one query per row in parallel) (#30)
+
+## 0.9.0 (2026-10-06)
+
+- Mark several recurring schedules done at one service visit, with one optional amount (#23)
+- Organize the frontend tests into folders by feature area (#24)
+- Add the Claude GitHub actions (#26)
+- Read photos added while editing a log, and let an emptied value wait for them (#28)
+- More motion and clearer waiting: progress near Save, busy buttons, rows that leave and cards that move (#29)
+- Show spending in every currency, never store a guessed currency, keep the price column's currency (#27)
+
+## 0.8.0 (2026-10-06)
+
+- Add a unit price to the refuelling dialog: any two amounts give the third (#17)
+- Let a refuelling say a fill-up before it was not logged (#18)
+- Log a refuelling, an expense or a finished schedule straight from the home page (#21)
+- Install as an app, and sign in with OIDC in one hop (#19)
+- Keep the UI settings with the account, and let the user arrange their vehicles (#20)
+- Fix flaky first tests in the frontend CI job (#22)
+
+## 0.7.1 (2026-10-05)
+
+- Say why a photo gave nothing: reasons, a trail in the log, and the whole request in the README (#14)
+- Log what is sent to the model and what it answers, on request (#15)
+- Tell the user why a photo gave less than it might have (#16)
+
+## 0.7.0 (2026-10-05)
+
+- Read photos with a vision model behind any OpenAI-compatible API, in place of the Tesseract reader (#13)
+
+## 0.6.0 (2026-10-03)
+
+- Log what happens in the app, so an operator can follow it (#12)
+- Read the odometer of a dashboard the OCR mistook for a receipt (#11)
+
+## 0.5.0 (2026-10-03)
+
+- Upload photos as soon as they are picked (photo drafts) (#8)
+- Read odometers and receipts from photos (standalone reader service) (#9)
+- Fill the log dialogs from photos read on the server (#10)
+
+## 0.4.0 (2026-10-02)
+
+- Fix Codecov reporting only the frontend coverage (#6)
+- Notifications (access changes, due recurring expenses) and configurable reminder defaults (#7)
+
+## 0.3.0 (2026-10-02)
+
+- Recurring expenses, admin-only vehicle list, searchable home page (#4)
+- Import repeating Fuelio reminders as recurring expenses (#5)
+
+## 0.2.0 (2026-10-02)
+
+- Administrator user management: edit, set password, delete with data move (#1)
+- Add code coverage reporting and status badges (#3)
+- Photos for refuelings and expenses, uploads stored per vehicle (#2)
+
+## 0.1.0 (2026-10-01)
+
+- Refuelling logs, sharing, delete levels and pictures
+- Expenses, Fuelio import and stored fuel consumption
+- The welcome screen, the vehicle dashboard and composable charts
+- Lazy-loaded pages and charts; vehicle cards that slide up on CSS backgrounds
+- A fixed mobile layout: overflow, compact grid actions, the drawer's header
+
+## 0.0.1 (2026-10-01)
+
+- The first release: a React and .NET 10 GraphQL app with vehicles, the authentication modes, access control, server-side grids, i18n, generated GraphQL types, a test-data seeder, smoke tests, CI and the single-container Docker image on GHCR
