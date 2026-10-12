@@ -13,8 +13,8 @@ namespace Tankstat.Api.IntegrationTests;
 
 /// <summary>
 /// The system settings an administrator manages through GraphQL: every setting with its source, changes written into the host's own
-/// settings file (waiting for a restart), refusals that write nothing, secrets never shown or logged, and the restart that reaches the host's
-/// restart service (a fake here: the real one would stop the test host).
+/// settings file (the defaults, notifications, sync and log levels in effect at once, the rest after a restart), refusals that write nothing,
+/// secrets never shown or logged, and the restart that reaches the host's restart service (a fake here: the real one would stop the test host).
 /// </summary>
 [Collection(ApiCollection.Name)]
 public class SystemSettingsTests
@@ -104,6 +104,34 @@ public class SystemSettingsTests
         // A file read at start is read afresh too.
         await restartedAdmin.Gql(Update, new { c = new object[] { new { key = "Defaults:Currency", value = "GBP" } } });
         Assert.Equal("GBP", (await restartedAdmin.Gql("{ vehicleDefaults { currency } }")).Data().GetProperty("vehicleDefaults").GetProperty("currency").GetString());
+    }
+
+    [Fact]
+    public async Task ClearingTheMailAndThePublicAddress_IsSaved_AndSoIsEverySaveAfterIt()
+    {
+        // The sign-in is read once. A save reloads the configuration, and the sign-in must not be validated again then against the mail the
+        // app started with (Auth:PublicUrl is required while Smtp is configured): that turned this checked save, and every later one, into an error.
+        var path = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-settings.json");
+        await File.WriteAllTextAsync(path, """{ "Smtp": { "Host": "mail.example.com", "From": "tank@example.com" }, "Auth": { "PublicUrl": "https://tank.test" } }""");
+        try
+        {
+            using var app = TestApp.Standalone(new() { ["Settings:Path"] = path });
+            var admin = await Admin(app);
+
+            var cleared = (await admin.Gql(Update, new { c = new object[] { new { key = "Smtp:Host", clear = true }, new { key = "Auth:PublicUrl", clear = true } } })).Data().GetProperty("updateSystemSettings");
+            Assert.True(Setting(cleared, "Smtp:Host").GetProperty("restartPending").GetBoolean()); // the mail is built at start
+            var next = (await admin.Gql(Update, new { c = new object[] { new { key = "Defaults:Currency", value = "HUF" } } })).Data().GetProperty("updateSystemSettings");
+
+            var currency = Setting(next, "Defaults:Currency");
+            Assert.Equal(("HUF", "FILE", false), (currency.GetProperty("value").GetString(), currency.GetProperty("source").GetString(), currency.GetProperty("restartPending").GetBoolean()));
+            Assert.Empty(app.Log.From(Service).Where(e => e.Level >= LogLevel.Warning)); // taken in whole, not only saved
+            Assert.Empty(app.Log.AtLeast(LogLevel.Error));
+        }
+        finally
+        {
+            File.Delete(path);
+            File.Delete(path + ".bak");
+        }
     }
 
     [Fact]

@@ -37,7 +37,10 @@ public static class DependencyInjection
         services.AddOptions<StorageOptions>().Bind(configuration.GetSection(StorageOptions.SectionName)).ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<StorageOptions>, StorageOptionsValidator>());
         services.AddOptions<SmtpOptions>().Bind(configuration.GetSection(SmtpOptions.SectionName));
-        services.AddOptions<AuthOptions>().Bind(configuration.GetSection(AuthOptions.SectionName)).ValidateOnStart();
+        // Bound without a change token: the sign-in is read once, at start. A save on the settings page reloads the configuration, and the
+        // options monitor ValidateOnStart leaves behind would validate the saved sign-in again then, against the Smtp its validator read at
+        // start (Auth:PublicUrl is required while Smtp is configured), and throw out of the save.
+        services.AddOptions<AuthOptions>().Configure(o => configuration.GetSection(AuthOptions.SectionName).Bind(o)).ValidateOnStart();
         // Photo reading is optional: its settings are never validated on start (they would stop the app); RecognitionSetup turns
         // reading off instead when they cannot be used.
         services.AddOptions<RecognitionOptions>().Bind(configuration.GetSection(RecognitionOptions.SectionName));
