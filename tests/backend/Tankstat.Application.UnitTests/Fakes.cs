@@ -796,8 +796,9 @@ internal sealed class World
     public InMemoryPhotoDrafts PhotoDrafts { get; } = new();
     public InMemorySettings Settings { get; } = new();
     public FakeCurrentUser Current { get; } = new();
-    public FakeSystemConfiguration SystemConfiguration { get; } = new();
     public InMemorySettingsFile SettingsFile { get; } = new();
+    public FakeSystemConfiguration SystemConfiguration => _systemConfiguration ??= new FakeSystemConfiguration { Store = SettingsFile };
+    private FakeSystemConfiguration? _systemConfiguration;
     public FakeOidcDiscovery Discovery { get; } = new();
     public FakeServerRestart Restart { get; } = new();
     public InMemoryInstanceState Instance { get; } = new();
@@ -826,7 +827,7 @@ internal sealed class World
     public InMemoryOfflineSettings OfflineSettingsStore { get; } = new();
     public OfflineSettingsService OfflineSettings { get; }
     public InMemorySyncChanges SyncLedger { get; } = new();
-    public SyncService Sync => new(SyncLedger, Vehicles, Access, Microsoft.Extensions.Options.Options.Create(new SyncOptions()), Clock, Log.For<SyncService>());
+    public SyncService Sync => new(SyncLedger, Vehicles, Access, new SyncOptions().Create(), Clock, Log.For<SyncService>());
     public SyncTargetService SyncTargets => new(Vehicles, Refuelings, Expenses, Recurring, RecurringService, Access);
     public ImportService Imports { get; }
     public OdometerService Odometer { get; }
@@ -903,7 +904,14 @@ internal sealed class World
 
 internal static class OptionsExtensions
 {
-    public static IOptions<T> Create<T>(this T value) where T : class => Options.Create(value);
+    /// <summary>Fixed options, as an <see cref="IOptionsSnapshot{TOptions}"/> too (which is an IOptions): a service that reads its options per request takes it as well.</summary>
+    public static IOptionsSnapshot<T> Create<T>(this T value) where T : class => new FixedOptions<T>(value);
+
+    private sealed class FixedOptions<T>(T value) : IOptionsSnapshot<T> where T : class
+    {
+        public T Value => value;
+        public T Get(string? name) => value;
+    }
 }
 
 /// <summary>Short forms so tests state only what they are about.</summary>

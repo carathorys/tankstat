@@ -44,7 +44,7 @@ public sealed record ImportResult(
 public sealed class ImportService(
     IEnumerable<IImportParser> parsers, ImportSessionStore sessions, AccessService access,
     VehicleService vehicles, RefuelingService refuelings, ExpenseService expenses, RecurringExpenseService recurring,
-    IRefuelingRepository refuelingRepository, IExpenseRepository expenseRepository, IOptions<VehicleDefaultsOptions> defaults, ILogger<ImportService> logger)
+    IRefuelingRepository refuelingRepository, IExpenseRepository expenseRepository, IOptionsSnapshot<VehicleDefaultsOptions> defaults, ILogger<ImportService> logger)
 {
     public IReadOnlyList<string> Formats => parsers.Select(p => p.Format).ToList();
 

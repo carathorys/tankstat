@@ -75,7 +75,7 @@ public interface ISyncChangeRepository
 /// sent again (an answer that never arrived) is answered with what was recorded and applied once. One batch of a user at a time.
 /// </summary>
 public sealed class SyncService(
-    ISyncChangeRepository ledger, IVehicleRepository vehicles, AccessService access, IOptions<SyncOptions> options, TimeProvider clock, ILogger<SyncService> logger)
+    ISyncChangeRepository ledger, IVehicleRepository vehicles, AccessService access, IOptionsSnapshot<SyncOptions> options, TimeProvider clock, ILogger<SyncService> logger)
 {
     private static readonly StripedLocks Locks = new();
 

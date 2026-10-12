@@ -22,7 +22,7 @@ public sealed record DraftReading(PhotoDraft Draft, PhotoReading? Reading);
 public sealed class RecognitionService(
     RecognitionAvailability availability, RecognitionSetup setup, IPhotoReadingRepository readings, IPhotoDraftRepository drafts,
     ILogPhotoRepository logPhotos, IRefuelingRepository refuelingLogs, IExpenseRepository expenseLogs, OdometerService odometer,
-    RefuelingService refuelings, IOptions<VehicleDefaultsOptions> defaults, IRecognitionSignal signal, AccessService access, TimeProvider clock,
+    RefuelingService refuelings, IOptionsSnapshot<VehicleDefaultsOptions> defaults, IRecognitionSignal signal, AccessService access, TimeProvider clock,
     ILogger<RecognitionService> logger)
 {
     private static readonly string[] Locales = ["hu", "en", "de"];

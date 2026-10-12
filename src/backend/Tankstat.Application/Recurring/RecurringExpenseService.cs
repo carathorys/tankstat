@@ -48,7 +48,7 @@ public sealed record RecurringItem(RecurringExpense Item, RecurrenceStatus Statu
 /// amount, logs one normal expense for them, so every expense and odometer rule applies.
 /// </summary>
 public sealed class RecurringExpenseService(
-    LogAccessGuard guard, IRecurringExpenseRepository items, AccessService access, OdometerService odometer, ExpenseService expenses, IOptions<VehicleDefaultsOptions> defaults, TimeProvider clock,
+    LogAccessGuard guard, IRecurringExpenseRepository items, AccessService access, OdometerService odometer, ExpenseService expenses, IOptionsSnapshot<VehicleDefaultsOptions> defaults, TimeProvider clock,
     ILogger<RecurringExpenseService> logger)
 {
     private DateOnly Today => DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);

@@ -15,7 +15,7 @@ namespace Tankstat.Application.Sync;
 /// schedules (with today's status) with the first. The vehicle's logs are seen with the View access to them.
 /// </summary>
 public sealed class OfflineFeedService(
-    LogAccessGuard guard, IOfflineFeedRepository feed, RecurringExpenseService recurring, IOptions<SyncOptions> options, TimeProvider clock,
+    LogAccessGuard guard, IOfflineFeedRepository feed, RecurringExpenseService recurring, IOptionsSnapshot<SyncOptions> options, TimeProvider clock,
     ILogger<OfflineFeedService> logger)
 {
     public const int MaxTake = 200;

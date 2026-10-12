@@ -125,7 +125,7 @@ public sealed class RecurringMutations
     /// for all of them. All or nothing: a schedule that refuses (its error names it) leaves everything as it was.
     /// </summary>
     public async Task<MarkRecurringExpensesDonePayload> MarkRecurringExpensesDone(
-        MarkRecurringExpensesDoneInput input, [Service] RecurringExpenseService recurring, [Service] IOptions<VehicleDefaultsOptions> defaults, CancellationToken ct)
+        MarkRecurringExpensesDoneInput input, [Service] RecurringExpenseService recurring, [Service] IOptionsSnapshot<VehicleDefaultsOptions> defaults, CancellationToken ct)
     {
         var done = await recurring.MarkDoneAsync(input.Ids,
             new MarkDoneInput(input.Date, input.Odometer, input.Amount, input.Currency ?? defaults.Value.Currency, input.Title, input.Category, input.PhotoIds, input.ExpenseId), ct);

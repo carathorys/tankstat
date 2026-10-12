@@ -106,7 +106,7 @@ public sealed class RefuelingQueries
 
     /// <summary>Starting values for a new log: the vehicle's latest odometer reading and the currency of its latest log.</summary>
     public async Task<LogDefaults?> GetLogDefaults(
-        Guid vehicleId, [Service] RefuelingService refuelings, [Service] IOptions<VehicleDefaultsOptions> defaults, CancellationToken ct) =>
+        Guid vehicleId, [Service] RefuelingService refuelings, [Service] IOptionsSnapshot<VehicleDefaultsOptions> defaults, CancellationToken ct) =>
         await refuelings.DefaultsAsync(vehicleId, ct) is { } d ? new LogDefaults(d.LastOdometer, d.LastDate, d.LastCurrency ?? defaults.Value.Currency) : null;
 
     /// <summary>One page of trashed logs (across vehicles) the user may restore.</summary>
@@ -134,7 +134,7 @@ public sealed class RefuelingQueries
 public sealed class RefuelingMutations
 {
     public Task<Refueling> LogRefueling(
-        LogRefuelingInput input, [Service] RefuelingService refuelings, [Service] IOptions<VehicleDefaultsOptions> defaults, CancellationToken ct) =>
+        LogRefuelingInput input, [Service] RefuelingService refuelings, [Service] IOptionsSnapshot<VehicleDefaultsOptions> defaults, CancellationToken ct) =>
         refuelings.LogAsync(input.VehicleId,
             new RefuelingInput(input.Date, input.Volume, input.TotalCost, input.Currency ?? defaults.Value.Currency, input.Odometer, input.IsFullTank, input.Note, input.MissedPreviousFillUp), ct,
             photoDraftIds: input.PhotoIds, id: input.Id);
