@@ -1,4 +1,7 @@
 using System.Text.Json;
+using System.Reflection;
+using Microsoft.Extensions.Options;
+using Tankstat.Application.SystemSettings;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -63,21 +66,22 @@ public class SystemSettingsTests
     }
 
     [Fact]
-    public async Task Changes_AreWrittenIntoTheFile_AndWaitForARestart()
+    public async Task Changes_AreWrittenIntoTheFile_TheDefaultsApplyAtOnce_TheMailWaitsForARestart()
     {
         using var app = TestApp.Standalone();
         var admin = await Admin(app);
         const string secret = "hunter2-zzzz-secret";
 
+        // No file at start: the save puts it among the sources.
         var answer = (await admin.Gql(Update, new { c = new object[] { new { key = "Defaults:Currency", value = "HUF" }, new { key = "Smtp:Password", value = secret } } })).Data().GetProperty("updateSystemSettings");
 
         var currency = Setting(answer, "Defaults:Currency");
-        Assert.Equal(("HUF", "DEFAULT", true), (currency.GetProperty("value").GetString(), currency.GetProperty("source").GetString(), currency.GetProperty("restartPending").GetBoolean())); // the running value is still the default
+        Assert.Equal(("HUF", "FILE", false), (currency.GetProperty("value").GetString(), currency.GetProperty("source").GetString(), currency.GetProperty("restartPending").GetBoolean())); // in effect at once
         var password = Setting(answer, "Smtp:Password");
-        Assert.Equal((JsonValueKind.Null, true, true), (password.GetProperty("value").ValueKind, password.GetProperty("isSet").GetBoolean(), password.GetProperty("isSecret").GetBoolean()));
+        Assert.Equal((JsonValueKind.Null, true, true, true), (password.GetProperty("value").ValueKind, password.GetProperty("isSet").GetBoolean(), password.GetProperty("isSecret").GetBoolean(), password.GetProperty("restartPending").GetBoolean())); // the mail is built at start
         Assert.True(answer.GetProperty("restartPending").GetBoolean());
         Assert.True(answer.GetProperty("file").GetProperty("exists").GetBoolean());
-        Assert.Equal("EUR", (await admin.Gql("{ vehicleDefaults { currency } }")).Data().GetProperty("vehicleDefaults").GetProperty("currency").GetString()); // nothing reloads
+        Assert.Equal("HUF", (await admin.Gql("{ vehicleDefaults { currency } }")).Data().GetProperty("vehicleDefaults").GetProperty("currency").GetString()); // the next request reads it
 
         var written = SettingsFileStore.Read(app.SettingsPath);
         Assert.Equal(("HUF", secret), (written["Defaults:Currency"], written["Smtp:Password"]));
@@ -88,11 +92,33 @@ public class SystemSettingsTests
         await admin.Gql(Update, new { c = new object[] { new { key = "Defaults:Currency", value = "USD" } } });
         Assert.Equal("HUF", SettingsFileStore.Read(app.SettingsPath + ".bak")["Defaults:Currency"]); // the previous file, kept beside it
         Assert.Equal(secret, SettingsFileStore.Read(app.SettingsPath)["Smtp:Password"]); // the secret stayed: the second change did not mention it
+        Assert.Equal("USD", (await admin.Gql("{ vehicleDefaults { currency } }")).Data().GetProperty("vehicleDefaults").GetProperty("currency").GetString()); // the file, now read, read again
 
         using var restarted = new TestApp(TestApp.StandaloneSettings(new() { ["Settings:Path"] = app.SettingsPath })); // the next start reads the file
+        var restartedAdmin = await Admin(restarted);
         Assert.Equal("USD", (await restarted.NewClient().Gql("{ vehicleDefaults { currency } }")).Data().GetProperty("vehicleDefaults").GetProperty("currency").GetString());
-        var now = Setting((await (await Admin(restarted)).Gql(Query)).Data().GetProperty("systemSettings"), "Defaults:Currency");
-        Assert.Equal(("FILE", "USD", false), (now.GetProperty("source").GetString(), now.GetProperty("value").GetString(), now.GetProperty("restartPending").GetBoolean()));
+        var now = (await restartedAdmin.Gql(Query)).Data().GetProperty("systemSettings");
+        Assert.Equal(("FILE", "USD", false), (Setting(now, "Defaults:Currency").GetProperty("source").GetString(), Setting(now, "Defaults:Currency").GetProperty("value").GetString(), Setting(now, "Defaults:Currency").GetProperty("restartPending").GetBoolean()));
+        Assert.False(now.GetProperty("restartPending").GetBoolean());
+
+        // A file read at start is read afresh too.
+        await restartedAdmin.Gql(Update, new { c = new object[] { new { key = "Defaults:Currency", value = "GBP" } } });
+        Assert.Equal("GBP", (await restartedAdmin.Gql("{ vehicleDefaults { currency } }")).Data().GetProperty("vehicleDefaults").GetProperty("currency").GetString());
+    }
+
+    [Fact]
+    public async Task ALogLevel_AppliesAtOnce()
+    {
+        using var app = TestApp.Standalone();
+        var admin = await Admin(app);
+        var probe = app.Factory.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Probe.Category"); // under the default level
+        Assert.False(probe.IsEnabled(LogLevel.Trace));
+
+        var answer = (await admin.Gql(Update, new { c = new object[] { new { key = "Logging:LogLevel:Default", value = "Trace" } } })).Data().GetProperty("updateSystemSettings");
+
+        Assert.True(probe.IsEnabled(LogLevel.Trace)); // the framework's filters follow the configuration
+        Assert.False(Setting(answer, "Logging:LogLevel:Default").GetProperty("restartPending").GetBoolean());
+        Assert.False(answer.GetProperty("restartPending").GetBoolean());
     }
 
     [Fact]
@@ -231,5 +257,35 @@ public class ModeChangeSignOutTests
 
         Assert.Equal(TestApp.AdminEmail, await UserEmail(again.NewClientHolding(cookies)));
         Assert.Empty(again.Log.From(Service).Where(e => e.Level >= LogLevel.Information));
+    }
+}
+
+/// <summary>
+/// A group that applies at once must be read afresh wherever it is used: a reader that took a plain <c>IOptions</c> would keep the start's
+/// value, and the page would say "in effect" of a change that is not. Logging is the framework's own (it monitors the configuration).
+/// </summary>
+public class LiveSettingsReadersTests
+{
+    /// <summary>The options class each live group's settings bind into.</summary>
+    private static readonly Dictionary<SettingsGroup, Type> OptionsOf = new()
+    {
+        [SettingsGroup.Defaults] = typeof(Tankstat.Application.Vehicles.VehicleDefaultsOptions),
+        [SettingsGroup.Notifications] = typeof(Tankstat.Application.Notifications.NotificationOptions),
+        [SettingsGroup.Sync] = typeof(Tankstat.Application.Sync.SyncOptions),
+    };
+
+    [Fact]
+    public void EveryLiveGroup_IsReadAfresh_NeverThroughAKeptIOptions()
+    {
+        Assert.Equal(SettingsCatalog.LiveGroups.Except([SettingsGroup.Logging]).Order(), OptionsOf.Keys.Order()); // a new live group needs its readers checked here
+
+        const BindingFlags all = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+        var parameters = typeof(Program).Assembly.GetReferencedAssemblies().Where(a => a.Name!.StartsWith("Tankstat.")).Select(Assembly.Load).Append(typeof(Program).Assembly)
+            .SelectMany(a => a.GetTypes())
+            .SelectMany(t => t.GetConstructors(all).Cast<MethodBase>().Concat(t.GetMethods(all)).SelectMany(m => m.GetParameters().Select(p => (Where: $"{t.FullName}.{m.Name}", p.ParameterType))))
+            .Where(p => p.ParameterType.IsGenericType && OptionsOf.ContainsValue(p.ParameterType.GetGenericArguments()[0]))
+            .ToList();
+        Assert.Contains(parameters, p => p.ParameterType == typeof(IOptionsSnapshot<Tankstat.Application.Vehicles.VehicleDefaultsOptions>) && p.Where.Contains("GraphQL")); // the scan sees the resolvers
+        Assert.DoesNotContain(parameters, p => p.ParameterType.GetGenericTypeDefinition() == typeof(IOptions<>));
     }
 }

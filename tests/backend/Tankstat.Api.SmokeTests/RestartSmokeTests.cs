@@ -13,7 +13,7 @@ public class RestartSmokeTests
     private const string Session = "{ session { mode user { email } } vehicleDefaults { currency } }";
 
     /// <summary>Waits until the app answers again after a restart and the answer passes <paramref name="ready"/>.</summary>
-    private static async Task<System.Text.Json.JsonElement> WhenBackAsync(AppProcess app, Func<System.Text.Json.JsonElement, bool> ready, IDictionary<string, string>? headers = null)
+    private static async Task<System.Text.Json.JsonElement> WhenBackAsync(AppProcess app, Func<System.Text.Json.JsonElement, bool> ready, IDictionary<string, string>? headers = null, string query = Session)
     {
         var deadline = DateTime.UtcNow.AddSeconds(45);
         while (DateTime.UtcNow < deadline)
@@ -21,7 +21,7 @@ public class RestartSmokeTests
             Assert.False(app.HasExited, "the process must not exit for a restart:\n" + app.Log);
             try
             {
-                var data = (await app.Gql(Session, headers: headers)).Data();
+                var data = (await app.Gql(query, headers: headers)).Data();
                 if (ready(data)) return data;
             }
             catch (Exception) when (!app.HasExited)
@@ -39,16 +39,20 @@ public class RestartSmokeTests
         await using var app = await AppProcess.StartAsync(Standalone);
         await app.Gql("mutation($i: LoginInput!) { login(input: $i) { id } }", new { i = new { email = "root@example.com", password = "initial-password-1" } });
         var signedIn = new Dictionary<string, string> { ["Cookie"] = app.CookieHeader };
-        var saved = (await app.Gql("mutation { updateSystemSettings(changes: [{ key: \"Defaults:Currency\", value: \"HUF\" }]) { restartPending } }", headers: signedIn)).Data();
+        // A default applies at once; the mail is built at start, so its port waits for the restart.
+        var saved = (await app.Gql("mutation { updateSystemSettings(changes: [{ key: \"Defaults:Currency\", value: \"HUF\" }, { key: \"Smtp:Port\", value: \"2525\" }]) { restartPending } }", headers: signedIn)).Data();
         Assert.True(saved.GetProperty("updateSystemSettings").GetProperty("restartPending").GetBoolean());
-        Assert.Equal("EUR", (await app.Gql(Session)).Data().GetProperty("vehicleDefaults").GetProperty("currency").GetString());
+        Assert.Equal("HUF", (await app.Gql(Session)).Data().GetProperty("vehicleDefaults").GetProperty("currency").GetString());
         var file = Path.Combine(app.WorkDirectory, "settings.json");
         Assert.True(File.Exists(file), "the settings file lands in the working directory by default");
         if (!OperatingSystem.IsWindows()) Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(file));
 
         Assert.True((await app.Gql("mutation { restartServer }", headers: signedIn)).Data().GetProperty("restartServer").GetBoolean());
 
-        var back = await WhenBackAsync(app, d => d.GetProperty("vehicleDefaults").GetProperty("currency").GetString() == "HUF", signedIn);
+        // Back once nothing waits any more: the new host started with the port the old one saved.
+        var back = await WhenBackAsync(app, d => !d.GetProperty("systemSettings").GetProperty("restartPending").GetBoolean(), signedIn,
+            "{ session { mode user { email } } systemSettings { restartPending } vehicleDefaults { currency } }");
+        Assert.Equal("HUF", back.GetProperty("vehicleDefaults").GetProperty("currency").GetString());
         Assert.False(app.HasExited);
         Assert.Equal("root@example.com", back.GetProperty("session").GetProperty("user").GetProperty("email").GetString()); // the same mode: the sign-in survives the restart
         Assert.Contains("Restarting the server", app.Log);

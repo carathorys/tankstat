@@ -44,6 +44,14 @@ public sealed record SettingDefinition(SettingsGroup Group, string Key, SettingK
 {
     public bool IsSecret => Kind == SettingKind.Secret;
     public bool IsList => Kind == SettingKind.List;
+
+    /// <summary>
+    /// Whether a saved change takes effect at once: the configuration is reloaded after every save, and these settings are read afresh
+    /// where they are used (<c>IOptionsSnapshot</c> per request, the logging framework's own monitor). The others are read once, when the
+    /// app starts (the sign-in, which signs everybody out when its mode changes; the mail, whose links are built from the sign-in's
+    /// public address; photo reading, whose provider is built at start), and wait for a restart.
+    /// </summary>
+    public bool AppliesAtOnce => SettingsCatalog.LiveGroups.Contains(Group);
 }
 
 /// <summary>
@@ -66,6 +74,13 @@ public static class SettingsCatalog
     public const LogLevel LogLevelFloor = LogLevel.Warning;
 
     public static readonly IReadOnlyList<string> LogLevels = Enum.GetNames<LogLevel>();
+
+    /// <summary>
+    /// The groups whose settings take effect at once after a save (<see cref="SettingDefinition.AppliesAtOnce"/>). A group joins only when
+    /// every reader of its settings reads them afresh: an <c>IOptionsSnapshot</c> or an <c>IOptionsMonitor</c>, never a kept <c>IOptions</c>
+    /// value; <c>LiveSettingsReadersTests</c> pins that for each.
+    /// </summary>
+    public static readonly IReadOnlySet<SettingsGroup> LiveGroups = new HashSet<SettingsGroup> { SettingsGroup.Defaults, SettingsGroup.Notifications, SettingsGroup.Sync, SettingsGroup.Logging };
 
     /// <summary>Settings of the managed sections that the page deliberately does not offer (the reflection test skips them).</summary>
     public static readonly IReadOnlyList<string> LeftOut =

@@ -18,7 +18,23 @@ internal sealed class FakeSystemConfiguration : ISystemConfiguration
 
     public SettingsFileStatus File { get; set; } = SettingsFileStatus.Used("/data/settings.json", exists: false);
 
-    public IConfiguration Running => Build(FileAtStart);
+    /// <summary>The file a save reloads from (the app reads it afresh): the world's settings file.</summary>
+    public InMemorySettingsFile? Store { get; set; }
+
+    /// <summary>The file's values the last save took in, or null before any: then the running configuration is the one it started with.</summary>
+    public Dictionary<string, string?>? FileApplied { get; private set; }
+
+    public int Reloads { get; private set; }
+
+    public IConfiguration Running => Build(FileApplied ?? FileAtStart);
+
+    public IConfiguration Started => Build(FileAtStart);
+
+    public void ApplySavedFile()
+    {
+        Reloads++;
+        FileApplied = new Dictionary<string, string?>(Store?.Values ?? FileAtStart, StringComparer.OrdinalIgnoreCase);
+    }
 
     public SettingSource SourceOf(string key) =>
         Has(Environment, key) ? SettingSource.Environment : Has(FileAtStart, key) ? SettingSource.File : Has(Shipped, key) ? SettingSource.Shipped : SettingSource.Default;

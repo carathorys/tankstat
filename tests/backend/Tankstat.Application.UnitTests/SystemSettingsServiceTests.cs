@@ -93,7 +93,9 @@ public class SystemSettingsServiceTests
                 ["Smtp:Password"] = "hunter2-zzzz",
             }.OrderBy(p => p.Key),
             w.SettingsFile.Values.OrderBy(p => p.Key));
-        Assert.Equal(("USD", true, SettingSource.File), (Setting(view, "Defaults:Currency").Value, Setting(view, "Defaults:Currency").RestartPending, Setting(view, "Defaults:Currency").Source));
+        Assert.Equal(1, w.SystemConfiguration.Reloads); // taken in at once after the write
+        // A default applies at once (its readers read it per request), so nothing of it waits; the sign-in and the mail still wait for a restart.
+        Assert.Equal(("USD", false, SettingSource.File), (Setting(view, "Defaults:Currency").Value, Setting(view, "Defaults:Currency").RestartPending, Setting(view, "Defaults:Currency").Source));
         Assert.Equal(("a@x.co\nb@x.co", true, SettingSource.Default), (Setting(view, "Auth:AdminEmails").Value, Setting(view, "Auth:AdminEmails").RestartPending, Setting(view, "Auth:AdminEmails").Source)); // not in the running configuration yet
         Assert.Equal((null, true, true), (Setting(view, "Smtp:Password").Value, Setting(view, "Smtp:Password").IsSet, Setting(view, "Smtp:Password").RestartPending));
         Assert.True(view.RestartPending);

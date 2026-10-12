@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration.Memory;
 using Tankstat.Application.SystemSettings;
+using Tankstat.Infrastructure.Settings;
 
 namespace Tankstat.Api.Settings;
 
@@ -10,14 +11,41 @@ namespace Tankstat.Api.Settings;
 /// </summary>
 internal sealed class SystemConfiguration(SettingsFile file, IConfiguration running) : ISystemConfiguration
 {
+    private readonly Lock _applying = new();
+
+    /// <summary>The settings file's source among the running ones (or where it would go): replaced by a fresh one at every save.</summary>
+    private IConfigurationSource _source = file.Source;
+
     public SettingsFileStatus File => file.Status;
 
     public IConfiguration Running => running;
 
+    /// <summary>
+    /// A copy of the running configuration taken when this (a singleton) is first asked for, which is before any save reloads it: the values
+    /// the settings that wait for a restart still run with, since their readers read them once.
+    /// </summary>
+    public IConfiguration Started { get; } = new ConfigurationBuilder().AddInMemoryCollection(running.AsEnumerable()).Build();
+
+    public void ApplySavedFile()
+    {
+        lock (_applying)
+        {
+            // A fresh source for the file in its place (the start's may not see it: its folder may have been made since), or, when it was not
+            // read at start (there was none yet, or the start left it out), right below the environment. Changing the sources reloads the
+            // configuration and says so: what reads it afresh (IOptionsSnapshot in the next request, the logging framework's filters at
+            // once) sees the saved values.
+            var fresh = SettingsFileStore.SourceFor(file.Status.Path);
+            var at = FileIndex;
+            if (at >= 0) Builder.Sources[at] = fresh;
+            else Builder.Sources.Insert(ConfigurationSources.IndexOfEnvironment(Builder.Sources), fresh);
+            _source = fresh;
+        }
+    }
+
     private IConfigurationBuilder Builder => (IConfigurationBuilder)running;
 
     /// <summary>The index of the file's source, or -1 when it was not read at start (absent or left out).</summary>
-    private int FileIndex => Builder.Sources.IndexOf(file.Source);
+    private int FileIndex => Builder.Sources.IndexOf(_source);
 
     public SettingSource SourceOf(string key)
     {
@@ -67,7 +95,7 @@ internal sealed class SystemConfiguration(SettingsFile file, IConfiguration runn
         IConfigurationBuilder builder = next;
         foreach (var (key, value) in Builder.Properties) builder.Properties[key] = value;
         foreach (var source in Builder.Sources)
-            if (!ReferenceEquals(source, file.Source)) builder.Add(ConfigurationSources.ReadOnce(source));
+            if (!ReferenceEquals(source, _source)) builder.Add(ConfigurationSources.ReadOnce(source));
         try
         {
             SettingsFile.Prepare(next);

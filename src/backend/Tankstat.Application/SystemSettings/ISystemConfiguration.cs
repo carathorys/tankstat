@@ -23,8 +23,21 @@ public interface ISystemConfiguration
 {
     SettingsFileStatus File { get; }
 
-    /// <summary>The configuration as this process started (nothing reloads).</summary>
+    /// <summary>The configuration as it runs now: reloaded after every save (<see cref="ApplySavedFile"/>), so it holds what the settings that apply at once run with.</summary>
     IConfiguration Running { get; }
+
+    /// <summary>
+    /// The configuration as this process started, kept as it was: what a setting that waits for a restart still runs with (its readers read
+    /// it once), whatever was saved since.
+    /// </summary>
+    IConfiguration Started { get; }
+
+    /// <summary>
+    /// Takes the settings file in afresh after a save, which checked the whole configuration first: the running configuration reloads (the
+    /// file joins it if it was not read at start), so the settings that apply at once take effect. A file edited by hand is never taken in
+    /// here: that waits for the start, which checks it.
+    /// </summary>
+    void ApplySavedFile();
 
     /// <summary>Where the running value of <paramref name="key"/> comes from (a list: its items, the highest source of any of them).</summary>
     SettingSource SourceOf(string key);

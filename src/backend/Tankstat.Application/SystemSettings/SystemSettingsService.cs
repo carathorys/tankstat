@@ -98,12 +98,15 @@ public sealed class SystemSettingsService(
                 logger.LogWarning(e, "The settings file {Path} could not be written", store.Path);
                 throw new DomainException("settings.fileNotWritable", "The settings file could not be written; see the server log.", new { Path = store.Path });
             }
+            // Checked as a whole above, so it may run: the settings that apply at once take effect now, the others wait for a restart.
+            configuration.ApplySavedFile();
         }
         finally
         {
             Saving.Release();
         }
-        logger.LogInformation("Administrator {AdminId} changed system settings {Keys}", admin.Id, string.Join(", ", definitions.Keys));
+        var live = definitions.Values.Where(d => d.AppliesAtOnce).Select(d => d.Key).ToList();
+        logger.LogInformation("Administrator {AdminId} changed system settings {Keys}; in effect at once: {Live}", admin.Id, string.Join(", ", definitions.Keys), live.Count == 0 ? "none" : string.Join(", ", live));
         return await ViewAsync(ct);
     }
 
@@ -156,8 +159,9 @@ public sealed class SystemSettingsService(
         var mode = candidate["Auth:Mode"];
         await RequireAdministratorAsync(candidate, ct);
 
-        // Whatever this save changed: the next start may take up a mode or an authority that does not run now (a file left out at start holds one).
-        var running = configuration.Running;
+        // Whatever this save changed: the next start may take up a mode or an authority that does not run now (a file left out at start holds
+        // one). The sign-in waits for a restart, so what runs now is what the process started with, not the configuration a save reloaded.
+        var running = configuration.Started;
         if (Is(mode, AuthMode.Oidc) && (!Is(running["Auth:Mode"], AuthMode.Oidc) || !SameText(candidate["Auth:Oidc:Authority"], running["Auth:Oidc:Authority"])))
         {
             var authority = candidate["Auth:Oidc:Authority"] ?? "";
@@ -251,7 +255,9 @@ public sealed class SystemSettingsService(
                 {
                     var source = configuration.SourceOf(definition.Key);
                     var next = ValueOf(candidate, definition);
-                    var running = ValueOf(configuration.Running, definition);
+                    // What it runs with: a setting that applies at once runs with the reloaded configuration, one that waits for a restart
+                    // still with the value it started with. So a restart is pending only where a restart is really needed.
+                    var running = ValueOf(definition.AppliesAtOnce ? configuration.Running : configuration.Started, definition);
                     settings.Add(new SettingView(definition, definition.IsSecret ? null : next, !string.IsNullOrEmpty(next), source,
                         SettingView.IsEditable(source) && !string.Equals(next, running, StringComparison.Ordinal)));
                 }

@@ -566,6 +566,7 @@ type SystemSetting {
 type SystemSettingsGroup {
   name: SettingsGroup!
   settings: [SystemSetting!]!
+  appliesAtOnce: Boolean!
 }
 
 type SystemSettingsInfo {
