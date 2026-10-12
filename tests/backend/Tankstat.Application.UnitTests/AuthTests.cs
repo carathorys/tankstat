@@ -738,14 +738,6 @@ public class NoticeAndOptionsTests
         Assert.Equal(("RESTORE_PENDING", NoticeSeverity.Warning), (notice.Code, notice.Severity));
     }
 
-    private sealed class NoBackups : Tankstat.Application.Backups.IBackupStore
-    {
-        public bool RestorePending { get; init; }
-        public Tankstat.Application.Backups.BackupManifest ReadManifest(string fileName) => throw new NotSupportedException();
-        public string? IdentityFor(Tankstat.Application.Backups.BackupManifest manifest, string? passphrase, string? identity) => throw new NotSupportedException();
-        public void RequestRestore(Tankstat.Application.Backups.RestoreMarker marker) => throw new NotSupportedException();
-    }
-
     private static ValidateOptionsResult Validate(AuthOptions o, SmtpOptions? smtp = null) =>
         new AuthOptionsValidator((smtp ?? new SmtpOptions()).Create()).Validate(null, o);
 
