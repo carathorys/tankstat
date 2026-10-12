@@ -60,6 +60,10 @@ public sealed record BackupArchive(string Name, string Sha256)
 public sealed record BackupEncryption(string Method, string Recipient, string Salt, Argon2idParameters Argon2id)
 {
     public const string AgeX25519 = "age-x25519";
+
+    /// <summary>Whether a salt is the base64 of at least 8 bytes, as the identity is derived with it (a setting, or a manifest being read).</summary>
+    public static bool IsSalt(string? text) =>
+        text is not null && Convert.TryFromBase64String(text.Trim(), new byte[text.Length], out var length) && length >= 8;
 }
 
 /// <summary>Argon2id's cost: memory in KiB, passes over it and lanes. Pinned in the manifest, so a later default never locks older files.</summary>
