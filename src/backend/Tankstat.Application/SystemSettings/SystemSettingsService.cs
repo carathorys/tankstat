@@ -64,6 +64,7 @@ public sealed class SystemSettingsService(
         }
         if (definitions.Count == 0) return await ViewAsync(ct);
 
+        var applied = false;
         await Saving.WaitAsync(ct);
         try
         {
@@ -98,14 +99,23 @@ public sealed class SystemSettingsService(
                 logger.LogWarning(e, "The settings file {Path} could not be written", store.Path);
                 throw new DomainException("settings.fileNotWritable", "The settings file could not be written; see the server log.", new { Path = store.Path });
             }
-            // Checked as a whole above, so it may run: the settings that apply at once take effect now, the others wait for a restart.
-            configuration.ApplySavedFile();
+            // Checked as a whole above, so it may run: the settings that apply at once take effect now, the others wait for a restart. The
+            // file is written by now, so a failure to take it in does not make the save a refusal: the view says what runs and what waits.
+            try
+            {
+                configuration.ApplySavedFile();
+                applied = true;
+            }
+            catch (Exception e)
+            {
+                logger.LogWarning(e, "The settings file {Path} was saved, but the running configuration could not take it in completely", store.Path);
+            }
         }
         finally
         {
             Saving.Release();
         }
-        var live = definitions.Values.Where(d => d.AppliesAtOnce).Select(d => d.Key).ToList();
+        List<string> live = applied ? [.. definitions.Values.Where(d => d.AppliesAtOnce).Select(d => d.Key)] : [];
         logger.LogInformation("Administrator {AdminId} changed system settings {Keys}; in effect at once: {Live}", admin.Id, string.Join(", ", definitions.Keys), live.Count == 0 ? "none" : string.Join(", ", live));
         return await ViewAsync(ct);
     }

@@ -11,6 +11,7 @@ namespace Tankstat.Api.Settings;
 /// </summary>
 internal sealed class SystemConfiguration(SettingsFile file, IConfiguration running) : ISystemConfiguration
 {
+    /// <summary>Held while a save changes the sources, and while they are read here, so a view or a restart never meets them half changed.</summary>
     private readonly Lock _applying = new();
 
     /// <summary>The settings file's source among the running ones (or where it would go): replaced by a fresh one at every save.</summary>
@@ -36,9 +37,11 @@ internal sealed class SystemConfiguration(SettingsFile file, IConfiguration runn
             // once) sees the saved values.
             var fresh = SettingsFileStore.SourceFor(file.Status.Path);
             var at = FileIndex;
+            // The file's source from here on, before the sources change: the list holds it even when the reload throws (a reader's change
+            // callback runs inside it), and every later save must find it in its place.
+            _source = fresh;
             if (at >= 0) Builder.Sources[at] = fresh;
             else Builder.Sources.Insert(ConfigurationSources.IndexOfEnvironment(Builder.Sources), fresh);
-            _source = fresh;
         }
     }
 
@@ -50,25 +53,31 @@ internal sealed class SystemConfiguration(SettingsFile file, IConfiguration runn
     public SettingSource SourceOf(string key)
     {
         if (running is not IConfigurationRoot root) return SettingSource.Default;
-        var providers = root.Providers.ToList(); // one per source, in the sources' order
-        var fileAt = FileIndex;
-        var place = fileAt >= 0 ? fileAt : ConfigurationSources.IndexOfEnvironment(Builder.Sources);
-        for (var i = providers.Count - 1; i >= 0; i--)
+        lock (_applying)
         {
-            if (!providers[i].TryGet(key, out _) && !providers[i].GetChildKeys([], key).Any()) continue;
-            if (i == fileAt) return SettingSource.File;
-            return i >= place ? SettingSource.Environment : SettingSource.Shipped;
+            var providers = root.Providers.ToList(); // one per source, in the sources' order
+            var fileAt = FileIndex;
+            var place = fileAt >= 0 ? fileAt : ConfigurationSources.IndexOfEnvironment(Builder.Sources);
+            for (var i = providers.Count - 1; i >= 0; i--)
+            {
+                if (!providers[i].TryGet(key, out _) && !providers[i].GetChildKeys([], key).Any()) continue;
+                if (i == fileAt) return SettingSource.File;
+                return i >= place ? SettingSource.Environment : SettingSource.Shipped;
+            }
+            return SettingSource.Default;
         }
-        return SettingSource.Default;
     }
 
     public IConfiguration With(IReadOnlyDictionary<string, string?> fileValues)
     {
-        var fileAt = FileIndex;
         var replacement = new MemoryConfigurationSource { InitialData = fileValues };
-        return fileAt >= 0
-            ? ConfigurationSources.With(Builder, replacement, fileAt, replacing: true)
-            : ConfigurationSources.With(Builder, replacement, ConfigurationSources.IndexOfEnvironment(Builder.Sources), replacing: false);
+        lock (_applying)
+        {
+            var fileAt = FileIndex;
+            return fileAt >= 0
+                ? ConfigurationSources.With(Builder, replacement, fileAt, replacing: true)
+                : ConfigurationSources.With(Builder, replacement, ConfigurationSources.IndexOfEnvironment(Builder.Sources), replacing: false);
+        }
     }
 
     public IReadOnlyList<string> Check(IConfiguration configuration)
@@ -94,8 +103,11 @@ internal sealed class SystemConfiguration(SettingsFile file, IConfiguration runn
         var next = new ConfigurationManager();
         IConfigurationBuilder builder = next;
         foreach (var (key, value) in Builder.Properties) builder.Properties[key] = value;
-        foreach (var source in Builder.Sources)
-            if (!ReferenceEquals(source, _source)) builder.Add(ConfigurationSources.ReadOnce(source));
+        lock (_applying)
+        {
+            foreach (var source in Builder.Sources)
+                if (!ReferenceEquals(source, _source)) builder.Add(ConfigurationSources.ReadOnce(source));
+        }
         try
         {
             SettingsFile.Prepare(next);

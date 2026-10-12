@@ -111,6 +111,20 @@ public class SystemSettingsServiceTests
     }
 
     [Fact]
+    public async Task ASaveTheRunningConfigurationCannotTakeIn_IsStillASave_AndTheViewSaysWhatWaits()
+    {
+        var w = AdminWorld(w => w.SystemConfiguration.ApplyFailure = new InvalidOperationException("a reader refused the reload"));
+
+        var view = await w.SystemSettings.UpdateAsync([Set("Defaults:Currency", "USD")], default);
+
+        Assert.Equal("USD", w.SettingsFile.Values["Defaults:Currency"]); // written, checked: not undone, and not answered as refused
+        Assert.Equal(("USD", true), (Setting(view, "Defaults:Currency").Value, Setting(view, "Defaults:Currency").RestartPending)); // not taken in, so it waits
+        var warning = Assert.Single(w.Log.From<SystemSettingsService>(), e => e.Level == LogLevel.Warning);
+        Assert.IsType<InvalidOperationException>(warning.Exception);
+        Assert.Equal("none", Assert.Single(w.Log.From<SystemSettingsService>(), e => e.Level == LogLevel.Information).Values["Live"]);
+    }
+
+    [Fact]
     public async Task ASecret_IsKeptByABlank_AndRemovedByClear()
     {
         var w = AdminWorld(w => w.SettingsFile.Values["Smtp:Password"] = "old-zzzz");

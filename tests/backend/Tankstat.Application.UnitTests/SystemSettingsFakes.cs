@@ -26,6 +26,9 @@ internal sealed class FakeSystemConfiguration : ISystemConfiguration
 
     public int Reloads { get; private set; }
 
+    /// <summary>What taking the saved file in throws, if anything (a reader of the configuration refusing it): the file is then not taken in.</summary>
+    public Exception? ApplyFailure { get; set; }
+
     public IConfiguration Running => Build(FileApplied ?? FileAtStart);
 
     public IConfiguration Started => Build(FileAtStart);
@@ -33,6 +36,7 @@ internal sealed class FakeSystemConfiguration : ISystemConfiguration
     public void ApplySavedFile()
     {
         Reloads++;
+        if (ApplyFailure is { } failure) throw failure;
         FileApplied = new Dictionary<string, string?>(Store?.Values ?? FileAtStart, StringComparer.OrdinalIgnoreCase);
     }
 
