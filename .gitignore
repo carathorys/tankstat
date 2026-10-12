@@ -543,5 +543,12 @@ keys/
 /src/backend/Tankstat.Api/settings.json
 /src/backend/Tankstat.Api/settings.json.bak
 
-# Backups a local run of the app writes (Backups:Path default "backups" in the working directory): an instance's data, never in the repository.
-backups/
+# Backups a local run of the app writes (Backups:Path default "backups" in the working directory: the repository root, or next to
+# appsettings.json for mise run dev:api) and the files themselves wherever --output put them: an instance's data, never in the repository.
+/backups/
+/src/backend/Tankstat.Api/backups/
+tankstat-backup-*.zip
+tankstat-backup-*.zip.partial
+# ... and still never the Backups folders of the app's own code: a clone that ignores case (core.ignorecase, git's default on macOS and
+# Windows) matches them by the lines above (and Backup*/) too.
+!src/backend/*/Backups/
