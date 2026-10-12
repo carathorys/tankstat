@@ -38,6 +38,25 @@ const NotificationsPage = lazy(() => import('./pages/NotificationsPage.tsx').the
 const AccountPage = lazy(() => import('./pages/AccountPage.tsx').then((m) => ({ default: m.AccountPage })))
 const AdminPanel = lazy(() => import('./admin/AdminPanel.tsx').then((m) => ({ default: m.AdminPanel })))
 const SystemSettingsPage = lazy(() => import('./admin/SystemSettingsPage.tsx').then((m) => ({ default: m.SystemSettingsPage })))
+const AdminOverviewPage = lazy(() => import('./admin/AdminOverviewPage.tsx').then((m) => ({ default: m.AdminOverviewPage })))
+
+/** Another address for a page, its query string kept (a page or a sort someone saved a link to). */
+function KeepQuery({ to }: { to: string }) {
+  const { search } = useLocation()
+  return <Navigate to={`${to}${search}`} replace />
+}
+
+/**
+ * The administration's first page. The old single page kept its tabs in `?tab=`: those links lead to where the tab went (the users and the
+ * access to People), the overview otherwise.
+ */
+function AdminHome() {
+  const [params] = useSearchParams()
+  const tab = params.get('tab')
+  if (tab === 'access') return <Navigate to="/admin/people?tab=access" replace />
+  if (tab === 'users') return <Navigate to="/admin/people" replace />
+  return <AdminOverviewPage />
+}
 
 export default function App() {
   const { data, error, loading } = useQuery(SessionDocument)
@@ -211,14 +230,17 @@ function Content({ data }: { data: SessionQuery }) {
         >
           <Routes>
             <Route path="/" element={<WelcomePage isAdmin={isAdmin} />} />
-            <Route path="/vehicles" element={isAdmin ? <VehiclesPage /> : <Navigate to="/" replace />} />
+            {/* The list of every vehicle moved into the administration; the old address still leads there, its query (page, sort) kept. */}
+            <Route path="/vehicles" element={<KeepQuery to="/admin/vehicles" />} />
             <Route path="/vehicles/:id/*" element={<VehiclePage isAdmin={isAdmin} />} />
             <Route path="/import" element={<ImportPage />} />
             <Route path="/trash" element={<TrashPage />} />
             <Route path="/sync" element={<SyncPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/account" element={<AccountPage mode={mode} user={user} />} />
-            <Route path="/admin" element={isAdmin ? <AdminPanel /> : <Navigate to="/" replace />} />
+            <Route path="/admin" element={isAdmin ? <AdminHome /> : <Navigate to="/" replace />} />
+            <Route path="/admin/people" element={isAdmin ? <AdminPanel /> : <Navigate to="/" replace />} />
+            <Route path="/admin/vehicles" element={isAdmin ? <VehiclesPage /> : <Navigate to="/" replace />} />
             <Route path="/admin/settings" element={isAdmin ? <SystemSettingsPage /> : <Navigate to="/" replace />} />
             <Route path="*" element={<Typography>{t('app.notFound')}</Typography>} />
           </Routes>

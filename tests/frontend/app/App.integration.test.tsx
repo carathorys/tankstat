@@ -239,7 +239,9 @@ it('menu entries follow the user: no account/admin without a user, admin entry o
   server.use(sessionHandler('STANDALONE', () => user({ isAdmin: true })))
   renderWithApollo(<App />, '/vehicles')
   await screen.findByText('admin')
-  expect(navLinks()).toEqual(['Home', 'Vehicles', 'Import', 'Notifications', 'Trash', 'Account', 'Administration', 'System settings'])
+  expect(navLinks()).toEqual(['Home', 'Import', 'Notifications', 'Trash', 'Account', 'Overview', 'People', 'Vehicles', 'Server settings'])
+  // The administrators' entries are a group of their own, under its heading.
+  expect(within(screen.getByRole('group', { name: 'Administration' })).getAllByRole('link').map((l) => l.textContent)).toEqual(['Overview', 'People', 'Vehicles', 'Server settings'])
   expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
 })
 

@@ -49,7 +49,7 @@ export function VehiclePage({ isAdmin }: { isAdmin: boolean }) {
   return (
     // With the floating add button, the page ends a little lower, so its last row can scroll out from under the button.
     <Box component="section" aria-labelledby="page-title" sx={{ pb: fab ? 9 : 0 }}>
-      <Link component={RouterLink} to={isAdmin ? '/vehicles' : '/'} variant="body2" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, minHeight: 44 }}>
+      <Link component={RouterLink} to={isAdmin ? '/admin/vehicles' : '/'} variant="body2" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, minHeight: 44 }}>
         <ArrowLeft size={16} aria-hidden />
         {isAdmin ? t('vehicles.back') : t('vehicles.backHome')}
       </Link>

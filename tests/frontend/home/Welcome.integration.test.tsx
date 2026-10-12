@@ -155,7 +155,7 @@ it('has a link to the import, and the full vehicle list only for administrators'
 it('shows administrators a link to all vehicles', async () => {
   setup([fakeVehicle()], 'desktop', true)
 
-  expect(await screen.findByRole('link', { name: 'All vehicles' })).toHaveAttribute('href', '/vehicles')
+  expect(await screen.findByRole('link', { name: 'All vehicles' })).toHaveAttribute('href', '/admin/vehicles')
 })
 
 const vehicleCard = async (name: string) => (await card(name)).querySelector('.vehicle-card') as HTMLElement

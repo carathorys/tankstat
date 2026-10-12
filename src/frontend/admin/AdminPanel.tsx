@@ -9,6 +9,8 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Typography from '@mui/material/Typography'
 import { useState } from 'react'
+import { useSearchParams } from 'react-router'
+import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { useTranslation } from 'react-i18next'
 import { SurfaceTable } from '../components/SurfaceTable.tsx'
 import { TabbedPanels } from '../components/TabbedPanels.tsx'
@@ -77,7 +79,11 @@ export function AdminPanel() {
   const [setGrant] = useMutation(SetAccessGrantDocument, refetch)
   const [reset, setReset] = useState<ResetLink>()
   const [actionError, setActionError] = useState<unknown>()
-  const [tab, setTab] = useState<'users' | 'access'>('users')
+  usePageTitle(t('admin.people'))
+  // The tab is in the address (`?tab=access`), so a link (the old /admin?tab=access among them) opens it.
+  const [params, setParams] = useSearchParams()
+  const tab = params.get('tab') === 'access' ? 'access' : 'users'
+  const setTab = (next: 'users' | 'access') => setParams(next === 'users' ? {} : { tab: next }, { replace: true })
 
   if (error) return <ErrorMessage error={error} />
   if (!data) return <Typography>{t('admin.loading')}</Typography>
@@ -234,14 +240,14 @@ export function AdminPanel() {
   )
 
   return (
-    <section aria-label={t('admin.title')}>
+    <section aria-label={t('admin.people')}>
       <Typography component="h1" variant="h3" sx={{ mb: 1.5 }}>
-        {t('admin.title')}
+        {t('admin.people')}
       </Typography>
       {actionError !== undefined && <ErrorMessage error={actionError} />}
       {reset && <ResetLinkMessage reset={reset} />}
       <TabbedPanels
-        label={t('admin.title')}
+        label={t('admin.people')}
         value={tab}
         onChange={setTab}
         tabs={[
