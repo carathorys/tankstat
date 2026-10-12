@@ -1,13 +1,16 @@
 import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
+import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import { useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useSearchParams } from 'react-router'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { DefinitionList } from '../components/DefinitionList.tsx'
 import { Loading } from '../components/Loading.tsx'
-import { HealthDocument, RestartServerDocument, SystemSettingsDocument, type SystemSettingsQuery } from '../gql/generated.ts'
+import { TabbedPanels } from '../components/TabbedPanels.tsx'
+import { HealthDocument, RestartServerDocument, SystemSettingsDocument, type SettingsGroup, type SystemSettingsQuery } from '../gql/generated.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { useErrorText } from '../i18n/errors.ts'
 import { ErrorMessage, WarningMessage } from '../messages.tsx'
@@ -15,12 +18,14 @@ import { navigation } from '../navigation.ts'
 import { classifyFailure } from '../offline/errors.ts'
 import { PROBE_TIMEOUT_MS, withDeadline } from '../offline/runtime.ts'
 import { waitForRestart } from './restartFlow.ts'
+import { valueOfDraft } from './settingsRelevance.ts'
 import { problemsOf } from './settingsText.ts'
+import { changesOf, draftOf, effectiveOf, type GroupDraft } from './settingsDraft.ts'
 import { ProblemList, SettingsGroupForm } from './SettingsGroupForm.tsx'
 
 /**
  * The settings the server runs with, for administrators: the app's own settings file (what became of it at the last start), the restart
- * that makes saved changes count, and a form per group. It needs the server (nothing of it is kept on the device).
+ * that makes saved changes count, and a tab with a form per group. It needs the server (nothing of it is kept on the device).
  */
 export function SystemSettingsPage() {
   const { t } = useTranslation()
@@ -43,13 +48,78 @@ export function SystemSettingsPage() {
         <>
           <FileStatus file={settings.file} />
           <RestartCard pending={settings.groups.flatMap((g) => g.settings).filter((s) => s.restartPending).length} />
-          {settings.groups.map((group) => (
-            // A new answer of the server starts the group's form afresh (after a save, or on a change made elsewhere seen on return).
-            <SettingsGroupForm key={`${group.name}:${JSON.stringify(group.settings)}`} group={group} />
-          ))}
+          <SettingsTabs groups={settings.groups} />
         </>
       )}
     </section>
+  )
+}
+
+type Group = SystemSettingsQuery['systemSettings']['groups'][number]
+
+/** A group's values as the form holds them, with the server's settings they started from: a new answer of the server starts them afresh. */
+interface HeldDraft {
+  basis: string
+  draft: GroupDraft
+}
+
+/**
+ * A tab per group, the chosen one in the address (`?tab=smtp`), the first one without. What is typed into a group stays here, not in its
+ * form (which only the chosen tab shows), so it outlasts a switch of tabs; a tab with changes not saved yet says so. Every group's values
+ * as they are held decide which settings of the others are used (a sign-in mode chosen in one tab greys out the e-mail settings in the
+ * other at once).
+ */
+function SettingsTabs({ groups }: { groups: readonly Group[] }) {
+  const { t } = useTranslation()
+  const [params, setParams] = useSearchParams()
+  const requested = params.get('tab')?.toUpperCase()
+  const tab = groups.find((g) => g.name === requested)?.name ?? groups[0]?.name
+  const [held, setHeld] = useState<Partial<Record<SettingsGroup, HeldDraft>>>({})
+
+  // The draft of a group, or a fresh one when there is none or the server's answer changed since (after a save, or a change made elsewhere
+  // seen on return): worked out as the page is drawn, so an answer never meets a draft of the settings before it.
+  const basisOf = (group: Group) => JSON.stringify(group.settings)
+  const draftFor = (group: Group): GroupDraft => {
+    const kept = held[group.name]
+    return kept && kept.basis === basisOf(group) ? kept.draft : draftOf(group.settings)
+  }
+  const server = Object.fromEntries(groups.flatMap((g) => g.settings.map((s) => [s.key, { value: effectiveOf(s), inFile: s.source === 'FILE' }] as const)))
+  const valueOf = valueOfDraft(server, Object.assign({}, ...groups.map((g) => draftFor(g).values)) as Record<string, string>)
+  const hold = (group: Group, draft: GroupDraft | undefined) =>
+    setHeld((h) => {
+      const next = { ...h }
+      if (draft) next[group.name] = { basis: basisOf(group), draft }
+      else delete next[group.name]
+      return next
+    })
+
+  if (!tab) return null
+  return (
+    <Box sx={{ mt: 3 }}>
+      <TabbedPanels
+        label={t('systemSettings.tabs')}
+        value={tab}
+        onChange={(next) => setParams(next === groups[0]?.name ? {} : { tab: next.toLowerCase() }, { replace: true })}
+        tabs={groups.map((group) => {
+          const name = t(`systemSettings.groups.${group.name}`)
+          return {
+            value: group.name,
+            label: changesOf(group.settings, draftFor(group)).length > 0 ? t('systemSettings.tabUnsaved', { group: name }) : name,
+            content: () => (
+              // A new answer of the server starts the group's form afresh (its error and confirmation; the values start afresh above).
+              <SettingsGroupForm
+                key={basisOf(group)}
+                group={group}
+                draft={draftFor(group)}
+                valueOf={valueOf}
+                onDraft={(draft) => hold(group, draft)}
+                onSaved={() => hold(group, undefined)}
+              />
+            ),
+          }
+        })}
+      />
+    </Box>
   )
 }
 

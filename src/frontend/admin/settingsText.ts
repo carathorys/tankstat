@@ -6,6 +6,9 @@ export const envName = (key: string) => key.replaceAll(':', '__')
 /** The translation key of a setting's label: no colons (i18next's namespace separator) and no dots (its nesting separator). */
 export const labelKey = (key: string) => `systemSettings.fields.${envName(key).replaceAll('.', '_')}`
 
+/** The translation key of what a setting does, shown behind its question mark; named like its label's. */
+export const helpKey = (key: string) => `systemSettings.help.${envName(key).replaceAll('.', '_')}`
+
 /** The refusals that name the settings at fault as `problems`: a save the server could not take, a restart the next start would refuse. */
 const NAMES_PROBLEMS = new Set(['settings.invalid', 'settings.restartWouldFail'])
 

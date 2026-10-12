@@ -4,6 +4,7 @@ import { graphql, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { RESTART_WAIT } from '../../../src/frontend/admin/restartFlow.ts'
 import App from '../../../src/frontend/App.tsx'
+import en from '../../../src/frontend/i18n/locales/en.json'
 import type { SystemSettingFieldsFragment } from '../../../src/frontend/gql/generated.ts'
 import { navigation } from '../../../src/frontend/navigation.ts'
 import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
@@ -29,14 +30,18 @@ const setting = (over: Partial<SystemSettingFieldsFragment> & { key: string }): 
   source: 'DEFAULT',
   editable: true,
   restartPending: false,
+  defaultValue: null,
   ...over,
 })
 
 const MODES = ['None', 'Standalone', 'Oidc', 'ProxyHeader']
 const LEVELS = ['Trace', 'Debug', 'Information', 'Warning', 'Error', 'Critical', 'None']
 
-/** The server's answer: the sign-in mode held by the environment, a list and a secret from the file, a currency waiting for a restart. */
-function fixture({ modeEditable = false }: { modeEditable?: boolean } = {}) {
+/**
+ * The server's answer: the sign-in mode (Standalone unless `mode` says another) held by the environment, a list and a secret from the file,
+ * a currency waiting for a restart.
+ */
+function fixture({ modeEditable = false, mode = 'Standalone' }: { modeEditable?: boolean; mode?: string } = {}) {
   return {
     __typename: 'SystemSettingsInfo',
     file: { __typename: 'SettingsFileInfo', path: '/data/settings.json', exists: true, ignored: false, problems: [] },
@@ -48,8 +53,8 @@ function fixture({ modeEditable = false }: { modeEditable?: boolean } = {}) {
         settings: [
           setting(
             modeEditable
-              ? { key: 'Auth:Mode', kind: 'CHOICE', choices: MODES, value: 'Standalone', isSet: true, source: 'SHIPPED' }
-              : { key: 'Auth:Mode', kind: 'CHOICE', choices: MODES, value: 'Standalone', isSet: true, source: 'ENVIRONMENT', editable: false },
+              ? { key: 'Auth:Mode', kind: 'CHOICE', choices: MODES, value: mode, isSet: true, source: 'SHIPPED' }
+              : { key: 'Auth:Mode', kind: 'CHOICE', choices: MODES, value: mode, isSet: true, source: 'ENVIRONMENT', editable: false },
           ),
           setting({ key: 'Auth:PublicUrl' }),
           setting({ key: 'Auth:AdminEmails', kind: 'LIST', value: 'a@example.com\nb@example.com', isSet: true, source: 'FILE' }),
@@ -87,8 +92,14 @@ function settingsServer(answer: object = fixture(), saved: object = answer) {
   return calls
 }
 
-const page = async () => within(await screen.findByRole('region', { name: 'System settings' }))
-const group = async (name: string) => within(await screen.findByRole('region', { name }))
+const page = async () => within(await screen.findByRole('region', { name: 'Server settings' }))
+
+/** A group's form, its tab chosen first (only the chosen tab shows its form; a tab with unsaved changes says so after its name). */
+async function group(name: string) {
+  const tab = await screen.findByRole('tab', { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}( \\(not saved\\))?$`) })
+  if (tab.getAttribute('aria-selected') !== 'true') await userEvent.setup().click(tab)
+  return within(await screen.findByRole('region', { name }))
+}
 
 it('shows every group, where each value comes from, and what waits for a restart', async () => {
   settingsServer()
@@ -98,7 +109,11 @@ it('shows every group, where each value comes from, and what waits for a restart
   expect(await view.findByText('1 setting waits for a restart.')).toBeInTheDocument()
   expect(view.getByText('/data/settings.json')).toBeInTheDocument()
   const auth = await group('Sign-in')
-  expect(auth.getByText('Set by the environment (Auth__Mode): change it there.')).toBeInTheDocument() // read-only: its variable wins
+  expect(auth.getByText('Set by the environment: change it there.')).toBeInTheDocument() // read-only: its variable wins
+  // The variable, and what the setting does, are behind its question mark: on hover, focus or a tap.
+  await userEvent.setup().hover(auth.getByRole('button', { name: 'About Sign-in mode' }))
+  expect(await screen.findByRole('tooltip')).toHaveTextContent(/^How users sign in: None .*Environment variable: Auth__Mode$/)
+  expect(auth.getByRole('button', { name: 'About Sign-in mode' })).toHaveAccessibleDescription(/Environment variable: Auth__Mode$/)
   expect(auth.queryByRole('combobox', { name: 'Sign-in mode' })).not.toBeInTheDocument()
   expect(auth.getByText('Standalone')).toBeInTheDocument()
   expect(auth.getByLabelText('Public address')).toHaveValue('')
@@ -112,7 +127,7 @@ it('shows every group, where each value comes from, and what waits for a restart
   expect(defaults.getByRole('button', { name: 'Save changes' })).toBeDisabled() // nothing changed yet
   const logging = await group('Logging')
   expect(logging.getByRole('combobox', { name: 'Everything else' })).toHaveTextContent('Information')
-  expect(logging.getByRole('combobox', { name: 'Everything else' })).toHaveAccessibleDescription('Logging__LogLevel__Default · the shipped default') // a choice's hint too
+  expect(logging.getByRole('combobox', { name: 'Everything else' })).toHaveAccessibleDescription('the shipped default') // a choice's hint too; its variable is behind the question mark
 })
 
 it('shows values as the server reads them however they are written, and sends a decimal as the server parses it', async () => {
@@ -179,7 +194,7 @@ it('saves only what changed, a secret only when typed, and says so', async () =>
 
 it('a save starts the form afresh, even when its answer looks as before', async () => {
   const ui = userEvent.setup()
-  const calls = settingsServer()
+  const calls = settingsServer(fixture({ mode: 'Oidc' })) // the OIDC secret is used only then
   renderWithApollo(<App />, '/admin/settings')
 
   const auth = await group('Sign-in')
@@ -210,7 +225,7 @@ it("a save's answer is the page from then on, with no second question to the ser
 
 it('a secret is removed with its checkbox, and a cleared text is sent as cleared', async () => {
   const ui = userEvent.setup()
-  const calls = settingsServer()
+  const calls = settingsServer(fixture({ mode: 'Oidc' })) // the OIDC secret is used only then
   renderWithApollo(<App />, '/admin/settings')
 
   const auth = await group('Sign-in')
@@ -410,7 +425,7 @@ it('coming back to the page while the server is out of reach says so, and shows 
 
   await ui.click(screen.getByRole('link', { name: 'Home' }))
   await act(() => connectivity.failed())
-  await ui.click(screen.getByRole('link', { name: 'System settings' }))
+  await ui.click(screen.getByRole('link', { name: 'Server settings' }))
 
   const view = await page()
   expect(await view.findByText('This needs a connection to the server. It works again once you are back online.')).toBeInTheDocument()
@@ -423,5 +438,234 @@ it('only administrators can open it', async () => {
   renderWithApollo(<App />, '/admin/settings')
 
   await screen.findByRole('heading', { name: 'Your vehicles' }) // bounced back to the home page
-  expect(screen.queryByRole('region', { name: 'System settings' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('region', { name: 'Server settings' })).not.toBeInTheDocument()
+})
+
+/** A server whose sign-in mode can be changed here, with the settings each mode uses and the mail server's. */
+function modesFixture(mode = 'Standalone') {
+  const base = fixture({ modeEditable: true, mode })
+  return {
+    ...base,
+    groups: [
+      {
+        ...base.groups[0],
+        settings: [
+          ...base.groups[0].settings,
+          setting({ key: 'Auth:AccessTokenMinutes', kind: 'INTEGER', value: '15', isSet: true, source: 'SHIPPED' }),
+          setting({ key: 'Auth:Oidc:Authority', value: 'https://id.example', isSet: true, source: 'FILE' }),
+        ],
+      },
+      {
+        __typename: 'SystemSettingsGroup',
+        name: 'SMTP',
+        settings: [setting({ key: 'Smtp:Host', value: 'mail.example', isSet: true, source: 'FILE' }), setting({ key: 'Smtp:Port', kind: 'INTEGER', value: '587', isSet: true, source: 'SHIPPED' })],
+      },
+      ...base.groups.slice(1),
+    ],
+  }
+}
+
+it('shows a tab per group, opens the one the address names, and keeps what was typed in a tab while another is open', async () => {
+  const ui = userEvent.setup()
+  settingsServer()
+  renderWithApollo(<App />, '/admin/settings?tab=defaults')
+
+  const tabs = await screen.findAllByRole('tab')
+  expect(tabs.map((t) => t.textContent)).toEqual(['Sign-in', 'Defaults for new vehicles', 'Logging'])
+  expect(screen.getByRole('tab', { name: 'Defaults for new vehicles' })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.queryByRole('region', { name: 'Sign-in' })).not.toBeInTheDocument() // only the chosen tab shows its form
+
+  const defaults = await group('Defaults for new vehicles')
+  await ui.type(defaults.getByLabelText('Currency'), 'X')
+  expect(screen.getByRole('tab', { name: 'Defaults for new vehicles (not saved)' })).toBeInTheDocument()
+  await group('Logging')
+  expect(screen.queryByRole('region', { name: 'Defaults for new vehicles' })).not.toBeInTheDocument()
+
+  const again = await group('Defaults for new vehicles')
+  expect(again.getByLabelText('Currency')).toHaveValue('HUFX')
+  expect(again.getByRole('button', { name: 'Save changes' })).toBeEnabled()
+})
+
+/** A section's header (a button that folds it), found by its title; its name goes on with what the section says of itself. */
+const sectionHeader = (view: ReturnType<typeof within>, title: string) => view.getByRole('button', { name: new RegExp(`^${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`) })
+
+it('lays a tab out in sections, folded ones say what they hold is not used and why, and a section with unsaved changes says so', async () => {
+  const ui = userEvent.setup()
+  settingsServer(modesFixture('Standalone'))
+  renderWithApollo(<App />, '/admin/settings')
+
+  const auth = await group('Sign-in')
+  expect(auth.getAllByRole('heading', { level: 3 }).map((h) => h.textContent?.trim())).toEqual([
+    'Sessions (Standalone and OIDC)',
+    'Standalone sign-in',
+    'OpenID Connect (OIDC) Not used while Sign-in mode is Standalone; only with Oidc.',
+    expect.stringMatching(/^Administrators from the provider/),
+  ])
+  expect(sectionHeader(auth, 'Standalone sign-in')).toHaveAttribute('aria-expanded', 'true') // used: open
+  const oidc = sectionHeader(auth, 'OpenID Connect (OIDC)')
+  expect(oidc).toHaveAttribute('aria-expanded', 'false') // not used: folded, the reason in its header
+  expect(oidc).toHaveAccessibleName('OpenID Connect (OIDC) Not used while Sign-in mode is Standalone; only with Oidc.')
+  expect(auth.getByLabelText('OIDC authority')).not.toHaveAccessibleDescription(/Not used/) // said once, in the header
+
+  await ui.click(oidc) // can still be opened, to see what is set
+  expect(oidc).toHaveAttribute('aria-expanded', 'true')
+  expect(auth.getByLabelText('OIDC authority')).toBeDisabled()
+  expect(auth.getByLabelText('OIDC authority')).toHaveValue('https://id.example')
+  expect(auth.getByRole('checkbox', { name: 'Remove the stored value' })).toBeDisabled()
+
+  await ui.type(auth.getByLabelText('Public address'), 'https://tank.example')
+  expect(sectionHeader(auth, 'Standalone sign-in')).toHaveAccessibleName('Standalone sign-in changes not saved yet')
+  await ui.click(sectionHeader(auth, 'Standalone sign-in'))
+  expect(sectionHeader(auth, 'Standalone sign-in')).toHaveAttribute('aria-expanded', 'false') // folded by hand, it still says so
+  expect(sectionHeader(auth, 'Standalone sign-in')).toHaveAccessibleName('Standalone sign-in changes not saved yet')
+})
+
+it('settings the sign-in mode leaves unused are shown but cannot be changed, and say why, in every group, as soon as the mode is chosen', async () => {
+  const ui = userEvent.setup()
+  settingsServer(modesFixture('Standalone'))
+  renderWithApollo(<App />, '/admin/settings')
+
+  // Standalone: its own settings and the sessions' are used, the OIDC and proxy ones not.
+  let auth = await group('Sign-in')
+  expect(auth.getByLabelText('Public address')).toBeEnabled()
+  expect(auth.getByRole('switch', { name: 'Administrators may set passwords' })).toBeEnabled()
+  expect(auth.getByLabelText('Access cookie (minutes)')).toBeEnabled()
+  expect(auth.getByLabelText('OIDC authority')).toBeDisabled()
+  expect(auth.getByLabelText('OIDC client secret')).toBeDisabled()
+  expect(auth.getByLabelText('Administrators (OIDC and proxy sign-in)')).toBeDisabled()
+  expect(sectionHeader(auth, 'Administrators from the provider')).toHaveAccessibleName(/Not used while Sign-in mode is Standalone; only with Oidc or ProxyHeader\.$/)
+  expect((await group('E-mail')).getByLabelText('Port')).toBeEnabled()
+
+  // None, chosen and not saved yet: everything that needs a sign-in greys out and folds at once, the e-mail tab as a whole.
+  auth = await group('Sign-in')
+  await ui.click(auth.getByRole('combobox', { name: 'Sign-in mode' }))
+  await ui.click(await screen.findByRole('option', { name: 'None' }))
+  expect(auth.getByLabelText('Public address')).toBeDisabled()
+  expect(auth.getByLabelText('Administrators may set passwords')).toBeDisabled() // folded away, so found by its label
+  expect(sectionHeader(auth, 'Standalone sign-in')).toHaveAttribute('aria-expanded', 'false')
+  expect(sectionHeader(auth, 'Standalone sign-in')).toHaveAccessibleName('Standalone sign-in Not used while Sign-in mode is None; only with Standalone.')
+  expect(sectionHeader(auth, 'Sessions (Standalone and OIDC)')).toHaveAccessibleName(/only with Standalone or Oidc\.$/)
+  expect(auth.getByRole('combobox', { name: 'Sign-in mode' })).not.toHaveAttribute('aria-disabled', 'true') // the way back
+  expect(auth.getByRole('button', { name: 'Save changes' })).toBeEnabled()
+
+  const mail = await group('E-mail')
+  expect(mail.getByRole('note')).toHaveTextContent('None of these settings is used now: Not used while Sign-in mode is None; only with Standalone. You can still see what they are set to.')
+  expect(sectionHeader(mail, 'Connection to the mail server')).toHaveAccessibleName('Connection to the mail server Not used now') // the reason is said once, above
+  expect(sectionHeader(mail, 'Connection to the mail server')).toHaveAttribute('aria-expanded', 'false')
+  expect(mail.getByLabelText('Mail server')).toBeDisabled()
+  expect(mail.getByLabelText('Mail server')).toHaveValue('mail.example') // still there
+  expect(mail.getByLabelText('Port')).toBeDisabled()
+  expect((await group('Defaults for new vehicles')).getByLabelText('Currency')).toBeEnabled() // used in every mode
+
+  // Back to Standalone: all of it can be changed again, and opens again.
+  auth = await group('Sign-in')
+  await ui.click(auth.getByRole('combobox', { name: 'Sign-in mode' }))
+  await ui.click(await screen.findByRole('option', { name: 'Standalone' }))
+  expect(auth.getByLabelText('Public address')).toBeEnabled()
+  expect(sectionHeader(auth, 'Standalone sign-in')).toHaveAttribute('aria-expanded', 'true')
+  expect((await group('E-mail')).queryByRole('note')).not.toBeInTheDocument()
+})
+
+it('a mode the settings file holds, cleared to the default, greys nothing out: what is below the file is not known here', async () => {
+  const ui = userEvent.setup()
+  const base = modesFixture('Standalone')
+  base.groups[0].settings[0] = setting({ key: 'Auth:Mode', kind: 'CHOICE', choices: MODES, value: 'Standalone', isSet: true, source: 'FILE', defaultValue: 'None' })
+  settingsServer(base)
+  renderWithApollo(<App />, '/admin/settings')
+  const auth = await group('Sign-in')
+
+  await ui.click(auth.getByRole('combobox', { name: 'Sign-in mode' }))
+  await ui.click(await screen.findByRole('option', { name: 'Default (not set)' }))
+
+  expect(auth.getByLabelText('OIDC authority')).toBeEnabled()
+  expect(auth.getByLabelText('Public address')).toBeEnabled()
+})
+
+it('a mode only the shipped file sets stays what it is when cleared, so it still decides', async () => {
+  const ui = userEvent.setup()
+  settingsServer(modesFixture('Standalone')) // the mode comes from appsettings.json: clearing it here changes nothing
+  renderWithApollo(<App />, '/admin/settings')
+  const auth = await group('Sign-in')
+
+  await ui.click(auth.getByRole('combobox', { name: 'Sign-in mode' }))
+  await ui.click(await screen.findByRole('option', { name: 'Default (not set)' }))
+
+  expect(auth.getByLabelText('OIDC authority')).toBeDisabled()
+  expect(auth.getByLabelText('Public address')).toBeEnabled()
+})
+
+it('a setting nobody set shows the value it runs with, its built-in default, and leaving it there saves nothing', async () => {
+  const ui = userEvent.setup()
+  const base = modesFixture('Standalone')
+  base.groups[0].settings = base.groups[0].settings.map((s) =>
+    s.key === 'Auth:AccessTokenMinutes' ? setting({ key: s.key, kind: 'INTEGER', defaultValue: '15' }) : s.key === 'Auth:Standalone:AllowAdminSetPassword' ? setting({ key: s.key, kind: 'BOOLEAN', defaultValue: 'false' }) : s,
+  )
+  const calls = settingsServer(base)
+  renderWithApollo(<App />, '/admin/settings')
+  const auth = await group('Sign-in')
+
+  expect(auth.getByLabelText('Access cookie (minutes)')).toHaveValue('15')
+  expect(auth.getByLabelText('Access cookie (minutes)')).toHaveAccessibleDescription('the built-in default')
+  expect(auth.getByRole('button', { name: 'Save changes' })).toBeDisabled() // shown, not changed
+  await ui.clear(auth.getByLabelText('Access cookie (minutes)'))
+  expect(auth.getByRole('button', { name: 'Save changes' })).toBeDisabled() // emptied: nothing is set, so nothing to clear
+  await ui.type(auth.getByLabelText('Access cookie (minutes)'), '30')
+  await ui.click(auth.getByRole('button', { name: 'Save changes' }))
+
+  await waitFor(() => expect(calls.UpdateSystemSettings).toEqual([{ changes: [{ key: 'Auth:AccessTokenMinutes', value: '30', clear: false }] }]))
+})
+
+it('a mode the environment holds decides as well, and the read-only settings say they are unused too', async () => {
+  const base = fixture({ mode: 'None' })
+  settingsServer({
+    ...base,
+    groups: [{ ...base.groups[0], settings: [...base.groups[0].settings, setting({ key: 'Auth:Oidc:Authority', value: 'https://id.example', isSet: true, source: 'ENVIRONMENT', editable: false })] }],
+  })
+  renderWithApollo(<App />, '/admin/settings')
+
+  const auth = await group('Sign-in')
+  expect(auth.getByLabelText('Public address')).toBeDisabled()
+  expect(sectionHeader(auth, 'OpenID Connect (OIDC)')).toHaveAccessibleName('OpenID Connect (OIDC) Not used while Sign-in mode is None; only with Oidc.')
+  expect(auth.getAllByText('Set by the environment: change it there.')).toHaveLength(2) // the mode and the authority; the reason is in the header
+})
+
+it('no section is named like a setting in it: a panel is named by its header, and two names alike would be one for a screen reader', () => {
+  const labels = new Set<string>(Object.values(en.systemSettings.fields))
+  expect(Object.values(en.systemSettings.sections).filter((title) => labels.has(title))).toEqual([])
+})
+
+it('a mail server left empty leaves the rest of the e-mail settings unused, and photo reading without a provider its own', async () => {
+  const ui = userEvent.setup()
+  const base = modesFixture('Standalone')
+  settingsServer({
+    ...base,
+    groups: [
+      { __typename: 'SystemSettingsGroup', name: 'SMTP', settings: [setting({ key: 'Smtp:Host' }), setting({ key: 'Smtp:Port', kind: 'INTEGER', value: '587', isSet: true, source: 'SHIPPED' })] },
+      {
+        __typename: 'SystemSettingsGroup',
+        name: 'PHOTO_READING',
+        settings: [
+          setting({ key: 'Recognition:Provider', kind: 'CHOICE', choices: ['None', 'OpenAiCompatible'], defaultValue: 'None' }), // set nowhere: its built-in None
+          setting({ key: 'Recognition:OpenAiCompatible:Model', value: 'llava', isSet: true, source: 'FILE' }),
+        ],
+      },
+      base.groups[0],
+    ],
+  })
+  renderWithApollo(<App />, '/admin/settings')
+
+  const mail = await group('E-mail')
+  expect(mail.getByLabelText('Mail server')).toBeEnabled()
+  expect(mail.getByLabelText('Port')).toBeDisabled()
+  expect(mail.getByLabelText('Port')).toHaveAccessibleDescription('the shipped default Not used while Mail server is empty.') // the badge first, as it is seen
+  await ui.type(mail.getByLabelText('Mail server'), 'mail.example')
+  expect(mail.getByLabelText('Port')).toBeEnabled()
+
+  const photos = await group('Photo reading')
+  expect(photos.getByLabelText('Model')).toBeDisabled() // no provider set anywhere: the built-in None
+  expect(sectionHeader(photos, 'Model server')).toHaveAccessibleName('Model server Not used while Provider is None; only with OpenAiCompatible.')
+  await ui.click(photos.getByRole('combobox', { name: 'Provider' })) // above the sections, never folded
+  await ui.click(await screen.findByRole('option', { name: 'OpenAiCompatible' }))
+  expect(photos.getByLabelText('Model')).toBeEnabled()
+  expect(sectionHeader(photos, 'Model server')).toHaveAttribute('aria-expanded', 'true')
 })
