@@ -175,7 +175,7 @@ internal static class BackupCommands
             return 0;
         }
         // Right away, as the server would at its start: the migrations, then the restore. A refusal renames the marker, and the log says why.
-        var root = services.GetRequiredService<Microsoft.Extensions.Options.IOptions<BackupOptions>>().Value.Root;
+        var root = services.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<BackupOptions>>().CurrentValue.Root;
         var before = Directory.GetFiles(root, "restore.*").ToHashSet();
         await StartupSteps.MigrateAndRestoreAsync(services, CancellationToken.None);
         if (store.RestorePending || Directory.GetFiles(root, "restore.*").Any(f => !before.Contains(f)))

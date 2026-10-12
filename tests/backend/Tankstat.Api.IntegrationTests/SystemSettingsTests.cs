@@ -43,7 +43,7 @@ public class SystemSettingsTests
         using var app = TestApp.Standalone();
         var settings = (await (await Admin(app)).Gql(Query)).Data().GetProperty("systemSettings");
 
-        Assert.Equal(["AUTH", "SMTP", "DEFAULTS", "NOTIFICATIONS", "SYNC", "PHOTO_READING", "LOGGING"], settings.GetProperty("groups").EnumerateArray().Select(g => g.GetProperty("name").GetString()));
+        Assert.Equal(["AUTH", "SMTP", "DEFAULTS", "NOTIFICATIONS", "SYNC", "PHOTO_READING", "BACKUPS", "LOGGING"], settings.GetProperty("groups").EnumerateArray().Select(g => g.GetProperty("name").GetString()));
         var mode = Setting(settings, "Auth:Mode");
         Assert.Equal(("ENVIRONMENT", false, "Standalone", "CHOICE"), (mode.GetProperty("source").GetString(), mode.GetProperty("editable").GetBoolean(), mode.GetProperty("value").GetString(), mode.GetProperty("kind").GetString())); // the host's own settings sit above the file, as the environment does
         Assert.Equal(["None", "Standalone", "Oidc", "ProxyHeader"], mode.GetProperty("choices").EnumerateArray().Select(c => c.GetString()));
@@ -300,6 +300,7 @@ public class LiveSettingsReadersTests
         [SettingsGroup.Defaults] = typeof(Tankstat.Application.Vehicles.VehicleDefaultsOptions),
         [SettingsGroup.Notifications] = typeof(Tankstat.Application.Notifications.NotificationOptions),
         [SettingsGroup.Sync] = typeof(Tankstat.Application.Sync.SyncOptions),
+        [SettingsGroup.Backups] = typeof(Tankstat.Application.Backups.BackupOptions),
     };
 
     [Fact]

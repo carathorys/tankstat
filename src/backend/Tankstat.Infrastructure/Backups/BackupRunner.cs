@@ -15,7 +15,7 @@ namespace Tankstat.Infrastructure.Backups;
 /// </summary>
 /// <param name="lifetime">The app's, whose stop cuts a run short; null where there is no host (the services built on their own, as tests do).</param>
 internal sealed class BackupRunner(
-    IBackupWriter writer, IBackupStore store, IOptions<BackupOptions> options, IServiceScopeFactory scopes, TimeProvider clock, ILogger<BackupRunner> logger,
+    IBackupWriter writer, IBackupStore store, IOptionsMonitor<BackupOptions> options, IServiceScopeFactory scopes, TimeProvider clock, ILogger<BackupRunner> logger,
     IHostApplicationLifetime? lifetime = null) : IBackupRunner
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -67,7 +67,7 @@ internal sealed class BackupRunner(
     /// <summary>Retention, after a backup was written; a file that cannot be removed is a Warning and the rest still goes.</summary>
     private void Prune()
     {
-        var o = options.Value;
+        var o = options.CurrentValue;
         if (!o.Pruning) return;
         try
         {

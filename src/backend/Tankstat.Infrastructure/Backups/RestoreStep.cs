@@ -32,7 +32,7 @@ namespace Tankstat.Infrastructure.Backups;
 internal sealed class RestoreStep(
     IDbContextFactory<AppDbContext> dbFactory,
     IBackupWriter writer,
-    IOptions<BackupOptions> options,
+    IOptionsMonitor<BackupOptions> options,
     IOptions<StorageOptions> storage,
     IOptions<KeyRingOptions> keyRing,
     IOptions<AuthOptions> auth,
@@ -43,7 +43,7 @@ internal sealed class RestoreStep(
 {
     public async Task StartAsync(CancellationToken ct)
     {
-        var marker = RestoreMarker.PathIn(options.Value.Root);
+        var marker = RestoreMarker.PathIn(options.CurrentValue.Root);
         if (File.Exists(marker)) await RestoreAsync(marker, ct);
 
         await using var db = await dbFactory.CreateDbContextAsync(ct);
@@ -81,7 +81,7 @@ internal sealed class RestoreStep(
             Refuse(markerPath, e, "the marker cannot be read");
             return;
         }
-        var file = Path.Combine(options.Value.Root, Path.GetFileName(marker.File));
+        var file = Path.Combine(options.CurrentValue.Root, Path.GetFileName(marker.File));
         BackupManifest manifest;
         byte[]? identity = null;
         try

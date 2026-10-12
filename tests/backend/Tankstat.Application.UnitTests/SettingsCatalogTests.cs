@@ -21,6 +21,7 @@ public class SettingsCatalogTests
         (typeof(NotificationOptions), NotificationOptions.SectionName),
         (typeof(SyncOptions), SyncOptions.SectionName),
         (typeof(RecognitionOptions), RecognitionOptions.SectionName),
+        (typeof(Tankstat.Application.Backups.BackupOptions), Tankstat.Application.Backups.BackupOptions.SectionName),
     ];
 
     [Fact]

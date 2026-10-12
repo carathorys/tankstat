@@ -9,14 +9,16 @@ namespace Tankstat.Infrastructure.Backups;
 /// The schedule (<c>Backups:Every</c>): a backup every day at that time of the server's local time, through the same one-at-a-time runner as
 /// Back up now, so a run due while one is being written joins it instead of writing a second. At start, a due time that passed without a
 /// backup since (<see cref="BackupSchedule.Missed"/>) is caught up at once. Without the setting it does nothing and says nothing. Nothing
-/// in here may stop the app: a failure is logged and the schedule goes on at the next due time.
+/// in here may stop the app: a failure is logged and the schedule goes on at the next due time. The settings apply at once: a new time, or
+/// none, is taken up as soon as it is saved (a missed backup is caught up only at the app's start).
 /// </summary>
-internal sealed class BackupWorker(BackupRunner runner, IBackupStore store, IOptions<BackupOptions> options, TimeProvider clock, ILogger<BackupWorker> logger)
+internal sealed class BackupWorker(BackupRunner runner, IBackupStore store, IOptionsMonitor<BackupOptions> options, TimeProvider clock, ILogger<BackupWorker> logger)
     : BackgroundService
 {
     private readonly Lock _sleep = new();
     private DateTimeOffset? _sleepingUntil;
     private readonly List<(DateTimeOffset Due, TaskCompletionSource Done)> _waiters = [];
+    private TaskCompletionSource _changed = new(TaskCreationOptions.RunContinuationsAsynchronously); // set by a change of the settings
 
     /// <summary>
     /// Tests: completes once the worker sleeps until <paramref name="due"/> or later, so everything before it (a missed backup caught up, the
@@ -47,35 +49,52 @@ internal sealed class BackupWorker(BackupRunner runner, IBackupStore store, IOpt
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        if (options.Value.DailyAt is not { } at) return;
         await Task.Yield(); // the start of the app does not wait for the catching up below
-        var zone = clock.LocalTimeZone;
-        logger.LogInformation("Backups are written every day at {Time} ({Zone})", at.ToString("HH:mm"), zone.Id);
-        if (!options.Value.Pruning)
-            logger.LogWarning("Backups are scheduled and none are ever removed: set Backups:Keep or Backups:KeepDays, or the backups folder grows until the disk is full");
-
-        try
-        {
-            if (BackupSchedule.Missed(NewestOwn(), clock.GetUtcNow(), at, zone))
-            {
-                logger.LogInformation("The backup due at {Due} was not written: writing it now", BackupSchedule.LastDueAtOrBefore(clock.GetUtcNow(), at, zone));
-                await RunAsync();
-            }
-        }
-        catch (Exception e) when (e is not OperationCanceledException)
-        {
-            logger.LogError(e, "The missed backup could not be caught up; the schedule goes on");
-        }
-
+        // The settings apply at once (the settings page saves them): every change wakes the worker, which reads them afresh.
+        using var subscription = options.OnChange((_, _) => _changed.TrySetResult());
+        var starting = true;
+        TimeOnly? announced = null;
         while (!ct.IsCancellationRequested)
         {
             try
             {
+                var changed = _changed.Task; // taken before the settings are read, so a change made meanwhile is not missed
+                var o = options.CurrentValue;
+                var zone = clock.LocalTimeZone;
+                if (o.DailyAt is not { } at)
+                {
+                    if (announced is not null) logger.LogInformation("Backups are not scheduled any more");
+                    announced = null;
+                    starting = false;
+                    await changed.WaitAsync(ct);
+                    Rearm();
+                    continue;
+                }
+                if (announced != at)
+                {
+                    logger.LogInformation("Backups are written every day at {Time} ({Zone})", at.ToString("HH:mm"), zone.Id);
+                    if (!o.Pruning)
+                        logger.LogWarning("Backups are scheduled and none are ever removed: set Backups:Keep or Backups:KeepDays, or the backups folder grows until the disk is full");
+                    announced = at;
+                }
+                if (starting)
+                {
+                    starting = false;
+                    await CatchUpAsync(at, zone);
+                }
+
                 var now = clock.GetUtcNow();
                 var next = BackupSchedule.NextAfter(now, at, zone);
-                var sleep = Task.Delay(next - now, clock, ct);
+                using var wake = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                var sleep = Task.Delay(next - now, clock, wake.Token);
                 FallAsleep(next);
                 logger.LogDebug("The next backup is due at {Next}", next);
+                if (await Task.WhenAny(sleep, changed) == changed)
+                {
+                    await wake.CancelAsync();
+                    Rearm();
+                    continue; // planned again with the new settings
+                }
                 await sleep;
                 await RunAsync();
             }
@@ -88,6 +107,25 @@ internal sealed class BackupWorker(BackupRunner runner, IBackupStore store, IOpt
                 logger.LogError(e, "The backup schedule failed; it goes on at the next due time");
                 await Task.Delay(TimeSpan.FromMinutes(1), clock, ct); // never a loop that spins
             }
+        }
+    }
+
+    private void Rearm() => _changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>At start: the due time that passed without a backup since is written at once.</summary>
+    private async Task CatchUpAsync(TimeOnly at, TimeZoneInfo zone)
+    {
+        try
+        {
+            if (BackupSchedule.Missed(NewestOwn(), clock.GetUtcNow(), at, zone))
+            {
+                logger.LogInformation("The backup due at {Due} was not written: writing it now", BackupSchedule.LastDueAtOrBefore(clock.GetUtcNow(), at, zone));
+                await RunAsync();
+            }
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            logger.LogError(e, "The missed backup could not be caught up; the schedule goes on");
         }
     }
 

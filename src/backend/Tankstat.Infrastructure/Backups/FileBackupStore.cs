@@ -11,11 +11,11 @@ namespace Tankstat.Infrastructure.Backups;
 /// The backups folder (<c>Backups:Path</c>): the restore points in it, uploads into it and downloads out of it, and the restore that waits
 /// for the next start. Files by bare name only, so nothing outside the folder is ever reached.
 /// </summary>
-internal sealed class FileBackupStore(IOptions<BackupOptions> options) : IBackupStore
+internal sealed class FileBackupStore(IOptionsMonitor<BackupOptions> options) : IBackupStore
 {
     private const string Uploading = ".uploading";
 
-    private string Root => options.Value.Root;
+    private string Root => options.CurrentValue.Root;
 
     public string Folder => Root;
 

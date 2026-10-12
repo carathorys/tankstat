@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Backups;
 using Tankstat.Application.Notifications;
 using Tankstat.Application.Recognition;
 using Tankstat.Application.Sync;
@@ -19,6 +20,7 @@ public enum SettingsGroup
     Notifications,
     Sync,
     PhotoReading,
+    Backups,
     Logging,
 }
 
@@ -80,7 +82,7 @@ public static class SettingsCatalog
     /// every reader of its settings reads them afresh: an <c>IOptionsSnapshot</c> or an <c>IOptionsMonitor</c>, never a kept <c>IOptions</c>
     /// value; <c>LiveSettingsReadersTests</c> pins that for each.
     /// </summary>
-    public static readonly IReadOnlySet<SettingsGroup> LiveGroups = new HashSet<SettingsGroup> { SettingsGroup.Defaults, SettingsGroup.Notifications, SettingsGroup.Sync, SettingsGroup.Logging };
+    public static readonly IReadOnlySet<SettingsGroup> LiveGroups = new HashSet<SettingsGroup> { SettingsGroup.Defaults, SettingsGroup.Notifications, SettingsGroup.Sync, SettingsGroup.Backups, SettingsGroup.Logging };
 
     /// <summary>Settings of the managed sections that the page deliberately does not offer (the reflection test skips them).</summary>
     public static readonly IReadOnlyList<string> LeftOut =
@@ -88,6 +90,7 @@ public static class SettingsCatalog
         "Auth:Standalone:AdminEmail", // the bootstrap administrator: read only while no administrator exists, and a password besides
         "Auth:Standalone:AdminPassword",
         "Recognition:OpenAiCompatible:SystemPromptFile", // a path the app reads: the environment's business, like every other path
+        "Backups:Path", // a folder, like Storage:Path: where the volume is, which the environment knows
     ];
 
     public static readonly IReadOnlyList<SettingDefinition> All =
@@ -144,6 +147,14 @@ public static class SettingsCatalog
         new(SettingsGroup.PhotoReading, "Recognition:MinConfidence", SettingKind.Decimal),
         new(SettingsGroup.PhotoReading, "Recognition:MaxConcurrent", SettingKind.Integer),
 
+        new(SettingsGroup.Backups, "Backups:Every", SettingKind.Text),
+        new(SettingsGroup.Backups, "Backups:Keep", SettingKind.Integer),
+        new(SettingsGroup.Backups, "Backups:KeepDays", SettingKind.Integer),
+        new(SettingsGroup.Backups, "Backups:Photos", SettingKind.Boolean),
+        new(SettingsGroup.Backups, "Backups:Encryption:Recipient", SettingKind.Text),
+        new(SettingsGroup.Backups, "Backups:Encryption:Salt", SettingKind.Text),
+        new(SettingsGroup.Backups, "Backups:MaxUploadMb", SettingKind.Integer),
+
         new(SettingsGroup.Logging, LoggingDefault, SettingKind.Choice, LogLevels),
         new(SettingsGroup.Logging, LoggingTankstat, SettingKind.Choice, LogLevels),
         new(SettingsGroup.Logging, LoggingAspNetCore, SettingKind.Choice, LogLevels),
@@ -171,6 +182,7 @@ public static class SettingsCatalog
         (NotificationOptions.SectionName, typeof(NotificationOptions)),
         (SyncOptions.SectionName, typeof(SyncOptions)),
         (RecognitionOptions.SectionName, typeof(RecognitionOptions)),
+        (BackupOptions.SectionName, typeof(BackupOptions)),
     ];
 
     /// <summary>The level the logging framework uses when no source sets the default category (every other category follows that one).</summary>

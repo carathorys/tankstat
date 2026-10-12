@@ -1289,6 +1289,7 @@ enum SettingsGroup {
   NOTIFICATIONS
   SYNC
   PHOTO_READING
+  BACKUPS
   LOGGING
 }
 

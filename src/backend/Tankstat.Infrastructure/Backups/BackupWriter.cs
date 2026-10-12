@@ -26,7 +26,7 @@ namespace Tankstat.Infrastructure.Backups;
 internal sealed class BackupWriter(
     IDbContextFactory<AppDbContext> dbFactory,
     IOptions<DatabaseOptions> database,
-    IOptions<BackupOptions> options,
+    IOptionsMonitor<BackupOptions> options,
     IOptions<StorageOptions> storage,
     IOptions<KeyRingOptions> keyRing,
     TimeProvider clock,
@@ -36,7 +36,7 @@ internal sealed class BackupWriter(
 
     public async Task<BackupResult> WriteAsync(BackupRequest request, CancellationToken ct)
     {
-        var o = options.Value;
+        var o = options.CurrentValue;
         var roots = storage.Value;
         var createdAt = clock.GetUtcNow();
         var encryption = request.Encryption ?? Configured(o);

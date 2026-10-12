@@ -30,7 +30,11 @@ public sealed class BackupScheduleTests : IDisposable
     private TestApp App(Dictionary<string, string?> extra, Action<IServiceCollection>? services = null)
     {
         var settings = new Dictionary<string, string?> { ["Backups:Path"] = _folder, ["Backups:Every"] = "02:00" };
-        foreach (var (key, value) in extra) settings[key] = value;
+        foreach (var (key, value) in extra)
+        {
+            if (value is null) settings.Remove(key); // left to the settings file, which the page may write
+            else settings[key] = value;
+        }
         var app = TestApp.Standalone(settings, s =>
         {
             s.AddSingleton<TimeProvider>(_clock);
@@ -172,5 +176,29 @@ public sealed class BackupScheduleTests : IDisposable
 
         Assert.Empty(Files());
         Assert.Empty(app.Log.From<BackupWorker>());
+    }
+
+    [Fact]
+    public async Task ATimeSavedOnTheSettingsPage_SchedulesBackupsAtOnce_AndClearingItStopsThem()
+    {
+        using var app = App(new() { ["Backups:Every"] = null });
+        var admin = app.NewClient();
+        await admin.LoginAs(TestApp.AdminEmail, TestApp.AdminPassword);
+        const string Save = "mutation($c: [SystemSettingChangeInput!]!) { updateSystemSettings(changes: $c) { restartPending } }";
+
+        var saved = (await admin.Gql(Save, new { c = new object[] { new { key = "Backups:Every", value = "04:00" }, new { key = "Backups:Keep", value = "3" } } })).Data();
+
+        Assert.False(saved.GetProperty("updateSystemSettings").GetProperty("restartPending").GetBoolean()); // the backups apply at once
+        await Worker(app).WhenAsleepUntil(At(10, 4)).WaitAsync(Wait); // tonight's 04:00, planned without a restart
+        Assert.Empty(Files()); // a time set while running catches nothing up: only a start does
+        _clock.Advance(TimeSpan.FromHours(1));
+        await Worker(app).WhenAsleepUntil(At(11, 4)).WaitAsync(Wait);
+        Assert.Single(Files());
+
+        await admin.LoginAs(TestApp.AdminEmail, TestApp.AdminPassword); // the hour the clock moved outlived the access cookie
+        (await admin.Gql(Save, new { c = new object[] { new { key = "Backups:Every", value = "" } } })).Data();
+        _clock.Advance(TimeSpan.FromDays(2)); // the save woke the worker before the clock moved: tomorrow's 04:00 is gone
+        await ((BackupRunner)app.Factory.Services.GetRequiredService<IBackupRunner>()).WhenIdleAsync();
+        Assert.Single(Files());
     }
 }

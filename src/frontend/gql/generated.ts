@@ -431,6 +431,7 @@ export type SettingSource =
 
 export type SettingsGroup =
   | 'AUTH'
+  | 'BACKUPS'
   | 'DEFAULTS'
   | 'LOGGING'
   | 'NOTIFICATIONS'
