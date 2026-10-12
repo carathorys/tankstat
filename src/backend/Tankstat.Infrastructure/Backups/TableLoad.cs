@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Tankstat.Application.Backups;
 using Tankstat.Domain;
-using Tankstat.Domain.Backups;
+using Tankstat.Domain.Instance;
 using Tankstat.Infrastructure.Persistence;
 
 namespace Tankstat.Infrastructure.Backups;
@@ -77,11 +77,12 @@ internal static class TableLoad
         }
 
         // The generation is this instance's own, never the backup's: stamped after the rows, inside the transaction.
-        var instance = await db.Instance.SingleOrDefaultAsync(ct);
+        // The backup's own row comes along (its last start mode too, so the start that follows signs out sessions it brought from another mode).
+        var instance = await db.InstanceState.SingleOrDefaultAsync(ct);
         if (instance is null)
         {
-            instance = Instance.Fresh();
-            db.Instance.Add(instance);
+            instance = InstanceState.New();
+            db.InstanceState.Add(instance);
         }
         instance.Restored(now, restorePoint);
         await db.SaveChangesAsync(ct);

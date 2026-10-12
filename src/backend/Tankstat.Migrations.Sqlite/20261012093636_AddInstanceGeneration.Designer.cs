@@ -11,8 +11,8 @@ using Tankstat.Infrastructure.Persistence;
 namespace Tankstat.Migrations.Sqlite
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261011134435_AddInstance")]
-    partial class AddInstance
+    [Migration("20261012093636_AddInstanceGeneration")]
+    partial class AddInstanceGeneration
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -95,25 +95,6 @@ namespace Tankstat.Migrations.Sqlite
                         .IsUnique();
 
                     b.ToTable("ResourceGrants", (string)null);
-                });
-
-            modelBuilder.Entity("Tankstat.Domain.Backups.Instance", b =>
-                {
-                    b.Property<int>("Id")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<Guid>("Generation")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("RestorePoint")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("RestoredAt")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Instance", (string)null);
                 });
 
             modelBuilder.Entity("Tankstat.Domain.Charts.VehicleChart", b =>
@@ -199,6 +180,32 @@ namespace Tankstat.Migrations.Sqlite
                     b.HasIndex("Folder");
 
                     b.ToTable("Images", (string)null);
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Instance.InstanceState", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("Generation")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastStartMode")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastStartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RestorePoint")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RestoredAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("InstanceState", (string)null);
                 });
 
             modelBuilder.Entity("Tankstat.Domain.Measurements.Cost", b =>

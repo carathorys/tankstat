@@ -9,6 +9,7 @@ using Tankstat.Application.Images;
 using Tankstat.Domain;
 using Tankstat.Domain.Backups;
 using Tankstat.Domain.Images;
+using Tankstat.Domain.Instance;
 using Tankstat.Infrastructure.Persistence;
 
 namespace Tankstat.Infrastructure.Backups;
@@ -46,11 +47,17 @@ internal sealed class RestoreStep(
         if (File.Exists(marker)) await RestoreAsync(marker, ct);
 
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var instance = await db.Instance.SingleOrDefaultAsync(ct);
+        // A fresh instance, or one whose row was written before generations existed, gets its first generation; InstanceStartService
+        // records the start in this row afterwards.
+        var instance = await db.InstanceState.SingleOrDefaultAsync(ct);
+        var stamped = instance is null || instance.EnsureGeneration();
         if (instance is null)
         {
-            instance = Instance.Fresh();
-            db.Instance.Add(instance);
+            instance = InstanceState.New();
+            db.InstanceState.Add(instance);
+        }
+        if (stamped)
+        {
             await db.SaveChangesAsync(ct);
             logger.LogDebug("The instance got its generation {Generation}", instance.Generation);
         }

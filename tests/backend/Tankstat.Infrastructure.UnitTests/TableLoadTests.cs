@@ -67,7 +67,7 @@ public sealed class TableLoadTests : IDisposable
         var seeded = await BackupSeed.SeedAsync(a, Path.Combine(_data, "a", "uploads"), Path.Combine(_data, "a", "uploads"), Path.Combine(_data, "a", "keys"));
         await using (var context = await Context(a))
         {
-            context.Instance.Add(Domain.Backups.Instance.Fresh());
+            context.InstanceState.Add(Domain.Instance.InstanceState.New());
             await context.SaveChangesAsync();
         }
         var backupA = await a.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
@@ -82,13 +82,13 @@ public sealed class TableLoadTests : IDisposable
 
         var backupB = await b.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
         var innerB = Inner(backupB.Path);
-        foreach (var table in backupA.Manifest.Contents.Tables.Keys.Where(t => t != "Instance"))
+        foreach (var table in backupA.Manifest.Contents.Tables.Keys.Where(t => t != "InstanceState"))
             Assert.Equal(BackupSeed.Lines(innerA, table).Order(), BackupSeed.Lines(innerB, table).Order());
-        Assert.Equal(backupA.Manifest.Contents.Tables.Where(t => t.Key != "Instance"), backupB.Manifest.Contents.Tables.Where(t => t.Key != "Instance"));
+        Assert.Equal(backupA.Manifest.Contents.Tables.Where(t => t.Key != "InstanceState"), backupB.Manifest.Contents.Tables.Where(t => t.Key != "InstanceState"));
 
         // The generation is B's own, not A's; the rows are A's, readable by the app (typed as EF expects them).
-        var instanceA = BackupSeed.Lines(innerA, "Instance").Single();
-        var instanceB = BackupSeed.Lines(innerB, "Instance").Single();
+        var instanceA = BackupSeed.Lines(innerA, "InstanceState").Single();
+        var instanceB = BackupSeed.Lines(innerB, "InstanceState").Single();
         Assert.NotEqual(instanceA, instanceB);
         Assert.Contains(instance.Generation.ToString("D"), instanceB);
         Assert.Equal(backupA.Manifest.CreatedAt, instance.RestorePoint);
@@ -99,8 +99,8 @@ public sealed class TableLoadTests : IDisposable
         {
             var refueling = await context.Refuelings.Include(r => r.OdometerReading).Include(r => r.Cost).SingleAsync(r => r.Id == seeded.Refueling);
             Assert.Equal((BackupSeed.Day, 40m, 60m, 1000L, true), (refueling.Date, refueling.Volume, refueling.Cost!.Amount, refueling.OdometerReading!.Value, refueling.IsFullTank));
-            Assert.Equal(1, await context.Instance.CountAsync());
-            Assert.Equal(restoredAt, (await context.Instance.SingleAsync()).RestoredAt);
+            Assert.Equal(1, await context.InstanceState.CountAsync());
+            Assert.Equal(restoredAt, (await context.InstanceState.SingleAsync()).RestoredAt);
         }
     }
 
@@ -129,8 +129,8 @@ public sealed class TableLoadTests : IDisposable
         await BackupSeed.SeedAsync(a, Path.Combine(_data, "a", "uploads"), Path.Combine(_data, "a", "uploads"), Path.Combine(_data, "a", "keys"));
         var backup = await a.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
         var inner = Inner(backup.Path);
-        Assert.Equal(0, backup.Manifest.Contents.Tables["Instance"]); // a bare test database has no generation row
-        File.Delete(Path.Combine(inner, "tables", "Instance.jsonl"));
+        Assert.Equal(0, backup.Manifest.Contents.Tables["InstanceState"]); // a bare test database has no generation row
+        File.Delete(Path.Combine(inner, "tables", "InstanceState.jsonl"));
         await using var b = Database("b");
         var own = await BackupSeed.SeedAsync(b, Path.Combine(_data, "b", "uploads"), Path.Combine(_data, "b", "uploads"), Path.Combine(_data, "b", "keys"));
 

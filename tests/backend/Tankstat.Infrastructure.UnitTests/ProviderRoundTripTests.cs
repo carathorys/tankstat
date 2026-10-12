@@ -87,7 +87,7 @@ public sealed class ProviderRoundTripTests(ITestOutputHelper output) : IDisposab
         return (backup, Inner(backup.Path));
     }
 
-    private static IEnumerable<string> TableNames(BackupResult backup) => backup.Manifest.Contents.Tables.Keys.Where(t => t is not ("Instance" or TableDump.MigrationsHistory));
+    private static IEnumerable<string> TableNames(BackupResult backup) => backup.Manifest.Contents.Tables.Keys.Where(t => t is not ("InstanceState" or TableDump.MigrationsHistory));
 
     [Theory]
     [MemberData(nameof(Servers))]
@@ -99,7 +99,7 @@ public sealed class ProviderRoundTripTests(ITestOutputHelper output) : IDisposab
         var (b, bTables) = await LoadedAndBackedUp(provider, "b", a, aTables);
 
         foreach (var table in TableNames(a)) Assert.Equal(BackupSeed.Lines(aTables, table).Order(), BackupSeed.Lines(bTables, table).Order());
-        Assert.Equal(a.Manifest.Contents.Tables.Where(t => t.Key != "Instance"), b.Manifest.Contents.Tables.Where(t => t.Key != "Instance"));
+        Assert.Equal(a.Manifest.Contents.Tables.Where(t => t.Key != "InstanceState"), b.Manifest.Contents.Tables.Where(t => t.Key != "InstanceState"));
         Assert.True(a.Manifest.Contents.Tables.Values.Sum() > 20);
     }
 
@@ -115,7 +115,7 @@ public sealed class ProviderRoundTripTests(ITestOutputHelper output) : IDisposab
 
         var (backInSqlite, backTables) = await LoadedAndBackedUp("Sqlite", "c", onServer, serverTables);
         foreach (var table in TableNames(fromSqlite)) Assert.Equal(Normalised(fromTables, table), Normalised(backTables, table));
-        Assert.Equal(fromSqlite.Manifest.Contents.Tables.Where(t => t.Key != "Instance"), backInSqlite.Manifest.Contents.Tables.Where(t => t.Key != "Instance"));
+        Assert.Equal(fromSqlite.Manifest.Contents.Tables.Where(t => t.Key != "InstanceState"), backInSqlite.Manifest.Contents.Tables.Where(t => t.Key != "InstanceState"));
     }
 
     private static readonly Regex Timestamp = new(@"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(\.\d+)?Z$");

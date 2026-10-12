@@ -12,8 +12,8 @@ using Tankstat.Infrastructure.Persistence;
 namespace Tankstat.Migrations.PostgreSql
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261011134438_AddInstance")]
-    partial class AddInstance
+    [Migration("20261012093639_AddInstanceGeneration")]
+    partial class AddInstanceGeneration
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -102,25 +102,6 @@ namespace Tankstat.Migrations.PostgreSql
                     b.ToTable("ResourceGrants", (string)null);
                 });
 
-            modelBuilder.Entity("Tankstat.Domain.Backups.Instance", b =>
-                {
-                    b.Property<int>("Id")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("Generation")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("RestorePoint")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("RestoredAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Instance", (string)null);
-                });
-
             modelBuilder.Entity("Tankstat.Domain.Charts.VehicleChart", b =>
                 {
                     b.Property<Guid>("Id")
@@ -204,6 +185,32 @@ namespace Tankstat.Migrations.PostgreSql
                     b.HasIndex("Folder");
 
                     b.ToTable("Images", (string)null);
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Instance.InstanceState", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("Generation")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("LastStartMode")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("LastStartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("RestorePoint")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("RestoredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("InstanceState", (string)null);
                 });
 
             modelBuilder.Entity("Tankstat.Domain.Measurements.Cost", b =>

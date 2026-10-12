@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Tankstat.Application.Backups;
@@ -293,6 +294,33 @@ public sealed class RestoreTests : IDisposable
     private sealed class UnwritableBackups : IBackupWriter
     {
         public Task<BackupResult> WriteAsync(BackupRequest request, CancellationToken ct) => throw new IOException("There is no room left on the device.");
+    }
+
+    [Fact]
+    public async Task AnInstanceRowWrittenBeforeGenerations_GetsOneAtTheNextStart_AndKeepsIt_AndItsLastStartMode()
+    {
+        using var shared = new SharedData();
+        shared.Host(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = Folder("backups") }).Dispose();
+        await using (var connection = new SqliteConnection($"Data Source={shared.DatabasePath};Pooling=False"))
+        {
+            await connection.OpenAsync();
+            await using var blank = connection.CreateCommand();
+            blank.CommandText = "UPDATE InstanceState SET Generation = '00000000-0000-0000-0000-000000000000'"; // as the migration leaves a row of an older release
+            Assert.Equal(1, await blank.ExecuteNonQueryAsync());
+        }
+
+        string generation;
+        using (var restarted = shared.Host(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = Folder("backups") }))
+            generation = (await InstanceOf(restarted)).Generation;
+        using var again = shared.Host(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = Folder("backups") });
+
+        Assert.NotEqual(Guid.Empty, Guid.Parse(generation));
+        Assert.Equal(generation, (await InstanceOf(again)).Generation);
+        await using var check = new SqliteConnection($"Data Source={shared.DatabasePath};Pooling=False");
+        await check.OpenAsync();
+        await using var mode = check.CreateCommand();
+        mode.CommandText = "SELECT LastStartMode FROM InstanceState";
+        Assert.Equal("None", await mode.ExecuteScalarAsync());
     }
 
     [Fact]
