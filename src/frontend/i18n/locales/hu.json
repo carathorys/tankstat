@@ -1397,7 +1397,7 @@
     "nothingPending": "Minden beállítás érvényben van.",
     "restart": "Kiszolgáló újraindítása",
     "restartConfirmTitle": "Újraindítod a kiszolgálót?",
-    "restartConfirmDescription": "A kiszolgáló leáll, és másodperceken belül újra elindul; ez az oldal újratöltődik, amint visszatért. Mindenki bejelentkezve marad, hacsak a bejelentkezési mód nem változott.",
+    "restartConfirmDescription": "A kiszolgáló leáll, és másodperceken belül újra elindul; ez az oldal újratöltődik, amint visszatért, és ami rajta még nincs mentve, elvész. Mindenki bejelentkezve marad, hacsak a bejelentkezési mód nem változott.",
     "restarting": "A kiszolgáló újraindul…",
     "restartBack": "A kiszolgáló visszatért; az oldal újratöltődik.",
     "restartTimeout": "A kiszolgáló még nem tért vissza. Töltsd újra az oldalt kicsit később.",
@@ -1440,6 +1440,8 @@
     "problems": "A kiszolgáló nem fogadta el ezeket az értékeket:",
     "modeChangeTitle": "Módosítod a bejelentkezési módot?",
     "modeChangeDescription": "A mód a következő újraindításkor {{mode}} lesz, ami mindenkit kijelentkeztet, téged is. Ha utána nem tudsz bejelentkezni, állítsd be az Auth__Mode környezeti változót: az győz a beállításfájllal szemben.",
+    "modeDefault": "az appsettings.json szerinti mód (gyárilag None: bejelentkezés nélkül mindenki mindent lát és módosíthat)",
+    "modeNone": "None (bejelentkezés nélkül mindenki mindent lát és módosíthat)",
     "confirmModeChange": "Mód módosítása",
     "fields": {
       "Auth__Mode": "Bejelentkezési mód",

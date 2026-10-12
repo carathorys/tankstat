@@ -1397,7 +1397,7 @@
     "nothingPending": "Every setting is in effect.",
     "restart": "Restart server",
     "restartConfirmTitle": "Restart the server?",
-    "restartConfirmDescription": "The server stops and starts again within seconds, and this page reloads when it is back. Everybody stays signed in, unless the sign-in mode changed.",
+    "restartConfirmDescription": "The server stops and starts again within seconds, and this page reloads when it is back: changes not saved on it yet are lost. Everybody stays signed in, unless the sign-in mode changed.",
     "restarting": "Restarting the server…",
     "restartBack": "The server is back; reloading the page.",
     "restartTimeout": "The server has not come back yet. Reload the page in a moment.",
@@ -1440,6 +1440,8 @@
     "problems": "The server could not take these values:",
     "modeChangeTitle": "Change the sign-in mode?",
     "modeChangeDescription": "The mode becomes {{mode}} at the next restart, which signs everybody out, you included. If you cannot sign in afterwards, set Auth__Mode in the environment: it wins over the settings file.",
+    "modeDefault": "the one appsettings.json sets (None as shipped: no sign-in, everyone sees and changes everything)",
+    "modeNone": "None (no sign-in: everyone sees and changes everything)",
     "confirmModeChange": "Change the mode",
     "fields": {
       "Auth__Mode": "Sign-in mode",

@@ -1,9 +1,8 @@
 import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
-import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { DefinitionList } from '../components/DefinitionList.tsx'
@@ -13,10 +12,11 @@ import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { useErrorText } from '../i18n/errors.ts'
 import { ErrorMessage, WarningMessage } from '../messages.tsx'
 import { navigation } from '../navigation.ts'
-import { isConnectionFailure } from '../offline/errors.ts'
+import { classifyFailure } from '../offline/errors.ts'
+import { PROBE_TIMEOUT_MS, withDeadline } from '../offline/runtime.ts'
 import { waitForRestart } from './restartFlow.ts'
 import { problemsOf } from './settingsText.ts'
-import { SettingsGroupForm } from './SettingsGroupForm.tsx'
+import { ProblemList, SettingsGroupForm } from './SettingsGroupForm.tsx'
 
 /**
  * The settings the server runs with, for administrators: the app's own settings file (what became of it at the last start), the restart
@@ -26,7 +26,8 @@ export function SystemSettingsPage() {
   const { t } = useTranslation()
   usePageTitle(t('systemSettings.title'))
   const { data, error } = useQuery(SystemSettingsDocument, { fetchPolicy: 'cache-and-network' })
-  const settings = data?.systemSettings
+  // The server's answer or nothing: when asking again fails, Apollo keeps the earlier answer beside the error, and that may be out of date.
+  const settings = error ? undefined : data?.systemSettings
 
   return (
     <section aria-labelledby="page-title">
@@ -36,7 +37,7 @@ export function SystemSettingsPage() {
       <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
         {t('systemSettings.description')}
       </Typography>
-      {error && !data && <ErrorMessage error={error} />}
+      {error && <ErrorMessage error={error} />}
       {!data && !error && <Loading />}
       {settings && (
         <>
@@ -65,13 +66,7 @@ function FileStatus({ file }: { file: SystemSettingsQuery['systemSettings']['fil
       {file.ignored && (
         <WarningMessage>
           {t('systemSettings.fileIgnored')}
-          {file.problems.length > 0 && (
-            <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
-              {file.problems.map((p) => (
-                <li key={p}>{p}</li>
-              ))}
-            </Box>
-          )}
+          <ProblemList problems={file.problems} />
         </WarningMessage>
       )}
     </Stack>
@@ -89,6 +84,21 @@ function RestartCard({ pending }: { pending: number }) {
   const [error, setError] = useState<unknown>()
   const errorText = useErrorText()
   const problems = problemsOf(error)
+  const trigger = useRef<HTMLButtonElement>(null)
+  // The wait outlives the page when it is left meanwhile; how it ends is then no business of the page open by then.
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+  // The button is off while busy, so the focus the confirmation gives back to it as it closes is lost. Once the confirmation is gone and the
+  // restart did not go ahead (refused, or the wait ran out), the focus returns to the button, unless it went somewhere else meanwhile.
+  const [confirmGone, setConfirmGone] = useState(true)
+  useEffect(() => {
+    if (confirmGone && !busy && (error !== undefined || status !== '') && (!document.activeElement || document.activeElement === document.body)) trigger.current?.focus()
+  }, [confirmGone, busy, error, status])
 
   async function restart() {
     setBusy(true)
@@ -97,16 +107,28 @@ function RestartCard({ pending }: { pending: number }) {
     try {
       await restartServer()
     } catch (e) {
-      // The host may stop before the answer gets out: a lost connection is the restart happening, anything else a refusal.
-      if (!isConnectionFailure(e)) {
+      // The host may stop before the answer gets out: a request that went and got no answer is the restart happening. Anything answered is a
+      // refusal, and so is an OfflineError: the server was known to be out of reach, so nothing was sent and nothing restarts.
+      if (classifyFailure(e) === 'answered') {
         setError(e)
         setStatus('')
         setBusy(false)
         return
       }
     }
-    const probe = () => client.query({ query: HealthDocument, fetchPolicy: 'network-only', context: { offline: 'bypass' } }).then(() => true, () => false)
+    // A deadline per probe, as the runtime's own: a request nobody answers must not hold the wait past `downFor` and `upFor`.
+    const probe = () =>
+      withDeadline(client.query({ query: HealthDocument, fetchPolicy: 'network-only', context: { offline: 'bypass' } }), PROBE_TIMEOUT_MS).then(
+        () => true,
+        () => false,
+      )
     const outcome = await waitForRestart(probe)
+    if (!mounted.current) {
+      // The page was left meanwhile: nothing is reloaded under the person's hands. Who is signed in is asked instead, since a restart in
+      // another sign-in mode may have changed it.
+      if (outcome === 'back') void client.refetchQueries({ include: ['Session'] }).catch(() => undefined)
+      return
+    }
     if (outcome === 'back') {
       setStatus(t('systemSettings.restartBack'))
       navigation.reload()
@@ -127,11 +149,7 @@ function RestartCard({ pending }: { pending: number }) {
           // A restart the next start would refuse: the settings at fault, as a refused save lists them.
           <ErrorMessage error={error}>
             {errorText(error)}
-            <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
-              {problems.map((p) => (
-                <li key={p}>{p}</li>
-              ))}
-            </Box>
+            <ProblemList problems={problems} />
           </ErrorMessage>
         ) : (
           <ErrorMessage error={error} />
@@ -139,14 +157,18 @@ function RestartCard({ pending }: { pending: number }) {
       <div>
         <ConfirmDialog
           trigger={
-            <Button variant="soft" color="error" size="large" disabled={busy}>
+            <Button ref={trigger} variant="soft" color="error" size="large" disabled={busy}>
               {t('systemSettings.restart')}
             </Button>
           }
           title={t('systemSettings.restartConfirmTitle')}
           description={t('systemSettings.restartConfirmDescription')}
           confirmLabel={t('systemSettings.restart')}
-          onConfirm={() => void restart()}
+          onConfirm={() => {
+            setConfirmGone(false)
+            void restart()
+          }}
+          onClosed={() => setConfirmGone(true)}
         />
       </div>
       <Typography variant="body2" role="status">

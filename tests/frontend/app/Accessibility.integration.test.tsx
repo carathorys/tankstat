@@ -69,7 +69,7 @@ it('the vehicle page and its tabs have no violations', async () => {
 })
 
 it('the trash, account and administration pages have no violations', async () => {
-  for (const route of ['/trash', '/trash?tab=refuelings', '/trash?tab=expenses', '/account', '/admin', '/admin/settings', '/sync']) {
+  for (const route of ['/trash', '/trash?tab=refuelings', '/trash?tab=expenses', '/account', '/admin', '/sync']) {
     const { view } = setup(route)
     await screen.findByRole('main')
     await screen.findByRole('heading', { level: 1 })
@@ -259,10 +259,11 @@ it('the user administration dialogs are labelled, described and free of violatio
   }
 })
 
-it('the system settings confirmations are labelled, described and free of violations', async () => {
-  const { ui } = setup('/admin/settings')
+it('the system settings page and its confirmation are labelled, described and free of violations', async () => {
+  const { view, ui } = setup('/admin/settings')
   const page = within(await screen.findByRole('region', { name: 'System settings' }))
   await page.findByText('/data/settings.json')
+  await check(view.container) // the forms loaded, before a dialog hides them
 
   await ui.click(page.getByRole('button', { name: 'Restart server' }))
   const restart = await screen.findByRole('alertdialog', { name: 'Restart the server?' })
