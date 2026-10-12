@@ -39,6 +39,7 @@ const AccountPage = lazy(() => import('./pages/AccountPage.tsx').then((m) => ({ 
 const AdminPanel = lazy(() => import('./admin/AdminPanel.tsx').then((m) => ({ default: m.AdminPanel })))
 const SystemSettingsPage = lazy(() => import('./admin/SystemSettingsPage.tsx').then((m) => ({ default: m.SystemSettingsPage })))
 const AdminOverviewPage = lazy(() => import('./admin/AdminOverviewPage.tsx').then((m) => ({ default: m.AdminOverviewPage })))
+const BackupsPage = lazy(() => import('./admin/BackupsPage.tsx').then((m) => ({ default: m.BackupsPage })))
 
 /** Another address for a page, its query string kept (a page or a sort someone saved a link to). */
 function KeepQuery({ to }: { to: string }) {
@@ -242,6 +243,7 @@ function Content({ data }: { data: SessionQuery }) {
             <Route path="/admin/people" element={isAdmin ? <AdminPanel /> : <Navigate to="/" replace />} />
             <Route path="/admin/vehicles" element={isAdmin ? <VehiclesPage /> : <Navigate to="/" replace />} />
             <Route path="/admin/settings" element={isAdmin ? <SystemSettingsPage /> : <Navigate to="/" replace />} />
+            <Route path="/admin/backups" element={isAdmin ? <BackupsPage /> : <Navigate to="/" replace />} />
             <Route path="*" element={<Typography>{t('app.notFound')}</Typography>} />
           </Routes>
         </Suspense>

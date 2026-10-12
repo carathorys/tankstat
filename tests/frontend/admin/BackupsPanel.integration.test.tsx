@@ -51,7 +51,7 @@ const idle: Run = { __typename: 'BackupRunInfo', running: false, startedAt: null
 /** The password field of a dialog: the radios that choose between passphrase and identity carry those words too. */
 const secretField = (dialog: HTMLElement, label: RegExp) => within(dialog).getByLabelText(label, { selector: 'input[type="password"]' })
 
-/** The server's side of the backups tab: the overview, a run, an upload, a key set and a restore, each call recorded. */
+/** The server's side of the Backups page: the overview, a run, an upload, a key set and a restore, each call recorded. */
 function backupsServer({ points = [point()], run = idle, restoreAnswer }: { points?: unknown[]; run?: Run; restoreAnswer?: () => Response } = {}) {
   const calls: Record<string, unknown[]> = {}
   const record = (name: string, value: unknown) => (calls[name] ??= []).push(value)
@@ -130,8 +130,7 @@ function backupsServer({ points = [point()], run = idle, restoreAnswer }: { poin
 
 async function openBackups() {
   const ui = userEvent.setup()
-  renderWithApollo(<App />, '/admin')
-  await ui.click(await screen.findByRole('tab', { name: 'Backups' }))
+  renderWithApollo(<App />, '/admin/backups')
   await screen.findByRole('heading', { name: 'Backups in the folder' })
   return ui
 }
@@ -292,9 +291,14 @@ it('a server without backups says how to make the first one', async () => {
   expect(screen.queryByRole('table')).not.toBeInTheDocument()
 })
 
-it('the backups are only asked for once the tab is opened', async () => {
+it('is a page of the Administration group, and the backups are only asked for there', async () => {
   const { calls } = backupsServer()
-  renderWithApollo(<App />, '/admin')
-  await screen.findByRole('tab', { name: 'Backups' })
+  renderWithApollo(<App />, '/admin/people')
+  await screen.findByRole('tab', { name: 'Users' })
   expect(calls.Backups).toBeUndefined()
+  const ui = userEvent.setup()
+  await ui.click(within(screen.getByRole('group', { name: 'Administration' })).getByRole('link', { name: 'Backups' }))
+  expect(await screen.findByRole('heading', { level: 1, name: 'Backups' })).toBeInTheDocument()
+  await screen.findByRole('heading', { name: 'Backups in the folder' })
+  expect(calls.Backups).toBeDefined()
 })

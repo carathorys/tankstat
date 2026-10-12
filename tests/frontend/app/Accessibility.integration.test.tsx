@@ -273,8 +273,8 @@ it('the system settings page and its confirmation are labelled, described and fr
   await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
 })
 
-it('the backups tab, its restore and its key set dialogs are labelled, described and free of violations', async () => {
-  const { ui } = setup('/admin')
+it('the backups page, its restore and its key set dialogs are labelled, described and free of violations', async () => {
+  const { ui } = setup('/admin/backups')
   const run = { __typename: 'BackupRunInfo', running: false, startedAt: '2026-10-11T08:00:00Z', finishedAt: '2026-10-11T08:00:05Z', file: 'tankstat-backup-20261011T080000Z.zip', bytes: 3_100_000, error: null }
   const point = {
     __typename: 'RestorePointInfo', file: 'tankstat-backup-20261011T080000Z.zip', bytes: 3_100_000, createdAt: '2026-10-11T08:00:00Z', appVersion: '0.13.0', provider: 'Sqlite',
@@ -297,7 +297,6 @@ it('the backups tab, its restore and its key set dialogs are labelled, described
       HttpResponse.json({ data: { prepareBackupEncryption: { __typename: 'BackupKeySetInfo', passphrase: 'K7QM-4XWD-PL2N-ZR8A-HJ3T', generated: true, identity: 'AGE-SECRET-KEY-1QQQ', recipient: 'age1abc', salt: 'c2FsdA==' } } }),
     ),
   )
-  await ui.click(await screen.findByRole('tab', { name: 'Backups' }))
   await screen.findByRole('table')
   await check(document.body)
 

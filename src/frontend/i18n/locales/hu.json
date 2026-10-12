@@ -26,7 +26,8 @@
     "notifications": "Értesítések",
     "serverSettings": "Szerverbeállítások",
     "adminOverview": "Áttekintés",
-    "people": "Felhasználók"
+    "people": "Felhasználók",
+    "backups": "Mentések"
   },
   "language": {
     "label": "Nyelv"
@@ -481,7 +482,8 @@
     "deleteConfirm": "Felhasználó törlése",
     "moveGrantsNote": "A megosztások is átkerülnek: a másik felhasználó átveszi, hogy kik láthatják ennek a felhasználónak az adatait, és kinek az adatait láthatta ő.",
     "backups": {
-      "tab": "Mentések",
+      "title": "Mentések",
+      "description": "A szerver visszaállítási pontjai: készíts most egyet, tölts fel egyet, töltsd le őket, vagy állítsd vissza a szervert valamelyikre.",
       "loading": "Mentések betöltése…",
       "overview": "Ez a szerver",
       "folder": "Mentések mappája",

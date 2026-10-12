@@ -102,7 +102,7 @@ A restore replaces the instance's data **as a whole**, never merges: every table
 
 ## On the administration page
 
-The **Backups** tab of the administration page (administrators only; with sign-in off there is none, so the commands above are the way) shows:
+The **Backups** page of the administration (`/admin/backups`, in the menu's Administration group; administrators only; with sign-in off there is none, so the commands above are the way) shows:
 
 - **This server**: the backups folder in full (where to copy a file in or out), the size of the database and the migration it is at, the size of the pictures and of the photos (when they have a folder of their own), whether backups are encrypted and for which recipient, and whether they take the photos along.
 - **Back up now**: the server writes a backup in the background, one at a time (a second press while one is being written waits for that one), with the settings above, so encrypted and with the photos exactly as the command would; the tab follows it and says when it is written or why it failed. Leaving the page does not stop it.

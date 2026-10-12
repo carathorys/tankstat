@@ -55,7 +55,7 @@ const Code = ({ children }: { children: ReactNode }) => (
 )
 
 /**
- * The backups tab of the administration page: what the server holds and where its backups go, the backups in the folder (written here,
+ * The Backups page of the administration: what the server holds and where its backups go, the backups in the folder (written here,
  * uploaded, or copied in by hand), a backup written now, an upload and a download, a restore (the server restarts, and the page reloads
  * once it is back with the restored data), and a key set for encrypted backups.
  */

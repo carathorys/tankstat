@@ -1,4 +1,4 @@
-# The backups tab of the administration page. `run` is polled while a backup is being written (BackupRun selects only what costs nothing).
+# The administration's Backups page. `run` is polled while a backup is being written (BackupRun selects only what costs nothing).
 
 fragment BackupRunFields on BackupRunInfo {
   running

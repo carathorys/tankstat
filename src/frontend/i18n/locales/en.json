@@ -26,7 +26,8 @@
     "notifications": "Notifications",
     "serverSettings": "Server settings",
     "adminOverview": "Overview",
-    "people": "People"
+    "people": "People",
+    "backups": "Backups"
   },
   "language": {
     "label": "Language"
@@ -481,7 +482,8 @@
     "deleteConfirm": "Delete user",
     "moveGrantsNote": "Sharing moves along: the other user takes over who may see this user's data, and whose data this user could see.",
     "backups": {
-      "tab": "Backups",
+      "title": "Backups",
+      "description": "Restore points of this server: write one now, upload one, download them, or take the server back to one.",
       "loading": "Loading the backups…",
       "overview": "This server",
       "folder": "Backups folder",
