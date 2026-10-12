@@ -7,7 +7,7 @@ import { useId } from 'react'
 
 /**
  * A labelled choice (units, fuel, a chart's metric, a person): the label names the select (aria-labelledby), the options open in a list.
- * An empty `value` shows the `placeholder`.
+ * An empty `value` shows the `placeholder`; a `hint` under it describes the select (aria-describedby), as a Field's hint does.
  */
 export function LabeledSelect<T extends string>({
   label,
@@ -16,6 +16,7 @@ export function LabeledSelect<T extends string>({
   onChange,
   disabled,
   placeholder,
+  hint,
 }: {
   label: string
   value: T
@@ -23,12 +24,19 @@ export function LabeledSelect<T extends string>({
   onChange: (value: T) => void
   disabled?: boolean
   placeholder?: string
+  hint?: string
 }) {
   const labelId = useId()
+  const hintId = `${labelId}-hint`
   return (
     <Stack sx={{ gap: 0.5, minWidth: 0 }}>
       <FormLabel id={labelId}>{label}</FormLabel>
-      <ChoiceSelect labelId={labelId} value={value} options={options} onChange={onChange} disabled={disabled} placeholder={placeholder} />
+      <ChoiceSelect labelId={labelId} describedBy={hint ? hintId : undefined} value={value} options={options} onChange={onChange} disabled={disabled} placeholder={placeholder} />
+      {hint && (
+        <Typography id={hintId} variant="caption" sx={{ color: 'text.secondary' }}>
+          {hint}
+        </Typography>
+      )}
     </Stack>
   )
 }
@@ -53,6 +61,7 @@ export function InlineSelect<T extends string>({
 function ChoiceSelect<T extends string>({
   labelId,
   ariaLabel,
+  describedBy,
   value,
   options,
   onChange,
@@ -61,6 +70,8 @@ function ChoiceSelect<T extends string>({
 }: {
   labelId?: string
   ariaLabel?: string
+  /** The id of what describes the select (MUI puts it on the combobox). */
+  describedBy?: string
   value: T
   options: { value: T; label: string }[]
   onChange: (value: T) => void
@@ -70,7 +81,7 @@ function ChoiceSelect<T extends string>({
   return (
     <Select<T>
       labelId={labelId}
-      inputProps={ariaLabel ? { 'aria-label': ariaLabel } : undefined}
+      inputProps={ariaLabel || describedBy ? { 'aria-label': ariaLabel, 'aria-describedby': describedBy } : undefined}
       value={value}
       onChange={(event) => onChange(event.target.value as T)}
       disabled={disabled}
