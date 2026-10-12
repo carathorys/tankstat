@@ -689,6 +689,7 @@
       "notEncrypted": "A mentés nincs titkosítva; nem nyitja jelmondat.",
       "newerFormat": "A mentést egy újabb kiadás írta (Tankstat {{appVersion}}); előbb frissíts.",
       "otherMigration": "A mentés az adatbázis másik verziójánál készült ({{backup}}), mint amin ez áll ({{database}}); azzal a kiadással állítsd vissza, amelyik írta.",
+      "databaseNewer": "Az adatbázist a Tankstat egy újabb kiadása frissítette ({{migration}}); azzal a kiadással készíts róla mentést.",
       "codeRequired": "A kiszolgáló naplójából az egyszer használatos visszaállítási kód kell hozzá.",
       "passphraseRequired": "Jelmondatot vár."
     }

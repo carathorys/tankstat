@@ -17,14 +17,41 @@ internal static class BackupFiles
         return !(parts.Length > 3 && parts[0] == "vehicles" && parts[2] == Drafts);
     }
 
-    /// <summary>The files of a root that belong in a backup, as (path in the archive below the part's folder, path on disk); none when the root does not exist.</summary>
-    public static IEnumerable<(string Relative, string Full)> Walk(string root)
+    /// <summary>
+    /// The files of a root that belong in a backup, as (path in the archive below the part's folder, path on disk); none when the root does
+    /// not exist. A folder the app cannot list (the lost+found of a disk mounted as the root, which is root's) holds nothing the app wrote: it
+    /// is left out and <paramref name="unreadable"/> is told, rather than the whole backup failing on it. A folder gone meanwhile (a purged
+    /// vehicle) is left out quietly. Hidden files are taken like any other.
+    /// </summary>
+    public static IEnumerable<(string Relative, string Full)> Walk(string root, Action<UnauthorizedAccessException> unreadable)
     {
         if (!Directory.Exists(root)) yield break;
-        foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+        var folders = new Stack<string>();
+        folders.Push(root);
+        while (folders.Count > 0)
         {
-            var relative = Path.GetRelativePath(root, file).Replace(Path.DirectorySeparatorChar, '/');
-            if (Included(relative)) yield return (relative, file);
+            var folder = folders.Pop();
+            string[] files, subfolders;
+            try
+            {
+                files = Directory.GetFiles(folder);
+                subfolders = Directory.GetDirectories(folder);
+            }
+            catch (UnauthorizedAccessException e)
+            {
+                unreadable(e);
+                continue;
+            }
+            catch (DirectoryNotFoundException)
+            {
+                continue;
+            }
+            foreach (var file in files)
+            {
+                var relative = Path.GetRelativePath(root, file).Replace(Path.DirectorySeparatorChar, '/');
+                if (Included(relative)) yield return (relative, file);
+            }
+            foreach (var subfolder in subfolders) folders.Push(subfolder);
         }
     }
 }

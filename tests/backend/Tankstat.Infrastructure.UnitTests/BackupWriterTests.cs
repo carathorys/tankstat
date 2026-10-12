@@ -1,9 +1,12 @@
+using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Tankstat.Application.Backups;
 using Tankstat.Application.Expenses;
 using Tankstat.Application.Images;
@@ -303,5 +306,134 @@ public sealed class BackupWriterTests : IDisposable
         }
         Assert.True(results[^1].Manifest.Contents.Tables["Refuelings"] >= results[0].Manifest.Contents.Tables["Refuelings"]);
         Assert.Equal(3, Directory.GetFiles(Backups).Length); // three in the same second: three names
+    }
+
+    [Theory]
+    [InlineData("th-TH")] // the Thai Buddhist calendar: a custom date pattern writes the year 2569
+    [InlineData("fi-FI")] // '.' as the time separator: a custom pattern writes 12.34.56
+    public async Task TheDumpAndTheFileName_AreIso8601_WhateverTheCultureOfTheProcess(string culture)
+    {
+        await using var db = Database();
+        await Seed(db, separatePhotos: false);
+        var before = CultureInfo.CurrentCulture;
+        BackupResult result;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(culture); // the CLI runs with the shell's LANG
+            result = await db.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = before;
+        }
+
+        var year = result.Manifest.CreatedAt.UtcDateTime.Year.ToString(CultureInfo.InvariantCulture);
+        Assert.Matches($@"^tankstat-backup-{year}\d{{4}}T\d{{6}}Z\.zip$", Path.GetFileName(result.Path));
+        var inner = Inner(result.Path);
+        try
+        {
+            var updatedAt = JsonDocument.Parse(Assert.Single(Lines(inner, "Vehicles"))).RootElement.GetProperty("UpdatedAt").GetString();
+            Assert.Matches($@"^{year}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{{7}}Z$", updatedAt);
+            Assert.Equal("2026-09-01", JsonDocument.Parse(Assert.Single(Lines(inner, "Refuelings"))).RootElement.GetProperty("Date").GetString());
+        }
+        finally
+        {
+            Directory.Delete(inner, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task APartialFileAnotherRunIsWriting_IsLeftAlone()
+    {
+        await using var db = Database();
+        await Seed(db, separatePhotos: false);
+        var output = Path.Combine(_data, "elsewhere", "same.zip");
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+
+        await using (var other = new FileStream(output + ".partial", FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        {
+            other.WriteByte(42); // another run with the same --output, half way
+            await Assert.ThrowsAsync<IOException>(() => db.Get<IBackupWriter>().WriteAsync(new BackupRequest(Output: output), default));
+        }
+
+        Assert.Equal(1, new FileInfo(output + ".partial").Length); // not this run's to remove, nor to write into
+        Assert.False(File.Exists(output));
+    }
+
+    [Fact]
+    public async Task ADatabaseANewerReleaseMigrated_IsRefused_RatherThanBackedUpWithoutWhatThisReleaseDoesNotKnow()
+    {
+        await using var db = Database();
+        await Seed(db, separatePhotos: false);
+        await using (var context = await db.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync())
+            await context.Database.ExecuteSqlRawAsync("INSERT INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ('99991231235959_FromANewerRelease', '99.0.0')");
+
+        var refusal = await Assert.ThrowsAsync<Domain.DomainException>(() => db.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default));
+
+        Assert.Equal("backup.databaseNewer", refusal.Key);
+        Assert.Empty(Directory.GetFiles(Backups)); // nothing partial stays behind
+    }
+
+    [Fact]
+    public async Task AFolderTheAppCannotRead_IsLeftOutWithAWarning_AndTheRestIsBackedUp()
+    {
+        if (OperatingSystem.IsWindows()) return; // Unix permissions
+        await using var db = Database();
+        await Seed(db, separatePhotos: false);
+        var lostAndFound = Directory.CreateDirectory(Path.Combine(Pictures, "lost+found")).FullName; // a disk mounted as the root: root's, 0700
+        File.SetUnixFileMode(lostAndFound, UnixFileMode.None);
+        try
+        {
+            var result = await db.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
+
+            Assert.Equal(3 * 4, result.Manifest.Sizes.Pictures); // the picture, the avatar, the legacy file and the photo
+            if (!IsReadable(lostAndFound)) Assert.Single(db.Log.From<BackupWriter>(), e => e.Level == LogLevel.Warning); // root reads it anyway
+        }
+        finally
+        {
+            File.SetUnixFileMode(lostAndFound, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+
+        static bool IsReadable(string folder)
+        {
+            try
+            {
+                Directory.GetFiles(folder);
+                return true;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return false;
+            }
+        }
+    }
+
+    [Fact]
+    public async Task FoldersThatAreNotThere_LeaveTheManifestHonest_AndAWarningWhenTheDatabaseListsPictures()
+    {
+        // The command run from another working directory than the server's: the relative folders resolve to nothing.
+        var identity = BackupKeys.Identity("correct horse battery staple", Encoding.ASCII.GetBytes("tankstat-salt-01"), new Argon2idParameters(256, 1, 1));
+        await using var db = Database(recipient: AgeKeys.FormatRecipient(BackupKeys.Recipient(identity)));
+        await Seed(db, separatePhotos: false);
+        Directory.Delete(Pictures, recursive: true);
+        Directory.Delete(Keys, recursive: true);
+
+        var result = await db.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
+
+        Assert.Equal((false, 0L, 0L), (result.Manifest.Contents.Keys, result.Manifest.Sizes.Keys, result.Manifest.Sizes.Pictures)); // no keys claimed that are not there
+        var warning = Assert.Single(db.Log.From<BackupWriter>(), e => e.Level == LogLevel.Warning);
+        Assert.Equal(4L, warning.Values["Images"]);
+    }
+
+    [Fact]
+    public async Task AMissingSqliteDatabase_IsRefused_NeverCreated()
+    {
+        var missing = Path.Combine(_data, "elsewhere", "tankstat.db"); // the relative default, seen from another working directory
+        Directory.CreateDirectory(Path.GetDirectoryName(missing)!);
+        await using var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlite($"Data Source={missing}").Options);
+
+        await Assert.ThrowsAsync<SqliteException>(() => BackupSource.OpenAsync(context, DatabaseProvider.Sqlite, NullLogger.Instance, default));
+
+        Assert.False(File.Exists(missing));
     }
 }

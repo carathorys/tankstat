@@ -689,6 +689,7 @@
       "notEncrypted": "The backup is not encrypted; no passphrase opens it.",
       "newerFormat": "The backup was written by a newer release (Tankstat {{appVersion}}); upgrade first.",
       "otherMigration": "The backup was made at another version of the database ({{backup}}) than this one is at ({{database}}); restore it with the release that wrote it.",
+      "databaseNewer": "The database was migrated by a newer release of Tankstat ({{migration}}); back it up with that release.",
       "codeRequired": "The one-time restore code from the server's log is needed.",
       "passphraseRequired": "A passphrase is expected."
     }
