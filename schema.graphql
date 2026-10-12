@@ -31,6 +31,7 @@ type Query {
   canSetUserPasswords: Boolean! @cost(weight: "10")
   accessSettings: AccessSettingsInfo! @cost(weight: "10")
   accessGrants: [AccessGrantInfo!]! @cost(weight: "10")
+  backups: BackupOverviewInfo! @cost(weight: "10")
   mySessions: [UserSessionInfo!]! @cost(weight: "10")
   refuelings(
     vehicleId: UUID!
@@ -114,6 +115,9 @@ type Mutation {
   setAccessGrant(input: SetAccessGrantInput!): Boolean! @cost(weight: "10")
   restoreBackup(input: RestoreBackupInput!): RestorePendingInfo!
     @cost(weight: "10")
+  runBackup: Boolean! @cost(weight: "10")
+  prepareBackupEncryption(passphrase: String): BackupKeySetInfo!
+    @cost(weight: "10")
   revokeSession(id: UUID!): Boolean! @cost(weight: "10")
   revokeOtherSessions: Int! @cost(weight: "10")
   logRefueling(input: LogRefuelingInput!): Refueling! @cost(weight: "10")
@@ -164,6 +168,39 @@ type AccessGrantInfo {
 
 type AccessSettingsInfo {
   defaultLevelForOthers: AccessLevel!
+}
+
+type BackupKeySetInfo {
+  passphrase: String!
+  generated: Boolean!
+  identity: String!
+  recipient: String!
+  salt: String!
+}
+
+type BackupOverviewInfo {
+  folder: String!
+  run: BackupRunInfo!
+  settings: BackupSettingsInfo!
+  restorePoints: [RestorePointInfo!]! @cost(weight: "10")
+  migration: String @cost(weight: "10")
+  sizes: StorageSizesInfo! @cost(weight: "10")
+}
+
+type BackupRunInfo {
+  running: Boolean!
+  startedAt: DateTime
+  finishedAt: DateTime
+  file: String
+  bytes: Long
+  error: String
+}
+
+type BackupSettingsInfo {
+  recipient: String
+  photosApart: Boolean!
+  photos: Boolean!
+  maxUploadMb: Int!
 }
 
 type ChartData {
@@ -485,6 +522,25 @@ type RestorePendingInfo {
   restorePoint: DateTime!
 }
 
+type RestorePointInfo {
+  file: String!
+  bytes: Long!
+  createdAt: DateTime!
+  appVersion: String!
+  provider: String!
+  migration: String
+  sameMigration: Boolean!
+  safetyNet: Boolean!
+  uploaded: Boolean!
+  encrypted: Boolean!
+  recipient: String
+  currentRecipient: Boolean!
+  photos: BackupPhotos!
+  keys: Boolean!
+  tables: Int!
+  rows: Long!
+}
+
 type Session {
   mode: AuthMode!
   user: UserInfo
@@ -496,6 +552,12 @@ type SettingsFileInfo {
   exists: Boolean!
   ignored: Boolean!
   problems: [String!]!
+}
+
+type StorageSizesInfo {
+  database: Long
+  pictures: Long!
+  photos: Long
 }
 
 type SyncChangeInfo {
@@ -998,6 +1060,12 @@ enum AuthMode {
   STANDALONE
   OIDC
   PROXY_HEADER
+}
+
+enum BackupPhotos {
+  WITH_PICTURES
+  SEPARATE
+  LEFT_OUT
 }
 
 enum ChartGrouping {
