@@ -137,14 +137,14 @@ public sealed class BackupWriterTests : IDisposable
         var manifest = BackupManifest.FromJson(Manifest(result.Path));
         Assert.Equal(result.Manifest.ToJson(), manifest.ToJson());
         Assert.Equal((1, "tankstat", "Sqlite", false, null), (manifest.Format, manifest.WrittenBy, manifest.Provider, manifest.SafetyNet, manifest.Encryption));
-        Assert.EndsWith("_AddPasswordResetIssuedAt", manifest.Migration); // the last migration at the time of writing; a newer one is fine too
         Assert.Equal((BackupArchive.Plain, true, BackupPhotos.WithPictures, false), (manifest.Archive.Name, manifest.Contents.Pictures, manifest.Contents.Photos, manifest.Contents.Keys));
 
         // Every table of the model, by its name in the database, plus the migrations history; every DbSet is among them.
         await using (var context = await db.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync())
         {
+            Assert.Equal(context.Database.GetMigrations().Last(), manifest.Migration); // the migration the database is at
             var tables = context.Model.GetEntityTypes().Select(e => e.GetTableName()).Where(t => t is not null).Distinct().ToList();
-            Assert.Equal(26, tables.Count);
+            Assert.True(tables.Count >= 26, "the model's tables");
             Assert.Equal(tables.Append(TableDump.MigrationsHistory).Order(), manifest.Contents.Tables.Keys.Order());
             Assert.Equal(context.Database.GetMigrations().Count(), manifest.Contents.Tables[TableDump.MigrationsHistory]);
         }
@@ -165,7 +165,7 @@ public sealed class BackupWriterTests : IDisposable
                 Files(inner).Where(f => f.StartsWith("files/")));
             Assert.Equal("PHO", File.ReadAllText(Path.Combine(inner, "files", "pictures", "vehicles", seeded.Vehicle.ToString("N"), "refuelings", seeded.Refueling.ToString("N"), seeded.Photo.ToString("N"))));
             Assert.DoesNotContain(Files(inner), f => f.StartsWith("keys/"));
-            Assert.Equal(27, Files(inner).Count(f => f.StartsWith("tables/")));
+            Assert.Equal(manifest.Contents.Tables.Count, Files(inner).Count(f => f.StartsWith("tables/")));
             Assert.Equal(3 * 4, manifest.Sizes.Pictures);
             Assert.Equal((0, 0), (manifest.Sizes.Photos, manifest.Sizes.Keys));
 
@@ -183,7 +183,7 @@ public sealed class BackupWriterTests : IDisposable
             Assert.Equal("2026-09-01", refueling.GetProperty("Date").GetString());
             Assert.Equal(seeded.Refueling, Guid.Parse(refueling.GetProperty("Id").GetString()!));
             var migration = JsonDocument.Parse(Lines(inner, TableDump.MigrationsHistory).Last()).RootElement;
-            Assert.EndsWith("_AddPasswordResetIssuedAt", migration.GetProperty("MigrationId").GetString());
+            Assert.Equal(manifest.Migration, migration.GetProperty("MigrationId").GetString());
             Assert.Equal(manifest.Sizes.Tables, Directory.EnumerateFiles(Path.Combine(inner, "tables")).Sum(f => new FileInfo(f).Length));
         }
         finally
@@ -197,7 +197,7 @@ public sealed class BackupWriterTests : IDisposable
         Assert.DoesNotContain(_data, json);
         var line = Assert.Single(db.Log.From<BackupWriter>().Where(e => e.Level == LogLevel.Information));
         Assert.Equal(Path.GetFileName(result.Path), line.Values["File"]);
-        Assert.Equal(27, line.Values["Tables"]);
+        Assert.Equal(manifest.Contents.Tables.Count, line.Values["Tables"]);
         foreach (var needle in new[] { Email, Name, Plate, "zzcanary", "zzsecret" }) Assert.False(db.Log.Mentions(needle), needle);
     }
 
