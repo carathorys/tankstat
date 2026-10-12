@@ -207,6 +207,33 @@ it('restarting asks once more, waits for the server to go and come back, and rel
   expect(screen.getByText('The server is back; reloading the page.')).toBeInTheDocument()
 })
 
+it('a restart the next start would refuse says why, names the settings, and leaves the page as it is', async () => {
+  const ui = userEvent.setup()
+  const reload = vi.spyOn(navigation, 'reload').mockImplementation(() => undefined)
+  settingsServer()
+  server.use(
+    graphql.mutation('RestartServer', () =>
+      HttpResponse.json(
+        gqlError('The server would not start again with the settings file as it is.', 'VALIDATION_FAILED', 'settings.restartWouldFail', {
+          problems: ['Notifications:MaxPerHour must be at least 1.'],
+        }),
+      ),
+    ),
+  )
+  renderWithApollo(<App />, '/admin/settings')
+  const view = await page()
+
+  await ui.click(view.getByRole('button', { name: 'Restart server' }))
+  const dialog = await screen.findByRole('alertdialog', { name: 'Restart the server?' })
+  await ui.click(within(dialog).getByRole('button', { name: 'Restart server' }))
+
+  const alert = await view.findByRole('alert')
+  expect(alert).toHaveTextContent('The server would not start again with the settings file as it is, so it was not restarted.')
+  expect(within(alert).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Notifications:MaxPerHour must be at least 1.'])
+  expect(view.getByRole('button', { name: 'Restart server' })).toBeEnabled() // nothing waits for a server that never went
+  expect(reload).not.toHaveBeenCalled()
+})
+
 it('only administrators can open it', async () => {
   server.use(sessionHandler('STANDALONE', () => user()), healthHandler, ...fakeVehicleBackend().handlers)
   renderWithApollo(<App />, '/admin/settings')

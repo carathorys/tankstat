@@ -10,10 +10,12 @@ import { DefinitionList } from '../components/DefinitionList.tsx'
 import { Loading } from '../components/Loading.tsx'
 import { HealthDocument, RestartServerDocument, SystemSettingsDocument, type SystemSettingsQuery } from '../gql/generated.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
+import { useErrorText } from '../i18n/errors.ts'
 import { ErrorMessage, WarningMessage } from '../messages.tsx'
 import { navigation } from '../navigation.ts'
 import { isConnectionFailure } from '../offline/errors.ts'
 import { waitForRestart } from './restartFlow.ts'
+import { problemsOf } from './settingsText.ts'
 import { SettingsGroupForm } from './SettingsGroupForm.tsx'
 
 /**
@@ -85,6 +87,8 @@ function RestartCard({ pending }: { pending: number }) {
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState<unknown>()
+  const errorText = useErrorText()
+  const problems = problemsOf(error)
 
   async function restart() {
     setBusy(true)
@@ -118,7 +122,20 @@ function RestartCard({ pending }: { pending: number }) {
         {t('systemSettings.restartTitle')}
       </Typography>
       <Typography variant="body2">{pending > 0 ? t('systemSettings.pending', { count: pending }) : t('systemSettings.nothingPending')}</Typography>
-      {error !== undefined && <ErrorMessage error={error} />}
+      {error !== undefined &&
+        (problems.length > 0 ? (
+          // A restart the next start would refuse: the settings at fault, as a refused save lists them.
+          <ErrorMessage error={error}>
+            {errorText(error)}
+            <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+              {problems.map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+            </Box>
+          </ErrorMessage>
+        ) : (
+          <ErrorMessage error={error} />
+        ))}
       <div>
         <ConfirmDialog
           trigger={
