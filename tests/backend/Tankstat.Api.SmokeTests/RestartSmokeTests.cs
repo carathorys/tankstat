@@ -56,4 +56,18 @@ public class RestartSmokeTests
         Assert.Contains("database migrations", app.Log); // the first start migrated...
         Assert.Contains("up to date", app.Log); // ...and the second found the database ready: two starts in one process
     }
+
+    [Fact]
+    public async Task AStopSignal_RightAfterARestart_EndsTheProcess()
+    {
+        if (OperatingSystem.IsWindows()) return; // POSIX signals, as docker stop sends them
+        await using var app = await AppProcess.StartAsync(Standalone);
+        await app.Gql("mutation($i: LoginInput!) { login(input: $i) { id } }", new { i = new { email = "root@example.com", password = "initial-password-1" } });
+        var signedIn = new Dictionary<string, string> { ["Cookie"] = app.CookieHeader };
+        Assert.True((await app.Gql("mutation { restartServer }", headers: signedIn)).Data().GetProperty("restartServer").GetBoolean());
+
+        await app.SignalAsync("TERM"); // docker stop, while the host stops for the restart
+
+        Assert.True(await app.ExitsWithinAsync(TimeSpan.FromSeconds(20)), "a stop signal during a restart must end the process, not start a new host:\n" + app.Log);
+    }
 }
