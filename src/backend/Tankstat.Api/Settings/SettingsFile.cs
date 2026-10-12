@@ -84,7 +84,7 @@ public sealed record SettingsFile(SettingsFileStatus Status, JsonConfigurationSo
         var path = System.IO.Path.GetFullPath(configuration[PathSetting] is { } configured && !string.IsNullOrWhiteSpace(configured) ? configured : DefaultPath);
         var builder = (IConfigurationBuilder)configuration;
         var at = ConfigurationSources.IndexOfEnvironment(builder.Sources);
-        var file = SettingsFileStore.SourceFor(path); // read once: every change waits for a restart
+        var file = SettingsFileStore.SourceFor(path); // not watched: a save on the settings page reads it afresh, a hand edit waits for the next start
 
         if (!File.Exists(path)) return new(SettingsFileStatus.Used(path, exists: false), file);
         var problems = Problems(builder, file, at, configuration);

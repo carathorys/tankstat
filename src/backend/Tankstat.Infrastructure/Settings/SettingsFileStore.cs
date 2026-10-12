@@ -39,9 +39,9 @@ public sealed class SettingsFileStore(string path) : ISettingsFileStore
     }
 
     /// <summary>
-    /// The file at <paramref name="path"/> as a JSON configuration source that is read once (nothing reloads), the way the app reads its own
-    /// settings file at start and the Seeder reads it too. The file's folder is the provider's root and nothing in it is hidden: the provider
-    /// <c>AddJsonFile</c> makes would not see a file whose name starts with a dot, and read it as missing.
+    /// The file at <paramref name="path"/> as a JSON configuration source that does not watch it (a save on the settings page puts a fresh one in
+    /// its place), the way the app reads its own settings file at start and the Seeder reads it too. The file's folder is the provider's root
+    /// and nothing in it is hidden: the provider <c>AddJsonFile</c> makes would not see a file whose name starts with a dot, and read it as missing.
     /// </summary>
     public static JsonConfigurationSource SourceFor(string path, bool optional = true)
     {
