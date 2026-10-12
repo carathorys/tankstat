@@ -1412,7 +1412,7 @@
   },
   "systemSettings": {
     "title": "Server settings",
-    "description": "What the server runs with. A value an environment variable sets cannot be changed here (the variable wins); everything else is kept in the app's own settings file and takes effect after a restart.",
+    "description": "What the server runs with. A value an environment variable sets cannot be changed here (the variable wins); everything else is kept in the app's own settings file. Some groups take effect as soon as they are saved, the others after a restart: each tab says which.",
     "file": "Settings file",
     "fileMissing": "No file yet: it is created with the first change.",
     "fileIgnored": "The file was left out at the last start because the server could not have started with it; the server runs without it. Fix what is named below (or save the group again) and restart.",
@@ -1462,6 +1462,9 @@
     "wholeNumber": "Enter a whole number.",
     "save": "Save changes",
     "saved": "Saved. It takes effect after a restart.",
+    "savedInEffect": "Saved. It is in effect now.",
+    "appliesAtOnce": "Changes here take effect as soon as they are saved.",
+    "appliesAfterRestart": "Changes here take effect after a restart of the server.",
     "problems": "The server could not take these values:",
     "modeChangeTitle": "Change the sign-in mode?",
     "modeChangeDescription": "The mode becomes {{mode}} at the next restart, which signs everybody out, you included. If you cannot sign in afterwards, set Auth__Mode in the environment: it wins over the settings file.",

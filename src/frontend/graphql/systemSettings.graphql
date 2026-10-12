@@ -21,6 +21,7 @@ fragment SystemSettingsFields on SystemSettingsInfo {
   restartPending
   groups {
     name
+    appliesAtOnce
     settings {
       ...SystemSettingFields
     }

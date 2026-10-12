@@ -39,7 +39,7 @@ const LEVELS = ['Trace', 'Debug', 'Information', 'Warning', 'Error', 'Critical',
 
 /**
  * The server's answer: the sign-in mode (Standalone unless `mode` says another) held by the environment, a list and a secret from the file,
- * a currency waiting for a restart.
+ * the admin password switch waiting for a restart (the sign-in is read at start), the defaults applying at once.
  */
 function fixture({ modeEditable = false, mode = 'Standalone' }: { modeEditable?: boolean; mode?: string } = {}) {
   return {
@@ -49,7 +49,7 @@ function fixture({ modeEditable = false, mode = 'Standalone' }: { modeEditable?:
     groups: [
       {
         __typename: 'SystemSettingsGroup',
-        name: 'AUTH',
+        name: 'AUTH', appliesAtOnce: false,
         settings: [
           setting(
             modeEditable
@@ -59,11 +59,11 @@ function fixture({ modeEditable = false, mode = 'Standalone' }: { modeEditable?:
           setting({ key: 'Auth:PublicUrl' }),
           setting({ key: 'Auth:AdminEmails', kind: 'LIST', value: 'a@example.com\nb@example.com', isSet: true, source: 'FILE' }),
           setting({ key: 'Auth:Oidc:ClientSecret', kind: 'SECRET', isSecret: true, isSet: true, source: 'FILE' }),
-          setting({ key: 'Auth:Standalone:AllowAdminSetPassword', kind: 'BOOLEAN' }),
+          setting({ key: 'Auth:Standalone:AllowAdminSetPassword', kind: 'BOOLEAN', restartPending: true }),
         ],
       },
-      { __typename: 'SystemSettingsGroup', name: 'DEFAULTS', settings: [setting({ key: 'Defaults:Currency', value: 'HUF', isSet: true, source: 'FILE', restartPending: true })] },
-      { __typename: 'SystemSettingsGroup', name: 'LOGGING', settings: [setting({ key: 'Logging:LogLevel:Default', kind: 'CHOICE', choices: LEVELS, value: 'Information', isSet: true, source: 'SHIPPED' })] },
+      { __typename: 'SystemSettingsGroup', name: 'DEFAULTS', appliesAtOnce: true, settings: [setting({ key: 'Defaults:Currency', value: 'HUF', isSet: true, source: 'FILE' })] },
+      { __typename: 'SystemSettingsGroup', name: 'LOGGING', appliesAtOnce: true, settings: [setting({ key: 'Logging:LogLevel:Default', kind: 'CHOICE', choices: LEVELS, value: 'Information', isSet: true, source: 'SHIPPED' })] },
     ],
   }
 }
@@ -118,12 +118,15 @@ it('shows every group, where each value comes from, and what waits for a restart
   expect(auth.getByText('Standalone')).toBeInTheDocument()
   expect(auth.getByLabelText('Public address')).toHaveValue('')
   expect(auth.getByLabelText('Administrators (OIDC and proxy sign-in)')).toHaveValue('a@example.com\nb@example.com')
+  expect(auth.getByRole('switch', { name: 'Administrators may set passwords' })).toHaveAccessibleDescription(/takes effect after a restart/)
+  expect(auth.getByText('Changes here take effect after a restart of the server.')).toBeInTheDocument()
   expect(auth.getByLabelText('OIDC client secret')).toHaveValue('') // never shown back
   expect(auth.getByLabelText('OIDC client secret')).toHaveAccessibleDescription(/Set\. Leave blank to keep it\./)
   expect(auth.getByRole('switch', { name: 'Administrators may set passwords' })).not.toBeChecked()
   const defaults = await group('Defaults for new vehicles')
   expect(defaults.getByLabelText('Currency')).toHaveValue('HUF')
-  expect(defaults.getByLabelText('Currency')).toHaveAccessibleDescription(/takes effect after a restart/)
+  expect(defaults.getByLabelText('Currency')).not.toHaveAccessibleDescription(/restart/) // the defaults apply at once: nothing of them waits
+  expect(defaults.getByText('Changes here take effect as soon as they are saved.')).toBeInTheDocument()
   expect(defaults.getByRole('button', { name: 'Save changes' })).toBeDisabled() // nothing changed yet
   const logging = await group('Logging')
   expect(logging.getByRole('combobox', { name: 'Everything else' })).toHaveTextContent('Information')
@@ -137,19 +140,19 @@ it('shows values as the server reads them however they are written, and sends a 
     groups: [
       {
         __typename: 'SystemSettingsGroup',
-        name: 'SMTP',
+        name: 'SMTP', appliesAtOnce: false,
         // A spelling the server still takes but no longer offers.
         settings: [setting({ key: 'Smtp:Security', kind: 'CHOICE', choices: ['Auto', 'None', 'StartTls', 'StartTlsWhenAvailable', 'SslOnConnect'], value: 'Ssl', isSet: true, source: 'FILE' })],
       },
       {
         __typename: 'SystemSettingsGroup',
-        name: 'PHOTO_READING',
+        name: 'PHOTO_READING', appliesAtOnce: false,
         settings: [
           setting({ key: 'Recognition:OpenAiCompatible:LogTraffic', kind: 'BOOLEAN', value: 'True', isSet: true, source: 'FILE' }), // a JSON true in the file, as .NET reads it
           setting({ key: 'Recognition:MinConfidence', kind: 'DECIMAL', value: '0.5', isSet: true, source: 'FILE' }),
         ],
       },
-      { __typename: 'SystemSettingsGroup', name: 'LOGGING', settings: [setting({ key: 'Logging:LogLevel:Tankstat', kind: 'CHOICE', choices: LEVELS, value: 'debug', isSet: true, source: 'FILE' })] },
+      { __typename: 'SystemSettingsGroup', name: 'LOGGING', appliesAtOnce: true, settings: [setting({ key: 'Logging:LogLevel:Tankstat', kind: 'CHOICE', choices: LEVELS, value: 'debug', isSet: true, source: 'FILE' })] },
     ],
   })
   renderWithApollo(<App />, '/admin/settings')
@@ -190,6 +193,22 @@ it('saves only what changed, a secret only when typed, and says so', async () =>
       ],
     },
   ])
+})
+
+it('says a saved setting is in effect when the server says nothing of it waits', async () => {
+  const ui = userEvent.setup()
+  const saved = fixture()
+  saved.groups[1].settings[0] = setting({ key: 'Defaults:Currency', value: 'USD', isSet: true, source: 'FILE' })
+  settingsServer(fixture(), saved)
+  renderWithApollo(<App />, '/admin/settings')
+
+  const defaults = await group('Defaults for new vehicles')
+  await ui.clear(defaults.getByLabelText('Currency'))
+  await ui.type(defaults.getByLabelText('Currency'), 'USD')
+  await ui.click(defaults.getByRole('button', { name: 'Save changes' }))
+
+  expect(await screen.findByText('Saved. It is in effect now.')).toBeInTheDocument()
+  expect(screen.queryByText('Saved. It takes effect after a restart.')).not.toBeInTheDocument()
 })
 
 it('a save starts the form afresh, even when its answer looks as before', async () => {
@@ -457,7 +476,7 @@ function modesFixture(mode = 'Standalone') {
       },
       {
         __typename: 'SystemSettingsGroup',
-        name: 'SMTP',
+        name: 'SMTP', appliesAtOnce: false,
         settings: [setting({ key: 'Smtp:Host', value: 'mail.example', isSet: true, source: 'FILE' }), setting({ key: 'Smtp:Port', kind: 'INTEGER', value: '587', isSet: true, source: 'SHIPPED' })],
       },
       ...base.groups.slice(1),
@@ -640,10 +659,10 @@ it('a mail server left empty leaves the rest of the e-mail settings unused, and 
   settingsServer({
     ...base,
     groups: [
-      { __typename: 'SystemSettingsGroup', name: 'SMTP', settings: [setting({ key: 'Smtp:Host' }), setting({ key: 'Smtp:Port', kind: 'INTEGER', value: '587', isSet: true, source: 'SHIPPED' })] },
+      { __typename: 'SystemSettingsGroup', name: 'SMTP', appliesAtOnce: false, settings: [setting({ key: 'Smtp:Host' }), setting({ key: 'Smtp:Port', kind: 'INTEGER', value: '587', isSet: true, source: 'SHIPPED' })] },
       {
         __typename: 'SystemSettingsGroup',
-        name: 'PHOTO_READING',
+        name: 'PHOTO_READING', appliesAtOnce: false,
         settings: [
           setting({ key: 'Recognition:Provider', kind: 'CHOICE', choices: ['None', 'OpenAiCompatible'], defaultValue: 'None' }), // set nowhere: its built-in None
           setting({ key: 'Recognition:OpenAiCompatible:Model', value: 'llava', isSet: true, source: 'FILE' }),

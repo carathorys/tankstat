@@ -48,7 +48,7 @@ export function SettingsGroupForm({
   onDraft,
   onSaved,
 }: {
-  group: { name: SettingsGroup; settings: readonly Setting[] }
+  group: { name: SettingsGroup; appliesAtOnce: boolean; settings: readonly Setting[] }
   draft: GroupDraft
   valueOf: ValueOf
   onDraft: (draft: GroupDraft) => void
@@ -186,9 +186,11 @@ export function SettingsGroupForm({
   async function save() {
     setError(undefined)
     try {
-      await update({ variables: { changes } })
+      const answer = await update({ variables: { changes } })
       onSaved()
-      toast(t('systemSettings.saved'))
+      // The server says what waits: a group that applies at once runs with what was saved, and a value saved back to what runs waits for nothing.
+      const saved = answer.data?.updateSystemSettings.groups.find((g) => g.name === group.name)
+      toast(t(saved?.settings.some((s) => s.restartPending) ? 'systemSettings.saved' : 'systemSettings.savedInEffect'))
     } catch (e) {
       setError(e)
     }
@@ -217,6 +219,9 @@ export function SettingsGroupForm({
         </Typography>
         <Typography variant="body2" sx={{ color: 'text.secondary' }}>
           {t(`systemSettings.groupHelp.${group.name}`)}
+        </Typography>
+        <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
+          {t(group.appliesAtOnce ? 'systemSettings.appliesAtOnce' : 'systemSettings.appliesAfterRestart')}
         </Typography>
       </div>
       {wholeGroup && (

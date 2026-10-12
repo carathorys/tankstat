@@ -96,7 +96,7 @@ export function setup(route: string, viewport: 'desktop' | 'phone' = 'desktop', 
             groups: [
               {
                 __typename: 'SystemSettingsGroup',
-                name: 'AUTH',
+                name: 'AUTH', appliesAtOnce: false,
                 settings: [
                   { __typename: 'SystemSetting', key: 'Auth:Mode', kind: 'CHOICE', choices: ['None', 'Standalone', 'Oidc', 'ProxyHeader'], value: 'Standalone', isSet: true, isSecret: false, source: 'ENVIRONMENT', editable: false, restartPending: false, defaultValue: 'None' },
                   { __typename: 'SystemSetting', key: 'Auth:PublicUrl', kind: 'TEXT', choices: [], value: null, isSet: false, isSecret: false, source: 'DEFAULT', editable: true, restartPending: false, defaultValue: null },
@@ -108,7 +108,7 @@ export function setup(route: string, viewport: 'desktop' | 'phone' = 'desktop', 
               },
               {
                 __typename: 'SystemSettingsGroup',
-                name: 'LOGGING',
+                name: 'LOGGING', appliesAtOnce: true,
                 settings: [{ __typename: 'SystemSetting', key: 'Logging:LogLevel:Default', kind: 'CHOICE', choices: ['Trace', 'Debug', 'Information', 'Warning', 'Error', 'Critical', 'None'], value: 'Information', isSet: true, isSecret: false, source: 'SHIPPED', editable: true, restartPending: false, defaultValue: 'Information' }],
               },
             ],

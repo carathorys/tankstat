@@ -1412,7 +1412,7 @@
   },
   "systemSettings": {
     "title": "Szerverbeállítások",
-    "description": "Amivel a kiszolgáló fut. Amit környezeti változó állít be, az itt nem módosítható (a változó győz); minden más az alkalmazás saját beállításfájljába kerül, és újraindítás után lép életbe.",
+    "description": "Amivel a kiszolgáló fut. Amit környezeti változó állít be, az itt nem módosítható (a változó győz); minden más az alkalmazás saját beállításfájljába kerül. Egyes csoportok a mentéskor életbe lépnek, a többiek újraindítás után: minden lap megmondja, melyik.",
     "file": "Beállításfájl",
     "fileMissing": "Még nincs fájl: az első módosítással jön létre.",
     "fileIgnored": "A fájl a legutóbbi indításkor kimaradt, mert a kiszolgáló nem tudott volna elindulni vele; a kiszolgáló nélküle fut. Javítsd az alább nevezett értékeket (vagy mentsd újra a csoportot), és indítsd újra.",
@@ -1462,6 +1462,9 @@
     "wholeNumber": "Egész számot adj meg.",
     "save": "Módosítások mentése",
     "saved": "Mentve. Újraindítás után lép életbe.",
+    "savedInEffect": "Mentve. Már életben van.",
+    "appliesAtOnce": "Az itteni változások a mentéskor életbe lépnek.",
+    "appliesAfterRestart": "Az itteni változások a szerver újraindítása után lépnek életbe.",
     "problems": "A kiszolgáló nem fogadta el ezeket az értékeket:",
     "modeChangeTitle": "Módosítod a bejelentkezési módot?",
     "modeChangeDescription": "A mód a következő újraindításkor {{mode}} lesz, ami mindenkit kijelentkeztet, téged is. Ha utána nem tudsz bejelentkezni, állítsd be az Auth__Mode környezeti változót: az győz a beállításfájllal szemben.",
