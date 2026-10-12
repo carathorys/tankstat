@@ -84,4 +84,70 @@ public class OidcDiscoveryTests
             return new HttpResponseMessage(HttpStatusCode.OK);
         }
     }
+
+    [Fact]
+    public async Task TheAppsClient_AsksAsTheHandlerDoes_WithinTheTimeout()
+    {
+        await using var db = new TestDatabase();
+
+        var client = db.Get<IHttpClientFactory>().CreateClient(nameof(Tankstat.Application.SystemSettings.IOidcDiscovery)); // the typed client's name
+
+        Assert.Equal((OidcDiscovery.UserAgent, OidcDiscovery.Timeout), (client.DefaultRequestHeaders.UserAgent.ToString(), client.Timeout));
+    }
+
+    [Fact]
+    public async Task ABodyThatStallsAfterTheHeaders_IsATimeoutToo()
+    {
+        var stub = new Stub(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new Body(stall: true)) });
+        var client = new HttpClient(stub) { Timeout = TimeSpan.FromMilliseconds(200) }; // ends with the headers, which come at once
+        using var request = new CancellationTokenSource(TimeSpan.FromSeconds(20)); // the request's own limit, far later
+
+        var result = await new OidcDiscovery(client).ProbeAsync("https://id.example.com", request.Token);
+
+        Assert.Equal((false, "timeout"), (result.Reachable, result.Reason));
+    }
+
+    [Fact]
+    public async Task ABodyCutShort_IsUnreachable()
+    {
+        var stub = new Stub(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new Body(stall: false)) });
+
+        var result = await new OidcDiscovery(new HttpClient(stub)).ProbeAsync("https://id.example.com", default);
+
+        Assert.Equal((false, "unreachable"), (result.Reachable, result.Reason));
+    }
+
+    [Fact]
+    public async Task ADocumentWithAByteOrderMark_IsRead()
+    {
+        var bytes = System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes("""{ "issuer": "https://id.example.com" }""")).ToArray();
+        var stub = new Stub(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) });
+
+        var result = await new OidcDiscovery(new HttpClient(stub)).ProbeAsync("https://id.example.com", default);
+
+        Assert.Equal((true, "https://id.example.com"), (result.Reachable, result.Issuer));
+    }
+
+    /// <summary>A response body that never comes (<paramref name="stall"/>) or breaks off, as a connection that drops after the headers does.</summary>
+    private sealed class Body(bool stall) : Stream
+    {
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
+        {
+            if (!stall) throw new HttpIOException(HttpRequestError.ResponseEnded, "The response ended prematurely.");
+            await Task.Delay(Timeout.Infinite, ct);
+            return 0;
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken ct) => ReadAsync(buffer.AsMemory(offset, count), ct).AsTask();
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
 }
