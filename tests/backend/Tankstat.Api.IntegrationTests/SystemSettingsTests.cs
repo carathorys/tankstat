@@ -120,6 +120,48 @@ public class SystemSettingsTests
     }
 
     [Fact]
+    public async Task AMistakeOfTheEnvironmentsOwn_TheAppRunsWith_HoldsNoSaveBack()
+    {
+        // Smtp:Security is no name of MailKit's: the sender runs it as Auto, so the app starts, and the next start keeps a file with it too.
+        using var app = TestApp.Standalone(new() { ["Smtp:Security"] = "Tls" });
+        var admin = await Admin(app);
+
+        var answer = (await admin.Gql(Update, new { c = new object[] { new { key = "Defaults:Currency", value = "HUF" } } })).Data().GetProperty("updateSystemSettings");
+
+        Assert.Equal("HUF", Setting(answer, "Defaults:Currency").GetProperty("value").GetString());
+        Assert.Equal("settings.invalid", ErrorKey(await admin.Gql(Update, new { c = new object[] { new { key = "Notifications:MaxPerHour", value = "0" } } }))); // what the file adds still counts
+    }
+
+    [Fact]
+    public async Task AFileTheAppMayNotOpen_IsShownAsEmpty_NotAsAnError()
+    {
+        if (OperatingSystem.IsWindows()) return; // file modes
+        using var app = TestApp.Standalone();
+        var admin = await Admin(app);
+        await File.WriteAllTextAsync(app.SettingsPath, """{ "Defaults": { "Currency": "HUF" } }""");
+        File.SetUnixFileMode(app.SettingsPath, UnixFileMode.None);
+        try
+        {
+            try
+            {
+                await File.ReadAllTextAsync(app.SettingsPath);
+                return; // root reads anything: there is no unreadable file to show here
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+
+            var settings = (await admin.Gql(Query)).Data().GetProperty("systemSettings");
+
+            Assert.False(Setting(settings, "Defaults:Currency").GetProperty("isSet").GetBoolean());
+        }
+        finally
+        {
+            File.SetUnixFileMode(app.SettingsPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+    }
+
+    [Fact]
     public async Task RestartServer_ReachesTheHostsRestart_AndIsLogged()
     {
         using var app = TestApp.Standalone();

@@ -111,16 +111,23 @@ public static class DependencyInjection
         services.AddSingleton<RecognitionSignal>();
         services.AddSingleton<IRecognitionSignal>(sp => sp.GetRequiredService<RecognitionSignal>());
 
-        // The discovery document of an OIDC authority an administrator typed: a short wait, no redirects (the handler follows none either), a small answer.
-        services.AddHttpClient<IOidcDiscovery, OidcDiscovery>(client => client.Timeout = OidcDiscovery.Timeout)
+        // The discovery document of an OIDC authority an administrator typed: a short wait, a small answer, and no redirects. The handler's own
+        // backchannel would follow one; the probe does not, on purpose: the address that is saved must be the one that answers. It asks with
+        // the handler's User-Agent, so a firewall in front of the provider that turns away requests without one treats it as it will the handler.
+        services.AddHttpClient<IOidcDiscovery, OidcDiscovery>(client =>
+            {
+                client.Timeout = OidcDiscovery.Timeout;
+                client.DefaultRequestHeaders.UserAgent.ParseAdd(OidcDiscovery.UserAgent);
+            })
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
 
-        // Order matters: migrate first, then sign everybody out when the authentication mode changed since the last start, then move the photos kept
-        // with the pictures once they have a folder of their own, then create the initial administrator; the photo reading worker needs the migrated database.
+        // Order matters: migrate first, then move the photos kept with the pictures once they have a folder of their own, then create the initial
+        // administrator, then sign everybody out when the authentication mode changed since the last start (after what can still fail the start,
+        // so a start that never served a request records no mode; still before the server listens); the photo reading worker needs the migrated database.
         services.AddHostedService<DatabaseMigrator>();
-        services.AddHostedService<ModeChangeSignOut>();
         services.AddHostedService<PhotosMove>();
         services.AddHostedService<StandaloneBootstrapper>();
+        services.AddHostedService<ModeChangeSignOut>();
         services.AddHostedService<RecognitionWorker>();
         services.AddHostedService<PasswordResetMailer>();
 

@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Tankstat.Application;
 using Tankstat.Infrastructure;
 using Tankstat.Infrastructure.Persistence;
+using Tankstat.Infrastructure.Settings;
 
 namespace Tankstat.Seeder;
 
@@ -33,7 +34,7 @@ public static class SeederApp
         }
 
         // The app's own settings file counts as it does in the app: below the environment, so a mode set on the settings page is seen too.
-        var settingsFile = Path.GetFullPath(options.SettingsPath ?? (string.IsNullOrWhiteSpace(config["Settings:Path"]) ? "settings.json" : config["Settings:Path"]!));
+        var settingsFile = Path.GetFullPath(new[] { options.SettingsPath, config["Settings:Path"] }.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p)) ?? "settings.json"); // blank = unset, as in the app
         var settings = new Dictionary<string, string?>();
         if (options.Provider is not null) settings["Database:Provider"] = options.Provider;
         if (options.ConnectionString is not null) settings["Database:ConnectionString"] = options.ConnectionString;
@@ -41,14 +42,14 @@ public static class SeederApp
         try
         {
             effective = new ConfigurationBuilder()
-                .AddJsonFile(settingsFile, optional: true, reloadOnChange: false)
+                .Add(SettingsFileStore.SourceFor(settingsFile)) // as the app reads it, a name starting with a dot included
                 .AddConfiguration(config)
                 .AddInMemoryCollection(settings)
                 .Build();
         }
-        catch (Exception e) when (e is FormatException or InvalidDataException or IOException)
+        catch (Exception e) when (e is FormatException or InvalidDataException or IOException or UnauthorizedAccessException)
         {
-            await output.WriteLineAsync($"Error: the settings file {settingsFile} cannot be read as JSON.");
+            await output.WriteLineAsync($"Error: the settings file {settingsFile} cannot be read, or is not valid JSON.");
             return Refused;
         }
 

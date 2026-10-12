@@ -48,7 +48,7 @@ Everything is configured through environment variables, or by an administrator o
 - [User guide](docs/user-guide.md): what is on the screen and how each feature behaves.
 - [Importing](docs/importing.md): bringing your logs from Fuelio.
 - [Install as an app](docs/install-as-an-app.md): the home screen, offline use and updates.
-- [Configuration](docs/configuration.md): database, uploaded files, defaults, notifications and logging.
+- [Configuration](docs/configuration.md): database, uploaded files, defaults, notifications, the app's own settings file and logging.
 - [Authentication and access control](docs/authentication.md): the four sign-in modes, every setting, and who may see what.
 - [Reading photos with an OpenAI-compatible model](docs/photo-reading.md): setting up a vision model, what it is told, and following a photo through the log.
 - [Self-hosting](docs/self-hosting.md): the Docker image, running the published build, releases.

@@ -90,7 +90,7 @@ public sealed class SmtpOptions
     public string? Password { get; set; }
     public string? From { get; set; }
 
-    /// <summary>Auto, None, StartTls or Ssl.</summary>
+    /// <summary>MailKit's names: Auto, None, StartTls, StartTlsWhenAvailable or SslOnConnect; anything else (the old "Ssl" too) runs as Auto.</summary>
     public string Security { get; set; } = "Auto";
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(Host) && !string.IsNullOrWhiteSpace(From);

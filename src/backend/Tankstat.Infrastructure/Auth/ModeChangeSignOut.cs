@@ -4,7 +4,10 @@ using Tankstat.Application.SystemSettings;
 
 namespace Tankstat.Infrastructure.Auth;
 
-/// <summary>Records this start and signs every device out when the authentication mode changed since the last one (after the migrations ran).</summary>
+/// <summary>
+/// Records this start and signs every device out when the authentication mode changed since the last one: after the migrations and the first
+/// administrator (a start that fails before it records nothing), before the server listens.
+/// </summary>
 internal sealed class ModeChangeSignOut(IServiceScopeFactory scopes) : IHostedService
 {
     public async Task StartAsync(CancellationToken ct)

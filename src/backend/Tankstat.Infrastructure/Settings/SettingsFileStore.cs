@@ -1,6 +1,9 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration.Json;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.FileProviders.Physical;
 using Tankstat.Application.SystemSettings;
 
 namespace Tankstat.Infrastructure.Settings;
@@ -31,8 +34,27 @@ public sealed class SettingsFileStore(string path) : ISettingsFileStore
     {
         var full = System.IO.Path.GetFullPath(path);
         if (!File.Exists(full)) return new Dictionary<string, string?>();
-        var root = new ConfigurationBuilder().AddJsonFile(full, optional: false, reloadOnChange: false).Build();
+        var root = new ConfigurationBuilder().Add(SourceFor(full, optional: false)).Build();
         return Leaves(root).ToDictionary(p => p.Key, p => p.Value, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The file at <paramref name="path"/> as a JSON configuration source that is read once (nothing reloads), the way the app reads its own
+    /// settings file at start and the Seeder reads it too. The file's folder is the provider's root and nothing in it is hidden: the provider
+    /// <c>AddJsonFile</c> makes would not see a file whose name starts with a dot, and read it as missing.
+    /// </summary>
+    public static JsonConfigurationSource SourceFor(string path, bool optional = true)
+    {
+        var full = System.IO.Path.GetFullPath(path);
+        var folder = System.IO.Path.GetDirectoryName(full);
+        var source = new JsonConfigurationSource { Path = full, Optional = optional, ReloadOnChange = false };
+        if (folder is not null && Directory.Exists(folder))
+        {
+            source.FileProvider = new PhysicalFileProvider(folder, ExclusionFilters.None);
+            source.Path = System.IO.Path.GetFileName(full);
+        }
+        else source.ResolveFileProvider(); // no folder, so no file there: an optional source reads as empty
+        return source;
     }
 
     private static IEnumerable<KeyValuePair<string, string?>> Leaves(IConfiguration section)

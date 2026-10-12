@@ -43,5 +43,40 @@ internal sealed class SystemConfiguration(SettingsFile file, IConfiguration runn
             : ConfigurationSources.With(Builder, replacement, ConfigurationSources.IndexOfEnvironment(Builder.Sources), replacing: false);
     }
 
-    public IReadOnlyList<string> Check(IConfiguration configuration) => SettingsCheck.Check(configuration);
+    public IReadOnlyList<string> Check(IConfiguration configuration)
+    {
+        if (SettingsCheck.Check(configuration).Count == 0) return [];
+        var without = With(new Dictionary<string, string?>()); // the same sources with no file, which the start compares with
+        try
+        {
+            return SettingsCheck.AgainstFile(configuration, without);
+        }
+        finally
+        {
+            (without as IDisposable)?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// The running sources without the file's (the same environment, command line and appsettings files, read afresh), prepared by
+    /// <see cref="SettingsFile.Prepare(ConfigurationManager)"/> as the next start will prepare them.
+    /// </summary>
+    public NextStart PrepareNextStart()
+    {
+        var next = new ConfigurationManager();
+        IConfigurationBuilder builder = next;
+        foreach (var (key, value) in Builder.Properties) builder.Properties[key] = value;
+        foreach (var source in Builder.Sources)
+            if (!ReferenceEquals(source, file.Source)) builder.Add(ConfigurationSources.ReadOnce(source));
+        try
+        {
+            SettingsFile.Prepare(next);
+            return new NextStart(next, []);
+        }
+        catch (SettingsFileRefusedException e)
+        {
+            next.Dispose();
+            return new NextStart(null, e.Problems);
+        }
+    }
 }

@@ -11,8 +11,9 @@ using Tankstat.Infrastructure.Settings;
 
 // Build and run, and again when an administrator restarts the server (ServerRestart): in this process, never by exiting, since Docker's
 // default restart policy leaves a container that exited cleanly stopped. Under WebApplicationFactory the first Build() throws
-// HostAbortedException out of here, so nothing may catch around it.
+// HostAbortedException out of here, so nothing may catch around it (the using below lets go of the signals on the way out).
 var restarts = new RestartRequests();
+using var stopSignals = restarts.EndOnStopSignals(); // docker stop during a restart still ends the process
 do
 {
     restarts.Reset();

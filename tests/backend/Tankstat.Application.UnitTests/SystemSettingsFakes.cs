@@ -25,11 +25,27 @@ internal sealed class FakeSystemConfiguration : ISystemConfiguration
 
     public IConfiguration With(IReadOnlyDictionary<string, string?> fileValues) => Build(fileValues);
 
-    /// <summary>The managed settings' kinds and the validators of the Application layer, bound from the configuration as the app binds them.</summary>
+    /// <summary>
+    /// As the app checks a save: what the file's values add to the sources without a file (the managed settings' kinds, then the validators,
+    /// each compared on its own), else what the validators refuse anyway: the environment's own mistakes count only when the host would not
+    /// start with them.
+    /// </summary>
     public IReadOnlyList<string> Check(IConfiguration configuration)
     {
-        var problems = new List<string>(SettingsCatalog.Problems(key => configuration[key]));
-        if (problems.Count > 0) return problems;
+        var without = Build(new Dictionary<string, string?>());
+        var shapes = Shapes(configuration).Except(Shapes(without)).ToList();
+        if (shapes.Count > 0) return shapes;
+        var rules = Rules(configuration);
+        var added = rules.Except(Rules(without)).ToList();
+        return added.Count > 0 ? added : rules;
+    }
+
+    private static List<string> Shapes(IConfiguration configuration) => [.. SettingsCatalog.Problems(key => configuration[key])];
+
+    /// <summary>The validators of the Application layer, bound from the configuration as the app binds them.</summary>
+    private static List<string> Rules(IConfiguration configuration)
+    {
+        var problems = new List<string>();
         try
         {
             var smtp = configuration.GetSection(SmtpOptions.SectionName).Get<SmtpOptions>() ?? new SmtpOptions();
@@ -49,6 +65,13 @@ internal sealed class FakeSystemConfiguration : ISystemConfiguration
             if (result.Failed) problems.AddRange(result.Failures!);
         }
     }
+
+    /// <summary>The settings file the next start would read (by default the one it read at start), or, when set, its refusal of it.</summary>
+    public Dictionary<string, string?>? FileAtNextStart { get; set; }
+    public IReadOnlyList<string> NextStartRefusal { get; set; } = [];
+
+    public NextStart PrepareNextStart() =>
+        NextStartRefusal.Count > 0 ? new NextStart(null, NextStartRefusal) : new NextStart(Build(FileAtNextStart ?? FileAtStart), []);
 
     private static bool Has(Dictionary<string, string?> values, string key) =>
         values.Keys.Any(k => k.Equals(key, StringComparison.OrdinalIgnoreCase) || k.StartsWith(key + ":", StringComparison.OrdinalIgnoreCase));
@@ -87,10 +110,18 @@ internal sealed class FakeOidcDiscovery : IOidcDiscovery
     public OidcDiscoveryResult Answer { get; set; } = OidcDiscoveryResult.Found("https://id.example.com");
     public List<string> Probed { get; } = [];
 
-    public Task<OidcDiscoveryResult> ProbeAsync(string authority, CancellationToken ct)
+    /// <summary>When set, a probe answers only once it completes: an authority that takes its time.</summary>
+    public TaskCompletionSource? Hold { get; set; }
+
+    /// <summary>Completes when the first probe was asked.</summary>
+    public TaskCompletionSource Asked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public async Task<OidcDiscoveryResult> ProbeAsync(string authority, CancellationToken ct)
     {
         Probed.Add(authority);
-        return Task.FromResult(Answer);
+        Asked.TrySetResult();
+        if (Hold is { } hold) await hold.Task.WaitAsync(ct);
+        return Answer;
     }
 }
 

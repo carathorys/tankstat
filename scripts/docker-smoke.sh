@@ -84,6 +84,7 @@ for _ in $(seq 1 60); do
   sgql '{"query":"{ __typename }"}' >/dev/null 2>&1 && break
   sleep 1
 done
+sgql '{"query":"{ __typename }"}' >/dev/null || { echo "FAIL: the Standalone container did not come up" >&2; exit 1; }
 sgql '{"query":"mutation { login(input: { email: \"root@example.com\", password: \"initial-password-1\" }) { id } }"}' | grep -q '"id"' || { echo "FAIL: the administrator cannot sign in" >&2; exit 1; }
 sgql '{"query":"mutation { updateSystemSettings(changes: [{ key: \"Defaults:Currency\", value: \"HUF\" }]) { restartPending } }"}' | grep -q '"restartPending":true' || { echo "FAIL: the setting was not saved" >&2; exit 1; }
 docker exec "$std" cat /data/settings.json | grep -q '"Currency": "HUF"' || { echo "FAIL: the settings file does not hold the change" >&2; exit 1; }

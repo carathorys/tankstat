@@ -27,7 +27,9 @@ public sealed class SeederAppTests : IDisposable
     {
         var output = new StringWriter();
         var config = new ConfigurationBuilder().AddInMemoryCollection(env ?? new Dictionary<string, string?>()).Build();
-        var code = await SeederApp.RunAsync([.. args, "--connection", Connection], config, output, new StringReader(input), _clock);
+        // A settings file that does not exist unless the test names one: never the settings.json of the working directory, a developer's maybe.
+        string[] settings = args.Contains("--settings") || env?.ContainsKey("Settings:Path") == true ? [] : ["--settings", _db + "-settings.json"];
+        var code = await SeederApp.RunAsync([.. args, .. settings, "--connection", Connection], config, output, new StringReader(input), _clock);
         return (code, output.ToString());
     }
 
@@ -144,6 +146,9 @@ public sealed class SeederAppTests : IDisposable
             // the environment wins over the file, as in the app
             Assert.Equal(SeederApp.Success, (await Run(["--vehicles", "2", "--yes"], env: new Dictionary<string, string?> { ["Settings:Path"] = file, ["Auth:Mode"] = "None" })).Code);
 
+            // a blank --settings is no path (an answer, not a crash): Settings:Path counts then, as a blank one does in the app
+            Assert.Equal(SeederApp.Refused, (await Run(["--vehicles", "2", "--yes", "--settings="], env: new Dictionary<string, string?> { ["Settings:Path"] = file })).Code);
+
             await File.WriteAllTextAsync(file, "{ not json");
             var (broken, said) = await Run(["--vehicles", "2", "--yes", "--settings", file]);
             Assert.Equal(SeederApp.Refused, broken);
@@ -152,6 +157,42 @@ public sealed class SeederAppTests : IDisposable
         finally
         {
             File.Delete(file);
+        }
+    }
+
+    [Fact]
+    public async Task ASettingsFileWhoseNameStartsWithADot_CountsToo_AndOneThatCannotBeRead_Refuses()
+    {
+        var file = Path.Combine(Path.GetTempPath(), $".tankstat-seed-settings-{Guid.NewGuid():N}.json");
+        await File.WriteAllTextAsync(file, """{ "Auth": { "Mode": "Standalone" } }""");
+        try
+        {
+            Assert.Equal(SeederApp.Refused, (await Run(["--vehicles", "2", "--yes", "--settings", file])).Code); // read as the app reads it
+
+            if (OperatingSystem.IsWindows()) return; // Unix file modes
+            File.SetUnixFileMode(file, UnixFileMode.None);
+            if (Readable(file)) return; // root reads it anyway
+            var (code, output) = await Run(["--vehicles", "2", "--yes", "--settings", file]);
+            Assert.Equal(SeederApp.Refused, code); // an answer, not an unhandled exception
+            Assert.Contains("cannot be read", output);
+        }
+        finally
+        {
+            if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            File.Delete(file);
+        }
+    }
+
+    private static bool Readable(string path)
+    {
+        try
+        {
+            using var _ = File.OpenRead(path);
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
         }
     }
 
