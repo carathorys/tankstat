@@ -145,6 +145,37 @@ public class SettingsCatalogTests
             else foreach (var nested in Keys(t, key)) yield return nested;
         }
     }
+
+    [Theory]
+    [InlineData("Auth:Mode", "None")]
+    [InlineData("Auth:AccessTokenMinutes", "15")]
+    [InlineData("Auth:Standalone:MaxFailedAttempts", "5")]
+    [InlineData("Auth:Standalone:AllowAdminSetPassword", "false")] // as the page writes a switch
+    [InlineData("Auth:ProxyHeader:UserHeader", "X-Forwarded-User")]
+    [InlineData("Smtp:Port", "587")]
+    [InlineData("Recognition:Provider", "None")]
+    [InlineData("Recognition:MinConfidence", "0.6")] // invariantly, whatever the server's culture
+    [InlineData("Recognition:OpenAiCompatible:TimeoutSeconds", "120")]
+    [InlineData("Logging:LogLevel:Default", "Information")] // the framework's, when no source sets the default category
+    public void TheBuiltInDefault_IsTheOptionsClassesOwnValue_WrittenAsThePageWritesIt(string key, string expected) =>
+        Assert.Equal(expected, SettingsCatalog.BuiltInDefault(key));
+
+    [Theory]
+    [InlineData("Auth:Oidc:ClientSecret")] // a secret: nothing is said of one
+    [InlineData("Auth:Oidc:Scopes")] // a list: what is given is added to the built-in scopes, so they are not the value
+    [InlineData("Auth:PublicUrl")] // empty: there is none
+    [InlineData("Logging:LogLevel:Microsoft.AspNetCore")] // another category follows the default one: no fixed level of its own
+    [InlineData("Database:Provider")] // not a setting the page manages
+    public void ThereIsNoBuiltInDefault_ForASecret_AList_AnEmptyValue_AFollowingLogCategory_OrASettingThePageDoesNotManage(string key) =>
+        Assert.Null(SettingsCatalog.BuiltInDefault(key));
+
+    [Fact]
+    public void EveryBuiltInDefault_IsAValueTheSettingTakes()
+    {
+        foreach (var setting in SettingsCatalog.All)
+            if (SettingsCatalog.BuiltInDefault(setting.Key) is { } value)
+                Assert.True(SettingsCatalog.Validate(setting, value) is null, $"{setting.Key}'s default {value} is not a value it takes");
+    }
 }
 
 public class SettingsFileNoticeTests

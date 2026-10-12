@@ -1,7 +1,10 @@
 using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Notifications;
 using Tankstat.Application.Recognition;
+using Tankstat.Application.Sync;
+using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
 
@@ -143,6 +146,63 @@ public static class SettingsCatalog
 
     /// <summary>The settings of one group, in order.</summary>
     public static IEnumerable<SettingDefinition> Of(SettingsGroup group) => All.Where(d => d.Group == group);
+
+    /// <summary>The options classes the managed sections bind into, by section name.</summary>
+    private static readonly (string Section, Type Options)[] OptionsSections =
+    [
+        (AuthOptions.SectionName, typeof(AuthOptions)),
+        (SmtpOptions.SectionName, typeof(SmtpOptions)),
+        (VehicleDefaultsOptions.SectionName, typeof(VehicleDefaultsOptions)),
+        (NotificationOptions.SectionName, typeof(NotificationOptions)),
+        (SyncOptions.SectionName, typeof(SyncOptions)),
+        (RecognitionOptions.SectionName, typeof(RecognitionOptions)),
+    ];
+
+    /// <summary>The level the logging framework uses when no source sets the default category (every other category follows that one).</summary>
+    private const string FrameworkLogLevel = nameof(LogLevel.Information);
+
+    private static readonly Lazy<IReadOnlyDictionary<string, string>> Defaults = new(() =>
+    {
+        var defaults = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var setting in All)
+            if (DefaultOf(setting) is { } value) defaults[setting.Key] = value;
+        return defaults;
+    });
+
+    /// <summary>
+    /// What the app runs with when no source sets <paramref name="key"/>: the options class's own value (the default log category: the
+    /// framework's), as the page writes such a value. Null for a secret (nothing is said of one), a list (the items given are added to the
+    /// built-in ones, so showing those as the value would be misleading), another log category (it follows the default one), a setting
+    /// without one, and one the page does not manage.
+    /// </summary>
+    public static string? BuiltInDefault(string key) => Defaults.Value.GetValueOrDefault(key);
+
+    private static string? DefaultOf(SettingDefinition setting)
+    {
+        if (setting.IsSecret || setting.IsList) return null;
+        if (setting.Group == SettingsGroup.Logging) return setting.Key == LoggingDefault ? FrameworkLogLevel : null;
+        var parts = setting.Key.Split(':');
+        var section = OptionsSections.FirstOrDefault(s => s.Section.Equals(parts[0], StringComparison.OrdinalIgnoreCase));
+        if (section.Options is null) return null;
+        object? current = Activator.CreateInstance(section.Options);
+        foreach (var name in parts.Skip(1))
+        {
+            var property = current?.GetType().GetProperty(name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);
+            if (property is null) return null;
+            current = property.GetValue(current);
+        }
+        return current switch
+        {
+            // A choice the options class leaves empty is read as its None, where it offers one (the photo provider: not set means none).
+            null when setting.Kind == SettingKind.Choice && setting.Choices!.Contains("None") => "None",
+            null => null,
+            string text => string.IsNullOrWhiteSpace(text) ? null : text,
+            bool flag => flag ? "true" : "false",
+            Enum choice => choice.ToString(),
+            IFormattable number => number.ToString(null, CultureInfo.InvariantCulture),
+            _ => null,
+        };
+    }
 
     /// <summary>
     /// Why <paramref name="value"/> is not a value for <paramref name="setting"/> (null when it is): the shape its kind needs, a choice among the

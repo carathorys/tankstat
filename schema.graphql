@@ -560,6 +560,7 @@ type SystemSetting {
   source: SettingSource!
   editable: Boolean!
   restartPending: Boolean!
+  defaultValue: String
 }
 
 type SystemSettingsGroup {
