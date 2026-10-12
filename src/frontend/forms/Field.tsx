@@ -1,6 +1,8 @@
 import FormControl from '@mui/material/FormControl'
 import FormHelperText, { type FormHelperTextProps } from '@mui/material/FormHelperText'
 import FormLabel from '@mui/material/FormLabel'
+import Stack from '@mui/material/Stack'
+import { LabelBadges, type LabelBadge } from '../components/LabelBadges.tsx'
 import { useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FieldContext, type CompositeControl, type FieldControl, type FieldMessages } from './fieldContext.ts'
@@ -10,7 +12,7 @@ type Control = HTMLInputElement | HTMLTextAreaElement
 /** What is wrong with a value, if anything: the browser's checks first, then the field's own. */
 type Problem = 'valueMissing' | 'typeMismatch' | { custom: string }
 
-const SLOTS = { hint: 0, note: 1, error: 2 } as const
+const SLOTS = { badge: 0, hint: 1, note: 2, error: 3 } as const
 
 /** `customFirst`: the control knows better why it has no value (a day only partly typed is not "missing"). */
 function problemOf(control: Control, custom: string | null, customFirst: boolean): Problem | null {
@@ -35,10 +37,13 @@ export function Field({
   invalid,
   typeMismatch,
   extra,
+  badges,
   children,
 }: {
   name: string
   label: string
+  /** Short words beside the label (where a value comes from); read as the start of the control's description. */
+  badges?: readonly LabelBadge[]
   hint?: string
   required?: boolean
   invalid?: { message: string; test: (value: string) => boolean }
@@ -131,9 +136,20 @@ export function Field({
     <FieldContext.Provider value={value}>
       <FormControl fullWidth required={required} error={error !== null} sx={{ gap: 0.5 }}>
         {/* required={false}: no asterisk (a missing value is said in words), so the label's text is just the label. */}
-        <FormLabel id={labelId} htmlFor={isComposite ? undefined : id} required={false}>
-          {label}
-        </FormLabel>
+        {badges && badges.length > 0 ? (
+          <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+            <FormLabel id={labelId} htmlFor={isComposite ? undefined : id} required={false}>
+              {label}
+            </FormLabel>
+            <FieldMessage slot="badge" component="span" sx={{ m: 0 }}>
+              <LabelBadges badges={badges} />
+            </FieldMessage>
+          </Stack>
+        ) : (
+          <FormLabel id={labelId} htmlFor={isComposite ? undefined : id} required={false}>
+            {label}
+          </FormLabel>
+        )}
         {children}
         {hint && <FieldMessage slot="hint">{hint}</FieldMessage>}
         {extra}
