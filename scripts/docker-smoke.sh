@@ -76,8 +76,9 @@ grep -q '^/data/photos/vehicles/[0-9a-f]*/refuelings/' <<<"$files" || { echo "FA
 user="$(docker exec "$name" id -u)"
 [ "$user" != "0" ] || { echo "FAIL: the container runs as root" >&2; exit 1; }
 
-# A second container in Standalone mode: an administrator saves a setting through the API, it lands in /data/settings.json readable by the app's
-# user only, and a restart (in the process: the container keeps running) makes it count.
+# A second container in Standalone mode: an administrator saves two settings through the API, they land in /data/settings.json readable by the
+# app's user only; the default currency (a group that applies at once) counts straight away, the access cookie's lifetime (sign-in waits for a
+# restart on purpose) after a restart, in the process: the container keeps running.
 docker run -d --name "$std" -p "${std_port}:8080" -e Auth__Mode=Standalone -e Auth__Standalone__AdminEmail=root@example.com -e Auth__Standalone__AdminPassword=initial-password-1 "$image" >/dev/null
 sgql() { curl -sf -b "$jar" -c "$jar" -H 'Content-Type: application/json' -d "$1" "${std_url}/graphql"; }
 for _ in $(seq 1 60); do
@@ -86,16 +87,20 @@ for _ in $(seq 1 60); do
 done
 sgql '{"query":"{ __typename }"}' >/dev/null || { echo "FAIL: the Standalone container did not come up" >&2; exit 1; }
 sgql '{"query":"mutation { login(input: { email: \"root@example.com\", password: \"initial-password-1\" }) { id } }"}' | grep -q '"id"' || { echo "FAIL: the administrator cannot sign in" >&2; exit 1; }
-sgql '{"query":"mutation { updateSystemSettings(changes: [{ key: \"Defaults:Currency\", value: \"HUF\" }]) { restartPending } }"}' | grep -q '"restartPending":true' || { echo "FAIL: the setting was not saved" >&2; exit 1; }
-docker exec "$std" cat /data/settings.json | grep -q '"Currency": "HUF"' || { echo "FAIL: the settings file does not hold the change" >&2; exit 1; }
+sgql '{"query":"mutation { updateSystemSettings(changes: [{ key: \"Defaults:Currency\", value: \"HUF\" }, { key: \"Auth:AccessTokenMinutes\", value: \"20\" }]) { restartPending } }"}' | grep -q '"restartPending":true' || { echo "FAIL: the settings were not saved, or the sign-in setting does not wait for a restart" >&2; exit 1; }
+sgql '{"query":"{ vehicleDefaults { currency } }"}' | grep -q '"currency":"HUF"' || { echo "FAIL: the default currency, which applies at once, does not count yet" >&2; exit 1; }
+docker exec "$std" cat /data/settings.json | grep -q '"Currency": "HUF"' || { echo "FAIL: the settings file does not hold the currency" >&2; exit 1; }
+docker exec "$std" cat /data/settings.json | grep -q '"AccessTokenMinutes": "20"' || { echo "FAIL: the settings file does not hold the sign-in setting" >&2; exit 1; }
 docker exec "$std" stat -c %a /data/settings.json | grep -q '^600$' || { echo "FAIL: the settings file is not owner-only" >&2; exit 1; }
 sgql '{"query":"mutation { restartServer }"}' | grep -q '"restartServer":true' || { echo "FAIL: the restart was refused" >&2; exit 1; }
+# Back once the new host answers and started with the file: nothing waits for a restart any more (the administrator's session survives it).
 for _ in $(seq 1 60); do
-  sgql '{"query":"{ vehicleDefaults { currency } }"}' 2>/dev/null | grep -q '"currency":"HUF"' && break
+  sgql '{"query":"{ systemSettings { restartPending } }"}' 2>/dev/null | grep -q '"restartPending":false' && break
   sleep 1
 done
-sgql '{"query":"{ vehicleDefaults { currency } }"}' | grep -q '"currency":"HUF"' || { echo "FAIL: the saved setting does not count after the restart" >&2; exit 1; }
+sgql '{"query":"{ systemSettings { restartPending } }"}' | grep -q '"restartPending":false' || { echo "FAIL: the saved sign-in setting does not count after the restart" >&2; exit 1; }
+sgql '{"query":"{ vehicleDefaults { currency } }"}' | grep -q '"currency":"HUF"' || { echo "FAIL: the default currency was lost in the restart" >&2; exit 1; }
 sgql '{"query":"{ session { user { email } } }"}' | grep -q 'root@example.com' || { echo "FAIL: the restart signed the administrator out" >&2; exit 1; }
 docker inspect -f '{{.State.Status}}' "$std" | grep -q '^running$' || { echo "FAIL: the container stopped for the restart" >&2; exit 1; }
 
-echo "OK: $image serves the web app (installable, cache rules in place) and the API (version check of both: ${expected_version:-skipped}, user $user), pictures and photos in their folders, a setting saved by an administrator survives an in-process restart"
+echo "OK: $image serves the web app (installable, cache rules in place) and the API (version check of both: ${expected_version:-skipped}, user $user), pictures and photos in their folders, settings saved by an administrator count at once or after an in-process restart, as their group says"
