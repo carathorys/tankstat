@@ -69,7 +69,7 @@ it('the vehicle page and its tabs have no violations', async () => {
 })
 
 it('the trash, account and administration pages have no violations', async () => {
-  for (const route of ['/trash', '/trash?tab=refuelings', '/trash?tab=expenses', '/account', '/admin', '/sync']) {
+  for (const route of ['/trash', '/trash?tab=refuelings', '/trash?tab=expenses', '/account', '/admin', '/admin/people', '/sync']) {
     const { view } = setup(route)
     await screen.findByRole('main')
     await screen.findByRole('heading', { level: 1 })
@@ -241,7 +241,7 @@ it('the details tab with its trash button and confirmation is free of violations
 })
 
 it('the user administration dialogs are labelled, described and free of violations', async () => {
-  const { ui } = setup('/admin')
+  const { ui } = setup('/admin/people')
   const table = await screen.findByRole('table')
   await within(table).findByText('bob@example.com')
 
@@ -257,6 +257,20 @@ it('the user administration dialogs are labelled, described and free of violatio
     await ui.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   }
+})
+
+it('the system settings page and its confirmation are labelled, described and free of violations', async () => {
+  const { view, ui } = setup('/admin/settings')
+  const page = within(await screen.findByRole('region', { name: 'Server settings' }))
+  await page.findByText('/data/settings.json')
+  await check(view.container) // the forms loaded, before a dialog hides them
+
+  await ui.click(page.getByRole('button', { name: 'Restart server' }))
+  const restart = await screen.findByRole('alertdialog', { name: 'Restart the server?' })
+  expect(restart).toHaveAccessibleDescription()
+  await check(document.body)
+  await ui.click(within(restart).getByRole('button', { name: 'Cancel' }))
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
 })
 
 it('the Arrange dialog is labelled, described and free of violations', async () => {

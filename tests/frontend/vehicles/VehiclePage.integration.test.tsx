@@ -48,7 +48,7 @@ it('shows the vehicle with its logs formatted in its own units', async () => {
 it('administrators go back to the full vehicle list', async () => {
   setup(fakeVehicle(), logs, '/vehicles/v1?tab=refuelings', true)
 
-  expect(await screen.findByRole('link', { name: 'Back to vehicles' })).toHaveAttribute('href', '/vehicles')
+  expect(await screen.findByRole('link', { name: 'Back to vehicles' })).toHaveAttribute('href', '/admin/vehicles')
 })
 
 it('shows the price per unit and the cost in the currency it was paid in', async () => {

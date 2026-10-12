@@ -385,7 +385,7 @@ function vehicleKey(field: VehicleSortField): (vehicle: Record<string, unknown>)
 }
 
 /**
- * The administrators' vehicle list (`/vehicles`) while the server is out of reach. The device holds only the vehicles of its own home list
+ * The administrators' vehicle list (`/admin/vehicles`) while the server is out of reach. The device holds only the vehicles of its own home list
  * (the page says so), each with the changes waiting over it: one added here is listed, an edited one has its new values, one on its way to
  * the trash stays, marked. Any order and page; who owns one and how many refuellings it has come from its page's answer the download kept.
  */

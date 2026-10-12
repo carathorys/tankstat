@@ -41,14 +41,14 @@ Then open http://localhost:8080 and sign in with that e-mail and password. The `
 
 > **Always set `Auth__Mode`.** The shipped `appsettings.json` runs without authentication: everyone sees and changes everything, and there is no administrator. Put TLS in front of the container, and never commit real credentials.
 
-Everything is configured through environment variables, see [Configuration](docs/configuration.md) (the other databases included) and [Authentication](docs/authentication.md). Running without Docker and the release images are in [Self-hosting](docs/self-hosting.md).
+Everything is configured through environment variables, or by an administrator on the *Server settings* page once it runs (the app's own settings file, below the environment), see [Configuration](docs/configuration.md) (the other databases included) and [Authentication](docs/authentication.md). Running without Docker and the release images are in [Self-hosting](docs/self-hosting.md).
 
 ## Documentation
 
 - [User guide](docs/user-guide.md): what is on the screen and how each feature behaves.
 - [Importing](docs/importing.md): bringing your logs from Fuelio.
 - [Install as an app](docs/install-as-an-app.md): the home screen, offline use and updates.
-- [Configuration](docs/configuration.md): database, uploaded files, defaults, notifications and logging.
+- [Configuration](docs/configuration.md): database, uploaded files, defaults, notifications, the app's own settings file and logging.
 - [Authentication and access control](docs/authentication.md): the four sign-in modes, every setting, and who may see what.
 - [Reading photos with an OpenAI-compatible model](docs/photo-reading.md): setting up a vision model, what it is told, and following a photo through the log.
 - [Self-hosting](docs/self-hosting.md): the Docker image, running the published build, releases.

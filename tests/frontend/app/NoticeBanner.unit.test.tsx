@@ -17,6 +17,13 @@ it('shows a warning notice prominently', () => {
   expect(note).toHaveTextContent(en.notices.AUTH_DISABLED)
 })
 
+it('words the settings file notice itself, whatever the server said', () => {
+  render(<NoticeBanner notices={[{ code: 'SETTINGS_FILE_IGNORED', severity: 'WARNING', message: 'server words' }]} />)
+  const note = screen.getByRole('note')
+  expect(note).toHaveTextContent(en.notices.SETTINGS_FILE_IGNORED)
+  expect(note).not.toHaveTextContent('server words')
+})
+
 it('shows several notices, info ones without the warning label', () => {
   render(<NoticeBanner notices={[authWarning, { code: 'X', severity: 'INFO', message: 'FYI' }]} />)
   const notes = screen.getAllByRole('note')

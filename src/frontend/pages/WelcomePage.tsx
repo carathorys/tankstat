@@ -118,7 +118,7 @@ export function WelcomePage({ isAdmin }: { isAdmin: boolean }) {
           {(data?.vehicleTotal ?? 0) >= 2 && <ArrangeVehiclesDialog />}
           {addButton(!isAdmin)}
           {isAdmin && (
-            <Button component={Link} to="/vehicles" size="large">
+            <Button component={Link} to="/admin/vehicles" size="large">
               {t('welcome.all')}
             </Button>
           )}

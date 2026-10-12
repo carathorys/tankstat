@@ -143,3 +143,31 @@ public class UserSessionRepositoryTests
         Assert.Null(await db.Get<IUserSessionRepository>().FindAsync(session.Id, default));
     }
 }
+
+public class UserSessionRevokeAllTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public async Task RevokeAll_EndsEverySessionOfEveryUser_ThatIsNotEndedYet()
+    {
+        await using var db = new TestDatabase();
+        var users = db.Get<IUserRepository>();
+        var repo = db.Get<IUserSessionRepository>();
+        var alice = User.CreateLocal("alice@x.co", null, false);
+        var bob = User.CreateLocal("bob@x.co", null, false);
+        await users.AddAsync(alice, default);
+        await users.AddAsync(bob, default);
+        var ended = UserSession.Issue(alice.Id, 1, "H1", "S1", null, Now, TimeSpan.FromDays(90));
+        ended.Revoke(Now.AddHours(-1));
+        foreach (var session in new[] { UserSession.Issue(alice.Id, 1, "H2", "S2", null, Now, TimeSpan.FromDays(90)), UserSession.Issue(bob.Id, 1, "H3", "S3", null, Now, TimeSpan.FromDays(90)), ended })
+            await repo.AddAsync(session, default);
+
+        Assert.Equal(2, await repo.RevokeAllAsync(Now.AddHours(1), default));
+
+        Assert.Empty(await repo.ListUsableForUserAsync(alice.Id, Now.AddHours(2), default));
+        Assert.Empty(await repo.ListUsableForUserAsync(bob.Id, Now.AddHours(2), default));
+        Assert.Equal(Now.AddHours(-1), (await repo.FindAsync(ended.Id, default))!.RevokedAt); // the one that had ended keeps its time
+        Assert.Equal(0, await repo.RevokeAllAsync(Now.AddHours(3), default));
+    }
+}

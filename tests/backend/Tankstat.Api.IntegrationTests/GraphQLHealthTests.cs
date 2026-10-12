@@ -18,12 +18,16 @@ public sealed class ApiFixture : IDisposable
     private const string ModeVar = "Auth__Mode";
     private const string StorageVar = "Storage__Path";
     private const string PhotosVar = "Storage__PhotosPath";
+    private const string SettingsVar = "Settings__Path";
 
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}.db");
 
     public string UploadsPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-uploads");
 
     public string PhotosPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-photos");
+
+    /// <summary>A settings file of the run's own (none exists): never a developer's.</summary>
+    public string SettingsPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-settings.json");
 
     public WebApplicationFactory<Program> Factory { get; }
 
@@ -34,6 +38,7 @@ public sealed class ApiFixture : IDisposable
         Environment.SetEnvironmentVariable(ModeVar, "None"); // these tests are about no-auth; appsettings.json may say otherwise
         Environment.SetEnvironmentVariable(StorageVar, UploadsPath);
         Environment.SetEnvironmentVariable(PhotosVar, PhotosPath);
+        Environment.SetEnvironmentVariable(SettingsVar, SettingsPath);
         Factory = new WebApplicationFactory<Program>();
     }
 
@@ -45,6 +50,8 @@ public sealed class ApiFixture : IDisposable
         Environment.SetEnvironmentVariable(ModeVar, null);
         Environment.SetEnvironmentVariable(StorageVar, null);
         Environment.SetEnvironmentVariable(PhotosVar, null);
+        Environment.SetEnvironmentVariable(SettingsVar, null);
+        File.Delete(SettingsPath);
         foreach (var folder in new[] { UploadsPath, PhotosPath })
             if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
         // Only this database's pooled connections: ClearAllPools would also close the ones of tests running in parallel.

@@ -2,7 +2,7 @@
 
 For operators: how users sign in (none, standalone, OpenID Connect or a trusted proxy), every setting of each mode, e-mail for password links, and who may see and change what.
 
-Authentication is configured through the `Auth` and `Smtp` sections. Every setting can be given in `appsettings.json` or as an **environment variable**, where `:` becomes `__` (double underscore): `Auth:Oidc:ClientId` is `Auth__Oidc__ClientId`. Environment variables override `appsettings.json`. List settings use an index: `Auth__AdminEmails__0=a@x.com`, `Auth__AdminEmails__1=b@x.com`. Names are case-insensitive, and enum values (`Auth__Mode`) are matched case-insensitively. A misconfiguration stops the app at start with a message naming the missing setting.
+Authentication is configured through the `Auth` and `Smtp` sections. Every setting can be given in `appsettings.json`, in [the app's own settings file](configuration.md#the-apps-own-settings-file) or as an **environment variable**, where `:` becomes `__` (double underscore): `Auth:Oidc:ClientId` is `Auth__Oidc__ClientId`. Environment variables override both files. List settings use an index: `Auth__AdminEmails__0=a@x.com`, `Auth__AdminEmails__1=b@x.com`; a list is merged item by item, so the environment replaces only the items at the indexes it sets (remove a list from the settings file to override it from the environment). Names are case-insensitive, and enum values (`Auth__Mode`) are matched case-insensitively. A misconfiguration in the environment stops the app at start with a message naming the missing setting; one in the app's own settings file leaves that file out instead (the app starts without it, with the `SETTINGS_FILE_IGNORED` notice and an `Error` line naming the setting), unless leaving it out would turn authentication off: a file that sets the mode while the environment does not, over the shipped `None`, stops the start when it cannot be used (see [what that means and its limits](configuration.md#the-apps-own-settings-file)).
 
 > **The shipped `appsettings.json` sets `Auth:Mode=None`: there is no authentication, everyone sees and changes everything, and there is no administrator.** Always set `Auth__Mode` explicitly (and, for `Standalone`, the administrator credentials) before exposing the app. Never put real credentials in a committed file.
 
@@ -19,6 +19,8 @@ Authentication is configured through the `Auth` and `Smtp` sections. Every setti
 
 All modes end in the same place: a user record in the database that owns data.
 
+The mode can also be changed from inside the app, by an administrator through the system settings (written into [the app's own settings file](configuration.md#the-apps-own-settings-file); the environment keeps winning, so `Auth__Mode` set in a compose file shows as read-only there). The change takes effect at the next restart, which signs every device out (see *Sessions*). Two things are checked before it is saved, because a mistake there would lock everybody out: an OpenID Connect authority the next start would sign in through (a switch to `Oidc`, or another authority) must answer with its discovery document and name itself as the issuer, and `Standalone` is refused while no administrator exists unless `Auth__Standalone__AdminEmail` and `Auth__Standalone__AdminPassword` are set for the first start, with an address no local account has yet and a password of 10 to 128 characters. The way back is always the environment: `Auth__Mode` beats the file, so set it and restart. In mode `None` there is no administrator, so a `None` instance changes its mode through the environment.
+
 ## Sessions (Standalone and OIDC)
 
 A signed-in browser holds two HttpOnly cookies, so no script on the page ever sees a token:
@@ -34,6 +36,7 @@ What ends a session (at once: the access cookie names its session, which is chec
 - **The Account page's *Signed-in devices*** (`mySessions`, `revokeSession(id)`, `revokeOtherSessions`): you see every device you are signed in on (a coarse name worked out from the browser, such as "Firefox on Linux", never the raw User-Agent; when it signed in and was last used) and sign out one of them, or every one but this.
 - **Changing your password**: every other device; the one that changed it stays signed in. **Resetting it with a link**, an **administrator setting it**, or **disabling the user**: every device.
 - **A refresh token used again**: a token that was already traded in is accepted once more within `Auth__RefreshRotationGraceSeconds` (and answered with the current one, so tabs that refreshed at the same moment agree); used later, someone else must have a copy, so the session ends (a Warning in the log names it by id).
+- **The instance starting in another authentication mode** than the one it last started in (from `Standalone` to `Oidc`, or back): every device of every user is signed out at that start, so a session issued in one mode never works in the next (the log says how many were signed out). A restart in the same mode signs nobody out.
 - Not using the device for `Auth__RefreshTokenDays`. Ended and expired sessions are deleted a week later.
 
 The token endpoints only answer requests with the header `X-Requested-With: fetch`, which a page of another site cannot send, and do not exist in `None` and `ProxyHeader` modes (there the proxy signs every request in itself). The cookies are protected by the key ring (`DataProtection:KeysPath`, see [Configuration](configuration.md)): keep it with the data, or every restart signs everybody out.
@@ -69,7 +72,7 @@ Facts that matter when configuring: passwords need 10 to 128 characters; changin
 
 | Environment variable | Type | Default | Required | Meaning |
 | --- | --- | --- | --- | --- |
-| `Auth__Oidc__Authority` | URL of the issuer, e.g. `https://id.example.com` | empty | yes | The provider's issuer URL (its `/.well-known/openid-configuration` is read from here). A non-HTTPS authority is accepted for local development only. |
+| `Auth__Oidc__Authority` | URL of the issuer, e.g. `https://id.example.com` | empty | yes | The provider's issuer URL (its `/.well-known/openid-configuration` is read from here). A non-HTTPS authority is accepted for local development only. Before the system settings save an authority, the app reads that document (within 10 seconds, without following a redirect) and refuses one that does not answer or names another issuer, since the sign-in would fail at the next start. |
 | `Auth__Oidc__ClientId` | string | empty | yes | Client id registered at the provider. |
 | `Auth__Oidc__ClientSecret` | string | empty | yes | Client secret (confidential client). |
 | `Auth__Oidc__Scopes__0`, `Auth__Oidc__Scopes__1`, ... | list of scopes | `openid`, `profile`, `email` | no | Scopes requested. The default three are always requested; values given here are **added** to them (listing a default again is harmless), so only give extra scopes such as `groups`. The defaults can only be changed in code. |
@@ -97,7 +100,7 @@ Without `Smtp__Host` and `Smtp__From` no e-mail is sent; administrators issue li
 | `Smtp__Host` | host name | empty | to enable e-mail | SMTP server. |
 | `Smtp__From` | e-mail address | empty | to enable e-mail | Sender address. |
 | `Smtp__Port` | integer | `587` | no | SMTP port (`465` for implicit TLS, `25` for plain). |
-| `Smtp__Security` | `Auto`, `None`, `StartTls`, `Ssl` | `Auto` | no | Transport security. `Auto` picks from the port. |
+| `Smtp__Security` | `Auto`, `None`, `StartTls`, `StartTlsWhenAvailable`, `SslOnConnect` | `Auto` | no | Transport security (MailKit's names). `Auto` picks from the port: TLS from the start on 465, otherwise STARTTLS when the server offers it. `Ssl`, which this table used to list, is not one of them and runs as `Auto`; use `SslOnConnect` for TLS from the start. |
 | `Smtp__Username` | string | empty | no | Login for the SMTP server (authentication is skipped when empty). |
 | `Smtp__Password` | string | empty | no | Password for the SMTP server. |
 
@@ -145,7 +148,7 @@ Auth__AdminEmails__0=you@example.com
 2. Set every setting marked *required* in the table of that mode; the app tells you at start which one is missing.
 3. Behind a TLS-terminating proxy keep `Auth__PublicUrl` and the OIDC redirect URI on the public `https://` address (the session cookie accepts plain HTTP behind the proxy).
 4. For `Standalone` with e-mail, set `Auth__PublicUrl` together with `Smtp__Host` and `Smtp__From`.
-5. Check the result: `{ session { mode user { email isAdmin } } }` at `/graphql` answers the active mode (and `notices` carries the `AUTH_DISABLED` warning when authentication is off).
+5. Check the result: `{ session { mode user { email isAdmin } } }` at `/graphql` answers the active mode (and `notices` carries the `AUTH_DISABLED` warning when authentication is off, or `SETTINGS_FILE_IGNORED` when the app's own settings file was left out at start).
 
 ## Access control
 

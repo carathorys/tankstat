@@ -7,7 +7,7 @@ namespace Tankstat.Application.Notifications;
 /// The one way to tell users something: every source hands its drafts here, and <see cref="NotificationPolicy"/> decides what is stored,
 /// so derived notifications stay single and events do not flood anyone. Nobody is notified about what they did themselves.
 /// </summary>
-public sealed class Notifier(INotificationRepository notifications, IOptions<NotificationOptions> options, TimeProvider clock)
+public sealed class Notifier(INotificationRepository notifications, IOptionsSnapshot<NotificationOptions> options, TimeProvider clock)
 {
     /// <param name="actorId">Who caused it (left out of the recipients); null when nobody did, e.g. a schedule became due.</param>
     public async Task NotifyAsync(Guid? actorId, IEnumerable<NotificationDraft> drafts, CancellationToken ct)

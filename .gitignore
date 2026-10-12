@@ -532,3 +532,11 @@ eval/
 # Data Protection keys that a local run of the app creates (DataProtection:KeysPath, default "keys" in the working directory).
 # They are secrets: every installation keeps its own, never in the repository.
 keys/
+
+# The app's own settings file (Settings:Path, default "settings.json" in the working directory) and the copy kept before each write.
+# It holds secrets. A local run writes it next to appsettings.json (mise run dev:api) or in the repository root (schema:export, test-api.sh);
+# anchored, so .vscode/settings.json stays what the rules above say.
+/settings.json
+/settings.json.bak
+/src/backend/Tankstat.Api/settings.json
+/src/backend/Tankstat.Api/settings.json.bak

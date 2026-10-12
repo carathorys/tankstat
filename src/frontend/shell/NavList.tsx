@@ -2,8 +2,9 @@ import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Stack from '@mui/material/Stack'
 import Chip from '@mui/material/Chip'
-import { Bell, Car, CloudUpload, FileUp, House, LogOut, Settings, ShieldCheck, Trash2 } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import Typography from '@mui/material/Typography'
+import { Bell, Car, CloudUpload, FileUp, House, LogOut, Settings, ShieldCheck, SlidersHorizontal, Trash2, Users } from 'lucide-react'
+import { useId, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NavLink } from 'react-router'
 import { type AuthMode, type SessionQuery } from '../gql/generated.ts'
@@ -25,6 +26,7 @@ export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: Sess
   const waiting = usePendingCount()
   const parked = useParkedChanges().parked?.length ?? 0
   const [confirmSignOut, setConfirmSignOut] = useState(false)
+  const adminHeading = useId()
   const leave = async () => {
     onNavigate?.()
     try {
@@ -37,7 +39,7 @@ export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: Sess
   }
 
   const link = (to: string, label: string, icon: ReactNode) => (
-    <Box component={NavLink} to={to} end={to === '/'} sx={navItemSx} onClick={onNavigate}>
+    <Box component={NavLink} to={to} end={to === '/' || to === '/admin'} sx={navItemSx} onClick={onNavigate}>
       {icon}
       {label}
     </Box>
@@ -46,7 +48,6 @@ export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: Sess
   return (
     <Stack component="nav" aria-label={t('nav.main')} sx={{ gap: 0.5 }}>
       {link('/', t('nav.home'), <House size={18} aria-hidden />)}
-      {user?.isAdmin && link('/vehicles', t('nav.vehicles'), <Car size={18} aria-hidden />)}
       {link('/import', t('nav.import'), <FileUp size={18} aria-hidden />)}
       {link('/notifications', t('nav.notifications'), <Bell size={18} aria-hidden />)}
       {link('/trash', t('nav.trash'), <Trash2 size={18} aria-hidden />)}
@@ -62,7 +63,18 @@ export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: Sess
         </Box>
       )}
       {user && link('/account', t('nav.account'), <Settings size={18} aria-hidden />)}
-      {user?.isAdmin && link('/admin', t('nav.admin'), <ShieldCheck size={18} aria-hidden />)}
+      {user?.isAdmin && (
+        // The administrators' pages under a heading of their own: a label, not a page, so every entry says what it holds.
+        <Stack role="group" aria-labelledby={adminHeading} sx={{ gap: 0.5, mt: 1.5 }}>
+          <Typography id={adminHeading} variant="caption" sx={{ px: 1.5, color: 'text.secondary', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            {t('nav.admin')}
+          </Typography>
+          {link('/admin', t('nav.adminOverview'), <ShieldCheck size={18} aria-hidden />)}
+          {link('/admin/people', t('nav.people'), <Users size={18} aria-hidden />)}
+          {link('/admin/vehicles', t('nav.vehicles'), <Car size={18} aria-hidden />)}
+          {link('/admin/settings', t('nav.serverSettings'), <SlidersHorizontal size={18} aria-hidden />)}
+        </Stack>
+      )}
       <InstallMenuItem onNavigate={onNavigate} />
       {canSignOut && (
         <Button

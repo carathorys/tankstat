@@ -73,6 +73,49 @@ export function setup(route: string, viewport: 'desktop' | 'phone' = 'desktop', 
         },
       }),
     ),
+    graphql.query('AdminOverview', () =>
+      HttpResponse.json({
+        data: {
+          systemSettings: { __typename: 'SystemSettingsInfo', restartPending: true, file: { __typename: 'SettingsFileInfo', path: '/data/settings.json', exists: true, ignored: false } },
+          users: [
+            { __typename: 'UserAccount', id: 'u1', isAdmin: true, isDisabled: false },
+            { __typename: 'UserAccount', id: 'u2', isAdmin: false, isDisabled: false },
+          ],
+          vehicleCount: 2,
+          health: { __typename: 'HealthReport', version: '1.2.3', databaseReachable: true },
+        },
+      }),
+    ),
+    graphql.query('SystemSettings', () =>
+      HttpResponse.json({
+        data: {
+          systemSettings: {
+            __typename: 'SystemSettingsInfo',
+            file: { __typename: 'SettingsFileInfo', path: '/data/settings.json', exists: true, ignored: true, problems: ['Smtp:Port must be a whole number.'] },
+            restartPending: true,
+            groups: [
+              {
+                __typename: 'SystemSettingsGroup',
+                name: 'AUTH', appliesAtOnce: false,
+                settings: [
+                  { __typename: 'SystemSetting', key: 'Auth:Mode', kind: 'CHOICE', choices: ['None', 'Standalone', 'Oidc', 'ProxyHeader'], value: 'Standalone', isSet: true, isSecret: false, source: 'ENVIRONMENT', editable: false, restartPending: false, defaultValue: 'None' },
+                  { __typename: 'SystemSetting', key: 'Auth:PublicUrl', kind: 'TEXT', choices: [], value: null, isSet: false, isSecret: false, source: 'DEFAULT', editable: true, restartPending: false, defaultValue: null },
+                  { __typename: 'SystemSetting', key: 'Auth:AdminEmails', kind: 'LIST', choices: [], value: 'a@example.com', isSet: true, isSecret: false, source: 'FILE', editable: true, restartPending: true, defaultValue: null },
+                  { __typename: 'SystemSetting', key: 'Auth:Oidc:ClientSecret', kind: 'SECRET', choices: [], value: null, isSet: true, isSecret: true, source: 'FILE', editable: true, restartPending: false, defaultValue: null },
+                  { __typename: 'SystemSetting', key: 'Auth:Standalone:AllowAdminSetPassword', kind: 'BOOLEAN', choices: [], value: null, isSet: false, isSecret: false, source: 'DEFAULT', editable: true, restartPending: false, defaultValue: 'false' },
+                  { __typename: 'SystemSetting', key: 'Auth:AccessTokenMinutes', kind: 'INTEGER', choices: [], value: null, isSet: false, isSecret: false, source: 'DEFAULT', editable: true, restartPending: false, defaultValue: '15' },
+                ],
+              },
+              {
+                __typename: 'SystemSettingsGroup',
+                name: 'LOGGING', appliesAtOnce: true,
+                settings: [{ __typename: 'SystemSetting', key: 'Logging:LogLevel:Default', kind: 'CHOICE', choices: ['Trace', 'Debug', 'Information', 'Warning', 'Error', 'Critical', 'None'], value: 'Information', isSet: true, isSecret: false, source: 'SHIPPED', editable: true, restartPending: false, defaultValue: 'Information' }],
+              },
+            ],
+          },
+        },
+      }),
+    ),
   )
   const view = renderWithApollo(<App />, route)
   return { view, ui: userEvent.setup() }

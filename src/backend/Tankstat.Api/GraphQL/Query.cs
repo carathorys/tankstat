@@ -52,7 +52,7 @@ public sealed class Query
     public Task<int> GetTrashDeletableCount([Service] VehicleService vehicles, CancellationToken ct) => vehicles.CountDeletableTrashAsync(ct);
 
     /// <summary>The units suggested for a new vehicle (set per instance, e.g. miles and gallons in the US) and the reminders a new recurring expense starts with.</summary>
-    public VehicleDefaults GetVehicleDefaults([Service] IOptions<VehicleDefaultsOptions> defaults) =>
+    public VehicleDefaults GetVehicleDefaults([Service] IOptionsSnapshot<VehicleDefaultsOptions> defaults) =>
         new(defaults.Value.DistanceUnit, defaults.Value.VolumeUnit, defaults.Value.Currency, defaults.Value.RecurringWarnDays, defaults.Value.RecurringWarnDistance);
 
     public Task<Vehicle?> GetVehicle(Guid id, [Service] VehicleService vehicles, CancellationToken ct) =>

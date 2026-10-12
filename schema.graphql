@@ -86,6 +86,7 @@ type Query {
     @cost(weight: "10")
   offlineSettings: OfflineSettingsInfo! @cost(weight: "10")
   parkedChanges: [SyncChangeInfo!]! @cost(weight: "10")
+  systemSettings: SystemSettingsInfo! @cost(weight: "10")
 }
 
 type Mutation {
@@ -147,6 +148,9 @@ type Mutation {
   syncChanges(input: SyncChangesInput!): SyncResultInfo! @cost(weight: "10")
   resolveSyncChange(input: ResolveSyncChangeInput!): SyncChangeInfo!
     @cost(weight: "10")
+  updateSystemSettings(changes: [SystemSettingChangeInput!]!): SystemSettingsInfo!
+    @cost(weight: "10")
+  restartServer: Boolean! @cost(weight: "10")
 }
 
 type AccessGrantInfo {
@@ -474,6 +478,13 @@ type Session {
   user: UserInfo
 }
 
+type SettingsFileInfo {
+  path: String!
+  exists: Boolean!
+  ignored: Boolean!
+  problems: [String!]!
+}
+
 type SyncChangeInfo {
   id: UUID!
   kind: SyncChangeKind!
@@ -537,6 +548,31 @@ type SyncVehicleRef {
   name: String!
   distanceUnit: DistanceUnit!
   volumeUnit: VolumeUnit!
+}
+
+type SystemSetting {
+  key: String!
+  kind: SettingKind!
+  choices: [String!]!
+  value: String
+  isSet: Boolean!
+  isSecret: Boolean!
+  source: SettingSource!
+  editable: Boolean!
+  restartPending: Boolean!
+  defaultValue: String
+}
+
+type SystemSettingsGroup {
+  name: SettingsGroup!
+  settings: [SystemSetting!]!
+  appliesAtOnce: Boolean!
+}
+
+type SystemSettingsInfo {
+  file: SettingsFileInfo!
+  groups: [SystemSettingsGroup!]!
+  restartPending: Boolean!
 }
 
 type UiSettingsInfo {
@@ -860,6 +896,12 @@ input SyncChangesInput {
   changes: [ChangeInput!]!
 }
 
+input SystemSettingChangeInput {
+  key: String!
+  value: String
+  clear: Boolean! = false
+}
+
 input UpdateExpenseInput {
   id: UUID!
   date: LocalDate!
@@ -1134,6 +1176,34 @@ enum ReviewState {
   AWAITING_PHOTOS
   NEEDS_REVIEW
   INCOMPLETE
+}
+
+enum SettingKind {
+  TEXT
+  MULTILINE
+  INTEGER
+  DECIMAL
+  BOOLEAN
+  CHOICE
+  LIST
+  SECRET
+}
+
+enum SettingsGroup {
+  AUTH
+  SMTP
+  DEFAULTS
+  NOTIFICATIONS
+  SYNC
+  PHOTO_READING
+  LOGGING
+}
+
+enum SettingSource {
+  ENVIRONMENT
+  FILE
+  SHIPPED
+  DEFAULT
 }
 
 enum SortDirection {

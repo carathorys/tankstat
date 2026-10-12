@@ -24,4 +24,10 @@
     <InternalsVisibleTo Include="Tankstat.Api.IntegrationTests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The app's own settings file of a local run (mise run dev:api) holds secrets and belongs to that run: the Web SDK would copy any *.json
+         here into bin/, the bins of the test projects (where the Seeder's tests would read it) and the published out/. -->
+    <Content Remove="settings.json" />
+  </ItemGroup>
+
 </Project>

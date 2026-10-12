@@ -22,7 +22,7 @@ public sealed record UpdateVehicleInput(Guid Id, string Name, string? LicensePla
 public sealed class Mutation
 {
     public Task<Vehicle> AddVehicle(
-        AddVehicleInput input, [Service] VehicleService vehicles, [Service] IOptions<VehicleDefaultsOptions> defaults, CancellationToken ct) =>
+        AddVehicleInput input, [Service] VehicleService vehicles, [Service] IOptionsSnapshot<VehicleDefaultsOptions> defaults, CancellationToken ct) =>
         vehicles.AddAsync(input.Name, input.LicensePlate, input.FuelType,
             input.Units?.ToDomain() ?? MeasurementUnits.Create(defaults.Value.DistanceUnit, defaults.Value.VolumeUnit), ct, input.Id);
 

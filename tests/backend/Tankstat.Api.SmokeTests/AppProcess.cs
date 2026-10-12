@@ -75,7 +75,7 @@ internal sealed class AppProcess : IAsyncDisposable
         info.ArgumentList.Add($"http://127.0.0.1:{port}");
 
         // A clean slate: nothing from the developer's own environment may leak into the run.
-        foreach (var key in info.Environment.Keys.Where(k => k.StartsWith("Auth__") || k.StartsWith("Database__") || k.StartsWith("Smtp__") || k.StartsWith("Recognition__") || k.StartsWith("Storage__") || k.StartsWith("ASPNETCORE_")).ToList())
+        foreach (var key in info.Environment.Keys.Where(k => k.StartsWith("Auth__") || k.StartsWith("Database__") || k.StartsWith("Smtp__") || k.StartsWith("Recognition__") || k.StartsWith("Storage__") || k.StartsWith("Settings__") || k.StartsWith("ASPNETCORE_")).ToList())
             info.Environment.Remove(key);
         info.Environment["ASPNETCORE_CONTENTROOT"] = Path.GetDirectoryName(dll); // finds appsettings.json although the working directory is elsewhere
         info.Environment["DOTNET_NOLOGO"] = "1";
@@ -130,10 +130,10 @@ internal sealed class AppProcess : IAsyncDisposable
         throw new TimeoutException($"The app did not answer within {StartupTimeout.TotalSeconds:F0}s.\n{app.Log}");
     }
 
-    /// <summary>For configurations that must be rejected: runs the app until it exits by itself.</summary>
-    public static async Task<(int ExitCode, string Log)> RunUntilExitAsync(IReadOnlyDictionary<string, string?> settings, bool useTempDatabase = true)
+    /// <summary>For configurations that must be rejected: runs the app until it exits by itself (in <paramref name="workDirectory"/>, which it removes afterwards, when given).</summary>
+    public static async Task<(int ExitCode, string Log)> RunUntilExitAsync(IReadOnlyDictionary<string, string?> settings, bool useTempDatabase = true, string? workDirectory = null)
     {
-        var (process, log, work, _) = Launch(settings, null, useTempDatabase);
+        var (process, log, work, _) = Launch(settings, workDirectory, useTempDatabase);
         try
         {
             using var cts = new CancellationTokenSource(StartupTimeout);
@@ -179,6 +179,28 @@ internal sealed class AppProcess : IAsyncDisposable
     }
 
     public bool HasExited => _process.HasExited;
+
+    /// <summary>Sends a POSIX signal to the app, as <c>docker stop</c> (TERM) or Ctrl+C (INT) would; not on Windows.</summary>
+    public async Task SignalAsync(string signal)
+    {
+        using var kill = Process.Start("kill", [$"-{signal}", _process.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)])!;
+        await kill.WaitForExitAsync();
+    }
+
+    /// <summary>Whether the app exits by itself within <paramref name="within"/>.</summary>
+    public async Task<bool> ExitsWithinAsync(TimeSpan within)
+    {
+        using var wait = new CancellationTokenSource(within);
+        try
+        {
+            await _process.WaitForExitAsync(wait.Token);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+    }
 
     /// <summary>Stops the app (without removing its files, so it can be started again on the same database).</summary>
     public async Task StopAsync()

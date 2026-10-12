@@ -4,25 +4,34 @@ import { DialogButtons, DialogCancel, DialogFrame } from '../dialogs/DialogFrame
 import { DialogTrigger } from '../dialogs/DialogTrigger.tsx'
 import { useDialogState } from '../dialogs/useDialogState.ts'
 
-/** A confirmation before something hard to undo. Focus starts on Cancel (the safe choice) and returns to the trigger. */
+/**
+ * A confirmation before something hard to undo. Focus starts on Cancel (the safe choice) and returns to the trigger. It opens from its
+ * `trigger`, or, when something else opens it (a form's submit), from `open` + `onOpenChange`. `onClosed` runs once it is fully gone.
+ */
 export function ConfirmDialog({
   trigger,
+  open: openAsked,
+  onOpenChange,
+  onClosed,
   title,
   description,
   confirmLabel,
   onConfirm,
 }: {
-  trigger: ReactNode
+  trigger?: ReactNode
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  onClosed?: () => void
   title: string
   description: string
   confirmLabel: string
   onConfirm: () => void
 }) {
-  const [open, setOpen] = useDialogState()
+  const [open, setOpen] = useDialogState({ open: openAsked, onOpenChange })
   return (
     <>
       <DialogTrigger trigger={trigger} open={open} onOpen={() => setOpen(true)} />
-      <DialogFrame open={open} onClose={() => setOpen(false)} title={title} description={description} role="alertdialog">
+      <DialogFrame open={open} onClose={() => setOpen(false)} onClosed={onClosed} title={title} description={description} role="alertdialog">
         <DialogButtons>
           <DialogCancel autoFocus />
           <Button

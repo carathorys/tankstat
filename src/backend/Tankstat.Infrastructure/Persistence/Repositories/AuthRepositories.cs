@@ -177,6 +177,12 @@ internal sealed class UserSessionRepository(IDbContextFactory<AppDbContext> dbFa
             .ExecuteUpdateAsync(u => u.SetProperty(s => s.RevokedAt, now), ct);
     }
 
+    public async Task<int> RevokeAllAsync(DateTimeOffset now, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.UserSessions.Where(s => s.RevokedAt == null).ExecuteUpdateAsync(u => u.SetProperty(s => s.RevokedAt, now), ct);
+    }
+
     public async Task<int> DeleteStaleAsync(DateTimeOffset before, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);

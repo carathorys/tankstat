@@ -80,12 +80,12 @@ const choose = async (ui: ReturnType<typeof userEvent.setup>, control: string, o
   await ui.click(await screen.findByRole('option', { name: option }))
 }
 
-const panel = async () => within(await screen.findByRole('region', { name: 'Administration' }))
+const panel = async () => within(await screen.findByRole('region', { name: 'People' }))
 
 it('lists users and the access rules for administrators', async () => {
   const ui = userEvent.setup()
   adminServer()
-  renderWithApollo(<App />, '/admin')
+  renderWithApollo(<App />, '/admin/people')
 
   const admin = await panel()
   await admin.findByText('bob@example.com')
@@ -100,7 +100,7 @@ it('lists users and the access rules for administrators', async () => {
 it('promotes and disables users', async () => {
   const ui = userEvent.setup()
   const calls = adminServer()
-  renderWithApollo(<App />, '/admin')
+  renderWithApollo(<App />, '/admin/people')
   const admin = await panel()
 
   await ui.click(await admin.findByRole('checkbox', { name: 'Administrator: Bob' }))
@@ -113,7 +113,7 @@ it('promotes and disables users', async () => {
 it('changes the default access and manages grants', async () => {
   const ui = userEvent.setup()
   const calls = adminServer()
-  renderWithApollo(<App />, '/admin')
+  renderWithApollo(<App />, '/admin/people')
   const admin = await panel()
 
   await ui.click(await admin.findByRole('tab', { name: /Access/ }))
@@ -134,7 +134,7 @@ it('changes the default access and manages grants', async () => {
 it('creates a user and shows the one-time setup link when no e-mail was sent', async () => {
   const ui = userEvent.setup()
   const calls = adminServer()
-  renderWithApollo(<App />, '/admin')
+  renderWithApollo(<App />, '/admin/people')
   const admin = await panel()
 
   await ui.type(await admin.findByLabelText('E-mail'), 'dave@example.com')
@@ -149,7 +149,7 @@ it('creates a user and shows the one-time setup link when no e-mail was sent', a
 it('says that the e-mail could not be sent, and still shows the link, when the mail server refused it', async () => {
   const ui = userEvent.setup()
   adminServer({ emailFailed: true })
-  renderWithApollo(<App />, '/admin')
+  renderWithApollo(<App />, '/admin/people')
   const admin = await panel()
 
   await ui.type(await admin.findByLabelText('E-mail'), 'dave@example.com')
@@ -166,7 +166,7 @@ it('says that the e-mail could not be sent, and still shows the link, when the m
 it('says the same when the e-mail with a reset link could not be sent', async () => {
   const ui = userEvent.setup()
   adminServer({ emailFailed: true })
-  renderWithApollo(<App />, '/admin')
+  renderWithApollo(<App />, '/admin/people')
   const admin = await panel()
 
   await ui.click(await admin.findByRole('button', { name: 'Reset link for Bob' }))
@@ -179,7 +179,7 @@ it('says the same when the e-mail with a reset link could not be sent', async ()
 it('issues a reset link only for local users', async () => {
   const ui = userEvent.setup()
   const calls = adminServer()
-  renderWithApollo(<App />, '/admin')
+  renderWithApollo(<App />, '/admin/people')
   const admin = await panel()
 
   await admin.findByText('carol@example.com')
@@ -196,7 +196,7 @@ it('shows the server error when an action is refused', async () => {
   server.use(
     graphql.mutation('SetUserAdmin', () => HttpResponse.json(gqlError('You cannot remove your own administrator rights.', 'VALIDATION_FAILED'))),
   )
-  renderWithApollo(<App />, '/admin')
+  renderWithApollo(<App />, '/admin/people')
   const admin = await panel()
 
   await ui.click(await admin.findByRole('checkbox', { name: 'Administrator: Alice' }))
@@ -207,8 +207,8 @@ it('shows the server error when an action is refused', async () => {
 it('offers the delete level for the default and for grants, and shows people with avatars', async () => {
   const ui = userEvent.setup()
   adminServer()
-  renderWithApollo(<App />, '/admin')
-  await screen.findByRole('heading', { name: 'Administration' })
+  renderWithApollo(<App />, '/admin/people')
+  await screen.findByRole('heading', { name: 'People' })
 
   expect((await within(screen.getByRole('table')).findAllByText('B')).length).toBeGreaterThan(0) // Bob's initials (the avatar fallback appears right after mounting)
   await ui.click(screen.getByRole('tab', { name: /Access/ }))
@@ -220,7 +220,7 @@ it('offers the delete level for the default and for grants, and shows people wit
 it('edits a local user in a dialog, prefilled, and offers it for local users only', async () => {
   const ui = userEvent.setup()
   const calls = adminServer()
-  renderWithApollo(<App />, '/admin')
+  renderWithApollo(<App />, '/admin/people')
   const admin = await panel()
 
   await admin.findByText('carol@example.com')
@@ -241,7 +241,7 @@ it('edits a local user in a dialog, prefilled, and offers it for local users onl
 it('offers setting a password only when the server allows it', async () => {
   const ui = userEvent.setup()
   const off = adminServer({ canSetUserPasswords: false })
-  const first = renderWithApollo(<App />, '/admin')
+  const first = renderWithApollo(<App />, '/admin/people')
   const admin = await panel()
   await admin.findByText('bob@example.com')
   expect(admin.queryByRole('button', { name: 'Set password for Bob' })).not.toBeInTheDocument()
@@ -250,7 +250,7 @@ it('offers setting a password only when the server allows it', async () => {
 
   server.resetHandlers()
   const calls = adminServer({ canSetUserPasswords: true })
-  renderWithApollo(<App />, '/admin')
+  renderWithApollo(<App />, '/admin/people')
   const allowed = await panel()
   expect(allowed.queryByRole('button', { name: 'Set password for Carol' })).not.toBeInTheDocument() // OIDC user
   await ui.click(await allowed.findByRole('button', { name: 'Set password for Bob' }))
@@ -264,7 +264,7 @@ it('offers setting a password only when the server allows it', async () => {
 it('deletes a user and moves their data to another user', async () => {
   const ui = userEvent.setup()
   const calls = adminServer()
-  renderWithApollo(<App />, '/admin')
+  renderWithApollo(<App />, '/admin/people')
   const admin = await panel()
 
   expect(await admin.findByText('bob@example.com')).toBeInTheDocument()
@@ -284,7 +284,7 @@ it('deletes a user and moves their data to another user', async () => {
 it('deletes a user together with their data after a warning', async () => {
   const ui = userEvent.setup()
   const calls = adminServer()
-  renderWithApollo(<App />, '/admin')
+  renderWithApollo(<App />, '/admin/people')
   const admin = await panel()
 
   await ui.click(await admin.findByRole('button', { name: 'Delete Bob' }))
@@ -304,7 +304,7 @@ it('shows the server error inside the delete dialog when the user owns data and 
       HttpResponse.json(gqlError('This user owns data.', 'VALIDATION_FAILED', 'user.dataChoiceRequired')),
     ),
   )
-  renderWithApollo(<App />, '/admin')
+  renderWithApollo(<App />, '/admin/people')
   const admin = await panel()
 
   await ui.click(await admin.findByRole('button', { name: 'Delete Bob' }))

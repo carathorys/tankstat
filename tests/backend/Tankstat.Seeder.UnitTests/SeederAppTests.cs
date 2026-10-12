@@ -27,7 +27,9 @@ public sealed class SeederAppTests : IDisposable
     {
         var output = new StringWriter();
         var config = new ConfigurationBuilder().AddInMemoryCollection(env ?? new Dictionary<string, string?>()).Build();
-        var code = await SeederApp.RunAsync([.. args, "--connection", Connection], config, output, new StringReader(input), _clock);
+        // A settings file that does not exist unless the test names one: never the settings.json of the working directory, a developer's maybe.
+        string[] settings = args.Contains("--settings") || env?.ContainsKey("Settings:Path") == true ? [] : ["--settings", _db + "-settings.json"];
+        var code = await SeederApp.RunAsync([.. args, .. settings, "--connection", Connection], config, output, new StringReader(input), _clock);
         return (code, output.ToString());
     }
 
@@ -126,6 +128,72 @@ public sealed class SeederAppTests : IDisposable
         var env = mode is null ? null : new Dictionary<string, string?> { ["Auth:Mode"] = mode };
 
         Assert.Equal(SeederApp.Success, (await Run(["--vehicles", "2", "--yes"], env: env)).Code);
+    }
+
+    [Fact]
+    public async Task TheAppsOwnSettingsFile_Counts_BelowTheEnvironment()
+    {
+        var file = Path.Combine(Path.GetTempPath(), $"tankstat-seed-settings-{Guid.NewGuid():N}.json");
+        await File.WriteAllTextAsync(file, """{ "Auth": { "Mode": "Standalone" } }""");
+        try
+        {
+            // a mode set on the settings page (Settings:Path from the environment, or --settings) refuses the seeder
+            var (byPath, output) = await Run(["--vehicles", "2", "--yes"], env: new Dictionary<string, string?> { ["Settings:Path"] = file });
+            Assert.Equal(SeederApp.Refused, byPath);
+            Assert.Contains("authentication mode None only", output);
+            Assert.Equal(SeederApp.Refused, (await Run(["--vehicles", "2", "--yes", "--settings", file])).Code);
+
+            // the environment wins over the file, as in the app
+            Assert.Equal(SeederApp.Success, (await Run(["--vehicles", "2", "--yes"], env: new Dictionary<string, string?> { ["Settings:Path"] = file, ["Auth:Mode"] = "None" })).Code);
+
+            // a blank --settings is no path (an answer, not a crash): Settings:Path counts then, as a blank one does in the app
+            Assert.Equal(SeederApp.Refused, (await Run(["--vehicles", "2", "--yes", "--settings="], env: new Dictionary<string, string?> { ["Settings:Path"] = file })).Code);
+
+            await File.WriteAllTextAsync(file, "{ not json");
+            var (broken, said) = await Run(["--vehicles", "2", "--yes", "--settings", file]);
+            Assert.Equal(SeederApp.Refused, broken);
+            Assert.Contains("settings file", said);
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Fact]
+    public async Task ASettingsFileWhoseNameStartsWithADot_CountsToo_AndOneThatCannotBeRead_Refuses()
+    {
+        var file = Path.Combine(Path.GetTempPath(), $".tankstat-seed-settings-{Guid.NewGuid():N}.json");
+        await File.WriteAllTextAsync(file, """{ "Auth": { "Mode": "Standalone" } }""");
+        try
+        {
+            Assert.Equal(SeederApp.Refused, (await Run(["--vehicles", "2", "--yes", "--settings", file])).Code); // read as the app reads it
+
+            if (OperatingSystem.IsWindows()) return; // Unix file modes
+            File.SetUnixFileMode(file, UnixFileMode.None);
+            if (Readable(file)) return; // root reads it anyway
+            var (code, output) = await Run(["--vehicles", "2", "--yes", "--settings", file]);
+            Assert.Equal(SeederApp.Refused, code); // an answer, not an unhandled exception
+            Assert.Contains("cannot be read", output);
+        }
+        finally
+        {
+            if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            File.Delete(file);
+        }
+    }
+
+    private static bool Readable(string path)
+    {
+        try
+        {
+            using var _ = File.OpenRead(path);
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     [Fact]
@@ -276,14 +344,19 @@ public sealed class SeederAppTests : IDisposable
     {
         await Run(["--vehicles", "30", "--trashed", "4", "--refuelings", "5-12", "--yes"]);
 
-        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(new Dictionary<string, string?>
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
-            ["Database:Provider"] = "Sqlite",
-            ["Database:ConnectionString"] = Connection,
-            ["Auth:Mode"] = "None",
-            // a folder that does not exist, never a developer's Storage__Path: the app moves photos at start
-            ["Storage:Path"] = Path.Combine(Path.GetTempPath(), $"tankstat-seed-app-{Guid.NewGuid():N}", "uploads"),
-        })));
+            // a settings file that does not exist, never a developer's: it is read before the host is built, so it goes as an argument
+            b.UseSetting("Settings:Path", Path.Combine(Path.GetTempPath(), $"tankstat-seed-app-{Guid.NewGuid():N}-settings.json"));
+            b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Database:Provider"] = "Sqlite",
+                ["Database:ConnectionString"] = Connection,
+                ["Auth:Mode"] = "None",
+                // a folder that does not exist, never a developer's Storage__Path: the app moves photos at start
+                ["Storage:Path"] = Path.Combine(Path.GetTempPath(), $"tankstat-seed-app-{Guid.NewGuid():N}", "uploads"),
+            }));
+        });
         var client = factory.CreateClient();
         async Task<JsonElement> Gql(string query, object? variables = null) =>
             await (await client.PostAsJsonAsync("/graphql", new { query, variables })).Content.ReadFromJsonAsync<JsonElement>();

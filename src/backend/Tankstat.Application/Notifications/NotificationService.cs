@@ -13,7 +13,7 @@ namespace Tankstat.Application.Notifications;
 /// ones removed (there is no background job).
 /// </summary>
 public sealed class NotificationService(
-    AccessService access, INotificationRepository notifications, RecurringNotificationSync recurring, SyncNotificationSync parked, IOptions<NotificationOptions> options,
+    AccessService access, INotificationRepository notifications, RecurringNotificationSync recurring, SyncNotificationSync parked, IOptionsSnapshot<NotificationOptions> options,
     TimeProvider clock,
     ILogger<NotificationService> logger)
 {

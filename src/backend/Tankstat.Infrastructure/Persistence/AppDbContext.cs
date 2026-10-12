@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Tankstat.Domain;
 using Tankstat.Domain.Access;
+using Tankstat.Domain.Instance;
 using Tankstat.Domain.Charts;
 using Tankstat.Domain.Images;
 using Tankstat.Domain.Photos;
@@ -66,6 +67,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<UserSession> UserSessions => Set<UserSession>();
     public DbSet<AccessGrant> AccessGrants => Set<AccessGrant>();
     public DbSet<AccessSettings> AccessSettings => Set<AccessSettings>();
+    public DbSet<InstanceState> InstanceState => Set<InstanceState>();
     public DbSet<ResourceGrant> ResourceGrants => Set<ResourceGrant>();
     public DbSet<LogPhoto> LogPhotos => Set<LogPhoto>();
     public DbSet<PhotoDraft> PhotoDrafts => Set<PhotoDraft>();

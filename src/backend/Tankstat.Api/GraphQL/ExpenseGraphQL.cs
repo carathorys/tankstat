@@ -103,7 +103,7 @@ public sealed class ExpenseQueries
 [ExtendObjectType(OperationTypeNames.Mutation)]
 public sealed class ExpenseMutations
 {
-    public Task<Expense> AddExpense(AddExpenseInput input, [Service] ExpenseService expenses, [Service] IOptions<VehicleDefaultsOptions> defaults, CancellationToken ct) =>
+    public Task<Expense> AddExpense(AddExpenseInput input, [Service] ExpenseService expenses, [Service] IOptionsSnapshot<VehicleDefaultsOptions> defaults, CancellationToken ct) =>
         expenses.AddAsync(input.VehicleId,
             new ExpenseInput(input.Date, input.Title, input.Category, input.Amount, input.Currency ?? defaults.Value.Currency, input.Odometer, input.Note), ct, input.PhotoIds, input.Id);
 

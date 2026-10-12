@@ -16,6 +16,8 @@ export Database__ConnectionString="Data Source=${db}"
 # Throwaway upload folders too: the app moves photos between them at start, so it must never be pointed at a developer's own.
 files="$(mktemp -d -t tankstat-api-files-XXXXXX)"
 export Storage__Path="${files}/uploads" Storage__PhotosPath="${files}/photos"
+# And a settings file of the run's own (none exists), so the working directory's (the repository root) is never read.
+export Settings__Path="${files}/settings.json"
 dotnet src/backend/Tankstat.Api/bin/Release/net10.0/Tankstat.Api.dll --urls "$TANKSTAT_API_URL" &
 pid=$!
 trap 'kill "$pid" 2>/dev/null || true; rm -f "$db"; rm -rf "$files"' EXIT

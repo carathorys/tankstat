@@ -9,10 +9,16 @@ name="tankstat-smoke-$$"
 port="${SMOKE_PORT:-18099}"
 url="http://127.0.0.1:${port}"
 
+std="${name}-standalone"
+std_port=$((port + 1))
+std_url="http://127.0.0.1:${std_port}"
+jar="$(mktemp)"
 cleanup() {
   docker logs "$name" 2>&1 | tail -n 40 || true
-  docker rm -f "$name" >/dev/null 2>&1 || true
+  docker logs "$std" 2>&1 | tail -n 40 || true
+  docker rm -f "$name" "$std" >/dev/null 2>&1 || true
   docker volume rm "${name}-photos" >/dev/null 2>&1 || true
+  rm -f "$jar"
 }
 trap cleanup EXIT
 
@@ -70,4 +76,26 @@ grep -q '^/data/photos/vehicles/[0-9a-f]*/refuelings/' <<<"$files" || { echo "FA
 user="$(docker exec "$name" id -u)"
 [ "$user" != "0" ] || { echo "FAIL: the container runs as root" >&2; exit 1; }
 
-echo "OK: $image serves the web app (installable, cache rules in place) and the API (version check of both: ${expected_version:-skipped}, user $user), pictures and photos in their folders"
+# A second container in Standalone mode: an administrator saves a setting through the API, it lands in /data/settings.json readable by the app's
+# user only, and a restart (in the process: the container keeps running) makes it count.
+docker run -d --name "$std" -p "${std_port}:8080" -e Auth__Mode=Standalone -e Auth__Standalone__AdminEmail=root@example.com -e Auth__Standalone__AdminPassword=initial-password-1 "$image" >/dev/null
+sgql() { curl -sf -b "$jar" -c "$jar" -H 'Content-Type: application/json' -d "$1" "${std_url}/graphql"; }
+for _ in $(seq 1 60); do
+  sgql '{"query":"{ __typename }"}' >/dev/null 2>&1 && break
+  sleep 1
+done
+sgql '{"query":"{ __typename }"}' >/dev/null || { echo "FAIL: the Standalone container did not come up" >&2; exit 1; }
+sgql '{"query":"mutation { login(input: { email: \"root@example.com\", password: \"initial-password-1\" }) { id } }"}' | grep -q '"id"' || { echo "FAIL: the administrator cannot sign in" >&2; exit 1; }
+sgql '{"query":"mutation { updateSystemSettings(changes: [{ key: \"Defaults:Currency\", value: \"HUF\" }]) { restartPending } }"}' | grep -q '"restartPending":true' || { echo "FAIL: the setting was not saved" >&2; exit 1; }
+docker exec "$std" cat /data/settings.json | grep -q '"Currency": "HUF"' || { echo "FAIL: the settings file does not hold the change" >&2; exit 1; }
+docker exec "$std" stat -c %a /data/settings.json | grep -q '^600$' || { echo "FAIL: the settings file is not owner-only" >&2; exit 1; }
+sgql '{"query":"mutation { restartServer }"}' | grep -q '"restartServer":true' || { echo "FAIL: the restart was refused" >&2; exit 1; }
+for _ in $(seq 1 60); do
+  sgql '{"query":"{ vehicleDefaults { currency } }"}' 2>/dev/null | grep -q '"currency":"HUF"' && break
+  sleep 1
+done
+sgql '{"query":"{ vehicleDefaults { currency } }"}' | grep -q '"currency":"HUF"' || { echo "FAIL: the saved setting does not count after the restart" >&2; exit 1; }
+sgql '{"query":"{ session { user { email } } }"}' | grep -q 'root@example.com' || { echo "FAIL: the restart signed the administrator out" >&2; exit 1; }
+docker inspect -f '{{.State.Status}}' "$std" | grep -q '^running$' || { echo "FAIL: the container stopped for the restart" >&2; exit 1; }
+
+echo "OK: $image serves the web app (installable, cache rules in place) and the API (version check of both: ${expected_version:-skipped}, user $user), pictures and photos in their folders, a setting saved by an administrator survives an in-process restart"

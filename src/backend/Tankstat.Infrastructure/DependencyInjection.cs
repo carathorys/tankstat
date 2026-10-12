@@ -15,12 +15,14 @@ using Tankstat.Application.Recurring;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Settings;
 using Tankstat.Application.Sync;
+using Tankstat.Application.SystemSettings;
 using Tankstat.Application.Stats;
 using Tankstat.Application.Photos;
 using Tankstat.Application.Recognition;
 using Tankstat.Application.Users;
 using Tankstat.Infrastructure.Auth;
 using Tankstat.Infrastructure.Recognition;
+using Tankstat.Infrastructure.Settings;
 using Tankstat.Infrastructure.Storage;
 using Tankstat.Application.Vehicles;
 using Tankstat.Infrastructure.Persistence;
@@ -84,6 +86,7 @@ public static class DependencyInjection
         services.AddScoped<IUserSessionRepository, UserSessionRepository>();
         services.AddScoped<IAccessGrantRepository, AccessGrantRepository>();
         services.AddScoped<IAccessSettingsRepository, AccessSettingsRepository>();
+        services.AddScoped<IInstanceStateRepository, InstanceStateRepository>();
         services.AddScoped<IResourceGrantRepository, ResourceGrantRepository>();
         services.AddScoped<IOdometerReadingRepository, OdometerReadingRepository>();
         services.AddScoped<IImageRepository, ImageRepository>();
@@ -108,11 +111,23 @@ public static class DependencyInjection
         services.AddSingleton<RecognitionSignal>();
         services.AddSingleton<IRecognitionSignal>(sp => sp.GetRequiredService<RecognitionSignal>());
 
+        // The discovery document of an OIDC authority an administrator typed: a short wait, a small answer, and no redirects. The handler's own
+        // backchannel would follow one; the probe does not, on purpose: the address that is saved must be the one that answers. It asks with
+        // the handler's User-Agent, so a firewall in front of the provider that turns away requests without one treats it as it will the handler.
+        services.AddHttpClient<IOidcDiscovery, OidcDiscovery>(client =>
+            {
+                client.Timeout = OidcDiscovery.Timeout;
+                client.DefaultRequestHeaders.UserAgent.ParseAdd(OidcDiscovery.UserAgent);
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
+
         // Order matters: migrate first, then move the photos kept with the pictures once they have a folder of their own, then create the initial
-        // administrator; the photo reading worker needs the migrated database.
+        // administrator, then sign everybody out when the authentication mode changed since the last start (after what can still fail the start,
+        // so a start that never served a request records no mode; still before the server listens); the photo reading worker needs the migrated database.
         services.AddHostedService<DatabaseMigrator>();
         services.AddHostedService<PhotosMove>();
         services.AddHostedService<StandaloneBootstrapper>();
+        services.AddHostedService<ModeChangeSignOut>();
         services.AddHostedService<RecognitionWorker>();
         services.AddHostedService<PasswordResetMailer>();
 

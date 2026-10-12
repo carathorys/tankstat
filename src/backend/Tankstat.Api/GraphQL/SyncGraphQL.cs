@@ -441,7 +441,7 @@ public sealed class SyncMutations
 /// </summary>
 public sealed class SyncChangeServices(
     VehicleService vehicles, RefuelingService refuelings, ExpenseService expenses, RecurringExpenseService recurring, LogPhotoService photos, ImageService images,
-    IOptions<VehicleDefaultsOptions> defaults, IRefuelingRepository refuelingRows, IExpenseRepository expenseRows, IRecurringExpenseRepository scheduleRows)
+    IOptionsSnapshot<VehicleDefaultsOptions> defaults, IRefuelingRepository refuelingRows, IExpenseRepository expenseRows, IRecurringExpenseRepository scheduleRows)
 {
     public ImageService Images => images;
     public VehicleService Vehicles => vehicles;

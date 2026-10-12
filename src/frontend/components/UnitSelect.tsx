@@ -4,10 +4,11 @@ import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import { useId } from 'react'
+import { LabelBadges, type LabelBadge } from './LabelBadges.tsx'
 
 /**
  * A labelled choice (units, fuel, a chart's metric, a person): the label names the select (aria-labelledby), the options open in a list.
- * An empty `value` shows the `placeholder`.
+ * An empty `value` shows the `placeholder`; a `hint` under it describes the select (aria-describedby), as a Field's hint does.
  */
 export function LabeledSelect<T extends string>({
   label,
@@ -16,6 +17,8 @@ export function LabeledSelect<T extends string>({
   onChange,
   disabled,
   placeholder,
+  hint,
+  badges,
 }: {
   label: string
   value: T
@@ -23,12 +26,27 @@ export function LabeledSelect<T extends string>({
   onChange: (value: T) => void
   disabled?: boolean
   placeholder?: string
+  hint?: string
+  /** Short words beside the label (where a value comes from); read as the start of the select's description. */
+  badges?: readonly LabelBadge[]
 }) {
   const labelId = useId()
+  const hintId = `${labelId}-hint`
+  const badgesId = `${labelId}-badges`
+  const hasBadges = (badges?.length ?? 0) > 0
+  const describedBy = [hasBadges && badgesId, hint && hintId].filter(Boolean).join(' ') || undefined
   return (
     <Stack sx={{ gap: 0.5, minWidth: 0 }}>
-      <FormLabel id={labelId}>{label}</FormLabel>
-      <ChoiceSelect labelId={labelId} value={value} options={options} onChange={onChange} disabled={disabled} placeholder={placeholder} />
+      <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+        <FormLabel id={labelId}>{label}</FormLabel>
+        {hasBadges && <LabelBadges id={badgesId} badges={badges!} />}
+      </Stack>
+      <ChoiceSelect labelId={labelId} describedBy={describedBy} value={value} options={options} onChange={onChange} disabled={disabled} placeholder={placeholder} />
+      {hint && (
+        <Typography id={hintId} variant="caption" sx={{ color: 'text.secondary' }}>
+          {hint}
+        </Typography>
+      )}
     </Stack>
   )
 }
@@ -53,6 +71,7 @@ export function InlineSelect<T extends string>({
 function ChoiceSelect<T extends string>({
   labelId,
   ariaLabel,
+  describedBy,
   value,
   options,
   onChange,
@@ -61,6 +80,8 @@ function ChoiceSelect<T extends string>({
 }: {
   labelId?: string
   ariaLabel?: string
+  /** The id of what describes the select (MUI puts it on the combobox). */
+  describedBy?: string
   value: T
   options: { value: T; label: string }[]
   onChange: (value: T) => void
@@ -70,7 +91,7 @@ function ChoiceSelect<T extends string>({
   return (
     <Select<T>
       labelId={labelId}
-      inputProps={ariaLabel ? { 'aria-label': ariaLabel } : undefined}
+      inputProps={ariaLabel || describedBy ? { 'aria-label': ariaLabel, 'aria-describedby': describedBy } : undefined}
       value={value}
       onChange={(event) => onChange(event.target.value as T)}
       disabled={disabled}
