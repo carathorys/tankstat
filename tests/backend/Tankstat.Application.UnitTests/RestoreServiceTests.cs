@@ -1,0 +1,54 @@
+using Tankstat.Application.Backups;
+using Tankstat.Domain;
+
+namespace Tankstat.Application.UnitTests;
+
+/// <summary>Asking for a restore restarts the server in its process, as an administrator's restart does, and never when the next start would refuse the settings file.</summary>
+public sealed class RestoreServiceTests
+{
+    private static readonly BackupManifest Plain = new(
+        BackupManifest.CurrentFormat, BackupManifest.Tankstat, "1.0.0", new DateTimeOffset(2026, 9, 30, 2, 0, 0, TimeSpan.Zero), "Sqlite", "20261012093636_AddInstanceGeneration",
+        false, new BackupContents(new Dictionary<string, long>(), true, BackupPhotos.WithPictures, false), new BackupSizes(0, 0, 0, 0, 0), new BackupArchive(BackupArchive.Plain, ""), null);
+
+    private sealed class OneBackup : IBackupStore
+    {
+        public RestoreMarker? Marker { get; private set; }
+        public bool RestorePending => Marker is not null;
+        public BackupManifest ReadManifest(string fileName) => Plain;
+        public string? IdentityFor(BackupManifest manifest, string? passphrase, string? identity) => throw new NotSupportedException();
+        public void RequestRestore(RestoreMarker marker) => Marker = marker;
+    }
+
+    private static (World World, OneBackup Store, RestoreService Service) Admin()
+    {
+        var w = new World();
+        w.Current.SignInAs(w.AddUser("root@x.co", admin: true));
+        var store = new OneBackup();
+        return (w, store, new RestoreService(store, w.Access, w.Options.Create(), new RestoreCode(), w.SystemConfiguration, w.Restart, w.Clock, w.Log.For<RestoreService>()));
+    }
+
+    [Fact]
+    public async Task ARestore_WritesTheMarker_ThenRestartsTheServer()
+    {
+        var (w, store, service) = Admin();
+
+        var pending = await service.RequestAsync(new RestoreRequest("tankstat-backup-1.zip", null, null, null), default);
+
+        Assert.Equal(("tankstat-backup-1.zip", Plain.CreatedAt), (pending.File, pending.RestorePoint));
+        Assert.Equal("tankstat-backup-1.zip", store.Marker!.File);
+        Assert.Equal(1, w.Restart.Count);
+    }
+
+    [Fact]
+    public async Task ARestoreTheNextStartWouldRefuse_WritesNoMarker_AndRestartsNothing()
+    {
+        var (w, store, service) = Admin();
+        w.SystemConfiguration.NextStartRefusal = ["Notifications:MaxPerHour must be at least 1."]; // a file hand-edited since the start
+
+        var refused = await Assert.ThrowsAsync<DomainException>(() => service.RequestAsync(new RestoreRequest("tankstat-backup-1.zip", null, null, null), default));
+
+        Assert.Equal("settings.restartWouldFail", refused.Key);
+        Assert.Null(store.Marker);
+        Assert.Equal(0, w.Restart.Count);
+    }
+}

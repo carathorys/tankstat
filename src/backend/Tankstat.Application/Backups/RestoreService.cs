@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
+using Tankstat.Application.SystemSettings;
 
 namespace Tankstat.Application.Backups;
 
@@ -14,11 +15,14 @@ public sealed record RestorePending(string File, DateTimeOffset RestorePoint);
 /// <summary>
 /// Asks for a restore: an administrator (with sign-in off, whoever holds the one-time code from the server's log, since there is no
 /// administrator then) names a backup of the folder and, for an encrypted one, its passphrase or identity. The key is checked against the
-/// manifest before anything is written, so a wrong passphrase is refused at once, never after a restart that then cannot decrypt; then the
-/// marker is written (with the identity, which the restart needs) and the caller restarts the app. Neither the passphrase nor the identity
-/// nor the code is ever logged.
+/// manifest before anything is written, so a wrong passphrase is refused at once, never after a restart that then cannot decrypt; so is a
+/// restart the next start would refuse (the settings file as it is now), since a start that fails ends the process. Then the marker is
+/// written (with the identity, which the restart needs) and the server restarts in this process, as an administrator's restart does
+/// (<see cref="IServerRestart"/>). Neither the passphrase nor the identity nor the code is ever logged.
 /// </summary>
-public sealed class RestoreService(IBackupStore store, AccessService access, IOptions<AuthOptions> auth, RestoreCode code, TimeProvider clock, ILogger<RestoreService> logger)
+public sealed class RestoreService(
+    IBackupStore store, AccessService access, IOptions<AuthOptions> auth, RestoreCode code, ISystemConfiguration configuration, IServerRestart restart,
+    TimeProvider clock, ILogger<RestoreService> logger)
 {
     public async Task<RestorePending> RequestAsync(RestoreRequest request, CancellationToken ct)
     {
@@ -32,8 +36,11 @@ public sealed class RestoreService(IBackupStore store, AccessService access, IOp
 
         var manifest = store.ReadManifest(request.File);
         var identity = manifest.Encryption is null ? null : store.IdentityFor(manifest, request.Passphrase, request.Identity);
+        // Only whether the file lets the server start again: who may sign in afterwards is the backup's business, its users replace these.
+        using (var next = configuration.PrepareNextStart()) next.RequireStartable();
         store.RequestRestore(new RestoreMarker(request.File, actor, clock.GetUtcNow(), identity));
-        logger.LogInformation("A restore of {File} (written {CreatedAt}) was asked for by user {UserId}; it is applied at the next start", request.File, manifest.CreatedAt, actor);
+        logger.LogInformation("A restore of {File} (written {CreatedAt}) was asked for by user {UserId}; the server restarts to apply it", request.File, manifest.CreatedAt, actor);
+        restart.Restart();
         return new RestorePending(request.File, manifest.CreatedAt);
     }
 }

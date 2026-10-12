@@ -1,6 +1,5 @@
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Tankstat.Api.Backups;
 using Tankstat.Application.Backups;
 using Tankstat.Domain.Backups;
@@ -10,8 +9,8 @@ namespace Tankstat.Api.IntegrationTests;
 
 /// <summary>
 /// Asking for a restore: an administrator (or, with sign-in off, the one-time code from the log) names a backup of the folder with its
-/// passphrase; a wrong one is refused before anything is written, a right one leaves the marker with the identity and stops the app once
-/// the answer is out. The notice says a restore waits. Neither the passphrase, the identity nor the code reaches the log.
+/// passphrase; a wrong one is refused before anything is written, a right one leaves the marker with the identity and restarts the server in
+/// its process. The notice says a restore waits. Neither the passphrase, the identity nor the code reaches the log.
 /// </summary>
 public sealed class RestoreRequestTests : IDisposable
 {
@@ -32,21 +31,13 @@ public sealed class RestoreRequestTests : IDisposable
     private async Task<string> Backup(TestApp app, bool encrypted = true) =>
         Path.GetFileName((await app.Factory.Services.GetRequiredService<IBackupWriter>().WriteAsync(new BackupRequest(Encryption: encrypted ? Encryption : null), default)).Path);
 
-    private static Task<bool> Stopping(TestApp app)
-    {
-        var stopping = new TaskCompletionSource<bool>();
-        app.Factory.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping.Register(() => stopping.TrySetResult(true));
-        return Task.WhenAny(stopping.Task, Task.Delay(TimeSpan.FromSeconds(10)).ContinueWith(_ => false)).Unwrap();
-    }
-
     [Fact]
-    public async Task AnAdministrator_WithTheRightPassphrase_LeavesTheMarkerWithTheIdentity_AndTheAppStops()
+    public async Task AnAdministrator_WithTheRightPassphrase_LeavesTheMarkerWithTheIdentity_AndTheServerRestarts()
     {
         using var app = TestApp.Standalone(new() { ["Backups:Path"] = _folder });
         var file = await Backup(app);
         var client = app.NewClient();
         await client.LoginAs(TestApp.AdminEmail, TestApp.AdminPassword);
-        var stopping = Stopping(app);
 
         var pending = (await client.Gql(Restore, new { i = new { file, passphrase = Passphrase } })).Data().GetProperty("restoreBackup");
 
@@ -56,7 +47,7 @@ public sealed class RestoreRequestTests : IDisposable
         Assert.Equal(AgeKeys.FormatIdentity(Identity), marker.Identity);
         Assert.NotEqual(Guid.Empty, marker.RequestedById);
         if (!OperatingSystem.IsWindows()) Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(RestoreMarker.PathIn(_folder)));
-        Assert.True(await stopping, "the app did not stop after the answer");
+        Assert.Equal(1, app.Restarts.Count); // in this process, as restartServer does
         foreach (var needle in new[] { Passphrase, "zzcanary", AgeKeys.FormatIdentity(Identity) }) Assert.False(app.Log.Mentions(needle), needle);
     }
 
@@ -75,6 +66,7 @@ public sealed class RestoreRequestTests : IDisposable
         Assert.Equal("backup.notFound", (await client.Gql(Restore, new { i = new { file = "../" + file, passphrase = Passphrase } })).ErrorKey());
         Assert.False(File.Exists(RestoreMarker.PathIn(_folder)));
         Assert.Empty((await client.Gql("{ notices { code } }")).Data().GetProperty("notices").EnumerateArray());
+        Assert.Equal(0, app.Restarts.Count);
 
         // Not an administrator: refused before the file is even looked at.
         var visitor = app.NewClient();
@@ -99,10 +91,9 @@ public sealed class RestoreRequestTests : IDisposable
         Assert.Contains("RESTORE_PENDING", (await client.Gql("{ notices { code } }")).Data().GetProperty("notices").EnumerateArray().Select(n => n.GetProperty("code").GetString()));
         File.Delete(RestoreMarker.PathIn(_folder));
 
-        var stopping = Stopping(app);
         (await client.Gql(Restore, new { i = new { file, code = code.ToLowerInvariant() } })).Data();
         Assert.Null(RestoreMarker.Read(RestoreMarker.PathIn(_folder)).Identity); // a plain backup needs none
-        Assert.True(await stopping);
+        Assert.Equal(1, app.Restarts.Count);
     }
 
     [Fact]
@@ -153,10 +144,10 @@ public sealed class RestoreRequestTests : IDisposable
         Assert.Equal("backup.notFound", (await client.Gql(Restore, new { i = new { file = "sub/" + file, passphrase = Passphrase } })).ErrorKey());
         Assert.False(File.Exists(RestoreMarker.PathIn(_folder)));
 
-        var stopping = Stopping(app);
+        Assert.Equal(0, app.Restarts.Count);
         (await client.Gql(Restore, new { i = new { file, identity = AgeKeys.FormatIdentity(Identity).ToLowerInvariant() } })).Data(); // either case is the same key
         Assert.Equal(AgeKeys.FormatIdentity(Identity), RestoreMarker.Read(RestoreMarker.PathIn(_folder)).Identity);
-        Assert.True(await stopping);
+        Assert.Equal(1, app.Restarts.Count);
         Assert.False(app.Log.Mentions(AgeKeys.FormatIdentity(Identity)));
     }
 

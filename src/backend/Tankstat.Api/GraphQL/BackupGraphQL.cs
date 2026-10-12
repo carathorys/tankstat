@@ -14,16 +14,13 @@ public sealed class BackupMutations
 {
     /// <summary>
     /// Asks for a restore of a backup from the backups folder: the data is replaced as a whole at the next start, which follows right after
-    /// the answer (the app stops itself; the container's restart policy brings it back). An administrator; with sign-in off, the one-time
-    /// code from the log. A wrong passphrase is <c>backup.wrongKey</c> at once, nothing is written then.
+    /// the answer (the server restarts in its process, as <c>restartServer</c> does). An administrator; with sign-in off, the one-time code
+    /// from the log. A wrong passphrase is <c>backup.wrongKey</c> at once, a restart the next start would refuse <c>settings.restartWouldFail</c>;
+    /// nothing is written then.
     /// </summary>
-    public async Task<RestorePendingInfo> RestoreBackup(
-        RestoreBackupInput input, [Service] RestoreService restores, [Service] IHostApplicationLifetime lifetime, [Service] IHttpContextAccessor http, CancellationToken ct)
+    public async Task<RestorePendingInfo> RestoreBackup(RestoreBackupInput input, [Service] RestoreService restores, CancellationToken ct)
     {
         var pending = await restores.RequestAsync(new RestoreRequest(input.File, input.Passphrase, input.Identity, input.Code), ct);
-        // The answer goes out first: the app stops once the response is written (stopping inside the resolver could cut it short).
-        if (http.HttpContext is { } context) context.Response.OnCompleted(() => { lifetime.StopApplication(); return Task.CompletedTask; });
-        else lifetime.StopApplication();
         return new RestorePendingInfo(pending.File, pending.RestorePoint);
     }
 }

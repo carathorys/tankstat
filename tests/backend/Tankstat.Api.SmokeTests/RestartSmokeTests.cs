@@ -1,6 +1,9 @@
 namespace Tankstat.Api.SmokeTests;
 
-/// <summary>An administrator's restart in the real process: the host stops and starts again in the same process, on the same port, and what was saved into the settings file counts afterwards.</summary>
+/// <summary>
+/// An administrator's restart in the real process: the host stops and starts again in the same process, on the same port, and what was saved
+/// into the settings file counts afterwards; a restore asked for from the app restarts the same way.
+/// </summary>
 public class RestartSmokeTests
 {
     private static readonly Dictionary<string, string?> Standalone = new()
@@ -59,6 +62,28 @@ public class RestartSmokeTests
         Assert.Contains("Settings file", app.Log); // the second host read the file the first one wrote (the first start had none: a Debug line, unseen in Production)
         Assert.Contains("database migrations", app.Log); // the first start migrated...
         Assert.Contains("up to date", app.Log); // ...and the second found the database ready: two starts in one process
+    }
+
+    [Fact]
+    public async Task RestoreBackup_RestartsTheHostInTheSameProcess_WhichStartsWithTheBackupsData()
+    {
+        var work = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"tankstat-smoke-{Guid.NewGuid():N}")).FullName;
+        var settings = new Dictionary<string, string?> { ["Auth__Mode"] = "None" };
+        await using var app = await AppProcess.StartAsync(settings, workDirectory: work);
+        await app.Gql("mutation { addVehicle(input: { name: \"Before\", fuelType: PETROL }) { id } }");
+        var (made, log) = await AppProcess.RunCommandAsync(settings, work, "", "backup");
+        Assert.True(made == 0, log);
+        await app.Gql("mutation { addVehicle(input: { name: \"After\", fuelType: PETROL }) { id } }");
+        var file = Path.GetFileName(Assert.Single(Directory.GetFiles(Path.Combine(work, "backups"), "tankstat-backup-*.zip")));
+        var code = System.Text.RegularExpressions.Regex.Match(app.Log, "one-time restore code ([A-Z0-9]{8})").Groups[1].Value; // sign-in is off: the log's code is the gate
+
+        var asked = (await app.Gql("mutation($i: RestoreBackupInput!) { restoreBackup(input: $i) { file } }", new { i = new { file, code } })).Data();
+
+        Assert.Equal(file, asked.GetProperty("restoreBackup").GetProperty("file").GetString());
+        await WhenBackAsync(app, d => d.GetProperty("myVehicles").EnumerateArray().Select(v => v.GetProperty("name").GetString()).SequenceEqual(["Before"]), query: "{ myVehicles { name } }");
+        Assert.False(app.HasExited); // no restart policy needed: the process never ended
+        Assert.Contains("Restarting the server", app.Log);
+        Assert.Contains("Restored the backup", app.Log);
     }
 
     [Fact]

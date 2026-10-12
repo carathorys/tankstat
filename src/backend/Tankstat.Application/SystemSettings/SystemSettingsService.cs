@@ -130,13 +130,7 @@ public sealed class SystemSettingsService(
     {
         var admin = await access.RequireAdminAsync(ct);
         using (var next = configuration.PrepareNextStart())
-        {
-            if (next.Configuration is null)
-                throw new DomainException("settings.restartWouldFail",
-                    $"The server would not start again with the settings file as it is ({string.Join(" ", next.Refusal)}), so it is not restarted: fix the file, or set Auth__Mode in the environment.",
-                    new { Problems = next.Refusal });
-            await RequireAdministratorAsync(next.Configuration, ct);
-        }
+            await RequireAdministratorAsync(next.RequireStartable(), ct);
         logger.LogInformation("Administrator {AdminId} restarted the server", admin.Id);
         restart.Restart();
     }

@@ -28,7 +28,7 @@ public sealed class NoticeService(IOptions<AuthOptions> auth, IBackupStore backu
             notices.Add(new Notice(
                 "SETTINGS_FILE_IGNORED", NoticeSeverity.Warning,
                 "The settings file could not be used and was left out; the app runs without it until the next start. See the server log for the reason."));
-        // Someone asked for a restore and the restart has not happened (no restart policy, or a server started by hand).
+        // A restore waits for a start that has not come: asked for with `restore` on the command line without --now, or a restart that did not happen.
         if (backups.RestorePending)
             notices.Add(new Notice("RESTORE_PENDING", NoticeSeverity.Warning, "A restore is waiting for a restart of the app: it replaces all data when the app starts next."));
         return notices;
