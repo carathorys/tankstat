@@ -2,6 +2,7 @@ import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Checkbox from '@mui/material/Checkbox'
+import Link from '@mui/material/Link'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Stack from '@mui/material/Stack'
 import TableBody from '@mui/material/TableBody'
@@ -12,6 +13,7 @@ import Typography from '@mui/material/Typography'
 import { DatabaseBackup, Download, KeyRound, RotateCcw, Upload } from 'lucide-react'
 import { useEffect, useEffectEvent, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Link as RouterLink } from 'react-router'
 import { DefinitionList } from '../components/DefinitionList.tsx'
 import { Segmented } from '../components/Segmented.tsx'
 import { SurfaceTable } from '../components/SurfaceTable.tsx'
@@ -27,6 +29,8 @@ import {
   RestoreBackupDocument,
   RunBackupDocument,
   SessionDocument,
+  SystemSettingsDocument,
+  UpdateSystemSettingsDocument,
   type BackupRunFieldsFragment,
   type BackupsQuery,
   type PrepareBackupEncryptionMutation,
@@ -132,6 +136,9 @@ function Overview({ backups }: { backups: BackupsQuery['backups'] }) {
           { label: t('admin.backups.retentionLabel'), value: retention },
         ]}
       />
+      <Link component={RouterLink} to="/admin/settings?tab=backups" sx={{ display: 'inline-block', mt: 1 }}>
+        {t('admin.backups.changeSettings')}
+      </Link>
     </section>
   )
 }
@@ -573,6 +580,22 @@ function KeySetForm({ replacing }: { replacing: boolean }) {
 function KeySetShown({ keys }: { keys: KeySet }) {
   const { t } = useTranslation()
   const [saved, setSaved] = useState(false)
+  // The settings page's own save: the answer is that page as the server now has it, and the Backups page says which key it encrypts for.
+  const [update, { loading: using, data: used, error: refused }] = useMutation(UpdateSystemSettingsDocument, {
+    update: (cache, { data }) => {
+      if (data) cache.writeQuery({ query: SystemSettingsDocument, data: { systemSettings: data.updateSystemSettings } })
+    },
+    refetchQueries: [BackupsDocument],
+  })
+  const use = () =>
+    update({
+      variables: {
+        changes: [
+          { key: 'Backups:Encryption:Recipient', value: keys.recipient },
+          { key: 'Backups:Encryption:Salt', value: keys.salt },
+        ],
+      },
+    }).catch(() => undefined) // the refusal is shown below
   return (
     <Stack sx={{ gap: 1.5 }}>
       <SuccessMessage>{t('admin.backups.keysMade')}</SuccessMessage>
@@ -583,6 +606,15 @@ function KeySetShown({ keys }: { keys: KeySet }) {
           { label: t('admin.backups.identity'), value: <Code>{keys.identity}</Code> },
         ]}
       />
+      {used ? (
+        <SuccessMessage>{t('admin.backups.keysInUse')}</SuccessMessage>
+      ) : (
+        <Button variant="soft" onClick={() => void use()} loading={using} sx={{ alignSelf: 'flex-start' }}>
+          <KeyRound size={16} aria-hidden />
+          {t('admin.backups.keysUse')}
+        </Button>
+      )}
+      {refused && <ErrorMessage error={refused} />}
       <Typography variant="body2">{t('admin.backups.keysSettings')}</Typography>
       <Box component="pre" sx={(theme) => ({ m: 0, p: 1.5, borderRadius: '8px', backgroundColor: theme.vars.palette.neutral.soft, whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '0.85em' })}>
         {`Backups__Encryption__Recipient=${keys.recipient}\nBackups__Encryption__Salt=${keys.salt}`}

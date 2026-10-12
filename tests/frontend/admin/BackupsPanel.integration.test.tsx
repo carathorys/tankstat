@@ -59,7 +59,12 @@ const idle: Run = { __typename: 'BackupRunInfo', running: false, startedAt: null
 const secretField = (dialog: HTMLElement, label: RegExp) => within(dialog).getByLabelText(label, { selector: 'input[type="password"]' })
 
 /** The server's side of the Backups page: the overview, a run, an upload, a key set and a restore, each call recorded. */
-function backupsServer({ points = [point()], run = idle, restoreAnswer }: { points?: unknown[]; run?: Run; restoreAnswer?: () => Response } = {}) {
+function backupsServer({
+  points = [point()],
+  run = idle,
+  restoreAnswer,
+  keysHeldByEnvironment = false,
+}: { points?: unknown[]; run?: Run; restoreAnswer?: () => Response; keysHeldByEnvironment?: boolean } = {}) {
   const calls: Record<string, unknown[]> = {}
   const record = (name: string, value: unknown) => (calls[name] ??= []).push(value)
   const state = { points, run, generation: 'gen-1', pending: false, polls: [] as unknown[], schedule: { every: null, nextRun: null, keep: null, keepDays: null } as Schedule }
@@ -101,6 +106,21 @@ function backupsServer({ points = [point()], run = idle, restoreAnswer }: { poin
       state.run = { ...idle, startedAt: '2026-10-11T08:00:00Z', finishedAt: '2026-10-11T08:00:05Z', file: 'tankstat-backup-20261011T080000Z.zip', bytes: 3_100_000 }
       state.points = [point({ file: 'tankstat-backup-20261011T080000Z.zip', createdAt: '2026-10-11T08:00:00Z' }), ...state.points]
       return HttpResponse.json({ data: { runBackup: true } })
+    }),
+    graphql.mutation('UpdateSystemSettings', ({ variables }) => {
+      record('UpdateSystemSettings', variables)
+      if (keysHeldByEnvironment)
+        return HttpResponse.json(gqlError('Set by the environment.', 'VALIDATION_FAILED', 'settings.readOnly', { key: 'Backups:Encryption:Recipient' }))
+      return HttpResponse.json({
+        data: {
+          updateSystemSettings: {
+            __typename: 'SystemSettingsInfo',
+            file: { __typename: 'SettingsFileInfo', path: '/data/settings.json', exists: true, ignored: false, problems: [] },
+            restartPending: false,
+            groups: [],
+          },
+        },
+      })
     }),
     graphql.mutation('PrepareBackupEncryption', ({ variables }) => {
       record('PrepareBackupEncryption', variables)
@@ -283,11 +303,45 @@ it('makes a key set, shows it once with the two settings to set, and is done onl
   expect(within(dialog).getByText('Passphrase (made up)')).toBeInTheDocument()
   expect(within(dialog).getByText(/Backups__Encryption__Recipient=age1qy.*\s+Backups__Encryption__Salt=c2FsdHNhbHRzYWx0c2FsdA==/)).toBeInTheDocument()
   expect(calls.PrepareBackupEncryption).toEqual([{ passphrase: 'short' }, { passphrase: null }])
+  expect(calls.UpdateSystemSettings).toBeUndefined() // nothing is saved unless asked
   const done = within(dialog).getByRole('button', { name: 'Done' })
   expect(done).toBeDisabled()
   await ui.click(within(dialog).getByRole('checkbox', { name: 'I have kept the passphrase in a safe place' }))
   await ui.click(done)
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+})
+
+it('saves a new key set into the server settings when asked, or says the environment holds them', async () => {
+  const { calls } = backupsServer()
+  const ui = await openBackups()
+  await ui.click(screen.getByRole('button', { name: 'Make a key set…' }))
+  const dialog = await screen.findByRole('dialog', { name: 'A key set for encrypted backups' })
+  await ui.click(within(dialog).getByRole('button', { name: 'Make the keys' }))
+  await within(dialog).findByText('K7QM-4XWD-PL2N-ZR8A-HJ3T')
+  const backupsAsked = calls.Backups?.length ?? 0
+
+  await ui.click(within(dialog).getByRole('button', { name: 'Use these keys for new backups' }))
+
+  expect(await within(dialog).findByText('Saved on the server: every backup from now on is encrypted with these keys.')).toBeInTheDocument()
+  expect(calls.UpdateSystemSettings).toEqual([
+    { changes: [{ key: 'Backups:Encryption:Recipient', value: expect.stringMatching(/^age1/) }, { key: 'Backups:Encryption:Salt', value: 'c2FsdHNhbHRzYWx0c2FsdA==' }] },
+  ])
+  await waitFor(() => expect(calls.Backups!.length).toBeGreaterThan(backupsAsked)) // the page says which key it encrypts for now
+  expect(within(dialog).queryByRole('button', { name: 'Use these keys for new backups' })).not.toBeInTheDocument()
+})
+
+it('says why a key set cannot be saved when the environment holds the settings', async () => {
+  backupsServer({ keysHeldByEnvironment: true })
+  const ui = await openBackups()
+  await ui.click(screen.getByRole('button', { name: 'Make a key set…' }))
+  const dialog = await screen.findByRole('dialog', { name: 'A key set for encrypted backups' })
+  await ui.click(within(dialog).getByRole('button', { name: 'Make the keys' }))
+  await within(dialog).findByText('K7QM-4XWD-PL2N-ZR8A-HJ3T')
+
+  await ui.click(within(dialog).getByRole('button', { name: 'Use these keys for new backups' }))
+
+  expect(await within(dialog).findByText('Backups:Encryption:Recipient is set by the environment, which wins over the settings file.')).toBeInTheDocument()
+  expect(within(dialog).getByText(/Backups__Encryption__Recipient=age1/)).toBeInTheDocument() // the other way stays shown
 })
 
 it('shows the schedule with the next run and what retention keeps, or that neither is set', async () => {
@@ -305,8 +359,9 @@ it('says when nothing is scheduled and every backup is kept', async () => {
   await openBackups()
 
   const overview = within(screen.getByRole('region', { name: 'This server' }))
-  expect(overview.getByText('Not scheduled (set Backups:Every to a time of day, such as 02:00)')).toBeInTheDocument()
-  expect(overview.getByText('Every backup is kept (set Backups:Keep or Backups:KeepDays to remove old ones)')).toBeInTheDocument()
+  expect(overview.getByText('Not scheduled')).toBeInTheDocument()
+  expect(overview.getByText('Every backup is kept')).toBeInTheDocument()
+  expect(overview.getByRole('link', { name: 'Change the schedule, retention and encryption in the server settings' })).toHaveAttribute('href', '/admin/settings?tab=backups')
 })
 
 it('a server without backups says how to make the first one', async () => {
