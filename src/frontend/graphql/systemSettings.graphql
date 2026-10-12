@@ -8,6 +8,7 @@ fragment SystemSettingFields on SystemSetting {
   source
   editable
   restartPending
+  defaultValue
 }
 
 fragment SystemSettingsFields on SystemSettingsInfo {

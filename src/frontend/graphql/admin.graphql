@@ -1,3 +1,26 @@
+# The administration's overview: what needs attention and a few facts, from the questions the other pages ask. Asked past the cache
+# (`no-cache`): its answer of only some of the system settings must never stand in for the whole one the Server settings page keeps.
+query AdminOverview {
+  systemSettings {
+    restartPending
+    file {
+      path
+      exists
+      ignored
+    }
+  }
+  users {
+    id
+    isAdmin
+    isDisabled
+  }
+  vehicleCount
+  health {
+    version
+    databaseReachable
+  }
+}
+
 query Admin {
   users {
     id
