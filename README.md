@@ -41,7 +41,7 @@ Then open http://localhost:8080 and sign in with that e-mail and password. The `
 
 > **Always set `Auth__Mode`.** The shipped `appsettings.json` runs without authentication: everyone sees and changes everything, and there is no administrator. Put TLS in front of the container, and never commit real credentials.
 
-Everything is configured through environment variables, or by an administrator on the *System settings* page once it runs (the app's own settings file, below the environment), see [Configuration](docs/configuration.md) (the other databases included) and [Authentication](docs/authentication.md). Running without Docker and the release images are in [Self-hosting](docs/self-hosting.md).
+Everything is configured through environment variables, or by an administrator on the *Server settings* page once it runs (the app's own settings file, below the environment), see [Configuration](docs/configuration.md) (the other databases included) and [Authentication](docs/authentication.md). Running without Docker and the release images are in [Self-hosting](docs/self-hosting.md).
 
 ## Documentation
 
