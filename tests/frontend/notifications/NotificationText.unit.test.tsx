@@ -87,7 +87,7 @@ it('shows the key of a refusal it cannot word, and does not trip over arguments 
   )
 })
 
-it('tells the administrators which backup failed and why, and leads to the Backups tab', () => {
+it('tells the administrators which backup failed and why, and leads to the Backups page', () => {
   const failed = say('BACKUP_FAILED', { error: 'backup.failed', startedAt: '2027-01-10T02:00:00.0000000+00:00' }, { subject: { type: 'INSTANCE', id: '00000000-0000-0000-0000-000000000000' }, context: null })
 
   expect(failed.href).toBe('/admin/backups')

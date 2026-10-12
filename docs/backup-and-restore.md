@@ -118,7 +118,7 @@ The **Backups** page of the administration (`/admin/backups`, in the menu's Admi
 
 **Retention.** After every backup the app writes (scheduled or Back up now, not the `backup` command), `Backups:Keep` and `Backups:KeepDays` remove the old ones. Both are ceilings: a backup is removed when it is beyond the newest `Keep` or older than `KeepDays`, whichever are set, and the newest one never goes. Only the app's own files are candidates: named `tankstat-backup-...` by it and written by Tankstat, never an upload (`uploaded-...`) or a file copied into the folder under another name. The safety nets a restore writes are kept by a count of their own: the newest three. With neither setting, nothing is ever removed, safety nets included; a schedule without either makes the app warn at every start, since the folder then grows until the disk is full. A backup that fails removes nothing.
 
-**When a backup fails**, every administrator who is not disabled gets a notification (with sign-in off, the anonymous user), once a day at most however often it fails that day; the administrator who pressed Back up now sees the reason on the page instead. The reason is also in the server's log, and the Backups tab says why the last run failed.
+**When a backup fails**, every administrator who is not disabled gets a notification (with sign-in off, the anonymous user), once a day at most however often it fails that day; the administrator who pressed Back up now sees the reason on the page instead. The reason is also in the server's log, and the Backups page says why the last run failed.
 
 ## Settings
 
