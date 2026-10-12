@@ -36,7 +36,10 @@ const RULES: readonly Rule[] = [
   { keys: ['Recognition:'], on: PROVIDER, usedWith: ['OpenAiCompatible'] },
 ]
 
-const covers = (rule: Rule, key: string) => key !== rule.on && rule.keys.some((k) => (k.endsWith(':') ? key.startsWith(k) : key === k))
+/** Whether `key` is among `keys`: a key, or every key below a prefix ending with a colon (the rules here, the page's sections). */
+export const keyIn = (keys: readonly string[], key: string) => keys.some((k) => (k.endsWith(':') ? key.startsWith(k) : key === k))
+
+const covers = (rule: Rule, key: string) => key !== rule.on && keyIn(rule.keys, key)
 
 /** Why a setting is not used with the values the page holds; null when it is used (or when that cannot be told). */
 export function unusedReason(key: string, valueOf: ValueOf): Unused | null {

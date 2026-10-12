@@ -524,6 +524,10 @@ it('lays a tab out in sections, folded ones say what they hold is not used and w
   const oidc = sectionHeader(auth, 'OpenID Connect (OIDC)')
   expect(oidc).toHaveAttribute('aria-expanded', 'false') // not used: folded, the reason in its header
   expect(oidc).toHaveAccessibleName('OpenID Connect (OIDC) Not used while Sign-in mode is Standalone; only with Oidc.')
+  // The header controls its panel's region, which takes that id from it: no other element carries the id too (axe does not catch that).
+  expect(document.getElementById(oidc.getAttribute('aria-controls')!)).toHaveAttribute('role', 'region')
+  const ids = [...document.body.querySelectorAll('[id]')].map((e) => e.id)
+  expect(ids.filter((id, i) => ids.indexOf(id) !== i)).toEqual([])
   expect(auth.getByLabelText('OIDC authority')).not.toHaveAccessibleDescription(/Not used/) // said once, in the header
 
   await ui.click(oidc) // can still be opened, to see what is set

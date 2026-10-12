@@ -1,4 +1,5 @@
 import type { SettingsGroup } from '../gql/generated.ts'
+import { keyIn } from './settingsRelevance.ts'
 
 /**
  * How a group's settings are laid out: the ones that decide what the rest is used for (the sign-in mode, the photo provider) above
@@ -26,8 +27,6 @@ const SECTIONS: Partial<Record<SettingsGroup, readonly { id: SectionId; keys: re
   ],
 }
 
-const holds = (keys: readonly string[], key: string) => keys.some((k) => (k.endsWith(':') ? key.startsWith(k) : key === k))
-
 export interface Layout<T> {
   /** Shown above the sections, never folded: the deciding settings, and any no section names. */
   lead: T[]
@@ -38,7 +37,7 @@ export interface Layout<T> {
 /** A group's settings laid out in its sections, each in the order the server lists them. */
 export function layoutOf<T extends { key: string }>(group: SettingsGroup, settings: readonly T[]): Layout<T> {
   const defined = SECTIONS[group] ?? []
-  const sections = defined.map((s) => ({ id: s.id, settings: settings.filter((setting) => holds(s.keys, setting.key)) })).filter((s) => s.settings.length > 0)
+  const sections = defined.map((s) => ({ id: s.id, settings: settings.filter((setting) => keyIn(s.keys, setting.key)) })).filter((s) => s.settings.length > 0)
   const placed = new Set(sections.flatMap((s) => s.settings.map((setting) => setting.key)))
   return { lead: settings.filter((s) => !placed.has(s.key)), sections }
 }

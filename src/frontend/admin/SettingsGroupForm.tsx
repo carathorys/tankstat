@@ -26,10 +26,10 @@ import { ErrorMessage } from '../messages.tsx'
 import { useToast } from '../toast/toastContext.ts'
 import { changesOf, isOn, type GroupDraft } from './settingsDraft.ts'
 import { SettingHelp } from './SettingHelp.tsx'
-import { labelKey, problemsOf } from './settingsText.ts'
+import { problemsOf } from './settingsText.ts'
 import { sharedReason, unusedReason, type Unused, type ValueOf } from './settingsRelevance.ts'
 import { layoutOf, type SectionId } from './settingsSections.ts'
-import { useUnusedText } from './useUnusedText.ts'
+import { useSettingLabel, useUnusedText } from './useUnusedText.ts'
 
 type Setting = SystemSettingFieldsFragment
 
@@ -55,9 +55,10 @@ export function SettingsGroupForm({
   /** After a save: the form starts afresh from the server's answer, even one that looks as before. */
   onSaved: () => void
 }) {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const { toast } = useToast()
   const unusedText = useUnusedText()
+  const settingLabel = useSettingLabel()
   const heading = useId()
   const saveButton = useRef<HTMLButtonElement>(null)
   const [update, { loading: saving }] = useMutation(UpdateSystemSettingsDocument, {
@@ -78,7 +79,7 @@ export function SettingsGroupForm({
     if (confirmGone && !saving && error !== undefined && (!document.activeElement || document.activeElement === document.body)) saveButton.current?.focus()
   }, [confirmGone, saving, error])
 
-  const label = (s: Setting) => (i18n.exists(labelKey(s.key)) ? String(t(labelKey(s.key) as never)) : s.key)
+  const label = (s: Setting) => settingLabel(s.key)
   const editable = group.settings.filter((s) => s.editable)
   const changes = changesOf(group.settings, draft)
   const layout = layoutOf(group.name, group.settings)
@@ -174,7 +175,8 @@ export function SettingsGroupForm({
                     )}
                   </Stack>
                 </AccordionSummary>
-                <AccordionDetails id={`${heading}-${section.id}-panel`}>{block(section.settings, section.id)}</AccordionDetails>
+                {/* The panel's region takes its id from the header's aria-controls (MUI does that): an id here too would be a second one. */}
+                <AccordionDetails>{block(section.settings, section.id)}</AccordionDetails>
               </Accordion>
             )
           })}
