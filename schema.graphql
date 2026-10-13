@@ -116,6 +116,7 @@ type Mutation {
   restoreBackup(input: RestoreBackupInput!): RestorePendingInfo!
     @cost(weight: "10")
   runBackup: Boolean! @cost(weight: "10")
+  deleteBackup(file: String!): Boolean! @cost(weight: "10")
   prepareBackupEncryption(passphrase: String): BackupKeySetInfo!
     @cost(weight: "10")
   revokeSession(id: UUID!): Boolean! @cost(weight: "10")

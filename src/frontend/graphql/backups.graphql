@@ -79,3 +79,7 @@ mutation RestoreBackup($input: RestoreBackupInput!) {
     restorePoint
   }
 }
+
+mutation DeleteBackup($file: String!) {
+  deleteBackup(file: $file)
+}

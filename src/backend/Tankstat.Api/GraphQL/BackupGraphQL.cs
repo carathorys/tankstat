@@ -106,6 +106,16 @@ public sealed class BackupMutations
     public Task<bool> RunBackup([Service] BackupAdminService backups, CancellationToken ct) => backups.RunNowAsync(ct);
 
     /// <summary>
+    /// Deletes a backup from the backups folder (any the page lists, uploaded ones and safety nets too). <c>backup.notFound</c> for a name
+    /// that is no backup there, <c>backup.restorePending</c> while a restore waits for the next start. Administrators only.
+    /// </summary>
+    public async Task<bool> DeleteBackup(string file, [Service] BackupAdminService backups, CancellationToken ct)
+    {
+        await backups.DeleteAsync(file, ct);
+        return true;
+    }
+
+    /// <summary>
     /// A key set for encrypted backups from the passphrase given (at least 12 characters), or from one the server makes up: shown once, stored
     /// nowhere. The two settings it names make every later backup encrypted for it. Administrators only.
     /// </summary>

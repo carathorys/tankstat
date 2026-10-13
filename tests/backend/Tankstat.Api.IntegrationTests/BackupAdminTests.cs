@@ -322,6 +322,30 @@ public sealed class BackupAdminTests : IDisposable
     }
 
     [Fact]
+    public async Task ABackup_IsDeletedByAnAdministrator_NothingElseOfTheFolder_AndNothingWhileARestoreWaits()
+    {
+        using var app = App();
+        var people = await app.Users();
+        var written = Path.GetFileName(await WriteBackup(app));
+        File.WriteAllText(Path.Combine(_folder, "notes.zip"), "not a backup");
+        const string Delete = "mutation($f: String!) { deleteBackup(file: $f) }";
+
+        Assert.Equal("auth.adminRequired", (await people.Alice.Gql(Delete, new { f = written })).ErrorKey());
+        Assert.Equal("backup.corrupt", (await people.Admin.Gql(Delete, new { f = "notes.zip" })).ErrorKey()); // never listed: not a backup
+        Assert.Equal("backup.notFound", (await people.Admin.Gql(Delete, new { f = "../" + written })).ErrorKey());
+        new RestoreMarker(written, Guid.NewGuid(), DateTimeOffset.UtcNow, null).Write(_folder);
+        Assert.Equal("backup.restorePending", (await people.Admin.Gql(Delete, new { f = written })).ErrorKey());
+        Assert.Equal("backup.notFound", (await people.Admin.Gql(Delete, new { f = RestoreMarker.FileName })).ErrorKey());
+        File.Delete(Path.Combine(_folder, RestoreMarker.FileName));
+
+        Assert.True((await people.Admin.Gql(Delete, new { f = written })).Data().GetProperty("deleteBackup").GetBoolean());
+
+        Assert.False(File.Exists(Path.Combine(_folder, written)));
+        Assert.True(File.Exists(Path.Combine(_folder, "notes.zip")));
+        Assert.Contains(app.Log.From("Tankstat.Application.Backups.BackupAdminService"), e => e.Values.TryGetValue("File", out var f) && Equals(f, written));
+    }
+
+    [Fact]
     public async Task AnUploadThatIsNoBackup_IsRefused_AndRemoved()
     {
         using var app = App();

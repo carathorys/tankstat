@@ -546,6 +546,12 @@
       "downloadAria": "A(z) {{made}} mentés letöltése ({{file}})",
       "restore": "Visszaállítás",
       "restoreAria": "A(z) {{made}} mentés visszaállítása ({{file}})",
+      "delete": "Törlés",
+      "deleteAria": "A(z) {{made}} mentés törlése ({{file}})",
+      "deleteTitle": "Törlöd a(z) {{made}} mentést ({{file}})?",
+      "deleteDescription": "A fájl végleg törlődik a mentések mappájából; a szervert többé nem lehet erre az állapotra visszaállítani.",
+      "deleteConfirm": "Törlés",
+      "deleted": "{{file}} törölve.",
       "restoreTitle": "Visszaállítod a(z) {{made}} mentést ({{file}})?",
       "restoreDescription": "A szerver összes adatát lecseréli ez a mentés: a felhasználókat, járműveket, bejegyzéseket és képeket. Ami azóta változott, elvész, de előbb mentés készül a mostani állapotról. Ehhez az alkalmazás újraindul, ami mindenkinek, aki használja, eltart egy pillanatig.",
       "keyKind": "Megnyitás ezzel",
@@ -795,7 +801,8 @@
       "uploadRefused": "A szerver, vagy egy előtte álló proxy, nem fogadott el ekkora fájlt; másold inkább a mentések mappájába.",
       "passphraseTooShort": "A jelmondat legalább {{min}} karakter.",
       "failed": "váratlan hiba (a szerver naplója többet mond)",
-      "stopped": "az alkalmazás leállt, miközben készült"
+      "stopped": "az alkalmazás leállt, miközben készült",
+      "restorePending": "Egy visszaállítás a következő indulásra vár; amíg le nem futott, mentés nem törölhető."
     }
   },
   "a11y": {

@@ -122,6 +122,12 @@ function backupsServer({
       record('BackupRun', {})
       return HttpResponse.json({ data: { backups: { __typename: 'BackupOverviewInfo', run: state.run } } })
     }),
+    graphql.mutation('DeleteBackup', ({ variables }) => {
+      record('DeleteBackup', variables.file)
+      if (state.pending) return HttpResponse.json(gqlError('A restore waits.', 'VALIDATION_FAILED', 'backup.restorePending'))
+      state.points = state.points.filter((p) => (p as { file: string }).file !== variables.file)
+      return HttpResponse.json({ data: { deleteBackup: true } })
+    }),
     graphql.mutation('RunBackup', () => {
       record('RunBackup', {})
       // Written at once in this fake: the first poll already finds it done.
@@ -275,6 +281,33 @@ it('says on the page when a backup is gone since the list, instead of leaving it
 
   expect(await screen.findByRole('alert')).toHaveTextContent('There is no such backup in the backups folder.')
   expect(download).not.toHaveBeenCalled()
+})
+
+it('deletes a backup once asked to confirm, and lists the folder afresh', async () => {
+  const kept = point({ file: 'tankstat-backup-20261009T020000Z.zip', createdAt: '2026-10-09T02:00:00Z' })
+  const { calls } = backupsServer({ points: [point(), kept] })
+  const ui = await openBackups()
+
+  await ui.click(screen.getByRole('button', { name: /^Delete the backup of .*\(tankstat-backup-20261010T020000Z\.zip\)$/ }))
+  const confirm = await screen.findByRole('alertdialog', { name: /^Delete the backup of .*\(tankstat-backup-20261010T020000Z\.zip\)\?$/ })
+  expect(calls.DeleteBackup).toBeUndefined() // only once confirmed
+  await ui.click(within(confirm).getByRole('button', { name: 'Delete' }))
+
+  await waitFor(() => expect(screen.queryByText(/tankstat-backup-20261010T020000Z\.zip/)).not.toBeInTheDocument())
+  expect(calls.DeleteBackup).toEqual(['tankstat-backup-20261010T020000Z.zip'])
+  expect(screen.getByText(/tankstat-backup-20261009T020000Z\.zip/)).toBeInTheDocument()
+})
+
+it('says why a backup cannot be deleted while a restore waits', async () => {
+  const { state } = backupsServer()
+  state.pending = true
+  const ui = await openBackups()
+
+  await ui.click(screen.getByRole('button', { name: /^Delete the backup of/ }))
+  await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('A restore waits for the next start; no backup can be deleted until it has run.')
+  expect(screen.getByText(/tankstat-backup-20261010T020000Z\.zip/)).toBeInTheDocument()
 })
 
 it('refuses a file larger than the server takes before sending anything', async () => {

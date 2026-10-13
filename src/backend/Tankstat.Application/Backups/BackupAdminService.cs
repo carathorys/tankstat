@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
 using Tankstat.Application.Images;
+using Tankstat.Domain;
 
 namespace Tankstat.Application.Backups;
 
@@ -99,6 +100,20 @@ public sealed class BackupAdminService(
         var stream = store.OpenRead(fileName);
         logger.LogInformation("User {UserId} downloaded the backup {File}", admin.Id, fileName);
         return stream;
+    }
+
+    /// <summary>
+    /// Removes a backup of the folder: only one the page lists (<c>backup.notFound</c> for anything else, the restore marker among it), and
+    /// nothing while a restore waits for the next start (<c>backup.restorePending</c>: the backup it names must still be there then, which
+    /// is why retention prunes nothing meanwhile either).
+    /// </summary>
+    public async Task DeleteAsync(string fileName, CancellationToken ct)
+    {
+        var admin = await access.RequireAdminAsync(ct);
+        store.ReadManifest(fileName);
+        if (store.RestorePending) throw new DomainException("backup.restorePending", "A restore waits for the next start; no backup is deleted until it ran.");
+        store.Delete(fileName);
+        logger.LogInformation("User {UserId} deleted the backup {File}", admin.Id, fileName);
     }
 
     /// <summary>

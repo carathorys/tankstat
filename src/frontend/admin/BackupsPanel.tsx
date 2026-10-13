@@ -10,10 +10,11 @@ import TableCell from '@mui/material/TableCell'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Typography from '@mui/material/Typography'
-import { DatabaseBackup, Download, KeyRound, RotateCcw, Upload } from 'lucide-react'
+import { DatabaseBackup, Download, KeyRound, RotateCcw, Trash2, Upload } from 'lucide-react'
 import { useEffect, useEffectEvent, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link as RouterLink } from 'react-router'
+import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { DefinitionList } from '../components/DefinitionList.tsx'
 import { Loading } from '../components/Loading.tsx'
 import { Segmented } from '../components/Segmented.tsx'
@@ -28,6 +29,7 @@ import { Form } from '../forms/Form.tsx'
 import {
   BackupRunDocument,
   BackupsDocument,
+  DeleteBackupDocument,
   PrepareBackupEncryptionDocument,
   RestoreBackupDocument,
   RunBackupDocument,
@@ -47,6 +49,7 @@ import { classifyFailure } from '../offline/errors.ts'
 import { PROBE_TIMEOUT_MS, withDeadline } from '../offline/runtime.ts'
 import { ApiError } from '../pictures/ApiError.ts'
 import { downloadBackup, uploadBackup } from './backupFiles.ts'
+import { useToast } from '../toast/toastContext.ts'
 import { ProblemList } from './ProblemList.tsx'
 import { problemsOf } from './settingsText.ts'
 
@@ -91,6 +94,7 @@ export function BackupsPanel() {
       <UploadBackup maxUploadMb={backups.settings.maxUploadMb} onUploaded={() => void refetch()} />
       <RestorePoints
         backups={backups}
+        onDeleted={() => void refetch()}
         onRestoring={(point) => setRestoring({ point, generation: session?.session.instance?.generation ?? undefined })}
       />
       <EncryptionSetup recipient={backups.settings.recipient ?? null} />
@@ -333,11 +337,32 @@ function useContentsText() {
     ].join(' · ')
 }
 
-function RestorePoints({ backups, onRestoring }: { backups: BackupsQuery['backups']; onRestoring: (point: RestorePoint) => void }) {
+function RestorePoints({
+  backups,
+  onDeleted,
+  onRestoring,
+}: {
+  backups: BackupsQuery['backups']
+  onDeleted: () => void
+  onRestoring: (point: RestorePoint) => void
+}) {
   const { t } = useTranslation()
   const { dateTime, bytes } = useFormat()
+  const { toast } = useToast()
   const contentsText = useContentsText()
   const [error, setError] = useState<unknown>()
+  const [deleteBackup] = useMutation(DeleteBackupDocument)
+
+  const remove = async (file: string) => {
+    setError(undefined)
+    try {
+      await deleteBackup({ variables: { file } })
+      toast(t('admin.backups.deleted', { file }))
+    } catch (e) {
+      setError(e)
+    }
+    onDeleted() // also after a refusal: a file gone since the list leaves it
+  }
 
   return (
     <section aria-labelledby="backups-points">
@@ -405,6 +430,18 @@ function RestorePoints({ backups, onRestoring }: { backups: BackupsQuery['backup
                           }
                         />
                       )}
+                      <ConfirmDialog
+                        title={t('admin.backups.deleteTitle', { made, file: p.file })}
+                        description={t('admin.backups.deleteDescription')}
+                        confirmLabel={t('admin.backups.deleteConfirm')}
+                        onConfirm={() => void remove(p.file)}
+                        trigger={
+                          <Button size="small" variant="soft" color="error" aria-label={t('admin.backups.deleteAria', { made, file: p.file })}>
+                            <Trash2 size={16} aria-hidden />
+                            {t('admin.backups.delete')}
+                          </Button>
+                        }
+                      />
                     </Stack>
                   </TableCell>
                 </TableRow>

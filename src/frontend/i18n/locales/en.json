@@ -546,6 +546,12 @@
       "downloadAria": "Download the backup of {{made}} ({{file}})",
       "restore": "Restore",
       "restoreAria": "Restore the backup of {{made}} ({{file}})",
+      "delete": "Delete",
+      "deleteAria": "Delete the backup of {{made}} ({{file}})",
+      "deleteTitle": "Delete the backup of {{made}} ({{file}})?",
+      "deleteDescription": "The file is removed from the backups folder for good; the server cannot be taken back to it any more.",
+      "deleteConfirm": "Delete",
+      "deleted": "{{file}} was deleted.",
       "restoreTitle": "Restore the backup of {{made}} ({{file}})?",
       "restoreDescription": "All data on this server is replaced by this backup: users, vehicles, logs and pictures. Whatever changed since it was made is lost, though a backup of the current state is written first. The app restarts to do it, which takes a moment for everyone using it.",
       "keyKind": "Open it with",
@@ -795,7 +801,8 @@
       "uploadRefused": "The server, or a proxy in front of it, refused a file this large; copy it into the backups folder instead.",
       "passphraseTooShort": "A passphrase has at least {{min}} characters.",
       "failed": "an unexpected error (the server log says more)",
-      "stopped": "the app stopped while it was being written"
+      "stopped": "the app stopped while it was being written",
+      "restorePending": "A restore waits for the next start; no backup can be deleted until it has run."
     }
   },
   "a11y": {
