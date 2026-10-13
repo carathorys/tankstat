@@ -1,0 +1,84 @@
+# Tankstat with PostgreSQL, Standalone sign-in, and its data in local folders next to this file.
+#
+# Before the first start:
+#   1. cp .env.example .env, and fill in the passwords and addresses there (never commit .env).
+#   2. Make the folders. The app runs as user 1654, so its folders must belong to it (PostgreSQL sets up its own):
+#        mkdir -p data/app data/photos data/backups data/postgres
+#        sudo chown -R 1654:1654 data/app data/photos data/backups
+#   3. docker compose -f docker-compose.example.yml up -d, then sign in at http://localhost:8080 as ADMIN_EMAIL.
+#      The e-mails the app sends (password links) land in Mailpit: http://localhost:8025.
+#
+# Upgrading: change TANKSTAT_VERSION and run up -d again. The app writes a backup into data/backups before it migrates the database.
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tankstat
+      POSTGRES_USER: tankstat
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tankstat -d tankstat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # No published port: only the app reaches the database, over the compose network.
+
+  # Catches the app's e-mails and shows them at http://localhost:8025 (SMTP on 1025 inside the compose network only).
+  # Not for a real installation: nothing is delivered.
+  mailpit:
+    image: axllent/mailpit:v1.31
+    restart: unless-stopped
+    ports:
+      - "8025:8025"
+
+  app:
+    image: ghcr.io/carathorys/tankstat:${TANKSTAT_VERSION:?set TANKSTAT_VERSION in .env}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    ports:
+      - "8080:8080" # put a reverse proxy with HTTPS in front of it for anything beyond your own network
+    environment:
+      # The database
+      Database__Provider: PostgreSql
+      Database__ConnectionString: Host=db;Database=tankstat;Username=tankstat;Password=${POSTGRES_PASSWORD}
+
+      # Sign-in: the app's own accounts. The administrator is created on the first start only (while none exists); afterwards these two
+      # are ignored, and you may remove them.
+      Auth__Mode: Standalone
+      Auth__Standalone__AdminEmail: ${ADMIN_EMAIL:?set ADMIN_EMAIL in .env}
+      Auth__Standalone__AdminPassword: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
+      # The address people reach the app at: the links in password e-mails are built from it.
+      Auth__PublicUrl: ${PUBLIC_URL:-http://localhost:8080}
+
+      # The photos of logs in a folder of their own (they grow without limit); everything else stays in /data (data/app).
+      Storage__PhotosPath: /data/photos
+
+      # Backups: every night at 02:00 in TZ below, keep the newest 14. The photos go into backups too (they have a folder of their own).
+      # These can also be set on the Server settings page; a variable set here wins and is shown read-only there.
+      Backups__Every: "02:00"
+      Backups__Keep: "14"
+      Backups__Photos: "true"
+
+      # The server's time zone: the backup times and the Backups page's "the server's time" are in it (UTC without it).
+      TZ: Europe/Budapest
+
+      # E-mail for password links, into Mailpit below: it catches every mail and sends none on, so nothing reaches a real inbox.
+      # For a real mail server, set its host, Port "587", Security Auto, and the Username/Password lines (SMTP_PASSWORD in .env).
+      Smtp__Host: mailpit
+      Smtp__Port: "1025"
+      Smtp__Security: None # Mailpit takes plain SMTP here
+      Smtp__From: Tankstat <tankstat@example.com>
+      # Smtp__Username: tankstat@example.com
+      # Smtp__Password: ${SMTP_PASSWORD}
+    volumes:
+      - ./data/app:/data # the pictures, the sign-in keys and the app's own settings file
+      - ./data/photos:/data/photos
+      - ./data/backups:/data/backups
