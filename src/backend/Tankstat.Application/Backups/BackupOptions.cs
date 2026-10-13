@@ -25,6 +25,11 @@ public sealed class BackupOptions
     /// <summary>The recipient backups are encrypted for, and the salt the identity is derived with; unset, backups are written in plain (without the keys).</summary>
     public BackupEncryptionOptions Encryption { get; set; } = new();
 
+    /// <summary>The largest backup an administrator may upload on the page, in MB (a file with photos can be gigabytes: copying it into the folder always works too).</summary>
+    public int MaxUploadMb { get; set; } = 1024;
+
+    public long MaxUploadBytes => MaxUploadMb * 1024L * 1024L;
+
     /// <summary><see cref="Path"/> in full, without a trailing separator.</summary>
     public string Root => Folders.Full(Path);
 
@@ -54,6 +59,7 @@ public sealed class BackupOptionsValidator(IOptions<StorageOptions> storage) : I
             failures.Add("Backups:Encryption:Recipient and Backups:Encryption:Salt are set together (tankstat backup keygen prints both) or not at all.");
         if (!string.IsNullOrWhiteSpace(recipient) && !IsRecipient(recipient)) failures.Add("Backups:Encryption:Recipient is not an age recipient (age1...).");
         if (!string.IsNullOrWhiteSpace(salt) && !BackupEncryption.IsSalt(salt)) failures.Add("Backups:Encryption:Salt is not the base64 of at least 8 bytes.");
+        if (o.MaxUploadMb < 1) failures.Add("Backups:MaxUploadMb must be at least 1.");
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 

@@ -1,0 +1,31 @@
+namespace Tankstat.Application.Backups;
+
+/// <summary>The database as the administration page shows it next to the backups: how large it is, and the migration it is at.</summary>
+public interface IDatabaseFacts
+{
+    /// <summary>Bytes the database takes on its server or disk; null where the provider will not say.</summary>
+    Task<long?> SizeAsync(CancellationToken ct);
+
+    /// <summary>The last applied migration (its id), which a backup must match by name to be restored here.</summary>
+    Task<string?> LastMigrationAsync(CancellationToken ct);
+}
+
+/// <summary>Bytes of the uploaded files: the pictures root, and the photos root when it is a folder of its own (null: the photos are with the pictures).</summary>
+public sealed record FileUsage(long Pictures, long? Photos);
+
+public interface IStorageUsage
+{
+    Task<FileUsage> MeasureAsync(CancellationToken ct);
+}
+
+/// <summary>
+/// A key pair for encrypted backups, made from a passphrase: the passphrase itself (made up when none was given), the identity that opens
+/// the backups, and the two settings that make the server encrypt for it (the recipient and the salt). Shown once, never stored or logged.
+/// </summary>
+public sealed record BackupKeySet(string Passphrase, bool Generated, string Identity, string Recipient, string Salt);
+
+public interface IBackupKeyMaker
+{
+    /// <summary>The key set of a passphrase with a new salt; with none, a passphrase is made up. <c>backup.passphraseTooShort</c> below the minimum.</summary>
+    BackupKeySet Make(string? passphrase);
+}

@@ -23,4 +23,29 @@ public interface IBackupStore
 
     /// <summary>Asks for a restore at the next start (one already waiting is replaced).</summary>
     void RequestRestore(RestoreMarker marker);
+
+    /// <summary>The backups in the folder, newest first: every file whose manifest can be read (one copied in by hand too); anything else is left out.</summary>
+    IReadOnlyList<RestorePoint> List();
+
+    /// <summary>The folder, in full, so an administrator knows where to copy a file in or out.</summary>
+    string Folder { get; }
+
+    /// <summary>
+    /// Stores an uploaded backup under a name of its own (<c>uploaded-&lt;its name&gt;</c>, so retention never takes it for one the app
+    /// wrote), streamed to a temporary file first: larger than <paramref name="maxBytes"/> is <c>backup.tooLarge</c>, a file that is no
+    /// backup (manifest or checksum) is <c>backup.corrupt</c>, and neither leaves anything behind. Returns the stored backup.
+    /// </summary>
+    Task<RestorePoint> SaveUploadAsync(Stream content, string? fileName, long maxBytes, CancellationToken ct);
+
+    /// <summary>A backup of the folder by its bare file name, to download; <c>backup.notFound</c> otherwise.</summary>
+    Stream OpenRead(string fileName);
+}
+
+/// <summary>A backup in the folder: its file name, its size on disk and what its manifest says.</summary>
+public sealed record RestorePoint(string File, long Bytes, BackupManifest Manifest)
+{
+    /// <summary>The prefix of a backup that came in by upload: never pruned, since the app did not write it into its folder.</summary>
+    public const string UploadedPrefix = "uploaded-";
+
+    public bool Uploaded => File.StartsWith(UploadedPrefix, StringComparison.Ordinal);
 }

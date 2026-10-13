@@ -24,6 +24,10 @@ public sealed class RestoreServiceTests
         public Task RequireSameMigrationAsync(BackupManifest manifest, CancellationToken ct) =>
             OtherMigration is null ? Task.CompletedTask : throw new DomainException("backup.otherMigration", "Another migration.", new { Backup = manifest.Migration, Database = OtherMigration });
         public void RequestRestore(RestoreMarker marker) => Marker = marker;
+        public IReadOnlyList<RestorePoint> List() => [];
+        public string Folder => "backups";
+        public Task<RestorePoint> SaveUploadAsync(Stream content, string? fileName, long maxBytes, CancellationToken ct) => throw new NotSupportedException();
+        public Stream OpenRead(string fileName) => throw new NotSupportedException();
     }
 
     private static (World World, OneBackup Store, RestoreService Service) Admin(OneBackup? store = null)

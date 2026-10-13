@@ -3,7 +3,7 @@ import Button from '@mui/material/Button'
 import Stack from '@mui/material/Stack'
 import Chip from '@mui/material/Chip'
 import Typography from '@mui/material/Typography'
-import { Bell, Car, CloudUpload, FileUp, House, LogOut, Settings, ShieldCheck, SlidersHorizontal, Trash2, Users } from 'lucide-react'
+import { Bell, Car, CloudUpload, DatabaseBackup, FileUp, House, LogOut, Settings, ShieldCheck, SlidersHorizontal, Trash2, Users } from 'lucide-react'
 import { useId, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NavLink } from 'react-router'
@@ -78,6 +78,7 @@ export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: Sess
           {link('/admin/people', t('nav.people'), <Users size={18} aria-hidden />)}
           {link('/admin/vehicles', t('nav.vehicles'), <Car size={18} aria-hidden />)}
           {link('/admin/settings', t('nav.serverSettings'), <SlidersHorizontal size={18} aria-hidden />)}
+          {link('/admin/backups', t('nav.backups'), <DatabaseBackup size={18} aria-hidden />)}
         </Stack>
       )}
       <InstallMenuItem onNavigate={onNavigate} />

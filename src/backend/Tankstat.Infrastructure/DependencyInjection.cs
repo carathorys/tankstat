@@ -98,6 +98,11 @@ public static class DependencyInjection
         services.AddSingleton<IImageStore, FileSystemImageStore>();
         services.AddSingleton<IBackupWriter, BackupWriter>();
         services.AddSingleton<IBackupStore, FileBackupStore>();
+        services.AddSingleton<BackupRunner>();
+        services.AddSingleton<IBackupRunner>(sp => sp.GetRequiredService<BackupRunner>());
+        services.AddSingleton<IBackupKeyMaker, BackupKeyMaker>();
+        services.AddSingleton<IDatabaseFacts, EfDatabaseFacts>();
+        services.AddSingleton<IStorageUsage, StorageUsage>();
         services.AddSingleton<IPasswordHasher, IdentityPasswordHasher>();
         services.AddSingleton<IEmailSender, SmtpEmailSender>();
         // Self-service reset mails go out after the answer (PasswordResetMailer below), so the answer tells no accounts apart.
@@ -129,7 +134,9 @@ public static class DependencyInjection
         // and the bootstrapper finds the restored users), then move the photos kept with the pictures once they have a folder of their own, then
         // create the initial administrator, then sign everybody out when the authentication mode changed since the last start (after what can
         // still fail the start, so a start that never served a request records no mode, and after the restore, so sessions a backup of another
-        // mode brought back end at this start; still before the server listens); the photo reading worker needs the migrated database.
+        // mode brought back end at this start; still before the server listens); the photo reading worker needs the migrated database. The
+        // backup runner starts nothing; it comes first so that it stops last, waiting for a backup under way once everything else stopped.
+        services.AddHostedService(sp => sp.GetRequiredService<BackupRunner>());
         services.AddHostedService<DatabaseMigrator>();
         services.AddHostedService<RestoreStep>();
         services.AddHostedService<PhotosMove>();

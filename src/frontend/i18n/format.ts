@@ -21,6 +21,18 @@ export function useFormat() {
       /** Short form for axes: 12 500 becomes 12.5K (or 12,5 E in Hungarian). */
       compact: (value: number) => new Intl.NumberFormat(language, { notation: 'compact', maximumFractionDigits: 1 }).format(value),
       dateTime: (iso: string) => new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso)),
+      /** A size on disk in the unit that suits it (1.2 GB, 340 kB), counted in thousands like the browser's storage figures. */
+      bytes: (value: number) => {
+        const units = ['byte', 'kilobyte', 'megabyte', 'gigabyte', 'terabyte'] as const
+        // The figure as it is shown (whole bytes, else one decimal): one that rounds up to 1,000 goes to the next unit (999,960 bytes is 1 MB).
+        const shown = (v: number, unit: number) => (unit === 0 ? Math.round(v) : Math.round(v * 10) / 10)
+        let index = 0
+        while (shown(value, index) >= 1000 && index < units.length - 1) {
+          value /= 1000
+          index++
+        }
+        return number(value, { style: 'unit', unit: units[index], unitDisplay: 'short', maximumFractionDigits: index === 0 ? 0 : 1 })
+      },
       /** Words joined the way the language lists them ("odometer and total"). */
       list: (items: string[]) => new Intl.ListFormat(language, { type: 'conjunction' }).format(items),
       /** Choices joined the way the language offers them ("Standalone or Oidc"). */

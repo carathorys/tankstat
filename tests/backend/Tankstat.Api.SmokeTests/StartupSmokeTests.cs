@@ -301,6 +301,48 @@ public class StartupSmokeTests
         await first.DisposeAsync();
     }
 
+    [Fact]
+    public async Task ABackupUploadLargerThanKestrelsOwnLimit_IsReadToTheEnd_ByTheBackupsLimitInstead()
+    {
+        // Kestrel stops a body at 30 MB unless the endpoint raises its limit; the test server of the integration tests has no such limit, so
+        // only the real server shows the raise works: 31 MB of noise is read whole and refused as no backup, not cut off with a bare 413.
+        await using var app = await AppProcess.StartAsync(Standalone());
+        await app.Gql("mutation($i: LoginInput!) { login(input: $i) { id } }", new { i = new { email = "root@example.com", password = "initial-password-1" } });
+        var noise = new byte[31 * 1024 * 1024];
+        new Random(7).NextBytes(noise);
+
+        using var upload = new HttpRequestMessage(HttpMethod.Put, "/media/backups?name=noise.zip") { Content = new ByteArrayContent(noise) };
+        using var response = await app.SendAsync(upload);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("backup.corrupt", await response.Content.ReadAsStringAsync());
+        Assert.Empty(Directory.GetFiles(Path.Combine(app.WorkDirectory, "backups"))); // nothing left behind
+    }
+
+    [Fact]
+    public async Task ABackupUploadSentInChunks_AboveTheBackupsLimit_IsRefusedByThatLimit_WithItsReason()
+    {
+        // A body without a length is counted by Kestrel as it arrives, ahead of what the app has read: under any limit of Kestrel's own, its
+        // bare 413 would answer first. The endpoint lifts that limit, so the backups' own count answers, and says why.
+        await using var app = await AppProcess.StartAsync(Standalone(("Backups__MaxUploadMb", "1")));
+        await app.Gql("mutation($i: LoginInput!) { login(input: $i) { id } }", new { i = new { email = "root@example.com", password = "initial-password-1" } });
+        var noise = new byte[3 * 1024 * 1024];
+        new Random(7).NextBytes(noise);
+
+        using var upload = new HttpRequestMessage(HttpMethod.Put, "/media/backups?name=noise.zip") { Content = new StreamContent(new UnseekableStream(noise)) };
+        using var response = await app.SendAsync(upload);
+
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
+        Assert.Contains("backup.tooLarge", await response.Content.ReadAsStringAsync());
+        Assert.Empty(Directory.GetFiles(Path.Combine(app.WorkDirectory, "backups")));
+    }
+
+    /// <summary>A body whose length the client cannot know, so it is sent in chunks.</summary>
+    private sealed class UnseekableStream(byte[] bytes) : MemoryStream(bytes)
+    {
+        public override bool CanSeek => false;
+    }
+
     // ---- Photo reading (optional: it never stops the app) ---------------------------------------------------
 
     private const string Recognition = "{ recognitionStatus { available } }";

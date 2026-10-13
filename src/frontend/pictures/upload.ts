@@ -1,7 +1,11 @@
 import { fetchSignedIn } from '../auth/refresh.ts'
 import { ApiError } from './ApiError.ts'
 
-async function check(response: Response): Promise<Response> {
+/**
+ * The answer of a REST endpoint when it is a success, else its keyed error. An answer without a key (a proxy's own page, or a HEAD answer,
+ * which has no body) takes the key `fallback` gives its status, if any.
+ */
+export async function check(response: Response, fallback: Partial<Record<number, string>> = {}): Promise<Response> {
   if (response.ok) return response
   let body: { key?: string; args?: Record<string, unknown>; message?: string } = {}
   try {
@@ -9,7 +13,7 @@ async function check(response: Response): Promise<Response> {
   } catch {
     // not JSON (e.g. a proxy error page)
   }
-  throw new ApiError(body.key, body.args ?? {}, body.message ?? response.statusText, response.status)
+  throw new ApiError(body.key ?? fallback[response.status], body.args ?? {}, body.message ?? response.statusText, response.status)
 }
 
 /** Sends a picture as the raw request body (the server checks what it really is). Returns the new picture's address. */

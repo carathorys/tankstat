@@ -936,4 +936,8 @@ internal sealed class NoBackups : Tankstat.Application.Backups.IBackupStore
     public string? IdentityFor(Tankstat.Application.Backups.BackupManifest manifest, string? passphrase, string? identity) => throw new NotSupportedException();
     public Task RequireSameMigrationAsync(Tankstat.Application.Backups.BackupManifest manifest, CancellationToken ct) => throw new NotSupportedException();
     public void RequestRestore(Tankstat.Application.Backups.RestoreMarker marker) => throw new NotSupportedException();
+    public IReadOnlyList<Tankstat.Application.Backups.RestorePoint> List() => [];
+    public string Folder => "backups";
+    public Task<Tankstat.Application.Backups.RestorePoint> SaveUploadAsync(Stream content, string? fileName, long maxBytes, CancellationToken ct) => throw new NotSupportedException();
+    public Stream OpenRead(string fileName) => throw new NotSupportedException();
 }
