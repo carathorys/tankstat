@@ -15,8 +15,9 @@ namespace Tankstat.Infrastructure.UnitTests;
 
 /// <summary>
 /// Upgrades, from every migration of the release: a database at it is backed up at start before anything is migrated (the backup holds it as
-/// that migration left it), then brought up to date; and that backup, an older migration's, is restored and brought up to date again. A
-/// backup that cannot be written stops the migration.
+/// that migration left it), then brought up to date; and that backup, an older migration's, is restored at a later start and brought up to
+/// date again, with no backup of what it replaced. A backup that cannot be written stops the migration. The start's order (user decision):
+/// a waiting restore first, else (or when it is refused) the backup, then the migrations.
 /// </summary>
 public sealed class MigrationUpgradeTests : IAsyncDisposable
 {
@@ -88,14 +89,17 @@ public sealed class MigrationUpgradeTests : IAsyncDisposable
         var lines = _log.From<DatabaseMigrator>().Select(e => e.Values.ContainsKey("Migrations") ? "applying" : e.Message.StartsWith("Backing up", StringComparison.Ordinal) ? "backup" : "other").ToList();
         Assert.True(lines.IndexOf("backup") is >= 0 and var b && b < lines.IndexOf("applying"), string.Join(", ", lines));
 
-        // That backup is an older migration's: restored, the database is set up at it, loaded, and brought up to date.
+        // That backup is an older migration's: restored at the next start, the database is set up at it, loaded, and brought up to date, and
+        // no backup is written of what it replaced.
         new RestoreMarker(Path.GetFileName(backup), Guid.Empty, DateTimeOffset.UtcNow, null).Write(Backups);
+        await Step<DatabaseMigrator>().StartAsync(default);
         var restore = Step<RestoreStep>();
         await restore.StartAsync(default);
 
         Assert.Equal(RestoreOutcome.Applied, restore.Outcome);
         Assert.Equal(latest, await LastApplied());
         Assert.False(File.Exists(RestoreMarker.PathIn(Backups)));
+        Assert.Equal([backup], Directory.GetFiles(Backups, "*.zip"));
     }
 
     [Fact]
@@ -114,18 +118,60 @@ public sealed class MigrationUpgradeTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task AStartWithARestoreWaiting_WritesNoBackupBeforeTheMigrations_TheRestoreWritesItsOwn()
+    public async Task ARestoreRefusedAtAStartThatMigrates_LeavesTheDataAsItWas_SoItIsBackedUpFirst()
     {
         Services();
-        await AtMigration(OlderMigrationNames()[^1]);
+        var id = await AtMigration(OlderMigrationNames()[^1]);
         Directory.CreateDirectory(Backups);
-        new RestoreMarker("tankstat-backup-20260101T000000Z.zip", Guid.Empty, DateTimeOffset.UtcNow, null).Write(Backups);
+        new RestoreMarker("tankstat-backup-20260101T000000Z.zip", Guid.Empty, DateTimeOffset.UtcNow, null).Write(Backups); // a backup that is not there
 
         await Step<DatabaseMigrator>().StartAsync(default);
 
-        Assert.Empty(Directory.GetFiles(Backups, "*.zip"));
+        Assert.Equal(RestoreOutcome.Refused, Step<RestoreStep>().Outcome);
+        Assert.Single(Directory.GetFiles(Backups, "restore.refused.*"));
+        var manifest = BackupFile.ReadManifest(Assert.Single(Directory.GetFiles(Backups, "*.zip")));
+        Assert.Equal((id, true), (manifest.Migration, manifest.SafetyNet)); // the data stays, so the upgrade has its way back
         await using var db = await Db();
         Assert.Empty(await db.Database.GetPendingMigrationsAsync());
+    }
+
+    [Fact]
+    public async Task ARestoreAppliedAtAStartThatMigrates_WritesNoBackup_AndTheMigrationsBringTheBackupUpToDate()
+    {
+        Services();
+        await AtMigration(OlderMigrationNames()[^1]);
+        // A backup of the database at that migration (the command, which never migrates first), then the restore of it at the start that upgrades.
+        var backup = (await _services!.GetRequiredService<IBackupWriter>().WriteAsync(new BackupRequest(), default)).Path;
+        new RestoreMarker(Path.GetFileName(backup), Guid.Empty, DateTimeOffset.UtcNow, null).Write(Backups);
+        string latest;
+        await using (var db = await Db()) latest = db.Database.GetMigrations().Last();
+
+        await Step<DatabaseMigrator>().StartAsync(default);
+        var restore = Step<RestoreStep>();
+        await restore.StartAsync(default);
+
+        Assert.Equal(RestoreOutcome.Applied, restore.Outcome);
+        Assert.Equal(latest, await LastApplied());
+        Assert.Equal([backup], Directory.GetFiles(Backups, "*.zip")); // the backup restored is the one there is
+        Assert.False(File.Exists(RestoreMarker.PathIn(Backups)));
+        Assert.DoesNotContain(_log.From<DatabaseMigrator>(), e => e.Message.StartsWith("Backing up", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AtStart_ABackupLeftHalfWritten_IsRemoved_AndOneAnotherRunIsWriting_Stays()
+    {
+        Services();
+        Directory.CreateDirectory(Backups);
+        var stale = Path.Combine(Backups, "tankstat-backup-20260101T000000Z.zip.partial");
+        await File.WriteAllBytesAsync(stale, [1, 2, 3]); // a run stopped while it wrote it
+        var writing = Path.Combine(Backups, "tankstat-backup-20260102T000000Z.zip.partial");
+
+        await using (var held = new FileStream(writing, FileMode.CreateNew, FileAccess.Write, FileShare.None)) // as the writer holds its own
+            await Step<DatabaseMigrator>().StartAsync(default);
+
+        Assert.False(File.Exists(stale));
+        Assert.True(File.Exists(writing));
+        Assert.Contains(_log.From<DatabaseMigrator>(), e => e.Level == LogLevel.Information && (string?)e.Values["File"] == Path.GetFileName(stale));
     }
 
     [Fact]

@@ -211,6 +211,36 @@ internal sealed class BackupWriter(
     /// <summary>The partial file of an output, created new: a partial of that name that is already there (another run's) is never taken over.</summary>
     private static FileStream CreatePartial(string output) => new(output + Partial, FileMode.CreateNew, FileAccess.Write, FileShare.None);
 
+    /// <summary>
+    /// At start: the partial files that runs cut short left in the backups folder (a process stopped while it wrote one: a crash, a restart
+    /// loop of a start that failed), removed, each with an Information line. Only one nobody holds open goes: a run keeps its partial open
+    /// with <see cref="FileShare.None"/> while it writes, so another process writing one now (the command line, another server on the same
+    /// folder) keeps it. On Linux that is the advisory lock .NET takes, honoured by the .NET processes of the same host; on a network share
+    /// mounted by several hosts it may not be, and a partial another host is writing could be removed (that backup then fails). Telling the
+    /// instances apart (an id of their own) is not done: the id would live in the database, which the start may not have yet.
+    /// </summary>
+    internal static void RemoveStalePartials(string folder, ILogger logger)
+    {
+        if (!Directory.Exists(folder)) return;
+        foreach (var path in Directory.EnumerateFiles(folder, "*.zip" + Partial))
+        {
+            try
+            {
+                // Opened alone, it goes as it is closed; held open by a run, the open fails and it stays.
+                using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose)) { }
+                logger.LogInformation("Removed {File}, a backup left half written by a run that was stopped", Path.GetFileName(path));
+            }
+            catch (IOException)
+            {
+                logger.LogDebug("{File} is being written by another run, or is gone: left as it is", Path.GetFileName(path));
+            }
+            catch (UnauthorizedAccessException e)
+            {
+                logger.LogWarning(e, "{File}, a backup left half written, cannot be removed", Path.GetFileName(path));
+            }
+        }
+    }
+
     private static BackupEncryption? Configured(BackupOptions o) =>
         o.Encrypted ? new BackupEncryption(BackupEncryption.AgeX25519, o.Encryption.Recipient!.Trim(), o.Encryption.Salt!.Trim(), Argon2idParameters.Default) : null;
 }

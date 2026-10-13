@@ -30,32 +30,39 @@ public enum RestoreOutcome
     Applied,
     /// <summary>Refused before anything was replaced: the data is as it was (<c>restore.refused.&lt;time&gt;</c>).</summary>
     Refused,
-    /// <summary>The database was replaced, then the files failed: they may be half copied (<c>restore.failed.&lt;time&gt;</c>).</summary>
+    /// <summary>
+    /// The data on the server was replaced (or its tables removed), then the restore failed: what was there before is gone, the files may be
+    /// half copied (<c>restore.failed.&lt;time&gt;</c>).
+    /// </summary>
     Failed,
 }
 
 /// <summary>
-/// At start, after the database migrations and before anything else touches the data: applies a restore that waits in the backups
-/// folder (<see cref="RestoreMarker"/>), and gives a fresh instance its generation; <see cref="InstanceGeneration"/> then knows which generation
-/// the data has, for every session answer.
+/// A restore that waits in the backups folder (<see cref="RestoreMarker"/>), applied first thing at start, before the database migrations
+/// (<see cref="DatabaseMigrator"/> asks <see cref="ApplyWaitingAsync"/> before anything else touches the data); then, as a hosted step after
+/// the migrations, the generation: a restored backup's new one, a fresh instance's first one, which <see cref="InstanceGeneration"/> answers
+/// with every session.
 /// <para>
-/// A restore replaces the instance's data as a whole, never merges: the manifest and the checksum are checked, the backup's migration must
-/// be one this release knows (the database's, or an older one, which is replayed: <see cref="ReplayAsync"/>), an encrypted backup's
-/// identity must open it; then a backup of the state about to be
-/// replaced is written first (the safety net, holding whatever the restore replaces; without it nothing goes on), the file is unpacked into
-/// a temporary folder, every table is loaded in one transaction (<see cref="TableLoad"/>, which stamps the new generation last; a Standalone
-/// instance refuses rows without an administrator to sign in with), the contents of the pictures root (and of the photos root, when the
-/// backup holds it) and of the keys folder (an encrypted backup) are replaced, and the marker goes. A refused restore renames the marker to
-/// <c>restore.refused.&lt;time&gt;</c> and the start goes on with the data as it is; a failure after the database was replaced (the files
-/// half copied) renames it to <c>restore.failed.&lt;time&gt;</c>, and the safety net is the way back. A renamed marker never keeps the
-/// identity: it opens every backup of the folder. Nothing here ever stops the app.
+/// A restore replaces the instance's data as a whole, never merges, and writes no backup of the data it replaces (user decision: the
+/// backup restored is the one there is; whatever changed since it was made is gone). What can be checked comes first, so a refusal leaves
+/// everything as it was: the marker, the file, the manifest, the backup's migration (one this release knows: the database's, or any other
+/// of the release, since the database is set up as the backup's migration left it; a newer release's is <c>backup.otherMigration</c>), an
+/// encrypted backup's identity, the checksum, then, from the backup's own unpacked files, Standalone's administrator and, where the tables
+/// are about to be rebuilt, every row as the load will read it. Then the database: at the backup's migration already, its rows are replaced
+/// in one transaction (<see cref="TableLoad"/>), so a failure there undoes itself; at another one (or empty), every table is dropped (in one
+/// transaction where the provider allows it), the migrations set it up as the backup's migration left it (Up steps only) and the rows are
+/// loaded. The pictures (and the photos when the backup holds them) and the key files follow, and the migrations bring it all up to date.
+/// The generation is stamped inside the load for a backup of this release's last migration, else after the migrations
+/// (<see cref="StartAsync"/>, whose instance table is only then as this release knows it), and the marker goes once it is: a stop in
+/// between repeats the restore at the next start. A refused restore renames the marker to <c>restore.refused.&lt;time&gt;</c> and the start
+/// goes on with the data as it is (and backs it up before migrating it); one that fails after the data was replaced renames it to
+/// <c>restore.failed.&lt;time&gt;</c>: the backup is still in the folder to try again, the data from before it is not. A renamed marker
+/// never keeps the identity: it opens every backup of the folder. Nothing here ever stops the app.
 /// </para>
 /// </summary>
 internal sealed class RestoreStep(
     IDbContextFactory<AppDbContext> dbFactory,
     IOptions<DatabaseOptions> database,
-    DatabaseMigrator migrator,
-    IBackupWriter writer,
     IOptionsMonitor<BackupOptions> options,
     IOptions<StorageOptions> storage,
     IOptions<KeyRingOptions> keyRing,
@@ -68,13 +75,38 @@ internal sealed class RestoreStep(
     /// <summary>The folders right below a vehicle's that hold the photos of its logs (not their drafts, which go with every restore).</summary>
     private static readonly HashSet<string> LogPhotoFolders = [.. ImageFolders.LogPhotoKinds];
 
+    /// <summary>
+    /// A restore whose generation is stamped after the migrations (a backup of an older migration): the file, the backup's time, and the marker
+    /// that goes once it is stamped (none when the restore failed, its marker renamed already).
+    /// </summary>
+    private (string File, DateTimeOffset RestorePoint, string? Marker)? _toStamp;
+
     /// <summary>What this start did with a restore that waited for it.</summary>
     public RestoreOutcome Outcome { get; private set; }
 
-    public async Task StartAsync(CancellationToken ct)
+    /// <summary>Before the migrations: the restore that waits, if any (<see cref="RestoreOutcome.None"/> when none does).</summary>
+    public async Task<RestoreOutcome> ApplyWaitingAsync(CancellationToken ct)
     {
         var marker = RestoreMarker.PathIn(options.CurrentValue.Root);
         Outcome = File.Exists(marker) ? await RestoreAsync(marker, ct) : RestoreOutcome.None;
+        return Outcome;
+    }
+
+    /// <summary>After the migrations: the generation of the data, stamped anew for a restore that waited for them.</summary>
+    public async Task StartAsync(CancellationToken ct)
+    {
+        if (_toStamp is { } stamp)
+        {
+            InstanceInfo restored;
+            await using (var stamping = await dbFactory.CreateDbContextAsync(ct))
+                restored = await TableLoad.StampAsync(stamping, clock.GetUtcNow(), stamp.RestorePoint, logger, ct);
+            _toStamp = null;
+            if (stamp.Marker is not null)
+            {
+                File.Delete(stamp.Marker);
+                Restored(stamp.File, restored, stamp.RestorePoint);
+            }
+        }
 
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         // A fresh instance, or one whose row was written before generations existed, gets its first generation; InstanceStartService
@@ -122,7 +154,9 @@ internal sealed class RestoreStep(
         var file = Path.Combine(options.CurrentValue.Root, Path.GetFileName(marker.File));
         BackupManifest manifest;
         byte[]? identity = null;
-        string? replayFrom;
+        string target; // this provider's id of the backup's migration
+        string? applied; // the database's last applied migration; none in an empty database
+        bool last; // whether the backup's migration is this release's last, so the load stamps the generation itself
         try
         {
             if (!File.Exists(file)) throw new FileNotFoundException("The backup is not in the backups folder.", marker.File);
@@ -133,7 +167,12 @@ internal sealed class RestoreStep(
                 if (identity is null || !BackupKeys.Opens(identity, encryption.Recipient))
                     throw new DomainException("backup.wrongKey", "The identity does not open this backup.");
             }
-            replayFrom = await FileBackupStore.ReplayFromAsync(dbFactory, manifest, ct);
+            target = await FileBackupStore.MigrationOfAsync(dbFactory, manifest, ct);
+            await using (var db = await dbFactory.CreateDbContextAsync(ct))
+            {
+                applied = (await db.Database.GetAppliedMigrationsAsync(ct)).LastOrDefault();
+                last = target == db.Database.GetMigrations().Last();
+            }
             BackupFile.VerifyChecksum(file, manifest);
         }
         catch (Exception e) when (e is DomainException or IOException or UnauthorizedAccessException or FormatException)
@@ -141,34 +180,34 @@ internal sealed class RestoreStep(
             return Refuse(markerPath, marker, e, e is DomainException d ? d.Key : "the backup cannot be read");
         }
 
-        logger.LogInformation("Restoring the backup {File} (written by Tankstat {Version} on {CreatedAt}, {Provider}), asked for by user {UserId}",
+        logger.LogInformation("Restoring the backup {File} (written by Tankstat {Version} on {CreatedAt}, {Provider}), asked for by user {UserId}; no backup of the data it replaces is written",
             Path.GetFileName(file), manifest.AppVersion, manifest.CreatedAt, manifest.Provider, marker.RequestedById);
-        try
-        {
-            // Of everything the restore replaces: a photos root of its own too when the backup brings one in its place, whatever Backups:Photos
-            // leaves out of the other backups (on one root the photos are with the pictures anyway).
-            await writer.WriteAsync(new BackupRequest(Photos: manifest.Contents.Photos == BackupPhotos.Separate ? true : null, SafetyNet: true), ct);
-        }
-        catch (Exception e) when (e is not OperationCanceledException)
-        {
-            return Refuse(markerPath, marker, e, "the safety-net backup of the data about to be replaced could not be written");
-        }
-
         DirectoryInfo? scratch = null;
+        var replaced = false; // past this point the data from before the restore is gone: a failure is a failed restore, never a refused one
         var loaded = false;
         try
         {
             scratch = Directory.CreateTempSubdirectory("tankstat-restore-");
             BackupFile.Extract(file, manifest, identity, scratch.FullName);
             var tables = Path.Combine(scratch.FullName, "tables");
-            InstanceInfo instance;
-            if (replayFrom is null)
+            IModel model;
+            await using (var db = await dbFactory.CreateDbContextAsync(ct))
+                model = last ? db.Model : MigrationModels.ModelOf(db, target);
+            // From the backup's own files, before anything changes: Standalone needs an administrator to sign in with afterwards, and tables
+            // about to be rebuilt need every row to load (a line that is no row, a value that is not its column's, a count that is not the
+            // manifest's); in place, the load's own transaction undoes such a row.
+            await RequireAdministratorAsync(() => Task.FromResult(BackupHoldsAdministrator(model, tables)), subject => Task.FromResult(BackupHoldsLocalUser(model, tables, subject)));
+            var inPlace = applied is not null && MigrationNames.Same(applied, target);
+            if (!inPlace) TableLoad.CheckRows(model, tables, manifest.Contents.Tables);
+
+            InstanceInfo? instance = null;
+            await using (var db = await dbFactory.CreateDbContextAsync(ct))
             {
-                await using var db = await dbFactory.CreateDbContextAsync(ct);
-                instance = await TableLoad.LoadAsync(db, tables, manifest.Contents.Tables, clock.GetUtcNow(), manifest.CreatedAt, logger, ct, RequireAdministratorAsync);
+                if (!inPlace) await SetUpAsync(db, applied, target, () => replaced = true, ct);
+                if (last) instance = await TableLoad.LoadAsync(db, tables, manifest.Contents.Tables, clock.GetUtcNow(), manifest.CreatedAt, logger, ct);
+                else await TableLoad.LoadRowsAsync(db, model, tables, manifest.Contents.Tables, logger, ct);
             }
-            else instance = await ReplayAsync(replayFrom, manifest, tables, () => loaded = true, ct);
-            loaded = true;
+            replaced = loaded = true;
             var roots = storage.Value;
             // A backup without the photos: the photos of logs on disk keep matching their logs' ids and stay, also those still below the
             // pictures root (one root, or not moved to a photos root of their own yet); everything else of the root is the backup's.
@@ -181,15 +220,20 @@ internal sealed class RestoreStep(
                 else ReplaceContents(roots.PhotosRoot, Path.Combine(scratch.FullName, "files", "photos"), "photos");
             }
             if (manifest.Contents.Keys) ReplaceKeys(keyRing.Value.Root, Path.Combine(scratch.FullName, "keys"));
-            File.Delete(markerPath);
-            logger.LogInformation("Restored the backup {File}: the data is generation {Generation} now, taken back to {RestorePoint}", Path.GetFileName(file), instance.Generation, manifest.CreatedAt);
+            if (instance is not null)
+            {
+                File.Delete(markerPath);
+                Restored(Path.GetFileName(file), instance, manifest.CreatedAt);
+            }
+            else _toStamp = (Path.GetFileName(file), manifest.CreatedAt, markerPath); // the marker goes once the migrations ran and the generation is stamped
             return RestoreOutcome.Applied;
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            if (!loaded) return Refuse(markerPath, marker, e, e is DomainException d ? d.Key : "it could not be unpacked or loaded; the database is as it was");
-            logger.LogError(e, "The restore of {File} failed after the database was replaced; the files may be half copied, the safety-net backup is the way back", Path.GetFileName(file));
-            if (replayFrom is not null) await BringUpToDateAsync();
+            if (!replaced) return Refuse(markerPath, marker, e, e is DomainException d ? d.Key : "it could not be unpacked or loaded; the database is as it was");
+            logger.LogError(e, "The restore of {File} failed after the data on this server was replaced; the files may be half copied. No backup of the data from before it was written: the backup itself is still in the folder to try again", Path.GetFileName(file));
+            // Rows of the backup loaded: their history is not the devices' one, so they get a new generation once the migrations ran.
+            if (loaded && !last) _toStamp = (Path.GetFileName(file), manifest.CreatedAt, null);
             Rename(markerPath, marker, "restore.failed");
             return RestoreOutcome.Failed;
         }
@@ -208,36 +252,26 @@ internal sealed class RestoreStep(
     }
 
     /// <summary>
-    /// A backup made at an older migration of this release: what can be checked is checked first (the administrator Standalone needs, and
-    /// every row as the load will read it, both from the backup's own files), then the database is emptied (every table of this release,
-    /// and the migrations history), set up as the backup's migration left it, loaded with that migration's model, and brought up to date by
-    /// the migrator, with what follows the newer migrations (the stored consumption, ...); the generation is stamped last. EF runs each
-    /// migration in a transaction of its own, so nothing after the tables are dropped can be undone: <paramref name="destructive"/> marks
-    /// that point (<see cref="DropAllAsync"/>), after which a failure is a failed restore (the schema brought up to date again, the safety-net
-    /// backup the way back), never a refused one.
+    /// The database set up as the backup's migration <paramref name="target"/> left it, when it is at another one (or empty): every table
+    /// dropped (none in an empty database), then the migrations up to <paramref name="target"/> (Up steps only: the path every new installation
+    /// runs; Down steps are never relied on). EF runs each migration in a transaction of its own, so once the tables are gone nothing undoes
+    /// it: <paramref name="replaced"/> marks that point (<see cref="DropAllAsync"/>), after which a failure is a failed restore.
     /// </summary>
-    private async Task<InstanceInfo> ReplayAsync(string from, BackupManifest manifest, string tables, Action destructive, CancellationToken ct)
+    private async Task SetUpAsync(AppDbContext db, string? applied, string target, Action replaced, CancellationToken ct)
     {
-        IModel model;
-        await using (var db = await dbFactory.CreateDbContextAsync(ct))
-            model = MigrationModels.ModelOf(db, from);
-        await RequireAdministratorAsync(() => Task.FromResult(BackupHoldsAdministrator(model, tables)), subject => Task.FromResult(BackupHoldsLocalUser(model, tables, subject)));
-        // What the load would refuse without a database (a line that is no row, a value that is not its column's, a count that is not the
-        // manifest's) refuses the restore before anything is removed, as the load's own transaction does for a backup of this migration.
-        TableLoad.CheckRows(model, tables, manifest.Contents.Tables);
-
-        logger.LogInformation("The backup was made at an older migration ({Migration}): the database is emptied, set up as that migration left it, loaded, and brought up to date",
-            MigrationNames.Of(from));
-        await using (var db = await dbFactory.CreateDbContextAsync(ct))
+        if (applied is null)
+            logger.LogInformation("The database is empty: it is set up as the backup's migration ({Migration}) left it", MigrationNames.Of(target));
+        else
         {
-            await DropAllAsync(db, destructive, ct);
-            await db.GetService<IMigrator>().MigrateAsync(from, ct);
-            await TableLoad.LoadRowsAsync(db, model, tables, manifest.Contents.Tables, logger, ct);
+            logger.LogInformation("The database is at another migration ({Database}) than the backup ({Migration}): it is emptied and set up as the backup's migration left it",
+                MigrationNames.Of(applied), MigrationNames.Of(target));
+            await DropAllAsync(db, replaced, ct);
         }
-        await migrator.MigrateAsync(ct);
-        await using (var db = await dbFactory.CreateDbContextAsync(ct))
-            return await TableLoad.StampAsync(db, clock.GetUtcNow(), manifest.CreatedAt, logger, ct);
+        await db.GetService<IMigrator>().MigrateAsync(target, ct);
     }
+
+    private void Restored(string file, InstanceInfo instance, DateTimeOffset restorePoint) =>
+        logger.LogInformation("Restored the backup {File}: the data is generation {Generation} now, taken back to {RestorePoint}", file, instance.Generation, restorePoint);
 
     /// <summary>
     /// Every table of this release (its children first) and the migrations' own, so the migrations can set the database up afresh. Where
@@ -262,19 +296,6 @@ internal sealed class RestoreStep(
             if (transaction is null) return;
             destructive(); // a commit that fails may still have happened: from here on the tables count as gone
             await transaction.CommitAsync(ct);
-        }
-    }
-
-    /// <summary>After a replay that failed half way: the schema up to date again, so the rest of the start meets the tables it knows.</summary>
-    private async Task BringUpToDateAsync()
-    {
-        try
-        {
-            await migrator.MigrateAsync(CancellationToken.None);
-        }
-        catch (Exception e)
-        {
-            logger.LogError(e, "The database could not be brought up to date after the failed restore");
         }
     }
 
@@ -311,16 +332,11 @@ internal sealed class RestoreStep(
         row.TryGetProperty(column, out var v) && (v.ValueKind == JsonValueKind.True || (v.ValueKind == JsonValueKind.Number && v.GetInt64() != 0));
 
     /// <summary>
-    /// Standalone needs an administrator to sign in with afterwards: among the users the backup brings, or one the start creates from the
-    /// bootstrap credentials as <c>StandaloneBootstrapper</c> will try to (it fails the start otherwise, and every start after it). Asked of
-    /// the loaded rows inside the load's transaction, so a backup without one is refused, never applied.
+    /// Standalone needs an administrator to sign in with afterwards: among the users the backup brings (read from its own rows, before anything
+    /// changes, so a backup without one is refused, never applied), or one the start creates from the bootstrap credentials as
+    /// <c>StandaloneBootstrapper</c> will try to (it fails the start otherwise, and every start after it): an enabled local administrator, or
+    /// bootstrap credentials of an address no local account has.
     /// </summary>
-    private Task RequireAdministratorAsync(AppDbContext db, CancellationToken ct) =>
-        RequireAdministratorAsync(
-            () => db.Users.AnyAsync(u => u.Provider == UserProvider.Local && u.IsAdmin && !u.IsDisabled, ct),
-            address => db.Users.AnyAsync(u => u.Provider == UserProvider.Local && u.Subject == address, ct));
-
-    /// <summary>The rule itself, over what the rows say: an enabled local administrator, or bootstrap credentials of an address no local account has.</summary>
     private async Task RequireAdministratorAsync(Func<Task<bool>> hasAdministrator, Func<string, Task<bool>> localAccountExists)
     {
         if (auth.Value.Mode != AuthMode.Standalone || await hasAdministrator()) return;

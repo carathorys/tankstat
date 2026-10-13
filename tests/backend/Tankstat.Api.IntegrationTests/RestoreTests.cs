@@ -17,7 +17,8 @@ namespace Tankstat.Api.IntegrationTests;
 
 /// <summary>
 /// A restore at start: a host whose backups folder holds a backup and a marker starts, replaces its data with the backup's (an empty
-/// database too, since the migrator runs first), gets a new generation, writes a safety-net backup first, and refuses what it must.
+/// database too: the restore sets it up as the backup's migration left it, before the migrations), gets a new generation, writes no backup
+/// of the data it replaces (user decision: the backup restored is the one there is), and refuses what it must.
 /// </summary>
 public sealed class RestoreTests : IDisposable
 {
@@ -79,7 +80,7 @@ public sealed class RestoreTests : IDisposable
     }
 
     [Fact]
-    public async Task AHostWithAMarker_StartsWithTheBackupsData_FromAnEmptyDatabase_WritesASafetyNet_AndHasANewGeneration()
+    public async Task AHostWithAMarker_StartsWithTheBackupsData_FromAnEmptyDatabase_WritesNoBackup_AndHasANewGeneration()
     {
         using var a = Host("a", migrated: true);
         await AddVehicle(a, "Golf");
@@ -96,11 +97,8 @@ public sealed class RestoreTests : IDisposable
         Assert.NotEqual(generationA, generationB);
         Assert.Equal(backup.Manifest.CreatedAt, DateTimeOffset.Parse(restorePoint!));
         Assert.False(File.Exists(RestoreMarker.PathIn(folderB)));
-        var files = Directory.GetFiles(folderB).Select(Path.GetFileName).Order().ToList();
-        Assert.Equal(2, files.Count); // the backup, and the safety net
-        var safetyNet = files.Single(f => f != Path.GetFileName(backup.Path));
-        Assert.True(BackupFile.ReadManifest(Path.Combine(folderB, safetyNet!)).SafetyNet);
-        Assert.DoesNotContain(files, f => f!.StartsWith("restore."));
+        var files = Directory.GetFiles(folderB).Select(Path.GetFileName).ToList();
+        Assert.Equal([Path.GetFileName(backup.Path)], files); // the backup restored, nothing more: a restore writes no backup of what it replaces
         var lines = b.Log.From("Tankstat.Infrastructure.Backups.RestoreStep").Where(e => e.Level == LogLevel.Information).ToList();
         Assert.Contains(lines, e => e.Values.ContainsKey("Generation") && (Guid)e.Values["Generation"]! == Guid.Parse(generationB));
         Assert.DoesNotContain(b.Log.From("Tankstat"), e => e.Level >= LogLevel.Warning);
@@ -254,7 +252,7 @@ public sealed class RestoreTests : IDisposable
         await using (var db = await DbOf(b))
             Assert.Equal(MigrationModels.Ids(db).Last(), await LastMigration(b)); // up to date
         Assert.Empty(Directory.GetFiles(folderB, "restore.*"));
-        Assert.Single(Directory.GetFiles(folderB, "tankstat-backup-*"), f => BackupFile.ReadManifest(f).SafetyNet);
+        Assert.Single(Directory.GetFiles(folderB, "tankstat-backup-*")); // the backup restored: no backup of the data it replaced, before or after the migrations
         Assert.Contains(b.Log.From("Tankstat.Infrastructure.Backups.RestoreStep"), e => e.Level == LogLevel.Information && e.Values.ContainsKey("Migration"));
         Assert.DoesNotContain(b.Log.From("Tankstat"), e => e.Level >= LogLevel.Warning);
     }
@@ -441,7 +439,7 @@ public sealed class RestoreTests : IDisposable
     }
 
     [Fact]
-    public async Task ABackupWithAPhotosRootOfItsOwn_ReplacesThePhotos_AfterASafetyNetThatHoldsThem()
+    public async Task ABackupWithAPhotosRootOfItsOwn_ReplacesThePhotos()
     {
         using var a = Host("a", migrated: true);
         var backup = await Backup(a, new BackupRequest(Photos: true));
@@ -457,9 +455,7 @@ public sealed class RestoreTests : IDisposable
         await InstanceOf(b); // started: the restore is behind it
 
         Assert.False(File.Exists(own)); // the photos root is the backup's now
-        var safetyNet = Directory.GetFiles(folderB, "tankstat-backup-*").Select(BackupFile.ReadManifest).Single(m => m.SafetyNet);
-        Assert.Equal(BackupPhotos.Separate, safetyNet.Contents.Photos); // the way back holds the photo the restore replaced
-        Assert.Equal(3, safetyNet.Sizes.Photos);
+        Assert.Single(Directory.GetFiles(folderB, "tankstat-backup-*")); // and no backup holds the photo it replaced: a restore writes none
     }
 
     [Theory]
@@ -610,7 +606,7 @@ public sealed class RestoreTests : IDisposable
     }
 
     [Fact]
-    public async Task ARestoreWhoseSafetyNetCannotBeWritten_IsRefused_AndTheDataStaysExactlyAsItWas()
+    public async Task ARestoreWritesNoBackup_SoADiskThatCouldTakeNoneStopsNothing_AndWhatChangedSinceTheBackupIsGone()
     {
         using var a = Host("a", migrated: true);
         await AddVehicle(a, "Golf");
@@ -625,12 +621,10 @@ public sealed class RestoreTests : IDisposable
 
         using var restarted = shared.Host(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = folderB }, services: s => s.AddSingleton<IBackupWriter, UnwritableBackups>());
 
-        Assert.Equal(["Own car"], await Vehicles(restarted)); // nothing was replaced
-        Assert.Equal(generation, (await InstanceOf(restarted)).Generation);
-        Assert.False(File.Exists(RestoreMarker.PathIn(folderB)));
-        Assert.Single(Directory.GetFiles(folderB, "restore.refused.*"));
-        var refusal = Assert.Single(restarted.Log.From("Tankstat.Infrastructure.Backups.RestoreStep").Where(e => e.Level == LogLevel.Error));
-        Assert.Contains("safety-net", (string)refusal.Values["Reason"]!);
+        Assert.Equal(["Golf"], await Vehicles(restarted)); // the backup's: the own car is gone, and in no backup (user decision)
+        Assert.NotEqual(generation, (await InstanceOf(restarted)).Generation);
+        Assert.Empty(Directory.GetFiles(folderB, "restore.*"));
+        Assert.DoesNotContain(restarted.Log.From("Tankstat"), e => e.Level >= LogLevel.Warning);
     }
 
     [Fact]
@@ -659,7 +653,7 @@ public sealed class RestoreTests : IDisposable
         Assert.Empty(Directory.GetFiles(folderB, "restore.refused.*"));
         var failure = Assert.Single(restarted.Log.From("Tankstat.Infrastructure.Backups.RestoreStep").Where(e => e.Level == LogLevel.Error));
         Assert.NotNull(failure.Exception);
-        Assert.True(Directory.GetFiles(folderB, "tankstat-backup-*").Length >= 2, "the safety net is the way back"); // the backup staged, and the safety net
+        Assert.Single(Directory.GetFiles(folderB, "tankstat-backup-*")); // the backup staged, to try again: no backup of the data it replaced
     }
 
     [Fact]

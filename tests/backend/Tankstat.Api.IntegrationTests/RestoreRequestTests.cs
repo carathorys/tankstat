@@ -130,6 +130,23 @@ public sealed class RestoreRequestTests : IDisposable
     }
 
     [Fact]
+    public async Task TheRestoreCommand_RefusesANewerReleasesBackup_BeforeItWritesTheMarker()
+    {
+        using var app = new TestApp(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = _folder });
+        var file = await Backup(app, encrypted: false);
+        var path = Path.Combine(_folder, file);
+        var migration = BackupFile.ReadManifest(path).Migration!;
+        RestoreTests.RewriteManifest(path, json => json.Replace(migration, "29991231235959_FromANewerRelease"));
+        var (output, error) = (new StringWriter(), new StringWriter());
+
+        var refused = await BackupCommands.RunAsync(["restore", file, "--yes"], app.Factory.Services, new StringReader(""), output, error);
+
+        Assert.Equal(1, refused);
+        Assert.Contains("does not know", error.ToString());
+        Assert.False(File.Exists(RestoreMarker.PathIn(_folder))); // as the app refuses it: the start would refuse it anyway
+    }
+
+    [Fact]
     public async Task TheIdentityInPlaceOfThePassphrase_Works_AMalformedOneIsTheWrongKey_AndNamesThatAreNoBackupAreNotFound()
     {
         using var app = TestApp.Standalone(new() { ["Backups:Path"] = _folder });
@@ -186,7 +203,8 @@ public sealed class RestoreRequestTests : IDisposable
         {
             var failed = await BackupCommands.RunAsync(["restore", file, "--yes", "--now"], app.Factory.Services, new StringReader(""), output, error);
             Assert.Equal(1, failed);
-            Assert.Contains("failed after the database was replaced", output.ToString());
+            Assert.Contains("failed after the data was replaced", output.ToString());
+            Assert.Contains("no backup of the data from before it", output.ToString());
             Assert.DoesNotContain("not applied", output.ToString());
             Assert.Single(Directory.GetFiles(_folder, "restore.failed.*"));
         }

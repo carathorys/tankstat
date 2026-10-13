@@ -3,24 +3,32 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Tankstat.Application.Backups;
 using Tankstat.Domain.Vehicles;
+using Tankstat.Infrastructure.Backups;
 
 namespace Tankstat.Infrastructure.Persistence;
 
 /// <summary>
-/// Applies pending EF Core migrations before the host starts accepting requests, and what has to follow a migration that ran (the stored
-/// consumption of logs that existed before it). At start, a database that holds data and has migrations pending is backed up first, always
-/// (a safety net, kept apart by retention like a restore's): when that backup cannot be written nothing is migrated, and the start stops
-/// with the reason, since an upgrade is the change a way back is needed for. A new, empty database has nothing to back up, and a start with
-/// a restore waiting writes none either: the data is about to be replaced by a backup, and the restore writes its own safety net of what
-/// it replaces. A restore of a backup made at an older migration brings the restored data up to date through <see cref="MigrateAsync"/>
-/// too, with no backup of its own, for the same reason.
+/// The database's part of every start, before the host starts accepting requests, in this order (user decision): backup files a stopped run
+/// left half written are removed; a restore that waits is applied (<see cref="RestoreStep.ApplyWaitingAsync"/>, which sets the database up
+/// as the backup's migration left it and writes no backup: the backup restored is the one there is); when none was applied (none waited, or
+/// it was refused with the data as it was) and migrations are pending on a database that holds data, a backup of the database as it is
+/// (a safety net, kept apart by retention) is written: when it cannot be written nothing is migrated, and the start stops with the reason,
+/// since an upgrade is the change a way back is needed for; then the pending migrations run (bringing restored data up to date too), and
+/// what has to follow a migration that ran (the stored consumption of logs that existed before it). A new, empty database has nothing to
+/// back up, and a restore that failed after it replaced the data writes none either.
 /// </summary>
-internal sealed class DatabaseMigrator(IDbContextFactory<AppDbContext> dbFactory, IBackupWriter backups, IBackupStore store, ILogger<DatabaseMigrator> logger) : IHostedService
+internal sealed class DatabaseMigrator(
+    IDbContextFactory<AppDbContext> dbFactory, IBackupWriter backups, IBackupStore store, RestoreStep restore, ILogger<DatabaseMigrator> logger) : IHostedService
 {
     /// <summary>The migration that added the stored consumption: logs that already existed get theirs calculated once, right after it ran.</summary>
     private const string ConsumptionMigration = "_AddRefuelingConsumption";
 
-    public Task StartAsync(CancellationToken ct) => MigrateAsync(ct, backupFirst: true);
+    public async Task StartAsync(CancellationToken ct)
+    {
+        BackupWriter.RemoveStalePartials(store.Folder, logger);
+        var restored = await restore.ApplyWaitingAsync(ct);
+        await MigrateAsync(ct, backupFirst: restored is RestoreOutcome.None or RestoreOutcome.Refused);
+    }
 
     /// <summary>Every pending migration (after a backup of the database as it is, with <paramref name="backupFirst"/>), then what has to follow the ones that ran.</summary>
     public async Task MigrateAsync(CancellationToken ct, bool backupFirst = false)
@@ -29,10 +37,7 @@ internal sealed class DatabaseMigrator(IDbContextFactory<AppDbContext> dbFactory
         var pending = (await db.Database.GetPendingMigrationsAsync(ct)).ToList();
         var backfill = pending.Any(m => m.EndsWith(ConsumptionMigration, StringComparison.Ordinal));
         if (backupFirst && pending.Count > 0 && (await db.Database.GetAppliedMigrationsAsync(ct)).Any())
-        {
-            if (store.RestorePending) logger.LogInformation("A restore waits, which writes its own safety net: no backup before the database migrations");
-            else await BackUpAsync(pending.Count, ct);
-        }
+            await BackUpAsync(pending.Count, ct);
 
         // The one line that tells an operator the database was changed by this start, and by what.
         if (pending.Count > 0) logger.LogInformation("Applying {Count} database migrations ({Provider}): {Migrations}", pending.Count, db.Database.ProviderName, string.Join(", ", pending));

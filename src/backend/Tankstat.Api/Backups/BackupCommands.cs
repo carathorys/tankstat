@@ -165,10 +165,12 @@ internal static class BackupCommands
         if (identityFile is not null && passphrase) throw new UsageException();
         var store = services.GetRequiredService<IBackupStore>();
         var manifest = store.ReadManifest(file); // a file of the backups folder, by name
+        // A newer release's backup is refused before anything is written, as the app refuses it: the start would refuse it anyway.
+        await store.RequireRestorableMigrationAsync(manifest, CancellationToken.None);
         if (!yes)
         {
             output.WriteLine($"This replaces ALL data of this instance (every table, the pictures{(manifest.Contents.Photos == BackupPhotos.Separate ? ", the photos" : "")}{(manifest.Contents.Keys ? ", the keys" : "")}) with the backup {file},");
-            output.WriteLine($"written by Tankstat {manifest.AppVersion} on {manifest.CreatedAt:u} ({manifest.Provider}, {manifest.Migration}). A backup of the current data is written first. Type yes to continue:");
+            output.WriteLine($"written by Tankstat {manifest.AppVersion} on {manifest.CreatedAt:u} ({manifest.Provider}, {manifest.Migration}). No backup of the current data is written: whatever changed since it was made is lost. Type yes to continue:");
             if (input.ReadLine()?.Trim().ToLowerInvariant() != "yes")
             {
                 output.WriteLine("Nothing was changed.");
@@ -180,17 +182,17 @@ internal static class BackupCommands
         store.RequestRestore(new RestoreMarker(file, Guid.Empty, DateTimeOffset.UtcNow, opened));
         if (!now)
         {
-            output.WriteLine($"The restore of {file} is applied at the next start of the server (the app's own data is backed up first). Restart it now; a running server shows a notice until then.");
+            output.WriteLine($"The restore of {file} is applied at the next start of the server. Restart it now; a running server shows a notice until then.");
             return 0;
         }
-        // Right away, as the server would at its start: the migrations, then the restore; the log above says how it went, and why.
-        switch (await StartupSteps.MigrateAndRestoreAsync(services, CancellationToken.None))
+        // Right away, as the server would at its start: the restore, then the migrations; the log above says how it went, and why.
+        switch (await StartupSteps.RestoreAndMigrateAsync(services, CancellationToken.None))
         {
             case RestoreOutcome.Applied:
                 output.WriteLine($"Restored {file}.");
                 return 0;
             case RestoreOutcome.Failed:
-                output.WriteLine("The restore failed after the database was replaced, so the files may be half copied; the safety-net backup in the backups folder is the way back, and the log above says why.");
+                output.WriteLine("The restore failed after the data was replaced, so the files may be half copied; no backup of the data from before it was written, the backup itself is still in the folder to try again, and the log above says why.");
                 return 1;
             default:
                 output.WriteLine("The restore was not applied, and the data is as it was; the log above says why.");
