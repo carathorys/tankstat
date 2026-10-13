@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -25,7 +26,13 @@ public sealed class BackupStoreTests : IDisposable
         if (Directory.Exists(_data)) Directory.Delete(_data, recursive: true);
     }
 
-    private FileBackupStore Store() => new(Options.Create(new BackupOptions { Path = Backups }));
+    private FileBackupStore Store() => new(Options.Create(new BackupOptions { Path = Backups }), new NoDatabase());
+
+    /// <summary>The folder's tests never ask the database (only the migration check of a restore does): a factory that says so if it is used.</summary>
+    private sealed class NoDatabase : IDbContextFactory<AppDbContext>
+    {
+        public AppDbContext CreateDbContext() => throw new InvalidOperationException("The backups folder's tests use no database.");
+    }
 
     /// <summary>A real backup file (of a seeded SQLite instance), written outside the backups folder.</summary>
     private async Task<string> BackupFileAsync()
@@ -42,12 +49,34 @@ public sealed class BackupStoreTests : IDisposable
 
     private static string Key(Func<Task> action) => Assert.ThrowsAnyAsync<KeyedException>(action).GetAwaiter().GetResult().Key;
 
+    /// <summary>An upload of a file, its stream closed again (an open one would keep the test's folder from being removed on Windows).</summary>
+    private static async Task<RestorePoint> Upload(FileBackupStore store, string file, string? name, long maxBytes = long.MaxValue)
+    {
+        await using var content = File.OpenRead(file);
+        return await store.SaveUploadAsync(content, name, maxBytes, default);
+    }
+
+    /// <summary>A copy of a backup whose manifest leaves out one field (edited by hand, say); the inner archive, and so the checksum, untouched.</summary>
+    private static void CopyWithout(string backup, string field, string copy)
+    {
+        File.Copy(backup, copy);
+        using var zip = ZipFile.Open(copy, ZipArchiveMode.Update);
+        var entry = zip.GetEntry(BackupManifest.FileName)!;
+        JsonObject manifest;
+        using (var reader = new StreamReader(entry.Open())) manifest = JsonNode.Parse(reader.ReadToEnd())!.AsObject();
+        Assert.True(manifest.Remove(field));
+        entry.Delete();
+        using var writer = new StreamWriter(zip.CreateEntry(BackupManifest.FileName).Open());
+        writer.Write(manifest.ToJsonString());
+    }
+
     [Fact]
     public async Task TheRestorePoints_AreEveryReadableBackup_NewestFirst_AndNothingElseInTheFolder()
     {
         var backup = await BackupFileAsync();
         Directory.CreateDirectory(Backups);
         File.Copy(backup, Path.Combine(Backups, "copied-by-hand.zip"));
+        File.Copy(backup, Path.Combine(Backups, ".hidden.zip")); // no download or restore takes a hidden name, so it is not listed either
         await File.WriteAllTextAsync(Path.Combine(Backups, "notes.zip"), "not a zip at all");
         await File.WriteAllTextAsync(Path.Combine(Backups, "half.zip.partial"), "a backup being written");
         await File.WriteAllTextAsync(Path.Combine(Backups, "restore.refused.20261011T000000Z"), "{}");
@@ -57,7 +86,7 @@ public sealed class BackupStoreTests : IDisposable
 
         Assert.Equal(("copied-by-hand.zip", new FileInfo(backup).Length, false), (point.File, point.Bytes, point.Uploaded));
         Assert.Equal(Path.GetFullPath(Backups), store.Folder);
-        Assert.Empty(new FileBackupStore(Options.Create(new BackupOptions { Path = Path.Combine(_data, "no-such-folder") })).List());
+        Assert.Empty(new FileBackupStore(Options.Create(new BackupOptions { Path = Path.Combine(_data, "no-such-folder") }), new NoDatabase()).List());
     }
 
     [Fact]
@@ -66,10 +95,10 @@ public sealed class BackupStoreTests : IDisposable
         var backup = await BackupFileAsync();
         var store = Store();
 
-        var first = await store.SaveUploadAsync(File.OpenRead(backup), "My backup (old)!.zip", long.MaxValue, default);
-        var second = await store.SaveUploadAsync(File.OpenRead(backup), "My backup (old)!.zip", long.MaxValue, default);
-        var nameless = await store.SaveUploadAsync(File.OpenRead(backup), null, long.MaxValue, default);
-        var sneaky = await store.SaveUploadAsync(File.OpenRead(backup), "../../etc/passwd", long.MaxValue, default);
+        var first = await Upload(store, backup, "My backup (old)!.zip");
+        var second = await Upload(store, backup, "My backup (old)!.zip");
+        var nameless = await Upload(store, backup, null);
+        var sneaky = await Upload(store, backup, "../../etc/passwd");
 
         Assert.Equal(["uploaded-My-backup--old.zip", "uploaded-My-backup--old-2.zip", "uploaded-backup.zip", "uploaded-passwd.zip"], new[] { first.File, second.File, nameless.File, sneaky.File });
         Assert.All(new[] { first, second, nameless, sneaky }, p => Assert.True(p.Uploaded));
@@ -92,11 +121,56 @@ public sealed class BackupStoreTests : IDisposable
                 writer.Write((BackupFile.ReadManifest(backup) with { WrittenBy = "another-tool" }).ToJson());
         foreign.Position = 0;
 
-        Assert.Equal("backup.tooLarge", Key(() => store.SaveUploadAsync(File.OpenRead(backup), "big.zip", 1000, default)));
+        Assert.Equal("backup.tooLarge", Key(() => Upload(store, backup, "big.zip", 1000)));
         Assert.Equal("backup.corrupt", Key(() => store.SaveUploadAsync(new MemoryStream(RandomNumberGenerator.GetBytes(5000)), "noise.zip", long.MaxValue, default)));
         Assert.Equal("backup.corrupt", Key(() => store.SaveUploadAsync(new MemoryStream(damaged), "damaged.zip", long.MaxValue, default)));
         Assert.Equal("backup.corrupt", Key(() => store.SaveUploadAsync(foreign, "foreign.zip", long.MaxValue, default)));
         Assert.Empty(Directory.GetFiles(Backups));
+    }
+
+    [Fact]
+    public async Task AnUploadOfANameAnotherUploadIsWriting_TakesTheNextNumber_AndLeavesThatFileAlone()
+    {
+        var backup = await BackupFileAsync();
+        Directory.CreateDirectory(Backups);
+        var another = Path.Combine(Backups, "uploaded-x.zip.uploading");
+        await File.WriteAllTextAsync(another, "another upload, under way");
+        var store = Store();
+
+        var point = await Upload(store, backup, "x.zip");
+
+        Assert.Equal("uploaded-x-2.zip", point.File);
+        Assert.Equal("another upload, under way", await File.ReadAllTextAsync(another));
+    }
+
+    [Fact]
+    public async Task UploadsOfOneName_AtOnce_AreEachStoredUnderANameOfTheirOwn()
+    {
+        var bytes = await File.ReadAllBytesAsync(await BackupFileAsync());
+        var store = Store();
+
+        // Each in its own task: none waits for the others to claim a name, so they race for the same one.
+        var points = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => Task.Run(() => store.SaveUploadAsync(new MemoryStream(bytes), "same.zip", long.MaxValue, default))));
+
+        Assert.Equal(8, points.Select(p => p.File).Distinct().Count());
+        Assert.Equal(8, store.List().Count);
+        Assert.All(points, p => Assert.Equal(bytes, File.ReadAllBytes(Path.Combine(Backups, p.File))));
+        Assert.DoesNotContain(Directory.GetFiles(Backups), f => f.EndsWith(".uploading"));
+    }
+
+    [Fact]
+    public async Task AManifestWithoutTheReleaseOrTheDatabaseItCameFrom_IsNoBackup_NeitherListedNorTakenAsAnUpload()
+    {
+        var backup = await BackupFileAsync();
+        Directory.CreateDirectory(Backups);
+        CopyWithout(backup, "appVersion", Path.Combine(Backups, "no-version.zip"));
+        CopyWithout(backup, "provider", Path.Combine(Backups, "no-provider.zip"));
+        var store = Store();
+
+        Assert.Empty(store.List());
+        Assert.Equal("backup.corrupt", Key(() => Upload(store, Path.Combine(Backups, "no-version.zip"), "no-version.zip")));
+        Assert.Equal("backup.corrupt", Key(() => Upload(store, Path.Combine(Backups, "no-provider.zip"), "no-provider.zip")));
+        Assert.Equal(["no-provider.zip", "no-version.zip"], Directory.GetFiles(Backups).Select(Path.GetFileName).Order());
     }
 
     [Fact]
@@ -107,6 +181,13 @@ public sealed class BackupStoreTests : IDisposable
         File.Copy(backup, Path.Combine(Backups, "a.zip"));
         await File.WriteAllTextAsync(Path.Combine(_data, "secret.txt"), "outside the folder");
         await File.WriteAllTextAsync(Path.Combine(Backups, ".hidden"), "hidden");
+        File.Copy(backup, Path.Combine(Backups, ".hidden.zip"));
+        // The rest of the folder: never a backup, whatever its name says. The marker holds the identity of the backups in plain.
+        new RestoreMarker("a.zip", Guid.NewGuid(), DateTimeOffset.UtcNow, "AGE-SECRET-KEY-1ZZZZ").Write(Backups);
+        await File.WriteAllTextAsync(Path.Combine(Backups, "notes.zip"), "not a zip at all");
+        File.Copy(backup, Path.Combine(Backups, "b.zip.partial"));
+        File.Copy(backup, Path.Combine(Backups, "uploaded-c.zip.uploading"));
+        File.Copy(backup, Path.Combine(Backups, "plain-copy"));
         var store = Store();
 
         await using (var stream = store.OpenRead("a.zip"))
@@ -115,7 +196,8 @@ public sealed class BackupStoreTests : IDisposable
             await stream.CopyToAsync(copy);
             Assert.Equal(await File.ReadAllBytesAsync(backup), copy.ToArray());
         }
-        foreach (var name in new[] { "../secret.txt", "..", ".hidden", "", "missing.zip", Path.Combine(_data, "secret.txt") })
+        foreach (var name in new[] { "../secret.txt", "..", ".hidden", ".hidden.zip", "", "missing.zip", Path.Combine(_data, "secret.txt"),
+                     RestoreMarker.FileName, "notes.zip", "b.zip.partial", "uploaded-c.zip.uploading", "plain-copy" })
             Assert.Equal("backup.notFound", Assert.Throws<NotFoundException>(() => store.OpenRead(name)).Key);
     }
 }

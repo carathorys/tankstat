@@ -2,7 +2,7 @@ import { IDBFactory } from 'fake-indexeddb'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { deviceData, GENERATION_KEY } from '../../../src/frontend/offline/deviceData.ts'
 import { indexedDbStorage, memoryStorage } from '../../../src/frontend/offline/deviceStorage.ts'
-import { compare, foundRows, inSendOrder, type FoundRow } from '../../../src/frontend/offline/foundRows.ts'
+import { compare, foundRows, inSendOrder, keptAnswers, type FoundRow } from '../../../src/frontend/offline/foundRows.ts'
 import { generationOf } from '../../../src/frontend/offline/offlineLink.ts'
 import { snapshotKey } from '../../../src/frontend/offline/snapshotPolicy.ts'
 
@@ -120,6 +120,43 @@ describe('deviceData.generationSeen, when answers arrive together or too early',
     expect(await rows.vehicles()).toEqual([{ id: 'v1', name: 'Octavia', logAccess: 'DELETE', version: 7 }]) // not wiped again after the download
   })
 
+  it('a tab that finds the new history kept by another tab drops its own copies of the old one, and tells what reads them', async () => {
+    const storage = memoryStorage()
+    deviceData.reset(storage)
+    await deviceData.signedIn('alice')
+    await deviceData.generationSeen('g1')
+    const rows = (await deviceData.writableRows())!
+    await rows.putLogs('refuelings', [{ id: 'r1', vehicleId: 'v1', date: '2026-09-01', version: 1, pulledAt: 1 }])
+    expect(await rows.logs('refuelings', 'v1')).toHaveLength(1) // this tab holds a copy of them in memory now
+    const other = await storage.open('alice') // another tab: the same stored data, copies of its own
+    await other.clear()
+    await other.put({ key: GENERATION_KEY, data: 'g2', at: 1 })
+    expect(await rows.logs('refuelings', 'v1')).toHaveLength(1) // still this tab's copy of the old history
+    const told = vi.fn()
+    deviceData.onStoreChange(told)
+
+    expect(await deviceData.generationSeen('g2')).toBe('same')
+
+    expect(await rows.logs('refuelings', 'v1')).toEqual([])
+    expect(told).toHaveBeenCalled()
+  })
+
+  it('drops nothing when the account was signed out while the rows were set aside: the next answer checks again', async () => {
+    deviceData.reset(memoryStorage())
+    await deviceData.signedIn('alice')
+    await deviceData.generationSeen('g1')
+    const rows = (await deviceData.writableRows())!
+    await rows.putVehicles([{ id: 'v1', name: 'Octavia', logAccess: 'DELETE' }])
+    deviceData.onGenerationChange((phase) => {
+      if (phase === 'before') deviceData.unconfirm() // a sign-in answer came meanwhile
+    })
+
+    expect(await deviceData.generationSeen('g2')).toBe('same')
+
+    expect(await rows.vehicles()).toHaveLength(1)
+    expect((await deviceData.read(GENERATION_KEY))?.data).toBe('g1')
+  })
+
   it('asks for the lock the tabs share, when the browser has Web Locks', async () => {
     const asked: string[] = []
     Object.defineProperty(navigator, 'locks', {
@@ -146,10 +183,10 @@ describe('compare', () => {
   const held = (_: unknown, id: string) => ({ same: 2, newerThere: 5, olderThere: 1 })[id]
 
   it('drops what the server has at the same or a newer version, keeps what it lacks or holds older, and waits for an unfinished download', () => {
-    const { keep, drop } = compare(rows, held, (vehicleId) => vehicleId === 'v1')
+    const { keep, drop } = compare(rows, held, (r) => r.vehicleId === 'v1')
 
     expect(drop).toEqual(['same', 'newerThere'])
-    expect(keep.map((r) => [r.id, r.serverVersion])).toEqual([['olderThere', 1], ['gone', undefined], ['pending', undefined]])
+    expect(keep.map((r) => [r.id, r.serverVersion, r.checked])).toEqual([['olderThere', 1, true], ['gone', undefined, true], ['pending', undefined, undefined]])
   })
 })
 
@@ -198,20 +235,49 @@ describe('foundRows', () => {
     await rows.putCursor({ vehicleId: 'v1', from: null, watermark: 'w', next: null, complete: true, fullStartedAt: null })
     await foundRows.reconcile(rows, async () => ({ vehicle: { id: 'v1', recurring: [] } }))
 
-    const left = (await rows.found()).map((r) => [r.id, r.serverVersion]).sort()
-    expect(left).toEqual([['r1', undefined], ['s1', undefined], ['v1', 1]])
+    const left = (await rows.found()).map((r) => [r.id, r.serverVersion, r.checked]).sort()
+    expect(left).toEqual([['r1', undefined, true], ['s1', undefined, true], ['v1', 1, true]])
   })
 
-  it('leaves everything listed while a vehicle is not downloaded in full, and keeps it all when the vehicle is gone from the server', async () => {
+  it('judges nothing a download does not cover yet, and keeps everything of a vehicle gone from the server', async () => {
     deviceData.reset(memoryStorage())
     await deviceData.signedIn('alice')
     const rows = (await deviceData.writableRows())!
-    await rows.putFound([row({ id: 'r1', vehicleId: 'v1' }), row({ id: 'r2', vehicleId: 'v2' })])
-    await rows.putVehicles([{ id: 'v1', name: 'Octavia', logAccess: 'DELETE' }]) // v1 listed, not downloaded yet; v2 not listed at all
+    await rows.putFound([
+      row({ id: 'r1', vehicleId: 'v1' }), // v1 listed, not downloaded in full yet
+      row({ id: 'r2', vehicleId: 'v2' }), // v2 no longer listed at all
+      row({ id: 'old', vehicleId: 'v3', date: '2026-01-10' }), // before the start of v3's window: the download says nothing of it
+      row({ id: 'in', vehicleId: 'v3', date: '2026-09-10' }),
+      row({ id: 's1', vehicleId: 'v3', entity: 'recurring' }), // v3's schedules: none kept, so unknown
+    ])
+    await rows.putVehicles([{ id: 'v1', name: 'Octavia', logAccess: 'DELETE' }, { id: 'v3', name: 'Fabia', logAccess: 'DELETE' }])
     await rows.putLogs('refuelings', [{ id: 'r1', vehicleId: 'v1', date: '2026-09-01', version: 9, pulledAt: 1 }])
+    await rows.putCursor({ vehicleId: 'v3', from: '2026-08-07', watermark: 'w', next: null, complete: true, fullStartedAt: null })
+    const told = vi.fn()
+    deviceData.onFoundChange(told)
 
     await foundRows.reconcile(rows, async () => undefined)
 
-    expect((await rows.found()).map((r) => r.id).sort()).toEqual(['r1', 'r2'])
+    expect((await rows.found()).map((r) => [r.id, r.checked ?? false]).sort()).toEqual([['in', true], ['old', false], ['r1', false], ['r2', true], ['s1', false]])
+    expect(told).toHaveBeenCalledOnce() // what lists or counts them reads them again
+  })
+
+  it('sets aside only what this account made: its own vehicles with their schedules, the entries it logged', async () => {
+    deviceData.reset(memoryStorage())
+    await deviceData.signedIn('alice')
+    const rows = (await deviceData.writableRows())!
+    const alice = { id: 'alice', displayName: 'Alice' }
+    const bob = { id: 'bob', displayName: 'Bob' }
+    await rows.putVehicles([{ id: 'mine', name: 'Octavia', logAccess: 'DELETE', owner: alice }, { id: 'shared', name: 'Superb', logAccess: 'EDIT', owner: bob }])
+    await rows.putLogs('refuelings', [
+      { id: 'r-alice', vehicleId: 'shared', date: '2026-09-01', version: 1, pulledAt: 1, createdBy: alice },
+      { id: 'r-bob', vehicleId: 'shared', date: '2026-09-02', version: 1, pulledAt: 1, createdBy: bob },
+    ])
+    await deviceData.keep(snapshotKey('RecurringExpenses', { vehicleId: 'shared' }), { vehicle: { id: 'shared', recurring: [{ id: 's-bob', version: 1, title: 'Oil' }] } })
+
+    await foundRows.setAside(rows, keptAnswers, 'g1')
+
+    // Sent by Alice, Bob's would be made hers, and Bob could not send them any more.
+    expect((await rows.found()).map((r) => r.id).sort()).toEqual(['mine', 'r-alice'])
   })
 })

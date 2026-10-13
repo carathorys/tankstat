@@ -1,4 +1,7 @@
+using System.Security.Cryptography;
+using Microsoft.Extensions.Options;
 using Tankstat.Application.Backups;
+using Tankstat.Application.SystemSettings;
 using Tankstat.Domain;
 using Tankstat.Domain.Backups;
 using Tankstat.Infrastructure.Backups;
@@ -23,7 +26,7 @@ internal static class BackupCommands
             return args switch
             {
                 ["backup", "keygen", .. var rest] => Keygen(rest, input, output),
-                ["backup", .. var rest] => await BackupAsync(rest, services, input, output),
+                ["backup", .. var rest] => await BackupAsync(rest, services, input, output, error),
                 ["decrypt", .. var rest] => Decrypt(rest, input, output),
                 ["restore", .. var rest] => await RestoreAsync(rest, services, input, output),
                 _ => throw new UsageException(),
@@ -34,7 +37,11 @@ internal static class BackupCommands
             await error.WriteLineAsync(Usage);
             return 1;
         }
-        catch (Exception e) when (e is DomainException or IOException or UnauthorizedAccessException or FormatException or System.Data.Common.DbException)
+        // What a run can meet is reported, never left to crash the process: settings the host never validated (a command does not start it,
+        // so they are validated when first read), a recipient no key agrees with, a backup that is not in the folder, a platform without
+        // ChaCha20-Poly1305 (Windows 10), a value the dump cannot hold.
+        catch (Exception e) when (e is KeyedException or IOException or UnauthorizedAccessException or FormatException or System.Data.Common.DbException
+            or OptionsValidationException or InvalidDataException or CryptographicException or NotSupportedException)
         {
             await error.WriteLineAsync(e.Message); // a database's message may quote the table it misses, as its own errors always did
             return 1;
@@ -64,12 +71,13 @@ internal static class BackupCommands
         output.WriteLine($"  Backups__Encryption__Recipient={AgeKeys.FormatRecipient(BackupKeys.Recipient(identity))}");
         output.WriteLine($"  Backups__Encryption__Salt={Convert.ToBase64String(salt)}");
         output.WriteLine("The identity below opens every backup made for this recipient, with age (age -d -i) or tankstat decrypt --identity; it is derived from the");
-        output.WriteLine("passphrase and the salt, so the passphrase alone is enough to keep. Losing the passphrase (or this identity) loses the backups, by design:");
-        output.WriteLine($"  {AgeKeys.FormatIdentity(identity)}");
+        output.WriteLine("passphrase and the salt, so the passphrase alone is enough to keep. Losing the passphrase (or this identity) loses the backups, by design.");
+        output.WriteLine("Saved as it is, the next line is an identity file (age takes no space before the key):");
+        output.WriteLine(AgeKeys.FormatIdentity(identity));
         return 0;
     }
 
-    private static async Task<int> BackupAsync(string[] args, IServiceProvider services, TextReader input, TextWriter output)
+    private static async Task<int> BackupAsync(string[] args, IServiceProvider services, TextReader input, TextWriter output, TextWriter error)
     {
         string? file = null;
         var photos = false;
@@ -78,12 +86,16 @@ internal static class BackupCommands
         {
             switch (args[i])
             {
-                case "--output" when i + 1 < args.Length: file = args[++i]; break;
+                case "--output" when i + 1 < args.Length && args[i + 1].Length > 0: file = args[++i]; break;
                 case "--photos": photos = true; break;
                 case "--passphrase-stdin": passphrase = true; break;
                 default: throw new UsageException();
             }
         }
+        // The server says this at start (SettingsFileReporter, a hosted service, which a command never runs). A backup runs without the file
+        // too, so it could come out without what the file held, its encryption say: never without a word.
+        if (services.GetService<SettingsFileStatus>() is { Ignored: true } settingsFile)
+            await error.WriteLineAsync($"The settings file {settingsFile.Path} was left out because the app could not start with it; the backup is written without it: {string.Join(" ", settingsFile.Problems)}");
         BackupEncryption? encryption = null;
         if (passphrase)
         {
@@ -94,7 +106,7 @@ internal static class BackupCommands
         var result = await services.GetRequiredService<IBackupWriter>().WriteAsync(new BackupRequest(file, photos ? true : null, encryption), CancellationToken.None);
         var m = result.Manifest;
         output.WriteLine($"Wrote {result.Path}");
-        output.WriteLine($"  {m.Contents.Tables.Count} tables with {m.Contents.Tables.Values.Sum()} rows ({m.Sizes.Tables} bytes), pictures {m.Sizes.Pictures} bytes, photos {Photos(m)}, keys {(m.Contents.Keys ? $"{m.Sizes.Keys} bytes" : "left out (not encrypted)")}");
+        output.WriteLine($"  {m.Contents.Tables.Count} tables with {m.Contents.Tables.Values.Sum()} rows ({m.Sizes.Tables} bytes), pictures {m.Sizes.Pictures} bytes, photos {Photos(m)}, keys {(m.Contents.Keys ? $"{m.Sizes.Keys} bytes" : m.Encryption is null ? "left out (not encrypted)" : "none found")}");
         output.WriteLine(m.Encryption is null ? "  not encrypted" : $"  encrypted for {m.Encryption.Recipient}");
         return 0;
     }
@@ -126,8 +138,7 @@ internal static class BackupCommands
         var manifest = BackupFile.ReadManifest(file);
         BackupFile.VerifyChecksum(file, manifest);
         byte[]? identity = null;
-        if (identityFile is not null)
-            identity = AgeKeys.ParseIdentity(File.ReadLines(identityFile).FirstOrDefault(l => !l.StartsWith('#') && l.Trim().Length > 0) ?? throw new FormatException("The identity file holds no identity."));
+        if (identityFile is not null) identity = AgeKeys.ParseIdentity(IdentityLine(identityFile));
         else if (passphrase) identity = BackupFile.IdentityOf(manifest, Passphrase(input));
         BackupFile.Extract(file, manifest, identity, folder);
         output.WriteLine($"Unpacked {file} into {System.IO.Path.GetFullPath(folder)}: {manifest.Contents.Tables.Count} tables, written by Tankstat {manifest.AppVersion} on {manifest.CreatedAt:u} ({manifest.Provider}, {manifest.Migration})");
@@ -164,9 +175,7 @@ internal static class BackupCommands
                 return 1;
             }
         }
-        var identity = identityFile is not null
-            ? File.ReadLines(identityFile).FirstOrDefault(l => !l.StartsWith('#') && l.Trim().Length > 0) ?? throw new FormatException("The identity file holds no identity.")
-            : null;
+        var identity = identityFile is not null ? IdentityLine(identityFile) : null;
         var opened = store.IdentityFor(manifest, passphrase ? Passphrase(input) : null, identity); // refused here when it does not open
         store.RequestRestore(new RestoreMarker(file, Guid.Empty, DateTimeOffset.UtcNow, opened));
         if (!now)
@@ -174,22 +183,29 @@ internal static class BackupCommands
             output.WriteLine($"The restore of {file} is applied at the next start of the server (the app's own data is backed up first). Restart it now; a running server shows a notice until then.");
             return 0;
         }
-        // Right away, as the server would at its start: the migrations, then the restore. A refusal renames the marker, and the log says why.
-        var root = services.GetRequiredService<Microsoft.Extensions.Options.IOptions<BackupOptions>>().Value.Root;
-        var before = Directory.GetFiles(root, "restore.*").ToHashSet();
-        await StartupSteps.MigrateAndRestoreAsync(services, CancellationToken.None);
-        if (store.RestorePending || Directory.GetFiles(root, "restore.*").Any(f => !before.Contains(f)))
+        // Right away, as the server would at its start: the migrations, then the restore; the log above says how it went, and why.
+        switch (await StartupSteps.MigrateAndRestoreAsync(services, CancellationToken.None))
         {
-            output.WriteLine("The restore was not applied; the log above says why.");
-            return 1;
+            case RestoreOutcome.Applied:
+                output.WriteLine($"Restored {file}.");
+                return 0;
+            case RestoreOutcome.Failed:
+                output.WriteLine("The restore failed after the database was replaced, so the files may be half copied; the safety-net backup in the backups folder is the way back, and the log above says why.");
+                return 1;
+            default:
+                output.WriteLine("The restore was not applied, and the data is as it was; the log above says why.");
+                return 1;
         }
-        output.WriteLine($"Restored {file}.");
-        return 0;
     }
+
+    /// <summary>The identity in an identity file: its first line that is neither blank nor a comment, as age reads one.</summary>
+    private static string IdentityLine(string path) =>
+        File.ReadLines(path).FirstOrDefault(l => !l.StartsWith('#') && l.Trim().Length > 0) ?? throw new FormatException("The identity file holds no identity.");
 
     private static string Passphrase(TextReader input)
     {
-        var passphrase = input.ReadLine()?.TrimEnd('\r');
+        // A byte order mark (a file saved by a Windows editor and piped in) is no part of what was typed: kept, it would derive another key.
+        var passphrase = input.ReadLine()?.TrimStart('\uFEFF').TrimEnd('\r');
         if (string.IsNullOrEmpty(passphrase)) throw new DomainException("backup.passphraseRequired", "A passphrase is expected on the standard input (one line).");
         return passphrase;
     }

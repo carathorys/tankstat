@@ -24,8 +24,10 @@ export function useFormat() {
       /** A size on disk in the unit that suits it (1.2 GB, 340 kB), counted in thousands like the browser's storage figures. */
       bytes: (value: number) => {
         const units = ['byte', 'kilobyte', 'megabyte', 'gigabyte', 'terabyte'] as const
+        // The figure as it is shown (whole bytes, else one decimal): one that rounds up to 1,000 goes to the next unit (999,960 bytes is 1 MB).
+        const shown = (v: number, unit: number) => (unit === 0 ? Math.round(v) : Math.round(v * 10) / 10)
         let index = 0
-        while (value >= 1000 && index < units.length - 1) {
+        while (shown(value, index) >= 1000 && index < units.length - 1) {
           value /= 1000
           index++
         }

@@ -53,6 +53,7 @@ const POLICIES: Record<string, SnapshotPolicy> = {
   RefuelingPhotoReadings: 'never',
   ExpensePhotoReadings: 'never',
   OfflineChanges: 'never', // the download itself: what it brings is kept row by row (pull.ts)
+  ServerGeneration: 'never', // the download's check of the server's history: a kept answer would say nothing about the server now
 }
 
 export const KNOWN_QUERIES: readonly string[] = Object.keys(POLICIES)

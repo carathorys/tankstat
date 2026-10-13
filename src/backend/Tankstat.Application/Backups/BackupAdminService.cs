@@ -50,11 +50,21 @@ public sealed class BackupAdminService(
         return new RestorePoints(store.List(), await database.LastMigrationAsync(ct));
     }
 
-    /// <summary>The sizes: a question to the database and a walk of the upload folders, so only asked for when shown.</summary>
+    /// <summary>The migration the database is at (a question to the database only, the folder is not read).</summary>
+    public async Task<string?> MigrationAsync(CancellationToken ct)
+    {
+        await access.RequireAdminAsync(ct);
+        return await database.LastMigrationAsync(ct);
+    }
+
+    /// <summary>The sizes: a question to the database and a walk of the upload folders, side by side, so only asked for when shown.</summary>
     public async Task<StorageSizes> SizesAsync(CancellationToken ct)
     {
         await access.RequireAdminAsync(ct);
-        return new StorageSizes(await database.SizeAsync(ct), await usage.MeasureAsync(ct));
+        var size = database.SizeAsync(ct);
+        var files = usage.MeasureAsync(ct);
+        await Task.WhenAll(size, files);
+        return new StorageSizes(await size, await files);
     }
 
     /// <summary>Starts a backup now; false when one is being written already (that one is the backup asked for).</summary>
@@ -89,5 +99,15 @@ public sealed class BackupAdminService(
         var stream = store.OpenRead(fileName);
         logger.LogInformation("User {UserId} downloaded the backup {File}", admin.Id, fileName);
         return stream;
+    }
+
+    /// <summary>
+    /// Whether a backup can be downloaded (<c>backup.notFound</c> otherwise). The page asks before it hands the download to the browser, so a
+    /// refusal is said on the page instead of replacing it; nothing is read or logged (the download is).
+    /// </summary>
+    public async Task CheckDownloadAsync(string fileName, CancellationToken ct)
+    {
+        await access.RequireAdminAsync(ct);
+        await using var _ = store.OpenRead(fileName);
     }
 }

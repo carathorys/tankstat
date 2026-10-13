@@ -77,7 +77,8 @@
     "label": "Notices",
     "warning": "Warning:",
     "AUTH_DISABLED": "Authentication is disabled: anyone who can reach this app can see and change all data. This is unsafe; configure Auth:Mode.",
-    "SETTINGS_FILE_IGNORED": "The app's own settings file could not be used and was left out; the app runs without it until the next start. See the server log for the reason."
+    "SETTINGS_FILE_IGNORED": "The app's own settings file could not be used and was left out; the app runs without it until the next start. See the server log for the reason.",
+    "RESTORE_PENDING": "A restore is waiting for a restart of the app: when it starts next, all data is replaced with the backup's."
   },
   "notifications": {
     "title": "Notifications",
@@ -541,10 +542,10 @@
       "withoutPhotos": "without the photos",
       "otherMigration": "Made at another version of the database: restore it with the release that wrote it (Tankstat {{version}}).",
       "download": "Download",
-      "downloadAria": "Download the backup of {{made}}",
+      "downloadAria": "Download the backup of {{made}} ({{file}})",
       "restore": "Restore",
-      "restoreAria": "Restore the backup of {{made}}",
-      "restoreTitle": "Restore the backup of {{made}}?",
+      "restoreAria": "Restore the backup of {{made}} ({{file}})",
+      "restoreTitle": "Restore the backup of {{made}} ({{file}})?",
       "restoreDescription": "All data on this server is replaced by this backup: users, vehicles, logs and pictures. Whatever changed since it was made is lost, though a backup of the current state is written first. The app restarts to do it, which takes a moment for everyone using it.",
       "keyKind": "Open it with",
       "keyPassphrase": "Passphrase",
@@ -783,6 +784,7 @@
       "notEncrypted": "The backup is not encrypted; no passphrase opens it.",
       "newerFormat": "The backup was written by a newer release (Tankstat {{appVersion}}); upgrade first.",
       "otherMigration": "The backup was made at another version of the database ({{backup}}) than this one is at ({{database}}); restore it with the release that wrote it.",
+      "databaseNewer": "The database was migrated by a newer release of Tankstat ({{migration}}); back it up with that release.",
       "codeRequired": "The one-time restore code from the server's log is needed.",
       "passphraseRequired": "A passphrase is expected.",
       "tooLarge": "The file is larger than an upload may be ({{maxMb}} MB); copy it into the backups folder instead.",
@@ -1548,7 +1550,12 @@
       "sent_one": "{{count}} entry is waiting to be sent.",
       "sent_other": "{{count}} entries are waiting to be sent.",
       "forgotten_one": "{{count}} entry forgotten.",
-      "forgotten_other": "{{count}} entries forgotten."
+      "forgotten_other": "{{count}} entries forgotten.",
+      "failed": "That did not work; try again.",
+      "leftWaiting_one": "{{count}} entry stays listed: a change of its own waits on this device and goes first.",
+      "leftWaiting_other": "{{count}} entries stay listed: changes of their own wait on this device and go first.",
+      "navCount_one": "{{count}} entry found on this device",
+      "navCount_other": "{{count}} entries found on this device"
     }
   },
   "systemSettings": {
