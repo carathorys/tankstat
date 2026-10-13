@@ -5,8 +5,11 @@ using Tankstat.Application.Images;
 
 namespace Tankstat.Application.Backups;
 
-/// <summary>What the administration page shows of the backups at no cost: the folder, the run under way or the last one, and the settings (polled while a backup runs).</summary>
-public sealed record BackupStatus(string Folder, BackupRunStatus Run, BackupOptions Settings, bool PhotosApart);
+/// <summary>
+/// What the administration page shows of the backups at no cost: the folder, the run under way or the last one, the settings and when the
+/// schedule writes the next one (null: nothing scheduled). Polled while a backup runs.
+/// </summary>
+public sealed record BackupStatus(string Folder, BackupRunStatus Run, BackupOptions Settings, bool PhotosApart, DateTimeOffset? NextRun);
 
 /// <summary>The backups in the folder and the migration the database is at, which a backup must match to be restored here.</summary>
 public sealed record RestorePoints(IReadOnlyList<RestorePoint> Points, string? DatabaseMigration);
@@ -29,12 +32,15 @@ public sealed class BackupAdminService(
     IBackupKeyMaker keys,
     IOptions<BackupOptions> options,
     IOptions<StorageOptions> storage,
+    TimeProvider clock,
     ILogger<BackupAdminService> logger)
 {
     public async Task<BackupStatus> StatusAsync(CancellationToken ct)
     {
         await access.RequireAdminAsync(ct);
-        return new BackupStatus(store.Folder, runner.Status, options.Value, !storage.Value.OneRoot);
+        var o = options.Value;
+        var next = o.DailyAt is { } at ? BackupSchedule.NextAfter(clock.GetUtcNow(), at, clock.LocalTimeZone) : (DateTimeOffset?)null;
+        return new BackupStatus(store.Folder, runner.Status, o, !storage.Value.OneRoot, next);
     }
 
     /// <summary>Every backup in the folder (each file's manifest is read), so only asked for when shown.</summary>
@@ -65,7 +71,7 @@ public sealed class BackupAdminService(
     public async Task<bool> RunNowAsync(CancellationToken ct)
     {
         var admin = await access.RequireAdminAsync(ct);
-        var started = runner.Start();
+        var started = runner.Start(admin.Id);
         if (started) logger.LogInformation("A backup was started by user {UserId}", admin.Id);
         return started;
     }

@@ -28,6 +28,7 @@ public sealed class RestoreServiceTests
         public string Folder => "backups";
         public Task<RestorePoint> SaveUploadAsync(Stream content, string? fileName, long maxBytes, CancellationToken ct) => throw new NotSupportedException();
         public Stream OpenRead(string fileName) => throw new NotSupportedException();
+        public void Delete(string fileName) => throw new NotSupportedException();
     }
 
     private static (World World, OneBackup Store, RestoreService Service) Admin(OneBackup? store = null)

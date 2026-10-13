@@ -144,6 +144,7 @@ public static class DependencyInjection
         services.AddHostedService<ModeChangeSignOut>();
         services.AddHostedService<RecognitionWorker>();
         services.AddHostedService<PasswordResetMailer>();
+        services.AddHostedService<BackupWorker>();
 
         return services;
     }

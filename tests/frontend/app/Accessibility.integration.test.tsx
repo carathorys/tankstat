@@ -286,7 +286,7 @@ it('the backups page, its restore and its key set dialogs are labelled, describe
         data: {
           backups: {
             __typename: 'BackupOverviewInfo', folder: '/data/backups', migration: 'AddInstance', run,
-            settings: { __typename: 'BackupSettingsInfo', recipient: null, photosApart: false, photos: false, maxUploadMb: 1024 },
+            settings: { __typename: 'BackupSettingsInfo', recipient: null, photosApart: false, photos: false, maxUploadMb: 1024, every: '02:00', nextRun: '2026-10-12T02:00:00Z', keep: 14, keepDays: null },
             sizes: { __typename: 'StorageSizesInfo', database: 5_300_000, pictures: 12_000_000, photos: null },
             restorePoints: [point, { ...point, file: 'uploaded-old.zip', sameMigration: false, uploaded: true, encrypted: false, recipient: null, currentRecipient: false }],
           },

@@ -53,7 +53,7 @@ internal sealed class BackupWriter(
         // A named file is never overwritten, and one that is there already is refused before any of the work.
         if (named is not null && File.Exists(named)) throw new IOException($"The file '{named}' already exists.");
         var (output, file) = named is null
-            ? Claim(folder, string.Create(CultureInfo.InvariantCulture, $"tankstat-backup-{createdAt:yyyyMMdd'T'HHmmss'Z'}"))
+            ? Claim(folder, string.Create(CultureInfo.InvariantCulture, $"{BackupRetention.OwnPrefix}{createdAt:yyyyMMdd'T'HHmmss'Z'}")) // the name retention knows as the app's own
             : (named, CreatePartial(named));
         var partial = output + Partial;
         try

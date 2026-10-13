@@ -75,4 +75,20 @@ public class BackupOptionsTests
     {
         Assert.Contains("Backups:Path must not be empty", Refusal(("Backups:Path", " ")));
     }
+
+    [Fact]
+    public void TheSchedule_IsATimeOfDay_AndRetentionKeepsAtLeastOne_NothingOfItByDefault()
+    {
+        var defaults = Bound()();
+        Assert.Equal((null, null, null, false), (defaults.DailyAt, defaults.Keep, defaults.KeepDays, defaults.Pruning));
+
+        var set = Bound(("Backups:Every", "2:30"), ("Backups:Keep", "14"), ("Backups:KeepDays", "30"))();
+        Assert.Equal((new TimeOnly(2, 30), 14, 30, true), (set.DailyAt, set.Keep, set.KeepDays, set.Pruning));
+        Assert.Null(Bound(("Backups:Every", ""))().DailyAt); // empty: nothing scheduled, as unset
+
+        foreach (var wrong in new[] { "25:00", "2am", "02:00:00", "daily" })
+            Assert.Contains("Backups:Every must be a time of day", Refusal(("Backups:Every", wrong)));
+        Assert.Contains("Backups:Keep must be at least 1", Refusal(("Backups:Keep", "0")));
+        Assert.Contains("Backups:KeepDays must be at least 1", Refusal(("Backups:KeepDays", "-3")));
+    }
 }

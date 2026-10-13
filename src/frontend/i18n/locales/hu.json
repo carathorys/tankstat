@@ -101,6 +101,7 @@
     "unread": "Olvasatlan",
     "folded_one": "({{count}} változás)",
     "folded_other": "({{count}} változás)",
+    "unknownKind": "Történt valami, amit az alkalmazás ezen verziója még nem tud leírni: töltsd újra az oldalt, hogy lásd.",
     "kinds": {
       "LOG_ACCESS_CHANGED": "{{actor}} hozzáférést adott neked a(z) {{vehicle}} naplóihoz: {{level}}.",
       "LOG_ACCESS_REVOKED": "{{actor}} megvonta a hozzáférésedet a(z) {{vehicle}} naplóihoz.",
@@ -119,6 +120,7 @@
       "LOG_NOT_FILLED_EXPENSE": "A(z) {{title}} ({{date}}, {{vehicle}}) fotóin nem látszott: {{values}}. Töltsd ki.",
       "MORE_ACTIVITY_one": "Még {{count}} változás történt, túl sok ahhoz, hogy egyenként felsoroljuk.",
       "MORE_ACTIVITY_other": "Még {{count}} változás történt, túl sok ahhoz, hogy egyenként felsoroljuk.",
+      "BACKUP_FAILED": "A(z) {{time}}-kor indult mentés nem sikerült: {{reason}}",
       "SYNC_CHANGE_PARKED": "{{vehicle}}: {{change}} ({{submitter}} küldte) nem érvényesíthető: {{reason}} Dönts róla a Szinkronizálásra vár oldalon."
     }
   },
@@ -500,6 +502,17 @@
       "photosInBackups": "Fotók a mentésekben",
       "photosIncluded": "benne vannak",
       "photosLeftOut": "kimaradnak (külön mappában vannak; lásd Backups:Photos)",
+      "schedule": "Ütemezés",
+      "everyDay": "Minden nap {{time}}-kor (a szerver ideje szerint)",
+      "nextRun": "a következő: {{time}}",
+      "notScheduled": "Nincs ütemezve (a Backups:Every legyen egy időpont, például 02:00)",
+      "retentionLabel": "Megőrzés",
+      "retention": "Minden mentés után, amit az alkalmazás ír, törli a régieket: {{limits}}; a legújabb mindig megmarad",
+      "keepCount_one": "a legújabbon kívül mindet",
+      "keepCount_other": "a legújabb {{count}} darabon felülieket",
+      "keepDays_one": "az egy napnál régebbieket",
+      "keepDays_other": "a {{count}} napnál régebbieket",
+      "keepAll": "Minden mentés megmarad (a Backups:Keep vagy a Backups:KeepDays beállításával a régiek törlődnek)",
       "runTitle": "Mentés most",
       "runHint": "A szerver a háttérben írja a mentést a mappájába; közben el is hagyhatod ezt az oldalt.",
       "runNow": "Mentés most",

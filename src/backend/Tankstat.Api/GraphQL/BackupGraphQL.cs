@@ -1,3 +1,4 @@
+using System.Globalization;
 using Tankstat.Application.Backups;
 
 namespace Tankstat.Api.GraphQL;
@@ -34,7 +35,11 @@ public sealed record BackupRunInfo(bool Running, DateTimeOffset? StartedAt, Date
 
 /// <param name="Recipient">Backups are encrypted for this recipient (<c>Backups:Encryption:Recipient</c>); none: in plain, without the keys.</param>
 /// <param name="PhotosApart">The photos of logs have a folder of their own (<c>Storage:PhotosPath</c>), so they are only in a backup with <paramref name="Photos"/>.</param>
-public sealed record BackupSettingsInfo(string? Recipient, bool PhotosApart, bool Photos, int MaxUploadMb);
+/// <param name="Every">The time of day (<c>HH:mm</c>, the server's local time) a backup is written every day; none: nothing is scheduled.</param>
+/// <param name="NextRun">When the schedule writes the next backup.</param>
+/// <param name="Keep">After a backup the app wrote, only the newest this many of its own stay.</param>
+/// <param name="KeepDays">After a backup the app wrote, its own older than this many days go.</param>
+public sealed record BackupSettingsInfo(string? Recipient, bool PhotosApart, bool Photos, int MaxUploadMb, string? Every, DateTimeOffset? NextRun, int? Keep, int? KeepDays);
 
 /// <summary>The backups of the administration page. <c>folder</c>, <c>run</c> and <c>settings</c> cost nothing (the page polls <c>run</c> while a backup is written); the rest is worked out only when selected.</summary>
 public sealed record BackupOverviewInfo(string Folder, BackupRunInfo Run, BackupSettingsInfo Settings)
@@ -45,7 +50,9 @@ public sealed record BackupOverviewInfo(string Folder, BackupRunInfo Run, Backup
         return new BackupOverviewInfo(
             s.Folder,
             new BackupRunInfo(s.Run.Running, last?.StartedAt, last?.FinishedAt, last?.File, last?.Bytes, last?.Error),
-            new BackupSettingsInfo(s.Settings.Encrypted ? s.Settings.Encryption.Recipient!.Trim() : null, s.PhotosApart, s.Settings.Photos, s.Settings.MaxUploadMb));
+            new BackupSettingsInfo(
+                s.Settings.Encrypted ? s.Settings.Encryption.Recipient!.Trim() : null, s.PhotosApart, s.Settings.Photos, s.Settings.MaxUploadMb,
+                s.Settings.DailyAt?.ToString("HH:mm", CultureInfo.InvariantCulture), s.NextRun, s.Settings.Keep, s.Settings.KeepDays)); // a culture's time separator (fi-FI: 02.00) is not the setting's
     }
 }
 

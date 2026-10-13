@@ -101,6 +101,7 @@
     "unread": "Unread",
     "folded_one": "({{count}} change)",
     "folded_other": "({{count}} changes)",
+    "unknownKind": "Something happened that this version of the app cannot describe yet: reload the page to see it.",
     "kinds": {
       "LOG_ACCESS_CHANGED": "{{actor}} gave you access to the logs of {{vehicle}}: {{level}}.",
       "LOG_ACCESS_REVOKED": "{{actor}} removed your access to the logs of {{vehicle}}.",
@@ -119,6 +120,7 @@
       "LOG_NOT_FILLED_EXPENSE": "The photos of {{title}} ({{date}}, {{vehicle}}) did not show: {{values}}. Fill it in.",
       "MORE_ACTIVITY_one": "There was {{count}} more change, too many to list one by one.",
       "MORE_ACTIVITY_other": "There were {{count}} more changes, too many to list one by one.",
+      "BACKUP_FAILED": "The backup of {{time}} failed: {{reason}}",
       "SYNC_CHANGE_PARKED": "{{change}} of {{vehicle}}, sent by {{submitter}}, could not be applied: {{reason}} Decide about it on Waiting to sync."
     }
   },
@@ -500,6 +502,17 @@
       "photosInBackups": "Photos in backups",
       "photosIncluded": "included",
       "photosLeftOut": "left out (they are in a folder of their own; see Backups:Photos)",
+      "schedule": "Schedule",
+      "everyDay": "Every day at {{time}} (the server's time)",
+      "nextRun": "next {{time}}",
+      "notScheduled": "Not scheduled (set Backups:Every to a time of day, such as 02:00)",
+      "retentionLabel": "Retention",
+      "retention": "After each backup the app writes, it keeps {{limits}}; the newest always stays",
+      "keepCount_one": "only the newest",
+      "keepCount_other": "the newest {{count}}",
+      "keepDays_one": "none older than a day",
+      "keepDays_other": "none older than {{count}} days",
+      "keepAll": "Every backup is kept (set Backups:Keep or Backups:KeepDays to remove old ones)",
       "runTitle": "Back up now",
       "runHint": "The server writes the backup into its folder in the background; you can leave this page meanwhile.",
       "runNow": "Back up now",

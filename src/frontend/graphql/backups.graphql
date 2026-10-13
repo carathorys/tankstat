@@ -21,6 +21,10 @@ query Backups {
       photosApart
       photos
       maxUploadMb
+      every
+      nextRun
+      keep
+      keepDays
     }
     sizes {
       database

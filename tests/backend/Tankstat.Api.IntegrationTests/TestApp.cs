@@ -39,6 +39,9 @@ internal sealed class TestApp : IDisposable
     /// <summary>Where this host keeps the keys that protect its cookies, unless its settings name another folder (<see cref="SharedData"/>).</summary>
     public string KeysPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-keys");
 
+    /// <summary>The backups folder of this host, unless its settings name another.</summary>
+    public string BackupsPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-backups");
+
     /// <summary>The app's own settings file of this host (none unless a test writes one), unless its settings name another (<see cref="SharedData"/>, a test's file).</summary>
     public string SettingsPath { get; }
 
@@ -65,6 +68,12 @@ internal sealed class TestApp : IDisposable
             ["Storage:Path"] = UploadsPath,
             ["Storage:PhotosPath"] = PhotosPath,
             ["DataProtection:KeysPath"] = KeysPath, // the cookies' keys of this host only, never in the build output
+            // A backups folder of its own, and no schedule or retention whatever the developer's environment says (Backups__Every, ...): a
+            // start writes a missed backup and retention prunes the folder. A null here wins over an environment variable.
+            ["Backups:Path"] = BackupsPath,
+            ["Backups:Every"] = null,
+            ["Backups:Keep"] = null,
+            ["Backups:KeepDays"] = null,
             ["Logging:LogLevel:Tankstat"] = "Debug", // the Debug lines are part of what is tested
         };
         foreach (var (key, value) in settings) all[key] = value;
@@ -138,6 +147,7 @@ internal sealed class TestApp : IDisposable
         if (Directory.Exists(UploadsPath)) Directory.Delete(UploadsPath, recursive: true);
         if (Directory.Exists(PhotosPath)) Directory.Delete(PhotosPath, recursive: true);
         if (Directory.Exists(KeysPath)) Directory.Delete(KeysPath, recursive: true);
+        if (Directory.Exists(BackupsPath)) Directory.Delete(BackupsPath, recursive: true);
         if (_ownSettingsFile)
         {
             File.Delete(SettingsPath);

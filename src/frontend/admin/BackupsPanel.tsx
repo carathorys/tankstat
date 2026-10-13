@@ -92,10 +92,31 @@ export function BackupsPanel() {
   )
 }
 
+/** The schedule and what retention keeps, in words: the time of day is the server's (its zone may not be the browser's), the next run the browser's. */
+function useScheduleText() {
+  const { t } = useTranslation()
+  const { dateTime, list, timeOfDay } = useFormat()
+  return (settings: BackupsQuery['backups']['settings']) => {
+    const schedule = settings.every
+      ? [t('admin.backups.everyDay', { time: timeOfDay(settings.every) }), settings.nextRun && t('admin.backups.nextRun', { time: dateTime(settings.nextRun) })]
+          .filter(Boolean)
+          .join(' · ')
+      : t('admin.backups.notScheduled')
+    const limits = [
+      settings.keep != null && t('admin.backups.keepCount', { count: settings.keep }),
+      settings.keepDays != null && t('admin.backups.keepDays', { count: settings.keepDays }),
+    ].filter((s): s is string => typeof s === 'string')
+    const retention = limits.length > 0 ? t('admin.backups.retention', { limits: list(limits) }) : t('admin.backups.keepAll')
+    return { schedule, retention }
+  }
+}
+
 function Overview({ backups }: { backups: BackupsQuery['backups'] }) {
   const { t } = useTranslation()
   const { bytes } = useFormat()
+  const scheduleText = useScheduleText()
   const { sizes, settings } = backups
+  const { schedule, retention } = scheduleText(settings)
   return (
     <section aria-labelledby="backups-overview">
       <Typography id="backups-overview" component="h2" variant="h5" sx={{ mb: 1.5 }}>
@@ -117,6 +138,8 @@ function Overview({ backups }: { backups: BackupsQuery['backups'] }) {
             value: settings.recipient ? t('admin.backups.encryptedFor', { recipient: shortRecipient(settings.recipient) }) : t('admin.backups.notEncrypted'),
           },
           ...(settings.photosApart ? [{ label: t('admin.backups.photosInBackups'), value: settings.photos ? t('admin.backups.photosIncluded') : t('admin.backups.photosLeftOut') }] : []),
+          { label: t('admin.backups.schedule'), value: schedule },
+          { label: t('admin.backups.retentionLabel'), value: retention },
         ]}
       />
     </section>

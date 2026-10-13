@@ -940,4 +940,5 @@ internal sealed class NoBackups : Tankstat.Application.Backups.IBackupStore
     public string Folder => "backups";
     public Task<Tankstat.Application.Backups.RestorePoint> SaveUploadAsync(Stream content, string? fileName, long maxBytes, CancellationToken ct) => throw new NotSupportedException();
     public Stream OpenRead(string fileName) => throw new NotSupportedException();
+    public void Delete(string fileName) => throw new NotSupportedException();
 }
