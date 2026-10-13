@@ -14,7 +14,8 @@ public static class BackupFile
 {
     /// <summary>
     /// The manifest of a backup file; <c>backup.corrupt</c> when the file is not a backup. Only a whole manifest Tankstat wrote counts: another
-    /// program's <c>manifest.json</c> (a browser extension's, say) reads as one with nothing set.
+    /// program's <c>manifest.json</c> (a browser extension's, say) reads as one with nothing set, and one that lacks what every backup states
+    /// (the release and the database it came from, where its photos are) is no backup either, so nothing that lists backups meets a gap.
     /// </summary>
     public static BackupManifest ReadManifest(string path)
     {
@@ -33,7 +34,8 @@ public static class BackupFile
         if (manifest.WrittenBy != BackupManifest.Tankstat) throw NotABackup();
         if (manifest.Format > BackupManifest.CurrentFormat)
             throw new DomainException("backup.newerFormat", "The backup was written by a newer release.", new { manifest.Format, manifest.AppVersion });
-        if (manifest is not { Archive: { Name: not null, Sha256: not null }, Contents.Tables: not null, Sizes: not null } || !Usable(manifest.Encryption))
+        if (manifest is not { AppVersion: not null, Provider: not null, Archive: { Name: not null, Sha256: not null }, Contents.Tables: not null, Sizes: not null }
+            || !Enum.IsDefined(manifest.Contents.Photos) || !Usable(manifest.Encryption))
             throw NotABackup();
         return manifest;
     }
@@ -54,12 +56,32 @@ public static class BackupFile
         {
             using var zip = ZipFile.OpenRead(path);
             using var data = (zip.GetEntry(manifest.Archive.Name) ?? throw NotABackup()).Open();
-            if (!string.Equals(Convert.ToHexStringLower(SHA256.HashData(data)), manifest.Archive.Sha256, StringComparison.OrdinalIgnoreCase)) throw NotABackup();
+            RequireChecksum(SHA256.HashData(data), manifest);
         }
         catch (InvalidDataException)
         {
             throw NotABackup(); // a damaged entry header, although the central directory the manifest was found by read fine
         }
+    }
+
+    /// <summary><see cref="VerifyChecksum"/> for a request (an upload of a gigabyte): no thread held while it is hashed, and given up with <paramref name="ct"/>.</summary>
+    public static async Task VerifyChecksumAsync(string path, BackupManifest manifest, CancellationToken ct)
+    {
+        try
+        {
+            using var zip = ZipFile.OpenRead(path);
+            await using var data = (zip.GetEntry(manifest.Archive.Name) ?? throw NotABackup()).Open();
+            RequireChecksum(await SHA256.HashDataAsync(data, ct), manifest);
+        }
+        catch (InvalidDataException)
+        {
+            throw NotABackup();
+        }
+    }
+
+    private static void RequireChecksum(byte[] sha256, BackupManifest manifest)
+    {
+        if (!string.Equals(Convert.ToHexStringLower(sha256), manifest.Archive.Sha256, StringComparison.OrdinalIgnoreCase)) throw NotABackup();
     }
 
     /// <summary>The identity of a passphrase for this backup, derived as the manifest says.</summary>
