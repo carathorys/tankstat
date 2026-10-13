@@ -25,6 +25,7 @@ const point = (o: Record<string, unknown> = {}) => ({
   provider: 'Sqlite',
   migration: 'AddInstance',
   sameMigration: true,
+  olderMigration: false,
   safetyNet: false,
   uploaded: false,
   encrypted: true,
@@ -207,7 +208,8 @@ it('shows the server, where its backups go, and every backup in the folder with 
     points: [
       point(),
       point({ file: 'uploaded-old-server.zip', createdAt: '2026-09-01T10:00:00Z', uploaded: true, encrypted: false, recipient: null, currentRecipient: false, photos: 'LEFT_OUT', keys: false }),
-      point({ file: 'tankstat-backup-20260101T000000Z.zip', createdAt: '2026-01-01T00:00:00Z', sameMigration: false, migration: 'AddRecurring', appVersion: '0.9.0' }),
+      point({ file: 'tankstat-backup-20260101T000000Z.zip', createdAt: '2026-01-01T00:00:00Z', sameMigration: false, migration: 'AddSomethingNewer', appVersion: '9.9.0' }),
+      point({ file: 'tankstat-backup-20250101T000000Z.zip', createdAt: '2025-01-01T00:00:00Z', sameMigration: false, olderMigration: true, migration: 'AddRecurring', appVersion: '0.9.0' }),
     ],
   })
   await openBackups()
@@ -220,7 +222,7 @@ it('shows the server, where its backups go, and every backup in the folder with 
   expect(overview.getByText('included')).toBeInTheDocument() // the photos, which have a folder of their own
 
   const rows = within(screen.getByRole('table')).getAllByRole('row').slice(1)
-  expect(rows).toHaveLength(3)
+  expect(rows).toHaveLength(4)
   // A column per property: the kind, encryption and photos as icons named by what they mean (their tooltip says it too).
   const cells = (row: HTMLElement) => within(row).getAllByRole('cell').map((cell) => cell.textContent)
   expect(cells(rows[0]).slice(0, 5)).toEqual(['', 'Tankstat 0.13.0Sqlite', '1,234', '', ''])
@@ -233,10 +235,15 @@ it('shows the server, where its backups go, and every backup in the folder with 
   expect(within(rows[1]).getByRole('img', { name: 'Without the photos of logs' })).toBeInTheDocument()
   await userEvent.setup().hover(within(rows[1]).getByRole('img', { name: 'Uploaded on this page' }))
   expect(await screen.findByRole('tooltip')).toHaveTextContent('Uploaded on this page')
-  // Made at another version of the database: it cannot be restored here, and the row says with what it can.
+  // Made by a newer release: it cannot be restored here, and the row says with what it can.
   expect(within(rows[2]).queryByRole('button', { name: /^Restore/ })).not.toBeInTheDocument()
-  expect(within(rows[2]).getByText(/restore it with the release that wrote it \(Tankstat 0\.9\.0\)/)).toBeInTheDocument()
+  expect(within(rows[2]).getByText('Made by a newer release: restore it with Tankstat 9.9.0 or later.')).toBeInTheDocument()
+  // Made by an older release: restored and brought up to date.
+  expect(within(rows[3]).getByText('Made by an older release: brought up to date as it is restored.')).toBeInTheDocument()
+  expect(within(rows[3]).getByRole('button', { name: /^Restore the backup of/ })).toBeInTheDocument()
   expect(within(rows[0]).getByRole('button', { name: /^Restore the backup of/ })).toBeInTheDocument()
+  await userEvent.setup().click(within(rows[3]).getByRole('button', { name: /^Restore the backup of/ }))
+  expect(await screen.findByRole('alertdialog')).toHaveAccessibleDescription(/made by an older release \(Tankstat 0\.9\.0\): the database is set up as that release left it/)
 })
 
 it('backs up now, follows the run, and lists the new backup when it is written', async () => {

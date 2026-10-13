@@ -12,17 +12,20 @@ public sealed record RestorePendingInfo(string File, DateTimeOffset RestorePoint
 
 /// <summary>A backup in the folder as the administration page lists it. Nothing in it is personal: the manifest's counts and settings.</summary>
 /// <param name="Migration">The name of the backup's last migration (without the provider's timestamp).</param>
-/// <param name="SameMigration">Whether it can be restored here: it was made at the migration the database is at.</param>
+/// <param name="SameMigration">It was made at the migration the database is at: restored as it is.</param>
+/// <param name="OlderMigration">It was made at an older migration of this release: restored, then brought up to date. Neither: a newer release made it, which must restore it.</param>
 /// <param name="Recipient">The recipient an encrypted backup is for; <paramref name="CurrentRecipient"/> says whether it is the one backups are encrypted for now.</param>
 public sealed record RestorePointInfo(
-    string File, long Bytes, DateTimeOffset CreatedAt, string AppVersion, string Provider, string? Migration, bool SameMigration, bool SafetyNet, bool Uploaded,
+    string File, long Bytes, DateTimeOffset CreatedAt, string AppVersion, string Provider, string? Migration, bool SameMigration, bool OlderMigration, bool SafetyNet, bool Uploaded,
     bool Encrypted, string? Recipient, bool CurrentRecipient, BackupPhotos Photos, bool Keys, int Tables, long Rows)
 {
-    public static RestorePointInfo From(RestorePoint point, string? databaseMigration, string? currentRecipient)
+    public static RestorePointInfo From(RestorePoint point, RestorePoints points, string? currentRecipient)
     {
         var m = point.Manifest;
+        var same = MigrationNames.Same(m.Migration, points.DatabaseMigration);
+        var older = !same && points.KnownMigrations.Any(known => MigrationNames.Same(known, m.Migration));
         return new RestorePointInfo(
-            point.File, point.Bytes, m.CreatedAt, m.AppVersion, m.Provider, MigrationNames.Of(m.Migration), MigrationNames.Same(m.Migration, databaseMigration), m.SafetyNet,
+            point.File, point.Bytes, m.CreatedAt, m.AppVersion, m.Provider, MigrationNames.Of(m.Migration), same, older, m.SafetyNet,
             point.Uploaded, m.Encryption is not null, m.Encryption?.Recipient, m.Encryption is { } e && e.Recipient == currentRecipient,
             m.Contents.Photos, m.Contents.Keys, m.Contents.Tables.Count, m.Contents.Tables.Where(t => t.Key != "__EFMigrationsHistory").Sum(t => t.Value));
     }
@@ -69,7 +72,7 @@ public sealed class BackupOverviewInfoExtensions
     public async Task<IReadOnlyList<RestorePointInfo>> GetRestorePoints([Parent] BackupOverviewInfo overview, [Service] BackupAdminService backups, CancellationToken ct)
     {
         var points = await backups.RestorePointsAsync(ct);
-        return [.. points.Points.Select(p => RestorePointInfo.From(p, points.DatabaseMigration, overview.Settings.Recipient))];
+        return [.. points.Points.Select(p => RestorePointInfo.From(p, points, overview.Settings.Recipient))];
     }
 
     /// <summary>The name of the migration the database is at; a backup made at another one cannot be restored here.</summary>

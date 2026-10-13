@@ -58,7 +58,7 @@ public class ContractTests
     [InlineData("Session", "mode", "user", "instance")]
     [InlineData("InstanceInfo", "generation", "restorePoint")]
     [InlineData("BackupOverviewInfo", "folder", "migration", "restorePoints", "sizes", "run", "settings")]
-    [InlineData("RestorePointInfo", "file", "bytes", "createdAt", "appVersion", "provider", "migration", "sameMigration", "safetyNet", "uploaded", "encrypted", "recipient", "currentRecipient", "photos", "keys", "tables", "rows")]
+    [InlineData("RestorePointInfo", "file", "bytes", "createdAt", "appVersion", "provider", "migration", "sameMigration", "olderMigration", "safetyNet", "uploaded", "encrypted", "recipient", "currentRecipient", "photos", "keys", "tables", "rows")]
     [InlineData("StorageSizesInfo", "database", "pictures", "photos")]
     [InlineData("BackupRunInfo", "running", "startedAt", "finishedAt", "file", "bytes", "error")]
     [InlineData("ServerFolder", "kind", "path", "setting", "variable", "sameAsPictures")]

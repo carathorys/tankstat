@@ -86,7 +86,9 @@ internal sealed class BackupWriter(
         // out without a word, under a manifest that names the newer migration.
         if (migration is not null && !db.Database.GetMigrations().Contains(migration))
             throw new DomainException("backup.databaseNewer", "The database was migrated by a newer release of Tankstat; back it up with that release.", new { migration });
-        var tables = TableDump.Tables(db.Model);
+        // A database not migrated to this release's last migration (the command line never migrates first) is dumped as its migration left
+        // it, so the backup holds what is there and names the migration it was made at; a restore brings it up to date.
+        var tables = TableDump.Tables(migration is null || migration == db.Database.GetMigrations().Last() ? db.Model : MigrationModels.ModelOf(db, migration));
         var sql = db.GetService<ISqlGenerationHelper>();
 
         var rows = new Dictionary<string, long>();

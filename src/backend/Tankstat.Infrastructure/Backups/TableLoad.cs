@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Tankstat.Application.Backups;
@@ -52,13 +53,37 @@ internal static class TableLoad
         AppDbContext db, string tablesFolder, IReadOnlyDictionary<string, long> expected, DateTimeOffset now, DateTimeOffset restorePoint, ILogger logger, CancellationToken ct,
         Func<AppDbContext, CancellationToken, Task>? check = null)
     {
-        var tables = InLoadOrder(TableDump.Tables(db.Model));
+        await db.Database.OpenConnectionAsync(ct);
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var loaded = await ReplaceRowsAsync(db, db.Model, transaction, tablesFolder, expected, logger, ct);
+        if (check is not null) await check(db, ct);
+        var instance = await StampAsync(db, now, restorePoint, ct);
+        await transaction.CommitAsync(ct);
+        logger.LogInformation("Loaded {Tables} tables with {Rows} rows from the backup", loaded.Count, loaded.Values.Sum());
+        return instance;
+    }
+
+    /// <summary>
+    /// Replaces every row with the backup's in one transaction, the tables as <paramref name="model"/> has them: a backup made at an older
+    /// migration is loaded into a database at that migration, before the newer ones run. The generation is stamped afterwards (<see cref="StampAsync"/>),
+    /// once the newer migrations ran and the instance table is as this release knows it.
+    /// </summary>
+    public static async Task LoadRowsAsync(AppDbContext db, IModel model, string tablesFolder, IReadOnlyDictionary<string, long> expected, ILogger logger, CancellationToken ct)
+    {
+        await db.Database.OpenConnectionAsync(ct);
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var loaded = await ReplaceRowsAsync(db, model, transaction, tablesFolder, expected, logger, ct);
+        await transaction.CommitAsync(ct);
+        logger.LogInformation("Loaded {Tables} tables with {Rows} rows from the backup", loaded.Count, loaded.Values.Sum());
+    }
+
+    private static async Task<Dictionary<string, long>> ReplaceRowsAsync(
+        AppDbContext db, IModel model, IDbContextTransaction transaction, string tablesFolder, IReadOnlyDictionary<string, long> expected, ILogger logger, CancellationToken ct)
+    {
+        var tables = InLoadOrder(TableDump.Tables(model));
         var sql = db.GetService<ISqlGenerationHelper>();
         foreach (var unknown in expected.Keys.Where(k => k != TableDump.MigrationsHistory && tables.All(t => t.Name != k)))
             logger.LogWarning("The backup holds a table this release does not know, which is not loaded: {Table}", unknown);
-
-        await db.Database.OpenConnectionAsync(ct);
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var connection = db.Database.GetDbConnection();
         var dbTransaction = transaction.GetDbTransaction();
 
@@ -79,10 +104,16 @@ internal static class TableLoad
             if (expected.TryGetValue(table.Name, out var count) && count != loaded[table.Name])
                 throw new DomainException("backup.corrupt", $"The backup's manifest says {count} rows of {table.Name}, the file holds {loaded[table.Name]}.", new { Table = table.Name, Expected = count, Actual = loaded[table.Name] });
         }
-        if (check is not null) await check(db, ct);
+        return loaded;
+    }
 
-        // The generation is this instance's own, never the backup's: stamped after the rows, inside the transaction.
-        // The backup's own row comes along (its last start mode too, so the start that follows signs out sessions it brought from another mode).
+    /// <summary>
+    /// The generation is this instance's own, never the backup's: stamped after the rows (inside the load's transaction, or in a save of its
+    /// own once a replayed backup is up to date). The backup's own row comes along (its last start mode too, so the start that follows signs
+    /// out sessions it brought from another mode).
+    /// </summary>
+    public static async Task<InstanceInfo> StampAsync(AppDbContext db, DateTimeOffset now, DateTimeOffset restorePoint, CancellationToken ct)
+    {
         var instance = await db.InstanceState.SingleOrDefaultAsync(ct);
         if (instance is null)
         {
@@ -91,8 +122,6 @@ internal static class TableLoad
         }
         instance.Restored(now, restorePoint);
         await db.SaveChangesAsync(ct);
-        await transaction.CommitAsync(ct);
-        logger.LogInformation("Loaded {Tables} tables with {Rows} rows from the backup", loaded.Count, loaded.Values.Sum());
         return new InstanceInfo(instance.Generation, instance.RestorePoint);
     }
 

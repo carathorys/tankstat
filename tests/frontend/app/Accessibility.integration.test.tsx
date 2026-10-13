@@ -278,7 +278,7 @@ it('the backups page, its restore and its key set dialogs are labelled, describe
   const run = { __typename: 'BackupRunInfo', running: false, startedAt: '2026-10-11T08:00:00Z', finishedAt: '2026-10-11T08:00:05Z', file: 'tankstat-backup-20261011T080000Z.zip', bytes: 3_100_000, error: null }
   const point = {
     __typename: 'RestorePointInfo', file: 'tankstat-backup-20261011T080000Z.zip', bytes: 3_100_000, createdAt: '2026-10-11T08:00:00Z', appVersion: '0.13.0', provider: 'Sqlite',
-    migration: 'AddInstance', sameMigration: true, safetyNet: false, uploaded: false, encrypted: true, recipient: 'age1abc', currentRecipient: true, photos: 'SEPARATE', keys: true, rows: 120,
+    migration: 'AddInstance', sameMigration: true, olderMigration: false, safetyNet: false, uploaded: false, encrypted: true, recipient: 'age1abc', currentRecipient: true, photos: 'SEPARATE', keys: true, rows: 120,
   }
   server.use(
     graphql.query('Backups', () =>

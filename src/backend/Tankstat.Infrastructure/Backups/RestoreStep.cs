@@ -1,6 +1,10 @@
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -48,6 +52,7 @@ public enum RestoreOutcome
 /// </summary>
 internal sealed class RestoreStep(
     IDbContextFactory<AppDbContext> dbFactory,
+    DatabaseMigrator migrator,
     IBackupWriter writer,
     IOptionsMonitor<BackupOptions> options,
     IOptions<StorageOptions> storage,
@@ -115,6 +120,7 @@ internal sealed class RestoreStep(
         var file = Path.Combine(options.CurrentValue.Root, Path.GetFileName(marker.File));
         BackupManifest manifest;
         byte[]? identity = null;
+        string? replayFrom;
         try
         {
             if (!File.Exists(file)) throw new FileNotFoundException("The backup is not in the backups folder.", marker.File);
@@ -125,7 +131,7 @@ internal sealed class RestoreStep(
                 if (identity is null || !BackupKeys.Opens(identity, encryption.Recipient))
                     throw new DomainException("backup.wrongKey", "The identity does not open this backup.");
             }
-            await FileBackupStore.RequireSameMigrationAsync(dbFactory, manifest, ct);
+            replayFrom = await FileBackupStore.ReplayFromAsync(dbFactory, manifest, ct);
             BackupFile.VerifyChecksum(file, manifest);
         }
         catch (Exception e) when (e is DomainException or IOException or UnauthorizedAccessException or FormatException)
@@ -152,9 +158,14 @@ internal sealed class RestoreStep(
         {
             scratch = Directory.CreateTempSubdirectory("tankstat-restore-");
             BackupFile.Extract(file, manifest, identity, scratch.FullName);
+            var tables = Path.Combine(scratch.FullName, "tables");
             InstanceInfo instance;
-            await using (var db = await dbFactory.CreateDbContextAsync(ct))
-                instance = await TableLoad.LoadAsync(db, Path.Combine(scratch.FullName, "tables"), manifest.Contents.Tables, clock.GetUtcNow(), manifest.CreatedAt, logger, ct, RequireAdministratorAsync);
+            if (replayFrom is null)
+            {
+                await using var db = await dbFactory.CreateDbContextAsync(ct);
+                instance = await TableLoad.LoadAsync(db, tables, manifest.Contents.Tables, clock.GetUtcNow(), manifest.CreatedAt, logger, ct, RequireAdministratorAsync);
+            }
+            else instance = await ReplayAsync(replayFrom, manifest, tables, () => loaded = true, ct);
             loaded = true;
             var roots = storage.Value;
             // A backup without the photos: the photos of logs on disk keep matching their logs' ids and stay, also those still below the
@@ -176,6 +187,7 @@ internal sealed class RestoreStep(
         {
             if (!loaded) return Refuse(markerPath, marker, e, e is DomainException d ? d.Key : "it could not be unpacked or loaded; the database is as it was");
             logger.LogError(e, "The restore of {File} failed after the database was replaced; the files may be half copied, the safety-net backup is the way back", Path.GetFileName(file));
+            if (replayFrom is not null) await BringUpToDateAsync();
             Rename(markerPath, marker, "restore.failed");
             return RestoreOutcome.Failed;
         }
@@ -194,16 +206,109 @@ internal sealed class RestoreStep(
     }
 
     /// <summary>
+    /// A backup made at an older migration of this release: what can be checked is checked first (the administrator Standalone needs, from
+    /// the backup's own rows), then the database is emptied (every table of this release, and the migrations history), set up as the
+    /// backup's migration left it, loaded with that migration's model, and brought up to date by the migrator, with what follows the newer
+    /// migrations (the stored consumption, ...); the generation is stamped last. EF runs each migration in a transaction of its own, so
+    /// nothing after the first table dropped can be undone: <paramref name="destructive"/> marks that point, after which a failure is a
+    /// failed restore (the schema brought up to date again, the safety-net backup the way back), never a refused one.
+    /// </summary>
+    private async Task<InstanceInfo> ReplayAsync(string from, BackupManifest manifest, string tables, Action destructive, CancellationToken ct)
+    {
+        IModel model;
+        await using (var db = await dbFactory.CreateDbContextAsync(ct))
+            model = MigrationModels.ModelOf(db, from);
+        await RequireAdministratorAsync(() => Task.FromResult(BackupHoldsAdministrator(model, tables)), subject => Task.FromResult(BackupHoldsLocalUser(model, tables, subject)));
+
+        logger.LogInformation("The backup was made at an older migration ({Migration}): the database is emptied, set up as that migration left it, loaded, and brought up to date",
+            MigrationNames.Of(from));
+        destructive();
+        await using (var db = await dbFactory.CreateDbContextAsync(ct))
+        {
+            await DropAllAsync(db, ct);
+            await db.GetService<IMigrator>().MigrateAsync(from, ct);
+            await TableLoad.LoadRowsAsync(db, model, tables, manifest.Contents.Tables, logger, ct);
+        }
+        await migrator.MigrateAsync(ct);
+        await using (var db = await dbFactory.CreateDbContextAsync(ct))
+            return await TableLoad.StampAsync(db, clock.GetUtcNow(), manifest.CreatedAt, ct);
+    }
+
+    /// <summary>Every table of this release (its children first) and the migrations' own, so the migrations can set the database up afresh.</summary>
+    private static async Task DropAllAsync(AppDbContext db, CancellationToken ct)
+    {
+        var sql = db.GetService<ISqlGenerationHelper>();
+        var names = TableLoad.InLoadOrder(TableDump.Tables(db.Model)).Reverse().Select(t => sql.DelimitIdentifier(t.Name, t.Schema))
+            .Concat([sql.DelimitIdentifier(TableDump.MigrationsHistory), sql.DelimitIdentifier("__EFMigrationsLock")]);
+        foreach (var name in names)
+        {
+            var drop = $"DROP TABLE IF EXISTS {name}"; // names from the model, never from the backup
+            await db.Database.ExecuteSqlRawAsync(drop, ct);
+        }
+    }
+
+    /// <summary>After a replay that failed half way: the schema up to date again, so the rest of the start meets the tables it knows.</summary>
+    private async Task BringUpToDateAsync()
+    {
+        try
+        {
+            await migrator.MigrateAsync(CancellationToken.None);
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e, "The database could not be brought up to date after the failed restore");
+        }
+    }
+
+    /// <summary>Whether the backup's users (in <paramref name="model"/>'s shape) hold an enabled local administrator.</summary>
+    private static bool BackupHoldsAdministrator(IModel model, string tables) =>
+        UsersOf(model, tables).Any(u => u.Local && u.Admin && !u.Disabled);
+
+    private static bool BackupHoldsLocalUser(IModel model, string tables, string subject) =>
+        UsersOf(model, tables).Any(u => u.Local && u.Subject == subject);
+
+    /// <summary>The backup's users as the Standalone rule needs them, read from its rows by the columns <paramref name="model"/> names; none before there were users.</summary>
+    private static IEnumerable<(bool Local, bool Admin, bool Disabled, string? Subject)> UsersOf(IModel model, string tables)
+    {
+        var users = model.GetEntityTypes().FirstOrDefault(e => e.GetTableName() == "Users");
+        var file = Path.Combine(tables, "Users.jsonl");
+        if (users is null || !File.Exists(file)) yield break;
+        var table = StoreObjectIdentifier.Table("Users", users.GetSchema());
+        string Column(string property) => users.FindProperty(property)?.GetColumnName(table) ?? property;
+        var (provider, admin, disabled, subject) = (Column("Provider"), Column("IsAdmin"), Column("IsDisabled"), Column("Subject"));
+        foreach (var line in File.ReadLines(file))
+        {
+            if (line.Length == 0) continue;
+            using var row = JsonDocument.Parse(line);
+            var r = row.RootElement;
+            yield return (
+                r.TryGetProperty(provider, out var p) && p.ValueKind == JsonValueKind.String && p.GetString() == nameof(UserProvider.Local),
+                IsTrue(r, admin), IsTrue(r, disabled),
+                r.TryGetProperty(subject, out var s) && s.ValueKind == JsonValueKind.String ? s.GetString() : null);
+        }
+    }
+
+    /// <summary>A flag as a dump holds it: a boolean, or a number where the provider keeps one.</summary>
+    private static bool IsTrue(JsonElement row, string column) =>
+        row.TryGetProperty(column, out var v) && (v.ValueKind == JsonValueKind.True || (v.ValueKind == JsonValueKind.Number && v.GetInt64() != 0));
+
+    /// <summary>
     /// Standalone needs an administrator to sign in with afterwards: among the users the backup brings, or one the start creates from the
     /// bootstrap credentials as <c>StandaloneBootstrapper</c> will try to (it fails the start otherwise, and every start after it). Asked of
     /// the loaded rows inside the load's transaction, so a backup without one is refused, never applied.
     /// </summary>
-    private async Task RequireAdministratorAsync(AppDbContext db, CancellationToken ct)
+    private Task RequireAdministratorAsync(AppDbContext db, CancellationToken ct) =>
+        RequireAdministratorAsync(
+            () => db.Users.AnyAsync(u => u.Provider == UserProvider.Local && u.IsAdmin && !u.IsDisabled, ct),
+            address => db.Users.AnyAsync(u => u.Provider == UserProvider.Local && u.Subject == address, ct));
+
+    /// <summary>The rule itself, over what the rows say: an enabled local administrator, or bootstrap credentials of an address no local account has.</summary>
+    private async Task RequireAdministratorAsync(Func<Task<bool>> hasAdministrator, Func<string, Task<bool>> localAccountExists)
     {
-        if (auth.Value.Mode != AuthMode.Standalone || await db.Users.AnyAsync(u => u.Provider == UserProvider.Local && u.IsAdmin && !u.IsDisabled, ct)) return;
+        if (auth.Value.Mode != AuthMode.Standalone || await hasAdministrator()) return;
         var bootstrap = auth.Value.Standalone;
         var reason = StandaloneBootstrap.ProblemOf(bootstrap.AdminEmail, bootstrap.AdminPassword, out var address)
-            ?? (await db.Users.AnyAsync(u => u.Provider == UserProvider.Local && u.Subject == address, ct) ? "taken" : null);
+            ?? (await localAccountExists(address!) ? "taken" : null);
         if (reason is not null)
             throw new DomainException("settings.standaloneNeedsAdministrator",
                 "The backup holds no administrator to sign in with in Standalone mode, and none can be created from Auth:Standalone:AdminEmail and Auth:Standalone:AdminPassword.",

@@ -137,7 +137,8 @@ public static class DependencyInjection
         // mode brought back end at this start; still before the server listens); the photo reading worker needs the migrated database. The
         // backup runner starts nothing; it comes first so that it stops last, waiting for a backup under way once everything else stopped.
         services.AddHostedService(sp => sp.GetRequiredService<BackupRunner>());
-        services.AddHostedService<DatabaseMigrator>();
+        services.AddSingleton<DatabaseMigrator>();
+        services.AddHostedService(sp => sp.GetRequiredService<DatabaseMigrator>());
         services.AddHostedService<RestoreStep>();
         services.AddHostedService<PhotosMove>();
         services.AddHostedService<StandaloneBootstrapper>();

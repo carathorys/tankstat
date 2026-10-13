@@ -3,11 +3,15 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Tankstat.Application.Backups;
 using Tankstat.Domain.Backups;
 using Tankstat.Infrastructure.Backups;
+using Tankstat.Infrastructure.Persistence;
 
 namespace Tankstat.Api.IntegrationTests;
 
@@ -199,6 +203,79 @@ public sealed class RestoreTests : IDisposable
         Assert.DoesNotContain(Directory.GetFiles(folderB, "tankstat-backup-*"), f => f != staged && BackupFile.ReadManifest(f).SafetyNet); // no safety net: nothing was about to be replaced
         var refusal = Assert.Single(b.Log.From("Tankstat.Infrastructure.Backups.RestoreStep").Where(e => e.Level == LogLevel.Error));
         Assert.Contains(how switch { "otherMigration" => "otherMigration", "wrongIdentity" => "wrongKey", "damaged" => "corrupt", _ => "cannot be read" }, (string)refusal.Values["Reason"]!);
+    }
+
+    /// <summary>
+    /// A backup made at an older migration of this release: <paramref name="app"/>'s database taken back to the migration before
+    /// <paramref name="before"/> (its rows kept, the newer columns and tables gone), then backed up as it is there.
+    /// </summary>
+    private static async Task<BackupResult> OlderBackup(TestApp app, string before)
+    {
+        await using (var db = await app.Factory.Services.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContextAsync())
+        {
+            var ids = MigrationModels.Ids(db);
+            await db.GetService<IMigrator>().MigrateAsync(ids[ids.ToList().FindIndex(id => MigrationNames.Of(id) == before) - 1]);
+        }
+        return await Backup(app);
+    }
+
+    private static async Task LogFillUp(TestApp app, string vehicleId, string date, long odometer, decimal volume)
+    {
+        using var client = app.NewClient();
+        (await client.Gql("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }",
+            new { i = new { vehicleId, date, volume, totalCost = volume * 600, currency = "HUF", odometer, isFullTank = true } })).Data();
+    }
+
+    private static async Task<string?> LastMigration(TestApp app)
+    {
+        await using var db = await DbOf(app);
+        return (await db.Database.GetAppliedMigrationsAsync()).LastOrDefault();
+    }
+
+    [Fact]
+    public async Task ABackupOfAnOlderMigration_IsRestored_AndBroughtUpToDate_WithWhatFollowsTheNewerMigrations()
+    {
+        using var a = Host("a", migrated: true);
+        var golf = await AddVehicle(a, "Golf");
+        await LogFillUp(a, golf, "2026-09-01", 10_000, 40);
+        await LogFillUp(a, golf, "2026-09-10", 10_500, 30);
+        var backup = await OlderBackup(a, "AddRefuelingConsumption");
+        Assert.Equal("AddExpenses", MigrationNames.Of(backup.Manifest.Migration));
+        Assert.DoesNotContain("UiSettings", backup.Manifest.Contents.Tables.Keys); // dumped as that migration left the database
+
+        var folderB = Folder("b-backups");
+        Stage(folderB, backup.Path);
+        using var b = Host("b", migrated: true, backups: folderB); // a database at this release's migration
+
+        Assert.Equal(["Golf"], await Vehicles(b));
+        using var client = b.NewClient();
+        var logs = (await client.Gql("query($v: UUID!) { refuelings(vehicleId: $v) { odometer consumption } }", new { v = golf })).Data().GetProperty("refuelings").EnumerateArray().ToList();
+        Assert.Equal(6.0, logs.Single(l => l.GetProperty("odometer").GetDouble() == 10_500).GetProperty("consumption").GetDouble(), 3); // worked out after the newer migrations ran
+        await using (var db = await DbOf(b))
+            Assert.Equal(MigrationModels.Ids(db).Last(), await LastMigration(b)); // up to date
+        Assert.Empty(Directory.GetFiles(folderB, "restore.*"));
+        Assert.Single(Directory.GetFiles(folderB, "tankstat-backup-*"), f => BackupFile.ReadManifest(f).SafetyNet);
+        Assert.Contains(b.Log.From("Tankstat.Infrastructure.Backups.RestoreStep"), e => e.Level == LogLevel.Information && e.Values.ContainsKey("Migration"));
+        Assert.DoesNotContain(b.Log.From("Tankstat"), e => e.Level >= LogLevel.Warning);
+    }
+
+    private static async Task<AppDbContext> DbOf(TestApp app) => await app.Factory.Services.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
+
+    [Fact]
+    public async Task ABackupOfAMigrationThisReleaseDoesNotKnow_IsRefused_AndTheHostKeepsItsData()
+    {
+        using var a = Host("a", migrated: true);
+        await AddVehicle(a, "Golf");
+        var backup = await Backup(a);
+        var folderB = Folder("b-backups");
+        var staged = Stage(folderB, backup.Path);
+        RewriteManifest(staged, json => json.Replace(backup.Manifest.Migration!, "20990101000000_AddSomethingNewer"));
+
+        using var b = Host("b", migrated: true, backups: folderB);
+        await AddVehicle(b, "Own car");
+
+        Assert.Equal(["Own car"], await Vehicles(b));
+        Assert.Single(Directory.GetFiles(folderB, "restore.refused.*"));
     }
 
     [Fact]

@@ -42,4 +42,10 @@ internal sealed class EfDatabaseFacts(IDbContextFactory<AppDbContext> dbFactory,
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         return (await db.Database.GetAppliedMigrationsAsync(ct)).LastOrDefault();
     }
+
+    public async Task<IReadOnlyList<string>> KnownMigrationsAsync(CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return [.. db.Database.GetMigrations()];
+    }
 }

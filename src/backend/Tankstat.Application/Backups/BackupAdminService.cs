@@ -12,8 +12,11 @@ namespace Tankstat.Application.Backups;
 /// </summary>
 public sealed record BackupStatus(string Folder, BackupRunStatus Run, BackupOptions Settings, bool PhotosApart, DateTimeOffset? NextRun, string TimeZone);
 
-/// <summary>The backups in the folder and the migration the database is at, which a backup must match to be restored here.</summary>
-public sealed record RestorePoints(IReadOnlyList<RestorePoint> Points, string? DatabaseMigration);
+/// <summary>
+/// The backups in the folder, the migration the database is at, and the migrations of this release: a backup made at one of them can be
+/// restored here (an older one is brought up to date), one made at another is a newer release's.
+/// </summary>
+public sealed record RestorePoints(IReadOnlyList<RestorePoint> Points, string? DatabaseMigration, IReadOnlyList<string> KnownMigrations);
 
 /// <summary>Bytes of the database (null: the provider would not say) and of the uploaded files.</summary>
 public sealed record StorageSizes(long? Database, FileUsage Files);
@@ -48,7 +51,7 @@ public sealed class BackupAdminService(
     public async Task<RestorePoints> RestorePointsAsync(CancellationToken ct)
     {
         await access.RequireAdminAsync(ct);
-        return new RestorePoints(store.List(), await database.LastMigrationAsync(ct));
+        return new RestorePoints(store.List(), await database.LastMigrationAsync(ct), await database.KnownMigrationsAsync(ct));
     }
 
     /// <summary>The migration the database is at (a question to the database only, the folder is not read).</summary>

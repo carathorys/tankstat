@@ -13,10 +13,11 @@ public interface IBackupStore
     string? IdentityFor(BackupManifest manifest, string? passphrase, string? identity);
 
     /// <summary>
-    /// Refuses, before anything is written or restarted, a backup the start would refuse anyway: one made at another migration than the
-    /// database is at (<c>backup.otherMigration</c>, compared by name as the start compares them).
+    /// Refuses, before anything is written or restarted, a backup the start would refuse anyway: one made at a migration this release does
+    /// not know, a newer release's (<c>backup.otherMigration</c>, compared by name as the start compares them). One made at an older migration
+    /// is restored and brought up to date.
     /// </summary>
-    Task RequireSameMigrationAsync(BackupManifest manifest, CancellationToken ct);
+    Task RequireRestorableMigrationAsync(BackupManifest manifest, CancellationToken ct);
 
     /// <summary>Whether a restore waits for the next start.</summary>
     bool RestorePending { get; }

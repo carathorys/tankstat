@@ -6,8 +6,11 @@ public interface IDatabaseFacts
     /// <summary>Bytes the database takes on its server or disk; null where the provider will not say.</summary>
     Task<long?> SizeAsync(CancellationToken ct);
 
-    /// <summary>The last applied migration (its id), which a backup must match by name to be restored here.</summary>
+    /// <summary>The last applied migration (its id): a backup made at it is restored as it is, one made at an older migration brought up to date.</summary>
     Task<string?> LastMigrationAsync(CancellationToken ct);
+
+    /// <summary>This release's migrations (their ids on the provider), oldest first: a backup made at one of them can be restored here.</summary>
+    Task<IReadOnlyList<string>> KnownMigrationsAsync(CancellationToken ct);
 }
 
 /// <summary>Bytes of the uploaded files: the pictures root, and the photos root when it is a folder of its own (null: the photos are with the pictures).</summary>

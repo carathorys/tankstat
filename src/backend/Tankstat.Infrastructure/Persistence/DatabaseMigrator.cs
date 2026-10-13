@@ -5,13 +5,20 @@ using Tankstat.Domain.Vehicles;
 
 namespace Tankstat.Infrastructure.Persistence;
 
-/// <summary>Applies pending EF Core migrations before the host starts accepting requests.</summary>
+/// <summary>
+/// Applies pending EF Core migrations before the host starts accepting requests, and what has to follow a migration that ran (the stored
+/// consumption of logs that existed before it). A restore of a backup made at an older migration brings the restored data up to date
+/// through <see cref="MigrateAsync"/> too.
+/// </summary>
 internal sealed class DatabaseMigrator(IDbContextFactory<AppDbContext> dbFactory, ILogger<DatabaseMigrator> logger) : IHostedService
 {
     /// <summary>The migration that added the stored consumption: logs that already existed get theirs calculated once, right after it ran.</summary>
     private const string ConsumptionMigration = "_AddRefuelingConsumption";
 
-    public async Task StartAsync(CancellationToken ct)
+    public Task StartAsync(CancellationToken ct) => MigrateAsync(ct);
+
+    /// <summary>Every pending migration, then what has to follow the ones that ran.</summary>
+    public async Task MigrateAsync(CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var pending = (await db.Database.GetPendingMigrationsAsync(ct)).ToList();

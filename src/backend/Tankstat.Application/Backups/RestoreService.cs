@@ -37,7 +37,7 @@ public sealed class RestoreService(
 
         var manifest = store.ReadManifest(request.File);
         // What the start would refuse anyway is refused now, not after a restart that comes back with the data as it was.
-        await store.RequireSameMigrationAsync(manifest, ct);
+        await store.RequireRestorableMigrationAsync(manifest, ct);
         var identity = manifest.Encryption is null ? null : store.IdentityFor(manifest, request.Passphrase, request.Identity);
         // Only whether the file lets the server start again: who may sign in afterwards is the backup's business, its users replace these.
         using (var next = configuration.PrepareNextStart()) next.RequireStartable();

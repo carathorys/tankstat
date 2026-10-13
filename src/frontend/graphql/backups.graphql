@@ -41,6 +41,7 @@ query Backups {
       provider
       migration
       sameMigration
+      olderMigration
       safetyNet
       uploaded
       encrypted

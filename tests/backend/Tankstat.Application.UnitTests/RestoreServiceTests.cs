@@ -21,7 +21,7 @@ public sealed class RestoreServiceTests
         public bool RestorePending => Marker is not null;
         public BackupManifest ReadManifest(string fileName) => Plain;
         public string? IdentityFor(BackupManifest manifest, string? passphrase, string? identity) => throw new NotSupportedException();
-        public Task RequireSameMigrationAsync(BackupManifest manifest, CancellationToken ct) =>
+        public Task RequireRestorableMigrationAsync(BackupManifest manifest, CancellationToken ct) =>
             OtherMigration is null ? Task.CompletedTask : throw new DomainException("backup.otherMigration", "Another migration.", new { Backup = manifest.Migration, Database = OtherMigration });
         public void RequestRestore(RestoreMarker marker) => Marker = marker;
         public IReadOnlyList<RestorePoint> List() => [];

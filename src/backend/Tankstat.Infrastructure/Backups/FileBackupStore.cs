@@ -58,18 +58,21 @@ internal sealed class FileBackupStore(IOptionsMonitor<BackupOptions> options, ID
         return AgeKeys.FormatIdentity(key);
     }
 
-    public Task RequireSameMigrationAsync(BackupManifest manifest, CancellationToken ct) => RequireSameMigrationAsync(dbFactory, manifest, ct);
+    public async Task RequireRestorableMigrationAsync(BackupManifest manifest, CancellationToken ct) => await ReplayFromAsync(dbFactory, manifest, ct);
 
     /// <summary>
-    /// The backup's last migration must be the one the database is at, compared by name: each provider stamps the same migration with its
-    /// own timestamp, and a backup may come from another provider. <c>backup.otherMigration</c> otherwise (older backups wait for a replay).
+    /// Where a restore of the backup starts from, compared by name (each provider stamps the same migration with its own timestamp, and a
+    /// backup may come from another provider): null when it was made at the migration the database is at; this provider's id of the backup's
+    /// migration when it is an older one of this release, which the restore sets the database up at, loads, and brings up to date. A migration
+    /// this release does not know is a newer release's: <c>backup.otherMigration</c>.
     /// </summary>
-    internal static async Task RequireSameMigrationAsync(IDbContextFactory<AppDbContext> dbFactory, BackupManifest manifest, CancellationToken ct)
+    internal static async Task<string?> ReplayFromAsync(IDbContextFactory<AppDbContext> dbFactory, BackupManifest manifest, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var applied = (await db.Database.GetAppliedMigrationsAsync(ct)).LastOrDefault();
-        if (!MigrationNames.Same(applied, manifest.Migration))
-            throw new DomainException("backup.otherMigration", "The backup was made at another migration than the database is at.", new { Backup = manifest.Migration, Database = applied });
+        if (MigrationNames.Same(applied, manifest.Migration)) return null;
+        return MigrationModels.IdOf(db, manifest.Migration)
+            ?? throw new DomainException("backup.otherMigration", "The backup was made at a migration this release does not know.", new { Backup = manifest.Migration, Database = applied });
     }
 
     public bool RestorePending => File.Exists(RestoreMarker.PathIn(Root));

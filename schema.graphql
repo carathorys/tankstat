@@ -537,6 +537,7 @@ type RestorePointInfo {
   provider: String!
   migration: String
   sameMigration: Boolean!
+  olderMigration: Boolean!
   safetyNet: Boolean!
   uploaded: Boolean!
   encrypted: Boolean!

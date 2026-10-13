@@ -450,7 +450,12 @@ function RestorePoints({
                     <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                       {p.provider}
                     </Typography>
-                    {!p.sameMigration && (
+                    {p.olderMigration && (
+                      <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', minWidth: '12rem' }}>
+                        {t('admin.backups.olderMigration')}
+                      </Typography>
+                    )}
+                    {!p.sameMigration && !p.olderMigration && (
                       <Typography variant="caption" sx={{ display: 'block', color: 'warning.softText', minWidth: '12rem' }}>
                         {t('admin.backups.otherMigration', { version: p.appVersion })}
                       </Typography>
@@ -473,7 +478,7 @@ function RestorePoints({
                         <Download size={16} aria-hidden />
                         {t('admin.backups.download')}
                       </Button>
-                      {p.sameMigration && (
+                      {(p.sameMigration || p.olderMigration) && (
                         <RestoreDialog
                           point={p}
                           onRestoring={onRestoring}
@@ -528,7 +533,7 @@ function RestoreDialog({ point, trigger, onRestoring }: { point: RestorePoint; t
         busy={busy}
         role="alertdialog"
         title={t('admin.backups.restoreTitle', { made: dateTime(point.createdAt), file: point.file })}
-        description={t('admin.backups.restoreDescription')}
+        description={[t('admin.backups.restoreDescription'), point.olderMigration && t('admin.backups.restoreOlder', { version: point.appVersion })].filter(Boolean).join(' ')}
       >
         <RestoreForm point={point} busy={busy} onBusy={setBusy} onRestoring={onRestoring} />
       </DialogFrame>
