@@ -61,7 +61,7 @@ public sealed class BackupOverviewInfoExtensions
 
     /// <summary>The name of the migration the database is at; a backup made at another one cannot be restored here.</summary>
     public async Task<string?> GetMigration([Service] BackupAdminService backups, CancellationToken ct) =>
-        MigrationNames.Of((await backups.RestorePointsAsync(ct)).DatabaseMigration);
+        MigrationNames.Of(await backups.MigrationAsync(ct));
 
     public async Task<StorageSizesInfo> GetSizes([Service] BackupAdminService backups, CancellationToken ct)
     {

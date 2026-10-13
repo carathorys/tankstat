@@ -163,6 +163,43 @@ public sealed class BackupAdminTests : IDisposable
             point.GetProperty("currentRecipient").GetBoolean(), point.GetProperty("photos").GetString(), point.GetProperty("keys").GetBoolean()));
     }
 
+    /// <summary>A writer that holds each run until it is let go, one release per run.</summary>
+    private sealed class GatedWriter(IBackupWriter real) : IBackupWriter
+    {
+        public readonly SemaphoreSlim Go = new(0);
+        public async Task<BackupResult> WriteAsync(BackupRequest request, CancellationToken ct)
+        {
+            await Go.WaitAsync(ct);
+            return await real.WriteAsync(request, ct);
+        }
+    }
+
+    [Fact]
+    public async Task WhileABackupIsWritten_TheOverviewSaysWhenThatOneStarted_NotHowTheLastOneWent()
+    {
+        GatedWriter? gated = null;
+        using var app = App(services: s => s.AddSingleton<IBackupWriter>(sp => gated = new GatedWriter(ActivatorUtilities.CreateInstance<BackupWriter>(sp))));
+        var admin = await Admin(app);
+        const string Run = "{ backups { run { running startedAt finishedAt file bytes error } } }";
+        (await admin.Gql("mutation { runBackup }")).Data();
+        gated!.Go.Release();
+        await Idle(app);
+        var last = (await admin.Gql(Run)).Data().GetProperty("backups").GetProperty("run");
+
+        (await admin.Gql("mutation { runBackup }")).Data();
+        var underWay = (await admin.Gql(Run)).Data().GetProperty("backups").GetProperty("run");
+
+        Assert.True(underWay.GetProperty("running").GetBoolean());
+        Assert.True(underWay.GetProperty("startedAt").GetDateTimeOffset() >= last.GetProperty("finishedAt").GetDateTimeOffset());
+        Assert.Equal((JsonValueKind.Null, JsonValueKind.Null, JsonValueKind.Null, JsonValueKind.Null),
+            (underWay.GetProperty("finishedAt").ValueKind, underWay.GetProperty("file").ValueKind, underWay.GetProperty("bytes").ValueKind, underWay.GetProperty("error").ValueKind));
+        gated.Go.Release();
+        await Idle(app);
+        var written = (await admin.Gql(Run)).Data().GetProperty("backups").GetProperty("run");
+        Assert.Equal(underWay.GetProperty("startedAt").GetDateTimeOffset(), written.GetProperty("startedAt").GetDateTimeOffset());
+        Assert.NotEqual(last.GetProperty("file").GetString(), written.GetProperty("file").GetString());
+    }
+
     private sealed class CountingUsage : IStorageUsage
     {
         public int Calls;
@@ -249,6 +286,39 @@ public sealed class BackupAdminTests : IDisposable
         var body = JsonDocument.Parse(await refused.Content.ReadAsStringAsync()).RootElement;
         Assert.Equal(("backup.tooLarge", 1), (body.GetProperty("key").GetString(), body.GetProperty("args").GetProperty("maxMb").GetInt32()));
         Assert.True(!Directory.Exists(_folder) || Directory.GetFiles(_folder).Length == 0);
+    }
+
+    [Fact]
+    public async Task AnUpload_AsksForAnAdministratorFirst_SoNobodyElseLearnsTheLimit()
+    {
+        using var app = App(new() { ["Backups:MaxUploadMb"] = "1" });
+        var people = await app.Users();
+        var tooLarge = new byte[1024 * 1024 + 10];
+
+        var signedOut = await Upload(app.NewClient(), tooLarge);
+        var alice = await Upload(people.Alice, tooLarge);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, signedOut.StatusCode);
+        Assert.Equal((HttpStatusCode.Forbidden, "auth.adminRequired"), (alice.StatusCode, JsonDocument.Parse(await alice.Content.ReadAsStringAsync()).RootElement.GetProperty("key").GetString()));
+        Assert.True(!Directory.Exists(_folder) || Directory.GetFiles(_folder).Length == 0);
+    }
+
+    [Fact]
+    public async Task ADownload_IsAskedFirst_WithoutBeingLogged_AndNothingButABackupIsEverSent()
+    {
+        using var app = App();
+        var people = await app.Users();
+        var written = Path.GetFileName(await WriteBackup(app));
+        new RestoreMarker(written, Guid.NewGuid(), DateTimeOffset.UtcNow, "AGE-SECRET-KEY-1ZZZZ").Write(_folder); // a restore waiting, its identity in plain
+        HttpRequestMessage Head(string file) => new(HttpMethod.Head, $"/media/backups/{file}");
+
+        Assert.Equal(HttpStatusCode.OK, (await people.Admin.SendAsync(Head(written))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await people.Admin.SendAsync(Head("missing.zip"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await people.Alice.SendAsync(Head(written))).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await app.NewClient().SendAsync(Head(written))).StatusCode);
+        Assert.DoesNotContain(app.Log.From("Tankstat.Application.Backups.BackupAdminService"), e => e.Values.ContainsKey("File"));
+        Assert.Equal(HttpStatusCode.NotFound, (await people.Admin.SendAsync(Head(RestoreMarker.FileName))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await people.Admin.GetAsync($"/media/backups/{RestoreMarker.FileName}")).StatusCode);
     }
 
     [Fact]
