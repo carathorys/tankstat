@@ -47,6 +47,8 @@ import { classifyFailure } from '../offline/errors.ts'
 import { PROBE_TIMEOUT_MS, withDeadline } from '../offline/runtime.ts'
 import { ApiError } from '../pictures/ApiError.ts'
 import { downloadBackup, uploadBackup } from './backupFiles.ts'
+import { ProblemList } from './ProblemList.tsx'
+import { problemsOf } from './settingsText.ts'
 
 type RestorePoint = BackupsQuery['backups']['restorePoints'][number]
 type KeySet = PrepareBackupEncryptionMutation['prepareBackupEncryption']
@@ -684,10 +686,15 @@ function KeySetShown({ keys, onLock }: { keys: KeySet; onLock: (locked: boolean)
         ],
       },
     }).catch(() => undefined) // the refusal is shown below
-  const keep = (kept: boolean) => {
-    setSaved(kept)
-    onLock(!kept)
-  }
+  // Kept open until the passphrase is kept, and while the keys are being saved: closed then, a refusal would go unseen.
+  useEffect(() => onLock(!saved || using), [saved, using, onLock])
+  // The button that had the focus is gone once the keys are in use: the focus goes to what took its place, which also has it read out.
+  const inUse = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (used) inUse.current?.focus()
+  }, [used])
+  // A save the server refused as a whole names the settings at fault (another one of the file, as a rule), as the settings page lists them.
+  const problems = problemsOf(refused)
   return (
     <Stack sx={{ gap: 1.5 }}>
       <SuccessMessage>{t('admin.backups.keysMade')}</SuccessMessage>
@@ -699,21 +706,31 @@ function KeySetShown({ keys, onLock }: { keys: KeySet; onLock: (locked: boolean)
         ]}
       />
       {used ? (
-        <SuccessMessage>{t('admin.backups.keysInUse')}</SuccessMessage>
+        <Box ref={inUse} tabIndex={-1}>
+          <SuccessMessage>{t('admin.backups.keysInUse')}</SuccessMessage>
+        </Box>
       ) : (
         <Button variant="soft" onClick={() => void use()} loading={using} sx={{ alignSelf: 'flex-start' }}>
           <KeyRound size={16} aria-hidden />
           {t('admin.backups.keysUse')}
         </Button>
       )}
-      {refused && <ErrorMessage error={refused} />}
+      {refused &&
+        (problems.length > 0 ? (
+          <ErrorMessage error={refused}>
+            {t('systemSettings.problems')}
+            <ProblemList problems={problems} />
+          </ErrorMessage>
+        ) : (
+          <ErrorMessage error={refused} />
+        ))}
       <Typography variant="body2">{t('admin.backups.keysSettings')}</Typography>
       <Box component="pre" sx={(theme) => ({ m: 0, p: 1.5, borderRadius: '8px', backgroundColor: theme.vars.palette.neutral.soft, whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '0.85em' })}>
         {`Backups__Encryption__Recipient=${keys.recipient}\nBackups__Encryption__Salt=${keys.salt}`}
       </Box>
-      <FormControlLabel control={<Checkbox checked={saved} onChange={(e) => keep(e.target.checked)} />} label={t('admin.backups.keysSaved')} />
+      <FormControlLabel control={<Checkbox checked={saved} onChange={(e) => setSaved(e.target.checked)} />} label={t('admin.backups.keysSaved')} />
       <DialogButtons>
-        <DialogCancel label={t('admin.backups.keysDone')} disabled={!saved} />
+        <DialogCancel label={t('admin.backups.keysDone')} disabled={!saved || using} />
       </DialogButtons>
     </Stack>
   )

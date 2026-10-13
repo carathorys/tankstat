@@ -21,7 +21,8 @@ import { waitForRestart } from './restartFlow.ts'
 import { valueOfDraft } from './settingsRelevance.ts'
 import { problemsOf } from './settingsText.ts'
 import { changesOf, draftOf, effectiveOf, type GroupDraft } from './settingsDraft.ts'
-import { ProblemList, SettingsGroupForm } from './SettingsGroupForm.tsx'
+import { ProblemList } from './ProblemList.tsx'
+import { SettingsGroupForm } from './SettingsGroupForm.tsx'
 
 /**
  * The settings the server runs with, for administrators: the app's own settings file (what became of it at the last start), the restart
