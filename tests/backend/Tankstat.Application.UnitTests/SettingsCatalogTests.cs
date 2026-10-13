@@ -185,14 +185,14 @@ public class SettingsFileNoticeTests
     {
         var status = SettingsFileStatus.LeftOut("/data/settings.json", ["Smtp:Port must be a whole number."]);
 
-        var notices = new NoticeService(new AuthOptions { Mode = AuthMode.None }.Create(), status).GetNotices();
+        var notices = new NoticeService(new AuthOptions { Mode = AuthMode.None }.Create(), new NoBackups(), status).GetNotices();
 
         Assert.Equal(["AUTH_DISABLED", "SETTINGS_FILE_IGNORED"], notices.Select(n => n.Code)); // the unsafe warning stays first
         var notice = notices[1];
         Assert.Equal(NoticeSeverity.Warning, notice.Severity);
         Assert.DoesNotContain("Smtp", notice.Message);
         Assert.DoesNotContain("/data", notice.Message);
-        Assert.Equal(["SETTINGS_FILE_IGNORED"], new NoticeService(new AuthOptions { Mode = AuthMode.Standalone }.Create(), status).GetNotices().Select(n => n.Code));
+        Assert.Equal(["SETTINGS_FILE_IGNORED"], new NoticeService(new AuthOptions { Mode = AuthMode.Standalone }.Create(), new NoBackups(), status).GetNotices().Select(n => n.Code));
     }
 
     [Fact]
@@ -200,9 +200,9 @@ public class SettingsFileNoticeTests
     {
         var options = new AuthOptions { Mode = AuthMode.Standalone }.Create();
 
-        Assert.Empty(new NoticeService(options, SettingsFileStatus.Used("/data/settings.json", exists: true)).GetNotices());
-        Assert.Empty(new NoticeService(options, SettingsFileStatus.Used("/data/settings.json", exists: false)).GetNotices());
-        Assert.Empty(new NoticeService(options).GetNotices());
+        Assert.Empty(new NoticeService(options, new NoBackups(), SettingsFileStatus.Used("/data/settings.json", exists: true)).GetNotices());
+        Assert.Empty(new NoticeService(options, new NoBackups(), SettingsFileStatus.Used("/data/settings.json", exists: false)).GetNotices());
+        Assert.Empty(new NoticeService(options, new NoBackups()).GetNotices());
     }
 
     [Fact]

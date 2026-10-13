@@ -189,11 +189,20 @@ namespace Tankstat.Migrations.SqlServer
                     b.Property<int>("Id")
                         .HasColumnType("int");
 
+                    b.Property<Guid>("Generation")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("LastStartMode")
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
                     b.Property<DateTime?>("LastStartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("RestorePoint")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("RestoredAt")
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");

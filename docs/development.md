@@ -58,6 +58,21 @@ mise run test:coverage     # unit + integration tests with coverage reports in .
 
 The backup encryption is the age format: `tests/backend/contracts/age/` holds files written by age 1.3.2 (see its README), which the reader must open, and `AgeStreamTests.TheRealTool_OpensWhatTheWriterWrote` runs `age -d` on the writer's file when `age` runs here (`age` on the `PATH`, or mise's installed copy: `mise install age@1.3.2`; the test runs mise offline, so it never fetches or installs anything); without it that one check passes with a line saying it was skipped.
 
+CI has no database servers, so the dump and the load are also checked against real ones by `ProviderRoundTripTests` (Infrastructure unit tests), which run for a provider when a connection string for it is in the environment, `{db}` standing for a database name the test makes and drops, and otherwise pass with a line saying they were skipped. For example, with throwaway containers:
+
+```sh
+docker run -d --name tk-pg -e POSTGRES_PASSWORD=secret -p 55432:5432 postgres:17-alpine
+docker run -d --name tk-mysql -e MYSQL_ROOT_PASSWORD=secret -p 53306:3306 mysql:8.4
+docker run -d --name tk-mssql -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD='Str0ng!Passw0rd' -p 51433:1433 mcr.microsoft.com/mssql/server:2022-latest
+
+TANKSTAT_TEST_POSTGRESQL='Host=localhost;Port=55432;Database={db};Username=postgres;Password=secret' \
+TANKSTAT_TEST_MYSQL='Server=localhost;Port=53306;Database={db};User=root;Password=secret' \
+TANKSTAT_TEST_SQLSERVER='Server=localhost,51433;Database={db};User Id=sa;Password=Str0ng!Passw0rd;TrustServerCertificate=True;Encrypt=False' \
+  dotnet test tests/backend/Tankstat.Infrastructure.UnitTests --filter FullyQualifiedName~ProviderRoundTripTests
+```
+
+Each provider's tests back up a seeded database, load the backup into another, and compare the two backups line for line; and move a backup from SQLite to the server and back, comparing the values (numbers without trailing zeros, timestamps to the microsecond). Run them after changing the dump or the load, a database driver or EF Core.
+
 The API tests pin the GraphQL schema the frontend relies on, so a breaking schema change fails them. They read the target from `TANKSTAT_API_URL` (default `http://localhost:5080`); `test:api` sets it for you.
 
 Frontend tests are named `*.unit.test.ts(x)` (a function or component on its own) or `*.integration.test.ts(x)` (the app against msw-mocked GraphQL); other names are not picked up. They are grouped by feature area, unit and integration tests side by side, nested where an area has parts:
@@ -95,6 +110,8 @@ What devices download for offline use (the server side; the app's side comes wit
 - Removing for good (an emptied trash, a deleted schedule, a purged vehicle or user) leaves a tombstone (`Tombstones`: the entity's type and id, its vehicle, when), written in the same save by the same interceptor; a vehicle's stands for everything below it. They are kept for `Sync:TombstoneRetentionDays`.
 - `offlineChanges(input: { vehicleId, from, since, after, take })` pages through a vehicle (View on its logs). A first download (no `since`) brings the logs dated from `from` (all of them without it), the trash included for those who may change the logs (anyone who may only view them gets a log in the trash as `removed`, as online they do not see the trash); a later one (`since` = the `watermark` the previous download returned) brings every row saved since then, minus a two-minute overlap for saves that committed late, whatever its date, plus `removed`. Refuelings and expenses are paged each by its own key, `(updatedAt, id)` in the database's own order of ids (providers order uuids differently; the database both orders and compares, a test prints every provider's SQL), inside one opaque `next`. The vehicle comes with every page, all its schedules (with today's status) with the first. A `since` older than the tombstones kept answers `resync: true`.
 - `offlineSettings` / `updateOfflineSettings` keep the user's offline window with the account (a default and per-vehicle rules: `none`, `all`, `thisYear`, `thisAndLastYear`, `from:yyyy-MM-dd` or `span:` an ISO 8601 duration such as `P2Y6M4DT2H48M12S`; default `span:P2M`); a device turns a rule into a date on its own clock. `Vehicle.logCountSince(from)` counts what a download would bring.
+
+- `session { instance { generation restorePoint } }` says which history the data belongs to: the `InstanceState` table's one row, whose `Generation` a restore stamps anew after the rows are loaded (never the backup's). A device keeps the first generation it sees and, on another one, sets its downloaded rows aside (`foundRows.ts`), drops the downloaded window and the kept answers, and downloads afresh; its outbox is sent as it is. Every download asks `session { instance { generation } }` first (`ServerGeneration`) and starts afresh before it writes anything when that changed, since a device may get no `Session` answer after a restore; its cursors carry the generation they were written in. The restore itself is `RestoreStep` at start (`docs/backup-and-restore.md`), asked for by `restoreBackup` or `tankstat restore`.
 
 Sending the changes a device kept: `syncChanges(input: { changes: [ChangeInput] })` (1 to 200 per request, in the order they were made). A `ChangeInput` is the change's own id, the version it was made from (`expectedVersion`) and exactly one operation, with the same input as the single mutation (`logRefueling`, `updateExpense`, `deleteVehicle`, `markRecurringExpensesDone`, ...; an add names its id). Each change goes through the same service as its mutation (every rule and access check) and is answered `APPLIED` (with the entity and its new version) or `PARKED` (with the error key and arguments the mutation would have given); the server keeps both in `SyncChanges`, so a change sent again (an answer that never arrived) is answered with what happened the first time and applied once. Applied records go after `Sync:RetentionDays`; parked ones stay for a person to decide. One batch of a user at a time. A change is kept as the `ChangeInput` it was (JSON, enums in the API's spelling).
 

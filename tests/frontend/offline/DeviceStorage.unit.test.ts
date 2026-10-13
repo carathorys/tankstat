@@ -222,8 +222,8 @@ describe('opening the IndexedDB data', () => {
 
     oldTab.close() // the open goes through now, too late: the connection closes at once
     await tasks()
-    const newer = await openRaw(factory, 'tankstat-offline-alice', 5) // a later build is not blocked: nothing holds the database open
-    expect(newer.version).toBe(5)
+    const newer = await openRaw(factory, 'tankstat-offline-alice', 7) // a later build is not blocked: nothing holds the database open
+    expect(newer.version).toBe(7)
     newer.close()
   })
 })

@@ -12,7 +12,7 @@ import { outbox } from '../../../src/frontend/offline/outbox.ts'
 import { createPullEngine } from '../../../src/frontend/offline/pull.ts'
 import { createPushEngine } from '../../../src/frontend/offline/push.ts'
 import { provideOfflineSync } from '../../../src/frontend/offline/runtime.ts'
-import { fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, stubViewport, user } from '../support/mocks.tsx'
+import { fakeInstance, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, stubViewport, user } from '../support/mocks.tsx'
 import { fakeFeed, now } from '../support/offlineFeed.ts'
 import { server } from '../support/server.ts'
 
@@ -106,7 +106,7 @@ it('signing out with changes waiting asks first, and they stay on the device for
   await downloaded(sessionHandler('STANDALONE', () => (signedIn ? user() : null)))
   await outbox.enqueue({ id: 't1', entity: 'refuelings', action: 'trash', vehicleId: 'v1', targetId: 'a', expectedVersion: 1 })
   connectivity.reset()
-  server.use(graphql.query('Session', () => HttpResponse.json({ data: { session: { mode: 'STANDALONE', user: signedIn ? user() : null }, notices: [] } })))
+  server.use(graphql.query('Session', () => HttpResponse.json({ data: { session: { mode: 'STANDALONE', user: signedIn ? user() : null, instance: fakeInstance() }, notices: [] } })))
   renderWithApollo(<App />, '/')
   const ui = userEvent.setup()
   await screen.findByText('Octavia')

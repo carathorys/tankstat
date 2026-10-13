@@ -723,12 +723,19 @@ public class NoticeAndOptionsTests
     [Fact]
     public void NoAuth_ProducesTheWarning_OtherModesDoNot()
     {
-        var warning = Assert.Single(new NoticeService(new AuthOptions { Mode = AuthMode.None }.Create()).GetNotices());
+        var warning = Assert.Single(new NoticeService(new AuthOptions { Mode = AuthMode.None }.Create(), new NoBackups()).GetNotices());
         Assert.Equal("AUTH_DISABLED", warning.Code);
         Assert.Equal(NoticeSeverity.Warning, warning.Severity);
 
         foreach (var mode in new[] { AuthMode.Standalone, AuthMode.Oidc, AuthMode.ProxyHeader })
-            Assert.Empty(new NoticeService(new AuthOptions { Mode = mode }.Create()).GetNotices());
+            Assert.Empty(new NoticeService(new AuthOptions { Mode = mode }.Create(), new NoBackups()).GetNotices());
+    }
+
+    [Fact]
+    public void ARestoreThatWaitsForARestart_IsANoticeForEveryone()
+    {
+        var notice = Assert.Single(new NoticeService(new AuthOptions { Mode = AuthMode.Standalone }.Create(), new NoBackups { RestorePending = true }).GetNotices());
+        Assert.Equal(("RESTORE_PENDING", NoticeSeverity.Warning), (notice.Code, notice.Severity));
     }
 
     private static ValidateOptionsResult Validate(AuthOptions o, SmtpOptions? smtp = null) =>

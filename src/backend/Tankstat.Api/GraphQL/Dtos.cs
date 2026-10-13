@@ -1,5 +1,6 @@
 using Tankstat.Api.Media;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Backups;
 using Tankstat.Application.Users;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Users;
@@ -19,7 +20,8 @@ public sealed record UserRef(Guid Id, string DisplayName, string? AvatarUrl)
     public static UserRef From(User u) => new(u.Id, u.DisplayName, MediaUrls.Image(u.AvatarImageId));
 }
 
-public sealed record Session(AuthMode Mode, UserInfo? User);
+/// <param name="Instance">Which history the data belongs to: a device with offline data starts afresh when it changes (a restore).</param>
+public sealed record Session(AuthMode Mode, UserInfo? User, InstanceInfo Instance);
 
 public sealed record UserAccount(Guid Id, UserProvider Provider, string Email, string DisplayName, bool IsAdmin, bool IsDisabled, string? AvatarUrl)
 {

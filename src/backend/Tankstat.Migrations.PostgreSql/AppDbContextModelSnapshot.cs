@@ -189,11 +189,20 @@ namespace Tankstat.Migrations.PostgreSql
                     b.Property<int>("Id")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("Generation")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("LastStartMode")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
                     b.Property<DateTime?>("LastStartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("RestorePoint")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("RestoredAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");

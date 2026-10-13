@@ -143,6 +143,19 @@ export function startOfflineRuntime(client: ApolloClient, now: () => number = Da
   // Another tab signed someone else in (or out): this tab asks whose it is, so the screen and the offline data follow.
   const offElsewhere = deviceData.onSignedInElsewhere(() => void client.refetchQueries({ include: ['Session'] }).catch(() => undefined))
   const unsubscribeUser = deviceData.subscribe(download)
+  // The server's history changed (a restore): what this device holds is set aside before it goes, and the new history is downloaded (when
+  // the tab is shown next, if it is hidden now: however recent the last download, it was of the old history).
+  const offGeneration = deviceData.onGenerationChange(async (phase, { from }) => {
+    if (phase === 'after') {
+      downloadedAt = Number.NEGATIVE_INFINITY
+      return download()
+    }
+    // Nothing goes that was not set aside first: with nobody's data open (signed out meanwhile), the change waits for the next answer.
+    const rows = await deviceData.writableRows()
+    if (!rows) throw new Error('Nothing can be set aside: no account\'s data is open.')
+    const { foundRows, keptAnswers } = await import('./foundRows.ts')
+    await foundRows.setAside(rows, keptAnswers, from)
+  })
   // A start in a tab that was not shown downloads once it is.
   document.addEventListener('visibilitychange', onShown)
   const hourly = setInterval(download, PULL_EVERY_MS)
@@ -155,6 +168,7 @@ export function startOfflineRuntime(client: ApolloClient, now: () => number = Da
       unsubscribe()
       offElsewhere()
       unsubscribeUser()
+      offGeneration()
       unsubscribeOutbox()
       unsubscribeApplied()
       clearTimeout(soon)

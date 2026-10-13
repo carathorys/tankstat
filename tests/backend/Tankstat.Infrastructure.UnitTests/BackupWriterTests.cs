@@ -33,11 +33,10 @@ namespace Tankstat.Infrastructure.UnitTests;
 /// </summary>
 public sealed class BackupWriterTests : IDisposable
 {
-    private static readonly DateOnly Day = new(2026, 9, 1);
-    private static readonly DateTimeOffset Now = new(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
-    private const string Email = "zzcanary@example.com";
-    private const string Name = "Zzcanary car";
-    private const string Plate = "ZZ-CANARY-1";
+    private static readonly DateOnly Day = BackupSeed.Day;
+    private const string Email = BackupSeed.Email;
+    private const string Name = BackupSeed.Name;
+    private const string Plate = BackupSeed.Plate;
 
     private readonly string _data = Path.Combine(Path.GetTempPath(), $"tankstat-backup-{Guid.NewGuid():N}");
     private string Pictures => Path.Combine(_data, "uploads");
@@ -61,71 +60,12 @@ public sealed class BackupWriterTests : IDisposable
         ["Backups:Encryption:Salt"] = recipient is null ? null : Convert.ToBase64String(Encoding.ASCII.GetBytes("tankstat-salt-01")),
     });
 
-    private sealed record Seeded(Guid Owner, Guid Vehicle, Guid Refueling, Guid Picture, Guid Photo, Guid Draft);
+    private Task<BackupSeed.Seeded> Seed(TestDatabase db, bool separatePhotos) => BackupSeed.SeedAsync(db, Pictures, separatePhotos ? Photos : Pictures, Keys);
 
-    /// <summary>A user, a vehicle with a picture, a refuelling with a photo, an expense, and a draft; the files under the roots, a key in the keys folder.</summary>
-    private async Task<Seeded> Seed(TestDatabase db, bool separatePhotos)
-    {
-        var user = User.CreateLocal(Email, "Zz Canary", false);
-        await db.Get<IUserRepository>().AddAsync(user, default);
-        var vehicle = TestData.Vehicle(user.Id, Name, Plate);
-        await db.Get<IVehicleRepository>().AddAsync(vehicle, default);
-        var refueling = TestData.Refueling(user.Id, user.Id, vehicle.Id, Day, note: "zzcanary note");
-        await db.Get<IRefuelingRepository>().AddAsync(refueling, default);
-        var expense = Expense.Create(user.Id, user.Id, vehicle.Id, Day, "Tyres", null, Cost.Create(user.Id, vehicle.Id, Day, 100, "EUR"), OdometerReading.Create(user.Id, vehicle.Id, Day, 1500));
-        await db.Get<IExpenseRepository>().AddAsync(expense, default);
-
-        var images = db.Get<IImageRepository>();
-        var picture = StoredImage.Create(Guid.NewGuid(), "image/webp", 3, Now, ImageFolders.VehiclePicture(vehicle.Id));
-        var photo = StoredImage.Create(Guid.NewGuid(), "image/jpeg", 3, Now, ImageFolders.LogPhotos(vehicle.Id, LogType.Refueling, refueling.Id));
-        var draft = StoredImage.Create(Guid.NewGuid(), "image/jpeg", 3, Now, ImageFolders.PhotoDrafts(vehicle.Id));
-        var avatar = StoredImage.Create(Guid.NewGuid(), "image/webp", 3, Now, ImageFolders.Avatar(user.Id));
-        foreach (var image in new[] { picture, photo, draft, avatar }) await images.AddAsync(image, default);
-        await db.Get<ILogPhotoRepository>().AddAsync(LogPhoto.Create(user.Id, vehicle.Id, LogType.Refueling, refueling.Id, photo.Id, user.Id, Now), default);
-        await db.Get<IPhotoDraftRepository>().AddAsync(PhotoDraft.Create(draft.Id, user.Id, vehicle.Id, user.Id, Now), default);
-
-        var photosRoot = separatePhotos ? Photos : Pictures;
-        WriteFile(Path.Combine(Pictures, picture.Folder!, picture.Id.ToString("N")), "PIC");
-        WriteFile(Path.Combine(Pictures, avatar.Folder!, avatar.Id.ToString("N")), "AVA");
-        WriteFile(Path.Combine(Pictures, "legacy-file-id"), "OLD"); // a file from before folders existed
-        WriteFile(Path.Combine(photosRoot, photo.Folder!, photo.Id.ToString("N")), "PHO");
-        WriteFile(Path.Combine(photosRoot, draft.Folder!, draft.Id.ToString("N")), "DRA");
-        WriteFile(Path.Combine(Keys, "key-" + Guid.NewGuid().ToString("D") + ".xml"), "<key>zzsecret</key>");
-        return new Seeded(user.Id, vehicle.Id, refueling.Id, picture.Id, photo.Id, draft.Id);
-    }
-
-    private static void WriteFile(string path, string text)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, text);
-    }
-
-    private static string Manifest(string file)
-    {
-        using var zip = ZipFile.OpenRead(file);
-        using var reader = new StreamReader(zip.GetEntry(BackupManifest.FileName)!.Open());
-        return reader.ReadToEnd();
-    }
-
-    /// <summary>The inner archive, decrypted when an identity is given, extracted to a folder.</summary>
-    private static string Inner(string file, byte[]? identity = null)
-    {
-        var folder = Directory.CreateTempSubdirectory("tankstat-inner-").FullName;
-        using var zip = ZipFile.OpenRead(file);
-        var entry = zip.GetEntry(identity is null ? BackupArchive.Plain : BackupArchive.Encrypted) ?? throw new InvalidOperationException("no inner archive");
-        var innerPath = Path.Combine(folder, "inner.zip");
-        using (var input = identity is null ? entry.Open() : AgeStream.Decrypt(entry.Open(), identity))
-        using (var output = File.Create(innerPath))
-            input.CopyTo(output);
-        ZipFile.ExtractToDirectory(innerPath, folder);
-        File.Delete(innerPath);
-        return folder;
-    }
-
-    private static string[] Lines(string folder, string table) => File.ReadAllLines(Path.Combine(folder, "tables", table + ".jsonl"));
-
-    private static IEnumerable<string> Files(string folder) =>
-        Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(folder, f).Replace(Path.DirectorySeparatorChar, '/')).Order();
+    private static string Manifest(string file) => BackupSeed.Manifest(file);
+    private static string Inner(string file, byte[]? identity = null) => BackupSeed.Inner(file, identity);
+    private static string[] Lines(string folder, string table) => BackupSeed.Lines(folder, table);
+    private static IEnumerable<string> Files(string folder) => BackupSeed.Files(folder);
 
     [Fact]
     public async Task APlainBackup_HoldsEveryTable_TheFilesButTheDrafts_NoKeys_AndAManifestWithoutAnythingPersonal()
@@ -147,8 +87,9 @@ public sealed class BackupWriterTests : IDisposable
         {
             Assert.Equal(context.Database.GetMigrations().Last(), manifest.Migration); // the migration the database is at
             var tables = context.Model.GetEntityTypes().Select(e => e.GetTableName()).Where(t => t is not null).Distinct().ToList();
-            Assert.True(tables.Count >= 26, "the model's tables");
+            Assert.True(tables.Count >= 27, "the model's tables");
             Assert.Equal(tables.Append(TableDump.MigrationsHistory).Order(), manifest.Contents.Tables.Keys.Order());
+            Assert.Contains("InstanceState", manifest.Contents.Tables.Keys); // the generation row (made at start, so none here), which a restore stamps anew after loading
             Assert.Equal(context.Database.GetMigrations().Count(), manifest.Contents.Tables[TableDump.MigrationsHistory]);
         }
         Assert.Equal((1L, 1L, 1L, 1L, 4L, 2L), (manifest.Contents.Tables["Users"], manifest.Contents.Tables["Vehicles"], manifest.Contents.Tables["Refuelings"],

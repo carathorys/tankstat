@@ -76,7 +76,8 @@
     "label": "Notices",
     "warning": "Warning:",
     "AUTH_DISABLED": "Authentication is disabled: anyone who can reach this app can see and change all data. This is unsafe; configure Auth:Mode.",
-    "SETTINGS_FILE_IGNORED": "The app's own settings file could not be used and was left out; the app runs without it until the next start. See the server log for the reason."
+    "SETTINGS_FILE_IGNORED": "The app's own settings file could not be used and was left out; the app runs without it until the next start. See the server log for the reason.",
+    "RESTORE_PENDING": "A restore is waiting for a restart of the app: when it starts next, all data is replaced with the backup's."
   },
   "notifications": {
     "title": "Notifications",
@@ -679,6 +680,19 @@
       "cannotResolve": "Only whoever sent it, or may change the vehicle's entries, decides about it.",
       "kindMismatch": "An edited change must do the same as the one that was not applied.",
       "cannotRestoreFirst": "Only an edit of a refuelling, an expense or a vehicle can bring it back from the trash."
+    },
+    "backup": {
+      "notFound": "There is no such backup in the backups folder.",
+      "wrongKey": "The passphrase (or identity) does not open this backup.",
+      "keyRequired": "The backup is encrypted: its passphrase or identity is needed.",
+      "corrupt": "The file is damaged or is not a Tankstat backup.",
+      "passphraseEncrypted": "The file is encrypted with age's own passphrase mode, not for a recipient; Tankstat cannot open it.",
+      "notEncrypted": "The backup is not encrypted; no passphrase opens it.",
+      "newerFormat": "The backup was written by a newer release (Tankstat {{appVersion}}); upgrade first.",
+      "otherMigration": "The backup was made at another version of the database ({{backup}}) than this one is at ({{database}}); restore it with the release that wrote it.",
+      "databaseNewer": "The database was migrated by a newer release of Tankstat ({{migration}}); back it up with that release.",
+      "codeRequired": "The one-time restore code from the server's log is needed.",
+      "passphraseRequired": "A passphrase is expected."
     }
   },
   "a11y": {
@@ -1408,6 +1422,41 @@
       "useMineDescription": "The values of this change replace the ones set on the server meanwhile, also where only the server changed them; what it does not set stays as it is there.",
       "keepServers": "Keep the server's",
       "keepServersDescription": "What is on the server stays as it is; this change is dropped for good."
+    },
+    "found": {
+      "title": "Found on this device",
+      "hint": "The server was taken back to a backup, and these entries were on this device but are not on the server any more (or are older there). Nothing is sent by itself: send what should be on the server again, forget the rest.",
+      "count_one": "{{count}} entry",
+      "count_other": "{{count}} entries",
+      "kinds": {
+        "refuelings": "Refuelling",
+        "expenses": "Expense",
+        "vehicles": "Vehicle",
+        "recurring": "Recurring expense"
+      },
+      "missingOnServer": "Not on the server",
+      "olderOnServer": "An older version is on the server",
+      "send": "Send to the server",
+      "sendAria": "Send to the server: {{row}}",
+      "sendAll": "Send all",
+      "sendAllAria": "Send all entries of {{vehicle}} to the server",
+      "forget": "Forget",
+      "forgetAria": "Forget: {{row}}",
+      "forgetAll": "Forget all",
+      "forgetAllAria": "Forget all entries of {{vehicle}}",
+      "forgetTitle": "Forget what was found on this device?",
+      "forgetDescription": "The entry is removed from this device; it is not on the server, so it is gone.",
+      "forgetAllDescription_one": "{{count}} entry of {{vehicle}} is removed from this device; it is not on the server, so it is gone.",
+      "forgetAllDescription_other": "{{count}} entries of {{vehicle}} are removed from this device; they are not on the server, so they are gone.",
+      "sent_one": "{{count}} entry is waiting to be sent.",
+      "sent_other": "{{count}} entries are waiting to be sent.",
+      "forgotten_one": "{{count}} entry forgotten.",
+      "forgotten_other": "{{count}} entries forgotten.",
+      "failed": "That did not work; try again.",
+      "leftWaiting_one": "{{count}} entry stays listed: a change of its own waits on this device and goes first.",
+      "leftWaiting_other": "{{count}} entries stay listed: changes of their own wait on this device and go first.",
+      "navCount_one": "{{count}} entry found on this device",
+      "navCount_other": "{{count}} entries found on this device"
     }
   },
   "systemSettings": {

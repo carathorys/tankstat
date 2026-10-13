@@ -36,6 +36,7 @@ do
         .AddMutationType<Mutation>()
         .AddTypeExtension<SessionQueries>()
         .AddTypeExtension<AuthMutations>()
+        .AddTypeExtension<BackupMutations>()
         .AddTypeExtension<DeviceSessionQueries>()
         .AddTypeExtension<DeviceSessionMutations>()
         .AddType<VehicleType>()

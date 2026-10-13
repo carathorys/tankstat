@@ -927,3 +927,13 @@ internal static class ServiceExtensions
         this RefuelingService s, Guid vehicleId, DateOnly date, decimal volume, decimal cost, long odometer, bool full, CancellationToken ct) =>
         s.LogAsync(vehicleId, new RefuelingInput(date, volume, cost, "EUR", odometer, full, null), ct);
 }
+
+/// <summary>A backup folder with nothing in it; a restore is waiting only when a test says so.</summary>
+internal sealed class NoBackups : Tankstat.Application.Backups.IBackupStore
+{
+    public bool RestorePending { get; init; }
+    public Tankstat.Application.Backups.BackupManifest ReadManifest(string fileName) => throw new NotSupportedException();
+    public string? IdentityFor(Tankstat.Application.Backups.BackupManifest manifest, string? passphrase, string? identity) => throw new NotSupportedException();
+    public Task RequireSameMigrationAsync(Tankstat.Application.Backups.BackupManifest manifest, CancellationToken ct) => throw new NotSupportedException();
+    public void RequestRestore(Tankstat.Application.Backups.RestoreMarker marker) => throw new NotSupportedException();
+}

@@ -10,9 +10,11 @@ using Microsoft.EntityFrameworkCore.Storage;
 namespace Tankstat.Infrastructure.Backups;
 
 /// <summary>A table of the database as the backup dumps it: its columns, each read the way the EF type mapping reads it, in the order of its key.</summary>
-internal sealed record DumpTable(string Name, string? Schema, IReadOnlyList<DumpColumn> Columns, IReadOnlyList<string> OrderBy);
+/// <param name="DependsOn">The tables its rows refer to (foreign keys): loaded before it, emptied after it.</param>
+internal sealed record DumpTable(string Name, string? Schema, IReadOnlyList<DumpColumn> Columns, IReadOnlyList<string> OrderBy, IReadOnlySet<string> DependsOn);
 
-internal sealed record DumpColumn(string Name, Func<DbDataReader, int, object> Read);
+/// <param name="Mapping">How the column is read and written on this provider; none for the migrations history, which is never loaded.</param>
+internal sealed record DumpColumn(string Name, Func<DbDataReader, int, object> Read, RelationalTypeMapping? Mapping);
 
 /// <summary>
 /// Every table as JSON Lines: one object per row, the column names as in the database, typed values (strings for GUIDs and ISO 8601 UTC
@@ -36,15 +38,20 @@ internal static class TableDump
             {
                 var column = property.GetColumnName(group.Key);
                 if (column is null || !seen.Add(column)) continue;
-                columns.Add(new DumpColumn(column, Reader(property.GetRelationalTypeMapping())));
+                var mapping = property.GetRelationalTypeMapping();
+                columns.Add(new DumpColumn(column, Reader(mapping), mapping));
             }
             var key = group.Select(e => e.FindPrimaryKey()).FirstOrDefault(k => k is not null);
             var orderBy = key?.Properties.Select(p => p.GetColumnName(group.Key)!).ToList() ?? [];
-            tables.Add(new DumpTable(group.Key.Name, group.Key.Schema, columns, orderBy));
+            // The tables this one's rows point at (an owned type points at its owner in the same table, which is no dependency).
+            var dependsOn = group.SelectMany(e => e.GetForeignKeys()).Select(fk => fk.PrincipalEntityType.GetTableName())
+                .Where(t => t is not null && t != group.Key.Name).Select(t => t!).ToHashSet(StringComparer.Ordinal);
+            tables.Add(new DumpTable(group.Key.Name, group.Key.Schema, columns, orderBy, dependsOn));
         }
         tables.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
         tables.Add(new DumpTable(MigrationsHistory, null,
-            [new DumpColumn("MigrationId", (r, i) => r.GetString(i)), new DumpColumn("ProductVersion", (r, i) => r.GetString(i))], ["MigrationId"]));
+            [new DumpColumn("MigrationId", (r, i) => r.GetString(i), null), new DumpColumn("ProductVersion", (r, i) => r.GetString(i), null)], ["MigrationId"],
+            new HashSet<string>()));
         return tables;
     }
 
@@ -79,7 +86,7 @@ internal static class TableDump
         return (rows, bytes);
     }
 
-    private static void WriteValue(Utf8JsonWriter writer, object value)
+    internal static void WriteValue(Utf8JsonWriter writer, object value)
     {
         switch (value)
         {

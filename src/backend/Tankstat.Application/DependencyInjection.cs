@@ -54,8 +54,11 @@ public static class DependencyInjection
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<HealthReporter>();
         services.AddSingleton<NoticeService>();
+        services.AddSingleton<InstanceGeneration>();
+        services.AddSingleton<RestoreCode>();
 
         services.AddScoped<AccessService>();
+        services.AddScoped<RestoreService>();
         services.AddScoped<AccessAdminService>();
         services.AddScoped<SessionService>();
         services.AddScoped<PasswordResetService>();

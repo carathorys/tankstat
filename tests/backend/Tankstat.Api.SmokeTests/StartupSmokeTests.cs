@@ -266,7 +266,39 @@ public class StartupSmokeTests
         Assert.True(opened == 0, openLog);
         Assert.Contains("Smoke car", await File.ReadAllTextAsync(Path.Combine(work, "restored", "tables", "Vehicles.jsonl")));
         Assert.NotEmpty(Directory.GetFiles(Path.Combine(work, "restored", "keys"), "*.xml")); // the keys of the instance, in an encrypted backup
-        Assert.DoesNotContain("backup", app.Log, StringComparison.OrdinalIgnoreCase); // the server said nothing about backups at start
+        Assert.DoesNotContain("Wrote backup", app.Log); // the server wrote none at start
+        Assert.Contains("one-time restore code", app.Log); // sign-in is off: the code that guards a restore asked for from the app is in the log
+    }
+
+    [Fact]
+    public async Task TheRestoreCommand_TakesAStoppedServerBackToABackup_AndTheNextStartServesIt()
+    {
+        var work = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"tankstat-smoke-{Guid.NewGuid():N}")).FullName;
+        var settings = Env(("Auth__Mode", "None"));
+        var first = await AppProcess.StartAsync(settings, workDirectory: work);
+        try
+        {
+            await first.Gql("mutation { addVehicle(input: { name: \"Before\", fuelType: PETROL }) { id } }");
+            var (made, log) = await AppProcess.RunCommandAsync(settings, work, "smoke passphrase\n", "backup", "--passphrase-stdin");
+            Assert.True(made == 0, log);
+            await first.Gql("mutation { addVehicle(input: { name: \"After\", fuelType: PETROL }) { id } }");
+        }
+        finally
+        {
+            await first.StopAsync(); // the files stay: the server is stopped for the restore, like an operator would
+        }
+        var file = Path.GetFileName(Assert.Single(Directory.GetFiles(Path.Combine(work, "backups"), "tankstat-backup-*.zip")));
+
+        var (code, restoreLog) = await AppProcess.RunCommandAsync(settings, work, "smoke passphrase\n", "restore", file, "--yes", "--now", "--passphrase-stdin");
+
+        Assert.True(code == 0, restoreLog);
+        Assert.Contains("Restored", restoreLog);
+        Assert.DoesNotContain("smoke passphrase", restoreLog);
+        await using var second = await AppProcess.StartAsync(settings, workDirectory: work, useTempDatabase: true);
+        var names = (await second.Gql("{ myVehicles { name } }")).Data().GetProperty("myVehicles").EnumerateArray().Select(v => v.GetProperty("name").GetString()).ToList();
+        Assert.Equal(["Before"], names);
+        Assert.True(await second.LogsAsync("up to date"), second.Log); // the restore happened under the command, the start finds nothing to do
+        await first.DisposeAsync();
     }
 
     // ---- Photo reading (optional: it never stops the app) ---------------------------------------------------

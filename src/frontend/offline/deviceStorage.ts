@@ -5,6 +5,7 @@
  */
 
 import type { Change } from './changes.ts'
+import type { FoundRow } from './foundRows.ts'
 
 /** The last answer of one query (an operation with its variables), and when it came. */
 export interface Snapshot {
@@ -62,6 +63,8 @@ export interface PullCursor {
   complete: boolean
   /** When the full download under way began: what it did not bring again is removed at its end. */
   fullStartedAt: number | null
+  /** The server's history it was written in (`Session.instance.generation`); one of another history is no cursor. None before histories. */
+  generation?: string
 }
 
 /**
@@ -119,7 +122,16 @@ export interface RowStore {
   pictureIds(): Promise<string[]>
   putPicture(picture: KeptPicture): Promise<void>
   deletePictures(ids: string[]): Promise<void>
+  /** The rows set aside when the server's history changed (`foundRows.ts`): what this device held that the server may lack. */
+  found(): Promise<FoundRow[]>
+  putFound(rows: FoundRow[]): Promise<void>
+  deleteFound(ids: string[]): Promise<void>
+  /** The downloaded window and its pictures; never the changes waiting, their photos, nor the rows set aside. */
   clear(): Promise<void>
+  /** The rows set aside too (Remove offline data). */
+  clearFound(): Promise<void>
+  /** Drops this tab's copies of the logs in memory (another tab changed what is stored under them); the next read reads them again. */
+  forget(): void
 }
 
 export interface DeviceStorage {
@@ -182,7 +194,7 @@ export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage
   const meta = () => openDb(factory, META_DB, 1, (db) => db.createObjectStore('meta'))
   return {
     async open(user) {
-      const db = await openDb(factory, dbName(user), 5, (created, from) => {
+      const db = await openDb(factory, dbName(user), 6, (created, from) => {
         if (from < 1) created.createObjectStore('snapshots', { keyPath: 'key' }).createIndex('at', 'at')
         if (from < 2) {
           // The downloaded window (2): vehicles, their logs by vehicle, and how far each vehicle's download got.
@@ -197,6 +209,7 @@ export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage
         if (from < 4) created.createObjectStore('photos', { keyPath: 'key' })
         // The pictures kept for offline use (5).
         if (from < 5) created.createObjectStore('pictures', { keyPath: 'id' })
+        if (from < 6) created.createObjectStore('found', { keyPath: 'id' }).createIndex('vehicleId', 'vehicleId')
       })
       const rows = rowStore({
         refuelings: idbTable<LogRow>(db, 'refuelings'),
@@ -206,6 +219,7 @@ export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage
         changes: idbTable<Change>(db, 'changes'),
         photos: idbTable<KeptPhoto>(db, 'photos'),
         pictures: idbTable<KeptPicture>(db, 'pictures'),
+        found: idbTable<FoundRow>(db, 'found'),
       })
       return {
         user,
@@ -240,7 +254,7 @@ export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage
           await committed(tx)
         },
         async clear() {
-          const names = ['snapshots', 'vehicles', 'refuelings', 'expenses', 'cursors', 'pictures'] // never the changes waiting for the server, nor their photos
+          const names = ['snapshots', 'vehicles', 'refuelings', 'expenses', 'cursors', 'pictures'] // never the changes waiting for the server, their photos, nor the rows set aside
           const tx = db.transaction(names, 'readwrite')
           names.forEach((name) => tx.objectStore(name).clear())
           await committed(tx)
@@ -288,6 +302,7 @@ export function memoryStorage(): DeviceStorage {
         changes: memoryTable<Change>('id'),
         photos: memoryTable<KeptPhoto>('key'),
         pictures: memoryTable<KeptPicture>('id'),
+        found: memoryTable<FoundRow>('id'),
       }
       memoryTables.set(user, tables)
       const kept = rowStore(tables)
@@ -332,6 +347,7 @@ interface Tables {
   changes: Table<Change>
   photos: Table<KeptPhoto>
   pictures: Table<KeptPicture>
+  found: Table<FoundRow>
 }
 
 function idbTable<T>(db: IDBDatabase, name: string): Table<T> {
@@ -422,6 +438,10 @@ function rowStore(tables: Tables): RowStore {
     pictureIds: () => tables.pictures.keys(),
     putPicture: (picture) => tables.pictures.put([picture]),
     deletePictures: (ids) => tables.pictures.delete(ids),
+    found: () => tables.found.all(),
+    putFound: (rows) => tables.found.put(rows),
+    deleteFound: (ids) => tables.found.delete(ids),
+    clearFound: () => tables.found.clear(),
     async clear() {
       // The downloaded window and its pictures; the changes waiting for the server and their photos stay (removing them would lose what the
       // user did).
@@ -430,5 +450,6 @@ function rowStore(tables: Tables): RowStore {
       )
       cache.clear()
     },
+    forget: () => cache.clear(),
   }
 }

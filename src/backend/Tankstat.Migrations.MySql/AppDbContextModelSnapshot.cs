@@ -186,11 +186,20 @@ namespace Tankstat.Migrations.MySql
                     b.Property<int>("Id")
                         .HasColumnType("int");
 
+                    b.Property<Guid>("Generation")
+                        .HasColumnType("char(36)");
+
                     b.Property<string>("LastStartMode")
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
                     b.Property<DateTime?>("LastStartedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("RestorePoint")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("RestoredAt")
                         .HasColumnType("datetime(6)");
 
                     b.HasKey("Id");

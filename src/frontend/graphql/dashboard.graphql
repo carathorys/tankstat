@@ -2,6 +2,7 @@
 # for exactly these fields, so Apollo updates the normalised Vehicle in place and the card re-renders without the home page being asked again.
 fragment VehicleCardFields on Vehicle {
   id
+  version
   name
   licensePlate
   fuelType

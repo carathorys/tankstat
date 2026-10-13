@@ -7,8 +7,11 @@ export const ANONYMOUS_USER = 'anonymous'
 export const MAX_SNAPSHOTS = 300
 const PRUNE_EVERY = 25
 
+/** Which history the server's data belonged to when this device downloaded it (`Session.instance.generation`); kept with the answers. */
+export const GENERATION_KEY = 'meta:generation'
+
 /** Asked once per page load and needed to open the app offline: never pruned, however old. */
-const spared = (key: string) => key.startsWith('Session:') || key.startsWith('UiSettings:')
+const spared = (key: string) => key.startsWith('Session:') || key.startsWith('UiSettings:') || key === GENERATION_KEY
 
 /** The tabs of this site tell each other who the server said is signed in (the cookies, and so the account, are shared). */
 export const TABS_CHANNEL = 'tankstat-offline'
@@ -31,11 +34,35 @@ const listeners = new Set<() => void>()
  * `keptPictures.ts`).
  */
 const storeListeners = new Set<() => void>()
+/** Told when the server's history changed: before the device drops what it holds (to set it aside), and after (to download afresh). */
+type GenerationListener = (phase: 'before' | 'after', change: { from: string; to: string }) => Promise<void> | void
+const generationListeners = new Set<GenerationListener>()
+/** Told when the rows set aside changed (`foundRows.ts`): what lists or counts them reads them again. */
+const foundListeners = new Set<() => void>()
+
+let generationTail: Promise<unknown> = Promise.resolve()
+/**
+ * The history this tab last saw kept for the open user's data: when another tab started afresh for a new one, what this tab holds in
+ * memory (the copies of the logs) is of the old history and goes too.
+ */
+let seenGeneration: string | undefined
+
+/** One check of the server's history at a time: in this tab by chaining, across the tabs of this site by a Web Lock (where there is one). */
+function oneGenerationCheckAtATime<T>(work: () => Promise<T>): Promise<T> {
+  const run = () => {
+    const locks = globalThis.navigator?.locks
+    return locks ? (locks.request('tankstat-generation', work) as Promise<T>) : work()
+  }
+  const result = generationTail.then(run, run)
+  generationTail = result.catch(() => undefined)
+  return result
+}
 
 async function openFor(user: string | null) {
   if (store?.user === user) return
   store?.close()
   store = null
+  seenGeneration = undefined
   if (user !== null) store = await storage.open(user)
   storeListeners.forEach((listener) => listener())
 }
@@ -159,15 +186,81 @@ export const deviceData = {
   },
 
   /**
-   * Removes everything this device keeps for the signed-in user (the next download brings their window again), and tells what read from it
-   * (the pictures on screen are its own until then).
+   * Removes everything this device keeps for the signed-in user (the next download brings their window again), the rows set aside when
+   * the server's history changed too, and tells what read from it (the pictures on screen are its own until then).
    */
   async removeAll(): Promise<void> {
     await switching
     await writes
     if (!store || !confirmed) return
     await store.clear()
+    await store.rows.clearFound()
     storeListeners.forEach((listener) => listener())
+    foundListeners.forEach((listener) => listener())
+  },
+
+  /**
+   * The server said which history its data belongs to (every `Session` answer, and every download before it writes anything): the first
+   * one seen is adopted as it is; another one than the one kept means a restore replaced the data, so what this device downloaded refers
+   * to ids and versions of another history. Then the listeners set it aside (one that cannot throws, and nothing goes), everything
+   * downloaded and every kept answer goes (never the changes waiting, their photos, nor the rows set aside), the new generation is kept,
+   * and the listeners download afresh. One check at a time, in this tab and across the tabs (a `Session` answer reaches every open tab at
+   * about the same time): each reads the kept generation inside its turn, so the second finds the new one kept and does nothing, and never
+   * wipes what the first just downloaded; a tab that finds it so drops its own copies in memory of the old history.
+   */
+  generationSeen(generation: string | undefined): Promise<'same' | 'adopted' | 'changed'> {
+    if (!generation) return Promise.resolve('same')
+    return oneGenerationCheckAtATime(async () => {
+      await switching
+      const open = store
+      if (!open || !confirmed) return 'same'
+      const kept = (await open.get(GENERATION_KEY).catch(() => undefined))?.data
+      if (kept === generation) {
+        // Another tab started afresh for this history: the copies of the logs this tab holds in memory are of the old one.
+        if (seenGeneration !== undefined && seenGeneration !== generation) {
+          open.rows.forget()
+          storeListeners.forEach((listener) => listener())
+        }
+        seenGeneration = generation
+        return 'same'
+      }
+      if (typeof kept !== 'string') {
+        await open.put({ key: GENERATION_KEY, data: generation, at: Date.now() })
+        seenGeneration = generation
+        return 'adopted'
+      }
+      const change = { from: kept, to: generation }
+      for (const listener of generationListeners) await listener('before', change)
+      // Signed out, or someone else signed in, while the rows were set aside: nothing is dropped (the next answer checks again).
+      if (store !== open || !confirmed) return 'same'
+      await writes
+      await open.clear()
+      await open.put({ key: GENERATION_KEY, data: generation, at: Date.now() })
+      seenGeneration = generation
+      storeListeners.forEach((listener) => listener())
+      for (const listener of generationListeners) await listener('after', change)
+      return 'changed'
+    })
+  },
+
+  onGenerationChange(listener: GenerationListener): () => void {
+    generationListeners.add(listener)
+    return () => {
+      generationListeners.delete(listener)
+    }
+  },
+
+  /** Told when the rows set aside changed (`foundRows.ts`): what lists or counts them reads them again. */
+  onFoundChange(listener: () => void): () => void {
+    foundListeners.add(listener)
+    return () => {
+      foundListeners.delete(listener)
+    }
+  },
+
+  /** The rows set aside changed (a download judged them, or the person sent or forgot some). */
+  foundChanged(): void {
+    foundListeners.forEach((listener) => listener())
   },
 
   /** Tests: waits until the answers on their way to the device are kept. */
@@ -189,6 +282,9 @@ export const deviceData = {
     writes = Promise.resolve()
     puts = 0
     listeners.clear()
+    generationListeners.clear()
+    generationTail = Promise.resolve()
+    seenGeneration = undefined
     storeListeners.forEach((listener) => listener())
   },
 }
