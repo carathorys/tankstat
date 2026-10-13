@@ -7,10 +7,10 @@ using Tankstat.Domain;
 namespace Tankstat.Application.Backups;
 
 /// <summary>
-/// What the administration page shows of the backups at no cost: the folder, the run under way or the last one, the settings and when the
-/// schedule writes the next one (null: nothing scheduled). Polled while a backup runs.
+/// What the administration page shows of the backups at no cost: the folder, the run under way or the last one, the settings, when the
+/// schedule writes the next one (null: nothing scheduled) and the server's time zone, the schedule's. Polled while a backup runs.
 /// </summary>
-public sealed record BackupStatus(string Folder, BackupRunStatus Run, BackupOptions Settings, bool PhotosApart, DateTimeOffset? NextRun);
+public sealed record BackupStatus(string Folder, BackupRunStatus Run, BackupOptions Settings, bool PhotosApart, DateTimeOffset? NextRun, string TimeZone);
 
 /// <summary>The backups in the folder and the migration the database is at, which a backup must match to be restored here.</summary>
 public sealed record RestorePoints(IReadOnlyList<RestorePoint> Points, string? DatabaseMigration);
@@ -40,8 +40,8 @@ public sealed class BackupAdminService(
     {
         await access.RequireAdminAsync(ct);
         var o = options.Value;
-        var next = o.DailyAt is { } at ? BackupSchedule.NextAfter(clock.GetUtcNow(), at, clock.LocalTimeZone) : (DateTimeOffset?)null;
-        return new BackupStatus(store.Folder, runner.Status, o, !storage.Value.OneRoot, next);
+        var next = o.Schedule?.NextAfter(clock.GetUtcNow(), clock.LocalTimeZone);
+        return new BackupStatus(store.Folder, runner.Status, o, !storage.Value.OneRoot, next, clock.LocalTimeZone.Id);
     }
 
     /// <summary>Every backup in the folder (each file's manifest is read), so only asked for when shown.</summary>

@@ -35,11 +35,14 @@ public sealed record BackupRunInfo(bool Running, DateTimeOffset? StartedAt, Date
 
 /// <param name="Recipient">Backups are encrypted for this recipient (<c>Backups:Encryption:Recipient</c>); none: in plain, without the keys.</param>
 /// <param name="PhotosApart">The photos of logs have a folder of their own (<c>Storage:PhotosPath</c>), so they are only in a backup with <paramref name="Photos"/>.</param>
-/// <param name="Every">The time of day (<c>HH:mm</c>, the server's local time) a backup is written every day; none: nothing is scheduled.</param>
+/// <param name="Times">The times of day (<c>HH:mm</c>, the server's local time), earliest first, a backup is written on each of <paramref name="Days"/>; none: nothing is scheduled.</param>
+/// <param name="Days">The days of the week of the schedule, from Monday; none: nothing is scheduled.</param>
+/// <param name="TimeZone">The server's time zone (an IANA id such as <c>Europe/Budapest</c>, or <c>UTC</c>), which the times are in.</param>
 /// <param name="NextRun">When the schedule writes the next backup.</param>
 /// <param name="Keep">After a backup the app wrote, only the newest this many of its own stay.</param>
 /// <param name="KeepDays">After a backup the app wrote, its own older than this many days go.</param>
-public sealed record BackupSettingsInfo(string? Recipient, bool PhotosApart, bool Photos, int MaxUploadMb, string? Every, DateTimeOffset? NextRun, int? Keep, int? KeepDays);
+public sealed record BackupSettingsInfo(
+    string? Recipient, bool PhotosApart, bool Photos, int MaxUploadMb, IReadOnlyList<string> Times, IReadOnlyList<DayOfWeek> Days, string TimeZone, DateTimeOffset? NextRun, int? Keep, int? KeepDays);
 
 /// <summary>The backups of the administration page. <c>folder</c>, <c>run</c> and <c>settings</c> cost nothing (the page polls <c>run</c> while a backup is written); the rest is worked out only when selected.</summary>
 public sealed record BackupOverviewInfo(string Folder, BackupRunInfo Run, BackupSettingsInfo Settings)
@@ -47,12 +50,15 @@ public sealed record BackupOverviewInfo(string Folder, BackupRunInfo Run, Backup
     public static BackupOverviewInfo From(BackupStatus s)
     {
         var last = s.Run.Last;
+        var schedule = s.Settings.Schedule;
         return new BackupOverviewInfo(
             s.Folder,
             new BackupRunInfo(s.Run.Running, last?.StartedAt, last?.FinishedAt, last?.File, last?.Bytes, last?.Error),
             new BackupSettingsInfo(
                 s.Settings.Encrypted ? s.Settings.Encryption.Recipient!.Trim() : null, s.PhotosApart, s.Settings.Photos, s.Settings.MaxUploadMb,
-                s.Settings.DailyAt?.ToString("HH:mm", CultureInfo.InvariantCulture), s.NextRun, s.Settings.Keep, s.Settings.KeepDays)); // a culture's time separator (fi-FI: 02.00) is not the setting's
+                // a culture's time separator (fi-FI: 02.00) is not the setting's
+                schedule?.Times.Select(t => t.ToString("HH:mm", CultureInfo.InvariantCulture)).ToList() ?? [], schedule?.Days ?? [], s.TimeZone,
+                s.NextRun, s.Settings.Keep, s.Settings.KeepDays));
     }
 }
 

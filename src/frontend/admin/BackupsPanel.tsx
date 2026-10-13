@@ -102,16 +102,23 @@ export function BackupsPanel() {
   )
 }
 
-/** The schedule and what retention keeps, in words: the time of day is the server's (its zone may not be the browser's), the next run the browser's. */
+/**
+ * The schedule and what retention keeps, in words: the days and times are the server's (its zone, which is named, may not be the
+ * browser's), the next run the browser's.
+ */
 function useScheduleText() {
   const { t } = useTranslation()
-  const { dateTime, list, timeOfDay } = useFormat()
+  const { dateTime, list, timeOfDay, weekday } = useFormat()
   return (settings: BackupsQuery['backups']['settings']) => {
-    const schedule = settings.every
-      ? [t('admin.backups.everyDay', { time: timeOfDay(settings.every) }), settings.nextRun && t('admin.backups.nextRun', { time: dateTime(settings.nextRun) })]
-          .filter(Boolean)
-          .join(' · ')
-      : t('admin.backups.notScheduled')
+    const times = list(settings.times.map(timeOfDay))
+    const when =
+      settings.days.length === 7
+        ? t('admin.backups.everyDay', { times, zone: settings.timeZone })
+        : t('admin.backups.onDays', { days: list(settings.days.map((day) => weekday(day))), times, zone: settings.timeZone })
+    const schedule =
+      settings.times.length > 0 && settings.days.length > 0
+        ? [when, settings.nextRun && t('admin.backups.nextRun', { time: dateTime(settings.nextRun) })].filter(Boolean).join(' · ')
+        : t('admin.backups.notScheduled')
     const limits = [
       settings.keep != null && t('admin.backups.keepCount', { count: settings.keep }),
       settings.keepDays != null && t('admin.backups.keepDays', { count: settings.keepDays }),

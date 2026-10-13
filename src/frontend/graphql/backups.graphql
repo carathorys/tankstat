@@ -21,7 +21,9 @@ query Backups {
       photosApart
       photos
       maxUploadMb
-      every
+      times
+      days
+      timeZone
       nextRun
       keep
       keepDays

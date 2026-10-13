@@ -202,7 +202,9 @@ type BackupSettingsInfo {
   photosApart: Boolean!
   photos: Boolean!
   maxUploadMb: Int!
-  every: String
+  times: [String!]!
+  days: [DayOfWeek!]!
+  timeZone: String!
   nextRun: DateTime
   keep: Int
   keepDays: Int
@@ -1123,6 +1125,16 @@ enum ColorMode {
   SYSTEM
 }
 
+enum DayOfWeek {
+  SUNDAY
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+}
+
 enum DistanceUnit {
   KILOMETERS
   MILES
@@ -1281,6 +1293,7 @@ enum SettingKind {
   CHOICE
   LIST
   SECRET
+  DAYS
 }
 
 enum SettingsGroup {

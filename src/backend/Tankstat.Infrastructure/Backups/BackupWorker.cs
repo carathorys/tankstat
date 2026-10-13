@@ -7,11 +7,11 @@ using Tankstat.Application.Backups;
 namespace Tankstat.Infrastructure.Backups;
 
 /// <summary>
-/// The schedule (<c>Backups:Every</c>): a backup every day at that time of the server's local time, through the same one-at-a-time runner as
+/// The schedule (<c>Backups:Every</c> on <c>Backups:Days</c>): a backup at each of those times of the server's local time, through the same one-at-a-time runner as
 /// Back up now, so a run due while one is being written joins it instead of writing a second. At start, a due time that passed without a
 /// backup since (<see cref="BackupSchedule.Missed"/>) is caught up at once. Without the setting it does nothing and says nothing. Nothing
 /// in here may stop the app: a failure is logged and the schedule goes on at the next due time. The settings apply at once: a new time, or
-/// none, is taken up as soon as it is saved (a missed backup is caught up only at the app's start), while a reload that leaves the time as
+/// none, is taken up as soon as it is saved (a missed backup is caught up only at the app's start), while a reload that leaves the schedule as
 /// it was never moves the due time waited for.
 /// </summary>
 internal sealed class BackupWorker(BackupRunner runner, IBackupStore store, IOptionsMonitor<BackupOptions> options, TimeProvider clock, ILogger<BackupWorker> logger)
@@ -56,10 +56,10 @@ internal sealed class BackupWorker(BackupRunner runner, IBackupStore store, IOpt
         // afresh. Any reload does (a save of another group too), so only what the settings say decides, never that the worker was woken.
         using var subscription = options.OnChange((_, _) => Volatile.Read(ref _changed).TrySetResult());
         var starting = true;
-        TimeOnly? announced = null;
+        string? announced = null; // the schedule last said, as its text
         var warned = false; // that no backup is ever removed, while that holds
         var unusable = false; // that the settings cannot be read, while that holds
-        (TimeOnly At, string Zone, DateTimeOffset Due)? plan = null; // the due time waited for, kept while the time of day stays
+        (string Schedule, string Zone, DateTimeOffset Due)? plan = null; // the due time waited for, kept while the schedule stays
         while (!ct.IsCancellationRequested)
         {
             try
@@ -89,7 +89,7 @@ internal sealed class BackupWorker(BackupRunner runner, IBackupStore store, IOpt
                 if (unusable) logger.LogInformation("The backup settings can be used again");
                 unusable = false;
                 var zone = clock.LocalTimeZone;
-                if (o.DailyAt is not { } at)
+                if (o.Schedule is not { } schedule)
                 {
                     if (announced is not null) logger.LogInformation("Backups are not scheduled any more");
                     announced = null;
@@ -99,10 +99,13 @@ internal sealed class BackupWorker(BackupRunner runner, IBackupStore store, IOpt
                     await changed.Task.WaitAsync(ct);
                     continue;
                 }
-                if (announced != at)
+                var key = schedule.ToString();
+                if (announced != key)
                 {
-                    logger.LogInformation("Backups are written every day at {Time} ({Zone})", at.ToString("HH:mm", CultureInfo.InvariantCulture), zone.Id);
-                    announced = at;
+                    logger.LogInformation("Backups are written {Days} at {Times} ({Zone})",
+                        schedule.IsEveryDay ? "every day" : string.Join(", ", schedule.Days),
+                        string.Join(", ", schedule.Times.Select(t => t.ToString("HH:mm", CultureInfo.InvariantCulture))), zone.Id);
+                    announced = key;
                 }
                 // When it comes to hold, at the start or when retention is cleared while backups are scheduled, not again for a new time.
                 if (!o.Pruning && !warned)
@@ -111,15 +114,15 @@ internal sealed class BackupWorker(BackupRunner runner, IBackupStore store, IOpt
                 if (starting)
                 {
                     starting = false;
-                    await CatchUpAsync(at, zone);
+                    await CatchUpAsync(schedule, zone);
                 }
 
-                // The due time waited for stays while the time of day does: a reload handled once the clock reached it (its timer about to
-                // end, or late after the host was suspended) still writes that night's backup, at once. A new time is planned from now, so
-                // one that passed today waits for tomorrow.
+                // The due time waited for stays while the schedule does: a reload handled once the clock reached it (its timer about to
+                // end, or late after the host was suspended) still writes that backup, at once. A new schedule is planned from now, so a time
+                // that passed today waits for its next day.
                 var now = clock.GetUtcNow();
-                var next = plan is { } kept && kept.At == at && kept.Zone == zone.Id ? kept.Due : BackupSchedule.NextAfter(now, at, zone);
-                plan = (at, zone.Id, next);
+                var next = plan is { } kept && kept.Schedule == key && kept.Zone == zone.Id ? kept.Due : schedule.NextAfter(now, zone);
+                plan = (key, zone.Id, next);
                 using var wake = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 var sleep = Task.Delay(next > now ? next - now : TimeSpan.Zero, clock, wake.Token);
                 FallAsleep(next);
@@ -153,13 +156,13 @@ internal sealed class BackupWorker(BackupRunner runner, IBackupStore store, IOpt
     }
 
     /// <summary>At start: the due time that passed without a backup since is written at once.</summary>
-    private async Task CatchUpAsync(TimeOnly at, TimeZoneInfo zone)
+    private async Task CatchUpAsync(BackupSchedule schedule, TimeZoneInfo zone)
     {
         try
         {
-            if (BackupSchedule.Missed(NewestOwn(), clock.GetUtcNow(), at, zone))
+            if (schedule.Missed(NewestOwn(), clock.GetUtcNow(), zone))
             {
-                logger.LogInformation("The backup due at {Due} was not written: writing it now", BackupSchedule.LastDueAtOrBefore(clock.GetUtcNow(), at, zone));
+                logger.LogInformation("The backup due at {Due} was not written: writing it now", schedule.LastDueAtOrBefore(clock.GetUtcNow(), zone));
                 await RunAsync();
             }
         }

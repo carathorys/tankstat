@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next'
 import type { DistanceUnit, VolumeUnit } from '../gql/generated.ts'
 import { validLocale } from './locale.ts'
 
+/** The week from Monday, as the server names the days (in its own case). */
+const WEEK = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+
 const DISTANCE_UNITS: Record<DistanceUnit, 'kilometer' | 'mile'> = { KILOMETERS: 'kilometer', MILES: 'mile' }
 
 /**
@@ -26,6 +29,12 @@ export function useFormat() {
         const match = /^(\d{1,2}):(\d{2})$/.exec(hhmm)
         if (!match) return hhmm
         return new Intl.DateTimeFormat(language, { timeStyle: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(2000, 0, 1, Number(match[1]), Number(match[2]))))
+      },
+      /** A day of the week by its English name in any case ("Monday", "MONDAY") as the language writes it ("hétfő"). */
+      weekday: (day: string, width: 'long' | 'short' = 'long') => {
+        const index = WEEK.indexOf(day.toLowerCase())
+        if (index < 0) return day
+        return new Intl.DateTimeFormat(language, { weekday: width, timeZone: 'UTC' }).format(new Date(Date.UTC(2024, 0, 1 + index))) // 1 January 2024 was a Monday
       },
       /** A size on disk in the unit that suits it (1.2 GB, 340 kB), counted in thousands like the browser's storage figures. */
       bytes: (value: number) => {

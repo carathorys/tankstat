@@ -26,15 +26,31 @@ export const isOn = (value: string) => value.trim().toLowerCase() === 'true'
 /** A value as it is sent: a decimal with a dot, which is what the server parses (invariantly), however it was typed ("0,5"). */
 const sent = (s: Setting, value: string) => (s.kind === 'DECIMAL' ? value.trim().replace(',', '.') : value)
 
+/** The week from Monday, as a days setting writes it (`Backups:Days`). */
+export const WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const
+/** The value of a days setting that chooses no day (an empty one would read as unset: every day). */
+export const NO_DAY = 'None'
+
+/** The days a days setting holds, from Monday: the whole week when empty, none for `None`, names or their first three letters in any case. */
+export function daysOf(value: string): string[] {
+  const parts = value.split(/[,; ]+/).filter(Boolean).map((p) => p.toLowerCase())
+  if (parts.length === 0) return [...WEEK]
+  return WEEK.filter((day) => parts.includes(day.toLowerCase()) || parts.includes(day.slice(0, 3).toLowerCase()))
+}
+
+/** A days setting's value for the days chosen: `None` for none, the names from Monday otherwise. */
+export const daysValue = (days: readonly string[]) => (days.length === 0 ? NO_DAY : WEEK.filter((day) => days.includes(day)).join(','))
+
 /**
- * Whether a value says what the server has: a switch by on or off (not set is off), a choice in any case (as the server takes it), a decimal
- * as sent. A setting nobody set is unchanged at its built-in default, and also when emptied: there is nothing to clear.
+ * Whether a value says what the server has: a switch by on or off (not set is off), a choice in any case (as the server takes it), days in
+ * any order, a decimal as sent. A setting nobody set is unchanged at its built-in default, and also when emptied: there is nothing to clear.
  */
 function unchanged(s: Setting, value: string): boolean {
   if (s.value == null && value.trim() === '') return true
   const server = effectiveOf(s) ?? ''
   if (s.kind === 'BOOLEAN') return isOn(value) === isOn(server)
   if (s.kind === 'CHOICE') return value.toLowerCase() === server.toLowerCase()
+  if (s.kind === 'DAYS') return daysValue(daysOf(value)) === daysValue(daysOf(server))
   return sent(s, value) === sent(s, server)
 }
 

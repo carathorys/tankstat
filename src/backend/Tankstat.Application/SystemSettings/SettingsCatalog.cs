@@ -38,6 +38,8 @@ public enum SettingKind
     List,
     /// <summary>A password, secret or API key: stored like any text, never shown back.</summary>
     Secret,
+    /// <summary>Days of the week, written <c>Monday,Thursday</c> (<c>None</c>: no day); see <see cref="BackupSchedule.ParseDays"/>.</summary>
+    Days,
 }
 
 /// <summary>One setting the app manages in its own settings file; <see cref="SettingsCatalog"/> lists them all.</summary>
@@ -148,6 +150,7 @@ public static class SettingsCatalog
         new(SettingsGroup.PhotoReading, "Recognition:MaxConcurrent", SettingKind.Integer),
 
         new(SettingsGroup.Backups, "Backups:Every", SettingKind.Text),
+        new(SettingsGroup.Backups, "Backups:Days", SettingKind.Days),
         new(SettingsGroup.Backups, "Backups:Keep", SettingKind.Integer),
         new(SettingsGroup.Backups, "Backups:KeepDays", SettingKind.Integer),
         new(SettingsGroup.Backups, "Backups:Photos", SettingKind.Boolean),
@@ -257,6 +260,9 @@ public static class SettingsCatalog
                 var choice = value.Trim();
                 if (!setting.Choices!.Contains(choice, StringComparer.OrdinalIgnoreCase) && setting.AlsoAccepted?.Contains(choice, StringComparer.OrdinalIgnoreCase) != true)
                     return $"{setting.Key} must be one of {string.Join(", ", setting.Choices!)}.";
+                break;
+            case SettingKind.Days:
+                if (BackupSchedule.ParseDays(value) is null) return $"{setting.Key} must be days of the week such as Monday,Thursday, or {BackupSchedule.NoDay}.";
                 break;
         }
         return null;

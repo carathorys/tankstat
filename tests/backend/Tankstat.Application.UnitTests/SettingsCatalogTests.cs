@@ -39,7 +39,7 @@ public class SettingsCatalogTests
             var definition = SettingsCatalog.Find(key);
             Assert.True(definition is not null, $"{key} is neither in the catalog nor left out on purpose");
             Assert.Equal(key, definition!.Key); // the catalog spells the key as the options class does
-            if (kind is SettingKind.Text) Assert.Contains(definition.Kind, new[] { SettingKind.Text, SettingKind.Multiline, SettingKind.Secret, SettingKind.Choice });
+            if (kind is SettingKind.Text) Assert.Contains(definition.Kind, new[] { SettingKind.Text, SettingKind.Multiline, SettingKind.Secret, SettingKind.Choice, SettingKind.Days });
             else Assert.Equal(kind, definition.Kind);
             if (choices is not null) Assert.Equal(choices, definition.Choices);
         }
@@ -85,6 +85,9 @@ public class SettingsCatalogTests
     [InlineData("Logging:LogLevel:Microsoft.AspNetCore", "Warning", null)]
     [InlineData("Logging:LogLevel:Microsoft.AspNetCore", "None", null)]
     [InlineData("Logging:LogLevel:Microsoft.AspNetCore", "Information", "must not be below Warning")]
+    [InlineData("Backups:Days", "Monday,thu", null)]
+    [InlineData("Backups:Days", "None", null)]
+    [InlineData("Backups:Days", "zzzz", "days of the week")]
     [InlineData("Auth:PublicUrl", "anything at all", null)]
     public void Validate_ChecksTheShapeOfAValue_AndNamesTheSettingAndTheRule(string key, string value, string? refusal)
     {

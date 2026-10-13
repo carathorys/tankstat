@@ -46,8 +46,12 @@ interface Run {
   error: string | null
 }
 
+const WEEK = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
+
 interface Schedule {
-  every: string | null
+  times: string[]
+  days: string[]
+  timeZone: string
   nextRun: string | null
   keep: number | null
   keepDays: number | null
@@ -87,7 +91,7 @@ function backupsServer({
     pending: false,
     polls: [] as unknown[],
     gone: [] as string[],
-    schedule: { every: null, nextRun: null, keep: null, keepDays: null } as Schedule,
+    schedule: { times: [], days: [], timeZone: 'UTC', nextRun: null, keep: null, keepDays: null } as Schedule,
   }
   server.use(
     graphql.query('Session', () => {
@@ -515,15 +519,25 @@ it('says why a key set cannot be saved when the environment holds the settings',
 
 it('shows the schedule with the next run and what retention keeps, or that neither is set', async () => {
   const { state } = backupsServer()
-  state.schedule = { every: '02:00', nextRun: '2026-10-12T02:00:00Z', keep: 14, keepDays: 30 }
+  state.schedule = { times: ['02:00'], days: WEEK, timeZone: 'Europe/Budapest', nextRun: '2026-10-12T02:00:00Z', keep: 14, keepDays: 30 }
   await openBackups()
 
-  // The time of day as the server has it (its zone, written as the language writes times), the next run in this machine's zone.
+  // The time of day as the server has it (its zone, named, written as the language writes times), the next run in this machine's zone.
   const daily = new Intl.DateTimeFormat('en', { timeStyle: 'short', timeZone: 'UTC' }).format(new Date('2000-01-01T02:00:00Z'))
   const next = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date('2026-10-12T02:00:00Z'))
   const overview = within(screen.getByRole('region', { name: 'This server' }))
-  expect(overview.getByText(`Every day at ${daily} (the server's time) · next ${next}`)).toBeInTheDocument()
+  expect(overview.getByText(`Every day at ${daily} (the server's time, Europe/Budapest) · next ${next}`)).toBeInTheDocument()
   expect(overview.getByText('After each backup the app writes, it keeps the newest 14 and none older than 30 days; the newest always stays')).toBeInTheDocument()
+})
+
+it('names the days and the times of a schedule that is not every day', async () => {
+  const { state } = backupsServer()
+  state.schedule = { times: ['02:00', '14:30'], days: ['MONDAY', 'THURSDAY'], timeZone: 'UTC', nextRun: null, keep: null, keepDays: null }
+  await openBackups()
+
+  const at = (h: number, m: number) => new Intl.DateTimeFormat('en', { timeStyle: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(2000, 0, 1, h, m)))
+  const overview = within(screen.getByRole('region', { name: 'This server' }))
+  expect(overview.getByText(`Monday and Thursday at ${at(2, 0)} and ${at(14, 30)} (the server's time, UTC)`)).toBeInTheDocument()
 })
 
 it('says when nothing is scheduled and every backup is kept', async () => {

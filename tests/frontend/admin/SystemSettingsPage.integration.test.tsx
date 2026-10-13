@@ -692,3 +692,26 @@ it('a mail server left empty leaves the rest of the e-mail settings unused, and 
   expect(photos.getByLabelText('Model')).toBeEnabled()
   expect(sectionHeader(photos, 'Model server')).toHaveAttribute('aria-expanded', 'true')
 })
+
+it('days of the week are checkboxes named by the setting: every day by default, and none ticked saves no day', async () => {
+  const ui = userEvent.setup()
+  const base = fixture()
+  const days = setting({ key: 'Backups:Days', kind: 'DAYS', defaultValue: 'Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday' })
+  base.groups.push({ __typename: 'SystemSettingsGroup', name: 'BACKUPS', appliesAtOnce: true, settings: [setting({ key: 'Backups:Every', value: '02:00', isSet: true, source: 'FILE' }), days] })
+  const calls = settingsServer(base)
+  renderWithApollo(<App />, '/admin/settings?tab=backups')
+  const backups = await group('Backups')
+
+  const week = within(backups.getByRole('group', { name: 'Back up on' }))
+  expect(week.getAllByRole('checkbox').map((c) => (c as HTMLInputElement).checked)).toEqual([true, true, true, true, true, true, true])
+  expect(backups.getByRole('button', { name: 'Save changes' })).toBeDisabled() // the built-in default: nothing to save
+  for (const day of ['Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']) await ui.click(week.getByRole('checkbox', { name: day }))
+  await ui.click(backups.getByRole('button', { name: 'Save changes' }))
+  await waitFor(() => expect(calls.UpdateSystemSettings).toEqual([{ changes: [{ key: 'Backups:Days', value: 'Monday', clear: false }] }]))
+
+  // The save's answer (still every day in this fake) is the form from then on: nothing ticked off is no day at all.
+  await waitFor(() => expect(week.getByRole('checkbox', { name: 'Sunday' })).toBeChecked())
+  for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']) await ui.click(week.getByRole('checkbox', { name: day }))
+  await ui.click(backups.getByRole('button', { name: 'Save changes' }))
+  await waitFor(() => expect(calls.UpdateSystemSettings?.[1]).toEqual({ changes: [{ key: 'Backups:Days', value: 'None', clear: false }] }))
+})

@@ -15,17 +15,18 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { DefinitionList } from '../components/DefinitionList.tsx'
-import type { LabelBadge } from '../components/LabelBadges.tsx'
+import { LabelBadges, type LabelBadge } from '../components/LabelBadges.tsx'
 import { LabeledSwitch } from '../components/LabeledSwitch.tsx'
 import { LabeledSelect } from '../components/UnitSelect.tsx'
 import { Field } from '../forms/Field.tsx'
 import { FieldInput } from '../forms/FieldInput.tsx'
 import { Form } from '../forms/Form.tsx'
 import { SystemSettingsDocument, UpdateSystemSettingsDocument, type SystemSettingFieldsFragment, type SettingsGroup } from '../gql/generated.ts'
+import { useFormat } from '../i18n/format.ts'
 import { ErrorMessage } from '../messages.tsx'
 import { useToast } from '../toast/toastContext.ts'
 import { ProblemList } from './ProblemList.tsx'
-import { changesOf, isOn, type GroupDraft } from './settingsDraft.ts'
+import { changesOf, daysOf, daysValue, isOn, WEEK, type GroupDraft } from './settingsDraft.ts'
 import { SettingHelp } from './SettingHelp.tsx'
 import { problemsOf } from './settingsText.ts'
 import { sharedReason, unusedReason, type Unused, type ValueOf } from './settingsRelevance.ts'
@@ -57,6 +58,7 @@ export function SettingsGroupForm({
   onSaved: () => void
 }) {
   const { t } = useTranslation()
+  const { weekday } = useFormat()
   const { toast } = useToast()
   const unusedText = useUnusedText()
   const settingLabel = useSettingLabel()
@@ -113,7 +115,7 @@ export function SettingsGroupForm({
               value: (
                 <Stack direction="row" sx={{ gap: 0.5, alignItems: 'flex-start' }}>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
-                    {shown(s, t)}
+                    {shown(s, t, weekday)}
                     <Typography component="span" variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
                       {[t('systemSettings.source.ENVIRONMENT'), reasonOf(s, section)].filter(Boolean).join(' ')}
                     </Typography>
@@ -270,10 +272,11 @@ export function SettingsGroupForm({
   )
 }
 
-/** A read-only value as words: a secret only as set or not, a list on one line, nothing as a dash. */
-function shown(s: Setting, t: TFunction): string {
+/** A read-only value as words: a secret only as set or not, a list on one line, days by their names, nothing as a dash. */
+function shown(s: Setting, t: TFunction, weekday: (day: string) => string): string {
   if (s.isSecret) return s.isSet ? t('systemSettings.secretSetShort') : t('systemSettings.secretNotSetShort')
   if (!s.value) return t('common.none')
+  if (s.kind === 'DAYS') return daysOf(s.value).map((day) => weekday(day)).join(', ') || t('common.none')
   return s.kind === 'LIST' ? s.value.split('\n').join(', ') : s.value
 }
 
@@ -351,6 +354,8 @@ function Control({
       if (choice !== '' && !s.choices.includes(choice)) options.push({ value: choice, label: choice })
       return <LabeledSelect label={label} hint={hint} badges={badges} value={choice} placeholder={t('systemSettings.useDefault')} disabled={unused} onChange={onChange} options={options} />
     }
+    case 'DAYS':
+      return <DaysControl label={label} hint={hint} badges={badges} value={value} disabled={unused} onChange={onChange} />
     case 'SECRET':
       return (
         <Stack sx={{ gap: 0.5 }}>
@@ -391,4 +396,57 @@ function Control({
         </Field>
       )
   }
+}
+
+/** Days of the week as checkboxes, from Monday, in a group named by the setting's label; none ticked chooses no day. */
+function DaysControl({
+  label,
+  hint,
+  badges,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string
+  hint?: string
+  badges: readonly LabelBadge[]
+  value: string
+  disabled: boolean
+  onChange: (value: string) => void
+}) {
+  const { weekday } = useFormat()
+  const id = useId()
+  const chosen = daysOf(value)
+  const describedBy = [badges.length > 0 && `${id}-badges`, hint && `${id}-hint`].filter(Boolean).join(' ') || undefined
+  return (
+    // A group named by its label (not a fieldset: the badges beside the label would have to sit inside its legend, and so in its name).
+    <Box role="group" aria-labelledby={`${id}-label`} aria-describedby={describedBy}>
+      <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap', mb: 0.5 }}>
+        <Typography id={`${id}-label`} variant="body2" sx={{ fontWeight: 700 }}>
+          {label}
+        </Typography>
+        {badges.length > 0 && <LabelBadges id={`${id}-badges`} badges={badges} />}
+      </Stack>
+      <Stack direction="row" sx={{ flexWrap: 'wrap', columnGap: 1 }}>
+        {WEEK.map((day) => (
+          <FormControlLabel
+            key={day}
+            label={weekday(day)}
+            control={
+              <Checkbox
+                checked={chosen.includes(day)}
+                disabled={disabled}
+                onChange={(e) => onChange(daysValue(e.target.checked ? [...chosen, day] : chosen.filter((d) => d !== day)))}
+              />
+            }
+          />
+        ))}
+      </Stack>
+      {hint && (
+        <Typography id={`${id}-hint`} variant="caption" sx={{ color: 'text.secondary' }}>
+          {hint}
+        </Typography>
+      )}
+    </Box>
+  )
 }
