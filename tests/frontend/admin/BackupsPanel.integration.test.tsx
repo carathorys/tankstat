@@ -25,6 +25,7 @@ const point = (o: Record<string, unknown> = {}) => ({
   provider: 'Sqlite',
   migration: 'AddInstance',
   sameMigration: true,
+  olderMigration: false,
   safetyNet: false,
   uploaded: false,
   encrypted: true,
@@ -46,8 +47,12 @@ interface Run {
   error: string | null
 }
 
+const WEEK = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
+
 interface Schedule {
-  every: string | null
+  times: string[]
+  days: string[]
+  timeZone: string
   nextRun: string | null
   keep: number | null
   keepDays: number | null
@@ -87,7 +92,7 @@ function backupsServer({
     pending: false,
     polls: [] as unknown[],
     gone: [] as string[],
-    schedule: { every: null, nextRun: null, keep: null, keepDays: null } as Schedule,
+    schedule: { times: [], days: [], timeZone: 'UTC', nextRun: null, keep: null, keepDays: null } as Schedule,
   }
   server.use(
     graphql.query('Session', () => {
@@ -121,6 +126,12 @@ function backupsServer({
     graphql.query('BackupRun', () => {
       record('BackupRun', {})
       return HttpResponse.json({ data: { backups: { __typename: 'BackupOverviewInfo', run: state.run } } })
+    }),
+    graphql.mutation('DeleteBackup', ({ variables }) => {
+      record('DeleteBackup', variables.file)
+      if (state.pending) return HttpResponse.json(gqlError('A restore waits.', 'VALIDATION_FAILED', 'backup.restorePending'))
+      state.points = state.points.filter((p) => (p as { file: string }).file !== variables.file)
+      return HttpResponse.json({ data: { deleteBackup: true } })
     }),
     graphql.mutation('RunBackup', () => {
       record('RunBackup', {})
@@ -197,7 +208,8 @@ it('shows the server, where its backups go, and every backup in the folder with 
     points: [
       point(),
       point({ file: 'uploaded-old-server.zip', createdAt: '2026-09-01T10:00:00Z', uploaded: true, encrypted: false, recipient: null, currentRecipient: false, photos: 'LEFT_OUT', keys: false }),
-      point({ file: 'tankstat-backup-20260101T000000Z.zip', createdAt: '2026-01-01T00:00:00Z', sameMigration: false, migration: 'AddRecurring', appVersion: '0.9.0' }),
+      point({ file: 'tankstat-backup-20260101T000000Z.zip', createdAt: '2026-01-01T00:00:00Z', sameMigration: false, migration: 'AddSomethingNewer', appVersion: '9.9.0' }),
+      point({ file: 'tankstat-backup-20250101T000000Z.zip', createdAt: '2025-01-01T00:00:00Z', sameMigration: false, olderMigration: true, migration: 'AddRecurring', appVersion: '0.9.0' }),
     ],
   })
   await openBackups()
@@ -210,14 +222,29 @@ it('shows the server, where its backups go, and every backup in the folder with 
   expect(overview.getByText('included')).toBeInTheDocument() // the photos, which have a folder of their own
 
   const rows = within(screen.getByRole('table')).getAllByRole('row').slice(1)
-  expect(rows).toHaveLength(3)
-  expect(within(rows[0]).getByText('Tankstat 0.13.0 on Sqlite · 1,234 rows · encrypted for the current key · with the photos')).toBeInTheDocument()
-  expect(within(rows[1]).getByText(/uploaded-old-server\.zip · uploaded/)).toBeInTheDocument()
-  expect(within(rows[1]).getByText(/not encrypted · without the photos/)).toBeInTheDocument()
-  // Made at another version of the database: it cannot be restored here, and the row says with what it can.
+  expect(rows).toHaveLength(4)
+  // A column per property: the kind, encryption and photos as icons named by what they mean (their tooltip says it too).
+  const cells = (row: HTMLElement) => within(row).getAllByRole('cell').map((cell) => cell.textContent)
+  expect(cells(rows[0]).slice(0, 5)).toEqual(['', 'Tankstat 0.13.0Sqlite', '1,234', '', ''])
+  expect(within(rows[0]).getByRole('img', { name: 'Backup (written by the app or copied into the folder)' })).toBeInTheDocument()
+  expect(within(rows[0]).getByRole('img', { name: 'Encrypted for the current key' })).toBeInTheDocument()
+  expect(within(rows[0]).getByRole('img', { name: 'With the photos of logs' })).toBeInTheDocument()
+  expect(within(rows[1]).getByText('uploaded-old-server.zip')).toBeInTheDocument()
+  expect(within(rows[1]).getByRole('img', { name: 'Uploaded on this page' })).toBeInTheDocument()
+  expect(within(rows[1]).getByRole('img', { name: 'Not encrypted (holds no sign-in keys)' })).toBeInTheDocument()
+  expect(within(rows[1]).getByRole('img', { name: 'Without the photos of logs' })).toBeInTheDocument()
+  await userEvent.setup().hover(within(rows[1]).getByRole('img', { name: 'Uploaded on this page' }))
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Uploaded on this page')
+  // Made by a newer release: it cannot be restored here, and the row says with what it can.
   expect(within(rows[2]).queryByRole('button', { name: /^Restore/ })).not.toBeInTheDocument()
-  expect(within(rows[2]).getByText(/restore it with the release that wrote it \(Tankstat 0\.9\.0\)/)).toBeInTheDocument()
+  expect(within(rows[2]).getByText('Made by a newer release: restore it with Tankstat 9.9.0 or later.')).toBeInTheDocument()
+  // At an older migration: restored and brought up to date. Worded by what it holds, not by who wrote it: a safety net written before an
+  // upgrade holds the older release's database, but the new release wrote it.
+  expect(within(rows[3]).getByText('Holds the database as an older release left it: brought up to date as it is restored.')).toBeInTheDocument()
+  expect(within(rows[3]).getByRole('button', { name: /^Restore the backup of/ })).toBeInTheDocument()
   expect(within(rows[0]).getByRole('button', { name: /^Restore the backup of/ })).toBeInTheDocument()
+  await userEvent.setup().click(within(rows[3]).getByRole('button', { name: /^Restore the backup of/ }))
+  expect(await screen.findByRole('alertdialog')).toHaveAccessibleDescription(/holds the database as an older release left it \(the file was written by Tankstat 0\.9\.0\): the database is set up as that release left it/)
 })
 
 it('backs up now, follows the run, and lists the new backup when it is written', async () => {
@@ -275,6 +302,37 @@ it('says on the page when a backup is gone since the list, instead of leaving it
 
   expect(await screen.findByRole('alert')).toHaveTextContent('There is no such backup in the backups folder.')
   expect(download).not.toHaveBeenCalled()
+})
+
+it('deletes a backup once asked to confirm, lists the folder afresh, and keeps the focus in the list', async () => {
+  const kept = point({ file: 'tankstat-backup-20261009T020000Z.zip', createdAt: '2026-10-09T02:00:00Z' })
+  const { calls } = backupsServer({ points: [point(), kept] })
+  const ui = await openBackups()
+
+  await ui.click(screen.getByRole('button', { name: /^Delete the backup of .*\(tankstat-backup-20261010T020000Z\.zip\)$/ }))
+  const confirm = await screen.findByRole('alertdialog', { name: /^Delete the backup of .*\(tankstat-backup-20261010T020000Z\.zip\)\?$/ })
+  expect(calls.DeleteBackup).toBeUndefined() // only once confirmed
+  await ui.click(within(confirm).getByRole('button', { name: 'Delete' }))
+
+  // In the table: the toast that says it was deleted names the file too, until it hides itself.
+  const table = screen.getByRole('table')
+  await waitFor(() => expect(within(table).queryByText(/tankstat-backup-20261010T020000Z\.zip/)).not.toBeInTheDocument())
+  expect(calls.DeleteBackup).toEqual(['tankstat-backup-20261010T020000Z.zip'])
+  expect(within(table).getByText(/tankstat-backup-20261009T020000Z\.zip/)).toBeInTheDocument()
+  // The button that had the focus went with its row: the list's heading has it, not the start of the page.
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Backups in the folder' })).toHaveFocus())
+})
+
+it('says why a backup cannot be deleted while a restore waits', async () => {
+  const { state } = backupsServer()
+  state.pending = true
+  const ui = await openBackups()
+
+  await ui.click(screen.getByRole('button', { name: /^Delete the backup of/ }))
+  await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('A restore waits for the next start; no backup can be deleted until it has run.')
+  expect(screen.getByText(/tankstat-backup-20261010T020000Z\.zip/)).toBeInTheDocument()
 })
 
 it('refuses a file larger than the server takes before sending anything', async () => {
@@ -482,15 +540,25 @@ it('says why a key set cannot be saved when the environment holds the settings',
 
 it('shows the schedule with the next run and what retention keeps, or that neither is set', async () => {
   const { state } = backupsServer()
-  state.schedule = { every: '02:00', nextRun: '2026-10-12T02:00:00Z', keep: 14, keepDays: 30 }
+  state.schedule = { times: ['02:00'], days: WEEK, timeZone: 'Europe/Budapest', nextRun: '2026-10-12T02:00:00Z', keep: 14, keepDays: 30 }
   await openBackups()
 
-  // The time of day as the server has it (its zone, written as the language writes times), the next run in this machine's zone.
+  // The time of day as the server has it (its zone, named, written as the language writes times), the next run in this machine's zone.
   const daily = new Intl.DateTimeFormat('en', { timeStyle: 'short', timeZone: 'UTC' }).format(new Date('2000-01-01T02:00:00Z'))
   const next = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date('2026-10-12T02:00:00Z'))
   const overview = within(screen.getByRole('region', { name: 'This server' }))
-  expect(overview.getByText(`Every day at ${daily} (the server's time) · next ${next}`)).toBeInTheDocument()
+  expect(overview.getByText(`Every day at ${daily} (the server's time, Europe/Budapest) · next ${next}`)).toBeInTheDocument()
   expect(overview.getByText('After each backup the app writes, it keeps the newest 14 and none older than 30 days; the newest always stays')).toBeInTheDocument()
+})
+
+it('names the days and the times of a schedule that is not every day', async () => {
+  const { state } = backupsServer()
+  state.schedule = { times: ['02:00', '14:30'], days: ['MONDAY', 'THURSDAY'], timeZone: 'UTC', nextRun: null, keep: null, keepDays: null }
+  await openBackups()
+
+  const at = (h: number, m: number) => new Intl.DateTimeFormat('en', { timeStyle: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(2000, 0, 1, h, m)))
+  const overview = within(screen.getByRole('region', { name: 'This server' }))
+  expect(overview.getByText(`Monday and Thursday at ${at(2, 0)} and ${at(14, 30)} (the server's time, UTC)`)).toBeInTheDocument()
 })
 
 it('says when nothing is scheduled and every backup is kept', async () => {

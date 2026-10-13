@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, configure } from '@testing-library/react'
 import { MotionGlobalConfig } from 'motion/react'
 import { afterEach } from 'vitest'
+import { resetFormats } from '../../../src/frontend/i18n/formatStore.ts'
 import { i18n, initI18n } from '../../../src/frontend/i18n/index.ts'
 import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
 import { deviceData } from '../../../src/frontend/offline/deviceData.ts'
@@ -23,6 +24,7 @@ afterEach(async () => {
   cleanup()
   window.localStorage.clear()
   window.sessionStorage.clear()
+  resetFormats() // the browser's copy is gone: as the language writes times and dates
   document.documentElement.classList.remove('surface-transparent', 'surface-opaque') // glossy again: the surface style lives on <html>
   installPrompt.reset()
   appUpdate.reset()

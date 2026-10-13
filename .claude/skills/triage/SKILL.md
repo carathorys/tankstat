@@ -16,7 +16,7 @@ The argument is an issue number, or `next` (pick the oldest open issue that has 
 ## Steps
 
 1. **Read everything.** `gh issue view N --comments`; follow every linked issue, PR and external page (WebFetch); read the files the issue names. Restate the problem in one paragraph before touching code.
-2. **Find the code.** Map where the behaviour lives (file:line). Check CLAUDE.md for the area's rules and conventions.
+2. **Find the code.** Map where the behaviour lives (file:line). Check CLAUDE.md and the area's file in `.claude/rules/` for its rules and conventions.
 3. **Reproduce it.** Prefer real evidence over reasoning: a throwaway unit test or probe, a real-browser run (Playwright), a request against a running server. Say plainly whether it is **confirmed**, **partly reproduced** or **not reproduced**, and what you ran. Throwaway probes live in the scratchpad or are deleted before you finish; **never commit them and never change source files** while triaging.
 4. **Find the cause.** Explain the mechanism with file:line references and the evidence. If the issue's description turns out wrong or incomplete, say so and correct the title.
 5. **Plan the fix.** Numbered steps, each with an acceptance criterion; the tests to add (unit / integration / real browser); docs to update; what is out of scope; related issues.

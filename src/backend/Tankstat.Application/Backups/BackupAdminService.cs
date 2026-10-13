@@ -2,17 +2,21 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
 using Tankstat.Application.Images;
+using Tankstat.Domain;
 
 namespace Tankstat.Application.Backups;
 
 /// <summary>
-/// What the administration page shows of the backups at no cost: the folder, the run under way or the last one, the settings and when the
-/// schedule writes the next one (null: nothing scheduled). Polled while a backup runs.
+/// What the administration page shows of the backups at no cost: the folder, the run under way or the last one, the settings, when the
+/// schedule writes the next one (null: nothing scheduled) and the server's time zone, the schedule's. Polled while a backup runs.
 /// </summary>
-public sealed record BackupStatus(string Folder, BackupRunStatus Run, BackupOptions Settings, bool PhotosApart, DateTimeOffset? NextRun);
+public sealed record BackupStatus(string Folder, BackupRunStatus Run, BackupOptions Settings, bool PhotosApart, DateTimeOffset? NextRun, string TimeZone);
 
-/// <summary>The backups in the folder and the migration the database is at, which a backup must match to be restored here.</summary>
-public sealed record RestorePoints(IReadOnlyList<RestorePoint> Points, string? DatabaseMigration);
+/// <summary>
+/// The backups in the folder, the migration the database is at, and the migrations of this release: a backup made at one of them can be
+/// restored here (an older one is brought up to date), one made at another is a newer release's.
+/// </summary>
+public sealed record RestorePoints(IReadOnlyList<RestorePoint> Points, string? DatabaseMigration, IReadOnlyList<string> KnownMigrations);
 
 /// <summary>Bytes of the database (null: the provider would not say) and of the uploaded files.</summary>
 public sealed record StorageSizes(long? Database, FileUsage Files);
@@ -39,15 +43,15 @@ public sealed class BackupAdminService(
     {
         await access.RequireAdminAsync(ct);
         var o = options.Value;
-        var next = o.DailyAt is { } at ? BackupSchedule.NextAfter(clock.GetUtcNow(), at, clock.LocalTimeZone) : (DateTimeOffset?)null;
-        return new BackupStatus(store.Folder, runner.Status, o, !storage.Value.OneRoot, next);
+        var next = o.Schedule?.NextAfter(clock.GetUtcNow(), clock.LocalTimeZone);
+        return new BackupStatus(store.Folder, runner.Status, o, !storage.Value.OneRoot, next, clock.LocalTimeZone.Id);
     }
 
     /// <summary>Every backup in the folder (each file's manifest is read), so only asked for when shown.</summary>
     public async Task<RestorePoints> RestorePointsAsync(CancellationToken ct)
     {
         await access.RequireAdminAsync(ct);
-        return new RestorePoints(store.List(), await database.LastMigrationAsync(ct));
+        return new RestorePoints(store.List(), await database.LastMigrationAsync(ct), await database.KnownMigrationsAsync(ct));
     }
 
     /// <summary>The migration the database is at (a question to the database only, the folder is not read).</summary>
@@ -99,6 +103,20 @@ public sealed class BackupAdminService(
         var stream = store.OpenRead(fileName);
         logger.LogInformation("User {UserId} downloaded the backup {File}", admin.Id, fileName);
         return stream;
+    }
+
+    /// <summary>
+    /// Removes a backup of the folder: only one the page lists (<c>backup.notFound</c> for anything else, the restore marker among it), and
+    /// nothing while a restore waits for the next start (<c>backup.restorePending</c>: the backup it names must still be there then, which
+    /// is why retention prunes nothing meanwhile either).
+    /// </summary>
+    public async Task DeleteAsync(string fileName, CancellationToken ct)
+    {
+        var admin = await access.RequireAdminAsync(ct);
+        store.ReadManifest(fileName);
+        if (store.RestorePending) throw new DomainException("backup.restorePending", "A restore waits for the next start; no backup is deleted until it ran.");
+        store.Delete(fileName);
+        logger.LogInformation("User {UserId} deleted the backup {File}", admin.Id, fileName);
     }
 
     /// <summary>

@@ -10,22 +10,25 @@ import FormControlLabel from '@mui/material/FormControlLabel'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import type { TFunction } from 'i18next'
-import { ChevronDown, Info } from 'lucide-react'
+import { ChevronDown, Info, TriangleAlert } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { DefinitionList } from '../components/DefinitionList.tsx'
-import type { LabelBadge } from '../components/LabelBadges.tsx'
+import { LabelBadges, type LabelBadge } from '../components/LabelBadges.tsx'
 import { LabeledSwitch } from '../components/LabeledSwitch.tsx'
 import { LabeledSelect } from '../components/UnitSelect.tsx'
 import { Field } from '../forms/Field.tsx'
 import { FieldInput } from '../forms/FieldInput.tsx'
 import { Form } from '../forms/Form.tsx'
 import { SystemSettingsDocument, UpdateSystemSettingsDocument, type SystemSettingFieldsFragment, type SettingsGroup } from '../gql/generated.ts'
+import { sampleDate, sampleTime, useFormat } from '../i18n/format.ts'
+import { DATE_FORMATS, TIME_FORMATS } from '../i18n/formatStore.ts'
+import { validLocale } from '../i18n/locale.ts'
 import { ErrorMessage } from '../messages.tsx'
 import { useToast } from '../toast/toastContext.ts'
 import { ProblemList } from './ProblemList.tsx'
-import { changesOf, isOn, type GroupDraft } from './settingsDraft.ts'
+import { changesOf, daysOf, daysValue, isOn, WEEK, type GroupDraft } from './settingsDraft.ts'
 import { SettingHelp } from './SettingHelp.tsx'
 import { problemsOf } from './settingsText.ts'
 import { sharedReason, unusedReason, type Unused, type ValueOf } from './settingsRelevance.ts'
@@ -57,6 +60,8 @@ export function SettingsGroupForm({
   onSaved: () => void
 }) {
   const { t } = useTranslation()
+  const { weekday } = useFormat()
+  const choiceLabel = useChoiceLabel()
   const { toast } = useToast()
   const unusedText = useUnusedText()
   const settingLabel = useSettingLabel()
@@ -113,7 +118,7 @@ export function SettingsGroupForm({
               value: (
                 <Stack direction="row" sx={{ gap: 0.5, alignItems: 'flex-start' }}>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
-                    {shown(s, t)}
+                    {shown(s, t, weekday, choiceLabel)}
                     <Typography component="span" variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
                       {[t('systemSettings.source.ENVIRONMENT'), reasonOf(s, section)].filter(Boolean).join(' ')}
                     </Typography>
@@ -139,6 +144,14 @@ export function SettingsGroupForm({
               onClear={(removed) => clear(s.key, removed)}
             />
           ))}
+        {/* No sign-in hands everything to whoever reaches the server: said as soon as it is chosen, and while it runs so. Part of the page,
+            not news (a note, not an alert, which would interrupt a screen reader each time the tab is drawn): the mode's confirmation
+            says it again at the moment of choosing. */}
+        {settings.some((s) => s.key === 'Auth:Mode') && valueOf('Auth:Mode')?.toLowerCase() === 'none' && (
+          <Alert severity="warning" role="note" icon={<TriangleAlert size={16} aria-hidden />}>
+            {t('systemSettings.noSignInWarning')}
+          </Alert>
+        )}
       </Stack>
     )
   }
@@ -270,10 +283,54 @@ export function SettingsGroupForm({
   )
 }
 
-/** A read-only value as words: a secret only as set or not, a list on one line, nothing as a dash. */
-function shown(s: Setting, t: TFunction): string {
+/** The server's spelling of an enum value ("TwentyFourHour") as the schema writes it ("TWENTY_FOUR_HOUR"). */
+const schemaName = (choice: string) => choice.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase()
+
+/** The settings whose choices have words of their own (`systemSettings.choices.<set>.<choice>`), by the set they take them from. */
+const CHOICE_SETS: Record<string, string> = {
+  'Auth:Mode': 'authMode',
+  'Smtp:Security': 'smtpSecurity',
+  'Recognition:Provider': 'recognitionProvider',
+  'Recognition:OpenAiCompatible:ResponseFormat': 'responseFormat',
+}
+
+/**
+ * A choice as the page offers it, in words with the value as the server spells it after them ("Local accounts (Standalone)"),
+ * since that is what the documentation and the environment use: a time or date format by an example of it alone (a name
+ * such as DayMonthYearDots says little), a unit by its name alone. A log level, which says itself, and a choice without words of its own (a spelling
+ * still accepted) as it is.
+ */
+function useChoiceLabel() {
+  const { t, i18n } = useTranslation()
+  // The examples in the tag the pages write with (useFormat's), so each shows what the format gives.
+  const language = validLocale(i18n.language, i18n.resolvedLanguage)
+  return (key: string, choice: string): string => {
+    // A format this page does not know (a newer server's, while the tab waits for its update) as the server spells it: it has no example.
+    if (key === 'Defaults:TimeFormat') {
+      const format = TIME_FORMATS.find((f) => f === schemaName(choice))
+      return format ? t('formats.option', { name: t(`formats.times.${format}`), example: sampleTime(language, format) }) : choice
+    }
+    if (key === 'Defaults:DateFormat') {
+      const format = DATE_FORMATS.find((f) => f === schemaName(choice))
+      return format ? sampleDate(language, format) : choice
+    }
+    const set = key === 'Defaults:DistanceUnit' ? 'distance' : key === 'Defaults:VolumeUnit' ? 'volume' : CHOICE_SETS[key]
+    const wordsKey = set === 'distance' || set === 'volume' ? `units.${set}.${schemaName(choice)}` : `systemSettings.choices.${set}.${choice}`
+    if (!set || !i18n.exists(wordsKey)) return choice
+    const words = String(t(wordsKey as never))
+    return set === 'distance' || set === 'volume' || words === choice ? words : t('systemSettings.choiceWithValue', { words, value: choice })
+  }
+}
+
+/** A read-only value as words: a secret only as set or not, a list on one line, days by their names, nothing as a dash. */
+function shown(s: Setting, t: TFunction, weekday: (day: string) => string, choiceLabel: (key: string, choice: string) => string): string {
   if (s.isSecret) return s.isSet ? t('systemSettings.secretSetShort') : t('systemSettings.secretNotSetShort')
   if (!s.value) return t('common.none')
+  if (s.kind === 'CHOICE') {
+    const choice = s.choices.find((c) => c.toLowerCase() === s.value!.toLowerCase())
+    return choice ? choiceLabel(s.key, choice) : s.value
+  }
+  if (s.kind === 'DAYS') return daysOf(s.value).map((day) => weekday(day)).join(', ') || t('common.none')
   return s.kind === 'LIST' ? s.value.split('\n').join(', ') : s.value
 }
 
@@ -331,6 +388,7 @@ function Control({
   onClear: (clear: boolean) => void
 }) {
   const { t } = useTranslation()
+  const choiceLabel = useChoiceLabel()
   // Where the value comes from, and a restart it waits for, beside the label; the hint keeps only what needs a sentence.
   const badges: LabelBadge[] = [
     { text: t(`systemSettings.sourceShort.${s.source}`), spoken: t(`systemSettings.source.${s.source}`) },
@@ -347,10 +405,12 @@ function Control({
       // The server takes a choice in any case, and spellings it no longer offers ("Ssl"): such a value shows as the choice it means, or as
       // it is written, never as an empty field.
       const choice = s.choices.find((c) => c.toLowerCase() === value.toLowerCase()) ?? value
-      const options = [{ value: '', label: t('systemSettings.useDefault') }, ...s.choices.map((c) => ({ value: c, label: c }))]
+      const options = [{ value: '', label: t('systemSettings.useDefault') }, ...s.choices.map((c) => ({ value: c, label: choiceLabel(s.key, c) }))]
       if (choice !== '' && !s.choices.includes(choice)) options.push({ value: choice, label: choice })
       return <LabeledSelect label={label} hint={hint} badges={badges} value={choice} placeholder={t('systemSettings.useDefault')} disabled={unused} onChange={onChange} options={options} />
     }
+    case 'DAYS':
+      return <DaysControl label={label} hint={hint} badges={badges} value={value} disabled={unused} onChange={onChange} />
     case 'SECRET':
       return (
         <Stack sx={{ gap: 0.5 }}>
@@ -391,4 +451,57 @@ function Control({
         </Field>
       )
   }
+}
+
+/** Days of the week as checkboxes, from Monday, in a group named by the setting's label; none ticked chooses no day. */
+function DaysControl({
+  label,
+  hint,
+  badges,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string
+  hint?: string
+  badges: readonly LabelBadge[]
+  value: string
+  disabled: boolean
+  onChange: (value: string) => void
+}) {
+  const { weekday } = useFormat()
+  const id = useId()
+  const chosen = daysOf(value)
+  const describedBy = [badges.length > 0 && `${id}-badges`, hint && `${id}-hint`].filter(Boolean).join(' ') || undefined
+  return (
+    // A group named by its label (not a fieldset: the badges beside the label would have to sit inside its legend, and so in its name).
+    <Box role="group" aria-labelledby={`${id}-label`} aria-describedby={describedBy}>
+      <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap', mb: 0.5 }}>
+        <Typography id={`${id}-label`} variant="body2" sx={{ fontWeight: 700 }}>
+          {label}
+        </Typography>
+        {badges.length > 0 && <LabelBadges id={`${id}-badges`} badges={badges} />}
+      </Stack>
+      <Stack direction="row" sx={{ flexWrap: 'wrap', columnGap: 1 }}>
+        {WEEK.map((day) => (
+          <FormControlLabel
+            key={day}
+            label={weekday(day)}
+            control={
+              <Checkbox
+                checked={chosen.includes(day)}
+                disabled={disabled}
+                onChange={(e) => onChange(daysValue(e.target.checked ? [...chosen, day] : chosen.filter((d) => d !== day)))}
+              />
+            }
+          />
+        ))}
+      </Stack>
+      {hint && (
+        <Typography id={`${id}-hint`} variant="caption" sx={{ color: 'text.secondary' }}>
+          {hint}
+        </Typography>
+      )}
+    </Box>
+  )
 }

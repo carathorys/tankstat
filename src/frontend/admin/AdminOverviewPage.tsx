@@ -1,9 +1,12 @@
 import { useQuery } from '@apollo/client/react'
+import Accordion from '@mui/material/Accordion'
+import AccordionDetails from '@mui/material/AccordionDetails'
+import AccordionSummary from '@mui/material/AccordionSummary'
 import Box from '@mui/material/Box'
 import Link from '@mui/material/Link'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
-import { CircleAlert, CircleCheck } from 'lucide-react'
+import { ChevronDown, CircleAlert, CircleCheck, FolderOpen } from 'lucide-react'
 import { useId, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link as RouterLink } from 'react-router'
@@ -32,6 +35,7 @@ export function AdminOverviewPage() {
   usePageTitle(t('admin.title'))
   const attentionId = useId()
   const factsId = useId()
+  const foldersId = useId()
   const { data, error, loading } = useQuery(AdminOverviewDocument, { fetchPolicy: 'no-cache' })
 
   const content = (): ReactNode => {
@@ -100,10 +104,50 @@ export function AdminOverviewPage() {
                   </Link>
                 ),
               },
-              { label: t('adminOverview.settingsFile'), value: systemSettings.file.exists ? systemSettings.file.path : t('adminOverview.noFile') },
             ]}
           />
         </section>
+        <Accordion disableGutters variant="outlined" slotProps={{ heading: { component: 'h2' } }}>
+          <AccordionSummary expandIcon={<ChevronDown size={18} aria-hidden />} id={`${foldersId}-header`} aria-controls={`${foldersId}-panel`}>
+            <Stack direction="row" sx={{ gap: 1, alignItems: 'center' }}>
+              <FolderOpen size={18} aria-hidden />
+              <Stack>
+                <Typography component="span" variant="body1" sx={{ fontWeight: 700 }}>
+                  {t('adminOverview.foldersTitle')}
+                </Typography>{' '}
+                <Typography component="span" variant="caption" sx={{ color: 'text.secondary' }}>
+                  {t('adminOverview.foldersHint')}
+                </Typography>
+              </Stack>
+            </Stack>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Stack component="ul" sx={{ gap: 2, m: 0, p: 0, listStyle: 'none' }}>
+              {systemSettings.folders.map((f) => (
+                <Stack component="li" key={f.kind} sx={{ gap: 0.25 }}>
+                  <Typography sx={{ fontWeight: 700 }}>{t(`adminOverview.folders.${f.kind}.name`)}</Typography>
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                    {t(`adminOverview.folders.${f.kind}.what`)}
+                  </Typography>
+                  {f.sameAsPictures ? (
+                    <Typography variant="body2">{t('adminOverview.photosWithPictures')}</Typography>
+                  ) : (
+                    <Typography variant="body2" sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                      {f.path}
+                      {f.kind === 'SETTINGS_FILE' && !systemSettings.file.exists && ` (${t('adminOverview.notCreatedYet')})`}
+                    </Typography>
+                  )}
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                    {t(f.sameAsPictures ? 'adminOverview.ownFolderBy' : 'adminOverview.changedBy')}{' '}
+                    <Box component="code" sx={{ fontFamily: 'monospace' }}>
+                      {f.variable}
+                    </Box>
+                  </Typography>
+                </Stack>
+              ))}
+            </Stack>
+          </AccordionDetails>
+        </Accordion>
       </Stack>
     )
   }

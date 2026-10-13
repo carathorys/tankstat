@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Tankstat.Application;
 using Tankstat.Application.Vehicles;
+using Tankstat.Domain.Settings;
 
 namespace Tankstat.Infrastructure.UnitTests;
 
@@ -35,6 +36,21 @@ public class VehicleDefaultsOptionsTests
     [InlineData("Defaults:RecurringWarnDays", "-1")]
     [InlineData("Defaults:RecurringWarnDays", "366")]
     [InlineData("Defaults:RecurringWarnDistance", "-5")]
+    [InlineData("Defaults:TimeFormat", "24")] // a number binds to an enum value no format has
+    [InlineData("Defaults:TimeFormat", "12")]
+    [InlineData("Defaults:DateFormat", "12")]
     public void OutOfRangeWarnings_FailValidation(string key, string value) =>
         Assert.Throws<OptionsValidationException>(() => Resolve(new() { [key] = value }));
+
+    [Fact]
+    public void TheTimeAndDateFormats_AreTakenByName_InAnyCase()
+    {
+        var options = Resolve(new() { ["Defaults:TimeFormat"] = "twentyFourHour", ["Defaults:DateFormat"] = "Iso" });
+
+        Assert.Equal(TimeFormat.TwentyFourHour, options.TimeFormat);
+        Assert.Equal(DateFormat.Iso, options.DateFormat);
+        var unset = Resolve([]); // as each person's language writes them
+        Assert.Null(unset.TimeFormat);
+        Assert.Null(unset.DateFormat);
+    }
 }

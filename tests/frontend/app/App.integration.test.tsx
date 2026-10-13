@@ -198,7 +198,7 @@ it('on a phone the top bar fits: badges shrink to their icons and the colour mod
   await ui.click(within(bar).getByRole('button', { name: 'Show menu' }))
   const drawer = await screen.findByRole('dialog')
   expect(within(drawer).getByRole('button', { name: 'Appearance' })).toBeInTheDocument()
-  expect(within(drawer).getByRole('button', { name: 'Language' })).toBeInTheDocument()
+  expect(within(drawer).getByRole('button', { name: 'Language and formats' })).toBeInTheDocument()
 })
 
 it('on a desktop the top bar keeps every badge in words, and the menus', async () => {

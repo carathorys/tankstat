@@ -672,6 +672,10 @@ namespace Tankstat.Migrations.MySql
                         .HasMaxLength(16)
                         .HasColumnType("varchar(16)");
 
+                    b.Property<string>("DateFormat")
+                        .HasMaxLength(24)
+                        .HasColumnType("varchar(24)");
+
                     b.Property<string>("Language")
                         .HasMaxLength(8)
                         .HasColumnType("varchar(8)");
@@ -682,6 +686,10 @@ namespace Tankstat.Migrations.MySql
                     b.Property<string>("Surface")
                         .HasMaxLength(16)
                         .HasColumnType("varchar(16)");
+
+                    b.Property<string>("TimeFormat")
+                        .HasMaxLength(24)
+                        .HasColumnType("varchar(24)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");

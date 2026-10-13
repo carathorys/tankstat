@@ -8,6 +8,13 @@ query AdminOverview {
       exists
       ignored
     }
+    folders {
+      kind
+      path
+      setting
+      variable
+      sameAsPictures
+    }
   }
   users {
     id

@@ -9,11 +9,13 @@ import TableBody from '@mui/material/TableBody'
 import TableCell from '@mui/material/TableCell'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
+import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
-import { DatabaseBackup, Download, KeyRound, RotateCcw, Upload } from 'lucide-react'
+import { Archive, DatabaseBackup, Download, Image, ImageOff, KeyRound, LifeBuoy, Lock, LockOpen, RotateCcw, Trash2, Upload, type LucideIcon } from 'lucide-react'
 import { useEffect, useEffectEvent, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link as RouterLink } from 'react-router'
+import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { DefinitionList } from '../components/DefinitionList.tsx'
 import { Loading } from '../components/Loading.tsx'
 import { Segmented } from '../components/Segmented.tsx'
@@ -28,6 +30,7 @@ import { Form } from '../forms/Form.tsx'
 import {
   BackupRunDocument,
   BackupsDocument,
+  DeleteBackupDocument,
   PrepareBackupEncryptionDocument,
   RestoreBackupDocument,
   RunBackupDocument,
@@ -46,7 +49,9 @@ import { connectivity } from '../offline/connectivity.ts'
 import { classifyFailure } from '../offline/errors.ts'
 import { PROBE_TIMEOUT_MS, withDeadline } from '../offline/runtime.ts'
 import { ApiError } from '../pictures/ApiError.ts'
+import { COARSE } from '../theme/components.ts'
 import { downloadBackup, uploadBackup } from './backupFiles.ts'
+import { useToast } from '../toast/toastContext.ts'
 import { ProblemList } from './ProblemList.tsx'
 import { problemsOf } from './settingsText.ts'
 
@@ -91,6 +96,7 @@ export function BackupsPanel() {
       <UploadBackup maxUploadMb={backups.settings.maxUploadMb} onUploaded={() => void refetch()} />
       <RestorePoints
         backups={backups}
+        onDeleted={() => refetch()}
         onRestoring={(point) => setRestoring({ point, generation: session?.session.instance?.generation ?? undefined })}
       />
       <EncryptionSetup recipient={backups.settings.recipient ?? null} />
@@ -98,16 +104,23 @@ export function BackupsPanel() {
   )
 }
 
-/** The schedule and what retention keeps, in words: the time of day is the server's (its zone may not be the browser's), the next run the browser's. */
+/**
+ * The schedule and what retention keeps, in words: the days and times are the server's (its zone, which is named, may not be the
+ * browser's), the next run the browser's.
+ */
 function useScheduleText() {
   const { t } = useTranslation()
-  const { dateTime, list, timeOfDay } = useFormat()
+  const { dateTime, list, timeOfDay, weekday } = useFormat()
   return (settings: BackupsQuery['backups']['settings']) => {
-    const schedule = settings.every
-      ? [t('admin.backups.everyDay', { time: timeOfDay(settings.every) }), settings.nextRun && t('admin.backups.nextRun', { time: dateTime(settings.nextRun) })]
-          .filter(Boolean)
-          .join(' · ')
-      : t('admin.backups.notScheduled')
+    const times = list(settings.times.map(timeOfDay))
+    const when =
+      settings.days.length === 7
+        ? t('admin.backups.everyDay', { times, zone: settings.timeZone })
+        : t('admin.backups.onDays', { days: list(settings.days.map((day) => weekday(day))), times, zone: settings.timeZone })
+    const schedule =
+      settings.times.length > 0 && settings.days.length > 0
+        ? [when, settings.nextRun && t('admin.backups.nextRun', { time: dateTime(settings.nextRun) })].filter(Boolean).join(' · ')
+        : t('admin.backups.notScheduled')
     const limits = [
       settings.keep != null && t('admin.backups.keepCount', { count: settings.keep }),
       settings.keepDays != null && t('admin.backups.keepDays', { count: settings.keepDays }),
@@ -320,28 +333,114 @@ function UploadBackup({ maxUploadMb, onUploaded }: { maxUploadMb: number; onUplo
   )
 }
 
-/** What a backup holds, in words: the release and database it came from, how many rows, whether it is encrypted (for which key) and has the photos. */
-function useContentsText() {
-  const { t } = useTranslation()
-  const { number } = useFormat()
-  return (point: RestorePoint): string =>
-    [
-      t('admin.backups.madeBy', { version: point.appVersion, provider: point.provider }),
-      t('admin.backups.rows', { count: point.rows, rows: number(point.rows) }),
-      point.encrypted ? (point.currentRecipient ? t('admin.backups.encryptedCurrent') : t('admin.backups.encryptedOther')) : t('admin.backups.plain'),
-      point.photos === 'LEFT_OUT' ? t('admin.backups.withoutPhotos') : t('admin.backups.withPhotos'),
-    ].join(' · ')
+/**
+ * A property of a backup as an icon whose meaning is its tooltip and its name (read by a screen reader as an image of that name); it takes
+ * the focus, so the tooltip is shown from the keyboard too, and a tap shows it at once on a touch screen, where the icon is a 44 px target.
+ * The colour only repeats what the icon and its name say.
+ */
+function PropertyIcon({ icon: Icon, label, tone }: { icon: LucideIcon; label: string; tone?: 'success' | 'warning' }) {
+  return (
+    <Tooltip title={label} enterTouchDelay={0} leaveTouchDelay={8000}>
+      <Box
+        component="span"
+        role="img"
+        tabIndex={0}
+        sx={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          p: 0.5,
+          borderRadius: 1,
+          color: tone ? `${tone}.softText` : 'text.secondary',
+          '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main' },
+          [COARSE]: { minWidth: 44, minHeight: 44 },
+        }}
+      >
+        <Icon size={18} aria-hidden />
+      </Box>
+    </Tooltip>
+  )
 }
 
-function RestorePoints({ backups, onRestoring }: { backups: BackupsQuery['backups']; onRestoring: (point: RestorePoint) => void }) {
+/** What kind of backup a row is, its encryption and its photos, each as an icon with its meaning. */
+function useBackupIcons() {
   const { t } = useTranslation()
-  const { dateTime, bytes } = useFormat()
-  const contentsText = useContentsText()
+  return {
+    kind: (p: RestorePoint) =>
+      p.safetyNet ? (
+        <PropertyIcon icon={LifeBuoy} label={t('admin.backups.safetyNet')} />
+      ) : p.uploaded ? (
+        <PropertyIcon icon={Upload} label={t('admin.backups.uploadedTag')} />
+      ) : (
+        <PropertyIcon icon={Archive} label={t('admin.backups.kindBackup')} />
+      ),
+    encryption: (p: RestorePoint) =>
+      !p.encrypted ? (
+        <PropertyIcon icon={LockOpen} label={t('admin.backups.plain')} />
+      ) : p.currentRecipient ? (
+        <PropertyIcon icon={Lock} label={t('admin.backups.encryptedCurrent')} tone="success" />
+      ) : (
+        <PropertyIcon icon={KeyRound} label={t('admin.backups.encryptedOther')} tone="warning" />
+      ),
+    photos: (p: RestorePoint) =>
+      p.photos === 'LEFT_OUT' ? <PropertyIcon icon={ImageOff} label={t('admin.backups.withoutPhotos')} /> : <PropertyIcon icon={Image} label={t('admin.backups.withPhotos')} />,
+  }
+}
+
+function RestorePoints({
+  backups,
+  onDeleted,
+  onRestoring,
+}: {
+  backups: BackupsQuery['backups']
+  onDeleted: () => Promise<unknown>
+  onRestoring: (point: RestorePoint) => void
+}) {
+  const { t } = useTranslation()
+  const { dateTime, bytes, number } = useFormat()
+  const { toast } = useToast()
+  const icons = useBackupIcons()
   const [error, setError] = useState<unknown>()
+  const [deleteBackup] = useMutation(DeleteBackupDocument)
+  // The backups being deleted: their row's buttons are off until the list is asked again (a ref as well, so a second confirmation in
+  // the same moment sends nothing either).
+  const [deleting, setDeleting] = useState<ReadonlySet<string>>(() => new Set())
+  const inFlight = useRef(new Set<string>())
+  const heading = useRef<HTMLHeadingElement>(null)
+  const focusAfterDelete = useRef(false)
+
+  // Once no delete is under way any more: the row went, and with it the button that had the focus (or the confirmation gave the focus
+  // back to that button while it was off), so the focus goes to the list's heading, not back to the start of the page.
+  useEffect(() => {
+    if (!focusAfterDelete.current || deleting.size > 0) return
+    focusAfterDelete.current = false
+    if (!document.activeElement || document.activeElement === document.body) heading.current?.focus()
+  }, [backups.restorePoints, deleting])
+
+  const remove = async (file: string) => {
+    if (inFlight.current.has(file)) return
+    inFlight.current.add(file)
+    setDeleting(new Set(inFlight.current))
+    setError(undefined)
+    try {
+      await deleteBackup({ variables: { file } })
+      toast(t('admin.backups.deleted', { file }))
+    } catch (e) {
+      setError(e)
+    }
+    focusAfterDelete.current = true
+    try {
+      await onDeleted() // also after a refusal: a file gone since the list leaves it
+    } catch {
+      // The list's own error says why it could not be asked again.
+    }
+    inFlight.current.delete(file)
+    setDeleting(new Set(inFlight.current))
+  }
 
   return (
     <section aria-labelledby="backups-points">
-      <Typography id="backups-points" component="h2" variant="h5" sx={{ mb: 1 }}>
+      <Typography ref={heading} id="backups-points" component="h2" variant="h5" tabIndex={-1} sx={{ mb: 1 }}>
         {t('admin.backups.pointsTitle')}
       </Typography>
       <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1.5 }}>
@@ -355,8 +454,12 @@ function RestorePoints({ backups, onRestoring }: { backups: BackupsQuery['backup
           <TableHead>
             <TableRow>
               <TableCell>{t('admin.backups.colMade')}</TableCell>
-              <TableCell>{t('admin.backups.colContents')}</TableCell>
-              <TableCell>{t('admin.backups.colSize')}</TableCell>
+              <TableCell>{t('admin.backups.colKind')}</TableCell>
+              <TableCell>{t('admin.backups.colRelease')}</TableCell>
+              <TableCell align="right">{t('admin.backups.colRows')}</TableCell>
+              <TableCell>{t('admin.backups.colEncryption')}</TableCell>
+              <TableCell>{t('admin.backups.colPhotos')}</TableCell>
+              <TableCell align="right">{t('admin.backups.colSize')}</TableCell>
               <TableCell>
                 <span style={visuallyHidden}>{t('grid.actions')}</span>
               </TableCell>
@@ -365,46 +468,76 @@ function RestorePoints({ backups, onRestoring }: { backups: BackupsQuery['backup
           <TableBody>
             {backups.restorePoints.map((p) => {
               const made = dateTime(p.createdAt)
+              const busy = deleting.has(p.file)
               return (
-                <TableRow key={p.file}>
+                <TableRow key={p.file} aria-busy={busy || undefined}>
                   <TableCell component="th" scope="row">
                     <Typography variant="body2">{made}</Typography>
                     <Typography variant="caption" sx={{ color: 'text.secondary', wordBreak: 'break-all' }}>
-                      {[p.file, p.safetyNet && t('admin.backups.safetyNet'), p.uploaded && t('admin.backups.uploadedTag')].filter(Boolean).join(' · ')}
+                      {p.file}
                     </Typography>
                   </TableCell>
+                  <TableCell>{icons.kind(p)}</TableCell>
                   <TableCell>
-                    <Typography variant="body2">{contentsText(p)}</Typography>
-                    {!p.sameMigration && (
-                      <Typography variant="caption" sx={{ color: 'warning.softText' }}>
+                    <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>
+                      {t('admin.backups.release', { version: p.appVersion })}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                      {p.provider}
+                    </Typography>
+                    {p.olderMigration && (
+                      <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', minWidth: '12rem' }}>
+                        {t('admin.backups.olderMigration')}
+                      </Typography>
+                    )}
+                    {!p.sameMigration && !p.olderMigration && (
+                      <Typography variant="caption" sx={{ display: 'block', color: 'warning.softText', minWidth: '12rem' }}>
                         {t('admin.backups.otherMigration', { version: p.appVersion })}
                       </Typography>
                     )}
                   </TableCell>
-                  <TableCell>{bytes(p.bytes)}</TableCell>
+                  <TableCell align="right">{number(p.rows)}</TableCell>
+                  <TableCell>{icons.encryption(p)}</TableCell>
+                  <TableCell>{icons.photos(p)}</TableCell>
+                  <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                    {bytes(p.bytes)}
+                  </TableCell>
                   <TableCell align="right">
                     <Stack direction="row" sx={{ gap: 1, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                       <Button
                         size="small"
                         variant="soft"
+                        disabled={busy}
                         aria-label={t('admin.backups.downloadAria', { made, file: p.file })}
                         onClick={() => downloadBackup(p.file).catch(setError)}
                       >
                         <Download size={16} aria-hidden />
                         {t('admin.backups.download')}
                       </Button>
-                      {p.sameMigration && (
+                      {(p.sameMigration || p.olderMigration) && (
                         <RestoreDialog
                           point={p}
                           onRestoring={onRestoring}
                           trigger={
-                            <Button size="small" variant="soft" color="error" aria-label={t('admin.backups.restoreAria', { made, file: p.file })}>
+                            <Button size="small" variant="soft" color="error" disabled={busy} aria-label={t('admin.backups.restoreAria', { made, file: p.file })}>
                               <RotateCcw size={16} aria-hidden />
                               {t('admin.backups.restore')}
                             </Button>
                           }
                         />
                       )}
+                      <ConfirmDialog
+                        title={t('admin.backups.deleteTitle', { made, file: p.file })}
+                        description={t('admin.backups.deleteDescription')}
+                        confirmLabel={t('admin.backups.deleteConfirm')}
+                        onConfirm={() => void remove(p.file)}
+                        trigger={
+                          <Button size="small" variant="soft" color="error" loading={busy} aria-label={t('admin.backups.deleteAria', { made, file: p.file })}>
+                            <Trash2 size={16} aria-hidden />
+                            {t('admin.backups.delete')}
+                          </Button>
+                        }
+                      />
                     </Stack>
                   </TableCell>
                 </TableRow>
@@ -436,7 +569,7 @@ function RestoreDialog({ point, trigger, onRestoring }: { point: RestorePoint; t
         busy={busy}
         role="alertdialog"
         title={t('admin.backups.restoreTitle', { made: dateTime(point.createdAt), file: point.file })}
-        description={t('admin.backups.restoreDescription')}
+        description={[t('admin.backups.restoreDescription'), point.olderMigration && t('admin.backups.restoreOlder', { version: point.appVersion })].filter(Boolean).join(' ')}
       >
         <RestoreForm point={point} busy={busy} onBusy={setBusy} onRestoring={onRestoring} />
       </DialogFrame>

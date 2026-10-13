@@ -6,7 +6,7 @@ namespace Tankstat.Application.Backups;
 
 /// <summary>
 /// Bound from the "Backups" section (<c>Backups__Path=/data/backups</c>, <c>Backups__Photos=true</c>, <c>Backups__Encryption__Recipient=age1...</c>,
-/// <c>Backups__Encryption__Salt=...</c>, <c>Backups__Every=02:00</c>, <c>Backups__Keep=14</c>, <c>Backups__KeepDays=30</c>). The folder is an
+/// <c>Backups__Encryption__Salt=...</c>, <c>Backups__Every=02:00</c>, <c>Backups__Days=Monday,Thursday</c>, <c>Backups__Keep=14</c>, <c>Backups__KeepDays=30</c>). The folder is an
 /// environment-level setting with a default, like <c>Storage:Path</c>; the rest may come from any configuration source.
 /// </summary>
 public sealed class BackupOptions
@@ -31,10 +31,16 @@ public sealed class BackupOptions
     public long MaxUploadBytes => MaxUploadMb * 1024L * 1024L;
 
     /// <summary>
-    /// The time of day (<c>HH:mm</c>, the server's local time: <c>TZ</c> in a container) a backup is written every day; unset, nothing is
-    /// scheduled. See <see cref="BackupSchedule"/>.
+    /// The times of day (<c>HH:mm</c>, the server's local time: <c>TZ</c> in a container; several with commas between them) a backup is
+    /// written on each day of <see cref="Days"/>; unset, nothing is scheduled. See <see cref="BackupSchedule"/>.
     /// </summary>
     public string? Every { get; set; }
+
+    /// <summary>
+    /// The days of the week a backup is written on (<c>Monday,Thursday</c>; the whole week by default); <c>None</c> chooses no day, so
+    /// nothing is scheduled. See <see cref="BackupSchedule.ParseDays"/>.
+    /// </summary>
+    public string? Days { get; set; } = BackupSchedule.EveryDay;
 
     /// <summary>After a backup the app wrote, keep only the newest this many of its own (unset: no limit by count). See <see cref="BackupRetention"/>.</summary>
     public int? Keep { get; set; }
@@ -42,8 +48,8 @@ public sealed class BackupOptions
     /// <summary>After a backup the app wrote, remove its own older than this many days (unset: no limit by age). See <see cref="BackupRetention"/>.</summary>
     public int? KeepDays { get; set; }
 
-    /// <summary>The time of day of <see cref="Every"/>, or null when nothing is scheduled.</summary>
-    public TimeOnly? DailyAt => BackupSchedule.Parse(Every);
+    /// <summary>The schedule of <see cref="Every"/> and <see cref="Days"/>, or null when nothing is scheduled.</summary>
+    public BackupSchedule? Schedule => BackupSchedule.Of(Every, Days);
 
     public bool Pruning => Keep is not null || KeepDays is not null;
 
@@ -77,7 +83,8 @@ public sealed class BackupOptionsValidator(IOptions<StorageOptions> storage) : I
         if (!string.IsNullOrWhiteSpace(recipient) && !IsRecipient(recipient)) failures.Add("Backups:Encryption:Recipient is not an age recipient (age1...).");
         if (!string.IsNullOrWhiteSpace(salt) && !BackupEncryption.IsSalt(salt)) failures.Add("Backups:Encryption:Salt is not the base64 of at least 8 bytes.");
         if (o.MaxUploadMb < 1) failures.Add("Backups:MaxUploadMb must be at least 1.");
-        if (!string.IsNullOrWhiteSpace(o.Every) && o.DailyAt is null) failures.Add("Backups:Every must be a time of day such as 02:00 (HH:mm).");
+        if (BackupSchedule.ParseTimes(o.Every) is null) failures.Add("Backups:Every must be one or more times of day such as 02:00 or 02:00, 14:00 (HH:mm).");
+        if (BackupSchedule.ParseDays(o.Days) is null) failures.Add("Backups:Days must be days of the week such as Monday,Thursday, or None.");
         if (o.Keep < 1) failures.Add("Backups:Keep must be at least 1 (the newest backup is always kept).");
         if (o.KeepDays < 1) failures.Add("Backups:KeepDays must be at least 1.");
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);

@@ -30,7 +30,18 @@
     "backups": "Mentések"
   },
   "language": {
-    "label": "Nyelv"
+    "label": "Nyelv",
+    "menu": "Nyelv és formátumok"
+  },
+  "formats": {
+    "time": "Idő",
+    "date": "Dátum",
+    "default": "Alapértelmezett",
+    "option": "{{name}} ({{example}})",
+    "times": {
+      "TWENTY_FOUR_HOUR": "24 órás",
+      "TWELVE_HOUR": "12 órás"
+    }
   },
   "appearance": {
     "label": "Megjelenés"
@@ -429,8 +440,34 @@
     "vehicles": "Járművek",
     "vehicleCount_one": "{{vehicles}} jármű",
     "vehicleCount_other": "{{vehicles}} jármű",
-    "settingsFile": "Beállításfájl",
-    "noFile": "Még nincs: az első mentett beállítással jön létre"
+    "foldersTitle": "Hol tartja a szerver a fájljait",
+    "foldersHint": "A szerver környezete állítja be, nem a beállítások oldal; a módosítás újraindítást igényel.",
+    "folders": {
+      "PICTURES": {
+        "name": "Képek",
+        "what": "A járművek képei és a profilképek."
+      },
+      "PHOTOS": {
+        "name": "A bejegyzések fotói",
+        "what": "A tankolásokhoz és kiadásokhoz csatolt fotók; korlát nélkül nőnek."
+      },
+      "BACKUPS": {
+        "name": "Mentések",
+        "what": "A szerver által írt mentések, és a Mentések oldalon feltöltöttek."
+      },
+      "KEYS": {
+        "name": "Bejelentkezési kulcsok",
+        "what": "A kulcsok, amelyek bejelentkezve tartanak mindenkit. Ha elvesznek, mindenki kijelentkezik."
+      },
+      "SETTINGS_FILE": {
+        "name": "Beállításfájl",
+        "what": "Amit a Szerverbeállítások oldal ment."
+      }
+    },
+    "photosWithPictures": "A képek mappájában.",
+    "notCreatedYet": "még nem jött létre",
+    "changedBy": "Módosítás ezzel a környezeti változóval:",
+    "ownFolderBy": "Saját mappához állítsd be ezt a környezeti változót:"
   },
   "admin": {
     "title": "Adminisztráció",
@@ -503,7 +540,8 @@
       "photosIncluded": "benne vannak",
       "photosLeftOut": "kimaradnak (külön mappában vannak; lásd Backups:Photos)",
       "schedule": "Ütemezés",
-      "everyDay": "Minden nap {{time}}-kor (a szerver ideje szerint)",
+      "everyDay": "Minden nap {{times}}-kor (a szerver ideje, {{zone}})",
+      "onDays": "Napok: {{days}}, {{times}}-kor (a szerver ideje, {{zone}})",
       "nextRun": "a következő: {{time}}",
       "notScheduled": "Nincs ütemezve",
       "retentionLabel": "Megőrzés",
@@ -529,25 +567,36 @@
       "pointsHint": "A mappa minden mentése itt van, a kézzel bemásolt is. Egy mentés visszaállítása a szerver összes adatát lecseréli.",
       "none": "Még nincs mentés a mappában. Készíts most egyet, tölts fel egyet, vagy másolj egy fájlt ide: {{folder}}.",
       "colMade": "Készült",
-      "colContents": "Tartalom",
+      "colKind": "Fajta",
+      "colRelease": "Készítette",
+      "colRows": "Sorok",
+      "colEncryption": "Titkosítás",
+      "colPhotos": "Fotók",
+      "release": "Tankstat {{version}}",
+      "kindBackup": "Mentés (az alkalmazás írta, vagy a mappába másolták)",
       "colSize": "Méret",
-      "safetyNet": "biztonsági mentés egy visszaállítás előtt",
-      "uploadedTag": "feltöltött",
-      "madeBy": "Tankstat {{version}}, {{provider}}",
-      "rows_one": "{{rows}} sor",
-      "rows_other": "{{rows}} sor",
-      "encryptedCurrent": "a mostani kulccsal titkosítva",
-      "encryptedOther": "másik kulccsal titkosítva",
-      "plain": "nincs titkosítva",
-      "withPhotos": "a fotókkal",
-      "withoutPhotos": "fotók nélkül",
-      "otherMigration": "Az adatbázis egy másik változatánál készült: azzal a kiadással állítsd vissza, amelyik írta (Tankstat {{version}}).",
+      "safetyNet": "Biztonsági mentés, közvetlenül egy adatbázis-frissítés előtt készült",
+      "uploadedTag": "Ezen az oldalon feltöltve",
+      "encryptedCurrent": "A jelenlegi kulccsal titkosítva",
+      "encryptedOther": "Másik kulccsal titkosítva: csak annak a kulcskészletnek a jelmondata nyitja",
+      "plain": "Nincs titkosítva (bejelentkezési kulcsok nélkül)",
+      "withPhotos": "A bejegyzések fotóival",
+      "withoutPhotos": "A bejegyzések fotói nélkül",
+      "otherMigration": "Újabb kiadás készítette: a Tankstat {{version}} vagy újabb kiadással állítsd vissza.",
+      "olderMigration": "Az adatbázist úgy tartalmazza, ahogy egy régebbi kiadás hagyta: visszaállításkor naprakészre hozza.",
       "download": "Letöltés",
       "downloadAria": "A(z) {{made}} mentés letöltése ({{file}})",
       "restore": "Visszaállítás",
       "restoreAria": "A(z) {{made}} mentés visszaállítása ({{file}})",
+      "delete": "Törlés",
+      "deleteAria": "A(z) {{made}} mentés törlése ({{file}})",
+      "deleteTitle": "Törlöd a(z) {{made}} mentést ({{file}})?",
+      "deleteDescription": "A fájl végleg törlődik a mentések mappájából; a szervert többé nem lehet erre az állapotra visszaállítani.",
+      "deleteConfirm": "Törlés",
+      "deleted": "{{file}} törölve.",
       "restoreTitle": "Visszaállítod a(z) {{made}} mentést ({{file}})?",
-      "restoreDescription": "A szerver összes adatát lecseréli ez a mentés: a felhasználókat, járműveket, bejegyzéseket és képeket. Ami azóta változott, elvész, de előbb mentés készül a mostani állapotról. Ehhez az alkalmazás újraindul, ami mindenkinek, aki használja, eltart egy pillanatig.",
+      "restoreDescription": "A szerver összes adatát lecseréli ez a mentés: a felhasználókat, járműveket, bejegyzéseket és képeket. Ami azóta változott, elvész: a mostani állapotról nem készül mentés. Ehhez az alkalmazás újraindul, ami mindenkinek, aki használja, eltart egy pillanatig.",
+      "restoreOlder": "Az adatbázist úgy tartalmazza, ahogy egy régebbi kiadás hagyta (a fájlt a Tankstat {{version}} írta): az adatbázis úgy áll fel, ahogy az a kiadás hagyta, betöltődik a mentés, majd minden naprakész lesz, ahogy egy frissítéskor. Miután a régi táblák törlődtek, ez nem vonható vissza.",
       "keyKind": "Megnyitás ezzel",
       "keyPassphrase": "Jelmondat",
       "keyIdentity": "Azonosító",
@@ -616,6 +665,8 @@
       "languageInvalid": "A nyelv kódja en vagy en-GB alakú lehet.",
       "colorModeInvalid": "A színmód világos, sötét vagy rendszer lehet.",
       "surfaceInvalid": "A felület üveghatású, átlátszó vagy átlátszatlan lehet.",
+      "timeFormatInvalid": "Az időformátum 24 órás vagy 12 órás lehet.",
+      "dateFormatInvalid": "A dátumformátum nem olyan, amilyet az alkalmazás kínál.",
       "unknownKey": "A(z) {{key}} nem itt módosítható beállítás.",
       "readOnly": "A(z) {{key}} értékét a környezet állítja be, az győz a beállításfájllal szemben.",
       "invalid": "A beállítások így nem használhatók.",
@@ -795,7 +846,8 @@
       "uploadRefused": "A szerver, vagy egy előtte álló proxy, nem fogadott el ekkora fájlt; másold inkább a mentések mappájába.",
       "passphraseTooShort": "A jelmondat legalább {{min}} karakter.",
       "failed": "váratlan hiba (a szerver naplója többet mond)",
-      "stopped": "az alkalmazás leállt, miközben készült"
+      "stopped": "az alkalmazás leállt, miközben készült",
+      "restorePending": "Egy visszaállítás a következő indulásra vár; amíg le nem futott, mentés nem törölhető."
     }
   },
   "a11y": {
@@ -1581,7 +1633,7 @@
     "groups": {
       "AUTH": "Bejelentkezés",
       "SMTP": "E-mail",
-      "DEFAULTS": "Új járművek alapértelmezései",
+      "DEFAULTS": "Alapértelmezések",
       "NOTIFICATIONS": "Értesítések",
       "SYNC": "Offline szinkronizálás",
       "PHOTO_READING": "Fényképolvasás",
@@ -1591,7 +1643,7 @@
     "groupHelp": {
       "AUTH": "Hogyan jelentkeznek be a felhasználók. A mód módosítása a következő újraindításkor lép életbe, és akkor mindenkit kijelentkeztet, téged is.",
       "SMTP": "A levelezőszerver a jelszólinkekhez. Szerver és feladó cím nélkül nem megy e-mail; velük a nyilvános cím kötelező.",
-      "DEFAULTS": "Amivel egy új jármű és egy új ütemezés indul; minden jármű és ütemezés a saját értékeit őrzi.",
+      "DEFAULTS": "Amivel egy új jármű és egy új ütemezés indul (minden jármű és ütemezés a saját értékeit őrzi), és ahogyan az időt és a dátumot írja mindenkinek, aki nem választott formátumot.",
       "NOTIFICATIONS": "Hány eseményről szóló értesítést kap valaki egy órában, és meddig őrződnek az olvasottak.",
       "SYNC": "Meddig emlékszik a kiszolgáló az eszközök küldte változásokra és a végleges törlésekre, az offline adatokat őrző eszközök kedvéért.",
       "PHOTO_READING": "OpenAI-kompatibilis API mögötti látómodell, amely nyugtákat és műszerfalakat olvas; szolgáltató nélkül kikapcsolva. Felhős cím esetén minden fénykép oda kerül.",
@@ -1674,6 +1726,8 @@
       "Defaults__Currency": "A pénznem, amellyel egy új jármű első bejegyzése indul, hárombetűs kóddal, például EUR vagy HUF.",
       "Defaults__RecurringWarnDays": "Hány nappal az esedékesség előtt kezd figyelmeztetni egy új rendszeres kiadás (alapból 30). Minden ütemezés módosíthatja.",
       "Defaults__RecurringWarnDistance": "Mennyivel az esedékesség előtt, a jármű távolságegységében, kezd figyelmeztetni egy új rendszeres kiadás (alapból 500).",
+      "Defaults__TimeFormat": "Így írja az időt mindenkinek, aki a nyelv menüben nem választott formátumot: TwentyFourHour (13:29) vagy TwelveHour (1:29 PM). Ha nincs megadva: ahogy az adott nyelv írja.",
+      "Defaults__DateFormat": "Így írja a dátumot mindenkinek, aki a nyelv menüben nem választott formátumot: Iso (2026-10-13), DayMonthYearDots (13.10.2026), DayMonthYearSlashes (13/10/2026), MonthDayYear (10/13/2026) vagy YearMonthDayDots (2026. 10. 13.). Ha nincs megadva: ahogy az adott nyelv írja.",
       "Notifications__MaxPerHour": "Hány értesítést kap valaki óránként eseményekről (alapból 20); a továbbiakat csak egyben számolja. Az emlékeztetők nem számítanak bele.",
       "Notifications__ReadRetentionDays": "Meddig marad meg egy értesítés az elolvasása után (alapból 30 nap). Az olvasatlanok megmaradnak.",
       "Sync__RetentionDays": "Meddig emlékszik a szerver az eszközök által küldött változásokra, hogy az újra küldő eszköz azt kapja vissza, ami történt, ne kétszer alkalmazza őket.",
@@ -1689,9 +1743,10 @@
       "Recognition__OpenAiCompatible__LogTraffic": "Minden kérést a modellszerverhez és minden választ a naplóba ír, az utasításokkal és a beolvasott értékekkel együtt. Hibakereséshez; alapból ki van kapcsolva.",
       "Recognition__MinConfidence": "Az ennél bizonytalanabb értékeket nem tölti ki (0 és 1 között, alapból 0,6).",
       "Recognition__MaxConcurrent": "Hány fotót olvas egyszerre (alapból 2; egyetlen helyi GPU-hoz 1).",
-      "Backups__Every": "Napi időpont, például 02:00, a szerver időzónájában (konténerben a TZ): ekkor készül mentés minden nap, és az, amelyik a szerver leállása miatt maradt ki, induláskor elkészül. Üresen nem készül mentés magától.",
-      "Backups__Keep": "Minden mentés után, amelyet az alkalmazás készít, a tankstat-backup-… nevű fájlok közül csak ennyi legújabb marad (a backup parancséi és az ilyen néven kézzel bemásoltak is beleszámítanak; a visszaállítások előtti biztonsági mentések külön maradnak, a legújabb három); a legújabb sosem törlődik. A feltöltött és a más néven bemásolt fájlok nem számítanak bele. Üresen nincs darabszám-korlát.",
-      "Backups__KeepDays": "Minden mentés után, amelyet az alkalmazás készít, törlődnek az ennyi napnál régebbi tankstat-backup-… nevű fájlok (a visszaállítások előtti biztonsági mentések külön maradnak, a legújabb három); a legújabb mindig megmarad. A feltöltött és a más néven bemásolt fájlok sosem törlődnek. Üresen nincs korkorlát.",
+      "Backups__Every": "Egy vagy több időpont, például 02:00, vagy 02:00, 14:00, a szerver időzónájában (konténerben a TZ): ilyenkor készül mentés az alább kiválasztott napokon, és ami a szerver leállása alatt maradt ki, az induláskor elkészül. Üresen hagyva magától nem készül mentés.",
+      "Backups__Days": "A hét napjai, amelyeken a fenti időpontok érvényesek; alapból minden nap. Ha egy nap sincs bejelölve, magától nem készül mentés.",
+      "Backups__Keep": "Minden mentés után, amelyet az alkalmazás készít, a tankstat-backup-… nevű fájlok közül csak ennyi legújabb marad (a backup parancséi és az ilyen néven kézzel bemásoltak is beleszámítanak; a frissítések előtti biztonsági mentések külön maradnak, a legújabb három); a legújabb sosem törlődik. A feltöltött és a más néven bemásolt fájlok nem számítanak bele. Üresen nincs darabszám-korlát.",
+      "Backups__KeepDays": "Minden mentés után, amelyet az alkalmazás készít, törlődnek az ennyi napnál régebbi tankstat-backup-… nevű fájlok (a frissítések előtti biztonsági mentések külön maradnak, a legújabb három); a legújabb mindig megmarad. A feltöltött és a más néven bemásolt fájlok sosem törlődnek. Üresen nincs korkorlát.",
       "Backups__Photos": "Csak akkor számít, ha a bejegyzések fényképeinek saját mappája van (Storage:PhotosPath): ezek korlát nélkül nőnek, ezért csak bekapcsolva kerülnek a mentésbe. Egy mappával mindig benne vannak.",
       "Backups__Encryption__Recipient": "Az age-címzett (age1…), akinek a mentések titkosítva készülnek. A sóval egy párt alkot, egyazon kulcskészletből: mindkettőt a Mentések oldal Kulcskészlet készítése gombjával lehet előállítani, és csak együtt szabad módosítani. Üresen a mentések titkosítatlanok, és nincsenek bennük a bejelentkezést védő kulcsok.",
       "Backups__Encryption__Salt": "A só, amellyel a kulcs a jelmondatból készül; a címzettel együtt kapod meg, és összetartoznak. Egy másik kulcskészlet sójával (vagy kézzel módosított sóval) az utána készült mentéseket már nem nyitja meg a jelmondat, csak az azonosító. A régebbi mentésekhez a saját jelmondatuk kell.",
@@ -1743,6 +1798,8 @@
       "Defaults__Currency": "Pénznem",
       "Defaults__RecurringWarnDays": "Figyelmeztetés az esedékesség előtt (nap)",
       "Defaults__RecurringWarnDistance": "Figyelmeztetés az esedékesség előtt (távolság)",
+      "Defaults__TimeFormat": "Időformátum",
+      "Defaults__DateFormat": "Dátumformátum",
       "Notifications__MaxPerHour": "Értesítések óránként",
       "Notifications__ReadRetentionDays": "Olvasott értesítések megőrzése (nap)",
       "Sync__RetentionDays": "Alkalmazott változások megőrzése (nap)",
@@ -1758,7 +1815,8 @@
       "Recognition__OpenAiCompatible__LogTraffic": "Minden kérés és válasz naplózása",
       "Recognition__MinConfidence": "Minimális bizonyosság (0-tól 1-ig)",
       "Recognition__MaxConcurrent": "Egyszerre olvasott fényképek",
-      "Backups__Every": "Napi mentés időpontja (ÓÓ:pp)",
+      "Backups__Every": "Mentés időpontja (ÓÓ:pp)",
+      "Backups__Days": "Mentés napjai",
       "Backups__Keep": "Megőrzött legújabb mentések száma",
       "Backups__KeepDays": "Megőrzés (nap)",
       "Backups__Photos": "A bejegyzések fényképei is kerüljenek bele",
@@ -1770,6 +1828,32 @@
       "Logging__LogLevel__Microsoft_AspNetCore": "ASP.NET Core",
       "Logging__LogLevel__Microsoft_EntityFrameworkCore": "Entity Framework Core",
       "Logging__LogLevel__System_Net_Http_HttpClient": "HTTP-kliens"
-    }
+    },
+    "choices": {
+      "authMode": {
+        "None": "Nincs bejelentkezés, nem biztonságos",
+        "Standalone": "Helyi fiókok",
+        "Oidc": "OpenID Connect",
+        "ProxyHeader": "Fordított proxy"
+      },
+      "smtpSecurity": {
+        "Auto": "Ahogy a port mutatja",
+        "None": "Titkosítás nélkül",
+        "StartTls": "STARTTLS, kötelezően",
+        "StartTlsWhenAvailable": "STARTTLS, ha a szerver kínálja",
+        "SslOnConnect": "TLS az első bájttól"
+      },
+      "recognitionProvider": {
+        "None": "Kikapcsolva",
+        "OpenAiCompatible": "OpenAI-kompatibilis modellszerver"
+      },
+      "responseFormat": {
+        "JsonSchema": "Sémát követő JSON",
+        "JsonObject": "Bármilyen JSON-objektum",
+        "None": "Nem kéri (a prompt mondja meg)"
+      }
+    },
+    "choiceWithValue": "{{words}} ({{value}})",
+    "noSignInWarning": "Nem biztonságos: bejelentkezés nélkül bárki, aki eléri a szervert, minden adatot lát és módosíthat, az adminisztrációs oldalak pedig nem érhetők el. Csak kipróbálásra, megbízható hálózaton használd, éles üzemben soha."
   }
 }

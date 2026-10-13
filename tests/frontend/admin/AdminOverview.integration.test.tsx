@@ -21,7 +21,18 @@ function overviewServer({ restartPending = false, ignored = false, databaseReach
       calls.push('AdminOverview')
       return HttpResponse.json({
         data: {
-          systemSettings: { __typename: 'SystemSettingsInfo', restartPending, file: { __typename: 'SettingsFileInfo', path: '/data/settings.json', exists, ignored } },
+          systemSettings: {
+            __typename: 'SystemSettingsInfo',
+            restartPending,
+            file: { __typename: 'SettingsFileInfo', path: '/data/settings.json', exists, ignored },
+            folders: [
+              { __typename: 'ServerFolder', kind: 'PICTURES', path: '/data/uploads', setting: 'Storage:Path', variable: 'Storage__Path', sameAsPictures: false },
+              { __typename: 'ServerFolder', kind: 'PHOTOS', path: '/data/uploads', setting: 'Storage:PhotosPath', variable: 'Storage__PhotosPath', sameAsPictures: true },
+              { __typename: 'ServerFolder', kind: 'BACKUPS', path: '/data/backups', setting: 'Backups:Path', variable: 'Backups__Path', sameAsPictures: false },
+              { __typename: 'ServerFolder', kind: 'KEYS', path: '/data/keys', setting: 'DataProtection:KeysPath', variable: 'DataProtection__KeysPath', sameAsPictures: false },
+              { __typename: 'ServerFolder', kind: 'SETTINGS_FILE', path: '/data/settings.json', setting: 'Settings:Path', variable: 'Settings__Path', sameAsPictures: false },
+            ],
+          },
           users: [
             { __typename: 'UserAccount', id: 'u1', isAdmin: true, isDisabled: false },
             { __typename: 'UserAccount', id: 'u2', isAdmin: false, isDisabled: true },
@@ -49,6 +60,24 @@ it('says in one line that nothing needs attention, and gives the facts with link
   expect(view.getByRole('link', { name: '3 users (administrators: 1, disabled: 1)' })).toHaveAttribute('href', '/admin/people') // reads right whatever each count is
   expect(view.getByRole('link', { name: '2 vehicles' })).toHaveAttribute('href', '/admin/vehicles')
   expect(view.getByText('/data/settings.json')).toBeInTheDocument()
+})
+
+it('keeps the folders out of the way until asked, then says what each holds and the variable that changes it', async () => {
+  overviewServer()
+  renderWithApollo(<App />, '/admin')
+  const view = await overview()
+
+  const folders = await view.findByRole('button', { name: /^Where the server keeps its files/ })
+  expect(folders).toHaveAttribute('aria-expanded', 'false')
+  await userEvent.setup().click(folders)
+
+  const panel = within(view.getByRole('region', { name: /^Where the server keeps its files/ }))
+  const items = panel.getAllByRole('listitem')
+  expect(items.map((item) => within(item).getAllByText(/./)[0].textContent)).toEqual(['Pictures', 'Photos of logs', 'Backups', 'Sign-in keys', 'Settings file'])
+  expect(items[0]).toHaveTextContent('/data/uploadsChange it with the environment variable Storage__Path')
+  // The photos with the pictures: no second copy of the path, and how to give them a folder of their own.
+  expect(items[1]).toHaveTextContent('In the pictures folder.For a folder of their own, set the environment variable Storage__PhotosPath')
+  expect(items[3]).toHaveTextContent('DataProtection__KeysPath')
 })
 
 it('lists what needs attention, each with where to act on it', async () => {

@@ -116,6 +116,7 @@ type Mutation {
   restoreBackup(input: RestoreBackupInput!): RestorePendingInfo!
     @cost(weight: "10")
   runBackup: Boolean! @cost(weight: "10")
+  deleteBackup(file: String!): Boolean! @cost(weight: "10")
   prepareBackupEncryption(passphrase: String): BackupKeySetInfo!
     @cost(weight: "10")
   revokeSession(id: UUID!): Boolean! @cost(weight: "10")
@@ -201,7 +202,9 @@ type BackupSettingsInfo {
   photosApart: Boolean!
   photos: Boolean!
   maxUploadMb: Int!
-  every: String
+  times: [String!]!
+  days: [DayOfWeek!]!
+  timeZone: String!
   nextRun: DateTime
   keep: Int
   keepDays: Int
@@ -534,6 +537,7 @@ type RestorePointInfo {
   provider: String!
   migration: String
   sameMigration: Boolean!
+  olderMigration: Boolean!
   safetyNet: Boolean!
   uploaded: Boolean!
   encrypted: Boolean!
@@ -543,6 +547,14 @@ type RestorePointInfo {
   keys: Boolean!
   tables: Int!
   rows: Long!
+}
+
+type ServerFolder {
+  kind: ServerFolderKind!
+  path: String!
+  setting: String!
+  variable: String!
+  sameAsPictures: Boolean!
 }
 
 type Session {
@@ -652,6 +664,7 @@ type SystemSettingsInfo {
   file: SettingsFileInfo!
   groups: [SystemSettingsGroup!]!
   restartPending: Boolean!
+  folders: [ServerFolder!]!
 }
 
 type UiSettingsInfo {
@@ -659,6 +672,10 @@ type UiSettingsInfo {
   language: String
   colorMode: ColorMode
   surface: SurfaceStyle
+  timeFormat: TimeFormat
+  dateFormat: DateFormat
+  defaultTimeFormat: TimeFormat
+  defaultDateFormat: DateFormat
   grids: [GridSettingsInfo!]! @cost(weight: "10")
 }
 
@@ -1036,6 +1053,10 @@ input UpdateUiSettingsInput {
   clearLanguage: Boolean
   colorMode: ColorMode
   surface: SurfaceStyle
+  timeFormat: TimeFormat
+  clearTimeFormat: Boolean
+  dateFormat: DateFormat
+  clearDateFormat: Boolean
 }
 
 input UpdateUserInput {
@@ -1120,6 +1141,24 @@ enum ColorMode {
   LIGHT
   DARK
   SYSTEM
+}
+
+enum DateFormat {
+  ISO
+  DAY_MONTH_YEAR_DOTS
+  DAY_MONTH_YEAR_SLASHES
+  MONTH_DAY_YEAR
+  YEAR_MONTH_DAY_DOTS
+}
+
+enum DayOfWeek {
+  SUNDAY
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
 }
 
 enum DistanceUnit {
@@ -1271,6 +1310,14 @@ enum ReviewState {
   INCOMPLETE
 }
 
+enum ServerFolderKind {
+  PICTURES
+  PHOTOS
+  BACKUPS
+  KEYS
+  SETTINGS_FILE
+}
+
 enum SettingKind {
   TEXT
   MULTILINE
@@ -1280,6 +1327,7 @@ enum SettingKind {
   CHOICE
   LIST
   SECRET
+  DAYS
 }
 
 enum SettingsGroup {
@@ -1350,6 +1398,11 @@ enum SyncResolveAction {
 enum SyncTargetState {
   LIVE
   TRASHED
+}
+
+enum TimeFormat {
+  TWENTY_FOUR_HOUR
+  TWELVE_HOUR
 }
 
 enum UserDataDisposition {

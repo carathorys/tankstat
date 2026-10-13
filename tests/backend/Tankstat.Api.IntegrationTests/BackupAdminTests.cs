@@ -15,7 +15,7 @@ namespace Tankstat.Api.IntegrationTests;
 public sealed class BackupAdminTests : IDisposable
 {
     private const string Overview = """
-        { backups { folder migration restorePoints { file bytes createdAt appVersion provider migration sameMigration safetyNet uploaded encrypted recipient currentRecipient photos keys tables rows }
+        { backups { folder migration restorePoints { file bytes createdAt appVersion provider migration sameMigration olderMigration safetyNet uploaded encrypted recipient currentRecipient photos keys tables rows }
           sizes { database pictures photos } run { running startedAt finishedAt file bytes error } settings { recipient photosApart photos maxUploadMb } } }
         """;
 
@@ -75,6 +75,7 @@ public sealed class BackupAdminTests : IDisposable
         Assert.Equal(["copied-in.zip", Path.GetFileName(written)], points.Select(p => p.GetProperty("file").GetString()).Order());
         var point = points[0];
         Assert.True(point.GetProperty("sameMigration").GetBoolean());
+        Assert.False(point.GetProperty("olderMigration").GetBoolean());
         Assert.Equal(backups.GetProperty("migration").GetString(), point.GetProperty("migration").GetString());
         // In plain, so without the keys; the photos have a folder of their own on the test host and are only in a backup with Backups:Photos.
         Assert.Equal(("Sqlite", false, false, "LEFT_OUT", false), (point.GetProperty("provider").GetString(), point.GetProperty("encrypted").GetBoolean(), point.GetProperty("safetyNet").GetBoolean(),
@@ -87,6 +88,37 @@ public sealed class BackupAdminTests : IDisposable
         var settings = backups.GetProperty("settings");
         Assert.Equal((JsonValueKind.Null, true, false, 1024), (settings.GetProperty("recipient").ValueKind, settings.GetProperty("photosApart").GetBoolean(), settings.GetProperty("photos").GetBoolean(), settings.GetProperty("maxUploadMb").GetInt32()));
         Assert.False(backups.GetProperty("run").GetProperty("running").GetBoolean());
+    }
+
+    [Fact]
+    public async Task ABackupOfAnOlderRelease_IsListedAsOlder_AndOneOfANewerRelease_AsNeither()
+    {
+        using var app = App();
+        var admin = await Admin(app);
+        var written = await WriteBackup(app);
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "contracts", "backups", "older-migration-AddExpenses.zip"), Path.Combine(_folder, "older.zip"));
+        var newer = Path.Combine(_folder, "newer.zip");
+        File.Copy(written, newer);
+        RewriteMigration(newer, BackupFile.ReadManifest(written).Migration!, "20990101000000_AddSomethingNewer");
+
+        var points = (await admin.Gql(Overview)).Data().GetProperty("backups").GetProperty("restorePoints").EnumerateArray()
+            .ToDictionary(p => p.GetProperty("file").GetString()!, p => (p.GetProperty("sameMigration").GetBoolean(), p.GetProperty("olderMigration").GetBoolean()));
+
+        Assert.Equal((false, true), points["older.zip"]);
+        Assert.Equal((false, false), points["newer.zip"]);
+        Assert.Equal((true, false), points[Path.GetFileName(written)]);
+    }
+
+    /// <summary>The manifest of a backup file rewritten with another migration (the checksum covers the inner archive, not the manifest).</summary>
+    private static void RewriteMigration(string file, string from, string to)
+    {
+        using var zip = System.IO.Compression.ZipFile.Open(file, System.IO.Compression.ZipArchiveMode.Update);
+        var entry = zip.GetEntry("manifest.json")!;
+        string json;
+        using (var reader = new StreamReader(entry.Open())) json = reader.ReadToEnd();
+        entry.Delete();
+        using var writer = new StreamWriter(zip.CreateEntry("manifest.json").Open());
+        writer.Write(json.Replace(from, to));
     }
 
     [Fact]
@@ -319,6 +351,30 @@ public sealed class BackupAdminTests : IDisposable
         Assert.DoesNotContain(app.Log.From("Tankstat.Application.Backups.BackupAdminService"), e => e.Values.ContainsKey("File"));
         Assert.Equal(HttpStatusCode.NotFound, (await people.Admin.SendAsync(Head(RestoreMarker.FileName))).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await people.Admin.GetAsync($"/media/backups/{RestoreMarker.FileName}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task ABackup_IsDeletedByAnAdministrator_NothingElseOfTheFolder_AndNothingWhileARestoreWaits()
+    {
+        using var app = App();
+        var people = await app.Users();
+        var written = Path.GetFileName(await WriteBackup(app));
+        File.WriteAllText(Path.Combine(_folder, "notes.zip"), "not a backup");
+        const string Delete = "mutation($f: String!) { deleteBackup(file: $f) }";
+
+        Assert.Equal("auth.adminRequired", (await people.Alice.Gql(Delete, new { f = written })).ErrorKey());
+        Assert.Equal("backup.corrupt", (await people.Admin.Gql(Delete, new { f = "notes.zip" })).ErrorKey()); // never listed: not a backup
+        Assert.Equal("backup.notFound", (await people.Admin.Gql(Delete, new { f = "../" + written })).ErrorKey());
+        new RestoreMarker(written, Guid.NewGuid(), DateTimeOffset.UtcNow, null).Write(_folder);
+        Assert.Equal("backup.restorePending", (await people.Admin.Gql(Delete, new { f = written })).ErrorKey());
+        Assert.Equal("backup.notFound", (await people.Admin.Gql(Delete, new { f = RestoreMarker.FileName })).ErrorKey());
+        File.Delete(Path.Combine(_folder, RestoreMarker.FileName));
+
+        Assert.True((await people.Admin.Gql(Delete, new { f = written })).Data().GetProperty("deleteBackup").GetBoolean());
+
+        Assert.False(File.Exists(Path.Combine(_folder, written)));
+        Assert.True(File.Exists(Path.Combine(_folder, "notes.zip")));
+        Assert.Contains(app.Log.From("Tankstat.Application.Backups.BackupAdminService"), e => e.Values.TryGetValue("File", out var f) && Equals(f, written));
     }
 
     [Fact]

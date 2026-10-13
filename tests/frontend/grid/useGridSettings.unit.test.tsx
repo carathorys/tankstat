@@ -21,6 +21,8 @@ const api = (over: Partial<UiSettingsApi> = {}): UiSettingsApi => ({
   setLanguage: vi.fn(),
   setColorMode: vi.fn(),
   setSurface: vi.fn(),
+  setTimeFormat: vi.fn(),
+  setDateFormat: vi.fn(),
   grid: () => undefined,
   saveGrid: vi.fn(),
   resetGrid: vi.fn(),

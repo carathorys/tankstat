@@ -54,21 +54,22 @@ public class ContractTests
 
     [Theory]
     [InlineData("Query", "health", "vehicles", "myVehicles", "myVehicleCount", "vehicle", "session", "notices", "users", "canSetUserPasswords", "accessSettings", "accessGrants", "trash", "vehicleCount", "trashCount", "trashDeletableCount", "vehicleDefaults", "refuelings", "refuelingCount", "refueling", "logDefaults", "refuelingTrash", "refuelingTrashCount", "refuelingTrashDeletableCount", "vehicleLogAccess", "shareCandidates", "notifications", "notificationCount", "recognitionStatus", "photoDrafts", "uiSettings", "mySessions", "offlineChanges", "offlineSettings", "parkedChanges", "systemSettings", "backups")]
-    [InlineData("Mutation", "addVehicle", "logRefueling", "login", "logout", "changePassword", "requestPasswordReset", "resetPassword", "createUser", "issuePasswordReset", "setUserAdmin", "setUserDisabled", "updateUser", "setUserPassword", "deleteUser", "setDefaultAccess", "setAccessGrant", "updateVehicle", "deleteVehicle", "restoreVehicle", "emptyTrash", "logRefueling", "updateRefueling", "deleteRefueling", "restoreRefueling", "emptyRefuelingTrash", "setVehicleLogAccess", "markNotificationsRead", "updateUiSettings", "saveGridSettings", "resetGridSettings", "setVehicleOrder", "addRecurringExpense", "updateRecurringExpense", "deleteRecurringExpense", "markRecurringExpensesDone", "revokeSession", "revokeOtherSessions", "updateOfflineSettings", "syncChanges", "resolveSyncChange", "updateSystemSettings", "restartServer", "restoreBackup", "runBackup", "prepareBackupEncryption")]
+    [InlineData("Mutation", "addVehicle", "logRefueling", "login", "logout", "changePassword", "requestPasswordReset", "resetPassword", "createUser", "issuePasswordReset", "setUserAdmin", "setUserDisabled", "updateUser", "setUserPassword", "deleteUser", "setDefaultAccess", "setAccessGrant", "updateVehicle", "deleteVehicle", "restoreVehicle", "emptyTrash", "logRefueling", "updateRefueling", "deleteRefueling", "restoreRefueling", "emptyRefuelingTrash", "setVehicleLogAccess", "markNotificationsRead", "updateUiSettings", "saveGridSettings", "resetGridSettings", "setVehicleOrder", "addRecurringExpense", "updateRecurringExpense", "deleteRecurringExpense", "markRecurringExpensesDone", "revokeSession", "revokeOtherSessions", "updateOfflineSettings", "syncChanges", "resolveSyncChange", "updateSystemSettings", "restartServer", "restoreBackup", "runBackup", "deleteBackup", "prepareBackupEncryption")]
     [InlineData("Session", "mode", "user", "instance")]
     [InlineData("InstanceInfo", "generation", "restorePoint")]
     [InlineData("BackupOverviewInfo", "folder", "migration", "restorePoints", "sizes", "run", "settings")]
-    [InlineData("RestorePointInfo", "file", "bytes", "createdAt", "appVersion", "provider", "migration", "sameMigration", "safetyNet", "uploaded", "encrypted", "recipient", "currentRecipient", "photos", "keys", "tables", "rows")]
+    [InlineData("RestorePointInfo", "file", "bytes", "createdAt", "appVersion", "provider", "migration", "sameMigration", "olderMigration", "safetyNet", "uploaded", "encrypted", "recipient", "currentRecipient", "photos", "keys", "tables", "rows")]
     [InlineData("StorageSizesInfo", "database", "pictures", "photos")]
     [InlineData("BackupRunInfo", "running", "startedAt", "finishedAt", "file", "bytes", "error")]
-    [InlineData("BackupSettingsInfo", "recipient", "photosApart", "photos", "maxUploadMb", "every", "nextRun", "keep", "keepDays")]
+    [InlineData("ServerFolder", "kind", "path", "setting", "variable", "sameAsPictures")]
+    [InlineData("BackupSettingsInfo", "recipient", "photosApart", "photos", "maxUploadMb", "times", "days", "timeZone", "nextRun", "keep", "keepDays")]
     [InlineData("BackupKeySetInfo", "passphrase", "generated", "identity", "recipient", "salt")]
     [InlineData("UserInfo", "id", "displayName", "email", "isAdmin")]
     [InlineData("UserSessionInfo", "id", "client", "createdAt", "lastUsedAt", "expiresAt", "current")]
     [InlineData("UserAccount", "id", "provider", "email", "displayName", "isAdmin", "isDisabled")]
     [InlineData("PasswordResetLink", "token", "url", "emailSent", "emailFailed")]
     [InlineData("Notice", "code", "severity", "message")]
-    [InlineData("SystemSettingsInfo", "file", "groups", "restartPending")]
+    [InlineData("SystemSettingsInfo", "file", "groups", "restartPending", "folders")]
     [InlineData("SystemSettingsGroup", "name", "settings", "appliesAtOnce")]
     [InlineData("SystemSetting", "key", "kind", "choices", "value", "isSet", "isSecret", "source", "editable", "restartPending", "defaultValue")]
     [InlineData("SettingsFileInfo", "path", "exists", "ignored", "problems")]
@@ -111,7 +112,7 @@ public class ContractTests
     [InlineData("VehicleChart", "id", "vehicleId", "title", "metric", "grouping", "kind", "range", "rangeFrom", "rangeTo", "stacked", "isShared", "createdAt", "canEdit", "createdBy")]
     [InlineData("Refueling", "id", "vehicleId", "createdBy", "date", "volume", "totalCost", "currency", "odometer", "pricePerUnit", "consumption", "isFullTank", "missedPreviousFillUp", "note", "deletedAt", "canEdit", "canDelete", "vehicle", "photos", "reviewState", "filledFromPhoto", "version", "updatedAt", "changedAt", "changedBy", "lastChange")]
     [InlineData("Expense", "id", "amount", "currency", "odometer", "reviewState", "filledFromPhoto")]
-    [InlineData("UiSettingsInfo", "navOpen", "language", "colorMode", "surface", "grids")]
+    [InlineData("UiSettingsInfo", "navOpen", "language", "colorMode", "surface", "timeFormat", "dateFormat", "defaultTimeFormat", "defaultDateFormat", "grids")]
     [InlineData("GridSettingsInfo", "gridId", "order", "hidden", "pageSize", "sortColumn", "sortDirection")]
     public async Task Schema_TypeExposesContractFields(string type, params string[] fields)
     {
@@ -128,7 +129,7 @@ public class ContractTests
     [InlineData("AddRecurringExpenseInput", "vehicleId", "title", "kind", "intervalMonths", "intervalDistance", "lastDoneDate", "lastDoneOdometer", "id")]
     [InlineData("MarkRecurringExpensesDoneInput", "ids", "date", "odometer", "amount", "currency", "title", "category", "photoIds", "expenseId")]
     [InlineData("GridSettingsInput", "gridId", "order", "hidden", "pageSize", "sortColumn", "sortDirection")]
-    [InlineData("UpdateUiSettingsInput", "navOpen", "language", "clearLanguage", "colorMode", "surface")]
+    [InlineData("UpdateUiSettingsInput", "navOpen", "language", "clearLanguage", "colorMode", "surface", "timeFormat", "clearTimeFormat", "dateFormat", "clearDateFormat")]
     [InlineData("ChangeInput", "id", "expectedVersion", "base", "setVehiclePicture", "removeVehiclePicture")]
     [InlineData("SetVehiclePictureInput", "vehicleId", "draftId")]
     [InlineData("ResolveSyncChangeInput", "id", "action", "change", "restoreFirst")]
@@ -185,8 +186,12 @@ public class ContractTests
     [InlineData("SyncChangeKind", "LOG_REFUELING", "UPDATE_REFUELING", "DELETE_REFUELING", "RESTORE_REFUELING", "ADD_EXPENSE", "UPDATE_EXPENSE", "DELETE_EXPENSE", "RESTORE_EXPENSE", "ADD_RECURRING_EXPENSE", "UPDATE_RECURRING_EXPENSE", "DELETE_RECURRING_EXPENSE", "MARK_RECURRING_EXPENSES_DONE", "ADD_VEHICLE", "UPDATE_VEHICLE", "DELETE_VEHICLE", "RESTORE_VEHICLE", "ADD_REFUELING_PHOTO", "REMOVE_REFUELING_PHOTO", "ADD_EXPENSE_PHOTO", "REMOVE_EXPENSE_PHOTO", "SET_VEHICLE_PICTURE", "REMOVE_VEHICLE_PICTURE")]
     [InlineData("SyncResolveAction", "APPLY", "DISCARD")]
     [InlineData("SettingsGroup", "AUTH", "SMTP", "DEFAULTS", "NOTIFICATIONS", "SYNC", "PHOTO_READING", "BACKUPS", "LOGGING")]
-    [InlineData("SettingKind", "TEXT", "MULTILINE", "INTEGER", "DECIMAL", "BOOLEAN", "CHOICE", "LIST", "SECRET")]
+    [InlineData("SettingKind", "TEXT", "MULTILINE", "INTEGER", "DECIMAL", "BOOLEAN", "CHOICE", "LIST", "SECRET", "DAYS")]
     [InlineData("SettingSource", "ENVIRONMENT", "FILE", "SHIPPED", "DEFAULT")]
+    [InlineData("TimeFormat", "TWENTY_FOUR_HOUR", "TWELVE_HOUR")]
+    [InlineData("DateFormat", "ISO", "DAY_MONTH_YEAR_DOTS", "DAY_MONTH_YEAR_SLASHES", "MONTH_DAY_YEAR", "YEAR_MONTH_DAY_DOTS")]
+    [InlineData("ServerFolderKind", "PICTURES", "PHOTOS", "BACKUPS", "KEYS", "SETTINGS_FILE")]
+    [InlineData("DayOfWeek", "SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY")] // the Backups page names them by these
     public async Task Schema_EnumsExposeContractValues(string type, params string[] expected)
     {
         var body = await Query($"{{ __type(name: \"{type}\") {{ enumValues {{ name }} }} }}");

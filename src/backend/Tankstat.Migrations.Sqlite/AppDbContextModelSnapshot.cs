@@ -670,6 +670,10 @@ namespace Tankstat.Migrations.Sqlite
                         .HasMaxLength(16)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("DateFormat")
+                        .HasMaxLength(24)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Language")
                         .HasMaxLength(8)
                         .HasColumnType("TEXT");
@@ -679,6 +683,10 @@ namespace Tankstat.Migrations.Sqlite
 
                     b.Property<string>("Surface")
                         .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TimeFormat")
+                        .HasMaxLength(24)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("UpdatedAt")

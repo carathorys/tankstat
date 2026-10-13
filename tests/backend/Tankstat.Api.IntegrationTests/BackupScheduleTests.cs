@@ -75,7 +75,7 @@ public sealed class BackupScheduleTests : IDisposable
         Assert.Equal([Name(At(11, 2)), Name(At(12, 2))], Files()); // Keep=2: the oldest went
 
         var lines = app.Log.From<BackupWorker>().ToList();
-        Assert.Contains(lines, e => e.Level == LogLevel.Information && e.Values.TryGetValue("Time", out var t) && (string?)t == "02:00");
+        Assert.Contains(lines, e => e.Level == LogLevel.Information && e.Values.TryGetValue("Times", out var t) && (string?)t == "02:00" && e.Values.TryGetValue("Days", out var d) && (string?)d == "every day");
         Assert.DoesNotContain(lines, e => e.Level >= LogLevel.Warning); // retention is set: no warning about a folder that only grows
         Assert.Contains(app.Log.From<BackupRunner>(), e => e.Level == LogLevel.Information && e.Values.TryGetValue("File", out var f) && (string?)f == Name(At(10, 3)));
     }
@@ -298,6 +298,28 @@ public sealed class BackupScheduleTests : IDisposable
         _clock.Advance(TimeSpan.FromDays(2));
         await ((BackupRunner)app.Factory.Services.GetRequiredService<IBackupRunner>()).WhenIdleAsync();
         Assert.Single(Files());
+    }
+
+    [Fact]
+    public async Task DaysSavedOnTheSettingsPage_LeaveTheOthersOut_AndNoDayStopsTheSchedule()
+    {
+        using var app = AppWithSettingsFile(_clock);
+        var admin = app.NewClient();
+        await admin.LoginAs(TestApp.AdminEmail, TestApp.AdminPassword);
+        var day = At(12, 0).DayOfWeek; // the day after tomorrow: today and tomorrow are left out
+
+        (await admin.Gql(SaveSettings, new { c = new object[] { new { key = "Backups:Every", value = "16:00, 4:00" }, new { key = "Backups:Days", value = day.ToString() } } })).Data();
+
+        await Worker(app).WhenAsleepUntil(At(12, 4)).WaitAsync(Wait);
+        var settings = (await admin.Gql("{ backups { settings { times days timeZone nextRun } } }")).Data().GetProperty("backups").GetProperty("settings");
+        Assert.Equal(["04:00", "16:00"], settings.GetProperty("times").EnumerateArray().Select(t => t.GetString()));
+        Assert.Equal([day.ToString().ToUpperInvariant()], settings.GetProperty("days").EnumerateArray().Select(d => d.GetString()));
+        Assert.Equal(("UTC", At(12, 4)), (settings.GetProperty("timeZone").GetString(), settings.GetProperty("nextRun").GetDateTimeOffset()));
+
+        (await admin.Gql(SaveSettings, new { c = new object[] { new { key = "Backups:Days", value = "None" } } })).Data();
+        _clock.Advance(TimeSpan.FromDays(8));
+        await ((BackupRunner)app.Factory.Services.GetRequiredService<IBackupRunner>()).WhenIdleAsync();
+        Assert.Empty(Files());
     }
 
     /// <summary>

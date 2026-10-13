@@ -190,9 +190,12 @@ it('the appearance and language menus are labelled radio menus, free of violatio
   await check(modes) // the menu itself: a transient popup outside the page's landmarks, as every popup menu is
   await ui.keyboard('{Escape}')
 
-  await ui.click(screen.getByRole('button', { name: 'Language' }))
-  const languages = await screen.findByRole('menu', { name: 'Language' })
-  expect(within(languages).getByRole('menuitemradio', { name: 'Magyar' })).toHaveAttribute('lang', 'hu')
+  await ui.click(screen.getByRole('button', { name: 'Language and formats' }))
+  const languages = await screen.findByRole('menu', { name: 'Language and formats' })
+  // A language's own name, in its own language as a whole: no "Language:" before it to be read in the Hungarian voice.
+  const hungarian = within(languages).getByRole('menuitemradio', { name: 'Magyar' })
+  expect(hungarian).toHaveAttribute('lang', 'hu')
+  expect(hungarian).not.toHaveAttribute('aria-label')
   await check(languages)
 })
 
@@ -278,7 +281,7 @@ it('the backups page, its restore and its key set dialogs are labelled, describe
   const run = { __typename: 'BackupRunInfo', running: false, startedAt: '2026-10-11T08:00:00Z', finishedAt: '2026-10-11T08:00:05Z', file: 'tankstat-backup-20261011T080000Z.zip', bytes: 3_100_000, error: null }
   const point = {
     __typename: 'RestorePointInfo', file: 'tankstat-backup-20261011T080000Z.zip', bytes: 3_100_000, createdAt: '2026-10-11T08:00:00Z', appVersion: '0.13.0', provider: 'Sqlite',
-    migration: 'AddInstance', sameMigration: true, safetyNet: false, uploaded: false, encrypted: true, recipient: 'age1abc', currentRecipient: true, photos: 'SEPARATE', keys: true, rows: 120,
+    migration: 'AddInstance', sameMigration: true, olderMigration: false, safetyNet: false, uploaded: false, encrypted: true, recipient: 'age1abc', currentRecipient: true, photos: 'SEPARATE', keys: true, rows: 120,
   }
   server.use(
     graphql.query('Backups', () =>
@@ -286,7 +289,7 @@ it('the backups page, its restore and its key set dialogs are labelled, describe
         data: {
           backups: {
             __typename: 'BackupOverviewInfo', folder: '/data/backups', migration: 'AddInstance', run,
-            settings: { __typename: 'BackupSettingsInfo', recipient: null, photosApart: false, photos: false, maxUploadMb: 1024, every: '02:00', nextRun: '2026-10-12T02:00:00Z', keep: 14, keepDays: null },
+            settings: { __typename: 'BackupSettingsInfo', recipient: null, photosApart: false, photos: false, maxUploadMb: 1024, times: ['02:00'], days: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'], timeZone: 'UTC', nextRun: '2026-10-12T02:00:00Z', keep: 14, keepDays: null },
             sizes: { __typename: 'StorageSizesInfo', database: 5_300_000, pictures: 12_000_000, photos: null },
             restorePoints: [point, { ...point, file: 'uploaded-old.zip', sameMigration: false, uploaded: true, encrypted: false, recipient: null, currentRecipient: false }],
           },

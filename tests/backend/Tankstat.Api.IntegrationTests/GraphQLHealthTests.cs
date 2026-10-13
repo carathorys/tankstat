@@ -22,7 +22,7 @@ public sealed class ApiFixture : IDisposable
     private const string BackupsVar = "Backups__Path";
 
     /// <summary>A schedule or retention of the developer's would make a start write and prune backups: none here.</summary>
-    private static readonly string[] ScheduleVars = ["Backups__Every", "Backups__Keep", "Backups__KeepDays"];
+    private static readonly string[] ScheduleVars = ["Backups__Every", "Backups__Days", "Backups__Keep", "Backups__KeepDays"];
 
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}.db");
 

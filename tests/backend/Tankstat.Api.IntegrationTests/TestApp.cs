@@ -43,7 +43,7 @@ internal sealed class TestApp : IDisposable
     public string BackupsPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-backups");
 
     /// <summary>The backup settings that make a start write and prune backups: never the developer's.</summary>
-    private static readonly string[] ScheduleKeys = ["Backups:Every", "Backups:Keep", "Backups:KeepDays"];
+    private static readonly string[] ScheduleKeys = ["Backups:Every", "Backups:Days", "Backups:Keep", "Backups:KeepDays"];
 
     /// <summary>The app's own settings file of this host (none unless a test writes one), unless its settings name another (<see cref="SharedData"/>, a test's file).</summary>
     public string SettingsPath { get; }

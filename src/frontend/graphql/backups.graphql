@@ -21,7 +21,9 @@ query Backups {
       photosApart
       photos
       maxUploadMb
-      every
+      times
+      days
+      timeZone
       nextRun
       keep
       keepDays
@@ -39,6 +41,7 @@ query Backups {
       provider
       migration
       sameMigration
+      olderMigration
       safetyNet
       uploaded
       encrypted
@@ -78,4 +81,8 @@ mutation RestoreBackup($input: RestoreBackupInput!) {
     file
     restorePoint
   }
+}
+
+mutation DeleteBackup($file: String!) {
+  deleteBackup(file: $file)
 }

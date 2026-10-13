@@ -42,7 +42,7 @@ The label comes off again at the end (step 4), after `reviewed` went on. If you 
 
 - `gh pr view N --comments`: the description, every comment and review, and the linked issue with its triage handoff (`gh issue view M --comments`): the plan and acceptance criteria say what the PR is meant to do.
 - Note the head commit (`headRefOid`); the review is of that commit.
-- Check CLAUDE.md for the rules of the areas the diff touches.
+- Check CLAUDE.md and the `.claude/rules/` files of the areas the diff touches.
 
 ## 3. Review
 

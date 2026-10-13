@@ -7,11 +7,22 @@ import 'dayjs/locale/en-gb'
 import 'dayjs/locale/hu'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { DateFormat } from '../gql/generated.ts'
+import { useFormats } from '../i18n/formatStore.ts'
 import { CalendarIcon } from '../theme/icons.tsx'
 import { pickerLocale } from './dates.ts'
 
 const ISO = 'YYYY-MM-DD'
 const HUNGARIAN = huHU.components.MuiLocalizationProvider.defaultProps.localeText
+
+/** The day typed in the order of the date format chosen (none: the UI language's own order). */
+const PICKER_FORMATS: Record<DateFormat, string> = {
+  ISO: ISO,
+  DAY_MONTH_YEAR_DOTS: 'DD.MM.YYYY',
+  DAY_MONTH_YEAR_SLASHES: 'DD/MM/YYYY',
+  MONTH_DAY_YEAR: 'MM/DD/YYYY',
+  YEAR_MONTH_DAY_DOTS: 'YYYY. MM. DD.',
+}
 
 /**
  * The picker behind FieldDate (its own chunk, with dayjs): the day in the UI language's order, typed section by section or picked from a
@@ -34,6 +45,8 @@ export default function DatePickerImpl({
 }) {
   const { i18n } = useTranslation()
   const locale = pickerLocale(i18n.language)
+  const formats = useFormats()
+  const dateFormat = formats.date ?? formats.defaultDate
   const [draft, setDraft] = useState<Dayjs | null>(() => (iso ? dayjs(iso) : null))
   const [reported, setReported] = useState(iso)
   // A day set from outside (a photo, the form's start values) replaces what the picker holds; the day it reported itself does not.
@@ -54,6 +67,7 @@ export default function DatePickerImpl({
           onChange(out)
         }}
         disableFuture={disableFuture}
+        format={dateFormat ? PICKER_FORMATS[dateFormat] : undefined}
         slots={{ openPickerIcon: CalendarIcon }}
         slotProps={{
           openPickerButton: { size: 'small' },

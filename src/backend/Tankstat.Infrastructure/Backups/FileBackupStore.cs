@@ -58,23 +58,30 @@ internal sealed class FileBackupStore(IOptionsMonitor<BackupOptions> options, ID
         return AgeKeys.FormatIdentity(key);
     }
 
-    public Task RequireSameMigrationAsync(BackupManifest manifest, CancellationToken ct) => RequireSameMigrationAsync(dbFactory, manifest, ct);
+    public async Task RequireRestorableMigrationAsync(BackupManifest manifest, CancellationToken ct) => await MigrationOfAsync(dbFactory, manifest, ct);
 
     /// <summary>
-    /// The backup's last migration must be the one the database is at, compared by name: each provider stamps the same migration with its
-    /// own timestamp, and a backup may come from another provider. <c>backup.otherMigration</c> otherwise (older backups wait for a replay).
+    /// This provider's id of the migration the backup was made at, found by name (each provider stamps the same migration with its own
+    /// timestamp, and a backup may come from another provider): the restore sets the database up at it (or finds it there), loads the
+    /// backup, and the migrations bring it up to date. A migration this release does not know is a newer release's: <c>backup.otherMigration</c>.
     /// </summary>
-    internal static async Task RequireSameMigrationAsync(IDbContextFactory<AppDbContext> dbFactory, BackupManifest manifest, CancellationToken ct)
+    internal static async Task<string> MigrationOfAsync(IDbContextFactory<AppDbContext> dbFactory, BackupManifest manifest, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var applied = (await db.Database.GetAppliedMigrationsAsync(ct)).LastOrDefault();
-        if (!MigrationNames.Same(applied, manifest.Migration))
-            throw new DomainException("backup.otherMigration", "The backup was made at another migration than the database is at.", new { Backup = manifest.Migration, Database = applied });
+        return MigrationModels.IdOf(db, manifest.Migration)
+            ?? throw new DomainException("backup.otherMigration", "The backup was made at a migration this release does not know.",
+                new { Backup = manifest.Migration, Database = (await db.Database.GetAppliedMigrationsAsync(ct)).LastOrDefault() });
     }
 
     public bool RestorePending => File.Exists(RestoreMarker.PathIn(Root));
 
-    public void RequestRestore(RestoreMarker marker) => marker.Write(Root);
+    public void RequestRestore(RestoreMarker marker)
+    {
+        // Looked for once more right before the marker is written: a delete may have taken the file since its manifest was read (deriving
+        // a key from a passphrase takes a while), and a marker naming no backup would restart the server only to refuse it.
+        PathOf(marker.File);
+        marker.Write(Root);
+    }
 
     public IReadOnlyList<RestorePoint> List()
     {

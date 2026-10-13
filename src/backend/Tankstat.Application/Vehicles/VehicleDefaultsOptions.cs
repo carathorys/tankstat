@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
+using Tankstat.Domain.Settings;
 using Tankstat.Domain.Recurring;
 
 namespace Tankstat.Application.Vehicles;
@@ -23,6 +24,12 @@ public sealed class VehicleDefaultsOptions
 
     /// <summary>How far (in the vehicle's distance unit) before it is due a new recurring expense starts warning (<c>Defaults__RecurringWarnDistance</c>).</summary>
     public long RecurringWarnDistance { get; set; } = 500;
+
+    /// <summary>How times are written for a user who did not choose (<c>Defaults__TimeFormat=TwentyFourHour</c>); unset, as their language writes them.</summary>
+    public TimeFormat? TimeFormat { get; set; }
+
+    /// <summary>How dates are written for a user who did not choose (<c>Defaults__DateFormat=Iso</c>); unset, as their language writes them.</summary>
+    public DateFormat? DateFormat { get; set; }
 }
 
 public sealed class VehicleDefaultsOptionsValidator : IValidateOptions<VehicleDefaultsOptions>
@@ -33,6 +40,12 @@ public sealed class VehicleDefaultsOptionsValidator : IValidateOptions<VehicleDe
         if (o.RecurringWarnDays is < 0 or > RecurringExpense.MaxWarnDays)
             errors.Add($"Defaults:RecurringWarnDays must be between 0 and {RecurringExpense.MaxWarnDays}.");
         if (o.RecurringWarnDistance < 0) errors.Add("Defaults:RecurringWarnDistance cannot be negative.");
+        // The binder takes a number for an enum (Defaults__TimeFormat=24 binds to no format at all), which every uiSettings answer would
+        // then fail to write: refused here by name, never by value, as an unknown name is refused by the binder.
+        if (o.TimeFormat is { } time && !Enum.IsDefined(time))
+            errors.Add($"Defaults:TimeFormat must be one of {string.Join(", ", Enum.GetNames<TimeFormat>())}.");
+        if (o.DateFormat is { } date && !Enum.IsDefined(date))
+            errors.Add($"Defaults:DateFormat must be one of {string.Join(", ", Enum.GetNames<DateFormat>())}.");
         return errors.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(errors);
     }
 }

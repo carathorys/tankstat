@@ -7,30 +7,65 @@ using Tankstat.Domain.Users;
 
 namespace Tankstat.Application.UnitTests;
 
-/// <summary>When a scheduled backup is due, also on the nights the clocks change, and when one was missed.</summary>
+/// <summary>When a scheduled backup is due, on the chosen days at each time, also on the nights the clocks change, and when one was missed.</summary>
 public class BackupScheduleTests
 {
-    private static readonly TimeOnly TwoAm = new(2, 0);
     private static readonly TimeZoneInfo Budapest = TimeZoneInfo.FindSystemTimeZoneById("Europe/Budapest");
+    private static readonly BackupSchedule TwoAm = BackupSchedule.Of("02:00", null)!;
+    private static readonly BackupSchedule HalfPastTwo = BackupSchedule.Of("02:30", null)!;
 
+    // 2027-01-10 is a Sunday.
     private static DateTimeOffset Utc(int month, int day, int hour, int minute = 0) => new(2027, month, day, hour, minute, 0, TimeSpan.Zero);
 
     [Fact]
     public void TheNextDueTime_IsTodayWhenItIsStillAhead_ElseTomorrow()
     {
-        Assert.Equal(Utc(1, 10, 2), BackupSchedule.NextAfter(Utc(1, 10, 1, 59), TwoAm, TimeZoneInfo.Utc));
-        Assert.Equal(Utc(1, 11, 2), BackupSchedule.NextAfter(Utc(1, 10, 2), TwoAm, TimeZoneInfo.Utc)); // exactly due: the next one is tomorrow
-        Assert.Equal(Utc(1, 11, 2), BackupSchedule.NextAfter(Utc(1, 10, 23), TwoAm, TimeZoneInfo.Utc));
-        Assert.Equal(Utc(1, 10, 2), BackupSchedule.LastDueAtOrBefore(Utc(1, 10, 2), TwoAm, TimeZoneInfo.Utc));
-        Assert.Equal(Utc(1, 9, 2), BackupSchedule.LastDueAtOrBefore(Utc(1, 10, 1, 59), TwoAm, TimeZoneInfo.Utc));
+        Assert.Equal(Utc(1, 10, 2), TwoAm.NextAfter(Utc(1, 10, 1, 59), TimeZoneInfo.Utc));
+        Assert.Equal(Utc(1, 11, 2), TwoAm.NextAfter(Utc(1, 10, 2), TimeZoneInfo.Utc)); // exactly due: the next one is tomorrow
+        Assert.Equal(Utc(1, 11, 2), TwoAm.NextAfter(Utc(1, 10, 23), TimeZoneInfo.Utc));
+        Assert.Equal(Utc(1, 10, 2), TwoAm.LastDueAtOrBefore(Utc(1, 10, 2), TimeZoneInfo.Utc));
+        Assert.Equal(Utc(1, 9, 2), TwoAm.LastDueAtOrBefore(Utc(1, 10, 1, 59), TimeZoneInfo.Utc));
+    }
+
+    [Fact]
+    public void SeveralTimes_AreEachDue_InTheirOrder()
+    {
+        var twice = BackupSchedule.Of("14:00, 2:00", null)!;
+
+        Assert.Equal([new TimeOnly(2, 0), new TimeOnly(14, 0)], twice.Times);
+        Assert.Equal(Utc(1, 10, 14), twice.NextAfter(Utc(1, 10, 2), TimeZoneInfo.Utc));
+        Assert.Equal(Utc(1, 11, 2), twice.NextAfter(Utc(1, 10, 14), TimeZoneInfo.Utc));
+        Assert.Equal(Utc(1, 10, 14), twice.LastDueAtOrBefore(Utc(1, 10, 23), TimeZoneInfo.Utc));
+        Assert.Equal(Utc(1, 9, 14), twice.LastDueAtOrBefore(Utc(1, 10, 1), TimeZoneInfo.Utc));
+    }
+
+    [Fact]
+    public void OnlyTheChosenDays_AreDue()
+    {
+        var mondaysAndThursdays = BackupSchedule.Of("02:00", "thursday, Mon")!;
+
+        Assert.Equal([DayOfWeek.Monday, DayOfWeek.Thursday], mondaysAndThursdays.Days);
+        Assert.Equal(Utc(1, 11, 2), mondaysAndThursdays.NextAfter(Utc(1, 10, 3), TimeZoneInfo.Utc)); // Sunday: the next is Monday
+        Assert.Equal(Utc(1, 14, 2), mondaysAndThursdays.NextAfter(Utc(1, 11, 2), TimeZoneInfo.Utc)); // then Thursday
+        Assert.Equal(Utc(1, 7, 2), mondaysAndThursdays.LastDueAtOrBefore(Utc(1, 10, 3), TimeZoneInfo.Utc)); // the Thursday before
+        Assert.False(mondaysAndThursdays.Missed(Utc(1, 7, 2, 5), Utc(1, 10, 23), TimeZoneInfo.Utc)); // nothing was due since
+        Assert.True(mondaysAndThursdays.Missed(Utc(1, 7, 2, 5), Utc(1, 11, 3), TimeZoneInfo.Utc));
+    }
+
+    [Fact]
+    public void TheDays_AreTheServersLocalDays()
+    {
+        // 00:30 on Monday in Budapest is still Sunday in UTC.
+        var mondays = BackupSchedule.Of("00:30", "Monday")!;
+        Assert.Equal(Utc(1, 10, 23, 30), mondays.NextAfter(Utc(1, 9, 12), Budapest));
     }
 
     [Fact]
     public void ItIsTheServersLocalTime()
     {
         // 02:00 in Budapest is 01:00 UTC in winter and 00:00 UTC in summer.
-        Assert.Equal(Utc(1, 10, 1), BackupSchedule.NextAfter(Utc(1, 9, 12), TwoAm, Budapest));
-        Assert.Equal(Utc(7, 10, 0), BackupSchedule.NextAfter(Utc(7, 9, 12), TwoAm, Budapest));
+        Assert.Equal(Utc(1, 10, 1), TwoAm.NextAfter(Utc(1, 9, 12), Budapest));
+        Assert.Equal(Utc(7, 10, 0), TwoAm.NextAfter(Utc(7, 9, 12), Budapest));
     }
 
     [Fact]
@@ -41,31 +76,81 @@ public class BackupScheduleTests
         // 31 October 2027: 03:00 becomes 02:00, so 02:30 happens twice (00:30 and 01:30 UTC): the first.
         Assert.Equal(Utc(10, 31, 0, 30), BackupSchedule.DueOn(new DateOnly(2027, 10, 31), new TimeOnly(2, 30), Budapest));
         // Either way a backup is due once on each of those days, and the day after goes back to normal.
-        Assert.Equal(Utc(3, 29, 0, 30), BackupSchedule.NextAfter(Utc(3, 28, 1), new TimeOnly(2, 30), Budapest));
+        Assert.Equal(Utc(3, 28, 1), HalfPastTwo.NextAfter(Utc(3, 27, 12), Budapest));
+        Assert.Equal(Utc(3, 29, 0, 30), HalfPastTwo.NextAfter(Utc(3, 28, 1), Budapest));
+        Assert.Equal(Utc(11, 1, 1, 30), HalfPastTwo.NextAfter(Utc(10, 31, 0, 30), Budapest));
+    }
+
+    [Fact]
+    public void TheNextAndTheLastDueTime_AreTheNearestInstants_AlsoWhereADaysFirstTimeComesBeforeTheDayBeforesLast()
+    {
+        // Asunción's spring night of 2017: the clocks went from 23:59 (-04:00) to 01:00 (-03:00), and .NET may read 00:15 of the new day
+        // as 00:15-03:00, an instant before 23:30-04:00 of the day before it. Whichever way the platform reads that night, the next due
+        // time is the earlier instant and the last one the later, never the first of a day that has one.
+        var asuncion = TimeZoneInfo.FindSystemTimeZoneById("America/Asuncion");
+        var schedule = BackupSchedule.Of("23:30, 00:15", "Saturday,Sunday")!;
+        DateTimeOffset[] dues = [BackupSchedule.DueOn(new DateOnly(2017, 9, 30), new TimeOnly(23, 30), asuncion), BackupSchedule.DueOn(new DateOnly(2017, 10, 1), new TimeOnly(0, 15), asuncion)];
+
+        Assert.Equal(dues.Min(), schedule.NextAfter(new DateTimeOffset(2017, 10, 1, 2, 0, 0, TimeSpan.Zero), asuncion));
+        Assert.Equal(dues.Max(), schedule.LastDueAtOrBefore(dues.Max().AddMinutes(1), asuncion));
     }
 
     [Fact]
     public void ABackupIsMissed_WhenTheLastDueTimePassedWithoutOne_ANewInstallOrAnOlderOneIncluded()
     {
-        Assert.False(BackupSchedule.Missed(Utc(1, 10, 2, 0), Utc(1, 10, 9), TwoAm, TimeZoneInfo.Utc)); // written at 02:00 today
-        Assert.False(BackupSchedule.Missed(Utc(1, 9, 2, 5), Utc(1, 10, 1), TwoAm, TimeZoneInfo.Utc)); // yesterday's, and today's is not due yet
-        Assert.True(BackupSchedule.Missed(Utc(1, 9, 2, 5), Utc(1, 10, 3), TwoAm, TimeZoneInfo.Utc)); // down over 02:00
-        Assert.True(BackupSchedule.Missed(null, Utc(1, 10, 3), TwoAm, TimeZoneInfo.Utc)); // none yet
+        Assert.False(TwoAm.Missed(Utc(1, 10, 2, 0), Utc(1, 10, 9), TimeZoneInfo.Utc)); // written at 02:00 today
+        Assert.False(TwoAm.Missed(Utc(1, 9, 2, 5), Utc(1, 10, 1), TimeZoneInfo.Utc)); // yesterday's, and today's is not due yet
+        Assert.True(TwoAm.Missed(Utc(1, 9, 2, 5), Utc(1, 10, 3), TimeZoneInfo.Utc)); // down over 02:00
+        Assert.True(TwoAm.Missed(null, Utc(1, 10, 3), TimeZoneInfo.Utc)); // none yet
+    }
+
+    [Fact]
+    public void NoTime_OrNoDay_IsNoSchedule()
+    {
+        Assert.Null(BackupSchedule.Of(null, null));
+        Assert.Null(BackupSchedule.Of(" ", "Monday"));
+        Assert.Null(BackupSchedule.Of("02:00", BackupSchedule.NoDay));
+        Assert.Null(BackupSchedule.Of("02:00", "someday"));
+        Assert.True(BackupSchedule.Of("02:00", BackupSchedule.EveryDay)!.IsEveryDay);
+        Assert.True(BackupSchedule.Of("02:00", "")!.IsEveryDay); // unset: every day
     }
 
     [Theory]
-    [InlineData("02:00", 2, 0)]
-    [InlineData("2:30", 2, 30)]
-    [InlineData(" 23:59 ", 23, 59)]
-    public void ATimeOfDay_IsParsed(string text, int hour, int minute) => Assert.Equal(new TimeOnly(hour, minute), BackupSchedule.Parse(text));
+    [InlineData("02:00", "02:00")]
+    [InlineData("2:30", "02:30")]
+    [InlineData(" 23:59 ", "23:59")]
+    [InlineData("14:00,02:00;14:00 06:15", "02:00 06:15 14:00")]
+    [InlineData("", "")]
+    [InlineData("02:00\n", "02:00")] // a secret or a file read with its line break
+    [InlineData("\t2:30\r\n", "02:30")]
+    [InlineData("02:00 ", "02:00")]
+    [InlineData("02:00,\t14:00", "02:00 14:00")]
+    [InlineData("\t", "")] // whitespace alone: nothing, as unset
+    public void TimesOfDay_AreParsed(string text, string expected) =>
+        Assert.Equal(expected, string.Join(" ", BackupSchedule.ParseTimes(text)!.Select(t => t.ToString("HH:mm", CultureInfo.InvariantCulture))));
 
     [Theory]
-    [InlineData(null)]
-    [InlineData("")]
     [InlineData("24:00")]
     [InlineData("02:00:00")]
     [InlineData("2 am")]
-    public void AnythingElse_IsNoTime(string? text) => Assert.Null(BackupSchedule.Parse(text));
+    [InlineData("02:00, later")]
+    public void AnythingElse_IsNoTime(string text) => Assert.Null(BackupSchedule.ParseTimes(text));
+
+    [Theory]
+    [InlineData("Monday,Friday", "Monday Friday")]
+    [InlineData("fri MON mon", "Monday Friday")]
+    [InlineData("None", "")]
+    [InlineData(null, "Monday Tuesday Wednesday Thursday Friday Saturday Sunday")]
+    [InlineData("Monday,Friday\n", "Monday Friday")]
+    [InlineData("None\r\n", "")]
+    [InlineData("\t", "Monday Tuesday Wednesday Thursday Friday Saturday Sunday")]
+    public void DaysOfTheWeek_AreParsed(string? text, string expected) => Assert.Equal(expected, string.Join(" ", BackupSchedule.ParseDays(text)!));
+
+    [Theory]
+    [InlineData("Mo")]
+    [InlineData("None,Monday")]
+    [InlineData("Hétfő")]
+    public void AnythingElse_IsNoDay(string text) => Assert.Null(BackupSchedule.ParseDays(text));
 }
 
 /// <summary>Which backups go after the app wrote one: both settings are ceilings, the newest always stays, and only the app's own files count.</summary>

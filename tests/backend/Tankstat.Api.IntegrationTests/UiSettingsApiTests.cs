@@ -91,6 +91,22 @@ public class UiSettingsApiTests : IDisposable
     }
 
     [Fact]
+    public async Task TheFormats_FollowTheUser_AreForgottenOnRequest_AndComeWithTheInstancesDefaults()
+    {
+        var people = await _app.Users();
+        const string Read = "{ uiSettings { timeFormat dateFormat defaultTimeFormat defaultDateFormat } }";
+
+        var chosen = (await people.Alice.Gql("mutation { updateUiSettings(input: { timeFormat: TWENTY_FOUR_HOUR, dateFormat: DAY_MONTH_YEAR_DOTS }) { timeFormat dateFormat } }")).Data().GetProperty("updateUiSettings");
+        Assert.Equal(("TWENTY_FOUR_HOUR", "DAY_MONTH_YEAR_DOTS"), (chosen.GetProperty("timeFormat").GetString(), chosen.GetProperty("dateFormat").GetString()));
+        Assert.Equal(JsonValueKind.Null, (await people.Bob.Gql(Read)).Data().GetProperty("uiSettings").GetProperty("timeFormat").ValueKind);
+
+        (await people.Alice.Gql("mutation { updateUiSettings(input: { clearTimeFormat: true }) { timeFormat } }")).Data();
+        var after = (await people.Alice.Gql(Read)).Data().GetProperty("uiSettings");
+        Assert.Equal((JsonValueKind.Null, "DAY_MONTH_YEAR_DOTS"), (after.GetProperty("timeFormat").ValueKind, after.GetProperty("dateFormat").GetString()));
+        Assert.Equal(JsonValueKind.Null, after.GetProperty("defaultTimeFormat").ValueKind); // the instance sets none
+    }
+
+    [Fact]
     public async Task InvalidSettings_AreValidationErrorsWithKeys()
     {
         var people = await _app.Users();

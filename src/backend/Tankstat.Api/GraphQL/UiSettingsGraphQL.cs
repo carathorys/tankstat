@@ -11,9 +11,13 @@ public sealed record GridSettingsInfo(string GridId, IReadOnlyList<string> Order
 }
 
 /// <summary>The current user's UI settings; a null value means nothing was chosen yet (the browser's own default applies). The grids are loaded only when selected.</summary>
-public sealed record UiSettingsInfo(bool? NavOpen, string? Language, ColorMode? ColorMode, SurfaceStyle? Surface)
+/// <param name="DefaultTimeFormat">The instance's time format for a user who chose none (none: as the language writes times).</param>
+/// <param name="DefaultDateFormat">The instance's date format for a user who chose none (none: as the language writes dates).</param>
+public sealed record UiSettingsInfo(
+    bool? NavOpen, string? Language, ColorMode? ColorMode, SurfaceStyle? Surface, TimeFormat? TimeFormat, DateFormat? DateFormat, TimeFormat? DefaultTimeFormat, DateFormat? DefaultDateFormat)
 {
-    public static UiSettingsInfo From(UiSettingsView v) => new(v.NavOpen, v.Language, v.ColorMode, v.Surface);
+    public static UiSettingsInfo From(UiSettingsView v) =>
+        new(v.NavOpen, v.Language, v.ColorMode, v.Surface, v.TimeFormat, v.DateFormat, v.DefaultTimeFormat, v.DefaultDateFormat);
 }
 
 [ExtendObjectType<UiSettingsInfo>]
@@ -29,7 +33,12 @@ public sealed class UiSettingsInfoExtensions
 /// <param name="ClearLanguage">Forget the saved language (the browser's choice applies again); wins over a language given at the same time.</param>
 /// <param name="ColorMode">Omit to leave it as it is.</param>
 /// <param name="Surface">Omit to leave it as it is.</param>
-public sealed record UpdateUiSettingsInput(bool? NavOpen, string? Language, bool? ClearLanguage, ColorMode? ColorMode, SurfaceStyle? Surface);
+/// <param name="TimeFormat">Omit to leave it as it is.</param>
+/// <param name="ClearTimeFormat">Forget the saved time format (the instance's default applies again); wins over a format given at the same time.</param>
+/// <param name="DateFormat">Omit to leave it as it is.</param>
+/// <param name="ClearDateFormat">Forget the saved date format (the instance's default applies again); wins over a format given at the same time.</param>
+public sealed record UpdateUiSettingsInput(
+    bool? NavOpen, string? Language, bool? ClearLanguage, ColorMode? ColorMode, SurfaceStyle? Surface, TimeFormat? TimeFormat, bool? ClearTimeFormat, DateFormat? DateFormat, bool? ClearDateFormat);
 
 public sealed record GridSettingsInput(string GridId, IReadOnlyList<string> Order, IReadOnlyList<string> Hidden, int PageSize, string SortColumn, SortDirection SortDirection);
 
@@ -45,7 +54,8 @@ public sealed class UiSettingsQueries
 public sealed class UiSettingsMutations
 {
     public async Task<UiSettingsInfo> UpdateUiSettings(UpdateUiSettingsInput input, [Service] UiSettingsService settings, CancellationToken ct) =>
-        UiSettingsInfo.From(await settings.UpdateAsync(new UiSettingsChange(input.NavOpen, input.Language, input.ClearLanguage ?? false, input.ColorMode, input.Surface), ct));
+        UiSettingsInfo.From(await settings.UpdateAsync(new UiSettingsChange(
+            input.NavOpen, input.Language, input.ClearLanguage ?? false, input.ColorMode, input.Surface, input.TimeFormat, input.ClearTimeFormat ?? false, input.DateFormat, input.ClearDateFormat ?? false), ct));
 
     public async Task<GridSettingsInfo> SaveGridSettings(GridSettingsInput input, [Service] UiSettingsService settings, CancellationToken ct) =>
         GridSettingsInfo.From(await settings.SaveGridAsync(input.GridId, new GridSettingsValues(input.Order, input.Hidden, input.PageSize, input.SortColumn, input.SortDirection), ct));

@@ -63,6 +63,27 @@ public class UiSettingsServiceTests
     }
 
     [Fact]
+    public async Task TheTimeAndDateFormats_AreChosenOrForgotten_AndComeWithTheInstancesDefaults()
+    {
+        var w = new World();
+        w.Defaults.TimeFormat = TimeFormat.TwentyFourHour;
+        w.Current.SignInAs(w.AddUser("alice@x.co"));
+        var start = await w.UiSettings.GetAsync(default);
+        Assert.Equal((null, null, TimeFormat.TwentyFourHour, null), (start.TimeFormat, start.DateFormat, start.DefaultTimeFormat, start.DefaultDateFormat));
+
+        await w.UiSettings.UpdateAsync(new UiSettingsChange(Surface: SurfaceStyle.Opaque), default);
+        var chosen = await w.UiSettings.UpdateAsync(new UiSettingsChange(TimeFormat: TimeFormat.TwelveHour, DateFormat: DateFormat.Iso), default);
+        Assert.Equal((TimeFormat.TwelveHour, DateFormat.Iso, SurfaceStyle.Opaque), (chosen.TimeFormat, chosen.DateFormat, chosen.Surface)); // the others stayed
+
+        // Forgotten, each on its own; a clear wins over a format given with it.
+        var cleared = await w.UiSettings.UpdateAsync(new UiSettingsChange(TimeFormat: TimeFormat.TwentyFourHour, ClearTimeFormat: true), default);
+        Assert.Equal((null, DateFormat.Iso), (cleared.TimeFormat, cleared.DateFormat));
+        Assert.Null((await w.UiSettings.UpdateAsync(new UiSettingsChange(ClearDateFormat: true), default)).DateFormat);
+        Assert.False(new UiSettingsChange(ClearDateFormat: true).IsEmpty);
+        await Assert.ThrowsAsync<DomainException>(() => w.UiSettings.UpdateAsync(new UiSettingsChange(TimeFormat: (TimeFormat)7), default));
+    }
+
+    [Fact]
     public async Task Grids_AreSavedPerUserAndGrid_ListedById_AndReset()
     {
         var w = new World();

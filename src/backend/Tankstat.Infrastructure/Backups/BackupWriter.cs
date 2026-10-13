@@ -81,12 +81,18 @@ internal sealed class BackupWriter(
         FileStream file, StorageOptions roots, DateTimeOffset createdAt, BackupEncryption? encryption, BackupPhotos photos, bool safetyNet, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var migration = (await db.Database.GetAppliedMigrationsAsync(ct)).LastOrDefault();
+        var applied = (await db.Database.GetAppliedMigrationsAsync(ct)).ToList();
+        var migration = applied.LastOrDefault();
+        var known = db.Database.GetMigrations().ToList();
         // A database that a newer release migrated holds tables and columns this release's model does not know: the dump would leave them
         // out without a word, under a manifest that names the newer migration.
-        if (migration is not null && !db.Database.GetMigrations().Contains(migration))
+        if (migration is not null && !known.Contains(migration))
             throw new DomainException("backup.databaseNewer", "The database was migrated by a newer release of Tankstat; back it up with that release.", new { migration });
-        var tables = TableDump.Tables(db.Model);
+        // A database with any migration of this release still to run (the command line never migrates first, nor does the start's backup
+        // before the migrations) is dumped as its last applied migration left it, so the backup holds what is there and names the migration
+        // it was made at; a restore brings it up to date. Today's model only when nothing is pending: a migration merged in after a later one
+        // was released is pending below the last applied one, and today's model would ask for its columns, which do not exist yet.
+        var tables = TableDump.Tables(migration is null || !known.Except(applied).Any() ? db.Model : MigrationModels.ModelOf(db, migration));
         var sql = db.GetService<ISqlGenerationHelper>();
 
         var rows = new Dictionary<string, long>();
@@ -204,6 +210,36 @@ internal sealed class BackupWriter(
 
     /// <summary>The partial file of an output, created new: a partial of that name that is already there (another run's) is never taken over.</summary>
     private static FileStream CreatePartial(string output) => new(output + Partial, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+
+    /// <summary>
+    /// At start: the partial files that runs cut short left in the backups folder (a process stopped while it wrote one: a crash, a restart
+    /// loop of a start that failed), removed, each with an Information line. Only one nobody holds open goes: a run keeps its partial open
+    /// with <see cref="FileShare.None"/> while it writes, so another process writing one now (the command line, another server on the same
+    /// folder) keeps it. On Linux that is the advisory lock .NET takes, honoured by the .NET processes of the same host; on a network share
+    /// mounted by several hosts it may not be, and a partial another host is writing could be removed (that backup then fails). Telling the
+    /// instances apart (an id of their own) is not done: the id would live in the database, which the start may not have yet.
+    /// </summary>
+    internal static void RemoveStalePartials(string folder, ILogger logger)
+    {
+        if (!Directory.Exists(folder)) return;
+        foreach (var path in Directory.EnumerateFiles(folder, "*.zip" + Partial))
+        {
+            try
+            {
+                // Opened alone, it goes as it is closed; held open by a run, the open fails and it stays.
+                using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose)) { }
+                logger.LogInformation("Removed {File}, a backup left half written by a run that was stopped", Path.GetFileName(path));
+            }
+            catch (IOException)
+            {
+                logger.LogDebug("{File} is being written by another run, or is gone: left as it is", Path.GetFileName(path));
+            }
+            catch (UnauthorizedAccessException e)
+            {
+                logger.LogWarning(e, "{File}, a backup left half written, cannot be removed", Path.GetFileName(path));
+            }
+        }
+    }
 
     private static BackupEncryption? Configured(BackupOptions o) =>
         o.Encrypted ? new BackupEncryption(BackupEncryption.AgeX25519, o.Encryption.Recipient!.Trim(), o.Encryption.Salt!.Trim(), Argon2idParameters.Default) : null;
