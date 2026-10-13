@@ -52,10 +52,12 @@ internal sealed class BackupRunner(
         {
             var result = await writer.WriteAsync(new BackupRequest(), ct);
             run = new BackupRun(started, clock.GetUtcNow(), Path.GetFileName(result.Path), new FileInfo(result.Path).Length, null);
-            Prune();
+            Prune(run.File!);
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (Exception) when (ct.IsCancellationRequested)
         {
+            // Stopped with the app, whatever the database made of the cancellation (SqlClient reports a cancelled read as a SqlException,
+            // not as an OperationCanceledException): no failure, and nobody is told; the next start finds it missed.
             logger.LogInformation("The backup under way was stopped with the app");
             run = new BackupRun(started, clock.GetUtcNow(), null, null, "backup.stopped");
         }
@@ -63,7 +65,7 @@ internal sealed class BackupRunner(
         {
             if (e is KeyedException keyed) logger.LogWarning(e, "A backup failed: {Key}", keyed.Key);
             else logger.LogError(e, "A backup failed");
-            run = new BackupRun(started, clock.GetUtcNow(), null, null, (e as KeyedException)?.Key ?? "backup.failed");
+            run = new BackupRun(started, clock.GetUtcNow(), null, null, (e as KeyedException)?.Key ?? "backup.failed", (e as KeyedException)?.Args);
             await NotifyAsync(run, actorId);
         }
         finally
@@ -74,14 +76,24 @@ internal sealed class BackupRunner(
         }
     }
 
-    /// <summary>Retention, after a backup was written; a file that cannot be removed is a Warning and the rest still goes.</summary>
-    private void Prune()
+    /// <summary>
+    /// Retention, after <paramref name="written"/> was written: never that file (a backup dated later than now, copied in or written while
+    /// the clock was wrong, would outrank it as the newest), and nothing while a restore waits for the next start, since the backup it names
+    /// must still be there then. A file that cannot be removed is a Warning and the rest still goes; nothing here makes the written backup a
+    /// failed one.
+    /// </summary>
+    private void Prune(string written)
     {
         var o = options.Value;
         if (!o.Pruning) return;
         try
         {
-            foreach (var point in BackupRetention.ToRemove(store.List(), o.Keep, o.KeepDays, clock.GetUtcNow()))
+            if (store.RestorePending)
+            {
+                logger.LogInformation("A restore waits for the next start: retention removes no backup until then");
+                return;
+            }
+            foreach (var point in BackupRetention.ToRemove(store.List(), o.Keep, o.KeepDays, clock.GetUtcNow()).Where(p => p.File != written))
             {
                 try
                 {
@@ -97,6 +109,10 @@ internal sealed class BackupRunner(
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             logger.LogWarning(e, "The backups folder could not be read to prune it");
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e, "Retention could not remove the old backups; the backup was written");
         }
     }
 

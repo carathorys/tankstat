@@ -146,14 +146,9 @@ internal sealed class FileBackupStore(IOptions<BackupOptions> options, IDbContex
 
     public void Delete(string fileName)
     {
-        try
-        {
-            File.Delete(PathOf(fileName));
-        }
-        catch (NotFoundException)
-        {
-            // gone already: nothing to remove (a name that is not a bare one never gets here: List only hands out bare names)
-        }
+        if (!IsBackupName(fileName)) return; // never anything but a backup of the folder (List only hands out such names)
+        var path = Path.Combine(Root, fileName);
+        if (File.Exists(path)) File.Delete(path); // gone already: nothing to remove
     }
 
     /// <summary>A backup of the folder by its bare name; <c>backup.notFound</c> for anything else (a path, a hidden file, not a backup's name, one not there).</summary>

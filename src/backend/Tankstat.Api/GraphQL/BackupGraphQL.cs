@@ -1,3 +1,4 @@
+using System.Globalization;
 using Tankstat.Application.Backups;
 
 namespace Tankstat.Api.GraphQL;
@@ -51,7 +52,7 @@ public sealed record BackupOverviewInfo(string Folder, BackupRunInfo Run, Backup
             new BackupRunInfo(s.Run.Running, last?.StartedAt, last?.FinishedAt, last?.File, last?.Bytes, last?.Error),
             new BackupSettingsInfo(
                 s.Settings.Encrypted ? s.Settings.Encryption.Recipient!.Trim() : null, s.PhotosApart, s.Settings.Photos, s.Settings.MaxUploadMb,
-                s.Settings.DailyAt?.ToString("HH:mm"), s.NextRun, s.Settings.Keep, s.Settings.KeepDays));
+                s.Settings.DailyAt?.ToString("HH:mm", CultureInfo.InvariantCulture), s.NextRun, s.Settings.Keep, s.Settings.KeepDays)); // a culture's time separator (fi-FI: 02.00) is not the setting's
     }
 }
 

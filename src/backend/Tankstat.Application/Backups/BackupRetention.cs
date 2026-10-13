@@ -27,12 +27,17 @@ public static class BackupRetention
     {
         if (keep is null && keepDays is null) return [];
         var own = points.Where(IsOwn).OrderByDescending(p => p.Manifest.CreatedAt).ThenByDescending(p => p.File, StringComparer.Ordinal).ToList();
-        var oldest = keepDays is { } days ? now.AddDays(-days) : (DateTimeOffset?)null;
+        var oldest = keepDays is { } days ? DaysBefore(now, days) : null;
         var backups = own.Where(p => !p.Manifest.SafetyNet).Skip(1) // the newest never goes
-            .Select((p, i) => (Point: p, Rank: i + 1))
-            .Where(x => x.Rank >= keep || x.Point.Manifest.CreatedAt < oldest)
-            .Select(x => x.Point);
+            .Where((p, i) => i + 1 >= keep || p.Manifest.CreatedAt < oldest); // i + 1: its place after the newest
         var safetyNets = own.Where(p => p.Manifest.SafetyNet).Skip(SafetyNetsKept);
         return [.. backups, .. safetyNets];
+    }
+
+    /// <summary>The time <paramref name="days"/> days before <paramref name="now"/>; null when that is before the calendar starts, so nothing is that old.</summary>
+    private static DateTimeOffset? DaysBefore(DateTimeOffset now, int days)
+    {
+        var utc = now.ToUniversalTime();
+        return days < (utc - DateTimeOffset.MinValue).TotalDays ? utc.AddDays(-days) : null;
     }
 }

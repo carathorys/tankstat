@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -9,14 +10,21 @@ namespace Tankstat.Api.IntegrationTests;
 
 /// <summary>
 /// The schedule on a fake clock (UTC as the server's local time): a backup missed while the app was down is written at start, then one at
-/// every due time, retention after each, a Back up now while the scheduled one is written joins it, and a failing backup tells the
-/// administrators once a day and removes nothing.
+/// every due time, retention after each, a Back up now while the scheduled one is written joins it, a failing backup tells the
+/// administrators once a day and removes nothing, a waiting restore holds retention back, and a run the app's stop cuts short is no failure.
 /// </summary>
 public sealed class BackupScheduleTests : IDisposable
 {
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// The day the tests call the 10th: tomorrow by the real clock. The sign-in cookies get their expiry from the fake clock, and the test
+    /// client drops a cookie whose expiry the real clock has passed, so the fake clock never runs behind the real one.
+    /// </summary>
+    private static readonly DateTimeOffset Tenth = new(DateTime.UtcNow.Date.AddDays(1), TimeSpan.Zero);
+
     private readonly string _folder = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-backups");
-    private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2027, 1, 10, 3, 0, 0, TimeSpan.Zero)); // 03:00, the night's 02:00 passed
+    private readonly FakeTimeProvider _clock = new(At(10, 3)); // 03:00, the night's 02:00 passed
 
     public BackupScheduleTests() => _clock.SetLocalTimeZone(TimeZoneInfo.Utc);
 
@@ -25,7 +33,10 @@ public sealed class BackupScheduleTests : IDisposable
         if (Directory.Exists(_folder)) Directory.Delete(_folder, recursive: true);
     }
 
-    private static DateTimeOffset At(int day, int hour) => new(2027, 1, day, hour, 0, 0, TimeSpan.Zero);
+    private static DateTimeOffset At(int day, int hour) => Tenth.AddDays(day - 10).AddHours(hour);
+
+    /// <summary>The name the app gives the backup it writes at <paramref name="at"/>.</summary>
+    private static string Name(DateTimeOffset at) => string.Create(CultureInfo.InvariantCulture, $"{BackupRetention.OwnPrefix}{at:yyyyMMdd'T'HHmmss'Z'}.zip");
 
     private TestApp App(Dictionary<string, string?> extra, Action<IServiceCollection>? services = null)
     {
@@ -51,20 +62,20 @@ public sealed class BackupScheduleTests : IDisposable
         var worker = Worker(app);
 
         await worker.WhenAsleepUntil(At(11, 2)).WaitAsync(Wait);
-        Assert.Equal(["tankstat-backup-20270110T030000Z.zip"], Files()); // the night's, caught up as the app started
+        Assert.Equal([Name(At(10, 3))], Files()); // the night's, caught up as the app started
 
         _clock.SetUtcNow(At(11, 2));
         await worker.WhenAsleepUntil(At(12, 2)).WaitAsync(Wait);
-        Assert.Equal(["tankstat-backup-20270110T030000Z.zip", "tankstat-backup-20270111T020000Z.zip"], Files());
+        Assert.Equal([Name(At(10, 3)), Name(At(11, 2))], Files());
 
         _clock.SetUtcNow(At(12, 2));
         await worker.WhenAsleepUntil(At(13, 2)).WaitAsync(Wait);
-        Assert.Equal(["tankstat-backup-20270111T020000Z.zip", "tankstat-backup-20270112T020000Z.zip"], Files()); // Keep=2: the oldest went
+        Assert.Equal([Name(At(11, 2)), Name(At(12, 2))], Files()); // Keep=2: the oldest went
 
         var lines = app.Log.From<BackupWorker>().ToList();
         Assert.Contains(lines, e => e.Level == LogLevel.Information && e.Values.TryGetValue("Time", out var t) && (string?)t == "02:00");
         Assert.DoesNotContain(lines, e => e.Level >= LogLevel.Warning); // retention is set: no warning about a folder that only grows
-        Assert.Contains(app.Log.From<BackupRunner>(), e => e.Level == LogLevel.Information && (string?)e.Values["File"] == "tankstat-backup-20270110T030000Z.zip");
+        Assert.Contains(app.Log.From<BackupRunner>(), e => e.Level == LogLevel.Information && e.Values.TryGetValue("File", out var f) && (string?)f == Name(At(10, 3)));
     }
 
     [Fact]
@@ -101,11 +112,10 @@ public sealed class BackupScheduleTests : IDisposable
     [Fact]
     public async Task BackUpNow_WhileTheScheduledOneIsWritten_JoinsIt()
     {
-        HeldWriter? held = null;
-        using var app = App([], s => s.AddSingleton<IBackupWriter>(sp => held = new HeldWriter(ActivatorUtilities.CreateInstance<BackupWriter>(sp))));
+        using var app = App([], s => s.AddSingleton<IBackupWriter>(sp => new HeldWriter(ActivatorUtilities.CreateInstance<BackupWriter>(sp))));
         var admin = app.NewClient();
         await admin.LoginAs(TestApp.AdminEmail, TestApp.AdminPassword);
-        held = (HeldWriter)app.Factory.Services.GetRequiredService<IBackupWriter>();
+        var held = (HeldWriter)app.Factory.Services.GetRequiredService<IBackupWriter>();
         await held.Started.Task.WaitAsync(Wait); // the missed one is being written
 
         Assert.False((await admin.Gql("mutation { runBackup }")).Data().GetProperty("runBackup").GetBoolean());
@@ -125,7 +135,10 @@ public sealed class BackupScheduleTests : IDisposable
     public async Task AFailingBackup_TellsEveryAdministratorOnceADay_AndRemovesNothing()
     {
         Directory.CreateDirectory(_folder);
-        using (var before = TestApp.Standalone(new() { ["Backups:Path"] = _folder })) // two older backups of the app, which Keep=1 would thin out
+        // Two older backups of the app, which Keep=1 would thin out, written the day before on a clock of their own (the schedule's clock does
+        // not go back): by the real clock they would date from today and count as the night's.
+        var dayBefore = new FakeTimeProvider(At(9, 12));
+        using (var before = TestApp.Standalone(new() { ["Backups:Path"] = _folder }, s => s.AddSingleton<TimeProvider>(dayBefore)))
         {
             var writer = before.Factory.Services.GetRequiredService<IBackupWriter>();
             await writer.WriteAsync(new BackupRequest(), default);
@@ -160,6 +173,81 @@ public sealed class BackupScheduleTests : IDisposable
         Assert.Empty(alices); // not an administrator
         Assert.Contains(bobs[0].GetProperty("args").EnumerateArray(), a => a.GetProperty("name").GetString() == "error" && a.GetProperty("value").GetString() == "backup.failed");
         Assert.Equal(older, Files()); // nothing was pruned
+    }
+
+    [Fact]
+    public async Task WhileARestoreWaits_RetentionRemovesNothing()
+    {
+        using var app = App(new() { ["Backups:Keep"] = "1" });
+        var worker = Worker(app);
+        await worker.WhenAsleepUntil(At(11, 2)).WaitAsync(Wait);
+        var first = Assert.Single(Files()); // the night's, caught up at start
+        new RestoreMarker(first, Guid.NewGuid(), _clock.GetUtcNow(), null).Write(_folder); // a restore of it waits for the next start
+
+        _clock.SetUtcNow(At(11, 2));
+        await worker.WhenAsleepUntil(At(12, 2)).WaitAsync(Wait);
+
+        // Keep=1 would have removed the backup the restore names, and the next start would have refused the restore.
+        Assert.Equal([RestoreMarker.FileName, first, Name(At(11, 2))], Files());
+        Assert.Contains(app.Log.From<BackupRunner>(), e => e.Level == LogLevel.Information);
+    }
+
+    [Fact]
+    public async Task TheBackupJustWritten_NeverGoes_EvenWhenAnOwnFileIsDatedLater()
+    {
+        // An own backup dated after the night's run, as one copied in from a server whose clock was ahead: by its date it is the newest.
+        using (var ahead = TestApp.Standalone(new() { ["Backups:Path"] = _folder }, s => s.AddSingleton<TimeProvider>(new FakeTimeProvider(At(20, 0)))))
+            await ahead.Factory.Services.GetRequiredService<IBackupWriter>().WriteAsync(new BackupRequest(), default);
+
+        using var app = App(new() { ["Backups:Keep"] = "1" });
+        var worker = Worker(app);
+        await worker.WhenAsleepUntil(At(11, 2)).WaitAsync(Wait);
+        _clock.SetUtcNow(At(11, 2));
+        await worker.WhenAsleepUntil(At(12, 2)).WaitAsync(Wait);
+
+        Assert.Equal([Name(At(11, 2)), Name(At(20, 0))], Files()); // Keep=1 would have removed the backup it had just written
+    }
+
+    /// <summary>
+    /// A writer that is under way until the app stops, and then fails the way a database may report the cancelled read: SQL Server's client
+    /// throws its own exception ("Operation cancelled by user."), not an OperationCanceledException.
+    /// </summary>
+    private sealed class StoppedWriter : IBackupWriter
+    {
+        public readonly TaskCompletionSource Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<BackupResult> WriteAsync(BackupRequest request, CancellationToken ct)
+        {
+            Started.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                throw new InvalidOperationException("Operation cancelled by user.");
+            }
+            throw new InvalidOperationException("Never reached: the delay ends only by the stop.");
+        }
+    }
+
+    [Fact]
+    public async Task ARunTheAppsStopCutsShort_IsStopped_HoweverTheStopSurfaces_AndTellsNobody()
+    {
+        var writer = new StoppedWriter();
+        var app = App([], s => s.AddSingleton<IBackupWriter>(writer));
+        try
+        {
+            await writer.Started.Task.WaitAsync(Wait); // the missed one is being written
+        }
+        finally
+        {
+            app.Dispose(); // the app stops under it, and waits for it to wind down
+        }
+
+        var lines = app.Log.From<BackupRunner>().ToList();
+        Assert.Contains(lines, e => e.Level == LogLevel.Information); // stopped with the app
+        Assert.DoesNotContain(lines, e => e.Level >= LogLevel.Warning); // no failure, so no administrator is told either
     }
 
     [Fact]

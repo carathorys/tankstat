@@ -1,7 +1,11 @@
 namespace Tankstat.Application.Backups;
 
-/// <summary>A run: when it started and, once it ended, when, the file it wrote, or the error key that stopped it (all null while it goes on).</summary>
-public sealed record BackupRun(DateTimeOffset StartedAt, DateTimeOffset? FinishedAt, string? File, long? Bytes, string? Error);
+/// <summary>
+/// A run: when it started and, once it ended, when, the file it wrote, or the error key that stopped it with the values its text is filled
+/// with (all null while it goes on).
+/// </summary>
+public sealed record BackupRun(
+    DateTimeOffset StartedAt, DateTimeOffset? FinishedAt, string? File, long? Bytes, string? Error, IReadOnlyDictionary<string, object?>? ErrorArgs = null);
 
 /// <summary>Whether a backup is being written now, and that run (<see cref="Running"/>), else the last one of this host's life.</summary>
 public sealed record BackupRunStatus(bool Running, BackupRun? Last);
