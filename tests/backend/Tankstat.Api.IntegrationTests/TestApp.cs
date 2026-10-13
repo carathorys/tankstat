@@ -76,9 +76,11 @@ internal sealed class TestApp : IDisposable
         };
         // No schedule or retention of the developer's environment (Backups__Every, ...): a start writes a missed backup and retention prunes
         // the folder. A null here wins over the variable; only one the environment sets is overridden, since a key held here is read-only on
-        // the settings page, which the tests of these settings save through.
+        // the settings page, which the tests of these settings save through. The environment is read as the configuration reads it, so a
+        // variable spelled in other letters (BACKUPS__EVERY) counts too.
+        var environment = new ConfigurationBuilder().AddEnvironmentVariables().Build();
         foreach (var key in ScheduleKeys)
-            if (Environment.GetEnvironmentVariable(key.Replace(":", "__", StringComparison.Ordinal)) is not null) all[key] = null;
+            if (environment[key] is not null) all[key] = null;
         foreach (var (key, value) in settings) all[key] = value;
         _ownSettingsFile = settings.GetValueOrDefault("Settings:Path") is null;
         SettingsPath = settings.GetValueOrDefault("Settings:Path") ?? Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-settings.json");
