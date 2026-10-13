@@ -8,7 +8,8 @@
 #   3. docker compose -f docker-compose.example.yml up -d, then sign in at http://localhost:8080 as ADMIN_EMAIL.
 #      The e-mails the app sends (password links) land in Mailpit: http://localhost:8025.
 #
-# Upgrading: change TANKSTAT_VERSION and run up -d again. The app writes a backup into data/backups before it migrates the database.
+# Upgrading: change TANKSTAT_VERSION and run up -d again. From 0.15 on, the app writes a backup into data/backups before it migrates
+# the database.
 
 services:
   db:
@@ -63,6 +64,7 @@ services:
 
       # Backups: every night at 02:00 in TZ below, keep the newest 14. The photos go into backups too (they have a folder of their own).
       # These can also be set on the Server settings page; a variable set here wins and is shown read-only there.
+      # Backups need 0.15 or later: an older release ignores these lines without a word and writes no backups.
       Backups__Every: "02:00"
       Backups__Keep: "14"
       Backups__Photos: "true"
