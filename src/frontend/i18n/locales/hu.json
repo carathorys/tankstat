@@ -30,7 +30,18 @@
     "backups": "Mentések"
   },
   "language": {
-    "label": "Nyelv"
+    "label": "Nyelv",
+    "menu": "Nyelv és formátumok"
+  },
+  "formats": {
+    "time": "Idő",
+    "date": "Dátum",
+    "default": "Alapértelmezett",
+    "option": "{{name}} ({{example}})",
+    "times": {
+      "TWENTY_FOUR_HOUR": "24 órás",
+      "TWELVE_HOUR": "12 órás"
+    }
   },
   "appearance": {
     "label": "Megjelenés"
@@ -1592,7 +1603,7 @@
     "groups": {
       "AUTH": "Bejelentkezés",
       "SMTP": "E-mail",
-      "DEFAULTS": "Új járművek alapértelmezései",
+      "DEFAULTS": "Alapértelmezések",
       "NOTIFICATIONS": "Értesítések",
       "SYNC": "Offline szinkronizálás",
       "PHOTO_READING": "Fényképolvasás",
@@ -1685,6 +1696,8 @@
       "Defaults__Currency": "A pénznem, amellyel egy új jármű első bejegyzése indul, hárombetűs kóddal, például EUR vagy HUF.",
       "Defaults__RecurringWarnDays": "Hány nappal az esedékesség előtt kezd figyelmeztetni egy új rendszeres kiadás (alapból 30). Minden ütemezés módosíthatja.",
       "Defaults__RecurringWarnDistance": "Mennyivel az esedékesség előtt, a jármű távolságegységében, kezd figyelmeztetni egy új rendszeres kiadás (alapból 500).",
+      "Defaults__TimeFormat": "Így írja az időt mindenkinek, aki a nyelv menüben nem választott formátumot: TwentyFourHour (13:29) vagy TwelveHour (1:29 PM). Ha nincs megadva: ahogy az adott nyelv írja.",
+      "Defaults__DateFormat": "Így írja a dátumot mindenkinek, aki a nyelv menüben nem választott formátumot: Iso (2026-10-13), DayMonthYearDots (13.10.2026), DayMonthYearSlashes (13/10/2026), MonthDayYear (10/13/2026) vagy YearMonthDayDots (2026. 10. 13.). Ha nincs megadva: ahogy az adott nyelv írja.",
       "Notifications__MaxPerHour": "Hány értesítést kap valaki óránként eseményekről (alapból 20); a továbbiakat csak egyben számolja. Az emlékeztetők nem számítanak bele.",
       "Notifications__ReadRetentionDays": "Meddig marad meg egy értesítés az elolvasása után (alapból 30 nap). Az olvasatlanok megmaradnak.",
       "Sync__RetentionDays": "Meddig emlékszik a szerver az eszközök által küldött változásokra, hogy az újra küldő eszköz azt kapja vissza, ami történt, ne kétszer alkalmazza őket.",
@@ -1755,6 +1768,8 @@
       "Defaults__Currency": "Pénznem",
       "Defaults__RecurringWarnDays": "Figyelmeztetés az esedékesség előtt (nap)",
       "Defaults__RecurringWarnDistance": "Figyelmeztetés az esedékesség előtt (távolság)",
+      "Defaults__TimeFormat": "Időformátum",
+      "Defaults__DateFormat": "Dátumformátum",
       "Notifications__MaxPerHour": "Értesítések óránként",
       "Notifications__ReadRetentionDays": "Olvasott értesítések megőrzése (nap)",
       "Sync__RetentionDays": "Alkalmazott változások megőrzése (nap)",
@@ -1783,6 +1798,32 @@
       "Logging__LogLevel__Microsoft_AspNetCore": "ASP.NET Core",
       "Logging__LogLevel__Microsoft_EntityFrameworkCore": "Entity Framework Core",
       "Logging__LogLevel__System_Net_Http_HttpClient": "HTTP-kliens"
-    }
+    },
+    "choices": {
+      "authMode": {
+        "None": "Nincs bejelentkezés, nem biztonságos",
+        "Standalone": "Helyi fiókok",
+        "Oidc": "OpenID Connect",
+        "ProxyHeader": "Fordított proxy"
+      },
+      "smtpSecurity": {
+        "Auto": "Ahogy a port mutatja",
+        "None": "Titkosítás nélkül",
+        "StartTls": "STARTTLS, kötelezően",
+        "StartTlsWhenAvailable": "STARTTLS, ha a szerver kínálja",
+        "SslOnConnect": "TLS az első bájttól"
+      },
+      "recognitionProvider": {
+        "None": "Kikapcsolva",
+        "OpenAiCompatible": "OpenAI-kompatibilis modellszerver"
+      },
+      "responseFormat": {
+        "JsonSchema": "Sémát követő JSON",
+        "JsonObject": "Bármilyen JSON-objektum",
+        "None": "Nem kéri (a prompt mondja meg)"
+      }
+    },
+    "choiceWithValue": "{{words}} ({{value}})",
+    "noSignInWarning": "Nem biztonságos: bejelentkezés nélkül bárki, aki eléri a szervert, minden adatot lát és módosíthat, az adminisztrációs oldalak pedig nem érhetők el. Csak kipróbálásra, megbízható hálózaton használd, éles üzemben soha."
   }
 }

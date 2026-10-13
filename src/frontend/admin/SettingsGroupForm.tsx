@@ -22,8 +22,9 @@ import { Field } from '../forms/Field.tsx'
 import { FieldInput } from '../forms/FieldInput.tsx'
 import { Form } from '../forms/Form.tsx'
 import { SystemSettingsDocument, UpdateSystemSettingsDocument, type SystemSettingFieldsFragment, type SettingsGroup } from '../gql/generated.ts'
-import { useFormat } from '../i18n/format.ts'
-import { ErrorMessage } from '../messages.tsx'
+import type { DateFormat, TimeFormat } from '../gql/generated.ts'
+import { sampleDate, sampleTime, useFormat } from '../i18n/format.ts'
+import { ErrorMessage, WarningMessage } from '../messages.tsx'
 import { useToast } from '../toast/toastContext.ts'
 import { ProblemList } from './ProblemList.tsx'
 import { changesOf, daysOf, daysValue, isOn, WEEK, type GroupDraft } from './settingsDraft.ts'
@@ -59,6 +60,7 @@ export function SettingsGroupForm({
 }) {
   const { t } = useTranslation()
   const { weekday } = useFormat()
+  const choiceLabel = useChoiceLabel()
   const { toast } = useToast()
   const unusedText = useUnusedText()
   const settingLabel = useSettingLabel()
@@ -115,7 +117,7 @@ export function SettingsGroupForm({
               value: (
                 <Stack direction="row" sx={{ gap: 0.5, alignItems: 'flex-start' }}>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
-                    {shown(s, t, weekday)}
+                    {shown(s, t, weekday, choiceLabel)}
                     <Typography component="span" variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
                       {[t('systemSettings.source.ENVIRONMENT'), reasonOf(s, section)].filter(Boolean).join(' ')}
                     </Typography>
@@ -141,6 +143,10 @@ export function SettingsGroupForm({
               onClear={(removed) => clear(s.key, removed)}
             />
           ))}
+        {/* No sign-in hands everything to whoever reaches the server: said as soon as it is chosen, and while it runs so. */}
+        {settings.some((s) => s.key === 'Auth:Mode') && valueOf('Auth:Mode')?.toLowerCase() === 'none' && (
+          <WarningMessage>{t('systemSettings.noSignInWarning')}</WarningMessage>
+        )}
       </Stack>
     )
   }
@@ -272,10 +278,48 @@ export function SettingsGroupForm({
   )
 }
 
+/** The server's spelling of an enum value ("TwentyFourHour") as the schema writes it ("TWENTY_FOUR_HOUR"). */
+const schemaName = (choice: string) => choice.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase()
+
+/** The settings whose choices have words of their own (`systemSettings.choices.<set>.<choice>`), by the set they take them from. */
+const CHOICE_SETS: Record<string, string> = {
+  'Auth:Mode': 'authMode',
+  'Smtp:Security': 'smtpSecurity',
+  'Recognition:Provider': 'recognitionProvider',
+  'Recognition:OpenAiCompatible:ResponseFormat': 'responseFormat',
+}
+
+/**
+ * A choice as the page offers it, in words with the value as the server spells it after them ("Local accounts (Standalone)"),
+ * since that is what the documentation and the environment use: a time or date format by an example of it alone (a name
+ * such as DayMonthYearDots says little), a unit by its name alone. A log level, which says itself, and a choice without words of its own (a spelling
+ * still accepted) as it is.
+ */
+function useChoiceLabel() {
+  const { t, i18n } = useTranslation()
+  const language = i18n.resolvedLanguage ?? 'en'
+  return (key: string, choice: string): string => {
+    if (key === 'Defaults:TimeFormat') {
+      const format = schemaName(choice) as TimeFormat
+      return t('formats.option', { name: t(`formats.times.${format}`), example: sampleTime(language, format) })
+    }
+    if (key === 'Defaults:DateFormat') return sampleDate(language, schemaName(choice) as DateFormat)
+    const set = key === 'Defaults:DistanceUnit' ? 'distance' : key === 'Defaults:VolumeUnit' ? 'volume' : CHOICE_SETS[key]
+    const wordsKey = set === 'distance' || set === 'volume' ? `units.${set}.${schemaName(choice)}` : `systemSettings.choices.${set}.${choice}`
+    if (!set || !i18n.exists(wordsKey)) return choice
+    const words = String(t(wordsKey as never))
+    return set === 'distance' || set === 'volume' || words === choice ? words : t('systemSettings.choiceWithValue', { words, value: choice })
+  }
+}
+
 /** A read-only value as words: a secret only as set or not, a list on one line, days by their names, nothing as a dash. */
-function shown(s: Setting, t: TFunction, weekday: (day: string) => string): string {
+function shown(s: Setting, t: TFunction, weekday: (day: string) => string, choiceLabel: (key: string, choice: string) => string): string {
   if (s.isSecret) return s.isSet ? t('systemSettings.secretSetShort') : t('systemSettings.secretNotSetShort')
   if (!s.value) return t('common.none')
+  if (s.kind === 'CHOICE') {
+    const choice = s.choices.find((c) => c.toLowerCase() === s.value!.toLowerCase())
+    return choice ? choiceLabel(s.key, choice) : s.value
+  }
   if (s.kind === 'DAYS') return daysOf(s.value).map((day) => weekday(day)).join(', ') || t('common.none')
   return s.kind === 'LIST' ? s.value.split('\n').join(', ') : s.value
 }
@@ -334,6 +378,7 @@ function Control({
   onClear: (clear: boolean) => void
 }) {
   const { t } = useTranslation()
+  const choiceLabel = useChoiceLabel()
   // Where the value comes from, and a restart it waits for, beside the label; the hint keeps only what needs a sentence.
   const badges: LabelBadge[] = [
     { text: t(`systemSettings.sourceShort.${s.source}`), spoken: t(`systemSettings.source.${s.source}`) },
@@ -350,7 +395,7 @@ function Control({
       // The server takes a choice in any case, and spellings it no longer offers ("Ssl"): such a value shows as the choice it means, or as
       // it is written, never as an empty field.
       const choice = s.choices.find((c) => c.toLowerCase() === value.toLowerCase()) ?? value
-      const options = [{ value: '', label: t('systemSettings.useDefault') }, ...s.choices.map((c) => ({ value: c, label: c }))]
+      const options = [{ value: '', label: t('systemSettings.useDefault') }, ...s.choices.map((c) => ({ value: c, label: choiceLabel(s.key, c) }))]
       if (choice !== '' && !s.choices.includes(choice)) options.push({ value: choice, label: choice })
       return <LabeledSelect label={label} hint={hint} badges={badges} value={choice} placeholder={t('systemSettings.useDefault')} disabled={unused} onChange={onChange} options={options} />
     }

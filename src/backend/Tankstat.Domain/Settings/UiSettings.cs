@@ -27,6 +27,12 @@ public sealed partial class UiSettings
     /// <summary>Glossy, transparent or opaque surfaces (null: never chosen, glossy).</summary>
     public SurfaceStyle? Surface { get; private set; }
 
+    /// <summary>A 24-hour or 12-hour clock (null: the instance's default, else as the language writes times).</summary>
+    public TimeFormat? TimeFormat { get; private set; }
+
+    /// <summary>How dates are written (null: the instance's default, else as the language writes them).</summary>
+    public DateFormat? DateFormat { get; private set; }
+
     public DateTimeOffset UpdatedAt { get; private set; }
 
     public static UiSettings Create(Guid userId, DateTimeOffset now) => new() { UserId = userId, UpdatedAt = now };
@@ -62,6 +68,24 @@ public sealed partial class UiSettings
         if (!Enum.IsDefined(surface))
             throw new DomainException("settings.surfaceInvalid", "The surface style must be glossy, transparent or opaque.");
         Surface = surface;
+        UpdatedAt = now;
+    }
+
+    /// <summary>Null forgets the choice (the default applies again); otherwise only the defined formats.</summary>
+    public void SetTimeFormat(TimeFormat? format, DateTimeOffset now)
+    {
+        if (format is { } f && !Enum.IsDefined(f))
+            throw new DomainException("settings.timeFormatInvalid", "The time format must be the 24-hour or the 12-hour clock.");
+        TimeFormat = format;
+        UpdatedAt = now;
+    }
+
+    /// <summary>Null forgets the choice (the default applies again); otherwise only the defined formats.</summary>
+    public void SetDateFormat(DateFormat? format, DateTimeOffset now)
+    {
+        if (format is { } f && !Enum.IsDefined(f))
+            throw new DomainException("settings.dateFormatInvalid", "The date format is not one the app offers.");
+        DateFormat = format;
         UpdatedAt = now;
     }
 

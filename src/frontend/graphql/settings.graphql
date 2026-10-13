@@ -6,6 +6,10 @@ query UiSettings {
     language
     colorMode
     surface
+    timeFormat
+    dateFormat
+    defaultTimeFormat
+    defaultDateFormat
     grids {
       gridId
       order
@@ -23,6 +27,10 @@ mutation UpdateUiSettings($input: UpdateUiSettingsInput!) {
     language
     colorMode
     surface
+    timeFormat
+    dateFormat
+    defaultTimeFormat
+    defaultDateFormat
   }
 }
 

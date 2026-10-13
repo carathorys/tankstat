@@ -1,4 +1,5 @@
 import { createContext, useContext } from 'react'
+import type { DateFormat, TimeFormat } from '../gql/generated.ts'
 import type { ColorModeChoice } from '../theme/colorMode.ts'
 import type { SurfaceChoice } from '../theme/surface.ts'
 import type { GridSaved } from './types.ts'
@@ -16,6 +17,10 @@ export interface UiSettingsApi {
   setColorMode: (mode: ColorModeChoice) => void
   /** Tells the server about a surface style the user chose (`theme/surfaceStore.ts` switches it and keeps the browser's copy). */
   setSurface: (surface: SurfaceChoice) => void
+  /** Switches the time format (null: the default again) and tells the server. */
+  setTimeFormat: (format: TimeFormat | null) => void
+  /** Switches the date format (null: the default again) and tells the server. */
+  setDateFormat: (format: DateFormat | null) => void
   /** A grid's settings as the server knows them (or as saved in this session); undefined when it knows none, or has not answered yet. */
   grid: (gridId: string) => GridSaved | undefined
   saveGrid: (gridId: string, saved: GridSaved) => void

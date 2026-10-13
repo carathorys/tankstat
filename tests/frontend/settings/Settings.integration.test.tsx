@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it, onTestFinished, vi } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
+import { resetFormats } from '../../../src/frontend/i18n/formatStore.ts'
 import { i18n } from '../../../src/frontend/i18n/index.ts'
 import { adminSession, fakeSettingsBackend, fakeVehicle, fakeVehicleBackend, gqlError, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport } from '../support/mocks.tsx'
 import { server } from '../support/server.ts'
@@ -137,8 +138,8 @@ it('the language is saved with the account and applied on another device; an unk
   const { settings, ui, view } = setup()
   await screen.findByRole('heading', { name: 'Vehicles' })
 
-  await ui.click(screen.getByRole('button', { name: 'Language' }))
-  await ui.click(await screen.findByRole('menuitemradio', { name: 'Magyar' }))
+  await ui.click(screen.getByRole('button', { name: 'Language and formats' }))
+  await ui.click(await screen.findByRole('menuitemradio', { name: 'Language: Magyar' }))
 
   await screen.findByRole('heading', { name: 'Járművek' })
   await waitFor(() => expect(settings.state.calls.UpdateUiSettings).toEqual([{ input: { language: 'hu' } }]))
@@ -280,8 +281,8 @@ it('a visitor who is not signed in changes only the browser', async () => {
   renderWithApollo(<App />, '/')
   await screen.findByRole('heading', { name: 'Sign in' })
 
-  await ui.click(screen.getByRole('button', { name: 'Language' }))
-  await ui.click(await screen.findByRole('menuitemradio', { name: 'Magyar' }))
+  await ui.click(screen.getByRole('button', { name: 'Language and formats' }))
+  await ui.click(await screen.findByRole('menuitemradio', { name: 'Language: Magyar' }))
 
   await screen.findByRole('heading', { name: 'Bejelentkezés' })
   await ui.click(screen.getByRole('button', { name: 'Megjelenés' }))
@@ -369,4 +370,31 @@ it('changes made while a save is on its way are sent after it, the newest only',
   await new Promise((resolve) => setTimeout(resolve, 50))
   expect(saves).toBe(2)
   expect(settings.state.calls.SaveGridSettings).toBeUndefined() // the fake's own handler was replaced; the requests above are the record
+})
+
+it('the time and date formats are chosen in the language menu with an example each, saved with the account, and Default follows the instance', async () => {
+  const { settings, ui, view } = setup(fakeSettingsBackend({ defaultTimeFormat: 'TWENTY_FOUR_HOUR' }))
+  await screen.findByRole('heading', { name: 'Vehicles' })
+
+  await ui.click(screen.getByRole('button', { name: 'Language and formats' }))
+  // The instance writes a 24-hour clock for whoever chose nothing, so Default says so by its example.
+  expect(await screen.findByRole('menuitemradio', { name: 'Time: Default (13:29)' })).toHaveAttribute('aria-checked', 'true')
+  await ui.click(screen.getByRole('menuitemradio', { name: /^Time: 12-hour \(1:29\sPM\)$/ }))
+  await waitFor(() => expect(settings.state.calls.UpdateUiSettings).toEqual([{ input: { timeFormat: 'TWELVE_HOUR' } }]))
+
+  await ui.click(screen.getByRole('button', { name: 'Language and formats' }))
+  await ui.click(await screen.findByRole('menuitemradio', { name: 'Date: 13.10.2026' }))
+  await waitFor(() => expect(settings.state.calls.UpdateUiSettings).toHaveLength(2))
+  await ui.click(screen.getByRole('button', { name: 'Language and formats' }))
+  await ui.click(await screen.findByRole('menuitemradio', { name: /^Time: Default/ }))
+  await waitFor(() => expect(settings.state.calls.UpdateUiSettings?.slice(1)).toEqual([{ input: { dateFormat: 'DAY_MONTH_YEAR_DOTS' } }, { input: { clearTimeFormat: true } }]))
+
+  view.unmount()
+  window.localStorage.clear() // another device: the browser remembers nothing, the server does
+  resetFormats()
+  renderWithApollo(<App />, '/vehicles')
+  await screen.findByRole('heading', { name: 'Vehicles' })
+  await ui.click(screen.getByRole('button', { name: 'Language and formats' }))
+  expect(await screen.findByRole('menuitemradio', { name: 'Date: 13.10.2026' })).toHaveAttribute('aria-checked', 'true')
+  expect(screen.getByRole('menuitemradio', { name: 'Time: Default (13:29)' })).toHaveAttribute('aria-checked', 'true')
 })

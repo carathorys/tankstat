@@ -20,6 +20,8 @@ internal sealed class UiSettingsConfiguration : IEntityTypeConfiguration<UiSetti
         b.Property(s => s.Language).HasMaxLength(UiSettings.MaxLanguageLength);
         b.Property(s => s.ColorMode).HasConversion<string>().HasMaxLength(16);
         b.Property(s => s.Surface).HasConversion<string>().HasMaxLength(16);
+        b.Property(s => s.TimeFormat).HasConversion<string>().HasMaxLength(24);
+        b.Property(s => s.DateFormat).HasConversion<string>().HasMaxLength(24);
         // Stored as a UTC date-time so comparisons translate on every provider (same as the other timestamps).
         b.Property(s => s.UpdatedAt).HasConversion(v => v.UtcDateTime, v => new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc)));
     }

@@ -190,9 +190,9 @@ it('the appearance and language menus are labelled radio menus, free of violatio
   await check(modes) // the menu itself: a transient popup outside the page's landmarks, as every popup menu is
   await ui.keyboard('{Escape}')
 
-  await ui.click(screen.getByRole('button', { name: 'Language' }))
-  const languages = await screen.findByRole('menu', { name: 'Language' })
-  expect(within(languages).getByRole('menuitemradio', { name: 'Magyar' })).toHaveAttribute('lang', 'hu')
+  await ui.click(screen.getByRole('button', { name: 'Language and formats' }))
+  const languages = await screen.findByRole('menu', { name: 'Language and formats' })
+  expect(within(languages).getByRole('menuitemradio', { name: 'Language: Magyar' })).toHaveAttribute('lang', 'hu')
   await check(languages)
 })
 

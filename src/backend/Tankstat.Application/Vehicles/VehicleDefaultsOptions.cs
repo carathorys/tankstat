@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
+using Tankstat.Domain.Settings;
 using Tankstat.Domain.Recurring;
 
 namespace Tankstat.Application.Vehicles;
@@ -23,6 +24,12 @@ public sealed class VehicleDefaultsOptions
 
     /// <summary>How far (in the vehicle's distance unit) before it is due a new recurring expense starts warning (<c>Defaults__RecurringWarnDistance</c>).</summary>
     public long RecurringWarnDistance { get; set; } = 500;
+
+    /// <summary>How times are written for a user who did not choose (<c>Defaults__TimeFormat=TwentyFourHour</c>); unset, as their language writes them.</summary>
+    public TimeFormat? TimeFormat { get; set; }
+
+    /// <summary>How dates are written for a user who did not choose (<c>Defaults__DateFormat=Iso</c>); unset, as their language writes them.</summary>
+    public DateFormat? DateFormat { get; set; }
 }
 
 public sealed class VehicleDefaultsOptionsValidator : IValidateOptions<VehicleDefaultsOptions>

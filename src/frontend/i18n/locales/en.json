@@ -30,7 +30,18 @@
     "backups": "Backups"
   },
   "language": {
-    "label": "Language"
+    "label": "Language",
+    "menu": "Language and formats"
+  },
+  "formats": {
+    "time": "Time",
+    "date": "Date",
+    "default": "Default",
+    "option": "{{name}} ({{example}})",
+    "times": {
+      "TWENTY_FOUR_HOUR": "24-hour",
+      "TWELVE_HOUR": "12-hour"
+    }
   },
   "appearance": {
     "label": "Appearance"
@@ -1592,7 +1603,7 @@
     "groups": {
       "AUTH": "Sign-in",
       "SMTP": "E-mail",
-      "DEFAULTS": "Defaults for new vehicles",
+      "DEFAULTS": "Defaults",
       "NOTIFICATIONS": "Notifications",
       "SYNC": "Offline sync",
       "PHOTO_READING": "Photo reading",
@@ -1685,6 +1696,8 @@
       "Defaults__Currency": "The currency a new vehicle's first log starts with, as a three-letter code such as EUR or HUF.",
       "Defaults__RecurringWarnDays": "How many days before it is due a new recurring expense starts warning (30 by default). Each schedule can change it.",
       "Defaults__RecurringWarnDistance": "How far before it is due, in the vehicle's distance unit, a new recurring expense starts warning (500 by default).",
+      "Defaults__TimeFormat": "How times are written for everyone who has not chosen a format in the language menu: TwentyFourHour (13:29) or TwelveHour (1:29 PM). Not set: as each person's language writes them.",
+      "Defaults__DateFormat": "How dates are written for everyone who has not chosen a format in the language menu: Iso (2026-10-13), DayMonthYearDots (13.10.2026), DayMonthYearSlashes (13/10/2026), MonthDayYear (10/13/2026) or YearMonthDayDots (2026. 10. 13.). Not set: as each person's language writes them.",
       "Notifications__MaxPerHour": "How many notifications about events a person gets in an hour (20 by default); further ones are only counted in one. Reminders do not count.",
       "Notifications__ReadRetentionDays": "How long a notification is kept after it was read (30 days by default). Unread ones are kept.",
       "Sync__RetentionDays": "How long the server remembers the changes devices sent, so a device that sends them again is told what happened instead of applying them twice.",
@@ -1755,6 +1768,8 @@
       "Defaults__Currency": "Currency",
       "Defaults__RecurringWarnDays": "Warn before due (days)",
       "Defaults__RecurringWarnDistance": "Warn before due (distance)",
+      "Defaults__TimeFormat": "Time format",
+      "Defaults__DateFormat": "Date format",
       "Notifications__MaxPerHour": "Notifications per hour",
       "Notifications__ReadRetentionDays": "Keep read notifications (days)",
       "Sync__RetentionDays": "Remember applied changes (days)",
@@ -1783,6 +1798,32 @@
       "Logging__LogLevel__Microsoft_AspNetCore": "ASP.NET Core",
       "Logging__LogLevel__Microsoft_EntityFrameworkCore": "Entity Framework Core",
       "Logging__LogLevel__System_Net_Http_HttpClient": "HTTP client"
-    }
+    },
+    "choices": {
+      "authMode": {
+        "None": "No sign-in, not secure",
+        "Standalone": "Local accounts",
+        "Oidc": "OpenID Connect",
+        "ProxyHeader": "Reverse proxy"
+      },
+      "smtpSecurity": {
+        "Auto": "As the port suggests",
+        "None": "No encryption",
+        "StartTls": "STARTTLS, required",
+        "StartTlsWhenAvailable": "STARTTLS when the server offers it",
+        "SslOnConnect": "TLS from the first byte"
+      },
+      "recognitionProvider": {
+        "None": "Off",
+        "OpenAiCompatible": "An OpenAI-compatible model server"
+      },
+      "responseFormat": {
+        "JsonSchema": "JSON that follows a schema",
+        "JsonObject": "Any JSON object",
+        "None": "Not asked for (the prompt says it)"
+      }
+    },
+    "choiceWithValue": "{{words}} ({{value}})",
+    "noSignInWarning": "Not secure: without sign-in, anyone who can reach the server sees and changes all data, and the administration pages are off. Use it only to try the app out on a network you trust, never in production."
   }
 }

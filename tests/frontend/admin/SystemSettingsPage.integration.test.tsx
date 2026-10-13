@@ -115,7 +115,7 @@ it('shows every group, where each value comes from, and what waits for a restart
   expect(await screen.findByRole('tooltip')).toHaveTextContent(/^How users sign in: None .*Environment variable: Auth__Mode$/)
   expect(auth.getByRole('button', { name: 'About Sign-in mode' })).toHaveAccessibleDescription(/Environment variable: Auth__Mode$/)
   expect(auth.queryByRole('combobox', { name: 'Sign-in mode' })).not.toBeInTheDocument()
-  expect(auth.getByText('Standalone')).toBeInTheDocument()
+  expect(auth.getByText("Local accounts (Standalone)")).toBeInTheDocument() // the environment's value, in words
   expect(auth.getByLabelText('Public address')).toHaveValue('')
   expect(auth.getByLabelText('Administrators (OIDC and proxy sign-in)')).toHaveValue('a@example.com\nb@example.com')
   expect(auth.getByRole('switch', { name: 'Administrators may set passwords' })).toHaveAccessibleDescription(/takes effect after a restart/)
@@ -123,7 +123,7 @@ it('shows every group, where each value comes from, and what waits for a restart
   expect(auth.getByLabelText('OIDC client secret')).toHaveValue('') // never shown back
   expect(auth.getByLabelText('OIDC client secret')).toHaveAccessibleDescription(/Set\. Leave blank to keep it\./)
   expect(auth.getByRole('switch', { name: 'Administrators may set passwords' })).not.toBeChecked()
-  const defaults = await group('Defaults for new vehicles')
+  const defaults = await group('Defaults')
   expect(defaults.getByLabelText('Currency')).toHaveValue('HUF')
   expect(defaults.getByLabelText('Currency')).not.toHaveAccessibleDescription(/restart/) // the defaults apply at once: nothing of them waits
   expect(defaults.getByText('Changes here take effect as soon as they are saved.')).toBeInTheDocument()
@@ -202,7 +202,7 @@ it('says a saved setting is in effect when the server says nothing of it waits',
   settingsServer(fixture(), saved)
   renderWithApollo(<App />, '/admin/settings')
 
-  const defaults = await group('Defaults for new vehicles')
+  const defaults = await group('Defaults')
   await ui.clear(defaults.getByLabelText('Currency'))
   await ui.type(defaults.getByLabelText('Currency'), 'USD')
   await ui.click(defaults.getByRole('button', { name: 'Save changes' }))
@@ -253,7 +253,7 @@ it('a secret is removed with its checkbox, and a cleared text is sent as cleared
   await waitFor(() => expect(calls.UpdateSystemSettings).toHaveLength(1))
   expect(calls.UpdateSystemSettings[0]).toEqual({ changes: [{ key: 'Auth:Oidc:ClientSecret', value: null, clear: true }] })
 
-  const defaults = await group('Defaults for new vehicles')
+  const defaults = await group('Defaults')
   await ui.clear(defaults.getByLabelText('Currency'))
   await ui.click(defaults.getByRole('button', { name: 'Save changes' }))
   await waitFor(() => expect(calls.UpdateSystemSettings).toHaveLength(2))
@@ -270,7 +270,7 @@ it('a refused save lists what the server could not take and keeps the form', asy
   )
   renderWithApollo(<App />, '/admin/settings')
 
-  const defaults = await group('Defaults for new vehicles')
+  const defaults = await group('Defaults')
   await ui.type(defaults.getByLabelText('Currency'), 'X')
   await ui.click(defaults.getByRole('button', { name: 'Save changes' }))
 
@@ -287,7 +287,7 @@ it('changing the sign-in mode asks once more and says the way back', async () =>
 
   const auth = await group('Sign-in')
   await ui.click(auth.getByRole('combobox', { name: 'Sign-in mode' }))
-  await ui.click(await screen.findByRole('option', { name: 'Oidc' }))
+  await ui.click(await screen.findByRole('option', { name: 'OpenID Connect (Oidc)' }))
   await ui.click(auth.getByRole('button', { name: 'Save changes' }))
 
   const dialog = await screen.findByRole('alertdialog', { name: 'Change the sign-in mode?' })
@@ -310,7 +310,7 @@ it('a mode change the server refuses says why, and the focus is back on Save onc
   const auth = await group('Sign-in')
 
   await ui.click(auth.getByRole('combobox', { name: 'Sign-in mode' }))
-  await ui.click(await screen.findByRole('option', { name: 'Oidc' }))
+  await ui.click(await screen.findByRole('option', { name: 'OpenID Connect (Oidc)' }))
   await ui.click(auth.getByRole('button', { name: 'Save changes' }))
   await ui.click(within(await screen.findByRole('alertdialog', { name: 'Change the sign-in mode?' })).getByRole('button', { name: 'Change the mode' }))
 
@@ -333,7 +333,7 @@ it('the mode confirmation says what a cleared mode and None come to: no sign-in 
   await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
 
   await ui.click(auth.getByRole('combobox', { name: 'Sign-in mode' }))
-  await ui.click(await screen.findByRole('option', { name: 'None' }))
+  await ui.click(await screen.findByRole('option', { name: 'No sign-in, not secure (None)' }))
   await ui.click(auth.getByRole('button', { name: 'Save changes' }))
   const none = await screen.findByRole('alertdialog', { name: 'Change the sign-in mode?' })
   expect(none).toHaveAccessibleDescription(/becomes None \(no sign-in: everyone sees and changes everything\) at the next restart/)
@@ -490,17 +490,17 @@ it('shows a tab per group, opens the one the address names, and keeps what was t
   renderWithApollo(<App />, '/admin/settings?tab=defaults')
 
   const tabs = await screen.findAllByRole('tab')
-  expect(tabs.map((t) => t.textContent)).toEqual(['Sign-in', 'Defaults for new vehicles', 'Logging'])
-  expect(screen.getByRole('tab', { name: 'Defaults for new vehicles' })).toHaveAttribute('aria-selected', 'true')
+  expect(tabs.map((t) => t.textContent)).toEqual(['Sign-in', 'Defaults', 'Logging'])
+  expect(screen.getByRole('tab', { name: 'Defaults' })).toHaveAttribute('aria-selected', 'true')
   expect(screen.queryByRole('region', { name: 'Sign-in' })).not.toBeInTheDocument() // only the chosen tab shows its form
 
-  const defaults = await group('Defaults for new vehicles')
+  const defaults = await group('Defaults')
   await ui.type(defaults.getByLabelText('Currency'), 'X')
-  expect(screen.getByRole('tab', { name: 'Defaults for new vehicles (not saved)' })).toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: 'Defaults (not saved)' })).toBeInTheDocument()
   await group('Logging')
-  expect(screen.queryByRole('region', { name: 'Defaults for new vehicles' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('region', { name: 'Defaults' })).not.toBeInTheDocument()
 
-  const again = await group('Defaults for new vehicles')
+  const again = await group('Defaults')
   expect(again.getByLabelText('Currency')).toHaveValue('HUFX')
   expect(again.getByRole('button', { name: 'Save changes' })).toBeEnabled()
 })
@@ -562,7 +562,7 @@ it('settings the sign-in mode leaves unused are shown but cannot be changed, and
   // None, chosen and not saved yet: everything that needs a sign-in greys out and folds at once, the e-mail tab as a whole.
   auth = await group('Sign-in')
   await ui.click(auth.getByRole('combobox', { name: 'Sign-in mode' }))
-  await ui.click(await screen.findByRole('option', { name: 'None' }))
+  await ui.click(await screen.findByRole('option', { name: 'No sign-in, not secure (None)' }))
   expect(auth.getByLabelText('Public address')).toBeDisabled()
   expect(auth.getByLabelText('Administrators may set passwords')).toBeDisabled() // folded away, so found by its label
   expect(sectionHeader(auth, 'Standalone sign-in')).toHaveAttribute('aria-expanded', 'false')
@@ -578,12 +578,12 @@ it('settings the sign-in mode leaves unused are shown but cannot be changed, and
   expect(mail.getByLabelText('Mail server')).toBeDisabled()
   expect(mail.getByLabelText('Mail server')).toHaveValue('mail.example') // still there
   expect(mail.getByLabelText('Port')).toBeDisabled()
-  expect((await group('Defaults for new vehicles')).getByLabelText('Currency')).toBeEnabled() // used in every mode
+  expect((await group('Defaults')).getByLabelText('Currency')).toBeEnabled() // used in every mode
 
   // Back to Standalone: all of it can be changed again, and opens again.
   auth = await group('Sign-in')
   await ui.click(auth.getByRole('combobox', { name: 'Sign-in mode' }))
-  await ui.click(await screen.findByRole('option', { name: 'Standalone' }))
+  await ui.click(await screen.findByRole('option', { name: "Local accounts (Standalone)" }))
   expect(auth.getByLabelText('Public address')).toBeEnabled()
   expect(sectionHeader(auth, 'Standalone sign-in')).toHaveAttribute('aria-expanded', 'true')
   expect((await group('E-mail')).queryByRole('note')).not.toBeInTheDocument()
@@ -688,7 +688,7 @@ it('a mail server left empty leaves the rest of the e-mail settings unused, and 
   expect(photos.getByLabelText('Model')).toBeDisabled() // no provider set anywhere: the built-in None
   expect(sectionHeader(photos, 'Model server')).toHaveAccessibleName('Model server Not used while Provider is None; only with OpenAiCompatible.')
   await ui.click(photos.getByRole('combobox', { name: 'Provider' })) // above the sections, never folded
-  await ui.click(await screen.findByRole('option', { name: 'OpenAiCompatible' }))
+  await ui.click(await screen.findByRole('option', { name: 'An OpenAI-compatible model server (OpenAiCompatible)' }))
   expect(photos.getByLabelText('Model')).toBeEnabled()
   expect(sectionHeader(photos, 'Model server')).toHaveAttribute('aria-expanded', 'true')
 })
@@ -714,4 +714,56 @@ it('days of the week are checkboxes named by the setting: every day by default, 
   for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']) await ui.click(week.getByRole('checkbox', { name: day }))
   await ui.click(backups.getByRole('button', { name: 'Save changes' }))
   await waitFor(() => expect(calls.UpdateSystemSettings?.[1]).toEqual({ changes: [{ key: 'Backups:Days', value: 'None', clear: false }] }))
+})
+
+it('offers the time and date formats by an example each, not by their names', async () => {
+  const ui = userEvent.setup()
+  const base = fixture()
+  base.groups[1].settings.push(
+    setting({ key: 'Defaults:TimeFormat', kind: 'CHOICE', choices: ['TwentyFourHour', 'TwelveHour'], value: 'TwentyFourHour', isSet: true, source: 'FILE' }),
+    setting({ key: 'Defaults:DateFormat', kind: 'CHOICE', choices: ['Iso', 'DayMonthYearDots', 'DayMonthYearSlashes', 'MonthDayYear', 'YearMonthDayDots'] }),
+  )
+  const calls = settingsServer(base)
+  renderWithApollo(<App />, '/admin/settings?tab=defaults')
+  const defaults = await group('Defaults')
+
+  expect(defaults.getByRole('combobox', { name: 'Time format' })).toHaveTextContent('24-hour (13:29)')
+  await ui.click(defaults.getByRole('combobox', { name: 'Date format' }))
+  const options = (await screen.findAllByRole('option')).map((o) => o.textContent)
+  expect(options.slice(1)).toEqual(['2026-10-13', '13.10.2026', '13/10/2026', '10/13/2026', '2026. 10. 13.'])
+  await ui.click(screen.getByRole('option', { name: '13.10.2026' }))
+  await ui.click(defaults.getByRole('button', { name: 'Save changes' }))
+  await waitFor(() => expect(calls.UpdateSystemSettings).toEqual([{ changes: [{ key: 'Defaults:DateFormat', value: 'DayMonthYearDots', clear: false }] }]))
+})
+
+it('words the other choices too: a unit by its name, a mode with its value after the words, a log level as it is', async () => {
+  const ui = userEvent.setup()
+  const base = fixture({ modeEditable: true })
+  base.groups[1].settings.push(setting({ key: 'Defaults:VolumeUnit', kind: 'CHOICE', choices: ['Liters', 'UsGallons', 'ImperialGallons'] }))
+  settingsServer(base)
+  renderWithApollo(<App />, '/admin/settings?tab=defaults')
+
+  await ui.click((await group('Defaults')).getByRole('combobox', { name: 'Volume unit' }))
+  expect((await screen.findAllByRole('option')).slice(1).map((o) => o.textContent)).toEqual(['Liters', 'US gallons', 'Imperial gallons'])
+  await ui.keyboard('{Escape}')
+
+  await ui.click((await group('Sign-in')).getByRole('combobox', { name: 'Sign-in mode' }))
+  expect(await screen.findByRole('option', { name: "Local accounts (Standalone)" })).toBeInTheDocument()
+  await ui.keyboard('{Escape}')
+
+  await ui.click((await group('Logging')).getByRole('combobox', { name: /./ }))
+  expect((await screen.findAllByRole('option')).slice(1).map((o) => o.textContent)).toEqual(LEVELS)
+})
+
+it('warns that no sign-in is not secure as soon as it is chosen', async () => {
+  const ui = userEvent.setup()
+  settingsServer(fixture({ modeEditable: true }))
+  renderWithApollo(<App />, '/admin/settings')
+  const auth = await group('Sign-in')
+  expect(auth.queryByRole('alert')).not.toBeInTheDocument()
+
+  await ui.click(auth.getByRole('combobox', { name: 'Sign-in mode' }))
+  await ui.click(await screen.findByRole('option', { name: 'No sign-in, not secure (None)' }))
+
+  expect(await auth.findByRole('alert')).toHaveTextContent(/^Not secure: without sign-in, anyone who can reach the server sees and changes all data.*never in production\.$/)
 })

@@ -675,6 +675,10 @@ namespace Tankstat.Migrations.PostgreSql
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<string>("DateFormat")
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
                     b.Property<string>("Language")
                         .HasMaxLength(8)
                         .HasColumnType("character varying(8)");
@@ -685,6 +689,10 @@ namespace Tankstat.Migrations.PostgreSql
                     b.Property<string>("Surface")
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
+
+                    b.Property<string>("TimeFormat")
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");

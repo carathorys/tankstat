@@ -3,8 +3,9 @@ import { useMutation, useQuery } from '@apollo/client/react'
 import { useColorScheme } from '@mui/material/styles'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ResetGridSettingsDocument, SaveGridSettingsDocument, UiSettingsDocument, UpdateUiSettingsDocument, type ColorMode, type SurfaceStyle } from '../gql/generated.ts'
+import { ResetGridSettingsDocument, SaveGridSettingsDocument, UiSettingsDocument, UpdateUiSettingsDocument, type ColorMode, type DateFormat, type SurfaceStyle, type TimeFormat } from '../gql/generated.ts'
 import { useStoredState } from '../hooks/useStoredState.ts'
+import { setFormats } from '../i18n/formatStore.ts'
 import { LANGUAGES } from '../i18n/index.ts'
 import type { ColorModeChoice } from '../theme/colorMode.ts'
 import type { SurfaceChoice } from '../theme/surface.ts'
@@ -61,7 +62,7 @@ function useSerialSaves() {
 }
 
 /**
- * What the UI remembers for the user (the sidebar, each grid, the language, the colour mode, the surfaces), on every device. The browser keeps a copy of everything
+ * What the UI remembers for the user (the sidebar, each grid, the language, the colour mode, the surfaces, the time and date formats), on every device. The browser keeps a copy of everything
  * (localStorage, as before), so the first paint never waits; the server is asked once per session and wins when it answers, except for a
  * setting the user changed meanwhile. Nothing the server does not know about is pushed to it unprompted, and a failed save stays in the
  * browser only. Mount it with a `key` per user, so a newly signed-in user's settings win over what a visitor chose on the login screen.
@@ -76,6 +77,8 @@ export function UiSettingsProvider({ enabled, children }: { enabled: boolean; ch
   const languageTouched = useRef(false)
   const colorModeTouched = useRef(false)
   const surfaceTouched = useRef(false)
+  const timeFormatTouched = useRef(false)
+  const dateFormatTouched = useRef(false)
   const { data } = useQuery(UiSettingsDocument, { skip: !enabled, fetchPolicy: 'network-only' }) // never another user's cached answer
   const send = useSerialSaves()
   const [updateUi] = useMutation(UpdateUiSettingsDocument)
@@ -104,6 +107,17 @@ export function UiSettingsProvider({ enabled, children }: { enabled: boolean; ch
   // ... and the surfaces (the class on <html> and the browser's copy).
   useEffect(() => {
     if (server?.surface && !surfaceTouched.current) applySurface(SURFACE_FROM_SERVER[server.surface])
+  }, [server])
+  // ... and the time and date formats with the instance's defaults. A format the server has none of is the default (it is cleared on
+  // purpose), so the account's choice is taken as it is, not only when one is set.
+  useEffect(() => {
+    if (!server) return
+    setFormats({
+      defaultTime: server.defaultTimeFormat ?? null,
+      defaultDate: server.defaultDateFormat ?? null,
+      ...(timeFormatTouched.current ? {} : { time: server.timeFormat ?? null }),
+      ...(dateFormatTouched.current ? {} : { date: server.dateFormat ?? null }),
+    })
   }, [server])
 
   const setNavOpen = useCallback(
@@ -135,6 +149,22 @@ export function UiSettingsProvider({ enabled, children }: { enabled: boolean; ch
     },
     [enabled, updateUi, send],
   )
+  const setTimeFormat = useCallback(
+    (format: TimeFormat | null) => {
+      timeFormatTouched.current = true
+      setFormats({ time: format })
+      if (enabled) send('timeFormat', () => updateUi({ variables: { input: format ? { timeFormat: format } : { clearTimeFormat: true } } }))
+    },
+    [enabled, updateUi, send],
+  )
+  const setDateFormat = useCallback(
+    (format: DateFormat | null) => {
+      dateFormatTouched.current = true
+      setFormats({ date: format })
+      if (enabled) send('dateFormat', () => updateUi({ variables: { input: format ? { dateFormat: format } : { clearDateFormat: true } } }))
+    },
+    [enabled, updateUi, send],
+  )
   const saveGrid = useCallback(
     (gridId: string, saved: GridSaved) => {
       setOverrides((known) => ({ ...known, [gridId]: saved }))
@@ -160,8 +190,8 @@ export function UiSettingsProvider({ enabled, children }: { enabled: boolean; ch
   )
 
   const value = useMemo<UiSettingsApi>(
-    () => ({ server, navOpen, setNavOpen, setLanguage, setColorMode, setSurface, grid, saveGrid, resetGrid }),
-    [server, navOpen, setNavOpen, setLanguage, setColorMode, setSurface, grid, saveGrid, resetGrid],
+    () => ({ server, navOpen, setNavOpen, setLanguage, setColorMode, setSurface, setTimeFormat, setDateFormat, grid, saveGrid, resetGrid }),
+    [server, navOpen, setNavOpen, setLanguage, setColorMode, setSurface, setTimeFormat, setDateFormat, grid, saveGrid, resetGrid],
   )
   return <UiSettingsContext.Provider value={value}>{children}</UiSettingsContext.Provider>
 }

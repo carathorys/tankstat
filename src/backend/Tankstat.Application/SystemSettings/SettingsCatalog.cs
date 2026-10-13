@@ -8,6 +8,7 @@ using Tankstat.Application.Sync;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
+using Tankstat.Domain.Settings;
 
 namespace Tankstat.Application.SystemSettings;
 
@@ -130,6 +131,8 @@ public static class SettingsCatalog
         new(SettingsGroup.Defaults, "Defaults:Currency", SettingKind.Text),
         new(SettingsGroup.Defaults, "Defaults:RecurringWarnDays", SettingKind.Integer),
         new(SettingsGroup.Defaults, "Defaults:RecurringWarnDistance", SettingKind.Integer),
+        new(SettingsGroup.Defaults, "Defaults:TimeFormat", SettingKind.Choice, Enum.GetNames<TimeFormat>()),
+        new(SettingsGroup.Defaults, "Defaults:DateFormat", SettingKind.Choice, Enum.GetNames<DateFormat>()),
 
         new(SettingsGroup.Notifications, "Notifications:MaxPerHour", SettingKind.Integer),
         new(SettingsGroup.Notifications, "Notifications:ReadRetentionDays", SettingKind.Integer),

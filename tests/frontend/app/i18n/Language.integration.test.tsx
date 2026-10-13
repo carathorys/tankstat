@@ -18,8 +18,8 @@ function setup(route = '/vehicles', vehicles = [fakeVehicle()]) {
 }
 
 const switchToHungarian = async (ui: ReturnType<typeof userEvent.setup>) => {
-  await ui.click(screen.getByRole('button', { name: 'Language' }))
-  await ui.click(await screen.findByRole('menuitemradio', { name: 'Magyar' }))
+  await ui.click(screen.getByRole('button', { name: 'Language and formats' }))
+  await ui.click(await screen.findByRole('menuitemradio', { name: 'Language: Magyar' }))
 }
 
 it('switches the whole UI to Hungarian from the language menu, and back', async () => {
@@ -35,8 +35,8 @@ it('switches the whole UI to Hungarian from the language menu, and back', async 
   expect(screen.getByText(/A hitelesítés ki van kapcsolva/)).toBeInTheDocument() // server notice code translated
   expect(document.documentElement.lang).toBe('hu')
 
-  await ui.click(screen.getByRole('button', { name: 'Nyelv' }))
-  await ui.click(await screen.findByRole('menuitemradio', { name: 'English' }))
+  await ui.click(screen.getByRole('button', { name: 'Nyelv és formátumok' }))
+  await ui.click(await screen.findByRole('menuitemradio', { name: 'Nyelv: English' }))
   await screen.findByRole('heading', { name: 'Vehicles' })
   expect(document.documentElement.lang).toBe('en')
 })

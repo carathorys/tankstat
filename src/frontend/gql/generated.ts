@@ -162,6 +162,13 @@ export type CreateUserInput = {
   isAdmin: boolean;
 };
 
+export type DateFormat =
+  | 'DAY_MONTH_YEAR_DOTS'
+  | 'DAY_MONTH_YEAR_SLASHES'
+  | 'ISO'
+  | 'MONTH_DAY_YEAR'
+  | 'YEAR_MONTH_DAY_DOTS';
+
 export type DayOfWeek =
   | 'FRIDAY'
   | 'MONDAY'
@@ -505,6 +512,10 @@ export type SystemSettingChangeInput = {
   value?: string | null | undefined;
 };
 
+export type TimeFormat =
+  | 'TWELVE_HOUR'
+  | 'TWENTY_FOUR_HOUR';
+
 export type UpdateExpenseInput = {
   amount?: number | null | undefined;
   category?: string | null | undefined;
@@ -548,11 +559,15 @@ export type UpdateRefuelingInput = {
 };
 
 export type UpdateUiSettingsInput = {
+  clearDateFormat?: boolean | null | undefined;
   clearLanguage?: boolean | null | undefined;
+  clearTimeFormat?: boolean | null | undefined;
   colorMode?: ColorMode | null | undefined;
+  dateFormat?: DateFormat | null | undefined;
   language?: string | null | undefined;
   navOpen?: boolean | null | undefined;
   surface?: SurfaceStyle | null | undefined;
+  timeFormat?: TimeFormat | null | undefined;
 };
 
 export type UpdateUserInput = {
@@ -1172,14 +1187,14 @@ export type RevokeOtherSessionsMutation = { revokeOtherSessions: number };
 export type UiSettingsQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type UiSettingsQuery = { uiSettings: { navOpen: boolean | null, language: string | null, colorMode: ColorMode | null, surface: SurfaceStyle | null, grids: Array<{ gridId: string, order: Array<string>, hidden: Array<string>, pageSize: number, sortColumn: string, sortDirection: SortDirection }> } };
+export type UiSettingsQuery = { uiSettings: { navOpen: boolean | null, language: string | null, colorMode: ColorMode | null, surface: SurfaceStyle | null, timeFormat: TimeFormat | null, dateFormat: DateFormat | null, defaultTimeFormat: TimeFormat | null, defaultDateFormat: DateFormat | null, grids: Array<{ gridId: string, order: Array<string>, hidden: Array<string>, pageSize: number, sortColumn: string, sortDirection: SortDirection }> } };
 
 export type UpdateUiSettingsMutationVariables = Exact<{
   input: UpdateUiSettingsInput;
 }>;
 
 
-export type UpdateUiSettingsMutation = { updateUiSettings: { navOpen: boolean | null, language: string | null, colorMode: ColorMode | null, surface: SurfaceStyle | null } };
+export type UpdateUiSettingsMutation = { updateUiSettings: { navOpen: boolean | null, language: string | null, colorMode: ColorMode | null, surface: SurfaceStyle | null, timeFormat: TimeFormat | null, dateFormat: DateFormat | null, defaultTimeFormat: TimeFormat | null, defaultDateFormat: DateFormat | null } };
 
 export type SaveGridSettingsMutationVariables = Exact<{
   input: GridSettingsInput;
@@ -1399,8 +1414,8 @@ export const ResetPasswordDocument = {"kind":"Document","definitions":[{"kind":"
 export const MySessionsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"MySessions"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"mySessions"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"client"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"lastUsedAt"}},{"kind":"Field","name":{"kind":"Name","value":"expiresAt"}},{"kind":"Field","name":{"kind":"Name","value":"current"}}]}}]}}]} as unknown as DocumentNode<MySessionsQuery, MySessionsQueryVariables>;
 export const RevokeSessionDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"RevokeSession"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UUID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"revokeSession"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}]}]}}]} as unknown as DocumentNode<RevokeSessionMutation, RevokeSessionMutationVariables>;
 export const RevokeOtherSessionsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"RevokeOtherSessions"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"revokeOtherSessions"}}]}}]} as unknown as DocumentNode<RevokeOtherSessionsMutation, RevokeOtherSessionsMutationVariables>;
-export const UiSettingsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"UiSettings"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"uiSettings"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"navOpen"}},{"kind":"Field","name":{"kind":"Name","value":"language"}},{"kind":"Field","name":{"kind":"Name","value":"colorMode"}},{"kind":"Field","name":{"kind":"Name","value":"surface"}},{"kind":"Field","name":{"kind":"Name","value":"grids"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"gridId"}},{"kind":"Field","name":{"kind":"Name","value":"order"}},{"kind":"Field","name":{"kind":"Name","value":"hidden"}},{"kind":"Field","name":{"kind":"Name","value":"pageSize"}},{"kind":"Field","name":{"kind":"Name","value":"sortColumn"}},{"kind":"Field","name":{"kind":"Name","value":"sortDirection"}}]}}]}}]}}]} as unknown as DocumentNode<UiSettingsQuery, UiSettingsQueryVariables>;
-export const UpdateUiSettingsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateUiSettings"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UpdateUiSettingsInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateUiSettings"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"navOpen"}},{"kind":"Field","name":{"kind":"Name","value":"language"}},{"kind":"Field","name":{"kind":"Name","value":"colorMode"}},{"kind":"Field","name":{"kind":"Name","value":"surface"}}]}}]}}]} as unknown as DocumentNode<UpdateUiSettingsMutation, UpdateUiSettingsMutationVariables>;
+export const UiSettingsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"UiSettings"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"uiSettings"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"navOpen"}},{"kind":"Field","name":{"kind":"Name","value":"language"}},{"kind":"Field","name":{"kind":"Name","value":"colorMode"}},{"kind":"Field","name":{"kind":"Name","value":"surface"}},{"kind":"Field","name":{"kind":"Name","value":"timeFormat"}},{"kind":"Field","name":{"kind":"Name","value":"dateFormat"}},{"kind":"Field","name":{"kind":"Name","value":"defaultTimeFormat"}},{"kind":"Field","name":{"kind":"Name","value":"defaultDateFormat"}},{"kind":"Field","name":{"kind":"Name","value":"grids"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"gridId"}},{"kind":"Field","name":{"kind":"Name","value":"order"}},{"kind":"Field","name":{"kind":"Name","value":"hidden"}},{"kind":"Field","name":{"kind":"Name","value":"pageSize"}},{"kind":"Field","name":{"kind":"Name","value":"sortColumn"}},{"kind":"Field","name":{"kind":"Name","value":"sortDirection"}}]}}]}}]}}]} as unknown as DocumentNode<UiSettingsQuery, UiSettingsQueryVariables>;
+export const UpdateUiSettingsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateUiSettings"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UpdateUiSettingsInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateUiSettings"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"navOpen"}},{"kind":"Field","name":{"kind":"Name","value":"language"}},{"kind":"Field","name":{"kind":"Name","value":"colorMode"}},{"kind":"Field","name":{"kind":"Name","value":"surface"}},{"kind":"Field","name":{"kind":"Name","value":"timeFormat"}},{"kind":"Field","name":{"kind":"Name","value":"dateFormat"}},{"kind":"Field","name":{"kind":"Name","value":"defaultTimeFormat"}},{"kind":"Field","name":{"kind":"Name","value":"defaultDateFormat"}}]}}]}}]} as unknown as DocumentNode<UpdateUiSettingsMutation, UpdateUiSettingsMutationVariables>;
 export const SaveGridSettingsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SaveGridSettings"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"GridSettingsInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"saveGridSettings"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"gridId"}},{"kind":"Field","name":{"kind":"Name","value":"order"}},{"kind":"Field","name":{"kind":"Name","value":"hidden"}},{"kind":"Field","name":{"kind":"Name","value":"pageSize"}},{"kind":"Field","name":{"kind":"Name","value":"sortColumn"}},{"kind":"Field","name":{"kind":"Name","value":"sortDirection"}}]}}]}}]} as unknown as DocumentNode<SaveGridSettingsMutation, SaveGridSettingsMutationVariables>;
 export const ResetGridSettingsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"ResetGridSettings"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"gridId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"resetGridSettings"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"gridId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"gridId"}}}]}]}}]} as unknown as DocumentNode<ResetGridSettingsMutation, ResetGridSettingsMutationVariables>;
 export const LogAccessDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"LogAccess"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"vehicleId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UUID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"vehicleLogAccess"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"vehicleId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"vehicleId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"level"}},{"kind":"Field","name":{"kind":"Name","value":"user"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"displayName"}},{"kind":"Field","name":{"kind":"Name","value":"avatarUrl"}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"shareCandidates"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"vehicleId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"vehicleId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"displayName"}},{"kind":"Field","name":{"kind":"Name","value":"avatarUrl"}}]}}]}}]} as unknown as DocumentNode<LogAccessQuery, LogAccessQueryVariables>;

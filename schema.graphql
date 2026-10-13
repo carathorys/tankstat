@@ -662,6 +662,10 @@ type UiSettingsInfo {
   language: String
   colorMode: ColorMode
   surface: SurfaceStyle
+  timeFormat: TimeFormat
+  dateFormat: DateFormat
+  defaultTimeFormat: TimeFormat
+  defaultDateFormat: DateFormat
   grids: [GridSettingsInfo!]! @cost(weight: "10")
 }
 
@@ -1039,6 +1043,10 @@ input UpdateUiSettingsInput {
   clearLanguage: Boolean
   colorMode: ColorMode
   surface: SurfaceStyle
+  timeFormat: TimeFormat
+  clearTimeFormat: Boolean
+  dateFormat: DateFormat
+  clearDateFormat: Boolean
 }
 
 input UpdateUserInput {
@@ -1123,6 +1131,14 @@ enum ColorMode {
   LIGHT
   DARK
   SYSTEM
+}
+
+enum DateFormat {
+  ISO
+  DAY_MONTH_YEAR_DOTS
+  DAY_MONTH_YEAR_SLASHES
+  MONTH_DAY_YEAR
+  YEAR_MONTH_DAY_DOTS
 }
 
 enum DayOfWeek {
@@ -1364,6 +1380,11 @@ enum SyncResolveAction {
 enum SyncTargetState {
   LIVE
   TRASHED
+}
+
+enum TimeFormat {
+  TWENTY_FOUR_HOUR
+  TWELVE_HOUR
 }
 
 enum UserDataDisposition {
