@@ -77,7 +77,13 @@ internal sealed class FileBackupStore(IOptionsMonitor<BackupOptions> options, ID
 
     public bool RestorePending => File.Exists(RestoreMarker.PathIn(Root));
 
-    public void RequestRestore(RestoreMarker marker) => marker.Write(Root);
+    public void RequestRestore(RestoreMarker marker)
+    {
+        // Looked for once more right before the marker is written: a delete may have taken the file since its manifest was read (deriving
+        // a key from a passphrase takes a while), and a marker naming no backup would restart the server only to refuse it.
+        PathOf(marker.File);
+        marker.Write(Root);
+    }
 
     public IReadOnlyList<RestorePoint> List()
     {

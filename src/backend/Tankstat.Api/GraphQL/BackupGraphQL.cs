@@ -75,7 +75,7 @@ public sealed class BackupOverviewInfoExtensions
         return [.. points.Points.Select(p => RestorePointInfo.From(p, points, overview.Settings.Recipient))];
     }
 
-    /// <summary>The name of the migration the database is at; a backup made at another one cannot be restored here.</summary>
+    /// <summary>The name of the migration the database is at; a backup made at an older one is brought up to date as it is restored, one made at a newer one (a newer release's) cannot be restored here.</summary>
     public async Task<string?> GetMigration([Service] BackupAdminService backups, CancellationToken ct) =>
         MigrationNames.Of(await backups.MigrationAsync(ct));
 
@@ -102,8 +102,8 @@ public sealed class BackupMutations
     /// <summary>
     /// Asks for a restore of a backup from the backups folder: the data is replaced as a whole at the next start, which follows right after
     /// the answer (the server restarts in its process, as <c>restartServer</c> does). An administrator; with sign-in off, the one-time code
-    /// from the log. A wrong passphrase is <c>backup.wrongKey</c> at once, a backup of another migration <c>backup.otherMigration</c>, a restart
-    /// the next start would refuse <c>settings.restartWouldFail</c>; nothing is written then.
+    /// from the log. A wrong passphrase is <c>backup.wrongKey</c> at once, a backup a newer release made <c>backup.otherMigration</c>, one
+    /// deleted meanwhile <c>backup.notFound</c>, a restart the next start would refuse <c>settings.restartWouldFail</c>; nothing is written then.
     /// </summary>
     public async Task<RestorePendingInfo> RestoreBackup(RestoreBackupInput input, [Service] RestoreService restores, CancellationToken ct)
     {

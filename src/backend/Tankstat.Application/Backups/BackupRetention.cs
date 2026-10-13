@@ -4,7 +4,7 @@ namespace Tankstat.Application.Backups;
 /// Which backups go after the app wrote one (<c>Backups:Keep</c>, <c>Backups:KeepDays</c>). Both are ceilings: a backup is removed when it
 /// is beyond the newest <c>Keep</c> or older than <c>KeepDays</c>, whichever are set, and the newest one never goes. Only the app's own
 /// files are candidates: named <c>tankstat-backup-...</c> by it and written by Tankstat, never an upload or a file copied in under another
-/// name. The safety nets a restore writes are kept by a count of their own, <see cref="SafetyNetsKept"/>. With neither setting, nothing is
+/// name. The safety nets written before a restore or an upgrade are kept by a count of their own, <see cref="SafetyNetsKept"/>. With neither setting, nothing is
 /// removed at all, safety nets included.
 /// </summary>
 public static class BackupRetention
@@ -12,7 +12,7 @@ public static class BackupRetention
     /// <summary>The prefix of the files the app names itself (<c>tankstat-backup-&lt;date&gt;T&lt;time&gt;Z.zip</c>).</summary>
     public const string OwnPrefix = "tankstat-backup-";
 
-    /// <summary>How many safety nets (the backups written right before a restore) stay once retention is on.</summary>
+    /// <summary>How many safety nets (the backups written right before a restore or a database upgrade) stay once retention is on.</summary>
     public const int SafetyNetsKept = 3;
 
     /// <summary>Whether a backup in the folder is one of the app's own, which retention and the missed-run check look at.</summary>

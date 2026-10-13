@@ -22,7 +22,10 @@ public interface IBackupStore
     /// <summary>Whether a restore waits for the next start.</summary>
     bool RestorePending { get; }
 
-    /// <summary>Asks for a restore at the next start (one already waiting is replaced).</summary>
+    /// <summary>
+    /// Asks for a restore at the next start (one already waiting is replaced); <c>backup.notFound</c> when the backup it names is no longer in
+    /// the folder (deleted since its manifest was read), so no restart is asked for a restore the start would refuse.
+    /// </summary>
     void RequestRestore(RestoreMarker marker);
 
     /// <summary>The backups in the folder, newest first: every file whose manifest can be read (one copied in by hand too); anything else is left out.</summary>

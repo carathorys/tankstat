@@ -200,6 +200,22 @@ public sealed class BackupStoreTests : IDisposable
                      RestoreMarker.FileName, "notes.zip", "b.zip.partial", "uploaded-c.zip.uploading", "plain-copy" })
             Assert.Equal("backup.notFound", Assert.Throws<NotFoundException>(() => store.OpenRead(name)).Key);
     }
+
+    [Fact]
+    public void ARestore_IsAskedFor_OnlyWhileItsBackupIsStillInTheFolder()
+    {
+        Directory.CreateDirectory(Backups);
+        var store = Store();
+        var marker = new RestoreMarker("a.zip", Guid.Empty, DateTimeOffset.UtcNow, null);
+
+        // Deleted since its manifest was read: no marker, so no restart only to have the start refuse it.
+        Assert.Equal("backup.notFound", Assert.Throws<NotFoundException>(() => store.RequestRestore(marker)).Key);
+        Assert.False(store.RestorePending);
+
+        File.WriteAllText(Path.Combine(Backups, "a.zip"), "there");
+        store.RequestRestore(marker);
+        Assert.True(store.RestorePending);
+    }
 }
 
 public class BackupKeyMakerTests
