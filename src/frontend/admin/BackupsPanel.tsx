@@ -49,6 +49,7 @@ import { connectivity } from '../offline/connectivity.ts'
 import { classifyFailure } from '../offline/errors.ts'
 import { PROBE_TIMEOUT_MS, withDeadline } from '../offline/runtime.ts'
 import { ApiError } from '../pictures/ApiError.ts'
+import { COARSE } from '../theme/components.ts'
 import { downloadBackup, uploadBackup } from './backupFiles.ts'
 import { useToast } from '../toast/toastContext.ts'
 import { ProblemList } from './ProblemList.tsx'
@@ -95,7 +96,7 @@ export function BackupsPanel() {
       <UploadBackup maxUploadMb={backups.settings.maxUploadMb} onUploaded={() => void refetch()} />
       <RestorePoints
         backups={backups}
-        onDeleted={() => void refetch()}
+        onDeleted={() => refetch()}
         onRestoring={(point) => setRestoring({ point, generation: session?.session.instance?.generation ?? undefined })}
       />
       <EncryptionSetup recipient={backups.settings.recipient ?? null} />
@@ -332,19 +333,28 @@ function UploadBackup({ maxUploadMb, onUploaded }: { maxUploadMb: number; onUplo
   )
 }
 
-/** What a backup holds, in words: the release and database it came from, how many rows, whether it is encrypted (for which key) and has the photos. */
 /**
  * A property of a backup as an icon whose meaning is its tooltip and its name (read by a screen reader as an image of that name); it takes
- * the focus, so the tooltip is shown from the keyboard too. The colour only repeats what the icon and its name say.
+ * the focus, so the tooltip is shown from the keyboard too, and a tap shows it at once on a touch screen, where the icon is a 44 px target.
+ * The colour only repeats what the icon and its name say.
  */
 function PropertyIcon({ icon: Icon, label, tone }: { icon: LucideIcon; label: string; tone?: 'success' | 'warning' }) {
   return (
-    <Tooltip title={label}>
+    <Tooltip title={label} enterTouchDelay={0} leaveTouchDelay={8000}>
       <Box
         component="span"
         role="img"
         tabIndex={0}
-        sx={{ display: 'inline-flex', p: 0.5, borderRadius: 1, color: tone ? `${tone}.softText` : 'text.secondary', '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main' } }}
+        sx={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          p: 0.5,
+          borderRadius: 1,
+          color: tone ? `${tone}.softText` : 'text.secondary',
+          '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main' },
+          [COARSE]: { minWidth: 44, minHeight: 44 },
+        }}
       >
         <Icon size={18} aria-hidden />
       </Box>
@@ -383,7 +393,7 @@ function RestorePoints({
   onRestoring,
 }: {
   backups: BackupsQuery['backups']
-  onDeleted: () => void
+  onDeleted: () => Promise<unknown>
   onRestoring: (point: RestorePoint) => void
 }) {
   const { t } = useTranslation()
@@ -392,8 +402,25 @@ function RestorePoints({
   const icons = useBackupIcons()
   const [error, setError] = useState<unknown>()
   const [deleteBackup] = useMutation(DeleteBackupDocument)
+  // The backups being deleted: their row's buttons are off until the list is asked again (a ref as well, so a second confirmation in
+  // the same moment sends nothing either).
+  const [deleting, setDeleting] = useState<ReadonlySet<string>>(() => new Set())
+  const inFlight = useRef(new Set<string>())
+  const heading = useRef<HTMLHeadingElement>(null)
+  const focusAfterDelete = useRef(false)
+
+  // Once no delete is under way any more: the row went, and with it the button that had the focus (or the confirmation gave the focus
+  // back to that button while it was off), so the focus goes to the list's heading, not back to the start of the page.
+  useEffect(() => {
+    if (!focusAfterDelete.current || deleting.size > 0) return
+    focusAfterDelete.current = false
+    if (!document.activeElement || document.activeElement === document.body) heading.current?.focus()
+  }, [backups.restorePoints, deleting])
 
   const remove = async (file: string) => {
+    if (inFlight.current.has(file)) return
+    inFlight.current.add(file)
+    setDeleting(new Set(inFlight.current))
     setError(undefined)
     try {
       await deleteBackup({ variables: { file } })
@@ -401,12 +428,19 @@ function RestorePoints({
     } catch (e) {
       setError(e)
     }
-    onDeleted() // also after a refusal: a file gone since the list leaves it
+    focusAfterDelete.current = true
+    try {
+      await onDeleted() // also after a refusal: a file gone since the list leaves it
+    } catch {
+      // The list's own error says why it could not be asked again.
+    }
+    inFlight.current.delete(file)
+    setDeleting(new Set(inFlight.current))
   }
 
   return (
     <section aria-labelledby="backups-points">
-      <Typography id="backups-points" component="h2" variant="h5" sx={{ mb: 1 }}>
+      <Typography ref={heading} id="backups-points" component="h2" variant="h5" tabIndex={-1} sx={{ mb: 1 }}>
         {t('admin.backups.pointsTitle')}
       </Typography>
       <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1.5 }}>
@@ -434,8 +468,9 @@ function RestorePoints({
           <TableBody>
             {backups.restorePoints.map((p) => {
               const made = dateTime(p.createdAt)
+              const busy = deleting.has(p.file)
               return (
-                <TableRow key={p.file}>
+                <TableRow key={p.file} aria-busy={busy || undefined}>
                   <TableCell component="th" scope="row">
                     <Typography variant="body2">{made}</Typography>
                     <Typography variant="caption" sx={{ color: 'text.secondary', wordBreak: 'break-all' }}>
@@ -472,6 +507,7 @@ function RestorePoints({
                       <Button
                         size="small"
                         variant="soft"
+                        disabled={busy}
                         aria-label={t('admin.backups.downloadAria', { made, file: p.file })}
                         onClick={() => downloadBackup(p.file).catch(setError)}
                       >
@@ -483,7 +519,7 @@ function RestorePoints({
                           point={p}
                           onRestoring={onRestoring}
                           trigger={
-                            <Button size="small" variant="soft" color="error" aria-label={t('admin.backups.restoreAria', { made, file: p.file })}>
+                            <Button size="small" variant="soft" color="error" disabled={busy} aria-label={t('admin.backups.restoreAria', { made, file: p.file })}>
                               <RotateCcw size={16} aria-hidden />
                               {t('admin.backups.restore')}
                             </Button>
@@ -496,7 +532,7 @@ function RestorePoints({
                         confirmLabel={t('admin.backups.deleteConfirm')}
                         onConfirm={() => void remove(p.file)}
                         trigger={
-                          <Button size="small" variant="soft" color="error" aria-label={t('admin.backups.deleteAria', { made, file: p.file })}>
+                          <Button size="small" variant="soft" color="error" loading={busy} aria-label={t('admin.backups.deleteAria', { made, file: p.file })}>
                             <Trash2 size={16} aria-hidden />
                             {t('admin.backups.delete')}
                           </Button>

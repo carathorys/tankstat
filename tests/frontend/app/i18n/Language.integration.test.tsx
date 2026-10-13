@@ -19,7 +19,7 @@ function setup(route = '/vehicles', vehicles = [fakeVehicle()]) {
 
 const switchToHungarian = async (ui: ReturnType<typeof userEvent.setup>) => {
   await ui.click(screen.getByRole('button', { name: 'Language and formats' }))
-  await ui.click(await screen.findByRole('menuitemradio', { name: 'Language: Magyar' }))
+  await ui.click(await screen.findByRole('menuitemradio', { name: 'Magyar' }))
 }
 
 it('switches the whole UI to Hungarian from the language menu, and back', async () => {
@@ -36,9 +36,23 @@ it('switches the whole UI to Hungarian from the language menu, and back', async 
   expect(document.documentElement.lang).toBe('hu')
 
   await ui.click(screen.getByRole('button', { name: 'Nyelv és formátumok' }))
-  await ui.click(await screen.findByRole('menuitemradio', { name: 'Nyelv: English' }))
+  await ui.click(await screen.findByRole('menuitemradio', { name: 'English' }))
   await screen.findByRole('heading', { name: 'Vehicles' })
   expect(document.documentElement.lang).toBe('en')
+})
+
+it('offers each format with an example in the very language the pages write in, a regional one too', async () => {
+  const { ui } = setup()
+  await screen.findByRole('heading', { name: 'Vehicles' })
+  await i18n.changeLanguage('en-GB') // a British browser: the English texts, the British way of writing times and dates
+
+  await ui.click(screen.getByRole('button', { name: 'Language and formats' }))
+
+  const at = new Date(Date.UTC(2026, 9, 13, 13, 29))
+  const twelveHour = new Intl.DateTimeFormat('en-GB', { timeStyle: 'short', hourCycle: 'h12', timeZone: 'UTC' }).format(at)
+  expect(await screen.findByRole('menuitemradio', { name: 'Time: Default (13:29)' })).toBeInTheDocument() // as every page writes it
+  expect(screen.getByRole('menuitemradio', { name: `Time: 12-hour (${twelveHour})` })).toBeInTheDocument()
+  expect(screen.getByRole('menuitemradio', { name: 'Date: Default (13 Oct 2026)' })).toBeInTheDocument()
 })
 
 it('keeps the language across pages', async () => {

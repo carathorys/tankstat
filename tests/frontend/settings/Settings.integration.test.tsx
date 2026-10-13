@@ -139,7 +139,7 @@ it('the language is saved with the account and applied on another device; an unk
   await screen.findByRole('heading', { name: 'Vehicles' })
 
   await ui.click(screen.getByRole('button', { name: 'Language and formats' }))
-  await ui.click(await screen.findByRole('menuitemradio', { name: 'Language: Magyar' }))
+  await ui.click(await screen.findByRole('menuitemradio', { name: 'Magyar' }))
 
   await screen.findByRole('heading', { name: 'Járművek' })
   await waitFor(() => expect(settings.state.calls.UpdateUiSettings).toEqual([{ input: { language: 'hu' } }]))
@@ -282,7 +282,7 @@ it('a visitor who is not signed in changes only the browser', async () => {
   await screen.findByRole('heading', { name: 'Sign in' })
 
   await ui.click(screen.getByRole('button', { name: 'Language and formats' }))
-  await ui.click(await screen.findByRole('menuitemradio', { name: 'Language: Magyar' }))
+  await ui.click(await screen.findByRole('menuitemradio', { name: 'Magyar' }))
 
   await screen.findByRole('heading', { name: 'Bejelentkezés' })
   await ui.click(screen.getByRole('button', { name: 'Megjelenés' }))

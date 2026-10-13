@@ -10,7 +10,7 @@ import FormControlLabel from '@mui/material/FormControlLabel'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import type { TFunction } from 'i18next'
-import { ChevronDown, Info } from 'lucide-react'
+import { ChevronDown, Info, TriangleAlert } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
@@ -22,9 +22,10 @@ import { Field } from '../forms/Field.tsx'
 import { FieldInput } from '../forms/FieldInput.tsx'
 import { Form } from '../forms/Form.tsx'
 import { SystemSettingsDocument, UpdateSystemSettingsDocument, type SystemSettingFieldsFragment, type SettingsGroup } from '../gql/generated.ts'
-import type { DateFormat, TimeFormat } from '../gql/generated.ts'
 import { sampleDate, sampleTime, useFormat } from '../i18n/format.ts'
-import { ErrorMessage, WarningMessage } from '../messages.tsx'
+import { DATE_FORMATS, TIME_FORMATS } from '../i18n/formatStore.ts'
+import { validLocale } from '../i18n/locale.ts'
+import { ErrorMessage } from '../messages.tsx'
 import { useToast } from '../toast/toastContext.ts'
 import { ProblemList } from './ProblemList.tsx'
 import { changesOf, daysOf, daysValue, isOn, WEEK, type GroupDraft } from './settingsDraft.ts'
@@ -143,9 +144,13 @@ export function SettingsGroupForm({
               onClear={(removed) => clear(s.key, removed)}
             />
           ))}
-        {/* No sign-in hands everything to whoever reaches the server: said as soon as it is chosen, and while it runs so. */}
+        {/* No sign-in hands everything to whoever reaches the server: said as soon as it is chosen, and while it runs so. Part of the page,
+            not news (a note, not an alert, which would interrupt a screen reader each time the tab is drawn): the mode's confirmation
+            says it again at the moment of choosing. */}
         {settings.some((s) => s.key === 'Auth:Mode') && valueOf('Auth:Mode')?.toLowerCase() === 'none' && (
-          <WarningMessage>{t('systemSettings.noSignInWarning')}</WarningMessage>
+          <Alert severity="warning" role="note" icon={<TriangleAlert size={16} aria-hidden />}>
+            {t('systemSettings.noSignInWarning')}
+          </Alert>
         )}
       </Stack>
     )
@@ -297,13 +302,18 @@ const CHOICE_SETS: Record<string, string> = {
  */
 function useChoiceLabel() {
   const { t, i18n } = useTranslation()
-  const language = i18n.resolvedLanguage ?? 'en'
+  // The examples in the tag the pages write with (useFormat's), so each shows what the format gives.
+  const language = validLocale(i18n.language, i18n.resolvedLanguage)
   return (key: string, choice: string): string => {
+    // A format this page does not know (a newer server's, while the tab waits for its update) as the server spells it: it has no example.
     if (key === 'Defaults:TimeFormat') {
-      const format = schemaName(choice) as TimeFormat
-      return t('formats.option', { name: t(`formats.times.${format}`), example: sampleTime(language, format) })
+      const format = TIME_FORMATS.find((f) => f === schemaName(choice))
+      return format ? t('formats.option', { name: t(`formats.times.${format}`), example: sampleTime(language, format) }) : choice
     }
-    if (key === 'Defaults:DateFormat') return sampleDate(language, schemaName(choice) as DateFormat)
+    if (key === 'Defaults:DateFormat') {
+      const format = DATE_FORMATS.find((f) => f === schemaName(choice))
+      return format ? sampleDate(language, format) : choice
+    }
     const set = key === 'Defaults:DistanceUnit' ? 'distance' : key === 'Defaults:VolumeUnit' ? 'volume' : CHOICE_SETS[key]
     const wordsKey = set === 'distance' || set === 'volume' ? `units.${set}.${schemaName(choice)}` : `systemSettings.choices.${set}.${choice}`
     if (!set || !i18n.exists(wordsKey)) return choice

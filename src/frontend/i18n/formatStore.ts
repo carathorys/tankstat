@@ -43,9 +43,22 @@ export function currentFormats(): Formats {
   return (current ??= read())
 }
 
+/**
+ * Only the formats this page knows, whoever hands them over: one a newer server sends (a format added since, while this tab waits for
+ * its update) is none here, so the language's own, never a page that cannot draw a date.
+ */
+function known(change: Partial<Formats>): Partial<Formats> {
+  const out: Partial<Formats> = {}
+  if ('time' in change) out.time = pick(change.time, TIME_FORMATS)
+  if ('date' in change) out.date = pick(change.date, DATE_FORMATS)
+  if ('defaultTime' in change) out.defaultTime = pick(change.defaultTime, TIME_FORMATS)
+  if ('defaultDate' in change) out.defaultDate = pick(change.defaultDate, DATE_FORMATS)
+  return out
+}
+
 /** Changes what is given, keeps the browser's copy (a storage failure only loses the copy) and redraws whatever writes a time or date. */
 export function setFormats(change: Partial<Formats>) {
-  const next = { ...currentFormats(), ...change }
+  const next = { ...currentFormats(), ...known(change) }
   if (Object.keys(next).every((k) => next[k as keyof Formats] === currentFormats()[k as keyof Formats])) return
   current = next
   try {

@@ -26,8 +26,9 @@ export interface RadioMenuGroup<V extends string = string> {
 /**
  * An icon button in the top bar that opens a menu of choices (menu item radios, with a check mark): the language, the appearance. One
  * set (`value`, `options`, `onChange`) or several (`groups`). Several sets are told apart by a separator, which ends a set of radios for
- * assistive technology too, under a heading that is only seen; each item's name says its set ("Surfaces: Opaque"). The items stay the
- * menu's own children, since the menu moves the focus among those (and takes no fragments).
+ * assistive technology too, under a heading that is only seen; each item's name says its set ("Surfaces: Opaque"), except a language's
+ * own name ("Magyar", `lang="hu"`), which says itself and would put the set's name in that language's voice. The items stay the menu's
+ * own children, since the menu moves the focus among those (and takes no fragments).
  */
 export function RadioMenu<V extends string>(
   props: { label: string; icon: ReactNode } & (
@@ -73,7 +74,8 @@ export function RadioMenu<V extends string>(
               key={`${index}-${option.value}`}
               role="menuitemradio"
               aria-checked={option.value === group.value}
-              aria-label={group.label ? `${group.label}: ${option.label}` : undefined}
+              // A language's own name is in its own language (lang): the set's name in the UI's language would be read in that voice too.
+              aria-label={group.label && !option.lang ? `${group.label}: ${option.label}` : undefined}
               selected={option.value === group.value} // the menu opens on it
               lang={option.lang}
               // The check mark says which one it is, in a narrow column, without the selected item's tint.

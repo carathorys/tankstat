@@ -192,7 +192,10 @@ it('the appearance and language menus are labelled radio menus, free of violatio
 
   await ui.click(screen.getByRole('button', { name: 'Language and formats' }))
   const languages = await screen.findByRole('menu', { name: 'Language and formats' })
-  expect(within(languages).getByRole('menuitemradio', { name: 'Language: Magyar' })).toHaveAttribute('lang', 'hu')
+  // A language's own name, in its own language as a whole: no "Language:" before it to be read in the Hungarian voice.
+  const hungarian = within(languages).getByRole('menuitemradio', { name: 'Magyar' })
+  expect(hungarian).toHaveAttribute('lang', 'hu')
+  expect(hungarian).not.toHaveAttribute('aria-label')
   await check(languages)
 })
 

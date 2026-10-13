@@ -238,12 +238,13 @@ it('shows the server, where its backups go, and every backup in the folder with 
   // Made by a newer release: it cannot be restored here, and the row says with what it can.
   expect(within(rows[2]).queryByRole('button', { name: /^Restore/ })).not.toBeInTheDocument()
   expect(within(rows[2]).getByText('Made by a newer release: restore it with Tankstat 9.9.0 or later.')).toBeInTheDocument()
-  // Made by an older release: restored and brought up to date.
-  expect(within(rows[3]).getByText('Made by an older release: brought up to date as it is restored.')).toBeInTheDocument()
+  // At an older migration: restored and brought up to date. Worded by what it holds, not by who wrote it: a safety net written before an
+  // upgrade holds the older release's database, but the new release wrote it.
+  expect(within(rows[3]).getByText('Holds the database as an older release left it: brought up to date as it is restored.')).toBeInTheDocument()
   expect(within(rows[3]).getByRole('button', { name: /^Restore the backup of/ })).toBeInTheDocument()
   expect(within(rows[0]).getByRole('button', { name: /^Restore the backup of/ })).toBeInTheDocument()
   await userEvent.setup().click(within(rows[3]).getByRole('button', { name: /^Restore the backup of/ }))
-  expect(await screen.findByRole('alertdialog')).toHaveAccessibleDescription(/made by an older release \(Tankstat 0\.9\.0\): the database is set up as that release left it/)
+  expect(await screen.findByRole('alertdialog')).toHaveAccessibleDescription(/holds the database as an older release left it \(the file was written by Tankstat 0\.9\.0\): the database is set up as that release left it/)
 })
 
 it('backs up now, follows the run, and lists the new backup when it is written', async () => {
@@ -303,7 +304,7 @@ it('says on the page when a backup is gone since the list, instead of leaving it
   expect(download).not.toHaveBeenCalled()
 })
 
-it('deletes a backup once asked to confirm, and lists the folder afresh', async () => {
+it('deletes a backup once asked to confirm, lists the folder afresh, and keeps the focus in the list', async () => {
   const kept = point({ file: 'tankstat-backup-20261009T020000Z.zip', createdAt: '2026-10-09T02:00:00Z' })
   const { calls } = backupsServer({ points: [point(), kept] })
   const ui = await openBackups()
@@ -313,9 +314,13 @@ it('deletes a backup once asked to confirm, and lists the folder afresh', async 
   expect(calls.DeleteBackup).toBeUndefined() // only once confirmed
   await ui.click(within(confirm).getByRole('button', { name: 'Delete' }))
 
-  await waitFor(() => expect(screen.queryByText(/tankstat-backup-20261010T020000Z\.zip/)).not.toBeInTheDocument())
+  // In the table: the toast that says it was deleted names the file too, until it hides itself.
+  const table = screen.getByRole('table')
+  await waitFor(() => expect(within(table).queryByText(/tankstat-backup-20261010T020000Z\.zip/)).not.toBeInTheDocument())
   expect(calls.DeleteBackup).toEqual(['tankstat-backup-20261010T020000Z.zip'])
-  expect(screen.getByText(/tankstat-backup-20261009T020000Z\.zip/)).toBeInTheDocument()
+  expect(within(table).getByText(/tankstat-backup-20261009T020000Z\.zip/)).toBeInTheDocument()
+  // The button that had the focus went with its row: the list's heading has it, not the start of the page.
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Backups in the folder' })).toHaveFocus())
 })
 
 it('says why a backup cannot be deleted while a restore waits', async () => {

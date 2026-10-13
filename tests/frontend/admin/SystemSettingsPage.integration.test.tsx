@@ -755,15 +755,18 @@ it('words the other choices too: a unit by its name, a mode with its value after
   expect((await screen.findAllByRole('option')).slice(1).map((o) => o.textContent)).toEqual(LEVELS)
 })
 
-it('warns that no sign-in is not secure as soon as it is chosen', async () => {
+it('warns that no sign-in is not secure as soon as it is chosen, as a note of the page rather than an alert', async () => {
   const ui = userEvent.setup()
   settingsServer(fixture({ modeEditable: true }))
   renderWithApollo(<App />, '/admin/settings')
   const auth = await group('Sign-in')
-  expect(auth.queryByRole('alert')).not.toBeInTheDocument()
+  expect(auth.queryByText(/^Not secure:/)).not.toBeInTheDocument()
 
   await ui.click(auth.getByRole('combobox', { name: 'Sign-in mode' }))
   await ui.click(await screen.findByRole('option', { name: 'No sign-in, not secure (None)' }))
 
-  expect(await auth.findByRole('alert')).toHaveTextContent(/^Not secure: without sign-in, anyone who can reach the server sees and changes all data.*never in production\.$/)
+  const warning = await auth.findByText(/^Not secure: without sign-in, anyone who can reach the server sees and changes all data.*never in production\.$/)
+  // Part of the page while None is chosen: a note, never an alert that interrupts a screen reader each time the tab is drawn.
+  expect(warning.closest('[role="note"]')).not.toBeNull()
+  expect(auth.queryByRole('alert')).not.toBeInTheDocument()
 })
