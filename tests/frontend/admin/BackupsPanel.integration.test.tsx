@@ -221,9 +221,18 @@ it('shows the server, where its backups go, and every backup in the folder with 
 
   const rows = within(screen.getByRole('table')).getAllByRole('row').slice(1)
   expect(rows).toHaveLength(3)
-  expect(within(rows[0]).getByText('Tankstat 0.13.0 on Sqlite · 1,234 rows · encrypted for the current key · with the photos')).toBeInTheDocument()
-  expect(within(rows[1]).getByText(/uploaded-old-server\.zip · uploaded/)).toBeInTheDocument()
-  expect(within(rows[1]).getByText(/not encrypted · without the photos/)).toBeInTheDocument()
+  // A column per property: the kind, encryption and photos as icons named by what they mean (their tooltip says it too).
+  const cells = (row: HTMLElement) => within(row).getAllByRole('cell').map((cell) => cell.textContent)
+  expect(cells(rows[0]).slice(0, 5)).toEqual(['', 'Tankstat 0.13.0Sqlite', '1,234', '', ''])
+  expect(within(rows[0]).getByRole('img', { name: 'Backup (written by the app or copied into the folder)' })).toBeInTheDocument()
+  expect(within(rows[0]).getByRole('img', { name: 'Encrypted for the current key' })).toBeInTheDocument()
+  expect(within(rows[0]).getByRole('img', { name: 'With the photos of logs' })).toBeInTheDocument()
+  expect(within(rows[1]).getByText('uploaded-old-server.zip')).toBeInTheDocument()
+  expect(within(rows[1]).getByRole('img', { name: 'Uploaded on this page' })).toBeInTheDocument()
+  expect(within(rows[1]).getByRole('img', { name: 'Not encrypted (holds no sign-in keys)' })).toBeInTheDocument()
+  expect(within(rows[1]).getByRole('img', { name: 'Without the photos of logs' })).toBeInTheDocument()
+  await userEvent.setup().hover(within(rows[1]).getByRole('img', { name: 'Uploaded on this page' }))
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Uploaded on this page')
   // Made at another version of the database: it cannot be restored here, and the row says with what it can.
   expect(within(rows[2]).queryByRole('button', { name: /^Restore/ })).not.toBeInTheDocument()
   expect(within(rows[2]).getByText(/restore it with the release that wrote it \(Tankstat 0\.9\.0\)/)).toBeInTheDocument()

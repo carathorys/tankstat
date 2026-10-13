@@ -9,8 +9,9 @@ import TableBody from '@mui/material/TableBody'
 import TableCell from '@mui/material/TableCell'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
+import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
-import { DatabaseBackup, Download, KeyRound, RotateCcw, Trash2, Upload } from 'lucide-react'
+import { Archive, DatabaseBackup, Download, Image, ImageOff, KeyRound, LifeBuoy, Lock, LockOpen, RotateCcw, Trash2, Upload, type LucideIcon } from 'lucide-react'
 import { useEffect, useEffectEvent, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link as RouterLink } from 'react-router'
@@ -332,16 +333,48 @@ function UploadBackup({ maxUploadMb, onUploaded }: { maxUploadMb: number; onUplo
 }
 
 /** What a backup holds, in words: the release and database it came from, how many rows, whether it is encrypted (for which key) and has the photos. */
-function useContentsText() {
+/**
+ * A property of a backup as an icon whose meaning is its tooltip and its name (read by a screen reader as an image of that name); it takes
+ * the focus, so the tooltip is shown from the keyboard too. The colour only repeats what the icon and its name say.
+ */
+function PropertyIcon({ icon: Icon, label, tone }: { icon: LucideIcon; label: string; tone?: 'success' | 'warning' }) {
+  return (
+    <Tooltip title={label}>
+      <Box
+        component="span"
+        role="img"
+        tabIndex={0}
+        sx={{ display: 'inline-flex', p: 0.5, borderRadius: 1, color: tone ? `${tone}.softText` : 'text.secondary', '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main' } }}
+      >
+        <Icon size={18} aria-hidden />
+      </Box>
+    </Tooltip>
+  )
+}
+
+/** What kind of backup a row is, its encryption and its photos, each as an icon with its meaning. */
+function useBackupIcons() {
   const { t } = useTranslation()
-  const { number } = useFormat()
-  return (point: RestorePoint): string =>
-    [
-      t('admin.backups.madeBy', { version: point.appVersion, provider: point.provider }),
-      t('admin.backups.rows', { count: point.rows, rows: number(point.rows) }),
-      point.encrypted ? (point.currentRecipient ? t('admin.backups.encryptedCurrent') : t('admin.backups.encryptedOther')) : t('admin.backups.plain'),
-      point.photos === 'LEFT_OUT' ? t('admin.backups.withoutPhotos') : t('admin.backups.withPhotos'),
-    ].join(' · ')
+  return {
+    kind: (p: RestorePoint) =>
+      p.safetyNet ? (
+        <PropertyIcon icon={LifeBuoy} label={t('admin.backups.safetyNet')} />
+      ) : p.uploaded ? (
+        <PropertyIcon icon={Upload} label={t('admin.backups.uploadedTag')} />
+      ) : (
+        <PropertyIcon icon={Archive} label={t('admin.backups.kindBackup')} />
+      ),
+    encryption: (p: RestorePoint) =>
+      !p.encrypted ? (
+        <PropertyIcon icon={LockOpen} label={t('admin.backups.plain')} />
+      ) : p.currentRecipient ? (
+        <PropertyIcon icon={Lock} label={t('admin.backups.encryptedCurrent')} tone="success" />
+      ) : (
+        <PropertyIcon icon={KeyRound} label={t('admin.backups.encryptedOther')} tone="warning" />
+      ),
+    photos: (p: RestorePoint) =>
+      p.photos === 'LEFT_OUT' ? <PropertyIcon icon={ImageOff} label={t('admin.backups.withoutPhotos')} /> : <PropertyIcon icon={Image} label={t('admin.backups.withPhotos')} />,
+  }
 }
 
 function RestorePoints({
@@ -354,9 +387,9 @@ function RestorePoints({
   onRestoring: (point: RestorePoint) => void
 }) {
   const { t } = useTranslation()
-  const { dateTime, bytes } = useFormat()
+  const { dateTime, bytes, number } = useFormat()
   const { toast } = useToast()
-  const contentsText = useContentsText()
+  const icons = useBackupIcons()
   const [error, setError] = useState<unknown>()
   const [deleteBackup] = useMutation(DeleteBackupDocument)
 
@@ -387,8 +420,12 @@ function RestorePoints({
           <TableHead>
             <TableRow>
               <TableCell>{t('admin.backups.colMade')}</TableCell>
-              <TableCell>{t('admin.backups.colContents')}</TableCell>
-              <TableCell>{t('admin.backups.colSize')}</TableCell>
+              <TableCell>{t('admin.backups.colKind')}</TableCell>
+              <TableCell>{t('admin.backups.colRelease')}</TableCell>
+              <TableCell align="right">{t('admin.backups.colRows')}</TableCell>
+              <TableCell>{t('admin.backups.colEncryption')}</TableCell>
+              <TableCell>{t('admin.backups.colPhotos')}</TableCell>
+              <TableCell align="right">{t('admin.backups.colSize')}</TableCell>
               <TableCell>
                 <span style={visuallyHidden}>{t('grid.actions')}</span>
               </TableCell>
@@ -402,18 +439,29 @@ function RestorePoints({
                   <TableCell component="th" scope="row">
                     <Typography variant="body2">{made}</Typography>
                     <Typography variant="caption" sx={{ color: 'text.secondary', wordBreak: 'break-all' }}>
-                      {[p.file, p.safetyNet && t('admin.backups.safetyNet'), p.uploaded && t('admin.backups.uploadedTag')].filter(Boolean).join(' · ')}
+                      {p.file}
                     </Typography>
                   </TableCell>
+                  <TableCell>{icons.kind(p)}</TableCell>
                   <TableCell>
-                    <Typography variant="body2">{contentsText(p)}</Typography>
+                    <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>
+                      {t('admin.backups.release', { version: p.appVersion })}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                      {p.provider}
+                    </Typography>
                     {!p.sameMigration && (
-                      <Typography variant="caption" sx={{ color: 'warning.softText' }}>
+                      <Typography variant="caption" sx={{ display: 'block', color: 'warning.softText', minWidth: '12rem' }}>
                         {t('admin.backups.otherMigration', { version: p.appVersion })}
                       </Typography>
                     )}
                   </TableCell>
-                  <TableCell>{bytes(p.bytes)}</TableCell>
+                  <TableCell align="right">{number(p.rows)}</TableCell>
+                  <TableCell>{icons.encryption(p)}</TableCell>
+                  <TableCell>{icons.photos(p)}</TableCell>
+                  <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                    {bytes(p.bytes)}
+                  </TableCell>
                   <TableCell align="right">
                     <Stack direction="row" sx={{ gap: 1, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                       <Button
