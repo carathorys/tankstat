@@ -1,4 +1,6 @@
 using System.Globalization;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -41,11 +43,7 @@ public sealed class BackupScheduleTests : IDisposable
     private TestApp App(Dictionary<string, string?> extra, Action<IServiceCollection>? services = null)
     {
         var settings = new Dictionary<string, string?> { ["Backups:Path"] = _folder, ["Backups:Every"] = "02:00" };
-        foreach (var (key, value) in extra)
-        {
-            if (value is null) settings.Remove(key); // left to the settings file, which the page may write
-            else settings[key] = value;
-        }
+        foreach (var (key, value) in extra) settings[key] = value; // a null is held too: no source below may set it (AppWithSettingsFile for the page's tests)
         var app = TestApp.Standalone(settings, s =>
         {
             s.AddSingleton<TimeProvider>(_clock);
@@ -266,15 +264,25 @@ public sealed class BackupScheduleTests : IDisposable
         Assert.Empty(app.Log.From<BackupWorker>());
     }
 
+    private const string SaveSettings = "mutation($c: [SystemSettingChangeInput!]!) { updateSystemSettings(changes: $c) { restartPending } }";
+
+    /// <summary>A host whose backup settings only its settings file holds (none held in memory, where the page could not save them), on <paramref name="clock"/>.</summary>
+    private TestApp AppWithSettingsFile(TimeProvider clock, string? file = null)
+    {
+        var app = TestApp.Standalone(new() { ["Backups:Path"] = _folder }, s => s.AddSingleton(clock));
+        if (file is not null) File.WriteAllText(app.SettingsPath, file); // read as the host is built, below
+        _ = app.Factory.Services; // starts the host, and the worker with it
+        return app;
+    }
+
     [Fact]
     public async Task ATimeSavedOnTheSettingsPage_SchedulesBackupsAtOnce_AndClearingItStopsThem()
     {
-        using var app = App(new() { ["Backups:Every"] = null });
+        using var app = AppWithSettingsFile(_clock);
         var admin = app.NewClient();
         await admin.LoginAs(TestApp.AdminEmail, TestApp.AdminPassword);
-        const string Save = "mutation($c: [SystemSettingChangeInput!]!) { updateSystemSettings(changes: $c) { restartPending } }";
 
-        var saved = (await admin.Gql(Save, new { c = new object[] { new { key = "Backups:Every", value = "04:00" }, new { key = "Backups:Keep", value = "3" } } })).Data();
+        var saved = (await admin.Gql(SaveSettings, new { c = new object[] { new { key = "Backups:Every", value = "04:00" }, new { key = "Backups:Keep", value = "3" } } })).Data();
 
         Assert.False(saved.GetProperty("updateSystemSettings").GetProperty("restartPending").GetBoolean()); // the backups apply at once
         await Worker(app).WhenAsleepUntil(At(10, 4)).WaitAsync(Wait); // tonight's 04:00, planned without a restart
@@ -284,9 +292,75 @@ public sealed class BackupScheduleTests : IDisposable
         Assert.Single(Files());
 
         await admin.LoginAs(TestApp.AdminEmail, TestApp.AdminPassword); // the hour the clock moved outlived the access cookie
-        (await admin.Gql(Save, new { c = new object[] { new { key = "Backups:Every", value = "" } } })).Data();
-        _clock.Advance(TimeSpan.FromDays(2)); // the save woke the worker before the clock moved: tomorrow's 04:00 is gone
+        (await admin.Gql(SaveSettings, new { c = new object[] { new { key = "Backups:Every", value = "" } } })).Data();
+        // The save completed the worker's signal before it answered: whether the worker woke before the clock moves or the timer ends first,
+        // the cleared time is seen before anything runs, so tomorrow's 04:00 is not written.
+        _clock.Advance(TimeSpan.FromDays(2));
         await ((BackupRunner)app.Factory.Services.GetRequiredService<IBackupRunner>()).WhenIdleAsync();
         Assert.Single(Files());
+    }
+
+    /// <summary>
+    /// A wall clock that runs ahead of the timers, as after the host was suspended or its clock was stepped forward: the time reads past a
+    /// due time whose timer has not ended yet.
+    /// </summary>
+    private sealed class SteppedClock(FakeTimeProvider timers) : TimeProvider
+    {
+        public TimeSpan Ahead { get; set; }
+        public override DateTimeOffset GetUtcNow() => timers.GetUtcNow() + Ahead;
+        public override TimeZoneInfo LocalTimeZone => timers.LocalTimeZone;
+        public override long TimestampFrequency => timers.TimestampFrequency;
+        public override long GetTimestamp() => timers.GetTimestamp();
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period) => timers.CreateTimer(callback, state, dueTime, period);
+    }
+
+    [Fact]
+    public async Task ASaveThatLeavesTheTime_StillWritesTheNightsBackup_OnceItsTimeHasPassed_AndClearedRetentionIsWarnedAbout()
+    {
+        var clock = new SteppedClock(_clock);
+        using var app = AppWithSettingsFile(clock, """{ "Backups": { "Every": "02:00", "Keep": "3" } }""");
+        var worker = Worker(app);
+        await worker.WhenAsleepUntil(At(11, 2)).WaitAsync(Wait); // the night's, caught up at start
+        Assert.DoesNotContain(app.Log.From<BackupWorker>(), e => e.Level >= LogLevel.Warning); // retention is set
+
+        // 02:01 on the clock of the day, while the timer of 02:00 still runs: a save then (retention cleared, the time left as it was) writes
+        // the night's backup at once, where planning again from now would have left that night without one.
+        clock.Ahead = At(11, 2).AddMinutes(1) - _clock.GetUtcNow();
+        var admin = app.NewClient();
+        await admin.LoginAs(TestApp.AdminEmail, TestApp.AdminPassword);
+        (await admin.Gql(SaveSettings, new { c = new object[] { new { key = "Backups:Keep", value = "" } } })).Data();
+
+        await worker.WhenAsleepUntil(At(12, 2)).WaitAsync(Wait);
+        Assert.Equal([Name(At(10, 3)), Name(At(11, 2).AddMinutes(1))], Files());
+        Assert.Single(app.Log.From<BackupWorker>(), e => e.Level == LogLevel.Warning); // retention cleared while backups are scheduled: the folder only grows now
+    }
+
+    [Fact]
+    public async Task SettingsThatStopValidatingWhileRunning_LeaveThePublicNoticesAlone_AndTheWorkerSaysSoOnce()
+    {
+        using var app = App(new() { ["Backups:Keep"] = "3" });
+        var worker = Worker(app);
+        await worker.WhenAsleepUntil(At(11, 2)).WaitAsync(Wait); // the night's, caught up at start
+
+        // As an appsettings.json edited by hand reloads on its own: nothing checks the value before it is read.
+        var configuration = (IConfigurationRoot)app.Factory.Services.GetRequiredService<IConfiguration>();
+        configuration.Providers.OfType<MemoryConfigurationProvider>().Last(p => p.TryGet("Backups:Every", out _)).Set("Backups:Keep", "0");
+        try
+        {
+            configuration.Reload();
+        }
+        catch (AggregateException)
+        {
+            // the options monitor validates the reloaded settings inside the reload, and its refusal comes out of it
+        }
+
+        // The store read its folder at start: the public notices (the sign-in screen's too) still answer.
+        Assert.Equal(0, (await app.NewClient().Gql("{ notices { code } }")).Data().GetProperty("notices").GetArrayLength());
+        _clock.SetUtcNow(At(11, 2)); // the night's run meets them and fails; the worker says why, once, and plans nothing until they are fixed
+        await worker.WhenAsleepUntil(DateTimeOffset.MaxValue).WaitAsync(Wait);
+
+        var lines = app.Log.From<BackupWorker>().ToList();
+        Assert.Contains("Backups:Keep", (string?)Assert.Single(lines, e => e.Level == LogLevel.Warning).Values["Problems"]);
+        Assert.DoesNotContain(lines, e => e.Level >= LogLevel.Error);
     }
 }

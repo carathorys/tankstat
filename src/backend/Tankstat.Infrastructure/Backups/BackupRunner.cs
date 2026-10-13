@@ -84,10 +84,11 @@ internal sealed class BackupRunner(
     /// </summary>
     private void Prune(string written)
     {
-        var o = options.CurrentValue;
-        if (!o.Pruning) return;
         try
         {
+            // Read in here: settings that stopped validating since the start (a file edited by hand) fail retention, never the written backup.
+            var o = options.CurrentValue;
+            if (!o.Pruning) return;
             if (store.RestorePending)
             {
                 logger.LogInformation("A restore waits for the next start: retention removes no backup until then");

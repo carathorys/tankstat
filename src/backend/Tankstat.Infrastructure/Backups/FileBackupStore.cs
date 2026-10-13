@@ -17,7 +17,12 @@ internal sealed class FileBackupStore(IOptionsMonitor<BackupOptions> options, ID
 {
     private const string Uploading = ".uploading";
 
-    private string Root => options.CurrentValue.Root;
+    /// <summary>
+    /// The folder as the app started with it, like the storage roots: only the other backup settings apply at once. A folder that moved on a
+    /// reload would split an upload or a run between two, and settings that stopped validating since (a file edited by hand) would make every
+    /// read throw, the public notices' look for a waiting restore among them.
+    /// </summary>
+    private string Root { get; } = options.CurrentValue.Root;
 
     public string Folder => Root;
 

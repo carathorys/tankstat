@@ -40,6 +40,9 @@ internal sealed class BackupWriter(
     /// <summary>The table whose rows are the pictures and photos, and the files below the storage roots.</summary>
     private const string ImagesTable = "Images";
 
+    /// <summary>The backups folder as the app started with it, the store's (see <see cref="FileBackupStore"/>); the other settings are read for every run.</summary>
+    private readonly string _folder = options.CurrentValue.Root;
+
     public async Task<BackupResult> WriteAsync(BackupRequest request, CancellationToken ct)
     {
         var o = options.CurrentValue;
@@ -48,7 +51,7 @@ internal sealed class BackupWriter(
         var encryption = request.Encryption ?? Configured(o);
         var photos = roots.OneRoot ? BackupPhotos.WithPictures : (request.Photos ?? o.Photos) ? BackupPhotos.Separate : BackupPhotos.LeftOut;
         var named = request.Output is null ? null : Path.GetFullPath(request.Output);
-        var folder = named is null ? o.Root : Path.GetDirectoryName(named)!;
+        var folder = named is null ? _folder : Path.GetDirectoryName(named)!;
         Directory.CreateDirectory(folder);
         // A named file is never overwritten, and one that is there already is refused before any of the work.
         if (named is not null && File.Exists(named)) throw new IOException($"The file '{named}' already exists.");
