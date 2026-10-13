@@ -31,6 +31,9 @@ export const server = setupServer(
       },
     }),
   ),
+  // The offline download asks which history the server's data has before it writes anything: by default a server that does not say (as
+  // an older one), so no download sets anything aside; generation tests answer it themselves.
+  graphql.query('ServerGeneration', () => HttpResponse.json({ data: { session: { __typename: 'Session', instance: { __typename: 'InstanceInfo', generation: '' } } } })),
   graphql.query('UnreadNotificationCount', () => HttpResponse.json({ data: { notificationCount: 0 } })),
   graphql.query('ParkedChanges', () => HttpResponse.json({ data: { parkedChanges: [] } })),
   graphql.query('RecognitionStatus', () => HttpResponse.json({ data: { recognitionStatus: { available: false } } })),

@@ -7,7 +7,7 @@ import { LOCK_RETRY_MS, PROBE_TIMEOUT_MS, probeServer, PUSH_AFTER_MS, REFETCH_GA
 import { appliedMutations } from '../../../src/frontend/offline/appliedMutations.ts'
 import { deviceData, TABS_CHANNEL } from '../../../src/frontend/offline/deviceData.ts'
 import { memoryStorage } from '../../../src/frontend/offline/deviceStorage.ts'
-import { HealthDocument, WelcomeDocument } from '../../../src/frontend/gql/generated.ts'
+import { HealthDocument, ServerGenerationDocument, WelcomeDocument } from '../../../src/frontend/gql/generated.ts'
 import { outbox } from '../../../src/frontend/offline/outbox.ts'
 import { ApiError } from '../../../src/frontend/pictures/ApiError.ts'
 
@@ -78,7 +78,8 @@ describe('startOfflineRuntime', () => {
     deviceData.reset(memoryStorage())
     await deviceData.signedIn('u1') // before the start: no download of its own yet
     vi.useFakeTimers()
-    const query = vi.fn((_options: { query: unknown }) => new Promise(() => undefined))
+    // The download asks the server's history first (an answer that says none), then waits for the home list for ever.
+    const query = vi.fn((options: { query: unknown }) => (options.query === ServerGenerationDocument ? Promise.resolve({ data: undefined }) : new Promise(() => undefined)))
     const client = { query, refetchQueries: vi.fn(async () => []) } as unknown as ApolloClient
     const runtime = startOfflineRuntime(client)
     const downloads = () => query.mock.calls.filter(([options]) => options.query === WelcomeDocument).length

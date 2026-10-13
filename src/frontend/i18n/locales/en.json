@@ -76,7 +76,8 @@
     "label": "Notices",
     "warning": "Warning:",
     "AUTH_DISABLED": "Authentication is disabled: anyone who can reach this app can see and change all data. This is unsafe; configure Auth:Mode.",
-    "SETTINGS_FILE_IGNORED": "The app's own settings file could not be used and was left out; the app runs without it until the next start. See the server log for the reason."
+    "SETTINGS_FILE_IGNORED": "The app's own settings file could not be used and was left out; the app runs without it until the next start. See the server log for the reason.",
+    "RESTORE_PENDING": "A restore is waiting for a restart of the app: when it starts next, all data is replaced with the backup's."
   },
   "notifications": {
     "title": "Notifications",
@@ -1450,7 +1451,12 @@
       "sent_one": "{{count}} entry is waiting to be sent.",
       "sent_other": "{{count}} entries are waiting to be sent.",
       "forgotten_one": "{{count}} entry forgotten.",
-      "forgotten_other": "{{count}} entries forgotten."
+      "forgotten_other": "{{count}} entries forgotten.",
+      "failed": "That did not work; try again.",
+      "leftWaiting_one": "{{count}} entry stays listed: a change of its own waits on this device and goes first.",
+      "leftWaiting_other": "{{count}} entries stay listed: changes of their own wait on this device and go first.",
+      "navCount_one": "{{count}} entry found on this device",
+      "navCount_other": "{{count}} entries found on this device"
     }
   },
   "systemSettings": {
