@@ -54,7 +54,7 @@ public class ContractTests
 
     [Theory]
     [InlineData("Query", "health", "vehicles", "myVehicles", "myVehicleCount", "vehicle", "session", "notices", "users", "canSetUserPasswords", "accessSettings", "accessGrants", "trash", "vehicleCount", "trashCount", "trashDeletableCount", "vehicleDefaults", "refuelings", "refuelingCount", "refueling", "logDefaults", "refuelingTrash", "refuelingTrashCount", "refuelingTrashDeletableCount", "vehicleLogAccess", "shareCandidates", "notifications", "notificationCount", "recognitionStatus", "photoDrafts", "uiSettings", "mySessions", "offlineChanges", "offlineSettings", "parkedChanges", "systemSettings", "backups")]
-    [InlineData("Mutation", "addVehicle", "logRefueling", "login", "logout", "changePassword", "requestPasswordReset", "resetPassword", "createUser", "issuePasswordReset", "setUserAdmin", "setUserDisabled", "updateUser", "setUserPassword", "deleteUser", "setDefaultAccess", "setAccessGrant", "updateVehicle", "deleteVehicle", "restoreVehicle", "emptyTrash", "logRefueling", "updateRefueling", "deleteRefueling", "restoreRefueling", "emptyRefuelingTrash", "setVehicleLogAccess", "markNotificationsRead", "updateUiSettings", "saveGridSettings", "resetGridSettings", "setVehicleOrder", "addRecurringExpense", "updateRecurringExpense", "deleteRecurringExpense", "markRecurringExpensesDone", "revokeSession", "revokeOtherSessions", "updateOfflineSettings", "syncChanges", "resolveSyncChange", "updateSystemSettings", "restartServer", "restoreBackup", "runBackup", "prepareBackupEncryption")]
+    [InlineData("Mutation", "addVehicle", "logRefueling", "login", "logout", "changePassword", "requestPasswordReset", "resetPassword", "createUser", "issuePasswordReset", "setUserAdmin", "setUserDisabled", "updateUser", "setUserPassword", "deleteUser", "setDefaultAccess", "setAccessGrant", "updateVehicle", "deleteVehicle", "restoreVehicle", "emptyTrash", "logRefueling", "updateRefueling", "deleteRefueling", "restoreRefueling", "emptyRefuelingTrash", "setVehicleLogAccess", "markNotificationsRead", "updateUiSettings", "saveGridSettings", "resetGridSettings", "setVehicleOrder", "addRecurringExpense", "updateRecurringExpense", "deleteRecurringExpense", "markRecurringExpensesDone", "revokeSession", "revokeOtherSessions", "updateOfflineSettings", "syncChanges", "resolveSyncChange", "updateSystemSettings", "restartServer", "restoreBackup", "runBackup", "deleteBackup", "prepareBackupEncryption")]
     [InlineData("Session", "mode", "user", "instance")]
     [InlineData("InstanceInfo", "generation", "restorePoint")]
     [InlineData("BackupOverviewInfo", "folder", "migration", "restorePoints", "sizes", "run", "settings")]
@@ -69,7 +69,7 @@ public class ContractTests
     [InlineData("UserAccount", "id", "provider", "email", "displayName", "isAdmin", "isDisabled")]
     [InlineData("PasswordResetLink", "token", "url", "emailSent", "emailFailed")]
     [InlineData("Notice", "code", "severity", "message")]
-    [InlineData("SystemSettingsInfo", "file", "groups", "restartPending")]
+    [InlineData("SystemSettingsInfo", "file", "groups", "restartPending", "folders")]
     [InlineData("SystemSettingsGroup", "name", "settings", "appliesAtOnce")]
     [InlineData("SystemSetting", "key", "kind", "choices", "value", "isSet", "isSecret", "source", "editable", "restartPending", "defaultValue")]
     [InlineData("SettingsFileInfo", "path", "exists", "ignored", "problems")]
@@ -191,6 +191,7 @@ public class ContractTests
     [InlineData("TimeFormat", "TWENTY_FOUR_HOUR", "TWELVE_HOUR")]
     [InlineData("DateFormat", "ISO", "DAY_MONTH_YEAR_DOTS", "DAY_MONTH_YEAR_SLASHES", "MONTH_DAY_YEAR", "YEAR_MONTH_DAY_DOTS")]
     [InlineData("ServerFolderKind", "PICTURES", "PHOTOS", "BACKUPS", "KEYS", "SETTINGS_FILE")]
+    [InlineData("DayOfWeek", "SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY")] // the Backups page names them by these
     public async Task Schema_EnumsExposeContractValues(string type, params string[] expected)
     {
         var body = await Query($"{{ __type(name: \"{type}\") {{ enumValues {{ name }} }} }}");
