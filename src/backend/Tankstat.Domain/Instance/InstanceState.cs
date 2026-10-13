@@ -37,14 +37,6 @@ public sealed class InstanceState
         LastStartedAt = now;
     }
 
-    /// <summary>Gives a row that has no generation yet its first one; false when it had one.</summary>
-    public bool EnsureGeneration()
-    {
-        if (Generation != Guid.Empty) return false;
-        Generation = Guid.NewGuid();
-        return true;
-    }
-
     /// <summary>A new generation: the data is another history from now on.</summary>
     public void Restored(DateTimeOffset now, DateTimeOffset restorePoint)
     {

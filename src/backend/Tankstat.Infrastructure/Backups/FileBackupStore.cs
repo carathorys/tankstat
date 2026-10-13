@@ -1,13 +1,15 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Tankstat.Application;
 using Tankstat.Application.Backups;
 using Tankstat.Domain;
 using Tankstat.Domain.Backups;
+using Tankstat.Infrastructure.Persistence;
 
 namespace Tankstat.Infrastructure.Backups;
 
 /// <summary>The backups folder (<c>Backups:Path</c>) for <see cref="RestoreService"/>: files by bare name only, so nothing outside it is ever reached.</summary>
-internal sealed class FileBackupStore(IOptions<BackupOptions> options) : IBackupStore
+internal sealed class FileBackupStore(IOptions<BackupOptions> options, IDbContextFactory<AppDbContext> dbFactory) : IBackupStore
 {
     private string Root => options.Value.Root;
 
@@ -36,8 +38,31 @@ internal sealed class FileBackupStore(IOptions<BackupOptions> options) : IBackup
         }
         else if (!string.IsNullOrEmpty(passphrase)) key = BackupFile.IdentityOf(manifest, passphrase);
         else throw new DomainException("backup.keyRequired", "The backup is encrypted: its passphrase or identity is needed.");
-        if (!BackupKeys.Opens(key, encryption.Recipient)) throw new DomainException("backup.wrongKey", "The identity does not open this backup.");
+        bool opens;
+        try
+        {
+            opens = BackupKeys.Opens(key, encryption.Recipient);
+        }
+        catch (FormatException)
+        {
+            throw new DomainException("backup.corrupt", "The file is damaged or is not a Tankstat backup."); // a manifest whose recipient is none
+        }
+        if (!opens) throw new DomainException("backup.wrongKey", "The identity does not open this backup.");
         return AgeKeys.FormatIdentity(key);
+    }
+
+    public Task RequireSameMigrationAsync(BackupManifest manifest, CancellationToken ct) => RequireSameMigrationAsync(dbFactory, manifest, ct);
+
+    /// <summary>
+    /// The backup's last migration must be the one the database is at, compared by name: each provider stamps the same migration with its
+    /// own timestamp, and a backup may come from another provider. <c>backup.otherMigration</c> otherwise (older backups wait for a replay).
+    /// </summary>
+    internal static async Task RequireSameMigrationAsync(IDbContextFactory<AppDbContext> dbFactory, BackupManifest manifest, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var applied = (await db.Database.GetAppliedMigrationsAsync(ct)).LastOrDefault();
+        if (!MigrationNames.Same(applied, manifest.Migration))
+            throw new DomainException("backup.otherMigration", "The backup was made at another migration than the database is at.", new { Backup = manifest.Migration, Database = applied });
     }
 
     public bool RestorePending => File.Exists(RestoreMarker.PathIn(Root));

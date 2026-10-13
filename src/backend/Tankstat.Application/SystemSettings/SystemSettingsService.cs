@@ -195,30 +195,9 @@ public sealed class SystemSettingsService(
     /// will try to (null when it could): both must be given, the password must pass the policy, the address must be one, and no local account
     /// may hold it yet (a disabled administrator or a user does: the new account could not be added beside it).
     /// </summary>
-    private async Task<string?> BootstrapProblemAsync(IConfiguration candidate, CancellationToken ct)
-    {
-        var email = candidate["Auth:Standalone:AdminEmail"];
-        var password = candidate["Auth:Standalone:AdminPassword"];
-        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password)) return "missing";
-        try
-        {
-            PasswordPolicy.Validate(password);
-        }
-        catch (DomainException)
-        {
-            return "password";
-        }
-        string address;
-        try
-        {
-            address = User.NormalizeEmail(email);
-        }
-        catch (DomainException)
-        {
-            return "email";
-        }
-        return await users.FindLocalByEmailAsync(address, ct) is null ? null : "taken";
-    }
+    private async Task<string?> BootstrapProblemAsync(IConfiguration candidate, CancellationToken ct) =>
+        StandaloneBootstrap.ProblemOf(candidate["Auth:Standalone:AdminEmail"], candidate["Auth:Standalone:AdminPassword"], out var address)
+        ?? (await users.FindLocalByEmailAsync(address, ct) is null ? null : "taken");
 
     /// <summary>The same place, written either way: a trailing slash or the case of the scheme and host make no difference.</summary>
     public static bool SameIssuer(string authority, string issuer) =>

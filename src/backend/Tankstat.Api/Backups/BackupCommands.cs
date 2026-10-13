@@ -38,9 +38,9 @@ internal static class BackupCommands
             return 1;
         }
         // What a run can meet is reported, never left to crash the process: settings the host never validated (a command does not start it,
-        // so they are validated when first read), a recipient no key agrees with, a platform without ChaCha20-Poly1305 (Windows 10), a value
-        // the dump cannot hold.
-        catch (Exception e) when (e is DomainException or IOException or UnauthorizedAccessException or FormatException or System.Data.Common.DbException
+        // so they are validated when first read), a recipient no key agrees with, a backup that is not in the folder, a platform without
+        // ChaCha20-Poly1305 (Windows 10), a value the dump cannot hold.
+        catch (Exception e) when (e is KeyedException or IOException or UnauthorizedAccessException or FormatException or System.Data.Common.DbException
             or OptionsValidationException or InvalidDataException or CryptographicException or NotSupportedException)
         {
             await error.WriteLineAsync(e.Message); // a database's message may quote the table it misses, as its own errors always did
@@ -138,8 +138,7 @@ internal static class BackupCommands
         var manifest = BackupFile.ReadManifest(file);
         BackupFile.VerifyChecksum(file, manifest);
         byte[]? identity = null;
-        if (identityFile is not null)
-            identity = AgeKeys.ParseIdentity(File.ReadLines(identityFile).FirstOrDefault(l => !l.StartsWith('#') && l.Trim().Length > 0) ?? throw new FormatException("The identity file holds no identity."));
+        if (identityFile is not null) identity = AgeKeys.ParseIdentity(IdentityLine(identityFile));
         else if (passphrase) identity = BackupFile.IdentityOf(manifest, Passphrase(input));
         BackupFile.Extract(file, manifest, identity, folder);
         output.WriteLine($"Unpacked {file} into {System.IO.Path.GetFullPath(folder)}: {manifest.Contents.Tables.Count} tables, written by Tankstat {manifest.AppVersion} on {manifest.CreatedAt:u} ({manifest.Provider}, {manifest.Migration})");
@@ -176,9 +175,7 @@ internal static class BackupCommands
                 return 1;
             }
         }
-        var identity = identityFile is not null
-            ? File.ReadLines(identityFile).FirstOrDefault(l => !l.StartsWith('#') && l.Trim().Length > 0) ?? throw new FormatException("The identity file holds no identity.")
-            : null;
+        var identity = identityFile is not null ? IdentityLine(identityFile) : null;
         var opened = store.IdentityFor(manifest, passphrase ? Passphrase(input) : null, identity); // refused here when it does not open
         store.RequestRestore(new RestoreMarker(file, Guid.Empty, DateTimeOffset.UtcNow, opened));
         if (!now)
@@ -186,18 +183,24 @@ internal static class BackupCommands
             output.WriteLine($"The restore of {file} is applied at the next start of the server (the app's own data is backed up first). Restart it now; a running server shows a notice until then.");
             return 0;
         }
-        // Right away, as the server would at its start: the migrations, then the restore. A refusal renames the marker, and the log says why.
-        var root = services.GetRequiredService<Microsoft.Extensions.Options.IOptions<BackupOptions>>().Value.Root;
-        var before = Directory.GetFiles(root, "restore.*").ToHashSet();
-        await StartupSteps.MigrateAndRestoreAsync(services, CancellationToken.None);
-        if (store.RestorePending || Directory.GetFiles(root, "restore.*").Any(f => !before.Contains(f)))
+        // Right away, as the server would at its start: the migrations, then the restore; the log above says how it went, and why.
+        switch (await StartupSteps.MigrateAndRestoreAsync(services, CancellationToken.None))
         {
-            output.WriteLine("The restore was not applied; the log above says why.");
-            return 1;
+            case RestoreOutcome.Applied:
+                output.WriteLine($"Restored {file}.");
+                return 0;
+            case RestoreOutcome.Failed:
+                output.WriteLine("The restore failed after the database was replaced, so the files may be half copied; the safety-net backup in the backups folder is the way back, and the log above says why.");
+                return 1;
+            default:
+                output.WriteLine("The restore was not applied, and the data is as it was; the log above says why.");
+                return 1;
         }
-        output.WriteLine($"Restored {file}.");
-        return 0;
     }
+
+    /// <summary>The identity in an identity file: its first line that is neither blank nor a comment, as age reads one.</summary>
+    private static string IdentityLine(string path) =>
+        File.ReadLines(path).FirstOrDefault(l => !l.StartsWith('#') && l.Trim().Length > 0) ?? throw new FormatException("The identity file holds no identity.");
 
     private static string Passphrase(TextReader input)
     {

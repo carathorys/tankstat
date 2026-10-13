@@ -192,7 +192,10 @@ public sealed class RestoreTests : IDisposable
 
         Assert.Equal(["Own car"], await Vehicles(b));
         Assert.False(File.Exists(RestoreMarker.PathIn(folderB)));
-        Assert.Single(Directory.GetFiles(folderB, "restore.refused.*"));
+        var refused = RestoreMarker.Read(Assert.Single(Directory.GetFiles(folderB, "restore.refused.*")));
+        Assert.Equal(Path.GetFileName(staged), refused.File);
+        Assert.Null(refused.Identity); // it opens every backup of the folder: kept nowhere in it
+        if (!OperatingSystem.IsWindows()) Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(Directory.GetFiles(folderB, "restore.refused.*")[0]));
         Assert.DoesNotContain(Directory.GetFiles(folderB, "tankstat-backup-*"), f => f != staged && BackupFile.ReadManifest(f).SafetyNet); // no safety net: nothing was about to be replaced
         var refusal = Assert.Single(b.Log.From("Tankstat.Infrastructure.Backups.RestoreStep").Where(e => e.Level == LogLevel.Error));
         Assert.Contains(how switch { "otherMigration" => "otherMigration", "wrongIdentity" => "wrongKey", "damaged" => "corrupt", _ => "cannot be read" }, (string)refusal.Values["Reason"]!);
@@ -252,8 +255,127 @@ public sealed class RestoreTests : IDisposable
         Assert.Contains(b.Log.From("Tankstat.Infrastructure.Backups.RestoreStep"), e => e.Values.TryGetValue("Kept", out var kept) && ((string?)kept)?.Length > 0);
     }
 
+    [Fact]
+    public async Task ABackupWithoutThePhotos_AlsoLeavesAlonePhotosStillBelowThePicturesRoot_WhereTheyHaveARootOfTheirOwn()
+    {
+        using var a = Host("a", migrated: true);
+        var backup = await Backup(a);
+        Assert.Equal(BackupPhotos.LeftOut, backup.Manifest.Contents.Photos);
+        var folderB = Folder("b-backups");
+        Stage(folderB, backup.Path);
+        // A photo not moved to B's photos root yet (PhotosMove runs after the restore, at this very start, and leaves one it cannot move).
+        var relative = Path.Combine("vehicles", "aa", "refuelings", "bb", "photo.jpg");
+        var waiting = Path.Combine(Folder("b-uploads"), relative);
+        Directory.CreateDirectory(Path.GetDirectoryName(waiting)!);
+        await File.WriteAllBytesAsync(waiting, [1, 2, 3]);
+
+        using var b = Host("b", migrated: false, backups: folderB);
+        await InstanceOf(b); // started: the restore is behind it
+
+        Assert.True(File.Exists(waiting) || File.Exists(Path.Combine(Folder("b-photos"), relative))); // where it was, or moved on afterwards
+        Assert.Empty(Directory.GetFiles(folderB, "restore.*"));
+    }
+
+    [Fact]
+    public async Task ABackupWithAPhotosRootOfItsOwn_ReplacesThePhotos_AfterASafetyNetThatHoldsThem()
+    {
+        using var a = Host("a", migrated: true);
+        var backup = await Backup(a, new BackupRequest(Photos: true));
+        Assert.Equal(BackupPhotos.Separate, backup.Manifest.Contents.Photos);
+        var folderB = Folder("b-backups");
+        Stage(folderB, backup.Path);
+        // B's own photo, in its photos root, which Backups:Photos (off, by default) leaves out of B's other backups.
+        var own = Path.Combine(Folder("b-photos"), "vehicles", "aa", "refuelings", "bb", "own.jpg");
+        Directory.CreateDirectory(Path.GetDirectoryName(own)!);
+        await File.WriteAllBytesAsync(own, [1, 2, 3]);
+
+        using var b = Host("b", migrated: false, backups: folderB);
+        await InstanceOf(b); // started: the restore is behind it
+
+        Assert.False(File.Exists(own)); // the photos root is the backup's now
+        var safetyNet = Directory.GetFiles(folderB, "tankstat-backup-*").Select(BackupFile.ReadManifest).Single(m => m.SafetyNet);
+        Assert.Equal(BackupPhotos.Separate, safetyNet.Contents.Photos); // the way back holds the photo the restore replaced
+        Assert.Equal(3, safetyNet.Sizes.Photos);
+    }
+
+    [Theory]
+    [InlineData("unreadable")]
+    [InlineData("noFile")]
+    public async Task AMarkerTheAppMayNotRead_OrThatNamesNoBackup_IsRefused_AndTheHostStartsWithItsOwnData(string how)
+    {
+        if (how == "unreadable" && (OperatingSystem.IsWindows() || Environment.UserName == "root")) return; // root reads any file
+        var folderB = Folder("b-backups");
+        Directory.CreateDirectory(folderB);
+        var marker = RestoreMarker.PathIn(folderB);
+        if (how == "noFile") await File.WriteAllTextAsync(marker, "{}");
+        else
+        {
+            new RestoreMarker("tankstat-backup-1.zip", Guid.Empty, DateTimeOffset.UtcNow, null).Write(folderB);
+            File.SetUnixFileMode(marker, UnixFileMode.None); // written by root (`sudo ... restore`): the app's user may not read it
+        }
+
+        using var b = Host("b", migrated: true, backups: folderB);
+        await AddVehicle(b, "Own car");
+
+        Assert.Equal(["Own car"], await Vehicles(b));
+        Assert.False(File.Exists(marker));
+        Assert.Single(Directory.GetFiles(folderB, "restore.refused.*"));
+        var refusal = Assert.Single(b.Log.From("Tankstat.Infrastructure.Backups.RestoreStep").Where(e => e.Level == LogLevel.Error));
+        Assert.Contains("marker cannot be read", (string)refusal.Values["Reason"]!);
+    }
+
+    [Fact]
+    public async Task SomethingInAStorageRootTheAppMayNotRemove_StaysAsItIs_AndTheRestoreIsApplied()
+    {
+        if (OperatingSystem.IsWindows() || Environment.UserName == "root") return; // root removes anything
+        using var a = Host("a", migrated: true);
+        await AddVehicle(a, "Golf");
+        var backup = await Backup(a);
+        var folderB = Folder("b-backups");
+        Stage(folderB, backup.Path);
+        // The lost+found of a disk mounted as the pictures root: root's, and not empty after a check of the disk.
+        var lostFound = Path.Combine(Folder("b-uploads"), "lost+found");
+        Directory.CreateDirectory(lostFound);
+        await File.WriteAllTextAsync(Path.Combine(lostFound, "#1234"), "recovered");
+        File.SetUnixFileMode(lostFound, UnixFileMode.None);
+        try
+        {
+            using var b = Host("b", migrated: false, backups: folderB);
+
+            Assert.Equal(["Golf"], await Vehicles(b));
+            Assert.Empty(Directory.GetFiles(folderB, "restore.*")); // applied: the marker is gone, neither refused nor failed
+            Assert.True(Directory.Exists(lostFound));
+            Assert.Contains(b.Log.From("Tankstat.Infrastructure.Backups.RestoreStep"), e => e.Level == LogLevel.Warning);
+        }
+        finally
+        {
+            File.SetUnixFileMode(lostFound, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute); // so the test's folder can go
+        }
+    }
+
+    [Fact]
+    public async Task ABackupWithoutAnAdministrator_IsRefusedInStandalone_WhenNoneCanBeCreated_AndTheStartGoesOn()
+    {
+        using var a = Host("a", migrated: true); // sign-in off: the backup holds no user at all
+        await AddVehicle(a, "Golf");
+        var backup = await Backup(a);
+        var folderB = Folder("b-backups");
+        using var shared = new SharedData();
+        using (var first = shared.Host(TestApp.StandaloneSettings(new() { ["Backups:Path"] = folderB })))
+            await first.NewClient().LoginAs(TestApp.AdminEmail, TestApp.AdminPassword); // its first start made the administrator
+        Stage(folderB, backup.Path);
+
+        // The bootstrap credentials are gone from the environment, as they may be once the administrator exists.
+        using var restarted = shared.Host(TestApp.StandaloneSettings(new() { ["Backups:Path"] = folderB, ["Auth:Standalone:AdminEmail"] = "", ["Auth:Standalone:AdminPassword"] = "" }));
+
+        await restarted.NewClient().LoginAs(TestApp.AdminEmail, TestApp.AdminPassword); // the start went on, with the instance's own administrator
+        Assert.Single(Directory.GetFiles(folderB, "restore.refused.*"));
+        var refusal = Assert.Single(restarted.Log.From("Tankstat.Infrastructure.Backups.RestoreStep").Where(e => e.Level == LogLevel.Error));
+        Assert.Contains("standaloneNeedsAdministrator", (string)refusal.Values["Reason"]!);
+    }
+
     /// <summary>Changes the plain manifest of a backup file (the checksum covers the inner archive only).</summary>
-    private static void RewriteManifest(string file, Func<string, string> change)
+    internal static void RewriteManifest(string file, Func<string, string> change)
     {
         using var zip = ZipFile.Open(file, ZipArchiveMode.Update);
         var entry = zip.GetEntry(BackupManifest.FileName)!;

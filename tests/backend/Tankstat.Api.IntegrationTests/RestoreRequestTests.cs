@@ -152,6 +152,51 @@ public sealed class RestoreRequestTests : IDisposable
     }
 
     [Fact]
+    public async Task ABackupOfAnotherMigration_IsRefusedAtOnce_NotAfterARestartThatWouldComeBackWithTheDataAsItWas()
+    {
+        using var app = TestApp.Standalone(new() { ["Backups:Path"] = _folder });
+        var written = await app.Factory.Services.GetRequiredService<IBackupWriter>().WriteAsync(new BackupRequest(Encryption: Encryption), default);
+        RestoreTests.RewriteManifest(written.Path, json => json.Replace(written.Manifest.Migration!, "20200101000000_SomethingElse"));
+        var client = app.NewClient();
+        await client.LoginAs(TestApp.AdminEmail, TestApp.AdminPassword);
+
+        Assert.Equal("backup.otherMigration", (await client.Gql(Restore, new { i = new { file = Path.GetFileName(written.Path), passphrase = Passphrase } })).ErrorKey());
+
+        Assert.False(File.Exists(RestoreMarker.PathIn(_folder)));
+        Assert.Equal(0, app.Restarts.Count);
+    }
+
+    [Fact]
+    public async Task TheRestoreCommand_SaysWhatItMeets_ABackupNotInTheFolder_AndARestoreThatFailedAfterTheTablesWereLoaded()
+    {
+        using var app = new TestApp(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = _folder });
+        var file = await Backup(app, encrypted: false);
+        var (output, error) = (new StringWriter(), new StringWriter());
+
+        // A path where a name of the backups folder belongs (decrypt takes one): the reason, never a crash.
+        var path = await BackupCommands.RunAsync(["restore", Path.Combine(_folder, file), "--yes"], app.Factory.Services, new StringReader(""), output, error);
+        Assert.Equal(1, path);
+        Assert.Contains("no such backup", error.ToString());
+        Assert.False(File.Exists(RestoreMarker.PathIn(_folder)));
+
+        // The pictures folder is a file: the tables load, then the files cannot be put in place. The database is the backup's now.
+        if (Directory.Exists(app.UploadsPath)) Directory.Delete(app.UploadsPath, recursive: true);
+        await File.WriteAllTextAsync(app.UploadsPath, "not a folder");
+        try
+        {
+            var failed = await BackupCommands.RunAsync(["restore", file, "--yes", "--now"], app.Factory.Services, new StringReader(""), output, error);
+            Assert.Equal(1, failed);
+            Assert.Contains("failed after the database was replaced", output.ToString());
+            Assert.DoesNotContain("not applied", output.ToString());
+            Assert.Single(Directory.GetFiles(_folder, "restore.failed.*"));
+        }
+        finally
+        {
+            File.Delete(app.UploadsPath);
+        }
+    }
+
+    [Fact]
     public async Task TheRestoreCommand_TakesAnIdentityFile_AndRefusesOneThatHoldsNone()
     {
         using var app = new TestApp(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = _folder });

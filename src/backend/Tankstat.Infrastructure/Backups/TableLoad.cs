@@ -44,9 +44,13 @@ internal static class TableLoad
         return ordered;
     }
 
-    /// <summary>Replaces every row of the database with the backup's and stamps a new generation; returns what the instance is now.</summary>
+    /// <summary>
+    /// Replaces every row of the database with the backup's and stamps a new generation; returns what the instance is now. <paramref name="check"/>
+    /// asks the loaded rows, inside the transaction, what only they can tell; what it throws undoes the load.
+    /// </summary>
     public static async Task<InstanceInfo> LoadAsync(
-        AppDbContext db, string tablesFolder, IReadOnlyDictionary<string, long> expected, DateTimeOffset now, DateTimeOffset restorePoint, ILogger logger, CancellationToken ct)
+        AppDbContext db, string tablesFolder, IReadOnlyDictionary<string, long> expected, DateTimeOffset now, DateTimeOffset restorePoint, ILogger logger, CancellationToken ct,
+        Func<AppDbContext, CancellationToken, Task>? check = null)
     {
         var tables = InLoadOrder(TableDump.Tables(db.Model));
         var sql = db.GetService<ISqlGenerationHelper>();
@@ -75,6 +79,7 @@ internal static class TableLoad
             if (expected.TryGetValue(table.Name, out var count) && count != loaded[table.Name])
                 throw new DomainException("backup.corrupt", $"The backup's manifest says {count} rows of {table.Name}, the file holds {loaded[table.Name]}.", new { Table = table.Name, Expected = count, Actual = loaded[table.Name] });
         }
+        if (check is not null) await check(db, ct);
 
         // The generation is this instance's own, never the backup's: stamped after the rows, inside the transaction.
         // The backup's own row comes along (its last start mode too, so the start that follows signs out sessions it brought from another mode).

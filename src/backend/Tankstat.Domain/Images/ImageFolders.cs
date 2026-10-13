@@ -14,10 +14,13 @@ public static class ImageFolders
     private const string Expenses = "expenses";
     private const string Refuelings = "refuelings";
 
+    /// <summary>The folder right below a root that holds a folder per vehicle.</summary>
+    public const string VehiclesFolder = "vehicles";
+
     public static string Avatar(Guid userId) => $"users/{userId:N}";
 
     /// <summary>The folder of a vehicle: its picture and the photos of its logs are below it.</summary>
-    public static string Vehicle(Guid vehicleId) => $"vehicles/{vehicleId:N}";
+    public static string Vehicle(Guid vehicleId) => $"{VehiclesFolder}/{vehicleId:N}";
 
     public static string VehiclePicture(Guid vehicleId) => $"{Vehicle(vehicleId)}/{Picture}";
 
@@ -30,6 +33,9 @@ public static class ImageFolders
 
     /// <summary>The folders right below a vehicle's folder that hold photos of logs; the rest of it is the vehicle's picture.</summary>
     public static IReadOnlyList<string> PhotoKinds { get; } = [Drafts, Refuelings, Expenses];
+
+    /// <summary>Of <see cref="PhotoKinds"/>, the photos of saved logs (not the drafts).</summary>
+    public static IReadOnlyList<string> LogPhotoKinds { get; } = [Refuelings, Expenses];
 
     /// <summary>
     /// Which root a folder lives under: the pictures (avatars, vehicle pictures and the files from before folders, which have none) or the
