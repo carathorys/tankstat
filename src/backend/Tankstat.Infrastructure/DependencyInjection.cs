@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Tankstat.Application;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Backups;
 using Tankstat.Application.Expenses;
 using Tankstat.Application.Images;
 using Tankstat.Application.Notifications;
@@ -21,6 +22,7 @@ using Tankstat.Application.Photos;
 using Tankstat.Application.Recognition;
 using Tankstat.Application.Users;
 using Tankstat.Infrastructure.Auth;
+using Tankstat.Infrastructure.Backups;
 using Tankstat.Infrastructure.Recognition;
 using Tankstat.Infrastructure.Settings;
 using Tankstat.Infrastructure.Storage;
@@ -94,6 +96,7 @@ public static class DependencyInjection
         services.AddScoped<IPhotoDraftRepository, PhotoDraftRepository>();
         services.AddScoped<IPhotoReadingRepository, PhotoReadingRepository>();
         services.AddSingleton<IImageStore, FileSystemImageStore>();
+        services.AddSingleton<IBackupWriter, BackupWriter>();
         services.AddSingleton<IPasswordHasher, IdentityPasswordHasher>();
         services.AddSingleton<IEmailSender, SmtpEmailSender>();
         // Self-service reset mails go out after the answer (PasswordResetMailer below), so the answer tells no accounts apart.

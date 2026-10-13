@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Backups;
 using Tankstat.Application.Expenses;
 using Tankstat.Application.Health;
 using Tankstat.Application.Images;
@@ -36,6 +37,10 @@ public static class DependencyInjection
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<SyncOptions>, SyncOptionsValidator>());
         services.AddOptions<StorageOptions>().Bind(configuration.GetSection(StorageOptions.SectionName)).ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<StorageOptions>, StorageOptionsValidator>());
+        services.AddOptions<BackupOptions>().Bind(configuration.GetSection(BackupOptions.SectionName)).ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<BackupOptions>, BackupOptionsValidator>());
+        services.AddOptions<KeyRingOptions>().Bind(configuration.GetSection(KeyRingOptions.SectionName))
+            .Validate(o => !string.IsNullOrWhiteSpace(o.KeysPath), "DataProtection:KeysPath must not be empty.").ValidateOnStart();
         services.AddOptions<SmtpOptions>().Bind(configuration.GetSection(SmtpOptions.SectionName));
         // Bound without a change token: the sign-in is read once, at start. A save on the settings page reloads the configuration, and the
         // options monitor ValidateOnStart leaves behind would validate the saved sign-in again then, against the Smtp its validator read at

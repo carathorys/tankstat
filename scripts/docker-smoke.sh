@@ -103,4 +103,11 @@ sgql '{"query":"{ vehicleDefaults { currency } }"}' | grep -q '"currency":"HUF"'
 sgql '{"query":"{ session { user { email } } }"}' | grep -q 'root@example.com' || { echo "FAIL: the restart signed the administrator out" >&2; exit 1; }
 docker inspect -f '{{.State.Status}}' "$std" | grep -q '^running$' || { echo "FAIL: the container stopped for the restart" >&2; exit 1; }
 
-echo "OK: $image serves the web app (installable, cache rules in place) and the API (version check of both: ${expected_version:-skipped}, user $user), pictures and photos in their folders, settings saved by an administrator count at once or after an in-process restart, as their group says"
+# A backup written inside the container lands in /data/backups (writable by the app's user) and holds the vehicle.
+docker exec "$name" dotnet Tankstat.Api.dll backup >/dev/null 2>&1 || { echo "FAIL: cannot write a backup inside the container" >&2; docker logs "$name" >&2; exit 1; }
+backup="$(docker exec "$name" sh -c 'ls /data/backups/tankstat-backup-*.zip' 2>/dev/null | head -n 1 || true)"
+[ -n "$backup" ] || { echo "FAIL: no backup file under /data/backups" >&2; exit 1; }
+docker exec "$name" dotnet Tankstat.Api.dll decrypt "$backup" --output /tmp/restored >/dev/null 2>&1 || { echo "FAIL: cannot open the backup" >&2; exit 1; }
+docker exec "$name" grep -q '"Smoke"' /tmp/restored/tables/Vehicles.jsonl || { echo "FAIL: the backup does not hold the vehicle" >&2; exit 1; }
+
+echo "OK: $image serves the web app (installable, cache rules in place) and the API (version check of both: ${expected_version:-skipped}, user $user), pictures and photos in their folders, settings saved by an administrator count at once or after an in-process restart, as their group says, a backup under /data/backups"

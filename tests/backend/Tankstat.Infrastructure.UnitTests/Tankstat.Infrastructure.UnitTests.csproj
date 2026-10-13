@@ -24,6 +24,8 @@
   <ItemGroup>
     <None Include="..\contracts\openai-compatible\*.json" LinkBase="contracts\openai-compatible" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\contracts\log-order\*.json" LinkBase="contracts\log-order" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Files written by age 1.3.2: the backup encryption must read exactly these, and write what the tool reads. -->
+    <None Include="..\contracts\age\*" Exclude="..\contracts\age\README.md" LinkBase="contracts\age" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

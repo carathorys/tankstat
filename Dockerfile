@@ -78,8 +78,8 @@ ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 
 WORKDIR /app
 
-# The SQLite database, the uploaded pictures (the photos of logs with them), the keys that protect the sign-in cookies and the app's own settings
-# file live in a volume the unprivileged user can write to. Every setting is a normal ASP.NET Core setting and can be overridden at run time
+# The SQLite database, the uploaded pictures (the photos of logs with them), the keys that protect the sign-in cookies, the app's own settings
+# file and the backups live in a volume the unprivileged user can write to. Every setting is a normal ASP.NET Core setting and can be overridden at run time
 # (Database__Provider, Database__ConnectionString, Auth__Mode, ...; an environment variable beats the settings file); Storage__PhotosPath=/data/photos,
 # usually with a volume of its own there, keeps the photos of logs apart (opt-in).
 ENV ASPNETCORE_URLS=http://+:8080 \
@@ -87,9 +87,11 @@ ENV ASPNETCORE_URLS=http://+:8080 \
     Database__ConnectionString="Data Source=/data/tankstat.db" \
     Storage__Path=/data/uploads \
     DataProtection__KeysPath=/data/keys \
-    Settings__Path=/data/settings.json
-# /data/photos is made here for that case: a volume mounted where the image has no folder starts out owned by root, and the app could not write to it.
-RUN mkdir -p /data/photos && chown -R "$APP_UID:$APP_UID" /data
+    Settings__Path=/data/settings.json \
+    Backups__Path=/data/backups
+# /data/photos and /data/backups are made here for volumes of their own: a volume mounted where the image has no folder starts out owned by root, and the
+# app could not write to it.
+RUN mkdir -p /data/photos /data/backups && chown -R "$APP_UID:$APP_UID" /data
 VOLUME /data
 
 USER $APP_UID
