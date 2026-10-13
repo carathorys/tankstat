@@ -440,8 +440,35 @@
     "vehicles": "Vehicles",
     "vehicleCount_one": "{{vehicles}} vehicle",
     "vehicleCount_other": "{{vehicles}} vehicles",
-    "settingsFile": "Settings file",
-    "noFile": "None yet: it is created with the first saved setting"
+    "noFile": "None yet: it is created with the first saved setting",
+    "foldersTitle": "Where the server keeps its files",
+    "foldersHint": "Set by the server's environment, not on the settings page; a change takes a restart.",
+    "folders": {
+      "PICTURES": {
+        "name": "Pictures",
+        "what": "Pictures of vehicles and profile pictures."
+      },
+      "PHOTOS": {
+        "name": "Photos of logs",
+        "what": "Photos added to refuellings and expenses; they grow without limit."
+      },
+      "BACKUPS": {
+        "name": "Backups",
+        "what": "The backups the server writes, and the ones uploaded on the Backups page."
+      },
+      "KEYS": {
+        "name": "Sign-in keys",
+        "what": "The keys that keep everyone signed in. Losing them signs everyone out."
+      },
+      "SETTINGS_FILE": {
+        "name": "Settings file",
+        "what": "What the Server settings page saves."
+      }
+    },
+    "photosWithPictures": "In the pictures folder.",
+    "notCreatedYet": "not created yet",
+    "changedBy": "Change it with the environment variable",
+    "ownFolderBy": "For a folder of their own, set the environment variable"
   },
   "admin": {
     "title": "Administration",

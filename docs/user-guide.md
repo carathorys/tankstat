@@ -19,7 +19,7 @@ A navigation menu opened by the hamburger button in the top bar gives access to:
 
 Administrators also get an **Administration** group at the end of the menu (never with `Auth:Mode=None`, where there is no administrator):
 
-- **Overview** (`/admin`): what needs your attention on the server, such as saved settings waiting for a restart or a settings file the last start left out, each with a link to where you deal with it, and a few facts (version, database, how many users and vehicles, the settings file). When nothing needs you it says so in one line.
+- **Overview** (`/admin`): what needs your attention on the server, such as saved settings waiting for a restart or a settings file the last start left out, each with a link to where you deal with it, a few facts (version, database, how many users and vehicles), and the server's **folders** (the pictures, the photos of logs, the backups, the sign-in keys and the settings file) in full, each with the environment variable that sets it: the settings page leaves folders out, since they are where the environment mounts its disks. When nothing needs you it says so in one line.
 - **People** (`/admin/people`): the users (add, edit, reset links, administrator rights, disabling, deleting) and the access to other people's data, in two tabs.
 - **Vehicles** (`/admin/vehicles`): the grid of all vehicles of everyone, sorted and paged by the server, with edit and delete.
 - **Server settings** (`/admin/settings`, see below).

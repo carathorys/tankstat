@@ -39,6 +39,7 @@ do
         .AddTypeExtension<BackupMutations>()
         .AddTypeExtension<BackupQueries>()
         .AddTypeExtension<BackupOverviewInfoExtensions>()
+        .AddTypeExtension<SystemSettingsInfoExtensions>()
         .AddTypeExtension<DeviceSessionQueries>()
         .AddTypeExtension<DeviceSessionMutations>()
         .AddType<VehicleType>()

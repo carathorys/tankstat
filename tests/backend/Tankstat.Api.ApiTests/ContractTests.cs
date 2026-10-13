@@ -61,6 +61,7 @@ public class ContractTests
     [InlineData("RestorePointInfo", "file", "bytes", "createdAt", "appVersion", "provider", "migration", "sameMigration", "safetyNet", "uploaded", "encrypted", "recipient", "currentRecipient", "photos", "keys", "tables", "rows")]
     [InlineData("StorageSizesInfo", "database", "pictures", "photos")]
     [InlineData("BackupRunInfo", "running", "startedAt", "finishedAt", "file", "bytes", "error")]
+    [InlineData("ServerFolder", "kind", "path", "setting", "variable", "sameAsPictures")]
     [InlineData("BackupSettingsInfo", "recipient", "photosApart", "photos", "maxUploadMb", "times", "days", "timeZone", "nextRun", "keep", "keepDays")]
     [InlineData("BackupKeySetInfo", "passphrase", "generated", "identity", "recipient", "salt")]
     [InlineData("UserInfo", "id", "displayName", "email", "isAdmin")]
@@ -189,6 +190,7 @@ public class ContractTests
     [InlineData("SettingSource", "ENVIRONMENT", "FILE", "SHIPPED", "DEFAULT")]
     [InlineData("TimeFormat", "TWENTY_FOUR_HOUR", "TWELVE_HOUR")]
     [InlineData("DateFormat", "ISO", "DAY_MONTH_YEAR_DOTS", "DAY_MONTH_YEAR_SLASHES", "MONTH_DAY_YEAR", "YEAR_MONTH_DAY_DOTS")]
+    [InlineData("ServerFolderKind", "PICTURES", "PHOTOS", "BACKUPS", "KEYS", "SETTINGS_FILE")]
     public async Task Schema_EnumsExposeContractValues(string type, params string[] expected)
     {
         var body = await Query($"{{ __type(name: \"{type}\") {{ enumValues {{ name }} }} }}");

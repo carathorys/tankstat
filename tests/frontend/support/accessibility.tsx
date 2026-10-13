@@ -76,7 +76,12 @@ export function setup(route: string, viewport: 'desktop' | 'phone' = 'desktop', 
     graphql.query('AdminOverview', () =>
       HttpResponse.json({
         data: {
-          systemSettings: { __typename: 'SystemSettingsInfo', restartPending: true, file: { __typename: 'SettingsFileInfo', path: '/data/settings.json', exists: true, ignored: false } },
+          systemSettings: {
+            __typename: 'SystemSettingsInfo',
+            restartPending: true,
+            file: { __typename: 'SettingsFileInfo', path: '/data/settings.json', exists: true, ignored: false },
+            folders: [{ __typename: 'ServerFolder', kind: 'PICTURES', path: '/data/uploads', setting: 'Storage:Path', variable: 'Storage__Path', sameAsPictures: false }],
+          },
           users: [
             { __typename: 'UserAccount', id: 'u1', isAdmin: true, isDisabled: false },
             { __typename: 'UserAccount', id: 'u2', isAdmin: false, isDisabled: false },

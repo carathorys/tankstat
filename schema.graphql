@@ -548,6 +548,14 @@ type RestorePointInfo {
   rows: Long!
 }
 
+type ServerFolder {
+  kind: ServerFolderKind!
+  path: String!
+  setting: String!
+  variable: String!
+  sameAsPictures: Boolean!
+}
+
 type Session {
   mode: AuthMode!
   user: UserInfo
@@ -655,6 +663,7 @@ type SystemSettingsInfo {
   file: SettingsFileInfo!
   groups: [SystemSettingsGroup!]!
   restartPending: Boolean!
+  folders: [ServerFolder!]!
 }
 
 type UiSettingsInfo {
@@ -1298,6 +1307,14 @@ enum ReviewState {
   AWAITING_PHOTOS
   NEEDS_REVIEW
   INCOMPLETE
+}
+
+enum ServerFolderKind {
+  PICTURES
+  PHOTOS
+  BACKUPS
+  KEYS
+  SETTINGS_FILE
 }
 
 enum SettingKind {

@@ -440,8 +440,35 @@
     "vehicles": "Járművek",
     "vehicleCount_one": "{{vehicles}} jármű",
     "vehicleCount_other": "{{vehicles}} jármű",
-    "settingsFile": "Beállításfájl",
-    "noFile": "Még nincs: az első mentett beállítással jön létre"
+    "noFile": "Még nincs: az első mentett beállítással jön létre",
+    "foldersTitle": "Hol tartja a szerver a fájljait",
+    "foldersHint": "A szerver környezete állítja be, nem a beállítások oldal; a módosítás újraindítást igényel.",
+    "folders": {
+      "PICTURES": {
+        "name": "Képek",
+        "what": "A járművek képei és a profilképek."
+      },
+      "PHOTOS": {
+        "name": "A bejegyzések fotói",
+        "what": "A tankolásokhoz és kiadásokhoz csatolt fotók; korlát nélkül nőnek."
+      },
+      "BACKUPS": {
+        "name": "Mentések",
+        "what": "A szerver által írt mentések, és a Mentések oldalon feltöltöttek."
+      },
+      "KEYS": {
+        "name": "Bejelentkezési kulcsok",
+        "what": "A kulcsok, amelyek bejelentkezve tartanak mindenkit. Ha elvesznek, mindenki kijelentkezik."
+      },
+      "SETTINGS_FILE": {
+        "name": "Beállításfájl",
+        "what": "Amit a Szerverbeállítások oldal ment."
+      }
+    },
+    "photosWithPictures": "A képek mappájában.",
+    "notCreatedYet": "még nem jött létre",
+    "changedBy": "Módosítás ezzel a környezeti változóval:",
+    "ownFolderBy": "Saját mappához állítsd be ezt a környezeti változót:"
   },
   "admin": {
     "title": "Adminisztráció",

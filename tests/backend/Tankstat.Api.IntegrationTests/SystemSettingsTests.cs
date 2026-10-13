@@ -38,6 +38,23 @@ public class SystemSettingsTests
     private static string? ErrorKey(JsonElement body) => body.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString();
 
     [Fact]
+    public async Task TheFolders_AreListedInFull_WithTheVariableThatSetsEach_ForAdministratorsOnly()
+    {
+        using var app = TestApp.Standalone();
+        const string Folders = "{ systemSettings { folders { kind path setting variable sameAsPictures } } }";
+
+        var folders = (await (await Admin(app)).Gql(Folders)).Data().GetProperty("systemSettings").GetProperty("folders").EnumerateArray().ToList();
+
+        Assert.Equal(["PICTURES", "PHOTOS", "BACKUPS", "KEYS", "SETTINGS_FILE"], folders.Select(f => f.GetProperty("kind").GetString()));
+        Assert.Equal(["Storage__Path", "Storage__PhotosPath", "Backups__Path", "DataProtection__KeysPath", "Settings__Path"], folders.Select(f => f.GetProperty("variable").GetString()));
+        Assert.All(folders, f => Assert.True(Path.IsPathFullyQualified(f.GetProperty("path").GetString()!)));
+        Assert.Equal(app.SettingsPath, folders[4].GetProperty("path").GetString());
+        Assert.False(folders[1].GetProperty("sameAsPictures").GetBoolean()); // the test host keeps its photos apart
+        var people = await app.Users();
+        Assert.Equal("auth.adminRequired", (await people.Alice.Gql(Folders)).ErrorKey());
+    }
+
+    [Fact]
     public async Task Administrators_SeeEverySetting_WithItsSource_OthersNothing()
     {
         using var app = TestApp.Standalone();
