@@ -40,6 +40,12 @@ public sealed class VehicleDefaultsOptionsValidator : IValidateOptions<VehicleDe
         if (o.RecurringWarnDays is < 0 or > RecurringExpense.MaxWarnDays)
             errors.Add($"Defaults:RecurringWarnDays must be between 0 and {RecurringExpense.MaxWarnDays}.");
         if (o.RecurringWarnDistance < 0) errors.Add("Defaults:RecurringWarnDistance cannot be negative.");
+        // The binder takes a number for an enum (Defaults__TimeFormat=24 binds to no format at all), which every uiSettings answer would
+        // then fail to write: refused here by name, never by value, as an unknown name is refused by the binder.
+        if (o.TimeFormat is { } time && !Enum.IsDefined(time))
+            errors.Add($"Defaults:TimeFormat must be one of {string.Join(", ", Enum.GetNames<TimeFormat>())}.");
+        if (o.DateFormat is { } date && !Enum.IsDefined(date))
+            errors.Add($"Defaults:DateFormat must be one of {string.Join(", ", Enum.GetNames<DateFormat>())}.");
         return errors.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(errors);
     }
 }
