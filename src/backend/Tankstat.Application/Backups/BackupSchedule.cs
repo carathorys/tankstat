@@ -23,6 +23,9 @@ public sealed class BackupSchedule
 
     private static readonly char[] Separators = [',', ';', ' '];
 
+    /// <summary>How a value is split: each part trimmed of any whitespace (a line break, a tab, a non-breaking space), empty ones left out.</summary>
+    private const StringSplitOptions Parts = StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries;
+
     private BackupSchedule(IReadOnlyList<TimeOnly> times, IReadOnlyList<DayOfWeek> days)
     {
         Times = times;
@@ -50,12 +53,13 @@ public sealed class BackupSchedule
 
     /// <summary>
     /// Times of day such as <c>02:00</c> or <c>2:30, 14:00</c> (<c>H</c> takes one digit or two; commas, semicolons or spaces between them),
-    /// earliest first, each once; empty for nothing, null when any of them is no time.
+    /// earliest first, each once; empty for nothing, null when any of them is no time. Whitespace around a time is no part of it: a value
+    /// read from a file or a secret often ends in a line break (<c>02:00\n</c>), which must not stop the start.
     /// </summary>
     public static IReadOnlyList<TimeOnly>? ParseTimes(string? text)
     {
         var times = new SortedSet<TimeOnly>();
-        foreach (var part in (text ?? "").Split(Separators, StringSplitOptions.RemoveEmptyEntries))
+        foreach (var part in (text ?? "").Split(Separators, Parts))
         {
             if (!TimeOnly.TryParseExact(part, "H:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var at)) return null;
             times.Add(at);
@@ -65,11 +69,12 @@ public sealed class BackupSchedule
 
     /// <summary>
     /// Days of the week by their English names or first three letters, in any case and order (<c>Monday,Friday</c>, <c>mon fri</c>), from
-    /// Monday, each once; the whole week for nothing (unset), none for <see cref="NoDay"/>, null when any of them is no day.
+    /// Monday, each once; the whole week for nothing (unset), none for <see cref="NoDay"/>, null when any of them is no day. Whitespace
+    /// around a day is no part of it, as with the times.
     /// </summary>
     public static IReadOnlyList<DayOfWeek>? ParseDays(string? text)
     {
-        var parts = (text ?? "").Split(Separators, StringSplitOptions.RemoveEmptyEntries);
+        var parts = (text ?? "").Split(Separators, Parts);
         if (parts.Length == 0) return Week;
         if (parts is [var only] && only.Equals(NoDay, StringComparison.OrdinalIgnoreCase)) return [];
         var days = new HashSet<DayOfWeek>();
@@ -83,18 +88,22 @@ public sealed class BackupSchedule
     }
 
     /// <summary>The first due time after <paramref name="now"/>.</summary>
-    public DateTimeOffset NextAfter(DateTimeOffset now, TimeZoneInfo zone)
-    {
-        // A chosen day comes within a week; the day before today too, since a time it skips may fall after midnight.
-        for (var day = LocalDay(now, zone).AddDays(-1); ; day = day.AddDays(1))
-            if (DuesOn(day, zone).Where(due => due > now).Order().FirstOrDefault() is var due && due != default) return due;
-    }
+    public DateTimeOffset NextAfter(DateTimeOffset now, TimeZoneInfo zone) => DuesAround(now, zone).Where(due => due > now).Min();
 
     /// <summary>The last due time at or before <paramref name="now"/>.</summary>
-    public DateTimeOffset LastDueAtOrBefore(DateTimeOffset now, TimeZoneInfo zone)
+    public DateTimeOffset LastDueAtOrBefore(DateTimeOffset now, TimeZoneInfo zone) => DuesAround(now, zone).Where(due => due <= now).Max();
+
+    /// <summary>
+    /// Every due time of the days from a week before the local day of <paramref name="now"/> to a week after it (a chosen day comes in
+    /// every week, so there is one on either side). They are compared as instants, never day by day: on a night the clocks jump at midnight,
+    /// a time just after it can come before one just before it (with times on both sides of midnight).
+    /// </summary>
+    private IEnumerable<DateTimeOffset> DuesAround(DateTimeOffset now, TimeZoneInfo zone)
     {
-        for (var day = LocalDay(now, zone).AddDays(1); ; day = day.AddDays(-1))
-            if (DuesOn(day, zone).Where(due => due <= now).OrderDescending().FirstOrDefault() is var due && due != default) return due;
+        var today = LocalDay(now, zone);
+        for (var offset = -8; offset <= 8; offset++)
+            foreach (var due in DuesOn(today.AddDays(offset), zone))
+                yield return due;
     }
 
     /// <summary>Whether the last due time passed without a backup since: <paramref name="lastBackup"/> is the newest the app wrote (null: none).</summary>

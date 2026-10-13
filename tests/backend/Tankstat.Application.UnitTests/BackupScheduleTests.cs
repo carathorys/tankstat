@@ -82,6 +82,20 @@ public class BackupScheduleTests
     }
 
     [Fact]
+    public void TheNextAndTheLastDueTime_AreTheNearestInstants_AlsoWhereADaysFirstTimeComesBeforeTheDayBeforesLast()
+    {
+        // Asunción's spring night of 2017: the clocks went from 23:59 (-04:00) to 01:00 (-03:00), and .NET may read 00:15 of the new day
+        // as 00:15-03:00, an instant before 23:30-04:00 of the day before it. Whichever way the platform reads that night, the next due
+        // time is the earlier instant and the last one the later, never the first of a day that has one.
+        var asuncion = TimeZoneInfo.FindSystemTimeZoneById("America/Asuncion");
+        var schedule = BackupSchedule.Of("23:30, 00:15", "Saturday,Sunday")!;
+        DateTimeOffset[] dues = [BackupSchedule.DueOn(new DateOnly(2017, 9, 30), new TimeOnly(23, 30), asuncion), BackupSchedule.DueOn(new DateOnly(2017, 10, 1), new TimeOnly(0, 15), asuncion)];
+
+        Assert.Equal(dues.Min(), schedule.NextAfter(new DateTimeOffset(2017, 10, 1, 2, 0, 0, TimeSpan.Zero), asuncion));
+        Assert.Equal(dues.Max(), schedule.LastDueAtOrBefore(dues.Max().AddMinutes(1), asuncion));
+    }
+
+    [Fact]
     public void ABackupIsMissed_WhenTheLastDueTimePassedWithoutOne_ANewInstallOrAnOlderOneIncluded()
     {
         Assert.False(TwoAm.Missed(Utc(1, 10, 2, 0), Utc(1, 10, 9), TimeZoneInfo.Utc)); // written at 02:00 today
@@ -107,6 +121,11 @@ public class BackupScheduleTests
     [InlineData(" 23:59 ", "23:59")]
     [InlineData("14:00,02:00;14:00 06:15", "02:00 06:15 14:00")]
     [InlineData("", "")]
+    [InlineData("02:00\n", "02:00")] // a secret or a file read with its line break
+    [InlineData("\t2:30\r\n", "02:30")]
+    [InlineData("02:00 ", "02:00")]
+    [InlineData("02:00,\t14:00", "02:00 14:00")]
+    [InlineData("\t", "")] // whitespace alone: nothing, as unset
     public void TimesOfDay_AreParsed(string text, string expected) =>
         Assert.Equal(expected, string.Join(" ", BackupSchedule.ParseTimes(text)!.Select(t => t.ToString("HH:mm", CultureInfo.InvariantCulture))));
 
@@ -122,6 +141,9 @@ public class BackupScheduleTests
     [InlineData("fri MON mon", "Monday Friday")]
     [InlineData("None", "")]
     [InlineData(null, "Monday Tuesday Wednesday Thursday Friday Saturday Sunday")]
+    [InlineData("Monday,Friday\n", "Monday Friday")]
+    [InlineData("None\r\n", "")]
+    [InlineData("\t", "Monday Tuesday Wednesday Thursday Friday Saturday Sunday")]
     public void DaysOfTheWeek_AreParsed(string? text, string expected) => Assert.Equal(expected, string.Join(" ", BackupSchedule.ParseDays(text)!));
 
     [Theory]
