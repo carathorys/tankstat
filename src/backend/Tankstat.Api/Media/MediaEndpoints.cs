@@ -83,7 +83,7 @@ public static class MediaEndpoints
 
         // Backups (administrators): a backup file uploaded into the backups folder, streamed to disk; a restore point downloaded. Under /media
         // so the service worker and the dev proxy leave them to the server, like the pictures.
-        media.MapPut("/backups", async (string? name, HttpRequest request, AccessService access, BackupAdminService backups, IOptions<BackupOptions> options, CancellationToken ct) =>
+        media.MapPut("/backups", async (string? name, HttpRequest request, AccessService access, BackupAdminService backups, IOptionsSnapshot<BackupOptions> options, CancellationToken ct) =>
         {
             // Administrators only, before anything else: nobody else learns the limit, or has a body read past the server's own.
             await access.RequireAdminAsync(ct);

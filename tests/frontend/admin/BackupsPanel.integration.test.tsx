@@ -64,7 +64,20 @@ function backupsServer({
   run = idle,
   restoreAnswer,
   maxUploadMb = 1024,
-}: { points?: unknown[]; run?: Run; restoreAnswer?: () => Response; maxUploadMb?: number } = {}) {
+  keysHeldByEnvironment = false,
+  keysProblems,
+  keysAnswered,
+}: {
+  points?: unknown[]
+  run?: Run
+  restoreAnswer?: () => Response
+  maxUploadMb?: number
+  keysHeldByEnvironment?: boolean
+  /** The settings the server names when it cannot take the file as a whole (`settings.invalid`). */
+  keysProblems?: string[]
+  /** Holds the answer to a save of the keys until it settles. */
+  keysAnswered?: Promise<unknown>
+} = {}) {
   const calls: Record<string, unknown[]> = {}
   const record = (name: string, value: unknown) => (calls[name] ??= []).push(value)
   const state = {
@@ -115,6 +128,24 @@ function backupsServer({
       state.run = { ...idle, startedAt: '2026-10-11T08:00:00Z', finishedAt: '2026-10-11T08:00:05Z', file: 'tankstat-backup-20261011T080000Z.zip', bytes: 3_100_000 }
       state.points = [point({ file: 'tankstat-backup-20261011T080000Z.zip', createdAt: '2026-10-11T08:00:00Z' }), ...state.points]
       return HttpResponse.json({ data: { runBackup: true } })
+    }),
+    graphql.mutation('UpdateSystemSettings', async ({ variables }) => {
+      record('UpdateSystemSettings', variables)
+      await keysAnswered
+      if (keysHeldByEnvironment)
+        return HttpResponse.json(gqlError('Set by the environment.', 'VALIDATION_FAILED', 'settings.readOnly', { key: 'Backups:Encryption:Recipient' }))
+      if (keysProblems)
+        return HttpResponse.json(gqlError('The settings cannot be used as they are.', 'VALIDATION_FAILED', 'settings.invalid', { problems: keysProblems }))
+      return HttpResponse.json({
+        data: {
+          updateSystemSettings: {
+            __typename: 'SystemSettingsInfo',
+            file: { __typename: 'SettingsFileInfo', path: '/data/settings.json', exists: true, ignored: false, problems: [] },
+            restartPending: false,
+            groups: [],
+          },
+        },
+      })
     }),
     graphql.mutation('PrepareBackupEncryption', ({ variables }) => {
       record('PrepareBackupEncryption', variables)
@@ -379,6 +410,7 @@ it('makes a key set, shows it once with the two settings to set, and is done onl
   expect(within(dialog).getByText('Passphrase (made up)')).toBeInTheDocument()
   expect(within(dialog).getByText(/Backups__Encryption__Recipient=age1qy.*\s+Backups__Encryption__Salt=c2FsdHNhbHRzYWx0c2FsdA==/)).toBeInTheDocument()
   expect(calls.PrepareBackupEncryption).toEqual([{ passphrase: 'short' }, { passphrase: null }])
+  expect(calls.UpdateSystemSettings).toBeUndefined() // nothing is saved unless asked
   const done = within(dialog).getByRole('button', { name: 'Done' })
   expect(done).toBeDisabled()
   await ui.keyboard('{Escape}') // shown only once: not dismissed before it is kept
@@ -386,6 +418,66 @@ it('makes a key set, shows it once with the two settings to set, and is done onl
   await ui.click(within(dialog).getByRole('checkbox', { name: 'I have kept the passphrase in a safe place' }))
   await ui.click(done)
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+})
+
+it('saves a new key set into the server settings when asked, and the page then says which key it encrypts for', async () => {
+  const { calls } = backupsServer()
+  const ui = await openBackups()
+  await ui.click(screen.getByRole('button', { name: 'Make a key set…' }))
+  const dialog = await screen.findByRole('dialog', { name: 'A key set for encrypted backups' })
+  await ui.click(within(dialog).getByRole('button', { name: 'Make the keys' }))
+  await within(dialog).findByText('K7QM-4XWD-PL2N-ZR8A-HJ3T')
+  const backupsAsked = calls.Backups?.length ?? 0
+
+  await ui.click(within(dialog).getByRole('button', { name: 'Use these keys for new backups' }))
+
+  const inUse = 'Saved on the server: every backup from now on is encrypted with these keys.'
+  expect(await within(dialog).findByText(inUse)).toBeInTheDocument()
+  await waitFor(() => expect(document.activeElement).toHaveTextContent(inUse)) // the button that had the focus is gone: its outcome has it
+  expect(calls.UpdateSystemSettings).toEqual([
+    { changes: [{ key: 'Backups:Encryption:Recipient', value: expect.stringMatching(/^age1/) }, { key: 'Backups:Encryption:Salt', value: 'c2FsdHNhbHRzYWx0c2FsdA==' }] },
+  ])
+  await waitFor(() => expect(calls.Backups!.length).toBeGreaterThan(backupsAsked)) // the page says which key it encrypts for now
+  expect(within(dialog).queryByRole('button', { name: 'Use these keys for new backups' })).not.toBeInTheDocument()
+})
+
+it('keeps the key set open while its keys are being saved, and names the settings a refused save was about', async () => {
+  let answer!: () => void
+  const held = new Promise<void>((resolve) => (answer = resolve))
+  backupsServer({ keysProblems: ['Smtp:Port must be a whole number.'], keysAnswered: held })
+  const ui = await openBackups()
+  await ui.click(screen.getByRole('button', { name: 'Make a key set…' }))
+  const dialog = await screen.findByRole('dialog', { name: 'A key set for encrypted backups' })
+  await ui.click(within(dialog).getByRole('button', { name: 'Make the keys' }))
+  await within(dialog).findByText('K7QM-4XWD-PL2N-ZR8A-HJ3T')
+
+  await ui.click(within(dialog).getByRole('button', { name: 'Use these keys for new backups' }))
+  await ui.click(within(dialog).getByRole('checkbox', { name: 'I have kept the passphrase in a safe place' }))
+
+  // Closed now, the answer would go unseen.
+  expect(within(dialog).getByRole('button', { name: 'Done' })).toBeDisabled()
+  await ui.keyboard('{Escape}')
+  expect(screen.getByRole('dialog', { name: 'A key set for encrypted backups' })).toBeInTheDocument()
+
+  answer()
+
+  expect(await within(dialog).findByText('The server could not take these values:')).toBeInTheDocument()
+  expect(within(dialog).getByText('Smtp:Port must be a whole number.')).toBeInTheDocument()
+  expect(within(dialog).getByRole('button', { name: 'Done' })).toBeEnabled()
+})
+
+it('says why a key set cannot be saved when the environment holds the settings', async () => {
+  backupsServer({ keysHeldByEnvironment: true })
+  const ui = await openBackups()
+  await ui.click(screen.getByRole('button', { name: 'Make a key set…' }))
+  const dialog = await screen.findByRole('dialog', { name: 'A key set for encrypted backups' })
+  await ui.click(within(dialog).getByRole('button', { name: 'Make the keys' }))
+  await within(dialog).findByText('K7QM-4XWD-PL2N-ZR8A-HJ3T')
+
+  await ui.click(within(dialog).getByRole('button', { name: 'Use these keys for new backups' }))
+
+  expect(await within(dialog).findByText('Backups:Encryption:Recipient is set by the environment, which wins over the settings file.')).toBeInTheDocument()
+  expect(within(dialog).getByText(/Backups__Encryption__Recipient=age1/)).toBeInTheDocument() // the other way stays shown
 })
 
 it('shows the schedule with the next run and what retention keeps, or that neither is set', async () => {
@@ -406,8 +498,9 @@ it('says when nothing is scheduled and every backup is kept', async () => {
   await openBackups()
 
   const overview = within(screen.getByRole('region', { name: 'This server' }))
-  expect(overview.getByText('Not scheduled (set Backups:Every to a time of day, such as 02:00)')).toBeInTheDocument()
-  expect(overview.getByText('Every backup is kept (set Backups:Keep or Backups:KeepDays to remove old ones)')).toBeInTheDocument()
+  expect(overview.getByText('Not scheduled')).toBeInTheDocument()
+  expect(overview.getByText('Every backup is kept')).toBeInTheDocument()
+  expect(overview.getByRole('link', { name: 'Change the schedule, retention and encryption in the server settings' })).toHaveAttribute('href', '/admin/settings?tab=backups')
 })
 
 it('a server without backups says how to make the first one', async () => {

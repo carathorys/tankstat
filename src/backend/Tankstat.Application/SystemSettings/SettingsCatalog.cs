@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Backups;
 using Tankstat.Application.Notifications;
 using Tankstat.Application.Recognition;
 using Tankstat.Application.Sync;
@@ -19,6 +20,7 @@ public enum SettingsGroup
     Notifications,
     Sync,
     PhotoReading,
+    Backups,
     Logging,
 }
 
@@ -80,7 +82,7 @@ public static class SettingsCatalog
     /// every reader of its settings reads them afresh: an <c>IOptionsSnapshot</c> or an <c>IOptionsMonitor</c>, never a kept <c>IOptions</c>
     /// value; <c>LiveSettingsReadersTests</c> pins that for each.
     /// </summary>
-    public static readonly IReadOnlySet<SettingsGroup> LiveGroups = new HashSet<SettingsGroup> { SettingsGroup.Defaults, SettingsGroup.Notifications, SettingsGroup.Sync, SettingsGroup.Logging };
+    public static readonly IReadOnlySet<SettingsGroup> LiveGroups = new HashSet<SettingsGroup> { SettingsGroup.Defaults, SettingsGroup.Notifications, SettingsGroup.Sync, SettingsGroup.Backups, SettingsGroup.Logging };
 
     /// <summary>Settings of the managed sections that the page deliberately does not offer (the reflection test skips them).</summary>
     public static readonly IReadOnlyList<string> LeftOut =
@@ -88,6 +90,7 @@ public static class SettingsCatalog
         "Auth:Standalone:AdminEmail", // the bootstrap administrator: read only while no administrator exists, and a password besides
         "Auth:Standalone:AdminPassword",
         "Recognition:OpenAiCompatible:SystemPromptFile", // a path the app reads: the environment's business, like every other path
+        "Backups:Path", // a folder, like Storage:Path: where the volume is, which the environment knows
     ];
 
     public static readonly IReadOnlyList<SettingDefinition> All =
@@ -144,6 +147,14 @@ public static class SettingsCatalog
         new(SettingsGroup.PhotoReading, "Recognition:MinConfidence", SettingKind.Decimal),
         new(SettingsGroup.PhotoReading, "Recognition:MaxConcurrent", SettingKind.Integer),
 
+        new(SettingsGroup.Backups, "Backups:Every", SettingKind.Text),
+        new(SettingsGroup.Backups, "Backups:Keep", SettingKind.Integer),
+        new(SettingsGroup.Backups, "Backups:KeepDays", SettingKind.Integer),
+        new(SettingsGroup.Backups, "Backups:Photos", SettingKind.Boolean),
+        new(SettingsGroup.Backups, "Backups:Encryption:Recipient", SettingKind.Text),
+        new(SettingsGroup.Backups, "Backups:Encryption:Salt", SettingKind.Text),
+        new(SettingsGroup.Backups, "Backups:MaxUploadMb", SettingKind.Integer),
+
         new(SettingsGroup.Logging, LoggingDefault, SettingKind.Choice, LogLevels),
         new(SettingsGroup.Logging, LoggingTankstat, SettingKind.Choice, LogLevels),
         new(SettingsGroup.Logging, LoggingAspNetCore, SettingKind.Choice, LogLevels),
@@ -171,6 +182,7 @@ public static class SettingsCatalog
         (NotificationOptions.SectionName, typeof(NotificationOptions)),
         (SyncOptions.SectionName, typeof(SyncOptions)),
         (RecognitionOptions.SectionName, typeof(RecognitionOptions)),
+        (BackupOptions.SectionName, typeof(BackupOptions)),
     ];
 
     /// <summary>The level the logging framework uses when no source sets the default category (every other category follows that one).</summary>
@@ -265,7 +277,9 @@ public static class SettingsCatalog
     /// The wrong shapes among the managed settings that <paramref name="valueOf"/> has a value for, as the start sees them: only what the app
     /// could not start with, named by its setting. Lists are not checked (every string is one); photo reading is not either, because its
     /// settings never stop the app (RecognitionSetup turns reading off and says why); nor is the log levels' floor, a rule for what the page
-    /// writes (<see cref="Validate"/>), not something the app refuses to start with.
+    /// writes (<see cref="Validate"/>), not something the app refuses to start with; nor an empty value, which the app runs with where a
+    /// setting may be unset (the binder reads <c>Backups:Keep</c> as no limit, the logging filter skips an empty level) and the binder refuses
+    /// elsewhere, naming the setting itself.
     /// </summary>
     public static IReadOnlyList<string> Problems(Func<string, string?> valueOf)
     {
@@ -274,7 +288,7 @@ public static class SettingsCatalog
         {
             if (setting.IsList || setting.Group == SettingsGroup.PhotoReading) continue;
             var value = valueOf(setting.Key);
-            if (value is null) continue;
+            if (string.IsNullOrEmpty(value)) continue;
             if (ShapeProblem(setting, value) is { } problem) problems.Add(problem);
         }
         return problems;

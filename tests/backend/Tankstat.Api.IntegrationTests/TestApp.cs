@@ -42,6 +42,9 @@ internal sealed class TestApp : IDisposable
     /// <summary>The backups folder of this host, unless its settings name another.</summary>
     public string BackupsPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-backups");
 
+    /// <summary>The backup settings that make a start write and prune backups: never the developer's.</summary>
+    private static readonly string[] ScheduleKeys = ["Backups:Every", "Backups:Keep", "Backups:KeepDays"];
+
     /// <summary>The app's own settings file of this host (none unless a test writes one), unless its settings name another (<see cref="SharedData"/>, a test's file).</summary>
     public string SettingsPath { get; }
 
@@ -68,14 +71,16 @@ internal sealed class TestApp : IDisposable
             ["Storage:Path"] = UploadsPath,
             ["Storage:PhotosPath"] = PhotosPath,
             ["DataProtection:KeysPath"] = KeysPath, // the cookies' keys of this host only, never in the build output
-            // A backups folder of its own, and no schedule or retention whatever the developer's environment says (Backups__Every, ...): a
-            // start writes a missed backup and retention prunes the folder. A null here wins over an environment variable.
-            ["Backups:Path"] = BackupsPath,
-            ["Backups:Every"] = null,
-            ["Backups:Keep"] = null,
-            ["Backups:KeepDays"] = null,
+            ["Backups:Path"] = BackupsPath, // a backups folder of its own
             ["Logging:LogLevel:Tankstat"] = "Debug", // the Debug lines are part of what is tested
         };
+        // No schedule or retention of the developer's environment (Backups__Every, ...): a start writes a missed backup and retention prunes
+        // the folder. A null here wins over the variable; only one the environment sets is overridden, since a key held here is read-only on
+        // the settings page, which the tests of these settings save through. The environment is read as the configuration reads it, so a
+        // variable spelled in other letters (BACKUPS__EVERY) counts too.
+        var environment = new ConfigurationBuilder().AddEnvironmentVariables().Build();
+        foreach (var key in ScheduleKeys)
+            if (environment[key] is not null) all[key] = null;
         foreach (var (key, value) in settings) all[key] = value;
         _ownSettingsFile = settings.GetValueOrDefault("Settings:Path") is null;
         SettingsPath = settings.GetValueOrDefault("Settings:Path") ?? Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-settings.json");

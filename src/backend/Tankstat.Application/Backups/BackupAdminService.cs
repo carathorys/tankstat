@@ -30,7 +30,7 @@ public sealed class BackupAdminService(
     IDatabaseFacts database,
     IStorageUsage usage,
     IBackupKeyMaker keys,
-    IOptions<BackupOptions> options,
+    IOptionsSnapshot<BackupOptions> options,
     IOptions<StorageOptions> storage,
     TimeProvider clock,
     ILogger<BackupAdminService> logger)

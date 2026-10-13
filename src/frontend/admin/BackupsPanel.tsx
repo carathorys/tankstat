@@ -2,6 +2,7 @@ import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Checkbox from '@mui/material/Checkbox'
+import Link from '@mui/material/Link'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Stack from '@mui/material/Stack'
 import TableBody from '@mui/material/TableBody'
@@ -12,6 +13,7 @@ import Typography from '@mui/material/Typography'
 import { DatabaseBackup, Download, KeyRound, RotateCcw, Upload } from 'lucide-react'
 import { useEffect, useEffectEvent, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Link as RouterLink } from 'react-router'
 import { DefinitionList } from '../components/DefinitionList.tsx'
 import { Loading } from '../components/Loading.tsx'
 import { Segmented } from '../components/Segmented.tsx'
@@ -30,6 +32,8 @@ import {
   RestoreBackupDocument,
   RunBackupDocument,
   SessionDocument,
+  SystemSettingsDocument,
+  UpdateSystemSettingsDocument,
   type BackupRunFieldsFragment,
   type BackupsQuery,
   type PrepareBackupEncryptionMutation,
@@ -43,6 +47,8 @@ import { classifyFailure } from '../offline/errors.ts'
 import { PROBE_TIMEOUT_MS, withDeadline } from '../offline/runtime.ts'
 import { ApiError } from '../pictures/ApiError.ts'
 import { downloadBackup, uploadBackup } from './backupFiles.ts'
+import { ProblemList } from './ProblemList.tsx'
+import { problemsOf } from './settingsText.ts'
 
 type RestorePoint = BackupsQuery['backups']['restorePoints'][number]
 type KeySet = PrepareBackupEncryptionMutation['prepareBackupEncryption']
@@ -142,6 +148,9 @@ function Overview({ backups }: { backups: BackupsQuery['backups'] }) {
           { label: t('admin.backups.retentionLabel'), value: retention },
         ]}
       />
+      <Link component={RouterLink} to="/admin/settings?tab=backups" sx={{ display: 'inline-block', mt: 1 }}>
+        {t('admin.backups.changeSettings')}
+      </Link>
     </section>
   )
 }
@@ -661,10 +670,31 @@ function KeySetForm({ replacing, onLock }: { replacing: boolean; onLock: (locked
 function KeySetShown({ keys, onLock }: { keys: KeySet; onLock: (locked: boolean) => void }) {
   const { t } = useTranslation()
   const [saved, setSaved] = useState(false)
-  const keep = (kept: boolean) => {
-    setSaved(kept)
-    onLock(!kept)
-  }
+  // The settings page's own save: the answer is that page as the server now has it, and the Backups page says which key it encrypts for.
+  const [update, { loading: using, data: used, error: refused }] = useMutation(UpdateSystemSettingsDocument, {
+    update: (cache, { data }) => {
+      if (data) cache.writeQuery({ query: SystemSettingsDocument, data: { systemSettings: data.updateSystemSettings } })
+    },
+    refetchQueries: [BackupsDocument],
+  })
+  const use = () =>
+    update({
+      variables: {
+        changes: [
+          { key: 'Backups:Encryption:Recipient', value: keys.recipient },
+          { key: 'Backups:Encryption:Salt', value: keys.salt },
+        ],
+      },
+    }).catch(() => undefined) // the refusal is shown below
+  // Kept open until the passphrase is kept, and while the keys are being saved: closed then, a refusal would go unseen.
+  useEffect(() => onLock(!saved || using), [saved, using, onLock])
+  // The button that had the focus is gone once the keys are in use: the focus goes to what took its place, which also has it read out.
+  const inUse = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (used) inUse.current?.focus()
+  }, [used])
+  // A save the server refused as a whole names the settings at fault (another one of the file, as a rule), as the settings page lists them.
+  const problems = problemsOf(refused)
   return (
     <Stack sx={{ gap: 1.5 }}>
       <SuccessMessage>{t('admin.backups.keysMade')}</SuccessMessage>
@@ -675,13 +705,32 @@ function KeySetShown({ keys, onLock }: { keys: KeySet; onLock: (locked: boolean)
           { label: t('admin.backups.identity'), value: <Code>{keys.identity}</Code> },
         ]}
       />
+      {used ? (
+        <Box ref={inUse} tabIndex={-1}>
+          <SuccessMessage>{t('admin.backups.keysInUse')}</SuccessMessage>
+        </Box>
+      ) : (
+        <Button variant="soft" onClick={() => void use()} loading={using} sx={{ alignSelf: 'flex-start' }}>
+          <KeyRound size={16} aria-hidden />
+          {t('admin.backups.keysUse')}
+        </Button>
+      )}
+      {refused &&
+        (problems.length > 0 ? (
+          <ErrorMessage error={refused}>
+            {t('systemSettings.problems')}
+            <ProblemList problems={problems} />
+          </ErrorMessage>
+        ) : (
+          <ErrorMessage error={refused} />
+        ))}
       <Typography variant="body2">{t('admin.backups.keysSettings')}</Typography>
       <Box component="pre" sx={(theme) => ({ m: 0, p: 1.5, borderRadius: '8px', backgroundColor: theme.vars.palette.neutral.soft, whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '0.85em' })}>
         {`Backups__Encryption__Recipient=${keys.recipient}\nBackups__Encryption__Salt=${keys.salt}`}
       </Box>
-      <FormControlLabel control={<Checkbox checked={saved} onChange={(e) => keep(e.target.checked)} />} label={t('admin.backups.keysSaved')} />
+      <FormControlLabel control={<Checkbox checked={saved} onChange={(e) => setSaved(e.target.checked)} />} label={t('admin.backups.keysSaved')} />
       <DialogButtons>
-        <DialogCancel label={t('admin.backups.keysDone')} disabled={!saved} />
+        <DialogCancel label={t('admin.backups.keysDone')} disabled={!saved || using} />
       </DialogButtons>
     </Stack>
   )

@@ -17,7 +17,7 @@ namespace Tankstat.Infrastructure.Backups;
 /// </summary>
 /// <param name="lifetime">The app's, whose stop cuts a run short; null where there is no host (the services built on their own, as tests do).</param>
 internal sealed class BackupRunner(
-    IBackupWriter writer, IBackupStore store, IOptions<BackupOptions> options, IServiceScopeFactory scopes, TimeProvider clock, ILogger<BackupRunner> logger,
+    IBackupWriter writer, IBackupStore store, IOptionsMonitor<BackupOptions> options, IServiceScopeFactory scopes, TimeProvider clock, ILogger<BackupRunner> logger,
     IHostApplicationLifetime? lifetime = null) : IBackupRunner, IHostedService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -84,10 +84,11 @@ internal sealed class BackupRunner(
     /// </summary>
     private void Prune(string written)
     {
-        var o = options.Value;
-        if (!o.Pruning) return;
         try
         {
+            // Read in here: settings that stopped validating since the start (a file edited by hand) fail retention, never the written backup.
+            var o = options.CurrentValue;
+            if (!o.Pruning) return;
             if (store.RestorePending)
             {
                 logger.LogInformation("A restore waits for the next start: retention removes no backup until then");

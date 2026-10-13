@@ -13,11 +13,16 @@ namespace Tankstat.Infrastructure.Backups;
 /// The backups folder (<c>Backups:Path</c>): the restore points in it, uploads into it and downloads out of it, and the restore that waits
 /// for the next start. Files by bare name only, so nothing outside the folder is ever reached.
 /// </summary>
-internal sealed class FileBackupStore(IOptions<BackupOptions> options, IDbContextFactory<AppDbContext> dbFactory) : IBackupStore
+internal sealed class FileBackupStore(IOptionsMonitor<BackupOptions> options, IDbContextFactory<AppDbContext> dbFactory) : IBackupStore
 {
     private const string Uploading = ".uploading";
 
-    private string Root => options.Value.Root;
+    /// <summary>
+    /// The folder as the app started with it, like the storage roots: only the other backup settings apply at once. A folder that moved on a
+    /// reload would split an upload or a run between two, and settings that stopped validating since (a file edited by hand) would make every
+    /// read throw, the public notices' look for a waiting restore among them.
+    /// </summary>
+    private string Root { get; } = options.CurrentValue.Root;
 
     public string Folder => Root;
 

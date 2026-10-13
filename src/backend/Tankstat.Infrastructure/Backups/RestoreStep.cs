@@ -49,7 +49,7 @@ public enum RestoreOutcome
 internal sealed class RestoreStep(
     IDbContextFactory<AppDbContext> dbFactory,
     IBackupWriter writer,
-    IOptions<BackupOptions> options,
+    IOptionsMonitor<BackupOptions> options,
     IOptions<StorageOptions> storage,
     IOptions<KeyRingOptions> keyRing,
     IOptions<AuthOptions> auth,
@@ -66,7 +66,7 @@ internal sealed class RestoreStep(
 
     public async Task StartAsync(CancellationToken ct)
     {
-        var marker = RestoreMarker.PathIn(options.Value.Root);
+        var marker = RestoreMarker.PathIn(options.CurrentValue.Root);
         Outcome = File.Exists(marker) ? await RestoreAsync(marker, ct) : RestoreOutcome.None;
 
         await using var db = await dbFactory.CreateDbContextAsync(ct);
@@ -112,7 +112,7 @@ internal sealed class RestoreStep(
         {
             return Refuse(markerPath, null, e, "the marker cannot be read");
         }
-        var file = Path.Combine(options.Value.Root, Path.GetFileName(marker.File));
+        var file = Path.Combine(options.CurrentValue.Root, Path.GetFileName(marker.File));
         BackupManifest manifest;
         byte[]? identity = null;
         try

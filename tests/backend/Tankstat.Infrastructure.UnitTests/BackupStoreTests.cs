@@ -26,7 +26,7 @@ public sealed class BackupStoreTests : IDisposable
         if (Directory.Exists(_data)) Directory.Delete(_data, recursive: true);
     }
 
-    private FileBackupStore Store() => new(Options.Create(new BackupOptions { Path = Backups }), new NoDatabase());
+    private FileBackupStore Store() => new(new FixedMonitor<BackupOptions>(new BackupOptions { Path = Backups }), new NoDatabase());
 
     /// <summary>The folder's tests never ask the database (only the migration check of a restore does): a factory that says so if it is used.</summary>
     private sealed class NoDatabase : IDbContextFactory<AppDbContext>
@@ -86,7 +86,7 @@ public sealed class BackupStoreTests : IDisposable
 
         Assert.Equal(("copied-by-hand.zip", new FileInfo(backup).Length, false), (point.File, point.Bytes, point.Uploaded));
         Assert.Equal(Path.GetFullPath(Backups), store.Folder);
-        Assert.Empty(new FileBackupStore(Options.Create(new BackupOptions { Path = Path.Combine(_data, "no-such-folder") }), new NoDatabase()).List());
+        Assert.Empty(new FileBackupStore(new FixedMonitor<BackupOptions>(new BackupOptions { Path = Path.Combine(_data, "no-such-folder") }), new NoDatabase()).List());
     }
 
     [Fact]
@@ -276,4 +276,12 @@ public sealed class BackupFactsTests : IDisposable
         Assert.Equal(new FileUsage(150, null), together);
         Assert.Equal(new FileUsage(0, null), nothing);
     }
+}
+
+/// <summary>Options that never change, where a reader takes an <see cref="IOptionsMonitor{TOptions}"/>.</summary>
+internal sealed class FixedMonitor<T>(T value) : IOptionsMonitor<T>
+{
+    public T CurrentValue => value;
+    public T Get(string? name) => value;
+    public IDisposable? OnChange(Action<T, string?> listener) => null;
 }
