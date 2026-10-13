@@ -13,10 +13,13 @@ import { DatabaseBackup, Download, KeyRound, RotateCcw, Upload } from 'lucide-re
 import { useEffect, useEffectEvent, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DefinitionList } from '../components/DefinitionList.tsx'
+import { Loading } from '../components/Loading.tsx'
 import { Segmented } from '../components/Segmented.tsx'
 import { SurfaceTable } from '../components/SurfaceTable.tsx'
 import { visuallyHidden } from '../components/visuallyHidden.ts'
 import { DialogButtons, DialogCancel, DialogFrame } from '../dialogs/DialogFrame.tsx'
+import { DialogTrigger } from '../dialogs/DialogTrigger.tsx'
+import { useDialogState } from '../dialogs/useDialogState.ts'
 import { Field } from '../forms/Field.tsx'
 import { FieldInput } from '../forms/FieldInput.tsx'
 import { Form } from '../forms/Form.tsx'
@@ -35,6 +38,10 @@ import { useKeyText } from '../i18n/errors.ts'
 import { useFormat } from '../i18n/format.ts'
 import { ErrorMessage, SuccessMessage, WarningMessage } from '../messages.tsx'
 import { navigation } from '../navigation.ts'
+import { connectivity } from '../offline/connectivity.ts'
+import { classifyFailure } from '../offline/errors.ts'
+import { PROBE_TIMEOUT_MS, withDeadline } from '../offline/runtime.ts'
+import { ApiError } from '../pictures/ApiError.ts'
 import { downloadBackup, uploadBackup } from './backupFiles.ts'
 
 type RestorePoint = BackupsQuery['backups']['restorePoints'][number]
@@ -61,13 +68,14 @@ const Code = ({ children }: { children: ReactNode }) => (
  */
 export function BackupsPanel() {
   const { t } = useTranslation()
-  const { data, error, refetch } = useQuery(BackupsDocument, { fetchPolicy: 'cache-and-network' })
   const [restoring, setRestoring] = useState<{ point: RestorePoint; generation: string | undefined }>()
+  // Not asked while a restore restarts the server (the answer would be of the data before it, worked out by a server just starting).
+  const { data, error, refetch } = useQuery(BackupsDocument, { fetchPolicy: 'cache-and-network', skip: restoring !== undefined })
   const { data: session } = useQuery(SessionDocument)
 
   if (restoring) return <RestartWait point={restoring.point} generation={restoring.generation} />
   if (error && !data) return <ErrorMessage error={error} />
-  if (!data) return <Typography role="status">{t('admin.backups.loading')}</Typography>
+  if (!data) return <Loading label={t('admin.backups.loading')} />
 
   const backups = data.backups
   return (
@@ -136,26 +144,34 @@ function RunNow({ initial, onFinished }: { initial: BackupRunFieldsFragment; onF
   const { t } = useTranslation()
   const runText = useRunText()
   const [runBackup, { loading: starting }] = useMutation(RunBackupDocument)
-  // Each wait for a run is a round of its own (a poller mounted afresh), so no answer of an earlier round is taken for this one's.
-  const [round, setRound] = useState(initial.running ? 1 : 0)
-  // What the polls said last; before any, the overview's run.
+  // What the polls said last; before any, and again with every new answer of the overview, the overview's run.
   const [polled, setPolled] = useState<BackupRunFieldsFragment>()
+  // A run this page asked for is followed until a poll says it ended, whatever an overview answer from before it began says meanwhile.
+  const [waiting, setWaiting] = useState(false)
+  const [seen, setSeen] = useState(initial)
+  if (initial !== seen) {
+    setSeen(initial)
+    if (!waiting) setPolled(undefined)
+  }
   const [error, setError] = useState<unknown>()
-  const running = round > 0
+  const run = polled ?? initial
+  // Followed while one is under way: the one asked for here, or one an answer says is (the cached overview, then the server's, on a later
+  // visit; one another tab started), so the page never says "being written" without asking how it gets on.
+  const running = waiting || run.running
 
   const start = async () => {
     setError(undefined)
     try {
       await runBackup()
       // Started now, or one was under way already: either way that is the backup to wait for.
-      setPolled({ ...(polled ?? initial), running: true, startedAt: null })
-      setRound((n) => n + 1)
+      setPolled({ ...run, running: true, startedAt: null })
+      setWaiting(true)
     } catch (e) {
       setError(e)
     }
   }
 
-  const status = runText(polled ?? initial)
+  const status = runText(run)
   return (
     <section aria-labelledby="backups-run">
       <Typography id="backups-run" component="h2" variant="h5" sx={{ mb: 1 }}>
@@ -178,11 +194,10 @@ function RunNow({ initial, onFinished }: { initial: BackupRunFieldsFragment; onF
       {error !== undefined && <ErrorMessage error={error} />}
       {running && (
         <RunPoll
-          key={round}
           onRun={(latest) => {
             setPolled(latest)
             if (!latest.running) {
-              setRound(0)
+              setWaiting(false)
               onFinished()
             }
           }}
@@ -192,9 +207,17 @@ function RunNow({ initial, onFinished }: { initial: BackupRunFieldsFragment; onF
   )
 }
 
-/** Asks how the run is getting on, outside the cache (an answer of only the run would replace the whole overview there). */
+/**
+ * Asks how the run is getting on, outside the cache (an answer of only the run would replace the whole overview there). Mounted afresh for
+ * every wait (the button is off while one goes on), so no answer of an earlier wait counts for this one; nothing is asked from a hidden tab
+ * or while the server is out of reach.
+ */
 function RunPoll({ onRun }: { onRun: (run: BackupRunFieldsFragment) => void }) {
-  const { data } = useQuery(BackupRunDocument, { fetchPolicy: 'no-cache', pollInterval: BACKUP_POLL_MS })
+  const { data } = useQuery(BackupRunDocument, {
+    fetchPolicy: 'no-cache',
+    pollInterval: BACKUP_POLL_MS,
+    skipPollAttempt: () => document.hidden || !connectivity.reachable,
+  })
   const report = useEffectEvent(onRun)
   useEffect(() => {
     if (data) report(data.backups.run)
@@ -211,6 +234,13 @@ function UploadBackup({ maxUploadMb, onUploaded }: { maxUploadMb: number; onUplo
   const [error, setError] = useState<unknown>()
 
   const send = async (file: File) => {
+    // Larger than the server takes (its rule exactly): said at once, before anything is sent. The server would refuse it as soon as it
+    // starts to arrive, which a browser still sending may only report as a lost connection.
+    if (file.size > maxUploadMb * 1024 * 1024) {
+      setStatus(undefined)
+      setError(new ApiError('backup.tooLarge', { maxMb: maxUploadMb }, 'The backup is larger than an upload may be.', 413))
+      return
+    }
     setBusy(true)
     setError(undefined)
     setStatus(t('admin.backups.uploading', { file: file.name, size: bytes(file.size) }))
@@ -276,7 +306,6 @@ function RestorePoints({ backups, onRestoring }: { backups: BackupsQuery['backup
   const { dateTime, bytes } = useFormat()
   const contentsText = useContentsText()
   const [error, setError] = useState<unknown>()
-  const [restore, setRestore] = useState<RestorePoint>()
 
   return (
     <section aria-labelledby="backups-points">
@@ -323,15 +352,26 @@ function RestorePoints({ backups, onRestoring }: { backups: BackupsQuery['backup
                   <TableCell>{bytes(p.bytes)}</TableCell>
                   <TableCell align="right">
                     <Stack direction="row" sx={{ gap: 1, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                      <Button size="small" variant="soft" aria-label={t('admin.backups.downloadAria', { made })} onClick={() => downloadBackup(p.file).catch(setError)}>
+                      <Button
+                        size="small"
+                        variant="soft"
+                        aria-label={t('admin.backups.downloadAria', { made, file: p.file })}
+                        onClick={() => downloadBackup(p.file).catch(setError)}
+                      >
                         <Download size={16} aria-hidden />
                         {t('admin.backups.download')}
                       </Button>
                       {p.sameMigration && (
-                        <Button size="small" variant="soft" color="error" aria-label={t('admin.backups.restoreAria', { made })} onClick={() => setRestore(p)}>
-                          <RotateCcw size={16} aria-hidden />
-                          {t('admin.backups.restore')}
-                        </Button>
+                        <RestoreDialog
+                          point={p}
+                          onRestoring={onRestoring}
+                          trigger={
+                            <Button size="small" variant="soft" color="error" aria-label={t('admin.backups.restoreAria', { made, file: p.file })}>
+                              <RotateCcw size={16} aria-hidden />
+                              {t('admin.backups.restore')}
+                            </Button>
+                          }
+                        />
                       )}
                     </Stack>
                   </TableCell>
@@ -341,44 +381,56 @@ function RestorePoints({ backups, onRestoring }: { backups: BackupsQuery['backup
           </TableBody>
         </SurfaceTable>
       )}
-      <RestoreDialog point={restore} onClose={() => setRestore(undefined)} onRestoring={onRestoring} />
     </section>
   )
 }
 
-/** The confirmation of a restore, with the passphrase (or the identity) of an encrypted backup. Nothing is written when it is wrong. */
-function RestoreDialog({ point, onClose, onRestoring }: { point: RestorePoint | undefined; onClose: () => void; onRestoring: (point: RestorePoint) => void }) {
+/**
+ * The confirmation of a restore, opened by its row's button, with the passphrase (or the identity) of an encrypted backup. It names the
+ * file as well as the time, since two backups can share a minute (a copy of one, a safety net written just after it). Nothing is written
+ * when the key is wrong.
+ */
+function RestoreDialog({ point, trigger, onRestoring }: { point: RestorePoint; trigger: ReactNode; onRestoring: (point: RestorePoint) => void }) {
   const { t } = useTranslation()
   const { dateTime } = useFormat()
-  // The dialog's content stays while it closes, so the last point is kept for the exit.
-  const [shown, setShown] = useState(point)
-  if (point && point !== shown) setShown(point)
+  const [open, setOpen] = useDialogState()
   const [busy, setBusy] = useState(false)
   return (
-    <DialogFrame
-      open={point !== undefined}
-      onClose={onClose}
-      busy={busy}
-      role="alertdialog"
-      title={t('admin.backups.restoreTitle', { made: shown ? dateTime(shown.createdAt) : '' })}
-      description={t('admin.backups.restoreDescription')}
-    >
-      {shown && <RestoreForm key={shown.file} point={shown} onBusy={setBusy} onRestoring={onRestoring} />}
-    </DialogFrame>
+    <>
+      <DialogTrigger trigger={trigger} open={open} onOpen={() => setOpen(true)} />
+      <DialogFrame
+        open={open}
+        onClose={() => setOpen(false)}
+        busy={busy}
+        role="alertdialog"
+        title={t('admin.backups.restoreTitle', { made: dateTime(point.createdAt), file: point.file })}
+        description={t('admin.backups.restoreDescription')}
+      >
+        <RestoreForm point={point} busy={busy} onBusy={setBusy} onRestoring={onRestoring} />
+      </DialogFrame>
+    </>
   )
 }
 
-function RestoreForm({ point, onBusy, onRestoring }: { point: RestorePoint; onBusy: (busy: boolean) => void; onRestoring: (point: RestorePoint) => void }) {
+function RestoreForm({
+  point,
+  busy,
+  onBusy,
+  onRestoring,
+}: {
+  point: RestorePoint
+  busy: boolean
+  onBusy: (busy: boolean) => void
+  onRestoring: (point: RestorePoint) => void
+}) {
   const { t } = useTranslation()
   const [restoreBackup] = useMutation(RestoreBackupDocument, { fetchPolicy: 'no-cache' })
   const [key, setKey] = useState<'passphrase' | 'identity'>('passphrase')
-  const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>()
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const secret = String(new FormData(e.currentTarget).get('secret') ?? '')
-    setBusy(true)
     onBusy(true)
     setError(undefined)
     try {
@@ -387,8 +439,13 @@ function RestoreForm({ point, onBusy, onRestoring }: { point: RestorePoint; onBu
       })
       onRestoring(point)
     } catch (err) {
+      // The server restarts a moment after it answers: a request that went and got no answer is that restart, which the wait then follows
+      // (it says so if the restore turns out not to have happened). Anything answered is a refusal, and so is an OfflineError (nothing sent).
+      if (classifyFailure(err) !== 'answered') {
+        onRestoring(point)
+        return
+      }
       setError(err)
-      setBusy(false)
       onBusy(false)
     }
   }
@@ -433,31 +490,39 @@ function RestoreForm({ point, onBusy, onRestoring }: { point: RestorePoint; onBu
 /**
  * After a restore was asked for: the server stops, takes the backup in as it starts and comes back with another generation of the data.
  * The page asks the server who it is until then (past the device's own answers) and reloads once the data is the restored one, so nothing
- * on screen is from before. A server back without the restore (it was refused at start) and one that stays away are said so.
+ * on screen is from before: an answer without the restore waiting any more, of another generation than the answers that still had it
+ * waiting. A server back without the restore (it was refused at start) and one that stays away are said so.
  */
 function RestartWait({ point, generation }: { point: RestorePoint; generation: string | undefined }) {
   const { t } = useTranslation()
   const { dateTime } = useFormat()
   const client = useApolloClient()
   const [state, setState] = useState<'waiting' | 'slow' | 'notRestored'>('waiting')
+  // The dialog and the row that opened it are gone: the focus goes to what took their place, which also has it read out.
+  const shown = useRef<HTMLDivElement>(null)
+  useEffect(() => shown.current?.focus(), [])
 
   useEffect(() => {
     let stopped = false
     let timer: ReturnType<typeof setTimeout> | undefined
+    // The generation of the data before the restore. An answer that still has the restore waiting comes from the server before it, so it
+    // says which that is (the page's own may be older: a restore made elsewhere since it loaded).
+    let before = generation
     const started = Date.now()
     const ask = async () => {
       try {
-        const { data } = await client.query({ query: SessionDocument, fetchPolicy: 'network-only', context: { offline: 'bypass' } })
+        // A deadline per question, as the settings page's restart has, and never one joined to an earlier question still unanswered.
+        const { data } = await withDeadline(
+          client.query({ query: SessionDocument, fetchPolicy: 'network-only', context: { offline: 'bypass', queryDeduplication: false } }),
+          PROBE_TIMEOUT_MS,
+        )
         const now = data?.session.instance?.generation
-        if (now && now !== generation) {
+        if (data?.notices.some((n) => n.code === 'RESTORE_PENDING')) before = now ?? before
+        else if (data) {
+          // Back, and nothing waits any more: restored when the data is of another generation, else refused as the app started.
           stopped = true
-          navigation.reload()
-          return
-        }
-        // Answered with the data as it was and nothing waiting any more: the restore was refused as the app started.
-        if (data && !data.notices.some((n) => n.code === 'RESTORE_PENDING')) {
-          setState('notRestored')
-          stopped = true
+          if (now && now !== before) navigation.reload()
+          else setState('notRestored')
           return
         }
       } catch {
@@ -476,7 +541,7 @@ function RestartWait({ point, generation }: { point: RestorePoint; generation: s
 
   if (state === 'notRestored') return <WarningMessage>{t('admin.backups.notRestored')}</WarningMessage>
   return (
-    <Stack role="status" sx={{ gap: 1 }}>
+    <Stack ref={shown} tabIndex={-1} role="status" sx={{ gap: 1 }}>
       <Typography className="tk-pulse">{t('admin.backups.restarting', { made: dateTime(point.createdAt) })}</Typography>
       {state === 'slow' && <Typography variant="body2" sx={{ color: 'text.secondary' }}>{t('admin.backups.restartSlow')}</Typography>}
     </Stack>
@@ -486,7 +551,9 @@ function RestartWait({ point, generation }: { point: RestorePoint; generation: s
 /** A key set for encrypted backups: made on the server from a passphrase (or one made up), shown once, then set as two settings. */
 function EncryptionSetup({ recipient }: { recipient: string | null }) {
   const { t } = useTranslation()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useDialogState()
+  // Escape and the backdrop do not close it while the keys are made, nor while they are shown and not yet kept: they are shown only once.
+  const [locked, setLocked] = useState(false)
   return (
     <section aria-labelledby="backups-encryption">
       <Typography id="backups-encryption" component="h2" variant="h5" sx={{ mb: 1 }}>
@@ -495,36 +562,55 @@ function EncryptionSetup({ recipient }: { recipient: string | null }) {
       <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1.5 }}>
         {recipient ? t('admin.backups.encryptionOn', { recipient: shortRecipient(recipient) }) : t('admin.backups.encryptionOff')}
       </Typography>
-      <Button variant="soft" onClick={() => setOpen(true)}>
-        <KeyRound size={16} aria-hidden />
-        {t('admin.backups.makeKeys')}
-      </Button>
-      <DialogFrame open={open} onClose={() => setOpen(false)} maxWidth={560} title={t('admin.backups.keysTitle')} description={t('admin.backups.keysDescription')}>
-        <KeySetForm replacing={recipient !== null} />
+      <DialogTrigger
+        trigger={
+          <Button variant="soft">
+            <KeyRound size={16} aria-hidden />
+            {t('admin.backups.makeKeys')}
+          </Button>
+        }
+        open={open}
+        onOpen={() => setOpen(true)}
+      />
+      <DialogFrame
+        open={open}
+        onClose={() => {
+          setLocked(false)
+          setOpen(false)
+        }}
+        busy={locked}
+        maxWidth={560}
+        title={t('admin.backups.keysTitle')}
+        description={t('admin.backups.keysDescription')}
+      >
+        <KeySetForm replacing={recipient !== null} onLock={setLocked} />
       </DialogFrame>
     </section>
   )
 }
 
-function KeySetForm({ replacing }: { replacing: boolean }) {
+function KeySetForm({ replacing, onLock }: { replacing: boolean; onLock: (locked: boolean) => void }) {
   const { t } = useTranslation()
   const [prepare] = useMutation(PrepareBackupEncryptionDocument, { fetchPolicy: 'no-cache' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>()
   const [keys, setKeys] = useState<KeySet>()
 
-  if (keys) return <KeySetShown keys={keys} />
+  if (keys) return <KeySetShown keys={keys} onLock={onLock} />
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const passphrase = String(new FormData(e.currentTarget).get('passphrase') ?? '')
     setBusy(true)
+    onLock(true)
     setError(undefined)
     try {
       const made = await prepare({ variables: { passphrase: passphrase === '' ? null : passphrase } })
-      if (made.data) setKeys(made.data.prepareBackupEncryption)
+      if (made.data) setKeys(made.data.prepareBackupEncryption) // shown, and the dialog stays until they are kept
+      else onLock(false)
     } catch (err) {
       setError(err)
+      onLock(false)
     } finally {
       setBusy(false)
     }
@@ -549,9 +635,13 @@ function KeySetForm({ replacing }: { replacing: boolean }) {
   )
 }
 
-function KeySetShown({ keys }: { keys: KeySet }) {
+function KeySetShown({ keys, onLock }: { keys: KeySet; onLock: (locked: boolean) => void }) {
   const { t } = useTranslation()
   const [saved, setSaved] = useState(false)
+  const keep = (kept: boolean) => {
+    setSaved(kept)
+    onLock(!kept)
+  }
   return (
     <Stack sx={{ gap: 1.5 }}>
       <SuccessMessage>{t('admin.backups.keysMade')}</SuccessMessage>
@@ -566,7 +656,7 @@ function KeySetShown({ keys }: { keys: KeySet }) {
       <Box component="pre" sx={(theme) => ({ m: 0, p: 1.5, borderRadius: '8px', backgroundColor: theme.vars.palette.neutral.soft, whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '0.85em' })}>
         {`Backups__Encryption__Recipient=${keys.recipient}\nBackups__Encryption__Salt=${keys.salt}`}
       </Box>
-      <FormControlLabel control={<Checkbox checked={saved} onChange={(e) => setSaved(e.target.checked)} />} label={t('admin.backups.keysSaved')} />
+      <FormControlLabel control={<Checkbox checked={saved} onChange={(e) => keep(e.target.checked)} />} label={t('admin.backups.keysSaved')} />
       <DialogButtons>
         <DialogCancel label={t('admin.backups.keysDone')} disabled={!saved} />
       </DialogButtons>
