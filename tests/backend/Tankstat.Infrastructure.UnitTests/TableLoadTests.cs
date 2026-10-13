@@ -111,14 +111,18 @@ public sealed class TableLoadTests : IDisposable
         await BackupSeed.SeedAsync(a, Path.Combine(_data, "a", "uploads"), Path.Combine(_data, "a", "uploads"), Path.Combine(_data, "a", "keys"));
         var backup = await a.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
         var inner = Inner(backup.Path);
-        File.AppendAllText(Path.Combine(inner, "tables", "Vehicles.jsonl"), BackupSeed.Lines(inner, "Vehicles")[0].Replace(BackupSeed.Name, "Another") + "\n"); // a row the manifest does not count (and a duplicate key)
+        // A row the manifest does not count, under an id of its own: it loads, so only the count can tell.
+        var first = BackupSeed.Lines(inner, "Vehicles")[0];
+        var id = JsonDocument.Parse(first).RootElement.GetProperty("Id").GetString()!;
+        File.AppendAllText(Path.Combine(inner, "tables", "Vehicles.jsonl"), first.Replace(id, Guid.NewGuid().ToString("D")).Replace(BackupSeed.Name, "Another") + "\n");
 
         await using var b = Database("b");
         var own = await BackupSeed.SeedAsync(b, Path.Combine(_data, "b", "uploads"), Path.Combine(_data, "b", "uploads"), Path.Combine(_data, "b", "keys"));
         await using var context = await Context(b);
-        await Assert.ThrowsAnyAsync<Exception>(() =>
+        var refused = await Assert.ThrowsAsync<DomainException>(() =>
             TableLoad.LoadAsync(context, Path.Combine(inner, "tables"), backup.Manifest.Contents.Tables, DateTimeOffset.UtcNow, backup.Manifest.CreatedAt, b.Log.For<TableLoadTests>(), default));
 
+        Assert.Equal("backup.corrupt", refused.Key);
         Assert.NotNull(await b.Get<IVehicleRepository>().FindAsync(own.Vehicle, default)); // rolled back
     }
 

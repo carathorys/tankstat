@@ -6,6 +6,7 @@ import { SessionDocument } from '../../../src/frontend/gql/generated.ts'
 import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
 import { deviceData } from '../../../src/frontend/offline/deviceData.ts'
 import { memoryStorage } from '../../../src/frontend/offline/deviceStorage.ts'
+import { foundRows, keptAnswers } from '../../../src/frontend/offline/foundRows.ts'
 import { answerLocally } from '../../../src/frontend/offline/localResolvers.ts'
 import { createPullEngine, PAGE_SIZE } from '../../../src/frontend/offline/pull.ts'
 import { snapshotKey } from '../../../src/frontend/offline/snapshotPolicy.ts'
@@ -34,6 +35,10 @@ async function localIds(vehicleId = 'v1') {
   const rows = await deviceData.rows()
   return ((await rows!.logs('refuelings', vehicleId)).map((r) => r.id)).sort()
 }
+
+/** The server's history, as the download asks it (`ServerGeneration`). */
+const generationIs = (generation: () => string) =>
+  graphql.query('ServerGeneration', () => HttpResponse.json({ data: { session: { __typename: 'Session', instance: { __typename: 'InstanceInfo', generation: generation() } } } }))
 
 it('a first download keeps the logs of the window page by page, and the answers of the vehicle page and the home page', async () => {
   for (const [id, date] of [['a', '2026-09-01'], ['b', '2026-09-15'], ['c', '2026-10-01'], ['d', '2026-08-10'], ['e', '2026-10-05']]) feed.add(id, date)
@@ -179,6 +184,55 @@ it('a run stops keeping anything once the server names another account', async (
 
   await deviceData.signedIn('u1')
   expect(await localIds()).toEqual([])
+})
+
+it('asks which history the server has before it writes anything: after a restore no Session answer told of, the rows are set aside and the window downloaded afresh', async () => {
+  for (const [id, date] of [['a', '2026-09-01'], ['b', '2026-09-15']]) feed.add(id, date)
+  feed.later() // saved well before the downloads: what changed since one of them never brings them again
+  let generation = 'g1'
+  server.use(generationIs(() => generation))
+  const rows = (await deviceData.writableRows())!
+  deviceData.onGenerationChange(async (phase, { from }) => {
+    if (phase === 'before') await foundRows.setAside(rows, keptAnswers, from)
+  })
+  const pull = engine(50)
+  await pull.run()
+  expect(await localIds()).toEqual(['a', 'b'])
+  // A refuelling this device downloaded that the backup does not hold (it was logged after it).
+  await rows.putLogs('refuelings', [{ ...(await rows.log('refuelings', 'b'))!, id: 'lost', date: '2026-10-01' }])
+  feed.later()
+  feed.asked.length = 0
+
+  generation = 'g2' // restored meanwhile: the tab's requests all went through the short restart, so no Session answer said so
+  await pull.run()
+
+  expect(feed.asked[0]).toMatchObject({ from: '2026-08-07' }) // afresh and in full, never only what changed since the old history's download
+  expect(await localIds()).toEqual(['a', 'b'])
+  expect((await rows.found()).map((r) => [r.id, r.checked, r.serverVersion])).toEqual([['lost', true, undefined]]) // the rest is on the server
+})
+
+it('a run that goes on while another tab starts afresh for a new history is followed at once by one that downloads the window again', async () => {
+  for (const [id, date] of [['a', '2026-09-01'], ['b', '2026-09-15']]) feed.add(id, date)
+  feed.later()
+  let generation = 'g1'
+  server.use(generationIs(() => generation))
+  const pull = engine(50)
+  await pull.run()
+  feed.later()
+  feed.asked.length = 0
+  // Restored while this run waits for what changed since its last download; another tab heard it first and started afresh.
+  feed.onAsk(async (n) => {
+    if (n !== 1) return
+    generation = 'g2'
+    await deviceData.generationSeen('g2')
+  })
+
+  await pull.run()
+
+  expect(feed.asked.map((input) => ('from' in input ? 'in full' : 'what changed'))).toEqual(['what changed', 'in full'])
+  expect(await localIds()).toEqual(['a', 'b'])
+  await pull.run()
+  expect(await localIds()).toEqual(['a', 'b'])
 })
 
 it('downloads nothing for someone the server did not confirm', async () => {

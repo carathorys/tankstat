@@ -77,7 +77,8 @@
     "label": "Közlemények",
     "warning": "Figyelem:",
     "AUTH_DISABLED": "A hitelesítés ki van kapcsolva: aki eléri ezt az alkalmazást, az minden adatot láthat és módosíthat. Ez nem biztonságos; állítsd be az Auth:Mode értékét.",
-    "SETTINGS_FILE_IGNORED": "Az alkalmazás saját beállításfájlja nem volt használható, ezért kimaradt; az alkalmazás nélküle fut a következő indításig. Az okot a kiszolgáló naplója tartalmazza."
+    "SETTINGS_FILE_IGNORED": "Az alkalmazás saját beállításfájlja nem volt használható, ezért kimaradt; az alkalmazás nélküle fut a következő indításig. Az okot a kiszolgáló naplója tartalmazza.",
+    "RESTORE_PENDING": "Egy visszaállítás vár az alkalmazás újraindítására: a következő indításkor az összes adatot a biztonsági mentés tartalma váltja fel."
   },
   "notifications": {
     "title": "Értesítések",
@@ -771,6 +772,7 @@
       "notEncrypted": "A mentés nincs titkosítva; nem nyitja jelmondat.",
       "newerFormat": "A mentést egy újabb kiadás írta (Tankstat {{appVersion}}); előbb frissíts.",
       "otherMigration": "A mentés az adatbázis másik verziójánál készült ({{backup}}), mint amin ez áll ({{database}}); azzal a kiadással állítsd vissza, amelyik írta.",
+      "databaseNewer": "Az adatbázist a Tankstat egy újabb kiadása frissítette ({{migration}}); azzal a kiadással készíts róla mentést.",
       "codeRequired": "A kiszolgáló naplójából az egyszer használatos visszaállítási kód kell hozzá.",
       "passphraseRequired": "Jelmondatot vár.",
       "tooLarge": "A fájl nagyobb, mint amekkora feltölthető ({{maxMb}} MB); másold inkább a mentések mappájába.",
@@ -1536,7 +1538,12 @@
       "sent_one": "{{count}} bejegyzés vár küldésre.",
       "sent_other": "{{count}} bejegyzés vár küldésre.",
       "forgotten_one": "{{count}} bejegyzés elfelejtve.",
-      "forgotten_other": "{{count}} bejegyzés elfelejtve."
+      "forgotten_other": "{{count}} bejegyzés elfelejtve.",
+      "failed": "Ez nem sikerült; próbáld újra.",
+      "leftWaiting_one": "{{count}} bejegyzés a listán marad: egy saját módosítása vár ezen az eszközön, az megy előbb.",
+      "leftWaiting_other": "{{count}} bejegyzés a listán marad: saját módosításaik várnak ezen az eszközön, azok mennek előbb.",
+      "navCount_one": "{{count}} talált bejegyzés ezen az eszközön",
+      "navCount_other": "{{count}} talált bejegyzés ezen az eszközön"
     }
   },
   "systemSettings": {

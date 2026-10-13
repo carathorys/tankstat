@@ -25,7 +25,13 @@ public sealed class BackupStoreTests : IDisposable
         if (Directory.Exists(_data)) Directory.Delete(_data, recursive: true);
     }
 
-    private FileBackupStore Store() => new(Options.Create(new BackupOptions { Path = Backups }));
+    private FileBackupStore Store() => new(Options.Create(new BackupOptions { Path = Backups }), new NoDatabase());
+
+    /// <summary>The folder's tests never ask the database (only the migration check of a restore does): a factory that says so if it is used.</summary>
+    private sealed class NoDatabase : IDbContextFactory<AppDbContext>
+    {
+        public AppDbContext CreateDbContext() => throw new InvalidOperationException("The backups folder's tests use no database.");
+    }
 
     /// <summary>A real backup file (of a seeded SQLite instance), written outside the backups folder.</summary>
     private async Task<string> BackupFileAsync()
@@ -57,7 +63,7 @@ public sealed class BackupStoreTests : IDisposable
 
         Assert.Equal(("copied-by-hand.zip", new FileInfo(backup).Length, false), (point.File, point.Bytes, point.Uploaded));
         Assert.Equal(Path.GetFullPath(Backups), store.Folder);
-        Assert.Empty(new FileBackupStore(Options.Create(new BackupOptions { Path = Path.Combine(_data, "no-such-folder") })).List());
+        Assert.Empty(new FileBackupStore(Options.Create(new BackupOptions { Path = Path.Combine(_data, "no-such-folder") }), new NoDatabase()).List());
     }
 
     [Fact]
