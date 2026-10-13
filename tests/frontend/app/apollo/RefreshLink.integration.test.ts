@@ -39,7 +39,7 @@ it('when the device has to sign in again the answer stands, and the session is a
     graphql.query('Health', () => HttpResponse.json(signInFirst())),
     graphql.query('Session', () => {
       sessions++
-      return HttpResponse.json({ data: { session: { mode: 'STANDALONE', user: null }, notices: [] } })
+      return HttpResponse.json({ data: { session: { mode: 'STANDALONE', user: null, instance: fakeInstance() }, notices: [] } })
     }),
   )
   const client = createApolloClient('http://localhost/graphql')
@@ -59,7 +59,7 @@ it('a refresh that does not get through leaves the answer as it is, without aski
     graphql.query('Health', () => HttpResponse.json(signInFirst())),
     graphql.query('Session', () => {
       sessions++
-      return HttpResponse.json({ data: { session: { mode: 'STANDALONE', user: null }, notices: [] } })
+      return HttpResponse.json({ data: { session: { mode: 'STANDALONE', user: null, instance: fakeInstance() }, notices: [] } })
     }),
     http.post('/auth/token/refresh', () => HttpResponse.error()),
   )

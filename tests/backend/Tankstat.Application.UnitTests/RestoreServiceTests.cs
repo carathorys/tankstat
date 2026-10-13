@@ -3,7 +3,10 @@ using Tankstat.Domain;
 
 namespace Tankstat.Application.UnitTests;
 
-/// <summary>Asking for a restore restarts the server in its process, as an administrator's restart does, and never when the next start would refuse the settings file.</summary>
+/// <summary>
+/// Asking for a restore restarts the server in its process, as an administrator's restart does, and never when the start would refuse the
+/// backup or the next start the settings file.
+/// </summary>
 public sealed class RestoreServiceTests
 {
     private static readonly BackupManifest Plain = new(
@@ -13,9 +16,13 @@ public sealed class RestoreServiceTests
     private sealed class OneBackup : IBackupStore
     {
         public RestoreMarker? Marker { get; private set; }
+        /// <summary>The database's migration, when it is not the backup's.</summary>
+        public string? OtherMigration { get; init; }
         public bool RestorePending => Marker is not null;
         public BackupManifest ReadManifest(string fileName) => Plain;
         public string? IdentityFor(BackupManifest manifest, string? passphrase, string? identity) => throw new NotSupportedException();
+        public Task RequireSameMigrationAsync(BackupManifest manifest, CancellationToken ct) =>
+            OtherMigration is null ? Task.CompletedTask : throw new DomainException("backup.otherMigration", "Another migration.", new { Backup = manifest.Migration, Database = OtherMigration });
         public void RequestRestore(RestoreMarker marker) => Marker = marker;
         public IReadOnlyList<RestorePoint> List() => [];
         public string Folder => "backups";
@@ -24,11 +31,11 @@ public sealed class RestoreServiceTests
         public void Delete(string fileName) => throw new NotSupportedException();
     }
 
-    private static (World World, OneBackup Store, RestoreService Service) Admin()
+    private static (World World, OneBackup Store, RestoreService Service) Admin(OneBackup? store = null)
     {
         var w = new World();
         w.Current.SignInAs(w.AddUser("root@x.co", admin: true));
-        var store = new OneBackup();
+        store ??= new OneBackup();
         return (w, store, new RestoreService(store, w.Access, w.Options.Create(), new RestoreCode(), w.SystemConfiguration, w.Restart, w.Clock, w.Log.For<RestoreService>()));
     }
 
@@ -53,6 +60,18 @@ public sealed class RestoreServiceTests
         var refused = await Assert.ThrowsAsync<DomainException>(() => service.RequestAsync(new RestoreRequest("tankstat-backup-1.zip", null, null, null), default));
 
         Assert.Equal("settings.restartWouldFail", refused.Key);
+        Assert.Null(store.Marker);
+        Assert.Equal(0, w.Restart.Count);
+    }
+
+    [Fact]
+    public async Task ABackupOfAnotherMigration_IsRefusedAtOnce_NotAfterARestartThatComesBackWithTheDataAsItWas()
+    {
+        var (w, store, service) = Admin(new OneBackup { OtherMigration = "20261101000000_SomethingNewer" });
+
+        var refused = await Assert.ThrowsAsync<DomainException>(() => service.RequestAsync(new RestoreRequest("tankstat-backup-1.zip", null, null, null), default));
+
+        Assert.Equal("backup.otherMigration", refused.Key);
         Assert.Null(store.Marker);
         Assert.Equal(0, w.Restart.Count);
     }

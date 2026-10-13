@@ -3,6 +3,7 @@ import { fetchSignedIn } from '../auth/refresh.ts'
 import {
   OfflineChangesDocument,
   OfflineSettingsDocument,
+  ServerGenerationDocument,
   SessionDocument,
   VehicleDefaultsDocument,
   WelcomeDocument,
@@ -11,10 +12,11 @@ import {
 } from '../gql/generated.ts'
 import { HOME_PAGE_SIZE } from '../homePaging.ts'
 import { connectivity } from './connectivity.ts'
-import { deviceData } from './deviceData.ts'
+import { deviceData, GENERATION_KEY } from './deviceData.ts'
 import type { LogKind, LogRow, PullCursor, RowStore, VehicleRow } from './deviceStorage.ts'
 import { isConnectionFailure } from './errors.ts'
 import { keptPictures, pictureIdOf } from './keptPictures.ts'
+import { generationOf, keptBy } from './offlineLink.ts'
 import { DEFAULT_RULE, fromDate, narrower } from './offlineWindow.ts'
 import { snapshotKey } from './snapshotPolicy.ts'
 
@@ -62,6 +64,8 @@ export interface PullDeps {
 
 /**
  * Downloads the user's offline window and keeps it current (`offlineChanges` on the server, `offline-download` in the docs):
+ * 0. which history the server's data has (`ServerGeneration`): after a restore the device sets what it holds aside and starts afresh
+ *    before anything is written (`deviceData.generationSeen`), whether or not a `Session` answer said so already;
  * 1. the home list (one request): the vehicles are kept, the ones no longer listed are dropped with everything below them (access lost,
  *    trashed or purged by someone else), and its pages are kept for the home page;
  * 2. the defaults a new vehicle or schedule starts from (kept for adding offline), and the window rules (`offlineSettings`), turned into a
@@ -103,6 +107,19 @@ export function createPullEngine({
   const sameAccount = () => {
     if (device.user !== account) throw new AccountChanged()
   }
+
+  /**
+   * The server's history the run downloads (kept by `deviceData.generationSeen`). Every cursor carries the one it was written in: a run that
+   * went on while another tab started afresh for a new history (a restore came during the run) writes cursors of the old one, which the
+   * next run takes for none, and a run that sees the history change under it is followed by another at once.
+   */
+  let generation: string | undefined
+  const keptGeneration = async () => {
+    const kept = (await device.read(GENERATION_KEY))?.data
+    return typeof kept === 'string' ? kept : undefined
+  }
+  /** Whether a cursor was written in this run's history (or before histories were told apart): only such a one is gone on from. */
+  const sameHistory = (cursor: PullCursor | undefined) => cursor?.generation === undefined || cursor.generation === generation
 
   async function keepHomePages(vehicles: readonly VehicleRow[], total: number) {
     sameAccount()
@@ -183,8 +200,8 @@ export function createPullEngine({
   async function restart(rows: RowStore, cursor: PullCursor | undefined, from: string | null = cursor?.from === false ? null : (cursor?.from ?? null)) {
     // A vehicle that held its logs keeps answering from them while they download again; one that held none (window "none") does not
     // until the download is through: a first page alone is not the list.
-    const complete = cursor?.from === false ? false : (cursor?.complete ?? false)
-    const fresh: PullCursor = { vehicleId: cursor!.vehicleId, from, watermark: null, next: null, complete, fullStartedAt: Date.now() }
+    const complete = cursor?.from === false || !sameHistory(cursor) ? false : (cursor?.complete ?? false)
+    const fresh: PullCursor = { vehicleId: cursor!.vehicleId, from, watermark: null, next: null, complete, fullStartedAt: Date.now(), generation }
     await rows.putCursor(fresh)
     return fresh
   }
@@ -251,11 +268,12 @@ export function createPullEngine({
 
   async function pullVehicle(rows: RowStore, vehicleId: string, rule: string) {
     const from = fromDate(rule, now())
-    const cursor = await rows.cursor(vehicleId)
+    const kept = await rows.cursor(vehicleId)
+    const cursor = kept && sameHistory(kept) ? { ...kept, generation } : undefined
     if (from === false) {
       // Nothing of its logs on this device: the vehicle's card and page come from the home list and the answers seen.
       if (cursor?.from !== false) await removeBefore(rows, vehicleId, () => true)
-      await rows.putCursor({ vehicleId, from: false, watermark: null, next: null, complete: true, fullStartedAt: null })
+      await rows.putCursor({ vehicleId, from: false, watermark: null, next: null, complete: true, fullStartedAt: null, generation })
       return
     }
     const started = cursor?.fullStartedAt != null
@@ -271,12 +289,26 @@ export function createPullEngine({
   }
 
   async function runOnce() {
-    const rows = await device.writableRows()
-    if (!rows || !connectivity.reachable) return
-    // A run belongs to the account it started for: once the server names someone else, nothing more of it lands anywhere.
-    account = device.user
+    if (!(await device.writableRows()) || !connectivity.reachable) return
     set({ status: 'pulling', vehiclesDone: 0, vehiclesTotal: 0, interrupted: false })
     try {
+      // Which history the server's data has, before anything is written: a restore may have taken it back to a backup since this device
+      // last heard (no Session answer comes to a tab whose requests all went through the short restart, and the one that does may come
+      // while this run goes). The device then sets what it holds aside and starts afresh first (`deviceData.generationSeen`, which waits
+      // for a check another answer or tab began), so nothing of the new history overwrites, or drops, what it has to set aside.
+      const server = await client.query({ query: ServerGenerationDocument, fetchPolicy: 'no-cache', context: SERVER }).then(
+        (answer) => answer.data,
+        (error: unknown) => {
+          if (isConnectionFailure(error)) throw error
+          return undefined // a server that cannot say (an older one): nothing to compare with
+        },
+      )
+      await device.generationSeen(generationOf(server))
+      const rows = await device.writableRows()
+      if (!rows) throw new AccountChanged() // signed out meanwhile
+      // A run belongs to the account it started for: once the server names someone else, nothing more of it lands anywhere.
+      account = device.user
+      generation = await keptGeneration()
       const home = await query(() => client.query({ query: WelcomeDocument, variables: { search: null, skip: 0, take: MAX_VEHICLES }, fetchPolicy: 'network-only', context: SERVER }))
       const vehicles = home.myVehicles as unknown as VehicleRow[]
       await rows.putVehicles(vehicles)
@@ -306,15 +338,25 @@ export function createPullEngine({
         }
       }
       await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, worker))
+      // The device started afresh for another history meanwhile (another tab heard of a restore while this run went on): what this run
+      // kept since is no window, and its cursors say so. The next run downloads it again, at once.
+      if ((await keptGeneration()) !== generation) throw new HistoryChanged()
       const finished = Date.now()
       await device.keep(LAST_PULL_KEY, finished)
-      // Rows set aside when the server's history changed: the ones it has again leave the list (`foundRows.ts`).
-      await (await import('./foundRows.ts')).foundRows.reconcile(rows, async (operationName, variables) => (await device.read(snapshotKey(operationName, variables)))?.data as Record<string, unknown> | undefined)
+      // Rows set aside when the server's history changed: those the download covers are judged, and the ones it has again leave the list
+      // (`foundRows.ts`). Not worth failing the download over.
+      try {
+        await (await import('./foundRows.ts')).foundRows.reconcile(rows, keptBy(device))
+      } catch (error) {
+        console.warn('What was found on this device could not be compared with the download; the next one tries again.', error)
+      }
       await keepPictures(rows)
       set({ status: 'idle', lastPullAt: finished })
     } catch (error) {
+      if (error instanceof HistoryChanged) again = true
       set({ status: 'idle', interrupted: isConnectionFailure(error) })
-      if (!isConnectionFailure(error) && !(error instanceof AccountChanged)) console.warn('The offline download failed; the next one tries again.', error)
+      if (!isConnectionFailure(error) && !(error instanceof AccountChanged) && !(error instanceof HistoryChanged))
+        console.warn('The offline download failed; the next one tries again.', error)
     }
   }
 
@@ -351,6 +393,9 @@ export type PullEngine = ReturnType<typeof createPullEngine>
 
 /** The server named another account during a run: it stops, keeping nothing more. */
 class AccountChanged extends Error {}
+
+/** The device started afresh for another history during a run: another run follows it at once. */
+class HistoryChanged extends Error {}
 
 function keyOf(error: unknown): string | undefined {
   const errors = (error as { errors?: readonly { extensions?: { key?: unknown } }[] } | null)?.errors

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Tankstat.Application.Backups;
 
 namespace Tankstat.Api.GraphQL;
@@ -51,7 +52,7 @@ public sealed record BackupOverviewInfo(string Folder, BackupRunInfo Run, Backup
             new BackupRunInfo(s.Run.Running, last?.StartedAt, last?.FinishedAt, last?.File, last?.Bytes, last?.Error),
             new BackupSettingsInfo(
                 s.Settings.Encrypted ? s.Settings.Encryption.Recipient!.Trim() : null, s.PhotosApart, s.Settings.Photos, s.Settings.MaxUploadMb,
-                s.Settings.DailyAt?.ToString("HH:mm"), s.NextRun, s.Settings.Keep, s.Settings.KeepDays));
+                s.Settings.DailyAt?.ToString("HH:mm", CultureInfo.InvariantCulture), s.NextRun, s.Settings.Keep, s.Settings.KeepDays)); // a culture's time separator (fi-FI: 02.00) is not the setting's
     }
 }
 
@@ -67,7 +68,7 @@ public sealed class BackupOverviewInfoExtensions
 
     /// <summary>The name of the migration the database is at; a backup made at another one cannot be restored here.</summary>
     public async Task<string?> GetMigration([Service] BackupAdminService backups, CancellationToken ct) =>
-        MigrationNames.Of((await backups.RestorePointsAsync(ct)).DatabaseMigration);
+        MigrationNames.Of(await backups.MigrationAsync(ct));
 
     public async Task<StorageSizesInfo> GetSizes([Service] BackupAdminService backups, CancellationToken ct)
     {
@@ -92,8 +93,8 @@ public sealed class BackupMutations
     /// <summary>
     /// Asks for a restore of a backup from the backups folder: the data is replaced as a whole at the next start, which follows right after
     /// the answer (the server restarts in its process, as <c>restartServer</c> does). An administrator; with sign-in off, the one-time code
-    /// from the log. A wrong passphrase is <c>backup.wrongKey</c> at once, a restart the next start would refuse <c>settings.restartWouldFail</c>;
-    /// nothing is written then.
+    /// from the log. A wrong passphrase is <c>backup.wrongKey</c> at once, a backup of another migration <c>backup.otherMigration</c>, a restart
+    /// the next start would refuse <c>settings.restartWouldFail</c>; nothing is written then.
     /// </summary>
     public async Task<RestorePendingInfo> RestoreBackup(RestoreBackupInput input, [Service] RestoreService restores, CancellationToken ct)
     {

@@ -19,6 +19,10 @@ public sealed class ApiFixture : IDisposable
     private const string StorageVar = "Storage__Path";
     private const string PhotosVar = "Storage__PhotosPath";
     private const string SettingsVar = "Settings__Path";
+    private const string BackupsVar = "Backups__Path";
+
+    /// <summary>A schedule or retention of the developer's would make a start write and prune backups: none here.</summary>
+    private static readonly string[] ScheduleVars = ["Backups__Every", "Backups__Keep", "Backups__KeepDays"];
 
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}.db");
 
@@ -28,6 +32,9 @@ public sealed class ApiFixture : IDisposable
 
     /// <summary>A settings file of the run's own (none exists): never a developer's.</summary>
     public string SettingsPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-settings.json");
+
+    /// <summary>A backups folder of the run's own: never a developer's.</summary>
+    public string BackupsPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-backups");
 
     public WebApplicationFactory<Program> Factory { get; }
 
@@ -39,6 +46,8 @@ public sealed class ApiFixture : IDisposable
         Environment.SetEnvironmentVariable(StorageVar, UploadsPath);
         Environment.SetEnvironmentVariable(PhotosVar, PhotosPath);
         Environment.SetEnvironmentVariable(SettingsVar, SettingsPath);
+        Environment.SetEnvironmentVariable(BackupsVar, BackupsPath);
+        foreach (var name in ScheduleVars) Environment.SetEnvironmentVariable(name, null);
         Factory = new WebApplicationFactory<Program>();
     }
 
@@ -51,8 +60,9 @@ public sealed class ApiFixture : IDisposable
         Environment.SetEnvironmentVariable(StorageVar, null);
         Environment.SetEnvironmentVariable(PhotosVar, null);
         Environment.SetEnvironmentVariable(SettingsVar, null);
+        Environment.SetEnvironmentVariable(BackupsVar, null);
         File.Delete(SettingsPath);
-        foreach (var folder in new[] { UploadsPath, PhotosPath })
+        foreach (var folder in new[] { UploadsPath, PhotosPath, BackupsPath })
             if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
         // Only this database's pooled connections: ClearAllPools would also close the ones of tests running in parallel.
         using (var pooled = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_path}")) Microsoft.Data.Sqlite.SqliteConnection.ClearPool(pooled);

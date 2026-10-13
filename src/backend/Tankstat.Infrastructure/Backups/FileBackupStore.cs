@@ -1,9 +1,11 @@
 using System.Text;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Tankstat.Application;
 using Tankstat.Application.Backups;
 using Tankstat.Domain;
 using Tankstat.Domain.Backups;
+using Tankstat.Infrastructure.Persistence;
 
 namespace Tankstat.Infrastructure.Backups;
 
@@ -11,7 +13,7 @@ namespace Tankstat.Infrastructure.Backups;
 /// The backups folder (<c>Backups:Path</c>): the restore points in it, uploads into it and downloads out of it, and the restore that waits
 /// for the next start. Files by bare name only, so nothing outside the folder is ever reached.
 /// </summary>
-internal sealed class FileBackupStore(IOptionsMonitor<BackupOptions> options) : IBackupStore
+internal sealed class FileBackupStore(IOptionsMonitor<BackupOptions> options, IDbContextFactory<AppDbContext> dbFactory) : IBackupStore
 {
     private const string Uploading = ".uploading";
 
@@ -38,8 +40,31 @@ internal sealed class FileBackupStore(IOptionsMonitor<BackupOptions> options) : 
         }
         else if (!string.IsNullOrEmpty(passphrase)) key = BackupFile.IdentityOf(manifest, passphrase);
         else throw new DomainException("backup.keyRequired", "The backup is encrypted: its passphrase or identity is needed.");
-        if (!BackupKeys.Opens(key, encryption.Recipient)) throw new DomainException("backup.wrongKey", "The identity does not open this backup.");
+        bool opens;
+        try
+        {
+            opens = BackupKeys.Opens(key, encryption.Recipient);
+        }
+        catch (FormatException)
+        {
+            throw new DomainException("backup.corrupt", "The file is damaged or is not a Tankstat backup."); // a manifest whose recipient is none
+        }
+        if (!opens) throw new DomainException("backup.wrongKey", "The identity does not open this backup.");
         return AgeKeys.FormatIdentity(key);
+    }
+
+    public Task RequireSameMigrationAsync(BackupManifest manifest, CancellationToken ct) => RequireSameMigrationAsync(dbFactory, manifest, ct);
+
+    /// <summary>
+    /// The backup's last migration must be the one the database is at, compared by name: each provider stamps the same migration with its
+    /// own timestamp, and a backup may come from another provider. <c>backup.otherMigration</c> otherwise (older backups wait for a replay).
+    /// </summary>
+    internal static async Task RequireSameMigrationAsync(IDbContextFactory<AppDbContext> dbFactory, BackupManifest manifest, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var applied = (await db.Database.GetAppliedMigrationsAsync(ct)).LastOrDefault();
+        if (!MigrationNames.Same(applied, manifest.Migration))
+            throw new DomainException("backup.otherMigration", "The backup was made at another migration than the database is at.", new { Backup = manifest.Migration, Database = applied });
     }
 
     public bool RestorePending => File.Exists(RestoreMarker.PathIn(Root));
@@ -52,9 +77,11 @@ internal sealed class FileBackupStore(IOptionsMonitor<BackupOptions> options) : 
         var points = new List<RestorePoint>();
         foreach (var path in Directory.EnumerateFiles(Root, "*.zip"))
         {
+            var name = Path.GetFileName(path);
+            if (!IsBackupName(name)) continue; // a hidden file, which no download or restore would take
             try
             {
-                points.Add(new RestorePoint(Path.GetFileName(path), new FileInfo(path).Length, BackupFile.ReadManifest(path)));
+                points.Add(new RestorePoint(name, new FileInfo(path).Length, BackupFile.ReadManifest(path)));
             }
             catch (Exception e) when (e is DomainException or IOException or UnauthorizedAccessException)
             {
@@ -67,11 +94,12 @@ internal sealed class FileBackupStore(IOptionsMonitor<BackupOptions> options) : 
     public async Task<RestorePoint> SaveUploadAsync(Stream content, string? fileName, long maxBytes, CancellationToken ct)
     {
         Directory.CreateDirectory(Root);
-        var name = UploadName(fileName);
+        var (name, file) = ClaimUpload(fileName);
         var temporary = Path.Combine(Root, name + Uploading);
+        var moved = false;
         try
         {
-            await using (var file = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true))
+            await using (file)
             {
                 var buffer = new byte[81920];
                 long total = 0;
@@ -82,48 +110,69 @@ internal sealed class FileBackupStore(IOptionsMonitor<BackupOptions> options) : 
                     if (total > maxBytes) throw TooLarge(maxBytes);
                     await file.WriteAsync(buffer.AsMemory(0, read), ct);
                 }
+                // On disk before the rename publishes it, as the writer's: after a power cut the final name never holds a file cut short.
+                file.Flush(flushToDisk: true);
             }
             var manifest = BackupFile.ReadManifest(temporary);
-            if (manifest.WrittenBy != BackupManifest.Tankstat) throw new DomainException("backup.corrupt", "The file is damaged or is not a Tankstat backup.");
-            BackupFile.VerifyChecksum(temporary, manifest);
+            await BackupFile.VerifyChecksumAsync(temporary, manifest, ct);
             var path = Path.Combine(Root, name);
             File.Move(temporary, path);
+            moved = true;
             return new RestorePoint(name, new FileInfo(path).Length, manifest);
         }
         finally
         {
-            if (File.Exists(temporary)) File.Delete(temporary);
+            if (!moved) File.Delete(temporary); // this upload's own file: it was created new for it, so it is never another's
         }
     }
 
-    public Stream OpenRead(string fileName) => new FileStream(PathOf(fileName), FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true);
+    /// <summary>
+    /// A backup of the folder to download: one <see cref="List"/> would show (a <c>*.zip</c> whose manifest reads), never any other file there,
+    /// such as the restore marker with its identity or a file still being written; <c>backup.notFound</c> otherwise.
+    /// </summary>
+    public Stream OpenRead(string fileName)
+    {
+        var path = PathOf(fileName);
+        try
+        {
+            BackupFile.ReadManifest(path);
+            return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true);
+        }
+        catch (Exception e) when (e is DomainException or FileNotFoundException or DirectoryNotFoundException)
+        {
+            throw NotFound(); // not a backup, or gone since the look
+        }
+    }
 
     public void Delete(string fileName)
     {
-        try
-        {
-            File.Delete(PathOf(fileName));
-        }
-        catch (NotFoundException)
-        {
-            // gone already: nothing to remove (a name that is not a bare one never gets here: List only hands out bare names)
-        }
+        if (!IsBackupName(fileName)) return; // never anything but a backup of the folder (List only hands out such names)
+        var path = Path.Combine(Root, fileName);
+        if (File.Exists(path)) File.Delete(path); // gone already: nothing to remove
     }
 
-    /// <summary>A backup of the folder by its bare name; <c>backup.notFound</c> for anything else (a path, a hidden file, one not there).</summary>
+    /// <summary>A backup of the folder by its bare name; <c>backup.notFound</c> for anything else (a path, a hidden file, not a backup's name, one not there).</summary>
     private string PathOf(string fileName)
     {
-        if (string.IsNullOrWhiteSpace(fileName) || Path.GetFileName(fileName) != fileName || fileName.StartsWith('.')) throw NotFound();
+        if (!IsBackupName(fileName)) throw NotFound();
         var path = Path.Combine(Root, fileName);
         if (!File.Exists(path)) throw NotFound();
         return path;
     }
 
     /// <summary>
-    /// <c>uploaded-&lt;the name&gt;.zip</c>: only letters, digits, dots, dashes and underscores of the name the browser sent, then a number
-    /// when that name is taken, so an upload never replaces a file and is never taken for one the app wrote.
+    /// Whether a name can be a backup's: a bare <c>*.zip</c> name, not hidden. The rest of the folder (the restore marker, which holds an
+    /// identity in plain, a refused one, a <c>.partial</c> or <c>.uploading</c> file still being written) is never listed, read or sent.
     /// </summary>
-    private string UploadName(string? fileName)
+    private static bool IsBackupName(string fileName) =>
+        !string.IsNullOrWhiteSpace(fileName) && Path.GetFileName(fileName) == fileName && !fileName.StartsWith('.') && fileName.EndsWith(".zip", StringComparison.Ordinal);
+
+    /// <summary>
+    /// <c>uploaded-&lt;the name&gt;.zip</c>: only letters, digits, dots, dashes and underscores of the name the browser sent, then a number
+    /// when that name is taken, so an upload never replaces a file and is never taken for one the app wrote. The name is claimed by creating
+    /// its temporary file new, one claim at a time: two uploads of one name at once never share a file, and each removes only its own.
+    /// </summary>
+    private (string Name, FileStream File) ClaimUpload(string? fileName)
     {
         var stem = Path.GetFileNameWithoutExtension(fileName ?? "");
         var clean = new StringBuilder();
@@ -131,12 +180,33 @@ internal sealed class FileBackupStore(IOptionsMonitor<BackupOptions> options) : 
         var safe = clean.ToString().Trim('-', '.');
         if (safe.Length == 0) safe = "backup";
         if (safe.Length > 80) safe = safe[..80];
-        for (var n = 1; ; n++)
+        lock (Claims)
         {
-            var name = $"{RestorePoint.UploadedPrefix}{safe}{(n == 1 ? "" : $"-{n}")}.zip";
-            if (!File.Exists(Path.Combine(Root, name)) && !File.Exists(Path.Combine(Root, name + Uploading))) return name;
+            for (var n = 1; ; n++)
+            {
+                var name = $"{RestorePoint.UploadedPrefix}{safe}{(n == 1 ? "" : $"-{n}")}.zip";
+                var path = Path.Combine(Root, name);
+                // The temporary file first: another upload's rename, outside this lock, makes the final name before it removes its temporary
+                // one, so a look in this order never finds neither while that upload holds the name.
+                if (File.Exists(path + Uploading) || File.Exists(path)) continue;
+                FileStream file;
+                try
+                {
+                    file = new FileStream(path + Uploading, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true);
+                }
+                catch (IOException) when (File.Exists(path + Uploading) || File.Exists(path))
+                {
+                    continue; // taken meanwhile by something other than this server's uploads (a copy by hand)
+                }
+                if (!File.Exists(path)) return (name, file);
+                file.Dispose(); // the final name appeared meanwhile, put there by hand: this file is ours, the name is not
+                File.Delete(path + Uploading);
+            }
         }
     }
+
+    /// <summary>Claims of upload names, one at a time (only this server uploads into the folder, so the process is the scope).</summary>
+    private static readonly Lock Claims = new();
 
     private static DomainException TooLarge(long maxBytes) =>
         new("backup.tooLarge", "The backup is larger than an upload may be; copy it into the backups folder instead.", new { MaxMb = maxBytes / 1024 / 1024 });

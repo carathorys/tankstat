@@ -12,6 +12,7 @@ import { useSignOut } from '../auth/useSignOut.ts'
 import { DialogButtons, DialogCancel, DialogFrame } from '../dialogs/DialogFrame.tsx'
 import { OfflineError } from '../offline/errors.ts'
 import { outbox, usePendingCount } from '../offline/outbox.ts'
+import { useFoundCount } from '../offline/useFoundCount.ts'
 import { useParkedChanges } from '../offline/useParkedChanges.ts'
 import { useToast } from '../toast/toastContext.ts'
 import { InstallMenuItem } from './InstallMenuItem.tsx'
@@ -25,6 +26,7 @@ export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: Sess
   const canSignOut = user !== null && mode !== 'PROXY_HEADER' // behind a proxy the proxy owns the session
   const waiting = usePendingCount()
   const parked = useParkedChanges().parked?.length ?? 0
+  const found = useFoundCount()
   const [confirmSignOut, setConfirmSignOut] = useState(false)
   const adminHeading = useId()
   const leave = async () => {
@@ -51,14 +53,17 @@ export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: Sess
       {link('/import', t('nav.import'), <FileUp size={18} aria-hidden />)}
       {link('/notifications', t('nav.notifications'), <Bell size={18} aria-hidden />)}
       {link('/trash', t('nav.trash'), <Trash2 size={18} aria-hidden />)}
-      {(waiting > 0 || parked > 0) && (
+      {(waiting > 0 || parked > 0 || found > 0) && (
         <Box component={NavLink} to="/sync" sx={navItemSx} onClick={onNavigate}>
           <CloudUpload size={18} aria-hidden />
           {t('sync.nav')}
           {waiting > 0 ? (
             <Chip size="small" color="neutral" label={waiting} aria-label={t('offline.waiting', { count: waiting })} sx={{ ml: 'auto' }} />
-          ) : (
+          ) : parked > 0 ? (
             <Chip size="small" color="warning" label={parked} aria-label={t('offline.notApplied', { count: parked })} sx={{ ml: 'auto' }} />
+          ) : (
+            // Only what a restore of the server left on this device (Found on this device): the person decides about it there.
+            <Chip size="small" color="neutral" label={found} aria-label={t('sync.found.navCount', { count: found })} sx={{ ml: 'auto' }} />
           )}
         </Box>
       )}

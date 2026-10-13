@@ -148,7 +148,7 @@ Auth__AdminEmails__0=you@example.com
 2. Set every setting marked *required* in the table of that mode; the app tells you at start which one is missing.
 3. Behind a TLS-terminating proxy keep `Auth__PublicUrl` and the OIDC redirect URI on the public `https://` address (the session cookie accepts plain HTTP behind the proxy).
 4. For `Standalone` with e-mail, set `Auth__PublicUrl` together with `Smtp__Host` and `Smtp__From`.
-5. Check the result: `{ session { mode user { email isAdmin } } }` at `/graphql` answers the active mode (and `notices` carries the `AUTH_DISABLED` warning when authentication is off, or `SETTINGS_FILE_IGNORED` when the app's own settings file was left out at start).
+5. Check the result: `{ session { mode user { email isAdmin } } }` at `/graphql` answers the active mode (and `notices` carries the `AUTH_DISABLED` warning when authentication is off, `SETTINGS_FILE_IGNORED` when the app's own settings file was left out at start, or `RESTORE_PENDING` while a restore waits for the next start).
 
 ## Access control
 

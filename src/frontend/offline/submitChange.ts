@@ -26,11 +26,14 @@ export async function submitChange<T>(client: ApolloClient, change: ChangeDraft,
   }
 }
 
-/** Keeps the change on this device whatever the connection: what `submitChange` does when it cannot send, and for a change that always waits. */
-export async function keepChange(client: ApolloClient, change: ChangeDraft): Promise<{ queued: true }> {
+/**
+ * Keeps the change on this device whatever the connection: what `submitChange` does when it cannot send, and for a change that always
+ * waits. The screen is asked again afterwards, unless the caller keeps several and asks once (`refetch: false`).
+ */
+export async function keepChange(client: ApolloClient, change: ChangeDraft, { refetch = true } = {}): Promise<{ queued: true }> {
   const base = (change.action === 'update' || change.action === 'trash') && !change.base ? baseOf(client, change.entity, change.targetId, change.expectedVersion) : undefined
   await outbox.enqueue(base ? { ...change, base } : change)
-  void client.refetchQueries({ include: 'active' }).catch(() => undefined)
+  if (refetch) void client.refetchQueries({ include: 'active' }).catch(() => undefined)
   return { queued: true }
 }
 

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -49,7 +50,7 @@ internal sealed class BackupWorker(BackupRunner runner, IBackupStore store, IOpt
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        await Task.Yield(); // the start of the app does not wait for the catching up below
+        // BackgroundService runs all of this on the thread pool (.NET 10), so the start of the app does not wait for the catching up below.
         // The settings apply at once (the settings page saves them): every change wakes the worker, which reads them afresh.
         using var subscription = options.OnChange((_, _) => _changed.TrySetResult());
         var starting = true;
@@ -72,7 +73,7 @@ internal sealed class BackupWorker(BackupRunner runner, IBackupStore store, IOpt
                 }
                 if (announced != at)
                 {
-                    logger.LogInformation("Backups are written every day at {Time} ({Zone})", at.ToString("HH:mm"), zone.Id);
+                    logger.LogInformation("Backups are written every day at {Time} ({Zone})", at.ToString("HH:mm", CultureInfo.InvariantCulture), zone.Id);
                     if (!o.Pruning)
                         logger.LogWarning("Backups are scheduled and none are ever removed: set Backups:Keep or Backups:KeepDays, or the backups folder grows until the disk is full");
                     announced = at;
@@ -96,6 +97,10 @@ internal sealed class BackupWorker(BackupRunner runner, IBackupStore store, IOpt
                     continue; // planned again with the new settings
                 }
                 await sleep;
+                // A timer counts whole milliseconds on a clock of its own, and the clock of the day may be set back meanwhile: it can end before
+                // the due time reads on the clock, and a backup stamped before it would leave the night missed (and could be written twice).
+                for (var woke = clock.GetUtcNow(); woke < next; woke = clock.GetUtcNow())
+                    await Task.Delay(TimeSpan.FromMilliseconds(Math.Ceiling((next - woke).TotalMilliseconds)), clock, ct);
                 await RunAsync();
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)

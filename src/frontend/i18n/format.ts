@@ -21,11 +21,19 @@ export function useFormat() {
       /** Short form for axes: 12 500 becomes 12.5K (or 12,5 E in Hungarian). */
       compact: (value: number) => new Intl.NumberFormat(language, { notation: 'compact', maximumFractionDigits: 1 }).format(value),
       dateTime: (iso: string) => new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso)),
+      /** A time of day such as "02:00" the way the language writes it ("2:00 AM"), as it is: never moved into another time zone. */
+      timeOfDay: (hhmm: string) => {
+        const match = /^(\d{1,2}):(\d{2})$/.exec(hhmm)
+        if (!match) return hhmm
+        return new Intl.DateTimeFormat(language, { timeStyle: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(2000, 0, 1, Number(match[1]), Number(match[2]))))
+      },
       /** A size on disk in the unit that suits it (1.2 GB, 340 kB), counted in thousands like the browser's storage figures. */
       bytes: (value: number) => {
         const units = ['byte', 'kilobyte', 'megabyte', 'gigabyte', 'terabyte'] as const
+        // The figure as it is shown (whole bytes, else one decimal): one that rounds up to 1,000 goes to the next unit (999,960 bytes is 1 MB).
+        const shown = (v: number, unit: number) => (unit === 0 ? Math.round(v) : Math.round(v * 10) / 10)
         let index = 0
-        while (value >= 1000 && index < units.length - 1) {
+        while (shown(value, index) >= 1000 && index < units.length - 1) {
           value /= 1000
           index++
         }

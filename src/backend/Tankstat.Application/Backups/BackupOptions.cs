@@ -75,7 +75,7 @@ public sealed class BackupOptionsValidator(IOptions<StorageOptions> storage) : I
         if (string.IsNullOrWhiteSpace(recipient) != string.IsNullOrWhiteSpace(salt))
             failures.Add("Backups:Encryption:Recipient and Backups:Encryption:Salt are set together (tankstat backup keygen prints both) or not at all.");
         if (!string.IsNullOrWhiteSpace(recipient) && !IsRecipient(recipient)) failures.Add("Backups:Encryption:Recipient is not an age recipient (age1...).");
-        if (!string.IsNullOrWhiteSpace(salt) && !IsSalt(salt)) failures.Add("Backups:Encryption:Salt is not the base64 of at least 8 bytes.");
+        if (!string.IsNullOrWhiteSpace(salt) && !BackupEncryption.IsSalt(salt)) failures.Add("Backups:Encryption:Salt is not the base64 of at least 8 bytes.");
         if (o.MaxUploadMb < 1) failures.Add("Backups:MaxUploadMb must be at least 1.");
         if (!string.IsNullOrWhiteSpace(o.Every) && o.DailyAt is null) failures.Add("Backups:Every must be a time of day such as 02:00 (HH:mm).");
         if (o.Keep < 1) failures.Add("Backups:Keep must be at least 1 (the newest backup is always kept).");
@@ -109,11 +109,5 @@ public sealed class BackupOptionsValidator(IOptions<StorageOptions> storage) : I
         {
             return false;
         }
-    }
-
-    private static bool IsSalt(string text)
-    {
-        var buffer = new byte[text.Length];
-        return Convert.TryFromBase64String(text.Trim(), buffer, out var length) && length >= 8;
     }
 }

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Options;
 using Tankstat.Api.Auth;
 using Tankstat.Application;
+using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Backups;
 using Tankstat.Application.Images;
@@ -82,12 +83,15 @@ public static class MediaEndpoints
 
         // Backups (administrators): a backup file uploaded into the backups folder, streamed to disk; a restore point downloaded. Under /media
         // so the service worker and the dev proxy leave them to the server, like the pictures.
-        media.MapPut("/backups", async (string? name, HttpRequest request, BackupAdminService backups, IOptionsSnapshot<BackupOptions> options, CancellationToken ct) =>
+        media.MapPut("/backups", async (string? name, HttpRequest request, AccessService access, BackupAdminService backups, IOptionsSnapshot<BackupOptions> options, CancellationToken ct) =>
         {
+            // Administrators only, before anything else: nobody else learns the limit, or has a body read past the server's own.
+            await access.RequireAdminAsync(ct);
             var max = options.Value.MaxUploadBytes;
             if (request.ContentLength > max) throw new DomainException("backup.tooLarge", "The backup is larger than an upload may be.", new { MaxMb = options.Value.MaxUploadMb });
-            // Kestrel's own limit (30 MB) is raised before anything is read, a little above ours, so ours is the one that answers.
-            if (request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit) limit.MaxRequestBodySize = max + 1;
+            // Kestrel's own limit (30 MB) is lifted before anything is read: the store counts every byte and answers past ours. Any limit of
+            // Kestrel's would answer first for a body sent in chunks (it counts what arrives, ahead of what was read), with a bare 413.
+            if (request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit) limit.MaxRequestBodySize = null;
             var point = await backups.UploadAsync(request.Body, name, ct);
             return Results.Json(new { file = point.File, bytes = point.Bytes });
         });
@@ -97,6 +101,13 @@ public static class MediaEndpoints
             http.Response.Headers.CacheControl = "no-store";
             http.Response.Headers.XContentTypeOptions = "nosniff";
             return Results.Stream(content, "application/zip", fileDownloadName: file);
+        });
+        // Whether a backup can be downloaded, asked by the page first: a refusal (a file gone since the list, a session that ended) is then
+        // said on the page instead of replacing it. Nothing is read.
+        media.MapMethods("/backups/{file}", [HttpMethods.Head], async (string file, BackupAdminService backups, CancellationToken ct) =>
+        {
+            await backups.CheckDownloadAsync(file, ct);
+            return Results.Ok();
         });
 
         // Photos of logs: PUT adds one (up to ten per log), DELETE removes one by its image id. With `form` (the log's kind) and `locale`,

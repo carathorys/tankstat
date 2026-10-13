@@ -6,15 +6,13 @@ namespace Tankstat.Application.Backups;
 /// When a scheduled backup is due: every day at one time of the server's local time (<c>Backups:Every</c>). On the night the clocks skip
 /// that time (02:00 on the spring night in much of Europe) it is due at the first time that exists after it; on the night they repeat it,
 /// at the first of the two. A start that finds the last due time passed without a backup since (the app was down, or this is its first
-/// start with a schedule, or a restore put an older backup in place) has missed one, and writes it at once.
+/// start with a schedule, or the folder holds no backup of the app's own since) has missed one, and writes it at once.
 /// </summary>
 public static class BackupSchedule
 {
-    private static readonly string[] Formats = ["HH:mm", "H:mm"];
-
-    /// <summary>A time of day such as <c>02:00</c>; null for nothing or anything else.</summary>
+    /// <summary>A time of day such as <c>02:00</c> or <c>2:30</c> (<c>H</c> takes one digit or two); null for nothing or anything else.</summary>
     public static TimeOnly? Parse(string? text) =>
-        TimeOnly.TryParseExact(text?.Trim(), Formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var at) ? at : null;
+        TimeOnly.TryParseExact(text?.Trim(), "H:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var at) ? at : null;
 
     /// <summary>The first due time after <paramref name="now"/>.</summary>
     public static DateTimeOffset NextAfter(DateTimeOffset now, TimeOnly at, TimeZoneInfo zone)
@@ -45,5 +43,6 @@ public static class BackupSchedule
         return new DateTimeOffset(local, offset);
     }
 
-    private static DateOnly LocalDay(DateTimeOffset now, TimeZoneInfo zone) => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
+    /// <summary>The day it is in <paramref name="zone"/> at <paramref name="now"/>: the schedule's day, and the failure notice's.</summary>
+    internal static DateOnly LocalDay(DateTimeOffset now, TimeZoneInfo zone) => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
 }

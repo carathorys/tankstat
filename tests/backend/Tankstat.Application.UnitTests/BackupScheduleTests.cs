@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Backups;
@@ -107,6 +108,14 @@ public class BackupRetentionTests
     }
 
     [Fact]
+    public void KeepDays_ReachingBackBeforeTheCalendarStarts_IsNoLimitByAge()
+    {
+        // 9999999 days would be about 27,000 years before now: nothing is that old, and working out the date must not fail the backup.
+        Assert.Empty(Removed([Own(0), Own(400)], keep: null, keepDays: 9_999_999));
+        Assert.Equal(["tankstat-backup-day400.zip"], Removed([Own(0), Own(400)], keep: 1, keepDays: int.MaxValue));
+    }
+
+    [Fact]
     public void BothSettings_AreCeilings_ABackupGoesWhenItIsBeyondEither()
     {
         var points = Enumerable.Range(0, 10).Select(d => Own(d * 5)).ToList(); // 0, 5, ..., 45 days old
@@ -168,7 +177,32 @@ public class BackupFailureNotifierTests
         Assert.All(told, n => Assert.Equal((NotificationKind.BackupFailed, NotificationTopic.Backup, NotificationRef.Instance), (n.Kind, n.Topic, n.Subject)));
         var first = told.First(n => n.RecipientId == a.Id && n.Occurrence == "2027-01-10");
         Assert.Equal(("backup.corrupt", night.ToString("O")), (first.Args["error"], first.Args["startedAt"]));
+        Assert.False(first.Args.ContainsKey("errorArgs")); // a reason without values says nothing more
         Assert.Contains(told, n => n.Occurrence == "2027-01-11");
+    }
+
+    [Fact]
+    public async Task TheValuesOfTheReason_GoAlong_AndTheDayIsTheSameInEveryCulture()
+    {
+        var world = new World();
+        world.Clock.SetLocalTimeZone(TimeZoneInfo.Utc);
+        world.Users.Items.Add(User.CreateLocal("a@x.co", "A", true));
+        var night = new DateTimeOffset(2027, 1, 10, 2, 0, 0, TimeSpan.Zero);
+        var run = Failed(night, "backup.databaseNewer") with { ErrorArgs = new Dictionary<string, object?> { ["migration"] = "AddSomethingNew" } };
+
+        var culture = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = new CultureInfo("th-TH"); // a calendar of another era
+        try
+        {
+            await Notifier(world).NotifyAsync(run, null, default);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = culture;
+        }
+
+        var told = Assert.Single(world.Notifications.Items);
+        Assert.Equal(("""{"migration":"AddSomethingNew"}""", "2027-01-10"), (told.Args["errorArgs"], told.Occurrence));
     }
 
     [Fact]

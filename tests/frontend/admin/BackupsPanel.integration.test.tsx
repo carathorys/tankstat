@@ -58,25 +58,35 @@ const idle: Run = { __typename: 'BackupRunInfo', running: false, startedAt: null
 /** The password field of a dialog: the radios that choose between passphrase and identity carry those words too. */
 const secretField = (dialog: HTMLElement, label: RegExp) => within(dialog).getByLabelText(label, { selector: 'input[type="password"]' })
 
-/** The server's side of the Backups page: the overview, a run, an upload, a key set and a restore, each call recorded. */
+/** The server's side of the Backups page: the overview, a run, an upload, a download, a key set and a restore, each call recorded. */
 function backupsServer({
   points = [point()],
   run = idle,
   restoreAnswer,
+  maxUploadMb = 1024,
   keysHeldByEnvironment = false,
-}: { points?: unknown[]; run?: Run; restoreAnswer?: () => Response; keysHeldByEnvironment?: boolean } = {}) {
+}: { points?: unknown[]; run?: Run; restoreAnswer?: () => Response; maxUploadMb?: number; keysHeldByEnvironment?: boolean } = {}) {
   const calls: Record<string, unknown[]> = {}
   const record = (name: string, value: unknown) => (calls[name] ??= []).push(value)
-  const state = { points, run, generation: 'gen-1', pending: false, polls: [] as unknown[], schedule: { every: null, nextRun: null, keep: null, keepDays: null } as Schedule }
+  const state = {
+    points,
+    run,
+    generation: 'gen-1',
+    pending: false,
+    polls: [] as unknown[],
+    gone: [] as string[],
+    schedule: { every: null, nextRun: null, keep: null, keepDays: null } as Schedule,
+  }
   server.use(
-    graphql.query('Session', () =>
-      HttpResponse.json({
+    graphql.query('Session', () => {
+      record('Session', { generation: state.generation, pending: state.pending })
+      return HttpResponse.json({
         data: {
           session: { mode: 'STANDALONE', user: user({ isAdmin: true }), instance: fakeInstance(state.generation) },
           notices: state.pending ? [{ code: 'RESTORE_PENDING', severity: 'WARNING', message: 'A restore is waiting.' }] : [],
         },
-      }),
-    ),
+      })
+    }),
     healthHandler,
     ...fakeVehicleBackend().handlers,
     graphql.query('Admin', () => HttpResponse.json({ data: { users: [], canSetUserPasswords: false, accessSettings: { defaultLevelForOthers: 'NONE' }, accessGrants: [] } })),
@@ -89,7 +99,7 @@ function backupsServer({
             folder: '/data/backups',
             migration: 'AddInstance',
             run: state.run,
-            settings: { __typename: 'BackupSettingsInfo', recipient: RECIPIENT, photosApart: true, photos: true, maxUploadMb: 1024, ...state.schedule },
+            settings: { __typename: 'BackupSettingsInfo', recipient: RECIPIENT, photosApart: true, photos: true, maxUploadMb, ...state.schedule },
             sizes: { __typename: 'StorageSizesInfo', database: 5_300_000, pictures: 12_000_000, photos: 340_000_000 },
             restorePoints: state.points,
           },
@@ -150,6 +160,11 @@ function backupsServer({
       record('upload', { name, bytes: (await request.arrayBuffer()).byteLength })
       if (name === 'huge.zip') return HttpResponse.json({ key: 'backup.tooLarge', args: { maxMb: 1024 }, message: 'Too large.' }, { status: 413 })
       return HttpResponse.json({ file: `uploaded-${name}`, bytes: 3 })
+    }),
+    // Asked before a download: whether the file is there (a HEAD answer has a status only).
+    http.head('/media/backups/:file', ({ params }) => {
+      record('head', params.file)
+      return new HttpResponse(null, { status: state.gone.includes(String(params.file)) ? 404 : 200 })
     }),
   )
   return { calls, state }
@@ -224,14 +239,54 @@ it('uploads a backup into the folder and lists it; one too large is refused with
   expect(await screen.findByRole('alert')).toHaveTextContent('The file is larger than an upload may be (1024 MB); copy it into the backups folder instead.')
 })
 
-it('downloads a backup through the browser, after renewing the sign-in', async () => {
-  backupsServer()
+it('downloads a backup through the browser, once the server said it can', async () => {
+  const { calls } = backupsServer()
+  const download = vi.spyOn(navigation, 'download').mockImplementation(() => undefined)
+  const ui = await openBackups()
+
+  await ui.click(screen.getByRole('button', { name: /^Download the backup of .*\(tankstat-backup-20261010T020000Z\.zip\)$/ }))
+
+  await waitFor(() => expect(download).toHaveBeenCalledWith('/media/backups/tankstat-backup-20261010T020000Z.zip'))
+  expect(calls.head).toEqual(['tankstat-backup-20261010T020000Z.zip'])
+})
+
+it('says on the page when a backup is gone since the list, instead of leaving it for the server answer', async () => {
+  const { state } = backupsServer()
+  state.gone = ['tankstat-backup-20261010T020000Z.zip'] // removed by hand meanwhile
   const download = vi.spyOn(navigation, 'download').mockImplementation(() => undefined)
   const ui = await openBackups()
 
   await ui.click(screen.getByRole('button', { name: /^Download the backup of/ }))
 
-  await waitFor(() => expect(download).toHaveBeenCalledWith('/media/backups/tankstat-backup-20261010T020000Z.zip'))
+  expect(await screen.findByRole('alert')).toHaveTextContent('There is no such backup in the backups folder.')
+  expect(download).not.toHaveBeenCalled()
+})
+
+it('refuses a file larger than the server takes before sending anything', async () => {
+  const { calls } = backupsServer({ maxUploadMb: 1 })
+  const ui = await openBackups()
+  const tooLarge = new File([new Uint8Array(1024 * 1024 + 1)], 'big.zip', { type: 'application/zip' })
+
+  await ui.upload(screen.getByTestId('backup-file'), tooLarge)
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('The file is larger than an upload may be (1 MB); copy it into the backups folder instead.')
+  expect(calls.upload).toBeUndefined()
+})
+
+it('follows a backup under way that an answer of the overview reports, and lists it once it is written', async () => {
+  const { calls, state } = backupsServer()
+  const ui = await openBackups()
+  // Started elsewhere (another tab), or still going when the page is opened again: the overview's next answer says so.
+  state.run = { ...idle, running: true, startedAt: '2026-10-11T08:00:00Z' }
+
+  await ui.upload(screen.getByTestId('backup-file'), new File([new Uint8Array([1, 2, 3])], 'from-old.zip', { type: 'application/zip' }))
+
+  await waitFor(() => expect(calls.BackupRun?.length).toBeGreaterThan(0))
+  expect(screen.getByRole('button', { name: 'Back up now' })).toBeDisabled()
+  state.run = { ...idle, startedAt: '2026-10-11T08:00:00Z', finishedAt: '2026-10-11T08:00:05Z', file: 'tankstat-backup-20261011T080000Z.zip', bytes: 3_100_000 }
+  state.points = [point({ file: 'tankstat-backup-20261011T080000Z.zip', createdAt: '2026-10-11T08:00:00Z' }), ...state.points]
+  expect(await screen.findByText(/The last backup was written .*: tankstat-backup-20261011T080000Z\.zip/, undefined, { timeout: 5000 })).toBeInTheDocument()
+  await waitFor(() => expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(3))
 })
 
 it('restores an encrypted backup with its passphrase, waits for the restarted server and reloads once its data is the restored one', async () => {
@@ -285,6 +340,43 @@ it('says so when the server comes back without the restore', async () => {
   expect(navigation.reload).not.toHaveBeenCalled()
 })
 
+it('follows the restart when the restore got no answer, since the server stops right after it answers', async () => {
+  const { state } = backupsServer({ restoreAnswer: () => HttpResponse.error() })
+  const reload = vi.spyOn(navigation, 'reload').mockImplementation(() => undefined)
+  const ui = await openBackups()
+
+  await ui.click(screen.getByRole('button', { name: /^Restore the backup of/ }))
+  const dialog = await screen.findByRole('alertdialog')
+  await ui.type(secretField(dialog, /^Passphrase/), 'correct horse battery')
+  state.pending = true // the request reached the server; its answer did not come back
+  await ui.click(within(dialog).getByRole('button', { name: 'Restore and restart' }))
+
+  expect(await screen.findByText(/the server is restarting\. This page reloads by itself/)).toBeInTheDocument()
+  state.generation = 'gen-2'
+  state.pending = false
+  await waitFor(() => expect(reload).toHaveBeenCalled(), { timeout: 5000 })
+})
+
+it('takes the generation from before the restore from the server, not from an older answer the page kept', async () => {
+  const { calls, state } = backupsServer()
+  vi.spyOn(navigation, 'reload').mockImplementation(() => undefined)
+  state.generation = 'gen-0'
+  const ui = await openBackups()
+  state.generation = 'gen-1' // restored elsewhere since the page loaded; the page still holds gen-0
+
+  await ui.click(screen.getByRole('button', { name: /^Restore the backup of/ }))
+  const dialog = await screen.findByRole('alertdialog')
+  await ui.type(secretField(dialog, /^Passphrase/), 'correct horse battery')
+  await ui.click(within(dialog).getByRole('button', { name: 'Restore and restart' }))
+  await screen.findByText(/the server is restarting/)
+  // The server before the restart has answered, the restore still waiting: gen-1 is the data from before it.
+  await waitFor(() => expect(calls.Session).toContainEqual({ generation: 'gen-1', pending: true }))
+  state.pending = false // refused as the app started: still gen-1
+
+  expect(await screen.findByRole('alert', {}, { timeout: 5000 })).toHaveTextContent('The server is back, but the backup was not restored.')
+  expect(navigation.reload).not.toHaveBeenCalled()
+})
+
 it('makes a key set, shows it once with the two settings to set, and is done only once the passphrase is kept', async () => {
   const { calls } = backupsServer()
   const ui = await openBackups()
@@ -306,6 +398,8 @@ it('makes a key set, shows it once with the two settings to set, and is done onl
   expect(calls.UpdateSystemSettings).toBeUndefined() // nothing is saved unless asked
   const done = within(dialog).getByRole('button', { name: 'Done' })
   expect(done).toBeDisabled()
+  await ui.keyboard('{Escape}') // shown only once: not dismissed before it is kept
+  expect(screen.getByRole('dialog', { name: 'A key set for encrypted backups' })).toBeInTheDocument()
   await ui.click(within(dialog).getByRole('checkbox', { name: 'I have kept the passphrase in a safe place' }))
   await ui.click(done)
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
@@ -349,8 +443,11 @@ it('shows the schedule with the next run and what retention keeps, or that neith
   state.schedule = { every: '02:00', nextRun: '2026-10-12T02:00:00Z', keep: 14, keepDays: 30 }
   await openBackups()
 
+  // The time of day as the server has it (its zone, written as the language writes times), the next run in this machine's zone.
+  const daily = new Intl.DateTimeFormat('en', { timeStyle: 'short', timeZone: 'UTC' }).format(new Date('2000-01-01T02:00:00Z'))
+  const next = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date('2026-10-12T02:00:00Z'))
   const overview = within(screen.getByRole('region', { name: 'This server' }))
-  expect(overview.getByText(/^Every day at 02:00 · next Oct 12, 2026/)).toBeInTheDocument()
+  expect(overview.getByText(`Every day at ${daily} (the server's time) · next ${next}`)).toBeInTheDocument()
   expect(overview.getByText('After each backup the app writes, it keeps the newest 14 and none older than 30 days; the newest always stays')).toBeInTheDocument()
 })
 

@@ -63,6 +63,8 @@ export interface PullCursor {
   complete: boolean
   /** When the full download under way began: what it did not bring again is removed at its end. */
   fullStartedAt: number | null
+  /** The server's history it was written in (`Session.instance.generation`); one of another history is no cursor. None before histories. */
+  generation?: string
 }
 
 /**
@@ -128,6 +130,8 @@ export interface RowStore {
   clear(): Promise<void>
   /** The rows set aside too (Remove offline data). */
   clearFound(): Promise<void>
+  /** Drops this tab's copies of the logs in memory (another tab changed what is stored under them); the next read reads them again. */
+  forget(): void
 }
 
 export interface DeviceStorage {
@@ -446,5 +450,6 @@ function rowStore(tables: Tables): RowStore {
       )
       cache.clear()
     },
+    forget: () => cache.clear(),
   }
 }

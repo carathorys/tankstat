@@ -77,7 +77,8 @@
     "label": "Közlemények",
     "warning": "Figyelem:",
     "AUTH_DISABLED": "A hitelesítés ki van kapcsolva: aki eléri ezt az alkalmazást, az minden adatot láthat és módosíthat. Ez nem biztonságos; állítsd be az Auth:Mode értékét.",
-    "SETTINGS_FILE_IGNORED": "Az alkalmazás saját beállításfájlja nem volt használható, ezért kimaradt; az alkalmazás nélküle fut a következő indításig. Az okot a kiszolgáló naplója tartalmazza."
+    "SETTINGS_FILE_IGNORED": "Az alkalmazás saját beállításfájlja nem volt használható, ezért kimaradt; az alkalmazás nélküle fut a következő indításig. Az okot a kiszolgáló naplója tartalmazza.",
+    "RESTORE_PENDING": "Egy visszaállítás vár az alkalmazás újraindítására: a következő indításkor az összes adatot a biztonsági mentés tartalma váltja fel."
   },
   "notifications": {
     "title": "Értesítések",
@@ -100,6 +101,7 @@
     "unread": "Olvasatlan",
     "folded_one": "({{count}} változás)",
     "folded_other": "({{count}} változás)",
+    "unknownKind": "Történt valami, amit az alkalmazás ezen verziója még nem tud leírni: töltsd újra az oldalt, hogy lásd.",
     "kinds": {
       "LOG_ACCESS_CHANGED": "{{actor}} hozzáférést adott neked a(z) {{vehicle}} naplóihoz: {{level}}.",
       "LOG_ACCESS_REVOKED": "{{actor}} megvonta a hozzáférésedet a(z) {{vehicle}} naplóihoz.",
@@ -118,7 +120,7 @@
       "LOG_NOT_FILLED_EXPENSE": "A(z) {{title}} ({{date}}, {{vehicle}}) fotóin nem látszott: {{values}}. Töltsd ki.",
       "MORE_ACTIVITY_one": "Még {{count}} változás történt, túl sok ahhoz, hogy egyenként felsoroljuk.",
       "MORE_ACTIVITY_other": "Még {{count}} változás történt, túl sok ahhoz, hogy egyenként felsoroljuk.",
-      "BACKUP_FAILED": "A(z) {{time}} mentés nem sikerült: {{reason}}.",
+      "BACKUP_FAILED": "A(z) {{time}}-kor indult mentés nem sikerült: {{reason}}",
       "SYNC_CHANGE_PARKED": "{{vehicle}}: {{change}} ({{submitter}} küldte) nem érvényesíthető: {{reason}} Dönts róla a Szinkronizálásra vár oldalon."
     }
   },
@@ -501,15 +503,15 @@
       "photosIncluded": "benne vannak",
       "photosLeftOut": "kimaradnak (külön mappában vannak; lásd Backups:Photos)",
       "schedule": "Ütemezés",
-      "everyDay": "Minden nap {{time}}-kor",
+      "everyDay": "Minden nap {{time}}-kor (a szerver ideje szerint)",
       "nextRun": "a következő: {{time}}",
       "notScheduled": "Nincs ütemezve",
       "retentionLabel": "Megőrzés",
-      "retention": "Minden mentés után, amit az alkalmazás ír, megtartja ezeket: {{limits}}; a legújabb mindig megmarad",
-      "keepCount_one": "csak a legújabbat",
-      "keepCount_other": "a legújabb {{count}} darabot",
-      "keepDays_one": "semmi egy napnál régebbit",
-      "keepDays_other": "semmi {{count}} napnál régebbit",
+      "retention": "Minden mentés után, amit az alkalmazás ír, törli a régieket: {{limits}}; a legújabb mindig megmarad",
+      "keepCount_one": "a legújabbon kívül mindet",
+      "keepCount_other": "a legújabb {{count}} darabon felülieket",
+      "keepDays_one": "az egy napnál régebbieket",
+      "keepDays_other": "a {{count}} napnál régebbieket",
       "keepAll": "Minden mentés megmarad",
       "runTitle": "Mentés most",
       "runHint": "A szerver a háttérben írja a mentést a mappájába; közben el is hagyhatod ezt az oldalt.",
@@ -541,10 +543,10 @@
       "withoutPhotos": "fotók nélkül",
       "otherMigration": "Az adatbázis egy másik változatánál készült: azzal a kiadással állítsd vissza, amelyik írta (Tankstat {{version}}).",
       "download": "Letöltés",
-      "downloadAria": "A(z) {{made}} mentés letöltése",
+      "downloadAria": "A(z) {{made}} mentés letöltése ({{file}})",
       "restore": "Visszaállítás",
-      "restoreAria": "A(z) {{made}} mentés visszaállítása",
-      "restoreTitle": "Visszaállítod a(z) {{made}} mentést?",
+      "restoreAria": "A(z) {{made}} mentés visszaállítása ({{file}})",
+      "restoreTitle": "Visszaállítod a(z) {{made}} mentést ({{file}})?",
       "restoreDescription": "A szerver összes adatát lecseréli ez a mentés: a felhasználókat, járműveket, bejegyzéseket és képeket. Ami azóta változott, elvész, de előbb mentés készül a mostani állapotról. Ehhez az alkalmazás újraindul, ami mindenkinek, aki használja, eltart egy pillanatig.",
       "keyKind": "Megnyitás ezzel",
       "keyPassphrase": "Jelmondat",
@@ -786,6 +788,7 @@
       "notEncrypted": "A mentés nincs titkosítva; nem nyitja jelmondat.",
       "newerFormat": "A mentést egy újabb kiadás írta (Tankstat {{appVersion}}); előbb frissíts.",
       "otherMigration": "A mentés az adatbázis másik verziójánál készült ({{backup}}), mint amin ez áll ({{database}}); azzal a kiadással állítsd vissza, amelyik írta.",
+      "databaseNewer": "Az adatbázist a Tankstat egy újabb kiadása frissítette ({{migration}}); azzal a kiadással készíts róla mentést.",
       "codeRequired": "A kiszolgáló naplójából az egyszer használatos visszaállítási kód kell hozzá.",
       "passphraseRequired": "Jelmondatot vár.",
       "tooLarge": "A fájl nagyobb, mint amekkora feltölthető ({{maxMb}} MB); másold inkább a mentések mappájába.",
@@ -1551,7 +1554,12 @@
       "sent_one": "{{count}} bejegyzés vár küldésre.",
       "sent_other": "{{count}} bejegyzés vár küldésre.",
       "forgotten_one": "{{count}} bejegyzés elfelejtve.",
-      "forgotten_other": "{{count}} bejegyzés elfelejtve."
+      "forgotten_other": "{{count}} bejegyzés elfelejtve.",
+      "failed": "Ez nem sikerült; próbáld újra.",
+      "leftWaiting_one": "{{count}} bejegyzés a listán marad: egy saját módosítása vár ezen az eszközön, az megy előbb.",
+      "leftWaiting_other": "{{count}} bejegyzés a listán marad: saját módosításaik várnak ezen az eszközön, azok mennek előbb.",
+      "navCount_one": "{{count}} talált bejegyzés ezen az eszközön",
+      "navCount_other": "{{count}} talált bejegyzés ezen az eszközön"
     }
   },
   "systemSettings": {

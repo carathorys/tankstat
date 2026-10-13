@@ -88,10 +88,25 @@ it('shows the key of a refusal it cannot word, and does not trip over arguments 
 })
 
 it('tells the administrators which backup failed and why, and leads to the Backups page', () => {
-  const failed = say('BACKUP_FAILED', { error: 'backup.failed', startedAt: '2027-01-10T02:00:00.0000000+00:00' }, { subject: { type: 'INSTANCE', id: '00000000-0000-0000-0000-000000000000' }, context: null })
+  const startedAt = '2027-01-10T02:00:00.0000000+00:00'
+  // When, in this machine's time zone, as the app shows it: the day itself depends on the zone.
+  const when = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(startedAt))
+  const failed = say('BACKUP_FAILED', { error: 'backup.failed', startedAt }, { subject: { type: 'INSTANCE', id: '00000000-0000-0000-0000-000000000000' }, context: null })
 
   expect(failed.href).toBe('/admin/backups')
-  expect(failed.text).toMatch(/^The backup of Jan 10, 2027, \d{1,2}:\d{2}\s?[AP]M failed: an unexpected error \(the server log says more\)\.$/)
+  expect(failed.text).toBe(`The backup of ${when} failed: an unexpected error (the server log says more)`)
+  // The values of the reason go along, and a reason worded as a sentence ends as one.
+  expect(say('BACKUP_FAILED', { error: 'backup.databaseNewer', errorArgs: '{"migration":"AddSomethingNew"}', startedAt }).text).toBe(
+    `The backup of ${when} failed: The database was migrated by a newer release of Tankstat (AddSomethingNew); back it up with that release.`,
+  )
   // A reason it has no words for is shown as it came.
-  expect(say('BACKUP_FAILED', { error: 'backup.somethingNew', startedAt: '2027-01-10T02:00:00Z' }).text).toMatch(/failed: backup\.somethingNew\.$/)
+  expect(say('BACKUP_FAILED', { error: 'backup.somethingNew', startedAt }).text).toBe(`The backup of ${when} failed: backup.somethingNew`)
+})
+
+it('says plainly that something happened it cannot describe yet, without a link, instead of breaking the list', () => {
+  // A kind of a newer server, while this tab still runs the release before it.
+  expect(say('SOMETHING_NEWER' as NotificationKind, {}, { context: null })).toEqual({
+    text: 'Something happened that this version of the app cannot describe yet: reload the page to see it.',
+    href: null,
+  })
 })

@@ -3,7 +3,7 @@ import Button from '@mui/material/Button'
 import Card from '@mui/material/Card'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
-import { useId } from 'react'
+import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '../../components/ConfirmDialog.tsx'
 import { useFormat } from '../../i18n/format.ts'
@@ -13,7 +13,7 @@ import { useFoundRows } from '../../offline/useFoundRows.ts'
 /**
  * Found on this device: what this device held of the server's data before a restore took it back, and the server no longer has (or has
  * at an older version). Each row can be sent to the server, as a new entry with its own id and values (or an edit of the older one), or
- * forgotten; nothing goes by itself. Shown only while something is set aside.
+ * forgotten; nothing goes by itself. Shown only while a download has judged something set aside (the navigation leads here then).
  */
 export function FoundOnDevice({ onDone }: { onDone: (message: string) => void }) {
   const { t } = useTranslation()
@@ -21,17 +21,40 @@ export function FoundOnDevice({ onDone }: { onDone: (message: string) => void })
   const client = useApolloClient()
   const { rows, vehicleNames, refresh } = useFoundRows()
   const id = useId()
+  const [busy, setBusy] = useState(false)
   if (!rows?.length) return null
 
   const groups = new Map<string, FoundRow[]>()
-  for (const row of rows) groups.set(row.vehicleId, [...(groups.get(row.vehicleId) ?? []), row])
-  const act = async (work: Promise<void>, message: string) => {
-    await work
-    refresh()
-    onDone(message)
+  for (const row of rows) {
+    const list = groups.get(row.vehicleId)
+    if (list) list.push(row)
+    else groups.set(row.vehicleId, [row])
   }
-  const send = (list: FoundRow[]) => act(foundRows.send(client, list), t('sync.found.sent', { count: list.length }))
-  const forget = (list: FoundRow[]) => act(foundRows.forget(list.map((r) => r.id)), t('sync.found.forgotten', { count: list.length }))
+  // One at a time (a second tap must not queue the rows again), and what fails is said.
+  const act = async (work: () => Promise<string>) => {
+    if (busy) return
+    setBusy(true)
+    try {
+      onDone(await work())
+    } catch (error) {
+      console.warn('Sending or forgetting what was found on this device failed.', error)
+      onDone(t('sync.found.failed'))
+    } finally {
+      setBusy(false)
+      refresh()
+    }
+  }
+  const send = (list: FoundRow[]) =>
+    act(async () => {
+      const sent = await foundRows.send(client, list)
+      const left = list.length - sent // an entry with a change of its own waiting here: that change goes first
+      return left > 0 ? `${t('sync.found.sent', { count: sent })} ${t('sync.found.leftWaiting', { count: left })}` : t('sync.found.sent', { count: sent })
+    })
+  const forget = (list: FoundRow[]) =>
+    act(async () => {
+      await foundRows.forget(list.map((r) => r.id))
+      return t('sync.found.forgotten', { count: list.length })
+    })
   const describe = (row: FoundRow) => {
     const money = (amount: unknown, currency: unknown) => (typeof amount === 'number' && typeof currency === 'string' ? format.money(amount, currency) : null)
     const parts = [
@@ -65,12 +88,12 @@ export function FoundOnDevice({ onDone }: { onDone: (message: string) => void })
                 </Typography>
               </Typography>
               <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
-                <Button variant="soft" size="large" onClick={() => void send(list)} aria-label={t('sync.found.sendAllAria', { vehicle: name })}>
+                <Button variant="soft" size="large" disabled={busy} onClick={() => void send(list)} aria-label={t('sync.found.sendAllAria', { vehicle: name })}>
                   {t('sync.found.sendAll')}
                 </Button>
                 <ConfirmDialog
                   trigger={
-                    <Button variant="soft" color="error" size="large" aria-label={t('sync.found.forgetAllAria', { vehicle: name })}>
+                    <Button variant="soft" color="error" size="large" disabled={busy} aria-label={t('sync.found.forgetAllAria', { vehicle: name })}>
                       {t('sync.found.forgetAll')}
                     </Button>
                   }
@@ -95,12 +118,12 @@ export function FoundOnDevice({ onDone }: { onDone: (message: string) => void })
                           </Typography>
                         </div>
                         <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
-                          <Button variant="soft" size="large" onClick={() => void send([row])} aria-label={t('sync.found.sendAria', { row: label })}>
+                          <Button variant="soft" size="large" disabled={busy} onClick={() => void send([row])} aria-label={t('sync.found.sendAria', { row: label })}>
                             {t('sync.found.send')}
                           </Button>
                           <ConfirmDialog
                             trigger={
-                              <Button variant="soft" color="error" size="large" aria-label={t('sync.found.forgetAria', { row: label })}>
+                              <Button variant="soft" color="error" size="large" disabled={busy} aria-label={t('sync.found.forgetAria', { row: label })}>
                                 {t('sync.found.forget')}
                               </Button>
                             }
