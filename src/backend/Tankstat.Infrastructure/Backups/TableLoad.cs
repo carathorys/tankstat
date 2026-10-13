@@ -17,8 +17,9 @@ namespace Tankstat.Infrastructure.Backups;
 /// Loads the tables of a backup (<c>tables/&lt;Table&gt;.jsonl</c>, as <see cref="TableDump"/> wrote them) into the database, replacing
 /// every row, in one transaction: the tables are emptied in reverse foreign-key order and filled in forward order (the model's foreign keys
 /// give the order; a cycle is refused), every value typed by the column's EF mapping, so a dump of one provider loads into another. The
-/// migrations history is never written (the backup's migration must already be the database's). Last of all, inside the same transaction,
-/// the instance gets a new generation, so the backup's own never survives. A row count that differs from the manifest fails the load.
+/// migrations history is never written (the backup's migration must already be the database's). Last of all (inside the same transaction;
+/// after a replay, in a save of its own once the newer migrations ran) the instance gets a new generation, so the backup's own never
+/// survives. A row count that differs from the manifest fails the load.
 /// </summary>
 internal static class TableLoad
 {
@@ -57,7 +58,7 @@ internal static class TableLoad
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var loaded = await ReplaceRowsAsync(db, db.Model, transaction, tablesFolder, expected, logger, ct);
         if (check is not null) await check(db, ct);
-        var instance = await StampAsync(db, now, restorePoint, ct);
+        var instance = await StampAsync(db, now, restorePoint, logger, ct);
         await transaction.CommitAsync(ct);
         logger.LogInformation("Loaded {Tables} tables with {Rows} rows from the backup", loaded.Count, loaded.Values.Sum());
         return instance;
@@ -101,22 +102,57 @@ internal static class TableLoad
             // A table the backup has no file for is empty, unless the manifest says it had rows: then the file went missing, and loading
             // on would silently empty the table.
             loaded[table.Name] = File.Exists(file) ? await InsertAsync(connection, dbTransaction, sql, table, file, ct) : 0;
-            if (expected.TryGetValue(table.Name, out var count) && count != loaded[table.Name])
-                throw new DomainException("backup.corrupt", $"The backup's manifest says {count} rows of {table.Name}, the file holds {loaded[table.Name]}.", new { Table = table.Name, Expected = count, Actual = loaded[table.Name] });
+            RequireCount(table.Name, loaded[table.Name], expected);
         }
         return loaded;
     }
 
     /// <summary>
+    /// What a load of <paramref name="model"/>'s tables would refuse, found without a database: every line of a table's file is read as a
+    /// row and every value parsed into its column's type, as <see cref="InsertAsync"/> does, and every count must be the manifest's (a
+    /// missing file of a table with rows too). A replay asks this before it removes anything, so such a backup is refused with the data as
+    /// it was, as a backup of the database's own migration is by the load's transaction.
+    /// </summary>
+    public static void CheckRows(IModel model, string tablesFolder, IReadOnlyDictionary<string, long> expected)
+    {
+        foreach (var table in InLoadOrder(TableDump.Tables(model)))
+        {
+            var file = Path.Combine(tablesFolder, table.Name + ".jsonl");
+            long rows = 0;
+            if (File.Exists(file))
+                foreach (var line in File.ReadLines(file))
+                {
+                    if (line.Length == 0) continue;
+                    using var row = JsonDocument.Parse(line);
+                    foreach (var column in table.Columns)
+                        if (row.RootElement.TryGetProperty(column.Name, out var element) && element.ValueKind != JsonValueKind.Null)
+                            _ = FromJson(element, column.Mapping ?? throw new InvalidOperationException($"{column.Name} has no type mapping."));
+                    rows++;
+                }
+            RequireCount(table.Name, rows, expected);
+        }
+    }
+
+    /// <summary>A row count that differs from the manifest's fails the load: a file gone missing would otherwise empty its table without a word.</summary>
+    private static void RequireCount(string table, long actual, IReadOnlyDictionary<string, long> expected)
+    {
+        if (expected.TryGetValue(table, out var count) && count != actual)
+            throw new DomainException("backup.corrupt", $"The backup's manifest says {count} rows of {table}, the file holds {actual}.", new { Table = table, Expected = count, Actual = actual });
+    }
+
+    /// <summary>
     /// The generation is this instance's own, never the backup's: stamped after the rows (inside the load's transaction, or in a save of its
     /// own once a replayed backup is up to date). The backup's own row comes along (its last start mode too, so the start that follows signs
-    /// out sessions it brought from another mode).
+    /// out sessions it brought from another mode). A backup without that row (one made before the instance recorded its sign-in mode) cannot
+    /// say which mode its sessions were issued in, so every one of them ends here: none may go on working in a mode it was not issued in.
     /// </summary>
-    public static async Task<InstanceInfo> StampAsync(AppDbContext db, DateTimeOffset now, DateTimeOffset restorePoint, CancellationToken ct)
+    public static async Task<InstanceInfo> StampAsync(AppDbContext db, DateTimeOffset now, DateTimeOffset restorePoint, ILogger logger, CancellationToken ct)
     {
         var instance = await db.InstanceState.SingleOrDefaultAsync(ct);
         if (instance is null)
         {
+            var ended = await db.UserSessions.Where(s => s.RevokedAt == null).ExecuteUpdateAsync(u => u.SetProperty(s => s.RevokedAt, now), ct);
+            if (ended > 0) logger.LogInformation("The backup does not say which sign-in mode its sessions were issued in: {Count} signed-in devices were signed out", ended);
             instance = InstanceState.New();
             db.InstanceState.Add(instance);
         }

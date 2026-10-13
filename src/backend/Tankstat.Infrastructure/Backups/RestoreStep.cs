@@ -40,7 +40,8 @@ public enum RestoreOutcome
 /// the data has, for every session answer.
 /// <para>
 /// A restore replaces the instance's data as a whole, never merges: the manifest and the checksum are checked, the backup's migration must
-/// be the one the database is at (this release's), an encrypted backup's identity must open it; then a backup of the state about to be
+/// be one this release knows (the database's, or an older one, which is replayed: <see cref="ReplayAsync"/>), an encrypted backup's
+/// identity must open it; then a backup of the state about to be
 /// replaced is written first (the safety net, holding whatever the restore replaces; without it nothing goes on), the file is unpacked into
 /// a temporary folder, every table is loaded in one transaction (<see cref="TableLoad"/>, which stamps the new generation last; a Standalone
 /// instance refuses rows without an administrator to sign in with), the contents of the pictures root (and of the photos root, when the
@@ -52,6 +53,7 @@ public enum RestoreOutcome
 /// </summary>
 internal sealed class RestoreStep(
     IDbContextFactory<AppDbContext> dbFactory,
+    IOptions<DatabaseOptions> database,
     DatabaseMigrator migrator,
     IBackupWriter writer,
     IOptionsMonitor<BackupOptions> options,
@@ -206,12 +208,13 @@ internal sealed class RestoreStep(
     }
 
     /// <summary>
-    /// A backup made at an older migration of this release: what can be checked is checked first (the administrator Standalone needs, from
-    /// the backup's own rows), then the database is emptied (every table of this release, and the migrations history), set up as the
-    /// backup's migration left it, loaded with that migration's model, and brought up to date by the migrator, with what follows the newer
-    /// migrations (the stored consumption, ...); the generation is stamped last. EF runs each migration in a transaction of its own, so
-    /// nothing after the first table dropped can be undone: <paramref name="destructive"/> marks that point, after which a failure is a
-    /// failed restore (the schema brought up to date again, the safety-net backup the way back), never a refused one.
+    /// A backup made at an older migration of this release: what can be checked is checked first (the administrator Standalone needs, and
+    /// every row as the load will read it, both from the backup's own files), then the database is emptied (every table of this release,
+    /// and the migrations history), set up as the backup's migration left it, loaded with that migration's model, and brought up to date by
+    /// the migrator, with what follows the newer migrations (the stored consumption, ...); the generation is stamped last. EF runs each
+    /// migration in a transaction of its own, so nothing after the tables are dropped can be undone: <paramref name="destructive"/> marks
+    /// that point (<see cref="DropAllAsync"/>), after which a failure is a failed restore (the schema brought up to date again, the safety-net
+    /// backup the way back), never a refused one.
     /// </summary>
     private async Task<InstanceInfo> ReplayAsync(string from, BackupManifest manifest, string tables, Action destructive, CancellationToken ct)
     {
@@ -219,31 +222,46 @@ internal sealed class RestoreStep(
         await using (var db = await dbFactory.CreateDbContextAsync(ct))
             model = MigrationModels.ModelOf(db, from);
         await RequireAdministratorAsync(() => Task.FromResult(BackupHoldsAdministrator(model, tables)), subject => Task.FromResult(BackupHoldsLocalUser(model, tables, subject)));
+        // What the load would refuse without a database (a line that is no row, a value that is not its column's, a count that is not the
+        // manifest's) refuses the restore before anything is removed, as the load's own transaction does for a backup of this migration.
+        TableLoad.CheckRows(model, tables, manifest.Contents.Tables);
 
         logger.LogInformation("The backup was made at an older migration ({Migration}): the database is emptied, set up as that migration left it, loaded, and brought up to date",
             MigrationNames.Of(from));
-        destructive();
         await using (var db = await dbFactory.CreateDbContextAsync(ct))
         {
-            await DropAllAsync(db, ct);
+            await DropAllAsync(db, destructive, ct);
             await db.GetService<IMigrator>().MigrateAsync(from, ct);
             await TableLoad.LoadRowsAsync(db, model, tables, manifest.Contents.Tables, logger, ct);
         }
         await migrator.MigrateAsync(ct);
         await using (var db = await dbFactory.CreateDbContextAsync(ct))
-            return await TableLoad.StampAsync(db, clock.GetUtcNow(), manifest.CreatedAt, ct);
+            return await TableLoad.StampAsync(db, clock.GetUtcNow(), manifest.CreatedAt, logger, ct);
     }
 
-    /// <summary>Every table of this release (its children first) and the migrations' own, so the migrations can set the database up afresh.</summary>
-    private static async Task DropAllAsync(AppDbContext db, CancellationToken ct)
+    /// <summary>
+    /// Every table of this release (its children first) and the migrations' own, so the migrations can set the database up afresh. Where
+    /// the provider takes DDL in a transaction (all but MySQL) the drops are one: one that fails (a view or a foreign key of the operator's
+    /// over a table, a lock that is not let go, a stop) undoes the others, so the restore is refused with every table and row as they were,
+    /// and <paramref name="destructive"/> marks the commit. MySQL commits each DROP by itself, so there the point of no return comes first.
+    /// </summary>
+    private async Task DropAllAsync(AppDbContext db, Action destructive, CancellationToken ct)
     {
         var sql = db.GetService<ISqlGenerationHelper>();
         var names = TableLoad.InLoadOrder(TableDump.Tables(db.Model)).Reverse().Select(t => sql.DelimitIdentifier(t.Name, t.Schema))
             .Concat([sql.DelimitIdentifier(TableDump.MigrationsHistory), sql.DelimitIdentifier("__EFMigrationsLock")]);
-        foreach (var name in names)
+        var transactional = database.Value.Provider != DatabaseProvider.MySql;
+        if (!transactional) destructive();
+        await using (var transaction = transactional ? await db.Database.BeginTransactionAsync(ct) : null)
         {
-            var drop = $"DROP TABLE IF EXISTS {name}"; // names from the model, never from the backup
-            await db.Database.ExecuteSqlRawAsync(drop, ct);
+            foreach (var name in names)
+            {
+                var drop = $"DROP TABLE IF EXISTS {name}"; // names from the model, never from the backup
+                await db.Database.ExecuteSqlRawAsync(drop, ct);
+            }
+            if (transaction is null) return;
+            destructive(); // a commit that fails may still have happened: from here on the tables count as gone
+            await transaction.CommitAsync(ct);
         }
     }
 

@@ -81,14 +81,18 @@ internal sealed class BackupWriter(
         FileStream file, StorageOptions roots, DateTimeOffset createdAt, BackupEncryption? encryption, BackupPhotos photos, bool safetyNet, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var migration = (await db.Database.GetAppliedMigrationsAsync(ct)).LastOrDefault();
+        var applied = (await db.Database.GetAppliedMigrationsAsync(ct)).ToList();
+        var migration = applied.LastOrDefault();
+        var known = db.Database.GetMigrations().ToList();
         // A database that a newer release migrated holds tables and columns this release's model does not know: the dump would leave them
         // out without a word, under a manifest that names the newer migration.
-        if (migration is not null && !db.Database.GetMigrations().Contains(migration))
+        if (migration is not null && !known.Contains(migration))
             throw new DomainException("backup.databaseNewer", "The database was migrated by a newer release of Tankstat; back it up with that release.", new { migration });
-        // A database not migrated to this release's last migration (the command line never migrates first) is dumped as its migration left
-        // it, so the backup holds what is there and names the migration it was made at; a restore brings it up to date.
-        var tables = TableDump.Tables(migration is null || migration == db.Database.GetMigrations().Last() ? db.Model : MigrationModels.ModelOf(db, migration));
+        // A database with any migration of this release still to run (the command line never migrates first, nor does the start's backup
+        // before the migrations) is dumped as its last applied migration left it, so the backup holds what is there and names the migration
+        // it was made at; a restore brings it up to date. Today's model only when nothing is pending: a migration merged in after a later one
+        // was released is pending below the last applied one, and today's model would ask for its columns, which do not exist yet.
+        var tables = TableDump.Tables(migration is null || !known.Except(applied).Any() ? db.Model : MigrationModels.ModelOf(db, migration));
         var sql = db.GetService<ISqlGenerationHelper>();
 
         var rows = new Dictionary<string, long>();

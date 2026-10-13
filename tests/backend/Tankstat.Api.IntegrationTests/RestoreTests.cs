@@ -259,6 +259,93 @@ public sealed class RestoreTests : IDisposable
         Assert.DoesNotContain(b.Log.From("Tankstat"), e => e.Level >= LogLevel.Warning);
     }
 
+    /// <summary>A host over one database, mode None, with a vehicle of its own: what an older backup's restore must leave as it was when it refuses.</summary>
+    private async Task<(SharedData Shared, Dictionary<string, string?> Settings, string Vehicle)> HostWithOwnData(string backups)
+    {
+        var shared = new SharedData();
+        var settings = new Dictionary<string, string?> { ["Auth:Mode"] = "None", ["Backups:Path"] = backups };
+        using var first = shared.Host(settings);
+        return (shared, settings, await AddVehicle(first, "Own car"));
+    }
+
+    [Fact]
+    public async Task AnOlderBackup_WhoseTablesTheDatabaseWillNotDrop_IsRefused_AndEveryTableAndRowStays()
+    {
+        using var a = Host("a", migrated: true);
+        await AddVehicle(a, "Golf");
+        var backup = await OlderBackup(a, "AddRefuelingConsumption");
+
+        // B's database also holds a table of the operator's own, whose row refers to B's vehicle: Vehicles cannot be dropped while it is
+        // there, though the tables that refer to Vehicles (refuellings among them) are dropped before it.
+        var folderB = Folder("b-backups");
+        var (shared, settings, own) = await HostWithOwnData(folderB);
+        using var data = shared;
+        using (var first = shared.Host(settings))
+        {
+            await using var db = await DbOf(first);
+            await db.Database.ExecuteSqlRawAsync("CREATE TABLE \"OperatorNotes\" (\"VehicleId\" TEXT NOT NULL REFERENCES \"Vehicles\" (\"Id\"))");
+            await db.Database.ExecuteSqlRawAsync("INSERT INTO \"OperatorNotes\" SELECT \"Id\" FROM \"Vehicles\"");
+        }
+        Stage(folderB, backup.Path);
+        using var b = shared.Host(settings);
+
+        // The drops were undone together: B serves its own data, its refuellings' table included.
+        Assert.Equal(["Own car"], await Vehicles(b));
+        using var client = b.NewClient();
+        Assert.Equal(0, (await client.Gql("query($v: UUID!) { refuelings(vehicleId: $v) { id } }", new { v = own })).Data().GetProperty("refuelings").GetArrayLength());
+        Assert.Single(Directory.GetFiles(folderB, "restore.refused.*"));
+        Assert.Empty(Directory.GetFiles(folderB, "restore.failed.*"));
+    }
+
+    [Fact]
+    public async Task AnOlderBackup_WhoseRowsTheLoadWouldRefuse_IsRefusedBeforeAnyTableIsDropped()
+    {
+        using var a = Host("a", migrated: true);
+        await AddVehicle(a, "Golf");
+        var backup = await OlderBackup(a, "AddRefuelingConsumption");
+
+        var folderB = Folder("b-backups");
+        var (shared, settings, _) = await HostWithOwnData(folderB);
+        using var data = shared;
+        var staged = Stage(folderB, backup.Path);
+        // A manifest whose count is not the file's (the manifest is outside the checksum): the load would refuse it after every table was gone.
+        RewriteManifest(staged, json =>
+        {
+            Assert.Contains("\"Vehicles\": 1", json);
+            return json.Replace("\"Vehicles\": 1", "\"Vehicles\": 2");
+        });
+        using var b = shared.Host(settings);
+
+        Assert.Equal(["Own car"], await Vehicles(b));
+        var refusal = Assert.Single(b.Log.From("Tankstat.Infrastructure.Backups.RestoreStep"), e => e.Level == LogLevel.Error);
+        Assert.Equal("backup.corrupt", (string)refusal.Values["Reason"]!);
+        Assert.Single(Directory.GetFiles(folderB, "restore.refused.*"));
+    }
+
+    [Fact]
+    public async Task ABackupMadeBeforeTheInstanceRecordedItsSignInMode_EndsEverySessionItBrings()
+    {
+        // A Standalone host whose administrator is signed in, backed up as the release before the instance recorded its sign-in mode left
+        // it: the sessions come along, the mode they were issued in does not.
+        using var a = Host("a", migrated: true, extra: TestApp.StandaloneSettings());
+        var cookies = await CookiesOf(a);
+        var backup = await OlderBackup(a, "AddInstanceState");
+        Assert.DoesNotContain("InstanceState", backup.Manifest.Contents.Tables.Keys);
+        Assert.True(backup.Manifest.Contents.Tables["UserSessions"] > 0);
+
+        var folderB = Folder("b-backups");
+        Stage(folderB, backup.Path);
+        using var b = Host("b", migrated: true, extra: TestApp.StandaloneSettings(), backups: folderB);
+
+        _ = b.Factory.Services; // the host starts, and the restore runs at its start
+        Assert.Empty(Directory.GetFiles(folderB, "restore.*")); // applied
+        await using (var db = await DbOf(b))
+            Assert.All(await db.UserSessions.AsNoTracking().ToListAsync(), s => Assert.NotNull(s.RevokedAt));
+        var refresh = new HttpRequestMessage(HttpMethod.Post, "/auth/token/refresh") { Headers = { { "X-Requested-With", "fetch" }, { "Cookie", cookies } } };
+        Assert.Equal(HttpStatusCode.Unauthorized, (await b.NewClientWithoutRedirects().SendAsync(refresh)).StatusCode);
+        Assert.Contains(b.Log.From("Tankstat.Infrastructure.Backups.RestoreStep"), e => e.Level == LogLevel.Information && e.Values.ContainsKey("Count") && !e.Values.ContainsKey("What"));
+    }
+
     private static async Task<AppDbContext> DbOf(TestApp app) => await app.Factory.Services.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
 
     [Fact]
