@@ -92,13 +92,15 @@ export function BackupsPanel() {
   )
 }
 
-/** The schedule and what retention keeps, in words. */
+/** The schedule and what retention keeps, in words: the time of day is the server's (its zone may not be the browser's), the next run the browser's. */
 function useScheduleText() {
   const { t } = useTranslation()
-  const { dateTime, list } = useFormat()
+  const { dateTime, list, timeOfDay } = useFormat()
   return (settings: BackupsQuery['backups']['settings']) => {
     const schedule = settings.every
-      ? [t('admin.backups.everyDay', { time: settings.every }), settings.nextRun && t('admin.backups.nextRun', { time: dateTime(settings.nextRun) })].filter(Boolean).join(' · ')
+      ? [t('admin.backups.everyDay', { time: timeOfDay(settings.every) }), settings.nextRun && t('admin.backups.nextRun', { time: dateTime(settings.nextRun) })]
+          .filter(Boolean)
+          .join(' · ')
       : t('admin.backups.notScheduled')
     const limits = [
       settings.keep != null && t('admin.backups.keepCount', { count: settings.keep }),

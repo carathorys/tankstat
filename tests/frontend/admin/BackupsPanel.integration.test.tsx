@@ -393,8 +393,11 @@ it('shows the schedule with the next run and what retention keeps, or that neith
   state.schedule = { every: '02:00', nextRun: '2026-10-12T02:00:00Z', keep: 14, keepDays: 30 }
   await openBackups()
 
+  // The time of day as the server has it (its zone, written as the language writes times), the next run in this machine's zone.
+  const daily = new Intl.DateTimeFormat('en', { timeStyle: 'short', timeZone: 'UTC' }).format(new Date('2000-01-01T02:00:00Z'))
+  const next = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date('2026-10-12T02:00:00Z'))
   const overview = within(screen.getByRole('region', { name: 'This server' }))
-  expect(overview.getByText(/^Every day at 02:00 · next Oct 12, 2026/)).toBeInTheDocument()
+  expect(overview.getByText(`Every day at ${daily} (the server's time) · next ${next}`)).toBeInTheDocument()
   expect(overview.getByText('After each backup the app writes, it keeps the newest 14 and none older than 30 days; the newest always stays')).toBeInTheDocument()
 })
 

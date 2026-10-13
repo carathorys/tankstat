@@ -82,10 +82,13 @@ export function useNotificationText() {
       case 'MORE_ACTIVITY':
         return { text: t('notifications.kinds.MORE_ACTIVITY', { count: n.count }), href: null }
       case 'BACKUP_FAILED': {
-        // A backup the app was to write failed: when, and why in words (the reason is an error key).
-        const reason = keyText(args.error, {}) ?? args.error ?? ''
+        // A backup the app was to write failed: when, and why in words (the reason is an error key, its values one JSON object).
+        const reason = keyText(args.error, parseArgs(args.errorArgs)) ?? args.error ?? ''
         return { text: t('notifications.kinds.BACKUP_FAILED', { time: args.startedAt ? dateTime(args.startedAt) : '', reason }), href: '/admin/backups' }
       }
+      default:
+        // A kind this release does not know: a newer server's, while this tab waits for its update. Said plainly, never a broken list.
+        return { text: t('notifications.unknownKind'), href: null }
     }
   }
 }
