@@ -93,7 +93,7 @@ public class ConsumptionPersistenceTests
         }
         Assert.All(await Stored(db, first), c => Assert.Null(c)); // nothing calculated yet: the logs were added without the service
 
-        await new DatabaseMigrator(db.Get<IDbContextFactory<AppDbContext>>(), db.Get<ILogger<DatabaseMigrator>>()).BackfillConsumptionAsync(default);
+        await new DatabaseMigrator(db.Get<IDbContextFactory<AppDbContext>>(), db.Get<Tankstat.Application.Backups.IBackupWriter>(), db.Get<Tankstat.Application.Backups.IBackupStore>(), db.Get<ILogger<DatabaseMigrator>>()).BackfillConsumptionAsync(default);
 
         Assert.Equal([null, 6m, null], await Stored(db, first));
         Assert.Equal([null, 6m, null], await Stored(db, second));

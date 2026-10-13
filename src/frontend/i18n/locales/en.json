@@ -576,7 +576,7 @@
       "release": "Tankstat {{version}}",
       "kindBackup": "Backup (written by the app or copied into the folder)",
       "colSize": "Size",
-      "safetyNet": "Safety net, written just before a restore",
+      "safetyNet": "Safety net, written just before a restore or a database upgrade",
       "uploadedTag": "Uploaded on this page",
       "encryptedCurrent": "Encrypted for the current key",
       "encryptedOther": "Encrypted for another key: only that key set's passphrase opens it",

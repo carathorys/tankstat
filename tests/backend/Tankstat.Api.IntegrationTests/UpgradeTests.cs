@@ -10,7 +10,8 @@ using Tankstat.Infrastructure.Persistence;
 namespace Tankstat.Api.IntegrationTests;
 
 /// <summary>
-/// The app over a database of an older release: the committed backup of an older release (<c>tests/backend/contracts/backups</c>) restores into the current one and
+/// The app over a database of an older release: started on one, it backs it up and migrates it, its data kept and what the newer migrations
+/// add worked out; and the committed backup of an older release (<c>tests/backend/contracts/backups</c>) restores into the current one and
 /// comes up to date. That file never changes: every release must still restore it.
 /// </summary>
 public sealed class UpgradeTests : IDisposable
@@ -67,6 +68,28 @@ public sealed class UpgradeTests : IDisposable
         Assert.Equal(6.0, logs.Single(l => l.GetProperty("odometer").GetDouble() == 10_500).GetProperty("consumption").GetDouble(), 3);
         var expense = Assert.Single((await client.Gql("query($v: UUID!) { expenses(vehicleId: $v) { title amount } }", new { v = id })).Data().GetProperty("expenses").EnumerateArray());
         Assert.Equal(("Wash", 4000m), (expense.GetProperty("title").GetString(), expense.GetProperty("amount").GetDecimal()));
+    }
+
+    [Fact]
+    public async Task TheAppStartedOnAnOlderDatabase_BacksItUpFirst_ThenMigratesIt_AndKeepsItsData()
+    {
+        using var shared = new SharedData();
+        var backups = Folder("backups");
+        var settings = new Dictionary<string, string?> { ["Auth:Mode"] = "None", ["Backups:Path"] = backups };
+        using (var before = shared.Host(settings))
+        {
+            await AddData(before);
+            await Downgrade(before, FixtureMigration); // the database as an older release left it
+        }
+
+        using var after = shared.Host(settings);
+
+        var (applied, latest) = await Migrations(after);
+        Assert.Equal(latest, applied);
+        await AssertData(after);
+        var backup = BackupFile.ReadManifest(Assert.Single(Directory.GetFiles(backups, "*.zip")));
+        Assert.Equal((FixtureMigration, true), (MigrationNames.Of(backup.Migration), backup.SafetyNet)); // taken before anything was migrated
+        Assert.DoesNotContain(after.Log.From("Tankstat"), e => e.Level >= LogLevel.Warning);
     }
 
     [Fact]

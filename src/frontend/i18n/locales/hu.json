@@ -576,7 +576,7 @@
       "release": "Tankstat {{version}}",
       "kindBackup": "Mentés (az alkalmazás írta, vagy a mappába másolták)",
       "colSize": "Méret",
-      "safetyNet": "Biztonsági mentés, közvetlenül egy visszaállítás előtt készült",
+      "safetyNet": "Biztonsági mentés, közvetlenül egy visszaállítás vagy adatbázis-frissítés előtt készült",
       "uploadedTag": "Ezen az oldalon feltöltve",
       "encryptedCurrent": "A jelenlegi kulccsal titkosítva",
       "encryptedOther": "Másik kulccsal titkosítva: csak annak a kulcskészletnek a jelmondata nyitja",
