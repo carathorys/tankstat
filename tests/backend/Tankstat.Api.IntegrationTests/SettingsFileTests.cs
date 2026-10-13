@@ -164,6 +164,8 @@ public class SettingsFileTests
             SettingsCheck.Check(Configuration(new() { ["Logging:Console:FormatterName"] = "simple", ["Logging:Console:FormatterOptions:UseUtcTimestamp"] = "zzzz" })));
         Assert.Equal(["Logging:CaptureScopes cannot be read as a value of its type."], SettingsCheck.Check(Configuration(new() { ["Logging:CaptureScopes"] = "zzzz" })));
         Assert.Empty(SettingsCheck.Check(Configuration(new() { ["Logging:LogLevel:Microsoft.Hosting.Lifetime"] = "" }))); // the logging filter skips an empty level
+        Assert.Empty(SettingsCheck.Check(Configuration(new() { ["Backups:Keep"] = "", ["Backups:KeepDays"] = "" }))); // empty: no limit, as the binder reads a number that may be unset
+        Assert.Equal(["Smtp:Port cannot be read as a value of its type."], SettingsCheck.Check(Configuration(new() { ["Smtp:Port"] = "" }))); // one that may not be: the binder names it
 
         Assert.Empty(SettingsCheck.Check(Configuration(new() { ["Recognition:MaxConcurrent"] = "99" }))); // photo reading never stops the app
         Assert.Empty(SettingsCheck.Check(Configuration(new() { ["Recognition:MinConfidence"] = "zzzz", ["Recognition:Provider"] = "" }))); // not even with a wrong shape

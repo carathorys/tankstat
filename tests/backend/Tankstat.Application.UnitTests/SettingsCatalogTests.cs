@@ -122,6 +122,7 @@ public class SettingsCatalogTests
             ["Auth:Mode"] = "Kerberos",
             ["Recognition:MinConfidence"] = "zzzz", // photo reading never stops the app: RecognitionSetup turns it off instead
             ["Logging:LogLevel:Microsoft.AspNetCore"] = "Information", // the floor is a rule for what the page writes, not for the start
+            ["Backups:Keep"] = "", // empty: the binder reads it as no limit (a whole number it may not be is the binder's to refuse, by name)
         };
 
         var problems = SettingsCatalog.Problems(key => values.GetValueOrDefault(key));

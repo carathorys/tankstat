@@ -277,7 +277,9 @@ public static class SettingsCatalog
     /// The wrong shapes among the managed settings that <paramref name="valueOf"/> has a value for, as the start sees them: only what the app
     /// could not start with, named by its setting. Lists are not checked (every string is one); photo reading is not either, because its
     /// settings never stop the app (RecognitionSetup turns reading off and says why); nor is the log levels' floor, a rule for what the page
-    /// writes (<see cref="Validate"/>), not something the app refuses to start with.
+    /// writes (<see cref="Validate"/>), not something the app refuses to start with; nor an empty value, which the app runs with where a
+    /// setting may be unset (the binder reads <c>Backups:Keep</c> as no limit, the logging filter skips an empty level) and the binder refuses
+    /// elsewhere, naming the setting itself.
     /// </summary>
     public static IReadOnlyList<string> Problems(Func<string, string?> valueOf)
     {
@@ -286,7 +288,7 @@ public static class SettingsCatalog
         {
             if (setting.IsList || setting.Group == SettingsGroup.PhotoReading) continue;
             var value = valueOf(setting.Key);
-            if (value is null) continue;
+            if (string.IsNullOrEmpty(value)) continue;
             if (ShapeProblem(setting, value) is { } problem) problems.Add(problem);
         }
         return problems;
