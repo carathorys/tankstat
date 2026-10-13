@@ -37,7 +37,7 @@ Every fix, feature or other piece of work gets a **new git worktree**, so the ma
 
 ## 3. Implement
 
-- Follow the plan and the repository's conventions (CLAUDE.md: layering, i18n, accessibility, docs that must be updated with a behaviour change).
+- Follow the plan and the repository's conventions (CLAUDE.md and the area's file in `.claude/rules/`: layering, i18n, accessibility, docs that must be updated with a behaviour change).
 - Add the tests the plan lists; the acceptance criteria are the definition of done.
 - **While working, run only the affected tests**: the test files or classes you changed and those covering the code you touched, plus typecheck and lint. Never the full suite between steps.
 - Respect the machine's limits named in CLAUDE.md or memory (e.g. Vitest `--maxWorkers=4`, one `dotnet test` process at a time).

@@ -1,0 +1,16 @@
+---
+paths:
+  - "src/backend/**/Notifications/**"
+  - "**/*Notification*"
+  - "**/*Notifier*"
+  - "src/frontend/notifications/**"
+  - "src/frontend/shell/NotificationBell.tsx"
+  - "src/frontend/pages/NotificationsPage.tsx"
+  - "tests/frontend/notifications/**"
+---
+
+# Notifications
+
+## Notifications
+
+- Notifications (`Domain/Notifications`, `Application/Notifications`): a `Notification` belongs to its recipient only (not `IOwned`; every query filters by `RecipientId`, admins included) and is attached to a subject and an optional context by `NotificationRef` (entity type + id, no foreign key; a new source adds a `NotificationEntityType`). Its identity (unique index) is recipient + topic + subject + context id (`Guid.Empty` when none) + `Occurrence`. Every producer goes through `Notifier.NotifyAsync(actorId, drafts)` (the actor is never notified); the pure `NotificationPolicy` decides: *derived* drafts (with an occurrence, worked out from current state) are added once and only raised to a more urgent kind (reopened); *events* are folded into the unread one of the same topic/subject/context (`Count`), removed when undone (`After == Before`), and past `Notifications:MaxPerHour` become one `MoreActivity` digest. Sources: `ResourceSharingService` and `AccessAdminService` (events built with `NotificationArgs.AccessChange`, `Before`/`After` = access levels), `SyncNotificationSync` (`SyncChangeParked`, topic `Sync`, subject `SyncChange`, context the vehicle, occurrence `parked`: every parked change the reader may see as themselves or sent; args `change` (kind in API spelling), `vehicleName`, `submitterName`, `reason`, `reasonArgs` as JSON), `BackupFailureNotifier` (`BackupFailed`, topic `Backup`, derived, subject `Instance`, occurrence the server's local date of the run: every enabled administrator, the anonymous user in mode None, args `error` (a key), `errorArgs` (its arguments as JSON, like `reasonArgs`) and `startedAt`; see Backups), and `RecurringNotificationSync`, which, like `SyncNotificationSync`, runs lazily once per request from `NotificationService` (no background job) over `AccessService.PersonalLogScopeAsync` (an admin's blanket rights do not count; anonymous keeps everything), one occurrence per schedule cycle (last done date + odometer). Arguments are display-ready snapshots; the frontend words them per kind (`notifications/useNotificationText.ts`, `notifications.kinds.*`; a kind the bundle does not know, from a newer server while an older tab waits for its update, is `notifications.unknownKind` without a link, never a crash: the bell is outside the error boundary). Users never delete notifications (deliberate): they only mark them read (`ReadAt`; `markNotificationsRead` returns the changed rows so Apollo updates loaded lists in place), and `NotificationService` purges the ones read more than `Notifications:ReadRetentionDays` ago on the same lazy path, keeping reminders of schedules that are still due and of changes still parked (else the sync would re-add them). UI: `shell/NotificationBell.tsx` (polls the unread count every minute; tests get an empty-inbox default handler from `tests/frontend/support/server.ts`, override with `fakeNotificationBackend`) and `pages/NotificationsPage.tsx`. User deletion purges the inbox; actions go through `notifications/useNotificationActions.ts`.
