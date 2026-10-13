@@ -2,6 +2,39 @@
 
 Every release of Tankstat, newest first. Each one is a Docker image, `ghcr.io/carathorys/tankstat:<version>`, and a [GitHub release](https://github.com/carathorys/tankstat/releases). The numbers in brackets are the pull requests. Pre-releases (the previews) are not listed: their changes are in the release that followed them.
 
+## 0.15.0 (2026-10-13)
+
+### Added
+
+- **Backups in one file** (#107): every table, the pictures, the photos of logs (when they live with the pictures, or with `Backups:Photos` when they have a folder of their own) and, in an encrypted backup, the keys that keep people signed in. Encryption is the `age` format exactly, so a backup opens with `age -d` too; the server keeps only the recipient, never a key that opens its own backups. Commands next to the server: `backup`, `backup keygen` and `decrypt`. The image writes them to `/data/backups`.
+- **Restore a backup** from the app or with `tankstat restore` (#110, #118): the server restarts in its own process and applies it first thing at that start, before the database migrations, replacing the data as a whole. A backup moves between SQLite, PostgreSQL, SQL Server and MySQL, and one made by an older release is brought up to date as an upgrade would be; a newer release's is refused before anything is written. Devices with offline data notice the restore, download afresh, and list what the server no longer has under *Found on this device* on Waiting to sync, to send again or forget.
+- **A Backups page** for administrators (Administration, then Backups) (#112, #118): back up now, upload, download, restore and delete backups, see each one's kind, release, rows, encryption, photos and size, and make a key set for encryption.
+- **Scheduled backups and retention** (#113, #118): `Backups:Every` (one or more times of day, the server's time) on the days of `Backups:Days`, with `Backups:Keep` and `Backups:KeepDays` removing the old ones. A backup missed while the app was down is written at its next start, and a failed one tells the administrators, once a day at most.
+- **A backup before every upgrade** (#118): a start that migrates a database holding data first writes a backup of it as it is (a safety net).
+- **The backup settings on the Server settings page**, applied at once; *Make a key set* saves its recipient and salt there with one button (#117).
+- **Time and date formats per user** (#118): the top bar's *Language and formats* menu offers a 24-hour or 12-hour clock and five date formats, kept with the account. *Default* follows the new `Defaults:TimeFormat` and `Defaults:DateFormat`, else the language.
+- **The server's folders on the administration overview** (pictures, photos of logs, backups, sign-in keys, the settings file), each with what it holds and its environment variable (#118).
+- **A Docker Compose example** with PostgreSQL and Mailpit, and an `.env.example` (#119).
+
+### Changed
+
+- The Server settings page words its choices (the value after them), warns that no sign-in is not secure, and the *Defaults for new vehicles* tab is now *Defaults* (#118).
+
+### Upgrading
+
+- Two migrations, `AddInstanceGeneration` and `AddUiFormats`, applied at start. **That start writes a backup of the database first**, as every start that migrates a database holding data now does; when it cannot be written, nothing is migrated and the start stops with the reason in the log. Keep the backups folder writable (`/data/backups` in the image, created for the app's user) and leave room for one more backup.
+- `Backups:Path` must not be a storage folder, lie inside one or hold one; the start refuses that. With the image's default `/data/backups`, a `Storage__Path=/data` needs a `Backups__Path` outside `/data` or a narrower storage folder.
+- **A restore keeps no copy of the data it replaces**: whatever changed since the restored backup was made is gone. Download or copy a backup of the current state first if you might want it back.
+- Backups are plain until a key set is made (the Backups page, or `backup keygen`); a plain backup leaves the sign-in keys out, so restoring one signs everyone out once.
+- Keep a copy of the app's own settings file (`/data/settings.json`) with your backups: the backup settings saved on the page live there, and no backup holds it.
+
+### For developers
+
+- `CHANGELOG.md`, carried by every release (#115).
+- The release smoke test checks that a setting of a group that applies at once counts at once, and that a sign-in setting waits for the restart (#116).
+- `CLAUDE.md` keeps what holds everywhere plus an index; each area's rules are in `.claude/rules/<area>.md`, loaded when a file of the area is read (#118).
+- Backup fixtures: files written by `age` 1.3.2, and the committed backup of an older migration that every release must restore; `ProviderRoundTripTests` moves a backup between real servers when given their connection strings (#107, #110, #118).
+
 ## 0.14.0 (2026-10-12)
 
 ### Added
