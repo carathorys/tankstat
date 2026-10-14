@@ -38,6 +38,7 @@
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@graphql-codegen/cli": "^7.4.3",
     "@graphql-codegen/typed-document-node": "^7.1.1",
     "@graphql-codegen/typescript": "^6.1.0",
