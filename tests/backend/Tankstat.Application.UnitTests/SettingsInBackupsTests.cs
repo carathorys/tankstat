@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Tankstat.Application.Backups;
 
 namespace Tankstat.Application.UnitTests;
@@ -83,5 +84,57 @@ public sealed class SettingsInBackupsTests
         Assert.Equal(["Smtp:Password"], BackupManifest.FromJson(json).Settings!.Omitted);
         var older = json[..json.IndexOf(",\n  \"settings\"", StringComparison.Ordinal)] + "\n}"; // as a release before it wrote them
         Assert.Null(BackupManifest.FromJson(older).Settings);
+    }
+
+    /// <summary>The keys a server's environment holds: the instance's, the machine's, and the process's own.</summary>
+    private static readonly string[] EnvironmentKeys =
+    [
+        "Auth:Mode", "Auth:AdminEmails:0", "Auth:Oidc:ClientSecret", "Defaults:Currency", "Logging:LogLevel:Tankstat",
+        "Database:ConnectionString", "Storage:Path", "Setup:Enabled", "Auth:Standalone:AdminEmail", "Backups:Path",
+        "PATH", "DOTNET_ROOT", "ASPNETCORE_URLS",
+    ];
+
+    [Fact]
+    public void ABackupRecords_TheEnvironmentsSettingsAndTheMachinesOwn_ByVariableName_AListOnce_NothingElse()
+    {
+        var recorded = SettingsInBackups.Recorded(BackupEnvironmentMode.Record, EnvironmentKeys);
+
+        Assert.Equal(["Auth__AdminEmails", "Auth__Mode", "Auth__Oidc__ClientSecret", "Defaults__Currency", "Logging__LogLevel__Tankstat"], recorded.Settings);
+        Assert.Equal(["Auth__Standalone__AdminEmail", "Backups__Path", "Database__ConnectionString", "Setup__Enabled", "Storage__Path"], recorded.Server);
+    }
+
+    [Fact]
+    public void Merged_TheCopyTakesWhatTheServerRunsWith_AListWhole_NoSecretInPlain_NeverTheMachinesOwn()
+    {
+        var file = new Dictionary<string, string?> { ["Auth:AdminEmails:0"] = "file-a@x.co", ["Auth:AdminEmails:1"] = "file-b@x.co", ["Defaults:Currency"] = "EUR" };
+        // As the configuration runs: the variable's item 0 over the file's, the file's item 1 kept by index.
+        var running = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Auth:Mode"] = "Standalone", ["Auth:AdminEmails:0"] = "env-a@x.co", ["Auth:AdminEmails:1"] = "file-b@x.co", ["Auth:Oidc:ClientSecret"] = "zzzz-secret",
+            ["Defaults:Currency"] = "HUF", ["Logging:LogLevel:Tankstat"] = "Debug", ["Storage:Path"] = "/srv/pictures",
+        }).Build();
+
+        var plain = SettingsInBackups.Merged(file, EnvironmentKeys, running, encrypted: false);
+        var encrypted = SettingsInBackups.Merged(file, EnvironmentKeys, running, encrypted: true);
+
+        Assert.Equal(new Dictionary<string, string?>
+        {
+            ["Auth:AdminEmails:0"] = "env-a@x.co", ["Auth:AdminEmails:1"] = "file-b@x.co", ["Auth:Mode"] = "Standalone", ["Defaults:Currency"] = "HUF",
+            ["Logging:LogLevel:Tankstat"] = "Debug",
+        }, plain.OrderBy(p => p.Key).ToDictionary());
+        Assert.Equal("zzzz-secret", encrypted["Auth:Oidc:ClientSecret"]);
+        Assert.False(encrypted.ContainsKey("Storage:Path"));
+        Assert.Equal("EUR", file["Defaults:Currency"]); // the copy, never the file it came from
+    }
+
+    [Fact]
+    public void Missing_IsWhatNeitherTheRestoredFileNorThisEnvironmentHolds()
+    {
+        var recorded = new BackupEnvironment(BackupEnvironmentMode.Record, ["Auth__AdminEmails", "Auth__Mode", "Defaults__Currency", "Smtp__Password"], ["Storage__Path"]);
+        var file = new Dictionary<string, string?> { ["Auth:AdminEmails:0"] = "a@x.co", ["Defaults:Currency"] = null };
+
+        var missing = SettingsInBackups.Missing(recorded, file, key => key == "Auth:Mode");
+
+        Assert.Equal(["Defaults__Currency", "Smtp__Password"], missing); // a list by its items, a null is no value; the machine's own never counts
     }
 }

@@ -12,22 +12,30 @@ namespace Tankstat.Api.Settings;
 /// </summary>
 internal sealed class SettingsBackup(ISystemConfiguration configuration, ISettingsFileStore file) : ISettingsBackup
 {
-    public async Task<SettingsCopy> CopyAsync(bool encrypted, CancellationToken ct)
+    public async Task<SettingsCopy> CopyAsync(bool encrypted, BackupEnvironmentMode mode, CancellationToken ct)
     {
+        var environmentKeys = configuration.EnvironmentKeys();
+        var environment = SettingsInBackups.Recorded(mode, environmentKeys);
+        var ignored = SettingsCopy.None with { State = BackupSettingsState.Ignored, Environment = environment };
         // A file the start left out is not what the server runs with: the backup holds none of it, and says so.
-        if (configuration.File.Ignored) return SettingsCopy.None with { State = BackupSettingsState.Ignored };
-        if (!file.Exists) return SettingsCopy.None;
-        IReadOnlyDictionary<string, string?> values;
-        try
+        if (configuration.File.Ignored) return ignored;
+        IReadOnlyDictionary<string, string?> values = new Dictionary<string, string?>();
+        if (file.Exists)
         {
-            values = await file.ReadAsync(ct);
+            try
+            {
+                values = await file.ReadAsync(ct);
+            }
+            catch (Exception e) when (e is InvalidDataException or FormatException or JsonException)
+            {
+                return ignored; // edited by hand since the start into a file no start would read
+            }
         }
-        catch (Exception e) when (e is InvalidDataException or FormatException or JsonException)
-        {
-            return SettingsCopy.None with { State = BackupSettingsState.Ignored }; // edited by hand since the start into a file no start would read
-        }
+        // Merged, the copy holds what the environment sets too (a server with no file but variables gets a file of them); the live file never.
+        if (mode == BackupEnvironmentMode.Merge) values = SettingsInBackups.Merged(values, environmentKeys, configuration.Running, encrypted);
+        if (!file.Exists && values.Count == 0) return SettingsCopy.None with { Environment = environment };
         var (carried, omitted) = SettingsInBackups.Copy(values, encrypted);
-        return new SettingsCopy(BackupSettingsState.Included, carried, omitted);
+        return new SettingsCopy(BackupSettingsState.Included, carried, omitted, environment);
     }
 
     public async Task<RestoredSettings> RestoredAsync(IReadOnlyDictionary<string, string?> fromBackup, bool encrypted, CancellationToken ct)
@@ -56,4 +64,18 @@ internal sealed class SettingsBackup(ISystemConfiguration configuration, ISettin
     }
 
     public Task WriteAsync(IReadOnlyDictionary<string, string?> values, CancellationToken ct) => file.WriteAsync(values, ct);
+
+    public async Task<IReadOnlyList<string>> MissingAsync(BackupEnvironment recorded, IReadOnlyDictionary<string, string?>? restored, CancellationToken ct)
+    {
+        IReadOnlyDictionary<string, string?> values;
+        try
+        {
+            values = restored ?? await file.ReadAsync(ct); // a backup without a file leaves this server's own
+        }
+        catch (Exception e) when (e is InvalidDataException or FormatException or JsonException)
+        {
+            values = new Dictionary<string, string?>();
+        }
+        return SettingsInBackups.Missing(recorded, values, key => configuration.SourceOf(key) == SettingSource.Environment);
+    }
 }

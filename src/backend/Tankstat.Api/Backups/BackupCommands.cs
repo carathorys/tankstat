@@ -52,7 +52,7 @@ internal static class BackupCommands
     private const string Usage = """
         Usage:
           backup keygen --passphrase-stdin                       derive the recipient and the salt from a passphrase (read from the standard input)
-          backup [--output <file>] [--photos] [--passphrase-stdin]
+          backup [--output <file>] [--photos] [--environment record|merge] [--passphrase-stdin]
                                                                  write a backup (encrypted for Backups:Encryption:Recipient, or for the passphrase read from the standard input)
           decrypt <file> --output <folder> (--identity <file> | --passphrase-stdin)
                                                                  unpack a backup into a folder
@@ -83,12 +83,17 @@ internal static class BackupCommands
         string? file = null;
         var photos = false;
         var passphrase = false;
+        BackupEnvironmentMode? environment = null;
         for (var i = 0; i < args.Length; i++)
         {
             switch (args[i])
             {
                 case "--output" when i + 1 < args.Length && args[i + 1].Length > 0: file = args[++i]; break;
                 case "--photos": photos = true; break;
+                case "--environment" when i + 1 < args.Length && Enum.TryParse<BackupEnvironmentMode>(args[i + 1], ignoreCase: true, out var mode) && Enum.IsDefined(mode):
+                    environment = mode;
+                    i++;
+                    break;
                 case "--passphrase-stdin": passphrase = true; break;
                 default: throw new UsageException();
             }
@@ -104,12 +109,14 @@ internal static class BackupCommands
             var identity = BackupKeys.Identity(Passphrase(input), salt, Argon2idParameters.Default);
             encryption = new BackupEncryption(BackupEncryption.AgeX25519, AgeKeys.FormatRecipient(BackupKeys.Recipient(identity)), Convert.ToBase64String(salt), Argon2idParameters.Default);
         }
-        var result = await services.GetRequiredService<IBackupWriter>().WriteAsync(new BackupRequest(file, photos ? true : null, encryption), CancellationToken.None);
+        var result = await services.GetRequiredService<IBackupWriter>().WriteAsync(new BackupRequest(file, photos ? true : null, encryption, Environment: environment), CancellationToken.None);
         var m = result.Manifest;
         output.WriteLine($"Wrote {result.Path}");
         output.WriteLine($"  {m.Contents.Tables.Count} tables with {m.Contents.Tables.Values.Sum()} rows ({m.Sizes.Tables} bytes), pictures {m.Sizes.Pictures} bytes, photos {Photos(m)}, keys {(m.Contents.Keys ? $"{m.Sizes.Keys} bytes" : m.Encryption is null ? "left out (not encrypted)" : "none found")}");
         output.WriteLine(m.Encryption is null ? "  not encrypted" : $"  encrypted for {m.Encryption.Recipient}");
         output.WriteLine($"  settings file {SettingsOf(m)}");
+        if (m.Environment is { } recorded)
+            output.WriteLine($"  environment of this process {(recorded.Mode == BackupEnvironmentMode.Merge ? "merged into the settings file" : "recorded")}: {(recorded.Settings.Count == 0 ? "no setting" : string.Join(", ", recorded.Settings))}");
         return 0;
     }
 

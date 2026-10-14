@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Tankstat.Application.Auth;
 using Tankstat.Application.SystemSettings;
 
@@ -56,6 +57,69 @@ public static class SettingsInBackups
         return restored;
     }
 
+    /// <summary>The sections that describe the machine a server runs on, never the instance: a backup never carries them, it only names them.</summary>
+    private static readonly string[] MachineSections = ["Database", "Storage", "DataProtection", "Settings", "Setup"];
+
+    /// <summary>Whether <paramref name="key"/> is the machine's own (a folder, the database, the bootstrap administrator), which only a manifest names.</summary>
+    public static bool IsMachineSetting(string key) =>
+        SettingsCatalog.LeftOut.Contains(key, StringComparer.OrdinalIgnoreCase)
+        || MachineSections.Any(section => key.Equals(section, StringComparison.OrdinalIgnoreCase) || Under(key, section));
+
+    /// <summary>A configuration key as an environment variable names it (<c>Auth:Mode</c> is <c>Auth__Mode</c>).</summary>
+    public static string VariableOf(string key) => key.Replace(":", "__", StringComparison.Ordinal);
+
+    /// <summary>The configuration key an environment variable's name stands for.</summary>
+    public static string KeyOf(string variable) => variable.Replace("__", ":", StringComparison.Ordinal);
+
+    /// <summary>
+    /// What a backup records of the environment the server runs with (<paramref name="environmentKeys"/>: the keys a variable or the command
+    /// line holds): the instance's settings and the machine's own, by variable name, a list once, sorted; anything else (<c>PATH</c>, the
+    /// runtime's own) not at all.
+    /// </summary>
+    public static BackupEnvironment Recorded(BackupEnvironmentMode mode, IEnumerable<string> environmentKeys)
+    {
+        var keys = environmentKeys.ToList();
+        IReadOnlyList<string> Names(Func<string, bool> which) =>
+            [.. keys.Where(which).Select(ListKeyOf).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).Select(VariableOf)];
+        return new BackupEnvironment(mode, Names(IsInstanceSetting), Names(IsMachineSetting));
+    }
+
+    /// <summary>
+    /// The backup's copy of the file with the environment's settings merged in (<see cref="BackupEnvironmentMode.Merge"/>): each setting a
+    /// variable holds that this kind of backup carries, at the value the server runs with (<paramref name="running"/>), a list whole (the
+    /// configuration merges a variable's items over the file's by index, so the file's own items of it go). Never a machine's own key, and in
+    /// a plain backup never a secret.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string?> Merged(
+        IReadOnlyDictionary<string, string?> file, IEnumerable<string> environmentKeys, IConfiguration running, bool encrypted)
+    {
+        var merged = new Dictionary<string, string?>(file, StringComparer.OrdinalIgnoreCase);
+        foreach (var setting in environmentKeys.Where(k => Carries(k, encrypted)).Select(ListKeyOf).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (SettingsCatalog.Find(setting)?.IsList == true)
+            {
+                foreach (var item in merged.Keys.Where(k => Under(k, setting)).ToList()) merged.Remove(item);
+                foreach (var item in running.GetSection(setting).GetChildren()) merged[item.Path] = item.Value;
+            }
+            else merged[setting] = running[setting];
+        }
+        return merged;
+    }
+
+    /// <summary>
+    /// The settings a backup recorded (by variable name) that a restore would leave without a value: neither the settings file it leaves
+    /// (<paramref name="file"/>) holds one, nor this server's environment (<paramref name="fromEnvironment"/>). Such a restore is refused (D4):
+    /// set them first.
+    /// </summary>
+    public static IReadOnlyList<string> Missing(BackupEnvironment recorded, IReadOnlyDictionary<string, string?> file, Func<string, bool> fromEnvironment) =>
+    [
+        .. recorded.Settings.Where(variable =>
+        {
+            var key = KeyOf(variable);
+            return !file.Any(p => p.Value is not null && (p.Key.Equals(key, StringComparison.OrdinalIgnoreCase) || Under(p.Key, key))) && !fromEnvironment(key);
+        }),
+    ];
+
     /// <summary>A list item's list (<c>Auth:AdminEmails:0</c> is <c>Auth:AdminEmails</c>); any other key as it is.</summary>
     private static string ListKeyOf(string key) =>
         SettingsCatalog.All.FirstOrDefault(d => d.IsList && Under(key, d.Key))?.Key ?? key;
@@ -64,8 +128,11 @@ public static class SettingsInBackups
         key.Length > section.Length && key[section.Length] == ':' && key.StartsWith(section, StringComparison.OrdinalIgnoreCase);
 }
 
-/// <summary>A copy of the settings file for a backup: whether there is one (<see cref="State"/>), the keys it carries, and the names it leaves out.</summary>
-public sealed record SettingsCopy(BackupSettingsState State, IReadOnlyDictionary<string, string?> Values, IReadOnlyList<string> Omitted)
+/// <summary>
+/// A copy of the settings file for a backup: whether there is one (<see cref="State"/>), the keys it carries, the names it leaves out, and what
+/// it records of the environment (null where nothing is known of it: a host without the Api).
+/// </summary>
+public sealed record SettingsCopy(BackupSettingsState State, IReadOnlyDictionary<string, string?> Values, IReadOnlyList<string> Omitted, BackupEnvironment? Environment = null)
 {
     public static readonly SettingsCopy None = new(BackupSettingsState.None, new Dictionary<string, string?>(), []);
 }
@@ -83,12 +150,21 @@ public sealed record RestoredSettings(IReadOnlyDictionary<string, string?> Value
 /// </summary>
 public interface ISettingsBackup
 {
-    /// <summary>The copy a backup takes now: the file on disk (what the next start reads), unless the start left it out.</summary>
-    Task<SettingsCopy> CopyAsync(bool encrypted, CancellationToken ct);
+    /// <summary>
+    /// The copy a backup takes now: the file on disk (what the next start reads), unless the start left it out; with
+    /// <see cref="BackupEnvironmentMode.Merge"/> the environment's settings merged into it; and what the backup records of the environment.
+    /// </summary>
+    Task<SettingsCopy> CopyAsync(bool encrypted, BackupEnvironmentMode mode, CancellationToken ct);
 
     /// <summary>What a restore of <paramref name="fromBackup"/> (a backup's carried keys) would leave, judged under this server's environment.</summary>
     Task<RestoredSettings> RestoredAsync(IReadOnlyDictionary<string, string?> fromBackup, bool encrypted, CancellationToken ct);
 
     /// <summary>Writes the restored file (the previous one kept as <c>.bak</c>).</summary>
     Task WriteAsync(IReadOnlyDictionary<string, string?> values, CancellationToken ct);
+
+    /// <summary>
+    /// The recorded settings a restore would leave without a value here (<see cref="SettingsInBackups.Missing"/>): judged against the file it
+    /// leaves (<paramref name="restored"/>; null for a backup without one, which leaves this server's own) and this server's environment.
+    /// </summary>
+    Task<IReadOnlyList<string>> MissingAsync(BackupEnvironment recorded, IReadOnlyDictionary<string, string?>? restored, CancellationToken ct);
 }

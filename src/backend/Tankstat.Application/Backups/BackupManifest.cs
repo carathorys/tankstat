@@ -22,7 +22,8 @@ public sealed record BackupManifest(
     BackupSizes Sizes,
     BackupArchive Archive,
     BackupEncryption? Encryption,
-    BackupSettingsFile? Settings = null)
+    BackupSettingsFile? Settings = null,
+    BackupEnvironment? Environment = null)
 {
     public const int CurrentFormat = 1;
     public const string Tankstat = "tankstat";
@@ -71,6 +72,14 @@ public sealed record BackupSettingsFile(BackupSettingsState State, string? Entry
     public const string Encrypted = "settings.age";
     public const string Plain = "settings.json";
 }
+
+/// <summary>
+/// The environment variables the server ran with, by name only (never a value: the manifest is plain), one per setting (<c>Auth__AdminEmails</c>,
+/// not <c>__0</c>): <see cref="Settings"/> the instance's (the Server settings page's and the logging), which <see cref="Mode"/> says whether
+/// the backup's settings file took in too, and <see cref="Server"/> the machine's own (the database, the folders, the bootstrap administrator),
+/// which never travel. A restore on a server that sets none of a recorded setting, and whose restored file holds none either, is refused.
+/// </summary>
+public sealed record BackupEnvironment(BackupEnvironmentMode Mode, IReadOnlyList<string> Settings, IReadOnlyList<string> Server);
 
 /// <summary>Whether the settings file went in: it did, there was none, or the start left it out (the server runs without it, so the backup does too).</summary>
 public enum BackupSettingsState { Included, None, Ignored }

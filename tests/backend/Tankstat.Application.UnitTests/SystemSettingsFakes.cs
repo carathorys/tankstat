@@ -40,6 +40,8 @@ internal sealed class FakeSystemConfiguration : ISystemConfiguration
         FileApplied = new Dictionary<string, string?>(Store?.Values ?? FileAtStart, StringComparer.OrdinalIgnoreCase);
     }
 
+    public IReadOnlyList<string> EnvironmentKeys() => [.. Environment.Keys];
+
     public SettingSource SourceOf(string key) =>
         Has(Environment, key) ? SettingSource.Environment : Has(FileAtStart, key) ? SettingSource.File : Has(Shipped, key) ? SettingSource.Shipped : SettingSource.Default;
 
