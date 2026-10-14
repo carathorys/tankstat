@@ -2,6 +2,7 @@ using Tankstat.Application.Auth;
 using Tankstat.Application.Backups;
 using Tankstat.Application.Setup;
 using Tankstat.Domain;
+using Tankstat.Domain.Instance;
 
 namespace Tankstat.Application.UnitTests;
 
@@ -41,8 +42,9 @@ public sealed class RestoreServiceTests
         return (w, store, Service(w, store, new OneTimeCode(), new SetupStatus()));
     }
 
-    private static RestoreService Service(World w, OneBackup store, OneTimeCode code, SetupStatus setup) =>
-        new(store, w.Access, w.Options.Create(), code, setup, w.SystemConfiguration, w.Restart, w.Clock, w.Log.For<RestoreService>());
+    private static RestoreService Service(World w, OneBackup store, OneTimeCode code, SetupStatus setup, SetupPhase phase = SetupPhase.Completed) =>
+        new(store, w.Access, w.Options.Create(), code, setup, new InMemorySetupStore(w.Users, w.Vehicles) { Phase = phase }, w.SystemConfiguration, w.Restart,
+            w.Clock, w.Log.For<RestoreService>());
 
     /// <summary>A new Standalone instance whose setup waits: nobody signed in, no administrator anywhere.</summary>
     private static (World World, OneBackup Store, OneTimeCode Code, RestoreService Service) WaitingForSetup()
@@ -52,7 +54,7 @@ public sealed class RestoreServiceTests
         var code = new OneTimeCode();
         var setup = new SetupStatus();
         setup.Set(pending: true);
-        return (w, store, code, Service(w, store, code, setup));
+        return (w, store, code, Service(w, store, code, setup, SetupPhase.Pending));
     }
 
     [Fact]
@@ -91,6 +93,27 @@ public sealed class RestoreServiceTests
         await Assert.ThrowsAsync<UnauthenticatedException>(() => service.RequestAsync(new RestoreRequest("tankstat-backup-1.zip", null, null, code.Value), default));
 
         Assert.Null(store.Marker);
+    }
+
+    [Fact]
+    public async Task ASetupAnotherServerCompleted_IsClosedToTheCode_AndItsAdministratorRestores()
+    {
+        // This process still thinks the setup waits; the database says another server on it completed the setup since.
+        var w = new World();
+        var store = new OneBackup();
+        var code = new OneTimeCode();
+        var setup = new SetupStatus();
+        setup.Set(pending: true);
+        var service = Service(w, store, code, setup, SetupPhase.Completed);
+
+        await Assert.ThrowsAsync<UnauthenticatedException>(() => service.RequestAsync(new RestoreRequest("tankstat-backup-1.zip", null, null, code.Value), default));
+        Assert.False(setup.Pending);
+        Assert.Null(store.Marker);
+
+        var admin = w.AddUser("root@x.co", admin: true);
+        w.Current.SignInAs(admin);
+        await service.RequestAsync(new RestoreRequest("tankstat-backup-1.zip", null, null, null), default);
+        Assert.Equal(admin.Id, store.Marker!.RequestedById);
     }
 
     [Fact]

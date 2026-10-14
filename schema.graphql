@@ -33,7 +33,7 @@ type Query {
   accessGrants: [AccessGrantInfo!]! @cost(weight: "10")
   backups: BackupOverviewInfo! @cost(weight: "10")
   mySessions: [UserSessionInfo!]! @cost(weight: "10")
-  setup: SetupInfo!
+  setup: SetupInfo! @cost(weight: "10")
   setupRestorePoints(code: String!): [RestorePointInfo!]! @cost(weight: "10")
   refuelings(
     vehicleId: UUID!

@@ -77,14 +77,15 @@ public sealed class SetupService(
         }
     }
 
-    public SetupInfo Info() => new(status.Pending);
+    /// <summary>Whether the setup waits, asked of the database while this process thinks so (another server may have completed it).</summary>
+    public async Task<SetupInfo> InfoAsync(CancellationToken ct) => new(await status.PendingAsync(store, ct));
 
     /// <summary>The restore points of the backups folder, to restore one into the waiting instance; with the recipient new backups are encrypted for.</summary>
     public async Task<(RestorePoints Points, string? CurrentRecipient)> RestorePointsAsync(string? typedCode, CancellationToken ct)
     {
-        RequireCode(typedCode);
+        await RequireCodeAsync(typedCode, ct);
         var points = new RestorePoints(backups.List(), await database.LastMigrationAsync(ct), await database.KnownMigrationsAsync(ct));
-        return (points, backupOptions.Value.Encryption.Recipient);
+        return (points, backupOptions.Value.CurrentRecipient);
     }
 
     /// <summary>
@@ -93,13 +94,12 @@ public sealed class SetupService(
     /// </summary>
     public async Task<User> CreateAdministratorAsync(string? typedCode, string? email, string? password, CancellationToken ct)
     {
-        RequireCode(typedCode);
+        await RequireCodeAsync(typedCode, ct);
         RequireMode(AuthMode.Standalone);
         if (await users.AnyLocalAdminAsync(ct)) throw new DomainException("setup.administratorExists", "An administrator exists already: sign in.");
         var admin = authService.NewAdministrator(email, password);
         if (await users.FindLocalByEmailAsync(admin.Email, ct) is not null) throw new DomainException("user.emailExists", "A user with this e-mail already exists.");
-        if (!await store.CompleteWithAdministratorAsync(admin, clock.GetUtcNow(), ct)) throw CompletedMeanwhile();
-        status.Set(false);
+        AfterCompletion(await store.CompleteWithAdministratorAsync(admin, clock.GetUtcNow(), ct));
         logger.LogInformation("The setup page made the first administrator {UserId}: the setup is completed", admin.Id);
         return admin;
     }
@@ -107,18 +107,20 @@ public sealed class SetupService(
     /// <summary>With sign-in off: the acknowledgement that everyone who reaches the instance may see and change everything completes the setup.</summary>
     public async Task<SetupInfo> AcknowledgeOpenAccessAsync(string? typedCode, CancellationToken ct)
     {
-        RequireCode(typedCode);
+        await RequireCodeAsync(typedCode, ct);
         RequireMode(AuthMode.None);
-        if (!await store.CompleteAsync(SetupCompletion.Acknowledged, clock.GetUtcNow(), ct)) throw CompletedMeanwhile();
-        status.Set(false);
+        AfterCompletion(await store.CompleteAsync(SetupCompletion.Acknowledged, clock.GetUtcNow(), ct));
         logger.LogInformation("Open access was acknowledged on the setup page (sign-in is off): the setup is completed");
-        return Info();
+        return new SetupInfo(false);
     }
 
-    /// <summary>The setup waits and the code matches; a wrong code is refused (the GraphQL listener logs the refusal, never what was typed).</summary>
-    private void RequireCode(string? typedCode)
+    /// <summary>
+    /// The setup waits (asked of the database: another server may have completed it) and the code matches; a wrong code is refused (the
+    /// GraphQL listener logs the refusal, never what was typed).
+    /// </summary>
+    private async Task RequireCodeAsync(string? typedCode, CancellationToken ct)
     {
-        if (!status.Pending) throw new DomainException("setup.completed", "The setup is completed already.");
+        if (!await status.PendingAsync(store, ct)) throw Completed();
         if (!code.Matches(typedCode)) throw new ForbiddenException("setup.codeInvalid", "The one-time setup code from the server's log is needed.");
     }
 
@@ -128,10 +130,15 @@ public sealed class SetupService(
             throw new DomainException("setup.otherMode", $"This step is not part of the setup in {auth.Value.Mode} sign-in mode.", new { Mode = auth.Value.Mode.ToString() });
     }
 
-    /// <summary>Another request (or server) completed the setup first: this process learns it too.</summary>
-    private DomainException CompletedMeanwhile()
+    /// <summary>
+    /// After a step's conditional completion: the setup is completed either way, so this process's copy follows; when the write found it
+    /// completed, another request (or server) was first and the step is refused.
+    /// </summary>
+    private void AfterCompletion(bool completedHere)
     {
         status.Set(false);
-        return new DomainException("setup.completed", "The setup is completed already.");
+        if (!completedHere) throw Completed();
     }
+
+    private static DomainException Completed() => new("setup.completed", "The setup is completed already.");
 }

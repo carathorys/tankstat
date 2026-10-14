@@ -10,7 +10,7 @@ public sealed record SetupAdministratorInput(string Code, string Email, string P
 public sealed class SetupQueries
 {
     /// <summary>Whether the instance waits for its setup (public, nothing secret: the code is only in the server's log).</summary>
-    public SetupInfo GetSetup([Service] SetupService setup) => setup.Info();
+    public Task<SetupInfo> GetSetup([Service] SetupService setup, CancellationToken ct) => setup.InfoAsync(ct);
 
     /// <summary>
     /// The backups folder's restore points while the setup waits, to restore one into the new instance with <c>restoreBackup</c> (which

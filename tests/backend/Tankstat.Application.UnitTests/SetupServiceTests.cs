@@ -87,7 +87,7 @@ public sealed class SetupServiceTests
 
         Assert.Equal(SetupPhase.Pending, s.Store.Phase);
         Assert.True(s.Status.Pending);
-        Assert.True(s.Service.Info().Pending);
+        Assert.True((await s.Service.InfoAsync(default)).Pending);
         var line = Assert.Single(CodeLines(s));
         Assert.Equal(LogLevel.Information, line.Level);
         Assert.Equal(s.Code.Value, line.Values["Code"]);
@@ -226,13 +226,25 @@ public sealed class SetupServiceTests
     {
         var s = Make();
         await s.Service.StartAsync(default);
-        await s.Store.CompleteAsync(SetupCompletion.Acknowledged, default, default); // the database moved on under this process
+        var elsewhere = User.CreateLocal("first@x.co", "Administrator", isAdmin: true);
+        await s.Store.CompleteWithAdministratorAsync(elsewhere, default, default); // another server on the database made the administrator
 
         var refused = await Assert.ThrowsAsync<DomainException>(() => s.Service.CreateAdministratorAsync(s.Code.Value, "root@x.co", "initial-password-1", default));
 
         Assert.Equal("setup.completed", refused.Key);
+        Assert.False(s.Status.Pending); // the notice goes too
+        Assert.Same(elsewhere, Assert.Single(s.World.Users.Items));
+    }
+
+    [Fact]
+    public async Task TheSetupQuery_AsksTheDatabase_WhileThisProcessThinksItWaits()
+    {
+        var s = Make(AuthMode.None);
+        await s.Service.StartAsync(default);
+        await s.Store.CompleteAsync(SetupCompletion.Acknowledged, default, default); // acknowledged on another server
+
+        Assert.False((await s.Service.InfoAsync(default)).Pending);
         Assert.False(s.Status.Pending);
-        Assert.Empty(s.World.Users.Items);
     }
 
     [Fact]

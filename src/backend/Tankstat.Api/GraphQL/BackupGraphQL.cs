@@ -58,7 +58,7 @@ public sealed record BackupOverviewInfo(string Folder, BackupRunInfo Run, Backup
             s.Folder,
             new BackupRunInfo(s.Run.Running, last?.StartedAt, last?.FinishedAt, last?.File, last?.Bytes, last?.Error),
             new BackupSettingsInfo(
-                s.Settings.Encrypted ? s.Settings.Encryption.Recipient!.Trim() : null, s.PhotosApart, s.Settings.Photos, s.Settings.MaxUploadMb,
+                s.Settings.CurrentRecipient, s.PhotosApart, s.Settings.Photos, s.Settings.MaxUploadMb,
                 // a culture's time separator (fi-FI: 02.00) is not the setting's
                 schedule?.Times.Select(t => t.ToString("HH:mm", CultureInfo.InvariantCulture)).ToList() ?? [], schedule?.Days ?? [], s.TimeZone,
                 s.NextRun, s.Settings.Keep, s.Settings.KeepDays));

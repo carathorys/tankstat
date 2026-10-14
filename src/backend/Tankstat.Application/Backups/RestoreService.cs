@@ -24,13 +24,15 @@ public sealed record RestorePending(string File, DateTimeOffset RestorePoint);
 /// (<see cref="IServerRestart"/>). Neither the passphrase nor the identity nor the code is ever logged.
 /// </summary>
 public sealed class RestoreService(
-    IBackupStore store, AccessService access, IOptions<AuthOptions> auth, OneTimeCode code, SetupStatus setup, ISystemConfiguration configuration,
-    IServerRestart restart, TimeProvider clock, ILogger<RestoreService> logger)
+    IBackupStore store, AccessService access, IOptions<AuthOptions> auth, OneTimeCode code, SetupStatus setup, ISetupStore setupStore,
+    ISystemConfiguration configuration, IServerRestart restart, TimeProvider clock, ILogger<RestoreService> logger)
 {
     public async Task<RestorePending> RequestAsync(RestoreRequest request, CancellationToken ct)
     {
         Guid actor;
-        if (auth.Value.Mode == AuthMode.None || setup.Pending)
+        // While the setup waits as the database says: one another server completed is closed to the code here too, and an administrator
+        // made there restores as administrators do.
+        if (auth.Value.Mode == AuthMode.None || await setup.PendingAsync(setupStore, ct))
         {
             if (!code.Matches(request.Code)) throw new ForbiddenException("backup.codeRequired", "The one-time code from the server's log is needed.");
             actor = Principal.Anonymous.Id;
