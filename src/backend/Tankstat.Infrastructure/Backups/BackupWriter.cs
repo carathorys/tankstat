@@ -24,7 +24,7 @@ namespace Tankstat.Infrastructure.Backups;
 /// from one consistent read (<see cref="BackupSource"/>, ended before the files are copied), <c>files/pictures/...</c> (everything under
 /// <c>Storage:Path</c> but the drafts), <c>files/photos/...</c> (a photos root of its own, only when asked for) and, in an encrypted backup
 /// only, <c>keys/*.xml</c> (the Data Protection keys, which are secrets in plain). Beside it, the instance's settings file as it is on disk
-/// when the run starts (<see cref="ISettingsBackup"/>: the instance's settings only, a plain backup without the secrets), as
+/// when the run starts (<see cref="ISettingsBackup"/>: the instance's settings only, the secrets only with Backups:Secrets), as
 /// <c>settings.age</c> (for the same recipient) or <c>settings.json</c>, an entry of its own with its checksum in the manifest, so a restore
 /// request reads it without the data. Everything is streamed; the file is written under a
 /// temporary name this run creates new (so two runs never share one, and a run only removes its own), and renamed once it is complete and
@@ -67,10 +67,12 @@ internal sealed class BackupWriter(
         try
         {
             // The settings as they are when the run starts, before the database is read: what the next start would read.
-            var settings = await settingsFile.CopyAsync(encryption is not null, request.Environment ?? o.Environment, ct);
+            // Secrets go into a backup only when asked for (Backups:Secrets), encrypted or not (user decision).
+            var carriesSecrets = request.Secrets ?? o.Secrets;
+            var settings = await settingsFile.CopyAsync(carriesSecrets, request.Environment ?? o.Environment, ct);
             BackupManifest manifest;
             await using (file)
-                manifest = await WriteArchiveAsync(file, roots, createdAt, encryption, photos, request.SafetyNet, settings, ct);
+                manifest = await WriteArchiveAsync(file, roots, createdAt, encryption, photos, request.SafetyNet, settings, carriesSecrets, ct);
             File.Move(partial, output);
             logger.LogInformation("Wrote backup {File}: {Tables} tables with {Rows} rows, {Bytes} bytes of files, {Encryption}",
                 Path.GetFileName(output), manifest.Contents.Tables.Count, manifest.Contents.Tables.Values.Sum(), manifest.Sizes.Pictures + manifest.Sizes.Photos,
@@ -86,7 +88,7 @@ internal sealed class BackupWriter(
 
     private async Task<BackupManifest> WriteArchiveAsync(
         FileStream file, StorageOptions roots, DateTimeOffset createdAt, BackupEncryption? encryption, BackupPhotos photos, bool safetyNet, SettingsCopy settings,
-        CancellationToken ct)
+        bool carriesSecrets, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var applied = (await db.Database.GetAppliedMigrationsAsync(ct)).ToList();
@@ -134,7 +136,7 @@ internal sealed class BackupWriter(
                 if (photos == BackupPhotos.Separate) photoBytes = await AddFilesAsync(inner, "files/photos", roots.PhotosRoot, ct);
                 if (encryption is not null) (keyFiles, keyBytes) = await AddKeysAsync(inner, ct);
             }
-            var settingsEntry = await AddSettingsAsync(outer, settings, encryption, ct);
+            var settingsEntry = await AddSettingsAsync(outer, settings, encryption, carriesSecrets, ct);
             manifest = new BackupManifest(
                 BackupManifest.CurrentFormat, BackupManifest.Tankstat, HealthReporter.AppVersion, createdAt, database.Value.Provider.ToString(), migration, safetyNet,
                 new BackupContents(rows, Pictures: true, photos, Keys: keyFiles > 0),
@@ -184,7 +186,7 @@ internal sealed class BackupWriter(
     /// The settings file as an outer entry of its own (encrypted for the backup's recipient in an encrypted backup), and what the manifest
     /// says of it: its entry and checksum as stored, and the names of the keys left out; only the state when no file went in.
     /// </summary>
-    private static async Task<BackupSettingsFile> AddSettingsAsync(ZipArchive outer, SettingsCopy settings, BackupEncryption? encryption, CancellationToken ct)
+    private static async Task<BackupSettingsFile> AddSettingsAsync(ZipArchive outer, SettingsCopy settings, BackupEncryption? encryption, bool carriesSecrets, CancellationToken ct)
     {
         if (settings.State != BackupSettingsState.Included) return new BackupSettingsFile(settings.State);
         var name = encryption is null ? BackupSettingsFile.Plain : BackupSettingsFile.Encrypted;
@@ -192,7 +194,7 @@ internal sealed class BackupWriter(
         var hashing = new HashingStream(outer.CreateEntry(name, CompressionLevel.NoCompression).Open());
         await using (var entry = encryption is null ? hashing : AgeStream.Encrypt(hashing, AgeKeys.ParseRecipient(encryption.Recipient)))
             await entry.WriteAsync(json, ct);
-        return new BackupSettingsFile(BackupSettingsState.Included, name, hashing.Sha256Hex, hashing.Written, settings.Omitted.Count > 0 ? settings.Omitted : null);
+        return new BackupSettingsFile(BackupSettingsState.Included, name, hashing.Sha256Hex, hashing.Written, settings.Omitted.Count > 0 ? settings.Omitted : null, carriesSecrets);
     }
 
     /// <summary>The Data Protection key files, directly in the keys folder; how many there were and their bytes.</summary>

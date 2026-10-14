@@ -249,4 +249,18 @@ public sealed class BackupCommandsTests : IDisposable
         Assert.DoesNotContain("ZZZZ", recorded.Out + merged.Out); // names, never values
         Assert.Equal(1, (await RunAsync(app, "", "backup", "--environment", "everything")).Code); // the usage
     }
+
+    [Fact]
+    public async Task Secrets_ForOneRun_PutThemIntoAPlainBackup_AndTheLineSaysSoInCapitals()
+    {
+        using var app = new TestApp(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = _folder });
+        File.WriteAllText(app.SettingsPath, """{ "Smtp": { "Password": "zzzz-secret" } }""");
+
+        var plain = await RunAsync(app, "", "backup");
+        var withSecrets = await RunAsync(app, "", "backup", "--secrets");
+
+        Assert.Contains("without Smtp:Password", plain.Out);
+        Assert.Contains("its secrets IN PLAIN (anyone with the file reads them)", withSecrets.Out);
+        Assert.DoesNotContain("zzzz", plain.Out + withSecrets.Out);
+    }
 }

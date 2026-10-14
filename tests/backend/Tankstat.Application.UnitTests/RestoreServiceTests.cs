@@ -47,9 +47,10 @@ public sealed class RestoreServiceTests
         /// <summary>The recorded settings this server lacks, as it would judge them.</summary>
         public IReadOnlyList<string> Missing { get; init; } = [];
         public IReadOnlyDictionary<string, string?>? Asked { get; private set; }
-        public Task<SettingsCopy> CopyAsync(bool encrypted, BackupEnvironmentMode mode, CancellationToken ct) => Task.FromResult(SettingsCopy.None);
+        public Task<SettingsCopy> CopyAsync(bool carriesSecrets, BackupEnvironmentMode mode, CancellationToken ct) => Task.FromResult(SettingsCopy.None);
         public Task<IReadOnlyList<string>> MissingAsync(BackupEnvironment recorded, IReadOnlyDictionary<string, string?>? restored, CancellationToken ct) => Task.FromResult(Missing);
-        public Task<RestoredSettings> RestoredAsync(IReadOnlyDictionary<string, string?> fromBackup, bool encrypted, CancellationToken ct)
+        public IReadOnlyList<string> Overridden(IReadOnlyDictionary<string, string?> fromBackup) => [];
+        public Task<RestoredSettings> RestoredAsync(IReadOnlyDictionary<string, string?> fromBackup, bool carriesSecrets, CancellationToken ct)
         {
             Asked = fromBackup;
             return Task.FromResult(new RestoredSettings(fromBackup, Problems, new AuthOptions()));

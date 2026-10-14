@@ -25,7 +25,7 @@ public sealed class SettingsInBackupsTests
     [Fact]
     public void APlainBackup_CarriesTheInstanceSettings_WithoutTheSecrets_AndNamesWhatItLeavesOut()
     {
-        var (carried, omitted) = SettingsInBackups.Copy(File, encrypted: false);
+        var (carried, omitted) = SettingsInBackups.Copy(File, carriesSecrets: false);
 
         Assert.Equal(["Auth:AdminEmails:0", "Auth:AdminEmails:1", "Auth:Mode", "Defaults:Currency", "Logging:Console:FormatterName"], carried.Keys.Order(StringComparer.Ordinal));
         Assert.Equal(["Auth:Standalone:AdminPassword", "Backups:Path", "Database:ConnectionString", "Setup:Enabled", "Smtp:Password", "Storage:Path"], omitted);
@@ -35,7 +35,7 @@ public sealed class SettingsInBackupsTests
     [Fact]
     public void AnEncryptedBackup_CarriesTheSecretsToo_NeverTheMachinesOwn()
     {
-        var (carried, omitted) = SettingsInBackups.Copy(File, encrypted: true);
+        var (carried, omitted) = SettingsInBackups.Copy(File, carriesSecrets: true);
 
         Assert.Equal("zzzz-secret", carried["Smtp:Password"]);
         Assert.DoesNotContain("Smtp:Password", omitted);
@@ -55,7 +55,7 @@ public sealed class SettingsInBackupsTests
         };
         var fromBackup = new Dictionary<string, string?> { ["Auth:Mode"] = "Standalone", ["Database:ConnectionString"] = "Host=elsewhere" }; // a key no backup carries: not taken
 
-        var restored = SettingsInBackups.Restored(fromBackup, live, encrypted: false);
+        var restored = SettingsInBackups.Restored(fromBackup, live, carriesSecrets: false);
 
         Assert.Equal(new Dictionary<string, string?> { ["Auth:Mode"] = "Standalone", ["Smtp:Password"] = "this-servers-password", ["Storage:Path"] = "/data/uploads" },
             restored.OrderBy(p => p.Key).ToDictionary());
@@ -66,7 +66,7 @@ public sealed class SettingsInBackupsTests
     {
         var live = new Dictionary<string, string?> { ["Smtp:Password"] = "this-servers-password" };
 
-        var restored = SettingsInBackups.Restored(new Dictionary<string, string?>(), live, encrypted: true);
+        var restored = SettingsInBackups.Restored(new Dictionary<string, string?>(), live, carriesSecrets: true);
 
         Assert.Empty(restored); // an encrypted backup carries the secrets it had: none here, so none stays
     }
@@ -114,8 +114,8 @@ public sealed class SettingsInBackupsTests
             ["Defaults:Currency"] = "HUF", ["Logging:LogLevel:Tankstat"] = "Debug", ["Storage:Path"] = "/srv/pictures",
         }).Build();
 
-        var plain = SettingsInBackups.Merged(file, EnvironmentKeys, running, encrypted: false);
-        var encrypted = SettingsInBackups.Merged(file, EnvironmentKeys, running, encrypted: true);
+        var plain = SettingsInBackups.Merged(file, EnvironmentKeys, running, carriesSecrets: false);
+        var encrypted = SettingsInBackups.Merged(file, EnvironmentKeys, running, carriesSecrets: true);
 
         Assert.Equal(new Dictionary<string, string?>
         {
@@ -136,5 +136,19 @@ public sealed class SettingsInBackupsTests
         var missing = SettingsInBackups.Missing(recorded, file, key => key == "Auth:Mode");
 
         Assert.Equal(["Defaults__Currency", "Smtp__Password"], missing); // a list by its items, a null is no value; the machine's own never counts
+    }
+
+    [Fact]
+    public void AManifestSaysWhetherTheSecretsWentIn_AnOlderOneByItsEncryption()
+    {
+        var plain = new BackupManifest(
+            BackupManifest.CurrentFormat, BackupManifest.Tankstat, "1.0.0", DateTimeOffset.UnixEpoch, "Sqlite", null, false,
+            new BackupContents(new Dictionary<string, long>(), true, BackupPhotos.WithPictures, false), new BackupSizes(0, 0, 0, 0, 0), new BackupArchive(BackupArchive.Plain, "ab"), null);
+        var encrypted = plain with { Encryption = new BackupEncryption(BackupEncryption.AgeX25519, "age1x", "c2FsdHNhbHQ=", Argon2idParameters.Default) };
+
+        Assert.False(plain.CarriesSecrets());
+        Assert.True(encrypted.CarriesSecrets());
+        Assert.True((plain with { Settings = new BackupSettingsFile(BackupSettingsState.Included, Secrets: true) }).CarriesSecrets()); // asked for in plain
+        Assert.DoesNotContain("carriesSecrets", plain.ToJson(), StringComparison.OrdinalIgnoreCase); // a method, never a member of the file
     }
 }

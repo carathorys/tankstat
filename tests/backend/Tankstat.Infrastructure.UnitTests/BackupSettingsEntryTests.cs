@@ -26,9 +26,10 @@ public sealed class BackupSettingsEntryTests : IDisposable
     /// <summary>The copy the port hands the writer, as the Api's would after its rules (<see cref="SettingsInBackups"/>).</summary>
     private sealed class GivenCopy(SettingsCopy copy) : ISettingsBackup
     {
-        public Task<SettingsCopy> CopyAsync(bool encrypted, BackupEnvironmentMode mode, CancellationToken ct) => Task.FromResult(copy);
+        public Task<SettingsCopy> CopyAsync(bool carriesSecrets, BackupEnvironmentMode mode, CancellationToken ct) => Task.FromResult(copy);
         public Task<IReadOnlyList<string>> MissingAsync(BackupEnvironment recorded, IReadOnlyDictionary<string, string?>? restored, CancellationToken ct) => throw new NotSupportedException();
-        public Task<RestoredSettings> RestoredAsync(IReadOnlyDictionary<string, string?> fromBackup, bool encrypted, CancellationToken ct) => throw new NotSupportedException();
+        public IReadOnlyList<string> Overridden(IReadOnlyDictionary<string, string?> fromBackup) => [];
+        public Task<RestoredSettings> RestoredAsync(IReadOnlyDictionary<string, string?> fromBackup, bool carriesSecrets, CancellationToken ct) => throw new NotSupportedException();
         public Task WriteAsync(IReadOnlyDictionary<string, string?> values, CancellationToken ct) => throw new NotSupportedException();
     }
 
