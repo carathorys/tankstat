@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
 import type { AuthMode, SessionQuery } from '../../../src/frontend/gql/generated.ts'
 import { navigation } from '../../../src/frontend/navigation.ts'
-import { fakeInstance, fakeVehicleBackend, gqlError, healthHandler, renderWithApollo, user } from '../support/mocks.tsx'
+import { backupRecipientHandler, fakeInstance, fakeVehicleBackend, gqlError, healthHandler, renderWithApollo, user } from '../support/mocks.tsx'
 import { server } from '../support/server.ts'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
@@ -74,34 +74,7 @@ function waitingServer(mode: AuthMode, options: { signedIn?: SessionQuery['sessi
       state.pending = false
       return HttpResponse.json({ data: { setupAcknowledgeOpenAccess: { __typename: 'SetupInfo', pending: false } } })
     }),
-    // What the done screen asks for its key set: backups written without encryption yet.
-    graphql.query('Backups', () =>
-      HttpResponse.json({
-        data: {
-          backups: {
-            __typename: 'BackupOverviewInfo',
-            folder: '/data/backups',
-            migration: 'AddSetup',
-            run: { __typename: 'BackupRunInfo', running: false, startedAt: null, finishedAt: null, file: null, bytes: null, error: null },
-            settings: {
-              __typename: 'BackupSettingsInfo',
-              recipient: null,
-              photosApart: false,
-              photos: false,
-              maxUploadMb: 1024,
-              times: [],
-              days: [],
-              timeZone: 'UTC',
-              nextRun: null,
-              keep: null,
-              keepDays: null,
-            },
-            sizes: { __typename: 'StorageSizesInfo', database: 1000, pictures: 0, photos: null },
-            restorePoints: [],
-          },
-        },
-      }),
-    ),
+    backupRecipientHandler(),
     graphql.mutation('RestoreBackup', ({ variables }) => {
       record('RestoreBackup', variables.input)
       state.restorePending = true
@@ -229,7 +202,7 @@ it('asks the session again when the setup was completed elsewhere meanwhile, so 
 it('says why the key set is missing from the done screen when the backups cannot be asked for', async () => {
   const state = waitingServer('STANDALONE', { signedIn: user({ isAdmin: true }) })
   state.pending = false
-  server.use(graphql.query('Backups', () => HttpResponse.json(gqlError('The backups folder cannot be read.', 'INTERNAL_SERVER_ERROR', 'backup.folderUnreadable'))))
+  server.use(graphql.query('BackupRecipient', () => HttpResponse.json(gqlError('The backups folder cannot be read.', 'INTERNAL_SERVER_ERROR', 'backup.folderUnreadable'))))
   renderWithApollo(<App />, '/setup')
 
   expect(await screen.findByText('The backups folder cannot be read.')).toBeInTheDocument() // not an endless "Loading"

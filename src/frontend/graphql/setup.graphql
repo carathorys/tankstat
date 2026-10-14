@@ -32,3 +32,12 @@ mutation SetupAcknowledgeOpenAccess($code: String!) {
     pending
   }
 }
+
+# The done screen's key set: the recipient alone (the Backups query's restore points and sizes read every backup and walk the folders).
+query BackupRecipient {
+  backups {
+    settings {
+      recipient
+    }
+  }
+}

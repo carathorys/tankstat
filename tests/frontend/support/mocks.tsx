@@ -64,6 +64,12 @@ export const healthHandler = graphql.query('Health', () =>
   HttpResponse.json({ data: { health: { status: 'ok', version: '1.2.3', databaseReachable: true } } }),
 )
 
+/** What the setup's done screen asks of the backups: the recipient new backups are encrypted for, none by default. */
+export const backupRecipientHandler = (recipient: string | null = null) =>
+  graphql.query('BackupRecipient', () =>
+    HttpResponse.json({ data: { backups: { __typename: 'BackupOverviewInfo', settings: { __typename: 'BackupSettingsInfo', recipient } } } }),
+  )
+
 /** A GraphQL error as the API sends it: coarse `code`, specific translation `key`, `args`, English fallback `message`. */
 export const gqlError = (message: string, code: string, key?: string, args?: Record<string, unknown>) => ({
   errors: [{ message, extensions: { code, ...(key ? { key, args: args ?? {} } : {}) } }],

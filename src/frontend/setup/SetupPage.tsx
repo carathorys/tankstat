@@ -8,12 +8,12 @@ import Typography from '@mui/material/Typography'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link as RouterLink, useNavigate } from 'react-router'
-import { EncryptionSetup } from '../admin/BackupsPanel.tsx'
+import { EncryptionSetup } from '../admin/encryption.tsx'
 import { RestartWait, RestoreDialog } from '../admin/restore.tsx'
 import { Loading } from '../components/Loading.tsx'
 import { FieldForm } from '../forms/FieldForm.tsx'
 import {
-  BackupsDocument,
+  BackupRecipientDocument,
   SessionDocument,
   SetupAcknowledgeOpenAccessDocument,
   SetupClaimAdministratorDocument,
@@ -82,7 +82,8 @@ function NothingToDo() {
  */
 function Done({ mode }: { mode: AuthMode }) {
   const { t } = useTranslation()
-  const { data, error } = useQuery(BackupsDocument, { fetchPolicy: 'cache-and-network' })
+  // The recipient alone, past the cache: an answer of only the settings would replace the Backups page's whole overview there.
+  const { data, error } = useQuery(BackupRecipientDocument, { fetchPolicy: 'no-cache' })
   const next: { to: string; label: string }[] = [
     { to: '/admin/settings?tab=backups', label: t('setup.nextBackups') },
     { to: '/admin/settings?tab=defaults', label: t('setup.nextDefaults') },
@@ -92,7 +93,7 @@ function Done({ mode }: { mode: AuthMode }) {
   return (
     <Stack sx={{ gap: 3, maxWidth: 720 }}>
       <SuccessMessage>{t('setup.done')}</SuccessMessage>
-      {data ? <EncryptionSetup recipient={data.backups.settings.recipient ?? null} /> : error !== undefined ? <ErrorMessage error={error} /> : <Loading />}
+      {data ? <EncryptionSetup recipient={data.backups.settings.recipient ?? null} refresh={BackupRecipientDocument} /> : error !== undefined ? <ErrorMessage error={error} /> : <Loading />}
       <section aria-labelledby="setup-next">
         <Typography id="setup-next" component="h2" variant="h5" sx={{ mb: 1 }}>
           {t('setup.nextTitle')}

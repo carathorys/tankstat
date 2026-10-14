@@ -10,7 +10,7 @@ import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
 import { platform } from '../../../src/frontend/pwa/platform.ts'
 import { check, setup, setupAccessibilityTests } from '../support/accessibility.tsx'
 import { server } from '../support/server.ts'
-import { fakeLogBackend, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport, user } from '../support/mocks.tsx'
+import { backupRecipientHandler, fakeLogBackend, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport, user } from '../support/mocks.tsx'
 
 // The pages, the shell and the sign-in screens. The log dialogs and photos are in AccessibilityLogs, the recurring expenses and the home
 // cards in AccessibilityRecurring (split so the files run side by side).
@@ -388,16 +388,11 @@ it('the setup page, its code and its steps, are labelled and free of violations'
             {
               __typename: 'RestorePointInfo',
               file: 'tankstat-backup-20261010T020000Z.zip',
-              bytes: 4096,
               createdAt: '2026-10-10T02:00:00Z',
               appVersion: '0.15.0',
-              migration: 'AddSetup',
               sameMigration: true,
               olderMigration: false,
-              safetyNet: false,
-              uploaded: false,
               encrypted: true,
-              photos: 'WITH_PICTURES',
             },
           ],
         },
@@ -418,33 +413,7 @@ it("the setup's done screen, with its key set and next steps, is labelled and fr
     sessionHandler('STANDALONE', () => user({ isAdmin: true })),
     healthHandler,
     graphql.query('Setup', () => HttpResponse.json({ data: { setup: { __typename: 'SetupInfo', pending: false } } })),
-    graphql.query('Backups', () =>
-      HttpResponse.json({
-        data: {
-          backups: {
-            __typename: 'BackupOverviewInfo',
-            folder: '/data/backups',
-            migration: 'AddSetup',
-            run: { __typename: 'BackupRunInfo', running: false, startedAt: null, finishedAt: null, file: null, bytes: null, error: null },
-            settings: {
-              __typename: 'BackupSettingsInfo',
-              recipient: null,
-              photosApart: false,
-              photos: false,
-              maxUploadMb: 1024,
-              times: [],
-              days: [],
-              timeZone: 'UTC',
-              nextRun: null,
-              keep: null,
-              keepDays: null,
-            },
-            sizes: { __typename: 'StorageSizesInfo', database: 1000, pictures: 0, photos: null },
-            restorePoints: [],
-          },
-        },
-      }),
-    ),
+    backupRecipientHandler(),
   )
   const view = renderWithApollo(<App />, '/setup')
 
