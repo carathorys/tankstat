@@ -1652,7 +1652,7 @@
     },
     "restoreTitle": "Biztonsági mentés visszaállítása",
     "restoreIntro": "Indulj egy Tankstat-szerver biztonsági mentéséből: a felhasználói, járművei, bejegyzései és képei visszakerülnek vele, és a beállítása is.",
-    "restoreNone": "A szerver mentések mappájában nincs biztonsági mentés. Ha egyet vissza szeretnél állítani, másold a fájlját abba a mappába, majd nézd meg újra.",
+    "restoreNone": "A szerver mentések mappájában nincs biztonsági mentés. Tölts fel egyet lent, vagy másold a fájlját abba a mappába, majd nézd meg újra.",
     "lookAgain": "Nézd meg újra",
     "restore": "Visszaállítás",
     "pointMeta": "Tankstat {{version}}, {{file}}",

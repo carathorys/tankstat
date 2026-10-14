@@ -1652,7 +1652,7 @@
     },
     "restoreTitle": "Restore a backup",
     "restoreIntro": "Start from a backup of a Tankstat server: its users, vehicles, logs and pictures come back with it, and so does its setup.",
-    "restoreNone": "There is no backup in the server's backups folder. To restore one, copy its file into that folder, then look again.",
+    "restoreNone": "There is no backup in the server's backups folder. Upload one below, or copy its file into that folder and look again.",
     "lookAgain": "Look again",
     "restore": "Restore",
     "pointMeta": "Tankstat {{version}}, {{file}}",

@@ -396,6 +396,7 @@ it('the setup page, its code and its wizard, are labelled and free of violations
               encrypted: true,
             },
           ],
+          setupUploadLimitMb: 1024,
         },
       }),
     ),

@@ -6,15 +6,16 @@ export const backupPath = (file: string) => `/media/backups/${encodeURIComponent
 
 /**
  * Sends a backup file into the server's backups folder, streamed as the raw body (it can be a gigabyte). The access cookie is renewed
- * first, so the file is not sent twice when the cookie ran out. The server checks it is a backup and names it `uploaded-...`.
+ * first, so the file is not sent twice when the cookie ran out; with the setup's one-time `code` (in a header, never the address, which
+ * proxies log) nobody is signed in, and nothing is renewed. The server checks it is a backup and names it `uploaded-...`.
  */
-export async function uploadBackup(file: File): Promise<{ file: string; bytes: number }> {
-  await refreshSession().catch(() => false)
+export async function uploadBackup(file: File, code?: string): Promise<{ file: string; bytes: number }> {
+  if (code === undefined) await refreshSession().catch(() => false)
   const response = await fetchSignedIn(`/media/backups?name=${encodeURIComponent(file.name)}`, {
     method: 'PUT',
     body: file,
     credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/zip' },
+    headers: { 'Content-Type': 'application/zip', ...(code === undefined ? {} : { 'X-Setup-Code': code }) },
   })
   // A refusal without a key is a proxy in front of the server answering (its own size limit, say).
   await check(response, { 413: 'backup.uploadRefused' })

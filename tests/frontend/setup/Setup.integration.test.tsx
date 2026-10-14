@@ -1,6 +1,6 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql, HttpResponse } from 'msw'
+import { graphql, http, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { RESTART_WAIT } from '../../../src/frontend/admin/restartFlow.ts'
 import App from '../../../src/frontend/App.tsx'
@@ -50,6 +50,7 @@ function waitingServer(running: AuthMode, options: { signedIn?: SessionQuery['se
     mode: running,
     current: options.signedIn ?? null,
     chosen: undefined as string | undefined, // the sign-in mode the wizard saved, waiting for the restart
+    points: [...(options.points ?? [])],
     calls: {} as Record<string, unknown[]>,
   }
   const record = (name: string, vars: unknown) => (state.calls[name] ??= []).push(vars)
@@ -68,7 +69,7 @@ function waitingServer(running: AuthMode, options: { signedIn?: SessionQuery['se
     graphql.query('SetupRestorePoints', ({ variables }) => {
       record('SetupRestorePoints', variables)
       if (!codeOk(variables.code)) return HttpResponse.json(codeInvalid)
-      return HttpResponse.json({ data: { setupRestorePoints: (options.points ?? []).map((p) => ({ __typename: 'RestorePointInfo', ...p })) } })
+      return HttpResponse.json({ data: { setupRestorePoints: state.points.map((p) => ({ __typename: 'RestorePointInfo', ...p })), setupUploadLimitMb: 1024 } })
     }),
     // The wizard's settings, with the code: a sign-in mode saved waits for the restart the last step makes.
     graphql.query('SystemSettings', ({ variables }) => {
@@ -101,6 +102,13 @@ function waitingServer(running: AuthMode, options: { signedIn?: SessionQuery['se
       return HttpResponse.json({ data: { setupClaimAdministrator: { __typename: 'UserInfo', id: state.current.id, isAdmin: true } } })
     }),
     backupRecipientHandler(),
+    // An upload with the code, as the setup sends it: the file joins the folder.
+    http.put('/media/backups', async ({ request }) => {
+      record('Upload', { name: new URL(request.url).searchParams.get('name'), code: request.headers.get('X-Setup-Code') })
+      if (!codeOk(request.headers.get('X-Setup-Code') ?? '')) return HttpResponse.json({ key: 'setup.codeInvalid', message: 'No.' }, { status: 403 })
+      state.points.push({ ...backup, file: 'uploaded-from-old.zip' })
+      return HttpResponse.json({ file: 'uploaded-from-old.zip', bytes: (await request.arrayBuffer()).byteLength })
+    }),
     graphql.mutation('RestoreBackup', ({ variables }) => {
       record('RestoreBackup', variables.input)
       state.restorePending = true
@@ -296,6 +304,22 @@ it('with sign-in off, a device that loses the server shows its own data, not a s
 
   expect(await screen.findByRole('navigation')).toBeInTheDocument()
   expect(screen.queryByRole('heading', { level: 1, name: 'Set up Tankstat' })).not.toBeInTheDocument()
+})
+
+it('uploads a backup the folder does not hold, with the code, and lists it to restore', async () => {
+  const ui = userEvent.setup()
+  const state = waitingServer('STANDALONE')
+  renderWithApollo(<App />)
+
+  await enterCode(ui)
+  await ui.click(await screen.findByRole('button', { name: 'Restore from a backup' }))
+  const restore = await screen.findByRole('region', { name: 'Restore a backup' })
+  expect(within(restore).getByText(/up to 1024 MB/)).toBeInTheDocument()
+  await ui.upload(screen.getByTestId('backup-file'), new File([new Uint8Array([1, 2, 3])], 'from-old.zip', { type: 'application/zip' }))
+
+  // Listed with the folder's, to restore like them.
+  expect(await within(restore).findByRole('button', { name: /\(uploaded-from-old\.zip\)$/ })).toBeInTheDocument()
+  expect(state.calls.Upload).toEqual([{ name: 'from-old.zip', code: CODE }]) // the code in its header, never the address
 })
 
 it('restores a backup of the folder with the code, and reloads once the restarted server has the restored data', async () => {

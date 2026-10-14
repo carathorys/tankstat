@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
 import { healthProbe, waitForRestart } from '../admin/restartFlow.ts'
 import { RestartWait, RestoreDialog } from '../admin/restore.tsx'
+import { UploadBackup } from '../admin/upload.tsx'
 import { SettingsGroupForm } from '../admin/SettingsGroupForm.tsx'
 import { unusedReason } from '../admin/settingsRelevance.ts'
 import { changesOf } from '../admin/settingsDraft.ts'
@@ -67,11 +68,11 @@ const STEP_MOTION_MS = 200
 export function SetupWizard() {
   const client = useApolloClient()
   const { data: session } = useQuery(SessionDocument)
-  const [entered, setEntered] = useState<{ code: string; points: RestorePoint[] }>()
+  const [entered, setEntered] = useState<{ code: string; points: RestorePoint[]; uploadLimitMb: number }>()
 
   const check = async (code: string) => {
     const { data } = await client.query({ query: SetupRestorePointsDocument, variables: { code }, fetchPolicy: 'network-only' })
-    setEntered({ code, points: data?.setupRestorePoints ?? [] })
+    setEntered({ code, points: data?.setupRestorePoints ?? [], uploadLimitMb: data?.setupUploadLimitMb ?? 0 })
   }
 
   if (!entered) return <CodeStep onCode={check} />
@@ -79,6 +80,7 @@ export function SetupWizard() {
     <WizardSteps
       code={entered.code}
       points={entered.points}
+      uploadLimitMb={entered.uploadLimitMb}
       name={session?.session.user?.displayName ?? ''}
       generation={session?.session.instance?.generation ?? undefined}
       onLookAgain={() => check(entered.code)}
@@ -118,6 +120,7 @@ interface WizardStep {
 function WizardSteps({
   code,
   points,
+  uploadLimitMb,
   name,
   generation,
   onLookAgain,
@@ -125,6 +128,7 @@ function WizardSteps({
 }: {
   code: string
   points: RestorePoint[]
+  uploadLimitMb: number
   name: string
   generation: string | undefined
   onLookAgain: () => Promise<void>
@@ -235,6 +239,7 @@ function WizardSteps({
         <RestoreStep
           points={points}
           code={code}
+          uploadLimitMb={uploadLimitMb}
           onLookAgain={onLookAgain}
           onRestoring={(point) => {
             setRestoring({ point, generation })
@@ -586,11 +591,13 @@ function OpenAccessStep({ code, onBack }: { code: string; onBack?: () => void })
 function RestoreStep({
   points,
   code,
+  uploadLimitMb,
   onLookAgain,
   onRestoring,
 }: {
   points: RestorePoint[]
   code: string
+  uploadLimitMb: number
   onLookAgain: () => Promise<void>
   onRestoring: (point: RestoreTargetFieldsFragment) => void
 }) {
@@ -651,6 +658,10 @@ function RestoreStep({
       <Button variant="ghost" color="primary" onClick={lookAgain}>
         {t('setup.lookAgain')}
       </Button>
+      {/* A backup this server's folder does not hold (moving to a new server): sent from this device, then listed above. */}
+      <Box sx={{ mt: 3 }}>
+        <UploadBackup maxUploadMb={uploadLimitMb} code={code} onUploaded={lookAgain} />
+      </Box>
     </section>
   )
 }
