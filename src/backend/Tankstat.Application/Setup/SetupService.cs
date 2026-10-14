@@ -50,14 +50,16 @@ public sealed class SetupService(
             phase = await store.DecideAsync(await store.HoldsDataAsync(ct), clock.GetUtcNow(), ct);
             if (phase == SetupPhase.Completed) logger.LogInformation("The database holds data from before the setup page existed: the instance counts as set up");
         }
+        var administratorSeenTo = false; // CompletedByAsync made sure of the administrator (or stopped the start) already
         if (phase == SetupPhase.Pending && await CompletedByAsync(ct) is { } reason)
         {
             // Completed either way: where this write finds it completed, another server starting at the same moment was first.
             if (await store.CompleteAsync(SetupCompletion.Environment, clock.GetUtcNow(), ct))
                 logger.LogInformation("The setup is completed by the environment: {Reason}", reason);
             phase = SetupPhase.Completed;
+            administratorSeenTo = true;
         }
-        if (phase != SetupPhase.Pending) await authService.BootstrapAdminAsync(setupWaits: false, ct);
+        if (phase != SetupPhase.Pending && !administratorSeenTo) await authService.BootstrapAdminAsync(setupWaits: false, ct);
 
         status.Set(phase == SetupPhase.Pending);
         // A Warning, so a log kept to warnings still has it: without it the instance cannot be set up from the browser.
