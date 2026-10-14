@@ -124,6 +124,9 @@ test('a new instance is restored from a backup uploaded on the setup page, and i
 
   await point.click()
   const dialog = page.getByRole('alertdialog', { name: /^Restore the backup of/ })
+  // The old server's environment is named, and this one sets the same (the same compose file): nothing missing, so nothing refuses it.
+  await expect(dialog).toContainText("Its server's environment set")
+  await expect(dialog.getByRole('alert')).toHaveCount(0)
   await dialog.getByRole('button', { name: 'Restore and restart' }).click()
 
   // The server restarts and restores the backup as it starts; the page reloads once it serves the restored data, which brings its own
