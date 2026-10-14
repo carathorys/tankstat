@@ -856,7 +856,8 @@
       "failed": "an unexpected error (the server log says more)",
       "stopped": "the app stopped while it was being written",
       "restorePending": "A restore waits for the next start; no backup can be deleted until it has run.",
-      "settingsRefused": "The server would not start with the settings file this backup brings, under this server's environment, so it was not restored. Set what it lacks in the environment (an OIDC client secret, say, which a plain backup does not carry), or restore an encrypted backup."
+      "settingsRefused": "The server would not start with the settings file this backup brings, under this server's environment, so it was not restored. Set what it lacks in the environment (an OIDC client secret, say, which a plain backup does not carry), or restore an encrypted backup.",
+      "environmentMissing": "The backup was made on a server whose environment set {{variables}}; this server sets none of them, and the settings file the backup brings holds none either, so it was not restored. Set them in this server's environment, then restore."
     }
   },
   "a11y": {

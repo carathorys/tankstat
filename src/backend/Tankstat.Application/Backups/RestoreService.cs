@@ -54,16 +54,19 @@ public sealed class RestoreService(
     }
 
     /// <summary>
-    /// Whether the server starts again after a restore of <paramref name="file"/>: with the settings file the backup carries, as the restore
-    /// would leave it (<c>backup.settingsRefused</c>, naming the settings at fault), else with the settings file as it is now
-    /// (<c>settings.restartWouldFail</c>). Shared with the <c>restore</c> command, which asks it before it writes the marker too.
+    /// Whether the server starts again after a restore of <paramref name="file"/>, with what it would run: the settings the backup recorded of
+    /// its server's environment must each have a value here, from this environment or from the file the restore leaves
+    /// (<c>backup.environmentMissing</c>, naming the variables: set them first); and the server must start with the settings file the backup
+    /// carries, as the restore would leave it (<c>backup.settingsRefused</c>, naming the settings at fault), else with the settings file as
+    /// it is now (<c>settings.restartWouldFail</c>). Shared with the <c>restore</c> command, which asks it before it writes the marker too.
     /// </summary>
     public static async Task RequireStartableAsync(
         IBackupStore store, ISettingsBackup settings, ISystemConfiguration configuration, string file, BackupManifest manifest, string? identity, CancellationToken ct)
     {
-        if (store.ReadSettings(file, manifest, identity) is { } fromBackup)
+        var restored = store.ReadSettings(file, manifest, identity) is { } fromBackup ? await settings.RestoredAsync(fromBackup, manifest.Encryption is not null, ct) : null;
+        await RequireRecordedAsync(settings, manifest, restored, ct);
+        if (restored is not null)
         {
-            var restored = await settings.RestoredAsync(fromBackup, manifest.Encryption is not null, ct);
             if (restored.Problems.Count > 0)
                 throw new DomainException("backup.settingsRefused",
                     $"The server would not start with the settings file this backup brings ({string.Join(" ", restored.Problems)}), so it is not restored.",
@@ -72,5 +75,19 @@ public sealed class RestoreService(
         }
         using var next = configuration.PrepareNextStart();
         next.RequireStartable();
+    }
+
+    /// <summary>
+    /// The refusal of a restore that would leave settings its backup recorded without a value (D4 of #140): <c>backup.environmentMissing</c>,
+    /// the variables named. Shared with the start, which asks it again (its environment may not be the one the restore was asked under).
+    /// </summary>
+    public static async Task RequireRecordedAsync(ISettingsBackup settings, BackupManifest manifest, RestoredSettings? restored, CancellationToken ct)
+    {
+        if (manifest.Environment is not { } recorded) return;
+        var missing = await settings.MissingAsync(recorded, restored?.Values, ct);
+        if (missing.Count > 0)
+            throw new DomainException("backup.environmentMissing",
+                $"The backup was made on a server whose environment set {string.Join(", ", missing)}; this server sets none of them, nor does the settings file the backup brings. Set them, then restore.",
+                new { Variables = string.Join(", ", missing) });
     }
 }
