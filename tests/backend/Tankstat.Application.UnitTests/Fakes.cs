@@ -425,7 +425,13 @@ internal sealed class InMemoryUsers : IUserRepository
     public Task<bool> AnyLocalAdminAsync(CancellationToken ct) =>
         Task.FromResult(Items.Any(u => u.Provider == UserProvider.Local && u.IsAdmin && !u.IsDisabled));
     public Task AddAsync(User user, CancellationToken ct) { Items.Add(user); return Task.CompletedTask; }
-    public Task UpdateAsync(User user, CancellationToken ct) => Task.CompletedTask; // entities are shared references
+    /// <summary>How often a user was written back (the entities are shared references, so only the count tells).</summary>
+    public int Updates { get; private set; }
+    public Task UpdateAsync(User user, CancellationToken ct)
+    {
+        Updates++;
+        return Task.CompletedTask;
+    }
 }
 
 internal sealed class InMemoryLogPhotos : ILogPhotoRepository

@@ -155,13 +155,16 @@ public sealed class AuthService(
             logger.Log(provider == UserProvider.Proxy ? LogLevel.Debug : LogLevel.Warning, "{Provider} sign-in refused: user {UserId} is disabled", provider, user.Id);
             throw new ForbiddenException(AccountDisabledKey, "This account has been disabled.");
         }
+        // Written only when something changed: a proxy authenticates every request, and the row written back as it was read would undo
+        // what changed meanwhile, such as the setup page making this user the first administrator.
+        var before = (user.Email, user.DisplayName, user.IsAdmin);
         user.UpdateProfile(email, displayName);
         if (configuredAdmin) // configuration only promotes; demotion happens in the UI
         {
             if (!user.IsAdmin) logger.LogInformation("User {UserId} was made an administrator by configuration", user.Id);
             user.SetAdmin(true);
         }
-        await users.UpdateAsync(user, ct);
+        if ((user.Email, user.DisplayName, user.IsAdmin) != before) await users.UpdateAsync(user, ct);
         return user;
     }
 

@@ -538,6 +538,20 @@ public class ProvisioningTests
     }
 
     [Fact]
+    public async Task AnUnchangedExternalUser_IsNotWrittenBack_ByEveryRequest()
+    {
+        // A proxy provisions on every request: a write of the row as read would undo the setup page's promotion made meanwhile.
+        var w = new World(AuthMode.ProxyHeader);
+        await w.Auth.ProvisionExternalAsync(UserProvider.Proxy, "sub-1", "a@x.co", "Alice", default);
+
+        await w.Auth.ProvisionExternalAsync(UserProvider.Proxy, "sub-1", "a@x.co", "Alice", default);
+        Assert.Equal(0, w.Users.Updates);
+
+        await w.Auth.ProvisionExternalAsync(UserProvider.Proxy, "sub-1", "new@x.co", "Alice", default);
+        Assert.Equal(1, w.Users.Updates);
+    }
+
+    [Fact]
     public async Task ConfiguredAdminEmails_BecomeAdministrators_ByEmailOrSubject()
     {
         var w = new World(AuthMode.Oidc, configure: o => o.AdminEmails = ["Boss@X.co", "root-user"]);
