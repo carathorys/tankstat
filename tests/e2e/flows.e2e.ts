@@ -1,7 +1,8 @@
-import { statSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
 import { ADMIN, addVehicle, pageLoaded, signIn } from './support/app.ts'
 import { violations } from './support/axe.ts'
+import { expectSoundLayout } from './support/layout.ts'
 
 // A few flows across the real server, its sign-in and the routing, at both sizes.
 
@@ -68,8 +69,40 @@ test('writes a backup from the Backups page and downloads it', async ({ page }) 
   const restore = page.getByRole('alertdialog', { name: /^Restore the backup of/ })
   await expect(restore).toContainText("Its server's environment set")
   await expect(restore).toContainText('Auth__Oidc__Authority')
-  await expect(restore.getByRole('alert')).toHaveCount(0)
+  // Never refused here: this server sets all of it. Whether it has a risk to accept depends on whether a test saved settings before.
+  await expect(restore).not.toContainText('The restore will be refused')
   expect(await violations(page, '[role="alertdialog"]')).toEqual([])
   await restore.getByRole('button', { name: 'Cancel' }).click()
   await expect(restore).toBeHidden()
 })
+
+test('says what an older backup can break in its row, and its restore waits until that is accepted', async ({ page }) => {
+  await signIn(page)
+  await page.goto('/admin/backups')
+  await pageLoaded(page)
+  // An older release's backup, which every release restores (the upgrade tests' own): no settings file, nothing of its environment.
+  const chooser = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: 'Upload a backup…' }).click()
+  await (await chooser).setFiles({ name: 'older.zip', mimeType: 'application/zip', buffer: readFileSync('tests/backend/contracts/backups/older-migration-AddExpenses.zip') })
+  const uploaded = page.getByText(/^Uploaded as /)
+  await expect(uploaded).toBeVisible()
+  const file = /^Uploaded as (\S+)\.$/.exec((await uploaded.textContent()) ?? '')?.[1]
+  expect(file, 'the name the upload got').toBeTruthy()
+
+  // Said in its row before anything is opened, in words.
+  const row = page.getByRole('row').filter({ hasText: file! })
+  await expect(row).toContainText('Risk: No settings file (an older release wrote it)')
+  await expectSoundLayout(page)
+
+  await row.getByRole('button', { name: /^Restore the backup of/ }).click()
+  const restore = page.getByRole('alertdialog', { name: /^Restore the backup of/ })
+  await expect(restore).toContainText('What this restore can break here')
+  const go = restore.getByRole('button', { name: 'Restore and restart' })
+  await expect(go).toBeDisabled()
+  await restore.getByRole('checkbox', { name: /^I understand that the restored server may not work as before/ }).check()
+  await expect(go).toBeEnabled()
+  expect(await violations(page, '[role="alertdialog"]')).toEqual([])
+  await restore.getByRole('button', { name: 'Cancel' }).click() // the shared server is never restored
+  await expect(restore).toBeHidden()
+})
+
