@@ -21,7 +21,7 @@ All modes end in the same place: a user record in the database that owns data.
 
 ## The first start: setup
 
-A new instance (an empty database) **waits for its setup** until it has its first administrator, or, with sign-in off, until someone acknowledges that everyone who reaches it sees and changes everything. While it waits, the app writes a **one-time setup code** to its log as it starts, at Information:
+A new instance (an empty database) **waits for its setup** until it has its first administrator, or, with sign-in off, until someone acknowledges that everyone who reaches it sees and changes everything. While it waits, the app writes a **one-time setup code** to its log as it starts, as a warning (so a log kept to warnings shows it too):
 
 ```
 Setup is waiting: open /setup in the browser and enter the one-time setup code ABCD-EFGH-JKLM
@@ -31,7 +31,7 @@ With Docker, `docker logs tankstat` shows it. Every start, an in-app restart too
 
 Opening the app shows the setup page, which asks for the code and then offers two ways:
 
-- **Restore a backup** from the server's backups folder (copy the file there first; see [Backup and restore](backup-and-restore.md)): the restored data brings its users and its own setup, so the instance is set up as the backup was. In Standalone the backup must hold an administrator (or the bootstrap variables above must be set), as for any restore.
+- **Restore a backup** from the server's backups folder (copy the file there first; see [Backup and restore](backup-and-restore.md)): the restored data brings its users and its own setup, so the instance is set up as the backup was. In Standalone the backup must hold an administrator (or the bootstrap variables above must be set), as for any restore; only a backup of an instance that was itself still waiting for its setup needs neither, and the restored instance then waits for its setup in turn.
 - **Start fresh**, which depends on the mode:
   - `Standalone`: an e-mail address and a password make the first administrator, who is signed in at once.
   - `Oidc` and `ProxyHeader`: sign in first (through the provider or the proxy), then follow *Open the setup* in the notice and choose *Become the administrator*.
@@ -86,8 +86,8 @@ The token endpoints only answer requests with the header `X-Requested-With: fetc
 
 | Environment variable | Type | Default | Required | Meaning |
 | --- | --- | --- | --- | --- |
-| `Auth__Standalone__AdminEmail` | e-mail | empty | on the first start | E-mail (login name) of the first administrator. Read only while no local administrator exists; afterwards it is ignored. |
-| `Auth__Standalone__AdminPassword` | string, 10-128 characters | empty | on the first start | Password of the first administrator (the normal password rules apply). The app refuses to start if no administrator exists and these two are missing. |
+| `Auth__Standalone__AdminEmail` | e-mail | empty | no (with the password, or neither) | E-mail (login name) of the first administrator, made at the first start instead of on the [setup page](#the-first-start-setup). Read only while no local administrator exists; afterwards it is ignored. |
+| `Auth__Standalone__AdminPassword` | string, 10-128 characters | empty | no (with the e-mail, or neither) | Password of the first administrator (the normal password rules apply). One of the two without the other, or a password the rules refuse, stops the start. On an instance that is set up, the app refuses to start if no administrator exists and these two are missing. |
 | `Auth__Standalone__MaxFailedAttempts` | integer | `5` | no | Failed logins before the account is locked. |
 | `Auth__Standalone__LockoutMinutes` | integer (minutes) | `15` | no | How long a locked account stays locked. |
 | `Auth__Standalone__ResetTokenMinutes` | integer (minutes), 1-43200 | `60` | no | How long a password setup/reset link is valid (it can be used once). At most 30 days; the app does not start with a larger value. |
@@ -175,10 +175,10 @@ Auth__AdminEmails__0=you@example.com
 ## Checklist for an automated setup
 
 1. Set `Auth__Mode` explicitly (never rely on the shipped `appsettings.json`).
-2. Set every setting marked *required* in the table of that mode; the app tells you at start which one is missing.
+2. Set every setting marked *required* in the table of that mode; the app tells you at start which one is missing. So that no browser setup waits: in `Standalone` set the first administrator (`Auth__Standalone__AdminEmail`, `Auth__Standalone__AdminPassword`), in `Oidc` and `ProxyHeader` the administrators (`Auth__AdminEmails__0`, ...), or turn the setup off (`Setup__Enabled=false`; with sign-in off that is the only way).
 3. Behind a TLS-terminating proxy keep `Auth__PublicUrl` and the OIDC redirect URI on the public `https://` address (the session cookie accepts plain HTTP behind the proxy).
 4. For `Standalone` with e-mail, set `Auth__PublicUrl` together with `Smtp__Host` and `Smtp__From`.
-5. Check the result: `{ session { mode user { email isAdmin } } }` at `/graphql` answers the active mode (and `notices` carries the `AUTH_DISABLED` warning when authentication is off, `SETTINGS_FILE_IGNORED` when the app's own settings file was left out at start, or `RESTORE_PENDING` while a restore waits for the next start).
+5. Check the result: `{ session { mode user { email isAdmin } } }` at `/graphql` answers the active mode (and `notices` carries the `AUTH_DISABLED` warning when authentication is off, `SETTINGS_FILE_IGNORED` when the app's own settings file was left out at start, `RESTORE_PENDING` while a restore waits for the next start, or `SETUP_PENDING` while the instance waits for its setup).
 
 ## Access control
 
