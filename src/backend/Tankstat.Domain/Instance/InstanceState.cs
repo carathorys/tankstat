@@ -28,6 +28,20 @@ public sealed class InstanceState
 
     public DateTimeOffset? RestorePoint { get; private set; }
 
+    /// <summary>
+    /// Since when the instance waits for its setup (its first administrator, or with sign-in off the acknowledgement that everyone may do
+    /// everything); kept once the setup is completed. Null with <see cref="SetupCompletedAt"/>: undecided, a row written before setup existed
+    /// (or a backup's from then), which the next start decides by whether the database holds data.
+    /// </summary>
+    public DateTimeOffset? SetupPendingSince { get; private set; }
+
+    /// <summary>When the setup was completed, and how; null while it waits or is undecided. A restore brings the backup's along.</summary>
+    public DateTimeOffset? SetupCompletedAt { get; private set; }
+
+    public SetupCompletion? SetupCompletedVia { get; private set; }
+
+    public SetupPhase Setup => SetupCompletedAt is not null ? SetupPhase.Completed : SetupPendingSince is not null ? SetupPhase.Pending : SetupPhase.Undecided;
+
     public static InstanceState New() => new() { Generation = Guid.NewGuid() };
 
     public void RecordStart(string mode, DateTimeOffset now)

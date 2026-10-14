@@ -16,6 +16,7 @@ using Tankstat.Application.Recognition;
 using Tankstat.Application.Recurring;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Settings;
+using Tankstat.Application.Setup;
 using Tankstat.Application.Sync;
 using Tankstat.Application.Sharing;
 using Tankstat.Application.SystemSettings;
@@ -39,6 +40,7 @@ public static class DependencyInjection
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<StorageOptions>, StorageOptionsValidator>());
         services.AddOptions<BackupOptions>().Bind(configuration.GetSection(BackupOptions.SectionName)).ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<BackupOptions>, BackupOptionsValidator>());
+        services.AddOptions<SetupOptions>().Bind(configuration.GetSection(SetupOptions.SectionName)).ValidateOnStart();
         services.AddOptions<KeyRingOptions>().Bind(configuration.GetSection(KeyRingOptions.SectionName))
             .Validate(o => !string.IsNullOrWhiteSpace(o.KeysPath), "DataProtection:KeysPath must not be empty.").ValidateOnStart();
         services.AddOptions<SmtpOptions>().Bind(configuration.GetSection(SmtpOptions.SectionName));
@@ -55,9 +57,12 @@ public static class DependencyInjection
         services.AddSingleton<HealthReporter>();
         services.AddSingleton<NoticeService>();
         services.AddSingleton<InstanceGeneration>();
-        services.AddSingleton<RestoreCode>();
+        services.TryAddSingleton<OneTimeCode>(); // the host's own when it keeps one over a restart in the process
+        services.AddSingleton<SetupStatus>();
 
         services.AddScoped<AccessService>();
+        services.AddScoped<SetupGate>();
+        services.AddScoped<SetupService>();
         services.AddScoped<RestoreService>();
         services.AddScoped<BackupAdminService>();
         services.AddScoped<BackupFailureNotifier>();

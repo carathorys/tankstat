@@ -75,7 +75,7 @@ public class RestartSmokeTests
         Assert.True(made == 0, log);
         await app.Gql("mutation { addVehicle(input: { name: \"After\", fuelType: PETROL }) { id } }");
         var file = Path.GetFileName(Assert.Single(Directory.GetFiles(Path.Combine(work, "backups"), "tankstat-backup-*.zip")));
-        var code = System.Text.RegularExpressions.Regex.Match(app.Log, "one-time restore code ([A-Z0-9]{8})").Groups[1].Value; // sign-in is off: the log's code is the gate
+        var code = System.Text.RegularExpressions.Regex.Match(app.Log, "one-time restore code ([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4})").Groups[1].Value; // sign-in is off: the log's code is the gate
 
         var asked = (await app.Gql("mutation($i: RestoreBackupInput!) { restoreBackup(input: $i) { file } }", new { i = new { file, code } })).Data();
 

@@ -100,7 +100,7 @@ function BuilderForm({ vehicle, chart, canShare, onSaved }: { vehicle: { id: str
   }
 
   return (
-    <Form onSubmit={submit}>
+    <Form onSubmit={submit} refusal={error}>
       <Stack sx={{ gap: 1.5 }}>
         <Field name="title" label={t('charts.fields.title')} required>
           <FieldInput maxLength={80} autoComplete="off" value={title} onChange={(e) => setTitle(e.target.value)} />

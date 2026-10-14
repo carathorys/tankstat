@@ -297,7 +297,7 @@ function ExpenseForm({
   }
 
   return (
-    <Form onSubmit={submit}>
+    <Form onSubmit={submit} refusal={error}>
       <ReviewCallout state={initial.reviewState} />
       <Stack sx={{ gap: 1.5 }}>
         <Field name="date" label={labels.date} required extra={note('date')}>

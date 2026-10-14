@@ -57,6 +57,9 @@ public sealed class BackupOptions
     public string Root => Folders.Full(Path);
 
     public bool Encrypted => !string.IsNullOrWhiteSpace(Encryption.Recipient);
+
+    /// <summary>The recipient new backups are encrypted for, as their manifests carry it (trimmed: a secret file's line break is no part of it); null in plain.</summary>
+    public string? CurrentRecipient => Encrypted ? Encryption.Recipient!.Trim() : null;
 }
 
 public sealed class BackupEncryptionOptions

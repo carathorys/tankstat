@@ -6,7 +6,7 @@ import type { ReactElement } from 'react'
 import { MemoryRouter } from 'react-router'
 import { onTestFinished, vi } from 'vitest'
 import { createApolloClient } from '../../../src/frontend/apolloClient.ts'
-import type { AuthMode, ColorMode, DateFormat, NotificationFieldsFragment, SessionQuery, SurfaceStyle, TimeFormat } from '../../../src/frontend/gql/generated.ts'
+import type { AuthMode, ColorMode, DateFormat, NotificationFieldsFragment, SessionQuery, SurfaceStyle, SystemSettingFieldsFragment, TimeFormat } from '../../../src/frontend/gql/generated.ts'
 import type { GridSaved } from '../../../src/frontend/settings/types.ts'
 import { ThemeRoot } from '../../../src/frontend/theme/ThemeRoot.tsx'
 
@@ -63,6 +63,60 @@ export const adminSession = (notices: Notice[] = []) => sessionHandler('STANDALO
 export const healthHandler = graphql.query('Health', () =>
   HttpResponse.json({ data: { health: { status: 'ok', version: '1.2.3', databaseReachable: true } } }),
 )
+
+// A setting of the Server settings page, typed as the server answers it: a fragment never matches an untyped object.
+export const systemSetting = (over: Partial<SystemSettingFieldsFragment> & { key: string }): SystemSettingFieldsFragment & { __typename: 'SystemSetting' } => ({
+  __typename: 'SystemSetting',
+  kind: 'TEXT',
+  choices: [],
+  value: null,
+  isSet: false,
+  isSecret: false,
+  source: 'DEFAULT',
+  editable: true,
+  restartPending: false,
+  defaultValue: null,
+  ...over,
+})
+
+const SIGN_IN_MODES = ['None', 'Standalone', 'Oidc', 'ProxyHeader']
+
+/**
+ * The settings the setup's wizard walks through, as `systemSettings(code)` answers: the sign-in (the environment's mode, read-only, except
+ * with sign-in off, where the shipped None is open to choice; `chosen` is the mode the wizard saved into the file, which waits for a
+ * restart), its administrators' addresses, the e-mail server, the defaults.
+ */
+export const wizardSettings = (running: AuthMode, chosen?: string) => {
+  const open = running === 'NONE'
+  const runningValue = { NONE: 'None', STANDALONE: 'Standalone', OIDC: 'Oidc', PROXY_HEADER: 'ProxyHeader' }[running]
+  const waits = chosen !== undefined && chosen !== runningValue
+  return {
+    __typename: 'SystemSettingsInfo',
+    file: { __typename: 'SettingsFileInfo', path: '/data/settings.json', exists: chosen !== undefined, ignored: false, problems: [] },
+    restartPending: waits,
+    groups: [
+      {
+        __typename: 'SystemSettingsGroup',
+        name: 'AUTH',
+        appliesAtOnce: false,
+        settings: [
+          open
+            ? systemSetting({ key: 'Auth:Mode', kind: 'CHOICE', choices: SIGN_IN_MODES, value: chosen ?? 'None', isSet: true, source: chosen ? 'FILE' : 'SHIPPED', restartPending: waits })
+            : systemSetting({ key: 'Auth:Mode', kind: 'CHOICE', choices: SIGN_IN_MODES, value: runningValue, isSet: true, source: 'ENVIRONMENT', editable: false }),
+          systemSetting({ key: 'Auth:AdminEmails', kind: 'LIST' }),
+        ],
+      },
+      { __typename: 'SystemSettingsGroup', name: 'SMTP', appliesAtOnce: false, settings: [systemSetting({ key: 'Smtp:Host' })] },
+      { __typename: 'SystemSettingsGroup', name: 'DEFAULTS', appliesAtOnce: true, settings: [systemSetting({ key: 'Defaults:Currency', defaultValue: 'EUR' })] },
+    ],
+  }
+}
+
+/** What the setup's done screen asks of the backups: the recipient new backups are encrypted for, none by default. */
+export const backupRecipientHandler = (recipient: string | null = null) =>
+  graphql.query('BackupRecipient', () =>
+    HttpResponse.json({ data: { backups: { __typename: 'BackupOverviewInfo', settings: { __typename: 'BackupSettingsInfo', recipient } } } }),
+  )
 
 /** A GraphQL error as the API sends it: coarse `code`, specific translation `key`, `args`, English fallback `message`. */
 export const gqlError = (message: string, code: string, key?: string, args?: Record<string, unknown>) => ({

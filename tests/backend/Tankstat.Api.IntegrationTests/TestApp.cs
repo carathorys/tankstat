@@ -73,6 +73,9 @@ internal sealed class TestApp : IDisposable
             ["DataProtection:KeysPath"] = KeysPath, // the cookies' keys of this host only, never in the build output
             ["Backups:Path"] = BackupsPath, // a backups folder of its own
             ["Logging:LogLevel:Tankstat"] = "Debug", // the Debug lines are part of what is tested
+            // Every host starts on an empty database, which would wait for its setup (a notice more, the setup's code): only the setup's
+            // own tests turn it on.
+            ["Setup:Enabled"] = "false",
         };
         // No schedule or retention of the developer's environment (Backups__Every, ...): a start writes a missed backup and retention prunes
         // the folder. A null here wins over the variable; only one the environment sets is overridden, since a key held here is read-only on
@@ -137,6 +140,20 @@ internal sealed class TestApp : IDisposable
         return c;
     }
 
+    /// <summary>
+    /// Leaves the setup of the database at <paramref name="path"/> undecided, as a release before the setup page left it. The template's start
+    /// decided its setup (completed, setup being off); every copy decides its own afresh, as a new database does, so a host with the setup
+    /// on starts with it waiting.
+    /// </summary>
+    internal static void UndecideSetup(string path)
+    {
+        using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={path}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE InstanceState SET SetupPendingSince = NULL, SetupCompletedAt = NULL, SetupCompletedVia = NULL";
+        command.ExecuteNonQuery();
+    }
+
     /// <summary>Closes the pooled connections to the database at <paramref name="path"/>, so the file can go. Only that database's: ClearAllPools would also close the ones of tests running in parallel.</summary>
     public static void ReleaseDatabase(string path)
     {
@@ -169,6 +186,7 @@ internal sealed class TestApp : IDisposable
             _ = app.Factory.Services; // starts the host: the migrations run as it starts
             path = Path.Combine(Path.GetTempPath(), $"tankstat-it-template-{Guid.NewGuid():N}.db");
             app.Factory.Dispose();
+            UndecideSetup(app._db);
             ReleaseDatabase(app._db);
             File.Copy(app._db, path);
         }

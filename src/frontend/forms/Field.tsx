@@ -38,6 +38,7 @@ export function Field({
   typeMismatch,
   extra,
   badges,
+  refusal,
   children,
 }: {
   name: string
@@ -51,6 +52,8 @@ export function Field({
   typeMismatch?: string
   /** More under the hint, inside the field (its FieldMessages are linked to the control too), e.g. what a photo showed. */
   extra?: ReactNode
+  /** What the server refused about the value the form sent, said here (after the field's own check) until the form takes it back. */
+  refusal?: string
   children: ReactNode
 }) {
   const { t } = useTranslation()
@@ -120,11 +123,12 @@ export function Field({
     }
   }, [])
 
-  const error =
+  const own =
     shown === null ? null
     : shown === 'valueMissing' ? (required ? t('forms.required', { field: label }) : null)
     : shown === 'typeMismatch' ? (typeMismatch ?? null)
     : shown.custom
+  const error = own ?? refusal ?? form?.refusalFor(name) ?? null
   const describedBy = messages.length > 0 ? [...messages].sort((a, b) => a.slot - b.slot || a.seq - b.seq).map((m) => m.id).join(' ') : undefined
 
   const value = useMemo(

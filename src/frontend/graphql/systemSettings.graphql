@@ -28,18 +28,19 @@ fragment SystemSettingsFields on SystemSettingsInfo {
   }
 }
 
-query SystemSettings {
-  systemSettings {
+# `code`: the one-time code, for the setup page's wizard while the setup waits; administrators leave it out.
+query SystemSettings($code: String) {
+  systemSettings(code: $code) {
     ...SystemSettingsFields
   }
 }
 
-mutation UpdateSystemSettings($changes: [SystemSettingChangeInput!]!) {
-  updateSystemSettings(changes: $changes) {
+mutation UpdateSystemSettings($changes: [SystemSettingChangeInput!]!, $code: String) {
+  updateSystemSettings(changes: $changes, code: $code) {
     ...SystemSettingsFields
   }
 }
 
-mutation RestartServer {
-  restartServer
+mutation RestartServer($code: String) {
+  restartServer(code: $code)
 }

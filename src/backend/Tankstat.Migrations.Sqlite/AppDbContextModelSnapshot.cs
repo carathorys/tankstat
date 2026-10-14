@@ -200,6 +200,16 @@ namespace Tankstat.Migrations.Sqlite
                     b.Property<DateTime?>("RestoredAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("SetupCompletedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SetupCompletedVia")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("SetupPendingSince")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.ToTable("InstanceState", (string)null);

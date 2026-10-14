@@ -33,8 +33,10 @@ public class StartupSmokeTests
         Assert.Contains(data.GetProperty("session").GetProperty("mode").GetString(), new[] { "NONE", "STANDALONE", "OIDC", "PROXY_HEADER" });
         Assert.Equal("ok", data.GetProperty("health").GetProperty("status").GetString());
         Assert.True(File.Exists(Path.Combine(work, "tankstat.db")), "the default SQLite database should have been created");
-        // What an operator reads after a first start: the app's own line, through the shipped logging settings (Production, no overrides).
+        // What an operator reads after a first start: the app's own line, through the shipped logging settings (Production, no overrides),
+        // and on a new database the setup's code.
         Assert.True(await app.LogsAsync("database migrations"), app.Log);
+        Assert.True(await app.LogsAsync("Setup is waiting"), app.Log);
     }
 
     [Fact]
@@ -139,11 +141,24 @@ public class StartupSmokeTests
     }
 
     [Fact]
-    public async Task Standalone_WithoutAnAdministrator_StopsAtStartupWithAnActionableMessage()
+    public async Task Standalone_WithoutAnAdministrator_OnANewDatabase_KeepsRunning_AndWaitsForItsSetup_WithTheCodeInTheLog()
     {
-        // The behaviour reported as "crash on startup": nothing configured and no administrator in the database.
-        // Today this is a deliberate fail-fast; this test pins down exactly what happens.
-        var (exitCode, log) = await AppProcess.RunUntilExitAsync(Env(("Auth__Mode", "Standalone"), ("Auth__Standalone__AdminEmail", ""), ("Auth__Standalone__AdminPassword", "")));
+        // Nothing configured and no administrator in a new database: the setup page makes the first one, with the code from the log.
+        await using var app = await AppProcess.StartAsync(Env(("Auth__Mode", "Standalone"), ("Auth__Standalone__AdminEmail", ""), ("Auth__Standalone__AdminPassword", "")));
+
+        Assert.Equal("ok", (await app.Gql("{ health { status } }")).Data().GetProperty("health").GetProperty("status").GetString());
+        Assert.True((await app.Gql("{ setup { pending } }")).Data().GetProperty("setup").GetProperty("pending").GetBoolean());
+        Assert.Matches("Setup is waiting: open /setup in the browser and enter the one-time setup code [A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}", app.Log);
+        Assert.False(app.HasExited, app.Log);
+    }
+
+    [Fact]
+    public async Task Standalone_WithoutAnAdministrator_AndTheSetupTurnedOff_StopsAtStartupWithAnActionableMessage()
+    {
+        // The behaviour reported as "crash on startup": nothing configured, no administrator, and nothing to make one (no setup page).
+        // A deliberate fail-fast; this test pins down exactly what happens.
+        var (exitCode, log) = await AppProcess.RunUntilExitAsync(Env(
+            ("Auth__Mode", "Standalone"), ("Auth__Standalone__AdminEmail", ""), ("Auth__Standalone__AdminPassword", ""), ("Setup__Enabled", "false")));
 
         Assert.NotEqual(0, exitCode);
         Assert.Contains("no administrator exists", log);
@@ -188,7 +203,8 @@ public class StartupSmokeTests
 
         var data = (await app.Gql(Session)).Data();
         Assert.Equal("OIDC", data.GetProperty("session").GetProperty("mode").GetString());
-        Assert.Empty(data.GetProperty("notices").EnumerateArray());
+        // No Auth:AdminEmails names the first administrator, so the new instance waits for its setup: that is the only notice.
+        Assert.Equal(["SETUP_PENDING"], data.GetProperty("notices").EnumerateArray().Select(n => n.GetProperty("code").GetString()));
         Assert.Equal("UNAUTHENTICATED", (await app.Gql("{ myVehicles { id } }")).ErrorCode());
         Assert.NotEqual(HttpStatusCode.NotFound, (await app.GetAsync("/auth/oidc/login")).StatusCode); // the login endpoint exists in this mode
     }

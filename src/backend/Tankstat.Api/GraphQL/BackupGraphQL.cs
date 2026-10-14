@@ -5,7 +5,7 @@ namespace Tankstat.Api.GraphQL;
 
 /// <param name="File">A backup's file name in the backups folder.</param>
 /// <param name="Passphrase">The passphrase of an encrypted backup, or <paramref name="Identity"/> (the <c>AGE-SECRET-KEY-1...</c> line) instead.</param>
-/// <param name="Code">With sign-in off: the one-time restore code from the server's log.</param>
+/// <param name="Code">With sign-in off, or while the setup waits: the one-time code from the server's log.</param>
 public sealed record RestoreBackupInput(string File, string? Passphrase, string? Identity, string? Code);
 
 public sealed record RestorePendingInfo(string File, DateTimeOffset RestorePoint);
@@ -58,7 +58,7 @@ public sealed record BackupOverviewInfo(string Folder, BackupRunInfo Run, Backup
             s.Folder,
             new BackupRunInfo(s.Run.Running, last?.StartedAt, last?.FinishedAt, last?.File, last?.Bytes, last?.Error),
             new BackupSettingsInfo(
-                s.Settings.Encrypted ? s.Settings.Encryption.Recipient!.Trim() : null, s.PhotosApart, s.Settings.Photos, s.Settings.MaxUploadMb,
+                s.Settings.CurrentRecipient, s.PhotosApart, s.Settings.Photos, s.Settings.MaxUploadMb,
                 // a culture's time separator (fi-FI: 02.00) is not the setting's
                 schedule?.Times.Select(t => t.ToString("HH:mm", CultureInfo.InvariantCulture)).ToList() ?? [], schedule?.Days ?? [], s.TimeZone,
                 s.NextRun, s.Settings.Keep, s.Settings.KeepDays));
@@ -101,7 +101,7 @@ public sealed class BackupMutations
 {
     /// <summary>
     /// Asks for a restore of a backup from the backups folder: the data is replaced as a whole at the next start, which follows right after
-    /// the answer (the server restarts in its process, as <c>restartServer</c> does). An administrator; with sign-in off, the one-time code
+    /// the answer (the server restarts in its process, as <c>restartServer</c> does). An administrator; with sign-in off or while the setup waits, the one-time code
     /// from the log. A wrong passphrase is <c>backup.wrongKey</c> at once, a backup a newer release made <c>backup.otherMigration</c>, one
     /// deleted meanwhile <c>backup.notFound</c>, a restart the next start would refuse <c>settings.restartWouldFail</c>; nothing is written then.
     /// </summary>

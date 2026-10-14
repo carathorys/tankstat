@@ -3,12 +3,13 @@ import MenuItem from '@mui/material/MenuItem'
 import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
-import { useId } from 'react'
+import { useId, type Ref } from 'react'
 import { LabelBadges, type LabelBadge } from './LabelBadges.tsx'
 
 /**
  * A labelled choice (units, fuel, a chart's metric, a person): the label names the select (aria-labelledby), the options open in a list.
- * An empty `value` shows the `placeholder`; a `hint` under it describes the select (aria-describedby), as a Field's hint does.
+ * An empty `value` shows the `placeholder`; a `hint` under it describes the select (aria-describedby), as a Field's hint does, and so does
+ * an `error` (a choice the form needs and does not have), which marks it invalid. `selectRef` gets what focuses it.
  */
 export function LabeledSelect<T extends string>({
   label,
@@ -19,6 +20,8 @@ export function LabeledSelect<T extends string>({
   placeholder,
   hint,
   badges,
+  error,
+  selectRef,
 }: {
   label: string
   value: T
@@ -29,22 +32,40 @@ export function LabeledSelect<T extends string>({
   hint?: string
   /** Short words beside the label (where a value comes from); read as the start of the select's description. */
   badges?: readonly LabelBadge[]
+  error?: string
+  selectRef?: Ref<{ focus: () => void }>
 }) {
   const labelId = useId()
   const hintId = `${labelId}-hint`
+  const errorId = `${labelId}-error`
   const badgesId = `${labelId}-badges`
   const hasBadges = (badges?.length ?? 0) > 0
-  const describedBy = [hasBadges && badgesId, hint && hintId].filter(Boolean).join(' ') || undefined
+  const describedBy = [hasBadges && badgesId, hint && hintId, error && errorId].filter(Boolean).join(' ') || undefined
   return (
     <Stack sx={{ gap: 0.5, minWidth: 0 }}>
       <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
         <FormLabel id={labelId}>{label}</FormLabel>
         {hasBadges && <LabelBadges id={badgesId} badges={badges!} />}
       </Stack>
-      <ChoiceSelect labelId={labelId} describedBy={describedBy} value={value} options={options} onChange={onChange} disabled={disabled} placeholder={placeholder} />
+      <ChoiceSelect
+        labelId={labelId}
+        describedBy={describedBy}
+        value={value}
+        options={options}
+        onChange={onChange}
+        disabled={disabled}
+        placeholder={placeholder}
+        invalid={error !== undefined}
+        selectRef={selectRef}
+      />
       {hint && (
         <Typography id={hintId} variant="caption" sx={{ color: 'text.secondary' }}>
           {hint}
+        </Typography>
+      )}
+      {error && (
+        <Typography id={errorId} variant="caption" sx={{ color: 'error.main' }}>
+          {error}
         </Typography>
       )}
     </Stack>
@@ -77,6 +98,8 @@ function ChoiceSelect<T extends string>({
   onChange,
   disabled,
   placeholder,
+  invalid,
+  selectRef,
 }: {
   labelId?: string
   ariaLabel?: string
@@ -87,11 +110,16 @@ function ChoiceSelect<T extends string>({
   onChange: (value: T) => void
   disabled?: boolean
   placeholder?: string
+  invalid?: boolean
+  /** MUI's handle of the select: its `focus()` focuses the combobox. */
+  selectRef?: Ref<{ focus: () => void }>
 }) {
   return (
     <Select<T>
       labelId={labelId}
-      inputProps={ariaLabel || describedBy ? { 'aria-label': ariaLabel, 'aria-describedby': describedBy } : undefined}
+      inputRef={selectRef}
+      error={invalid}
+      inputProps={ariaLabel || describedBy || invalid ? { 'aria-label': ariaLabel, 'aria-describedby': describedBy, 'aria-invalid': invalid || undefined } : undefined}
       value={value}
       onChange={(event) => onChange(event.target.value as T)}
       disabled={disabled}

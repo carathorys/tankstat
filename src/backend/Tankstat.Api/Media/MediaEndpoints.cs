@@ -22,6 +22,9 @@ namespace Tankstat.Api.Media;
 /// </summary>
 public static class MediaEndpoints
 {
+    /// <summary>The header the setup page sends the one-time code in with a backup's upload while the setup waits.</summary>
+    public const string SetupCodeHeader = "X-Setup-Code";
+
     public static void MapMediaEndpoints(this WebApplication app)
     {
         var media = app.MapGroup("/media").AddEndpointFilter(TranslateErrors);
@@ -82,17 +85,20 @@ public static class MediaEndpoints
         });
 
         // Backups (administrators): a backup file uploaded into the backups folder, streamed to disk; a restore point downloaded. Under /media
-        // so the service worker and the dev proxy leave them to the server, like the pictures.
-        media.MapPut("/backups", async (string? name, HttpRequest request, AccessService access, BackupAdminService backups, IOptionsSnapshot<BackupOptions> options, CancellationToken ct) =>
+        // so the service worker and the dev proxy leave them to the server, like the pictures. An upload also takes the one-time code while
+        // the setup waits (the setup page restores a backup the new server has no copy of yet), in a header: a query string ends up in
+        // the access logs of the proxies in front of the server.
+        media.MapPut("/backups", async (string? name, HttpRequest request, BackupAdminService backups, IOptionsSnapshot<BackupOptions> options, CancellationToken ct) =>
         {
-            // Administrators only, before anything else: nobody else learns the limit, or has a body read past the server's own.
-            await access.RequireAdminAsync(ct);
+            var code = request.Headers[SetupCodeHeader].FirstOrDefault();
+            // Administrators (or the code) only, before anything else: nobody else learns the limit, or has a body read past the server's own.
+            await backups.RequireUploaderAsync(code, ct);
             var max = options.Value.MaxUploadBytes;
             if (request.ContentLength > max) throw new DomainException("backup.tooLarge", "The backup is larger than an upload may be.", new { MaxMb = options.Value.MaxUploadMb });
             // Kestrel's own limit (30 MB) is lifted before anything is read: the store counts every byte and answers past ours. Any limit of
             // Kestrel's would answer first for a body sent in chunks (it counts what arrives, ahead of what was read), with a bare 413.
             if (request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit) limit.MaxRequestBodySize = null;
-            var point = await backups.UploadAsync(request.Body, name, ct);
+            var point = await backups.UploadAsync(request.Body, name, code, ct);
             return Results.Json(new { file = point.File, bytes = point.Bytes });
         });
         media.MapGet("/backups/{file}", async (string file, BackupAdminService backups, HttpContext http, CancellationToken ct) =>

@@ -13,11 +13,44 @@ Authentication is configured through the `Auth` and `Smtp` sections. Every setti
 | `Auth__Mode` value | Who authenticates | Required settings (see the tables below) | Notes |
 | --- | --- | --- | --- |
 | `None` | nobody | none | **Unsafe.** Everyone sees and changes everything; the UI shows a warning. Data belongs to an anonymous owner; there are no profile pictures, no administration. A sign-in left over from another mode (a browser still holding its cookies after the switch) counts for nothing: every visitor is the anonymous owner. |
-| `Standalone` | the app itself | `Auth__Standalone__AdminEmail` and `Auth__Standalone__AdminPassword` on the first start (while no local administrator exists) | Login with e-mail and password, password change, one-time reset links, lockout, user management by administrators (create, edit name and e-mail, reset link, disable, delete). |
+| `Standalone` | the app itself | none: a new instance makes its first administrator on the [setup page](#the-first-start-setup); or `Auth__Standalone__AdminEmail` and `Auth__Standalone__AdminPassword`, which make it at the first start instead (while no local administrator exists) | Login with e-mail and password, password change, one-time reset links, lockout, user management by administrators (create, edit name and e-mail, reset link, disable, delete). |
 | `Oidc` | an OpenID Connect provider | `Auth__Oidc__Authority`, `Auth__Oidc__ClientId`, `Auth__Oidc__ClientSecret` | Server-side authorization-code flow with PKCE; the browser only gets the two HttpOnly cookies of a session (see *Sessions* below). Redirect URI to register: `https://<your-host>/auth/oidc/callback`. |
 | `ProxyHeader` | a trusted reverse proxy (Authelia, Authentik, Cloudflare Access, oauth2-proxy, ...) | `Auth__ProxyHeader__TrustedProxies__0` (at least one) | The app trusts a user header, but only from the listed proxy addresses. There is no login or logout in the app. |
 
 All modes end in the same place: a user record in the database that owns data.
+
+## The first start: setup
+
+A new instance (an empty database) **waits for its setup** until it has its first administrator, or, with sign-in off, until someone acknowledges that everyone who reaches it sees and changes everything. While it waits, the app writes a **one-time setup code** to its log as it starts, as a warning (so a log kept to warnings shows it too):
+
+```
+Setup is waiting: open /setup in the browser and enter the one-time setup code ABCD-EFGH-JKLM
+```
+
+With Docker, `docker logs tankstat` shows it. Every start of the server writes a new code (a restart from inside the app keeps it, so the setup goes on with the one you entered), so use the latest; case, spaces and hyphens do not matter. Whoever can read the server's log is the one the setup trusts: no administrator exists yet to ask. The code is never shown anywhere else.
+
+Opening the app shows the setup page, which asks for the code and then takes you through the setup as a wizard, step by step:
+
+1. **The settings**, a step per group of the *Server settings* page with the same fields (what the environment sets is shown read-only, and a group with nothing to choose has no step): the sign-in first, whose mode must be chosen (none is preselected, and sign-in off is one of the choices), then the e-mail, photo reading, backups, defaults, notifications, offline sync and logging, each of which can be skipped. *Next* saves a step into the app's own settings file, *Back* goes to the one before.
+2. **The last step**, by the sign-in mode chosen:
+   - `Standalone`: an e-mail address and a password make the first administrator.
+   - `None`: tick that you understand everyone who reaches the address sees and changes all data, and finish. Until then every page shows the setup, but the API itself is as open as sign-in-off always is.
+   - `Oidc` and `ProxyHeader`: the administrators named in the sign-in step (`Auth:AdminEmails`) become administrators as they sign in. With none named, sign in through the provider or the proxy after the restart: you come back to the setup (enter the code again), and *Become the administrator* makes you it. Where the provider runs already, the visitor signs in first, then follows *Open the setup* in the notice.
+3. **One restart**, when a saved setting waits for it (the sign-in mode always does): the server restarts in its own process, keeping the code, and the page goes on once it is back. A new sign-in mode signs everyone out, so the new administrator then signs in.
+
+**Or restore a backup** instead, with *Restore from a backup* on the first step: only then are the backups of the server's backups folder listed, and *Start fresh instead* goes back. A backup the folder does not hold (one of the old server, moving to a new one) is uploaded right there with *Upload a backup…*, up to `Backups:MaxUploadMb`, and then listed with the others; a larger one is copied into the folder by hand, then *Look again* (see [Backup and restore](backup-and-restore.md)). The restored data brings its users and its own setup, so the instance is set up as the backup was. In Standalone the backup must hold an administrator (or the bootstrap variables above must be set), as for any restore; only a backup of an instance that was itself still waiting for its setup needs neither, and the restored instance then waits for its setup in turn.
+
+Once the setup is done, the page and the code open nothing again. The new administrator lands on what to set up next, none of it part of the setup: a key set for encrypted backups (made right there, as on the *Backups* page), then links to the backup schedule and the defaults for new vehicles on the *Server settings* page and, in `Standalone`, to *People* for the other users.
+
+**What skips the setup**, so an unattended deployment never needs a browser:
+
+- `Standalone` with `Auth__Standalone__AdminEmail` and `Auth__Standalone__AdminPassword`: the administrator is made at the first start.
+- `Oidc` and `ProxyHeader` with `Auth__AdminEmails__0`: whoever it names becomes the administrator by signing in.
+- `Setup__Enabled=false` in any mode.
+
+**A database that already holds data** (users or vehicles, from before this release) counts as set up. A set-up `Standalone` instance with no administrator and no bootstrap variables still stops at start, saying which variables to set.
+
+Several servers on one database each print their own code; the first to finish the setup completes it for all of them.
 
 The mode can also be changed from inside the app, by an administrator through the system settings (written into [the app's own settings file](configuration.md#the-apps-own-settings-file); the environment keeps winning, so `Auth__Mode` set in a compose file shows as read-only there). The change takes effect at the next restart, which signs every device out (see *Sessions*). Two things are checked before it is saved, because a mistake there would lock everybody out: an OpenID Connect authority the next start would sign in through (a switch to `Oidc`, or another authority) must answer with its discovery document and name itself as the issuer, and `Standalone` is refused while no administrator exists unless `Auth__Standalone__AdminEmail` and `Auth__Standalone__AdminPassword` are set for the first start, with an address no local account has yet and a password of 10 to 128 characters. The way back is always the environment: `Auth__Mode` beats the file, so set it and restart. In mode `None` there is no administrator, so a `None` instance changes its mode through the environment.
 
@@ -56,8 +89,8 @@ The token endpoints only answer requests with the header `X-Requested-With: fetc
 
 | Environment variable | Type | Default | Required | Meaning |
 | --- | --- | --- | --- | --- |
-| `Auth__Standalone__AdminEmail` | e-mail | empty | on the first start | E-mail (login name) of the first administrator. Read only while no local administrator exists; afterwards it is ignored. |
-| `Auth__Standalone__AdminPassword` | string, 10-128 characters | empty | on the first start | Password of the first administrator (the normal password rules apply). The app refuses to start if no administrator exists and these two are missing. |
+| `Auth__Standalone__AdminEmail` | e-mail | empty | no (with the password, or neither) | E-mail (login name) of the first administrator, made at the first start instead of on the [setup page](#the-first-start-setup). Read only while no local administrator exists; afterwards it is ignored. |
+| `Auth__Standalone__AdminPassword` | string, 10-128 characters | empty | no (with the e-mail, or neither) | Password of the first administrator (the normal password rules apply). One of the two without the other, or a password the rules refuse, stops the start. On an instance that is set up, the app refuses to start if no administrator exists and these two are missing. |
 | `Auth__Standalone__MaxFailedAttempts` | integer | `5` | no | Failed logins before the account is locked. |
 | `Auth__Standalone__LockoutMinutes` | integer (minutes) | `15` | no | How long a locked account stays locked. |
 | `Auth__Standalone__ResetTokenMinutes` | integer (minutes), 1-43200 | `60` | no | How long a password setup/reset link is valid (it can be used once). At most 30 days; the app does not start with a larger value. |
@@ -145,10 +178,10 @@ Auth__AdminEmails__0=you@example.com
 ## Checklist for an automated setup
 
 1. Set `Auth__Mode` explicitly (never rely on the shipped `appsettings.json`).
-2. Set every setting marked *required* in the table of that mode; the app tells you at start which one is missing.
+2. Set every setting marked *required* in the table of that mode; the app tells you at start which one is missing. So that no browser setup waits: in `Standalone` set the first administrator (`Auth__Standalone__AdminEmail`, `Auth__Standalone__AdminPassword`), in `Oidc` and `ProxyHeader` the administrators (`Auth__AdminEmails__0`, ...), or turn the setup off (`Setup__Enabled=false`; with sign-in off that is the only way).
 3. Behind a TLS-terminating proxy keep `Auth__PublicUrl` and the OIDC redirect URI on the public `https://` address (the session cookie accepts plain HTTP behind the proxy).
 4. For `Standalone` with e-mail, set `Auth__PublicUrl` together with `Smtp__Host` and `Smtp__From`.
-5. Check the result: `{ session { mode user { email isAdmin } } }` at `/graphql` answers the active mode (and `notices` carries the `AUTH_DISABLED` warning when authentication is off, `SETTINGS_FILE_IGNORED` when the app's own settings file was left out at start, or `RESTORE_PENDING` while a restore waits for the next start).
+5. Check the result: `{ session { mode user { email isAdmin } } }` at `/graphql` answers the active mode (and `notices` carries the `AUTH_DISABLED` warning when authentication is off, `SETTINGS_FILE_IGNORED` when the app's own settings file was left out at start, `RESTORE_PENDING` while a restore waits for the next start, or `SETUP_PENDING` while the instance waits for its setup).
 
 ## Access control
 

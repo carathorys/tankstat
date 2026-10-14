@@ -11,6 +11,7 @@ using Microsoft.Extensions.Options;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Backups;
 using Tankstat.Application.Images;
+using Tankstat.Application.Setup;
 using Tankstat.Application.Users;
 using Tankstat.Domain;
 using Tankstat.Domain.Backups;
@@ -68,7 +69,7 @@ internal sealed class RestoreStep(
     IOptions<KeyRingOptions> keyRing,
     IOptions<AuthOptions> auth,
     InstanceGeneration state,
-    RestoreCode code,
+    OneTimeCode code,
     TimeProvider clock,
     ILogger<RestoreStep> logger) : IHostedService
 {
@@ -196,7 +197,8 @@ internal sealed class RestoreStep(
             // From the backup's own files, before anything changes: Standalone needs an administrator to sign in with afterwards, and tables
             // about to be rebuilt need every row to load (a line that is no row, a value that is not its column's, a count that is not the
             // manifest's); in place, the load's own transaction undoes such a row.
-            await RequireAdministratorAsync(() => Task.FromResult(BackupHoldsAdministrator(model, tables)), subject => Task.FromResult(BackupHoldsLocalUser(model, tables, subject)));
+            await RequireAdministratorAsync(() => Task.FromResult(BackupHoldsAdministrator(model, tables)), subject => Task.FromResult(BackupHoldsLocalUser(model, tables, subject)),
+                BackupSetupWaits(model, tables, manifest.Contents.Tables));
             var inPlace = applied is not null && MigrationNames.Same(applied, target);
             if (!inPlace) TableLoad.CheckRows(model, tables, manifest.Contents.Tables);
 
@@ -306,6 +308,26 @@ internal sealed class RestoreStep(
     private static bool BackupHoldsLocalUser(IModel model, string tables, string subject) =>
         UsersOf(model, tables).Any(u => u.Local && u.Subject == subject);
 
+    /// <summary>
+    /// Whether the setup waits on the backup's data once restored, as the start will decide it: its own row says so, or says nothing (a row
+    /// from before the setup existed, or none) of data without a user or a vehicle.
+    /// </summary>
+    private static bool BackupSetupWaits(IModel model, string tables, IReadOnlyDictionary<string, long> counts)
+    {
+        var state = model.GetEntityTypes().FirstOrDefault(e => e.GetTableName() == "InstanceState");
+        var file = Path.Combine(tables, "InstanceState.jsonl");
+        if (state is not null && File.Exists(file) && File.ReadLines(file).FirstOrDefault(l => l.Length > 0) is { } line)
+        {
+            var table = StoreObjectIdentifier.Table("InstanceState", state.GetSchema());
+            using var row = JsonDocument.Parse(line);
+            bool Set(string property) =>
+                state.FindProperty(property)?.GetColumnName(table) is { } column && row.RootElement.TryGetProperty(column, out var v) && v.ValueKind != JsonValueKind.Null;
+            if (Set(nameof(InstanceState.SetupCompletedAt))) return false;
+            if (Set(nameof(InstanceState.SetupPendingSince))) return true;
+        }
+        return counts.GetValueOrDefault("Users") == 0 && counts.GetValueOrDefault("Vehicles") == 0;
+    }
+
     /// <summary>The backup's users as the Standalone rule needs them, read from its rows by the columns <paramref name="model"/> names; none before there were users.</summary>
     private static IEnumerable<(bool Local, bool Admin, bool Disabled, string? Subject)> UsersOf(IModel model, string tables)
     {
@@ -334,13 +356,15 @@ internal sealed class RestoreStep(
     /// <summary>
     /// Standalone needs an administrator to sign in with afterwards: among the users the backup brings (read from its own rows, before anything
     /// changes, so a backup without one is refused, never applied), or one the start creates from the bootstrap credentials as
-    /// <c>StandaloneBootstrapper</c> will try to (it fails the start otherwise, and every start after it): an enabled local administrator, or
-    /// bootstrap credentials of an address no local account has.
+    /// <c>SetupStep</c> will try to (it fails the start otherwise, and every start after it, on data that counts as set up): an enabled
+    /// local administrator, or bootstrap credentials of an address no local account has. Without either credential, data whose setup waits
+    /// (<paramref name="setupWaits"/>) needs none: the start waits for the setup page, which makes the administrator.
     /// </summary>
-    private async Task RequireAdministratorAsync(Func<Task<bool>> hasAdministrator, Func<string, Task<bool>> localAccountExists)
+    private async Task RequireAdministratorAsync(Func<Task<bool>> hasAdministrator, Func<string, Task<bool>> localAccountExists, bool setupWaits)
     {
         if (auth.Value.Mode != AuthMode.Standalone || await hasAdministrator()) return;
         var bootstrap = auth.Value.Standalone;
+        if (setupWaits && string.IsNullOrWhiteSpace(bootstrap.AdminEmail) && string.IsNullOrWhiteSpace(bootstrap.AdminPassword)) return;
         var reason = StandaloneBootstrap.ProblemOf(bootstrap.AdminEmail, bootstrap.AdminPassword, out var address)
             ?? (await localAccountExists(address!) ? "taken" : null);
         if (reason is not null)
