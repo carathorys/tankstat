@@ -41,6 +41,7 @@ import { classifyFailure } from '../offline/errors.ts'
 import { standaloneLink } from '../theme/components.ts'
 import { MEDIA } from '../theme/media.ts'
 import { claimNext, remember } from './claimNext.ts'
+import { useHoldTakeover } from './takeoverHold.ts'
 
 type RestorePoint = SetupRestorePointsQuery['setupRestorePoints'][number]
 
@@ -148,6 +149,8 @@ function WizardSteps({
   const [left, setLeft] = useState<ReadonlySet<string>>(new Set())
   // The generation of the data when the restore was asked for, kept with it: the session's own may change while the wait runs.
   const [restoring, setRestoring] = useState<{ point: RestoreTargetFieldsFragment; generation: string | undefined }>()
+  // The restore's restart takes the server away: the page stays, with the wait that reloads it once the restored data is served.
+  useHoldTakeover(restoring !== undefined)
 
   const go = (step: number) => {
     setLeft((l) => new Set(l).add(steps[at]!.id))
@@ -454,6 +457,8 @@ function useFinishSetup(to: '/setup' | '/') {
   const navigate = useNavigate()
   const [finishSetup] = useMutation(SetupFinishDocument)
   const [restart, setRestart] = useState<'waiting' | 'timeout'>()
+  // The page stays while the server it restarts is away, so the wait goes on to the done screen.
+  useHoldTakeover(restart === 'waiting')
 
   const done = async () => {
     remember(false)

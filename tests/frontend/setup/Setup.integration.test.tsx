@@ -345,6 +345,12 @@ it('restores a backup of the folder with the code, and reloads once the restarte
 
   expect(await screen.findByText(/the server is restarting/)).toBeInTheDocument()
   expect(state.calls.RestoreBackup).toEqual([{ file: backup.file, passphrase: null, identity: null, code: CODE }])
+  // The restart takes the server away: the page stays with its wait (no sign-in of the device's last answer in its place).
+  act(() => connectivity.failed())
+  expect(screen.getByText(/the server is restarting/)).toBeInTheDocument()
+  expect(screen.getByRole('heading', { level: 1, name: 'Set up Tankstat' })).toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Sign in' })).not.toBeInTheDocument()
+  act(() => connectivity.succeeded())
   state.restorePending = false // back with the backup's data, which is set up
   state.pending = false
   state.generation = 'gen-2'

@@ -16,6 +16,7 @@ import { LoginView } from './LoginView.tsx'
 import { ErrorMessage } from './messages.tsx'
 import { NoticeBanner } from './NoticeBanner.tsx'
 import { useConnectivity } from './offline/useConnectivity.ts'
+import { useTakeoverHeld } from './setup/takeoverHold.ts'
 import { ResetPasswordView } from './PasswordForms.tsx'
 import { HealthFooter } from './shell/HealthFooter.tsx'
 import { UiSettingsProvider } from './settings/UiSettingsProvider.tsx'
@@ -47,12 +48,14 @@ const SetupPage = lazy(() => import('./setup/SetupPage.tsx').then((m) => ({ defa
  * While a new instance waits for its setup, whoever reaches it in Standalone (nobody can sign in yet) or with sign-in off gets the setup
  * page wherever they go; with a provider (OIDC, proxy) a visitor signs in first and finds the setup at `/setup`, the notice links to it.
  * Not while the server is out of reach: the session is then the device's last answer, maybe from before the setup was done elsewhere, and
- * the setup page could only say that it needs the server, where the device's own data still works.
+ * the setup page could only say that it needs the server, where the device's own data still works. Except while the setup page waits for
+ * a restart it asked for (`takeoverHold.ts`): the server is away on purpose then, and the page goes on once it is back.
  */
 function useSetupTakesOver(data: SessionQuery | undefined) {
   const { reachable } = useConnectivity()
+  const held = useTakeoverHeld()
   return (
-    reachable &&
+    (reachable || held) &&
     data !== undefined &&
     data.notices.some((n) => n.code === 'SETUP_PENDING') &&
     (data.session.mode === 'NONE' || (data.session.mode === 'STANDALONE' && !data.session.user))
