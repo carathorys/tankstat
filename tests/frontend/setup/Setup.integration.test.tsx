@@ -7,13 +7,14 @@ import App from '../../../src/frontend/App.tsx'
 import type { AuthMode, SessionQuery } from '../../../src/frontend/gql/generated.ts'
 import { navigation } from '../../../src/frontend/navigation.ts'
 import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
-import { backupRecipientHandler, fakeInstance, fakeVehicleBackend, gqlError, healthHandler, renderWithApollo, user, wizardSettings } from '../support/mocks.tsx'
+import { backupRecipientHandler, fakeInstance, fakeVehicleBackend, gqlError, healthHandler, renderWithApollo, stubViewport, user, wizardSettings } from '../support/mocks.tsx'
 import { server } from '../support/server.ts'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
   server.resetHandlers()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals() // a phone's viewport, where a test asks for one
 })
 afterAll(() => server.close())
 
@@ -204,6 +205,30 @@ it('with sign-in off, the sign-in mode must be chosen (none is preselected), and
   await waitFor(() => expect(screen.queryByRole('heading', { name: 'Set up Tankstat' })).not.toBeInTheDocument())
   expect(state.calls.SetupFinish).toEqual([{ code: CODE, acknowledgeOpenAccess: true }])
   expect(state.calls.UpdateSystemSettings).toBeUndefined() // None was what ran: nothing to save
+})
+
+it('on a desktop the steps stand in a row, the one at hand below them', async () => {
+  const ui = userEvent.setup()
+  waitingServer('STANDALONE')
+  renderWithApollo(<App />)
+  await enterCode(ui)
+  await ui.click(await screen.findByRole('button', { name: 'Start the wizard' }))
+
+  const current = (await stepAt('E-mail')).closest('li')!
+  expect(within(current).queryByRole('button', { name: 'Next' })).not.toBeInTheDocument() // below the row, not in the step
+  expect(screen.getByRole('button', { name: 'Next' })).toBeInTheDocument()
+})
+
+it('on a phone each step opens under its own label', async () => {
+  const ui = userEvent.setup()
+  stubViewport('phone')
+  waitingServer('STANDALONE')
+  renderWithApollo(<App />)
+  await enterCode(ui)
+  await ui.click(await screen.findByRole('button', { name: 'Start the wizard' }))
+
+  const current = (await stepAt('E-mail')).closest('li')!
+  expect(within(current).getByRole('button', { name: 'Next' })).toBeInTheDocument()
 })
 
 it('a step left without what it needs is an error step, and the last step lists it instead of finishing; values stay as chosen', async () => {

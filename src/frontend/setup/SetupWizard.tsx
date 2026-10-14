@@ -34,13 +34,22 @@ import {
 } from '../gql/generated.ts'
 import { useFormat } from '../i18n/format.ts'
 import { ErrorMessage, WarningMessage } from '../messages.tsx'
+import { useMediaQuery } from '../hooks/useMediaQuery.ts'
 import { classifyFailure } from '../offline/errors.ts'
 import { standaloneLink } from '../theme/components.ts'
+import { MEDIA } from '../theme/media.ts'
 import { claimNext, remember } from './claimNext.ts'
 
 type RestorePoint = SetupRestorePointsQuery['setupRestorePoints'][number]
 
 const MODE_KEY = 'Auth:Mode'
+
+/**
+ * How the stepper is laid out on a desktop: `horizontal`, every label in one row (each under its step's icon) and the step at hand below
+ * the whole row; `vertical`, the labels stacked and the step at hand open under its own label. Below the desktop width it is always
+ * vertical: a row of seven to ten labels does not fit a phone.
+ */
+const DESKTOP_LAYOUT: 'horizontal' | 'vertical' = 'horizontal'
 
 /**
  * The setup of a new instance as one wizard (#90). First the one-time code from the server's log, which opens what no administrator could,
@@ -266,12 +275,14 @@ function WizardSteps({
   // The step at hand's label takes the focus as it opens: the button that led to it is gone (or was a label itself), and it is read out.
   const label = useRef<HTMLSpanElement>(null)
   useEffect(() => label.current?.focus(), [at, way])
+  const horizontal = useMediaQuery(MEDIA.desktop, true) && DESKTOP_LAYOUT === 'horizontal'
+  const content = way === 'fresh' && at > 0 && !settings ? error ? <ErrorMessage error={error} /> : <Loading /> : steps[at]!.content()
 
   return (
-    <Stack sx={{ gap: 2, maxWidth: 720 }}>
+    <Stack sx={{ gap: 2, maxWidth: horizontal ? undefined : 720 }}>
       {/* A list of the steps (no StepButton: MUI makes a stepper with one a tab list, which may hold nothing but its tabs, and the step at
           hand's content sits in it), each label a button once the step was reached, the one at hand the current step. */}
-      <Stepper orientation="vertical" nonLinear activeStep={at} aria-label={t('setup.wizard.steps')}>
+      <Stepper orientation={horizontal ? 'horizontal' : 'vertical'} alternativeLabel={horizontal} nonLinear activeStep={at} aria-label={t('setup.wizard.steps')}>
         {steps.map((step, i) => (
           <Step key={step.id} completed={left.has(step.id) && i !== at && !step.needs} disabled={closed(i, step)}>
             <StepLabel
@@ -297,12 +308,13 @@ function WizardSteps({
                 step.label
               )}
             </StepLabel>
-            <StepContent>
-              {i === at && (way === 'fresh' && i > 0 && !settings ? error ? <ErrorMessage error={error} /> : <Loading /> : step.content())}
-            </StepContent>
+            {/* Vertical: the step at hand open under its own label. */}
+            {!horizontal && <StepContent>{i === at && content}</StepContent>}
           </Step>
         ))}
       </Stepper>
+      {/* Horizontal: the step at hand below the whole row of labels, as wide as a form reads well. */}
+      {horizontal && <Box sx={{ maxWidth: 720, width: '100%', alignSelf: 'center', mt: 1 }}>{content}</Box>}
       {restoring === undefined && (
         <Button variant="ghost" color="primary" sx={{ alignSelf: 'flex-start' }} onClick={onOtherCode}>
           {t('setup.otherCode')}
