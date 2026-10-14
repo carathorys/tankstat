@@ -628,7 +628,17 @@
       "keysSettings": "Or set these two settings in the server's environment, where they win over the settings page:",
       "keysSaved": "I have kept the passphrase in a safe place",
       "keysDone": "Done",
-      "changeSettings": "Change the schedule, retention and encryption in the server settings"
+      "changeSettings": "Change the schedule, retention and encryption in the server settings",
+      "environmentLabel": "Settings from the environment",
+      "environmentRecord": "named in every backup; a restore elsewhere needs them set there",
+      "environmentMerge": "merged into every backup's settings file (secrets only into an encrypted one)",
+      "settingsBrings": "It brings its server's settings file, which replaces this server's (kept as settings.json.bak). This server keeps its own database, folders and keys settings, and its passwords when the backup is not encrypted.",
+      "settingsNone": "Its server had no settings file: this server's stays as it is.",
+      "settingsIgnored": "Its server ran without its settings file (the start left it out): this server's stays as it is.",
+      "settingsOlder": "It was written by a release before backups held the settings file: this server's stays as it is.",
+      "environmentRecorded": "Its server's environment set {{names}}. Their values are not in the backup: this server must set them.",
+      "environmentMerged": "Its server's environment set {{names}}. Their values are in its settings file (secrets only in an encrypted backup).",
+      "environmentMissing": "This server sets none of these, so the restore will be refused: {{names}}. Set them in this server's environment first."
     }
   },
   "errors": {

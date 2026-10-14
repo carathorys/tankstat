@@ -7,6 +7,16 @@ fragment RestoreTargetFields on RestorePointInfo {
   appVersion
   encrypted
   olderMigration
+  # what it brings of its server's settings, and what this server would lack (its restore is refused until they are set)
+  settingsFile {
+    state
+    omitted
+  }
+  environment {
+    mode
+    settings
+    missing
+  }
 }
 
 fragment BackupRunFields on BackupRunInfo {
@@ -36,6 +46,7 @@ query Backups {
       nextRun
       keep
       keepDays
+      environment
     }
     sizes {
       database

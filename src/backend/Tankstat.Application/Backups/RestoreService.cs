@@ -78,6 +78,31 @@ public sealed class RestoreService(
     }
 
     /// <summary>
+    /// For a list of the folder's backups: the settings <paramref name="point"/> recorded of its server's environment that a restore here
+    /// would lack, as far as can be told without a key. A plain backup's settings file is read; an encrypted one's cannot be: one that merged
+    /// the environment into it carries every one of them, one that only recorded it counts as holding none (its restore judges the file).
+    /// Never a refusal: a backup whose file cannot be read lacks nothing here, its restore says why.
+    /// </summary>
+    public static async Task<IReadOnlyList<string>> MissingHereAsync(IBackupStore store, ISettingsBackup settings, RestorePoint point, CancellationToken ct)
+    {
+        var m = point.Manifest;
+        if (m.Environment is not { Settings.Count: > 0 } recorded) return [];
+        IReadOnlyDictionary<string, string?>? file;
+        try
+        {
+            if (m.Settings is not { State: BackupSettingsState.Included }) file = null; // the restore leaves this server's own file
+            else if (m.Encryption is null) file = store.ReadSettings(point.File, m, identity: null);
+            else if (recorded.Mode == BackupEnvironmentMode.Merge) return [];
+            else file = new Dictionary<string, string?>();
+            return await settings.MissingAsync(recorded, file, ct);
+        }
+        catch (DomainException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>
     /// The refusal of a restore that would leave settings its backup recorded without a value (D4 of #140): <c>backup.environmentMissing</c>,
     /// the variables named. Shared with the start, which asks it again (its environment may not be the one the restore was asked under).
     /// </summary>

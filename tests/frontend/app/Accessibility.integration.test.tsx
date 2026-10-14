@@ -282,6 +282,8 @@ it('the backups page, its restore and its key set dialogs are labelled, describe
   const point = {
     __typename: 'RestorePointInfo', file: 'tankstat-backup-20261011T080000Z.zip', bytes: 3_100_000, createdAt: '2026-10-11T08:00:00Z', appVersion: '0.13.0', provider: 'Sqlite',
     migration: 'AddInstance', sameMigration: true, olderMigration: false, safetyNet: false, uploaded: false, encrypted: true, recipient: 'age1abc', currentRecipient: true, photos: 'SEPARATE', keys: true, rows: 120,
+    settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', omitted: [] },
+    environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: ['Auth__Mode', 'Smtp__Host'], missing: ['Smtp__Host'] },
   }
   server.use(
     graphql.query('Backups', () =>
@@ -289,7 +291,7 @@ it('the backups page, its restore and its key set dialogs are labelled, describe
         data: {
           backups: {
             __typename: 'BackupOverviewInfo', folder: '/data/backups', migration: 'AddInstance', run,
-            settings: { __typename: 'BackupSettingsInfo', recipient: null, photosApart: false, photos: false, maxUploadMb: 1024, times: ['02:00'], days: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'], timeZone: 'UTC', nextRun: '2026-10-12T02:00:00Z', keep: 14, keepDays: null },
+            settings: { __typename: 'BackupSettingsInfo', recipient: null, photosApart: false, photos: false, maxUploadMb: 1024, times: ['02:00'], days: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'], timeZone: 'UTC', nextRun: '2026-10-12T02:00:00Z', keep: 14, keepDays: null, environment: 'RECORD' },
             sizes: { __typename: 'StorageSizesInfo', database: 5_300_000, pictures: 12_000_000, photos: null },
             restorePoints: [point, { ...point, file: 'uploaded-old.zip', sameMigration: false, uploaded: true, encrypted: false, recipient: null, currentRecipient: false }],
           },
@@ -394,6 +396,8 @@ it('the setup page, its code and its wizard, are labelled and free of violations
               sameMigration: true,
               olderMigration: false,
               encrypted: true,
+              settingsFile: null,
+              environment: null,
             },
           ],
           setupUploadLimitMb: 1024,

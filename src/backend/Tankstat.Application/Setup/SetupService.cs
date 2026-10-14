@@ -37,6 +37,7 @@ public sealed class SetupService(
     IServerRestart restart,
     IUserRepository users,
     IBackupStore backups,
+    ISettingsBackup settingsFile,
     IDatabaseFacts database,
     IOptionsSnapshot<BackupOptions> backupOptions,
     IOptions<AuthOptions> auth,
@@ -109,7 +110,7 @@ public sealed class SetupService(
     public async Task<(RestorePoints Points, string? CurrentRecipient)> RestorePointsAsync(string? typedCode, CancellationToken ct)
     {
         await gate.RequireAsync(typedCode, ct);
-        var points = new RestorePoints(backups.List(), await database.LastMigrationAsync(ct), await database.KnownMigrationsAsync(ct));
+        var points = await RestorePoints.ListAsync(backups, settingsFile, database, ct);
         return (points, backupOptions.Value.CurrentRecipient);
     }
 

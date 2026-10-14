@@ -196,6 +196,14 @@ internal static class BackupCommands
         var manifest = store.ReadManifest(file); // a file of the backups folder, by name
         // A newer release's backup is refused before anything is written, as the app refuses it: the start would refuse it anyway.
         await store.RequireRestorableMigrationAsync(manifest, CancellationToken.None);
+        // What it brings of its server's settings, and what this server lacks of them (the restore is refused for that, below).
+        output.WriteLine($"The backup's settings file: {SettingsOf(manifest)}.");
+        if (manifest.Environment is { Settings.Count: > 0 } recorded)
+        {
+            output.WriteLine($"Its server's environment set {string.Join(", ", recorded.Settings)} ({(recorded.Mode == BackupEnvironmentMode.Merge ? "merged into its settings file" : "recorded by name only")}).");
+            var missing = await RestoreService.MissingHereAsync(store, services.GetRequiredService<ISettingsBackup>(), new RestorePoint(file, 0, manifest), CancellationToken.None);
+            if (missing.Count > 0) output.WriteLine($"This server sets none of {string.Join(", ", missing)}: the restore is refused until they are set.");
+        }
         if (!yes)
         {
             output.WriteLine($"This replaces ALL data of this instance (every table, the pictures{(manifest.Contents.Photos == BackupPhotos.Separate ? ", the photos" : "")}{(manifest.Contents.Keys ? ", the keys" : "")}) with the backup {file},");
