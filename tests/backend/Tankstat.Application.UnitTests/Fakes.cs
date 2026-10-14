@@ -426,7 +426,15 @@ internal sealed class InMemoryUsers : IUserRepository
     public Task<IReadOnlyList<User>> ListAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<User>>(Items.ToList());
     public Task<bool> AnyLocalAdminAsync(CancellationToken ct) =>
         Task.FromResult(Items.Any(u => u.Provider == UserProvider.Local && u.IsAdmin && !u.IsDisabled));
-    public Task AddAsync(User user, CancellationToken ct) { Items.Add(user); return Task.CompletedTask; }
+    /// <summary>Runs right before a user is added: lets a test put in what another request saved "at the same moment" (the unique index then refuses the add).</summary>
+    public Action<User>? BeforeAdd { get; set; }
+    public Task<bool> AddAsync(User user, CancellationToken ct)
+    {
+        BeforeAdd?.Invoke(user);
+        if (Items.Any(u => u.Provider == user.Provider && u.Subject == user.Subject)) return Task.FromResult(false); // the unique index of (Provider, Subject)
+        Items.Add(user);
+        return Task.FromResult(true);
+    }
     /// <summary>How often a user was written back (the entities are shared references, so only the count tells).</summary>
     public int Updates { get; private set; }
     public Task UpdateAsync(User user, CancellationToken ct)

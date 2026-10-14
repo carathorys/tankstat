@@ -538,6 +538,70 @@ public class ProvisioningTests
     }
 
     [Fact]
+    public async Task TheLoserOfTwoRequestsAtOnce_GetsTheUserTheWinnerSaved_NotItsOwnUnsavedOne()
+    {
+        // Both find no user and both insert; the unique index keeps the first. The loser's own User has an id that was never stored.
+        var w = new World(AuthMode.ProxyHeader);
+        User? winner = null;
+        w.Users.BeforeAdd = _ =>
+        {
+            winner = User.CreateExternal(UserProvider.Proxy, "sub-1", "a@x.co", "Alice", false);
+            w.Users.Items.Add(winner);
+        };
+
+        var loser = await w.Auth.ProvisionExternalAsync(UserProvider.Proxy, "sub-1", "a@x.co", "Alice", default);
+
+        Assert.Same(winner, loser);
+        Assert.Single(w.Users.Items);
+        Assert.Equal(0, w.Users.Updates);
+        var line = Assert.Single(w.Log.From<AuthService>()); // "Created user" is the winner's line, not this one
+        Assert.Equal(LogLevel.Debug, line.Level);
+        Assert.Equal(winner!.Id, line.Values["UserId"]);
+        Assert.False(w.Log.Mentions("a@x.co")); // ids only: the subject an identity provider or proxy sends can be the e-mail address
+    }
+
+    [Fact]
+    public async Task NewUsersWhoseSubjectsDifferOnlyByCase_AreCreatedOneAtATime()
+    {
+        // SQL Server and MySQL compare a subject by the column's collation, case-insensitive by default: one user there, so the second request
+        // waits for the first instead of racing it on the unique index (the fake compares exactly, so the lock is what is observed).
+        var w = new World(AuthMode.ProxyHeader);
+        using var inFirstInsert = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var adds = 0;
+        w.Users.BeforeAdd = _ =>
+        {
+            if (Interlocked.Increment(ref adds) != 1) return;
+            inFirstInsert.Set();
+            release.Wait(TimeSpan.FromSeconds(30));
+        };
+
+        var first = Task.Run(() => w.Auth.ProvisionExternalAsync(UserProvider.Proxy, "Alice", null, null, default));
+        Assert.True(inFirstInsert.Wait(TimeSpan.FromSeconds(30)));
+        var second = Task.Run(() => w.Auth.ProvisionExternalAsync(UserProvider.Proxy, "alice", null, null, default));
+        await Task.Delay(300); // a negative: the second one must still be waiting for the lock
+        Assert.Equal(1, Volatile.Read(ref adds));
+
+        release.Set();
+        await Task.WhenAll(first, second);
+        Assert.Equal(2, adds);
+    }
+
+    [Fact]
+    public async Task TheLoserOfTwoRequestsAtOnce_IsRefused_WhenTheWinnerIsDisabledMeanwhile()
+    {
+        var w = new World(AuthMode.ProxyHeader);
+        w.Users.BeforeAdd = _ =>
+        {
+            var winner = User.CreateExternal(UserProvider.Proxy, "sub-1", null, null, false);
+            winner.SetDisabled(true);
+            w.Users.Items.Add(winner);
+        };
+
+        await Assert.ThrowsAsync<ForbiddenException>(() => w.Auth.ProvisionExternalAsync(UserProvider.Proxy, "sub-1", null, null, default));
+    }
+
+    [Fact]
     public async Task AnUnchangedExternalUser_IsNotWrittenBack_ByEveryRequest()
     {
         // A proxy provisions on every request: a write of the row as read would undo the setup page's promotion made meanwhile.
@@ -620,6 +684,29 @@ public class BootstrapTests
         await w.Auth.BootstrapAdminAsync(setupWaits: false, default);
 
         Assert.Single(w.Users.Items);
+    }
+
+    [Fact]
+    public async Task LosingTheRace_ToAnotherServersAdministrator_IsNoFailure()
+    {
+        // Two servers start on one database at once: both find no administrator, the second one's insert is refused by the unique index.
+        var w = new World(configure: o => { o.Standalone.AdminEmail = "root@x.co"; o.Standalone.AdminPassword = "initial-password-1"; });
+        w.Users.BeforeAdd = _ => w.AddUser("root@x.co", admin: true);
+
+        Assert.False(await w.Auth.BootstrapAdminAsync(setupWaits: false, default));
+
+        Assert.Single(w.Users.Items);
+        Assert.Equal(LogLevel.Information, Assert.Single(w.Log.From<AuthService>()).Level); // said, so an Error line of EF Core's is not a mystery
+        Assert.False(w.Log.Mentions("root@x.co"));
+    }
+
+    [Fact]
+    public async Task ARefusedInsert_BecauseTheAddressBelongsToNoAdministrator_StillStopsTheStart()
+    {
+        var w = new World(configure: o => { o.Standalone.AdminEmail = "root@x.co"; o.Standalone.AdminPassword = "initial-password-1"; });
+        w.AddUser("root@x.co").SetDisabled(true); // holds the address, and is no administrator to sign in with
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => w.Auth.BootstrapAdminAsync(setupWaits: false, default));
     }
 
     [Fact]
@@ -716,6 +803,19 @@ public class UserAdminTests
 
         w.Options.Mode = AuthMode.Oidc;
         await Assert.ThrowsAsync<DomainException>(() => w.UserService.CreateLocalAsync("new@x.co", null, false, default));
+    }
+
+    [Fact]
+    public async Task CreateUser_ForTheSameAddressAtTheSameMoment_TellsTheLoserTheAddressIsTaken()
+    {
+        var w = new World();
+        w.Current.SignInAs(w.AddUser("root@x.co", admin: true));
+        w.Users.BeforeAdd = _ => w.AddUser("new@x.co"); // the other request saved it between the check and the insert
+
+        var e = await Assert.ThrowsAsync<DomainException>(() => w.UserService.CreateLocalAsync("new@x.co", null, false, default));
+
+        Assert.Equal("user.emailExists", e.Key);
+        Assert.Equal(2, w.Users.Items.Count);
     }
 
     [Fact]
