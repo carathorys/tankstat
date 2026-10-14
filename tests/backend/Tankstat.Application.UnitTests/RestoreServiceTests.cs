@@ -38,6 +38,8 @@ public sealed class RestoreServiceTests
         public Task<RestorePoint> SaveUploadAsync(Stream content, string? fileName, long maxBytes, CancellationToken ct) => throw new NotSupportedException();
         public Stream OpenRead(string fileName) => throw new NotSupportedException();
         public void Delete(string fileName) => throw new NotSupportedException();
+        public RestorePoint Find(string fileName) => throw new NotSupportedException();
+        public void Hold(string fileName, DateTimeOffset? since) => throw new NotSupportedException();
     }
 
     /// <summary>The settings file as this server would judge a restored one: the problems it is given, the values it was asked about.</summary>

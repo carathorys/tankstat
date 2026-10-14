@@ -32,9 +32,12 @@ type Query {
   accessSettings: AccessSettingsInfo! @cost(weight: "10")
   accessGrants: [AccessGrantInfo!]! @cost(weight: "10")
   backups: BackupOverviewInfo! @cost(weight: "10")
+  backupDetails(file: String!): BackupDetailsInfo! @cost(weight: "10")
   mySessions: [UserSessionInfo!]! @cost(weight: "10")
   setup: SetupInfo! @cost(weight: "10")
   setupRestorePoints(code: String!): [RestorePointInfo!]! @cost(weight: "10")
+  setupBackupDetails(code: String!, file: String!): BackupDetailsInfo!
+    @cost(weight: "10")
   setupUploadLimitMb(code: String!): Int! @cost(weight: "10")
   refuelings(
     vehicleId: UUID!
@@ -120,6 +123,7 @@ type Mutation {
     @cost(weight: "10")
   runBackup: Boolean! @cost(weight: "10")
   deleteBackup(file: String!): Boolean! @cost(weight: "10")
+  holdBackup(file: String!, hold: Boolean!): Boolean! @cost(weight: "10")
   prepareBackupEncryption(passphrase: String): BackupKeySetInfo!
     @cost(weight: "10")
   revokeSession(id: UUID!): Boolean! @cost(weight: "10")
@@ -176,6 +180,34 @@ type AccessSettingsInfo {
   defaultLevelForOthers: AccessLevel!
 }
 
+type BackupDetailsInfo {
+  file: String!
+  bytes: Long!
+  held: Boolean!
+  heldSince: DateTime
+  format: Int!
+  writtenBy: String!
+  createdAt: DateTime!
+  appVersion: String!
+  provider: String!
+  migration: String
+  safetyNet: Boolean!
+  uploaded: Boolean!
+  encrypted: Boolean!
+  recipient: String
+  currentRecipient: Boolean!
+  encryptionMethod: String
+  pictures: Boolean!
+  photos: BackupPhotos!
+  keys: Boolean!
+  tables: [BackupTableInfo!]!
+  sizes: BackupSizesInfo!
+  archiveEntry: String!
+  sha256: String!
+  settingsFile: BackupSettingsFileInfo
+  environment: BackupEnvironmentInfo
+}
+
 type BackupEnvironmentInfo {
   mode: BackupEnvironmentMode!
   settings: [String!]!
@@ -217,6 +249,7 @@ type BackupSettingsFileInfo {
   secrets: Boolean!
   secretsLeftOut: [String!]!
   machineLeftOut: [String!]!
+  bytes: Long!
 }
 
 type BackupSettingsInfo {
@@ -232,6 +265,19 @@ type BackupSettingsInfo {
   keepDays: Int
   environment: BackupEnvironmentMode!
   secrets: Boolean!
+}
+
+type BackupSizesInfo {
+  tables: Long!
+  pictures: Long!
+  photos: Long!
+  keys: Long!
+  archive: Long!
+}
+
+type BackupTableInfo {
+  name: String!
+  rows: Long!
 }
 
 type ChartData {
@@ -573,6 +619,8 @@ type RestorePointInfo {
   rows: Long!
   settingsFile: BackupSettingsFileInfo
   environment: BackupEnvironmentInfo
+  held: Boolean!
+  heldSince: DateTime
 }
 
 type ServerFolder {
