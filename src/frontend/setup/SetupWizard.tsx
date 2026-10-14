@@ -310,6 +310,9 @@ function WizardSteps({
         {steps.map((step, i) => (
           <Step key={step.id} completed={left.has(step.id) && i !== at && !step.needs} disabled={closed(i, step)}>
             <StepLabel
+              // The label's link covers the whole label, its number (or tick) too: a small target on its own on a touch screen. The link
+              // (a button, which MUI positions) is static, so its stretch is measured from here.
+              sx={{ position: 'relative' }}
               // What it still needs, once it was left (or the last step asks): an error step, saying what.
               error={i !== at && (left.has(step.id) || last) && step.needs !== undefined}
               optional={
@@ -325,7 +328,7 @@ function WizardSteps({
                   {step.label}
                 </Box>
               ) : !closed(i, step) ? (
-                <Link component="button" type="button" onClick={() => go(i)} sx={standaloneLink}>
+                <Link component="button" type="button" onClick={() => go(i)} sx={{ position: 'static', '&::after': { content: '""', position: 'absolute', inset: 0 }, ...standaloneLink }}>
                   {step.label}
                 </Link>
               ) : (
