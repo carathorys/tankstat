@@ -51,6 +51,9 @@ const MODE_KEY = 'Auth:Mode'
  */
 const DESKTOP_LAYOUT: 'horizontal' | 'vertical' = 'horizontal'
 
+/** How long a stacked step takes to open (and the one before it to fold), a change of state's short motion. */
+const STEP_MOTION_MS = 200
+
 /**
  * The setup of a new instance as one wizard (#90). First the one-time code from the server's log, which opens what no administrator could,
  * since none exists yet. Then every step at once in a stepper, the one at hand open: the start, which asks whether to set the instance up
@@ -275,14 +278,22 @@ function WizardSteps({
   // The step at hand from its top as it opens (one opened from further down, a label or the last step's list, would else open out of
   // sight), and its label takes the focus: the button that led to it is gone (or was a label itself), and it is read out.
   const label = useRef<HTMLSpanElement>(null)
+  const horizontal = useMediaQuery(MEDIA.desktop, true) && DESKTOP_LAYOUT === 'horizontal'
   useEffect(() => {
     const opened = label.current
     if (!opened) return
-    const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
-    opened.scrollIntoView?.({ block: 'start', behavior: still ? 'auto' : 'smooth' })
     opened.focus({ preventScroll: true })
-  }, [at, way])
-  const horizontal = useMediaQuery(MEDIA.desktop, true) && DESKTOP_LAYOUT === 'horizontal'
+    const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    const scroll = () => opened.scrollIntoView?.({ block: 'start', behavior: still ? 'auto' : 'smooth' })
+    // Measured once the steps stopped moving: stacked, the step that closes folds while this one opens, and a scroll before that ends is
+    // moved by it; in a row, once the step below it is laid out.
+    if (horizontal) {
+      const frame = requestAnimationFrame(scroll)
+      return () => cancelAnimationFrame(frame)
+    }
+    const timer = setTimeout(scroll, STEP_MOTION_MS + 20)
+    return () => clearTimeout(timer)
+  }, [at, way, horizontal])
   const content = way === 'fresh' && at > 0 && !settings ? error ? <ErrorMessage error={error} /> : <Loading /> : steps[at]!.content()
 
   return (
@@ -316,7 +327,7 @@ function WizardSteps({
               )}
             </StepLabel>
             {/* Vertical: the step at hand open under its own label. */}
-            {!horizontal && <StepContent>{i === at && content}</StepContent>}
+            {!horizontal && <StepContent transitionDuration={STEP_MOTION_MS}>{i === at && content}</StepContent>}
           </Step>
         ))}
       </Stepper>
