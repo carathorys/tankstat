@@ -18,6 +18,7 @@ All tooling is managed by `mise` (`mise.toml`: Node LTS, .NET 10). Prefer `mise 
 - `mise run dev:api` / `mise run dev:web` - API on :5080 with hot reload; Vite dev server proxying `/graphql`, `/auth/oidc/`, `/auth/token/`, `/media` and `/imports` to it (only those two of `/auth`: `src/frontend/auth/` modules are served at `/auth/...`, so no module may live in `src/frontend/auth/oidc/` or `src/frontend/auth/token/`)
 - `mise run test` - typecheck, lint, then every test layer (run this before finishing a change)
 - `mise run test:unit`, `test:integration`, `test:api` - single layers
+- `mise run test:e2e` - the real-browser tests (Playwright, in Docker here) against a fresh `out/`; not part of `mise run test`
 - `mise run build` - self-hostable output in `out/` (published API + SPA in `wwwroot`)
 
 Single tests:
@@ -44,6 +45,7 @@ The rules of each area are in `.claude/rules/`, one file per area. Each loads by
 - `logging.md`: what is logged at which level, what never is, and the canary tests.
 - `pwa.md`: the installable app, updates, chunk recovery.
 - `ci-and-tests.md`: CI and tests kept apart from `appsettings.json` and the developer's environment.
+- `e2e.md`: the real-browser tests (Playwright): the app they start, Docker or native, data, waits, the layout check.
 - `docker-and-release.md`: the image, its two targets, the release workflow.
 - `seeder.md`: the test-only Seeder.
 
@@ -88,6 +90,8 @@ Every change must keep all three layers covering behavior, so breaking changes a
 - **Unit:** `tests/backend/Tankstat.Application.UnitTests` (pure logic, fakes for ports), `tests/backend/Tankstat.Infrastructure.UnitTests` (config binding, EF adapters on in-memory SQLite), `tests/frontend/*.unit.test.*`.
 - **Integration:** `tests/backend/Tankstat.Api.IntegrationTests` (`WebApplicationFactory<Program>`, real DI/GraphQL/EF) and `tests/frontend/*.integration.test.*` (Apollo against msw-mocked GraphQL over HTTP).
 - **API:** `tests/backend/Tankstat.Api.ApiTests` are black-box GraphQL contract tests against a running server (`TANKSTAT_API_URL`); `scripts/test-api.sh` starts one on a throwaway port with an in-memory database. A schema change the frontend depends on must fail here.
+
+A fourth layer runs outside `mise run test`: **real browser** (`tests/e2e/*.e2e.ts`, Playwright against the published build at phone and desktop size; `mise run test:e2e`, CI's `e2e` job; `.claude/rules/e2e.md`). It checks what jsdom cannot: layout (sideways scroll, values past their panel, 44 px touch targets), axe with the real styles (colour contrast), and a few flows across the real server. A page whose layout changes gets its test there, and **every new user flow** (something a person does across pages or dialogs: a new feature, or a new way through an existing one) **gets a Playwright test** in `tests/e2e` with the change that adds it, at both sizes; a change of an existing flow updates its test.
 
 Frontend test files must be named `*.unit.test.ts(x)` or `*.integration.test.ts(x)` to be picked up by `vitest.config.ts`. They live in a folder per feature area, nested where an area has parts (`app/` with `apollo/` and `i18n/`, `auth/`, `pwa/`, `offline/` (connectivity and device data), `home/`, `vehicles/` with `logs/`, `recurring/` and `dashboard/`, `recognition/`, `pictures/`, `trash/`, `grid/`, `settings/`, `notifications/`, `admin/`, `import/`, `ui/` for the theme, forms, dialogs, toast and other shared building blocks); unit and integration tests of an area sit side by side, and the shared helpers (`mocks.tsx`, `server.ts`, `setup.ts`, `dates.ts` for the date pickers' fields) are in `tests/frontend/support/`. `stubViewport(kind, { scheme })` answers real media queries (widths, hover, pointer, `prefers-color-scheme`), and `renderWithApollo` uses the instant theme (no transitions), so a closed dialog is gone at once. A new test goes into the folder of the feature it covers.
 

@@ -221,3 +221,56 @@ jobs:
           path: out
           if-no-files-found: error
           retention-days: 14
+
+  # The real-browser tests (tests/e2e): the build job's out/ started as scripts/test-e2e.sh does, Playwright with Chromium at phone and
+  # desktop size. It starts once the build is up (about 90 s in) and runs next to the slower test jobs, in two shards on two machines
+  # (Playwright splits the tests; each shard starts its own server), so it ends within the backend job's time.
+  e2e:
+    name: e2e (${{ matrix.shard }}/2)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false # report every failing shard, not just the first
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+        with:
+          install_args: node dotnet
+          cache: true
+      - uses: ./.github/actions/node-modules
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tankstat-${{ github.sha }}
+          path: out
+
+      - name: Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      # The browser per Playwright version; its system libraries come from apt every time (install-deps is part of --with-deps).
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      - run: npx playwright install --with-deps chromium
+
+      - name: Real-browser tests
+        run: scripts/test-e2e.sh --shard=${{ matrix.shard }}/2
+        env:
+          E2E_NATIVE: "1"
+
+      - name: Upload the traces and the report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results-${{ matrix.shard }}
+          path: |
+            test-results/e2e
+            playwright-report
+          retention-days: 7
