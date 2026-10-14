@@ -2,7 +2,7 @@
 
 For operators: what a backup of a Tankstat instance is, how to make one, how to keep it safe, and how to get the data out of it again.
 
-An instance's data is spread over the database (SQLite, PostgreSQL, SQL Server or MySQL), the uploaded pictures and photos (`Storage:Path`, and `Storage:PhotosPath` where set), the keys that protect the sign-in cookies and the stored refresh secrets (`DataProtection:KeysPath`) and [the app's own settings file](configuration.md#the-apps-own-settings-file) (`Settings:Path`). A backup is one file with all of it **but the settings file, which is not in it yet**: keep a copy of that file with your backups, since it holds what was set on the *Server settings* page, the sign-in mode and its secrets among them. The tables come from one consistent read of the database (a live SQLite file is copied with its backup API, never with `cp`; a server database is read inside one transaction that sees one snapshot: `REPEATABLE READ` on PostgreSQL and MySQL; on SQL Server `SNAPSHOT` isolation where the database allows it, which it does not by default (`ALTER DATABASE <name> SET ALLOW_SNAPSHOT_ISOLATION ON`), else `SERIALIZABLE`, which is just as consistent but makes writers wait while the tables are read, and the log warns about it). The pictures, photos and keys are copied after the tables, once that read has ended, not in the same snapshot: a file uploaded meanwhile is simply not in the backup, or is in it without a row.
+An instance's data is spread over the database (SQLite, PostgreSQL, SQL Server or MySQL), the uploaded pictures and photos (`Storage:Path`, and `Storage:PhotosPath` where set), the keys that protect the sign-in cookies and the stored refresh secrets (`DataProtection:KeysPath`) and [the app's own settings file](configuration.md#the-apps-own-settings-file) (`Settings:Path`). A backup is one file with all of it, the settings file with what was set on the *Server settings* page (the sign-in mode among them) included; settings held by **environment variables are in no backup**, so set them again on a new server ([What is in the file](#what-is-in-the-file)). The tables come from one consistent read of the database (a live SQLite file is copied with its backup API, never with `cp`; a server database is read inside one transaction that sees one snapshot: `REPEATABLE READ` on PostgreSQL and MySQL; on SQL Server `SNAPSHOT` isolation where the database allows it, which it does not by default (`ALTER DATABASE <name> SET ALLOW_SNAPSHOT_ISOLATION ON`), else `SERIALIZABLE`, which is just as consistent but makes writers wait while the tables are read, and the log warns about it). The pictures, photos and keys are copied after the tables, once that read has ended, not in the same snapshot: a file uploaded meanwhile is simply not in the backup, or is in it without a row.
 
 A backup in the backups folder is a **restore point**: the instance can be taken back to it at any time (below). Administrators find them on the administration page too ([below](#on-the-administration-page)), and the app can write one every day and remove the old ones ([Schedule and retention](#schedule-and-retention)).
 
@@ -32,12 +32,15 @@ Run the command in the server's working directory too: the relative defaults (`t
 
 ## What is in the file
 
-The backup is a zip (stored, not compressed) with two entries, readable with any zip tool:
+The backup is a zip (stored, not compressed), readable with any zip tool:
 
 | Entry | Content |
 | --- | --- |
 | `data.age` (encrypted) or `data.zip` (plain) | the inner archive, see below |
-| `manifest.json` | in plain, always: the app version, the database provider and its last migration, when it was written, every table with its row count, which files and keys went in, the sizes, the SHA-256 of the inner archive, and for an encrypted backup the recipient, the salt and the Argon2id parameters. Nothing personal: no names, e-mails or paths |
+| `settings.age` (encrypted) or `settings.json` (plain) | the app's own settings file, when the server has one: an entry of its own, so a restore can read it without unpacking the data. See below |
+| `manifest.json` | in plain, always: the app version, the database provider and its last migration, when it was written, every table with its row count, which files and keys went in, the sizes, the SHA-256 of the inner archive, whether the settings file went in (with its SHA-256 and the names of the settings it left out), and for an encrypted backup the recipient, the salt and the Argon2id parameters. Nothing personal: no names, e-mails, paths or values |
+
+**The settings file in the backup** is the file as it is on disk when the backup starts (so a setting saved on the *Server settings* page that still waits for a restart is in it), with what belongs to the instance: every setting of the *Server settings* page and the `Logging` section. What describes the machine stays out (a database connection, a folder, the keys folder, the settings file's own place, the backups folder, the first administrator's credentials, the prompt file), and so do the secrets in a plain backup (the OIDC client secret, the SMTP password, the model API key), as the keys do: an encrypted backup carries them. The manifest names what stayed out, never a value. A server without a settings file writes none, and one whose file the start left out writes none either: the manifest says which. Settings held by environment variables are not in the file, so they are in no backup.
 
 `unzip -p <file> manifest.json` prints the manifest. The inner archive holds:
 
@@ -86,7 +89,7 @@ dotnet Tankstat.Api.dll decrypt tankstat-backup-20261011T020000Z.zip --output re
 dotnet Tankstat.Api.dll decrypt tankstat-backup-20261011T020000Z.zip --output restored
 ```
 
-`decrypt` checks the manifest and the checksum, derives the identity and checks it against the recipient **before** anything is unpacked (a wrong passphrase is refused at once), then unpacks `tables/`, `files/` and `keys/` into the folder (which must be empty; one that `decrypt` creates is readable by you alone, since the data and the keys land in it in plain). A backup of a newer format than this release reads is refused, and so is a zip that is not a Tankstat backup.
+`decrypt` checks the manifest and the checksum, derives the identity and checks it against the recipient **before** anything is unpacked (a wrong passphrase is refused at once), then unpacks `tables/`, `files/` and `keys/` into the folder (which must be empty; one that `decrypt` creates is readable by you alone, since the data and the keys land in it in plain), and the settings file as `settings.json` beside them (readable by you alone too: an encrypted backup's holds the secrets). A backup of a newer format than this release reads is refused, and so is a zip that is not a Tankstat backup.
 
 ## Restoring a backup
 

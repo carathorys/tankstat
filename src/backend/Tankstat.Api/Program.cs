@@ -6,6 +6,7 @@ using Tankstat.Api.Media;
 using Tankstat.Api.GraphQL;
 using Tankstat.Api.Settings;
 using Tankstat.Application;
+using Tankstat.Application.Backups;
 using Tankstat.Application.SystemSettings;
 using Tankstat.Infrastructure;
 using Tankstat.Infrastructure.Settings;
@@ -25,6 +26,7 @@ do
     builder.Services.AddSingleton(settingsFile.Status);
     builder.Services.AddSingleton<ISettingsFileStore>(new SettingsFileStore(settingsFile.Status.Path));
     builder.Services.AddSingleton<ISystemConfiguration, SystemConfiguration>();
+    builder.Services.AddSingleton<ISettingsBackup, SettingsBackup>(); // before AddInfrastructure, whose default (no file) steps aside then
     builder.Services.AddSingleton<IServerRestart>(sp => new ServerRestart(restarts, sp.GetRequiredService<IHostApplicationLifetime>(), sp.GetRequiredService<ILogger<ServerRestart>>())); // plain Add: a test host replaces it
     builder.Services.AddSingleton(restarts.Code); // the one-time code outlives a restart in the process
     builder.Services.AddHostedService<SettingsFileReporter>();

@@ -5,6 +5,7 @@ using Tankstat.Application.SystemSettings;
 using Tankstat.Domain;
 using Tankstat.Domain.Backups;
 using Tankstat.Infrastructure.Backups;
+using Tankstat.Infrastructure.Settings;
 
 namespace Tankstat.Api.Backups;
 
@@ -108,8 +109,19 @@ internal static class BackupCommands
         output.WriteLine($"Wrote {result.Path}");
         output.WriteLine($"  {m.Contents.Tables.Count} tables with {m.Contents.Tables.Values.Sum()} rows ({m.Sizes.Tables} bytes), pictures {m.Sizes.Pictures} bytes, photos {Photos(m)}, keys {(m.Contents.Keys ? $"{m.Sizes.Keys} bytes" : m.Encryption is null ? "left out (not encrypted)" : "none found")}");
         output.WriteLine(m.Encryption is null ? "  not encrypted" : $"  encrypted for {m.Encryption.Recipient}");
+        output.WriteLine($"  settings file {SettingsOf(m)}");
         return 0;
     }
+
+    /// <summary>What a backup holds of the settings file, in words; names only, never a value.</summary>
+    private static string SettingsOf(BackupManifest m) => m.Settings switch
+    {
+        { State: BackupSettingsState.Included, Omitted: { Count: > 0 } omitted } => $"{m.Settings.Bytes} bytes, without {string.Join(", ", omitted)}",
+        { State: BackupSettingsState.Included } => $"{m.Settings.Bytes} bytes",
+        { State: BackupSettingsState.Ignored } => "left out (the server runs without it)",
+        { State: BackupSettingsState.None } => "none (the server has none)",
+        _ => "not in the backup (written by an older release)",
+    };
 
     private static string Photos(BackupManifest m) => m.Contents.Photos switch
     {
@@ -141,7 +153,17 @@ internal static class BackupCommands
         if (identityFile is not null) identity = AgeKeys.ParseIdentity(IdentityLine(identityFile));
         else if (passphrase) identity = BackupFile.IdentityOf(manifest, Passphrase(input));
         BackupFile.Extract(file, manifest, identity, folder);
-        output.WriteLine($"Unpacked {file} into {System.IO.Path.GetFullPath(folder)}: {manifest.Contents.Tables.Count} tables, written by Tankstat {manifest.AppVersion} on {manifest.CreatedAt:u} ({manifest.Provider}, {manifest.Migration})");
+        // The settings file beside the tables, owner-only like the rest: it may hold secrets (an encrypted backup carries them).
+        if (BackupFile.ReadSettings(file, manifest, identity) is { } settings)
+        {
+            var path = System.IO.Path.Combine(folder, BackupSettingsFile.Plain);
+            var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write };
+            if (!OperatingSystem.IsWindows()) options.UnixCreateMode = SettingsFileStore.OwnerOnly;
+            using (var stream = new FileStream(path, options))
+            using (var writer = new StreamWriter(stream))
+                writer.Write(SettingsFileStore.ToJson(settings));
+        }
+        output.WriteLine($"Unpacked {file} into {System.IO.Path.GetFullPath(folder)}: {manifest.Contents.Tables.Count} tables, written by Tankstat {manifest.AppVersion} on {manifest.CreatedAt:u} ({manifest.Provider}, {manifest.Migration}), settings file {SettingsOf(manifest)}");
         return 0;
     }
 

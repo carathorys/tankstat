@@ -57,6 +57,13 @@ public sealed class SettingsFileStore(string path) : ISettingsFileStore
         return source;
     }
 
+    /// <summary>The leaf values of settings JSON read from a stream (a backup's copy of the file), as <see cref="Read(string)"/> reads a file.</summary>
+    public static IReadOnlyDictionary<string, string?> Read(Stream json)
+    {
+        var root = new ConfigurationBuilder().AddJsonStream(json).Build();
+        return Leaves(root).ToDictionary(p => p.Key, p => p.Value, StringComparer.OrdinalIgnoreCase);
+    }
+
     private static IEnumerable<KeyValuePair<string, string?>> Leaves(IConfiguration section)
     {
         foreach (var child in section.GetChildren())
