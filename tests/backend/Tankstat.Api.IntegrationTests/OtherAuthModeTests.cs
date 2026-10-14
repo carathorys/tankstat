@@ -217,6 +217,34 @@ public class ProxyHeaderModeTests : IDisposable
     }
 
     [Fact]
+    public async Task ANewUsersFirstRequestsAtOnce_AllSucceed_AndOneUserIsCreated()
+    {
+        // A proxy authenticates every request, and a page's first ones come together: all find no user and all insert. The unique index keeps
+        // one; the others used to end as a 500 (an unhandled DbUpdateException). A request first, so the app is warm (a cold one serialises
+        // the first requests by itself), and three new users, so that missing the race by luck once does not pass the test.
+        await Client("warm-up").Gql("{ session { user { id } } }");
+        var created = new List<(string Subject, string? Id)>();
+        foreach (var subject in new[] { "newcomer-1", "newcomer-2", "newcomer-3" })
+        {
+            var answers = await Task.WhenAll(Enumerable.Range(0, 8).Select(async _ =>
+            {
+                using var response = await Client(subject, $"{subject}@example.com").PostAsJsonAsync("/graphql", new { query = "{ session { user { id email } } }" });
+                return (response.StatusCode, Body: await response.Content.ReadFromJsonAsync<JsonElement>());
+            }));
+
+            Assert.All(answers, a => Assert.Equal(HttpStatusCode.OK, a.StatusCode));
+            var ids = answers.Select(a => a.Body.Data().GetProperty("session").GetProperty("user").GetProperty("id").GetString()).Distinct().ToList();
+            created.Add((subject, Assert.Single(ids))); // every request names the one user that was saved
+        }
+
+        Assert.Equal(4, _app.Log.From<Tankstat.Application.Users.AuthService>().Count(e => e.Level == LogLevel.Information && e.Message.StartsWith("Created user"))); // each once
+        Assert.DoesNotContain(_app.Log.Entries, e => e.Level == LogLevel.Error);
+        var users = (await Client("boss", "boss@example.com").Gql("{ users { id email } }")).Data().GetProperty("users");
+        foreach (var (subject, id) in created)
+            Assert.Equal(id, Assert.Single(users.EnumerateArray(), u => u.GetProperty("email").GetString() == $"{subject}@example.com").GetProperty("id").GetString());
+    }
+
+    [Fact]
     public async Task PasswordLogin_IsNotAvailable()
     {
         var body = await Client("alice").Gql("mutation($i: LoginInput!) { login(input: $i) { id } }",

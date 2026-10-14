@@ -45,6 +45,22 @@ public class UserAdministrationTests : IDisposable
     }
 
     [Fact]
+    public async Task CreatingTheSameUserAtOnce_CreatesOne_AndTellsTheOthersTheAddressIsTaken()
+    {
+        // Two requests that both found no such address both insert; the unique index keeps one. The others used to end as an unexpected error.
+        var admin = await LoggedIn(Admin, AdminPassword);
+        const string create = "mutation($i: CreateUserInput!) { createUser(input: $i) { user { id } } }";
+
+        var answers = await Task.WhenAll(Enumerable.Range(0, 16)
+            .Select(_ => admin.Gql(create, new { i = new { email = "same@example.com", displayName = "Same", isAdmin = false } })));
+
+        Assert.Single(answers, a => !a.TryGetProperty("errors", out _));
+        Assert.All(answers.Where(a => a.TryGetProperty("errors", out _)), a => Assert.Equal("user.emailExists", a.ErrorKey()));
+        Assert.Single((await admin.Gql("{ users { email } }")).Data().GetProperty("users").EnumerateArray(), u => u.GetProperty("email").GetString() == "same@example.com");
+        Assert.DoesNotContain(_app.Log.Entries, e => e.Level == Microsoft.Extensions.Logging.LogLevel.Error);
+    }
+
+    [Fact]
     public async Task SettingPasswords_IsOffUnlessConfigured()
     {
         var admin = await LoggedIn(Admin, AdminPassword);

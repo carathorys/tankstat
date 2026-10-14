@@ -15,6 +15,9 @@ public sealed class UserService(
     AccessService access, IUserRepository users, IUserDataRepository userData, PasswordResetService resets, UserSessionService sessions, IPasswordHasher hasher,
     ImageService images, ImportSessionStore importSessions, IOptions<AuthOptions> auth, ILogger<UserService> logger)
 {
+    /// <summary>One new local user per address at a time within this process (an instance per request, so static).</summary>
+    private static readonly StripedLocks Creating = new();
+
     public async Task<IReadOnlyList<User>> ListAsync(CancellationToken ct)
     {
         await access.RequireAdminAsync(ct);
@@ -28,9 +31,20 @@ public sealed class UserService(
         if (auth.Value.Mode != AuthMode.Standalone) throw new DomainException("user.onlyStandalone", "Users are only created here in Standalone authentication mode.");
 
         var user = User.CreateLocal(email!, displayName, isAdmin);
-        if (await users.FindLocalByEmailAsync(user.Email, ct) is not null) throw new DomainException("user.emailExists", "A user with this e-mail already exists.");
-
-        await users.AddAsync(user, ct);
+        // Two requests for one address at once (a double submit) both pass the check below. One at a time per address here, so the second
+        // is told the address is taken without a failed insert (EF Core logs a failed save as an Error); another server on the same
+        // database is not held back by this, so the unique index settles that, and AddAsync says so.
+        var gate = Creating.For(user.Email);
+        await gate.WaitAsync(ct);
+        try
+        {
+            if (await users.FindLocalByEmailAsync(user.Email, ct) is not null) throw new DomainException("user.emailExists", "A user with this e-mail already exists.");
+            if (!await users.AddAsync(user, ct)) throw new DomainException("user.emailExists", "A user with this e-mail already exists.");
+        }
+        finally
+        {
+            gate.Release();
+        }
         logger.LogInformation("Administrator {AdminId} created user {UserId} (administrator: {IsAdmin})", admin.Id, user.Id, user.IsAdmin);
         return (user, await IssueAndReportAsync(admin, user, ct));
     }

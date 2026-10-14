@@ -33,6 +33,64 @@ public class AuthRepositoryTests
     }
 
     [Fact]
+    public async Task Users_TheSameProviderAndSubjectTwice_IsRefusedWithFalse_AndTheFirstStays()
+    {
+        // Two requests that both found no such user both insert; the unique index (Provider, Subject) keeps the first.
+        await using var db = new TestDatabase();
+        var repo = db.Get<IUserRepository>();
+        var first = User.CreateExternal(UserProvider.Proxy, "sub-1", "a@x.co", "A", false);
+        var second = User.CreateExternal(UserProvider.Proxy, "sub-1", "a@x.co", "A", false);
+        var otherProvider = User.CreateExternal(UserProvider.Oidc, "sub-1", "a@x.co", "A", false);
+
+        Assert.True(await repo.AddAsync(first, default));
+        Assert.False(await repo.AddAsync(second, default));
+        Assert.True(await repo.AddAsync(otherProvider, default)); // the same subject at another provider is another user
+
+        Assert.Equal(2, (await repo.ListAsync(default)).Count);
+        Assert.Equal(first.Id, (await repo.FindExternalAsync(UserProvider.Proxy, "sub-1", default))!.Id);
+        Assert.Null(await repo.FindByIdAsync(second.Id, default)); // the loser's own id was never stored
+    }
+
+    [Fact]
+    public async Task Users_AddedAtOnce_OneIsSaved_TheOthersAreToldSo()
+    {
+        // What a second server on the same database does (the in-process lock of the services does not hold it back): all insert at once.
+        await using var db = new TestDatabase();
+        var repo = db.Get<IUserRepository>();
+
+        var saved = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => repo.AddAsync(User.CreateExternal(UserProvider.Proxy, "sub-1", null, null, false), default)));
+
+        Assert.Single(saved, s => s);
+        Assert.Single(await repo.ListAsync(default));
+    }
+
+    [Fact]
+    public async Task Users_TheSameLocalAddressTwice_IsRefusedWithFalse()
+    {
+        await using var db = new TestDatabase();
+        var repo = db.Get<IUserRepository>();
+
+        Assert.True(await repo.AddAsync(User.CreateLocal("a@x.co", "A", false), default));
+        Assert.False(await repo.AddAsync(User.CreateLocal("A@X.co", "Again", true), default)); // the address is normalised: the same subject
+
+        Assert.Single(await repo.ListAsync(default));
+    }
+
+    [Fact]
+    public async Task Users_AnInsertThatFailsForAnotherReason_IsStillAnError()
+    {
+        // The same id under another subject: not the race the unique index of (Provider, Subject) settles, so nothing to report as "taken".
+        await using var db = new TestDatabase();
+        var repo = db.Get<IUserRepository>();
+        var first = User.CreateExternal(UserProvider.Proxy, "sub-1", null, null, false);
+        var sameId = User.CreateExternal(UserProvider.Proxy, "sub-2", null, null, false);
+        typeof(User).GetProperty(nameof(User.Id))!.SetValue(sameId, first.Id);
+        await repo.AddAsync(first, default);
+
+        await Assert.ThrowsAsync<Microsoft.EntityFrameworkCore.DbUpdateException>(() => repo.AddAsync(sameId, default));
+    }
+
+    [Fact]
     public async Task Users_UpdatePersistsCredentialsAndFlags()
     {
         await using var db = new TestDatabase();
@@ -52,17 +110,6 @@ public class AuthRepositoryTests
         Assert.Equal(loaded.SessionVersion, again.SessionVersion);
         Assert.NotNull(again.LockoutEnd);
         Assert.False(await repo.AnyLocalAdminAsync(default));
-    }
-
-    [Fact]
-    public async Task Users_AreUniquePerProviderAndSubject()
-    {
-        await using var db = new TestDatabase();
-        var repo = db.Get<IUserRepository>();
-        await repo.AddAsync(User.CreateLocal("a@x.co", null, false), default);
-
-        await Assert.ThrowsAnyAsync<Exception>(() => repo.AddAsync(User.CreateLocal("a@x.co", null, false), default));
-        await repo.AddAsync(User.CreateExternal(UserProvider.Oidc, "a@x.co", null, null, false), default); // other provider is fine
     }
 
     [Fact]

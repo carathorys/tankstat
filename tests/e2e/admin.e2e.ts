@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { addVehicle, createUser, pageLoaded, signIn, signInAsNewUser, tag } from './support/app.ts'
 
-// What an administrator does with people: a new user with the one-time link, disabling someone, a grant on someone else's data, and
+// What an administrator does with people: a new user with the one-time link (and the same user created twice at once), disabling someone, a grant on someone else's data, and
 // the list of every vehicle. The administrator is the bootstrap one; the people are the test's own.
 
 test('creates a user, who sets a password through the link and signs in', async ({ page, browser }) => {
@@ -36,6 +36,25 @@ test('creates a user, who sets a password through the link and signs in', async 
   } finally {
     await theirs.close()
   }
+})
+
+test('creating the same user twice at once creates one, and the others are told the address is taken', async ({ page }) => {
+  await signIn(page)
+  const email = `twice-${tag()}@example.com`
+  // Sent with page.request, not the graphql helper: that one fails the test on any error, and the answers of the losers are the point.
+  const create = async () => {
+    const response = await page.request.post('/graphql', {
+      data: { query: 'mutation($i: CreateUserInput!) { createUser(input: $i) { user { id } } }', variables: { i: { email, displayName: 'Twice', isAdmin: false } } },
+    })
+    return (await response.json()) as { errors?: { extensions: { key?: string } }[] }
+  }
+  const answers = await Promise.all([create(), create(), create(), create()])
+
+  expect(answers.filter((a) => !a.errors)).toHaveLength(1)
+  expect(answers.filter((a) => a.errors).map((a) => a.errors![0].extensions.key)).toEqual(['user.emailExists', 'user.emailExists', 'user.emailExists'])
+  await page.goto('/admin/people')
+  await pageLoaded(page)
+  await expect(page.getByRole('cell', { name: email, exact: true })).toHaveCount(1)
 })
 
 test('disables a user, who can no longer sign in', async ({ page, browser }) => {

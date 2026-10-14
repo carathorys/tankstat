@@ -13,7 +13,12 @@ public interface IUserRepository
     Task<User?> FindByAvatarImageAsync(Guid imageId, CancellationToken ct);
     Task<IReadOnlyList<User>> ListAsync(CancellationToken ct);
     Task<bool> AnyLocalAdminAsync(CancellationToken ct);
-    Task AddAsync(User user, CancellationToken ct);
+    /// <summary>
+    /// Saves a new user. <c>false</c> when a user with the same provider and subject is there already: another request created it first
+    /// (two at once both find none and both insert; the unique index keeps one), so the caller reads that row, never goes on with its own
+    /// unsaved one, whose id was never stored.
+    /// </summary>
+    Task<bool> AddAsync(User user, CancellationToken ct);
     Task UpdateAsync(User user, CancellationToken ct);
 }
 
