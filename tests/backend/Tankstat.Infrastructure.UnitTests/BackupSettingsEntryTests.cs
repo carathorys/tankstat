@@ -30,6 +30,7 @@ public sealed class BackupSettingsEntryTests : IDisposable
         public Task<IReadOnlyList<string>> MissingAsync(BackupEnvironment recorded, IReadOnlyDictionary<string, string?>? restored, CancellationToken ct) => throw new NotSupportedException();
         public IReadOnlyList<string> Overridden(IReadOnlyDictionary<string, string?> fromBackup) => [];
         public Task<RestoredSettings> RestoredAsync(IReadOnlyDictionary<string, string?> fromBackup, bool carriesSecrets, CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyDictionary<string, string?>> LeavesAsync(IReadOnlyDictionary<string, string?> fromBackup, bool carriesSecrets, CancellationToken ct) => throw new NotSupportedException();
         public Task WriteAsync(IReadOnlyDictionary<string, string?> values, CancellationToken ct) => throw new NotSupportedException();
     }
 

@@ -110,6 +110,9 @@ public sealed class BackupStoreTests : IDisposable
         // An empty one, as an operator's touch makes it: held since its file's time.
         await File.WriteAllTextAsync(Path.Combine(Backups, "b.zip.hold"), "");
         Assert.True(store.Find("b.zip").Held);
+        // One without its time: since its file's time too, never the year 1.
+        await File.WriteAllTextAsync(Path.Combine(Backups, "b.zip.hold"), "{}");
+        Assert.Equal(new DateTimeOffset(File.GetLastWriteTimeUtc(Path.Combine(Backups, "b.zip.hold")), TimeSpan.Zero), store.Find("b.zip").HeldSince);
 
         store.Hold("a.zip", null);
         Assert.False(store.Find("a.zip").Held);

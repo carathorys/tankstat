@@ -20,7 +20,9 @@ using var stopSignals = restarts.EndOnStopSignals(); // docker stop during a res
 do
 {
     restarts.Reset();
-    var builder = WebApplication.CreateBuilder(args);
+    // A command's flags are no configuration (its parser refuses anything else): read as such, `backup --environment merge` would set the
+    // hosting environment and leave appsettings.{Environment}.json out of that run.
+    var builder = WebApplication.CreateBuilder(BackupCommands.Handles(args) ? [] : args);
     // The app's own settings file joins the configuration below the environment variables, unless the app could not start with it (see SettingsFile).
     var settingsFile = SettingsFile.Prepare(builder);
     builder.Services.AddSingleton(settingsFile);
@@ -149,6 +151,9 @@ do
     // nothing after Build() runs: the host's start applies the restore, see RestoreStep.)
     if (app.Services.GetRequiredService<IBackupStore>().RestorePending)
     {
+        // The options the host validates before any start step, validated first here too: a wrong folder stops the start before the restore
+        // replaces anything, as it did when the host's start applied it.
+        app.Services.GetService<Microsoft.Extensions.Options.IStartupValidator>()?.Validate();
         await StartupSteps.ApplyBeforeHostAsync(app.Services, CancellationToken.None);
         if (restarts.Requested)
         {

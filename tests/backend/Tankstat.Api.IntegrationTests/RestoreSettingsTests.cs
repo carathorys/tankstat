@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Tankstat.Application.Backups;
+using Tankstat.Application.SystemSettings;
 using Tankstat.Domain.Backups;
 using Tankstat.Infrastructure.Backups;
 
@@ -102,6 +103,37 @@ public sealed class RestoreSettingsTests : IDisposable
         Assert.False(written.Manifest.Settings!.Secrets); // encrypted, but not asked to (user decision)
         Assert.False(written.Manifest.CarriesSecrets());
         Assert.Contains("Smtp:Password", written.Manifest.Settings.Omitted!);
+    }
+
+    [Fact]
+    public async Task AFileTheStartLeftOut_IsLeftOutOfTheBackup_UntilASaveTakesAFileIn()
+    {
+        using var a = Host("a", "None", """{ "Notifications": { "MaxPerHour": "0" } }""");
+        Assert.True(a.Factory.Services.GetRequiredService<SettingsFileStatus>().Ignored);
+        Assert.Equal(BackupSettingsState.Ignored, (await Backup(a)).Manifest.Settings!.State);
+
+        // What a save on the settings page does over a file the start left out: the file written, then taken into the running configuration.
+        await a.Factory.Services.GetRequiredService<ISettingsFileStore>().WriteAsync(new Dictionary<string, string?> { ["Defaults:Currency"] = "XYZ" }, default);
+        a.Factory.Services.GetRequiredService<ISystemConfiguration>().ApplySavedFile();
+
+        var settings = (await Backup(a)).Manifest.Settings!;
+        Assert.Equal(BackupSettingsState.Included, settings.State);
+    }
+
+    [Fact]
+    public async Task AMergedBackup_OfAServerWhoseFileTheStartLeftOut_StillCarriesTheEnvironmentsSettings_NotTheFiles()
+    {
+        // Merge was chosen so that the environment's values travel: a left-out file takes none of its own along, the environment's still go.
+        using var a = Host("a", "None", """{ "Notifications": { "MaxPerHour": "0" } }""",
+            new() { ["Backups:Environment"] = "Merge", ["Defaults:Currency"] = "XYZ" });
+        Assert.True(a.Factory.Services.GetRequiredService<SettingsFileStatus>().Ignored);
+
+        var written = await Backup(a);
+
+        Assert.Equal(BackupSettingsState.Included, written.Manifest.Settings!.State);
+        var carried = BackupFile.ReadSettings(written.Path, written.Manifest, null)!;
+        Assert.Equal("XYZ", carried["Defaults:Currency"]);
+        Assert.DoesNotContain(carried.Keys, k => k.StartsWith("Notifications:", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -301,6 +333,27 @@ public sealed class RestoreSettingsTests : IDisposable
         Assert.Equal(["Smtp:Password"], file.GetProperty("secretsLeftOut").EnumerateArray().Select(n => n.GetString()));
         Assert.Empty(file.GetProperty("machineLeftOut").EnumerateArray());
         Assert.Equal(["Defaults__Currency"], point.GetProperty("environment").GetProperty("overridden").EnumerateArray().Select(n => n.GetString()));
+    }
+
+    [Fact]
+    public async Task ASecretTheBackupsServerSetButDidNotCarry_IsNotListedAsLacking_WhereThisServersOwnFileHoldsIt()
+    {
+        var admin = new Dictionary<string, string?> { ["Auth:Standalone:AdminEmail"] = TestApp.AdminEmail, ["Auth:Standalone:AdminPassword"] = TestApp.AdminPassword };
+        string backup;
+        using (var a = Host("a", "Standalone", """{ "Defaults": { "Currency": "XYZ" } }""", new(admin) { ["Smtp:Password"] = "zzzz-a-password" }))
+            backup = (await Backup(a)).Path;
+        // The restore keeps this server's own secrets from a backup that holds none, so it lacks nothing: the list says as the restore judges.
+        using var b = Host("b", "Standalone", """{ "Smtp": { "Password": "zzzz-b-password" } }""", admin);
+        Stage(Folder("b-backups"), backup, marker: false);
+        using var client = b.NewClient();
+        await client.LoginAs(TestApp.AdminEmail, TestApp.AdminPassword);
+
+        var environment = Assert.Single((await client.Gql("{ backups { restorePoints { environment { settings missing missingCertain } } } }"))
+            .Data().GetProperty("backups").GetProperty("restorePoints").EnumerateArray()).GetProperty("environment");
+
+        Assert.Contains("Smtp__Password", environment.GetProperty("settings").EnumerateArray().Select(n => n.GetString()));
+        Assert.Empty(environment.GetProperty("missing").EnumerateArray());
+        Assert.True(environment.GetProperty("missingCertain").GetBoolean());
     }
 
     /// <summary>A backup of an instance without users, whose settings file says Standalone (its sign-in held off by the environment).</summary>

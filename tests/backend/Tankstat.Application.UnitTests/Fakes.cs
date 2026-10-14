@@ -959,6 +959,8 @@ internal sealed class NoSettingsFile : Tankstat.Application.Backups.ISettingsBac
         Task.FromResult(Tankstat.Application.Backups.SettingsCopy.None);
     public Task<Tankstat.Application.Backups.RestoredSettings> RestoredAsync(IReadOnlyDictionary<string, string?> fromBackup, bool carriesSecrets, CancellationToken ct) =>
         throw new NotSupportedException();
+    public Task<IReadOnlyDictionary<string, string?>> LeavesAsync(IReadOnlyDictionary<string, string?> fromBackup, bool carriesSecrets, CancellationToken ct) =>
+        Task.FromResult(fromBackup);
     public Task WriteAsync(IReadOnlyDictionary<string, string?> values, CancellationToken ct) => throw new NotSupportedException();
     public Task<IReadOnlyList<string>> MissingAsync(Tankstat.Application.Backups.BackupEnvironment recorded, IReadOnlyDictionary<string, string?>? restored, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<string>>([]);

@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Microsoft.Extensions.Options;
+using Tankstat.Api.GraphQL;
 using Tankstat.Application.Backups;
 using Tankstat.Application.SystemSettings;
 using Tankstat.Domain;
@@ -118,19 +119,18 @@ internal static class BackupCommands
         output.WriteLine(m.Encryption is null ? "  not encrypted" : $"  encrypted for {m.Encryption.Recipient}");
         output.WriteLine($"  settings file {SettingsOf(m)}");
         if (m.Environment is { } recorded)
-            output.WriteLine($"  environment of this process {(recorded.Mode == BackupEnvironmentMode.Merge ? "merged into the settings file" : "recorded")}: {(recorded.Settings.Count == 0 ? "no setting" : string.Join(", ", recorded.Settings))}");
+            output.WriteLine($"  environment of this process {(recorded.Mode == BackupEnvironmentMode.Merge && m.Settings?.State == BackupSettingsState.Included ? "merged into the settings file" : "recorded")}: {(recorded.Settings.Count == 0 ? "no setting" : string.Join(", ", recorded.Settings))}");
         return 0;
     }
 
     /// <summary>What a backup holds of the settings file, in words; names only, never a value.</summary>
     private static string SettingsOf(BackupManifest m) => m.Settings switch
     {
-        { State: BackupSettingsState.Included, Secrets: true } when m.Encryption is not null =>
-            $"{m.Settings.Bytes} bytes, with its secrets (encrypted){(m.Settings.Omitted is { Count: > 0 } o ? $", without {string.Join(", ", o)}" : "")}",
-        { State: BackupSettingsState.Included, Secrets: true } =>
-            $"{m.Settings.Bytes} bytes, its secrets IN PLAIN (anyone with the file reads them){(m.Settings.Omitted is { Count: > 0 } o ? $", without {string.Join(", ", o)}" : "")}",
-        { State: BackupSettingsState.Included, Omitted: { Count: > 0 } omitted } => $"{m.Settings.Bytes} bytes, without {string.Join(", ", omitted)}",
-        { State: BackupSettingsState.Included } => $"{m.Settings.Bytes} bytes",
+        // Its secrets as CarriesSecrets says: an older encrypted backup's manifest does not say, and it carried them.
+        { State: BackupSettingsState.Included } s =>
+            $"{s.Bytes} bytes"
+            + (!m.CarriesSecrets() ? "" : m.Encryption is not null ? ", with its secrets (encrypted)" : ", its secrets IN PLAIN (anyone with the file reads them)")
+            + (s.Omitted is { Count: > 0 } omitted ? $", without {string.Join(", ", omitted)}" : ""),
         { State: BackupSettingsState.Ignored } => "left out (the server runs without it)",
         { State: BackupSettingsState.None } => "none (the server has none)",
         _ => "not in the backup (written by an older release)",
@@ -207,14 +207,14 @@ internal static class BackupCommands
         var here = await RestoreService.HereAsync(store, services.GetRequiredService<ISettingsBackup>(), new RestorePoint(file, 0, manifest), CancellationToken.None);
         if (manifest.Environment is { Settings.Count: > 0 } recorded)
         {
-            output.WriteLine($"Its server's environment set {string.Join(", ", recorded.Settings)} ({(recorded.Mode == BackupEnvironmentMode.Merge ? "merged into its settings file" : "recorded by name only")}).");
+            output.WriteLine($"Its server's environment set {string.Join(", ", recorded.Settings)} ({(recorded.Mode == BackupEnvironmentMode.Merge && manifest.Settings is { State: BackupSettingsState.Included } ? "merged into its settings file" : "recorded by name only")}).");
             if (here.Missing.Count > 0)
                 output.WriteLine($"This server sets none of {string.Join(", ", here.Missing)}: the restore is refused until they are set{(here.MissingCertain ? "" : " (unless the backup's encrypted settings file holds them)")}.");
         }
         else if (manifest.Environment is null) output.WriteLine("RISK: it says nothing of its server's environment (an older release wrote it): settings its server set there may be missing here.");
         if (manifest.Settings is not { State: BackupSettingsState.Included })
             output.WriteLine("RISK: it brings no settings file, so this server's settings stay, which may not suit the restored data (its sign-in, its e-mail, its backups).");
-        else if (!manifest.CarriesSecrets() && manifest.Settings.Omitted?.Where(k => SettingsInBackups.CategoryOf(k) == SettingCategory.Secret).ToList() is { Count: > 0 } secrets)
+        else if (BackupSettingsFileInfo.From(manifest.Settings, manifest.CarriesSecrets()) is { Secrets: false, SecretsLeftOut: { Count: > 0 } secrets })
             output.WriteLine($"RISK: its secrets are not in it ({string.Join(", ", secrets)}): this server's own are kept, and what this server has none of stops working.");
         if (here.Overridden.Count > 0)
             output.WriteLine($"RISK: this server's environment overrides {string.Join(", ", here.Overridden)}, which the backup brings: this server's values run{(here.Overridden.Contains("Auth__Mode") ? ", the sign-in mode among them, so the restored users may have no way to sign in" : "")}.");

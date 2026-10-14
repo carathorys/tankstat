@@ -92,13 +92,13 @@ function RestoreSettingsNote({ point, risks }: { point: RestoreTarget; risks: Re
   const names = environment?.settings.join(', ') ?? ''
   const blockers = risks.filter((r) => r.tier === 'blocker')
   const accepted = risks.filter((r) => r.tier === 'risk')
+  // Merged, but no file went in (a plain backup whose environment set only secrets): the values are not in the backup.
+  const merged = environment?.mode === 'MERGE' && point.settingsFile?.state === 'INCLUDED'
   return (
     <>
       {point.settingsFile?.state === 'INCLUDED' && <Typography variant="body2">{t('admin.backups.settingsBrings')}</Typography>}
       {environment && environment.settings.length > 0 && (
-        <Typography variant="body2">
-          {environment.mode === 'MERGE' ? t('admin.backups.environmentMerged', { names }) : t('admin.backups.environmentRecorded', { names })}
-        </Typography>
+        <Typography variant="body2">{merged ? t('admin.backups.environmentMerged', { names }) : t('admin.backups.environmentRecorded', { names })}</Typography>
       )}
       {blockers.map((risk) => (
         <Alert key={risk.key} severity="error" role="alert">

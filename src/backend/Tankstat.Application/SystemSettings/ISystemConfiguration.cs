@@ -24,6 +24,12 @@ public interface ISystemConfiguration
 {
     SettingsFileStatus File { get; }
 
+    /// <summary>
+    /// Whether the settings file is among the running sources now: read at start, or taken in by a save since (<see cref="ApplySavedFile"/>,
+    /// also over a file the start left out, which <see cref="File"/> still says it did).
+    /// </summary>
+    bool FileInUse { get; }
+
     /// <summary>The configuration as it runs now: reloaded after every save (<see cref="ApplySavedFile"/>), so it holds what the settings that apply at once run with.</summary>
     IConfiguration Running { get; }
 

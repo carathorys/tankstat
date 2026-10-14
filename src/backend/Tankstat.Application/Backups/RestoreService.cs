@@ -70,27 +70,34 @@ public sealed class RestoreService(
     public static async Task RequireStartableAsync(
         IBackupStore store, ISettingsBackup settings, ISystemConfiguration configuration, string file, BackupManifest manifest, string? identity, CancellationToken ct)
     {
-        var restored = store.ReadSettings(file, manifest, identity) is { } fromBackup ? await settings.RestoredAsync(fromBackup, manifest.CarriesSecrets(), ct) : null;
-        await RequireRecordedAsync(settings, manifest, restored, ct);
-        if (restored is not null)
-        {
-            if (restored.Problems.Count > 0)
-                throw new DomainException("backup.settingsRefused",
-                    $"The server would not start with the settings file this backup brings ({string.Join(" ", restored.Problems)}), so it is not restored.",
-                    new { restored.Problems });
-            return;
-        }
+        if (await RequireRestorableAsync(settings, manifest, store.ReadSettings(file, manifest, identity), ct) is not null) return;
         using var next = configuration.PrepareNextStart();
         next.RequireStartable();
     }
 
     /// <summary>
+    /// What a restore of a backup's settings file (<paramref name="fromBackup"/>; null for a backup without one) would leave, refused as the
+    /// request and the start refuse it alike: first a recorded setting left without a value (<see cref="RequireRecordedAsync"/>), then a file
+    /// this server would not start with (<see cref="RestoredSettingsExtensions.RequireRestorable"/>). Null when the backup carries no file.
+    /// </summary>
+    public static async Task<RestoredSettings?> RequireRestorableAsync(
+        ISettingsBackup settings, BackupManifest manifest, IReadOnlyDictionary<string, string?>? fromBackup, CancellationToken ct)
+    {
+        var restored = fromBackup is null ? null : await settings.RestoredAsync(fromBackup, manifest.CarriesSecrets(), ct);
+        await RequireRecordedAsync(settings, manifest, restored, ct);
+        restored?.RequireRestorable();
+        return restored;
+    }
+
+    /// <summary>
     /// For a list of the folder's backups, before anyone restores: what <paramref name="point"/> would lack here (the settings it recorded of its
-    /// server's environment that neither this environment nor its file holds, which the restore is refused for) and what this server's
-    /// environment overrides of its file, as far as can be told without a key. A plain backup's settings entry is read; an encrypted one's cannot
-    /// be: one that merged the environment into it holds what it recorded (the secrets only if it carries them), one that only recorded counts as holding none, and then the missing ones are not
-    /// certain (<see cref="RestoreHere.MissingCertain"/>: the restore judges the file once the passphrase is given), and nothing is known to be
-    /// overridden. A backup whose file cannot be read lacks nothing here: its restore says why.
+    /// server's environment that neither this environment nor the file the restore leaves holds, which the restore is refused for) and what
+    /// this server's environment overrides of its file, as far as can be told without a key. A plain backup's settings entry is read; an
+    /// encrypted one's cannot be: one that merged the environment into it holds what it recorded (the secrets only if it carries them), one
+    /// that only recorded counts as holding none, and then the missing ones are not certain (<see cref="RestoreHere.MissingCertain"/>: the
+    /// restore judges the file once the passphrase is given), and nothing is known to be overridden. As the restore leaves the file
+    /// (<see cref="SettingsInBackups.Restored"/>), a secret the backup does not carry is judged against this server's own file. A backup whose
+    /// file cannot be read (damaged, gone since the list, not readable) lacks nothing here: its restore says why.
     /// </summary>
     public static async Task<RestoreHere> HereAsync(IBackupStore store, ISettingsBackup settings, RestorePoint point, CancellationToken ct)
     {
@@ -107,18 +114,20 @@ public sealed class RestoreService(
             var overridden = file is null ? [] : settings.Overridden(file);
             if (m.Environment is not { Settings.Count: > 0 } recorded) return new RestoreHere([], true, overridden);
             // Merged into a file that cannot be read without the passphrase: it holds every recorded setting, the secrets only when it was
-            // asked to carry them.
-            if (!readable && recorded.Mode == BackupEnvironmentMode.Merge)
-            {
-                var merged = recorded.Settings.Select(SettingsInBackups.KeyOf)
-                    .Where(k => m.CarriesSecrets() || SettingsInBackups.CategoryOf(k) != SettingCategory.Secret)
-                    .ToDictionary(k => k, string? (_) => "", StringComparer.OrdinalIgnoreCase);
-                return new RestoreHere(await settings.MissingAsync(recorded, merged, ct), true, overridden);
-            }
-            var missing = await settings.MissingAsync(recorded, readable ? file : new Dictionary<string, string?>(), ct);
-            return new RestoreHere(missing, readable, overridden);
+            // asked to carry them. Only recorded: as if it held none, which is not certain.
+            var merged = !readable && recorded.Mode == BackupEnvironmentMode.Merge;
+            if (!readable)
+                file = merged
+                    ? recorded.Settings.Select(SettingsInBackups.KeyOf)
+                        .Where(k => m.CarriesSecrets() || SettingsInBackups.CategoryOf(k) != SettingCategory.Secret)
+                        .ToDictionary(k => k, string? (_) => "", StringComparer.OrdinalIgnoreCase)
+                    : new Dictionary<string, string?>();
+            // Judged against the file the restore leaves, as the restore judges it (RequireRecordedAsync): this server's own secrets stay
+            // where the backup carries none.
+            var leaves = file is null ? null : await settings.LeavesAsync(file, m.CarriesSecrets(), ct);
+            return new RestoreHere(await settings.MissingAsync(recorded, leaves, ct), readable || merged, overridden);
         }
-        catch (DomainException)
+        catch (Exception e) when (e is DomainException or IOException or UnauthorizedAccessException)
         {
             return new RestoreHere([], true, []);
         }

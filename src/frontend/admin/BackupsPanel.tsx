@@ -325,8 +325,9 @@ function RestorePoints({
   const [error, setError] = useState<unknown>()
   const [deleteBackup] = useMutation(DeleteBackupDocument)
   const [holdBackup] = useMutation(HoldBackupDocument)
-  // The backup whose hold is being changed: its Hold or Release button waits until the list is asked again.
-  const [holding, setHolding] = useState<string | null>(null)
+  // The backups whose hold is being changed: each one's Hold or Release button waits until the list is asked again (a set: two rows can
+  // be held at once, and the first one's answer must not free the second's button).
+  const [holding, setHolding] = useState<ReadonlySet<string>>(() => new Set())
   // The backups being deleted: their row's buttons are off until the list is asked again (a ref as well, so a second confirmation in
   // the same moment sends nothing either).
   const [deleting, setDeleting] = useState<ReadonlySet<string>>(() => new Set())
@@ -364,7 +365,7 @@ function RestorePoints({
   }
 
   const hold = async (file: string, held: boolean) => {
-    setHolding(file)
+    setHolding((files) => new Set(files).add(file))
     setError(undefined)
     try {
       await holdBackup({ variables: { file, hold: held } })
@@ -377,7 +378,11 @@ function RestorePoints({
     } catch {
       // The list's own error says why it could not be asked again.
     }
-    setHolding(null)
+    setHolding((files) => {
+      const left = new Set(files)
+      left.delete(file)
+      return left
+    })
   }
 
   return (
@@ -489,7 +494,7 @@ function RestorePoints({
                         size="small"
                         variant="soft"
                         disabled={busy}
-                        loading={holding === p.file}
+                        loading={holding.has(p.file)}
                         aria-label={t(p.held ? 'admin.backups.releaseHoldAria' : 'admin.backups.holdAria', { made, file: p.file })}
                         onClick={() => void hold(p.file, !p.held)}
                       >
@@ -508,7 +513,7 @@ function RestorePoints({
                           confirmLabel={t('admin.backups.deleteConfirm')}
                           onConfirm={() => void remove(p.file)}
                           trigger={
-                            <Button size="small" variant="soft" color="error" loading={busy} aria-label={t('admin.backups.deleteAria', { made, file: p.file })}>
+                            <Button size="small" variant="soft" color="error" loading={busy} disabled={holding.has(p.file)} aria-label={t('admin.backups.deleteAria', { made, file: p.file })}>
                               <Trash2 size={16} aria-hidden />
                               {t('admin.backups.delete')}
                             </Button>

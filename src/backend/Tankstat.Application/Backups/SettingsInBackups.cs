@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Tankstat.Application.Auth;
 using Tankstat.Application.SystemSettings;
+using Tankstat.Domain;
 
 namespace Tankstat.Application.Backups;
 
@@ -169,6 +170,12 @@ public interface ISettingsBackup
     /// <summary>What a restore of <paramref name="fromBackup"/> (a backup's carried keys) would leave, judged under this server's environment.</summary>
     Task<RestoredSettings> RestoredAsync(IReadOnlyDictionary<string, string?> fromBackup, bool carriesSecrets, CancellationToken ct);
 
+    /// <summary>
+    /// The settings file a restore of <paramref name="fromBackup"/> would leave, not judged (<see cref="SettingsInBackups.Restored"/>): the
+    /// backup's carried keys over what this server's own file keeps (its machine keys, and from a backup without secrets its secrets).
+    /// </summary>
+    Task<IReadOnlyDictionary<string, string?>> LeavesAsync(IReadOnlyDictionary<string, string?> fromBackup, bool carriesSecrets, CancellationToken ct);
+
     /// <summary>Writes the restored file (the previous one kept as <c>.bak</c>).</summary>
     Task WriteAsync(IReadOnlyDictionary<string, string?> values, CancellationToken ct);
 
@@ -187,3 +194,18 @@ public interface ISettingsBackup
 
 /// <summary>What a setting is to a backup (<see cref="SettingsInBackups.CategoryOf"/>).</summary>
 public enum SettingCategory { Instance, Secret, Machine }
+
+public static class RestoredSettingsExtensions
+{
+    /// <summary>
+    /// Refuses what a restore would leave (<see cref="ISettingsBackup.RestoredAsync"/>) as <c>backup.settingsRefused</c> (naming the settings at
+    /// fault, never a value) when this server would not start with it: the one judgement the request and the start make alike.
+    /// </summary>
+    public static void RequireRestorable(this RestoredSettings restored)
+    {
+        if (restored.Problems.Count > 0)
+            throw new DomainException("backup.settingsRefused",
+                $"The server would not start with the settings file this backup brings ({string.Join(" ", restored.Problems)}), so it is not restored.",
+                new { restored.Problems });
+    }
+}

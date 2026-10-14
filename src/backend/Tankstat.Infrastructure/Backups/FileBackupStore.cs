@@ -32,7 +32,8 @@ internal sealed class FileBackupStore(IOptionsMonitor<BackupOptions> options, ID
     /// <summary>A backup's hold beside it: <c>&lt;file&gt;.hold</c>, which no listing, download or restore takes for a backup (not a <c>*.zip</c>).</summary>
     private const string HoldSuffix = ".hold";
 
-    private sealed record HoldFile(DateTimeOffset HeldAt);
+    /// <summary>The hold's file; <see cref="HeldAt"/> nullable, so one without it (<c>{}</c>) is held since its file's time, not since the year 1.</summary>
+    private sealed record HoldFile(DateTimeOffset? HeldAt);
 
     private static readonly JsonSerializerOptions HoldJson = new(JsonSerializerDefaults.Web);
 
@@ -59,7 +60,7 @@ internal sealed class FileBackupStore(IOptionsMonitor<BackupOptions> options, ID
         if (!File.Exists(hold)) return null;
         try
         {
-            return JsonSerializer.Deserialize<HoldFile>(File.ReadAllText(hold), HoldJson)?.HeldAt ?? File.GetLastWriteTimeUtc(hold);
+            return JsonSerializer.Deserialize<HoldFile>(File.ReadAllText(hold), HoldJson)?.HeldAt ?? new DateTimeOffset(File.GetLastWriteTimeUtc(hold), TimeSpan.Zero);
         }
         catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException)
         {

@@ -16,6 +16,9 @@ internal sealed class NoSettingsBackup(IOptions<AuthOptions> auth) : ISettingsBa
     public Task<RestoredSettings> RestoredAsync(IReadOnlyDictionary<string, string?> fromBackup, bool carriesSecrets, CancellationToken ct) =>
         Task.FromResult(new RestoredSettings(fromBackup, [], auth.Value));
 
+    public Task<IReadOnlyDictionary<string, string?>> LeavesAsync(IReadOnlyDictionary<string, string?> fromBackup, bool carriesSecrets, CancellationToken ct) =>
+        Task.FromResult(fromBackup); // no file of this server's to keep anything of
+
     public Task WriteAsync(IReadOnlyDictionary<string, string?> values, CancellationToken ct) => Task.CompletedTask;
 
     public Task<IReadOnlyList<string>> MissingAsync(BackupEnvironment recorded, IReadOnlyDictionary<string, string?>? restored, CancellationToken ct) =>

@@ -500,6 +500,13 @@ it('says in a row and in its restore dialog what a backup brings and what it can
         environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: ['Auth__Mode', 'Smtp__Host'], missing: ['Smtp__Host'], missingCertain: true, overridden: [] },
       }),
       point({ file: 'tankstat-backup-20260101T000000Z.zip', createdAt: '2026-01-01T00:00:00Z', settingsFile: null, environment: null }), // an older release's: neither
+      point({
+        // merged, but nothing went in (a plain backup of a server whose environment set only a secret): the values are not in it
+        file: 'tankstat-backup-20260202T000000Z.zip',
+        createdAt: '2026-02-02T00:00:00Z',
+        settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'NONE', secrets: false, secretsLeftOut: [] },
+        environment: { __typename: 'BackupEnvironmentInfo', mode: 'MERGE', settings: ['Smtp__Password'], missing: [], missingCertain: true, overridden: [] },
+      }),
     ],
   })
   const ui = await openBackups()
@@ -527,6 +534,12 @@ it('says in a row and in its restore dialog what a backup brings and what it can
   expect(go).toBeDisabled()
   await ui.click(within(older).getByRole('checkbox', { name: /^I understand that the restored server may not work as before/ }))
   expect(go).toBeEnabled()
+  await ui.click(within(older).getByRole('button', { name: 'Cancel' }))
+
+  // Merged, but no file went in: the values are not in the backup.
+  await ui.click(screen.getByRole('button', { name: /^Restore the backup of .*\(tankstat-backup-20260202T000000Z\.zip\)$/ }))
+  const merged = await screen.findByRole('alertdialog', { name: /^Restore the backup of/ })
+  expect(merged).toHaveTextContent("Its server's environment set Smtp__Password. Their values are not in the backup: this server must set them.")
 })
 
 it('opens a backup with its identity instead, and keeps the dialog with the reason when the key does not open it', async () => {

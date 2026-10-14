@@ -84,7 +84,9 @@ public sealed record BackupSettingsFileInfo(BackupSettingsState State, IReadOnly
     {
         var omitted = settings.Omitted ?? [];
         var leftOutSecrets = omitted.Where(k => SettingsInBackups.CategoryOf(k) == SettingCategory.Secret).ToList();
-        return new BackupSettingsFileInfo(settings.State, omitted, secrets, leftOutSecrets, [.. omitted.Except(leftOutSecrets)], settings.Bytes);
+        // No file went in, so no secret did either (an encrypted backup's manifest without the member would say otherwise).
+        return new BackupSettingsFileInfo(
+            settings.State, omitted, secrets && settings.State == BackupSettingsState.Included, leftOutSecrets, [.. omitted.Except(leftOutSecrets)], settings.Bytes);
     }
 }
 
