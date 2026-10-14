@@ -405,9 +405,11 @@ it('the setup page, its code and its wizard, are labelled and free of violations
   await ui.type(await screen.findByRole('textbox', { name: /^Setup code/ }), 'ABCD-EFGH-JKLM')
   await check(view.container)
   await ui.click(screen.getByRole('button', { name: 'Continue' }))
-  await screen.findByText(/^Step 1 of \d+: E-mail$/) // a settings step: the settings page's own form
+  await ui.click(await screen.findByRole('button', { name: 'Start the wizard' }))
+  await screen.findByText('E-mail', { selector: '[aria-current="step"]' }) // the stepper, with a settings step: the settings page's own form
   await check(view.container)
-  await ui.click(screen.getByRole('button', { name: 'Restore from a backup' }))
+  await ui.click(screen.getByRole('button', { name: 'Start' }))
+  await ui.click(await screen.findByRole('button', { name: 'Restore from a backup' }))
   await screen.findByRole('region', { name: 'Restore a backup' })
   await check(view.container)
 })

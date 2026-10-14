@@ -114,8 +114,8 @@ async function enterCode(ui: ReturnType<typeof userEvent.setup>, code = CODE) {
   await ui.click(screen.getByRole('button', { name: 'Continue' }))
 }
 
-/** The wizard's step, by the line that says where it is ("Step 2 of 3: Defaults"), which takes the focus as the step appears. */
-const stepLine = (at: number, name: string) => screen.findByText(new RegExp(`^Step ${at} of \\d+: ${name}$`))
+/** The wizard's step at hand: its label, the stepper's current step, which takes the focus as the step opens. */
+const stepAt = (name: string) => screen.findByText(name, { selector: '[aria-current="step"]' })
 
 it('in Standalone, the code opens the wizard: its settings, then the first administrator, signed in, who sees what to set up next', async () => {
   const ui = userEvent.setup()
@@ -131,26 +131,29 @@ it('in Standalone, the code opens the wizard: its settings, then the first admin
   await ui.clear(screen.getByRole('textbox', { name: /^Setup code/ }))
   await enterCode(ui, 'abcd efgh jklm')
 
-  // The sign-in is the environment's (Standalone) and its other setting is a provider's: no step for it. The e-mail first, read out.
-  expect(await stepLine(1, 'E-mail')).toHaveFocus()
+  // Every step at once, the start at hand: set the instance up, or restore a backup. Nothing is chosen for the person.
+  expect(await stepAt('Start')).toHaveFocus()
   expect(state.calls.SystemSettings).toEqual([{ code: 'abcd efgh jklm' }])
-  expect(screen.getByRole('progressbar', { name: 'Setup progress' })).toHaveAttribute('aria-valuetext', 'Step 1 of 3: E-mail')
-  // A restore instead, chosen on purpose, with a way back.
-  expect(screen.queryByRole('region', { name: 'Restore a backup' })).not.toBeInTheDocument()
+  const steps = screen.getByRole('list', { name: 'Setup steps' })
+  expect(within(steps).getAllByRole('listitem')).toHaveLength(1) // a way's steps come once it is chosen
+  // A restore instead, chosen on purpose; the start can be gone back to at any time.
   await ui.click(screen.getByRole('button', { name: 'Restore from a backup' }))
-  expect(await screen.findByRole('region', { name: 'Restore a backup' })).toHaveTextContent('There is no backup in the server')
-  expect(screen.getByRole('heading', { name: 'Restore a backup' })).toHaveFocus()
-  await ui.click(screen.getByRole('button', { name: 'Start fresh instead' }))
-  await stepLine(1, 'E-mail')
+  expect(await stepAt('Restore a backup')).toHaveFocus()
+  expect(screen.getByRole('region', { name: 'Restore a backup' })).toHaveTextContent('There is no backup in the server')
+  await ui.click(screen.getByRole('button', { name: 'Start' }))
+  await ui.click(await screen.findByRole('button', { name: 'Start the wizard' }))
 
+  // The sign-in is the environment's (Standalone) and its other setting is a provider's: no step for it. The e-mail first.
+  expect(await stepAt('E-mail')).toHaveFocus()
+  expect(within(steps).getAllByRole('listitem').map((step) => step.querySelector('.MuiStepLabel-label')?.textContent)).toEqual(['Start', 'E-mail', 'Defaults', 'Finish'])
   await ui.click(screen.getByRole('button', { name: 'Skip' }))
-  expect(await stepLine(2, 'Defaults')).toHaveFocus()
+  expect(await stepAt('Defaults')).toHaveFocus()
   await ui.click(screen.getByRole('button', { name: 'Back' }))
-  await stepLine(1, 'E-mail')
-  await ui.click(screen.getByRole('button', { name: 'Skip' }))
-  await stepLine(2, 'Defaults')
+  await stepAt('E-mail')
+  await ui.click(screen.getByRole('button', { name: 'Defaults' })) // every step opens by its label, in any order
+  await stepAt('Defaults')
   await ui.click(screen.getByRole('button', { name: 'Next' })) // nothing changed: nothing saved, on to the next step
-  expect(await stepLine(3, 'Finish')).toHaveFocus()
+  expect(await stepAt('Finish')).toHaveFocus()
   expect(state.calls.UpdateSystemSettings).toBeUndefined()
 
   const last = screen.getByRole('region', { name: 'Finish' })
@@ -176,7 +179,8 @@ it('with sign-in off, the sign-in mode must be chosen (none is preselected), and
   renderWithApollo(<App />)
 
   await enterCode(ui)
-  await stepLine(1, 'Sign-in')
+  await ui.click(await screen.findByRole('button', { name: 'Start the wizard' }))
+  await stepAt('Sign-in')
   expect(screen.queryByRole('button', { name: 'Skip' })).not.toBeInTheDocument() // the sign-in cannot be skipped
   const mode = screen.getByRole('combobox', { name: /^Sign-in mode/ })
   expect(mode).toHaveTextContent('Choose one')
@@ -187,7 +191,7 @@ it('with sign-in off, the sign-in mode must be chosen (none is preselected), and
   expect(screen.queryByRole('option', { name: /Default/ })).not.toBeInTheDocument()
   await ui.click(screen.getByRole('option', { name: 'No sign-in, not secure (None)' }))
   await ui.click(screen.getByRole('button', { name: 'Next' }))
-  await stepLine(2, 'Defaults') // the e-mail is for local accounts: no step for it with sign-in off
+  await stepAt('Defaults') // the e-mail is for local accounts: no step for it with sign-in off
   expect(screen.queryByRole('navigation')).not.toBeInTheDocument() // no menu: no page is there yet
   await ui.click(screen.getByRole('button', { name: 'Next' }))
 
@@ -202,21 +206,50 @@ it('with sign-in off, the sign-in mode must be chosen (none is preselected), and
   expect(state.calls.UpdateSystemSettings).toBeUndefined() // None was what ran: nothing to save
 })
 
+it('a step left without what it needs is an error step, and the last step lists it instead of finishing; values stay as chosen', async () => {
+  const ui = userEvent.setup()
+  waitingServer('NONE')
+  renderWithApollo(<App />)
+
+  await enterCode(ui)
+  await ui.click(await screen.findByRole('button', { name: 'Start the wizard' }))
+  await stepAt('Sign-in')
+  await ui.click(screen.getByRole('button', { name: 'Finish' })) // straight to the end: the steps open in any order
+
+  const last = await screen.findByRole('region', { name: 'Finish' })
+  expect(last).toHaveTextContent('Before the setup can finish, these steps need you:')
+  expect(within(last).queryByRole('button', { name: 'Finish the setup' })).not.toBeInTheDocument()
+  expect(screen.getByText('Choose a sign-in mode', { selector: '.MuiStepLabel-root *' })).toBeInTheDocument() // said on the step's label too
+  await ui.click(within(last).getByRole('button', { name: 'Sign-in: Choose a sign-in mode' }))
+  await stepAt('Sign-in')
+
+  await ui.click(screen.getByRole('combobox', { name: /^Sign-in mode/ }))
+  await ui.click(screen.getByRole('option', { name: 'No sign-in, not secure (None)' }))
+  await ui.click(screen.getByRole('button', { name: 'Next' }))
+  await stepAt('Defaults')
+  await ui.click(screen.getByRole('button', { name: 'Sign-in' }))
+  // Gone back to, the step shows what was chosen (None runs already, so nothing was saved: the choice is the wizard's).
+  expect(await screen.findByRole('combobox', { name: /^Sign-in mode/ })).toHaveTextContent('No sign-in, not secure (None)')
+  await ui.click(screen.getByRole('button', { name: 'Finish' }))
+  expect(await screen.findByRole('button', { name: 'Finish the setup' })).toBeInTheDocument() // nothing in the way any more
+})
+
 it('a sign-in mode chosen in the wizard is saved with the code, and the last step makes its administrator, then one restart', async () => {
   const ui = userEvent.setup()
   const state = waitingServer('NONE')
   renderWithApollo(<App />)
 
   await enterCode(ui)
-  await stepLine(1, 'Sign-in')
+  await ui.click(await screen.findByRole('button', { name: 'Start the wizard' }))
+  await stepAt('Sign-in')
   await ui.click(screen.getByRole('combobox', { name: /^Sign-in mode/ }))
   await ui.click(screen.getByRole('option', { name: 'Local accounts (Standalone)' }))
   await ui.click(screen.getByRole('button', { name: 'Next' }))
 
-  expect(await stepLine(2, 'E-mail')).toHaveFocus() // local accounts send e-mail: its step is there now
+  expect(await stepAt('E-mail')).toHaveFocus() // local accounts send e-mail: its step is there now
   expect(state.calls.UpdateSystemSettings).toEqual([{ changes: [{ key: 'Auth:Mode', value: 'Standalone', clear: false }], code: CODE }])
   await ui.click(screen.getByRole('button', { name: 'Skip' }))
-  await stepLine(3, 'Defaults')
+  await stepAt('Defaults')
   await ui.click(screen.getByRole('button', { name: 'Next' }))
   const last = screen.getByRole('region', { name: 'Finish' })
   await ui.type(within(last).getByRole('textbox', { name: /^E-mail/ }), 'root@example.com')
@@ -272,9 +305,10 @@ it('with a provider, the signed-in user finds the setup through the notice, and 
 
   await ui.click(await screen.findByRole('link', { name: 'Open the setup' }))
   await enterCode(ui)
-  await stepLine(1, 'Sign-in') // the provider's administrators may be named here; the e-mail is for local accounts
+  await ui.click(await screen.findByRole('button', { name: 'Start the wizard' }))
+  await stepAt('Sign-in') // the provider's administrators may be named here; the e-mail is for local accounts
   await ui.click(screen.getByRole('button', { name: 'Next' }))
-  await stepLine(2, 'Defaults')
+  await stepAt('Defaults')
   await ui.click(screen.getByRole('button', { name: 'Skip' }))
 
   const last = await screen.findByRole('region', { name: 'Finish' })
@@ -294,7 +328,7 @@ it('back from the provider after the wizard restarted into it, the setup goes on
   renderWithApollo(<App />, '/setup')
 
   await enterCode(ui) // asked once more: the code is kept nowhere
-  expect(await stepLine(3, 'Finish')).toHaveFocus()
+  expect(await stepAt('Finish')).toHaveFocus()
   expect(screen.getByRole('button', { name: 'Become the administrator' })).toBeInTheDocument()
 })
 

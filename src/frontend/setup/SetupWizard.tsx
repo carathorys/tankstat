@@ -1,9 +1,14 @@
 import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
+import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Checkbox from '@mui/material/Checkbox'
 import FormControlLabel from '@mui/material/FormControlLabel'
-import LinearProgress from '@mui/material/LinearProgress'
+import Link from '@mui/material/Link'
 import Stack from '@mui/material/Stack'
+import Step from '@mui/material/Step'
+import StepContent from '@mui/material/StepContent'
+import StepLabel from '@mui/material/StepLabel'
+import Stepper from '@mui/material/Stepper'
 import Typography from '@mui/material/Typography'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -12,6 +17,7 @@ import { healthProbe, waitForRestart } from '../admin/restartFlow.ts'
 import { RestartWait, RestoreDialog } from '../admin/restore.tsx'
 import { SettingsGroupForm } from '../admin/SettingsGroupForm.tsx'
 import { unusedReason } from '../admin/settingsRelevance.ts'
+import { changesOf } from '../admin/settingsDraft.ts'
 import { useGroupDrafts } from '../admin/useGroupDrafts.ts'
 import { Loading } from '../components/Loading.tsx'
 import { FieldForm } from '../forms/FieldForm.tsx'
@@ -29,6 +35,7 @@ import {
 import { useFormat } from '../i18n/format.ts'
 import { ErrorMessage, WarningMessage } from '../messages.tsx'
 import { classifyFailure } from '../offline/errors.ts'
+import { standaloneLink } from '../theme/components.ts'
 import { claimNext, remember } from './claimNext.ts'
 
 type RestorePoint = SetupRestorePointsQuery['setupRestorePoints'][number]
@@ -37,138 +44,147 @@ const MODE_KEY = 'Auth:Mode'
 
 /**
  * The setup of a new instance as one wizard (#90). First the one-time code from the server's log, which opens what no administrator could,
- * since none exists yet. Then a step per group of the Server settings page with the page's own forms (`SettingsGroupForm`, saved with the
- * code as each step goes on): the sign-in first, its mode to be chosen (none is preselected, sign-in off is one of them), every later group
- * may be skipped, and one that has nothing to choose is left out. The last step is the gatekeeper of the sign-in mode chosen, after which
- * the server restarts once when a saved setting waits for it. Restoring a backup instead is chosen on the first step, with a way back. The
- * code stays in this page only (never stored); a restart in the server's process keeps it.
+ * since none exists yet. Then every step at once in a stepper, the one at hand open: the start, which asks whether to set the instance up
+ * or restore a backup (no way is preselected, and the start can be gone back to at any time); setting it up, a step per group of the
+ * Server settings page with the page's own forms (`SettingsGroupForm`, saved with the code as each step goes on: the sign-in first, its
+ * mode to be chosen, none preselected and sign-in off one of them; every later group may be skipped, and one with nothing to choose has no
+ * step), then the gatekeeper of the sign-in mode chosen, after which the server restarts once when a saved setting waits for it; restoring,
+ * the backups of the folder, then the wait for the restart. The code stays in this page only (never stored); a restart in the server's
+ * process keeps it.
  */
 export function SetupWizard() {
-  const { t } = useTranslation()
   const client = useApolloClient()
   const { data: session } = useQuery(SessionDocument)
   const [entered, setEntered] = useState<{ code: string; points: RestorePoint[] }>()
-  // The generation of the data when the restore was asked for, kept with it: the session's own may change while the wait runs.
-  const [restoring, setRestoring] = useState<{ point: RestoreTargetFieldsFragment; generation: string | undefined }>()
-  // Starting fresh is what the setup is for; a backup's restore is chosen on purpose, and only then are the backups shown.
-  const [restoreChosen, setRestoreChosen] = useState(false)
 
   const check = async (code: string) => {
     const { data } = await client.query({ query: SetupRestorePointsDocument, variables: { code }, fetchPolicy: 'network-only' })
     setEntered({ code, points: data?.setupRestorePoints ?? [] })
   }
-  const startOver = () => {
-    setRestoring(undefined)
-    setRestoreChosen(false)
-    setEntered(undefined)
-  }
 
-  if (restoring)
-    return (
-      <RestartWait
-        point={restoring.point}
-        generation={restoring.generation}
-        notRestored={
-          // The restart kept the code: back to the backups, asked for again (a new process made a new code: back to it).
-          <Button
-            onClick={() => {
-              setRestoring(undefined)
-              if (entered) void check(entered.code).catch(startOver)
-            }}
-          >
-            {t('setup.backToSetup')}
-          </Button>
-        }
-      />
-    )
-
-  if (!entered)
-    return (
-      <Stack sx={{ gap: 1.5, maxWidth: 560 }}>
-        <Typography>{t('setup.intro')}</Typography>
-        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-          {t('setup.codeWhere')}
-        </Typography>
-        <FieldForm fields={[{ name: 'code', label: 'setup.code', autoComplete: 'off' }]} submitLabel="setup.continue" onSubmit={(v) => check(v.code ?? '')} />
-      </Stack>
-    )
-
-  const otherCode = (
-    <Button variant="ghost" color="primary" sx={{ alignSelf: 'flex-start' }} onClick={startOver}>
-      {t('setup.otherCode')}
-    </Button>
-  )
-  if (restoreChosen)
-    return (
-      <Stack sx={{ gap: 3, maxWidth: 720 }}>
-        <RestoreStep
-          points={entered.points}
-          code={entered.code}
-          onLookAgain={() => check(entered.code)}
-          onRestoring={(point) => setRestoring({ point, generation: session?.session.instance?.generation ?? undefined })}
-          onFresh={() => setRestoreChosen(false)}
-        />
-        {otherCode}
-      </Stack>
-    )
+  if (!entered) return <CodeStep onCode={check} />
   return (
-    <SettingsSteps code={entered.code} name={session?.session.user?.displayName ?? ''} onRestore={() => setRestoreChosen(true)}>
-      {otherCode}
-    </SettingsSteps>
+    <WizardSteps
+      code={entered.code}
+      points={entered.points}
+      name={session?.session.user?.displayName ?? ''}
+      generation={session?.session.instance?.generation ?? undefined}
+      onLookAgain={() => check(entered.code)}
+      onOtherCode={() => setEntered(undefined)}
+    />
   )
 }
 
+function CodeStep({ onCode }: { onCode: (code: string) => Promise<void> }) {
+  const { t } = useTranslation()
+  return (
+    <Stack sx={{ gap: 1.5, maxWidth: 560 }}>
+      <Typography>{t('setup.intro')}</Typography>
+      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+        {t('setup.codeWhere')}
+      </Typography>
+      <FieldForm fields={[{ name: 'code', label: 'setup.code', autoComplete: 'off' }]} submitLabel="setup.continue" onSubmit={(v) => onCode(v.code ?? '')} />
+    </Stack>
+  )
+}
+
+interface WizardStep {
+  id: string
+  label: string
+  /** What the step still needs before the setup can finish (a choice, a save). */
+  needs?: string
+  content: () => ReactNode
+}
+
 /**
- * The settings of the wizard, a step per group, then the last step. The settings are the server's, asked with the code (never kept on the
- * device); what is typed into a step is held above the forms (`useGroupDrafts`), and a step's Next saves it before it goes on.
+ * The stepper: every step's label at once, the one at hand open below its label (vertical, so it fits a phone as well). Once a way is chosen
+ * on the start, every step opens by its label, in any order (Next, Back and Skip walk them in order); what a step still needs (a sign-in
+ * mode, changes not saved yet) is said on its label once it was left, and the last step lists it instead of finishing. The settings are
+ * the server's, asked with the code (never kept on the device); what is typed into a step is held above the forms (`useGroupDrafts`), so it
+ * is there again when the step is, and a step's Next saves it before it goes on.
  */
-function SettingsSteps({ code, name, onRestore, children }: { code: string; name: string; onRestore: () => void; children: ReactNode }) {
+function WizardSteps({
+  code,
+  points,
+  name,
+  generation,
+  onLookAgain,
+  onOtherCode,
+}: {
+  code: string
+  points: RestorePoint[]
+  name: string
+  generation: string | undefined
+  onLookAgain: () => Promise<void>
+  onOtherCode: () => void
+}) {
   const { t } = useTranslation()
   const { data, error } = useQuery(SystemSettingsDocument, { variables: { code }, fetchPolicy: 'network-only' })
   const settings = data?.systemSettings
   const groups = settings?.groups ?? []
   const { draftFor, hold, valueOf, basisOf } = useGroupDrafts(groups, [MODE_KEY])
-  const [index, setIndex] = useState(() => (claimNext() ? Number.MAX_SAFE_INTEGER : 0))
+  // Back from a provider's sign-in after the last step restarted into it: on at that step, the claim.
+  const [resumed] = useState(claimNext)
+  const [way, setWay] = useState<'fresh' | 'restore' | undefined>(resumed ? 'fresh' : undefined)
+  const [active, setActive] = useState(resumed ? Number.MAX_SAFE_INTEGER : 0)
+  // The steps left at least once: what one of them still needs is said on its label from then on.
+  const [left, setLeft] = useState<ReadonlySet<string>>(new Set())
+  // The generation of the data when the restore was asked for, kept with it: the session's own may change while the wait runs.
+  const [restoring, setRestoring] = useState<{ point: RestoreTargetFieldsFragment; generation: string | undefined }>()
 
-  if (error && !settings) return <ErrorMessage error={error} />
-  if (!settings) return <Loading />
+  const go = (step: number) => {
+    setLeft((l) => new Set(l).add(steps[at]!.id))
+    setActive(step)
+  }
+  const choose = (chosen: 'fresh' | 'restore') => {
+    if (chosen !== way) {
+      setWay(chosen)
+      setLeft(new Set()) // the other way's steps are other steps: none of them gone through yet
+    }
+    go(1)
+  }
 
   // A step per group with something to choose: none for one the environment holds whole, or whose every setting another one leaves
   // unused (the e-mail with a provider's sign-in).
-  const steps = groups.filter((g) => g.settings.some((s) => s.editable && unusedReason(s.key, valueOf) === null))
-  const at = Math.min(index, steps.length)
-  const step = steps[at]
-  const back = at > 0 ? () => setIndex(at - 1) : undefined
-  return (
-    <Stack sx={{ gap: 3, maxWidth: 720 }}>
-      <WizardProgress key={at} at={at + 1} total={steps.length + 1} name={step ? t(`systemSettings.groups.${step.name}`) : t('setup.wizard.lastTitle')} />
-      {step ? (
+  const groupSteps = groups.filter((g) => g.settings.some((s) => s.editable && unusedReason(s.key, valueOf) === null))
+  // What a step still needs before the setup can finish: the sign-in mode chosen (no source but the shipped default holds one, and the step
+  // holds none), and nothing typed that is not saved.
+  const needs = (group: (typeof groups)[number]): string | undefined => {
+    const mode = group.settings.find((s) => s.key === MODE_KEY)
+    if (mode?.editable && mode.source !== 'FILE' && !(draftFor(group).values[MODE_KEY] ?? '').trim()) return t('setup.wizard.chooseMode')
+    return changesOf(group.settings, draftFor(group)).length > 0 ? t('setup.wizard.unsaved') : undefined
+  }
+  const fresh: WizardStep[] = [
+    ...groupSteps.map((group, i) => ({
+      id: group.name,
+      label: t(`systemSettings.groups.${group.name}`),
+      needs: needs(group),
+      content: () => (
         <SettingsGroupForm
-          key={`${step.name}:${basisOf(step)}`}
-          group={step}
-          draft={draftFor(step)}
+          key={`${group.name}:${basisOf(group)}`}
+          group={group}
+          draft={draftFor(group)}
           valueOf={valueOf}
-          onDraft={(draft) => hold(step, draft)}
-          onSaved={() => {
-            hold(step, undefined)
-            setIndex(at + 1)
-          }}
+          onDraft={(draft) => hold(group, draft)}
+          // On, keeping what the step holds: a save's answer starts it afresh from the server anyway (its settings changed), and a step
+          // with nothing to save (a choice of what runs already) shows the choice again when it is gone back to.
+          onSaved={() => go(i + 2)}
           code={code}
-          required={step.name === 'AUTH' ? [MODE_KEY] : []}
+          required={group.name === 'AUTH' ? [MODE_KEY] : []}
           confirmModeChange={false}
           submitLabel={t('setup.wizard.next')}
           saveUnchanged
           announceSaved={false}
           actions={
             <>
-              {back && <BackButton onBack={back} />}
-              {step.name !== 'AUTH' && (
+              <BackButton onBack={() => go(i)} />
+              {group.name !== 'AUTH' && (
                 <Button
                   variant="ghost"
                   color="primary"
                   onClick={() => {
-                    hold(step, undefined) // skipped: what was typed here is not saved
-                    setIndex(at + 1)
+                    hold(group, undefined) // skipped: what was typed here is not saved
+                    go(i + 2)
                   }}
                 >
                   {t('setup.wizard.skip')}
@@ -177,27 +193,143 @@ function SettingsSteps({ code, name, onRestore, children }: { code: string; name
             </>
           }
         />
-      ) : (
-        <LastStep
+      ),
+    })),
+    {
+      id: 'last',
+      label: t('setup.wizard.lastTitle'),
+      content: () =>
+        settings && (
+          <LastStep
+            code={code}
+            name={name}
+            next={modeOf(valueOf(MODE_KEY))}
+            administrators={valueOf('Auth:AdminEmails')}
+            restartPending={settings.restartPending}
+            onBack={() => go(groupSteps.length)}
+            blockers={groupSteps.flatMap((group, i) => {
+              const need = needs(group)
+              return need ? [{ step: t(`systemSettings.groups.${group.name}`), need, open: () => go(i + 1) }] : []
+            })}
+          />
+        ),
+    },
+  ]
+  const restore: WizardStep[] = [
+    {
+      id: 'backup',
+      label: t('setup.restoreTitle'),
+      content: () => (
+        <RestoreStep
+          points={points}
           code={code}
-          name={name}
-          next={modeOf(valueOf(MODE_KEY))}
-          administrators={valueOf('Auth:AdminEmails')}
-          restartPending={settings.restartPending}
-          onBack={steps.length > 0 ? () => setIndex(steps.length - 1) : undefined}
+          onLookAgain={onLookAgain}
+          onRestoring={(point) => {
+            setRestoring({ point, generation })
+            go(2)
+          }}
         />
+      ),
+    },
+    {
+      id: 'restart',
+      label: t('setup.wizard.restartTitle'),
+      content: () =>
+        restoring && (
+          <RestartWait
+            point={restoring.point}
+            generation={restoring.generation}
+            notRestored={
+              // The restart kept the code: back to the backups, asked for again (a new process made a new code: back to it).
+              <Button
+                onClick={() => {
+                  setRestoring(undefined)
+                  go(1)
+                  void onLookAgain().catch(onOtherCode)
+                }}
+              >
+                {t('setup.backToSetup')}
+              </Button>
+            }
+          />
+        ),
+    },
+  ]
+  const start: WizardStep = { id: 'start', label: t('setup.wizard.startTitle'), content: () => <StartStep onFresh={() => choose('fresh')} onRestore={() => choose('restore')} /> }
+  // The way's steps follow the start once it is chosen: before that, the start is all there is.
+  const steps = [start, ...(way === 'restore' ? restore : way === 'fresh' ? fresh : [])]
+  const at = Math.min(active, steps.length - 1)
+  const last = at === steps.length - 1
+  // Every step opens by its label, except while a restore restarts the server, and the restart's wait before there is one.
+  const closed = (i: number, step: WizardStep) => (restoring !== undefined ? i !== at : step.id === 'restart')
+
+  // The step at hand's label takes the focus as it opens: the button that led to it is gone (or was a label itself), and it is read out.
+  const label = useRef<HTMLSpanElement>(null)
+  useEffect(() => label.current?.focus(), [at, way])
+
+  return (
+    <Stack sx={{ gap: 2, maxWidth: 720 }}>
+      {/* A list of the steps (no StepButton: MUI makes a stepper with one a tab list, which may hold nothing but its tabs, and the step at
+          hand's content sits in it), each label a button once the step was reached, the one at hand the current step. */}
+      <Stepper orientation="vertical" nonLinear activeStep={at} aria-label={t('setup.wizard.steps')}>
+        {steps.map((step, i) => (
+          <Step key={step.id} completed={left.has(step.id) && i !== at && !step.needs} disabled={closed(i, step)}>
+            <StepLabel
+              // What it still needs, once it was left (or the last step asks): an error step, saying what.
+              error={i !== at && (left.has(step.id) || last) && step.needs !== undefined}
+              optional={
+                i !== at && (left.has(step.id) || last) && step.needs ? (
+                  <Typography variant="caption" sx={{ color: 'error.main' }}>
+                    {step.needs}
+                  </Typography>
+                ) : undefined
+              }
+            >
+              {i === at ? (
+                <Box component="span" ref={label} tabIndex={-1} aria-current="step">
+                  {step.label}
+                </Box>
+              ) : !closed(i, step) ? (
+                <Link component="button" type="button" onClick={() => go(i)} sx={standaloneLink}>
+                  {step.label}
+                </Link>
+              ) : (
+                step.label
+              )}
+            </StepLabel>
+            <StepContent>
+              {i === at && (way === 'fresh' && i > 0 && !settings ? error ? <ErrorMessage error={error} /> : <Loading /> : step.content())}
+            </StepContent>
+          </Step>
+        ))}
+      </Stepper>
+      {restoring === undefined && (
+        <Button variant="ghost" color="primary" sx={{ alignSelf: 'flex-start' }} onClick={onOtherCode}>
+          {t('setup.otherCode')}
+        </Button>
       )}
-      {at === 0 && (
-        <Stack sx={{ gap: 1, alignItems: 'flex-start' }}>
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            {t('setup.restoreOffer')}
-          </Typography>
-          <Button variant="soft" onClick={onRestore}>
-            {t('setup.restoreChoose')}
-          </Button>
-        </Stack>
-      )}
-      {children}
+    </Stack>
+  )
+}
+
+/** The start: set the instance up, or restore a backup instead; one of the two is chosen, neither is preselected. */
+function StartStep({ onFresh, onRestore }: { onFresh: () => void; onRestore: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <Stack sx={{ gap: 1.5, alignItems: 'flex-start' }}>
+      <Typography>{t('setup.wizard.startIntro')}</Typography>
+      <Stack direction="row" sx={{ gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
+        {/* Two ways of the same weight: neither is the one the page pushes. */}
+        <Button variant="contained" onClick={onFresh}>
+          {t('setup.wizard.startFresh')}
+        </Button>
+        <Typography component="span" sx={{ color: 'text.secondary' }}>
+          {t('setup.wizard.or')}
+        </Typography>
+        <Button variant="contained" onClick={onRestore}>
+          {t('setup.restoreChoose')}
+        </Button>
+      </Stack>
     </Stack>
   )
 }
@@ -214,25 +346,6 @@ function modeOf(value: string | undefined): AuthMode {
     default:
       return 'NONE'
   }
-}
-
-/**
- * Where the wizard is: "Step 2 of 8: E-mail" and a bar of it. The line takes the focus as a step appears (it is drawn anew for each), since
- * the button that led to it is gone, and has the step read out.
- */
-function WizardProgress({ at, total, name }: { at: number; total: number; name: string }) {
-  const { t } = useTranslation()
-  const line = useRef<HTMLParagraphElement>(null)
-  useEffect(() => line.current?.focus(), [])
-  const text = t('setup.wizard.step', { at, total, name })
-  return (
-    <Stack sx={{ gap: 0.75 }}>
-      <Typography ref={line} tabIndex={-1} variant="body2" sx={{ fontWeight: 700, color: 'text.secondary' }}>
-        {text}
-      </Typography>
-      <LinearProgress variant="determinate" value={(at / total) * 100} aria-label={t('setup.wizard.progress')} aria-valuetext={text} />
-    </Stack>
-  )
 }
 
 function BackButton({ onBack }: { onBack: () => void }) {
@@ -255,6 +368,7 @@ function LastStep({
   administrators,
   restartPending,
   onBack,
+  blockers,
 }: {
   code: string
   name: string
@@ -262,13 +376,27 @@ function LastStep({
   administrators: string | undefined
   restartPending: boolean
   onBack?: () => void
+  /** Steps that still need something (`needs`): listed, each with the way to it, in place of the gatekeeper. */
+  blockers: { step: string; need: string; open: () => void }[]
 }) {
   const { t } = useTranslation()
+  if (blockers.length > 0)
+    return (
+      <section aria-label={t('setup.wizard.lastTitle')}>
+        <WarningMessage>{t('setup.wizard.blocked')}</WarningMessage>
+        <Stack component="ul" sx={{ m: 0, mt: 1.5, pl: 2.5, gap: 1 }}>
+          {blockers.map((b) => (
+            <li key={b.step}>
+              <Link component="button" type="button" onClick={b.open} sx={standaloneLink}>
+                {t('setup.wizard.blocker', { step: b.step, need: b.need })}
+              </Link>
+            </li>
+          ))}
+        </Stack>
+      </section>
+    )
   return (
-    <section aria-labelledby="setup-last">
-      <Typography id="setup-last" component="h2" variant="h4" sx={{ mb: 1 }}>
-        {t('setup.wizard.lastTitle')}
-      </Typography>
+    <section aria-label={t('setup.wizard.lastTitle')}>
       {next === 'STANDALONE' && <AdministratorStep code={code} onBack={onBack} />}
       {next === 'NONE' && <OpenAccessStep code={code} onBack={onBack} />}
       {(next === 'OIDC' || next === 'PROXY_HEADER') &&
@@ -430,13 +558,11 @@ function RestoreStep({
   code,
   onLookAgain,
   onRestoring,
-  onFresh,
 }: {
   points: RestorePoint[]
   code: string
   onLookAgain: () => Promise<void>
   onRestoring: (point: RestoreTargetFieldsFragment) => void
-  onFresh: () => void
 }) {
   const { t } = useTranslation()
   const { dateTime } = useFormat()
@@ -446,8 +572,7 @@ function RestoreStep({
     onLookAgain().catch(setError)
   }
   return (
-    <section aria-labelledby="setup-restore">
-      <StepTitle id="setup-restore">{t('setup.restoreTitle')}</StepTitle>
+    <section aria-label={t('setup.restoreTitle')}>
       <Typography sx={{ mb: 1.5 }}>{t('setup.restoreIntro')}</Typography>
       {points.length === 0 ? (
         <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1 }}>
@@ -493,29 +618,10 @@ function RestoreStep({
         </Stack>
       )}
       {error !== undefined && <ErrorMessage error={error} />}
-      <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
-        <Button variant="ghost" color="primary" onClick={lookAgain}>
-          {t('setup.lookAgain')}
-        </Button>
-        <Button variant="ghost" color="primary" onClick={onFresh}>
-          {t('setup.freshInstead')}
-        </Button>
-      </Stack>
+      <Button variant="ghost" color="primary" onClick={lookAgain}>
+        {t('setup.lookAgain')}
+      </Button>
     </section>
-  )
-}
-
-/**
- * A step's heading, which takes the focus as it appears: the form or the button that led to it is gone, and the heading has the step read
- * out.
- */
-function StepTitle({ id, children }: { id: string; children: string }) {
-  const heading = useRef<HTMLHeadingElement>(null)
-  useEffect(() => heading.current?.focus(), [])
-  return (
-    <Typography ref={heading} id={id} tabIndex={-1} component="h2" variant="h4" sx={{ mb: 1 }}>
-      {children}
-    </Typography>
   )
 }
 
