@@ -50,21 +50,31 @@ public sealed class SetupService(
         }
         if (phase == SetupPhase.Pending && await CompletedByAsync(ct) is { } reason)
         {
-            await store.CompleteAsync(SetupCompletion.Environment, clock.GetUtcNow(), ct);
-            phase = await store.PhaseAsync(ct);
-            logger.LogInformation("The setup is completed by the environment: {Reason}", reason);
+            // Completed either way: where this write finds it completed, another server starting at the same moment was first.
+            if (await store.CompleteAsync(SetupCompletion.Environment, clock.GetUtcNow(), ct))
+                logger.LogInformation("The setup is completed by the environment: {Reason}", reason);
+            phase = SetupPhase.Completed;
         }
         if (phase != SetupPhase.Pending) await authService.BootstrapAdminAsync(setupWaits: false, ct);
 
         status.Set(phase == SetupPhase.Pending);
+        // A Warning, so a log kept to warnings still has it: without it the instance cannot be set up from the browser.
         if (phase == SetupPhase.Pending)
-            logger.LogInformation("Setup is waiting: open /setup in the browser and enter the one-time setup code {Code}", code.Value);
+            logger.LogWarning("Setup is waiting: open /setup in the browser and enter the one-time setup code {Code}", code.Value);
     }
 
-    /// <summary>What in the environment completes a waiting setup, by the setting's name; null when nothing does.</summary>
+    /// <summary>
+    /// What in the environment completes a waiting setup, by the setting's name; null when nothing does. Whatever can still stop the start
+    /// runs before the completion is written: with the setup turned off, a Standalone instance without an administrator or the credentials
+    /// for one stops here, and a later start with the setup on still finds it waiting.
+    /// </summary>
     private async Task<string?> CompletedByAsync(CancellationToken ct)
     {
-        if (!options.Value.Enabled) return "Setup:Enabled is false";
+        if (!options.Value.Enabled)
+        {
+            await authService.BootstrapAdminAsync(setupWaits: false, ct);
+            return "Setup:Enabled is false";
+        }
         switch (auth.Value.Mode)
         {
             case AuthMode.Standalone:

@@ -54,7 +54,7 @@ public sealed class SetupTests : IDisposable
         var notice = (await browser.Gql(Notices)).Data().GetProperty("notices").EnumerateArray().Last();
         Assert.Equal(("SETUP_PENDING", "INFO"), (notice.GetProperty("code").GetString(), notice.GetProperty("severity").GetString()));
         var code = CodeOf(app);
-        Assert.Equal(LogLevel.Information, Assert.Single(app.Log.From<SetupService>(), e => e.Values.ContainsKey("Code")).Level);
+        Assert.Equal(LogLevel.Warning, Assert.Single(app.Log.From<SetupService>(), e => e.Values.ContainsKey("Code")).Level);
 
         Assert.Equal("setup.codeInvalid", (await browser.Gql(CreateAdministrator, new { i = new { code = "ZZZZ-ZZZZ-ZZZZ", email = "root@example.com", password = "zzzz-password-1" } })).ErrorKey());
         Assert.False(app.Log.Mentions("zzzz-password-1"));

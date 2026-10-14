@@ -168,18 +168,21 @@ public sealed class AuthService(
     /// <summary>
     /// Standalone mode: creates the first administrator from configuration if no local administrator exists yet; true when it did. Without
     /// the credentials the start stops, unless the setup waits (<paramref name="setupWaits"/>): the setup page makes the administrator then.
-    /// A password the policy refuses stops the start either way.
+    /// Only one of the two, or a password the policy refuses, stops the start either way.
     /// </summary>
     public async Task<bool> BootstrapAdminAsync(bool setupWaits, CancellationToken ct)
     {
         if (auth.Value.Mode != AuthMode.Standalone || await users.AnyLocalAdminAsync(ct)) return false;
 
         var options = auth.Value.Standalone;
-        if (string.IsNullOrWhiteSpace(options.AdminEmail) || string.IsNullOrWhiteSpace(options.AdminPassword))
+        var (email, password) = (!string.IsNullOrWhiteSpace(options.AdminEmail), !string.IsNullOrWhiteSpace(options.AdminPassword));
+        if (!email || !password)
         {
-            if (setupWaits) return false;
-            throw new InvalidOperationException(
-                "Auth:Mode is Standalone but no administrator exists. Set Auth:Standalone:AdminEmail and Auth:Standalone:AdminPassword (e.g. Auth__Standalone__AdminEmail) for the first start.");
+            // Neither: the setup page makes the administrator. One without the other is a mistake, which stops the start like a weak password.
+            if (setupWaits && !email && !password) return false;
+            throw new InvalidOperationException(setupWaits
+                ? $"Only {(email ? "Auth:Standalone:AdminEmail" : "Auth:Standalone:AdminPassword")} of the first administrator is set. Set Auth:Standalone:AdminEmail and Auth:Standalone:AdminPassword (e.g. Auth__Standalone__AdminEmail) both, or neither to make the administrator on the setup page."
+                : "Auth:Mode is Standalone but no administrator exists. Set Auth:Standalone:AdminEmail and Auth:Standalone:AdminPassword (e.g. Auth__Standalone__AdminEmail) for the first start.");
         }
 
         var admin = NewAdministrator(options.AdminEmail, options.AdminPassword);

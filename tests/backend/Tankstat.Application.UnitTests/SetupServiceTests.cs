@@ -89,7 +89,7 @@ public sealed class SetupServiceTests
         Assert.True(s.Status.Pending);
         Assert.True((await s.Service.InfoAsync(default)).Pending);
         var line = Assert.Single(CodeLines(s));
-        Assert.Equal(LogLevel.Information, line.Level);
+        Assert.Equal(LogLevel.Warning, line.Level); // a log kept to warnings has it too
         Assert.Equal(s.Code.Value, line.Values["Code"]);
         Assert.Empty(s.World.Users.Items);
     }
@@ -163,11 +163,26 @@ public sealed class SetupServiceTests
     }
 
     [Fact]
-    public async Task SetupTurnedOff_InStandalone_WithoutCredentials_StopsTheStart_AsBeforeTheSetupPageExisted()
+    public async Task SetupTurnedOff_InStandalone_WithoutCredentials_StopsTheStart_AndALaterStartWithTheSetupOn_StillWaits()
     {
         var s = Make(enabled: false);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => s.Service.StartAsync(default));
+
+        Assert.Equal(SetupPhase.Pending, s.Store.Phase); // nothing completed by a start that stopped
+    }
+
+    [Theory]
+    [InlineData("root@x.co", "")]
+    [InlineData("", "initial-password-1")]
+    public async Task OnlyOneOfTheBootstrapCredentials_StopsTheStart_NamingTheOneThatIsSet(string email, string password)
+    {
+        var s = Make(configure: o => { o.Standalone.AdminEmail = email; o.Standalone.AdminPassword = password; });
+
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() => s.Service.StartAsync(default));
+
+        Assert.Contains(email.Length > 0 ? "Only Auth:Standalone:AdminEmail" : "Only Auth:Standalone:AdminPassword", e.Message);
+        Assert.Empty(s.World.Users.Items);
     }
 
     [Fact]
