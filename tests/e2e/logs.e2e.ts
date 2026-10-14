@@ -46,7 +46,9 @@ test('restores a trashed refuelling from the trash', async ({ page }) => {
   await pageLoaded(page)
   await page.getByRole('tab', { name: 'Refuelings' }).click()
   await page.getByRole('button', { name: /^Restore/ }).first().click()
-  await expect(page.getByRole('tabpanel').getByRole('row').filter({ hasText: '42 L' })).toHaveCount(0)
+  // Gone from the trash once the server restored it: found by its vehicle, whose column the trash shows at both sizes (the volume's is
+  // hidden on a phone, where a wait for it passed at once and the navigation below cut the restore short).
+  await expect(page.getByRole('tabpanel').getByRole('row').filter({ hasText: vehicle.name })).toHaveCount(0)
 
   await openVehicle(page, vehicle.id, 'refuelings')
   await expect(row(page, '42 L')).toBeVisible()
