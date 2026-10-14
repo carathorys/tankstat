@@ -37,8 +37,9 @@ const backup = {
   sameMigration: true,
   olderMigration: false,
   encrypted: false,
-  settingsFile: null as Record<string, unknown> | null, // a backup of a release before it held the settings file
-  environment: null as Record<string, unknown> | null,
+  // A backup of this release with nothing to warn about.
+  settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', secrets: true, secretsLeftOut: [] } as Record<string, unknown> | null,
+  environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: [], missing: [], missingCertain: true, overridden: [] } as Record<string, unknown> | null,
 }
 
 /**
@@ -334,8 +335,8 @@ it('says before a restore on the setup page which settings of the old server thi
     points: [
       {
         ...backup,
-        settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', omitted: [] },
-        environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: ['Auth__Mode', 'Auth__Oidc__ClientSecret'], missing: ['Auth__Oidc__ClientSecret'] },
+        settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', secrets: true, secretsLeftOut: [] },
+        environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: ['Auth__Mode', 'Auth__Oidc__ClientSecret'], missing: ['Auth__Oidc__ClientSecret'], missingCertain: true, overridden: [] },
       },
     ],
   })
@@ -347,7 +348,9 @@ it('says before a restore on the setup page which settings of the old server thi
   await ui.click(within(restore).getByRole('button', { name: /^Restore the backup of/ }))
   const dialog = await screen.findByRole('alertdialog', { name: /^Restore the backup of/ })
 
-  expect(within(dialog).getByRole('alert')).toHaveTextContent('This server sets none of these, so the restore will be refused: Auth__Oidc__ClientSecret.')
+  expect(screen.getByText('Refused: this server lacks Auth__Oidc__ClientSecret')).toBeInTheDocument() // the list said it already
+  expect(dialog).toHaveTextContent('The restore will be refused: its server set Auth__Oidc__ClientSecret in its environment')
+  expect(within(dialog).getByRole('button', { name: 'Restore and restart' })).toBeDisabled()
 })
 
 it('restores a backup of the folder with the code, and reloads once the restarted server has the restored data', async () => {
