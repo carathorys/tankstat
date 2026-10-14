@@ -3,6 +3,7 @@ import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Checkbox from '@mui/material/Checkbox'
 import FormControlLabel from '@mui/material/FormControlLabel'
+import Divider from '@mui/material/Divider'
 import Link from '@mui/material/Link'
 import Stack from '@mui/material/Stack'
 import Step from '@mui/material/Step'
@@ -351,16 +352,21 @@ function WizardSteps({
 function StartStep({ onFresh, onRestore }: { onFresh: () => void; onRestore: () => void }) {
   const { t } = useTranslation()
   return (
-    <Stack sx={{ gap: 1.5, alignItems: 'flex-start' }}>
+    <Stack sx={{ gap: 1.5, alignItems: 'center', textAlign: 'center' }}>
       <Typography>{t('setup.wizard.startIntro')}</Typography>
-      <Stack direction="row" sx={{ gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
-        {/* Two ways of the same weight: neither is the one the page pushes. */}
+      {/* Two ways of the same weight, as wide as each other: neither is the one the page pushes. */}
+      <Stack sx={{ gap: 1.5, alignItems: 'stretch' }}>
         <Button variant="contained" onClick={onFresh}>
           {t('setup.wizard.startFresh')}
         </Button>
-        <Typography component="span" sx={{ color: 'text.secondary' }}>
-          {t('setup.wizard.or')}
-        </Typography>
+        {/* The word stays text, read between the two (a divider holding it would be a separator, whose content is not read). */}
+        <Stack direction="row" sx={{ gap: 1.5, alignItems: 'center' }}>
+          <Divider sx={{ flex: 1 }} />
+          <Typography component="span" sx={{ color: 'text.secondary' }}>
+            {t('setup.wizard.or')}
+          </Typography>
+          <Divider sx={{ flex: 1 }} />
+        </Stack>
         <Button variant="contained" onClick={onRestore}>
           {t('setup.restoreChoose')}
         </Button>
