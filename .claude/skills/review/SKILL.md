@@ -1,6 +1,6 @@
 ---
 name: review
-description: Review a GitHub pull request - only one that carries neither `reviewing` nor `reviewed`, claim it with the `reviewing` label, review it with the built-in `code-review` skill (its effort levels, `--fix` and `--max-findings` passed on) and report the findings to the user (posted on the PR only with `--comment`, inline, or `--summarize`, one summary comment), then label it `reviewed` and release the claim. Use when asked to review a PR (`/review 99`, `/review next max --fix`, "review the next PR"). Changes the PR's code only with `--fix`, in a worktree of its own.
+description: Review a GitHub pull request - only one that carries neither `reviewing` nor `reviewed`, claim it with the `reviewing` label, review it with the built-in `code-review` skill (its effort levels, `--fix` and `--max-findings` passed on) and report the findings to the user (posted on the PR only with `--comment`, inline, or `--summarize`, one summary comment), then label it `reviewed` and release the claim. Use when asked to review a PR (`/review 99`, `/review next max --fix`, "review the next PR"). Changes the PR's code only with `--fix`, on the PR's branch in the main checkout.
 ---
 
 # Review a pull request
@@ -46,21 +46,23 @@ The label comes off again at the end (step 4), after `reviewed` went on. If you 
 
 ## 3. Review
 
-Invoke the built-in `code-review` skill on the PR: `code-review` with the argument `N`, plus the level, `--max-findings`, `--fix` and `--comment` exactly as the user gave them (`--comment` only when the user typed it). It does the review itself; follow its instructions. With `--fix`, set up the worktree of section 3b **first** and invoke it from there, so the fixes land in the PR's branch and nowhere else.
+Invoke the built-in `code-review` skill on the PR: `code-review` with the argument `N`, plus the level, `--max-findings`, `--fix` and `--comment` exactly as the user gave them (`--comment` only when the user typed it). It does the review itself; follow its instructions. With `--fix`, check out the PR's branch as section 3b says **first** and invoke it there, so the fixes land in the PR's branch and nowhere else.
 
 With `--summarize`, then add one summary comment on the PR (`gh pr comment N`): the head commit reviewed, the level, how many findings and of what kind, anything checked by hand (and how), whether you see something blocking, without `--comment` every finding itself (file:line, what goes wrong and when, its severity), and with `--fix` which findings were fixed (the commits) and which were left and why. When there are no findings, say so. Without `--summarize`, post no comment of your own.
 
 Without `--fix`, **never change the PR's code**: no commits, no pushes. Applying the findings is then a separate task (the author's, or `/dev`).
 
-## 3b. `--fix`: a worktree on the PR's branch
+## 3b. `--fix`: the PR's branch in the main checkout
 
-1. **Clear the previous task's finished worktree first**, as `/dev` does (`git worktree list`; one with uncommitted changes is never removed without asking).
+**No git worktree** (`git worktree add`, `EnterWorktree`) unless the user asks for one: one agent works at a time, and the LSP indexes only the main checkout.
+
+1. **The working tree must be clean:** `git status -sb`. Uncommitted changes are never stashed, committed or thrown away on your own: tell the user and ask what to do.
 2. `git fetch origin <headRefName>` and check that `origin/<headRefName>` is the `headRefOid` noted in step 2; if it moved, the review is of the new head: say so and note it again.
-3. **A local branch of its own**, because the PR's branch is often checked out in the author's worktree already and git refuses a second checkout: `git worktree add ../<repo>-review-<N> -b review/<N> origin/<headRefName>`. Switch the session into it (`EnterWorktree` with that `path`), set it up as CLAUDE.md says (`mise run install`), and work only inside it.
+3. **Switch the main checkout to the PR's branch:** `git switch <headRefName>` (it tracks `origin/<headRefName>`), then `git merge --ff-only origin/<headRefName>` to bring a local copy of it up to date. If the local branch has commits the remote lacks, or cannot be fast-forwarded, stop and ask the user. Run `mise run install` (CLAUDE.md) when the lockfiles changed since the last install.
 4. After `code-review` applied its fixes: run the affected tests, then **the full suite before committing** (`mise run test`, within the machine's limits). Red means fix or take the change back; never commit failing tests.
 5. Commit in logical commits (CLAUDE.md / memory: split, trailers), staged by hand, never `git add -A`.
-6. **Push to the PR's branch without force:** `git push origin HEAD:<headRefName>`. A rejected push means someone pushed meanwhile: stop, do not force, do not rebase on your own; tell the user and leave the commits in the worktree.
-7. Leave the worktree (`ExitWorktree` with `keep`). It stays until the next task replaces it (step 1), like `/dev`'s.
+6. **Push to the PR's branch without force:** `git push origin HEAD:<headRefName>`. A rejected push means someone pushed meanwhile: stop, do not force, do not rebase on your own; tell the user and leave the commits on the local branch.
+7. The checkout stays on the PR's branch; the next task starts from a clean working tree, like `/dev`'s.
 
 ## 4. Bookkeeping
 
@@ -68,7 +70,7 @@ Without `--fix`, **never change the PR's code**: no commits, no pushes. Applying
 
 ## 5. Report
 
-In chat: the PR reviewed (link, head commit, level), every finding (file:line, what goes wrong and when, its severity; or none), anything checked by hand, whether something blocks, what was posted on the PR (inline comments, the summary comment's link, or nothing), and the labels it now carries. Without `--fix`: no code was changed; say so. With `--fix`: what was fixed and pushed (commits), what was left, the full suite's result, and the worktree that holds the work.
+In chat: the PR reviewed (link, head commit, level), every finding (file:line, what goes wrong and when, its severity; or none), anything checked by hand, whether something blocks, what was posted on the PR (inline comments, the summary comment's link, or nothing), and the labels it now carries. Without `--fix`: no code was changed; say so. With `--fix`: what was fixed and pushed (commits), what was left, the full suite's result, and the branch the checkout is on.
 
 ## Rules
 
