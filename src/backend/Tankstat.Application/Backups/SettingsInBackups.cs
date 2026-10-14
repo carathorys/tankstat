@@ -9,19 +9,29 @@ namespace Tankstat.Application.Backups;
 /// never the machine's: the settings the Server settings page manages (<see cref="SettingsCatalog.All"/>, a list with its items) and the
 /// <c>Logging</c> section; never what describes the machine it ran on (the database, the storage and key folders, the settings file's own
 /// path, the backups folder, the bootstrap administrator, the prompt file: none of them is in the catalog), which restored onto another
-/// machine would point it at a database or folders it lacks. A plain backup carries no secret (<see cref="SettingDefinition.IsSecret"/>),
-/// like the Data Protection keys, which only an encrypted one holds.
+/// machine would point it at a database or folders it lacks. A backup carries no secret (<see cref="SettingDefinition.IsSecret"/>) unless
+/// asked to (<c>Backups:Secrets</c>).
 /// </summary>
 public static class SettingsInBackups
 {
+    /// <summary>
+    /// What a setting is to a backup (null: none the app binds): the instance's, which travels; a secret, which travels only where secrets are asked for
+    /// (<c>Backups:Secrets</c>); or the machine's own, which never does. Every option the
+    /// app binds has one, pinned by <c>SettingCategoriesTests</c>, so a setting added later is sorted too.
+    /// </summary>
+    public static SettingCategory? CategoryOf(string key) =>
+        IsMachineSetting(key) ? SettingCategory.Machine
+        : IsInstanceSetting(key) ? (IsSecret(key) ? SettingCategory.Secret : SettingCategory.Instance)
+        : null;
+
     private const string LoggingSection = "Logging";
 
-    /// <summary>Whether a backup may carry <paramref name="key"/> at all (a secret only in an encrypted one, <see cref="Carries"/>).</summary>
+    /// <summary>Whether a backup may carry <paramref name="key"/> at all (a secret only where it carries secrets, <see cref="Carries"/>).</summary>
     public static bool IsInstanceSetting(string key) =>
         Under(key, LoggingSection) || SettingsCatalog.All.Any(d => d.Key.Equals(key, StringComparison.OrdinalIgnoreCase) || d.IsList && Under(key, d.Key));
 
-    /// <summary>Whether a backup, encrypted or not, carries <paramref name="key"/>.</summary>
-    public static bool Carries(string key, bool encrypted) => IsInstanceSetting(key) && (encrypted || !IsSecret(key));
+    /// <summary>Whether a backup carries <paramref name="key"/>: a secret only where it carries secrets (<c>Backups:Secrets</c>).</summary>
+    public static bool Carries(string key, bool carriesSecrets) => IsInstanceSetting(key) && (carriesSecrets || !IsSecret(key));
 
     private static bool IsSecret(string key) => SettingsCatalog.Find(key)?.IsSecret == true;
 
@@ -29,13 +39,13 @@ public static class SettingsInBackups
     /// The copy of the file a backup takes: the keys it carries, and the names of those it leaves out (a list once, by its key), sorted.
     /// Never a value of what is left out.
     /// </summary>
-    public static (IReadOnlyDictionary<string, string?> Carried, IReadOnlyList<string> Omitted) Copy(IReadOnlyDictionary<string, string?> file, bool encrypted)
+    public static (IReadOnlyDictionary<string, string?> Carried, IReadOnlyList<string> Omitted) Copy(IReadOnlyDictionary<string, string?> file, bool carriesSecrets)
     {
         var carried = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         var omitted = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (key, value) in file)
         {
-            if (Carries(key, encrypted)) carried[key] = value;
+            if (Carries(key, carriesSecrets)) carried[key] = value;
             else omitted.Add(ListKeyOf(key));
         }
         return (carried, [.. omitted]);
@@ -43,17 +53,17 @@ public static class SettingsInBackups
 
     /// <summary>
     /// The settings file a restore leaves: the backup's, as it carried it, and of this server's own file what no backup of that kind would
-    /// carry (the machine's own keys, and in a plain backup the secrets, which it never holds), so a restore keeps this machine pointed at
+    /// carry (the machine's own keys, and the secrets of a backup that holds none), so a restore keeps this machine pointed at
     /// its own database and folders and keeps the passwords a plain backup could not bring.
     /// </summary>
     public static IReadOnlyDictionary<string, string?> Restored(
-        IReadOnlyDictionary<string, string?> fromBackup, IReadOnlyDictionary<string, string?> live, bool encrypted)
+        IReadOnlyDictionary<string, string?> fromBackup, IReadOnlyDictionary<string, string?> live, bool carriesSecrets)
     {
         var restored = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         foreach (var (key, value) in live)
-            if (!Carries(key, encrypted)) restored[key] = value;
+            if (!Carries(key, carriesSecrets)) restored[key] = value;
         foreach (var (key, value) in fromBackup)
-            if (Carries(key, encrypted)) restored[key] = value; // a key the backup should not have carried (a file edited by hand) is not taken
+            if (Carries(key, carriesSecrets)) restored[key] = value; // a key the backup should not have carried (a file edited by hand) is not taken
         return restored;
     }
 
@@ -87,14 +97,14 @@ public static class SettingsInBackups
     /// <summary>
     /// The backup's copy of the file with the environment's settings merged in (<see cref="BackupEnvironmentMode.Merge"/>): each setting a
     /// variable holds that this kind of backup carries, at the value the server runs with (<paramref name="running"/>), a list whole (the
-    /// configuration merges a variable's items over the file's by index, so the file's own items of it go). Never a machine's own key, and in
-    /// a plain backup never a secret.
+    /// configuration merges a variable's items over the file's by index, so the file's own items of it go). Never a machine's own key, and a
+    /// secret only where the backup carries secrets.
     /// </summary>
     public static IReadOnlyDictionary<string, string?> Merged(
-        IReadOnlyDictionary<string, string?> file, IEnumerable<string> environmentKeys, IConfiguration running, bool encrypted)
+        IReadOnlyDictionary<string, string?> file, IEnumerable<string> environmentKeys, IConfiguration running, bool carriesSecrets)
     {
         var merged = new Dictionary<string, string?>(file, StringComparer.OrdinalIgnoreCase);
-        foreach (var setting in environmentKeys.Where(k => Carries(k, encrypted)).Select(ListKeyOf).Distinct(StringComparer.OrdinalIgnoreCase))
+        foreach (var setting in environmentKeys.Where(k => Carries(k, carriesSecrets)).Select(ListKeyOf).Distinct(StringComparer.OrdinalIgnoreCase))
         {
             if (SettingsCatalog.Find(setting)?.IsList == true)
             {
@@ -121,7 +131,7 @@ public static class SettingsInBackups
     ];
 
     /// <summary>A list item's list (<c>Auth:AdminEmails:0</c> is <c>Auth:AdminEmails</c>); any other key as it is.</summary>
-    private static string ListKeyOf(string key) =>
+    public static string ListKeyOf(string key) =>
         SettingsCatalog.All.FirstOrDefault(d => d.IsList && Under(key, d.Key))?.Key ?? key;
 
     private static bool Under(string key, string section) =>
@@ -154,10 +164,10 @@ public interface ISettingsBackup
     /// The copy a backup takes now: the file on disk (what the next start reads), unless the start left it out; with
     /// <see cref="BackupEnvironmentMode.Merge"/> the environment's settings merged into it; and what the backup records of the environment.
     /// </summary>
-    Task<SettingsCopy> CopyAsync(bool encrypted, BackupEnvironmentMode mode, CancellationToken ct);
+    Task<SettingsCopy> CopyAsync(bool carriesSecrets, BackupEnvironmentMode mode, CancellationToken ct);
 
     /// <summary>What a restore of <paramref name="fromBackup"/> (a backup's carried keys) would leave, judged under this server's environment.</summary>
-    Task<RestoredSettings> RestoredAsync(IReadOnlyDictionary<string, string?> fromBackup, bool encrypted, CancellationToken ct);
+    Task<RestoredSettings> RestoredAsync(IReadOnlyDictionary<string, string?> fromBackup, bool carriesSecrets, CancellationToken ct);
 
     /// <summary>Writes the restored file (the previous one kept as <c>.bak</c>).</summary>
     Task WriteAsync(IReadOnlyDictionary<string, string?> values, CancellationToken ct);
@@ -167,4 +177,13 @@ public interface ISettingsBackup
     /// leaves (<paramref name="restored"/>; null for a backup without one, which leaves this server's own) and this server's environment.
     /// </summary>
     Task<IReadOnlyList<string>> MissingAsync(BackupEnvironment recorded, IReadOnlyDictionary<string, string?>? restored, CancellationToken ct);
+
+    /// <summary>
+    /// The settings of a backup's file that this server's environment overrides, by variable name, a list once: a restore leaves them in the
+    /// file, but the environment's values run (the sign-in mode among them, which can leave the restored users without a way in).
+    /// </summary>
+    IReadOnlyList<string> Overridden(IReadOnlyDictionary<string, string?> fromBackup);
 }
+
+/// <summary>What a setting is to a backup (<see cref="SettingsInBackups.CategoryOf"/>).</summary>
+public enum SettingCategory { Instance, Secret, Machine }
