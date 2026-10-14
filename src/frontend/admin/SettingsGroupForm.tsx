@@ -353,6 +353,7 @@ const CHOICE_SETS: Record<string, string> = {
   'Smtp:Security': 'smtpSecurity',
   'Recognition:Provider': 'recognitionProvider',
   'Recognition:OpenAiCompatible:ResponseFormat': 'responseFormat',
+  'Backups:Environment': 'backupEnvironment',
 }
 
 /**

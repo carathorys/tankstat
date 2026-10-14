@@ -108,6 +108,23 @@ public sealed class RestoreSettingsTests : IDisposable
         Assert.False(b.Log.Mentions("zzzz-a-password"));
     }
 
+    [Fact]
+    public async Task ABackupRecordsWhatItsServersEnvironmentSet_ByName_NeverAValue()
+    {
+        using var a = Host("a", "None", file: null, new() { ["Defaults:Currency"] = "ZZZZ" });
+
+        var written = await Backup(a);
+
+        var recorded = written.Manifest.Environment!;
+        Assert.Equal(BackupEnvironmentMode.Record, recorded.Mode);
+        Assert.Contains("Defaults__Currency", recorded.Settings);
+        Assert.Contains("Auth__Mode", recorded.Settings);
+        Assert.Contains("Database__ConnectionString", recorded.Server); // the machine's own: named, never carried
+        Assert.Contains("Storage__Path", recorded.Server);
+        Assert.Equal(BackupSettingsState.None, written.Manifest.Settings!.State); // recorded only: no file here, and none made of the environment
+        Assert.DoesNotContain("ZZZZ", written.Manifest.ToJson());
+    }
+
     /// <summary>A backup of an instance without users, whose settings file says Standalone (its sign-in held off by the environment).</summary>
     private async Task<string> StandaloneFileWithoutAnAdministrator()
     {

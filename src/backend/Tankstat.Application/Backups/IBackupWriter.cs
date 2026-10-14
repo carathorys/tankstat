@@ -6,7 +6,8 @@ namespace Tankstat.Application.Backups;
 /// recipient to encrypt for (default: <c>Backups:Encryption</c>, else plain); <paramref name="SafetyNet"/> marks the backup a restore
 /// writes of the state it replaces.
 /// </summary>
-public sealed record BackupRequest(string? Output = null, bool? Photos = null, BackupEncryption? Encryption = null, bool SafetyNet = false);
+/// <param name="Environment">Over <see cref="BackupOptions.Environment"/> for this one (the command's <c>--environment</c>).</param>
+public sealed record BackupRequest(string? Output = null, bool? Photos = null, BackupEncryption? Encryption = null, bool SafetyNet = false, BackupEnvironmentMode? Environment = null);
 
 public sealed record BackupResult(string Path, BackupManifest Manifest);
 

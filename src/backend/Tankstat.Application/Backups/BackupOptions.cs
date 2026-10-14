@@ -22,6 +22,13 @@ public sealed class BackupOptions
     /// </summary>
     public bool Photos { get; set; }
 
+    /// <summary>
+    /// What a backup does with the settings environment variables hold (#140): <see cref="BackupEnvironmentMode.Record"/> names them in the
+    /// manifest only (nothing leaves the environment), <see cref="BackupEnvironmentMode.Merge"/> also puts the values the server runs with into
+    /// the backup's copy of the settings file (never into the live one), so a restore elsewhere brings them.
+    /// </summary>
+    public BackupEnvironmentMode Environment { get; set; } = BackupEnvironmentMode.Record;
+
     /// <summary>The recipient backups are encrypted for, and the salt the identity is derived with; unset, backups are written in plain (without the keys).</summary>
     public BackupEncryptionOptions Encryption { get; set; } = new();
 
@@ -121,3 +128,6 @@ public sealed class BackupOptionsValidator(IOptions<StorageOptions> storage) : I
         }
     }
 }
+
+/// <summary>What a backup does with the settings environment variables hold (<see cref="BackupOptions.Environment"/>).</summary>
+public enum BackupEnvironmentMode { Record, Merge }

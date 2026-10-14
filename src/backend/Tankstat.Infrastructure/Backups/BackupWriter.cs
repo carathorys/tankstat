@@ -67,7 +67,7 @@ internal sealed class BackupWriter(
         try
         {
             // The settings as they are when the run starts, before the database is read: what the next start would read.
-            var settings = await settingsFile.CopyAsync(encryption is not null, ct);
+            var settings = await settingsFile.CopyAsync(encryption is not null, request.Environment ?? o.Environment, ct);
             BackupManifest manifest;
             await using (file)
                 manifest = await WriteArchiveAsync(file, roots, createdAt, encryption, photos, request.SafetyNet, settings, ct);
@@ -141,7 +141,8 @@ internal sealed class BackupWriter(
                 new BackupSizes(tableBytes, pictureBytes, photoBytes, keyBytes, hashing.Written),
                 new BackupArchive(archiveName, hashing.Sha256Hex),
                 encryption,
-                settingsEntry);
+                settingsEntry,
+                settings.Environment);
             await using (var entry = outer.CreateEntry(BackupManifest.FileName, CompressionLevel.NoCompression).Open())
                 await entry.WriteAsync(Encoding.UTF8.GetBytes(manifest.ToJson()), ct);
         }

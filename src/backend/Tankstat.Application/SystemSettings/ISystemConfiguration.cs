@@ -43,6 +43,9 @@ public interface ISystemConfiguration
     /// <summary>Where the running value of <paramref name="key"/> comes from (a list: its items, the highest source of any of them).</summary>
     SettingSource SourceOf(string key);
 
+    /// <summary>Every key the environment holds (the sources above the settings file's place: variables, the command line), by its full path.</summary>
+    IReadOnlyList<string> EnvironmentKeys();
+
     /// <summary>
     /// The whole configuration with <paramref name="fileValues"/> in the settings file's place: the other sources as they are. Dispose it
     /// when done (it is disposable): one of the sources it reads chains a configuration that lives as long as the host, and would keep it.
