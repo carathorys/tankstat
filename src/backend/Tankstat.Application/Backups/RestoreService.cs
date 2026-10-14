@@ -89,7 +89,7 @@ public sealed class RestoreService(
     public static async Task RequireRecordedAsync(ISettingsBackup settings, BackupManifest manifest, RestoredSettings? restored, CancellationToken ct)
     {
         if (manifest.Environment is not { } recorded) return;
-        var missing = await settings.MissingAsync(recorded, restored?.Values, ct);
+        var missing = (await settings.MissingAsync(recorded, restored?.Values, ct)).Where(SettingsInBackups.Refuses).ToList();
         if (missing.Count > 0)
             throw new DomainException("backup.environmentMissing",
                 $"The backup was made on a server whose environment set {string.Join(", ", missing)}; this server sets none of them, nor does the settings file the backup brings. Set them, then restore.",

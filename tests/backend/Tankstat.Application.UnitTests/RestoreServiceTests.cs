@@ -208,6 +208,18 @@ public sealed class RestoreServiceTests
     }
 
     [Fact]
+    public async Task ALogLevelTheBackupsServerSetInItsEnvironment_ThatThisServerLacks_DoesNotRefuseTheRestore()
+    {
+        var (w, store, service) = Admin(new OneBackup { Recorded = new BackupEnvironment(BackupEnvironmentMode.Record, ["Logging__LogLevel__Default"], []) },
+            new JudgedSettings { Missing = ["Logging__LogLevel__Default"] });
+
+        await service.RequestAsync(new RestoreRequest("tankstat-backup-1.zip", null, null, null), default);
+
+        Assert.NotNull(store.Marker);
+        Assert.Equal(1, w.Restart.Count);
+    }
+
+    [Fact]
     public async Task ABackupOfAnotherMigration_IsRefusedAtOnce_NotAfterARestartThatComesBackWithTheDataAsItWas()
     {
         var (w, store, service) = Admin(new OneBackup { OtherMigration = "20261101000000_SomethingNewer" });

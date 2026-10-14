@@ -137,4 +137,12 @@ public sealed class SettingsInBackupsTests
 
         Assert.Equal(["Defaults__Currency", "Smtp__Password"], missing); // a list by its items, a null is no value; the machine's own never counts
     }
+
+    [Theory]
+    [InlineData("Defaults__Currency", true)]
+    [InlineData("Auth__Mode", true)]
+    [InlineData("Logging__LogLevel__Default", false)] // its levels only change what the log holds: a missing one is a risk, never a refusal
+    [InlineData("logging__loglevel__Microsoft.AspNetCore", false)]
+    public void Refuses_EveryMissingSetting_ButTheLoggingSections(string variable, bool refuses) =>
+        Assert.Equal(refuses, SettingsInBackups.Refuses(variable));
 }
