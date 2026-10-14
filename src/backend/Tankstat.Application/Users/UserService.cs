@@ -38,8 +38,8 @@ public sealed class UserService(
         await gate.WaitAsync(ct);
         try
         {
-            if (await users.FindLocalByEmailAsync(user.Email, ct) is not null) throw new DomainException("user.emailExists", "A user with this e-mail already exists.");
-            if (!await users.AddAsync(user, ct)) throw new DomainException("user.emailExists", "A user with this e-mail already exists.");
+            if (await users.FindLocalByEmailAsync(user.Email, ct) is not null || !await users.AddAsync(user, ct))
+                throw new DomainException("user.emailExists", "A user with this e-mail already exists.");
         }
         finally
         {

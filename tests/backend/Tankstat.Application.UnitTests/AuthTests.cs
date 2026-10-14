@@ -554,7 +554,37 @@ public class ProvisioningTests
         Assert.Same(winner, loser);
         Assert.Single(w.Users.Items);
         Assert.Equal(0, w.Users.Updates);
-        Assert.DoesNotContain(w.Log.From<AuthService>(), e => e.Level == LogLevel.Information); // "Created user" is the winner's line
+        var line = Assert.Single(w.Log.From<AuthService>()); // "Created user" is the winner's line, not this one
+        Assert.Equal(LogLevel.Debug, line.Level);
+        Assert.Equal(winner!.Id, line.Values["UserId"]);
+        Assert.False(w.Log.Mentions("a@x.co")); // ids only: the subject an identity provider or proxy sends can be the e-mail address
+    }
+
+    [Fact]
+    public async Task NewUsersWhoseSubjectsDifferOnlyByCase_AreCreatedOneAtATime()
+    {
+        // SQL Server and MySQL compare a subject by the column's collation, case-insensitive by default: one user there, so the second request
+        // waits for the first instead of racing it on the unique index (the fake compares exactly, so the lock is what is observed).
+        var w = new World(AuthMode.ProxyHeader);
+        using var inFirstInsert = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var adds = 0;
+        w.Users.BeforeAdd = _ =>
+        {
+            if (Interlocked.Increment(ref adds) != 1) return;
+            inFirstInsert.Set();
+            release.Wait(TimeSpan.FromSeconds(30));
+        };
+
+        var first = Task.Run(() => w.Auth.ProvisionExternalAsync(UserProvider.Proxy, "Alice", null, null, default));
+        Assert.True(inFirstInsert.Wait(TimeSpan.FromSeconds(30)));
+        var second = Task.Run(() => w.Auth.ProvisionExternalAsync(UserProvider.Proxy, "alice", null, null, default));
+        await Task.Delay(300); // a negative: the second one must still be waiting for the lock
+        Assert.Equal(1, Volatile.Read(ref adds));
+
+        release.Set();
+        await Task.WhenAll(first, second);
+        Assert.Equal(2, adds);
     }
 
     [Fact]
@@ -666,6 +696,8 @@ public class BootstrapTests
         Assert.False(await w.Auth.BootstrapAdminAsync(setupWaits: false, default));
 
         Assert.Single(w.Users.Items);
+        Assert.Equal(LogLevel.Information, Assert.Single(w.Log.From<AuthService>()).Level); // said, so an Error line of EF Core's is not a mystery
+        Assert.False(w.Log.Mentions("root@x.co"));
     }
 
     [Fact]

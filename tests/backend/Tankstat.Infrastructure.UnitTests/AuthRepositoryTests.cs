@@ -45,8 +45,10 @@ public class AuthRepositoryTests
         Assert.True(await repo.AddAsync(first, default));
         Assert.False(await repo.AddAsync(second, default));
         Assert.True(await repo.AddAsync(otherProvider, default)); // the same subject at another provider is another user
+        Assert.True(await repo.AddAsync(User.CreateLocal("a@x.co", "A", false), default));
+        Assert.False(await repo.AddAsync(User.CreateLocal("A@X.co", "Again", true), default)); // the address is normalised: the same subject
 
-        Assert.Equal(2, (await repo.ListAsync(default)).Count);
+        Assert.Equal(3, (await repo.ListAsync(default)).Count);
         Assert.Equal(first.Id, (await repo.FindExternalAsync(UserProvider.Proxy, "sub-1", default))!.Id);
         Assert.Null(await repo.FindByIdAsync(second.Id, default)); // the loser's own id was never stored
     }
@@ -61,18 +63,6 @@ public class AuthRepositoryTests
         var saved = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => repo.AddAsync(User.CreateExternal(UserProvider.Proxy, "sub-1", null, null, false), default)));
 
         Assert.Single(saved, s => s);
-        Assert.Single(await repo.ListAsync(default));
-    }
-
-    [Fact]
-    public async Task Users_TheSameLocalAddressTwice_IsRefusedWithFalse()
-    {
-        await using var db = new TestDatabase();
-        var repo = db.Get<IUserRepository>();
-
-        Assert.True(await repo.AddAsync(User.CreateLocal("a@x.co", "A", false), default));
-        Assert.False(await repo.AddAsync(User.CreateLocal("A@X.co", "Again", true), default)); // the address is normalised: the same subject
-
         Assert.Single(await repo.ListAsync(default));
     }
 

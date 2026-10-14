@@ -1,4 +1,3 @@
-using System.Runtime.ExceptionServices;
 using Microsoft.EntityFrameworkCore;
 using Tankstat.Application.Access;
 using Tankstat.Application.Users;
@@ -53,29 +52,10 @@ internal sealed class UserRepository(IDbContextFactory<AppDbContext> dbFactory) 
         return await db.Users.AnyAsync(u => u.Provider == UserProvider.Local && u.IsAdmin && !u.IsDisabled, ct);
     }
 
-    public async Task<bool> AddAsync(User user, CancellationToken ct)
-    {
-        ExceptionDispatchInfo failure;
-        await using (var db = await dbFactory.CreateDbContextAsync(ct))
-        {
-            db.Users.Add(user);
-            try
-            {
-                await db.SaveChangesAsync(ct);
-                return true;
-            }
-            catch (DbUpdateException e)
-            {
-                failure = ExceptionDispatchInfo.Capture(e); // looked into with a fresh context: this one still holds the failed insert
-            }
-        }
-        // The unique index is (Provider, Subject): two requests that found no such user both insert and the second one fails. Looked up with
-        // the same equality the index uses (the column's collation decides on SQL Server and MySQL), so a clash is told from any other failure.
-        await using var check = await dbFactory.CreateDbContextAsync(ct);
-        if (await check.Users.AnyAsync(u => u.Provider == user.Provider && u.Subject == user.Subject, ct)) return false;
-        failure.Throw();
-        return false; // not reached
-    }
+    // The unique index is (Provider, Subject): two requests that found no such user both insert and the second one fails. Looked up with the
+    // same equality the index uses (the column's collation decides on SQL Server and MySQL), so a clash is told from any other failure.
+    public Task<bool> AddAsync(User user, CancellationToken ct) =>
+        dbFactory.AddOnceAsync(user, u => u.Provider == user.Provider && u.Subject == user.Subject, ct);
 
     public async Task UpdateAsync(User user, CancellationToken ct)
     {

@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using System.Runtime.ExceptionServices;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,7 +11,14 @@ internal static class AddOnceExtensions
     /// the second one's primary key violation is turned into <c>false</c> (the row is there, saved by the other), so the service answers it
     /// like any repeated add instead of failing with an unkeyed error. Any other failure is rethrown as it was.
     /// </summary>
-    public static async Task<bool> AddOnceAsync<T>(this IDbContextFactory<AppDbContext> factory, T entity, Guid id, CancellationToken ct) where T : class
+    public static Task<bool> AddOnceAsync<T>(this IDbContextFactory<AppDbContext> factory, T entity, Guid id, CancellationToken ct) where T : class =>
+        factory.AddOnceAsync(entity, e => EF.Property<Guid>(e, "Id") == id, ct);
+
+    /// <summary>
+    /// The same for an entity another unique key identifies (a user's provider and subject): <paramref name="isThere"/> finds the row the
+    /// other insert saved, with the equality the unique index uses, so a clash is told from any other failure.
+    /// </summary>
+    public static async Task<bool> AddOnceAsync<T>(this IDbContextFactory<AppDbContext> factory, T entity, Expression<Func<T, bool>> isThere, CancellationToken ct) where T : class
     {
         ExceptionDispatchInfo failure;
         await using (var db = await factory.CreateDbContextAsync(ct))
@@ -27,7 +35,7 @@ internal static class AddOnceExtensions
             }
         }
         await using var check = await factory.CreateDbContextAsync(ct);
-        if (await check.Set<T>().IgnoreQueryFilters().AnyAsync(e => EF.Property<Guid>(e, "Id") == id, ct)) return false;
+        if (await check.Set<T>().IgnoreQueryFilters().AnyAsync(isThere, ct)) return false;
         failure.Throw();
         return false; // not reached
     }

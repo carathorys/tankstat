@@ -143,37 +143,13 @@ public sealed class AuthService(
         var configuredAdmin = admins.Contains(subject.Trim().ToLowerInvariant()) ||
                               (!string.IsNullOrWhiteSpace(email) && admins.Contains(email.Trim().ToLowerInvariant()));
 
-        var user = await users.FindExternalAsync(provider, subject.Trim(), ct);
+        var trimmed = subject.Trim();
+        var user = await users.FindExternalAsync(provider, trimmed, ct);
         if (user is null)
         {
-            // A proxy authenticates every request and a page's first ones come together: all of one new user's find nobody and all would
-            // insert. One at a time here, so the others find the row the first saved and no insert fails (EF Core logs a failed save as an
-            // Error, handled or not). Another server on the same database is not held back by this; its insert is refused by the unique index
-            // and AddAsync says so.
-            var gate = Creating.For($"{provider}\n{subject.Trim()}");
-            await gate.WaitAsync(ct);
-            try
-            {
-                user = await users.FindExternalAsync(provider, subject.Trim(), ct);
-                if (user is null)
-                {
-                    var created = User.CreateExternal(provider, subject, email, displayName, configuredAdmin);
-                    if (await users.AddAsync(created, ct))
-                    {
-                        logger.LogInformation("Created user {UserId} from a {Provider} sign-in (administrator: {IsAdmin})", created.Id, provider, created.IsAdmin);
-                        return created;
-                    }
-                    // Another server created this user at the same moment. Its row is the user: ours was never saved, so its id would name
-                    // nobody. Goes on as for any user that is there.
-                    user = await users.FindExternalAsync(provider, created.Subject, ct)
-                        ?? throw new InvalidOperationException("The user another server created is gone again.");
-                    logger.LogDebug("User {UserId} was created by another server at the same moment", user.Id);
-                }
-            }
-            finally
-            {
-                gate.Release();
-            }
+            var (found, created) = await FindOrCreateExternalAsync(provider, trimmed, email, displayName, configuredAdmin, ct);
+            if (created) return found;
+            user = found; // saved by another request meanwhile: goes on as for any user that is there
         }
 
         if (user.IsDisabled)
@@ -193,6 +169,41 @@ public sealed class AuthService(
         }
         if ((user.Email, user.DisplayName, user.IsAdmin) != before) await users.UpdateAsync(user, ct);
         return user;
+    }
+
+    /// <summary>
+    /// The user of a provider and subject that was not there a moment ago, and whether this call created it. A proxy authenticates every
+    /// request and a page's first ones come together: all of one new user's find nobody and all would insert. One at a time here, so the
+    /// others find the row the first saved and no insert fails (EF Core logs a failed save as an Error, handled or not). Another server on
+    /// the same database is not held back by this; its insert is refused by the unique index and AddAsync says so: its row is the user,
+    /// ours was never saved, so its id would name nobody.
+    /// </summary>
+    private async Task<(User User, bool Created)> FindOrCreateExternalAsync(
+        UserProvider provider, string subject, string? email, string? displayName, bool configuredAdmin, CancellationToken ct)
+    {
+        var gate = Creating.For($"{provider}\n{subject}");
+        await gate.WaitAsync(ct);
+        try
+        {
+            var existing = await users.FindExternalAsync(provider, subject, ct);
+            if (existing is not null) return (existing, false);
+
+            var created = User.CreateExternal(provider, subject, email, displayName, configuredAdmin);
+            if (await users.AddAsync(created, ct))
+            {
+                logger.LogInformation("Created user {UserId} from a {Provider} sign-in (administrator: {IsAdmin})", created.Id, provider, created.IsAdmin);
+                return (created, true);
+            }
+
+            var winner = await users.FindExternalAsync(provider, created.Subject, ct)
+                ?? throw new InvalidOperationException("The user another server created is gone again.");
+            logger.LogDebug("User {UserId} was created by another server at the same moment", winner.Id);
+            return (winner, false);
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     /// <summary>
@@ -220,7 +231,11 @@ public sealed class AuthService(
         {
             // Another server starting on this database at the same time was first. Only an administrator it made counts: a user that holds
             // the address without being one (a disabled one, say) leaves nobody to sign in, which stops the start as it always did.
-            if (await users.AnyLocalAdminAsync(ct)) return false;
+            if (await users.AnyLocalAdminAsync(ct))
+            {
+                logger.LogInformation("The first administrator was created by another server at the same moment");
+                return false;
+            }
             throw new InvalidOperationException("The address of Auth:Standalone:AdminEmail belongs to a user that is no enabled administrator, so the first administrator cannot be created from it.");
         }
         logger.LogInformation("Created the first administrator {UserId}", admin.Id);

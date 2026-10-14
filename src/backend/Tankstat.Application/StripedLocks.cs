@@ -10,6 +10,10 @@ internal sealed class StripedLocks(int stripes = 64)
 
     public SemaphoreSlim For(Guid key) => gates[(uint)key.GetHashCode() % gates.Length];
 
-    /// <summary>The lock of a key that is text (a provider and a subject, an address); the same text always gets the same one within this process.</summary>
-    public SemaphoreSlim For(string key) => gates[(uint)StringComparer.Ordinal.GetHashCode(key) % gates.Length];
+    /// <summary>
+    /// The lock of a key that is text (a provider and a subject, an address); the same text always gets the same one within this process.
+    /// Case is ignored: SQL Server and MySQL compare such text by the column's collation, which is case-insensitive by default, so
+    /// <c>Alice</c> and <c>alice</c> are one user there and must wait for each other.
+    /// </summary>
+    public SemaphoreSlim For(string key) => gates[(uint)StringComparer.OrdinalIgnoreCase.GetHashCode(key) % gates.Length];
 }

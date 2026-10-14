@@ -226,18 +226,17 @@ public class ProxyHeaderModeTests : IDisposable
         var created = new List<(string Subject, string? Id)>();
         foreach (var subject in new[] { "newcomer-1", "newcomer-2", "newcomer-3" })
         {
-            var answers = await Task.WhenAll(Enumerable.Range(0, 8).Select(async _ =>
-            {
-                using var response = await Client(subject, $"{subject}@example.com").PostAsJsonAsync("/graphql", new { query = "{ session { user { id email } } }" });
-                return (response.StatusCode, Body: await response.Content.ReadFromJsonAsync<JsonElement>());
-            }));
-
-            Assert.All(answers, a => Assert.Equal(HttpStatusCode.OK, a.StatusCode));
-            var ids = answers.Select(a => a.Body.Data().GetProperty("session").GetProperty("user").GetProperty("id").GetString()).Distinct().ToList();
+            var client = Client(subject, $"{subject}@example.com");
+            var answers = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => client.Gql("{ session { user { id email } } }"))); // Gql: each one 200
+            var ids = answers.Select(a => a.Data().GetProperty("session").GetProperty("user").GetProperty("id").GetString()).Distinct().ToList();
             created.Add((subject, Assert.Single(ids))); // every request names the one user that was saved
         }
 
-        Assert.Equal(4, _app.Log.From<Tankstat.Application.Users.AuthService>().Count(e => e.Level == LogLevel.Information && e.Message.StartsWith("Created user"))); // each once
+        // "Created user" is the one Information line of AuthService with a Provider; each user that was saved has it once, the warm-up's too
+        var createdLines = _app.Log.From<Tankstat.Application.Users.AuthService>().Where(e => e.Level == LogLevel.Information && e.Values.ContainsKey("Provider")).ToList();
+        Assert.Equal(4, createdLines.Count);
+        foreach (var (_, id) in created)
+            Assert.Single(createdLines, e => e.Values["UserId"]?.ToString() == id);
         Assert.DoesNotContain(_app.Log.Entries, e => e.Level == LogLevel.Error);
         var users = (await Client("boss", "boss@example.com").Gql("{ users { id email } }")).Data().GetProperty("users");
         foreach (var (subject, id) in created)
