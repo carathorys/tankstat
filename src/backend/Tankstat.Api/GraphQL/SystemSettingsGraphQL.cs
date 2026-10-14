@@ -85,22 +85,32 @@ public sealed record SystemSettingChangeInput(string Key, string? Value, bool Cl
 [ExtendObjectType(OperationTypeNames.Query)]
 public sealed class SystemSettingsQueries
 {
-    /// <summary>Administrators only: every setting the app manages in its own settings file, group by group, with its source.</summary>
-    public async Task<SystemSettingsInfo> GetSystemSettings([Service] SystemSettingsService settings, CancellationToken ct) =>
-        SystemSettingsInfo.From(await settings.GetAsync(ct));
+    /// <summary>
+    /// Administrators only, or the setup page's wizard with the one-time code from the server's log while the setup waits: every setting the
+    /// app manages in its own settings file, group by group, with its source.
+    /// </summary>
+    public async Task<SystemSettingsInfo> GetSystemSettings(string? code, [Service] SystemSettingsService settings, CancellationToken ct) =>
+        SystemSettingsInfo.From(await settings.GetAsync(code, ct));
 }
 
 [ExtendObjectType(OperationTypeNames.Mutation)]
 public sealed class SystemSettingsMutations
 {
-    /// <summary>Administrators only: writes the changes into the settings file, all or none; they take effect at the next restart.</summary>
-    public async Task<SystemSettingsInfo> UpdateSystemSettings(IReadOnlyList<SystemSettingChangeInput> changes, [Service] SystemSettingsService settings, CancellationToken ct) =>
-        SystemSettingsInfo.From(await settings.UpdateAsync(changes.Select(c => new SettingChange(c.Key, c.Value, c.Clear)).ToList(), ct));
+    /// <summary>
+    /// Administrators only, or the setup page's wizard with the one-time code while the setup waits: writes the changes into the settings
+    /// file, all or none; what applies at once takes effect now, the rest at the next restart.
+    /// </summary>
+    public async Task<SystemSettingsInfo> UpdateSystemSettings(
+        IReadOnlyList<SystemSettingChangeInput> changes, string? code, [Service] SystemSettingsService settings, CancellationToken ct) =>
+        SystemSettingsInfo.From(await settings.UpdateAsync(changes.Select(c => new SettingChange(c.Key, c.Value, c.Clear)).ToList(), code, ct));
 
-    /// <summary>Administrators only: restarts the server that answered (in its process); it is back within seconds, and the settings file is read afresh.</summary>
-    public async Task<bool> RestartServer([Service] SystemSettingsService settings, CancellationToken ct)
+    /// <summary>
+    /// Administrators only, or the setup page with the one-time code while the setup waits: restarts the server that answered (in its
+    /// process; the code stays the same); it is back within seconds, and the settings file is read afresh.
+    /// </summary>
+    public async Task<bool> RestartServer(string? code, [Service] SystemSettingsService settings, CancellationToken ct)
     {
-        await settings.RestartAsync(ct);
+        await settings.RestartAsync(code, ct);
         return true;
     }
 }

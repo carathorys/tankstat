@@ -33,6 +33,9 @@ type Query {
   accessGrants: [AccessGrantInfo!]! @cost(weight: "10")
   backups: BackupOverviewInfo! @cost(weight: "10")
   mySessions: [UserSessionInfo!]! @cost(weight: "10")
+  setup: SetupInfo! @cost(weight: "10")
+  setupRestorePoints(code: String!): [RestorePointInfo!]! @cost(weight: "10")
+  setupUploadLimitMb(code: String!): Int! @cost(weight: "10")
   refuelings(
     vehicleId: UUID!
     orderBy: RefuelingSortField! = DATE
@@ -87,7 +90,7 @@ type Query {
     @cost(weight: "10")
   offlineSettings: OfflineSettingsInfo! @cost(weight: "10")
   parkedChanges: [SyncChangeInfo!]! @cost(weight: "10")
-  systemSettings: SystemSettingsInfo! @cost(weight: "10")
+  systemSettings(code: String): SystemSettingsInfo! @cost(weight: "10")
 }
 
 type Mutation {
@@ -121,6 +124,8 @@ type Mutation {
     @cost(weight: "10")
   revokeSession(id: UUID!): Boolean! @cost(weight: "10")
   revokeOtherSessions: Int! @cost(weight: "10")
+  setupFinish(input: SetupFinishInput!): SetupFinishInfo! @cost(weight: "10")
+  setupClaimAdministrator(code: String!): UserInfo! @cost(weight: "10")
   logRefueling(input: LogRefuelingInput!): Refueling! @cost(weight: "10")
   updateRefueling(input: UpdateRefuelingInput!): Refueling! @cost(weight: "10")
   deleteRefueling(id: UUID!): Refueling! @cost(weight: "10")
@@ -155,9 +160,9 @@ type Mutation {
   syncChanges(input: SyncChangesInput!): SyncResultInfo! @cost(weight: "10")
   resolveSyncChange(input: ResolveSyncChangeInput!): SyncChangeInfo!
     @cost(weight: "10")
-  updateSystemSettings(changes: [SystemSettingChangeInput!]!): SystemSettingsInfo!
+  updateSystemSettings(changes: [SystemSettingChangeInput!]!, code: String): SystemSettingsInfo!
     @cost(weight: "10")
-  restartServer: Boolean! @cost(weight: "10")
+  restartServer(code: String): Boolean! @cost(weight: "10")
 }
 
 type AccessGrantInfo {
@@ -568,6 +573,16 @@ type SettingsFileInfo {
   exists: Boolean!
   ignored: Boolean!
   problems: [String!]!
+}
+
+type SetupFinishInfo {
+  restarting: Boolean!
+  administrator: UserInfo
+  signedIn: Boolean!
+}
+
+type SetupInfo {
+  pending: Boolean!
 }
 
 type StorageSizesInfo {
@@ -988,6 +1003,13 @@ input SetLogAccessInput {
   vehicleId: UUID!
   userId: UUID!
   level: AccessLevel!
+}
+
+input SetupFinishInput {
+  code: String!
+  email: String
+  password: String
+  acknowledgeOpenAccess: Boolean! = false
 }
 
 input SetVehiclePictureInput {

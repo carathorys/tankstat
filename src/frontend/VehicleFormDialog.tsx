@@ -152,7 +152,7 @@ function VehicleForm({
   }
 
   return (
-    <Form onSubmit={submit}>
+    <Form onSubmit={submit} refusal={error}>
       <Stack sx={{ gap: 1.5 }}>
         <Field name="name" label={t('fields.name')} required extra={merging.note('name', t('fields.name'))}>
           <FieldInput key={merging.key('name')} defaultValue={merging.value('name', initial.name)} autoFocus />

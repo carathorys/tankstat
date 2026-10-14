@@ -40,6 +40,7 @@ The rules of each area are in `.claude/rules/`, one file per area. Each loads by
 - `photo-reading.md`: reading photos with a vision model, logs saved before their photos are read, refuelling amounts, reading issues.
 - `settings-file.md`: the app's own settings file, the Server settings page, restarts.
 - `authentication.md`: sign-in modes, password resets, sessions and refresh tokens, OIDC.
+- `setup.md`: a new instance's setup: its state, the one-time code, what completes it, the setup page.
 - `ui-settings-and-home-cards.md`: what the UI remembers per user (incl. the time and date formats), the home cards.
 - `frontend.md`: UI structure and shared components, grids, bundle size, charts, libraries and motion.
 - `logging.md`: what is logged at which level, what never is, and the canary tests.
@@ -81,7 +82,7 @@ The rules of each area are in `.claude/rules/`, one file per area. Each loads by
 
 ### Notices and the schema
 
-- **Notices:** the server sends public `notices` (currently the `AUTH_DISABLED` warning, `SETTINGS_FILE_IGNORED`, the settings file left out at start, which names no setting: notices are public, and `RESTORE_PENDING`, a restore waiting for the next start); the UI renders them generically in `NoticeBanner`, worded by `notices.<code>` in English and Hungarian (the server's text only as a fallback).
+- **Notices:** the server sends public `notices` (currently the `AUTH_DISABLED` warning, `SETTINGS_FILE_IGNORED`, the settings file left out at start, which names no setting: notices are public, `RESTORE_PENDING`, a restore waiting for the next start, and `SETUP_PENDING`, a new instance waiting for its setup, always last); the UI renders them generically in `NoticeBanner`, worded by `notices.<code>` in English and Hungarian (the server's text only as a fallback).
 - HotChocolate schema introspection only works in the Development environment, which is why `scripts/test-api.sh` sets it.
 
 ## Testing requirements

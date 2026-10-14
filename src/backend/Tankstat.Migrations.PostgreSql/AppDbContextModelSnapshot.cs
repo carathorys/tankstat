@@ -205,6 +205,16 @@ namespace Tankstat.Migrations.PostgreSql
                     b.Property<DateTime?>("RestoredAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("SetupCompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SetupCompletedVia")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("SetupPendingSince")
+                        .HasColumnType("timestamp with time zone");
+
                     b.HasKey("Id");
 
                     b.ToTable("InstanceState", (string)null);

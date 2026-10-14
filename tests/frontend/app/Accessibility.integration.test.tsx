@@ -10,7 +10,7 @@ import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
 import { platform } from '../../../src/frontend/pwa/platform.ts'
 import { check, setup, setupAccessibilityTests } from '../support/accessibility.tsx'
 import { server } from '../support/server.ts'
-import { fakeLogBackend, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport } from '../support/mocks.tsx'
+import { backupRecipientHandler, fakeLogBackend, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport, user, wizardSettings } from '../support/mocks.tsx'
 
 // The pages, the shell and the sign-in screens. The log dialogs and photos are in AccessibilityLogs, the recurring expenses and the home
 // cards in AccessibilityRecurring (split so the files run side by side).
@@ -371,6 +371,60 @@ it('the sign-in screens of every mode have no violations', async () => {
   server.use(sessionHandler('PROXY_HEADER', () => null), healthHandler)
   view = renderWithApollo(<App />, '/')
   await screen.findByText(/reverse proxy/i)
+  await check(view.container)
+})
+
+it('the setup page, its code and its wizard, are labelled and free of violations', async () => {
+  const ui = userEvent.setup()
+  const pending = { code: 'SETUP_PENDING', severity: 'INFO' as const, message: 'This instance is not set up yet.' }
+  server.use(
+    sessionHandler('STANDALONE', () => null, [pending]),
+    healthHandler,
+    graphql.query('Setup', () => HttpResponse.json({ data: { setup: { __typename: 'SetupInfo', pending: true } } })),
+    graphql.query('SystemSettings', () => HttpResponse.json({ data: { systemSettings: wizardSettings('STANDALONE') } })),
+    graphql.query('SetupRestorePoints', () =>
+      HttpResponse.json({
+        data: {
+          setupRestorePoints: [
+            {
+              __typename: 'RestorePointInfo',
+              file: 'tankstat-backup-20261010T020000Z.zip',
+              createdAt: '2026-10-10T02:00:00Z',
+              appVersion: '0.15.0',
+              sameMigration: true,
+              olderMigration: false,
+              encrypted: true,
+            },
+          ],
+          setupUploadLimitMb: 1024,
+        },
+      }),
+    ),
+  )
+  const view = renderWithApollo(<App />, '/')
+
+  await ui.type(await screen.findByRole('textbox', { name: /^Setup code/ }), 'ABCD-EFGH-JKLM')
+  await check(view.container)
+  await ui.click(screen.getByRole('button', { name: 'Continue' }))
+  await ui.click(await screen.findByRole('button', { name: 'Start the wizard' }))
+  await screen.findByText('E-mail', { selector: '[aria-current="step"]' }) // the stepper, with a settings step: the settings page's own form
+  await check(view.container)
+  await ui.click(screen.getByRole('button', { name: 'Start' }))
+  await ui.click(await screen.findByRole('button', { name: 'Restore from a backup' }))
+  await screen.findByRole('region', { name: 'Restore a backup' })
+  await check(view.container)
+})
+
+it("the setup's done screen, with its key set and next steps, is labelled and free of violations", async () => {
+  server.use(
+    sessionHandler('STANDALONE', () => user({ isAdmin: true })),
+    healthHandler,
+    graphql.query('Setup', () => HttpResponse.json({ data: { setup: { __typename: 'SetupInfo', pending: false } } })),
+    backupRecipientHandler(),
+  )
+  const view = renderWithApollo(<App />, '/setup')
+
+  await screen.findByRole('region', { name: 'Encrypted backups' })
   await check(view.container)
 })
 

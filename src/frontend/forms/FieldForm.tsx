@@ -52,7 +52,7 @@ export function FieldForm({
   }
 
   return (
-    <Form onSubmit={submit}>
+    <Form onSubmit={submit} refusal={error}>
       <Stack sx={{ gap: 1.5 }}>
         {fields.map((f) => (
           <Field key={f.name} name={f.name} label={t(f.label)} required={f.required ?? true} typeMismatch={f.type === 'email' ? t('forms.emailInvalid') : undefined}>

@@ -1,10 +1,12 @@
 import Alert from '@mui/material/Alert'
+import Link from '@mui/material/Link'
 import Stack from '@mui/material/Stack'
 import { Info, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { Link as RouterLink } from 'react-router'
 import type { SessionQuery } from './gql/generated.ts'
 
-/** Shows every notice the server sent, translated by its code (the server text is only a fallback). */
+/** Shows every notice the server sent, translated by its code (the server text is only a fallback); the waiting setup's links to its page. */
 export function NoticeBanner({ notices }: { notices: SessionQuery['notices'] }) {
   const { t, i18n } = useTranslation()
   if (notices.length === 0) return null
@@ -25,6 +27,14 @@ export function NoticeBanner({ notices }: { notices: SessionQuery['notices'] }) 
           >
             {warning && <strong>{t('notices.warning')} </strong>}
             {i18n.exists(path) ? t(path as never) : n.message}
+            {n.code === 'SETUP_PENDING' && (
+              <>
+                {' '}
+                <Link component={RouterLink} to="/setup">
+                  {t('notices.openSetup')}
+                </Link>
+              </>
+            )}
           </Alert>
         )
       })}

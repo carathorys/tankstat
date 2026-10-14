@@ -11,7 +11,7 @@ import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import type { TFunction } from 'i18next'
 import { ChevronDown, Info, TriangleAlert } from 'lucide-react'
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode, type Ref } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { DefinitionList } from '../components/DefinitionList.tsx'
@@ -30,7 +30,7 @@ import { useToast } from '../toast/toastContext.ts'
 import { ProblemList } from './ProblemList.tsx'
 import { changesOf, daysOf, daysValue, isOn, WEEK, type GroupDraft } from './settingsDraft.ts'
 import { SettingHelp } from './SettingHelp.tsx'
-import { problemsOf } from './settingsText.ts'
+import { problemsByKey, problemsOf } from './settingsText.ts'
 import { sharedReason, unusedReason, type Unused, type ValueOf } from './settingsRelevance.ts'
 import { layoutOf, type SectionId } from './settingsSections.ts'
 import { useSettingLabel, useUnusedText } from './useUnusedText.ts'
@@ -43,7 +43,8 @@ const MODE_KEY = 'Auth:Mode'
  * One group of system settings as a form: the settings the environment holds are shown read-only with their variable, the others are
  * edited and saved together. The values live with the page (`draft`, `onDraft`), so they outlast a switch of tabs, and a setting another
  * one leaves unused (`valueOf`, the values of every group as the page holds them) is shown but cannot be changed, with the reason. A change
- * of the sign-in mode asks once more and says the way back.
+ * of the sign-in mode asks once more and says the way back. The setup page's wizard shows each group with it too (the props after
+ * `onSaved`), so a setting looks and is saved the same in both.
  */
 export function SettingsGroupForm({
   group,
@@ -51,6 +52,13 @@ export function SettingsGroupForm({
   valueOf,
   onDraft,
   onSaved,
+  code,
+  required = [],
+  confirmModeChange = true,
+  submitLabel,
+  saveUnchanged = false,
+  actions,
+  announceSaved = true,
 }: {
   group: { name: SettingsGroup; appliesAtOnce: boolean; settings: readonly Setting[] }
   draft: GroupDraft
@@ -58,6 +66,20 @@ export function SettingsGroupForm({
   onDraft: (draft: GroupDraft) => void
   /** After a save: the form starts afresh from the server's answer, even one that looks as before. */
   onSaved: () => void
+  /** The one-time code the setup page's wizard saves with while the setup waits (no administrator exists yet). */
+  code?: string
+  /** Choices that must be made: offered without "Default (not set)", and the form is not sent until each holds one. */
+  required?: readonly string[]
+  /** Ask once more before the sign-in mode changes, saying the way back; a first setup has no mode to go back to. */
+  confirmModeChange?: boolean
+  /** The submit button's words; the settings page's Save by default. */
+  submitLabel?: string
+  /** Nothing changed: the submit goes on (`onSaved`) instead of doing nothing, as a wizard's step does. */
+  saveUnchanged?: boolean
+  /** More buttons beside the submit one (a wizard's Back and Skip). */
+  actions?: ReactNode
+  /** A toast after a save, saying whether it waits for a restart (the settings page); a wizard moves on instead. */
+  announceSaved?: boolean
 }) {
   const { t } = useTranslation()
   const { weekday } = useFormat()
@@ -71,10 +93,13 @@ export function SettingsGroupForm({
     // The answer is the whole page as the server now has it, so it takes the query's place: no second request, whose failure would show a
     // save that was written as refused (and invite another, which writes the file and its .bak once more).
     update: (cache, { data }) => {
-      if (data) cache.writeQuery({ query: SystemSettingsDocument, data: { systemSettings: data.updateSystemSettings } })
+      if (data) cache.writeQuery({ query: SystemSettingsDocument, variables: code === undefined ? undefined : { code }, data: { systemSettings: data.updateSystemSettings } })
     },
   })
   const [error, setError] = useState<unknown>()
+  // The required choices the last submit found empty, each said at its control, the first one given the focus.
+  const [missing, setMissing] = useState<ReadonlySet<string>>(new Set())
+  const focusers = useRef(new Map<string, { focus: () => void }>())
   const [confirmMode, setConfirmMode] = useState(false)
   const problems = problemsOf(error)
 
@@ -87,6 +112,20 @@ export function SettingsGroupForm({
 
   const label = (s: Setting) => settingLabel(s.key)
   const editable = group.settings.filter((s) => s.editable)
+  // A refused save's problems at the controls they name (a switch or the days have no place for one: said under the form, as is what names
+  // a setting the environment holds, which cannot be changed here).
+  const { byKey: problemAt, rest: otherProblems } = problemsByKey(
+    problems,
+    editable.filter((s) => s.kind !== 'BOOLEAN' && s.kind !== 'DAYS').map((s) => s.key),
+  )
+  const form = useRef<HTMLFormElement>(null)
+  useEffect(() => {
+    const first = editable.find((s) => problemAt.has(s.key))
+    if (!first) return
+    if (focusers.current.has(first.key)) focusers.current.get(first.key)!.focus()
+    else form.current?.querySelector<HTMLElement>(`[name="${CSS.escape(first.key)}"]`)?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per refusal
+  }, [error])
   const changes = changesOf(group.settings, draft)
   const layout = layoutOf(group.name, group.settings)
   // Which sections are open: as the person left them, else open while used and closed while not (so a choice that leaves one unused folds it).
@@ -140,6 +179,13 @@ export function SettingsGroupForm({
               cleared={draft.cleared.has(s.key)}
               unused={unused.get(s.key) != null}
               reason={reasonOf(s, section)}
+              required={required.includes(s.key)}
+              missing={missing.has(s.key)}
+              problem={problemAt.get(s.key)}
+              selectRef={(handle) => {
+                if (handle) focusers.current.set(s.key, handle)
+                else focusers.current.delete(s.key)
+              }}
               onChange={(value) => set(s.key, value)}
               onClear={(removed) => clear(s.key, removed)}
             />
@@ -202,11 +248,11 @@ export function SettingsGroupForm({
   async function save() {
     setError(undefined)
     try {
-      const answer = await update({ variables: { changes } })
+      const answer = await update({ variables: code === undefined ? { changes } : { changes, code } })
       onSaved()
       // The server says what waits: a group that applies at once runs with what was saved, and a value saved back to what runs waits for nothing.
       const saved = answer.data?.updateSystemSettings.groups.find((g) => g.name === group.name)
-      toast(t(saved?.settings.some((s) => s.restartPending) ? 'systemSettings.saved' : 'systemSettings.savedInEffect'))
+      if (announceSaved) toast(t(saved?.settings.some((s) => s.restartPending) ? 'systemSettings.saved' : 'systemSettings.savedInEffect'))
     } catch (e) {
       setError(e)
     }
@@ -214,12 +260,24 @@ export function SettingsGroupForm({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (changes.length === 0) return
-    if (modeChange) setConfirmMode(true)
+    const empty = editable.filter((s) => required.includes(s.key) && !(draft.values[s.key] ?? '').trim()).map((s) => s.key)
+    if (empty.length > 0) {
+      setMissing(new Set(empty))
+      focusers.current.get(empty[0]!)?.focus()
+      return
+    }
+    if (changes.length === 0) {
+      if (saveUnchanged) onSaved()
+      return
+    }
+    if (modeChange && confirmModeChange) setConfirmMode(true)
     else void save()
   }
 
-  const set = (key: string, value: string) => onDraft({ ...draft, values: { ...draft.values, [key]: value } })
+  const set = (key: string, value: string) => {
+    if (missing.has(key)) setMissing(new Set([...missing].filter((k) => k !== key)))
+    onDraft({ ...draft, values: { ...draft.values, [key]: value } })
+  }
   const clear = (key: string, removed: boolean) => {
     const next = new Set(draft.cleared)
     if (removed) next.add(key)
@@ -247,23 +305,26 @@ export function SettingsGroupForm({
       )}
       {editable.length === 0 && body}
       {editable.length > 0 && (
-        <Form onSubmit={submit} aria-label={t('systemSettings.groupForm', { group: t(`systemSettings.groups.${group.name}`) })}>
+        <Form ref={form} onSubmit={submit} aria-label={t('systemSettings.groupForm', { group: t(`systemSettings.groups.${group.name}`) })}>
           <Stack sx={{ gap: 1.5 }}>
             {body}
             {error !== undefined &&
-              (problems.length > 0 ? (
-                <ErrorMessage error={error}>
-                  {t('systemSettings.problems')}
-                  <ProblemList problems={problems} />
-                </ErrorMessage>
-              ) : (
+              (problems.length === 0 ? (
                 <ErrorMessage error={error} />
+              ) : (
+                otherProblems.length > 0 && (
+                  <ErrorMessage error={error}>
+                    {t('systemSettings.problems')}
+                    <ProblemList problems={otherProblems} />
+                  </ErrorMessage>
+                )
               ))}
-            <div>
-              <Button ref={saveButton} type="submit" variant="contained" size="large" loading={saving} disabled={changes.length === 0}>
-                {t('systemSettings.save')}
+            <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+              {actions}
+              <Button ref={saveButton} type="submit" variant="contained" size="large" loading={saving} disabled={changes.length === 0 && !saveUnchanged}>
+                {submitLabel ?? t('systemSettings.save')}
               </Button>
-            </div>
+            </Stack>
           </Stack>
         </Form>
       )}
@@ -345,6 +406,10 @@ function SettingControl({
   cleared,
   unused,
   reason,
+  required,
+  missing,
+  problem,
+  selectRef,
   onChange,
   onClear,
 }: {
@@ -354,6 +419,10 @@ function SettingControl({
   cleared: boolean
   unused: boolean
   reason: string | null
+  required: boolean
+  missing: boolean
+  problem: string | undefined
+  selectRef: Ref<{ focus: () => void }>
   onChange: (value: string) => void
   onClear: (clear: boolean) => void
 }) {
@@ -361,7 +430,20 @@ function SettingControl({
     // The question mark beside the control, level with its label: what the setting does and its variable, kept out of the way.
     <Stack direction="row" sx={{ gap: 0.5, alignItems: 'flex-start' }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Control setting={s} label={label} value={value} cleared={cleared} unused={unused} reason={reason} onChange={onChange} onClear={onClear} />
+        <Control
+          setting={s}
+          label={label}
+          value={value}
+          cleared={cleared}
+          unused={unused}
+          reason={reason}
+          required={required}
+          missing={missing}
+          problem={problem}
+          selectRef={selectRef}
+          onChange={onChange}
+          onClear={onClear}
+        />
       </Box>
       <SettingHelp settingKey={s.key} label={label} />
     </Stack>
@@ -375,6 +457,10 @@ function Control({
   cleared,
   unused,
   reason,
+  required,
+  missing,
+  problem,
+  selectRef,
   onChange,
   onClear,
 }: {
@@ -384,6 +470,12 @@ function Control({
   cleared: boolean
   unused: boolean
   reason: string | null
+  /** A choice that must be made: no "Default (not set)", an empty one waits for the person (`missing`: the submit found it empty). */
+  required: boolean
+  missing: boolean
+  /** What the server refused about the value at the last save, said at the control. */
+  problem: string | undefined
+  selectRef: Ref<{ focus: () => void }>
   onChange: (value: string) => void
   onClear: (clear: boolean) => void
 }) {
@@ -405,16 +497,29 @@ function Control({
       // The server takes a choice in any case, and spellings it no longer offers ("Ssl"): such a value shows as the choice it means, or as
       // it is written, never as an empty field.
       const choice = s.choices.find((c) => c.toLowerCase() === value.toLowerCase()) ?? value
-      const options = [{ value: '', label: t('systemSettings.useDefault') }, ...s.choices.map((c) => ({ value: c, label: choiceLabel(s.key, c) }))]
+      const options = [...(required ? [] : [{ value: '', label: t('systemSettings.useDefault') }]), ...s.choices.map((c) => ({ value: c, label: choiceLabel(s.key, c) }))]
       if (choice !== '' && !s.choices.includes(choice)) options.push({ value: choice, label: choice })
-      return <LabeledSelect label={label} hint={hint} badges={badges} value={choice} placeholder={t('systemSettings.useDefault')} disabled={unused} onChange={onChange} options={options} />
+      return (
+        <LabeledSelect
+          label={label}
+          hint={hint}
+          badges={badges}
+          value={choice}
+          placeholder={t(required ? 'systemSettings.chooseOne' : 'systemSettings.useDefault')}
+          disabled={unused}
+          onChange={onChange}
+          options={options}
+          error={missing ? t('systemSettings.choiceRequired') : problem}
+          selectRef={selectRef}
+        />
+      )
     }
     case 'DAYS':
       return <DaysControl label={label} hint={hint} badges={badges} value={value} disabled={unused} onChange={onChange} />
     case 'SECRET':
       return (
         <Stack sx={{ gap: 0.5 }}>
-          <Field name={s.key} label={label} badges={badges} hint={[s.isSet ? t('systemSettings.secretSet') : t('systemSettings.secretNotSet'), hint].filter(Boolean).join(' · ')}>
+          <Field name={s.key} label={label} badges={badges} refusal={problem} hint={[s.isSet ? t('systemSettings.secretSet') : t('systemSettings.secretNotSet'), hint].filter(Boolean).join(' · ')}>
             <FieldInput type="password" autoComplete="new-password" value={value} disabled={cleared || unused} onChange={(e) => onChange(e.target.value)} />
           </Field>
           {s.isSet && (
@@ -431,6 +536,7 @@ function Control({
           label={label}
           badges={badges}
           hint={hint}
+          refusal={problem}
           invalid={{ message: t(integer ? 'systemSettings.wholeNumber' : 'forms.numberInvalid'), test: (v) => v.trim() !== '' && !(integer ? /^-?\d+$/ : /^-?\d+([.,]\d+)?$/).test(v.trim()) }}
         >
           <FieldInput inputMode={integer ? 'numeric' : 'decimal'} value={value} disabled={unused} onChange={(e) => onChange(e.target.value)} />
@@ -440,13 +546,13 @@ function Control({
     case 'MULTILINE':
     case 'LIST':
       return (
-        <Field name={s.key} label={label} badges={badges} hint={hint}>
+        <Field name={s.key} label={label} badges={badges} hint={hint} refusal={problem}>
           <FieldInput multiline minRows={3} value={value} disabled={unused} onChange={(e) => onChange(e.target.value)} />
         </Field>
       )
     default:
       return (
-        <Field name={s.key} label={label} badges={badges} hint={hint}>
+        <Field name={s.key} label={label} badges={badges} hint={hint} refusal={problem}>
           <FieldInput value={value} disabled={unused} onChange={(e) => onChange(e.target.value)} />
         </Field>
       )

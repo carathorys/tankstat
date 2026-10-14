@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Setup;
 using Tankstat.Application.Users;
 using Tankstat.Domain;
 using Tankstat.Domain.Users;
@@ -34,9 +35,11 @@ public sealed record SystemSettingsView(SettingsFileStatus File, IReadOnlyList<S
 /// The system settings an administrator manages: every setting of the catalog with its source, the changes written into the app's own
 /// settings file (after the whole resulting configuration passed the same checks the start runs, and the rules only a running app can
 /// check: an OIDC authority that answers, a Standalone mode with an administrator to sign in), and the restart that makes them count.
+/// While a new instance waits for its setup, the setup page's wizard does the same with the one-time code instead of an administrator
+/// (<paramref name="setup"/>): nobody is one yet.
 /// </summary>
 public sealed class SystemSettingsService(
-    AccessService access, ISystemConfiguration configuration, ISettingsFileStore store, IUserRepository users, IOidcDiscovery discovery,
+    AccessService access, SetupGate setup, ISystemConfiguration configuration, ISettingsFileStore store, IUserRepository users, IOidcDiscovery discovery,
     IServerRestart restart, ILogger<SystemSettingsService> logger)
 {
     /// <summary>
@@ -45,15 +48,17 @@ public sealed class SystemSettingsService(
     /// </summary>
     private static readonly SemaphoreSlim Saving = new(1, 1);
 
-    public async Task<SystemSettingsView> GetAsync(CancellationToken ct)
+    /// <param name="code">The one-time code, from the setup page while the setup waits; otherwise an administrator is needed.</param>
+    public async Task<SystemSettingsView> GetAsync(string? code, CancellationToken ct)
     {
-        await access.RequireAdminAsync(ct);
+        await AuthorizeAsync(code, ct);
         return await ViewAsync(ct);
     }
 
-    public async Task<SystemSettingsView> UpdateAsync(IReadOnlyList<SettingChange> changes, CancellationToken ct)
+    /// <param name="code">The one-time code, from the setup page while the setup waits; otherwise an administrator is needed.</param>
+    public async Task<SystemSettingsView> UpdateAsync(IReadOnlyList<SettingChange> changes, string? code, CancellationToken ct)
     {
-        var admin = await access.RequireAdminAsync(ct);
+        var admin = await AuthorizeAsync(code, ct);
         var definitions = new Dictionary<string, SettingDefinition>(StringComparer.OrdinalIgnoreCase);
         foreach (var change in changes)
         {
@@ -116,7 +121,9 @@ public sealed class SystemSettingsService(
             Saving.Release();
         }
         List<string> live = applied ? [.. definitions.Values.Where(d => d.AppliesAtOnce).Select(d => d.Key)] : [];
-        logger.LogInformation("Administrator {AdminId} changed system settings {Keys}; in effect at once: {Live}", admin.Id, string.Join(", ", definitions.Keys), live.Count == 0 ? "none" : string.Join(", ", live));
+        var (keys, inEffect) = (string.Join(", ", definitions.Keys), live.Count == 0 ? "none" : string.Join(", ", live));
+        if (admin is { } id) logger.LogInformation("Administrator {AdminId} changed system settings {Keys}; in effect at once: {Live}", id, keys, inEffect);
+        else logger.LogInformation("The setup page changed system settings {Keys}; in effect at once: {Live}", keys, inEffect);
         return await ViewAsync(ct);
     }
 
@@ -126,13 +133,32 @@ public sealed class SystemSettingsService(
     /// since, say) and a switch to Standalone that could not create its first administrator refuse the restart instead; what only the start
     /// finds (a database out of reach) still stops it.
     /// </summary>
-    public async Task RestartAsync(CancellationToken ct)
+    /// <param name="code">The one-time code, from the setup page while the setup waits; otherwise an administrator is needed.</param>
+    public async Task RestartAsync(string? code, CancellationToken ct)
     {
-        var admin = await access.RequireAdminAsync(ct);
-        using (var next = configuration.PrepareNextStart())
-            await RequireAdministratorAsync(next.RequireStartable(), ct);
-        logger.LogInformation("Administrator {AdminId} restarted the server", admin.Id);
+        var admin = await AuthorizeAsync(code, ct);
+        await RequireStartableAsync(ct);
+        if (admin is { } id) logger.LogInformation("Administrator {AdminId} restarted the server", id);
+        else logger.LogInformation("The setup page restarted the server");
         restart.Restart();
+    }
+
+    /// <summary>Refuses what the next start would refuse, as far as it can be told now (see <see cref="RestartAsync"/>).</summary>
+    public async Task RequireStartableAsync(CancellationToken ct)
+    {
+        using var next = configuration.PrepareNextStart();
+        await RequireAdministratorAsync(next.RequireStartable(), ct);
+    }
+
+    /// <summary>Whether a saved setting waits for a restart to take effect (what the settings page's restart card counts).</summary>
+    public async Task<bool> RestartPendingAsync(CancellationToken ct) => (await ViewAsync(ct)).RestartPending;
+
+    /// <summary>The administrator asking, by id; null for the setup page, whose one-time code opened it.</summary>
+    private async Task<Guid?> AuthorizeAsync(string? code, CancellationToken ct)
+    {
+        if (code is null) return (await access.RequireAdminAsync(ct)).Id;
+        await setup.RequireAsync(code, ct);
+        return null;
     }
 
     private static void Apply(SettingDefinition definition, SettingChange change, Dictionary<string, string?> values, List<string> problems)
@@ -181,10 +207,13 @@ public sealed class SystemSettingsService(
 
     private static bool SameText(string? a, string? b) => string.Equals(a?.Trim(), b?.Trim(), StringComparison.Ordinal);
 
-    /// <summary>Standalone needs an administrator to sign in with afterwards: one there, or one the first start can create from the credentials.</summary>
+    /// <summary>
+    /// Standalone needs an administrator to sign in with afterwards: one there, or one the first start can create from the credentials. Not
+    /// while the setup waits: a start without either waits for the setup page then, which makes the administrator.
+    /// </summary>
     private async Task RequireAdministratorAsync(IConfiguration next, CancellationToken ct)
     {
-        if (Is(next["Auth:Mode"], AuthMode.Standalone) && !await users.AnyLocalAdminAsync(ct) && await BootstrapProblemAsync(next, ct) is { } reason)
+        if (Is(next["Auth:Mode"], AuthMode.Standalone) && !await users.AnyLocalAdminAsync(ct) && await BootstrapProblemAsync(next, ct) is { } reason && !await setup.WaitsAsync(ct))
             throw new DomainException("settings.standaloneNeedsAdministrator",
                 $"Standalone mode needs an administrator: none exists yet, and the next start creates the first one from Auth:Standalone:AdminEmail (a valid address no local account has) and Auth:Standalone:AdminPassword ({PasswordPolicy.MinLength} to {PasswordPolicy.MaxLength} characters) in the environment.",
                 new { Reason = reason });

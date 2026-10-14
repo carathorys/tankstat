@@ -20,3 +20,19 @@ export function problemsOf(error: unknown): string[] {
   const problems = (first.extensions?.args as { problems?: unknown } | undefined)?.problems
   return Array.isArray(problems) ? problems.filter((p): p is string => typeof p === 'string') : []
 }
+
+/**
+ * The problems of a refused save by the setting each names, to say it at its control: a validator's message starts with the setting's key
+ * ("Auth:Oidc:Authority is required for Oidc mode."), the longest of `keys` that does; `rest` names none of them (or one already said).
+ */
+export function problemsByKey(problems: readonly string[], keys: readonly string[]): { byKey: ReadonlyMap<string, string>; rest: string[] } {
+  const byKey = new Map<string, string>()
+  const rest: string[] = []
+  const longestFirst = [...keys].sort((a, b) => b.length - a.length)
+  for (const problem of problems) {
+    const key = longestFirst.find((k) => problem.startsWith(k) && /^(\s|['"]|$)/.test(problem.slice(k.length)))
+    if (key && !byKey.has(key)) byKey.set(key, problem)
+    else rest.push(problem)
+  }
+  return { byKey, rest }
+}

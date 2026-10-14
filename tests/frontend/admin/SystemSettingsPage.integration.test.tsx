@@ -5,11 +5,10 @@ import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vite
 import { RESTART_WAIT } from '../../../src/frontend/admin/restartFlow.ts'
 import App from '../../../src/frontend/App.tsx'
 import en from '../../../src/frontend/i18n/locales/en.json'
-import type { SystemSettingFieldsFragment } from '../../../src/frontend/gql/generated.ts'
 import { navigation } from '../../../src/frontend/navigation.ts'
 import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
 import { server } from '../support/server.ts'
-import { fakeVehicleBackend, gqlError, healthHandler, renderWithApollo, sessionHandler, stubViewport, user } from '../support/mocks.tsx'
+import { fakeVehicleBackend, gqlError, healthHandler, renderWithApollo, sessionHandler, stubViewport, systemSetting as setting, user } from '../support/mocks.tsx'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => server.resetHandlers())
@@ -18,21 +17,6 @@ afterAll(() => server.close())
 const slow = { ...RESTART_WAIT }
 beforeEach(() => Object.assign(RESTART_WAIT, { interval: 1, downFor: 5, upFor: 500 }))
 afterEach(() => Object.assign(RESTART_WAIT, slow))
-
-// Typed, as the server answers them: a fragment never matches an untyped object.
-const setting = (over: Partial<SystemSettingFieldsFragment> & { key: string }): SystemSettingFieldsFragment & { __typename: 'SystemSetting' } => ({
-  __typename: 'SystemSetting',
-  kind: 'TEXT',
-  choices: [],
-  value: null,
-  isSet: false,
-  isSecret: false,
-  source: 'DEFAULT',
-  editable: true,
-  restartPending: false,
-  defaultValue: null,
-  ...over,
-})
 
 const MODES = ['None', 'Standalone', 'Oidc', 'ProxyHeader']
 const LEVELS = ['Trace', 'Debug', 'Information', 'Warning', 'Error', 'Critical', 'None']
@@ -278,6 +262,28 @@ it('a refused save lists what the server could not take and keeps the form', asy
   expect(alert).toHaveTextContent('The server could not take these values:')
   expect(within(alert).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Smtp:Port must be a whole number.', 'Auth:PublicUrl is required when Smtp is configured (it is used in e-mailed links).'])
   expect(defaults.getByLabelText('Currency')).toHaveValue('HUFX')
+})
+
+it('a problem of a setting of the group is said at its field, not under the form, and the field takes the focus', async () => {
+  const ui = userEvent.setup()
+  settingsServer()
+  const problem = 'Auth:PublicUrl is required when Smtp is configured (it is used in e-mailed links).'
+  server.use(
+    graphql.mutation('UpdateSystemSettings', () =>
+      HttpResponse.json(gqlError(`The settings cannot be used as they are: ${problem}`, 'VALIDATION_FAILED', 'settings.invalid', { problems: [problem] })),
+    ),
+  )
+  renderWithApollo(<App />, '/admin/settings')
+
+  const auth = await group('Sign-in')
+  const url = auth.getByRole('textbox', { name: /^Public address/ })
+  await ui.click(auth.getByLabelText(/^Administrators may set passwords/)) // a change to save; the server names another setting of the group
+  await ui.click(auth.getByRole('button', { name: 'Save changes' }))
+
+  await waitFor(() => expect(url).toHaveAccessibleDescription(expect.stringContaining(problem)))
+  expect(url).toHaveAttribute('aria-invalid', 'true')
+  expect(url).toHaveFocus()
+  expect(auth.queryByRole('alert')).not.toBeInTheDocument() // said once, at the field
 })
 
 it('changing the sign-in mode asks once more and says the way back', async () => {

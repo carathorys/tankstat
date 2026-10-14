@@ -202,6 +202,16 @@ namespace Tankstat.Migrations.MySql
                     b.Property<DateTime?>("RestoredAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<DateTime?>("SetupCompletedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("SetupCompletedVia")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime?>("SetupPendingSince")
+                        .HasColumnType("datetime(6)");
+
                     b.HasKey("Id");
 
                     b.ToTable("InstanceState", (string)null);

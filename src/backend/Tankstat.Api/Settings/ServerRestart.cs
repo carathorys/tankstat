@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Tankstat.Application.Setup;
 using Tankstat.Application.SystemSettings;
 
 namespace Tankstat.Api.Settings;
@@ -11,6 +12,12 @@ public sealed class RestartRequests
 {
     private volatile bool _requested;
     private volatile bool _stopping;
+
+    /// <summary>
+    /// The instance's one-time code for this process: a restart in it keeps it (the setup page that asked for the restart goes on with the
+    /// code it was given, a provider's sign-in after it too); a new process makes a new one.
+    /// </summary>
+    public OneTimeCode Code { get; } = new();
 
     /// <summary>A restart was asked for since this host started, and no stop signal came since the process started.</summary>
     public bool Requested => _requested && !_stopping;

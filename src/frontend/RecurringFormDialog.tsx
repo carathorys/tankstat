@@ -192,7 +192,7 @@ function RecurringForm({
   }
 
   return (
-    <Form onSubmit={submit}>
+    <Form onSubmit={submit} refusal={error}>
       <Stack sx={{ gap: 1.5 }}>
         <Field name="title" label={t('recurring.fields.title')} required extra={merging.note('title', t('recurring.fields.title'))}>
           <FieldInput maxLength={120} autoComplete="off" key={merging.key('title')} defaultValue={own('title', initial?.title)} />

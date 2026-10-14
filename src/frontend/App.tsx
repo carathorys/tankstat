@@ -15,6 +15,8 @@ import { ErrorBoundary } from './ErrorBoundary.tsx'
 import { LoginView } from './LoginView.tsx'
 import { ErrorMessage } from './messages.tsx'
 import { NoticeBanner } from './NoticeBanner.tsx'
+import { useConnectivity } from './offline/useConnectivity.ts'
+import { useTakeoverHeld } from './setup/takeoverHold.ts'
 import { ResetPasswordView } from './PasswordForms.tsx'
 import { HealthFooter } from './shell/HealthFooter.tsx'
 import { UiSettingsProvider } from './settings/UiSettingsProvider.tsx'
@@ -40,6 +42,39 @@ const AdminPanel = lazy(() => import('./admin/AdminPanel.tsx').then((m) => ({ de
 const SystemSettingsPage = lazy(() => import('./admin/SystemSettingsPage.tsx').then((m) => ({ default: m.SystemSettingsPage })))
 const AdminOverviewPage = lazy(() => import('./admin/AdminOverviewPage.tsx').then((m) => ({ default: m.AdminOverviewPage })))
 const BackupsPage = lazy(() => import('./admin/BackupsPage.tsx').then((m) => ({ default: m.BackupsPage })))
+const SetupPage = lazy(() => import('./setup/SetupPage.tsx').then((m) => ({ default: m.SetupPage })))
+
+/**
+ * While a new instance waits for its setup, whoever reaches it in Standalone (nobody can sign in yet) or with sign-in off gets the setup
+ * page wherever they go; with a provider (OIDC, proxy) a visitor signs in first and finds the setup at `/setup`, the notice links to it.
+ * Not while the server is out of reach: the session is then the device's last answer, maybe from before the setup was done elsewhere, and
+ * the setup page could only say that it needs the server, where the device's own data still works. Except while the setup page waits for
+ * a restart it asked for (`takeoverHold.ts`): the server is away on purpose then, and the page goes on once it is back.
+ */
+function useSetupTakesOver(data: SessionQuery | undefined) {
+  const { reachable } = useConnectivity()
+  const held = useTakeoverHeld()
+  return (
+    (reachable || held) &&
+    data !== undefined &&
+    data.notices.some((n) => n.code === 'SETUP_PENDING') &&
+    (data.session.mode === 'NONE' || (data.session.mode === 'STANDALONE' && !data.session.user))
+  )
+}
+
+/**
+ * The notices above the page. The setup's own is left out where the setup page is what is shown (in place of every page, or at `/setup`
+ * once past the sign-in), since it would point at itself; and while the setup waits there, so is the warning of sign-in off: the shipped
+ * mode is not chosen yet, the wizard asks for one, and its last step says what sign-in off means. The address is read here, so a
+ * navigation redraws this, not the whole shell.
+ */
+function Notices({ data }: { data: SessionQuery }) {
+  const { pathname } = useLocation()
+  const setupShown = useSetupTakesOver(data) || (pathname === '/setup' && (data.session.mode === 'NONE' || data.session.user !== null))
+  const waits = data.notices.some((n) => n.code === 'SETUP_PENDING')
+  const hidden = setupShown ? (waits ? ['SETUP_PENDING', 'AUTH_DISABLED'] : ['SETUP_PENDING']) : []
+  return <NoticeBanner notices={data.notices.filter((n) => !hidden.includes(n.code))} />
+}
 
 /** Another address for a page, its query string kept (a page or a sort someone saved a link to). */
 function KeepQuery({ to }: { to: string }) {
@@ -63,7 +98,9 @@ export default function App() {
   const { data, error, loading } = useQuery(SessionDocument)
   const mode = data?.session.mode ?? 'NONE'
   const user = data?.session.user ?? null
-  const showMenu = data !== undefined && (mode === 'NONE' || user !== null)
+  // No menu while the setup page stands in for every page: none of them is there yet.
+  const takenOver = useSetupTakesOver(data)
+  const showMenu = data !== undefined && (mode === 'NONE' || user !== null) && !takenOver
 
   // The UI settings follow the user: asked from the server once per session, kept per user (the key starts afresh on sign-in and sign-out).
   return (
@@ -172,7 +209,7 @@ function Shell({
             {loading && <Loading />}
             <UpdateNotice />
             <OfflineReadyNotice />
-            {data && <NoticeBanner notices={data.notices} />}
+            {data && <Notices data={data} />}
             {data && <Content data={data} />}
           </Box>
         </Box>
@@ -215,7 +252,16 @@ function Content({ data }: { data: SessionQuery }) {
   const resetToken = params.get('resetToken')
   const { mode, user } = data.session
   const isAdmin = user?.isAdmin === true // the full vehicle list and the administration are for administrators only
+  const takenOver = useSetupTakesOver(data)
 
+  if (takenOver)
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<Loading />}>
+          <SetupPage mode={mode} />
+        </Suspense>
+      </ErrorBoundary>
+    )
   if (mode === 'STANDALONE' && resetToken && !user) return <ResetPasswordView token={resetToken} />
   if (mode !== 'NONE' && !user) return <LoginView mode={mode} />
 
@@ -244,6 +290,7 @@ function Content({ data }: { data: SessionQuery }) {
             <Route path="/admin/vehicles" element={isAdmin ? <VehiclesPage /> : <Navigate to="/" replace />} />
             <Route path="/admin/settings" element={isAdmin ? <SystemSettingsPage /> : <Navigate to="/" replace />} />
             <Route path="/admin/backups" element={isAdmin ? <BackupsPage /> : <Navigate to="/" replace />} />
+            <Route path="/setup" element={<SetupPage mode={mode} />} />
             <Route path="*" element={<Typography>{t('app.notFound')}</Typography>} />
           </Routes>
         </Suspense>

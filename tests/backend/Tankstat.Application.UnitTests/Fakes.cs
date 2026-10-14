@@ -1,4 +1,5 @@
 using Tankstat.Application.Sync;
+using Tankstat.Application.Setup;
 using Tankstat.Application.SystemSettings;
 using Tankstat.Domain.Sync;
 using Microsoft.Extensions.Options;
@@ -23,6 +24,7 @@ using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Images;
+using Tankstat.Domain.Instance;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Notifications;
 using Tankstat.Domain.Odometers;
@@ -425,7 +427,13 @@ internal sealed class InMemoryUsers : IUserRepository
     public Task<bool> AnyLocalAdminAsync(CancellationToken ct) =>
         Task.FromResult(Items.Any(u => u.Provider == UserProvider.Local && u.IsAdmin && !u.IsDisabled));
     public Task AddAsync(User user, CancellationToken ct) { Items.Add(user); return Task.CompletedTask; }
-    public Task UpdateAsync(User user, CancellationToken ct) => Task.CompletedTask; // entities are shared references
+    /// <summary>How often a user was written back (the entities are shared references, so only the count tells).</summary>
+    public int Updates { get; private set; }
+    public Task UpdateAsync(User user, CancellationToken ct)
+    {
+        Updates++;
+        return Task.CompletedTask;
+    }
 }
 
 internal sealed class InMemoryLogPhotos : ILogPhotoRepository
@@ -802,6 +810,11 @@ internal sealed class World
     public FakeOidcDiscovery Discovery { get; } = new();
     public FakeServerRestart Restart { get; } = new();
     public InMemoryInstanceState Instance { get; } = new();
+    /// <summary>The setup: completed unless a test says it waits (<c>SetupStatus.Set(true)</c> and <c>SetupStore.Phase</c>); the code is <c>Code</c>.</summary>
+    public SetupStatus SetupStatus { get; } = new();
+    public InMemorySetupStore SetupStore { get; }
+    public OneTimeCode Code { get; } = new();
+    public SetupGate SetupGate { get; }
     public SystemSettingsService SystemSettings { get; }
     public InstanceStartService InstanceStart { get; }
 
@@ -889,7 +902,9 @@ internal sealed class World
         UserService = new UserService(Access, Users, UserData, resets, SessionService, new FakeHasher(), ImageService, ImportSessions, options, Log.For<UserService>());
         AccessAdmin = new AccessAdminService(Access, Settings, Grants, Users, Notifier, Log.For<AccessAdminService>());
         Availability = new RecognitionAvailability(Recognizer, Clock, Log.For<RecognitionAvailability>());
-        SystemSettings = new SystemSettingsService(Access, SystemConfiguration, SettingsFile, Users, Discovery, Restart, Log.For<SystemSettingsService>());
+        SetupStore = new InMemorySetupStore(Users, Vehicles) { Phase = SetupPhase.Completed };
+        SetupGate = new SetupGate(SetupStatus, SetupStore, Code);
+        SystemSettings = new SystemSettingsService(Access, SetupGate, SystemConfiguration, SettingsFile, Users, Discovery, Restart, Log.For<SystemSettingsService>());
         InstanceStart = new InstanceStartService(Instance, Sessions, options, Clock, Log.For<InstanceStartService>());
     }
 
