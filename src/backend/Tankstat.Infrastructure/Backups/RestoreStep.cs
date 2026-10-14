@@ -207,7 +207,7 @@ internal sealed class RestoreStep(
             // The settings file the backup brings, as the restore would leave it under this server's environment: one this server would not
             // start with (or would leave out) is refused with the data as it is, as the request refused it.
             if (BackupFile.ReadSettings(file, manifest, identity) is { } fromBackup)
-                settings = await settingsFile.RestoredAsync(fromBackup, manifest.Encryption is not null, ct);
+                settings = await settingsFile.RestoredAsync(fromBackup, manifest.CarriesSecrets(), ct);
             // What the backup's server set in its environment needs a value here too, as the request asked; this start's environment decides.
             await RestoreService.RequireRecordedAsync(settingsFile, manifest, settings, ct);
             if (settings is { Problems.Count: > 0 })

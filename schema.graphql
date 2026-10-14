@@ -181,6 +181,8 @@ type BackupEnvironmentInfo {
   settings: [String!]!
   server: [String!]!
   missing: [String!]!
+  missingCertain: Boolean!
+  overridden: [String!]!
 }
 
 type BackupKeySetInfo {
@@ -212,6 +214,9 @@ type BackupRunInfo {
 type BackupSettingsFileInfo {
   state: BackupSettingsState!
   omitted: [String!]!
+  secrets: Boolean!
+  secretsLeftOut: [String!]!
+  machineLeftOut: [String!]!
 }
 
 type BackupSettingsInfo {
@@ -226,6 +231,7 @@ type BackupSettingsInfo {
   keep: Int
   keepDays: Int
   environment: BackupEnvironmentMode!
+  secrets: Boolean!
 }
 
 type ChartData {

@@ -11,6 +11,13 @@ namespace Tankstat.Application.Backups;
 /// <summary>What is asked for: a backup by its file name in the backups folder, the passphrase or the identity of an encrypted one, and with sign-in off or while the setup waits the one-time code from the log.</summary>
 public sealed record RestoreRequest(string File, string? Passphrase, string? Identity, string? Code);
 
+/// <summary>
+/// What a backup of the folder would mean here (<see cref="RestoreService.HereAsync"/>): the recorded settings this server lacks (the restore is
+/// refused for them; <see cref="MissingCertain"/> false where they could not be checked against an encrypted backup's file), and the settings
+/// of its file that this server's environment overrides, by variable name.
+/// </summary>
+public sealed record RestoreHere(IReadOnlyList<string> Missing, bool MissingCertain, IReadOnlyList<string> Overridden);
+
 /// <summary>The restore that now waits for the restart: the file and the time it takes the data back to.</summary>
 public sealed record RestorePending(string File, DateTimeOffset RestorePoint);
 
@@ -63,7 +70,7 @@ public sealed class RestoreService(
     public static async Task RequireStartableAsync(
         IBackupStore store, ISettingsBackup settings, ISystemConfiguration configuration, string file, BackupManifest manifest, string? identity, CancellationToken ct)
     {
-        var restored = store.ReadSettings(file, manifest, identity) is { } fromBackup ? await settings.RestoredAsync(fromBackup, manifest.Encryption is not null, ct) : null;
+        var restored = store.ReadSettings(file, manifest, identity) is { } fromBackup ? await settings.RestoredAsync(fromBackup, manifest.CarriesSecrets(), ct) : null;
         await RequireRecordedAsync(settings, manifest, restored, ct);
         if (restored is not null)
         {
@@ -78,27 +85,42 @@ public sealed class RestoreService(
     }
 
     /// <summary>
-    /// For a list of the folder's backups: the settings <paramref name="point"/> recorded of its server's environment that a restore here
-    /// would lack, as far as can be told without a key. A plain backup's settings file is read; an encrypted one's cannot be: one that merged
-    /// the environment into it carries every one of them, one that only recorded it counts as holding none (its restore judges the file).
-    /// Never a refusal: a backup whose file cannot be read lacks nothing here, its restore says why.
+    /// For a list of the folder's backups, before anyone restores: what <paramref name="point"/> would lack here (the settings it recorded of its
+    /// server's environment that neither this environment nor its file holds, which the restore is refused for) and what this server's
+    /// environment overrides of its file, as far as can be told without a key. A plain backup's settings entry is read; an encrypted one's cannot
+    /// be: one that merged the environment into it holds what it recorded (the secrets only if it carries them), one that only recorded counts as holding none, and then the missing ones are not
+    /// certain (<see cref="RestoreHere.MissingCertain"/>: the restore judges the file once the passphrase is given), and nothing is known to be
+    /// overridden. A backup whose file cannot be read lacks nothing here: its restore says why.
     /// </summary>
-    public static async Task<IReadOnlyList<string>> MissingHereAsync(IBackupStore store, ISettingsBackup settings, RestorePoint point, CancellationToken ct)
+    public static async Task<RestoreHere> HereAsync(IBackupStore store, ISettingsBackup settings, RestorePoint point, CancellationToken ct)
     {
         var m = point.Manifest;
-        if (m.Environment is not { Settings.Count: > 0 } recorded) return [];
-        IReadOnlyDictionary<string, string?>? file;
         try
         {
-            if (m.Settings is not { State: BackupSettingsState.Included }) file = null; // the restore leaves this server's own file
-            else if (m.Encryption is null) file = store.ReadSettings(point.File, m, identity: null);
-            else if (recorded.Mode == BackupEnvironmentMode.Merge) return [];
-            else file = new Dictionary<string, string?>();
-            return await settings.MissingAsync(recorded, file, ct);
+            IReadOnlyDictionary<string, string?>? file = null; // none: the restore leaves this server's own file
+            var readable = true;
+            if (m.Settings is { State: BackupSettingsState.Included })
+            {
+                if (m.Encryption is null) file = store.ReadSettings(point.File, m, identity: null);
+                else readable = false;
+            }
+            var overridden = file is null ? [] : settings.Overridden(file);
+            if (m.Environment is not { Settings.Count: > 0 } recorded) return new RestoreHere([], true, overridden);
+            // Merged into a file that cannot be read without the passphrase: it holds every recorded setting, the secrets only when it was
+            // asked to carry them.
+            if (!readable && recorded.Mode == BackupEnvironmentMode.Merge)
+            {
+                var merged = recorded.Settings.Select(SettingsInBackups.KeyOf)
+                    .Where(k => m.CarriesSecrets() || SettingsInBackups.CategoryOf(k) != SettingCategory.Secret)
+                    .ToDictionary(k => k, string? (_) => "", StringComparer.OrdinalIgnoreCase);
+                return new RestoreHere(await settings.MissingAsync(recorded, merged, ct), true, overridden);
+            }
+            var missing = await settings.MissingAsync(recorded, readable ? file : new Dictionary<string, string?>(), ct);
+            return new RestoreHere(missing, readable, overridden);
         }
         catch (DomainException)
         {
-            return [];
+            return new RestoreHere([], true, []);
         }
     }
 

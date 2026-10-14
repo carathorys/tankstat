@@ -12,7 +12,7 @@ namespace Tankstat.Api.Settings;
 /// </summary>
 internal sealed class SettingsBackup(ISystemConfiguration configuration, ISettingsFileStore file) : ISettingsBackup
 {
-    public async Task<SettingsCopy> CopyAsync(bool encrypted, BackupEnvironmentMode mode, CancellationToken ct)
+    public async Task<SettingsCopy> CopyAsync(bool carriesSecrets, BackupEnvironmentMode mode, CancellationToken ct)
     {
         var environmentKeys = configuration.EnvironmentKeys();
         var environment = SettingsInBackups.Recorded(mode, environmentKeys);
@@ -32,13 +32,13 @@ internal sealed class SettingsBackup(ISystemConfiguration configuration, ISettin
             }
         }
         // Merged, the copy holds what the environment sets too (a server with no file but variables gets a file of them); the live file never.
-        if (mode == BackupEnvironmentMode.Merge) values = SettingsInBackups.Merged(values, environmentKeys, configuration.Running, encrypted);
+        if (mode == BackupEnvironmentMode.Merge) values = SettingsInBackups.Merged(values, environmentKeys, configuration.Running, carriesSecrets);
         if (!file.Exists && values.Count == 0) return SettingsCopy.None with { Environment = environment };
-        var (carried, omitted) = SettingsInBackups.Copy(values, encrypted);
+        var (carried, omitted) = SettingsInBackups.Copy(values, carriesSecrets);
         return new SettingsCopy(BackupSettingsState.Included, carried, omitted, environment);
     }
 
-    public async Task<RestoredSettings> RestoredAsync(IReadOnlyDictionary<string, string?> fromBackup, bool encrypted, CancellationToken ct)
+    public async Task<RestoredSettings> RestoredAsync(IReadOnlyDictionary<string, string?> fromBackup, bool carriesSecrets, CancellationToken ct)
     {
         IReadOnlyDictionary<string, string?> live;
         try
@@ -49,7 +49,7 @@ internal sealed class SettingsBackup(ISystemConfiguration configuration, ISettin
         {
             live = new Dictionary<string, string?>(); // this server's file reads as nothing: none of it is kept
         }
-        var values = SettingsInBackups.Restored(fromBackup, live, encrypted);
+        var values = SettingsInBackups.Restored(fromBackup, live, carriesSecrets);
         var candidate = configuration.With(values);
         try
         {
@@ -64,6 +64,13 @@ internal sealed class SettingsBackup(ISystemConfiguration configuration, ISettin
     }
 
     public Task WriteAsync(IReadOnlyDictionary<string, string?> values, CancellationToken ct) => file.WriteAsync(values, ct);
+
+    public IReadOnlyList<string> Overridden(IReadOnlyDictionary<string, string?> fromBackup) =>
+    [
+        .. fromBackup.Keys.Select(SettingsInBackups.ListKeyOf).Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(key => configuration.SourceOf(key) == SettingSource.Environment)
+            .Order(StringComparer.OrdinalIgnoreCase).Select(SettingsInBackups.VariableOf),
+    ];
 
     public async Task<IReadOnlyList<string>> MissingAsync(BackupEnvironment recorded, IReadOnlyDictionary<string, string?>? restored, CancellationToken ct)
     {

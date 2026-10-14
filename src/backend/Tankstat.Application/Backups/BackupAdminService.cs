@@ -17,16 +17,16 @@ public sealed record BackupStatus(string Folder, BackupRunStatus Run, BackupOpti
 /// The backups in the folder, the migration the database is at, and the migrations of this release: a backup made at one of them can be
 /// restored here (an older one is brought up to date), one made at another is a newer release's.
 /// </summary>
-/// <param name="Missing">By file: the settings a backup recorded of its server's environment that a restore here would lack (<see cref="RestoreService.MissingHereAsync"/>).</param>
-public sealed record RestorePoints(IReadOnlyList<RestorePoint> Points, string? DatabaseMigration, IReadOnlyList<string> KnownMigrations, IReadOnlyDictionary<string, IReadOnlyList<string>> Missing)
+/// <param name="Here">By file: what a restore of the backup would mean here (<see cref="RestoreService.HereAsync"/>).</param>
+public sealed record RestorePoints(IReadOnlyList<RestorePoint> Points, string? DatabaseMigration, IReadOnlyList<string> KnownMigrations, IReadOnlyDictionary<string, RestoreHere> Here)
 {
     /// <summary>The points of the folder, with what each would lack here.</summary>
     public static async Task<RestorePoints> ListAsync(IBackupStore store, ISettingsBackup settings, IDatabaseFacts database, CancellationToken ct)
     {
         var points = store.List();
-        var missing = new Dictionary<string, IReadOnlyList<string>>();
-        foreach (var point in points) missing[point.File] = await RestoreService.MissingHereAsync(store, settings, point, ct);
-        return new RestorePoints(points, await database.LastMigrationAsync(ct), await database.KnownMigrationsAsync(ct), missing);
+        var here = new Dictionary<string, RestoreHere>();
+        foreach (var point in points) here[point.File] = await RestoreService.HereAsync(store, settings, point, ct);
+        return new RestorePoints(points, await database.LastMigrationAsync(ct), await database.KnownMigrationsAsync(ct), here);
     }
 }
 

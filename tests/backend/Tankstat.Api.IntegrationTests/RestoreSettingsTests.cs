@@ -87,6 +87,24 @@ public sealed class RestoreSettingsTests : IDisposable
     }
 
     [Fact]
+    public async Task AnEncryptedBackup_LeavesTheSecretsOut_UnlessAskedTo()
+    {
+        var salt = Encoding.ASCII.GetBytes("tankstat-salt-01");
+        var identity = BackupKeys.Identity("correct horse battery staple", salt, Argon2idParameters.Default);
+        using var a = Host("a", "None", """{ "Smtp": { "Password": "zzzz-a-password" } }""", new()
+        {
+            ["Backups:Encryption:Recipient"] = AgeKeys.FormatRecipient(BackupKeys.Recipient(identity)),
+            ["Backups:Encryption:Salt"] = Convert.ToBase64String(salt),
+        });
+
+        var written = await Backup(a);
+
+        Assert.False(written.Manifest.Settings!.Secrets); // encrypted, but not asked to (user decision)
+        Assert.False(written.Manifest.CarriesSecrets());
+        Assert.Contains("Smtp:Password", written.Manifest.Settings.Omitted!);
+    }
+
+    [Fact]
     public async Task AnEncryptedBackup_BringsItsSecretsBack()
     {
         var salt = Encoding.ASCII.GetBytes("tankstat-salt-01");
@@ -97,11 +115,11 @@ public sealed class RestoreSettingsTests : IDisposable
             ["Backups:Encryption:Salt"] = Convert.ToBase64String(salt),
         };
         string backup;
-        using (var a = Host("a", "None", """{ "Smtp": { "Password": "zzzz-a-password" } }""", encryption))
+        using (var a = Host("a", "None", """{ "Smtp": { "Password": "zzzz-a-password" } }""", new(encryption) { ["Backups:Secrets"] = "true" }))
             backup = (await Backup(a)).Path;
-        // The same key set in its environment, as the old server's: a backup records what its server's environment set, and a restore
-        // where it is missing is refused.
-        using var b = Host("b", "None", """{ "Smtp": { "Password": "b-password" } }""", encryption);
+        // The same key set and choice in its environment, as the old server's: a backup records what its server's environment set, and a
+        // restore where it is missing is refused.
+        using var b = Host("b", "None", """{ "Smtp": { "Password": "b-password" } }""", new(encryption) { ["Backups:Secrets"] = "true" });
         Stage(Folder("b-backups"), backup, AgeKeys.FormatIdentity(identity));
 
         _ = b.Factory.Services;
@@ -213,6 +231,76 @@ public sealed class RestoreSettingsTests : IDisposable
         Assert.Equal(1, refused);
         Assert.Contains("Defaults__Currency", error.ToString()); // the refusal, before the marker
         Assert.False(File.Exists(RestoreMarker.PathIn(Folder("b-backups"))));
+    }
+
+    [Fact]
+    public async Task APlainBackup_KeepsItsSecretsOnlyWhenAskedTo_AndARestoreOfOneThatDid_BringsThemBack()
+    {
+        string backup;
+        using (var a = Host("a", "None", """{ "Smtp": { "Password": "zzzz-a-password" } }""", new() { ["Backups:Secrets"] = "true" }))
+        {
+            var written = await Backup(a);
+            Assert.True(written.Manifest.Settings!.Secrets);
+            Assert.Equal("zzzz-a-password", BackupFile.ReadSettings(written.Path, written.Manifest, null)!["Smtp:Password"]); // in plain, as asked
+            backup = written.Path;
+        }
+        using var b = Host("b", "None", """{ "Smtp": { "Password": "b-password" } }""", new() { ["Backups:Secrets"] = "true" });
+        Stage(Folder("b-backups"), backup);
+
+        _ = b.Factory.Services;
+
+        Assert.Equal("zzzz-a-password", (string?)Json(b.SettingsPath)["Smtp"]!["Password"]); // the backup's, since it brought them
+    }
+
+    [Fact]
+    public async Task AnEncryptedMergedBackup_WithoutItsSecrets_IsListedAsLackingThem_ForCertain()
+    {
+        var salt = Encoding.ASCII.GetBytes("tankstat-salt-01");
+        var identity = BackupKeys.Identity("correct horse battery staple", salt, Argon2idParameters.Default);
+        var shared = new Dictionary<string, string?>
+        {
+            ["Auth:Standalone:AdminEmail"] = TestApp.AdminEmail,
+            ["Auth:Standalone:AdminPassword"] = TestApp.AdminPassword,
+            ["Backups:Environment"] = "Merge",
+            ["Backups:Encryption:Recipient"] = AgeKeys.FormatRecipient(BackupKeys.Recipient(identity)),
+            ["Backups:Encryption:Salt"] = Convert.ToBase64String(salt),
+        };
+        string backup;
+        using (var a = Host("a", "Standalone", file: null, new(shared) { ["Smtp:Password"] = "zzzz-a-password" }))
+            backup = (await Backup(a)).Path;
+        using var b = Host("b", "Standalone", file: null, shared);
+        Stage(Folder("b-backups"), backup, marker: false);
+        using var client = b.NewClient();
+        await client.LoginAs(TestApp.AdminEmail, TestApp.AdminPassword);
+
+        var environment = Assert.Single((await client.Gql("{ backups { restorePoints { environment { missing missingCertain } } } }"))
+            .Data().GetProperty("backups").GetProperty("restorePoints").EnumerateArray()).GetProperty("environment");
+
+        // Its file cannot be read without the passphrase, but it merged everything except the secret, which it was not asked to carry.
+        Assert.Equal(["Smtp__Password"], environment.GetProperty("missing").EnumerateArray().Select(n => n.GetString()));
+        Assert.True(environment.GetProperty("missingCertain").GetBoolean());
+    }
+
+    [Fact]
+    public async Task TheBackupsPage_SaysWhichSecretsAPlainBackupLeftOut_AndWhatThisServersEnvironmentOverrides()
+    {
+        var admin = new Dictionary<string, string?> { ["Auth:Standalone:AdminEmail"] = TestApp.AdminEmail, ["Auth:Standalone:AdminPassword"] = TestApp.AdminPassword };
+        string backup;
+        using (var a = Host("a", "Standalone", """{ "Smtp": { "Password": "zzzz" }, "Defaults": { "Currency": "XYZ" } }""", admin))
+            backup = (await Backup(a)).Path;
+        using var b = Host("b", "Standalone", file: null, new(admin) { ["Defaults:Currency"] = "EUR" });
+        Stage(Folder("b-backups"), backup, marker: false);
+        using var client = b.NewClient();
+        await client.LoginAs(TestApp.AdminEmail, TestApp.AdminPassword);
+
+        var point = Assert.Single((await client.Gql("{ backups { restorePoints { settingsFile { secrets secretsLeftOut machineLeftOut } environment { overridden } } } }"))
+            .Data().GetProperty("backups").GetProperty("restorePoints").EnumerateArray());
+
+        var file = point.GetProperty("settingsFile");
+        Assert.False(file.GetProperty("secrets").GetBoolean());
+        Assert.Equal(["Smtp:Password"], file.GetProperty("secretsLeftOut").EnumerateArray().Select(n => n.GetString()));
+        Assert.Empty(file.GetProperty("machineLeftOut").EnumerateArray());
+        Assert.Equal(["Defaults__Currency"], point.GetProperty("environment").GetProperty("overridden").EnumerateArray().Select(n => n.GetString()));
     }
 
     /// <summary>A backup of an instance without users, whose settings file says Standalone (its sign-in held off by the environment).</summary>

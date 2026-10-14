@@ -30,16 +30,25 @@ public sealed record RestorePointInfo(
             point.File, point.Bytes, m.CreatedAt, m.AppVersion, m.Provider, MigrationNames.Of(m.Migration), same, older, m.SafetyNet,
             point.Uploaded, m.Encryption is not null, m.Encryption?.Recipient, m.Encryption is { } e && e.Recipient == currentRecipient,
             m.Contents.Photos, m.Contents.Keys, m.Contents.Tables.Count, m.Contents.Tables.Where(t => t.Key != "__EFMigrationsHistory").Sum(t => t.Value),
-            m.Settings is { } settings ? new BackupSettingsFileInfo(settings.State, settings.Omitted ?? []) : null,
-            m.Environment is { } environment
-                ? new BackupEnvironmentInfo(environment.Mode, environment.Settings, environment.Server, points.Missing.GetValueOrDefault(point.File) ?? [])
-                : null);
+            m.Settings is { } settings ? BackupSettingsFileInfo.From(settings, m.CarriesSecrets()) : null,
+            m.Environment is { } environment ? BackupEnvironmentInfo.From(environment, points.Here.GetValueOrDefault(point.File)) : null);
     }
 }
 
 /// <param name="State">It went in, the server had none, or its start had left it out.</param>
-/// <param name="Omitted">The settings of the file that stayed out (the machine's own; in a plain backup the secrets), by name.</param>
-public sealed record BackupSettingsFileInfo(BackupSettingsState State, IReadOnlyList<string> Omitted);
+/// <param name="Omitted">The settings of the file that stayed out (the machine's own; without its secrets, those), by name.</param>
+/// <param name="Secrets">Whether its secrets went in (<c>Backups:Secrets</c> when it was written; an older backup's: when it is encrypted).</param>
+/// <param name="SecretsLeftOut">Of <paramref name="Omitted"/>, the secrets: a restore keeps this server's own, and what this server has none of stops working.</param>
+/// <param name="MachineLeftOut">Of <paramref name="Omitted"/>, the rest: the machine's own, which never travel (a restore keeps this server's).</param>
+public sealed record BackupSettingsFileInfo(BackupSettingsState State, IReadOnlyList<string> Omitted, bool Secrets, IReadOnlyList<string> SecretsLeftOut, IReadOnlyList<string> MachineLeftOut)
+{
+    public static BackupSettingsFileInfo From(BackupSettingsFile settings, bool secrets)
+    {
+        var omitted = settings.Omitted ?? [];
+        var leftOutSecrets = omitted.Where(k => SettingsInBackups.CategoryOf(k) == SettingCategory.Secret).ToList();
+        return new BackupSettingsFileInfo(settings.State, omitted, secrets, leftOutSecrets, [.. omitted.Except(leftOutSecrets)]);
+    }
+}
 
 /// <param name="Mode">Whether the backup's settings file took the environment's values in too, or the names are all it holds.</param>
 /// <param name="Settings">The instance's settings its server's environment set, by variable name.</param>
@@ -47,9 +56,18 @@ public sealed record BackupSettingsFileInfo(BackupSettingsState State, IReadOnly
 /// <param name="Missing">
 /// Of <paramref name="Settings"/>, those a restore here would lack (neither this server's environment nor the backup's settings file holds
 /// them), so it is refused until they are set; for an encrypted backup that only recorded them, as if its file held none, since it is read only
-/// with the passphrase.
+/// with the passphrase (<paramref name="MissingCertain"/> false then).
 /// </param>
-public sealed record BackupEnvironmentInfo(BackupEnvironmentMode Mode, IReadOnlyList<string> Settings, IReadOnlyList<string> Server, IReadOnlyList<string> Missing);
+/// <param name="Overridden">
+/// The settings of the backup's file that this server's environment overrides, by variable name: its values run, not the backup's (the
+/// sign-in mode among them can leave the restored users without a way in). Empty where the file cannot be read without the passphrase.
+/// </param>
+public sealed record BackupEnvironmentInfo(
+    BackupEnvironmentMode Mode, IReadOnlyList<string> Settings, IReadOnlyList<string> Server, IReadOnlyList<string> Missing, bool MissingCertain, IReadOnlyList<string> Overridden)
+{
+    public static BackupEnvironmentInfo From(BackupEnvironment environment, RestoreHere? here) =>
+        new(environment.Mode, environment.Settings, environment.Server, here?.Missing ?? [], here?.MissingCertain ?? true, here?.Overridden ?? []);
+}
 
 /// <summary>Bytes of the database (null: the provider would not say), of the pictures, and of the photos when they have a folder of their own.</summary>
 public sealed record StorageSizesInfo(long? Database, long Pictures, long? Photos);
@@ -65,9 +83,10 @@ public sealed record BackupRunInfo(bool Running, DateTimeOffset? StartedAt, Date
 /// <param name="Keep">After a backup the app wrote, only the newest this many of its own stay.</param>
 /// <param name="KeepDays">After a backup the app wrote, its own older than this many days go.</param>
 /// <param name="Environment">What a backup does with the settings environment variables hold (<c>Backups:Environment</c>).</param>
+/// <param name="Secrets">Whether a backup's settings file holds the secrets (<c>Backups:Secrets</c>, encrypted or not).</param>
 public sealed record BackupSettingsInfo(
     string? Recipient, bool PhotosApart, bool Photos, int MaxUploadMb, IReadOnlyList<string> Times, IReadOnlyList<DayOfWeek> Days, string TimeZone, DateTimeOffset? NextRun, int? Keep, int? KeepDays,
-    BackupEnvironmentMode Environment);
+    BackupEnvironmentMode Environment, bool Secrets);
 
 /// <summary>The backups of the administration page. <c>folder</c>, <c>run</c> and <c>settings</c> cost nothing (the page polls <c>run</c> while a backup is written); the rest is worked out only when selected.</summary>
 public sealed record BackupOverviewInfo(string Folder, BackupRunInfo Run, BackupSettingsInfo Settings)
@@ -83,7 +102,7 @@ public sealed record BackupOverviewInfo(string Folder, BackupRunInfo Run, Backup
                 s.Settings.CurrentRecipient, s.PhotosApart, s.Settings.Photos, s.Settings.MaxUploadMb,
                 // a culture's time separator (fi-FI: 02.00) is not the setting's
                 schedule?.Times.Select(t => t.ToString("HH:mm", CultureInfo.InvariantCulture)).ToList() ?? [], schedule?.Days ?? [], s.TimeZone,
-                s.NextRun, s.Settings.Keep, s.Settings.KeepDays, s.Settings.Environment));
+                s.NextRun, s.Settings.Keep, s.Settings.KeepDays, s.Settings.Environment, s.Settings.Secrets));
     }
 }
 

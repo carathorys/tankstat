@@ -158,6 +158,7 @@ public static class SettingsCatalog
         new(SettingsGroup.Backups, "Backups:KeepDays", SettingKind.Integer),
         new(SettingsGroup.Backups, "Backups:Photos", SettingKind.Boolean),
         new(SettingsGroup.Backups, "Backups:Environment", SettingKind.Choice, Enum.GetNames<BackupEnvironmentMode>()),
+        new(SettingsGroup.Backups, "Backups:Secrets", SettingKind.Boolean),
         new(SettingsGroup.Backups, "Backups:Encryption:Recipient", SettingKind.Text),
         new(SettingsGroup.Backups, "Backups:Encryption:Salt", SettingKind.Text),
         new(SettingsGroup.Backups, "Backups:MaxUploadMb", SettingKind.Integer),

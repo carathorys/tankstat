@@ -29,6 +29,13 @@ public sealed class BackupOptions
     /// </summary>
     public BackupEnvironmentMode Environment { get; set; } = BackupEnvironmentMode.Record;
 
+    /// <summary>
+    /// Whether a backup's settings file holds the secrets (the OIDC client secret, the SMTP password, the model API key), encrypted or not
+    /// (user decision: only when asked for, whatever the backup). Off by default. In a plain backup anyone who has the file reads them, which
+    /// the settings page says while it is on and backups are not encrypted.
+    /// </summary>
+    public bool Secrets { get; set; }
+
     /// <summary>The recipient backups are encrypted for, and the salt the identity is derived with; unset, backups are written in plain (without the keys).</summary>
     public BackupEncryptionOptions Encryption { get; set; } = new();
 

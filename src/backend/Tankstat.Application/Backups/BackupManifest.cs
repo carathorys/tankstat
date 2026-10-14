@@ -39,6 +39,12 @@ public sealed record BackupManifest(
 
     public string ToJson() => JsonSerializer.Serialize(this, Json);
 
+    /// <summary>
+    /// Whether the backup's settings file holds the secrets: as its manifest says (<c>Backups:Secrets</c> when it was written), else (a release
+    /// before it said so) only an encrypted one's did. A restore keeps this server's own secrets only from a backup that holds none.
+    /// </summary>
+    public bool CarriesSecrets() => Settings?.Secrets ?? Encryption is not null;
+
     /// <summary>A manifest from its JSON; a <see cref="JsonException"/> when it is not one.</summary>
     public static BackupManifest FromJson(string json) =>
         JsonSerializer.Deserialize<BackupManifest>(json, Json) ?? throw new JsonException("The manifest is empty.");
@@ -67,7 +73,8 @@ public sealed record BackupArchive(string Name, string Sha256)
 /// stayed out: what is not the instance's but the machine's (a folder, the database, the bootstrap administrator) and, in a plain backup, the
 /// secrets.
 /// </summary>
-public sealed record BackupSettingsFile(BackupSettingsState State, string? Entry = null, string? Sha256 = null, long Bytes = 0, IReadOnlyList<string>? Omitted = null)
+/// <param name="Secrets">Whether the secrets went in (<c>Backups:Secrets</c>, encrypted or not).</param>
+public sealed record BackupSettingsFile(BackupSettingsState State, string? Entry = null, string? Sha256 = null, long Bytes = 0, IReadOnlyList<string>? Omitted = null, bool? Secrets = null)
 {
     public const string Encrypted = "settings.age";
     public const string Plain = "settings.json";
