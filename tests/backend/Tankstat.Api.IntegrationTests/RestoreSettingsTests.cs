@@ -103,6 +103,22 @@ public sealed class RestoreSettingsTests : IDisposable
     }
 
     [Fact]
+    public async Task AMergedBackup_OfAServerWhoseFileTheStartLeftOut_StillCarriesTheEnvironmentsSettings_NotTheFiles()
+    {
+        // Merge was chosen so that the environment's values travel: a left-out file takes none of its own along, the environment's still go.
+        using var a = Host("a", "None", """{ "Notifications": { "MaxPerHour": "0" } }""",
+            new() { ["Backups:Environment"] = "Merge", ["Defaults:Currency"] = "XYZ" });
+        Assert.True(a.Factory.Services.GetRequiredService<SettingsFileStatus>().Ignored);
+
+        var written = await Backup(a);
+
+        Assert.Equal(BackupSettingsState.Included, written.Manifest.Settings!.State);
+        var carried = BackupFile.ReadSettings(written.Path, written.Manifest, null)!;
+        Assert.Equal("XYZ", carried["Defaults:Currency"]);
+        Assert.DoesNotContain(carried.Keys, k => k.StartsWith("Notifications:", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task AnEncryptedBackup_BringsItsSecretsBack()
     {
         var salt = Encoding.ASCII.GetBytes("tankstat-salt-01");

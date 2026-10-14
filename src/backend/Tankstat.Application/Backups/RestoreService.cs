@@ -63,15 +63,23 @@ public sealed class RestoreService(
     public static async Task RequireStartableAsync(
         IBackupStore store, ISettingsBackup settings, ISystemConfiguration configuration, string file, BackupManifest manifest, string? identity, CancellationToken ct)
     {
-        var restored = store.ReadSettings(file, manifest, identity) is { } fromBackup ? await settings.RestoredAsync(fromBackup, manifest.Encryption is not null, ct) : null;
-        await RequireRecordedAsync(settings, manifest, restored, ct);
-        if (restored is not null)
-        {
-            restored.RequireRestorable();
-            return;
-        }
+        if (await RequireRestorableAsync(settings, manifest, store.ReadSettings(file, manifest, identity), ct) is not null) return;
         using var next = configuration.PrepareNextStart();
         next.RequireStartable();
+    }
+
+    /// <summary>
+    /// What a restore of a backup's settings file (<paramref name="fromBackup"/>; null for a backup without one) would leave, refused as the
+    /// request and the start refuse it alike: first a recorded setting left without a value (<see cref="RequireRecordedAsync"/>), then a file
+    /// this server would not start with (<see cref="RestoredSettingsExtensions.RequireRestorable"/>). Null when the backup carries no file.
+    /// </summary>
+    public static async Task<RestoredSettings?> RequireRestorableAsync(
+        ISettingsBackup settings, BackupManifest manifest, IReadOnlyDictionary<string, string?>? fromBackup, CancellationToken ct)
+    {
+        var restored = fromBackup is null ? null : await settings.RestoredAsync(fromBackup, manifest.Encryption is not null, ct);
+        await RequireRecordedAsync(settings, manifest, restored, ct);
+        restored?.RequireRestorable();
+        return restored;
     }
 
     /// <summary>

@@ -18,9 +18,11 @@ internal sealed class SettingsBackup(ISystemConfiguration configuration, ISettin
         var environment = SettingsInBackups.Recorded(mode, environmentKeys);
         var ignored = SettingsCopy.None with { State = BackupSettingsState.Ignored, Environment = environment };
         // A file the start left out, and no save took in since, is not what the server runs with: the backup holds none of it, and says so.
-        if (configuration.File.Ignored && !configuration.FileInUse) return ignored;
+        // Merged, it still holds what the environment sets, as a server without a file does.
+        var leftOut = configuration.File.Ignored && !configuration.FileInUse;
+        if (leftOut && mode != BackupEnvironmentMode.Merge) return ignored;
         IReadOnlyDictionary<string, string?> values = new Dictionary<string, string?>();
-        if (file.Exists)
+        if (!leftOut && file.Exists)
         {
             try
             {
@@ -30,11 +32,13 @@ internal sealed class SettingsBackup(ISystemConfiguration configuration, ISettin
             {
                 // Edited by hand since the start into a file no start would read, or one the app may no longer read: the backup goes on without it.
                 logger.LogWarning(e, "The settings file could not be read, so this backup leaves it out");
-                return ignored;
+                if (mode != BackupEnvironmentMode.Merge) return ignored;
+                leftOut = true;
             }
         }
         // Merged, the copy holds what the environment sets too (a server with no file but variables gets a file of them); the live file never.
         if (mode == BackupEnvironmentMode.Merge) values = SettingsInBackups.Merged(values, environmentKeys, configuration.Running, encrypted);
+        if (leftOut && values.Count == 0) return ignored;
         if (!file.Exists && values.Count == 0) return SettingsCopy.None with { Environment = environment };
         var (carried, omitted) = SettingsInBackups.Copy(values, encrypted);
         return new SettingsCopy(BackupSettingsState.Included, carried, omitted, environment);
@@ -77,6 +81,8 @@ internal sealed class SettingsBackup(ISystemConfiguration configuration, ISettin
         }
         catch (Exception e) when (e is InvalidDataException or FormatException or JsonException)
         {
+            // The file this server keeps reads as nothing, as the next start would leave it out: none of its values counts.
+            logger.LogWarning(e, "The settings file could not be read, so a restore counts none of its values");
             values = new Dictionary<string, string?>();
         }
         return SettingsInBackups.Missing(recorded, values, key => configuration.SourceOf(key) == SettingSource.Environment);
