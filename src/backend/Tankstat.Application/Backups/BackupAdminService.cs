@@ -17,7 +17,18 @@ public sealed record BackupStatus(string Folder, BackupRunStatus Run, BackupOpti
 /// The backups in the folder, the migration the database is at, and the migrations of this release: a backup made at one of them can be
 /// restored here (an older one is brought up to date), one made at another is a newer release's.
 /// </summary>
-public sealed record RestorePoints(IReadOnlyList<RestorePoint> Points, string? DatabaseMigration, IReadOnlyList<string> KnownMigrations);
+/// <param name="Missing">By file: the settings a backup recorded of its server's environment that a restore here would lack (<see cref="RestoreService.MissingHereAsync"/>).</param>
+public sealed record RestorePoints(IReadOnlyList<RestorePoint> Points, string? DatabaseMigration, IReadOnlyList<string> KnownMigrations, IReadOnlyDictionary<string, IReadOnlyList<string>> Missing)
+{
+    /// <summary>The points of the folder, with what each would lack here.</summary>
+    public static async Task<RestorePoints> ListAsync(IBackupStore store, ISettingsBackup settings, IDatabaseFacts database, CancellationToken ct)
+    {
+        var points = store.List();
+        var missing = new Dictionary<string, IReadOnlyList<string>>();
+        foreach (var point in points) missing[point.File] = await RestoreService.MissingHereAsync(store, settings, point, ct);
+        return new RestorePoints(points, await database.LastMigrationAsync(ct), await database.KnownMigrationsAsync(ct), missing);
+    }
+}
 
 /// <summary>Bytes of the database (null: the provider would not say) and of the uploaded files.</summary>
 public sealed record StorageSizes(long? Database, FileUsage Files);
@@ -32,6 +43,7 @@ public sealed class BackupAdminService(
     AccessService access,
     SetupGate setup,
     IBackupStore store,
+    ISettingsBackup settings,
     IBackupRunner runner,
     IDatabaseFacts database,
     IStorageUsage usage,
@@ -53,7 +65,7 @@ public sealed class BackupAdminService(
     public async Task<RestorePoints> RestorePointsAsync(CancellationToken ct)
     {
         await access.RequireAdminAsync(ct);
-        return new RestorePoints(store.List(), await database.LastMigrationAsync(ct), await database.KnownMigrationsAsync(ct));
+        return await RestorePoints.ListAsync(store, settings, database, ct);
     }
 
     /// <summary>The migration the database is at (a question to the database only, the folder is not read).</summary>

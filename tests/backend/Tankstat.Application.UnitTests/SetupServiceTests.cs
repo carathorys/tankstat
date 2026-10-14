@@ -73,7 +73,7 @@ public sealed class SetupServiceTests
         w.SetupStore.Phase = SetupPhase.Undecided; // a new database: its start decides
         var service = new SetupService(
             w.SetupStore, w.SetupStatus, w.SetupGate, w.Code, w.Auth, w.Access, w.SystemSettings, w.SystemConfiguration, w.Restart, w.Users, new NoBackups(),
-            new NoDatabaseFacts(), new BackupOptions().Create(), w.Options.Create(), new SetupOptions { Enabled = enabled }.Create(), w.Clock, w.Log.For<SetupService>());
+            new NoSettingsFile(), new NoDatabaseFacts(), new BackupOptions().Create(), w.Options.Create(), new SetupOptions { Enabled = enabled }.Create(), w.Clock, w.Log.For<SetupService>());
         return new Setup(w, w.SetupStore, w.SetupStatus, w.Code, service);
     }
 

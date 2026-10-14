@@ -15,9 +15,11 @@ public sealed record RestorePendingInfo(string File, DateTimeOffset RestorePoint
 /// <param name="SameMigration">It was made at the migration the database is at: restored as it is.</param>
 /// <param name="OlderMigration">It was made at an older migration of this release: restored, then brought up to date. Neither: a newer release made it, which must restore it.</param>
 /// <param name="Recipient">The recipient an encrypted backup is for; <paramref name="CurrentRecipient"/> says whether it is the one backups are encrypted for now.</param>
+/// <param name="SettingsFile">Whether the settings file went in (none: written by a release before it did).</param>
+/// <param name="Environment">What it recorded of its server's environment (none: written by a release before it did).</param>
 public sealed record RestorePointInfo(
     string File, long Bytes, DateTimeOffset CreatedAt, string AppVersion, string Provider, string? Migration, bool SameMigration, bool OlderMigration, bool SafetyNet, bool Uploaded,
-    bool Encrypted, string? Recipient, bool CurrentRecipient, BackupPhotos Photos, bool Keys, int Tables, long Rows)
+    bool Encrypted, string? Recipient, bool CurrentRecipient, BackupPhotos Photos, bool Keys, int Tables, long Rows, BackupSettingsFileInfo? SettingsFile, BackupEnvironmentInfo? Environment)
 {
     public static RestorePointInfo From(RestorePoint point, RestorePoints points, string? currentRecipient)
     {
@@ -27,9 +29,27 @@ public sealed record RestorePointInfo(
         return new RestorePointInfo(
             point.File, point.Bytes, m.CreatedAt, m.AppVersion, m.Provider, MigrationNames.Of(m.Migration), same, older, m.SafetyNet,
             point.Uploaded, m.Encryption is not null, m.Encryption?.Recipient, m.Encryption is { } e && e.Recipient == currentRecipient,
-            m.Contents.Photos, m.Contents.Keys, m.Contents.Tables.Count, m.Contents.Tables.Where(t => t.Key != "__EFMigrationsHistory").Sum(t => t.Value));
+            m.Contents.Photos, m.Contents.Keys, m.Contents.Tables.Count, m.Contents.Tables.Where(t => t.Key != "__EFMigrationsHistory").Sum(t => t.Value),
+            m.Settings is { } settings ? new BackupSettingsFileInfo(settings.State, settings.Omitted ?? []) : null,
+            m.Environment is { } environment
+                ? new BackupEnvironmentInfo(environment.Mode, environment.Settings, environment.Server, points.Missing.GetValueOrDefault(point.File) ?? [])
+                : null);
     }
 }
+
+/// <param name="State">It went in, the server had none, or its start had left it out.</param>
+/// <param name="Omitted">The settings of the file that stayed out (the machine's own; in a plain backup the secrets), by name.</param>
+public sealed record BackupSettingsFileInfo(BackupSettingsState State, IReadOnlyList<string> Omitted);
+
+/// <param name="Mode">Whether the backup's settings file took the environment's values in too, or the names are all it holds.</param>
+/// <param name="Settings">The instance's settings its server's environment set, by variable name.</param>
+/// <param name="Server">The machine's own variables of its server (the database, the folders), which never travel.</param>
+/// <param name="Missing">
+/// Of <paramref name="Settings"/>, those a restore here would lack (neither this server's environment nor the backup's settings file holds
+/// them), so it is refused until they are set; for an encrypted backup that only recorded them, as if its file held none, since it is read only
+/// with the passphrase.
+/// </param>
+public sealed record BackupEnvironmentInfo(BackupEnvironmentMode Mode, IReadOnlyList<string> Settings, IReadOnlyList<string> Server, IReadOnlyList<string> Missing);
 
 /// <summary>Bytes of the database (null: the provider would not say), of the pictures, and of the photos when they have a folder of their own.</summary>
 public sealed record StorageSizesInfo(long? Database, long Pictures, long? Photos);
@@ -44,8 +64,10 @@ public sealed record BackupRunInfo(bool Running, DateTimeOffset? StartedAt, Date
 /// <param name="NextRun">When the schedule writes the next backup.</param>
 /// <param name="Keep">After a backup the app wrote, only the newest this many of its own stay.</param>
 /// <param name="KeepDays">After a backup the app wrote, its own older than this many days go.</param>
+/// <param name="Environment">What a backup does with the settings environment variables hold (<c>Backups:Environment</c>).</param>
 public sealed record BackupSettingsInfo(
-    string? Recipient, bool PhotosApart, bool Photos, int MaxUploadMb, IReadOnlyList<string> Times, IReadOnlyList<DayOfWeek> Days, string TimeZone, DateTimeOffset? NextRun, int? Keep, int? KeepDays);
+    string? Recipient, bool PhotosApart, bool Photos, int MaxUploadMb, IReadOnlyList<string> Times, IReadOnlyList<DayOfWeek> Days, string TimeZone, DateTimeOffset? NextRun, int? Keep, int? KeepDays,
+    BackupEnvironmentMode Environment);
 
 /// <summary>The backups of the administration page. <c>folder</c>, <c>run</c> and <c>settings</c> cost nothing (the page polls <c>run</c> while a backup is written); the rest is worked out only when selected.</summary>
 public sealed record BackupOverviewInfo(string Folder, BackupRunInfo Run, BackupSettingsInfo Settings)
@@ -61,7 +83,7 @@ public sealed record BackupOverviewInfo(string Folder, BackupRunInfo Run, Backup
                 s.Settings.CurrentRecipient, s.PhotosApart, s.Settings.Photos, s.Settings.MaxUploadMb,
                 // a culture's time separator (fi-FI: 02.00) is not the setting's
                 schedule?.Times.Select(t => t.ToString("HH:mm", CultureInfo.InvariantCulture)).ToList() ?? [], schedule?.Days ?? [], s.TimeZone,
-                s.NextRun, s.Settings.Keep, s.Settings.KeepDays));
+                s.NextRun, s.Settings.Keep, s.Settings.KeepDays, s.Settings.Environment));
     }
 }
 

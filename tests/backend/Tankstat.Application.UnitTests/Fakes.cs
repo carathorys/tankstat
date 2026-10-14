@@ -944,6 +944,18 @@ internal static class ServiceExtensions
 }
 
 /// <summary>A backup folder with nothing in it; a restore is waiting only when a test says so.</summary>
+/// <summary>A server without a settings file, whose environment holds nothing a backup recorded: nothing to carry, nothing missing.</summary>
+internal sealed class NoSettingsFile : Tankstat.Application.Backups.ISettingsBackup
+{
+    public Task<Tankstat.Application.Backups.SettingsCopy> CopyAsync(bool encrypted, Tankstat.Application.Backups.BackupEnvironmentMode mode, CancellationToken ct) =>
+        Task.FromResult(Tankstat.Application.Backups.SettingsCopy.None);
+    public Task<Tankstat.Application.Backups.RestoredSettings> RestoredAsync(IReadOnlyDictionary<string, string?> fromBackup, bool encrypted, CancellationToken ct) =>
+        throw new NotSupportedException();
+    public Task WriteAsync(IReadOnlyDictionary<string, string?> values, CancellationToken ct) => throw new NotSupportedException();
+    public Task<IReadOnlyList<string>> MissingAsync(Tankstat.Application.Backups.BackupEnvironment recorded, IReadOnlyDictionary<string, string?>? restored, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<string>>([]);
+}
+
 internal sealed class NoBackups : Tankstat.Application.Backups.IBackupStore
 {
     public bool RestorePending { get; init; }

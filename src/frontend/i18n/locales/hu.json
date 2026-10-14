@@ -628,7 +628,17 @@
       "keysSettings": "Vagy add meg ezt a két beállítást a szerver környezetében, ahol erősebbek a beállítások oldalánál:",
       "keysSaved": "A jelmondatot biztonságos helyre tettem",
       "keysDone": "Kész",
-      "changeSettings": "Az ütemezés, a megőrzés és a titkosítás a szerverbeállításokban módosítható"
+      "changeSettings": "Az ütemezés, a megőrzés és a titkosítás a szerverbeállításokban módosítható",
+      "environmentLabel": "A környezet beállításai",
+      "environmentRecord": "minden mentés megnevezi őket; máshol a visszaállításhoz ott be kell állítani őket",
+      "environmentMerge": "minden mentés beállításfájljába bekerülnek (titkok csak titkosítottba)",
+      "settingsBrings": "Magával hozza a kiszolgálója beállításfájlját, amely felváltja ennek a kiszolgálónak a fájlját (settings.json.bak néven megmarad). Ez a kiszolgáló megtartja a saját adatbázisa, mappái és kulcsai beállítását, és a jelszavait, ha a mentés nem titkosított.",
+      "settingsNone": "A kiszolgálójának nem volt beállításfájlja: ennek a kiszolgálónak a fájlja marad, ahogy van.",
+      "settingsIgnored": "A kiszolgálója a beállításfájlja nélkül futott (az indulás kihagyta): ennek a kiszolgálónak a fájlja marad, ahogy van.",
+      "settingsOlder": "Egy olyan kiadás írta, amelynek a mentései még nem tartalmazták a beállításfájlt: ennek a kiszolgálónak a fájlja marad, ahogy van.",
+      "environmentRecorded": "A kiszolgálója környezete beállította ezeket: {{names}}. Az értékük nincs a mentésben: ennek a kiszolgálónak kell beállítania őket.",
+      "environmentMerged": "A kiszolgálója környezete beállította ezeket: {{names}}. Az értékük a beállításfájljában van (titkok csak titkosított mentésben).",
+      "environmentMissing": "Ez a kiszolgáló egyiket sem állítja be, ezért a visszaállítást elutasítja: {{names}}. Előbb állítsd be őket ennek a kiszolgálónak a környezetében."
     }
   },
   "errors": {

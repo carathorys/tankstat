@@ -179,6 +179,42 @@ public sealed class RestoreSettingsTests : IDisposable
         Assert.Null(Json(b.SettingsPath)["Smtp"]); // the environment's password stays the environment's
     }
 
+    [Fact]
+    public async Task TheBackupsPage_AndTheRestoreCommand_SayWhatABackupBrings_AndWhatThisServerLacks()
+    {
+        string backup;
+        var admin = new Dictionary<string, string?> { ["Auth:Standalone:AdminEmail"] = TestApp.AdminEmail, ["Auth:Standalone:AdminPassword"] = TestApp.AdminPassword };
+        using (var a = Host("a", "Standalone", """{ "Notifications": { "MaxPerHour": "7" } }""", new(admin) { ["Defaults:Currency"] = "XYZ" }))
+            backup = (await Backup(a)).Path;
+        using var b = Host("b", "Standalone", file: null, admin);
+        Stage(Folder("b-backups"), backup, marker: false);
+        using var client = b.NewClient();
+        await client.LoginAs(TestApp.AdminEmail, TestApp.AdminPassword);
+
+        var listed = (await client.Gql("{ backups { settings { environment } restorePoints { settingsFile { state omitted } environment { mode settings server missing } } } }"))
+            .Data().GetProperty("backups");
+
+        Assert.Equal("RECORD", listed.GetProperty("settings").GetProperty("environment").GetString());
+        var point = Assert.Single(listed.GetProperty("restorePoints").EnumerateArray());
+        Assert.Equal("INCLUDED", point.GetProperty("settingsFile").GetProperty("state").GetString());
+        var environment = point.GetProperty("environment");
+        Assert.Equal("RECORD", environment.GetProperty("mode").GetString());
+        Assert.Contains("Defaults__Currency", environment.GetProperty("settings").EnumerateArray().Select(n => n.GetString()));
+        Assert.Contains("Storage__Path", environment.GetProperty("server").EnumerateArray().Select(n => n.GetString()));
+        Assert.Equal(["Defaults__Currency"], environment.GetProperty("missing").EnumerateArray().Select(n => n.GetString())); // the rest this host sets too
+
+        var (output, error) = (new StringWriter(), new StringWriter());
+        var code = await Tankstat.Api.Backups.BackupCommands.RunAsync(["restore", Path.GetFileName(backup)], b.Factory.Services, new StringReader("no\n"), output, error);
+        Assert.Equal(1, code);
+        Assert.Contains("The backup's settings file: ", output.ToString());
+        Assert.Contains("This server sets none of Defaults__Currency: the restore is refused until they are set.", output.ToString());
+        Assert.DoesNotContain("XYZ", output.ToString());
+        var refused = await Tankstat.Api.Backups.BackupCommands.RunAsync(["restore", Path.GetFileName(backup), "--yes"], b.Factory.Services, new StringReader(""), output, error);
+        Assert.Equal(1, refused);
+        Assert.Contains("Defaults__Currency", error.ToString()); // the refusal, before the marker
+        Assert.False(File.Exists(RestoreMarker.PathIn(Folder("b-backups"))));
+    }
+
     /// <summary>A backup of an instance without users, whose settings file says Standalone (its sign-in held off by the environment).</summary>
     private async Task<string> StandaloneFileWithoutAnAdministrator()
     {

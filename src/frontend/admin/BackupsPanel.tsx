@@ -129,6 +129,7 @@ function Overview({ backups }: { backups: BackupsQuery['backups'] }) {
           ...(settings.photosApart ? [{ label: t('admin.backups.photosInBackups'), value: settings.photos ? t('admin.backups.photosIncluded') : t('admin.backups.photosLeftOut') }] : []),
           { label: t('admin.backups.schedule'), value: schedule },
           { label: t('admin.backups.retentionLabel'), value: retention },
+          { label: t('admin.backups.environmentLabel'), value: settings.environment === 'MERGE' ? t('admin.backups.environmentMerge') : t('admin.backups.environmentRecord') },
         ]}
       />
       <Link component={RouterLink} to="/admin/settings?tab=backups" sx={{ display: 'inline-block', mt: 1, ...standaloneLink }}>

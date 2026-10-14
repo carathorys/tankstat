@@ -64,6 +64,37 @@ export function RestoreDialog({
   )
 }
 
+/**
+ * What the backup brings of its server's settings, before anything is asked: its settings file or none (and why), what its server's
+ * environment set, and what this server lacks of that, which the server refuses the restore for until it is set (#140).
+ */
+function RestoreSettingsNote({ point }: { point: RestoreTarget }) {
+  const { t } = useTranslation()
+  const file =
+    point.settingsFile?.state === 'INCLUDED'
+      ? t('admin.backups.settingsBrings')
+      : point.settingsFile?.state === 'IGNORED'
+        ? t('admin.backups.settingsIgnored')
+        : point.settingsFile?.state === 'NONE'
+          ? t('admin.backups.settingsNone')
+          : t('admin.backups.settingsOlder')
+  const environment = point.environment
+  const names = environment?.settings.join(', ') ?? ''
+  return (
+    <>
+      <Typography variant="body2">{file}</Typography>
+      {environment && environment.settings.length > 0 && (
+        <Typography variant="body2">
+          {environment.mode === 'MERGE' ? t('admin.backups.environmentMerged', { names }) : t('admin.backups.environmentRecorded', { names })}
+        </Typography>
+      )}
+      {environment && environment.missing.length > 0 && (
+        <WarningMessage>{t('admin.backups.environmentMissing', { names: environment.missing.join(', ') })}</WarningMessage>
+      )}
+    </>
+  )
+}
+
 function RestoreForm({
   point,
   code,
@@ -114,6 +145,7 @@ function RestoreForm({
   return (
     <Form onSubmit={(e) => void submit(e)} refusal={error}>
       <Stack sx={{ gap: 1.5 }}>
+        <RestoreSettingsNote point={point} />
         {point.encrypted && (
           <>
             <Segmented

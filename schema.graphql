@@ -176,6 +176,13 @@ type AccessSettingsInfo {
   defaultLevelForOthers: AccessLevel!
 }
 
+type BackupEnvironmentInfo {
+  mode: BackupEnvironmentMode!
+  settings: [String!]!
+  server: [String!]!
+  missing: [String!]!
+}
+
 type BackupKeySetInfo {
   passphrase: String!
   generated: Boolean!
@@ -202,6 +209,11 @@ type BackupRunInfo {
   error: String
 }
 
+type BackupSettingsFileInfo {
+  state: BackupSettingsState!
+  omitted: [String!]!
+}
+
 type BackupSettingsInfo {
   recipient: String
   photosApart: Boolean!
@@ -213,6 +225,7 @@ type BackupSettingsInfo {
   nextRun: DateTime
   keep: Int
   keepDays: Int
+  environment: BackupEnvironmentMode!
 }
 
 type ChartData {
@@ -552,6 +565,8 @@ type RestorePointInfo {
   keys: Boolean!
   tables: Int!
   rows: Long!
+  settingsFile: BackupSettingsFileInfo
+  environment: BackupEnvironmentInfo
 }
 
 type ServerFolder {
@@ -1109,10 +1124,21 @@ enum AuthMode {
   PROXY_HEADER
 }
 
+enum BackupEnvironmentMode {
+  RECORD
+  MERGE
+}
+
 enum BackupPhotos {
   WITH_PICTURES
   SEPARATE
   LEFT_OUT
+}
+
+enum BackupSettingsState {
+  INCLUDED
+  NONE
+  IGNORED
 }
 
 enum ChartGrouping {

@@ -37,6 +37,8 @@ const backup = {
   sameMigration: true,
   olderMigration: false,
   encrypted: false,
+  settingsFile: null as Record<string, unknown> | null, // a backup of a release before it held the settings file
+  environment: null as Record<string, unknown> | null,
 }
 
 /**
@@ -324,6 +326,28 @@ it('uploads a backup the folder does not hold, with the code, and lists it to re
   // Listed with the folder's, to restore like them.
   expect(await within(restore).findByRole('button', { name: /\(uploaded-from-old\.zip\)$/ })).toBeInTheDocument()
   expect(state.calls.Upload).toEqual([{ name: 'from-old.zip', code: CODE }]) // the code in its header, never the address
+})
+
+it('says before a restore on the setup page which settings of the old server this new one lacks, which it is refused for', async () => {
+  const ui = userEvent.setup()
+  waitingServer('STANDALONE', {
+    points: [
+      {
+        ...backup,
+        settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', omitted: [] },
+        environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: ['Auth__Mode', 'Auth__Oidc__ClientSecret'], missing: ['Auth__Oidc__ClientSecret'] },
+      },
+    ],
+  })
+  renderWithApollo(<App />)
+
+  await enterCode(ui)
+  await ui.click(await screen.findByRole('button', { name: 'Restore from a backup' }))
+  const restore = await screen.findByRole('region', { name: 'Restore a backup' })
+  await ui.click(within(restore).getByRole('button', { name: /^Restore the backup of/ }))
+  const dialog = await screen.findByRole('alertdialog', { name: /^Restore the backup of/ })
+
+  expect(within(dialog).getByRole('alert')).toHaveTextContent('This server sets none of these, so the restore will be refused: Auth__Oidc__ClientSecret.')
 })
 
 it('restores a backup of the folder with the code, and reloads once the restarted server has the restored data', async () => {
