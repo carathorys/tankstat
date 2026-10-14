@@ -1,0 +1,42 @@
+query Setup {
+  setup {
+    pending
+  }
+}
+
+query SetupRestorePoints($code: String!) {
+  setupRestorePoints(code: $code) {
+    file
+    bytes
+    createdAt
+    appVersion
+    migration
+    sameMigration
+    olderMigration
+    safetyNet
+    uploaded
+    encrypted
+    photos
+  }
+}
+
+mutation SetupCreateAdministrator($input: SetupAdministratorInput!) {
+  setupCreateAdministrator(input: $input) {
+    id
+    email
+    isAdmin
+  }
+}
+
+mutation SetupClaimAdministrator($code: String!) {
+  setupClaimAdministrator(code: $code) {
+    id
+    isAdmin
+  }
+}
+
+mutation SetupAcknowledgeOpenAccess($code: String!) {
+  setupAcknowledgeOpenAccess(code: $code) {
+    pending
+  }
+}

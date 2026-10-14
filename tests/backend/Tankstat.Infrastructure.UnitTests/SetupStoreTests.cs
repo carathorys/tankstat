@@ -98,4 +98,25 @@ public class SetupStoreTests
         Assert.False(await store.CompleteWithAdministratorAsync(User.CreateLocal("third@x.co", "Administrator", isAdmin: true), Now, default));
         Assert.Single(await db.Get<Tankstat.Application.Users.IUserRepository>().ListAsync(default));
     }
+
+    [Fact]
+    public async Task AClaim_PromotesTheUser_WithTheCompletion_AndOnlyWhileTheSetupWaits()
+    {
+        await using var db = new TestDatabase();
+        var store = db.Get<ISetupStore>();
+        var users = db.Get<Tankstat.Application.Users.IUserRepository>();
+        var first = User.CreateExternal(UserProvider.Oidc, "subject-1", "first@x.co", "First", isAdmin: false);
+        var second = User.CreateExternal(UserProvider.Oidc, "subject-2", "second@x.co", "Second", isAdmin: false);
+        await users.AddAsync(first, default);
+        await users.AddAsync(second, default);
+        Assert.False(await store.CompleteWithClaimAsync(first.Id, Now, default)); // undecided: nothing to claim
+
+        await store.DecideAsync(holdsData: false, Now, default);
+        Assert.True(await store.CompleteWithClaimAsync(first.Id, Now, default));
+        Assert.False(await store.CompleteWithClaimAsync(second.Id, Now, default));
+
+        Assert.True((await users.FindByIdAsync(first.Id, default))!.IsAdmin);
+        Assert.False((await users.FindByIdAsync(second.Id, default))!.IsAdmin);
+        Assert.Equal(SetupPhase.Completed, await store.PhaseAsync(default));
+    }
 }

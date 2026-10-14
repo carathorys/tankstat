@@ -125,6 +125,7 @@ type Mutation {
   revokeOtherSessions: Int! @cost(weight: "10")
   setupCreateAdministrator(input: SetupAdministratorInput!): UserInfo!
     @cost(weight: "10")
+  setupClaimAdministrator(code: String!): UserInfo! @cost(weight: "10")
   setupAcknowledgeOpenAccess(code: String!): SetupInfo! @cost(weight: "10")
   logRefueling(input: LogRefuelingInput!): Refueling! @cost(weight: "10")
   updateRefueling(input: UpdateRefuelingInput!): Refueling! @cost(weight: "10")

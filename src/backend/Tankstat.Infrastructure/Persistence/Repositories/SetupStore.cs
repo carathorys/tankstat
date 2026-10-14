@@ -59,6 +59,18 @@ internal sealed class SetupStore(IDbContextFactory<AppDbContext> dbFactory) : IS
         return true;
     }
 
+    public async Task<bool> CompleteWithClaimAsync(Guid userId, DateTimeOffset now, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        if (!await CompletePendingAsync(db, SetupCompletion.Administrator, now, ct)) return false;
+        var user = await db.Users.SingleAsync(u => u.Id == userId, ct);
+        user.SetAdmin(true);
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return true;
+    }
+
     private static async Task<bool> CompletePendingAsync(AppDbContext db, SetupCompletion via, DateTimeOffset now, CancellationToken ct) =>
         await db.InstanceState
             .Where(s => s.Id == InstanceState.SingletonId && s.SetupPendingSince != null && s.SetupCompletedAt == null)

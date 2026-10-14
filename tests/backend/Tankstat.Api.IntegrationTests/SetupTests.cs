@@ -142,6 +142,33 @@ public sealed class SetupTests : IDisposable
     }
 
     [Fact]
+    public async Task BehindAProxy_TheSignedInUser_ClaimsTheAdministrator_WithTheCode()
+    {
+        using var app = new TestApp(
+            new() { ["Auth:Mode"] = "ProxyHeader", ["Auth:ProxyHeader:TrustedProxies:0"] = "10.0.0.0/8", ["Setup:Enabled"] = "true" },
+            s => s.AddSingleton<Microsoft.AspNetCore.Hosting.IStartupFilter, FakeRemoteIpStartupFilter>());
+        HttpClient Through(string? user)
+        {
+            var client = app.NewClient();
+            client.DefaultRequestHeaders.Add("X-Test-Remote-Ip", "10.1.2.3");
+            if (user is not null) client.DefaultRequestHeaders.Add("X-Forwarded-User", user);
+            return client;
+        }
+        const string Claim = "mutation($c: String!) { setupClaimAdministrator(code: $c) { email isAdmin } }";
+        _ = app.Factory.Services; // starts the host, which logs the code
+        var code = CodeOf(app);
+
+        Assert.Equal("auth.unauthenticated", (await Through(null).Gql(Claim, new { c = code })).ErrorKey());
+        Assert.Equal("setup.codeInvalid", (await Through("alice").Gql(Claim, new { c = "nope" })).ErrorKey());
+        var claimed = (await Through("alice").Gql(Claim, new { c = code })).Data().GetProperty("setupClaimAdministrator");
+
+        Assert.True(claimed.GetProperty("isAdmin").GetBoolean());
+        Assert.True((await Through("alice").Gql("{ session { user { isAdmin } } }")).Data().GetProperty("session").GetProperty("user").GetProperty("isAdmin").GetBoolean());
+        Assert.Equal("setup.completed", (await Through("bob").Gql(Claim, new { c = code })).ErrorKey());
+        Assert.False((await Through("bob").Gql("{ session { user { isAdmin } } }")).Data().GetProperty("session").GetProperty("user").GetProperty("isAdmin").GetBoolean());
+    }
+
+    [Fact]
     public async Task SetupTurnedOff_NeverWaits()
     {
         using var app = new TestApp(new() { ["Auth:Mode"] = "None" }); // the test hosts' default: Setup:Enabled=false

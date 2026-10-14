@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Backups;
 using Tankstat.Application.Users;
@@ -24,6 +25,7 @@ public sealed class SetupService(
     SetupStatus status,
     OneTimeCode code,
     AuthService authService,
+    AccessService access,
     IUserRepository users,
     IBackupStore backups,
     IDatabaseFacts database,
@@ -114,6 +116,20 @@ public sealed class SetupService(
         return admin;
     }
 
+    /// <summary>
+    /// OIDC and proxy mode: the signed-in user (provisioned by their sign-in, so anyone the provider or proxy lets in) becomes the first
+    /// administrator, which completes the setup; the code is the whole guard, since no administrator exists to ask.
+    /// </summary>
+    public async Task<Principal> ClaimAdministratorAsync(string? typedCode, CancellationToken ct)
+    {
+        await RequireCodeAsync(typedCode, ct);
+        RequireMode(AuthMode.Oidc, AuthMode.ProxyHeader);
+        var user = await access.RequirePrincipalAsync(ct);
+        AfterCompletion(await store.CompleteWithClaimAsync(user.Id, clock.GetUtcNow(), ct));
+        logger.LogInformation("User {UserId} became the first administrator on the setup page: the setup is completed", user.Id);
+        return user with { IsAdmin = true };
+    }
+
     /// <summary>With sign-in off: the acknowledgement that everyone who reaches the instance may see and change everything completes the setup.</summary>
     public async Task<SetupInfo> AcknowledgeOpenAccessAsync(string? typedCode, CancellationToken ct)
     {
@@ -134,9 +150,9 @@ public sealed class SetupService(
         if (!code.Matches(typedCode)) throw new ForbiddenException("setup.codeInvalid", "The one-time setup code from the server's log is needed.");
     }
 
-    private void RequireMode(AuthMode mode)
+    private void RequireMode(params AuthMode[] modes)
     {
-        if (auth.Value.Mode != mode)
+        if (!modes.Contains(auth.Value.Mode))
             throw new DomainException("setup.otherMode", $"This step is not part of the setup in {auth.Value.Mode} sign-in mode.", new { Mode = auth.Value.Mode.ToString() });
     }
 

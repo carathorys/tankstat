@@ -44,6 +44,14 @@ internal sealed class InMemorySetupStore(InMemoryUsers users, InMemoryVehicles v
         (Phase, Via) = (SetupPhase.Completed, SetupCompletion.Administrator);
         return Task.FromResult(true);
     }
+
+    public Task<bool> CompleteWithClaimAsync(Guid userId, DateTimeOffset now, CancellationToken ct)
+    {
+        if (Phase != SetupPhase.Pending) return Task.FromResult(false);
+        users.Items.Single(u => u.Id == userId).SetAdmin(true);
+        (Phase, Via) = (SetupPhase.Completed, SetupCompletion.Administrator);
+        return Task.FromResult(true);
+    }
 }
 
 internal sealed class NoDatabaseFacts : IDatabaseFacts
@@ -64,7 +72,7 @@ public sealed class SetupServiceTests
         var status = new SetupStatus();
         var code = new OneTimeCode();
         var service = new SetupService(
-            store, status, code, w.Auth, w.Users, new NoBackups(), new NoDatabaseFacts(), new BackupOptions().Create(), w.Options.Create(),
+            store, status, code, w.Auth, w.Access, w.Users, new NoBackups(), new NoDatabaseFacts(), new BackupOptions().Create(), w.Options.Create(),
             new SetupOptions { Enabled = enabled }.Create(), w.Clock, w.Log.For<SetupService>());
         return new Setup(w, store, status, code, service);
     }
@@ -274,6 +282,28 @@ public sealed class SetupServiceTests
         Assert.Equal((SetupPhase.Completed, SetupCompletion.Acknowledged), (s.Store.Phase, s.Store.Via));
     }
 
+    [Theory]
+    [InlineData(AuthMode.Oidc)]
+    [InlineData(AuthMode.ProxyHeader)]
+    public async Task WithAProvider_TheSignedInUser_ClaimsTheAdministrator_WithTheCode(AuthMode mode)
+    {
+        var s = Make(mode);
+        await s.Service.StartAsync(default);
+        var someone = s.World.AddUser("someone@x.co");
+
+        await Assert.ThrowsAsync<UnauthenticatedException>(() => s.Service.ClaimAdministratorAsync(s.Code.Value, default)); // nobody signed in
+        s.World.Current.SignInAs(someone);
+        Assert.Equal("setup.codeInvalid", (await Assert.ThrowsAsync<ForbiddenException>(() => s.Service.ClaimAdministratorAsync("nope", default))).Key);
+        Assert.False(someone.IsAdmin);
+
+        var claimed = await s.Service.ClaimAdministratorAsync(s.Code.Value, default);
+
+        Assert.True(claimed.IsAdmin);
+        Assert.True(someone.IsAdmin);
+        Assert.Equal((SetupPhase.Completed, SetupCompletion.Administrator), (s.Store.Phase, s.Store.Via));
+        Assert.Contains(s.World.Log.From<SetupService>(), e => e.Values.TryGetValue("UserId", out var id) && (Guid?)id == someone.Id);
+    }
+
     [Fact]
     public async Task EachStep_BelongsToItsMode()
     {
@@ -284,6 +314,7 @@ public sealed class SetupServiceTests
 
         Assert.Equal("setup.otherMode", (await Assert.ThrowsAsync<DomainException>(() => standalone.Service.AcknowledgeOpenAccessAsync(standalone.Code.Value, default))).Key);
         Assert.Equal("setup.otherMode", (await Assert.ThrowsAsync<DomainException>(() => none.Service.CreateAdministratorAsync(none.Code.Value, "root@x.co", "initial-password-1", default))).Key);
+        Assert.Equal("setup.otherMode", (await Assert.ThrowsAsync<DomainException>(() => standalone.Service.ClaimAdministratorAsync(standalone.Code.Value, default))).Key);
         Assert.True(standalone.Status.Pending);
         Assert.True(none.Status.Pending);
     }

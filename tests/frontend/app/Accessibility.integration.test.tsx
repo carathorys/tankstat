@@ -374,6 +374,45 @@ it('the sign-in screens of every mode have no violations', async () => {
   await check(view.container)
 })
 
+it('the setup page, its code and its steps, are labelled and free of violations', async () => {
+  const ui = userEvent.setup()
+  const pending = { code: 'SETUP_PENDING', severity: 'INFO' as const, message: 'This instance is not set up yet.' }
+  server.use(
+    sessionHandler('STANDALONE', () => null, [pending]),
+    healthHandler,
+    graphql.query('Setup', () => HttpResponse.json({ data: { setup: { __typename: 'SetupInfo', pending: true } } })),
+    graphql.query('SetupRestorePoints', () =>
+      HttpResponse.json({
+        data: {
+          setupRestorePoints: [
+            {
+              __typename: 'RestorePointInfo',
+              file: 'tankstat-backup-20261010T020000Z.zip',
+              bytes: 4096,
+              createdAt: '2026-10-10T02:00:00Z',
+              appVersion: '0.15.0',
+              migration: 'AddSetup',
+              sameMigration: true,
+              olderMigration: false,
+              safetyNet: false,
+              uploaded: false,
+              encrypted: true,
+              photos: 'WITH_PICTURES',
+            },
+          ],
+        },
+      }),
+    ),
+  )
+  const view = renderWithApollo(<App />, '/')
+
+  await ui.type(await screen.findByRole('textbox', { name: /^Setup code/ }), 'ABCD-EFGH-JKLM')
+  await check(view.container)
+  await ui.click(screen.getByRole('button', { name: 'Continue' }))
+  await screen.findByRole('region', { name: 'Start fresh' })
+  await check(view.container)
+})
+
 it('the install how-to for iPhones is a labelled dialog without violations', async () => {
   vi.spyOn(platform, 'isIos').mockReturnValue(true)
   onTestFinished(() => {

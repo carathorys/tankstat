@@ -39,6 +39,13 @@ public sealed class SetupMutations
         return UserInfo.From(administrator);
     }
 
+    /// <summary>
+    /// OIDC and proxy mode, while the setup waits: the signed-in user becomes the first administrator (at once: every request reloads the
+    /// user), which completes the setup. The one-time code from the server's log; signed out, <c>auth.unauthenticated</c>.
+    /// </summary>
+    public async Task<UserInfo> SetupClaimAdministrator(string code, [Service] SetupService setup, CancellationToken ct) =>
+        UserInfo.From(await setup.ClaimAdministratorAsync(code, ct));
+
     /// <summary>With sign-in off, while the setup waits: acknowledges that everyone who reaches the instance sees and changes everything, which completes the setup.</summary>
     public Task<SetupInfo> SetupAcknowledgeOpenAccess(string code, [Service] SetupService setup, CancellationToken ct) => setup.AcknowledgeOpenAccessAsync(code, ct);
 }

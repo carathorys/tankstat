@@ -29,4 +29,10 @@ public interface ISetupStore
     /// with nothing added, when the setup was not pending.
     /// </summary>
     Task<bool> CompleteWithAdministratorAsync(User administrator, DateTimeOffset now, CancellationToken ct);
+
+    /// <summary>
+    /// Makes the signed-in user (OIDC, proxy) the first administrator and completes the pending setup
+    /// (<see cref="SetupCompletion.Administrator"/>) in one transaction; false, with nobody promoted, when the setup was not pending.
+    /// </summary>
+    Task<bool> CompleteWithClaimAsync(Guid userId, DateTimeOffset now, CancellationToken ct);
 }

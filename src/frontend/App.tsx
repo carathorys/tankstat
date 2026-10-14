@@ -40,6 +40,14 @@ const AdminPanel = lazy(() => import('./admin/AdminPanel.tsx').then((m) => ({ de
 const SystemSettingsPage = lazy(() => import('./admin/SystemSettingsPage.tsx').then((m) => ({ default: m.SystemSettingsPage })))
 const AdminOverviewPage = lazy(() => import('./admin/AdminOverviewPage.tsx').then((m) => ({ default: m.AdminOverviewPage })))
 const BackupsPage = lazy(() => import('./admin/BackupsPage.tsx').then((m) => ({ default: m.BackupsPage })))
+const SetupPage = lazy(() => import('./setup/SetupPage.tsx').then((m) => ({ default: m.SetupPage })))
+
+/**
+ * While a new instance waits for its setup, whoever reaches it in Standalone (nobody can sign in yet) or with sign-in off gets the setup
+ * page wherever they go; with a provider (OIDC, proxy) a visitor signs in first and finds the setup at `/setup`, the notice links to it.
+ */
+const setupTakesOver = (data: SessionQuery) =>
+  data.notices.some((n) => n.code === 'SETUP_PENDING') && (data.session.mode === 'NONE' || (data.session.mode === 'STANDALONE' && !data.session.user))
 
 /** Another address for a page, its query string kept (a page or a sort someone saved a link to). */
 function KeepQuery({ to }: { to: string }) {
@@ -63,7 +71,8 @@ export default function App() {
   const { data, error, loading } = useQuery(SessionDocument)
   const mode = data?.session.mode ?? 'NONE'
   const user = data?.session.user ?? null
-  const showMenu = data !== undefined && (mode === 'NONE' || user !== null)
+  // No menu while the setup page stands in for every page: none of them is there yet.
+  const showMenu = data !== undefined && (mode === 'NONE' || user !== null) && !setupTakesOver(data)
 
   // The UI settings follow the user: asked from the server once per session, kept per user (the key starts afresh on sign-in and sign-out).
   return (
@@ -89,6 +98,9 @@ function Shell({
   showMenu: boolean
 }) {
   const { t } = useTranslation()
+  const { pathname } = useLocation()
+  // The setup's notice is the page itself while it is shown: no banner pointing at it.
+  const setupShown = data !== undefined && (setupTakesOver(data) || pathname === '/setup')
   const drawerTitle = useId()
   // Desktop: a docked sidebar, open by default; hiding it is remembered (in this browser, and with the account once signed in).
   // Phone: an overlay drawer, closed until the menu button is pressed, never remembered.
@@ -172,7 +184,7 @@ function Shell({
             {loading && <Loading />}
             <UpdateNotice />
             <OfflineReadyNotice />
-            {data && <NoticeBanner notices={data.notices} />}
+            {data && <NoticeBanner notices={setupShown ? data.notices.filter((n) => n.code !== 'SETUP_PENDING') : data.notices} />}
             {data && <Content data={data} />}
           </Box>
         </Box>
@@ -216,6 +228,14 @@ function Content({ data }: { data: SessionQuery }) {
   const { mode, user } = data.session
   const isAdmin = user?.isAdmin === true // the full vehicle list and the administration are for administrators only
 
+  if (setupTakesOver(data))
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<Loading />}>
+          <SetupPage mode={mode} />
+        </Suspense>
+      </ErrorBoundary>
+    )
   if (mode === 'STANDALONE' && resetToken && !user) return <ResetPasswordView token={resetToken} />
   if (mode !== 'NONE' && !user) return <LoginView mode={mode} />
 
@@ -244,6 +264,7 @@ function Content({ data }: { data: SessionQuery }) {
             <Route path="/admin/vehicles" element={isAdmin ? <VehiclesPage /> : <Navigate to="/" replace />} />
             <Route path="/admin/settings" element={isAdmin ? <SystemSettingsPage /> : <Navigate to="/" replace />} />
             <Route path="/admin/backups" element={isAdmin ? <BackupsPage /> : <Navigate to="/" replace />} />
+            <Route path="/setup" element={<SetupPage mode={mode} />} />
             <Route path="*" element={<Typography>{t('app.notFound')}</Typography>} />
           </Routes>
         </Suspense>

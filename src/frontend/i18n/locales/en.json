@@ -89,7 +89,9 @@
     "warning": "Warning:",
     "AUTH_DISABLED": "Authentication is disabled: anyone who can reach this app can see and change all data. This is unsafe; configure Auth:Mode.",
     "SETTINGS_FILE_IGNORED": "The app's own settings file could not be used and was left out; the app runs without it until the next start. See the server log for the reason.",
-    "RESTORE_PENDING": "A restore is waiting for a restart of the app: when it starts next, all data is replaced with the backup's."
+    "RESTORE_PENDING": "A restore is waiting for a restart of the app: when it starts next, all data is replaced with the backup's.",
+    "SETUP_PENDING": "This instance is not set up yet: its first administrator is still to be chosen.",
+    "openSetup": "Open the setup"
   },
   "notifications": {
     "title": "Notifications",
@@ -830,6 +832,12 @@
       "kindMismatch": "An edited change must do the same as the one that was not applied.",
       "cannotRestoreFirst": "Only an edit of a refuelling, an expense or a vehicle can bring it back from the trash."
     },
+    "setup": {
+      "codeInvalid": "This is not the setup code from the server's log. Every start writes a new one: use the latest.",
+      "completed": "This instance is set up already.",
+      "otherMode": "This step is not part of the setup in this sign-in mode.",
+      "administratorExists": "An administrator exists already: sign in instead."
+    },
     "backup": {
       "notFound": "There is no such backup in the backups folder.",
       "wrongKey": "The passphrase (or identity) does not open this backup.",
@@ -840,7 +848,7 @@
       "newerFormat": "The backup was written by a newer release (Tankstat {{appVersion}}); upgrade first.",
       "otherMigration": "The backup was made at another version of the database ({{backup}}) than this one is at ({{database}}); restore it with the release that wrote it.",
       "databaseNewer": "The database was migrated by a newer release of Tankstat ({{migration}}); back it up with that release.",
-      "codeRequired": "The one-time restore code from the server's log is needed.",
+      "codeRequired": "The one-time code from the server's log is needed.",
       "passphraseRequired": "A passphrase is expected.",
       "tooLarge": "The file is larger than an upload may be ({{maxMb}} MB); copy it into the backups folder instead.",
       "uploadRefused": "The server, or a proxy in front of it, refused a file this large; copy it into the backups folder instead.",
@@ -1613,6 +1621,36 @@
       "navCount_one": "{{count}} entry found on this device",
       "navCount_other": "{{count}} entries found on this device"
     }
+  },
+  "setup": {
+    "title": "Set up Tankstat",
+    "intro": "This instance is new and not set up yet. To show that you run the server, enter the one-time setup code it wrote to its log as it started.",
+    "codeWhere": "It is on the line that starts with \"Setup is waiting\" (with Docker: docker logs and the container's name). Every start writes a new one, so use the latest.",
+    "code": "Setup code",
+    "continue": "Continue",
+    "otherCode": "Enter another code",
+    "newCode": "Enter the new code",
+    "restoreTitle": "Restore a backup",
+    "restoreIntro": "Start from a backup of a Tankstat server: its users, vehicles, logs and pictures come back with it, and so does its setup.",
+    "restoreNone": "There is no backup in the server's backups folder. To restore one, copy its file into that folder, then look again.",
+    "lookAgain": "Look again",
+    "restore": "Restore",
+    "restoreOne": "Restore the backup of {{made}}",
+    "pointMeta": "Tankstat {{version}}, {{file}}",
+    "encrypted": "encrypted",
+    "older": "Made by an older release (Tankstat {{version}}): brought up to date as it is restored.",
+    "newer": "Made by a newer release of Tankstat: restore it with that release.",
+    "freshTitle": "Start fresh",
+    "adminIntro": "Create the first administrator: they sign in with this e-mail address and password, and add everyone else.",
+    "passwordHint": "The password needs 10 to 128 characters.",
+    "createAdmin": "Create the administrator",
+    "claimIntro": "You are signed in as {{name}}. Become the administrator of this instance: you then manage its users, settings and backups.",
+    "claim": "Become the administrator",
+    "openIntro": "Sign-in is off on this server: everyone who can reach this address sees and changes all data, and there is no administrator. Use it only on a network you trust; to turn sign-in on, set Auth__Mode and restart.",
+    "openAcknowledge": "I understand that everyone who can reach this address sees and changes all data.",
+    "finish": "Finish the setup",
+    "notPending": "This instance is set up: there is nothing to set up here.",
+    "home": "Go to the start page"
   },
   "systemSettings": {
     "title": "Server settings",
