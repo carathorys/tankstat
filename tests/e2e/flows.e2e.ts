@@ -76,6 +76,42 @@ test('writes a backup from the Backups page and downloads it', async ({ page }) 
   await expect(restore).toBeHidden()
 })
 
+test('holds a backup, which then cannot be deleted, opens it, and releases it', async ({ page }) => {
+  await signIn(page)
+  await page.goto('/admin/backups')
+  await pageLoaded(page)
+  await page.getByRole('button', { name: 'Back up now' }).click()
+  const written = page.getByText(/^The last backup was written/)
+  await expect(written).toBeVisible({ timeout: 30_000 })
+  const file = /: (\S+), [^,]+\.$/.exec((await written.textContent()) ?? '')?.[1]
+  expect(file, 'the file named in the last backup line').toBeTruthy()
+  const escaped = file!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const row = page.getByRole('row').filter({ hasText: file! })
+
+  await row.getByRole('button', { name: new RegExp(`^Hold the backup of .*\\(${escaped}\\)$`) }).click()
+  await expect(page.getByText(`${file} is held: retention keeps it, and it counts towards no limit.`)).toBeVisible()
+  await expect(row.getByRole('img', { name: /^Held since/ })).toBeVisible()
+  await expect(row.getByRole('button', { name: /^Delete the backup of/ })).toHaveCount(0)
+  await expect(row).toContainText('Held: release it to delete it')
+  await expectSoundLayout(page)
+
+  // Opened: what its manifest says, readable without its key.
+  await row.getByRole('button', { name: new RegExp(`^Open the backup of .*\\(${escaped}\\)$`) }).click()
+  const opened = page.getByRole('dialog', { name: /^The backup of/ })
+  await expect(opened.getByRole('table', { name: /^Tables: \d+ · rows: / })).toBeVisible()
+  await expect(opened.getByRole('rowheader', { name: 'Vehicles', exact: true })).toBeVisible()
+  await expect(opened).toContainText(/Held since/)
+  await expectSoundLayout(page)
+  expect(await violations(page, '[role="dialog"]')).toEqual([])
+  await opened.getByRole('button', { name: 'Close' }).click()
+  await expect(opened).toBeHidden()
+
+  // Released, as found: deletable again.
+  await row.getByRole('button', { name: new RegExp(`^Release the backup of .*\\(${escaped}\\)$`) }).click()
+  await expect(row.getByRole('button', { name: /^Delete the backup of/ })).toBeVisible()
+  await expect(row.getByRole('img', { name: /^Held since/ })).toHaveCount(0)
+})
+
 test('says what an older backup can break in its row, and its restore waits until that is accepted', async ({ page }) => {
   await signIn(page)
   await page.goto('/admin/backups')
