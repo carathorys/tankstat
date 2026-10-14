@@ -82,7 +82,7 @@ function NothingToDo() {
  */
 function Done({ mode }: { mode: AuthMode }) {
   const { t } = useTranslation()
-  const { data } = useQuery(BackupsDocument, { fetchPolicy: 'cache-and-network' })
+  const { data, error } = useQuery(BackupsDocument, { fetchPolicy: 'cache-and-network' })
   const next: { to: string; label: string }[] = [
     { to: '/admin/settings?tab=backups', label: t('setup.nextBackups') },
     { to: '/admin/settings?tab=defaults', label: t('setup.nextDefaults') },
@@ -92,7 +92,7 @@ function Done({ mode }: { mode: AuthMode }) {
   return (
     <Stack sx={{ gap: 3, maxWidth: 720 }}>
       <SuccessMessage>{t('setup.done')}</SuccessMessage>
-      {data ? <EncryptionSetup recipient={data.backups.settings.recipient ?? null} /> : <Loading />}
+      {data ? <EncryptionSetup recipient={data.backups.settings.recipient ?? null} /> : error !== undefined ? <ErrorMessage error={error} /> : <Loading />}
       <section aria-labelledby="setup-next">
         <Typography id="setup-next" component="h2" variant="h5" sx={{ mb: 1 }}>
           {t('setup.nextTitle')}
@@ -100,7 +100,7 @@ function Done({ mode }: { mode: AuthMode }) {
         <Stack component="ul" sx={{ m: 0, pl: 2.5, gap: 1 }}>
           {next.map((item) => (
             <li key={item.to}>
-              <Link component={RouterLink} to={item.to}>
+              <Link component={RouterLink} to={item.to} sx={standaloneLink}>
                 {item.label}
               </Link>
             </li>

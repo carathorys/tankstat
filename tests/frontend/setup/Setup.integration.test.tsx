@@ -226,6 +226,16 @@ it('asks the session again when the setup was completed elsewhere meanwhile, so 
   expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
 })
 
+it('says why the key set is missing from the done screen when the backups cannot be asked for', async () => {
+  const state = waitingServer('STANDALONE', { signedIn: user({ isAdmin: true }) })
+  state.pending = false
+  server.use(graphql.query('Backups', () => HttpResponse.json(gqlError('The backups folder cannot be read.', 'INTERNAL_SERVER_ERROR', 'backup.folderUnreadable'))))
+  renderWithApollo(<App />, '/setup')
+
+  expect(await screen.findByText('The backups folder cannot be read.')).toBeInTheDocument() // not an endless "Loading"
+  expect(screen.getByRole('region', { name: 'What to set up next' })).toBeInTheDocument()
+})
+
 it('says there is nothing to set up once the instance is set up, to someone who is no administrator', async () => {
   const state = waitingServer('OIDC', { signedIn: user({ isAdmin: false }) })
   state.pending = false
