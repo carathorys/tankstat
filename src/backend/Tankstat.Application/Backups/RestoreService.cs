@@ -93,7 +93,10 @@ public sealed class RestoreService(
     public static async Task<IReadOnlyList<string>> MissingHereAsync(IBackupStore store, ISettingsBackup settings, RestorePoint point, CancellationToken ct)
     {
         var m = point.Manifest;
-        if (m.Environment is not { Settings.Count: > 0 } recorded) return [];
+        if (m.Environment is not { } environment) return [];
+        // Only what refuses the restore: a missing log level does not (SettingsInBackups.Refuses).
+        var recorded = environment with { Settings = [.. environment.Settings.Where(SettingsInBackups.Refuses)] };
+        if (recorded.Settings.Count == 0) return [];
         try
         {
             if (m.Settings is not { State: BackupSettingsState.Included }) return await settings.MissingAsync(recorded, null, ct); // the restore leaves this server's own file
@@ -120,7 +123,7 @@ public sealed class RestoreService(
     public static async Task RequireRecordedAsync(ISettingsBackup settings, BackupManifest manifest, RestoredSettings? restored, CancellationToken ct)
     {
         if (manifest.Environment is not { } recorded) return;
-        var missing = await settings.MissingAsync(recorded, restored?.Values, ct);
+        var missing = (await settings.MissingAsync(recorded, restored?.Values, ct)).Where(SettingsInBackups.Refuses).ToList();
         if (missing.Count > 0)
             throw new DomainException("backup.environmentMissing",
                 $"The backup was made on a server whose environment set {string.Join(", ", missing)}; this server sets none of them, nor does the settings file the backup brings. Set them, then restore.",

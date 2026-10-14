@@ -182,6 +182,26 @@ public sealed class RestoreSettingsTests : IDisposable
     }
 
     [Fact]
+    public async Task ALogLevelTheBackupsServerSetInItsEnvironment_DoesNotRefuseARestoreWhereItHasNoValue()
+    {
+        // A compose file often sets Logging__LogLevel__Default: a server without it still restores (user decision), only what the log holds differs.
+        string backup;
+        using (var a = Host("a", "None", file: null, new() { ["Logging:LogLevel:Default"] = "Warning" }))
+        {
+            var written = await Backup(a);
+            Assert.Contains("Logging__LogLevel__Default", written.Manifest.Environment!.Settings);
+            backup = written.Path;
+        }
+        using var b = Host("b", "None", file: null);
+        Stage(Folder("b-backups"), backup);
+
+        _ = b.Factory.Services;
+
+        Assert.Empty(Directory.GetFiles(Folder("b-backups"), "restore.refused.*"));
+        Assert.False(File.Exists(RestoreMarker.PathIn(Folder("b-backups"))));
+    }
+
+    [Fact]
     public async Task AMergedBackup_CarriesTheEnvironmentsSettingsInItsFile_ButNoSecretInPlain_WhichTheRestoredServerMustThenSet()
     {
         string backup;
