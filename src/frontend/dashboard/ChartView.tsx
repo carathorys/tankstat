@@ -16,6 +16,7 @@ import { SurfaceTable } from '../components/SurfaceTable.tsx'
 import type { DistanceUnit, VolumeUnit } from '../gql/generated.ts'
 import { useFormat } from '../i18n/format.ts'
 import { validLocale } from '../i18n/locale.ts'
+import { standaloneLink } from '../theme/components.ts'
 import { PALETTE, periodLabel, seriesId, type ChartData, type ChartRecipe, type Series } from './chartFormat.ts'
 
 type Units = { distance: DistanceUnit; volume: VolumeUnit }
@@ -137,7 +138,7 @@ export function ChartView({ data, recipe, units, title, height = 240 }: { data: 
       <div role="img" aria-label={t('dashboard.chartLabel', { title })}>
         <div aria-hidden>{picture}</div>
       </div>
-      <Link component="button" type="button" variant="body2" underline="always" aria-expanded={table} onClick={() => setTable(!table)} sx={{ minHeight: 24, mt: 1 }}>
+      <Link component="button" type="button" variant="body2" underline="always" aria-expanded={table} onClick={() => setTable(!table)} sx={{ minHeight: 24, mt: 1, ...standaloneLink }}>
         {table ? t('dashboard.hideTable') : t('dashboard.showTable')}
       </Link>
       {table && (

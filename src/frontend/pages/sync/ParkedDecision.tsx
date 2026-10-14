@@ -18,6 +18,7 @@ import type { Change } from '../../offline/changes.ts'
 import { changedOnServer, currentValues, merge, situationOf, type Current } from '../../offline/conflicts.ts'
 import { toChangeInput, unblockAdd } from '../../offline/push.ts'
 import { canForce } from '../../offline/syncKinds.ts'
+import { standaloneLink } from '../../theme/components.ts'
 import { useFieldText, type Units } from './useFieldText.ts'
 
 type Parked = ParkedChangeFieldsFragment
@@ -71,7 +72,7 @@ export function ParkedAccount({ parked, change, units, label }: { parked: Parked
       {state && <Typography variant="body2">{state}</Typography>}
       {situation === 'edited' && <MergeTable change={change} current={current} units={units} />}
       {current && (
-        <Link component={RouterLink} to={placeOf(change, current)} variant="body2" aria-label={t('sync.conflict.openAria', { change: label })} sx={{ alignSelf: 'flex-start' }}>
+        <Link component={RouterLink} to={placeOf(change, current)} variant="body2" aria-label={t('sync.conflict.openAria', { change: label })} sx={{ alignSelf: 'flex-start', ...standaloneLink }}>
           {t('sync.conflict.open')}
         </Link>
       )}

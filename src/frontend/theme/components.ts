@@ -10,6 +10,12 @@ type T = Omit<Theme, 'components'>
 /** A touch screen: every control is at least 44 px (WCAG target size). */
 export const COARSE = '@media (pointer: coarse)'
 
+/**
+ * A link on its own, not in a sentence (a value in a list, a name in a grid, "Change the settings" under a panel): on a touch screen a
+ * 44 px target like every control; WCAG 2.5.8 exempts only links in a sentence. Spread it last in `sx`, after the link's own minHeight.
+ */
+export const standaloneLink: CSSObject = { [COARSE]: { display: 'inline-flex', alignItems: 'center', minHeight: 44 } }
+
 /** The palette colours a control can take, each with soft tones (theme/augment.d.ts). */
 export const TONES = ['primary', 'neutral', 'error', 'warning', 'success', 'info'] as const
 export type Tone = (typeof TONES)[number]

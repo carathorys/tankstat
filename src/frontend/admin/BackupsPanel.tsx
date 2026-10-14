@@ -49,7 +49,7 @@ import { connectivity } from '../offline/connectivity.ts'
 import { classifyFailure } from '../offline/errors.ts'
 import { PROBE_TIMEOUT_MS, withDeadline } from '../offline/runtime.ts'
 import { ApiError } from '../pictures/ApiError.ts'
-import { COARSE } from '../theme/components.ts'
+import { COARSE, standaloneLink } from '../theme/components.ts'
 import { downloadBackup, uploadBackup } from './backupFiles.ts'
 import { useToast } from '../toast/toastContext.ts'
 import { ProblemList } from './ProblemList.tsx'
@@ -161,7 +161,7 @@ function Overview({ backups }: { backups: BackupsQuery['backups'] }) {
           { label: t('admin.backups.retentionLabel'), value: retention },
         ]}
       />
-      <Link component={RouterLink} to="/admin/settings?tab=backups" sx={{ display: 'inline-block', mt: 1 }}>
+      <Link component={RouterLink} to="/admin/settings?tab=backups" sx={{ display: 'inline-block', mt: 1, ...standaloneLink }}>
         {t('admin.backups.changeSettings')}
       </Link>
     </section>
