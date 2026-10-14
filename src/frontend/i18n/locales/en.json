@@ -1628,7 +1628,6 @@
     "codeWhere": "It is on the line that starts with \"Setup is waiting\" (with Docker: docker logs and the container's name). Every start writes a new one, so use the latest.",
     "code": "Setup code",
     "continue": "Continue",
-    "otherCode": "Enter another code",
     "backToSetup": "Back to the setup",
     "wizard": {
       "next": "Next",

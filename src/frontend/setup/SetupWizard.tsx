@@ -339,11 +339,6 @@ function WizardSteps({
       </Stepper>
       {/* Horizontal: the step at hand below the whole row of labels, as wide as a form reads well. */}
       {horizontal && <Box sx={{ maxWidth: 720, width: '100%', alignSelf: 'center', mt: 1 }}>{content}</Box>}
-      {restoring === undefined && (
-        <Button variant="ghost" color="primary" sx={{ alignSelf: 'flex-start' }} onClick={onOtherCode}>
-          {t('setup.otherCode')}
-        </Button>
-      )}
     </Stack>
   )
 }

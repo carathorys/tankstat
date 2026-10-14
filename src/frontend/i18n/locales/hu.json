@@ -1628,7 +1628,6 @@
     "codeWhere": "A „Setup is waiting” kezdetű sorban találod (Dockerrel: docker logs és a konténer neve). Minden indítás újat ír, ezért a legutóbbit használd.",
     "code": "Beállítási kód",
     "continue": "Tovább",
-    "otherCode": "Másik kód megadása",
     "backToSetup": "Vissza a beállításhoz",
     "wizard": {
       "next": "Tovább",
