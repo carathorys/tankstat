@@ -1,6 +1,7 @@
 import { statSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
 import { ADMIN, addVehicle, pageLoaded, signIn } from './support/app.ts'
+import { violations } from './support/axe.ts'
 
 // A few flows across the real server, its sign-in and the routing, at both sizes.
 
@@ -56,8 +57,19 @@ test('writes a backup from the Backups page and downloads it', async ({ page }) 
   // "The last backup was written <time>: <file>, <size>." The other size's run writes one too, so this one is found by its file.
   const file = /: (\S+), [^,]+\.$/.exec((await written.textContent()) ?? '')?.[1]
   expect(file, 'the file named in the last backup line').toBeTruthy()
+  const escaped = file!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const download = page.waitForEvent('download')
-  await page.getByRole('button', { name: new RegExp(`^Download the backup of .*\\(${file!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)$`) }).click()
+  await page.getByRole('button', { name: new RegExp(`^Download the backup of .*\\(${escaped}\\)$`) }).click()
   expect((await download).suggestedFilename()).toBe(file)
   expect(statSync(await (await download).path()).size).toBeGreaterThan(0)
+
+  // Its restore dialog says what it brings of the server's settings: the variables its environment set, none of them missing here.
+  await page.getByRole('button', { name: new RegExp(`^Restore the backup of .*\\(${escaped}\\)$`) }).click()
+  const restore = page.getByRole('alertdialog', { name: /^Restore the backup of/ })
+  await expect(restore).toContainText("Its server's environment set")
+  await expect(restore).toContainText('Auth__Oidc__Authority')
+  await expect(restore.getByRole('alert')).toHaveCount(0)
+  expect(await violations(page, '[role="alertdialog"]')).toEqual([])
+  await restore.getByRole('button', { name: 'Cancel' }).click()
+  await expect(restore).toBeHidden()
 })
