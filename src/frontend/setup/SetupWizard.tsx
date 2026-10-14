@@ -272,9 +272,16 @@ function WizardSteps({
   // Every step opens by its label, except while a restore restarts the server, and the restart's wait before there is one.
   const closed = (i: number, step: WizardStep) => (restoring !== undefined ? i !== at : step.id === 'restart')
 
-  // The step at hand's label takes the focus as it opens: the button that led to it is gone (or was a label itself), and it is read out.
+  // The step at hand from its top as it opens (one opened from further down, a label or the last step's list, would else open out of
+  // sight), and its label takes the focus: the button that led to it is gone (or was a label itself), and it is read out.
   const label = useRef<HTMLSpanElement>(null)
-  useEffect(() => label.current?.focus(), [at, way])
+  useEffect(() => {
+    const opened = label.current
+    if (!opened) return
+    const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    opened.scrollIntoView?.({ block: 'start', behavior: still ? 'auto' : 'smooth' })
+    opened.focus({ preventScroll: true })
+  }, [at, way])
   const horizontal = useMediaQuery(MEDIA.desktop, true) && DESKTOP_LAYOUT === 'horizontal'
   const content = way === 'fresh' && at > 0 && !settings ? error ? <ErrorMessage error={error} /> : <Loading /> : steps[at]!.content()
 
@@ -297,7 +304,7 @@ function WizardSteps({
               }
             >
               {i === at ? (
-                <Box component="span" ref={label} tabIndex={-1} aria-current="step">
+                <Box component="span" ref={label} tabIndex={-1} aria-current="step" sx={{ scrollMarginTop: (theme) => theme.spacing(12) }}>
                   {step.label}
                 </Box>
               ) : !closed(i, step) ? (
