@@ -223,11 +223,17 @@ jobs:
           retention-days: 14
 
   # The real-browser tests (tests/e2e): the build job's out/ started as scripts/test-e2e.sh does, Playwright with Chromium at phone and
-  # desktop size. It starts once the build is up (about 105 s in) and runs next to the slower test jobs.
+  # desktop size. It starts once the build is up (about 90 s in) and runs next to the slower test jobs, in two shards on two machines
+  # (Playwright splits the tests; each shard starts its own server), so it ends within the backend job's time.
   e2e:
+    name: e2e (${{ matrix.shard }}/2)
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false # report every failing shard, not just the first
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v4
 
@@ -255,7 +261,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
 
       - name: Real-browser tests
-        run: scripts/test-e2e.sh
+        run: scripts/test-e2e.sh --shard=${{ matrix.shard }}/2
         env:
           E2E_NATIVE: "1"
 
@@ -263,7 +269,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-results
+          name: e2e-results-${{ matrix.shard }}
           path: |
             test-results/e2e
             playwright-report

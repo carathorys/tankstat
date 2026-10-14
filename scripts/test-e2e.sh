@@ -68,6 +68,6 @@ fi
 if [[ "$status" != 0 ]]; then
   echo "The app's last log lines:" >&2
   tail -n 40 "${files}/app.log" >&2
-  echo "Report: npx playwright show-report; a failed test's trace: npx playwright show-trace test-results/e2e/<test>/trace.zip" >&2
+  echo "Report: npx playwright show-report; a failed test's video: test-results/e2e/<test>/video.webm, its trace: npx playwright show-trace test-results/e2e/<test>/trace.zip" >&2
 fi
 exit "$status"

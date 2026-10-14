@@ -1,3 +1,4 @@
+import { statSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
 import { ADMIN, addVehicle, pageLoaded, signIn } from './support/app.ts'
 
@@ -42,12 +43,21 @@ test('adds a vehicle and a refuelling', async ({ page, isMobile }) => {
   await expect(page.getByRole('row').filter({ hasText: '42.5 L' })).toBeVisible()
 })
 
-test('writes a backup from the Backups page', async ({ page }) => {
+test('writes a backup from the Backups page and downloads it', async ({ page }) => {
   await signIn(page)
   // A vehicle of its own, so the backup has something in it whatever ran before.
   await addVehicle(page)
   await page.goto('/admin/backups')
   await pageLoaded(page)
   await page.getByRole('button', { name: 'Back up now' }).click()
-  await expect(page.getByText(/^The last backup was written/)).toBeVisible({ timeout: 30_000 })
+  const written = page.getByText(/^The last backup was written/)
+  await expect(written).toBeVisible({ timeout: 30_000 })
+
+  // "The last backup was written <time>: <file>, <size>." The other size's run writes one too, so this one is found by its file.
+  const file = /: (\S+), [^,]+\.$/.exec((await written.textContent()) ?? '')?.[1]
+  expect(file, 'the file named in the last backup line').toBeTruthy()
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: new RegExp(`^Download the backup of .*\\(${file!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)$`) }).click()
+  expect((await download).suggestedFilename()).toBe(file)
+  expect(statSync(await (await download).path()).size).toBeGreaterThan(0)
 })
