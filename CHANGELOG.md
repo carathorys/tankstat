@@ -2,6 +2,24 @@
 
 Every release of Tankstat, newest first. Each one is a Docker image, `ghcr.io/carathorys/tankstat:<version>`, and a [GitHub release](https://github.com/carathorys/tankstat/releases). The numbers in brackets are the pull requests. Pre-releases (the previews) are not listed: their changes are in the release that followed them.
 
+## 0.15.1 (2026-10-14)
+
+### Fixed
+
+- **Label and value lists on a phone** (#127): on a narrow screen each label now stands above its value, and a value wraps instead of running past its panel. Before, the Server settings page squeezed the environment's settings into a one-word column, long addresses and ids ran off the screen under their help buttons, and a long settings-file path made the whole page scroll sideways. On wider screens the label column takes at most 40 %. This covers every such list: Server settings, Overview, Backups and Account.
+- **Touch targets of 44 px on a touch screen** (#128): the app's name in the top bar, and every text link that is not part of a sentence. That means the Overview's user and vehicle counts, the vehicle names under Administration, then Vehicles, the Backups page's link to its settings, a chart's *Show the data as a table*, a sync conflict's *Open*, *Continue to sign in* after setting a password, and a notification's link. Nothing changes with a mouse.
+- **The Docker Compose example runs 0.15** (#126): `.env.example` said `0.14`, which ignores the example's backup settings without a word. Its comments now name the tags that exist (`0.15` follows the patches, `0.15.0` stays put, `latest` moves with every stable release) and say that the example's backups need 0.15 or later.
+
+### Upgrading
+
+- Nothing to do: no migration and no setting changed. `0.15` and `latest` move to this release.
+- If you started from the Compose example with `TANKSTAT_VERSION=0.14`, read 0.15.0's *Upgrading* below, then set it to `0.15`: the example's backups only run from 0.15.
+
+### For developers
+
+- `.claude/rules/frontend.md` has a *Touch targets* rule: `standaloneLink` (`theme/components.ts`) for a link that stands on its own, and links in a sentence are exempt (#128).
+- `.claude/rules/docker-and-release.md` says which image tags each release gets, and that a new minor release's changelog PR also moves the Compose example's `TANKSTAT_VERSION` (#126).
+
 ## 0.15.0 (2026-10-13)
 
 ### Added
