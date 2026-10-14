@@ -15,12 +15,8 @@ internal sealed class SetupStore(IDbContextFactory<AppDbContext> dbFactory) : IS
     public async Task<SetupPhase> PhaseAsync(CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var row = await db.InstanceState.AsNoTracking().Where(s => s.Id == InstanceState.SingletonId)
-            .Select(s => new { s.SetupPendingSince, s.SetupCompletedAt }).FirstOrDefaultAsync(ct);
-        return row is null ? SetupPhase.Undecided
-            : row.SetupCompletedAt is not null ? SetupPhase.Completed
-            : row.SetupPendingSince is not null ? SetupPhase.Pending
-            : SetupPhase.Undecided;
+        var row = await db.InstanceState.AsNoTracking().FirstOrDefaultAsync(s => s.Id == InstanceState.SingletonId, ct);
+        return row?.Setup ?? SetupPhase.Undecided;
     }
 
     public async Task<bool> HoldsDataAsync(CancellationToken ct)
