@@ -631,14 +631,56 @@
       "changeSettings": "Az ütemezés, a megőrzés és a titkosítás a szerverbeállításokban módosítható",
       "environmentLabel": "A környezet beállításai",
       "environmentRecord": "minden mentés megnevezi őket; máshol a visszaállításhoz ott be kell állítani őket",
-      "environmentMerge": "minden mentés beállításfájljába bekerülnek (titkok csak titkosítottba)",
+      "environmentMerge": "minden mentés beállításfájljába bekerülnek (titkok csak bekapcsolt „Titkok a mentésekben” mellett)",
       "settingsBrings": "Magával hozza a kiszolgálója beállításfájlját, amely felváltja ennek a kiszolgálónak a fájlját (settings.json.bak néven megmarad). Ez a kiszolgáló megtartja a saját adatbázisa, mappái és kulcsai beállítását, és a jelszavait, ha a mentés nem titkosított.",
-      "settingsNone": "A kiszolgálójának nem volt beállításfájlja: ennek a kiszolgálónak a fájlja marad, ahogy van.",
-      "settingsIgnored": "A kiszolgálója a beállításfájlja nélkül futott (az indulás kihagyta): ennek a kiszolgálónak a fájlja marad, ahogy van.",
-      "settingsOlder": "Egy olyan kiadás írta, amelynek a mentései még nem tartalmazták a beállításfájlt: ennek a kiszolgálónak a fájlja marad, ahogy van.",
       "environmentRecorded": "A kiszolgálója környezete beállította ezeket: {{names}}. Az értékük nincs a mentésben: ennek a kiszolgálónak kell beállítania őket.",
-      "environmentMerged": "A kiszolgálója környezete beállította ezeket: {{names}}. Az értékük a beállításfájljában van (titkok csak titkosított mentésben).",
-      "environmentMissing": "Ez a kiszolgáló egyiket sem állítja be, ezért a visszaállítást elutasítja: {{names}}. Előbb állítsd be őket ennek a kiszolgálónak a környezetében."
+      "environmentMerged": "A kiszolgálója környezete beállította ezeket: {{names}}. Az értékük a beállításfájljában van (a titkok csak akkor, ha a kiszolgálója a mentéseibe tette őket).",
+      "risks": {
+        "missing": {
+          "short": "ezen a kiszolgálón hiányzik: {{names}}",
+          "text": "A visszaállítást a kiszolgáló elutasítja: a mentés kiszolgálója a környezetében beállította ezeket: {{names}}, ez a kiszolgáló egyiket sem állítja be, és a mentés beállításfájlja sem tartalmazza őket. Előbb állítsd be őket ennek a kiszolgálónak a környezetében."
+        },
+        "mayBeMissing": {
+          "short": "Elutasíthatja: {{names}} itt nincs beállítva",
+          "text": "A mentés kiszolgálója a környezetében beállította ezeket: {{names}}, ez a kiszolgáló nem állítja be őket. A mentés titkosított, így a beállításfájlja csak a jelmondattal olvasható: ha egyiket sem tartalmazza, a visszaállítást a kiszolgáló elutasítja."
+        },
+        "noSettingsOlder": {
+          "short": "Nincs beállításfájl (egy régebbi kiadás írta)",
+          "text": "Nincs benne beállításfájl, és a kiszolgálója környezetéről sem mond semmit: egy olyan kiadás írta, amelynek a mentései még nem tartalmazták ezeket. Ennek a kiszolgálónak a beállításai maradnak, amelyek nem biztos, hogy illenek a visszaállított adatokhoz: a bejelentkezés, az e-mail, a mentések."
+        },
+        "noSettingsNone": {
+          "short": "Nincs beállításfájl (a kiszolgálójának nem volt)",
+          "text": "A kiszolgálójának nem volt beállításfájlja, így a mentésben sincs. Ennek a kiszolgálónak a beállításai maradnak, amelyek nem biztos, hogy illenek a visszaállított adatokhoz: a bejelentkezés, az e-mail, a mentések."
+        },
+        "noSettingsIgnored": {
+          "short": "Nincs beállításfájl (a kiszolgálója nélküle futott)",
+          "text": "A kiszolgálója a beállításfájlja nélkül futott (az indulás kihagyta a fájlt), így a mentésben nincs. Ennek a kiszolgálónak a beállításai maradnak, amelyek nem biztos, hogy illenek a visszaállított adatokhoz."
+        },
+        "secretsLeftOut": {
+          "short": "A titkai nélkül: {{names}}",
+          "text": "A titkai nincsenek benne ({{names}}): a kiszolgálója nem tette bele őket a mentéseibe. Ez a kiszolgáló megtartja a sajátjait; ami ennek a kiszolgálónak nincs, az nem fog működni (az e-mail, a bejelentkezési szolgáltató, a fotóolvasás)."
+        },
+        "signInOverridden": {
+          "short": "Bejelentkezés: ennek a kiszolgálónak a környezete dönt",
+          "text": "Ennek a kiszolgálónak a környezete beállítja a bejelentkezési módot, amely felülírja a mentésé. Ha eltérnek, a visszaállított felhasználók nem biztos, hogy be tudnak jelentkezni (egy azonosítási szolgáltató fiókjainak itt nincs jelszavuk, és fordítva)."
+        },
+        "overridden": {
+          "short": "Ennek a kiszolgálónak a környezete felülírja: {{names}}",
+          "text": "Ennek a kiszolgálónak a környezete felülírja ezeket: {{names}}, amelyeket a mentés beállításfájlja tartalmaz: ennek a kiszolgálónak az értékei futnak, nem a mentéséi."
+        },
+        "environmentUnknown": {
+          "short": "Nem mond semmit a kiszolgálója környezetéről",
+          "text": "Semmit sem mond azokról a beállításokról, amelyeket a kiszolgálója a környezetéből vett (egy régebbi kiadás írta): bármelyik hiányozhat itt."
+        }
+      },
+      "riskRefused": "Elutasítva",
+      "riskRisk": "Kockázat",
+      "risksTitle": "Mit ronthat el itt ez a visszaállítás",
+      "risksAcknowledge": "Értem, hogy a visszaállított kiszolgáló nem biztos, hogy úgy működik, mint korábban, és mégis vissza szeretném állítani.",
+      "refusedNote": "Előbb állítsd be, ami hiányzik: addig a kiszolgáló elutasítja ezt a visszaállítást.",
+      "secretsLeftOut": "kimaradnak (a visszaállított kiszolgáló a sajátjait tartja meg)",
+      "secretsIncluded": "benne vannak (titkosítva)",
+      "secretsIncludedPlain": "benne vannak OLVASHATÓAN: aki hozzájut egy mentésfájlhoz, olvashatja őket"
     }
   },
   "errors": {
@@ -866,7 +908,7 @@
       "failed": "váratlan hiba (a szerver naplója többet mond)",
       "stopped": "az alkalmazás leállt, miközben készült",
       "restorePending": "Egy visszaállítás a következő indulásra vár; amíg le nem futott, mentés nem törölhető.",
-      "settingsRefused": "A kiszolgáló nem indulna el azzal a beállításfájllal, amelyet ez a mentés hoz, ennek a kiszolgálónak a környezetében, ezért nem állította vissza. Állítsd be a környezetben, ami hiányzik (például egy OIDC-kliens titkát, amelyet a titkosítatlan mentés nem tartalmaz), vagy állíts vissza titkosított mentést.",
+      "settingsRefused": "A kiszolgáló nem indulna el azzal a beállításfájllal, amelyet ez a mentés hoz, ennek a kiszolgálónak a környezetében, ezért nem állította vissza. Állítsd be a környezetben, ami hiányzik (például egy OIDC-kliens titkát, amelyet a mentés csak akkor tartalmaz, ha a kiszolgálója a titkokat a mentéseibe tette), vagy állíts vissza olyan mentést, amely tartalmazza a titkokat.",
       "environmentMissing": "A mentés olyan kiszolgálón készült, amelynek a környezete beállította ezeket: {{variables}}; ez a kiszolgáló egyiket sem állítja be, és a mentés beállításfájlja sem tartalmazza őket, ezért nem állította vissza. Állítsd be őket ennek a kiszolgálónak a környezetében, majd állítsd vissza."
     }
   },
@@ -1823,7 +1865,8 @@
       "Backups__Keep": "Minden mentés után, amelyet az alkalmazás készít, a tankstat-backup-… nevű fájlok közül csak ennyi legújabb marad (a backup parancséi és az ilyen néven kézzel bemásoltak is beleszámítanak; a frissítések előtti biztonsági mentések külön maradnak, a legújabb három); a legújabb sosem törlődik. A feltöltött és a más néven bemásolt fájlok nem számítanak bele. Üresen nincs darabszám-korlát.",
       "Backups__KeepDays": "Minden mentés után, amelyet az alkalmazás készít, törlődnek az ennyi napnál régebbi tankstat-backup-… nevű fájlok (a frissítések előtti biztonsági mentések külön maradnak, a legújabb három); a legújabb mindig megmarad. A feltöltött és a más néven bemásolt fájlok sosem törlődnek. Üresen nincs korkorlát.",
       "Backups__Photos": "Csak akkor számít, ha a bejegyzések fényképeinek saját mappája van (Storage:PhotosPath): ezek korlát nélkül nőnek, ezért csak bekapcsolva kerülnek a mentésbe. Egy mappával mindig benne vannak.",
-      "Backups__Environment": "Mit kezd a mentés az itteni környezeti változókban megadott beállításokkal: a Feljegyzés csak a nevüket írja a mentésbe, és ha egy kiszolgáló egyiket sem adja meg, a visszaállítását a mentés elutasítja, amíg be nem állítod őket; az Összefésülés a kiszolgáló futó értékeit is beírja a mentés beállításfájl-másolatába (soha nem a kiszolgáló saját fájljába), így egy másik kiszolgálón a visszaállítás magával hozza őket, a titkokat csak titkosított mentésben.",
+      "Backups__Environment": "Mit kezd a mentés az itteni környezeti változókban megadott beállításokkal: a „Csak a nevek” (Record) csak a nevüket írja a mentésbe, és ha egy kiszolgáló egyiket sem adja meg, a visszaállítását a kiszolgáló elutasítja, amíg be nem állítod őket; a „Nevek és értékek” (Merge) a kiszolgáló futó értékeit is beírja a mentés beállításfájl-másolatába (soha nem a kiszolgáló saját fájljába), így egy másik kiszolgálón a visszaállítás magával hozza őket, a titkokat csak titkosított mentésben (vagy ha a titkosítatlan mentések is tartalmazhatják őket).",
+      "Backups__Secrets": "Minden mentés beállításfájlja a titkokat is tartalmazza (az OIDC-kliens titkát, az SMTP-jelszót, a modell API-kulcsát), így egy másik kiszolgálón a visszaállítás magával hozza őket. Alapból ki van kapcsolva. Egy nem titkosított mentésben aki hozzájut a fájlhoz, olvashatja őket: a mentések titkosításához készíts kulcskészletet a Mentések oldalon. A „Csak a nevek” beállítás mellett (Beállítások a környezetből) csak így kerülnek a kiszolgáló beállításfájljában tárolt titkok a mentésbe; a környezeti változókban megadott titkok csak a „Nevek és értékek” mellett. A mentés mindkét esetben megnevez minden titkot, amelyet kihagy.",
       "Backups__Encryption__Recipient": "Az age-címzett (age1…), akinek a mentések titkosítva készülnek. A sóval egy párt alkot, egyazon kulcskészletből: mindkettőt a Mentések oldal Kulcskészlet készítése gombjával lehet előállítani, és csak együtt szabad módosítani. Üresen a mentések titkosítatlanok, és nincsenek bennük a bejelentkezést védő kulcsok.",
       "Backups__Encryption__Salt": "A só, amellyel a kulcs a jelmondatból készül; a címzettel együtt kapod meg, és összetartoznak. Egy másik kulcskészlet sójával (vagy kézzel módosított sóval) az utána készült mentéseket már nem nyitja meg a jelmondat, csak az azonosító. A régebbi mentésekhez a saját jelmondatuk kell.",
       "Backups__MaxUploadMb": "A legnagyobb mentés, amelyet egy adminisztrátor a Mentések oldalon feltölthet (alapból 1024). Fájlt a mentések mappájába másolni mindig lehet; olyan nevet adj neki, amely nem tankstat-backup- kezdetű, különben a megőrzés az alkalmazás saját mentései közé számítja.",
@@ -1897,6 +1940,7 @@
       "Backups__KeepDays": "Megőrzés (nap)",
       "Backups__Photos": "A bejegyzések fényképei is kerüljenek bele",
       "Backups__Environment": "A környezet beállításai",
+      "Backups__Secrets": "Titkok a mentésekben",
       "Backups__Encryption__Recipient": "Titkosítás címzettje (age)",
       "Backups__Encryption__Salt": "A jelmondat sója",
       "Backups__MaxUploadMb": "Legnagyobb feltöltés (MB)",
@@ -1930,11 +1974,12 @@
         "None": "Nem kéri (a prompt mondja meg)"
       },
       "backupEnvironment": {
-        "Record": "Nevük feljegyzése",
-        "Merge": "Értékeik összefésülése a mentés beállításfájljába"
+        "Record": "Csak a nevek",
+        "Merge": "Nevek és értékek"
       }
     },
     "choiceWithValue": "{{words}} ({{value}})",
-    "noSignInWarning": "Nem biztonságos: bejelentkezés nélkül bárki, aki eléri a szervert, minden adatot lát és módosíthat, az adminisztrációs oldalak pedig nem érhetők el. Csak kipróbálásra, megbízható hálózaton használd, éles üzemben soha."
+    "noSignInWarning": "Nem biztonságos: bejelentkezés nélkül bárki, aki eléri a szervert, minden adatot lát és módosíthat, az adminisztrációs oldalak pedig nem érhetők el. Csak kipróbálásra, megbízható hálózaton használd, éles üzemben soha.",
+    "secretsPlainWarning": "A mentések nincsenek titkosítva, így bekapcsolva minden mentés olvashatóan tartalmazza a titkokat: aki hozzájut egy fájlhoz, egy lemezről, egy másolatból vagy egy megosztásból, olvashatja az OIDC-kliens titkát, az SMTP-jelszót és a modell API-kulcsát. A titkosításukhoz készíts kulcskészletet a Mentések oldalon."
   }
 }

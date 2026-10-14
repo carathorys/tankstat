@@ -37,7 +37,7 @@ import { downloadBackup } from './backupFiles.ts'
 import { Code, EncryptionSetup } from './encryption.tsx'
 import { shortRecipient } from './recipient.ts'
 import { UploadBackup } from './upload.tsx'
-import { BACKUP_POLL_MS, RestartWait, RestoreDialog } from './restore.tsx'
+import { BACKUP_POLL_MS, RestartWait, RestoreDialog, RestoreRiskLines } from './restore.tsx'
 import { useToast } from '../toast/toastContext.ts'
 
 type RestorePoint = BackupsQuery['backups']['restorePoints'][number]
@@ -130,6 +130,10 @@ function Overview({ backups }: { backups: BackupsQuery['backups'] }) {
           { label: t('admin.backups.schedule'), value: schedule },
           { label: t('admin.backups.retentionLabel'), value: retention },
           { label: t('admin.backups.environmentLabel'), value: settings.environment === 'MERGE' ? t('admin.backups.environmentMerge') : t('admin.backups.environmentRecord') },
+          {
+            label: t('systemSettings.fields.Backups__Secrets'),
+            value: !settings.secrets ? t('admin.backups.secretsLeftOut') : settings.recipient ? t('admin.backups.secretsIncluded') : t('admin.backups.secretsIncludedPlain'),
+          },
         ]}
       />
       <Link component={RouterLink} to="/admin/settings?tab=backups" sx={{ display: 'inline-block', mt: 1, ...standaloneLink }}>
@@ -404,6 +408,8 @@ function RestorePoints({
                         {t('admin.backups.otherMigration', { version: p.appVersion })}
                       </Typography>
                     )}
+                    {/* What its restore can break here, before anyone opens it (#140). */}
+                    {(p.sameMigration || p.olderMigration) && <RestoreRiskLines point={p} />}
                   </TableCell>
                   <TableCell align="right">{number(p.rows)}</TableCell>
                   <TableCell>{icons.encryption(p)}</TableCell>

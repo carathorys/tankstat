@@ -34,8 +34,9 @@ const point = (o: Record<string, unknown> = {}) => ({
   photos: 'SEPARATE',
   keys: true,
   rows: 1234,
-  settingsFile: null, // a backup of a release before it held the settings file
-  environment: null,
+  // A backup of this release with nothing to warn about: its settings file in, nothing its server's environment set missing here.
+  settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', secrets: true, secretsLeftOut: [] } as Record<string, unknown> | null,
+  environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: [], missing: [], missingCertain: true, overridden: [] } as Record<string, unknown> | null,
   ...o,
 })
 
@@ -118,7 +119,7 @@ function backupsServer({
             folder: '/data/backups',
             migration: 'AddInstance',
             run: state.run,
-            settings: { __typename: 'BackupSettingsInfo', recipient: RECIPIENT, photosApart: true, photos: true, maxUploadMb, environment: 'RECORD', ...state.schedule },
+            settings: { __typename: 'BackupSettingsInfo', recipient: RECIPIENT, photosApart: true, photos: true, maxUploadMb, environment: 'RECORD', secrets: false, ...state.schedule },
             sizes: { __typename: 'StorageSizesInfo', database: 5_300_000, pictures: 12_000_000, photos: 340_000_000 },
             restorePoints: state.points,
           },
@@ -384,17 +385,18 @@ it('restores an encrypted backup with its passphrase, waits for the restarted se
   await waitFor(() => expect(reload).toHaveBeenCalled(), { timeout: 5000 })
 })
 
-it('says in the restore dialog what the backup brings of the settings of its server, and what this server lacks, which the restore is refused for', async () => {
+it('says in a row and in its restore dialog what a backup brings and what it can break: refused for what this server lacks, an older one accepted knowingly', async () => {
   backupsServer({
     points: [
       point({
-        settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', omitted: ['Smtp:Password'] },
-        environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: ['Auth__Mode', 'Smtp__Host'], missing: ['Smtp__Host'] },
+        settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', secrets: false, secretsLeftOut: ['Smtp:Password'] },
+        environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: ['Auth__Mode', 'Smtp__Host'], missing: ['Smtp__Host'], missingCertain: true, overridden: [] },
       }),
-      point({ file: 'tankstat-backup-20260101T000000Z.zip', createdAt: '2026-01-01T00:00:00Z' }), // an older release's: neither
+      point({ file: 'tankstat-backup-20260101T000000Z.zip', createdAt: '2026-01-01T00:00:00Z', settingsFile: null, environment: null }), // an older release's: neither
     ],
   })
   const ui = await openBackups()
+  expect(screen.getByText('Refused: this server lacks Smtp__Host')).toBeInTheDocument() // in its row, before anything is opened
   // The choice for new backups, in the overview.
   expect(screen.getByText('Settings from the environment').nextElementSibling).toHaveTextContent('named in every backup; a restore elsewhere needs them set there')
 
@@ -402,13 +404,22 @@ it('says in the restore dialog what the backup brings of the settings of its ser
   const dialog = await screen.findByRole('alertdialog', { name: /^Restore the backup of/ })
   expect(dialog).toHaveTextContent("It brings its server's settings file, which replaces this server's (kept as settings.json.bak).")
   expect(dialog).toHaveTextContent("Its server's environment set Auth__Mode, Smtp__Host. Their values are not in the backup: this server must set them.")
-  expect(within(dialog).getByRole('alert')).toHaveTextContent('This server sets none of these, so the restore will be refused: Smtp__Host.')
+  // Refused: said in full, and the button stays off whatever is ticked.
+  expect(dialog).toHaveTextContent("The restore will be refused: its server set Smtp__Host in its environment, and this server sets none of them")
+  expect(within(dialog).getByRole('button', { name: 'Restore and restart' })).toBeDisabled()
+  expect(within(dialog).queryByRole('checkbox')).not.toBeInTheDocument()
   await ui.click(within(dialog).getByRole('button', { name: 'Cancel' }))
 
+  // An older release's: a risk, accepted knowingly before the restore can go.
+  expect(screen.getByText('Risk: No settings file (an older release wrote it)')).toBeInTheDocument() // in its row, before anything is opened
   await ui.click(screen.getByRole('button', { name: /^Restore the backup of .*\(tankstat-backup-20260101T000000Z\.zip\)$/ }))
   const older = await screen.findByRole('alertdialog', { name: /^Restore the backup of/ })
-  expect(older).toHaveTextContent("It was written by a release before backups held the settings file: this server's stays as it is.")
-  expect(within(older).queryByRole('alert')).not.toBeInTheDocument()
+  expect(older).toHaveTextContent('What this restore can break here')
+  expect(older).toHaveTextContent("It holds no settings file and says nothing of its server's environment")
+  const go = within(older).getByRole('button', { name: 'Restore and restart' })
+  expect(go).toBeDisabled()
+  await ui.click(within(older).getByRole('checkbox', { name: /^I understand that the restored server may not work as before/ }))
+  expect(go).toBeEnabled()
 })
 
 it('opens a backup with its identity instead, and keeps the dialog with the reason when the key does not open it', async () => {

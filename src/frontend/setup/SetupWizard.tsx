@@ -15,7 +15,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
 import { healthProbe, waitForRestart } from '../admin/restartFlow.ts'
-import { RestartWait, RestoreDialog } from '../admin/restore.tsx'
+import { RestartWait, RestoreDialog, RestoreRiskLines } from '../admin/restore.tsx'
 import { UploadBackup } from '../admin/upload.tsx'
 import { SettingsGroupForm } from '../admin/SettingsGroupForm.tsx'
 import { unusedReason } from '../admin/settingsRelevance.ts'
@@ -645,6 +645,8 @@ function RestoreStep({
                       {t('setup.newer')}
                     </Typography>
                   )}
+                  {/* What its restore can break here, before anyone opens it. */}
+                  {restorable && <RestoreRiskLines point={point} />}
                 </Stack>
                 {restorable && (
                   <RestoreDialog
