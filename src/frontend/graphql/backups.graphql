@@ -7,6 +7,9 @@ fragment RestoreTargetFields on RestorePointInfo {
   appVersion
   encrypted
   olderMigration
+  # held: retention never removes it, and it is not deleted until released
+  held
+  heldSince
   # what it brings of its server's settings, and what this server would lack (its restore is refused until they are set)
   settingsFile {
     state
@@ -105,4 +108,62 @@ mutation RestoreBackup($input: RestoreBackupInput!) {
 
 mutation DeleteBackup($file: String!) {
   deleteBackup(file: $file)
+}
+
+mutation HoldBackup($file: String!, $hold: Boolean!) {
+  holdBackup(file: $file, hold: $hold)
+}
+
+# A backup opened: what its plain manifest says, asked for when its dialog opens (the setup page asks the same with its code).
+fragment BackupDetailsFields on BackupDetailsInfo {
+  file
+  bytes
+  held
+  heldSince
+  format
+  writtenBy
+  createdAt
+  appVersion
+  provider
+  migration
+  safetyNet
+  uploaded
+  encrypted
+  recipient
+  currentRecipient
+  encryptionMethod
+  pictures
+  photos
+  keys
+  tables {
+    name
+    rows
+  }
+  sizes {
+    tables
+    pictures
+    photos
+    keys
+    archive
+  }
+  archiveEntry
+  sha256
+  settingsFile {
+    state
+    bytes
+    secrets
+    secretsLeftOut
+    machineLeftOut
+  }
+  environment {
+    mode
+    settings
+    server
+  }
+}
+
+query BackupDetails($file: String!) {
+  backupDetails(file: $file) {
+    ...BackupDetailsFields
+  }
 }

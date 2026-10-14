@@ -13,6 +13,13 @@ query SetupRestorePoints($code: String!) {
   setupUploadLimitMb(code: $code)
 }
 
+# A backup opened before it is restored, with the code (the Backups page's own view: BackupDetailsFields).
+query SetupBackupDetails($code: String!, $file: String!) {
+  setupBackupDetails(code: $code, file: $file) {
+    ...BackupDetailsFields
+  }
+}
+
 # The setup's last step: the gatekeeper of the sign-in mode the next start runs, then the restart the saved settings wait for.
 mutation SetupFinish($input: SetupFinishInput!) {
   setupFinish(input: $input) {
