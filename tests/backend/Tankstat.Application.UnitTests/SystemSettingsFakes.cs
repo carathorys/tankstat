@@ -148,7 +148,9 @@ internal sealed class FakeOidcDiscovery : IOidcDiscovery
 internal sealed class FakeServerRestart : IServerRestart
 {
     public int Count { get; private set; }
+    public int NowCount { get; private set; }
     public void Restart() => Count++;
+    public void RestartNow() => NowCount++;
 }
 
 internal sealed class InMemoryInstanceState : IInstanceStateRepository

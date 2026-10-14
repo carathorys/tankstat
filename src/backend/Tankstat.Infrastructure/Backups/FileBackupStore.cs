@@ -28,6 +28,9 @@ internal sealed class FileBackupStore(IOptionsMonitor<BackupOptions> options, ID
 
     public BackupManifest ReadManifest(string fileName) => BackupFile.ReadManifest(PathOf(fileName));
 
+    public IReadOnlyDictionary<string, string?>? ReadSettings(string fileName, BackupManifest manifest, string? identity) =>
+        BackupFile.ReadSettings(PathOf(fileName), manifest, identity is null ? null : AgeKeys.ParseIdentity(identity));
+
     public string? IdentityFor(BackupManifest manifest, string? passphrase, string? identity)
     {
         if (manifest.Encryption is not { } encryption) return null;

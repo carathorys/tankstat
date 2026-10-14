@@ -257,7 +257,12 @@ internal sealed class FakeServerRestart : IServerRestart
 {
     public int Count { get; private set; }
 
+    /// <summary>The restarts a start step asked for at once (a restore that wrote the settings file): counted, never thrown, since a test host cannot take a start step that throws.</summary>
+    public int NowCount { get; private set; }
+
     public void Restart() => Count++;
+
+    public void RestartNow() => NowCount++;
 }
 
 /// <summary>Two signed-in users of a Standalone host, created by its administrator, who stays signed in too.</summary>

@@ -100,8 +100,9 @@ public static class DependencyInjection
         services.AddScoped<IPhotoReadingRepository, PhotoReadingRepository>();
         services.AddSingleton<IImageStore, FileSystemImageStore>();
         services.AddSingleton<IBackupWriter, BackupWriter>();
-        // The settings file is the Api's (Program.cs registers it first); a host of the backups alone has none.
+        // The settings file and the restart loop are the Api's (Program.cs registers both first); a host of the backups alone has neither.
         services.TryAddSingleton<ISettingsBackup, NoSettingsBackup>();
+        services.TryAddSingleton<IServerRestart, NoServerRestart>();
         services.AddSingleton<IBackupStore, FileBackupStore>();
         services.AddSingleton<BackupRunner>();
         services.AddSingleton<IBackupRunner>(sp => sp.GetRequiredService<BackupRunner>());

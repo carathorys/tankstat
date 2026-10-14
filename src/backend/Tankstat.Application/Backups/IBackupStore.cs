@@ -13,6 +13,12 @@ public interface IBackupStore
     string? IdentityFor(BackupManifest manifest, string? passphrase, string? identity);
 
     /// <summary>
+    /// The settings file a backup of the folder carries, by key (null when it carries none), read with the identity (as
+    /// <see cref="IdentityFor"/> gives it) when it is encrypted; damage is <c>backup.corrupt</c>.
+    /// </summary>
+    IReadOnlyDictionary<string, string?>? ReadSettings(string fileName, BackupManifest manifest, string? identity);
+
+    /// <summary>
     /// Refuses, before anything is written or restarted, a backup the start would refuse anyway: one made at a migration this release does
     /// not know, a newer release's (<c>backup.otherMigration</c>, compared by name as the start compares them). One made at an older migration
     /// is restored and brought up to date.
