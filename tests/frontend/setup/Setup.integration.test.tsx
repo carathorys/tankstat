@@ -1,10 +1,11 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
 import type { AuthMode, SessionQuery } from '../../../src/frontend/gql/generated.ts'
 import { navigation } from '../../../src/frontend/navigation.ts'
+import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
 import { backupRecipientHandler, fakeInstance, fakeVehicleBackend, gqlError, healthHandler, renderWithApollo, user } from '../support/mocks.tsx'
 import { server } from '../support/server.ts'
 
@@ -143,6 +144,17 @@ it('with sign-in off, the setup ends with the acknowledgement of open access', a
 
   await waitFor(() => expect(screen.queryByRole('heading', { name: 'Set up Tankstat' })).not.toBeInTheDocument())
   expect(state.calls.SetupAcknowledgeOpenAccess).toEqual([{ code: CODE }])
+})
+
+it('with sign-in off, a device that loses the server shows its own data, not a setup page that needs the server', async () => {
+  waitingServer('NONE')
+  renderWithApollo(<App />)
+  expect(await screen.findByRole('heading', { level: 1, name: 'Set up Tankstat' })).toBeInTheDocument()
+
+  act(() => connectivity.failed()) // the session is the device's last answer from now on, maybe from before a setup done elsewhere
+
+  expect(await screen.findByRole('navigation')).toBeInTheDocument()
+  expect(screen.queryByRole('heading', { level: 1, name: 'Set up Tankstat' })).not.toBeInTheDocument()
 })
 
 it('restores a backup of the folder with the code, and reloads once the restarted server has the restored data', async () => {
