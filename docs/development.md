@@ -27,7 +27,9 @@ tests/backend/Tankstat.Api.IntegrationTests/      in-process GraphQL tests for e
 tests/backend/Tankstat.Api.ApiTests/              black-box contract tests against a running server
 tests/frontend/                           Vitest unit (*.unit.test.*) and integration (*.integration.test.*) tests, a folder per feature area
 tests/frontend/support/                   shared test helpers: msw handlers (server.ts), fake backends (mocks.tsx), setup
+tests/e2e/                                real-browser tests (Playwright, *.e2e.ts) against the published build; support/ holds the sign-in, GraphQL and layout helpers
 scripts/test-api.sh                       starts the API, runs the API tests, stops it
+scripts/test-e2e.sh                       starts the build in out/, runs the real-browser tests, stops it
 tests/backend/contracts/openai-compatible/  answers as OpenAI-compatible model servers write them, for the app's adapter tests
 ```
 
@@ -54,7 +56,26 @@ mise run test:unit         # frontend + backend unit tests
 mise run test:integration  # frontend (msw-mocked HTTP) + backend (in-process)
 mise run test:api          # contract tests against a freshly started server
 mise run test:coverage     # unit + integration tests with coverage reports in ./coverage
+mise run test:e2e          # real-browser tests against a fresh build (not part of mise run test)
 ```
+
+### Real-browser tests
+
+`tests/e2e/*.e2e.ts` open the published app in Chromium with [Playwright](https://playwright.dev), at phone size (Pixel 7: 412 px, touch) and desktop size (1280 × 900), and check what the Vitest tests in jsdom cannot see: that a page never scrolls sideways, that no value runs past its panel or under its help button, and that on a touch screen every control is at least 44 px. `mise run test:e2e` builds `out/` (`mise run build`) and runs `scripts/test-e2e.sh`, which starts the build from `out/` on port 5097 (Standalone, a bootstrap administrator, throwaway folders, none of your own `Auth__`, `Storage__`, `Backups__` or other settings), runs the tests and stops it again. Options after `--` go to Playwright:
+
+```sh
+mise run test:e2e                              # everything, both sizes
+scripts/test-e2e.sh --project phone -g Backups # again on the same out/, only the phone and the tests named "Backups"
+```
+
+Playwright runs in Docker here, in the `mcr.microsoft.com/playwright` image of the installed `@playwright/test` version (it supports only some Linux distributions as a host), as your own user and with the repository's own `node_modules`; CI runs it natively (`E2E_NATIVE=1`). So Docker must be running, and the first run pulls the image (about 1 GB). A failed test keeps a trace and a screenshot in `test-results/e2e/`:
+
+```sh
+npx playwright show-report                                   # the HTML report of the last run (playwright-report/)
+npx playwright show-trace test-results/e2e/<test>/trace.zip  # a failed test step by step: the page, the network, the console
+```
+
+Each test creates the data it needs through GraphQL, since all workers share one server; it never counts what other tests made.
 
 The backup encryption is the age format: `tests/backend/contracts/age/` holds files written by age 1.3.2 (see its README), which the reader must open, and `AgeStreamTests.TheRealTool_OpensWhatTheWriterWrote` runs `age -d` on the writer's file when `age` runs here (`age` on the `PATH`, or mise's installed copy: `mise install age@1.3.2`; the test runs mise offline, so it never fetches or installs anything); without it that one check passes with a line saying it was skipped.
 
@@ -169,6 +190,6 @@ Recurring expenses (insurance, vignette, inspection, oil change, tyres; the dist
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every push to `main` and every pull request, installing the toolchain from `mise.toml` so CI uses the same Node and .NET versions as developers. Jobs run in parallel: **frontend** (lint, typecheck, the production build of the web app, stamped with the version: `0.0.0-dev.<sha>`, or the release's when the release workflow calls CI), **frontend tests** (Vitest with coverage, in three shards on three machines, split by how long each test file takes as measured in `tests/frontend/durations.json` (`vitest.config.ts`); run `mise run test:durations` again when test files were added or got much slower; Codecov merges their uploads), **backend** (build, then `scripts/test-backend.sh`: the unit test projects and the in-process integration tests side by side, the latter in three processes by the first letter of the test class, since they run one after another within one), **smoke** (the real app as a process in every authentication mode, plus the black-box API contract tests), **codegen** (`schema.graphql` and the generated GraphQL types are up to date). **build** takes the frontend job's web app (no second `vite build`), publishes the API once with the same version (`mise run build:api`) and uploads the self-hostable output (`out/`) as an artifact; it does not wait for the tests, the release does. `node_modules` is cached per lockfile and Node version (`.github/actions/node-modules`), so `npm ci` only runs when the lockfile changed. Run the same things locally with `mise run test`.
+`.github/workflows/ci.yml` runs on every push to `main` and every pull request, installing the toolchain from `mise.toml` so CI uses the same Node and .NET versions as developers. Jobs run in parallel: **frontend** (lint, typecheck, the production build of the web app, stamped with the version: `0.0.0-dev.<sha>`, or the release's when the release workflow calls CI), **frontend tests** (Vitest with coverage, in three shards on three machines, split by how long each test file takes as measured in `tests/frontend/durations.json` (`vitest.config.ts`); run `mise run test:durations` again when test files were added or got much slower; Codecov merges their uploads), **backend** (build, then `scripts/test-backend.sh`: the unit test projects and the in-process integration tests side by side, the latter in three processes by the first letter of the test class, since they run one after another within one), **smoke** (the real app as a process in every authentication mode, plus the black-box API contract tests), **codegen** (`schema.graphql` and the generated GraphQL types are up to date). **build** takes the frontend job's web app (no second `vite build`), publishes the API once with the same version (`mise run build:api`) and uploads the self-hostable output (`out/`) as an artifact; it does not wait for the tests, the release does. **e2e** starts that artifact and runs the real-browser tests against it (Chromium, cached per Playwright version); a failure uploads the traces and the report as `e2e-results`. `node_modules` is cached per lockfile and Node version (`.github/actions/node-modules`), so `npm ci` only runs when the lockfile changed. Run the same things locally with `mise run test` and `mise run test:e2e`.
 
 **Coverage.** The frontend job runs Vitest with V8 coverage (`lcov`) and the backend job runs the unit and integration tests with coverlet (`coverlet.runsettings`: the app's own code, without migrations, the seeder and the tests; Cobertura output). Both upload to [Codecov](https://codecov.io/gh/carathorys/tankstat) under the flags `frontend` and `backend`; `codecov.yml` holds the gates (project coverage may not drop by more than 1% against the base, new and changed lines need 80%) and the pull request comment. The upload needs the Codecov GitHub app and a `CODECOV_TOKEN` repository secret (`release.yml` passes secrets on to `ci.yml`); without the token the step only warns. `mise run test:coverage` writes the same reports to `coverage/` (HTML for the frontend at `coverage/frontend/index.html`).

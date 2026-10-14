@@ -425,6 +425,8 @@ autom4te.cache/
 *.tar.gz
 tarballs/
 test-results/
+# The real-browser tests' HTML report (playwright.config.ts)
+playwright-report/
 # scripts/test-backend.sh: each run's output, and the integration tests' copies of their build
 test-logs/
 test-shards/

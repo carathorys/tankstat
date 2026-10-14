@@ -85,6 +85,10 @@ run = "dotnet test tests/backend/Tankstat.Api.SmokeTests"
 description = "Black-box API contract tests against a freshly started server"
 run = "scripts/test-api.sh"
 
+[tasks."test:e2e"]
+description = "Real-browser tests (Playwright, tests/e2e) against a fresh build in ./out, at phone and desktop size; Playwright's options after --, e.g. mise run test:e2e -- --project phone. Not part of mise run test"
+run = ["mise run build", "scripts/test-e2e.sh"]
+
 [tasks."test:durations"]
 description = "Measure how long each frontend test file takes into tests/frontend/durations.json (CI balances its shards by it); rerun when files were added or got much slower"
 run = [
