@@ -40,7 +40,7 @@ public static class DependencyInjection
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<StorageOptions>, StorageOptionsValidator>());
         services.AddOptions<BackupOptions>().Bind(configuration.GetSection(BackupOptions.SectionName)).ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<BackupOptions>, BackupOptionsValidator>());
-        services.AddOptions<SetupOptions>().Bind(configuration.GetSection(SetupOptions.SectionName));
+        services.AddOptions<SetupOptions>().Bind(configuration.GetSection(SetupOptions.SectionName)).ValidateOnStart();
         services.AddOptions<KeyRingOptions>().Bind(configuration.GetSection(KeyRingOptions.SectionName))
             .Validate(o => !string.IsNullOrWhiteSpace(o.KeysPath), "DataProtection:KeysPath must not be empty.").ValidateOnStart();
         services.AddOptions<SmtpOptions>().Bind(configuration.GetSection(SmtpOptions.SectionName));

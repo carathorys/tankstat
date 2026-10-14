@@ -58,7 +58,7 @@ public sealed class SetupTests : IDisposable
 
         Assert.Equal("setup.codeInvalid", (await browser.Gql(CreateAdministrator, new { i = new { code = "ZZZZ-ZZZZ-ZZZZ", email = "root@example.com", password = "zzzz-password-1" } })).ErrorKey());
         Assert.False(app.Log.Mentions("zzzz-password-1"));
-        Assert.Contains(app.Log.AtLeast(LogLevel.Warning), e => e.Message.Contains("setup.codeInvalid"));
+        Assert.Contains(app.Log.From("Tankstat.Api.GraphQL.GraphQLLoggingListener"), e => e.Level == LogLevel.Warning && e.Values.TryGetValue("Key", out var k) && (string?)k == "setup.codeInvalid");
 
         var made = (await browser.Gql(CreateAdministrator, new { i = new { code = code.ToLowerInvariant(), email = "Root@Example.com", password = "initial-password-1" } }))
             .Data().GetProperty("setupCreateAdministrator");
@@ -122,13 +122,7 @@ public sealed class SetupTests : IDisposable
             (await before.NewClient().Gql("mutation { addVehicle(input: { name: \"Old car\", fuelType: PETROL }) { id } }")).Data();
         // As the release before the setup page left it: the setup columns empty.
         TestApp.ReleaseDatabase(data.DatabasePath);
-        using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={data.DatabasePath}"))
-        {
-            connection.Open();
-            using var command = connection.CreateCommand();
-            command.CommandText = "UPDATE InstanceState SET SetupPendingSince = NULL, SetupCompletedAt = NULL, SetupCompletedVia = NULL";
-            command.ExecuteNonQuery();
-        }
+        TestApp.UndecideSetup(data.DatabasePath);
 
         using var upgraded = data.Host(new() { ["Auth:Mode"] = "None", ["Setup:Enabled"] = "true" });
 

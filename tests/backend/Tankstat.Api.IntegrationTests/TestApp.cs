@@ -140,12 +140,12 @@ internal sealed class TestApp : IDisposable
         return c;
     }
 
-    /// <summary>Closes the pooled connections to the database at <paramref name="path"/>, so the file can go. Only that database's: ClearAllPools would also close the ones of tests running in parallel.</summary>
     /// <summary>
-    /// The template's start decided its setup (completed, setup being off); every copy decides its own afresh, as a new database does, so a
-    /// host with the setup on starts with it waiting.
+    /// Leaves the setup of the database at <paramref name="path"/> undecided, as a release before the setup page left it. The template's start
+    /// decided its setup (completed, setup being off); every copy decides its own afresh, as a new database does, so a host with the setup
+    /// on starts with it waiting.
     /// </summary>
-    private static void UndecideSetup(string path)
+    internal static void UndecideSetup(string path)
     {
         using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={path}");
         connection.Open();
@@ -154,6 +154,7 @@ internal sealed class TestApp : IDisposable
         command.ExecuteNonQuery();
     }
 
+    /// <summary>Closes the pooled connections to the database at <paramref name="path"/>, so the file can go. Only that database's: ClearAllPools would also close the ones of tests running in parallel.</summary>
     public static void ReleaseDatabase(string path)
     {
         using var pooled = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={path}");
