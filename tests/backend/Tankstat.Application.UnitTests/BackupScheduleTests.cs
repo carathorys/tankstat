@@ -233,6 +233,27 @@ public class BackupRetentionTests
         Assert.Equal(new DateTimeOffset(2027, 1, 26, 12, 0, 0, TimeSpan.Zero), BackupRetention.NewestOwn(points)); // the newest backup, not the newest safety net
         Assert.Null(BackupRetention.NewestOwn([Point("uploaded-a.zip", 0), Own(0, safetyNet: true)]));
     }
+
+    [Fact]
+    public void AHeldBackup_IsNeverRemoved_AndCountsTowardsNeitherLimit()
+    {
+        RestorePoint Held(RestorePoint p) => p with { HeldSince = Now };
+        var points = new[] { Held(Own(0)), Own(1), Own(2), Held(Own(3)), Own(40), Held(Own(50)) };
+
+        // Keep 2 keeps the two newest not held (1, 2) besides the held ones; KeepDays 30 takes 40 days but not the held 50.
+        Assert.Equal(["tankstat-backup-day40.zip"], Removed(points, keep: 2, keepDays: 30));
+        Assert.Equal(["tankstat-backup-day02.zip", "tankstat-backup-day40.zip"], Removed(points, keep: 1, keepDays: null)); // the newest not held stays
+        Assert.Empty(Removed([Held(Own(0)), Held(Own(9))], keep: 1, keepDays: 1));
+        Assert.Equal(Now, BackupRetention.NewestOwn([Held(Own(0)), Own(5)])); // still the app's own: a held night's backup is no missed run
+    }
+
+    [Fact]
+    public void AHeldSafetyNet_IsKept_BesidesTheThreeNewest()
+    {
+        var points = new[] { Own(0, true), Own(1, true), Own(2, true), Own(3, true), Own(9, true) with { HeldSince = Now } };
+
+        Assert.Equal(["tankstat-backup-day03.zip"], Removed(points, keep: 5, keepDays: null));
+    }
 }
 
 /// <summary>A failed backup is told to every enabled administrator once a day, never to the one who pressed Back up now; with sign-in off to the anonymous user.</summary>

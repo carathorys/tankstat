@@ -53,13 +53,16 @@ public class ContractTests
     }
 
     [Theory]
-    [InlineData("Query", "health", "vehicles", "myVehicles", "myVehicleCount", "vehicle", "session", "notices", "users", "canSetUserPasswords", "accessSettings", "accessGrants", "trash", "vehicleCount", "trashCount", "trashDeletableCount", "vehicleDefaults", "refuelings", "refuelingCount", "refueling", "logDefaults", "refuelingTrash", "refuelingTrashCount", "refuelingTrashDeletableCount", "vehicleLogAccess", "shareCandidates", "notifications", "notificationCount", "recognitionStatus", "photoDrafts", "uiSettings", "mySessions", "offlineChanges", "offlineSettings", "parkedChanges", "systemSettings", "backups", "setup", "setupRestorePoints", "setupUploadLimitMb")]
-    [InlineData("Mutation", "addVehicle", "logRefueling", "login", "logout", "changePassword", "requestPasswordReset", "resetPassword", "createUser", "issuePasswordReset", "setUserAdmin", "setUserDisabled", "updateUser", "setUserPassword", "deleteUser", "setDefaultAccess", "setAccessGrant", "updateVehicle", "deleteVehicle", "restoreVehicle", "emptyTrash", "logRefueling", "updateRefueling", "deleteRefueling", "restoreRefueling", "emptyRefuelingTrash", "setVehicleLogAccess", "markNotificationsRead", "updateUiSettings", "saveGridSettings", "resetGridSettings", "setVehicleOrder", "addRecurringExpense", "updateRecurringExpense", "deleteRecurringExpense", "markRecurringExpensesDone", "revokeSession", "revokeOtherSessions", "updateOfflineSettings", "syncChanges", "resolveSyncChange", "updateSystemSettings", "restartServer", "restoreBackup", "runBackup", "deleteBackup", "prepareBackupEncryption", "setupClaimAdministrator", "setupFinish")]
+    [InlineData("Query", "health", "vehicles", "myVehicles", "myVehicleCount", "vehicle", "session", "notices", "users", "canSetUserPasswords", "accessSettings", "accessGrants", "trash", "vehicleCount", "trashCount", "trashDeletableCount", "vehicleDefaults", "refuelings", "refuelingCount", "refueling", "logDefaults", "refuelingTrash", "refuelingTrashCount", "refuelingTrashDeletableCount", "vehicleLogAccess", "shareCandidates", "notifications", "notificationCount", "recognitionStatus", "photoDrafts", "uiSettings", "mySessions", "offlineChanges", "offlineSettings", "parkedChanges", "systemSettings", "backups", "backupDetails", "setup", "setupRestorePoints", "setupBackupDetails", "setupUploadLimitMb")]
+    [InlineData("Mutation", "addVehicle", "logRefueling", "login", "logout", "changePassword", "requestPasswordReset", "resetPassword", "createUser", "issuePasswordReset", "setUserAdmin", "setUserDisabled", "updateUser", "setUserPassword", "deleteUser", "setDefaultAccess", "setAccessGrant", "updateVehicle", "deleteVehicle", "restoreVehicle", "emptyTrash", "logRefueling", "updateRefueling", "deleteRefueling", "restoreRefueling", "emptyRefuelingTrash", "setVehicleLogAccess", "markNotificationsRead", "updateUiSettings", "saveGridSettings", "resetGridSettings", "setVehicleOrder", "addRecurringExpense", "updateRecurringExpense", "deleteRecurringExpense", "markRecurringExpensesDone", "revokeSession", "revokeOtherSessions", "updateOfflineSettings", "syncChanges", "resolveSyncChange", "updateSystemSettings", "restartServer", "restoreBackup", "runBackup", "deleteBackup", "holdBackup", "prepareBackupEncryption", "setupClaimAdministrator", "setupFinish")]
     [InlineData("Session", "mode", "user", "instance")]
     [InlineData("InstanceInfo", "generation", "restorePoint")]
     [InlineData("BackupOverviewInfo", "folder", "migration", "restorePoints", "sizes", "run", "settings")]
-    [InlineData("RestorePointInfo", "file", "bytes", "createdAt", "appVersion", "provider", "migration", "sameMigration", "olderMigration", "safetyNet", "uploaded", "encrypted", "recipient", "currentRecipient", "photos", "keys", "tables", "rows", "settingsFile", "environment")]
-    [InlineData("BackupSettingsFileInfo", "state", "omitted", "secrets", "secretsLeftOut", "machineLeftOut")]
+    [InlineData("RestorePointInfo", "file", "bytes", "createdAt", "appVersion", "provider", "migration", "sameMigration", "olderMigration", "safetyNet", "uploaded", "encrypted", "recipient", "currentRecipient", "photos", "keys", "tables", "rows", "settingsFile", "environment", "held", "heldSince")]
+    [InlineData("BackupDetailsInfo", "file", "bytes", "held", "heldSince", "format", "writtenBy", "createdAt", "appVersion", "provider", "migration", "safetyNet", "uploaded", "encrypted", "recipient", "currentRecipient", "encryptionMethod", "pictures", "photos", "keys", "tables", "sizes", "archiveEntry", "sha256", "settingsFile", "environment")]
+    [InlineData("BackupTableInfo", "name", "rows")]
+    [InlineData("BackupSizesInfo", "tables", "pictures", "photos", "keys", "archive")]
+    [InlineData("BackupSettingsFileInfo", "state", "omitted", "secrets", "secretsLeftOut", "machineLeftOut", "bytes")]
     [InlineData("BackupEnvironmentInfo", "mode", "settings", "server", "missing", "missingCertain", "overridden")]
     [InlineData("StorageSizesInfo", "database", "pictures", "photos")]
     [InlineData("BackupRunInfo", "running", "startedAt", "finishedAt", "file", "bytes", "error")]
@@ -236,6 +239,27 @@ public class ContractTests
 
         var closed = await Query("mutation { setupFinish(input: { code: \"ABCD-EFGH-JKLM\", acknowledgeOpenAccess: true }) { restarting } }");
         Assert.Equal("setup.completed", closed.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
+    }
+
+    [Theory]
+    [InlineData("mutation { holdBackup(file: \"tankstat-backup-20260101T000000Z.zip\", hold: true) }")]
+    [InlineData("mutation { holdBackup(file: \"tankstat-backup-20260101T000000Z.zip\", hold: false) }")]
+    [InlineData("mutation { deleteBackup(file: \"tankstat-backup-20260101T000000Z.zip\") }")]
+    [InlineData("{ backupDetails(file: \"tankstat-backup-20260101T000000Z.zip\") { file held } }")]
+    public async Task HoldingReleasingDeletingOrOpeningABackup_IsRefused_WithoutAnAdministrator(string operation)
+    {
+        // The contract server runs with sign-in off, where no administrator exists: the server itself refuses these, whatever the page shows.
+        var body = await Query(operation);
+
+        Assert.Equal("auth.adminRequired", body.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
+    }
+
+    [Fact]
+    public async Task OpeningABackupOnTheSetupPage_IsRefused_OnceTheSetupIsCompleted()
+    {
+        var body = await Query("{ setupBackupDetails(code: \"ABCD-EFGH-JKLM\", file: \"tankstat-backup-20260101T000000Z.zip\") { file } }");
+
+        Assert.Equal("setup.completed", body.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
     }
 
     [Fact]

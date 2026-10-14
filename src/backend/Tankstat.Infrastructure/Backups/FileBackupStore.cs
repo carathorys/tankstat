@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Tankstat.Application;
@@ -27,6 +28,44 @@ internal sealed class FileBackupStore(IOptionsMonitor<BackupOptions> options, ID
     public string Folder => Root;
 
     public BackupManifest ReadManifest(string fileName) => BackupFile.ReadManifest(PathOf(fileName));
+
+    /// <summary>A backup's hold beside it: <c>&lt;file&gt;.hold</c>, which no listing, download or restore takes for a backup (not a <c>*.zip</c>).</summary>
+    private const string HoldSuffix = ".hold";
+
+    private sealed record HoldFile(DateTimeOffset HeldAt);
+
+    private static readonly JsonSerializerOptions HoldJson = new(JsonSerializerDefaults.Web);
+
+    public RestorePoint Find(string fileName)
+    {
+        var path = PathOf(fileName);
+        return new RestorePoint(fileName, new FileInfo(path).Length, BackupFile.ReadManifest(path), HeldSince(path));
+    }
+
+    public void Hold(string fileName, DateTimeOffset? since)
+    {
+        var hold = PathOf(fileName) + HoldSuffix;
+        if (since is { } at) File.WriteAllText(hold, JsonSerializer.Serialize(new HoldFile(at), HoldJson));
+        else File.Delete(hold); // not held: nothing to remove
+    }
+
+    /// <summary>
+    /// Since when the backup at <paramref name="path"/> is held; null when it is not. A hold that does not read (edited by hand, or an empty
+    /// file an operator made with <c>touch</c>) still holds it, since its file's time: a hold errs on the side of keeping.
+    /// </summary>
+    private static DateTimeOffset? HeldSince(string path)
+    {
+        var hold = path + HoldSuffix;
+        if (!File.Exists(hold)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<HoldFile>(File.ReadAllText(hold), HoldJson)?.HeldAt ?? File.GetLastWriteTimeUtc(hold);
+        }
+        catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException)
+        {
+            return new DateTimeOffset(File.GetLastWriteTimeUtc(hold), TimeSpan.Zero);
+        }
+    }
 
     public IReadOnlyDictionary<string, string?>? ReadSettings(string fileName, BackupManifest manifest, string? identity) =>
         BackupFile.ReadSettings(PathOf(fileName), manifest, identity is null ? null : AgeKeys.ParseIdentity(identity));
@@ -96,7 +135,7 @@ internal sealed class FileBackupStore(IOptionsMonitor<BackupOptions> options, ID
             if (!IsBackupName(name)) continue; // a hidden file, which no download or restore would take
             try
             {
-                points.Add(new RestorePoint(name, new FileInfo(path).Length, BackupFile.ReadManifest(path)));
+                points.Add(new RestorePoint(name, new FileInfo(path).Length, BackupFile.ReadManifest(path), HeldSince(path)));
             }
             catch (Exception e) when (e is DomainException or IOException or UnauthorizedAccessException)
             {
@@ -164,6 +203,7 @@ internal sealed class FileBackupStore(IOptionsMonitor<BackupOptions> options, ID
         if (!IsBackupName(fileName)) return; // never anything but a backup of the folder (List only hands out such names)
         var path = Path.Combine(Root, fileName);
         if (File.Exists(path)) File.Delete(path); // gone already: nothing to remove
+        File.Delete(path + HoldSuffix); // its hold, which would otherwise hold a backup copied in later under the same name
     }
 
     /// <summary>A backup of the folder by its bare name; <c>backup.notFound</c> for anything else (a path, a hidden file, not a backup's name, one not there).</summary>

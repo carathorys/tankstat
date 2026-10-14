@@ -34,6 +34,13 @@ public sealed class SetupQueries
         return [.. points.Points.Select(p => RestorePointInfo.From(p, points, recipient))];
     }
 
+    /// <summary>One backup of the folder in full, from its manifest, to look into before restoring it while the setup waits. The one-time code.</summary>
+    public async Task<BackupDetailsInfo> GetSetupBackupDetails(string code, string file, [Service] SetupService setup, CancellationToken ct)
+    {
+        var (point, recipient) = await setup.BackupDetailsAsync(code, file, ct);
+        return BackupDetailsInfo.From(point, recipient);
+    }
+
     /// <summary>
     /// While the setup waits, the largest backup the setup page may upload into the folder (`PUT /media/backups` with the code in the
     /// `X-Setup-Code` header), in megabytes. The one-time code from the server's log.

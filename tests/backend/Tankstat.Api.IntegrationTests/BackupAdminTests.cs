@@ -378,6 +378,65 @@ public sealed class BackupAdminTests : IDisposable
     }
 
     [Fact]
+    public async Task AHeldBackup_IsListedAsHeld_NeitherDeletedNorPruned_UntilReleased()
+    {
+        using var app = App(new() { ["Backups:Keep"] = "1" });
+        var people = await app.Users();
+        var held = Path.GetFileName(await WriteBackup(app));
+        const string Hold = "mutation($f: String!, $h: Boolean!) { holdBackup(file: $f, hold: $h) }";
+        const string Delete = "mutation($f: String!) { deleteBackup(file: $f) }";
+
+        Assert.Equal("auth.adminRequired", (await people.Alice.Gql(Hold, new { f = held, h = true })).ErrorKey());
+        Assert.Equal("backup.notFound", (await people.Admin.Gql(Hold, new { f = "../" + held, h = true })).ErrorKey());
+        Assert.True((await people.Admin.Gql(Hold, new { f = held, h = true })).Data().GetProperty("holdBackup").GetBoolean());
+
+        var point = Assert.Single((await people.Admin.Gql("{ backups { restorePoints { file held heldSince } } }")).Data().GetProperty("backups").GetProperty("restorePoints").EnumerateArray());
+        Assert.True(point.GetProperty("held").GetBoolean());
+        Assert.NotEqual(JsonValueKind.Null, point.GetProperty("heldSince").ValueKind);
+        Assert.Equal("backup.held", (await people.Admin.Gql(Delete, new { f = held })).ErrorKey());
+
+        // Keep 1 counts only the backups not held: two runs leave the held one and the newest.
+        foreach (var _ in new[] { 1, 2 })
+        {
+            Assert.True((await people.Admin.Gql("mutation { runBackup }")).Data().GetProperty("runBackup").GetBoolean());
+            await Idle(app);
+        }
+        var files = Directory.GetFiles(_folder, "*.zip").Select(Path.GetFileName).ToList();
+        Assert.Equal(2, files.Count);
+        Assert.Contains(held, files);
+
+        Assert.False((await people.Admin.Gql(Hold, new { f = held, h = false })).Data().GetProperty("holdBackup").GetBoolean());
+        Assert.True((await people.Admin.Gql(Delete, new { f = held })).Data().GetProperty("deleteBackup").GetBoolean());
+        Assert.Contains(app.Log.From("Tankstat.Application.Backups.BackupAdminService"), e => e.Values.TryGetValue("File", out var f) && Equals(f, held));
+    }
+
+    [Fact]
+    public async Task ABackupOpened_SaysWhatItsManifestSays_TablesSizesAndChecksum_ToAnAdministratorOnly()
+    {
+        using var app = App();
+        var people = await app.Users();
+        var file = Path.GetFileName(await WriteBackup(app));
+        const string Details = """
+            query($f: String!) { backupDetails(file: $f) {
+              file bytes held format writtenBy appVersion provider migration encrypted keys photos pictures archiveEntry sha256
+              tables { name rows } sizes { tables pictures photos keys archive } settingsFile { state bytes } environment { mode settings } } }
+            """;
+
+        Assert.Equal("auth.adminRequired", (await people.Alice.Gql(Details, new { f = file })).ErrorKey());
+        Assert.Equal("backup.notFound", (await people.Admin.Gql(Details, new { f = "../" + file })).ErrorKey());
+        var details = (await people.Admin.Gql(Details, new { f = file })).Data().GetProperty("backupDetails");
+
+        Assert.Equal(file, details.GetProperty("file").GetString());
+        Assert.Equal("tankstat", details.GetProperty("writtenBy").GetString());
+        Assert.Equal(64, details.GetProperty("sha256").GetString()!.Length);
+        Assert.Equal("data.zip", details.GetProperty("archiveEntry").GetString());
+        var tables = details.GetProperty("tables").EnumerateArray().ToDictionary(t => t.GetProperty("name").GetString()!, t => t.GetProperty("rows").GetInt64());
+        Assert.True(tables["Users"] >= 1); // the administrator at least
+        Assert.DoesNotContain("__EFMigrationsHistory", tables.Keys);
+        Assert.True(details.GetProperty("sizes").GetProperty("archive").GetInt64() > 0);
+    }
+
+    [Fact]
     public async Task AnUploadThatIsNoBackup_IsRefused_AndRemoved()
     {
         using var app = App();

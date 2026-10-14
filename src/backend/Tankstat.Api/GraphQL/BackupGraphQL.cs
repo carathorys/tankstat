@@ -17,9 +17,12 @@ public sealed record RestorePendingInfo(string File, DateTimeOffset RestorePoint
 /// <param name="Recipient">The recipient an encrypted backup is for; <paramref name="CurrentRecipient"/> says whether it is the one backups are encrypted for now.</param>
 /// <param name="SettingsFile">Whether the settings file went in (none: written by a release before it did).</param>
 /// <param name="Environment">What it recorded of its server's environment (none: written by a release before it did).</param>
+/// <param name="Held">Held: retention never removes it, it counts towards no limit, and it is not deleted until released.</param>
+/// <param name="HeldSince">Since when it is held.</param>
 public sealed record RestorePointInfo(
     string File, long Bytes, DateTimeOffset CreatedAt, string AppVersion, string Provider, string? Migration, bool SameMigration, bool OlderMigration, bool SafetyNet, bool Uploaded,
-    bool Encrypted, string? Recipient, bool CurrentRecipient, BackupPhotos Photos, bool Keys, int Tables, long Rows, BackupSettingsFileInfo? SettingsFile, BackupEnvironmentInfo? Environment)
+    bool Encrypted, string? Recipient, bool CurrentRecipient, BackupPhotos Photos, bool Keys, int Tables, long Rows, BackupSettingsFileInfo? SettingsFile, BackupEnvironmentInfo? Environment,
+    bool Held, DateTimeOffset? HeldSince)
 {
     public static RestorePointInfo From(RestorePoint point, RestorePoints points, string? currentRecipient)
     {
@@ -31,22 +34,57 @@ public sealed record RestorePointInfo(
             point.Uploaded, m.Encryption is not null, m.Encryption?.Recipient, m.Encryption is { } e && e.Recipient == currentRecipient,
             m.Contents.Photos, m.Contents.Keys, m.Contents.Tables.Count, m.Contents.Tables.Where(t => t.Key != "__EFMigrationsHistory").Sum(t => t.Value),
             m.Settings is { } settings ? BackupSettingsFileInfo.From(settings, m.CarriesSecrets()) : null,
-            m.Environment is { } environment ? BackupEnvironmentInfo.From(environment, points.Here.GetValueOrDefault(point.File)) : null);
+            m.Environment is { } environment ? BackupEnvironmentInfo.From(environment, points.Here.GetValueOrDefault(point.File)) : null,
+            point.Held, point.HeldSince);
     }
 }
+
+/// <summary>
+/// One backup in full, as far as its plain manifest says (its "open" view on the Backups page and the setup page): nothing is decrypted or
+/// unpacked, so nothing personal is in it either, only counts, sizes, names of settings and the checksum.
+/// </summary>
+/// <param name="Tables">Each table's rows, by the database's table name (the migrations' own history left out).</param>
+/// <param name="Sizes">Bytes per part before compression and encryption, and the inner archive as stored.</param>
+/// <param name="Sha256">The SHA-256 of the inner archive as stored, which the restore checks first.</param>
+/// <param name="Environment">What it recorded of its server's environment (what this server lacks of it is the list's, not this view's).</param>
+public sealed record BackupDetailsInfo(
+    string File, long Bytes, bool Held, DateTimeOffset? HeldSince, int Format, string WrittenBy, DateTimeOffset CreatedAt, string AppVersion, string Provider,
+    string? Migration, bool SafetyNet, bool Uploaded, bool Encrypted, string? Recipient, bool CurrentRecipient, string? EncryptionMethod,
+    bool Pictures, BackupPhotos Photos, bool Keys, IReadOnlyList<BackupTableInfo> Tables, BackupSizesInfo Sizes, string ArchiveEntry, string Sha256,
+    BackupSettingsFileInfo? SettingsFile, BackupEnvironmentInfo? Environment)
+{
+    public static BackupDetailsInfo From(RestorePoint point, string? currentRecipient)
+    {
+        var m = point.Manifest;
+        return new BackupDetailsInfo(
+            point.File, point.Bytes, point.Held, point.HeldSince, m.Format, m.WrittenBy, m.CreatedAt, m.AppVersion, m.Provider, MigrationNames.Of(m.Migration),
+            m.SafetyNet, point.Uploaded, m.Encryption is not null, m.Encryption?.Recipient, m.Encryption is { } e && e.Recipient == currentRecipient, m.Encryption?.Method,
+            m.Contents.Pictures, m.Contents.Photos, m.Contents.Keys,
+            [.. m.Contents.Tables.Where(t => t.Key != "__EFMigrationsHistory").OrderBy(t => t.Key, StringComparer.Ordinal).Select(t => new BackupTableInfo(t.Key, t.Value))],
+            new BackupSizesInfo(m.Sizes.Tables, m.Sizes.Pictures, m.Sizes.Photos, m.Sizes.Keys, m.Sizes.Archive), m.Archive.Name, m.Archive.Sha256,
+            m.Settings is { } settings ? BackupSettingsFileInfo.From(settings, m.CarriesSecrets()) : null,
+            m.Environment is { } environment ? BackupEnvironmentInfo.From(environment, null) : null);
+    }
+}
+
+public sealed record BackupTableInfo(string Name, long Rows);
+
+/// <summary>Bytes before compression and encryption: the tables, the pictures, the photos, the keys; and the inner archive as stored.</summary>
+public sealed record BackupSizesInfo(long Tables, long Pictures, long Photos, long Keys, long Archive);
 
 /// <param name="State">It went in, the server had none, or its start had left it out.</param>
 /// <param name="Omitted">The settings of the file that stayed out (the machine's own; without its secrets, those), by name.</param>
 /// <param name="Secrets">Whether its secrets went in (<c>Backups:Secrets</c> when it was written; an older backup's: when it is encrypted).</param>
 /// <param name="SecretsLeftOut">Of <paramref name="Omitted"/>, the secrets: a restore keeps this server's own, and what this server has none of stops working.</param>
 /// <param name="MachineLeftOut">Of <paramref name="Omitted"/>, the rest: the machine's own, which never travel (a restore keeps this server's).</param>
-public sealed record BackupSettingsFileInfo(BackupSettingsState State, IReadOnlyList<string> Omitted, bool Secrets, IReadOnlyList<string> SecretsLeftOut, IReadOnlyList<string> MachineLeftOut)
+/// <param name="Bytes">The file's size as stored in the backup (none: 0).</param>
+public sealed record BackupSettingsFileInfo(BackupSettingsState State, IReadOnlyList<string> Omitted, bool Secrets, IReadOnlyList<string> SecretsLeftOut, IReadOnlyList<string> MachineLeftOut, long Bytes)
 {
     public static BackupSettingsFileInfo From(BackupSettingsFile settings, bool secrets)
     {
         var omitted = settings.Omitted ?? [];
         var leftOutSecrets = omitted.Where(k => SettingsInBackups.CategoryOf(k) == SettingCategory.Secret).ToList();
-        return new BackupSettingsFileInfo(settings.State, omitted, secrets, leftOutSecrets, [.. omitted.Except(leftOutSecrets)]);
+        return new BackupSettingsFileInfo(settings.State, omitted, secrets, leftOutSecrets, [.. omitted.Except(leftOutSecrets)], settings.Bytes);
     }
 }
 
@@ -135,6 +173,13 @@ public sealed class BackupQueries
 {
     /// <summary>The restore points in the backups folder, how large the data is, the last backup and the settings. Administrators only.</summary>
     public async Task<BackupOverviewInfo> GetBackups([Service] BackupAdminService backups, CancellationToken ct) => BackupOverviewInfo.From(await backups.StatusAsync(ct));
+
+    /// <summary>One backup of the folder in full, from its manifest (<c>backup.notFound</c> for a name that is no backup there). Administrators only.</summary>
+    public async Task<BackupDetailsInfo> GetBackupDetails(string file, [Service] BackupAdminService backups, CancellationToken ct)
+    {
+        var (point, recipient) = await backups.DetailsAsync(file, ct);
+        return BackupDetailsInfo.From(point, recipient);
+    }
 }
 
 [ExtendObjectType(OperationTypeNames.Mutation)]
@@ -157,13 +202,20 @@ public sealed class BackupMutations
 
     /// <summary>
     /// Deletes a backup from the backups folder (any the page lists, uploaded ones and safety nets too). <c>backup.notFound</c> for a name
-    /// that is no backup there, <c>backup.restorePending</c> while a restore waits for the next start. Administrators only.
+    /// that is no backup there, <c>backup.held</c> for a held one, <c>backup.restorePending</c> while a restore waits for the next start. Administrators only.
     /// </summary>
     public async Task<bool> DeleteBackup(string file, [Service] BackupAdminService backups, CancellationToken ct)
     {
         await backups.DeleteAsync(file, ct);
         return true;
     }
+
+    /// <summary>
+    /// Holds a backup (<paramref name="hold"/>) or releases it: held, retention never removes it and it counts towards neither
+    /// <c>Backups:Keep</c> nor <c>Backups:KeepDays</c>, and <c>deleteBackup</c> refuses it (<c>backup.held</c>). Answers whether it is held now. Administrators only.
+    /// </summary>
+    public async Task<bool> HoldBackup(string file, bool hold, [Service] BackupAdminService backups, CancellationToken ct) =>
+        (await backups.HoldAsync(file, hold, ct)).Held;
 
     /// <summary>
     /// A key set for encrypted backups from the passphrase given (at least 12 characters), or from one the server makes up: shown once, stored
