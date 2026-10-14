@@ -334,7 +334,7 @@ it('says before a restore on the setup page which settings of the old server thi
     points: [
       {
         ...backup,
-        settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', omitted: [] },
+        settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED' },
         environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: ['Auth__Mode', 'Auth__Oidc__ClientSecret'], missing: ['Auth__Oidc__ClientSecret'] },
       },
     ],

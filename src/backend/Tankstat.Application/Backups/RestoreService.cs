@@ -86,22 +86,28 @@ public sealed class RestoreService(
     /// For a list of the folder's backups: the settings <paramref name="point"/> recorded of its server's environment that a restore here
     /// would lack, as far as can be told without a key. A plain backup's settings file is read; an encrypted one's cannot be: one that merged
     /// the environment into it carries every one of them, one that only recorded it counts as holding none (its restore judges the file).
-    /// Never a refusal: a backup whose file cannot be read lacks nothing here, its restore says why.
+    /// As the restore leaves the file (<see cref="SettingsInBackups.Restored"/>), a setting no backup of its kind carries (a plain backup's
+    /// secrets) is judged against this server's own file. Never a refusal: a backup whose file cannot be read (damaged, gone since the list,
+    /// not readable) lacks nothing here, its restore says why.
     /// </summary>
     public static async Task<IReadOnlyList<string>> MissingHereAsync(IBackupStore store, ISettingsBackup settings, RestorePoint point, CancellationToken ct)
     {
         var m = point.Manifest;
         if (m.Environment is not { Settings.Count: > 0 } recorded) return [];
-        IReadOnlyDictionary<string, string?>? file;
         try
         {
-            if (m.Settings is not { State: BackupSettingsState.Included }) file = null; // the restore leaves this server's own file
-            else if (m.Encryption is null) file = store.ReadSettings(point.File, m, identity: null);
-            else if (recorded.Mode == BackupEnvironmentMode.Merge) return [];
-            else file = new Dictionary<string, string?>();
-            return await settings.MissingAsync(recorded, file, ct);
+            if (m.Settings is not { State: BackupSettingsState.Included }) return await settings.MissingAsync(recorded, null, ct); // the restore leaves this server's own file
+            var encrypted = m.Encryption is not null;
+            if (encrypted && recorded.Mode == BackupEnvironmentMode.Merge) return [];
+            var file = encrypted ? null : store.ReadSettings(point.File, m, identity: null);
+            var carried = recorded.Settings.Where(v => SettingsInBackups.Carries(SettingsInBackups.KeyOf(v), encrypted)).ToList();
+            var kept = recorded.Settings.Except(carried, StringComparer.OrdinalIgnoreCase).ToList();
+            var missing = new HashSet<string>(
+                await settings.MissingAsync(recorded with { Settings = carried }, file ?? new Dictionary<string, string?>(), ct), StringComparer.OrdinalIgnoreCase);
+            if (kept.Count > 0) missing.UnionWith(await settings.MissingAsync(recorded with { Settings = kept }, null, ct));
+            return [.. recorded.Settings.Where(missing.Contains)];
         }
-        catch (DomainException)
+        catch (Exception e) when (e is DomainException or IOException or UnauthorizedAccessException)
         {
             return [];
         }

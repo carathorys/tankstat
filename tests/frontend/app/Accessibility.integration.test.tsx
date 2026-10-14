@@ -282,7 +282,7 @@ it('the backups page, its restore and its key set dialogs are labelled, describe
   const point = {
     __typename: 'RestorePointInfo', file: 'tankstat-backup-20261011T080000Z.zip', bytes: 3_100_000, createdAt: '2026-10-11T08:00:00Z', appVersion: '0.13.0', provider: 'Sqlite',
     migration: 'AddInstance', sameMigration: true, olderMigration: false, safetyNet: false, uploaded: false, encrypted: true, recipient: 'age1abc', currentRecipient: true, photos: 'SEPARATE', keys: true, rows: 120,
-    settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', omitted: [] },
+    settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED' },
     environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: ['Auth__Mode', 'Smtp__Host'], missing: ['Smtp__Host'] },
   }
   server.use(

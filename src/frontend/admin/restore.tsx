@@ -80,13 +80,13 @@ function RestoreSettingsNote({ point }: { point: RestoreTarget }) {
           : t('admin.backups.settingsOlder')
   const environment = point.environment
   const names = environment?.settings.join(', ') ?? ''
+  // Merged, but no file went in (a plain backup whose environment set only secrets): the values are not in the backup.
+  const merged = environment?.mode === 'MERGE' && point.settingsFile?.state === 'INCLUDED'
   return (
     <>
       <Typography variant="body2">{file}</Typography>
       {environment && environment.settings.length > 0 && (
-        <Typography variant="body2">
-          {environment.mode === 'MERGE' ? t('admin.backups.environmentMerged', { names }) : t('admin.backups.environmentRecorded', { names })}
-        </Typography>
+        <Typography variant="body2">{merged ? t('admin.backups.environmentMerged', { names }) : t('admin.backups.environmentRecorded', { names })}</Typography>
       )}
       {environment && environment.missing.length > 0 && (
         <WarningMessage>{t('admin.backups.environmentMissing', { names: environment.missing.join(', ') })}</WarningMessage>

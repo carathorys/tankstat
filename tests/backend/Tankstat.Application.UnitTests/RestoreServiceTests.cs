@@ -27,8 +27,11 @@ public sealed class RestoreServiceTests
         public bool RestorePending => Marker is not null;
         /// <summary>What the backup recorded of its server's environment; nothing (an older backup) when null.</summary>
         public BackupEnvironment? Recorded { get; init; }
+        /// <summary>What reading the backup's settings entry throws (a file gone since the list, a damaged entry); nothing when null.</summary>
+        public Exception? ReadFailure { get; init; }
         public BackupManifest ReadManifest(string fileName) => Plain with { Environment = Recorded };
-        public IReadOnlyDictionary<string, string?>? ReadSettings(string fileName, BackupManifest manifest, string? identity) => Settings;
+        public IReadOnlyDictionary<string, string?>? ReadSettings(string fileName, BackupManifest manifest, string? identity) =>
+            ReadFailure is null ? Settings : throw ReadFailure;
         public string? IdentityFor(BackupManifest manifest, string? passphrase, string? identity) => throw new NotSupportedException();
         public Task RequireRestorableMigrationAsync(BackupManifest manifest, CancellationToken ct) =>
             OtherMigration is null ? Task.CompletedTask : throw new DomainException("backup.otherMigration", "Another migration.", new { Backup = manifest.Migration, Database = OtherMigration });
@@ -205,6 +208,73 @@ public sealed class RestoreServiceTests
         Assert.Contains("Smtp__Host", refused.Message);
         Assert.Null(store.Marker);
         Assert.Equal(0, w.Restart.Count);
+    }
+
+    /// <summary>This server as <see cref="SettingsInBackups.Missing"/> judges it: its own settings file, and the keys its environment holds.</summary>
+    private sealed class ThisServer(IReadOnlyDictionary<string, string?> file, params string[] environment) : ISettingsBackup
+    {
+        public Task<SettingsCopy> CopyAsync(bool encrypted, BackupEnvironmentMode mode, CancellationToken ct) => Task.FromResult(SettingsCopy.None);
+        public Task<RestoredSettings> RestoredAsync(IReadOnlyDictionary<string, string?> fromBackup, bool encrypted, CancellationToken ct) => throw new NotSupportedException();
+        public Task WriteAsync(IReadOnlyDictionary<string, string?> values, CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyList<string>> MissingAsync(BackupEnvironment recorded, IReadOnlyDictionary<string, string?>? restored, CancellationToken ct) =>
+            Task.FromResult(SettingsInBackups.Missing(recorded, restored ?? file, key => environment.Contains(key, StringComparer.OrdinalIgnoreCase)));
+    }
+
+    private static RestorePoint Listed(BackupEnvironmentMode mode, BackupSettingsState? state, bool encrypted = false) =>
+        new("tankstat-backup-1.zip", 0, Plain with
+        {
+            Environment = new BackupEnvironment(mode, ["Defaults__Currency", "Smtp__Host", "Smtp__Password"], ["Storage__Path"]),
+            Settings = state is { } s ? new BackupSettingsFile(s, s == BackupSettingsState.Included ? BackupSettingsFile.Plain : null, "") : null,
+            Encryption = encrypted ? new BackupEncryption(BackupEncryption.AgeX25519, "age1x", "salt", Argon2idParameters.Default) : null,
+        });
+
+    private static readonly Dictionary<string, string?> HostAndPassword = new() { ["Smtp:Host"] = "mail.example", ["Smtp:Password"] = "zzzz" };
+
+    [Fact]
+    public async Task InTheList_APlainBackup_LacksWhatNeitherItsFileNorThisEnvironmentHolds_ItsSecretsJudgedAgainstThisServersFile()
+    {
+        // The plain backup carries Smtp:Host but no secret; this server's file keeps its password, as the restore leaves it.
+        var store = new OneBackup { Settings = new Dictionary<string, string?> { ["Smtp:Host"] = "mail.example" } };
+        var settings = new ThisServer(new Dictionary<string, string?> { ["Smtp:Password"] = "zzzz" });
+
+        Assert.Equal(["Defaults__Currency"], await RestoreService.MissingHereAsync(store, settings, Listed(BackupEnvironmentMode.Record, BackupSettingsState.Included), default));
+
+        var noPassword = new ThisServer(new Dictionary<string, string?>(), "Defaults:Currency");
+        Assert.Equal(["Smtp__Password"], await RestoreService.MissingHereAsync(store, noPassword, Listed(BackupEnvironmentMode.Record, BackupSettingsState.Included), default));
+    }
+
+    [Theory]
+    [InlineData(BackupSettingsState.None)]
+    [InlineData(BackupSettingsState.Ignored)]
+    [InlineData(null)] // a release before the settings file went in
+    public async Task InTheList_ABackupWithoutASettingsFile_IsJudgedAgainstThisServersOwnFile(BackupSettingsState? state)
+    {
+        var missing = await RestoreService.MissingHereAsync(new OneBackup(), new ThisServer(HostAndPassword), Listed(BackupEnvironmentMode.Record, state), default);
+
+        Assert.Equal(["Defaults__Currency"], missing);
+    }
+
+    [Fact]
+    public async Task InTheList_AnEncryptedBackup_MergedLacksNothing_RecordedCountsAsHoldingNone()
+    {
+        var settings = new ThisServer(HostAndPassword);
+        var store = new OneBackup { ReadFailure = new InvalidOperationException("an encrypted backup's file is never read for the list") };
+
+        Assert.Empty(await RestoreService.MissingHereAsync(store, settings, Listed(BackupEnvironmentMode.Merge, BackupSettingsState.Included, encrypted: true), default));
+        Assert.Equal(
+            ["Defaults__Currency", "Smtp__Host", "Smtp__Password"],
+            await RestoreService.MissingHereAsync(store, settings, Listed(BackupEnvironmentMode.Record, BackupSettingsState.Included, encrypted: true), default));
+    }
+
+    [Fact]
+    public async Task InTheList_ABackupWhoseFileCannotBeRead_LacksNothing_ItsRestoreSaysWhy()
+    {
+        var point = Listed(BackupEnvironmentMode.Record, BackupSettingsState.Included);
+        var settings = new ThisServer(new Dictionary<string, string?>());
+
+        Assert.Empty(await RestoreService.MissingHereAsync(new OneBackup { ReadFailure = new DomainException("backup.corrupt", "Damaged.") }, settings, point, default));
+        Assert.Empty(await RestoreService.MissingHereAsync(new OneBackup { ReadFailure = new FileNotFoundException("Gone since the list.") }, settings, point, default));
+        Assert.Empty(await RestoreService.MissingHereAsync(new OneBackup { ReadFailure = new UnauthorizedAccessException() }, settings, point, default));
     }
 
     [Fact]

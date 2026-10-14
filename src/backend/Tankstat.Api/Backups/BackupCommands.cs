@@ -200,7 +200,7 @@ internal static class BackupCommands
         output.WriteLine($"The backup's settings file: {SettingsOf(manifest)}.");
         if (manifest.Environment is { Settings.Count: > 0 } recorded)
         {
-            output.WriteLine($"Its server's environment set {string.Join(", ", recorded.Settings)} ({(recorded.Mode == BackupEnvironmentMode.Merge ? "merged into its settings file" : "recorded by name only")}).");
+            output.WriteLine($"Its server's environment set {string.Join(", ", recorded.Settings)} ({(recorded.Mode == BackupEnvironmentMode.Merge && manifest.Settings is { State: BackupSettingsState.Included } ? "merged into its settings file" : "recorded by name only")}).");
             var missing = await RestoreService.MissingHereAsync(store, services.GetRequiredService<ISettingsBackup>(), new RestorePoint(file, 0, manifest), CancellationToken.None);
             if (missing.Count > 0) output.WriteLine($"This server sets none of {string.Join(", ", missing)}: the restore is refused until they are set.");
         }
