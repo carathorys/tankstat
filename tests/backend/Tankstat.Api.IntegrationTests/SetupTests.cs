@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -119,6 +121,41 @@ public sealed class SetupTests : IDisposable
         Assert.Contains("mail.example.com", await File.ReadAllTextAsync(app.SettingsPath));
         Assert.Equal("root@example.com", (await browser.Gql("{ session { user { email } } }")).Data().GetProperty("session").GetProperty("user").GetProperty("email").GetString());
         Assert.Equal("setup.completed", (await browser.Gql(Save, new { c = change, code })).ErrorKey());
+    }
+
+    [Fact]
+    public async Task WhileTheSetupWaits_TheCode_UploadsABackupIntoTheFolder_ItsLimitToldWithTheCodeOnly()
+    {
+        var elsewhere = _folder + "-elsewhere";
+        byte[] body;
+        using (var old = TestApp.Standalone(new() { ["Backups:Path"] = elsewhere }))
+            body = await File.ReadAllBytesAsync((await old.Factory.Services.GetRequiredService<IBackupWriter>().WriteAsync(new BackupRequest(), default)).Path);
+        Directory.Delete(elsewhere, recursive: true);
+        using var app = new TestApp(WaitingStandalone(new() { ["Backups:Path"] = _folder }));
+        var client = app.NewClient();
+        var code = CodeOf(app);
+        app.Log.Clear(); // the start's own line holds the code; nothing after it may
+        HttpRequestMessage Upload(string? with)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Put, "/media/backups?name=moved.zip") { Content = new ByteArrayContent(body) };
+            request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
+            if (with is not null) request.Headers.Add("X-Setup-Code", with);
+            return request;
+        }
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.SendAsync(Upload(null))).StatusCode); // no administrator, no code
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.SendAsync(Upload("ZZZZ-ZZZZ-ZZZZ"))).StatusCode);
+        Assert.Equal("setup.codeInvalid", (await client.Gql("query($c: String!) { setupUploadLimitMb(code: $c) }", new { c = "nope" })).ErrorKey());
+        Assert.Equal(1024, (await client.Gql("query($c: String!) { setupUploadLimitMb(code: $c) }", new { c = code })).Data().GetProperty("setupUploadLimitMb").GetInt32());
+
+        var stored = await client.SendAsync(Upload(code));
+
+        Assert.Equal(HttpStatusCode.OK, stored.StatusCode);
+        var file = Path.GetFileName(Assert.Single(Directory.GetFiles(_folder, "uploaded-*.zip")));
+        Assert.Contains((await client.Gql("query($c: String!) { setupRestorePoints(code: $c) { file } }", new { c = code })).Data().GetProperty("setupRestorePoints").EnumerateArray(),
+            p => p.GetProperty("file").GetString() == file); // listed to restore
+        Assert.False(app.Log.Mentions(code)); // the header is never logged
+        Assert.Contains(app.Log.From<BackupAdminService>(), e => e.Values.TryGetValue("File", out var f) && (string?)f == file);
     }
 
     [Fact]

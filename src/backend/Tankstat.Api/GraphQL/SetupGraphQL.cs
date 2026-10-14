@@ -33,6 +33,12 @@ public sealed class SetupQueries
         var (points, recipient) = await setup.RestorePointsAsync(code, ct);
         return [.. points.Points.Select(p => RestorePointInfo.From(p, points, recipient))];
     }
+
+    /// <summary>
+    /// While the setup waits, the largest backup the setup page may upload into the folder (`PUT /media/backups` with the code in the
+    /// `X-Setup-Code` header), in megabytes. The one-time code from the server's log.
+    /// </summary>
+    public Task<int> GetSetupUploadLimitMb(string code, [Service] SetupService setup, CancellationToken ct) => setup.UploadLimitMbAsync(code, ct);
 }
 
 [ExtendObjectType(OperationTypeNames.Mutation)]

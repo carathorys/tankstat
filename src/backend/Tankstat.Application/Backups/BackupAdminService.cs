@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
+using Tankstat.Application.Setup;
 using Tankstat.Application.Images;
 using Tankstat.Domain;
 
@@ -29,6 +30,7 @@ public sealed record StorageSizes(long? Database, FileUsage Files);
 /// </summary>
 public sealed class BackupAdminService(
     AccessService access,
+    SetupGate setup,
     IBackupStore store,
     IBackupRunner runner,
     IDatabaseFacts database,
@@ -89,11 +91,25 @@ public sealed class BackupAdminService(
         return set;
     }
 
-    public async Task<RestorePoint> UploadAsync(Stream content, string? fileName, CancellationToken ct)
+    /// <summary>
+    /// Who may upload: an administrator, or while the setup waits whoever holds the one-time code (<paramref name="code"/>), so a new
+    /// instance can be restored from a backup it does not have in its folder yet. Asked before anything of the upload is read; the
+    /// administrator's id, none for the code.
+    /// </summary>
+    public async Task<Guid?> RequireUploaderAsync(string? code, CancellationToken ct)
     {
-        var admin = await access.RequireAdminAsync(ct);
+        if (code is null) return (await access.RequireAdminAsync(ct)).Id;
+        await setup.RequireAsync(code, ct);
+        return null;
+    }
+
+    /// <param name="code">The one-time code, from the setup page while the setup waits; otherwise an administrator is needed.</param>
+    public async Task<RestorePoint> UploadAsync(Stream content, string? fileName, string? code, CancellationToken ct)
+    {
+        var uploader = await RequireUploaderAsync(code, ct);
         var point = await store.SaveUploadAsync(content, fileName, options.Value.MaxUploadBytes, ct);
-        logger.LogInformation("User {UserId} uploaded the backup {File} ({Bytes} bytes)", admin.Id, point.File, point.Bytes);
+        if (uploader is { } id) logger.LogInformation("User {UserId} uploaded the backup {File} ({Bytes} bytes)", id, point.File, point.Bytes);
+        else logger.LogInformation("The setup page uploaded the backup {File} ({Bytes} bytes)", point.File, point.Bytes);
         return point;
     }
 

@@ -35,6 +35,7 @@ type Query {
   mySessions: [UserSessionInfo!]! @cost(weight: "10")
   setup: SetupInfo! @cost(weight: "10")
   setupRestorePoints(code: String!): [RestorePointInfo!]! @cost(weight: "10")
+  setupUploadLimitMb(code: String!): Int! @cost(weight: "10")
   refuelings(
     vehicleId: UUID!
     orderBy: RefuelingSortField! = DATE

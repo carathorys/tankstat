@@ -111,6 +111,13 @@ public sealed class SetupService(
         return (points, backupOptions.Value.CurrentRecipient);
     }
 
+    /// <summary>The largest backup the setup page may upload (`Backups:MaxUploadMb`), which the Backups page tells administrators only.</summary>
+    public async Task<int> UploadLimitMbAsync(string? typedCode, CancellationToken ct)
+    {
+        await gate.RequireAsync(typedCode, ct);
+        return backupOptions.Value.MaxUploadMb;
+    }
+
     /// <summary>
     /// The setup's last step, once the wizard saved its settings: the gatekeeper of the sign-in mode the next start runs, then the one restart
     /// the saved settings wait for. Standalone makes the first administrator (the bootstrap administrator's rules: a valid address, a password

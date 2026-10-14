@@ -9,6 +9,8 @@ query SetupRestorePoints($code: String!) {
     ...RestoreTargetFields
     sameMigration
   }
+  # how large a backup the setup may upload (told with the code only, as the Backups page tells administrators only)
+  setupUploadLimitMb(code: $code)
 }
 
 # The setup's last step: the gatekeeper of the sign-in mode the next start runs, then the restart the saved settings wait for.
