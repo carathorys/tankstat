@@ -130,6 +130,21 @@ public sealed class SetupServiceTests
     }
 
     [Fact]
+    public async Task LosingTheBootstrapAdministrator_ToAnotherServerStartingAtOnce_CompletesTheSetup_NotLeavesItWaiting()
+    {
+        // Both servers find no administrator and both insert; the unique index keeps the other's. The setup is then complete, not pending.
+        var s = Make(configure: Bootstrap());
+        s.World.Users.BeforeAdd = _ => s.World.AddUser("root@x.co", admin: true);
+
+        await s.Service.StartAsync(default);
+
+        Assert.Equal((SetupPhase.Completed, SetupCompletion.Environment), (s.Store.Phase, s.Store.Via));
+        Assert.False(s.Status.Pending);
+        Assert.Empty(CodeLines(s));
+        Assert.Single(s.World.Users.Items);
+    }
+
+    [Fact]
     public async Task AWeakBootstrapPassword_StillStopsTheStart()
     {
         var s = Make(configure: Bootstrap("weak"));

@@ -92,7 +92,9 @@ public sealed class SetupService(
         {
             case AuthMode.Standalone:
                 if (await users.AnyLocalAdminAsync(ct)) return "a local administrator exists";
-                return await authService.BootstrapAdminAsync(setupWaits: true, ct) ? "Auth:Standalone:AdminEmail" : null;
+                if (await authService.BootstrapAdminAsync(setupWaits: true, ct)) return "Auth:Standalone:AdminEmail";
+                // false is "no credentials given", or another server starting at the same moment made the administrator first
+                return await users.AnyLocalAdminAsync(ct) ? "a local administrator exists" : null;
             case AuthMode.Oidc or AuthMode.ProxyHeader:
                 return auth.Value.AdminEmails.Any(e => !string.IsNullOrWhiteSpace(e)) ? "Auth:AdminEmails" : null;
             default:
