@@ -295,24 +295,15 @@ function ClaimStep({ code, name }: { code: string; name: string }) {
   const { t } = useTranslation()
   const [claim] = useMutation(SetupClaimAdministratorDocument)
   const finish = useFinish('/setup')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<unknown>()
-  const submit = async () => {
-    setBusy(true)
-    setError(undefined)
-    try {
-      await claim({ variables: { code } })
-      await finish()
-    } catch (err) {
-      setError(err)
-      setBusy(false)
-    }
-  }
+  const { busy, error, run } = useStepAction(async () => {
+    await claim({ variables: { code } })
+    await finish()
+  })
   return (
     <Stack sx={{ gap: 1.5, alignItems: 'flex-start', maxWidth: 560 }}>
       <Typography>{t('setup.claimIntro', { name })}</Typography>
       {error !== undefined && <ErrorMessage error={error} />}
-      <Button loading={busy} onClick={() => void submit()}>
+      <Button loading={busy} onClick={run}>
         {t('setup.claim')}
       </Button>
     </Stack>
@@ -325,27 +316,35 @@ function OpenAccessStep({ code }: { code: string }) {
   const [acknowledge] = useMutation(SetupAcknowledgeOpenAccessDocument)
   const finish = useFinish('/')
   const [understood, setUnderstood] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<unknown>()
-  const submit = async () => {
-    setBusy(true)
-    setError(undefined)
-    try {
-      await acknowledge({ variables: { code } })
-      await finish()
-    } catch (err) {
-      setError(err)
-      setBusy(false)
-    }
-  }
+  const { busy, error, run } = useStepAction(async () => {
+    await acknowledge({ variables: { code } })
+    await finish()
+  })
   return (
     <Stack sx={{ gap: 1.5, alignItems: 'flex-start', maxWidth: 560 }}>
       <WarningMessage>{t('setup.openIntro')}</WarningMessage>
       <FormControlLabel control={<Checkbox checked={understood} onChange={(e) => setUnderstood(e.target.checked)} />} label={t('setup.openAcknowledge')} />
       {error !== undefined && <ErrorMessage error={error} />}
-      <Button loading={busy} disabled={!understood} onClick={() => void submit()}>
+      <Button loading={busy} disabled={!understood} onClick={run}>
         {t('setup.finish')}
       </Button>
     </Stack>
   )
+}
+
+/** The button of a step that completes the setup: busy while it runs; a refusal is said under it, and the button is free again. */
+function useStepAction(action: () => Promise<void>) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<unknown>()
+  const run = async () => {
+    setBusy(true)
+    setError(undefined)
+    try {
+      await action()
+    } catch (err) {
+      setError(err)
+      setBusy(false)
+    }
+  }
+  return { busy, error, run: () => void run() }
 }
