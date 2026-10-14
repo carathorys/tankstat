@@ -541,8 +541,11 @@ function RestorePoints({
   )
 }
 
-/** A key set for encrypted backups: made on the server from a passphrase (or one made up), shown once, then set as two settings. */
-function EncryptionSetup({ recipient }: { recipient: string | null }) {
+/**
+ * A key set for encrypted backups: made on the server from a passphrase (or one made up), shown once, then set as two settings. Also the
+ * setup's done screen, for the administrator the setup just made.
+ */
+export function EncryptionSetup({ recipient }: { recipient: string | null }) {
   const { t } = useTranslation()
   const [open, setOpen] = useDialogState()
   // Escape and the backdrop do not close it while the keys are made, nor while they are shown and not yet kept: they are shown only once.

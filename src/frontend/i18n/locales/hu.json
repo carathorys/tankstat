@@ -1649,7 +1649,12 @@
     "openAcknowledge": "Tudomásul veszem, hogy aki eléri ezt a címet, minden adatot lát és módosíthat.",
     "finish": "A beállítás befejezése",
     "notPending": "Ez a példány be van állítva: itt nincs mit beállítani.",
-    "home": "Ugrás a kezdőlapra"
+    "home": "Ugrás a kezdőlapra",
+    "done": "A beállítás kész: te vagy ennek a példánynak az adminisztrátora.",
+    "nextTitle": "Mit érdemes még beállítani",
+    "nextBackups": "Biztonsági mentések: mikor készüljenek, és hányat őrizzen meg",
+    "nextDefaults": "Az új járművek alapértékei: mértékegységek és pénznem",
+    "nextPeople": "Felhasználók: a többiek felvétele"
   },
   "systemSettings": {
     "title": "Szerverbeállítások",

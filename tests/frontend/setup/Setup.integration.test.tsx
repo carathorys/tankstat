@@ -74,6 +74,34 @@ function waitingServer(mode: AuthMode, options: { signedIn?: SessionQuery['sessi
       state.pending = false
       return HttpResponse.json({ data: { setupAcknowledgeOpenAccess: { __typename: 'SetupInfo', pending: false } } })
     }),
+    // What the done screen asks for its key set: backups written without encryption yet.
+    graphql.query('Backups', () =>
+      HttpResponse.json({
+        data: {
+          backups: {
+            __typename: 'BackupOverviewInfo',
+            folder: '/data/backups',
+            migration: 'AddSetup',
+            run: { __typename: 'BackupRunInfo', running: false, startedAt: null, finishedAt: null, file: null, bytes: null, error: null },
+            settings: {
+              __typename: 'BackupSettingsInfo',
+              recipient: null,
+              photosApart: false,
+              photos: false,
+              maxUploadMb: 1024,
+              times: [],
+              days: [],
+              timeZone: 'UTC',
+              nextRun: null,
+              keep: null,
+              keepDays: null,
+            },
+            sizes: { __typename: 'StorageSizesInfo', database: 1000, pictures: 0, photos: null },
+            restorePoints: [],
+          },
+        },
+      }),
+    ),
     graphql.mutation('RestoreBackup', ({ variables }) => {
       record('RestoreBackup', variables.input)
       state.restorePending = true
@@ -88,7 +116,7 @@ async function enterCode(ui: ReturnType<typeof userEvent.setup>, code = CODE) {
   await ui.click(screen.getByRole('button', { name: 'Continue' }))
 }
 
-it('in Standalone, the setup page stands in for every page, and the code makes the first administrator, who is then signed in', async () => {
+it('in Standalone, the setup page stands in for every page, and the code makes the first administrator, who is signed in and sees what to set up next', async () => {
   const ui = userEvent.setup()
   const state = waitingServer('STANDALONE')
   renderWithApollo(<App />, '/vehicles/v1')
@@ -108,9 +136,16 @@ it('in Standalone, the setup page stands in for every page, and the code makes t
   await ui.type(within(fresh).getByLabelText(/^Password/), 'initial-password-1')
   await ui.click(within(fresh).getByRole('button', { name: 'Create the administrator' }))
 
-  await waitFor(() => expect(screen.queryByRole('heading', { name: 'Set up Tankstat' })).not.toBeInTheDocument())
+  // Signed in, with the menu, on the done screen: backups encrypted at once, and where the rest is.
+  expect(await screen.findByText("The setup is done: you are this instance's administrator.")).toBeInTheDocument()
   expect(state.calls.SetupCreateAdministrator).toEqual([{ input: { code: 'abcd efgh jklm', email: 'root@example.com', password: 'initial-password-1' } }])
-  expect(state.current?.isAdmin).toBe(true)
+  expect(await screen.findByRole('region', { name: 'Encrypted backups' })).toHaveTextContent('Backups are written without encryption.')
+  expect(screen.getByRole('button', { name: 'Make a key set…' })).toBeInTheDocument()
+  const next = screen.getByRole('region', { name: 'What to set up next' })
+  expect(within(next).getByRole('link', { name: /^Backups:/ })).toHaveAttribute('href', '/admin/settings?tab=backups')
+  expect(within(next).getByRole('link', { name: /^Defaults for new vehicles/ })).toHaveAttribute('href', '/admin/settings?tab=defaults')
+  expect(within(next).getByRole('link', { name: /^People/ })).toHaveAttribute('href', '/admin/people')
+  expect(screen.getAllByRole('navigation').length).toBeGreaterThan(0)
 })
 
 it('with sign-in off, the setup ends with the acknowledgement of open access', async () => {
@@ -165,8 +200,10 @@ it('with a provider, the signed-in user finds the setup through the notice and b
   expect(fresh).toHaveTextContent('You are signed in as Ada.')
   await ui.click(within(fresh).getByRole('button', { name: 'Become the administrator' }))
 
-  await waitFor(() => expect(state.calls.SetupClaimAdministrator).toEqual([{ code: CODE }]))
-  await waitFor(() => expect(screen.queryByRole('link', { name: 'Open the setup' })).not.toBeInTheDocument())
+  expect(await screen.findByText("The setup is done: you are this instance's administrator.")).toBeInTheDocument()
+  expect(state.calls.SetupClaimAdministrator).toEqual([{ code: CODE }])
+  expect(screen.queryByRole('link', { name: 'Open the setup' })).not.toBeInTheDocument()
+  expect(within(screen.getByRole('region', { name: 'What to set up next' })).queryByRole('link', { name: /^People/ })).not.toBeInTheDocument() // the provider brings the people
 })
 
 it('keeps the notice above the sign-in at /setup, where no setup page is shown before it', async () => {
@@ -189,8 +226,8 @@ it('asks the session again when the setup was completed elsewhere meanwhile, so 
   expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
 })
 
-it('says there is nothing to set up once the instance is set up', async () => {
-  const state = waitingServer('STANDALONE', { signedIn: user({ isAdmin: true }) })
+it('says there is nothing to set up once the instance is set up, to someone who is no administrator', async () => {
+  const state = waitingServer('OIDC', { signedIn: user({ isAdmin: false }) })
   state.pending = false
   renderWithApollo(<App />, '/setup')
 

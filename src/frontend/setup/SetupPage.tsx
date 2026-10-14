@@ -8,10 +8,12 @@ import Typography from '@mui/material/Typography'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link as RouterLink, useNavigate } from 'react-router'
+import { EncryptionSetup } from '../admin/BackupsPanel.tsx'
 import { RestartWait, RestoreDialog } from '../admin/restore.tsx'
 import { Loading } from '../components/Loading.tsx'
 import { FieldForm } from '../forms/FieldForm.tsx'
 import {
+  BackupsDocument,
   SessionDocument,
   SetupAcknowledgeOpenAccessDocument,
   SetupClaimAdministratorDocument,
@@ -23,7 +25,7 @@ import {
 } from '../gql/generated.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { useFormat } from '../i18n/format.ts'
-import { ErrorMessage, WarningMessage } from '../messages.tsx'
+import { ErrorMessage, SuccessMessage, WarningMessage } from '../messages.tsx'
 import { standaloneLink } from '../theme/components.ts'
 
 type RestorePoint = SetupRestorePointsQuery['setupRestorePoints'][number]
@@ -41,6 +43,7 @@ export function SetupPage({ mode }: { mode: AuthMode }) {
   const { data, error, loading } = useQuery(SetupDocument, { fetchPolicy: 'network-only' })
   const client = useApolloClient()
   const { data: session } = useQuery(SessionDocument)
+  const isAdmin = session?.session.user?.isAdmin === true
   // Completed since the session was asked (on another server of the instance, say): the session is asked again, so its notice, and
   // the takeover of every page with it, go too.
   const stale = data?.setup.pending === false && session?.notices.some((n) => n.code === 'SETUP_PENDING') === true
@@ -55,16 +58,56 @@ export function SetupPage({ mode }: { mode: AuthMode }) {
       </Typography>
       {error !== undefined && !data && <ErrorMessage error={error} />}
       {loading && !data && <Loading />}
-      {data && !data.setup.pending && (
-        <Stack sx={{ gap: 1.5, alignItems: 'flex-start' }}>
-          <Typography>{t('setup.notPending')}</Typography>
-          <Link component={RouterLink} to="/" sx={standaloneLink}>
-            {t('setup.home')}
-          </Link>
-        </Stack>
-      )}
+      {data && !data.setup.pending && (isAdmin ? <Done mode={mode} /> : <NothingToDo />)}
       {data?.setup.pending && <Steps mode={mode} />}
     </section>
+  )
+}
+
+function NothingToDo() {
+  const { t } = useTranslation()
+  return (
+    <Stack sx={{ gap: 1.5, alignItems: 'flex-start' }}>
+      <Typography>{t('setup.notPending')}</Typography>
+      <Link component={RouterLink} to="/" sx={standaloneLink}>
+        {t('setup.home')}
+      </Link>
+    </Stack>
+  )
+}
+
+/**
+ * After the setup, for an administrator (the one it just made lands here): what is worth setting up next, none of it part of the setup
+ * itself. Backups encrypted (the Backups page's own key set, here at once), then where the schedule, the defaults and the users are.
+ */
+function Done({ mode }: { mode: AuthMode }) {
+  const { t } = useTranslation()
+  const { data } = useQuery(BackupsDocument, { fetchPolicy: 'cache-and-network' })
+  const next: { to: string; label: string }[] = [
+    { to: '/admin/settings?tab=backups', label: t('setup.nextBackups') },
+    { to: '/admin/settings?tab=defaults', label: t('setup.nextDefaults') },
+    ...(mode === 'STANDALONE' ? [{ to: '/admin/people', label: t('setup.nextPeople') }] : []),
+    { to: '/', label: t('setup.home') },
+  ]
+  return (
+    <Stack sx={{ gap: 3, maxWidth: 720 }}>
+      <SuccessMessage>{t('setup.done')}</SuccessMessage>
+      {data ? <EncryptionSetup recipient={data.backups.settings.recipient ?? null} /> : <Loading />}
+      <section aria-labelledby="setup-next">
+        <Typography id="setup-next" component="h2" variant="h5" sx={{ mb: 1 }}>
+          {t('setup.nextTitle')}
+        </Typography>
+        <Stack component="ul" sx={{ m: 0, pl: 2.5, gap: 1 }}>
+          {next.map((item) => (
+            <li key={item.to}>
+              <Link component={RouterLink} to={item.to}>
+                {item.label}
+              </Link>
+            </li>
+          ))}
+        </Stack>
+      </section>
+    </Stack>
   )
 }
 
@@ -204,13 +247,18 @@ function RestoreStep({
   )
 }
 
-/** After the step that completes the setup: the session is asked again (the notice is gone, an administrator signed in), then the start page. */
-function useFinish() {
+/**
+ * After the step that completes the setup: the session is asked again (the notice is gone, an administrator signed in), then the done
+ * screen for the new administrator (`/setup`, its next steps), or the start page with sign-in off, where nobody administers anything.
+ */
+function useFinish(to: '/setup' | '/') {
   const client = useApolloClient()
   const navigate = useNavigate()
   return async () => {
+    // The address first: the session's new answer ends the takeover and draws the page of the address, which unmounts this step (a
+    // navigate after that would be lost).
+    void navigate(to, { replace: true })
     await client.resetStore()
-    void navigate('/', { replace: true })
   }
 }
 
@@ -218,7 +266,7 @@ function useFinish() {
 function AdministratorStep({ code }: { code: string }) {
   const { t } = useTranslation()
   const [create] = useMutation(SetupCreateAdministratorDocument)
-  const finish = useFinish()
+  const finish = useFinish('/setup')
   return (
     <Stack sx={{ gap: 1.5, maxWidth: 480 }}>
       <Typography>{t('setup.adminIntro')}</Typography>
@@ -244,7 +292,7 @@ function AdministratorStep({ code }: { code: string }) {
 function ClaimStep({ code, name }: { code: string; name: string }) {
   const { t } = useTranslation()
   const [claim] = useMutation(SetupClaimAdministratorDocument)
-  const finish = useFinish()
+  const finish = useFinish('/setup')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>()
   const submit = async () => {
@@ -273,7 +321,7 @@ function ClaimStep({ code, name }: { code: string; name: string }) {
 function OpenAccessStep({ code }: { code: string }) {
   const { t } = useTranslation()
   const [acknowledge] = useMutation(SetupAcknowledgeOpenAccessDocument)
-  const finish = useFinish()
+  const finish = useFinish('/')
   const [understood, setUnderstood] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>()

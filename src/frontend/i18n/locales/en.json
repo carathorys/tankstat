@@ -1649,7 +1649,12 @@
     "openAcknowledge": "I understand that everyone who can reach this address sees and changes all data.",
     "finish": "Finish the setup",
     "notPending": "This instance is set up: there is nothing to set up here.",
-    "home": "Go to the start page"
+    "home": "Go to the start page",
+    "done": "The setup is done: you are this instance's administrator.",
+    "nextTitle": "What to set up next",
+    "nextBackups": "Backups: when they are written and how many are kept",
+    "nextDefaults": "Defaults for new vehicles: units and currency",
+    "nextPeople": "People: add the other users"
   },
   "systemSettings": {
     "title": "Server settings",

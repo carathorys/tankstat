@@ -5,7 +5,9 @@
 #   2. Make the folders. The app runs as user 1654, so its folders must belong to it (PostgreSQL sets up its own):
 #        mkdir -p data/app data/photos data/backups data/postgres
 #        sudo chown -R 1654:1654 data/app data/photos data/backups
-#   3. docker compose -f docker-compose.example.yml up -d, then sign in at http://localhost:8080 as ADMIN_EMAIL.
+#   3. docker compose -f docker-compose.example.yml up -d, then sign in at http://localhost:8080 as ADMIN_EMAIL. Without ADMIN_EMAIL and
+#      ADMIN_PASSWORD (releases after 0.15), that address shows the setup page instead: enter the one-time code from
+#      docker compose -f docker-compose.example.yml logs app (the line "Setup is waiting"), then make the administrator or restore a backup.
 #      The e-mails the app sends (password links) land in Mailpit: http://localhost:8025.
 #
 # Upgrading: change TANKSTAT_VERSION and run up -d again. From 0.15 on, the app writes a backup into data/backups before it migrates
@@ -52,10 +54,10 @@ services:
       Database__ConnectionString: Host=db;Database=tankstat;Username=tankstat;Password=${POSTGRES_PASSWORD}
 
       # Sign-in: the app's own accounts. The administrator is created on the first start only (while none exists); afterwards these two
-      # are ignored, and you may remove them.
+      # are ignored, and you may remove them. Left empty (releases after 0.15), a new instance shows the setup page instead.
       Auth__Mode: Standalone
-      Auth__Standalone__AdminEmail: ${ADMIN_EMAIL:?set ADMIN_EMAIL in .env}
-      Auth__Standalone__AdminPassword: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
+      Auth__Standalone__AdminEmail: ${ADMIN_EMAIL:-}
+      Auth__Standalone__AdminPassword: ${ADMIN_PASSWORD:-}
       # The address people reach the app at: the links in password e-mails are built from it.
       Auth__PublicUrl: ${PUBLIC_URL:-http://localhost:8080}
 

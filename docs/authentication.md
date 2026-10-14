@@ -37,7 +37,7 @@ Opening the app shows the setup page, which asks for the code and then offers tw
   - `Oidc` and `ProxyHeader`: sign in first (through the provider or the proxy), then follow *Open the setup* in the notice and choose *Become the administrator*.
   - `None`: tick that you understand everyone who reaches the address sees and changes all data, and finish. Until then every page shows the setup, but the API itself is as open as sign-in-off always is.
 
-Once the setup is done, the page and the code open nothing again.
+Once the setup is done, the page and the code open nothing again. The new administrator lands on what to set up next, none of it part of the setup: a key set for encrypted backups (made right there, as on the *Backups* page), then links to the backup schedule and the defaults for new vehicles on the *Server settings* page and, in `Standalone`, to *People* for the other users.
 
 **What skips the setup**, so an unattended deployment never needs a browser:
 
