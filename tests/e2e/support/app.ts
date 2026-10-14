@@ -24,9 +24,12 @@ export async function graphql<T = Record<string, unknown>>(
 
 const LOGIN = 'mutation($i: LoginInput!) { login(input: $i) { id } }'
 
-/** Signs the page's context in (the administrator by default): the session cookies land in the context, so `page.goto` is signed in. */
-export async function signIn(page: Page, user: { email: string; password: string } = ADMIN) {
-  const data = await graphql<{ login: { id: string } }>(page, LOGIN, { i: { email: user.email, password: user.password } })
+/**
+ * Signs the page's context in (the administrator by default): the session cookies land in the context, so `page.goto` is signed in.
+ * A request context of its own (`request.newContext`) is signed in the same way.
+ */
+export async function signIn(client: Page | APIRequestContext, user: { email: string; password: string } = ADMIN) {
+  const data = await graphql<{ login: { id: string } }>(client, LOGIN, { i: { email: user.email, password: user.password } })
   expect(data.login.id).toBeTruthy()
 }
 
@@ -68,9 +71,9 @@ export async function signInAsNewUser(page: Page, options?: { admin?: boolean })
  * A vehicle of the test's own. The suite shares one server and its workers run side by side, so a test makes what it needs and never
  * counts what others made.
  */
-export async function addVehicle(page: Page, name = `Car ${tag()}`) {
+export async function addVehicle(client: Page | APIRequestContext, name = `Car ${tag()}`) {
   const data = await graphql<{ addVehicle: { id: string; name: string } }>(
-    page,
+    client,
     'mutation($i: AddVehicleInput!) { addVehicle(input: $i) { id name } }',
     { i: { name, licensePlate: 'E2E-001', fuelType: 'PETROL' } },
   )

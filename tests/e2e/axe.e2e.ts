@@ -1,17 +1,9 @@
-import { AxeBuilder } from '@axe-core/playwright'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import { addVehicle, pageLoaded, signIn } from './support/app.ts'
+import { violations } from './support/axe.ts'
 
 // axe in a real browser: what jsdom cannot judge (the colour contrast of the real styles, what is hidden after layout). The jsdom scans
 // in tests/frontend/app/Accessibility*.integration.test.tsx stay; these add the pages as they are drawn, at both sizes.
-
-/** The violations of the page, or of the part `include` selects, one readable line each. */
-async function violations(page: Page, include?: string) {
-  const builder = new AxeBuilder({ page })
-  if (include) builder.include(include)
-  const { violations } = await builder.analyze()
-  return violations.map((v) => `${v.id} (${v.impact}): ${v.nodes.length} nodes, e.g. ${v.nodes[0]?.target.join(' ')}`)
-}
 
 test.beforeEach(async ({ page }) => signIn(page))
 
