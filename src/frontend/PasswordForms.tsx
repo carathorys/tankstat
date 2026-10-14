@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { FieldForm } from './forms/FieldForm.tsx'
 import { ChangePasswordDocument, ResetPasswordDocument } from './gql/generated.ts'
 import { SuccessMessage } from './messages.tsx'
+import { standaloneLink } from './theme/components.ts'
 
 export function ChangePasswordForm() {
   const { t } = useTranslation()
@@ -45,7 +46,9 @@ export function ResetPasswordView({ token }: { token: string }) {
       {done ? (
         <>
           <SuccessMessage>{t('auth.setDone')}</SuccessMessage>
-          <Link href="/">{t('auth.continueSignIn')}</Link>
+          <Link href="/" sx={standaloneLink}>
+            {t('auth.continueSignIn')}
+          </Link>
         </>
       ) : (
         <>

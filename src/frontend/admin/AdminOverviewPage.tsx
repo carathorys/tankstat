@@ -16,6 +16,7 @@ import { AdminOverviewDocument } from '../gql/generated.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { useFormat } from '../i18n/format.ts'
 import { ErrorMessage } from '../messages.tsx'
+import { standaloneLink } from '../theme/components.ts'
 
 /** Something an administrator should act on, with where to do it. */
 interface Attention {
@@ -91,7 +92,7 @@ export function AdminOverviewPage() {
               {
                 label: t('adminOverview.users'),
                 value: (
-                  <Link component={RouterLink} to="/admin/people">
+                  <Link component={RouterLink} to="/admin/people" sx={standaloneLink}>
                     {t('adminOverview.userCount', { count: users.length, users: number(users.length), admins: number(admins), disabled: number(disabled) })}
                   </Link>
                 ),
@@ -99,7 +100,7 @@ export function AdminOverviewPage() {
               {
                 label: t('adminOverview.vehicles'),
                 value: (
-                  <Link component={RouterLink} to="/admin/vehicles">
+                  <Link component={RouterLink} to="/admin/vehicles" sx={standaloneLink}>
                     {t('adminOverview.vehicleCount', { count: vehicleCount, vehicles: number(vehicleCount) })}
                   </Link>
                 ),

@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next'
 import { Link as RouterLink } from 'react-router'
 import type { NotificationFieldsFragment } from '../gql/generated.ts'
 import { useFormat } from '../i18n/format.ts'
+import { COARSE } from '../theme/components.ts'
 import { useNotificationActions } from './useNotificationActions.ts'
 import { useNotificationText } from './useNotificationText.ts'
 
@@ -27,9 +28,13 @@ export function NotificationItem({ notification, onFollow, actions }: { notifica
         <Typography variant="body2" sx={{ fontWeight: notification.read ? 'fontWeightRegular' : 'fontWeightBold' }}>
           {!notification.read && <Chip component="span" color="info" label={t('notifications.new')} sx={{ mr: 1 }} />}
           {href ? (
+            // On a touch screen a 44 px target. Padding, not the shared standaloneLink: the text flows on under the "New" chip, which an
+            // inline-flex box would turn into a column beside it; an inline box's padding moves nothing, and the next item's link is
+            // further away than that.
             <Link
               component={RouterLink}
               to={href}
+              sx={{ [COARSE]: { paddingBlock: '14px' } }}
               onClick={() => {
                 open(notification)
                 onFollow?.()

@@ -9,7 +9,7 @@ import { IconAction } from '../components/IconAction.tsx'
 import { UserAvatar } from '../components/UserAvatar.tsx'
 import type { SessionQuery } from '../gql/generated.ts'
 import { useMediaQuery } from '../hooks/useMediaQuery.ts'
-import { glass } from '../theme/components.ts'
+import { COARSE, glass } from '../theme/components.ts'
 import { MEDIA } from '../theme/media.ts'
 import { AppearanceMenu } from './AppearanceMenu.tsx'
 import { ConnectivityIndicator } from './ConnectivityIndicator.tsx'
@@ -62,8 +62,15 @@ export function TopBar({
           <Menu size={20} aria-hidden />
         </IconAction>
       )}
-      {/* The one thing that gives way when the bar is full: the name, cut short, never the controls. */}
-      <Typography component={Link} to="/" variant="h4" noWrap sx={{ color: 'inherit', textDecoration: 'none', minWidth: 0, flexShrink: 1 }}>
+      {/* The one thing that gives way when the bar is full: the name, cut short, never the controls. On a touch screen its line is a
+          44 px target; a block still, so the ellipsis stays. */}
+      <Typography
+        component={Link}
+        to="/"
+        variant="h4"
+        noWrap
+        sx={{ color: 'inherit', textDecoration: 'none', minWidth: 0, flexShrink: 1, [COARSE]: { lineHeight: '44px' } }}
+      >
         {t('app.name')}
       </Typography>
       <Box sx={{ flexGrow: 1 }} />

@@ -33,6 +33,7 @@ import { useConnectivity } from '../offline/useConnectivity.ts'
 import { useSubmitChange } from '../offline/useLogChange.ts'
 import { uuidV4 } from '../offline/uuid.ts'
 import { useToast } from '../toast/toastContext.ts'
+import { standaloneLink } from '../theme/components.ts'
 import { VehicleFormDialog } from '../VehicleFormDialog.tsx'
 
 type Row = VehiclesQuery['vehicles'][number]
@@ -67,7 +68,7 @@ export function VehiclesPage() {
         cell: (r) => (
           <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5 }}>
             <VehiclePicture url={r.pictureUrl} name={r.name} width={40} />
-            <Link component={RouterLink} to={`/vehicles/${r.id}`} aria-label={t('vehicles.open', { name: r.name })} sx={{ fontWeight: 'fontWeightMedium' }}>
+            <Link component={RouterLink} to={`/vehicles/${r.id}`} aria-label={t('vehicles.open', { name: r.name })} sx={{ fontWeight: 'fontWeightMedium', ...standaloneLink }}>
               {r.name}
             </Link>
           </Stack>
