@@ -1,12 +1,13 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { graphql, HttpResponse } from 'msw'
-import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
+import { RESTART_WAIT } from '../../../src/frontend/admin/restartFlow.ts'
 import App from '../../../src/frontend/App.tsx'
 import type { AuthMode, SessionQuery } from '../../../src/frontend/gql/generated.ts'
 import { navigation } from '../../../src/frontend/navigation.ts'
 import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
-import { backupRecipientHandler, fakeInstance, fakeVehicleBackend, gqlError, healthHandler, renderWithApollo, user } from '../support/mocks.tsx'
+import { backupRecipientHandler, fakeInstance, fakeVehicleBackend, gqlError, healthHandler, renderWithApollo, user, wizardSettings } from '../support/mocks.tsx'
 import { server } from '../support/server.ts'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
@@ -15,6 +16,13 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 afterAll(() => server.close())
+
+const slow = { ...RESTART_WAIT }
+beforeEach(() => Object.assign(RESTART_WAIT, { interval: 1, downFor: 5, upFor: 500 }))
+afterEach(() => {
+  Object.assign(RESTART_WAIT, slow)
+  sessionStorage.clear()
+})
 
 const CODE = 'ABCD-EFGH-JKLM'
 type Notice = SessionQuery['notices'][number]
@@ -33,38 +41,57 @@ const backup = {
  * A new instance waiting for its setup: the session answers with `SETUP_PENDING` until a step completes it, the code opens the steps, and
  * the calls are recorded.
  */
-function waitingServer(mode: AuthMode, options: { signedIn?: SessionQuery['session']['user']; points?: (typeof backup)[] } = {}) {
+function waitingServer(running: AuthMode, options: { signedIn?: SessionQuery['session']['user']; points?: (typeof backup)[] } = {}) {
   const state = {
     pending: true,
     restorePending: false,
     generation: 'gen-1',
+    mode: running,
     current: options.signedIn ?? null,
+    chosen: undefined as string | undefined, // the sign-in mode the wizard saved, waiting for the restart
     calls: {} as Record<string, unknown[]>,
   }
   const record = (name: string, vars: unknown) => (state.calls[name] ??= []).push(vars)
+  const codeOk = (code: string) => code.replace(/[-\s]/g, '').toUpperCase() === CODE.replaceAll('-', '') // the server ignores hyphens, spaces and case
+  const codeInvalid = gqlError("The one-time setup code from the server's log is needed.", 'FORBIDDEN', 'setup.codeInvalid')
   const notices = (): Notice[] => [
-    ...(mode === 'NONE' ? [{ code: 'AUTH_DISABLED', severity: 'WARNING' as const, message: 'Authentication is disabled.' }] : []),
+    ...(state.mode === 'NONE' ? [{ code: 'AUTH_DISABLED', severity: 'WARNING' as const, message: 'Authentication is disabled.' }] : []),
     ...(state.restorePending ? [{ code: 'RESTORE_PENDING', severity: 'WARNING' as const, message: 'A restore is waiting.' }] : []),
     ...(state.pending ? [setupNotice] : []),
   ]
   server.use(
-    graphql.query('Session', () => HttpResponse.json({ data: { session: { mode, user: state.current, instance: fakeInstance(state.generation) }, notices: notices() } })),
+    graphql.query('Session', () => HttpResponse.json({ data: { session: { mode: state.mode, user: state.current, instance: fakeInstance(state.generation) }, notices: notices() } })),
     healthHandler,
     ...fakeVehicleBackend().handlers,
     graphql.query('Setup', () => HttpResponse.json({ data: { setup: { __typename: 'SetupInfo', pending: state.pending } } })),
     graphql.query('SetupRestorePoints', ({ variables }) => {
       record('SetupRestorePoints', variables)
-      if (variables.code.replace(/[-\s]/g, '').toUpperCase() !== CODE.replaceAll('-', '')) // the server ignores hyphens, spaces and case
-        return HttpResponse.json(gqlError("The one-time setup code from the server's log is needed.", 'FORBIDDEN', 'setup.codeInvalid'))
+      if (!codeOk(variables.code)) return HttpResponse.json(codeInvalid)
       return HttpResponse.json({ data: { setupRestorePoints: (options.points ?? []).map((p) => ({ __typename: 'RestorePointInfo', ...p })) } })
     }),
-    // The last step, in the running mode: Standalone makes the administrator (signed in, as Standalone runs), sign-in off acknowledges.
+    // The wizard's settings, with the code: a sign-in mode saved waits for the restart the last step makes.
+    graphql.query('SystemSettings', ({ variables }) => {
+      record('SystemSettings', variables)
+      if (!variables.code || !codeOk(variables.code)) return HttpResponse.json(codeInvalid)
+      return HttpResponse.json({ data: { systemSettings: wizardSettings(running, state.chosen) } })
+    }),
+    graphql.mutation('UpdateSystemSettings', ({ variables }) => {
+      record('UpdateSystemSettings', variables)
+      const mode = (Array.isArray(variables.changes) ? variables.changes : [variables.changes]).find((c) => c.key === 'Auth:Mode')
+      if (mode) state.chosen = mode.value ?? undefined
+      return HttpResponse.json({ data: { updateSystemSettings: wizardSettings(running, state.chosen) } })
+    }),
+    // The last step, in the mode the next start runs: the administrator (signed in when Standalone runs already), or the acknowledgement;
+    // a mode saved by the wizard restarts the server into it.
     graphql.mutation('SetupFinish', ({ variables }) => {
       record('SetupFinish', variables.input)
-      state.pending = false
-      const standalone = mode === 'STANDALONE'
-      if (standalone) state.current = user({ email: variables.input.email ?? '', isAdmin: true })
-      return HttpResponse.json({ data: { setupFinish: { __typename: 'SetupFinishInfo', restarting: false, signedIn: standalone } } })
+      const restarting = wizardSettings(running, state.chosen).restartPending
+      const next = (state.chosen ?? { NONE: 'None', STANDALONE: 'Standalone', OIDC: 'Oidc', PROXY_HEADER: 'ProxyHeader' }[running]).toLowerCase()
+      const signedIn = next === 'standalone' && running === 'STANDALONE'
+      if (next === 'standalone' || next === 'none') state.pending = false
+      if (signedIn) state.current = user({ email: variables.input.email ?? '', isAdmin: true })
+      if (restarting) state.mode = next === 'standalone' ? 'STANDALONE' : next === 'oidc' ? 'OIDC' : next === 'proxyheader' ? 'PROXY_HEADER' : 'NONE'
+      return HttpResponse.json({ data: { setupFinish: { __typename: 'SetupFinishInfo', restarting, signedIn } } })
     }),
     graphql.mutation('SetupClaimAdministrator', ({ variables }) => {
       record('SetupClaimAdministrator', variables)
@@ -87,7 +114,10 @@ async function enterCode(ui: ReturnType<typeof userEvent.setup>, code = CODE) {
   await ui.click(screen.getByRole('button', { name: 'Continue' }))
 }
 
-it('in Standalone, the setup page stands in for every page, and the code makes the first administrator, who is signed in and sees what to set up next', async () => {
+/** The wizard's step, by the line that says where it is ("Step 2 of 3: Defaults"), which takes the focus as the step appears. */
+const stepLine = (at: number, name: string) => screen.findByText(new RegExp(`^Step ${at} of \\d+: ${name}$`))
+
+it('in Standalone, the code opens the wizard: its settings, then the first administrator, signed in, who sees what to set up next', async () => {
   const ui = userEvent.setup()
   const state = waitingServer('STANDALONE')
   renderWithApollo(<App />, '/vehicles/v1')
@@ -101,18 +131,32 @@ it('in Standalone, the setup page stands in for every page, and the code makes t
   await ui.clear(screen.getByRole('textbox', { name: /^Setup code/ }))
   await enterCode(ui, 'abcd efgh jklm')
 
-  expect(await screen.findByRole('heading', { name: 'Start fresh' })).toHaveFocus() // the code's form is gone: its next step is read out
-  // Starting fresh is the way; the backups are shown only once a restore is chosen, and that choice can be taken back.
+  // The sign-in is the environment's (Standalone) and its other setting is a provider's: no step for it. The e-mail first, read out.
+  expect(await stepLine(1, 'E-mail')).toHaveFocus()
+  expect(state.calls.SystemSettings).toEqual([{ code: 'abcd efgh jklm' }])
+  expect(screen.getByRole('progressbar', { name: 'Setup progress' })).toHaveAttribute('aria-valuetext', 'Step 1 of 3: E-mail')
+  // A restore instead, chosen on purpose, with a way back.
   expect(screen.queryByRole('region', { name: 'Restore a backup' })).not.toBeInTheDocument()
   await ui.click(screen.getByRole('button', { name: 'Restore from a backup' }))
   expect(await screen.findByRole('region', { name: 'Restore a backup' })).toHaveTextContent('There is no backup in the server')
   expect(screen.getByRole('heading', { name: 'Restore a backup' })).toHaveFocus()
-  expect(screen.queryByRole('region', { name: 'Start fresh' })).not.toBeInTheDocument()
   await ui.click(screen.getByRole('button', { name: 'Start fresh instead' }))
-  const fresh = await screen.findByRole('region', { name: 'Start fresh' })
-  await ui.type(within(fresh).getByRole('textbox', { name: /^E-mail/ }), 'root@example.com')
-  await ui.type(within(fresh).getByLabelText(/^Password/), 'initial-password-1')
-  await ui.click(within(fresh).getByRole('button', { name: 'Create the administrator' }))
+  await stepLine(1, 'E-mail')
+
+  await ui.click(screen.getByRole('button', { name: 'Skip' }))
+  expect(await stepLine(2, 'Defaults')).toHaveFocus()
+  await ui.click(screen.getByRole('button', { name: 'Back' }))
+  await stepLine(1, 'E-mail')
+  await ui.click(screen.getByRole('button', { name: 'Skip' }))
+  await stepLine(2, 'Defaults')
+  await ui.click(screen.getByRole('button', { name: 'Next' })) // nothing changed: nothing saved, on to the next step
+  expect(await stepLine(3, 'Finish')).toHaveFocus()
+  expect(state.calls.UpdateSystemSettings).toBeUndefined()
+
+  const last = screen.getByRole('region', { name: 'Finish' })
+  await ui.type(within(last).getByRole('textbox', { name: /^E-mail/ }), 'root@example.com')
+  await ui.type(within(last).getByLabelText(/^Password/), 'initial-password-1')
+  await ui.click(within(last).getByRole('button', { name: 'Create the administrator' }))
 
   // Signed in, with the menu, on the done screen: backups encrypted at once, and where the rest is.
   expect(await screen.findByText("The setup is done: you are this instance's administrator.")).toBeInTheDocument()
@@ -126,21 +170,63 @@ it('in Standalone, the setup page stands in for every page, and the code makes t
   expect(screen.getAllByRole('navigation').length).toBeGreaterThan(0)
 })
 
-it('with sign-in off, the setup ends with the acknowledgement of open access', async () => {
+it('with sign-in off, the sign-in mode must be chosen (none is preselected), and the setup ends with the acknowledgement', async () => {
   const ui = userEvent.setup()
   const state = waitingServer('NONE')
   renderWithApollo(<App />)
 
   await enterCode(ui)
-  const fresh = await screen.findByRole('region', { name: 'Start fresh' })
-  const finish = within(fresh).getByRole('button', { name: 'Finish the setup' })
-  expect(finish).toBeDisabled()
+  await stepLine(1, 'Sign-in')
+  expect(screen.queryByRole('button', { name: 'Skip' })).not.toBeInTheDocument() // the sign-in cannot be skipped
+  const mode = screen.getByRole('combobox', { name: /^Sign-in mode/ })
+  expect(mode).toHaveTextContent('Choose one')
+  await ui.click(screen.getByRole('button', { name: 'Next' }))
+  expect(await screen.findByText('Choose one to go on.')).toBeInTheDocument()
+  expect(mode).toHaveFocus()
+  await ui.click(mode)
+  expect(screen.queryByRole('option', { name: /Default/ })).not.toBeInTheDocument()
+  await ui.click(screen.getByRole('option', { name: 'No sign-in, not secure (None)' }))
+  await ui.click(screen.getByRole('button', { name: 'Next' }))
+  await stepLine(2, 'Defaults') // the e-mail is for local accounts: no step for it with sign-in off
   expect(screen.queryByRole('navigation')).not.toBeInTheDocument() // no menu: no page is there yet
-  await ui.click(within(fresh).getByRole('checkbox', { name: /everyone who can reach this address sees and changes all data/ }))
+  await ui.click(screen.getByRole('button', { name: 'Next' }))
+
+  const last = await screen.findByRole('region', { name: 'Finish' })
+  const finish = within(last).getByRole('button', { name: 'Finish the setup' })
+  expect(finish).toBeDisabled()
+  await ui.click(within(last).getByRole('checkbox', { name: /everyone who can reach this address sees and changes all data/ }))
   await ui.click(finish)
 
   await waitFor(() => expect(screen.queryByRole('heading', { name: 'Set up Tankstat' })).not.toBeInTheDocument())
   expect(state.calls.SetupFinish).toEqual([{ code: CODE, acknowledgeOpenAccess: true }])
+  expect(state.calls.UpdateSystemSettings).toBeUndefined() // None was what ran: nothing to save
+})
+
+it('a sign-in mode chosen in the wizard is saved with the code, and the last step makes its administrator, then one restart', async () => {
+  const ui = userEvent.setup()
+  const state = waitingServer('NONE')
+  renderWithApollo(<App />)
+
+  await enterCode(ui)
+  await stepLine(1, 'Sign-in')
+  await ui.click(screen.getByRole('combobox', { name: /^Sign-in mode/ }))
+  await ui.click(screen.getByRole('option', { name: 'Local accounts (Standalone)' }))
+  await ui.click(screen.getByRole('button', { name: 'Next' }))
+
+  expect(await stepLine(2, 'E-mail')).toHaveFocus() // local accounts send e-mail: its step is there now
+  expect(state.calls.UpdateSystemSettings).toEqual([{ changes: [{ key: 'Auth:Mode', value: 'Standalone', clear: false }], code: CODE }])
+  await ui.click(screen.getByRole('button', { name: 'Skip' }))
+  await stepLine(3, 'Defaults')
+  await ui.click(screen.getByRole('button', { name: 'Next' }))
+  const last = screen.getByRole('region', { name: 'Finish' })
+  await ui.type(within(last).getByRole('textbox', { name: /^E-mail/ }), 'root@example.com')
+  await ui.type(within(last).getByLabelText(/^Password/), 'initial-password-1')
+  await ui.click(within(last).getByRole('button', { name: 'Create the administrator' }))
+
+  // The restart signs everyone out of the old mode: the new administrator signs in.
+  expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
+  expect(state.calls.SetupFinish).toEqual([{ code: CODE, email: 'root@example.com', password: 'initial-password-1' }])
+  expect(state.mode).toBe('STANDALONE')
 })
 
 it('with sign-in off, a device that loses the server shows its own data, not a setup page that needs the server', async () => {
@@ -179,21 +265,37 @@ it('restores a backup of the folder with the code, and reloads once the restarte
   await waitFor(() => expect(reload).toHaveBeenCalled(), { timeout: 5000 })
 })
 
-it('with a provider, the signed-in user finds the setup through the notice and becomes the administrator', async () => {
+it('with a provider, the signed-in user finds the setup through the notice, and its last step makes them the administrator', async () => {
   const ui = userEvent.setup()
   const state = waitingServer('OIDC', { signedIn: user({ displayName: 'Ada', isAdmin: false }) })
   renderWithApollo(<App />)
 
   await ui.click(await screen.findByRole('link', { name: 'Open the setup' }))
   await enterCode(ui)
-  const fresh = await screen.findByRole('region', { name: 'Start fresh' })
-  expect(fresh).toHaveTextContent('You are signed in as Ada.')
-  await ui.click(within(fresh).getByRole('button', { name: 'Become the administrator' }))
+  await stepLine(1, 'Sign-in') // the provider's administrators may be named here; the e-mail is for local accounts
+  await ui.click(screen.getByRole('button', { name: 'Next' }))
+  await stepLine(2, 'Defaults')
+  await ui.click(screen.getByRole('button', { name: 'Skip' }))
+
+  const last = await screen.findByRole('region', { name: 'Finish' })
+  expect(last).toHaveTextContent('You are signed in as Ada.')
+  await ui.click(within(last).getByRole('button', { name: 'Become the administrator' }))
 
   expect(await screen.findByText("The setup is done: you are this instance's administrator.")).toBeInTheDocument()
   expect(state.calls.SetupClaimAdministrator).toEqual([{ code: CODE }])
   expect(screen.queryByRole('link', { name: 'Open the setup' })).not.toBeInTheDocument()
   expect(within(screen.getByRole('region', { name: 'What to set up next' })).queryByRole('link', { name: /^People/ })).not.toBeInTheDocument() // the provider brings the people
+})
+
+it('back from the provider after the wizard restarted into it, the setup goes on at its last step, the claim', async () => {
+  const ui = userEvent.setup()
+  sessionStorage.setItem('tankstat.setup.claimNext', '1') // what the last step left in this tab before the restart and the provider's sign-in
+  waitingServer('OIDC', { signedIn: user({ displayName: 'Ada', isAdmin: false }) })
+  renderWithApollo(<App />, '/setup')
+
+  await enterCode(ui) // asked once more: the code is kept nowhere
+  expect(await stepLine(3, 'Finish')).toHaveFocus()
+  expect(screen.getByRole('button', { name: 'Become the administrator' })).toBeInTheDocument()
 })
 
 it('keeps the notice above the sign-in at /setup, where no setup page is shown before it', async () => {

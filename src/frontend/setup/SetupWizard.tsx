@@ -1,0 +1,537 @@
+import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
+import Button from '@mui/material/Button'
+import Checkbox from '@mui/material/Checkbox'
+import FormControlLabel from '@mui/material/FormControlLabel'
+import LinearProgress from '@mui/material/LinearProgress'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router'
+import { healthProbe, waitForRestart } from '../admin/restartFlow.ts'
+import { RestartWait, RestoreDialog } from '../admin/restore.tsx'
+import { SettingsGroupForm } from '../admin/SettingsGroupForm.tsx'
+import { unusedReason } from '../admin/settingsRelevance.ts'
+import { useGroupDrafts } from '../admin/useGroupDrafts.ts'
+import { Loading } from '../components/Loading.tsx'
+import { FieldForm } from '../forms/FieldForm.tsx'
+import {
+  SessionDocument,
+  SetupClaimAdministratorDocument,
+  SetupFinishDocument,
+  SetupRestorePointsDocument,
+  SystemSettingsDocument,
+  type AuthMode,
+  type RestoreTargetFieldsFragment,
+  type SetupFinishInput,
+  type SetupRestorePointsQuery,
+} from '../gql/generated.ts'
+import { useFormat } from '../i18n/format.ts'
+import { ErrorMessage, WarningMessage } from '../messages.tsx'
+import { classifyFailure } from '../offline/errors.ts'
+import { claimNext, remember } from './claimNext.ts'
+
+type RestorePoint = SetupRestorePointsQuery['setupRestorePoints'][number]
+
+const MODE_KEY = 'Auth:Mode'
+
+/**
+ * The setup of a new instance as one wizard (#90). First the one-time code from the server's log, which opens what no administrator could,
+ * since none exists yet. Then a step per group of the Server settings page with the page's own forms (`SettingsGroupForm`, saved with the
+ * code as each step goes on): the sign-in first, its mode to be chosen (none is preselected, sign-in off is one of them), every later group
+ * may be skipped, and one that has nothing to choose is left out. The last step is the gatekeeper of the sign-in mode chosen, after which
+ * the server restarts once when a saved setting waits for it. Restoring a backup instead is chosen on the first step, with a way back. The
+ * code stays in this page only (never stored); a restart in the server's process keeps it.
+ */
+export function SetupWizard() {
+  const { t } = useTranslation()
+  const client = useApolloClient()
+  const { data: session } = useQuery(SessionDocument)
+  const [entered, setEntered] = useState<{ code: string; points: RestorePoint[] }>()
+  // The generation of the data when the restore was asked for, kept with it: the session's own may change while the wait runs.
+  const [restoring, setRestoring] = useState<{ point: RestoreTargetFieldsFragment; generation: string | undefined }>()
+  // Starting fresh is what the setup is for; a backup's restore is chosen on purpose, and only then are the backups shown.
+  const [restoreChosen, setRestoreChosen] = useState(false)
+
+  const check = async (code: string) => {
+    const { data } = await client.query({ query: SetupRestorePointsDocument, variables: { code }, fetchPolicy: 'network-only' })
+    setEntered({ code, points: data?.setupRestorePoints ?? [] })
+  }
+  const startOver = () => {
+    setRestoring(undefined)
+    setRestoreChosen(false)
+    setEntered(undefined)
+  }
+
+  if (restoring)
+    return (
+      <RestartWait
+        point={restoring.point}
+        generation={restoring.generation}
+        notRestored={
+          // The restart kept the code: back to the backups, asked for again (a new process made a new code: back to it).
+          <Button
+            onClick={() => {
+              setRestoring(undefined)
+              if (entered) void check(entered.code).catch(startOver)
+            }}
+          >
+            {t('setup.backToSetup')}
+          </Button>
+        }
+      />
+    )
+
+  if (!entered)
+    return (
+      <Stack sx={{ gap: 1.5, maxWidth: 560 }}>
+        <Typography>{t('setup.intro')}</Typography>
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+          {t('setup.codeWhere')}
+        </Typography>
+        <FieldForm fields={[{ name: 'code', label: 'setup.code', autoComplete: 'off' }]} submitLabel="setup.continue" onSubmit={(v) => check(v.code ?? '')} />
+      </Stack>
+    )
+
+  const otherCode = (
+    <Button variant="ghost" color="primary" sx={{ alignSelf: 'flex-start' }} onClick={startOver}>
+      {t('setup.otherCode')}
+    </Button>
+  )
+  if (restoreChosen)
+    return (
+      <Stack sx={{ gap: 3, maxWidth: 720 }}>
+        <RestoreStep
+          points={entered.points}
+          code={entered.code}
+          onLookAgain={() => check(entered.code)}
+          onRestoring={(point) => setRestoring({ point, generation: session?.session.instance?.generation ?? undefined })}
+          onFresh={() => setRestoreChosen(false)}
+        />
+        {otherCode}
+      </Stack>
+    )
+  return (
+    <SettingsSteps code={entered.code} name={session?.session.user?.displayName ?? ''} onRestore={() => setRestoreChosen(true)}>
+      {otherCode}
+    </SettingsSteps>
+  )
+}
+
+/**
+ * The settings of the wizard, a step per group, then the last step. The settings are the server's, asked with the code (never kept on the
+ * device); what is typed into a step is held above the forms (`useGroupDrafts`), and a step's Next saves it before it goes on.
+ */
+function SettingsSteps({ code, name, onRestore, children }: { code: string; name: string; onRestore: () => void; children: ReactNode }) {
+  const { t } = useTranslation()
+  const { data, error } = useQuery(SystemSettingsDocument, { variables: { code }, fetchPolicy: 'network-only' })
+  const settings = data?.systemSettings
+  const groups = settings?.groups ?? []
+  const { draftFor, hold, valueOf, basisOf } = useGroupDrafts(groups, [MODE_KEY])
+  const [index, setIndex] = useState(() => (claimNext() ? Number.MAX_SAFE_INTEGER : 0))
+
+  if (error && !settings) return <ErrorMessage error={error} />
+  if (!settings) return <Loading />
+
+  // A step per group with something to choose: none for one the environment holds whole, or whose every setting another one leaves
+  // unused (the e-mail with a provider's sign-in).
+  const steps = groups.filter((g) => g.settings.some((s) => s.editable && unusedReason(s.key, valueOf) === null))
+  const at = Math.min(index, steps.length)
+  const step = steps[at]
+  const back = at > 0 ? () => setIndex(at - 1) : undefined
+  return (
+    <Stack sx={{ gap: 3, maxWidth: 720 }}>
+      <WizardProgress key={at} at={at + 1} total={steps.length + 1} name={step ? t(`systemSettings.groups.${step.name}`) : t('setup.wizard.lastTitle')} />
+      {step ? (
+        <SettingsGroupForm
+          key={`${step.name}:${basisOf(step)}`}
+          group={step}
+          draft={draftFor(step)}
+          valueOf={valueOf}
+          onDraft={(draft) => hold(step, draft)}
+          onSaved={() => {
+            hold(step, undefined)
+            setIndex(at + 1)
+          }}
+          code={code}
+          required={step.name === 'AUTH' ? [MODE_KEY] : []}
+          confirmModeChange={false}
+          submitLabel={t('setup.wizard.next')}
+          saveUnchanged
+          announceSaved={false}
+          actions={
+            <>
+              {back && <BackButton onBack={back} />}
+              {step.name !== 'AUTH' && (
+                <Button
+                  variant="ghost"
+                  color="primary"
+                  onClick={() => {
+                    hold(step, undefined) // skipped: what was typed here is not saved
+                    setIndex(at + 1)
+                  }}
+                >
+                  {t('setup.wizard.skip')}
+                </Button>
+              )}
+            </>
+          }
+        />
+      ) : (
+        <LastStep
+          code={code}
+          name={name}
+          next={modeOf(valueOf(MODE_KEY))}
+          administrators={valueOf('Auth:AdminEmails')}
+          restartPending={settings.restartPending}
+          onBack={steps.length > 0 ? () => setIndex(steps.length - 1) : undefined}
+        />
+      )}
+      {at === 0 && (
+        <Stack sx={{ gap: 1, alignItems: 'flex-start' }}>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            {t('setup.restoreOffer')}
+          </Typography>
+          <Button variant="soft" onClick={onRestore}>
+            {t('setup.restoreChoose')}
+          </Button>
+        </Stack>
+      )}
+      {children}
+    </Stack>
+  )
+}
+
+/** The sign-in mode a setting's value names, as the schema spells it; nothing (the shipped default) is sign-in off. */
+function modeOf(value: string | undefined): AuthMode {
+  switch (value?.toLowerCase()) {
+    case 'standalone':
+      return 'STANDALONE'
+    case 'oidc':
+      return 'OIDC'
+    case 'proxyheader':
+      return 'PROXY_HEADER'
+    default:
+      return 'NONE'
+  }
+}
+
+/**
+ * Where the wizard is: "Step 2 of 8: E-mail" and a bar of it. The line takes the focus as a step appears (it is drawn anew for each), since
+ * the button that led to it is gone, and has the step read out.
+ */
+function WizardProgress({ at, total, name }: { at: number; total: number; name: string }) {
+  const { t } = useTranslation()
+  const line = useRef<HTMLParagraphElement>(null)
+  useEffect(() => line.current?.focus(), [])
+  const text = t('setup.wizard.step', { at, total, name })
+  return (
+    <Stack sx={{ gap: 0.75 }}>
+      <Typography ref={line} tabIndex={-1} variant="body2" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+        {text}
+      </Typography>
+      <LinearProgress variant="determinate" value={(at / total) * 100} aria-label={t('setup.wizard.progress')} aria-valuetext={text} />
+    </Stack>
+  )
+}
+
+function BackButton({ onBack }: { onBack: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <Button variant="ghost" color="primary" onClick={onBack}>
+      {t('setup.wizard.back')}
+    </Button>
+  )
+}
+
+/**
+ * The wizard's last step, by the sign-in mode chosen (`next`): Standalone the first administrator, sign-in off the acknowledgement, a
+ * provider the restart that takes it up (the administrators named, or the claim after it) or, once it runs, the claim.
+ */
+function LastStep({
+  code,
+  name,
+  next,
+  administrators,
+  restartPending,
+  onBack,
+}: {
+  code: string
+  name: string
+  next: AuthMode
+  administrators: string | undefined
+  restartPending: boolean
+  onBack?: () => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <section aria-labelledby="setup-last">
+      <Typography id="setup-last" component="h2" variant="h4" sx={{ mb: 1 }}>
+        {t('setup.wizard.lastTitle')}
+      </Typography>
+      {next === 'STANDALONE' && <AdministratorStep code={code} onBack={onBack} />}
+      {next === 'NONE' && <OpenAccessStep code={code} onBack={onBack} />}
+      {(next === 'OIDC' || next === 'PROXY_HEADER') &&
+        (restartPending ? <ProviderRestartStep code={code} administrators={administrators} onBack={onBack} /> : <ClaimStep code={code} name={name} onBack={onBack} />)}
+    </section>
+  )
+}
+
+/**
+ * The end of the setup: `setupFinish` (the gatekeeper, then the restart the saved settings wait for), the wait for the server to come back
+ * when it restarts, then the session asked again on the page it goes on with: the done screen for an administrator (`/setup`, after the
+ * sign-in a mode change asks for), the start page with sign-in off.
+ */
+function useFinishSetup(to: '/setup' | '/') {
+  const client = useApolloClient()
+  const navigate = useNavigate()
+  const [finishSetup] = useMutation(SetupFinishDocument)
+  const [restart, setRestart] = useState<'waiting' | 'timeout'>()
+
+  const done = async () => {
+    remember(false)
+    // The address first: the session's new answer ends the takeover and draws the page of the address, which unmounts this step (a
+    // navigate after that would be lost).
+    void navigate(to, { replace: true })
+    await client.resetStore()
+  }
+  const finish = async (input: SetupFinishInput) => {
+    let restarting: boolean
+    try {
+      restarting = (await finishSetup({ variables: { input } })).data?.setupFinish.restarting ?? false
+    } catch (e) {
+      // A request that went and got no answer is the restart cutting it short; anything answered is a refusal, said under the button.
+      if (classifyFailure(e) === 'answered') throw e
+      restarting = true
+    }
+    if (restarting) {
+      setRestart('waiting')
+      if ((await waitForRestart(healthProbe(client))) === 'timeout') {
+        setRestart('timeout')
+        return
+      }
+    }
+    await done()
+  }
+  return { finish, done, restart }
+}
+
+/** While the server restarts for the saved settings, and when it does not come back in time. */
+function RestartStatus({ restart }: { restart: 'waiting' | 'timeout' | undefined }) {
+  const { t } = useTranslation()
+  return (
+    <Typography role="status" variant="body2" className={restart === 'waiting' ? 'tk-pulse' : undefined}>
+      {restart === 'waiting' ? t('setup.wizard.restarting') : restart === 'timeout' ? t('systemSettings.restartTimeout') : ''}
+    </Typography>
+  )
+}
+
+/** Standalone: the first administrator, made as the setup ends (signed in on this browser when Standalone runs already). */
+function AdministratorStep({ code, onBack }: { code: string; onBack?: () => void }) {
+  const { t } = useTranslation()
+  const { finish, restart } = useFinishSetup('/setup')
+  return (
+    <Stack sx={{ gap: 1.5, maxWidth: 480 }}>
+      <Typography>{t('setup.adminIntro')}</Typography>
+      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+        {t('setup.passwordHint')}
+      </Typography>
+      <FieldForm
+        fields={[
+          { name: 'email', label: 'fields.email', type: 'email', autoComplete: 'username' },
+          { name: 'password', label: 'fields.password', type: 'password', autoComplete: 'new-password' },
+        ]}
+        submitLabel="setup.createAdmin"
+        onSubmit={(v) => finish({ code, email: v.email ?? '', password: v.password ?? '' })}
+      >
+        {onBack && restart === undefined && <BackButton onBack={onBack} />}
+      </FieldForm>
+      <RestartStatus restart={restart} />
+    </Stack>
+  )
+}
+
+/**
+ * A provider's sign-in chosen while another runs: the restart takes it up. The administrators the settings name become administrators as
+ * they sign in; with none named, the visitor signs in through the provider after the restart and comes back to the claim.
+ */
+function ProviderRestartStep({ code, administrators, onBack }: { code: string; administrators: string | undefined; onBack?: () => void }) {
+  const { t } = useTranslation()
+  const { list } = useFormat()
+  const { finish, restart } = useFinishSetup('/setup')
+  const named = (administrators ?? '').split('\n').map((a) => a.trim()).filter(Boolean)
+  const { busy, error, run } = useStepAction(async () => {
+    remember(named.length === 0)
+    await finish({ code })
+  })
+  return (
+    <Stack sx={{ gap: 1.5, alignItems: 'flex-start', maxWidth: 560 }}>
+      <Typography>{named.length > 0 ? t('setup.wizard.providerAdmins', { emails: list(named) }) : t('setup.wizard.providerClaim')}</Typography>
+      {error !== undefined && <ErrorMessage error={error} />}
+      <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
+        <Button loading={busy} onClick={run}>
+          {t('setup.wizard.restartFinish')}
+        </Button>
+        {onBack && restart === undefined && <BackButton onBack={onBack} />}
+      </Stack>
+      <RestartStatus restart={restart} />
+    </Stack>
+  )
+}
+
+/** OIDC and proxy mode, once the provider runs: the signed-in user becomes the first administrator. */
+function ClaimStep({ code, name, onBack }: { code: string; name: string; onBack?: () => void }) {
+  const { t } = useTranslation()
+  const [claim] = useMutation(SetupClaimAdministratorDocument)
+  const { done } = useFinishSetup('/setup')
+  const { busy, error, run } = useStepAction(async () => {
+    await claim({ variables: { code } })
+    await done()
+  })
+  return (
+    <Stack sx={{ gap: 1.5, alignItems: 'flex-start', maxWidth: 560 }}>
+      <Typography>{t('setup.claimIntro', { name })}</Typography>
+      {error !== undefined && <ErrorMessage error={error} />}
+      <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
+        <Button loading={busy} onClick={run}>
+          {t('setup.claim')}
+        </Button>
+        {onBack && <BackButton onBack={onBack} />}
+      </Stack>
+    </Stack>
+  )
+}
+
+/** Sign-in off: nobody is an administrator, so the setup ends with the acknowledgement of what that means. */
+function OpenAccessStep({ code, onBack }: { code: string; onBack?: () => void }) {
+  const { t } = useTranslation()
+  const { finish, restart } = useFinishSetup('/')
+  const [understood, setUnderstood] = useState(false)
+  const { busy, error, run } = useStepAction(() => finish({ code, acknowledgeOpenAccess: true }))
+  return (
+    <Stack sx={{ gap: 1.5, alignItems: 'flex-start', maxWidth: 560 }}>
+      <WarningMessage>{t('setup.openIntro')}</WarningMessage>
+      <FormControlLabel control={<Checkbox checked={understood} onChange={(e) => setUnderstood(e.target.checked)} />} label={t('setup.openAcknowledge')} />
+      {error !== undefined && <ErrorMessage error={error} />}
+      <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
+        <Button loading={busy} disabled={!understood} onClick={run}>
+          {t('setup.finish')}
+        </Button>
+        {onBack && restart === undefined && <BackButton onBack={onBack} />}
+      </Stack>
+      <RestartStatus restart={restart} />
+    </Stack>
+  )
+}
+
+/** The backups of the folder: one restored is the instance's data from then on, its users and its setup included. */
+function RestoreStep({
+  points,
+  code,
+  onLookAgain,
+  onRestoring,
+  onFresh,
+}: {
+  points: RestorePoint[]
+  code: string
+  onLookAgain: () => Promise<void>
+  onRestoring: (point: RestoreTargetFieldsFragment) => void
+  onFresh: () => void
+}) {
+  const { t } = useTranslation()
+  const { dateTime } = useFormat()
+  const [error, setError] = useState<unknown>()
+  const lookAgain = () => {
+    setError(undefined)
+    onLookAgain().catch(setError)
+  }
+  return (
+    <section aria-labelledby="setup-restore">
+      <StepTitle id="setup-restore">{t('setup.restoreTitle')}</StepTitle>
+      <Typography sx={{ mb: 1.5 }}>{t('setup.restoreIntro')}</Typography>
+      {points.length === 0 ? (
+        <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1 }}>
+          {t('setup.restoreNone')}
+        </Typography>
+      ) : (
+        <Stack component="ul" sx={{ listStyle: 'none', p: 0, m: 0, mb: 1, gap: 1.5 }}>
+          {points.map((point) => {
+            const restorable = point.sameMigration || point.olderMigration
+            return (
+              <Stack component="li" key={point.file} direction="row" sx={{ gap: 1.5, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                <Stack sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                  <Typography>{dateTime(point.createdAt)}</Typography>
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                    {[t('setup.pointMeta', { version: point.appVersion, file: point.file }), point.encrypted && t('setup.encrypted')].filter(Boolean).join(' · ')}
+                  </Typography>
+                  {point.olderMigration && (
+                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                      {t('setup.older', { version: point.appVersion })}
+                    </Typography>
+                  )}
+                  {!restorable && (
+                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                      {t('setup.newer')}
+                    </Typography>
+                  )}
+                </Stack>
+                {restorable && (
+                  <RestoreDialog
+                    point={point}
+                    code={code}
+                    onRestoring={onRestoring}
+                    trigger={
+                      <Button color="error" variant="soft" aria-label={t('admin.backups.restoreAria', { made: dateTime(point.createdAt), file: point.file })}>
+                        {t('setup.restore')}
+                      </Button>
+                    }
+                  />
+                )}
+              </Stack>
+            )
+          })}
+        </Stack>
+      )}
+      {error !== undefined && <ErrorMessage error={error} />}
+      <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
+        <Button variant="ghost" color="primary" onClick={lookAgain}>
+          {t('setup.lookAgain')}
+        </Button>
+        <Button variant="ghost" color="primary" onClick={onFresh}>
+          {t('setup.freshInstead')}
+        </Button>
+      </Stack>
+    </section>
+  )
+}
+
+/**
+ * A step's heading, which takes the focus as it appears: the form or the button that led to it is gone, and the heading has the step read
+ * out.
+ */
+function StepTitle({ id, children }: { id: string; children: string }) {
+  const heading = useRef<HTMLHeadingElement>(null)
+  useEffect(() => heading.current?.focus(), [])
+  return (
+    <Typography ref={heading} id={id} tabIndex={-1} component="h2" variant="h4" sx={{ mb: 1 }}>
+      {children}
+    </Typography>
+  )
+}
+
+/** The button of a step that completes the setup: busy while it runs; a refusal is said under it, and the button is free again. */
+function useStepAction(action: () => Promise<void>) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<unknown>()
+  const run = async () => {
+    setBusy(true)
+    setError(undefined)
+    try {
+      await action()
+    } catch (err) {
+      setError(err)
+      setBusy(false)
+    }
+  }
+  return { busy, error, run: () => void run() }
+}

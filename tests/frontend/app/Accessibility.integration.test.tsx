@@ -10,7 +10,7 @@ import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
 import { platform } from '../../../src/frontend/pwa/platform.ts'
 import { check, setup, setupAccessibilityTests } from '../support/accessibility.tsx'
 import { server } from '../support/server.ts'
-import { backupRecipientHandler, fakeLogBackend, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport, user } from '../support/mocks.tsx'
+import { backupRecipientHandler, fakeLogBackend, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport, user, wizardSettings } from '../support/mocks.tsx'
 
 // The pages, the shell and the sign-in screens. The log dialogs and photos are in AccessibilityLogs, the recurring expenses and the home
 // cards in AccessibilityRecurring (split so the files run side by side).
@@ -374,13 +374,14 @@ it('the sign-in screens of every mode have no violations', async () => {
   await check(view.container)
 })
 
-it('the setup page, its code and its steps, are labelled and free of violations', async () => {
+it('the setup page, its code and its wizard, are labelled and free of violations', async () => {
   const ui = userEvent.setup()
   const pending = { code: 'SETUP_PENDING', severity: 'INFO' as const, message: 'This instance is not set up yet.' }
   server.use(
     sessionHandler('STANDALONE', () => null, [pending]),
     healthHandler,
     graphql.query('Setup', () => HttpResponse.json({ data: { setup: { __typename: 'SetupInfo', pending: true } } })),
+    graphql.query('SystemSettings', () => HttpResponse.json({ data: { systemSettings: wizardSettings('STANDALONE') } })),
     graphql.query('SetupRestorePoints', () =>
       HttpResponse.json({
         data: {
@@ -404,7 +405,7 @@ it('the setup page, its code and its steps, are labelled and free of violations'
   await ui.type(await screen.findByRole('textbox', { name: /^Setup code/ }), 'ABCD-EFGH-JKLM')
   await check(view.container)
   await ui.click(screen.getByRole('button', { name: 'Continue' }))
-  await screen.findByRole('region', { name: 'Start fresh' })
+  await screen.findByText(/^Step 1 of \d+: E-mail$/) // a settings step: the settings page's own form
   await check(view.container)
   await ui.click(screen.getByRole('button', { name: 'Restore from a backup' }))
   await screen.findByRole('region', { name: 'Restore a backup' })

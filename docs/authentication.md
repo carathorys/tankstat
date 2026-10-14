@@ -29,13 +29,16 @@ Setup is waiting: open /setup in the browser and enter the one-time setup code A
 
 With Docker, `docker logs tankstat` shows it. Every start of the server writes a new code (a restart from inside the app keeps it, so the setup goes on with the one you entered), so use the latest; case, spaces and hyphens do not matter. Whoever can read the server's log is the one the setup trusts: no administrator exists yet to ask. The code is never shown anywhere else.
 
-Opening the app shows the setup page, which asks for the code and then sets the instance up:
+Opening the app shows the setup page, which asks for the code and then takes you through the setup as a wizard, step by step:
 
-- **Start fresh**, which depends on the mode:
-  - `Standalone`: an e-mail address and a password make the first administrator, who is signed in at once.
-  - `Oidc` and `ProxyHeader`: sign in first (through the provider or the proxy), then follow *Open the setup* in the notice and choose *Become the administrator*.
-  - `None`: tick that you understand everyone who reaches the address sees and changes all data, and finish. Until then every page shows the setup, but the API itself is as open as sign-in-off always is.
-- **Or restore a backup** instead, with *Restore from a backup* under it: only then are the backups of the server's backups folder listed (copy the file there first; see [Backup and restore](backup-and-restore.md)), and *Start fresh instead* goes back. The restored data brings its users and its own setup, so the instance is set up as the backup was. In Standalone the backup must hold an administrator (or the bootstrap variables above must be set), as for any restore; only a backup of an instance that was itself still waiting for its setup needs neither, and the restored instance then waits for its setup in turn.
+1. **The settings**, a step per group of the *Server settings* page with the same fields (what the environment sets is shown read-only, and a group with nothing to choose has no step): the sign-in first, whose mode must be chosen (none is preselected, and sign-in off is one of the choices), then the e-mail, photo reading, backups, defaults, notifications, offline sync and logging, each of which can be skipped. *Next* saves a step into the app's own settings file, *Back* goes to the one before.
+2. **The last step**, by the sign-in mode chosen:
+   - `Standalone`: an e-mail address and a password make the first administrator.
+   - `None`: tick that you understand everyone who reaches the address sees and changes all data, and finish. Until then every page shows the setup, but the API itself is as open as sign-in-off always is.
+   - `Oidc` and `ProxyHeader`: the administrators named in the sign-in step (`Auth:AdminEmails`) become administrators as they sign in. With none named, sign in through the provider or the proxy after the restart: you come back to the setup (enter the code again), and *Become the administrator* makes you it. Where the provider runs already, the visitor signs in first, then follows *Open the setup* in the notice.
+3. **One restart**, when a saved setting waits for it (the sign-in mode always does): the server restarts in its own process, keeping the code, and the page goes on once it is back. A new sign-in mode signs everyone out, so the new administrator then signs in.
+
+**Or restore a backup** instead, with *Restore from a backup* on the first step: only then are the backups of the server's backups folder listed (copy the file there first; see [Backup and restore](backup-and-restore.md)), and *Start fresh instead* goes back. The restored data brings its users and its own setup, so the instance is set up as the backup was. In Standalone the backup must hold an administrator (or the bootstrap variables above must be set), as for any restore; only a backup of an instance that was itself still waiting for its setup needs neither, and the restored instance then waits for its setup in turn.
 
 Once the setup is done, the page and the code open nothing again. The new administrator lands on what to set up next, none of it part of the setup: a key set for encrypted backups (made right there, as on the *Backups* page), then links to the backup schedule and the defaults for new vehicles on the *Server settings* page and, in `Standalone`, to *People* for the other users.
 
