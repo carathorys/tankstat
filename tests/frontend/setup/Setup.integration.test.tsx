@@ -4,6 +4,7 @@ import { graphql, http, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { RESTART_WAIT } from '../../../src/frontend/admin/restartFlow.ts'
 import App from '../../../src/frontend/App.tsx'
+import en from '../../../src/frontend/i18n/locales/en.json'
 import type { AuthMode, SessionQuery } from '../../../src/frontend/gql/generated.ts'
 import { navigation } from '../../../src/frontend/navigation.ts'
 import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
@@ -188,6 +189,8 @@ it('with sign-in off, the sign-in mode must be chosen (none is preselected), and
   renderWithApollo(<App />)
 
   await enterCode(ui)
+  // The shipped sign-in off is not chosen yet: its warning waits until the setup is done, the wizard asks for a mode.
+  expect(screen.queryByText(en.notices.AUTH_DISABLED)).not.toBeInTheDocument()
   await ui.click(await screen.findByRole('button', { name: 'Start the wizard' }))
   await stepAt('Sign-in')
   expect(screen.queryByRole('button', { name: 'Skip' })).not.toBeInTheDocument() // the sign-in cannot be skipped
@@ -211,6 +214,7 @@ it('with sign-in off, the sign-in mode must be chosen (none is preselected), and
   await ui.click(finish)
 
   await waitFor(() => expect(screen.queryByRole('heading', { name: 'Set up Tankstat' })).not.toBeInTheDocument())
+  expect(await screen.findByText(en.notices.AUTH_DISABLED)).toBeInTheDocument() // the app itself warns again
   expect(state.calls.SetupFinish).toEqual([{ code: CODE, acknowledgeOpenAccess: true }])
   expect(state.calls.UpdateSystemSettings).toBeUndefined() // None was what ran: nothing to save
 })

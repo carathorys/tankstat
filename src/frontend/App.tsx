@@ -61,12 +61,16 @@ function useSetupTakesOver(data: SessionQuery | undefined) {
 
 /**
  * The notices above the page. The setup's own is left out where the setup page is what is shown (in place of every page, or at `/setup`
- * once past the sign-in), since it would point at itself; the address is read here, so a navigation redraws this, not the whole shell.
+ * once past the sign-in), since it would point at itself; and while the setup waits there, so is the warning of sign-in off: the shipped
+ * mode is not chosen yet, the wizard asks for one, and its last step says what sign-in off means. The address is read here, so a
+ * navigation redraws this, not the whole shell.
  */
 function Notices({ data }: { data: SessionQuery }) {
   const { pathname } = useLocation()
   const setupShown = useSetupTakesOver(data) || (pathname === '/setup' && (data.session.mode === 'NONE' || data.session.user !== null))
-  return <NoticeBanner notices={setupShown ? data.notices.filter((n) => n.code !== 'SETUP_PENDING') : data.notices} />
+  const waits = data.notices.some((n) => n.code === 'SETUP_PENDING')
+  const hidden = setupShown ? (waits ? ['SETUP_PENDING', 'AUTH_DISABLED'] : ['SETUP_PENDING']) : []
+  return <NoticeBanner notices={data.notices.filter((n) => !hidden.includes(n.code))} />
 }
 
 /** Another address for a page, its query string kept (a page or a sort someone saved a link to). */
