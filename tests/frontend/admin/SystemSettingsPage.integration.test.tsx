@@ -722,6 +722,46 @@ it('days of the week are checkboxes named by the setting: every day by default, 
   await waitFor(() => expect(calls.UpdateSystemSettings?.[1]).toEqual({ changes: [{ key: 'Backups:Days', value: 'None', clear: false }] }))
 })
 
+it('offers what a backup does with the environment by its words alone, the values named in the help', async () => {
+  const ui = userEvent.setup()
+  const base = fixture()
+  base.groups.push({
+    __typename: 'SystemSettingsGroup', name: 'BACKUPS', appliesAtOnce: true,
+    settings: [setting({ key: 'Backups:Environment', kind: 'CHOICE', choices: ['Record', 'Merge'], defaultValue: 'Record' })],
+  })
+  settingsServer(base)
+  renderWithApollo(<App />, '/admin/settings?tab=backups')
+  const backups = await group('Backups')
+
+  await ui.click(backups.getByRole('combobox', { name: /^Settings from the environment/ }))
+
+  expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(expect.arrayContaining(['Names only', 'Names and values']))
+  expect(screen.queryByRole('option', { name: /\(Record\)|\(Merge\)/ })).not.toBeInTheDocument()
+})
+
+it('warns while secrets go into backups that are not encrypted, and not once they are', async () => {
+  const ui = userEvent.setup()
+  const base = fixture()
+  const recipient = setting({ key: 'Backups:Encryption:Recipient' })
+  base.groups.push({
+    __typename: 'SystemSettingsGroup', name: 'BACKUPS', appliesAtOnce: true,
+    settings: [setting({ key: 'Backups:Secrets', kind: 'BOOLEAN', defaultValue: 'false' }), recipient],
+  })
+  const calls = settingsServer(base)
+  renderWithApollo(<App />, '/admin/settings?tab=backups')
+  const backups = await group('Backups')
+  const warning = /^Backups are not encrypted, so with this on every backup holds the secrets in plain/
+
+  expect(backups.queryByText(warning)).not.toBeInTheDocument()
+  await ui.click(backups.getByLabelText(/^Secrets in backups/)) // always there to turn on
+  expect(backups.getByRole('note')).toHaveTextContent(warning)
+  await ui.type(backups.getByLabelText(/^Encrypt for \(age recipient\)/), 'age1recipient')
+  expect(backups.queryByText(warning)).not.toBeInTheDocument() // encrypted: no warning
+  await ui.click(backups.getByRole('button', { name: 'Save changes' }))
+  await waitFor(() => expect(calls.UpdateSystemSettings?.[0]).toBeDefined()) // no question asked first
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+})
+
 it('offers the time and date formats by an example each, not by their names', async () => {
   const ui = userEvent.setup()
   const base = fixture()
