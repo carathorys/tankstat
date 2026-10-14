@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Tankstat.Application.Backups;
+using Tankstat.Application.Setup;
 using Tankstat.Domain.Backups;
 using Tankstat.Infrastructure.Backups;
 using Tankstat.Infrastructure.Persistence;
@@ -532,6 +533,21 @@ public sealed class RestoreTests : IDisposable
         Assert.Single(Directory.GetFiles(folderB, "restore.refused.*"));
         var refusal = Assert.Single(restarted.Log.From("Tankstat.Infrastructure.Backups.RestoreStep").Where(e => e.Level == LogLevel.Error));
         Assert.Contains("standaloneNeedsAdministrator", (string)refusal.Values["Reason"]!);
+    }
+
+    [Fact]
+    public async Task ABackupWhoseSetupWaits_IsRestoredInStandalone_WithoutCredentials_AndTheSetupWaitsOnIt()
+    {
+        using var a = Host("a", migrated: true, new() { ["Setup:Enabled"] = "true" }); // sign-in off and waiting: no user, no administrator
+        var backup = await Backup(a);
+        var folderB = Folder("b-backups");
+        Stage(folderB, backup.Path);
+
+        using var b = Host("b", migrated: false,
+            new() { ["Auth:Mode"] = "Standalone", ["Auth:Standalone:AdminEmail"] = "", ["Auth:Standalone:AdminPassword"] = "", ["Setup:Enabled"] = "true" }, folderB);
+
+        Assert.True(b.Factory.Services.GetRequiredService<SetupStatus>().Pending); // the start waits for the setup page, which makes the administrator
+        Assert.Empty(Directory.GetFiles(folderB, "restore.*")); // applied, neither refused nor failed
     }
 
     /// <summary>Changes the plain manifest of a backup file (the checksum covers the inner archive only).</summary>
