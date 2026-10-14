@@ -1,9 +1,21 @@
 name: CI
 
 on:
+  # A change of Markdown files only (docs, the agents' rules and skills) runs nothing. The later pattern wins: docs/photo-reading.md is
+  # pinned to the code by OpenAiCompatiblePromptTests, and the test contracts keep READMEs next to their files.
   push:
     branches: [main]
+    paths:
+      - "**"
+      - "!**/*.md"
+      - docs/photo-reading.md
+      - "tests/**"
   pull_request:
+    paths:
+      - "**"
+      - "!**/*.md"
+      - docs/photo-reading.md
+      - "tests/**"
   # Lets the release workflow run the very same checks before it builds an image, and stamp the build with its version.
   workflow_call:
     inputs:
