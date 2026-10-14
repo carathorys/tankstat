@@ -103,6 +103,22 @@ public sealed class BackupScheduleTests : IDisposable
     }
 
     [Fact]
+    public async Task AWaitingSetup_ThatHoldsData_IsBackedUp_AsAnyOtherInstance()
+    {
+        // Sign-in off: the API is open while the acknowledgement waits, so the instance holds data before anyone finishes its setup.
+        using var app = App(new() { ["Auth:Mode"] = "None", ["Setup:Enabled"] = "true", ["Backups:Keep"] = "2" });
+        var worker = Worker(app);
+        await worker.WhenAsleepUntil(At(11, 2)).WaitAsync(Wait);
+        Assert.Empty(Files());
+
+        (await app.NewClient().Gql("mutation { addVehicle(input: { name: \"Car\", fuelType: PETROL }) { id } }")).Data();
+        _clock.SetUtcNow(At(11, 2));
+        await worker.WhenAsleepUntil(At(12, 2)).WaitAsync(Wait);
+
+        Assert.Equal([Name(At(11, 2))], Files());
+    }
+
+    [Fact]
     public async Task AStartAfterTheNightsBackup_WritesNoneAtStart_AndWarnsWhenNothingIsEverRemoved()
     {
         using (var first = App([]))

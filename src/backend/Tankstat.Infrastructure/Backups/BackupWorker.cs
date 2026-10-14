@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -13,11 +14,13 @@ namespace Tankstat.Infrastructure.Backups;
 /// backup since (<see cref="BackupSchedule.Missed"/>) is caught up at once. Without the setting it does nothing and says nothing. Nothing
 /// in here may stop the app: a failure is logged and the schedule goes on at the next due time. The settings apply at once: a new time, or
 /// none, is taken up as soon as it is saved (a missed backup is caught up only at the app's start), while a reload that leaves the schedule as
-/// it was never moves the due time waited for. While the setup waits nothing is written (the instance is empty, and such a backup would be
-/// offered as a restore point by the setup page itself); the first due time after the setup writes the first backup.
+/// it was never moves the due time waited for. While the setup waits and the database holds nothing yet, nothing is written (such a backup
+/// would be offered as a restore point by the setup page itself); the first due time after that writes the first backup. A waiting
+/// instance that holds data (sign-in off, or users signed in through a provider before anyone became the administrator) is backed up.
 /// </summary>
 internal sealed class BackupWorker(
-    BackupRunner runner, IBackupStore store, IOptionsMonitor<BackupOptions> options, SetupStatus setup, TimeProvider clock, ILogger<BackupWorker> logger)
+    BackupRunner runner, IBackupStore store, IOptionsMonitor<BackupOptions> options, SetupStatus setup, IServiceScopeFactory scopes, TimeProvider clock,
+    ILogger<BackupWorker> logger)
     : BackgroundService
 {
     private readonly Lock _sleep = new();
@@ -117,7 +120,7 @@ internal sealed class BackupWorker(
                 if (starting)
                 {
                     starting = false;
-                    await CatchUpAsync(schedule, zone);
+                    await CatchUpAsync(schedule, zone, ct);
                 }
 
                 // The due time waited for stays while the schedule does: a reload handled once the clock reached it (its timer about to
@@ -144,7 +147,7 @@ internal sealed class BackupWorker(
                 for (var woke = clock.GetUtcNow(); woke < next; woke = clock.GetUtcNow())
                     await Task.Delay(TimeSpan.FromMilliseconds(Math.Ceiling((next - woke).TotalMilliseconds)), clock, ct);
                 plan = null; // this due time is served: the next round plans the one after it
-                if (setup.Pending) logger.LogInformation("The setup is not finished: the backup due at {Due} is not written", next);
+                if (await NothingToBackUpAsync(ct)) logger.LogInformation("The setup is not finished and the instance holds nothing yet: the backup due at {Due} is not written", next);
                 else await RunAsync();
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -160,13 +163,13 @@ internal sealed class BackupWorker(
     }
 
     /// <summary>At start: the due time that passed without a backup since is written at once.</summary>
-    private async Task CatchUpAsync(BackupSchedule schedule, TimeZoneInfo zone)
+    private async Task CatchUpAsync(BackupSchedule schedule, TimeZoneInfo zone, CancellationToken ct)
     {
         try
         {
-            if (setup.Pending)
+            if (await NothingToBackUpAsync(ct))
             {
-                logger.LogInformation("The setup is not finished: no backup is written until it is");
+                logger.LogInformation("The setup is not finished and the instance holds nothing yet: no backup is written until it does");
                 return;
             }
             if (schedule.Missed(NewestOwn(), clock.GetUtcNow(), zone))
@@ -179,6 +182,15 @@ internal sealed class BackupWorker(
         {
             logger.LogError(e, "The missed backup could not be caught up; the schedule goes on");
         }
+    }
+
+    /// <summary>The setup waits (as the database says: another server may have completed it) and nobody has stored anything yet.</summary>
+    private async Task<bool> NothingToBackUpAsync(CancellationToken ct)
+    {
+        if (!setup.Pending) return false;
+        await using var scope = scopes.CreateAsyncScope();
+        var setupStore = scope.ServiceProvider.GetRequiredService<ISetupStore>();
+        return await setup.PendingAsync(setupStore, ct) && !await setupStore.HoldsDataAsync(ct);
     }
 
     private DateTimeOffset? NewestOwn()
