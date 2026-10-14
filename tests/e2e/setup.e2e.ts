@@ -69,14 +69,20 @@ test('a new instance is set up through the wizard: the sign-in mode, the first a
 
 type BackupRun = { running: boolean; startedAt: string | null; file: string | null; error: string | null }
 
+/** The notification setting each size saves on the shared server before its backup (a setting of its own, as the e2e rules ask), and its label. */
+const MOVED_SETTING = { phone: ['Notifications:ReadRetentionDays', 'Keep read notifications (days)'], desktop: ['Notifications:MaxPerHour', 'Notifications per hour'] } as const
+
 /**
- * A backup of the shared server that holds a vehicle made for it, as its file: the backup the restore test moves to its new server. The
- * other tests write backups too, one at a time, so a run that started after the vehicle was saved is waited for (and asked for again
- * while the last one is older).
+ * A backup of the shared server that holds a vehicle made for it and, in its settings file, a setting saved for it, as its file: the
+ * backup the restore test moves to its new server. The other tests write backups too, one at a time, so a run that started after both were
+ * saved is waited for (and asked for again while the last one is older).
  */
 async function backupOfTheSharedServer(api: APIRequestContext) {
   await signIn(api)
   const vehicle = await addVehicle(api, `Moved ${tag()}`)
+  const [key, label] = MOVED_SETTING[test.info().project.name as keyof typeof MOVED_SETTING]
+  const value = String(100 + Math.floor(Math.random() * 800))
+  await graphql(api, 'mutation($c: [SystemSettingChangeInput!]!) { updateSystemSettings(changes: $c) { restartPending } }', { c: [{ key, value }] })
   const since = Date.now()
   let run: BackupRun | undefined
   await expect
@@ -93,14 +99,15 @@ async function backupOfTheSharedServer(api: APIRequestContext) {
     .toBe('written')
   const download = await api.get(`/media/backups/${encodeURIComponent(run!.file!)}`)
   expect(download.ok()).toBe(true)
-  return { vehicle, file: run!.file!, body: await download.body() }
+  return { vehicle, setting: { label, value }, file: run!.file!, body: await download.body() }
 }
 
-test('a new instance is restored from a backup uploaded on the setup page, and its data is back', async ({ page }) => {
+test('a new instance is restored from a backup uploaded on the setup page, and its data and its settings are back', async ({ page }) => {
   const api = await request.newContext({ baseURL: test.info().project.use.baseURL })
   const backup = await backupOfTheSharedServer(api).finally(() => api.dispose())
 
-  await enterCode(page, waitingServer('restore'))
+  const server = waitingServer('restore')
+  await enterCode(page, server)
   await page.getByRole('button', { name: 'Restore from a backup' }).click()
   await stepAt(page, 'Restore a backup')
   const restore = page.getByRole('region', { name: 'Restore a backup' })
@@ -125,4 +132,10 @@ test('a new instance is restored from a backup uploaded on the setup page, and i
   await pageLoaded(page)
   await page.getByLabel('Search vehicles').fill(backup.vehicle.name)
   await expect(page.getByRole('link', { name: backup.vehicle.name })).toBeVisible()
+
+  // The backup's settings file came back with it: the setting saved on the old server is this one's now.
+  await page.goto(`${server.url}/admin/settings?tab=notifications`)
+  await pageLoaded(page)
+  const form = page.getByRole('form', { name: 'Notifications settings' })
+  await expect(form.getByRole('textbox', { name: backup.setting.label, exact: true })).toHaveValue(backup.setting.value)
 })
