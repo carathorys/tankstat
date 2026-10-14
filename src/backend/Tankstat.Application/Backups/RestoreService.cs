@@ -2,19 +2,20 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Setup;
 using Tankstat.Application.SystemSettings;
 
 namespace Tankstat.Application.Backups;
 
-/// <summary>What is asked for: a backup by its file name in the backups folder, the passphrase or the identity of an encrypted one, and with sign-in off the one-time code from the log.</summary>
+/// <summary>What is asked for: a backup by its file name in the backups folder, the passphrase or the identity of an encrypted one, and with sign-in off or while the setup waits the one-time code from the log.</summary>
 public sealed record RestoreRequest(string File, string? Passphrase, string? Identity, string? Code);
 
 /// <summary>The restore that now waits for the restart: the file and the time it takes the data back to.</summary>
 public sealed record RestorePending(string File, DateTimeOffset RestorePoint);
 
 /// <summary>
-/// Asks for a restore: an administrator (with sign-in off, whoever holds the one-time code from the server's log, since there is no
-/// administrator then) names a backup of the folder and, for an encrypted one, its passphrase or identity. The key is checked against the
+/// Asks for a restore: an administrator (with sign-in off, or while the setup waits, whoever holds the one-time code from the server's log,
+/// since there is no administrator then) names a backup of the folder and, for an encrypted one, its passphrase or identity. The key is checked against the
 /// manifest before anything is written, so a wrong passphrase is refused at once, never after a restart that then cannot decrypt; so is a
 /// backup made by a newer release, at a migration this release does not know (the start would refuse it; an older one is brought up to
 /// date), one deleted since its manifest was read, and a restart the next start would refuse (the
@@ -23,15 +24,15 @@ public sealed record RestorePending(string File, DateTimeOffset RestorePoint);
 /// (<see cref="IServerRestart"/>). Neither the passphrase nor the identity nor the code is ever logged.
 /// </summary>
 public sealed class RestoreService(
-    IBackupStore store, AccessService access, IOptions<AuthOptions> auth, RestoreCode code, ISystemConfiguration configuration, IServerRestart restart,
-    TimeProvider clock, ILogger<RestoreService> logger)
+    IBackupStore store, AccessService access, IOptions<AuthOptions> auth, OneTimeCode code, SetupStatus setup, ISystemConfiguration configuration,
+    IServerRestart restart, TimeProvider clock, ILogger<RestoreService> logger)
 {
     public async Task<RestorePending> RequestAsync(RestoreRequest request, CancellationToken ct)
     {
         Guid actor;
-        if (auth.Value.Mode == AuthMode.None)
+        if (auth.Value.Mode == AuthMode.None || setup.Pending)
         {
-            if (!code.Matches(request.Code)) throw new ForbiddenException("backup.codeRequired", "The one-time restore code from the server's log is needed.");
+            if (!code.Matches(request.Code)) throw new ForbiddenException("backup.codeRequired", "The one-time code from the server's log is needed.");
             actor = Principal.Anonymous.Id;
         }
         else actor = (await access.RequireAdminAsync(ct)).Id;

@@ -63,7 +63,7 @@ public class SettingsFileSmokeTests
         var data = (await app.Gql(Session)).Data();
         Assert.Equal("NONE", data.GetProperty("session").GetProperty("mode").GetString());
         var codes = data.GetProperty("notices").EnumerateArray().Select(n => n.GetProperty("code").GetString()).ToList();
-        Assert.Equal(["AUTH_DISABLED", "SETTINGS_FILE_IGNORED"], codes);
+        Assert.Equal(["AUTH_DISABLED", "SETTINGS_FILE_IGNORED", "SETUP_PENDING"], codes); // a new instance waits for its setup: that notice comes last
         Assert.True(await app.LogsAsync("left out"), app.Log);
         Assert.Contains("Auth:AccessTokenMinutes", app.Log);
         Assert.Contains("fail: ", app.Log); // an Error line, as the console writes it

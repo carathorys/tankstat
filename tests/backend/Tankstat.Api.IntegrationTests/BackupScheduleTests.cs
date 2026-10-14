@@ -81,6 +81,28 @@ public sealed class BackupScheduleTests : IDisposable
     }
 
     [Fact]
+    public async Task WhileTheSetupWaits_NothingIsWritten_TheFirstDueTimeAfterItWritesTheFirstBackup()
+    {
+        using var app = App(new() { ["Auth:Standalone:AdminEmail"] = "", ["Auth:Standalone:AdminPassword"] = "", ["Setup:Enabled"] = "true", ["Backups:Keep"] = "2" });
+        var worker = Worker(app);
+
+        await worker.WhenAsleepUntil(At(11, 2)).WaitAsync(Wait);
+        Assert.Empty(Files()); // nothing caught up: an empty instance, whose backup the setup page would offer as a restore point
+        _clock.SetUtcNow(At(11, 2));
+        await worker.WhenAsleepUntil(At(12, 2)).WaitAsync(Wait);
+        Assert.Empty(Files());
+
+        var code = (string)Assert.Single(app.Log.From<Tankstat.Application.Setup.SetupService>(), e => e.Values.ContainsKey("Code")).Values["Code"]!;
+        (await app.NewClient().Gql("mutation($i: SetupAdministratorInput!) { setupCreateAdministrator(input: $i) { id } }",
+            new { i = new { code, email = "root@example.com", password = "initial-password-1" } })).Data();
+        _clock.SetUtcNow(At(12, 2));
+        await worker.WhenAsleepUntil(At(13, 2)).WaitAsync(Wait);
+
+        Assert.Equal([Name(At(12, 2))], Files());
+        Assert.Equal(2, app.Log.From<BackupWorker>().Count(e => e.Message.Contains("setup is not finished")));
+    }
+
+    [Fact]
     public async Task AStartAfterTheNightsBackup_WritesNoneAtStart_AndWarnsWhenNothingIsEverRemoved()
     {
         using (var first = App([]))

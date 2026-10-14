@@ -590,7 +590,7 @@ public class BootstrapTests
     {
         var w = new World(configure: o => { o.Standalone.AdminEmail = "root@x.co"; o.Standalone.AdminPassword = "initial-password-1"; });
 
-        await w.Auth.BootstrapAdminAsync(default);
+        await w.Auth.BootstrapAdminAsync(setupWaits: false, default);
 
         var admin = Assert.Single(w.Users.Items);
         Assert.True(admin.IsAdmin);
@@ -603,7 +603,7 @@ public class BootstrapTests
         var w = new World(configure: o => { o.Standalone.AdminEmail = "other@x.co"; o.Standalone.AdminPassword = "initial-password-1"; });
         w.AddUser("root@x.co", admin: true);
 
-        await w.Auth.BootstrapAdminAsync(default);
+        await w.Auth.BootstrapAdminAsync(setupWaits: false, default);
 
         Assert.Single(w.Users.Items);
     }
@@ -613,15 +613,27 @@ public class BootstrapTests
     {
         var w = new World();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => w.Auth.BootstrapAdminAsync(default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => w.Auth.BootstrapAdminAsync(setupWaits: false, default));
     }
 
     [Fact]
-    public async Task Fails_WhenTheConfiguredPasswordIsTooWeak()
+    public async Task WhileTheSetupWaits_NoConfiguration_IsNoFailure_TheSetupPageMakesTheAdministrator()
+    {
+        var w = new World();
+
+        Assert.False(await w.Auth.BootstrapAdminAsync(setupWaits: true, default));
+
+        Assert.Empty(w.Users.Items);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Fails_WhenTheConfiguredPasswordIsTooWeak_WhetherTheSetupWaitsOrNot(bool setupWaits)
     {
         var w = new World(configure: o => { o.Standalone.AdminEmail = "root@x.co"; o.Standalone.AdminPassword = "weak"; });
 
-        await Assert.ThrowsAsync<DomainException>(() => w.Auth.BootstrapAdminAsync(default));
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.BootstrapAdminAsync(setupWaits, default));
     }
 
     [Theory]
@@ -630,7 +642,7 @@ public class BootstrapTests
     [InlineData(AuthMode.ProxyHeader)]
     public async Task IsSkipped_OutsideStandaloneMode(AuthMode mode)
     {
-        await new World(mode).Auth.BootstrapAdminAsync(default);
+        await new World(mode).Auth.BootstrapAdminAsync(setupWaits: false, default);
     }
 }
 
@@ -736,6 +748,20 @@ public class NoticeAndOptionsTests
     {
         var notice = Assert.Single(new NoticeService(new AuthOptions { Mode = AuthMode.Standalone }.Create(), new NoBackups { RestorePending = true }).GetNotices());
         Assert.Equal(("RESTORE_PENDING", NoticeSeverity.Warning), (notice.Code, notice.Severity));
+    }
+
+    [Fact]
+    public void ASetupThatWaits_IsAnInfoNotice_AfterEveryOther_NamingNoCode()
+    {
+        var setup = new Tankstat.Application.Setup.SetupStatus();
+        setup.Set(pending: true);
+
+        var notices = new NoticeService(new AuthOptions { Mode = AuthMode.None }.Create(), new NoBackups { RestorePending = true }, setup: setup).GetNotices();
+
+        Assert.Equal(["AUTH_DISABLED", "RESTORE_PENDING", "SETUP_PENDING"], notices.Select(n => n.Code));
+        Assert.Equal(NoticeSeverity.Info, notices[^1].Severity);
+        setup.Set(pending: false);
+        Assert.Equal(["AUTH_DISABLED", "RESTORE_PENDING"], new NoticeService(new AuthOptions { Mode = AuthMode.None }.Create(), new NoBackups { RestorePending = true }, setup: setup).GetNotices().Select(n => n.Code));
     }
 
     private static ValidateOptionsResult Validate(AuthOptions o, SmtpOptions? smtp = null) =>

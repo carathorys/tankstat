@@ -33,6 +33,8 @@ type Query {
   accessGrants: [AccessGrantInfo!]! @cost(weight: "10")
   backups: BackupOverviewInfo! @cost(weight: "10")
   mySessions: [UserSessionInfo!]! @cost(weight: "10")
+  setup: SetupInfo!
+  setupRestorePoints(code: String!): [RestorePointInfo!]! @cost(weight: "10")
   refuelings(
     vehicleId: UUID!
     orderBy: RefuelingSortField! = DATE
@@ -121,6 +123,9 @@ type Mutation {
     @cost(weight: "10")
   revokeSession(id: UUID!): Boolean! @cost(weight: "10")
   revokeOtherSessions: Int! @cost(weight: "10")
+  setupCreateAdministrator(input: SetupAdministratorInput!): UserInfo!
+    @cost(weight: "10")
+  setupAcknowledgeOpenAccess(code: String!): SetupInfo! @cost(weight: "10")
   logRefueling(input: LogRefuelingInput!): Refueling! @cost(weight: "10")
   updateRefueling(input: UpdateRefuelingInput!): Refueling! @cost(weight: "10")
   deleteRefueling(id: UUID!): Refueling! @cost(weight: "10")
@@ -570,6 +575,10 @@ type SettingsFileInfo {
   problems: [String!]!
 }
 
+type SetupInfo {
+  pending: Boolean!
+}
+
 type StorageSizesInfo {
   database: Long
   pictures: Long!
@@ -988,6 +997,12 @@ input SetLogAccessInput {
   vehicleId: UUID!
   userId: UUID!
   level: AccessLevel!
+}
+
+input SetupAdministratorInput {
+  code: String!
+  email: String!
+  password: String!
 }
 
 input SetVehiclePictureInput {

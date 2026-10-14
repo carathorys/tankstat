@@ -11,6 +11,7 @@ using Microsoft.Extensions.Options;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Backups;
 using Tankstat.Application.Images;
+using Tankstat.Application.Setup;
 using Tankstat.Application.Users;
 using Tankstat.Domain;
 using Tankstat.Domain.Backups;
@@ -68,7 +69,7 @@ internal sealed class RestoreStep(
     IOptions<KeyRingOptions> keyRing,
     IOptions<AuthOptions> auth,
     InstanceGeneration state,
-    RestoreCode code,
+    OneTimeCode code,
     TimeProvider clock,
     ILogger<RestoreStep> logger) : IHostedService
 {
@@ -334,8 +335,8 @@ internal sealed class RestoreStep(
     /// <summary>
     /// Standalone needs an administrator to sign in with afterwards: among the users the backup brings (read from its own rows, before anything
     /// changes, so a backup without one is refused, never applied), or one the start creates from the bootstrap credentials as
-    /// <c>StandaloneBootstrapper</c> will try to (it fails the start otherwise, and every start after it): an enabled local administrator, or
-    /// bootstrap credentials of an address no local account has.
+    /// <c>SetupStep</c> will try to (it fails the start otherwise, and every start after it: the restored data counts as set up, so no setup
+    /// page waits to make one): an enabled local administrator, or bootstrap credentials of an address no local account has.
     /// </summary>
     private async Task RequireAdministratorAsync(Func<Task<bool>> hasAdministrator, Func<string, Task<bool>> localAccountExists)
     {

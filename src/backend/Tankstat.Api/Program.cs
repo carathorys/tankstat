@@ -42,6 +42,8 @@ do
         .AddTypeExtension<SystemSettingsInfoExtensions>()
         .AddTypeExtension<DeviceSessionQueries>()
         .AddTypeExtension<DeviceSessionMutations>()
+        .AddTypeExtension<SetupQueries>()
+        .AddTypeExtension<SetupMutations>()
         .AddType<VehicleType>()
         .AddType<RefuelingType>()
         .AddTypeExtension<VehicleExtensions>()

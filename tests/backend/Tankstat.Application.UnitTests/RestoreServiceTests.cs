@@ -1,4 +1,6 @@
+using Tankstat.Application.Auth;
 using Tankstat.Application.Backups;
+using Tankstat.Application.Setup;
 using Tankstat.Domain;
 
 namespace Tankstat.Application.UnitTests;
@@ -36,7 +38,59 @@ public sealed class RestoreServiceTests
         var w = new World();
         w.Current.SignInAs(w.AddUser("root@x.co", admin: true));
         store ??= new OneBackup();
-        return (w, store, new RestoreService(store, w.Access, w.Options.Create(), new RestoreCode(), w.SystemConfiguration, w.Restart, w.Clock, w.Log.For<RestoreService>()));
+        return (w, store, Service(w, store, new OneTimeCode(), new SetupStatus()));
+    }
+
+    private static RestoreService Service(World w, OneBackup store, OneTimeCode code, SetupStatus setup) =>
+        new(store, w.Access, w.Options.Create(), code, setup, w.SystemConfiguration, w.Restart, w.Clock, w.Log.For<RestoreService>());
+
+    /// <summary>A new Standalone instance whose setup waits: nobody signed in, no administrator anywhere.</summary>
+    private static (World World, OneBackup Store, OneTimeCode Code, RestoreService Service) WaitingForSetup()
+    {
+        var w = new World();
+        var store = new OneBackup();
+        var code = new OneTimeCode();
+        var setup = new SetupStatus();
+        setup.Set(pending: true);
+        return (w, store, code, Service(w, store, code, setup));
+    }
+
+    [Fact]
+    public async Task WhileTheSetupWaits_TheCodeFromTheLog_AsksForTheRestore_WithoutAnAdministrator()
+    {
+        var (w, store, code, service) = WaitingForSetup();
+
+        await service.RequestAsync(new RestoreRequest("tankstat-backup-1.zip", null, null, code.Value.ToLowerInvariant()), default);
+
+        Assert.Equal(Principal.Anonymous.Id, store.Marker!.RequestedById);
+        Assert.Equal(1, w.Restart.Count);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("ABCD-EFGH-JKLM")]
+    public async Task WhileTheSetupWaits_AWrongOrMissingCode_IsRefused_AndNothingIsWritten(string? typed)
+    {
+        var (w, store, _, service) = WaitingForSetup();
+
+        var refused = await Assert.ThrowsAsync<ForbiddenException>(() => service.RequestAsync(new RestoreRequest("tankstat-backup-1.zip", null, null, typed), default));
+
+        Assert.Equal("backup.codeRequired", refused.Key);
+        Assert.Null(store.Marker);
+        Assert.Equal(0, w.Restart.Count);
+    }
+
+    [Fact]
+    public async Task OnceTheSetupIsCompleted_TheCodeOpensNothing_AnAdministratorIsNeeded()
+    {
+        var w = new World();
+        var store = new OneBackup();
+        var code = new OneTimeCode();
+        var service = Service(w, store, code, new SetupStatus());
+
+        await Assert.ThrowsAsync<UnauthenticatedException>(() => service.RequestAsync(new RestoreRequest("tankstat-backup-1.zip", null, null, code.Value), default));
+
+        Assert.Null(store.Marker);
     }
 
     [Fact]

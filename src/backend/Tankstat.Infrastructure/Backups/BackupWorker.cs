@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Backups;
+using Tankstat.Application.Setup;
 
 namespace Tankstat.Infrastructure.Backups;
 
@@ -12,9 +13,11 @@ namespace Tankstat.Infrastructure.Backups;
 /// backup since (<see cref="BackupSchedule.Missed"/>) is caught up at once. Without the setting it does nothing and says nothing. Nothing
 /// in here may stop the app: a failure is logged and the schedule goes on at the next due time. The settings apply at once: a new time, or
 /// none, is taken up as soon as it is saved (a missed backup is caught up only at the app's start), while a reload that leaves the schedule as
-/// it was never moves the due time waited for.
+/// it was never moves the due time waited for. While the setup waits nothing is written (the instance is empty, and such a backup would be
+/// offered as a restore point by the setup page itself); the first due time after the setup writes the first backup.
 /// </summary>
-internal sealed class BackupWorker(BackupRunner runner, IBackupStore store, IOptionsMonitor<BackupOptions> options, TimeProvider clock, ILogger<BackupWorker> logger)
+internal sealed class BackupWorker(
+    BackupRunner runner, IBackupStore store, IOptionsMonitor<BackupOptions> options, SetupStatus setup, TimeProvider clock, ILogger<BackupWorker> logger)
     : BackgroundService
 {
     private readonly Lock _sleep = new();
@@ -141,7 +144,8 @@ internal sealed class BackupWorker(BackupRunner runner, IBackupStore store, IOpt
                 for (var woke = clock.GetUtcNow(); woke < next; woke = clock.GetUtcNow())
                     await Task.Delay(TimeSpan.FromMilliseconds(Math.Ceiling((next - woke).TotalMilliseconds)), clock, ct);
                 plan = null; // this due time is served: the next round plans the one after it
-                await RunAsync();
+                if (setup.Pending) logger.LogInformation("The setup is not finished: the backup due at {Due} is not written", next);
+                else await RunAsync();
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -160,6 +164,11 @@ internal sealed class BackupWorker(BackupRunner runner, IBackupStore store, IOpt
     {
         try
         {
+            if (setup.Pending)
+            {
+                logger.LogInformation("The setup is not finished: no backup is written until it is");
+                return;
+            }
             if (schedule.Missed(NewestOwn(), clock.GetUtcNow(), zone))
             {
                 logger.LogInformation("The backup due at {Due} was not written: writing it now", schedule.LastDueAtOrBefore(clock.GetUtcNow(), zone));

@@ -15,6 +15,7 @@ using Tankstat.Application.Odometers;
 using Tankstat.Application.Recurring;
 using Tankstat.Application.Refuelings;
 using Tankstat.Application.Settings;
+using Tankstat.Application.Setup;
 using Tankstat.Application.Sync;
 using Tankstat.Application.SystemSettings;
 using Tankstat.Application.Stats;
@@ -89,6 +90,7 @@ public static class DependencyInjection
         services.AddScoped<IAccessGrantRepository, AccessGrantRepository>();
         services.AddScoped<IAccessSettingsRepository, AccessSettingsRepository>();
         services.AddScoped<IInstanceStateRepository, InstanceStateRepository>();
+        services.AddScoped<ISetupStore, SetupStore>();
         services.AddScoped<IResourceGrantRepository, ResourceGrantRepository>();
         services.AddScoped<IOdometerReadingRepository, OdometerReadingRepository>();
         services.AddScoped<IImageRepository, ImageRepository>();
@@ -132,8 +134,9 @@ public static class DependencyInjection
 
         // Order matters: the database first (DatabaseMigrator: a waiting restore, which sets the database up itself, else a backup when
         // migrations are pending, then the migrations), then the restore step's generation (the restored data's, stamped once the migrations
-        // ran; before anything looks at the data, and the bootstrapper finds the restored users), then move the photos kept with the pictures
-        // once they have a folder of their own, then create the initial administrator, then sign everybody out when the authentication mode
+        // ran; before anything looks at the data, and the setup step finds the restored users and setup state), then move the photos kept with
+        // the pictures once they have a folder of their own, then decide the setup and create the initial administrator (SetupStep), then sign
+        // everybody out when the authentication mode
         // changed since the last start (after what can still fail the start, so a start that never served a request records no mode, and after
         // the restore, so sessions a backup of another mode brought back end at this start; still before the server listens); the photo reading
         // worker needs the migrated database. The backup runner starts nothing; it comes first so that it stops last, waiting for a backup under
@@ -144,7 +147,7 @@ public static class DependencyInjection
         services.AddHostedService(sp => sp.GetRequiredService<DatabaseMigrator>());
         services.AddHostedService(sp => sp.GetRequiredService<RestoreStep>());
         services.AddHostedService<PhotosMove>();
-        services.AddHostedService<StandaloneBootstrapper>();
+        services.AddHostedService<SetupStep>();
         services.AddHostedService<ModeChangeSignOut>();
         services.AddHostedService<RecognitionWorker>();
         services.AddHostedService<PasswordResetMailer>();

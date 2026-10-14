@@ -451,14 +451,25 @@ public class StandaloneAuthTests : IDisposable
 public class StandaloneStartupTests
 {
     [Fact]
-    public void Startup_Fails_WithoutAnAdministratorOrBootstrapConfiguration()
+    public void Startup_Fails_WithoutAnAdministratorOrBootstrapConfiguration_OnceTheSetupIsCompleted()
     {
-        // Blank administrator settings: whatever appsettings.json provides must not matter.
+        // Blank administrator settings: whatever appsettings.json provides must not matter. The test hosts' setup is off, so the new
+        // database counts as set up: nothing could make an administrator, and the start stops as it always did.
         using var app = new TestApp(new() { ["Auth:Mode"] = "Standalone", ["Auth:Standalone:AdminEmail"] = "", ["Auth:Standalone:AdminPassword"] = "" });
 
         var e = Assert.ThrowsAny<Exception>(() => app.NewClient());
 
         AssertMentions(e, "Auth:Standalone:AdminEmail");
+    }
+
+    [Fact]
+    public async Task Startup_WaitsForTheSetup_WithoutAnAdministratorOrBootstrapConfiguration_OnANewDatabase()
+    {
+        using var app = new TestApp(new() { ["Auth:Mode"] = "Standalone", ["Auth:Standalone:AdminEmail"] = "", ["Auth:Standalone:AdminPassword"] = "", ["Setup:Enabled"] = "true" });
+
+        var health = (await app.NewClient().Gql("{ health { status } setup { pending } }")).Data();
+
+        Assert.True(health.GetProperty("setup").GetProperty("pending").GetBoolean());
     }
 
     [Fact]
