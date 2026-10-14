@@ -10,14 +10,13 @@ import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { DefinitionList } from '../components/DefinitionList.tsx'
 import { Loading } from '../components/Loading.tsx'
 import { TabbedPanels } from '../components/TabbedPanels.tsx'
-import { HealthDocument, RestartServerDocument, SystemSettingsDocument, type SystemSettingsQuery } from '../gql/generated.ts'
+import { RestartServerDocument, SystemSettingsDocument, type SystemSettingsQuery } from '../gql/generated.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { useErrorText } from '../i18n/errors.ts'
 import { ErrorMessage, WarningMessage } from '../messages.tsx'
 import { navigation } from '../navigation.ts'
 import { classifyFailure } from '../offline/errors.ts'
-import { PROBE_TIMEOUT_MS, withDeadline } from '../offline/runtime.ts'
-import { waitForRestart } from './restartFlow.ts'
+import { healthProbe, waitForRestart } from './restartFlow.ts'
 import { problemsOf } from './settingsText.ts'
 import { changesOf } from './settingsDraft.ts'
 import { ProblemList } from './ProblemList.tsx'
@@ -160,13 +159,7 @@ function RestartCard({ pending }: { pending: number }) {
         return
       }
     }
-    // A deadline per probe, as the runtime's own: a request nobody answers must not hold the wait past `downFor` and `upFor`.
-    const probe = () =>
-      withDeadline(client.query({ query: HealthDocument, fetchPolicy: 'network-only', context: { offline: 'bypass' } }), PROBE_TIMEOUT_MS).then(
-        () => true,
-        () => false,
-      )
-    const outcome = await waitForRestart(probe)
+    const outcome = await waitForRestart(healthProbe(client))
     if (!mounted.current) {
       // The page was left meanwhile: nothing is reloaded under the person's hands. Who is signed in is asked instead, since a restart in
       // another sign-in mode may have changed it.
