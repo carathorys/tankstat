@@ -58,22 +58,19 @@ function waitingServer(mode: AuthMode, options: { signedIn?: SessionQuery['sessi
         return HttpResponse.json(gqlError("The one-time setup code from the server's log is needed.", 'FORBIDDEN', 'setup.codeInvalid'))
       return HttpResponse.json({ data: { setupRestorePoints: (options.points ?? []).map((p) => ({ __typename: 'RestorePointInfo', ...p })) } })
     }),
-    graphql.mutation('SetupCreateAdministrator', ({ variables }) => {
-      record('SetupCreateAdministrator', variables)
+    // The last step, in the running mode: Standalone makes the administrator (signed in, as Standalone runs), sign-in off acknowledges.
+    graphql.mutation('SetupFinish', ({ variables }) => {
+      record('SetupFinish', variables.input)
       state.pending = false
-      state.current = user({ email: variables.input.email, isAdmin: true })
-      return HttpResponse.json({ data: { setupCreateAdministrator: { __typename: 'UserInfo', id: 'u1', email: variables.input.email, isAdmin: true } } })
+      const standalone = mode === 'STANDALONE'
+      if (standalone) state.current = user({ email: variables.input.email ?? '', isAdmin: true })
+      return HttpResponse.json({ data: { setupFinish: { __typename: 'SetupFinishInfo', restarting: false, signedIn: standalone } } })
     }),
     graphql.mutation('SetupClaimAdministrator', ({ variables }) => {
       record('SetupClaimAdministrator', variables)
       state.pending = false
       state.current = { ...state.current!, isAdmin: true }
       return HttpResponse.json({ data: { setupClaimAdministrator: { __typename: 'UserInfo', id: state.current.id, isAdmin: true } } })
-    }),
-    graphql.mutation('SetupAcknowledgeOpenAccess', ({ variables }) => {
-      record('SetupAcknowledgeOpenAccess', variables)
-      state.pending = false
-      return HttpResponse.json({ data: { setupAcknowledgeOpenAccess: { __typename: 'SetupInfo', pending: false } } })
     }),
     backupRecipientHandler(),
     graphql.mutation('RestoreBackup', ({ variables }) => {
@@ -119,7 +116,7 @@ it('in Standalone, the setup page stands in for every page, and the code makes t
 
   // Signed in, with the menu, on the done screen: backups encrypted at once, and where the rest is.
   expect(await screen.findByText("The setup is done: you are this instance's administrator.")).toBeInTheDocument()
-  expect(state.calls.SetupCreateAdministrator).toEqual([{ input: { code: 'abcd efgh jklm', email: 'root@example.com', password: 'initial-password-1' } }])
+  expect(state.calls.SetupFinish).toEqual([{ code: 'abcd efgh jklm', email: 'root@example.com', password: 'initial-password-1' }])
   expect(await screen.findByRole('region', { name: 'Encrypted backups' })).toHaveTextContent('Backups are written without encryption.')
   expect(screen.getByRole('button', { name: 'Make a key set…' })).toBeInTheDocument()
   const next = screen.getByRole('region', { name: 'What to set up next' })
@@ -143,7 +140,7 @@ it('with sign-in off, the setup ends with the acknowledgement of open access', a
   await ui.click(finish)
 
   await waitFor(() => expect(screen.queryByRole('heading', { name: 'Set up Tankstat' })).not.toBeInTheDocument())
-  expect(state.calls.SetupAcknowledgeOpenAccess).toEqual([{ code: CODE }])
+  expect(state.calls.SetupFinish).toEqual([{ code: CODE, acknowledgeOpenAccess: true }])
 })
 
 it('with sign-in off, a device that loses the server shows its own data, not a setup page that needs the server', async () => {

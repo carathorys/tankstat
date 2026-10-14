@@ -43,8 +43,8 @@ public sealed class RestoreServiceTests
     }
 
     private static RestoreService Service(World w, OneBackup store, OneTimeCode code, SetupStatus setup, SetupPhase phase = SetupPhase.Completed) =>
-        new(store, w.Access, w.Options.Create(), code, setup, new InMemorySetupStore(w.Users, w.Vehicles) { Phase = phase }, w.SystemConfiguration, w.Restart,
-            w.Clock, w.Log.For<RestoreService>());
+        new(store, w.Access, w.Options.Create(), code, new SetupGate(setup, new InMemorySetupStore(w.Users, w.Vehicles) { Phase = phase }, code), w.SystemConfiguration,
+            w.Restart, w.Clock, w.Log.For<RestoreService>());
 
     /// <summary>A new Standalone instance whose setup waits: nobody signed in, no administrator anywhere.</summary>
     private static (World World, OneBackup Store, OneTimeCode Code, RestoreService Service) WaitingForSetup()

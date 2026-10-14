@@ -57,10 +57,11 @@ public static class DependencyInjection
         services.AddSingleton<HealthReporter>();
         services.AddSingleton<NoticeService>();
         services.AddSingleton<InstanceGeneration>();
-        services.AddSingleton<OneTimeCode>();
+        services.TryAddSingleton<OneTimeCode>(); // the host's own when it keeps one over a restart in the process
         services.AddSingleton<SetupStatus>();
 
         services.AddScoped<AccessService>();
+        services.AddScoped<SetupGate>();
         services.AddScoped<SetupService>();
         services.AddScoped<RestoreService>();
         services.AddScoped<BackupAdminService>();

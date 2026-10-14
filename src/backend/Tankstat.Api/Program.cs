@@ -26,6 +26,7 @@ do
     builder.Services.AddSingleton<ISettingsFileStore>(new SettingsFileStore(settingsFile.Status.Path));
     builder.Services.AddSingleton<ISystemConfiguration, SystemConfiguration>();
     builder.Services.AddSingleton<IServerRestart>(sp => new ServerRestart(restarts, sp.GetRequiredService<IHostApplicationLifetime>(), sp.GetRequiredService<ILogger<ServerRestart>>())); // plain Add: a test host replaces it
+    builder.Services.AddSingleton(restarts.Code); // the one-time code outlives a restart in the process
     builder.Services.AddHostedService<SettingsFileReporter>();
     builder.Services.AddApplication(builder.Configuration);
     builder.Services.AddInfrastructure(builder.Configuration);

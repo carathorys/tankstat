@@ -15,7 +15,7 @@ public sealed class SetupTests : IDisposable
 {
     private const string Notices = "{ notices { code severity } }";
     private const string Pending = "{ setup { pending } }";
-    private const string CreateAdministrator = "mutation($i: SetupAdministratorInput!) { setupCreateAdministrator(input: $i) { email isAdmin } }";
+    private const string Finish = "mutation($i: SetupFinishInput!) { setupFinish(input: $i) { restarting signedIn administrator { email isAdmin } } }";
 
     private readonly string _folder = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-backups");
 
@@ -56,20 +56,24 @@ public sealed class SetupTests : IDisposable
         var code = CodeOf(app);
         Assert.Equal(LogLevel.Warning, Assert.Single(app.Log.From<SetupService>(), e => e.Values.ContainsKey("Code")).Level);
 
-        Assert.Equal("setup.codeInvalid", (await browser.Gql(CreateAdministrator, new { i = new { code = "ZZZZ-ZZZZ-ZZZZ", email = "root@example.com", password = "zzzz-password-1" } })).ErrorKey());
+        Assert.Equal("setup.codeInvalid", (await browser.Gql(Finish, new { i = new { code = "ZZZZ-ZZZZ-ZZZZ", email = "root@example.com", password = "zzzz-password-1" } })).ErrorKey());
         Assert.False(app.Log.Mentions("zzzz-password-1"));
         Assert.Contains(app.Log.From("Tankstat.Api.GraphQL.GraphQLLoggingListener"), e => e.Level == LogLevel.Warning && e.Values.TryGetValue("Key", out var k) && (string?)k == "setup.codeInvalid");
 
-        var made = (await browser.Gql(CreateAdministrator, new { i = new { code = code.ToLowerInvariant(), email = "Root@Example.com", password = "initial-password-1" } }))
-            .Data().GetProperty("setupCreateAdministrator");
+        var finished = (await browser.Gql(Finish, new { i = new { code = code.ToLowerInvariant(), email = "Root@Example.com", password = "initial-password-1" } }))
+            .Data().GetProperty("setupFinish");
+        var made = finished.GetProperty("administrator");
         Assert.Equal(("root@example.com", true), (made.GetProperty("email").GetString(), made.GetProperty("isAdmin").GetBoolean()));
+        // Standalone runs already and nothing saved waits for a restart: signed in at once, no restart.
+        Assert.Equal((false, true), (finished.GetProperty("restarting").GetBoolean(), finished.GetProperty("signedIn").GetBoolean()));
+        Assert.Equal(0, app.Restarts.Count);
 
         // Signed in on this browser at once, the setup completed, the notice gone, and the code opens nothing any more.
         var session = (await browser.Gql("{ session { user { email isAdmin } } }")).Data().GetProperty("session").GetProperty("user");
         Assert.Equal("root@example.com", session.GetProperty("email").GetString());
         Assert.False((await browser.Gql(Pending)).Data().GetProperty("setup").GetProperty("pending").GetBoolean());
         Assert.DoesNotContain("SETUP_PENDING", CodesOf(await browser.Gql(Notices)));
-        Assert.Equal("setup.completed", (await app.NewClient().Gql(CreateAdministrator, new { i = new { code, email = "other@example.com", password = "initial-password-1" } })).ErrorKey());
+        Assert.Equal("setup.completed", (await app.NewClient().Gql(Finish, new { i = new { code, email = "other@example.com", password = "initial-password-1" } })).ErrorKey());
         await app.NewClient().LoginAs("root@example.com", "initial-password-1");
         Assert.False(app.Log.Mentions("initial-password-1"));
     }
@@ -83,11 +87,38 @@ public sealed class SetupTests : IDisposable
         // With sign-in off the one code is also the restore code its own line names.
         Assert.Equal(CodeOf(app), (string)Assert.Single(app.Log.From("Tankstat.Infrastructure.Backups.RestoreStep"), e => e.Values.ContainsKey("Code")).Values["Code"]!);
 
-        Assert.Equal("setup.codeInvalid", (await client.Gql("mutation($c: String!) { setupAcknowledgeOpenAccess(code: $c) { pending } }", new { c = "nope" })).ErrorKey());
-        var done = (await client.Gql("mutation($c: String!) { setupAcknowledgeOpenAccess(code: $c) { pending } }", new { c = CodeOf(app) })).Data();
+        Assert.Equal("setup.codeInvalid", (await client.Gql(Finish, new { i = new { code = "nope", acknowledgeOpenAccess = true } })).ErrorKey());
+        Assert.Equal("setup.acknowledgementRequired", (await client.Gql(Finish, new { i = new { code = CodeOf(app) } })).ErrorKey());
+        var done = (await client.Gql(Finish, new { i = new { code = CodeOf(app), acknowledgeOpenAccess = true } })).Data().GetProperty("setupFinish");
 
-        Assert.False(done.GetProperty("setupAcknowledgeOpenAccess").GetProperty("pending").GetBoolean());
+        Assert.False(done.GetProperty("restarting").GetBoolean());
         Assert.Equal(["AUTH_DISABLED"], CodesOf(await client.Gql(Notices)));
+    }
+
+    [Fact]
+    public async Task TheWizard_SavesTheSettingsWithTheCode_ThenItsLastStepMakesTheAdministrator_AndRestartsOnce()
+    {
+        // In this process the sign-in mode is held like an environment variable (read-only to a save), so the wizard saves a setting of the
+        // e-mail, which waits for a restart as the sign-in does; the unit tests choose the mode itself.
+        using var app = new TestApp(WaitingStandalone());
+        var browser = app.NewClient();
+        var code = CodeOf(app);
+        const string Save = "mutation($c: [SystemSettingChangeInput!]!, $code: String) { updateSystemSettings(changes: $c, code: $code) { restartPending } }";
+        var change = new[] { new { key = "Smtp:Host", value = "mail.example.com" } };
+
+        Assert.Equal("UNAUTHENTICATED", (await browser.Gql("{ systemSettings { restartPending } }")).ErrorCode()); // without the code: administrators only
+        Assert.Equal("setup.codeInvalid", (await browser.Gql(Save, new { c = change, code = "nope" })).ErrorKey());
+        Assert.True((await browser.Gql(Save, new { c = change, code })).Data().GetProperty("updateSystemSettings").GetProperty("restartPending").GetBoolean());
+        Assert.Equal(0, app.Restarts.Count); // one restart, at the end
+
+        var finished = (await browser.Gql(Finish, new { i = new { code, email = "root@example.com", password = "initial-password-1" } })).Data().GetProperty("setupFinish");
+
+        // Standalone runs already, so the administrator is signed in on this browser, and a restart in the same mode keeps the session.
+        Assert.Equal((true, true), (finished.GetProperty("restarting").GetBoolean(), finished.GetProperty("signedIn").GetBoolean()));
+        Assert.Equal(1, app.Restarts.Count);
+        Assert.Contains("mail.example.com", await File.ReadAllTextAsync(app.SettingsPath));
+        Assert.Equal("root@example.com", (await browser.Gql("{ session { user { email } } }")).Data().GetProperty("session").GetProperty("user").GetProperty("email").GetString());
+        Assert.Equal("setup.completed", (await browser.Gql(Save, new { c = change, code })).ErrorKey());
     }
 
     [Fact]

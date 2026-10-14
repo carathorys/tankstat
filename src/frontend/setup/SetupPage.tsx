@@ -15,10 +15,9 @@ import { FieldForm } from '../forms/FieldForm.tsx'
 import {
   BackupRecipientDocument,
   SessionDocument,
-  SetupAcknowledgeOpenAccessDocument,
   SetupClaimAdministratorDocument,
-  SetupCreateAdministratorDocument,
   SetupDocument,
+  SetupFinishDocument,
   SetupRestorePointsDocument,
   type AuthMode,
   type RestoreTargetFieldsFragment,
@@ -301,7 +300,7 @@ function useFinish(to: '/setup' | '/') {
 /** Standalone: the first administrator, signed in on this browser as it is made. */
 function AdministratorStep({ code }: { code: string }) {
   const { t } = useTranslation()
-  const [create] = useMutation(SetupCreateAdministratorDocument)
+  const [finishSetup] = useMutation(SetupFinishDocument)
   const finish = useFinish('/setup')
   return (
     <Stack sx={{ gap: 1.5, maxWidth: 480 }}>
@@ -316,7 +315,7 @@ function AdministratorStep({ code }: { code: string }) {
         ]}
         submitLabel="setup.createAdmin"
         onSubmit={async (v) => {
-          await create({ variables: { input: { code, email: v.email ?? '', password: v.password ?? '' } } })
+          await finishSetup({ variables: { input: { code, email: v.email ?? '', password: v.password ?? '' } } })
           await finish()
         }}
       />
@@ -347,11 +346,11 @@ function ClaimStep({ code, name }: { code: string; name: string }) {
 /** Sign-in off: nobody is an administrator, so the setup ends with the acknowledgement of what that means. */
 function OpenAccessStep({ code }: { code: string }) {
   const { t } = useTranslation()
-  const [acknowledge] = useMutation(SetupAcknowledgeOpenAccessDocument)
+  const [finishSetup] = useMutation(SetupFinishDocument)
   const finish = useFinish('/')
   const [understood, setUnderstood] = useState(false)
   const { busy, error, run } = useStepAction(async () => {
-    await acknowledge({ variables: { code } })
+    await finishSetup({ variables: { input: { code, acknowledgeOpenAccess: true } } })
     await finish()
   })
   return (

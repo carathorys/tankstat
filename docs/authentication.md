@@ -27,7 +27,7 @@ A new instance (an empty database) **waits for its setup** until it has its firs
 Setup is waiting: open /setup in the browser and enter the one-time setup code ABCD-EFGH-JKLM
 ```
 
-With Docker, `docker logs tankstat` shows it. Every start, an in-app restart too, writes a new code, so use the latest; case, spaces and hyphens do not matter. Whoever can read the server's log is the one the setup trusts: no administrator exists yet to ask. The code is never shown anywhere else.
+With Docker, `docker logs tankstat` shows it. Every start of the server writes a new code (a restart from inside the app keeps it, so the setup goes on with the one you entered), so use the latest; case, spaces and hyphens do not matter. Whoever can read the server's log is the one the setup trusts: no administrator exists yet to ask. The code is never shown anywhere else.
 
 Opening the app shows the setup page, which asks for the code and then sets the instance up:
 

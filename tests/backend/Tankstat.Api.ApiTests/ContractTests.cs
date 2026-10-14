@@ -54,7 +54,7 @@ public class ContractTests
 
     [Theory]
     [InlineData("Query", "health", "vehicles", "myVehicles", "myVehicleCount", "vehicle", "session", "notices", "users", "canSetUserPasswords", "accessSettings", "accessGrants", "trash", "vehicleCount", "trashCount", "trashDeletableCount", "vehicleDefaults", "refuelings", "refuelingCount", "refueling", "logDefaults", "refuelingTrash", "refuelingTrashCount", "refuelingTrashDeletableCount", "vehicleLogAccess", "shareCandidates", "notifications", "notificationCount", "recognitionStatus", "photoDrafts", "uiSettings", "mySessions", "offlineChanges", "offlineSettings", "parkedChanges", "systemSettings", "backups", "setup", "setupRestorePoints")]
-    [InlineData("Mutation", "addVehicle", "logRefueling", "login", "logout", "changePassword", "requestPasswordReset", "resetPassword", "createUser", "issuePasswordReset", "setUserAdmin", "setUserDisabled", "updateUser", "setUserPassword", "deleteUser", "setDefaultAccess", "setAccessGrant", "updateVehicle", "deleteVehicle", "restoreVehicle", "emptyTrash", "logRefueling", "updateRefueling", "deleteRefueling", "restoreRefueling", "emptyRefuelingTrash", "setVehicleLogAccess", "markNotificationsRead", "updateUiSettings", "saveGridSettings", "resetGridSettings", "setVehicleOrder", "addRecurringExpense", "updateRecurringExpense", "deleteRecurringExpense", "markRecurringExpensesDone", "revokeSession", "revokeOtherSessions", "updateOfflineSettings", "syncChanges", "resolveSyncChange", "updateSystemSettings", "restartServer", "restoreBackup", "runBackup", "deleteBackup", "prepareBackupEncryption", "setupCreateAdministrator", "setupClaimAdministrator", "setupAcknowledgeOpenAccess")]
+    [InlineData("Mutation", "addVehicle", "logRefueling", "login", "logout", "changePassword", "requestPasswordReset", "resetPassword", "createUser", "issuePasswordReset", "setUserAdmin", "setUserDisabled", "updateUser", "setUserPassword", "deleteUser", "setDefaultAccess", "setAccessGrant", "updateVehicle", "deleteVehicle", "restoreVehicle", "emptyTrash", "logRefueling", "updateRefueling", "deleteRefueling", "restoreRefueling", "emptyRefuelingTrash", "setVehicleLogAccess", "markNotificationsRead", "updateUiSettings", "saveGridSettings", "resetGridSettings", "setVehicleOrder", "addRecurringExpense", "updateRecurringExpense", "deleteRecurringExpense", "markRecurringExpensesDone", "revokeSession", "revokeOtherSessions", "updateOfflineSettings", "syncChanges", "resolveSyncChange", "updateSystemSettings", "restartServer", "restoreBackup", "runBackup", "deleteBackup", "prepareBackupEncryption", "setupClaimAdministrator", "setupFinish")]
     [InlineData("Session", "mode", "user", "instance")]
     [InlineData("InstanceInfo", "generation", "restorePoint")]
     [InlineData("BackupOverviewInfo", "folder", "migration", "restorePoints", "sizes", "run", "settings")]
@@ -232,7 +232,7 @@ public class ContractTests
         Assert.False(body.TryGetProperty("errors", out _), body.ToString());
         Assert.False(body.GetProperty("data").GetProperty("setup").GetProperty("pending").GetBoolean());
 
-        var closed = await Query("mutation { setupAcknowledgeOpenAccess(code: \"ABCD-EFGH-JKLM\") { pending } }");
+        var closed = await Query("mutation { setupFinish(input: { code: \"ABCD-EFGH-JKLM\", acknowledgeOpenAccess: true }) { restarting } }");
         Assert.Equal("setup.completed", closed.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
     }
 

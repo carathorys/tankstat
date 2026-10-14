@@ -1,10 +1,21 @@
+using Microsoft.Extensions.Options;
 using Tankstat.Api.Auth;
+using Tankstat.Application.Auth;
 using Tankstat.Application.Setup;
 
 namespace Tankstat.Api.GraphQL;
 
+/// <summary>The setup's last step: what the sign-in mode the next start runs needs of it.</summary>
 /// <param name="Code">The one-time code from the server's log.</param>
-public sealed record SetupAdministratorInput(string Code, string Email, string Password);
+/// <param name="Email">Standalone: the first administrator's e-mail address.</param>
+/// <param name="Password">Standalone: the first administrator's password.</param>
+/// <param name="AcknowledgeOpenAccess">Sign-in off: that everyone who reaches the instance sees and changes everything.</param>
+public sealed record SetupFinishInput(string Code, string? Email = null, string? Password = null, bool AcknowledgeOpenAccess = false);
+
+/// <param name="Restarting">The server restarts a moment after this answer, for the settings the wizard saved.</param>
+/// <param name="Administrator">The first administrator it made (Standalone).</param>
+/// <param name="SignedIn">The administrator is signed in on this device: Standalone was running already (a restart into it from another mode signs everyone out).</param>
+public sealed record SetupFinishInfo(bool Restarting, UserInfo? Administrator, bool SignedIn);
 
 [ExtendObjectType(OperationTypeNames.Query)]
 public sealed class SetupQueries
@@ -28,15 +39,18 @@ public sealed class SetupQueries
 public sealed class SetupMutations
 {
     /// <summary>
-    /// Standalone, while the setup waits: makes the first administrator and signs them in on this device (both cookies), which completes the
-    /// setup. The one-time code from the server's log; the bootstrap administrator's rules (<c>user.emailInvalid</c>, the password policy).
+    /// While the setup waits, once the wizard saved its settings: its last step in the sign-in mode the next start runs (Standalone: the first
+    /// administrator, signed in on this device when Standalone runs already; sign-in off: the acknowledgement; OIDC, proxy: nothing to make,
+    /// the administrators the settings name, or the claim after the restart), then the restart the saved settings wait for. The one-time code
+    /// from the server's log; what the next start would refuse is refused before anything is completed.
     /// </summary>
-    public async Task<UserInfo> SetupCreateAdministrator(
-        SetupAdministratorInput input, [Service] SetupService setup, [Service] IHttpContextAccessor http, CancellationToken ct)
+    public async Task<SetupFinishInfo> SetupFinish(
+        SetupFinishInput input, [Service] SetupService setup, [Service] IOptions<AuthOptions> auth, [Service] IHttpContextAccessor http, CancellationToken ct)
     {
-        var administrator = await setup.CreateAdministratorAsync(input.Code, input.Email, input.Password, ct);
-        await SessionCookies.IssueAsync(http.HttpContext!, administrator, ct);
-        return UserInfo.From(administrator);
+        var finished = await setup.FinishAsync(input.Code, input.Email, input.Password, input.AcknowledgeOpenAccess, ct);
+        var signIn = finished.Administrator is not null && auth.Value.Mode == AuthMode.Standalone;
+        if (signIn) await SessionCookies.IssueAsync(http.HttpContext!, finished.Administrator!, ct);
+        return new SetupFinishInfo(finished.Restarting, finished.Administrator is { } a ? UserInfo.From(a) : null, signIn);
     }
 
     /// <summary>
@@ -45,7 +59,4 @@ public sealed class SetupMutations
     /// </summary>
     public async Task<UserInfo> SetupClaimAdministrator(string code, [Service] SetupService setup, CancellationToken ct) =>
         UserInfo.From(await setup.ClaimAdministratorAsync(code, ct));
-
-    /// <summary>With sign-in off, while the setup waits: acknowledges that everyone who reaches the instance sees and changes everything, which completes the setup.</summary>
-    public Task<SetupInfo> SetupAcknowledgeOpenAccess(string code, [Service] SetupService setup, CancellationToken ct) => setup.AcknowledgeOpenAccessAsync(code, ct);
 }

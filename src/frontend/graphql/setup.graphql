@@ -11,21 +11,17 @@ query SetupRestorePoints($code: String!) {
   }
 }
 
-mutation SetupCreateAdministrator($input: SetupAdministratorInput!) {
-  setupCreateAdministrator(input: $input) {
-    id
+# The setup's last step: the gatekeeper of the sign-in mode the next start runs, then the restart the saved settings wait for.
+mutation SetupFinish($input: SetupFinishInput!) {
+  setupFinish(input: $input) {
+    restarting
+    signedIn
   }
 }
 
 mutation SetupClaimAdministrator($code: String!) {
   setupClaimAdministrator(code: $code) {
     id
-  }
-}
-
-mutation SetupAcknowledgeOpenAccess($code: String!) {
-  setupAcknowledgeOpenAccess(code: $code) {
-    pending
   }
 }
 

@@ -93,7 +93,7 @@ public sealed class BackupScheduleTests : IDisposable
         Assert.Empty(Files());
 
         var code = (string)Assert.Single(app.Log.From<Tankstat.Application.Setup.SetupService>(), e => e.Values.ContainsKey("Code")).Values["Code"]!;
-        (await app.NewClient().Gql("mutation($i: SetupAdministratorInput!) { setupCreateAdministrator(input: $i) { id } }",
+        (await app.NewClient().Gql("mutation($i: SetupFinishInput!) { setupFinish(input: $i) { restarting } }",
             new { i = new { code, email = "root@example.com", password = "initial-password-1" } })).Data();
         _clock.SetUtcNow(At(12, 2));
         await worker.WhenAsleepUntil(At(13, 2)).WaitAsync(Wait);

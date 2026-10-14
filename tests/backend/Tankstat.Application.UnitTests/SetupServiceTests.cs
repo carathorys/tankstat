@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Backups;
 using Tankstat.Application.Setup;
+using Tankstat.Application.SystemSettings;
 using Tankstat.Domain;
 using Tankstat.Domain.Instance;
 using Tankstat.Domain.Users;
@@ -68,13 +69,12 @@ public sealed class SetupServiceTests
     private static Setup Make(AuthMode mode = AuthMode.Standalone, Action<AuthOptions>? configure = null, bool enabled = true)
     {
         var w = new World(mode, configure: configure);
-        var store = new InMemorySetupStore(w.Users, w.Vehicles);
-        var status = new SetupStatus();
-        var code = new OneTimeCode();
+        w.SystemConfiguration.Shipped["Auth:Mode"] = mode.ToString(); // what the instance runs, as appsettings.json says it
+        w.SetupStore.Phase = SetupPhase.Undecided; // a new database: its start decides
         var service = new SetupService(
-            store, status, code, w.Auth, w.Access, w.Users, new NoBackups(), new NoDatabaseFacts(), new BackupOptions().Create(), w.Options.Create(),
-            new SetupOptions { Enabled = enabled }.Create(), w.Clock, w.Log.For<SetupService>());
-        return new Setup(w, store, status, code, service);
+            w.SetupStore, w.SetupStatus, w.SetupGate, w.Code, w.Auth, w.Access, w.SystemSettings, w.SystemConfiguration, w.Restart, w.Users, new NoBackups(),
+            new NoDatabaseFacts(), new BackupOptions().Create(), w.Options.Create(), new SetupOptions { Enabled = enabled }.Create(), w.Clock, w.Log.For<SetupService>());
+        return new Setup(w, w.SetupStore, w.SetupStatus, w.Code, service);
     }
 
     private static Action<AuthOptions> Bootstrap(string password = "initial-password-1") =>
@@ -200,7 +200,7 @@ public sealed class SetupServiceTests
         await s.Service.StartAsync(default);
         var typed = " " + s.Code.Value.Replace("-", "").ToLowerInvariant() + "\n";
 
-        var admin = await s.Service.CreateAdministratorAsync(typed, "Root@X.co", "initial-password-1", default);
+        var admin = (await s.Service.FinishAsync(typed, "Root@X.co", "initial-password-1", false, default)).Administrator!;
 
         Assert.True(admin.IsAdmin);
         Assert.Equal("root@x.co", admin.Email);
@@ -208,7 +208,7 @@ public sealed class SetupServiceTests
         Assert.False(s.Status.Pending);
         await s.World.Auth.LoginAsync("root@x.co", "initial-password-1", default);
         // Once completed, the code opens nothing again.
-        var again = await Assert.ThrowsAsync<DomainException>(() => s.Service.CreateAdministratorAsync(s.Code.Value, "other@x.co", "initial-password-1", default));
+        var again = await Assert.ThrowsAsync<DomainException>(() => s.Service.FinishAsync(s.Code.Value, "other@x.co", "initial-password-1", false, default));
         Assert.Equal("setup.completed", again.Key);
         Assert.Single(s.World.Users.Items);
     }
@@ -223,7 +223,7 @@ public sealed class SetupServiceTests
         await s.Service.StartAsync(default);
         s.World.Log.Clear();
 
-        var refused = await Assert.ThrowsAsync<ForbiddenException>(() => s.Service.CreateAdministratorAsync(typed, "zzzz@x.co", "zzzz-password-1", default));
+        var refused = await Assert.ThrowsAsync<ForbiddenException>(() => s.Service.FinishAsync(typed, "zzzz@x.co", "zzzz-password-1", false, default));
 
         Assert.Equal("setup.codeInvalid", refused.Key);
         Assert.Empty(s.World.Users.Items);
@@ -237,7 +237,7 @@ public sealed class SetupServiceTests
         var s = Make();
         await s.Service.StartAsync(default);
 
-        var refused = await Assert.ThrowsAsync<DomainException>(() => s.Service.CreateAdministratorAsync(s.Code.Value, "root@x.co", "short", default));
+        var refused = await Assert.ThrowsAsync<DomainException>(() => s.Service.FinishAsync(s.Code.Value, "root@x.co", "short", false, default));
 
         Assert.Equal("password.tooShort", refused.Key);
         Assert.Equal(SetupPhase.Pending, s.Store.Phase);
@@ -252,7 +252,7 @@ public sealed class SetupServiceTests
         var elsewhere = User.CreateLocal("first@x.co", "Administrator", isAdmin: true);
         await s.Store.CompleteWithAdministratorAsync(elsewhere, default, default); // another server on the database made the administrator
 
-        var refused = await Assert.ThrowsAsync<DomainException>(() => s.Service.CreateAdministratorAsync(s.Code.Value, "root@x.co", "initial-password-1", default));
+        var refused = await Assert.ThrowsAsync<DomainException>(() => s.Service.FinishAsync(s.Code.Value, "root@x.co", "initial-password-1", false, default));
 
         Assert.Equal("setup.completed", refused.Key);
         Assert.False(s.Status.Pending); // the notice goes too
@@ -276,9 +276,11 @@ public sealed class SetupServiceTests
         var s = Make(AuthMode.None);
         await s.Service.StartAsync(default);
 
-        var info = await s.Service.AcknowledgeOpenAccessAsync(s.Code.Value, default);
+        Assert.Equal("setup.acknowledgementRequired", (await Assert.ThrowsAsync<DomainException>(() => s.Service.FinishAsync(s.Code.Value, null, null, false, default))).Key);
+        var finished = await s.Service.FinishAsync(s.Code.Value, null, null, true, default);
 
-        Assert.False(info.Pending);
+        Assert.Equal((false, (User?)null), (finished.Restarting, finished.Administrator)); // nothing the wizard saved waits for a restart
+        Assert.False(s.Status.Pending);
         Assert.Equal((SetupPhase.Completed, SetupCompletion.Acknowledged), (s.Store.Phase, s.Store.Via));
     }
 
@@ -305,18 +307,49 @@ public sealed class SetupServiceTests
     }
 
     [Fact]
-    public async Task EachStep_BelongsToItsMode()
+    public async Task TheWizardsSettings_AreSavedWithTheCode_AndTheLastStep_IsTheNextModesGatekeeper_ThenOneRestart()
     {
-        var standalone = Make();
-        await standalone.Service.StartAsync(default);
-        var none = Make(AuthMode.None);
-        await none.Service.StartAsync(default);
+        var s = Make(AuthMode.None);
+        await s.Service.StartAsync(default);
+        Assert.Equal("setup.codeInvalid", (await Assert.ThrowsAsync<ForbiddenException>(() => s.World.SystemSettings.GetAsync("nope", default))).Key);
 
-        Assert.Equal("setup.otherMode", (await Assert.ThrowsAsync<DomainException>(() => standalone.Service.AcknowledgeOpenAccessAsync(standalone.Code.Value, default))).Key);
-        Assert.Equal("setup.otherMode", (await Assert.ThrowsAsync<DomainException>(() => none.Service.CreateAdministratorAsync(none.Code.Value, "root@x.co", "initial-password-1", default))).Key);
-        Assert.Equal("setup.otherMode", (await Assert.ThrowsAsync<DomainException>(() => standalone.Service.ClaimAdministratorAsync(standalone.Code.Value, default))).Key);
-        Assert.True(standalone.Status.Pending);
-        Assert.True(none.Status.Pending);
+        // Standalone chosen in the wizard: no administrator and no credentials, which the settings page refuses once the setup is done, since
+        // the start would stop; while it waits the start waits for the setup page instead.
+        await s.World.SystemSettings.UpdateAsync([new SettingChange("Auth:Mode", "Standalone")], s.Code.Value, default);
+        Assert.Contains(s.World.Log.From<SystemSettingsService>(), e => e.Values.TryGetValue("Keys", out var keys) && (string?)keys == "Auth:Mode");
+        Assert.Equal(0, s.World.Restart.Count); // the one restart comes with the last step
+
+        var finished = await s.Service.FinishAsync(s.Code.Value, "root@x.co", "initial-password-1", false, default);
+
+        Assert.True(finished.Administrator!.IsAdmin); // the mode the next start runs, although sign-in is off until the restart
+        Assert.True(finished.Restarting);
+        Assert.Equal(1, s.World.Restart.Count);
+        Assert.Equal((SetupPhase.Completed, SetupCompletion.Administrator), (s.Store.Phase, s.Store.Via));
+        Assert.Equal("setup.completed", (await Assert.ThrowsAsync<DomainException>(() => s.World.SystemSettings.GetAsync(s.Code.Value, default))).Key);
+    }
+
+    [Theory]
+    [InlineData(AuthMode.Oidc)]
+    [InlineData(AuthMode.ProxyHeader)]
+    public async Task WithAProvider_TheLastStep_CompletesNothing_TheClaimFollows(AuthMode mode)
+    {
+        var s = Make(mode);
+        await s.Service.StartAsync(default);
+
+        var finished = await s.Service.FinishAsync(s.Code.Value, null, null, false, default);
+
+        Assert.Equal((false, (User?)null), (finished.Restarting, finished.Administrator));
+        Assert.True(s.Status.Pending); // the administrators the settings name complete it at the next start, else the claim
+    }
+
+    [Fact]
+    public async Task TheClaim_BelongsToAProvider()
+    {
+        var s = Make();
+        await s.Service.StartAsync(default);
+
+        Assert.Equal("setup.otherMode", (await Assert.ThrowsAsync<DomainException>(() => s.Service.ClaimAdministratorAsync(s.Code.Value, default))).Key);
+        Assert.True(s.Status.Pending);
     }
 
     [Fact]
@@ -330,7 +363,7 @@ public sealed class SetupServiceTests
         Assert.Empty(points.Points);
         Assert.Equal("20261014021748_AddSetup", points.DatabaseMigration);
 
-        await s.Service.CreateAdministratorAsync(s.Code.Value, "root@x.co", "initial-password-1", default);
+        await s.Service.FinishAsync(s.Code.Value, "root@x.co", "initial-password-1", false, default);
         Assert.Equal("setup.completed", (await Assert.ThrowsAsync<DomainException>(() => s.Service.RestorePointsAsync(s.Code.Value, default))).Key);
     }
 }

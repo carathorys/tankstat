@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Backups;
+using Tankstat.Application.SystemSettings;
 using Tankstat.Application.Users;
 using Tankstat.Domain;
 using Tankstat.Domain.Instance;
@@ -13,19 +14,27 @@ namespace Tankstat.Application.Setup;
 /// <summary>Whether the setup waits: public (the setup page and its notice), nothing secret in it.</summary>
 public sealed record SetupInfo(bool Pending);
 
+/// <summary>What the setup's last step did: the administrator it made (Standalone), and whether the server restarts now for the settings saved.</summary>
+public sealed record SetupFinished(User? Administrator, bool Restarting);
+
 /// <summary>
 /// The setup of a new instance. A new instance waits until it has its gatekeeper: its first administrator (Standalone, OIDC, proxy), or
 /// with sign-in off the acknowledgement that everyone who reaches it may see and change everything. While it waits, the one-time code
-/// from the server's log (<see cref="OneTimeCode"/>) opens the setup page's steps, since no administrator exists to ask; once it is
-/// completed nothing here opens again. What the environment already says completes it at start (<see cref="StartAsync"/>), so an
-/// unattended deployment never sees the page; a restore brings the backup's setup state along.
+/// from the server's log (<see cref="OneTimeCode"/>) opens the setup page's steps (<see cref="SetupGate"/>), since no administrator exists
+/// to ask: the settings (the wizard saves them through <see cref="SystemSettingsService"/> with the code), then <see cref="FinishAsync"/>;
+/// once it is completed nothing here opens again. What the environment already says completes it at start (<see cref="StartAsync"/>), so
+/// an unattended deployment never sees the page; a restore brings the backup's setup state along.
 /// </summary>
 public sealed class SetupService(
     ISetupStore store,
     SetupStatus status,
+    SetupGate gate,
     OneTimeCode code,
     AuthService authService,
     AccessService access,
+    SystemSettingsService settings,
+    ISystemConfiguration configuration,
+    IServerRestart restart,
     IUserRepository users,
     IBackupStore backups,
     IDatabaseFacts database,
@@ -92,31 +101,56 @@ public sealed class SetupService(
     }
 
     /// <summary>Whether the setup waits, asked of the database while this process thinks so (another server may have completed it).</summary>
-    public async Task<SetupInfo> InfoAsync(CancellationToken ct) => new(await status.PendingAsync(store, ct));
+    public async Task<SetupInfo> InfoAsync(CancellationToken ct) => new(await gate.WaitsAsync(ct));
 
     /// <summary>The restore points of the backups folder, to restore one into the waiting instance; with the recipient new backups are encrypted for.</summary>
     public async Task<(RestorePoints Points, string? CurrentRecipient)> RestorePointsAsync(string? typedCode, CancellationToken ct)
     {
-        await RequireCodeAsync(typedCode, ct);
+        await gate.RequireAsync(typedCode, ct);
         var points = new RestorePoints(backups.List(), await database.LastMigrationAsync(ct), await database.KnownMigrationsAsync(ct));
         return (points, backupOptions.Value.CurrentRecipient);
     }
 
     /// <summary>
-    /// Standalone: makes the first administrator (the bootstrap administrator's rules: a valid address, a password within the policy) and
-    /// completes the setup with it, in one transaction; the caller signs the new administrator in.
+    /// The setup's last step, once the wizard saved its settings: the gatekeeper of the sign-in mode the next start runs, then the one restart
+    /// the saved settings wait for. Standalone makes the first administrator (the bootstrap administrator's rules: a valid address, a password
+    /// within the policy) and completes the setup with it, in one transaction; sign-in off needs the acknowledgement that everyone who reaches
+    /// the instance may see and change everything; OIDC and proxy complete nothing here: the administrators the settings name complete it as
+    /// the server starts, else the signed-in user claims it after the restart (<see cref="ClaimAdministratorAsync"/>, the same code). What the
+    /// next start would refuse refuses this step before anything is completed.
     /// </summary>
-    public async Task<User> CreateAdministratorAsync(string? typedCode, string? email, string? password, CancellationToken ct)
+    public async Task<SetupFinished> FinishAsync(string? typedCode, string? email, string? password, bool acknowledgeOpenAccess, CancellationToken ct)
     {
-        await RequireCodeAsync(typedCode, ct);
-        RequireMode(AuthMode.Standalone);
-        if (await users.AnyLocalAdminAsync(ct)) throw new DomainException("setup.administratorExists", "An administrator exists already: sign in.");
-        var admin = authService.NewAdministrator(email, password);
-        if (await users.FindLocalByEmailAsync(admin.Email, ct) is not null) throw new DomainException("user.emailExists", "A user with this e-mail already exists.");
-        AfterCompletion(await store.CompleteWithAdministratorAsync(admin, clock.GetUtcNow(), ct));
-        logger.LogInformation("The setup page made the first administrator {UserId}: the setup is completed", admin.Id);
-        return admin;
+        await gate.RequireAsync(typedCode, ct);
+        var restarting = await settings.RestartPendingAsync(ct);
+        if (restarting) await settings.RequireStartableAsync(ct);
+        User? administrator = null;
+        switch (NextMode())
+        {
+            case AuthMode.Standalone:
+                if (await users.AnyLocalAdminAsync(ct)) throw new DomainException("setup.administratorExists", "An administrator exists already: sign in.");
+                administrator = authService.NewAdministrator(email, password);
+                if (await users.FindLocalByEmailAsync(administrator.Email, ct) is not null) throw new DomainException("user.emailExists", "A user with this e-mail already exists.");
+                AfterCompletion(await store.CompleteWithAdministratorAsync(administrator, clock.GetUtcNow(), ct));
+                logger.LogInformation("The setup page made the first administrator {UserId}: the setup is completed", administrator.Id);
+                break;
+            case AuthMode.None:
+                if (!acknowledgeOpenAccess)
+                    throw new DomainException("setup.acknowledgementRequired", "With sign-in off, the setup ends with the acknowledgement that everyone who reaches the instance sees and changes everything.");
+                AfterCompletion(await store.CompleteAsync(SetupCompletion.Acknowledged, clock.GetUtcNow(), ct));
+                logger.LogInformation("Open access was acknowledged on the setup page (sign-in is off): the setup is completed");
+                break;
+        }
+        if (restarting)
+        {
+            logger.LogInformation("The setup page restarts the server for the settings it saved");
+            restart.Restart();
+        }
+        return new SetupFinished(administrator, restarting);
     }
+
+    /// <summary>The sign-in mode the next start runs: what the saved settings say beside the environment's (the running one waits for a restart).</summary>
+    private AuthMode NextMode() => Enum.TryParse<AuthMode>(configuration.Running["Auth:Mode"], ignoreCase: true, out var mode) ? mode : AuthMode.None;
 
     /// <summary>
     /// OIDC and proxy mode: the signed-in user (provisioned by their sign-in, so anyone the provider or proxy lets in) becomes the first
@@ -124,32 +158,12 @@ public sealed class SetupService(
     /// </summary>
     public async Task<Principal> ClaimAdministratorAsync(string? typedCode, CancellationToken ct)
     {
-        await RequireCodeAsync(typedCode, ct);
+        await gate.RequireAsync(typedCode, ct);
         RequireMode(AuthMode.Oidc, AuthMode.ProxyHeader);
         var user = await access.RequirePrincipalAsync(ct);
         AfterCompletion(await store.CompleteWithClaimAsync(user.Id, clock.GetUtcNow(), ct));
         logger.LogInformation("User {UserId} became the first administrator on the setup page: the setup is completed", user.Id);
         return user with { IsAdmin = true };
-    }
-
-    /// <summary>With sign-in off: the acknowledgement that everyone who reaches the instance may see and change everything completes the setup.</summary>
-    public async Task<SetupInfo> AcknowledgeOpenAccessAsync(string? typedCode, CancellationToken ct)
-    {
-        await RequireCodeAsync(typedCode, ct);
-        RequireMode(AuthMode.None);
-        AfterCompletion(await store.CompleteAsync(SetupCompletion.Acknowledged, clock.GetUtcNow(), ct));
-        logger.LogInformation("Open access was acknowledged on the setup page (sign-in is off): the setup is completed");
-        return new SetupInfo(false);
-    }
-
-    /// <summary>
-    /// The setup waits (asked of the database: another server may have completed it) and the code matches; a wrong code is refused (the
-    /// GraphQL listener logs the refusal, never what was typed).
-    /// </summary>
-    private async Task RequireCodeAsync(string? typedCode, CancellationToken ct)
-    {
-        if (!await status.PendingAsync(store, ct)) throw Completed();
-        if (!code.Matches(typedCode)) throw new ForbiddenException("setup.codeInvalid", "The one-time setup code from the server's log is needed.");
     }
 
     private void RequireMode(params AuthMode[] modes)
@@ -165,8 +179,6 @@ public sealed class SetupService(
     private void AfterCompletion(bool completedHere)
     {
         status.Set(false);
-        if (!completedHere) throw Completed();
+        if (!completedHere) throw SetupGate.Completed();
     }
-
-    private static DomainException Completed() => new("setup.completed", "The setup is completed already.");
 }
