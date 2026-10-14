@@ -1710,6 +1710,8 @@
     "clearSecret": "Remove the stored value",
     "listHint": "one per line",
     "useDefault": "Default (not set)",
+    "chooseOne": "Choose one",
+    "choiceRequired": "Choose one to go on.",
     "wholeNumber": "Enter a whole number.",
     "save": "Save changes",
     "saved": "Saved. It takes effect after a restart.",

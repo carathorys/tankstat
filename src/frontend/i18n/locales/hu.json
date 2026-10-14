@@ -1710,6 +1710,8 @@
     "clearSecret": "A tárolt érték törlése",
     "listHint": "soronként egy",
     "useDefault": "Alapértelmezett (nincs beállítva)",
+    "chooseOne": "Válassz egyet",
+    "choiceRequired": "Válassz egyet a folytatáshoz.",
     "wholeNumber": "Egész számot adj meg.",
     "save": "Módosítások mentése",
     "saved": "Mentve. Újraindítás után lép életbe.",
