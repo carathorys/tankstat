@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Tankstat.Application.Backups;
+using Tankstat.Application.SystemSettings;
 using Tankstat.Domain.Backups;
 using Tankstat.Infrastructure.Backups;
 
@@ -84,6 +85,21 @@ public sealed class RestoreSettingsTests : IDisposable
         Assert.Equal(1, b.Restarts.NowCount); // the next start reads it; nothing after the restore ran under the old file in a real process
         Assert.False(File.Exists(RestoreMarker.PathIn(Folder("b-backups"))));
         Assert.False(b.Log.Mentions("zzzz-a-password"));
+    }
+
+    [Fact]
+    public async Task AFileTheStartLeftOut_IsLeftOutOfTheBackup_UntilASaveTakesAFileIn()
+    {
+        using var a = Host("a", "None", """{ "Notifications": { "MaxPerHour": "0" } }""");
+        Assert.True(a.Factory.Services.GetRequiredService<SettingsFileStatus>().Ignored);
+        Assert.Equal(BackupSettingsState.Ignored, (await Backup(a)).Manifest.Settings!.State);
+
+        // What a save on the settings page does over a file the start left out: the file written, then taken into the running configuration.
+        await a.Factory.Services.GetRequiredService<ISettingsFileStore>().WriteAsync(new Dictionary<string, string?> { ["Defaults:Currency"] = "XYZ" }, default);
+        a.Factory.Services.GetRequiredService<ISystemConfiguration>().ApplySavedFile();
+
+        var settings = (await Backup(a)).Manifest.Settings!;
+        Assert.Equal(BackupSettingsState.Included, settings.State);
     }
 
     [Fact]

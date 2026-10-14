@@ -67,10 +67,7 @@ public sealed class RestoreService(
         await RequireRecordedAsync(settings, manifest, restored, ct);
         if (restored is not null)
         {
-            if (restored.Problems.Count > 0)
-                throw new DomainException("backup.settingsRefused",
-                    $"The server would not start with the settings file this backup brings ({string.Join(" ", restored.Problems)}), so it is not restored.",
-                    new { restored.Problems });
+            restored.RequireRestorable();
             return;
         }
         using var next = configuration.PrepareNextStart();

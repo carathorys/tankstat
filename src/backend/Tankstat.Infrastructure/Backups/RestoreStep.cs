@@ -210,8 +210,7 @@ internal sealed class RestoreStep(
                 settings = await settingsFile.RestoredAsync(fromBackup, manifest.Encryption is not null, ct);
             // What the backup's server set in its environment needs a value here too, as the request asked; this start's environment decides.
             await RestoreService.RequireRecordedAsync(settingsFile, manifest, settings, ct);
-            if (settings is { Problems.Count: > 0 })
-                throw new DomainException("backup.settingsRefused", $"The server would not start with the settings file this backup brings ({string.Join(" ", settings.Problems)}).");
+            settings?.RequireRestorable();
         }
         catch (Exception e) when (e is DomainException or IOException or UnauthorizedAccessException or FormatException)
         {

@@ -149,6 +149,9 @@ do
     // nothing after Build() runs: the host's start applies the restore, see RestoreStep.)
     if (app.Services.GetRequiredService<IBackupStore>().RestorePending)
     {
+        // The options the host validates before any start step, validated first here too: a wrong folder stops the start before the restore
+        // replaces anything, as it did when the host's start applied it.
+        app.Services.GetService<Microsoft.Extensions.Options.IStartupValidator>()?.Validate();
         await StartupSteps.ApplyBeforeHostAsync(app.Services, CancellationToken.None);
         if (restarts.Requested)
         {
