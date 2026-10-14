@@ -23,6 +23,15 @@ for name in $(compgen -e); do
 done
 
 files="$(mktemp -d -t tankstat-e2e-XXXXXX)"
+# The settings the shared server takes from its environment besides the machine's own: the OIDC values, an administrator list and a backup
+# time on no day (Backups__Days=None, nothing scheduled) make the read-only rows of the Server settings page. The restore servers below set
+# them too, as a move with the same compose file does: a backup records them, and a restore where one has no value is refused (#140).
+instance_env=(
+  Auth__Oidc__Authority=https://auth.example-identity.test/application/o/tankstat-production/
+  Auth__Oidc__ClientId=1qViVYDsILFCoXa8Rk2mT5pWn9QeZ4uB7yHcJ3dE Auth__Oidc__ClientSecret=made-up-secret
+  Auth__Oidc__Scopes__0=groups Auth__AdminEmails__0=first.administrator@example.com
+  Backups__Every=03:00 Backups__Days=None
+)
 app() {
   # From out/: the content root (wwwroot, the web app) is the working directory, not the dll's folder.
   cd out
@@ -32,22 +41,18 @@ app() {
     DataProtection__KeysPath="${files}/keys" Settings__Path="${files}/settings.json" \
     Auth__Mode=Standalone Auth__Standalone__AdminEmail=root@example.com Auth__Standalone__AdminPassword=initial-password-1 \
     Setup__Enabled=false \
-    Auth__Oidc__Authority=https://auth.example-identity.test/application/o/tankstat-production/ \
-    Auth__Oidc__ClientId=1qViVYDsILFCoXa8Rk2mT5pWn9QeZ4uB7yHcJ3dE Auth__Oidc__ClientSecret=made-up-secret \
-    Auth__Oidc__Scopes__0=groups Auth__AdminEmails__0=first.administrator@example.com \
-    Backups__Every=03:00 Backups__Days=None \
-    exec dotnet Tankstat.Api.dll --urls "$E2E_URL"
+    exec env "${instance_env[@]}" dotnet Tankstat.Api.dll --urls "$E2E_URL"
 }
-# The environment above, besides the run's own folders: the OIDC values, an administrator list and a backup time (on no day, so
-# nothing is scheduled) make the read-only rows of the Server settings page. Setup__Enabled=false keeps a new instance from waiting for
-# its setup (#90); the bootstrap administrator is the one the tests sign in as (tests/e2e/support/app.ts).
+# Setup__Enabled=false keeps a new instance from waiting for its setup (#90); the bootstrap administrator is the one the tests sign in as
+# (tests/e2e/support/app.ts).
 app > "${files}/app.log" 2>&1 &
 pids=($!)
 trap 'kill "${pids[@]}" 2>/dev/null || true; wait "${pids[@]}" 2>/dev/null || true; rm -rf "$files"' EXIT
 
 # The servers the setup's tests take over (tests/e2e/setup.e2e.ts), one per test and size: each is a new instance waiting for its setup,
 # which its test finishes or restores a backup into, so none is shared. "fresh" runs the shipped sign-in off (the wizard chooses the
-# mode), "restore" Standalone without an administrator; each with folders of its own and nothing else set.
+# mode) with nothing else set, "restore" Standalone without an administrator and the shared server's instance_env; each with folders of
+# its own.
 setup_names=(phone-fresh desktop-fresh phone-restore desktop-restore)
 setup_app() {
   local dir="${files}/setup-$1"
@@ -56,7 +61,7 @@ setup_app() {
   export ASPNETCORE_ENVIRONMENT=Production Database__Provider=Sqlite Database__ConnectionString="Data Source=${dir}/tankstat.db" \
     Storage__Path="${dir}/uploads" Storage__PhotosPath="${dir}/photos" Backups__Path="${dir}/backups" \
     DataProtection__KeysPath="${dir}/keys" Settings__Path="${dir}/settings.json"
-  if [[ "$1" == *-restore ]]; then export Auth__Mode=Standalone; fi
+  if [[ "$1" == *-restore ]]; then export Auth__Mode=Standalone "${instance_env[@]}"; fi
   exec dotnet Tankstat.Api.dll --urls "http://127.0.0.1:$2"
 }
 for i in "${!setup_names[@]}"; do

@@ -856,7 +856,8 @@
       "failed": "váratlan hiba (a szerver naplója többet mond)",
       "stopped": "az alkalmazás leállt, miközben készült",
       "restorePending": "Egy visszaállítás a következő indulásra vár; amíg le nem futott, mentés nem törölhető.",
-      "settingsRefused": "A kiszolgáló nem indulna el azzal a beállításfájllal, amelyet ez a mentés hoz, ennek a kiszolgálónak a környezetében, ezért nem állította vissza. Állítsd be a környezetben, ami hiányzik (például egy OIDC-kliens titkát, amelyet a titkosítatlan mentés nem tartalmaz), vagy állíts vissza titkosított mentést."
+      "settingsRefused": "A kiszolgáló nem indulna el azzal a beállításfájllal, amelyet ez a mentés hoz, ennek a kiszolgálónak a környezetében, ezért nem állította vissza. Állítsd be a környezetben, ami hiányzik (például egy OIDC-kliens titkát, amelyet a titkosítatlan mentés nem tartalmaz), vagy állíts vissza titkosított mentést.",
+      "environmentMissing": "A mentés olyan kiszolgálón készült, amelynek a környezete beállította ezeket: {{variables}}; ez a kiszolgáló egyiket sem állítja be, és a mentés beállításfájlja sem tartalmazza őket, ezért nem állította vissza. Állítsd be őket ennek a kiszolgálónak a környezetében, majd állítsd vissza."
     }
   },
   "a11y": {

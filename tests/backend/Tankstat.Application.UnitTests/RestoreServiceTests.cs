@@ -25,7 +25,9 @@ public sealed class RestoreServiceTests
         /// <summary>The settings file the backup carries; none (an older backup) when null.</summary>
         public IReadOnlyDictionary<string, string?>? Settings { get; init; }
         public bool RestorePending => Marker is not null;
-        public BackupManifest ReadManifest(string fileName) => Plain;
+        /// <summary>What the backup recorded of its server's environment; nothing (an older backup) when null.</summary>
+        public BackupEnvironment? Recorded { get; init; }
+        public BackupManifest ReadManifest(string fileName) => Plain with { Environment = Recorded };
         public IReadOnlyDictionary<string, string?>? ReadSettings(string fileName, BackupManifest manifest, string? identity) => Settings;
         public string? IdentityFor(BackupManifest manifest, string? passphrase, string? identity) => throw new NotSupportedException();
         public Task RequireRestorableMigrationAsync(BackupManifest manifest, CancellationToken ct) =>
@@ -187,6 +189,20 @@ public sealed class RestoreServiceTests
 
         Assert.Equal("backup.settingsRefused", refused.Key);
         Assert.Contains("Auth:Oidc:Authority", refused.Message);
+        Assert.Null(store.Marker);
+        Assert.Equal(0, w.Restart.Count);
+    }
+
+    [Fact]
+    public async Task ABackupWhoseServerSetSettingsInItsEnvironment_ThatThisServerLacks_IsRefused_NamingThem_AndNothingIsWritten()
+    {
+        var (w, store, service) = Admin(new OneBackup { Recorded = new BackupEnvironment(BackupEnvironmentMode.Record, ["Auth__Mode", "Smtp__Host"], []) },
+            new JudgedSettings { Missing = ["Smtp__Host"] });
+
+        var refused = await Assert.ThrowsAsync<DomainException>(() => service.RequestAsync(new RestoreRequest("tankstat-backup-1.zip", null, null, null), default));
+
+        Assert.Equal("backup.environmentMissing", refused.Key);
+        Assert.Contains("Smtp__Host", refused.Message);
         Assert.Null(store.Marker);
         Assert.Equal(0, w.Restart.Count);
     }

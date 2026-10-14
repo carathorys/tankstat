@@ -99,7 +99,9 @@ public sealed class RestoreSettingsTests : IDisposable
         string backup;
         using (var a = Host("a", "None", """{ "Smtp": { "Password": "zzzz-a-password" } }""", encryption))
             backup = (await Backup(a)).Path;
-        using var b = Host("b", "None", """{ "Smtp": { "Password": "b-password" } }""");
+        // The same key set in its environment, as the old server's: a backup records what its server's environment set, and a restore
+        // where it is missing is refused.
+        using var b = Host("b", "None", """{ "Smtp": { "Password": "b-password" } }""", encryption);
         Stage(Folder("b-backups"), backup, AgeKeys.FormatIdentity(identity));
 
         _ = b.Factory.Services;
@@ -123,6 +125,58 @@ public sealed class RestoreSettingsTests : IDisposable
         Assert.Contains("Storage__Path", recorded.Server);
         Assert.Equal(BackupSettingsState.None, written.Manifest.Settings!.State); // recorded only: no file here, and none made of the environment
         Assert.DoesNotContain("ZZZZ", written.Manifest.ToJson());
+    }
+
+    [Fact]
+    public async Task ARestoreWhereASettingTheBackupsServerSetHasNoValue_IsRefused_AndAppliedOnceItIsSet()
+    {
+        string backup;
+        using (var a = Host("a", "None", file: null, new() { ["Defaults:Currency"] = "XYZ" }))
+            backup = (await Backup(a)).Path;
+        using (var refused = Host("b", "None", file: null))
+        {
+            Stage(Folder("b-backups"), backup);
+            _ = refused.Factory.Services;
+            Assert.Single(Directory.GetFiles(Folder("b-backups"), "restore.refused.*"));
+            Assert.Contains(refused.Log.Entries, e => e.Values.TryGetValue("Reason", out var r) && (string?)r == "backup.environmentMissing");
+        }
+        using var b = Host("c", "None", file: null, new() { ["Defaults:Currency"] = "EUR" }); // set: its own value is what runs, as always
+        Stage(Folder("c-backups"), backup);
+
+        _ = b.Factory.Services;
+
+        Assert.Empty(Directory.GetFiles(Folder("c-backups"), "restore.refused.*"));
+        Assert.False(File.Exists(RestoreMarker.PathIn(Folder("c-backups"))));
+    }
+
+    [Fact]
+    public async Task AMergedBackup_CarriesTheEnvironmentsSettingsInItsFile_ButNoSecretInPlain_WhichTheRestoredServerMustThenSet()
+    {
+        string backup;
+        using (var a = Host("a", "None", file: null, new() { ["Backups:Environment"] = "Merge", ["Defaults:Currency"] = "XYZ", ["Smtp:Password"] = "zzzz-a-password" }))
+        {
+            var written = await Backup(a);
+            Assert.Equal(BackupSettingsState.Included, written.Manifest.Settings!.State); // a file made of the environment, the server has none
+            var carried = BackupFile.ReadSettings(written.Path, written.Manifest, null)!;
+            Assert.Equal("XYZ", carried["Defaults:Currency"]);
+            Assert.False(carried.ContainsKey("Smtp:Password")); // a plain backup carries no secret, merged or not...
+            Assert.Contains("Smtp__Password", written.Manifest.Environment!.Settings); // ...but records it
+            Assert.DoesNotContain("zzzz", File.ReadAllText(written.Path));
+            backup = written.Path;
+        }
+        using (var refused = Host("b", "None", file: null, new() { ["Backups:Environment"] = "Merge" }))
+        {
+            Stage(Folder("b-backups"), backup);
+            _ = refused.Factory.Services;
+            Assert.Single(Directory.GetFiles(Folder("b-backups"), "restore.refused.*")); // the password: recorded, not carried, not set here
+        }
+        using var b = Host("c", "None", file: null, new() { ["Backups:Environment"] = "Merge", ["Smtp:Password"] = "c-password" });
+        Stage(Folder("c-backups"), backup);
+
+        _ = b.Factory.Services;
+
+        Assert.Equal("XYZ", (string?)Json(b.SettingsPath)["Defaults"]!["Currency"]);
+        Assert.Null(Json(b.SettingsPath)["Smtp"]); // the environment's password stays the environment's
     }
 
     /// <summary>A backup of an instance without users, whose settings file says Standalone (its sign-in held off by the environment).</summary>
