@@ -321,6 +321,56 @@ it('the backups page, its restore and its key set dialogs are labelled, describe
   await check(keys)
 })
 
+it('a held backup in its row, and a backup opened, are labelled and free of violations', async () => {
+  const { ui } = setup('/admin/backups')
+  const point = {
+    __typename: 'RestorePointInfo', file: 'tankstat-backup-20261011T080000Z.zip', bytes: 3_100_000, createdAt: '2026-10-11T08:00:00Z', appVersion: '0.13.0', provider: 'Sqlite',
+    migration: 'AddInstance', sameMigration: true, olderMigration: false, safetyNet: false, uploaded: false, encrypted: false, recipient: null, currentRecipient: false, photos: 'SEPARATE', keys: false, rows: 120,
+    held: true, heldSince: '2026-10-12T08:00:00Z',
+    settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', secrets: true, secretsLeftOut: [] },
+    environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: [], missing: [], missingCertain: true, overridden: [] },
+  }
+  server.use(
+    graphql.query('Backups', () =>
+      HttpResponse.json({
+        data: {
+          backups: {
+            __typename: 'BackupOverviewInfo', folder: '/data/backups', migration: 'AddInstance',
+            run: { __typename: 'BackupRunInfo', running: false, startedAt: null, finishedAt: null, file: null, bytes: null, error: null },
+            settings: { __typename: 'BackupSettingsInfo', recipient: null, photosApart: false, photos: false, maxUploadMb: 1024, times: [], days: [], timeZone: 'UTC', nextRun: null, keep: null, keepDays: null, environment: 'RECORD', secrets: true },
+            sizes: { __typename: 'StorageSizesInfo', database: 5_300_000, pictures: 12_000_000, photos: null },
+            restorePoints: [point],
+          },
+        },
+      }),
+    ),
+    graphql.query('BackupDetails', () =>
+      HttpResponse.json({
+        data: {
+          backupDetails: {
+            __typename: 'BackupDetailsInfo', file: point.file, bytes: point.bytes, held: true, heldSince: point.heldSince, format: 1, writtenBy: 'tankstat', createdAt: point.createdAt,
+            appVersion: '0.13.0', provider: 'Sqlite', migration: 'AddInstance', safetyNet: false, uploaded: false, encrypted: false, recipient: null, currentRecipient: false,
+            encryptionMethod: null, pictures: true, photos: 'SEPARATE', keys: false, tables: [{ __typename: 'BackupTableInfo', name: 'Refuelings', rows: 120 }],
+            sizes: { __typename: 'BackupSizesInfo', tables: 1000, pictures: 2000, photos: 3000, keys: 0, archive: 4000 }, archiveEntry: 'data.zip', sha256: 'ab'.repeat(32),
+            settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', bytes: 300, secrets: true, secretsLeftOut: [], machineLeftOut: ['Database:ConnectionString'] },
+            environment: { __typename: 'BackupEnvironmentInfo', mode: 'MERGE', settings: ['Auth__Mode'], server: ['Database__Provider'] },
+          },
+        },
+      }),
+    ),
+  )
+  await screen.findByRole('table')
+  expect(screen.getByRole('img', { name: /^Held since/ })).toBeInTheDocument()
+  expect(screen.getByRole('img', { name: /^In plain with its secrets/ })).toBeInTheDocument()
+  await check(document.body)
+
+  await ui.click(screen.getByRole('button', { name: /^Open the backup of/ }))
+  const opened = await screen.findByRole('dialog', { name: /^The backup of/ })
+  expect(opened).toHaveAccessibleDescription(/nothing in it is decrypted or unpacked/)
+  await within(opened).findByRole('table')
+  await check(opened)
+})
+
 it('the Arrange dialog is labelled, described and free of violations', async () => {
   stubViewport('desktop')
   const vehicles = fakeVehicleBackend([fakeVehicle({ id: 'a', name: 'Alpha' }), fakeVehicle({ id: 'b', name: 'Beta' })])
@@ -396,6 +446,8 @@ it('the setup page, its code and its wizard, are labelled and free of violations
               sameMigration: true,
               olderMigration: false,
               encrypted: true,
+              held: false,
+              heldSince: null,
               settingsFile: null,
               environment: null,
             },

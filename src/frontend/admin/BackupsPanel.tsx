@@ -9,7 +9,7 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
-import { Archive, DatabaseBackup, Download, Image, ImageOff, KeyRound, LifeBuoy, Lock, LockOpen, RotateCcw, Trash2, Upload, type LucideIcon } from 'lucide-react'
+import { Archive, DatabaseBackup, Download, FolderOpen, Image, ImageOff, KeyRound, LifeBuoy, Lock, LockKeyholeOpen, LockOpen, Pin, PinOff, RotateCcw, Trash2, Upload, type LucideIcon } from 'lucide-react'
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link as RouterLink } from 'react-router'
@@ -22,6 +22,7 @@ import {
   BackupRunDocument,
   BackupsDocument,
   DeleteBackupDocument,
+  HoldBackupDocument,
   RunBackupDocument,
   SessionDocument,
   type BackupRunFieldsFragment,
@@ -33,7 +34,9 @@ import { useFormat } from '../i18n/format.ts'
 import { ErrorMessage } from '../messages.tsx'
 import { connectivity } from '../offline/connectivity.ts'
 import { COARSE, standaloneLink } from '../theme/components.ts'
+import { BackupDetailsDialog } from './backupDetails.tsx'
 import { downloadBackup } from './backupFiles.ts'
+import { secretsInPlain, useHeldText } from './backupMarks.ts'
 import { Code, EncryptionSetup } from './encryption.tsx'
 import { shortRecipient } from './recipient.ts'
 import { UploadBackup } from './upload.tsx'
@@ -66,7 +69,7 @@ export function BackupsPanel() {
       <UploadBackup maxUploadMb={backups.settings.maxUploadMb} onUploaded={() => void refetch()} />
       <RestorePoints
         backups={backups}
-        onDeleted={() => refetch()}
+        onChanged={() => refetch()}
         onRestoring={(point) => setRestoring({ point, generation: session?.session.instance?.generation ?? undefined })}
       />
       <EncryptionSetup recipient={backups.settings.recipient ?? null} refresh={BackupsDocument} />
@@ -251,7 +254,7 @@ function RunPoll({ onRun }: { onRun: (run: BackupRunFieldsFragment) => void }) {
  * the focus, so the tooltip is shown from the keyboard too, and a tap shows it at once on a touch screen, where the icon is a 44 px target.
  * The colour only repeats what the icon and its name say.
  */
-function PropertyIcon({ icon: Icon, label, tone }: { icon: LucideIcon; label: string; tone?: 'success' | 'warning' }) {
+function PropertyIcon({ icon: Icon, label, tone }: { icon: LucideIcon; label: string; tone?: 'success' | 'warning' | 'error' }) {
   return (
     <Tooltip title={label} enterTouchDelay={0} leaveTouchDelay={8000}>
       <Box
@@ -275,10 +278,12 @@ function PropertyIcon({ icon: Icon, label, tone }: { icon: LucideIcon; label: st
   )
 }
 
-/** What kind of backup a row is, its encryption and its photos, each as an icon with its meaning. */
+/** What kind of backup a row is, its hold, its encryption and its photos, each as an icon with its meaning. */
 function useBackupIcons() {
   const { t } = useTranslation()
+  const heldText = useHeldText()
   return {
+    held: (p: RestorePoint) => (p.held ? <PropertyIcon icon={Pin} label={heldText(p) ?? ''} /> : null),
     kind: (p: RestorePoint) =>
       p.safetyNet ? (
         <PropertyIcon icon={LifeBuoy} label={t('admin.backups.safetyNet')} />
@@ -288,7 +293,10 @@ function useBackupIcons() {
         <PropertyIcon icon={Archive} label={t('admin.backups.kindBackup')} />
       ),
     encryption: (p: RestorePoint) =>
-      !p.encrypted ? (
+      // Its secrets readable by anyone with the file: a glyph of its own, not only a colour (#140's improvements).
+      secretsInPlain(p) ? (
+        <PropertyIcon icon={LockKeyholeOpen} label={t('admin.backups.secretsPlainMark')} tone="error" />
+      ) : !p.encrypted ? (
         <PropertyIcon icon={LockOpen} label={t('admin.backups.plain')} />
       ) : p.currentRecipient ? (
         <PropertyIcon icon={Lock} label={t('admin.backups.encryptedCurrent')} tone="success" />
@@ -302,11 +310,12 @@ function useBackupIcons() {
 
 function RestorePoints({
   backups,
-  onDeleted,
+  onChanged,
   onRestoring,
 }: {
   backups: BackupsQuery['backups']
-  onDeleted: () => Promise<unknown>
+  /** The list asked again, after a delete or a hold (a refusal too: a file gone since the list leaves it). */
+  onChanged: () => Promise<unknown>
   onRestoring: (point: RestoreTargetFieldsFragment) => void
 }) {
   const { t } = useTranslation()
@@ -315,6 +324,9 @@ function RestorePoints({
   const icons = useBackupIcons()
   const [error, setError] = useState<unknown>()
   const [deleteBackup] = useMutation(DeleteBackupDocument)
+  const [holdBackup] = useMutation(HoldBackupDocument)
+  // The backup whose hold is being changed: its Hold or Release button waits until the list is asked again.
+  const [holding, setHolding] = useState<string | null>(null)
   // The backups being deleted: their row's buttons are off until the list is asked again (a ref as well, so a second confirmation in
   // the same moment sends nothing either).
   const [deleting, setDeleting] = useState<ReadonlySet<string>>(() => new Set())
@@ -343,12 +355,29 @@ function RestorePoints({
     }
     focusAfterDelete.current = true
     try {
-      await onDeleted() // also after a refusal: a file gone since the list leaves it
+      await onChanged() // also after a refusal: a file gone since the list leaves it
     } catch {
       // The list's own error says why it could not be asked again.
     }
     inFlight.current.delete(file)
     setDeleting(new Set(inFlight.current))
+  }
+
+  const hold = async (file: string, held: boolean) => {
+    setHolding(file)
+    setError(undefined)
+    try {
+      await holdBackup({ variables: { file, hold: held } })
+      toast(t(held ? 'admin.backups.heldToast' : 'admin.backups.releasedToast', { file }))
+    } catch (e) {
+      setError(e)
+    }
+    try {
+      await onChanged()
+    } catch {
+      // The list's own error says why it could not be asked again.
+    }
+    setHolding(null)
   }
 
   return (
@@ -390,7 +419,12 @@ function RestorePoints({
                       {p.file}
                     </Typography>
                   </TableCell>
-                  <TableCell>{icons.kind(p)}</TableCell>
+                  <TableCell>
+                    <Stack direction="row" sx={{ gap: 0.5 }}>
+                      {icons.kind(p)}
+                      {icons.held(p)}
+                    </Stack>
+                  </TableCell>
                   <TableCell>
                     <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>
                       {t('admin.backups.release', { version: p.appVersion })}
@@ -419,6 +453,16 @@ function RestorePoints({
                   </TableCell>
                   <TableCell align="right">
                     <Stack direction="row" sx={{ gap: 1, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                      <BackupDetailsDialog
+                        file={p.file}
+                        createdAt={p.createdAt}
+                        trigger={
+                          <Button size="small" variant="soft" aria-label={t('admin.backups.openAria', { made, file: p.file })}>
+                            <FolderOpen size={16} aria-hidden />
+                            {t('admin.backups.open')}
+                          </Button>
+                        }
+                      />
                       <Button
                         size="small"
                         variant="soft"
@@ -441,18 +485,36 @@ function RestorePoints({
                           }
                         />
                       )}
-                      <ConfirmDialog
-                        title={t('admin.backups.deleteTitle', { made, file: p.file })}
-                        description={t('admin.backups.deleteDescription')}
-                        confirmLabel={t('admin.backups.deleteConfirm')}
-                        onConfirm={() => void remove(p.file)}
-                        trigger={
-                          <Button size="small" variant="soft" color="error" loading={busy} aria-label={t('admin.backups.deleteAria', { made, file: p.file })}>
-                            <Trash2 size={16} aria-hidden />
-                            {t('admin.backups.delete')}
-                          </Button>
-                        }
-                      />
+                      <Button
+                        size="small"
+                        variant="soft"
+                        disabled={busy}
+                        loading={holding === p.file}
+                        aria-label={t(p.held ? 'admin.backups.releaseHoldAria' : 'admin.backups.holdAria', { made, file: p.file })}
+                        onClick={() => void hold(p.file, !p.held)}
+                      >
+                        {p.held ? <PinOff size={16} aria-hidden /> : <Pin size={16} aria-hidden />}
+                        {t(p.held ? 'admin.backups.releaseHold' : 'admin.backups.hold')}
+                      </Button>
+                      {/* A held backup is never deleted (the server refuses it too): it is released first. */}
+                      {p.held ? (
+                        <Typography variant="caption" sx={{ color: 'text.secondary', alignSelf: 'center' }}>
+                          {t('admin.backups.deleteHeld')}
+                        </Typography>
+                      ) : (
+                        <ConfirmDialog
+                          title={t('admin.backups.deleteTitle', { made, file: p.file })}
+                          description={t('admin.backups.deleteDescription')}
+                          confirmLabel={t('admin.backups.deleteConfirm')}
+                          onConfirm={() => void remove(p.file)}
+                          trigger={
+                            <Button size="small" variant="soft" color="error" loading={busy} aria-label={t('admin.backups.deleteAria', { made, file: p.file })}>
+                              <Trash2 size={16} aria-hidden />
+                              {t('admin.backups.delete')}
+                            </Button>
+                          }
+                        />
+                      )}
                     </Stack>
                   </TableCell>
                 </TableRow>

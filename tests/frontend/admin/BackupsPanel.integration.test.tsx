@@ -34,9 +34,45 @@ const point = (o: Record<string, unknown> = {}) => ({
   photos: 'SEPARATE',
   keys: true,
   rows: 1234,
+  held: false,
+  heldSince: null as string | null,
   // A backup of this release with nothing to warn about: its settings file in, nothing its server's environment set missing here.
   settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', secrets: true, secretsLeftOut: [] } as Record<string, unknown> | null,
   environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: [], missing: [], missingCertain: true, overridden: [] } as Record<string, unknown> | null,
+  ...o,
+})
+
+/** A backup opened: what its manifest says (`BackupDetailsFields`). */
+const details = (o: Record<string, unknown> = {}) => ({
+  __typename: 'BackupDetailsInfo',
+  file: 'tankstat-backup-20261010T020000Z.zip',
+  bytes: 2_400_000,
+  held: false,
+  heldSince: null,
+  format: 1,
+  writtenBy: 'tankstat',
+  createdAt: '2026-10-10T02:00:00Z',
+  appVersion: '0.13.0',
+  provider: 'Sqlite',
+  migration: 'AddInstance',
+  safetyNet: false,
+  uploaded: false,
+  encrypted: true,
+  recipient: RECIPIENT,
+  currentRecipient: true,
+  encryptionMethod: 'age-x25519',
+  pictures: true,
+  photos: 'SEPARATE',
+  keys: true,
+  tables: [
+    { __typename: 'BackupTableInfo', name: 'Refuelings', rows: 1200 },
+    { __typename: 'BackupTableInfo', name: 'Users', rows: 34 },
+  ],
+  sizes: { __typename: 'BackupSizesInfo', tables: 900_000, pictures: 1_200_000, photos: 300_000, keys: 2_000, archive: 2_300_000 },
+  archiveEntry: 'data.age',
+  sha256: 'ab'.repeat(32),
+  settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', bytes: 512, secrets: false, secretsLeftOut: ['Smtp:Password'], machineLeftOut: ['Database:ConnectionString'] },
+  environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: ['Auth__Mode'], server: ['Database__Provider'] },
   ...o,
 })
 
@@ -136,6 +172,17 @@ function backupsServer({
       state.points = state.points.filter((p) => (p as { file: string }).file !== variables.file)
       return HttpResponse.json({ data: { deleteBackup: true } })
     }),
+    graphql.mutation('HoldBackup', ({ variables }) => {
+      record('HoldBackup', variables)
+      state.points = state.points.map((p) =>
+        (p as { file: string }).file === variables.file ? { ...(p as object), held: variables.hold, heldSince: variables.hold ? '2026-10-14T09:30:00Z' : null } : p,
+      )
+      return HttpResponse.json({ data: { holdBackup: variables.hold } })
+    }),
+    graphql.query('BackupDetails', ({ variables }) => {
+      record('BackupDetails', variables.file)
+      return HttpResponse.json({ data: { backupDetails: details({ file: variables.file }) } })
+    }),
     graphql.mutation('RunBackup', () => {
       record('RunBackup', {})
       // Written at once in this fake: the first poll already finds it done.
@@ -210,7 +257,10 @@ it('shows the server, where its backups go, and every backup in the folder with 
   backupsServer({
     points: [
       point(),
-      point({ file: 'uploaded-old-server.zip', createdAt: '2026-09-01T10:00:00Z', uploaded: true, encrypted: false, recipient: null, currentRecipient: false, photos: 'LEFT_OUT', keys: false }),
+      point({
+        file: 'uploaded-old-server.zip', createdAt: '2026-09-01T10:00:00Z', uploaded: true, encrypted: false, recipient: null, currentRecipient: false, photos: 'LEFT_OUT', keys: false,
+        settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', secrets: false, secretsLeftOut: [] },
+      }),
       point({ file: 'tankstat-backup-20260101T000000Z.zip', createdAt: '2026-01-01T00:00:00Z', sameMigration: false, migration: 'AddSomethingNewer', appVersion: '9.9.0' }),
       point({ file: 'tankstat-backup-20250101T000000Z.zip', createdAt: '2025-01-01T00:00:00Z', sameMigration: false, olderMigration: true, migration: 'AddRecurring', appVersion: '0.9.0' }),
     ],
@@ -324,6 +374,63 @@ it('deletes a backup once asked to confirm, lists the folder afresh, and keeps t
   expect(within(table).getByText(/tankstat-backup-20261009T020000Z\.zip/)).toBeInTheDocument()
   // The button that had the focus went with its row: the list's heading has it, not the start of the page.
   await waitFor(() => expect(screen.getByRole('heading', { name: 'Backups in the folder' })).toHaveFocus())
+})
+
+it('holds a backup, which then says so in its row and cannot be deleted until it is released', async () => {
+  const { calls } = backupsServer({ points: [point()] })
+  const ui = await openBackups()
+  const row = () => within(screen.getAllByRole('row')[1])
+
+  await ui.click(row().getByRole('button', { name: /^Hold the backup of .*\(tankstat-backup-20261010T020000Z\.zip\)$/ }))
+
+  expect(calls.HoldBackup).toEqual([{ file: 'tankstat-backup-20261010T020000Z.zip', hold: true }])
+  expect(await screen.findByText('tankstat-backup-20261010T020000Z.zip is held: retention keeps it, and it counts towards no limit.')).toBeInTheDocument()
+  expect(await row().findByRole('img', { name: /^Held since .*: never removed by retention, not deleted until released$/ })).toBeInTheDocument()
+  expect(row().queryByRole('button', { name: /^Delete the backup of/ })).not.toBeInTheDocument()
+  expect(row().getByText('Held: release it to delete it')).toBeInTheDocument()
+
+  await ui.click(row().getByRole('button', { name: /^Release the backup of/ }))
+  expect(calls.HoldBackup?.[1]).toEqual({ file: 'tankstat-backup-20261010T020000Z.zip', hold: false })
+  expect(await row().findByRole('button', { name: /^Delete the backup of/ })).toBeInTheDocument()
+  expect(row().queryByRole('img', { name: /^Held/ })).not.toBeInTheDocument()
+})
+
+it('says why a held backup was not deleted when the server refuses it', async () => {
+  backupsServer({ points: [point()] })
+  server.use(graphql.mutation('DeleteBackup', () => HttpResponse.json(gqlError('The backup is held.', 'VALIDATION_FAILED', 'backup.held'))))
+  const ui = await openBackups()
+
+  await ui.click(screen.getByRole('button', { name: /^Delete the backup of/ }))
+  await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }))
+
+  expect(await screen.findByText('The backup is held: release it before deleting it.')).toBeInTheDocument()
+})
+
+it('marks a backup that holds its secrets in plain with a lock of its own, in words', async () => {
+  backupsServer({ points: [point({ encrypted: false, recipient: null, currentRecipient: false })] })
+  await openBackups()
+
+  expect(screen.getByRole('img', { name: 'In plain with its secrets: anyone who has the file reads the passwords in it' })).toBeInTheDocument()
+  expect(screen.queryByRole('img', { name: 'Not encrypted (holds no sign-in keys)' })).not.toBeInTheDocument()
+})
+
+it('opens a backup: what its manifest says, its tables with their rows, the sizes and the checksum', async () => {
+  const { calls } = backupsServer({ points: [point()] })
+  const ui = await openBackups()
+  expect(calls.BackupDetails).toBeUndefined() // asked for only once opened
+
+  await ui.click(screen.getByRole('button', { name: /^Open the backup of .*\(tankstat-backup-20261010T020000Z\.zip\)$/ }))
+  const dialog = await screen.findByRole('dialog', { name: /^The backup of .*\(tankstat-backup-20261010T020000Z\.zip\)$/ })
+
+  const tables = within(await within(dialog).findByRole('table', { name: 'Tables: 2 · rows: 1,234' }))
+  expect(tables.getByRole('rowheader', { name: 'Refuelings' }).closest('tr')).toHaveTextContent('1,200')
+  expect(dialog).toHaveTextContent('ab'.repeat(32))
+  expect(dialog).toHaveTextContent('tankstat 0.13.0 (format 1)')
+  expect(dialog).toHaveTextContent('Smtp:Password')
+  expect(dialog).toHaveTextContent('Database__Provider')
+  expect(calls.BackupDetails).toEqual(['tankstat-backup-20261010T020000Z.zip'])
+  await ui.click(within(dialog).getByRole('button', { name: 'Close' }))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
 
 it('says why a backup cannot be deleted while a restore waits', async () => {
