@@ -49,6 +49,16 @@ const SetupPage = lazy(() => import('./setup/SetupPage.tsx').then((m) => ({ defa
 const setupTakesOver = (data: SessionQuery) =>
   data.notices.some((n) => n.code === 'SETUP_PENDING') && (data.session.mode === 'NONE' || (data.session.mode === 'STANDALONE' && !data.session.user))
 
+/**
+ * The notices above the page. The setup's own is left out where the setup page is what is shown (in place of every page, or at `/setup`
+ * once past the sign-in), since it would point at itself; the address is read here, so a navigation redraws this, not the whole shell.
+ */
+function Notices({ data }: { data: SessionQuery }) {
+  const { pathname } = useLocation()
+  const setupShown = setupTakesOver(data) || (pathname === '/setup' && (data.session.mode === 'NONE' || data.session.user !== null))
+  return <NoticeBanner notices={setupShown ? data.notices.filter((n) => n.code !== 'SETUP_PENDING') : data.notices} />
+}
+
 /** Another address for a page, its query string kept (a page or a sort someone saved a link to). */
 function KeepQuery({ to }: { to: string }) {
   const { search } = useLocation()
@@ -98,9 +108,6 @@ function Shell({
   showMenu: boolean
 }) {
   const { t } = useTranslation()
-  const { pathname } = useLocation()
-  // The setup's notice is the page itself while it is shown: no banner pointing at it.
-  const setupShown = data !== undefined && (setupTakesOver(data) || pathname === '/setup')
   const drawerTitle = useId()
   // Desktop: a docked sidebar, open by default; hiding it is remembered (in this browser, and with the account once signed in).
   // Phone: an overlay drawer, closed until the menu button is pressed, never remembered.
@@ -184,7 +191,7 @@ function Shell({
             {loading && <Loading />}
             <UpdateNotice />
             <OfflineReadyNotice />
-            {data && <NoticeBanner notices={setupShown ? data.notices.filter((n) => n.code !== 'SETUP_PENDING') : data.notices} />}
+            {data && <Notices data={data} />}
             {data && <Content data={data} />}
           </Box>
         </Box>

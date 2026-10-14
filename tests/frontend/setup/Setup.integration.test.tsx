@@ -172,6 +172,13 @@ it('with a provider, the signed-in user finds the setup through the notice and b
   await waitFor(() => expect(screen.queryByRole('link', { name: 'Open the setup' })).not.toBeInTheDocument())
 })
 
+it('keeps the notice above the sign-in at /setup, where no setup page is shown before it', async () => {
+  waitingServer('PROXY_HEADER')
+  renderWithApollo(<App />, '/setup')
+
+  expect(await screen.findByRole('link', { name: 'Open the setup' })).toBeInTheDocument()
+})
+
 it('says there is nothing to set up once the instance is set up', async () => {
   const state = waitingServer('STANDALONE', { signedIn: user({ isAdmin: true }) })
   state.pending = false
