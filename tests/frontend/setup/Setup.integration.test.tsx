@@ -21,16 +21,11 @@ const setupNotice: Notice = { code: 'SETUP_PENDING', severity: 'INFO', message: 
 
 const backup = {
   file: 'tankstat-backup-20261010T020000Z.zip',
-  bytes: 4096,
   createdAt: '2026-10-10T02:00:00Z',
   appVersion: '0.15.0',
-  migration: 'AddSetup',
   sameMigration: true,
   olderMigration: false,
-  safetyNet: false,
-  uploaded: false,
   encrypted: false,
-  photos: 'WITH_PICTURES',
 }
 
 /**
@@ -145,6 +140,8 @@ it('restores a backup of the folder with the code, and reloads once the restarte
   const restore = await screen.findByRole('region', { name: 'Restore a backup' })
   expect(within(restore).getByText('Made by a newer release of Tankstat: restore it with that release.')).toBeInTheDocument()
   expect(within(restore).getAllByRole('button', { name: /^Restore the backup of/ })).toHaveLength(1) // a newer release's has no button
+  // Named by the file too: two backups of one minute (one and its uploaded copy) are told apart.
+  expect(within(restore).getByRole('button', { name: /^Restore the backup of .* \(tankstat-backup-20261010T020000Z\.zip\)$/ })).toBeInTheDocument()
   await ui.click(within(restore).getByRole('button', { name: /^Restore the backup of/ }))
   const dialog = await screen.findByRole('alertdialog', { name: /^Restore the backup of .*\?$/ })
   await ui.click(within(dialog).getByRole('button', { name: 'Restore and restart' }))
@@ -177,6 +174,19 @@ it('keeps the notice above the sign-in at /setup, where no setup page is shown b
   renderWithApollo(<App />, '/setup')
 
   expect(await screen.findByRole('link', { name: 'Open the setup' })).toBeInTheDocument()
+})
+
+it('asks the session again when the setup was completed elsewhere meanwhile, so the sign-in takes the setup page\'s place', async () => {
+  const state = waitingServer('STANDALONE')
+  server.use(
+    graphql.query('Setup', () => {
+      state.pending = false // another server of the instance completed it since the session was asked
+      return HttpResponse.json({ data: { setup: { __typename: 'SetupInfo', pending: false } } })
+    }),
+  )
+  renderWithApollo(<App />)
+
+  expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
 })
 
 it('says there is nothing to set up once the instance is set up', async () => {

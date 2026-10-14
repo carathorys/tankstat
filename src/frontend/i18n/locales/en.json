@@ -1635,7 +1635,6 @@
     "restoreNone": "There is no backup in the server's backups folder. To restore one, copy its file into that folder, then look again.",
     "lookAgain": "Look again",
     "restore": "Restore",
-    "restoreOne": "Restore the backup of {{made}}",
     "pointMeta": "Tankstat {{version}}, {{file}}",
     "encrypted": "encrypted",
     "older": "Made by an older release (Tankstat {{version}}): brought up to date as it is restored.",

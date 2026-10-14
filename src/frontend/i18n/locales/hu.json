@@ -1635,7 +1635,6 @@
     "restoreNone": "A szerver mentések mappájában nincs biztonsági mentés. Ha egyet vissza szeretnél állítani, másold a fájlját abba a mappába, majd nézd meg újra.",
     "lookAgain": "Nézd meg újra",
     "restore": "Visszaállítás",
-    "restoreOne": "A(z) {{made}} mentés visszaállítása",
     "pointMeta": "Tankstat {{version}}, {{file}}",
     "encrypted": "titkosított",
     "older": "Régebbi kiadás készítette (Tankstat {{version}}): visszaállításkor naprakészre hozza az alkalmazás.",

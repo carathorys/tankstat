@@ -5,7 +5,7 @@ import FormControlLabel from '@mui/material/FormControlLabel'
 import Link from '@mui/material/Link'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link as RouterLink, useNavigate } from 'react-router'
 import { RestartWait, RestoreDialog } from '../admin/restore.tsx'
@@ -24,6 +24,7 @@ import {
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { useFormat } from '../i18n/format.ts'
 import { ErrorMessage, WarningMessage } from '../messages.tsx'
+import { standaloneLink } from '../theme/components.ts'
 
 type RestorePoint = SetupRestorePointsQuery['setupRestorePoints'][number]
 
@@ -38,6 +39,14 @@ export function SetupPage({ mode }: { mode: AuthMode }) {
   usePageTitle(t('setup.title'))
   // Asked of the server, never of the device: whether the instance still waits is its business, and a kept answer would be stale.
   const { data, error, loading } = useQuery(SetupDocument, { fetchPolicy: 'network-only' })
+  const client = useApolloClient()
+  const { data: session } = useQuery(SessionDocument)
+  // Completed since the session was asked (on another server of the instance, say): the session is asked again, so its notice, and
+  // the takeover of every page with it, go too.
+  const stale = data?.setup.pending === false && session?.notices.some((n) => n.code === 'SETUP_PENDING') === true
+  useEffect(() => {
+    if (stale) void client.refetchQueries({ include: [SessionDocument] })
+  }, [client, stale])
 
   return (
     <section aria-labelledby="page-title">
@@ -49,7 +58,7 @@ export function SetupPage({ mode }: { mode: AuthMode }) {
       {data && !data.setup.pending && (
         <Stack sx={{ gap: 1.5, alignItems: 'flex-start' }}>
           <Typography>{t('setup.notPending')}</Typography>
-          <Link component={RouterLink} to="/">
+          <Link component={RouterLink} to="/" sx={standaloneLink}>
             {t('setup.home')}
           </Link>
         </Stack>
@@ -64,7 +73,8 @@ function Steps({ mode }: { mode: AuthMode }) {
   const client = useApolloClient()
   const { data: session } = useQuery(SessionDocument)
   const [entered, setEntered] = useState<{ code: string; points: RestorePoint[] }>()
-  const [restoring, setRestoring] = useState<RestorePoint>()
+  // The generation of the data when the restore was asked for, kept with it: the session's own may change while the wait runs.
+  const [restoring, setRestoring] = useState<{ point: RestorePoint; generation: string | undefined }>()
 
   const check = async (code: string) => {
     const { data } = await client.query({ query: SetupRestorePointsDocument, variables: { code }, fetchPolicy: 'network-only' })
@@ -78,8 +88,8 @@ function Steps({ mode }: { mode: AuthMode }) {
   if (restoring)
     return (
       <RestartWait
-        point={restoring}
-        generation={session?.session.instance?.generation ?? undefined}
+        point={restoring.point}
+        generation={restoring.generation}
         notRestored={<Button onClick={startOver}>{t('setup.newCode')}</Button>}
       />
     )
@@ -97,7 +107,12 @@ function Steps({ mode }: { mode: AuthMode }) {
 
   return (
     <Stack sx={{ gap: 3, maxWidth: 720 }}>
-      <RestoreStep points={entered.points} code={entered.code} onLookAgain={() => check(entered.code)} onRestoring={setRestoring} />
+      <RestoreStep
+        points={entered.points}
+        code={entered.code}
+        onLookAgain={() => check(entered.code)}
+        onRestoring={(point) => setRestoring({ point, generation: session?.session.instance?.generation ?? undefined })}
+      />
       <section aria-labelledby="setup-fresh">
         <Typography id="setup-fresh" component="h2" variant="h4" sx={{ mb: 1 }}>
           {t('setup.freshTitle')}
@@ -170,7 +185,7 @@ function RestoreStep({
                     code={code}
                     onRestoring={onRestoring}
                     trigger={
-                      <Button color="error" variant="soft" aria-label={t('setup.restoreOne', { made: dateTime(point.createdAt) })}>
+                      <Button color="error" variant="soft" aria-label={t('admin.backups.restoreAria', { made: dateTime(point.createdAt), file: point.file })}>
                         {t('setup.restore')}
                       </Button>
                     }
