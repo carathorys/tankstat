@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Tankstat.Application.Backups;
 using Tankstat.Domain;
+using Tankstat.Infrastructure.Settings;
 
 namespace Tankstat.Infrastructure.Backups;
 
@@ -35,9 +36,51 @@ public static class BackupFile
         if (manifest.Format > BackupManifest.CurrentFormat)
             throw new DomainException("backup.newerFormat", "The backup was written by a newer release.", new { manifest.Format, manifest.AppVersion });
         if (manifest is not { AppVersion: not null, Provider: not null, Archive: { Name: not null, Sha256: not null }, Contents.Tables: not null, Sizes: not null }
-            || !Enum.IsDefined(manifest.Contents.Photos) || !Usable(manifest.Encryption))
+            || !Enum.IsDefined(manifest.Contents.Photos) || !Usable(manifest.Encryption) || !Usable(manifest.Settings, manifest.Encryption is not null))
             throw NotABackup();
         return manifest;
+    }
+
+    /// <summary>
+    /// A settings member a manifest may carry: none (an older backup), or a known state, and when the file went in, the entry an encrypted or
+    /// plain backup writes it as, with its checksum.
+    /// </summary>
+    private static bool Usable(BackupSettingsFile? settings, bool encrypted) =>
+        settings is null
+        || Enum.IsDefined(settings.State) && (settings.State != BackupSettingsState.Included
+            || settings.Sha256 is not null && settings.Entry == (encrypted ? BackupSettingsFile.Encrypted : BackupSettingsFile.Plain));
+
+    /// <summary>
+    /// The settings file a backup carries, by key (null when it carries none: an older backup, or none went in): its entry checked against the
+    /// manifest's checksum, then read, decrypted with the identity in an encrypted backup (checked against the recipient first,
+    /// <c>backup.wrongKey</c>). Damage is <c>backup.corrupt</c>. Only the small entry is read, never the data.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string?>? ReadSettings(string path, BackupManifest manifest, byte[]? identity)
+    {
+        if (manifest.Settings is not { State: BackupSettingsState.Included } settings) return null;
+        if (manifest.Encryption is { } encryption)
+        {
+            if (identity is null) throw new DomainException("backup.wrongKey", "The backup is encrypted; the identity or the passphrase is needed.");
+            if (!BackupKeys.Opens(identity, encryption.Recipient)) throw new DomainException("backup.wrongKey", "The identity does not open this backup.");
+        }
+        try
+        {
+            using var zip = ZipFile.OpenRead(path);
+            var entry = zip.GetEntry(settings.Entry!) ?? throw NotABackup();
+            using var stored = new MemoryStream();
+            using (var data = entry.Open()) data.CopyTo(stored);
+            RequireSettingsChecksum(SHA256.HashData(stored.ToArray()), settings);
+            stored.Position = 0;
+            using var plain = manifest.Encryption is null ? stored : AgeStream.Decrypt(stored, identity!, leaveOpen: true);
+            using var json = new MemoryStream();
+            plain.CopyTo(json);
+            json.Position = 0;
+            return SettingsFileStore.Read(json);
+        }
+        catch (Exception e) when (e is InvalidDataException or FormatException or JsonException or CryptographicException)
+        {
+            throw NotABackup();
+        }
     }
 
     /// <summary>
@@ -49,14 +92,19 @@ public static class BackupFile
         || encryption is { Recipient: not null, Argon2id: { MemoryKiB: >= 8 and <= 4 * 1024 * 1024, Passes: >= 1 and <= 100, Lanes: >= 1 and <= 64 } }
            && BackupEncryption.IsSalt(encryption.Salt);
 
-    /// <summary>Checks the inner archive against the manifest's checksum; <c>backup.corrupt</c> when it does not match.</summary>
+    /// <summary>Checks the inner archive (and the settings file, when it went in) against the manifest's checksums; <c>backup.corrupt</c> when one does not match.</summary>
     public static void VerifyChecksum(string path, BackupManifest manifest)
     {
         try
         {
             using var zip = ZipFile.OpenRead(path);
-            using var data = (zip.GetEntry(manifest.Archive.Name) ?? throw NotABackup()).Open();
-            RequireChecksum(SHA256.HashData(data), manifest);
+            using (var data = (zip.GetEntry(manifest.Archive.Name) ?? throw NotABackup()).Open())
+                RequireChecksum(SHA256.HashData(data), manifest);
+            if (manifest.Settings is { State: BackupSettingsState.Included } settings)
+            {
+                using var stored = (zip.GetEntry(settings.Entry!) ?? throw NotABackup()).Open();
+                RequireSettingsChecksum(SHA256.HashData(stored), settings);
+            }
         }
         catch (InvalidDataException)
         {
@@ -70,8 +118,13 @@ public static class BackupFile
         try
         {
             using var zip = ZipFile.OpenRead(path);
-            await using var data = (zip.GetEntry(manifest.Archive.Name) ?? throw NotABackup()).Open();
-            RequireChecksum(await SHA256.HashDataAsync(data, ct), manifest);
+            await using (var data = (zip.GetEntry(manifest.Archive.Name) ?? throw NotABackup()).Open())
+                RequireChecksum(await SHA256.HashDataAsync(data, ct), manifest);
+            if (manifest.Settings is { State: BackupSettingsState.Included } settings)
+            {
+                await using var stored = (zip.GetEntry(settings.Entry!) ?? throw NotABackup()).Open();
+                RequireSettingsChecksum(await SHA256.HashDataAsync(stored, ct), settings);
+            }
         }
         catch (InvalidDataException)
         {
@@ -82,6 +135,11 @@ public static class BackupFile
     private static void RequireChecksum(byte[] sha256, BackupManifest manifest)
     {
         if (!string.Equals(Convert.ToHexStringLower(sha256), manifest.Archive.Sha256, StringComparison.OrdinalIgnoreCase)) throw NotABackup();
+    }
+
+    private static void RequireSettingsChecksum(byte[] sha256, BackupSettingsFile settings)
+    {
+        if (!string.Equals(Convert.ToHexStringLower(sha256), settings.Sha256, StringComparison.OrdinalIgnoreCase)) throw NotABackup();
     }
 
     /// <summary>The identity of a passphrase for this backup, derived as the manifest says.</summary>
