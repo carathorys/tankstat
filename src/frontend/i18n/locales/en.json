@@ -855,7 +855,8 @@
       "passphraseTooShort": "A passphrase has at least {{min}} characters.",
       "failed": "an unexpected error (the server log says more)",
       "stopped": "the app stopped while it was being written",
-      "restorePending": "A restore waits for the next start; no backup can be deleted until it has run."
+      "restorePending": "A restore waits for the next start; no backup can be deleted until it has run.",
+      "settingsRefused": "The server would not start with the settings file this backup brings, under this server's environment, so it was not restored. Set what it lacks in the environment (an OIDC client secret, say, which a plain backup does not carry), or restore an encrypted backup."
     }
   },
   "a11y": {
