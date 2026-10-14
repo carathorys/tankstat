@@ -406,6 +406,9 @@ it('the setup page, its code and its steps, are labelled and free of violations'
   await ui.click(screen.getByRole('button', { name: 'Continue' }))
   await screen.findByRole('region', { name: 'Start fresh' })
   await check(view.container)
+  await ui.click(screen.getByRole('button', { name: 'Restore from a backup' }))
+  await screen.findByRole('region', { name: 'Restore a backup' })
+  await check(view.container)
 })
 
 it("the setup's done screen, with its key set and next steps, is labelled and free of violations", async () => {

@@ -29,13 +29,13 @@ Setup is waiting: open /setup in the browser and enter the one-time setup code A
 
 With Docker, `docker logs tankstat` shows it. Every start, an in-app restart too, writes a new code, so use the latest; case, spaces and hyphens do not matter. Whoever can read the server's log is the one the setup trusts: no administrator exists yet to ask. The code is never shown anywhere else.
 
-Opening the app shows the setup page, which asks for the code and then offers two ways:
+Opening the app shows the setup page, which asks for the code and then sets the instance up:
 
-- **Restore a backup** from the server's backups folder (copy the file there first; see [Backup and restore](backup-and-restore.md)): the restored data brings its users and its own setup, so the instance is set up as the backup was. In Standalone the backup must hold an administrator (or the bootstrap variables above must be set), as for any restore; only a backup of an instance that was itself still waiting for its setup needs neither, and the restored instance then waits for its setup in turn.
 - **Start fresh**, which depends on the mode:
   - `Standalone`: an e-mail address and a password make the first administrator, who is signed in at once.
   - `Oidc` and `ProxyHeader`: sign in first (through the provider or the proxy), then follow *Open the setup* in the notice and choose *Become the administrator*.
   - `None`: tick that you understand everyone who reaches the address sees and changes all data, and finish. Until then every page shows the setup, but the API itself is as open as sign-in-off always is.
+- **Or restore a backup** instead, with *Restore from a backup* under it: only then are the backups of the server's backups folder listed (copy the file there first; see [Backup and restore](backup-and-restore.md)), and *Start fresh instead* goes back. The restored data brings its users and its own setup, so the instance is set up as the backup was. In Standalone the backup must hold an administrator (or the bootstrap variables above must be set), as for any restore; only a backup of an instance that was itself still waiting for its setup needs neither, and the restored instance then waits for its setup in turn.
 
 Once the setup is done, the page and the code open nothing again. The new administrator lands on what to set up next, none of it part of the setup: a key set for encrypted backups (made right there, as on the *Backups* page), then links to the backup schedule and the defaults for new vehicles on the *Server settings* page and, in `Standalone`, to *People* for the other users.
 

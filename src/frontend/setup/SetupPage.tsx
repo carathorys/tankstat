@@ -5,7 +5,7 @@ import FormControlLabel from '@mui/material/FormControlLabel'
 import Link from '@mui/material/Link'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link as RouterLink, useNavigate } from 'react-router'
 import { EncryptionSetup } from '../admin/encryption.tsx'
@@ -120,6 +120,8 @@ function Steps({ mode }: { mode: AuthMode }) {
   const [entered, setEntered] = useState<{ code: string; points: RestorePoint[] }>()
   // The generation of the data when the restore was asked for, kept with it: the session's own may change while the wait runs.
   const [restoring, setRestoring] = useState<{ point: RestoreTargetFieldsFragment; generation: string | undefined }>()
+  // Starting fresh is what the setup is for; a backup's restore is chosen on purpose, and only then are the backups shown.
+  const [restoreChosen, setRestoreChosen] = useState(false)
 
   const check = async (code: string) => {
     const { data } = await client.query({ query: SetupRestorePointsDocument, variables: { code }, fetchPolicy: 'network-only' })
@@ -127,6 +129,7 @@ function Steps({ mode }: { mode: AuthMode }) {
   }
   const startOver = () => {
     setRestoring(undefined)
+    setRestoreChosen(false)
     setEntered(undefined)
   }
 
@@ -152,24 +155,50 @@ function Steps({ mode }: { mode: AuthMode }) {
 
   return (
     <Stack sx={{ gap: 3, maxWidth: 720 }}>
-      <RestoreStep
-        points={entered.points}
-        code={entered.code}
-        onLookAgain={() => check(entered.code)}
-        onRestoring={(point) => setRestoring({ point, generation: session?.session.instance?.generation ?? undefined })}
-      />
-      <section aria-labelledby="setup-fresh">
-        <Typography id="setup-fresh" component="h2" variant="h4" sx={{ mb: 1 }}>
-          {t('setup.freshTitle')}
-        </Typography>
-        {mode === 'STANDALONE' && <AdministratorStep code={entered.code} />}
-        {(mode === 'OIDC' || mode === 'PROXY_HEADER') && <ClaimStep code={entered.code} name={session?.session.user?.displayName ?? ''} />}
-        {mode === 'NONE' && <OpenAccessStep code={entered.code} />}
-      </section>
+      {restoreChosen ? (
+        <RestoreStep
+          points={entered.points}
+          code={entered.code}
+          onLookAgain={() => check(entered.code)}
+          onRestoring={(point) => setRestoring({ point, generation: session?.session.instance?.generation ?? undefined })}
+          onFresh={() => setRestoreChosen(false)}
+        />
+      ) : (
+        <>
+          <section aria-labelledby="setup-fresh">
+            <StepTitle id="setup-fresh">{t('setup.freshTitle')}</StepTitle>
+            {mode === 'STANDALONE' && <AdministratorStep code={entered.code} />}
+            {(mode === 'OIDC' || mode === 'PROXY_HEADER') && <ClaimStep code={entered.code} name={session?.session.user?.displayName ?? ''} />}
+            {mode === 'NONE' && <OpenAccessStep code={entered.code} />}
+          </section>
+          <Stack sx={{ gap: 1, alignItems: 'flex-start' }}>
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              {t('setup.restoreOffer')}
+            </Typography>
+            <Button variant="soft" onClick={() => setRestoreChosen(true)}>
+              {t('setup.restoreChoose')}
+            </Button>
+          </Stack>
+        </>
+      )}
       <Button variant="ghost" color="primary" sx={{ alignSelf: 'flex-start' }} onClick={startOver}>
         {t('setup.otherCode')}
       </Button>
     </Stack>
+  )
+}
+
+/**
+ * A step's heading, which takes the focus as it appears: the form or the button that led to it is gone, and the heading has the step read
+ * out.
+ */
+function StepTitle({ id, children }: { id: string; children: string }) {
+  const heading = useRef<HTMLHeadingElement>(null)
+  useEffect(() => heading.current?.focus(), [])
+  return (
+    <Typography ref={heading} id={id} tabIndex={-1} component="h2" variant="h4" sx={{ mb: 1 }}>
+      {children}
+    </Typography>
   )
 }
 
@@ -179,11 +208,13 @@ function RestoreStep({
   code,
   onLookAgain,
   onRestoring,
+  onFresh,
 }: {
   points: RestorePoint[]
   code: string
   onLookAgain: () => Promise<void>
   onRestoring: (point: RestoreTargetFieldsFragment) => void
+  onFresh: () => void
 }) {
   const { t } = useTranslation()
   const { dateTime } = useFormat()
@@ -194,9 +225,7 @@ function RestoreStep({
   }
   return (
     <section aria-labelledby="setup-restore">
-      <Typography id="setup-restore" component="h2" variant="h4" sx={{ mb: 1 }}>
-        {t('setup.restoreTitle')}
-      </Typography>
+      <StepTitle id="setup-restore">{t('setup.restoreTitle')}</StepTitle>
       <Typography sx={{ mb: 1.5 }}>{t('setup.restoreIntro')}</Typography>
       {points.length === 0 ? (
         <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1 }}>
@@ -242,9 +271,14 @@ function RestoreStep({
         </Stack>
       )}
       {error !== undefined && <ErrorMessage error={error} />}
-      <Button variant="ghost" color="primary" onClick={lookAgain}>
-        {t('setup.lookAgain')}
-      </Button>
+      <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
+        <Button variant="ghost" color="primary" onClick={lookAgain}>
+          {t('setup.lookAgain')}
+        </Button>
+        <Button variant="ghost" color="primary" onClick={onFresh}>
+          {t('setup.freshInstead')}
+        </Button>
+      </Stack>
     </section>
   )
 }

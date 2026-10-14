@@ -103,8 +103,15 @@ it('in Standalone, the setup page stands in for every page, and the code makes t
   await ui.clear(screen.getByRole('textbox', { name: /^Setup code/ }))
   await enterCode(ui, 'abcd efgh jklm')
 
+  expect(await screen.findByRole('heading', { name: 'Start fresh' })).toHaveFocus() // the code's form is gone: its next step is read out
+  // Starting fresh is the way; the backups are shown only once a restore is chosen, and that choice can be taken back.
+  expect(screen.queryByRole('region', { name: 'Restore a backup' })).not.toBeInTheDocument()
+  await ui.click(screen.getByRole('button', { name: 'Restore from a backup' }))
+  expect(await screen.findByRole('region', { name: 'Restore a backup' })).toHaveTextContent('There is no backup in the server')
+  expect(screen.getByRole('heading', { name: 'Restore a backup' })).toHaveFocus()
+  expect(screen.queryByRole('region', { name: 'Start fresh' })).not.toBeInTheDocument()
+  await ui.click(screen.getByRole('button', { name: 'Start fresh instead' }))
   const fresh = await screen.findByRole('region', { name: 'Start fresh' })
-  expect(screen.getByRole('region', { name: 'Restore a backup' })).toHaveTextContent('There is no backup in the server')
   await ui.type(within(fresh).getByRole('textbox', { name: /^E-mail/ }), 'root@example.com')
   await ui.type(within(fresh).getByLabelText(/^Password/), 'initial-password-1')
   await ui.click(within(fresh).getByRole('button', { name: 'Create the administrator' }))
@@ -145,6 +152,7 @@ it('restores a backup of the folder with the code, and reloads once the restarte
   renderWithApollo(<App />)
 
   await enterCode(ui)
+  await ui.click(await screen.findByRole('button', { name: 'Restore from a backup' }))
   const restore = await screen.findByRole('region', { name: 'Restore a backup' })
   expect(within(restore).getByText('Made by a newer release of Tankstat: restore it with that release.')).toBeInTheDocument()
   expect(within(restore).getAllByRole('button', { name: /^Restore the backup of/ })).toHaveLength(1) // a newer release's has no button
