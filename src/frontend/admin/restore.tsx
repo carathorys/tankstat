@@ -11,7 +11,7 @@ import { useDialogState } from '../dialogs/useDialogState.ts'
 import { Field } from '../forms/Field.tsx'
 import { FieldInput } from '../forms/FieldInput.tsx'
 import { Form } from '../forms/Form.tsx'
-import { RestoreBackupDocument, SessionDocument } from '../gql/generated.ts'
+import { RestoreBackupDocument, SessionDocument, type RestoreTargetFieldsFragment } from '../gql/generated.ts'
 import { useFormat } from '../i18n/format.ts'
 import { ErrorMessage, WarningMessage } from '../messages.tsx'
 import { navigation } from '../navigation.ts'
@@ -24,30 +24,24 @@ export const BACKUP_POLL_MS = 2_000
 /** After this long without the server back, the page says what may keep it away (no restart policy, a refused restore). */
 export const RESTART_SLOW_MS = 60_000
 
-/** What a restore needs of a restore point, as the Backups page and the setup page list them. */
-export interface RestoreTarget {
-  file: string
-  createdAt: string
-  appVersion: string
-  encrypted: boolean
-  olderMigration: boolean
-}
+/** What a restore needs of a restore point (`RestoreTargetFields`), as the Backups page and the setup page list them. */
+type RestoreTarget = RestoreTargetFieldsFragment
 
 /**
  * The confirmation of a restore, opened by its row's button, with the passphrase (or the identity) of an encrypted backup. It names the
  * file as well as the time, since two backups can share a minute (a copy of one, a safety net written just after it). Nothing is written
  * when the key is wrong. `code`: the one-time code from the server's log, while the setup waits (no administrator exists to ask).
  */
-export function RestoreDialog<P extends RestoreTarget>({
+export function RestoreDialog({
   point,
   trigger,
   code,
   onRestoring,
 }: {
-  point: P
+  point: RestoreTarget
   trigger: ReactNode
   code?: string
-  onRestoring: (point: P) => void
+  onRestoring: (point: RestoreTarget) => void
 }) {
   const { t } = useTranslation()
   const { dateTime } = useFormat()
@@ -70,18 +64,18 @@ export function RestoreDialog<P extends RestoreTarget>({
   )
 }
 
-function RestoreForm<P extends RestoreTarget>({
+function RestoreForm({
   point,
   code,
   busy,
   onBusy,
   onRestoring,
 }: {
-  point: P
+  point: RestoreTarget
   code?: string
   busy: boolean
   onBusy: (busy: boolean) => void
-  onRestoring: (point: P) => void
+  onRestoring: (point: RestoreTarget) => void
 }) {
   const { t } = useTranslation()
   const [restoreBackup] = useMutation(RestoreBackupDocument, { fetchPolicy: 'no-cache' })

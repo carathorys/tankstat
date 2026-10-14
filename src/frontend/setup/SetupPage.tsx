@@ -21,6 +21,7 @@ import {
   SetupDocument,
   SetupRestorePointsDocument,
   type AuthMode,
+  type RestoreTargetFieldsFragment,
   type SetupRestorePointsQuery,
 } from '../gql/generated.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
@@ -118,7 +119,7 @@ function Steps({ mode }: { mode: AuthMode }) {
   const { data: session } = useQuery(SessionDocument)
   const [entered, setEntered] = useState<{ code: string; points: RestorePoint[] }>()
   // The generation of the data when the restore was asked for, kept with it: the session's own may change while the wait runs.
-  const [restoring, setRestoring] = useState<{ point: RestorePoint; generation: string | undefined }>()
+  const [restoring, setRestoring] = useState<{ point: RestoreTargetFieldsFragment; generation: string | undefined }>()
 
   const check = async (code: string) => {
     const { data } = await client.query({ query: SetupRestorePointsDocument, variables: { code }, fetchPolicy: 'network-only' })
@@ -182,7 +183,7 @@ function RestoreStep({
   points: RestorePoint[]
   code: string
   onLookAgain: () => Promise<void>
-  onRestoring: (point: RestorePoint) => void
+  onRestoring: (point: RestoreTargetFieldsFragment) => void
 }) {
   const { t } = useTranslation()
   const { dateTime } = useFormat()

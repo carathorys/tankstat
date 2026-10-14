@@ -26,6 +26,7 @@ import {
   SessionDocument,
   type BackupRunFieldsFragment,
   type BackupsQuery,
+  type RestoreTargetFieldsFragment,
 } from '../gql/generated.ts'
 import { useKeyText } from '../i18n/errors.ts'
 import { useFormat } from '../i18n/format.ts'
@@ -48,7 +49,7 @@ type RestorePoint = BackupsQuery['backups']['restorePoints'][number]
  */
 export function BackupsPanel() {
   const { t } = useTranslation()
-  const [restoring, setRestoring] = useState<{ point: RestorePoint; generation: string | undefined }>()
+  const [restoring, setRestoring] = useState<{ point: RestoreTargetFieldsFragment; generation: string | undefined }>()
   // Not asked while a restore restarts the server (the answer would be of the data before it, worked out by a server just starting).
   const { data, error, refetch } = useQuery(BackupsDocument, { fetchPolicy: 'cache-and-network', skip: restoring !== undefined })
   const { data: session } = useQuery(SessionDocument)
@@ -363,7 +364,7 @@ function RestorePoints({
 }: {
   backups: BackupsQuery['backups']
   onDeleted: () => Promise<unknown>
-  onRestoring: (point: RestorePoint) => void
+  onRestoring: (point: RestoreTargetFieldsFragment) => void
 }) {
   const { t } = useTranslation()
   const { dateTime, bytes, number } = useFormat()

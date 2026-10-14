@@ -1,5 +1,14 @@
 # The administration's Backups page. `run` is polled while a backup is being written (BackupRun selects only what costs nothing).
 
+# What a restore needs of a restore point (its confirmation and the wait for the restart), on the Backups page and the setup page alike.
+fragment RestoreTargetFields on RestorePointInfo {
+  file
+  createdAt
+  appVersion
+  encrypted
+  olderMigration
+}
+
 fragment BackupRunFields on BackupRunInfo {
   running
   startedAt
@@ -34,17 +43,13 @@ query Backups {
       photos
     }
     restorePoints {
-      file
+      ...RestoreTargetFields
       bytes
-      createdAt
-      appVersion
       provider
       migration
       sameMigration
-      olderMigration
       safetyNet
       uploaded
-      encrypted
       recipient
       currentRecipient
       photos

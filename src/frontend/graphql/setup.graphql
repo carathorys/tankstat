@@ -6,12 +6,8 @@ query Setup {
 
 query SetupRestorePoints($code: String!) {
   setupRestorePoints(code: $code) {
-    file
-    createdAt
-    appVersion
+    ...RestoreTargetFields
     sameMigration
-    olderMigration
-    encrypted
   }
 }
 
