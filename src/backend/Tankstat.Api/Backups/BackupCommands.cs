@@ -116,7 +116,7 @@ internal static class BackupCommands
         output.WriteLine(m.Encryption is null ? "  not encrypted" : $"  encrypted for {m.Encryption.Recipient}");
         output.WriteLine($"  settings file {SettingsOf(m)}");
         if (m.Environment is { } recorded)
-            output.WriteLine($"  environment of this process {(recorded.Mode == BackupEnvironmentMode.Merge ? "merged into the settings file" : "recorded")}: {(recorded.Settings.Count == 0 ? "no setting" : string.Join(", ", recorded.Settings))}");
+            output.WriteLine($"  environment of this process {(recorded.Mode == BackupEnvironmentMode.Merge && m.Settings?.State == BackupSettingsState.Included ? "merged into the settings file" : "recorded")}: {(recorded.Settings.Count == 0 ? "no setting" : string.Join(", ", recorded.Settings))}");
         return 0;
     }
 

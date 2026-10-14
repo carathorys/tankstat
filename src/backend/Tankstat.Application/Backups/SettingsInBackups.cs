@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Tankstat.Application.Auth;
 using Tankstat.Application.SystemSettings;
+using Tankstat.Domain;
 
 namespace Tankstat.Application.Backups;
 
@@ -167,4 +168,19 @@ public interface ISettingsBackup
     /// leaves (<paramref name="restored"/>; null for a backup without one, which leaves this server's own) and this server's environment.
     /// </summary>
     Task<IReadOnlyList<string>> MissingAsync(BackupEnvironment recorded, IReadOnlyDictionary<string, string?>? restored, CancellationToken ct);
+}
+
+public static class RestoredSettingsExtensions
+{
+    /// <summary>
+    /// Refuses what a restore would leave (<see cref="ISettingsBackup.RestoredAsync"/>) as <c>backup.settingsRefused</c> (naming the settings at
+    /// fault, never a value) when this server would not start with it: the one judgement the request and the start make alike.
+    /// </summary>
+    public static void RequireRestorable(this RestoredSettings restored)
+    {
+        if (restored.Problems.Count > 0)
+            throw new DomainException("backup.settingsRefused",
+                $"The server would not start with the settings file this backup brings ({string.Join(" ", restored.Problems)}), so it is not restored.",
+                new { restored.Problems });
+    }
 }
