@@ -644,6 +644,10 @@
           "short": "Elutasíthatja: {{names}} itt nincs beállítva",
           "text": "A mentés kiszolgálója a környezetében beállította ezeket: {{names}}, ez a kiszolgáló nem állítja be őket. A mentés titkosított, így a beállításfájlja csak a jelmondattal olvasható: ha egyiket sem tartalmazza, a visszaállítást a kiszolgáló elutasítja."
         },
+        "logLevelsMissing": {
+          "short": "Naplózási szintek itt nincsenek beállítva: {{names}}",
+          "text": "A mentés kiszolgálója a környezetében beállította ezeket a naplózási szinteket: {{names}}, ez a kiszolgáló nem állítja be őket. A visszaállítás megtörténik, a napló pedig azt tartalmazza, amit ennek a kiszolgálónak a szintjei engednek."
+        },
         "noSettingsOlder": {
           "short": "Nincs beállításfájl (egy régebbi kiadás írta)",
           "text": "Nincs benne beállításfájl, és a kiszolgálója környezetéről sem mond semmit: egy olyan kiadás írta, amelynek a mentései még nem tartalmazták ezeket. Ennek a kiszolgálónak a beállításai maradnak, amelyek nem biztos, hogy illenek a visszaállított adatokhoz: a bejelentkezés, az e-mail, a mentések."

@@ -41,7 +41,7 @@ const backup = {
   heldSince: null as string | null,
   // A backup of this release with nothing to warn about.
   settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', secrets: true, secretsLeftOut: [] } as Record<string, unknown> | null,
-  environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: [], missing: [], missingCertain: true, overridden: [] } as Record<string, unknown> | null,
+  environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: [], missing: [], missingCertain: true, logLevelsMissing: [], overridden: [] } as Record<string, unknown> | null,
 }
 
 /**
@@ -373,7 +373,7 @@ it('says before a restore on the setup page which settings of the old server thi
       {
         ...backup,
         settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', secrets: true, secretsLeftOut: [] },
-        environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: ['Auth__Mode', 'Auth__Oidc__ClientSecret'], missing: ['Auth__Oidc__ClientSecret'], missingCertain: true, overridden: [] },
+        environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: ['Auth__Mode', 'Auth__Oidc__ClientSecret'], missing: ['Auth__Oidc__ClientSecret'], missingCertain: true, logLevelsMissing: [], overridden: [] },
       },
     ],
   })

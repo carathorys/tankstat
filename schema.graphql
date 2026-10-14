@@ -215,6 +215,7 @@ type BackupEnvironmentInfo {
   missing: [String!]!
   missingCertain: Boolean!
   overridden: [String!]!
+  logLevelsMissing: [String!]!
 }
 
 type BackupKeySetInfo {

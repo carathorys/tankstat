@@ -151,4 +151,12 @@ public sealed class SettingsInBackupsTests
         Assert.True((plain with { Settings = new BackupSettingsFile(BackupSettingsState.Included, Secrets: true) }).CarriesSecrets()); // asked for in plain
         Assert.DoesNotContain("carriesSecrets", plain.ToJson(), StringComparison.OrdinalIgnoreCase); // a method, never a member of the file
     }
+
+    [Theory]
+    [InlineData("Defaults__Currency", true)]
+    [InlineData("Auth__Mode", true)]
+    [InlineData("Logging__LogLevel__Default", false)] // its levels only change what the log holds: a missing one is a risk, never a refusal
+    [InlineData("logging__loglevel__Microsoft.AspNetCore", false)]
+    public void Refuses_EveryMissingSetting_ButTheLoggingSections(string variable, bool refuses) =>
+        Assert.Equal(refuses, SettingsInBackups.Refuses(variable));
 }

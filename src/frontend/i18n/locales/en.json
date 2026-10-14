@@ -644,6 +644,10 @@
           "short": "May be refused: {{names}} not set here",
           "text": "Its server set {{names}} in its environment, which this server does not set. The backup is encrypted, so its settings file is read only with its passphrase: if it holds none of them, the restore will be refused."
         },
+        "logLevelsMissing": {
+          "short": "Log levels {{names}} not set here",
+          "text": "Its server set the log levels {{names}} in its environment, which this server does not set: the restore goes on, and the log holds what this server's levels say."
+        },
         "noSettingsOlder": {
           "short": "No settings file (an older release wrote it)",
           "text": "It holds no settings file and says nothing of its server's environment: a release before backups held them wrote it. This server's settings stay, which may not suit the restored data: its sign-in, its e-mail, its backups."

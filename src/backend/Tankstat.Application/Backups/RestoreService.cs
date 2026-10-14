@@ -13,10 +13,14 @@ public sealed record RestoreRequest(string File, string? Passphrase, string? Ide
 
 /// <summary>
 /// What a backup of the folder would mean here (<see cref="RestoreService.HereAsync"/>): the recorded settings this server lacks (the restore is
-/// refused for them; <see cref="MissingCertain"/> false where they could not be checked against an encrypted backup's file), and the settings
-/// of its file that this server's environment overrides, by variable name.
+/// refused for them; <see cref="MissingCertain"/> false where they could not be checked against an encrypted backup's file), the settings
+/// of its file that this server's environment overrides, and the recorded log levels this server lacks (<see cref="LogLevelsMissing"/>: a
+/// risk, never a refusal, <see cref="SettingsInBackups.Refuses"/>), by variable name.
 /// </summary>
-public sealed record RestoreHere(IReadOnlyList<string> Missing, bool MissingCertain, IReadOnlyList<string> Overridden);
+public sealed record RestoreHere(IReadOnlyList<string> Missing, bool MissingCertain, IReadOnlyList<string> Overridden, IReadOnlyList<string> LogLevelsMissing)
+{
+    public static readonly RestoreHere Nothing = new([], true, [], []);
+}
 
 /// <summary>The restore that now waits for the restart: the file and the time it takes the data back to.</summary>
 public sealed record RestorePending(string File, DateTimeOffset RestorePoint);
@@ -112,7 +116,7 @@ public sealed class RestoreService(
                 else readable = false;
             }
             var overridden = file is null ? [] : settings.Overridden(file);
-            if (m.Environment is not { Settings.Count: > 0 } recorded) return new RestoreHere([], true, overridden);
+            if (m.Environment is not { Settings.Count: > 0 } recorded) return RestoreHere.Nothing with { Overridden = overridden };
             // Merged into a file that cannot be read without the passphrase: it holds every recorded setting, the secrets only when it was
             // asked to carry them. Only recorded: as if it held none, which is not certain.
             var merged = !readable && recorded.Mode == BackupEnvironmentMode.Merge;
@@ -125,11 +129,14 @@ public sealed class RestoreService(
             // Judged against the file the restore leaves, as the restore judges it (RequireRecordedAsync): this server's own secrets stay
             // where the backup carries none.
             var leaves = file is null ? null : await settings.LeavesAsync(file, m.CarriesSecrets(), ct);
-            return new RestoreHere(await settings.MissingAsync(recorded, leaves, ct), readable || merged, overridden);
+            var missing = await settings.MissingAsync(recorded, leaves, ct);
+            // A missing log level refuses nothing (SettingsInBackups.Refuses): it is a risk of its own.
+            return new RestoreHere(
+                [.. missing.Where(SettingsInBackups.Refuses)], readable || merged, overridden, [.. missing.Where(v => !SettingsInBackups.Refuses(v))]);
         }
         catch (Exception e) when (e is DomainException or IOException or UnauthorizedAccessException)
         {
-            return new RestoreHere([], true, []);
+            return RestoreHere.Nothing;
         }
     }
 
@@ -140,7 +147,7 @@ public sealed class RestoreService(
     public static async Task RequireRecordedAsync(ISettingsBackup settings, BackupManifest manifest, RestoredSettings? restored, CancellationToken ct)
     {
         if (manifest.Environment is not { } recorded) return;
-        var missing = await settings.MissingAsync(recorded, restored?.Values, ct);
+        var missing = (await settings.MissingAsync(recorded, restored?.Values, ct)).Where(SettingsInBackups.Refuses).ToList();
         if (missing.Count > 0)
             throw new DomainException("backup.environmentMissing",
                 $"The backup was made on a server whose environment set {string.Join(", ", missing)}; this server sets none of them, nor does the settings file the backup brings. Set them, then restore.",

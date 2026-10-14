@@ -21,6 +21,7 @@ fragment RestoreTargetFields on RestorePointInfo {
     settings
     missing
     missingCertain
+    logLevelsMissing
     overridden
   }
 }

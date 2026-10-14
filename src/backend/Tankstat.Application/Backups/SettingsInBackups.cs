@@ -119,8 +119,8 @@ public static class SettingsInBackups
 
     /// <summary>
     /// The settings a backup recorded (by variable name) that a restore would leave without a value: neither the settings file it leaves
-    /// (<paramref name="file"/>) holds one, nor this server's environment (<paramref name="fromEnvironment"/>). Such a restore is refused (D4):
-    /// set them first.
+    /// (<paramref name="file"/>) holds one, nor this server's environment (<paramref name="fromEnvironment"/>). Such a restore is refused (D4)
+    /// for those that <see cref="Refuses"/>: set them first.
     /// </summary>
     public static IReadOnlyList<string> Missing(BackupEnvironment recorded, IReadOnlyDictionary<string, string?> file, Func<string, bool> fromEnvironment) =>
     [
@@ -130,6 +130,13 @@ public static class SettingsInBackups
             return !file.Any(p => p.Value is not null && (p.Key.Equals(key, StringComparison.OrdinalIgnoreCase) || Under(p.Key, key))) && !fromEnvironment(key);
         }),
     ];
+
+    /// <summary>
+    /// Whether a recorded setting (by variable name) left without a value here refuses the restore: every one but the <c>Logging</c> section's
+    /// (user decision), whose levels only change what the log holds, and which a compose file often sets (<c>Logging__LogLevel__Default</c>):
+    /// it would otherwise refuse every restore elsewhere.
+    /// </summary>
+    public static bool Refuses(string variable) => !Under(KeyOf(variable), LoggingSection);
 
     /// <summary>A list item's list (<c>Auth:AdminEmails:0</c> is <c>Auth:AdminEmails</c>); any other key as it is.</summary>
     public static string ListKeyOf(string key) =>

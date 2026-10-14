@@ -63,7 +63,7 @@ public class ContractTests
     [InlineData("BackupTableInfo", "name", "rows")]
     [InlineData("BackupSizesInfo", "tables", "pictures", "photos", "keys", "archive")]
     [InlineData("BackupSettingsFileInfo", "state", "omitted", "secrets", "secretsLeftOut", "machineLeftOut", "bytes")]
-    [InlineData("BackupEnvironmentInfo", "mode", "settings", "server", "missing", "missingCertain", "overridden")]
+    [InlineData("BackupEnvironmentInfo", "mode", "settings", "server", "missing", "missingCertain", "overridden", "logLevelsMissing")]
     [InlineData("StorageSizesInfo", "database", "pictures", "photos")]
     [InlineData("BackupRunInfo", "running", "startedAt", "finishedAt", "file", "bytes", "error")]
     [InlineData("ServerFolder", "kind", "path", "setting", "variable", "sameAsPictures")]

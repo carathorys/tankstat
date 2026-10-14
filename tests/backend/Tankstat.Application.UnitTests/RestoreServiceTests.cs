@@ -279,6 +279,20 @@ public sealed class RestoreServiceTests
     }
 
     [Fact]
+    public async Task InTheList_ALogLevelThisServerLacks_IsARisk_NotARefusal()
+    {
+        var point = new RestorePoint("tankstat-backup-1.zip", 0, Plain with
+        {
+            Environment = new BackupEnvironment(BackupEnvironmentMode.Record, ["Defaults__Currency", "Logging__LogLevel__Default"], []),
+        });
+
+        var here = await RestoreService.HereAsync(new OneBackup(), new ThisServer(new Dictionary<string, string?>()), point, default);
+
+        Assert.Equal(["Defaults__Currency"], here.Missing);
+        Assert.Equal(["Logging__LogLevel__Default"], here.LogLevelsMissing);
+    }
+
+    [Fact]
     public async Task InTheList_ABackupWhoseFileCannotBeRead_LacksNothing_ItsRestoreSaysWhy()
     {
         var point = Listed(BackupEnvironmentMode.Record, BackupSettingsState.Included);
@@ -287,6 +301,18 @@ public sealed class RestoreServiceTests
         Assert.Empty(await MissingHere(new OneBackup { ReadFailure = new DomainException("backup.corrupt", "Damaged.") }, settings, point, default));
         Assert.Empty(await MissingHere(new OneBackup { ReadFailure = new FileNotFoundException("Gone since the list.") }, settings, point, default));
         Assert.Empty(await MissingHere(new OneBackup { ReadFailure = new UnauthorizedAccessException() }, settings, point, default));
+    }
+
+    [Fact]
+    public async Task ALogLevelTheBackupsServerSetInItsEnvironment_ThatThisServerLacks_DoesNotRefuseTheRestore()
+    {
+        var (w, store, service) = Admin(new OneBackup { Recorded = new BackupEnvironment(BackupEnvironmentMode.Record, ["Logging__LogLevel__Default"], []) },
+            new JudgedSettings { Missing = ["Logging__LogLevel__Default"] });
+
+        await service.RequestAsync(new RestoreRequest("tankstat-backup-1.zip", null, null, null), default);
+
+        Assert.NotNull(store.Marker);
+        Assert.Equal(1, w.Restart.Count);
     }
 
     [Fact]

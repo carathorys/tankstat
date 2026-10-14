@@ -38,7 +38,7 @@ const point = (o: Record<string, unknown> = {}) => ({
   heldSince: null as string | null,
   // A backup of this release with nothing to warn about: its settings file in, nothing its server's environment set missing here.
   settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', secrets: true, secretsLeftOut: [] } as Record<string, unknown> | null,
-  environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: [], missing: [], missingCertain: true, overridden: [] } as Record<string, unknown> | null,
+  environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: [], missing: [], missingCertain: true, logLevelsMissing: [], overridden: [] } as Record<string, unknown> | null,
   ...o,
 })
 
@@ -497,7 +497,7 @@ it('says in a row and in its restore dialog what a backup brings and what it can
     points: [
       point({
         settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', secrets: false, secretsLeftOut: ['Smtp:Password'] },
-        environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: ['Auth__Mode', 'Smtp__Host'], missing: ['Smtp__Host'], missingCertain: true, overridden: [] },
+        environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: ['Auth__Mode', 'Smtp__Host'], missing: ['Smtp__Host'], missingCertain: true, logLevelsMissing: [], overridden: [] },
       }),
       point({ file: 'tankstat-backup-20260101T000000Z.zip', createdAt: '2026-01-01T00:00:00Z', settingsFile: null, environment: null }), // an older release's: neither
       point({
@@ -505,7 +505,7 @@ it('says in a row and in its restore dialog what a backup brings and what it can
         file: 'tankstat-backup-20260202T000000Z.zip',
         createdAt: '2026-02-02T00:00:00Z',
         settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'NONE', secrets: false, secretsLeftOut: [] },
-        environment: { __typename: 'BackupEnvironmentInfo', mode: 'MERGE', settings: ['Smtp__Password'], missing: [], missingCertain: true, overridden: [] },
+        environment: { __typename: 'BackupEnvironmentInfo', mode: 'MERGE', settings: ['Smtp__Password'], missing: [], missingCertain: true, logLevelsMissing: [], overridden: [] },
       }),
     ],
   })

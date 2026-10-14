@@ -210,6 +210,8 @@ internal static class BackupCommands
             output.WriteLine($"Its server's environment set {string.Join(", ", recorded.Settings)} ({(recorded.Mode == BackupEnvironmentMode.Merge && manifest.Settings is { State: BackupSettingsState.Included } ? "merged into its settings file" : "recorded by name only")}).");
             if (here.Missing.Count > 0)
                 output.WriteLine($"This server sets none of {string.Join(", ", here.Missing)}: the restore is refused until they are set{(here.MissingCertain ? "" : " (unless the backup's encrypted settings file holds them)")}.");
+            if (here.LogLevelsMissing.Count > 0)
+                output.WriteLine($"RISK: this server sets none of the log levels {string.Join(", ", here.LogLevelsMissing)}: the log holds what this server's levels say.");
         }
         else if (manifest.Environment is null) output.WriteLine("RISK: it says nothing of its server's environment (an older release wrote it): settings its server set there may be missing here.");
         if (manifest.Settings is not { State: BackupSettingsState.Included })

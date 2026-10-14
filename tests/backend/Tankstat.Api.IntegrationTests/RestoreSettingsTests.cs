@@ -200,6 +200,26 @@ public sealed class RestoreSettingsTests : IDisposable
     }
 
     [Fact]
+    public async Task ALogLevelTheBackupsServerSetInItsEnvironment_DoesNotRefuseARestoreWhereItHasNoValue()
+    {
+        // A compose file often sets Logging__LogLevel__Default: a server without it still restores (user decision), only what the log holds differs.
+        string backup;
+        using (var a = Host("a", "None", file: null, new() { ["Logging:LogLevel:Default"] = "Warning" }))
+        {
+            var written = await Backup(a);
+            Assert.Contains("Logging__LogLevel__Default", written.Manifest.Environment!.Settings);
+            backup = written.Path;
+        }
+        using var b = Host("b", "None", file: null);
+        Stage(Folder("b-backups"), backup);
+
+        _ = b.Factory.Services;
+
+        Assert.Empty(Directory.GetFiles(Folder("b-backups"), "restore.refused.*"));
+        Assert.False(File.Exists(RestoreMarker.PathIn(Folder("b-backups"))));
+    }
+
+    [Fact]
     public async Task AMergedBackup_CarriesTheEnvironmentsSettingsInItsFile_ButNoSecretInPlain_WhichTheRestoredServerMustThenSet()
     {
         string backup;
@@ -311,6 +331,25 @@ public sealed class RestoreSettingsTests : IDisposable
         // Its file cannot be read without the passphrase, but it merged everything except the secret, which it was not asked to carry.
         Assert.Equal(["Smtp__Password"], environment.GetProperty("missing").EnumerateArray().Select(n => n.GetString()));
         Assert.True(environment.GetProperty("missingCertain").GetBoolean());
+    }
+
+    [Fact]
+    public async Task ALogLevelThisServerLacks_IsListedAsARisk_NotAsMissing()
+    {
+        var admin = new Dictionary<string, string?> { ["Auth:Standalone:AdminEmail"] = TestApp.AdminEmail, ["Auth:Standalone:AdminPassword"] = TestApp.AdminPassword };
+        string backup;
+        using (var a = Host("a", "Standalone", file: null, new(admin) { ["Logging:LogLevel:Default"] = "Warning" }))
+            backup = (await Backup(a)).Path;
+        using var b = Host("b", "Standalone", file: null, admin);
+        Stage(Folder("b-backups"), backup, marker: false);
+        using var client = b.NewClient();
+        await client.LoginAs(TestApp.AdminEmail, TestApp.AdminPassword);
+
+        var environment = Assert.Single((await client.Gql("{ backups { restorePoints { environment { missing logLevelsMissing } } } }"))
+            .Data().GetProperty("backups").GetProperty("restorePoints").EnumerateArray()).GetProperty("environment");
+
+        Assert.Empty(environment.GetProperty("missing").EnumerateArray());
+        Assert.Equal(["Logging__LogLevel__Default"], environment.GetProperty("logLevelsMissing").EnumerateArray().Select(n => n.GetString()));
     }
 
     [Fact]

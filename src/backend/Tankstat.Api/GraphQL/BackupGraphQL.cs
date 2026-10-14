@@ -102,11 +102,17 @@ public sealed record BackupSettingsFileInfo(BackupSettingsState State, IReadOnly
 /// The settings of the backup's file that this server's environment overrides, by variable name: its values run, not the backup's (the
 /// sign-in mode among them can leave the restored users without a way in). Empty where the file cannot be read without the passphrase.
 /// </param>
+/// <param name="LogLevelsMissing">
+/// Of <paramref name="Settings"/>, the log levels (the <c>Logging</c> section) a restore here would lack: a risk, never a refusal (they only
+/// change what the log holds), so they are not in <paramref name="Missing"/>.
+/// </param>
 public sealed record BackupEnvironmentInfo(
-    BackupEnvironmentMode Mode, IReadOnlyList<string> Settings, IReadOnlyList<string> Server, IReadOnlyList<string> Missing, bool MissingCertain, IReadOnlyList<string> Overridden)
+    BackupEnvironmentMode Mode, IReadOnlyList<string> Settings, IReadOnlyList<string> Server, IReadOnlyList<string> Missing, bool MissingCertain,
+    IReadOnlyList<string> Overridden, IReadOnlyList<string> LogLevelsMissing)
 {
     public static BackupEnvironmentInfo From(BackupEnvironment environment, RestoreHere? here) =>
-        new(environment.Mode, environment.Settings, environment.Server, here?.Missing ?? [], here?.MissingCertain ?? true, here?.Overridden ?? []);
+        new(environment.Mode, environment.Settings, environment.Server, here?.Missing ?? [], here?.MissingCertain ?? true, here?.Overridden ?? [],
+            here?.LogLevelsMissing ?? []);
 }
 
 /// <summary>Bytes of the database (null: the provider would not say), of the pictures, and of the photos when they have a folder of their own.</summary>

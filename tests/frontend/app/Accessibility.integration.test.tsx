@@ -283,7 +283,7 @@ it('the backups page, its restore and its key set dialogs are labelled, describe
     __typename: 'RestorePointInfo', file: 'tankstat-backup-20261011T080000Z.zip', bytes: 3_100_000, createdAt: '2026-10-11T08:00:00Z', appVersion: '0.13.0', provider: 'Sqlite',
     migration: 'AddInstance', sameMigration: true, olderMigration: false, safetyNet: false, uploaded: false, encrypted: true, recipient: 'age1abc', currentRecipient: true, photos: 'SEPARATE', keys: true, rows: 120,
     settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', secrets: true, secretsLeftOut: [] },
-    environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: ['Auth__Mode', 'Smtp__Host'], missing: ['Smtp__Host'], missingCertain: true, overridden: [] },
+    environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: ['Auth__Mode', 'Smtp__Host'], missing: ['Smtp__Host'], missingCertain: true, logLevelsMissing: [], overridden: [] },
   }
   server.use(
     graphql.query('Backups', () =>
@@ -328,7 +328,7 @@ it('a held backup in its row, and a backup opened, are labelled and free of viol
     migration: 'AddInstance', sameMigration: true, olderMigration: false, safetyNet: false, uploaded: false, encrypted: false, recipient: null, currentRecipient: false, photos: 'SEPARATE', keys: false, rows: 120,
     held: true, heldSince: '2026-10-12T08:00:00Z',
     settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', secrets: true, secretsLeftOut: [] },
-    environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: [], missing: [], missingCertain: true, overridden: [] },
+    environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: [], missing: [], missingCertain: true, logLevelsMissing: [], overridden: [] },
   }
   server.use(
     graphql.query('Backups', () =>
