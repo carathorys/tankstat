@@ -264,6 +264,28 @@ it('a refused save lists what the server could not take and keeps the form', asy
   expect(defaults.getByLabelText('Currency')).toHaveValue('HUFX')
 })
 
+it('a problem of a setting of the group is said at its field, not under the form, and the field takes the focus', async () => {
+  const ui = userEvent.setup()
+  settingsServer()
+  const problem = 'Auth:PublicUrl is required when Smtp is configured (it is used in e-mailed links).'
+  server.use(
+    graphql.mutation('UpdateSystemSettings', () =>
+      HttpResponse.json(gqlError(`The settings cannot be used as they are: ${problem}`, 'VALIDATION_FAILED', 'settings.invalid', { problems: [problem] })),
+    ),
+  )
+  renderWithApollo(<App />, '/admin/settings')
+
+  const auth = await group('Sign-in')
+  const url = auth.getByRole('textbox', { name: /^Public address/ })
+  await ui.click(auth.getByLabelText(/^Administrators may set passwords/)) // a change to save; the server names another setting of the group
+  await ui.click(auth.getByRole('button', { name: 'Save changes' }))
+
+  await waitFor(() => expect(url).toHaveAccessibleDescription(expect.stringContaining(problem)))
+  expect(url).toHaveAttribute('aria-invalid', 'true')
+  expect(url).toHaveFocus()
+  expect(auth.queryByRole('alert')).not.toBeInTheDocument() // said once, at the field
+})
+
 it('changing the sign-in mode asks once more and says the way back', async () => {
   const ui = userEvent.setup()
   const calls = settingsServer(fixture({ modeEditable: true }))

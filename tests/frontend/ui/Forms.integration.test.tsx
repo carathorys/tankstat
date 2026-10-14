@@ -1,11 +1,13 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
+import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { expect, it, vi } from 'vitest'
 import { Field, FieldMessage } from '../../../src/frontend/forms/Field.tsx'
 import { FieldDate } from '../../../src/frontend/forms/FieldDate.tsx'
 import { FieldInput } from '../../../src/frontend/forms/FieldInput.tsx'
 import { Form } from '../../../src/frontend/forms/Form.tsx'
+import { ErrorMessage } from '../../../src/frontend/messages.tsx'
 import { ThemeRoot } from '../../../src/frontend/theme/ThemeRoot.tsx'
 import { dateValue, findDateField, typeDate } from '../support/dates.ts'
 
@@ -195,4 +197,26 @@ it('a message goes away when the value is put right without typing (a photo, a c
 
   await waitFor(() => expect(screen.queryByText('Volume is required')).not.toBeInTheDocument())
   expect(screen.getByLabelText('Volume')).not.toHaveAttribute('aria-invalid', 'true')
+})
+
+it('a refusal of the server about one field (a required value) is said at that field, which takes the focus, not under the form', async () => {
+  const refusal = new CombinedGraphQLErrors({ errors: [{ message: 'A chart needs a title.', extensions: { code: 'VALIDATION_FAILED', key: 'chart.titleRequired' } }] })
+  const form = (error?: unknown) => (
+    <ThemeRoot>
+      <Form onSubmit={(e) => e.preventDefault()} refusal={error}>
+        <Field name="title" label="Title">
+          <FieldInput />
+        </Field>
+        {error !== undefined && <ErrorMessage error={error} />}
+      </Form>
+    </ThemeRoot>
+  )
+  const { rerender } = render(form())
+  rerender(form(refusal)) // the server's answer to the submit
+
+  const title = screen.getByRole('textbox', { name: 'Title' })
+  expect(title).toHaveAccessibleDescription('The chart needs a title.')
+  expect(title).toHaveAttribute('aria-invalid', 'true')
+  await waitFor(() => expect(title).toHaveFocus())
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })

@@ -280,7 +280,7 @@ function DoneFields({
   }
 
   return (
-    <Form onSubmit={submit}>
+    <Form onSubmit={submit} refusal={error}>
       <Stack sx={{ gap: 1.5 }}>
         <Box component="fieldset" sx={{ border: 0, p: 0, m: 0, minWidth: 0 }}>
           <Typography component="legend" variant="body2" sx={{ fontWeight: 700, p: 0, mb: 0.5 }}>

@@ -112,7 +112,7 @@ function RestoreForm({
   }
 
   return (
-    <Form onSubmit={(e) => void submit(e)}>
+    <Form onSubmit={(e) => void submit(e)} refusal={error}>
       <Stack sx={{ gap: 1.5 }}>
         {point.encrypted && (
           <>

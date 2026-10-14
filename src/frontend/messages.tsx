@@ -1,12 +1,16 @@
 import Alert from '@mui/material/Alert'
 import { AlertTriangle, CircleCheck, CircleX, CloudOff } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useContext, type ReactNode } from 'react'
+import { FormContext } from './forms/formContext.ts'
 import { useErrorText } from './i18n/errors.ts'
 import { OfflineError } from './offline/errors.ts'
 
 /** Pass a caught/Apollo `error` (translated by its error key) or plain `children`. */
 export function ErrorMessage({ error, children }: { error?: unknown; children?: ReactNode }) {
   const errorText = useErrorText()
+  // A refusal about one field of the form is said at that field (`Form`'s `refusal`): not twice.
+  const form = useContext(FormContext)
+  if (form?.says(error)) return null
   // Not sent because the server is out of reach: a calm note, not an alarm (the top bar says offline; what was loaded stays).
   if (error instanceof OfflineError && children === undefined)
     return (

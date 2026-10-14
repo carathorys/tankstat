@@ -30,7 +30,7 @@ import { useToast } from '../toast/toastContext.ts'
 import { ProblemList } from './ProblemList.tsx'
 import { changesOf, daysOf, daysValue, isOn, WEEK, type GroupDraft } from './settingsDraft.ts'
 import { SettingHelp } from './SettingHelp.tsx'
-import { problemsOf } from './settingsText.ts'
+import { problemsByKey, problemsOf } from './settingsText.ts'
 import { sharedReason, unusedReason, type Unused, type ValueOf } from './settingsRelevance.ts'
 import { layoutOf, type SectionId } from './settingsSections.ts'
 import { useSettingLabel, useUnusedText } from './useUnusedText.ts'
@@ -112,6 +112,20 @@ export function SettingsGroupForm({
 
   const label = (s: Setting) => settingLabel(s.key)
   const editable = group.settings.filter((s) => s.editable)
+  // A refused save's problems at the controls they name (a switch or the days have no place for one: said under the form, as is what names
+  // a setting the environment holds, which cannot be changed here).
+  const { byKey: problemAt, rest: otherProblems } = problemsByKey(
+    problems,
+    editable.filter((s) => s.kind !== 'BOOLEAN' && s.kind !== 'DAYS').map((s) => s.key),
+  )
+  const form = useRef<HTMLFormElement>(null)
+  useEffect(() => {
+    const first = editable.find((s) => problemAt.has(s.key))
+    if (!first) return
+    if (focusers.current.has(first.key)) focusers.current.get(first.key)!.focus()
+    else form.current?.querySelector<HTMLElement>(`[name="${CSS.escape(first.key)}"]`)?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per refusal
+  }, [error])
   const changes = changesOf(group.settings, draft)
   const layout = layoutOf(group.name, group.settings)
   // Which sections are open: as the person left them, else open while used and closed while not (so a choice that leaves one unused folds it).
@@ -167,6 +181,7 @@ export function SettingsGroupForm({
               reason={reasonOf(s, section)}
               required={required.includes(s.key)}
               missing={missing.has(s.key)}
+              problem={problemAt.get(s.key)}
               selectRef={(handle) => {
                 if (handle) focusers.current.set(s.key, handle)
                 else focusers.current.delete(s.key)
@@ -290,17 +305,19 @@ export function SettingsGroupForm({
       )}
       {editable.length === 0 && body}
       {editable.length > 0 && (
-        <Form onSubmit={submit} aria-label={t('systemSettings.groupForm', { group: t(`systemSettings.groups.${group.name}`) })}>
+        <Form ref={form} onSubmit={submit} aria-label={t('systemSettings.groupForm', { group: t(`systemSettings.groups.${group.name}`) })}>
           <Stack sx={{ gap: 1.5 }}>
             {body}
             {error !== undefined &&
-              (problems.length > 0 ? (
-                <ErrorMessage error={error}>
-                  {t('systemSettings.problems')}
-                  <ProblemList problems={problems} />
-                </ErrorMessage>
-              ) : (
+              (problems.length === 0 ? (
                 <ErrorMessage error={error} />
+              ) : (
+                otherProblems.length > 0 && (
+                  <ErrorMessage error={error}>
+                    {t('systemSettings.problems')}
+                    <ProblemList problems={otherProblems} />
+                  </ErrorMessage>
+                )
               ))}
             <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
               {actions}
@@ -391,6 +408,7 @@ function SettingControl({
   reason,
   required,
   missing,
+  problem,
   selectRef,
   onChange,
   onClear,
@@ -403,6 +421,7 @@ function SettingControl({
   reason: string | null
   required: boolean
   missing: boolean
+  problem: string | undefined
   selectRef: Ref<{ focus: () => void }>
   onChange: (value: string) => void
   onClear: (clear: boolean) => void
@@ -420,6 +439,7 @@ function SettingControl({
           reason={reason}
           required={required}
           missing={missing}
+          problem={problem}
           selectRef={selectRef}
           onChange={onChange}
           onClear={onClear}
@@ -439,6 +459,7 @@ function Control({
   reason,
   required,
   missing,
+  problem,
   selectRef,
   onChange,
   onClear,
@@ -452,6 +473,8 @@ function Control({
   /** A choice that must be made: no "Default (not set)", an empty one waits for the person (`missing`: the submit found it empty). */
   required: boolean
   missing: boolean
+  /** What the server refused about the value at the last save, said at the control. */
+  problem: string | undefined
   selectRef: Ref<{ focus: () => void }>
   onChange: (value: string) => void
   onClear: (clear: boolean) => void
@@ -486,7 +509,7 @@ function Control({
           disabled={unused}
           onChange={onChange}
           options={options}
-          error={missing ? t('systemSettings.choiceRequired') : undefined}
+          error={missing ? t('systemSettings.choiceRequired') : problem}
           selectRef={selectRef}
         />
       )
@@ -496,7 +519,7 @@ function Control({
     case 'SECRET':
       return (
         <Stack sx={{ gap: 0.5 }}>
-          <Field name={s.key} label={label} badges={badges} hint={[s.isSet ? t('systemSettings.secretSet') : t('systemSettings.secretNotSet'), hint].filter(Boolean).join(' · ')}>
+          <Field name={s.key} label={label} badges={badges} refusal={problem} hint={[s.isSet ? t('systemSettings.secretSet') : t('systemSettings.secretNotSet'), hint].filter(Boolean).join(' · ')}>
             <FieldInput type="password" autoComplete="new-password" value={value} disabled={cleared || unused} onChange={(e) => onChange(e.target.value)} />
           </Field>
           {s.isSet && (
@@ -513,6 +536,7 @@ function Control({
           label={label}
           badges={badges}
           hint={hint}
+          refusal={problem}
           invalid={{ message: t(integer ? 'systemSettings.wholeNumber' : 'forms.numberInvalid'), test: (v) => v.trim() !== '' && !(integer ? /^-?\d+$/ : /^-?\d+([.,]\d+)?$/).test(v.trim()) }}
         >
           <FieldInput inputMode={integer ? 'numeric' : 'decimal'} value={value} disabled={unused} onChange={(e) => onChange(e.target.value)} />
@@ -522,13 +546,13 @@ function Control({
     case 'MULTILINE':
     case 'LIST':
       return (
-        <Field name={s.key} label={label} badges={badges} hint={hint}>
+        <Field name={s.key} label={label} badges={badges} hint={hint} refusal={problem}>
           <FieldInput multiline minRows={3} value={value} disabled={unused} onChange={(e) => onChange(e.target.value)} />
         </Field>
       )
     default:
       return (
-        <Field name={s.key} label={label} badges={badges} hint={hint}>
+        <Field name={s.key} label={label} badges={badges} hint={hint} refusal={problem}>
           <FieldInput value={value} disabled={unused} onChange={(e) => onChange(e.target.value)} />
         </Field>
       )

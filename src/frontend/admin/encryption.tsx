@@ -103,7 +103,7 @@ function KeySetForm({ replacing, refresh, onLock }: { replacing: boolean; refres
   }
 
   return (
-    <Form onSubmit={(e) => void submit(e)}>
+    <Form onSubmit={(e) => void submit(e)} refusal={error}>
       <Stack sx={{ gap: 1.5 }}>
         {replacing && <WarningMessage>{t('admin.backups.keysReplacing')}</WarningMessage>}
         <Field name="passphrase" label={t('admin.backups.newPassphrase')} hint={t('admin.backups.newPassphraseHint')}>
