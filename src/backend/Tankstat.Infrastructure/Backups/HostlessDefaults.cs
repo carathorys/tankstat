@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Backups;
+using Tankstat.Application.SystemSettings;
 
 namespace Tankstat.Infrastructure.Backups;
 
@@ -18,3 +19,10 @@ internal sealed class NoSettingsBackup(IOptions<AuthOptions> auth) : ISettingsBa
     public Task WriteAsync(IReadOnlyDictionary<string, string?> values, CancellationToken ct) => Task.CompletedTask;
 }
 
+/// <summary>A host without the restart loop of Program.cs (a test of the backups alone, a tool): nothing to restart. The Api registers the real one first.</summary>
+internal sealed class NoServerRestart : IServerRestart
+{
+    public void Restart() { }
+
+    public void RestartNow() { }
+}

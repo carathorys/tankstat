@@ -201,6 +201,9 @@ internal static class BackupCommands
         }
         var identity = identityFile is not null ? IdentityLine(identityFile) : null;
         var opened = store.IdentityFor(manifest, passphrase ? Passphrase(input) : null, identity); // refused here when it does not open
+        // The settings the restore leaves must let the server start, as the app refuses it before a restart: refused before the marker.
+        await RestoreService.RequireStartableAsync(store, services.GetRequiredService<ISettingsBackup>(), services.GetRequiredService<ISystemConfiguration>(),
+            file, manifest, opened, CancellationToken.None);
         store.RequestRestore(new RestoreMarker(file, Guid.Empty, DateTimeOffset.UtcNow, opened));
         if (!now)
         {

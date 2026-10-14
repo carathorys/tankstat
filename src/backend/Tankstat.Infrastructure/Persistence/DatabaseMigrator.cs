@@ -23,8 +23,18 @@ internal sealed class DatabaseMigrator(
     /// <summary>The migration that added the stored consumption: logs that already existed get theirs calculated once, right after it ran.</summary>
     private const string ConsumptionMigration = "_AddRefuelingConsumption";
 
+    /// <summary>Done for this host already, before it started (<see cref="StartupSteps.ApplyBeforeHostAsync"/>): the host's start skips it once.</summary>
+    private bool _skipNext;
+
+    internal void SkipNextStart() => _skipNext = true;
+
     public async Task StartAsync(CancellationToken ct)
     {
+        if (_skipNext)
+        {
+            _skipNext = false;
+            return;
+        }
         BackupWriter.RemoveStalePartials(store.Folder, logger);
         var restored = await restore.ApplyWaitingAsync(ct);
         await MigrateAsync(ct, backupFirst: restored is RestoreOutcome.None or RestoreOutcome.Refused);

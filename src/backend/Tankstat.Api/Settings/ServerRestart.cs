@@ -67,4 +67,11 @@ internal sealed class ServerRestart(RestartRequests requests, IHostApplicationLi
             lifetime.StopApplication();
         });
     }
+
+    public void RestartNow()
+    {
+        requests.Request();
+        logger.LogInformation("Restarting the server at once: this start wrote the settings file, which the next one reads");
+        throw new ServerRestartException();
+    }
 }

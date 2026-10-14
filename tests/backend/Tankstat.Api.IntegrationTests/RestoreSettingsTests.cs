@@ -1,0 +1,177 @@
+using System.Text;
+using System.Text.Json.Nodes;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Tankstat.Application.Backups;
+using Tankstat.Domain.Backups;
+using Tankstat.Infrastructure.Backups;
+
+namespace Tankstat.Api.IntegrationTests;
+
+/// <summary>
+/// The settings file goes into every backup and comes back with a restore (#140): written back over this server's file (kept as
+/// <c>.bak</c>), keeping this machine's own keys and the passwords a plain backup cannot bring, and judged before anything changes as the
+/// server would run with it, here and now: its sign-in decides whether the backup needs an administrator. The in-memory settings of a test
+/// host rank as the environment, so a host whose sign-in should come from its file leaves <c>Auth:Mode</c> out of them; then nothing in the
+/// process's environment may set it (<see cref="ApiFixture"/> sets <c>Auth__Mode</c> while its tests run), so these run on their own.
+/// </summary>
+[Collection(AloneCollection.Name)]
+public sealed class RestoreSettingsTests : IDisposable
+{
+    private const string Restore = "mutation($i: RestoreBackupInput!) { restoreBackup(input: $i) { file } }";
+
+    private readonly string _root = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-restore-settings");
+    private string Folder(string name) => Path.Combine(_root, name);
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
+    }
+
+    /// <summary>A host with folders of its own, its settings file written before it is built, its sign-in from <paramref name="mode"/> (none: from the file).</summary>
+    private TestApp Host(string name, string? mode, string? file, Dictionary<string, string?>? extra = null)
+    {
+        var settings = new Dictionary<string, string?>
+        {
+            ["Backups:Path"] = Folder(name + "-backups"),
+            ["Storage:Path"] = Folder(name + "-uploads"),
+            ["Storage:PhotosPath"] = Folder(name + "-photos"),
+            ["DataProtection:KeysPath"] = Folder(name + "-keys"),
+        };
+        if (mode is not null) settings["Auth:Mode"] = mode;
+        else if (new ConfigurationBuilder().AddEnvironmentVariables().Build()["Auth:Mode"] is not null)
+            throw new InvalidOperationException("Auth__Mode is set in the test process's environment: it would win over the host's settings file, which this test is about.");
+        foreach (var (key, value) in extra ?? []) settings[key] = value;
+        var app = new TestApp(settings);
+        if (file is not null) File.WriteAllText(app.SettingsPath, file); // read as the host is built
+        return app;
+    }
+
+    private static Task<BackupResult> Backup(TestApp app) => app.Factory.Services.GetRequiredService<IBackupWriter>().WriteAsync(new BackupRequest(), default);
+
+    /// <summary>A backup put into another host's folder, with the marker that asks for it at its start (as the mutation or the command writes it).</summary>
+    private static void Stage(string folder, string backup, string? identity = null, bool marker = true)
+    {
+        Directory.CreateDirectory(folder);
+        File.Copy(backup, Path.Combine(folder, Path.GetFileName(backup)));
+        if (marker) new RestoreMarker(Path.GetFileName(backup), Guid.Empty, DateTimeOffset.UtcNow, identity).Write(folder);
+    }
+
+    private static JsonNode Json(string path) => JsonNode.Parse(File.ReadAllText(path))!;
+
+    [Fact]
+    public async Task ARestore_WritesTheBackupsSettingsFile_KeepsTheOldOneAsBak_AndThisMachinesOwnKeysAndPasswords_ThenRestartsAtOnce()
+    {
+        string backup;
+        using (var a = Host("a", "None", """{ "Defaults": { "Currency": "XYZ" }, "Smtp": { "Password": "zzzz-a-password" }, "Storage": { "Path": "/a/own" } }"""))
+        {
+            var written = await Backup(a);
+            Assert.Equal(BackupSettingsState.Included, written.Manifest.Settings!.State);
+            Assert.Equal(["Smtp:Password", "Storage:Path"], written.Manifest.Settings.Omitted); // a plain backup: no secret, and never the machine's own
+            backup = written.Path;
+        }
+        var bFile = """{ "Defaults": { "Currency": "EUR" }, "Smtp": { "Password": "b-password" }, "Storage": { "Path": "/b/own" } }""";
+        using var b = Host("b", "None", bFile);
+        Stage(Folder("b-backups"), backup);
+
+        _ = b.Factory.Services; // the start restores
+
+        var restored = Json(b.SettingsPath);
+        Assert.Equal("XYZ", (string?)restored["Defaults"]!["Currency"]);
+        Assert.Equal("b-password", (string?)restored["Smtp"]!["Password"]); // this server's: the plain backup had none to bring
+        Assert.Equal("/b/own", (string?)restored["Storage"]!["Path"]); // this machine's folder
+        Assert.Equal(bFile, File.ReadAllText(b.SettingsPath + ".bak"));
+        Assert.Equal(1, b.Restarts.NowCount); // the next start reads it; nothing after the restore ran under the old file in a real process
+        Assert.False(File.Exists(RestoreMarker.PathIn(Folder("b-backups"))));
+        Assert.False(b.Log.Mentions("zzzz-a-password"));
+    }
+
+    [Fact]
+    public async Task AnEncryptedBackup_BringsItsSecretsBack()
+    {
+        var salt = Encoding.ASCII.GetBytes("tankstat-salt-01");
+        var identity = BackupKeys.Identity("correct horse battery staple", salt, Argon2idParameters.Default);
+        var encryption = new Dictionary<string, string?>
+        {
+            ["Backups:Encryption:Recipient"] = AgeKeys.FormatRecipient(BackupKeys.Recipient(identity)),
+            ["Backups:Encryption:Salt"] = Convert.ToBase64String(salt),
+        };
+        string backup;
+        using (var a = Host("a", "None", """{ "Smtp": { "Password": "zzzz-a-password" } }""", encryption))
+            backup = (await Backup(a)).Path;
+        using var b = Host("b", "None", """{ "Smtp": { "Password": "b-password" } }""");
+        Stage(Folder("b-backups"), backup, AgeKeys.FormatIdentity(identity));
+
+        _ = b.Factory.Services;
+
+        Assert.Equal("zzzz-a-password", (string?)Json(b.SettingsPath)["Smtp"]!["Password"]);
+        Assert.False(b.Log.Mentions("zzzz-a-password"));
+    }
+
+    /// <summary>A backup of an instance without users, whose settings file says Standalone (its sign-in held off by the environment).</summary>
+    private async Task<string> StandaloneFileWithoutAnAdministrator()
+    {
+        using var a = Host("a", "None", """{ "Auth": { "Mode": "Standalone" } }""");
+        return (await Backup(a)).Path;
+    }
+
+    [Fact]
+    public async Task AStandaloneSettingsFile_RestoredOnAServerWithoutCredentials_NeedsAnAdministratorInTheBackup_AndIsRefusedWithEverythingAsItWas()
+    {
+        var backup = await StandaloneFileWithoutAnAdministrator();
+        var bFile = """{ "Auth": { "Mode": "None" } }""";
+        using var b = Host("b", mode: null, bFile); // its sign-in from its own file, which the restore would replace
+        Stage(Folder("b-backups"), backup);
+
+        _ = b.Factory.Services;
+
+        Assert.Single(Directory.GetFiles(Folder("b-backups"), "restore.refused.*"));
+        Assert.Equal(bFile, File.ReadAllText(b.SettingsPath));
+        Assert.Equal(0, b.Restarts.NowCount);
+        Assert.Contains(b.Log.Entries, e => e.Values.TryGetValue("Reason", out var r) && (string?)r == "settings.standaloneNeedsAdministrator");
+    }
+
+    [Fact]
+    public async Task AStandaloneSettingsFile_IsRestored_WhereTheBootstrapCredentialsCanMakeTheAdministrator()
+    {
+        var backup = await StandaloneFileWithoutAnAdministrator();
+        using var b = Host("b", mode: null, """{ "Auth": { "Mode": "None" } }""", new()
+        {
+            ["Auth:Standalone:AdminEmail"] = TestApp.AdminEmail,
+            ["Auth:Standalone:AdminPassword"] = TestApp.AdminPassword,
+        });
+        Stage(Folder("b-backups"), backup);
+
+        _ = b.Factory.Services;
+
+        Assert.Equal("Standalone", (string?)Json(b.SettingsPath)["Auth"]!["Mode"]);
+        Assert.Equal(1, b.Restarts.NowCount);
+    }
+
+    [Fact]
+    public async Task ARestoreRequest_IsRefusedWhenThisServerWouldNotStartWithTheBackupsSettingsFile_AndNothingIsWritten()
+    {
+        // A complete OIDC sign-in in its file (its environment keeps it at None, so it runs here without the provider); a plain backup leaves
+        // the client secret out, and this server has none of its own.
+        string backup;
+        using (var a = Host("a", "None", """{ "Auth": { "Mode": "Oidc", "Oidc": { "Authority": "https://id.example.com", "ClientId": "tankstat", "ClientSecret": "zzzz-client-secret" } } }"""))
+            backup = (await Backup(a)).Path;
+        using var b = Host("b", mode: null, """{ "Auth": { "Mode": "Standalone", "Standalone": { "AdminEmail": "root@example.com", "AdminPassword": "initial-password-1" } } }""");
+        Stage(Folder("b-backups"), backup, marker: false);
+        using var client = b.NewClient();
+        await client.LoginAs(TestApp.AdminEmail, TestApp.AdminPassword);
+
+        var refused = await client.Gql(Restore, new { i = new { file = Path.GetFileName(backup) } });
+
+        Assert.Equal("backup.settingsRefused", refused.ErrorKey()); // Oidc without its client secret: the next start would stop
+        Assert.False(File.Exists(RestoreMarker.PathIn(Folder("b-backups"))));
+        Assert.Equal(0, b.Restarts.Count);
+    }
+}
+
+/// <summary>Tests that must not run beside any other (a host's settings depend on the process's environment, which <see cref="ApiFixture"/> changes): after the others, one at a time.</summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class AloneCollection
+{
+    public const string Name = "Alone";
+}
