@@ -67,8 +67,10 @@ public static class BackupFile
         {
             using var zip = ZipFile.OpenRead(path);
             var entry = zip.GetEntry(settings.Entry!) ?? throw NotABackup();
+            // A settings file is a few kilobytes: an entry far larger is no backup's, and is never read into memory whole.
+            if (entry.Length > MaxSettingsBytes) throw NotABackup();
             using var stored = new MemoryStream();
-            using (var data = entry.Open()) data.CopyTo(stored);
+            using (var data = entry.Open()) CopyAtMost(data, stored, MaxSettingsBytes);
             RequireSettingsChecksum(SHA256.HashData(stored.ToArray()), settings);
             stored.Position = 0;
             using var plain = manifest.Encryption is null ? stored : AgeStream.Decrypt(stored, identity!, leaveOpen: true);
@@ -80,6 +82,23 @@ public static class BackupFile
         catch (Exception e) when (e is InvalidDataException or FormatException or JsonException or CryptographicException)
         {
             throw NotABackup();
+        }
+    }
+
+    /// <summary>The most a backup's settings entry may hold, as stored.</summary>
+    private const int MaxSettingsBytes = 1024 * 1024;
+
+    /// <summary>Copies <paramref name="source"/>, refusing it as no backup once it holds more than <paramref name="limit"/> bytes (whatever its header said).</summary>
+    private static void CopyAtMost(Stream source, Stream target, int limit)
+    {
+        var buffer = new byte[81920];
+        long total = 0;
+        int read;
+        while ((read = source.Read(buffer)) > 0)
+        {
+            total += read;
+            if (total > limit) throw NotABackup();
+            target.Write(buffer, 0, read);
         }
     }
 

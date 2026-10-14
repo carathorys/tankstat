@@ -19,6 +19,14 @@ internal sealed class SystemConfiguration(SettingsFile file, IConfiguration runn
 
     public SettingsFileStatus File => file.Status;
 
+    public bool FileInUse
+    {
+        get
+        {
+            lock (_applying) return FileIndex >= 0;
+        }
+    }
+
     public IConfiguration Running => running;
 
     /// <summary>

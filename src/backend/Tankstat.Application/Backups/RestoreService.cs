@@ -4,7 +4,6 @@ using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Setup;
 using Tankstat.Application.SystemSettings;
-using Tankstat.Domain;
 
 namespace Tankstat.Application.Backups;
 
@@ -63,11 +62,7 @@ public sealed class RestoreService(
     {
         if (store.ReadSettings(file, manifest, identity) is { } fromBackup)
         {
-            var restored = await settings.RestoredAsync(fromBackup, manifest.Encryption is not null, ct);
-            if (restored.Problems.Count > 0)
-                throw new DomainException("backup.settingsRefused",
-                    $"The server would not start with the settings file this backup brings ({string.Join(" ", restored.Problems)}), so it is not restored.",
-                    new { restored.Problems });
+            await settings.RequireRestorableAsync(fromBackup, manifest.Encryption is not null, ct);
             return;
         }
         using var next = configuration.PrepareNextStart();

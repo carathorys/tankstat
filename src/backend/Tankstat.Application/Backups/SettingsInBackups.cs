@@ -1,5 +1,6 @@
 using Tankstat.Application.Auth;
 using Tankstat.Application.SystemSettings;
+using Tankstat.Domain;
 
 namespace Tankstat.Application.Backups;
 
@@ -91,4 +92,23 @@ public interface ISettingsBackup
 
     /// <summary>Writes the restored file (the previous one kept as <c>.bak</c>).</summary>
     Task WriteAsync(IReadOnlyDictionary<string, string?> values, CancellationToken ct);
+}
+
+public static class SettingsBackupExtensions
+{
+    /// <summary>
+    /// What a restore of <paramref name="fromBackup"/> would leave (<see cref="ISettingsBackup.RestoredAsync"/>), refused as
+    /// <c>backup.settingsRefused</c> (naming the settings at fault, never a value) when this server would not start with it: the one judgement
+    /// the request and the start make alike.
+    /// </summary>
+    public static async Task<RestoredSettings> RequireRestorableAsync(
+        this ISettingsBackup settings, IReadOnlyDictionary<string, string?> fromBackup, bool encrypted, CancellationToken ct)
+    {
+        var restored = await settings.RestoredAsync(fromBackup, encrypted, ct);
+        if (restored.Problems.Count > 0)
+            throw new DomainException("backup.settingsRefused",
+                $"The server would not start with the settings file this backup brings ({string.Join(" ", restored.Problems)}), so it is not restored.",
+                new { restored.Problems });
+        return restored;
+    }
 }

@@ -66,11 +66,13 @@ internal sealed class BackupWriter(
         var partial = output + Partial;
         try
         {
-            // The settings as they are when the run starts, before the database is read: what the next start would read.
-            var settings = await settingsFile.CopyAsync(encryption is not null, ct);
             BackupManifest manifest;
             await using (file)
+            {
+                // The settings as they are when the run starts, before the database is read: what the next start would read.
+                var settings = await settingsFile.CopyAsync(encryption is not null, ct);
                 manifest = await WriteArchiveAsync(file, roots, createdAt, encryption, photos, request.SafetyNet, settings, ct);
+            }
             File.Move(partial, output);
             logger.LogInformation("Wrote backup {File}: {Tables} tables with {Rows} rows, {Bytes} bytes of files, {Encryption}",
                 Path.GetFileName(output), manifest.Contents.Tables.Count, manifest.Contents.Tables.Values.Sum(), manifest.Sizes.Pictures + manifest.Sizes.Photos,

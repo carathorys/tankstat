@@ -24,6 +24,8 @@ internal sealed class FakeSystemConfiguration : ISystemConfiguration
     /// <summary>The file's values the last save took in, or null before any: then the running configuration is the one it started with.</summary>
     public Dictionary<string, string?>? FileApplied { get; private set; }
 
+    public bool FileInUse => FileApplied is not null || File is { Exists: true, Ignored: false };
+
     public int Reloads { get; private set; }
 
     /// <summary>What taking the saved file in throws, if anything (a reader of the configuration refusing it): the file is then not taken in.</summary>
