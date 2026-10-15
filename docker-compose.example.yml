@@ -6,7 +6,7 @@
 #        mkdir -p data/app data/photos data/backups data/postgres
 #        sudo chown -R 1654:1654 data/app data/photos data/backups
 #   3. docker compose -f docker-compose.example.yml up -d, then sign in at http://localhost:8080 as ADMIN_EMAIL. Without ADMIN_EMAIL and
-#      ADMIN_PASSWORD (releases after 0.15), that address shows the setup page instead: enter the one-time code from
+#      ADMIN_PASSWORD, that address shows the setup page instead: enter the one-time code from
 #      docker compose -f docker-compose.example.yml logs app (the line "Setup is waiting"), then make the administrator or restore a backup.
 #      The e-mails the app sends (password links) land in Mailpit: http://localhost:8025.
 #
@@ -54,7 +54,7 @@ services:
       Database__ConnectionString: Host=db;Database=tankstat;Username=tankstat;Password=${POSTGRES_PASSWORD}
 
       # Sign-in: the app's own accounts. The administrator is created on the first start only (while none exists); afterwards these two
-      # are ignored, and you may remove them. Left empty (releases after 0.15), a new instance shows the setup page instead.
+      # are ignored, and you may remove them. Left empty, a new instance shows the setup page instead.
       Auth__Mode: Standalone
       Auth__Standalone__AdminEmail: ${ADMIN_EMAIL:-}
       Auth__Standalone__AdminPassword: ${ADMIN_PASSWORD:-}
@@ -66,7 +66,6 @@ services:
 
       # Backups: every night at 02:00 in TZ below, keep the newest 14. The photos go into backups too (they have a folder of their own).
       # These can also be set on the Server settings page; a variable set here wins and is shown read-only there.
-      # Backups need 0.15 or later: an older release ignores these lines without a word and writes no backups.
       Backups__Every: "02:00"
       Backups__Keep: "14"
       Backups__Photos: "true"
