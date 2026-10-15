@@ -178,7 +178,7 @@ public class ApplicationErrorKeyTests
         Assert.Equal("user.cannotDemoteSelf", (await Assert.ThrowsAsync<DomainException>(() => w.UserService.SetAdminAsync(admin.Id, false, default))).Key);
         Assert.Equal("user.cannotDisableSelf", (await Assert.ThrowsAsync<DomainException>(() => w.UserService.SetDisabledAsync(admin.Id, true, default))).Key);
         Assert.Equal("user.notFound", (await Assert.ThrowsAsync<NotFoundException>(() => w.UserService.SetAdminAsync(Guid.NewGuid(), true, default))).Key);
-        Assert.Equal("password.currentIncorrect", (await Assert.ThrowsAsync<DomainException>(() => w.Auth.ChangePasswordAsync("wrong", "new-password-123", default))).Key);
-        Assert.Equal("reset.invalid", (await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync("garbage", "new-password-123", default))).Key);
+        Assert.Equal("password.currentIncorrect", (await Assert.ThrowsAsync<DomainException>(() => w.Auth.ChangePasswordAsync("wrong", "new-password-123", "new-password-123", default))).Key);
+        Assert.Equal("reset.invalid", (await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync("garbage", "new-password-123", "new-password-123", default))).Key);
     }
 }

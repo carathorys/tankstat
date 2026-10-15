@@ -68,7 +68,7 @@ public class AccountLoggingTests
 
         await w.Auth.LoginAsync("alice@x.co", "password-123456", default);
         w.Current.SignInAs(alice);
-        await w.Auth.ChangePasswordAsync("password-123456", "new-password-1234", default);
+        await w.Auth.ChangePasswordAsync("password-123456", "new-password-1234", "new-password-1234", default);
 
         var lines = w.Log.From<AuthService>().Where(e => e.Level >= LogLevel.Information).ToList();
         Assert.Equal(2, lines.Count);
@@ -82,7 +82,7 @@ public class AccountLoggingTests
         var alice = w.AddUser("alice@x.co");
         w.Current.SignInAs(alice);
 
-        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ChangePasswordAsync("not-the-password", "new-password-1234", default));
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ChangePasswordAsync("not-the-password", "new-password-1234", "new-password-1234", default));
 
         var warning = Assert.Single(w.Log.From<AuthService>(), e => e.Level == LogLevel.Warning);
         Assert.Equal(alice.Id, warning.Values["UserId"]);
@@ -119,8 +119,8 @@ public class AccountLoggingTests
         var alice = w.AddUser("alice@x.co");
         var token = (await w.UserService.IssueResetAsync(alice.Id, default)).Token;
 
-        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync("garbage-link", "brand-new-password", default));
-        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(token.Split('.')[0] + ".not-the-secret", "brand-new-password", default));
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync("garbage-link", "brand-new-password", "brand-new-password", default));
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(token.Split('.')[0] + ".not-the-secret", "brand-new-password", "brand-new-password", default));
 
         var refused = w.Log.From<PasswordResetService>().ToList();
         Assert.Equal(["malformed link", "wrong secret"], refused.Select(e => e.Values["Reason"]));

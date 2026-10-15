@@ -87,17 +87,18 @@ export function SetPasswordDialog({
 }: {
   trigger: ReactNode
   name: string
-  onSubmit: (password: string) => Promise<unknown>
+  /** The new password and its repetition, which the server compares again. */
+  onSubmit: (password: string, confirmation: string) => Promise<unknown>
 }) {
   const { t } = useTranslation()
   return (
     <UserDialog trigger={trigger} title={t('admin.passwordTitle', { name })} description={t('admin.passwordDescription')}>
       {({ saved }) => (
         <FieldForm
-          fields={[{ name: 'password', label: 'fields.newPassword', type: 'password', autoComplete: 'new-password' }]}
+          fields={[{ name: 'password', label: 'fields.newPassword', type: 'newPassword', repeatLabel: 'fields.newPasswordRepeat' }]}
           submitLabel="admin.setPassword"
           onSubmit={async (v) => {
-            await onSubmit(v.password ?? '')
+            await onSubmit(v.password ?? '', v.passwordRepeat ?? '')
             saved()
           }}
         >

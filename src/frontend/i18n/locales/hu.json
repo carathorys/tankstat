@@ -172,6 +172,8 @@
     "password": "Jelszó",
     "currentPassword": "Jelenlegi jelszó",
     "newPassword": "Új jelszó",
+    "newPasswordRepeat": "Az új jelszó még egyszer",
+    "passwordRepeat": "A jelszó még egyszer",
     "name": "Név",
     "licensePlate": "Rendszám",
     "licensePlateOptional": "Rendszám (nem kötelező)",
@@ -843,7 +845,8 @@
     "password": {
       "tooShort": "A jelszónak legalább {{min}} karakter hosszúnak kell lennie.",
       "tooLong": "A jelszó legfeljebb {{max}} karakter hosszú lehet.",
-      "currentIncorrect": "A jelenlegi jelszó nem helyes."
+      "currentIncorrect": "A jelenlegi jelszó nem helyes.",
+      "mismatch": "A két beírás nem egyezik."
     },
     "reset": {
       "invalid": "Ez a jelszó-visszaállító link érvénytelen vagy lejárt."

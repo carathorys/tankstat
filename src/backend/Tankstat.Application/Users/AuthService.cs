@@ -58,12 +58,15 @@ public sealed class AuthService(
 
     /// <summary>
     /// Changes the signed-in user's password; the returned user carries the new session version. Every other device is signed out; the
-    /// one that asked (<paramref name="currentSessionId"/>) stays signed in.
+    /// one that asked (<paramref name="currentSessionId"/>) stays signed in. The new password must come twice (<see cref="PasswordPolicy.RequireRepeated"/>),
+    /// checked before the current one is.
     /// </summary>
-    public async Task<User> ChangePasswordAsync(string? currentPassword, string? newPassword, CancellationToken ct, Guid? currentSessionId = null)
+    public async Task<User> ChangePasswordAsync(
+        string? currentPassword, string? newPassword, string? newPasswordConfirmation, CancellationToken ct, Guid? currentSessionId = null)
     {
         RequireMode(AuthMode.Standalone);
         var principal = await access.RequirePrincipalAsync(ct);
+        PasswordPolicy.RequireRepeated(newPassword, newPasswordConfirmation);
         var user = await users.FindByIdAsync(principal.Id, ct) ?? throw new UnauthenticatedException();
 
         if (user.PasswordHash is null || !hasher.Verify(user.PasswordHash, currentPassword ?? ""))
@@ -120,9 +123,11 @@ public sealed class AuthService(
         }
     }
 
-    public async Task<User> ResetPasswordAsync(string? token, string? newPassword, CancellationToken ct)
+    /// <summary>Sets a new password through a reset link; the new password must come twice, checked before the link is looked up.</summary>
+    public async Task<User> ResetPasswordAsync(string? token, string? newPassword, string? newPasswordConfirmation, CancellationToken ct)
     {
         RequireMode(AuthMode.Standalone);
+        PasswordPolicy.RequireRepeated(newPassword, newPasswordConfirmation);
         var (user, record) = await resets.ResolveAsync(token, ct);
         PasswordPolicy.Validate(newPassword);
 

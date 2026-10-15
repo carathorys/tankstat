@@ -117,10 +117,26 @@ it('reset link: sets the new password with the token from the URL', async () => 
   renderWithApollo(<App />, '/?resetToken=tok.en')
 
   await ui.type(await screen.findByLabelText('New password'), 'brand-new-password')
+  await ui.type(screen.getByLabelText('Repeat the new password'), 'brand-new-password')
   await ui.click(screen.getByRole('button', { name: 'Set password' }))
 
   expect(await screen.findByText('Your password has been set.')).toBeInTheDocument()
-  expect(state.calls.ResetPassword).toEqual([{ input: { token: 'tok.en', newPassword: 'brand-new-password' } }])
+  expect(state.calls.ResetPassword).toEqual([{ input: { token: 'tok.en', newPassword: 'brand-new-password', newPasswordConfirmation: 'brand-new-password' } }])
+})
+
+it('reset link: a repetition that differs stops the form at it, and nothing is sent', async () => {
+  const ui = userEvent.setup()
+  const state = standaloneServer()
+  renderWithApollo(<App />, '/?resetToken=tok.en')
+
+  await ui.type(await screen.findByLabelText('New password'), 'brand-new-password')
+  await ui.type(screen.getByLabelText('Repeat the new password'), 'brand-new-passwort')
+  await ui.click(screen.getByRole('button', { name: 'Set password' }))
+
+  expect(await screen.findByText('The two entries are not the same.')).toBeInTheDocument()
+  expect(screen.getByLabelText('Repeat the new password')).toHaveFocus()
+  expect(screen.getByLabelText('Repeat the new password')).toHaveAccessibleDescription('The two entries are not the same.')
+  expect(state.calls.ResetPassword).toBeUndefined()
 })
 
 it('reset link: shows an invalid-link error from the server', async () => {
@@ -134,6 +150,7 @@ it('reset link: shows an invalid-link error from the server', async () => {
   renderWithApollo(<App />, '/?resetToken=bad')
 
   await ui.type(await screen.findByLabelText('New password'), 'brand-new-password')
+  await ui.type(screen.getByLabelText('Repeat the new password'), 'brand-new-password')
   await ui.click(screen.getByRole('button', { name: 'Set password' }))
 
   expect(await screen.findByRole('alert')).toHaveTextContent('invalid or has expired')
@@ -148,8 +165,13 @@ it('signed-in users can change their password', async () => {
   await screen.findByRole('heading', { name: 'Change password' })
   await ui.type(screen.getByLabelText('Current password'), 'old-password-1')
   await ui.type(screen.getByLabelText('New password'), 'new-password-123')
+  await ui.type(screen.getByLabelText('Repeat the new password'), 'new-password-123')
   await ui.click(screen.getByRole('button', { name: 'Update password' }))
 
-  await waitFor(() => expect(state.calls.ChangePassword).toEqual([{ input: { currentPassword: 'old-password-1', newPassword: 'new-password-123' } }]))
+  await waitFor(() =>
+    expect(state.calls.ChangePassword).toEqual([
+      { input: { currentPassword: 'old-password-1', newPassword: 'new-password-123', newPasswordConfirmation: 'new-password-123' } },
+    ]),
+  )
   expect(await screen.findByText(/Password changed/)).toBeInTheDocument()
 })

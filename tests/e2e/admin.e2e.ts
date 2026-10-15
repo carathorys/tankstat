@@ -24,7 +24,8 @@ test('creates a user, who sets a password through the link and signs in', async 
   try {
     await them.goto(url)
     await expect(them.getByRole('heading', { name: 'Set your password' })).toBeVisible()
-    await them.getByLabel(/password/i).first().fill(`chosen-${id}`)
+    await them.getByLabel('New password', { exact: true }).fill(`chosen-${id}`)
+    await them.getByLabel('Repeat the new password').fill(`chosen-${id}`)
     await them.getByRole('button', { name: 'Set password' }).click()
     await expect(them.getByText('Your password has been set.')).toBeVisible()
     await them.getByRole('button', { name: 'Continue to sign in' }).or(them.getByRole('link', { name: 'Continue to sign in' })).click()

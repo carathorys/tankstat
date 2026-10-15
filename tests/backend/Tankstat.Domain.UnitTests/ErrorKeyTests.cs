@@ -48,6 +48,7 @@ public class ErrorKeyTests
         var tooLong = Catch(() => PasswordPolicy.Validate(new string('x', PasswordPolicy.MaxLength + 1)));
         Assert.Equal("password.tooLong", tooLong.Key);
         Assert.Equal(PasswordPolicy.MaxLength, tooLong.Args["max"]);
+        Assert.Equal("password.mismatch", Catch(() => PasswordPolicy.RequireRepeated("a", "b")).Key);
     }
 
     [Fact]

@@ -52,7 +52,7 @@ export async function createUser({ admin = false } = {}): Promise<User> {
     )
     // The password comes through the new user's link, as it does for a person (setting one directly is off by default).
     await graphql(api, 'mutation($i: ResetPasswordInput!) { resetPassword(input: $i) }', {
-      i: { token: created.createUser.reset.token, newPassword: user.password },
+      i: { token: created.createUser.reset.token, newPassword: user.password, newPasswordConfirmation: user.password },
     })
     return { id: created.createUser.user.id, ...user }
   } finally {

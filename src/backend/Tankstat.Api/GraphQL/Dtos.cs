@@ -40,8 +40,10 @@ public sealed record AccessSettingsInfo(AccessLevel DefaultLevelForOthers);
 public sealed record AccessGrantInfo(Guid Id, Guid OwnerId, Guid GranteeId, AccessLevel Level);
 
 public sealed record LoginInput(string Email, string Password);
-public sealed record ChangePasswordInput(string CurrentPassword, string NewPassword);
-public sealed record ResetPasswordInput(string Token, string NewPassword);
+/// <param name="NewPasswordConfirmation">The new password again; nullable so an older client gets <c>password.mismatch</c>, not a missing field.</param>
+public sealed record ChangePasswordInput(string CurrentPassword, string NewPassword, string? NewPasswordConfirmation = null);
+/// <param name="NewPasswordConfirmation">The new password again; nullable so an older client gets <c>password.mismatch</c>, not a missing field.</param>
+public sealed record ResetPasswordInput(string Token, string NewPassword, string? NewPasswordConfirmation = null);
 public sealed record CreateUserInput(string Email, string? DisplayName, bool IsAdmin);
 public sealed record UpdateUserInput(Guid UserId, string Email, string? DisplayName);
 public sealed record DeleteUserInput(Guid UserId, UserDataDisposition? Data, Guid? MoveToUserId);

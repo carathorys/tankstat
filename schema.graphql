@@ -114,8 +114,11 @@ type Mutation {
   setUserDisabled(userId: UUID!, disabled: Boolean!): UserAccount!
     @cost(weight: "10")
   updateUser(input: UpdateUserInput!): UserAccount! @cost(weight: "10")
-  setUserPassword(userId: UUID!, newPassword: String!): Boolean!
-    @cost(weight: "10")
+  setUserPassword(
+    userId: UUID!
+    newPassword: String!
+    newPasswordConfirmation: String
+  ): Boolean! @cost(weight: "10")
   deleteUser(input: DeleteUserInput!): Boolean! @cost(weight: "10")
   setDefaultAccess(level: AccessLevel!): AccessSettingsInfo! @cost(weight: "10")
   setAccessGrant(input: SetAccessGrantInput!): Boolean! @cost(weight: "10")
@@ -934,6 +937,7 @@ input ChangeInput {
 input ChangePasswordInput {
   currentPassword: String!
   newPassword: String!
+  newPasswordConfirmation: String
 }
 
 input ChartConfigInput {
@@ -1039,6 +1043,7 @@ input RemoveLogPhotoInput {
 input ResetPasswordInput {
   token: String!
   newPassword: String!
+  newPasswordConfirmation: String
 }
 
 input ResolveSyncChangeInput {
@@ -1080,6 +1085,7 @@ input SetupFinishInput {
   email: String
   password: String
   acknowledgeOpenAccess: Boolean! = false
+  passwordConfirmation: String
 }
 
 input SetVehiclePictureInput {

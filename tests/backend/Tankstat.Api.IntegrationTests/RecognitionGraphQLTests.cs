@@ -135,7 +135,7 @@ public class RecognitionGraphQLTests
         var id = await UploadDraft(admin, vehicle);
         var created = (await admin.Gql("mutation($i: CreateUserInput!) { createUser(input: $i) { reset { token } } }", new { i = new { email = "bob@example.com", displayName = "Bob", isAdmin = false } })).Data();
         await app.NewClient().Gql("mutation($i: ResetPasswordInput!) { resetPassword(input: $i) }",
-            new { i = new { token = created.GetProperty("createUser").GetProperty("reset").GetProperty("token").GetString(), newPassword = "bob-password-1" } });
+            new { i = new { token = created.GetProperty("createUser").GetProperty("reset").GetProperty("token").GetString(), newPassword = "bob-password-1", newPasswordConfirmation = "bob-password-1" } });
         var bob = app.NewClient();
         await bob.LoginAs("bob@example.com", "bob-password-1");
 

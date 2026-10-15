@@ -56,6 +56,7 @@ test('a new instance is set up through the wizard: the sign-in mode, the first a
   const admin = { email: `admin-${tag()}@example.com`, password: `password-${tag()}` }
   await last.getByRole('textbox', { name: /^E-mail/ }).fill(admin.email)
   await last.getByLabel(/^Password/).fill(admin.password)
+  await last.getByLabel(/^Repeat the password/).fill(admin.password)
   await expectSoundLayout(page)
   await last.getByRole('button', { name: 'Create the administrator' }).click()
 

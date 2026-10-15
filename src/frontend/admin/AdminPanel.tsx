@@ -160,7 +160,9 @@ export function AdminPanel() {
                             {t('admin.setPasswordFor', { name: u.displayName })}
                           </Button>
                         }
-                        onSubmit={(password) => setPassword({ variables: { userId: u.id, newPassword: password } })}
+                        onSubmit={(password, confirmation) =>
+                          setPassword({ variables: { userId: u.id, newPassword: password, newPasswordConfirmation: confirmation } })
+                        }
                       />
                     )}
                     {u.id !== selfId && u.provider === 'LOCAL' && (

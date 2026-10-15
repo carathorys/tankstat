@@ -9,8 +9,10 @@ namespace Tankstat.Api.GraphQL;
 /// <param name="Code">The one-time code from the server's log.</param>
 /// <param name="Email">Standalone: the first administrator's e-mail address.</param>
 /// <param name="Password">Standalone: the first administrator's password.</param>
+/// <param name="PasswordConfirmation">Standalone: the password again; a different or missing one is <c>password.mismatch</c>.</param>
 /// <param name="AcknowledgeOpenAccess">Sign-in off: that everyone who reaches the instance sees and changes everything.</param>
-public sealed record SetupFinishInput(string Code, string? Email = null, string? Password = null, bool AcknowledgeOpenAccess = false);
+public sealed record SetupFinishInput(
+    string Code, string? Email = null, string? Password = null, bool AcknowledgeOpenAccess = false, string? PasswordConfirmation = null);
 
 /// <param name="Restarting">The server restarts a moment after this answer, for the settings the wizard saved.</param>
 /// <param name="Administrator">The first administrator it made (Standalone).</param>
@@ -60,7 +62,7 @@ public sealed class SetupMutations
     public async Task<SetupFinishInfo> SetupFinish(
         SetupFinishInput input, [Service] SetupService setup, [Service] IOptions<AuthOptions> auth, [Service] IHttpContextAccessor http, CancellationToken ct)
     {
-        var finished = await setup.FinishAsync(input.Code, input.Email, input.Password, input.AcknowledgeOpenAccess, ct);
+        var finished = await setup.FinishAsync(input.Code, input.Email, input.Password, input.PasswordConfirmation, input.AcknowledgeOpenAccess, ct);
         var signIn = finished.Administrator is not null && auth.Value.Mode == AuthMode.Standalone;
         if (signIn) await SessionCookies.IssueAsync(http.HttpContext!, finished.Administrator!, ct);
         return new SetupFinishInfo(finished.Restarting, finished.Administrator is { } a ? UserInfo.From(a) : null, signIn);

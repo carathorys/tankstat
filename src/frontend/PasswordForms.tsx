@@ -23,11 +23,13 @@ export function ChangePasswordForm() {
       <FieldForm
         fields={[
           { name: 'current', label: 'fields.currentPassword', type: 'password', autoComplete: 'current-password' },
-          { name: 'next', label: 'fields.newPassword', type: 'password', autoComplete: 'new-password' },
+          { name: 'next', label: 'fields.newPassword', type: 'newPassword', repeatLabel: 'fields.newPasswordRepeat' },
         ]}
         submitLabel="auth.changeSubmit"
         onSubmit={async (v) => {
-          await changePassword({ variables: { input: { currentPassword: v.current ?? '', newPassword: v.next ?? '' } } })
+          await changePassword({
+            variables: { input: { currentPassword: v.current ?? '', newPassword: v.next ?? '', newPasswordConfirmation: v.nextRepeat ?? '' } },
+          })
           setDone(true)
         }}
       />
@@ -56,10 +58,10 @@ export function ResetPasswordView({ token }: { token: string }) {
             {t('auth.setTitle')}
           </Typography>
           <FieldForm
-            fields={[{ name: 'password', label: 'fields.newPassword', type: 'password', autoComplete: 'new-password' }]}
+            fields={[{ name: 'password', label: 'fields.newPassword', type: 'newPassword', repeatLabel: 'fields.newPasswordRepeat' }]}
             submitLabel="auth.setSubmit"
             onSubmit={async (v) => {
-              await resetPassword({ variables: { input: { token, newPassword: v.password ?? '' } } })
+              await resetPassword({ variables: { input: { token, newPassword: v.password ?? '', newPasswordConfirmation: v.passwordRepeat ?? '' } } })
               setDone(true)
             }}
           />

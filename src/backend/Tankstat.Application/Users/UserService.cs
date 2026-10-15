@@ -113,11 +113,15 @@ public sealed class UserService(
 
     private bool AdminPasswordsAllowed => auth.Value.Mode == AuthMode.Standalone && auth.Value.Standalone.AllowAdminSetPassword;
 
-    /// <summary>Sets a local user's password directly and signs them out everywhere. Off unless the instance allows it.</summary>
-    public async Task SetPasswordAsync(Guid userId, string? newPassword, CancellationToken ct)
+    /// <summary>
+    /// Sets a local user's password directly and signs them out everywhere. Off unless the instance allows it. The new password must come
+    /// twice, checked before the user is looked up.
+    /// </summary>
+    public async Task SetPasswordAsync(Guid userId, string? newPassword, string? newPasswordConfirmation, CancellationToken ct)
     {
         var admin = await access.RequireAdminAsync(ct);
         if (!AdminPasswordsAllowed) throw new DomainException("user.adminPasswordDisabled", "Setting passwords directly is turned off on this instance.");
+        PasswordPolicy.RequireRepeated(newPassword, newPasswordConfirmation);
         var user = await Find(userId, ct);
         if (user.Provider != UserProvider.Local) throw new DomainException("user.passwordsLocalOnly", "Only local users have passwords managed here.");
 

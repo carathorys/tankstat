@@ -43,7 +43,8 @@ test('changes the password and signs in with the new one', async ({ page, isMobi
   await pageLoaded(page)
   const newPassword = `${user.password}-new`
   await page.getByLabel('Current password').fill(user.password)
-  await page.getByLabel('New password').fill(newPassword)
+  await page.getByLabel('New password', { exact: true }).fill(newPassword)
+  await page.getByLabel('Repeat the new password').fill(newPassword)
   await page.getByRole('button', { name: 'Update password' }).click()
   await expect(page.getByText('Password changed. Your other sessions were signed out.')).toBeVisible()
 

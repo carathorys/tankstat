@@ -139,6 +139,9 @@ public class ContractTests
     [InlineData("SetVehiclePictureInput", "vehicleId", "draftId")]
     [InlineData("ResolveSyncChangeInput", "id", "action", "change", "restoreFirst")]
     [InlineData("SystemSettingChangeInput", "key", "value", "clear")]
+    [InlineData("ChangePasswordInput", "currentPassword", "newPassword", "newPasswordConfirmation")]
+    [InlineData("ResetPasswordInput", "token", "newPassword", "newPasswordConfirmation")]
+    [InlineData("SetupFinishInput", "code", "email", "password", "passwordConfirmation", "acknowledgeOpenAccess")]
     public async Task Schema_InputTypeTakesContractFields(string type, params string[] fields)
     {
         var body = await Query($"{{ __type(name: \"{type}\") {{ inputFields {{ name }} }} }}");
@@ -217,6 +220,17 @@ public class ContractTests
             .Single(f => f.GetProperty("name").GetString() == field).GetProperty("args").EnumerateArray()
             .Select(a => a.GetProperty("name").GetString());
         Assert.Equal(["orderBy", "direction", "skip", "take"], args);
+    }
+
+    [Fact]
+    public async Task SettingAUsersPassword_TakesItsRepetition()
+    {
+        var body = await Query("{ __type(name: \"Mutation\") { fields { name args { name } } } }");
+
+        var args = body.GetProperty("data").GetProperty("__type").GetProperty("fields").EnumerateArray()
+            .Single(f => f.GetProperty("name").GetString() == "setUserPassword").GetProperty("args").EnumerateArray()
+            .Select(a => a.GetProperty("name").GetString());
+        Assert.Equal(["userId", "newPassword", "newPasswordConfirmation"], args);
     }
 
     [Fact]

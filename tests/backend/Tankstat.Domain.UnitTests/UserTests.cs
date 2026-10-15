@@ -107,6 +107,18 @@ public class PasswordTests
     [Fact]
     public void Policy_AcceptsReasonablePasswords() => PasswordPolicy.Validate("correct horse battery");
 
+    [Theory]
+    [InlineData("correct horse battery", null)] // an older client sends none
+    [InlineData("correct horse battery", "correct horse batter")]
+    [InlineData("correct horse battery", "correct horse battery ")] // a trailing space counts: nothing is trimmed
+    [InlineData("Correct horse battery", "correct horse battery")] // nor is the case folded
+    [InlineData("", "x")] // a blank entry with a repetition that is not
+    public void TheRepetition_MustBeTheSameEntry(string? value, string? repeated) =>
+        Assert.Equal("password.mismatch", Assert.Throws<DomainException>(() => PasswordPolicy.RequireRepeated(value, repeated)).Key);
+
+    [Fact]
+    public void TheSameEntryTwice_Passes() => PasswordPolicy.RequireRepeated("correct horse battery", "correct horse battery");
+
     [Fact]
     public void ResetToken_IsSingleUse_AndExpires()
     {

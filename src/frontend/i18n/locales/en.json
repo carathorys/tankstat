@@ -172,6 +172,8 @@
     "password": "Password",
     "currentPassword": "Current password",
     "newPassword": "New password",
+    "newPasswordRepeat": "Repeat the new password",
+    "passwordRepeat": "Repeat the password",
     "name": "Name",
     "licensePlate": "License plate",
     "licensePlateOptional": "License plate (optional)",
@@ -843,7 +845,8 @@
     "password": {
       "tooShort": "The password must be at least {{min}} characters long.",
       "tooLong": "The password must be at most {{max}} characters long.",
-      "currentIncorrect": "The current password is not correct."
+      "currentIncorrect": "The current password is not correct.",
+      "mismatch": "The two entries are not the same."
     },
     "reset": {
       "invalid": "This password reset link is invalid or has expired."

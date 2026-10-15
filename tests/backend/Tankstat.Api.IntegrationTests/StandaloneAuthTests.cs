@@ -27,7 +27,7 @@ public class StandaloneAuthTests : IDisposable
             .Data().GetProperty("createUser");
         var token = created.GetProperty("reset").GetProperty("token").GetString();
         var anon = _app.NewClient();
-        Assert.True((await anon.Gql(ResetPassword, new { i = new { token, newPassword = password } })).Data().GetProperty("resetPassword").GetBoolean());
+        Assert.True((await anon.Gql(ResetPassword, new { i = new { token, newPassword = password, newPasswordConfirmation = password } })).Data().GetProperty("resetPassword").GetBoolean());
         return created.GetProperty("user").GetProperty("id").GetString()!;
     }
 
@@ -255,7 +255,7 @@ public class StandaloneAuthTests : IDisposable
         var second = _app.NewClient(); await second.LoginAs("alice@example.com", "alice-password-1");
 
         var changed = await first.Gql("mutation($i: ChangePasswordInput!) { changePassword(input: $i) }",
-            new { i = new { currentPassword = "alice-password-1", newPassword = "alice-new-password" } });
+            new { i = new { currentPassword = "alice-password-1", newPassword = "alice-new-password", newPasswordConfirmation = "alice-new-password" } });
 
         Assert.True(changed.Data().GetProperty("changePassword").GetBoolean());
         Assert.Null((await first.Gql("{ myVehicles { id } }")).ErrorCode());
@@ -266,12 +266,37 @@ public class StandaloneAuthTests : IDisposable
     }
 
     [Fact]
+    public async Task ANewPasswordNotTypedTwiceTheSame_IsRefused_ByTheChange_AndByTheResetLink_WhichChangeNothing()
+    {
+        var admin = await AdminClient();
+        await CreateUserWithPassword(admin, "alice@example.com", "alice-password-1");
+        var alice = _app.NewClient(); await alice.LoginAs("alice@example.com", "alice-password-1");
+
+        // No repetition, as an older client sends: a keyed refusal, not a missing argument.
+        var changed = await alice.Gql("mutation($i: ChangePasswordInput!) { changePassword(input: $i) }",
+            new { i = new { currentPassword = "alice-password-1", newPassword = "alice-new-password" } });
+        Assert.Equal("password.mismatch", changed.ErrorKey());
+        Assert.Null((await alice.Gql("{ myVehicles { id } }")).ErrorCode()); // still signed in
+
+        var token = (await admin.Gql("mutation($id: UUID!) { issuePasswordReset(userId: $id) { token } }",
+            new { id = (await alice.Gql("{ session { user { id } } }")).Data().GetProperty("session").GetProperty("user").GetProperty("id").GetString() }))
+            .Data().GetProperty("issuePasswordReset").GetProperty("token").GetString();
+        var reset = await _app.NewClient().Gql(ResetPassword, new { i = new { token, newPassword = "alice-new-password", newPasswordConfirmation = "alice-new-passwort" } });
+        Assert.Equal("password.mismatch", reset.ErrorKey());
+
+        await _app.NewClient().LoginAs("alice@example.com", "alice-password-1"); // the password is the old one
+        Assert.True((await _app.NewClient().Gql(ResetPassword, new { i = new { token, newPassword = "alice-new-password", newPasswordConfirmation = "alice-new-password" } }))
+            .Data().GetProperty("resetPassword").GetBoolean()); // and the link was not used up
+        Assert.False(_app.Log.Mentions("alice-new-passwort"));
+    }
+
+    [Fact]
     public async Task ChangePassword_WithWrongCurrentPassword_Fails()
     {
         var admin = await AdminClient();
 
         var body = await admin.Gql("mutation($i: ChangePasswordInput!) { changePassword(input: $i) }",
-            new { i = new { currentPassword = "wrong-password-1", newPassword = "alice-new-password" } });
+            new { i = new { currentPassword = "wrong-password-1", newPassword = "alice-new-password", newPasswordConfirmation = "alice-new-password" } });
 
         Assert.Equal("VALIDATION_FAILED", body.ErrorCode());
     }
@@ -299,7 +324,7 @@ public class StandaloneAuthTests : IDisposable
             .GetProperty("createUser").GetProperty("user").GetProperty("id").GetString();
         var token = (await admin.Gql("mutation($id: UUID!) { issuePasswordReset(userId: $id) { token } }", new { id })).Data()
             .GetProperty("issuePasswordReset").GetProperty("token").GetString();
-        await _app.NewClient().Gql(ResetPassword, new { i = new { token, newPassword = "second-password-1" } });
+        await _app.NewClient().Gql(ResetPassword, new { i = new { token, newPassword = "second-password-1", newPasswordConfirmation = "second-password-1" } });
         var second = _app.NewClient(); await second.LoginAs("second@example.com", "second-password-1");
         Assert.Null((await second.Gql("{ users { id } }")).ErrorCode());
 
@@ -405,7 +430,7 @@ public class StandaloneAuthTests : IDisposable
 
         // The link the administrator hands over works.
         var token = reset.GetProperty("token").GetString();
-        await app.NewClient().Gql(ResetPassword, new { i = new { token, newPassword = "second-password-1" } });
+        await app.NewClient().Gql(ResetPassword, new { i = new { token, newPassword = "second-password-1", newPasswordConfirmation = "second-password-1" } });
         var person = app.NewClient();
         await person.LoginAs("new.person@example.com", "second-password-1");
     }
@@ -419,8 +444,8 @@ public class StandaloneAuthTests : IDisposable
         var token = reset.GetProperty("token").GetString();
         Assert.False(reset.GetProperty("emailSent").GetBoolean()); // no SMTP configured here
 
-        var first = await _app.NewClient().Gql(ResetPassword, new { i = new { token, newPassword = "first-password-12" } });
-        var second = await _app.NewClient().Gql(ResetPassword, new { i = new { token, newPassword = "second-password-12" } });
+        var first = await _app.NewClient().Gql(ResetPassword, new { i = new { token, newPassword = "first-password-12", newPasswordConfirmation = "first-password-12" } });
+        var second = await _app.NewClient().Gql(ResetPassword, new { i = new { token, newPassword = "second-password-12", newPasswordConfirmation = "second-password-12" } });
 
         Assert.True(first.Data().GetProperty("resetPassword").GetBoolean());
         Assert.Equal("VALIDATION_FAILED", second.ErrorCode());

@@ -513,10 +513,10 @@ function AdministratorStep({ code, onBack }: { code: string; onBack?: () => void
       <FieldForm
         fields={[
           { name: 'email', label: 'fields.email', type: 'email', autoComplete: 'username' },
-          { name: 'password', label: 'fields.password', type: 'password', autoComplete: 'new-password' },
+          { name: 'password', label: 'fields.password', type: 'newPassword', repeatLabel: 'fields.passwordRepeat' },
         ]}
         submitLabel="setup.createAdmin"
-        onSubmit={(v) => finish({ code, email: v.email ?? '', password: v.password ?? '' })}
+        onSubmit={(v) => finish({ code, email: v.email ?? '', password: v.password ?? '', passwordConfirmation: v.passwordRepeat ?? '' })}
       >
         {onBack && restart === undefined && <BackButton onBack={onBack} />}
       </FieldForm>
