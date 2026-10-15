@@ -269,12 +269,14 @@ internal static class BackupCommands
 
     /// <summary>
     /// A new passphrase (<c>backup keygen</c>, <c>backup --passphrase-stdin</c>): typed twice, a different repetition stopping the command before
-    /// any key is derived, and at least <c>Backups:PassphraseMinLength</c> characters, as on the Backups page. One that opens a backup is asked once.
+    /// any key is derived, and at least <c>Backups:PassphraseMinLength</c> characters, as on the Backups page. Only spaces is refused: the page
+    /// makes one up for it, and nothing here can. One that opens a backup is asked once and taken as typed (an older keygen took spaces too).
     /// </summary>
     private static string NewPassphrase(IServiceProvider services, IPassphrasePrompt prompt)
     {
         var passphrase = prompt.Read("Passphrase:");
         PasswordPolicy.RequireRepeated(passphrase, prompt.Read("Repeat it:"));
+        if (string.IsNullOrWhiteSpace(passphrase)) throw new DomainException("backup.passphraseRequired", "A passphrase of only spaces is no passphrase.");
         BackupPassphrase.Validate(passphrase, PassphraseMinLength(services));
         return passphrase;
     }

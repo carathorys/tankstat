@@ -647,6 +647,18 @@ it('makes a key set, shows it once with the two settings to set, and is done onl
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 })
 
+it('takes a passphrase of only spaces as none: no check stops it, and one is made up', async () => {
+  const { calls } = backupsServer()
+  const ui = await openBackups()
+  await ui.click(screen.getByRole('button', { name: 'Make a key set…' }))
+  const dialog = await screen.findByRole('dialog', { name: 'A key set for encrypted backups' })
+  await ui.type(within(dialog).getByLabelText(/^Passphrase \(optional\)/), '   ') // shorter than the minimum, and no repetition
+  await ui.click(within(dialog).getByRole('button', { name: 'Make the keys' }))
+
+  expect(await within(dialog).findByText('K7QM-4XWD-PL2N-ZR8A-HJ3T')).toBeInTheDocument()
+  expect(calls.PrepareBackupEncryption).toEqual([{ passphrase: null, passphraseConfirmation: null }])
+})
+
 it("says the server's minimum when it refuses a passphrase the page let through, and the dialog closes after it", async () => {
   const { calls } = backupsServer() // the page says 12, the server's minimum is 20 by now
   const ui = await openBackups()

@@ -94,7 +94,9 @@ function KeySetForm({ replacing, minLength, refresh, onLock }: { replacing: bool
     onLock(true)
     setError(undefined)
     try {
-      const made = await prepare({ variables: { passphrase: passphrase === '' ? null : passphrase, passphraseConfirmation: repeated === '' ? null : repeated } })
+      // Only spaces is no passphrase (the server takes it so too): one is made up.
+      const typedOrNone = (value: string) => (value.trim() === '' ? null : value)
+      const made = await prepare({ variables: { passphrase: typedOrNone(passphrase), passphraseConfirmation: typedOrNone(repeated) } })
       if (made.data) setKeys(made.data.prepareBackupEncryption) // shown, and the dialog stays until they are kept
       else onLock(false)
     } catch (err) {

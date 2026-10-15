@@ -76,6 +76,9 @@ public sealed class BackupCommandsTests : IDisposable
         Assert.Contains("passphrase", once.Error);
         var short28 = await RunAsync(app, "correct horse battery staple\ncorrect horse battery staple\n", commandLine.Split(' '));
         Assert.Equal((1, "A passphrase has at least 30 characters."), (short28.Code, short28.Error.Trim()));
+        var spaces = new string(' ', 30); // long enough, but no passphrase: the page would make one up, which the command line cannot
+        var blank = await RunAsync(app, $"{spaces}\n{spaces}\n", commandLine.Split(' '));
+        Assert.Equal((1, "A passphrase of only spaces is no passphrase."), (blank.Code, blank.Error.Trim()));
 
         Assert.False(Directory.Exists(_folder) && Directory.EnumerateFiles(_folder).Any()); // no backup was written
         Assert.DoesNotContain("AGE-SECRET-KEY", different.Out + short28.Out);

@@ -472,6 +472,10 @@ public sealed class BackupAdminTests : IDisposable
         Assert.Equal("password.mismatch", (await admin.Gql(Query, new { p = "zzcanary passphrase", c = "zzcanary passphrasf" })).ErrorKey());
         Assert.Equal("password.mismatch", (await admin.Gql(Query, new { p = "zzcanary passphrase", c = (string?)null })).ErrorKey());
         Assert.Equal("password.mismatch", (await admin.Gql(Query, new { p = (string?)null, c = "zzcanary passphrase" })).ErrorKey());
+        // Only spaces is no passphrase: one is made up, as for an empty field, whatever the repetition holds of spaces.
+        foreach (var (p, c) in new[] { ("            ", "            "), ("            ", (string?)null), (" ", "  ") })
+            Assert.True((await admin.Gql(Query, new { p, c })).Data().GetProperty("prepareBackupEncryption").GetProperty("generated").GetBoolean());
+        Assert.Equal("password.mismatch", (await admin.Gql(Query, new { p = "            ", c = "zzcanary passphrase" })).ErrorKey());
         foreach (var secret in new[] { "zzcanary", made.GetProperty("passphrase").GetString()!, typed.GetProperty("identity").GetString()!, made.GetProperty("identity").GetString()! })
             Assert.False(app.Log.Mentions(secret), "logged");
     }

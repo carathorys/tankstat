@@ -54,6 +54,8 @@ export function NewPasswordFields({
   // What the first field holds now: the form brings every field's checks up to date before it validates, so the repetition reads it then.
   const first = useRef('')
   const [typed, setTyped] = useState('')
+  // Where both may stay empty (a passphrase one is made up for), only spaces is empty too, as the server takes it: no check, no meter.
+  const blank = (value: string) => !required && value.trim() === ''
   return (
     <>
       <Field
@@ -63,9 +65,9 @@ export function NewPasswordFields({
         hint={hint ?? t('forms.password.requirements', { min })}
         invalid={{
           message: max !== undefined && typed.length > max ? t('errors.password.tooLong', { max }) : (tooShort ?? t('errors.password.tooShort', { min })),
-          test: (value) => value.length > 0 && (value.length < min || (max !== undefined && value.length > max)),
+          test: (value) => !blank(value) && value.length > 0 && (value.length < min || (max !== undefined && value.length > max)),
         }}
-        extra={typed && <StrengthMeter password={typed} personal={personal} min={min} />}
+        extra={!blank(typed) && typed && <StrengthMeter password={typed} personal={personal} min={min} />}
       >
         <PasswordInput
           autoComplete="new-password"
@@ -80,7 +82,7 @@ export function NewPasswordFields({
         name={`${name}Repeat`}
         label={repeatLabel}
         required={required}
-        invalid={{ message: t('errors.password.mismatch'), test: (value) => value !== first.current }}
+        invalid={{ message: t('errors.password.mismatch'), test: (value) => !(blank(value) && blank(first.current)) && value !== first.current }}
       >
         <PasswordInput autoComplete="new-password" showLabel={showLabel} />
       </Field>

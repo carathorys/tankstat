@@ -97,12 +97,13 @@ public sealed class BackupAdminService(
 
     /// <summary>
     /// A key set for encrypted backups (the passphrase given, or one made up), shown to the administrator once. A typed passphrase comes twice
-    /// (<see cref="PasswordPolicy.RequireRepeated"/>, before anything is derived); a blank one with a repetition is a mismatch too.
+    /// (<see cref="PasswordPolicy.RequireRepeated"/>, before anything is derived); a blank one with a repetition is a mismatch too. Blank is
+    /// what the key maker takes for "make one up": empty or only spaces, so spaces in both fields make one up rather than being compared.
     /// </summary>
     public async Task<BackupKeySet> PrepareEncryptionAsync(string? passphrase, string? passphraseConfirmation, CancellationToken ct)
     {
         var admin = await access.RequireAdminAsync(ct);
-        if (!string.IsNullOrEmpty(passphrase) || !string.IsNullOrEmpty(passphraseConfirmation)) PasswordPolicy.RequireRepeated(passphrase, passphraseConfirmation);
+        if (!string.IsNullOrWhiteSpace(passphrase) || !string.IsNullOrWhiteSpace(passphraseConfirmation)) PasswordPolicy.RequireRepeated(passphrase, passphraseConfirmation);
         var set = keys.Make(passphrase);
         logger.LogInformation("User {UserId} made a key set for encrypted backups", admin.Id);
         return set;
