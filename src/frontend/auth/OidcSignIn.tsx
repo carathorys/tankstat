@@ -8,34 +8,55 @@ import { useTranslation } from 'react-i18next'
 import { useLocation } from 'react-router'
 import { ErrorMessage } from '../messages.tsx'
 import { navigation } from '../navigation.ts'
+import { connectivity } from '../offline/connectivity.ts'
+import { deviceData } from '../offline/deviceData.ts'
+import { OfflineError } from '../offline/errors.ts'
 import { failureText, oidcLoginUrl, signedOut } from './oidc.ts'
+import { forgetLeftOverSignOut } from './signedOutHere.ts'
 
 /**
  * Signing in with an identity provider (Auth:Mode=Oidc). On a fresh visit the browser is sent to the provider at once and comes back to
  * this very page; the screen only shows a spinner and a link for the case that the navigation did not happen (a browser that blocked it).
  * After Sign out it waits for a click instead (the provider's own session would sign the user straight back in), and a sign-in
  * that failed (`?signIn=failed&reason=…`, see OidcFailures on the server) says why and offers to try again. Never rendered while the
- * session query has not answered, so a server that is down does not send anyone away.
+ * session query has not answered, so a server that is down does not send anyone away. A device signed out while the server was out of
+ * reach waits for a click too, in any tab and after a restart (`SignedOutHere`, #162): the provider is the server's, and it may not be there.
  */
 export function OidcSignIn() {
   const { t } = useTranslation()
   const { pathname, search } = useLocation()
   const params = new URLSearchParams(search)
   const [wasSignedOut] = useState(signedOut.isSet)
+  // Signed out here without the server hearing of it: null until known, so nothing is sent away on a guess.
+  const [signedOutHere, setSignedOutHere] = useState<boolean | null>(null)
+  const [offline, setOffline] = useState(false)
   const failed = params.get('signIn') === 'failed'
   const loginUrl = oidcLoginUrl(pathname, search)
   const redirected = useRef(false)
 
   useEffect(() => {
-    if (failed || wasSignedOut || redirected.current) return
+    let live = true
+    void deviceData.signedOutHere().then((held) => live && setSignedOutHere(held !== null))
+    return () => {
+      live = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (failed || wasSignedOut || signedOutHere !== false || redirected.current) return
     redirected.current = true // StrictMode runs effects twice; the ref survives it
     navigation.replace(loginUrl)
-  }, [failed, wasSignedOut, loginUrl])
+  }, [failed, wasSignedOut, signedOutHere, loginUrl])
 
-  const signIn = () => {
+  const signIn = async () => {
+    // The provider is reached through the server: without it the page would be gone.
+    if (!connectivity.reachable) return setOffline(true)
+    setOffline(false)
     signedOut.clear()
+    await forgetLeftOverSignOut()
     navigation.replace(loginUrl)
   }
+  const offlineNote = offline && <ErrorMessage error={new OfflineError()} />
 
   if (failed) {
     return (
@@ -44,20 +65,22 @@ export function OidcSignIn() {
           {t('auth.failedTitle')}
         </Typography>
         <ErrorMessage>{t(failureText(params.get('reason')))}</ErrorMessage>
-        <Button size="large" sx={{ mt: 1.5, minHeight: 44 }} onClick={signIn}>
+        {offlineNote}
+        <Button size="large" sx={{ mt: 1.5, minHeight: 44 }} onClick={() => void signIn()}>
           {t('auth.tryAgain')}
         </Button>
       </>
     )
   }
-  if (wasSignedOut) {
+  if (wasSignedOut || signedOutHere) {
     return (
       <>
         <Typography component="h2" variant="h4" sx={{ mb: 1.5 }}>
           {t('auth.signedOutTitle')}
         </Typography>
         <Typography sx={{ mb: 1.5 }}>{t('auth.signedOutHint')}</Typography>
-        <Button size="large" sx={{ minHeight: 44 }} onClick={signIn}>
+        {offlineNote}
+        <Button size="large" sx={{ minHeight: 44 }} onClick={() => void signIn()}>
           {t('auth.signIn')}
         </Button>
       </>

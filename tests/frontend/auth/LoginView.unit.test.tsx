@@ -1,10 +1,12 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { afterEach, expect, it, vi } from 'vitest'
 import { SIGNED_OUT_KEY } from '../../../src/frontend/auth/oidc.ts'
 import { LoginView } from '../../../src/frontend/LoginView.tsx'
 import { navigation } from '../../../src/frontend/navigation.ts'
+import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
+import { deviceData } from '../../../src/frontend/offline/deviceData.ts'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -12,13 +14,13 @@ afterEach(() => vi.restoreAllMocks())
 const oidc = (route = '/') => render(<MemoryRouter initialEntries={[route]}><LoginView mode="OIDC" /></MemoryRouter>, { reactStrictMode: true })
 const spyOnRedirect = () => vi.spyOn(navigation, 'replace').mockImplementation(() => undefined)
 
-it('in OIDC mode a fresh visitor is sent to the identity provider at once, with a link in case the redirect did not happen', () => {
+it('in OIDC mode a fresh visitor is sent to the identity provider at once, with a link in case the redirect did not happen', async () => {
   const replace = spyOnRedirect()
   oidc('/vehicles/abc?tab=refuelings')
 
   expect(screen.getByText('Taking you to your identity provider…')).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'Continue to sign in' })).toHaveAttribute('href', '/auth/oidc/login?returnUrl=%2Fvehicles%2Fabc%3Ftab%3Drefuelings')
-  expect(replace).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(replace).toHaveBeenCalledTimes(1)) // once the device said it did not sign out here
   expect(replace).toHaveBeenCalledWith('/auth/oidc/login?returnUrl=%2Fvehicles%2Fabc%3Ftab%3Drefuelings')
 })
 
@@ -33,6 +35,23 @@ it('after signing out it waits for a click instead of going back to the provider
   await userEvent.setup().click(screen.getByRole('button', { name: 'Sign in' }))
   expect(window.sessionStorage.getItem(SIGNED_OUT_KEY)).toBeNull()
   expect(replace).toHaveBeenCalledWith('/auth/oidc/login?returnUrl=%2F')
+})
+
+it('signed out while the server was out of reach, it waits for a click in any tab, and says why it cannot go while still offline', async () => {
+  const replace = spyOnRedirect()
+  await deviceData.setSignedOutHere({ mode: 'OIDC', at: 1 }) // no sessionStorage flag: another tab, or after a restart
+  connectivity.failed()
+  oidc()
+
+  expect(await screen.findByRole('heading', { name: 'You have signed out.' })).toBeInTheDocument()
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Sign in' }))
+  expect(await screen.findByText('The server cannot be reached right now. This works again once you are back online.')).toBeInTheDocument()
+  expect(replace).not.toHaveBeenCalled()
+
+  connectivity.succeeded()
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Sign in' }))
+  await waitFor(() => expect(replace).toHaveBeenCalledWith('/auth/oidc/login?returnUrl=%2F'))
+  expect(await deviceData.signedOutHere()).toBeNull() // forgotten: the new sign-in's cookies replace the old ones
 })
 
 it('a failed sign-in says why and tries again without the failure marker', async () => {

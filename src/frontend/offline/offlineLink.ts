@@ -2,6 +2,8 @@ import { ApolloLink } from '@apollo/client'
 import { getMainDefinition, print } from '@apollo/client/utilities'
 import type { DocumentNode } from 'graphql'
 import { catchError, from, mergeMap, of, tap, throwError, type Observable } from 'rxjs'
+import { forgetLeftOverSignOut, tellLeftOverSignOut } from '../auth/signedOutHere.ts'
+import type { AuthMode, SessionQuery } from '../gql/generated.ts'
 import { appliedMutations } from './appliedMutations.ts'
 import { connectivity } from './connectivity.ts'
 import { ANONYMOUS_USER, deviceData } from './deviceData.ts'
@@ -11,6 +13,18 @@ import { policyFor, snapshotKey } from './snapshotPolicy.ts'
 
 /** Signing in or out: what comes back afterwards may be another account's, so nothing is kept until `Session` says whose it is. */
 const SIGN_IN_MUTATIONS = new Set(['Login', 'Logout', 'ResetPassword'])
+
+/** The mutations that sign someone in on this device: a sign-out the server has not heard of is told, then forgotten, first. */
+const SIGNING_IN = new Set(['Login', 'ResetPassword'])
+
+/**
+ * The device's own answer while it is signed out without the server knowing (#162): nobody, in the mode it signed out of, so the sign-in
+ * screen shows (offline too) and the cookies still in the browser never sign it back in. No notices: they are the server's to send.
+ */
+export const signedOutSession = (mode: string): SessionQuery => ({
+  session: { mode: mode as AuthMode, user: null, instance: { generation: '', restorePoint: null } },
+  notices: [],
+})
 
 interface SessionAnswer {
   session?: { mode?: string; user?: { id?: string } | null; instance?: { generation?: string } | null }
@@ -145,11 +159,25 @@ export function createOfflineLink(device = deviceData): ApolloLink {
         catchError((error: unknown) => (!bypass && classifyFailure(error) !== 'answered' && isQuery && policy !== 'never' ? fromDevice() : throwError(() => error))),
       )
 
-    if (!bypass && !connectivity.reachable) return fromDevice()
-    if (!bypass && isQuery && waitingFor(name, operation.variables)) {
-      const local = import('./localResolvers.ts').then(async ({ answerLocally }) => answerLocally(await device.rows(), name, operation.variables, keptBy(device)))
-      return from(local).pipe(mergeMap((data) => (data !== undefined ? of({ data } as ApolloLink.Result) : fromServer())))
+    const route = (): Observable<ApolloLink.Result> => {
+      if (!bypass && !connectivity.reachable) return fromDevice()
+      if (!bypass && isQuery && waitingFor(name, operation.variables)) {
+        const local = import('./localResolvers.ts').then(async ({ answerLocally }) => answerLocally(await device.rows(), name, operation.variables, keptBy(device)))
+        return from(local).pipe(mergeMap((data) => (data !== undefined ? of({ data } as ApolloLink.Result) : fromServer())))
+      }
+      return fromServer()
     }
-    return fromServer()
+
+    // Signed out here without the server hearing of it: told now if it can be, and until then nobody is signed in on this device.
+    if (!bypass && name === 'Session') {
+      return from(device.signedOutHere()).pipe(
+        mergeMap((signedOut) => {
+          if (!signedOut) return route()
+          return from(tellLeftOverSignOut()).pipe(mergeMap((told) => (told ? route() : of({ data: signedOutSession(signedOut.mode) } as ApolloLink.Result))))
+        }),
+      )
+    }
+    if (!bypass && name && SIGNING_IN.has(name)) return from(forgetLeftOverSignOut()).pipe(mergeMap(() => route()))
+    return route()
   })
 }

@@ -204,3 +204,69 @@ it('an answer the device cannot keep (its storage is full) still reaches the scr
   const error = await client.query({ query: VehicleDefaultsDocument, fetchPolicy: 'network-only' }).catch((e: unknown) => e)
   expect((error as OfflineError).reason).toBe('notLoaded') // nothing was kept
 })
+
+/** Signed out while the server was out of reach (#162): the device remembers it, and the server still knows the session. */
+async function signedOutHere(logout: () => Response | Promise<Response> = () => new HttpResponse(null, { status: 204 })) {
+  const calls = { logout: 0, session: 0, refresh: 0, login: 0 }
+  let ended = false
+  server.use(
+    http.post('/auth/token/logout', () => (calls.logout++, (ended = true), logout())),
+    http.post('/auth/token/refresh', () => (calls.refresh++, new HttpResponse(null, { status: 204 }))),
+    graphql.query('Session', () => (calls.session++, HttpResponse.json({ data: { session: { mode: 'STANDALONE', user: ended ? null : { id: 'u1', displayName: 'Alice', email: 'a@x.co', isAdmin: false, avatarUrl: null }, instance: fakeInstance() }, notices: [] } }))),
+    graphql.mutation('Login', () => (calls.login++, HttpResponse.json({ data: { login: { id: 'u1' } } }))),
+  )
+  await deviceData.setSignedOutHere({ mode: 'STANDALONE', at: 1 })
+  return calls
+}
+
+it('signed out here, the device answers the session itself as nobody while the server is out of reach, and sends nothing', async () => {
+  const calls = await signedOutHere()
+  connectivity.failed()
+  const client = createApolloClient('http://localhost/graphql')
+
+  const { data } = await client.query({ query: SessionDocument, fetchPolicy: 'network-only' })
+
+  expect(data?.session).toEqual({ mode: 'STANDALONE', user: null, instance: { generation: '', restorePoint: null } })
+  expect(data?.notices).toEqual([])
+  expect(calls).toEqual({ logout: 0, session: 0, refresh: 0, login: 0 })
+})
+
+it('once the server can be reached, the sign-out it missed is sent first, once, and the session is then the server\'s', async () => {
+  const calls = await signedOutHere()
+  const client = createApolloClient('http://localhost/graphql')
+
+  const first = await client.query({ query: SessionDocument, fetchPolicy: 'network-only' })
+  const again = await client.query({ query: SessionDocument, fetchPolicy: 'network-only' })
+
+  expect(first.data?.session.user).toBeNull() // the cookies' session ended before it was asked
+  expect(again.data?.session.user).toBeNull()
+  expect(calls.logout).toBe(1)
+  expect(await deviceData.signedOutHere()).toBeNull()
+})
+
+it('a sign-out the server could not be told of keeps the device signed out, and the cookies are never refreshed meanwhile', async () => {
+  silenceConsoleError()
+  const calls = await signedOutHere(() => HttpResponse.error() as unknown as Response)
+  const client = createApolloClient('http://localhost/graphql')
+
+  const { data } = await client.query({ query: SessionDocument, fetchPolicy: 'network-only' })
+
+  expect(data?.session.user).toBeNull() // the device's own answer: the server's would still name the user
+  expect(calls.session).toBe(0)
+  expect(await deviceData.signedOutHere()).not.toBeNull() // still to be told
+  connectivity.succeeded()
+  const { refreshSession } = await import('../../../../src/frontend/auth/refresh.ts')
+  await expect(refreshSession()).resolves.toBe(false)
+  expect(calls.refresh).toBe(0)
+})
+
+it('signing in forgets a sign-out left over, after telling the server once more', async () => {
+  const calls = await signedOutHere(() => new HttpResponse(null, { status: 500 })) // reachable, but the logout went wrong: best effort
+  const client = createApolloClient('http://localhost/graphql')
+
+  await client.mutate({ mutation: LoginDocument, variables: { input: { email: 'a@x.co', password: 'secret-password' } } })
+
+  expect(calls.logout).toBe(1)
+  expect(calls.login).toBe(1)
+  expect(await deviceData.signedOutHere()).toBeNull() // the new sign-in's cookies replace the old ones
+})
