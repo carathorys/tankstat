@@ -421,3 +421,58 @@ describe('deviceData, when things go wrong or change', () => {
     }
   })
 })
+
+describe('signing out (#162)', () => {
+  it('deletes everything kept for the account, nobody is open or last, and what reads from it is told', async () => {
+    const storage = memoryStorage()
+    deviceData.reset(storage)
+    await deviceData.signedIn('alice')
+    await deviceData.keep('Welcome:{}', { welcome: 1 })
+    const rows = (await deviceData.rows())!
+    await rows.putChanges([{ id: 'c1', seq: 1, createdAt: 1, entity: 'refuelings', action: 'add', vehicleId: 'v1', targetId: 'r1' }])
+    await rows.putFound([{ id: 'r9', entity: 'refuelings', vehicleId: 'v1', generation: 'g0', version: 1, values: {} } as never])
+    let told = 0
+    deviceData.onStoreChange(() => told++)
+
+    await deviceData.signOut()
+
+    expect(deviceData.user).toBeNull()
+    expect(await deviceData.rows()).toBeNull()
+    expect(await storage.lastUser()).toBeNull()
+    expect(told).toBe(1)
+    const again = await storage.open('alice')
+    expect(await again.get('Welcome:{}')).toBeUndefined()
+    expect(await again.rows.changes()).toEqual([])
+    expect(await again.rows.found()).toEqual([])
+  })
+
+  it('another tab signing out makes this one let go of the account at once, and ask whose it is', async () => {
+    deviceData.reset(memoryStorage())
+    await deviceData.boot(memoryStorage()) // listens to the other tabs
+    await deviceData.signedIn('alice')
+    const asked = vi.fn()
+    deviceData.onSignedInElsewhere(asked)
+    const otherTab = new BroadcastChannel(TABS_CHANNEL)
+    try {
+      otherTab.postMessage({ type: 'signedIn', user: null }) // what `signOut` tells the others
+
+      await vi.waitFor(() => expect(asked).toHaveBeenCalledTimes(1))
+      expect(await deviceData.rows()).toBeNull() // nothing of the account is read here any more
+    } finally {
+      otherTab.close()
+    }
+  })
+
+  it('signs out even when the database cannot be deleted, saying why in the console', async () => {
+    const storage = memoryStorage()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    deviceData.reset({ ...storage, delete: () => Promise.reject(new Error('IndexedDB is blocked by another tab')) })
+    await deviceData.signedIn('alice')
+
+    await deviceData.signOut()
+
+    expect(deviceData.user).toBeNull()
+    expect(await storage.lastUser()).toBeNull()
+    expect(warn).toHaveBeenCalledWith('The offline data of the account that signed out cannot be removed.', expect.any(Error))
+  })
+})

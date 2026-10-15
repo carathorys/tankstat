@@ -134,10 +134,23 @@ export interface RowStore {
   forget(): void
 }
 
+/**
+ * This device was signed out while its session could not be ended on the server (out of reach): the sign-in cookies are HttpOnly, so
+ * they stay in the browser until the server hears of it. No secret: only the sign-in mode, for the sign-in screen, and when.
+ */
+export interface SignedOutHere {
+  mode: string
+  at: number
+}
+
 export interface DeviceStorage {
   open(user: string): Promise<DeviceStore>
+  /** Removes everything kept for the user (their whole database): the answers, the downloaded window, the changes waiting, the photos. */
+  delete(user: string): Promise<void>
   lastUser(): Promise<string | null>
   setLastUser(user: string | null): Promise<void>
+  signedOutHere(): Promise<SignedOutHere | null>
+  setSignedOutHere(signedOut: SignedOutHere | null): Promise<void>
 }
 
 const META_DB = 'tankstat-offline-meta'
@@ -190,8 +203,46 @@ function openDb(factory: IDBFactory, name: string, version: number, upgrade: (db
   })
 }
 
+/** Deletes a database: another tab's connection closes itself (`versionchange`); one that does not is waited for `BLOCKED_WAIT_MS`. */
+function deleteDb(factory: IDBFactory, name: string): Promise<void> {
+  const request = factory.deleteDatabase(name)
+  return new Promise((resolve, reject) => {
+    let blocked: ReturnType<typeof setTimeout> | undefined
+    request.onsuccess = () => {
+      clearTimeout(blocked)
+      resolve()
+    }
+    request.onerror = () => {
+      clearTimeout(blocked)
+      reject(request.error ?? new Error('IndexedDB could not be deleted'))
+    }
+    request.onblocked = () => {
+      blocked ??= setTimeout(() => reject(new Error('IndexedDB is blocked by another tab')), BLOCKED_WAIT_MS)
+    }
+  })
+}
+
 export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage {
   const meta = () => openDb(factory, META_DB, 1, (db) => db.createObjectStore('meta'))
+  const metaGet = async <T>(key: string): Promise<T | null> => {
+    const db = await meta()
+    try {
+      return ((await done(db.transaction('meta').objectStore('meta').get(key))) as T | undefined) ?? null
+    } finally {
+      db.close()
+    }
+  }
+  const metaSet = async (key: string, value: unknown) => {
+    const db = await meta()
+    try {
+      const tx = db.transaction('meta', 'readwrite')
+      if (value === null) tx.objectStore('meta').delete(key)
+      else tx.objectStore('meta').put(value, key)
+      await committed(tx)
+    } finally {
+      db.close()
+    }
+  }
   return {
     async open(user) {
       const db = await openDb(factory, dbName(user), 6, (created, from) => {
@@ -263,25 +314,11 @@ export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage
         close: () => db.close(),
       }
     },
-    async lastUser() {
-      const db = await meta()
-      try {
-        return ((await done(db.transaction('meta').objectStore('meta').get('lastUser'))) as string | undefined) ?? null
-      } finally {
-        db.close()
-      }
-    },
-    async setLastUser(user) {
-      const db = await meta()
-      try {
-        const tx = db.transaction('meta', 'readwrite')
-        if (user === null) tx.objectStore('meta').delete('lastUser')
-        else tx.objectStore('meta').put(user, 'lastUser')
-        await committed(tx)
-      } finally {
-        db.close()
-      }
-    },
+    delete: (user) => deleteDb(factory, dbName(user)),
+    lastUser: () => metaGet<string>('lastUser'),
+    setLastUser: (user) => metaSet('lastUser', user),
+    signedOutHere: () => metaGet<SignedOutHere>('signedOutHere'),
+    setSignedOutHere: (signedOut) => metaSet('signedOutHere', signedOut),
   }
 }
 
@@ -290,6 +327,7 @@ export function memoryStorage(): DeviceStorage {
   const stores = new Map<string, Map<string, Snapshot>>()
   const memoryTables = new Map<string, Tables>()
   let last: string | null = null
+  let signedOut: SignedOutHere | null = null
   return {
     async open(user) {
       const rows = stores.get(user) ?? new Map<string, Snapshot>()
@@ -323,8 +361,14 @@ export function memoryStorage(): DeviceStorage {
         close: () => undefined,
       }
     },
+    async delete(user) {
+      stores.delete(user)
+      memoryTables.delete(user)
+    },
     lastUser: async () => last,
     setLastUser: async (user) => void (last = user),
+    signedOutHere: async () => signedOut,
+    setSignedOutHere: async (value) => void (signedOut = value),
   }
 }
 

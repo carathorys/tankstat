@@ -1,4 +1,4 @@
-import { indexedDbStorage, memoryStorage, type DeviceStorage, type DeviceStore, type RowStore, type Snapshot } from './deviceStorage.ts'
+import { indexedDbStorage, memoryStorage, type DeviceStorage, type DeviceStore, type RowStore, type SignedOutHere, type Snapshot } from './deviceStorage.ts'
 
 /** Whose data the device keeps when sign-in is off (`Auth:Mode=None`): every visitor is the same anonymous user. */
 export const ANONYMOUS_USER = 'anonymous'
@@ -77,6 +77,8 @@ function listenToOtherTabs() {
   tabs.onmessage = (event: MessageEvent<{ type?: string; user?: string | null }>) => {
     if (event.data?.type !== 'signedIn' || event.data.user === undefined || event.data.user === (store?.user ?? null)) return
     confirmed = false
+    // Signed out in another tab: the account's database is being deleted, so this tab lets go of it at once (and reads nothing more of it).
+    if (event.data.user === null) switching = switching.then(() => openFor(null)).catch(() => undefined)
     elsewhere.forEach((listener) => listener())
   }
 }
@@ -183,6 +185,39 @@ export const deviceData = {
     })()
     writes = Promise.allSettled([writes, write])
     return write
+  },
+
+  /**
+   * Signing out (#162): everything this device keeps for the open account goes, its whole database (the answers, the downloaded window,
+   * the pictures, the changes waiting and their photos, the rows set aside), nobody's data is open, and nobody is the last user. What read
+   * from it is told (the outbox, the pictures, the counts), and so are the other tabs. A database another tab will not let go of is left
+   * with a warning: the sign-out itself still happens.
+   */
+  signOut(): Promise<void> {
+    switching = switching.then(async () => {
+      await writes
+      const user = store?.user ?? null
+      store?.close()
+      store = null
+      confirmed = false
+      seenGeneration = undefined
+      if (user !== null) await storage.delete(user).catch((error) => console.warn('The offline data of the account that signed out cannot be removed.', error))
+      await storage.setLastUser(null).catch(() => undefined)
+      storeListeners.forEach((listener) => listener())
+      foundListeners.forEach((listener) => listener())
+      listeners.forEach((listener) => listener())
+    })
+    tabs?.postMessage({ type: 'signedIn', user: null })
+    return switching
+  },
+
+  /** Whether this device was signed out while the server could not end its session (`SignedOutHere`); null when it was not. */
+  signedOutHere(): Promise<SignedOutHere | null> {
+    return storage.signedOutHere().catch(() => null)
+  },
+
+  setSignedOutHere(signedOut: SignedOutHere | null): Promise<void> {
+    return storage.setSignedOutHere(signedOut).catch((error) => console.warn('This device cannot remember that it signed out.', error))
   },
 
   /**
