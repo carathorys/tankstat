@@ -20,6 +20,7 @@ import { LabeledSwitch } from '../components/LabeledSwitch.tsx'
 import { LabeledSelect } from '../components/UnitSelect.tsx'
 import { Field } from '../forms/Field.tsx'
 import { FieldInput } from '../forms/FieldInput.tsx'
+import { PasswordInput } from '../forms/PasswordInput.tsx'
 import { Form } from '../forms/Form.tsx'
 import { SystemSettingsDocument, UpdateSystemSettingsDocument, type SystemSettingFieldsFragment, type SettingsGroup } from '../gql/generated.ts'
 import { sampleDate, sampleTime, useFormat } from '../i18n/format.ts'
@@ -174,6 +175,7 @@ export function SettingsGroupForm({
             <SettingControl
               key={s.key}
               setting={s}
+              groupAppliesAtOnce={group.appliesAtOnce}
               label={label(s)}
               value={draft.values[s.key] ?? ''}
               cleared={draft.cleared.has(s.key)}
@@ -257,8 +259,12 @@ export function SettingsGroupForm({
       const answer = await update({ variables: code === undefined ? { changes } : { changes, code } })
       onSaved()
       // The server says what waits: a group that applies at once runs with what was saved, and a value saved back to what runs waits for nothing.
+      // Only what this save changed counts: a setting of the tab saved before may wait for a restart beside one that applies at once (the
+      // password minimum in the Sign-in tab).
+      const sent = new Set(changes.map((c) => c.key))
       const saved = answer.data?.updateSystemSettings.groups.find((g) => g.name === group.name)
-      if (announceSaved) toast(t(saved?.settings.some((s) => s.restartPending) ? 'systemSettings.saved' : 'systemSettings.savedInEffect'))
+      if (announceSaved)
+        toast(t(saved?.settings.some((s) => sent.has(s.key) && s.restartPending) ? 'systemSettings.saved' : 'systemSettings.savedInEffect'))
     } catch (e) {
       setError(e)
     }
@@ -411,6 +417,7 @@ function shown(s: Setting, t: TFunction, weekday: (day: string) => string, choic
  */
 function SettingControl({
   setting: s,
+  groupAppliesAtOnce,
   label,
   value,
   cleared,
@@ -424,6 +431,8 @@ function SettingControl({
   onClear,
 }: {
   setting: Setting
+  /** What the group's note says; a setting that applies otherwise (the password minimum in the Sign-in group) says so in a badge. */
+  groupAppliesAtOnce: boolean
   label: string
   value: string
   cleared: boolean
@@ -442,6 +451,7 @@ function SettingControl({
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Control
           setting={s}
+          groupAppliesAtOnce={groupAppliesAtOnce}
           label={label}
           value={value}
           cleared={cleared}
@@ -462,6 +472,7 @@ function SettingControl({
 
 function Control({
   setting: s,
+  groupAppliesAtOnce,
   label,
   value,
   cleared,
@@ -475,6 +486,8 @@ function Control({
   onClear,
 }: {
   setting: Setting
+  /** What the group's note says; a setting that applies otherwise (the password minimum in the Sign-in group) says so in a badge. */
+  groupAppliesAtOnce: boolean
   label: string
   value: string
   cleared: boolean
@@ -495,6 +508,7 @@ function Control({
   const badges: LabelBadge[] = [
     { text: t(`systemSettings.sourceShort.${s.source}`), spoken: t(`systemSettings.source.${s.source}`) },
     ...(s.restartPending ? [{ text: t('systemSettings.restartShort'), spoken: t('systemSettings.pendingRestart'), tone: 'warning' as const }] : []),
+    ...(s.appliesAtOnce && !groupAppliesAtOnce ? [{ text: t('systemSettings.atOnceShort'), spoken: t('systemSettings.atOnce') }] : []),
   ]
   const hint =
     [reason, s.kind === 'LIST' && t('systemSettings.listHint')].filter((part): part is string => typeof part === 'string' && part.length > 0).join(' · ') ||
@@ -530,7 +544,13 @@ function Control({
       return (
         <Stack sx={{ gap: 0.5 }}>
           <Field name={s.key} label={label} badges={badges} refusal={problem} hint={[s.isSet ? t('systemSettings.secretSet') : t('systemSettings.secretNotSet'), hint].filter(Boolean).join(' · ')}>
-            <FieldInput type="password" autoComplete="new-password" value={value} disabled={cleared || unused} onChange={(e) => onChange(e.target.value)} />
+            <PasswordInput
+              autoComplete="new-password"
+              showLabel={t('forms.password.showSecret')}
+              value={value}
+              disabled={cleared || unused}
+              onChange={(e) => onChange(e.target.value)}
+            />
           </Field>
           {s.isSet && (
             <FormControlLabel control={<Checkbox checked={cleared} disabled={unused} onChange={(e) => onClear(e.target.checked)} />} label={t('systemSettings.clearSecret')} />

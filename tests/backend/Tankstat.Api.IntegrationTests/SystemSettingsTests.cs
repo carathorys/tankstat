@@ -83,6 +83,35 @@ public class SystemSettingsTests
     }
 
     [Fact]
+    public async Task ThePasswordMinimum_AppliesAtOnce_InTheSignInGroupThatWaits_IsPublic_AndStaysWithinTheFloorAndTheCeiling()
+    {
+        using var app = TestApp.Standalone();
+        var admin = await Admin(app);
+        const string Requirements = "{ passwordRequirements { minLength maxLength } }";
+        var before = (await app.NewClient().Gql(Requirements)).Data().GetProperty("passwordRequirements"); // nobody signed in: the reset page asks it
+        Assert.Equal((10, 128), (before.GetProperty("minLength").GetInt32(), before.GetProperty("maxLength").GetInt32()));
+
+        var answer = (await admin.Gql(Update, new { c = new object[] { new { key = "Auth:Standalone:PasswordMinLength", value = "14" } } })).Data().GetProperty("updateSystemSettings");
+
+        Assert.False(Setting(answer, "Auth:Standalone:PasswordMinLength").GetProperty("restartPending").GetBoolean());
+        Assert.False(answer.GetProperty("restartPending").GetBoolean()); // nothing waits: the rest of the Sign-in group did not change
+        var listed = (await admin.Gql("{ systemSettings { groups { name appliesAtOnce settings { key appliesAtOnce } } } }")).Data().GetProperty("systemSettings").GetProperty("groups")
+            .EnumerateArray().Single(g => g.GetProperty("name").GetString() == "AUTH");
+        Assert.False(listed.GetProperty("appliesAtOnce").GetBoolean());
+        Assert.True(listed.GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("key").GetString() == "Auth:Standalone:PasswordMinLength").GetProperty("appliesAtOnce").GetBoolean());
+        Assert.Equal(14, (await app.NewClient().Gql(Requirements)).Data().GetProperty("passwordRequirements").GetProperty("minLength").GetInt32());
+
+        // The next new password is judged by it, without a restart.
+        var refused = await admin.Gql("mutation($i: ChangePasswordInput!) { changePassword(input: $i) }",
+            new { i = new { currentPassword = TestApp.AdminPassword, newPassword = "thirteen-char", newPasswordConfirmation = "thirteen-char" } });
+        Assert.Equal("password.tooShort", refused.ErrorKey());
+
+        foreach (var value in new[] { "9", "129" })
+            Assert.Equal("settings.invalid", (await admin.Gql(Update, new { c = new object[] { new { key = "Auth:Standalone:PasswordMinLength", value } } })).ErrorKey());
+        Assert.Equal(0, app.Restarts.Count);
+    }
+
+    [Fact]
     public async Task Changes_AreWrittenIntoTheFile_TheDefaultsApplyAtOnce_TheMailWaitsForARestart()
     {
         using var app = TestApp.Standalone();
@@ -333,5 +362,21 @@ public class LiveSettingsReadersTests
             .ToList();
         Assert.Contains(parameters, p => p.ParameterType == typeof(IOptionsSnapshot<Tankstat.Application.Vehicles.VehicleDefaultsOptions>) && p.Where.Contains("GraphQL")); // the scan sees the resolvers
         Assert.DoesNotContain(parameters, p => p.ParameterType.GetGenericTypeDefinition() == typeof(IOptions<>));
+    }
+
+    [Fact]
+    public void EveryLiveSettingOfAGroupReadAtStart_IsReadAfresh_NeverThroughAKeptIOptions()
+    {
+        // The password minimum, in the Sign-in group: its own options class, read through PasswordRequirements' monitor.
+        Assert.Equal([Tankstat.Application.Users.PasswordOptions.MinLengthKey], SettingsCatalog.LiveKeys);
+
+        const BindingFlags all = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+        var parameters = typeof(Program).Assembly.GetReferencedAssemblies().Where(a => a.Name!.StartsWith("Tankstat.")).Select(Assembly.Load).Append(typeof(Program).Assembly)
+            .SelectMany(a => a.GetTypes())
+            .SelectMany(t => t.GetConstructors(all).Cast<MethodBase>().Concat(t.GetMethods(all)).SelectMany(m => m.GetParameters().Select(p => p.ParameterType)))
+            .Where(p => p.IsGenericType && p.GetGenericArguments()[0] == typeof(Tankstat.Application.Users.PasswordOptions))
+            .ToList();
+        Assert.Contains(typeof(IOptionsMonitor<Tankstat.Application.Users.PasswordOptions>), parameters);
+        Assert.DoesNotContain(parameters, p => p.GetGenericTypeDefinition() == typeof(IOptions<>));
     }
 }

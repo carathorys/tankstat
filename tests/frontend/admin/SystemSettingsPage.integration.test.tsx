@@ -44,6 +44,7 @@ function fixture({ modeEditable = false, mode = 'Standalone' }: { modeEditable?:
           setting({ key: 'Auth:AdminEmails', kind: 'LIST', value: 'a@example.com\nb@example.com', isSet: true, source: 'FILE' }),
           setting({ key: 'Auth:Oidc:ClientSecret', kind: 'SECRET', isSecret: true, isSet: true, source: 'FILE' }),
           setting({ key: 'Auth:Standalone:AllowAdminSetPassword', kind: 'BOOLEAN', restartPending: true }),
+          setting({ key: 'Auth:Standalone:PasswordMinLength', kind: 'INTEGER', defaultValue: '10', appliesAtOnce: true }), // read afresh in a group read at start
         ],
       },
       { __typename: 'SystemSettingsGroup', name: 'DEFAULTS', appliesAtOnce: true, settings: [setting({ key: 'Defaults:Currency', value: 'HUF', isSet: true, source: 'FILE' })] },
@@ -104,6 +105,10 @@ it('shows every group, where each value comes from, and what waits for a restart
   expect(auth.getByLabelText('Administrators (OIDC and proxy sign-in)')).toHaveValue('a@example.com\nb@example.com')
   expect(auth.getByRole('switch', { name: 'Administrators may set passwords' })).toHaveAccessibleDescription(/takes effect after a restart/)
   expect(auth.getByText('Changes here take effect after a restart of the server.')).toBeInTheDocument()
+  // The one setting of the tab that applies at once says so beside its label; the others say nothing of it.
+  expect(auth.getByLabelText('Minimum password length')).toHaveAccessibleDescription(/takes effect as soon as it is saved, unlike the rest of this tab/)
+  expect(auth.getByLabelText('Minimum password length')).toHaveValue('10')
+  expect(auth.getAllByText('Applies at once')).toHaveLength(1)
   expect(auth.getByLabelText('OIDC client secret')).toHaveValue('') // never shown back
   expect(auth.getByLabelText('OIDC client secret')).toHaveAccessibleDescription(/Set\. Leave blank to keep it\./)
   expect(auth.getByRole('switch', { name: 'Administrators may set passwords' })).not.toBeChecked()
@@ -195,9 +200,29 @@ it('says a saved setting is in effect when the server says nothing of it waits',
   expect(screen.queryByText('Saved. It takes effect after a restart.')).not.toBeInTheDocument()
 })
 
+it('says the password minimum is in effect when saved alone, though another setting of its tab still waits for a restart', async () => {
+  const ui = userEvent.setup()
+  const saved = fixture() // the admin password switch still waits for a restart from an earlier save
+  saved.groups[0].settings[5] = setting({ key: 'Auth:Standalone:PasswordMinLength', kind: 'INTEGER', defaultValue: '10', appliesAtOnce: true, value: '14', isSet: true, source: 'FILE' })
+  const calls = settingsServer(fixture(), saved)
+  renderWithApollo(<App />, '/admin/settings')
+
+  const auth = await group('Sign-in')
+  await ui.clear(auth.getByLabelText('Minimum password length'))
+  await ui.type(auth.getByLabelText('Minimum password length'), '14')
+  await ui.click(auth.getByRole('button', { name: 'Save changes' }))
+
+  expect(await screen.findByText('Saved. It is in effect now.')).toBeInTheDocument()
+  expect(screen.queryByText('Saved. It takes effect after a restart.')).not.toBeInTheDocument()
+  expect(calls.UpdateSystemSettings).toEqual([{ changes: [{ key: 'Auth:Standalone:PasswordMinLength', value: '14', clear: false }] }])
+})
+
 it('a save starts the form afresh, even when its answer looks as before', async () => {
   const ui = userEvent.setup()
-  const calls = settingsServer(fixture({ mode: 'Oidc' })) // the OIDC secret is used only then
+  const before = fixture({ mode: 'Oidc' }) // the OIDC secret is used only then
+  // Saved before and still waiting for a restart, as the one typed now will.
+  before.groups[0].settings[3] = setting({ key: 'Auth:Oidc:ClientSecret', kind: 'SECRET', isSecret: true, isSet: true, source: 'FILE', restartPending: true })
+  const calls = settingsServer(before)
   renderWithApollo(<App />, '/admin/settings')
 
   const auth = await group('Sign-in')

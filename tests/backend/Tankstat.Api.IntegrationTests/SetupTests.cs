@@ -62,7 +62,11 @@ public sealed class SetupTests : IDisposable
         Assert.False(app.Log.Mentions("zzzz-password-1"));
         Assert.Contains(app.Log.From("Tankstat.Api.GraphQL.GraphQLLoggingListener"), e => e.Level == LogLevel.Warning && e.Values.TryGetValue("Key", out var k) && (string?)k == "setup.codeInvalid");
 
-        var finished = (await browser.Gql(Finish, new { i = new { code = code.ToLowerInvariant(), email = "Root@Example.com", password = "initial-password-1" } }))
+        // The password typed once (an older page sends no repetition): refused, nothing made, the setup still waits.
+        Assert.Equal("password.mismatch", (await browser.Gql(Finish, new { i = new { code, email = "Root@Example.com", password = "initial-password-1" } })).ErrorKey());
+        Assert.True((await browser.Gql(Pending)).Data().GetProperty("setup").GetProperty("pending").GetBoolean());
+
+        var finished = (await browser.Gql(Finish, new { i = new { code = code.ToLowerInvariant(), email = "Root@Example.com", password = "initial-password-1", passwordConfirmation = "initial-password-1" } }))
             .Data().GetProperty("setupFinish");
         var made = finished.GetProperty("administrator");
         Assert.Equal(("root@example.com", true), (made.GetProperty("email").GetString(), made.GetProperty("isAdmin").GetBoolean()));
@@ -75,7 +79,7 @@ public sealed class SetupTests : IDisposable
         Assert.Equal("root@example.com", session.GetProperty("email").GetString());
         Assert.False((await browser.Gql(Pending)).Data().GetProperty("setup").GetProperty("pending").GetBoolean());
         Assert.DoesNotContain("SETUP_PENDING", CodesOf(await browser.Gql(Notices)));
-        Assert.Equal("setup.completed", (await app.NewClient().Gql(Finish, new { i = new { code, email = "other@example.com", password = "initial-password-1" } })).ErrorKey());
+        Assert.Equal("setup.completed", (await app.NewClient().Gql(Finish, new { i = new { code, email = "other@example.com", password = "initial-password-1", passwordConfirmation = "initial-password-1" } })).ErrorKey());
         await app.NewClient().LoginAs("root@example.com", "initial-password-1");
         Assert.False(app.Log.Mentions("initial-password-1"));
     }
@@ -113,7 +117,7 @@ public sealed class SetupTests : IDisposable
         Assert.True((await browser.Gql(Save, new { c = change, code })).Data().GetProperty("updateSystemSettings").GetProperty("restartPending").GetBoolean());
         Assert.Equal(0, app.Restarts.Count); // one restart, at the end
 
-        var finished = (await browser.Gql(Finish, new { i = new { code, email = "root@example.com", password = "initial-password-1" } })).Data().GetProperty("setupFinish");
+        var finished = (await browser.Gql(Finish, new { i = new { code, email = "root@example.com", password = "initial-password-1", passwordConfirmation = "initial-password-1" } })).Data().GetProperty("setupFinish");
 
         // Standalone runs already, so the administrator is signed in on this browser, and a restart in the same mode keeps the session.
         Assert.Equal((true, true), (finished.GetProperty("restarting").GetBoolean(), finished.GetProperty("signedIn").GetBoolean()));

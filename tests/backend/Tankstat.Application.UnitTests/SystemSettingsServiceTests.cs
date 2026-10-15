@@ -235,6 +235,26 @@ public class SystemSettingsServiceTests
     }
 
     [Fact]
+    public async Task SwitchingToStandalone_JudgesTheBootstrapPassword_ByTheMinimumTheSameSaveSets()
+    {
+        var w = new World(AuthMode.Oidc, configure: o => o.Mode = AuthMode.Oidc);
+        var external = User.CreateExternal(UserProvider.Oidc, "sub-1", "owner@x.co", "Owner", isAdmin: true);
+        w.Users.Items.Add(external);
+        w.Current.SignInAs(external);
+        w.SystemConfiguration.FileAtStart["Auth:Mode"] = "Oidc";
+        w.SettingsFile.Values["Auth:Mode"] = "Oidc";
+        w.SystemConfiguration.Environment["Auth:Standalone:AdminEmail"] = "root@x.co";
+        w.SystemConfiguration.Environment["Auth:Standalone:AdminPassword"] = "initial-password-1"; // 18 characters
+
+        var refused = await Assert.ThrowsAsync<DomainException>(() =>
+            w.SystemSettings.UpdateAsync([Set("Auth:Mode", "Standalone"), Set("Auth:Standalone:PasswordMinLength", "20")], null, default));
+
+        Assert.Equal(("settings.standaloneNeedsAdministrator", "password"), (refused.Key, refused.Args["reason"]));
+        Assert.Equal((object?)20, refused.Args["min"]); // the page says the minimum it was judged by, not the floor
+        await w.SystemSettings.UpdateAsync([Set("Auth:Mode", "Standalone"), Set("Auth:Standalone:PasswordMinLength", "18")], null, default);
+    }
+
+    [Fact]
     public async Task SwitchingToOidc_ChecksThatTheAuthorityAnswers_WithThatIssuer()
     {
         var w = AdminWorld(w =>

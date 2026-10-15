@@ -42,6 +42,7 @@ export const user = (over: Partial<SessionUser> = {}): SessionUser => ({
   email: 'alice@example.com',
   isAdmin: false,
   avatarUrl: null,
+  passwordChangeRequired: false,
   ...over,
 })
 
@@ -76,6 +77,7 @@ export const systemSetting = (over: Partial<SystemSettingFieldsFragment> & { key
   editable: true,
   restartPending: false,
   defaultValue: null,
+  appliesAtOnce: false,
   ...over,
 })
 
@@ -115,7 +117,7 @@ export const wizardSettings = (running: AuthMode, chosen?: string) => {
 /** What the setup's done screen asks of the backups: the recipient new backups are encrypted for, none by default. */
 export const backupRecipientHandler = (recipient: string | null = null) =>
   graphql.query('BackupRecipient', () =>
-    HttpResponse.json({ data: { backups: { __typename: 'BackupOverviewInfo', settings: { __typename: 'BackupSettingsInfo', recipient } } } }),
+    HttpResponse.json({ data: { backups: { __typename: 'BackupOverviewInfo', settings: { __typename: 'BackupSettingsInfo', recipient, passphraseMinLength: 12 } } } }),
   )
 
 /** A GraphQL error as the API sends it: coarse `code`, specific translation `key`, `args`, English fallback `message`. */

@@ -28,7 +28,7 @@ async function signInWithTheForm(page: Page, user: { email: string; password: st
   // The restart takes a few seconds, and the page waits for it before it asks.
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible({ timeout: 60_000 })
   await page.getByLabel('E-mail').fill(user.email)
-  await page.getByLabel('Password').fill(user.password)
+  await page.getByLabel('Password', { exact: true }).fill(user.password)
   await page.getByRole('button', { name: 'Sign in' }).click()
 }
 
@@ -56,6 +56,7 @@ test('a new instance is set up through the wizard: the sign-in mode, the first a
   const admin = { email: `admin-${tag()}@example.com`, password: `password-${tag()}` }
   await last.getByRole('textbox', { name: /^E-mail/ }).fill(admin.email)
   await last.getByLabel(/^Password/).fill(admin.password)
+  await last.getByLabel(/^Repeat the password/).fill(admin.password)
   await expectSoundLayout(page)
   await last.getByRole('button', { name: 'Create the administrator' }).click()
 

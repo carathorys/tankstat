@@ -7,6 +7,8 @@ export default defineConfig({
   testDir: 'tests/e2e',
   testMatch: '**/*.e2e.ts',
   outputDir: 'test-results/e2e',
+  // Once before the tests: a user per size with a password shorter than the minimum the shared server then runs with.
+  globalSetup: './tests/e2e/support/global-setup.ts',
   // Every test makes its own data (tests/e2e/support/app.ts), so the tests of a file run side by side too, and CI's shards split by test.
   fullyParallel: true,
   // A flaky test is fixed, not retried.

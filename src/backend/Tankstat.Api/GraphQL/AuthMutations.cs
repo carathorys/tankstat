@@ -33,7 +33,7 @@ public sealed class AuthMutations
     {
         var context = http.HttpContext!;
         var session = SessionCookies.SessionId(context.User);
-        var user = await auth.ChangePasswordAsync(input.CurrentPassword, input.NewPassword, ct, session);
+        var user = await auth.ChangePasswordAsync(input.CurrentPassword, input.NewPassword, input.NewPasswordConfirmation, ct, session);
         // Every other session is now invalid (new session version); this one stays signed in with a fresh access cookie.
         if (session is { } current) await SessionCookies.SignInAsync(context, user, current);
         else await SessionCookies.IssueAsync(context, user, ct); // a cookie from before sessions: start one
@@ -49,7 +49,7 @@ public sealed class AuthMutations
 
     public async Task<bool> ResetPassword(ResetPasswordInput input, [Service] AuthService auth, CancellationToken ct)
     {
-        await auth.ResetPasswordAsync(input.Token, input.NewPassword, ct);
+        await auth.ResetPasswordAsync(input.Token, input.NewPassword, input.NewPasswordConfirmation, ct);
         return true;
     }
 
@@ -71,10 +71,14 @@ public sealed class AuthMutations
     public async Task<UserAccount> UpdateUser(UpdateUserInput input, [Service] UserService users, CancellationToken ct) =>
         UserAccount.From(await users.UpdateAsync(input.UserId, input.Email, input.DisplayName, ct));
 
-    /// <summary>Only works when <c>Auth:Standalone:AllowAdminSetPassword</c> is on.</summary>
-    public async Task<bool> SetUserPassword(Guid userId, string newPassword, [Service] UserService users, CancellationToken ct)
+    /// <summary>
+    /// Only works when <c>Auth:Standalone:AllowAdminSetPassword</c> is on. <paramref name="newPasswordConfirmation"/>: the new password
+    /// again (nullable so an older client gets <c>password.mismatch</c>, not a missing argument).
+    /// </summary>
+    public async Task<bool> SetUserPassword(
+        Guid userId, string newPassword, string? newPasswordConfirmation, [Service] UserService users, CancellationToken ct)
     {
-        await users.SetPasswordAsync(userId, newPassword, ct);
+        await users.SetPasswordAsync(userId, newPassword, newPasswordConfirmation, ct);
         return true;
     }
 

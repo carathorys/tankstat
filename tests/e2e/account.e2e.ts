@@ -1,5 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
 import { createUser, pageLoaded, picture, signIn, signInAsNewUser, type User } from './support/app.ts'
+import { violations } from './support/axe.ts'
+import { RAISED_MINIMUM } from './support/global-setup.ts'
+import { expectSoundLayout } from './support/layout.ts'
 
 // What a person does with their own account: signing in and out, the password, other devices, the language, the colour mode and the
 // profile picture. A user of the test's own each, so a lockout or a language never reaches another test.
@@ -7,7 +10,7 @@ import { createUser, pageLoaded, picture, signIn, signInAsNewUser, type User } f
 /** Signs in through the form on the sign-in page. */
 async function signInWithForm(page: Page, user: { email: string; password: string }) {
   await page.getByLabel('E-mail').fill(user.email)
-  await page.getByLabel('Password').fill(user.password)
+  await page.getByLabel('Password', { exact: true }).fill(user.password)
   await page.getByRole('button', { name: 'Sign in' }).click()
 }
 
@@ -43,7 +46,8 @@ test('changes the password and signs in with the new one', async ({ page, isMobi
   await pageLoaded(page)
   const newPassword = `${user.password}-new`
   await page.getByLabel('Current password').fill(user.password)
-  await page.getByLabel('New password').fill(newPassword)
+  await page.getByLabel('New password', { exact: true }).fill(newPassword)
+  await page.getByLabel('Repeat the new password').fill(newPassword)
   await page.getByRole('button', { name: 'Update password' }).click()
   await expect(page.getByText('Password changed. Your other sessions were signed out.')).toBeVisible()
 
@@ -53,6 +57,33 @@ test('changes the password and signs in with the new one', async ({ page, isMobi
   await expect(page.getByText('Invalid e-mail or password, or the account is temporarily locked.')).toBeVisible()
   await signInWithForm(page, { email: user.email, password: newPassword })
   await pageLoaded(page)
+})
+
+test('a password shorter than the minimum now signs in, and only its change is shown until it is changed', async ({ page }, info) => {
+  // Made by the global setup with 10 characters, before the shared server's minimum went up to RAISED_MINIMUM.
+  const user = (JSON.parse(process.env.E2E_SHORT_PASSWORDS ?? '{}') as Record<string, { email: string; password: string }>)[info.project.name]
+  expect(user, 'the global setup made a user for this project').toBeDefined()
+  await page.goto('/')
+  await signInWithForm(page, user)
+
+  const heading = page.getByRole('heading', { name: 'Choose a new password' })
+  await expect(heading).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Main navigation' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Show menu' })).toHaveCount(0)
+  await expect(page.getByText(`At least ${RAISED_MINIMUM} characters.`)).toBeVisible()
+  await expectSoundLayout(page)
+  expect(await violations(page)).toEqual([])
+  await page.goto('/trash') // no page past it
+  await expect(heading).toBeVisible()
+
+  const newPassword = `${user.password}-long-enough`
+  await page.getByLabel('Current password').fill(user.password)
+  await page.getByLabel('New password', { exact: true }).fill(newPassword)
+  await page.getByLabel('Repeat the new password').fill(newPassword)
+  await page.getByRole('button', { name: 'Update password' }).click()
+  await expect(page.getByText('Password changed. Your other sessions were signed out.')).toBeVisible()
+  await pageLoaded(page) // the trash, asked for before
+  await expect(heading).toHaveCount(0)
 })
 
 test('signs another device out from the account page', async ({ page, browser }) => {

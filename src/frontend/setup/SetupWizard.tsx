@@ -507,16 +507,14 @@ function AdministratorStep({ code, onBack }: { code: string; onBack?: () => void
   return (
     <Stack sx={{ gap: 1.5, maxWidth: 480 }}>
       <Typography>{t('setup.adminIntro')}</Typography>
-      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-        {t('setup.passwordHint')}
-      </Typography>
+      {/* The password's field says the minimum itself (the server's, which the environment may have raised). */}
       <FieldForm
         fields={[
           { name: 'email', label: 'fields.email', type: 'email', autoComplete: 'username' },
-          { name: 'password', label: 'fields.password', type: 'password', autoComplete: 'new-password' },
+          { name: 'password', label: 'fields.password', type: 'newPassword', repeatLabel: 'fields.passwordRepeat' },
         ]}
         submitLabel="setup.createAdmin"
-        onSubmit={(v) => finish({ code, email: v.email ?? '', password: v.password ?? '' })}
+        onSubmit={(v) => finish({ code, email: v.email ?? '', password: v.password ?? '', passwordConfirmation: v.passwordRepeat ?? '' })}
       >
         {onBack && restart === undefined && <BackButton onBack={onBack} />}
       </FieldForm>

@@ -17,7 +17,7 @@ import { ErrorMessage } from './messages.tsx'
 import { NoticeBanner } from './NoticeBanner.tsx'
 import { useConnectivity } from './offline/useConnectivity.ts'
 import { useTakeoverHeld } from './setup/takeoverHold.ts'
-import { ResetPasswordView } from './PasswordForms.tsx'
+import { PasswordChangeRequiredView, ResetPasswordView } from './PasswordForms.tsx'
 import { HealthFooter } from './shell/HealthFooter.tsx'
 import { UiSettingsProvider } from './settings/UiSettingsProvider.tsx'
 import { useUiSettings } from './settings/uiSettingsContext.ts'
@@ -98,13 +98,16 @@ export default function App() {
   const { data, error, loading } = useQuery(SessionDocument)
   const mode = data?.session.mode ?? 'NONE'
   const user = data?.session.user ?? null
-  // No menu while the setup page stands in for every page: none of them is there yet.
+  // No menu while the setup page stands in for every page (none of them is there yet), nor while the change of a password asked at
+  // sign-in stands in for them.
   const takenOver = useSetupTakesOver(data)
-  const showMenu = data !== undefined && (mode === 'NONE' || user !== null) && !takenOver
+  const signedIn = data !== undefined && (mode === 'NONE' || user !== null) && !takenOver
+  const showMenu = signedIn && !user?.passwordChangeRequired
 
-  // The UI settings follow the user: asked from the server once per session, kept per user (the key starts afresh on sign-in and sign-out).
+  // The UI settings follow the user: asked from the server once per session, kept per user (the key starts afresh on sign-in and sign-out),
+  // the change asked at sign-in included (its page speaks the account's language, and what is chosen in the top bar meanwhile is kept).
   return (
-    <UiSettingsProvider key={user?.id ?? mode} enabled={showMenu}>
+    <UiSettingsProvider key={user?.id ?? mode} enabled={signedIn}>
       <Shell data={data} error={error} loading={loading} mode={mode} user={user} showMenu={showMenu} />
     </UiSettingsProvider>
   )
@@ -264,6 +267,7 @@ function Content({ data }: { data: SessionQuery }) {
     )
   if (mode === 'STANDALONE' && resetToken && !user) return <ResetPasswordView token={resetToken} />
   if (mode !== 'NONE' && !user) return <LoginView mode={mode} />
+  if (user?.passwordChangeRequired) return <PasswordChangeRequiredView />
 
   return (
     // A short fade/slide-in on every page change (honours the user's reduced-motion setting).

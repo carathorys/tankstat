@@ -34,11 +34,13 @@ mutation SetupClaimAdministrator($code: String!) {
   }
 }
 
-# The done screen's key set: the recipient alone (the Backups query's restore points and sizes read every backup and walk the folders).
+# The done screen's key set: the recipient and the passphrase minimum alone (the Backups query's restore points and sizes read every backup and
+# walk the folders).
 query BackupRecipient {
   backups {
     settings {
       recipient
+      passphraseMinLength
     }
   }
 }

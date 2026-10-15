@@ -27,6 +27,7 @@ type Query {
   vehicle(id: UUID!): Vehicle @cost(weight: "10")
   session: Session! @cost(weight: "10")
   notices: [Notice!]!
+  passwordRequirements: PasswordRequirementsInfo!
   users: [UserAccount!]! @cost(weight: "10")
   canSetUserPasswords: Boolean! @cost(weight: "10")
   accessSettings: AccessSettingsInfo! @cost(weight: "10")
@@ -114,8 +115,11 @@ type Mutation {
   setUserDisabled(userId: UUID!, disabled: Boolean!): UserAccount!
     @cost(weight: "10")
   updateUser(input: UpdateUserInput!): UserAccount! @cost(weight: "10")
-  setUserPassword(userId: UUID!, newPassword: String!): Boolean!
-    @cost(weight: "10")
+  setUserPassword(
+    userId: UUID!
+    newPassword: String!
+    newPasswordConfirmation: String
+  ): Boolean! @cost(weight: "10")
   deleteUser(input: DeleteUserInput!): Boolean! @cost(weight: "10")
   setDefaultAccess(level: AccessLevel!): AccessSettingsInfo! @cost(weight: "10")
   setAccessGrant(input: SetAccessGrantInput!): Boolean! @cost(weight: "10")
@@ -124,7 +128,7 @@ type Mutation {
   runBackup: Boolean! @cost(weight: "10")
   deleteBackup(file: String!): Boolean! @cost(weight: "10")
   holdBackup(file: String!, hold: Boolean!): Boolean! @cost(weight: "10")
-  prepareBackupEncryption(passphrase: String): BackupKeySetInfo!
+  prepareBackupEncryption(passphrase: String, passphraseConfirmation: String): BackupKeySetInfo!
     @cost(weight: "10")
   revokeSession(id: UUID!): Boolean! @cost(weight: "10")
   revokeOtherSessions: Int! @cost(weight: "10")
@@ -266,6 +270,7 @@ type BackupSettingsInfo {
   keepDays: Int
   environment: BackupEnvironmentMode!
   secrets: Boolean!
+  passphraseMinLength: Int!
 }
 
 type BackupSizesInfo {
@@ -484,6 +489,11 @@ type OfflineSettingsInfo {
 type OfflineVehicleWindow {
   vehicleId: UUID!
   window: String!
+}
+
+type PasswordRequirementsInfo {
+  minLength: Int!
+  maxLength: Int!
 }
 
 type PasswordResetLink {
@@ -737,6 +747,7 @@ type SystemSetting {
   editable: Boolean!
   restartPending: Boolean!
   defaultValue: String
+  appliesAtOnce: Boolean!
 }
 
 type SystemSettingsGroup {
@@ -780,6 +791,7 @@ type UserInfo {
   email: String!
   isAdmin: Boolean!
   avatarUrl: String
+  passwordChangeRequired: Boolean!
 }
 
 type UserRef {
@@ -934,6 +946,7 @@ input ChangeInput {
 input ChangePasswordInput {
   currentPassword: String!
   newPassword: String!
+  newPasswordConfirmation: String
 }
 
 input ChartConfigInput {
@@ -1039,6 +1052,7 @@ input RemoveLogPhotoInput {
 input ResetPasswordInput {
   token: String!
   newPassword: String!
+  newPasswordConfirmation: String
 }
 
 input ResolveSyncChangeInput {
@@ -1080,6 +1094,7 @@ input SetupFinishInput {
   email: String
   password: String
   acknowledgeOpenAccess: Boolean! = false
+  passwordConfirmation: String
 }
 
 input SetVehiclePictureInput {

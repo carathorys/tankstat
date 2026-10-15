@@ -56,7 +56,7 @@ public class UserAdministrationTests
         var alice = w.AddUser("alice@x.co");
 
         Assert.False(await w.UserService.CanSetPasswordsAsync(default));
-        Assert.Equal("user.adminPasswordDisabled", (await Assert.ThrowsAsync<DomainException>(() => w.UserService.SetPasswordAsync(alice.Id, "brand-new-pass-1", default))).Key);
+        Assert.Equal("user.adminPasswordDisabled", (await Assert.ThrowsAsync<DomainException>(() => w.UserService.SetPasswordAsync(alice.Id, "brand-new-pass-1", "brand-new-pass-1", default))).Key);
     }
 
     [Fact]
@@ -67,10 +67,24 @@ public class UserAdministrationTests
         var version = alice.SessionVersion;
 
         Assert.True(await w.UserService.CanSetPasswordsAsync(default));
-        await w.UserService.SetPasswordAsync(alice.Id, "brand-new-pass-1", default);
+        await w.UserService.SetPasswordAsync(alice.Id, "brand-new-pass-1", "brand-new-pass-1", default);
 
         Assert.Equal(version + 1, alice.SessionVersion);
         await w.Auth.LoginAsync("alice@x.co", "brand-new-pass-1", default);
+    }
+
+    [Fact]
+    public async Task SetPassword_WithoutTheSameNewPasswordTwice_IsRefused_AndSignsNobodyOut()
+    {
+        var (w, _) = SignedInAdmin(o => o.Standalone.AllowAdminSetPassword = true);
+        var alice = w.AddUser("alice@x.co");
+        var version = alice.SessionVersion;
+
+        var refused = await Assert.ThrowsAsync<DomainException>(() => w.UserService.SetPasswordAsync(alice.Id, "brand-new-pass-1", null, default));
+
+        Assert.Equal("password.mismatch", refused.Key);
+        Assert.Equal(version, alice.SessionVersion);
+        await w.Auth.LoginAsync("alice@x.co", "password-123456", default);
     }
 
     [Fact]
@@ -81,11 +95,11 @@ public class UserAdministrationTests
         var oidc = User.CreateExternal(UserProvider.Oidc, "sub", "o@x.co", "O", false);
         w.Users.Items.Add(oidc);
 
-        await Assert.ThrowsAsync<DomainException>(() => w.UserService.SetPasswordAsync(alice.Id, "short", default));
-        Assert.Equal("user.passwordsLocalOnly", (await Assert.ThrowsAsync<DomainException>(() => w.UserService.SetPasswordAsync(oidc.Id, "brand-new-pass-1", default))).Key);
+        await Assert.ThrowsAsync<DomainException>(() => w.UserService.SetPasswordAsync(alice.Id, "short", "short", default));
+        Assert.Equal("user.passwordsLocalOnly", (await Assert.ThrowsAsync<DomainException>(() => w.UserService.SetPasswordAsync(oidc.Id, "brand-new-pass-1", "brand-new-pass-1", default))).Key);
 
         w.Options.Mode = AuthMode.Oidc;
-        Assert.Equal("user.adminPasswordDisabled", (await Assert.ThrowsAsync<DomainException>(() => w.UserService.SetPasswordAsync(alice.Id, "brand-new-pass-1", default))).Key);
+        Assert.Equal("user.adminPasswordDisabled", (await Assert.ThrowsAsync<DomainException>(() => w.UserService.SetPasswordAsync(alice.Id, "brand-new-pass-1", "brand-new-pass-1", default))).Key);
     }
 
     [Fact]
@@ -198,9 +212,9 @@ public class UserAdministrationTests
         var (w, _) = SignedInAdmin(o => o.Standalone.AllowAdminSetPassword = true);
         var (user, reset) = await w.UserService.CreateLocalAsync("new@x.co", null, false, default);
 
-        await w.UserService.SetPasswordAsync(user.Id, "brand-new-pass-1", default);
+        await w.UserService.SetPasswordAsync(user.Id, "brand-new-pass-1", "brand-new-pass-1", default);
 
-        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(reset.Token, "another-pass-1234", default));
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(reset.Token, "another-pass-1234", "another-pass-1234", default));
         await w.Auth.LoginAsync("new@x.co", "brand-new-pass-1", default);
     }
 
@@ -211,9 +225,9 @@ public class UserAdministrationTests
         var (user, first) = await w.UserService.CreateLocalAsync("new@x.co", null, false, default);
         var second = await w.UserService.IssueResetAsync(user.Id, default);
 
-        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(first.Token, "chosen-password-1", default));
-        await w.Auth.ResetPasswordAsync(second.Token, "chosen-password-1", default);
-        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(second.Token, "another-pass-1234", default));
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(first.Token, "chosen-password-1", "chosen-password-1", default));
+        await w.Auth.ResetPasswordAsync(second.Token, "chosen-password-1", "chosen-password-1", default);
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(second.Token, "another-pass-1234", "another-pass-1234", default));
     }
 
     [Fact]
@@ -233,7 +247,7 @@ public class UserAdministrationTests
         Assert.Equal(user.Id, warning.Values["UserId"]);
         Assert.IsType<EmailSendException>(warning.Exception);
         Assert.Contains(w.Log.From<UserService>(), e => e.Level == LogLevel.Information && e.Values.GetValueOrDefault("EmailSent") is false);
-        await w.Auth.ResetPasswordAsync(reset.Token, "chosen-password-1", default); // and it works
+        await w.Auth.ResetPasswordAsync(reset.Token, "chosen-password-1", "chosen-password-1", default); // and it works
     }
 
     [Fact]
@@ -247,8 +261,8 @@ public class UserAdministrationTests
 
         Assert.Equal(EmailOutcome.Failed, second.Email);
         Assert.Single(w.Tokens.Items, t => t.UserId == user.Id); // one live link: the new one
-        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(first.Token, "chosen-password-1", default));
-        await w.Auth.ResetPasswordAsync(second.Token, "chosen-password-1", default);
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(first.Token, "chosen-password-1", "chosen-password-1", default));
+        await w.Auth.ResetPasswordAsync(second.Token, "chosen-password-1", "chosen-password-1", default);
     }
 
     [Fact]
@@ -269,7 +283,7 @@ public class UserAdministrationTests
             e.Level == LogLevel.Warning && e.Exception is EmailSendException && Equals(e.Values.GetValueOrDefault("UserId"), user.Id)));
         var left = Assert.Single(w.Tokens.Items, t => t.UserId == user.Id);
         Assert.StartsWith($"{left.Id:N}.", kept.Token);
-        await w.Auth.ResetPasswordAsync(kept.Token, "chosen-password-1", default); // the link the administrator handed over still works
+        await w.Auth.ResetPasswordAsync(kept.Token, "chosen-password-1", "chosen-password-1", default); // the link the administrator handed over still works
     }
 
     [Fact]
@@ -290,7 +304,7 @@ public class UserAdministrationTests
         Assert.True(issued.EmailFailed);
         var left = Assert.Single(w.Tokens.Items, t => t.UserId == user.Id);
         Assert.StartsWith($"{left.Id:N}.", issued.Token);
-        await w.Auth.ResetPasswordAsync(issued.Token, "chosen-password-1", default);
+        await w.Auth.ResetPasswordAsync(issued.Token, "chosen-password-1", "chosen-password-1", default);
     }
 
     [Fact]
@@ -323,7 +337,7 @@ public class UserAdministrationTests
         var left = Assert.Single(w.Tokens.Items, t => t.UserId == user.Id);
         Assert.StartsWith($"{left.Id:N}.", first.Token);
         Assert.DoesNotContain(w.Log.From<PasswordResetService>(), e => e.Level == LogLevel.Warning);
-        await w.Auth.ResetPasswordAsync(first.Token, "chosen-password-1", default); // the earlier link was not replaced
+        await w.Auth.ResetPasswordAsync(first.Token, "chosen-password-1", "chosen-password-1", default); // the earlier link was not replaced
     }
 
     [Fact]

@@ -74,7 +74,7 @@ it('a refresh that does not get through leaves the answer as it is, without aski
 it.each(['STANDALONE', 'OIDC'])('the app opened again after its access cookie ran out (%s) refreshes before it says nobody is signed in', async (mode) => {
   let signedIn = false
   let refreshes = 0
-  const user = { __typename: 'UserInfo', id: 'u1', email: 'a@x.co', displayName: 'A', isAdmin: false, avatarUrl: null }
+  const user = { __typename: 'UserInfo', id: 'u1', email: 'a@x.co', displayName: 'A', isAdmin: false, avatarUrl: null, passwordChangeRequired: false }
   server.use(
     graphql.query('Session', () => HttpResponse.json({ data: { session: { __typename: 'Session', mode, user: signedIn ? user : null , instance: fakeInstance() }, notices: [] } })),
     http.post('/auth/token/refresh', () => {

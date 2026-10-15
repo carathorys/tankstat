@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Tankstat.Api.Backups;
@@ -43,7 +44,7 @@ public sealed class BackupCommandsTests : IDisposable
     {
         using var app = new TestApp(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = _folder });
 
-        var run = await RunAsync(app, "correct horse battery staple\n", "backup", "keygen", "--passphrase-stdin");
+        var run = await RunAsync(app, "correct horse battery staple\ncorrect horse battery staple\n", "backup", "keygen", "--passphrase-stdin"); // typed twice
 
         Assert.Equal((0, ""), (run.Code, run.Error));
         var recipient = Regex.Match(run.Out, @"Backups__Encryption__Recipient=(age1\S+)").Groups[1].Value;
@@ -61,6 +62,28 @@ public sealed class BackupCommandsTests : IDisposable
         Assert.Contains("Usage", (await RunAsync(app, "x\n", "backup", "keygen")).Error); // never from an argument
     }
 
+    [Theory]
+    [InlineData("backup keygen --passphrase-stdin")]
+    [InlineData("backup --passphrase-stdin")]
+    public async Task ANewPassphrase_TypedTwiceDifferently_OrShorterThanTheMinimum_StopsTheCommand_BeforeAnyKeyOrFile(string commandLine)
+    {
+        using var app = new TestApp(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = _folder, ["Backups:PassphraseMinLength"] = "30" });
+
+        var different = await RunAsync(app, "correct horse battery staple, a\ncorrect horse battery staple, b\n", commandLine.Split(' '));
+        Assert.Equal((1, "", "The two entries are not the same."), (different.Code, different.Out, different.Error.Trim()));
+        var once = await RunAsync(app, "correct horse battery staple, a\n", commandLine.Split(' ')); // one line, as before: the repetition is missing
+        Assert.Equal(1, once.Code);
+        Assert.Contains("passphrase", once.Error);
+        var short28 = await RunAsync(app, "correct horse battery staple\ncorrect horse battery staple\n", commandLine.Split(' '));
+        Assert.Equal((1, "A passphrase has at least 30 characters."), (short28.Code, short28.Error.Trim()));
+        var spaces = new string(' ', 30); // long enough, but no passphrase: the page would make one up, which the command line cannot
+        var blank = await RunAsync(app, $"{spaces}\n{spaces}\n", commandLine.Split(' '));
+        Assert.Equal((1, "A passphrase of only spaces is no passphrase."), (blank.Code, blank.Error.Trim()));
+
+        Assert.False(Directory.Exists(_folder) && Directory.EnumerateFiles(_folder).Any()); // no backup was written
+        Assert.DoesNotContain("AGE-SECRET-KEY", different.Out + short28.Out);
+    }
+
     [Fact]
     public async Task Backup_WritesTheInstance_AndDecrypt_OpensIt_WithThePassphrase_OrTheIdentity_NeverWithAnother()
     {
@@ -74,7 +97,7 @@ public sealed class BackupCommandsTests : IDisposable
         Assert.Contains("not encrypted", plain.Out);
         Assert.Contains("keys left out", plain.Out);
 
-        var encrypted = await RunAsync(app, "hunter2 hunter2\n", "backup", "--passphrase-stdin", "--output", Path.Combine(_folder, "enc.zip"));
+        var encrypted = await RunAsync(app, "hunter2 hunter2\nhunter2 hunter2\n", "backup", "--passphrase-stdin", "--output", Path.Combine(_folder, "enc.zip"));
         Assert.Equal((0, ""), (encrypted.Code, encrypted.Error));
         Assert.Contains("encrypted for age1", encrypted.Out);
         var manifest = BackupFile.ReadManifest(Path.Combine(_folder, "enc.zip"));
@@ -150,6 +173,44 @@ public sealed class BackupCommandsTests : IDisposable
             await writer.WriteAsync("""{ "manifest_version": 3, "name": "Some extension", "version": "1.0" }""");
         var foreign = await RunAsync(app, "", "decrypt", extension, "--output", Path.Combine(_folder, "out4"));
         Assert.Equal((1, true), (foreign.Code, foreign.Error.Contains("not a Tankstat backup")));
+    }
+
+    [Fact]
+    public async Task Keygen_ReadsOnlyThePassphraseMinimum_SoBackupSettingsThatDoNotValidate_NeverStopIt()
+    {
+        // Half a key pair, which the start refuses with "tankstat backup keygen prints both", and a value the binder cannot read: keygen makes
+        // the pair and needs nothing else of the Backups section.
+        static ServiceProvider Services(string? minimum) => new ServiceCollection()
+            .AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Backups:Encryption:Recipient"] = "age1qyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqs3290gq",
+                ["Backups:Photos"] = "yes",
+                ["Backups:PassphraseMinLength"] = minimum,
+            }).Build())
+            .BuildServiceProvider();
+        async Task<Run> Keygen(ServiceProvider services, string passphrase)
+        {
+            var (output, error) = (new StringWriter(), new StringWriter());
+            var code = await BackupCommands.RunAsync(["backup", "keygen", "--passphrase-stdin"], services, new StringReader($"{passphrase}\n{passphrase}\n"), output, error);
+            return new Run(code, output.ToString(), error.ToString());
+        }
+
+        using (var services = Services(minimum: null))
+        {
+            var made = await Keygen(services, "correct horse battery staple");
+            Assert.Equal((0, ""), (made.Code, made.Error));
+            Assert.Matches(@"Backups__Encryption__Recipient=age1\S+", made.Out);
+        }
+        using (var services = Services(minimum: "30"))
+        {
+            var refused = await Keygen(services, "correct horse battery staple"); // 28 characters
+            Assert.Equal((1, "A passphrase has at least 30 characters."), (refused.Code, refused.Error.Trim()));
+        }
+        using (var services = Services(minimum: "twelve"))
+        {
+            var refused = await Keygen(services, "correct horse battery staple"); // reported with exit code 1, never a crash
+            Assert.Equal((1, "Backups:PassphraseMinLength must be from 12 to 128."), (refused.Code, refused.Error.Trim()));
+        }
     }
 
     [Fact]

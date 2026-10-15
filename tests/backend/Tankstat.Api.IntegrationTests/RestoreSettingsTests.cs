@@ -436,6 +436,26 @@ public sealed class RestoreSettingsTests : IDisposable
     }
 
     [Fact]
+    public async Task TheBootstrapCredentials_AreJudgedByThePasswordMinimumOfTheRestoredSettingsFile()
+    {
+        string backup;
+        using (var a = Host("a", "None", """{ "Auth": { "Mode": "Standalone", "Standalone": { "PasswordMinLength": "40" } } }"""))
+            backup = (await Backup(a)).Path;
+        using var b = Host("b", mode: null, """{ "Auth": { "Mode": "None" } }""", new()
+        {
+            ["Auth:Standalone:AdminEmail"] = TestApp.AdminEmail,
+            ["Auth:Standalone:AdminPassword"] = TestApp.AdminPassword, // under the 40 the next start would require: it could not make the administrator
+        });
+        Stage(Folder("b-backups"), backup);
+
+        _ = b.Factory.Services;
+
+        Assert.Single(Directory.GetFiles(Folder("b-backups"), "restore.refused.*"));
+        Assert.Equal(0, b.Restarts.NowCount);
+        Assert.Contains(b.Log.Entries, e => e.Values.TryGetValue("Reason", out var r) && (string?)r == "settings.standaloneNeedsAdministrator");
+    }
+
+    [Fact]
     public async Task ARestoreRequest_IsRefusedWhenThisServerWouldNotStartWithTheBackupsSettingsFile_AndNothingIsWritten()
     {
         // A complete OIDC sign-in in its file (its environment keeps it at None, so it runs here without the provider); a plain backup leaves

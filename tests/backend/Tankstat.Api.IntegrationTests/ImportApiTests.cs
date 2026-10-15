@@ -43,7 +43,7 @@ public class ImportApiTests : IDisposable
         var admin = _app.NewClient();
         await admin.LoginAs("root@example.com", "initial-password-1");
         var created = (await admin.Gql("mutation($i: CreateUserInput!) { createUser(input: $i) { user { id } reset { token } } }", new { i = new { email = "alice@example.com", displayName = "alice", isAdmin = false } })).Data().GetProperty("createUser");
-        await _app.NewClient().Gql("mutation($i: ResetPasswordInput!) { resetPassword(input: $i) }", new { i = new { token = created.GetProperty("reset").GetProperty("token").GetString(), newPassword = "alice-password-1" } });
+        await _app.NewClient().Gql("mutation($i: ResetPasswordInput!) { resetPassword(input: $i) }", new { i = new { token = created.GetProperty("reset").GetProperty("token").GetString(), newPassword = "alice-password-1", newPasswordConfirmation = "alice-password-1" } });
         var client = _app.NewClient();
         await client.LoginAs("alice@example.com", "alice-password-1");
         return client;

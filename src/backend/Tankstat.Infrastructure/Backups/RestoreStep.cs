@@ -73,6 +73,7 @@ internal sealed class RestoreStep(
     IOptions<StorageOptions> storage,
     IOptions<KeyRingOptions> keyRing,
     IOptions<AuthOptions> auth,
+    IOptionsMonitor<PasswordOptions> passwords,
     ISettingsBackup settingsFile,
     IServerRestart restart,
     InstanceGeneration state,
@@ -230,7 +231,9 @@ internal sealed class RestoreStep(
             // From the backup's own files, before anything changes: Standalone needs an administrator to sign in with afterwards, and tables
             // about to be rebuilt need every row to load (a line that is no row, a value that is not its column's, a count that is not the
             // manifest's); in place, the load's own transaction undoes such a row.
-            await RequireAdministratorAsync(settings?.Auth ?? auth.Value, () => Task.FromResult(BackupHoldsAdministrator(model, tables)),
+            // The password minimum the start after it runs with: the restored file's under this server's environment, else this server's.
+            var minLength = settings?.PasswordMinLength ?? passwords.CurrentValue.PasswordMinLength;
+            await RequireAdministratorAsync(settings?.Auth ?? auth.Value, minLength, () => Task.FromResult(BackupHoldsAdministrator(model, tables)),
                 subject => Task.FromResult(BackupHoldsLocalUser(model, tables, subject)), BackupSetupWaits(model, tables, manifest.Contents.Tables));
             var inPlace = applied is not null && MigrationNames.Same(applied, target);
             if (!inPlace) TableLoad.CheckRows(model, tables, manifest.Contents.Tables);
@@ -400,17 +403,18 @@ internal sealed class RestoreStep(
     /// (<paramref name="setupWaits"/>) needs none: the start waits for the setup page, which makes the administrator. <paramref name="next"/>
     /// is the sign-in the start after the restore runs: the restored settings file's under this server's environment, else this server's.
     /// </summary>
-    private static async Task RequireAdministratorAsync(AuthOptions next, Func<Task<bool>> hasAdministrator, Func<string, Task<bool>> localAccountExists, bool setupWaits)
+    private static async Task RequireAdministratorAsync(
+        AuthOptions next, int minLength, Func<Task<bool>> hasAdministrator, Func<string, Task<bool>> localAccountExists, bool setupWaits)
     {
         if (next.Mode != AuthMode.Standalone || await hasAdministrator()) return;
         var bootstrap = next.Standalone;
         if (setupWaits && string.IsNullOrWhiteSpace(bootstrap.AdminEmail) && string.IsNullOrWhiteSpace(bootstrap.AdminPassword)) return;
-        var reason = StandaloneBootstrap.ProblemOf(bootstrap.AdminEmail, bootstrap.AdminPassword, out var address)
+        var reason = StandaloneBootstrap.ProblemOf(bootstrap.AdminEmail, bootstrap.AdminPassword, minLength, out var address)
             ?? (await localAccountExists(address!) ? "taken" : null);
         if (reason is not null)
             throw new DomainException("settings.standaloneNeedsAdministrator",
-                "The backup holds no administrator to sign in with in Standalone mode, and none can be created from Auth:Standalone:AdminEmail and Auth:Standalone:AdminPassword.",
-                new { Reason = reason });
+                $"The backup holds no administrator to sign in with in Standalone mode, and none can be created from Auth:Standalone:AdminEmail and Auth:Standalone:AdminPassword ({minLength} to {PasswordPolicy.MaxLength} characters).",
+                new { Reason = reason, Min = minLength });
     }
 
     private RestoreOutcome Refuse(string markerPath, RestoreMarker? marker, Exception e, string reason)

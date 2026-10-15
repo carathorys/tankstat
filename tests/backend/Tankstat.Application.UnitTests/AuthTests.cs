@@ -90,8 +90,8 @@ public class PasswordTests
         w.Current.SignInAs(alice);
         var version = alice.SessionVersion;
 
-        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ChangePasswordAsync("wrong", "new-password-123", default));
-        await w.Auth.ChangePasswordAsync("password-123456", "new-password-123", default);
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ChangePasswordAsync("wrong", "new-password-123", "new-password-123", default));
+        await w.Auth.ChangePasswordAsync("password-123456", "new-password-123", "new-password-123", default);
 
         Assert.Equal(version + 1, alice.SessionVersion);
         await w.Auth.LoginAsync("alice@x.co", "new-password-123", default);
@@ -103,7 +103,75 @@ public class PasswordTests
         var w = new World();
         w.Current.SignInAs(w.AddUser("alice@x.co"));
 
-        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ChangePasswordAsync("password-123456", "short", default));
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ChangePasswordAsync("password-123456", "short", "short", default));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("new-password-124")]
+    public async Task ChangePassword_WithoutTheSameNewPasswordTwice_IsRefused_BeforeTheCurrentOneIsChecked_AndChangesNothing(string? repeated)
+    {
+        var w = new World();
+        var alice = w.AddUser("alice@x.co");
+        w.Current.SignInAs(alice);
+        var version = alice.SessionVersion;
+
+        // A wrong current password too: the repetition is checked first, so the answer says nothing about the current password.
+        var refused = await Assert.ThrowsAsync<DomainException>(() => w.Auth.ChangePasswordAsync("wrong", "new-password-123", repeated, default));
+
+        Assert.Equal("password.mismatch", refused.Key);
+        Assert.Equal(version, alice.SessionVersion);
+        Assert.Equal(0, w.Users.Updates);
+        await w.Auth.LoginAsync("alice@x.co", "password-123456", default);
+    }
+
+    [Fact]
+    public async Task ResetPassword_WithoutTheSameNewPasswordTwice_IsRefused_AndTheLinkStillWorks()
+    {
+        var w = new World(smtp: true);
+        w.AddUser("alice@x.co");
+        await RequestAsync(w, "alice@x.co", default);
+        var token = LinkIn(Assert.Single(w.Email.Sent));
+
+        var refused = await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(token, "brand-new-password", "brand-new-passw0rd", default));
+
+        Assert.Equal("password.mismatch", refused.Key);
+        await w.Auth.ResetPasswordAsync(token, "brand-new-password", "brand-new-password", default); // not used up by the refusal
+        await w.Auth.LoginAsync("alice@x.co", "brand-new-password", default);
+    }
+
+    [Fact]
+    public async Task ANewPassword_IsJudgedByTheMinimumAnAdministratorSaved_AtOnce()
+    {
+        var w = new World();
+        var alice = w.AddUser("alice@x.co");
+        w.Current.SignInAs(alice);
+        w.PasswordSettings.CurrentValue = new PasswordOptions { PasswordMinLength = 16 }; // saved on the settings page: no restart
+
+        var refused = await Assert.ThrowsAsync<DomainException>(() => w.Auth.ChangePasswordAsync("password-123456", "fifteen-chars-1", "fifteen-chars-1", default));
+        Assert.Equal(("password.tooShort", (object?)16), (refused.Key, refused.Args["min"]));
+
+        await w.Auth.ChangePasswordAsync("password-123456", "sixteen-chars-12", "sixteen-chars-12", default);
+        Assert.Throws<DomainException>(() => w.Auth.NewAdministrator("root@x.co", "fifteen-chars-1")); // the setup's administrator too
+    }
+
+    [Fact]
+    public async Task APasswordShortOfARaisedMinimum_StillSignsIn_AndIsAskedToChange_UntilTheChange()
+    {
+        var w = new World();
+        var alice = w.AddUser("alice@x.co"); // "password-123456": 15 characters
+        w.PasswordSettings.CurrentValue = new PasswordOptions { PasswordMinLength = 16 };
+
+        var signedIn = await w.Auth.LoginAsync("alice@x.co", "password-123456", default);
+
+        Assert.True(signedIn.PasswordChangeRequired);
+        Assert.True(w.Users.Items.Single(u => u.Id == alice.Id).PasswordChangeRequired); // stored: the session reads it from the database
+        Assert.Equal(2, w.Log.From<AuthService>().Count(e => e.Level == LogLevel.Information && Equals(e.Values["UserId"], alice.Id))); // signed in, asked to change
+
+        w.Current.SignInAs(signedIn);
+        var changed = await w.Auth.ChangePasswordAsync("password-123456", "sixteen-chars-12", "sixteen-chars-12", default);
+        Assert.False(changed.PasswordChangeRequired);
+        Assert.False((await w.Auth.LoginAsync("alice@x.co", "sixteen-chars-12", default)).PasswordChangeRequired);
     }
 
     [Fact]
@@ -112,7 +180,7 @@ public class PasswordTests
         var w = new World();
         w.AddUser("alice@x.co");
 
-        await Assert.ThrowsAsync<UnauthenticatedException>(() => w.Auth.ChangePasswordAsync("password-123456", "new-password-123", default));
+        await Assert.ThrowsAsync<UnauthenticatedException>(() => w.Auth.ChangePasswordAsync("password-123456", "new-password-123", "new-password-123", default));
     }
 
     [Fact]
@@ -140,7 +208,7 @@ public class PasswordTests
         var token = LinkIn(mail);
         Assert.StartsWith("https://tank.test/?resetToken=", mail.Body[mail.Body.IndexOf("https", StringComparison.Ordinal)..]);
 
-        await w.Auth.ResetPasswordAsync(token, "brand-new-password", default);
+        await w.Auth.ResetPasswordAsync(token, "brand-new-password", "brand-new-password", default);
         await w.Auth.LoginAsync("alice@x.co", "brand-new-password", default);
         Assert.True(alice.SessionVersion > 1);
     }
@@ -166,7 +234,7 @@ public class PasswordTests
 
         await RequestAsync(w, "alice@x.co", default);
 
-        await w.Auth.ResetPasswordAsync(token, "brand-new-password", default);
+        await w.Auth.ResetPasswordAsync(token, "brand-new-password", "brand-new-password", default);
     }
 
     private static string LinkIn((string To, string Subject, string Body) mail) => mail.Body.Split("resetToken=")[1].Split('\n')[0];
@@ -198,7 +266,7 @@ public class PasswordTests
         var lines = Withheld(w, alice);
         Assert.Equal(2, lines.Count);
         Assert.All(lines, l => Assert.Equal(LogLevel.Information, l.Level));
-        await w.Auth.ResetPasswordAsync(LinkIn(w.Email.Sent[0]), "brand-new-password", default); // the first link still works
+        await w.Auth.ResetPasswordAsync(LinkIn(w.Email.Sent[0]), "brand-new-password", "brand-new-password", default); // the first link still works
     }
 
     [Fact]
@@ -213,9 +281,9 @@ public class PasswordTests
 
         Assert.Equal(2, w.Email.Sent.Count);
         Assert.Single(w.Tokens.Items);
-        var refused = await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(LinkIn(w.Email.Sent[0]), "brand-new-password", default));
+        var refused = await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(LinkIn(w.Email.Sent[0]), "brand-new-password", "brand-new-password", default));
         Assert.Equal("reset.invalid", refused.Key);
-        await w.Auth.ResetPasswordAsync(LinkIn(w.Email.Sent[1]), "brand-new-password", default);
+        await w.Auth.ResetPasswordAsync(LinkIn(w.Email.Sent[1]), "brand-new-password", "brand-new-password", default);
     }
 
     [Fact]
@@ -231,9 +299,9 @@ public class PasswordTests
 
         Assert.Equal(3, w.Email.Sent.Count);
         Assert.Single(w.Tokens.Items);
-        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(LinkIn(w.Email.Sent[0]), "brand-new-password", default));
-        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(first.Token, "brand-new-password", default));
-        await w.Auth.ResetPasswordAsync(second.Token, "brand-new-password", default);
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(LinkIn(w.Email.Sent[0]), "brand-new-password", "brand-new-password", default));
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(first.Token, "brand-new-password", "brand-new-password", default));
+        await w.Auth.ResetPasswordAsync(second.Token, "brand-new-password", "brand-new-password", default);
     }
 
     [Fact]
@@ -281,7 +349,7 @@ public class PasswordTests
         await RequestAsync(w, "alice@x.co", default);
 
         var mail = Assert.Single(w.Email.Sent);
-        await w.Auth.ResetPasswordAsync(LinkIn(mail), "brand-new-password", default);
+        await w.Auth.ResetPasswordAsync(LinkIn(mail), "brand-new-password", "brand-new-password", default);
     }
 
     [Fact]
@@ -373,7 +441,7 @@ public class PasswordTests
         w.Clock.Advance(TimeSpan.FromMinutes(10)); // past the cool-down
 
         await w.Auth.RequestPasswordResetAsync("alice@x.co", default); // waits to be sent
-        await w.Auth.ResetPasswordAsync(token, "brand-new-password", default); // meanwhile she uses the link she has, which revokes every link
+        await w.Auth.ResetPasswordAsync(token, "brand-new-password", "brand-new-password", default); // meanwhile she uses the link she has, which revokes every link
         await w.ResetQueue.DrainAsync();
 
         Assert.Empty(w.Tokens.Items); // no link outlives the new password
@@ -389,12 +457,12 @@ public class PasswordTests
         w.Clock.Advance(TimeSpan.FromMinutes(10)); // past the cool-down
 
         await w.Auth.RequestPasswordResetAsync("alice@x.co", default);
-        await w.Auth.ResetPasswordAsync(token, "brand-new-password", default);
+        await w.Auth.ResetPasswordAsync(token, "brand-new-password", "brand-new-password", default);
         await w.Auth.RequestPasswordResetAsync("alice@x.co", default); // asked again since: the waiting request serves this one
         await w.ResetQueue.DrainAsync();
 
         Assert.Equal(2, w.Email.Sent.Count);
-        await w.Auth.ResetPasswordAsync(LinkIn(w.Email.Sent[1]), "another-password-1", default);
+        await w.Auth.ResetPasswordAsync(LinkIn(w.Email.Sent[1]), "another-password-1", "another-password-1", default);
     }
 
     [Fact]
@@ -440,7 +508,7 @@ public class PasswordTests
         await RequestAsync(w, "alice@x.co", default); // it expired: a new one
 
         Assert.Equal(2, w.Email.Sent.Count);
-        await w.Auth.ResetPasswordAsync(LinkIn(w.Email.Sent[1]), "brand-new-password", default);
+        await w.Auth.ResetPasswordAsync(LinkIn(w.Email.Sent[1]), "brand-new-password", "brand-new-password", default);
     }
 
     [Fact]
@@ -453,9 +521,9 @@ public class PasswordTests
         var second = await w.UserService.IssueResetAsync(earlier.UserId, default);
         w.Tokens.Items.Add(earlier);
 
-        await w.Auth.ResetPasswordAsync(second.Token, "brand-new-password", default);
+        await w.Auth.ResetPasswordAsync(second.Token, "brand-new-password", "brand-new-password", default);
 
-        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(first, "another-password-1", default));
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(first, "another-password-1", "another-password-1", default));
     }
 
     private static async Task<string> IssueToken(World w, string email)
@@ -472,9 +540,9 @@ public class PasswordTests
         var w = new World();
         var token = await IssueToken(w, "alice@x.co");
 
-        await w.Auth.ResetPasswordAsync(token, "brand-new-password", default);
+        await w.Auth.ResetPasswordAsync(token, "brand-new-password", "brand-new-password", default);
 
-        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(token, "another-password-1", default));
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(token, "another-password-1", "another-password-1", default));
     }
 
     [Fact]
@@ -485,7 +553,7 @@ public class PasswordTests
 
         w.Clock.Advance(TimeSpan.FromMinutes(61));
 
-        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(token, "brand-new-password", default));
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(token, "brand-new-password", "brand-new-password", default));
     }
 
     [Theory]
@@ -496,7 +564,7 @@ public class PasswordTests
     {
         var w = new World();
 
-        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(token, "brand-new-password", default));
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(token, "brand-new-password", "brand-new-password", default));
     }
 
     [Fact]
@@ -506,7 +574,7 @@ public class PasswordTests
         var token = await IssueToken(w, "alice@x.co");
 
         await Assert.ThrowsAsync<DomainException>(() =>
-            w.Auth.ResetPasswordAsync(token.Split('.')[0] + ".not-the-secret", "brand-new-password", default));
+            w.Auth.ResetPasswordAsync(token.Split('.')[0] + ".not-the-secret", "brand-new-password", "brand-new-password", default));
     }
 
     [Fact]
@@ -515,8 +583,8 @@ public class PasswordTests
         var w = new World();
         var token = await IssueToken(w, "alice@x.co");
 
-        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(token, "short", default));
-        await w.Auth.ResetPasswordAsync(token, "long-enough-password", default);
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync(token, "short", "short", default));
+        await w.Auth.ResetPasswordAsync(token, "long-enough-password", "long-enough-password", default);
     }
 }
 
@@ -775,7 +843,7 @@ public class UserAdminTests
         Assert.Contains("resetToken=", reset.Url);
         Assert.Single(w.Email.Sent);
 
-        await w.Auth.ResetPasswordAsync(reset.Token, "chosen-password-1", default);
+        await w.Auth.ResetPasswordAsync(reset.Token, "chosen-password-1", "chosen-password-1", default);
         await w.Auth.LoginAsync("new@x.co", "chosen-password-1", default);
     }
 

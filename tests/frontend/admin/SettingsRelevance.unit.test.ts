@@ -89,6 +89,7 @@ const setting = (over: Partial<SystemSettingFieldsFragment> & { key: string }): 
   editable: true,
   restartPending: false,
   defaultValue: null,
+  appliesAtOnce: false,
   ...over,
 })
 

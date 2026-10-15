@@ -213,19 +213,22 @@ public sealed class SystemSettingsService(
     /// </summary>
     private async Task RequireAdministratorAsync(IConfiguration next, CancellationToken ct)
     {
-        if (Is(next["Auth:Mode"], AuthMode.Standalone) && !await users.AnyLocalAdminAsync(ct) && await BootstrapProblemAsync(next, ct) is { } reason && !await setup.WaitsAsync(ct))
+        if (!Is(next["Auth:Mode"], AuthMode.Standalone) || await users.AnyLocalAdminAsync(ct)) return;
+        // The minimum the next start judges the bootstrap password by, the one this configuration holds: the refusal says it (`min`).
+        var minLength = PasswordOptions.MinLengthIn(key => next[key]);
+        if (await BootstrapProblemAsync(next, minLength, ct) is { } reason && !await setup.WaitsAsync(ct))
             throw new DomainException("settings.standaloneNeedsAdministrator",
-                $"Standalone mode needs an administrator: none exists yet, and the next start creates the first one from Auth:Standalone:AdminEmail (a valid address no local account has) and Auth:Standalone:AdminPassword ({PasswordPolicy.MinLength} to {PasswordPolicy.MaxLength} characters) in the environment.",
-                new { Reason = reason });
+                $"Standalone mode needs an administrator: none exists yet, and the next start creates the first one from Auth:Standalone:AdminEmail (a valid address no local account has) and Auth:Standalone:AdminPassword ({minLength} to {PasswordPolicy.MaxLength} characters) in the environment.",
+                new { Reason = reason, Min = minLength });
     }
 
     /// <summary>
     /// Why the first start in Standalone could not create the administrator from the candidate's credentials, as AuthService.BootstrapAdminAsync
-    /// will try to (null when it could): both must be given, the password must pass the policy, the address must be one, and no local account
-    /// may hold it yet (a disabled administrator or a user does: the new account could not be added beside it).
+    /// will try to (null when it could): both must be given, the password must pass the policy with <paramref name="minLength"/>, the address
+    /// must be one, and no local account may hold it yet (a disabled administrator or a user does: the new account could not be added beside it).
     /// </summary>
-    private async Task<string?> BootstrapProblemAsync(IConfiguration candidate, CancellationToken ct) =>
-        StandaloneBootstrap.ProblemOf(candidate["Auth:Standalone:AdminEmail"], candidate["Auth:Standalone:AdminPassword"], out var address)
+    private async Task<string?> BootstrapProblemAsync(IConfiguration candidate, int minLength, CancellationToken ct) =>
+        StandaloneBootstrap.ProblemOf(candidate["Auth:Standalone:AdminEmail"], candidate["Auth:Standalone:AdminPassword"], minLength, out var address)
         ?? (await users.FindLocalByEmailAsync(address, ct) is null ? null : "taken");
 
     /// <summary>The same place, written either way: a trailing slash or the case of the scheme and host make no difference.</summary>

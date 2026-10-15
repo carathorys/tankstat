@@ -172,6 +172,8 @@
     "password": "Jelszó",
     "currentPassword": "Jelenlegi jelszó",
     "newPassword": "Új jelszó",
+    "newPasswordRepeat": "Az új jelszó még egyszer",
+    "passwordRepeat": "A jelszó még egyszer",
     "name": "Név",
     "licensePlate": "Rendszám",
     "licensePlateOptional": "Rendszám (nem kötelező)",
@@ -182,7 +184,33 @@
     "emailInvalid": "Adj meg érvényes e-mail-címet",
     "numberInvalid": "Adj meg egy számot, például 12,5.",
     "dateIncomplete": "Add meg a teljes dátumot.",
-    "dateFuture": "A dátum nem lehet a jövőben."
+    "dateFuture": "A dátum nem lehet a jövőben.",
+    "password": {
+      "show": "A jelszó megjelenítése",
+      "showPassphrase": "A jelmondat megjelenítése",
+      "showSecret": "A beírt érték megjelenítése",
+      "capsLock": "A Caps Lock be van kapcsolva.",
+      "requirements": "Legalább {{min}} karakter.",
+      "strength": {
+        "label": "Erősség: {{level}}.",
+        "levels": {
+          "veryWeak": "nagyon gyenge",
+          "weak": "gyenge",
+          "fair": "közepes",
+          "good": "jó",
+          "strong": "erős"
+        },
+        "reasons": {
+          "tooShort": "Legyen hosszabb.",
+          "common": "Kerüld a gyakori jelszavakat, számokra cserélt betűkkel is.",
+          "containsName": "Hagyd ki a neved és az e-mail-címed.",
+          "repeats": "Kerüld az ismétlődő karaktereket és részeket.",
+          "sequence": "Kerüld az olyan sorokat, mint az abc vagy a 123.",
+          "keyboardRow": "Kerüld a billentyűzet sorait, például a qwertz-t.",
+          "oneKind": "Keverj bele másféle karaktereket, vagy használj néhány szót."
+        }
+      }
+    }
   },
   "auth": {
     "signIn": "Bejelentkezés",
@@ -203,6 +231,10 @@
     "backToSignIn": "Vissza a bejelentkezéshez",
     "resetSent": "Ha ez a cím regisztrálva van, és a szerver tud e-mailt küldeni, a visszaállító link úton van. Ellenkező esetben kérj linket egy adminisztrátortól.",
     "changeTitle": "Jelszó módosítása",
+    "changeRequired": {
+      "title": "Válassz új jelszót",
+      "text": "A jelszavaknak most hosszabbnak kell lenniük, mint amikor a tiédet választottad. A folytatáshoz válassz újat; az adataid úgy várnak, ahogy hagytad őket."
+    },
     "changeSubmit": "Jelszó frissítése",
     "changed": "A jelszó megváltozott. A többi munkamenetedből kijelentkeztettünk.",
     "setTitle": "Add meg a jelszavad",
@@ -618,7 +650,10 @@
       "keysDescription": "A szerver egy jelmondatból készíti a kulcsot: a tiédből, vagy egy általa kitaláltból. A jelmondatot sehol nem tárolja: csak a címzett és a só marad meg, ha a kulcsokat az új mentésekhez használod.",
       "keysReplacing": "A mentések már titkosítva készülnek. A régebbi mentések továbbra is csak a saját jelmondatukkal nyílnak meg.",
       "newPassphrase": "Jelmondat (nem kötelező)",
-      "newPassphraseHint": "Legalább 12 karakter. Ha üresen hagyod, kitalál egyet.",
+      "newPassphraseHint": "Legalább {{min}} karakter. Ha mindkettőt üresen hagyod, kitalál egyet, amelyet megjelenése után vissza kell írnod.",
+      "newPassphraseRepeat": "A jelmondat még egyszer",
+      "typeBack": "Írd vissza a jelmondatot",
+      "typeBackHint": "A fenti kitalált jelmondat, ahogy leírtad: az „Ezekkel a kulcsokkal készüljenek az új mentések” gomb akkor használható, ha egyezik.",
       "makeKeysConfirm": "Kulcsok készítése",
       "keysMade": "A kulcskészlet elkészült.",
       "keysOnce": "Írd fel a jelmondatot, és a szervertől távol tartsd: nélküle (vagy az azonosító nélkül) egy titkosított mentés sem nyílik meg. Csak most látszik.",
@@ -791,7 +826,7 @@
       "unknownKey": "A(z) {{key}} nem itt módosítható beállítás.",
       "readOnly": "A(z) {{key}} értékét a környezet állítja be, az győz a beállításfájllal szemben.",
       "invalid": "A beállítások így nem használhatók.",
-      "standaloneNeedsAdministrator": "A Standalone módhoz adminisztrátor kell, és még nincs. Állítsd be az Auth__Standalone__AdminEmail (egy cím, amely még egyetlen helyi fióké sem) és az Auth__Standalone__AdminPassword (10–128 karakter) környezeti változókat a következő indításhoz, aztán válts.",
+      "standaloneNeedsAdministrator": "A Standalone módhoz adminisztrátor kell, és még nincs. Állítsd be az Auth__Standalone__AdminEmail (egy cím, amely még egyetlen helyi fióké sem) és az Auth__Standalone__AdminPassword ({{min}}–128 karakter) környezeti változókat a következő indításhoz, aztán válts.",
       "restartWouldFail": "A kiszolgáló a beállításfájllal, ahogy most van, nem indulna el újra, ezért nem indult újra. Javítsd a fájlt, vagy állítsd be az Auth__Mode környezeti változót.",
       "oidcUnreachable": "A(z) {{authority}} nem válaszol OpenID Connect felfedezési dokumentummal ({{reason}}).",
       "oidcIssuerMismatch": "A(z) {{authority}} más kibocsátót nevez meg ({{issuer}}): add meg a kibocsátót úgy, ahogy a szolgáltató nevezi.",
@@ -837,7 +872,8 @@
     "password": {
       "tooShort": "A jelszónak legalább {{min}} karakter hosszúnak kell lennie.",
       "tooLong": "A jelszó legfeljebb {{max}} karakter hosszú lehet.",
-      "currentIncorrect": "A jelenlegi jelszó nem helyes."
+      "currentIncorrect": "A jelenlegi jelszó nem helyes.",
+      "mismatch": "A két beírás nem egyezik."
     },
     "reset": {
       "invalid": "Ez a jelszó-visszaállító link érvénytelen vagy lejárt."
@@ -1782,7 +1818,6 @@
     "newer": "A Tankstat egy újabb kiadása készítette: azzal a kiadással állítsd vissza.",
     "restoreChoose": "Visszaállítás biztonsági mentésből",
     "adminIntro": "Hozd létre az első adminisztrátort: ezzel az e-mail-címmel és jelszóval jelentkezik be, és ő veszi fel a többieket.",
-    "passwordHint": "A jelszó 10–128 karakter hosszú legyen.",
     "createAdmin": "Adminisztrátor létrehozása",
     "claimIntro": "{{name}} néven vagy bejelentkezve. Legyél ennek a példánynak az adminisztrátora: ezután te kezeled a felhasználóit, beállításait és mentéseit.",
     "claim": "Adminisztrátor leszek",
@@ -1842,6 +1877,8 @@
       "DEFAULT": "a beépített alapértelmezés"
     },
     "pendingRestart": "újraindítás után lép életbe",
+    "atOnce": "mentés után azonnal életbe lép, a lap többi beállításától eltérően",
+    "atOnceShort": "Azonnal érvényes",
     "secretSet": "Beállítva. Hagyd üresen, hogy megmaradjon.",
     "secretNotSet": "Nincs beállítva.",
     "secretSetShort": "beállítva",
@@ -1889,6 +1926,7 @@
       "Auth__AccessTokenMinutes": "Meddig érvényes a rövid bejelentkezési süti (alapból 15, 1 és 1440 között). A még bejelentkezett eszköz kérdés nélkül újat kap.",
       "Auth__RefreshTokenDays": "Meddig marad bejelentkezve egy eszköz használat nélkül (alapból 90). Minden használat újraindítja az időt.",
       "Auth__RefreshRotationGraceSeconds": "Meddig fogadja el még a szerver a már beváltott frissítő tokent (alapból 60), az egyszerre frissítő lapok miatt.",
+      "Auth__Standalone__PasswordMinLength": "Legalább ilyen hosszú legyen egy új jelszó, 10 és 128 karakter között (alapból 10). Azonnal érvényes minden új jelszóra; a meglévő jelszavak továbbra is működnek.",
       "Auth__Standalone__MaxFailedAttempts": "Ennyi sikertelen bejelentkezés után zárolódik a fiók (alapból 5).",
       "Auth__Standalone__LockoutMinutes": "Meddig marad zárolva a fiók (alapból 15).",
       "Auth__Standalone__ResetTokenMinutes": "Meddig működik egy jelszóbeállító vagy -visszaállító link (alapból 60, legfeljebb 30 nap). Minden link egyszer használható.",
@@ -1938,6 +1976,7 @@
       "Backups__Secrets": "Minden mentés beállításfájlja a titkokat is tartalmazza (az OIDC-kliens titkát, az SMTP-jelszót, a modell API-kulcsát), így egy másik kiszolgálón a visszaállítás magával hozza őket. Alapból ki van kapcsolva. Egy nem titkosított mentésben aki hozzájut a fájlhoz, olvashatja őket: a mentések titkosításához készíts kulcskészletet a Mentések oldalon. A „Csak a nevek” beállítás mellett (Beállítások a környezetből) csak így kerülnek a kiszolgáló beállításfájljában tárolt titkok a mentésbe; a környezeti változókban megadott titkok csak a „Nevek és értékek” mellett. A mentés mindkét esetben megnevez minden titkot, amelyet kihagy.",
       "Backups__Encryption__Recipient": "Az age-címzett (age1…), akinek a mentések titkosítva készülnek. A sóval egy párt alkot, egyazon kulcskészletből: mindkettőt a Mentések oldal Kulcskészlet készítése gombjával lehet előállítani, és csak együtt szabad módosítani. Üresen a mentések titkosítatlanok, és nincsenek bennük a bejelentkezést védő kulcsok.",
       "Backups__Encryption__Salt": "A só, amellyel a kulcs a jelmondatból készül; a címzettel együtt kapod meg, és összetartoznak. Egy másik kulcskészlet sójával (vagy kézzel módosított sóval) az utána készült mentéseket már nem nyitja meg a jelmondat, csak az azonosító. A régebbi mentésekhez a saját jelmondatuk kell.",
+      "Backups__PassphraseMinLength": "Legalább ilyen hosszú legyen egy titkosított mentésekhez beírt jelmondat a Mentések oldalon és a backup keygen parancsnál (12 és 128 között, alapból 12). A kitalált jelmondatra és arra, amely egy meglévő mentést nyit meg, nem vonatkozik.",
       "Backups__MaxUploadMb": "A legnagyobb mentés, amelyet egy adminisztrátor a Mentések oldalon feltölthet (alapból 1024). Fájlt a mentések mappájába másolni mindig lehet; olyan nevet adj neki, amely nem tankstat-backup- kezdetű, különben a megőrzés az alkalmazás saját mentései közé számítja.",
       "Logging__LogLevel__Default": "A legkevésbé fontos sorok, amelyeket minden itt fel nem sorolt kategóriából ír.",
       "Logging__LogLevel__Tankstat": "Az alkalmazás saját sorai: az Information azt mutatja, amit egy üzemeltető keres, a Debug minden szokásos változást azonosítóval.",
@@ -1963,6 +2002,7 @@
       "Auth__AccessTokenMinutes": "Hozzáférési süti (perc)",
       "Auth__RefreshTokenDays": "Egy eszköz bejelentkezve marad (nap)",
       "Auth__RefreshRotationGraceSeconds": "Frissítési türelmi idő (másodperc)",
+      "Auth__Standalone__PasswordMinLength": "A jelszó legkisebb hossza",
       "Auth__Standalone__MaxFailedAttempts": "Sikertelen bejelentkezések a zárolásig",
       "Auth__Standalone__LockoutMinutes": "Zárolás (perc)",
       "Auth__Standalone__ResetTokenMinutes": "Visszaállító link érvényessége (perc)",
@@ -2012,6 +2052,7 @@
       "Backups__Secrets": "Titkok a mentésekben",
       "Backups__Encryption__Recipient": "Titkosítás címzettje (age)",
       "Backups__Encryption__Salt": "A jelmondat sója",
+      "Backups__PassphraseMinLength": "A jelmondat legkisebb hossza",
       "Backups__MaxUploadMb": "Legnagyobb feltöltés (MB)",
       "Logging__LogLevel__Default": "Minden más",
       "Logging__LogLevel__Tankstat": "Tankstat",

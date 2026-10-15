@@ -230,7 +230,7 @@ public sealed class SessionTokenTests : IDisposable
         var (phone, _) = await SignIn();
 
         (await laptop.Gql("mutation($i: ChangePasswordInput!) { changePassword(input: $i) }",
-            new { i = new { currentPassword = AdminPassword, newPassword = "a-brand-new-password" } })).Data();
+            new { i = new { currentPassword = AdminPassword, newPassword = "a-brand-new-password", newPasswordConfirmation = "a-brand-new-password" } })).Data();
         _clock.Advance(TimeSpan.FromMinutes(16));
 
         Assert.Equal(HttpStatusCode.NoContent, (await Post(laptop, "/auth/token/refresh")).StatusCode);

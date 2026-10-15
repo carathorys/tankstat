@@ -14,8 +14,9 @@ import { DialogButtons, DialogCancel, DialogFrame } from '../dialogs/DialogFrame
 import { DialogTrigger } from '../dialogs/DialogTrigger.tsx'
 import { useDialogState } from '../dialogs/useDialogState.ts'
 import { Field } from '../forms/Field.tsx'
-import { FieldInput } from '../forms/FieldInput.tsx'
 import { Form } from '../forms/Form.tsx'
+import { NewPasswordFields } from '../forms/NewPasswordFields.tsx'
+import { PasswordInput } from '../forms/PasswordInput.tsx'
 import { PrepareBackupEncryptionDocument, SystemSettingsDocument, UpdateSystemSettingsDocument, type PrepareBackupEncryptionMutation } from '../gql/generated.ts'
 import { ErrorMessage, SuccessMessage, WarningMessage } from '../messages.tsx'
 import { ProblemList } from './ProblemList.tsx'
@@ -33,9 +34,9 @@ export const Code = ({ children }: { children: ReactNode }) => (
 /**
  * A key set for encrypted backups: made on the server from a passphrase (or one made up), shown once, then set as two settings. On the
  * Backups page and on the setup's done screen, for the administrator the setup just made; `refresh` is the query of the page that shows
- * the recipient, asked again once the keys are in use.
+ * the recipient, asked again once the keys are in use; `passphraseMinLength` the server's `Backups:PassphraseMinLength`, from the same query.
  */
-export function EncryptionSetup({ recipient, refresh }: { recipient: string | null; refresh: DocumentNode }) {
+export function EncryptionSetup({ recipient, passphraseMinLength, refresh }: { recipient: string | null; passphraseMinLength: number; refresh: DocumentNode }) {
   const { t } = useTranslation()
   const [open, setOpen] = useDialogState()
   // Escape and the backdrop do not close it while the keys are made, nor while they are shown and not yet kept: they are shown only once.
@@ -69,13 +70,13 @@ export function EncryptionSetup({ recipient, refresh }: { recipient: string | nu
         title={t('admin.backups.keysTitle')}
         description={t('admin.backups.keysDescription')}
       >
-        <KeySetForm replacing={recipient !== null} refresh={refresh} onLock={setLocked} />
+        <KeySetForm replacing={recipient !== null} minLength={passphraseMinLength} refresh={refresh} onLock={setLocked} />
       </DialogFrame>
     </section>
   )
 }
 
-function KeySetForm({ replacing, refresh, onLock }: { replacing: boolean; refresh: DocumentNode; onLock: (locked: boolean) => void }) {
+function KeySetForm({ replacing, minLength, refresh, onLock }: { replacing: boolean; minLength: number; refresh: DocumentNode; onLock: (locked: boolean) => void }) {
   const { t } = useTranslation()
   const [prepare] = useMutation(PrepareBackupEncryptionDocument, { fetchPolicy: 'no-cache' })
   const [busy, setBusy] = useState(false)
@@ -86,12 +87,16 @@ function KeySetForm({ replacing, refresh, onLock }: { replacing: boolean; refres
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    const passphrase = String(new FormData(e.currentTarget).get('passphrase') ?? '')
+    const form = new FormData(e.currentTarget)
+    const passphrase = String(form.get('passphrase') ?? '')
+    const repeated = String(form.get('passphraseRepeat') ?? '')
     setBusy(true)
     onLock(true)
     setError(undefined)
     try {
-      const made = await prepare({ variables: { passphrase: passphrase === '' ? null : passphrase } })
+      // Only spaces is no passphrase (the server takes it so too): one is made up.
+      const typedOrNone = (value: string) => (value.trim() === '' ? null : value)
+      const made = await prepare({ variables: { passphrase: typedOrNone(passphrase), passphraseConfirmation: typedOrNone(repeated) } })
       if (made.data) setKeys(made.data.prepareBackupEncryption) // shown, and the dialog stays until they are kept
       else onLock(false)
     } catch (err) {
@@ -106,9 +111,17 @@ function KeySetForm({ replacing, refresh, onLock }: { replacing: boolean; refres
     <Form onSubmit={(e) => void submit(e)} refusal={error}>
       <Stack sx={{ gap: 1.5 }}>
         {replacing && <WarningMessage>{t('admin.backups.keysReplacing')}</WarningMessage>}
-        <Field name="passphrase" label={t('admin.backups.newPassphrase')} hint={t('admin.backups.newPassphraseHint')}>
-          <FieldInput type="password" autoComplete="new-password" />
-        </Field>
+        {/* Typed twice (the server compares them again), or left empty for one made up, which is typed back once shown. */}
+        <NewPasswordFields
+          name="passphrase"
+          label={t('admin.backups.newPassphrase')}
+          repeatLabel={t('admin.backups.newPassphraseRepeat')}
+          showLabel={t('forms.password.showPassphrase')}
+          required={false}
+          minLength={minLength}
+          hint={t('admin.backups.newPassphraseHint', { min: minLength })}
+          tooShort={t('errors.backup.passphraseTooShort', { min: minLength })}
+        />
         {error !== undefined && <ErrorMessage error={error} />}
         <DialogButtons>
           <DialogCancel disabled={busy} />
@@ -124,6 +137,9 @@ function KeySetForm({ replacing, refresh, onLock }: { replacing: boolean; refres
 function KeySetShown({ keys, refresh, onLock }: { keys: KeySet; refresh: DocumentNode; onLock: (locked: boolean) => void }) {
   const { t } = useTranslation()
   const [saved, setSaved] = useState(false)
+  // A made-up passphrase is typed back before its keys are used: proof it was written down, compared here only (a typed one came twice).
+  const [typedBack, setTypedBack] = useState('')
+  const kept = !keys.generated || typedBack === keys.passphrase
   // The settings page's own save: the answer is that page as the server now has it, and the page here says which key it encrypts for.
   const [update, { loading: using, data: used, error: refused }] = useMutation(UpdateSystemSettingsDocument, {
     update: (cache, { data }) => {
@@ -159,12 +175,17 @@ function KeySetShown({ keys, refresh, onLock }: { keys: KeySet; refresh: Documen
           { label: t('admin.backups.identity'), value: <Code>{keys.identity}</Code> },
         ]}
       />
+      {keys.generated && !used && (
+        <Field name="typedBack" label={t('admin.backups.typeBack')} hint={t('admin.backups.typeBackHint')}>
+          <PasswordInput autoComplete="off" showLabel={t('forms.password.showPassphrase')} onChange={(e) => setTypedBack(e.target.value)} />
+        </Field>
+      )}
       {used ? (
         <Box ref={inUse} tabIndex={-1}>
           <SuccessMessage>{t('admin.backups.keysInUse')}</SuccessMessage>
         </Box>
       ) : (
-        <Button variant="soft" onClick={() => void use()} loading={using} sx={{ alignSelf: 'flex-start' }}>
+        <Button variant="soft" onClick={() => void use()} loading={using} disabled={!kept} sx={{ alignSelf: 'flex-start' }}>
           <KeyRound size={16} aria-hidden />
           {t('admin.backups.keysUse')}
         </Button>

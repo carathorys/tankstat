@@ -191,11 +191,21 @@ it('in Standalone, the code opens the wizard: its settings, then the first admin
   const last = screen.getByRole('region', { name: 'Finish' })
   await ui.type(within(last).getByRole('textbox', { name: /^E-mail/ }), 'root@example.com')
   await ui.type(within(last).getByLabelText(/^Password/), 'initial-password-1')
+  // Typed differently the second time: the page stops, says so at the repetition and sends nothing.
+  await ui.type(within(last).getByLabelText(/^Repeat the password/), 'initial-password-2')
+  await ui.click(within(last).getByRole('button', { name: 'Create the administrator' }))
+  expect(await within(last).findByText('The two entries are not the same.')).toBeInTheDocument()
+  expect(within(last).getByLabelText(/^Repeat the password/)).toHaveFocus()
+  expect(state.calls.SetupFinish).toBeUndefined()
+  await ui.clear(within(last).getByLabelText(/^Repeat the password/))
+  await ui.type(within(last).getByLabelText(/^Repeat the password/), 'initial-password-1')
   await ui.click(within(last).getByRole('button', { name: 'Create the administrator' }))
 
   // Signed in, with the menu, on the done screen: backups encrypted at once, and where the rest is.
   expect(await screen.findByText("The setup is done: you are this instance's administrator.")).toBeInTheDocument()
-  expect(state.calls.SetupFinish).toEqual([{ code: 'abcd efgh jklm', email: 'root@example.com', password: 'initial-password-1' }])
+  expect(state.calls.SetupFinish).toEqual([
+    { code: 'abcd efgh jklm', email: 'root@example.com', password: 'initial-password-1', passwordConfirmation: 'initial-password-1' },
+  ])
   expect(await screen.findByRole('region', { name: 'Encrypted backups' })).toHaveTextContent('Backups are written without encryption.')
   expect(screen.getByRole('button', { name: 'Make a key set…' })).toBeInTheDocument()
   const next = screen.getByRole('region', { name: 'What to set up next' })
@@ -313,11 +323,12 @@ it('a sign-in mode chosen in the wizard is saved with the code, and the last ste
   const last = screen.getByRole('region', { name: 'Finish' })
   await ui.type(within(last).getByRole('textbox', { name: /^E-mail/ }), 'root@example.com')
   await ui.type(within(last).getByLabelText(/^Password/), 'initial-password-1')
+  await ui.type(within(last).getByLabelText(/^Repeat the password/), 'initial-password-1')
   await ui.click(within(last).getByRole('button', { name: 'Create the administrator' }))
 
   // The restart signs everyone out of the old mode: the new administrator signs in.
   expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
-  expect(state.calls.SetupFinish).toEqual([{ code: CODE, email: 'root@example.com', password: 'initial-password-1' }])
+  expect(state.calls.SetupFinish).toEqual([{ code: CODE, email: 'root@example.com', password: 'initial-password-1', passwordConfirmation: 'initial-password-1' }])
   expect(state.mode).toBe('STANDALONE')
 })
 

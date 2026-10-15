@@ -72,7 +72,7 @@ export function BackupsPanel() {
         onChanged={() => refetch()}
         onRestoring={(point) => setRestoring({ point, generation: session?.session.instance?.generation ?? undefined })}
       />
-      <EncryptionSetup recipient={backups.settings.recipient ?? null} refresh={BackupsDocument} />
+      <EncryptionSetup recipient={backups.settings.recipient ?? null} passphraseMinLength={backups.settings.passphraseMinLength} refresh={BackupsDocument} />
     </Stack>
   )
 }
