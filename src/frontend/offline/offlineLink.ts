@@ -177,7 +177,8 @@ export function createOfflineLink(device = deviceData): ApolloLink {
         }),
       )
     }
-    if (!bypass && name && SIGNING_IN.has(name)) return from(forgetLeftOverSignOut()).pipe(mergeMap(() => route()))
+    // Only while the server can be reached: offline the sign-in itself is refused, and the device must stay signed out.
+    if (!bypass && name && SIGNING_IN.has(name) && connectivity.reachable) return from(forgetLeftOverSignOut()).pipe(mergeMap(() => route()))
     return route()
   })
 }

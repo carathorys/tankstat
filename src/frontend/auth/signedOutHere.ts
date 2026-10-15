@@ -5,13 +5,14 @@ import { signOutDevice } from './refresh.ts'
 
 /**
  * Ends this device's session on the server, best effort: only while it can be reached, and never waiting longer than a probe would.
- * True when the server answered (whatever it said: a session already gone is ended too); false when it could not be asked.
+ * True when the server ended it (a 2xx), or it was gone already (401: a logout that landed after the deadline, say); false when it could
+ * not be asked or did not do it. A gateway answering for an app that is down (502, 503, 504) is no answer of the server's.
  */
 export async function endSessionOnServer(): Promise<boolean> {
   if (!connectivity.reachable) return false
   try {
-    await withDeadline(signOutDevice(), PROBE_TIMEOUT_MS)
-    return true
+    const response = await withDeadline(signOutDevice(), PROBE_TIMEOUT_MS)
+    return response.ok || response.status === 401
   } catch {
     return false
   }

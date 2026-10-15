@@ -270,3 +270,28 @@ it('signing in forgets a sign-out left over, after telling the server once more'
   expect(calls.login).toBe(1)
   expect(await deviceData.signedOutHere()).toBeNull() // the new sign-in's cookies replace the old ones
 })
+
+it('a gateway answering for an app that is down tells the server nothing: the device stays signed out', async () => {
+  silenceConsoleError()
+  const calls = await signedOutHere(() => new HttpResponse('Bad gateway', { status: 503 }))
+  const client = createApolloClient('http://localhost/graphql')
+
+  const { data } = await client.query({ query: SessionDocument, fetchPolicy: 'network-only' })
+
+  expect(data?.session.user).toBeNull()
+  expect(calls.logout).toBe(1)
+  expect(calls.session).toBe(0)
+  expect(await deviceData.signedOutHere()).not.toBeNull()
+})
+
+it('signing in while the server is out of reach is refused and keeps the device signed out', async () => {
+  const calls = await signedOutHere()
+  connectivity.failed()
+  const client = createApolloClient('http://localhost/graphql')
+
+  await expect(client.mutate({ mutation: LoginDocument, variables: { input: { email: 'a@x.co', password: 'secret-password' } } })).rejects.toBeInstanceOf(OfflineError)
+
+  expect(calls).toEqual({ logout: 0, session: 0, refresh: 0, login: 0 })
+  expect(await deviceData.signedOutHere()).not.toBeNull()
+})
+
