@@ -19,7 +19,7 @@ internal sealed class LinePrompt(TextReader input) : IPassphrasePrompt
     public string Read(string label)
     {
         // A byte order mark (a file saved by a Windows editor and piped in) is no part of what was typed: kept, it would derive another key.
-        var passphrase = input.ReadLine()?.TrimStart('﻿').TrimEnd('\r');
+        var passphrase = input.ReadLine()?.TrimStart((char)0xFEFF).TrimEnd('\r');
         if (string.IsNullOrEmpty(passphrase)) throw new DomainException("backup.passphraseRequired", "A passphrase is expected on the standard input (one line each).");
         return passphrase;
     }
@@ -27,7 +27,9 @@ internal sealed class LinePrompt(TextReader input) : IPassphrasePrompt
 
 /// <summary>
 /// Typed at the terminal without an echo: the question on the standard error (the standard output may be a file the keys go to), each key
-/// read with <see cref="Console.ReadKey(bool)"/>, Backspace taking the last character back, Enter ending it; Ctrl+C stops the command.
+/// read with <see cref="Console.ReadKey(bool)"/>, Backspace taking the last character back, Enter ending it; Ctrl+C stops the command. It
+/// keeps what a line of <see cref="LinePrompt"/> and the Backups page keep, a Tab (pasted) included: the same passphrase must give the same key
+/// whichever way it came. Only the other control characters (what a special key gives) are left out.
 /// </summary>
 internal sealed class TerminalPrompt(TextWriter error) : IPassphrasePrompt
 {
@@ -41,7 +43,7 @@ internal sealed class TerminalPrompt(TextWriter error) : IPassphrasePrompt
             {
                 if (typed.Length > 0) typed.Length--;
             }
-            else if (!char.IsControl(key.KeyChar)) typed.Append(key.KeyChar);
+            else if (key.KeyChar == '\t' || !char.IsControl(key.KeyChar)) typed.Append(key.KeyChar);
         }
         error.WriteLine();
         if (typed.Length == 0) throw new DomainException("backup.passphraseRequired", "A passphrase is expected.");

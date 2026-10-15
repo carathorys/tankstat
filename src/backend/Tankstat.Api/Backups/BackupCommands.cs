@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Options;
 using Tankstat.Api.GraphQL;
@@ -274,8 +275,22 @@ internal static class BackupCommands
     {
         var passphrase = prompt.Read("Passphrase:");
         PasswordPolicy.RequireRepeated(passphrase, prompt.Read("Repeat it:"));
-        BackupPassphrase.Validate(passphrase, services.GetRequiredService<IOptionsMonitor<BackupOptions>>().CurrentValue.PassphraseMinLength);
+        BackupPassphrase.Validate(passphrase, PassphraseMinLength(services));
         return passphrase;
+    }
+
+    /// <summary>
+    /// <c>Backups:PassphraseMinLength</c> on its own, never through the whole Backups section: keygen needs nothing else of it, and it is what
+    /// makes the pair a half-set Recipient or Salt asks for, so settings that do not validate must not stop it (nor a value the binder cannot
+    /// read crash it). Not set is the floor; one the start would refuse is refused here too, in the validator's words.
+    /// </summary>
+    private static int PassphraseMinLength(IServiceProvider services)
+    {
+        var value = services.GetRequiredService<IConfiguration>()[$"{BackupOptions.SectionName}:{nameof(BackupOptions.PassphraseMinLength)}"];
+        if (string.IsNullOrWhiteSpace(value)) return BackupPassphrase.Floor;
+        return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var min) && min is >= BackupPassphrase.Floor and <= BackupPassphrase.Ceiling
+            ? min
+            : throw new FormatException($"Backups:PassphraseMinLength must be from {BackupPassphrase.Floor} to {BackupPassphrase.Ceiling}.");
     }
 
     private sealed class UsageException : Exception;

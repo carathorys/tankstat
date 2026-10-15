@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Tankstat.Api.Backups;
@@ -169,6 +170,44 @@ public sealed class BackupCommandsTests : IDisposable
             await writer.WriteAsync("""{ "manifest_version": 3, "name": "Some extension", "version": "1.0" }""");
         var foreign = await RunAsync(app, "", "decrypt", extension, "--output", Path.Combine(_folder, "out4"));
         Assert.Equal((1, true), (foreign.Code, foreign.Error.Contains("not a Tankstat backup")));
+    }
+
+    [Fact]
+    public async Task Keygen_ReadsOnlyThePassphraseMinimum_SoBackupSettingsThatDoNotValidate_NeverStopIt()
+    {
+        // Half a key pair, which the start refuses with "tankstat backup keygen prints both", and a value the binder cannot read: keygen makes
+        // the pair and needs nothing else of the Backups section.
+        static ServiceProvider Services(string? minimum) => new ServiceCollection()
+            .AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Backups:Encryption:Recipient"] = "age1qyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqs3290gq",
+                ["Backups:Photos"] = "yes",
+                ["Backups:PassphraseMinLength"] = minimum,
+            }).Build())
+            .BuildServiceProvider();
+        async Task<Run> Keygen(ServiceProvider services, string passphrase)
+        {
+            var (output, error) = (new StringWriter(), new StringWriter());
+            var code = await BackupCommands.RunAsync(["backup", "keygen", "--passphrase-stdin"], services, new StringReader($"{passphrase}\n{passphrase}\n"), output, error);
+            return new Run(code, output.ToString(), error.ToString());
+        }
+
+        using (var services = Services(minimum: null))
+        {
+            var made = await Keygen(services, "correct horse battery staple");
+            Assert.Equal((0, ""), (made.Code, made.Error));
+            Assert.Matches(@"Backups__Encryption__Recipient=age1\S+", made.Out);
+        }
+        using (var services = Services(minimum: "30"))
+        {
+            var refused = await Keygen(services, "correct horse battery staple"); // 28 characters
+            Assert.Equal((1, "A passphrase has at least 30 characters."), (refused.Code, refused.Error.Trim()));
+        }
+        using (var services = Services(minimum: "twelve"))
+        {
+            var refused = await Keygen(services, "correct horse battery staple"); // reported with exit code 1, never a crash
+            Assert.Equal((1, "Backups:PassphraseMinLength must be from 12 to 128."), (refused.Code, refused.Error.Trim()));
+        }
     }
 
     [Fact]
