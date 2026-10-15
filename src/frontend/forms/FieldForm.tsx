@@ -18,6 +18,8 @@ export interface FieldDef {
   type?: 'text' | 'email' | 'password' | 'newPassword'
   /** The repetition's label, for `newPassword`. */
   repeatLabel?: ParseKeys
+  /** For `newPassword`: the person's own address and name, which its strength meter counts against it. */
+  personal?: readonly (string | null | undefined)[]
   autoComplete?: string
   /** Defaults to true: an empty field blocks the form. */
   required?: boolean
@@ -61,7 +63,7 @@ export function FieldForm({
       <Stack sx={{ gap: 1.5 }}>
         {fields.map((f) =>
           f.type === 'newPassword' ? (
-            <NewPasswordFields key={f.name} name={f.name} label={t(f.label)} repeatLabel={t(f.repeatLabel ?? 'fields.newPasswordRepeat')} required={f.required ?? true} />
+            <NewPasswordFields key={f.name} name={f.name} label={t(f.label)} repeatLabel={t(f.repeatLabel ?? 'fields.newPasswordRepeat')} required={f.required ?? true} personal={f.personal} />
           ) : (
           <Field key={f.name} name={f.name} label={t(f.label)} required={f.required ?? true} typeMismatch={f.type === 'email' ? t('forms.emailInvalid') : undefined}>
             {f.type === 'password' ? (

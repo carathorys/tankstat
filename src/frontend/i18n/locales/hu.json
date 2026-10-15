@@ -190,7 +190,26 @@
       "showPassphrase": "A jelmondat megjelenítése",
       "showSecret": "A beírt érték megjelenítése",
       "capsLock": "A Caps Lock be van kapcsolva.",
-      "requirements": "Legalább {{min}} karakter."
+      "requirements": "Legalább {{min}} karakter.",
+      "strength": {
+        "label": "Erősség: {{level}}.",
+        "levels": {
+          "veryWeak": "nagyon gyenge",
+          "weak": "gyenge",
+          "fair": "közepes",
+          "good": "jó",
+          "strong": "erős"
+        },
+        "reasons": {
+          "tooShort": "Legyen hosszabb.",
+          "common": "Kerüld a gyakori jelszavakat, számokra cserélt betűkkel is.",
+          "containsName": "Hagyd ki a neved és az e-mail-címed.",
+          "repeats": "Kerüld az ismétlődő karaktereket és részeket.",
+          "sequence": "Kerüld az olyan sorokat, mint az abc vagy a 123.",
+          "keyboardRow": "Kerüld a billentyűzet sorait, például a qwertz-t.",
+          "oneKind": "Keverj bele másféle karaktereket, vagy használj néhány szót."
+        }
+      }
     }
   },
   "auth": {
@@ -1796,7 +1815,6 @@
     "newer": "A Tankstat egy újabb kiadása készítette: azzal a kiadással állítsd vissza.",
     "restoreChoose": "Visszaállítás biztonsági mentésből",
     "adminIntro": "Hozd létre az első adminisztrátort: ezzel az e-mail-címmel és jelszóval jelentkezik be, és ő veszi fel a többieket.",
-    "passwordHint": "A jelszó 10–128 karakter hosszú legyen.",
     "createAdmin": "Adminisztrátor létrehozása",
     "claimIntro": "{{name}} néven vagy bejelentkezve. Legyél ennek a példánynak az adminisztrátora: ezután te kezeled a felhasználóit, beállításait és mentéseit.",
     "claim": "Adminisztrátor leszek",

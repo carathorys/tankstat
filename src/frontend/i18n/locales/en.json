@@ -190,7 +190,26 @@
       "showPassphrase": "Show the passphrase",
       "showSecret": "Show what is typed",
       "capsLock": "Caps Lock is on.",
-      "requirements": "At least {{min}} characters."
+      "requirements": "At least {{min}} characters.",
+      "strength": {
+        "label": "Strength: {{level}}.",
+        "levels": {
+          "veryWeak": "very weak",
+          "weak": "weak",
+          "fair": "fair",
+          "good": "good",
+          "strong": "strong"
+        },
+        "reasons": {
+          "tooShort": "Make it longer.",
+          "common": "Avoid common passwords, also with letters swapped for digits.",
+          "containsName": "Leave out your name and e-mail address.",
+          "repeats": "Avoid repeated characters or pieces.",
+          "sequence": "Avoid runs such as abc or 123.",
+          "keyboardRow": "Avoid rows of the keyboard such as qwerty.",
+          "oneKind": "Mix in other kinds of characters, or use a few words."
+        }
+      }
     }
   },
   "auth": {
@@ -1796,7 +1815,6 @@
     "newer": "Made by a newer release of Tankstat: restore it with that release.",
     "restoreChoose": "Restore from a backup",
     "adminIntro": "Create the first administrator: they sign in with this e-mail address and password, and add everyone else.",
-    "passwordHint": "The password needs 10 to 128 characters.",
     "createAdmin": "Create the administrator",
     "claimIntro": "You are signed in as {{name}}. Become the administrator of this instance: you then manage its users, settings and backups.",
     "claim": "Become the administrator",

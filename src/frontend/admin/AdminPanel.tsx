@@ -155,6 +155,7 @@ export function AdminPanel() {
                     {u.provider === 'LOCAL' && data.canSetUserPasswords && (
                       <SetPasswordDialog
                         name={u.displayName}
+                        personal={[u.email, u.displayName]}
                         trigger={
                           <Button size="small" variant="soft">
                             {t('admin.setPasswordFor', { name: u.displayName })}

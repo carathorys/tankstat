@@ -142,6 +142,18 @@ it('a password shorter than the minimum now: only the change is shown, and the p
   ])
 })
 
+it("the change form's strength counts the signed-in person's own address and name against the new password", async () => {
+  const ui = userEvent.setup()
+  const state = standaloneServer()
+  state.current = user({ passwordChangeRequired: true }) // Alice, alice@example.com
+  renderWithApollo(<App />, '/')
+
+  const password = await screen.findByLabelText('New password')
+  await ui.type(password, 'alice-example-2024')
+
+  expect(password).toHaveAccessibleDescription(/Leave out your name and e-mail address\./)
+})
+
 it('a password shorter than the minimum now: Sign out leaves without changing it', async () => {
   const ui = userEvent.setup()
   const state = standaloneServer()
@@ -197,6 +209,26 @@ it('reset link: says the minimum the administrators set before typing, and a sho
   expect(password).toHaveFocus()
   expect(password).toHaveAccessibleDescription(/The password must be at least 14 characters long\./)
   expect(state.calls.ResetPassword).toBeUndefined()
+})
+
+it('reset link: says how strong the new password is in its description, and a weak one is still sent', async () => {
+  const ui = userEvent.setup()
+  const state = standaloneServer()
+  renderWithApollo(<App />, '/?resetToken=tok.en')
+
+  const password = await screen.findByLabelText('New password')
+  expect(password).not.toHaveAccessibleDescription(/Strength/) // nothing typed, nothing judged
+  await ui.type(password, 'correct horse battery staple')
+  expect(password).toHaveAccessibleDescription(/Strength: strong\.$/)
+  await ui.clear(password)
+  await ui.type(password, 'password1234')
+  expect(password).toHaveAccessibleDescription(/Strength: very weak\. Avoid common passwords, also with letters swapped for digits\. Avoid runs such as abc or 123\.$/)
+
+  await ui.type(screen.getByLabelText('Repeat the new password'), 'password1234')
+  await ui.click(screen.getByRole('button', { name: 'Set password' }))
+
+  expect(await screen.findByText('Your password has been set.')).toBeInTheDocument() // advisory only: the minimum is what the server judges
+  expect(state.calls.ResetPassword).toHaveLength(1)
 })
 
 it('reset link: shows an invalid-link error from the server', async () => {

@@ -1,4 +1,4 @@
-import { useMutation } from '@apollo/client/react'
+import { useMutation, useQuery } from '@apollo/client/react'
 import Button from '@mui/material/Button'
 import Card from '@mui/material/Card'
 import Link from '@mui/material/Link'
@@ -17,6 +17,8 @@ import { useToast } from './toast/toastContext.ts'
 export function ChangePasswordForm({ required = false }: { required?: boolean }) {
   const { t } = useTranslation()
   const { toast } = useToast()
+  // Whose password it is: the App's own Session answer, from the cache (the strength meter counts their address and name against it).
+  const me = useQuery(SessionDocument, { fetchPolicy: 'cache-only' }).data?.session.user
   // The change asked at sign-in ends once the session says so: it is asked again, and the pages come back.
   const [changePassword] = useMutation(ChangePasswordDocument, required ? { refetchQueries: [SessionDocument], awaitRefetchQueries: true } : {})
   const [done, setDone] = useState(false)
@@ -32,7 +34,7 @@ export function ChangePasswordForm({ required = false }: { required?: boolean })
       <FieldForm
         fields={[
           { name: 'current', label: 'fields.currentPassword', type: 'password', autoComplete: 'current-password' },
-          { name: 'next', label: 'fields.newPassword', type: 'newPassword', repeatLabel: 'fields.newPasswordRepeat' },
+          { name: 'next', label: 'fields.newPassword', type: 'newPassword', repeatLabel: 'fields.newPasswordRepeat', personal: [me?.email, me?.displayName] },
         ]}
         submitLabel="auth.changeSubmit"
         onSubmit={async (v) => {
