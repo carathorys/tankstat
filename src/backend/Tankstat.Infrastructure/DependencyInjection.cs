@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -99,6 +100,9 @@ public static class DependencyInjection
         services.AddScoped<IPhotoReadingRepository, PhotoReadingRepository>();
         services.AddSingleton<IImageStore, FileSystemImageStore>();
         services.AddSingleton<IBackupWriter, BackupWriter>();
+        // The settings file and the restart loop are the Api's (Program.cs registers both first); a host of the backups alone has neither.
+        services.TryAddSingleton<ISettingsBackup, NoSettingsBackup>();
+        services.TryAddSingleton<IServerRestart, NoServerRestart>();
         services.AddSingleton<IBackupStore, FileBackupStore>();
         services.AddSingleton<BackupRunner>();
         services.AddSingleton<IBackupRunner>(sp => sp.GetRequiredService<BackupRunner>());

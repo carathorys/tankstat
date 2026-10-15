@@ -6,8 +6,10 @@ using Tankstat.Api.Media;
 using Tankstat.Api.GraphQL;
 using Tankstat.Api.Settings;
 using Tankstat.Application;
+using Tankstat.Application.Backups;
 using Tankstat.Application.SystemSettings;
 using Tankstat.Infrastructure;
+using Tankstat.Infrastructure.Backups;
 using Tankstat.Infrastructure.Settings;
 
 // Build and run, and again when an administrator restarts the server (ServerRestart): in this process, never by exiting, since Docker's
@@ -18,13 +20,16 @@ using var stopSignals = restarts.EndOnStopSignals(); // docker stop during a res
 do
 {
     restarts.Reset();
-    var builder = WebApplication.CreateBuilder(args);
+    // A command's flags are no configuration (its parser refuses anything else): read as such, `backup --environment merge` would set the
+    // hosting environment and leave appsettings.{Environment}.json out of that run.
+    var builder = WebApplication.CreateBuilder(BackupCommands.Handles(args) ? [] : args);
     // The app's own settings file joins the configuration below the environment variables, unless the app could not start with it (see SettingsFile).
     var settingsFile = SettingsFile.Prepare(builder);
     builder.Services.AddSingleton(settingsFile);
     builder.Services.AddSingleton(settingsFile.Status);
     builder.Services.AddSingleton<ISettingsFileStore>(new SettingsFileStore(settingsFile.Status.Path));
     builder.Services.AddSingleton<ISystemConfiguration, SystemConfiguration>();
+    builder.Services.AddSingleton<ISettingsBackup, SettingsBackup>(); // before AddInfrastructure, whose default (no file) steps aside then
     builder.Services.AddSingleton<IServerRestart>(sp => new ServerRestart(restarts, sp.GetRequiredService<IHostApplicationLifetime>(), sp.GetRequiredService<ILogger<ServerRestart>>())); // plain Add: a test host replaces it
     builder.Services.AddSingleton(restarts.Code); // the one-time code outlives a restart in the process
     builder.Services.AddHostedService<SettingsFileReporter>();
@@ -140,7 +145,32 @@ do
         return;
     }
 
-    app.Run();
+    // A restore that waits is applied before the host starts, as `restore --now` applies it (the migrator, which restores first, then the
+    // restore step): when it writes the backup's settings file, the next pass of the loop builds the host that reads it, so no start step
+    // and no request ever ran under the file it replaced. The host's own start then finds both steps done. (Under WebApplicationFactory
+    // nothing after Build() runs: the host's start applies the restore, see RestoreStep.)
+    if (app.Services.GetRequiredService<IBackupStore>().RestorePending)
+    {
+        // The options the host validates before any start step, validated first here too: a wrong folder stops the start before the restore
+        // replaces anything, as it did when the host's start applied it.
+        app.Services.GetService<Microsoft.Extensions.Options.IStartupValidator>()?.Validate();
+        await StartupSteps.ApplyBeforeHostAsync(app.Services, CancellationToken.None);
+        if (restarts.Requested)
+        {
+            await app.DisposeAsync();
+            continue;
+        }
+    }
+
+    try
+    {
+        app.Run();
+    }
+    catch (ServerRestartException) when (restarts.Requested)
+    {
+        // A start step asked for the next host at once (a restore that wrote the settings file): nothing after it started, the loop builds
+        // the next one, which reads the file.
+    }
 } while (restarts.Requested);
 
 // Exposed for WebApplicationFactory<Program> in the integration tests.

@@ -952,10 +952,26 @@ internal static class ServiceExtensions
 }
 
 /// <summary>A backup folder with nothing in it; a restore is waiting only when a test says so.</summary>
+/// <summary>A server without a settings file, whose environment holds nothing a backup recorded: nothing to carry, nothing missing.</summary>
+internal sealed class NoSettingsFile : Tankstat.Application.Backups.ISettingsBackup
+{
+    public Task<Tankstat.Application.Backups.SettingsCopy> CopyAsync(bool carriesSecrets, Tankstat.Application.Backups.BackupEnvironmentMode mode, CancellationToken ct) =>
+        Task.FromResult(Tankstat.Application.Backups.SettingsCopy.None);
+    public Task<Tankstat.Application.Backups.RestoredSettings> RestoredAsync(IReadOnlyDictionary<string, string?> fromBackup, bool carriesSecrets, CancellationToken ct) =>
+        throw new NotSupportedException();
+    public Task<IReadOnlyDictionary<string, string?>> LeavesAsync(IReadOnlyDictionary<string, string?> fromBackup, bool carriesSecrets, CancellationToken ct) =>
+        Task.FromResult(fromBackup);
+    public Task WriteAsync(IReadOnlyDictionary<string, string?> values, CancellationToken ct) => throw new NotSupportedException();
+    public Task<IReadOnlyList<string>> MissingAsync(Tankstat.Application.Backups.BackupEnvironment recorded, IReadOnlyDictionary<string, string?>? restored, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<string>>([]);
+    public IReadOnlyList<string> Overridden(IReadOnlyDictionary<string, string?> fromBackup) => [];
+}
+
 internal sealed class NoBackups : Tankstat.Application.Backups.IBackupStore
 {
     public bool RestorePending { get; init; }
     public Tankstat.Application.Backups.BackupManifest ReadManifest(string fileName) => throw new NotSupportedException();
+    public IReadOnlyDictionary<string, string?>? ReadSettings(string fileName, Tankstat.Application.Backups.BackupManifest manifest, string? identity) => throw new NotSupportedException();
     public string? IdentityFor(Tankstat.Application.Backups.BackupManifest manifest, string? passphrase, string? identity) => throw new NotSupportedException();
     public Task RequireRestorableMigrationAsync(Tankstat.Application.Backups.BackupManifest manifest, CancellationToken ct) => throw new NotSupportedException();
     public void RequestRestore(Tankstat.Application.Backups.RestoreMarker marker) => throw new NotSupportedException();
@@ -964,4 +980,6 @@ internal sealed class NoBackups : Tankstat.Application.Backups.IBackupStore
     public Task<Tankstat.Application.Backups.RestorePoint> SaveUploadAsync(Stream content, string? fileName, long maxBytes, CancellationToken ct) => throw new NotSupportedException();
     public Stream OpenRead(string fileName) => throw new NotSupportedException();
     public void Delete(string fileName) => throw new NotSupportedException();
+    public Tankstat.Application.Backups.RestorePoint Find(string fileName) => throw new NotSupportedException();
+    public void Hold(string fileName, DateTimeOffset? since) => throw new NotSupportedException();
 }

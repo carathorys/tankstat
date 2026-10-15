@@ -17,7 +17,18 @@ public sealed record BackupStatus(string Folder, BackupRunStatus Run, BackupOpti
 /// The backups in the folder, the migration the database is at, and the migrations of this release: a backup made at one of them can be
 /// restored here (an older one is brought up to date), one made at another is a newer release's.
 /// </summary>
-public sealed record RestorePoints(IReadOnlyList<RestorePoint> Points, string? DatabaseMigration, IReadOnlyList<string> KnownMigrations);
+/// <param name="Here">By file: what a restore of the backup would mean here (<see cref="RestoreService.HereAsync"/>).</param>
+public sealed record RestorePoints(IReadOnlyList<RestorePoint> Points, string? DatabaseMigration, IReadOnlyList<string> KnownMigrations, IReadOnlyDictionary<string, RestoreHere> Here)
+{
+    /// <summary>The points of the folder, with what each would lack here.</summary>
+    public static async Task<RestorePoints> ListAsync(IBackupStore store, ISettingsBackup settings, IDatabaseFacts database, CancellationToken ct)
+    {
+        var points = store.List();
+        var here = new Dictionary<string, RestoreHere>();
+        foreach (var point in points) here[point.File] = await RestoreService.HereAsync(store, settings, point, ct);
+        return new RestorePoints(points, await database.LastMigrationAsync(ct), await database.KnownMigrationsAsync(ct), here);
+    }
+}
 
 /// <summary>Bytes of the database (null: the provider would not say) and of the uploaded files.</summary>
 public sealed record StorageSizes(long? Database, FileUsage Files);
@@ -32,6 +43,7 @@ public sealed class BackupAdminService(
     AccessService access,
     SetupGate setup,
     IBackupStore store,
+    ISettingsBackup settings,
     IBackupRunner runner,
     IDatabaseFacts database,
     IStorageUsage usage,
@@ -53,7 +65,7 @@ public sealed class BackupAdminService(
     public async Task<RestorePoints> RestorePointsAsync(CancellationToken ct)
     {
         await access.RequireAdminAsync(ct);
-        return new RestorePoints(store.List(), await database.LastMigrationAsync(ct), await database.KnownMigrationsAsync(ct));
+        return await RestorePoints.ListAsync(store, settings, database, ct);
     }
 
     /// <summary>The migration the database is at (a question to the database only, the folder is not read).</summary>
@@ -122,14 +134,39 @@ public sealed class BackupAdminService(
     }
 
     /// <summary>
-    /// Removes a backup of the folder: only one the page lists (<c>backup.notFound</c> for anything else, the restore marker among it), and
-    /// nothing while a restore waits for the next start (<c>backup.restorePending</c>: the backup it names must still be there then, which
-    /// is why retention prunes nothing meanwhile either).
+    /// One backup of the folder in full, what its manifest says and its hold (<c>backup.notFound</c> for a name that is no backup there), with
+    /// the recipient new backups are encrypted for.
+    /// </summary>
+    public async Task<(RestorePoint Point, string? CurrentRecipient)> DetailsAsync(string fileName, CancellationToken ct)
+    {
+        await access.RequireAdminAsync(ct);
+        return (store.Find(fileName), options.Value.CurrentRecipient);
+    }
+
+    /// <summary>
+    /// Holds a backup (<paramref name="hold"/>) or releases it: held, retention never removes it and it counts towards no limit, and it is not
+    /// deleted until released. Holding one already held keeps the time it was held since.
+    /// </summary>
+    public async Task<RestorePoint> HoldAsync(string fileName, bool hold, CancellationToken ct)
+    {
+        var admin = await access.RequireAdminAsync(ct);
+        var point = store.Find(fileName);
+        if (point.Held == hold) return point;
+        store.Hold(fileName, hold ? clock.GetUtcNow() : null);
+        if (hold) logger.LogInformation("User {UserId} held the backup {File}", admin.Id, fileName);
+        else logger.LogInformation("User {UserId} released the backup {File}", admin.Id, fileName);
+        return store.Find(fileName);
+    }
+
+    /// <summary>
+    /// Removes a backup of the folder: only one the page lists (<c>backup.notFound</c> for anything else, the restore marker among it), not one
+    /// that is held (<c>backup.held</c>: release it first), and nothing while a restore waits for the next start (<c>backup.restorePending</c>:
+    /// the backup it names must still be there then, which is why retention prunes nothing meanwhile either).
     /// </summary>
     public async Task DeleteAsync(string fileName, CancellationToken ct)
     {
         var admin = await access.RequireAdminAsync(ct);
-        store.ReadManifest(fileName);
+        if (store.Find(fileName).Held) throw new DomainException("backup.held", "The backup is held: release it before deleting it.");
         if (store.RestorePending) throw new DomainException("backup.restorePending", "A restore waits for the next start; no backup is deleted until it ran.");
         store.Delete(fileName);
         logger.LogInformation("User {UserId} deleted the backup {File}", admin.Id, fileName);

@@ -86,6 +86,77 @@ public class RestartSmokeTests
         Assert.Contains("Restored the backup", app.Log);
     }
 
+    /// <summary>
+    /// Sign-in off, with the database and the backups folder outside the working directory (a stopped process removes it), whose settings
+    /// file is the server's (the default place).
+    /// </summary>
+    private static (Dictionary<string, string?> Settings, string Work, string Backups) OutsideTheWorkingDirectory()
+    {
+        var root = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"tankstat-smoke-{Guid.NewGuid():N}")).FullName;
+        var backups = Path.Combine(root, "backups");
+        var settings = new Dictionary<string, string?>
+        {
+            ["Auth__Mode"] = "None",
+            ["Database__ConnectionString"] = $"Data Source={Path.Combine(root, "tankstat.db")}",
+            ["Backups__Path"] = backups,
+        };
+        return (settings, Directory.CreateDirectory(Path.Combine(root, "work")).FullName, backups);
+    }
+
+    /// <summary>A server started once in <paramref name="work"/> (its database made), backed up by the command while it runs, then stopped; the backup's file name.</summary>
+    private static async Task<string> BackupOfAServerWithItsFileAsync(Dictionary<string, string?> settings, string work, string backups, string file)
+    {
+        await using (var first = await AppProcess.StartAsync(settings, workDirectory: work))
+        {
+            var (made, log) = await AppProcess.RunCommandAsync(settings, work, "", "backup");
+            Assert.True(made == 0, log);
+            Assert.Contains("settings file", log);
+        }
+        Directory.CreateDirectory(work); // gone with the process
+        return Path.GetFileName(Assert.Single(Directory.GetFiles(backups, "tankstat-backup-*.zip")));
+    }
+
+    [Fact]
+    public async Task ARestoreOfABackupWithASettingsFile_EndsInAStartThatRunsWithIt_InTheSameProcess()
+    {
+        var (settings, work, backups) = OutsideTheWorkingDirectory();
+        var file = Path.Combine(work, "settings.json"); // the default place, in the working directory
+        File.WriteAllText(file, """{ "Defaults": { "Currency": "HUF" } }""");
+        var backup = await BackupOfAServerWithItsFileAsync(settings, work, backups, file); // the backup carries the file as it was
+        File.WriteAllText(file, """{ "Defaults": { "Currency": "EUR" } }"""); // then the server runs with another
+        await using var app = await AppProcess.StartAsync(settings, workDirectory: work);
+        Assert.Equal("EUR", (await app.Gql(Session)).Data().GetProperty("vehicleDefaults").GetProperty("currency").GetString());
+        var code = System.Text.RegularExpressions.Regex.Match(app.Log, "one-time restore code ([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4})").Groups[1].Value;
+
+        await app.Gql("mutation($i: RestoreBackupInput!) { restoreBackup(input: $i) { file } }", new { i = new { file = backup, code } });
+
+        // The restart, the restore, which writes the file and ends that start at once, and the host after it, which reads the file.
+        await WhenBackAsync(app, d => d.GetProperty("vehicleDefaults").GetProperty("currency").GetString() == "HUF");
+        Assert.False(app.HasExited);
+        Assert.Contains("Restored the settings file", app.Log);
+        Assert.Contains("Restarting the server at once", app.Log);
+        Assert.Equal("""{ "Defaults": { "Currency": "EUR" } }""", File.ReadAllText(file + ".bak"));
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(app.Log, "Restoring the backup")); // once: the marker went before the start ended
+        Assert.True(!app.Log.Contains("fail:"), app.Log); // ending that start is no failure
+    }
+
+    [Fact]
+    public async Task RestoreNow_OfABackupWithASettingsFile_WritesItAndEndsCleanly()
+    {
+        var (settings, work, backups) = OutsideTheWorkingDirectory();
+        var file = Path.Combine(work, "settings.json");
+        File.WriteAllText(file, """{ "Defaults": { "Currency": "HUF" } }""");
+        var backup = await BackupOfAServerWithItsFileAsync(settings, work, backups, file);
+        File.WriteAllText(file, """{ "Defaults": { "Currency": "EUR" } }"""); // the server is stopped: --now restores at once
+
+        var (restored, output) = await AppProcess.RunCommandAsync(settings, work, "", "restore", backup, "--yes", "--now");
+
+        Assert.True(restored == 0, output);
+        Assert.Contains($"Restored {backup}.", output);
+        Assert.DoesNotContain("ServerRestartException", output);
+        Assert.Contains("HUF", File.ReadAllText(file));
+    }
+
     [Fact]
     public async Task AStopSignal_RightAfterARestart_EndsTheProcess()
     {

@@ -19,6 +19,14 @@ internal sealed class SystemConfiguration(SettingsFile file, IConfiguration runn
 
     public SettingsFileStatus File => file.Status;
 
+    public bool FileInUse
+    {
+        get
+        {
+            lock (_applying) return FileIndex >= 0;
+        }
+    }
+
     public IConfiguration Running => running;
 
     /// <summary>
@@ -65,6 +73,31 @@ internal sealed class SystemConfiguration(SettingsFile file, IConfiguration runn
                 return i >= place ? SettingSource.Environment : SettingSource.Shipped;
             }
             return SettingSource.Default;
+        }
+    }
+
+    public IReadOnlyList<string> EnvironmentKeys()
+    {
+        if (running is not IConfigurationRoot root) return [];
+        lock (_applying)
+        {
+            var providers = root.Providers.ToList(); // one per source, in the sources' order
+            var fileAt = FileIndex;
+            var first = fileAt >= 0 ? fileAt + 1 : ConfigurationSources.IndexOfEnvironment(Builder.Sources);
+            var keys = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (var i = first; i < providers.Count; i++) keys.UnionWith(Leaves(providers[i], null));
+            return [.. keys];
+        }
+    }
+
+    /// <summary>The keys a provider holds a value for, below <paramref name="parent"/> (all of them for null).</summary>
+    private static IEnumerable<string> Leaves(IConfigurationProvider provider, string? parent)
+    {
+        foreach (var child in provider.GetChildKeys([], parent).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var path = parent is null ? child : ConfigurationPath.Combine(parent, child);
+            if (provider.TryGet(path, out var value) && value is not null) yield return path; // a null held (a test host's) is no variable
+            foreach (var below in Leaves(provider, path)) yield return below;
         }
     }
 

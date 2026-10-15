@@ -5,7 +5,9 @@ namespace Tankstat.Application.Backups;
 /// is beyond the newest <c>Keep</c> or older than <c>KeepDays</c>, whichever are set, and the newest one never goes. Only the app's own
 /// files are candidates: named <c>tankstat-backup-...</c> by it and written by Tankstat, never an upload or a file copied in under another
 /// name. The safety nets written before a database upgrade are kept by a count of their own, <see cref="SafetyNetsKept"/>. With neither
-/// setting, nothing is removed at all, safety nets included.
+/// setting, nothing is removed at all, safety nets included. A held backup (<see cref="RestorePoint.Held"/>) is never removed and counts towards
+/// neither limit: <c>Keep</c> 3 keeps three besides the held ones, and the newest that is not held never goes. It is still one of the app's
+/// own (<see cref="IsOwn"/>), so the missed-run check sees it.
 /// </summary>
 public static class BackupRetention
 {
@@ -26,7 +28,7 @@ public static class BackupRetention
     public static IReadOnlyList<RestorePoint> ToRemove(IReadOnlyList<RestorePoint> points, int? keep, int? keepDays, DateTimeOffset now)
     {
         if (keep is null && keepDays is null) return [];
-        var own = points.Where(IsOwn).OrderByDescending(p => p.Manifest.CreatedAt).ThenByDescending(p => p.File, StringComparer.Ordinal).ToList();
+        var own = points.Where(p => IsOwn(p) && !p.Held).OrderByDescending(p => p.Manifest.CreatedAt).ThenByDescending(p => p.File, StringComparer.Ordinal).ToList();
         var oldest = keepDays is { } days ? DaysBefore(now, days) : null;
         var backups = own.Where(p => !p.Manifest.SafetyNet).Skip(1) // the newest never goes
             .Where((p, i) => i + 1 >= keep || p.Manifest.CreatedAt < oldest); // i + 1: its place after the newest

@@ -6,11 +6,27 @@ public interface IBackupStore
     /// <summary>The manifest of a backup in the folder; <c>backup.notFound</c> for a name that is not a file there (a path is never one).</summary>
     BackupManifest ReadManifest(string fileName);
 
+    /// <summary>A backup of the folder by its bare name, as <see cref="List"/> would give it (its size, manifest and hold); <c>backup.notFound</c> otherwise.</summary>
+    RestorePoint Find(string fileName);
+
+    /// <summary>
+    /// Holds a backup of the folder since <paramref name="since"/> (null: releases it), so retention never removes it and it counts towards
+    /// no limit; kept beside it as <c>&lt;file&gt;.hold</c>, so a restore, which replaces the database, keeps it, and so does another server
+    /// sharing the folder. <c>backup.notFound</c> for a name that is no backup there.
+    /// </summary>
+    void Hold(string fileName, DateTimeOffset? since);
+
     /// <summary>
     /// The identity that opens an encrypted backup, from the passphrase (derived as the manifest says) or as given; checked against the
     /// manifest's recipient (<c>backup.wrongKey</c>). <c>backup.keyRequired</c> when neither came; null for a backup that is not encrypted.
     /// </summary>
     string? IdentityFor(BackupManifest manifest, string? passphrase, string? identity);
+
+    /// <summary>
+    /// The settings file a backup of the folder carries, by key (null when it carries none), read with the identity (as
+    /// <see cref="IdentityFor"/> gives it) when it is encrypted; damage is <c>backup.corrupt</c>.
+    /// </summary>
+    IReadOnlyDictionary<string, string?>? ReadSettings(string fileName, BackupManifest manifest, string? identity);
 
     /// <summary>
     /// Refuses, before anything is written or restarted, a backup the start would refuse anyway: one made at a migration this release does
@@ -44,13 +60,16 @@ public interface IBackupStore
     /// <summary>A backup of the folder by its bare file name, to download; <c>backup.notFound</c> otherwise.</summary>
     Stream OpenRead(string fileName);
 
-    /// <summary>Removes a backup of the folder by its bare file name (retention); one already gone is nothing to do.</summary>
+    /// <summary>Removes a backup of the folder by its bare file name (retention), its hold with it; one already gone is nothing to do.</summary>
     void Delete(string fileName);
 }
 
-/// <summary>A backup in the folder: its file name, its size on disk and what its manifest says.</summary>
-public sealed record RestorePoint(string File, long Bytes, BackupManifest Manifest)
+/// <summary>A backup in the folder: its file name, its size on disk, what its manifest says, and since when it is held (null: it is not).</summary>
+public sealed record RestorePoint(string File, long Bytes, BackupManifest Manifest, DateTimeOffset? HeldSince = null)
 {
+    /// <summary>Held: retention never removes it, it counts towards no limit, and it is not deleted until released.</summary>
+    public bool Held => HeldSince is not null;
+
     /// <summary>The prefix of a backup that came in by upload: never pruned, since the app did not write it into its folder.</summary>
     public const string UploadedPrefix = "uploaded-";
 

@@ -232,4 +232,35 @@ public sealed class BackupCommandsTests : IDisposable
         Assert.Contains("photos 0 bytes", (await RunAsync(apart, "", "backup", "--photos")).Out);
         Assert.Contains("photos with the pictures", (await RunAsync(together, "", "backup", "--photos")).Out);
     }
+
+    [Fact]
+    public async Task TheBackupLines_SayWhatTheProcesssEnvironmentSet_AndEnvironmentMerge_PutsItIntoTheBackupsSettingsFile()
+    {
+        using var app = new TestApp(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = _folder, ["Defaults:Currency"] = "ZZZZ" });
+
+        var recorded = await RunAsync(app, "", "backup");
+        var merged = await RunAsync(app, "", "backup", "--environment", "merge");
+
+        Assert.Contains("environment of this process recorded: ", recorded.Out);
+        Assert.Contains("Defaults__Currency", recorded.Out);
+        Assert.Contains("settings file none (the server has none)", recorded.Out);
+        Assert.Contains("environment of this process merged into the settings file: ", merged.Out);
+        Assert.Matches(@"settings file \d+ bytes", merged.Out); // a file made of the environment
+        Assert.DoesNotContain("ZZZZ", recorded.Out + merged.Out); // names, never values
+        Assert.Equal(1, (await RunAsync(app, "", "backup", "--environment", "everything")).Code); // the usage
+    }
+
+    [Fact]
+    public async Task Secrets_ForOneRun_PutThemIntoAPlainBackup_AndTheLineSaysSoInCapitals()
+    {
+        using var app = new TestApp(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = _folder });
+        File.WriteAllText(app.SettingsPath, """{ "Smtp": { "Password": "zzzz-secret" } }""");
+
+        var plain = await RunAsync(app, "", "backup");
+        var withSecrets = await RunAsync(app, "", "backup", "--secrets");
+
+        Assert.Contains("without Smtp:Password", plain.Out);
+        Assert.Contains("its secrets IN PLAIN (anyone with the file reads them)", withSecrets.Out);
+        Assert.DoesNotContain("zzzz", plain.Out + withSecrets.Out);
+    }
 }

@@ -24,6 +24,8 @@ internal sealed class FakeSystemConfiguration : ISystemConfiguration
     /// <summary>The file's values the last save took in, or null before any: then the running configuration is the one it started with.</summary>
     public Dictionary<string, string?>? FileApplied { get; private set; }
 
+    public bool FileInUse => FileApplied is not null || File is { Exists: true, Ignored: false };
+
     public int Reloads { get; private set; }
 
     /// <summary>What taking the saved file in throws, if anything (a reader of the configuration refusing it): the file is then not taken in.</summary>
@@ -39,6 +41,8 @@ internal sealed class FakeSystemConfiguration : ISystemConfiguration
         if (ApplyFailure is { } failure) throw failure;
         FileApplied = new Dictionary<string, string?>(Store?.Values ?? FileAtStart, StringComparer.OrdinalIgnoreCase);
     }
+
+    public IReadOnlyList<string> EnvironmentKeys() => [.. Environment.Keys];
 
     public SettingSource SourceOf(string key) =>
         Has(Environment, key) ? SettingSource.Environment : Has(FileAtStart, key) ? SettingSource.File : Has(Shipped, key) ? SettingSource.Shipped : SettingSource.Default;
@@ -148,7 +152,9 @@ internal sealed class FakeOidcDiscovery : IOidcDiscovery
 internal sealed class FakeServerRestart : IServerRestart
 {
     public int Count { get; private set; }
+    public int NowCount { get; private set; }
     public void Restart() => Count++;
+    public void RestartNow() => NowCount++;
 }
 
 internal sealed class InMemoryInstanceState : IInstanceStateRepository

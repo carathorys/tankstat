@@ -628,7 +628,126 @@
       "keysSettings": "Or set these two settings in the server's environment, where they win over the settings page:",
       "keysSaved": "I have kept the passphrase in a safe place",
       "keysDone": "Done",
-      "changeSettings": "Change the schedule, retention and encryption in the server settings"
+      "changeSettings": "Change the schedule, retention and encryption in the server settings",
+      "environmentLabel": "Settings from the environment",
+      "environmentRecord": "named in every backup; a restore elsewhere needs them set there",
+      "environmentMerge": "merged into every backup's settings file (secrets only with secrets in backups on)",
+      "settingsBrings": "It brings its server's settings file, which replaces this server's (kept as settings.json.bak). This server keeps its own database, folders and keys settings, and its passwords when the backup is not encrypted.",
+      "environmentRecorded": "Its server's environment set {{names}}. Their values are not in the backup: this server must set them.",
+      "environmentMerged": "Its server's environment set {{names}}. Their values are in its settings file (the secrets only if its server put them into its backups).",
+      "risks": {
+        "missing": {
+          "short": "this server lacks {{names}}",
+          "text": "The restore will be refused: its server set {{names}} in its environment, and this server sets none of them, nor does the backup's settings file hold them. Set them in this server's environment first."
+        },
+        "mayBeMissing": {
+          "short": "May be refused: {{names}} not set here",
+          "text": "Its server set {{names}} in its environment, which this server does not set. The backup is encrypted, so its settings file is read only with its passphrase: if it holds none of them, the restore will be refused."
+        },
+        "logLevelsMissing": {
+          "short": "Log levels {{names}} not set here",
+          "text": "Its server set the log levels {{names}} in its environment, which this server does not set: the restore goes on, and the log holds what this server's levels say."
+        },
+        "noSettingsOlder": {
+          "short": "No settings file (an older release wrote it)",
+          "text": "It holds no settings file and says nothing of its server's environment: a release before backups held them wrote it. This server's settings stay, which may not suit the restored data: its sign-in, its e-mail, its backups."
+        },
+        "noSettingsNone": {
+          "short": "No settings file (its server had none)",
+          "text": "Its server had no settings file, so the backup holds none. This server's settings stay, which may not suit the restored data: its sign-in, its e-mail, its backups."
+        },
+        "noSettingsIgnored": {
+          "short": "No settings file (its server ran without it)",
+          "text": "Its server ran without its settings file (its start left the file out), so the backup holds none. This server's settings stay, which may not suit the restored data."
+        },
+        "secretsLeftOut": {
+          "short": "Without its secrets: {{names}}",
+          "text": "Its secrets are not in it ({{names}}): its server did not put them into its backups. This server keeps its own; what this server has none of stops working (the e-mail, the sign-in provider, photo reading)."
+        },
+        "signInOverridden": {
+          "short": "Sign-in: this server's environment decides",
+          "text": "This server's environment sets the sign-in mode, which wins over the backup's. If they differ, the restored users may have no way to sign in (accounts of an identity provider have no password here, and the other way round)."
+        },
+        "overridden": {
+          "short": "This server's environment overrides {{names}}",
+          "text": "This server's environment overrides {{names}}, which the backup's settings file holds: this server's values run, not the backup's."
+        },
+        "environmentUnknown": {
+          "short": "Says nothing of its server's environment",
+          "text": "It says nothing of the settings its server took from its environment (an older release wrote it): any of them may be missing here."
+        }
+      },
+      "riskRefused": "Refused",
+      "riskRisk": "Risk",
+      "risksTitle": "What this restore can break here",
+      "risksAcknowledge": "I understand that the restored server may not work as before, and I want to restore it anyway.",
+      "refusedNote": "Set what is missing first: the server refuses this restore until then.",
+      "secretsLeftOut": "left out (a restore keeps the restored server's own)",
+      "secretsIncluded": "included (encrypted)",
+      "secretsIncludedPlain": "included IN PLAIN: anyone with a backup file reads them",
+      "held": "Held: never removed by retention, not deleted until released",
+      "heldSince": "Held since {{since}}: never removed by retention, not deleted until released",
+      "hold": "Hold",
+      "holdAria": "Hold the backup of {{made}} ({{file}})",
+      "heldToast": "{{file}} is held: retention keeps it, and it counts towards no limit.",
+      "releasedToast": "{{file}} was released: retention treats it like any other backup.",
+      "deleteHeld": "Held: release it to delete it",
+      "open": "Open",
+      "openAria": "Open the backup of {{made}} ({{file}})",
+      "secretsPlainMark": "In plain with its secrets: anyone who has the file reads the passwords in it",
+      "details": {
+        "title": "The backup of {{made}} ({{file}})",
+        "description": "What its manifest says, readable without its key: nothing in it is decrypted or unpacked.",
+        "backup": "The backup",
+        "made": "Made",
+        "file": "File",
+        "size": "Size",
+        "kind": "Kind",
+        "hold": "Hold",
+        "notHeld": "Not held: retention may remove it",
+        "writtenBy": "Written by",
+        "writtenByValue": "{{by}} {{version}} (format {{format}})",
+        "database": "Database",
+        "databaseAt": "{{provider}}, at {{migration}}",
+        "encryption": "Encryption",
+        "recipient": "Recipient",
+        "method": "Method",
+        "keys": "Sign-in keys",
+        "keysIn": "Included (the server's Data Protection keys)",
+        "keysOut": "Not included",
+        "contents": "Contents",
+        "pictures": "Pictures",
+        "photos": "Photos of logs",
+        "included": "Included",
+        "notIncluded": "Not included",
+        "tablesCaption": "Tables: {{tables}} · rows: {{rows}}",
+        "table": "Table",
+        "rows": "Rows",
+        "sizes": "Sizes and checksum",
+        "sizeTables": "Tables (before compression)",
+        "sizePictures": "Pictures (before compression)",
+        "sizePhotos": "Photos (before compression)",
+        "sizeKeys": "Keys (before compression)",
+        "sizeArchive": "Stored archive ({{entry}})",
+        "checksum": "SHA-256 of the archive",
+        "settingsFile": "Settings file",
+        "settingsState": "Settings file",
+        "settingsIncluded": "Included ({{size}})",
+        "settingsIgnored": "None: its server's start had left its file out",
+        "settingsNone": "None: its server had no settings file",
+        "settingsOlder": "None: an older release wrote it, before backups held the settings file.",
+        "secrets": "Secrets",
+        "secretsLeftOut": "Secrets left out",
+        "machineLeftOut": "The machine's own settings left out",
+        "noneNamed": "none",
+        "environment": "Environment",
+        "environmentMode": "Settings from the environment",
+        "environmentSettings": "Settings its environment set",
+        "environmentServer": "The machine's own variables",
+        "environmentOlder": "Not recorded: an older release wrote it."
+      },
+      "releaseHold": "Release",
+      "releaseHoldAria": "Release the backup of {{made}} ({{file}})"
     }
   },
   "errors": {
@@ -855,7 +974,10 @@
       "passphraseTooShort": "A passphrase has at least {{min}} characters.",
       "failed": "an unexpected error (the server log says more)",
       "stopped": "the app stopped while it was being written",
-      "restorePending": "A restore waits for the next start; no backup can be deleted until it has run."
+      "restorePending": "A restore waits for the next start; no backup can be deleted until it has run.",
+      "settingsRefused": "The server would not start with the settings file this backup brings, under this server's environment, so it was not restored. Set what it lacks in the environment (an OIDC client secret, say, which a backup carries only when its server put the secrets into its backups), or restore a backup that holds the secrets.",
+      "environmentMissing": "The backup was made on a server whose environment set {{variables}}; this server sets none of them, and the settings file the backup brings holds none either, so it was not restored. Set them in this server's environment, then restore.",
+      "held": "The backup is held: release it before deleting it."
     }
   },
   "a11y": {
@@ -1673,7 +1795,8 @@
     "nextTitle": "What to set up next",
     "nextBackups": "Backups: when they are written and how many are kept",
     "nextDefaults": "Defaults for new vehicles: units and currency",
-    "nextPeople": "People: add the other users"
+    "nextPeople": "People: add the other users",
+    "secretsPlain": "in plain, with its secrets"
   },
   "systemSettings": {
     "title": "Server settings",
@@ -1811,6 +1934,8 @@
       "Backups__Keep": "After every backup the app writes, only this many of the newest files named tankstat-backup-… stay (the backup command's, and any copied in under that name, count too; the safety nets before upgrades are kept apart, the newest three); the newest is never removed. Uploads and files under another name are never counted. Empty: no limit by count.",
       "Backups__KeepDays": "After every backup the app writes, the files named tankstat-backup-… older than this many days are removed (the safety nets before upgrades are kept apart, the newest three); the newest always stays. Uploads and files under another name are never removed. Empty: no limit by age.",
       "Backups__Photos": "Only matters when the photos of logs have a folder of their own (Storage:PhotosPath): they grow without limit, so they are left out unless this is on. With one folder they are always in.",
+      "Backups__Environment": "What a backup does with the settings environment variables hold here. Names only (Record): the backup names them, and a restore on a server where one of them has no value is refused until it is set. Names and values (Merge): the backup's copy of the settings file also takes the values this server runs with (never this server's own file), so a restore elsewhere brings them; the secrets only with Secrets in backups on.",
+      "Backups__Secrets": "Every backup's settings file holds the secrets too (the OIDC client secret, the SMTP password, the model API key), so a restore elsewhere brings them. Off by default. In a backup that is not encrypted anyone who has the file reads them: make a key set on the Backups page to encrypt backups. With Names only (Settings from the environment), this is the only way the secrets in this server's settings file reach a backup; secrets held by environment variables travel only with Names and values. Either way a backup names every secret it leaves out.",
       "Backups__Encryption__Recipient": "The age recipient (age1…) backups are encrypted for. It and the salt are one pair, from one key set: make both with Make a key set on the Backups page and change them only together. Empty: backups are written in plain, without the keys that protect the sign-in.",
       "Backups__Encryption__Salt": "The salt the key is worked out from the passphrase with, printed with the recipient: the two belong together. With a salt of another key set (or one changed by hand) the passphrase no longer opens the backups written after it, only the identity does. Older backups keep their own passphrase.",
       "Backups__MaxUploadMb": "The largest backup an administrator may upload on the Backups page (1024 by default). Copying a file into the backups folder always works; give it a name that does not start with tankstat-backup-, or retention counts it as one of the app's own.",
@@ -1883,6 +2008,8 @@
       "Backups__Keep": "Keep the newest (backups)",
       "Backups__KeepDays": "Keep for (days)",
       "Backups__Photos": "Include the photos of logs",
+      "Backups__Environment": "Settings from the environment",
+      "Backups__Secrets": "Secrets in backups",
       "Backups__Encryption__Recipient": "Encrypt for (age recipient)",
       "Backups__Encryption__Salt": "Salt of the passphrase",
       "Backups__MaxUploadMb": "Largest upload (MB)",
@@ -1914,9 +2041,14 @@
         "JsonSchema": "JSON that follows a schema",
         "JsonObject": "Any JSON object",
         "None": "Not asked for (the prompt says it)"
+      },
+      "backupEnvironment": {
+        "Record": "Names only",
+        "Merge": "Names and values"
       }
     },
     "choiceWithValue": "{{words}} ({{value}})",
-    "noSignInWarning": "Not secure: without sign-in, anyone who can reach the server sees and changes all data, and the administration pages are off. Use it only to try the app out on a network you trust, never in production."
+    "noSignInWarning": "Not secure: without sign-in, anyone who can reach the server sees and changes all data, and the administration pages are off. Use it only to try the app out on a network you trust, never in production.",
+    "secretsPlainWarning": "Backups are not encrypted, so with this on every backup holds the secrets in plain: anyone who gets a file, from a disk, a copy or a share, reads the OIDC client secret, the SMTP password and the model API key. Make a key set on the Backups page to encrypt them."
   }
 }

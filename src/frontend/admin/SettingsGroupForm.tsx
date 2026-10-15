@@ -198,6 +198,12 @@ export function SettingsGroupForm({
             {t('systemSettings.noSignInWarning')}
           </Alert>
         )}
+        {/* Secrets in backups that are not encrypted: readable by anyone who has a file (#140). Said while it is so, as above. */}
+        {settings.some((s) => s.key === 'Backups:Secrets') && valueOf('Backups:Secrets')?.toLowerCase() === 'true' && !valueOf('Backups:Encryption:Recipient')?.trim() && (
+          <Alert severity="warning" role="note" icon={<TriangleAlert size={16} aria-hidden />}>
+            {t('systemSettings.secretsPlainWarning')}
+          </Alert>
+        )}
       </Stack>
     )
   }
@@ -353,12 +359,16 @@ const CHOICE_SETS: Record<string, string> = {
   'Smtp:Security': 'smtpSecurity',
   'Recognition:Provider': 'recognitionProvider',
   'Recognition:OpenAiCompatible:ResponseFormat': 'responseFormat',
+  'Backups:Environment': 'backupEnvironment',
 }
+
+/** Choice sets whose words say it all (user decision): offered without the value after them; the help names the values. */
+const WORDS_ALONE = new Set(['backupEnvironment'])
 
 /**
  * A choice as the page offers it, in words with the value as the server spells it after them ("Local accounts (Standalone)"),
  * since that is what the documentation and the environment use: a time or date format by an example of it alone (a name
- * such as DayMonthYearDots says little), a unit by its name alone. A log level, which says itself, and a choice without words of its own (a spelling
+ * such as DayMonthYearDots says little), a unit by its name alone, a set of `WORDS_ALONE` by its words alone. A log level, which says itself, and a choice without words of its own (a spelling
  * still accepted) as it is.
  */
 function useChoiceLabel() {
@@ -379,7 +389,7 @@ function useChoiceLabel() {
     const wordsKey = set === 'distance' || set === 'volume' ? `units.${set}.${schemaName(choice)}` : `systemSettings.choices.${set}.${choice}`
     if (!set || !i18n.exists(wordsKey)) return choice
     const words = String(t(wordsKey as never))
-    return set === 'distance' || set === 'volume' || words === choice ? words : t('systemSettings.choiceWithValue', { words, value: choice })
+    return set === 'distance' || set === 'volume' || WORDS_ALONE.has(set) || words === choice ? words : t('systemSettings.choiceWithValue', { words, value: choice })
   }
 }
 

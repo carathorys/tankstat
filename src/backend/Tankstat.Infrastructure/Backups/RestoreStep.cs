@@ -12,6 +12,7 @@ using Tankstat.Application.Auth;
 using Tankstat.Application.Backups;
 using Tankstat.Application.Images;
 using Tankstat.Application.Setup;
+using Tankstat.Application.SystemSettings;
 using Tankstat.Application.Users;
 using Tankstat.Domain;
 using Tankstat.Domain.Backups;
@@ -52,7 +53,11 @@ public enum RestoreOutcome
 /// are about to be rebuilt, every row as the load will read it. Then the database: at the backup's migration already, its rows are replaced
 /// in one transaction (<see cref="TableLoad"/>), so a failure there undoes itself; at another one (or empty), every table is dropped (in one
 /// transaction where the provider allows it), the migrations set it up as the backup's migration left it (Up steps only) and the rows are
-/// loaded. The pictures (and the photos when the backup holds them) and the key files follow, and the migrations bring it all up to date.
+/// loaded. The pictures (and the photos when the backup holds them), the key files and the settings file the backup carries follow, and the
+/// migrations bring it all up to date. That settings file is judged among the checks, as the restore would leave it under this server's
+/// environment (<see cref="ISettingsBackup.RestoredAsync"/>: the start it would give, and the sign-in the administrator rule applies to);
+/// once it is written, this start ends at the end of the step (<see cref="IServerRestart.RestartNow"/>), so no later step runs under the
+/// settings it replaced, and the next host reads it.
 /// The generation is stamped inside the load for a backup of this release's last migration, else after the migrations
 /// (<see cref="StartAsync"/>, whose instance table is only then as this release knows it), and the marker goes once it is: a stop in
 /// between repeats the restore at the next start. A refused restore renames the marker to <c>restore.refused.&lt;time&gt;</c> and the start
@@ -68,6 +73,8 @@ internal sealed class RestoreStep(
     IOptions<StorageOptions> storage,
     IOptions<KeyRingOptions> keyRing,
     IOptions<AuthOptions> auth,
+    ISettingsBackup settingsFile,
+    IServerRestart restart,
     InstanceGeneration state,
     OneTimeCode code,
     TimeProvider clock,
@@ -85,6 +92,9 @@ internal sealed class RestoreStep(
     /// <summary>What this start did with a restore that waited for it.</summary>
     public RestoreOutcome Outcome { get; private set; }
 
+    /// <summary>The restore wrote the settings file: this start ends once the step is through, and the next one reads it.</summary>
+    private bool _settingsWritten;
+
     /// <summary>Before the migrations: the restore that waits, if any (<see cref="RestoreOutcome.None"/> when none does).</summary>
     public async Task<RestoreOutcome> ApplyWaitingAsync(CancellationToken ct)
     {
@@ -93,9 +103,19 @@ internal sealed class RestoreStep(
         return Outcome;
     }
 
+    /// <summary>Done for this host already, before it started (<see cref="StartupSteps.ApplyBeforeHostAsync"/>): the host's start skips it once.</summary>
+    private bool _skipNext;
+
+    internal void SkipNextStart() => _skipNext = true;
+
     /// <summary>After the migrations: the generation of the data, stamped anew for a restore that waited for them.</summary>
     public async Task StartAsync(CancellationToken ct)
     {
+        if (_skipNext)
+        {
+            _skipNext = false;
+            return;
+        }
         if (_toStamp is { } stamp)
         {
             InstanceInfo restored;
@@ -134,6 +154,14 @@ internal sealed class RestoreStep(
         var instance = await db.InstanceState.AsNoTracking().SingleAsync(ct);
         state.Set(new InstanceInfo(instance.Generation, instance.RestorePoint));
 
+        if (_settingsWritten)
+        {
+            // Nothing after this step may run under the settings the file replaced (the setup step decides the setup under the sign-in it
+            // reads, the sign-out after a mode change compares it): the next host, built at once, reads the restored file.
+            _settingsWritten = false;
+            restart.RestartNow();
+            return;
+        }
         if (auth.Value.Mode == AuthMode.None)
             logger.LogInformation("Restoring a backup from the app needs the one-time restore code {Code} (sign-in is off, so there is no administrator to ask)", code.Value);
     }
@@ -158,6 +186,7 @@ internal sealed class RestoreStep(
         string target; // this provider's id of the backup's migration
         string? applied; // the database's last applied migration; none in an empty database
         bool last; // whether the backup's migration is this release's last, so the load stamps the generation itself
+        RestoredSettings? settings = null; // the settings file the restore leaves, when the backup carries one
         try
         {
             if (!File.Exists(file)) throw new FileNotFoundException("The backup is not in the backups folder.", marker.File);
@@ -175,6 +204,10 @@ internal sealed class RestoreStep(
                 last = target == db.Database.GetMigrations().Last();
             }
             BackupFile.VerifyChecksum(file, manifest);
+            // The settings file the backup brings, as the restore would leave it under this server's environment (this start's decides): a
+            // setting the backup's server set in its environment left without a value, or a file this server would not start with (or would
+            // leave out), is refused with the data as it is, as the request refused it.
+            settings = await RestoreService.RequireRestorableAsync(settingsFile, manifest, BackupFile.ReadSettings(file, manifest, identity), ct);
         }
         catch (Exception e) when (e is DomainException or IOException or UnauthorizedAccessException or FormatException)
         {
@@ -197,8 +230,8 @@ internal sealed class RestoreStep(
             // From the backup's own files, before anything changes: Standalone needs an administrator to sign in with afterwards, and tables
             // about to be rebuilt need every row to load (a line that is no row, a value that is not its column's, a count that is not the
             // manifest's); in place, the load's own transaction undoes such a row.
-            await RequireAdministratorAsync(() => Task.FromResult(BackupHoldsAdministrator(model, tables)), subject => Task.FromResult(BackupHoldsLocalUser(model, tables, subject)),
-                BackupSetupWaits(model, tables, manifest.Contents.Tables));
+            await RequireAdministratorAsync(settings?.Auth ?? auth.Value, () => Task.FromResult(BackupHoldsAdministrator(model, tables)),
+                subject => Task.FromResult(BackupHoldsLocalUser(model, tables, subject)), BackupSetupWaits(model, tables, manifest.Contents.Tables));
             var inPlace = applied is not null && MigrationNames.Same(applied, target);
             if (!inPlace) TableLoad.CheckRows(model, tables, manifest.Contents.Tables);
 
@@ -222,6 +255,12 @@ internal sealed class RestoreStep(
                 else ReplaceContents(roots.PhotosRoot, Path.Combine(scratch.FullName, "files", "photos"), "photos");
             }
             if (manifest.Contents.Keys) ReplaceKeys(keyRing.Value.Root, Path.Combine(scratch.FullName, "keys"));
+            if (settings is not null)
+            {
+                await settingsFile.WriteAsync(settings.Values, ct); // the previous file kept as .bak
+                _settingsWritten = true;
+                logger.LogInformation("Restored the settings file with {Count} values; the server restarts once this start step is through, to run with it", settings.Values.Count);
+            }
             if (instance is not null)
             {
                 File.Delete(markerPath);
@@ -358,12 +397,13 @@ internal sealed class RestoreStep(
     /// changes, so a backup without one is refused, never applied), or one the start creates from the bootstrap credentials as
     /// <c>SetupStep</c> will try to (it fails the start otherwise, and every start after it, on data that counts as set up): an enabled
     /// local administrator, or bootstrap credentials of an address no local account has. Without either credential, data whose setup waits
-    /// (<paramref name="setupWaits"/>) needs none: the start waits for the setup page, which makes the administrator.
+    /// (<paramref name="setupWaits"/>) needs none: the start waits for the setup page, which makes the administrator. <paramref name="next"/>
+    /// is the sign-in the start after the restore runs: the restored settings file's under this server's environment, else this server's.
     /// </summary>
-    private async Task RequireAdministratorAsync(Func<Task<bool>> hasAdministrator, Func<string, Task<bool>> localAccountExists, bool setupWaits)
+    private static async Task RequireAdministratorAsync(AuthOptions next, Func<Task<bool>> hasAdministrator, Func<string, Task<bool>> localAccountExists, bool setupWaits)
     {
-        if (auth.Value.Mode != AuthMode.Standalone || await hasAdministrator()) return;
-        var bootstrap = auth.Value.Standalone;
+        if (next.Mode != AuthMode.Standalone || await hasAdministrator()) return;
+        var bootstrap = next.Standalone;
         if (setupWaits && string.IsNullOrWhiteSpace(bootstrap.AdminEmail) && string.IsNullOrWhiteSpace(bootstrap.AdminPassword)) return;
         var reason = StandaloneBootstrap.ProblemOf(bootstrap.AdminEmail, bootstrap.AdminPassword, out var address)
             ?? (await localAccountExists(address!) ? "taken" : null);

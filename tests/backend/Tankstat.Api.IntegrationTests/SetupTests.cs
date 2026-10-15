@@ -173,6 +173,10 @@ public sealed class SetupTests : IDisposable
         var point = Assert.Single((await client.Gql("query($c: String!) { setupRestorePoints(code: $c) { file sameMigration } }", new { c = code }))
             .Data().GetProperty("setupRestorePoints").EnumerateArray());
         Assert.Equal((file, true), (point.GetProperty("file").GetString(), point.GetProperty("sameMigration").GetBoolean()));
+        // Opened before it is restored, with the same code.
+        const string Details = "query($c: String!, $f: String!) { setupBackupDetails(code: $c, file: $f) { file tables { name rows } } }";
+        Assert.Equal("setup.codeInvalid", (await client.Gql(Details, new { c = "nope", f = file })).ErrorKey());
+        Assert.Equal(file, (await client.Gql(Details, new { c = code, f = file })).Data().GetProperty("setupBackupDetails").GetProperty("file").GetString());
 
         const string Restore = "mutation($i: RestoreBackupInput!) { restoreBackup(input: $i) { file } }";
         Assert.Equal("backup.codeRequired", (await client.Gql(Restore, new { i = new { file } })).ErrorKey());

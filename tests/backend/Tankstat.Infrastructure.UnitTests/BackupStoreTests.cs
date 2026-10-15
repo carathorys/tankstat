@@ -90,6 +90,37 @@ public sealed class BackupStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task AHold_IsAFileBesideTheBackup_ThatTheListReads_ThatNothingTakesForABackup_AndThatGoesWithIt()
+    {
+        var backup = await BackupFileAsync();
+        Directory.CreateDirectory(Backups);
+        File.Copy(backup, Path.Combine(Backups, "a.zip"));
+        File.Copy(backup, Path.Combine(Backups, "b.zip"));
+        var store = Store();
+        var since = new DateTimeOffset(2026, 10, 14, 9, 30, 0, TimeSpan.Zero);
+
+        store.Hold("a.zip", since);
+
+        Assert.Equal(since, store.Find("a.zip").HeldSince);
+        Assert.Equal([("a.zip", true), ("b.zip", false)], store.List().Select(p => (p.File, p.Held)).Order());
+        Assert.True(File.Exists(Path.Combine(Backups, "a.zip.hold")));
+        Assert.Equal("backup.notFound", Assert.ThrowsAny<KeyedException>(() => store.OpenRead("a.zip.hold")).Key); // never a backup itself
+        Assert.Equal("backup.notFound", Assert.ThrowsAny<KeyedException>(() => store.Hold("../a.zip", since)).Key);
+
+        // An empty one, as an operator's touch makes it: held since its file's time.
+        await File.WriteAllTextAsync(Path.Combine(Backups, "b.zip.hold"), "");
+        Assert.True(store.Find("b.zip").Held);
+        // One without its time: since its file's time too, never the year 1.
+        await File.WriteAllTextAsync(Path.Combine(Backups, "b.zip.hold"), "{}");
+        Assert.Equal(new DateTimeOffset(File.GetLastWriteTimeUtc(Path.Combine(Backups, "b.zip.hold")), TimeSpan.Zero), store.Find("b.zip").HeldSince);
+
+        store.Hold("a.zip", null);
+        Assert.False(store.Find("a.zip").Held);
+        store.Delete("b.zip");
+        Assert.False(File.Exists(Path.Combine(Backups, "b.zip.hold"))); // gone with its backup, so a later copy under that name is not held
+    }
+
+    [Fact]
     public async Task AnUpload_IsStoredUnderANameOfItsOwn_ThatNeverReplacesAFile()
     {
         var backup = await BackupFileAsync();

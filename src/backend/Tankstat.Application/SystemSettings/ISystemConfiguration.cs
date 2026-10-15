@@ -24,6 +24,12 @@ public interface ISystemConfiguration
 {
     SettingsFileStatus File { get; }
 
+    /// <summary>
+    /// Whether the settings file is among the running sources now: read at start, or taken in by a save since (<see cref="ApplySavedFile"/>,
+    /// also over a file the start left out, which <see cref="File"/> still says it did).
+    /// </summary>
+    bool FileInUse { get; }
+
     /// <summary>The configuration as it runs now: reloaded after every save (<see cref="ApplySavedFile"/>), so it holds what the settings that apply at once run with.</summary>
     IConfiguration Running { get; }
 
@@ -42,6 +48,9 @@ public interface ISystemConfiguration
 
     /// <summary>Where the running value of <paramref name="key"/> comes from (a list: its items, the highest source of any of them).</summary>
     SettingSource SourceOf(string key);
+
+    /// <summary>Every key the environment holds (the sources above the settings file's place: variables, the command line), by its full path.</summary>
+    IReadOnlyList<string> EnvironmentKeys();
 
     /// <summary>
     /// The whole configuration with <paramref name="fileValues"/> in the settings file's place: the other sources as they are. Dispose it

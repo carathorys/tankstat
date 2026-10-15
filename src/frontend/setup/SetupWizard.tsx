@@ -15,7 +15,9 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
 import { healthProbe, waitForRestart } from '../admin/restartFlow.ts'
-import { RestartWait, RestoreDialog } from '../admin/restore.tsx'
+import { BackupDetailsDialog } from '../admin/backupDetails.tsx'
+import { secretsInPlain, useHeldText } from '../admin/backupMarks.ts'
+import { RestartWait, RestoreDialog, RestoreRiskLines } from '../admin/restore.tsx'
 import { UploadBackup } from '../admin/upload.tsx'
 import { SettingsGroupForm } from '../admin/SettingsGroupForm.tsx'
 import { unusedReason } from '../admin/settingsRelevance.ts'
@@ -612,6 +614,7 @@ function RestoreStep({
 }) {
   const { t } = useTranslation()
   const { dateTime } = useFormat()
+  const heldText = useHeldText()
   const [error, setError] = useState<unknown>()
   const lookAgain = () => {
     setError(undefined)
@@ -635,6 +638,17 @@ function RestoreStep({
                   <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                     {[t('setup.pointMeta', { version: point.appVersion, file: point.file }), point.encrypted && t('setup.encrypted')].filter(Boolean).join(' · ')}
                   </Typography>
+                  {point.held && (
+                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                      {heldText(point)}
+                    </Typography>
+                  )}
+                  {/* In words, not only in red: anyone with the file reads its passwords. */}
+                  {secretsInPlain(point) && (
+                    <Typography variant="body2" sx={{ color: 'error.softText' }}>
+                      {t('admin.backups.secretsPlainMark')}
+                    </Typography>
+                  )}
                   {point.olderMigration && (
                     <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                       {t('setup.older', { version: point.appVersion })}
@@ -645,19 +659,33 @@ function RestoreStep({
                       {t('setup.newer')}
                     </Typography>
                   )}
+                  {/* What its restore can break here, before anyone opens it. */}
+                  {restorable && <RestoreRiskLines point={point} />}
                 </Stack>
-                {restorable && (
-                  <RestoreDialog
-                    point={point}
+                <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
+                  <BackupDetailsDialog
+                    file={point.file}
+                    createdAt={point.createdAt}
                     code={code}
-                    onRestoring={onRestoring}
                     trigger={
-                      <Button color="error" variant="soft" aria-label={t('admin.backups.restoreAria', { made: dateTime(point.createdAt), file: point.file })}>
-                        {t('setup.restore')}
+                      <Button variant="soft" aria-label={t('admin.backups.openAria', { made: dateTime(point.createdAt), file: point.file })}>
+                        {t('admin.backups.open')}
                       </Button>
                     }
                   />
-                )}
+                  {restorable && (
+                    <RestoreDialog
+                      point={point}
+                      code={code}
+                      onRestoring={onRestoring}
+                      trigger={
+                        <Button color="error" variant="soft" aria-label={t('admin.backups.restoreAria', { made: dateTime(point.createdAt), file: point.file })}>
+                          {t('setup.restore')}
+                        </Button>
+                      }
+                    />
+                  )}
+                </Stack>
               </Stack>
             )
           })}

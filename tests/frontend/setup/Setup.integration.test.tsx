@@ -37,6 +37,11 @@ const backup = {
   sameMigration: true,
   olderMigration: false,
   encrypted: false,
+  held: false,
+  heldSince: null as string | null,
+  // A backup of this release with nothing to warn about.
+  settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', secrets: true, secretsLeftOut: [] } as Record<string, unknown> | null,
+  environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: [], missing: [], missingCertain: true, logLevelsMissing: [], overridden: [] } as Record<string, unknown> | null,
 }
 
 /**
@@ -71,6 +76,23 @@ function waitingServer(running: AuthMode, options: { signedIn?: SessionQuery['se
       record('SetupRestorePoints', variables)
       if (!codeOk(variables.code)) return HttpResponse.json(codeInvalid)
       return HttpResponse.json({ data: { setupRestorePoints: state.points.map((p) => ({ __typename: 'RestorePointInfo', ...p })), setupUploadLimitMb: 1024 } })
+    }),
+    // A backup opened before it is restored, with the code (what its manifest says).
+    graphql.query('SetupBackupDetails', ({ variables }) => {
+      record('SetupBackupDetails', variables)
+      if (!codeOk(variables.code)) return HttpResponse.json(codeInvalid)
+      return HttpResponse.json({
+        data: {
+          setupBackupDetails: {
+            __typename: 'BackupDetailsInfo', file: variables.file, bytes: 2_400_000, held: true, heldSince: '2026-10-12T08:00:00Z', format: 1, writtenBy: 'tankstat',
+            createdAt: backup.createdAt, appVersion: backup.appVersion, provider: 'Sqlite', migration: 'AddInstance', safetyNet: false, uploaded: false, encrypted: false,
+            recipient: null, currentRecipient: false, encryptionMethod: null, pictures: true, photos: 'WITH_PICTURES', keys: false,
+            tables: [{ __typename: 'BackupTableInfo', name: 'Vehicles', rows: 3 }],
+            sizes: { __typename: 'BackupSizesInfo', tables: 1000, pictures: 0, photos: 0, keys: 0, archive: 900 },
+            archiveEntry: 'data.zip', sha256: 'cd'.repeat(32), settingsFile: null, environment: null,
+          },
+        },
+      })
     }),
     // The wizard's settings, with the code: a sign-in mode saved waits for the restart the last step makes.
     graphql.query('SystemSettings', ({ variables }) => {
@@ -322,8 +344,50 @@ it('uploads a backup the folder does not hold, with the code, and lists it to re
   await ui.upload(screen.getByTestId('backup-file'), new File([new Uint8Array([1, 2, 3])], 'from-old.zip', { type: 'application/zip' }))
 
   // Listed with the folder's, to restore like them.
-  expect(await within(restore).findByRole('button', { name: /\(uploaded-from-old\.zip\)$/ })).toBeInTheDocument()
+  expect(await within(restore).findByRole('button', { name: /^Restore the backup of .*\(uploaded-from-old\.zip\)$/ })).toBeInTheDocument()
   expect(state.calls.Upload).toEqual([{ name: 'from-old.zip', code: CODE }]) // the code in its header, never the address
+})
+
+it('opens a backup of the folder before restoring it, with the code, and marks one held or holding its secrets in plain', async () => {
+  const ui = userEvent.setup()
+  const state = waitingServer('STANDALONE', { points: [{ ...backup, held: true, heldSince: '2026-10-12T08:00:00Z' }] })
+  renderWithApollo(<App />)
+
+  await enterCode(ui)
+  await ui.click(await screen.findByRole('button', { name: 'Restore from a backup' }))
+  const restore = await screen.findByRole('region', { name: 'Restore a backup' })
+  expect(within(restore).getByText(/^Held since .*: never removed by retention/)).toBeInTheDocument()
+  expect(within(restore).getByText('In plain with its secrets: anyone who has the file reads the passwords in it')).toBeInTheDocument() // plain, its secrets in
+  await ui.click(within(restore).getByRole('button', { name: /^Open the backup of .*\(tankstat-backup-20261010T020000Z\.zip\)$/ }))
+
+  const dialog = await screen.findByRole('dialog', { name: /^The backup of/ })
+  expect(await within(dialog).findByRole('table', { name: 'Tables: 1 · rows: 3' })).toBeInTheDocument()
+  expect(dialog).toHaveTextContent('None: an older release wrote it, before backups held the settings file.')
+  expect(state.calls.SetupBackupDetails).toEqual([{ code: CODE, file: 'tankstat-backup-20261010T020000Z.zip' }])
+})
+
+it('says before a restore on the setup page which settings of the old server this new one lacks, which it is refused for', async () => {
+  const ui = userEvent.setup()
+  waitingServer('STANDALONE', {
+    points: [
+      {
+        ...backup,
+        settingsFile: { __typename: 'BackupSettingsFileInfo', state: 'INCLUDED', secrets: true, secretsLeftOut: [] },
+        environment: { __typename: 'BackupEnvironmentInfo', mode: 'RECORD', settings: ['Auth__Mode', 'Auth__Oidc__ClientSecret'], missing: ['Auth__Oidc__ClientSecret'], missingCertain: true, logLevelsMissing: [], overridden: [] },
+      },
+    ],
+  })
+  renderWithApollo(<App />)
+
+  await enterCode(ui)
+  await ui.click(await screen.findByRole('button', { name: 'Restore from a backup' }))
+  const restore = await screen.findByRole('region', { name: 'Restore a backup' })
+  await ui.click(within(restore).getByRole('button', { name: /^Restore the backup of/ }))
+  const dialog = await screen.findByRole('alertdialog', { name: /^Restore the backup of/ })
+
+  expect(screen.getByText('Refused: this server lacks Auth__Oidc__ClientSecret')).toBeInTheDocument() // the list said it already
+  expect(dialog).toHaveTextContent('The restore will be refused: its server set Auth__Oidc__ClientSecret in its environment')
+  expect(within(dialog).getByRole('button', { name: 'Restore and restart' })).toBeDisabled()
 })
 
 it('restores a backup of the folder with the code, and reloads once the restarted server has the restored data', async () => {

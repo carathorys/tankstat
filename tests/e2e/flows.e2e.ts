@@ -1,6 +1,8 @@
-import { statSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
 import { ADMIN, addVehicle, pageLoaded, signIn } from './support/app.ts'
+import { violations } from './support/axe.ts'
+import { expectSoundLayout } from './support/layout.ts'
 
 // A few flows across the real server, its sign-in and the routing, at both sizes.
 
@@ -56,8 +58,87 @@ test('writes a backup from the Backups page and downloads it', async ({ page }) 
   // "The last backup was written <time>: <file>, <size>." The other size's run writes one too, so this one is found by its file.
   const file = /: (\S+), [^,]+\.$/.exec((await written.textContent()) ?? '')?.[1]
   expect(file, 'the file named in the last backup line').toBeTruthy()
+  const escaped = file!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const download = page.waitForEvent('download')
-  await page.getByRole('button', { name: new RegExp(`^Download the backup of .*\\(${file!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)$`) }).click()
+  await page.getByRole('button', { name: new RegExp(`^Download the backup of .*\\(${escaped}\\)$`) }).click()
   expect((await download).suggestedFilename()).toBe(file)
   expect(statSync(await (await download).path()).size).toBeGreaterThan(0)
+
+  // Its restore dialog says what it brings of the server's settings: the variables its environment set, none of them missing here.
+  await page.getByRole('button', { name: new RegExp(`^Restore the backup of .*\\(${escaped}\\)$`) }).click()
+  const restore = page.getByRole('alertdialog', { name: /^Restore the backup of/ })
+  await expect(restore).toContainText("Its server's environment set")
+  await expect(restore).toContainText('Auth__Oidc__Authority')
+  // Never refused here: this server sets all of it. Whether it has a risk to accept depends on whether a test saved settings before.
+  await expect(restore).not.toContainText('The restore will be refused')
+  expect(await violations(page, '[role="alertdialog"]')).toEqual([])
+  await restore.getByRole('button', { name: 'Cancel' }).click()
+  await expect(restore).toBeHidden()
 })
+
+test('holds a backup, which then cannot be deleted, opens it, and releases it', async ({ page }) => {
+  await signIn(page)
+  await page.goto('/admin/backups')
+  await pageLoaded(page)
+  await page.getByRole('button', { name: 'Back up now' }).click()
+  const written = page.getByText(/^The last backup was written/)
+  await expect(written).toBeVisible({ timeout: 30_000 })
+  const file = /: (\S+), [^,]+\.$/.exec((await written.textContent()) ?? '')?.[1]
+  expect(file, 'the file named in the last backup line').toBeTruthy()
+  const escaped = file!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const row = page.getByRole('row').filter({ hasText: file! })
+
+  await row.getByRole('button', { name: new RegExp(`^Hold the backup of .*\\(${escaped}\\)$`) }).click()
+  await expect(page.getByText(`${file} is held: retention keeps it, and it counts towards no limit.`)).toBeVisible()
+  await expect(row.getByRole('img', { name: /^Held since/ })).toBeVisible()
+  await expect(row.getByRole('button', { name: /^Delete the backup of/ })).toHaveCount(0)
+  await expect(row).toContainText('Held: release it to delete it')
+  await expectSoundLayout(page)
+
+  // Opened: what its manifest says, readable without its key.
+  await row.getByRole('button', { name: new RegExp(`^Open the backup of .*\\(${escaped}\\)$`) }).click()
+  const opened = page.getByRole('dialog', { name: /^The backup of/ })
+  await expect(opened.getByRole('table', { name: /^Tables: \d+ · rows: / })).toBeVisible()
+  await expect(opened.getByRole('rowheader', { name: 'Vehicles', exact: true })).toBeVisible()
+  await expect(opened).toContainText(/Held since/)
+  await expectSoundLayout(page)
+  expect(await violations(page, '[role="dialog"]')).toEqual([])
+  await opened.getByRole('button', { name: 'Close' }).click()
+  await expect(opened).toBeHidden()
+
+  // Released, as found: deletable again.
+  await row.getByRole('button', { name: new RegExp(`^Release the backup of .*\\(${escaped}\\)$`) }).click()
+  await expect(row.getByRole('button', { name: /^Delete the backup of/ })).toBeVisible()
+  await expect(row.getByRole('img', { name: /^Held since/ })).toHaveCount(0)
+})
+
+test('says what an older backup can break in its row, and its restore waits until that is accepted', async ({ page }) => {
+  await signIn(page)
+  await page.goto('/admin/backups')
+  await pageLoaded(page)
+  // An older release's backup, which every release restores (the upgrade tests' own): no settings file, nothing of its environment.
+  const chooser = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: 'Upload a backup…' }).click()
+  await (await chooser).setFiles({ name: 'older.zip', mimeType: 'application/zip', buffer: readFileSync('tests/backend/contracts/backups/older-migration-AddExpenses.zip') })
+  const uploaded = page.getByText(/^Uploaded as /)
+  await expect(uploaded).toBeVisible()
+  const file = /^Uploaded as (\S+)\.$/.exec((await uploaded.textContent()) ?? '')?.[1]
+  expect(file, 'the name the upload got').toBeTruthy()
+
+  // Said in its row before anything is opened, in words.
+  const row = page.getByRole('row').filter({ hasText: file! })
+  await expect(row).toContainText('Risk: No settings file (an older release wrote it)')
+  await expectSoundLayout(page)
+
+  await row.getByRole('button', { name: /^Restore the backup of/ }).click()
+  const restore = page.getByRole('alertdialog', { name: /^Restore the backup of/ })
+  await expect(restore).toContainText('What this restore can break here')
+  const go = restore.getByRole('button', { name: 'Restore and restart' })
+  await expect(go).toBeDisabled()
+  await restore.getByRole('checkbox', { name: /^I understand that the restored server may not work as before/ }).check()
+  await expect(go).toBeEnabled()
+  expect(await violations(page, '[role="alertdialog"]')).toEqual([])
+  await restore.getByRole('button', { name: 'Cancel' }).click() // the shared server is never restored
+  await expect(restore).toBeHidden()
+})
+

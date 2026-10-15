@@ -1,10 +1,12 @@
 using System.Security.Cryptography;
 using Microsoft.Extensions.Options;
+using Tankstat.Api.GraphQL;
 using Tankstat.Application.Backups;
 using Tankstat.Application.SystemSettings;
 using Tankstat.Domain;
 using Tankstat.Domain.Backups;
 using Tankstat.Infrastructure.Backups;
+using Tankstat.Infrastructure.Settings;
 
 namespace Tankstat.Api.Backups;
 
@@ -51,7 +53,7 @@ internal static class BackupCommands
     private const string Usage = """
         Usage:
           backup keygen --passphrase-stdin                       derive the recipient and the salt from a passphrase (read from the standard input)
-          backup [--output <file>] [--photos] [--passphrase-stdin]
+          backup [--output <file>] [--photos] [--environment record|merge] [--secrets] [--passphrase-stdin]
                                                                  write a backup (encrypted for Backups:Encryption:Recipient, or for the passphrase read from the standard input)
           decrypt <file> --output <folder> (--identity <file> | --passphrase-stdin)
                                                                  unpack a backup into a folder
@@ -82,12 +84,19 @@ internal static class BackupCommands
         string? file = null;
         var photos = false;
         var passphrase = false;
+        BackupEnvironmentMode? environment = null;
+        bool? secrets = null;
         for (var i = 0; i < args.Length; i++)
         {
             switch (args[i])
             {
                 case "--output" when i + 1 < args.Length && args[i + 1].Length > 0: file = args[++i]; break;
                 case "--photos": photos = true; break;
+                case "--secrets": secrets = true; break;
+                case "--environment" when i + 1 < args.Length && Enum.TryParse<BackupEnvironmentMode>(args[i + 1], ignoreCase: true, out var mode) && Enum.IsDefined(mode):
+                    environment = mode;
+                    i++;
+                    break;
                 case "--passphrase-stdin": passphrase = true; break;
                 default: throw new UsageException();
             }
@@ -103,13 +112,29 @@ internal static class BackupCommands
             var identity = BackupKeys.Identity(Passphrase(input), salt, Argon2idParameters.Default);
             encryption = new BackupEncryption(BackupEncryption.AgeX25519, AgeKeys.FormatRecipient(BackupKeys.Recipient(identity)), Convert.ToBase64String(salt), Argon2idParameters.Default);
         }
-        var result = await services.GetRequiredService<IBackupWriter>().WriteAsync(new BackupRequest(file, photos ? true : null, encryption), CancellationToken.None);
+        var result = await services.GetRequiredService<IBackupWriter>().WriteAsync(new BackupRequest(file, photos ? true : null, encryption, Environment: environment, Secrets: secrets), CancellationToken.None);
         var m = result.Manifest;
         output.WriteLine($"Wrote {result.Path}");
         output.WriteLine($"  {m.Contents.Tables.Count} tables with {m.Contents.Tables.Values.Sum()} rows ({m.Sizes.Tables} bytes), pictures {m.Sizes.Pictures} bytes, photos {Photos(m)}, keys {(m.Contents.Keys ? $"{m.Sizes.Keys} bytes" : m.Encryption is null ? "left out (not encrypted)" : "none found")}");
         output.WriteLine(m.Encryption is null ? "  not encrypted" : $"  encrypted for {m.Encryption.Recipient}");
+        output.WriteLine($"  settings file {SettingsOf(m)}");
+        if (m.Environment is { } recorded)
+            output.WriteLine($"  environment of this process {(recorded.Mode == BackupEnvironmentMode.Merge && m.Settings?.State == BackupSettingsState.Included ? "merged into the settings file" : "recorded")}: {(recorded.Settings.Count == 0 ? "no setting" : string.Join(", ", recorded.Settings))}");
         return 0;
     }
+
+    /// <summary>What a backup holds of the settings file, in words; names only, never a value.</summary>
+    private static string SettingsOf(BackupManifest m) => m.Settings switch
+    {
+        // Its secrets as CarriesSecrets says: an older encrypted backup's manifest does not say, and it carried them.
+        { State: BackupSettingsState.Included } s =>
+            $"{s.Bytes} bytes"
+            + (!m.CarriesSecrets() ? "" : m.Encryption is not null ? ", with its secrets (encrypted)" : ", its secrets IN PLAIN (anyone with the file reads them)")
+            + (s.Omitted is { Count: > 0 } omitted ? $", without {string.Join(", ", omitted)}" : ""),
+        { State: BackupSettingsState.Ignored } => "left out (the server runs without it)",
+        { State: BackupSettingsState.None } => "none (the server has none)",
+        _ => "not in the backup (written by an older release)",
+    };
 
     private static string Photos(BackupManifest m) => m.Contents.Photos switch
     {
@@ -141,7 +166,17 @@ internal static class BackupCommands
         if (identityFile is not null) identity = AgeKeys.ParseIdentity(IdentityLine(identityFile));
         else if (passphrase) identity = BackupFile.IdentityOf(manifest, Passphrase(input));
         BackupFile.Extract(file, manifest, identity, folder);
-        output.WriteLine($"Unpacked {file} into {System.IO.Path.GetFullPath(folder)}: {manifest.Contents.Tables.Count} tables, written by Tankstat {manifest.AppVersion} on {manifest.CreatedAt:u} ({manifest.Provider}, {manifest.Migration})");
+        // The settings file beside the tables, owner-only like the rest: it may hold secrets (Backups:Secrets).
+        if (BackupFile.ReadSettings(file, manifest, identity) is { } settings)
+        {
+            var path = System.IO.Path.Combine(folder, BackupSettingsFile.Plain);
+            var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write };
+            if (!OperatingSystem.IsWindows()) options.UnixCreateMode = SettingsFileStore.OwnerOnly;
+            using (var stream = new FileStream(path, options))
+            using (var writer = new StreamWriter(stream))
+                writer.Write(SettingsFileStore.ToJson(settings));
+        }
+        output.WriteLine($"Unpacked {file} into {System.IO.Path.GetFullPath(folder)}: {manifest.Contents.Tables.Count} tables, written by Tankstat {manifest.AppVersion} on {manifest.CreatedAt:u} ({manifest.Provider}, {manifest.Migration}), settings file {SettingsOf(manifest)}");
         return 0;
     }
 
@@ -167,6 +202,24 @@ internal static class BackupCommands
         var manifest = store.ReadManifest(file); // a file of the backups folder, by name
         // A newer release's backup is refused before anything is written, as the app refuses it: the start would refuse it anyway.
         await store.RequireRestorableMigrationAsync(manifest, CancellationToken.None);
+        // What it brings of its server's settings, and what this server lacks of them (the restore is refused for that, below).
+        output.WriteLine($"The backup's settings file: {SettingsOf(manifest)}.");
+        var here = await RestoreService.HereAsync(store, services.GetRequiredService<ISettingsBackup>(), new RestorePoint(file, 0, manifest), CancellationToken.None);
+        if (manifest.Environment is { Settings.Count: > 0 } recorded)
+        {
+            output.WriteLine($"Its server's environment set {string.Join(", ", recorded.Settings)} ({(recorded.Mode == BackupEnvironmentMode.Merge && manifest.Settings is { State: BackupSettingsState.Included } ? "merged into its settings file" : "recorded by name only")}).");
+            if (here.Missing.Count > 0)
+                output.WriteLine($"This server sets none of {string.Join(", ", here.Missing)}: the restore is refused until they are set{(here.MissingCertain ? "" : " (unless the backup's encrypted settings file holds them)")}.");
+            if (here.LogLevelsMissing.Count > 0)
+                output.WriteLine($"RISK: this server sets none of the log levels {string.Join(", ", here.LogLevelsMissing)}: the log holds what this server's levels say.");
+        }
+        else if (manifest.Environment is null) output.WriteLine("RISK: it says nothing of its server's environment (an older release wrote it): settings its server set there may be missing here.");
+        if (manifest.Settings is not { State: BackupSettingsState.Included })
+            output.WriteLine("RISK: it brings no settings file, so this server's settings stay, which may not suit the restored data (its sign-in, its e-mail, its backups).");
+        else if (BackupSettingsFileInfo.From(manifest.Settings, manifest.CarriesSecrets()) is { Secrets: false, SecretsLeftOut: { Count: > 0 } secrets })
+            output.WriteLine($"RISK: its secrets are not in it ({string.Join(", ", secrets)}): this server's own are kept, and what this server has none of stops working.");
+        if (here.Overridden.Count > 0)
+            output.WriteLine($"RISK: this server's environment overrides {string.Join(", ", here.Overridden)}, which the backup brings: this server's values run{(here.Overridden.Contains("Auth__Mode") ? ", the sign-in mode among them, so the restored users may have no way to sign in" : "")}.");
         if (!yes)
         {
             output.WriteLine($"This replaces ALL data of this instance (every table, the pictures{(manifest.Contents.Photos == BackupPhotos.Separate ? ", the photos" : "")}{(manifest.Contents.Keys ? ", the keys" : "")}) with the backup {file},");
@@ -179,6 +232,9 @@ internal static class BackupCommands
         }
         var identity = identityFile is not null ? IdentityLine(identityFile) : null;
         var opened = store.IdentityFor(manifest, passphrase ? Passphrase(input) : null, identity); // refused here when it does not open
+        // The settings the restore leaves must let the server start, as the app refuses it before a restart: refused before the marker.
+        await RestoreService.RequireStartableAsync(store, services.GetRequiredService<ISettingsBackup>(), services.GetRequiredService<ISystemConfiguration>(),
+            file, manifest, opened, CancellationToken.None);
         store.RequestRestore(new RestoreMarker(file, Guid.Empty, DateTimeOffset.UtcNow, opened));
         if (!now)
         {

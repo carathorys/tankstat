@@ -1,5 +1,9 @@
 import { useApolloClient, useMutation } from '@apollo/client/react'
+import Alert from '@mui/material/Alert'
+import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
+import Checkbox from '@mui/material/Checkbox'
+import FormControlLabel from '@mui/material/FormControlLabel'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
@@ -17,6 +21,7 @@ import { ErrorMessage, WarningMessage } from '../messages.tsx'
 import { navigation } from '../navigation.ts'
 import { classifyFailure } from '../offline/errors.ts'
 import { PROBE_TIMEOUT_MS, withDeadline } from '../offline/runtime.ts'
+import { restoreRisks, type RestoreRisk } from './restoreRisks.ts'
 
 /** How often the page asks how a backup that is being written is getting on, and whether the server is back after a restore. */
 export const BACKUP_POLL_MS = 2_000
@@ -64,6 +69,58 @@ export function RestoreDialog({
   )
 }
 
+/**
+ * A backup's risks in its row, before anyone opens its restore (#140): a line each, said in words ("Refused", "Risk") and not by colour alone,
+ * the dialog then says each in full.
+ */
+export function RestoreRiskLines({ point }: { point: RestoreTarget }) {
+  const { t } = useTranslation()
+  return restoreRisks(point).map((risk) => (
+    <Typography key={risk.key} variant="caption" sx={{ display: 'block', color: risk.tier === 'blocker' ? 'error.main' : 'warning.softText', minWidth: '12rem' }}>
+      {t(risk.tier === 'blocker' ? 'admin.backups.riskRefused' : 'admin.backups.riskRisk')}: {t(`admin.backups.risks.${risk.key}.short`, { names: risk.names })}
+    </Typography>
+  ))
+}
+
+/**
+ * What the backup brings of its server's settings, and what its restore can break here, before anyone accepts it (#140): its settings file and
+ * the variables its server's environment set, then what refuses the restore (set it first) and the risks it carries, each in full.
+ */
+function RestoreSettingsNote({ point, risks }: { point: RestoreTarget; risks: RestoreRisk[] }) {
+  const { t } = useTranslation()
+  const environment = point.environment
+  const names = environment?.settings.join(', ') ?? ''
+  const blockers = risks.filter((r) => r.tier === 'blocker')
+  const accepted = risks.filter((r) => r.tier === 'risk')
+  // Merged, but no file went in (a plain backup whose environment set only secrets): the values are not in the backup.
+  const merged = environment?.mode === 'MERGE' && point.settingsFile?.state === 'INCLUDED'
+  return (
+    <>
+      {point.settingsFile?.state === 'INCLUDED' && <Typography variant="body2">{t('admin.backups.settingsBrings')}</Typography>}
+      {environment && environment.settings.length > 0 && (
+        <Typography variant="body2">{merged ? t('admin.backups.environmentMerged', { names }) : t('admin.backups.environmentRecorded', { names })}</Typography>
+      )}
+      {blockers.map((risk) => (
+        <Alert key={risk.key} severity="error" role="alert">
+          {t(`admin.backups.risks.${risk.key}.text`, { names: risk.names })} {t('admin.backups.refusedNote')}
+        </Alert>
+      ))}
+      {accepted.length > 0 && (
+        <WarningMessage>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            {t('admin.backups.risksTitle')}
+          </Typography>
+          <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+            {accepted.map((risk) => (
+              <li key={risk.key}>{t(`admin.backups.risks.${risk.key}.text`, { names: risk.names })}</li>
+            ))}
+          </Box>
+        </WarningMessage>
+      )}
+    </>
+  )
+}
+
 function RestoreForm({
   point,
   code,
@@ -81,6 +138,11 @@ function RestoreForm({
   const [restoreBackup] = useMutation(RestoreBackupDocument, { fetchPolicy: 'no-cache' })
   const [key, setKey] = useState<'passphrase' | 'identity'>('passphrase')
   const [error, setError] = useState<unknown>()
+  const risks = restoreRisks(point)
+  const refused = risks.some((r) => r.tier === 'blocker')
+  const risky = risks.some((r) => r.tier === 'risk')
+  // Accepted knowingly: what the restore can break is said above, and the button waits for this.
+  const [understood, setUnderstood] = useState(false)
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -114,6 +176,7 @@ function RestoreForm({
   return (
     <Form onSubmit={(e) => void submit(e)} refusal={error}>
       <Stack sx={{ gap: 1.5 }}>
+        <RestoreSettingsNote point={point} risks={risks} />
         {point.encrypted && (
           <>
             <Segmented
@@ -136,10 +199,16 @@ function RestoreForm({
             </Field>
           </>
         )}
+        {risky && !refused && (
+          <FormControlLabel
+            control={<Checkbox checked={understood} disabled={busy} onChange={(e) => setUnderstood(e.target.checked)} />}
+            label={t('admin.backups.risksAcknowledge')}
+          />
+        )}
         {error !== undefined && <ErrorMessage error={error} />}
         <DialogButtons>
-          <DialogCancel autoFocus={!point.encrypted} disabled={busy} />
-          <Button type="submit" color="error" loading={busy}>
+          <DialogCancel autoFocus={!point.encrypted || refused} disabled={busy} />
+          <Button type="submit" color="error" loading={busy} disabled={refused || (risky && !understood)}>
             {t('admin.backups.restoreConfirm')}
           </Button>
         </DialogButtons>

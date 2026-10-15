@@ -37,6 +37,7 @@ public sealed class SetupService(
     IServerRestart restart,
     IUserRepository users,
     IBackupStore backups,
+    ISettingsBackup settingsFile,
     IDatabaseFacts database,
     IOptionsSnapshot<BackupOptions> backupOptions,
     IOptions<AuthOptions> auth,
@@ -109,8 +110,15 @@ public sealed class SetupService(
     public async Task<(RestorePoints Points, string? CurrentRecipient)> RestorePointsAsync(string? typedCode, CancellationToken ct)
     {
         await gate.RequireAsync(typedCode, ct);
-        var points = new RestorePoints(backups.List(), await database.LastMigrationAsync(ct), await database.KnownMigrationsAsync(ct));
+        var points = await RestorePoints.ListAsync(backups, settingsFile, database, ct);
         return (points, backupOptions.Value.CurrentRecipient);
+    }
+
+    /// <summary>One backup of the folder in full, to look into before restoring it; with the recipient new backups are encrypted for.</summary>
+    public async Task<(RestorePoint Point, string? CurrentRecipient)> BackupDetailsAsync(string? typedCode, string fileName, CancellationToken ct)
+    {
+        await gate.RequireAsync(typedCode, ct);
+        return (backups.Find(fileName), backupOptions.Value.CurrentRecipient);
     }
 
     /// <summary>The largest backup the setup page may upload (`Backups:MaxUploadMb`), which the Backups page tells administrators only.</summary>

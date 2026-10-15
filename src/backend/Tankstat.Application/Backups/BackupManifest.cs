@@ -6,7 +6,9 @@ namespace Tankstat.Application.Backups;
 /// <summary>
 /// What a backup file says about itself, in plain (<c>manifest.json</c>, the last entry of the outer zip, readable without any key): what
 /// release wrote it, from which database and migration, what it holds and how much, the checksum of the inner archive and, when it is
-/// encrypted, for which recipient and how the identity is derived from the passphrase. Nothing personal: no names, e-mails or paths.
+/// encrypted, for which recipient and how the identity is derived from the passphrase; and whether the instance's settings file went in
+/// (<see cref="Settings"/>; a member older backups lack, read as null, and older releases skip, so the format stays 1). Nothing personal:
+/// no names, e-mails, paths or values.
 /// </summary>
 public sealed record BackupManifest(
     int Format,
@@ -19,7 +21,9 @@ public sealed record BackupManifest(
     BackupContents Contents,
     BackupSizes Sizes,
     BackupArchive Archive,
-    BackupEncryption? Encryption)
+    BackupEncryption? Encryption,
+    BackupSettingsFile? Settings = null,
+    BackupEnvironment? Environment = null)
 {
     public const int CurrentFormat = 1;
     public const string Tankstat = "tankstat";
@@ -34,6 +38,12 @@ public sealed record BackupManifest(
     };
 
     public string ToJson() => JsonSerializer.Serialize(this, Json);
+
+    /// <summary>
+    /// Whether the backup's settings file holds the secrets: as its manifest says (<c>Backups:Secrets</c> when it was written), else (a release
+    /// before it said so) only an encrypted one's did. A restore keeps this server's own secrets only from a backup that holds none.
+    /// </summary>
+    public bool CarriesSecrets() => Settings?.Secrets ?? Encryption is not null;
 
     /// <summary>A manifest from its JSON; a <see cref="JsonException"/> when it is not one.</summary>
     public static BackupManifest FromJson(string json) =>
@@ -55,6 +65,31 @@ public sealed record BackupArchive(string Name, string Sha256)
     public const string Encrypted = "data.age";
     public const string Plain = "data.zip";
 }
+
+/// <summary>
+/// The instance's settings file in the backup: <see cref="BackupSettingsState.Included"/> as an outer entry of its own (<see cref="Entry"/>,
+/// encrypted like the data in an encrypted backup), so a restore request reads it without decrypting the data, which can be gigabytes; its
+/// SHA-256 as stored, since the archive's checksum does not cover it. <see cref="Omitted"/> names (never values) the keys of the file that
+/// stayed out: what is not the instance's but the machine's (a folder, the database, the bootstrap administrator) and, in a plain backup, the
+/// secrets.
+/// </summary>
+/// <param name="Secrets">Whether the secrets went in (<c>Backups:Secrets</c>, encrypted or not).</param>
+public sealed record BackupSettingsFile(BackupSettingsState State, string? Entry = null, string? Sha256 = null, long Bytes = 0, IReadOnlyList<string>? Omitted = null, bool? Secrets = null)
+{
+    public const string Encrypted = "settings.age";
+    public const string Plain = "settings.json";
+}
+
+/// <summary>
+/// The environment variables the server ran with, by name only (never a value: the manifest is plain), one per setting (<c>Auth__AdminEmails</c>,
+/// not <c>__0</c>): <see cref="Settings"/> the instance's (the Server settings page's and the logging), which <see cref="Mode"/> says whether
+/// the backup's settings file took in too, and <see cref="Server"/> the machine's own (the database, the folders, the bootstrap administrator),
+/// which never travel. A restore on a server that sets none of a recorded setting, and whose restored file holds none either, is refused.
+/// </summary>
+public sealed record BackupEnvironment(BackupEnvironmentMode Mode, IReadOnlyList<string> Settings, IReadOnlyList<string> Server);
+
+/// <summary>Whether the settings file went in: it did, there was none, or the start left it out (the server runs without it, so the backup does too).</summary>
+public enum BackupSettingsState { Included, None, Ignored }
 
 /// <summary>How the file is encrypted: age for one X25519 recipient, whose identity is Argon2id of the passphrase and this salt.</summary>
 public sealed record BackupEncryption(string Method, string Recipient, string Salt, Argon2idParameters Argon2id)
