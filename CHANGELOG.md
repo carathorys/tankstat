@@ -2,6 +2,48 @@
 
 Every release of Tankstat, newest first. Each one is a Docker image, `ghcr.io/carathorys/tankstat:<version>`, and a [GitHub release](https://github.com/carathorys/tankstat/releases). The numbers in brackets are the pull requests. Pre-releases (the previews) are not listed: their changes are in the release that followed them.
 
+## 0.16.0 (2026-10-15)
+
+### Added
+
+- **A setup page for a new instance** (#130, #131, #132, #139): a new instance with no administrator waits for its setup instead of stopping. Its log names a one-time code (the line starting "Setup is waiting"); with it, the setup page at the server's address opens one wizard:
+  - the Server settings page's groups, a step each, the sign-in mode first and chosen on purpose;
+  - then the gatekeeper: the first administrator in Standalone, the acknowledgement that everyone sees and changes everything with sign-in off, or in OIDC and proxy mode the administrators named in `Auth:AdminEmails` or the first person who signs in and claims it;
+  - one restart at the end when a saved setting waits for it, then a done screen with the backups' key set and what to set up next.
+
+  *Restore from a backup* instead lists the backups folder and takes an upload, so moving a server to a new machine starts on its setup page. The setup is skipped where the environment already decides it: the bootstrap administrator, `Auth:AdminEmails`, or `Setup__Enabled=false`. An instance that holds data counts as set up.
+- **The settings file in every backup** (#143): a backup carries the app's own settings file (the instance's settings only, never the machine's: no database, folders or keys folder), and a restore brings it back, keeping this server's previous file as `settings.json.bak`. A restore is judged by the settings it would leave, so a moved Standalone server can no longer come up with sign-in off: a file this server would not start with is refused before anything changes.
+- **The environment's settings recorded or merged** (#144): `Backups:Environment` (*Settings from the environment* on the Server settings page). *Names only* (the default) names in the backup the settings its server's environment variables held, never a value; *Names and values* also puts their values into the backup's copy of the settings file (never into the server's own). `backup --environment record|merge` chooses for one run.
+- **A restore is refused while a recorded setting has no value here** (#144): neither this server's environment nor the restored settings file holds it. The refusal names the variables: set them, then restore. A log level (the `Logging` section) is the exception: it never refuses a restore (#148).
+- **What a restore can break, said before it** (#146, #148): each backup's row on the Backups page and the setup page says what refuses its restore here ("Refused") and what it risks ("Risk": no settings file, secrets left out, settings this server's environment overrides, the sign-in mode above all, log levels this server lacks). The restore dialog says each in full, and a risk must be acknowledged before *Restore and restart*. The `restore` command prints the same.
+- **Secrets in backups by choice** (#148): `Backups:Secrets` (*Secrets in backups*) puts the OIDC client secret, the SMTP password and the model API key into the backup's settings file; off by default, with a warning on the Server settings page while backups are not encrypted. A backup always names the secrets it leaves out. `backup --secrets` for one run.
+- **Hold a backup** (#148): a held backup is never removed by retention and cannot be deleted until it is released (*Hold* / *Release* on the Backups page, or a `<file>.hold` file beside it with sign-in off).
+- **Open a backup** (#148): a dialog per backup, on the Backups page and the setup page, with what its manifest says: release, database and migration, encryption, what it holds, every table with its rows, its settings file and the variables its server's environment set.
+
+### Changed
+
+- **A plain backup that holds its secrets is marked** with a red open padlock on the Backups page (#148).
+- **A value the server refuses is said at its field** (#139), like the form's own checks, everywhere: the log, vehicle, schedule, visit and chart dialogs, the restore and key-set dialogs, and the Server settings page.
+- **The one-time code** for a restore with sign-in off is now the instance's setup code, 12 characters shown `XXXX-XXXX-XXXX` (#130).
+
+### Fixed
+
+- **Two requests that create the same user at once** (#145): a proxy user's first page, whose requests come together, or an administrator's *Create user* sent twice. One creates the user and the other reads it; before, the loser ended with an error (a 500 through a proxy). An administrator another server made at the same moment now completes the setup.
+
+### Upgrading
+
+- One migration, `AddSetup`, applied at start; as with every migration, the start writes a backup of the database first. An instance that holds data counts as set up: it shows no setup page.
+- **A new instance with nothing configured waits for its setup instead of stopping**: in Standalone without the bootstrap administrator, its address shows the setup page. An unattended deployment that should never see it sets the bootstrap administrator (as before), `Auth:AdminEmails` in OIDC or proxy mode, or `Setup__Enabled=false`.
+- **Backups now hold the settings file, and restores check the settings**: a backup of 0.16 restored on a server without the variables its server set is refused until they are set here (the refusal and the Backups page name them). With *Names and values* the backup carries their values instead.
+- **No backup holds the secrets unless `Backups:Secrets` is on**, encrypted or not. A restore keeps this server's own secrets where the backup has none. Backups written by 0.15 restore as before and bring no settings file.
+- The Docker Compose example now runs 0.16 (`TANKSTAT_VERSION` in `.env.example`), and its administrator variables may be left empty to use the setup page.
+
+### For developers
+
+- **A fourth test layer: real-browser tests** (#135, #136, #137): Playwright against the published build at phone and desktop size (`mise run test:e2e`, CI's `e2e` job in two shards): a layout check (no sideways scroll, values inside their panels, 44 px touch targets), axe with the real styles, and the user flows by area, each as a user of its own, with a video of a failed test. Every new user flow gets a Playwright test (#141 steadied a flaky one).
+- The issue workflow's skills use the main checkout, with no git worktree unless asked; CI does not run for a change of Markdown files only (#142).
+- `SettingsInBackups.CategoryOf` sorts every setting the app binds as the instance's, a secret or the machine's, and a test fails for one left unsorted (#148).
+
 ## 0.15.1 (2026-10-14)
 
 ### Fixed
