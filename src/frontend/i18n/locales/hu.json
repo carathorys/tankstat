@@ -212,6 +212,10 @@
     "backToSignIn": "Vissza a bejelentkezéshez",
     "resetSent": "Ha ez a cím regisztrálva van, és a szerver tud e-mailt küldeni, a visszaállító link úton van. Ellenkező esetben kérj linket egy adminisztrátortól.",
     "changeTitle": "Jelszó módosítása",
+    "changeRequired": {
+      "title": "Válassz új jelszót",
+      "text": "A jelszavaknak most hosszabbnak kell lenniük, mint amikor a tiédet választottad. A folytatáshoz válassz újat; az adataid úgy várnak, ahogy hagytad őket."
+    },
     "changeSubmit": "Jelszó frissítése",
     "changed": "A jelszó megváltozott. A többi munkamenetedből kijelentkeztettünk.",
     "setTitle": "Add meg a jelszavad",

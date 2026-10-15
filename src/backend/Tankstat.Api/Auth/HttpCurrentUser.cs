@@ -50,6 +50,6 @@ internal sealed class HttpCurrentUser(
             return null;
         }
 
-        return new Principal(user.Id, user.DisplayName, user.Email, user.IsAdmin, user.AvatarImageId);
+        return new Principal(user.Id, user.DisplayName, user.Email, user.IsAdmin, user.AvatarImageId, user.PasswordChangeRequired);
     }
 }

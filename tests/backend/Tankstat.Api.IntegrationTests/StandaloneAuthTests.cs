@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Tankstat.Application.Auth;
@@ -263,6 +264,29 @@ public class StandaloneAuthTests : IDisposable
         await _app.NewClient().LoginAs("alice@example.com", "alice-new-password");
         // Whoever asks why the other session was signed out finds it in the log (Debug: the bell asks every minute).
         Assert.Contains(_app.Log.From("Tankstat.Api.Auth.HttpCurrentUser"), e => e.Level == LogLevel.Debug && e.Values.ContainsKey("UserId"));
+    }
+
+    [Fact]
+    public async Task APasswordShortOfARaisedMinimum_SignsIn_AndTheSessionAsksForAChange_WhichTheChangeEnds()
+    {
+        var admin = await AdminClient();
+        await CreateUserWithPassword(admin, "alice@example.com", "alice-password-1"); // 16 characters
+        const string Flag = "{ session { user { passwordChangeRequired } } }";
+        static bool Asked(JsonElement body) => body.Data().GetProperty("session").GetProperty("user").GetProperty("passwordChangeRequired").GetBoolean();
+        Assert.Null((await admin.Gql("mutation($c: [SystemSettingChangeInput!]!) { updateSystemSettings(changes: $c) { restartPending } }",
+            new { c = new object[] { new { key = "Auth:Standalone:PasswordMinLength", value = "20" } } })).ErrorCode());
+
+        var alice = _app.NewClient();
+        var login = await alice.Gql("mutation($i: LoginInput!) { login(input: $i) { passwordChangeRequired } }", new { i = new { email = "alice@example.com", password = "alice-password-1" } });
+        Assert.True(login.Data().GetProperty("login").GetProperty("passwordChangeRequired").GetBoolean());
+        Assert.True(Asked(await alice.Gql(Flag)));
+        Assert.Null((await alice.Gql("{ myVehicles { id } }")).ErrorCode()); // the server holds nothing else back: the offline engine still syncs
+
+        await alice.Gql("mutation($i: ChangePasswordInput!) { changePassword(input: $i) }",
+            new { i = new { currentPassword = "alice-password-1", newPassword = "alice-new-password-20", newPasswordConfirmation = "alice-new-password-20" } });
+
+        Assert.False(Asked(await alice.Gql(Flag)));
+        Assert.False(Asked(await admin.Gql(Flag))); // the administrator signed in before the minimum went up: never asked
     }
 
     [Fact]

@@ -1,24 +1,33 @@
 import { useMutation } from '@apollo/client/react'
+import Button from '@mui/material/Button'
 import Card from '@mui/material/Card'
 import Link from '@mui/material/Link'
 import Typography from '@mui/material/Typography'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useSignOut } from './auth/useSignOut.ts'
 import { FieldForm } from './forms/FieldForm.tsx'
-import { ChangePasswordDocument, ResetPasswordDocument } from './gql/generated.ts'
+import { ChangePasswordDocument, ResetPasswordDocument, SessionDocument } from './gql/generated.ts'
 import { SuccessMessage } from './messages.tsx'
+import { OfflineError } from './offline/errors.ts'
 import { standaloneLink } from './theme/components.ts'
+import { useToast } from './toast/toastContext.ts'
 
-export function ChangePasswordForm() {
+/** The Account page's change form; also the form of the change asked at sign-in (`required`), whose view has its own heading. */
+export function ChangePasswordForm({ required = false }: { required?: boolean }) {
   const { t } = useTranslation()
-  const [changePassword] = useMutation(ChangePasswordDocument)
+  const { toast } = useToast()
+  // The change asked at sign-in ends once the session says so: it is asked again, and the pages come back.
+  const [changePassword] = useMutation(ChangePasswordDocument, required ? { refetchQueries: [SessionDocument], awaitRefetchQueries: true } : {})
   const [done, setDone] = useState(false)
 
   return (
     <section>
-      <Typography component="h2" variant="h5" sx={{ my: 1.5 }}>
-        {t('auth.changeTitle')}
-      </Typography>
+      {!required && (
+        <Typography component="h2" variant="h5" sx={{ my: 1.5 }}>
+          {t('auth.changeTitle')}
+        </Typography>
+      )}
       {done && <SuccessMessage>{t('auth.changed')}</SuccessMessage>}
       <FieldForm
         fields={[
@@ -30,10 +39,43 @@ export function ChangePasswordForm() {
           await changePassword({
             variables: { input: { currentPassword: v.current ?? '', newPassword: v.next ?? '', newPasswordConfirmation: v.nextRepeat ?? '' } },
           })
-          setDone(true)
+          if (required) toast(t('auth.changed'))
+          else setDone(true)
         }}
       />
     </section>
+  )
+}
+
+/**
+ * Shown in place of every page while the session says the password last signed in with is shorter than the minimum now
+ * (`passwordChangeRequired`, Standalone only): why, the change form, and Sign out. The server holds nothing else back.
+ */
+export function PasswordChangeRequiredView() {
+  const { t } = useTranslation()
+  const { toast } = useToast()
+  const signOut = useSignOut('STANDALONE')
+  const leave = async () => {
+    try {
+      await signOut()
+    } catch (error) {
+      // Signing out ends the session on the server: without it the device stays signed in, so say why nothing happened.
+      if (error instanceof OfflineError) toast(t('errors.offline'))
+      else throw error
+    }
+  }
+
+  return (
+    <Card sx={{ maxWidth: 420, mx: 'auto', my: 4, p: 3 }}>
+      <Typography component="h1" variant="h4" sx={{ mb: 1.5 }}>
+        {t('auth.changeRequired.title')}
+      </Typography>
+      <Typography sx={{ mb: 1.5 }}>{t('auth.changeRequired.text')}</Typography>
+      <ChangePasswordForm required />
+      <Button variant="ghost" color="primary" sx={{ mt: 1.5 }} onClick={() => void leave()}>
+        {t('nav.signOut')}
+      </Button>
+    </Card>
   )
 }
 

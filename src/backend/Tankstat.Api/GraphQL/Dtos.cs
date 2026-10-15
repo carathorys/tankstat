@@ -8,10 +8,13 @@ using Tankstat.Domain.Users;
 namespace Tankstat.Api.GraphQL;
 
 /// <summary>GraphQL shapes for users. Domain <see cref="User"/> is never exposed: it carries the password hash.</summary>
-public sealed record UserInfo(Guid Id, string DisplayName, string Email, bool IsAdmin, string? AvatarUrl)
+/// <param name="PasswordChangeRequired">
+/// The password last signed in with is shorter than the minimum now (Standalone only): the app asks for a new one before anything else.
+/// </param>
+public sealed record UserInfo(Guid Id, string DisplayName, string Email, bool IsAdmin, string? AvatarUrl, bool PasswordChangeRequired)
 {
-    public static UserInfo From(Principal p) => new(p.Id, p.DisplayName, p.Email, p.IsAdmin, MediaUrls.Image(p.AvatarImageId));
-    public static UserInfo From(User u) => new(u.Id, u.DisplayName, u.Email, u.IsAdmin, MediaUrls.Image(u.AvatarImageId));
+    public static UserInfo From(Principal p) => new(p.Id, p.DisplayName, p.Email, p.IsAdmin, MediaUrls.Image(p.AvatarImageId), p.PasswordChangeRequired);
+    public static UserInfo From(User u) => new(u.Id, u.DisplayName, u.Email, u.IsAdmin, MediaUrls.Image(u.AvatarImageId), u.PasswordChangeRequired);
 }
 
 /// <summary>A user as shown next to data (owner, creator, grantee): enough for a name and an avatar, nothing private.</summary>

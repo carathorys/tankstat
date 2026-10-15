@@ -63,6 +63,22 @@ public class UserTests
     }
 
     [Fact]
+    public void ASignInWithAPasswordShortOfTheRequirements_AsksForAChange_WhichAnyNewPasswordOrAGoodSignInEnds()
+    {
+        var u = User.CreateLocal("a@b.co", null, false);
+        Assert.False(u.PasswordChangeRequired);
+
+        u.RegisterSuccessfulLogin(meetsRequirements: false);
+        Assert.True(u.PasswordChangeRequired);
+        u.SetPasswordHash("hash"); // a change, a reset or an administrator's
+        Assert.False(u.PasswordChangeRequired);
+
+        u.RegisterSuccessfulLogin(meetsRequirements: false);
+        u.RegisterSuccessfulLogin(meetsRequirements: true); // the minimum came down again
+        Assert.False(u.PasswordChangeRequired);
+    }
+
+    [Fact]
     public void ExternalUsers_HaveNoPassword() =>
         Assert.Throws<DomainException>(() => User.CreateExternal(UserProvider.Oidc, "s", null, null, false).SetPasswordHash("x"));
 

@@ -111,6 +111,49 @@ it('forgot password: requests a reset and gives neutral feedback', async () => {
   expect(state.calls.RequestPasswordReset).toEqual([{ email: 'alice@example.com' }])
 })
 
+it('a password shorter than the minimum now: only the change is shown, and the pages come back once it is changed', async () => {
+  const ui = userEvent.setup()
+  const state = standaloneServer()
+  state.current = user({ passwordChangeRequired: true })
+  server.use(
+    graphql.mutation('ChangePassword', ({ variables }) => {
+      ;(state.calls.ChangePassword ??= []).push(variables)
+      state.current = user() // the server cleared it with the new password
+      return HttpResponse.json({ data: { changePassword: true } })
+    }),
+  )
+  renderWithApollo(<App />, '/vehicles')
+
+  expect(await screen.findByRole('heading', { name: 'Choose a new password' })).toBeInTheDocument()
+  expect(screen.getByText(/Passwords must be longer now than when you chose yours/)).toBeInTheDocument()
+  expect(screen.queryByRole('navigation', { name: 'Main navigation' })).not.toBeInTheDocument() // nothing else to go to
+  expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+
+  await ui.type(screen.getByLabelText('Current password'), 'old-password')
+  await ui.type(screen.getByLabelText('New password'), 'brand-new-password')
+  await ui.type(screen.getByLabelText('Repeat the new password'), 'brand-new-password')
+  await ui.click(screen.getByRole('button', { name: 'Update password' }))
+
+  expect(await screen.findByText('Password changed. Your other sessions were signed out.')).toBeInTheDocument()
+  await waitFor(() => expect(screen.queryByRole('heading', { name: 'Choose a new password' })).not.toBeInTheDocument())
+  expect(await screen.findByRole('navigation', { name: 'Main navigation' })).toBeInTheDocument()
+  expect(state.calls.ChangePassword).toEqual([
+    { input: { currentPassword: 'old-password', newPassword: 'brand-new-password', newPasswordConfirmation: 'brand-new-password' } },
+  ])
+})
+
+it('a password shorter than the minimum now: Sign out leaves without changing it', async () => {
+  const ui = userEvent.setup()
+  const state = standaloneServer()
+  state.current = user({ passwordChangeRequired: true })
+  renderWithApollo(<App />, '/')
+
+  await ui.click(await screen.findByRole('button', { name: 'Sign out' }))
+
+  expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
+  expect(state.calls.ChangePassword).toBeUndefined()
+})
+
 it('reset link: sets the new password with the token from the URL', async () => {
   const ui = userEvent.setup()
   const state = standaloneServer()

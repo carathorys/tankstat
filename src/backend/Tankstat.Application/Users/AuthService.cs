@@ -50,9 +50,11 @@ public sealed class AuthService(
             throw new InvalidCredentialsException();
         }
 
-        user.RegisterSuccessfulLogin();
+        // A password that met the rules of its time still signs in; one short of today's minimum is asked to change (the app does).
+        user.RegisterSuccessfulLogin(passwords.Meets(password ?? ""));
         await users.UpdateAsync(user, ct);
         logger.LogInformation("User {UserId} signed in", user.Id);
+        if (user.PasswordChangeRequired) logger.LogInformation("User {UserId} is asked to change their password: it is shorter than the minimum now", user.Id);
         return user;
     }
 

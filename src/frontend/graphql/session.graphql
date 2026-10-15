@@ -7,6 +7,8 @@ query Session {
       email
       isAdmin
       avatarUrl
+      # the password last signed in with is shorter than the minimum now: the app shows only the change (App.tsx)
+      passwordChangeRequired
     }
     instance {
       generation

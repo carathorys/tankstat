@@ -79,7 +79,7 @@ public class ContractTests
     [InlineData("ServerFolder", "kind", "path", "setting", "variable", "sameAsPictures")]
     [InlineData("BackupSettingsInfo", "recipient", "photosApart", "photos", "maxUploadMb", "times", "days", "timeZone", "nextRun", "keep", "keepDays", "environment", "secrets")]
     [InlineData("BackupKeySetInfo", "passphrase", "generated", "identity", "recipient", "salt")]
-    [InlineData("UserInfo", "id", "displayName", "email", "isAdmin")]
+    [InlineData("UserInfo", "id", "displayName", "email", "isAdmin", "passwordChangeRequired")]
     [InlineData("UserSessionInfo", "id", "client", "createdAt", "lastUsedAt", "expiresAt", "current")]
     [InlineData("UserAccount", "id", "provider", "email", "displayName", "isAdmin", "isDisabled")]
     [InlineData("PasswordResetLink", "token", "url", "emailSent", "emailFailed")]

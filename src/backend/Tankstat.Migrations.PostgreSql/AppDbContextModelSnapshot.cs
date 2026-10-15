@@ -898,6 +898,9 @@ namespace Tankstat.Migrations.PostgreSql
                     b.Property<DateTimeOffset?>("LockoutEnd")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("PasswordChangeRequired")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("PasswordHash")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");

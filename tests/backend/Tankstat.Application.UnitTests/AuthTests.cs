@@ -156,6 +156,25 @@ public class PasswordTests
     }
 
     [Fact]
+    public async Task APasswordShortOfARaisedMinimum_StillSignsIn_AndIsAskedToChange_UntilTheChange()
+    {
+        var w = new World();
+        var alice = w.AddUser("alice@x.co"); // "password-123456": 15 characters
+        w.PasswordSettings.CurrentValue = new PasswordOptions { PasswordMinLength = 16 };
+
+        var signedIn = await w.Auth.LoginAsync("alice@x.co", "password-123456", default);
+
+        Assert.True(signedIn.PasswordChangeRequired);
+        Assert.True(w.Users.Items.Single(u => u.Id == alice.Id).PasswordChangeRequired); // stored: the session reads it from the database
+        Assert.Equal(2, w.Log.From<AuthService>().Count(e => e.Level == LogLevel.Information && Equals(e.Values["UserId"], alice.Id))); // signed in, asked to change
+
+        w.Current.SignInAs(signedIn);
+        var changed = await w.Auth.ChangePasswordAsync("password-123456", "sixteen-chars-12", "sixteen-chars-12", default);
+        Assert.False(changed.PasswordChangeRequired);
+        Assert.False((await w.Auth.LoginAsync("alice@x.co", "sixteen-chars-12", default)).PasswordChangeRequired);
+    }
+
+    [Fact]
     public async Task ChangePassword_NeedsSignIn()
     {
         var w = new World();

@@ -212,6 +212,10 @@
     "backToSignIn": "Back to sign in",
     "resetSent": "If that address is registered and the server can send e-mail, a reset link is on its way. Otherwise ask an administrator for a reset link.",
     "changeTitle": "Change password",
+    "changeRequired": {
+      "title": "Choose a new password",
+      "text": "Passwords must be longer now than when you chose yours. Choose a new one to go on; your data is waiting as you left it."
+    },
     "changeSubmit": "Update password",
     "changed": "Password changed. Your other sessions were signed out.",
     "setTitle": "Set your password",

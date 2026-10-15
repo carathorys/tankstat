@@ -419,6 +419,13 @@ it('the sign-in screens of every mode have no violations', async () => {
   await check(view.container)
   view.unmount()
 
+  // Standalone, signed in with a password shorter than the minimum now: the change in place of every page.
+  server.use(sessionHandler('STANDALONE', () => user({ passwordChangeRequired: true })), healthHandler)
+  view = renderWithApollo(<App />, '/')
+  await screen.findByRole('heading', { name: 'Choose a new password' })
+  await check(view.container)
+  view.unmount()
+
   // Behind a proxy: only an explanation.
   server.use(sessionHandler('PROXY_HEADER', () => null), healthHandler)
   view = renderWithApollo(<App />, '/')

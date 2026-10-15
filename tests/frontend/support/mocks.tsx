@@ -42,6 +42,7 @@ export const user = (over: Partial<SessionUser> = {}): SessionUser => ({
   email: 'alice@example.com',
   isAdmin: false,
   avatarUrl: null,
+  passwordChangeRequired: false,
   ...over,
 })
 
