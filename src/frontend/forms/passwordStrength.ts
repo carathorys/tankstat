@@ -27,48 +27,72 @@ const COMMON = [
 
 const LEET: Record<string, string> = { '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', '7': 't', '@': 'a', $: 's', '!': 'i' }
 
-/** What a character costs on its own, by kind: letters of words are predictable, the first capital nearly free. */
+/**
+ * The most of a password that is looked at: what the server takes at most (it refuses a longer password anyway), and plenty to advise on a
+ * passphrase. It keeps every keystroke cheap however much is pasted: the repeated pieces cost the cube of the length.
+ */
+const MAX_ANALYSED = 128
+
+/**
+ * A character as the patterns and the lists see it: lowercase and without its accents (`Ó` is `o`, so `jelszó` is the listed `jelszo`), the
+ * final sigma as any other; one per character, so a position in the password stays a position in the result.
+ */
+function folded(char: string): string {
+  const lower = char.toLowerCase()
+  return (lower.normalize('NFD').replace(/\p{M}/gu, '') || lower).replace('ς', 'σ')
+}
+
+/** The common passwords as the password is compared with them: folded, the usual swaps undone like the password's (`trustno1`). */
+const COMMON_FOLDED = COMMON.map((word) => Array.from(word, (c) => LEET[c] ?? folded(c)))
+
+/** What a character costs on its own, by kind: letters of words are predictable (accented ones too), the first capital nearly free. */
 function charBits(char: string, index: number): number {
-  if (/[a-z]/.test(char)) return 2.5
-  if (/[A-Z]/.test(char)) return index === 0 ? 1 : 3
-  if (/[0-9]/.test(char)) return 3.3
+  if (/\p{Ll}/u.test(char)) return 2.5
+  if (/\p{Lu}/u.test(char)) return index === 0 ? 1 : 3
+  if (/\p{Nd}/u.test(char)) return 3.3
   if (char === ' ') return 1
   return 4
 }
 
-/** The person's own words worth looking for: the parts of an address or a name with three letters or more. */
-function personalWords(personal: readonly (string | null | undefined)[]): string[] {
+/**
+ * The person's own words worth looking for, folded: the parts of a name, and of an address all but its top-level domain (`com` is
+ * everybody's), with three characters or more.
+ */
+function personalWords(personal: readonly (string | null | undefined)[]): string[][] {
   return personal
-    .flatMap((p) => (p ?? '').toLowerCase().split(/[^\p{L}\p{N}]+/u))
-    .filter((w) => w.length >= 3)
+    .flatMap((p) => {
+      const text = (p ?? '').normalize('NFC')
+      const at = text.lastIndexOf('@')
+      return (at < 0 ? text : `${text.slice(0, at)} ${text.slice(at + 1).replace(/\.[^.]*$/, '')}`).split(/[^\p{L}\p{M}\p{N}]+/u)
+    })
+    .map((word) => Array.from(word, folded))
+    .filter((word) => word.length >= 3)
 }
 
 export function passwordStrength(password: string, personal: readonly (string | null | undefined)[] = [], minLength = 10): Strength {
   if (password.length === 0) return { score: 0, reasons: [] }
-  const chars = Array.from(password)
-  const lower = chars.map((c) => c.toLowerCase())
+  const text = password.normalize('NFC') // an accent typed as a mark of its own is one character with its letter
+  const chars = Array.from(text).slice(0, MAX_ANALYSED)
+  const lower = chars.map(folded)
   // Per character: what it costs (null until a pattern decides), and the pattern that made it cheap.
   const cost: (number | null)[] = chars.map(() => null)
   const found = new Set<StrengthReason>()
   let listed = 0
 
-  // A word from a list, anywhere: its characters are free, the word costs one pick from the list.
-  const markListed = (words: string[], text: string[], reason: StrengthReason) => {
-    const joined = text.join('')
-    for (const word of words) {
-      let at = joined.indexOf(word)
-      while (at >= 0) {
+  // A word from a list, anywhere, compared character by character: its characters are free, the word costs one pick from the list.
+  const markListed = (words: readonly (readonly string[])[], seen: readonly string[], reason: StrengthReason) => {
+    for (const word of words)
+      for (let at = 0; at + word.length <= seen.length; at++) {
+        if (!word.every((c, k) => seen[at + k] === c)) continue
         if (cost.slice(at, at + word.length).some((c) => c === null)) {
           for (let i = at; i < at + word.length; i++) cost[i] = 0
           listed++
           found.add(reason)
         }
-        at = joined.indexOf(word, at + 1)
       }
-    }
   }
   markListed(personalWords(personal), lower, 'containsName')
-  markListed(COMMON, lower.map((c) => LEET[c] ?? c), 'common')
+  markListed(COMMON_FOLDED, lower.map((c) => LEET[c] ?? c), 'common')
 
   // Runs: the same character again, a step of one up or down (abc, 987), a stretch of a keyboard row; the first of a run costs as usual.
   for (let i = 2; i < chars.length; i++) {
@@ -103,11 +127,12 @@ export function passwordStrength(password: string, personal: readonly (string | 
 
   const bits = chars.reduce((sum, char, i) => sum + (cost[i] ?? charBits(char, i)), 0) + listed * LISTED_BITS
   let score = THRESHOLDS.filter((t) => bits >= t).length as Score
-  if (chars.length < minLength) {
+  // Counted as the field and the server count it (UTF-16 units), so the meter never asks for more than the form does.
+  if (password.length < minLength) {
     score = 0
     found.add('tooShort')
   }
-  const kinds = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^a-zA-Z0-9]/].filter((kind) => kind.test(password)).length
+  const kinds = [/\p{Ll}/u, /\p{Lu}/u, /\p{N}/u, /[^\p{Ll}\p{Lu}\p{N}]/u].filter((kind) => kind.test(text)).length
   if (kinds === 1 && score < 3) found.add('oneKind')
   // The patterns in the order they matter; a password that is strong anyway is not told what to avoid.
   const order: StrengthReason[] = ['tooShort', 'common', 'containsName', 'repeats', 'sequence', 'keyboardRow', 'oneKind']
