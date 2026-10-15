@@ -65,7 +65,7 @@ When the access cookie ran out, the app trades the refresh token at `POST /auth/
 
 What ends a session (at once: the access cookie names its session, which is checked on every request like the user is):
 
-- **Sign out** (`POST /auth/token/logout`, or the `logout` mutation): this device's session, even after its access cookie ran out.
+- **Sign out** (`POST /auth/token/logout`, or the `logout` mutation): this device's session, even after its access cookie ran out. It also works while the server cannot be reached: the device's data goes and the sign-in screen shows at once, and the device tells the server once it can, staying signed out until then; meanwhile the server still accepts that session's cookies, which only it can clear.
 - **The Account page's *Signed-in devices*** (`mySessions`, `revokeSession(id)`, `revokeOtherSessions`): you see every device you are signed in on (a coarse name worked out from the browser, such as "Firefox on Linux", never the raw User-Agent; when it signed in and was last used) and sign out one of them, or every one but this.
 - **Changing your password**: every other device; the one that changed it stays signed in. **Resetting it with a link**, an **administrator setting it**, or **disabling the user**: every device.
 - **A refresh token used again**: a token that was already traded in is accepted once more within `Auth__RefreshRotationGraceSeconds` (and answered with the current one, so tabs that refreshed at the same moment agree); used later, someone else must have a copy, so the session ends (a Warning in the log names it by id).
