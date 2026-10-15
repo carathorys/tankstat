@@ -17,7 +17,12 @@ public sealed record SeedOptions(
     IntRange RecurringPerVehicle = default,
     int Notifications = 0,
     string? PhotosPath = null,
-    string? SettingsPath = null);
+    string? SettingsPath = null,
+    SeedPictures Pictures = SeedPictures.None,
+    string? PicturesCache = null);
+
+/// <summary>What pictures the vehicles get: none, a photo of their model (drawn when none is found), or drawn ones only.</summary>
+public enum SeedPictures { None, Photos, Drawn }
 
 public sealed class SeedOptionsException(string message) : Exception(message);
 
@@ -54,6 +59,12 @@ public static class SeedOptionsParser
                                                                                       if set, else photos next to the pictures)
           --settings <file>      the app's own settings file to read (default: Settings:Path, else settings.json
                                                                                       in the working directory)
+          --pictures             a picture for every vehicle: a photo of its model from Wikimedia Commons (kept
+                                 in the cache below, so a model is downloaded once), else a drawn one. Commons
+                                 photos have licences of their own: for a local test database only, never shared
+          --drawn-pictures       a drawn picture for every vehicle, without the network
+          --pictures-cache <folder>  where downloaded photos are kept (default: tankstat-seeder/pictures in the
+                                                                                      user's local application data)
           --yes                  do not ask for confirmation before deleting the database
           --help                 show this text
 
@@ -70,7 +81,8 @@ public static class SeedOptionsParser
         var recurring = new IntRange(0, 2);
         var notifications = 15;
         var yes = false;
-        string? provider = null, connection = null, uploads = null, photos = null, settingsFile = null;
+        string? provider = null, connection = null, uploads = null, photos = null, settingsFile = null, picturesCache = null;
+        var pictures = SeedPictures.None;
 
         for (var i = 0; i < args.Count; i++)
         {
@@ -101,12 +113,15 @@ public static class SeedOptionsParser
                 case "--uploads": uploads = Value(); break;
                 case "--photos": photos = Value(); break;
                 case "--settings": settingsFile = Value(); break;
+                case "--pictures": pictures = SeedPictures.Photos; break;
+                case "--drawn-pictures": pictures = SeedPictures.Drawn; break;
+                case "--pictures-cache": picturesCache = Value(); break;
                 default: throw new SeedOptionsException($"Unknown option '{arg}'. Use --help.");
             }
         }
 
         if ((long)vehicles + trashed > MaxVehicles) throw new SeedOptionsException($"At most {MaxVehicles:N0} vehicles in total.");
-        return new SeedOptions(vehicles, trashed, refuelings, seed, yes, provider, connection, uploads, recurring, notifications, photos, settingsFile);
+        return new SeedOptions(vehicles, trashed, refuelings, seed, yes, provider, connection, uploads, recurring, notifications, photos, settingsFile, pictures, picturesCache);
     }
 
     private static int Count(string name, string text, int max)
