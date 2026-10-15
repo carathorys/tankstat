@@ -69,7 +69,7 @@ docker exec -it tankstat dotnet Tankstat.Api.dll backup keygen --passphrase-stdi
 printf '%s\n%s\n' "$P" "$P" | docker exec -i tankstat dotnet Tankstat.Api.dll backup keygen --passphrase-stdin
 ```
 
-A new passphrase (here and for `backup --passphrase-stdin`) is typed twice: when the two differ the command stops before any key is derived, and one shorter than `Backups:PassphraseMinLength` (12 by default) is refused as it is on the Backups page. A script that pipes one line, as releases before 0.17 took, now stops for want of the repetition.
+A new passphrase (here and for `backup --passphrase-stdin`) is typed twice: when the two differ the command stops before any key is derived, and one shorter than `Backups:PassphraseMinLength` (12 by default) is refused as it is on the Backups page. A script that pipes one line, as earlier releases took, now stops for want of the repetition.
 
 It prints two settings and the identity:
 

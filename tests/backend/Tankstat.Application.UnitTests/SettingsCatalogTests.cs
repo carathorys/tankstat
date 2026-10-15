@@ -214,4 +214,22 @@ public class SettingsFileNoticeTests
 
     [Fact]
     public void TheLogLevelFloor_IsTheOneTheConfigurationDocumentationPromises() => Assert.Equal(LogLevel.Warning, SettingsCatalog.LogLevelFloor);
+
+    [Theory]
+    [InlineData("en")]
+    [InlineData("hu")]
+    public void EverySetting_HasItsLabelAndHelp_InTheWebApp(string language)
+    {
+        // The page words a setting by its key (admin/settingsText.ts labelKey, helpKey): one left out shows as its key.
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Tankstat.slnx"))) dir = dir.Parent;
+        using var texts = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(dir!.FullName, "src", "frontend", "i18n", "locales", $"{language}.json")));
+        var settings = texts.RootElement.GetProperty("systemSettings");
+        static string Name(string key) => key.Replace(":", "__").Replace(".", "_");
+
+        var unworded = SettingsCatalog.All.Select(d => Name(d.Key))
+            .Where(n => !settings.GetProperty("fields").TryGetProperty(n, out _) || !settings.GetProperty("help").TryGetProperty(n, out _)).ToList();
+
+        Assert.True(unworded.Count == 0, $"Without a label or a help text in {language}.json: {string.Join(", ", unworded)}");
+    }
 }
