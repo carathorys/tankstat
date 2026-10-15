@@ -6,7 +6,8 @@ import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useSignOut } from '../../auth/useSignOut.ts'
+import { SignOutConfirm } from '../../auth/SignOutConfirm.tsx'
+import { useSignOutFlow } from '../../auth/useSignOut.ts'
 import { ConfirmDialog } from '../../components/ConfirmDialog.tsx'
 import { Loading } from '../../components/Loading.tsx'
 import { MySessionsDocument, RevokeOtherSessionsDocument, RevokeSessionDocument, type AuthMode, type MySessionsQuery } from '../../gql/generated.ts'
@@ -27,7 +28,7 @@ export function SessionsPanel({ mode }: { mode: AuthMode }) {
   const { data, error, refetch } = useQuery(MySessionsDocument, { fetchPolicy: 'cache-and-network' })
   const [revoke] = useMutation(RevokeSessionDocument)
   const [revokeOthers] = useMutation(RevokeOtherSessionsDocument)
-  const signOut = useSignOut(mode)
+  const signOut = useSignOutFlow(mode)
   const [status, setStatus] = useState('')
   const [actionError, setActionError] = useState<unknown>()
 
@@ -47,7 +48,7 @@ export function SessionsPanel({ mode }: { mode: AuthMode }) {
   const end = (s: Session) =>
     run(async () => {
       if (s.current) {
-        await signOut() // this device: the usual sign-out, which shows the sign-in screen
+        await signOut.start() // this device: the usual sign-out (asking first when it deletes changes not sent), which shows the sign-in screen
         return undefined
       }
       const result = await revoke({ variables: { id: s.id } })
@@ -67,6 +68,7 @@ export function SessionsPanel({ mode }: { mode: AuthMode }) {
 
   return (
     <Stack component="section" aria-labelledby={heading} sx={{ gap: 1.5, mt: 3 }}>
+      <SignOutConfirm {...signOut.confirm} />
       <div>
         <Typography component="h2" variant="h5" id={heading} sx={{ mb: 0.5 }}>
           {t('account.sessions.title')}

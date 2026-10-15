@@ -1579,10 +1579,8 @@
     "keep": "Keep",
     "keepAria": "Keep {{name}}: take back moving it to the trash",
     "kept": "Kept: it will not be moved to the trash.",
-    "signOutTitle": "Sign out with changes waiting?",
-    "signOutDescription_one": "{{count}} change made on this device has not reached the server yet. It stays on this device and is sent when this account signs in here again.",
-    "signOutDescription_other": "{{count}} changes made on this device have not reached the server yet. They stay on this device and are sent when this account signs in here again.",
-    "signOutConfirm": "Sign out",
+    "signOutTitle": "Sign out and delete what was not sent?",
+    "signOutConfirm": "Sign out and delete",
     "nav": "Waiting to sync",
     "syncNow": "Sync now",
     "syncing": "Syncing…",
@@ -1742,7 +1740,12 @@
       "leftWaiting_other": "{{count}} entries stay listed: changes of their own wait on this device and go first.",
       "navCount_one": "{{count}} entry found on this device",
       "navCount_other": "{{count}} entries found on this device"
-    }
+    },
+    "signOutChanges_one": "{{count}} change made on this device has not reached the server yet.",
+    "signOutChanges_other": "{{count}} changes made on this device have not reached the server yet.",
+    "signOutFound_one": "{{count}} entry found on this device after the server was restored is not on the server.",
+    "signOutFound_other": "{{count}} entries found on this device after the server was restored are not on the server.",
+    "signOutDeleted": "Signing out deletes everything this device keeps for your account, and these with it: they cannot be sent later."
   },
   "setup": {
     "title": "Set up Tankstat",

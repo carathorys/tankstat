@@ -4,41 +4,28 @@ import Stack from '@mui/material/Stack'
 import Chip from '@mui/material/Chip'
 import Typography from '@mui/material/Typography'
 import { Bell, Car, CloudUpload, DatabaseBackup, FileUp, House, LogOut, Settings, ShieldCheck, SlidersHorizontal, Trash2, Users } from 'lucide-react'
-import { useId, useState, type ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NavLink } from 'react-router'
 import { type AuthMode, type SessionQuery } from '../gql/generated.ts'
-import { useSignOut } from '../auth/useSignOut.ts'
-import { DialogButtons, DialogCancel, DialogFrame } from '../dialogs/DialogFrame.tsx'
-import { OfflineError } from '../offline/errors.ts'
-import { outbox, usePendingCount } from '../offline/outbox.ts'
+import { SignOutConfirm } from '../auth/SignOutConfirm.tsx'
+import { useSignOutFlow } from '../auth/useSignOut.ts'
+import { usePendingCount } from '../offline/outbox.ts'
 import { useFoundCount } from '../offline/useFoundCount.ts'
 import { useParkedChanges } from '../offline/useParkedChanges.ts'
-import { useToast } from '../toast/toastContext.ts'
 import { InstallMenuItem } from './InstallMenuItem.tsx'
 import { navItemSx } from './navStyles.ts'
 
 /** The navigation links, shared by the docked sidebar and the phone drawer. `onNavigate` lets the drawer close itself. */
 export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: SessionQuery['session']['user']; onNavigate?: () => void }) {
   const { t } = useTranslation()
-  const signOut = useSignOut(mode)
-  const { toast } = useToast()
+  // Signing out works with the server out of reach too, and asks first when it would delete changes that only this device holds (#162).
+  const signOut = useSignOutFlow(mode, onNavigate)
   const canSignOut = user !== null && mode !== 'PROXY_HEADER' // behind a proxy the proxy owns the session
   const waiting = usePendingCount()
   const parked = useParkedChanges().parked?.length ?? 0
   const found = useFoundCount()
-  const [confirmSignOut, setConfirmSignOut] = useState(false)
   const adminHeading = useId()
-  const leave = async () => {
-    onNavigate?.()
-    try {
-      await signOut()
-    } catch (error) {
-      // Signing out ends the session on the server: without it the device stays signed in, so say why nothing happened.
-      if (error instanceof OfflineError) toast(t('errors.offline'))
-      else throw error
-    }
-  }
 
   const link = (to: string, label: string, icon: ReactNode) => (
     <Box component={NavLink} to={to} end={to === '/' || to === '/admin'} sx={navItemSx} onClick={onNavigate}>
@@ -87,27 +74,13 @@ export function NavList({ mode, user, onNavigate }: { mode: AuthMode; user: Sess
           variant="ghost"
           color="neutral"
           sx={(theme) => ({ ...navItemSx(theme), mt: 1.5 })}
-          onClick={() => (outbox.count() > 0 ? setConfirmSignOut(true) : void leave())}
+          onClick={() => void signOut.start()}
         >
           <LogOut size={18} aria-hidden />
           {t('nav.signOut')}
         </Button>
       )}
-      {/* Changes waiting stay on the device for this account (signing out never removes them), but the person should know. */}
-      <DialogFrame open={confirmSignOut} onClose={() => setConfirmSignOut(false)} title={t('sync.signOutTitle')} description={t('sync.signOutDescription', { count: waiting })} role="alertdialog">
-        <DialogButtons>
-          <DialogCancel autoFocus />
-          <Button
-            color="error"
-            onClick={() => {
-              setConfirmSignOut(false)
-              void leave()
-            }}
-          >
-            {t('sync.signOutConfirm')}
-          </Button>
-        </DialogButtons>
-      </DialogFrame>
+      <SignOutConfirm {...signOut.confirm} />
     </Stack>
   )
 }
