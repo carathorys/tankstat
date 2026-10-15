@@ -250,6 +250,7 @@ public class SystemSettingsServiceTests
             w.SystemSettings.UpdateAsync([Set("Auth:Mode", "Standalone"), Set("Auth:Standalone:PasswordMinLength", "20")], null, default));
 
         Assert.Equal(("settings.standaloneNeedsAdministrator", "password"), (refused.Key, refused.Args["reason"]));
+        Assert.Equal((object?)20, refused.Args["min"]); // the page says the minimum it was judged by, not the floor
         await w.SystemSettings.UpdateAsync([Set("Auth:Mode", "Standalone"), Set("Auth:Standalone:PasswordMinLength", "18")], null, default);
     }
 
