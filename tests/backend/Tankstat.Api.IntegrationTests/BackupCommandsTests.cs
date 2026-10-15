@@ -43,7 +43,7 @@ public sealed class BackupCommandsTests : IDisposable
     {
         using var app = new TestApp(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = _folder });
 
-        var run = await RunAsync(app, "correct horse battery staple\n", "backup", "keygen", "--passphrase-stdin");
+        var run = await RunAsync(app, "correct horse battery staple\ncorrect horse battery staple\n", "backup", "keygen", "--passphrase-stdin"); // typed twice
 
         Assert.Equal((0, ""), (run.Code, run.Error));
         var recipient = Regex.Match(run.Out, @"Backups__Encryption__Recipient=(age1\S+)").Groups[1].Value;
@@ -61,6 +61,25 @@ public sealed class BackupCommandsTests : IDisposable
         Assert.Contains("Usage", (await RunAsync(app, "x\n", "backup", "keygen")).Error); // never from an argument
     }
 
+    [Theory]
+    [InlineData("backup keygen --passphrase-stdin")]
+    [InlineData("backup --passphrase-stdin")]
+    public async Task ANewPassphrase_TypedTwiceDifferently_OrShorterThanTheMinimum_StopsTheCommand_BeforeAnyKeyOrFile(string commandLine)
+    {
+        using var app = new TestApp(new() { ["Auth:Mode"] = "None", ["Backups:Path"] = _folder, ["Backups:PassphraseMinLength"] = "30" });
+
+        var different = await RunAsync(app, "correct horse battery staple, a\ncorrect horse battery staple, b\n", commandLine.Split(' '));
+        Assert.Equal((1, "", "The two entries are not the same."), (different.Code, different.Out, different.Error.Trim()));
+        var once = await RunAsync(app, "correct horse battery staple, a\n", commandLine.Split(' ')); // one line, as before: the repetition is missing
+        Assert.Equal(1, once.Code);
+        Assert.Contains("passphrase", once.Error);
+        var short28 = await RunAsync(app, "correct horse battery staple\ncorrect horse battery staple\n", commandLine.Split(' '));
+        Assert.Equal((1, "A passphrase has at least 30 characters."), (short28.Code, short28.Error.Trim()));
+
+        Assert.False(Directory.Exists(_folder) && Directory.EnumerateFiles(_folder).Any()); // no backup was written
+        Assert.DoesNotContain("AGE-SECRET-KEY", different.Out + short28.Out);
+    }
+
     [Fact]
     public async Task Backup_WritesTheInstance_AndDecrypt_OpensIt_WithThePassphrase_OrTheIdentity_NeverWithAnother()
     {
@@ -74,7 +93,7 @@ public sealed class BackupCommandsTests : IDisposable
         Assert.Contains("not encrypted", plain.Out);
         Assert.Contains("keys left out", plain.Out);
 
-        var encrypted = await RunAsync(app, "hunter2 hunter2\n", "backup", "--passphrase-stdin", "--output", Path.Combine(_folder, "enc.zip"));
+        var encrypted = await RunAsync(app, "hunter2 hunter2\nhunter2 hunter2\n", "backup", "--passphrase-stdin", "--output", Path.Combine(_folder, "enc.zip"));
         Assert.Equal((0, ""), (encrypted.Code, encrypted.Error));
         Assert.Contains("encrypted for age1", encrypted.Out);
         var manifest = BackupFile.ReadManifest(Path.Combine(_folder, "enc.zip"));

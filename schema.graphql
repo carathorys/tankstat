@@ -128,7 +128,7 @@ type Mutation {
   runBackup: Boolean! @cost(weight: "10")
   deleteBackup(file: String!): Boolean! @cost(weight: "10")
   holdBackup(file: String!, hold: Boolean!): Boolean! @cost(weight: "10")
-  prepareBackupEncryption(passphrase: String): BackupKeySetInfo!
+  prepareBackupEncryption(passphrase: String, passphraseConfirmation: String): BackupKeySetInfo!
     @cost(weight: "10")
   revokeSession(id: UUID!): Boolean! @cost(weight: "10")
   revokeOtherSessions: Int! @cost(weight: "10")
@@ -270,6 +270,7 @@ type BackupSettingsInfo {
   keepDays: Int
   environment: BackupEnvironmentMode!
   secrets: Boolean!
+  passphraseMinLength: Int!
 }
 
 type BackupSizesInfo {

@@ -155,7 +155,7 @@ function backupsServer({
             folder: '/data/backups',
             migration: 'AddInstance',
             run: state.run,
-            settings: { __typename: 'BackupSettingsInfo', recipient: RECIPIENT, photosApart: true, photos: true, maxUploadMb, environment: 'RECORD', secrets: false, ...state.schedule },
+            settings: { __typename: 'BackupSettingsInfo', recipient: RECIPIENT, photosApart: true, photos: true, maxUploadMb, environment: 'RECORD', secrets: false, passphraseMinLength: 12, ...state.schedule },
             sizes: { __typename: 'StorageSizesInfo', database: 5_300_000, pictures: 12_000_000, photos: 340_000_000 },
             restorePoints: state.points,
           },
@@ -251,6 +251,11 @@ async function openBackups() {
   renderWithApollo(<App />, '/admin/backups')
   await screen.findByRole('heading', { name: 'Backups in the folder' })
   return ui
+}
+
+/** A made-up passphrase is typed back before its keys can be used: proof it was written down. */
+async function typeBack(ui: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) {
+  await ui.type(within(dialog).getByLabelText('Type the passphrase back'), 'K7QM-4XWD-PL2N-ZR8A-HJ3T')
 }
 
 it('shows the server, where its backups go, and every backup in the folder with what it holds', async () => {
@@ -617,17 +622,20 @@ it('makes a key set, shows it once with the two settings to set, and is done onl
   await ui.click(screen.getByRole('button', { name: 'Make a key set…' }))
   const dialog = await screen.findByRole('dialog', { name: 'A key set for encrypted backups' })
   expect(within(dialog).getByText(/Backups are already encrypted/)).toBeInTheDocument()
+  expect(within(dialog).getByLabelText(/^Passphrase \(optional\)/)).toHaveAccessibleDescription(/^At least 12 characters\./) // the server's minimum
   await ui.type(within(dialog).getByLabelText(/^Passphrase \(optional\)/), 'short')
+  await ui.type(within(dialog).getByLabelText('Repeat the passphrase'), 'short')
   await ui.click(within(dialog).getByRole('button', { name: 'Make the keys' }))
-  expect(await within(dialog).findByText('A passphrase has at least 12 characters.')).toBeInTheDocument()
+  expect(await within(dialog).findByText('A passphrase has at least 12 characters.')).toBeInTheDocument() // stopped at the field: nothing sent
 
   await ui.clear(within(dialog).getByLabelText(/^Passphrase \(optional\)/))
+  await ui.clear(within(dialog).getByLabelText('Repeat the passphrase'))
   await ui.click(within(dialog).getByRole('button', { name: 'Make the keys' }))
 
   expect(await within(dialog).findByText('K7QM-4XWD-PL2N-ZR8A-HJ3T')).toBeInTheDocument()
   expect(within(dialog).getByText('Passphrase (made up)')).toBeInTheDocument()
   expect(within(dialog).getByText(/Backups__Encryption__Recipient=age1qy.*\s+Backups__Encryption__Salt=c2FsdHNhbHRzYWx0c2FsdA==/)).toBeInTheDocument()
-  expect(calls.PrepareBackupEncryption).toEqual([{ passphrase: 'short' }, { passphrase: null }])
+  expect(calls.PrepareBackupEncryption).toEqual([{ passphrase: null, passphraseConfirmation: null }])
   expect(calls.UpdateSystemSettings).toBeUndefined() // nothing is saved unless asked
   const done = within(dialog).getByRole('button', { name: 'Done' })
   expect(done).toBeDisabled()
@@ -646,6 +654,12 @@ it('saves a new key set into the server settings when asked, and the page then s
   await ui.click(within(dialog).getByRole('button', { name: 'Make the keys' }))
   await within(dialog).findByText('K7QM-4XWD-PL2N-ZR8A-HJ3T')
   const backupsAsked = calls.Backups?.length ?? 0
+  const use = within(dialog).getByRole('button', { name: 'Use these keys for new backups' })
+  expect(use).toBeDisabled() // the made-up passphrase is typed back first
+  await ui.type(within(dialog).getByLabelText('Type the passphrase back'), 'K7QM-4XWD-PL2N-ZR8A-HJ3')
+  expect(use).toBeDisabled() // not the same yet
+  await ui.type(within(dialog).getByLabelText('Type the passphrase back'), 'T')
+  expect(use).toBeEnabled()
 
   await ui.click(within(dialog).getByRole('button', { name: 'Use these keys for new backups' }))
 
@@ -659,6 +673,28 @@ it('saves a new key set into the server settings when asked, and the page then s
   expect(within(dialog).queryByRole('button', { name: 'Use these keys for new backups' })).not.toBeInTheDocument()
 })
 
+it('a passphrase typed for a key set comes twice, a different repetition stops the form, and it is not typed back afterwards', async () => {
+  const { calls } = backupsServer()
+  const ui = await openBackups()
+  await ui.click(screen.getByRole('button', { name: 'Make a key set…' }))
+  const dialog = await screen.findByRole('dialog', { name: 'A key set for encrypted backups' })
+  await ui.type(within(dialog).getByLabelText(/^Passphrase \(optional\)/), 'correct horse battery staple')
+  await ui.type(within(dialog).getByLabelText('Repeat the passphrase'), 'correct horse battery stapel')
+  await ui.click(within(dialog).getByRole('button', { name: 'Make the keys' }))
+
+  expect(within(dialog).getByLabelText('Repeat the passphrase')).toHaveAccessibleDescription('The two entries are not the same.')
+  expect(calls.PrepareBackupEncryption).toBeUndefined()
+
+  await ui.clear(within(dialog).getByLabelText('Repeat the passphrase'))
+  await ui.type(within(dialog).getByLabelText('Repeat the passphrase'), 'correct horse battery staple')
+  await ui.click(within(dialog).getByRole('button', { name: 'Make the keys' }))
+
+  expect(await within(dialog).findByText('correct horse battery staple')).toBeInTheDocument()
+  expect(calls.PrepareBackupEncryption).toEqual([{ passphrase: 'correct horse battery staple', passphraseConfirmation: 'correct horse battery staple' }])
+  expect(within(dialog).queryByLabelText('Type the passphrase back')).not.toBeInTheDocument() // typed twice already
+  expect(within(dialog).getByRole('button', { name: 'Use these keys for new backups' })).toBeEnabled()
+})
+
 it('keeps the key set open while its keys are being saved, and names the settings a refused save was about', async () => {
   let answer!: () => void
   const held = new Promise<void>((resolve) => (answer = resolve))
@@ -669,6 +705,7 @@ it('keeps the key set open while its keys are being saved, and names the setting
   await ui.click(within(dialog).getByRole('button', { name: 'Make the keys' }))
   await within(dialog).findByText('K7QM-4XWD-PL2N-ZR8A-HJ3T')
 
+  await typeBack(ui, dialog)
   await ui.click(within(dialog).getByRole('button', { name: 'Use these keys for new backups' }))
   await ui.click(within(dialog).getByRole('checkbox', { name: 'I have kept the passphrase in a safe place' }))
 
@@ -692,6 +729,7 @@ it('says why a key set cannot be saved when the environment holds the settings',
   await ui.click(within(dialog).getByRole('button', { name: 'Make the keys' }))
   await within(dialog).findByText('K7QM-4XWD-PL2N-ZR8A-HJ3T')
 
+  await typeBack(ui, dialog)
   await ui.click(within(dialog).getByRole('button', { name: 'Use these keys for new backups' }))
 
   expect(await within(dialog).findByText('Backups:Encryption:Recipient is set by the environment, which wins over the settings file.')).toBeInTheDocument()

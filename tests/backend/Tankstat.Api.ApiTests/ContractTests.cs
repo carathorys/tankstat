@@ -77,7 +77,7 @@ public class ContractTests
     [InlineData("StorageSizesInfo", "database", "pictures", "photos")]
     [InlineData("BackupRunInfo", "running", "startedAt", "finishedAt", "file", "bytes", "error")]
     [InlineData("ServerFolder", "kind", "path", "setting", "variable", "sameAsPictures")]
-    [InlineData("BackupSettingsInfo", "recipient", "photosApart", "photos", "maxUploadMb", "times", "days", "timeZone", "nextRun", "keep", "keepDays", "environment", "secrets")]
+    [InlineData("BackupSettingsInfo", "recipient", "photosApart", "photos", "maxUploadMb", "times", "days", "timeZone", "nextRun", "keep", "keepDays", "environment", "secrets", "passphraseMinLength")]
     [InlineData("BackupKeySetInfo", "passphrase", "generated", "identity", "recipient", "salt")]
     [InlineData("UserInfo", "id", "displayName", "email", "isAdmin", "passwordChangeRequired")]
     [InlineData("UserSessionInfo", "id", "client", "createdAt", "lastUsedAt", "expiresAt", "current")]
@@ -234,14 +234,15 @@ public class ContractTests
     }
 
     [Fact]
-    public async Task SettingAUsersPassword_TakesItsRepetition()
+    public async Task SettingAUsersPassword_AndMakingABackupKeySet_TakeTheRepetition()
     {
         var body = await Query("{ __type(name: \"Mutation\") { fields { name args { name } } } }");
-
-        var args = body.GetProperty("data").GetProperty("__type").GetProperty("fields").EnumerateArray()
-            .Single(f => f.GetProperty("name").GetString() == "setUserPassword").GetProperty("args").EnumerateArray()
+        IEnumerable<string?> ArgsOf(string field) => body.GetProperty("data").GetProperty("__type").GetProperty("fields").EnumerateArray()
+            .Single(f => f.GetProperty("name").GetString() == field).GetProperty("args").EnumerateArray()
             .Select(a => a.GetProperty("name").GetString());
-        Assert.Equal(["userId", "newPassword", "newPasswordConfirmation"], args);
+
+        Assert.Equal(["userId", "newPassword", "newPasswordConfirmation"], ArgsOf("setUserPassword"));
+        Assert.Equal(["passphrase", "passphraseConfirmation"], ArgsOf("prepareBackupEncryption"));
     }
 
     [Fact]

@@ -27,6 +27,9 @@ export function NewPasswordFields({
   showLabel,
   required = true,
   personal = [],
+  minLength,
+  hint,
+  tooShort,
 }: {
   name: string
   label: string
@@ -36,10 +39,16 @@ export function NewPasswordFields({
   required?: boolean
   /** The person's own address and name, which a strong password leaves out (none where the form does not know whose it is). */
   personal?: readonly (string | null | undefined)[]
+  /** Another minimum than the sign-in's (a backup passphrase's): then the password requirements are not asked. */
+  minLength?: number
+  /** Another hint than "At least {{min}} characters." (it should say the minimum too). */
+  hint?: string
+  /** Another message for one under the minimum than the password's (a passphrase's). */
+  tooShort?: string
 }) {
   const { t } = useTranslation()
-  const { data } = useQuery(PasswordRequirementsDocument, { fetchPolicy: 'cache-and-network' })
-  const min = data?.passwordRequirements.minLength ?? PASSWORD_FLOOR
+  const { data } = useQuery(PasswordRequirementsDocument, { fetchPolicy: 'cache-and-network', skip: minLength !== undefined })
+  const min = minLength ?? data?.passwordRequirements.minLength ?? PASSWORD_FLOOR
   // What the first field holds now: the form brings every field's checks up to date before it validates, so the repetition reads it then.
   const first = useRef('')
   const [typed, setTyped] = useState('')
@@ -49,8 +58,8 @@ export function NewPasswordFields({
         name={name}
         label={label}
         required={required}
-        hint={t('forms.password.requirements', { min })}
-        invalid={{ message: t('errors.password.tooShort', { min }), test: (value) => value.length > 0 && value.length < min }}
+        hint={hint ?? t('forms.password.requirements', { min })}
+        invalid={{ message: tooShort ?? t('errors.password.tooShort', { min }), test: (value) => value.length > 0 && value.length < min }}
         extra={typed && <StrengthMeter password={typed} personal={personal} min={min} />}
       >
         <PasswordInput

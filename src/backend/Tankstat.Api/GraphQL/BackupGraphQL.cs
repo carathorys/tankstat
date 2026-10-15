@@ -132,7 +132,7 @@ public sealed record BackupRunInfo(bool Running, DateTimeOffset? StartedAt, Date
 /// <param name="Secrets">Whether a backup's settings file holds the secrets (<c>Backups:Secrets</c>, encrypted or not).</param>
 public sealed record BackupSettingsInfo(
     string? Recipient, bool PhotosApart, bool Photos, int MaxUploadMb, IReadOnlyList<string> Times, IReadOnlyList<DayOfWeek> Days, string TimeZone, DateTimeOffset? NextRun, int? Keep, int? KeepDays,
-    BackupEnvironmentMode Environment, bool Secrets);
+    BackupEnvironmentMode Environment, bool Secrets, int PassphraseMinLength);
 
 /// <summary>The backups of the administration page. <c>folder</c>, <c>run</c> and <c>settings</c> cost nothing (the page polls <c>run</c> while a backup is written); the rest is worked out only when selected.</summary>
 public sealed record BackupOverviewInfo(string Folder, BackupRunInfo Run, BackupSettingsInfo Settings)
@@ -148,7 +148,7 @@ public sealed record BackupOverviewInfo(string Folder, BackupRunInfo Run, Backup
                 s.Settings.CurrentRecipient, s.PhotosApart, s.Settings.Photos, s.Settings.MaxUploadMb,
                 // a culture's time separator (fi-FI: 02.00) is not the setting's
                 schedule?.Times.Select(t => t.ToString("HH:mm", CultureInfo.InvariantCulture)).ToList() ?? [], schedule?.Days ?? [], s.TimeZone,
-                s.NextRun, s.Settings.Keep, s.Settings.KeepDays, s.Settings.Environment, s.Settings.Secrets));
+                s.NextRun, s.Settings.Keep, s.Settings.KeepDays, s.Settings.Environment, s.Settings.Secrets, s.Settings.PassphraseMinLength));
     }
 }
 
@@ -226,12 +226,14 @@ public sealed class BackupMutations
         (await backups.HoldAsync(file, hold, ct)).Held;
 
     /// <summary>
-    /// A key set for encrypted backups from the passphrase given (at least 12 characters), or from one the server makes up: shown once, stored
-    /// nowhere. The two settings it names make every later backup encrypted for it. Administrators only.
+    /// A key set for encrypted backups from the passphrase given (at least <c>Backups:PassphraseMinLength</c> characters, typed twice:
+    /// <c>passphraseConfirmation</c>, nullable so an older client gets the keyed <c>password.mismatch</c>), or from one the server makes up: shown
+    /// once, stored nowhere. The two settings it names make every later backup encrypted for it. Administrators only.
     /// </summary>
-    public async Task<BackupKeySetInfo> PrepareBackupEncryption(string? passphrase, [Service] BackupAdminService backups, CancellationToken ct)
+    public async Task<BackupKeySetInfo> PrepareBackupEncryption(
+        string? passphrase, string? passphraseConfirmation, [Service] BackupAdminService backups, CancellationToken ct)
     {
-        var set = await backups.PrepareEncryptionAsync(passphrase, ct);
+        var set = await backups.PrepareEncryptionAsync(passphrase, passphraseConfirmation, ct);
         return new BackupKeySetInfo(set.Passphrase, set.Generated, set.Identity, set.Recipient, set.Salt);
     }
 }

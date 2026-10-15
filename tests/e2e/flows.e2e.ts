@@ -76,6 +76,41 @@ test('writes a backup from the Backups page and downloads it', async ({ page }) 
   await expect(restore).toBeHidden()
 })
 
+test('makes a key set: a typed passphrase comes twice, a made-up one is typed back before its keys can be used', async ({ page }) => {
+  await signIn(page)
+  await page.goto('/admin/backups')
+  await pageLoaded(page)
+  await page.getByRole('button', { name: 'Make a key set…' }).click()
+  const dialog = page.getByRole('dialog', { name: 'A key set for encrypted backups' })
+  const passphrase = dialog.getByLabel(/^Passphrase \(optional\)/)
+  const repeat = dialog.getByLabel('Repeat the passphrase', { exact: true })
+
+  await passphrase.fill('correct horse battery staple')
+  await repeat.fill('correct horse battery stapel')
+  await dialog.getByRole('button', { name: 'Make the keys' }).click()
+  await expect(dialog.getByText('The two entries are not the same.')).toBeVisible()
+  await expectSoundLayout(page)
+  expect(await violations(page, '[role="dialog"]')).toEqual([])
+
+  // Both left empty: one is made up, shown once, and typed back as proof it was written down.
+  await passphrase.fill('')
+  await repeat.fill('')
+  await dialog.getByRole('button', { name: 'Make the keys' }).click()
+  const madeUp = dialog.getByText(/^[A-HJ-NP-Z2-9]{4}(-[A-HJ-NP-Z2-9]{4}){4}$/)
+  await expect(madeUp).toBeVisible({ timeout: 30_000 }) // Argon2id takes a moment
+  const use = dialog.getByRole('button', { name: 'Use these keys for new backups' })
+  await expect(use).toBeDisabled()
+  await dialog.getByLabel('Type the passphrase back').fill((await madeUp.textContent())!)
+  await expect(use).toBeEnabled()
+  await expectSoundLayout(page)
+  expect(await violations(page, '[role="dialog"]')).toEqual([])
+
+  // Not used: the shared server's backups stay in plain, which the other tests' restores rely on.
+  await dialog.getByRole('checkbox', { name: 'I have kept the passphrase in a safe place' }).check()
+  await dialog.getByRole('button', { name: 'Done' }).click()
+  await expect(dialog).toBeHidden()
+})
+
 test('holds a backup, which then cannot be deleted, opens it, and releases it', async ({ page }) => {
   await signIn(page)
   await page.goto('/admin/backups')

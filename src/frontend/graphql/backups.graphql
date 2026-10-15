@@ -44,6 +44,7 @@ query Backups {
     }
     settings {
       recipient
+      passphraseMinLength
       photosApart
       photos
       maxUploadMb
@@ -90,8 +91,8 @@ mutation RunBackup {
   runBackup
 }
 
-mutation PrepareBackupEncryption($passphrase: String) {
-  prepareBackupEncryption(passphrase: $passphrase) {
+mutation PrepareBackupEncryption($passphrase: String, $passphraseConfirmation: String) {
+  prepareBackupEncryption(passphrase: $passphrase, passphraseConfirmation: $passphraseConfirmation) {
     passphrase
     generated
     identity
