@@ -210,8 +210,9 @@ function backupsServer({
     }),
     graphql.mutation('PrepareBackupEncryption', ({ variables }) => {
       record('PrepareBackupEncryption', variables)
-      if (typeof variables.passphrase === 'string' && variables.passphrase.length < 12)
-        return HttpResponse.json(gqlError('Too short.', 'VALIDATION_FAILED', 'backup.passphraseTooShort', { min: 12 }))
+      // The minimum was raised to 20 since the page said 12 (it applies at once): what the field lets through, the server may refuse.
+      if (typeof variables.passphrase === 'string' && variables.passphrase.length < 20)
+        return HttpResponse.json(gqlError('Too short.', 'VALIDATION_FAILED', 'backup.passphraseTooShort', { min: 20 }))
       return HttpResponse.json({
         data: {
           prepareBackupEncryption: {
@@ -643,6 +644,21 @@ it('makes a key set, shows it once with the two settings to set, and is done onl
   expect(screen.getByRole('dialog', { name: 'A key set for encrypted backups' })).toBeInTheDocument()
   await ui.click(within(dialog).getByRole('checkbox', { name: 'I have kept the passphrase in a safe place' }))
   await ui.click(done)
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+})
+
+it("says the server's minimum when it refuses a passphrase the page let through, and the dialog closes after it", async () => {
+  const { calls } = backupsServer() // the page says 12, the server's minimum is 20 by now
+  const ui = await openBackups()
+  await ui.click(screen.getByRole('button', { name: 'Make a key set…' }))
+  const dialog = await screen.findByRole('dialog', { name: 'A key set for encrypted backups' })
+  await ui.type(within(dialog).getByLabelText(/^Passphrase \(optional\)/), 'fifteen-letters')
+  await ui.type(within(dialog).getByLabelText('Repeat the passphrase'), 'fifteen-letters')
+  await ui.click(within(dialog).getByRole('button', { name: 'Make the keys' }))
+
+  expect(await within(dialog).findByText('A passphrase has at least 20 characters.')).toBeInTheDocument()
+  expect(calls.PrepareBackupEncryption).toEqual([{ passphrase: 'fifteen-letters', passphraseConfirmation: 'fifteen-letters' }])
+  await ui.keyboard('{Escape}') // a refusal leaves nothing shown once, so nothing holds the dialog open
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 })
 
