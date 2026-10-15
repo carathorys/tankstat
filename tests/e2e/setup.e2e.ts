@@ -28,7 +28,7 @@ async function signInWithTheForm(page: Page, user: { email: string; password: st
   // The restart takes a few seconds, and the page waits for it before it asks.
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible({ timeout: 60_000 })
   await page.getByLabel('E-mail').fill(user.email)
-  await page.getByLabel('Password').fill(user.password)
+  await page.getByLabel('Password', { exact: true }).fill(user.password)
   await page.getByRole('button', { name: 'Sign in' }).click()
 }
 

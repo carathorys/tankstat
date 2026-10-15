@@ -13,7 +13,7 @@ import { DialogButtons, DialogCancel, DialogFrame } from '../dialogs/DialogFrame
 import { DialogTrigger } from '../dialogs/DialogTrigger.tsx'
 import { useDialogState } from '../dialogs/useDialogState.ts'
 import { Field } from '../forms/Field.tsx'
-import { FieldInput } from '../forms/FieldInput.tsx'
+import { PasswordInput } from '../forms/PasswordInput.tsx'
 import { Form } from '../forms/Form.tsx'
 import { RestoreBackupDocument, SessionDocument, type RestoreTargetFieldsFragment } from '../gql/generated.ts'
 import { useFormat } from '../i18n/format.ts'
@@ -195,7 +195,7 @@ function RestoreForm({
               label={key === 'passphrase' ? t('admin.backups.passphrase') : t('admin.backups.identity')}
               hint={key === 'passphrase' ? t('admin.backups.passphraseHint') : t('admin.backups.identityHint')}
             >
-              <FieldInput type="password" autoComplete="off" />
+              <PasswordInput autoComplete="off" showLabel={key === 'passphrase' ? t('forms.password.showPassphrase') : t('forms.password.showSecret')} />
             </Field>
           </>
         )}

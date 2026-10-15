@@ -9,7 +9,7 @@ import { expectSoundLayout } from './support/layout.ts'
 test('signs in with the form and lands on the home page', async ({ page }) => {
   await page.goto('/')
   await page.getByLabel('E-mail').fill(ADMIN.email)
-  await page.getByLabel('Password').fill(ADMIN.password)
+  await page.getByLabel('Password', { exact: true }).fill(ADMIN.password)
   await page.getByRole('button', { name: 'Sign in' }).click()
   await pageLoaded(page)
   await expect(page.getByRole('button', { name: 'Notifications' })).toBeVisible()

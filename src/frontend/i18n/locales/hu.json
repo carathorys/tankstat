@@ -182,7 +182,13 @@
     "emailInvalid": "Adj meg érvényes e-mail-címet",
     "numberInvalid": "Adj meg egy számot, például 12,5.",
     "dateIncomplete": "Add meg a teljes dátumot.",
-    "dateFuture": "A dátum nem lehet a jövőben."
+    "dateFuture": "A dátum nem lehet a jövőben.",
+    "password": {
+      "show": "A jelszó megjelenítése",
+      "showPassphrase": "A jelmondat megjelenítése",
+      "showSecret": "A beírt érték megjelenítése",
+      "capsLock": "A Caps Lock be van kapcsolva."
+    }
   },
   "auth": {
     "signIn": "Bejelentkezés",

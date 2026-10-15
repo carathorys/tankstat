@@ -14,7 +14,7 @@ import { DialogButtons, DialogCancel, DialogFrame } from '../dialogs/DialogFrame
 import { DialogTrigger } from '../dialogs/DialogTrigger.tsx'
 import { useDialogState } from '../dialogs/useDialogState.ts'
 import { Field } from '../forms/Field.tsx'
-import { FieldInput } from '../forms/FieldInput.tsx'
+import { PasswordInput } from '../forms/PasswordInput.tsx'
 import { Form } from '../forms/Form.tsx'
 import { PrepareBackupEncryptionDocument, SystemSettingsDocument, UpdateSystemSettingsDocument, type PrepareBackupEncryptionMutation } from '../gql/generated.ts'
 import { ErrorMessage, SuccessMessage, WarningMessage } from '../messages.tsx'
@@ -107,7 +107,7 @@ function KeySetForm({ replacing, refresh, onLock }: { replacing: boolean; refres
       <Stack sx={{ gap: 1.5 }}>
         {replacing && <WarningMessage>{t('admin.backups.keysReplacing')}</WarningMessage>}
         <Field name="passphrase" label={t('admin.backups.newPassphrase')} hint={t('admin.backups.newPassphraseHint')}>
-          <FieldInput type="password" autoComplete="new-password" />
+          <PasswordInput autoComplete="new-password" showLabel={t('forms.password.showPassphrase')} />
         </Field>
         {error !== undefined && <ErrorMessage error={error} />}
         <DialogButtons>

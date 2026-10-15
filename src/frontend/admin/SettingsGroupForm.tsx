@@ -20,6 +20,7 @@ import { LabeledSwitch } from '../components/LabeledSwitch.tsx'
 import { LabeledSelect } from '../components/UnitSelect.tsx'
 import { Field } from '../forms/Field.tsx'
 import { FieldInput } from '../forms/FieldInput.tsx'
+import { PasswordInput } from '../forms/PasswordInput.tsx'
 import { Form } from '../forms/Form.tsx'
 import { SystemSettingsDocument, UpdateSystemSettingsDocument, type SystemSettingFieldsFragment, type SettingsGroup } from '../gql/generated.ts'
 import { sampleDate, sampleTime, useFormat } from '../i18n/format.ts'
@@ -530,7 +531,13 @@ function Control({
       return (
         <Stack sx={{ gap: 0.5 }}>
           <Field name={s.key} label={label} badges={badges} refusal={problem} hint={[s.isSet ? t('systemSettings.secretSet') : t('systemSettings.secretNotSet'), hint].filter(Boolean).join(' · ')}>
-            <FieldInput type="password" autoComplete="new-password" value={value} disabled={cleared || unused} onChange={(e) => onChange(e.target.value)} />
+            <PasswordInput
+              autoComplete="new-password"
+              showLabel={t('forms.password.showSecret')}
+              value={value}
+              disabled={cleared || unused}
+              onChange={(e) => onChange(e.target.value)}
+            />
           </Field>
           {s.isSet && (
             <FormControlLabel control={<Checkbox checked={cleared} disabled={unused} onChange={(e) => onClear(e.target.checked)} />} label={t('systemSettings.clearSecret')} />

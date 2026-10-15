@@ -7,6 +7,7 @@ import { ErrorMessage } from '../messages.tsx'
 import { Field } from './Field.tsx'
 import { FieldInput } from './FieldInput.tsx'
 import { Form } from './Form.tsx'
+import { PasswordInput } from './PasswordInput.tsx'
 
 export interface FieldDef {
   name: string
@@ -56,7 +57,11 @@ export function FieldForm({
       <Stack sx={{ gap: 1.5 }}>
         {fields.map((f) => (
           <Field key={f.name} name={f.name} label={t(f.label)} required={f.required ?? true} typeMismatch={f.type === 'email' ? t('forms.emailInvalid') : undefined}>
-            <FieldInput type={f.type ?? 'text'} autoComplete={f.autoComplete} defaultValue={f.defaultValue} />
+            {f.type === 'password' ? (
+              <PasswordInput autoComplete={f.autoComplete} defaultValue={f.defaultValue} />
+            ) : (
+              <FieldInput type={f.type ?? 'text'} autoComplete={f.autoComplete} defaultValue={f.defaultValue} />
+            )}
           </Field>
         ))}
         {error !== undefined && <ErrorMessage error={error} />}

@@ -182,7 +182,13 @@
     "emailInvalid": "Enter a valid e-mail address",
     "numberInvalid": "Enter a number, for example 12.5.",
     "dateIncomplete": "Enter the whole date.",
-    "dateFuture": "The date cannot be in the future."
+    "dateFuture": "The date cannot be in the future.",
+    "password": {
+      "show": "Show the password",
+      "showPassphrase": "Show the passphrase",
+      "showSecret": "Show what is typed",
+      "capsLock": "Caps Lock is on."
+    }
   },
   "auth": {
     "signIn": "Sign in",
