@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
 import type { SessionQuery } from '../../../src/frontend/gql/generated.ts'
 import { server } from '../support/server.ts'
-import { fakeVehicleBackend, gqlError, healthHandler, renderWithApollo, sessionHandler, user } from '../support/mocks.tsx'
+import { fakeSettingsBackend, fakeVehicleBackend, gqlError, healthHandler, renderWithApollo, sessionHandler, user } from '../support/mocks.tsx'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => server.resetHandlers())
@@ -142,6 +142,44 @@ it('a password shorter than the minimum now: only the change is shown, and the p
   ])
 })
 
+it('a password shorter than the minimum now: the pages come back with the change even when the session asked again fails', async () => {
+  const ui = userEvent.setup()
+  const state = standaloneServer()
+  state.current = user({ passwordChangeRequired: true })
+  let changed = false
+  server.use(
+    graphql.mutation('ChangePassword', () => {
+      changed = true
+      state.current = user()
+      return HttpResponse.json({ data: { changePassword: true } })
+    }),
+    // The server answers the session asked again after the change with an error: the password is changed all the same.
+    graphql.query('Session', () => (changed ? HttpResponse.json(gqlError('Unexpected Execution Error', 'UNEXPECTED')) : undefined)),
+  )
+  renderWithApollo(<App />, '/vehicles')
+
+  await ui.type(await screen.findByLabelText('Current password'), 'old-password')
+  await ui.type(screen.getByLabelText('New password'), 'brand-new-password')
+  await ui.type(screen.getByLabelText('Repeat the new password'), 'brand-new-password')
+  await ui.click(screen.getByRole('button', { name: 'Update password' }))
+
+  expect(await screen.findByText('Password changed. Your other sessions were signed out.')).toBeInTheDocument()
+  expect(await screen.findByRole('navigation', { name: 'Main navigation' })).toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Choose a new password' })).not.toBeInTheDocument()
+  expect(screen.queryByText('Unexpected Execution Error')).not.toBeInTheDocument()
+})
+
+it("a password shorter than the minimum now: the change speaks the account's language, which its UI settings bring", async () => {
+  const state = standaloneServer()
+  state.current = user({ passwordChangeRequired: true })
+  const settings = fakeSettingsBackend({ language: 'hu' })
+  server.use(...settings.handlers)
+  renderWithApollo(<App />, '/')
+
+  expect(await screen.findByRole('heading', { name: 'Válassz új jelszót' })).toBeInTheDocument()
+  expect(settings.state.requests.UiSettings).toBe(1)
+})
+
 it("the change form's strength counts the signed-in person's own address and name against the new password", async () => {
   const ui = userEvent.setup()
   const state = standaloneServer()
@@ -208,6 +246,23 @@ it('reset link: says the minimum the administrators set before typing, and a sho
 
   expect(password).toHaveFocus()
   expect(password).toHaveAccessibleDescription(/The password must be at least 14 characters long\./)
+  expect(state.calls.ResetPassword).toBeUndefined()
+})
+
+it('reset link: a password longer than the server takes stops the form at it too', async () => {
+  const ui = userEvent.setup()
+  const state = standaloneServer()
+  server.use(graphql.query('PasswordRequirements', () => HttpResponse.json({ data: { passwordRequirements: { minLength: 10, maxLength: 20 } } })))
+  renderWithApollo(<App />, '/?resetToken=tok.en')
+
+  const password = await screen.findByLabelText('New password')
+  await waitFor(() => expect(password).toHaveAccessibleDescription('At least 10 characters.'))
+  await ui.type(password, 'twenty-one-characters')
+  await ui.type(screen.getByLabelText('Repeat the new password'), 'twenty-one-characters')
+  await ui.click(screen.getByRole('button', { name: 'Set password' }))
+
+  expect(password).toHaveFocus()
+  expect(password).toHaveAccessibleDescription(/The password must be at most 20 characters long\./)
   expect(state.calls.ResetPassword).toBeUndefined()
 })
 

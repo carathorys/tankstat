@@ -909,7 +909,7 @@ internal sealed class World
         Sharing = new ResourceSharingService(Vehicles, ResourceGrants, Users, Access, Notifier, Log.For<ResourceSharingService>());
         SessionService = new UserSessionService(Sessions, Users, new FakeSecretProtector(), Access, options, Clock, Log.For<UserSessionService>());
         ResetQueue = new FakeResetQueue(resets);
-        Passwords = new PasswordRequirements(PasswordSettings);
+        Passwords = new PasswordRequirements(PasswordSettings, Log.For<PasswordRequirements>());
         Auth = new AuthService(Users, new FakeHasher(), resets, ResetQueue, SessionService, Access, options, Passwords, Clock, Log.For<AuthService>());
         UserService = new UserService(Access, Users, UserData, resets, SessionService, new FakeHasher(), ImageService, ImportSessions, options, Passwords, Log.For<UserService>());
         AccessAdmin = new AccessAdminService(Access, Settings, Grants, Users, Notifier, Log.For<AccessAdminService>());

@@ -40,6 +40,8 @@ export function NewPasswordFields({
   const { t } = useTranslation()
   const { data } = useQuery(PasswordRequirementsDocument, { fetchPolicy: 'cache-and-network' })
   const min = data?.passwordRequirements.minLength ?? PASSWORD_FLOOR
+  // The ceiling too: a longer one is said at the field, as a shorter one is, before anything is sent.
+  const max = data?.passwordRequirements.maxLength
   // What the first field holds now: the form brings every field's checks up to date before it validates, so the repetition reads it then.
   const first = useRef('')
   const [typed, setTyped] = useState('')
@@ -50,7 +52,10 @@ export function NewPasswordFields({
         label={label}
         required={required}
         hint={t('forms.password.requirements', { min })}
-        invalid={{ message: t('errors.password.tooShort', { min }), test: (value) => value.length > 0 && value.length < min }}
+        invalid={{
+          message: max !== undefined && typed.length > max ? t('errors.password.tooLong', { max }) : t('errors.password.tooShort', { min }),
+          test: (value) => value.length > 0 && (value.length < min || (max !== undefined && value.length > max)),
+        }}
         extra={typed && <StrengthMeter password={typed} personal={personal} min={min} />}
       >
         <PasswordInput
