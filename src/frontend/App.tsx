@@ -101,11 +101,13 @@ export default function App() {
   // No menu while the setup page stands in for every page (none of them is there yet), nor while the change of a password asked at
   // sign-in stands in for them.
   const takenOver = useSetupTakesOver(data)
-  const showMenu = data !== undefined && (mode === 'NONE' || user !== null) && !takenOver && !user?.passwordChangeRequired
+  const signedIn = data !== undefined && (mode === 'NONE' || user !== null) && !takenOver
+  const showMenu = signedIn && !user?.passwordChangeRequired
 
-  // The UI settings follow the user: asked from the server once per session, kept per user (the key starts afresh on sign-in and sign-out).
+  // The UI settings follow the user: asked from the server once per session, kept per user (the key starts afresh on sign-in and sign-out),
+  // the change asked at sign-in included (its page speaks the account's language, and what is chosen in the top bar meanwhile is kept).
   return (
-    <UiSettingsProvider key={user?.id ?? mode} enabled={showMenu}>
+    <UiSettingsProvider key={user?.id ?? mode} enabled={signedIn}>
       <Shell data={data} error={error} loading={loading} mode={mode} user={user} showMenu={showMenu} />
     </UiSettingsProvider>
   )

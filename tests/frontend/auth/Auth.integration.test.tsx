@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import App from '../../../src/frontend/App.tsx'
 import type { SessionQuery } from '../../../src/frontend/gql/generated.ts'
 import { server } from '../support/server.ts'
-import { fakeVehicleBackend, gqlError, healthHandler, renderWithApollo, sessionHandler, user } from '../support/mocks.tsx'
+import { fakeSettingsBackend, fakeVehicleBackend, gqlError, healthHandler, renderWithApollo, sessionHandler, user } from '../support/mocks.tsx'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => server.resetHandlers())
@@ -140,6 +140,44 @@ it('a password shorter than the minimum now: only the change is shown, and the p
   expect(state.calls.ChangePassword).toEqual([
     { input: { currentPassword: 'old-password', newPassword: 'brand-new-password', newPasswordConfirmation: 'brand-new-password' } },
   ])
+})
+
+it('a password shorter than the minimum now: the pages come back with the change even when the session asked again fails', async () => {
+  const ui = userEvent.setup()
+  const state = standaloneServer()
+  state.current = user({ passwordChangeRequired: true })
+  let changed = false
+  server.use(
+    graphql.mutation('ChangePassword', () => {
+      changed = true
+      state.current = user()
+      return HttpResponse.json({ data: { changePassword: true } })
+    }),
+    // The server answers the session asked again after the change with an error: the password is changed all the same.
+    graphql.query('Session', () => (changed ? HttpResponse.json(gqlError('Unexpected Execution Error', 'UNEXPECTED')) : undefined)),
+  )
+  renderWithApollo(<App />, '/vehicles')
+
+  await ui.type(await screen.findByLabelText('Current password'), 'old-password')
+  await ui.type(screen.getByLabelText('New password'), 'brand-new-password')
+  await ui.type(screen.getByLabelText('Repeat the new password'), 'brand-new-password')
+  await ui.click(screen.getByRole('button', { name: 'Update password' }))
+
+  expect(await screen.findByText('Password changed. Your other sessions were signed out.')).toBeInTheDocument()
+  expect(await screen.findByRole('navigation', { name: 'Main navigation' })).toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Choose a new password' })).not.toBeInTheDocument()
+  expect(screen.queryByText('Unexpected Execution Error')).not.toBeInTheDocument()
+})
+
+it("a password shorter than the minimum now: the change speaks the account's language, which its UI settings bring", async () => {
+  const state = standaloneServer()
+  state.current = user({ passwordChangeRequired: true })
+  const settings = fakeSettingsBackend({ language: 'hu' })
+  server.use(...settings.handlers)
+  renderWithApollo(<App />, '/')
+
+  expect(await screen.findByRole('heading', { name: 'Válassz új jelszót' })).toBeInTheDocument()
+  expect(settings.state.requests.UiSettings).toBe(1)
 })
 
 it('a password shorter than the minimum now: Sign out leaves without changing it', async () => {
