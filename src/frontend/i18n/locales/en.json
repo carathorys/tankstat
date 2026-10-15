@@ -826,7 +826,7 @@
       "unknownKey": "{{key}} is not a setting that can be changed here.",
       "readOnly": "{{key}} is set by the environment, which wins over the settings file.",
       "invalid": "The settings cannot be used as they are.",
-      "standaloneNeedsAdministrator": "Standalone mode needs an administrator, and none exists yet. Set Auth__Standalone__AdminEmail (an address no local account has) and Auth__Standalone__AdminPassword (10 to 128 characters) in the environment for the next start, then switch.",
+      "standaloneNeedsAdministrator": "Standalone mode needs an administrator, and none exists yet. Set Auth__Standalone__AdminEmail (an address no local account has) and Auth__Standalone__AdminPassword ({{min}} to 128 characters) in the environment for the next start, then switch.",
       "restartWouldFail": "The server would not start again with the settings file as it is, so it was not restarted. Fix the file, or set Auth__Mode in the environment.",
       "oidcUnreachable": "{{authority}} does not answer with an OpenID Connect discovery document ({{reason}}).",
       "oidcIssuerMismatch": "{{authority}} names another issuer, {{issuer}}: enter the authority as the provider names it.",

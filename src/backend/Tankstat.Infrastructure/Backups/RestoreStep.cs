@@ -413,8 +413,8 @@ internal sealed class RestoreStep(
             ?? (await localAccountExists(address!) ? "taken" : null);
         if (reason is not null)
             throw new DomainException("settings.standaloneNeedsAdministrator",
-                "The backup holds no administrator to sign in with in Standalone mode, and none can be created from Auth:Standalone:AdminEmail and Auth:Standalone:AdminPassword.",
-                new { Reason = reason });
+                $"The backup holds no administrator to sign in with in Standalone mode, and none can be created from Auth:Standalone:AdminEmail and Auth:Standalone:AdminPassword ({minLength} to {PasswordPolicy.MaxLength} characters).",
+                new { Reason = reason, Min = minLength });
     }
 
     private RestoreOutcome Refuse(string markerPath, RestoreMarker? marker, Exception e, string reason)

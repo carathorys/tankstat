@@ -1,4 +1,5 @@
-import { useMutation, useQuery } from '@apollo/client/react'
+import type { ApolloCache } from '@apollo/client'
+import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
 import Button from '@mui/material/Button'
 import Card from '@mui/material/Card'
 import Link from '@mui/material/Link'
@@ -17,11 +18,19 @@ import { useToast } from './toast/toastContext.ts'
 export function ChangePasswordForm({ required = false }: { required?: boolean }) {
   const { t } = useTranslation()
   const { toast } = useToast()
+  const client = useApolloClient()
   // Whose password it is: the App's own Session answer, from the cache (the strength meter counts their address and name against it).
   const me = useQuery(SessionDocument, { fetchPolicy: 'cache-only' }).data?.session.user
-  // The change asked at sign-in ends once the session says so: it is asked again, and the pages come back.
-  const [changePassword] = useMutation(ChangePasswordDocument, required ? { refetchQueries: [SessionDocument], awaitRefetchQueries: true } : {})
+  const [changePassword] = useMutation(ChangePasswordDocument)
   const [done, setDone] = useState(false)
+
+  // The change asked at sign-in ends with the new password, which cleared the flag on the server: the pages come back at once, never held
+  // up by asking the session again (a failed answer would make a saved password look refused, and the device's kept answer still has the
+  // flag), which then goes past the device and keeps the server's answer for it.
+  const lift = (cache: ApolloCache) =>
+    cache.updateQuery({ query: SessionDocument }, (data) =>
+      data?.session.user ? { ...data, session: { ...data.session, user: { ...data.session.user, passwordChangeRequired: false } } } : data,
+    )
 
   return (
     <section>
@@ -40,9 +49,16 @@ export function ChangePasswordForm({ required = false }: { required?: boolean })
         onSubmit={async (v) => {
           await changePassword({
             variables: { input: { currentPassword: v.current ?? '', newPassword: v.next ?? '', newPasswordConfirmation: v.nextRepeat ?? '' } },
+            ...(required ? { update: lift } : {}),
           })
-          if (required) toast(t('auth.changed'))
-          else setDone(true)
+          if (!required) {
+            setDone(true)
+            return
+          }
+          toast(t('auth.changed'))
+          void client
+            .query({ query: SessionDocument, fetchPolicy: 'network-only', context: { offline: 'bypass', queryDeduplication: false } })
+            .catch(() => undefined)
         }}
       />
     </section>

@@ -259,8 +259,12 @@ export function SettingsGroupForm({
       const answer = await update({ variables: code === undefined ? { changes } : { changes, code } })
       onSaved()
       // The server says what waits: a group that applies at once runs with what was saved, and a value saved back to what runs waits for nothing.
+      // Only what this save changed counts: a setting of the tab saved before may wait for a restart beside one that applies at once (the
+      // password minimum in the Sign-in tab).
+      const sent = new Set(changes.map((c) => c.key))
       const saved = answer.data?.updateSystemSettings.groups.find((g) => g.name === group.name)
-      if (announceSaved) toast(t(saved?.settings.some((s) => s.restartPending) ? 'systemSettings.saved' : 'systemSettings.savedInEffect'))
+      if (announceSaved)
+        toast(t(saved?.settings.some((s) => sent.has(s.key) && s.restartPending) ? 'systemSettings.saved' : 'systemSettings.savedInEffect'))
     } catch (e) {
       setError(e)
     }
