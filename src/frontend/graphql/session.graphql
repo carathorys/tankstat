@@ -51,3 +51,11 @@ mutation RequestPasswordReset($email: String!) {
 mutation ResetPassword($input: ResetPasswordInput!) {
   resetPassword(input: $input)
 }
+
+# What a new password must be: public (the reset page and the setup have nobody signed in), shown before typing, checked while typing.
+query PasswordRequirements {
+  passwordRequirements {
+    minLength
+    maxLength
+  }
+}

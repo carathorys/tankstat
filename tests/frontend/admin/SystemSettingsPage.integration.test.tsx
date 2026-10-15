@@ -44,6 +44,7 @@ function fixture({ modeEditable = false, mode = 'Standalone' }: { modeEditable?:
           setting({ key: 'Auth:AdminEmails', kind: 'LIST', value: 'a@example.com\nb@example.com', isSet: true, source: 'FILE' }),
           setting({ key: 'Auth:Oidc:ClientSecret', kind: 'SECRET', isSecret: true, isSet: true, source: 'FILE' }),
           setting({ key: 'Auth:Standalone:AllowAdminSetPassword', kind: 'BOOLEAN', restartPending: true }),
+          setting({ key: 'Auth:Standalone:PasswordMinLength', kind: 'INTEGER', defaultValue: '10', appliesAtOnce: true }), // read afresh in a group read at start
         ],
       },
       { __typename: 'SystemSettingsGroup', name: 'DEFAULTS', appliesAtOnce: true, settings: [setting({ key: 'Defaults:Currency', value: 'HUF', isSet: true, source: 'FILE' })] },
@@ -104,6 +105,10 @@ it('shows every group, where each value comes from, and what waits for a restart
   expect(auth.getByLabelText('Administrators (OIDC and proxy sign-in)')).toHaveValue('a@example.com\nb@example.com')
   expect(auth.getByRole('switch', { name: 'Administrators may set passwords' })).toHaveAccessibleDescription(/takes effect after a restart/)
   expect(auth.getByText('Changes here take effect after a restart of the server.')).toBeInTheDocument()
+  // The one setting of the tab that applies at once says so beside its label; the others say nothing of it.
+  expect(auth.getByLabelText('Minimum password length')).toHaveAccessibleDescription(/takes effect as soon as it is saved, unlike the rest of this tab/)
+  expect(auth.getByLabelText('Minimum password length')).toHaveValue('10')
+  expect(auth.getAllByText('Applies at once')).toHaveLength(1)
   expect(auth.getByLabelText('OIDC client secret')).toHaveValue('') // never shown back
   expect(auth.getByLabelText('OIDC client secret')).toHaveAccessibleDescription(/Set\. Leave blank to keep it\./)
   expect(auth.getByRole('switch', { name: 'Administrators may set passwords' })).not.toBeChecked()

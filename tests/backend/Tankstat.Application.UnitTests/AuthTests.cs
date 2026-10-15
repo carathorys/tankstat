@@ -141,6 +141,21 @@ public class PasswordTests
     }
 
     [Fact]
+    public async Task ANewPassword_IsJudgedByTheMinimumAnAdministratorSaved_AtOnce()
+    {
+        var w = new World();
+        var alice = w.AddUser("alice@x.co");
+        w.Current.SignInAs(alice);
+        w.PasswordSettings.CurrentValue = new PasswordOptions { PasswordMinLength = 16 }; // saved on the settings page: no restart
+
+        var refused = await Assert.ThrowsAsync<DomainException>(() => w.Auth.ChangePasswordAsync("password-123456", "fifteen-chars-1", "fifteen-chars-1", default));
+        Assert.Equal(("password.tooShort", (object?)16), (refused.Key, refused.Args["min"]));
+
+        await w.Auth.ChangePasswordAsync("password-123456", "sixteen-chars-12", "sixteen-chars-12", default);
+        Assert.Throws<DomainException>(() => w.Auth.NewAdministrator("root@x.co", "fifteen-chars-1")); // the setup's administrator too
+    }
+
+    [Fact]
     public async Task ChangePassword_NeedsSignIn()
     {
         var w = new World();

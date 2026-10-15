@@ -33,6 +33,16 @@ public class ContractTests
     }
 
     [Fact]
+    public async Task PasswordRequirements_ArePublic_AndStartAtTheFloor()
+    {
+        var body = await Query("{ passwordRequirements { minLength maxLength } }");
+
+        Assert.False(body.TryGetProperty("errors", out _), body.ToString());
+        var requirements = body.GetProperty("data").GetProperty("passwordRequirements");
+        Assert.Equal((10, 128), (requirements.GetProperty("minLength").GetInt32(), requirements.GetProperty("maxLength").GetInt32()));
+    }
+
+    [Fact]
     public async Task Health_ExposesContractFields()
     {
         var body = await Query("{ health { status version uptime databaseReachable } }");
@@ -53,7 +63,7 @@ public class ContractTests
     }
 
     [Theory]
-    [InlineData("Query", "health", "vehicles", "myVehicles", "myVehicleCount", "vehicle", "session", "notices", "users", "canSetUserPasswords", "accessSettings", "accessGrants", "trash", "vehicleCount", "trashCount", "trashDeletableCount", "vehicleDefaults", "refuelings", "refuelingCount", "refueling", "logDefaults", "refuelingTrash", "refuelingTrashCount", "refuelingTrashDeletableCount", "vehicleLogAccess", "shareCandidates", "notifications", "notificationCount", "recognitionStatus", "photoDrafts", "uiSettings", "mySessions", "offlineChanges", "offlineSettings", "parkedChanges", "systemSettings", "backups", "backupDetails", "setup", "setupRestorePoints", "setupBackupDetails", "setupUploadLimitMb")]
+    [InlineData("Query", "health", "vehicles", "myVehicles", "myVehicleCount", "vehicle", "session", "notices", "users", "canSetUserPasswords", "accessSettings", "accessGrants", "trash", "vehicleCount", "trashCount", "trashDeletableCount", "vehicleDefaults", "refuelings", "refuelingCount", "refueling", "logDefaults", "refuelingTrash", "refuelingTrashCount", "refuelingTrashDeletableCount", "vehicleLogAccess", "shareCandidates", "notifications", "notificationCount", "recognitionStatus", "photoDrafts", "uiSettings", "mySessions", "offlineChanges", "offlineSettings", "parkedChanges", "systemSettings", "backups", "backupDetails", "setup", "setupRestorePoints", "setupBackupDetails", "setupUploadLimitMb", "passwordRequirements")]
     [InlineData("Mutation", "addVehicle", "logRefueling", "login", "logout", "changePassword", "requestPasswordReset", "resetPassword", "createUser", "issuePasswordReset", "setUserAdmin", "setUserDisabled", "updateUser", "setUserPassword", "deleteUser", "setDefaultAccess", "setAccessGrant", "updateVehicle", "deleteVehicle", "restoreVehicle", "emptyTrash", "logRefueling", "updateRefueling", "deleteRefueling", "restoreRefueling", "emptyRefuelingTrash", "setVehicleLogAccess", "markNotificationsRead", "updateUiSettings", "saveGridSettings", "resetGridSettings", "setVehicleOrder", "addRecurringExpense", "updateRecurringExpense", "deleteRecurringExpense", "markRecurringExpensesDone", "revokeSession", "revokeOtherSessions", "updateOfflineSettings", "syncChanges", "resolveSyncChange", "updateSystemSettings", "restartServer", "restoreBackup", "runBackup", "deleteBackup", "holdBackup", "prepareBackupEncryption", "setupClaimAdministrator", "setupFinish")]
     [InlineData("Session", "mode", "user", "instance")]
     [InlineData("InstanceInfo", "generation", "restorePoint")]
@@ -76,7 +86,8 @@ public class ContractTests
     [InlineData("Notice", "code", "severity", "message")]
     [InlineData("SystemSettingsInfo", "file", "groups", "restartPending", "folders")]
     [InlineData("SystemSettingsGroup", "name", "settings", "appliesAtOnce")]
-    [InlineData("SystemSetting", "key", "kind", "choices", "value", "isSet", "isSecret", "source", "editable", "restartPending", "defaultValue")]
+    [InlineData("SystemSetting", "key", "kind", "choices", "value", "isSet", "isSecret", "source", "editable", "restartPending", "defaultValue", "appliesAtOnce")]
+    [InlineData("PasswordRequirementsInfo", "minLength", "maxLength")]
     [InlineData("SettingsFileInfo", "path", "exists", "ignored", "problems")]
     [InlineData("Vehicle", "id", "ownerId", "name", "licensePlate", "fuelType", "units", "deletedAt", "canEdit", "logAccess", "owner", "refuelingCount", "version", "updatedAt", "logCountSince", "parkedChangeCount", "changedAt", "changedBy", "lastChange")]
     [InlineData("MeasurementUnits", "distance", "volume")]

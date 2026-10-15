@@ -189,7 +189,8 @@
       "show": "Show the password",
       "showPassphrase": "Show the passphrase",
       "showSecret": "Show what is typed",
-      "capsLock": "Caps Lock is on."
+      "capsLock": "Caps Lock is on.",
+      "requirements": "At least {{min}} characters."
     }
   },
   "auth": {
@@ -1851,6 +1852,8 @@
       "DEFAULT": "the built-in default"
     },
     "pendingRestart": "takes effect after a restart",
+    "atOnce": "takes effect as soon as it is saved, unlike the rest of this tab",
+    "atOnceShort": "Applies at once",
     "secretSet": "Set. Leave blank to keep it.",
     "secretNotSet": "Not set.",
     "secretSetShort": "set",
@@ -1898,6 +1901,7 @@
       "Auth__AccessTokenMinutes": "How long the short sign-in cookie lasts (15 by default, 1 to 1440). A device still signed in gets a new one without asking.",
       "Auth__RefreshTokenDays": "How long a device stays signed in without being used (90 by default). Every use starts the period again.",
       "Auth__RefreshRotationGraceSeconds": "How long a refresh token already traded in is still accepted (60 by default), for tabs that refresh at the same moment.",
+      "Auth__Standalone__PasswordMinLength": "The least a new password must have, from 10 to 128 characters (10 by default). It applies at once to every new password; existing passwords keep working.",
       "Auth__Standalone__MaxFailedAttempts": "Failed sign-ins before the account is locked (5 by default).",
       "Auth__Standalone__LockoutMinutes": "How long a locked account stays locked (15 by default).",
       "Auth__Standalone__ResetTokenMinutes": "How long a password setup or reset link works (60 by default, at most 30 days). Each link works once.",
@@ -1972,6 +1976,7 @@
       "Auth__AccessTokenMinutes": "Access cookie (minutes)",
       "Auth__RefreshTokenDays": "A device stays signed in (days)",
       "Auth__RefreshRotationGraceSeconds": "Refresh grace (seconds)",
+      "Auth__Standalone__PasswordMinLength": "Minimum password length",
       "Auth__Standalone__MaxFailedAttempts": "Failed sign-ins before a lockout",
       "Auth__Standalone__LockoutMinutes": "Lockout (minutes)",
       "Auth__Standalone__ResetTokenMinutes": "Reset link lifetime (minutes)",

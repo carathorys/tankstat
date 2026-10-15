@@ -157,9 +157,10 @@ public sealed record SettingsCopy(BackupSettingsState State, IReadOnlyDictionary
 
 /// <summary>
 /// The settings file a restore would leave (<see cref="SettingsInBackups.Restored"/>), and what this server's next start would make of it
-/// under its own environment: the problems it would refuse or leave the file out for (names only), and the sign-in it would run.
+/// under its own environment: the problems it would refuse or leave the file out for (names only), the sign-in it would run, and the
+/// password minimum its bootstrap administrator is judged by (null: this server's, a host without a settings file).
 /// </summary>
-public sealed record RestoredSettings(IReadOnlyDictionary<string, string?> Values, IReadOnlyList<string> Problems, AuthOptions Auth);
+public sealed record RestoredSettings(IReadOnlyDictionary<string, string?> Values, IReadOnlyList<string> Problems, AuthOptions Auth, int? PasswordMinLength = null);
 
 /// <summary>
 /// The instance's settings file as backups carry it (the app's own <c>Settings:Path</c>): the copy a backup takes, what a restore of one

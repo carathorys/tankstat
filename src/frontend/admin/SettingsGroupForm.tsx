@@ -175,6 +175,7 @@ export function SettingsGroupForm({
             <SettingControl
               key={s.key}
               setting={s}
+              groupAppliesAtOnce={group.appliesAtOnce}
               label={label(s)}
               value={draft.values[s.key] ?? ''}
               cleared={draft.cleared.has(s.key)}
@@ -412,6 +413,7 @@ function shown(s: Setting, t: TFunction, weekday: (day: string) => string, choic
  */
 function SettingControl({
   setting: s,
+  groupAppliesAtOnce,
   label,
   value,
   cleared,
@@ -425,6 +427,8 @@ function SettingControl({
   onClear,
 }: {
   setting: Setting
+  /** What the group's note says; a setting that applies otherwise (the password minimum in the Sign-in group) says so in a badge. */
+  groupAppliesAtOnce: boolean
   label: string
   value: string
   cleared: boolean
@@ -443,6 +447,7 @@ function SettingControl({
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Control
           setting={s}
+          groupAppliesAtOnce={groupAppliesAtOnce}
           label={label}
           value={value}
           cleared={cleared}
@@ -463,6 +468,7 @@ function SettingControl({
 
 function Control({
   setting: s,
+  groupAppliesAtOnce,
   label,
   value,
   cleared,
@@ -476,6 +482,8 @@ function Control({
   onClear,
 }: {
   setting: Setting
+  /** What the group's note says; a setting that applies otherwise (the password minimum in the Sign-in group) says so in a badge. */
+  groupAppliesAtOnce: boolean
   label: string
   value: string
   cleared: boolean
@@ -496,6 +504,7 @@ function Control({
   const badges: LabelBadge[] = [
     { text: t(`systemSettings.sourceShort.${s.source}`), spoken: t(`systemSettings.source.${s.source}`) },
     ...(s.restartPending ? [{ text: t('systemSettings.restartShort'), spoken: t('systemSettings.pendingRestart'), tone: 'warning' as const }] : []),
+    ...(s.appliesAtOnce && !groupAppliesAtOnce ? [{ text: t('systemSettings.atOnceShort'), spoken: t('systemSettings.atOnce') }] : []),
   ]
   const hint =
     [reason, s.kind === 'LIST' && t('systemSettings.listHint')].filter((part): part is string => typeof part === 'string' && part.length > 0).join(' · ') ||

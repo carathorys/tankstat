@@ -6,6 +6,7 @@ using Tankstat.Application.Notifications;
 using Tankstat.Application.Recognition;
 using Tankstat.Application.Sync;
 using Tankstat.Application.SystemSettings;
+using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
 
 namespace Tankstat.Application.UnitTests;
@@ -16,6 +17,7 @@ public class SettingsCatalogTests
     private static readonly (Type Options, string Section)[] Sections =
     [
         (typeof(AuthOptions), AuthOptions.SectionName),
+        (typeof(PasswordOptions), PasswordOptions.SectionName),
         (typeof(SmtpOptions), SmtpOptions.SectionName),
         (typeof(VehicleDefaultsOptions), VehicleDefaultsOptions.SectionName),
         (typeof(NotificationOptions), NotificationOptions.SectionName),

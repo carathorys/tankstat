@@ -37,6 +37,7 @@ export const server = setupServer(
   graphql.query('UnreadNotificationCount', () => HttpResponse.json({ data: { notificationCount: 0 } })),
   graphql.query('ParkedChanges', () => HttpResponse.json({ data: { parkedChanges: [] } })),
   graphql.query('RecognitionStatus', () => HttpResponse.json({ data: { recognitionStatus: { available: false } } })),
+  graphql.query('PasswordRequirements', () => HttpResponse.json({ data: { passwordRequirements: { minLength: 10, maxLength: 128 } } })),
   graphql.query('UiSettings', () => HttpResponse.json({ data: { uiSettings: { navOpen: null, language: null, colorMode: null, surface: null, timeFormat: null, dateFormat: null, defaultTimeFormat: null, defaultDateFormat: null, grids: [] } } })),
   // The Account page's Offline data section: the default window, no vehicles of its own (tests with vehicles answer these themselves).
   graphql.query('OfflineSettings', () => HttpResponse.json({ data: { offlineSettings: { __typename: 'OfflineSettingsInfo', defaultWindow: 'span:P2M', vehicles: [] } } })),

@@ -76,6 +76,7 @@ export const systemSetting = (over: Partial<SystemSettingFieldsFragment> & { key
   editable: true,
   restartPending: false,
   defaultValue: null,
+  appliesAtOnce: false,
   ...over,
 })
 

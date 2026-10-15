@@ -10,7 +10,7 @@ namespace Tankstat.Application.Users;
 /// <summary>Sign-in related use cases for every mode: local login/password handling and external user provisioning.</summary>
 public sealed class AuthService(
     IUserRepository users, IPasswordHasher hasher, PasswordResetService resets, IPasswordResetQueue resetQueue, UserSessionService sessions,
-    AccessService access, IOptions<AuthOptions> auth, TimeProvider clock, ILogger<AuthService> logger)
+    AccessService access, IOptions<AuthOptions> auth, PasswordRequirements passwords, TimeProvider clock, ILogger<AuthService> logger)
 {
     /// <summary>The error key of a refused sign-in of a disabled user; the OIDC failure handler recognises it.</summary>
     public const string AccountDisabledKey = "auth.accountDisabled";
@@ -74,7 +74,7 @@ public sealed class AuthService(
             logger.LogWarning("Password change refused for user {UserId}: the current password is incorrect", user.Id);
             throw new DomainException("password.currentIncorrect", "The current password is not correct.");
         }
-        PasswordPolicy.Validate(newPassword);
+        passwords.Validate(newPassword);
 
         user.SetPasswordHash(hasher.Hash(newPassword!));
         await users.UpdateAsync(user, ct);
@@ -129,7 +129,7 @@ public sealed class AuthService(
         RequireMode(AuthMode.Standalone);
         PasswordPolicy.RequireRepeated(newPassword, newPasswordConfirmation);
         var (user, record) = await resets.ResolveAsync(token, ct);
-        PasswordPolicy.Validate(newPassword);
+        passwords.Validate(newPassword);
 
         await resets.MarkUsedAsync(record, ct);
         user.SetPasswordHash(hasher.Hash(newPassword!));
@@ -247,10 +247,13 @@ public sealed class AuthService(
         return true;
     }
 
-    /// <summary>A local administrator, not saved yet: the password within <see cref="PasswordPolicy"/> (else a <see cref="DomainException"/>), hashed.</summary>
+    /// <summary>
+    /// A local administrator, not saved yet: the password within the requirements as they are now (<see cref="PasswordRequirements"/>, which
+    /// the setup's wizard may have saved a step before; else a <see cref="DomainException"/>), hashed.
+    /// </summary>
     public User NewAdministrator(string? email, string? password)
     {
-        PasswordPolicy.Validate(password ?? "");
+        passwords.Validate(password ?? "");
         var admin = User.CreateLocal(email ?? "", "Administrator", isAdmin: true);
         admin.SetPasswordHash(hasher.Hash(password!));
         return admin;

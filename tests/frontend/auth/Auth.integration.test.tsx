@@ -139,6 +139,23 @@ it('reset link: a repetition that differs stops the form at it, and nothing is s
   expect(state.calls.ResetPassword).toBeUndefined()
 })
 
+it('reset link: says the minimum the administrators set before typing, and a shorter password stops the form at it', async () => {
+  const ui = userEvent.setup()
+  const state = standaloneServer()
+  server.use(graphql.query('PasswordRequirements', () => HttpResponse.json({ data: { passwordRequirements: { minLength: 14, maxLength: 128 } } })))
+  renderWithApollo(<App />, '/?resetToken=tok.en')
+
+  const password = await screen.findByLabelText('New password')
+  await waitFor(() => expect(password).toHaveAccessibleDescription('At least 14 characters.'))
+  await ui.type(password, 'thirteen-char')
+  await ui.type(screen.getByLabelText('Repeat the new password'), 'thirteen-char')
+  await ui.click(screen.getByRole('button', { name: 'Set password' }))
+
+  expect(password).toHaveFocus()
+  expect(password).toHaveAccessibleDescription(/The password must be at least 14 characters long\./)
+  expect(state.calls.ResetPassword).toBeUndefined()
+})
+
 it('reset link: shows an invalid-link error from the server', async () => {
   const ui = userEvent.setup()
   standaloneServer()

@@ -18,6 +18,13 @@ public sealed class SessionQueries
     /// <summary>Public messages the UI must show (e.g. the "authentication disabled" warning).</summary>
     public IReadOnlyList<Notice> GetNotices([Service] NoticeService notices) => notices.GetNotices();
 
+    /// <summary>
+    /// Public, in every mode: what a new password must be (the reset page and the setup have nobody signed in), shown before typing and
+    /// checked while typing; the server stays the judge.
+    /// </summary>
+    public PasswordRequirementsInfo GetPasswordRequirements([Service] PasswordRequirements passwords) =>
+        new(passwords.MinLength, PasswordRequirements.MaxLength);
+
     public async Task<IReadOnlyList<UserAccount>> GetUsers([Service] UserService users, CancellationToken ct) =>
         (await users.ListAsync(ct)).Select(UserAccount.From).ToList();
 

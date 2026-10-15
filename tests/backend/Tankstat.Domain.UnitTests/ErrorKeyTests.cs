@@ -41,11 +41,11 @@ public class ErrorKeyTests
     [Fact]
     public void Password_Errors_CarryTheLimits()
     {
-        var tooShort = Catch(() => PasswordPolicy.Validate("short"));
+        var tooShort = Catch(() => PasswordPolicy.Validate("short", PasswordPolicy.MinLength));
         Assert.Equal("password.tooShort", tooShort.Key);
         Assert.Equal(PasswordPolicy.MinLength, tooShort.Args["min"]);
 
-        var tooLong = Catch(() => PasswordPolicy.Validate(new string('x', PasswordPolicy.MaxLength + 1)));
+        var tooLong = Catch(() => PasswordPolicy.Validate(new string('x', PasswordPolicy.MaxLength + 1), PasswordPolicy.MinLength));
         Assert.Equal("password.tooLong", tooLong.Key);
         Assert.Equal(PasswordPolicy.MaxLength, tooLong.Args["max"]);
         Assert.Equal("password.mismatch", Catch(() => PasswordPolicy.RequireRepeated("a", "b")).Key);

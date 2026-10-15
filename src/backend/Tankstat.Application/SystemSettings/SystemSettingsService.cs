@@ -225,7 +225,8 @@ public sealed class SystemSettingsService(
     /// may hold it yet (a disabled administrator or a user does: the new account could not be added beside it).
     /// </summary>
     private async Task<string?> BootstrapProblemAsync(IConfiguration candidate, CancellationToken ct) =>
-        StandaloneBootstrap.ProblemOf(candidate["Auth:Standalone:AdminEmail"], candidate["Auth:Standalone:AdminPassword"], out var address)
+        StandaloneBootstrap.ProblemOf(
+            candidate["Auth:Standalone:AdminEmail"], candidate["Auth:Standalone:AdminPassword"], PasswordOptions.MinLengthIn(key => candidate[key]), out var address)
         ?? (await users.FindLocalByEmailAsync(address, ct) is null ? null : "taken");
 
     /// <summary>The same place, written either way: a trailing slash or the case of the scheme and host make no difference.</summary>

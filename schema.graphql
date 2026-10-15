@@ -27,6 +27,7 @@ type Query {
   vehicle(id: UUID!): Vehicle @cost(weight: "10")
   session: Session! @cost(weight: "10")
   notices: [Notice!]!
+  passwordRequirements: PasswordRequirementsInfo!
   users: [UserAccount!]! @cost(weight: "10")
   canSetUserPasswords: Boolean! @cost(weight: "10")
   accessSettings: AccessSettingsInfo! @cost(weight: "10")
@@ -489,6 +490,11 @@ type OfflineVehicleWindow {
   window: String!
 }
 
+type PasswordRequirementsInfo {
+  minLength: Int!
+  maxLength: Int!
+}
+
 type PasswordResetLink {
   token: String!
   url: String
@@ -740,6 +746,7 @@ type SystemSetting {
   editable: Boolean!
   restartPending: Boolean!
   defaultValue: String
+  appliesAtOnce: Boolean!
 }
 
 type SystemSettingsGroup {

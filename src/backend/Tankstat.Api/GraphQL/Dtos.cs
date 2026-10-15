@@ -39,6 +39,9 @@ public sealed record AccessSettingsInfo(AccessLevel DefaultLevelForOthers);
 
 public sealed record AccessGrantInfo(Guid Id, Guid OwnerId, Guid GranteeId, AccessLevel Level);
 
+/// <summary>What a new password must be: <paramref name="MinLength"/> (an administrator's setting) to <paramref name="MaxLength"/> characters.</summary>
+public sealed record PasswordRequirementsInfo(int MinLength, int MaxLength);
+
 public sealed record LoginInput(string Email, string Password);
 /// <param name="NewPasswordConfirmation">The new password again; nullable so an older client gets <c>password.mismatch</c>, not a missing field.</param>
 public sealed record ChangePasswordInput(string CurrentPassword, string NewPassword, string? NewPasswordConfirmation = null);

@@ -9,6 +9,8 @@ fragment SystemSettingFields on SystemSetting {
   editable
   restartPending
   defaultValue
+  # differs from its group's where one setting of a group read at start applies at once (the password minimum)
+  appliesAtOnce
 }
 
 fragment SystemSettingsFields on SystemSettingsInfo {

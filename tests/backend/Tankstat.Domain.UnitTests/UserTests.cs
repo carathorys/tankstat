@@ -98,14 +98,26 @@ public class PasswordTests
     [InlineData(null)]
     [InlineData("short")]
     public void Policy_RejectsShortPasswords(string? password) =>
-        Assert.Throws<DomainException>(() => PasswordPolicy.Validate(password));
+        Assert.Throws<DomainException>(() => PasswordPolicy.Validate(password, PasswordPolicy.MinLength));
 
     [Fact]
     public void Policy_RejectsHugePasswords() =>
-        Assert.Throws<DomainException>(() => PasswordPolicy.Validate(new string('x', PasswordPolicy.MaxLength + 1)));
+        Assert.Throws<DomainException>(() => PasswordPolicy.Validate(new string('x', PasswordPolicy.MaxLength + 1), PasswordPolicy.MinLength));
 
     [Fact]
-    public void Policy_AcceptsReasonablePasswords() => PasswordPolicy.Validate("correct horse battery");
+    public void Policy_AcceptsReasonablePasswords() => PasswordPolicy.Validate("correct horse battery", PasswordPolicy.MinLength);
+
+    [Fact]
+    public void Policy_TakesTheMinimumItIsGiven()
+    {
+        var refused = Assert.Throws<DomainException>(() => PasswordPolicy.Validate("twelve chars", 13)); // 12 characters
+        Assert.Equal(13, refused.Args["min"]);
+        PasswordPolicy.Validate("twelve chars", 12);
+        Assert.False(PasswordPolicy.Meets("twelve chars", 13));
+        Assert.True(PasswordPolicy.Meets("twelve chars", 12));
+        Assert.False(PasswordPolicy.Meets(new string('x', PasswordPolicy.MaxLength + 1), 12));
+        Assert.False(PasswordPolicy.Meets(null, 12));
+    }
 
     [Theory]
     [InlineData("correct horse battery", null)] // an older client sends none

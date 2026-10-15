@@ -189,7 +189,8 @@
       "show": "A jelszó megjelenítése",
       "showPassphrase": "A jelmondat megjelenítése",
       "showSecret": "A beírt érték megjelenítése",
-      "capsLock": "A Caps Lock be van kapcsolva."
+      "capsLock": "A Caps Lock be van kapcsolva.",
+      "requirements": "Legalább {{min}} karakter."
     }
   },
   "auth": {
@@ -1851,6 +1852,8 @@
       "DEFAULT": "a beépített alapértelmezés"
     },
     "pendingRestart": "újraindítás után lép életbe",
+    "atOnce": "mentés után azonnal életbe lép, a lap többi beállításától eltérően",
+    "atOnceShort": "Azonnal érvényes",
     "secretSet": "Beállítva. Hagyd üresen, hogy megmaradjon.",
     "secretNotSet": "Nincs beállítva.",
     "secretSetShort": "beállítva",
@@ -1898,6 +1901,7 @@
       "Auth__AccessTokenMinutes": "Meddig érvényes a rövid bejelentkezési süti (alapból 15, 1 és 1440 között). A még bejelentkezett eszköz kérdés nélkül újat kap.",
       "Auth__RefreshTokenDays": "Meddig marad bejelentkezve egy eszköz használat nélkül (alapból 90). Minden használat újraindítja az időt.",
       "Auth__RefreshRotationGraceSeconds": "Meddig fogadja el még a szerver a már beváltott frissítő tokent (alapból 60), az egyszerre frissítő lapok miatt.",
+      "Auth__Standalone__PasswordMinLength": "Legalább ilyen hosszú legyen egy új jelszó, 10 és 128 karakter között (alapból 10). Azonnal érvényes minden új jelszóra; a meglévő jelszavak továbbra is működnek.",
       "Auth__Standalone__MaxFailedAttempts": "Ennyi sikertelen bejelentkezés után zárolódik a fiók (alapból 5).",
       "Auth__Standalone__LockoutMinutes": "Meddig marad zárolva a fiók (alapból 15).",
       "Auth__Standalone__ResetTokenMinutes": "Meddig működik egy jelszóbeállító vagy -visszaállító link (alapból 60, legfeljebb 30 nap). Minden link egyszer használható.",
@@ -1972,6 +1976,7 @@
       "Auth__AccessTokenMinutes": "Hozzáférési süti (perc)",
       "Auth__RefreshTokenDays": "Egy eszköz bejelentkezve marad (nap)",
       "Auth__RefreshRotationGraceSeconds": "Frissítési türelmi idő (másodperc)",
+      "Auth__Standalone__PasswordMinLength": "A jelszó legkisebb hossza",
       "Auth__Standalone__MaxFailedAttempts": "Sikertelen bejelentkezések a zárolásig",
       "Auth__Standalone__LockoutMinutes": "Zárolás (perc)",
       "Auth__Standalone__ResetTokenMinutes": "Visszaállító link érvényessége (perc)",

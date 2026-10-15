@@ -13,7 +13,7 @@ namespace Tankstat.Application.Users;
 /// <summary>Administrator-only user management.</summary>
 public sealed class UserService(
     AccessService access, IUserRepository users, IUserDataRepository userData, PasswordResetService resets, UserSessionService sessions, IPasswordHasher hasher,
-    ImageService images, ImportSessionStore importSessions, IOptions<AuthOptions> auth, ILogger<UserService> logger)
+    ImageService images, ImportSessionStore importSessions, IOptions<AuthOptions> auth, PasswordRequirements passwords, ILogger<UserService> logger)
 {
     /// <summary>One new local user per address at a time within this process (an instance per request, so static).</summary>
     private static readonly StripedLocks Creating = new();
@@ -125,7 +125,7 @@ public sealed class UserService(
         var user = await Find(userId, ct);
         if (user.Provider != UserProvider.Local) throw new DomainException("user.passwordsLocalOnly", "Only local users have passwords managed here.");
 
-        PasswordPolicy.Validate(newPassword);
+        passwords.Validate(newPassword);
         user.SetPasswordHash(hasher.Hash(newPassword!));
         await users.UpdateAsync(user, ct);
         await resets.RevokeAllAsync(user.Id, ct);
