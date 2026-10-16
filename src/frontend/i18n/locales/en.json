@@ -189,6 +189,7 @@
     "redirecting": "Taking you to your identity provider…",
     "signedOutTitle": "You have signed out.",
     "signedOutHint": "Your session in this app has ended. You may still be signed in at your identity provider.",
+    "signedOutNotTold": "The server has not yet ended the session this device signed out of, so signing in has to wait. Try again in a moment.",
     "failedTitle": "Sign-in failed",
     "failedText": "Signing in with your identity provider did not work. Try again; if it keeps failing, contact your administrator.",
     "failedReasons": {
@@ -1745,7 +1746,8 @@
     "signOutChanges_other": "{{count}} changes made on this device have not reached the server yet.",
     "signOutFound_one": "{{count}} entry found on this device after the server was restored is not on the server.",
     "signOutFound_other": "{{count}} entries found on this device after the server was restored are not on the server.",
-    "signOutDeleted": "Signing out deletes everything this device keeps for your account, and these with it: they cannot be sent later."
+    "signOutDeleted": "Signing out deletes everything this device keeps for your account, and these with it: they cannot be sent later.",
+    "signOutFailed": "This device could not sign out: it cannot note it, and the server cannot be reached to end the session. Nothing was deleted. Try again once the server can be reached."
   },
   "setup": {
     "title": "Set up Tankstat",

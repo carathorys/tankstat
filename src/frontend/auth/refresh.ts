@@ -14,21 +14,25 @@ let pending: Promise<boolean> | null = null
  * Asks for a new access cookie. True when the device is signed in again; false when it has to sign in (or the server has no token
  * endpoints: no authentication, or a proxy that signs every request in itself). A network failure rejects: that is not "signed out".
  * Callers at the same moment share one request, so a refresh token is never traded in twice by this tab. Never while this device signed
- * out without the server hearing of it (#162): its cookies would sign it straight back in.
+ * out without the server hearing of it (#162): its cookies would sign it straight back in; nor while the device cannot read whether it
+ * did (one refresh lost is the price; the next sign-in mends it).
  */
 export function refreshSession(): Promise<boolean> {
   pending ??= deviceData
     .signedOutHere()
-    .then((signedOut) => (signedOut ? false : trackedFetch('/auth/token/refresh', { method: 'POST', credentials: 'same-origin', headers: HEADERS }).then((response) => response.ok)))
+    .then(
+      (signedOut) => (signedOut ? false : trackedFetch('/auth/token/refresh', { method: 'POST', credentials: 'same-origin', headers: HEADERS }).then((response) => response.ok)),
+      () => false,
+    )
     .finally(() => {
       pending = null
     })
   return pending
 }
 
-/** Signs this device out on the server (its session ends, both cookies go), also once the access cookie ran out. */
-export function signOutDevice(): Promise<Response> {
-  return trackedFetch('/auth/token/logout', { method: 'POST', credentials: 'same-origin', headers: HEADERS })
+/** Signs this device out on the server (its session ends, both cookies go), also once the access cookie ran out; `signal` gives it up. */
+export function signOutDevice(signal?: AbortSignal): Promise<Response> {
+  return trackedFetch('/auth/token/logout', { method: 'POST', credentials: 'same-origin', headers: HEADERS, signal })
 }
 
 /** `fetch` for the REST endpoints: an answer of 401 is tried once more after a refresh. */

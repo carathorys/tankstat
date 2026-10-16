@@ -1,9 +1,9 @@
 import { ApolloClient, ApolloLink, HttpLink, InMemoryCache } from '@apollo/client'
 import { parse } from 'graphql'
 import { graphql, http, HttpResponse } from 'msw'
-import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import { createApolloClient } from '../../../../src/frontend/apolloClient.ts'
-import { AdminDocument, HealthDocument, LoginDocument, RefuelingDetailsDocument, SessionDocument, VehicleDefaultsDocument } from '../../../../src/frontend/gql/generated.ts'
+import { AdminDocument, HealthDocument, LoginDocument, RefuelingDetailsDocument, ResetPasswordDocument, SessionDocument, VehicleDefaultsDocument } from '../../../../src/frontend/gql/generated.ts'
 import { appliedMutations } from '../../../../src/frontend/offline/appliedMutations.ts'
 import { connectivity } from '../../../../src/frontend/offline/connectivity.ts'
 import { deviceData } from '../../../../src/frontend/offline/deviceData.ts'
@@ -11,7 +11,7 @@ import { OfflineError } from '../../../../src/frontend/offline/errors.ts'
 import { createOfflineLink } from '../../../../src/frontend/offline/offlineLink.ts'
 import { outbox } from '../../../../src/frontend/offline/outbox.ts'
 import { trackedFetch } from '../../../../src/frontend/offline/trackedFetch.ts'
-import { fakeInstance, silenceConsoleError } from '../../support/mocks.tsx'
+import { fakeInstance, gqlError, silenceConsoleError } from '../../support/mocks.tsx'
 import { server } from '../../support/server.ts'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
@@ -282,6 +282,86 @@ it('a gateway answering for an app that is down tells the server nothing: the de
   expect(calls.logout).toBe(1)
   expect(calls.session).toBe(0)
   expect(await deviceData.signedOutHere()).not.toBeNull()
+})
+
+it('a sign-in that fails (a wrong password) keeps the sign-out left over: the old cookies must not sign the device back in', async () => {
+  const calls = await signedOutHere(() => new HttpResponse(null, { status: 500 }))
+  server.use(graphql.mutation('Login', () => (calls.login++, HttpResponse.json(gqlError('Wrong e-mail or password.', 'auth.invalidCredentials')))))
+  const client = createApolloClient('http://localhost/graphql')
+
+  await client.mutate({ mutation: LoginDocument, variables: { input: { email: 'a@x.co', password: 'wrong-password' } } }).catch(() => undefined)
+
+  expect(calls.login).toBe(1)
+  expect(await deviceData.signedOutHere()).not.toBeNull()
+  const { refreshSession } = await import('../../../../src/frontend/auth/refresh.ts')
+  await expect(refreshSession()).resolves.toBe(false) // the old refresh cookie is never traded in
+  expect(calls.refresh).toBe(0)
+})
+
+it('setting a password from a reset link signs nobody in, so a sign-out left over stays', async () => {
+  const calls = await signedOutHere(() => new HttpResponse(null, { status: 500 }))
+  server.use(graphql.mutation('ResetPassword', () => HttpResponse.json({ data: { resetPassword: true } })))
+  const client = createApolloClient('http://localhost/graphql')
+
+  await client.mutate({ mutation: ResetPasswordDocument, variables: { input: { token: 't', newPassword: 'a-new-password' } } })
+
+  expect(calls.logout).toBe(0)
+  expect(await deviceData.signedOutHere()).not.toBeNull()
+})
+
+it('a server with no sessions to end (sign-in off or a proxy now: 404) counts as told, so the device is not held signed out', async () => {
+  const calls = await signedOutHere(() => new HttpResponse(null, { status: 404 }))
+  server.use(graphql.query('Session', () => (calls.session++, HttpResponse.json({ data: { session: { mode: 'NONE', user: null, instance: fakeInstance() }, notices: [] } }))))
+  const client = createApolloClient('http://localhost/graphql')
+
+  const { data } = await client.query({ query: SessionDocument, fetchPolicy: 'network-only' })
+
+  expect(data?.session.mode).toBe('NONE') // the server's answer, its notices and all
+  expect(calls).toMatchObject({ logout: 1, session: 1 })
+  expect(await deviceData.signedOutHere()).toBeNull()
+})
+
+it('a sign-out the server does not answer in time is called off, not left running, and the server counts as out of reach', async () => {
+  silenceConsoleError()
+  let aborted = false
+  await signedOutHere(() => new Promise<Response>(() => undefined))
+  server.use(
+    http.post('/auth/token/logout', ({ request }) => {
+      request.signal.addEventListener('abort', () => (aborted = true))
+      return new Promise<Response>(() => undefined) // never answers: a late 204 would clear a newer sign-in's cookies
+    }),
+  )
+  const timeout = AbortSignal.timeout.bind(AbortSignal)
+  vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => timeout(20)) // the probes' deadline, made short
+  const { endSessionOnServer } = await import('../../../../src/frontend/auth/signedOutHere.ts')
+
+  await expect(endSessionOnServer()).resolves.toBe(false)
+
+  await vi.waitFor(() => expect(aborted).toBe(true))
+  expect(connectivity.reachable).toBe(false) // the next Session is answered by the device at once, not after another wait
+  vi.restoreAllMocks()
+})
+
+it('a sign-out the server answered without ending the session is told again a while later, with nothing else asking', async () => {
+  let answer = 500
+  const calls = await signedOutHere(() => new HttpResponse(null, { status: answer }))
+  const { RETRY_MS, tellLeftOverSignOut } = await import('../../../../src/frontend/auth/signedOutHere.ts')
+  let retry: (() => void) | undefined
+  const original = globalThis.setTimeout
+  vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
+    if (ms !== RETRY_MS) return original(fn, ms)
+    retry = fn
+    return 0
+  }) as unknown as typeof setTimeout)
+
+  await expect(tellLeftOverSignOut()).resolves.toBe(false)
+  vi.restoreAllMocks()
+  expect(retry).toBeDefined()
+  answer = 204
+  retry!()
+
+  await vi.waitFor(async () => expect(await deviceData.signedOutHere()).toBeNull())
+  expect(calls.logout).toBe(2)
 })
 
 it('signing in while the server is out of reach is refused and keeps the device signed out', async () => {

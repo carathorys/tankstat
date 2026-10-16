@@ -11,8 +11,9 @@ import { navigation } from '../navigation.ts'
 import { connectivity } from '../offline/connectivity.ts'
 import { deviceData } from '../offline/deviceData.ts'
 import { OfflineError } from '../offline/errors.ts'
+import { useConnectivity } from '../offline/useConnectivity.ts'
 import { failureText, oidcLoginUrl, signedOut } from './oidc.ts'
-import { forgetLeftOverSignOut } from './signedOutHere.ts'
+import { tellLeftOverSignOut } from './signedOutHere.ts'
 
 /**
  * Signing in with an identity provider (Auth:Mode=Oidc). On a fresh visit the browser is sent to the provider at once and comes back to
@@ -29,14 +30,20 @@ export function OidcSignIn() {
   const [wasSignedOut] = useState(signedOut.isSet)
   // Signed out here without the server hearing of it: null until known, so nothing is sent away on a guess.
   const [signedOutHere, setSignedOutHere] = useState<boolean | null>(null)
-  const [offline, setOffline] = useState(false)
+  // Why the last Sign in did not go to the provider: the server out of reach, or it did not end the session this device signed out of.
+  const [stopped, setStopped] = useState<'offline' | 'notTold' | null>(null)
+  const { reachable } = useConnectivity()
   const failed = params.get('signIn') === 'failed'
   const loginUrl = oidcLoginUrl(pathname, search)
   const redirected = useRef(false)
 
   useEffect(() => {
     let live = true
-    void deviceData.signedOutHere().then((held) => live && setSignedOutHere(held !== null))
+    // A read the device cannot make counts as not signed out here, as for the session (a guess would keep a signed-in person waiting).
+    void deviceData.signedOutHere().then(
+      (held) => live && setSignedOutHere(held !== null),
+      () => live && setSignedOutHere(false),
+    )
     return () => {
       live = false
     }
@@ -50,13 +57,17 @@ export function OidcSignIn() {
 
   const signIn = async () => {
     // The provider is reached through the server: without it the page would be gone.
-    if (!connectivity.reachable) return setOffline(true)
-    setOffline(false)
+    if (!connectivity.reachable) return setStopped('offline')
+    // A sign-out left over is told first, and the browser goes only once the server ended that session: what it navigates to cannot be
+    // seen from here, and the sign-out told after its return would end the new session (a read the device cannot make does not hold it up).
+    if (!(await tellLeftOverSignOut().catch(() => true))) return setStopped(connectivity.reachable ? 'notTold' : 'offline')
+    setStopped(null)
     signedOut.clear()
-    await forgetLeftOverSignOut()
     navigation.replace(loginUrl)
   }
-  const offlineNote = offline && <ErrorMessage error={new OfflineError()} />
+  // Said as things are now: once the server is back, the note goes.
+  const offlineNote =
+    stopped === 'notTold' ? <ErrorMessage>{t('auth.signedOutNotTold')}</ErrorMessage> : stopped === 'offline' && !reachable && <ErrorMessage error={new OfflineError()} />
 
   if (failed) {
     return (

@@ -189,6 +189,7 @@
     "redirecting": "Átirányítás az identitásszolgáltatódhoz…",
     "signedOutTitle": "Kijelentkeztél.",
     "signedOutHint": "Az alkalmazásbeli munkameneted véget ért. Az identitásszolgáltatódnál továbbra is bejelentkezve lehetsz.",
+    "signedOutNotTold": "A szerver még nem zárta le azt a munkamenetet, amelyből ez az eszköz kijelentkezett, ezért a bejelentkezésnek várnia kell. Próbáld újra egy kicsit később.",
     "failedTitle": "A bejelentkezés nem sikerült",
     "failedText": "A bejelentkezés az identitásszolgáltatódon keresztül nem sikerült. Próbáld újra; ha továbbra sem megy, fordulj az adminisztrátorhoz.",
     "failedReasons": {
@@ -1745,7 +1746,8 @@
     "signOutChanges_other": "{{count}} ezen az eszközön végzett módosítás még nem jutott el a szerverre.",
     "signOutFound_one": "{{count}} bejegyzés, amelyet a szerver visszaállítása után ezen az eszközön találtunk, nincs a szerveren.",
     "signOutFound_other": "{{count}} bejegyzés, amelyet a szerver visszaállítása után ezen az eszközön találtunk, nincs a szerveren.",
-    "signOutDeleted": "A kijelentkezés törli mindazt, amit ez az eszköz a fiókodhoz tárol, ezeket is: később már nem küldhetők el."
+    "signOutDeleted": "A kijelentkezés törli mindazt, amit ez az eszköz a fiókodhoz tárol, ezeket is: később már nem küldhetők el.",
+    "signOutFailed": "Ez az eszköz nem tudott kijelentkezni: nem tudja feljegyezni, és a szerver sem érhető el, hogy lezárja a munkamenetet. Semmi sem törlődött. Próbáld újra, amikor a szerver elérhető."
   },
   "setup": {
     "title": "A Tankstat beállítása",

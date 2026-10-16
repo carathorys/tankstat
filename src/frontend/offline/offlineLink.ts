@@ -1,8 +1,8 @@
 import { ApolloLink } from '@apollo/client'
 import { getMainDefinition, print } from '@apollo/client/utilities'
 import type { DocumentNode } from 'graphql'
-import { catchError, from, mergeMap, of, tap, throwError, type Observable } from 'rxjs'
-import { forgetLeftOverSignOut, tellLeftOverSignOut } from '../auth/signedOutHere.ts'
+import { catchError, from, map, mergeMap, of, tap, throwError, type Observable } from 'rxjs'
+import { tellLeftOverSignOut } from '../auth/signedOutHere.ts'
 import type { AuthMode, SessionQuery } from '../gql/generated.ts'
 import { appliedMutations } from './appliedMutations.ts'
 import { connectivity } from './connectivity.ts'
@@ -14,14 +14,11 @@ import { policyFor, snapshotKey } from './snapshotPolicy.ts'
 /** Signing in or out: what comes back afterwards may be another account's, so nothing is kept until `Session` says whose it is. */
 const SIGN_IN_MUTATIONS = new Set(['Login', 'Logout', 'ResetPassword'])
 
-/** The mutations that sign someone in on this device: a sign-out the server has not heard of is told, then forgotten, first. */
-const SIGNING_IN = new Set(['Login', 'ResetPassword'])
-
 /**
  * The device's own answer while it is signed out without the server knowing (#162): nobody, in the mode it signed out of, so the sign-in
  * screen shows (offline too) and the cookies still in the browser never sign it back in. No notices: they are the server's to send.
  */
-export const signedOutSession = (mode: string): SessionQuery => ({
+const signedOutSession = (mode: string): SessionQuery => ({
   session: { mode: mode as AuthMode, user: null, instance: { generation: '', restorePoint: null } },
   notices: [],
 })
@@ -168,17 +165,31 @@ export function createOfflineLink(device = deviceData): ApolloLink {
       return fromServer()
     }
 
-    // Signed out here without the server hearing of it: told now if it can be, and until then nobody is signed in on this device.
+    // Signed out here without the server hearing of it: told now if it can be, and until then nobody is signed in on this device. When the
+    // device cannot read whether it was, the server is asked as usual: a guess of "signed out" would lock a signed-in person out.
     if (!bypass && name === 'Session') {
-      return from(device.signedOutHere()).pipe(
+      return from(device.signedOutHere().catch(() => null)).pipe(
         mergeMap((signedOut) => {
           if (!signedOut) return route()
-          return from(tellLeftOverSignOut()).pipe(mergeMap((told) => (told ? route() : of({ data: signedOutSession(signedOut.mode) } as ApolloLink.Result))))
+          const told = tellLeftOverSignOut(device).catch(() => false)
+          return from(told).pipe(mergeMap((done) => (done ? route() : of({ data: signedOutSession(signedOut.mode) } as ApolloLink.Result))))
         }),
       )
     }
-    // Only while the server can be reached: offline the sign-in itself is refused, and the device must stay signed out.
-    if (!bypass && name && SIGNING_IN.has(name) && connectivity.reachable) return from(forgetLeftOverSignOut()).pipe(mergeMap(() => route()))
+    // Signing in (only while the server can be reached: offline the sign-in itself is refused, and the device must stay signed out): a
+    // sign-out left over is told once more first. Forgotten only once the sign-in worked, whatever came of telling it, since its cookies
+    // replace the old ones (an old session nobody holds any more ends with its lifetime); a failed one leaves the old cookies, which must
+    // not sign the device back in. Forgotten before the answer goes on: the `Session` asked right after must not end the new session.
+    if (!bypass && name === 'Login' && connectivity.reachable) {
+      return from(tellLeftOverSignOut(device).catch(() => false)).pipe(
+        mergeMap(() => route()),
+        mergeMap((result) =>
+          !result.errors?.length && (result.data as { login?: unknown } | null | undefined)?.login
+            ? from(device.setSignedOutHere(null).catch(() => undefined)).pipe(map(() => result))
+            : of(result),
+        ),
+      )
+    }
     return route()
   })
 }
