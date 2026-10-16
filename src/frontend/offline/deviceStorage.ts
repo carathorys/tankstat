@@ -203,23 +203,39 @@ function openDb(factory: IDBFactory, name: string, version: number, upgrade: (db
   })
 }
 
-/** Deletes a database: another tab's connection closes itself (`versionchange`); one that does not is waited for `BLOCKED_WAIT_MS`. */
-function deleteDb(factory: IDBFactory, name: string): Promise<void> {
+/**
+ * Deletes a database: another tab's connection closes itself (`versionchange`); one that does not is waited for `BLOCKED_WAIT_MS`, then the
+ * delete is reported as failed (`result`), although IndexedDB cannot call it off: it is carried out once that tab lets go, and `settled`
+ * says when it really ended.
+ */
+function deleteDb(factory: IDBFactory, name: string): { result: Promise<void>; settled: Promise<void> } {
   const request = factory.deleteDatabase(name)
-  return new Promise((resolve, reject) => {
+  let settle = () => {}
+  const settled = new Promise<void>((resolve) => (settle = resolve))
+  const result = new Promise<void>((resolve, reject) => {
     let blocked: ReturnType<typeof setTimeout> | undefined
     request.onsuccess = () => {
       clearTimeout(blocked)
+      settle()
       resolve()
     }
     request.onerror = () => {
       clearTimeout(blocked)
+      settle()
       reject(request.error ?? new Error('IndexedDB could not be deleted'))
     }
     request.onblocked = () => {
       blocked ??= setTimeout(() => reject(new Error('IndexedDB is blocked by another tab')), BLOCKED_WAIT_MS)
     }
   })
+  return { result, settled }
+}
+
+/** Waits for `work` at most `BLOCKED_WAIT_MS`, then rejects as a blocked open does. */
+function withinBlockedWait(work: Promise<void>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const gaveUp = new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error('IndexedDB is blocked by another tab')), BLOCKED_WAIT_MS)))
+  return Promise.race([work, gaveUp]).finally(() => clearTimeout(timer))
 }
 
 export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage {
@@ -243,8 +259,12 @@ export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage
       db.close()
     }
   }
+  // The deletes IndexedDB has not carried out yet (another tab holds the database): an open of it waits behind one, never told it is blocked.
+  const deleting = new Map<string, Promise<void>>()
   return {
     async open(user) {
+      const pending = deleting.get(dbName(user))
+      if (pending) await withinBlockedWait(pending)
       const db = await openDb(factory, dbName(user), 6, (created, from) => {
         if (from < 1) created.createObjectStore('snapshots', { keyPath: 'key' }).createIndex('at', 'at')
         if (from < 2) {
@@ -314,7 +334,13 @@ export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage
         close: () => db.close(),
       }
     },
-    delete: (user) => deleteDb(factory, dbName(user)),
+    delete(user) {
+      const name = dbName(user)
+      const { result, settled } = deleteDb(factory, name)
+      deleting.set(name, settled)
+      void settled.then(() => deleting.get(name) === settled && deleting.delete(name))
+      return result
+    },
     lastUser: () => metaGet<string>('lastUser'),
     setLastUser: (user) => metaSet('lastUser', user),
     signedOutHere: () => metaGet<SignedOutHere>('signedOutHere'),

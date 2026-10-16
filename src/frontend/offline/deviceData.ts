@@ -27,7 +27,14 @@ let switching: Promise<void> = Promise.resolve()
 let puts = 0
 let writes: Promise<unknown> = Promise.resolve()
 let tabs: BroadcastChannel | null = null
+/**
+ * The storage chosen at start when it could not be opened and memory stands in for it: a sign-out goes there too (best effort), so a
+ * restart neither opens the account again nor forgets that it signed out.
+ */
+let durable: DeviceStorage | null = null
+const stores = () => (durable ? [storage, durable] : [storage])
 const elsewhere = new Set<() => void>()
+const signedOutElsewhere = new Set<(mode: string | undefined) => void>()
 const listeners = new Set<() => void>()
 /**
  * Told whenever another user's data (or none) is open, or what it held was removed: what is read from it must be read again (`outbox.ts`,
@@ -74,11 +81,19 @@ async function openFor(user: string | null) {
 function listenToOtherTabs() {
   if (tabs || typeof BroadcastChannel === 'undefined') return
   tabs = new BroadcastChannel(TABS_CHANNEL)
-  tabs.onmessage = (event: MessageEvent<{ type?: string; user?: string | null }>) => {
+  tabs.onmessage = (event: MessageEvent<{ type?: string; user?: string | null; mode?: string }>) => {
+    if (event.data?.type === 'signedOut') {
+      // Signed out in another tab: the account's database is being deleted, so this tab lets go of it at once (and reads nothing more of
+      // it). Only then: a `Session` answer of nobody elsewhere (a refresh that failed) leaves this tab's data open.
+      const { mode } = event.data
+      confirmed = false
+      switching = switching.then(() => openFor(null)).catch(() => undefined)
+      signedOutElsewhere.forEach((listener) => listener(mode))
+      elsewhere.forEach((listener) => listener())
+      return
+    }
     if (event.data?.type !== 'signedIn' || event.data.user === undefined || event.data.user === (store?.user ?? null)) return
     confirmed = false
-    // Signed out in another tab: the account's database is being deleted, so this tab lets go of it at once (and reads nothing more of it).
-    if (event.data.user === null) switching = switching.then(() => openFor(null)).catch(() => undefined)
     elsewhere.forEach((listener) => listener())
   }
 }
@@ -91,12 +106,14 @@ export const deviceData = {
   /** At start, before the first request: the last user's data, so the app opens with what it showed last time. */
   async boot(chosen?: DeviceStorage): Promise<void> {
     storage = chosen ?? pickStorage()
+    durable = null
     confirmed = false
     listenToOtherTabs()
     try {
       await openFor(await storage.lastUser())
     } catch (error) {
       console.warn('Offline data cannot be opened; the app works, but nothing is kept on this device.', error)
+      durable = storage
       storage = memoryStorage()
       store = null
     }
@@ -190,34 +207,55 @@ export const deviceData = {
   /**
    * Signing out (#162): everything this device keeps for the open account goes, its whole database (the answers, the downloaded window,
    * the pictures, the changes waiting and their photos, the rows set aside), nobody's data is open, and nobody is the last user. What read
-   * from it is told (the outbox, the pictures, the counts), and so are the other tabs. A database another tab will not let go of is left
-   * with a warning: the sign-out itself still happens.
+   * from it is told (the outbox, the pictures, the counts), and so are the other tabs (`signedOut`, with `mode`). A database another tab
+   * will not let go of is deleted once it does (IndexedDB cannot call a delete off); the sign-out does not wait for it, saying so in the
+   * console. The last user's database goes too when none is open (a sign-out right after a start offline).
    */
-  signOut(): Promise<void> {
+  signOut(mode?: string): Promise<void> {
+    // The writes begun before: a keep() made after this call waits for this step, so waiting for it in here would never end.
+    const before = writes
     switching = switching.then(async () => {
-      await writes
-      const user = store?.user ?? null
+      await before
+      // The open account's, and the last user's (no account open yet: a sign-out right after a start offline), in either storage.
+      const last = await Promise.all(stores().map((target) => target.lastUser().catch(() => null)))
+      const users = new Set([store?.user ?? null, ...last].filter((user) => user !== null))
       store?.close()
       store = null
       confirmed = false
       seenGeneration = undefined
-      if (user !== null) await storage.delete(user).catch((error) => console.warn('The offline data of the account that signed out cannot be removed.', error))
-      await storage.setLastUser(null).catch(() => undefined)
+      for (const target of stores()) {
+        for (const user of users) await target.delete(user).catch((error) => console.warn('The offline data of the account that signed out cannot be removed.', error))
+        await target.setLastUser(null).catch(() => undefined)
+      }
       storeListeners.forEach((listener) => listener())
       foundListeners.forEach((listener) => listener())
       listeners.forEach((listener) => listener())
     })
-    tabs?.postMessage({ type: 'signedIn', user: null })
+    tabs?.postMessage({ type: 'signedOut', mode })
     return switching
   },
 
-  /** Whether this device was signed out while the server could not end its session (`SignedOutHere`); null when it was not. */
-  signedOutHere(): Promise<SignedOutHere | null> {
-    return storage.signedOutHere().catch(() => null)
+  /**
+   * Whether this device was signed out while the server could not end its session (`SignedOutHere`); null when it was not. Rejects when
+   * the device cannot read it: each caller decides what a doubt means (a refresh is refused, a `Session` is asked of the server).
+   */
+  async signedOutHere(): Promise<SignedOutHere | null> {
+    const kept = await storage.signedOutHere()
+    return kept ?? (durable ? await durable.signedOutHere().catch(() => null) : null)
   },
 
-  setSignedOutHere(signedOut: SignedOutHere | null): Promise<void> {
-    return storage.setSignedOutHere(signedOut).catch((error) => console.warn('This device cannot remember that it signed out.', error))
+  /** Rejects when the device cannot keep it: a sign-out must then be heard by the server, or nothing is deleted. */
+  async setSignedOutHere(signedOut: SignedOutHere | null): Promise<void> {
+    await storage.setSignedOutHere(signedOut)
+    await durable?.setSignedOutHere(signedOut).catch((error) => console.warn('This device cannot remember that it signed out.', error))
+  },
+
+  /** Told when another tab signed out (`mode`: the one it signed out of), before this tab asks whose it is. */
+  onSignedOutElsewhere(listener: (mode: string | undefined) => void): () => void {
+    signedOutElsewhere.add(listener)
+    return () => {
+      signedOutElsewhere.delete(listener)
+    }
   },
 
   /**
@@ -310,6 +348,8 @@ export const deviceData = {
     tabs?.close()
     tabs = null
     elsewhere.clear()
+    signedOutElsewhere.clear()
+    durable = null
     storage = chosen
     store = null
     confirmed = false

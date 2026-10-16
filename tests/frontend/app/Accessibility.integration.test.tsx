@@ -7,6 +7,8 @@ import { ErrorBoundary } from '../../../src/frontend/ErrorBoundary.tsx'
 import { SIGNED_OUT_KEY } from '../../../src/frontend/auth/oidc.ts'
 import { navigation } from '../../../src/frontend/navigation.ts'
 import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
+import { deviceData } from '../../../src/frontend/offline/deviceData.ts'
+import { outbox } from '../../../src/frontend/offline/outbox.ts'
 import { platform } from '../../../src/frontend/pwa/platform.ts'
 import { check, setup, setupAccessibilityTests } from '../support/accessibility.tsx'
 import { server } from '../support/server.ts'
@@ -158,6 +160,19 @@ it('offline, the top bar, the footer and a page that needs the server are free o
   await ui.click(screen.getByRole('link', { name: 'Trash' }))
   await screen.findAllByText(/This needs a connection to the server/)
   await check(view.container)
+})
+
+it('the warning before a sign-out that deletes changes not sent is a labelled, described alert dialog free of violations', async () => {
+  const { ui } = setup('/')
+  await screen.findByRole('heading', { level: 1 })
+  await deviceData.settled()
+  await outbox.enqueue({ id: 't1', entity: 'refuelings', action: 'trash', vehicleId: 'v1', targetId: 'r1', expectedVersion: 1 })
+
+  await ui.click(screen.getByRole('button', { name: 'Sign out' }))
+
+  const dialog = await screen.findByRole('alertdialog', { name: 'Sign out and delete what was not sent?' })
+  expect(dialog).toHaveAccessibleDescription(/^1 change made on this device has not reached the server yet\./)
+  await check(dialog)
 })
 
 it('the notifications page and the open bell are labelled and free of violations', async () => {

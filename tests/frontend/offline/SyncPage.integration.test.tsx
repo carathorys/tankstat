@@ -101,9 +101,13 @@ it('Keep, on an entry waiting to be moved to the trash, takes that back', async 
   expect(outbox.changes).toEqual([])
 })
 
-it('signing out also warns of the rows found after a restore, which go with the rest of the account', async () => {
+it('signing out also warns of the rows found after a restore that a download judged, which go with the rest of the account', async () => {
   await downloaded(sessionHandler('STANDALONE', () => user()))
-  await (await deviceData.rows())!.putFound([{ id: 'r9', entity: 'refuelings', vehicleId: 'v1', generation: 'g0', version: 1, values: {} } as never])
+  await (await deviceData.rows())!.putFound([
+    { id: 'r9', entity: 'refuelings', vehicleId: 'v1', generation: 'g0', version: 1, values: {}, checked: true },
+    // Not judged yet (outside the window, say): it may well be on the server, and Waiting to sync lists none such, so it is not counted.
+    { id: 'r8', entity: 'refuelings', vehicleId: 'v1', generation: 'g0', version: 1, values: {} },
+  ] as never)
   connectivity.reset()
   renderWithApollo(<App />, '/')
   const ui = userEvent.setup()
@@ -114,7 +118,7 @@ it('signing out also warns of the rows found after a restore, which go with the 
   const confirm = await screen.findByRole('alertdialog', { name: 'Sign out and delete what was not sent?' })
   expect(confirm).toHaveAccessibleDescription(/^1 entry found on this device after the server was restored is not on the server\./)
   await ui.click(within(confirm).getByRole('button', { name: 'Cancel' }))
-  expect(await (await deviceData.rows())!.found()).toHaveLength(1) // kept: nothing was signed out
+  expect(await (await deviceData.rows())!.found()).toHaveLength(2) // kept: nothing was signed out
 })
 
 it('signing out with changes waiting asks first, and deletes them with the rest of the account on the device', async () => {

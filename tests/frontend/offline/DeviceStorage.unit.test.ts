@@ -308,4 +308,28 @@ describe('signing out (#162)', () => {
     vi.restoreAllMocks()
     stubborn.close()
   })
+
+  it('an open behind a delete still held up gives up after the same wait instead of hanging, and once the tab lets go it is empty', async () => {
+    const factory = new IDBFactory()
+    const storage = indexedDbStorage(factory)
+    const alice = await storage.open('alice')
+    await alice.put({ key: 'Welcome:{}', data: 1, at: 1 })
+    alice.close()
+    const stubborn = await openRaw(factory, 'tankstat-offline-alice', 6)
+    const original = globalThis.setTimeout
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
+      if (ms !== BLOCKED_WAIT_MS) return original(fn, ms)
+      fn()
+      return 0
+    }) as unknown as typeof setTimeout)
+    await expect(storage.delete('alice')).rejects.toThrow('IndexedDB is blocked by another tab')
+
+    await expect(storage.open('alice')).rejects.toThrow('IndexedDB is blocked by another tab') // the delete it waits behind is never "blocked"
+    vi.restoreAllMocks()
+    stubborn.close() // the delete is carried out now
+
+    const again = await storage.open('alice')
+    expect(await again.get('Welcome:{}')).toBeUndefined()
+    again.close()
+  })
 })
