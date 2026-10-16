@@ -10,6 +10,7 @@ import { memoryStorage } from '../../../src/frontend/offline/deviceStorage.ts'
 import { HealthDocument, ServerGenerationDocument, WelcomeDocument } from '../../../src/frontend/gql/generated.ts'
 import { outbox } from '../../../src/frontend/offline/outbox.ts'
 import { ApiError } from '../../../src/frontend/pictures/ApiError.ts'
+import { signedOut } from '../../../src/frontend/auth/oidc.ts'
 
 describe('connectivity', () => {
   it('starts as unknown, which counts as reachable, and tells its listeners about changes only', () => {
@@ -94,6 +95,25 @@ describe('startOfflineRuntime', () => {
     } finally {
       runtime.stop()
       vi.useRealTimers()
+    }
+  })
+
+  it('another tab signing out of OIDC makes this tab\'s sign-in screen wait for a click, not go back to the provider', async () => {
+    deviceData.reset(memoryStorage())
+    await deviceData.boot(memoryStorage())
+    await deviceData.signedIn('u1')
+    const refetchQueries = vi.fn(async () => [])
+    const client = { query: vi.fn(() => new Promise(() => undefined)), refetchQueries } as unknown as ApolloClient
+    const runtime = startOfflineRuntime(client)
+    const otherTab = new BroadcastChannel(TABS_CHANNEL)
+    try {
+      otherTab.postMessage({ type: 'signedOut', mode: 'OIDC' })
+
+      await vi.waitFor(() => expect(refetchQueries).toHaveBeenCalledWith({ include: ['Session'] }))
+      expect(signedOut.isSet()).toBe(true) // marked before the Session asked again shows the sign-in screen
+    } finally {
+      otherTab.close()
+      runtime.stop()
     }
   })
 })

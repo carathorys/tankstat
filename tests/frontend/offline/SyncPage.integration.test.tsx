@@ -101,7 +101,27 @@ it('Keep, on an entry waiting to be moved to the trash, takes that back', async 
   expect(outbox.changes).toEqual([])
 })
 
-it('signing out with changes waiting asks first, and they stay on the device for the account', async () => {
+it('signing out also warns of the rows found after a restore that a download judged, which go with the rest of the account', async () => {
+  await downloaded(sessionHandler('STANDALONE', () => user()))
+  await (await deviceData.rows())!.putFound([
+    { id: 'r9', entity: 'refuelings', vehicleId: 'v1', generation: 'g0', version: 1, values: {}, checked: true },
+    // Not judged yet (outside the window, say): it may well be on the server, and Waiting to sync lists none such, so it is not counted.
+    { id: 'r8', entity: 'refuelings', vehicleId: 'v1', generation: 'g0', version: 1, values: {} },
+  ] as never)
+  connectivity.reset()
+  renderWithApollo(<App />, '/')
+  const ui = userEvent.setup()
+  await screen.findByText('Octavia')
+
+  await ui.click(screen.getByRole('button', { name: 'Sign out' }))
+
+  const confirm = await screen.findByRole('alertdialog', { name: 'Sign out and delete what was not sent?' })
+  expect(confirm).toHaveAccessibleDescription(/^1 entry found on this device after the server was restored is not on the server\./)
+  await ui.click(within(confirm).getByRole('button', { name: 'Cancel' }))
+  expect(await (await deviceData.rows())!.found()).toHaveLength(2) // kept: nothing was signed out
+})
+
+it('signing out with changes waiting asks first, and deletes them with the rest of the account on the device', async () => {
   let signedIn = true
   await downloaded(sessionHandler('STANDALONE', () => (signedIn ? user() : null)))
   await outbox.enqueue({ id: 't1', entity: 'refuelings', action: 'trash', vehicleId: 'v1', targetId: 'a', expectedVersion: 1 })
@@ -112,20 +132,20 @@ it('signing out with changes waiting asks first, and they stay on the device for
   await screen.findByText('Octavia')
 
   await ui.click(screen.getByRole('button', { name: 'Sign out' }))
-  const confirm = await screen.findByRole('alertdialog', { name: 'Sign out with changes waiting?' })
-  expect(within(confirm).getByText(/1 change made on this device has not reached the server yet/)).toBeInTheDocument()
+  const confirm = await screen.findByRole('alertdialog', { name: 'Sign out and delete what was not sent?' })
+  expect(confirm).toHaveAccessibleDescription(/^1 change made on this device has not reached the server yet\. Signing out deletes everything this device keeps for your account/)
   await ui.click(within(confirm).getByRole('button', { name: 'Cancel' }))
   expect(screen.getByText('Octavia')).toBeInTheDocument()
 
   await ui.click(screen.getByRole('button', { name: 'Sign out' }))
   signedIn = false
-  await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Sign out' }))
+  await ui.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Sign out and delete' }))
 
   await waitFor(() => expect(screen.queryByText('Octavia')).not.toBeInTheDocument())
-  expect(outbox.changes).toEqual([]) // nobody's data is open now
+  expect(outbox.changes).toEqual([])
   await deviceData.signedIn(user().id) // the same account signs in here again
   await outbox.reload()
-  expect(outbox.changes).toHaveLength(1) // it waited for them
+  expect(outbox.changes).toEqual([]) // deleted, as the warning said
 })
 
 /** A change the server parked, as `ParkedChanges` answers it: of Octavia, sent by `by`. */

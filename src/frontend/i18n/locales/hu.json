@@ -217,6 +217,7 @@
     "redirecting": "Átirányítás az identitásszolgáltatódhoz…",
     "signedOutTitle": "Kijelentkeztél.",
     "signedOutHint": "Az alkalmazásbeli munkameneted véget ért. Az identitásszolgáltatódnál továbbra is bejelentkezve lehetsz.",
+    "signedOutNotTold": "A szerver még nem zárta le azt a munkamenetet, amelyből ez az eszköz kijelentkezett, ezért a bejelentkezésnek várnia kell. Próbáld újra egy kicsit később.",
     "failedTitle": "A bejelentkezés nem sikerült",
     "failedText": "A bejelentkezés az identitásszolgáltatódon keresztül nem sikerült. Próbáld újra; ha továbbra sem megy, fordulj az adminisztrátorhoz.",
     "failedReasons": {
@@ -1615,10 +1616,8 @@
     "keep": "Megtartás",
     "keepAria": "{{name}} megtartása: a kukába helyezés visszavonása",
     "kept": "Megtartva: nem kerül a kukába.",
-    "signOutTitle": "Kijelentkezel, miközben módosítások várnak?",
-    "signOutDescription_one": "{{count}} ezen az eszközön végzett módosítás még nem jutott el a szerverre. Ezen az eszközön marad, és akkor kerül a szerverre, amikor ez a fiók itt újra bejelentkezik.",
-    "signOutDescription_other": "{{count}} ezen az eszközön végzett módosítás még nem jutott el a szerverre. Ezen az eszközön maradnak, és akkor kerülnek a szerverre, amikor ez a fiók itt újra bejelentkezik.",
-    "signOutConfirm": "Kijelentkezés",
+    "signOutTitle": "Kijelentkezel, és törlöd, ami nem jutott el a szerverre?",
+    "signOutConfirm": "Kijelentkezés és törlés",
     "nav": "Szinkronizálásra vár",
     "syncNow": "Szinkronizálás most",
     "syncing": "Szinkronizálás…",
@@ -1778,7 +1777,13 @@
       "leftWaiting_other": "{{count}} bejegyzés a listán marad: saját módosításaik várnak ezen az eszközön, azok mennek előbb.",
       "navCount_one": "{{count}} talált bejegyzés ezen az eszközön",
       "navCount_other": "{{count}} talált bejegyzés ezen az eszközön"
-    }
+    },
+    "signOutChanges_one": "{{count}} ezen az eszközön végzett módosítás még nem jutott el a szerverre.",
+    "signOutChanges_other": "{{count}} ezen az eszközön végzett módosítás még nem jutott el a szerverre.",
+    "signOutFound_one": "{{count}} bejegyzés, amelyet a szerver visszaállítása után ezen az eszközön találtunk, nincs a szerveren.",
+    "signOutFound_other": "{{count}} bejegyzés, amelyet a szerver visszaállítása után ezen az eszközön találtunk, nincs a szerveren.",
+    "signOutDeleted": "A kijelentkezés törli mindazt, amit ez az eszköz a fiókodhoz tárol, ezeket is: később már nem küldhetők el.",
+    "signOutFailed": "Ez az eszköz nem tudott kijelentkezni: nem tudja feljegyezni, és a szerver sem érhető el, hogy lezárja a munkamenetet. Semmi sem törlődött. Próbáld újra, amikor a szerver elérhető."
   },
   "setup": {
     "title": "A Tankstat beállítása",

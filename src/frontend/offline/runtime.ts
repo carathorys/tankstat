@@ -1,7 +1,8 @@
 import type { ApolloClient } from '@apollo/client'
+import { signedOut } from '../auth/oidc.ts'
 import { HealthDocument } from '../gql/generated.ts'
 import { appliedMutations } from './appliedMutations.ts'
-import { connectivity, watchConnectivity } from './connectivity.ts'
+import { connectivity, PROBE_TIMEOUT_MS, watchConnectivity } from './connectivity.ts'
 import { deviceData } from './deviceData.ts'
 import { outbox } from './outbox.ts'
 import type { PullEngine } from './pull.ts'
@@ -66,8 +67,8 @@ export function probeServer(client: ApolloClient): Promise<unknown> {
   return client.query({ query: HealthDocument, fetchPolicy: 'network-only', context: { offline: 'bypass' } }).catch(() => undefined)
 }
 
-/** How long the probe waits for an answer: a server that does not answer at all (a LAN address seen from mobile data) is out of reach. */
-export const PROBE_TIMEOUT_MS = 5_000
+/** How long the probe waits for an answer (kept beside the reachability, which needs no more than that). */
+export { PROBE_TIMEOUT_MS }
 
 /** The screen is asked again at most this often when the server comes back (a proxy that keeps flapping must not make a loop of it). */
 export const REFETCH_GAP_MS = 15_000
@@ -142,6 +143,10 @@ export function startOfflineRuntime(client: ApolloClient, now: () => number = Da
   })
   // Another tab signed someone else in (or out): this tab asks whose it is, so the screen and the offline data follow.
   const offElsewhere = deviceData.onSignedInElsewhere(() => void client.refetchQueries({ include: ['Session'] }).catch(() => undefined))
+  // Signed out of OIDC in another tab: this tab's sign-in screen waits for a click too, or the provider's session signs it straight back in.
+  const offSignedOut = deviceData.onSignedOutElsewhere((mode) => {
+    if (mode === 'OIDC') signedOut.mark()
+  })
   const unsubscribeUser = deviceData.subscribe(download)
   // The server's history changed (a restore): what this device holds is set aside before it goes, and the new history is downloaded (when
   // the tab is shown next, if it is hidden now: however recent the last download, it was of the old history).
@@ -167,6 +172,7 @@ export function startOfflineRuntime(client: ApolloClient, now: () => number = Da
       watch.stop()
       unsubscribe()
       offElsewhere()
+      offSignedOut()
       unsubscribeUser()
       offGeneration()
       unsubscribeOutbox()

@@ -421,3 +421,125 @@ describe('deviceData, when things go wrong or change', () => {
     }
   })
 })
+
+describe('signing out (#162)', () => {
+  it('deletes everything kept for the account, nobody is open or last, and what reads from it is told', async () => {
+    const storage = memoryStorage()
+    deviceData.reset(storage)
+    await deviceData.signedIn('alice')
+    await deviceData.keep('Welcome:{}', { welcome: 1 })
+    const rows = (await deviceData.rows())!
+    await rows.putChanges([{ id: 'c1', seq: 1, createdAt: 1, entity: 'refuelings', action: 'add', vehicleId: 'v1', targetId: 'r1' }])
+    await rows.putFound([{ id: 'r9', entity: 'refuelings', vehicleId: 'v1', generation: 'g0', version: 1, values: {} } as never])
+    let told = 0
+    deviceData.onStoreChange(() => told++)
+
+    await deviceData.signOut()
+
+    expect(deviceData.user).toBeNull()
+    expect(await deviceData.rows()).toBeNull()
+    expect(await storage.lastUser()).toBeNull()
+    expect(told).toBe(1)
+    const again = await storage.open('alice')
+    expect(await again.get('Welcome:{}')).toBeUndefined()
+    expect(await again.rows.changes()).toEqual([])
+    expect(await again.rows.found()).toEqual([])
+  })
+
+  it('another tab signing out makes this one let go of the account at once, and ask whose it is', async () => {
+    deviceData.reset(memoryStorage())
+    await deviceData.boot(memoryStorage()) // listens to the other tabs
+    await deviceData.signedIn('alice')
+    const asked = vi.fn()
+    const signedOutOf = vi.fn()
+    deviceData.onSignedInElsewhere(asked)
+    deviceData.onSignedOutElsewhere(signedOutOf)
+    const otherTab = new BroadcastChannel(TABS_CHANNEL)
+    try {
+      otherTab.postMessage({ type: 'signedOut', mode: 'OIDC' }) // what `signOut` tells the others
+
+      await vi.waitFor(() => expect(asked).toHaveBeenCalledTimes(1))
+      expect(signedOutOf).toHaveBeenCalledWith('OIDC') // an OIDC sign-in screen there waits for a click too
+      expect(await deviceData.rows()).toBeNull() // nothing of the account is read here any more
+    } finally {
+      otherTab.close()
+    }
+  })
+
+  it('another tab hearing nobody from the server (a refresh that failed) only makes this one ask: its data stays open', async () => {
+    deviceData.reset(memoryStorage())
+    await deviceData.boot(memoryStorage())
+    await deviceData.signedIn('alice')
+    const asked = vi.fn()
+    deviceData.onSignedInElsewhere(asked)
+    const otherTab = new BroadcastChannel(TABS_CHANNEL)
+    try {
+      otherTab.postMessage({ type: 'signedIn', user: null })
+
+      await vi.waitFor(() => expect(asked).toHaveBeenCalledTimes(1))
+      expect(await deviceData.rows()).not.toBeNull() // still signed in here, offline too, until its own Session says otherwise
+    } finally {
+      otherTab.close()
+    }
+  })
+
+  it('an answer kept just as the sign-out starts never holds it up', async () => {
+    deviceData.reset(memoryStorage())
+    await deviceData.signedIn('alice')
+
+    const out = deviceData.signOut()
+    void deviceData.keep('Welcome:{}', { welcome: 1 }) // waits for the sign-out, which must not wait for it
+
+    const stuck = new Promise((resolve) => setTimeout(() => resolve('stuck'), 1000))
+    await expect(Promise.race([out.then(() => 'done'), stuck])).resolves.toBe('done')
+  })
+
+  it('with no account open, the last user is still deleted: a sign-out right after a start offline leaves nothing', async () => {
+    const storage = memoryStorage()
+    await (await storage.open('alice')).rows.putChanges([{ id: 'c1', seq: 1, createdAt: 1, entity: 'refuelings', action: 'add', vehicleId: 'v1', targetId: 'r1' }])
+    await storage.setLastUser('alice')
+    deviceData.reset(storage) // nothing opened yet
+
+    await deviceData.signOut()
+
+    expect(await (await storage.open('alice')).rows.changes()).toEqual([])
+    expect(await storage.lastUser()).toBeNull()
+  })
+
+  it('a device that cannot keep or read the sign-out says so (rejects), so a sign-out never passes for kept', async () => {
+    const storage = memoryStorage()
+    deviceData.reset({ ...storage, setSignedOutHere: () => Promise.reject(new Error('QuotaExceededError')), signedOutHere: () => Promise.reject(new Error('lost')) })
+
+    await expect(deviceData.setSignedOutHere({ mode: 'STANDALONE', at: 1 })).rejects.toThrow('QuotaExceededError')
+    await expect(deviceData.signedOutHere()).rejects.toThrow('lost')
+  })
+
+  it('when the storage could not be opened at start and memory stands in, a sign-out still reaches it, so a restart opens nothing', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const disk = memoryStorage()
+    await (await disk.open('alice')).put({ key: 'Session:{}', data: { session: 1 }, at: 1 })
+    await disk.setLastUser('alice')
+    deviceData.reset(memoryStorage())
+    await deviceData.boot({ ...disk, open: () => Promise.reject(new Error('IndexedDB is blocked by another tab')) })
+
+    await deviceData.setSignedOutHere({ mode: 'STANDALONE', at: 1 })
+    await deviceData.signOut()
+
+    expect(await disk.lastUser()).toBeNull()
+    expect(await disk.signedOutHere()).toEqual({ mode: 'STANDALONE', at: 1 })
+    expect(await (await disk.open('alice')).get('Session:{}')).toBeUndefined()
+  })
+
+  it('signs out even when the database cannot be deleted, saying why in the console', async () => {
+    const storage = memoryStorage()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    deviceData.reset({ ...storage, delete: () => Promise.reject(new Error('IndexedDB is blocked by another tab')) })
+    await deviceData.signedIn('alice')
+
+    await deviceData.signOut()
+
+    expect(deviceData.user).toBeNull()
+    expect(await storage.lastUser()).toBeNull()
+    expect(warn).toHaveBeenCalledWith('The offline data of the account that signed out cannot be removed.', expect.any(Error))
+  })
+})

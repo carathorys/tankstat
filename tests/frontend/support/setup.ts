@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, configure } from '@testing-library/react'
 import { MotionGlobalConfig } from 'motion/react'
 import { afterEach } from 'vitest'
+import { resetSignedOutHere } from '../../../src/frontend/auth/signedOutHere.ts'
 import { resetFormats } from '../../../src/frontend/i18n/formatStore.ts'
 import { i18n, initI18n } from '../../../src/frontend/i18n/index.ts'
 import { connectivity } from '../../../src/frontend/offline/connectivity.ts'
@@ -31,6 +32,7 @@ afterEach(async () => {
   offlineReady.reset()
   connectivity.reset()
   deviceData.reset() // a fresh, empty device: what one test kept is never another's
+  resetSignedOutHere() // no sign-out being told, none waiting to be told again
   await i18n.changeLanguage('en')
 })
 

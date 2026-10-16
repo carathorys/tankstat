@@ -134,10 +134,23 @@ export interface RowStore {
   forget(): void
 }
 
+/**
+ * This device was signed out while its session could not be ended on the server (out of reach): the sign-in cookies are HttpOnly, so
+ * they stay in the browser until the server hears of it. No secret: only the sign-in mode, for the sign-in screen, and when.
+ */
+export interface SignedOutHere {
+  mode: string
+  at: number
+}
+
 export interface DeviceStorage {
   open(user: string): Promise<DeviceStore>
+  /** Removes everything kept for the user (their whole database): the answers, the downloaded window, the changes waiting, the photos. */
+  delete(user: string): Promise<void>
   lastUser(): Promise<string | null>
   setLastUser(user: string | null): Promise<void>
+  signedOutHere(): Promise<SignedOutHere | null>
+  setSignedOutHere(signedOut: SignedOutHere | null): Promise<void>
 }
 
 const META_DB = 'tankstat-offline-meta'
@@ -190,10 +203,68 @@ function openDb(factory: IDBFactory, name: string, version: number, upgrade: (db
   })
 }
 
+/**
+ * Deletes a database: another tab's connection closes itself (`versionchange`); one that does not is waited for `BLOCKED_WAIT_MS`, then the
+ * delete is reported as failed (`result`), although IndexedDB cannot call it off: it is carried out once that tab lets go, and `settled`
+ * says when it really ended.
+ */
+function deleteDb(factory: IDBFactory, name: string): { result: Promise<void>; settled: Promise<void> } {
+  const request = factory.deleteDatabase(name)
+  let settle = () => {}
+  const settled = new Promise<void>((resolve) => (settle = resolve))
+  const result = new Promise<void>((resolve, reject) => {
+    let blocked: ReturnType<typeof setTimeout> | undefined
+    request.onsuccess = () => {
+      clearTimeout(blocked)
+      settle()
+      resolve()
+    }
+    request.onerror = () => {
+      clearTimeout(blocked)
+      settle()
+      reject(request.error ?? new Error('IndexedDB could not be deleted'))
+    }
+    request.onblocked = () => {
+      blocked ??= setTimeout(() => reject(new Error('IndexedDB is blocked by another tab')), BLOCKED_WAIT_MS)
+    }
+  })
+  return { result, settled }
+}
+
+/** Waits for `work` at most `BLOCKED_WAIT_MS`, then rejects as a blocked open does. */
+function withinBlockedWait(work: Promise<void>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const gaveUp = new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error('IndexedDB is blocked by another tab')), BLOCKED_WAIT_MS)))
+  return Promise.race([work, gaveUp]).finally(() => clearTimeout(timer))
+}
+
 export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage {
   const meta = () => openDb(factory, META_DB, 1, (db) => db.createObjectStore('meta'))
+  const metaGet = async <T>(key: string): Promise<T | null> => {
+    const db = await meta()
+    try {
+      return ((await done(db.transaction('meta').objectStore('meta').get(key))) as T | undefined) ?? null
+    } finally {
+      db.close()
+    }
+  }
+  const metaSet = async (key: string, value: unknown) => {
+    const db = await meta()
+    try {
+      const tx = db.transaction('meta', 'readwrite')
+      if (value === null) tx.objectStore('meta').delete(key)
+      else tx.objectStore('meta').put(value, key)
+      await committed(tx)
+    } finally {
+      db.close()
+    }
+  }
+  // The deletes IndexedDB has not carried out yet (another tab holds the database): an open of it waits behind one, never told it is blocked.
+  const deleting = new Map<string, Promise<void>>()
   return {
     async open(user) {
+      const pending = deleting.get(dbName(user))
+      if (pending) await withinBlockedWait(pending)
       const db = await openDb(factory, dbName(user), 6, (created, from) => {
         if (from < 1) created.createObjectStore('snapshots', { keyPath: 'key' }).createIndex('at', 'at')
         if (from < 2) {
@@ -263,25 +334,17 @@ export function indexedDbStorage(factory: IDBFactory = indexedDB): DeviceStorage
         close: () => db.close(),
       }
     },
-    async lastUser() {
-      const db = await meta()
-      try {
-        return ((await done(db.transaction('meta').objectStore('meta').get('lastUser'))) as string | undefined) ?? null
-      } finally {
-        db.close()
-      }
+    delete(user) {
+      const name = dbName(user)
+      const { result, settled } = deleteDb(factory, name)
+      deleting.set(name, settled)
+      void settled.then(() => deleting.get(name) === settled && deleting.delete(name))
+      return result
     },
-    async setLastUser(user) {
-      const db = await meta()
-      try {
-        const tx = db.transaction('meta', 'readwrite')
-        if (user === null) tx.objectStore('meta').delete('lastUser')
-        else tx.objectStore('meta').put(user, 'lastUser')
-        await committed(tx)
-      } finally {
-        db.close()
-      }
-    },
+    lastUser: () => metaGet<string>('lastUser'),
+    setLastUser: (user) => metaSet('lastUser', user),
+    signedOutHere: () => metaGet<SignedOutHere>('signedOutHere'),
+    setSignedOutHere: (signedOut) => metaSet('signedOutHere', signedOut),
   }
 }
 
@@ -290,6 +353,7 @@ export function memoryStorage(): DeviceStorage {
   const stores = new Map<string, Map<string, Snapshot>>()
   const memoryTables = new Map<string, Tables>()
   let last: string | null = null
+  let signedOut: SignedOutHere | null = null
   return {
     async open(user) {
       const rows = stores.get(user) ?? new Map<string, Snapshot>()
@@ -323,8 +387,14 @@ export function memoryStorage(): DeviceStorage {
         close: () => undefined,
       }
     },
+    async delete(user) {
+      stores.delete(user)
+      memoryTables.delete(user)
+    },
     lastUser: async () => last,
     setLastUser: async (user) => void (last = user),
+    signedOutHere: async () => signedOut,
+    setSignedOutHere: async (value) => void (signedOut = value),
   }
 }
 

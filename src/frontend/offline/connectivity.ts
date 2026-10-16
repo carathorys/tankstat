@@ -52,6 +52,9 @@ export const connectivity = {
 export const nextDelay = (attempt: number, delays: readonly number[] = PROBE_DELAYS): number => delays[Math.min(attempt, delays.length - 1)]
 export const PROBE_DELAYS = [2_000, 5_000, 15_000, 30_000, 60_000] as const
 
+/** How long the probe waits for an answer: a server that does not answer at all (a LAN address seen from mobile data) is out of reach. */
+export const PROBE_TIMEOUT_MS = 5_000
+
 export interface WatchDeps {
   delays?: readonly number[]
   setTimer?: (run: () => void, ms: number) => ReturnType<typeof setTimeout>

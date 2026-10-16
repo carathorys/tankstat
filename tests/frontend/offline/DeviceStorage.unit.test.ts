@@ -2,7 +2,7 @@ import { IDBFactory, IDBObjectStore } from 'fake-indexeddb'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Change } from '../../../src/frontend/offline/changes.ts'
 import { deviceData } from '../../../src/frontend/offline/deviceData.ts'
-import { indexedDbStorage, memoryStorage, type KeptPhoto, type LogRow, type PullCursor } from '../../../src/frontend/offline/deviceStorage.ts'
+import { BLOCKED_WAIT_MS, indexedDbStorage, memoryStorage, type KeptPhoto, type LogRow, type PullCursor } from '../../../src/frontend/offline/deviceStorage.ts'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -255,5 +255,81 @@ describe('the same in memory', () => {
     expect(await again.rows.allLogs('refuelings')).toEqual([])
     expect((await again.rows.changes()).map((c) => c.id)).toEqual(['c1'])
     expect((await again.rows.photos()).map((p) => p.key)).toEqual(['local:p1'])
+  })
+})
+
+describe('signing out (#162)', () => {
+  for (const [kind, make] of [['IndexedDB', () => indexedDbStorage(new IDBFactory())], ['memory', () => memoryStorage()]] as const) {
+    it(`deletes everything kept for one user, the changes and photos too, and nobody else's (${kind})`, async () => {
+      const storage = make()
+      const alice = await storage.open('alice')
+      await alice.put({ key: 'Session:{}', data: {}, at: 1 })
+      await alice.rows.putChanges([change('c1', 1)])
+      await alice.rows.putPhoto(photo('local:p1'))
+      await (await storage.open('bob')).rows.putChanges([change('c2', 1)])
+      alice.close() // this tab lets go first, as `deviceData.signOut` does
+
+      await storage.delete('alice')
+
+      const again = await storage.open('alice')
+      expect(await again.get('Session:{}')).toBeUndefined()
+      expect(await again.rows.changes()).toEqual([])
+      expect(await again.rows.photos()).toEqual([])
+      expect((await (await storage.open('bob')).rows.changes()).map((c) => c.id)).toEqual(['c2'])
+    })
+
+    it(`remembers a sign-out the server did not hear of, beside the last user, until it is forgotten (${kind})`, async () => {
+      const storage = make()
+      expect(await storage.signedOutHere()).toBeNull()
+
+      await storage.setSignedOutHere({ mode: 'OIDC', at: 5 })
+      await storage.setLastUser('alice')
+
+      expect(await storage.signedOutHere()).toEqual({ mode: 'OIDC', at: 5 })
+      await storage.setSignedOutHere(null)
+      expect(await storage.signedOutHere()).toBeNull()
+      expect(await storage.lastUser()).toBe('alice')
+    })
+  }
+
+  it('a deletion another tab holds up gives up after a while, so the sign-out still goes on', async () => {
+    const factory = new IDBFactory()
+    const storage = indexedDbStorage(factory)
+    ;(await storage.open('alice')).close()
+    const stubborn = await openRaw(factory, 'tankstat-offline-alice', 6) // an old build's tab: it never closes on versionchange
+    const original = globalThis.setTimeout
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
+      if (ms !== BLOCKED_WAIT_MS) return original(fn, ms)
+      fn() // the wait is over at once
+      return 0
+    }) as unknown as typeof setTimeout)
+
+    await expect(storage.delete('alice')).rejects.toThrow('IndexedDB is blocked by another tab')
+    vi.restoreAllMocks()
+    stubborn.close()
+  })
+
+  it('an open behind a delete still held up gives up after the same wait instead of hanging, and once the tab lets go it is empty', async () => {
+    const factory = new IDBFactory()
+    const storage = indexedDbStorage(factory)
+    const alice = await storage.open('alice')
+    await alice.put({ key: 'Welcome:{}', data: 1, at: 1 })
+    alice.close()
+    const stubborn = await openRaw(factory, 'tankstat-offline-alice', 6)
+    const original = globalThis.setTimeout
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
+      if (ms !== BLOCKED_WAIT_MS) return original(fn, ms)
+      fn()
+      return 0
+    }) as unknown as typeof setTimeout)
+    await expect(storage.delete('alice')).rejects.toThrow('IndexedDB is blocked by another tab')
+
+    await expect(storage.open('alice')).rejects.toThrow('IndexedDB is blocked by another tab') // the delete it waits behind is never "blocked"
+    vi.restoreAllMocks()
+    stubborn.close() // the delete is carried out now
+
+    const again = await storage.open('alice')
+    expect(await again.get('Welcome:{}')).toBeUndefined()
+    again.close()
   })
 })
