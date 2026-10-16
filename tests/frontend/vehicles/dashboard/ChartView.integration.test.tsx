@@ -91,6 +91,35 @@ it('lists a chart by category with the expenses that have none as Uncategorised'
   expect(within(table).getAllByRole('rowheader').map((h) => h.textContent)).toEqual(['Service', 'Uncategorised'])
 })
 
+const twoCurrencies: ChartData = {
+  unit: 'CURRENCY',
+  series: [
+    { kind: 'fuel', currency: 'HUF', points: [{ key: '2026-08', value: 38000 }, { key: '2026-09', value: 0 }] },
+    { kind: 'fuel', currency: 'EUR', points: [{ key: '2026-08', value: 54 }, { key: '2026-09', value: 155.19 }] },
+  ],
+}
+
+it('with several currencies says each has a scale of its own, and lists a period without spending in one with a dash, not as 0', async () => {
+  const ui = userEvent.setup()
+  view(twoCurrencies, 'BAR')
+
+  expect(screen.getByText('Each currency is drawn on a scale of its own; the amounts are in the tooltip and the table.')).toBeInTheDocument()
+  await ui.click(screen.getByRole('button', { name: 'Show the data as a table' }))
+  const table = screen.getByRole('table', { name: 'Monthly costs' })
+  expect(within(table).getByRole('rowheader', { name: 'Sep 2026' }).closest('tr')).toHaveTextContent(/^Sep 2026–€155\.19$/)
+  expect(within(table).getByRole('rowheader', { name: 'Aug 2026' }).closest('tr')).toHaveTextContent(/^Aug 2026HUF\s38,000€54\.00$/)
+})
+
+it.each(['LINE', 'AREA'] as const)('a %s chart of several currencies says so too', (kind) => {
+  view(twoCurrencies, kind)
+  expect(screen.getByText(/scale of its own/)).toBeInTheDocument()
+})
+
+it('with one currency there is one scale, read by its axis, and nothing to say about it', () => {
+  view(money, 'BAR')
+  expect(screen.queryByText(/scale of its own/)).not.toBeInTheDocument()
+})
+
 it('names a series of a kind it does not know plainly, and writes an amount without a currency as a bare number', async () => {
   const table = await tableOf({ unit: 'CURRENCY', series: [{ kind: 'price', currency: null, points: [{ key: '2026-09', value: 12000 }] }] })
 

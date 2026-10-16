@@ -60,6 +60,15 @@ export function useFormat() {
       number,
       /** Short form for axes: 12 500 becomes 12.5K (or 12,5 E in Hungarian). */
       compact: (value: number) => new Intl.NumberFormat(language, { notation: 'compact', maximumFractionDigits: 1 }).format(value),
+      /** The same with its currency, for an axis of one currency's amounts: 40,000 HUF becomes "HUF 40K" ("40 E Ft"); an unknown code "40K XYZ". */
+      compactMoney: (value: number, currency: string) => {
+        const compact = { notation: 'compact', maximumFractionDigits: 1 } as const
+        try {
+          return new Intl.NumberFormat(language, { style: 'currency', currency, ...compact }).format(value)
+        } catch {
+          return `${new Intl.NumberFormat(language, compact).format(value)} ${currency}`
+        }
+      },
       /** An instant in the browser's time zone, as the date and time formats write it. */
       dateTime: (iso: string) => {
         const at = new Date(iso)
