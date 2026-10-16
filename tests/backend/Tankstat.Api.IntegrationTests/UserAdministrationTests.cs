@@ -26,7 +26,7 @@ public class UserAdministrationTests : IDisposable
             "mutation($i: CreateUserInput!) { createUser(input: $i) { user { id } reset { token } } }",
             new { i = new { email, displayName = email, isAdmin = false } })).Data().GetProperty("createUser");
         await _app.NewClient().Gql("mutation($i: ResetPasswordInput!) { resetPassword(input: $i) }",
-            new { i = new { token = created.GetProperty("reset").GetProperty("token").GetString(), newPassword = password } });
+            new { i = new { token = created.GetProperty("reset").GetProperty("token").GetString(), newPassword = password, newPasswordConfirmation = password } });
         return created.GetProperty("user").GetProperty("id").GetString()!;
     }
 
@@ -65,7 +65,7 @@ public class UserAdministrationTests : IDisposable
     {
         var admin = await LoggedIn(Admin, AdminPassword);
         var id = await CreateUser(admin, "alice@example.com", "alice-password-1");
-        const string Set = "mutation($id: UUID!) { setUserPassword(userId: $id, newPassword: \"brand-new-pass-1\") }";
+        const string Set = "mutation($id: UUID!) { setUserPassword(userId: $id, newPassword: \"brand-new-pass-1\", newPasswordConfirmation: \"brand-new-pass-1\") }";
 
         Assert.False((await admin.Gql("{ canSetUserPasswords }")).Data().GetProperty("canSetUserPasswords").GetBoolean());
         Assert.Equal("VALIDATION_FAILED", (await admin.Gql(Set, new { id })).ErrorCode());
@@ -78,6 +78,8 @@ public class UserAdministrationTests : IDisposable
         var bobId = created.GetProperty("user").GetProperty("id").GetString();
 
         Assert.True((await allowedAdmin.Gql("{ canSetUserPasswords }")).Data().GetProperty("canSetUserPasswords").GetBoolean());
+        Assert.Equal("password.mismatch",
+            (await allowedAdmin.Gql("mutation($id: UUID!) { setUserPassword(userId: $id, newPassword: \"brand-new-pass-1\") }", new { id = bobId })).ErrorKey());
         Assert.True((await allowedAdmin.Gql(Set, new { id = bobId })).Data().GetProperty("setUserPassword").GetBoolean());
         await allowed.NewClient().LoginAs("bob@example.com", "brand-new-pass-1");
     }

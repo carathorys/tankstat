@@ -308,7 +308,7 @@ public class LoggingTests
 
         // An administrator creates a user: the setup link and its token are secrets.
         var (alice, issued) = await w.UserService.CreateLocalAsync(Mail, "Canary Alice", false, default);
-        await w.Auth.ResetPasswordAsync(issued.Token, "canary-alice-pass-1", default);
+        await w.Auth.ResetPasswordAsync(issued.Token, "canary-alice-pass-1", "canary-alice-pass-1", default);
         canaries.AddRange(["Canary Alice", "canary-alice-pass-1", issued.Token, issued.Token.Split('.')[1], issued.Url!]);
         await w.UserService.UpdateAsync(alice.Id, "canary.renamed@canary-mail.example", "Canary Renamed", default);
         await w.UserService.SetAdminAsync(alice.Id, true, default);
@@ -332,9 +332,9 @@ public class LoggingTests
         await w.Auth.RequestPasswordResetAsync("canary.renamed@canary-mail.example", default);
         await w.ResetQueue.DrainAsync();
         foreach (var mail in w.Email.Sent) canaries.Add(mail.Body.Split("resetToken=")[1].Split('\n')[0]);
-        await w.Auth.ChangePasswordAsync("canary-alice-pass-1", "canary-alice-pass-2", default);
-        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ChangePasswordAsync("canary-wrong-current-1", "canary-alice-pass-3", default));
-        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync("canary-garbage-token", "canary-alice-pass-3", default));
+        await w.Auth.ChangePasswordAsync("canary-alice-pass-1", "canary-alice-pass-2", "canary-alice-pass-2", default);
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ChangePasswordAsync("canary-wrong-current-1", "canary-alice-pass-3", "canary-alice-pass-3", default));
+        await Assert.ThrowsAsync<DomainException>(() => w.Auth.ResetPasswordAsync("canary-garbage-token", "canary-alice-pass-3", "canary-alice-pass-3", default));
         canaries.AddRange(["canary-alice-pass-2", "canary-wrong-current-1", "canary-alice-pass-3", "canary-garbage-token"]);
 
         // A user from an identity provider.

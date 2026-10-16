@@ -131,12 +131,14 @@ public sealed class SetupService(
     /// <summary>
     /// The setup's last step, once the wizard saved its settings: the gatekeeper of the sign-in mode the next start runs, then the one restart
     /// the saved settings wait for. Standalone makes the first administrator (the bootstrap administrator's rules: a valid address, a password
-    /// within the policy) and completes the setup with it, in one transaction; sign-in off needs the acknowledgement that everyone who reaches
+    /// within the policy, typed twice: <c>password.mismatch</c> before any administrator is looked up or made) and completes the setup with it, in one transaction;
+    /// sign-in off needs the acknowledgement that everyone who reaches
     /// the instance may see and change everything; OIDC and proxy complete nothing here: the administrators the settings name complete it as
     /// the server starts, else the signed-in user claims it after the restart (<see cref="ClaimAdministratorAsync"/>, the same code). What the
     /// next start would refuse refuses this step before anything is completed.
     /// </summary>
-    public async Task<SetupFinished> FinishAsync(string? typedCode, string? email, string? password, bool acknowledgeOpenAccess, CancellationToken ct)
+    public async Task<SetupFinished> FinishAsync(
+        string? typedCode, string? email, string? password, string? passwordConfirmation, bool acknowledgeOpenAccess, CancellationToken ct)
     {
         await gate.RequireAsync(typedCode, ct);
         var restarting = await settings.RestartPendingAsync(ct);
@@ -145,6 +147,7 @@ public sealed class SetupService(
         switch (NextMode())
         {
             case AuthMode.Standalone:
+                PasswordPolicy.RequireRepeated(password, passwordConfirmation);
                 if (await users.AnyLocalAdminAsync(ct)) throw new DomainException("setup.administratorExists", "An administrator exists already: sign in.");
                 administrator = authService.NewAdministrator(email, password);
                 if (await users.FindLocalByEmailAsync(administrator.Email, ct) is not null) throw new DomainException("user.emailExists", "A user with this e-mail already exists.");

@@ -74,6 +74,19 @@ public class BackupHoldTests
         Assert.Equal(["free.zip"], folder.Deleted);
     }
 
+    [Theory]
+    [InlineData("correct horse battery staple", "correct horse battery stapel")]
+    [InlineData("correct horse battery staple", null)] // an older client sends no repetition
+    [InlineData(null, "correct horse battery staple")] // made up, yet a repetition came: not what the person meant
+    public async Task AKeySet_WhosePassphraseWasNotTypedTwiceTheSame_IsRefusedBeforeAnyKeyIsDerived(string? passphrase, string? confirmation)
+    {
+        var (_, _, service) = Admin(); // its key maker throws when it is reached
+
+        var refused = await Assert.ThrowsAsync<DomainException>(() => service.PrepareEncryptionAsync(passphrase, confirmation, default));
+
+        Assert.Equal("password.mismatch", refused.Key);
+    }
+
     [Fact]
     public async Task AReleasedBackup_CanThenBeDeleted()
     {

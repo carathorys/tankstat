@@ -263,7 +263,7 @@ public class BackupKeyMakerTests
     [Fact]
     public void AKeySet_OpensWhatItsRecipientEncrypts_AndAShortPassphraseIsRefused()
     {
-        var maker = new BackupKeyMaker();
+        var maker = new BackupKeyMaker(new FixedMonitor<BackupOptions>(new BackupOptions()));
 
         var made = maker.Make(null);
         var typed = maker.Make("correct horse battery staple");
@@ -280,6 +280,18 @@ public class BackupKeyMakerTests
         Assert.NotEqual(made.Salt, typed.Salt);
         var refused = Assert.Throws<DomainException>(() => maker.Make("short"));
         Assert.Equal(("backup.passphraseTooShort", 12), (refused.Key, refused.Args["min"]));
+    }
+
+    [Fact]
+    public void ATypedPassphrase_IsJudgedByTheMinimumTheSettingsHoldNow_AMadeUpOneNever()
+    {
+        var options = new BackupOptions { PassphraseMinLength = 30 };
+        var maker = new BackupKeyMaker(new FixedMonitor<BackupOptions>(options));
+
+        var refused = Assert.Throws<DomainException>(() => maker.Make("correct horse battery staple")); // 28 characters
+        Assert.Equal(("backup.passphraseTooShort", (object?)30), (refused.Key, refused.Args["min"]));
+        Assert.True(maker.Make(null).Generated); // 20 characters of 100 random bits: the minimum is for what people type
+        Assert.False(maker.Make("correct horse battery staple, twice").Generated);
     }
 }
 

@@ -172,6 +172,8 @@
     "password": "Password",
     "currentPassword": "Current password",
     "newPassword": "New password",
+    "newPasswordRepeat": "Repeat the new password",
+    "passwordRepeat": "Repeat the password",
     "name": "Name",
     "licensePlate": "License plate",
     "licensePlateOptional": "License plate (optional)",
@@ -182,7 +184,33 @@
     "emailInvalid": "Enter a valid e-mail address",
     "numberInvalid": "Enter a number, for example 12.5.",
     "dateIncomplete": "Enter the whole date.",
-    "dateFuture": "The date cannot be in the future."
+    "dateFuture": "The date cannot be in the future.",
+    "password": {
+      "show": "Show the password",
+      "showPassphrase": "Show the passphrase",
+      "showSecret": "Show what is typed",
+      "capsLock": "Caps Lock is on.",
+      "requirements": "At least {{min}} characters.",
+      "strength": {
+        "label": "Strength: {{level}}.",
+        "levels": {
+          "veryWeak": "very weak",
+          "weak": "weak",
+          "fair": "fair",
+          "good": "good",
+          "strong": "strong"
+        },
+        "reasons": {
+          "tooShort": "Make it longer.",
+          "common": "Avoid common passwords, also with letters swapped for digits.",
+          "containsName": "Leave out your name and e-mail address.",
+          "repeats": "Avoid repeated characters or pieces.",
+          "sequence": "Avoid runs such as abc or 123.",
+          "keyboardRow": "Avoid rows of the keyboard such as qwerty.",
+          "oneKind": "Mix in other kinds of characters, or use a few words."
+        }
+      }
+    }
   },
   "auth": {
     "signIn": "Sign in",
@@ -204,6 +232,10 @@
     "backToSignIn": "Back to sign in",
     "resetSent": "If that address is registered and the server can send e-mail, a reset link is on its way. Otherwise ask an administrator for a reset link.",
     "changeTitle": "Change password",
+    "changeRequired": {
+      "title": "Choose a new password",
+      "text": "Passwords must be longer now than when you chose yours. Choose a new one to go on; your data is waiting as you left it."
+    },
     "changeSubmit": "Update password",
     "changed": "Password changed. Your other sessions were signed out.",
     "setTitle": "Set your password",
@@ -619,7 +651,10 @@
       "keysDescription": "The server makes the key from a passphrase, yours or one it makes up. The passphrase is stored nowhere: only the recipient and the salt are kept, once you use the keys for new backups.",
       "keysReplacing": "Backups are already encrypted. Older backups still open only with their own passphrase.",
       "newPassphrase": "Passphrase (optional)",
-      "newPassphraseHint": "At least 12 characters. Leave it empty and one is made up for you.",
+      "newPassphraseHint": "At least {{min}} characters. Leave both empty and one is made up for you, which you type back once it is shown.",
+      "newPassphraseRepeat": "Repeat the passphrase",
+      "typeBack": "Type the passphrase back",
+      "typeBackHint": "The made-up passphrase above, as you wrote it down: Use these keys for new backups is available once it matches.",
       "makeKeysConfirm": "Make the keys",
       "keysMade": "The key set is made.",
       "keysOnce": "Write the passphrase down and keep it away from the server: no encrypted backup opens without it (or the identity). It is shown only now.",
@@ -792,7 +827,7 @@
       "unknownKey": "{{key}} is not a setting that can be changed here.",
       "readOnly": "{{key}} is set by the environment, which wins over the settings file.",
       "invalid": "The settings cannot be used as they are.",
-      "standaloneNeedsAdministrator": "Standalone mode needs an administrator, and none exists yet. Set Auth__Standalone__AdminEmail (an address no local account has) and Auth__Standalone__AdminPassword (10 to 128 characters) in the environment for the next start, then switch.",
+      "standaloneNeedsAdministrator": "Standalone mode needs an administrator, and none exists yet. Set Auth__Standalone__AdminEmail (an address no local account has) and Auth__Standalone__AdminPassword ({{min}} to 128 characters) in the environment for the next start, then switch.",
       "restartWouldFail": "The server would not start again with the settings file as it is, so it was not restarted. Fix the file, or set Auth__Mode in the environment.",
       "oidcUnreachable": "{{authority}} does not answer with an OpenID Connect discovery document ({{reason}}).",
       "oidcIssuerMismatch": "{{authority}} names another issuer, {{issuer}}: enter the authority as the provider names it.",
@@ -838,7 +873,8 @@
     "password": {
       "tooShort": "The password must be at least {{min}} characters long.",
       "tooLong": "The password must be at most {{max}} characters long.",
-      "currentIncorrect": "The current password is not correct."
+      "currentIncorrect": "The current password is not correct.",
+      "mismatch": "The two entries are not the same."
     },
     "reset": {
       "invalid": "This password reset link is invalid or has expired."
@@ -1787,7 +1823,6 @@
     "newer": "Made by a newer release of Tankstat: restore it with that release.",
     "restoreChoose": "Restore from a backup",
     "adminIntro": "Create the first administrator: they sign in with this e-mail address and password, and add everyone else.",
-    "passwordHint": "The password needs 10 to 128 characters.",
     "createAdmin": "Create the administrator",
     "claimIntro": "You are signed in as {{name}}. Become the administrator of this instance: you then manage its users, settings and backups.",
     "claim": "Become the administrator",
@@ -1847,6 +1882,8 @@
       "DEFAULT": "the built-in default"
     },
     "pendingRestart": "takes effect after a restart",
+    "atOnce": "takes effect as soon as it is saved, unlike the rest of this tab",
+    "atOnceShort": "Applies at once",
     "secretSet": "Set. Leave blank to keep it.",
     "secretNotSet": "Not set.",
     "secretSetShort": "set",
@@ -1894,6 +1931,7 @@
       "Auth__AccessTokenMinutes": "How long the short sign-in cookie lasts (15 by default, 1 to 1440). A device still signed in gets a new one without asking.",
       "Auth__RefreshTokenDays": "How long a device stays signed in without being used (90 by default). Every use starts the period again.",
       "Auth__RefreshRotationGraceSeconds": "How long a refresh token already traded in is still accepted (60 by default), for tabs that refresh at the same moment.",
+      "Auth__Standalone__PasswordMinLength": "The least a new password must have, from 10 to 128 characters (10 by default). It applies at once to every new password; existing passwords keep working.",
       "Auth__Standalone__MaxFailedAttempts": "Failed sign-ins before the account is locked (5 by default).",
       "Auth__Standalone__LockoutMinutes": "How long a locked account stays locked (15 by default).",
       "Auth__Standalone__ResetTokenMinutes": "How long a password setup or reset link works (60 by default, at most 30 days). Each link works once.",
@@ -1943,6 +1981,7 @@
       "Backups__Secrets": "Every backup's settings file holds the secrets too (the OIDC client secret, the SMTP password, the model API key), so a restore elsewhere brings them. Off by default. In a backup that is not encrypted anyone who has the file reads them: make a key set on the Backups page to encrypt backups. With Names only (Settings from the environment), this is the only way the secrets in this server's settings file reach a backup; secrets held by environment variables travel only with Names and values. Either way a backup names every secret it leaves out.",
       "Backups__Encryption__Recipient": "The age recipient (age1…) backups are encrypted for. It and the salt are one pair, from one key set: make both with Make a key set on the Backups page and change them only together. Empty: backups are written in plain, without the keys that protect the sign-in.",
       "Backups__Encryption__Salt": "The salt the key is worked out from the passphrase with, printed with the recipient: the two belong together. With a salt of another key set (or one changed by hand) the passphrase no longer opens the backups written after it, only the identity does. Older backups keep their own passphrase.",
+      "Backups__PassphraseMinLength": "The least a passphrase typed for encrypted backups must have, on the Backups page and for backup keygen (12 to 128, 12 by default). A made-up passphrase and one that opens an existing backup are never judged by it.",
       "Backups__MaxUploadMb": "The largest backup an administrator may upload on the Backups page (1024 by default). Copying a file into the backups folder always works; give it a name that does not start with tankstat-backup-, or retention counts it as one of the app's own.",
       "Logging__LogLevel__Default": "The least important lines written for every category not listed here.",
       "Logging__LogLevel__Tankstat": "The app's own lines: Information shows what an operator looks for, Debug every ordinary change by id.",
@@ -1968,6 +2007,7 @@
       "Auth__AccessTokenMinutes": "Access cookie (minutes)",
       "Auth__RefreshTokenDays": "A device stays signed in (days)",
       "Auth__RefreshRotationGraceSeconds": "Refresh grace (seconds)",
+      "Auth__Standalone__PasswordMinLength": "Minimum password length",
       "Auth__Standalone__MaxFailedAttempts": "Failed sign-ins before a lockout",
       "Auth__Standalone__LockoutMinutes": "Lockout (minutes)",
       "Auth__Standalone__ResetTokenMinutes": "Reset link lifetime (minutes)",
@@ -2017,6 +2057,7 @@
       "Backups__Secrets": "Secrets in backups",
       "Backups__Encryption__Recipient": "Encrypt for (age recipient)",
       "Backups__Encryption__Salt": "Salt of the passphrase",
+      "Backups__PassphraseMinLength": "Minimum passphrase length",
       "Backups__MaxUploadMb": "Largest upload (MB)",
       "Logging__LogLevel__Default": "Everything else",
       "Logging__LogLevel__Tankstat": "Tankstat",

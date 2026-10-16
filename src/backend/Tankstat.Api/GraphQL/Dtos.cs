@@ -8,10 +8,13 @@ using Tankstat.Domain.Users;
 namespace Tankstat.Api.GraphQL;
 
 /// <summary>GraphQL shapes for users. Domain <see cref="User"/> is never exposed: it carries the password hash.</summary>
-public sealed record UserInfo(Guid Id, string DisplayName, string Email, bool IsAdmin, string? AvatarUrl)
+/// <param name="PasswordChangeRequired">
+/// The password last signed in with is shorter than the minimum now (Standalone only): the app asks for a new one before anything else.
+/// </param>
+public sealed record UserInfo(Guid Id, string DisplayName, string Email, bool IsAdmin, string? AvatarUrl, bool PasswordChangeRequired)
 {
-    public static UserInfo From(Principal p) => new(p.Id, p.DisplayName, p.Email, p.IsAdmin, MediaUrls.Image(p.AvatarImageId));
-    public static UserInfo From(User u) => new(u.Id, u.DisplayName, u.Email, u.IsAdmin, MediaUrls.Image(u.AvatarImageId));
+    public static UserInfo From(Principal p) => new(p.Id, p.DisplayName, p.Email, p.IsAdmin, MediaUrls.Image(p.AvatarImageId), p.PasswordChangeRequired);
+    public static UserInfo From(User u) => new(u.Id, u.DisplayName, u.Email, u.IsAdmin, MediaUrls.Image(u.AvatarImageId), u.PasswordChangeRequired);
 }
 
 /// <summary>A user as shown next to data (owner, creator, grantee): enough for a name and an avatar, nothing private.</summary>
@@ -39,9 +42,14 @@ public sealed record AccessSettingsInfo(AccessLevel DefaultLevelForOthers);
 
 public sealed record AccessGrantInfo(Guid Id, Guid OwnerId, Guid GranteeId, AccessLevel Level);
 
+/// <summary>What a new password must be: <paramref name="MinLength"/> (an administrator's setting) to <paramref name="MaxLength"/> characters.</summary>
+public sealed record PasswordRequirementsInfo(int MinLength, int MaxLength);
+
 public sealed record LoginInput(string Email, string Password);
-public sealed record ChangePasswordInput(string CurrentPassword, string NewPassword);
-public sealed record ResetPasswordInput(string Token, string NewPassword);
+/// <param name="NewPasswordConfirmation">The new password again; nullable so an older client gets <c>password.mismatch</c>, not a missing field.</param>
+public sealed record ChangePasswordInput(string CurrentPassword, string NewPassword, string? NewPasswordConfirmation = null);
+/// <param name="NewPasswordConfirmation">The new password again; nullable so an older client gets <c>password.mismatch</c>, not a missing field.</param>
+public sealed record ResetPasswordInput(string Token, string NewPassword, string? NewPasswordConfirmation = null);
 public sealed record CreateUserInput(string Email, string? DisplayName, bool IsAdmin);
 public sealed record UpdateUserInput(Guid UserId, string Email, string? DisplayName);
 public sealed record DeleteUserInput(Guid UserId, UserDataDisposition? Data, Guid? MoveToUserId);

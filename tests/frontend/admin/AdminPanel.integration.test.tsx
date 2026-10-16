@@ -256,9 +256,10 @@ it('offers setting a password only when the server allows it', async () => {
   await ui.click(await allowed.findByRole('button', { name: 'Set password for Bob' }))
   const dialog = await screen.findByRole('dialog', { name: 'Set password for Bob' })
   await ui.type(within(dialog).getByLabelText('New password'), 'brand-new-pass-1')
+  await ui.type(within(dialog).getByLabelText('Repeat the new password'), 'brand-new-pass-1')
   await ui.click(within(dialog).getByRole('button', { name: 'Set password' }))
 
-  expect(calls.SetUserPassword).toEqual([{ userId: 'u2', newPassword: 'brand-new-pass-1' }])
+  expect(calls.SetUserPassword).toEqual([{ userId: 'u2', newPassword: 'brand-new-pass-1', newPasswordConfirmation: 'brand-new-pass-1' }])
 })
 
 it('deletes a user and moves their data to another user', async () => {

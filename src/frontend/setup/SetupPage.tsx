@@ -79,7 +79,7 @@ function Done({ mode }: { mode: AuthMode }) {
   return (
     <Stack sx={{ gap: 3, maxWidth: 720 }}>
       <SuccessMessage>{t('setup.done')}</SuccessMessage>
-      {data ? <EncryptionSetup recipient={data.backups.settings.recipient ?? null} refresh={BackupRecipientDocument} /> : error !== undefined ? <ErrorMessage error={error} /> : <Loading />}
+      {data ? <EncryptionSetup recipient={data.backups.settings.recipient ?? null} passphraseMinLength={data.backups.settings.passphraseMinLength} refresh={BackupRecipientDocument} /> : error !== undefined ? <ErrorMessage error={error} /> : <Loading />}
       <section aria-labelledby="setup-next">
         <Typography id="setup-next" component="h2" variant="h5" sx={{ mb: 1 }}>
           {t('setup.nextTitle')}

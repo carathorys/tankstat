@@ -141,7 +141,9 @@ do
     // `dotnet Tankstat.Api.dll backup ...` and `decrypt ...` write and open backups the same way (see BackupCommands and docs/backup-and-restore.md).
     if (BackupCommands.Handles(args))
     {
-        Environment.ExitCode = await BackupCommands.RunAsync(args, app.Services, Console.In, Console.Out, Console.Error);
+        // A passphrase typed at a terminal shows nothing; piped in (a script, `docker exec -i`), it is read a line at a time.
+        var prompt = Console.IsInputRedirected ? null : new TerminalPrompt(Console.Error);
+        Environment.ExitCode = await BackupCommands.RunAsync(args, app.Services, Console.In, Console.Out, Console.Error, prompt);
         return;
     }
 

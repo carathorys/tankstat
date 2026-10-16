@@ -101,8 +101,8 @@ mutation UpdateUser($input: UpdateUserInput!) {
   }
 }
 
-mutation SetUserPassword($userId: UUID!, $newPassword: String!) {
-  setUserPassword(userId: $userId, newPassword: $newPassword)
+mutation SetUserPassword($userId: UUID!, $newPassword: String!, $newPasswordConfirmation: String!) {
+  setUserPassword(userId: $userId, newPassword: $newPassword, newPasswordConfirmation: $newPasswordConfirmation)
 }
 
 mutation DeleteUser($input: DeleteUserInput!) {

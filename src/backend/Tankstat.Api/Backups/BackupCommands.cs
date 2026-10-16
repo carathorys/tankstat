@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Options;
 using Tankstat.Api.GraphQL;
@@ -5,6 +6,7 @@ using Tankstat.Application.Backups;
 using Tankstat.Application.SystemSettings;
 using Tankstat.Domain;
 using Tankstat.Domain.Backups;
+using Tankstat.Domain.Users;
 using Tankstat.Infrastructure.Backups;
 using Tankstat.Infrastructure.Settings;
 
@@ -15,22 +17,26 @@ namespace Tankstat.Api.Backups;
 /// <c>backup keygen --passphrase-stdin</c> prints the two settings that make backups encrypted and the identity, once;
 /// <c>backup [--output &lt;file&gt;] [--photos] [--passphrase-stdin]</c> writes one; <c>decrypt &lt;file&gt; --output &lt;folder&gt;
 /// (--identity &lt;file&gt; | --passphrase-stdin)</c> unpacks one. A passphrase is only ever read from the standard input, never from an
-/// argument (which the process list and the shell history would keep). Exit code 0, or 1 with the reason on the standard error.
+/// argument (which the process list and the shell history would keep): typed without an echo at a terminal, a line each when piped
+/// (<see cref="IPassphrasePrompt"/>); a new one (keygen, backup) twice, an existing one (decrypt, restore) once. Exit code 0, or 1 with the reason on the standard error.
 /// </summary>
 internal static class BackupCommands
 {
     public static bool Handles(string[] args) => args is ["backup", ..] or ["decrypt", ..] or ["restore", ..];
 
-    public static async Task<int> RunAsync(string[] args, IServiceProvider services, TextReader input, TextWriter output, TextWriter error)
+    /// <param name="prompt">Where a passphrase is read: the terminal without an echo, else (and in tests) a line of <paramref name="input"/> each.</param>
+    public static async Task<int> RunAsync(
+        string[] args, IServiceProvider services, TextReader input, TextWriter output, TextWriter error, IPassphrasePrompt? prompt = null)
     {
+        prompt ??= new LinePrompt(input);
         try
         {
             return args switch
             {
-                ["backup", "keygen", .. var rest] => Keygen(rest, input, output),
-                ["backup", .. var rest] => await BackupAsync(rest, services, input, output, error),
-                ["decrypt", .. var rest] => Decrypt(rest, input, output),
-                ["restore", .. var rest] => await RestoreAsync(rest, services, input, output),
+                ["backup", "keygen", .. var rest] => Keygen(rest, services, prompt, output),
+                ["backup", .. var rest] => await BackupAsync(rest, services, prompt, output, error),
+                ["decrypt", .. var rest] => Decrypt(rest, prompt, output),
+                ["restore", .. var rest] => await RestoreAsync(rest, services, input, prompt, output),
                 _ => throw new UsageException(),
             };
         }
@@ -52,9 +58,10 @@ internal static class BackupCommands
 
     private const string Usage = """
         Usage:
-          backup keygen --passphrase-stdin                       derive the recipient and the salt from a passphrase (read from the standard input)
+          backup keygen --passphrase-stdin                       derive the recipient and the salt from a passphrase, typed twice (at a terminal
+                                                                 without an echo, or two lines on the standard input)
           backup [--output <file>] [--photos] [--environment record|merge] [--secrets] [--passphrase-stdin]
-                                                                 write a backup (encrypted for Backups:Encryption:Recipient, or for the passphrase read from the standard input)
+                                                                 write a backup (encrypted for Backups:Encryption:Recipient, or for a new passphrase typed twice)
           decrypt <file> --output <folder> (--identity <file> | --passphrase-stdin)
                                                                  unpack a backup into a folder
           restore <file> [--yes] [--now] [--identity <file> | --passphrase-stdin]
@@ -63,10 +70,10 @@ internal static class BackupCommands
                                                                  (asked on the standard input, before the passphrase line)
         """;
 
-    private static int Keygen(string[] args, TextReader input, TextWriter output)
+    private static int Keygen(string[] args, IServiceProvider services, IPassphrasePrompt prompt, TextWriter output)
     {
         if (args is not ["--passphrase-stdin"]) throw new UsageException();
-        var passphrase = Passphrase(input);
+        var passphrase = NewPassphrase(services, prompt);
         var salt = BackupKeys.NewSalt();
         var identity = BackupKeys.Identity(passphrase, salt, Argon2idParameters.Default);
         output.WriteLine("Set these two settings (as environment variables or in the configuration), then every backup is encrypted for this passphrase:");
@@ -79,7 +86,7 @@ internal static class BackupCommands
         return 0;
     }
 
-    private static async Task<int> BackupAsync(string[] args, IServiceProvider services, TextReader input, TextWriter output, TextWriter error)
+    private static async Task<int> BackupAsync(string[] args, IServiceProvider services, IPassphrasePrompt prompt, TextWriter output, TextWriter error)
     {
         string? file = null;
         var photos = false;
@@ -109,7 +116,7 @@ internal static class BackupCommands
         if (passphrase)
         {
             var salt = BackupKeys.NewSalt();
-            var identity = BackupKeys.Identity(Passphrase(input), salt, Argon2idParameters.Default);
+            var identity = BackupKeys.Identity(NewPassphrase(services, prompt), salt, Argon2idParameters.Default);
             encryption = new BackupEncryption(BackupEncryption.AgeX25519, AgeKeys.FormatRecipient(BackupKeys.Recipient(identity)), Convert.ToBase64String(salt), Argon2idParameters.Default);
         }
         var result = await services.GetRequiredService<IBackupWriter>().WriteAsync(new BackupRequest(file, photos ? true : null, encryption, Environment: environment, Secrets: secrets), CancellationToken.None);
@@ -143,7 +150,7 @@ internal static class BackupCommands
         _ => "left out (Backups:Photos is off)",
     };
 
-    private static int Decrypt(string[] args, TextReader input, TextWriter output)
+    private static int Decrypt(string[] args, IPassphrasePrompt prompt, TextWriter output)
     {
         if (args.Length == 0 || args[0].StartsWith("--")) throw new UsageException();
         var file = args[0];
@@ -164,7 +171,7 @@ internal static class BackupCommands
         BackupFile.VerifyChecksum(file, manifest);
         byte[]? identity = null;
         if (identityFile is not null) identity = AgeKeys.ParseIdentity(IdentityLine(identityFile));
-        else if (passphrase) identity = BackupFile.IdentityOf(manifest, Passphrase(input));
+        else if (passphrase) identity = BackupFile.IdentityOf(manifest, prompt.Read("Passphrase:"));
         BackupFile.Extract(file, manifest, identity, folder);
         // The settings file beside the tables, owner-only like the rest: it may hold secrets (Backups:Secrets).
         if (BackupFile.ReadSettings(file, manifest, identity) is { } settings)
@@ -180,7 +187,7 @@ internal static class BackupCommands
         return 0;
     }
 
-    private static async Task<int> RestoreAsync(string[] args, IServiceProvider services, TextReader input, TextWriter output)
+    private static async Task<int> RestoreAsync(string[] args, IServiceProvider services, TextReader input, IPassphrasePrompt prompt, TextWriter output)
     {
         if (args.Length == 0 || args[0].StartsWith("--")) throw new UsageException();
         var file = args[0];
@@ -231,7 +238,7 @@ internal static class BackupCommands
             }
         }
         var identity = identityFile is not null ? IdentityLine(identityFile) : null;
-        var opened = store.IdentityFor(manifest, passphrase ? Passphrase(input) : null, identity); // refused here when it does not open
+        var opened = store.IdentityFor(manifest, passphrase ? prompt.Read("Passphrase:") : null, identity); // refused here when it does not open
         // The settings the restore leaves must let the server start, as the app refuses it before a restart: refused before the marker.
         await RestoreService.RequireStartableAsync(store, services.GetRequiredService<ISettingsBackup>(), services.GetRequiredService<ISystemConfiguration>(),
             file, manifest, opened, CancellationToken.None);
@@ -260,12 +267,32 @@ internal static class BackupCommands
     private static string IdentityLine(string path) =>
         File.ReadLines(path).FirstOrDefault(l => !l.StartsWith('#') && l.Trim().Length > 0) ?? throw new FormatException("The identity file holds no identity.");
 
-    private static string Passphrase(TextReader input)
+    /// <summary>
+    /// A new passphrase (<c>backup keygen</c>, <c>backup --passphrase-stdin</c>): typed twice, a different repetition stopping the command before
+    /// any key is derived, and at least <c>Backups:PassphraseMinLength</c> characters, as on the Backups page. Only spaces is refused: the page
+    /// makes one up for it, and nothing here can. One that opens a backup is asked once and taken as typed (an older keygen took spaces too).
+    /// </summary>
+    private static string NewPassphrase(IServiceProvider services, IPassphrasePrompt prompt)
     {
-        // A byte order mark (a file saved by a Windows editor and piped in) is no part of what was typed: kept, it would derive another key.
-        var passphrase = input.ReadLine()?.TrimStart('\uFEFF').TrimEnd('\r');
-        if (string.IsNullOrEmpty(passphrase)) throw new DomainException("backup.passphraseRequired", "A passphrase is expected on the standard input (one line).");
+        var passphrase = prompt.Read("Passphrase:");
+        PasswordPolicy.RequireRepeated(passphrase, prompt.Read("Repeat it:"));
+        if (string.IsNullOrWhiteSpace(passphrase)) throw new DomainException("backup.passphraseRequired", "A passphrase of only spaces is no passphrase.");
+        BackupPassphrase.Validate(passphrase, PassphraseMinLength(services));
         return passphrase;
+    }
+
+    /// <summary>
+    /// <c>Backups:PassphraseMinLength</c> on its own, never through the whole Backups section: keygen needs nothing else of it, and it is what
+    /// makes the pair a half-set Recipient or Salt asks for, so settings that do not validate must not stop it (nor a value the binder cannot
+    /// read crash it). Not set is the floor; one the start would refuse is refused here too, in the validator's words.
+    /// </summary>
+    private static int PassphraseMinLength(IServiceProvider services)
+    {
+        var value = services.GetRequiredService<IConfiguration>()[$"{BackupOptions.SectionName}:{nameof(BackupOptions.PassphraseMinLength)}"];
+        if (string.IsNullOrWhiteSpace(value)) return BackupPassphrase.Floor;
+        return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var min) && min is >= BackupPassphrase.Floor and <= BackupPassphrase.Ceiling
+            ? min
+            : throw new FormatException($"Backups:PassphraseMinLength must be from {BackupPassphrase.Floor} to {BackupPassphrase.Ceiling}.");
     }
 
     private sealed class UsageException : Exception;

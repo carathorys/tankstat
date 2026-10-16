@@ -83,21 +83,25 @@ export function EditUserDialog({
 export function SetPasswordDialog({
   trigger,
   name,
+  personal,
   onSubmit,
 }: {
   trigger: ReactNode
   name: string
-  onSubmit: (password: string) => Promise<unknown>
+  /** The user's address and name, which the strength meter counts against the password. */
+  personal: readonly string[]
+  /** The new password and its repetition, which the server compares again. */
+  onSubmit: (password: string, confirmation: string) => Promise<unknown>
 }) {
   const { t } = useTranslation()
   return (
     <UserDialog trigger={trigger} title={t('admin.passwordTitle', { name })} description={t('admin.passwordDescription')}>
       {({ saved }) => (
         <FieldForm
-          fields={[{ name: 'password', label: 'fields.newPassword', type: 'password', autoComplete: 'new-password' }]}
+          fields={[{ name: 'password', label: 'fields.newPassword', type: 'newPassword', repeatLabel: 'fields.newPasswordRepeat', personal }]}
           submitLabel="admin.setPassword"
           onSubmit={async (v) => {
-            await onSubmit(v.password ?? '')
+            await onSubmit(v.password ?? '', v.passwordRepeat ?? '')
             saved()
           }}
         >

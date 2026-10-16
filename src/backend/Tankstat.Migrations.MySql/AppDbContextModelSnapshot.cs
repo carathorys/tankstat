@@ -895,6 +895,9 @@ namespace Tankstat.Migrations.MySql
                     b.Property<DateTimeOffset?>("LockoutEnd")
                         .HasColumnType("datetime");
 
+                    b.Property<bool>("PasswordChangeRequired")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("PasswordHash")
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");

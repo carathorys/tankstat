@@ -11,6 +11,7 @@ export type SnapshotPolicy = 'keep' | 'onlineOnly' | 'never'
 
 const POLICIES: Record<string, SnapshotPolicy> = {
   Session: 'keep',
+  PasswordRequirements: 'keep', // the last minimum seen: a change form opened offline still says it (the change itself needs the server)
   UiSettings: 'keep',
   VehicleDefaults: 'keep',
   RecognitionStatus: 'keep',

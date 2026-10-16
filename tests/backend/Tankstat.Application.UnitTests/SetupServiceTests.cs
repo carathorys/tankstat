@@ -215,7 +215,7 @@ public sealed class SetupServiceTests
         await s.Service.StartAsync(default);
         var typed = " " + s.Code.Value.Replace("-", "").ToLowerInvariant() + "\n";
 
-        var admin = (await s.Service.FinishAsync(typed, "Root@X.co", "initial-password-1", false, default)).Administrator!;
+        var admin = (await s.Service.FinishAsync(typed, "Root@X.co", "initial-password-1", "initial-password-1", false, default)).Administrator!;
 
         Assert.True(admin.IsAdmin);
         Assert.Equal("root@x.co", admin.Email);
@@ -223,7 +223,7 @@ public sealed class SetupServiceTests
         Assert.False(s.Status.Pending);
         await s.World.Auth.LoginAsync("root@x.co", "initial-password-1", default);
         // Once completed, the code opens nothing again.
-        var again = await Assert.ThrowsAsync<DomainException>(() => s.Service.FinishAsync(s.Code.Value, "other@x.co", "initial-password-1", false, default));
+        var again = await Assert.ThrowsAsync<DomainException>(() => s.Service.FinishAsync(s.Code.Value, "other@x.co", "initial-password-1", "initial-password-1", false, default));
         Assert.Equal("setup.completed", again.Key);
         Assert.Single(s.World.Users.Items);
     }
@@ -238,7 +238,7 @@ public sealed class SetupServiceTests
         await s.Service.StartAsync(default);
         s.World.Log.Clear();
 
-        var refused = await Assert.ThrowsAsync<ForbiddenException>(() => s.Service.FinishAsync(typed, "zzzz@x.co", "zzzz-password-1", false, default));
+        var refused = await Assert.ThrowsAsync<ForbiddenException>(() => s.Service.FinishAsync(typed, "zzzz@x.co", "zzzz-password-1", "zzzz-password-1", false, default));
 
         Assert.Equal("setup.codeInvalid", refused.Key);
         Assert.Empty(s.World.Users.Items);
@@ -247,12 +247,25 @@ public sealed class SetupServiceTests
     }
 
     [Fact]
+    public async Task TheAdministratorsPasswordNotTypedTwiceTheSame_LeavesTheSetupWaiting()
+    {
+        var s = Make();
+        await s.Service.StartAsync(default);
+
+        var refused = await Assert.ThrowsAsync<DomainException>(() => s.Service.FinishAsync(s.Code.Value, "root@x.co", "initial-password-1", "initial-password-2", false, default));
+
+        Assert.Equal("password.mismatch", refused.Key);
+        Assert.Equal(SetupPhase.Pending, s.Store.Phase);
+        Assert.Empty(s.World.Users.Items);
+    }
+
+    [Fact]
     public async Task APasswordThePolicyRefuses_LeavesTheSetupWaiting()
     {
         var s = Make();
         await s.Service.StartAsync(default);
 
-        var refused = await Assert.ThrowsAsync<DomainException>(() => s.Service.FinishAsync(s.Code.Value, "root@x.co", "short", false, default));
+        var refused = await Assert.ThrowsAsync<DomainException>(() => s.Service.FinishAsync(s.Code.Value, "root@x.co", "short", "short", false, default));
 
         Assert.Equal("password.tooShort", refused.Key);
         Assert.Equal(SetupPhase.Pending, s.Store.Phase);
@@ -267,7 +280,7 @@ public sealed class SetupServiceTests
         var elsewhere = User.CreateLocal("first@x.co", "Administrator", isAdmin: true);
         await s.Store.CompleteWithAdministratorAsync(elsewhere, default, default); // another server on the database made the administrator
 
-        var refused = await Assert.ThrowsAsync<DomainException>(() => s.Service.FinishAsync(s.Code.Value, "root@x.co", "initial-password-1", false, default));
+        var refused = await Assert.ThrowsAsync<DomainException>(() => s.Service.FinishAsync(s.Code.Value, "root@x.co", "initial-password-1", "initial-password-1", false, default));
 
         Assert.Equal("setup.completed", refused.Key);
         Assert.False(s.Status.Pending); // the notice goes too
@@ -291,8 +304,8 @@ public sealed class SetupServiceTests
         var s = Make(AuthMode.None);
         await s.Service.StartAsync(default);
 
-        Assert.Equal("setup.acknowledgementRequired", (await Assert.ThrowsAsync<DomainException>(() => s.Service.FinishAsync(s.Code.Value, null, null, false, default))).Key);
-        var finished = await s.Service.FinishAsync(s.Code.Value, null, null, true, default);
+        Assert.Equal("setup.acknowledgementRequired", (await Assert.ThrowsAsync<DomainException>(() => s.Service.FinishAsync(s.Code.Value, null, null, null, false, default))).Key);
+        var finished = await s.Service.FinishAsync(s.Code.Value, null, null, null, true, default);
 
         Assert.Equal((false, (User?)null), (finished.Restarting, finished.Administrator)); // nothing the wizard saved waits for a restart
         Assert.False(s.Status.Pending);
@@ -334,7 +347,7 @@ public sealed class SetupServiceTests
         Assert.Contains(s.World.Log.From<SystemSettingsService>(), e => e.Values.TryGetValue("Keys", out var keys) && (string?)keys == "Auth:Mode");
         Assert.Equal(0, s.World.Restart.Count); // the one restart comes with the last step
 
-        var finished = await s.Service.FinishAsync(s.Code.Value, "root@x.co", "initial-password-1", false, default);
+        var finished = await s.Service.FinishAsync(s.Code.Value, "root@x.co", "initial-password-1", "initial-password-1", false, default);
 
         Assert.True(finished.Administrator!.IsAdmin); // the mode the next start runs, although sign-in is off until the restart
         Assert.True(finished.Restarting);
@@ -351,7 +364,7 @@ public sealed class SetupServiceTests
         var s = Make(mode);
         await s.Service.StartAsync(default);
 
-        var finished = await s.Service.FinishAsync(s.Code.Value, null, null, false, default);
+        var finished = await s.Service.FinishAsync(s.Code.Value, null, null, null, false, default);
 
         Assert.Equal((false, (User?)null), (finished.Restarting, finished.Administrator));
         Assert.True(s.Status.Pending); // the administrators the settings name complete it at the next start, else the claim
@@ -378,7 +391,7 @@ public sealed class SetupServiceTests
         Assert.Empty(points.Points);
         Assert.Equal("20261014021748_AddSetup", points.DatabaseMigration);
 
-        await s.Service.FinishAsync(s.Code.Value, "root@x.co", "initial-password-1", false, default);
+        await s.Service.FinishAsync(s.Code.Value, "root@x.co", "initial-password-1", "initial-password-1", false, default);
         Assert.Equal("setup.completed", (await Assert.ThrowsAsync<DomainException>(() => s.Service.RestorePointsAsync(s.Code.Value, default))).Key);
     }
 }

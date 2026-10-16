@@ -272,7 +272,7 @@ public class StartupSmokeTests
         await app.Gql("mutation { addVehicle(input: { name: \"Smoke car\", fuelType: PETROL }) { id } }");
         await app.StopAsync();
 
-        var (code, log) = await AppProcess.RunCommandAsync(settings, work, "smoke passphrase\n", "backup", "--passphrase-stdin");
+        var (code, log) = await AppProcess.RunCommandAsync(settings, work, "smoke passphrase\nsmoke passphrase\n", "backup", "--passphrase-stdin"); // a new one: twice
 
         Assert.True(code == 0, log);
         var file = Assert.Single(Directory.GetFiles(Path.Combine(work, "backups"), "tankstat-backup-*.zip")); // Backups:Path defaults to the working directory, like the database
@@ -287,6 +287,23 @@ public class StartupSmokeTests
     }
 
     [Fact]
+    public async Task Keygen_AsAProcess_TakesThePassphraseTwice_AndPrintsNoKeysWhenTheTwoDiffer()
+    {
+        var work = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"tankstat-smoke-{Guid.NewGuid():N}")).FullName;
+        var settings = Env(("Auth__Mode", "None"));
+
+        var (same, sameLog) = await AppProcess.RunCommandAsync(settings, work, "smoke passphrase\nsmoke passphrase\n", "backup", "keygen", "--passphrase-stdin");
+        var (different, differentLog) = await AppProcess.RunCommandAsync(settings, work, "smoke passphrase\nsmoke passphrasf\n", "backup", "keygen", "--passphrase-stdin");
+
+        Assert.True(same == 0, sameLog);
+        Assert.Contains("Backups__Encryption__Recipient=age1", sameLog);
+        Assert.Equal(1, different);
+        Assert.Contains("The two entries are not the same.", differentLog);
+        Assert.DoesNotContain("AGE-SECRET-KEY", differentLog);
+        Assert.DoesNotContain("smoke passphras", sameLog + differentLog);
+    }
+
+    [Fact]
     public async Task TheRestoreCommand_TakesAStoppedServerBackToABackup_AndTheNextStartServesIt()
     {
         var work = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"tankstat-smoke-{Guid.NewGuid():N}")).FullName;
@@ -295,7 +312,7 @@ public class StartupSmokeTests
         try
         {
             await first.Gql("mutation { addVehicle(input: { name: \"Before\", fuelType: PETROL }) { id } }");
-            var (made, log) = await AppProcess.RunCommandAsync(settings, work, "smoke passphrase\n", "backup", "--passphrase-stdin");
+            var (made, log) = await AppProcess.RunCommandAsync(settings, work, "smoke passphrase\nsmoke passphrase\n", "backup", "--passphrase-stdin"); // a new one: twice
             Assert.True(made == 0, log);
             await first.Gql("mutation { addVehicle(input: { name: \"After\", fuelType: PETROL }) { id } }");
         }

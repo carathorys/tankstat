@@ -2,6 +2,7 @@ using System.Text.Json;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Backups;
 using Tankstat.Application.SystemSettings;
+using Tankstat.Application.Users;
 
 namespace Tankstat.Api.Settings;
 
@@ -67,7 +68,8 @@ internal sealed class SettingsBackup(ISystemConfiguration configuration, ISettin
         {
             var problems = configuration.Check(candidate);
             if (problems.Count > 0) return new RestoredSettings(values, problems, new AuthOptions());
-            return new RestoredSettings(values, [], candidate.GetSection(AuthOptions.SectionName).Get<AuthOptions>() ?? new AuthOptions());
+            return new RestoredSettings(values, [], candidate.GetSection(AuthOptions.SectionName).Get<AuthOptions>() ?? new AuthOptions(),
+                PasswordOptions.MinLengthIn(key => candidate[key]));
         }
         finally
         {

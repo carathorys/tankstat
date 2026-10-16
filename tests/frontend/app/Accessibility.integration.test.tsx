@@ -306,7 +306,7 @@ it('the backups page, its restore and its key set dialogs are labelled, describe
         data: {
           backups: {
             __typename: 'BackupOverviewInfo', folder: '/data/backups', migration: 'AddInstance', run,
-            settings: { __typename: 'BackupSettingsInfo', recipient: null, photosApart: false, photos: false, maxUploadMb: 1024, times: ['02:00'], days: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'], timeZone: 'UTC', nextRun: '2026-10-12T02:00:00Z', keep: 14, keepDays: null, environment: 'RECORD', secrets: false },
+            settings: { __typename: 'BackupSettingsInfo', recipient: null, photosApart: false, photos: false, maxUploadMb: 1024, times: ['02:00'], days: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'], timeZone: 'UTC', nextRun: '2026-10-12T02:00:00Z', keep: 14, keepDays: null, environment: 'RECORD', secrets: false, passphraseMinLength: 12 },
             sizes: { __typename: 'StorageSizesInfo', database: 5_300_000, pictures: 12_000_000, photos: null },
             restorePoints: [point, { ...point, file: 'uploaded-old.zip', sameMigration: false, uploaded: true, encrypted: false, recipient: null, currentRecipient: false }],
           },
@@ -352,7 +352,7 @@ it('a held backup in its row, and a backup opened, are labelled and free of viol
           backups: {
             __typename: 'BackupOverviewInfo', folder: '/data/backups', migration: 'AddInstance',
             run: { __typename: 'BackupRunInfo', running: false, startedAt: null, finishedAt: null, file: null, bytes: null, error: null },
-            settings: { __typename: 'BackupSettingsInfo', recipient: null, photosApart: false, photos: false, maxUploadMb: 1024, times: [], days: [], timeZone: 'UTC', nextRun: null, keep: null, keepDays: null, environment: 'RECORD', secrets: true },
+            settings: { __typename: 'BackupSettingsInfo', recipient: null, photosApart: false, photos: false, maxUploadMb: 1024, times: [], days: [], timeZone: 'UTC', nextRun: null, keep: null, keepDays: null, environment: 'RECORD', secrets: true, passphraseMinLength: 12 },
             sizes: { __typename: 'StorageSizesInfo', database: 5_300_000, pictures: 12_000_000, photos: null },
             restorePoints: [point],
           },
@@ -431,6 +431,13 @@ it('the sign-in screens of every mode have no violations', async () => {
   server.use(sessionHandler('STANDALONE', () => null), healthHandler)
   view = renderWithApollo(<App />, '/')
   await screen.findByLabelText(/Password/)
+  await check(view.container)
+  view.unmount()
+
+  // Standalone, signed in with a password shorter than the minimum now: the change in place of every page.
+  server.use(sessionHandler('STANDALONE', () => user({ passwordChangeRequired: true })), healthHandler)
+  view = renderWithApollo(<App />, '/')
+  await screen.findByRole('heading', { name: 'Choose a new password' })
   await check(view.container)
   view.unmount()
 

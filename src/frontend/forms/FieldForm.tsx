@@ -7,12 +7,19 @@ import { ErrorMessage } from '../messages.tsx'
 import { Field } from './Field.tsx'
 import { FieldInput } from './FieldInput.tsx'
 import { Form } from './Form.tsx'
+import { NewPasswordFields } from './NewPasswordFields.tsx'
+import { PasswordInput } from './PasswordInput.tsx'
 
 export interface FieldDef {
   name: string
   /** Translation key of the label, e.g. "fields.email". */
   label: ParseKeys
-  type?: 'text' | 'email' | 'password'
+  /** `newPassword`: the field and its repetition, `<name>Repeat` (NewPasswordFields), labelled `label` and `repeatLabel`. */
+  type?: 'text' | 'email' | 'password' | 'newPassword'
+  /** The repetition's label, for `newPassword`. */
+  repeatLabel?: ParseKeys
+  /** For `newPassword`: the person's own address and name, which its strength meter counts against it. */
+  personal?: readonly (string | null | undefined)[]
   autoComplete?: string
   /** Defaults to true: an empty field blocks the form. */
   required?: boolean
@@ -54,11 +61,19 @@ export function FieldForm({
   return (
     <Form onSubmit={submit} refusal={error}>
       <Stack sx={{ gap: 1.5 }}>
-        {fields.map((f) => (
+        {fields.map((f) =>
+          f.type === 'newPassword' ? (
+            <NewPasswordFields key={f.name} name={f.name} label={t(f.label)} repeatLabel={t(f.repeatLabel ?? 'fields.newPasswordRepeat')} required={f.required ?? true} personal={f.personal} />
+          ) : (
           <Field key={f.name} name={f.name} label={t(f.label)} required={f.required ?? true} typeMismatch={f.type === 'email' ? t('forms.emailInvalid') : undefined}>
-            <FieldInput type={f.type ?? 'text'} autoComplete={f.autoComplete} defaultValue={f.defaultValue} />
+            {f.type === 'password' ? (
+              <PasswordInput autoComplete={f.autoComplete} defaultValue={f.defaultValue} />
+            ) : (
+              <FieldInput type={f.type ?? 'text'} autoComplete={f.autoComplete} defaultValue={f.defaultValue} />
+            )}
           </Field>
-        ))}
+          ),
+        )}
         {error !== undefined && <ErrorMessage error={error} />}
         <Stack direction="row" sx={{ gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
           <Button type="submit" disabled={busy}>

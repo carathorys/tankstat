@@ -44,6 +44,10 @@ public static class DependencyInjection
         services.AddOptions<KeyRingOptions>().Bind(configuration.GetSection(KeyRingOptions.SectionName))
             .Validate(o => !string.IsNullOrWhiteSpace(o.KeysPath), "DataProtection:KeysPath must not be empty.").ValidateOnStart();
         services.AddOptions<SmtpOptions>().Bind(configuration.GetSection(SmtpOptions.SectionName));
+        // The password requirements apply at once: bound with a change token, apart from the sign-in below, which waits for a restart.
+        services.AddOptions<PasswordOptions>().Bind(configuration.GetSection(PasswordOptions.SectionName)).ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<PasswordOptions>, PasswordOptionsValidator>());
+        services.AddSingleton<PasswordRequirements>();
         // Bound without a change token: the sign-in is read once, at start. A save on the settings page reloads the configuration, and the
         // options monitor ValidateOnStart leaves behind would validate the saved sign-in again then, against the Smtp its validator read at
         // start (Auth:PublicUrl is required while Smtp is configured), and throw out of the save.

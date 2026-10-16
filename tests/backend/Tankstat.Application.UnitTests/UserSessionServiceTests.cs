@@ -107,7 +107,7 @@ public class UserSessionServiceTests
         var phone = await w.SessionService.IssueAsync(alice, "Safari on iOS", default);
         w.Current.SignInAs(alice);
 
-        await w.Auth.ChangePasswordAsync("password-123456", "a-new-password-1", default, first.Session.Id);
+        await w.Auth.ChangePasswordAsync("password-123456", "a-new-password-1", "a-new-password-1", default, first.Session.Id);
 
         Assert.Equal(alice.SessionVersion, first.Session.SessionVersion); // took the new version, so its next refresh works
         Assert.NotNull(await w.SessionService.RefreshAsync(first.Token, default));
@@ -126,7 +126,7 @@ public class UserSessionServiceTests
         var bobSession = await w.SessionService.IssueAsync(bob, null, default);
         w.Current.SignInAs(admin);
 
-        await w.UserService.SetPasswordAsync(alice.Id, "set-by-the-admin-1", default);
+        await w.UserService.SetPasswordAsync(alice.Id, "set-by-the-admin-1", "set-by-the-admin-1", default);
         await w.UserService.SetDisabledAsync(bob.Id, true, default);
 
         Assert.NotNull(aliceSession.Session.RevokedAt);
