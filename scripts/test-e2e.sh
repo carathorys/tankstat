@@ -39,35 +39,14 @@ app() {
     Database__Provider=Sqlite Database__ConnectionString="Data Source=${files}/tankstat.db" \
     Storage__Path="${files}/uploads" Storage__PhotosPath="${files}/photos" Backups__Path="${files}/backups" \
     DataProtection__KeysPath="${files}/keys" Settings__Path="${files}/settings.json" \
-    Auth__Mode=Standalone Auth__Standalone__AdminEmail=root@example.com Auth__Standalone__AdminPassword=initial-password-1 \
-    Setup__Enabled=false \
+    Auth__Mode=Standalone \
     exec env "${instance_env[@]}" dotnet Tankstat.Api.dll --urls "$E2E_URL"
 }
-# Setup__Enabled=false keeps a new instance from waiting for its setup (#90); the bootstrap administrator is the one the tests sign in as
-# (tests/e2e/support/app.ts).
+# A new Standalone instance waits for its setup, the only way to its first administrator (#149): finished below the unattended way, as
+# root@example.com, whom the tests sign in as (tests/e2e/support/app.ts).
 app > "${files}/app.log" 2>&1 &
 pids=($!)
 trap 'kill "${pids[@]}" 2>/dev/null || true; wait "${pids[@]}" 2>/dev/null || true; rm -rf "$files"' EXIT
-
-# The servers the setup's tests take over (tests/e2e/setup.e2e.ts), one per test and size: each is a new instance waiting for its setup,
-# which its test finishes or restores a backup into, so none is shared. "fresh" runs the shipped sign-in off (the wizard chooses the
-# mode) with nothing else set, "restore" Standalone without an administrator and the shared server's instance_env; each with folders of
-# its own.
-setup_names=(phone-fresh desktop-fresh phone-restore desktop-restore)
-setup_app() {
-  local dir="${files}/setup-$1"
-  mkdir -p "$dir"
-  cd out
-  export ASPNETCORE_ENVIRONMENT=Production Database__Provider=Sqlite Database__ConnectionString="Data Source=${dir}/tankstat.db" \
-    Storage__Path="${dir}/uploads" Storage__PhotosPath="${dir}/photos" Backups__Path="${dir}/backups" \
-    DataProtection__KeysPath="${dir}/keys" Settings__Path="${dir}/settings.json"
-  if [[ "$1" == *-restore ]]; then export Auth__Mode=Standalone "${instance_env[@]}"; fi
-  exec dotnet Tankstat.Api.dll --urls "http://127.0.0.1:$2"
-}
-for i in "${!setup_names[@]}"; do
-  setup_app "${setup_names[$i]}" $((port + 1 + i)) > "${files}/setup-${setup_names[$i]}.log" 2>&1 &
-  pids+=($!)
-done
 
 # Waits for a server's API: false when it stopped or never answered.
 answers() {
@@ -78,8 +57,46 @@ answers() {
   done
   return 1
 }
+
+# The servers the setup's tests take over (tests/e2e/setup.e2e.ts), one per test and size: each is an instance waiting for its setup,
+# which its test finishes or restores a backup into, so none is shared. "fresh" runs the shipped sign-in off (the wizard chooses the
+# mode) with nothing else set, "restore" Standalone without an administrator and the shared server's instance_env, "reopened" an
+# instance set up with sign-in off and started again in Standalone, which has no administrator, so its setup reopens (#149); each with
+# folders of its own.
+setup_names=(phone-fresh desktop-fresh phone-restore desktop-restore phone-reopened desktop-reopened)
+setup_app() {
+  local dir="${files}/setup-$1"
+  mkdir -p "$dir"
+  cd out
+  export ASPNETCORE_ENVIRONMENT=Production Database__Provider=Sqlite Database__ConnectionString="Data Source=${dir}/tankstat.db" \
+    Storage__Path="${dir}/uploads" Storage__PhotosPath="${dir}/photos" Backups__Path="${dir}/backups" \
+    DataProtection__KeysPath="${dir}/keys" Settings__Path="${dir}/settings.json"
+  if [[ "$1" == *-restore ]]; then export Auth__Mode=Standalone "${instance_env[@]}"; fi
+  if [[ "$1" == *-reopened ]]; then
+    # Set up once with sign-in off (the environment completes it), stopped, then started in Standalone.
+    Auth__Mode=None Setup__Enabled=false dotnet Tankstat.Api.dll --urls "http://127.0.0.1:$2" &
+    local first=$!
+    answers "http://127.0.0.1:$2" "$first" || exit 1
+    kill "$first" && wait "$first" || true
+    export Auth__Mode=Standalone
+  fi
+  exec dotnet Tankstat.Api.dll --urls "http://127.0.0.1:$2"
+}
+for i in "${!setup_names[@]}"; do
+  setup_app "${setup_names[$i]}" $((port + 1 + i)) > "${files}/setup-${setup_names[$i]}.log" 2>&1 &
+  pids+=($!)
+done
+
 if ! answers "$E2E_URL" "${pids[0]}"; then
   echo "The app did not start on $E2E_URL:" >&2
+  cat "${files}/app.log" >&2
+  exit 1
+fi
+# The shared server's setup, finished without a browser: the code from its log and one setupFinish.
+code="$(grep -oE 'setup code [A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}' "${files}/app.log" | head -n 1 | cut -d' ' -f3)"
+finish="{\"query\":\"mutation(\$i: SetupFinishInput!) { setupFinish(input: \$i) { restarting } }\",\"variables\":{\"i\":{\"code\":\"${code}\",\"email\":\"root@example.com\",\"password\":\"initial-password-1\",\"passwordConfirmation\":\"initial-password-1\"}}}"
+if ! curl -sf -H 'Content-Type: application/json' -H 'X-Requested-With: fetch' -d "$finish" "$E2E_URL/graphql" | grep -q '"restarting":false'; then
+  echo "The app's setup could not be finished on $E2E_URL:" >&2
   cat "${files}/app.log" >&2
   exit 1
 fi
