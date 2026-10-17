@@ -80,14 +80,20 @@ user="$(docker exec "$name" id -u)"
 # app's user only; the default currency (a group that applies at once) counts straight away, the access cookie's lifetime (sign-in waits for a
 # restart on purpose) after a restart, in the process: the container keeps running.
 docker run -d --name "$std" -p "${std_port}:8080" -e Auth__Mode=Standalone "$image" >/dev/null
-sgql() { curl -sf -b "$jar" -c "$jar" -H 'Content-Type: application/json' -H 'X-Requested-With: fetch' -d "$1" "${std_url}/graphql"; }
+sgql() { curl -sf -b "$jar" -c "$jar" -H 'Content-Type: application/json' -d "$1" "${std_url}/graphql"; }
 for _ in $(seq 1 60); do
   sgql '{"query":"{ __typename }"}' >/dev/null 2>&1 && break
   sleep 1
 done
 sgql '{"query":"{ __typename }"}' >/dev/null || { echo "FAIL: the Standalone container did not come up" >&2; exit 1; }
 # The first administrator, made by the setup without a browser (the only way, #149): the one-time code from the log and one setupFinish.
-code="$(docker logs "$std" 2>&1 | grep -oE 'setup code [A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}' | head -n 1 | cut -d' ' -f3)"
+# `|| true`: a grep that finds nothing must reach the message below, not end the script (set -e, pipefail).
+code=""
+for _ in $(seq 1 10); do
+  code="$(docker logs "$std" 2>&1 | grep -oE 'setup code [A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}' | tail -n 1 | cut -d' ' -f3 || true)"
+  [ -n "$code" ] && break
+  sleep 1
+done
 [ -n "$code" ] || { echo "FAIL: the Standalone container logged no setup code" >&2; docker logs "$std" >&2; exit 1; }
 sgql "{\"query\":\"mutation(\$i: SetupFinishInput!) { setupFinish(input: \$i) { restarting } }\",\"variables\":{\"i\":{\"code\":\"$code\",\"email\":\"root@example.com\",\"password\":\"initial-password-1\",\"passwordConfirmation\":\"initial-password-1\"}}}" | grep -q '"restarting":false' || { echo "FAIL: the setup could not be finished" >&2; exit 1; }
 sgql '{"query":"mutation { login(input: { email: \"root@example.com\", password: \"initial-password-1\" }) { id } }"}' | grep -q '"id"' || { echo "FAIL: the administrator cannot sign in" >&2; exit 1; }
