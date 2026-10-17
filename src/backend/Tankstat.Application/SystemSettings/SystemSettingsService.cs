@@ -5,7 +5,6 @@ using Tankstat.Application.Auth;
 using Tankstat.Application.Setup;
 using Tankstat.Application.Users;
 using Tankstat.Domain;
-using Tankstat.Domain.Users;
 
 namespace Tankstat.Application.SystemSettings;
 
@@ -130,8 +129,8 @@ public sealed class SystemSettingsService(
     /// <summary>
     /// Restarts the server in its process, unless the next start would fail for what can be told now: a start that fails ends the process (the
     /// next host is built in it), and a container that exited stays stopped. So a settings file the next start would refuse (hand-edited
-    /// since, say) and a switch to Standalone that could not create its first administrator refuse the restart instead; what only the start
-    /// finds (a database out of reach) still stops it.
+    /// since, say) refuses the restart instead, and so does a switch to Standalone with no enabled local administrator (only the setup page
+    /// makes one: <see cref="RequireAdministratorAsync"/>); what only the start finds (a database out of reach) still stops it.
     /// </summary>
     /// <param name="code">The one-time code, from the setup page while the setup waits; otherwise an administrator is needed.</param>
     public async Task RestartAsync(string? code, CancellationToken ct)
@@ -181,8 +180,8 @@ public sealed class SystemSettingsService(
     }
 
     /// <summary>
-    /// The start's checks pass, but a running app knows more: Standalone needs an administrator to sign in with afterwards (one there, or one
-    /// the first start can create), and an OIDC mode or authority the next start would take up must answer with itself as the issuer.
+    /// The start's checks pass, but a running app knows more: Standalone needs an enabled local administrator to sign in with afterwards
+    /// (unless the setup waits), and an OIDC mode or authority the next start would take up must answer with itself as the issuer.
     /// </summary>
     private async Task CheckRulesOnlyARunningAppKnowsAsync(IConfiguration candidate, CancellationToken ct)
     {
@@ -210,13 +209,14 @@ public sealed class SystemSettingsService(
     /// <summary>
     /// Standalone needs an administrator to sign in with afterwards, and only the setup page makes the first one (#149): refused while none
     /// is enabled, unless the setup waits (the start waits for the setup page then). A switch from another mode is made outside the app
-    /// (<c>Auth__Mode</c> in the environment or the settings file), after which the start opens the setup page.
+    /// (<c>Auth__Mode</c> in the environment or the settings file) with a restart from there (this refuses the app's own, D3), after which the
+    /// start opens the setup page, or with <c>Setup:Enabled=false</c> stops.
     /// </summary>
     private async Task RequireAdministratorAsync(IConfiguration next, CancellationToken ct)
     {
         if (!Is(next["Auth:Mode"], AuthMode.Standalone) || await users.AnyLocalAdminAsync(ct) || await setup.WaitsAsync(ct)) return;
         throw new DomainException("settings.standaloneNeedsAdministrator",
-            "Standalone mode needs an administrator, and none exists. Switch to it outside the app (Auth__Mode in the environment or the settings file): the next start then opens the setup page, which makes the first administrator.");
+            "Standalone mode needs an administrator, and none exists. Switch to it outside the app (Auth__Mode in the environment or the settings file) and restart the server from there: that start opens the setup page, which makes the first administrator; with Setup__Enabled=false it stops instead.");
     }
 
     /// <summary>The same place, written either way: a trailing slash or the case of the scheme and host make no difference.</summary>
