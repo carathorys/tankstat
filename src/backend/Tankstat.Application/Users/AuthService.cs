@@ -214,43 +214,7 @@ public sealed class AuthService(
     }
 
     /// <summary>
-    /// Standalone mode: creates the first administrator from configuration if no local administrator exists yet; true when it did. Without
-    /// the credentials the start stops, unless the setup waits (<paramref name="setupWaits"/>): the setup page makes the administrator then.
-    /// Only one of the two, or a password the policy refuses, stops the start either way.
-    /// </summary>
-    public async Task<bool> BootstrapAdminAsync(bool setupWaits, CancellationToken ct)
-    {
-        if (auth.Value.Mode != AuthMode.Standalone || await users.AnyLocalAdminAsync(ct)) return false;
-
-        var options = auth.Value.Standalone;
-        var (email, password) = (!string.IsNullOrWhiteSpace(options.AdminEmail), !string.IsNullOrWhiteSpace(options.AdminPassword));
-        if (!email || !password)
-        {
-            // Neither: the setup page makes the administrator. One without the other is a mistake, which stops the start like a weak password.
-            if (setupWaits && !email && !password) return false;
-            throw new InvalidOperationException(setupWaits
-                ? $"Only {(email ? "Auth:Standalone:AdminEmail" : "Auth:Standalone:AdminPassword")} of the first administrator is set. Set Auth:Standalone:AdminEmail and Auth:Standalone:AdminPassword (e.g. Auth__Standalone__AdminEmail) both, or neither to make the administrator on the setup page."
-                : "Auth:Mode is Standalone but no administrator exists. Set Auth:Standalone:AdminEmail and Auth:Standalone:AdminPassword (e.g. Auth__Standalone__AdminEmail) for the first start.");
-        }
-
-        var admin = NewAdministrator(options.AdminEmail, options.AdminPassword);
-        if (!await users.AddAsync(admin, ct))
-        {
-            // Another server starting on this database at the same time was first. Only an administrator it made counts: a user that holds
-            // the address without being one (a disabled one, say) leaves nobody to sign in, which stops the start as it always did.
-            if (await users.AnyLocalAdminAsync(ct))
-            {
-                logger.LogInformation("The first administrator was created by another server at the same moment");
-                return false;
-            }
-            throw new InvalidOperationException("The address of Auth:Standalone:AdminEmail belongs to a user that is no enabled administrator, so the first administrator cannot be created from it.");
-        }
-        logger.LogInformation("Created the first administrator {UserId}", admin.Id);
-        return true;
-    }
-
-    /// <summary>
-    /// A local administrator, not saved yet: the password within the requirements as they are now (<see cref="PasswordRequirements"/>, which
+    /// The first administrator of a Standalone instance, not saved yet (the setup page's last step saves it, the only way one is made, #149): the password within the requirements as they are now (<see cref="PasswordRequirements"/>, which
     /// the setup's wizard may have saved a step before; else a <see cref="DomainException"/>), hashed.
     /// </summary>
     public User NewAdministrator(string? email, string? password)

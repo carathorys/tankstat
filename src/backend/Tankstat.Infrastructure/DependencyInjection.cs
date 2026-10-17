@@ -139,7 +139,8 @@ public static class DependencyInjection
         // Order matters: the database first (DatabaseMigrator: a waiting restore, which sets the database up itself, else a backup when
         // migrations are pending, then the migrations), then the restore step's generation (the restored data's, stamped once the migrations
         // ran; before anything looks at the data, and the setup step finds the restored users and setup state), then move the photos kept with
-        // the pictures once they have a folder of their own, then decide the setup and create the initial administrator (SetupStep), then sign
+        // the pictures once they have a folder of their own, then decide the setup (SetupStep; for Standalone without an administrator it
+        // reopens the setup, or stops the start with the setup turned off: only the setup page makes the first administrator), then sign
         // everybody out when the authentication mode
         // changed since the last start (after what can still fail the start, so a start that never served a request records no mode, and after
         // the restore, so sessions a backup of another mode brought back end at this start; still before the server listens); the photo reading

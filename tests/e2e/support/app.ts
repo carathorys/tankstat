@@ -1,6 +1,6 @@
 import { expect, request, test, type APIRequestContext, type Page } from '@playwright/test'
 
-/** The bootstrap administrator scripts/test-e2e.sh starts the app with. */
+/** The first administrator, made by the setup scripts/test-e2e.sh finishes on the shared server. */
 export const ADMIN = { email: 'root@example.com', password: 'initial-password-1' }
 
 /** A short random tag that keeps a test's names apart from every other test's on the shared server. */

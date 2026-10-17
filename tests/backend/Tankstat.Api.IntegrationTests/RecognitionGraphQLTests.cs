@@ -48,9 +48,7 @@ public class RecognitionGraphQLTests
 
     private static TestApp WithReading(FakeProvider provider) => new(new Dictionary<string, string?>
     {
-        ["Auth:Mode"] = "Standalone",
-        ["Auth:Standalone:AdminEmail"] = "root@example.com",
-        ["Auth:Standalone:AdminPassword"] = "initial-password-1",
+        ["Auth:Mode"] = "Standalone", // its administrator, root@example.com, the set-up template's
         ["Recognition:Provider"] = "OpenAiCompatible",
         ["Recognition:OpenAiCompatible:BaseUrl"] = "http://model.invalid:1234/v1",
         ["Recognition:OpenAiCompatible:Model"] = "test-vision",
@@ -284,9 +282,7 @@ public class RecognitionGraphQLTests
 
     private static TestApp WithModel(FakeModelServer server, string key = "secret-key", bool logTraffic = false) => new(new Dictionary<string, string?>
     {
-        ["Auth:Mode"] = "Standalone",
-        ["Auth:Standalone:AdminEmail"] = "root@example.com",
-        ["Auth:Standalone:AdminPassword"] = "initial-password-1",
+        ["Auth:Mode"] = "Standalone", // its administrator, root@example.com, the set-up template's
         ["Recognition:Provider"] = "OpenAiCompatible",
         ["Recognition:OpenAiCompatible:BaseUrl"] = "http://model.invalid:1234/v1",
         ["Recognition:OpenAiCompatible:ApiKey"] = key,

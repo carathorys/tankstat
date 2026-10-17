@@ -35,7 +35,10 @@ public sealed class InstanceState
     /// </summary>
     public DateTimeOffset? SetupPendingSince { get; private set; }
 
-    /// <summary>When the setup was completed, and how; null while it waits or is undecided. A restore brings the backup's along.</summary>
+    /// <summary>
+    /// When the setup was completed, and how; null while it waits or is undecided. A restore brings the backup's along. A setup a start in
+    /// Standalone reopened (#149) keeps how it was completed while it waits again, so a start in another mode completes it again by it.
+    /// </summary>
     public DateTimeOffset? SetupCompletedAt { get; private set; }
 
     public SetupCompletion? SetupCompletedVia { get; private set; }

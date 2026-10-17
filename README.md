@@ -34,11 +34,11 @@ Under the hood: a React + TypeScript frontend (Vite, MUI) and a .NET 10 backend 
 
 ```sh
 docker run -d --name tankstat -p 8080:8080 -v tankstat-data:/data \
-  -e Auth__Mode=Standalone -e Auth__Standalone__AdminEmail=admin@example.com -e Auth__Standalone__AdminPassword='a long password' \
+  -e Auth__Mode=Standalone \
   ghcr.io/carathorys/tankstat:latest
 ```
 
-Then open http://localhost:8080 and sign in with that e-mail and password. Or leave the two `AdminEmail`/`AdminPassword` variables out: the first visit then shows a setup wizard, which takes you through the settings and makes the administrator (or restores a backup) with the one-time code from `docker logs tankstat`. The `/data` volume holds the SQLite database and the uploaded pictures. To build the image yourself instead, run `mise run docker:build` and use `tankstat:local` as the image name.
+Then open http://localhost:8080: the first visit shows a setup wizard, which takes you through the settings and makes the first administrator (or restores a backup) with the one-time code from `docker logs tankstat`. A script can finish it without a browser, see [Authentication](docs/authentication.md#the-first-start-setup). The `/data` volume holds the SQLite database and the uploaded pictures. To build the image yourself instead, run `mise run docker:build` and use `tankstat:local` as the image name.
 
 > **Always set `Auth__Mode`.** The shipped `appsettings.json` runs without authentication: everyone sees and changes everything, and there is no administrator. Put TLS in front of the container, and never commit real credentials.
 

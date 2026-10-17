@@ -76,13 +76,15 @@ public class StartupSmokeTests
 
     // ---- Standalone ---------------------------------------------------------------------------------------
 
-    private static Dictionary<string, string?> Standalone(params (string Key, string? Value)[] extra) =>
-        Env([("Auth__Mode", "Standalone"), ("Auth__Standalone__AdminEmail", "root@example.com"), ("Auth__Standalone__AdminPassword", "initial-password-1"), .. extra]);
+    private static Dictionary<string, string?> Standalone(params (string Key, string? Value)[] extra) => Env([("Auth__Mode", "Standalone"), .. extra]);
 
     [Fact]
-    public async Task Standalone_WithAnAdministratorConfigured_Starts_AndTheAdministratorCanSignIn()
+    public async Task Standalone_SetUpWithoutABrowser_WithTheCodeFromItsLog_Starts_AndTheAdministratorCanSignIn()
     {
-        await using var app = await AppProcess.StartAsync(Standalone());
+        // The unattended way (#149): the code from the log and one setupFinish, as a script would; then nothing waits any more.
+        await using var app = await AppProcess.StartStandaloneAsync(Standalone());
+
+        Assert.False((await app.Gql("{ setup { pending } }")).Data().GetProperty("setup").GetProperty("pending").GetBoolean());
 
         var anonymous = (await app.Gql(Session)).Data();
         Assert.Equal("STANDALONE", anonymous.GetProperty("session").GetProperty("mode").GetString());
@@ -100,7 +102,7 @@ public class StartupSmokeTests
     {
         // The unit and integration tests read scopes as data; only the process shows how the console prints one (a scope that is a
         // dictionary is printed as its type name). The formatter has to be named for its options to apply.
-        await using var app = await AppProcess.StartAsync(Standalone(
+        await using var app = await AppProcess.StartStandaloneAsync(Standalone(
             ("Logging__LogLevel__Tankstat", "Debug"), ("Logging__Console__FormatterName", "simple"), ("Logging__Console__FormatterOptions__IncludeScopes", "true")));
         var login = (await app.Gql("mutation($i: LoginInput!) { login(input: $i) { id } }", new { i = new { email = "root@example.com", password = "initial-password-1" } })).Data().GetProperty("login");
         var id = login.GetProperty("id").GetString()!;
@@ -112,15 +114,15 @@ public class StartupSmokeTests
     }
 
     [Fact]
-    public async Task Standalone_StartsAgainOnAnExistingDatabase_WithoutTheBootstrapSettings()
+    public async Task Standalone_StartsAgainOnAnExistingDatabase_SetUp_AndKeepsItsSignIns()
     {
-        var first = await AppProcess.StartAsync(Standalone());
+        var first = await AppProcess.StartStandaloneAsync(Standalone());
         var work = first.WorkDirectory;
         await first.Gql("mutation($i: LoginInput!) { login(input: $i) { id } }", new { i = new { email = "root@example.com", password = "initial-password-1" } });
         var signedIn = first.CookieHeader;
         await first.StopAsync();
 
-        // Second start: the administrator already exists in the database, so no bootstrap settings are needed.
+        // Second start: the administrator the setup made is in the database, so nothing waits.
         var settings = Env(("Auth__Mode", "Standalone"), ("Database__ConnectionString", $"Data Source={first.DatabasePath}"));
         var second = await AppProcess.StartAsync(settings, workDirectory: work, useTempDatabase: false);
         try
@@ -144,7 +146,7 @@ public class StartupSmokeTests
     public async Task Standalone_WithoutAnAdministrator_OnANewDatabase_KeepsRunning_AndWaitsForItsSetup_WithTheCodeInTheLog()
     {
         // Nothing configured and no administrator in a new database: the setup page makes the first one, with the code from the log.
-        await using var app = await AppProcess.StartAsync(Env(("Auth__Mode", "Standalone"), ("Auth__Standalone__AdminEmail", ""), ("Auth__Standalone__AdminPassword", "")));
+        await using var app = await AppProcess.StartAsync(Standalone());
 
         Assert.Equal("ok", (await app.Gql("{ health { status } }")).Data().GetProperty("health").GetProperty("status").GetString());
         Assert.True((await app.Gql("{ setup { pending } }")).Data().GetProperty("setup").GetProperty("pending").GetBoolean());
@@ -155,24 +157,47 @@ public class StartupSmokeTests
     [Fact]
     public async Task Standalone_WithoutAnAdministrator_AndTheSetupTurnedOff_StopsAtStartupWithAnActionableMessage()
     {
-        // The behaviour reported as "crash on startup": nothing configured, no administrator, and nothing to make one (no setup page).
-        // A deliberate fail-fast; this test pins down exactly what happens.
-        var (exitCode, log) = await AppProcess.RunUntilExitAsync(Env(
-            ("Auth__Mode", "Standalone"), ("Auth__Standalone__AdminEmail", ""), ("Auth__Standalone__AdminPassword", ""), ("Setup__Enabled", "false")));
+        // Nothing to make the first administrator: the setup page is the only way (#149), and it is turned off. A deliberate fail-fast,
+        // pinned down exactly, with the way out.
+        var (exitCode, log) = await AppProcess.RunUntilExitAsync(Env(("Auth__Mode", "Standalone"), ("Setup__Enabled", "false")));
 
         Assert.NotEqual(0, exitCode);
         Assert.Contains("no administrator exists", log);
-        Assert.Contains("Auth:Standalone:AdminEmail", log);
-        Assert.Contains("Auth__Standalone__AdminEmail", log);
+        Assert.Contains("Setup__Enabled", log);
+        Assert.Contains("/setup", log);
     }
 
     [Fact]
-    public async Task Standalone_WithAWeakAdministratorPassword_StopsAtStartup()
+    public async Task ASetUpInstance_SwitchedToStandaloneOutsideTheApp_WithoutAnAdministrator_ReopensItsSetup_WithTheCodeInTheLog()
     {
-        var (exitCode, log) = await AppProcess.RunUntilExitAsync(Standalone(("Auth__Standalone__AdminPassword", "weak")));
+        // Set up with sign-in off (completed by the environment), then started in Standalone: nobody can sign in, so the setup opens again.
+        var none = await AppProcess.StartAsync(Env(("Auth__Mode", "None"), ("Setup__Enabled", "false")));
+        await none.StopAsync();
+        try
+        {
+            await using var app = await AppProcess.StartAsync(Standalone(), workDirectory: none.WorkDirectory); // the same database
 
-        Assert.NotEqual(0, exitCode);
-        Assert.Contains("at least", log);
+            Assert.True((await app.Gql("{ setup { pending } }")).Data().GetProperty("setup").GetProperty("pending").GetBoolean());
+            Assert.True(await app.LogsAsync("The setup is reopened"), app.Log);
+            Assert.Matches("one-time setup code [A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}", app.Log);
+            await app.FinishSetupAsync(); // and the setup page makes the administrator again
+            Assert.False((await app.Gql("{ setup { pending } }")).Data().GetProperty("setup").GetProperty("pending").GetBoolean());
+        }
+        finally
+        {
+            await none.DisposeAsync(); // last: it owns the folder
+        }
+    }
+
+    [Fact]
+    public async Task TheRetiredBootstrapSettings_AreIgnored_WithAWarningThatNamesThem_NeverTheirValues()
+    {
+        await using var app = await AppProcess.StartAsync(Standalone(("Auth__Standalone__AdminEmail", "zzzz@example.com"), ("Auth__Standalone__AdminPassword", "zzzz-password-1")));
+
+        Assert.True(await app.LogsAsync("Auth:Standalone:AdminEmail, Auth:Standalone:AdminPassword are no longer used"), app.Log);
+        Assert.DoesNotContain("zzzz", app.Log);
+        // Nobody was made from them: the new instance waits for its setup page.
+        Assert.True((await app.Gql("{ setup { pending } }")).Data().GetProperty("setup").GetProperty("pending").GetBoolean());
     }
 
     [Fact]
@@ -339,7 +364,7 @@ public class StartupSmokeTests
     {
         // Kestrel stops a body at 30 MB unless the endpoint raises its limit; the test server of the integration tests has no such limit, so
         // only the real server shows the raise works: 31 MB of noise is read whole and refused as no backup, not cut off with a bare 413.
-        await using var app = await AppProcess.StartAsync(Standalone());
+        await using var app = await AppProcess.StartStandaloneAsync(Standalone());
         await app.Gql("mutation($i: LoginInput!) { login(input: $i) { id } }", new { i = new { email = "root@example.com", password = "initial-password-1" } });
         var noise = new byte[31 * 1024 * 1024];
         new Random(7).NextBytes(noise);
@@ -357,7 +382,7 @@ public class StartupSmokeTests
     {
         // A body without a length is counted by Kestrel as it arrives, ahead of what the app has read: under any limit of Kestrel's own, its
         // bare 413 would answer first. The endpoint lifts that limit, so the backups' own count answers, and says why.
-        await using var app = await AppProcess.StartAsync(Standalone(("Backups__MaxUploadMb", "1")));
+        await using var app = await AppProcess.StartStandaloneAsync(Standalone(("Backups__MaxUploadMb", "1")));
         await app.Gql("mutation($i: LoginInput!) { login(input: $i) { id } }", new { i = new { email = "root@example.com", password = "initial-password-1" } });
         var noise = new byte[3 * 1024 * 1024];
         new Random(7).NextBytes(noise);

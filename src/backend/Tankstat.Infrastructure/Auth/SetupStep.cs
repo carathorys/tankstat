@@ -5,8 +5,8 @@ using Tankstat.Application.Setup;
 namespace Tankstat.Infrastructure.Auth;
 
 /// <summary>
-/// After the restore and the migrations: decides the setup, creates the bootstrap administrator in Standalone, and fails the start when a
-/// set-up Standalone instance has no administrator and nothing to create one from (<see cref="SetupService.StartAsync"/>).
+/// After the restore and the migrations: decides the setup, reopens it for a Standalone instance without an administrator, and fails the
+/// start when such an instance has the setup turned off (<see cref="SetupService.StartAsync"/>).
 /// </summary>
 internal sealed class SetupStep(IServiceScopeFactory scopes) : IHostedService
 {

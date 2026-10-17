@@ -1,4 +1,3 @@
-using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tankstat.Domain.Users;
@@ -17,13 +16,6 @@ public sealed class PasswordOptions
     public int PasswordMinLength { get; set; } = PasswordPolicy.MinLength;
 
     public const string MinLengthKey = SectionName + ":" + nameof(PasswordMinLength);
-
-    /// <summary>
-    /// The minimum a configuration (a candidate's, a restored file's) sets, or the floor where it sets none or one that is no number (the
-    /// validator says that; this only answers what a password must have meanwhile).
-    /// </summary>
-    public static int MinLengthIn(Func<string, string?> value) =>
-        int.TryParse(value(MinLengthKey), NumberStyles.Integer, CultureInfo.InvariantCulture, out var min) ? Math.Max(min, PasswordPolicy.MinLength) : PasswordPolicy.MinLength;
 }
 
 public sealed class PasswordOptionsValidator : IValidateOptions<PasswordOptions>

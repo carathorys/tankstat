@@ -83,7 +83,7 @@ public sealed class BackupScheduleTests : IDisposable
     [Fact]
     public async Task WhileTheSetupWaits_NothingIsWritten_TheFirstDueTimeAfterItWritesTheFirstBackup()
     {
-        using var app = App(new() { ["Auth:Standalone:AdminEmail"] = "", ["Auth:Standalone:AdminPassword"] = "", ["Setup:Enabled"] = "true", ["Backups:Keep"] = "2" });
+        using var app = App(new() { ["Setup:Enabled"] = "true", ["Backups:Keep"] = "2" });
         var worker = Worker(app);
 
         await worker.WhenAsleepUntil(At(11, 2)).WaitAsync(Wait);

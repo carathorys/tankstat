@@ -68,6 +68,35 @@ test('a new instance is set up through the wizard: the sign-in mode, the first a
   await expectSoundLayout(page)
 })
 
+test('an instance switched to local accounts outside the app, without an administrator, reopens its setup, which makes the first one', async ({
+  page,
+}) => {
+  // Set up with sign-in off, then started in Standalone (scripts/test-e2e.sh): nobody can sign in, so the setup page stands in for the
+  // sign-in again, the only way to the first administrator (#149).
+  await enterCode(page, waitingServer('reopened'))
+  await page.getByRole('button', { name: 'Start the wizard' }).click()
+  await stepAt(page, 'Sign-in')
+  // The environment chose the mode: shown, not offered.
+  const signIn = page.getByRole('form', { name: 'Sign-in settings' })
+  await expect(signIn.getByText('Local accounts (Standalone)')).toBeVisible()
+  await expect(signIn.getByRole('combobox', { name: /^Sign-in mode/ })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Next' }).click()
+  await stepAt(page, 'E-mail')
+  await page.getByRole('button', { name: 'Finish', exact: true }).click()
+  await stepAt(page, 'Finish')
+
+  const last = page.getByRole('region', { name: 'Finish' })
+  const admin = { email: `admin-${tag()}@example.com`, password: `password-${tag()}` }
+  await last.getByRole('textbox', { name: /^E-mail/ }).fill(admin.email)
+  await last.getByLabel(/^Password/).fill(admin.password)
+  await last.getByLabel(/^Repeat the password/).fill(admin.password)
+  await last.getByRole('button', { name: 'Create the administrator' }).click()
+
+  // Local accounts run already: no restart, the new administrator is signed in at once and the setup is done.
+  await expect(page.getByText("The setup is done: you are this instance's administrator.")).toBeVisible()
+  await expectSoundLayout(page)
+})
+
 type BackupRun = { running: boolean; startedAt: string | null; file: string | null; error: string | null }
 
 /** The notification setting each size saves on the shared server before its backup (a setting of its own, as the e2e rules ask), and its label. */
