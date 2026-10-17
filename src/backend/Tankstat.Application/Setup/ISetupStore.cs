@@ -23,9 +23,15 @@ public interface ISetupStore
 
     /// <summary>
     /// Reopens a completed setup (a set-up Standalone instance that has no administrator, #149): pending again from <paramref name="now"/>,
-    /// its completion forgotten; false when it was not completed (another start reopened it first).
+    /// how it was completed kept (<see cref="CompleteReopenedAsync"/>); false when it was not completed (another start reopened it first).
     /// </summary>
     Task<bool> ReopenAsync(DateTimeOffset now, CancellationToken ct);
+
+    /// <summary>
+    /// Completes a reopened setup again as it was completed before (a start in another sign-in mode than Standalone: the way back is the
+    /// environment); false when the setup waits as a new one does, with no completion before it, or is not pending.
+    /// </summary>
+    Task<bool> CompleteReopenedAsync(DateTimeOffset now, CancellationToken ct);
 
     /// <summary>Completes a pending setup; false when it was not pending (completed meanwhile).</summary>
     Task<bool> CompleteAsync(SetupCompletion via, DateTimeOffset now, CancellationToken ct);

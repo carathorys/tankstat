@@ -57,9 +57,10 @@ public sealed class SetupService(
     /// At every start, after a waiting restore and the migrations: decides a setup that is undecided (a database from before setup existed
     /// is set up when it holds data, a new one waits). Standalone without an enabled local administrator needs the setup page, the only one
     /// that makes the first administrator (#149): a set-up instance in that state (the mode changed outside the app, or every administrator
-    /// gone) reopens its setup, and with the setup turned off (<c>Setup:Enabled=false</c>) the start stops. Then a waiting setup the
-    /// environment completes is completed (the setup turned off, a local administrator there, <c>Auth:AdminEmails</c>). While it waits, the
-    /// code is logged.
+    /// gone) reopens its setup, and with the setup turned off (<c>Setup:Enabled=false</c>) the start stops. A setup reopened that way is
+    /// completed again as it was by a start in another mode (the mode switched back: the way back is the environment). Then a waiting setup
+    /// the environment completes is completed (the setup turned off, a local administrator there, <c>Auth:AdminEmails</c>). While it waits,
+    /// the code is logged.
     /// </summary>
     public async Task StartAsync(CancellationToken ct)
     {
@@ -83,12 +84,20 @@ public sealed class SetupService(
                 phase = await store.PhaseAsync(ct);
             }
         }
-        else if (phase == SetupPhase.Pending && CompletedBy() is { } reason)
+        else if (phase == SetupPhase.Pending)
         {
-            // Completed either way: where this write finds it completed, another server starting at the same moment was first.
-            if (await store.CompleteAsync(SetupCompletion.Environment, clock.GetUtcNow(), ct))
-                logger.LogInformation("The setup is completed by the environment: {Reason}", reason);
-            phase = SetupPhase.Completed;
+            if (auth.Value.Mode != AuthMode.Standalone && await store.CompleteReopenedAsync(clock.GetUtcNow(), ct))
+            {
+                logger.LogInformation("The setup a start in Standalone reopened is completed again as it was: the instance runs {Mode}", auth.Value.Mode);
+                phase = SetupPhase.Completed;
+            }
+            else if (CompletedBy() is { } reason)
+            {
+                // Completed either way: where this write finds it completed, another server starting at the same moment was first.
+                if (await store.CompleteAsync(SetupCompletion.Environment, clock.GetUtcNow(), ct))
+                    logger.LogInformation("The setup is completed by the environment: {Reason}", reason);
+                phase = SetupPhase.Completed;
+            }
         }
 
         status.Set(phase == SetupPhase.Pending);

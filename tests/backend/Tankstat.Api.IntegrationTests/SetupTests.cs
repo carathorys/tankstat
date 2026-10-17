@@ -106,6 +106,23 @@ public sealed class SetupTests : IDisposable
     }
 
     [Fact]
+    public async Task ASetupAStartInStandaloneReopened_IsCompletedAgain_WhenTheModeIsSwitchedBack()
+    {
+        // Set up with sign-in off (by the environment: TestApp turns the setup off), started once in Standalone, which reopens it, then
+        // started in its own mode again: the way back is the environment, so nothing waits.
+        using var data = new SharedData(standalone: false);
+        using (var none = data.Host(new() { ["Auth:Mode"] = "None" }))
+            _ = none.Factory.Services; // starts the host
+        using (var standalone = data.Host(WaitingStandalone()))
+            Assert.True((await standalone.NewClient().Gql(Pending)).Data().GetProperty("setup").GetProperty("pending").GetBoolean());
+
+        using var back = data.Host(new() { ["Auth:Mode"] = "None", ["Setup:Enabled"] = "true" });
+
+        Assert.False((await back.NewClient().Gql(Pending)).Data().GetProperty("setup").GetProperty("pending").GetBoolean());
+        Assert.DoesNotContain(back.Log.From<SetupService>(), e => e.Values.ContainsKey("Code"));
+    }
+
+    [Fact]
     public async Task WithSignInOff_TheAcknowledgement_CompletesTheSetup_AndAuthDisabledStays()
     {
         using var app = new TestApp(new() { ["Auth:Mode"] = "None", ["Setup:Enabled"] = "true" });

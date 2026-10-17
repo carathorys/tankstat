@@ -15,7 +15,7 @@ namespace Tankstat.Application.UnitTests;
 internal sealed class InMemorySetupStore(InMemoryUsers users, InMemoryVehicles vehicles) : ISetupStore
 {
     public SetupPhase Phase { get; set; } = SetupPhase.Undecided;
-    public SetupCompletion? Via { get; private set; }
+    public SetupCompletion? Via { get; set; }
 
     public Task<SetupPhase> PhaseAsync(CancellationToken ct) => Task.FromResult(Phase);
 
@@ -40,8 +40,15 @@ internal sealed class InMemorySetupStore(InMemoryUsers users, InMemoryVehicles v
     {
         BeforeReopen?.Invoke();
         if (Phase != SetupPhase.Completed) return Task.FromResult(false);
-        (Phase, Via) = (SetupPhase.Pending, null);
+        Phase = SetupPhase.Pending; // how it was completed stays, as the database's row keeps it
         Reopened++;
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> CompleteReopenedAsync(DateTimeOffset now, CancellationToken ct)
+    {
+        if (Phase != SetupPhase.Pending || Via is null) return Task.FromResult(false);
+        Phase = SetupPhase.Completed;
         return Task.FromResult(true);
     }
 
@@ -152,16 +159,49 @@ public sealed class SetupServiceTests
     {
         // The mode switched to Standalone outside the app, or every administrator gone: only the setup page makes one now.
         var s = Make();
-        s.Store.Phase = SetupPhase.Completed;
+        (s.Store.Phase, s.Store.Via) = (SetupPhase.Completed, SetupCompletion.Acknowledged); // set up with sign-in off, say
         s.World.AddUser("plain@x.co");
 
         await s.Service.StartAsync(default);
 
-        Assert.Equal((SetupPhase.Pending, 1), (s.Store.Phase, s.Store.Reopened));
+        // How it was completed stays, for a start in the mode switched back (below).
+        Assert.Equal((SetupPhase.Pending, 1, SetupCompletion.Acknowledged), (s.Store.Phase, s.Store.Reopened, s.Store.Via));
         Assert.True(s.Status.Pending);
         Assert.Single(CodeLines(s));
         Assert.Single(ReopenLines(s));
         Assert.False(s.World.Log.Mentions("plain@x.co"));
+    }
+
+    [Theory]
+    [InlineData(AuthMode.None)]
+    [InlineData(AuthMode.Oidc)]
+    [InlineData(AuthMode.ProxyHeader)]
+    public async Task ASetupAStartInStandaloneReopened_IsCompletedAgainAsItWas_WhenTheModeIsSwitchedBack(AuthMode mode)
+    {
+        // Reopened by a start in Standalone (the mode tried out, say): the way back is the environment, as it always was.
+        var s = Make(mode);
+        (s.Store.Phase, s.Store.Via) = (SetupPhase.Pending, SetupCompletion.Administrator);
+
+        await s.Service.StartAsync(default);
+
+        Assert.Equal((SetupPhase.Completed, SetupCompletion.Administrator), (s.Store.Phase, s.Store.Via));
+        Assert.False(s.Status.Pending);
+        Assert.Empty(CodeLines(s));
+        Assert.Equal(LogLevel.Information, Assert.Single(s.World.Log.From<SetupService>(), e => e.Values.ContainsKey("Mode")).Level);
+    }
+
+    [Fact]
+    public async Task ASetupAStartInStandaloneReopened_StillWaits_AtTheNextStartInStandalone()
+    {
+        var s = Make();
+        (s.Store.Phase, s.Store.Via) = (SetupPhase.Pending, SetupCompletion.Acknowledged);
+
+        await s.Service.StartAsync(default);
+
+        Assert.Equal(SetupPhase.Pending, s.Store.Phase);
+        Assert.True(s.Status.Pending);
+        Assert.Single(CodeLines(s));
+        Assert.Empty(ReopenLines(s)); // reopened before, not by this start
     }
 
     [Fact]
