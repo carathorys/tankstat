@@ -10,14 +10,14 @@ import { BarChart } from '@mui/x-charts/BarChart'
 import { LineChart } from '@mui/x-charts/LineChart'
 import { PieChart } from '@mui/x-charts/PieChart'
 import { useReducedMotion } from 'motion/react'
-import { useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SurfaceTable } from '../components/SurfaceTable.tsx'
 import type { DistanceUnit, VolumeUnit } from '../gql/generated.ts'
 import { useFormat } from '../i18n/format.ts'
 import { validLocale } from '../i18n/locale.ts'
 import { standaloneLink } from '../theme/components.ts'
-import { barPlaces, chartAxes, PALETTE, periodLabel, seriesId, shortPeriodLabels, type ChartData, type ChartRecipe, type Series } from './chartFormat.ts'
+import { barPlaces, chartAxes, labelStep, PALETTE, periodLabel, seriesId, shortPeriodLabels, stackOf, type ChartData, type ChartRecipe, type Series } from './chartFormat.ts'
 import { BarLayoutContext, type BarLayout } from './barLayout.ts'
 import { PlacedBar } from './PlacedBar.tsx'
 
@@ -41,6 +41,20 @@ const BAR_GAP_RATIO = 0.1
  */
 const LABEL_ROOM = { bars: 18, points: 32 }
 
+/** How wide an element is now (0 until it is laid out, and in jsdom): the axis names as many periods as fit in it. */
+function useWidth(): [RefObject<HTMLElement | null>, number] {
+  const ref = useRef<HTMLElement>(null)
+  const [width, setWidth] = useState(0)
+  useEffect(() => {
+    const element = ref.current
+    if (!element || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(([entry]) => setWidth(Math.round(entry.contentRect.width)))
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+  return [ref, width]
+}
+
 /**
  * A chart of server-calculated data. The picture is for sighted users (hidden from assistive technology); the same numbers are always
  * available as a table next to it, which is what a screen reader reads.
@@ -50,6 +64,7 @@ export function ChartView({ data, recipe, units, title, height = 240 }: { data: 
   const format = useFormat()
   const reduce = useReducedMotion() ?? false
   const [table, setTable] = useState(false)
+  const [figure, figureWidth] = useWidth()
 
   if (noData(data)) {
     return (
@@ -78,23 +93,28 @@ export function ChartView({ data, recipe, units, title, height = 240 }: { data: 
   const rows: Record<string, string | number | null>[] = keys.map((key) => ({ key, label: keyLabel(key), ...Object.fromEntries(data.series.map((s) => [seriesId(s), s.points.find((p) => p.key === key)?.value ?? null])) }))
   const colour = (i: number) => PALETTE[i % PALETTE.length]
   const several = data.series.length > 1
-  // A period is named short along the bottom (more of them fit on a phone) and in full in the tooltip.
-  const short = shortPeriodLabels(keys, validLocale(i18n.language, i18n.resolvedLanguage))
-  const period = (key: string, context: { location: string }) => (context.location === 'tick' ? (short.get(key) ?? keyLabel(key)) : keyLabel(key))
-  // The x axis of every cartesian chart: as high as its labels need (a year goes under its month).
-  const periods = { dataKey: 'key', valueFormatter: period, height: 'auto' as const }
   // Every currency of a chart of costs on a scale of its own (#159): one axis per currency, shown (in its currency) only when there is one.
   const scales = chartAxes(data)
+  const axisWidth = (currency: string | null) => (currency ? 64 : 48)
   const yAxis = scales.axes.map((a) => ({
     id: a.id,
     position: scales.shown ? ('left' as const) : ('none' as const),
     // Room for an amount with its currency ("HUF 500", "40 E Ft"): MUI's 'auto' measured too little and cut it.
-    width: a.currency ? 64 : 48,
+    width: axisWidth(a.currency),
     valueFormatter: (value: number) => (a.currency ? format.compactMoney(value, a.currency) : axis(value)),
-    // The highest value of each currency reaches the top, whatever the size of its numbers.
-    domainLimit: scales.shown ? undefined : ('strict' as const),
+    // The highest value of each currency reaches the top, whatever the size of its numbers; from 0, as a bar is, so a line of prices that
+    // barely moves does not look like a swing from nothing to everything with no axis to read it by.
+    ...(scales.shown ? {} : { domainLimit: 'strict' as const, min: 0 }),
   }))
   const room = recipe.kind === 'BAR' ? LABEL_ROOM.bars : LABEL_ROOM.points
+  // A period is named short along the bottom, every `step`-th one so the named ones fit (more on a phone), its year on every one that
+  // starts a year among them; in full in the tooltip. A category is named as it is ("Uncategorised" for none).
+  const step = labelStep(keys.length, figureWidth - room * 2 - (scales.shown ? axisWidth(scales.axes[0].currency) : 0))
+  const short = shortPeriodLabels(keys, validLocale(i18n.language, i18n.resolvedLanguage), recipe.grouping, step)
+  const byPeriod = recipe.grouping === 'MONTH' || recipe.grouping === 'QUARTER'
+  const period = (key: string, context: { location: string }) => (context.location === 'tick' && byPeriod ? (short.get(key) ?? '') : keyLabel(key))
+  // The x axis of every cartesian chart: as high as its labels need (a year goes under its month).
+  const periods = { dataKey: 'key', valueFormatter: period, height: 'auto' as const, tickLabelInterval: byPeriod ? (key: string) => short.has(key) : ('auto' as const) }
   // The parts every cartesian chart shares: the periods along the bottom, compact values up the side, light horizontal lines (only with
   // an axis to read them by).
   const cartesian = {
@@ -108,7 +128,8 @@ export function ChartView({ data, recipe, units, title, height = 240 }: { data: 
     hideLegend: !several,
     skipAnimation: reduce,
     disableKeyboardNavigation: true,
-    slotProps: tooltipInPage(),
+    // By axis (the whole period), never by item: a bar is drawn where `PlacedBar` puts it, but MUI finds the one under the pointer at its own place.
+    slotProps: { tooltip: { ...tooltipInPage().tooltip, trigger: 'axis' as const } },
   }
   const lines = (area: boolean) =>
     data.series.map((s, i) => ({
@@ -120,19 +141,20 @@ export function ChartView({ data, recipe, units, title, height = 240 }: { data: 
       showMark: rows.length < 25,
       connectNulls: true,
       area,
-      stack: area && recipe.stacked ? (s.currency ?? 'a') : undefined,
+      stack: area && recipe.stacked ? stackOf(s) : undefined,
       yAxisId: scales.axisOf(s),
       valueFormatter: (value: number | null) => show(value, s),
     }))
-  // The bars of a period: only those of the currencies (or series) it has, centred in it (#159).
-  const places = barPlaces(data, keys, recipe.stacked)
-  const byId = new Map(data.series.map((s) => [seriesId(s), s]))
-  const barLayout: BarLayout = {
-    groups: places.groups,
-    groupOf: (id) => places.group(byId.get(id)!),
-    at: (id, index) => (byId.has(id) ? places.at(byId.get(id)!, index) : null),
-    gapRatio: BAR_GAP_RATIO,
-    radius: 4,
+  // The bars of a period: only those of the currencies (or series) it has, centred in it (#159). Worked out for a bar chart only.
+  const barLayout = (): BarLayout => {
+    const places = barPlaces(data, keys, recipe.stacked)
+    const byId = new Map(data.series.map((s) => [seriesId(s), s]))
+    return {
+      periodOf: (index) => keys[index],
+      at: (id, index) => (byId.has(id) ? places.at(byId.get(id)!, index) : null),
+      gapRatio: BAR_GAP_RATIO,
+      radius: 4,
+    }
   }
 
   const picture =
@@ -170,7 +192,7 @@ export function ChartView({ data, recipe, units, title, height = 240 }: { data: 
       <LineChart {...cartesian} xAxis={[{ scaleType: 'point', ...periods }]} series={lines(true)} />
     ) : (
       // The bars draw themselves (`PlacedBar`), rounded corners included: MUI's `borderRadius` would clip them where MUI placed them.
-      <BarLayoutContext.Provider value={barLayout}>
+      <BarLayoutContext.Provider value={barLayout()}>
         <BarChart
           {...cartesian}
           slots={{ bar: PlacedBar }}
@@ -180,7 +202,7 @@ export function ChartView({ data, recipe, units, title, height = 240 }: { data: 
             dataKey: seriesId(s),
             label: name(s),
             color: colour(i),
-            stack: recipe.stacked ? (s.currency ?? 'a') : undefined,
+            stack: recipe.stacked ? stackOf(s) : undefined,
             yAxisId: scales.axisOf(s),
             valueFormatter: (value: number | null) => show(value, s),
           }))}
@@ -190,12 +212,13 @@ export function ChartView({ data, recipe, units, title, height = 240 }: { data: 
 
   const categories = recipe.grouping === 'CATEGORY'
   return (
-    <Box component="figure" sx={{ m: 0 }}>
+    <Box component="figure" ref={figure} sx={{ m: 0 }}>
       <div role="img" aria-label={t('dashboard.chartLabel', { title })}>
         <div aria-hidden>{picture}</div>
       </div>
+      {/* A note, not the figure's caption: the chart's title names it. */}
       {recipe.kind !== 'DONUT' && !scales.shown && (
-        <Typography component="figcaption" variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
+        <Typography component="p" variant="body2" sx={{ color: 'text.secondary', mt: 0.5, mb: 0 }}>
           {t('dashboard.ownScales')}
         </Typography>
       )}

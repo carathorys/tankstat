@@ -103,7 +103,10 @@ it('with several currencies says each has a scale of its own, and lists a period
   const ui = userEvent.setup()
   view(twoCurrencies, 'BAR')
 
-  expect(screen.getByText('Each currency is drawn on a scale of its own; the amounts are in the tooltip and the table.')).toBeInTheDocument()
+  const note = screen.getByText('Each currency is drawn on a scale of its own; the amounts are in the tooltip and the table.')
+  // A note under the chart, not the figure's caption: the chart's title names the figure (a caption in its middle would, and is invalid).
+  expect(note.tagName).toBe('P')
+  expect(note.closest('figure')?.querySelector('figcaption')).toBeNull()
   await ui.click(screen.getByRole('button', { name: 'Show the data as a table' }))
   const table = screen.getByRole('table', { name: 'Monthly costs' })
   expect(within(table).getByRole('rowheader', { name: 'Sep 2026' }).closest('tr')).toHaveTextContent(/^Sep 2026–€155\.19$/)

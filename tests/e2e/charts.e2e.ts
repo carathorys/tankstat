@@ -12,7 +12,8 @@ const monthStart = (back: number) => {
 
 /** What a chart's bars and period labels measure: each bar's box and colour, and the labels along the bottom. */
 async function measureChart(page: Page, name: string) {
-  const figure = page.getByRole('img', { name: `${name}: chart` }).locator('xpath=ancestor::figure')
+  // The chart's own figure, by its exact name ("By category" would also match the preset "Expenses by category").
+  const figure = page.getByRole('img', { name: `${name}: chart`, exact: true }).locator('xpath=ancestor::figure[1]')
   return figure.evaluate((root) => {
     // The widest svg is the chart: the legend's swatches are svgs too.
     const svg = [...root.querySelectorAll('svg')].sort((a, b) => b.getBoundingClientRect().width - a.getBoundingClientRect().width)[0]
@@ -72,8 +73,27 @@ test('draws a chart of costs in two currencies on a scale for each, with only th
   }
   for (const month of [1, 2, 4, 5, 7, 8, 10, 11]) expect(Math.abs(centre(eurosDrawn[month]) - middleOf(month))).toBeLessThanOrEqual(2)
 
-  // Short month names fit: at least half of them, on a phone too (a dashboard card is narrow at both sizes), none cut short.
+  // Short month names fit: at least half of them, on a phone too (a dashboard card is narrow at both sizes), none cut short, and every
+  // year the chart covers named under one of them, whichever months the axis leaves out.
   expect(labels.filter(Boolean).length).toBeGreaterThanOrEqual(6)
   expect(labels.filter((label) => label.includes('…'))).toEqual([])
+  const years = [...new Set([0, 11].map((back) => monthStart(back).slice(0, 4)))]
+  for (const year of years) expect(labels.join(' ')).toContain(year)
   await expectSoundLayout(page)
+})
+
+test('names a category of a bar chart on its axis, and the expenses without one as Uncategorised', async ({ page }) => {
+  await signInAsNewUser(page)
+  const vehicle = await addVehicle(page)
+  for (const [category, amount] of [['Parking', 4000], [null, 2500]] as const) {
+    await graphql(page, 'mutation($i: AddExpenseInput!) { addExpense(input: $i) { id } }', {
+      i: { vehicleId: vehicle.id, date: monthStart(1), title: 'Fee', amount, currency: 'HUF', category },
+    })
+  }
+  await graphql(page, 'mutation($i: SaveChartInput!) { saveVehicleChart(input: $i) { id } }', {
+    i: { vehicleId: vehicle.id, title: 'By category', shared: false, config: { metric: 'EXPENSE_COST', grouping: 'CATEGORY', kind: 'BAR', range: 'LAST12_MONTHS', stacked: false } },
+  })
+  await openVehicle(page, vehicle.id)
+
+  await expect.poll(async () => (await measureChart(page, 'By category')).labels.filter(Boolean).sort()).toEqual(['Parking', 'Uncategorised'])
 })

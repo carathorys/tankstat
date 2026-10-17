@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { barPlaces, chartAxes, shortPeriodLabels, type Series } from '../../../../src/frontend/dashboard/chartFormat.ts'
+import { barPlaces, chartAxes, labelStep, MONTH_LABEL_PX, parsePeriod, periodLabel, shortPeriodLabels, type Series } from '../../../../src/frontend/dashboard/chartFormat.ts'
 
 const series = (kind: string, currency: string | null, values: Record<string, number | null>): Series => ({
   kind,
@@ -7,21 +7,54 @@ const series = (kind: string, currency: string | null, values: Record<string, nu
   points: Object.entries(values).map(([key, value]) => ({ key, value })),
 })
 
+describe('parsePeriod and periodLabel', () => {
+  it('read a month and a quarter one way, for the axis and the tooltip alike, and nothing else', () => {
+    expect(parsePeriod('2026-09')).toEqual({ year: '2026', month: 9 })
+    expect(parsePeriod('2026-Q3')).toEqual({ year: '2026', quarter: 3 })
+    expect([parsePeriod('2026'), parsePeriod('Service'), parsePeriod('')]).toEqual([null, null, null])
+    expect([periodLabel('2026-09', 'en'), periodLabel('2026-Q3', 'en'), periodLabel('Service', 'en')]).toEqual(['Sep 2026', 'Q3 2026', 'Service'])
+  })
+})
+
 describe('shortPeriodLabels', () => {
   it('names a month alone, with its year under it on the first and on every January, so more of them fit on an axis', () => {
-    const labels = shortPeriodLabels(['2025-11', '2025-12', '2026-01', '2026-02'], 'en')
+    const labels = shortPeriodLabels(['2025-11', '2025-12', '2026-01', '2026-02'], 'en', 'MONTH')
     expect([...labels.values()]).toEqual(['Nov\n2025', 'Dec', 'Jan\n2026', 'Feb'])
   })
 
   it('in Hungarian too', () => {
-    const labels = shortPeriodLabels(['2025-12', '2026-01', '2026-03'], 'hu')
+    const labels = shortPeriodLabels(['2025-12', '2026-01', '2026-03'], 'hu', 'MONTH')
     expect([...labels.values()]).toEqual(['dec.\n2025', 'jan.\n2026', 'márc.'])
   })
 
-  it('shortens a quarter, and leaves a year or a category as it is', () => {
-    expect([...shortPeriodLabels(['2025-Q4', '2026-Q1'], 'en').values()]).toEqual(['Q4 ’25', 'Q1 ’26'])
-    expect([...shortPeriodLabels(['2025', '2026'], 'en').values()]).toEqual(['2025', '2026'])
-    expect([...shortPeriodLabels(['Service', ''], 'en').values()]).toEqual(['Service', ''])
+  it('names every step-th month, and the year on each named one that starts a year among them, so no year goes unnamed', () => {
+    const months = ['2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12', '2027-01', '2027-02']
+    const labels = shortPeriodLabels(months, 'en', 'MONTH', 3)
+
+    // January 2026 and 2027 are left out, so the year goes on the first month named in each.
+    expect([...labels.entries()]).toEqual([
+      ['2025-11', 'Nov\n2025'],
+      ['2026-02', 'Feb\n2026'],
+      ['2026-05', 'May'],
+      ['2026-08', 'Aug'],
+      ['2026-11', 'Nov'],
+      ['2027-02', 'Feb\n2027'],
+    ])
+  })
+
+  it('shortens a quarter, and names nothing in a chart by year or by category (those are named as they are)', () => {
+    expect([...shortPeriodLabels(['2025-Q4', '2026-Q1'], 'en', 'QUARTER').values()]).toEqual(['Q4 ’25', 'Q1 ’26'])
+    // A category that looks like a month ("2025-03", a project code) stays a category.
+    expect(shortPeriodLabels(['Service', '', '2025-03'], 'en', 'CATEGORY').size).toBe(0)
+  })
+})
+
+describe('labelStep', () => {
+  it('names every period while they fit, and every n-th one when they do not', () => {
+    expect(labelStep(12, 12 * MONTH_LABEL_PX)).toBe(1)
+    expect(labelStep(12, 6 * MONTH_LABEL_PX)).toBe(2)
+    expect(labelStep(12, 5 * MONTH_LABEL_PX)).toBe(3)
+    expect(labelStep(12, 0)).toBe(1) // not laid out yet
   })
 })
 
@@ -59,8 +92,6 @@ describe('barPlaces', () => {
   it('stacked: a bar per currency the period has, side by side, and the top of each stack is rounded', () => {
     const places = barPlaces({ series: [fuelHuf, expensesHuf, fuelEur] }, periods, true)
 
-    expect(places.groups).toBe(2)
-    expect([places.group(fuelHuf), places.group(expensesHuf), places.group(fuelEur)]).toEqual([0, 0, 1])
     // January has both currencies: HUF first (fuel at the bottom, expenses on top), EUR beside it.
     expect(places.at(fuelHuf, 0)).toEqual({ place: 0, of: 2, top: false })
     expect(places.at(expensesHuf, 0)).toEqual({ place: 0, of: 2, top: true })
@@ -75,7 +106,6 @@ describe('barPlaces', () => {
   it('not stacked: a bar per series the period has', () => {
     const places = barPlaces({ series: [fuelHuf, expensesHuf, fuelEur] }, periods, false)
 
-    expect(places.groups).toBe(3)
     expect([places.at(fuelHuf, 0), places.at(expensesHuf, 0), places.at(fuelEur, 0)]).toEqual([
       { place: 0, of: 3, top: true },
       { place: 1, of: 3, top: true },
