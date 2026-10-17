@@ -552,6 +552,25 @@ public sealed class RestoreTests : IDisposable
         Assert.Empty(Directory.GetFiles(folderB, "restore.*")); // applied, neither refused nor failed
     }
 
+    [Fact]
+    public async Task ABackupWhoseSetupWaits_IsRefusedInStandalone_WhereTheSetupIsTurnedOff_AndTheStartGoesOn()
+    {
+        using var a = Host("a", migrated: true, new() { ["Setup:Enabled"] = "true" }); // sign-in off and waiting: no user, no administrator
+        var backup = await Backup(a);
+        var folderB = Folder("b-backups");
+        using var shared = new SharedData();
+        Stage(folderB, backup.Path);
+
+        // The setup turned off here (TestApp's own default): the start after the restore would not wait for the setup page but stop, and every
+        // start after it, Standalone having no administrator then (#149). So the backup is refused, and the instance keeps its data.
+        using var restarted = shared.Host(TestApp.StandaloneSettings(new() { ["Backups:Path"] = folderB }));
+
+        await restarted.NewClient().LoginAs(TestApp.AdminEmail, TestApp.AdminPassword); // the start went on, with the instance's own administrator
+        Assert.Single(Directory.GetFiles(folderB, "restore.refused.*"));
+        var refusal = Assert.Single(restarted.Log.From("Tankstat.Infrastructure.Backups.RestoreStep"), e => e.Level == LogLevel.Error);
+        Assert.Contains("standaloneNeedsAdministrator", (string)refusal.Values["Reason"]!);
+    }
+
     /// <summary>Changes the plain manifest of a backup file (the checksum covers the inner archive only).</summary>
     internal static void RewriteManifest(string file, Func<string, string> change)
     {

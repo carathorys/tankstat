@@ -13,7 +13,6 @@ using Tankstat.Application.Backups;
 using Tankstat.Application.Images;
 using Tankstat.Application.Setup;
 using Tankstat.Application.SystemSettings;
-using Tankstat.Application.Users;
 using Tankstat.Domain;
 using Tankstat.Domain.Backups;
 using Tankstat.Domain.Images;
@@ -73,6 +72,7 @@ internal sealed class RestoreStep(
     IOptions<StorageOptions> storage,
     IOptions<KeyRingOptions> keyRing,
     IOptions<AuthOptions> auth,
+    IOptions<SetupOptions> setup,
     ISettingsBackup settingsFile,
     IServerRestart restart,
     InstanceGeneration state,
@@ -230,7 +230,7 @@ internal sealed class RestoreStep(
             // From the backup's own files, before anything changes: Standalone needs an administrator to sign in with afterwards, and tables
             // about to be rebuilt need every row to load (a line that is no row, a value that is not its column's, a count that is not the
             // manifest's); in place, the load's own transaction undoes such a row.
-            RequireAdministrator(settings?.Auth ?? auth.Value, BackupHoldsAdministrator(model, tables), BackupSetupWaits(model, tables, manifest.Contents.Tables));
+            RequireAdministrator(settings?.Auth ?? auth.Value, model, tables, manifest.Contents.Tables);
             var inPlace = applied is not null && MigrationNames.Same(applied, target);
             if (!inPlace) TableLoad.CheckRows(model, tables, manifest.Contents.Tables);
 
@@ -389,16 +389,17 @@ internal sealed class RestoreStep(
 
     /// <summary>
     /// Standalone needs an administrator to sign in with afterwards: an enabled local administrator among the users the backup brings (read
-    /// from its own rows, before anything changes, so a backup without one is refused, never applied). Data whose setup waits
-    /// (<paramref name="setupWaits"/>) needs none: the start waits for the setup page, the only one that makes the first administrator (#149).
-    /// <paramref name="next"/> is the sign-in the start after the restore runs: the restored settings file's under this server's environment,
-    /// else this server's.
+    /// from its own rows, before anything changes, so a backup without one is refused, never applied). Data whose setup waits needs none
+    /// while this server's setup is on: the start waits for the setup page, the only one that makes the first administrator (#149). With the
+    /// setup turned off (<c>Setup:Enabled=false</c>, this server's environment: the backup never brings it) that start would stop instead, and
+    /// every start after it, so such a backup is refused too. <paramref name="next"/> is the sign-in the start after the restore runs: the
+    /// restored settings file's under this server's environment, else this server's. The backup's files are read for Standalone only.
     /// </summary>
-    private static void RequireAdministrator(AuthOptions next, bool hasAdministrator, bool setupWaits)
+    private void RequireAdministrator(AuthOptions next, IModel model, string tables, IReadOnlyDictionary<string, long> counts)
     {
-        if (next.Mode != AuthMode.Standalone || hasAdministrator || setupWaits) return;
+        if (next.Mode != AuthMode.Standalone || BackupHoldsAdministrator(model, tables) || (setup.Value.Enabled && BackupSetupWaits(model, tables, counts))) return;
         throw new DomainException("settings.standaloneNeedsAdministrator",
-            "The backup holds no administrator to sign in with in Standalone mode, and only the setup page makes the first one: restore a backup that has one, or one whose setup waits.");
+            "The backup holds no administrator to sign in with in Standalone mode, and only the setup page makes the first one: restore a backup that has one, or, with the setup on, one whose setup waits.");
     }
 
     private RestoreOutcome Refuse(string markerPath, RestoreMarker? marker, Exception e, string reason)
