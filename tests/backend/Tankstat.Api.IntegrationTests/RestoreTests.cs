@@ -124,13 +124,19 @@ public sealed class RestoreTests : IDisposable
         var backup = await Backup(a, new BackupRequest(Encryption: encryption));
         Assert.True(backup.Manifest.Contents.Keys);
 
-        // B has data of its own, its own administrator's session, and its own keys: all of it replaced at its restart.
+        // B has data of its own, a user of its own (its administrator is a copy of A's, both databases being copies of TestApp's set-up
+        // template), its own administrator's session, and its own keys: all of it replaced at its restart.
         var folderB = Folder("b-backups");
         using var shared = new SharedData();
         var b = shared.Host(TestApp.StandaloneSettings(new() { ["Backups:Path"] = folderB }));
         var ownClient = b.NewClient();
         await ownClient.LoginAs(TestApp.AdminEmail, TestApp.AdminPassword);
         await ownClient.Gql("mutation { addVehicle(input: { name: \"Own car\", fuelType: PETROL }) { id } }");
+        var other = (await ownClient.Gql("mutation($i: CreateUserInput!) { createUser(input: $i) { reset { token } } }",
+            new { i = new { email = "other@example.com", displayName = "Other", isAdmin = true } })).Data().GetProperty("createUser");
+        (await b.NewClient().Gql("mutation($i: ResetPasswordInput!) { resetPassword(input: $i) }",
+            new { i = new { token = other.GetProperty("reset").GetProperty("token").GetString(), newPassword = "other-password-1", newPasswordConfirmation = "other-password-1" } })).Data();
+        await b.NewClient().LoginAs("other@example.com", "other-password-1"); // B's own administrator, there before the restore
         var ownCookies = await CookiesOf(b);
         b.Dispose(); // stopped, like a server before its restart
 
@@ -147,9 +153,11 @@ public sealed class RestoreTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, image.StatusCode); // the picture file came along
         var refresh = new HttpRequestMessage(HttpMethod.Post, "/auth/token/refresh") { Headers = { { "X-Requested-With", "fetch" }, { "Cookie", cookies } } };
         Assert.Equal(HttpStatusCode.NoContent, (await restarted.NewClientWithoutRedirects().SendAsync(refresh)).StatusCode);
-        // B's own session is gone with B's data (its row and the keys that protected its cookies).
+        // B's own session is gone with B's data (its row and the keys that protected its cookies), and so is B's own administrator.
         var ownRefresh = new HttpRequestMessage(HttpMethod.Post, "/auth/token/refresh") { Headers = { { "X-Requested-With", "fetch" }, { "Cookie", ownCookies } } };
         Assert.Equal(HttpStatusCode.Unauthorized, (await restarted.NewClientWithoutRedirects().SendAsync(ownRefresh)).StatusCode);
+        Assert.NotNull((await restarted.NewClient().Gql("mutation($i: LoginInput!) { login(input: $i) { id } }",
+            new { i = new { email = "other@example.com", password = "other-password-1" } })).ErrorCode());
     }
 
     /// <summary>Both cookies of a signed-in client, as a browser would send them to the token endpoints.</summary>

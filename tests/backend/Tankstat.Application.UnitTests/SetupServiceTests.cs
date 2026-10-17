@@ -93,6 +93,9 @@ public sealed class SetupServiceTests
 
     private static IEnumerable<LogEntry> CodeLines(Setup s) => s.World.Log.From<SetupService>().Where(e => e.Values.ContainsKey("Code"));
 
+    /// <summary>The reopen's line: SetupService's one Warning without a value (the code's names the code, the retired settings' line their names).</summary>
+    private static IEnumerable<LogEntry> ReopenLines(Setup s) => s.World.Log.From<SetupService>().Where(e => e.Level == LogLevel.Warning && e.Values.Count == 0);
+
     [Theory]
     [InlineData(AuthMode.Standalone)]
     [InlineData(AuthMode.None)]
@@ -157,8 +160,7 @@ public sealed class SetupServiceTests
         Assert.Equal((SetupPhase.Pending, 1), (s.Store.Phase, s.Store.Reopened));
         Assert.True(s.Status.Pending);
         Assert.Single(CodeLines(s));
-        var reopened = Assert.Single(s.World.Log.From<SetupService>(), e => e.Text.Contains("reopened"));
-        Assert.Equal(LogLevel.Warning, reopened.Level);
+        Assert.Single(ReopenLines(s));
         Assert.False(s.World.Log.Mentions("plain@x.co"));
     }
 
@@ -213,7 +215,7 @@ public sealed class SetupServiceTests
         Assert.Equal((SetupPhase.Pending, 0), (s.Store.Phase, s.Store.Reopened));
         Assert.True(s.Status.Pending);
         Assert.Single(CodeLines(s)); // this server waits too, with its own code
-        Assert.DoesNotContain(s.World.Log.From<SetupService>(), e => e.Text.Contains("reopened"));
+        Assert.Empty(ReopenLines(s));
     }
 
     [Theory]

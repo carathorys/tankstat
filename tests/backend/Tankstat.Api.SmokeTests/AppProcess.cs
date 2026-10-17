@@ -211,19 +211,33 @@ internal sealed class AppProcess : IAsyncDisposable
         Assert.True(await LogsAsync("one-time setup code"), Log);
         var code = System.Text.RegularExpressions.Regex.Match(Log, "one-time setup code ([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4})").Groups[1].Value;
         using var script = new HttpClient { BaseAddress = _http.BaseAddress };
-        var answer = await (await script.PostAsJsonAsync("/graphql", new
+        using var response = await script.PostAsJsonAsync("/graphql", new
         {
             query = "mutation($i: SetupFinishInput!) { setupFinish(input: $i) { restarting } }",
             variables = new { i = new { code, email, password, passwordConfirmation = password } },
-        })).Content.ReadFromJsonAsync<JsonElement>();
+        });
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.True(response.IsSuccessStatusCode, $"HTTP {(int)response.StatusCode}: {body}\n{Log}");
+        using var document = JsonDocument.Parse(body);
+        var answer = document.RootElement;
         Assert.False(answer.TryGetProperty("errors", out var errors), $"{errors}\n{Log}");
+        // Nothing waits for a restart (no settings file saved by a wizard): the instance runs on at once, as the scripts finishing a setup expect.
+        Assert.False(answer.GetProperty("data").GetProperty("setupFinish").GetProperty("restarting").GetBoolean(), Log);
     }
 
     /// <summary>A Standalone instance with its first administrator (<see cref="AdminEmail"/>): started, and its setup finished.</summary>
     public static async Task<AppProcess> StartStandaloneAsync(IReadOnlyDictionary<string, string?> settings, string? workDirectory = null, bool useTempDatabase = true)
     {
         var app = await StartAsync(settings, workDirectory, useTempDatabase);
-        await app.FinishSetupAsync();
+        try
+        {
+            await app.FinishSetupAsync();
+        }
+        catch
+        {
+            await app.DisposeAsync(); // as StartAsync does before every failure: no process or folder left behind
+            throw;
+        }
         return app;
     }
 

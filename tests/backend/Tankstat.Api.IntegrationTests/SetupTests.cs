@@ -87,16 +87,15 @@ public sealed class SetupTests : IDisposable
     {
         // A set-up database whose administrators are gone (or a switch to Standalone outside the app): nobody can sign in, and only the setup
         // page makes the first administrator (#149), so its start reopens the setup.
-        var path = Path.Combine(_folder, "lost.db");
-        Directory.CreateDirectory(_folder);
-        TestApp.CopyStandaloneDatabase(path);
-        TestApp.RemoveAdministrators(path);
-        using var app = new TestApp(WaitingStandalone(new() { ["Database:ConnectionString"] = $"Data Source={path}" }));
+        using var data = new SharedData();
+        TestApp.RemoveAdministrators(data.DatabasePath);
+        using var app = data.Host(WaitingStandalone());
         var browser = app.NewClient();
 
         Assert.True((await browser.Gql(Pending)).Data().GetProperty("setup").GetProperty("pending").GetBoolean());
         Assert.Contains("SETUP_PENDING", CodesOf(await browser.Gql(Notices)));
-        Assert.Single(app.Log.From<SetupService>(), e => e.Level == LogLevel.Warning && e.Text.Contains("reopened"));
+        // The reopen's line: SetupService's one Warning without a value (the code's line names the code).
+        Assert.Single(app.Log.From<SetupService>(), e => e.Level == LogLevel.Warning && e.Values.Count == 0);
         // The former administrator is a plain user now: signing in does not get past the setup page's guard, the setup makes a new one.
         var finished = (await browser.Gql(Finish, new { i = new { code = CodeOf(app), email = "new-root@example.com", password = "initial-password-2", passwordConfirmation = "initial-password-2" } }))
             .Data().GetProperty("setupFinish");
@@ -104,7 +103,6 @@ public sealed class SetupTests : IDisposable
         Assert.True(finished.GetProperty("administrator").GetProperty("isAdmin").GetBoolean());
         Assert.False((await browser.Gql(Pending)).Data().GetProperty("setup").GetProperty("pending").GetBoolean());
         await app.NewClient().LoginAs("new-root@example.com", "initial-password-2");
-        TestApp.ReleaseDatabase(path);
     }
 
     [Fact]
@@ -216,7 +214,7 @@ public sealed class SetupTests : IDisposable
     [Fact]
     public async Task ADatabaseWithData_FromBeforeTheSetupPage_CountsAsSetUp()
     {
-        using var data = new SharedData();
+        using var data = new SharedData(standalone: false); // no user: the vehicle is the data
         using (var before = data.Host(new() { ["Auth:Mode"] = "None" }))
             (await before.NewClient().Gql("mutation { addVehicle(input: { name: \"Old car\", fuelType: PETROL }) { id } }")).Data();
         // As the release before the setup page left it: the setup columns empty.

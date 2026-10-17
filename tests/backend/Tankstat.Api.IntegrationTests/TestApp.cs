@@ -101,6 +101,10 @@ internal sealed class TestApp : IDisposable
         var environment = new ConfigurationBuilder().AddEnvironmentVariables().Build();
         foreach (var key in ScheduleKeys)
             if (environment[key] is not null) all[key] = null;
+        // Nor the retired bootstrap administrator (#149), which an older environment may still export: every start would warn of it, and the
+        // tests that a start logs no Warning would fail on that machine only.
+        foreach (var key in Tankstat.Application.Setup.SetupService.RetiredSettings)
+            if (environment[key] is not null) all[key] = null;
         foreach (var (key, value) in settings) all[key] = value;
         _ownSettingsFile = settings.GetValueOrDefault("Settings:Path") is null;
         SettingsPath = settings.GetValueOrDefault("Settings:Path") ?? Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-settings.json");
@@ -255,8 +259,9 @@ internal sealed class TestApp : IDisposable
 
 /// <summary>
 /// One database, one key ring and one set of upload folders for several hosts in turn: the same instance restarted with other settings (another
-/// auth mode, say). The database starts as a copy of the migrated template, every host gets the shared paths over its own settings, and starting
-/// a host lets go of the connections the host before held, so dispose that one first.
+/// auth mode, say). The database starts as a copy of the set-up Standalone template (its administrator, the setup completed), or of the
+/// migrated one (no user, the setup undecided); every host gets the shared paths over its own settings, and starting a host lets go of the
+/// connections the host before held, so dispose that one first.
 /// </summary>
 internal sealed class SharedData : IDisposable
 {
@@ -268,8 +273,15 @@ internal sealed class SharedData : IDisposable
     public string PhotosPath => _root + "-photos";
     public string SettingsPath => _root + "-settings.json";
 
-    /// <summary>A copy of the set-up Standalone template: its administrator (<see cref="TestApp.AdminEmail"/>) is there for a Standalone host in turn.</summary>
-    public SharedData() => TestApp.CopyStandaloneDatabase(DatabasePath);
+    /// <param name="standalone">
+    /// A copy of the set-up Standalone template: its administrator (<see cref="TestApp.AdminEmail"/>) is there for a Standalone host in turn.
+    /// False: of the migrated template, which holds no user (a test about what data a database holds).
+    /// </param>
+    public SharedData(bool standalone = true)
+    {
+        if (standalone) TestApp.CopyStandaloneDatabase(DatabasePath);
+        else TestApp.CopyMigratedDatabase(DatabasePath);
+    }
 
     public TestApp Host(Dictionary<string, string?> settings, Action<IServiceCollection>? services = null, Action<IWebHostBuilder>? host = null)
     {
