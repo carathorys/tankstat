@@ -22,8 +22,10 @@ public sealed record SetupFinished(User? Administrator, bool Restarting);
 /// with sign-in off the acknowledgement that everyone who reaches it may see and change everything. While it waits, the one-time code
 /// from the server's log (<see cref="OneTimeCode"/>) opens the setup page's steps (<see cref="SetupGate"/>), since no administrator exists
 /// to ask: the settings (the wizard saves them through <see cref="SystemSettingsService"/> with the code), then <see cref="FinishAsync"/>;
-/// once it is completed nothing here opens again. What the environment already says completes it at start (<see cref="StartAsync"/>), so
-/// an unattended deployment never sees the page; a restore brings the backup's setup state along.
+/// once it is completed nothing here opens again, unless a start in Standalone finds no administrator and reopens it (#149, see
+/// <see cref="StartAsync"/>). What the environment already says completes it at start (<see cref="StartAsync"/>), so
+/// an unattended deployment never sees the page (in Standalone, which no setting completes, it sends the last step itself with the code
+/// from the log); a restore brings the backup's setup state along.
 /// </summary>
 public sealed class SetupService(
     ISetupStore store,
@@ -68,8 +70,7 @@ public sealed class SetupService(
             phase = await store.DecideAsync(await store.HoldsDataAsync(ct), clock.GetUtcNow(), ct);
             if (phase == SetupPhase.Completed) logger.LogInformation("The database holds data from before the setup page existed: the instance counts as set up");
         }
-        var hasAdministrator = auth.Value.Mode == AuthMode.Standalone && await users.AnyLocalAdminAsync(ct);
-        if (auth.Value.Mode == AuthMode.Standalone && !hasAdministrator)
+        if (auth.Value.Mode == AuthMode.Standalone && !await users.AnyLocalAdminAsync(ct))
         {
             if (!options.Value.Enabled)
                 throw new InvalidOperationException(
@@ -82,7 +83,7 @@ public sealed class SetupService(
                 phase = await store.PhaseAsync(ct);
             }
         }
-        if (phase == SetupPhase.Pending && CompletedBy(hasAdministrator) is { } reason)
+        else if (phase == SetupPhase.Pending && CompletedBy() is { } reason)
         {
             // Completed either way: where this write finds it completed, another server starting at the same moment was first.
             if (await store.CompleteAsync(SetupCompletion.Environment, clock.GetUtcNow(), ct))
@@ -97,15 +98,15 @@ public sealed class SetupService(
     }
 
     /// <summary>
-    /// What in the environment completes a waiting setup, by the setting's name; null when nothing does. Standalone without an administrator
-    /// never gets here with the setup turned off: the start stopped.
+    /// What in the environment completes a waiting setup, by the setting's name; null when nothing does. Standalone gets here only with an
+    /// enabled local administrator: without one the start reopened the setup, or stopped.
     /// </summary>
-    private string? CompletedBy(bool hasAdministrator)
+    private string? CompletedBy()
     {
         if (!options.Value.Enabled) return "Setup:Enabled is false";
         return auth.Value.Mode switch
         {
-            AuthMode.Standalone => hasAdministrator ? "a local administrator exists" : null,
+            AuthMode.Standalone => "a local administrator exists",
             AuthMode.Oidc or AuthMode.ProxyHeader => auth.Value.AdminEmails.Any(e => !string.IsNullOrWhiteSpace(e)) ? "Auth:AdminEmails" : null,
             _ => null,
         };

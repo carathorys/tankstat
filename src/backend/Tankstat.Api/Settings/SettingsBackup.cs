@@ -2,7 +2,6 @@ using System.Text.Json;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Backups;
 using Tankstat.Application.SystemSettings;
-using Tankstat.Application.Users;
 
 namespace Tankstat.Api.Settings;
 
