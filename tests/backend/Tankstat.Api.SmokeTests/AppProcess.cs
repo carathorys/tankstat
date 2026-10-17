@@ -198,6 +198,35 @@ internal sealed class AppProcess : IAsyncDisposable
     /// <summary>The cookies this client would send to <c>/graphql</c> (the access cookie), as a Cookie header for another process.</summary>
     public string CookieHeader => _cookies.GetCookieHeader(new Uri(_http.BaseAddress!, "/graphql"));
 
+    /// <summary>The first administrator of the smoke tests' Standalone instances, made by <see cref="FinishSetupAsync"/>.</summary>
+    public const string AdminEmail = "root@example.com";
+    public const string AdminPassword = "initial-password-1";
+
+    /// <summary>
+    /// Finishes a waiting Standalone setup the unattended way (#149): the one-time code from the log and one <c>setupFinish</c>, as a script
+    /// would, through a client of its own, so this one stays signed out. The setup page is the only way to the first administrator.
+    /// </summary>
+    public async Task FinishSetupAsync(string email = AdminEmail, string password = AdminPassword)
+    {
+        Assert.True(await LogsAsync("one-time setup code"), Log);
+        var code = System.Text.RegularExpressions.Regex.Match(Log, "one-time setup code ([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4})").Groups[1].Value;
+        using var script = new HttpClient { BaseAddress = _http.BaseAddress };
+        var answer = await (await script.PostAsJsonAsync("/graphql", new
+        {
+            query = "mutation($i: SetupFinishInput!) { setupFinish(input: $i) { restarting } }",
+            variables = new { i = new { code, email, password, passwordConfirmation = password } },
+        })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(answer.TryGetProperty("errors", out var errors), $"{errors}\n{Log}");
+    }
+
+    /// <summary>A Standalone instance with its first administrator (<see cref="AdminEmail"/>): started, and its setup finished.</summary>
+    public static async Task<AppProcess> StartStandaloneAsync(IReadOnlyDictionary<string, string?> settings, string? workDirectory = null, bool useTempDatabase = true)
+    {
+        var app = await StartAsync(settings, workDirectory, useTempDatabase);
+        await app.FinishSetupAsync();
+        return app;
+    }
+
     /// <summary>Waits for a line in the app's output (background work logs a little after the app starts answering).</summary>
     public async Task<bool> LogsAsync(string text, TimeSpan? within = null)
     {

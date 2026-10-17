@@ -124,13 +124,14 @@ public sealed class RestoreTests : IDisposable
         var backup = await Backup(a, new BackupRequest(Encryption: encryption));
         Assert.True(backup.Manifest.Contents.Keys);
 
-        // B has data of its own, another administrator even, and its own keys: all of it replaced at its restart.
+        // B has data of its own, its own administrator's session, and its own keys: all of it replaced at its restart.
         var folderB = Folder("b-backups");
         using var shared = new SharedData();
-        var b = shared.Host(TestApp.StandaloneSettings(new() { ["Auth:Standalone:AdminEmail"] = "other@example.com", ["Backups:Path"] = folderB }));
+        var b = shared.Host(TestApp.StandaloneSettings(new() { ["Backups:Path"] = folderB }));
         var ownClient = b.NewClient();
-        await ownClient.LoginAs("other@example.com", TestApp.AdminPassword);
+        await ownClient.LoginAs(TestApp.AdminEmail, TestApp.AdminPassword);
         await ownClient.Gql("mutation { addVehicle(input: { name: \"Own car\", fuelType: PETROL }) { id } }");
+        var ownCookies = await CookiesOf(b);
         b.Dispose(); // stopped, like a server before its restart
 
         Stage(folderB, backup.Path, AgeKeys.FormatIdentity(identity));
@@ -146,8 +147,9 @@ public sealed class RestoreTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, image.StatusCode); // the picture file came along
         var refresh = new HttpRequestMessage(HttpMethod.Post, "/auth/token/refresh") { Headers = { { "X-Requested-With", "fetch" }, { "Cookie", cookies } } };
         Assert.Equal(HttpStatusCode.NoContent, (await restarted.NewClientWithoutRedirects().SendAsync(refresh)).StatusCode);
-        var other = restarted.NewClient();
-        Assert.NotNull((await other.Gql("mutation($i: LoginInput!) { login(input: $i) { id } }", new { i = new { email = "other@example.com", password = TestApp.AdminPassword } })).ErrorCode()); // B's own administrator is gone
+        // B's own session is gone with B's data (its row and the keys that protected its cookies).
+        var ownRefresh = new HttpRequestMessage(HttpMethod.Post, "/auth/token/refresh") { Headers = { { "X-Requested-With", "fetch" }, { "Cookie", ownCookies } } };
+        Assert.Equal(HttpStatusCode.Unauthorized, (await restarted.NewClientWithoutRedirects().SendAsync(ownRefresh)).StatusCode);
     }
 
     /// <summary>Both cookies of a signed-in client, as a browser would send them to the token endpoints.</summary>
@@ -515,7 +517,7 @@ public sealed class RestoreTests : IDisposable
     }
 
     [Fact]
-    public async Task ABackupWithoutAnAdministrator_IsRefusedInStandalone_WhenNoneCanBeCreated_AndTheStartGoesOn()
+    public async Task ABackupWithoutAnAdministrator_IsRefusedInStandalone_AndTheStartGoesOn()
     {
         using var a = Host("a", migrated: true); // sign-in off: the backup holds no user at all
         await AddVehicle(a, "Golf");
@@ -523,11 +525,11 @@ public sealed class RestoreTests : IDisposable
         var folderB = Folder("b-backups");
         using var shared = new SharedData();
         using (var first = shared.Host(TestApp.StandaloneSettings(new() { ["Backups:Path"] = folderB })))
-            await first.NewClient().LoginAs(TestApp.AdminEmail, TestApp.AdminPassword); // its first start made the administrator
+            await first.NewClient().LoginAs(TestApp.AdminEmail, TestApp.AdminPassword); // its setup made the administrator
         Stage(folderB, backup.Path);
 
-        // The bootstrap credentials are gone from the environment, as they may be once the administrator exists.
-        using var restarted = shared.Host(TestApp.StandaloneSettings(new() { ["Backups:Path"] = folderB, ["Auth:Standalone:AdminEmail"] = "", ["Auth:Standalone:AdminPassword"] = "" }));
+        // Only the setup page makes a first administrator (#149): the backup, which holds none, is refused, and the instance keeps its own.
+        using var restarted = shared.Host(TestApp.StandaloneSettings(new() { ["Backups:Path"] = folderB }));
 
         await restarted.NewClient().LoginAs(TestApp.AdminEmail, TestApp.AdminPassword); // the start went on, with the instance's own administrator
         Assert.Single(Directory.GetFiles(folderB, "restore.refused.*"));
@@ -536,7 +538,7 @@ public sealed class RestoreTests : IDisposable
     }
 
     [Fact]
-    public async Task ABackupWhoseSetupWaits_IsRestoredInStandalone_WithoutCredentials_AndTheSetupWaitsOnIt()
+    public async Task ABackupWhoseSetupWaits_IsRestoredInStandalone_AndTheSetupWaitsOnIt()
     {
         using var a = Host("a", migrated: true, new() { ["Setup:Enabled"] = "true" }); // sign-in off and waiting: no user, no administrator
         var backup = await Backup(a);
@@ -544,7 +546,7 @@ public sealed class RestoreTests : IDisposable
         Stage(folderB, backup.Path);
 
         using var b = Host("b", migrated: false,
-            new() { ["Auth:Mode"] = "Standalone", ["Auth:Standalone:AdminEmail"] = "", ["Auth:Standalone:AdminPassword"] = "", ["Setup:Enabled"] = "true" }, folderB);
+            new() { ["Auth:Mode"] = "Standalone", ["Setup:Enabled"] = "true" }, folderB);
 
         Assert.True(b.Factory.Services.GetRequiredService<SetupStatus>().Pending); // the start waits for the setup page, which makes the administrator
         Assert.Empty(Directory.GetFiles(folderB, "restore.*")); // applied, neither refused nor failed

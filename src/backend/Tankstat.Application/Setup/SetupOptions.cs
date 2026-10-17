@@ -10,8 +10,8 @@ public sealed class SetupOptions
 
     /// <summary>
     /// False: a new instance counts as set up at once (completed by the environment) and never shows the setup page, for hosts that have
-    /// nothing to set up in a browser. The bootstrap administrator in Standalone, or <c>Auth:AdminEmails</c> in OIDC and proxy mode, does
-    /// the same without this.
+    /// nothing to set up in a browser. <c>Auth:AdminEmails</c> in OIDC and proxy mode does the same without this. Standalone without an
+    /// administrator does not start with it: only the setup page makes the first one.
     /// </summary>
     public bool Enabled { get; set; } = true;
 }

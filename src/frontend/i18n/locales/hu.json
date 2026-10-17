@@ -827,7 +827,7 @@
       "unknownKey": "A(z) {{key}} nem itt módosítható beállítás.",
       "readOnly": "A(z) {{key}} értékét a környezet állítja be, az győz a beállításfájllal szemben.",
       "invalid": "A beállítások így nem használhatók.",
-      "standaloneNeedsAdministrator": "A Standalone módhoz adminisztrátor kell, és még nincs. Állítsd be az Auth__Standalone__AdminEmail (egy cím, amely még egyetlen helyi fióké sem) és az Auth__Standalone__AdminPassword ({{min}}–128 karakter) környezeti változókat a következő indításhoz, aztán válts.",
+      "standaloneNeedsAdministrator": "A Standalone módhoz adminisztrátor kell, és nincs. Az első adminisztrátort csak a beállítóoldal hozza létre: válts Standalone módra az alkalmazáson kívül (Auth__Mode a környezetben vagy a beállítófájlban), és a következő indítás megnyitja a beállítóoldalt.",
       "restartWouldFail": "A kiszolgáló a beállításfájllal, ahogy most van, nem indulna el újra, ezért nem indult újra. Javítsd a fájlt, vagy állítsd be az Auth__Mode környezeti változót.",
       "oidcUnreachable": "A(z) {{authority}} nem válaszol OpenID Connect felfedezési dokumentummal ({{reason}}).",
       "oidcIssuerMismatch": "A(z) {{authority}} más kibocsátót nevez meg ({{issuer}}): add meg a kibocsátót úgy, ahogy a szolgáltató nevezi.",

@@ -25,8 +25,18 @@ internal sealed class TestApp : IDisposable
     /// </summary>
     private static readonly Lazy<string> Template = new(CreateTemplate);
 
+    /// <summary>
+    /// A set-up Standalone database, made once per run from the template through the setup's own last step: its first administrator
+    /// (<see cref="AdminEmail"/>) and the setup completed. The only way a Standalone instance gets one (#149), so every Standalone host
+    /// starts from a copy of it.
+    /// </summary>
+    private static readonly Lazy<string> StandaloneTemplate = new(CreateStandaloneTemplate);
+
     /// <summary>A migrated database at <paramref name="path"/>, from the template every host starts from.</summary>
     public static void CopyMigratedDatabase(string path) => File.Copy(Template.Value, path);
+
+    /// <summary>A set-up Standalone database at <paramref name="path"/> with its first administrator (<see cref="AdminEmail"/>).</summary>
+    public static void CopyStandaloneDatabase(string path) => File.Copy(StandaloneTemplate.Value, path);
 
     private readonly string _db = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}.db");
 
@@ -63,7 +73,14 @@ internal sealed class TestApp : IDisposable
     /// <param name="migrated">False: a new, empty database, so the host applies every migration itself (the template is made that way).</param>
     public TestApp(Dictionary<string, string?> settings, Action<IServiceCollection>? services = null, Action<IWebHostBuilder>? host = null, bool migrated = true)
     {
-        if (migrated && !settings.ContainsKey("Database:ConnectionString")) CopyMigratedDatabase(_db);
+        // A Standalone host with the setup off needs its administrator before it starts (it stops without one): the set-up template's.
+        var standalone = string.Equals(settings.GetValueOrDefault("Auth:Mode"), "Standalone", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(settings.GetValueOrDefault("Setup:Enabled"), "true", StringComparison.OrdinalIgnoreCase);
+        if (migrated && !settings.ContainsKey("Database:ConnectionString"))
+        {
+            if (standalone) CopyStandaloneDatabase(_db);
+            else CopyMigratedDatabase(_db);
+        }
         var all = new Dictionary<string, string?>
         {
             ["Database:Provider"] = "Sqlite",
@@ -103,19 +120,14 @@ internal sealed class TestApp : IDisposable
         });
     }
 
-    /// <summary>The bootstrap administrator of a Standalone host (<see cref="StandaloneSettings"/>).</summary>
+    /// <summary>The first administrator of a Standalone host (<see cref="StandaloneSettings"/>), made by the setup in its database's template.</summary>
     public const string AdminEmail = "root@example.com";
     public const string AdminPassword = "initial-password-1";
 
-    /// <summary>The settings of a Standalone host with the bootstrap administrator, <paramref name="extra"/> over them.</summary>
+    /// <summary>The settings of a Standalone host (its database a copy of the set-up template, with <see cref="AdminEmail"/>), <paramref name="extra"/> over them.</summary>
     public static Dictionary<string, string?> StandaloneSettings(Dictionary<string, string?>? extra = null)
     {
-        var settings = new Dictionary<string, string?>
-        {
-            ["Auth:Mode"] = "Standalone",
-            ["Auth:Standalone:AdminEmail"] = AdminEmail,
-            ["Auth:Standalone:AdminPassword"] = AdminPassword,
-        };
+        var settings = new Dictionary<string, string?> { ["Auth:Mode"] = "Standalone" };
         foreach (var (key, value) in extra ?? []) settings[key] = value;
         return settings;
     }
@@ -193,6 +205,52 @@ internal sealed class TestApp : IDisposable
         AppDomain.CurrentDomain.ProcessExit += (_, _) => File.Delete(path);
         return path;
     }
+
+    /// <summary>
+    /// Starts a Standalone host with the setup on, on a copy of the template (it waits for its setup), finishes the setup as the setup page
+    /// does, through its own service with the process's code (not through GraphQL, whose answer would sign the administrator in and leave a
+    /// session every copy would inherit), and keeps the file until the run ends.
+    /// </summary>
+    private static string CreateStandaloneTemplate()
+    {
+        var source = Path.Combine(Path.GetTempPath(), $"tankstat-it-standalone-{Guid.NewGuid():N}.db");
+        CopyMigratedDatabase(source);
+        string path;
+        using (var app = new TestApp(new Dictionary<string, string?>
+        {
+            ["Auth:Mode"] = "Standalone",
+            ["Setup:Enabled"] = "true",
+            ["Database:ConnectionString"] = $"Data Source={source}",
+        }))
+        {
+            using (var scope = app.Factory.Services.CreateScope())
+            {
+                var setup = scope.ServiceProvider.GetRequiredService<Tankstat.Application.Setup.SetupService>();
+                var code = scope.ServiceProvider.GetRequiredService<Tankstat.Application.Setup.OneTimeCode>().Value;
+                setup.FinishAsync(code, AdminEmail, AdminPassword, AdminPassword, acknowledgeOpenAccess: false, CancellationToken.None).GetAwaiter().GetResult();
+            }
+            app.Factory.Dispose();
+            ReleaseDatabase(source);
+            path = Path.Combine(Path.GetTempPath(), $"tankstat-it-standalone-template-{Guid.NewGuid():N}.db");
+            File.Copy(source, path);
+            File.Delete(source);
+        }
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => File.Delete(path);
+        return path;
+    }
+
+    /// <summary>
+    /// Takes the administrators of the database at <paramref name="path"/> away (they become plain users), as a database whose instance lost
+    /// them: a set-up Standalone instance without an administrator, which reopens its setup at start (#149).
+    /// </summary>
+    internal static void RemoveAdministrators(string path)
+    {
+        using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={path}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE Users SET IsAdmin = 0";
+        command.ExecuteNonQuery();
+    }
 }
 
 /// <summary>
@@ -210,7 +268,8 @@ internal sealed class SharedData : IDisposable
     public string PhotosPath => _root + "-photos";
     public string SettingsPath => _root + "-settings.json";
 
-    public SharedData() => TestApp.CopyMigratedDatabase(DatabasePath);
+    /// <summary>A copy of the set-up Standalone template: its administrator (<see cref="TestApp.AdminEmail"/>) is there for a Standalone host in turn.</summary>
+    public SharedData() => TestApp.CopyStandaloneDatabase(DatabasePath);
 
     public TestApp Host(Dictionary<string, string?> settings, Action<IServiceCollection>? services = null, Action<IWebHostBuilder>? host = null)
     {
@@ -226,7 +285,7 @@ internal sealed class SharedData : IDisposable
     }
 
     /// <summary>
-    /// Signs the bootstrap administrator in on a Standalone host over this data and gives back what the browser then holds, as a
+    /// Signs the first administrator (<see cref="TestApp.AdminEmail"/>, the set-up template's) in on a Standalone host over this data and gives back what the browser then holds, as a
     /// <c>Cookie</c> header with both cookies (what a browser sends to <c>/auth/token/...</c>; <c>/graphql</c> reads the access cookie only):
     /// a sign-in made before the instance was restarted in another mode.
     /// </summary>

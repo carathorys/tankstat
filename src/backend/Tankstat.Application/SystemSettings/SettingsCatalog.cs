@@ -97,8 +97,6 @@ public static class SettingsCatalog
     /// <summary>Settings of the managed sections that the page deliberately does not offer (the reflection test skips them).</summary>
     public static readonly IReadOnlyList<string> LeftOut =
     [
-        "Auth:Standalone:AdminEmail", // the bootstrap administrator: read only while no administrator exists, and a password besides
-        "Auth:Standalone:AdminPassword",
         "Recognition:OpenAiCompatible:SystemPromptFile", // a path the app reads: the environment's business, like every other path
         "Backups:Path", // a folder, like Storage:Path: where the volume is, which the environment knows
     ];

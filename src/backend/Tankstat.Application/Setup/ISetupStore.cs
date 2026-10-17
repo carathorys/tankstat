@@ -21,6 +21,12 @@ public interface ISetupStore
     /// </summary>
     Task<SetupPhase> DecideAsync(bool holdsData, DateTimeOffset now, CancellationToken ct);
 
+    /// <summary>
+    /// Reopens a completed setup (a set-up Standalone instance that has no administrator, #149): pending again from <paramref name="now"/>,
+    /// its completion forgotten; false when it was not completed (another start reopened it first).
+    /// </summary>
+    Task<bool> ReopenAsync(DateTimeOffset now, CancellationToken ct);
+
     /// <summary>Completes a pending setup; false when it was not pending (completed meanwhile).</summary>
     Task<bool> CompleteAsync(SetupCompletion via, DateTimeOffset now, CancellationToken ct);
 

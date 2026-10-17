@@ -26,14 +26,12 @@ public sealed class SetupTests : IDisposable
         if (Directory.Exists(_folder)) Directory.Delete(_folder, recursive: true);
     }
 
-    /// <summary>Standalone with no bootstrap credentials and the setup on: what <c>docker run</c> with nothing but the mode starts as.</summary>
+    /// <summary>Standalone with the setup on: what <c>docker run</c> with nothing but the mode starts as.</summary>
     private static Dictionary<string, string?> WaitingStandalone(Dictionary<string, string?>? extra = null)
     {
         var settings = new Dictionary<string, string?>
         {
             ["Auth:Mode"] = "Standalone",
-            ["Auth:Standalone:AdminEmail"] = "",
-            ["Auth:Standalone:AdminPassword"] = "",
             ["Setup:Enabled"] = "true",
         };
         foreach (var (key, value) in extra ?? []) settings[key] = value;
@@ -82,6 +80,31 @@ public sealed class SetupTests : IDisposable
         Assert.Equal("setup.completed", (await app.NewClient().Gql(Finish, new { i = new { code, email = "other@example.com", password = "initial-password-1", passwordConfirmation = "initial-password-1" } })).ErrorKey());
         await app.NewClient().LoginAs("root@example.com", "initial-password-1");
         Assert.False(app.Log.Mentions("initial-password-1"));
+    }
+
+    [Fact]
+    public async Task ASetUpStandaloneInstance_ThatLostItsAdministrators_ReopensItsSetup_AndTheCodeMakesANewOne()
+    {
+        // A set-up database whose administrators are gone (or a switch to Standalone outside the app): nobody can sign in, and only the setup
+        // page makes the first administrator (#149), so its start reopens the setup.
+        var path = Path.Combine(_folder, "lost.db");
+        Directory.CreateDirectory(_folder);
+        TestApp.CopyStandaloneDatabase(path);
+        TestApp.RemoveAdministrators(path);
+        using var app = new TestApp(WaitingStandalone(new() { ["Database:ConnectionString"] = $"Data Source={path}" }));
+        var browser = app.NewClient();
+
+        Assert.True((await browser.Gql(Pending)).Data().GetProperty("setup").GetProperty("pending").GetBoolean());
+        Assert.Contains("SETUP_PENDING", CodesOf(await browser.Gql(Notices)));
+        Assert.Single(app.Log.From<SetupService>(), e => e.Level == LogLevel.Warning && e.Text.Contains("reopened"));
+        // The former administrator is a plain user now: signing in does not get past the setup page's guard, the setup makes a new one.
+        var finished = (await browser.Gql(Finish, new { i = new { code = CodeOf(app), email = "new-root@example.com", password = "initial-password-2", passwordConfirmation = "initial-password-2" } }))
+            .Data().GetProperty("setupFinish");
+
+        Assert.True(finished.GetProperty("administrator").GetProperty("isAdmin").GetBoolean());
+        Assert.False((await browser.Gql(Pending)).Data().GetProperty("setup").GetProperty("pending").GetBoolean());
+        await app.NewClient().LoginAs("new-root@example.com", "initial-password-2");
+        TestApp.ReleaseDatabase(path);
     }
 
     [Fact]

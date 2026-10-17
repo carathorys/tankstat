@@ -17,7 +17,7 @@ public sealed class SettingsInBackupsTests
         ["Logging:Console:FormatterName"] = "json", // the Logging section, beyond the five levels the page offers
         ["Storage:Path"] = "/srv/pictures", // the machine's: a folder
         ["Database:ConnectionString"] = "Host=db", // the machine's
-        ["Auth:Standalone:AdminPassword"] = "bootstrap-password", // left out of the page on purpose
+        ["Auth:Standalone:AdminPassword"] = "bootstrap-password", // retired (#149), as an older file may still hold it: never carried
         ["Backups:Path"] = "/srv/backups",
         ["Setup:Enabled"] = "false", // the environment's only
     };
@@ -100,7 +100,8 @@ public sealed class SettingsInBackupsTests
         var recorded = SettingsInBackups.Recorded(BackupEnvironmentMode.Record, EnvironmentKeys);
 
         Assert.Equal(["Auth__AdminEmails", "Auth__Mode", "Auth__Oidc__ClientSecret", "Defaults__Currency", "Logging__LogLevel__Tankstat"], recorded.Settings);
-        Assert.Equal(["Auth__Standalone__AdminEmail", "Backups__Path", "Database__ConnectionString", "Setup__Enabled", "Storage__Path"], recorded.Server);
+        // A retired setting (the bootstrap administrator's address, #149) is nobody's: recorded neither way.
+        Assert.Equal(["Backups__Path", "Database__ConnectionString", "Setup__Enabled", "Storage__Path"], recorded.Server);
     }
 
     [Fact]

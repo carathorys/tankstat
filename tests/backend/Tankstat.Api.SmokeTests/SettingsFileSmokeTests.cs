@@ -11,8 +11,7 @@ public class SettingsFileSmokeTests
     private const string StandaloneFile = """
         {
           "Auth": {
-            "Mode": "Standalone",
-            "Standalone": { "AdminEmail": "root@example.com", "AdminPassword": "initial-password-1" }
+            "Mode": "Standalone"
           }
         }
         """;
@@ -28,7 +27,8 @@ public class SettingsFileSmokeTests
         await using var app = await AppProcess.StartAsync(new Dictionary<string, string?>(), workDirectory: work); // disposed last: it owns the folder
         var data = (await app.Gql(Session)).Data();
         Assert.Equal("STANDALONE", data.GetProperty("session").GetProperty("mode").GetString()); // appsettings.json says None
-        Assert.Empty(data.GetProperty("notices").EnumerateArray());
+        // A new Standalone instance waits for its setup page, the only one that makes the first administrator (#149): the only notice.
+        Assert.Equal(["SETUP_PENDING"], data.GetProperty("notices").EnumerateArray().Select(n => n.GetProperty("code").GetString()).ToList());
         Assert.True(await app.LogsAsync("Settings file"), app.Log);
         await app.StopAsync();
 

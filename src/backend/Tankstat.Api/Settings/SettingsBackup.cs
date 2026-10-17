@@ -68,8 +68,7 @@ internal sealed class SettingsBackup(ISystemConfiguration configuration, ISettin
         {
             var problems = configuration.Check(candidate);
             if (problems.Count > 0) return new RestoredSettings(values, problems, new AuthOptions());
-            return new RestoredSettings(values, [], candidate.GetSection(AuthOptions.SectionName).Get<AuthOptions>() ?? new AuthOptions(),
-                PasswordOptions.MinLengthIn(key => candidate[key]));
+            return new RestoredSettings(values, [], candidate.GetSection(AuthOptions.SectionName).Get<AuthOptions>() ?? new AuthOptions());
         }
         finally
         {

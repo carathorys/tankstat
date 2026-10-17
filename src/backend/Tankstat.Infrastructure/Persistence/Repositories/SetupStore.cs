@@ -41,6 +41,17 @@ internal sealed class SetupStore(IDbContextFactory<AppDbContext> dbFactory) : IS
         return await PhaseAsync(ct);
     }
 
+    public async Task<bool> ReopenAsync(DateTimeOffset now, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.InstanceState
+            .Where(s => s.Id == InstanceState.SingletonId && s.SetupCompletedAt != null)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(s => s.SetupPendingSince, (DateTimeOffset?)now)
+                .SetProperty(s => s.SetupCompletedAt, (DateTimeOffset?)null)
+                .SetProperty(s => s.SetupCompletedVia, (SetupCompletion?)null), ct) > 0;
+    }
+
     public async Task<bool> CompleteAsync(SetupCompletion via, DateTimeOffset now, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
