@@ -1284,6 +1284,7 @@
     "deleteDescription": "A(z) „{{title}}” mindenkinek eltűnik, akivel meg van osztva. Maguk az adatok nem változnak.",
     "deleteConfirm": "Grafikon törlése",
     "chartLabel": "{{title}}: grafikon",
+    "ownScales": "Minden pénznem saját léptékben látszik; az összegek a buboréksúgóban és a táblázatban vannak.",
     "table": {
       "period": "Időszak",
       "category": "Kategória",

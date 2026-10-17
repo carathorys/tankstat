@@ -1284,6 +1284,7 @@
     "deleteDescription": "“{{title}}” is removed for everyone it is shared with. The data itself is not affected.",
     "deleteConfirm": "Delete chart",
     "chartLabel": "{{title}}: chart",
+    "ownScales": "Each currency is drawn on a scale of its own; the amounts are in the tooltip and the table.",
     "table": {
       "period": "Period",
       "category": "Category",
