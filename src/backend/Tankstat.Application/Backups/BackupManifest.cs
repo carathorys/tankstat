@@ -70,7 +70,7 @@ public sealed record BackupArchive(string Name, string Sha256)
 /// The instance's settings file in the backup: <see cref="BackupSettingsState.Included"/> as an outer entry of its own (<see cref="Entry"/>,
 /// encrypted like the data in an encrypted backup), so a restore request reads it without decrypting the data, which can be gigabytes; its
 /// SHA-256 as stored, since the archive's checksum does not cover it. <see cref="Omitted"/> names (never values) the keys of the file that
-/// stayed out: what is not the instance's but the machine's (a folder, the database, the bootstrap administrator) and, in a plain backup, the
+/// stayed out: what is not the instance's but the machine's (a folder, the database) and, in a plain backup, the
 /// secrets.
 /// </summary>
 /// <param name="Secrets">Whether the secrets went in (<c>Backups:Secrets</c>, encrypted or not).</param>
@@ -83,7 +83,7 @@ public sealed record BackupSettingsFile(BackupSettingsState State, string? Entry
 /// <summary>
 /// The environment variables the server ran with, by name only (never a value: the manifest is plain), one per setting (<c>Auth__AdminEmails</c>,
 /// not <c>__0</c>): <see cref="Settings"/> the instance's (the Server settings page's and the logging), which <see cref="Mode"/> says whether
-/// the backup's settings file took in too, and <see cref="Server"/> the machine's own (the database, the folders, the bootstrap administrator),
+/// the backup's settings file took in too, and <see cref="Server"/> the machine's own (the database, the folders),
 /// which never travel. A restore on a server that sets none of a recorded setting, and whose restored file holds none either, is refused.
 /// </summary>
 public sealed record BackupEnvironment(BackupEnvironmentMode Mode, IReadOnlyList<string> Settings, IReadOnlyList<string> Server);

@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { addVehicle, createUser, pageLoaded, signIn, signInAsNewUser, tag } from './support/app.ts'
 
 // What an administrator does with people: a new user with the one-time link (and the same user created twice at once), disabling someone, a grant on someone else's data, and
-// the list of every vehicle. The administrator is the bootstrap one; the people are the test's own.
+// the list of every vehicle. The administrator is the shared server's first one; the people are the test's own.
 
 test('creates a user, who sets a password through the link and signs in', async ({ page, browser }) => {
   await signIn(page)

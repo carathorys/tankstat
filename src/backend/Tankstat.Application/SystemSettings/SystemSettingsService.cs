@@ -5,7 +5,6 @@ using Tankstat.Application.Auth;
 using Tankstat.Application.Setup;
 using Tankstat.Application.Users;
 using Tankstat.Domain;
-using Tankstat.Domain.Users;
 
 namespace Tankstat.Application.SystemSettings;
 
@@ -130,8 +129,8 @@ public sealed class SystemSettingsService(
     /// <summary>
     /// Restarts the server in its process, unless the next start would fail for what can be told now: a start that fails ends the process (the
     /// next host is built in it), and a container that exited stays stopped. So a settings file the next start would refuse (hand-edited
-    /// since, say) and a switch to Standalone that could not create its first administrator refuse the restart instead; what only the start
-    /// finds (a database out of reach) still stops it.
+    /// since, say) refuses the restart instead, and so does a switch to Standalone with no enabled local administrator (only the setup page
+    /// makes one: <see cref="RequireAdministratorAsync"/>); what only the start finds (a database out of reach) still stops it.
     /// </summary>
     /// <param name="code">The one-time code, from the setup page while the setup waits; otherwise an administrator is needed.</param>
     public async Task RestartAsync(string? code, CancellationToken ct)
@@ -181,8 +180,8 @@ public sealed class SystemSettingsService(
     }
 
     /// <summary>
-    /// The start's checks pass, but a running app knows more: Standalone needs an administrator to sign in with afterwards (one there, or one
-    /// the first start can create), and an OIDC mode or authority the next start would take up must answer with itself as the issuer.
+    /// The start's checks pass, but a running app knows more: Standalone needs an enabled local administrator to sign in with afterwards
+    /// (unless the setup waits), and an OIDC mode or authority the next start would take up must answer with itself as the issuer.
     /// </summary>
     private async Task CheckRulesOnlyARunningAppKnowsAsync(IConfiguration candidate, CancellationToken ct)
     {
@@ -208,28 +207,17 @@ public sealed class SystemSettingsService(
     private static bool SameText(string? a, string? b) => string.Equals(a?.Trim(), b?.Trim(), StringComparison.Ordinal);
 
     /// <summary>
-    /// Standalone needs an administrator to sign in with afterwards: one there, or one the first start can create from the credentials. Not
-    /// while the setup waits: a start without either waits for the setup page then, which makes the administrator.
+    /// Standalone needs an administrator to sign in with afterwards, and only the setup page makes the first one (#149): refused while none
+    /// is enabled, unless the setup waits (the start waits for the setup page then). A switch from another mode is made outside the app
+    /// (<c>Auth__Mode</c> in the environment or the settings file) with a restart from there (this refuses the app's own, D3), after which the
+    /// start opens the setup page, or with <c>Setup:Enabled=false</c> stops.
     /// </summary>
     private async Task RequireAdministratorAsync(IConfiguration next, CancellationToken ct)
     {
-        if (!Is(next["Auth:Mode"], AuthMode.Standalone) || await users.AnyLocalAdminAsync(ct)) return;
-        // The minimum the next start judges the bootstrap password by, the one this configuration holds: the refusal says it (`min`).
-        var minLength = PasswordOptions.MinLengthIn(key => next[key]);
-        if (await BootstrapProblemAsync(next, minLength, ct) is { } reason && !await setup.WaitsAsync(ct))
-            throw new DomainException("settings.standaloneNeedsAdministrator",
-                $"Standalone mode needs an administrator: none exists yet, and the next start creates the first one from Auth:Standalone:AdminEmail (a valid address no local account has) and Auth:Standalone:AdminPassword ({minLength} to {PasswordPolicy.MaxLength} characters) in the environment.",
-                new { Reason = reason, Min = minLength });
+        if (!Is(next["Auth:Mode"], AuthMode.Standalone) || await users.AnyLocalAdminAsync(ct) || await setup.WaitsAsync(ct)) return;
+        throw new DomainException("settings.standaloneNeedsAdministrator",
+            "Standalone mode needs an administrator, and none exists. Switch to it outside the app (Auth__Mode in the environment or the settings file) and restart the server from there: that start opens the setup page, which makes the first administrator; with Setup__Enabled=false it stops instead.");
     }
-
-    /// <summary>
-    /// Why the first start in Standalone could not create the administrator from the candidate's credentials, as AuthService.BootstrapAdminAsync
-    /// will try to (null when it could): both must be given, the password must pass the policy with <paramref name="minLength"/>, the address
-    /// must be one, and no local account may hold it yet (a disabled administrator or a user does: the new account could not be added beside it).
-    /// </summary>
-    private async Task<string?> BootstrapProblemAsync(IConfiguration candidate, int minLength, CancellationToken ct) =>
-        StandaloneBootstrap.ProblemOf(candidate["Auth:Standalone:AdminEmail"], candidate["Auth:Standalone:AdminPassword"], minLength, out var address)
-        ?? (await users.FindLocalByEmailAsync(address, ct) is null ? null : "taken");
 
     /// <summary>The same place, written either way: a trailing slash or the case of the scheme and host make no difference.</summary>
     public static bool SameIssuer(string authority, string issuer) =>

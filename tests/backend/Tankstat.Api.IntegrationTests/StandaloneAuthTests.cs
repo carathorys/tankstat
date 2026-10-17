@@ -500,21 +500,31 @@ public class StandaloneAuthTests : IDisposable
 public class StandaloneStartupTests
 {
     [Fact]
-    public void Startup_Fails_WithoutAnAdministratorOrBootstrapConfiguration_OnceTheSetupIsCompleted()
+    public void Startup_Fails_WithoutAnAdministrator_WhenTheSetupIsTurnedOff()
     {
-        // Blank administrator settings: whatever appsettings.json provides must not matter. The test hosts' setup is off, so the new
-        // database counts as set up: nothing could make an administrator, and the start stops as it always did.
-        using var app = new TestApp(new() { ["Auth:Mode"] = "Standalone", ["Auth:Standalone:AdminEmail"] = "", ["Auth:Standalone:AdminPassword"] = "" });
+        // A new database (not the set-up template every Standalone host copies) with the setup off: nothing can make the first administrator,
+        // the setup page being the only way (#149), so the start stops and says how to go on.
+        var path = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}.db");
+        TestApp.CopyMigratedDatabase(path);
+        try
+        {
+            using var app = new TestApp(new() { ["Auth:Mode"] = "Standalone", ["Database:ConnectionString"] = $"Data Source={path}" });
 
-        var e = Assert.ThrowsAny<Exception>(() => app.NewClient());
+            var e = Assert.ThrowsAny<Exception>(() => app.NewClient());
 
-        AssertMentions(e, "Auth:Standalone:AdminEmail");
+            AssertMentions(e, "Setup__Enabled");
+        }
+        finally
+        {
+            TestApp.ReleaseDatabase(path);
+            File.Delete(path);
+        }
     }
 
     [Fact]
-    public async Task Startup_WaitsForTheSetup_WithoutAnAdministratorOrBootstrapConfiguration_OnANewDatabase()
+    public async Task Startup_WaitsForTheSetup_WithoutAnAdministrator_OnANewDatabase()
     {
-        using var app = new TestApp(new() { ["Auth:Mode"] = "Standalone", ["Auth:Standalone:AdminEmail"] = "", ["Auth:Standalone:AdminPassword"] = "", ["Setup:Enabled"] = "true" });
+        using var app = new TestApp(new() { ["Auth:Mode"] = "Standalone", ["Setup:Enabled"] = "true" });
 
         var health = (await app.NewClient().Gql("{ health { status } setup { pending } }")).Data();
 

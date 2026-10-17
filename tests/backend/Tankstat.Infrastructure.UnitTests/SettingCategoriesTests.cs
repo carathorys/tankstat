@@ -72,7 +72,7 @@ public sealed partial class SettingCategoriesTests
     [InlineData("Smtp:Password", SettingCategory.Secret)]
     [InlineData("Recognition:OpenAiCompatible:ApiKey", SettingCategory.Secret)]
     [InlineData("Database:ConnectionString", SettingCategory.Machine)]
-    [InlineData("Auth:Standalone:AdminPassword", SettingCategory.Machine)]
+    [InlineData("Auth:Standalone:AdminPassword", null)] // retired (#149): nothing binds it, so a backup leaves it out by name, never its value
     [InlineData("Backups:Path", SettingCategory.Machine)]
     [InlineData("Setup:Enabled", SettingCategory.Machine)]
     [InlineData("PATH", null)]

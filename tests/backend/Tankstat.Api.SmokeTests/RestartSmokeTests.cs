@@ -6,12 +6,8 @@ namespace Tankstat.Api.SmokeTests;
 /// </summary>
 public class RestartSmokeTests
 {
-    private static readonly Dictionary<string, string?> Standalone = new()
-    {
-        ["Auth__Mode"] = "Standalone",
-        ["Auth__Standalone__AdminEmail"] = "root@example.com",
-        ["Auth__Standalone__AdminPassword"] = "initial-password-1",
-    };
+    /// <summary>A Standalone instance; its first administrator (root@example.com) is made by its setup (<see cref="AppProcess.StartStandaloneAsync"/>).</summary>
+    private static readonly Dictionary<string, string?> Standalone = new() { ["Auth__Mode"] = "Standalone" };
 
     private const string Session = "{ session { mode user { email } } vehicleDefaults { currency } }";
 
@@ -39,7 +35,7 @@ public class RestartSmokeTests
     [Fact]
     public async Task RestartServer_StartsTheHostAgain_InTheSameProcess_AndWhatWasSavedCounts()
     {
-        await using var app = await AppProcess.StartAsync(Standalone);
+        await using var app = await AppProcess.StartStandaloneAsync(Standalone);
         await app.Gql("mutation($i: LoginInput!) { login(input: $i) { id } }", new { i = new { email = "root@example.com", password = "initial-password-1" } });
         var signedIn = new Dictionary<string, string> { ["Cookie"] = app.CookieHeader };
         // A default applies at once; the mail is built at start, so its port waits for the restart.
@@ -161,7 +157,7 @@ public class RestartSmokeTests
     public async Task AStopSignal_RightAfterARestart_EndsTheProcess()
     {
         if (OperatingSystem.IsWindows()) return; // POSIX signals, as docker stop sends them
-        await using var app = await AppProcess.StartAsync(Standalone);
+        await using var app = await AppProcess.StartStandaloneAsync(Standalone);
         await app.Gql("mutation($i: LoginInput!) { login(input: $i) { id } }", new { i = new { email = "root@example.com", password = "initial-password-1" } });
         var signedIn = new Dictionary<string, string> { ["Cookie"] = app.CookieHeader };
         Assert.True((await app.Gql("mutation { restartServer }", headers: signedIn)).Data().GetProperty("restartServer").GetBoolean());

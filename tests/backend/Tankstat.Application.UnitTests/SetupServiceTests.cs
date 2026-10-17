@@ -15,7 +15,7 @@ namespace Tankstat.Application.UnitTests;
 internal sealed class InMemorySetupStore(InMemoryUsers users, InMemoryVehicles vehicles) : ISetupStore
 {
     public SetupPhase Phase { get; set; } = SetupPhase.Undecided;
-    public SetupCompletion? Via { get; private set; }
+    public SetupCompletion? Via { get; set; }
 
     public Task<SetupPhase> PhaseAsync(CancellationToken ct) => Task.FromResult(Phase);
 
@@ -29,6 +29,27 @@ internal sealed class InMemorySetupStore(InMemoryUsers users, InMemoryVehicles v
             if (holdsData) Via = SetupCompletion.Upgrade;
         }
         return Task.FromResult(Phase);
+    }
+
+    public int Reopened { get; private set; }
+
+    /// <summary>Runs as a reopen begins: another server's at the same moment, say.</summary>
+    public Action? BeforeReopen { get; set; }
+
+    public Task<bool> ReopenAsync(DateTimeOffset now, CancellationToken ct)
+    {
+        BeforeReopen?.Invoke();
+        if (Phase != SetupPhase.Completed) return Task.FromResult(false);
+        Phase = SetupPhase.Pending; // how it was completed stays, as the database's row keeps it
+        Reopened++;
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> CompleteReopenedAsync(DateTimeOffset now, CancellationToken ct)
+    {
+        if (Phase != SetupPhase.Pending || Via is null) return Task.FromResult(false);
+        Phase = SetupPhase.Completed;
+        return Task.FromResult(true);
     }
 
     public Task<bool> CompleteAsync(SetupCompletion via, DateTimeOffset now, CancellationToken ct)
@@ -77,10 +98,10 @@ public sealed class SetupServiceTests
         return new Setup(w, w.SetupStore, w.SetupStatus, w.Code, service);
     }
 
-    private static Action<AuthOptions> Bootstrap(string password = "initial-password-1") =>
-        o => { o.Standalone.AdminEmail = "root@x.co"; o.Standalone.AdminPassword = password; };
-
     private static IEnumerable<LogEntry> CodeLines(Setup s) => s.World.Log.From<SetupService>().Where(e => e.Values.ContainsKey("Code"));
+
+    /// <summary>The reopen's line: SetupService's one Warning without a value (the code's names the code, the retired settings' line their names).</summary>
+    private static IEnumerable<LogEntry> ReopenLines(Setup s) => s.World.Log.From<SetupService>().Where(e => e.Level == LogLevel.Warning && e.Values.Count == 0);
 
     [Theory]
     [InlineData(AuthMode.Standalone)]
@@ -116,40 +137,125 @@ public sealed class SetupServiceTests
     }
 
     [Fact]
-    public async Task TheBootstrapAdministrator_CompletesTheSetup_ByTheEnvironment_DecidedBeforeItsOwnRowExists()
+    public async Task TheRetiredBootstrapSettings_AreNeverRead_ButAStartThatFindsThemSaysSo_ByNameOnly()
     {
-        var s = Make(configure: Bootstrap());
+        var s = Make();
+        s.World.SystemConfiguration.Environment["Auth:Standalone:AdminEmail"] = "zzzz@x.co";
+        s.World.SystemConfiguration.Environment["Auth:Standalone:AdminPassword"] = "zzzz-password-1";
 
         await s.Service.StartAsync(default);
 
-        // Decided as a new instance first (the administrator made afterwards is no "data"), then completed by the environment.
-        Assert.Equal((SetupPhase.Completed, SetupCompletion.Environment), (s.Store.Phase, s.Store.Via));
-        Assert.True(Assert.Single(s.World.Users.Items).IsAdmin);
-        Assert.False(s.Status.Pending);
-        Assert.Empty(CodeLines(s));
+        // Nobody was made from them: the setup page is the only way (#149), so the new instance waits for it.
+        Assert.Empty(s.World.Users.Items);
+        Assert.Equal(SetupPhase.Pending, s.Store.Phase);
+        var warning = Assert.Single(s.World.Log.From<SetupService>(), e => e.Values.ContainsKey("Settings"));
+        Assert.Equal(LogLevel.Warning, warning.Level);
+        Assert.Equal("Auth:Standalone:AdminEmail, Auth:Standalone:AdminPassword", warning.Values["Settings"]);
+        Assert.False(s.World.Log.Mentions("zzzz"));
     }
 
     [Fact]
-    public async Task LosingTheBootstrapAdministrator_ToAnotherServerStartingAtOnce_CompletesTheSetup_NotLeavesItWaiting()
+    public async Task ASetUpStandaloneInstance_WithoutAnAdministrator_ReopensItsSetup_AndLogsTheCode()
     {
-        // Both servers find no administrator and both insert; the unique index keeps the other's. The setup is then complete, not pending.
-        var s = Make(configure: Bootstrap());
-        s.World.Users.BeforeAdd = _ => s.World.AddUser("root@x.co", admin: true);
+        // The mode switched to Standalone outside the app, or every administrator gone: only the setup page makes one now.
+        var s = Make();
+        (s.Store.Phase, s.Store.Via) = (SetupPhase.Completed, SetupCompletion.Acknowledged); // set up with sign-in off, say
+        s.World.AddUser("plain@x.co");
 
         await s.Service.StartAsync(default);
 
-        Assert.Equal((SetupPhase.Completed, SetupCompletion.Environment), (s.Store.Phase, s.Store.Via));
+        // How it was completed stays, for a start in the mode switched back (below).
+        Assert.Equal((SetupPhase.Pending, 1, SetupCompletion.Acknowledged), (s.Store.Phase, s.Store.Reopened, s.Store.Via));
+        Assert.True(s.Status.Pending);
+        Assert.Single(CodeLines(s));
+        Assert.Single(ReopenLines(s));
+        Assert.False(s.World.Log.Mentions("plain@x.co"));
+    }
+
+    [Theory]
+    [InlineData(AuthMode.None)]
+    [InlineData(AuthMode.Oidc)]
+    [InlineData(AuthMode.ProxyHeader)]
+    public async Task ASetupAStartInStandaloneReopened_IsCompletedAgainAsItWas_WhenTheModeIsSwitchedBack(AuthMode mode)
+    {
+        // Reopened by a start in Standalone (the mode tried out, say): the way back is the environment, as it always was.
+        var s = Make(mode);
+        (s.Store.Phase, s.Store.Via) = (SetupPhase.Pending, SetupCompletion.Administrator);
+
+        await s.Service.StartAsync(default);
+
+        Assert.Equal((SetupPhase.Completed, SetupCompletion.Administrator), (s.Store.Phase, s.Store.Via));
         Assert.False(s.Status.Pending);
         Assert.Empty(CodeLines(s));
-        Assert.Single(s.World.Users.Items);
+        Assert.Equal(LogLevel.Information, Assert.Single(s.World.Log.From<SetupService>(), e => e.Values.ContainsKey("Mode")).Level);
     }
 
     [Fact]
-    public async Task AWeakBootstrapPassword_StillStopsTheStart()
+    public async Task ASetupAStartInStandaloneReopened_StillWaits_AtTheNextStartInStandalone()
     {
-        var s = Make(configure: Bootstrap("weak"));
+        var s = Make();
+        (s.Store.Phase, s.Store.Via) = (SetupPhase.Pending, SetupCompletion.Acknowledged);
 
-        await Assert.ThrowsAsync<DomainException>(() => s.Service.StartAsync(default));
+        await s.Service.StartAsync(default);
+
+        Assert.Equal(SetupPhase.Pending, s.Store.Phase);
+        Assert.True(s.Status.Pending);
+        Assert.Single(CodeLines(s));
+        Assert.Empty(ReopenLines(s)); // reopened before, not by this start
+    }
+
+    [Fact]
+    public async Task ADisabledAdministrator_CountsAsNone_SoTheSetupReopens()
+    {
+        var s = Make();
+        s.Store.Phase = SetupPhase.Completed;
+        s.World.AddUser("root@x.co", admin: true).SetDisabled(true);
+
+        await s.Service.StartAsync(default);
+
+        Assert.Equal(SetupPhase.Pending, s.Store.Phase);
+    }
+
+    [Fact]
+    public async Task ASetUpStandaloneInstance_WithAnAdministrator_StaysSetUp()
+    {
+        var s = Make();
+        s.Store.Phase = SetupPhase.Completed;
+        s.World.AddUser("root@x.co", admin: true);
+
+        await s.Service.StartAsync(default);
+
+        Assert.Equal((SetupPhase.Completed, 0), (s.Store.Phase, s.Store.Reopened));
+        Assert.Empty(CodeLines(s));
+    }
+
+    [Theory]
+    [InlineData(AuthMode.None)]
+    [InlineData(AuthMode.Oidc)]
+    [InlineData(AuthMode.ProxyHeader)]
+    public async Task AnotherMode_NeverReopensASetUpInstance(AuthMode mode)
+    {
+        var s = Make(mode);
+        s.Store.Phase = SetupPhase.Completed;
+
+        await s.Service.StartAsync(default);
+
+        Assert.Equal((SetupPhase.Completed, 0), (s.Store.Phase, s.Store.Reopened));
+    }
+
+    [Fact]
+    public async Task TwoServersStartingAtOnce_ReopenTheSetupOnce_AndBothWaitForIt()
+    {
+        var s = Make();
+        s.Store.Phase = SetupPhase.Completed;
+        s.Store.BeforeReopen = () => s.Store.Phase = SetupPhase.Pending; // the other server's conditional update came first
+
+        await s.Service.StartAsync(default);
+
+        Assert.Equal((SetupPhase.Pending, 0), (s.Store.Phase, s.Store.Reopened));
+        Assert.True(s.Status.Pending);
+        Assert.Single(CodeLines(s)); // this server waits too, with its own code
+        Assert.Empty(ReopenLines(s));
     }
 
     [Theory]
@@ -176,36 +282,26 @@ public sealed class SetupServiceTests
     }
 
     [Fact]
-    public async Task ASetUpStandaloneInstance_WithoutAnAdministratorOrCredentials_StillStopsTheStart()
-    {
-        var s = Make();
-        s.Store.Phase = SetupPhase.Completed;
-
-        var e = await Assert.ThrowsAsync<InvalidOperationException>(() => s.Service.StartAsync(default));
-        Assert.Contains("Auth:Standalone:AdminEmail", e.Message);
-    }
-
-    [Fact]
-    public async Task SetupTurnedOff_InStandalone_WithoutCredentials_StopsTheStart_AndALaterStartWithTheSetupOn_StillWaits()
+    public async Task SetupTurnedOff_InStandalone_WithoutAnAdministrator_StopsTheStart_NamingTheSetup_AndALaterStartWithTheSetupOn_StillWaits()
     {
         var s = Make(enabled: false);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => s.Service.StartAsync(default));
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() => s.Service.StartAsync(default));
 
+        Assert.Contains("Setup__Enabled", e.Message);
+        Assert.Contains("/setup", e.Message);
         Assert.Equal(SetupPhase.Pending, s.Store.Phase); // nothing completed by a start that stopped
     }
 
-    [Theory]
-    [InlineData("root@x.co", "")]
-    [InlineData("", "initial-password-1")]
-    public async Task OnlyOneOfTheBootstrapCredentials_StopsTheStart_NamingTheOneThatIsSet(string email, string password)
+    [Fact]
+    public async Task SetupTurnedOff_OnASetUpStandaloneInstance_WithoutAnAdministrator_StopsTheStart_AndReopensNothing()
     {
-        var s = Make(configure: o => { o.Standalone.AdminEmail = email; o.Standalone.AdminPassword = password; });
+        var s = Make(enabled: false);
+        s.Store.Phase = SetupPhase.Completed;
 
-        var e = await Assert.ThrowsAsync<InvalidOperationException>(() => s.Service.StartAsync(default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => s.Service.StartAsync(default));
 
-        Assert.Contains(email.Length > 0 ? "Only Auth:Standalone:AdminEmail" : "Only Auth:Standalone:AdminPassword", e.Message);
-        Assert.Empty(s.World.Users.Items);
+        Assert.Equal((SetupPhase.Completed, 0), (s.Store.Phase, s.Store.Reopened));
     }
 
     [Fact]
