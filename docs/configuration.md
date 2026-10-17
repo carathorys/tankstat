@@ -61,7 +61,7 @@ Besides `appsettings.json` and the environment, the app reads one JSON file of i
 }
 ```
 
-Switching an instance that has no administrator yet to `Standalone` also needs the first administrator for that start, `Auth__Standalone__AdminEmail` and `Auth__Standalone__AdminPassword` ([Authentication](authentication.md)); without them the app does not start, as when the mode comes from the environment on an instance that is set up. (A new instance, one still waiting for its setup, waits for its first administrator instead.)
+Switching an instance that has no administrator yet to `Standalone` is refused on this page: only the setup page makes the first administrator. Switch it outside the app (`Auth__Mode` in the environment, or the file by hand), and the next start reopens the setup ([Authentication](authentication.md#the-first-start-setup)). (A new instance, one still waiting for its setup, makes its first administrator there anyway.)
 
 What to know about it:
 
