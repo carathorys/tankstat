@@ -120,16 +120,23 @@ test('logs a refuelling and an expense from the home card', async ({ page }) => 
   await expect(row(page, 'Vignette')).toBeVisible()
 })
 
-test('marks a due recurring expense as done from the home card', async ({ page }) => {
+test('marks a due recurring expense as done from the home card, with only its category ticked', async ({ page }) => {
   const vehicle = await addVehicle(page)
-  await addDueRecurring(page, vehicle.id, 'Insurance')
+  await addDueRecurring(page, vehicle.id, 'Insurance', 'Insurance')
+  await addDueRecurring(page, vehicle.id, 'Vignette', 'Fees')
   await page.goto('/')
   await pageLoaded(page)
   const attention = page.getByRole('list', { name: 'Needs attention' })
   await expect(attention.getByText('Insurance')).toBeVisible()
   await page.getByRole('button', { name: `Mark Insurance of ${vehicle.name} as done` }).click()
-  await page.getByRole('dialog', { name: 'Mark as done: Insurance' }).getByRole('button', { name: 'Mark as done' }).click()
-  await expect(attention).toHaveCount(0)
+  const done = page.getByRole('dialog', { name: 'Mark as done: Insurance' })
+  // Due too, but of another category: not part of this visit.
+  await expect(done.getByRole('checkbox', { name: 'Insurance' })).toBeChecked()
+  await expect(done.getByRole('checkbox', { name: 'Vignette' })).not.toBeChecked()
+  await done.getByRole('button', { name: 'Mark as done' }).click()
+  await expect(done).toBeHidden()
+  await expect(attention.getByText('Insurance')).toHaveCount(0)
+  await expect(attention.getByText('Vignette')).toBeVisible()
 })
 
 test('shows an expense logged through the API on the dashboard', async ({ page }) => {

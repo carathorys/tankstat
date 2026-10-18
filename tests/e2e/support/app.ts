@@ -97,12 +97,12 @@ export async function addExpense(page: Page, vehicleId: string, { title = 'Car w
 }
 
 /** A yearly recurring expense last done almost a year ago, so it is due soon (and on the home card, and in the notifications). */
-export async function addDueRecurring(page: Page, vehicleId: string, title = 'Insurance') {
+export async function addDueRecurring(page: Page, vehicleId: string, title = 'Insurance', category: string | null = null) {
   const lastDone = new Date(Date.now() - 360 * 24 * 3600 * 1000).toISOString().slice(0, 10)
   const data = await graphql<{ addRecurringExpense: { id: string } }>(
     page,
     'mutation($i: AddRecurringExpenseInput!) { addRecurringExpense(input: $i) { id } }',
-    { i: { vehicleId, title, kind: 'TIME', intervalMonths: 12, lastDoneDate: lastDone } },
+    { i: { vehicleId, title, category, kind: 'TIME', intervalMonths: 12, lastDoneDate: lastDone } },
   )
   return data.addRecurringExpense
 }

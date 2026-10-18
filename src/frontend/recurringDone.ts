@@ -26,7 +26,17 @@ export function defaultCategory(items: readonly { category?: string | null }[]):
 /** Whether the odometer is needed: distance counts for at least one of them. */
 export const usesDistance = (items: readonly { kind: RecurrenceKind }[]) => items.some((i) => i.kind !== 'TIME')
 
-/** What a dialog opened from one schedule starts with ticked: that one, and everything else that is due soon or overdue (one visit). */
+/** Whether two schedules share a category: both have one, the same once trimmed, ignoring case but not accents (typed text). */
+export function sameCategory(a?: string | null, b?: string | null): boolean {
+  const [x, y] = [a?.trim() ?? '', b?.trim() ?? '']
+  return x !== '' && y !== '' && x.localeCompare(y, undefined, { sensitivity: 'accent' }) === 0
+}
+
+/**
+ * What a dialog opened from one schedule starts with ticked: that one, and the others of its category that are due soon or overdue (one
+ * visit: the oil change with its filters, not the vignette). One without a category starts alone.
+ */
 export function preselect(items: readonly DoneItem[], openedFrom: string): string[] {
-  return [openedFrom, ...items.filter((i) => i.id !== openedFrom && i.status.state !== 'UPCOMING').map((i) => i.id)]
+  const from = items.find((i) => i.id === openedFrom)
+  return [openedFrom, ...items.filter((i) => i.id !== openedFrom && i.status.state !== 'UPCOMING' && sameCategory(i.category, from?.category)).map((i) => i.id)]
 }

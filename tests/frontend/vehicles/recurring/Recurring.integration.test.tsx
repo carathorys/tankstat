@@ -31,7 +31,7 @@ afterAll(() => server.close())
 const overdue = fakeRecurring({
   id: 'rc2',
   title: 'Tyres',
-  category: null,
+  category: 'Service', // the Oil change's too: done at the same visit
   kind: 'ODOMETER',
   intervalMonths: null,
   intervalDistance: 40000,
@@ -63,7 +63,7 @@ it('draws a dial per limit beside the state, the one that decides at full streng
     status: { state: 'DUE_SOON', limit: 'ODOMETER', dueDate: '2027-01-01', dueOdometer: 25000, daysLeft: 87, distanceLeft: 400 },
   })
   setup(fakeVehicle(), [combined, overdue])
-  const row = (await screen.findByRole('rowheader', { name: /Service/ })).closest('tr')!
+  const row = (await screen.findByRole('rowheader', { name: /^Service/ })).closest('tr')! // Tyres's category is Service too
 
   await waitFor(() => expect(row.querySelectorAll('[data-limit]')).toHaveLength(2))
   expect([...row.querySelectorAll('[data-limit]')].map((g) => [g.getAttribute('data-limit'), g.getAttribute('data-deciding')])).toEqual([
@@ -252,6 +252,27 @@ it('marks what was done at one visit: the clicked one and the due ones start tic
       },
     },
   ])
+})
+
+it('a due schedule of another category starts unticked, and can still be ticked by hand', async () => {
+  const { ui, state } = setup(fakeVehicle(), [{ ...overdue, title: 'Vignette', category: 'Fees' }, fakeRecurring()])
+  await row('Oil change')
+
+  const dialog = await doneDialog(ui, 'Oil change')
+  const visit = within(within(dialog).getByRole('group', { name: 'Done at this visit' }))
+  expect(visit.getByRole('checkbox', { name: 'Oil change' })).toBeChecked()
+  expect(visit.getByRole('checkbox', { name: 'Vignette' })).not.toBeChecked() // overdue, but not part of the service
+  expect(within(dialog).getByText('1 ticked')).toBeInTheDocument()
+  expect(within(dialog).getByLabelText('Expense title')).toHaveValue('Oil change')
+  expect(within(dialog).getByLabelText('Expense category (optional)')).toHaveValue('Service')
+
+  await ui.click(visit.getByRole('checkbox', { name: 'Vignette' }))
+  expect(within(dialog).getByText('2 ticked')).toBeInTheDocument()
+  await ui.type(within(dialog).getByLabelText(/^Odometer/), '62000')
+  await ui.click(within(dialog).getByRole('button', { name: 'Mark as done' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(state.calls.MarkRecurringExpensesDone).toEqual([{ input: expect.objectContaining({ ids: ['rc2', 'rc1'] }) }])
 })
 
 it('an unticked schedule stays as it is, and a title typed by hand is kept when the ticks change', async () => {

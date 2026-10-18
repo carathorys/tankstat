@@ -1,13 +1,38 @@
 import { expect, it } from 'vitest'
-import { defaultCategory, defaultTitle, MAX_EXPENSE_TITLE, preselect, usesDistance, type DoneItem } from '../../../../src/frontend/recurringDone.ts'
+import { defaultCategory, defaultTitle, MAX_EXPENSE_TITLE, preselect, sameCategory, usesDistance, type DoneItem } from '../../../../src/frontend/recurringDone.ts'
 
 const item = (id: string, state: DoneItem['status']['state'] = 'UPCOMING', over: Partial<DoneItem> = {}): DoneItem => ({ id, title: id, kind: 'TIME', category: null, status: { state }, ...over })
 
-it('starts from the clicked schedule and everything else that needs attention', () => {
-  const items = [item('tyres', 'OVERDUE'), item('oil', 'DUE_SOON'), item('wipers'), item('fuelFilter')]
+it('starts from the clicked schedule and the others of its category that need attention', () => {
+  const items = [
+    item('oil', 'DUE_SOON', { category: 'Service' }),
+    item('airFilter', 'OVERDUE', { category: 'service ' }),
+    item('vignette', 'DUE_SOON', { category: 'Fees' }),
+    item('insurance', 'OVERDUE', { category: 'Insurance' }),
+    item('wipers', 'OVERDUE'),
+    item('brakeFluid', 'UPCOMING', { category: 'Service' }), // not due yet: not part of this visit
+  ]
 
-  expect(preselect(items, 'wipers')).toEqual(['wipers', 'tyres', 'oil'])
-  expect(preselect(items, 'oil')).toEqual(['oil', 'tyres'])
+  expect(preselect(items, 'oil')).toEqual(['oil', 'airFilter'])
+  expect(preselect(items, 'brakeFluid')).toEqual(['brakeFluid', 'oil', 'airFilter'])
+  expect(preselect(items, 'vignette')).toEqual(['vignette'])
+  expect(preselect(items, 'wipers')).toEqual(['wipers']) // no category: alone, not with the others that have none
+  expect(preselect([...items, item('bulbs', 'OVERDUE')], 'wipers')).toEqual(['wipers'])
+})
+
+it('compares categories as typed text: trimmed, ignoring case but not accents', () => {
+  expect(sameCategory('Service', ' SERVICE ')).toBe(true)
+  expect(sameCategory('Szerviz', 'Szervíz')).toBe(false)
+  expect(sameCategory('Service', 'Fees')).toBe(false)
+  expect(sameCategory(null, null)).toBe(false)
+  expect(sameCategory(' ', '')).toBe(false)
+})
+
+it("prefills the visit's expense with the clicked schedule's category, as only its category starts ticked", () => {
+  const items = [item('Oil change', 'DUE_SOON', { category: 'Service' }), item('Vignette', 'DUE_SOON', { category: 'Fees' })]
+  const ticked = (from: string) => items.filter((i) => preselect(items, from).includes(i.id))
+
+  expect([defaultTitle(ticked('Vignette')), defaultCategory(ticked('Vignette'))]).toEqual(['Vignette', 'Fees'])
 })
 
 it("names the visit's expense after the schedules, as the server would, cut to fit", () => {
