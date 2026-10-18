@@ -62,11 +62,11 @@ const READ_INTO: Record<FillableField, ReadingFieldName> = { date: 'DATE', odome
 
 /**
  * "Mark as done" for a service visit: the vehicle's schedules are listed, the ones done at this visit ticked (opened from one schedule, that
- * one and everything else that needs attention start ticked). The next interval of each ticked schedule starts from the day and odometer
- * entered. The amount is optional and covers all of them together, never split: with an amount one expense is logged for the visit (its
- * title and category prefilled from the schedules) and remembers each schedule; without one only the schedules move on. Photos (the
- * dashboard, the invoice) go with the logged expense: an expense is logged when an amount is given or a photo is still being read (it may
- * fill the amount in, under the expense rules); otherwise the photos are not kept.
+ * one and the others of its category that need attention start ticked: `preselect`). The next interval of each ticked schedule starts from
+ * the day and odometer entered. The amount is optional and covers all of them together, never split: with an amount one expense is logged
+ * for the visit (its title and category prefilled from the schedules) and remembers each schedule; without one only the schedules move on.
+ * Photos (the dashboard, the invoice) go with the logged expense: an expense is logged when an amount is given or a photo is still being
+ * read (it may fill the amount in, under the expense rules); otherwise the photos are not kept.
  */
 export function RecurringDoneDialog({
   trigger,

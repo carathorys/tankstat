@@ -10,18 +10,20 @@ it('starts from the clicked schedule and the others of its category that need at
     item('vignette', 'DUE_SOON', { category: 'Fees' }),
     item('insurance', 'OVERDUE', { category: 'Insurance' }),
     item('wipers', 'OVERDUE'),
-    item('brakeFluid', 'UPCOMING', { category: 'Service' }), // not due yet: not part of this visit
+    item('bulbs', 'OVERDUE'),
+    item('brakeFluid', 'UPCOMING', { category: 'Service' }), // not due yet: ticked only in a visit opened from it
   ]
 
   expect(preselect(items, 'oil')).toEqual(['oil', 'airFilter'])
   expect(preselect(items, 'brakeFluid')).toEqual(['brakeFluid', 'oil', 'airFilter'])
   expect(preselect(items, 'vignette')).toEqual(['vignette'])
-  expect(preselect(items, 'wipers')).toEqual(['wipers']) // no category: alone, not with the others that have none
-  expect(preselect([...items, item('bulbs', 'OVERDUE')], 'wipers')).toEqual(['wipers'])
+  expect(preselect(items, 'wipers')).toEqual(['wipers']) // no category: alone, not with bulbs, which has none either
 })
 
 it('compares categories as typed text: trimmed, ignoring case but not accents', () => {
-  expect(sameCategory('Service', ' SERVICE ')).toBe(true)
+  // No capital I in these pairs: the comparison uses the runtime's default locale, and under a Turkish one I is the capital of ı, not of i.
+  expect(sameCategory('Service', ' service ')).toBe(true)
+  expect(sameCategory('Fees', ' FEES ')).toBe(true)
   expect(sameCategory('Szerviz', 'Szervíz')).toBe(false)
   expect(sameCategory('Service', 'Fees')).toBe(false)
   expect(sameCategory(null, null)).toBe(false)
@@ -30,9 +32,10 @@ it('compares categories as typed text: trimmed, ignoring case but not accents', 
 
 it("prefills the visit's expense with the clicked schedule's category, as only its category starts ticked", () => {
   const items = [item('Oil change', 'DUE_SOON', { category: 'Service' }), item('Vignette', 'DUE_SOON', { category: 'Fees' })]
-  const ticked = (from: string) => items.filter((i) => preselect(items, from).includes(i.id))
+  const ids = preselect(items, 'Vignette')
+  const ticked = items.filter((i) => ids.includes(i.id)) // what the dialog starts with, in the list's order
 
-  expect([defaultTitle(ticked('Vignette')), defaultCategory(ticked('Vignette'))]).toEqual(['Vignette', 'Fees'])
+  expect([defaultTitle(ticked), defaultCategory(ticked)]).toEqual(['Vignette', 'Fees'])
 })
 
 it("names the visit's expense after the schedules, as the server would, cut to fit", () => {
