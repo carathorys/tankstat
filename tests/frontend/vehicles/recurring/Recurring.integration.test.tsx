@@ -221,14 +221,14 @@ const doneDialog = async (ui: ReturnType<typeof userEvent.setup>, title: string)
   return dialog
 }
 
-it('marks what was done at one visit: the clicked one and the due ones start ticked, and one amount covers all of them', async () => {
+it('marks what was done at one visit: the clicked one and the due ones of its category start ticked, and one amount covers all of them', async () => {
   const { ui, state } = setup()
   await row('Oil change')
 
   const dialog = await doneDialog(ui, 'Oil change')
   const visit = within(within(dialog).getByRole('group', { name: 'Done at this visit' }))
   expect(visit.getByRole('checkbox', { name: 'Oil change' })).toBeChecked()
-  expect(visit.getByRole('checkbox', { name: 'Tyres' })).toBeChecked() // overdue: probably done at the same visit
+  expect(visit.getByRole('checkbox', { name: 'Tyres' })).toBeChecked() // overdue and of its category: probably done at the same visit
   expect(within(dialog).getByText('2 ticked')).toBeInTheDocument()
   expect(within(dialog).getByLabelText('Expense title')).toHaveValue('Tyres, Oil change')
   expect(within(dialog).getByLabelText('Expense category (optional)')).toHaveValue('Service')

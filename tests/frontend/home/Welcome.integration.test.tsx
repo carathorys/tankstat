@@ -456,8 +456,9 @@ it('marks a due schedule done from the card: it leaves the attention list, the l
   await waitFor(() => expect(document.activeElement).toBe(c.getByRole('link', { name: 'Open Octavia' }))) // the Done button is gone with its row
 })
 
-it('one visit from the card: the other due schedule starts ticked, both leave the list, and the focus lands on the title', async () => {
-  const oil = fakeRecurring({ id: 'rc3', title: 'Oil change', status: { state: 'DUE_SOON', limit: 'TIME', dueDate: '2026-10-20', dueOdometer: null, daysLeft: 19, distanceLeft: null } })
+it('one visit from the card: the other due schedule of its category starts ticked, both leave the list, and the focus lands on the title', async () => {
+  // Service, as tyres() (fakeRecurring's default): the same visit.
+  const oil = fakeRecurring({ id: 'rc3', title: 'Oil change', category: 'Service', status: { state: 'DUE_SOON', limit: 'TIME', dueDate: '2026-10-20', dueOdometer: null, daysLeft: 19, distanceLeft: null } })
   const { ui, recurring } = setup([fakeVehicle({ recurring: [tyres(), oil] })])
   const c = within(await card('Octavia'))
 

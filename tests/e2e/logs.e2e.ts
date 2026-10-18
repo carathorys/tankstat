@@ -130,9 +130,8 @@ test('marks a due recurring expense as done from the home card, with only its ca
   await expect(attention.getByText('Insurance')).toBeVisible()
   await page.getByRole('button', { name: `Mark Insurance of ${vehicle.name} as done` }).click()
   const done = page.getByRole('dialog', { name: 'Mark as done: Insurance' })
-  // Due too, but of another category: not part of this visit.
   await expect(done.getByRole('checkbox', { name: 'Insurance' })).toBeChecked()
-  await expect(done.getByRole('checkbox', { name: 'Vignette' })).not.toBeChecked()
+  await expect(done.getByRole('checkbox', { name: 'Vignette' })).not.toBeChecked() // due too, but of another category: not part of this visit
   await done.getByRole('button', { name: 'Mark as done' }).click()
   await expect(done).toBeHidden()
   await expect(attention.getByText('Insurance')).toHaveCount(0)
