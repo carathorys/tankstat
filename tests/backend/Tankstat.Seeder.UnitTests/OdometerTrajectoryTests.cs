@@ -1,7 +1,6 @@
-using Tankstat.Domain.Measurements;
-using Tankstat.Domain.Odometers;
 using Tankstat.Domain.Vehicles;
 using Tankstat.Seeder;
+using Tankstat.TestSupport;
 
 namespace Tankstat.Seeder.UnitTests;
 
@@ -12,9 +11,7 @@ public class OdometerTrajectoryTests
     private static List<Refueling> Log(params (int Day, long Value)[] points)
     {
         var vehicleId = Guid.NewGuid();
-        return [.. points.Select(p => Refueling.Create(
-            Guid.Empty, Guid.Empty, vehicleId, Day.AddDays(p.Day), 30m, Cost.Create(Guid.Empty, vehicleId, Day.AddDays(p.Day), 50m, "EUR"),
-            OdometerReading.Create(Guid.Empty, vehicleId, Day.AddDays(p.Day), p.Value), isFullTank: true, missedPreviousFillUp: false))];
+        return [.. points.Select(p => TestData.Refueling(Guid.Empty, Guid.Empty, vehicleId, Day.AddDays(p.Day), odometer: p.Value))];
     }
 
     [Fact]

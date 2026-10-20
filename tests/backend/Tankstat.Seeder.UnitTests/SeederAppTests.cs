@@ -57,13 +57,13 @@ public sealed class SeederAppTests : IDisposable
         Assert.True(Scalar("select count(*) from Expenses") > 0);
         Assert.Equal(Scalar("select count(*) from Refuelings") + Scalar("select count(*) from Expenses where OdometerReadingId is not null"), Scalar("select count(*) from OdometerReadings"));
         Assert.Equal(Scalar("select count(*) from Refuelings") + Scalar("select count(*) from Expenses"), Scalar("select count(*) from Costs"));
-        Assert.Equal(Scalar("select count(*) from Expenses"), long.Parse(System.Text.RegularExpressions.Regex.Match(output, @"([\d,]+) expenses,").Groups[1].Value.Replace(",", "")));
+        Assert.Contains($" {Scalar("select count(*) from Expenses"):N0} expenses,", output); // as the line writes it, in any culture
         Assert.Equal(0, Scalar("select count(*) from Vehicles where OwnerId <> '00000000-0000-0000-0000-000000000000'"));
         Assert.True(Scalar("select count(*) from __EFMigrationsHistory") >= 2); // really migrated
         Assert.Contains("15 notifications", output);
         Assert.Equal(15, Scalar("select count(*) from Notifications where RecipientId = '00000000-0000-0000-0000-000000000000'"));
         Assert.Equal(0, Scalar("select count(*) from RecurringExpenses r join Vehicles v on v.Id = r.VehicleId where v.DeletedAt is not null or r.OwnerId <> v.OwnerId"));
-        Assert.Equal(Scalar("select count(*) from RecurringExpenses"), long.Parse(System.Text.RegularExpressions.Regex.Match(output, @"([\d,]+) recurring expenses,").Groups[1].Value.Replace(",", "")));
+        Assert.Contains($" {Scalar("select count(*) from RecurringExpenses"):N0} recurring expenses,", output);
     }
 
     [Fact]
@@ -398,19 +398,22 @@ public sealed class SeederAppTests : IDisposable
 
         // the expenses, the visits among them listing the schedule they were for
         var ids = (await Gql("{ myVehicles { id } }")).GetProperty("data").GetProperty("myVehicles").EnumerateArray().Select(v => v.GetProperty("id").GetString()).ToList();
-        var expenses = new List<JsonElement>();
+        var expenses = new List<(string? VehicleId, JsonElement Expense)>();
         foreach (var id in ids)
             expenses.AddRange((await Gql("query($id: UUID!) { expenses(vehicleId: $id, take: 100) { category schedules { id } } }", new { id }))
-                .GetProperty("data").GetProperty("expenses").EnumerateArray());
-        Assert.Contains(expenses, e => e.GetProperty("schedules").GetArrayLength() > 0);
-        Assert.Contains(expenses, e => e.GetProperty("category").GetString() == "Parking");
+                .GetProperty("data").GetProperty("expenses").EnumerateArray().Select(e => (id, e)));
+        Assert.Contains(expenses, e => e.Expense.GetProperty("schedules").GetArrayLength() > 0);
+        Assert.Contains(expenses, e => e.Expense.GetProperty("category").GetString() == "Parking");
 
-        Assert.Equal(4, (await Gql("mutation { emptyTrash }")).GetProperty("data").GetProperty("emptyTrash").GetInt32());
+        // a vehicle with visits goes to the trash too, so emptying it has links to take along (the seeded trashed ones have no schedules)
+        var visited = expenses.First(e => e.Expense.GetProperty("schedules").GetArrayLength() > 0).VehicleId;
+        Assert.Equal(visited, (await Gql("mutation($id: UUID!) { deleteVehicle(id: $id) { id } }", new { id = visited })).GetProperty("data").GetProperty("deleteVehicle").GetProperty("id").GetString());
+        Assert.Equal(5, (await Gql("mutation { emptyTrash }")).GetProperty("data").GetProperty("emptyTrash").GetInt32());
         Assert.Equal(0, Scalar("select count(*) from Vehicles where DeletedAt is not null"));
         Assert.Equal(0, Scalar("select count(*) from Refuelings r left join Vehicles v on v.Id = r.VehicleId where v.Id is null")); // cascade left no orphans
         Assert.Equal(0, Scalar("select count(*) from Expenses e left join Vehicles v on v.Id = e.VehicleId where v.Id is null"));
         Assert.Equal(0, Scalar("select count(*) from Costs c left join Vehicles v on v.Id = c.VehicleId where v.Id is null"));
         Assert.Equal(0, Scalar("select count(*) from OdometerReadings o left join Vehicles v on v.Id = o.VehicleId where v.Id is null"));
-        Assert.Equal(0, Scalar("select count(*) from RecurringCompletions c left join Expenses e on e.Id = c.ExpenseId where e.Id is null"));
+        Assert.Equal(0, Scalar("select count(*) from RecurringCompletions c left join Expenses e on e.Id = c.ExpenseId left join RecurringExpenses r on r.Id = c.RecurringExpenseId where e.Id is null or r.Id is null"));
     }
 }

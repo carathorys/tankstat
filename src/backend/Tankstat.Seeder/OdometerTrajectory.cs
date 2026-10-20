@@ -42,15 +42,23 @@ public sealed class OdometerTrajectory
         var (lastDay, lastValue) = _points[^1];
         if (day >= lastDay) return lastValue + (long)Math.Floor((day - lastDay) * _perDay);
 
-        var i = Array.FindLastIndex(_points, p => p.Day <= day);
-        var (fromDay, fromValue) = _points[i];
-        var (toDay, toValue) = _points[i + 1];
+        // The last refuelling on or before the day and the next one (binary search: the points are in date order).
+        int low = 0, high = _points.Length - 1;
+        while (high - low > 1)
+        {
+            var mid = low + (high - low) / 2;
+            if (_points[mid].Day <= day) low = mid;
+            else high = mid;
+        }
+        var (fromDay, fromValue) = _points[low];
+        var (toDay, toValue) = _points[high];
         return fromValue + (toValue - fromValue) * (day - fromDay) / (toDay - fromDay);
     }
 
     /// <summary>
     /// The last day, at most the log's last, on which the odometer had not passed <paramref name="value"/>: a reading of that value on
-    /// that day is not above any reading of the days before nor below any of the days after.
+    /// that day is not below any reading of the days before nor above any of the days after. When it had passed it already on the first
+    /// day searched (<see cref="SearchYears"/> back), that day, where such a reading still fits (it is below every later one).
     /// </summary>
     public DateOnly DateAt(long value)
     {
