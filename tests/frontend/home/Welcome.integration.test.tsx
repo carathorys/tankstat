@@ -456,8 +456,9 @@ it('marks a due schedule done from the card: it leaves the attention list, the l
   await waitFor(() => expect(document.activeElement).toBe(c.getByRole('link', { name: 'Open Octavia' }))) // the Done button is gone with its row
 })
 
-it('one visit from the card: the other due schedule starts ticked, both leave the list, and the focus lands on the title', async () => {
-  const oil = fakeRecurring({ id: 'rc3', title: 'Oil change', status: { state: 'DUE_SOON', limit: 'TIME', dueDate: '2026-10-20', dueOdometer: null, daysLeft: 19, distanceLeft: null } })
+it('one visit from the card: the other due schedule of its category starts ticked, both leave the list, and the focus lands on the title', async () => {
+  // Service, as tyres() (fakeRecurring's default): the same visit.
+  const oil = fakeRecurring({ id: 'rc3', title: 'Oil change', category: 'Service', status: { state: 'DUE_SOON', limit: 'TIME', dueDate: '2026-10-20', dueOdometer: null, daysLeft: 19, distanceLeft: null } })
   const { ui, recurring } = setup([fakeVehicle({ recurring: [tyres(), oil] })])
   const c = within(await card('Octavia'))
 
@@ -472,6 +473,24 @@ it('one visit from the card: the other due schedule starts ticked, both leave th
   expect(recurring.state.calls.MarkRecurringExpensesDone).toEqual([{ input: expect.objectContaining({ ids: ['rc2', 'rc3'], amount: null }) }])
   await waitFor(() => expect(c.queryByRole('list', { name: 'Needs attention' })).not.toBeInTheDocument())
   await waitFor(() => expect(document.activeElement).toBe(c.getByRole('link', { name: 'Open Octavia' })))
+})
+
+it('one visit from the card: a due schedule of another category starts unticked and stays in the list', async () => {
+  const vignette = fakeRecurring({ id: 'rc3', title: 'Vignette', category: 'Fees', kind: 'TIME', status: { state: 'DUE_SOON', limit: 'TIME', dueDate: '2026-10-20', dueOdometer: null, daysLeft: 19, distanceLeft: null } })
+  const { ui, recurring } = setup([fakeVehicle({ recurring: [tyres(), vignette] })])
+  const c = within(await card('Octavia'))
+
+  await ui.click(c.getByRole('button', { name: 'Mark Tyres of Octavia as done' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Mark as done: Tyres' })
+  expect(within(dialog).getByRole('checkbox', { name: 'Vignette' })).not.toBeChecked()
+  await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
+  await ui.type(within(dialog).getByLabelText(/^Odometer/), '62000')
+  await ui.click(within(dialog).getByRole('button', { name: 'Mark as done' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(recurring.state.calls.MarkRecurringExpensesDone).toEqual([{ input: expect.objectContaining({ ids: ['rc2'] }) }])
+  await waitFor(() => expect(c.getByRole('list', { name: 'Needs attention' })).not.toHaveTextContent('Tyres'))
+  expect(c.getByRole('list', { name: 'Needs attention' })).toHaveTextContent('Vignette')
 })
 
 it('cancelling the Done dialog hands the focus back to its button', async () => {
