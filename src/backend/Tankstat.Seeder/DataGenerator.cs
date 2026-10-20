@@ -1,3 +1,4 @@
+using Tankstat.Application.Expenses;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Notifications;
@@ -53,7 +54,7 @@ public sealed class DataGenerator(TimeProvider clock)
             var count = random.Next(options.RefuelingsPerVehicle.Min, options.RefuelingsPerVehicle.Max + 1);
             var log = Refuelings(random, vehicle, market, count, today);
             var trajectory = OdometerTrajectory.Of(log, DefaultKmPerDay * market.DistancePerKm);
-            var schedules = vehicle.IsDeleted ? [] : Recurring(scheduleRandom, vehicle, trajectory, options.RecurringPerVehicle, today);
+            var schedules = vehicle.IsDeleted ? [] : Recurring(scheduleRandom, vehicle, market, trajectory, options.RecurringPerVehicle, today);
             var (expenses, completions) = Expenses(expenseRandom, vehicle, market, trajectory, schedules, options.ExpensesPerVehicle, today);
             yield return new GeneratedVehicle(vehicle, log, schedules, expenses, completions);
         }
@@ -191,11 +192,12 @@ public sealed class DataGenerator(TimeProvider clock)
     /// Schedules with the instance's default warnings, last done so that some are overdue, some due soon and the rest upcoming (the app
     /// works out their reminders when the notifications are looked at). Ones that count distance need a reading, so a vehicle without a
     /// fuel log only gets time-based ones. A schedule was last done where the vehicle's log puts it (<see cref="OdometerTrajectory"/>):
-    /// that visit is an expense with a reading, which must fit between the log's readings like any other. One that counts time is last
-    /// done on a day drawn for its state (the odometer of that day, when it counts distance too); one that counts only distance at an
-    /// odometer drawn for its state, on the day the vehicle got there. Time-only ones note no odometer.
+    /// that visit is an expense with a reading, which must fit between the log's readings like any other. Each limit it counts is drawn
+    /// for its state: time a day, distance an odometer (on the day the vehicle got there). One that counts both was last done at whichever
+    /// of the two came later: that limit stands where its state was drawn and the other one started after its own draw, so it is no
+    /// further along, and the app, which goes by the one further along, sees the state drawn. Time-only ones note no odometer.
     /// </summary>
-    private List<RecurringExpense> Recurring(Random random, Vehicle vehicle, OdometerTrajectory? trajectory, IntRange perVehicle, DateOnly today)
+    private List<RecurringExpense> Recurring(Random random, Vehicle vehicle, Market market, OdometerTrajectory? trajectory, IntRange perVehicle, DateOnly today)
     {
         var defaults = new VehicleDefaultsOptions();
         var usable = Templates.Where(t => trajectory is not null || t.Kind == RecurrenceKind.Time).OrderBy(_ => random.Next()).ToList();
@@ -205,34 +207,30 @@ public sealed class DataGenerator(TimeProvider clock)
         {
             var roll = random.NextDouble();
             var due = roll < 0.25 ? Due.Overdue : roll < 0.5 ? Due.Soon : Due.Upcoming;
-            var distance = t.DistanceKm is { } km ? Distance(vehicle, km) : (long?)null;
+            // In the vehicle's unit, rounded to a thousand like a person would set it.
+            var distance = t.DistanceKm is { } km ? (long)Math.Round(km * market.DistancePerKm / 1000) * 1000 : (long?)null;
 
-            DateOnly lastDone;
-            long? lastOdometer;
-            if (t.Months is { } months)
-            {
-                // Time: due at last done + interval; "soon" is within the 30 warning days.
-                lastDone = due switch
+            // Time: due at last done + interval; "soon" is within the 30 warning days.
+            DateOnly? byTime = t.Months is { } months
+                ? due switch
                 {
                     Due.Overdue => today.AddMonths(-months).AddDays(-random.Next(1, 60)),
                     Due.Soon => today.AddMonths(-months).AddDays(random.Next(1, Math.Min(defaults.RecurringWarnDays, 26))),
                     _ => today.AddMonths(-months).AddDays(random.Next(defaults.RecurringWarnDays + 10, months * 28)),
-                };
-                lastOdometer = distance is null ? null : trajectory!.At(lastDone);
-            }
-            else
-            {
-                // Distance: due at last done + interval; "soon" is within the warning distance.
-                var interval = distance!.Value;
-                var current = trajectory!.Latest;
-                lastOdometer = Math.Max(0, due switch
+                }
+                : null;
+            // Distance: due at last done + interval; "soon" is within the warning distance.
+            long? byDistance = distance is { } interval && trajectory is { Latest: var current }
+                ? due switch
                 {
                     Due.Overdue => current - interval - random.Next(100, 2_000),
                     Due.Soon => current - interval + random.Next(50, (int)defaults.RecurringWarnDistance - 50),
                     _ => current - random.Next(0, (int)(interval / 2)),
-                });
-                lastDone = trajectory.DateAt(lastOdometer.Value);
-            }
+                }
+                : null;
+            // A vehicle that has not gone that far yet: the time limit decides, or one that counts only distance was last done at 0.
+            if (byDistance is <= 0) byDistance = byTime is null ? 0 : null;
+            var (lastDone, lastOdometer) = Later(byTime, byDistance, distance is not null, trajectory);
 
             return RecurringExpense.Create(
                 vehicle.OwnerId, vehicle.OwnerId, vehicle.Id, t.Title, t.Category, null, t.Kind, t.Months, distance, lastDone, lastOdometer,
@@ -240,8 +238,18 @@ public sealed class DataGenerator(TimeProvider clock)
         }).ToList();
     }
 
-    /// <summary>A schedule's distance in the vehicle's unit, rounded to a thousand like a person would set it.</summary>
-    private static long Distance(Vehicle vehicle, long km) => (long)Math.Round(km * (vehicle.Units.Distance == DistanceUnit.Miles ? KmToMiles : 1) / 1000) * 1000;
+    /// <summary>
+    /// The later of the visit a time limit gives (that day, with its odometer when the schedule counts distance) and the one a distance
+    /// limit gives (that odometer, on the day the vehicle got there); either may be missing, not both. On a tie the distance's, whose
+    /// odometer is then the exact one.
+    /// </summary>
+    private static (DateOnly Date, long? Odometer) Later(DateOnly? byTime, long? byDistance, bool usesDistance, OdometerTrajectory? trajectory)
+    {
+        var distanceDate = byDistance is { } value ? trajectory!.DateAt(value) : (DateOnly?)null;
+        return byTime is { } timeDate && (distanceDate is null || timeDate > distanceDate)
+            ? (timeDate, usesDistance ? trajectory!.At(timeDate) : null)
+            : (distanceDate!.Value, byDistance);
+    }
 
     // ---- Expenses ---------------------------------------------------------------------------------------------------
 
@@ -274,9 +282,8 @@ public sealed class DataGenerator(TimeProvider clock)
 
         Expense Add(DateOnly date, string title, string? category, double euro, long? odometer, string? note = null)
         {
-            var cost = Cost.Create(vehicle.OwnerId, vehicle.Id, date, Math.Round((decimal)(euro * market.HomeRate), 2), market.HomeCurrency);
-            var reading = odometer is { } value ? OdometerReading.Create(vehicle.OwnerId, vehicle.Id, date, value) : null;
-            var expense = Expense.Create(vehicle.OwnerId, vehicle.OwnerId, vehicle.Id, date, title, category, cost, reading, note);
+            var expense = ExpenseService.Build(vehicle, vehicle.OwnerId,
+                new ExpenseInput(date, title, category, Math.Round((decimal)(euro * market.HomeRate), 2), market.HomeCurrency, odometer, note));
             expenses.Add(expense);
             return expense;
         }
@@ -285,10 +292,10 @@ public sealed class DataGenerator(TimeProvider clock)
         {
             var template = Templates.First(t => t.Title == schedule.Title);
             var price = template.MinEuro + random.NextDouble() * (template.MaxEuro - template.MinEuro); // the same place each time, give or take
+            var (title, category, note) = (RecurringDoneDefaults.Title([schedule]), RecurringDoneDefaults.Category([schedule]), RecurringDoneDefaults.Note([schedule]));
             foreach (var (date, odometer) in Visits(schedule, trajectory, today))
             {
-                var expense = Add(date, RecurringDoneDefaults.Title([schedule]), RecurringDoneDefaults.Category([schedule]), price * (0.95 + random.NextDouble() * 0.1),
-                    odometer, RecurringDoneDefaults.Note([schedule]));
+                var expense = Add(date, title, category, price * (0.95 + random.NextDouble() * 0.1), odometer, note);
                 completions.Add(RecurringCompletion.Create(expense.Id, schedule.Id));
             }
         }
@@ -333,10 +340,7 @@ public sealed class DataGenerator(TimeProvider clock)
             if (byDistance is <= 0) byDistance = null;
             if (byTime is null && byDistance is null) yield break; // nothing before a distance schedule's first kilometre
 
-            var distanceDate = byDistance is { } value ? trajectory!.DateAt(value) : (DateOnly?)null;
-            (date, odometer) = byTime is { } timeDate && (distanceDate is null || timeDate >= distanceDate)
-                ? (timeDate, schedule.UsesDistance ? trajectory!.At(timeDate) : null)
-                : (distanceDate!.Value, byDistance);
+            (date, odometer) = Later(byTime, byDistance, schedule.UsesDistance, trajectory);
             if (date < floor || odometer is <= 0) yield break;
         }
     }

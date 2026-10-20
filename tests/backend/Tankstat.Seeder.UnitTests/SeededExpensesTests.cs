@@ -104,7 +104,12 @@ public class SeededExpensesTests
                 {
                     Assert.True(visits[i - 1].Date < visits[i].Date);
                     if (s.UsesDistance) Assert.True(visits[i - 1].Odometer < visits[i].Odometer);
-                    if (s.Kind == RecurrenceKind.Time) Assert.Equal(visits[i].Date.AddMonths(-s.IntervalMonths!.Value), visits[i - 1].Date);
+                    // an interval apart: by months or by distance, and for one that counts both, by one of them with the other no further back
+                    var byTime = s.UsesTime && visits[i - 1].Date == visits[i].Date.AddMonths(-s.IntervalMonths!.Value);
+                    var byDistance = s.UsesDistance && visits[i - 1].Odometer == visits[i].Odometer - s.IntervalDistance!.Value;
+                    Assert.True(byTime || byDistance, $"{s.Title}: {visits[i - 1].Date} at {visits[i - 1].Odometer}, then {visits[i].Date} at {visits[i].Odometer}");
+                    if (s.UsesTime) Assert.True(visits[i - 1].Date >= visits[i].Date.AddMonths(-s.IntervalMonths!.Value));
+                    if (s.UsesDistance) Assert.True(visits[i - 1].Odometer >= visits[i].Odometer - s.IntervalDistance!.Value);
                 }
                 Assert.All(visits.SkipLast(1), v => Assert.True(v.Date >= Today.AddYears(-3)));
             }
@@ -123,12 +128,21 @@ public class SeededExpensesTests
     }
 
     [Fact]
-    public void Schedules_StillComeInEveryState()
+    public void Schedules_StillComeInEveryState_EachKindAboutAsDrawn()
     {
-        var all = Generate(Options(vehicles: 100, recurring: new IntRange(0, 2)));
+        var all = Generate(Options(vehicles: 200, recurring: new IntRange(5, 5)));
 
-        var states = all.SelectMany(g => g.Recurring.Select(r => RecurrenceCalculator.Evaluate(r, Today, g.Refuelings.LastOrDefault()?.Odometer).State)).ToList();
-        Assert.Equal([RecurrenceState.Upcoming, RecurrenceState.DueSoon, RecurrenceState.Overdue], states.Distinct().Order());
+        var states = all.SelectMany(g => g.Recurring.Select(r => (r.Title, RecurrenceCalculator.Evaluate(r, Today, g.Refuelings.LastOrDefault()?.Odometer).State))).ToList();
+        Assert.Equal([RecurrenceState.Upcoming, RecurrenceState.DueSoon, RecurrenceState.Overdue], states.Select(s => s.State).Distinct().Order());
+        Assert.Equal(5, states.Select(s => s.Title).Distinct().Count()); // every kind is there to be judged
+        // every kind about as drawn, a quarter overdue and a quarter due soon: the app goes by the limit further along, so an oil change
+        // (time and distance) whose odometer was not placed for the state drawn too would mostly be overdue
+        foreach (var kind in states.GroupBy(s => s.Title))
+            foreach (var state in new[] { RecurrenceState.Overdue, RecurrenceState.DueSoon })
+            {
+                var share = kind.Count(s => s.State == state) / (double)kind.Count();
+                Assert.True(share is >= 0.1 and <= 0.4, $"{kind.Key}: {share:P0} {state}");
+            }
         // no expense reading is newer than the last fill-up, so the fill-up's is the latest the app reads for these states
         Assert.All(all, g => Assert.All(g.Expenses.Where(e => e.Odometer is not null), e => Assert.True(e.Date <= g.Refuelings[^1].Date)));
     }
