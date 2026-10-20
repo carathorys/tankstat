@@ -20,14 +20,16 @@ flags:
     carryforward: true
 
 # No global path fixes: they would be applied to the backend report as well. The Vitest lcov paths are made repo-relative by
-# `npm run test:coverage` (src/frontend/...), and the cobertura paths (Tankstat.Application/...) are unique below src/backend.
+# `npm run test:coverage` (src/frontend/tankstat-react/src/...), and the cobertura paths (Tankstat.Application/...) are unique below src/backend.
 
 ignore:
   - "tests"
+  - "src/frontend/tankstat-react/tests"
+  - "src/frontend/tankstat-react/e2e"
   - "src/backend/Tankstat.Migrations.*"
   - "src/backend/Tankstat.Seeder"
-  - "src/frontend/gql/generated.ts"
-  - "src/frontend/main.tsx"
+  - "src/frontend/tankstat-react/src/gql/generated.ts"
+  - "src/frontend/tankstat-react/src/main.tsx"
 
 comment:
   layout: "condensed_header, diff, flags, files"

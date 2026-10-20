@@ -5,8 +5,11 @@
 **/bin
 **/obj
 dist
+src/frontend/tankstat-react/dist
 out
 test-results
+src/frontend/tankstat-react/test-results
+src/frontend/tankstat-react/playwright-report
 coverage
 **/*.db
 **/*.db-shm
@@ -20,6 +23,8 @@ coverage
 .vscode
 .claude
 tests
+src/frontend/tankstat-react/tests
+src/frontend/tankstat-react/e2e
 # Private photos for evaluating photo reading, wherever they were put.
 **/eval
 Dockerfile

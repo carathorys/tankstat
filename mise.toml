@@ -4,7 +4,7 @@ dotnet = "10"
 
 [tasks.install]
 description = "Install web dependencies and restore .NET packages"
-run = ["npm ci", "dotnet restore"]
+run = ["npm ci --prefix src/frontend/tankstat-react", "dotnet restore"]
 
 [tasks."dev:api"]
 description = "Run the API with hot reload on :5080"
@@ -15,6 +15,7 @@ run = "dotnet watch run"
 
 [tasks."dev:web"]
 description = "Run the Vite dev server (proxies /graphql, /auth/oidc/, /media and /imports to :5080)"
+dir = "src/frontend/tankstat-react"
 run = "npm run dev"
 
 [tasks."db:migration"]
@@ -44,38 +45,39 @@ description = "Export the GraphQL schema from the API to schema.graphql (no serv
 run = 'dotnet run --project src/backend/Tankstat.Api --no-launch-profile -- schema export --output "$PWD/schema.graphql"'
 
 [tasks.codegen]
-description = "Regenerate schema.graphql and the TypeScript GraphQL types/documents (src/frontend/gql/generated.ts)"
-run = ["mise run schema:export", "npm run codegen"]
+description = "Regenerate schema.graphql and the TypeScript GraphQL types/documents (src/frontend/tankstat-react/src/gql/generated.ts)"
+run = ["mise run schema:export", "npm --prefix src/frontend/tankstat-react run codegen"]
 
 [tasks."codegen:check"]
 description = "Fail if schema.graphql or the generated GraphQL types are out of date"
 run = "scripts/check-codegen.sh"
 
 [tasks.lint]
+dir = "src/frontend/tankstat-react"
 run = "npm run lint"
 
 [tasks.build]
 description = "Produce a self-hostable build in ./out (API + SPA in wwwroot; VERSION=1.2.3 sets the version of both)"
 run = [
-  "npm run build",
+  "npm --prefix src/frontend/tankstat-react run build",
   "mise run build:api",
 ]
 
 # CI's build job runs this on the SPA the frontend job built, and the release image is made from its ./out (Dockerfile, target release).
 [tasks."build:api"]
-description = "Publish the API into ./out (framework-dependent, every platform; VERSION=1.2.3 sets its version; the SPA gets its own from vite build) and put ./dist in wwwroot"
+description = "Publish the API into ./out (framework-dependent, every platform; VERSION=1.2.3 sets its version; the SPA gets its own from vite build) and put the web app's build (src/frontend/tankstat-react/dist) in wwwroot"
 run = [
   'dotnet publish src/backend/Tankstat.Api -c Release -o out -p:UseAppHost=false ${VERSION:+-p:Version=$VERSION}',
-  "rm -rf out/wwwroot && cp -r dist out/wwwroot",
+  "rm -rf out/wwwroot && cp -r src/frontend/tankstat-react/dist out/wwwroot",
 ]
 
 [tasks."test:unit"]
 description = "Unit tests (web + API)"
-run = ["npm run test:unit", "dotnet test tests/backend/Tankstat.Seeder.UnitTests", "dotnet test tests/backend/Tankstat.Domain.UnitTests", "dotnet test tests/backend/Tankstat.Application.UnitTests", "dotnet test tests/backend/Tankstat.Infrastructure.UnitTests"]
+run = ["npm --prefix src/frontend/tankstat-react run test:unit", "dotnet test tests/backend/Tankstat.Seeder.UnitTests", "dotnet test tests/backend/Tankstat.Domain.UnitTests", "dotnet test tests/backend/Tankstat.Application.UnitTests", "dotnet test tests/backend/Tankstat.Infrastructure.UnitTests"]
 
 [tasks."test:integration"]
 description = "Integration tests (web with mocked HTTP + API in-process)"
-run = ["npm run test:integration", "dotnet test tests/backend/Tankstat.Api.IntegrationTests"]
+run = ["npm --prefix src/frontend/tankstat-react run test:integration", "dotnet test tests/backend/Tankstat.Api.IntegrationTests"]
 
 [tasks."test:smoke"]
 description = "Start the real app as a process in every authentication mode (and with bad settings) and check it comes up"
@@ -86,22 +88,23 @@ description = "Black-box API contract tests against a freshly started server"
 run = "scripts/test-api.sh"
 
 [tasks."test:e2e"]
-description = "Real-browser tests (Playwright, tests/e2e) against a fresh build in ./out, at phone and desktop size; Playwright's options after --, e.g. mise run test:e2e -- --project phone. Not part of mise run test"
+description = "Real-browser tests (Playwright, src/frontend/tankstat-react/e2e) against a fresh build in ./out, at phone and desktop size; Playwright's options after --, e.g. mise run test:e2e -- --project phone. Not part of mise run test"
 run = ["mise run build", "scripts/test-e2e.sh"]
 
 [tasks."test:durations"]
-description = "Measure how long each frontend test file takes into tests/frontend/durations.json (CI balances its shards by it); rerun when files were added or got much slower"
+description = "Measure how long each frontend test file takes into src/frontend/tankstat-react/tests/durations.json (CI balances its shards by it); rerun when files were added or got much slower"
+dir = "src/frontend/tankstat-react"
 run = [
-  # The report's path is from Vitest's root (src/frontend). On a small machine add -- --maxWorkers=4 to the vitest line by hand.
-  "npx vitest run --coverage --reporter=json --outputFile=../../coverage/vitest-report.json",
-  "node scripts/frontend-durations.mjs coverage/vitest-report.json",
+  # The report's path is from Vitest's root (src/frontend/tankstat-react/src). On a small machine add -- --maxWorkers=4 to the vitest line by hand.
+  "npx vitest run --coverage --reporter=json --outputFile=../../../../coverage/vitest-report.json",
+  "node scripts/durations.mjs ../../../coverage/vitest-report.json",
 ]
 
 [tasks."test:coverage"]
 description = "Unit + integration tests with coverage reports in ./coverage (frontend/index.html, backend/*/*/coverage.cobertura.xml)"
 run = """
 rm -rf coverage
-npm run test:coverage
+npm --prefix src/frontend/tankstat-react run test:coverage
 for project in tests/backend/*.UnitTests tests/backend/Tankstat.Api.IntegrationTests; do
   dotnet test "$project" --settings coverlet.runsettings --collect:"XPlat Code Coverage" --results-directory "coverage/backend/$(basename "$project")"
 done
@@ -110,4 +113,4 @@ done
 [tasks.test]
 description = "Everything: typecheck, lint, unit, integration, API"
 depends = ["lint"]
-run = ["mise run codegen:check", "npm run typecheck", "mise run test:unit", "mise run test:integration", "mise run test:smoke", "mise run test:api"]
+run = ["mise run codegen:check", "npm --prefix src/frontend/tankstat-react run typecheck", "mise run test:unit", "mise run test:integration", "mise run test:smoke", "mise run test:api"]

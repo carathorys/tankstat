@@ -20,12 +20,12 @@ FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend
 WORKDIR /src
 
 # Dependencies first so they stay cached until the lockfile changes.
-COPY package.json package-lock.json ./
+COPY src/frontend/tankstat-react/package.json src/frontend/tankstat-react/package-lock.json ./
 RUN npm ci
 
 # `vite build` only: type checking, linting and tests are CI's job (the tests are not part of this build context).
-COPY vite.config.ts ./
-COPY src/frontend ./src/frontend
+COPY src/frontend/tankstat-react/vite.config.ts ./
+COPY src/frontend/tankstat-react/src ./src
 # The web app's version, shown in its footer (also while the API is out of reach); declared here so only this layer changes with it.
 ARG VERSION=0.0.0-dev
 RUN npx vite build            # -> /src/dist (ARG VERSION is in its environment)
