@@ -2,8 +2,8 @@
 paths:
   - "src/backend/**"
   - "tests/backend/**"
-  - "src/frontend/apolloClient.ts"
-  - "src/frontend/ErrorBoundary.tsx"
+  - "src/frontend/tankstat-react/src/apolloClient.ts"
+  - "src/frontend/tankstat-react/src/ErrorBoundary.tsx"
   - "docs/configuration.md"
 ---
 

@@ -37,7 +37,7 @@ Every fix, feature or other piece of work gets a **new branch in the main checko
 ## 3. Implement
 
 - Follow the plan and the repository's conventions (CLAUDE.md and the area's file in `.claude/rules/`: layering, i18n, accessibility, docs that must be updated with a behaviour change).
-- Add the tests the plan lists; the acceptance criteria are the definition of done. A new or changed user flow always gets its Playwright test in `tests/e2e` (CLAUDE.md, `.claude/rules/e2e.md`), also when the plan forgot it, and `mise run test:e2e` runs before the commit that adds or changes one.
+- Add the tests the plan lists; the acceptance criteria are the definition of done. A new or changed user flow always gets its Playwright test in `src/frontend/tankstat-react/e2e` (CLAUDE.md, `.claude/rules/e2e.md`), also when the plan forgot it, and `mise run test:e2e` runs before the commit that adds or changes one.
 - **While working, run only the affected tests**: the test files or classes you changed and those covering the code you touched, plus typecheck and lint. Never the full suite between steps.
 - Respect the machine's limits named in CLAUDE.md or memory (e.g. Vitest `--maxWorkers=4`, one `dotnet test` process at a time).
 

@@ -6,9 +6,9 @@ paths:
   - "**/*Refueling*"
   - "**/*Consumption*"
   - "**/*Chart*"
-  - "src/frontend/dashboard/**"
-  - "src/frontend/pages/vehicle/**"
-  - "tests/frontend/vehicles/**"
+  - "src/frontend/tankstat-react/src/dashboard/**"
+  - "src/frontend/tankstat-react/src/pages/vehicle/**"
+  - "src/frontend/tankstat-react/tests/vehicles/**"
 ---
 
 # Fuel log, consumption and statistics
