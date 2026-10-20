@@ -38,13 +38,16 @@ env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
 
 jobs:
-  # Lint, types and the production build of the web app. The build (dist/) is handed to the build job, so it is made once; so is the
+  # Lint, types and the production build of the web app (src/frontend/tankstat-react). The build (its dist/) is handed to the build job, so it is made once; so is the
   # version both are stamped with (the web app shows its own in the footer, next to the API's).
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
       version: ${{ steps.version.outputs.version }}
+    defaults:
+      run:
+        working-directory: src/frontend/tankstat-react
     steps:
       - uses: actions/checkout@v4
 
@@ -71,7 +74,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: web-dist
-          path: dist
+          path: src/frontend/tankstat-react/dist
           if-no-files-found: error
           retention-days: 1
 
@@ -86,6 +89,9 @@ jobs:
       fail-fast: false # report every failing shard, not just the first
       matrix:
         shard: [1, 2, 3]
+    defaults:
+      run:
+        working-directory: src/frontend/tankstat-react
     steps:
       - uses: actions/checkout@v4
 
@@ -102,7 +108,7 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage/frontend/lcov.info
+          files: coverage/frontend/lcov.info # the repository's coverage/ (vitest.config.ts)
           flags: frontend
           # A missing token (no secret yet, or a fork) must not break the build; the status checks come from Codecov itself.
           fail_ci_if_error: false
@@ -220,7 +226,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: web-dist
-          path: dist
+          path: src/frontend/tankstat-react/dist
 
       - name: Publish the API with the web app
         env:
@@ -234,7 +240,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  # The real-browser tests (tests/e2e): the build job's out/ started as scripts/test-e2e.sh does, Playwright with Chromium at phone and
+  # The real-browser tests (src/frontend/tankstat-react/e2e): the build job's out/ started as scripts/test-e2e.sh does, Playwright with Chromium at phone and
   # desktop size. It starts once the build is up (about 90 s in) and runs next to the slower test jobs, in two shards on two machines
   # (Playwright splits the tests; each shard starts its own server), so it ends within the backend job's time.
   e2e:
@@ -262,6 +268,7 @@ jobs:
 
       - name: Playwright version
         id: playwright
+        working-directory: src/frontend/tankstat-react
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
 
       # The browser per Playwright version; its system libraries come from apt every time (install-deps is part of --with-deps).
@@ -271,6 +278,7 @@ jobs:
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
       - run: npx playwright install --with-deps chromium
+        working-directory: src/frontend/tankstat-react
 
       - name: Real-browser tests
         run: scripts/test-e2e.sh --shard=${{ matrix.shard }}/2
@@ -283,6 +291,6 @@ jobs:
         with:
           name: e2e-results-${{ matrix.shard }}
           path: |
-            test-results/e2e
-            playwright-report
+            src/frontend/tankstat-react/test-results/e2e
+            src/frontend/tankstat-react/playwright-report
           retention-days: 7

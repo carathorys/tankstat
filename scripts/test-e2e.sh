@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Starts the published build (out/) on a throwaway port, runs the real-browser tests (tests/e2e) against it, always cleans up.
+# Starts the published build (out/) on a throwaway port, runs the real-browser tests (src/frontend/tankstat-react/e2e) against it, always cleans up.
 # Playwright runs natively with E2E_NATIVE=1 (CI, which installs Chromium), otherwise in the Playwright image of the installed version
 # (this machine's Linux is not one Playwright supports). Arguments go to `playwright test`: scripts/test-e2e.sh --project phone
 # Besides it, six instances that wait for their setup (two of them set up first, so their setup reopens), on the next ports, for the
@@ -44,7 +44,7 @@ app() {
     exec env "${instance_env[@]}" dotnet Tankstat.Api.dll --urls "$E2E_URL"
 }
 # A new Standalone instance waits for its setup, the only way to its first administrator (#149): finished below the unattended way, as
-# root@example.com, whom the tests sign in as (tests/e2e/support/app.ts).
+# root@example.com, whom the tests sign in as (src/frontend/tankstat-react/e2e/support/app.ts).
 app > "${files}/app.log" 2>&1 &
 pids=($!)
 trap 'kill "${pids[@]}" 2>/dev/null || true; wait "${pids[@]}" 2>/dev/null || true; rm -rf "$files"' EXIT
@@ -72,7 +72,7 @@ setup_code() {
   return 1
 }
 
-# The servers the setup's tests take over (tests/e2e/setup.e2e.ts), one per test and size: each is an instance waiting for its setup,
+# The servers the setup's tests take over (src/frontend/tankstat-react/e2e/setup.e2e.ts), one per test and size: each is an instance waiting for its setup,
 # which its test finishes or restores a backup into, so none is shared. "fresh" runs the shipped sign-in off (the wizard chooses the
 # mode) with nothing else set, "restore" Standalone without an administrator and the shared server's instance_env, "reopened" an
 # instance set up with sign-in off and started again in Standalone, which has no administrator, so its setup reopens (#149); each with
@@ -136,14 +136,17 @@ for i in "${!setup_names[@]}"; do
 done
 export E2E_SETUP="{${setup}}"
 
+# Playwright runs from the web app's folder: its config, node_modules, test-results/ and playwright-report/ are there.
+web="$repo/src/frontend/tankstat-react"
 status=0
 if [[ "${E2E_NATIVE:-}" == 1 ]]; then
-  npx playwright test "$@" || status=$?
+  (cd "$web" && npx playwright test "$@") || status=$?
 else
-  version="$(node -p "require('@playwright/test/package.json').version")"
-  # As the host user, so nothing it writes (test-results/, the report) belongs to root; the repository's own node_modules, the image's browsers.
+  version="$(cd "$web" && node -p "require('@playwright/test/package.json').version")"
+  # As the host user, so nothing it writes (test-results/, the report) belongs to root; the web app's own node_modules, the image's browsers.
+  # The whole repository is mounted: a test reads a backup file from tests/backend/contracts.
   docker run --rm --network host --ipc=host --user "$(id -u):$(id -g)" -e HOME=/tmp -e E2E_URL -e E2E_SETUP \
-    -v "$repo:$repo" -w "$repo" "mcr.microsoft.com/playwright:v${version}-noble" npx playwright test "$@" || status=$?
+    -v "$repo:$repo" -w "$web" "mcr.microsoft.com/playwright:v${version}-noble" npx playwright test "$@" || status=$?
 fi
 if [[ "$status" != 0 ]]; then
   echo "The app's last log lines:" >&2
@@ -152,6 +155,6 @@ if [[ "$status" != 0 ]]; then
     echo "The waiting server $name's last log lines:" >&2
     tail -n 20 "${files}/setup-$name.log" >&2
   done
-  echo "Report: npx playwright show-report; a failed test's video: test-results/e2e/<test>/video.webm, its trace: npx playwright show-trace test-results/e2e/<test>/trace.zip" >&2
+  echo "In src/frontend/tankstat-react: the report: npx playwright show-report; a failed test's video: test-results/e2e/<test>/video.webm, its trace: npx playwright show-trace test-results/e2e/<test>/trace.zip" >&2
 fi
 exit "$status"

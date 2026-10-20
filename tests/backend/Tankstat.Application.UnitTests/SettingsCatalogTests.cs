@@ -223,7 +223,7 @@ public class SettingsFileNoticeTests
         // The page words a setting by its key (admin/settingsText.ts labelKey, helpKey): one left out shows as its key.
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Tankstat.slnx"))) dir = dir.Parent;
-        using var texts = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(dir!.FullName, "src", "frontend", "i18n", "locales", $"{language}.json")));
+        using var texts = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(dir!.FullName, "src", "frontend", "tankstat-react", "src", "i18n", "locales", $"{language}.json")));
         var settings = texts.RootElement.GetProperty("systemSettings");
         static string Name(string key) => key.Replace(":", "__").Replace(".", "_");
 

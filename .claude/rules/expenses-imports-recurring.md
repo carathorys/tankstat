@@ -6,9 +6,9 @@ paths:
   - "**/*Expense*"
   - "**/*Import*"
   - "**/*Recurring*"
-  - "src/frontend/pages/ImportPage.tsx"
-  - "tests/frontend/import/**"
-  - "tests/frontend/vehicles/recurring/**"
+  - "src/frontend/tankstat-react/src/pages/ImportPage.tsx"
+  - "src/frontend/tankstat-react/tests/import/**"
+  - "src/frontend/tankstat-react/tests/vehicles/recurring/**"
   - "docs/importing.md"
 ---
 

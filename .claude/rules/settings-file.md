@@ -6,8 +6,8 @@ paths:
   - "**/*SettingsFile*"
   - "**/*SystemSettings*"
   - "**/*Restart*"
-  - "src/frontend/admin/**"
-  - "tests/frontend/admin/**"
+  - "src/frontend/tankstat-react/src/admin/**"
+  - "src/frontend/tankstat-react/tests/admin/**"
   - "docs/configuration.md"
 ---
 
