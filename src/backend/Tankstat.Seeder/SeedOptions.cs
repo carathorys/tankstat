@@ -17,7 +17,8 @@ public sealed record SeedOptions(
     IntRange RecurringPerVehicle = default,
     int Notifications = 0,
     string? PhotosPath = null,
-    string? SettingsPath = null);
+    string? SettingsPath = null,
+    IntRange ExpensesPerVehicle = default);
 
 public sealed class SeedOptionsException(string message) : Exception(message);
 
@@ -27,6 +28,7 @@ public static class SeedOptionsParser
     public const int MaxRefuelingsPerVehicle = 10_000;
     public const int MaxRecurringPerVehicle = 5;
     public const int MaxNotifications = 10_000;
+    public const int MaxExpensesPerVehicle = 1_000;
 
     public const string Usage = """
         Tankstat database seeder (for testing only; authentication mode None only).
@@ -34,7 +36,8 @@ public static class SeedOptionsParser
         Deletes the database, creates it, applies the migrations and fills it with random but consistent data:
         vehicles, optionally some in the trash, a fuel log for each (dates and odometer only ever increase, litres
         follow a per-vehicle consumption), recurring expenses (some overdue, some due soon: the app turns those into
-        reminders when the notifications are looked at) and notifications about access changes. It creates no users;
+        reminders when the notifications are looked at) with an expense for each past visit, one-off expenses
+        (parking, washing, repairs, accessories) and notifications about access changes. It creates no users;
         everything belongs to, and every notification goes to, the anonymous (no-auth) user.
 
         Usage: Tankstat.Seeder [options]
@@ -43,6 +46,8 @@ public static class SeedOptionsParser
           --trashed <n>          additional vehicles that are in the trash           (default 0)
           --refuelings <n|a-b>   refuelings per vehicle, e.g. 20 or a range 5-40     (default 20)
           --recurring <n|a-b>    recurring expenses per vehicle, at most 5           (default 0-2)
+          --expenses <n|a-b>     one-off expenses per vehicle, besides the visits    (default 0-5)
+                                 of its recurring expenses
           --notifications <n>    notifications about access changes                  (default 15)
           --seed <n>             random seed; the same seed gives the same data      (default 1234)
           --provider <name>      Sqlite, PostgreSql, SqlServer or MySql              (default: Database:Provider, else Sqlite)
@@ -68,6 +73,7 @@ public static class SeedOptionsParser
         int vehicles = 25, trashed = 0, seed = 1234;
         var refuelings = new IntRange(20, 20);
         var recurring = new IntRange(0, 2);
+        var expenses = new IntRange(0, 5);
         var notifications = 15;
         var yes = false;
         string? provider = null, connection = null, uploads = null, photos = null, settingsFile = null;
@@ -94,6 +100,7 @@ public static class SeedOptionsParser
                 case "--trashed": trashed = Count(arg, Value(), MaxVehicles); break;
                 case "--refuelings": refuelings = Range(arg, Value(), MaxRefuelingsPerVehicle); break;
                 case "--recurring": recurring = Range(arg, Value(), MaxRecurringPerVehicle); break;
+                case "--expenses": expenses = Range(arg, Value(), MaxExpensesPerVehicle); break;
                 case "--notifications": notifications = Count(arg, Value(), MaxNotifications); break;
                 case "--seed": seed = int.TryParse(Value(), out var s) ? s : throw new SeedOptionsException("--seed must be a whole number."); break;
                 case "--provider": provider = Value(); break;
@@ -106,7 +113,7 @@ public static class SeedOptionsParser
         }
 
         if ((long)vehicles + trashed > MaxVehicles) throw new SeedOptionsException($"At most {MaxVehicles:N0} vehicles in total.");
-        return new SeedOptions(vehicles, trashed, refuelings, seed, yes, provider, connection, uploads, recurring, notifications, photos, settingsFile);
+        return new SeedOptions(vehicles, trashed, refuelings, seed, yes, provider, connection, uploads, recurring, notifications, photos, settingsFile, expenses);
     }
 
     private static int Count(string name, string text, int max)
