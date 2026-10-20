@@ -10,15 +10,16 @@ public class SeedOptionsTests
         var o = SeedOptionsParser.Parse([])!;
 
         Assert.Equal((25, 0, new IntRange(20, 20), 1234, false, null, null), (o.Vehicles, o.Trashed, o.RefuelingsPerVehicle, o.RandomSeed, o.AssumeYes, o.Provider, o.ConnectionString));
-        Assert.Equal((new IntRange(0, 2), 15), (o.RecurringPerVehicle, o.Notifications));
+        Assert.Equal((new IntRange(0, 2), 15, new IntRange(0, 5)), (o.RecurringPerVehicle, o.Notifications, o.ExpensesPerVehicle));
     }
 
     [Fact]
-    public void ParsesTheRecurringAndNotificationOptions()
+    public void ParsesTheRecurringNotificationAndExpenseOptions()
     {
-        var o = SeedOptionsParser.Parse(["--recurring", "1-3", "--notifications=40"])!;
+        var o = SeedOptionsParser.Parse(["--recurring", "1-3", "--notifications=40", "--expenses", "2-8"])!;
 
-        Assert.Equal((new IntRange(1, 3), 40), (o.RecurringPerVehicle, o.Notifications));
+        Assert.Equal((new IntRange(1, 3), 40, new IntRange(2, 8)), (o.RecurringPerVehicle, o.Notifications, o.ExpensesPerVehicle));
+        Assert.Equal(new IntRange(3, 3), SeedOptionsParser.Parse(["--expenses=3"])!.ExpensesPerVehicle);
     }
 
     [Fact]
@@ -48,6 +49,9 @@ public class SeedOptionsTests
     [InlineData("--refuelings", "10-5")]
     [InlineData("--refuelings", "a-b")]
     [InlineData("--recurring", "0-6")]
+    [InlineData("--expenses", "8-2")]
+    [InlineData("--expenses", "1001")]
+    [InlineData("--expenses", "some")]
     [InlineData("--notifications", "-1")]
     [InlineData("--notifications", "10001")]
     [InlineData("--refuelings", "10001")]

@@ -176,6 +176,7 @@ mise run seed -- --help
 | `--trashed <n>` | additional vehicles that are in the trash (default 0) |
 | `--refuelings <n\|a-b>` | refuelings per vehicle, a number or a range (default 20) |
 | `--recurring <n\|a-b>` | recurring expenses per vehicle, at most 5 (default 0-2) |
+| `--expenses <n\|a-b>` | one-off expenses per vehicle, besides the visits of its recurring expenses, at most 1,000 (default 0-5) |
 | `--notifications <n>` | notifications about access changes (default 15) |
 | `--seed <n>` | same seed, same data (default 1234) |
 | `--provider`, `--connection` | override the database (otherwise `Database__*` settings; `mise run seed` targets the `dev:api` SQLite file) |
@@ -186,7 +187,11 @@ mise run seed -- --help
 
 The fuel logs are consistent: per vehicle, dates and the odometer only increase, the last fill-up is recent, litres follow the distance at a per-vehicle consumption (now and then a fill-up was not logged: the odometer runs on and the next log is marked), and prices drift slowly. Trashed vehicles keep their fuel logs.
 
-Recurring expenses (insurance, vignette, inspection, oil change, tyres; the distance ones only on vehicles with a reading) are last done so that some are overdue, some due soon and the rest upcoming; the app turns the first two into reminders when the notifications are looked at, as it always does. The access-change notifications are seeded directly for the anonymous user (there is nobody to share with without authentication), over the last two weeks, about made-up people and the first live vehicles: about a third already read, a few standing for several changes, and one "more changes" digest when there are at least ten.
+Recurring expenses (insurance, vignette, inspection, oil change, tyres; the distance ones only on vehicles with a reading) are last done so that some are overdue, some due soon and the rest upcoming; the app turns the first two into reminders when the notifications are looked at, as it always does. They are last done where the vehicle's fuel log puts them: a day and the odometer of that day (in the log, on a straight line between two fill-ups; before it, at the log's own pace), or for the tyres an odometer and the day the vehicle got there.
+
+Expenses come in two kinds, all in the currency the vehicle's fill-ups are mostly paid in. Each recurring expense has its past visits as expenses, linked to it as *Mark as done* links them (called like it, in its category, with the odometer when it counts distance): the last one where it was last done, the earlier ones an interval apart, going back three years. Besides those, each vehicle gets one-off expenses (`--expenses`: parking, washing, repairs, accessories) dated within its fuel log, about half of them with the odometer of their day, or over the last half year without one when it has no log. Every expense's reading fits between the readings of the days before and after it, as the app requires. Trashed vehicles keep their one-off expenses (they have no recurring ones).
+
+The access-change notifications are seeded directly for the anonymous user (there is nobody to share with without authentication), over the last two weeks, about made-up people and the first live vehicles: about a third already read, a few standing for several changes, and one "more changes" digest when there are at least ten.
 
 ## Continuous integration
 

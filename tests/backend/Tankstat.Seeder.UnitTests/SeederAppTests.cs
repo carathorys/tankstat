@@ -53,8 +53,11 @@ public sealed class SeederAppTests : IDisposable
         Assert.Equal(6, Scalar("select count(*) from Vehicles where DeletedAt is not null"));
         Assert.InRange(Scalar("select count(*) from Refuelings"), 46 * 5, 46 * 15);
         Assert.Equal(0, Scalar("select count(*) from Users")); // no users, ever
-        Assert.Equal(Scalar("select count(*) from Refuelings"), Scalar("select count(*) from OdometerReadings"));
-        Assert.Equal(Scalar("select count(*) from Refuelings"), Scalar("select count(*) from Costs"));
+        // every reading and cost is a refuelling's or an expense's (an expense always has a cost, a reading only when the odometer was noted)
+        Assert.True(Scalar("select count(*) from Expenses") > 0);
+        Assert.Equal(Scalar("select count(*) from Refuelings") + Scalar("select count(*) from Expenses where OdometerReadingId is not null"), Scalar("select count(*) from OdometerReadings"));
+        Assert.Equal(Scalar("select count(*) from Refuelings") + Scalar("select count(*) from Expenses"), Scalar("select count(*) from Costs"));
+        Assert.Equal(Scalar("select count(*) from Expenses"), long.Parse(System.Text.RegularExpressions.Regex.Match(output, @"([\d,]+) expenses,").Groups[1].Value.Replace(",", "")));
         Assert.Equal(0, Scalar("select count(*) from Vehicles where OwnerId <> '00000000-0000-0000-0000-000000000000'"));
         Assert.True(Scalar("select count(*) from __EFMigrationsHistory") >= 2); // really migrated
         Assert.Contains("15 notifications", output);
@@ -332,10 +335,27 @@ public sealed class SeederAppTests : IDisposable
         // every log owns exactly one reading and one cost of its own vehicle, dated like the log
         Assert.Equal(0, Scalar("select count(*) from Refuelings r left join OdometerReadings o on o.Id = r.OdometerReadingId where o.Id is null or o.VehicleId <> r.VehicleId or o.Date <> r.Date"));
         Assert.Equal(0, Scalar("select count(*) from Refuelings r left join Costs c on c.Id = r.CostId where c.Id is null or c.VehicleId <> r.VehicleId or c.Date <> r.Date"));
-        // odometer and date both increase within a vehicle
+        // the fill-ups' odometer and date both increase within a vehicle
+        Assert.Equal(0, Scalar("""
+            select count(*) from Refuelings ra join OdometerReadings a on a.Id = ra.OdometerReadingId
+            join Refuelings rb on rb.VehicleId = ra.VehicleId join OdometerReadings b on b.Id = rb.OdometerReadingId
+            where a.Date < b.Date and a.Value >= b.Value
+            """));
+        // and no reading, an expense's included, is below one of an earlier day (equal ones are fine, as in the app)
         Assert.Equal(0, Scalar("""
             select count(*) from OdometerReadings a join OdometerReadings b on a.VehicleId = b.VehicleId
-            where a.Date < b.Date and a.Value >= b.Value
+            where a.Date < b.Date and a.Value > b.Value
+            """));
+        // every expense owns one cost, and at most one reading, of its own vehicle, dated like the expense
+        Assert.True(Scalar("select count(*) from Expenses") > 0);
+        Assert.Equal(0, Scalar("select count(*) from Expenses e left join Vehicles v on v.Id = e.VehicleId where v.Id is null or e.OwnerId <> v.OwnerId"));
+        Assert.Equal(0, Scalar("select count(*) from Expenses e left join Costs c on c.Id = e.CostId where c.Id is null or c.VehicleId <> e.VehicleId or c.Date <> e.Date"));
+        Assert.Equal(0, Scalar("select count(*) from Expenses e join OdometerReadings o on o.Id = e.OdometerReadingId where o.VehicleId <> e.VehicleId or o.Date <> e.Date"));
+        // every visit links an expense and a schedule of the same vehicle
+        Assert.True(Scalar("select count(*) from RecurringCompletions") > 0);
+        Assert.Equal(0, Scalar("""
+            select count(*) from RecurringCompletions c left join Expenses e on e.Id = c.ExpenseId left join RecurringExpenses r on r.Id = c.RecurringExpenseId
+            where e.Id is null or r.Id is null or e.VehicleId <> r.VehicleId
             """));
     }
 
@@ -376,8 +396,21 @@ public sealed class SeederAppTests : IDisposable
         Assert.Contains("RECURRING_OVERDUE", kinds);
         Assert.Contains("LOG_ACCESS_CHANGED", kinds);
 
+        // the expenses, the visits among them listing the schedule they were for
+        var ids = (await Gql("{ myVehicles { id } }")).GetProperty("data").GetProperty("myVehicles").EnumerateArray().Select(v => v.GetProperty("id").GetString()).ToList();
+        var expenses = new List<JsonElement>();
+        foreach (var id in ids)
+            expenses.AddRange((await Gql("query($id: UUID!) { expenses(vehicleId: $id, take: 100) { category schedules { id } } }", new { id }))
+                .GetProperty("data").GetProperty("expenses").EnumerateArray());
+        Assert.Contains(expenses, e => e.GetProperty("schedules").GetArrayLength() > 0);
+        Assert.Contains(expenses, e => e.GetProperty("category").GetString() == "Parking");
+
         Assert.Equal(4, (await Gql("mutation { emptyTrash }")).GetProperty("data").GetProperty("emptyTrash").GetInt32());
         Assert.Equal(0, Scalar("select count(*) from Vehicles where DeletedAt is not null"));
         Assert.Equal(0, Scalar("select count(*) from Refuelings r left join Vehicles v on v.Id = r.VehicleId where v.Id is null")); // cascade left no orphans
+        Assert.Equal(0, Scalar("select count(*) from Expenses e left join Vehicles v on v.Id = e.VehicleId where v.Id is null"));
+        Assert.Equal(0, Scalar("select count(*) from Costs c left join Vehicles v on v.Id = c.VehicleId where v.Id is null"));
+        Assert.Equal(0, Scalar("select count(*) from OdometerReadings o left join Vehicles v on v.Id = o.VehicleId where v.Id is null"));
+        Assert.Equal(0, Scalar("select count(*) from RecurringCompletions c left join Expenses e on e.Id = c.ExpenseId where e.Id is null"));
     }
 }
