@@ -27,6 +27,6 @@ public class SchemaSnapshotTests(ApiFixture api)
 
         Assert.True(
             Normalize(executor.Schema.ToString()) == Normalize(committed),
-            "schema.graphql is out of date with the API. Run `mise run codegen` and commit schema.graphql and src/frontend/gql/generated.ts.");
+            "schema.graphql is out of date with the API. Run `mise run codegen` and commit schema.graphql and src/frontend/tankstat-react/src/gql/generated.ts.");
     }
 }
