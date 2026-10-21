@@ -2,6 +2,50 @@
 
 Every release of Tankstat, newest first. Each one is a Docker image, `ghcr.io/carathorys/tankstat:<version>`, and a [GitHub release](https://github.com/carathorys/tankstat/releases). The numbers in brackets are the pull requests. Pre-releases (the previews) are not listed: their changes are in the release that followed them.
 
+## 0.17.0 (2026-10-21)
+
+### Added
+
+- **Passwords done properly** (#151, #152, #155, #156, #157, #158):
+  - one password field everywhere (sign-in, password changes, the server's secrets, backup passphrases), each with its own **Show** button that hides again when you leave the field, send the form or stop typing for 30 seconds, and a note while **Caps Lock** is on;
+  - **every new password is typed twice**: a change, a reset or first-password link, one an administrator sets, and the setup's first administrator; the form and the server both check the repetition;
+  - **a minimum length you set**: *Minimum password length* in the sign-in settings (`Auth__Standalone__PasswordMinLength`, 10 to 128, 10 by default), which applies at once, without a restart; every new-password field says it before you type;
+  - **a new password asked for at the next sign-in** when the minimum was raised above a user's password: they sign in, nobody is signed out, and the app shows only *Choose a new password* until it is changed;
+  - **a strength meter** under every new password, with what makes it weak (a common password, your own name or address, repeats, runs, keyboard rows); advice only;
+  - **backup passphrases** typed twice too, a made-up one typed back before *Use these keys for new backups* turns on, a minimum of their own (`Backups__PassphraseMinLength`, 12 to 128, 12 by default), and the backup commands ask for a passphrase without showing it at a terminal.
+- **Signing out works without the server** (#163): the sign-in screen shows at once, offline too. The device tells the server once it can be reached, stays signed out until then, and remembers only that it signed out, never a secret. With an identity provider, *Sign in* goes to the provider only once the server has ended the old session.
+
+### Changed
+
+- **Every sign-out deletes what the device keeps for the account** (#163): the downloaded data, the pictures, the changes not sent yet and the entries found after a restore of the server. When the device holds changes or found entries the server does not have, it says how many and asks first; *Cancel* keeps everything.
+- **The setup page is the only way to a Standalone instance's first administrator** (#165): `Auth__Standalone__AdminEmail` and `Auth__Standalone__AdminPassword` are gone. A deployment without a browser finishes the setup with the one-time code from the log and one request (`docs/authentication.md`). A set-up Standalone instance left without an administrator (a switch to Standalone outside the app, every administrator gone) opens its setup page again at start, with a new code, instead of failing to start; until it is finished, local users who are not administrators cannot sign in.
+- **Charts of costs give each currency a scale of its own** (#164), so a currency with small amounts is no longer a sliver beside a large one; with several, the line under the chart says so, and the amounts are in the tooltip and the table (a month without spending in a currency shows a dash). A month's bars are only its own currencies, centred, and the month labels are shorter: the month alone, its year on a second line under the first month and every January.
+- **Mark as done starts with only the opened schedule's category ticked** (#166): opened from an oil change in *Service*, the visit starts with it and the other due *Service* schedules, not the vignette in *Fees*. Categories match ignoring spaces at either end and capitals, but not accents; a schedule without a category starts alone; the expense's prefilled title and category follow what is ticked. On a vehicle's *Recurring* tab and a home card's Done alike.
+
+### Fixed
+
+- **Two .NET denial-of-service advisories in a dependency** (CVE-2026-84008, high, and CVE-2026-70162, moderate; #196): MailKit's MimeKit asked for `System.Security.Cryptography.Pkcs` 10.0.0, affected by both, which 0.16.0 shipped too; it is pinned to the fixed 10.0.13. The runtime packages are at .NET 10.0.13 and HotChocolate 16.6.9 (#183).
+
+### Upgrading
+
+- **One database migration**, `AddPasswordChangeRequired` (a column on the users), applied at start after the automatic backup that comes before migrations.
+- **Remove `Auth__Standalone__AdminEmail` and `Auth__Standalone__AdminPassword`**: they are ignored now, with a Warning at start that names them (never their values). A new Standalone instance makes its first administrator on the setup page.
+- **`Setup__Enabled=false` with Standalone and no enabled administrator stops the start**; the message says how to go on.
+- **Scripts that pipe a passphrase into `backup keygen` or `backup --passphrase-stdin` need two lines now**, the passphrase and its repetition: `printf '%s\n%s\n' "$P" "$P" | docker exec -i tankstat dotnet Tankstat.Api.dll backup keygen --passphrase-stdin`. Given one line they stop without writing anything. `decrypt` and `restore` still take one.
+- **Signing out deletes the account's offline data on that device**, changes not sent yet included (after a warning): sync or keep what you need before signing out.
+- If you use no categories on recurring expenses, each Done now starts with only its own schedule ticked; tick the others by hand.
+- Nothing changes for existing passwords until an administrator raises the minimum.
+- The Docker Compose example now runs 0.17 (`TANKSTAT_VERSION` in `.env.example`).
+
+### For developers
+
+- **The web app moved to `src/frontend/tankstat-react`** (#168): one npm package with its own `package.json`, `node_modules` and configs; `mise run install` runs `npm ci` there.
+- **The Seeder** writes expenses, each schedule's visits linked as *Mark as done* links them and one-off ones (#167), places every reading on the vehicle's odometer trajectory, and draws a picture per vehicle with `--drawn-pictures` (or fetches its model's photo from Wikimedia Commons with `--pictures`, for a local database only) (#171).
+- **Screenshots for the README** (#170, #181): `mise run screenshots` builds `out/`, seeds a throwaway database with drawn pictures and takes them with Playwright at phone and desktop size.
+- **Community files** (#169): `CONTRIBUTING.md`, `SECURITY.md` (private vulnerability reports), a code of conduct, issue forms, a pull request template, Dependabot (weekly, grouped), and `AGENTS.md` for other coding agents. The Claude Code GitHub workflows are gone (#180, #182).
+- **msw 3** (#195): the tests' GraphQL handlers come from `tests/support/graphql.ts` (msw 3 intercepts GraphQL only through a link), and `answered()` in `tests/support/server.ts` waits for every request in flight before a test cuts the connection.
+- Dependency updates: Apollo Client 4.3.4, MUI 9.5, React 19.3.1, TypeScript 7.0, Vite 8.3.5, motion 14.3, the GitHub Actions, the test SDKs and the GraphQL code generator (#172–#179, #183–#187).
+
 ## 0.16.0 (2026-10-15)
 
 ### Added
