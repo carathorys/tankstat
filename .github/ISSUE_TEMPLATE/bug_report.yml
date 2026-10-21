@@ -1,0 +1,76 @@
+name: Bug report
+description: Something does not work as documented or expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. For a security problem use the private form instead (see [SECURITY.md](../blob/main/SECURITY.md)).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you saw, and what you expected instead.
+      placeholder: |
+        1. Open ...
+        2. Click ...
+        3. ...
+        Expected: ...
+        Got: ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown in the footer of the app, or `docker inspect` the image.
+      placeholder: 0.16.0
+    validations:
+      required: true
+  - type: dropdown
+    id: how
+    attributes:
+      label: How it runs
+      options:
+        - Docker image (ghcr.io/carathorys/tankstat)
+        - Published build (dotnet out/Tankstat.Api.dll)
+        - Development (mise run dev:api / dev:web)
+    validations:
+      required: true
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database provider
+      options:
+        - SQLite
+        - PostgreSQL
+        - SQL Server
+        - MySQL
+  - type: dropdown
+    id: auth
+    attributes:
+      label: Sign-in mode
+      # Not a bare "None": issue forms reserve it, and GitHub refuses the whole form.
+      options:
+        - None (sign-in off)
+        - Standalone
+        - OIDC
+        - ProxyHeader
+  - type: input
+    id: client
+    attributes:
+      label: Browser and device
+      description: Browser and version; say if the app is installed on the home screen, and whether it was offline at the time.
+      placeholder: Firefox 147 on Android, installed as an app
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        The server's log around the time: `docker logs tankstat` for the container of the quick start, `docker compose -f docker-compose.example.yml logs app` for the Compose example. The browser console helps too. Remove secrets, addresses and personal data first.
+      render: text
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Drop or paste images here.

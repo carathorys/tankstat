@@ -12,7 +12,7 @@ description: Review a GitHub pull request - only one that carries neither `revie
 | Argument | Meaning |
 | --- | --- |
 | `N` | The PR number. |
-| `next` | The oldest open, non-draft PR that has neither the `reviewing` nor the `reviewed` label; say which one you picked and why. |
+| `next` | The oldest open, non-draft PR that has neither the `reviewing` nor the `reviewed` label and was not opened by Dependabot (`gh pr list --search "draft:false -label:reviewing -label:reviewed -author:app/dependabot sort:created-asc"`); say which one you picked and why. |
 | `low` `medium` `high` `xhigh` `max` | The effort level, passed on to `code-review`. Without one, `code-review` reuses the level typed last. |
 | `--max-findings <n>` / `all` / `default` | Passed on to `code-review` as given (it remembers the choice until `default`). |
 | `--fix` | After the review, apply the findings to the PR's branch and push them (section 3b). Without it the PR's code is never changed. |
@@ -25,12 +25,13 @@ By default **nothing is posted on the PR**: the findings are reported to the use
 
 ## 0. Gate: is it open and free?
 
-`gh pr view N --json state,isDraft,labels,headRefOid,headRefName,isCrossRepository`.
+`gh pr view N --json state,isDraft,labels,headRefOid,headRefName,isCrossRepository,author`.
 - Closed or merged: **stop**, tell the user, do nothing else.
 - `reviewing`: another agent is reviewing it right now. **Do not start.** Tell the user and **ask what to do**: take it over, or leave it. Only when the user has already said they know and want it taken over (e.g. "take over the review of #99") is there nothing to ask; say you are taking it over.
 - `reviewed`: it has been reviewed already. **Do not review it again** unless the user asks for a new review explicitly (e.g. "review #99 again", after new commits); otherwise tell the user and stop. On a new review, remove `reviewed` when you claim it (step 1).
 - A draft (`isDraft`, usually labelled `WIP`) is not finished: `next` never picks one; a named draft is reviewed only after telling the user it is still a draft.
 - `--fix` on a PR from a fork (`isCrossRepository`): its branch is not ours to push to. Tell the user and ask whether to review it without `--fix`.
+- A Dependabot PR (`author.login` is `app/dependabot`): `next` never picks one; a named one is reviewed only after telling the user, and never with `--fix`: a commit of ours on its branch stops Dependabot from rebasing it. A finding there is fixed on a branch of its own.
 
 ## 1. Claim it
 

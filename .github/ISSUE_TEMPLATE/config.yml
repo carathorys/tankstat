@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question
+    url: https://github.com/carathorys/tankstat/discussions/categories/q-a
+    about: How do I ..., does it ..., and anything that is not a bug or a request.
+  - name: Security problem
+    url: https://github.com/carathorys/tankstat/security/advisories/new
+    about: Report it privately, not as an issue.
