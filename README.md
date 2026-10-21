@@ -19,12 +19,12 @@ Under the hood: a React + TypeScript frontend (Vite, MUI) and a .NET 10 backend 
   <img src="docs/screenshots/dashboard-desktop-dark.png" alt="A vehicle's dashboard on a desktop: the key figures (spent this month, average consumption, odometer, last fill-up) and the Overview charts, monthly costs per currency and consumption." width="100%">
 </p>
 <p align="center">
-  <img src="docs/screenshots/home-phone-dark.png" alt="The home page on a phone: a card per vehicle with its overdue and due-soon reminders and the Refuel and Expense buttons." width="32%">
-  <img src="docs/screenshots/dashboard-phone-dark.png" alt="A vehicle's dashboard on a phone: the key figures above its tabs." width="32%">
+  <img src="docs/screenshots/home-phone-dark.png" alt="The home page on a phone: a card per vehicle over its picture, with its overdue reminders, each with a Done button, and the Refuel and Expense buttons." width="32%">
+  <img src="docs/screenshots/dashboard-phone-dark.png" alt="A vehicle's dashboard on a phone: its picture and name, the tabs, and the key figures below them." width="32%">
   <img src="docs/screenshots/add-refuelling-phone-dark.png" alt="The Add refuelling dialog on a phone: date, volume, price, total cost, odometer with the last reading, full tank, note and photos." width="32%">
 </p>
 
-Recurring expenses: a schedule by time, by distance or whichever comes first, its state on the home card and on the vehicle's Recurring tab, and a service visit that marks several done at once, logged as one expense.
+Recurring expenses: a schedule by time, by distance or whichever comes first, its state on the home card and on the vehicle's Recurring tab, and a service visit that marks several done at once, with an optional amount logged as one expense.
 
 <p align="center">
   <img src="docs/screenshots/recurring-desktop-dark.png" alt="A vehicle's Recurring tab on a desktop: each schedule with how it repeats, when it was last done, when it is next due, and its state, overdue or upcoming, with a gauge for time and one for distance." width="100%">

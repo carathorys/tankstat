@@ -1,19 +1,22 @@
 name: CI
 
 on:
-  # A change of Markdown files only (docs, the agents' rules and skills) runs nothing. The later pattern wins: docs/photo-reading.md is
-  # pinned to the code by OpenAiCompatiblePromptTests, and the test contracts keep READMEs next to their files.
+  # A change of Markdown files and the README's screenshots only (docs, the agents' rules and skills) runs nothing. The later pattern
+  # wins: docs/photo-reading.md is pinned to the code by OpenAiCompatiblePromptTests, and the test contracts keep READMEs next to their
+  # files.
   push:
     branches: [main]
     paths:
       - "**"
       - "!**/*.md"
+      - "!docs/screenshots/**"
       - docs/photo-reading.md
       - "tests/**"
   pull_request:
     paths:
       - "**"
       - "!**/*.md"
+      - "!docs/screenshots/**"
       - docs/photo-reading.md
       - "tests/**"
   # Lets the release workflow run the very same checks before it builds an image, and stamp the build with its version.
@@ -49,10 +52,10 @@ jobs:
       run:
         working-directory: src/frontend/tankstat-react
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Installs the versions pinned in mise.toml (the same ones developers use); only Node is needed here.
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@v4
         with:
           install_args: node
           cache: true
@@ -71,7 +74,7 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: web-dist
           path: src/frontend/tankstat-react/dist
@@ -93,9 +96,9 @@ jobs:
       run:
         working-directory: src/frontend/tankstat-react
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@v4
         with:
           install_args: node
           cache: true
@@ -105,7 +108,7 @@ jobs:
         run: npx vitest run --coverage --shard=${{ matrix.shard }}/3 && npm run coverage:paths
 
       - name: Upload frontend coverage
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage/frontend/lcov.info # the repository's coverage/ (vitest.config.ts)
@@ -118,14 +121,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@v4
         with:
           install_args: dotnet
           cache: true
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
@@ -140,7 +143,7 @@ jobs:
         run: scripts/test-backend.sh
 
       - name: Upload backend coverage
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           directory: test-results
@@ -149,7 +152,7 @@ jobs:
 
       - name: Upload test results
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-test-results
           path: |
@@ -163,14 +166,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@v4
         with:
           install_args: dotnet
           cache: true
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
@@ -187,14 +190,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@v4
         with:
           cache: true
       - uses: ./.github/actions/node-modules
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
@@ -210,20 +213,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@v4
         with:
           install_args: dotnet
           cache: true
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
           restore-keys: nuget-${{ runner.os }}-
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: web-dist
           path: src/frontend/tankstat-react/dist
@@ -233,7 +236,7 @@ jobs:
           VERSION: ${{ needs.frontend.outputs.version }}
         run: mise run build:api
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: tankstat-${{ github.sha }}
           path: out
@@ -253,15 +256,15 @@ jobs:
       matrix:
         shard: [1, 2]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@v4
         with:
           install_args: node dotnet
           cache: true
       - uses: ./.github/actions/node-modules
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: tankstat-${{ github.sha }}
           path: out
@@ -272,7 +275,7 @@ jobs:
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
 
       # The browser per Playwright version; its system libraries come from apt every time (install-deps is part of --with-deps).
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
@@ -287,7 +290,7 @@ jobs:
 
       - name: Upload the traces and the report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-results-${{ matrix.shard }}
           path: |
