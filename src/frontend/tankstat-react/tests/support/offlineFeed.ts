@@ -1,4 +1,5 @@
-import { graphql, HttpResponse } from 'msw'
+import { HttpResponse } from 'msw'
+import { graphql } from './graphql.ts'
 
 // The device's clock: 7 October 2026. The default window (the last two months) starts on 7 August.
 export const now = () => new Date(2026, 9, 7, 12, 0, 0)

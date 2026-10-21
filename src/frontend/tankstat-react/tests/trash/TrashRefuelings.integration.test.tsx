@@ -5,7 +5,7 @@ import App from '../../src/App.tsx'
 import { server } from '../support/server.ts'
 import { fakeLogBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, stubViewport } from '../support/mocks.tsx'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => {
   server.resetHandlers()
   vi.unstubAllGlobals()

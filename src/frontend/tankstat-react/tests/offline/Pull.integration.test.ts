@@ -1,5 +1,6 @@
 import type { ApolloClient } from '@apollo/client'
-import { graphql, http, HttpResponse } from 'msw'
+import { http, HttpResponse } from 'msw'
+import { graphql } from '../support/graphql.ts'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { createApolloClient } from '../../src/apolloClient.ts'
 import { SessionDocument } from '../../src/gql/generated.ts'
@@ -14,7 +15,7 @@ import { fakeVehicle, fakeVehicleBackend, gqlError, person, sessionHandler, sile
 import { fakeFeed, now } from '../support/offlineFeed.ts'
 import { server } from '../support/server.ts'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 

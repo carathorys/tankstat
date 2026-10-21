@@ -1,16 +1,17 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql, HttpResponse } from 'msw'
+import { HttpResponse } from 'msw'
+import { graphql } from '../support/graphql.ts'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { RESTART_WAIT } from '../../src/admin/restartFlow.ts'
 import App from '../../src/App.tsx'
 import en from '../../src/i18n/locales/en.json'
 import { navigation } from '../../src/navigation.ts'
 import { connectivity } from '../../src/offline/connectivity.ts'
-import { server } from '../support/server.ts'
+import { answered, server } from '../support/server.ts'
 import { fakeVehicleBackend, gqlError, healthHandler, renderWithApollo, sessionHandler, stubViewport, systemSetting as setting, user } from '../support/mocks.tsx'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
@@ -378,9 +379,11 @@ it('restarting asks once more, waits for the server to go and come back, and rel
   let probes = 0
   renderWithApollo(<App />, '/admin/settings')
   const view = await page()
+  await view.findByText('/data/settings.json')
+  await answered() // the page's own Health first: the server below is down for the next two
   server.use(graphql.query('Health', () => (++probes <= 2 ? HttpResponse.error() : HttpResponse.json({ data: { health: { status: 'ok', version: '1.2.4', databaseReachable: true } } }))))
 
-  await ui.click(view.getByRole('button', { name: 'Restart server' }))
+  await ui.click(await view.findByRole('button', { name: 'Restart server' }))
   const dialog = await screen.findByRole('alertdialog', { name: 'Restart the server?' })
   expect(dialog).toHaveAccessibleDescription(/stops and starts again within seconds/)
   await ui.click(within(dialog).getByRole('button', { name: 'Restart server' }))
@@ -416,24 +419,26 @@ it('a restart whose page was left meanwhile reloads nothing when the server is b
   const reload = vi.spyOn(navigation, 'reload').mockImplementation(() => undefined)
   settingsServer()
   let down = true
-  let answered = false
+  let back = false
   const { unmount } = renderWithApollo(<App />, '/admin/settings')
   const view = await page()
+  await view.findByText('/data/settings.json')
+  await answered() // the page's own Health first: the server below is down
   server.use(
     graphql.query('Health', () => {
       if (down) return HttpResponse.error()
-      answered = true
+      back = true
       return HttpResponse.json({ data: { health: { status: 'ok', version: '1.2.4', databaseReachable: true } } })
     }),
   )
 
-  await ui.click(view.getByRole('button', { name: 'Restart server' }))
+  await ui.click(await view.findByRole('button', { name: 'Restart server' }))
   await ui.click(within(await screen.findByRole('alertdialog', { name: 'Restart the server?' })).getByRole('button', { name: 'Restart server' }))
   await view.findByText('Restarting the server…')
   unmount() // gone elsewhere: whatever is open by then is not reloaded under the person's hands
   down = false
 
-  await waitFor(() => expect(answered).toBe(true))
+  await waitFor(() => expect(back).toBe(true))
   await new Promise((resolve) => setTimeout(resolve, 20))
   expect(reload).not.toHaveBeenCalled()
 })
@@ -453,8 +458,9 @@ it('a restart the next start would refuse says why, names the settings, and leav
   )
   renderWithApollo(<App />, '/admin/settings')
   const view = await page()
+  await view.findByText('/data/settings.json')
 
-  await ui.click(view.getByRole('button', { name: 'Restart server' }))
+  await ui.click(await view.findByRole('button', { name: 'Restart server' }))
   const dialog = await screen.findByRole('alertdialog', { name: 'Restart the server?' })
   await ui.click(within(dialog).getByRole('button', { name: 'Restart server' }))
 

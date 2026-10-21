@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/App.tsx'
 import { connectivity } from '../../src/offline/connectivity.ts'
-import { server } from '../support/server.ts'
+import { answered, server } from '../support/server.ts'
 import { fakeLogBackend, fakeVehicle, healthHandler, renderWithApollo, sessionHandler, stubViewport, user } from '../support/mocks.tsx'
 
 // jsdom cannot decode pictures: the browser-side resize is covered in Media.unit.test.ts, here it passes the file through.
@@ -13,7 +13,7 @@ vi.mock('../../src/pictures/resizeImage.ts', async (original) => ({
   resizeImage: vi.fn(async (file: Blob) => file),
 }))
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => {
   server.resetHandlers()
   vi.unstubAllGlobals()
@@ -61,6 +61,7 @@ it('uploads a profile picture and shows it right away', async () => {
 it('while the server is out of reach the picture cannot be changed, and says why, instead of throwing the file away', async () => {
   const { uploads } = setupAccount({ avatarUrl: '/media/0123456789abcdef0123456789abcdef' })
   await screen.findByRole('heading', { name: 'Profile picture' })
+  await answered()
 
   await act(() => connectivity.failed())
 

@@ -1,6 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql, HttpResponse } from 'msw'
+import { HttpResponse } from 'msw'
+import { graphql } from '../support/graphql.ts'
 import { afterAll, afterEach, beforeAll, expect, it, onTestFinished, vi } from 'vitest'
 import App from '../../src/App.tsx'
 import { connectivity } from '../../src/offline/connectivity.ts'
@@ -11,9 +12,9 @@ import { provideOfflineDownload } from '../../src/offline/runtime.ts'
 import { offlineReady } from '../../src/pwa/offlineReady.ts'
 import { dateValue, findDateField } from '../support/dates.ts'
 import { gqlError, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport } from '../support/mocks.tsx'
-import { server } from '../support/server.ts'
+import { answered, server } from '../support/server.ts'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => {
   server.resetHandlers()
   provideOfflineDownload(null)
@@ -192,6 +193,7 @@ it('offline, choosing needs the server, but the device side still works: removin
   const panel = await section()
   await deviceData.settled()
   await deviceData.keep('Welcome:{}', { kept: true })
+  await answered()
   await act(() => connectivity.failed())
 
   expect(await panel.findByText('Choosing what to download needs a connection to the server.')).toBeInTheDocument()

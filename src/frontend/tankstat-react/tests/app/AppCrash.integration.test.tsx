@@ -13,7 +13,7 @@ vi.mock('../../src/pages/NotificationsPage.tsx', () => ({
   },
 }))
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => {
   server.resetHandlers()
   vi.unstubAllGlobals()

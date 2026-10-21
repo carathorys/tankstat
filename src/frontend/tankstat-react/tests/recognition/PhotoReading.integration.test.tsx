@@ -30,7 +30,7 @@ vi.mock('../../src/pictures/resizeImage.ts', async (original) => ({
 }))
 
 beforeAll(() => {
-  server.listen({ onUnhandledRequest: 'error' })
+  server.listen({ onUnhandledFrame: 'error' })
   let n = 0
   URL.createObjectURL = () => `blob:preview-${n++}`
   URL.revokeObjectURL = () => undefined

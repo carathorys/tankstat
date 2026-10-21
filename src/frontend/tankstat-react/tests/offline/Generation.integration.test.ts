@@ -1,4 +1,5 @@
-import { graphql, HttpResponse } from 'msw'
+import { HttpResponse } from 'msw'
+import { graphql } from '../support/graphql.ts'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import { createApolloClient } from '../../src/apolloClient.ts'
 import { SessionDocument } from '../../src/gql/generated.ts'
@@ -8,7 +9,7 @@ import { startOfflineRuntime } from '../../src/offline/runtime.ts'
 import { fakeInstance } from '../support/mocks.tsx'
 import { server } from '../support/server.ts'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 

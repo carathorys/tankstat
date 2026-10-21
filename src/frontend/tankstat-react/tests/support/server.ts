@@ -1,5 +1,8 @@
-import { graphql, http, HttpResponse } from 'msw'
+import { act, waitFor } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+import { expect } from 'vitest'
+import { graphql } from './graphql.ts'
 
 // Handlers are registered per test with server.use(); unhandled requests fail the test. The defaults: the bell in the top bar asks for
 // the unread count on every screen (an empty inbox; notification tests override it with fakeNotificationBackend), the top bar and the
@@ -65,3 +68,26 @@ export const server = setupServer(
   graphql.mutation('SaveGridSettings', ({ variables }) => HttpResponse.json({ data: { saveGridSettings: variables.input } })),
   graphql.mutation('ResetGridSettings', () => HttpResponse.json({ data: { resetGridSettings: true } })),
 )
+
+// The requests the server has taken and not answered yet, by id. A request ends with `request:end`, except one whose handler threw
+// (msw answers it with a 500 and emits only the response event) and one no handler takes (`onUnhandledFrame: 'error'` fails it), so
+// any of these ends it.
+const inFlight = new Set<string>()
+server.events.on('request:start', ({ requestId }) => void inFlight.add(requestId))
+for (const end of ['request:end', 'request:unhandled', 'response:mocked', 'response:bypass'] as const) {
+  server.events.on(end, ({ requestId }) => void inFlight.delete(requestId))
+}
+
+/**
+ * Waits until every request sent so far is answered and the app has taken the answers in, and nothing new went out meanwhile. A test
+ * that marks the server unreachable (`connectivity.failed()`) waits for this first: the app counts any answer as the server being back,
+ * and msw 3 answers a few ticks later than msw 2 did, so an answer to the page's first requests could otherwise arrive after the test
+ * cut the connection.
+ */
+export async function answered() {
+  do {
+    await waitFor(() => expect(inFlight.size).toBe(0))
+    // A turn of the event loop: a request the app has just sent reaches msw (and this count) a few ticks after its fetch.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)))
+  } while (inFlight.size > 0)
+}

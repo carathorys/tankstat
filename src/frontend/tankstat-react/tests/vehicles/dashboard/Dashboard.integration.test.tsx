@@ -7,7 +7,7 @@ import { server } from '../../support/server.ts'
 import { fakeChart, fakeDashboardBackend, fakeLogBackend, fakeSummary, fakeVehicle, healthHandler, person, renderWithApollo, sessionHandler, stubViewport } from '../../support/mocks.tsx'
 import { dateValue, findDateField, typeDate } from '../../support/dates.ts'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => {
   server.resetHandlers()
   vi.unstubAllGlobals()
@@ -105,7 +105,7 @@ it('formats chart tables in the units of the vehicle, and lists categories (unca
 it('says when there is no data to chart', async () => {
   setup()
   server.use(
-    (await import('msw')).graphql.query('ChartData', () => (async () => (await import('msw')).HttpResponse.json({ data: { vehicleChartData: { unit: 'CURRENCY', series: [] } } }))()),
+    (await import('../../support/graphql.ts')).graphql.query('ChartData', () => (async () => (await import('msw')).HttpResponse.json({ data: { vehicleChartData: { unit: 'CURRENCY', series: [] } } }))()),
   )
 
   expect((await screen.findAllByText('No data for this period yet.')).length).toBeGreaterThan(0)

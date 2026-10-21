@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql, http, HttpResponse } from 'msw'
+import { http, HttpResponse } from 'msw'
+import { graphql } from '../support/graphql.ts'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { axe } from 'vitest-axe'
 import App from '../../src/App.tsx'
@@ -15,7 +16,7 @@ import { createPullEngine } from '../../src/offline/pull.ts'
 import { snapshotKey } from '../../src/offline/snapshotPolicy.ts'
 import { fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, stubViewport } from '../support/mocks.tsx'
 import { fakeFeed, now } from '../support/offlineFeed.ts'
-import { server } from '../support/server.ts'
+import { answered, server } from '../support/server.ts'
 
 // jsdom cannot decode pictures: the browser-side resize is covered in Media.unit.test.ts, here it passes the file through.
 vi.mock('../../src/pictures/resizeImage.ts', async (original) => ({
@@ -26,7 +27,7 @@ vi.mock('../../src/pictures/resizeImage.ts', async (original) => ({
 let uploads: string[]
 
 beforeAll(() => {
-  server.listen({ onUnhandledRequest: 'error' })
+  server.listen({ onUnhandledFrame: 'error' })
   let n = 0
   URL.createObjectURL = () => `blob:preview-${n++}`
   URL.revokeObjectURL = () => undefined
@@ -55,6 +56,7 @@ beforeEach(async () => {
   await deviceData.settled()
   await createPullEngine({ client: createApolloClient('http://localhost/graphql'), now }).run()
   online.unmount()
+  await answered()
   connectivity.failed()
 })
 

@@ -1,5 +1,6 @@
 import { ApolloClient, ApolloLink, InMemoryCache } from '@apollo/client'
-import { graphql, http, HttpResponse } from 'msw'
+import { http, HttpResponse } from 'msw'
+import { graphql } from '../../support/graphql.ts'
 import { of } from 'rxjs'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import { createApolloClient, refreshLink } from '../../../src/apolloClient.ts'
@@ -7,7 +8,7 @@ import { HealthDocument, SessionDocument } from '../../../src/gql/generated.ts'
 import { fakeInstance, gqlError } from '../../support/mocks.tsx'
 import { server } from '../../support/server.ts'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 

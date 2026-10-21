@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql, HttpResponse } from 'msw'
+import { HttpResponse } from 'msw'
+import { graphql } from '../../support/graphql.ts'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../src/App.tsx'
 import { server } from '../../support/server.ts'
@@ -21,7 +22,7 @@ import {
 import { UUID } from '../../support/ids.ts'
 import { dateValue, findDateField } from '../../support/dates.ts'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => {
   server.resetHandlers()
   vi.unstubAllGlobals()
@@ -111,7 +112,7 @@ it('adds a schedule that counts time or distance, whichever comes first', async 
   await ui.click(within(dialog).getByRole('button', { name: 'Add recurring expense' }))
 
   await screen.findByText('Insurance')
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(state.calls.AddRecurringExpense).toEqual([
     {
       input: {

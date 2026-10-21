@@ -5,7 +5,7 @@ import App from '../../src/App.tsx'
 import { server } from '../support/server.ts'
 import { fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler } from '../support/mocks.tsx'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 

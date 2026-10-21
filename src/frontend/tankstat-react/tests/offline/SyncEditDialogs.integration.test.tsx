@@ -10,9 +10,9 @@ import { outbox } from '../../src/offline/outbox.ts'
 import { createPullEngine } from '../../src/offline/pull.ts'
 import { fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, stubViewport } from '../support/mocks.tsx'
 import { fakeFeed, now } from '../support/offlineFeed.ts'
-import { server } from '../support/server.ts'
+import { answered, server } from '../support/server.ts'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
@@ -28,6 +28,7 @@ async function downloaded() {
   await deviceData.settled()
   await createPullEngine({ client: createApolloClient('http://localhost/graphql'), now }).run()
   online.unmount()
+  await answered()
   connectivity.failed()
 }
 
@@ -56,7 +57,7 @@ it('Edit, on an expense waiting here, opens the expense dialog with what it carr
   await ui.click(within(dialog).getByRole('button', { name: 'Save the change' }))
 
   expect(await screen.findByText(saved)).toBeInTheDocument()
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(outbox.changes).toHaveLength(1)
   expect(outbox.changes[0]).toMatchObject({ id: 'x1', action: 'add', input: { id: 'x1', title: 'Car wash', amount: 4500 } }) // still one add
 })

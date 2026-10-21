@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql, HttpResponse } from 'msw'
+import { HttpResponse } from 'msw'
+import { graphql } from '../support/graphql.ts'
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import { axe } from 'vitest-axe'
 import App from '../../src/App.tsx'
@@ -14,9 +15,9 @@ import { createPushEngine } from '../../src/offline/push.ts'
 import { provideOfflineSync } from '../../src/offline/runtime.ts'
 import { fakeInstance, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, stubViewport, user } from '../support/mocks.tsx'
 import { fakeFeed, now } from '../support/offlineFeed.ts'
-import { server } from '../support/server.ts'
+import { answered, server } from '../support/server.ts'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => {
   server.resetHandlers()
   provideOfflineSync(null)
@@ -36,6 +37,7 @@ async function downloaded(session = sessionHandler('NONE', () => null)) {
   await deviceData.settled()
   await createPullEngine({ client: createApolloClient('http://localhost/graphql'), now }).run()
   online.unmount()
+  await answered()
   connectivity.failed()
 }
 
@@ -316,7 +318,7 @@ it('Edit and apply sends the change as edited; a refusal stays in the dialog wit
   await ui.click(within(dialog).getByRole('button', { name: 'Apply' }))
 
   expect(await screen.findByText('Applied.')).toBeInTheDocument()
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(sent).toHaveLength(2)
   // Against what the person saw on the server, not the version the device made it from.
   expect(sent[1]).toMatchObject({ id: 'c1', action: 'APPLY', change: { id: 'c1', expectedVersion: 3, updateRefueling: { id: 'b', volume: 44, odometer: 1500 } } })

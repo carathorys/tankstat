@@ -1,6 +1,7 @@
 import { ApolloClient, ApolloLink, HttpLink, InMemoryCache } from '@apollo/client'
 import { parse } from 'graphql'
-import { graphql, http, HttpResponse } from 'msw'
+import { http, HttpResponse } from 'msw'
+import { graphql } from '../../support/graphql.ts'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import { createApolloClient } from '../../../src/apolloClient.ts'
 import { AdminDocument, HealthDocument, LoginDocument, RefuelingDetailsDocument, ResetPasswordDocument, SessionDocument, VehicleDefaultsDocument } from '../../../src/gql/generated.ts'
@@ -14,7 +15,7 @@ import { trackedFetch } from '../../../src/offline/trackedFetch.ts'
 import { fakeInstance, gqlError, silenceConsoleError } from '../../support/mocks.tsx'
 import { server } from '../../support/server.ts'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 

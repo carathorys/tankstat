@@ -1,6 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql, HttpResponse } from 'msw'
+import { HttpResponse } from 'msw'
+import { graphql } from '../support/graphql.ts'
 import { afterAll, afterEach, beforeAll, expect, it, onTestFinished, vi } from 'vitest'
 import { axe } from 'vitest-axe'
 import App from '../../src/App.tsx'
@@ -10,7 +11,7 @@ import { navigation } from '../../src/navigation.ts'
 import { connectivity } from '../../src/offline/connectivity.ts'
 import { deviceData } from '../../src/offline/deviceData.ts'
 import { outbox } from '../../src/offline/outbox.ts'
-import { server } from '../support/server.ts'
+import { answered, server } from '../support/server.ts'
 import {
   adminSession,
   authWarning,
@@ -24,7 +25,7 @@ import {
   user,
 } from '../support/mocks.tsx'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => {
   server.resetHandlers()
   vi.unstubAllGlobals()
@@ -84,12 +85,15 @@ it('offline the footer keeps the app version and says the device is offline inst
   renderWithApollo(<App />, '/vehicles')
   const footer = await screen.findByRole('contentinfo')
   await within(footer).findByText('Healthy')
+  await screen.findByText('Octavia') // the page's own query answered too: an answer after the cut would bring the server back
 
   const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
   onTestFinished(() => onLine.mockRestore())
+  await answered()
   act(() => connectivity.failed())
 
-  expect(await within(footer).findByText('You are offline')).toBeInTheDocument()
+  // Asked afresh each time: the footer draws its offline line again as the status settles, so a node found once may be replaced.
+  await waitFor(() => expect(within(footer).getByText('You are offline')).toBeInTheDocument())
   expect(within(footer).getByText(`App v${APP_VERSION}`)).toBeInTheDocument()
   expect(within(footer).getByRole('button', { name: 'Try again' })).toBeInTheDocument()
   expect(footer).not.toHaveTextContent('API:')
@@ -185,6 +189,7 @@ it('on a phone the top bar fits: badges shrink to their icons and the colour mod
   await screen.findByText('Octavia')
   await deviceData.settled()
   await outbox.enqueue({ id: 'c1', entity: 'refuelings', action: 'trash', vehicleId: 'v1', targetId: 'r1', expectedVersion: 1 })
+  await answered()
   act(() => connectivity.failed())
 
   const bar = screen.getByRole('banner')
@@ -208,6 +213,7 @@ it('on a desktop the top bar keeps every badge in words, and the menus', async (
   await screen.findByText('Octavia')
   await deviceData.settled()
   await outbox.enqueue({ id: 'c1', entity: 'refuelings', action: 'trash', vehicleId: 'v1', targetId: 'r1', expectedVersion: 1 })
+  await answered()
   act(() => connectivity.failed())
 
   const bar = screen.getByRole('banner')

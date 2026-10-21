@@ -1,12 +1,13 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql, http, HttpResponse } from 'msw'
+import { http, HttpResponse } from 'msw'
+import { graphql } from '../support/graphql.ts'
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import App from '../../src/App.tsx'
 import { server } from '../support/server.ts'
 import { healthHandler, renderWithApollo, sessionHandler, stubViewport, user } from '../support/mocks.tsx'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
@@ -51,7 +52,7 @@ it('lists the devices the user is signed in on, this one marked, and when each w
 
   const list = await section()
 
-  const items = within(list).getAllByRole('listitem')
+  const items = await within(list).findAllByRole('listitem')
   expect(items.map((i) => within(i).getByRole('heading').textContent)).toEqual(['Firefox on Linux', 'Safari on iOS', 'Unknown device'])
   expect(within(items[0]).getByText('This device')).toBeInTheDocument()
   expect(within(items[1]).queryByText('This device')).not.toBeInTheDocument()
@@ -65,7 +66,7 @@ it('signs another device out and says so', async () => {
   renderWithApollo(<App />, '/account')
   const list = await section()
 
-  await ui.click(within(list).getByRole('button', { name: 'Sign out of Safari on iOS' }))
+  await ui.click(await within(list).findByRole('button', { name: 'Sign out of Safari on iOS' }))
 
   expect(await within(list).findByText('Safari on iOS is signed out.')).toBeInTheDocument()
   expect(state.calls.RevokeSession).toEqual([{ id: 's2' }])
@@ -86,7 +87,7 @@ it('a device signed out meanwhile (another tab) is not announced as signed out b
   renderWithApollo(<App />, '/account')
   const list = await section()
 
-  await ui.click(within(list).getByRole('button', { name: 'Sign out of Safari on iOS' }))
+  await ui.click(await within(list).findByRole('button', { name: 'Sign out of Safari on iOS' }))
 
   await waitFor(() => expect(within(list).queryByRole('heading', { name: 'Safari on iOS' })).not.toBeInTheDocument())
   expect(within(list).queryByText('Safari on iOS is signed out.')).not.toBeInTheDocument()
@@ -99,7 +100,7 @@ it('signing this device out is the normal sign-out', async () => {
   renderWithApollo(<App />, '/account')
   const list = await section()
 
-  await ui.click(within(list).getByRole('button', { name: 'Sign out of Firefox on Linux' }))
+  await ui.click(await within(list).findByRole('button', { name: 'Sign out of Firefox on Linux' }))
 
   await screen.findByRole('heading', { name: 'Sign in' })
   expect(state.signedIn).toBe(false)
@@ -113,7 +114,7 @@ it('signs out everywhere else after a confirmation', async () => {
   renderWithApollo(<App />, '/account')
   const list = await section()
 
-  await ui.click(within(list).getByRole('button', { name: 'Sign out everywhere else' }))
+  await ui.click(await within(list).findByRole('button', { name: 'Sign out everywhere else' }))
   const dialog = await screen.findByRole('alertdialog', { name: 'Sign out everywhere else?' })
   expect(state.calls.RevokeOtherSessions).toBeUndefined() // nothing before the confirmation
   await ui.click(within(dialog).getByRole('button', { name: 'Sign out everywhere else' }))
