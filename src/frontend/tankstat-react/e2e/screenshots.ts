@@ -1,38 +1,34 @@
 import { expect, test, type Page } from '@playwright/test'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { graphql, pageLoaded } from './support/app.ts'
+import { graphql, openVehicle, pageLoaded } from './support/app.ts'
 
-// The README's screenshots, one file per page and project (`home-desktop-dark.png`), see playwright.screenshots.config.ts. The server
-// runs the seeder's data with sign-in off, so nothing signs in and the first vehicle by name is the one shown.
+// The README's screenshots, one file per page and project (`home-desktop-dark.png`), see playwright.screenshots.config.ts: the tag
+// `@light` puts a page in the light scheme too, `@phone-only` keeps a dialog off the desktop. The server runs the seeder's data with
+// sign-in off, so nothing signs in and the first vehicle by name is the one shown.
 const folder = join(import.meta.dirname, '../../../../docs/screenshots')
 mkdirSync(folder, { recursive: true })
 
-/**
- * Waits until the page stops changing (the charts and the cards animate in), then saves the viewport. The notice that sign-in is off
- * (the server's, not the app's) and a toast (the service worker's "can now be used offline") are taken out first: neither is the page.
- */
+// Hidden in every frame, never taken out of the page (React owns these nodes): the notice that sign-in is off (the server's, not the
+// app's) with its aside, whose margin would push the page down, and any toast.
+const HIDDEN = 'aside:has(> [role="note"][data-severity]), .MuiSnackbar-root { display: none !important }'
+
+/** Waits until two frames taken an interval apart are the same (the charts and the cards animate in), then saves that frame. */
 async function capture(page: Page, name: string) {
-  // Before every shot: the toast arrives on its own time (the service worker's), after the page has loaded.
-  const clean = () =>
-    page.evaluate(() => {
-      for (const el of document.querySelectorAll('[role="note"][data-severity], .MuiSnackbar-root')) el.remove()
-    })
-  await clean()
-  let last = await page.screenshot()
+  let last: Buffer | undefined
   await expect
     .poll(
       async () => {
-        await clean()
-        const next = await page.screenshot()
-        const same = next.equals(last)
+        // The first call only keeps its frame: it runs at once, so it is compared with the next one, an interval later.
+        const next = await page.screenshot({ style: HIDDEN })
+        const same = last !== undefined && next.equals(last)
         last = next
         return same
       },
       { intervals: [400], timeout: 15_000 },
     )
     .toBe(true)
-  await page.screenshot({ path: join(folder, `${name}-${test.info().project.name}.png`) })
+  writeFileSync(join(folder, `${name}-${test.info().project.name}.png`), last!)
 }
 
 async function firstVehicle(page: Page) {
@@ -41,18 +37,14 @@ async function firstVehicle(page: Page) {
   return data.myVehicles[0]
 }
 
-test.beforeEach(async ({ page, context }) => {
-  await page.emulateMedia({ reducedMotion: 'reduce' })
-  // The app is dark unless the browser (or the account, which the anonymous user has none of) keeps another choice.
-  if (test.info().project.name.endsWith('-light')) {
-    await context.addInitScript(() => localStorage.setItem('tankstat.colorMode', 'light'))
-  }
+test.beforeEach(async ({ context }) => {
+  // No service worker, so no "can now be used offline" toast on its own time: main.tsx registers one only where the browser has it.
+  await context.addInitScript(() => {
+    delete (Navigator.prototype as { serviceWorker?: unknown }).serviceWorker
+  })
 })
 
-// The light scheme: the two pages the README shows in it; the rest would only double the files.
-const darkOnly = () => test.skip(test.info().project.name.endsWith('-light'), 'dark only')
-
-test('home', async ({ page }) => {
+test('home', { tag: '@light' }, async ({ page }) => {
   const vehicle = await firstVehicle(page)
   await page.goto('/')
   await pageLoaded(page)
@@ -60,50 +52,46 @@ test('home', async ({ page }) => {
   await capture(page, 'home')
 })
 
-test('dashboard', async ({ page }) => {
+test('dashboard', { tag: '@light' }, async ({ page }) => {
   const vehicle = await firstVehicle(page)
-  await page.goto(`/vehicles/${vehicle.id}`)
-  await pageLoaded(page)
+  await openVehicle(page, vehicle.id)
   await expect(page.locator('figure svg').first()).toBeVisible()
   await capture(page, 'dashboard')
 })
 
 test('refuelings', async ({ page }) => {
-  darkOnly()
   const vehicle = await firstVehicle(page)
-  await page.goto(`/vehicles/${vehicle.id}?tab=refuelings`)
-  await pageLoaded(page)
+  await openVehicle(page, vehicle.id, 'refuelings')
   await expect(page.getByRole('row').nth(2)).toBeVisible()
   await capture(page, 'refuelings')
 })
 
-test('add refuelling', async ({ page }) => {
-  darkOnly()
+test('add refuelling', { tag: '@phone-only' }, async ({ page }) => {
   const vehicle = await firstVehicle(page)
-  await page.goto(`/vehicles/${vehicle.id}?tab=refuelings`)
-  await pageLoaded(page)
+  await openVehicle(page, vehicle.id, 'refuelings')
   await page.getByRole('button', { name: 'Add refuelling' }).first().click()
-  await expect(page.getByRole('dialog', { name: 'Add refuelling' })).toBeVisible()
+  const dialog = page.getByRole('dialog', { name: 'Add refuelling' })
+  await expect(dialog.getByRole('textbox', { name: /^Odometer/ })).toBeVisible()
+  await expect(dialog.getByText(/^Loading/)).toHaveCount(0)
   await capture(page, 'add-refuelling')
 })
 
 test('recurring', async ({ page }) => {
-  darkOnly()
   const vehicle = await firstVehicle(page)
-  await page.goto(`/vehicles/${vehicle.id}?tab=recurring`)
-  await pageLoaded(page)
-  await expect(page.getByRole('tab', { name: 'Recurring', exact: false })).toHaveAttribute('aria-selected', 'true')
+  await openVehicle(page, vehicle.id, 'recurring')
+  // The schedules come in a query of their own after the tab: until then it shows none, as still as a loaded page.
+  await expect(page.getByRole('button', { name: /^Mark .* as done$/, disabled: false }).first()).toBeVisible()
   await capture(page, 'recurring')
 })
 
-test('mark as done', async ({ page }) => {
-  darkOnly()
+test('mark as done', { tag: '@phone-only' }, async ({ page }) => {
   const vehicle = await firstVehicle(page)
-  await page.goto(`/vehicles/${vehicle.id}?tab=recurring`)
-  await pageLoaded(page)
+  await openVehicle(page, vehicle.id, 'recurring')
   // The first schedule's Done button (not the disabled "Mark 0 selected as done" above the table): the dialog ticks it and every
   // other due one of its category.
   await page.getByRole('button', { name: /^Mark .* as done$/, disabled: false }).first().click()
-  await expect(page.getByRole('dialog', { name: /^Mark as done/ })).toBeVisible()
+  const dialog = page.getByRole('dialog', { name: /^Mark as done/ })
+  await expect(dialog.getByRole('checkbox').first()).toBeVisible()
+  await expect(dialog.getByText(/^Loading/)).toHaveCount(0)
   await capture(page, 'mark-as-done')
 })
