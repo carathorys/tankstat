@@ -15,6 +15,27 @@ Under the hood: a React + TypeScript frontend (Vite, MUI) and a .NET 10 backend 
 
 **Status:** `0.x`, released often. Every release has an *Upgrading* section in the [CHANGELOG](CHANGELOG.md) that says what to do, if anything; the database is backed up before every migration, and a backup of one release restores on the next. A `0.N` tag follows its patch releases, `0.N.M` stays put, `latest` moves with every stable release. 1.0 is when the data model and the settings have stopped moving.
 
+<p align="center">
+  <img src="docs/screenshots/dashboard-desktop-dark.png" alt="A vehicle's dashboard on a desktop: the key figures (spent this month, average consumption, odometer, last fill-up) and the Overview charts, monthly costs per currency and consumption." width="100%">
+</p>
+<p align="center">
+  <img src="docs/screenshots/home-phone-dark.png" alt="The home page on a phone: a card per vehicle with its overdue and due-soon reminders and the Refuel and Expense buttons." width="32%">
+  <img src="docs/screenshots/dashboard-phone-dark.png" alt="A vehicle's dashboard on a phone: the key figures above its tabs." width="32%">
+  <img src="docs/screenshots/add-refuelling-phone-dark.png" alt="The Add refuelling dialog on a phone: date, volume, price, total cost, odometer with the last reading, full tank, note and photos." width="32%">
+</p>
+
+Recurring expenses: a schedule by time, by distance or whichever comes first, its state on the home card and on the vehicle's Recurring tab, and a service visit that marks several done at once, logged as one expense.
+
+<p align="center">
+  <img src="docs/screenshots/recurring-desktop-dark.png" alt="A vehicle's Recurring tab on a desktop: each schedule with how it repeats, when it was last done, when it is next due, and its state, overdue or upcoming, with a gauge for time and one for distance." width="100%">
+</p>
+<p align="center">
+  <img src="docs/screenshots/recurring-phone-dark.png" alt="The Recurring tab on a phone." width="32%">
+  <img src="docs/screenshots/mark-as-done-phone-dark.png" alt="The Mark as done dialog on a phone: the vehicle's schedules as checkboxes with the ones done at this visit ticked, the date and the odometer, and an optional amount logged as one expense." width="32%">
+</p>
+
+More in [`docs/screenshots/`](docs/screenshots/): the refuelling grid and the light scheme.
+
 ## Features
 
 - **Vehicles and refuelings**: per-vehicle units and currencies (never converted), odometer checks, full and partial fill-ups, and the fuel consumption between full fill-ups.
