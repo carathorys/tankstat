@@ -1,6 +1,6 @@
 # Development
 
-For people who work on Tankstat itself: the toolchain, the layout of the repository, how to run and test it, and the tools around it.
+For people who work on Tankstat itself: the toolchain, the layout of the repository, how to run and test it, and the tools around it. [CONTRIBUTING.md](../CONTRIBUTING.md) is the entry point for a contribution: what a change needs, how work is tracked in the issues, and where to start.
 
 ## Prerequisites
 

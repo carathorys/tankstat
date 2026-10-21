@@ -13,6 +13,8 @@ A self-hosted fuel log for your vehicles: refuelings, other costs, recurring exp
 
 Under the hood: a React + TypeScript frontend (Vite, MUI) and a .NET 10 backend that talk GraphQL (HotChocolate, Apollo Client), with Entity Framework Core for the database. Kestrel serves both the API and the built frontend.
 
+**Status:** `0.x`, used daily by its author and released often. Every release has an *Upgrading* section in the [CHANGELOG](CHANGELOG.md) that says what to do, if anything; the database is backed up before every migration, and a backup of one release restores on the next. A `0.N` tag follows its patch releases, `0.N.M` stays put, `latest` moves with every stable release. 1.0 is when the data model and the settings have stopped moving.
+
 ## Features
 
 - **Vehicles and refuelings**: per-vehicle units and currencies (never converted), odometer checks, full and partial fill-ups, and the fuel consumption between full fill-ups.
@@ -68,6 +70,10 @@ mise run test                      # typecheck, lint, every test layer
 ```
 
 See [Development](docs/development.md) for the layout, the test layers and the tools around them.
+
+## Contributing
+
+Bug reports, questions and pull requests are welcome: [CONTRIBUTING.md](CONTRIBUTING.md) says what a change needs and how work is tracked here (the labels you will see in the issues), [Discussions](https://github.com/carathorys/tankstat/discussions) take questions and ideas, and [`good first issue`](https://github.com/carathorys/tankstat/labels/good%20first%20issue) marks a good place to start. Security problems go through [SECURITY.md](SECURITY.md), privately.
 
 ## License
 

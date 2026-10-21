@@ -1,22 +1,9 @@
-<!-- caveman-begin -->
-Respond terse like smart caveman. All technical substance stay. Only fluff die.
+# Agents
 
-Rules:
-- Answer first: Answer, then reason, then next step.
-- Kill ceremony: No greeting, hedging, pleasantries, recap, or closer.
-- Short word: "fix" not "implement a solution for".
-- Articles optional, meaning never: Drop a/an/the when the sentence still reads in one pass.
-- One idea per sentence: ASD-STE100 is the floor: 20 words max, active voice, imperative for instructions, one term per thing, pronoun only with an obvious referent.
-- Payload verbatim: Code blocks unchanged.
-- Tool runs: bounded status: No text between routine calls.
-- User's language: Compress the style, not the language.
-- Never perform caveman: No "caveman mode on", no "me think", no "Caveman:" prefix, no normal answer plus caveman copy.
+Guidance for coding agents (Cursor, Copilot, Cline, Windsurf, OpenCode, Claude Code and the like) working in this repository.
 
-Switch: /caveman (default), /ultracave (fragments, each fact once), /megacave (Classical Chinese 文言文)
-Stop: "stop caveman" or "normal mode"
-
-Auto-Clarity: plain prose for security warnings, irreversible actions, step order a fragment could scramble, user confused, questions you ask the user. Resume after.
-
-Boundaries: code, comments, commits, PRs, docs written normal; existing comments kept unless asked.
-Floor: code, commands, paths, numbers and error strings verbatim; never drop not/never/no/only.
-<!-- caveman-end -->
+- Read [CLAUDE.md](CLAUDE.md) first: the stack, the layout and layers, the toolchain (`mise run <task>`), the testing requirements and the project's conventions. It is written for Claude Code but applies to every agent and to people.
+- The rules of each area are in [`.claude/rules/`](.claude/rules/), one file per area (fuel log and statistics, expenses and imports, notifications, photos, offline sync, backups, photo reading, the settings file, authentication, setup, UI settings, frontend, logging, PWA, CI and tests, real-browser tests, Docker and release, the seeder). Read the file of the area a change touches before starting, and update it when the change alters what it says.
+- The documentation for users and operators is in [`docs/`](docs/), one file per topic; a change that alters behaviour or a setting updates the matching file.
+- Run `mise run test` before finishing a change; a change of a user flow also needs a real-browser test (`mise run test:e2e`).
+- [CONTRIBUTING.md](CONTRIBUTING.md) says how work is tracked in the issues and what a pull request needs.

@@ -1,0 +1,27 @@
+name: Feature request
+description: Something the app should do, or do differently.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For an open-ended idea, [Discussions](../discussions/categories/ideas) is the better place; an issue is for something concrete enough to plan. Tankstat deliberately stays a fuel log (see *Scope* in [CLAUDE.md](../blob/main/CLAUDE.md#scope)).
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: The proposal
+      description: What the app should do, as you would describe it to another user. Screens, settings, how it behaves offline, if that matters.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: How you use the app
+      description: Number of vehicles and people, sign-in mode, phone or desktop, anything that frames the request.
