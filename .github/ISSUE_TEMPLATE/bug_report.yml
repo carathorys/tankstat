@@ -50,8 +50,9 @@ body:
     id: auth
     attributes:
       label: Sign-in mode
+      # Not a bare "None": issue forms reserve it, and GitHub refuses the whole form.
       options:
-        - None
+        - None (sign-in off)
         - Standalone
         - OIDC
         - ProxyHeader
@@ -64,6 +65,12 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: Logs or screenshots
-      description: The server's log around the time (`docker logs tankstat`), the browser console, or a screenshot. Remove secrets, addresses and personal data first.
+      label: Logs
+      description: |
+        The server's log around the time: `docker logs tankstat` for the container of the quick start, `docker compose -f docker-compose.example.yml logs app` for the Compose example. The browser console helps too. Remove secrets, addresses and personal data first.
       render: text
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Drop or paste images here.

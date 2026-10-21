@@ -21,4 +21,6 @@ Anything that lets a person see or change data they were not given access to, or
 - the photo-reading integration (where the API key goes, what is sent to the model server);
 - the offline data on a device and how changes are sent back.
 
-Not a vulnerability: running with `Auth:Mode=None` (the shipped `appsettings.json`), which the documentation and the app's own notice say makes everything visible to everyone; and anything that needs an administrator's account or the host to begin with. Reports of a dependency's published CVE are welcome as ordinary issues when the app is affected.
+**A dependency's published CVE** that Tankstat can be attacked through (you can show how) is a vulnerability like any other: report it privately, as above. A CVE in a dependency that the app does not reach needs no report: Dependabot's security updates raise those on their own, in the open.
+
+Not a vulnerability: running with `Auth:Mode=None` (the shipped `appsettings.json`), which the documentation and the app's own notice say makes everything visible to everyone; and what someone can do only with powers the app gives them anyway, an administrator's in the app or the host's over its files, settings and processes. What those powers must not reach is in scope all the same: a backup's encryption against someone holding only the file, an administrator reaching another server's data or the host through the app.

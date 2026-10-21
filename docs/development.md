@@ -160,7 +160,7 @@ Importing lives in `Application/Imports`: one `IImportParser` per file format tu
 
 ## Languages
 
-The UI is in English and Hungarian (react-i18next). Every visible string is in `src/frontend/tankstat-react/src/i18n/locales/<lang>.json` (typed keys; a test checks that all languages have the same messages and placeholders). API errors carry a stable `key` and `args` (e.g. `password.tooShort`, `{min: 10}`) which the UI translates; the API's English message is only a fallback. Dates and numbers use `Intl` for the selected language. To add a language: add `<lang>.json`, list it in `LANGUAGES` (`i18n/index.ts`), and the test tells you what is missing.
+The UI is in English and Hungarian (react-i18next). Every visible string is in `src/frontend/tankstat-react/src/i18n/locales/<lang>.json` (typed keys; a test checks that all languages have the same messages and placeholders). API errors carry a stable `key` and `args` (e.g. `password.tooShort`, `{min: 10}`) which the UI translates; the API's English message is only a fallback. Dates and numbers use `Intl` for the selected language. To add a language: add `<lang>.json`, list it in `LANGUAGES` (`i18n/index.ts`), and add it to the catalogs of `src/frontend/tankstat-react/tests/app/i18n/I18n.unit.test.ts`; the test then tells you what is missing (it fails until the language in `LANGUAGES` has its catalog there).
 
 ## Test data (seeder)
 
