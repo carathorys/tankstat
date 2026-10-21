@@ -84,22 +84,22 @@ jobs:
       IMAGE: ${{ needs.info.outputs.image }}
       PUBLISH: ${{ needs.info.outputs.publish }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The app as CI's build job published it (API + web app in wwwroot).
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: tankstat-${{ github.sha }}
           path: out
 
       # Needed only for the few RUN steps of the runtime base on arm64; everything else runs natively on amd64.
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@v4
         if: needs.info.outputs.publish == 'true'
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - name: Tags and labels
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ needs.info.outputs.image }}
           tags: |
@@ -111,7 +111,7 @@ jobs:
       # Not publishing: the amd64 image into the local daemon, smoke-tested there.
       - name: Build for testing (amd64)
         if: needs.info.outputs.publish != 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           target: release
@@ -131,7 +131,7 @@ jobs:
 
       - name: Log in to the registry
         if: needs.info.outputs.publish == 'true'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -141,7 +141,7 @@ jobs:
       - name: Build and push by digest (amd64 + arm64)
         id: push
         if: needs.info.outputs.publish == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           target: release
@@ -186,7 +186,7 @@ jobs:
 
       - name: Attest build provenance
         if: needs.info.outputs.publish == 'true'
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-name: ${{ needs.info.outputs.image }}
           subject-digest: ${{ steps.push.outputs.digest }}
