@@ -454,10 +454,10 @@ public sealed class BackupAdminTests : IDisposable
     {
         using var app = App();
         var admin = await Admin(app);
-        const string Query = "mutation($p: String) { prepareBackupEncryption(passphrase: $p) { passphrase generated identity recipient salt } }";
+        const string Query = "mutation($p: String, $c: String) { prepareBackupEncryption(passphrase: $p, passphraseConfirmation: $c) { passphrase generated identity recipient salt } }";
 
-        var typed = (await admin.Gql(Query, new { p = "zzcanary passphrase" })).Data().GetProperty("prepareBackupEncryption");
-        var made = (await admin.Gql(Query, new { p = (string?)null })).Data().GetProperty("prepareBackupEncryption");
+        var typed = (await admin.Gql(Query, new { p = "zzcanary passphrase", c = "zzcanary passphrase" })).Data().GetProperty("prepareBackupEncryption");
+        var made = (await admin.Gql(Query, new { p = (string?)null, c = (string?)null })).Data().GetProperty("prepareBackupEncryption");
 
         Assert.Equal(("zzcanary passphrase", false), (typed.GetProperty("passphrase").GetString(), typed.GetProperty("generated").GetBoolean()));
         Assert.True(made.GetProperty("generated").GetBoolean());
@@ -467,9 +467,34 @@ public sealed class BackupAdminTests : IDisposable
             Assert.True(BackupKeys.Opens(identity, set.GetProperty("recipient").GetString()!));
             Assert.Equal(identity, BackupKeys.Identity(set.GetProperty("passphrase").GetString()!, Convert.FromBase64String(set.GetProperty("salt").GetString()!), Argon2idParameters.Default));
         }
-        Assert.Equal("backup.passphraseTooShort", (await admin.Gql(Query, new { p = "short" })).ErrorKey());
+        Assert.Equal("backup.passphraseTooShort", (await admin.Gql(Query, new { p = "short", c = "short" })).ErrorKey());
+        // A typed passphrase comes twice, compared before anything is derived; an older client sends no repetition and gets the keyed refusal.
+        Assert.Equal("password.mismatch", (await admin.Gql(Query, new { p = "zzcanary passphrase", c = "zzcanary passphrasf" })).ErrorKey());
+        Assert.Equal("password.mismatch", (await admin.Gql(Query, new { p = "zzcanary passphrase", c = (string?)null })).ErrorKey());
+        Assert.Equal("password.mismatch", (await admin.Gql(Query, new { p = (string?)null, c = "zzcanary passphrase" })).ErrorKey());
+        // Only spaces is no passphrase: one is made up, as for an empty field, whatever the repetition holds of spaces.
+        foreach (var (p, c) in new[] { ("            ", "            "), ("            ", (string?)null), (" ", "  ") })
+            Assert.True((await admin.Gql(Query, new { p, c })).Data().GetProperty("prepareBackupEncryption").GetProperty("generated").GetBoolean());
+        Assert.Equal("password.mismatch", (await admin.Gql(Query, new { p = "            ", c = "zzcanary passphrase" })).ErrorKey());
         foreach (var secret in new[] { "zzcanary", made.GetProperty("passphrase").GetString()!, typed.GetProperty("identity").GetString()!, made.GetProperty("identity").GetString()! })
             Assert.False(app.Log.Mentions(secret), "logged");
+    }
+
+    [Fact]
+    public async Task ThePassphraseMinimum_IsOnThePage_AndASaveAppliesItToTheNextKeySetAtOnce()
+    {
+        using var app = App(); // the minimum is in no source the page cannot save over
+        var admin = await Admin(app);
+        const string Minimum = "{ backups { settings { passphraseMinLength } } }";
+        Assert.Equal(12, (await admin.Gql(Minimum)).Data().GetProperty("backups").GetProperty("settings").GetProperty("passphraseMinLength").GetInt32());
+
+        var saved = (await admin.Gql("mutation($c: [SystemSettingChangeInput!]!) { updateSystemSettings(changes: $c) { restartPending } }",
+            new { c = new object[] { new { key = "Backups:PassphraseMinLength", value = "25" } } })).Data().GetProperty("updateSystemSettings");
+
+        Assert.False(saved.GetProperty("restartPending").GetBoolean());
+        Assert.Equal(25, (await admin.Gql(Minimum)).Data().GetProperty("backups").GetProperty("settings").GetProperty("passphraseMinLength").GetInt32());
+        var refused = await admin.Gql("mutation($p: String) { prepareBackupEncryption(passphrase: $p, passphraseConfirmation: $p) { recipient } }", new { p = "zzcanary passphrase" });
+        Assert.Equal("backup.passphraseTooShort", refused.ErrorKey());
     }
 
     [Fact]

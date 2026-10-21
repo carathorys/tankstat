@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Tankstat.Application.Auth;
@@ -27,7 +28,7 @@ public class StandaloneAuthTests : IDisposable
             .Data().GetProperty("createUser");
         var token = created.GetProperty("reset").GetProperty("token").GetString();
         var anon = _app.NewClient();
-        Assert.True((await anon.Gql(ResetPassword, new { i = new { token, newPassword = password } })).Data().GetProperty("resetPassword").GetBoolean());
+        Assert.True((await anon.Gql(ResetPassword, new { i = new { token, newPassword = password, newPasswordConfirmation = password } })).Data().GetProperty("resetPassword").GetBoolean());
         return created.GetProperty("user").GetProperty("id").GetString()!;
     }
 
@@ -255,7 +256,7 @@ public class StandaloneAuthTests : IDisposable
         var second = _app.NewClient(); await second.LoginAs("alice@example.com", "alice-password-1");
 
         var changed = await first.Gql("mutation($i: ChangePasswordInput!) { changePassword(input: $i) }",
-            new { i = new { currentPassword = "alice-password-1", newPassword = "alice-new-password" } });
+            new { i = new { currentPassword = "alice-password-1", newPassword = "alice-new-password", newPasswordConfirmation = "alice-new-password" } });
 
         Assert.True(changed.Data().GetProperty("changePassword").GetBoolean());
         Assert.Null((await first.Gql("{ myVehicles { id } }")).ErrorCode());
@@ -266,12 +267,60 @@ public class StandaloneAuthTests : IDisposable
     }
 
     [Fact]
+    public async Task APasswordShortOfARaisedMinimum_SignsIn_AndTheSessionAsksForAChange_WhichTheChangeEnds()
+    {
+        var admin = await AdminClient();
+        await CreateUserWithPassword(admin, "alice@example.com", "alice-password-1"); // 16 characters
+        const string Flag = "{ session { user { passwordChangeRequired } } }";
+        static bool Asked(JsonElement body) => body.Data().GetProperty("session").GetProperty("user").GetProperty("passwordChangeRequired").GetBoolean();
+        Assert.Null((await admin.Gql("mutation($c: [SystemSettingChangeInput!]!) { updateSystemSettings(changes: $c) { restartPending } }",
+            new { c = new object[] { new { key = "Auth:Standalone:PasswordMinLength", value = "20" } } })).ErrorCode());
+
+        var alice = _app.NewClient();
+        var login = await alice.Gql("mutation($i: LoginInput!) { login(input: $i) { passwordChangeRequired } }", new { i = new { email = "alice@example.com", password = "alice-password-1" } });
+        Assert.True(login.Data().GetProperty("login").GetProperty("passwordChangeRequired").GetBoolean());
+        Assert.True(Asked(await alice.Gql(Flag)));
+        Assert.Null((await alice.Gql("{ myVehicles { id } }")).ErrorCode()); // the server holds nothing else back: the offline engine still syncs
+
+        await alice.Gql("mutation($i: ChangePasswordInput!) { changePassword(input: $i) }",
+            new { i = new { currentPassword = "alice-password-1", newPassword = "alice-new-password-20", newPasswordConfirmation = "alice-new-password-20" } });
+
+        Assert.False(Asked(await alice.Gql(Flag)));
+        Assert.False(Asked(await admin.Gql(Flag))); // the administrator signed in before the minimum went up: never asked
+    }
+
+    [Fact]
+    public async Task ANewPasswordNotTypedTwiceTheSame_IsRefused_ByTheChange_AndByTheResetLink_WhichChangeNothing()
+    {
+        var admin = await AdminClient();
+        await CreateUserWithPassword(admin, "alice@example.com", "alice-password-1");
+        var alice = _app.NewClient(); await alice.LoginAs("alice@example.com", "alice-password-1");
+
+        // No repetition, as an older client sends: a keyed refusal, not a missing argument.
+        var changed = await alice.Gql("mutation($i: ChangePasswordInput!) { changePassword(input: $i) }",
+            new { i = new { currentPassword = "alice-password-1", newPassword = "alice-new-password" } });
+        Assert.Equal("password.mismatch", changed.ErrorKey());
+        Assert.Null((await alice.Gql("{ myVehicles { id } }")).ErrorCode()); // still signed in
+
+        var token = (await admin.Gql("mutation($id: UUID!) { issuePasswordReset(userId: $id) { token } }",
+            new { id = (await alice.Gql("{ session { user { id } } }")).Data().GetProperty("session").GetProperty("user").GetProperty("id").GetString() }))
+            .Data().GetProperty("issuePasswordReset").GetProperty("token").GetString();
+        var reset = await _app.NewClient().Gql(ResetPassword, new { i = new { token, newPassword = "alice-new-password", newPasswordConfirmation = "alice-new-passwort" } });
+        Assert.Equal("password.mismatch", reset.ErrorKey());
+
+        await _app.NewClient().LoginAs("alice@example.com", "alice-password-1"); // the password is the old one
+        Assert.True((await _app.NewClient().Gql(ResetPassword, new { i = new { token, newPassword = "alice-new-password", newPasswordConfirmation = "alice-new-password" } }))
+            .Data().GetProperty("resetPassword").GetBoolean()); // and the link was not used up
+        Assert.False(_app.Log.Mentions("alice-new-passwort"));
+    }
+
+    [Fact]
     public async Task ChangePassword_WithWrongCurrentPassword_Fails()
     {
         var admin = await AdminClient();
 
         var body = await admin.Gql("mutation($i: ChangePasswordInput!) { changePassword(input: $i) }",
-            new { i = new { currentPassword = "wrong-password-1", newPassword = "alice-new-password" } });
+            new { i = new { currentPassword = "wrong-password-1", newPassword = "alice-new-password", newPasswordConfirmation = "alice-new-password" } });
 
         Assert.Equal("VALIDATION_FAILED", body.ErrorCode());
     }
@@ -299,7 +348,7 @@ public class StandaloneAuthTests : IDisposable
             .GetProperty("createUser").GetProperty("user").GetProperty("id").GetString();
         var token = (await admin.Gql("mutation($id: UUID!) { issuePasswordReset(userId: $id) { token } }", new { id })).Data()
             .GetProperty("issuePasswordReset").GetProperty("token").GetString();
-        await _app.NewClient().Gql(ResetPassword, new { i = new { token, newPassword = "second-password-1" } });
+        await _app.NewClient().Gql(ResetPassword, new { i = new { token, newPassword = "second-password-1", newPasswordConfirmation = "second-password-1" } });
         var second = _app.NewClient(); await second.LoginAs("second@example.com", "second-password-1");
         Assert.Null((await second.Gql("{ users { id } }")).ErrorCode());
 
@@ -405,7 +454,7 @@ public class StandaloneAuthTests : IDisposable
 
         // The link the administrator hands over works.
         var token = reset.GetProperty("token").GetString();
-        await app.NewClient().Gql(ResetPassword, new { i = new { token, newPassword = "second-password-1" } });
+        await app.NewClient().Gql(ResetPassword, new { i = new { token, newPassword = "second-password-1", newPasswordConfirmation = "second-password-1" } });
         var person = app.NewClient();
         await person.LoginAs("new.person@example.com", "second-password-1");
     }
@@ -419,8 +468,8 @@ public class StandaloneAuthTests : IDisposable
         var token = reset.GetProperty("token").GetString();
         Assert.False(reset.GetProperty("emailSent").GetBoolean()); // no SMTP configured here
 
-        var first = await _app.NewClient().Gql(ResetPassword, new { i = new { token, newPassword = "first-password-12" } });
-        var second = await _app.NewClient().Gql(ResetPassword, new { i = new { token, newPassword = "second-password-12" } });
+        var first = await _app.NewClient().Gql(ResetPassword, new { i = new { token, newPassword = "first-password-12", newPasswordConfirmation = "first-password-12" } });
+        var second = await _app.NewClient().Gql(ResetPassword, new { i = new { token, newPassword = "second-password-12", newPasswordConfirmation = "second-password-12" } });
 
         Assert.True(first.Data().GetProperty("resetPassword").GetBoolean());
         Assert.Equal("VALIDATION_FAILED", second.ErrorCode());
@@ -451,21 +500,31 @@ public class StandaloneAuthTests : IDisposable
 public class StandaloneStartupTests
 {
     [Fact]
-    public void Startup_Fails_WithoutAnAdministratorOrBootstrapConfiguration_OnceTheSetupIsCompleted()
+    public void Startup_Fails_WithoutAnAdministrator_WhenTheSetupIsTurnedOff()
     {
-        // Blank administrator settings: whatever appsettings.json provides must not matter. The test hosts' setup is off, so the new
-        // database counts as set up: nothing could make an administrator, and the start stops as it always did.
-        using var app = new TestApp(new() { ["Auth:Mode"] = "Standalone", ["Auth:Standalone:AdminEmail"] = "", ["Auth:Standalone:AdminPassword"] = "" });
+        // A new database (not the set-up template every Standalone host copies) with the setup off: nothing can make the first administrator,
+        // the setup page being the only way (#149), so the start stops and says how to go on.
+        var path = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}.db");
+        TestApp.CopyMigratedDatabase(path);
+        try
+        {
+            using var app = new TestApp(new() { ["Auth:Mode"] = "Standalone", ["Database:ConnectionString"] = $"Data Source={path}" });
 
-        var e = Assert.ThrowsAny<Exception>(() => app.NewClient());
+            var e = Assert.ThrowsAny<Exception>(() => app.NewClient());
 
-        AssertMentions(e, "Auth:Standalone:AdminEmail");
+            AssertMentions(e, "Setup__Enabled");
+        }
+        finally
+        {
+            TestApp.ReleaseDatabase(path);
+            File.Delete(path);
+        }
     }
 
     [Fact]
-    public async Task Startup_WaitsForTheSetup_WithoutAnAdministratorOrBootstrapConfiguration_OnANewDatabase()
+    public async Task Startup_WaitsForTheSetup_WithoutAnAdministrator_OnANewDatabase()
     {
-        using var app = new TestApp(new() { ["Auth:Mode"] = "Standalone", ["Auth:Standalone:AdminEmail"] = "", ["Auth:Standalone:AdminPassword"] = "", ["Setup:Enabled"] = "true" });
+        using var app = new TestApp(new() { ["Auth:Mode"] = "Standalone", ["Setup:Enabled"] = "true" });
 
         var health = (await app.NewClient().Gql("{ health { status } setup { pending } }")).Data();
 

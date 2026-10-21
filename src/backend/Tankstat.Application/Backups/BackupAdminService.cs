@@ -4,6 +4,7 @@ using Tankstat.Application.Access;
 using Tankstat.Application.Setup;
 using Tankstat.Application.Images;
 using Tankstat.Domain;
+using Tankstat.Domain.Users;
 
 namespace Tankstat.Application.Backups;
 
@@ -94,10 +95,15 @@ public sealed class BackupAdminService(
         return started;
     }
 
-    /// <summary>A key set for encrypted backups (the passphrase given, or one made up), shown to the administrator once.</summary>
-    public async Task<BackupKeySet> PrepareEncryptionAsync(string? passphrase, CancellationToken ct)
+    /// <summary>
+    /// A key set for encrypted backups (the passphrase given, or one made up), shown to the administrator once. A typed passphrase comes twice
+    /// (<see cref="PasswordPolicy.RequireRepeated"/>, before anything is derived); a blank one with a repetition is a mismatch too. Blank is
+    /// what the key maker takes for "make one up": empty or only spaces, so spaces in both fields make one up rather than being compared.
+    /// </summary>
+    public async Task<BackupKeySet> PrepareEncryptionAsync(string? passphrase, string? passphraseConfirmation, CancellationToken ct)
     {
         var admin = await access.RequireAdminAsync(ct);
+        if (!string.IsNullOrWhiteSpace(passphrase) || !string.IsNullOrWhiteSpace(passphraseConfirmation)) PasswordPolicy.RequireRepeated(passphrase, passphraseConfirmation);
         var set = keys.Make(passphrase);
         logger.LogInformation("User {UserId} made a key set for encrypted backups", admin.Id);
         return set;

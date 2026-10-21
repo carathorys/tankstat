@@ -81,6 +81,56 @@ public class SetupStoreTests
     }
 
     [Fact]
+    public async Task OnlyACompletedSetup_IsReopened_AndOfTwoStartsAtOnceOnlyOne_ThenItWaitsAndCompletesAgain()
+    {
+        await using var db = new TestDatabase();
+        var store = db.Get<ISetupStore>();
+        Assert.False(await store.ReopenAsync(Now, default)); // undecided: nothing to reopen
+        await store.DecideAsync(holdsData: true, Now, default);
+
+        var both = await Task.WhenAll(store.ReopenAsync(Now.AddMinutes(1), default), store.ReopenAsync(Now.AddMinutes(1), default));
+
+        Assert.Equal(1, both.Count(reopened => reopened));
+        Assert.Equal(SetupPhase.Pending, await store.PhaseAsync(default));
+        Assert.False(await store.ReopenAsync(Now.AddMinutes(2), default)); // pending: nothing to reopen
+        await using (var context = await db.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync())
+        {
+            // Waiting again, how it was completed kept (CompleteReopenedAsync completes it again by it).
+            var row = await context.InstanceState.SingleAsync();
+            Assert.Equal((Now.AddMinutes(1), (DateTimeOffset?)null, (SetupCompletion?)SetupCompletion.Upgrade), (row.SetupPendingSince!.Value, row.SetupCompletedAt, row.SetupCompletedVia));
+        }
+        // The setup page then completes it as any waiting one.
+        Assert.True(await store.CompleteWithAdministratorAsync(User.CreateLocal("root@x.co", null, isAdmin: true), Now.AddMinutes(3), default));
+        Assert.Equal(SetupPhase.Completed, await store.PhaseAsync(default));
+    }
+
+    [Fact]
+    public async Task AReopenedSetup_IsCompletedAgainAsItWas_ButANewInstancesWaitingSetupIsNot()
+    {
+        await using (var fresh = new TestDatabase())
+        {
+            var store = fresh.Get<ISetupStore>();
+            await store.DecideAsync(holdsData: false, Now, default);
+            Assert.False(await store.CompleteReopenedAsync(Now.AddMinutes(1), default)); // waits as a new instance does: nothing to go back to
+            Assert.Equal(SetupPhase.Pending, await store.PhaseAsync(default));
+        }
+
+        await using var db = new TestDatabase();
+        var reopened = db.Get<ISetupStore>();
+        await reopened.DecideAsync(holdsData: false, Now, default);
+        await reopened.CompleteAsync(SetupCompletion.Acknowledged, Now.AddMinutes(1), default);
+        Assert.True(await reopened.ReopenAsync(Now.AddMinutes(2), default));
+
+        var both = await Task.WhenAll(reopened.CompleteReopenedAsync(Now.AddMinutes(3), default), reopened.CompleteReopenedAsync(Now.AddMinutes(3), default));
+
+        Assert.Equal(1, both.Count(completed => completed));
+        await using var context = await db.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
+        var row = await context.InstanceState.SingleAsync();
+        Assert.Equal((Now.AddMinutes(3), SetupCompletion.Acknowledged), (row.SetupCompletedAt!.Value, row.SetupCompletedVia!.Value));
+        Assert.Equal(SetupPhase.Completed, row.Setup);
+    }
+
+    [Fact]
     public async Task TheFirstAdministrator_IsAddedWithTheCompletion_AndOfTwoAtOnceOnlyOne()
     {
         await using var db = new TestDatabase();

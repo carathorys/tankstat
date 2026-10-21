@@ -63,6 +63,22 @@ public class UserTests
     }
 
     [Fact]
+    public void ASignInWithAPasswordShortOfTheRequirements_AsksForAChange_WhichAnyNewPasswordOrAGoodSignInEnds()
+    {
+        var u = User.CreateLocal("a@b.co", null, false);
+        Assert.False(u.PasswordChangeRequired);
+
+        u.RegisterSuccessfulLogin(meetsRequirements: false);
+        Assert.True(u.PasswordChangeRequired);
+        u.SetPasswordHash("hash"); // a change, a reset or an administrator's
+        Assert.False(u.PasswordChangeRequired);
+
+        u.RegisterSuccessfulLogin(meetsRequirements: false);
+        u.RegisterSuccessfulLogin(meetsRequirements: true); // the minimum came down again
+        Assert.False(u.PasswordChangeRequired);
+    }
+
+    [Fact]
     public void ExternalUsers_HaveNoPassword() =>
         Assert.Throws<DomainException>(() => User.CreateExternal(UserProvider.Oidc, "s", null, null, false).SetPasswordHash("x"));
 
@@ -98,14 +114,38 @@ public class PasswordTests
     [InlineData(null)]
     [InlineData("short")]
     public void Policy_RejectsShortPasswords(string? password) =>
-        Assert.Throws<DomainException>(() => PasswordPolicy.Validate(password));
+        Assert.Throws<DomainException>(() => PasswordPolicy.Validate(password, PasswordPolicy.MinLength));
 
     [Fact]
     public void Policy_RejectsHugePasswords() =>
-        Assert.Throws<DomainException>(() => PasswordPolicy.Validate(new string('x', PasswordPolicy.MaxLength + 1)));
+        Assert.Throws<DomainException>(() => PasswordPolicy.Validate(new string('x', PasswordPolicy.MaxLength + 1), PasswordPolicy.MinLength));
 
     [Fact]
-    public void Policy_AcceptsReasonablePasswords() => PasswordPolicy.Validate("correct horse battery");
+    public void Policy_AcceptsReasonablePasswords() => PasswordPolicy.Validate("correct horse battery", PasswordPolicy.MinLength);
+
+    [Fact]
+    public void Policy_TakesTheMinimumItIsGiven()
+    {
+        var refused = Assert.Throws<DomainException>(() => PasswordPolicy.Validate("twelve chars", 13)); // 12 characters
+        Assert.Equal(13, refused.Args["min"]);
+        PasswordPolicy.Validate("twelve chars", 12);
+        Assert.False(PasswordPolicy.Meets("twelve chars", 13));
+        Assert.True(PasswordPolicy.Meets("twelve chars", 12));
+        Assert.False(PasswordPolicy.Meets(new string('x', PasswordPolicy.MaxLength + 1), 12));
+        Assert.False(PasswordPolicy.Meets(null, 12));
+    }
+
+    [Theory]
+    [InlineData("correct horse battery", null)] // an older client sends none
+    [InlineData("correct horse battery", "correct horse batter")]
+    [InlineData("correct horse battery", "correct horse battery ")] // a trailing space counts: nothing is trimmed
+    [InlineData("Correct horse battery", "correct horse battery")] // nor is the case folded
+    [InlineData("", "x")] // a blank entry with a repetition that is not
+    public void TheRepetition_MustBeTheSameEntry(string? value, string? repeated) =>
+        Assert.Equal("password.mismatch", Assert.Throws<DomainException>(() => PasswordPolicy.RequireRepeated(value, repeated)).Key);
+
+    [Fact]
+    public void TheSameEntryTwice_Passes() => PasswordPolicy.RequireRepeated("correct horse battery", "correct horse battery");
 
     [Fact]
     public void ResetToken_IsSingleUse_AndExpires()

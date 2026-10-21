@@ -275,7 +275,7 @@ public class VehicleListAdminTests : IDisposable
         var created = (await admin.Gql("mutation($i: CreateUserInput!) { createUser(input: $i) { reset { token } } }",
             new { i = new { email = "alice@example.com", displayName = "Alice", isAdmin = false } })).Data().GetProperty("createUser");
         await _app.NewClient().Gql("mutation($i: ResetPasswordInput!) { resetPassword(input: $i) }",
-            new { i = new { token = created.GetProperty("reset").GetProperty("token").GetString(), newPassword = "alice-password-1" } });
+            new { i = new { token = created.GetProperty("reset").GetProperty("token").GetString(), newPassword = "alice-password-1", newPasswordConfirmation = "alice-password-1" } });
         var alice = _app.NewClient();
         await alice.LoginAs("alice@example.com", "alice-password-1");
         await Add(alice, "Alice car", "LPG");

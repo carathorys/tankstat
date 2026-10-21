@@ -24,6 +24,12 @@ public sealed class User
     public int FailedLoginCount { get; private set; }
     public DateTimeOffset? LockoutEnd { get; private set; }
 
+    /// <summary>
+    /// The password the user last signed in with falls short of the requirements set since (a higher minimum): the app asks for a new one
+    /// before anything else. Set at every successful sign-in, cleared by any new password; only local users ever have it.
+    /// </summary>
+    public bool PasswordChangeRequired { get; private set; }
+
     /// <summary>Embedded in session cookies; bumping it signs the user out everywhere.</summary>
     public int SessionVersion { get; private set; }
 
@@ -87,10 +93,12 @@ public sealed class User
         }
     }
 
-    public void RegisterSuccessfulLogin()
+    /// <param name="meetsRequirements">Whether the password just typed meets today's requirements; one that does not asks for a change.</param>
+    public void RegisterSuccessfulLogin(bool meetsRequirements)
     {
         FailedLoginCount = 0;
         LockoutEnd = null;
+        PasswordChangeRequired = !meetsRequirements;
     }
 
     /// <summary>Sets a new password and invalidates every existing session.</summary>
@@ -100,6 +108,7 @@ public sealed class User
         PasswordHash = hash;
         FailedLoginCount = 0;
         LockoutEnd = null;
+        PasswordChangeRequired = false;
         SessionVersion++;
     }
 

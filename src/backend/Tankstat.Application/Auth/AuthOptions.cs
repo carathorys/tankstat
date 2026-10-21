@@ -45,12 +45,12 @@ public sealed class AuthOptions
     public ProxyHeaderOptions ProxyHeader { get; set; } = new();
 }
 
+/// <summary>
+/// The local accounts' sign-in. No first administrator here: only the setup page makes one (#149); <c>Auth:Standalone:AdminEmail</c> and
+/// <c>AdminPassword</c> are no longer read (a start says so, <c>SetupService.RetiredSettings</c>).
+/// </summary>
 public sealed class StandaloneOptions
 {
-    /// <summary>Credentials of the first administrator, used only while no local administrator exists.</summary>
-    public string? AdminEmail { get; set; }
-    public string? AdminPassword { get; set; }
-
     public int MaxFailedAttempts { get; set; } = 5;
     public int LockoutMinutes { get; set; } = 15;
     public int ResetTokenMinutes { get; set; } = 60;

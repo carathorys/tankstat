@@ -1,0 +1,110 @@
+# The administration's overview: what needs attention and a few facts, from the questions the other pages ask. Asked past the cache
+# (`no-cache`): its answer of only some of the system settings must never stand in for the whole one the Server settings page keeps.
+query AdminOverview {
+  systemSettings {
+    restartPending
+    file {
+      path
+      exists
+      ignored
+    }
+    folders {
+      kind
+      path
+      setting
+      variable
+      sameAsPictures
+    }
+  }
+  users {
+    id
+    isAdmin
+    isDisabled
+  }
+  vehicleCount
+  health {
+    version
+    databaseReachable
+  }
+}
+
+query Admin {
+  users {
+    id
+    provider
+    email
+    displayName
+    isAdmin
+    isDisabled
+    avatarUrl
+  }
+  canSetUserPasswords
+  accessSettings {
+    defaultLevelForOthers
+  }
+  accessGrants {
+    id
+    ownerId
+    granteeId
+    level
+  }
+}
+
+mutation CreateUser($input: CreateUserInput!) {
+  createUser(input: $input) {
+    user {
+      id
+    }
+    reset {
+      token
+      url
+      emailSent
+      emailFailed
+    }
+  }
+}
+
+mutation IssuePasswordReset($userId: UUID!) {
+  issuePasswordReset(userId: $userId) {
+    token
+    url
+    emailSent
+    emailFailed
+  }
+}
+
+mutation SetUserAdmin($userId: UUID!, $isAdmin: Boolean!) {
+  setUserAdmin(userId: $userId, isAdmin: $isAdmin) {
+    id
+  }
+}
+
+mutation SetUserDisabled($userId: UUID!, $disabled: Boolean!) {
+  setUserDisabled(userId: $userId, disabled: $disabled) {
+    id
+  }
+}
+
+mutation SetDefaultAccess($level: AccessLevel!) {
+  setDefaultAccess(level: $level) {
+    defaultLevelForOthers
+  }
+}
+
+mutation SetAccessGrant($input: SetAccessGrantInput!) {
+  setAccessGrant(input: $input)
+}
+
+mutation UpdateUser($input: UpdateUserInput!) {
+  updateUser(input: $input) {
+    id
+  }
+}
+
+mutation SetUserPassword($userId: UUID!, $newPassword: String!, $newPasswordConfirmation: String!) {
+  setUserPassword(userId: $userId, newPassword: $newPassword, newPasswordConfirmation: $newPasswordConfirmation)
+}
+
+mutation DeleteUser($input: DeleteUserInput!) {
+  deleteUser(input: $input)
+}

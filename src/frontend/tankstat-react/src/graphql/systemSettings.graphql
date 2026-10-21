@@ -1,0 +1,48 @@
+fragment SystemSettingFields on SystemSetting {
+  key
+  kind
+  choices
+  value
+  isSet
+  isSecret
+  source
+  editable
+  restartPending
+  defaultValue
+  # differs from its group's where one setting of a group read at start applies at once (the password minimum)
+  appliesAtOnce
+}
+
+fragment SystemSettingsFields on SystemSettingsInfo {
+  file {
+    path
+    exists
+    ignored
+    problems
+  }
+  restartPending
+  groups {
+    name
+    appliesAtOnce
+    settings {
+      ...SystemSettingFields
+    }
+  }
+}
+
+# `code`: the one-time code, for the setup page's wizard while the setup waits; administrators leave it out.
+query SystemSettings($code: String) {
+  systemSettings(code: $code) {
+    ...SystemSettingsFields
+  }
+}
+
+mutation UpdateSystemSettings($changes: [SystemSettingChangeInput!]!, $code: String) {
+  updateSystemSettings(changes: $changes, code: $code) {
+    ...SystemSettingsFields
+  }
+}
+
+mutation RestartServer($code: String) {
+  restartServer(code: $code)
+}

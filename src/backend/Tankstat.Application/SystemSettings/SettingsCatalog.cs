@@ -5,6 +5,7 @@ using Tankstat.Application.Backups;
 using Tankstat.Application.Notifications;
 using Tankstat.Application.Recognition;
 using Tankstat.Application.Sync;
+using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
@@ -56,7 +57,7 @@ public sealed record SettingDefinition(SettingsGroup Group, string Key, SettingK
     /// app starts (the sign-in, which signs everybody out when its mode changes; the mail, whose links are built from the sign-in's
     /// public address; photo reading, whose provider is built at start), and wait for a restart.
     /// </summary>
-    public bool AppliesAtOnce => SettingsCatalog.LiveGroups.Contains(Group);
+    public bool AppliesAtOnce => SettingsCatalog.LiveGroups.Contains(Group) || SettingsCatalog.LiveKeys.Contains(Key);
 }
 
 /// <summary>
@@ -87,11 +88,15 @@ public static class SettingsCatalog
     /// </summary>
     public static readonly IReadOnlySet<SettingsGroup> LiveGroups = new HashSet<SettingsGroup> { SettingsGroup.Defaults, SettingsGroup.Notifications, SettingsGroup.Sync, SettingsGroup.Backups, SettingsGroup.Logging };
 
+    /// <summary>
+    /// Settings that take effect at once in a group read at start: their options class of its own is read afresh (the password
+    /// requirements, <c>PasswordOptions</c> through <c>PasswordRequirements</c>); <c>LiveSettingsReadersTests</c> pins it like the groups'.
+    /// </summary>
+    public static readonly IReadOnlySet<string> LiveKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { PasswordOptions.MinLengthKey };
+
     /// <summary>Settings of the managed sections that the page deliberately does not offer (the reflection test skips them).</summary>
     public static readonly IReadOnlyList<string> LeftOut =
     [
-        "Auth:Standalone:AdminEmail", // the bootstrap administrator: read only while no administrator exists, and a password besides
-        "Auth:Standalone:AdminPassword",
         "Recognition:OpenAiCompatible:SystemPromptFile", // a path the app reads: the environment's business, like every other path
         "Backups:Path", // a folder, like Storage:Path: where the volume is, which the environment knows
     ];
@@ -104,6 +109,7 @@ public static class SettingsCatalog
         new(SettingsGroup.Auth, "Auth:AccessTokenMinutes", SettingKind.Integer),
         new(SettingsGroup.Auth, "Auth:RefreshTokenDays", SettingKind.Integer),
         new(SettingsGroup.Auth, "Auth:RefreshRotationGraceSeconds", SettingKind.Integer),
+        new(SettingsGroup.Auth, PasswordOptions.MinLengthKey, SettingKind.Integer),
         new(SettingsGroup.Auth, "Auth:Standalone:MaxFailedAttempts", SettingKind.Integer),
         new(SettingsGroup.Auth, "Auth:Standalone:LockoutMinutes", SettingKind.Integer),
         new(SettingsGroup.Auth, "Auth:Standalone:ResetTokenMinutes", SettingKind.Integer),
@@ -161,6 +167,7 @@ public static class SettingsCatalog
         new(SettingsGroup.Backups, "Backups:Secrets", SettingKind.Boolean),
         new(SettingsGroup.Backups, "Backups:Encryption:Recipient", SettingKind.Text),
         new(SettingsGroup.Backups, "Backups:Encryption:Salt", SettingKind.Text),
+        new(SettingsGroup.Backups, "Backups:PassphraseMinLength", SettingKind.Integer),
         new(SettingsGroup.Backups, "Backups:MaxUploadMb", SettingKind.Integer),
 
         new(SettingsGroup.Logging, LoggingDefault, SettingKind.Choice, LogLevels),
@@ -184,6 +191,7 @@ public static class SettingsCatalog
     /// <summary>The options classes the managed sections bind into, by section name.</summary>
     private static readonly (string Section, Type Options)[] OptionsSections =
     [
+        (PasswordOptions.SectionName, typeof(PasswordOptions)), // inside Auth: a longer section is looked at first
         (AuthOptions.SectionName, typeof(AuthOptions)),
         (SmtpOptions.SectionName, typeof(SmtpOptions)),
         (VehicleDefaultsOptions.SectionName, typeof(VehicleDefaultsOptions)),
@@ -216,15 +224,23 @@ public static class SettingsCatalog
     {
         if (setting.IsSecret || setting.IsList) return null;
         if (setting.Group == SettingsGroup.Logging) return setting.Key == LoggingDefault ? FrameworkLogLevel : null;
-        var parts = setting.Key.Split(':');
-        var section = OptionsSections.FirstOrDefault(s => s.Section.Equals(parts[0], StringComparison.OrdinalIgnoreCase));
-        if (section.Options is null) return null;
-        object? current = Activator.CreateInstance(section.Options);
-        foreach (var name in parts.Skip(1))
+        // The options class whose section holds the key; a section inside another (Auth:Standalone of the password requirements) is tried
+        // before the outer one, which does not know the key.
+        object? current = null;
+        foreach (var (section, options) in OptionsSections.Where(s => setting.Key.StartsWith(s.Section + ":", StringComparison.OrdinalIgnoreCase)))
         {
-            var property = current?.GetType().GetProperty(name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);
-            if (property is null) return null;
-            current = property.GetValue(current);
+            current = Activator.CreateInstance(options);
+            foreach (var name in setting.Key[(section.Length + 1)..].Split(':'))
+            {
+                var property = current?.GetType().GetProperty(name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);
+                current = property?.GetValue(current);
+                if (property is null)
+                {
+                    current = null;
+                    break;
+                }
+            }
+            if (current is not null) break;
         }
         return current switch
         {

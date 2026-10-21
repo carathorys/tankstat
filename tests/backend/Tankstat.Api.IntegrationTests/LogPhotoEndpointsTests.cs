@@ -37,7 +37,7 @@ public class LogPhotoEndpointsTests : IDisposable
         async Task<(HttpClient, string)> Create(string name)
         {
             var created = (await admin.Gql("mutation($i: CreateUserInput!) { createUser(input: $i) { user { id } reset { token } } }", new { i = new { email = $"{name}@example.com", displayName = name, isAdmin = false } })).Data().GetProperty("createUser");
-            await _app.NewClient().Gql("mutation($i: ResetPasswordInput!) { resetPassword(input: $i) }", new { i = new { token = created.GetProperty("reset").GetProperty("token").GetString(), newPassword = name + "-password-1" } });
+            await _app.NewClient().Gql("mutation($i: ResetPasswordInput!) { resetPassword(input: $i) }", new { i = new { token = created.GetProperty("reset").GetProperty("token").GetString(), newPassword = name + "-password-1", newPasswordConfirmation = name + "-password-1" } });
             var client = _app.NewClient();
             await client.LoginAs($"{name}@example.com", name + "-password-1");
             return (client, created.GetProperty("user").GetProperty("id").GetString()!);

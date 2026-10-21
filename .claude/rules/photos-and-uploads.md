@@ -7,9 +7,9 @@ paths:
   - "**/*Photo*"
   - "**/*Image*"
   - "**/*Picture*"
-  - "src/frontend/pictures/**"
-  - "tests/frontend/pictures/**"
-  - "tests/frontend/vehicles/logs/**"
+  - "src/frontend/tankstat-react/src/pictures/**"
+  - "src/frontend/tankstat-react/tests/pictures/**"
+  - "src/frontend/tankstat-react/tests/vehicles/logs/**"
 ---
 
 # Photos of logs and upload folders

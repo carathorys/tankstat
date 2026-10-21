@@ -71,6 +71,15 @@ public class BackupOptionsTests
     }
 
     [Fact]
+    public void ThePassphraseMinimum_IsTwelveByDefault_FromTwelveTo128()
+    {
+        Assert.Equal(12, Bound()().PassphraseMinLength);
+        Assert.Equal(40, Bound(("Backups:PassphraseMinLength", "40"))().PassphraseMinLength);
+        Assert.StartsWith("Backups:PassphraseMinLength must be from 12 to 128", Refusal(("Backups:PassphraseMinLength", "11")));
+        Assert.StartsWith("Backups:PassphraseMinLength must be from 12 to 128", Refusal(("Backups:PassphraseMinLength", "129")));
+    }
+
+    [Fact]
     public void AnEmptyPath_IsRefused()
     {
         Assert.Contains("Backups:Path must not be empty", Refusal(("Backups:Path", " ")));

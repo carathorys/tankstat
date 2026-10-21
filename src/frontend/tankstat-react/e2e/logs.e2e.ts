@@ -1,0 +1,146 @@
+import { expect, test, type Page } from '@playwright/test'
+import { addDueRecurring, addExpense, addVehicle, logRefueling, openVehicle, pageLoaded, signInAsNewUser } from './support/app.ts'
+
+// The logs of a vehicle: refuellings, expenses and recurring expenses, changed and trashed through the vehicle page and the home card.
+// Every test signs in as a user of its own, so its home page and trash hold only its own data.
+
+test.beforeEach(async ({ page }) => {
+  await signInAsNewUser(page)
+})
+
+/** The grid's row that holds the text (a value shown at both sizes). */
+const row = (page: Page, text: string | RegExp) => page.getByRole('row').filter({ hasText: text })
+
+test('edits a refuelling', async ({ page }) => {
+  const vehicle = await addVehicle(page)
+  await logRefueling(page, vehicle.id, { date: '2026-01-15', volume: 40 })
+  await openVehicle(page, vehicle.id, 'refuelings')
+  await page.getByRole('button', { name: 'Edit the refuelling of Jan 15, 2026' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Edit refuelling' })
+  await dialog.getByLabel(/^Volume/).fill('38.25')
+  await dialog.getByRole('button', { name: 'Save changes' }).click()
+  await expect(dialog).toBeHidden()
+  await expect(row(page, '38.25 L')).toBeVisible()
+})
+
+test('trashes a refuelling and takes it back with Undo', async ({ page }) => {
+  const vehicle = await addVehicle(page)
+  await logRefueling(page, vehicle.id, { date: '2026-01-15', volume: 41 })
+  await openVehicle(page, vehicle.id, 'refuelings')
+  await page.getByRole('button', { name: 'Delete the refuelling of Jan 15, 2026' }).click()
+  await page.getByRole('alertdialog', { name: 'Move this refuelling to the trash?' }).getByRole('button', { name: 'Move to trash' }).click()
+  await expect(row(page, '41 L')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Undo' }).click()
+  await expect(row(page, '41 L')).toBeVisible()
+})
+
+test('restores a trashed refuelling from the trash', async ({ page }) => {
+  const vehicle = await addVehicle(page)
+  await logRefueling(page, vehicle.id, { date: '2026-01-15', volume: 42 })
+  await openVehicle(page, vehicle.id, 'refuelings')
+  await page.getByRole('button', { name: 'Delete the refuelling of Jan 15, 2026' }).click()
+  await page.getByRole('alertdialog', { name: 'Move this refuelling to the trash?' }).getByRole('button', { name: 'Move to trash' }).click()
+  await expect(row(page, '42 L')).toHaveCount(0)
+
+  await page.goto('/trash')
+  await pageLoaded(page)
+  await page.getByRole('tab', { name: 'Refuelings' }).click()
+  await page.getByRole('button', { name: /^Restore/ }).first().click()
+  // Gone from the trash once the server restored it: found by its vehicle, whose column the trash shows at both sizes (the volume's is
+  // hidden on a phone, where a wait for it passed at once and the navigation below cut the restore short).
+  await expect(page.getByRole('tabpanel').getByRole('row').filter({ hasText: vehicle.name })).toHaveCount(0)
+
+  await openVehicle(page, vehicle.id, 'refuelings')
+  await expect(row(page, '42 L')).toBeVisible()
+})
+
+test('adds, edits and trashes an expense', async ({ page }) => {
+  const vehicle = await addVehicle(page)
+  await openVehicle(page, vehicle.id, 'expenses')
+  await page.getByRole('button', { name: 'Add expense' }).click()
+  const add = page.getByRole('dialog', { name: 'Add expense' })
+  await add.getByLabel('Title').fill('Parking')
+  await add.getByLabel('Amount').fill('1500')
+  await add.getByRole('button', { name: 'Add expense' }).click()
+  await expect(add).toBeHidden()
+  await expect(row(page, 'Parking')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Edit the expense Parking' }).click()
+  const edit = page.getByRole('dialog', { name: 'Edit expense' })
+  await edit.getByLabel('Title').fill('Parking garage')
+  await edit.getByRole('button', { name: 'Save changes' }).click()
+  await expect(edit).toBeHidden()
+  await expect(row(page, 'Parking garage')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Delete the expense Parking garage' }).click()
+  await page.getByRole('alertdialog', { name: 'Move this expense to the trash?' }).getByRole('button', { name: 'Move to trash' }).click()
+  await expect(row(page, 'Parking garage')).toHaveCount(0)
+})
+
+test('adds a recurring expense and marks it as done', async ({ page }) => {
+  const vehicle = await addVehicle(page)
+  await logRefueling(page, vehicle.id)
+  await openVehicle(page, vehicle.id, 'recurring')
+  await page.getByRole('button', { name: 'Add recurring expense' }).click()
+  const add = page.getByRole('dialog', { name: 'Add recurring expense' })
+  await add.getByLabel('Title').fill('Oil change')
+  await add.getByLabel('Every (kilometers)').fill('15000')
+  await add.getByRole('button', { name: 'Add recurring expense' }).click()
+  await expect(add).toBeHidden()
+  await expect(page.getByRole('rowheader', { name: 'Oil change' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Mark Oil change as done' }).click()
+  const done = page.getByRole('dialog', { name: 'Mark as done: Oil change' })
+  await done.getByRole('button', { name: 'Mark as done' }).click()
+  await expect(done).toBeHidden()
+  await expect(page.getByRole('row').filter({ hasText: 'Oil change' })).toBeVisible()
+})
+
+test('logs a refuelling and an expense from the home card', async ({ page }) => {
+  const vehicle = await addVehicle(page)
+  await page.goto('/')
+  await pageLoaded(page)
+  await page.getByRole('button', { name: `Refuel ${vehicle.name}` }).click()
+  const refuel = page.getByRole('dialog', { name: 'Add refuelling' })
+  await refuel.getByLabel(/^Volume/).fill('30')
+  await refuel.getByLabel('Total cost').fill('18000')
+  await refuel.getByLabel(/^Odometer/).fill('2500')
+  await refuel.getByRole('button', { name: 'Add refuelling' }).click()
+  await expect(refuel).toBeHidden()
+  // The card asks for its figures afresh: the odometer is the new reading.
+  await expect(page.getByRole('listitem').filter({ hasText: vehicle.name }).getByText('2,500 km')).toBeAttached()
+
+  await page.getByRole('button', { name: `Expense for ${vehicle.name}` }).click()
+  const expense = page.getByRole('dialog', { name: 'Add expense' })
+  await expense.getByLabel('Title').fill('Vignette')
+  await expense.getByLabel('Amount').fill('5000')
+  await expense.getByRole('button', { name: 'Add expense' }).click()
+  await expect(expense).toBeHidden()
+  await openVehicle(page, vehicle.id, 'expenses')
+  await expect(row(page, 'Vignette')).toBeVisible()
+})
+
+test('marks a due recurring expense as done from the home card, with only its category ticked', async ({ page }) => {
+  const vehicle = await addVehicle(page)
+  await addDueRecurring(page, vehicle.id, 'Insurance', 'Insurance')
+  await addDueRecurring(page, vehicle.id, 'Vignette', 'Fees')
+  await page.goto('/')
+  await pageLoaded(page)
+  const attention = page.getByRole('list', { name: 'Needs attention' })
+  await expect(attention.getByText('Insurance')).toBeVisible()
+  await page.getByRole('button', { name: `Mark Insurance of ${vehicle.name} as done` }).click()
+  const done = page.getByRole('dialog', { name: 'Mark as done: Insurance' })
+  await expect(done.getByRole('checkbox', { name: 'Insurance' })).toBeChecked()
+  await expect(done.getByRole('checkbox', { name: 'Vignette' })).not.toBeChecked() // due too, but of another category: not part of this visit
+  await done.getByRole('button', { name: 'Mark as done' }).click()
+  await expect(done).toBeHidden()
+  await expect(attention.getByText('Insurance')).toHaveCount(0)
+  await expect(attention.getByText('Vignette')).toBeVisible()
+})
+
+test('shows an expense logged through the API on the dashboard', async ({ page }) => {
+  const vehicle = await addVehicle(page)
+  await addExpense(page, vehicle.id, { title: 'Tyres', date: new Date().toISOString().slice(0, 10), amount: 64000 })
+  await openVehicle(page, vehicle.id)
+  await expect(page.getByRole('region', { name: 'Key figures' }).getByText('HUF 64,000').first()).toBeVisible()
+})

@@ -8,7 +8,7 @@ For people who work on Tankstat itself: the toolchain, the layout of the reposit
 
 ```sh
 mise install
-mise run install   # npm ci + dotnet restore
+mise run install   # npm ci (in src/frontend/tankstat-react) + dotnet restore
 ```
 
 ## Layout
@@ -19,15 +19,16 @@ src/backend/Tankstat.Application/         use cases and ports (e.g. IDatabasePro
 src/backend/Tankstat.Domain/              entities (Vehicle, Refueling, User, access grants) and their rules, no dependencies
 src/backend/Tankstat.Infrastructure/      EF Core mapping, repositories, database provider selection
 src/backend/Tankstat.Migrations.*/        one EF Core migration set per provider (Sqlite, PostgreSql, SqlServer, MySql)
-src/frontend/                             React + Vite app: top bar, hamburger menu, pages (vehicles, trash, account, administration); UI built with MUI (@mui/material, with MUI X grid, charts and date pickers), lucide-react icons, motion animations, react-i18next
+src/frontend/tankstat-react/              the web app, one npm package: package.json, node_modules, Vite/Vitest/Playwright/codegen configs
+src/frontend/tankstat-react/src/          React + Vite app: top bar, hamburger menu, pages (vehicles, trash, account, administration); UI built with MUI (@mui/material, with MUI X grid, charts and date pickers), lucide-react icons, motion animations, react-i18next
 tests/backend/Tankstat.Domain.UnitTests/          entity rules
 tests/backend/Tankstat.Application.UnitTests/     services (incl. access and auth rules) against in-memory fakes
 tests/backend/Tankstat.Infrastructure.UnitTests/  config binding, repositories (SQLite file), migration/model consistency for every provider
 tests/backend/Tankstat.Api.IntegrationTests/      in-process GraphQL tests for every auth mode (WebApplicationFactory)
 tests/backend/Tankstat.Api.ApiTests/              black-box contract tests against a running server
-tests/frontend/                           Vitest unit (*.unit.test.*) and integration (*.integration.test.*) tests, a folder per feature area
-tests/frontend/support/                   shared test helpers: msw handlers (server.ts), fake backends (mocks.tsx), setup
-tests/e2e/                                real-browser tests (Playwright, *.e2e.ts) against the published build; support/ holds the sign-in, GraphQL and layout helpers
+src/frontend/tankstat-react/tests/        Vitest unit (*.unit.test.*) and integration (*.integration.test.*) tests, a folder per feature area
+src/frontend/tankstat-react/tests/support/  shared test helpers: msw handlers (server.ts), fake backends (mocks.tsx), setup
+src/frontend/tankstat-react/e2e/          real-browser tests (Playwright, *.e2e.ts) against the published build; support/ holds the sign-in, GraphQL and layout helpers
 scripts/test-api.sh                       starts the API, runs the API tests, stops it
 scripts/test-e2e.sh                       starts the build in out/, runs the real-browser tests, stops it
 tests/backend/contracts/openai-compatible/  answers as OpenAI-compatible model servers write them, for the app's adapter tests
@@ -37,7 +38,7 @@ Photo reading is optional: the app talks to a vision model behind an OpenAI-comp
 
 Backend dependencies point inward: Api -> Application, Infrastructure; Infrastructure -> Application; Application -> Domain. Application defines interfaces (ports) that Infrastructure implements, so Application and Domain never reference EF Core or HotChocolate.
 
-The frontend tooling (`package.json`, `vite.config.ts`, `tsconfig*`) lives at the repo root so that both `src/frontend` and `tests/frontend` resolve the same `node_modules`.
+Everything frontend lives in `src/frontend/tankstat-react`: `package.json` and its lockfile, `node_modules`, the configs, the app (`src/`), its Vitest tests (`tests/`) and Playwright tests (`e2e/`). Run npm and npx there; the mise tasks do it for you. `schema.graphql` stays at the repository root, where the API exports it, and the web app's build goes to `src/frontend/tankstat-react/dist`.
 
 ## Running the app
 
@@ -61,16 +62,17 @@ mise run test:e2e          # real-browser tests against a fresh build (not part 
 
 ### Real-browser tests
 
-`tests/e2e/*.e2e.ts` open the published app in Chromium with [Playwright](https://playwright.dev), at phone size (Pixel 7: 412 px, touch) and desktop size (1280 × 900), and check what the Vitest tests in jsdom cannot see: that a page never scrolls sideways, that no value runs past its panel or under its help button, and that on a touch screen every control is at least 44 px; axe in the real browser, which also judges the colour contrast of the real styles; and the user flows across the real server, one file per area (logs, vehicles, account, administration, sharing and notifications, import, offline, the screens' own settings, the setup of a new instance), each as a user of its own. Every new user flow gets its test here (CLAUDE.md). `mise run test:e2e` builds `out/` (`mise run build`) and runs `scripts/test-e2e.sh`, which starts the build from `out/` on port 5097 (Standalone, a bootstrap administrator, throwaway folders, none of your own `Auth__`, `Storage__`, `Backups__` or other settings) and four new instances waiting for their setup on the next ports (one per setup test and size, since a finished setup cannot be undone), runs the tests and stops them again. Options after `--` go to Playwright:
+`src/frontend/tankstat-react/e2e/*.e2e.ts` open the published app in Chromium with [Playwright](https://playwright.dev), at phone size (Pixel 7: 412 px, touch) and desktop size (1280 × 900), and check what the Vitest tests in jsdom cannot see: that a page never scrolls sideways, that no value runs past its panel or under its help button, and that on a touch screen every control is at least 44 px; axe in the real browser, which also judges the colour contrast of the real styles; and the user flows across the real server, one file per area (logs, vehicles, account, administration, sharing and notifications, import, offline, the screens' own settings, the setup of a new instance), each as a user of its own. Every new user flow gets its test here (CLAUDE.md). `mise run test:e2e` builds `out/` (`mise run build`) and runs `scripts/test-e2e.sh`, which starts the build from `out/` on port 5097 (Standalone, its setup finished by the script with the one-time code from its log, throwaway folders, none of your own `Auth__`, `Storage__`, `Backups__` or other settings) and six instances waiting for their setup on the next ports (one per setup test and size, since a finished setup cannot be undone; two of them set up with sign-in off first and switched to Standalone, so their setup reopens), runs the tests and stops them again. Options after `--` go to Playwright:
 
 ```sh
 mise run test:e2e                              # everything, both sizes
 scripts/test-e2e.sh --project phone -g Backups # again on the same out/, only the phone and the tests named "Backups"
 ```
 
-Playwright runs in Docker here, in the `mcr.microsoft.com/playwright` image of the installed `@playwright/test` version (it supports only some Linux distributions as a host), as your own user and with the repository's own `node_modules`; CI runs it natively (`E2E_NATIVE=1`). So Docker must be running, and the first run pulls the image (about 1 GB). A failed test keeps a video, a trace and a screenshot in `test-results/e2e/<test>/` (`video.webm` plays in any browser; on CI they are in the `e2e-results` artifact):
+Playwright runs in Docker here, in the `mcr.microsoft.com/playwright` image of the installed `@playwright/test` version (it supports only some Linux distributions as a host), as your own user and with the web app's own `node_modules`; CI runs it natively (`E2E_NATIVE=1`). So Docker must be running, and the first run pulls the image (about 1 GB). A failed test keeps a video, a trace and a screenshot in `src/frontend/tankstat-react/test-results/e2e/<test>/` (`video.webm` plays in any browser; on CI they are in the `e2e-results` artifact):
 
 ```sh
+cd src/frontend/tankstat-react
 npx playwright show-report                                   # the HTML report of the last run (playwright-report/)
 npx playwright show-trace test-results/e2e/<test>/trace.zip  # a failed test step by step: the page, the network, the console
 ```
@@ -99,7 +101,7 @@ The API tests pin the GraphQL schema the frontend relies on, so a breaking schem
 Frontend tests are named `*.unit.test.ts(x)` (a function or component on its own) or `*.integration.test.ts(x)` (the app against msw-mocked GraphQL); other names are not picked up. They are grouped by feature area, unit and integration tests side by side, nested where an area has parts:
 
 ```text
-tests/frontend/
+src/frontend/tankstat-react/tests/
   support/                   shared helpers: msw default handlers (server.ts), fake backends (mocks.tsx), setup.ts
   app/  app/apollo/  app/i18n/   the shell, error handling, accessibility, Apollo, translations
   auth/  pwa/                sign-in, installing the app
@@ -110,7 +112,7 @@ tests/frontend/
   ui/                        the theme, forms, dialogs, toast and other shared building blocks
 ```
 
-A new test goes into the folder of the feature it covers; run one file with `npx vitest run tests/frontend/<area>/<file>`.
+A new test goes into the folder of the feature it covers; run one file from `src/frontend/tankstat-react` with `npx vitest run tests/<area>/<file>`.
 
 ## Data model and migrations
 
@@ -150,15 +152,15 @@ A unit test fails if any provider's migrations are out of sync with the model.
 
 ## GraphQL types are generated
 
-Nothing GraphQL is typed by hand. `schema.graphql` is exported from the API (`mise run schema:export`) and, with the operations in `src/frontend/graphql/*.graphql`, GraphQL Code Generator writes `src/frontend/gql/generated.ts`. After changing the API schema or a `.graphql` document run `mise run codegen` and commit the results; `mise run test` (and an API test) fail if they are stale.
+Nothing GraphQL is typed by hand. `schema.graphql` is exported from the API (`mise run schema:export`) and, with the operations in `src/frontend/tankstat-react/src/graphql/*.graphql`, GraphQL Code Generator writes `src/frontend/tankstat-react/src/gql/generated.ts`. After changing the API schema or a `.graphql` document run `mise run codegen` and commit the results; `mise run test` (and an API test) fail if they are stale.
 
 ## Import formats
 
-Importing lives in `Application/Imports`: one `IImportParser` per file format turns an uploaded file into an `ImportBatch` (vehicle, fuel logs, expenses, recurring reminders), and `ImportService` keeps the batch in memory for the preview and commits it row by row through the same services the dialogs use, so every rule applies and a bad row is reported rather than fatal. `FuelioCsvParser` is the first format. A new format is a new parser with its own tests, and its name added to `FORMATS` in `src/frontend/pages/ImportPage.tsx` (with the `import.file.formats.<name>` texts in both languages).
+Importing lives in `Application/Imports`: one `IImportParser` per file format turns an uploaded file into an `ImportBatch` (vehicle, fuel logs, expenses, recurring reminders), and `ImportService` keeps the batch in memory for the preview and commits it row by row through the same services the dialogs use, so every rule applies and a bad row is reported rather than fatal. `FuelioCsvParser` is the first format. A new format is a new parser with its own tests, and its name added to `FORMATS` in `src/frontend/tankstat-react/src/pages/ImportPage.tsx` (with the `import.file.formats.<name>` texts in both languages).
 
 ## Languages
 
-The UI is in English and Hungarian (react-i18next). Every visible string is in `src/frontend/i18n/locales/<lang>.json` (typed keys; a test checks that all languages have the same messages and placeholders). API errors carry a stable `key` and `args` (e.g. `password.tooShort`, `{min: 10}`) which the UI translates; the API's English message is only a fallback. Dates and numbers use `Intl` for the selected language. To add a language: add `<lang>.json`, list it in `LANGUAGES` (`i18n/index.ts`), and the test tells you what is missing.
+The UI is in English and Hungarian (react-i18next). Every visible string is in `src/frontend/tankstat-react/src/i18n/locales/<lang>.json` (typed keys; a test checks that all languages have the same messages and placeholders). API errors carry a stable `key` and `args` (e.g. `password.tooShort`, `{min: 10}`) which the UI translates; the API's English message is only a fallback. Dates and numbers use `Intl` for the selected language. To add a language: add `<lang>.json`, list it in `LANGUAGES` (`i18n/index.ts`), and the test tells you what is missing.
 
 ## Test data (seeder)
 
@@ -176,6 +178,7 @@ mise run seed -- --help
 | `--trashed <n>` | additional vehicles that are in the trash (default 0) |
 | `--refuelings <n\|a-b>` | refuelings per vehicle, a number or a range (default 20) |
 | `--recurring <n\|a-b>` | recurring expenses per vehicle, at most 5 (default 0-2) |
+| `--expenses <n\|a-b>` | one-off expenses per vehicle, besides the visits of its recurring expenses, at most 1,000 (default 0-5) |
 | `--notifications <n>` | notifications about access changes (default 15) |
 | `--seed <n>` | same seed, same data (default 1234) |
 | `--provider`, `--connection` | override the database (otherwise `Database__*` settings; `mise run seed` targets the `dev:api` SQLite file) |
@@ -191,10 +194,14 @@ The fuel logs are consistent: per vehicle, dates and the odometer only increase,
 
 Pictures are random but deterministic: each vehicle draws from a random sequence of its own, made from the seed and its name, so the same seed gives every vehicle the same picture again (a drawn one's colours, or which of its model's photos it gets: vehicles of one model get different ones). The photos are the first JPEG and PNG results of a Commons search for the model; the search's results and the photos are cached, so a seed again needs no network and gives the same photos even if Commons' search has changed meanwhile (empty the cache for new ones). They are stored as the app stores an upload. **Commons photos carry licences of their own** (mostly CC BY-SA, which asks for attribution when shared): they are for a local test database only, never committed or published.
 
-Recurring expenses (insurance, vignette, inspection, oil change, tyres; the distance ones only on vehicles with a reading) are last done so that some are overdue, some due soon and the rest upcoming; the app turns the first two into reminders when the notifications are looked at, as it always does. The access-change notifications are seeded directly for the anonymous user (there is nobody to share with without authentication), over the last two weeks, about made-up people and the first live vehicles: about a third already read, a few standing for several changes, and one "more changes" digest when there are at least ten.
+Recurring expenses (insurance, vignette, inspection, oil change, tyres; the distance ones only on vehicles with a reading) are last done so that some are overdue, some due soon and the rest upcoming; the app turns the first two into reminders when the notifications are looked at, as it always does. They are last done where the vehicle's fuel log puts them: a day and the odometer of that day (in the log, on a straight line between two fill-ups; before it, at the log's own pace), or for the tyres an odometer and the day the vehicle got there. The oil change counts both, so it is last done at whichever of the two came later: the app goes by the limit further along, and this way that is the state drawn for it too.
+
+Expenses come in two kinds, all in the currency the vehicle's fill-ups are mostly paid in. Each recurring expense has its past visits as expenses, linked to it as *Mark as done* links them (called like it, in its category, with the odometer when it counts distance): the last one where it was last done, the earlier ones an interval apart, going back three years. Besides those, each vehicle gets one-off expenses (`--expenses`: parking, washing, repairs, accessories) dated within its fuel log, about half of them with the odometer of their day, or over the last half year without one when it has no log. Every expense's reading fits between the readings of the days before and after it, as the app requires. Trashed vehicles keep their one-off expenses (they have no recurring ones).
+
+The access-change notifications are seeded directly for the anonymous user (there is nobody to share with without authentication), over the last two weeks, about made-up people and the first live vehicles: about a third already read, a few standing for several changes, and one "more changes" digest when there are at least ten.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every push to `main` and every pull request that changes more than Markdown files (`docs/photo-reading.md`, which a test pins to the code, and Markdown under `tests/` still count; the release workflow always runs it), installing the toolchain from `mise.toml` so CI uses the same Node and .NET versions as developers. Jobs run in parallel: **frontend** (lint, typecheck, the production build of the web app, stamped with the version: `0.0.0-dev.<sha>`, or the release's when the release workflow calls CI), **frontend tests** (Vitest with coverage, in three shards on three machines, split by how long each test file takes as measured in `tests/frontend/durations.json` (`vitest.config.ts`); run `mise run test:durations` again when test files were added or got much slower; Codecov merges their uploads), **backend** (build, then `scripts/test-backend.sh`: the unit test projects and the in-process integration tests side by side, the latter in three processes by the first letter of the test class, since they run one after another within one), **smoke** (the real app as a process in every authentication mode, plus the black-box API contract tests), **codegen** (`schema.graphql` and the generated GraphQL types are up to date). **build** takes the frontend job's web app (no second `vite build`), publishes the API once with the same version (`mise run build:api`) and uploads the self-hostable output (`out/`) as an artifact; it does not wait for the tests, the release does. **e2e** starts that artifact and runs the real-browser tests against it, in two shards on two machines (Chromium, cached per Playwright version); a failure uploads the videos, traces and the report as `e2e-results-1`/`-2`. `node_modules` is cached per lockfile and Node version (`.github/actions/node-modules`), so `npm ci` only runs when the lockfile changed. Run the same things locally with `mise run test` and `mise run test:e2e`.
+`.github/workflows/ci.yml` runs on every push to `main` and every pull request that changes more than Markdown files (`docs/photo-reading.md`, which a test pins to the code, and Markdown under `tests/` still count; the release workflow always runs it), installing the toolchain from `mise.toml` so CI uses the same Node and .NET versions as developers. Jobs run in parallel: **frontend** (lint, typecheck, the production build of the web app, stamped with the version: `0.0.0-dev.<sha>`, or the release's when the release workflow calls CI), **frontend tests** (Vitest with coverage, in three shards on three machines, split by how long each test file takes as measured in `src/frontend/tankstat-react/tests/durations.json` (`vitest.config.ts`); run `mise run test:durations` again when test files were added or got much slower; Codecov merges their uploads), **backend** (build, then `scripts/test-backend.sh`: the unit test projects and the in-process integration tests side by side, the latter in three processes by the first letter of the test class, since they run one after another within one), **smoke** (the real app as a process in every authentication mode, plus the black-box API contract tests), **codegen** (`schema.graphql` and the generated GraphQL types are up to date). **build** takes the frontend job's web app (no second `vite build`), publishes the API once with the same version (`mise run build:api`) and uploads the self-hostable output (`out/`) as an artifact; it does not wait for the tests, the release does. **e2e** starts that artifact and runs the real-browser tests against it, in two shards on two machines (Chromium, cached per Playwright version); a failure uploads the videos, traces and the report as `e2e-results-1`/`-2`. `node_modules` is cached per lockfile and Node version (`.github/actions/node-modules`), so `npm ci` only runs when the lockfile changed. Run the same things locally with `mise run test` and `mise run test:e2e`.
 
 **Coverage.** The frontend job runs Vitest with V8 coverage (`lcov`) and the backend job runs the unit and integration tests with coverlet (`coverlet.runsettings`: the app's own code, without migrations, the seeder and the tests; Cobertura output). Both upload to [Codecov](https://codecov.io/gh/carathorys/tankstat) under the flags `frontend` and `backend`; `codecov.yml` holds the gates (project coverage may not drop by more than 1% against the base, new and changed lines need 80%) and the pull request comment. The upload needs the Codecov GitHub app and a `CODECOV_TOKEN` repository secret (`release.yml` passes secrets on to `ci.yml`); without the token the step only warns. `mise run test:coverage` writes the same reports to `coverage/` (HTML for the frontend at `coverage/frontend/index.html`).

@@ -1,5 +1,5 @@
 name: node_modules
-description: Restores node_modules for this lockfile and Node version from the cache, and runs npm ci only when there is none. Node must be installed first (mise).
+description: Restores the web app's node_modules (src/frontend/tankstat-react) for its lockfile and Node version from the cache, and runs npm ci only when there is none. Node must be installed first (mise).
 
 runs:
   using: composite
@@ -15,10 +15,11 @@ runs:
       id: cache
       uses: actions/cache@v4
       with:
-        path: node_modules
-        key: node-modules-${{ runner.os }}-${{ steps.node.outputs.version }}-${{ hashFiles('package-lock.json') }}
+        path: src/frontend/tankstat-react/node_modules
+        key: node-modules-${{ runner.os }}-${{ steps.node.outputs.version }}-${{ hashFiles('src/frontend/tankstat-react/package-lock.json') }}
 
     - name: npm ci
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
+      working-directory: src/frontend/tankstat-react
       run: npm ci --no-audit --no-fund

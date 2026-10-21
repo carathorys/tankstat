@@ -20,11 +20,14 @@ public sealed record SettingsFileInfo(string Path, bool Exists, bool Ignored, IR
 /// <param name="Editable">False when an environment variable or a command-line argument holds the setting: it wins over the file.</param>
 /// <param name="RestartPending">The value differs from the one it runs with: it takes effect at the next restart. Never for a setting that applies at once, which runs with what was saved.</param>
 /// <param name="DefaultValue">What the app runs with when no source sets it (the options class's own value), as the page writes a value; null for a secret, a list, or a setting without one.</param>
+/// <param name="AppliesAtOnce">A saved change of it takes effect at once (<see cref="SettingDefinition.AppliesAtOnce"/>); it can differ from its group's (the password minimum in the Sign-in group, which waits for a restart).</param>
 public sealed record SystemSetting(
-    string Key, SettingKind Kind, IReadOnlyList<string> Choices, string? Value, bool IsSet, bool IsSecret, SettingSource Source, bool Editable, bool RestartPending, string? DefaultValue)
+    string Key, SettingKind Kind, IReadOnlyList<string> Choices, string? Value, bool IsSet, bool IsSecret, SettingSource Source, bool Editable, bool RestartPending,
+    string? DefaultValue, bool AppliesAtOnce)
 {
     public static SystemSetting From(SettingView v) =>
-        new(v.Definition.Key, v.Definition.Kind, v.Definition.Choices ?? [], v.Value, v.IsSet, v.Definition.IsSecret, v.Source, v.Editable, v.RestartPending, SettingsCatalog.BuiltInDefault(v.Definition.Key));
+        new(v.Definition.Key, v.Definition.Kind, v.Definition.Choices ?? [], v.Value, v.IsSet, v.Definition.IsSecret, v.Source, v.Editable, v.RestartPending,
+            SettingsCatalog.BuiltInDefault(v.Definition.Key), v.Definition.AppliesAtOnce);
 }
 
 /// <param name="AppliesAtOnce">A saved change of its settings takes effect at once; otherwise it waits for a restart (<see cref="SettingDefinition.AppliesAtOnce"/>).</param>

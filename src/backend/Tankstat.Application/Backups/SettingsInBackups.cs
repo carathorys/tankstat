@@ -9,7 +9,7 @@ namespace Tankstat.Application.Backups;
 /// Which keys of the instance's settings file a backup carries, and what a restore makes of them. A backup carries the instance's settings,
 /// never the machine's: the settings the Server settings page manages (<see cref="SettingsCatalog.All"/>, a list with its items) and the
 /// <c>Logging</c> section; never what describes the machine it ran on (the database, the storage and key folders, the settings file's own
-/// path, the backups folder, the bootstrap administrator, the prompt file: none of them is in the catalog), which restored onto another
+/// path, the backups folder, the prompt file: none of them is in the catalog), which restored onto another
 /// machine would point it at a database or folders it lacks. A backup carries no secret (<see cref="SettingDefinition.IsSecret"/>) unless
 /// asked to (<c>Backups:Secrets</c>).
 /// </summary>
@@ -71,7 +71,7 @@ public static class SettingsInBackups
     /// <summary>The sections that describe the machine a server runs on, never the instance: a backup never carries them, it only names them.</summary>
     private static readonly string[] MachineSections = ["Database", "Storage", "DataProtection", "Settings", "Setup"];
 
-    /// <summary>Whether <paramref name="key"/> is the machine's own (a folder, the database, the bootstrap administrator), which only a manifest names.</summary>
+    /// <summary>Whether <paramref name="key"/> is the machine's own (a folder, the database), which only a manifest names.</summary>
     public static bool IsMachineSetting(string key) =>
         SettingsCatalog.LeftOut.Contains(key, StringComparer.OrdinalIgnoreCase)
         || MachineSections.Any(section => key.Equals(section, StringComparison.OrdinalIgnoreCase) || Under(key, section));

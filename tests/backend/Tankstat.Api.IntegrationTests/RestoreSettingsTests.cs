@@ -253,7 +253,7 @@ public sealed class RestoreSettingsTests : IDisposable
     public async Task TheBackupsPage_AndTheRestoreCommand_SayWhatABackupBrings_AndWhatThisServerLacks()
     {
         string backup;
-        var admin = new Dictionary<string, string?> { ["Auth:Standalone:AdminEmail"] = TestApp.AdminEmail, ["Auth:Standalone:AdminPassword"] = TestApp.AdminPassword };
+        var admin = new Dictionary<string, string?>(); // a Standalone host's administrator is its database's (TestApp's set-up template)
         using (var a = Host("a", "Standalone", """{ "Notifications": { "MaxPerHour": "7" } }""", new(admin) { ["Defaults:Currency"] = "XYZ" }))
             backup = (await Backup(a)).Path;
         using var b = Host("b", "Standalone", file: null, admin);
@@ -311,8 +311,6 @@ public sealed class RestoreSettingsTests : IDisposable
         var identity = BackupKeys.Identity("correct horse battery staple", salt, Argon2idParameters.Default);
         var shared = new Dictionary<string, string?>
         {
-            ["Auth:Standalone:AdminEmail"] = TestApp.AdminEmail,
-            ["Auth:Standalone:AdminPassword"] = TestApp.AdminPassword,
             ["Backups:Environment"] = "Merge",
             ["Backups:Encryption:Recipient"] = AgeKeys.FormatRecipient(BackupKeys.Recipient(identity)),
             ["Backups:Encryption:Salt"] = Convert.ToBase64String(salt),
@@ -336,7 +334,7 @@ public sealed class RestoreSettingsTests : IDisposable
     [Fact]
     public async Task ALogLevelThisServerLacks_IsListedAsARisk_NotAsMissing()
     {
-        var admin = new Dictionary<string, string?> { ["Auth:Standalone:AdminEmail"] = TestApp.AdminEmail, ["Auth:Standalone:AdminPassword"] = TestApp.AdminPassword };
+        var admin = new Dictionary<string, string?>(); // a Standalone host's administrator is its database's (TestApp's set-up template)
         string backup;
         using (var a = Host("a", "Standalone", file: null, new(admin) { ["Logging:LogLevel:Default"] = "Warning" }))
             backup = (await Backup(a)).Path;
@@ -355,7 +353,7 @@ public sealed class RestoreSettingsTests : IDisposable
     [Fact]
     public async Task TheBackupsPage_SaysWhichSecretsAPlainBackupLeftOut_AndWhatThisServersEnvironmentOverrides()
     {
-        var admin = new Dictionary<string, string?> { ["Auth:Standalone:AdminEmail"] = TestApp.AdminEmail, ["Auth:Standalone:AdminPassword"] = TestApp.AdminPassword };
+        var admin = new Dictionary<string, string?>(); // a Standalone host's administrator is its database's (TestApp's set-up template)
         string backup;
         using (var a = Host("a", "Standalone", """{ "Smtp": { "Password": "zzzz" }, "Defaults": { "Currency": "XYZ" } }""", admin))
             backup = (await Backup(a)).Path;
@@ -377,7 +375,7 @@ public sealed class RestoreSettingsTests : IDisposable
     [Fact]
     public async Task ASecretTheBackupsServerSetButDidNotCarry_IsNotListedAsLacking_WhereThisServersOwnFileHoldsIt()
     {
-        var admin = new Dictionary<string, string?> { ["Auth:Standalone:AdminEmail"] = TestApp.AdminEmail, ["Auth:Standalone:AdminPassword"] = TestApp.AdminPassword };
+        var admin = new Dictionary<string, string?>(); // a Standalone host's administrator is its database's (TestApp's set-up template)
         string backup;
         using (var a = Host("a", "Standalone", """{ "Defaults": { "Currency": "XYZ" } }""", new(admin) { ["Smtp:Password"] = "zzzz-a-password" }))
             backup = (await Backup(a)).Path;
@@ -403,7 +401,7 @@ public sealed class RestoreSettingsTests : IDisposable
     }
 
     [Fact]
-    public async Task AStandaloneSettingsFile_RestoredOnAServerWithoutCredentials_NeedsAnAdministratorInTheBackup_AndIsRefusedWithEverythingAsItWas()
+    public async Task AStandaloneSettingsFile_NeedsAnAdministratorInTheBackup_AndIsRefusedWithEverythingAsItWas()
     {
         var backup = await StandaloneFileWithoutAnAdministrator();
         var bFile = """{ "Auth": { "Mode": "None" } }""";
@@ -419,8 +417,9 @@ public sealed class RestoreSettingsTests : IDisposable
     }
 
     [Fact]
-    public async Task AStandaloneSettingsFile_IsRestored_WhereTheBootstrapCredentialsCanMakeTheAdministrator()
+    public async Task TheRetiredBootstrapSettings_DoNotLetABackupWithoutAnAdministratorIntoStandalone()
     {
+        // They made the first administrator once; only the setup page does now (#149), so they change nothing about the refusal.
         var backup = await StandaloneFileWithoutAnAdministrator();
         using var b = Host("b", mode: null, """{ "Auth": { "Mode": "None" } }""", new()
         {
@@ -431,8 +430,8 @@ public sealed class RestoreSettingsTests : IDisposable
 
         _ = b.Factory.Services;
 
-        Assert.Equal("Standalone", (string?)Json(b.SettingsPath)["Auth"]!["Mode"]);
-        Assert.Equal(1, b.Restarts.NowCount);
+        Assert.Single(Directory.GetFiles(Folder("b-backups"), "restore.refused.*"));
+        Assert.Equal(0, b.Restarts.NowCount);
     }
 
     [Fact]
@@ -443,7 +442,10 @@ public sealed class RestoreSettingsTests : IDisposable
         string backup;
         using (var a = Host("a", "None", """{ "Auth": { "Mode": "Oidc", "Oidc": { "Authority": "https://id.example.com", "ClientId": "tankstat", "ClientSecret": "zzzz-client-secret" } } }"""))
             backup = (await Backup(a)).Path;
-        using var b = Host("b", mode: null, """{ "Auth": { "Mode": "Standalone", "Standalone": { "AdminEmail": "root@example.com", "AdminPassword": "initial-password-1" } } }""");
+        // Standalone from its own file: a set-up database with its administrator (the host's own setting names no mode, so it is copied here).
+        var bDatabase = Path.Combine(Directory.CreateDirectory(Folder("b-database")).FullName, "b.db");
+        TestApp.CopyStandaloneDatabase(bDatabase);
+        using var b = Host("b", mode: null, """{ "Auth": { "Mode": "Standalone" } }""", new() { ["Database:ConnectionString"] = $"Data Source={bDatabase}" });
         Stage(Folder("b-backups"), backup, marker: false);
         using var client = b.NewClient();
         await client.LoginAs(TestApp.AdminEmail, TestApp.AdminPassword);

@@ -204,34 +204,36 @@ public class SystemSettingsServiceTests
 
         var refused = await Assert.ThrowsAsync<DomainException>(() => w.SystemSettings.UpdateAsync([Set("Auth:Mode", "Standalone")], null, default));
         Assert.Equal("settings.standaloneNeedsAdministrator", refused.Key);
+        Assert.Empty(refused.Args); // no reason, no credentials: only the setup page makes the first administrator (#149)
+        Assert.Contains("Auth__Mode", refused.Message); // the way out: the switch is made outside the app, and the start opens the setup
         Assert.Equal(0, w.SettingsFile.Writes);
 
+        // The retired bootstrap settings make no administrator any more, so they do not let it through either.
         w.SystemConfiguration.Environment["Auth:Standalone:AdminEmail"] = "root@x.co";
         w.SystemConfiguration.Environment["Auth:Standalone:AdminPassword"] = "initial-password-1";
-        await w.SystemSettings.UpdateAsync([Set("Auth:Mode", "Standalone")], null, default); // the first start creates the administrator from these
+        Assert.Equal("settings.standaloneNeedsAdministrator",
+            (await Assert.ThrowsAsync<DomainException>(() => w.SystemSettings.UpdateAsync([Set("Auth:Mode", "Standalone")], null, default))).Key);
+
+        // A local administrator there: the switch is made.
+        w.AddUser("root@x.co", admin: true);
+        await w.SystemSettings.UpdateAsync([Set("Auth:Mode", "Standalone")], null, default);
         Assert.Equal("Standalone", w.SettingsFile.Values["Auth:Mode"]);
     }
 
-    [Theory]
-    [InlineData("root@x.co", "changeme", "password")] // under the policy's 10 characters: the first start would throw password.tooShort
-    [InlineData("root", "initial-password-1", "email")] // not an address
-    [InlineData("taken@x.co", "initial-password-1", "taken")] // a local account (here a user, as a disabled administrator would) holds it: the new one could not be added
-    public async Task SwitchingToStandalone_NeedsCredentialsTheFirstStartCanUse(string email, string password, string reason)
+    [Fact]
+    public async Task SwitchingToStandalone_WithADisabledAdministratorOnly_IsRefused()
     {
         var w = new World(AuthMode.Oidc, configure: o => o.Mode = AuthMode.Oidc);
         var external = User.CreateExternal(UserProvider.Oidc, "sub-1", "owner@x.co", "Owner", isAdmin: true);
         w.Users.Items.Add(external);
         w.Current.SignInAs(external);
-        w.AddUser("taken@x.co");
+        w.AddUser("root@x.co", admin: true).SetDisabled(true);
         w.SystemConfiguration.FileAtStart["Auth:Mode"] = "Oidc";
         w.SettingsFile.Values["Auth:Mode"] = "Oidc";
-        w.SystemConfiguration.Environment["Auth:Standalone:AdminEmail"] = email;
-        w.SystemConfiguration.Environment["Auth:Standalone:AdminPassword"] = password;
 
         var refused = await Assert.ThrowsAsync<DomainException>(() => w.SystemSettings.UpdateAsync([Set("Auth:Mode", "Standalone")], null, default));
 
-        Assert.Equal(("settings.standaloneNeedsAdministrator", reason), (refused.Key, refused.Args["reason"]));
-        Assert.Equal(0, w.SettingsFile.Writes);
+        Assert.Equal("settings.standaloneNeedsAdministrator", refused.Key);
     }
 
     [Fact]
@@ -445,7 +447,7 @@ public class SystemSettingsServiceTests
     }
 
     [Fact]
-    public async Task ARestartIntoStandalone_WithNoAdministratorItCouldCreate_IsRefused()
+    public async Task ARestartIntoStandalone_WithNoAdministrator_IsRefused()
     {
         var w = new World(AuthMode.Oidc, configure: o => o.Mode = AuthMode.Oidc);
         var external = User.CreateExternal(UserProvider.Oidc, "sub-1", "owner@x.co", "Owner", isAdmin: true);
@@ -457,9 +459,8 @@ public class SystemSettingsServiceTests
         Assert.Equal("settings.standaloneNeedsAdministrator", refused.Key);
         Assert.Equal(0, w.Restart.Count);
 
-        w.SystemConfiguration.Environment["Auth:Standalone:AdminEmail"] = "root@x.co";
-        w.SystemConfiguration.Environment["Auth:Standalone:AdminPassword"] = "initial-password-1";
-        await w.SystemSettings.RestartAsync(null, default); // the next start creates the administrator from these
+        w.AddUser("root@x.co", admin: true);
+        await w.SystemSettings.RestartAsync(null, default);
         Assert.Equal(1, w.Restart.Count);
     }
 }

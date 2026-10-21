@@ -1,0 +1,63 @@
+query Session {
+  session {
+    mode
+    user {
+      id
+      displayName
+      email
+      isAdmin
+      avatarUrl
+      # the password last signed in with is shorter than the minimum now: the app shows only the change (App.tsx)
+      passwordChangeRequired
+    }
+    instance {
+      generation
+      restorePoint
+    }
+  }
+  notices {
+    code
+    severity
+    message
+  }
+}
+
+# Only which history the server's data has: the download asks it before it writes anything (pull.ts), since a restore may have taken
+# the data back to a backup while no Session answer came (an open tab whose requests all went through the short restart).
+query ServerGeneration {
+  session {
+    instance {
+      generation
+    }
+  }
+}
+
+mutation Login($input: LoginInput!) {
+  login(input: $input) {
+    id
+  }
+}
+
+mutation Logout {
+  logout
+}
+
+mutation ChangePassword($input: ChangePasswordInput!) {
+  changePassword(input: $input)
+}
+
+mutation RequestPasswordReset($email: String!) {
+  requestPasswordReset(email: $email)
+}
+
+mutation ResetPassword($input: ResetPasswordInput!) {
+  resetPassword(input: $input)
+}
+
+# What a new password must be: public (the reset page and the setup have nobody signed in), shown before typing, checked while typing.
+query PasswordRequirements {
+  passwordRequirements {
+    minLength
+    maxLength
+  }
+}

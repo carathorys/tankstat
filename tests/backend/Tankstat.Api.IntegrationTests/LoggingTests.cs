@@ -19,6 +19,7 @@ public class LoggingTests
 {
     private const string Listener = "Tankstat.Api.GraphQL.GraphQLLoggingListener";
     private const string AuthService = "Tankstat.Application.Users.AuthService";
+    private const string SetupService = "Tankstat.Application.Setup.SetupService";
 
     /// <summary>What the app itself logged (the framework's lines are not what is tested here).</summary>
     private static IEnumerable<LogEntry> Ours(TestApp app) => app.Log.From("Tankstat");
@@ -147,8 +148,6 @@ public class LoggingTests
         using var app = new TestApp(new()
         {
             ["Auth:Mode"] = "Standalone",
-            ["Auth:Standalone:AdminEmail"] = "root@example.com",
-            ["Auth:Standalone:AdminPassword"] = "initial-password-1",
             ["Auth:PublicUrl"] = "https://tank.test",
         }, s => s.AddSingleton<IEmailSender>(new BrokenEmail())); // the last registration wins: sending the setup link fails unexpectedly
         var admin = app.NewClient();
@@ -197,7 +196,7 @@ public class LoggingTests
         async Task<(HttpClient Client, string Id)> Create(string name)
         {
             var created = (await admin.Gql("mutation($i: CreateUserInput!) { createUser(input: $i) { user { id } reset { token } } }", new { i = new { email = $"{name}@example.com", displayName = name, isAdmin = false } })).Data().GetProperty("createUser");
-            await app.NewClient().Gql("mutation($i: ResetPasswordInput!) { resetPassword(input: $i) }", new { i = new { token = created.GetProperty("reset").GetProperty("token").GetString(), newPassword = name + "-password-1" } });
+            await app.NewClient().Gql("mutation($i: ResetPasswordInput!) { resetPassword(input: $i) }", new { i = new { token = created.GetProperty("reset").GetProperty("token").GetString(), newPassword = name + "-password-1", newPasswordConfirmation = name + "-password-1" } });
             var client = app.NewClient();
             await client.LoginAs($"{name}@example.com", name + "-password-1");
             return (client, created.GetProperty("user").GetProperty("id").GetString()!);
@@ -226,18 +225,18 @@ public class LoggingTests
     public async Task AStart_LogsTheMigrationsAndTheFirstAdministrator()
     {
         // A new, empty database (not the migrated copy the other hosts start from), so this start applies the migrations itself.
-        using var app = new TestApp(new Dictionary<string, string?>
-        {
-            ["Auth:Mode"] = "Standalone",
-            ["Auth:Standalone:AdminEmail"] = "root@example.com",
-            ["Auth:Standalone:AdminPassword"] = "initial-password-1",
-        }, migrated: false);
+        // The first administrator is the setup page's to make (#149), with the code the start logs.
+        using var app = new TestApp(new Dictionary<string, string?> { ["Auth:Mode"] = "Standalone", ["Setup:Enabled"] = "true" }, migrated: false);
 
-        _ = app.NewClient(); // starts the host
+        var client = app.NewClient(); // starts the host
+        var code = (string)Assert.Single(app.Log.From(SetupService), e => e.Values.ContainsKey("Code")).Values["Code"]!;
+        (await client.Gql("mutation($i: SetupFinishInput!) { setupFinish(input: $i) { restarting } }",
+            new { i = new { code, email = "root@example.com", password = "initial-password-1", passwordConfirmation = "initial-password-1" } })).Data();
 
         Assert.Contains(app.Log.From("Tankstat.Infrastructure.Persistence.DatabaseMigrator"), e => e.Level == LogLevel.Information && e.Values.ContainsKey("Migrations"));
-        Assert.Contains(app.Log.From(AuthService), e => e.Level == LogLevel.Information && e.Values.ContainsKey("UserId"));
+        Assert.Contains(app.Log.From(SetupService), e => e.Level == LogLevel.Information && e.Values.ContainsKey("UserId"));
         Assert.False(app.Log.Mentions("root@example.com"));
+        Assert.False(app.Log.Mentions("initial-password-1"));
     }
 
     [Fact]

@@ -856,6 +856,9 @@ internal sealed class World
     public ImageService ImageService { get; }
     public LogPhotoService Photos { get; }
     public PhotoDraftService Drafts { get; }
+    /// <summary>The password requirements as an administrator saved them (<c>PasswordSettings.CurrentValue.PasswordMinLength</c> is read afresh).</summary>
+    public FixedMonitor<PasswordOptions> PasswordSettings { get; } = new(new PasswordOptions());
+    public PasswordRequirements Passwords { get; }
     public AuthService Auth { get; }
 
     /// <summary>Self-service reset requests: <c>await w.ResetQueue.DrainAsync()</c> sends what the requests queued.</summary>
@@ -906,8 +909,9 @@ internal sealed class World
         Sharing = new ResourceSharingService(Vehicles, ResourceGrants, Users, Access, Notifier, Log.For<ResourceSharingService>());
         SessionService = new UserSessionService(Sessions, Users, new FakeSecretProtector(), Access, options, Clock, Log.For<UserSessionService>());
         ResetQueue = new FakeResetQueue(resets);
-        Auth = new AuthService(Users, new FakeHasher(), resets, ResetQueue, SessionService, Access, options, Clock, Log.For<AuthService>());
-        UserService = new UserService(Access, Users, UserData, resets, SessionService, new FakeHasher(), ImageService, ImportSessions, options, Log.For<UserService>());
+        Passwords = new PasswordRequirements(PasswordSettings, Log.For<PasswordRequirements>());
+        Auth = new AuthService(Users, new FakeHasher(), resets, ResetQueue, SessionService, Access, options, Passwords, Clock, Log.For<AuthService>());
+        UserService = new UserService(Access, Users, UserData, resets, SessionService, new FakeHasher(), ImageService, ImportSessions, options, Passwords, Log.For<UserService>());
         AccessAdmin = new AccessAdminService(Access, Settings, Grants, Users, Notifier, Log.For<AccessAdminService>());
         Availability = new RecognitionAvailability(Recognizer, Clock, Log.For<RecognitionAvailability>());
         SetupStore = new InMemorySetupStore(Users, Vehicles) { Phase = SetupPhase.Completed };
@@ -982,4 +986,12 @@ internal sealed class NoBackups : Tankstat.Application.Backups.IBackupStore
     public void Delete(string fileName) => throw new NotSupportedException();
     public Tankstat.Application.Backups.RestorePoint Find(string fileName) => throw new NotSupportedException();
     public void Hold(string fileName, DateTimeOffset? since) => throw new NotSupportedException();
+}
+
+/// <summary>Options a test changes as an administrator's save would, where a reader takes an <see cref="IOptionsMonitor{TOptions}"/>.</summary>
+internal sealed class FixedMonitor<T>(T value) : IOptionsMonitor<T>
+{
+    public T CurrentValue { get; set; } = value;
+    public T Get(string? name) => CurrentValue;
+    public IDisposable? OnChange(Action<T, string?> listener) => null;
 }

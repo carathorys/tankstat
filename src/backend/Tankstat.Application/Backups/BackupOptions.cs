@@ -39,6 +39,12 @@ public sealed class BackupOptions
     /// <summary>The recipient backups are encrypted for, and the salt the identity is derived with; unset, backups are written in plain (without the keys).</summary>
     public BackupEncryptionOptions Encryption { get; set; } = new();
 
+    /// <summary>
+    /// The least a passphrase typed for encrypted backups must have (12 to 128, <see cref="BackupPassphrase"/>): the Backups page's key set and
+    /// the command line's alike. A made-up one has 20 characters of 100 random bits whatever this says.
+    /// </summary>
+    public int PassphraseMinLength { get; set; } = BackupPassphrase.Floor;
+
     /// <summary>The largest backup an administrator may upload on the page, in MB (a file with photos can be gigabytes: copying it into the folder always works too).</summary>
     public int MaxUploadMb { get; set; } = 1024;
 
@@ -100,6 +106,8 @@ public sealed class BackupOptionsValidator(IOptions<StorageOptions> storage) : I
         if (!string.IsNullOrWhiteSpace(recipient) && !IsRecipient(recipient)) failures.Add("Backups:Encryption:Recipient is not an age recipient (age1...).");
         if (!string.IsNullOrWhiteSpace(salt) && !BackupEncryption.IsSalt(salt)) failures.Add("Backups:Encryption:Salt is not the base64 of at least 8 bytes.");
         if (o.MaxUploadMb < 1) failures.Add("Backups:MaxUploadMb must be at least 1.");
+        if (o.PassphraseMinLength is < BackupPassphrase.Floor or > BackupPassphrase.Ceiling)
+            failures.Add($"Backups:PassphraseMinLength must be from {BackupPassphrase.Floor} to {BackupPassphrase.Ceiling}.");
         if (BackupSchedule.ParseTimes(o.Every) is null) failures.Add("Backups:Every must be one or more times of day such as 02:00 or 02:00, 14:00 (HH:mm).");
         if (BackupSchedule.ParseDays(o.Days) is null) failures.Add("Backups:Days must be days of the week such as Monday,Thursday, or None.");
         if (o.Keep < 1) failures.Add("Backups:Keep must be at least 1 (the newest backup is always kept).");

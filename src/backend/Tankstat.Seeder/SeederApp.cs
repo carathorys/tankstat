@@ -86,7 +86,7 @@ public static class SeederApp
         if (!string.IsNullOrWhiteSpace(uploads)) await output.WriteLineAsync($"Uploaded pictures folder (deleted too): {Path.GetFullPath(uploads)}");
         if (!string.IsNullOrWhiteSpace(photos)) await output.WriteLineAsync($"Photos of logs folder (deleted too): {Path.GetFullPath(photos)}");
         await output.WriteLineAsync(
-            $"This will DELETE it and create it again with {options.Vehicles:N0} vehicles, {options.Trashed:N0} in the trash, {options.RefuelingsPerVehicle} refuelings and {options.RecurringPerVehicle} recurring expenses each, and {options.Notifications:N0} notifications.");
+            $"This will DELETE it and create it again with {options.Vehicles:N0} vehicles, {options.Trashed:N0} in the trash, {options.RefuelingsPerVehicle} refuelings, {options.RecurringPerVehicle} recurring expenses (with their past visits) and {options.ExpensesPerVehicle} one-off expenses each, and {options.Notifications:N0} notifications.");
         if (options.Pictures == SeedPictures.Photos)
             await output.WriteLineAsync($"Every vehicle gets a photo of its model from Wikimedia Commons (kept in {Path.GetFullPath(PicturesCache(options))}), else a drawn one.");
         else if (options.Pictures == SeedPictures.Drawn) await output.WriteLineAsync("Every vehicle gets a drawn picture.");
@@ -113,7 +113,7 @@ public static class SeederApp
             var pictures = options.Pictures == SeedPictures.None ? null : await AddPicturesAsync(services, options, clock, ct);
             await output.WriteLineAsync(
                 $"Done in {watch.Elapsed.TotalSeconds:F1}s: {result.Vehicles:N0} vehicles, {result.Trashed:N0} in the trash, {result.Refuelings:N0} refuelings, " +
-                $"{result.Recurring:N0} recurring expenses, {result.Notifications:N0} notifications (seed {options.RandomSeed})" +
+                $"{result.Recurring:N0} recurring expenses, {result.Expenses:N0} expenses, {result.Notifications:N0} notifications (seed {options.RandomSeed})" +
                 (pictures is null ? "." : $"; pictures: {pictures.Photos:N0} photos, {pictures.Drawn:N0} drawn."));
             return Success;
         }

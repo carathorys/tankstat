@@ -198,6 +198,49 @@ internal sealed class AppProcess : IAsyncDisposable
     /// <summary>The cookies this client would send to <c>/graphql</c> (the access cookie), as a Cookie header for another process.</summary>
     public string CookieHeader => _cookies.GetCookieHeader(new Uri(_http.BaseAddress!, "/graphql"));
 
+    /// <summary>The first administrator of the smoke tests' Standalone instances, made by <see cref="FinishSetupAsync"/>.</summary>
+    public const string AdminEmail = "root@example.com";
+    public const string AdminPassword = "initial-password-1";
+
+    /// <summary>
+    /// Finishes a waiting Standalone setup the unattended way (#149): the one-time code from the log and one <c>setupFinish</c>, as a script
+    /// would, through a client of its own, so this one stays signed out. The setup page is the only way to the first administrator.
+    /// </summary>
+    public async Task FinishSetupAsync(string email = AdminEmail, string password = AdminPassword)
+    {
+        Assert.True(await LogsAsync("one-time setup code"), Log);
+        var code = System.Text.RegularExpressions.Regex.Match(Log, "one-time setup code ([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4})").Groups[1].Value;
+        using var script = new HttpClient { BaseAddress = _http.BaseAddress };
+        using var response = await script.PostAsJsonAsync("/graphql", new
+        {
+            query = "mutation($i: SetupFinishInput!) { setupFinish(input: $i) { restarting } }",
+            variables = new { i = new { code, email, password, passwordConfirmation = password } },
+        });
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.True(response.IsSuccessStatusCode, $"HTTP {(int)response.StatusCode}: {body}\n{Log}");
+        using var document = JsonDocument.Parse(body);
+        var answer = document.RootElement;
+        Assert.False(answer.TryGetProperty("errors", out var errors), $"{errors}\n{Log}");
+        // Nothing waits for a restart (no settings file saved by a wizard): the instance runs on at once, as the scripts finishing a setup expect.
+        Assert.False(answer.GetProperty("data").GetProperty("setupFinish").GetProperty("restarting").GetBoolean(), Log);
+    }
+
+    /// <summary>A Standalone instance with its first administrator (<see cref="AdminEmail"/>): started, and its setup finished.</summary>
+    public static async Task<AppProcess> StartStandaloneAsync(IReadOnlyDictionary<string, string?> settings, string? workDirectory = null, bool useTempDatabase = true)
+    {
+        var app = await StartAsync(settings, workDirectory, useTempDatabase);
+        try
+        {
+            await app.FinishSetupAsync();
+        }
+        catch
+        {
+            await app.DisposeAsync(); // as StartAsync does before every failure: no process or folder left behind
+            throw;
+        }
+        return app;
+    }
+
     /// <summary>Waits for a line in the app's output (background work logs a little after the app starts answering).</summary>
     public async Task<bool> LogsAsync(string text, TimeSpan? within = null)
     {

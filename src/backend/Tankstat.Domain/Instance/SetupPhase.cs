@@ -18,7 +18,10 @@ public enum SetupCompletion
     /// <summary>The database held data when setup first came: an instance set up before there was a setup.</summary>
     Upgrade,
 
-    /// <summary>The environment did it: the bootstrap administrator, <c>Auth:AdminEmails</c>, or <c>Setup:Enabled=false</c>.</summary>
+    /// <summary>
+    /// The environment did it: a local administrator that exists (the bootstrap administrator of releases before 0.17 too),
+    /// <c>Auth:AdminEmails</c>, or <c>Setup:Enabled=false</c>.
+    /// </summary>
     Environment,
 
     /// <summary>The first administrator was made, or claimed, on the setup page.</summary>
