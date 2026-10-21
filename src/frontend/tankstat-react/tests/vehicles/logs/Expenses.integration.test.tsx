@@ -20,9 +20,11 @@ const expenses = [
   fakeExpense({ id: 'e2', date: '2026-09-01', title: 'Oil change', category: 'Service', amount: 35000, odometer: 12000, note: 'with filters' }),
 ]
 
-function setup(vehicle = fakeVehicle(), initial = expenses, route = '/vehicles/v1?tab=expenses') {
+/** The trash goes in before the page renders: the page asks for it at once, and an answer before it is there shows an empty trash. */
+function setup(vehicle = fakeVehicle(), initial = expenses, route = '/vehicles/v1?tab=expenses', trash: ReturnType<typeof fakeExpense>[] = []) {
   stubViewport('desktop')
   const backend = fakeExpenseBackend(vehicle, initial)
+  backend.state.trash = trash
   server.use(sessionHandler('NONE', () => null), healthHandler, ...backend.handlers)
   renderWithApollo(<App />, route)
   return { ...backend, ui: userEvent.setup() }
@@ -208,8 +210,10 @@ it('view-only access: no add button and no edit or delete', async () => {
 })
 
 it('the trash has an expenses tab: restore and empty', async () => {
-  const { ui, state } = setup(fakeVehicle(), [], '/trash?tab=expenses')
-  state.trash = [fakeExpense({ id: 'x1', title: 'Old fee', deletedAt: '2026-10-01T08:00:00Z' }), fakeExpense({ id: 'x2', title: 'Older fee', deletedAt: '2026-10-01T08:00:00Z' })]
+  const { ui, state } = setup(fakeVehicle(), [], '/trash?tab=expenses', [
+    fakeExpense({ id: 'x1', title: 'Old fee', deletedAt: '2026-10-01T08:00:00Z' }),
+    fakeExpense({ id: 'x2', title: 'Older fee', deletedAt: '2026-10-01T08:00:00Z' }),
+  ])
   await screen.findByText('Old fee')
 
   await ui.click(screen.getByRole('button', { name: 'Restore Old fee' }))
