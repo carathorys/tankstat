@@ -16,12 +16,16 @@ fi
 port="${E2E_PORT:-5097}"
 export E2E_URL="http://127.0.0.1:${port}"
 
-# Nothing of the developer's own setup: the mode, the database, the folders, the schedule, the photo reading.
+# Nothing of the developer's own setup: the mode, the database, the folders, the schedule, the photo reading, the defaults the pages
+# show (a date format), the logging the start is read from. .NET reads the variables' names in any case.
+shopt -s nocasematch
 for name in $(compgen -e); do
   case "$name" in
-    Auth__* | Database__* | Storage__* | Settings__* | Backups__* | Recognition__* | DataProtection__* | Setup__* | Smtp__* | ASPNETCORE_*) unset "$name" ;;
+    Auth__* | Database__* | Storage__* | Settings__* | Backups__* | Recognition__* | DataProtection__* | Setup__* | Smtp__* | \
+      Defaults__* | Notifications__* | Sync__* | Logging__* | Kestrel__* | ASPNETCORE_*) unset "$name" ;;
   esac
 done
+shopt -u nocasematch
 
 files="$(mktemp -d -t tankstat-e2e-XXXXXX)"
 # The settings the shared server takes from its environment besides the machine's own: the OIDC values, an administrator list and a backup
