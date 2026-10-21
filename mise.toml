@@ -93,9 +93,10 @@ run = ["mise run build", "scripts/test-e2e.sh"]
 
 [tasks.screenshots]
 description = "The README's screenshots (docs/screenshots) from a fresh build in ./out with the seeder's data, at phone and desktop size, dark and light; Playwright's options after --, e.g. mise run screenshots -- --project desktop-dark. The footer shows VERSION, else the latest tag's"
-# The footer is in the desktop pictures: the latest tag's version unless VERSION says otherwise, never 0.0.0-dev.
+# The footer is in the desktop pictures: the latest tag's version unless VERSION says otherwise, never 0.0.0-dev (a clone without
+# tags stops here: set VERSION).
 run = [
-  "VERSION=\"${VERSION:-$(git describe --tags --abbrev=0 | sed 's/^v//')}\" mise run build",
+  "tag=\"${VERSION:-$(git describe --tags --abbrev=0)}\" && [ -n \"$tag\" ] && VERSION=\"${tag#v}\" mise run build",
   "scripts/screenshots.sh",
 ]
 
