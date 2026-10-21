@@ -1,0 +1,48 @@
+# Dependency updates, once a week. npm and NuGet come as one pull request per ecosystem for minor and patch versions, a major on its
+# own; the GitHub Actions are pinned by major (`@v4`), so every bump of one is a major: they come together, in one pull request. CI
+# runs on each, like on any pull request. Security updates are separate (the repository's Dependabot security updates) and not grouped.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /src/frontend/tankstat-react
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+    labels: [dependencies]
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      nuget-minor-and-patch:
+        update-types: [minor, patch]
+    labels: [dependencies]
+  # The workflows and the composite actions under .github/actions, which `directory: /` alone never reads.
+  - package-ecosystem: github-actions
+    directories: ["/", "/.github/actions/*"]
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ["*"]
+    labels: [dependencies]
+  # The base images, minor and patch only: a new .NET major (the runtime image) cannot run the app until its TargetFramework moves
+  # with it, and CI never builds the image, so such a pull request would pass and break the release's smoke test. A major is moved
+  # by hand, with the TargetFramework (and Node with mise.toml's version).
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      docker-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    labels: [dependencies]

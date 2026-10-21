@@ -29,6 +29,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+          # The commit, not the branch: checked out as the local `main`, the action's fetch of a fork pull request opened from the
+          # fork's own `main` (`pull/N/head:main`) is refused (anthropics/claude-code-action#1423), and @claude fails on it.
+          ref: ${{ github.sha }}
 
       - name: Run Claude Code
         id: claude

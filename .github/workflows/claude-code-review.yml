@@ -12,11 +12,10 @@ on:
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    # Branches of this repository only, and not Dependabot's: a pull request from a fork gets no secrets, and Dependabot's runs get
+    # only its own, so the step would fail for every outside contributor and every Monday's updates. A fork pull request is reviewed
+    # by a person (CONTRIBUTING.md), or by the bot when asked with @claude (claude.yml).
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
 
     runs-on: ubuntu-latest
     permissions:
