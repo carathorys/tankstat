@@ -1,6 +1,6 @@
 # Development
 
-For people who work on Tankstat itself: the toolchain, the layout of the repository, how to run and test it, and the tools around it.
+For people who work on Tankstat itself: the toolchain, the layout of the repository, how to run and test it, and the tools around it. [CONTRIBUTING.md](../CONTRIBUTING.md) is the entry point for a contribution: what a change needs, how work is tracked in the issues, and where to start.
 
 ## Prerequisites
 
@@ -160,7 +160,7 @@ Importing lives in `Application/Imports`: one `IImportParser` per file format tu
 
 ## Languages
 
-The UI is in English and Hungarian (react-i18next). Every visible string is in `src/frontend/tankstat-react/src/i18n/locales/<lang>.json` (typed keys; a test checks that all languages have the same messages and placeholders). API errors carry a stable `key` and `args` (e.g. `password.tooShort`, `{min: 10}`) which the UI translates; the API's English message is only a fallback. Dates and numbers use `Intl` for the selected language. To add a language: add `<lang>.json`, list it in `LANGUAGES` (`i18n/index.ts`), and the test tells you what is missing.
+The UI is in English and Hungarian (react-i18next). Every visible string is in `src/frontend/tankstat-react/src/i18n/locales/<lang>.json` (typed keys; a test checks that all languages have the same messages and placeholders). API errors carry a stable `key` and `args` (e.g. `password.tooShort`, `{min: 10}`) which the UI translates; the API's English message is only a fallback. Dates and numbers use `Intl` for the selected language. To add a language: add `<lang>.json`, list it in `LANGUAGES` (`i18n/index.ts`), and add it to the catalogs of `src/frontend/tankstat-react/tests/app/i18n/I18n.unit.test.ts`; the test then tells you what is missing (it fails until the language in `LANGUAGES` has its catalog there).
 
 ## Test data (seeder)
 
@@ -199,6 +199,10 @@ Recurring expenses (insurance, vignette, inspection, oil change, tyres; the dist
 Expenses come in two kinds, all in the currency the vehicle's fill-ups are mostly paid in. Each recurring expense has its past visits as expenses, linked to it as *Mark as done* links them (called like it, in its category, with the odometer when it counts distance): the last one where it was last done, the earlier ones an interval apart, going back three years. Besides those, each vehicle gets one-off expenses (`--expenses`: parking, washing, repairs, accessories) dated within its fuel log, about half of them with the odometer of their day, or over the last half year without one when it has no log. Every expense's reading fits between the readings of the days before and after it, as the app requires. Trashed vehicles keep their one-off expenses (they have no recurring ones).
 
 The access-change notifications are seeded directly for the anonymous user (there is nobody to share with without authentication), over the last two weeks, about made-up people and the first live vehicles: about a third already read, a few standing for several changes, and one "more changes" digest when there are at least ten.
+
+## Screenshots
+
+The README's pictures are in `docs/screenshots/`, one file per page and size (`dashboard-desktop-dark.png`, `home-phone-dark.png`), taken by `mise run screenshots`: it builds `out/`, seeds a throwaway SQLite database with four vehicles, a couple of years of logs each and a drawn picture each (`--drawn-pictures`, never a downloaded photo: those carry licences of their own; the same data each run, seed 2026; the cards' colours follow the vehicles' ids, which are new each run, so the files still differ), starts the build with sign-in off, and runs `src/frontend/tankstat-react/e2e/screenshots.ts` against it (`playwright.screenshots.config.ts`: a phone at two device pixels per CSS pixel, a 1280 × 1024 desktop, dark, and the home page and the dashboard in light too; Playwright runs as it does for the real-browser tests, natively with `E2E_NATIVE=1` or in its Docker image). The notice that sign-in is off and a toast are taken out of the page first. The footer in the desktop pictures shows the latest tag's version (`VERSION=1.2.3 mise run screenshots` chooses another). Take them again by hand when a page they show changes, or the data behind them (the seeder); they are not made in CI.
 
 ## Continuous integration
 

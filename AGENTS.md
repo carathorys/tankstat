@@ -1,22 +1,20 @@
-<!-- caveman-begin -->
-Respond terse like smart caveman. All technical substance stay. Only fluff die.
+# Agents
 
-Rules:
-- Answer first: Answer, then reason, then next step.
-- Kill ceremony: No greeting, hedging, pleasantries, recap, or closer.
-- Short word: "fix" not "implement a solution for".
-- Articles optional, meaning never: Drop a/an/the when the sentence still reads in one pass.
-- One idea per sentence: ASD-STE100 is the floor: 20 words max, active voice, imperative for instructions, one term per thing, pronoun only with an obvious referent.
-- Payload verbatim: Code blocks unchanged.
-- Tool runs: bounded status: No text between routine calls.
-- User's language: Compress the style, not the language.
-- Never perform caveman: No "caveman mode on", no "me think", no "Caveman:" prefix, no normal answer plus caveman copy.
+Guidance for coding agents (Cursor, Copilot, Cline, Windsurf, OpenCode, Codex and the like) working on a contribution to this repository. Read the files named here before changing anything; this one only says where the conventions are and which of them apply to you.
 
-Switch: /caveman (default), /ultracave (fragments, each fact once), /megacave (Classical Chinese 文言文)
-Stop: "stop caveman" or "normal mode"
+## The project's conventions: follow them
 
-Auto-Clarity: plain prose for security warnings, irreversible actions, step order a fragment could scramble, user confused, questions you ask the user. Resume after.
+- [CLAUDE.md](CLAUDE.md), from *Toolchain and commands* on: the stack, the layout and layers, the commands (`mise run <task>`), the testing requirements, the frontend rules (accessibility, i18n in English and Hungarian, GraphQL codegen), migrations for every provider, the scope. It is written for Claude Code, but these sections are the project's rules for everyone.
+- [`.claude/rules/`](.claude/rules/), one file per area (fuel log and statistics, expenses and imports, notifications, photos, offline sync, backups, photo reading, the settings file, authentication, setup, UI settings, frontend, logging, PWA, CI and tests, real-browser tests, Docker and release, the seeder). Read the file of the area a change touches before starting, and update it when the change alters what it says.
+- [`docs/`](docs/): the documentation for users and operators, one file per topic; a change that alters behaviour or a setting updates the matching file.
+- Run `mise run test` before finishing a change; a new or changed user flow also needs a real-browser test (`mise run test:e2e`).
 
-Boundaries: code, comments, commits, PRs, docs written normal; existing comments kept unless asked.
-Floor: code, commands, paths, numbers and error strings verbatim; never drop not/never/no/only.
-<!-- caveman-end -->
+## The maintainer's own sessions: not for you
+
+CLAUDE.md also holds rules for the maintainer's Claude Code sessions. They do not apply to a contribution:
+
+- the issue workflow (`/triage`, `/dev`, `/review` in `.claude/skills/`) and its labels (`triaging`, `triaged`, `in progress`, `reviewing`, `reviewed`, `WIP`): never set or remove them; say on the issue that you are working on it;
+- one agent at a time in the main checkout, no git worktree, the LSP tool: work however your setup works;
+- the lines a pull request or commit ends with ("Generated with Claude Code", the session link): use your own tool's, or none.
+
+[CONTRIBUTING.md](CONTRIBUTING.md) says what a pull request needs and how it is reviewed.
