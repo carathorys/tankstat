@@ -1,5 +1,6 @@
 import userEvent from '@testing-library/user-event'
-import { graphql, HttpResponse } from 'msw'
+import { HttpResponse } from 'msw'
+import { graphql } from './graphql.ts'
 import { axe } from 'vitest-axe'
 import { afterAll, afterEach, beforeAll, expect, vi } from 'vitest'
 import App from '../../src/App.tsx'
@@ -14,7 +15,7 @@ import { fakeExpense, fakeExpenseBackend, fakeLogBackend, fakeNotification, fake
 /** The test server for the file, and object URLs for the previews of queued photos (jsdom has none). Call once at the top of a file. */
 export function setupAccessibilityTests() {
   beforeAll(() => {
-    server.listen({ onUnhandledRequest: 'error' })
+    server.listen({ onUnhandledFrame: 'error' })
     let n = 0
     URL.createObjectURL = () => `blob:preview-${n++}`
     URL.revokeObjectURL = () => undefined

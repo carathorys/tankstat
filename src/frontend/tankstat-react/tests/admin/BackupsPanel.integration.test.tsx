@@ -1,13 +1,14 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql, http, HttpResponse } from 'msw'
+import { http, HttpResponse } from 'msw'
+import { graphql } from '../support/graphql.ts'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/App.tsx'
 import { navigation } from '../../src/navigation.ts'
 import { server } from '../support/server.ts'
 import { fakeInstance, fakeVehicleBackend, gqlError, healthHandler, renderWithApollo, user } from '../support/mocks.tsx'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => {
   server.resetHandlers()
   vi.restoreAllMocks()
@@ -436,7 +437,7 @@ it('opens a backup: what its manifest says, its tables with their rows, the size
   expect(dialog).toHaveTextContent('Database__Provider')
   expect(calls.BackupDetails).toEqual(['tankstat-backup-20261010T020000Z.zip'])
   await ui.click(within(dialog).getByRole('button', { name: 'Close' }))
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 })
 
 it('says why a backup cannot be deleted while a restore waits', async () => {

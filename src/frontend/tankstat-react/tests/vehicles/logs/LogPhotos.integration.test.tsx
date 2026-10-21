@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql, http, HttpResponse } from 'msw'
+import { http, HttpResponse } from 'msw'
+import { graphql } from '../../support/graphql.ts'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../src/App.tsx'
 import { resizeImage } from '../../../src/pictures/resizeImage.ts'
@@ -25,7 +26,7 @@ vi.mock('../../../src/pictures/resizeImage.ts', async (original) => ({
 }))
 
 beforeAll(() => {
-  server.listen({ onUnhandledRequest: 'error' })
+  server.listen({ onUnhandledFrame: 'error' })
   // jsdom has no object URLs (the previews of photos that are not saved yet)
   let n = 0
   URL.createObjectURL = () => `blob:preview-${n++}`
@@ -130,7 +131,8 @@ it('closing the dialog without saving deletes the photos uploaded for it', async
 
   await ui.click(within(dialog).getByRole('button', { name: 'Cancel' }))
 
-  await waitFor(() => expect(photos.state.draftDeletes).toEqual(['draft1', 'draft2']))
+  // Both deletions go at once, so the server may take them in either order.
+  await waitFor(() => expect([...photos.state.draftDeletes].sort()).toEqual(['draft1', 'draft2']))
   expect(state.calls.AddExpense).toBeUndefined()
   const again = await openAddExpense(ui)
   expect(within(again).getByText(/0 of 10 photos/)).toBeInTheDocument()

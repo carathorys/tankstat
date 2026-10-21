@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql, http, HttpResponse } from 'msw'
+import { http, HttpResponse } from 'msw'
+import { graphql } from '../../support/graphql.ts'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../src/App.tsx'
 import { isKept } from '../../../src/offline/changes.ts'
@@ -16,7 +17,7 @@ vi.mock('../../../src/pictures/resizeImage.ts', async (original) => ({
 }))
 
 beforeAll(() => {
-  server.listen({ onUnhandledRequest: 'error' })
+  server.listen({ onUnhandledFrame: 'error' })
   let n = 0
   URL.createObjectURL = () => `blob:preview-${n++}`
   URL.revokeObjectURL = () => undefined

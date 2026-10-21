@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql, HttpResponse } from 'msw'
+import { HttpResponse } from 'msw'
+import { graphql } from '../support/graphql.ts'
 import { expect, it, onTestFinished, vi } from 'vitest'
 import App from '../../src/App.tsx'
 import { ErrorBoundary } from '../../src/ErrorBoundary.tsx'
@@ -11,7 +12,7 @@ import { deviceData } from '../../src/offline/deviceData.ts'
 import { outbox } from '../../src/offline/outbox.ts'
 import { platform } from '../../src/pwa/platform.ts'
 import { check, setup, setupAccessibilityTests } from '../support/accessibility.tsx'
-import { server } from '../support/server.ts'
+import { answered, server } from '../support/server.ts'
 import { backupRecipientHandler, fakeLogBackend, fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport, user, wizardSettings } from '../support/mocks.tsx'
 
 // The pages, the shell and the sign-in screens. The log dialogs and photos are in AccessibilityLogs, the recurring expenses and the home
@@ -154,6 +155,7 @@ it("the Offline data section, a vehicle's window dialog and the timespan fields 
 it('offline, the top bar, the footer and a page that needs the server are free of violations', async () => {
   const { view, ui } = setup('/')
   await screen.findByRole('heading', { level: 1 })
+  await answered()
   connectivity.failed()
 
   await screen.findByText('Offline')

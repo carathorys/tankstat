@@ -7,7 +7,7 @@ import { isKept } from '../../../src/offline/changes.ts'
 import { connectivity } from '../../../src/offline/connectivity.ts'
 import { keptPhotos } from '../../../src/offline/keptPhotos.ts'
 import { outbox } from '../../../src/offline/outbox.ts'
-import { server } from '../../support/server.ts'
+import { answered, server } from '../../support/server.ts'
 import { fakeExpense, fakeExpenseBackend, fakePhotoStore, fakeVehicle, healthHandler, renderWithApollo, sessionHandler, stubViewport } from '../../support/mocks.tsx'
 
 // jsdom cannot decode pictures: the browser-side resize is covered in Media.unit.test.ts, here it passes the file through.
@@ -17,7 +17,7 @@ vi.mock('../../../src/pictures/resizeImage.ts', async (original) => ({
 }))
 
 beforeAll(() => {
-  server.listen({ onUnhandledRequest: 'error' })
+  server.listen({ onUnhandledFrame: 'error' })
   let n = 0
   URL.createObjectURL = () => `blob:preview-${n++}`
   URL.revokeObjectURL = () => undefined
@@ -246,6 +246,7 @@ it('a photo added to a saved expense while the server is out of reach and nothin
   const { ui, photos } = setup()
   const dialog = await openEdit(ui)
   vi.spyOn(keptPhotos, 'keep').mockResolvedValue(null) // no account's data is open on this device
+  await answered()
   act(() => connectivity.failed())
 
   await ui.upload(library(dialog), photo())

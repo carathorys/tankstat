@@ -1,6 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql, http, HttpResponse } from 'msw'
+import { http, HttpResponse } from 'msw'
+import { graphql } from '../support/graphql.ts'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/App.tsx'
 import { connectivity } from '../../src/offline/connectivity.ts'
@@ -9,10 +10,10 @@ import { memoryStorage } from '../../src/offline/deviceStorage.ts'
 import { createPullEngine } from '../../src/offline/pull.ts'
 import { createApolloClient } from '../../src/apolloClient.ts'
 import { fakeFeed, now } from '../support/offlineFeed.ts'
-import { server } from '../support/server.ts'
+import { answered, server } from '../support/server.ts'
 import { fakeVehicle, fakeVehicleBackend, healthHandler, person, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport, user } from '../support/mocks.tsx'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => {
   server.resetHandlers()
   vi.restoreAllMocks()
@@ -36,6 +37,7 @@ it('a request that gets no answer marks the app offline: the top bar and the foo
   server.use(graphql.query('Welcome', () => HttpResponse.error()))
 
   await ui.click(screen.getByRole('link', { name: 'Home' })) // asks again
+  await answered()
   await act(() => connectivity.failed()) // what the failed request did; the explicit call keeps the test independent of the page's timing
 
   expect(await screen.findByText('Offline')).toBeInTheDocument()
@@ -49,6 +51,7 @@ it('while the server is out of reach nothing is sent, and a page that needs it s
   await screen.findByText('Octavia')
   let sent = 0
   server.use(graphql.query('Trash', () => (sent++, HttpResponse.json({ data: null }))))
+  await answered()
   await act(() => connectivity.failed())
 
   await ui.click(screen.getByRole('link', { name: 'Trash' }))
@@ -71,6 +74,7 @@ it('signing out while the server is out of reach signs out at once, deletes what
   await screen.findByText('Octavia')
   await deviceData.settled()
   await (await deviceData.rows())!.putPicture({ id: 'img1', type: 'image/png', bytes: new ArrayBuffer(4), keptAt: 1 })
+  await answered()
   await act(() => connectivity.failed())
 
   await ui.click(screen.getByRole('button', { name: 'Sign out' }))
@@ -119,6 +123,7 @@ it('a sign-out the device can neither note nor tell the server deletes nothing, 
   await deviceData.settled()
   await (await deviceData.rows())!.putPicture({ id: 'img1', type: 'image/png', bytes: new ArrayBuffer(4), keptAt: 1 })
   vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  await answered()
   await act(() => connectivity.failed())
 
   await ui.click(screen.getByRole('button', { name: 'Sign out' }))
@@ -153,6 +158,7 @@ it('what was opened online opens again without the server, after a restart too, 
 it('a page that was never opened online says it is not on this device yet', async () => {
   const { ui } = setup()
   await screen.findByText('Octavia')
+  await answered()
   await act(() => connectivity.failed())
 
   await ui.click(screen.getByRole('link', { name: /Octavia/ }))
@@ -208,6 +214,7 @@ it('what the device kept for one account never shows for another, and signing ou
 it('Try again in the footer asks the server, and when it answers the app is back online', async () => {
   const { ui } = setup()
   await screen.findByText('Octavia')
+  await answered()
   await act(() => connectivity.failed())
 
   await ui.click(within(screen.getByRole('contentinfo')).getByRole('button', { name: 'Try again' }))
@@ -230,6 +237,7 @@ it('a vehicle downloaded for offline use opens without the server, its logs page
   await createPullEngine({ client: createApolloClient('http://localhost/graphql'), now }).run()
   online.unmount()
 
+  await answered()
   connectivity.failed()
   let sent = 0
   server.use(graphql.query('Refuelings', () => (sent++, HttpResponse.error())))
@@ -257,6 +265,7 @@ it('the pictures downloaded for offline use show without the server: the card\'s
   await createPullEngine({ client: createApolloClient('http://localhost/graphql'), now }).run()
   online.unmount()
 
+  await answered()
   connectivity.failed()
   renderWithApollo(<App />, '/')
 

@@ -6,7 +6,7 @@ import { server } from '../support/server.ts'
 import { fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, adminSession } from '../support/mocks.tsx'
 import { UUID } from '../support/ids.ts'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
@@ -51,7 +51,7 @@ it('adds a vehicle through the dialog', async () => {
   await ui.click(within(dialog).getByRole('button', { name: 'Add vehicle' }))
 
   await screen.findByText('Golf')
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(state.calls.AddVehicle).toEqual([{ input: { id: expect.stringMatching(UUID), name: 'Golf', licensePlate: 'xy-99', fuelType: 'LPG', units: { distance: 'KILOMETERS', volume: 'LITERS' } } }])
 })
 
@@ -112,7 +112,7 @@ it('cancelling the add dialog changes nothing', async () => {
   await ui.click(screen.getByRole('button', { name: 'Add vehicle' }))
   await ui.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cancel' }))
 
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(state.calls.AddVehicle).toBeUndefined()
 })
 

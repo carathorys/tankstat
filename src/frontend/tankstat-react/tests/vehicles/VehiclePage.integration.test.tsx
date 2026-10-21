@@ -8,7 +8,7 @@ import { server } from '../support/server.ts'
 import { fakeExpenseBackend, fakeLogBackend, fakeRefueling, fakeVehicle, fakeVehicleBackend, adminSession, healthHandler, person, renderWithApollo, sessionHandler, stubViewport } from '../support/mocks.tsx'
 import { dateValue, findDateField } from '../support/dates.ts'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => {
   server.resetHandlers()
   vi.unstubAllGlobals()

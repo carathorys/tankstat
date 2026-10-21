@@ -1,12 +1,13 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql, HttpResponse } from 'msw'
+import { HttpResponse } from 'msw'
+import { graphql } from '../support/graphql.ts'
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import App from '../../src/App.tsx'
 import { gqlError, healthHandler, renderWithApollo, sessionHandler, silenceConsoleError, stubViewport } from '../support/mocks.tsx'
 import { server } from '../support/server.ts'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
@@ -69,7 +70,7 @@ it('Edit and apply, on a vehicle change the server parked, opens the vehicle dia
   await ui.click(within(dialog).getByRole('button', { name: 'Apply' }))
 
   expect(await screen.findByText('Applied.')).toBeInTheDocument()
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   // Applied against the version shown of what is on the server now (`current`; none shown here: over whatever is there), never the
   // version the device made it from, which is why it was parked.
   expect(sent).toEqual([{ id: 'c2', action: 'APPLY', change: expect.objectContaining({ id: 'c2', expectedVersion: null, updateVehicle: expect.objectContaining({ id: 'v1', name: 'Octavia vRS' }) }) }])

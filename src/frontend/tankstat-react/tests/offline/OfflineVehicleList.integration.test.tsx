@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql, HttpResponse } from 'msw'
+import { HttpResponse } from 'msw'
+import { graphql } from '../support/graphql.ts'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest'
 import App from '../../src/App.tsx'
 import { createApolloClient } from '../../src/apolloClient.ts'
@@ -11,9 +12,9 @@ import { outbox } from '../../src/offline/outbox.ts'
 import { createPullEngine } from '../../src/offline/pull.ts'
 import { fakeVehicle, fakeVehicleBackend, healthHandler, renderWithApollo, sessionHandler, stubViewport, user } from '../support/mocks.tsx'
 import { fakeFeed, now } from '../support/offlineFeed.ts'
-import { server } from '../support/server.ts'
+import { answered, server } from '../support/server.ts'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
@@ -44,6 +45,7 @@ beforeEach(async () => {
   await deviceData.settled()
   await createPullEngine({ client: createApolloClient('http://localhost/graphql'), now }).run()
   online.unmount()
+  await answered()
   connectivity.failed()
 })
 
@@ -115,6 +117,7 @@ it('a vehicle known on this device but not downloaded yet (added online since) c
   await screen.findByRole('button', { name: 'Add refuelling' })
   await deviceData.settled()
   online.unmount()
+  await answered()
   connectivity.failed()
 
   renderWithApollo(<App />, '/vehicles/v3?tab=refuelings')

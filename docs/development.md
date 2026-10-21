@@ -27,7 +27,7 @@ tests/backend/Tankstat.Infrastructure.UnitTests/  config binding, repositories (
 tests/backend/Tankstat.Api.IntegrationTests/      in-process GraphQL tests for every auth mode (WebApplicationFactory)
 tests/backend/Tankstat.Api.ApiTests/              black-box contract tests against a running server
 src/frontend/tankstat-react/tests/        Vitest unit (*.unit.test.*) and integration (*.integration.test.*) tests, a folder per feature area
-src/frontend/tankstat-react/tests/support/  shared test helpers: msw handlers (server.ts), fake backends (mocks.tsx), setup
+src/frontend/tankstat-react/tests/support/  shared test helpers: msw handlers (server.ts; GraphQL ones through graphql.ts), fake backends (mocks.tsx), setup
 src/frontend/tankstat-react/e2e/          real-browser tests (Playwright, *.e2e.ts) against the published build; support/ holds the sign-in, GraphQL and layout helpers
 scripts/test-api.sh                       starts the API, runs the API tests, stops it
 scripts/test-e2e.sh                       starts the build in out/, runs the real-browser tests, stops it

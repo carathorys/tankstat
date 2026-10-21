@@ -1,4 +1,5 @@
-import { graphql, http, HttpResponse } from 'msw'
+import { http, HttpResponse } from 'msw'
+import { graphql } from '../support/graphql.ts'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, onTestFinished, vi } from 'vitest'
 import { createApolloClient } from '../../src/apolloClient.ts'
 import { connectivity } from '../../src/offline/connectivity.ts'
@@ -7,9 +8,9 @@ import { memoryStorage } from '../../src/offline/deviceStorage.ts'
 import { keptPhotos } from '../../src/offline/keptPhotos.ts'
 import { outbox, type ChangeDraft } from '../../src/offline/outbox.ts'
 import { createPushEngine, PARKED_ADDS_KEY, parkedAdds, unblockAdd } from '../../src/offline/push.ts'
-import { server } from '../support/server.ts'
+import { answered, server } from '../support/server.ts'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
@@ -154,6 +155,7 @@ it('sends nothing while the server is out of reach, for nobody confirmed, or whe
   const sync = fakeSync()
   await engine().run() // nothing waits
   await keep(log('a'))
+  await answered()
   connectivity.failed()
   await engine().run()
   connectivity.reset()

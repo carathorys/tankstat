@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql, HttpResponse } from 'msw'
+import { HttpResponse } from 'msw'
+import { graphql } from '../support/graphql.ts'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../src/App.tsx'
 import { outbox } from '../../src/offline/outbox.ts'
@@ -19,7 +20,7 @@ import {
   stubViewport,
 } from '../support/mocks.tsx'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => {
   server.resetHandlers()
   vi.unstubAllGlobals()
@@ -64,7 +65,7 @@ it('a refuelling from the card whose connection drops is kept on this device, an
   await ui.click(within(dialog).getByRole('button', { name: 'Add refuelling' }))
 
   expect(await screen.findByText('Saved on this device · syncs when online.')).toBeInTheDocument()
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(outbox.changes).toMatchObject([{ entity: 'refuelings', action: 'add', vehicleId: 'v1', input: { volume: 38.2, totalCost: 19100, odometer: 12450 } }])
   expect(state.requests.VehicleCard).toEqual([])
 })
@@ -123,7 +124,7 @@ it('a saved refuelling never looks like an error when the card cannot be asked a
   await ui.click(within(dialog).getByRole('button', { name: 'Add refuelling' }))
 
   expect(await screen.findByText('Saved.')).toBeInTheDocument()
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(logs.state.calls.LogRefueling).toHaveLength(1)
   expect(outbox.changes).toEqual([])
 })

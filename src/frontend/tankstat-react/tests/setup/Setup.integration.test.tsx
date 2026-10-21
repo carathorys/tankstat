@@ -1,6 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { graphql, http, HttpResponse } from 'msw'
+import { http, HttpResponse } from 'msw'
+import { graphql } from '../support/graphql.ts'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { RESTART_WAIT } from '../../src/admin/restartFlow.ts'
 import App from '../../src/App.tsx'
@@ -9,9 +10,9 @@ import type { AuthMode, SessionQuery } from '../../src/gql/generated.ts'
 import { navigation } from '../../src/navigation.ts'
 import { connectivity } from '../../src/offline/connectivity.ts'
 import { backupRecipientHandler, fakeInstance, fakeVehicleBackend, gqlError, healthHandler, renderWithApollo, stubViewport, user, wizardSettings } from '../support/mocks.tsx'
-import { server } from '../support/server.ts'
+import { answered, server } from '../support/server.ts'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => {
   server.resetHandlers()
   vi.restoreAllMocks()
@@ -337,6 +338,7 @@ it('with sign-in off, a device that loses the server shows its own data, not a s
   renderWithApollo(<App />)
   expect(await screen.findByRole('heading', { level: 1, name: 'Set up Tankstat' })).toBeInTheDocument()
 
+  await answered()
   act(() => connectivity.failed()) // the session is the device's last answer from now on, maybe from before a setup done elsewhere
 
   expect(await screen.findByRole('navigation')).toBeInTheDocument()
@@ -421,6 +423,7 @@ it('restores a backup of the folder with the code, and reloads once the restarte
   expect(await screen.findByText(/the server is restarting/)).toBeInTheDocument()
   expect(state.calls.RestoreBackup).toEqual([{ file: backup.file, passphrase: null, identity: null, code: CODE }])
   // The restart takes the server away: the page stays with its wait (no sign-in of the device's last answer in its place).
+  await answered()
   act(() => connectivity.failed())
   expect(screen.getByText(/the server is restarting/)).toBeInTheDocument()
   expect(screen.getByRole('heading', { level: 1, name: 'Set up Tankstat' })).toBeInTheDocument()

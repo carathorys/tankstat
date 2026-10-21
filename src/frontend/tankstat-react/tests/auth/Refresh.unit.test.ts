@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import { fetchSignedIn, refreshSession, signOutDevice } from '../../src/auth/refresh.ts'
 import { server } from '../support/server.ts'
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
