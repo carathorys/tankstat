@@ -182,12 +182,17 @@ mise run seed -- --help
 | `--notifications <n>` | notifications about access changes (default 15) |
 | `--seed <n>` | same seed, same data (default 1234) |
 | `--provider`, `--connection` | override the database (otherwise `Database__*` settings; `mise run seed` targets the `dev:api` SQLite file) |
-| `--uploads <folder>` | the folder of uploaded pictures, which is deleted too because nothing would point to the pictures any more (default: `Storage:Path` if configured) |
+| `--uploads <folder>` | the folder of uploaded pictures, which is deleted too because nothing would point to the pictures any more, and where seeded pictures go (default: `Storage:Path` if configured; with pictures, the app's default `uploads` otherwise) |
 | `--photos <folder>` | the folder of the photos of logs, deleted too for the same reason, when they have one of their own (default: `Storage:PhotosPath` if set; unset, they are in the uploads folder) |
 | `--settings <file>` | the app's own settings file to read, for its `Auth:Mode` and folders (default: `Settings:Path`, else `settings.json` in the working directory; `mise run seed` names the `dev:api` file) |
+| `--pictures` | a picture for every vehicle, the trash's too: a photo of its model from Wikimedia Commons, else (offline, nothing found) a drawn one |
+| `--drawn-pictures` | a drawn picture for every vehicle (a car in a colour of its own on a road), without the network |
+| `--pictures-cache <folder>` | where `--pictures` keeps each model's search results and the photos it downloaded (default: `tankstat-seeder/pictures` in the user's local application data, `~/.local/share` on Linux) |
 | `--yes` | skip the "type yes" confirmation before the database is deleted |
 
 The fuel logs are consistent: per vehicle, dates and the odometer only increase, the last fill-up is recent, litres follow the distance at a per-vehicle consumption (now and then a fill-up was not logged: the odometer runs on and the next log is marked), and prices drift slowly. Trashed vehicles keep their fuel logs.
+
+Pictures are random but deterministic: each vehicle draws from a random sequence of its own, made from the seed and its name, so the same seed gives every vehicle the same picture again (a drawn one's colours, or which of its model's photos it gets: vehicles of one model get different ones). The photos are the first JPEG and PNG results of a Commons search for the model; the search's results and the photos are cached, so a seed again needs no network and gives the same photos even if Commons' search has changed meanwhile (empty the cache for new ones). They are stored as the app stores an upload. **Commons photos carry licences of their own** (mostly CC BY-SA, which asks for attribution when shared): they are for a local test database only, never committed or published.
 
 Recurring expenses (insurance, vignette, inspection, oil change, tyres; the distance ones only on vehicles with a reading) are last done so that some are overdue, some due soon and the rest upcoming; the app turns the first two into reminders when the notifications are looked at, as it always does. They are last done where the vehicle's fuel log puts them: a day and the odometer of that day (in the log, on a straight line between two fill-ups; before it, at the log's own pace), or for the tyres an odometer and the day the vehicle got there. The oil change counts both, so it is last done at whichever of the two came later: the app goes by the limit further along, and this way that is the state drawn for it too.
 
