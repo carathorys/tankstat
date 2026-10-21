@@ -20,6 +20,7 @@ All tooling is managed by `mise` (`mise.toml`: Node LTS, .NET 10). Prefer `mise 
 - `mise run test:unit`, `test:integration`, `test:api` - single layers
 - `mise run test:e2e` - the real-browser tests (Playwright, in Docker here) against a fresh `out/`; not part of `mise run test`
 - `mise run build` - self-hostable output in `out/` (published API + SPA in `wwwroot`)
+- `mise run screenshots` - the README's pictures in `docs/screenshots/` from a fresh `out/` with the Seeder's data (`.claude/rules/e2e.md`); by hand when a page they show changes, never in CI
 
 Single tests:
 - Frontend, from `src/frontend/tankstat-react`: `npx vitest run tests/<area>/<file>` (add `-t "<name>"` to filter)
