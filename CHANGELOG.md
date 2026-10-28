@@ -2,6 +2,23 @@
 
 Every release of Tankstat, newest first. Each one is a Docker image, `ghcr.io/carathorys/tankstat:<version>`, and a [GitHub release](https://github.com/carathorys/tankstat/releases). The numbers in brackets are the pull requests. Pre-releases (the previews) are not listed: their changes are in the release that followed them.
 
+## 0.17.1 (2026-10-28)
+
+A security and dependency release: nothing in the app changes.
+
+### Security
+
+- **The image's .NET runtime is 10.0.14** (was 10.0.13), with Microsoft's out-of-band fix for **CVE-2026-111497**, an out-of-bounds write in Google's Brotli decoder that .NET bundles (in other ecosystems called "Node2Shell"; [Microsoft's advisory](https://github.com/dotnet/announcements/issues/494)). Tankstat itself decompresses no Brotli: it turns on no request decompression, and its HTTP clients decompress nothing, which are the paths Microsoft names. The fix is in the runtime the image carries, so the image is built again on it; a scanner flags 0.17.0's image for it.
+
+### Changed
+
+- Dependency updates: the .NET packages 10.0.14, HotChocolate 16.7.1, MailKit 4.18.2, the MySQL provider 10.0.12 (#200); MUI X 9.16, Apollo Client 4.3.5, React Router 8.5, motion 14.6, i18next and lucide-react (#199); `fast-uri` and `serialize-javascript`, which only the build uses, for their advisories (#201, #202).
+
+### Upgrading
+
+- Nothing to do in the app: no migration and no setting changed. `0.17` and `latest` move to this release.
+- **Running the published build without Docker** (`dotnet out/Tankstat.Api.dll`): the machine's own ASP.NET Core runtime is the one that counts, so update it to 10.0.14 or later.
+
 ## 0.17.0 (2026-10-21)
 
 ### Added
