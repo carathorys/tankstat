@@ -45,7 +45,7 @@ More in [`docs/screenshots/`](docs/screenshots/): the refuelling grid and the li
 - **Dashboard and charts**: key figures, ready-made charts and your own, arranged per vehicle or for yourself alone (the Standard preset until then) (metric, grouping, chart type, period, a trend line, a running total or a year earlier beside it, a second measure on a scale of its own; cost per distance among the metrics), costs always per currency.
 - **Photos and photo reading**: up to ten photos per entry, and optionally a vision model behind any OpenAI-compatible API that reads the odometer or the receipt into the form. Off by default; nothing leaves your server unless you point it at a paid API.
 - **Notifications**: access changes and due schedules, folded so nobody is flooded.
-- **Import** from Fuelio (CSV), with a preview and duplicate handling.
+- **Import** from Fuelio (CSV), with a preview and duplicate handling, and cars out of a Tankstat backup or export.
 - **Sharing and access control**: owners, administrators, instance-wide defaults, per-user grants, and sharing a single vehicle's logs.
 - **Sign-in your way**: none, the app's own accounts, OpenID Connect, or a trusted reverse proxy (Authelia, Authentik, oauth2-proxy, ...).
 - **Your database**: SQLite (no setup), PostgreSQL, SQL Server or MySQL.
@@ -71,7 +71,7 @@ Everything is configured through environment variables, or by an administrator o
 ## Documentation
 
 - [User guide](docs/user-guide.md): what is on the screen and how each feature behaves.
-- [Importing](docs/importing.md): bringing your logs from Fuelio.
+- [Importing](docs/importing.md): bringing your logs from Fuelio, or cars from a Tankstat backup.
 - [Install as an app](docs/install-as-an-app.md): the home screen, offline use and updates.
 - [Configuration](docs/configuration.md): database, uploaded files, defaults, notifications, the app's own settings file and logging.
 - [Authentication and access control](docs/authentication.md): the four sign-in modes, every setting, and who may see what.
