@@ -223,3 +223,19 @@ it('says the span cannot be when the figure stops before In use since\'s month',
   expect(within(dialog).getByText('The day the estimate starts must be before the day it ends, and not in the future.')).toBeInTheDocument()
   expect(within(dialog).queryByText('Fill in In use since first.')).not.toBeInTheDocument() // it is filled
 })
+
+it('keeps no months of its own for a set ticked as new after estimating: the panel it hid was never the set\'s', async () => {
+  const { ui, state } = setup([tyreSummer, tyreWinter])
+  const dialog = await addForm(ui)
+  await ui.type(within(dialog).getByLabelText(/^Name/), 'Nokian')
+  await typeDate(ui, await findDateField(/In use since/, dialog), '2023-03-25')
+  await ui.click(within(dialog).getByRole('button', { name: 'Estimate from the fuel log' }))
+  await within(dialog).findByText(/^≈ 24,100 km/)
+  await ui.click(month(dialog, 'October')) // months of its own, picked in the estimate
+  await ui.click(within(dialog).getByLabelText('These tyres are new'))
+  await typeDate(ui, await findDateField(/Bought on/, dialog), '2026-10-01')
+  await ui.click(within(dialog).getByRole('button', { name: 'Save set' }))
+
+  await waitFor(() => expect(state.calls.AddTyreSet).toHaveLength(1))
+  expect(state.calls.AddTyreSet[0].input).not.toHaveProperty('usualMonths') // a new set keeps its season's (decision 51)
+})

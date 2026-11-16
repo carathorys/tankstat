@@ -123,7 +123,8 @@ export function TyreSetDialog({
           day: todayIso(),
           roughDistance: isNew ? 0 : (wholeOrNull(text('rough')) ?? 0),
           // Months of its own only when they were changed in the estimate (decision 51); else its season's, which the server takes for none.
-          ...(ownMonths(season, months) ? { usualMonths: months } : {}),
+          // A new set has no estimate: what was picked in a panel its *These tyres are new* hid is not its own.
+          ...(!isNew && ownMonths(season, months) ? { usualMonths: months } : {}),
           replace: replace !== null,
           ...(text('feeAmount') !== ''
             ? {
