@@ -105,6 +105,8 @@ TANKSTAT_TEST_SQLSERVER='Server=localhost,51433;Database={db};User Id=sa;Passwor
   dotnet test tests/backend/Tankstat.Infrastructure.UnitTests --filter FullyQualifiedName~ProviderRoundTripTests
 ```
 
+`RunScopeTests` runs the same way (`--filter FullyQualifiedName~RunScopeTests`): the app's real services inside one transaction (a background run, `.claude/rules/runs.md`) on SQLite always and on the servers named. Run it against PostgreSQL after changing the run scope or a repository on a run's path: only PostgreSQL refuses every statement after an error in a transaction, so only it shows a missing savepoint. On MySQL it saves vehicles only until #345 is fixed.
+
 Each provider's tests back up a seeded database, load the backup into another, and compare the two backups line for line; and move a backup from SQLite to the server and back, comparing the values (numbers without trailing zeros, timestamps to the microsecond). Run them after changing the dump or the load, a database driver or EF Core.
 
 The API tests pin the GraphQL schema the frontend relies on, so a breaking schema change fails them. They read the target from `TANKSTAT_API_URL` (default `http://localhost:5080`); `test:api` sets it for you.

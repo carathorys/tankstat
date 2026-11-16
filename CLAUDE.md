@@ -40,6 +40,7 @@ The rules of each area are in `.claude/rules/`, one file per area. Each loads by
 - `photos-and-uploads.md`: photos of logs, drafts, upload folders and the two storage roots.
 - `offline-sync.md`: client ids and versions, the offline download, connectivity, device data, the downloaded window, changes kept on the device, sending, parked changes, the generation after a restore.
 - `backups.md`: the backup file and its encryption, restore, the Backups page, schedule and retention.
+- `runs.md`: background runs in one transaction across the services (#335): the scope, savepoints, the mark, the gate and the busy answer.
 - `photo-reading.md`: reading photos with a vision model, logs saved before their photos are read, refuelling amounts, reading issues.
 - `settings-file.md`: the app's own settings file, the Server settings page, restarts.
 - `authentication.md`: sign-in modes, password resets, sessions and refresh tokens, OIDC.
