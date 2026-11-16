@@ -3,7 +3,8 @@ using Tankstat.Application.Auth;
 namespace Tankstat.Application.Runs;
 
 /// <summary>Who starts a run and the cars it will touch (#335).</summary>
-public sealed record RunStart(Principal Starter, IReadOnlyCollection<Guid> VehicleIds);
+/// <param name="RunId">The run's id, when whoever starts it keeps a record of its own under it (#337); else one is made.</param>
+public sealed record RunStart(Principal Starter, IReadOnlyCollection<Guid> VehicleIds, Guid? RunId = null);
 
 /// <summary>
 /// A run (#335): background work, an import or a partial restore, whose every save through the app's services lands in one database

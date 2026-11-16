@@ -267,6 +267,78 @@ namespace Tankstat.Migrations.Sqlite
                     b.ToTable("Images", (string)null);
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Imports.ImportRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("CancelledById")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Cars")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("DoneCars")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("DoneEntries")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Entries")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Failure")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Plan")
+                        .IsRequired()
+                        .HasMaxLength(1000000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("QueuedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Report")
+                        .HasMaxLength(1000000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("SeenAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Server")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("StartedById")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StartedById");
+
+                    b.HasIndex("State", "QueuedAt");
+
+                    b.ToTable("ImportRuns", (string)null);
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Instance.InstanceState", b =>
                 {
                     b.Property<int>("Id")

@@ -28,7 +28,7 @@ internal sealed class RunScope(
 
         // The mark first, outside the transaction: saves to these cars wait from here on, on every server, and a run a stopped server
         // rolled back is still known to have existed.
-        var marker = RunMarker.Start(start.Starter.Id, start.VehicleIds, clock.GetUtcNow());
+        var marker = RunMarker.Start(start.Starter.Id, start.VehicleIds, clock.GetUtcNow(), start.RunId);
         await markers.AddAsync(marker, ct);
         var stop = new Stop();
         _open[marker.Id] = stop;

@@ -43,6 +43,18 @@ public enum NotificationKind
 
     /// <summary>A tyre set in storage on a vehicle the recipient can see has reached the month it is to be fitted from (#292); one per set and season.</summary>
     TyreSwapDue,
+
+    /// <summary>To the person who started it: their import from a backup finished (#337); the report is kept for a week.</summary>
+    ImportFinished,
+
+    /// <summary>To the person who started it: their import brought nothing in (it failed, took too long, never got its turn, or the server restarted).</summary>
+    ImportNotFinished,
+
+    /// <summary>To the person who started it: someone else (an administrator) cancelled their import.</summary>
+    ImportCancelled,
+
+    /// <summary>To every administrator: a user imported cars from a backup.</summary>
+    CarsImported,
 }
 
 /// <summary>
@@ -62,6 +74,7 @@ public enum NotificationTopic
     Digest,
     Backup,
     Tyres,
+    Imports,
 }
 
 public static class NotificationKinds
@@ -79,6 +92,7 @@ public static class NotificationKinds
         NotificationKind.MoreActivity => NotificationTopic.Digest,
         NotificationKind.BackupFailed => NotificationTopic.Backup,
         NotificationKind.TyreSwapDue => NotificationTopic.Tyres,
+        NotificationKind.ImportFinished or NotificationKind.ImportNotFinished or NotificationKind.ImportCancelled or NotificationKind.CarsImported => NotificationTopic.Imports,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 

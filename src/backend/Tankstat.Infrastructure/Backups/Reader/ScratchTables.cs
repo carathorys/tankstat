@@ -24,7 +24,7 @@ internal static class ScratchTables
     public static readonly IReadOnlySet<string> Never = new HashSet<string>(StringComparer.Ordinal)
     {
         "AccessGrants", "AccessSettings", "GridSettings", "InstanceState", "Notifications", "OfflineSettings", "OfflineVehicleSettings",
-        "PasswordResetTokens", "PhotoDrafts", "PhotoReadings", "RunMarkers", "RunMarkerVehicles", "SyncChanges", "Tombstones", "UiSettings", "UserSessions",
+        "ImportRuns", "PasswordResetTokens", "PhotoDrafts", "PhotoReadings", "RunMarkers", "RunMarkerVehicles", "SyncChanges", "Tombstones", "UiSettings", "UserSessions",
         "VehicleOrders",
     };
 

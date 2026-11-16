@@ -67,6 +67,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
     public DbSet<RunMarker> RunMarkers => Set<RunMarker>();
+    public DbSet<Tankstat.Domain.Imports.ImportRun> ImportRuns => Set<Tankstat.Domain.Imports.ImportRun>();
     public DbSet<Refueling> Refuelings => Set<Refueling>();
     public DbSet<Expense> Expenses => Set<Expense>();
     public DbSet<RecurringExpense> RecurringExpenses => Set<RecurringExpense>();

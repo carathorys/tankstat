@@ -272,6 +272,78 @@ namespace Tankstat.Migrations.PostgreSql
                     b.ToTable("Images", (string)null);
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Imports.ImportRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CancelledById")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Cars")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DoneCars")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DoneEntries")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Entries")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Failure")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Plan")
+                        .IsRequired()
+                        .HasMaxLength(1000000)
+                        .HasColumnType("character varying(1000000)");
+
+                    b.Property<DateTime>("QueuedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Report")
+                        .HasMaxLength(1000000)
+                        .HasColumnType("character varying(1000000)");
+
+                    b.Property<DateTime>("SeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Server")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("StartedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StartedById");
+
+                    b.HasIndex("State", "QueuedAt");
+
+                    b.ToTable("ImportRuns", (string)null);
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Instance.InstanceState", b =>
                 {
                     b.Property<int>("Id")

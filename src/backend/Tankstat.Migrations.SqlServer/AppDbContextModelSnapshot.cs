@@ -272,6 +272,78 @@ namespace Tankstat.Migrations.SqlServer
                     b.ToTable("Images", (string)null);
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Imports.ImportRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CancelledById")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Cars")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DoneCars")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DoneEntries")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Entries")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Failure")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Plan")
+                        .IsRequired()
+                        .HasMaxLength(1000000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("QueuedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Report")
+                        .HasMaxLength(1000000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("SeenAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Server")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("StartedById")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StartedById");
+
+                    b.HasIndex("State", "QueuedAt");
+
+                    b.ToTable("ImportRuns", (string)null);
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Instance.InstanceState", b =>
                 {
                     b.Property<int>("Id")
