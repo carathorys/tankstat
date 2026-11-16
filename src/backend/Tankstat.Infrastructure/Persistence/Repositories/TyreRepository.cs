@@ -6,6 +6,7 @@ using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Odometers;
 using Tankstat.Domain.Tyres;
 using Tankstat.Domain.Vehicles;
+using Tankstat.Infrastructure.Persistence.Runs;
 
 namespace Tankstat.Infrastructure.Persistence.Repositories;
 
@@ -178,7 +179,7 @@ internal sealed class TyreRepository(IDbContextFactory<AppDbContext> dbFactory, 
     private async Task SaveInOneAsync(TyreSave save, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await using var tx = await db.BeginInnerAsync(ct);
         // An expense shows the line it was made from (its kind, its set's name, whether it is in the trash): a device downloads it again
         // when one of those changes, also when the expense itself is not saved. Before the save, while a line that lets go of it still names it.
         await db.TouchExpensesOfTyreLinesAsync([.. save.ChangedEntries.Select(e => e.Id)], [.. save.ChangedSets.Select(s => s.Id)], clock.GetUtcNow(), ct);

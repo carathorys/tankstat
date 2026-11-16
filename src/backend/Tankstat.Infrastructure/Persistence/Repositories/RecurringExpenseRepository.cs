@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Tankstat.Application.Access;
 using Tankstat.Application.Recurring;
 using Tankstat.Domain.Recurring;
+using Tankstat.Infrastructure.Persistence.Runs;
 
 namespace Tankstat.Infrastructure.Persistence.Repositories;
 
@@ -47,7 +48,7 @@ internal sealed class RecurringExpenseRepository(IDbContextFactory<AppDbContext>
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         db.RecurringExpenses.UpdateRange(items);
         db.RecurringCompletions.AddRange(links);
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await using var tx = await db.BeginInnerAsync(ct);
         await db.SaveChangesAsync(ct); // one transaction: no link without its moved schedule, and the other way round
         await db.TouchExpensesOfSchedulesAsync([.. items.Select(i => i.Id)], clock.GetUtcNow(), ct); // the expense now lists them
         await tx.CommitAsync(ct);
@@ -71,7 +72,7 @@ internal sealed class RecurringExpenseRepository(IDbContextFactory<AppDbContext>
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         db.RecurringExpenses.Update(item);
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await using var tx = await db.BeginInnerAsync(ct);
         await db.SaveChangesAsync(ct);
         await db.TouchExpensesOfSchedulesAsync([item.Id], clock.GetUtcNow(), ct); // they show its title
         await tx.CommitAsync(ct);
@@ -81,7 +82,7 @@ internal sealed class RecurringExpenseRepository(IDbContextFactory<AppDbContext>
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         db.RecurringExpenses.Remove(item);
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await using var tx = await db.BeginInnerAsync(ct);
         await db.TouchExpensesOfSchedulesAsync([item.Id], clock.GetUtcNow(), ct); // before the links cascade away with it
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);

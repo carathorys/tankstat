@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Tankstat.Domain.Vehicles;
+using Tankstat.Infrastructure.Persistence.Runs;
 
 namespace Tankstat.Infrastructure.Persistence;
 
@@ -12,7 +13,7 @@ internal static class LinkedChangesExtensions
     /// </summary>
     public static async Task SaveLogAsync<TLog>(this AppDbContext db, TLog log, LinkedChanges changes, CancellationToken ct) where TLog : class
     {
-        await using var tx = changes.RemovedReading is null && changes.RemovedCost is null ? null : await db.Database.BeginTransactionAsync(ct);
+        await using var tx = changes.RemovedReading is null && changes.RemovedCost is null ? null : await db.BeginInnerAsync(ct);
         db.Update(log); // marks the loaded graph (cost, reading) as modified; new and let-go rows are said so explicitly
         if (changes.CreatedReading is { } createdReading) db.Entry(createdReading).State = EntityState.Added;
         if (changes.CreatedCost is { } createdCost) db.Entry(createdCost).State = EntityState.Added;
