@@ -11,7 +11,9 @@ import { PhotosLeftOut } from './components/PhotosLeftOut.tsx'
 import type { Saved } from './components/usePhotoQueue.ts'
 import { useOdometerLabel } from './components/useOdometerLabel.ts'
 import { usePhotoSession } from './components/usePhotoSession.ts'
+import { SaveCancelled } from './dialogs/changeEdit.ts'
 import { DialogButtons, DialogCancel, DialogFrame } from './dialogs/DialogFrame.tsx'
+import { LeftBehindNote } from './dialogs/LeftBehindNote.tsx'
 import { DialogTrigger } from './dialogs/DialogTrigger.tsx'
 import { useClientId } from './dialogs/useClientId.ts'
 import { useDialogState } from './dialogs/useDialogState.ts'
@@ -218,6 +220,7 @@ export function ExpenseFormDialog({
         {ready && leftOut === 0 && (
           <ExpenseForm
             initial={initial}
+            edit={change}
             unit={vehicle.units.distance}
             editing={editing}
             categories={categories.data?.expenseCategories ?? []}
@@ -279,6 +282,7 @@ export function ExpenseFormDialog({
 
 function ExpenseForm({
   initial,
+  edit,
   unit,
   editing,
   categories,
@@ -301,6 +305,8 @@ function ExpenseForm({
   merge,
   onSubmit,
 }: {
+  /** A change edited on Waiting to sync (#330: the note of what saving would remove). */
+  edit?: ChangeEdit<ExpenseValues>
   /** The Save button's text, when it is not the add or edit one. */
   submitLabel?: string
   /** Merging a parked edit with what is on the server now: what to say (and offer) under each field. */
@@ -435,7 +441,7 @@ function ExpenseForm({
       await checkTyres(values)
       await onSubmit(values, tyreInput?.named || undefined)
     } catch (err) {
-      setError(err)
+      if (!(err instanceof SaveCancelled)) setError(err) // Cancel in the confirmation: as it was
     } finally {
       setBusy(false)
     }
@@ -523,6 +529,8 @@ function ExpenseForm({
           )}
           <ReadingProblems problems={fill.problems} />
         </div>
+        {/* What saving would remove from the changes waiting here (#330): a change edited on Waiting to sync. */}
+        <LeftBehindNote edit={edit} values={() => tyre.preview(fill.values.date, tyreIds)} />
         {error !== undefined && <ErrorMessage error={error} />}
         <DialogButtons>
           <SaveWait waiting={photosBusy && !busy} />

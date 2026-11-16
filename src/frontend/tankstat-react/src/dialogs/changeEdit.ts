@@ -1,3 +1,5 @@
+import type { Change } from '../offline/changes.ts'
+
 /**
  * Editing a change (on Waiting to sync: one kept on this device, or one the server parked) in the dialog of the entry it concerns: the
  * values the change carries, and the dialog's own title and Save label. The dialog loads nothing and offers no photos; the caller's
@@ -15,6 +17,18 @@ export interface ChangeEdit<T> {
   parked?: boolean
   /** Merging a parked edit with what is on the server now (`initial` is the merged values): what to say under each field. */
   merge?: MergeInfo
+  /**
+   * The changes waiting on this device that saving the dialog's values would remove (#330): `values` are those the dialog knows as they
+   * stand (the amount, the tyre details), over the change's own. The dialog says so in a note before Save; Save asks first.
+   */
+  leftBehind?: (values: Record<string, unknown>) => Change[]
+}
+
+/** Thrown by an edit's save when the person chose Cancel in its confirmation: the dialog stays as it was, with no error. */
+export class SaveCancelled extends Error {
+  constructor() {
+    super('The save was cancelled.')
+  }
 }
 
 /** One value of a field changed on both sides: as the change's input has it, and in words. */

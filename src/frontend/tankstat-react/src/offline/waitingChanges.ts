@@ -50,7 +50,8 @@ export function useDescribed(changes: readonly Change[], version: unknown): Wait
   return groups
 }
 
-async function describe(changes: readonly Change[]): Promise<WaitingGroup[]> {
+/** Names changes from what the device holds, grouped by vehicle (`useDescribed` for a screen; the edit's confirmation asks it at once, #330). */
+export async function describe(changes: readonly Change[]): Promise<WaitingGroup[]> {
   const rows = await deviceData.rows()
   const vehicles = new Map((rows ? await rows.vehicles() : []).map((v) => [v.id, v]))
   const names = new Map<string, string>([...vehicles].map(([id, v]) => [id, v.name]))

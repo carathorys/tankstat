@@ -14,7 +14,9 @@ import { RecurringStatusBadge } from './components/RecurringStatus.tsx'
 import type { Saved } from './components/usePhotoQueue.ts'
 import { useOdometerLabel } from './components/useOdometerLabel.ts'
 import { usePhotoSession } from './components/usePhotoSession.ts'
+import { SaveCancelled } from './dialogs/changeEdit.ts'
 import { DialogButtons, DialogCancel, DialogFrame } from './dialogs/DialogFrame.tsx'
+import { LeftBehindNote } from './dialogs/LeftBehindNote.tsx'
 import { DialogTrigger } from './dialogs/DialogTrigger.tsx'
 import { useClientId } from './dialogs/useClientId.ts'
 import { useDialogState } from './dialogs/useDialogState.ts'
@@ -157,6 +159,7 @@ export function RecurringDoneDialog({
         {open && leftOut === 0 && (
           <DoneForm
             vehicle={vehicle}
+            edit={change}
             items={items}
             selected={change?.initial.ids ?? selected}
             tyreIds={tyreIds}
@@ -203,6 +206,8 @@ export function RecurringDoneDialog({
 }
 
 interface FormProps {
+  /** A visit edited on Waiting to sync (#330: the note of what saving would remove). */
+  edit?: ChangeEdit<DoneValues>
   vehicle: { id: string; units: { distance: DistanceUnit } }
   items: DoneItem[]
   selected: string[]
@@ -244,6 +249,7 @@ function DoneForm(props: FormProps) {
 
 function DoneFields({
   vehicle,
+  edit,
   items,
   selected,
   tyreIds,
@@ -369,7 +375,7 @@ function DoneFields({
       }
       await onSubmit(values, logsExpense)
     } catch (err) {
-      setError(err)
+      if (!(err instanceof SaveCancelled)) setError(err) // Cancel in the confirmation: as it was
     } finally {
       setBusy(false)
     }
@@ -487,6 +493,8 @@ function DoneFields({
           )}
           <ReadingProblems problems={fill.problems} />
         </div>
+        {/* What saving would remove from the changes waiting here (#330): a change edited on Waiting to sync. */}
+        <LeftBehindNote edit={edit} values={async () => ({ amount: hasAmount ? (parseDecimal(fill.values.amount) ?? null) : null, ...(await tyre.preview(fill.values.date, tyreIds)) })} />
         {error !== undefined && <ErrorMessage error={error} />}
         <DialogButtons>
           <SaveWait waiting={photosBusy && !busy} />

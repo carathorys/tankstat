@@ -187,10 +187,11 @@ export function collapse(existing: readonly Change[], incoming: Change): Change[
       return [...existing, incoming]
     case 'update':
       if (trash) return [...existing] // on its way to the trash: nothing to edit
-      if (add) return replace(existing, add, { ...add, input: { ...add.input, ...pick(incoming.input, UPDATABLE[incoming.entity]), ...foldedTyre(add.input, incoming.input) } })
+      // An edit folding in may stop making what the change made (#330: tyre details switched off or fewer tyres): what was made on that goes.
+      if (add) return replacing(existing, add, { ...add, input: { ...add.input, ...pick(incoming.input, UPDATABLE[incoming.entity]), ...foldedTyre(add.input, incoming.input) } })
       if (update) {
         const folded = from(update, incoming)
-        return replace(existing, update, { ...folded, input: { ...folded.input, ...foldedTyre(update.input, incoming.input) }, id: update.id, seq: update.seq, createdAt: update.createdAt })
+        return replacing(existing, update, { ...folded, input: { ...folded.input, ...foldedTyre(update.input, incoming.input) }, id: update.id, seq: update.seq, createdAt: update.createdAt })
       }
       return [...existing, next]
     case 'trash': {
@@ -313,6 +314,38 @@ function withoutTyreDependents(list: readonly Change[], created: readonly string
 }
 
 const replace = (list: readonly Change[], old: Change, next: Change) => list.map((c) => (c === old ? next : c))
+
+/**
+ * What saving `change` with `input` (its edit on Waiting to sync) would remove from `list` (#330): a visit's edit takes its place, a parked
+ * change is applied as edited, and an edit of a waiting add or edit folds into it (`collapse`), each without the changes made on what it
+ * no longer makes.
+ */
+export function editLeavesBehind(list: readonly Change[], change: Change, input: Record<string, unknown>, parked = false): Change[] {
+  if (parked || change.action === 'markDone') return dependentsOf(list, change, { ...change, input })
+  const edit: Change = { id: `${change.id}:edit`, seq: Number.MAX_SAFE_INTEGER, createdAt: 0, entity: change.entity, action: 'update', vehicleId: change.vehicleId, targetId: change.targetId, input }
+  const after = new Set(collapse(list, edit).map((c) => c.id))
+  return list.filter((c) => c.id !== change.id && !after.has(c.id))
+}
+
+/** `old` replaced by `next`, without the changes made on what `old` made and `next` no longer does. */
+function replacing(list: readonly Change[], old: Change, next: Change): Change[] {
+  const gone = new Set(dependentsOf(list, old, next).map((c) => c.id))
+  return replace(list, old, next).filter((c) => !gone.has(c.id))
+}
+
+/**
+ * The changes waiting in `list` that were made on what `before` makes and `after`, its edit, no longer would (#330): an expense's or a
+ * visit's tyre log lines and a break-up's tyres no longer made (details switched off, fewer tyres, another set), the expense a visit no
+ * longer logs; and in turn what was made on what those make. Saving the edit removes them, since the server could only park them as not found.
+ */
+export function dependentsOf(list: readonly Change[], before: Change, after: Change): Change[] {
+  const made = new Set(createdBy(after))
+  const lost = createdBy(before).filter((id) => !made.has(id))
+  if (lost.length === 0) return []
+  const others = list.filter((c) => c.id !== before.id)
+  const left = new Set(withoutTyreDependents(others, lost))
+  return others.filter((c) => !left.has(c))
+}
 
 function pick(input: Record<string, unknown> | undefined, keys: readonly string[]) {
   return Object.fromEntries(keys.filter((k) => input && k in input).map((k) => [k, input![k]]))

@@ -201,8 +201,23 @@ export function useExpenseTyreDetails({
     return (await import('./expenseTyreInput.ts')).tyreInputOf(state, tyres, ids, day, initial?.setId === state.setId ? initial.breakUp : null)
   }
 
+  /**
+   * What a save would send of the tyre details as they stand, quietly (#330: the note of an edit that leaves changes behind): `tyre` as the
+   * save sends it (null switched off), nothing while that cannot be told yet (no kind, no tyre tapped) or it would change no line.
+   */
+  async function preview(day: string, ids: TyreDetailsIds): Promise<{ tyre?: ExpenseTyreInput | null }> {
+    if (!tyres || linked || !available) return {}
+    if (!open) return initial ? { tyre: null } : {}
+    if (!state.kind) return {}
+    try {
+      return { tyre: (await import('./expenseTyreInput.ts')).tyreInputOf(state, tyres, ids, day, initial?.setId === state.setId ? initial.breakUp : null).tyre }
+    } catch {
+      return {} // a tyre still to be tapped: Save says so
+    }
+  }
+
   // A kind the photo filled in after a refused Save answers "Choose what was done." too.
-  return { available, open, state, change, toggle, kindError: state.kind ? undefined : kindError, kindRef, title, announcement, inputOf, last, linked: linked ?? null, photo }
+  return { available, open, state, change, toggle, kindError: state.kind ? undefined : kindError, kindRef, title, announcement, inputOf, preview, last, linked: linked ?? null, photo }
 }
 
 export type ExpenseTyreDetails = ReturnType<typeof useExpenseTyreDetails>
