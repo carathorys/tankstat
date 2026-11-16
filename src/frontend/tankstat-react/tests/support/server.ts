@@ -52,6 +52,10 @@ export const server = setupServer(
   // The Account page's Offline data section: the default window, no vehicles of its own (tests with vehicles answer these themselves).
   graphql.query('OfflineSettings', () => HttpResponse.json({ data: { offlineSettings: { __typename: 'OfflineSettingsInfo', defaultWindow: 'span:P2M', vehicles: [] } } })),
   graphql.query('OfflineVehicles', () => HttpResponse.json({ data: { myVehicles: [] } })),
+  // Importing from a backup (#337): not offered, no run of the person's, none for the administrators' lists (its tests answer these themselves).
+  graphql.query('CanImportFromBackup', () => HttpResponse.json({ data: { canImportFromBackup: false } })),
+  graphql.query('MyImportRun', () => HttpResponse.json({ data: { myImportRun: null } })),
+  graphql.query('ImportRuns', () => HttpResponse.json({ data: { importRuns: [] } })),
   graphql.query('OfflineEstimates', () => HttpResponse.json({ data: { myVehicles: [] } })),
   graphql.mutation('UpdateOfflineSettings', ({ variables }) =>
     HttpResponse.json({ data: { updateOfflineSettings: { __typename: 'OfflineSettingsInfo', ...variables.input, vehicles: variables.input.vehicles.map((v: object) => ({ __typename: 'OfflineVehicleWindow', ...v })) } } }),

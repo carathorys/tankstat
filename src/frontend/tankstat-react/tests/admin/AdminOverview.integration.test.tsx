@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { HttpResponse } from 'msw'
 import { graphql } from '../support/graphql.ts'
@@ -99,6 +99,40 @@ it('lists what needs attention, each with where to act on it', async () => {
   // The page asks for its settings, which this file does not answer: that request fails inside this test, never after the teardown's
   // reset of the reachability, where it would leave the next test out of reach with no probe to bring it back.
   await answered()
+})
+
+it('lists the imports that go or wait, each with its cancel behind a confirmation, and nothing else needs attention then', async () => {
+  const ui = userEvent.setup()
+  overviewServer()
+  const run = (id: string, state: string, name: string) => ({
+    __typename: 'ImportRunInfo', id, kind: 'IMPORT', startedByName: name, mine: false, state, failure: null, queuedAt: '2026-11-16T10:00:00Z', startedAt: state === 'RUNNING' ? '2026-11-16T10:01:00Z' : null,
+    ahead: 0, fileToken: null, limitMinutes: 10, progress: { __typename: 'ImportRunProgressInfo', car: 1, cars: 2, done: 310, total: 470 },
+    cars: [{ __typename: 'ImportRunCarInfo', carId: 'c1', name: 'Octavia', targetName: null }, { __typename: 'ImportRunCarInfo', carId: 'c2', name: 'Fabia', targetName: null }], report: null,
+  })
+  let runs = [run('r1', 'RUNNING', 'Bob'), run('r2', 'WAITING', 'Carol')]
+  const cancelled: string[] = []
+  server.use(
+    graphql.query('ImportRuns', () => HttpResponse.json({ data: { importRuns: runs } })),
+    graphql.mutation('CancelImportRun', ({ variables }) => {
+      cancelled.push(variables.id as string)
+      runs = runs.filter((r) => r.id !== variables.id)
+      return HttpResponse.json({ data: { cancelImportRun: true } })
+    }),
+  )
+  renderWithApollo(<App />, '/admin')
+
+  const view = await overview()
+  expect(await view.findByText(/^An import started by Bob has been running since .* \(2 cars, 310 of 470 entries\)\.$/)).toBeInTheDocument()
+  expect(view.getByText(/^An import started by Carol has been waiting since .* \(2 cars\)\.$/)).toBeInTheDocument()
+  expect(view.queryByText('Nothing needs your attention.')).not.toBeInTheDocument()
+
+  await ui.click(view.getByRole('button', { name: 'Cancel it: Carol' }))
+  const dialog = await screen.findByRole('alertdialog', { name: 'Cancel the import?' })
+  await ui.click(within(dialog).getByRole('button', { name: 'Cancel the import' }))
+
+  await waitFor(() => expect(cancelled).toEqual(['r2']))
+  await waitFor(() => expect(screen.queryByText(/started by Carol/)).not.toBeInTheDocument())
+  expect(screen.getByText(/started by Bob/)).toBeInTheDocument()
 })
 
 it('asks the server every time it is opened, never answering from what it kept', async () => {

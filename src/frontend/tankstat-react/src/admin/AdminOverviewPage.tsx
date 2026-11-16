@@ -1,4 +1,6 @@
 import { useQuery } from '@apollo/client/react'
+import { ImportRunLines } from './ImportRuns.tsx'
+import { useImportRuns } from './useImportRuns.ts'
 import Accordion from '@mui/material/Accordion'
 import AccordionDetails from '@mui/material/AccordionDetails'
 import AccordionSummary from '@mui/material/AccordionSummary'
@@ -38,6 +40,8 @@ export function AdminOverviewPage() {
   const factsId = useId()
   const foldersId = useId()
   const { data, error, loading } = useQuery(AdminOverviewDocument, { fetchPolicy: 'no-cache' })
+  // Imports that go or wait (#337): each a line here, with its cancel.
+  const imports = useImportRuns()
 
   const content = (): ReactNode => {
     if (error) return <ErrorMessage error={error} />
@@ -56,13 +60,20 @@ export function AdminOverviewPage() {
           <Typography id={attentionId} component="h2" variant="h5" sx={{ mb: 1 }}>
             {t('adminOverview.attention')}
           </Typography>
+          {imports.runs.length > 0 && (
+            <Box sx={{ mb: attention.length > 0 ? 1 : 0 }}>
+              <ImportRunLines runs={imports.runs} onCancelled={imports.refetch} />
+            </Box>
+          )}
           {attention.length === 0 ? (
+            imports.runs.length > 0 ? null : (
             <Stack direction="row" sx={{ gap: 1, alignItems: 'center' }}>
               <Box component="span" sx={{ color: 'success.softText', display: 'inline-flex' }}>
                 <CircleCheck size={18} aria-hidden />
               </Box>
               <Typography>{t('adminOverview.nothing')}</Typography>
             </Stack>
+            )
           ) : (
             <Stack component="ul" sx={{ gap: 1, m: 0, p: 0, listStyle: 'none' }}>
               {attention.map((a) => (

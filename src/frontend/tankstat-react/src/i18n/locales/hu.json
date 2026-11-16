@@ -135,7 +135,13 @@
       "MORE_ACTIVITY_one": "Még {{count}} változás történt, túl sok ahhoz, hogy egyenként felsoroljuk.",
       "MORE_ACTIVITY_other": "Még {{count}} változás történt, túl sok ahhoz, hogy egyenként felsoroljuk.",
       "BACKUP_FAILED": "A(z) {{time}}-kor indult mentés nem sikerült: {{reason}}",
-      "SYNC_CHANGE_PARKED": "{{vehicle}}: {{change}} ({{submitter}} küldte) nem érvényesíthető: {{reason}} Dönts róla a Szinkronizálásra vár oldalon."
+      "SYNC_CHANGE_PARKED": "{{vehicle}}: {{change}} ({{submitter}} küldte) nem érvényesíthető: {{reason}} Dönts róla a Szinkronizálásra vár oldalon.",
+      "IMPORT_FINISHED_one": "Az importálásod elkészült: {{count}} autó ({{names}}). {{refused}} bejegyzést nem sikerült menteni.",
+      "IMPORT_FINISHED_other": "Az importálásod elkészült: {{count}} autó ({{names}}). {{refused}} bejegyzést nem sikerült menteni.",
+      "IMPORT_NOT_FINISHED": "Az importálásod nem fejeződött be: semmi nem lett importálva.",
+      "IMPORT_CANCELLED": "{{actor}} megszakította az importálásodat: semmi nem lett importálva.",
+      "CARS_IMPORTED_one": "{{actor}} {{count}} autót importált egy mentésből: {{names}}.",
+      "CARS_IMPORTED_other": "{{actor}} {{count}} autót importált egy mentésből: {{names}}."
     }
   },
   "status": {
@@ -810,6 +816,14 @@
       },
       "releaseHold": "Feloldás",
       "releaseHoldAria": "A(z) {{made}} mentés megtartásának feloldása ({{file}})"
+    },
+    "imports": {
+      "title": "Importálások",
+      "hint": "Csak akkor látszik, amíg egy importálás fut vagy várakozik.",
+      "running": "{{name}} importálása {{time}} óta fut ({{cars}} autó, {{done}} / {{total}} bejegyzés).",
+      "waiting": "{{name}} importálása {{time}} óta várakozik ({{cars}} autó).",
+      "cancel": "Megszakítás",
+      "cancelled": "Az importálás megszakítva."
     }
   },
   "errors": {
@@ -960,7 +974,13 @@
       "incomeSkipped": "A(z) „{{title}}” bevétel, amelyet nem importálunk.",
       "titleMissing": "A sorban nincs megnevezés vagy kategória.",
       "unitsDiffer": "A fájl más mértékegységeket használ, mint ez a jármű. A számok átváltás nélkül, úgy kerülnek be, ahogy vannak.",
-      "scratchUnusable": "A szerver most nem tud feltöltést fogadni. Szólj egy adminisztrátornak."
+      "scratchUnusable": "A szerver most nem tud feltöltést fogadni. Szólj egy adminisztrátornak.",
+      "carUnitsDiffer": "A(z) {{car}} és a(z) {{target}} más mértékegységben van; semmit nem váltunk át. Csak új autóként importálható.",
+      "noCars": "Válassz legalább egy autót az importáláshoz.",
+      "unknownCar": "A fájlban már nincs ilyen autó. Válaszd ki újra a fájlt.",
+      "carTwice": "Egy autó egyszer választható, és minden autód a fájl egy autóját kaphatja.",
+      "alreadyRunning": "Már fut vagy várakozik egy importálásod.",
+      "notOnMySql": "A mentésből importálás MySQL-en futó szerveren még nem érhető el."
     },
     "chart": {
       "invalid": "Ez a grafikon nem érvényes.",
@@ -1344,6 +1364,7 @@
     "intro": "Hozz át tankolásokat és más költségeket egy másik alkalmazásból. Mentés előtt látod, mi fog történni.",
     "steps": {
       "file": "Fájl",
+      "cars": "Autók",
       "target": "Cél",
       "review": "Áttekintés",
       "done": "Kész"
@@ -1357,7 +1378,8 @@
       "reading": "A fájl beolvasása…",
       "fuelioHint": "A Fuelióban exportáld a járművet (Beállítások, Export/Szinkron), és itt a .csv fájlt válaszd ki. A .zip fájlt előbb ki kell csomagolni. Az ismétlődő emlékeztetők ismétlődő költségek lesznek.",
       "formats": {
-        "fuelio": "Fuelio (CSV)"
+        "fuelio": "Fuelio (CSV)",
+        "tankstat": "Tankstat mentés vagy export"
       }
     },
     "target": {
@@ -1402,6 +1424,81 @@
       "log": "Tankolások",
       "costs": "Költségek",
       "vehicle": "Jármű"
+    },
+    "cars": {
+      "intro_one": "{{date}}-i mentés, a Tankstat {{version}} írta: {{count}} autó. Válaszd ki, melyiket importálod; amit importálsz, a tiéd lesz.",
+      "intro_other": "{{date}}-i mentés, a Tankstat {{version}} írta: {{count}} autó. Válaszd ki, melyiket importálod; amit importálsz, a tiéd lesz.",
+      "counts": "{{fuel}} tankolás · {{expenses}} kiadás · {{recurring}} ismétlődő kiadás",
+      "owner": "{{name}} autója volt",
+      "units": "Mértékegységek: {{units}}",
+      "asNew": "Új autóként",
+      "target": "Hozzáadás az egyik autódhoz:",
+      "suggested": "javasolt",
+      "neither": "Válassz egy autót, vagy jelöld be: Új autóként.",
+      "noOwnCars": "Nincs saját autód, amelyhez hozzáadhatnád.",
+      "unitsDiffer": "A(z) {{car}} mértékegysége {{units}}, a(z) {{target}} autóé {{targetUnits}}: csak új autóként importálható.",
+      "taken": "A(z) {{target}} már a fájl egy másik autóját kapja.",
+      "none": "Jelölj be legalább egy autót.",
+      "trashed_one": "A fájl {{count}} autója a kukában volt, ez kimarad.",
+      "trashed_other": "A fájl {{count}} autója a kukában volt, ezek kimaradnak.",
+      "back": "Vissza",
+      "next": "Tovább"
+    },
+    "plan": {
+      "cardNew": "{{car}} · új autó",
+      "cardAdded": "{{car}} · a(z) {{target}} autódhoz adva",
+      "owner": "{{name}} autója volt",
+      "new": "{{fuel}} tankolás, {{expenses}} kiadás és {{recurring}} ismétlődő kiadás új.",
+      "existing": "{{fuel}} tankolás, {{expenses}} kiadás és {{recurring}} ismétlődő kiadás már megvan, ezeket kihagyjuk.",
+      "differ_one": "{{count}} bejegyzés eltér a tiédtől, és marad, ahogy van.",
+      "differ_other": "{{count}} bejegyzés eltér a tiédtől, és marad, ahogy van.",
+      "inTrash_one": "{{count}} bejegyzés a(z) {{target}} kukájában van, ezt nem importáljuk; ha kell, ott állítsd vissza.",
+      "inTrash_other": "{{count}} bejegyzés a(z) {{target}} kukájában van, ezeket nem importáljuk; ha kellenek, ott állítsd vissza.",
+      "pastFigures": "A(z) {{target}} autóhoz adott bejegyzések megváltoztatják az érintett hónapok adatait és diagramjait.",
+      "policy": "Ha egy bejegyzést nem lehet menteni:",
+      "policyRest": "A többi importálása",
+      "policyLeaveOut": "Az autó kihagyása",
+      "yours": "Minden importált adat a tiéd. A megosztás és az, hogy ki rögzítette, nem kerül át; a bejegyzések nem lesznek ellenőrzésre jelölve.",
+      "mayWait": "Amíg fut, a mentésnek egy pillanatig várnia kell, neked és másoknak is.",
+      "back": "Vissza",
+      "import": "Importálás"
+    },
+    "run": {
+      "running": "Importálás… {{car}}. autó a(z) {{cars}}-ból · {{done}} / {{total}} bejegyzés",
+      "mayLeave": "Elhagyhatod az oldalt: értesítés jön, ha kész. Semmi nem marad meg, hacsak minden át nem megy.",
+      "cancel": "Importálás megszakítása",
+      "cancelTitle": "Megszakítod az importálást?",
+      "cancelText": "Semmi nem lesz importálva.",
+      "keep": "Folytatás",
+      "waiting_one": "Várakozás egy másik importálás végére ({{count}} van előtted). A tiéd magától indul.",
+      "waiting_other": "Várakozás más importálások végére ({{count}} van előtted). A tiéd magától indul.",
+      "fileKept": "A fájlt addig megőrizzük.",
+      "finished_one": "Az importálás kész: {{count}} autó.",
+      "finished_other": "Az importálás kész: {{count}} autó.",
+      "imported": "{{fuel}} tankolás, {{expenses}} kiadás és {{recurring}} ismétlődő kiadás importálva.",
+      "skipped": "{{existing}} bejegyzés már megvolt, ezeket kihagytuk; {{differing}} eltér, és marad, ahogy van; {{inTrash}} az autó kukájában van.",
+      "leftOut": "Ez az autó kimaradt: az egyik bejegyzését nem lehetett menteni.",
+      "refused_one": "{{count}} bejegyzést nem sikerült menteni:",
+      "refused_other": "{{count}} bejegyzést nem sikerült menteni:",
+      "refusedMore_one": "…és még {{count}}.",
+      "refusedMore_other": "…és még {{count}}.",
+      "entry": {
+        "refueling": "A(z) {{date}}-i tankolás",
+        "expense": "{{title}} ({{date}})",
+        "recurring": "{{title}} (ismétlődő kiadás)"
+      },
+      "nothing": "Semmi nem lett importálva: az autóid változatlanok.",
+      "failure": {
+        "CANCELLED": "Az importálás megszakadt.",
+        "TIMED_OUT": "Az importálás tovább tartott, mint amit a szerver enged ({{minutes}} perc), ezért leállt.",
+        "INTERRUPTED": "Az importálás nem fejeződött be: a szerver közben újraindult.",
+        "DID_NOT_START": "Az importálásod nem indult el: egy másik túl sokáig tartott. Semmi nem lett importálva.",
+        "FAILED": "Az importálás nem fejeződött be: valami váratlan történt a szerveren."
+      },
+      "backToReview": "Vissza az áttekintéshez",
+      "open": "Autó megnyitása",
+      "another": "Másik fájl importálása",
+      "gone": "Ennek az importálásnak a jelentését már nem őrizzük."
     }
   },
   "welcome": {

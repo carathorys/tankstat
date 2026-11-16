@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client/react'
+import { ImportRunsSection } from './ImportRuns.tsx'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Link from '@mui/material/Link'
@@ -66,6 +67,7 @@ export function BackupsPanel() {
     <Stack sx={{ gap: 3 }}>
       <Overview backups={backups} />
       <RunNow initial={backups.run} onFinished={() => void refetch()} />
+      <ImportRunsSection />
       <UploadBackup maxUploadMb={backups.settings.maxUploadMb} onUploaded={() => void refetch()} />
       <RestorePoints
         backups={backups}

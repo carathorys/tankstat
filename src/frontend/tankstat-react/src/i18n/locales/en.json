@@ -135,7 +135,13 @@
       "MORE_ACTIVITY_one": "There was {{count}} more change, too many to list one by one.",
       "MORE_ACTIVITY_other": "There were {{count}} more changes, too many to list one by one.",
       "BACKUP_FAILED": "The backup of {{time}} failed: {{reason}}",
-      "SYNC_CHANGE_PARKED": "{{change}} of {{vehicle}}, sent by {{submitter}}, could not be applied: {{reason}} Decide about it on Waiting to sync."
+      "SYNC_CHANGE_PARKED": "{{change}} of {{vehicle}}, sent by {{submitter}}, could not be applied: {{reason}} Decide about it on Waiting to sync.",
+      "IMPORT_FINISHED_one": "Your import finished: {{count}} car ({{names}}). {{refused}} entries could not be saved.",
+      "IMPORT_FINISHED_other": "Your import finished: {{count}} cars ({{names}}). {{refused}} entries could not be saved.",
+      "IMPORT_NOT_FINISHED": "Your import did not finish: nothing was imported.",
+      "IMPORT_CANCELLED": "{{actor}} cancelled your import: nothing was imported.",
+      "CARS_IMPORTED_one": "{{actor}} imported {{count}} car from a backup: {{names}}.",
+      "CARS_IMPORTED_other": "{{actor}} imported {{count}} cars from a backup: {{names}}."
     }
   },
   "status": {
@@ -810,6 +816,14 @@
       },
       "releaseHold": "Release",
       "releaseHoldAria": "Release the backup of {{made}} ({{file}})"
+    },
+    "imports": {
+      "title": "Imports",
+      "hint": "Shown only while an import runs or waits.",
+      "running": "An import started by {{name}} has been running since {{time}} ({{cars}} cars, {{done}} of {{total}} entries).",
+      "waiting": "An import started by {{name}} has been waiting since {{time}} ({{cars}} cars).",
+      "cancel": "Cancel it",
+      "cancelled": "The import was cancelled."
     }
   },
   "errors": {
@@ -960,7 +974,13 @@
       "incomeSkipped": "“{{title}}” is income, which is not imported.",
       "titleMissing": "The row has no title or category.",
       "unitsDiffer": "The file uses other units than this vehicle. Numbers are imported as they are, without conversion.",
-      "scratchUnusable": "The server cannot take an upload right now. Ask an administrator."
+      "scratchUnusable": "The server cannot take an upload right now. Ask an administrator.",
+      "carUnitsDiffer": "{{car}} and {{target}} are in other units; nothing is converted. It can only come as a new car.",
+      "noCars": "Choose at least one car to import.",
+      "unknownCar": "The file has no such car any more. Choose the file again.",
+      "carTwice": "A car can be chosen once, and each of your cars can take one car of the file.",
+      "alreadyRunning": "An import of yours is running or waiting already.",
+      "notOnMySql": "Importing from a backup is not available on a server that runs on MySQL yet."
     },
     "chart": {
       "invalid": "This chart is not valid.",
@@ -1344,6 +1364,7 @@
     "intro": "Bring fuel logs and other costs from another app into Tankstat. You see what will happen before anything is saved.",
     "steps": {
       "file": "File",
+      "cars": "Cars",
       "target": "Target",
       "review": "Review",
       "done": "Done"
@@ -1357,7 +1378,8 @@
       "reading": "Reading the file…",
       "fuelioHint": "In Fuelio, export the vehicle (Settings, Export/Sync) and choose the .csv file here. A .zip file has to be unzipped first. Reminders that repeat become recurring expenses.",
       "formats": {
-        "fuelio": "Fuelio (CSV)"
+        "fuelio": "Fuelio (CSV)",
+        "tankstat": "Tankstat backup or export"
       }
     },
     "target": {
@@ -1402,6 +1424,81 @@
       "log": "Fuel logs",
       "costs": "Costs",
       "vehicle": "Vehicle"
+    },
+    "cars": {
+      "intro_one": "A backup of {{date}}, written by Tankstat {{version}}: {{count}} car. Pick the ones to import; what you import becomes yours.",
+      "intro_other": "A backup of {{date}}, written by Tankstat {{version}}: {{count}} cars. Pick the ones to import; what you import becomes yours.",
+      "counts": "{{fuel}} refuellings · {{expenses}} expenses · {{recurring}} recurring expenses",
+      "owner": "was {{name}}'s",
+      "units": "Units: {{units}}",
+      "asNew": "As a new car",
+      "target": "Add to one of your cars:",
+      "suggested": "suggested",
+      "neither": "Choose a car, or tick As a new car.",
+      "noOwnCars": "You have no car of your own to add it to.",
+      "unitsDiffer": "{{car}} is in {{units}}, {{target}} in {{targetUnits}}: it can only come as a new car.",
+      "taken": "{{target}} already takes another car of this file.",
+      "none": "Tick at least one car.",
+      "trashed_one": "{{count}} car of this file was in the trash and is left out.",
+      "trashed_other": "{{count}} cars of this file were in the trash and are left out.",
+      "back": "Back",
+      "next": "Next"
+    },
+    "plan": {
+      "cardNew": "{{car}} · a new car",
+      "cardAdded": "{{car}} · added to your car {{target}}",
+      "owner": "was {{name}}'s",
+      "new": "{{fuel}} refuellings, {{expenses}} expenses and {{recurring}} recurring expenses are new.",
+      "existing": "{{fuel}} refuellings, {{expenses}} expenses and {{recurring}} recurring expenses already exist and are skipped.",
+      "differ_one": "{{count}} entry differs from yours and stays as it is.",
+      "differ_other": "{{count}} entries differ from yours and stay as they are.",
+      "inTrash_one": "{{count}} entry is in {{target}}'s trash and is not imported; restore it there if you want it.",
+      "inTrash_other": "{{count}} entries are in {{target}}'s trash and are not imported; restore them there if you want them.",
+      "pastFigures": "Adding entries to {{target}} changes its figures and charts for those months.",
+      "policy": "If an entry cannot be saved:",
+      "policyRest": "Import the rest",
+      "policyLeaveOut": "Leave this car out",
+      "yours": "Everything imported is yours. Sharing and who logged an entry are not carried over; entries are not marked for review.",
+      "mayWait": "While it runs, saving may have to wait for a moment, for you and for others.",
+      "back": "Back",
+      "import": "Import"
+    },
+    "run": {
+      "running": "Importing… car {{car}} of {{cars}} · {{done}} of {{total}} entries",
+      "mayLeave": "You can leave this page: a notification tells you when it is done. Nothing is kept unless everything goes through.",
+      "cancel": "Cancel the import",
+      "cancelTitle": "Cancel the import?",
+      "cancelText": "Nothing will be imported.",
+      "keep": "Keep importing",
+      "waiting_one": "Waiting for another import to finish ({{count}} ahead of you). Yours starts by itself.",
+      "waiting_other": "Waiting for other imports to finish ({{count}} ahead of you). Yours starts by itself.",
+      "fileKept": "The file is kept while it waits.",
+      "finished_one": "Import finished: {{count}} car.",
+      "finished_other": "Import finished: {{count}} cars.",
+      "imported": "Imported {{fuel}} refuellings, {{expenses}} expenses and {{recurring}} recurring expenses.",
+      "skipped": "{{existing}} entries already existed and were skipped; {{differing}} differ and stay as they are; {{inTrash}} are in the car's trash.",
+      "leftOut": "This car was left out: one of its entries could not be saved.",
+      "refused_one": "{{count}} entry could not be saved:",
+      "refused_other": "{{count}} entries could not be saved:",
+      "refusedMore_one": "…and {{count}} more.",
+      "refusedMore_other": "…and {{count}} more.",
+      "entry": {
+        "refueling": "The refuelling of {{date}}",
+        "expense": "{{title}} ({{date}})",
+        "recurring": "{{title}} (recurring expense)"
+      },
+      "nothing": "Nothing was imported: your cars are as they were.",
+      "failure": {
+        "CANCELLED": "The import was cancelled.",
+        "TIMED_OUT": "The import took longer than the server allows ({{minutes}} minutes) and was stopped.",
+        "INTERRUPTED": "The import did not finish: the server restarted while it ran.",
+        "DID_NOT_START": "Your import did not start: another one took too long. Nothing was imported.",
+        "FAILED": "The import did not finish: something unexpected happened on the server."
+      },
+      "backToReview": "Back to the review",
+      "open": "Open the vehicle",
+      "another": "Import another file",
+      "gone": "This import's report is no longer kept."
     }
   },
   "welcome": {

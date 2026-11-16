@@ -109,6 +109,18 @@ it('tells the administrators which backup failed and why, and leads to the Backu
   expect(say('BACKUP_FAILED', { error: 'backup.somethingNew', startedAt }).text).toBe(`The backup of ${when} failed: backup.somethingNew`)
 })
 
+it('words an import from a backup for its starter and for the administrators, and leads to its report', () => {
+  const run = { subject: { type: 'IMPORT_RUN' as const, id: 'run1' }, context: null }
+  expect(say('IMPORT_FINISHED', { count: '2', names: 'Octavia, Fabia', refused: '3' }, run)).toEqual({
+    text: 'Your import finished: 2 cars (Octavia, Fabia). 3 entries could not be saved.',
+    href: '/import?run=run1',
+  })
+  expect(say('IMPORT_FINISHED', { count: '1', names: 'Octavia', refused: '0' }, run).text).toBe('Your import finished: 1 car (Octavia). 0 entries could not be saved.')
+  expect(say('IMPORT_NOT_FINISHED', { reason: 'TimedOut' }, run)).toEqual({ text: 'Your import did not finish: nothing was imported.', href: '/import?run=run1' })
+  expect(say('IMPORT_CANCELLED', { actor: 'Root' }, run).text).toBe('Root cancelled your import: nothing was imported.')
+  expect(say('CARS_IMPORTED', { actor: 'Bob', count: '2', names: 'Octavia, Fabia' }, run)).toEqual({ text: 'Bob imported 2 cars from a backup: Octavia, Fabia.', href: null })
+})
+
 it('says plainly that something happened it cannot describe yet, without a link, instead of breaking the list', () => {
   // A kind of a newer server, while this tab still runs the release before it.
   expect(say('SOMETHING_NEWER' as NotificationKind, {}, { context: null })).toEqual({

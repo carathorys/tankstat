@@ -91,6 +91,15 @@ export function useNotificationText() {
         const reason = keyText(args.error, parseArgs(args.errorArgs)) ?? args.error ?? ''
         return { text: t('notifications.kinds.BACKUP_FAILED', { time: args.startedAt ? dateTime(args.startedAt) : '', reason }), href: '/admin/backups' }
       }
+      case 'IMPORT_FINISHED':
+        // An import from a backup (#337): how much came in; its report is kept for a week behind the link.
+        return { text: t('notifications.kinds.IMPORT_FINISHED', { count: Number(args.count ?? 0), names: args.names ?? '', refused: args.refused ?? '0' }), href: `/import?run=${n.subject.id}` }
+      case 'IMPORT_NOT_FINISHED':
+        return { text: t('notifications.kinds.IMPORT_NOT_FINISHED'), href: `/import?run=${n.subject.id}` }
+      case 'IMPORT_CANCELLED':
+        return { text: t('notifications.kinds.IMPORT_CANCELLED', { actor: args.actor ?? '' }), href: `/import?run=${n.subject.id}` }
+      case 'CARS_IMPORTED':
+        return { text: t('notifications.kinds.CARS_IMPORTED', { actor: args.actor ?? '', count: Number(args.count ?? 0), names: args.names ?? '' }), href: null }
       default:
         // A kind this release does not know: a newer server's, while this tab waits for its update. Said plainly, never a broken list.
         return { text: t('notifications.unknownKind'), href: null }

@@ -26,7 +26,7 @@ public sealed record ImportCarDelta(
 /// </summary>
 public sealed class BackupImportRules(IImportTargetReader targets, IVehicleRepository vehicles)
 {
-    public const string UnitsDifferKey = "import.unitsDiffer";
+    public const string UnitsDifferKey = "import.carUnitsDiffer";
 
     /// <summary>
     /// The target of a choice: a live car the person <b>owns</b> (one only shared with them, or an administrator's reach into someone

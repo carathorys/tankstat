@@ -102,3 +102,135 @@ mutation OpenBackupImport($input: OpenBackupImportInput!) {
 mutation EndBackupImport($token: String!) {
   endBackupImport(token: $token)
 }
+
+# The steps after the file (#337): the cars it offers, the review, the run and its report.
+query CanImportFromBackup {
+  canImportFromBackup
+}
+
+query BackupImportCars($token: String!) {
+  backupImportCars(token: $token) {
+    file {
+      createdAt
+      version
+      trashedCars
+    }
+    cars {
+      ownedByMe
+      suggestedTargetId
+      car {
+        id
+        name
+        licensePlate
+        ownerName
+        distanceUnit
+        volumeUnit
+        refuelings
+        expenses
+        schedules
+      }
+    }
+    targets {
+      id
+      name
+      licensePlate
+      distanceUnit
+      volumeUnit
+    }
+  }
+}
+
+query BackupImportReview($token: String!, $cars: [ImportCarChoiceInput!]!) {
+  backupImportReview(token: $token, cars: $cars) {
+    carId
+    name
+    ownerName
+    ownedByMe
+    targetVehicleId
+    targetName
+    newRefuelings
+    newExpenses
+    newSchedules
+    existingRefuelings
+    existingExpenses
+    existingSchedules
+    differing
+    inTrash
+  }
+}
+
+fragment ImportRunFields on ImportRunInfo {
+  id
+  kind
+  startedByName
+  mine
+  state
+  failure
+  queuedAt
+  startedAt
+  ahead
+  fileToken
+  limitMinutes
+  progress {
+    car
+    cars
+    done
+    total
+  }
+  cars {
+    carId
+    name
+    targetName
+  }
+  report {
+    carId
+    name
+    vehicleId
+    targetName
+    asNew
+    leftOut
+    refuelings
+    expenses
+    schedules
+    existing
+    differing
+    inTrash
+    refusedMore
+    refused {
+      kind
+      date
+      title
+      key
+      args
+    }
+  }
+}
+
+query ImportRun($id: UUID!) {
+  importRun(id: $id) {
+    ...ImportRunFields
+  }
+}
+
+query MyImportRun {
+  myImportRun {
+    ...ImportRunFields
+  }
+}
+
+# Administrators: every import that goes or waits.
+query ImportRuns {
+  importRuns {
+    ...ImportRunFields
+  }
+}
+
+mutation StartBackupImport($input: StartBackupImportInput!) {
+  startBackupImport(input: $input) {
+    ...ImportRunFields
+  }
+}
+
+mutation CancelImportRun($id: UUID!) {
+  cancelImportRun(id: $id)
+}
