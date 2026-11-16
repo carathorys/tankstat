@@ -255,7 +255,6 @@ public sealed class TyreEntry : IOwned, ISoftDeletable, ISynced
         return (created, removed, true);
     }
 
-    /// <summary>The line of an installation follows its first day; the reading typed for that day moves with it.</summary>
     /// <summary>
     /// A swap's line follows its installation to another set (#332), and its kind is what it would be were it made now: positions changed
     /// when the same set came off that day, else a swap. True when anything changed.
@@ -269,6 +268,7 @@ public sealed class TyreEntry : IOwned, ISoftDeletable, ISynced
         return true;
     }
 
+    /// <summary>The line of an installation follows its first day; the reading typed for that day moves with it.</summary>
     public bool MoveTo(DateOnly day, Guid? by = null)
     {
         if (day == Day) return false;

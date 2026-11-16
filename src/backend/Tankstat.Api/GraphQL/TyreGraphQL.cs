@@ -183,6 +183,7 @@ public sealed class TyreInstallationType : ObjectType<TyreInstallation>
         descriptor.Ignore(s => s.SavedVersion);
         descriptor.Ignore(s => s.IsDeleted);
         descriptor.Ignore(s => s.Update(default, default, default, default));
+        descriptor.Ignore(s => s.MoveToSet(default, default, default, default, default));
     }
 }
 
@@ -198,6 +199,7 @@ public sealed class TyreEntryType : ObjectType<TyreEntry>
         descriptor.Ignore(e => e.DeletedAt);
         descriptor.Ignore(e => e.Update(default, default, default, default, default, default));
         descriptor.Ignore(e => e.MoveTo(default, default));
+        descriptor.Ignore(e => e.FollowInstallation(default, default, default));
         descriptor.Ignore(e => e.TakeReading(default!, default));
         descriptor.Ignore(e => e.ForAnotherTyre(default, default, default));
         descriptor.Ignore(e => e.LeaveGroup(default));
