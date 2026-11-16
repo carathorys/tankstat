@@ -130,6 +130,11 @@ public sealed record TyreInstallationView(TyreInstallation Installation, Install
 public sealed record TyreSetView(TyreSet Set, TyreSetFigures Figures, IReadOnlyList<TyreInstallationView> Installations, bool OnTheCar,
     IReadOnlyList<TyreSpent>? Spent = null, int Repairs = 0, IReadOnlyList<TyreView>? Tyres = null, TyreReminderView? Reminder = null);
 
+/// <summary>A set whose swap reminder is due (#292), as the home card and the notification name it.</summary>
+/// <param name="Month">The month it is reminded from (1 = January).</param>
+/// <param name="SeasonStart">The season it is due for, its first day: what <em>Not this season</em> names.</param>
+public sealed record TyreReminderItem(Guid SetId, Guid VehicleId, string Name, TyreSeason Season, int Month, DateOnly SeasonStart);
+
 /// <summary>A set's swap reminder that is due (#292).</summary>
 /// <param name="Season">The season it is due for, its first day: what <em>Not this season</em> names.</param>
 public sealed record TyreReminderView(DateOnly Season);
@@ -1101,6 +1106,32 @@ public sealed class TyreService(
         var category = book.Entries.Where(e => !e.IsDeleted && e.ExpenseId is not null).OrderByDescending(e => e.Day).ThenByDescending(e => e.UpdatedAt)
             .Select(book.ExpenseOf).FirstOrDefault(x => x is { IsDeleted: false })?.Category;
         return new TyreOverview(vehicleId, sets, entries, book.Readings, category, costs.All, costs.NoSet);
+    }
+
+    /// <summary>
+    /// The swap reminders due on each of these vehicles (#292), by the set's name: for the home page's cards and the notifications, in one
+    /// access check and two queries whatever the number of vehicles. A vehicle whose logs the user may not see has none.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<TyreReminderItem>>> ListRemindersAsync(IReadOnlyCollection<Vehicle> vehicles, CancellationToken ct)
+    {
+        var result = vehicles.ToDictionary(v => v.Id, _ => (IReadOnlyList<TyreReminderItem>)[]);
+        if (vehicles.Count == 0) return result;
+        var scope = await access.LogScopeAsync(AccessLevel.View, ct);
+        var visible = vehicles.Where(v => scope.Contains(v.OwnerId, v.Id)).Select(v => v.Id).ToList();
+        if (visible.Count == 0) return result;
+
+        var rows = await tyres.LoadRemindersAsync(visible, ct);
+        var installations = rows.Installations.ToLookup(i => i.VehicleId);
+        foreach (var sets in rows.Sets.GroupBy(s => s.VehicleId))
+        {
+            var due = Reminders([.. sets], [.. installations[sets.Key]], Today);
+            result[sets.Key] =
+            [
+                .. sets.Where(s => due.ContainsKey(s.Id)).OrderBy(s => s.Name, StringComparer.CurrentCultureIgnoreCase).ThenBy(s => s.Id)
+                    .Select(s => new TyreReminderItem(s.Id, s.VehicleId, s.Name, s.Season, s.EffectiveReminderMonth!.Value, due[s.Id])),
+            ];
+        }
+        return result;
     }
 
     /// <summary>The sets whose swap reminder is due on <paramref name="today"/> (#292), each with its season.</summary>

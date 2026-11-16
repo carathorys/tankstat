@@ -478,6 +478,7 @@ export type NotificationEntityType =
   | 'RECURRING_EXPENSE'
   | 'REFUELING'
   | 'SYNC_CHANGE'
+  | 'TYRE_SET'
   | 'USER'
   | 'VEHICLE';
 
@@ -493,6 +494,7 @@ export type NotificationKind =
   | 'RECURRING_DUE_SOON'
   | 'RECURRING_OVERDUE'
   | 'SYNC_CHANGE_PARKED'
+  | 'TYRE_SWAP_DUE'
   | 'VEHICLE_SHARED';
 
 export type OfflineChangesInput = {

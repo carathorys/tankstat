@@ -4,6 +4,7 @@ using Tankstat.Application.Tyres;
 using Tankstat.Domain;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Measurements;
+using Tankstat.Domain.Notifications;
 using Tankstat.Domain.Odometers;
 using Tankstat.Domain.Tyres;
 using Tankstat.Domain.Users;
@@ -719,6 +720,56 @@ public class TyreServiceTests
         await s.Tyres.DismissReminderAsync(winter, season, default);
         On(s, 2027, 11, 2); // it ends by itself with the next season
         Assert.Equal(D(2027, 11, 1), (await Now(s, winter)).Reminder!.Season);
+    }
+
+    [Fact]
+    public async Task TheCarsDueSets_AreListedForSeveralVehiclesAtOnce_OnlyWhereTheLogsMayBeSeen()
+    {
+        var s = await Setup();
+        var (_, _, winter) = await TwoSets(s);
+        var other = await s.W.VehicleService.AddAsync("Other", null, FuelType.Petrol, MeasurementUnits.Metric, default);
+        On(s, 2026, 11, 16);
+
+        var due = await s.Tyres.ListRemindersAsync([s.Car, other], default);
+        var item = Assert.Single(due[s.Car.Id]);
+        Assert.Equal((winter, s.Car.Id, "Continental WinterContact", TyreSeason.Winter, 11, D(2026, 11, 1)), (item.SetId, item.VehicleId, item.Name, item.Season, item.Month, item.SeasonStart));
+        Assert.Empty(due[other.Id]);
+
+        s.W.Current.SignInAs(s.Bob); // no access to the car's logs: nothing
+        Assert.Empty((await s.Tyres.ListRemindersAsync([s.Car], default))[s.Car.Id]);
+    }
+
+    [Fact]
+    public async Task ADueSet_RaisesOneNotificationPerSeason_KeptWhileDue_AndTheSwapRemovesNothing()
+    {
+        var s = await Setup();
+        var (_, summer, winter) = await TwoSets(s);
+        Assert.Empty(await s.W.NotificationService.ListAsync(false, 0, 10, default)); // October: nothing is due
+
+        On(s, 2026, 11, 16);
+        var n = Assert.Single(await s.W.NotificationService.ListAsync(false, 0, 10, default));
+        Assert.Equal((NotificationKind.TyreSwapDue, NotificationTopic.Tyres, NotificationRef.TyreSet(winter), (NotificationRef?)NotificationRef.Vehicle(s.Car.Id), "2026-11"),
+            (n.Kind, n.Topic, n.Subject, n.Context, n.Occurrence));
+        Assert.Equal(("Continental WinterContact", "WINTER", "Car"), (n.Args["set"], n.Args["season"], n.Args["vehicleName"]));
+        Assert.Single(await s.W.NotificationService.ListAsync(false, 0, 10, default)); // again: nothing new
+
+        // Read long ago and still due: kept, or the next look would add it again as new.
+        await s.W.NotificationService.MarkReadAsync(null, default);
+        On(s, 2027, 3, 20);
+        Assert.Equal(n.Id, Assert.Single(await s.W.NotificationService.ListAsync(false, 0, 10, default)).Id);
+
+        // Someone who may see the car's logs as themselves gets their own; the swap deletes neither.
+        s.W.Grants.Items.Add(AccessGrant.Create(s.Alice.Id, s.Bob.Id, AccessLevel.View));
+        s.W.Current.SignInAs(s.Bob);
+        Assert.Equal(NotificationKind.TyreSwapDue, Assert.Single(await s.W.NotificationService.ListAsync(false, 0, 10, default)).Kind);
+        s.W.Current.SignInAs(s.Alice);
+        await s.Tyres.SwapAsync(new TyreSwapInput(s.Car.Id, winter, D(2027, 3, 20), null, false, null, null), default);
+
+        // The next season: a second one for the winter set (off again in spring), and the summer set had its own in March.
+        await s.Tyres.SwapAsync(new TyreSwapInput(s.Car.Id, summer, D(2027, 3, 21), null, false, null, null), default);
+        On(s, 2027, 11, 5);
+        var all = await s.W.NotificationService.ListAsync(false, 0, 10, default);
+        Assert.Equal(["2026-11", "2027-11"], all.Where(x => x.Subject == NotificationRef.TyreSet(winter)).Select(x => x.Occurrence).Order());
     }
 
     [Fact]

@@ -100,6 +100,35 @@ public class TyreRepositoryTests
     }
 
     [Fact]
+    public async Task TheReminderReads_TakeTheSetsInUseOfSeveralVehicles_AndTheVehiclesWithASetThatCanRemind()
+    {
+        // #292: the home page's cards and the notification, for several vehicles at once.
+        await using var db = Database();
+        var (first, second, quiet) = (await Car(db), await Car(db), await Car(db));
+        var (summer, installation, _) = await SetOnTheCar(db, first); // a summer set on its season's month, on the car
+        TyreSet Stored(Vehicle car, string name, TyreSeason season, int? month = null) =>
+            TyreSet.Create(car.OwnerId, car.OwnerId, car.Id, name, season, null, D(2023, 11, 1), null, null, 0, null, reminderMonth: month, today: D(2026, 10, 1));
+        var winter = Stored(second, "Winter", TyreSeason.Winter);
+        var retired = Stored(second, "Retired", TyreSeason.Winter);
+        retired.Retire(D(2026, 10, 1));
+        var trashed = Stored(second, "Trashed", TyreSeason.Winter);
+        trashed.MarkDeleted(DateTimeOffset.UtcNow);
+        var save = new TyreSave();
+        foreach (var set in new[] { winter, retired, trashed, Stored(quiet, "All season", TyreSeason.AllSeason), Stored(quiet, "Off", TyreSeason.Winter, 0) }) save.AddedSets.Add(set);
+        await db.Get<ITyreRepository>().SaveAsync(save, default);
+
+        var rows = await db.Get<ITyreRepository>().LoadRemindersAsync([first.Id, second.Id], default);
+        Assert.Equal([summer.Id, winter.Id], rows.Sets.Select(s => s.Id).Order().ToList().Intersect([summer.Id, winter.Id]).Order());
+        Assert.Equal(2, rows.Sets.Count); // neither the retired nor the trashed one
+        Assert.Equal(installation.Id, Assert.Single(rows.Installations).Id);
+        Assert.Empty((await db.Get<ITyreRepository>().LoadRemindersAsync([], default)).Sets);
+
+        // The car whose sets have no month is not asked about at all.
+        Assert.Equal(new[] { first.Id, second.Id }.Order(), (await db.Get<ITyreRepository>().ListReminderVehicleIdsAsync(OwnerScope.All, default)).Order());
+        Assert.Empty(await db.Get<ITyreRepository>().ListReminderVehicleIdsAsync(OwnerScope.Of([Guid.NewGuid()]), default));
+    }
+
+    [Fact]
     public async Task ASave_RoundTrips_AndTheLinesReading_IsOneOfTheCarsReadings()
     {
         await using var db = Database();

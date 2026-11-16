@@ -24,6 +24,26 @@ internal sealed class TyreRepository(IDbContextFactory<AppDbContext> dbFactory, 
         return new TyreBook(sets, installations, entries, TyreCalculator.Sorted(readings), await LinkedExpensesAsync(db, entries, ct), tyres, places);
     }
 
+    public async Task<TyreReminderRows> LoadRemindersAsync(IReadOnlyCollection<Guid> vehicleIds, CancellationToken ct)
+    {
+        if (vehicleIds.Count == 0) return new TyreReminderRows([], []);
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var sets = await db.TyreSets.AsNoTracking().Where(s => vehicleIds.Contains(s.VehicleId) && s.DeletedAt == null && s.RetiredOn == null).ToListAsync(ct);
+        if (sets.Count == 0) return new TyreReminderRows([], []);
+        var installations = await db.TyreInstallations.AsNoTracking().Where(i => vehicleIds.Contains(i.VehicleId) && i.DeletedAt == null).ToListAsync(ct);
+        return new TyreReminderRows(sets, installations);
+    }
+
+    public async Task<IReadOnlyList<Guid>> ListReminderVehicleIdsAsync(OwnerScope scope, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        // The vehicles' query filter leaves out the trashed ones. A month of 0 is no reminder; an all-season set on its season's has none either.
+        return await db.TyreSets.InScope(scope, s => s.VehicleId)
+            .Where(s => s.DeletedAt == null && s.RetiredOn == null && (s.ReminderMonth == null ? s.Season != TyreSeason.AllSeason : s.ReminderMonth != 0))
+            .Where(s => db.Vehicles.Any(v => v.Id == s.VehicleId))
+            .Select(s => s.VehicleId).Distinct().ToListAsync(ct);
+    }
+
     /// <summary>The lines made together for several tyres (#289) hold one reading row: one object, as their expense holds it too.</summary>
     private static void ShareReadings(IReadOnlyCollection<TyreEntry> entries)
     {

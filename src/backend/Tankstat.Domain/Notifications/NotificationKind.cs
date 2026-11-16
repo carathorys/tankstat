@@ -40,6 +40,9 @@ public enum NotificationKind
 
     /// <summary>To every administrator (the anonymous user with sign-in off): a backup the app was to write failed; one a day at most.</summary>
     BackupFailed,
+
+    /// <summary>A tyre set in storage on a vehicle the recipient can see has reached the month it is to be fitted from (#292); one per set and season.</summary>
+    TyreSwapDue,
 }
 
 /// <summary>
@@ -58,6 +61,7 @@ public enum NotificationTopic
     Sync,
     Digest,
     Backup,
+    Tyres,
 }
 
 public static class NotificationKinds
@@ -74,11 +78,12 @@ public static class NotificationKinds
         NotificationKind.SyncChangeParked => NotificationTopic.Sync,
         NotificationKind.MoreActivity => NotificationTopic.Digest,
         NotificationKind.BackupFailed => NotificationTopic.Backup,
+        NotificationKind.TyreSwapDue => NotificationTopic.Tyres,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
     /// <summary>Topics whose notifications are derived (worked out on read from the current state) rather than sent by events.</summary>
-    public static IReadOnlySet<NotificationTopic> DerivedTopics { get; } = new HashSet<NotificationTopic> { NotificationTopic.Recurring, NotificationTopic.LogReview, NotificationTopic.Sync, NotificationTopic.Backup };
+    public static IReadOnlySet<NotificationTopic> DerivedTopics { get; } = new HashSet<NotificationTopic> { NotificationTopic.Recurring, NotificationTopic.LogReview, NotificationTopic.Sync, NotificationTopic.Backup, NotificationTopic.Tyres };
 
     /// <summary>Topics whose notifications are sent by events; only these count against the hourly limit.</summary>
     public static IReadOnlyList<NotificationTopic> EventTopics { get; } = Enum.GetValues<NotificationTopic>().Where(t => !DerivedTopics.Contains(t)).ToList();

@@ -669,8 +669,15 @@ public class TyreGraphQLTests(ApiFixture api)
 
         // Not this season, and its undo.
         var season = SetNamed(added, "Nokian").GetProperty("reminder").GetProperty("season").GetString();
+        // The home card's row: the set by name, with its kind, its month and the season to dismiss.
+        async Task<JsonElement> Card() => (await Send("query($id: UUID!) { vehicle(id: $id) { tyreReminders { setId name setSeason month season } } }", new { id = vehicle }))
+            .GetProperty("data").GetProperty("vehicle").GetProperty("tyreReminders");
+        var row = Assert.Single((await Card()).EnumerateArray());
+        Assert.Equal((id.ToString(), "Nokian", "ALL_SEASON", month, season),
+            (row.GetProperty("setId").GetString(), row.GetProperty("name").GetString(), row.GetProperty("setSeason").GetString(), row.GetProperty("month").GetInt32(), row.GetProperty("season").GetString()));
         var dismissed = SetNamed(await Mutate("dismissTyreReminder", "DismissTyreReminderInput", new { id, season }, selection), "Nokian");
         Assert.Equal((JsonValueKind.Null, season), (dismissed.GetProperty("reminder").ValueKind, dismissed.GetProperty("set").GetProperty("reminderDismissedFor").GetString()));
+        Assert.Equal(0, (await Card()).GetArrayLength());
         var back = (await Send($"mutation($id: UUID!) {{ restoreTyreReminder(id: $id) {{ {selection} }} }}", new { id })).GetProperty("data").GetProperty("restoreTyreReminder");
         Assert.Equal(season, SetNamed(back, "Nokian").GetProperty("reminder").GetProperty("season").GetString());
 

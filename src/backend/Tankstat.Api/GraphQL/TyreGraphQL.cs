@@ -242,6 +242,31 @@ public sealed class TyreSetViewType : ObjectType<TyreSetView>
     }
 }
 
+/// <summary>The swap reminders due on the vehicles of a response (#292), loaded together: one access check and two queries for a page of cards.</summary>
+public sealed class TyreRemindersByVehicleLoader(TyreService tyres, IBatchScheduler scheduler, DataLoaderOptions options)
+    : BatchDataLoader<Vehicle, IReadOnlyList<TyreReminderItem>>(scheduler, options)
+{
+    protected override async Task<IReadOnlyDictionary<Vehicle, IReadOnlyList<TyreReminderItem>>> LoadBatchAsync(IReadOnlyList<Vehicle> keys, CancellationToken ct)
+    {
+        var loaded = await tyres.ListRemindersAsync(keys, ct);
+        return keys.ToDictionary(v => v, v => loaded[v.Id]);
+    }
+}
+
+/// <summary>A set in storage whose month to be fitted has come (#292), on its vehicle's home card.</summary>
+/// <param name="SetSeason">The set's kind: winter, summer or all-season.</param>
+/// <param name="Season">The season it is due for, its first day: what Not this season names.</param>
+/// <param name="Month">The month it is reminded from (1 = January).</param>
+public sealed record VehicleTyreReminder(Guid SetId, string Name, TyreSeason SetSeason, int Month, DateOnly Season);
+
+[ExtendObjectType<Vehicle>]
+public sealed class VehicleTyreReminderExtensions
+{
+    /// <summary>The tyre sets in storage whose swap reminder is due (#292), by name; none for someone who may not see the vehicle's logs.</summary>
+    public async Task<IReadOnlyList<VehicleTyreReminder>> GetTyreReminders([Parent] Vehicle vehicle, TyreRemindersByVehicleLoader loader, CancellationToken ct) =>
+        (await loader.LoadAsync(vehicle, ct) ?? []).Select(r => new VehicleTyreReminder(r.SetId, r.Name, r.Season, r.Month, r.SeasonStart)).ToList();
+}
+
 /// <summary>A set's swap reminder that is due (#292).</summary>
 public sealed class TyreReminderViewType : ObjectType<TyreReminderView>
 {

@@ -78,6 +78,7 @@ do
         .AddDataLoader<ExpenseSchedulesLoader>()
         .AddTypeExtension<ExpenseRecurringExtensions>()
         .AddTypeExtension<VehicleRecurringExtensions>()
+        .AddTypeExtension<VehicleTyreReminderExtensions>()
         .AddTypeExtension<RecurringMutations>()
         .AddTypeExtension<RecurringExpenseInfoExtensions>()
         .AddType<TyreSetType>()
