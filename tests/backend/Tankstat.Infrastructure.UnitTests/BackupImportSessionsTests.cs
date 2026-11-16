@@ -89,7 +89,12 @@ public sealed class BackupImportSessionsTests : IAsyncDisposable
         for (var i = 0; i < 600; i++)
         {
             var status = database.Get<IBackupImportSessions>().Find(user, token) ?? throw new InvalidOperationException("The session is gone.");
-            if (status.State != BackupImportState.Opening) return status;
+            if (status.State != BackupImportState.Opening)
+            {
+                // A refused file's session says so before its folder is gone: the open has wound down before a test looks at the scratch folder.
+                await database.Get<BackupImportSessions>().WhenIdleAsync();
+                return status;
+            }
             await Task.Delay(50);
         }
         throw new TimeoutException("The file was not opened.");
@@ -195,6 +200,26 @@ public sealed class BackupImportSessionsTests : IAsyncDisposable
         Assert.Equal([schedule], read.Expenses.Single(e => e.Id == visit).CompletedScheduleIds); // the visit's link
         Assert.Empty(read.Expenses.Single(e => e.Values.Title == "Car wash").CompletedScheduleIds);
         Assert.Equal((95m, "EUR", 10_200L), (read.Expenses.Single(e => e.Id == visit).Values.Amount, read.Expenses.Single(e => e.Id == visit).Values.Currency, read.Expenses.Single(e => e.Id == visit).Values.Odometer));
+    }
+
+    [Fact]
+    public async Task AFileWithoutCars_AndACarWithoutAPlate_AreOpened()
+    {
+        var empty = Instance();
+        var none = await empty.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
+        var nothing = await SettledAsync(empty, Alice, (await UploadAsync(empty, Alice, none.Path)).Token);
+        Assert.Equal(BackupImportState.Opened, nothing.State);
+        Assert.Empty(nothing.Summary!.Cars);
+
+        var database = Instance();
+        await using (var scope = database.Services.CreateAsyncScope())
+            await scope.ServiceProvider.GetRequiredService<Tankstat.Application.Vehicles.VehicleService>()
+                .AddAsync("No plate yet", null, Tankstat.Domain.Vehicles.FuelType.Petrol, Tankstat.Domain.Measurements.MeasurementUnits.Metric, default);
+        var backup = await database.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
+        var opened = await SettledAsync(database, Bob, (await UploadAsync(database, Bob, backup.Path)).Token);
+
+        var car = Assert.Single(opened.Summary!.Cars);
+        Assert.Equal(("No plate yet", null, 0), (car.Name, car.LicensePlate, car.Refuelings));
     }
 
     [Fact]
@@ -310,8 +335,9 @@ public sealed class BackupImportSessionsTests : IAsyncDisposable
         Assert.Empty(Folders());
 
         var bobs = await UploadAsync(database, Bob, backup);
-        sessions.EndForUser(Bob);
+        sessions.EndForUser(Bob); // while it is still being opened
         Assert.Null(sessions.Find(Bob, bobs.Token));
+        await store.WhenIdleAsync(); // the open winds down: what it wrote under the folder's delete, or after it, is gone too
         Assert.Empty(Folders());
     }
 

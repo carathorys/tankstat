@@ -24,10 +24,13 @@ export async function uploadImportFile(format: string, file: Blob): Promise<{ to
 export async function uploadBackupImport(file: Blob, onProgress?: (share: number) => void, signal?: AbortSignal): Promise<{ token: string }> {
   await refreshSession().catch(() => false)
   return new Promise((resolve, reject) => {
+    const givenUp = () => reject(new DOMException('The upload was given up.', 'AbortError'))
+    // Given up while the cookie was renewed: an aborted signal fires no event any more, so nothing is sent at all.
+    if (signal?.aborted) return givenUp()
     const request = new XMLHttpRequest()
     // Given up (the step was left): the upload stops, and the server throws away what it had taken.
     signal?.addEventListener('abort', () => request.abort())
-    request.onabort = () => reject(new DOMException('The upload was given up.', 'AbortError'))
+    request.onabort = givenUp
     request.open('POST', '/imports/tankstat')
     request.withCredentials = true
     request.setRequestHeader('Content-Type', 'application/zip')

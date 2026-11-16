@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import { BackupFileStep } from '../../src/pages/import/BackupFileStep.tsx'
+import { uploadBackupImport } from '../../src/pictures/uploadFile.ts'
 import { check } from '../support/accessibility.tsx'
 import { graphql } from '../support/graphql.ts'
 import { renderWithApollo, stubViewport } from '../support/mocks.tsx'
@@ -167,4 +168,14 @@ it('leaving the step with a file still on the server gives it up there', async (
   view.unmount()
 
   await waitFor(() => expect(calls.ended).toEqual(['t1']))
+})
+
+it('an upload given up before it began (the step left while the session was renewed) sends nothing', async () => {
+  const { calls } = setup()
+  const left = new AbortController()
+  left.abort()
+
+  await expect(uploadBackupImport(new Blob(['zip']), undefined, left.signal)).rejects.toMatchObject({ name: 'AbortError' })
+
+  expect(calls.uploads).toBe(0)
 })

@@ -6,6 +6,7 @@ import Typography from '@mui/material/Typography'
 import { FileUp } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import { dayIso } from '../../forms/dates.ts'
 import { Field, FieldMessage } from '../../forms/Field.tsx'
 import { Form } from '../../forms/Form.tsx'
 import { PasswordInput } from '../../forms/PasswordInput.tsx'
@@ -200,7 +201,7 @@ export function BackupFileStep({ onOpened, pollMs = OPENING_POLL_MS }: { onOpene
 
       {opened && status && (
         <>
-          <SuccessMessage>{t('import.backup.opened', { date: date(opened.createdAt.slice(0, 10)), version: opened.version, count: opened.cars.length })}</SuccessMessage>
+          <SuccessMessage>{t('import.backup.opened', { date: date(dayIso(new Date(opened.createdAt))), version: opened.version, count: opened.cars.length })}</SuccessMessage>
           <Button
             size="large"
             onClick={() => {

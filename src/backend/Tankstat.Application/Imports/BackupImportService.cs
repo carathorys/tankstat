@@ -73,5 +73,5 @@ public sealed class BackupImportService(
 
     public static DomainException TooLarge(int maxMb) => new("import.tooLarge", $"The file can be at most {maxMb} MB.", new { MaxMb = maxMb });
 
-    private static DomainException Expired() => new("import.expired", "This import has expired. Choose the file again.");
+    public static DomainException Expired() => new("import.expired", "This import has expired. Choose the file again.");
 }

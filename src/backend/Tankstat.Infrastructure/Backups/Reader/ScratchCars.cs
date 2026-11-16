@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Tankstat.Application.Backups;
 using Tankstat.Application.Imports;
 using Tankstat.Domain;
+using Tankstat.Domain.Measurements;
 
 namespace Tankstat.Infrastructure.Backups.Reader;
 
@@ -19,15 +20,32 @@ internal sealed class ScratchCars(ScratchDatabase database, BackupFileSummary su
     public static async Task<ScratchCars> CreateAsync(ScratchDatabase database, BackupManifest manifest, CancellationToken ct)
     {
         await using var db = database.Read();
-        var vehicles = await db.Vehicles.OrderBy(v => v.Name).ThenBy(v => v.Id).Take(MaxCars + 1).ToListAsync(ct);
+        // Only what the summary shows is read, and its texts are cut by the database: a row of the file may be a megabyte and the rows
+        // together gigabytes (a few megabytes deflated), which whole rows, or every user's name, would put on the heap before any cut.
+        const int max = BackupCarShapes.MaxTextLength;
+        var vehicles = await db.Vehicles.OrderBy(v => v.Name).ThenBy(v => v.Id).Take(MaxCars + 1)
+            .Select(v => new
+            {
+                v.Id, Name = v.Name.Substring(0, max), LicensePlate = v.LicensePlate!.Substring(0, max), v.FuelType,
+                v.Units.Distance, v.Units.Volume, v.OwnerId,
+            })
+            .ToListAsync(ct);
         if (vehicles.Count > MaxCars) throw NotABackup();
         var trashed = await db.Vehicles.IgnoreQueryFilters().CountAsync(v => v.DeletedAt != null, ct);
-        var owners = await db.Users.Select(u => new { u.Id, u.DisplayName }).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
-        var refuelings = await db.Refuelings.GroupBy(r => r.VehicleId).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.Key, g => g.Count, ct);
-        var expenses = await db.Expenses.GroupBy(e => e.VehicleId).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.Key, g => g.Count, ct);
-        var schedules = await db.RecurringExpenses.GroupBy(s => s.VehicleId).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.Key, g => g.Count, ct);
+        // The foreign keys are off: a row may name any car or owner, so only those of the cars shown are asked for.
+        var ids = vehicles.Select(v => v.Id).ToList();
+        var ownerIds = vehicles.Select(v => v.OwnerId).Distinct().ToList();
+        var owners = await db.Users.Where(u => ownerIds.Contains(u.Id)).Select(u => new { u.Id, DisplayName = u.DisplayName.Substring(0, max) })
+            .ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
+        var refuelings = await db.Refuelings.Where(r => ids.Contains(r.VehicleId)).GroupBy(r => r.VehicleId).Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(g => g.Key, g => g.Count, ct);
+        var expenses = await db.Expenses.Where(e => ids.Contains(e.VehicleId)).GroupBy(e => e.VehicleId).Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(g => g.Key, g => g.Count, ct);
+        var schedules = await db.RecurringExpenses.Where(s => ids.Contains(s.VehicleId)).GroupBy(s => s.VehicleId).Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(g => g.Key, g => g.Count, ct);
         var cars = vehicles.Select(v => new BackupCarSummary(
-            v.Id, BackupCarShapes.Cut(v.Name) ?? "", BackupCarShapes.Cut(v.LicensePlate), v.FuelType, v.Units, v.OwnerId, BackupCarShapes.Cut(owners.GetValueOrDefault(v.OwnerId)),
+            v.Id, BackupCarShapes.Cut(v.Name) ?? "", BackupCarShapes.Cut(v.LicensePlate), v.FuelType, MeasurementUnits.Create(v.Distance, v.Volume), v.OwnerId,
+            BackupCarShapes.Cut(owners.GetValueOrDefault(v.OwnerId)),
             refuelings.GetValueOrDefault(v.Id), expenses.GetValueOrDefault(v.Id), schedules.GetValueOrDefault(v.Id))).ToList();
         return new ScratchCars(database, new BackupFileSummary(
             manifest.CreatedAt, BackupReaderText.Version(manifest.AppVersion), manifest.WrittenBy == BackupManifest.Export, cars, trashed));

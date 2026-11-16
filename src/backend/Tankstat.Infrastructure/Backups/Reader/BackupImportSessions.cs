@@ -55,6 +55,7 @@ internal sealed class BackupImportSessions(
     private DateTimeOffset Now => clock.GetUtcNow();
     private readonly SemaphoreSlim _derivations = new(1, 1); // each asks for 64 MiB: one at a time on this server
     private readonly object _replacing = new();
+    private readonly ConcurrentDictionary<Task, byte> _opening = new(); // the opens under way, a forgotten session's too: a stop waits for them
     private ITimer? _timer;
 
     /// <summary>The app's own folder inside the scratch place: all of it is this server's to delete.</summary>
@@ -74,12 +75,17 @@ internal sealed class BackupImportSessions(
         return Task.CompletedTask;
     }
 
-    public Task StopAsync(CancellationToken ct)
+    public async Task StopAsync(CancellationToken ct)
     {
         _timer?.Dispose();
         foreach (var session in _sessions.Values) Close(session, null, forget: true);
-        return Task.CompletedTask;
+        // What was being opened winds down first (never throws), as a backup's run does: a restart in the process must not start the
+        // next host, whose start empties the scratch folder, while an open of this one still writes into it.
+        await WhenIdleAsync().WaitAsync(ct).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
     }
+
+    /// <summary>The opens under way, ended ones still winding down too: a stop waits for them, and tests that look at the scratch folder.</summary>
+    internal Task WhenIdleAsync() => Task.WhenAll(_opening.Keys);
 
     public void Dispose()
     {
@@ -90,6 +96,7 @@ internal sealed class BackupImportSessions(
     public async Task<BackupImportStatus> UploadAsync(Guid userId, Stream content, CancellationToken ct)
     {
         var limit = options.CurrentValue.MaxUploadBytes;
+        if (HeldFor(userId)) throw InUse(); // before the body is taken; looked at again when this file replaces the earlier one
         var (token, folder) = NewFolder();
         var file = Path.Combine(folder, UploadName);
         try
@@ -143,8 +150,7 @@ internal sealed class BackupImportSessions(
         // One at a time: two uploads of one person arriving together must leave one session, not two.
         lock (_replacing)
         {
-            if (_sessions.Values.Any(s => s.UserId == userId && s.Holds > 0))
-                throw new DomainException(InUseKey, "An import is still running from the file you opened before.");
+            if (HeldFor(userId)) throw InUse();
             EndForUser(userId);
             _sessions[token] = session;
         }
@@ -181,12 +187,16 @@ internal sealed class BackupImportSessions(
         return manifest;
     }
 
+    private bool HeldFor(Guid userId) => _sessions.Values.Any(s => s.UserId == userId && s.Holds > 0);
+
+    private static DomainException InUse() => new(InUseKey, "An import is still running from the file you opened before.");
+
     private static DomainException NewerRelease(string? version) =>
         new("backup.newerFormat", "The backup was written by a newer release.", new { AppVersion = BackupReaderText.Version(version) });
 
     public BackupImportStatus SubmitKey(Guid userId, string token, string? passphrase, string? identity)
     {
-        var session = Mine(userId, token) ?? throw Expired();
+        var session = Mine(userId, token) ?? throw BackupImportService.Expired();
         lock (session)
         {
             if (session.State is BackupImportState.Opening or BackupImportState.Opened or BackupImportState.Ended) return StatusOf(session); // one try at a time
@@ -203,13 +213,24 @@ internal sealed class BackupImportSessions(
 
     private void StartOpening(Session session, string? passphrase, string? identity)
     {
-        var stop = CancellationTokenSource.CreateLinkedTokenSource(session.Stop.Token, lifetime?.ApplicationStopping ?? CancellationToken.None).Token;
+        var stop = CancellationTokenSource.CreateLinkedTokenSource(session.Stop.Token, lifetime?.ApplicationStopping ?? CancellationToken.None);
         // Not the caller's context: the request that started it ends long before a large file is open.
-        using (ExecutionContext.SuppressFlow()) _ = Task.Run(() => OpenAsync(session, passphrase, identity, stop), CancellationToken.None);
+        using (ExecutionContext.SuppressFlow())
+        {
+            var opening = Task.Run(async () =>
+            {
+                using (stop) await OpenAsync(session, passphrase, identity, stop.Token); // disposed with its try: it hangs on the app's own stopping token
+            }, CancellationToken.None);
+            _opening[opening] = 0;
+            _ = opening.ContinueWith(done => _opening.TryRemove(done, out _), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
     }
 
     private async Task OpenAsync(Session session, string? passphrase, string? identity, CancellationToken ct)
     {
+        string? folder;
+        lock (session) folder = session.Folder;
+        if (folder is null) return; // ended before this began
         try
         {
             byte[]? key = null;
@@ -245,7 +266,7 @@ internal sealed class BackupImportSessions(
                 : new UnpackLimits(Math.Max(session.Manifest.Sizes.Archive, new FileInfo(session.File).Length) + 1024 * 1024, session.Manifest.Sizes.Tables + 1024 * 1024);
             await BackupUnpack.VerifyChecksumAsync(session.File, session.Manifest, limits.ArchiveBytes, ct);
             var database = await BackupScratchLoad.RunAsync(
-                session.File, session.Manifest, key, session.Folder!, limits, keepEmails: session.Origin == BackupFileOrigin.RestorePoint, ct);
+                session.File, session.Manifest, key, folder, limits, keepEmails: session.Origin == BackupFileOrigin.RestorePoint, ct);
             ScratchCars cars;
             try
             {
@@ -260,7 +281,7 @@ internal sealed class BackupImportSessions(
             {
                 if (session.State == BackupImportState.Ended) // ended meanwhile (a new upload, the account gone)
                 {
-                    cars.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                    Discard(cars);
                     return;
                 }
                 session.Cars = cars;
@@ -300,6 +321,14 @@ internal sealed class BackupImportSessions(
             logger.LogWarning("Import session {Session} of user {UserId}: the file could not be opened ({Failure})", session.Token, session.UserId, e.GetType().Name);
             Close(session, new BackupImportRefusal(NotABackupKey, new Dictionary<string, object?>()), forget: false);
         }
+        finally
+        {
+            // Ended from outside while this still wrote (a new upload, the step left, a stop): the folder's delete ran under it then, and
+            // may have missed a file being written, or met one made after it. Nothing writes any more: what is left goes now.
+            bool ended;
+            lock (session) ended = session.State == BackupImportState.Ended;
+            if (ended) DeleteFolder(folder);
+        }
     }
 
     private sealed class WrongKeyException : Exception;
@@ -328,6 +357,8 @@ internal sealed class BackupImportSessions(
     public IDisposable? Hold(Guid userId, string token)
     {
         if (Mine(userId, token) is not { } session) return null;
+        // With the look at the holds of a replacing upload and of the sweep: a hold never lands between that look and the session's end.
+        lock (_replacing)
         lock (session)
         {
             if (session.State != BackupImportState.Opened) return null;
@@ -363,8 +394,6 @@ internal sealed class BackupImportSessions(
 
     private Session? Mine(Guid userId, string token) => _sessions.TryGetValue(token, out var session) && session.UserId == userId ? session : null;
 
-    private static DomainException Expired() => new("import.expired", "This import has expired. Choose the file again.");
-
     private static BackupImportStatus StatusOf(Session s)
     {
         lock (s) return new BackupImportStatus(s.Token, s.Origin, s.State, s.State == BackupImportState.NeedsKey ? s.TriesLeft : null, s.WrongKey, s.Cars?.Summary, s.Refusal);
@@ -390,8 +419,24 @@ internal sealed class BackupImportSessions(
         }
         try { session.Stop.Cancel(); } catch (ObjectDisposedException) { }
         if (forget) _sessions.TryRemove(session.Token, out _);
-        cars?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        Discard(cars);
         if (folder is not null) DeleteFolder(folder);
+    }
+
+    /// <summary>
+    /// Deletes the cars' database. Never throws for a file that cannot be deleted (the sweep runs on a timer, where that would end the
+    /// process, and the folder must still go): the database is in the session's folder, whose delete follows and says so.
+    /// </summary>
+    private static void Discard(ScratchCars? cars)
+    {
+        try
+        {
+            cars?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // the folder's delete, which every caller goes on to, meets the same file and logs it
+        }
     }
 
     private void Sweep()
@@ -399,11 +444,14 @@ internal sealed class BackupImportSessions(
         var now = clock.GetUtcNow();
         foreach (var session in _sessions.Values.ToList())
         {
-            bool expired;
-            lock (session) expired = session.Expires <= now && session.Holds == 0 && session.State != BackupImportState.Opening;
-            if (!expired) continue;
-            logger.LogDebug("Import session {Session} of user {UserId} expired", session.Token, session.UserId);
-            Close(session, null, forget: true);
+            lock (_replacing) // with Hold: a run that takes the session now either keeps it, or finds it ended
+            {
+                bool expired;
+                lock (session) expired = session.Expires <= now && session.Holds == 0 && session.State != BackupImportState.Opening;
+                if (!expired) continue;
+                logger.LogDebug("Import session {Session} of user {UserId} expired", session.Token, session.UserId);
+                Close(session, null, forget: true);
+            }
         }
     }
 
