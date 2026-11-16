@@ -122,7 +122,8 @@ public class VisitTyreDetailsTests
 
         Assert.True(Assert.Single(s.W.Expenses.Items).IsDeleted); // all or nothing: nothing of the visit comes back
         Assert.True(Assert.Single(s.Lines).IsDeleted);
-        Assert.Empty(s.W.Recurring.Completions); // no schedule saved as done (the fakes keep a failed save's in-memory change, so its date says nothing)
+        Assert.Empty(s.W.Recurring.Completions); // no schedule saved as done
+        Assert.Equal(D(2025, 9, 1), s.Item.LastDoneDate);
     }
 
     [Fact]
@@ -170,5 +171,70 @@ public class VisitTyreDetailsTests
 
         Assert.Equal(D(2026, 9, 20), Assert.Single(done.Schedules).Item.LastDoneDate);
         Assert.False(Assert.Single(s.Lines).IsDeleted); // the visit is done: its line stays
+    }
+
+    // #330 item 3: a visit without an amount has no expense to mark it recorded; what is there says so.
+
+    [Fact]
+    public async Task WithoutAnAmount_SentAgainAfterItsLineWasTrashed_IsAnsweredAsRecorded_TheLineStaysInTheTrash()
+    {
+        var s = await Setup();
+        var lineId = Guid.NewGuid();
+        await s.Recurring.MarkDoneAsync([s.Schedule], Visit(s.Summer, lineId, amount: null), default);
+        await s.W.TyreService.TrashEntryAsync(lineId, default);
+        var version = s.Item.Version;
+
+        var again = await s.Recurring.MarkDoneAsync([s.Schedule], Visit(s.Summer, lineId, amount: null), default);
+
+        Assert.Equal(D(2026, 9, 20), Assert.Single(again.Schedules).Item.LastDoneDate);
+        Assert.True(Assert.Single(s.Lines).IsDeleted); // the person's trash stands
+        Assert.Equal(version, s.Item.Version); // nothing moved
+    }
+
+    [Fact]
+    public async Task WithoutAnAmount_SentAgainWhenItsSaveFails_TakesBackOnlyTheLinesItMadeOrRestored()
+    {
+        var s = await Setup();
+        var lineId = Guid.NewGuid();
+        await s.Recurring.MarkDoneAsync([s.Schedule], Visit(s.Summer, lineId, amount: null), default);
+        // The schedule's baseline set back by hand since: the visit no longer reads as recorded, and its line is live.
+        await s.Recurring.UpdateAsync(s.Schedule, new RecurringExpenseInput(
+            "Wheel balancing", "Tyres", null, RecurrenceKind.Time, 12, null, D(2026, 1, 15), null, null, null), default);
+        s.W.Recurring.FailUpdateWith = new InvalidOperationException("database down");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => s.Recurring.MarkDoneAsync([s.Schedule], Visit(s.Summer, lineId, amount: null), default));
+
+        Assert.False(Assert.Single(s.Lines).IsDeleted); // live before this request: not its to take back
+        Assert.Equal(D(2026, 1, 15), s.Item.LastDoneDate);
+    }
+
+    [Fact]
+    public async Task WithoutAnAmount_AFailedFirstTry_IsNotReadAsRecorded_TheTryAgainBringsItsLineBack()
+    {
+        var s = await Setup();
+        var lineId = Guid.NewGuid();
+        s.W.Recurring.FailUpdateWith = new InvalidOperationException("database down");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => s.Recurring.MarkDoneAsync([s.Schedule], Visit(s.Summer, lineId, amount: null), default));
+        Assert.Equal(D(2025, 9, 1), s.Item.LastDoneDate); // a failed save moved nothing
+        s.W.Recurring.FailUpdateWith = null;
+
+        var done = await s.Recurring.MarkDoneAsync([s.Schedule], Visit(s.Summer, lineId, amount: null), default);
+
+        Assert.Equal(D(2026, 9, 20), Assert.Single(done.Schedules).Item.LastDoneDate);
+        Assert.False(Assert.Single(s.Lines).IsDeleted);
+    }
+
+    [Fact]
+    public async Task APlainVisitSentTwice_IsAccepted_AndOneSentAfterALaterVisit_IsRefused_AsBefore()
+    {
+        var s = await Setup();
+        var plain = new MarkDoneInput(D(2026, 9, 20), 148_200, null, null);
+        await s.Recurring.MarkDoneAsync([s.Schedule], plain, default);
+        await s.Recurring.MarkDoneAsync([s.Schedule], plain, default); // no line ids to know it by: done again, harmless (3c)
+        Assert.Equal(D(2026, 9, 20), s.Item.LastDoneDate);
+
+        await s.Recurring.MarkDoneAsync([s.Schedule], new MarkDoneInput(D(2026, 9, 25), null, null, null), default);
+        var lineId = Guid.NewGuid();
+        Assert.Equal("recurring.doneBeforeLast", (await Assert.ThrowsAnyAsync<KeyedException>(() => s.Recurring.MarkDoneAsync([s.Schedule], Visit(s.Summer, lineId, amount: null), default))).Key); // 3d
     }
 }

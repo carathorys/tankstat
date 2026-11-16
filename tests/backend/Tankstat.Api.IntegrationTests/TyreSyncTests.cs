@@ -464,6 +464,27 @@ public class TyreSyncTests : IDisposable
         Assert.Equal(("WHEEL_BALANCING", 148_300L, JsonValueKind.Null), (made.GetProperty("kind").GetString(), made.GetProperty("odometer").GetInt64(), made.GetProperty("expenseId").ValueKind));
     }
 
+    [Fact]
+    public async Task AVisitWithoutAnAmount_SentAgainAfterItsLineWasTrashed_IsAppliedAsRecorded_TheLineStaysInTheTrash()
+    {
+        // #330 item 3: a lost answer sends the same visit again later under a change id the ledger never saw. Nothing but what is there marks
+        // a visit without an expense recorded: the line the person trashed meanwhile stays in the trash, and the schedule does not move again.
+        var (people, car, summer, _, _) = await Car(_app);
+        var schedule = await Schedule(people.Alice, car);
+        var line = Guid.NewGuid();
+        var visit = new { ids = new[] { schedule }, date = "2026-09-20", odometer = 148_300, tyre = new { kind = "WHEEL_BALANCING", setId = summer, lineId = line } };
+        Assert.Equal(("APPLIED", null), Result(await Send(people.Alice, new { id = Guid.NewGuid(), markRecurringExpensesDone = visit })));
+        await people.Alice.Gql("mutation($i: DeleteTyreEntryInput!) { deleteTyreEntry(input: $i) { vehicleId } }", new { i = new { id = line, withExpense = false } });
+        const string read = "query($v: UUID!) { vehicle(id: $v) { recurring { version lastDoneDate } } }";
+        var before = (await people.Alice.Gql(read, new { v = car })).Data().GetProperty("vehicle").GetProperty("recurring")[0].GetProperty("version").GetInt32();
+
+        Assert.Equal(("APPLIED", null), Result(await Send(people.Alice, new { id = Guid.NewGuid(), markRecurringExpensesDone = visit })));
+
+        Assert.DoesNotContain(await LinesOf(people.Alice, car), e => e.GetProperty("id").GetString() == line.ToString());
+        var now = (await people.Alice.Gql(read, new { v = car })).Data().GetProperty("vehicle").GetProperty("recurring")[0];
+        Assert.Equal((before, "2026-09-20"), (now.GetProperty("version").GetInt32(), now.GetProperty("lastDoneDate").GetString()));
+    }
+
     private static async Task<string> UploadDraft(HttpClient c, string vehicleId)
     {
         var content = new ByteArrayContent([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 4]);
