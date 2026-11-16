@@ -104,13 +104,16 @@ describe('the range and the scale', () => {
     expect(pxPerDay(100, year, 1)).toBe(0.55)
   })
 
-  it('ticks every month for a short range and every quarter for a long one, the years marked', () => {
-    const short = ticksOf({ start: dayOf('2025-11-01'), end: dayOf('2027-01-01') })
-    expect(short).toHaveLength(14)
-    expect(short.filter((t) => t.year).map((t) => isoOf(t.day))).toEqual(['2026-01-01'])
-    const long = ticksOf(spanOf('ALL', tyres, periods, today))
-    expect(long.every((t) => (t.month - 1) % 3 === 0)).toBe(true)
-    expect(long.filter((t) => t.year)).toHaveLength(7) // 2020 to 2026
+  it('ticks as many months as have room for their names: every month, quarter, half year or year, the years marked', () => {
+    const year = { start: dayOf('2025-11-01'), end: dayOf('2027-01-01') }
+    const wide = ticksOf(year, 2)
+    expect(wide).toHaveLength(14)
+    expect(wide.filter((t) => t.year).map((t) => isoOf(t.day))).toEqual(['2026-01-01'])
+    expect(ticksOf(year, 0.8).map((t) => t.month)).toEqual([1, 4, 7, 10]) // a phone at 1×: a month is 24 px, a quarter has room
+    const all = spanOf('ALL', tyres, periods, today)
+    expect(ticksOf(all, 0.55).every((t) => (t.month - 1) % 3 === 0)).toBe(true)
+    expect(ticksOf(all, 0.55).filter((t) => t.year)).toHaveLength(7) // 2020 to 2026
+    expect(ticksOf(all, 0.1).every((t) => t.year)).toBe(true)
   })
 
   it('a drag moves the swap by whole days', () => {

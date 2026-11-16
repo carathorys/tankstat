@@ -3020,6 +3020,7 @@
       "onTheCar": "az autón",
       "period": "{{set}}, az autón {{from}} és {{until}} között, {{distance}}. Szerkesztés",
       "periodText": "{{set}}, az autón {{from}} és {{until}} között, {{distance}}.",
+      "barText": "{{from}} és {{until}} között, {{distance}}",
       "swap": "Csere ekkor: {{date}}: {{off}} le, {{on}} fel. A csere áthelyezése",
       "moveTitle": "A csere áthelyezése",
       "moveText": "Aznap a(z) {{off}} lekerült, a(z) {{on}} felkerült. Az új nap mindkettőt áthelyezi.",

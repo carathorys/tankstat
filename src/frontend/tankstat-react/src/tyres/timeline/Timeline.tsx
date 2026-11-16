@@ -264,7 +264,7 @@ export default function Timeline({
           {summary}
         </Typography>
       </Stack>
-      <Stack id={menuId} hidden={!menu} sx={{ gap: 1.5, p: 1.5, border: 1, borderColor: 'divider', borderRadius: 3 }}>
+      <Stack id={menuId} sx={{ display: menu ? 'flex' : 'none', gap: 1.5, p: 1.5, border: 1, borderColor: 'divider', borderRadius: 3 }}>
         <Stack sx={{ gap: 0.5, alignItems: 'flex-start' }}>
           <Typography variant="body2" component="span" sx={{ fontWeight: 600 }}>
             {t('tyres.timeline.range')}
@@ -303,12 +303,13 @@ export default function Timeline({
         <Box sx={{ position: 'relative', display: 'grid', gridTemplateColumns: `${labelWidth}px ${W}px`, width: labelWidth + W }}>
           <Box sx={{ position: 'sticky', left: 0, zIndex: 3, bgcolor: 'background.paper', borderRight: 1, borderColor: 'divider', minHeight: HEAD }} />
           <Box aria-hidden sx={{ position: 'relative', minHeight: HEAD, typography: 'caption', color: 'text.secondary' }}>
-            {ticksOf(span).map((tick) => (
+            {ticksOf(span, perDay).map((tick) => (
               <Box key={tick.day} sx={{ position: 'absolute', top: 0, bottom: 0, left: X(tick.day), borderLeft: 1, borderColor: tick.year ? 'text.secondary' : 'divider', px: 0.5, whiteSpace: 'nowrap', fontWeight: tick.year ? 700 : 400, color: tick.year ? 'text.primary' : 'text.secondary', fontSize: '0.7rem' }}>
                 {tick.year ? isoOf(tick.day).slice(0, 4) : format.month(tick.month, 'short')}
               </Box>
             ))}
-            <Box sx={{ position: 'absolute', top: 16, left: X(today), borderLeft: 2, borderColor: 'primary.main', color: 'primary.main', px: 0.5, fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{t('tyres.timeline.today')}</Box>
+            {/* To the left of its line: the picture ends soon after today, and a label to the right would be cut. */}
+            <Box sx={{ position: 'absolute', top: 16, left: X(today), transform: 'translateX(-100%)', borderRight: 2, borderColor: 'primary.main', color: 'text.primary', px: 0.5, fontSize: '0.7rem', whiteSpace: 'nowrap', bgcolor: 'background.default' }}>{t('tyres.timeline.today')}</Box>
           </Box>
           {sets.map((s) => {
             const tone = TONE[s.set.season]
@@ -345,13 +346,15 @@ export default function Timeline({
                 )}
                 {periods.filter((p) => p.setId === s.set.id && inSpan(p.from, p.until)).map((p) => {
                   const left = X(Math.max(p.from, span.start))
-                  const text = `${day(p.from)} – ${p.until === null ? t('tyres.timeline.onTheCar') : day(p.until)} · ${distanceOf(p)}`
+                  // What the bar shows is part of what it is called ("…, on the car {from} to {until}, {distance}. Edit"), so it can be asked for by what is seen.
+                  const text = t('tyres.timeline.barText', { from: day(p.from), until: p.until === null ? t('tyres.timeline.today') : day(p.until), distance: distanceOf(p) })
                   const look = (theme: Theme) => ({
                     position: 'absolute' as const, top: 10, height: 36, left, width: Math.max(4, X(p.until ?? today) - left), boxSizing: 'border-box' as const,
                     borderRadius: p.until === null ? '8px 0 0 8px' : '8px', border: `2px ${waiting ? 'dashed' : 'solid'} ${theme.vars.palette[tone].main}`,
                     ...(p.until === null ? { borderRightStyle: 'dashed' as const } : {}),
                     bgcolor: theme.vars.palette[tone].soft, color: theme.vars.palette.text.primary, font: 'inherit', fontSize: '0.75rem', fontWeight: 650,
-                    display: 'flex', alignItems: 'center', px: 0.75, whiteSpace: 'nowrap' as const, overflow: 'hidden', textAlign: 'left' as const, m: 0,
+                    // Its text starts after the swap's handle, which lies over its first day.
+                    display: 'flex', alignItems: 'center', pr: 0.75, pl: handles.some((b) => b.after === p) ? '26px' : 0.75, whiteSpace: 'nowrap' as const, overflow: 'hidden', textAlign: 'left' as const, m: 0,
                   })
                   return canLog ? (
                     <Box key={p.id} component="button" type="button" data-layout-exempt="timeline" data-period={p.id} aria-label={periodName(p, true)} title={`${s.set.name}: ${text}`} onClick={() => open({ kind: 'period', period: p })} sx={(theme) => ({ ...look(theme), cursor: 'pointer', ...focusRing(theme) })}>
@@ -403,7 +406,6 @@ export default function Timeline({
                   sx={(theme) => ({
                     position: 'absolute', top: row * (ROW + 1) + 6, left: X(at) - 22, width: 44, height: 44, border: 0, p: 0, m: 0, background: 'none', pointerEvents: 'auto', zIndex: 2,
                     display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: mouse ? 'ew-resize' : 'pointer', touchAction: 'pan-x', ...focusRing(theme),
-                    '@media (prefers-reduced-motion: no-preference)': { transition: drag?.id === b.line.id ? 'none' : 'left 0.15s ease' },
                   })}
                 >
                   <Box component="span" sx={(theme) => ({ width: 20, height: 30, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: `2px solid ${theme.vars.palette.primary.main}`, bgcolor: drag?.id === b.line.id ? theme.vars.palette.primary.main : theme.vars.palette.background.paper, color: drag?.id === b.line.id ? theme.vars.palette.primary.contrastText : theme.vars.palette.primary.main })}>

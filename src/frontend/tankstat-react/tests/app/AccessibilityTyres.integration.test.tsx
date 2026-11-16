@@ -43,6 +43,33 @@ it('the swap reminder: a status above the sets, its buttons naming the set, and 
   await check(dialog)
 })
 
+it('the timeline: its picture a focusable group of named buttons, the Show menu, the table, and its two dialogs (#332)', async () => {
+  const { ui } = setup('/vehicles/v1?tab=tyres')
+  // The winter set off on 1 March, the summer one on on the 28th: a gap, and after filling none a swap would have a handle.
+  server.use(...fakeTyres([tyreSummer, { ...tyreWinter, installations: [{ ...tyreWinter.installations[0], until: '2026-03-01' }] }]).handlers)
+  const card = (await screen.findByRole('heading', { name: 'Timeline' })).closest('section')!
+  const tl = within(card)
+  expect(tl.getByRole('group', { name: 'Timeline picture, scrolls sideways' })).toHaveAttribute('tabindex', '0')
+  expect(tl.getByRole('table', { name: 'The timeline as a table' })).toBeInTheDocument()
+  await ui.click(tl.getByRole('button', { name: 'Show' }))
+  expect(tl.getByRole('radiogroup', { name: 'Range' })).toBeInTheDocument()
+  expect(tl.getByRole('group', { name: 'Sets' })).toBeInTheDocument()
+  await check(card)
+
+  await ui.click(tl.getAllByRole('button', { name: /^No set recorded from .* Fill in$/ })[0])
+  await check(await screen.findByRole('dialog', { name: 'Which set was on the car?' }))
+})
+
+it('the timeline’s Move the swap dialog is labelled, described and free of violations (#332)', async () => {
+  const { ui } = withTyres('/vehicles/v1?tab=tyres')
+  const card = (await screen.findByRole('heading', { name: 'Timeline' })).closest('section')!
+
+  await ui.click(within(card).getAllByRole('button', { name: /Move the swap$/ })[0])
+  const dialog = await screen.findByRole('dialog', { name: 'Move the swap' })
+  expect(dialog).toHaveAccessibleDescription(/came off and .* went on that day/)
+  await check(dialog)
+})
+
 it('the add set, past swaps and history dialogs are labelled and free of violations', async () => {
   const { ui } = withTyres('/vehicles/v1?tab=tyres')
   await screen.findByRole('article', { name: 'Michelin Primacy 4' })

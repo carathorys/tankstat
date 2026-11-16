@@ -3020,6 +3020,7 @@
       "onTheCar": "on the car",
       "period": "{{set}}, on the car {{from}} to {{until}}, {{distance}}. Edit",
       "periodText": "{{set}}, on the car {{from}} to {{until}}, {{distance}}.",
+      "barText": "{{from}} to {{until}}, {{distance}}",
       "swap": "Swap on {{date}}: {{off}} off, {{on}} on. Move the swap",
       "moveTitle": "Move the swap",
       "moveText": "{{off}} came off and {{on}} went on that day. A new day moves both.",

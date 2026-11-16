@@ -114,15 +114,19 @@ export const MIN_PX_PER_DAY = 0.55
 export const pxPerDay = (room: number, span: { start: number; end: number }, zoom: number): number =>
   Math.max(MIN_PX_PER_DAY, room / Math.max(1, span.end - span.start)) * zoom
 
-/** A tick of the header: a year's first day, or a month's (every month up to about two years on screen, else every quarter). */
+/** A tick of the header: a year's first day, or a month's, as many as have room for their names. */
 export interface Tick {
   day: number
   year: boolean
   month: number
 }
 
-export function ticksOf(span: { start: number; end: number }): Tick[] {
-  const step = span.end - span.start < 800 ? 1 : 3
+/** The fewest pixels between two ticks' labels ("Sep", "2026"). */
+const TICK_ROOM = 34
+
+export function ticksOf(span: { start: number; end: number }, perDay: number): Tick[] {
+  // Every month where a month is wide enough for its name, else every quarter, half year or year.
+  const step = [1, 3, 6, 12].find((months) => months * 30.4 * perDay >= TICK_ROOM) ?? 12
   const ticks: Tick[] = []
   for (let day = monthStart(span.start); day < span.end; day = monthStart(day, 1)) {
     const month = new Date(day * DAY).getUTCMonth()
