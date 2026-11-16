@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Tankstat.Application.Auth;
 using Tankstat.Application.Runs;
 using Tankstat.Domain.Runs;
 
@@ -13,8 +14,11 @@ namespace Tankstat.Infrastructure.Persistence.Runs;
 /// </summary>
 internal sealed class RunScope(
     DbContextOptions<AppDbContext> options, IRunMarkerRepository markers, RunGateState gate, IOptionsMonitor<RunOptions> settings, RunTimings timings, TimeProvider clock,
-    ILogger<RunScope> logger) : IRunScope
+    IOptions<DatabaseOptions> database, ILogger<RunScope> logger) : IRunScope
 {
+    /// <summary>The runs open on this server, to cancel them without the database.</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, Run> _open = new();
+
     public async Task RunAsync(RunStart start, Func<IRun, Task> work, CancellationToken ct)
     {
         if (RunTransaction.Current is not null) throw new InvalidOperationException("A run cannot be started inside a run.");
@@ -32,6 +36,11 @@ internal sealed class RunScope(
             if (timings.Settle > TimeSpan.Zero) await Task.Delay(timings.Settle, clock, ct);
             await InTransactionAsync(start, marker.Id, work, ct);
             end = RunEnd.Done;
+        }
+        catch (RunStoppedException e)
+        {
+            end = e.Reason;
+            throw;
         }
         finally
         {
@@ -54,7 +63,10 @@ internal sealed class RunScope(
         await using var root = new AppDbContext(options); // unpooled: it owns the run's connection, closed with it
         await root.Database.OpenConnectionAsync(ct);
         await using var transaction = await root.Database.BeginTransactionAsync(ct);
-        var run = new Run(runId, transaction);
+        // On SQLite the mark cannot be asked while the run holds the database's lock to write; a cancel there is this server's own.
+        var run = new Run(runId, transaction, clock, clock.GetUtcNow() + settings.CurrentValue.Limit,
+            database.Value.Provider == DatabaseProvider.Sqlite ? null : markers);
+        _open[runId] = run;
         try
         {
             await InsideAsync(start, new RunTransaction(root.Database.GetDbConnection(), transaction), run, work);
@@ -66,7 +78,25 @@ internal sealed class RunScope(
             await run.RolledBackAsync();
             throw;
         }
+        finally
+        {
+            _open.TryRemove(runId, out _);
+        }
         await run.CommittedAsync();
+    }
+
+    public async Task<bool> CancelAsync(Guid runId, Principal by, CancellationToken ct)
+    {
+        if (await markers.FindAsync(runId, ct) is not { IsOpen: true } marker) return false;
+        if (marker.StartedById != by.Id && !by.IsAdmin) throw new ForbiddenException();
+        logger.LogInformation("Run {RunId} asked to cancel by {UserId}", runId, by.Id);
+        if (_open.TryGetValue(runId, out var here))
+        {
+            here.Cancel();
+            return true;
+        }
+        // Another server's run: through its mark, which that run asks between its entries.
+        return database.Value.Provider != DatabaseProvider.Sqlite && await markers.RequestCancelAsync(runId, by.Id, clock.GetUtcNow(), ct);
     }
 
     /// <summary>
@@ -86,9 +116,27 @@ internal sealed class RunScope(
         catch (Exception) { /* a rollback or an undo that fails must not hide why the run failed */ }
     }
 
-    private sealed class Run(Guid id, IDbContextTransaction transaction) : IRun
+    private sealed class Run(Guid id, IDbContextTransaction transaction, TimeProvider clock, DateTimeOffset until, IRunMarkerRepository? markers) : IRun
     {
+        private static readonly TimeSpan AskEvery = TimeSpan.FromSeconds(1);
+        private volatile bool _cancelled;
+        private DateTimeOffset _asked;
+
         public Guid Id => id;
+
+        public void Cancel() => _cancelled = true;
+
+        public async Task ThrowIfStoppedAsync()
+        {
+            var now = clock.GetUtcNow();
+            if (!_cancelled && markers is not null && now - _asked >= AskEvery)
+            {
+                _asked = now;
+                _cancelled = await markers.IsCancelRequestedAsync(id, CancellationToken.None);
+            }
+            if (_cancelled) throw new RunStoppedException(RunEnd.Cancelled);
+            if (now >= until) throw new RunStoppedException(RunEnd.TimedOut);
+        }
 
         /// <summary>The hooks of the savepoint being worked in, the run's own at the bottom.</summary>
         private readonly Stack<Hooks> _levels = new([new Hooks()]);

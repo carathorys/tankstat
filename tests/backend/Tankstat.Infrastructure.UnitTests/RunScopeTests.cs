@@ -32,6 +32,7 @@ public sealed class RunScopeTests(ITestOutputHelper output) : IDisposable
     private readonly List<TestDatabase> _databases = [];
     private readonly List<TestDatabase> _servers = [];
     private readonly SignedIn _user = new();
+    private readonly AheadClock _clock = new();
 
     public static TheoryData<string> Providers => new("Sqlite", "PostgreSql", "SqlServer", "MySql");
 
@@ -59,10 +60,18 @@ public sealed class RunScopeTests(ITestOutputHelper output) : IDisposable
         }
         // Nobody is signed in unless a test says so: outside a run the services refuse, inside one they act as its starter.
         var database = new TestDatabase(settings, services => services.AddSingleton<ICurrentUser>(_user)
-            .AddSingleton(new RunTimings { Settle = TimeSpan.Zero, BusyWait = TimeSpan.FromSeconds(1) }));
+            .AddSingleton(new RunTimings { Settle = TimeSpan.Zero, BusyWait = TimeSpan.FromSeconds(1) })
+            .AddSingleton<TimeProvider>(_clock));
         _databases.Add(database);
         if (provider != "Sqlite") _servers.Add(database);
         return database;
+    }
+
+    /// <summary>The real clock, set ahead by a test (the run's limit).</summary>
+    private sealed class AheadClock : TimeProvider
+    {
+        public TimeSpan Ahead { get; set; }
+        public override DateTimeOffset GetUtcNow() => base.GetUtcNow() + Ahead;
     }
 
     private sealed class SignedIn : ICurrentUser
@@ -346,6 +355,71 @@ public sealed class RunScopeTests(ITestOutputHelper output) : IDisposable
         Assert.Contains(database.Log.Entries, e => e.Message.Contains(left.Id.ToString()) && e.Message.Contains("did not finish"));
         await using var after = database.Services.CreateAsyncScope();
         await after.ServiceProvider.GetRequiredService<VehicleService>().UpdateAsync(car, "Free again", null, FuelType.Petrol, null, default);
+    }
+
+    /// <summary>The owner's decision 3: the starter and any administrator can cancel; the run sees it between its entries and leaves nothing.</summary>
+    [Theory, MemberData(nameof(Providers))]
+    public async Task ACancelledRun_LeavesNothing_AndItsMarkSaysCancelled(string provider)
+    {
+        if (Database(provider) is not { } database) return;
+        var logs = provider != "MySql";
+        var scope = database.Get<IRunScope>();
+        var someoneElse = new Principal(Guid.NewGuid(), "Someone", "someone@example.com", false);
+        var administrator = new Principal(Guid.NewGuid(), "Admin", "admin@example.com", true);
+
+        var stopped = await Assert.ThrowsAsync<RunStoppedException>(() => RunAsync(database, async (run, services) =>
+        {
+            await AddCarAsync(services, "First", logs);
+            await run.ThrowIfStoppedAsync(); // not asked yet: goes on
+            await Assert.ThrowsAsync<ForbiddenException>(() => scope.CancelAsync(run.Id, someoneElse, default));
+            Assert.True(await scope.CancelAsync(run.Id, administrator, default));
+            await run.ThrowIfStoppedAsync();
+        }));
+
+        Assert.Equal(RunEnd.Cancelled, stopped.Reason);
+        Assert.Equal(Cars(0, logs), await CountAsync(database));
+        var mark = await OnlyMarkerAsync(database);
+        Assert.Equal(RunEnd.Cancelled, mark.End);
+        Assert.False(await scope.CancelAsync(mark.Id, Starter, default)); // over already
+        Assert.False(await scope.CancelAsync(Guid.NewGuid(), Starter, default));
+    }
+
+    /// <summary>A run of another server is asked through its mark; SQLite cannot write a mark while a run is open, and has one server.</summary>
+    [Theory, MemberData(nameof(Providers))]
+    public async Task ARunAskedToCancelThroughItsMark_AsFromAnotherServer_Stops(string provider)
+    {
+        if (provider == "Sqlite" || Database(provider) is not { } database) return;
+
+        var stopped = await Assert.ThrowsAsync<RunStoppedException>(() => RunAsync(database, async (run, services) =>
+        {
+            await AddCarAsync(services, "First", logs: false);
+            Assert.True(await ElsewhereAsync(database, _ => database.Get<IRunMarkerRepository>().RequestCancelAsync(run.Id, Starter.Id, DateTimeOffset.UtcNow, default)));
+            await run.ThrowIfStoppedAsync();
+        }));
+
+        Assert.Equal(RunEnd.Cancelled, stopped.Reason);
+        Assert.Equal(0, (await CountAsync(database)).Vehicles);
+        var mark = await OnlyMarkerAsync(database);
+        Assert.Equal((RunEnd.Cancelled, Starter.Id), (mark.End!.Value, mark.CancelRequestedById!.Value));
+    }
+
+    [Theory, MemberData(nameof(Providers))]
+    public async Task ARunPastItsLimit_LeavesNothing_AndItsMarkSaysTimedOut(string provider)
+    {
+        if (Database(provider) is not { } database) return;
+
+        var stopped = await Assert.ThrowsAsync<RunStoppedException>(() => RunAsync(database, async (run, services) =>
+        {
+            await AddCarAsync(services, "First", logs: false);
+            _clock.Ahead = TimeSpan.FromMinutes(9);
+            await run.ThrowIfStoppedAsync(); // within the ten minutes
+            _clock.Ahead = TimeSpan.FromMinutes(10) + TimeSpan.FromSeconds(1);
+            await run.ThrowIfStoppedAsync();
+        }));
+
+        Assert.Equal(RunEnd.TimedOut, stopped.Reason);
+        Assert.Equal(0, (await CountAsync(database)).Vehicles);
+        Assert.Equal(RunEnd.TimedOut, (await OnlyMarkerAsync(database)).End);
     }
 
     [Fact]

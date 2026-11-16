@@ -17,6 +17,22 @@ public interface IRunScope
     /// (<see cref="RunContext"/>), without a request. A run inside a run is refused.
     /// </summary>
     Task RunAsync(RunStart start, Func<IRun, Task> work, CancellationToken ct);
+
+    /// <summary>
+    /// Asks an open run to stop (the owner's decision 3): its starter and any administrator may. The run sees it between its entries
+    /// (<see cref="IRun.ThrowIfStoppedAsync"/>), rolls back and ends as cancelled. On this server at once; a run of another server through
+    /// its mark, which SQLite cannot write while a run is open (there one server has the database to itself). False when no such run is open.
+    /// </summary>
+    Task<bool> CancelAsync(Guid runId, Principal by, CancellationToken ct);
+}
+
+/// <summary>
+/// A run was stopped before it finished, cancelled or past its limit (<see cref="Tankstat.Domain.Runs.RunEnd"/>): thrown by
+/// <see cref="IRun.ThrowIfStoppedAsync"/> through the work, so the run rolls back whole, and rethrown to whoever started it.
+/// </summary>
+public sealed class RunStoppedException(Tankstat.Domain.Runs.RunEnd reason) : Exception($"The run was stopped: {reason}.")
+{
+    public Tankstat.Domain.Runs.RunEnd Reason { get; } = reason;
 }
 
 /// <summary>What the work of a run is handed.</summary>
@@ -30,6 +46,12 @@ public interface IRun
     /// everything it saved is rolled back, the run goes on, and the exception reaches the caller, who decides what a refusal means.
     /// </summary>
     Task InSavepointAsync(Func<Task> work);
+
+    /// <summary>
+    /// For the work to call between its entries: throws <see cref="RunStoppedException"/> once the run was cancelled or has held its
+    /// transaction longer than the limit (<c>Runs:LimitMinutes</c>). Nothing stops a run in the middle of a save.
+    /// </summary>
+    Task ThrowIfStoppedAsync();
 
     /// <summary>
     /// Something outside the database to take back (a photo's file written for a row of this run): run when what was saved around it is
