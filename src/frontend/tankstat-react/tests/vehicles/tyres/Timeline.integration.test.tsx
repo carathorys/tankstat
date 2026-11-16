@@ -177,6 +177,49 @@ it('a later period whose line holds a reading is not trashed: the earlier one st
   expect(state.calls.DeleteTyreInstallation).toBeUndefined()
 })
 
+it('a later period with other pairs is not trashed either: its positions would be lost, so the two meet', async () => {
+  const twice: FakeTyreSet = { ...tyreWinter, installations: [{ id: 'r4', setId: 's2', from: '2026-02-01', until: '2026-03-28', pairOneFront: false, distance: 900 }, { ...tyreWinter.installations[0], until: '2026-01-10' }] }
+  const { ui, state } = setup([tyreSummer, twice])
+
+  await ui.click(within(await card()).getAllByRole('button', { name: /^No set recorded from Jan 10, 2026 to Feb 1, 2026\. Fill in$/ })[0])
+  await ui.click(within(await screen.findByRole('dialog', { name: 'Which set was on the car?' })).getByRole('button', { name: 'Save' }))
+
+  await waitFor(() => expect(state.calls.UpdateTyreInstallation).toHaveLength(1))
+  expect(state.calls.UpdateTyreInstallation[0].input).toMatchObject({ id: 'r2', until: '2026-02-01', pairOneFront: true })
+  expect(state.calls.DeleteTyreInstallation).toBeUndefined()
+})
+
+it('out of reach, the same set on both sides is joined too: the trash kept first, then the stretch checked against it', async () => {
+  const twice: FakeTyreSet = { ...tyreWinter, installations: [{ id: 'r4', setId: 's2', from: '2026-02-01', until: '2026-03-28', pairOneFront: true, distance: 900 }, { ...tyreWinter.installations[0], until: '2026-01-10' }] }
+  const { ui, state } = setup([tyreSummer, twice])
+  const tl = within(await card())
+  await answered()
+  act(() => connectivity.failed())
+
+  await ui.click(tl.getAllByRole('button', { name: /^No set recorded from Jan 10, 2026 to Feb 1, 2026\. Fill in$/ })[0])
+  await ui.click(within(await screen.findByRole('dialog', { name: 'Which set was on the car?' })).getByRole('button', { name: 'Save' }))
+
+  await waitFor(() => expect(outbox.changes).toMatchObject([
+    { entity: 'tyres', action: 'deleteTyreInstallation', input: { id: 'r4' } },
+    { entity: 'tyres', action: 'updateTyreInstallation', input: { id: 'r2', from: '2025-11-15', until: '2026-03-28' } },
+  ]))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(state.calls.DeleteTyreInstallation).toBeUndefined()
+  expect(within(await card()).queryByRole('button', { name: /^No set recorded/ })).not.toBeInTheDocument()
+})
+
+it('a gap filled with days the wrong way round is refused in the dialog, and the set before it keeps its days', async () => {
+  const { ui, state } = setup([tyreSummer, winterEarly])
+
+  await ui.click(within(await card()).getAllByRole('button', { name: /^No set recorded .* Fill in$/ })[0])
+  const dialog = await screen.findByRole('dialog', { name: 'Which set was on the car?' })
+  await typeDate(ui, await findDateField(/^Day it came off/, dialog), '2026-02-01') // before the gap's first day, 1 March
+  await ui.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+  expect((await within(dialog).findAllByText('The day it came off must be after its first day on the car.')).length).toBeGreaterThan(0)
+  expect(state.calls.UpdateTyreInstallation).toBeUndefined()
+})
+
 it('the Show menu chooses the range, the layers and the sets, says what is chosen, and saves the choices with the account', async () => {
   const { ui, settings } = setup([tyreSummer, winterEarly])
   const tl = within(await card())
@@ -316,6 +359,25 @@ it('a refused drag says why in a toast and the handle goes back; less than a few
   fireEvent.click(handle)
   expect(await screen.findByRole('dialog', { name: 'Move the swap' })).toBeInTheDocument()
   expect(state.calls.UpdateTyreEntry).toHaveLength(1)
+})
+
+it('a drag the browser cancels saves nothing, and the next click on the handle still opens the dialog', async () => {
+  const { state } = setup()
+  const handle = within(await card()).getAllByRole('button', { name: SWAP })[0]
+  const pointer = (type: string, clientX: number) => fireEvent(handle, new MouseEvent(type, { bubbles: true, clientX, button: 0 }))
+  const down = new MouseEvent('pointerdown', { bubbles: true, clientX: 100, button: 0 })
+  Object.defineProperty(down, 'pointerType', { value: 'mouse' })
+  Object.defineProperty(handle, 'setPointerCapture', { value: () => undefined, configurable: true })
+
+  fireEvent(handle, down)
+  pointer('pointermove', 111)
+  expect(within(await card()).getByRole('status')).toHaveTextContent('Apr 17, 2026')
+  pointer('pointercancel', 111)
+  expect(within(await card()).queryByRole('status')).not.toBeInTheDocument()
+
+  fireEvent.click(handle) // no click followed the cancel: this one is its own
+  expect(await screen.findByRole('dialog', { name: 'Move the swap' })).toBeInTheDocument()
+  expect(state.calls.UpdateTyreEntry).toBeUndefined()
 })
 
 it('out of reach, the device refuses a move the server would refuse, in the dialog, and keeps nothing', async () => {

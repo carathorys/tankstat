@@ -10,15 +10,14 @@ import { useClientId } from '../../dialogs/useClientId.ts'
 import { Field } from '../../forms/Field.tsx'
 import { FieldDate } from '../../forms/FieldDate.tsx'
 import { Form } from '../../forms/Form.tsx'
-import { AddTyreInstallationDocument, DeleteTyreInstallationDocument, RestoreTyreInstallationDocument, UpdateTyreInstallationDocument } from '../../gql/generated.ts'
+import { AddTyreInstallationDocument, DeleteTyreInstallationDocument, RestoreTyreInstallationDocument, UpdateTyreInstallationDocument, VehicleTyresDocument } from '../../gql/generated.ts'
 import { useFormat } from '../../i18n/format.ts'
 import { ErrorMessage } from '../../messages.tsx'
 import { discardChange } from '../../offline/submitChange.ts'
+import { TyreRuleError } from '../tyreHistory.ts'
 import { type Tyres, useTyreMutation, useTyreToasts } from '../tyres.ts'
-import { isoOf, type Boundary, type Gap } from './model.ts'
+import { isoOf, setNameOf, type Boundary, type Gap } from './model.ts'
 import { useMoveSwap } from './useMoveSwap.ts'
-
-const setName = (tyres: Tyres, id: string) => tyres.sets.find((s) => s.set.id === id)?.set.name ?? ''
 
 /** *Move the swap*: one day for both sets. Opened by the timeline (a handle, or the table's button). */
 export function MoveSwapDialog({ vehicleId, tyres, boundary, open, onOpenChange, onClosed }: { vehicleId: string; tyres: Tyres; boundary: Boundary; open: boolean; onOpenChange: (open: boolean) => void; onClosed: () => void }) {
@@ -48,7 +47,7 @@ export function MoveSwapDialog({ vehicleId, tyres, boundary, open, onOpenChange,
       busy={busy}
       maxWidth={440}
       title={t('tyres.timeline.moveTitle')}
-      description={t('tyres.timeline.moveText', { off: setName(tyres, boundary.before.setId), on: setName(tyres, boundary.after.setId) })}
+      description={t('tyres.timeline.moveText', { off: setNameOf(tyres, boundary.before.setId), on: setNameOf(tyres, boundary.after.setId) })}
     >
       <Form onSubmit={submit} refusal={error}>
         <OfflineNote />
@@ -74,8 +73,10 @@ export function MoveSwapDialog({ vehicleId, tyres, boundary, open, onOpenChange,
  * stretches its own period when the chosen days touch it: the set before, from the gap's first day, ends later; the set after, up to the
  * gap's last day, starts earlier (its line, reading and expense move with it); anything else adds a period. The same set on both sides,
  * filled whole: the server never joins two periods of a set that meet, so the later one goes to the trash with its line and the earlier
- * one runs to where it ended, one period. When the later one's line holds something (a reading, a note, an amount), or the set is tracked
- * tyre by tyre (its tyres' corners in that period would go too), nothing is trashed: the earlier one stretches to it and the two meet.
+ * one runs to where it ended, one period. When the later one's line holds something (a reading, a note, an amount), its pairs are not the
+ * earlier one's (the server joins only the same pairs: its positions would be lost), or the set is tracked tyre by tyre (its tyres'
+ * corners in that period would go too), nothing is trashed: the earlier one stretches to it and the two meet. Days the wrong way round are
+ * refused here: a stretch sends only the end that moves, so the server would not see them.
  */
 export function FillGapDialog({ vehicleId, tyres, gap, open, onOpenChange, onClosed }: { vehicleId: string; tyres: Tyres; gap: Gap; open: boolean; onOpenChange: (open: boolean) => void; onClosed: () => void }) {
   const { t } = useTranslation()
@@ -91,7 +92,9 @@ export function FillGapDialog({ vehicleId, tyres, gap, open, onOpenChange, onClo
   const [until, setUntil] = useState(isoOf(gap.until))
   const [error, setError] = useState<unknown>()
   const [busy, setBusy] = useState(false)
-  const stretchesAfter = setId === gap.after.setId && until === isoOf(gap.until) && !(setId === gap.before.setId && from === isoOf(gap.from))
+  // The chosen days touch the period before the gap (it ends later), or only the one after it (it starts earlier).
+  const stretchesBefore = setId === gap.before.setId && from === isoOf(gap.from)
+  const stretchesAfter = setId === gap.after.setId && until === isoOf(gap.until) && !stretchesBefore
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -101,16 +104,20 @@ export function FillGapDialog({ vehicleId, tyres, gap, open, onOpenChange, onClo
     const before = gap.before.info.installation
     const after = gap.after.info.installation
     try {
+      if (until <= from) throw new TyreRuleError('tyres.untilBeforeFrom', { from, until })
       let saved
-      if (setId === gap.before.setId && from === isoOf(gap.from)) {
+      if (stretchesBefore) {
         const line = tyres.entries.find((x) => x.installationId === after.id)
         // What trashing the later period would take along: something typed on its line, or (a set tracked tyre by tyre) its tyres' corners.
         const holds = !!line && (line.odometer != null || !!line.note || line.expenseId != null)
         const tracked = !!tyres.sets.find((x) => x.set.id === setId)?.set.brokenUpOn
-        if (setId === gap.after.setId && until === isoOf(gap.until) && !holds && !tracked) {
+        const samePairs = (before.pairOneFront ?? null) === (after.pairOneFront ?? null)
+        if (setId === gap.after.setId && until === isoOf(gap.until) && !holds && !tracked && samePairs) {
           // One set all along: one period. The later one's empty line goes to the trash with it (the trash brings both back).
           const trashed = await run(DeleteTyreInstallationDocument, { id: after.id })
           try {
+            // A trash kept on this device: the stretch is checked against what the tab shows, so the tab takes the trash in first.
+            if (trashed.queued) await client.refetchQueries({ include: [VehicleTyresDocument] })
             saved = await run(UpdateTyreInstallationDocument, { input: whole(gap.before, { from: before.from, until: after.until ?? null }) })
           } catch (err) {
             // The stretch was refused: the later period comes back (a trash kept on this device is taken back), so nothing is left half done.
