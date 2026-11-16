@@ -113,6 +113,8 @@ public class ContractTests
     [InlineData("TyreSet", "id", "vehicleId", "name", "season", "size", "since", "madeWeek", "madeYear", "roughDistance", "roughUntil", "usualMonths", "retiredOn", "isRetired", "brokenUpOn", "deletedAt", "version", "updatedAt", "changedAt", "changedBy", "lastChange", "createdBy")]
     [InlineData("TyreSetFigures", "distance", "approximate", "measured", "pairOneFront", "pairOneRear", "pairsUnknown", "suggestion")]
     [InlineData("RoughSuggestion", "distance", "until", "measuredBefore")]
+    [InlineData("TyreRoughEstimate", "distance", "from", "notCovered", "leftOutDays", "readings")]
+    [InlineData("DayRange", "from", "until")]
     [InlineData("TyreInstallationInfo", "installation", "distance")]
     [InlineData("TyreInstallation", "id", "vehicleId", "setId", "from", "until", "pairOneFront", "isOpen", "deletedAt", "version", "updatedAt", "changedAt", "lastChange")]
     [InlineData("InstallationDistance", "distance", "approximate", "measure")]

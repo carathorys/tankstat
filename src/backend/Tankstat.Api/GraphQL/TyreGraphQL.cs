@@ -1,5 +1,6 @@
 using GreenDonut;
 using Tankstat.Application.Expenses;
+using Tankstat.Application;
 using Tankstat.Application.Tyres;
 using Tankstat.Application.Users;
 using Tankstat.Domain.Access;
@@ -378,6 +379,16 @@ public sealed class TyreQueries
         TyreTrashSortField orderBy = TyreTrashSortField.DeletedAt, Tankstat.Domain.SortDirection direction = Tankstat.Domain.SortDirection.Desc,
         int skip = 0, int take = 50) =>
         tyres.ListTrashAsync(skip, take, ct, direction == Tankstat.Domain.SortDirection.Desc);
+
+    /// <summary>
+    /// The automatic estimate of a used set's rough figure (#291): the car's logged distance in <paramref name="months"/> (1 = January) from
+    /// the month of <paramref name="since"/> up to <paramref name="until"/>, the first day the figure does not cover, less the days a
+    /// recorded installation covers. Only offered: nothing is saved. A vehicle that cannot be seen is <c>NOT_FOUND</c>.
+    /// </summary>
+    public async Task<TyreRoughEstimate> GetTyreRoughEstimate(
+        Guid vehicleId, DateOnly since, DateOnly until, IReadOnlyList<int> months, [Service] TyreService tyres, CancellationToken ct) =>
+        await tyres.EstimateRoughAsync(vehicleId, since, until, months, ct)
+        ?? throw new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId });
 
     public Task<int> GetTyreTrashCount([Service] TyreService tyres, CancellationToken ct) => tyres.CountTrashAsync(ct);
 

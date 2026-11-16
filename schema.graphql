@@ -85,6 +85,12 @@ type Query {
     skip: Int! = 0
     take: Int! = 50
   ): [TyreTrashRow!]! @cost(weight: "10")
+  tyreRoughEstimate(
+    vehicleId: UUID!
+    since: LocalDate!
+    until: LocalDate!
+    months: [Int!]!
+  ): TyreRoughEstimate! @cost(weight: "10")
   tyreTrashCount: Int! @cost(weight: "10")
   tyreTrashDeletableCount: Int! @cost(weight: "10")
   notifications(unreadOnly: Boolean! = false, skip: Int! = 0, take: Int! = 20): [NotificationInfo!]!
@@ -433,6 +439,11 @@ type DashboardTrends {
   costPerDistance: [CurrencyChange!]!
   consumption: ConsumptionChange
   distance: ValueChange
+}
+
+type DayRange {
+  from: LocalDate!
+  until: LocalDate!
 }
 
 type Expense {
@@ -1112,6 +1123,14 @@ type TyrePlace {
 type TyrePlaceInfo {
   place: TyrePlace!
   distance: InstallationDistance!
+}
+
+type TyreRoughEstimate {
+  distance: Long!
+  from: LocalDate
+  notCovered: [DayRange!]!
+  leftOutDays: Int!
+  readings: Boolean!
 }
 
 type TyreSet {

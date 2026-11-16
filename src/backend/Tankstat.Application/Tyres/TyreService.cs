@@ -159,6 +159,23 @@ public sealed class TyreService(
     public async Task<TyreOverview?> OverviewAsync(Guid vehicleId, CancellationToken ct) =>
         await guard.ForVehicleAsync(vehicleId, ct) is null ? null : Overview(vehicleId, await tyres.LoadAsync(vehicleId, ct));
 
+    /// <summary>
+    /// The automatic estimate of a used set's rough figure (#291): the car's logged distance in <paramref name="months"/> from *in use since*
+    /// to <paramref name="until"/>, the day the figure stops covering (the client's: the add form's today, or the day the rough figure dialog
+    /// shows, so the two never disagree on the span). Whoever may see the vehicle's logs may ask; an invisible vehicle answers null.
+    /// </summary>
+    public async Task<TyreRoughEstimate?> EstimateRoughAsync(Guid vehicleId, DateOnly since, DateOnly until, IReadOnlyList<int> months, CancellationToken ct)
+    {
+        if (await guard.ForVehicleAsync(vehicleId, ct) is null) return null;
+        if (since > until || until > LatestAllowedDate)
+            throw new DomainException("tyres.estimateSpan", "The day the estimate starts must be before the day it ends, and not in the future.");
+        var chosen = TyreMonths.Of(months);
+        var book = await tyres.LoadAsync(vehicleId, ct);
+        var liveSets = book.Sets.Where(s => !s.IsDeleted).Select(s => s.Id).ToHashSet();
+        var installations = book.Installations.Where(i => !i.IsDeleted && liveSets.Contains(i.SetId)).Select(i => (i.From, i.Until));
+        return TyreCalculator.Estimate(TyreCalculator.Sorted(book.Readings), installations, chosen, since, until, Today);
+    }
+
     /// <param name="id">The set's id chosen by the client: an add sent again is answered with what it created.</param>
     /// <param name="installationId">The id of the installation a fitted set starts with.</param>
     public async Task<TyreOverview> AddSetAsync(NewTyreSet input, CancellationToken ct, Guid? id = null, Guid? installationId = null)

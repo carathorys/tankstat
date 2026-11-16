@@ -588,6 +588,30 @@ public class TyreServiceTests
     }
 
     [Fact]
+    public async Task TheEstimate_IsWorkedOutFromTheCarsReadings_ForWhoeverMaySeeTheLogs_LeavingOutRecordedInstallations()
+    {
+        // #291. The car's readings: 140,000 on 1 March 2026 and 147,000 on 1 September (a straight line between them).
+        var s = await Setup();
+        var (winter, summer) = (Guid.NewGuid(), Guid.NewGuid());
+        await s.Tyres.AddSetAsync(new NewTyreSet(s.Car.Id, Winter(0), Fitted: true, D(2026, 3, 1), null, true), default, winter);
+        await s.Tyres.AddSetAsync(new NewTyreSet(s.Car.Id, Summer(0), Fitted: false, D(2026, 3, 1), null, null), default, summer);
+        await s.Tyres.SwapAsync(new TyreSwapInput(s.Car.Id, summer, D(2026, 4, 11), true, false, null, null), default);
+
+        var estimate = (await s.Tyres.EstimateRoughAsync(s.Car.Id, D(2025, 3, 25), D(2026, 4, 11), [3, 4], default))!;
+
+        // March 2025 is before the first reading; March 2026 and 1 to 10 April 2026 ran on the winter set, which is recorded: left out.
+        Assert.Equal((0L, 31 + 10, true), (estimate.Distance, estimate.LeftOutDays, estimate.Readings));
+        Assert.Equal([new DayRange(D(2025, 3, 1), D(2025, 4, 30))], estimate.NotCovered);
+
+        Assert.Equal("tyres.estimateSpan", (await Assert.ThrowsAsync<DomainException>(() => s.Tyres.EstimateRoughAsync(s.Car.Id, D(2026, 4, 12), D(2026, 4, 11), [4], default))).Key);
+        Assert.Equal("tyres.estimateSpan", (await Assert.ThrowsAsync<DomainException>(() => s.Tyres.EstimateRoughAsync(s.Car.Id, D(2025, 3, 25), D(2099, 1, 1), [4], default))).Key);
+        Assert.Equal("tyres.monthsRequired", (await Assert.ThrowsAsync<DomainException>(() => s.Tyres.EstimateRoughAsync(s.Car.Id, D(2025, 3, 25), D(2026, 4, 11), [], default))).Key);
+
+        s.W.Current.SignInAs(s.Bob); // no access to the car: it looks as if it were not there
+        Assert.Null(await s.Tyres.EstimateRoughAsync(s.Car.Id, D(2025, 3, 25), D(2026, 4, 11), [3, 4], default));
+    }
+
+    [Fact]
     public async Task TheUsualMonths_ComeWithTheAdd_TheEditAndTheRoughFigure_AndAClientWithoutThemChangesNone()
     {
         // #291: the three inputs' rules.

@@ -37,6 +37,20 @@ public sealed record TyreFigures(long Distance, bool Approximate, long Measured,
 /// </summary>
 public sealed record RoughSuggestion(long Distance, DateOnly Until, long MeasuredBefore);
 
+/// <summary>Days of the calendar, both ends counted.</summary>
+public readonly record struct DayRange(DateOnly From, DateOnly Until);
+
+/// <summary>
+/// What a used set probably ran before it was tracked (#291): the car's distance in the set's usual months, as the fuel log measured it.
+/// Always approximate, and only ever offered: the person takes it or types their own.
+/// </summary>
+/// <param name="Distance">The sum, rounded to 100 like a <see cref="RoughSuggestion"/>.</param>
+/// <param name="From">The first day counted; null when nothing was.</param>
+/// <param name="NotCovered">The days of its months before the car's first reading, which no figure can be worked out for.</param>
+/// <param name="LeftOutDays">The days of its months a recorded installation covers: the car ran on those tyres (the owner's decision 47).</param>
+/// <param name="Readings">Whether the car has a reading at all; without one nothing can be estimated.</param>
+public sealed record TyreRoughEstimate(long Distance, DateOnly? From, IReadOnlyList<DayRange> NotCovered, int LeftOutDays, bool Readings);
+
 /// <summary>
 /// Pure arithmetic of tyre distances (#287), worked out on every read from the vehicle's odometer readings, nothing stored. The odometer
 /// on a day is the highest reading of that day (the tie-break of the latest reading), else a straight line between the nearest readings
@@ -98,6 +112,50 @@ public static class TyreCalculator
             measure = InstallationMeasure.FromFirstReading;
         }
         return new InstallationDistance(Math.Max(0, end.Value - start.Value.Value), end.Approximate || start.Value.Approximate, measure);
+    }
+
+    /// <summary>
+    /// The estimate of a used set's rough figure (#291): the days of <paramref name="months"/> from the first day of
+    /// <paramref name="since"/>'s month (*in use since* is month-level, decision 48) up to <paramref name="until"/>, the first day the figure
+    /// does not cover; less the days any live installation covers, this set's own too (decision 47); each run of days left counts the car's
+    /// odometer at its end minus at its start. A run before the car's first reading is not covered; after the latest reading it counts 0.
+    /// </summary>
+    /// <param name="installations">Every live installation of the vehicle, of any set; one still on the car covers up to <paramref name="today"/>.</param>
+    public static TyreRoughEstimate Estimate(
+        IReadOnlyList<ReadingPoint> sorted, IEnumerable<(DateOnly From, DateOnly? Until)> installations, TyreMonths months, DateOnly since, DateOnly until, DateOnly today)
+    {
+        var covered = installations.Select(i => (i.From, Until: i.Until ?? today)).ToList();
+        var first = sorted.Count > 0 ? sorted[0].Date : (DateOnly?)null;
+        var notCovered = new List<DayRange>();
+        long sum = 0;
+        var leftOut = 0;
+        DateOnly? from = null, runStart = null;
+
+        void Close(DateOnly end) // the run [runStart, end)
+        {
+            if (runStart is not { } start) return;
+            runStart = null;
+            if (first is not { } firstReading) return;
+            if (start < firstReading) notCovered.Add(new DayRange(start, (end <= firstReading ? end : firstReading).AddDays(-1)));
+            if (end <= firstReading) return;
+            var counted = start < firstReading ? firstReading : start;
+            from ??= counted;
+            sum += Math.Max(0, OdometerOn(sorted, end)!.Value.Value - OdometerOn(sorted, counted)!.Value.Value);
+        }
+
+        for (var day = new DateOnly(since.Year, since.Month, 1); day < until; day = day.AddDays(1))
+        {
+            var free = months.Has(day.Month);
+            if (free && covered.Any(c => c.From <= day && day < c.Until))
+            {
+                leftOut++;
+                free = false;
+            }
+            if (free) runStart ??= day;
+            else Close(day);
+        }
+        Close(until);
+        return new TyreRoughEstimate((long)Math.Round(sum / 100.0, MidpointRounding.AwayFromZero) * 100, from, notCovered, leftOut, first is not null);
     }
 
     /// <summary>A whole set's figures from its live installations and its rough figure.</summary>
