@@ -265,7 +265,7 @@ test('starts from the Usage preset, then adds a template as it is and a ready-ma
   await page.getByRole('button', { name: 'Save dashboard' }).click()
   await expect(page.getByText('Saved.')).toBeVisible()
   await expect.poll(() => chartTitles(page)).toEqual(['Distance, this year and last', 'Consumption trend', 'Distance and consumption', 'Distance per month', 'My costs'])
-  expect(await figureLabels(page)).toEqual(['Odometer', 'Distance driven', 'Average consumption', 'Consumption change', 'Last fill-up'])
+  await expect.poll(() => figureLabels(page)).toEqual(['Odometer', 'Distance driven', 'Average consumption', 'Consumption change', 'Last fill-up']) // polled: the cards draw their labels a moment after edit mode ends (seen once on CI)
   // Outside Customize a tile shows only its content: no pencil, no bin, the table a button away (on a chart with something to list).
   await expect(page.getByRole('button', { name: /^(Edit|Customize|Remove) / })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'My costs as a table' })).toBeVisible()
