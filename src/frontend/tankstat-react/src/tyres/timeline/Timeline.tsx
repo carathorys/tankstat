@@ -197,8 +197,11 @@ export default function Timeline({
   // back to it), or the focus is elsewhere by then, nothing moves.
   const acted = useRef<string | null>(null)
   const keyOf = (o: Opened) => (o.kind === 'period' ? `period:${o.period.id}` : o.kind === 'swap' ? `swap:${o.boundary.line.id}` : `gap:${o.gap.from}`)
+  // The row a period's bar was in when its dialog opened: only a bar drawn anew in another row has lost the focus its old self held.
+  const actedRow = useRef<string | null>(null)
   const open = (what: Opened) => {
     acted.current = keyOf(what)
+    actedRow.current = what.kind === 'period' ? what.period.setId : null
     setOpened((o) => ({ what, open: true, turn: (o?.turn ?? 0) + 1 }))
   }
   const setOpen = (next: boolean) => setOpened((o) => o && { ...o, open: next })
@@ -210,9 +213,13 @@ export default function Timeline({
     if (opened || !acted.current) return
     const lost = !document.activeElement || document.activeElement === document.body
     if (controls.split(' ').includes(acted.current)) {
-      // Still there: a bar drawn anew in another row takes the focus its old self held.
+      // Still there. Where it was, nothing moves (also on a later redraw: the focus may be anywhere by then). A bar drawn anew in another
+      // row takes the focus its old self held, once; the picture takes it when that row is not drawn (a hidden set, days out of the range).
       const [kind, id] = acted.current.split(':')
-      if (lost && kind === 'period') scroll.current?.querySelector<HTMLElement>(`button[data-period="${id}"]`)?.focus()
+      const row = kind === 'period' ? drawnIn.split(' ').find((d) => d.startsWith(`${id}@`))?.slice(id.length + 1) : undefined
+      if (row === undefined || row === actedRow.current) return
+      actedRow.current = row
+      if (lost) (scroll.current?.querySelector<HTMLElement>(`button[data-period="${id}"]`) ?? scroll.current)?.focus()
       return
     }
     acted.current = null

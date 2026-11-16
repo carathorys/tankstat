@@ -33,11 +33,14 @@ export interface Followed {
   moved: { line: LineState; from: string }[]
 }
 
+/** The kind of an installation's line (`TyreLog.PositionsChanged`): a change of positions when the same set came off on its first day, else a swap. */
+const kindFor = (installation: InstallationState, live: readonly InstallationState[]): 'POSITIONS_CHANGED' | 'SWAP' =>
+  live.some((o) => o.id !== installation.id && o.setId === installation.setId && o.until === installation.from) ? 'POSITIONS_CHANGED' : 'SWAP'
+
 /** The line of a new installation: a change of positions when the same set came off on its first day. */
 export function lineFor(installation: InstallationState, live: readonly InstallationState[]): LineState {
-  const positions = live.some((o) => o.setId === installation.setId && o.until === installation.from)
   return {
-    id: installation.id, kind: positions ? 'POSITIONS_CHANGED' : 'SWAP', setId: installation.setId, installationId: installation.id,
+    id: installation.id, kind: kindFor(installation, live), setId: installation.setId, installationId: installation.id,
     day: installation.from, odometer: null, note: null,
   }
 }
@@ -84,7 +87,7 @@ export function follow(
       const line = live.find((l) => l.id === affected.id)
       if (!line || (line.kind !== 'SWAP' && line.kind !== 'POSITIONS_CHANGED')) continue
       line.setId = affected.setId
-      line.kind = after.some((o) => o.id !== affected.id && o.setId === affected.setId && o.until === affected.from) ? 'POSITIONS_CHANGED' : 'SWAP'
+      line.kind = kindFor(affected, after)
     }
   }
   return { lines: live, trashed, moved }

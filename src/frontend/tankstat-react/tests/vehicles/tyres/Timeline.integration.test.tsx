@@ -155,6 +155,22 @@ it('a period moved to another set is drawn in that set’s row, and its bar ther
   await waitFor(() => expect(moved).toHaveFocus())
 })
 
+it('a period moved to a set the picture does not show hands the focus its bar held to the picture', async () => {
+  const { ui, state } = setup([tyreSummer, tyreWinter, spare], { timeline: { range: 'ALL', layers: ['BEFORE_TRACKING', 'GAPS', 'MARKS', 'TABLE'], hiddenSets: ['s3'] } })
+  server.use(graphql.mutation('UpdateTyreInstallation', () => void (state.sets = [tyreSummer, { ...tyreWinter, installations: [] }, { ...spare, installations: [{ ...tyreWinter.installations[0], setId: 's3' }] }])))
+  const tl = within(await card())
+
+  await ui.click(tl.getAllByRole('button', { name: /^Continental WinterContact, on the car .* Edit$/ })[0])
+  const dialog = await screen.findByRole('dialog', { name: 'Edit the period' })
+  await ui.click(within(dialog).getByRole('combobox', { name: 'Set' }))
+  await ui.click(await screen.findByRole('option', { name: 'All-season: Spare all-season' })) // hidden in the picture, still a set of the car
+  await ui.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  await waitFor(() => expect(tl.queryByRole('button', { name: /, on the car Nov 15, 2025 to Mar 28, 2026, .* Edit$/ })).not.toBeInTheDocument())
+  await waitFor(() => expect(tl.getByRole('group', { name: 'Timeline picture, scrolls sideways' })).toHaveFocus())
+})
+
 it('from a set’s History too: the period moved to another set leaves that list, and History stays usable', async () => {
   const { ui, state } = setup([tyreSummer, tyreWinter, spare])
   server.use(graphql.mutation('UpdateTyreInstallation', () => void (state.sets = [tyreSummer, { ...tyreWinter, installations: [] }, { ...spare, installations: [{ ...tyreWinter.installations[0], setId: 's3' }] }])))
