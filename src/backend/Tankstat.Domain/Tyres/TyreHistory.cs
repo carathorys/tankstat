@@ -13,6 +13,9 @@ public sealed class TyreChanges
     /// </summary>
     public List<(TyreInstallation Installation, DateOnly Day)> JoinedAway { get; } = [];
 
+    /// <summary>The installations moved to another set (#332): their lines take the set, and the kinds around them are worked out again.</summary>
+    public List<TyreInstallation> SetChanged { get; } = [];
+
     public bool Any => Created.Count + Changed.Count + Trashed.Count > 0;
 
     internal void Change(TyreInstallation s)
@@ -191,6 +194,31 @@ public sealed class TyreHistory
         }
         installation.Update(day, installation.Until, installation.PairOneFront, by);
         changes.Change(installation);
+        return Checked(changes);
+    }
+
+    /// <summary>
+    /// A period that was another set's (#332, edit B): <paramref name="installation"/> moves to <paramref name="set"/>, with its days and
+    /// pairs as given, then every check as after any change. A set tracked tyre by tyre, the old one or the new one, is refused
+    /// (<c>tyres.brokenUpSetCannotMove</c>, the owner's decision 83): its tyres have their own times on the car inside the period.
+    /// </summary>
+    public TyreChanges MoveToSet(TyreInstallation installation, TyreSet set, DateOnly from, DateOnly? until, bool? pairOneFront, Guid by)
+    {
+        if (!_live.Contains(installation)) throw new DomainException("tyres.installationTrashedCannotEdit", "An installation in the trash cannot be changed; restore it first.");
+        var changes = new TyreChanges();
+        if (set.Id == installation.SetId)
+        {
+            if (Edit(installation, from, until, pairOneFront, by)) changes.Change(installation);
+            return changes;
+        }
+        if (!_sets.ContainsKey(set.Id)) throw new DomainException("tyres.setNotFound", "This tyre set does not exist.");
+        if (set.IsBrokenUp || _sets[installation.SetId].IsBrokenUp)
+            throw new DomainException("tyres.brokenUpSetCannotMove",
+                "A period of a set tracked tyre by tyre cannot move to another set. Move it to the trash and add the right one instead.",
+                new { Set = (set.IsBrokenUp ? set : _sets[installation.SetId]).Name });
+        installation.MoveToSet(set.Id, from, until, pairOneFront, by);
+        changes.Change(installation);
+        changes.SetChanged.Add(installation);
         return Checked(changes);
     }
 

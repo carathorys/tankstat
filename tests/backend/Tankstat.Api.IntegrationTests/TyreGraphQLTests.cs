@@ -654,6 +654,35 @@ public class TyreGraphQLTests(ApiFixture api)
     }
 
     [Fact]
+    public async Task APeriodsSet_IsChangedWithItsUpdate_ItsLineFollows_AndASetTrackedTyreByTyreRefusesIt()
+    {
+        // #332 (edit B): `setId` on `UpdateTyreInstallationInput`.
+        var vehicle = await AddVehicle();
+        var (winter, spare, tracked, period) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        const string selection = "sets { set { id name } installations { installation { id pairOneFront } } } entries { id kind setId }";
+        foreach (var (id, name) in new[] { (winter, "Continental"), (spare, "Spare"), (tracked, "Tracked") })
+            await Mutate("addTyreSet", "AddTyreSetInput", new { vehicleId = vehicle, name, season = "WINTER", since = "2022-11-19", fitted = false, day = "2026-03-28", id, reminderMonth = 0 }, selection);
+        await Mutate("addTyreInstallation", "AddTyreInstallationInput", new { setId = winter, from = "2025-11-15", until = "2026-02-20", pairOneFront = true, id = period }, selection);
+
+        var moved = await Mutate("updateTyreInstallation", "UpdateTyreInstallationInput", new { id = period, from = "2025-11-15", until = "2026-02-20", setId = spare }, selection);
+        Assert.Equal(period.ToString(), SetNamed(moved, "Spare").GetProperty("installations")[0].GetProperty("installation").GetProperty("id").GetString());
+        Assert.Equal(JsonValueKind.Null, SetNamed(moved, "Spare").GetProperty("installations")[0].GetProperty("installation").GetProperty("pairOneFront").ValueKind);
+        Assert.Equal(0, SetNamed(moved, "Continental").GetProperty("installations").GetArrayLength());
+        var line = moved.GetProperty("entries").EnumerateArray().Single(e => e.GetProperty("id").GetString() == period.ToString());
+        Assert.Equal(("SWAP", spare.ToString()), (line.GetProperty("kind").GetString(), line.GetProperty("setId").GetString()));
+
+        // Left out, the set stays (a client from before the field).
+        var kept = await Mutate("updateTyreInstallation", "UpdateTyreInstallationInput", new { id = period, from = "2025-11-16", until = "2026-02-20" }, selection);
+        Assert.Equal(1, SetNamed(kept, "Spare").GetProperty("installations").GetArrayLength());
+
+        // A set tracked tyre by tyre takes no period from another set.
+        string T() => Guid.NewGuid().ToString();
+        await Mutate("breakUpTyreSet", "BreakUpTyreSetInput", new { setId = tracked, day = "2026-03-28", tyres = new[] { new { id = T(), label = "W1", corner = "FRONT_LEFT" }, new { id = T(), label = "W2", corner = "FRONT_RIGHT" }, new { id = T(), label = "W3", corner = "REAR_LEFT" }, new { id = T(), label = "W4", corner = "REAR_RIGHT" } } }, selection);
+        var refused = await Send("mutation($i: UpdateTyreInstallationInput!) { updateTyreInstallation(input: $i) { vehicleId } }", new { i = new { id = period, from = "2025-11-16", until = "2026-02-20", setId = tracked } });
+        Assert.Equal("tyres.brokenUpSetCannotMove", refused.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
+    }
+
+    [Fact]
     public async Task ASetsReminderMonth_ComesWithTheAddAndTheEdit_ItsSeasonsAnsweredAsNone_AndAStoredSetIsDueInItsMonth()
     {
         // #292: `reminderMonth` on the two inputs and the set, `reminder` on a stored set whose month runs.

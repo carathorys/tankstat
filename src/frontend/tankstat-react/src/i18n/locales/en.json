@@ -1107,6 +1107,7 @@
       "entryNotTrashed": "This line of the tyre log is not in the trash.",
       "noteTakesNoAmount": "A note takes no amount; choose what was done.",
       "alreadyBrokenUp": "{{set}} is tracked tyre by tyre already.",
+      "brokenUpSetCannotMove": "A period of a set tracked tyre by tyre cannot move to another set. Move it to the trash and add the right one instead.",
       "fourTyres": "A car's set is four tyres: give each a label.",
       "labelRequired": "Every tyre needs a label.",
       "labelTooLong": "A label can be at most {{max}} characters.",

@@ -1107,6 +1107,7 @@
       "entryNotTrashed": "A gumi napló e sora nincs a kukában.",
       "noteTakesNoAmount": "A megjegyzéshez nem tartozhat összeg; válaszd ki, mi történt.",
       "alreadyBrokenUp": "A(z) {{set}} szettet már gumiként követi az app.",
+      "brokenUpSetCannotMove": "Az abroncsonként követett szett időszaka nem tehető át másik szettre. Tedd a kukába, és vedd fel a helyeset.",
       "fourTyres": "Egy autó szettje négy gumi: mindegyiknek adj jelölést.",
       "labelRequired": "Minden guminak kell jelölés.",
       "labelTooLong": "A jelölés legfeljebb {{max}} karakter lehet.",

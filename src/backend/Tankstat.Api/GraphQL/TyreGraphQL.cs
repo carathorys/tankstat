@@ -128,8 +128,10 @@ public sealed record AddPastTyreSwapsInput(Guid VehicleId, IReadOnlyList<PastTyr
 public sealed record AddTyreInstallationInput(
     Guid SetId, DateOnly From, DateOnly? Until = null, bool? PairOneFront = null, long? OdometerFrom = null, long? OdometerUntil = null, Guid? Id = null);
 
+/// <param name="SetId">The set the period is of (#332): another set moves it there (its line with it; a set tracked tyre by tyre, either one,
+/// is refused with <c>tyres.brokenUpSetCannotMove</c>). Left out, the set stays: a client from before it.</param>
 public sealed record UpdateTyreInstallationInput(
-    Guid Id, DateOnly From, DateOnly? Until = null, bool? PairOneFront = null, long? OdometerFrom = null, long? OdometerUntil = null);
+    Guid Id, DateOnly From, DateOnly? Until = null, bool? PairOneFront = null, long? OdometerFrom = null, long? OdometerUntil = null, Guid? SetId = null);
 
 /// <param name="Kind">What was done: any kind but <c>SWAP</c> and <c>POSITIONS_CHANGED</c>, which come with the swap (<c>tyres.entryKindNotAllowed</c>).</param>
 /// <param name="SetId">The set it concerns; left out for none.</param>
@@ -564,7 +566,7 @@ internal static class TyreChanges
         tyres.AddInstallationAsync(i.SetId, new TyreInstallationInput(i.From, i.Until, i.PairOneFront, i.OdometerFrom, i.OdometerUntil), ct, i.Id);
 
     public static Task<TyreOverview> UpdateInstallation(UpdateTyreInstallationInput i, TyreService tyres, CancellationToken ct, int? version = null) =>
-        tyres.UpdateInstallationAsync(i.Id, new TyreInstallationInput(i.From, i.Until, i.PairOneFront, i.OdometerFrom, i.OdometerUntil), ct, version);
+        tyres.UpdateInstallationAsync(i.Id, new TyreInstallationInput(i.From, i.Until, i.PairOneFront, i.OdometerFrom, i.OdometerUntil, i.SetId), ct, version);
 
     public static Task<TyreOverview> AddEntry(AddTyreEntryInput i, TyreService tyres, CancellationToken ct) =>
         tyres.AddEntryAsync(i.VehicleId, new TyreEntryInput(i.Kind, i.SetId, i.Day, i.Odometer, i.Note, i.Fee?.ToFee(),

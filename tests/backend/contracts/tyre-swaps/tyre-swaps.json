@@ -1683,6 +1683,228 @@
         }
       },
       "op": "move"
+    },
+    {
+      "name": "a period moved to another set takes its line along, with its note, and pairs not sure",
+      "sets": [
+        {
+          "id": "summer",
+          "name": "Michelin Primacy 4",
+          "retiredOn": null
+        },
+        {
+          "id": "winter",
+          "name": "Continental WinterContact",
+          "retiredOn": null
+        },
+        {
+          "id": "allseason",
+          "name": "Nokian Seasonproof",
+          "retiredOn": null
+        }
+      ],
+      "installations": [
+        {
+          "id": "a1",
+          "set": "summer",
+          "from": "2025-04-01",
+          "until": "2025-11-01",
+          "pairOneFront": true
+        },
+        {
+          "id": "b1",
+          "set": "winter",
+          "from": "2025-11-01",
+          "until": null,
+          "pairOneFront": true
+        }
+      ],
+      "toSet": {
+        "installation": "b1",
+        "set": "allseason",
+        "pairOneFront": null
+      },
+      "lineNotes": {
+        "b1": "At the garage"
+      },
+      "expect": [
+        {
+          "id": "a1",
+          "set": "summer",
+          "from": "2025-04-01",
+          "until": "2025-11-01",
+          "pairOneFront": true
+        },
+        {
+          "id": "b1",
+          "set": "allseason",
+          "from": "2025-11-01",
+          "until": null,
+          "pairOneFront": null
+        }
+      ],
+      "op": "toSet",
+      "lines": [
+        {
+          "id": "a1",
+          "kind": "Swap",
+          "set": "summer",
+          "day": "2025-04-01",
+          "note": null
+        },
+        {
+          "id": "b1",
+          "kind": "Swap",
+          "set": "allseason",
+          "day": "2025-11-01",
+          "note": "At the garage"
+        }
+      ],
+      "trashedLines": []
+    },
+    {
+      "name": "a period moved to the set before it and after it: its line and the next one's kinds are worked out again",
+      "sets": [
+        {
+          "id": "summer",
+          "name": "Michelin Primacy 4",
+          "retiredOn": null
+        },
+        {
+          "id": "winter",
+          "name": "Continental WinterContact",
+          "retiredOn": null
+        },
+        {
+          "id": "allseason",
+          "name": "Nokian Seasonproof",
+          "retiredOn": null
+        }
+      ],
+      "installations": [
+        {
+          "id": "a1",
+          "set": "winter",
+          "from": "2025-11-01",
+          "until": "2026-03-01",
+          "pairOneFront": true
+        },
+        {
+          "id": "b1",
+          "set": "summer",
+          "from": "2026-03-01",
+          "until": "2026-03-15",
+          "pairOneFront": true
+        },
+        {
+          "id": "c1",
+          "set": "summer",
+          "from": "2026-03-15",
+          "until": null,
+          "pairOneFront": true
+        }
+      ],
+      "toSet": {
+        "installation": "b1",
+        "set": "winter",
+        "pairOneFront": null
+      },
+      "expect": [
+        {
+          "id": "a1",
+          "set": "winter",
+          "from": "2025-11-01",
+          "until": "2026-03-01",
+          "pairOneFront": true
+        },
+        {
+          "id": "b1",
+          "set": "winter",
+          "from": "2026-03-01",
+          "until": "2026-03-15",
+          "pairOneFront": null
+        },
+        {
+          "id": "c1",
+          "set": "summer",
+          "from": "2026-03-15",
+          "until": null,
+          "pairOneFront": true
+        }
+      ],
+      "op": "toSet",
+      "lines": [
+        {
+          "id": "a1",
+          "kind": "Swap",
+          "set": "winter",
+          "day": "2025-11-01",
+          "note": null
+        },
+        {
+          "id": "b1",
+          "kind": "PositionsChanged",
+          "set": "winter",
+          "day": "2026-03-01",
+          "note": null
+        },
+        {
+          "id": "c1",
+          "kind": "Swap",
+          "set": "summer",
+          "day": "2026-03-15",
+          "note": null
+        }
+      ],
+      "trashedLines": []
+    },
+    {
+      "name": "a period cannot move to a set retired before it ends",
+      "sets": [
+        {
+          "id": "summer",
+          "name": "Michelin Primacy 4",
+          "retiredOn": null
+        },
+        {
+          "id": "winter",
+          "name": "Continental WinterContact",
+          "retiredOn": null
+        },
+        {
+          "id": "allseason",
+          "name": "Nokian Seasonproof",
+          "retiredOn": "2025-06-01"
+        }
+      ],
+      "installations": [
+        {
+          "id": "a1",
+          "set": "summer",
+          "from": "2025-04-01",
+          "until": "2025-11-01",
+          "pairOneFront": true
+        },
+        {
+          "id": "b1",
+          "set": "winter",
+          "from": "2025-11-01",
+          "until": null,
+          "pairOneFront": true
+        }
+      ],
+      "toSet": {
+        "installation": "b1",
+        "set": "allseason",
+        "pairOneFront": null
+      },
+      "op": "toSet",
+      "error": {
+        "key": "tyres.setRetired",
+        "args": {
+          "set": "Nokian Seasonproof"
+        }
+      }
     }
   ]
 }

@@ -80,7 +80,8 @@ public sealed record TyrePastSwap(DateOnly Day, Guid SetId, long? Odometer, Guid
 /// <param name="OdometerFrom">A reading for the first day, kept on the installation's line; null leaves the line's reading as it is.</param>
 /// <param name="OdometerUntil">A reading for the day it came off, kept on the line of the installation that starts that day, else on a
 /// <see cref="TyreEntryKind.Note"/> line of the set.</param>
-public sealed record TyreInstallationInput(DateOnly From, DateOnly? Until, bool? PairOneFront, long? OdometerFrom, long? OdometerUntil);
+/// <param name="SetId">An edit: the set the period is of (#332); left out, or its own, the set stays (a client from before it).</param>
+public sealed record TyreInstallationInput(DateOnly From, DateOnly? Until, bool? PairOneFront, long? OdometerFrom, long? OdometerUntil, Guid? SetId = null);
 
 /// <summary>A line for a single tyre (#289) of an entry for several: the tyre, and the line's client id.</summary>
 public sealed record TyreLine(Guid TyreId, Guid? Id = null);
@@ -367,6 +368,19 @@ public sealed class TyreService(
         var by = (await access.RequirePrincipalAsync(ct)).Id;
         var save = new TyreSave { Book = book, By = by };
         var (history, places) = Rules(vehicle, book);
+        if (input.SetId is { } setId && setId != installation.SetId)
+        {
+            // The period was another set's (#332): it moves there with its line, whose kind (and the next line's) is worked out again, and
+            // the line's expense follows its line as for any change. A set tracked tyre by tyre, either one, is refused by the history.
+            var moved = installation.From != input.From;
+            Follow(save, book, history, history.MoveToSet(installation, LiveSet(book, setId), input.From, input.Until, input.PairOneFront, by), by);
+            if (moved && input.OdometerFrom is null && LineOf(book, installation.Id) is { IsDeleted: false, OdometerReading: { } reading })
+                await odometer.ValidateAsync(vehicle.Id, reading.Date, reading.Value, exceptReadingId: reading.Id, ct);
+            await InstallationReadingsAsync(vehicle, book, save, history, installation.SetId, input, by, ct);
+            await SaveAsync(save, ct);
+            logger.LogDebug("Tyre installation {InstallationId} of vehicle {VehicleId} moved to tyre set {SetId}", id, vehicle.Id, setId);
+            return Overview(vehicle.Id, await tyres.LoadAsync(vehicle.Id, ct));
+        }
         var (edited, placed) = places.EditInstallation(installation, input.From, input.Until, input.PairOneFront, by); // the places at its ends follow (#289)
         save.Take(placed);
         if (edited)

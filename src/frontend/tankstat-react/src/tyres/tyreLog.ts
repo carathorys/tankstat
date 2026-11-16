@@ -5,7 +5,7 @@ import type { InstallationState } from './tyreHistory.ts'
  * How the tyre log follows the history, ported from the server's `TyreLog` (#288) so a tyre change made offline shows its lines as the
  * server will make them. Every installation has its line, with the installation's id: one a change creates gets a line (a change of positions
  * when the same set came off that day, else a swap), one it trashes takes its line along, one whose first day moved moves its line (and the
- * line's reading). An installation a join took away from its first day leaves what its line held for that day (a reading, a note) there, on a
+ * line's reading), one moved to another set takes its line along and the kinds around it are worked out again (#332). An installation a join took away from its first day leaves what its line held for that day (a reading, a note) there, on a
  * Note line of the set. Pure; pinned to the server by `tests/backend/contracts/tyre-swaps/tyre-swaps.json`.
  */
 export interface LineState {
@@ -75,5 +75,17 @@ export function follow(
     }
   }
   for (const created of after.filter((a) => !before.some((b) => b.id === a.id))) live.push(lineFor(created, after))
+  // A period moved to another set (#332): its line takes the set, and its kind and the kind of the line that starts where it ends are
+  // worked out again, as a new line's would be.
+  for (const now of after) {
+    const was = before.find((b) => b.id === now.id)
+    if (!was || was.setId === now.setId) continue
+    for (const affected of [now, ...after.filter((o) => o.id !== now.id && now.until !== null && o.from === now.until)]) {
+      const line = live.find((l) => l.id === affected.id)
+      if (!line || (line.kind !== 'SWAP' && line.kind !== 'POSITIONS_CHANGED')) continue
+      line.setId = affected.setId
+      line.kind = after.some((o) => o.id !== affected.id && o.setId === affected.setId && o.until === affected.from) ? 'POSITIONS_CHANGED' : 'SWAP'
+    }
+  }
   return { lines: live, trashed, moved }
 }

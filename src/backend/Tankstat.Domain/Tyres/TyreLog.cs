@@ -16,6 +16,7 @@ public sealed class TyreLogChanges
 /// How the tyre log follows the history (#288): every installation has its line, which takes the installation's id. A change of the history
 /// gives each installation it creates a line (<see cref="TyreEntryKind.PositionsChanged"/> when the same set came off that day, else
 /// <see cref="TyreEntryKind.Swap"/>), trashes the line of each installation it trashes, and moves the line of each one whose first day moved.
+/// An installation moved to another set (#332) takes its line along, and the kinds around it are worked out again.
 /// An installation a join took away from its first day leaves what its line held for that day (a reading, a note) on that day, on a
 /// <see cref="TyreEntryKind.Note"/> line of the set. Pure; the device ports it (<c>src/tyres/tyreLog.ts</c>), pinned by the swap contract.
 /// </summary>
@@ -44,10 +45,21 @@ public static class TyreLog
         foreach (var installation in changes.Changed)
             if (LineOf(installation) is { IsDeleted: false } line && line.MoveTo(installation.From, by)) result.Change(line);
         foreach (var installation in changes.Created) result.Created.Add(LineFor(installation, history, by));
+        // A period moved to another set (#332): its line takes the set, and its kind and the kind of the line that starts where it ends are
+        // worked out again, as a new line's would be (a swap, or positions changed when the same set came off that day).
+        foreach (var installation in changes.SetChanged)
+        {
+            var next = history.Live.Where(o => o != installation && installation.Until is { } end && o.From == end);
+            foreach (var affected in next.Prepend(installation))
+                if (LineOf(affected) is { IsDeleted: false } line && line.FollowInstallation(affected.SetId, PositionsChanged(affected, history), by)) result.Change(line);
+        }
         return result;
     }
 
+    private static bool PositionsChanged(TyreInstallation installation, TyreHistory history) =>
+        history.Live.Any(o => o != installation && o.SetId == installation.SetId && o.Until == installation.From);
+
     /// <summary>The line of a new installation: a change of positions when the same set came off on its first day.</summary>
     public static TyreEntry LineFor(TyreInstallation installation, TyreHistory history, Guid by) =>
-        TyreEntry.ForInstallation(installation, by, positionsChanged: history.Live.Any(o => o.SetId == installation.SetId && o.Until == installation.From));
+        TyreEntry.ForInstallation(installation, by, positionsChanged: PositionsChanged(installation, history));
 }

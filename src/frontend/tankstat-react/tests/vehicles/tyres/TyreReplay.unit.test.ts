@@ -728,3 +728,33 @@ describe('a swap moved from the timeline on the device (#332)', () => {
     expect([period('r2').until, period('r1').from]).toEqual(['2026-04-04', '2026-04-04'])
   })
 })
+
+describe('a period moved to another set on the device (#332)', () => {
+  const edit = (over: Record<string, unknown>) => change('updateTyreInstallation', { id: 'r2', from: '2025-11-15', until: '2026-03-28', pairOneFront: null, odometerFrom: null, odometerUntil: null, ...over })
+  const third = set('s3', 'Spare all-season', false, [])
+
+  it('moves the period and its line to the set named, marks both sets, and leaves it alone when no set is named', () => {
+    const withSpare: Tyres = { ...base, sets: [...base.sets, third] }
+    const { tyres, touched, skipped } = replayTyres(withSpare, [edit({ setId: 's3' })])
+    expect(skipped).toEqual([])
+    expect(tyres.sets.find((s) => s.set.id === 's3')!.installations.map((i) => i.installation.id)).toEqual(['r2'])
+    expect(tyres.sets.find((s) => s.set.id === 's2')!.installations).toEqual([])
+    expect(tyres.entries.find((e) => e.id === 'r2')).toMatchObject({ setId: 's3', kind: 'SWAP', day: '2025-11-15' })
+    expect([...touched].sort()).toEqual(['s2', 's3'])
+
+    const plain = replayTyres(withSpare, [edit({ from: '2025-11-20' })]) // a build from before the field
+    expect(plain.tyres.sets.find((s) => s.set.id === 's2')!.installations[0].installation).toMatchObject({ id: 'r2', from: '2025-11-20' })
+  })
+
+  it('works the kinds out again: onto the set that went on next, the next line becomes a change of positions', () => {
+    const { tyres } = replayTyres(base, [edit({ setId: 's1' })]) // the winter period was really the summer set's
+    expect(tyres.entries.find((e) => e.id === 'r2')).toMatchObject({ setId: 's1', kind: 'SWAP' })
+    expect(tyres.entries.find((e) => e.id === 'r1')).toMatchObject({ setId: 's1', kind: 'POSITIONS_CHANGED' })
+  })
+
+  it('refuses a set tracked tyre by tyre, the old one or the new one, as the server does', () => {
+    const tracked: Tyres = { ...base, sets: [...base.sets, { ...third, set: { ...third.set, brokenUpOn: '2026-01-01' } }] }
+    expect(() => applyTyreChange(tracked, edit({ setId: 's3' }))).toThrow(expect.objectContaining({ key: 'tyres.brokenUpSetCannotMove', args: { set: 'Spare all-season' } }))
+    expect(() => applyTyreChange(base, edit({ setId: 'nope' }))).toThrow(expect.objectContaining({ key: 'tyres.setNotFound' }))
+  })
+})

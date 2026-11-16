@@ -16,6 +16,8 @@ export interface SetState {
   name: string
   /** The day it was retired: no installation of it may run past it. */
   retiredOn: string | null
+  /** Tracked tyre by tyre (#289): its periods cannot move to another set, nor another set's to it (#332). */
+  brokenUp?: boolean
 }
 
 /** A rule the change breaks, as the server words it (`tyres.swapExists` with `date` and `set`, ...). */
@@ -138,6 +140,25 @@ export function moveSwap(sets: readonly SetState[], installations: readonly Inst
   if (moving.until !== null && moving.until <= day) throw new TyreRuleError('tyres.untilBeforeFrom', { from: day, until: moving.until })
   moving.from = day
   return checked(sets, live, moved(installations, live))
+}
+
+/**
+ * A period that was another set's (`TyreHistory.MoveToSet`, #332): it moves to `setId` with the days and pairs given, then every check. A
+ * set tracked tyre by tyre, the old one or the new one, is refused (`tyres.brokenUpSetCannotMove`); the same set is a plain edit.
+ */
+export function moveToSet(
+  sets: readonly SetState[], installations: readonly InstallationState[], id: string, setId: string, from: string, until: string | null, pairOneFront: boolean | null,
+): InstallationState[] {
+  const live = installations.map((s) => ({ ...s }))
+  const moving = live.find((s) => s.id === id)
+  if (!moving) throw new TyreRuleError('tyres.installationTrashedCannotEdit')
+  if (moving.setId !== setId) {
+    const [to, was] = [sets.find((x) => x.id === setId), sets.find((x) => x.id === moving.setId)]
+    if (!to) throw new TyreRuleError('tyres.setNotFound')
+    if (to.brokenUp || was?.brokenUp) throw new TyreRuleError('tyres.brokenUpSetCannotMove', { set: (to.brokenUp ? to : was!).name })
+  }
+  Object.assign(moving, { setId, from, until, pairOneFront })
+  return checked(sets, live, new Set([id]))
 }
 
 /**

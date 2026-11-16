@@ -108,6 +108,27 @@ public class SyncGraphQLTests : IDisposable
     }
 
     [Fact]
+    public async Task APeriodsSet_ChangedOnADevice_TravelsWithItsUpdate_AfterTheSetItNames()
+    {
+        // #332 (edit B): no kind of its own; `updateTyreInstallation` carries `setId`.
+        var people = await _app.Users();
+        var (car, winter, spare, period) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var result = await Send(people.Alice,
+            new { id = Guid.NewGuid(), addVehicle = new { id = car, name = "Octavia", fuelType = "PETROL" } },
+            new { id = Guid.NewGuid(), addTyreSet = new { id = winter, vehicleId = car, name = "Continental", season = "WINTER", since = "2022-11-19", fitted = false, day = "2026-03-28", reminderMonth = 0 } },
+            new { id = Guid.NewGuid(), addTyreInstallation = new { id = period, setId = winter, from = "2025-11-15", until = "2026-02-20" } },
+            new { id = Guid.NewGuid(), addTyreSet = new { id = spare, vehicleId = car, name = "Spare", season = "WINTER", since = "2022-11-19", fitted = false, day = "2026-03-28", reminderMonth = 0 } },
+            new { id = Guid.NewGuid(), updateTyreInstallation = new { id = period, from = "2025-11-15", until = "2026-02-20", setId = spare } });
+
+        Assert.Equal((5, 0), (result.GetProperty("applied").GetInt32(), result.GetProperty("parked").GetInt32()));
+        var sets = (await people.Alice.Gql("query($v: UUID!) { vehicleTyres(vehicleId: $v) { sets { set { name } installations { installation { id } } } entries { id setId } } }", new { v = car }))
+            .Data().GetProperty("vehicleTyres");
+        var bySet = sets.GetProperty("sets").EnumerateArray().ToDictionary(x => x.GetProperty("set").GetProperty("name").GetString()!, x => x.GetProperty("installations").GetArrayLength());
+        Assert.Equal((0, 1), (bySet["Continental"], bySet["Spare"]));
+        Assert.Equal(spare.ToString(), sets.GetProperty("entries").EnumerateArray().Single(e => e.GetProperty("id").GetString() == period.ToString()).GetProperty("setId").GetString());
+    }
+
+    [Fact]
     public async Task EveryKindOfTyreChange_IsApplied_ARepeatedTrashToo()
     {
         var people = await _app.Users();

@@ -1034,6 +1034,7 @@ type TyreEntry {
   expenseId: UUID
   "The installation whose line it is (the same id): set on a swap's and a change of positions' line."
   installationId: UUID
+  followInstallation(setId: UUID!, positionsChanged: Boolean!, by: UUID): Boolean!
   id: UUID!
   ownerId: UUID!
   vehicleId: UUID!
@@ -1089,6 +1090,13 @@ type TyreInfo {
 }
 
 type TyreInstallation {
+  moveToSet(
+    setId: UUID!
+    from: LocalDate!
+    until: LocalDate
+    pairOneFront: Boolean
+    by: UUID
+  ): Boolean!
   id: UUID!
   ownerId: UUID!
   vehicleId: UUID!
@@ -1937,6 +1945,7 @@ input UpdateTyreInstallationInput {
   pairOneFront: Boolean
   odometerFrom: Long
   odometerUntil: Long
+  setId: UUID
 }
 
 input UpdateTyrePlaceInput {

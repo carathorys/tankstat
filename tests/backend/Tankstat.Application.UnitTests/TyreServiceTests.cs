@@ -637,6 +637,72 @@ public class TyreServiceTests
         Assert.Equal("tyres.monthsRequired", (await Assert.ThrowsAsync<DomainException>(() => s.Tyres.SetRoughAsync(plain, 9_000, null, default, usualMonths: []))).Key);
     }
 
+    // ---- a period moved to another set (#332, edit B) -------------------------------------------------------------------
+
+    [Fact]
+    public async Task APeriodsSetIsChanged_ItsLineAndExpenseFollow_AnOlderClientLeavesIt_AndViewAccessCannot()
+    {
+        var s = await Setup();
+        var (_, summer, winter) = await TwoSets(s); // the summer set on the car since 28 Mar 2026, the winter one stored
+        // A past period logged for the winter set, with a reading and a fee on its line.
+        var period = Guid.NewGuid();
+        await s.Tyres.AddInstallationAsync(winter, new TyreInstallationInput(D(2025, 11, 15), D(2026, 2, 20), true, null, null), default, period);
+        var paid = await s.Tyres.UpdateEntryAsync(period, new TyreEntryInput(TyreEntryKind.Swap, winter, D(2025, 11, 15), null, "At the garage", new TyreFee(70, "EUR", "Tyres", "Swap: Continental", Guid.NewGuid())), default);
+        var expenseId = paid.Entries.Single(e => e.Id == period).ExpenseId!.Value;
+        var spare = Guid.NewGuid();
+        await s.Tyres.AddSetAsync(new NewTyreSet(s.Car.Id, Winter(0) with { Name = "Spare" }, Fitted: false, D(2026, 3, 28), null, null), default, spare);
+
+        // It was the spare set: the period moves, its line with it (still a swap), the pairs as given (none), the expense untouched.
+        var moved = await s.Tyres.UpdateInstallationAsync(period, new TyreInstallationInput(D(2025, 11, 15), D(2026, 2, 20), null, null, null, spare), default);
+        Assert.Equal(period, Assert.Single(Set(moved, spare).Installations).Installation.Id);
+        Assert.Empty(Set(moved, winter).Installations);
+        Assert.Null(Set(moved, spare).Installations[0].Installation.PairOneFront);
+        var line = moved.Entries.Single(e => e.Id == period);
+        Assert.Equal((spare, TyreEntryKind.Swap, "At the garage", (Guid?)expenseId), (line.SetId!.Value, line.Kind, line.Note, line.ExpenseId));
+        var expense = s.W.Expenses.Items.Single(e => e.Id == expenseId);
+        Assert.Equal((D(2025, 11, 15), 70m, false), (expense.Date, expense.Amount, expense.IsDeleted));
+
+        // A client from before the field names no set: the set stays, only the days change.
+        var older = await s.Tyres.UpdateInstallationAsync(period, new TyreInstallationInput(D(2025, 11, 20), D(2026, 2, 20), null, null, null), default);
+        Assert.Equal((spare, D(2025, 11, 20)), (older.Entries.Single(e => e.Id == period).SetId!.Value, Set(older, spare).Installations[0].Installation.From));
+
+        // Onto the set that went on next: the summer set's line of 28 Mar is no swap any more, the same set came off that day.
+        var joined = await s.Tyres.UpdateInstallationAsync(period, new TyreInstallationInput(D(2025, 11, 20), D(2026, 3, 28), null, null, null, summer), default);
+        Assert.Equal([TyreEntryKind.PositionsChanged, TyreEntryKind.Swap], joined.Entries.Where(e => e.SetId == summer).OrderByDescending(e => e.Day).Select(e => e.Kind));
+
+        // A set that does not exist; and someone who may only view.
+        await Assert.ThrowsAsync<NotFoundException>(() => s.Tyres.UpdateInstallationAsync(period, new TyreInstallationInput(D(2025, 11, 20), D(2026, 3, 28), null, null, null, Guid.NewGuid()), default));
+        s.W.Grants.Items.Add(AccessGrant.Create(s.Alice.Id, s.Bob.Id, AccessLevel.View));
+        s.W.Current.SignInAs(s.Bob);
+        await Assert.ThrowsAsync<ForbiddenException>(() => s.Tyres.UpdateInstallationAsync(period, new TyreInstallationInput(D(2025, 11, 20), D(2026, 3, 28), null, null, null, winter), default));
+    }
+
+    [Fact]
+    public async Task APeriodMovedOntoAStoredSetThatIsDue_ClearsItsReminder_OnlyWhenItReachesPastTheFirstOfItsMonth()
+    {
+        // #332's addendum: the reminder follows the history by itself.
+        var s = await Setup();
+        var (_, summer, winter) = await TwoSets(s);
+        var spare = Guid.NewGuid();
+        await s.Tyres.AddSetAsync(new NewTyreSet(s.Car.Id, Summer(0) with { Name = "Spare", ReminderMonth = 0 }, Fitted: false, D(2026, 3, 28), null, null), default, spare);
+        // The summer set off on 20 October, the spare on until 10 November, then nothing recorded: the winter set is due in November.
+        await s.Tyres.UpdateInstallationAsync(Set((await s.Tyres.OverviewAsync(s.Car.Id, default))!, summer).Installations[0].Installation.Id,
+            new TyreInstallationInput(D(2026, 3, 28), D(2026, 10, 1), true, null, null), default);
+        On(s, 2026, 11, 16);
+        var (old, late) = (Guid.NewGuid(), Guid.NewGuid());
+        await s.Tyres.AddInstallationAsync(spare, new TyreInstallationInput(D(2026, 10, 1), D(2026, 10, 20), null, null, null), default, old);
+        await s.Tyres.AddInstallationAsync(spare, new TyreInstallationInput(D(2026, 10, 20), D(2026, 11, 10), null, null, null), default, late);
+        Assert.NotNull((await Now(s, winter)).Reminder);
+
+        // A period that ended before 1 November leaves it due; one that reaches past it clears it; moved away again, it is due again.
+        var before = await s.Tyres.UpdateInstallationAsync(old, new TyreInstallationInput(D(2026, 10, 1), D(2026, 10, 20), null, null, null, winter), default);
+        Assert.NotNull(Set(before, winter).Reminder);
+        var past = await s.Tyres.UpdateInstallationAsync(late, new TyreInstallationInput(D(2026, 10, 20), D(2026, 11, 10), null, null, null, winter), default);
+        Assert.Null(Set(past, winter).Reminder);
+        var back = await s.Tyres.UpdateInstallationAsync(late, new TyreInstallationInput(D(2026, 10, 20), D(2026, 11, 10), null, null, null, spare), default);
+        Assert.NotNull(Set(back, winter).Reminder);
+    }
+
     // ---- the swap reminder (#292) -----------------------------------------------------------------------------------
 
     private static void On(Scene s, int y, int m, int d) => s.W.Clock.SetUtcNow(new DateTimeOffset(y, m, d, 12, 0, 0, TimeSpan.Zero));

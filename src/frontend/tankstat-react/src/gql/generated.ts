@@ -1009,6 +1009,7 @@ export type UpdateTyreInstallationInput = {
   odometerFrom?: number | null | undefined;
   odometerUntil?: number | null | undefined;
   pairOneFront?: boolean | null | undefined;
+  setId?: string | null | undefined;
   until?: string | null | undefined;
 };
 
