@@ -1270,6 +1270,15 @@ namespace Tankstat.Migrations.Sqlite
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateOnly?>("ReminderDismissedFor")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ReminderMonth")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateOnly?>("ReminderSince")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateOnly?>("RetiredOn")
                         .HasColumnType("TEXT");
 

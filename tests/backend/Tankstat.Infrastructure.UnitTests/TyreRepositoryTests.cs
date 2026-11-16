@@ -75,6 +75,31 @@ public class TyreRepositoryTests
     }
 
     [Fact]
+    public async Task ASetsReminder_RoundTrips_ItsMonthItsDayAndTheDismissedSeason()
+    {
+        // #292: three nullable columns.
+        await using var db = Database();
+        var car = await Car(db);
+        var onSeason = Set(car);
+        var own = TyreSet.Create(car.OwnerId, car.OwnerId, car.Id, "Continental", TyreSeason.Winter, null, D(2023, 11, 1), null, null, 0, null, reminderMonth: 10, today: D(2026, 10, 5));
+        var none = TyreSet.Create(car.OwnerId, car.OwnerId, car.Id, "Quiet", TyreSeason.Winter, null, D(2023, 11, 1), null, null, 0, null, reminderMonth: 0, today: D(2026, 10, 5));
+        Assert.True(own.DismissReminder(D(2026, 10, 1), D(2026, 10, 5)));
+        var save = new TyreSave();
+        save.AddedSets.Add(onSeason);
+        save.AddedSets.Add(own);
+        save.AddedSets.Add(none);
+        await db.Get<ITyreRepository>().SaveAsync(save, default);
+
+        var book = await db.Get<ITyreRepository>().LoadAsync(car.Id, default);
+
+        var plain = book.Sets.Single(s => s.Id == onSeason.Id);
+        Assert.Equal((null, null, null), (plain.ReminderMonth, plain.ReminderSince, plain.ReminderDismissedFor));
+        var loaded = book.Sets.Single(s => s.Id == own.Id);
+        Assert.Equal((10, D(2026, 10, 5), D(2026, 10, 1)), (loaded.ReminderMonth!.Value, loaded.ReminderSince!.Value, loaded.ReminderDismissedFor!.Value));
+        Assert.Equal((0, (int?)null), (book.Sets.Single(s => s.Id == none.Id).ReminderMonth!.Value, book.Sets.Single(s => s.Id == none.Id).EffectiveReminderMonth));
+    }
+
+    [Fact]
     public async Task ASave_RoundTrips_AndTheLinesReading_IsOneOfTheCarsReadings()
     {
         await using var db = Database();
