@@ -322,6 +322,29 @@ describe("an expense's tyre details (#290)", () => {
 })
 
 
+describe("an expense's tyre details, then its trash (#330)", () => {
+  const giving = change('update', 'e1', { entity: 'expenses', expectedVersion: 2, input: { id: 'e1', title: 'Puncture', amount: 25, tyre: { kind: 'PUNCTURE_REPAIRED', setId: 's1', lineId: 'l8' } } })
+  const onLine = change('updateTyreEntry', 'l8', { entity: 'tyres', input: { id: 'l8', kind: 'VALVE_REPLACED', day: '2026-10-01' } })
+
+  it('an edit that gives a plain expense its lines stays: the line, edited, and then the trash, without a version, in that order', () => {
+    const list = fold(giving, onLine, change('trash', 'e1', { entity: 'expenses', expectedVersion: 2 }))
+    expect(list.map((c) => [c.entity, c.action, c.targetId])).toEqual([['expenses', 'update', 'e1'], ['tyres', 'updateTyreEntry', 'l8'], ['expenses', 'trash', 'e1']])
+    expect(list[0]).toMatchObject({ expectedVersion: 2, input: { tyre: { lineId: 'l8' } } })
+    expect(list[2].expectedVersion).toBeNull() // the edit and the line's change move its version
+    expect(list[2].input).toBeUndefined() // nothing to give back: the edit is still there
+
+    expect(discard(list, list[2].id)).toEqual(list.slice(0, 2)) // taken back, only the trash goes
+    expect(collapse(list, change('restore', 'e1', { entity: 'expenses' }))).toEqual(list.slice(0, 2))
+  })
+
+  it('an edit that makes no lines still folds into the trash, as before', () => {
+    const linked = change('update', 'e1', { entity: 'expenses', expectedVersion: 2, input: { id: 'e1', title: 'Valve', tyre: { kind: 'VALVE_REPLACED', setId: 's1' } } })
+    const [only, ...rest] = fold(linked, change('trash', 'e1', { entity: 'expenses', expectedVersion: 2 }))
+    expect(rest).toEqual([])
+    expect(only).toMatchObject({ action: 'trash', expectedVersion: 2, input: linked.input })
+  })
+})
+
 describe("an expense's tyre details replaced or taken back (#290)", () => {
   const picked = { kind: 'PUNCTURE_REPAIRED', setId: 's9', tyres: [{ tyreId: 'nt1', id: 'l1' }], breakUp: { setId: 's9', day: '2026-10-01', tyres: [{ id: 'nt1' }, { id: 'nt2' }] } }
   const expenseAdd = change('add', 'e1', { id: 'e1', entity: 'expenses', input: { id: 'e1', vehicleId: 'v1', date: '2026-10-01', title: 'Puncture', amount: 25, tyre: picked } })

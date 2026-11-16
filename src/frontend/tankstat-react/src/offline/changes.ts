@@ -133,7 +133,8 @@ export function tyreNeedsOf(c: Change): string[] {
  * The changes waiting after `incoming` joins them. Changes of one log fold into one:
  * - an add then an update is the add with the new values; an add then a trash is nothing at all;
  * - an update then an update is the last one, from the first one's version (and values, `base`); an update then a trash is the trash,
- *   from that version, keeping the edit's values so that taking the trash back brings the edit back;
+ *   from that version, keeping the edit's values so that taking the trash back brings the edit back, unless the update makes tyre log
+ *   lines (#330): then it stays, and the trash follows it without a version;
  * - a trash then a restore, or a restore then a trash, is nothing (back where the server is, or the edit the trash took the place of);
  * - a second trash or restore of the same log, or an edit of one on its way to the trash, changes nothing.
  * A change that was sent already (`sent`) is never folded into: what follows it waits as a change of its own, from the version the log has
@@ -202,6 +203,10 @@ export function collapse(existing: readonly Change[], incoming: Change): Change[
       // Photos of a log in the trash can be neither added nor removed: those changes go (a restore does not bring them back).
       const kept = existing.filter((c) => !photosOfLog(c))
       if (restore) return kept.filter((c) => c !== restore)
+      // An edit that makes tyre log lines (#290) stays (#330): online the lines would stay too, live, without the expense's amount, and
+      // what was made on them waits after it. The trash follows as a change of its own, without a version: the edit and the lines' own
+      // changes move the expense's, which this device cannot count. Taken back, only the trash goes.
+      if (update && createdBy(update).length > 0) return [...kept, { ...incoming, expectedVersion: null }]
       if (update) return replace(kept, update, { ...from(update, incoming), id: update.id, seq: update.seq, createdAt: update.createdAt, input: update.input })
       return [...kept, next]
     }

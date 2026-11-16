@@ -485,6 +485,27 @@ public class TyreSyncTests : IDisposable
         Assert.Equal((before, "2026-09-20"), (now.GetProperty("version").GetInt32(), now.GetProperty("lastDoneDate").GetString()));
     }
 
+    [Fact]
+    public async Task APlainExpenseGivenALine_ItsLineEdited_ThenTheExpenseTrashed_FromTheQueue_LeavesTheLineLiveAndEdited()
+    {
+        // #330 item 1: the device keeps the three changes in order (the trash, after an edit that makes lines, no longer folds into it), and the
+        // server ends where it would online: the line live, edited, without the expense's amount.
+        var (people, car, summer, _, _) = await Car(_app);
+        var (expense, line) = (Guid.NewGuid(), Guid.NewGuid());
+        Assert.Equal(("APPLIED", null), Result(await Send(people.Alice, new { id = Guid.NewGuid(), addExpense = new { id = expense, vehicleId = car, date = "2026-09-20", title = "Repair", amount = 25, currency = "EUR", odometer = 148_300 } })));
+
+        var sent = await Send(people.Alice,
+            new { id = Guid.NewGuid(), expectedVersion = 1, updateExpense = new { id = expense, date = "2026-09-20", title = "Puncture", amount = 25, currency = "EUR", odometer = 148_300,
+                tyre = new { kind = "PUNCTURE_REPAIRED", setId = summer, lineId = line } } },
+            new { id = Guid.NewGuid(), updateTyreEntry = new { id = line, kind = "VALVE_REPLACED", setId = summer, day = "2026-09-20", odometer = 148_300, fee = new { amount = 25, currency = "EUR", expenseId = expense } } },
+            new { id = Guid.NewGuid(), deleteExpense = expense });
+
+        Assert.Equal(["APPLIED", "APPLIED", "APPLIED"], sent.GetProperty("results").EnumerateArray().Select(r => r.GetProperty("status").GetString()));
+        var entry = (await people.Alice.Gql("query($v: UUID!) { vehicleTyres(vehicleId: $v) { entries { id kind expenseTrashed } } }", new { v = car })).Data()
+            .GetProperty("vehicleTyres").GetProperty("entries").EnumerateArray().Single(e => e.GetProperty("id").GetString() == line.ToString());
+        Assert.Equal(("VALVE_REPLACED", true), (entry.GetProperty("kind").GetString(), entry.GetProperty("expenseTrashed").GetBoolean()));
+    }
+
     private static async Task<string> UploadDraft(HttpClient c, string vehicleId)
     {
         var content = new ByteArrayContent([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 4]);
