@@ -624,4 +624,32 @@ public class TyreGraphQLTests(ApiFixture api)
         var made = Assert.Single(await Lines(vehicle), e => e.GetProperty("id").GetString() == line);
         Assert.Equal((148_300L, JsonValueKind.Null), (made.GetProperty("odometer").GetInt64(), made.GetProperty("expenseId").ValueKind));
     }
+
+    [Fact]
+    public async Task ASetsUsualMonths_ComeWithTheAdd_TheEditAndTheRoughFigure_ItsSeasonsAnsweredAsNone()
+    {
+        // #291: `usualMonths` on the three inputs and on the set.
+        var vehicle = await AddVehicle();
+        var id = Guid.NewGuid();
+        int[]? Months(JsonElement tyres) => SetNamed(tyres, "Michelin").GetProperty("set").GetProperty("usualMonths") is { ValueKind: JsonValueKind.Array } list
+            ? [.. list.EnumerateArray().Select(m => m.GetInt32())] : null;
+        const string selection = "sets { set { name usualMonths } }";
+
+        var added = await Mutate("addTyreSet", "AddTyreSetInput", new
+        {
+            vehicleId = vehicle, name = "Michelin", season = "SUMMER", since = "2023-03-25", fitted = false, day = "2026-03-28", id, usualMonths = new[] { 10, 3, 4, 5, 6, 7, 8, 9 },
+        }, selection);
+        Assert.Equal([3, 4, 5, 6, 7, 8, 9, 10], Months(added));
+
+        var edited = await Mutate("updateTyreSet", "UpdateTyreSetInput", new { id, name = "Michelin", season = "SUMMER", since = "2023-03-25", usualMonths = new[] { 4, 5, 6, 7, 8, 9, 10 } }, selection);
+        Assert.Null(Months(edited)); // its season's: none of its own
+
+        var rough = await Mutate("setTyreRoughDistance", "SetTyreRoughDistanceInput", new { id, distance = 24_000, until = "2026-03-28", usualMonths = new[] { 5, 6, 7 } }, selection);
+        Assert.Equal([5, 6, 7], Months(rough));
+        var kept = await Mutate("setTyreRoughDistance", "SetTyreRoughDistanceInput", new { id, distance = 25_000 }, selection);
+        Assert.Equal([5, 6, 7], Months(kept)); // left out: kept
+
+        var refused = await Send("mutation($i: UpdateTyreSetInput!) { updateTyreSet(input: $i) { vehicleId } }", new { i = new { id, name = "Michelin", season = "SUMMER", since = "2023-03-25", usualMonths = Array.Empty<int>() } });
+        Assert.Equal("tyres.monthsRequired", refused.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
+    }
 }

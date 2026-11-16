@@ -1115,6 +1115,7 @@ type TyrePlaceInfo {
 }
 
 type TyreSet {
+  usualMonths: [Int!] @cost(weight: "10")
   id: UUID!
   ownerId: UUID!
   vehicleId: UUID!
@@ -1416,6 +1417,7 @@ input AddTyreSetInput {
   price: TyreFeeInput
   boughtOn: LocalDate
   boughtEntryId: UUID
+  usualMonths: [Int!]
 }
 
 input AddVehicleInput {
@@ -1731,6 +1733,7 @@ input SetTyreRoughDistanceInput {
   id: UUID!
   distance: Long!
   until: LocalDate
+  usualMonths: [Int!]
 }
 
 input SetupFinishInput {
@@ -1890,6 +1893,7 @@ input UpdateTyreSetInput {
   since: LocalDate!
   madeWeek: Int
   madeYear: Int
+  usualMonths: [Int!]
 }
 
 input UpdateUiSettingsInput {

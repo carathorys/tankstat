@@ -368,7 +368,7 @@ public sealed class SyncMutations
             return make(SyncChangeKind.AddTyreSet, id, a.VehicleId, async ct => { await TyreChanges.Add(input, tyres, ct); return await SetAnswer(id, ct); }, null);
         }
         if (c.UpdateTyreSet is { } u) return OnSet(SyncChangeKind.UpdateTyreSet, u.Id, ct => TyreChanges.Update(u, tyres, ct, version));
-        if (c.SetTyreRoughDistance is { } r) return OnSet(SyncChangeKind.SetTyreRoughDistance, r.Id, ct => tyres.SetRoughAsync(r.Id, r.Distance, r.Until, ct, version));
+        if (c.SetTyreRoughDistance is { } r) return OnSet(SyncChangeKind.SetTyreRoughDistance, r.Id, ct => tyres.SetRoughAsync(r.Id, r.Distance, r.Until, ct, version, r.UsualMonths));
         if (c.RetireTyreSet is { } rt) return OnSet(SyncChangeKind.RetireTyreSet, rt.Id, ct => tyres.RetireAsync(rt.Id, rt.Day, ct, version));
         if (c.UnretireTyreSet is { } ur) return OnSet(SyncChangeKind.UnretireTyreSet, ur, ct => tyres.UnretireAsync(ur, ct, version));
         if (c.DeleteTyreSet is { } ds)

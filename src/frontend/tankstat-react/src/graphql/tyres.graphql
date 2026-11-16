@@ -12,6 +12,7 @@ fragment TyreSetFields on TyreSet {
   madeYear
   roughDistance
   roughUntil
+  usualMonths
   retiredOn
   isRetired
   brokenUpOn
