@@ -36,6 +36,24 @@ internal sealed class RecognitionWorker(IServiceScopeFactory scopes, Recognition
 {
     internal static readonly TimeSpan Sweep = TimeSpan.FromSeconds(10);
 
+    /// <summary>
+    /// Whether a run is open. A failure to ask is no reason not to read: whatever made it fail (a database out of reach) is met by the
+    /// reading itself, which says so as it always did.
+    /// </summary>
+    private async Task<bool> RunOpenAsync(CancellationToken ct)
+    {
+        if (runs is null) return false;
+        try
+        {
+            return await runs.AnyOpenAsync(ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            logger.LogDebug(e, "Whether a run is open could not be asked; reading photos as usual");
+            return false;
+        }
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stopping)
     {
         if (!setup.Enabled)
@@ -57,7 +75,7 @@ internal sealed class RecognitionWorker(IServiceScopeFactory scopes, Recognition
             {
                 // A run (#335) is open: on SQLite nothing read could be saved, and anywhere the log a photo fills may be the run's. The
                 // photos wait for the next sweep.
-                if (runs is not null && await runs.AnyOpenAsync(stopping)) throw new BusyException();
+                if (await RunOpenAsync(stopping)) throw new BusyException();
                 await using var scope = scopes.CreateAsyncScope();
                 foreach (var done in await scope.ServiceProvider.GetRequiredService<PhotoReadingProcessor>().ProcessDueAsync(stopping))
                 {
