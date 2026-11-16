@@ -348,7 +348,8 @@ function DoneFields({
       setNoneTicked(true)
       return
     }
-    const form = new FormData(e.currentTarget)
+    const formElement = e.currentTarget
+    const form = new FormData(formElement)
     const text = (name: string) => String(form.get(name) ?? '').trim()
     setBusy(true)
     setError(undefined)
@@ -375,7 +376,9 @@ function DoneFields({
       }
       await onSubmit(values, logsExpense)
     } catch (err) {
-      if (!(err instanceof SaveCancelled)) setError(err) // Cancel in the confirmation: as it was
+      if (!(err instanceof SaveCancelled)) setError(err)
+      // Cancel in the confirmation: as it was, the focus back on Save once it can take it again (it was off while the question was open).
+      else setTimeout(() => formElement.querySelector<HTMLButtonElement>('button[type="submit"]')?.focus())
     } finally {
       setBusy(false)
     }
@@ -494,7 +497,7 @@ function DoneFields({
           <ReadingProblems problems={fill.problems} />
         </div>
         {/* What saving would remove from the changes waiting here (#330): a change edited on Waiting to sync. */}
-        <LeftBehindNote edit={edit} values={async () => ({ amount: hasAmount ? (parseDecimal(fill.values.amount) ?? null) : null, ...(await tyre.preview(fill.values.date, tyreIds)) })} />
+        {edit?.leftBehind && <LeftBehindNote edit={edit} values={async () => ({ amount: hasAmount ? (parseDecimal(fill.values.amount) ?? null) : null, ...(await tyre.preview(fill.values.date, tyreIds)) })} />}
         {error !== undefined && <ErrorMessage error={error} />}
         <DialogButtons>
           <SaveWait waiting={photosBusy && !busy} />

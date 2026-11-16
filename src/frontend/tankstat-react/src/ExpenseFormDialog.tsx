@@ -416,7 +416,8 @@ function ExpenseForm({
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    const form = new FormData(e.currentTarget)
+    const formElement = e.currentTarget
+    const form = new FormData(formElement)
     const text = (name: string) => String(form.get(name) ?? '').trim()
     setBusy(true)
     setError(undefined)
@@ -441,7 +442,9 @@ function ExpenseForm({
       await checkTyres(values)
       await onSubmit(values, tyreInput?.named || undefined)
     } catch (err) {
-      if (!(err instanceof SaveCancelled)) setError(err) // Cancel in the confirmation: as it was
+      if (!(err instanceof SaveCancelled)) setError(err)
+      // Cancel in the confirmation: as it was, the focus back on Save once it can take it again (it was off while the question was open).
+      else setTimeout(() => formElement.querySelector<HTMLButtonElement>('button[type="submit"]')?.focus())
     } finally {
       setBusy(false)
     }
@@ -530,7 +533,7 @@ function ExpenseForm({
           <ReadingProblems problems={fill.problems} />
         </div>
         {/* What saving would remove from the changes waiting here (#330): a change edited on Waiting to sync. */}
-        <LeftBehindNote edit={edit} values={() => tyre.preview(fill.values.date, tyreIds)} />
+        {edit?.leftBehind && <LeftBehindNote edit={edit} values={() => tyre.preview(fill.values.date, tyreIds)} />}
         {error !== undefined && <ErrorMessage error={error} />}
         <DialogButtons>
           <SaveWait waiting={photosBusy && !busy} />
