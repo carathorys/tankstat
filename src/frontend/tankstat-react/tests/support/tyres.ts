@@ -12,6 +12,11 @@ export type FakeTyreSet = {
   brokenUpOn?: string; tyres?: FakeTyre[]
   /** The months of its own (#291); left out: its season's. */
   usualMonths?: number[]
+  /** The reminder's month of its own (#292; 0: none); left out: its season's. */
+  reminderMonth?: number
+  reminderDismissedFor?: string
+  /** The season its swap reminder is due for. */
+  reminder?: string
   /** The first day its rough figure does not cover; left out: 28 March 2026, null: none yet. */
   roughUntil?: string | null
 }
@@ -91,11 +96,12 @@ export function fakeTyres(initial: FakeTyreSet[], entries: FakeTyreEntry[] = [],
     sets: state.sets.map((s) => ({
       __typename: 'TyreSetInfo',
       onTheCar: s.onTheCar,
+      reminder: s.reminder ? { __typename: 'TyreReminder', season: s.reminder } : null,
       spent: (s.spent ?? []).map((x) => ({ __typename: 'TyreSpent', ...x })),
       repairs: s.repairs ?? 0,
       set: {
         __typename: 'TyreSet', id: s.id, vehicleId: 'v1', name: s.name, season: s.season, size: null, since: '2023-03-25', madeWeek: 5, madeYear: 2023,
-        roughDistance: s.roughDistance, roughUntil: s.roughUntil === undefined ? '2026-03-28' : s.roughUntil, usualMonths: s.usualMonths ?? null, retiredOn: s.isRetired ? '2026-10-01' : null, isRetired: s.isRetired ?? false,
+        roughDistance: s.roughDistance, roughUntil: s.roughUntil === undefined ? '2026-03-28' : s.roughUntil, usualMonths: s.usualMonths ?? null, reminderMonth: s.reminderMonth ?? null, reminderDismissedFor: s.reminderDismissedFor ?? null, retiredOn: s.isRetired ? '2026-10-01' : null, isRetired: s.isRetired ?? false,
         brokenUpOn: s.brokenUpOn ?? null, version: 1,
       },
       tyres: (s.tyres ?? []).map((t) => ({
@@ -147,6 +153,18 @@ export function fakeTyres(initial: FakeTyreSet[], entries: FakeTyreEntry[] = [],
     mutation('DeleteTyreEntry', 'deleteTyreEntry'),
     mutation('RestoreTyreEntry', 'restoreTyreEntry'),
     mutation('RetireTyreSet', 'retireTyreSet'),
+    // Not this season and its undo (#292) change what the server answers: the reminder leaves, or is due again.
+    graphql.mutation('DismissTyreReminder', ({ variables }) => {
+      ;(state.calls.DismissTyreReminder ??= []).push(variables as Record<string, unknown>)
+      const { id, season } = (variables as { input: { id: string; season: string } }).input
+      state.sets = state.sets.map((s) => (s.id === id ? { ...s, reminder: undefined, reminderDismissedFor: season } : s))
+      return HttpResponse.json({ data: { dismissTyreReminder: answer() } })
+    }),
+    graphql.mutation('RestoreTyreReminder', ({ variables }) => {
+      ;(state.calls.RestoreTyreReminder ??= []).push(variables as Record<string, unknown>)
+      state.sets = state.sets.map((s) => (s.id === variables.id ? { ...s, reminder: s.reminderDismissedFor, reminderDismissedFor: undefined } : s))
+      return HttpResponse.json({ data: { restoreTyreReminder: answer() } })
+    }),
     mutation('AddTyreInstallation', 'addTyreInstallation'),
     mutation('UpdateTyreInstallation', 'updateTyreInstallation'),
     mutation('SetTyreRoughDistance', 'setTyreRoughDistance'),

@@ -37,7 +37,7 @@ const actionOf = (document: DocumentNode): TyreAction => {
   return name
 }
 
-const SET_ACTIONS = new Set<TyreAction>(['updateTyreSet', 'setTyreRoughDistance', 'retireTyreSet', 'unretireTyreSet', 'deleteTyreSet', 'restoreTyreSet', 'breakUpTyreSet'])
+const SET_ACTIONS = new Set<TyreAction>(['updateTyreSet', 'setTyreRoughDistance', 'retireTyreSet', 'unretireTyreSet', 'deleteTyreSet', 'restoreTyreSet', 'breakUpTyreSet', 'dismissTyreReminder', 'restoreTyreReminder'])
 const TYRE_ACTIONS = new Set<TyreAction>(['updateTyre', 'deleteTyre', 'restoreTyre'])
 const PLACE_ACTIONS = new Set<TyreAction>(['updateTyrePlace', 'deleteTyrePlace', 'restoreTyrePlace'])
 const INSTALLATION_ACTIONS = new Set<TyreAction>(['updateTyreInstallation', 'deleteTyreInstallation', 'restoreTyreInstallation'])

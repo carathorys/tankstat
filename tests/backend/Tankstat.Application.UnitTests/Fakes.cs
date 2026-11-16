@@ -462,6 +462,20 @@ internal sealed class InMemoryTyres : ITyreRepository
         return copy;
     }
 
+    /// <summary>The world's vehicles, so a trashed one's sets are left out of the reminders (#292).</summary>
+    public InMemoryVehicles? Vehicles { get; set; }
+
+    public Task<TyreReminderRows> LoadRemindersAsync(IReadOnlyCollection<Guid> vehicleIds, CancellationToken ct) =>
+        Task.FromResult(new TyreReminderRows(
+            [.. Sets.Where(s => vehicleIds.Contains(s.VehicleId) && !s.IsDeleted && !s.IsRetired)],
+            [.. Installations.Where(i => vehicleIds.Contains(i.VehicleId) && !i.IsDeleted)]));
+
+    public Task<IReadOnlyList<Guid>> ListReminderVehicleIdsAsync(OwnerScope scope, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<Guid>>([.. Sets
+            .Where(s => !s.IsDeleted && !s.IsRetired && s.EffectiveReminderMonth is not null && scope.Contains(s.OwnerId, s.VehicleId)
+                && Vehicles?.Items.Any(v => v.Id == s.VehicleId && !v.IsDeleted) != false)
+            .Select(s => s.VehicleId).Distinct()]);
+
     public Task<TyreBook> LoadAsync(Guid vehicleId, CancellationToken ct)
     {
         var readings = Readings?.Live(vehicleId).Select(r => new ReadingPoint(r.Date, r.Value)) ?? [];
@@ -1085,7 +1099,7 @@ internal sealed class World
     public Tankstat.Application.Telemetry.AppMetrics Metrics { get; } = new();
 
     public PhotoReadingProcessor Processor => new(Recognizer, Availability, new RecognitionSetup(RecognitionOptions.Create(), new FakePromptFiles()), Readings, Images, ImageStore, Filler, Clock, Metrics, Log.For<PhotoReadingProcessor>());
-    public NotificationService NotificationService => new(Access, Notifications, new RecurringNotificationSync(Access, Recurring, Vehicles, RecurringService, Notifier), new SyncNotificationSync(Access, SyncLedger, Vehicles, Users, Notifier), NotificationOptions.Create(), Clock, Log.For<NotificationService>()); // a new one per use, like one per request (it syncs once)
+    public NotificationService NotificationService => new(Access, Notifications, new RecurringNotificationSync(Access, Recurring, Vehicles, RecurringService, Notifier), new SyncNotificationSync(Access, SyncLedger, Vehicles, Users, Notifier), new TyreReminderSync(Access, Tyres, Vehicles, TyreService, Notifier), NotificationOptions.Create(), Clock, Log.For<NotificationService>()); // a new one per use, like one per request (it syncs once)
 
     public World(AuthMode mode = AuthMode.Standalone, bool smtp = false, Action<AuthOptions>? configure = null)
     {
@@ -1102,6 +1116,7 @@ internal sealed class World
         var readings = new InMemoryReadings(Refuelings, Expenses, Tyres);
         Tyres.Readings = readings;
         Tyres.Expenses = Expenses;
+        Tyres.Vehicles = Vehicles;
         Odometer = new OdometerService(readings);
         var resets = new PasswordResetService(Tokens, Users, Email, options, Clock, Log.For<PasswordResetService>());
         var logPhotoAccess = new LogPhotoAccess(LogGuard, Expenses, Refuelings, LogPhotos);

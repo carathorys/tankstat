@@ -654,6 +654,44 @@ public class TyreGraphQLTests(ApiFixture api)
     }
 
     [Fact]
+    public async Task ASetsReminderMonth_ComesWithTheAddAndTheEdit_ItsSeasonsAnsweredAsNone_AndAStoredSetIsDueInItsMonth()
+    {
+        // #292: `reminderMonth` on the two inputs and the set, `reminder` on a stored set whose month runs.
+        var vehicle = await AddVehicle();
+        var id = Guid.NewGuid();
+        var month = DateTime.UtcNow.Month; // the server's today is the UTC date
+        const string selection = "sets { reminder { season } set { name reminderMonth reminderDismissedFor } }";
+        int? Month(JsonElement tyres) => SetNamed(tyres, "Nokian").GetProperty("set").GetProperty("reminderMonth") is { ValueKind: JsonValueKind.Number } m ? m.GetInt32() : null;
+
+        var added = await Mutate("addTyreSet", "AddTyreSetInput", new { vehicleId = vehicle, name = "Nokian", season = "ALL_SEASON", since = "2023-03-25", fitted = false, day = "2026-03-28", id, reminderMonth = month }, selection);
+        Assert.Equal(month, Month(added));
+        Assert.Equal(new DateOnly(DateTime.UtcNow.Year, month, 1).ToString("yyyy-MM-dd"), SetNamed(added, "Nokian").GetProperty("reminder").GetProperty("season").GetString());
+
+        // Not this season, and its undo.
+        var season = SetNamed(added, "Nokian").GetProperty("reminder").GetProperty("season").GetString();
+        // The home card's row: the set by name, with its kind, its month and the season to dismiss.
+        async Task<JsonElement> Card() => (await Send("query($id: UUID!) { vehicle(id: $id) { tyreReminders { setId name setSeason month season } } }", new { id = vehicle }))
+            .GetProperty("data").GetProperty("vehicle").GetProperty("tyreReminders");
+        var row = Assert.Single((await Card()).EnumerateArray());
+        Assert.Equal((id.ToString(), "Nokian", "ALL_SEASON", month, season),
+            (row.GetProperty("setId").GetString(), row.GetProperty("name").GetString(), row.GetProperty("setSeason").GetString(), row.GetProperty("month").GetInt32(), row.GetProperty("season").GetString()));
+        var dismissed = SetNamed(await Mutate("dismissTyreReminder", "DismissTyreReminderInput", new { id, season }, selection), "Nokian");
+        Assert.Equal((JsonValueKind.Null, season), (dismissed.GetProperty("reminder").ValueKind, dismissed.GetProperty("set").GetProperty("reminderDismissedFor").GetString()));
+        Assert.Equal(0, (await Card()).GetArrayLength());
+        var back = (await Send($"mutation($id: UUID!) {{ restoreTyreReminder(id: $id) {{ {selection} }} }}", new { id })).GetProperty("data").GetProperty("restoreTyreReminder");
+        Assert.Equal(season, SetNamed(back, "Nokian").GetProperty("reminder").GetProperty("season").GetString());
+
+        var kept = await Mutate("updateTyreSet", "UpdateTyreSetInput", new { id, name = "Nokian", season = "ALL_SEASON", since = "2023-03-25" }, selection);
+        Assert.Equal(month, Month(kept)); // left out: kept
+        var none = await Mutate("updateTyreSet", "UpdateTyreSetInput", new { id, name = "Nokian", season = "ALL_SEASON", since = "2023-03-25", reminderMonth = 0 }, selection);
+        Assert.Null(Month(none)); // an all-season set's own: no reminder
+        Assert.Equal(JsonValueKind.Null, SetNamed(none, "Nokian").GetProperty("reminder").ValueKind);
+
+        var refused = await Send("mutation($i: UpdateTyreSetInput!) { updateTyreSet(input: $i) { vehicleId } }", new { i = new { id, name = "Nokian", season = "ALL_SEASON", since = "2023-03-25", reminderMonth = 13 } });
+        Assert.Equal("tyres.reminderMonthInvalid", refused.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
+    }
+
+    [Fact]
     public async Task TheRoughEstimate_AnswersFromTheFuelLog_SaysWhatIsNotCovered_AndAnUnseenVehicleIsNotFound()
     {
         // #291: `tyreRoughEstimate`.

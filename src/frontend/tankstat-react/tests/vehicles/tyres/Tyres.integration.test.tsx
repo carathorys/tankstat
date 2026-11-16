@@ -383,7 +383,7 @@ it('corrects a set’s own details from its history, without where it is or what
 
   await waitFor(() =>
     expect(state.calls.UpdateTyreSet).toEqual([
-      { input: { id: 's2', name: 'Continental TS 870', season: 'ALL_SEASON', size: '205/55 R16', since: '2023-03-25', madeWeek: 5, madeYear: 2023, usualMonths: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] } }, // on its season's months, it follows the new season (#291)
+      { input: { id: 's2', name: 'Continental TS 870', season: 'ALL_SEASON', size: '205/55 R16', since: '2023-03-25', madeWeek: 5, madeYear: 2023, usualMonths: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], reminderMonth: 0 } }, // on its season's months, it follows the new season (#291)
     ]),
   )
 })

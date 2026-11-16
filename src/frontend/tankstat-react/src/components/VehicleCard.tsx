@@ -4,8 +4,8 @@ import Chip from '@mui/material/Chip'
 import Stack from '@mui/material/Stack'
 import type { Theme } from '@mui/material/styles'
 import Typography from '@mui/material/Typography'
-import { CheckCheck, ChevronRight, Fuel, Receipt } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { ArrowLeftRight, CheckCheck, ChevronRight, Fuel, Receipt } from 'lucide-react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router'
 import { LazySparkline } from '../dashboard/LazySparkline.tsx'
@@ -28,6 +28,14 @@ import { useCardActions } from './useCardActions.ts'
 import { UserChip } from './UserAvatar.tsx'
 import { outbox, usePendingCount } from '../offline/outbox.ts'
 import { PendingBadge } from './PendingBadge.tsx'
+import { ErrorMessage } from '../messages.tsx'
+import type { CardReminderAction } from '../tyres/CardReminder.tsx'
+
+// The tyre code stays out of the home page's chunk: it loads when a swap row's button is tapped (#292).
+const CardReminder = lazy(() => import('../tyres/CardReminder.tsx').then((m) => ({ default: m.CardReminder })))
+
+/** The card's rows that need attention: three at most, the schedules first, then the swap reminders (the owner's decision 76). */
+const MAX_ROWS = 3
 
 type Vehicle = VehicleCardFieldsFragment
 
@@ -108,6 +116,28 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
   const titleLink = useRef<HTMLAnchorElement>(null)
   // One Done dialog for the card, opened from the schedule's own button: a dialog per schedule would leave with its row once done.
   const [done, setDone] = useState<{ item: Vehicle['recurring'][number]; open: boolean } | null>(null)
+  // The swap reminders (#292) after the schedules, within the card's three rows; one acted on at a time.
+  const shownSchedules = attention.slice(0, MAX_ROWS)
+  const reminders = (v.tyreReminders ?? []).slice(0, MAX_ROWS - shownSchedules.length)
+  const [reminding, setReminding] = useState<CardReminderAction | null>(null)
+  const [reminderError, setReminderError] = useState<unknown>()
+  const acted = useRef<string | null>(null)
+  const reminded = useCallback((error?: unknown) => {
+    setReminderError(error)
+    setReminding((was) => {
+      acted.current = was && !error ? was.setId : null
+      return null
+    })
+  }, [])
+  // Swapped or dismissed, the row leaves with its buttons (once the card's new answer is drawn), and the focus they held falls off the
+  // page: it goes to the card's title, as after Done. While the row stays (a cancelled swap handed the focus back to its button), or the
+  // focus is somewhere else by then, nothing moves.
+  const reminderIds = reminders.map((r) => r.setId).join(' ')
+  useEffect(() => {
+    if (reminding || !acted.current || card.current?.querySelector(`[data-reminder="${acted.current}"]`)) return
+    acted.current = null
+    if (!document.activeElement || document.activeElement === document.body) titleLink.current?.focus()
+  }, [reminding, reminderIds])
   // Touch: a tap anywhere else (not in a dialog opened from here) puts the figures away again.
   useEffect(() => {
     if (!open) return
@@ -174,9 +204,9 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
           {!v.canEdit && <Chip variant="solid" color="warning" label={t('welcome.card.logAccess', { level: t(`level.${v.logAccess}`) })} />}
           <PendingBadge entity="vehicles" id={v.id} />
         </Stack>
-        {attention.length > 0 && (
+        {shownSchedules.length + reminders.length > 0 && (
           <Stack component="ul" aria-label={t('welcome.card.recurringTitle')} sx={{ gap: 0.5, listStyle: 'none', p: 0, m: 0 }}>
-            {attention.slice(0, 3).map((r) => {
+            {shownSchedules.map((r) => {
               const due = dueText(r.status)
               // Done on this device and not sent yet: marked, and not to be done again meanwhile.
               const doneHere = outbox.markOf('recurring', r.id) === 'done'
@@ -205,7 +235,50 @@ export function VehicleCard({ vehicle: v }: { vehicle: Vehicle }) {
                 </li>
               )
             })}
+            {reminders.map((r) => (
+              <li key={r.setId} data-reminder={r.setId}>
+                <Stack direction="row" sx={{ alignItems: 'center', gap: 1, justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                  <Stack direction="row" sx={{ alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                    <Chip size="medium" color="info" variant="solid" icon={<ArrowLeftRight size={14} aria-hidden />} label={t('tyres.reminder.chip')} />
+                    <Typography variant="caption" sx={{ color: 'white', textShadow: TEXT_SHADOW }}>
+                      {r.name}
+                    </Typography>
+                  </Stack>
+                  {canLog && (
+                    <Stack direction="row" sx={{ gap: 0.5, flexWrap: 'wrap' }}>
+                      <Button
+                        size="small"
+                        className="vehicle-card-action"
+                        aria-haspopup="dialog"
+                        disabled={reminding?.kind === 'dismiss'}
+                        aria-label={t('tyres.reminder.swapAria', { set: r.name, vehicle: v.name })}
+                        onClick={() => setReminding({ setId: r.setId, season: r.season, kind: 'swap' })}
+                      >
+                        {t('tyres.reminder.swap')}
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="soft"
+                        color="neutral"
+                        className="vehicle-card-action"
+                        disabled={reminding?.kind === 'dismiss'}
+                        aria-label={t('tyres.reminder.dismissAria', { set: r.name })}
+                        onClick={() => setReminding({ setId: r.setId, season: r.season, kind: 'dismiss' })}
+                      >
+                        {t('tyres.reminder.dismiss')}
+                      </Button>
+                    </Stack>
+                  )}
+                </Stack>
+              </li>
+            ))}
           </Stack>
+        )}
+        {reminderError !== undefined && <ErrorMessage error={reminderError} />}
+        {reminding && (
+          <Suspense fallback={null}>
+            <CardReminder vehicleId={v.id} unit={v.units.distance} action={reminding} refresh={actions.refresh} onDone={reminded} />
+          </Suspense>
         )}
         {done && (
           <RecurringDoneDialog

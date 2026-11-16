@@ -1,4 +1,4 @@
-import { ownMonths } from './tyreMonths.ts'
+import { ownMonths, ownReminderMonth, reminderMonthOf } from './tyreMonths.ts'
 import { expenseTyreOf as tyreDetailsOf, type Change } from '../offline/changes.ts'
 import { isTyreAction } from '../offline/tyreChanges.ts'
 import { checked, moveSwap, TyreRuleError, type SetState, type InstallationState } from './tyreHistory.ts'
@@ -309,6 +309,16 @@ function monthsGiven(season: SetInfo['set']['season'], given: unknown, kept: num
   return ownMonths(season, given as number[])
 }
 
+/**
+ * The reminder's month a change gives a set (#292), as the server's `TyreSet.OwnReminderMonth`: left out, it stays; given (0: no reminder),
+ * the set keeps it only when it differs from its season's.
+ */
+function reminderGiven(season: SetInfo['set']['season'], given: unknown, kept: number | null): number | null {
+  if (given === undefined || given === null) return kept
+  if (typeof given !== 'number' || !Number.isInteger(given) || given < 0 || given > 12) throw new TyreRuleError('tyres.reminderMonthInvalid')
+  return ownReminderMonth(season, given)
+}
+
 /** Applies one tyre change to the model; a rule it breaks is thrown (`TyreRuleError`), as the server would refuse it. */
 function apply(m: Model, c: Change, vehicleId: string) {
   if (c.entity === 'expenses') return expenseEdited(m, c)
@@ -328,7 +338,9 @@ function apply(m: Model, c: Change, vehicleId: string) {
           id: str(input.id), vehicleId, name: str(input.name), season: input.season as SetInfo['set']['season'], size: (input.size as string | null) ?? null,
           since: str(input.since), madeWeek: num(input.madeWeek), madeYear: num(input.madeYear), roughDistance: rough, roughUntil: rough > 0 ? day(input.day) : null, retiredOn: null, isRetired: false,
           brokenUpOn: null, version: 0, usualMonths: monthsGiven(input.season as SetInfo['set']['season'], input.usualMonths, null),
+          reminderMonth: reminderGiven(input.season as SetInfo['set']['season'], input.reminderMonth, null), reminderDismissedFor: null,
         }),
+        reminder: null, // whether it is due is the server's to say (#292)
         figures: named<SetInfo['figures']>('TyreSetFigures', { distance: rough, approximate: rough > 0, measured: 0, pairOneFront: 0, pairOneRear: 0, pairsUnknown: 0, suggestion: null }),
         spent: [],
         repairs: 0,
@@ -353,6 +365,7 @@ function apply(m: Model, c: Change, vehicleId: string) {
       s.set = {
         ...s.set, name: str(input.name), season, size: (input.size as string | null) ?? null, since: str(input.since), madeWeek: num(input.madeWeek), madeYear: num(input.madeYear),
         usualMonths: monthsGiven(season, input.usualMonths, s.set.usualMonths ?? null),
+        reminderMonth: reminderGiven(season, input.reminderMonth, s.set.reminderMonth ?? null),
       }
       return
     }
@@ -382,6 +395,22 @@ function apply(m: Model, c: Change, vehicleId: string) {
       if (!s.set.isRetired) throw new TyreRuleError('tyres.notRetired')
       s.set = { ...s.set, retiredOn: null, isRetired: false }
       m.tyres = m.tyres.map((t) => (t.setId === s.set.id && t.retiredWhy === 'SET_RETIRED' ? { ...t, retiredOn: null, retiredWhy: null, isRetired: false } : t))
+      return
+    }
+    case 'dismissTyreReminder': {
+      // Not this season (#292): kept with the set, so the reminder the server last answered hides at once. A season that is not the one
+      // shown changes nothing, as on the server.
+      const s = setOf(m, input.id)
+      if (s.reminder && s.reminder.season === input.season) s.set = { ...s.set, reminderDismissedFor: str(input.season) }
+      return
+    }
+    case 'restoreTyreReminder': {
+      // Its undo: the season dismissed is due again, as far as the device knows (the server says for certain).
+      const s = setOf(m, input.id)
+      const season = s.set.reminderDismissedFor
+      if (!season) return
+      s.set = { ...s.set, reminderDismissedFor: null }
+      s.reminder = s.reminder ?? named<NonNullable<SetInfo['reminder']>>('TyreReminder', { season })
       return
     }
     case 'deleteTyreSet': {
@@ -693,21 +722,31 @@ function answerOf(base: Tyres, m: Model): { tyres: Tyres; touched: Set<string>; 
   const baseSet = new Map(base.sets.map((s) => [s.set.id, s] as const))
   const touched = new Set<string>()
   const added = new Set<string>()
+  const fitted = new Set(m.installations.filter((x) => x.until === null).map((x) => m.sets.find((s) => s.set.id === x.setId)?.set.season))
+  const quiet = (info: SetInfo, prior: SetInfo | undefined, onTheCar: boolean) =>
+    !info.reminder || onTheCar || fitted.has(info.set.season) || info.set.reminderDismissedFor === info.reminder.season ||
+    (!!prior && reminderMonthOf(prior.set) !== reminderMonthOf(info.set))
   const sets = m.sets.map((info): SetInfo => {
     const id = info.set.id
     const own = m.installations.filter((x) => x.setId === id).sort((a, b) => (a.from < b.from ? 1 : a.from > b.from ? -1 : 0))
     const was = before.installations.filter((x) => x.setId === id)
     const prior = baseSet.get(id)
-    const detailsChanged = !!prior && JSON.stringify({ ...prior.set, brokenUpOn: prior.set.brokenUpOn ?? null, version: 0 }) !== JSON.stringify({ ...info.set, version: 0 })
+    // Not this season (#292) is no change of the set's details: the server bumps no version for it, so a later edit keeps the set's.
+    const detailsChanged = !!prior &&
+      JSON.stringify({ ...prior.set, brokenUpOn: prior.set.brokenUpOn ?? null, reminderDismissedFor: null, version: 0 }) !== JSON.stringify({ ...info.set, reminderDismissedFor: null, version: 0 })
+    const dismissedChanged = !!prior && (prior.set.reminderDismissedFor ?? null) !== (info.set.reminderDismissedFor ?? null)
     if (!prior) added.add(id)
     const tyres = tyresOf(base, m, id, touchedTyres)
     const tyresChanged = tyres.some((t) => touchedTyres.has(t.tyre.id)) || (prior?.tyres ?? []).length !== tyres.length
-    if (!prior || detailsChanged || tyresChanged || own.length !== was.length || own.some((x) => !sameInstallation(was.find((w) => w.id === x.id), x))) touched.add(id)
+    if (!prior || detailsChanged || dismissedChanged || tyresChanged || own.length !== was.length || own.some((x) => !sameInstallation(was.find((w) => w.id === x.id), x))) touched.add(id)
     return {
       ...info,
       tyres,
       set: detailsChanged ? { ...info.set, version: 0 } : info.set,
       onTheCar: own.some((x) => x.until === null),
+      // The swap reminder (#292) is the server's last answer; the device only clears it: for a set a waiting swap put on the car, one a
+      // waiting Not this season names, one whose month changed, and while a set of its season is on the car.
+      reminder: quiet(info, prior, own.some((x) => x.until === null)) ? null : info.reminder ?? null,
       installations: own.map((x) => {
         const kept = baseDistance.get(x.id)
         const unchanged = kept && sameInstallation(before.installations.find((w) => w.id === x.id), x)

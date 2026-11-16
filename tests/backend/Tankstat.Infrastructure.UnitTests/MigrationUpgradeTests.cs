@@ -112,6 +112,9 @@ public sealed class MigrationUpgradeTests : IAsyncDisposable
         // A set from before the usual months (#291) has none of its own: its season's.
         var old = await after.TyreSets.SingleAsync(s => s.Id == set);
         Assert.Equal((null, Tankstat.Domain.Tyres.TyreMonths.DefaultFor(Tankstat.Domain.Tyres.TyreSeason.Summer)), (old.UsualMonths, old.Months));
+        // The swap reminder (#292): its season's month, counted from the day of the upgrade, so nothing is due for last season.
+        Assert.Equal((null, 3, null), (old.ReminderMonth, old.EffectiveReminderMonth, old.ReminderDismissedFor));
+        Assert.InRange(old.ReminderSince!.Value, DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1)), DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)));
         Assert.Equal(Tankstat.Domain.Sync.OfflineEntityType.TyreInstallation, (await after.Tombstones.SingleAsync(t => t.EntityId == gone)).EntityType);
         var update = await after.SyncChanges.SingleAsync(c => c.Id == parked);
         Assert.Equal((Tankstat.Domain.Sync.SyncChangeKind.UpdateTyreInstallation, "tyres.installationNotFound"), (update.Kind, update.ReasonKey));

@@ -138,9 +138,18 @@ public enum TyreTrashSortField
     DeletedAt,
 }
 
+/// <summary>What the swap reminder (#292) reads of several vehicles at once: their sets in use and those sets' live installations.</summary>
+public sealed record TyreReminderRows(IReadOnlyList<TyreSet> Sets, IReadOnlyList<TyreInstallation> Installations);
+
 public interface ITyreRepository
 {
     Task<TyreBook> LoadAsync(Guid vehicleId, CancellationToken ct);
+
+    /// <summary>The sets (not in the trash, not retired) of these vehicles and their installations not in the trash, in two queries (#292).</summary>
+    Task<TyreReminderRows> LoadRemindersAsync(IReadOnlyCollection<Guid> vehicleIds, CancellationToken ct);
+
+    /// <summary>The vehicles in scope (not in the trash) with a set that can remind: in use, with a month (#292).</summary>
+    Task<IReadOnlyList<Guid>> ListReminderVehicleIdsAsync(OwnerScope scope, CancellationToken ct);
 
     Task<TyreSet?> FindSetAsync(Guid id, CancellationToken ct);
 

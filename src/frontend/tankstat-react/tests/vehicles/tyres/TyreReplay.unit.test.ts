@@ -12,7 +12,8 @@ const installation = (id: string, setId: string, from: string, until: string | n
 })
 const set = (id: string, name: string, onTheCar: boolean, installations: ReturnType<typeof installation>[]) => ({
   onTheCar,
-  set: { id, vehicleId: 'v1', name, season: 'SUMMER' as const, size: null, since: '2023-03-01', madeWeek: null, madeYear: null, roughDistance: 0, roughUntil: null, retiredOn: null, isRetired: false, brokenUpOn: null, version: 2, usualMonths: null as number[] | null },
+  set: { id, vehicleId: 'v1', name, season: 'SUMMER' as const, size: null, since: '2023-03-01', madeWeek: null, madeYear: null, roughDistance: 0, roughUntil: null, retiredOn: null, isRetired: false, brokenUpOn: null, version: 2, usualMonths: null as number[] | null, reminderMonth: null as number | null, reminderDismissedFor: null as string | null },
+  reminder: null as { __typename: 'TyreReminder'; season: string } | null,
   figures: { distance: 9000, approximate: false, measured: 9000, pairOneFront: 9000, pairOneRear: 0, pairsUnknown: 0, suggestion: null },
   spent: [],
   repairs: 0,
@@ -657,5 +658,61 @@ describe("a set's usual months on the device (#291)", () => {
     const { tyres, skipped } = replayTyres(older, [change('setTyreRoughDistance', { id: 's1', distance: 9000, until: '2026-03-28' })])
     expect(skipped).toEqual([])
     expect(monthsOf(tyres, 's1')).toBeNull()
+  })
+})
+
+describe("a set's swap reminder on the device (#292)", () => {
+  const due = (over: Partial<Tyres['sets'][number]['set']> = {}): Tyres => ({
+    ...base,
+    sets: base.sets.map((s) => (s.set.id === 's2' ? { ...s, set: { ...s.set, season: 'WINTER' as const, ...over }, reminder: { season: '2026-11-01' } } : s)),
+  })
+  const of = (tyres: Tyres, id: string) => tyres.sets.find((s) => s.set.id === id)!
+  const edit = (over: Record<string, unknown>) =>
+    change('updateTyreSet', { id: 's2', name: 'Continental WinterContact', season: 'WINTER', size: null, since: '2023-03-01', madeWeek: null, madeYear: null, ...over })
+
+  it('is the server\'s last answer, cleared at once by a waiting swap that puts the set on the car', () => {
+    expect(of(replayTyres(due(), []).tyres, 's2').reminder).toEqual({ season: '2026-11-01' })
+    const { tyres, skipped } = replayTyres(due(), [change('swapTyres', { vehicleId: 'v1', setId: 's2', day: '2026-11-10', pairOneFront: null, replace: false, installationId: 'n1' })])
+    expect(skipped).toEqual([])
+    expect(of(tyres, 's2')).toMatchObject({ onTheCar: true, reminder: null })
+  })
+
+  it('its month comes with the add and the edit, its season\'s kept as none; a changed month hides the reminder until the server answers', () => {
+    const added = (over: Record<string, unknown> = {}) =>
+      change('addTyreSet', { id: 's9', vehicleId: 'v1', name: 'Nokian', season: 'WINTER', size: null, since: '2024-11-01', madeWeek: null, madeYear: null, fitted: false, day: '2026-10-01', roughDistance: 0, ...over })
+    expect(of(replayTyres(base, [added({ reminderMonth: 10 })]).tyres, 's9')).toMatchObject({ reminder: null, set: { reminderMonth: 10, reminderDismissedFor: null } })
+    expect(of(replayTyres(base, [added({ reminderMonth: 11 })]).tyres, 's9').set.reminderMonth).toBeNull() // its season's
+    expect(of(replayTyres(base, [added({ reminderMonth: 0 })]).tyres, 's9').set.reminderMonth).toBe(0)
+    expect(of(replayTyres(base, [added()]).tyres, 's9').set.reminderMonth).toBeNull()
+
+    expect(of(replayTyres(due({ reminderMonth: 10 }), [edit({})]).tyres, 's2')).toMatchObject({ reminder: { season: '2026-11-01' }, set: { reminderMonth: 10 } }) // a build from before it
+    expect(of(replayTyres(due(), [edit({ reminderMonth: 12 })]).tyres, 's2')).toMatchObject({ reminder: null, set: { reminderMonth: 12 } })
+    expect(of(replayTyres(due(), [edit({ reminderMonth: 11 })]).tyres, 's2')).toMatchObject({ reminder: { season: '2026-11-01' }, set: { reminderMonth: null } })
+    expect(of(replayTyres(due(), [edit({ season: 'SUMMER' })]).tyres, 's2').reminder).toBeNull() // follows its season: March now
+    expect(() => applyTyreChange(base, added({ reminderMonth: 13 }))).toThrow(TyreRuleError)
+  })
+})
+
+describe('Not this season on the device (#292)', () => {
+  const due: Tyres = { ...base, sets: base.sets.map((s) => (s.set.id === 's2' ? { ...s, set: { ...s.set, season: 'WINTER' as const }, reminder: { season: '2026-11-01' } } : s)) }
+  const of = (tyres: Tyres) => tyres.sets.find((s) => s.set.id === 's2')!
+
+  it('hides the reminder at once and marks the set; taken back, it shows again', () => {
+    const dismissed = replayTyres(due, [change('dismissTyreReminder', { id: 's2', season: '2026-11-01' })])
+    expect(dismissed.skipped).toEqual([])
+    expect(of(dismissed.tyres)).toMatchObject({ reminder: null, set: { reminderDismissedFor: '2026-11-01' } })
+    expect(dismissed.touched.has('s2')).toBe(true)
+    // No change of the set's details: the server bumps no version, so an edit made after it still names the set's.
+    expect(of(dismissed.tyres).set.version).toBe(of(due).set.version)
+    expect(of(due).set.version).toBeGreaterThan(0)
+    const back = replayTyres(due, [change('dismissTyreReminder', { id: 's2', season: '2026-11-01' }), change('restoreTyreReminder', { id: 's2' })])
+    expect(of(back.tyres)).toMatchObject({ reminder: { season: '2026-11-01' }, set: { reminderDismissedFor: null } })
+  })
+
+  it('a season that is not the one shown changes nothing, and an undo of a dismissal the server holds shows the reminder again', () => {
+    expect(of(replayTyres(due, [change('dismissTyreReminder', { id: 's2', season: '2025-11-01' })]).tyres)).toMatchObject({ reminder: { season: '2026-11-01' }, set: { reminderDismissedFor: null } })
+    const held: Tyres = { ...due, sets: due.sets.map((s) => (s.set.id === 's2' ? { ...s, reminder: null, set: { ...s.set, reminderDismissedFor: '2026-11-01' } } : s)) }
+    expect(of(replayTyres(held, [change('restoreTyreReminder', { id: 's2' })]).tyres)).toMatchObject({ reminder: { season: '2026-11-01' }, set: { reminderDismissedFor: null } })
+    expect(of(replayTyres(due, [change('restoreTyreReminder', { id: 's2' })]).tyres).reminder).toEqual({ season: '2026-11-01' }) // nothing to take back
   })
 })

@@ -29,6 +29,20 @@ it('the Tyres tab and its swap dialog are labelled and free of violations', asyn
   await check(document.body)
 })
 
+it('the swap reminder: a status above the sets, its buttons naming the set, and the month in the add form (#292)', async () => {
+  const { ui } = setup('/vehicles/v1?tab=tyres')
+  server.use(...fakeTyres([tyreSummer, { ...tyreWinter, reminder: '2026-11-01' }]).handlers)
+  const title = await screen.findByText('Time to fit the winter tyres')
+  expect(title.closest('[role="status"]')).not.toBeNull()
+  expect(screen.getByRole('button', { name: 'Not this season: Continental WinterContact' })).toBeInTheDocument()
+  await check(document.body)
+
+  await ui.click(screen.getByRole('button', { name: 'Add a tyre set' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add a tyre set' })
+  expect(within(dialog).getByRole('combobox', { name: 'Remind me to fit them from' })).toHaveAccessibleDescription(/A row on the home page/)
+  await check(dialog)
+})
+
 it('the add set, past swaps and history dialogs are labelled and free of violations', async () => {
   const { ui } = withTyres('/vehicles/v1?tab=tyres')
   await screen.findByRole('article', { name: 'Michelin Primacy 4' })

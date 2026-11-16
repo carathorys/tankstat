@@ -127,6 +127,7 @@
       "DEFAULT_ACCESS_CHANGED": "{{actor}} changed what everyone may do with other users' data: {{level}}.",
       "RECURRING_DUE_SOON": "{{title}} on {{vehicle}} is due soon.",
       "RECURRING_OVERDUE": "{{title}} on {{vehicle}} is overdue.",
+      "TYRE_SWAP_DUE": "{{title}}: {{set}} on {{vehicle}} is in storage, and its month has come.",
       "LOG_FILLED_FROM_PHOTO_REFUELING": "The photo of the {{date}} refuelling of {{vehicle}} filled in: {{values}}. Check it.",
       "LOG_FILLED_FROM_PHOTO_EXPENSE": "The photo of {{title}} ({{date}}, {{vehicle}}) filled in: {{values}}. Check it.",
       "LOG_NOT_FILLED_REFUELING": "The photos of the {{date}} refuelling of {{vehicle}} did not show: {{values}}. Fill it in.",
@@ -1143,6 +1144,7 @@
       "tyreNotYet": "Tyre {{label}} came on {{date}}: it cannot be on the car before.",
       "monthsRequired": "Pick at least one month.",
       "monthInvalid": "A month is a number from 1 to 12.",
+      "reminderMonthInvalid": "The month to be reminded from is a number from 1 to 12, or none.",
       "estimateSpan": "The day the estimate starts must be before the day it ends, and not in the future."
     }
   },
@@ -2065,7 +2067,9 @@
         "updateTyrePlace": "Changed time on the car of a tyre",
         "deleteTyrePlace": "A tyre's time on the car to the trash",
         "restoreTyrePlace": "A tyre's time on the car back from the trash",
-        "replaceTyres": "Tyres replaced"
+        "replaceTyres": "Tyres replaced",
+        "dismissTyreReminder": "Swap reminder off for this season",
+        "restoreTyreReminder": "Swap reminder back on"
       }
     },
     "remove": "Remove the change",
@@ -2952,6 +2956,27 @@
       "toastMany": "Replaced. {{tyres}} are under Retired.",
       "retiredRow": "{{set}} · {{why}}, {{date}}",
       "retiredName": "Tyre {{label}}, {{set}}, retired on {{date}}: {{why}}"
+    },
+    "reminder": {
+      "label": "Remind me to fit them from",
+      "none": "No reminder",
+      "hint": "A row on the home page, a note on the Tyres tab and a notification while the set is in storage. Its season's month unless you change it.",
+      "changed": "Changed from its season's.",
+      "chip": "Time to swap",
+      "title": {
+        "WINTER": "Time to fit the winter tyres",
+        "SUMMER": "Time to fit the summer tyres",
+        "ALL_SEASON": "Time to fit the all-season tyres"
+      },
+      "text": "{{set}} is in storage, and you asked to be reminded from {{month}}.",
+      "swap": "Swap",
+      "swapAria": "Swap to {{set}} on {{vehicle}}",
+      "swapTyresAria": "Swap tyres: fit {{set}}",
+      "dismiss": "Not this season",
+      "dismissAria": "Not this season: {{set}}",
+      "dismissed": "Reminder off for this season.",
+      "from": "Reminder from {{month}}.",
+      "off": "No reminder."
     },
     "estimate": {
       "button": "Estimate from the fuel log",

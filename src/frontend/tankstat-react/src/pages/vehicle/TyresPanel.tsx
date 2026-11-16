@@ -19,7 +19,9 @@ import { ErrorMessage } from '../../messages.tsx'
 import { HistoryDialog, RoughDialog } from '../../tyres/HistoryDialog.tsx'
 import { odometerOn, sortedReadings } from '../../tyres/odometer.ts'
 import { PastSwapsDialog } from '../../tyres/PastSwapsDialog.tsx'
+import { ReminderBanners } from '../../tyres/ReminderBanner.tsx'
 import { SwapDialog } from '../../tyres/SwapDialog.tsx'
+import { reminderMonthOf, reminderSeasonOf } from '../../tyres/tyreMonths.ts'
 import { TyreSetDialog } from '../../tyres/TyreSetDialog.tsx'
 import { usePendingTyres } from '../../tyres/usePendingTyres.ts'
 import { NO_SET, noTyres } from '../../tyres/replay.ts'
@@ -107,6 +109,7 @@ export function TyresPanel({ vehicle, canLog }: { vehicle: { id: string; units: 
           {t('tyres.viewOnly')}
         </Typography>
       )}
+      <ReminderBanners tyres={tyres} vehicleId={vehicle.id} unit={unit} canLog={canLog} />
       <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: { xs: 'minmax(0,1fr)', md: 'minmax(0,1.1fr) minmax(0,1fr)' }, alignItems: 'start' }}>
         <Stack sx={{ gap: 2.5, minWidth: 0 }}>
           <Section title={t('tyres.onCar')}>
@@ -383,7 +386,7 @@ function SetCard({
   }
 
   return (
-    <Paper variant="outlined" component="article" aria-label={set.name} sx={{ p: 1.75, borderRadius: 3, display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
+    <Paper variant="outlined" component="article" aria-label={set.name} data-set-card={set.id} tabIndex={-1} sx={{ p: 1.75, borderRadius: 3, display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
       <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
         <Chip size="small" icon={<>{SEASON_ICON[set.season]}</>} label={t(`tyres.seasons.${set.season}`)} />
         <Typography component="h3" variant="subtitle1" sx={{ fontWeight: 700, minWidth: 0, overflowWrap: 'anywhere' }}>
@@ -411,6 +414,16 @@ function SetCard({
               })
             : t('tyres.storedLast', { pairs: words.pairs(last?.pairOneFront) })}
       </Typography>
+      {/* The swap reminder (#292), on a set in storage: from which month, off for this season, or none. */}
+      {!set.isRetired && !info.onTheCar && (
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+          {reminderMonthOf(set) === null
+            ? t('tyres.reminder.off')
+            : set.reminderDismissedFor === reminderSeasonOf(reminderMonthOf(set)!, todayIso())
+              ? t('tyres.reminder.dismissed')
+              : t('tyres.reminder.from', { month: format.month(reminderMonthOf(set)!) })}
+        </Typography>
+      )}
       <Box component="dl" sx={{ m: 0, display: 'flex', flexWrap: 'wrap', gap: '6px 24px' }}>
         <Box>
           <Typography component="dt" variant="caption" sx={{ color: 'text.secondary' }}>

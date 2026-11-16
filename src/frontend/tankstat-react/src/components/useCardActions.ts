@@ -26,6 +26,8 @@ export function useCardActions(vehicleId: string) {
   // An expense saved with tyre details (#290) is on the tyre log too: its answer asked again, so the device's copy has the line at once.
   const refreshTyres = () => client.query({ query: VehicleTyresDocument, variables: { vehicleId }, fetchPolicy: 'network-only' }).then(() => undefined, () => undefined)
   return {
+    /** Asks for this vehicle's card again (after a tyre change made from it, #292, which asks only for the Tyres tab's answer). */
+    refresh,
     // Kept on the device while the server is out of reach (`offline/submitChange.ts`); the card's figures are the server's, so a kept log
     // asks for nothing.
     refuel: async (values: RefuelingValues, photoIds: string[]): Promise<Saved> => {

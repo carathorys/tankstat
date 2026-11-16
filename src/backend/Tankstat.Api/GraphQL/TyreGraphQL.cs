@@ -17,11 +17,12 @@ namespace Tankstat.Api.GraphQL;
 /// <param name="InstallationId">The id of the installation a fitted set starts with.</param>
 /// <param name="Price">What the set cost (#288): a <c>BOUGHT</c> line of the tyre log with its expense, on <paramref name="BoughtOn"/> (left out: <paramref name="Day"/>).</param>
 /// <param name="BoughtEntryId">The client's id of that line.</param>
+/// <param name="ReminderMonth">The month the swap reminder starts from (#292; 1 = January, 0: no reminder); left out: its season's.</param>
 /// <param name="UsualMonths">The months it is usually on the car (#291; 1 = January), which the rough figure's estimate counts; left out: its season's.</param>
 public sealed record AddTyreSetInput(
     Guid VehicleId, string Name, TyreSeason Season, string? Size, DateOnly Since, int? MadeWeek, int? MadeYear, bool Fitted, DateOnly Day,
     long RoughDistance = 0, long? Odometer = null, bool? PairOneFront = null, bool Replace = false, Guid? Id = null, Guid? InstallationId = null,
-    TyreFeeInput? Price = null, DateOnly? BoughtOn = null, Guid? BoughtEntryId = null, IReadOnlyList<int>? UsualMonths = null);
+    TyreFeeInput? Price = null, DateOnly? BoughtOn = null, Guid? BoughtEntryId = null, IReadOnlyList<int>? UsualMonths = null, int? ReminderMonth = null);
 
 /// <summary>
 /// The amount of a tyre log line (#288): an ordinary expense on the Expenses tab, with the line's day and reading. Left out, the line's stays
@@ -56,8 +57,14 @@ public sealed record DeleteTyreEntryInput(Guid Id, bool WithExpense = true);
 /// <param name="Day">The device's today.</param>
 public sealed record RetireTyreSetInput(Guid Id, DateOnly Day);
 
+/// <summary>Not this season (#292): the set's swap reminder off for the season it is due for.</summary>
+/// <param name="Season">The season's first day, as <c>TyreSetInfo.reminder.season</c> gave it; one that is over changes nothing.</param>
+public sealed record DismissTyreReminderInput(Guid Id, DateOnly Season);
+
 /// <param name="UsualMonths">The months it is usually on the car (#291; 1 = January); left out (a client from before them) keeps the set's.</param>
-public sealed record UpdateTyreSetInput(Guid Id, string Name, TyreSeason Season, string? Size, DateOnly Since, int? MadeWeek, int? MadeYear, IReadOnlyList<int>? UsualMonths = null);
+/// <param name="ReminderMonth">The month the swap reminder starts from (#292; 0: no reminder); left out (a client from before it) keeps the set's.</param>
+public sealed record UpdateTyreSetInput(
+    Guid Id, string Name, TyreSeason Season, string? Size, DateOnly Since, int? MadeWeek, int? MadeYear, IReadOnlyList<int>? UsualMonths = null, int? ReminderMonth = null);
 
 /// <param name="Until">The first day the rough figure does not cover, when accepting a suggestion; left out keeps it.</param>
 /// <param name="UsualMonths">The months the figure was estimated over, kept with the set (#291); left out keeps the set's.</param>
@@ -156,6 +163,12 @@ public sealed class TyreSetType : ObjectType<TyreSet>
         descriptor.Ignore(s => s.SavedVersion);
         descriptor.Ignore(s => s.IsDeleted);
         descriptor.Ignore(s => s.Months);
+        // The swap reminder (#292): the month of its own (null on its season's, 0 for none) and the dismissed season are the client's to show;
+        // the rest is the server's bookkeeping.
+        descriptor.Ignore(s => s.EffectiveReminderMonth);
+        descriptor.Ignore(s => s.ReminderSince);
+        descriptor.Ignore(s => s.DismissReminder(default, default));
+        descriptor.Ignore(s => s.RestoreReminder());
         // The months of its own (#291; 1 = January), null while it is on its season's: the client knows a season's months.
         descriptor.Field(s => s.UsualMonths).Type<ListType<NonNullType<IntType>>>().Resolve(c => c.Parent<TyreSet>().UsualMonths?.ToList());
     }
@@ -225,6 +238,42 @@ public sealed class TyreSetViewType : ObjectType<TyreSetView>
         descriptor.Field(v => v.Repairs).Description("Its punctures repaired and valves replaced.");
         descriptor.Field(v => v.Tyres).Type<NonNullType<ListType<NonNullType<TyreViewType>>>>().Resolve(c => c.Parent<TyreSetView>().Tyres ?? [])
             .Description("A set tracked tyre by tyre (#289): its tyres not in the trash, retired ones included, by label; none for a whole set.");
+        descriptor.Field(v => v.Reminder).Description("The swap reminder (#292) while the set is due: in storage since the 1st of its month, not dismissed for this season; null while it is quiet.");
+    }
+}
+
+/// <summary>The swap reminders due on the vehicles of a response (#292), loaded together: one access check and two queries for a page of cards.</summary>
+public sealed class TyreRemindersByVehicleLoader(TyreService tyres, IBatchScheduler scheduler, DataLoaderOptions options)
+    : BatchDataLoader<Vehicle, IReadOnlyList<TyreReminderItem>>(scheduler, options)
+{
+    protected override async Task<IReadOnlyDictionary<Vehicle, IReadOnlyList<TyreReminderItem>>> LoadBatchAsync(IReadOnlyList<Vehicle> keys, CancellationToken ct)
+    {
+        var loaded = await tyres.ListRemindersAsync(keys, ct);
+        return keys.ToDictionary(v => v, v => loaded[v.Id]);
+    }
+}
+
+/// <summary>A set in storage whose month to be fitted has come (#292), on its vehicle's home card.</summary>
+/// <param name="SetSeason">The set's kind: winter, summer or all-season.</param>
+/// <param name="Season">The season it is due for, its first day: what Not this season names.</param>
+/// <param name="Month">The month it is reminded from (1 = January).</param>
+public sealed record VehicleTyreReminder(Guid SetId, string Name, TyreSeason SetSeason, int Month, DateOnly Season);
+
+[ExtendObjectType<Vehicle>]
+public sealed class VehicleTyreReminderExtensions
+{
+    /// <summary>The tyre sets in storage whose swap reminder is due (#292), by name; none for someone who may not see the vehicle's logs.</summary>
+    public async Task<IReadOnlyList<VehicleTyreReminder>> GetTyreReminders([Parent] Vehicle vehicle, TyreRemindersByVehicleLoader loader, CancellationToken ct) =>
+        (await loader.LoadAsync(vehicle, ct) ?? []).Select(r => new VehicleTyreReminder(r.SetId, r.Name, r.Season, r.Month, r.SeasonStart)).ToList();
+}
+
+/// <summary>A set's swap reminder that is due (#292).</summary>
+public sealed class TyreReminderViewType : ObjectType<TyreReminderView>
+{
+    protected override void Configure(IObjectTypeDescriptor<TyreReminderView> descriptor)
+    {
+        descriptor.Name("TyreReminder");
+        descriptor.Field(r => r.Season).Description("The season it is due for, its first day (the latest 1st of the set's month): what Not this season names.");
     }
 }
 
@@ -437,6 +486,13 @@ public sealed class TyreMutations
 
     public Task<TyreOverview> UnretireTyreSet(Guid id, [Service] TyreService tyres, CancellationToken ct) => tyres.UnretireAsync(id, ct);
 
+    /// <summary>Not this season (#292): the set's swap reminder is off for that season, for everyone; a season that is over changes nothing.</summary>
+    public Task<TyreOverview> DismissTyreReminder(DismissTyreReminderInput input, [Service] TyreService tyres, CancellationToken ct) =>
+        tyres.DismissReminderAsync(input.Id, input.Season, ct);
+
+    /// <summary>Takes Not this season back.</summary>
+    public Task<TyreOverview> RestoreTyreReminder(Guid id, [Service] TyreService tyres, CancellationToken ct) => tyres.RestoreReminderAsync(id, ct);
+
     public Task<TyreOverview> DeleteTyreSet(Guid id, [Service] TyreService tyres, CancellationToken ct) => tyres.TrashSetAsync(id, ct);
 
     public Task<TyreOverview> RestoreTyreSet(Guid id, [Service] TyreService tyres, CancellationToken ct) => tyres.RestoreSetAsync(id, ct);
@@ -495,11 +551,11 @@ internal static class TyreChanges
         tyres.UpdatePlaceAsync(i.Id, new TyrePlaceInput(i.From, i.Until, i.Corner), ct, version);
 
     public static Task<TyreOverview> Add(AddTyreSetInput i, TyreService tyres, CancellationToken ct) =>
-        tyres.AddSetAsync(new NewTyreSet(i.VehicleId, new TyreSetInput(i.Name, i.Season, i.Size, i.Since, i.MadeWeek, i.MadeYear, i.RoughDistance, i.UsualMonths), i.Fitted, i.Day, i.Odometer, i.PairOneFront, i.Replace,
+        tyres.AddSetAsync(new NewTyreSet(i.VehicleId, new TyreSetInput(i.Name, i.Season, i.Size, i.Since, i.MadeWeek, i.MadeYear, i.RoughDistance, i.UsualMonths, i.ReminderMonth), i.Fitted, i.Day, i.Odometer, i.PairOneFront, i.Replace,
             i.Price?.ToFee(), i.BoughtOn, i.BoughtEntryId), ct, i.Id, i.InstallationId);
 
     public static Task<TyreOverview> Update(UpdateTyreSetInput i, TyreService tyres, CancellationToken ct, int? version = null) =>
-        tyres.UpdateSetAsync(i.Id, new TyreSetInput(i.Name, i.Season, i.Size, i.Since, i.MadeWeek, i.MadeYear, UsualMonths: i.UsualMonths), ct, version);
+        tyres.UpdateSetAsync(i.Id, new TyreSetInput(i.Name, i.Season, i.Size, i.Since, i.MadeWeek, i.MadeYear, UsualMonths: i.UsualMonths, ReminderMonth: i.ReminderMonth), ct, version);
 
     public static Task<TyreOverview> Past(AddPastTyreSwapsInput i, TyreService tyres, CancellationToken ct, bool repeat = false) =>
         tyres.AddPastSwapsAsync(i.VehicleId, [.. i.Swaps.Select(s => new TyrePastSwap(s.Day, s.SetId, s.Odometer, s.InstallationId))], i.Replace, ct, repeat);

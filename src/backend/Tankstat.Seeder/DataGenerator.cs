@@ -209,7 +209,8 @@ public sealed class DataGenerator(TimeProvider clock)
             var made = since.AddDays(-random.Next(30, 300));
             var week = WeekOf(made);
             var rough = (long)Math.Round(random.Next(0, 30) * 1000 * market.DistancePerKm);
-            return TyreSet.Create(owner, owner, vehicle.Id, names[random.Next(names.Length)], season, size, since, week, made.Year, rough, first);
+            return TyreSet.Create(owner, owner, vehicle.Id, names[random.Next(names.Length)], season, size, since, week, made.Year, rough, first,
+                reminderMonth: 0); // no swap reminder (#292): the seeded pages and the README's pictures must not change with the month
         }
         var summer = Make(SummerTyres, TyreSeason.Summer);
         var winter = Make(WinterTyres, TyreSeason.Winter);

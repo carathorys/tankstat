@@ -33,6 +33,23 @@ test('a vehicle page and its add refuelling dialog have no axe violations', asyn
   expect(await violations(page, '[role="dialog"]')).toEqual([])
 })
 
+test('the tyre swap reminder, on the Tyres tab and on the home card, has no axe violations (#292)', async ({ page }) => {
+  // A winter set in storage reminded from the server's (UTC) month: due whatever day the test runs.
+  const vehicle = await addVehicle(page)
+  await graphql(page, 'mutation($i: AddTyreSetInput!) { addTyreSet(input: $i) { vehicleId } }', {
+    i: { vehicleId: vehicle.id, name: 'Continental WinterContact', season: 'WINTER', since: '2022-11-19', fitted: false, day: new Date().toISOString().slice(0, 10), reminderMonth: new Date().getUTCMonth() + 1 },
+  })
+  await openVehicle(page, vehicle.id, 'tyres')
+  await expect(page.getByText('Time to fit the winter tyres')).toBeVisible()
+  expect(await violations(page)).toEqual([])
+
+  await page.goto('/')
+  await pageLoaded(page)
+  // The shared user's other cars (the other size's run among them) may show a row too: this test's card is the one looked for.
+  await expect(page.getByRole('link', { name: `Open ${vehicle.name}` }).locator('xpath=ancestor::li[1]').getByText('Time to swap')).toBeVisible()
+  expect(await violations(page)).toEqual([])
+})
+
 test('a vehicle\'s dashboard, shown and being arranged, has no axe violations', async ({ page }) => {
   const vehicle = await addVehicle(page)
   await page.goto(`/vehicles/${vehicle.id}`)

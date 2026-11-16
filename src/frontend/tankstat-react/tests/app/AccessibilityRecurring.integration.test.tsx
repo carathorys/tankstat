@@ -59,6 +59,10 @@ it('the home page card lists what needs attention in a labelled list, free of vi
   const list = await screen.findByRole('list', { name: 'Needs attention' })
 
   expect(within(list).getByText(/Tyres · 300 km over/)).toBeInTheDocument()
+  // The swap reminder's row (#292): in words, its two buttons naming the set (and the car).
+  expect(within(list).getByText('Time to swap')).toBeInTheDocument()
+  expect(within(list).getByRole('button', { name: 'Swap to Continental WinterContact on Octavia' })).toBeInTheDocument()
+  expect(within(list).getByRole('button', { name: 'Not this season: Continental WinterContact' })).toBeInTheDocument()
   await check(document.body)
 })
 

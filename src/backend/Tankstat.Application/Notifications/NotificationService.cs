@@ -13,7 +13,7 @@ namespace Tankstat.Application.Notifications;
 /// ones removed (there is no background job).
 /// </summary>
 public sealed class NotificationService(
-    AccessService access, INotificationRepository notifications, RecurringNotificationSync recurring, SyncNotificationSync parked, IOptionsSnapshot<NotificationOptions> options,
+    AccessService access, INotificationRepository notifications, RecurringNotificationSync recurring, SyncNotificationSync parked, TyreReminderSync tyres, IOptionsSnapshot<NotificationOptions> options,
     TimeProvider clock,
     ILogger<NotificationService> logger)
 {
@@ -44,8 +44,9 @@ public sealed class NotificationService(
         var me = await access.RequirePrincipalAsync(ct);
         var due = await recurring.SyncAsync(ct);
         var waiting = await parked.SyncAsync(ct);
-        // A reminder of a schedule that is still due, or of a change still parked, is kept, or the next look would add it again as new.
-        var purged = await notifications.PurgeReadAsync(me.Id, clock.GetUtcNow().AddDays(-options.Value.ReadRetentionDays), [.. due, .. waiting], ct);
+        var swaps = await tyres.SyncAsync(ct);
+        // A reminder of a schedule or a tyre set that is still due, or of a change still parked, is kept, or the next look would add it again as new.
+        var purged = await notifications.PurgeReadAsync(me.Id, clock.GetUtcNow().AddDays(-options.Value.ReadRetentionDays), [.. due, .. waiting, .. swaps], ct);
         if (purged > 0) logger.LogDebug("Purged {Count} read notifications of user {UserId}", purged, me.Id);
         return me;
     }

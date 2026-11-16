@@ -200,6 +200,9 @@ type Mutation {
   restoreTyreEntry(id: UUID!): VehicleTyres! @cost(weight: "10")
   retireTyreSet(id: UUID!, day: LocalDate!): VehicleTyres! @cost(weight: "10")
   unretireTyreSet(id: UUID!): VehicleTyres! @cost(weight: "10")
+  dismissTyreReminder(input: DismissTyreReminderInput!): VehicleTyres!
+    @cost(weight: "10")
+  restoreTyreReminder(id: UUID!): VehicleTyres! @cost(weight: "10")
   deleteTyreSet(id: UUID!): VehicleTyres! @cost(weight: "10")
   restoreTyreSet(id: UUID!): VehicleTyres! @cost(weight: "10")
   breakUpTyreSet(input: BreakUpTyreSetInput!): VehicleTyres! @cost(weight: "10")
@@ -1125,6 +1128,11 @@ type TyrePlaceInfo {
   distance: InstallationDistance!
 }
 
+type TyreReminder {
+  "The season it is due for, its first day (the latest 1st of the set's month): what Not this season names."
+  season: LocalDate!
+}
+
 type TyreRoughEstimate {
   distance: Long!
   from: LocalDate
@@ -1147,6 +1155,8 @@ type TyreSet {
   madeYear: Int
   roughDistance: Long!
   roughUntil: LocalDate
+  reminderMonth: Int
+  reminderDismissedFor: LocalDate
   retiredOn: LocalDate
   brokenUpOn: LocalDate
   isBrokenUp: Boolean!
@@ -1178,6 +1188,8 @@ type TyreSetInfo {
   repairs: Int!
   "A set tracked tyre by tyre (#289): its tyres not in the trash, retired ones included, by label; none for a whole set."
   tyres: [TyreInfo!]! @cost(weight: "10")
+  "The swap reminder (#292) while the set is due: in storage since the 1st of its month, not dismissed for this season; null while it is quiet."
+  reminder: TyreReminder
   set: TyreSet!
   figures: TyreSetFigures!
   installations: [TyreInstallationInfo!]!
@@ -1280,6 +1292,7 @@ type Vehicle {
   refuelingCount: Int! @cost(weight: "10")
   expenseCount: Int! @cost(weight: "10")
   recurring: [RecurringExpenseInfo!]! @cost(weight: "10")
+  tyreReminders: [VehicleTyreReminder!]! @cost(weight: "10")
   summary: VehicleSummary @cost(weight: "10")
   dashboard: DashboardInfo @cost(weight: "10")
   parkedChangeCount: Int! @cost(weight: "10")
@@ -1329,6 +1342,14 @@ type VehicleSummary {
   expenseCount: Int!
   spending: [CurrencySpend!]!
   trends: DashboardTrends!
+}
+
+type VehicleTyreReminder {
+  setId: UUID!
+  name: String!
+  setSeason: TyreSeason!
+  month: Int!
+  season: LocalDate!
 }
 
 type VehicleTyres {
@@ -1437,6 +1458,7 @@ input AddTyreSetInput {
   boughtOn: LocalDate
   boughtEntryId: UUID
   usualMonths: [Int!]
+  reminderMonth: Int
 }
 
 input AddVehicleInput {
@@ -1505,6 +1527,8 @@ input ChangeInput {
   deleteTyrePlace: UUID
   restoreTyrePlace: UUID
   replaceTyres: ReplaceTyresInput
+  dismissTyreReminder: DismissTyreReminderInput
+  restoreTyreReminder: UUID
   base: String
 }
 
@@ -1563,6 +1587,11 @@ input DeleteUserInput {
   userId: UUID!
   data: UserDataDisposition
   moveToUserId: UUID
+}
+
+input DismissTyreReminderInput {
+  id: UUID!
+  season: LocalDate!
 }
 
 input ExpenseTyreInput {
@@ -1913,6 +1942,7 @@ input UpdateTyreSetInput {
   madeWeek: Int
   madeYear: Int
   usualMonths: [Int!]
+  reminderMonth: Int
 }
 
 input UpdateUiSettingsInput {
@@ -2138,6 +2168,7 @@ enum NotificationEntityType {
   REFUELING
   EXPENSE
   SYNC_CHANGE
+  TYRE_SET
 }
 
 enum NotificationKind {
@@ -2153,6 +2184,7 @@ enum NotificationKind {
   SYNC_CHANGE_PARKED
   MORE_ACTIVITY
   BACKUP_FAILED
+  TYRE_SWAP_DUE
 }
 
 enum OfflineEntityType {
@@ -2343,6 +2375,8 @@ enum SyncChangeKind {
   DELETE_TYRE_PLACE
   RESTORE_TYRE_PLACE
   REPLACE_TYRES
+  DISMISS_TYRE_REMINDER
+  RESTORE_TYRE_REMINDER
 }
 
 enum SyncChangeStatus {

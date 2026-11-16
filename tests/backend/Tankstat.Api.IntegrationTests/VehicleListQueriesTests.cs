@@ -58,9 +58,9 @@ public class VehicleListQueriesTests(VehicleListQueriesTests.Data data) : IClass
     [Fact]
     public async Task TheHomePagesCards_TakeAFixedNumberOfContexts_ForTheOwnerAndForAGrantee()
     {
-        // The fields of the home page's cards (VehicleCardFields: what the user may do, the schedules and the summary).
+        // The fields of the home page's cards (VehicleCardFields: what the user may do, the schedules, the swap reminders and the summary).
         string Cards(int take) =>
-            $"{{ myVehicles(skip: 0, take: {take}) {{ id canEdit logAccess recurring {{ id }} summary {{ fillUpCount latestOdometer spending {{ currency }} }} }} }}";
+            $"{{ myVehicles(skip: 0, take: {take}) {{ id canEdit logAccess recurring {{ id }} tyreReminders {{ setId }} summary {{ fillUpCount latestOdometer spending {{ currency }} }} }} }}";
         foreach (var (client, canEdit) in new[] { (data.Users.Alice, true), (data.Users.Bob, false) })
         {
             var cards = await PageAsync(client, "myVehicles", Cards, 24);
@@ -68,6 +68,7 @@ public class VehicleListQueriesTests(VehicleListQueriesTests.Data data) : IClass
             Assert.All(cards, card =>
             {
                 Assert.Equal(canEdit, card.GetProperty("canEdit").GetBoolean());
+                Assert.Equal(1, card.GetProperty("tyreReminders").GetArrayLength()); // #292: every car's stored set is due, read for the whole page at once
                 var summary = card.GetProperty("summary");
                 Assert.Equal(1, summary.GetProperty("fillUpCount").GetInt32());
                 Assert.True(summary.GetProperty("latestOdometer").GetInt64() >= 1000);
@@ -112,6 +113,9 @@ public class VehicleListQueriesTests(VehicleListQueriesTests.Data data) : IClass
                     .Data().GetProperty("addVehicle").GetProperty("id").GetString();
                 (await Users.Alice.Gql("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }",
                     new { i = new { vehicleId = id, date = "2026-01-10", volume = 40, totalCost = 60, currency = "EUR", odometer = 1000 + i, isFullTank = true } })).Data();
+                // A set in storage whose reminder's month is the server's (UTC) month: due on every card (#292).
+                (await Users.Alice.Gql("mutation($i: AddTyreSetInput!) { addTyreSet(input: $i) { vehicleId } }",
+                    new { i = new { vehicleId = id, name = "Winter", season = "WINTER", since = "2024-11-01", fitted = false, day = "2026-01-10", reminderMonth = DateTime.UtcNow.Month } })).Data();
                 if (i % 13 == 0 || i % 13 == 7) (await Users.Alice.Gql("mutation($id: UUID!) { deleteVehicle(id: $id) { id } }", new { id })).Data();
             }
             (await Users.Admin.Gql("mutation($i: SetAccessGrantInput!) { setAccessGrant(input: $i) }",

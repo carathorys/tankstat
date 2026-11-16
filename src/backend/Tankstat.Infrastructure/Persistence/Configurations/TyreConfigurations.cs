@@ -35,6 +35,7 @@ internal sealed class TyreSetConfiguration : IEntityTypeConfiguration<TyreSet>
         // The usual months (#291) as their twelve bits; null is the season's.
         b.Property(s => s.UsualMonths).HasConversion(new ValueConverter<TyreMonths, int>(m => m.Mask, mask => TyreMonths.FromMask(mask)));
         b.Ignore(s => s.Months);
+        b.Ignore(s => s.EffectiveReminderMonth); // worked out from the month of its own and the season (#292)
         // Unlike a log, a trashed set is read by its own queries (its installations hide through it), so there is no query filter.
     }
 }

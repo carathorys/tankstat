@@ -116,6 +116,7 @@ public static class DependencyInjection
         services.AddScoped<Notifier>();
         services.AddScoped<RecurringNotificationSync>();
         services.AddScoped<SyncNotificationSync>();
+        services.AddScoped<TyreReminderSync>();
         services.AddScoped<NotificationService>();
         services.AddSingleton<RecognitionSetup>();
         services.AddSingleton<RecognitionAvailability>();

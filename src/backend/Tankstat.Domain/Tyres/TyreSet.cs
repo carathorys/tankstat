@@ -61,6 +61,29 @@ public sealed class TyreSet : IOwned, ISoftDeletable, ISynced
     /// <summary>The months it is usually on the car: its own, else its season's.</summary>
     public TyreMonths Months => UsualMonths ?? TyreMonths.DefaultFor(Season);
 
+    /// <summary>
+    /// The month it is reminded to be fitted from (#292), when that differs from its season's: 1 to 12, or 0 for no reminder; null means
+    /// the season's (<see cref="TyreReminder.DefaultMonth"/>), so a set that never chose follows a change of season.
+    /// </summary>
+    public int? ReminderMonth { get; private set; }
+
+    /// <summary>The month the reminder starts from, its own or its season's; null: no reminder.</summary>
+    public int? EffectiveReminderMonth => ReminderMonth switch
+    {
+        null => TyreReminder.DefaultMonth(Season),
+        0 => null,
+        var month => month,
+    };
+
+    /// <summary>
+    /// The day the reminder was set: the set added, or its month (its own, or its season's with the season) last changed. A season that
+    /// began before that day's month does not count (decision 78). Null: no such limit.
+    /// </summary>
+    public DateOnly? ReminderSince { get; private set; }
+
+    /// <summary>The season (its first day) <em>Not this season</em> was tapped for; it ends by itself when the next season begins.</summary>
+    public DateOnly? ReminderDismissedFor { get; private set; }
+
     /// <summary>The day it was retired; a retired set takes no swap.</summary>
     public DateOnly? RetiredOn { get; private set; }
 
@@ -112,9 +135,11 @@ public sealed class TyreSet : IOwned, ISoftDeletable, ISynced
     /// <param name="roughUntil">The first day the rough figure does not cover (the day tracking starts); needed with a rough figure.</param>
     /// <param name="id">The id the client chose beforehand, if any (see <see cref="EntityId"/>).</param>
     /// <param name="usualMonths">The months it is usually on the car (1 = January); null: its season's.</param>
+    /// <param name="reminderMonth">The month it is reminded from (0: no reminder); null: its season's.</param>
+    /// <param name="today">The day it is added: the reminder counts from its month.</param>
     public static TyreSet Create(
         Guid ownerId, Guid createdById, Guid vehicleId, string name, TyreSeason season, string? size, DateOnly since, int? madeWeek, int? madeYear,
-        long roughDistance, DateOnly? roughUntil, Guid? id = null, IReadOnlyList<int>? usualMonths = null)
+        long roughDistance, DateOnly? roughUntil, Guid? id = null, IReadOnlyList<int>? usualMonths = null, int? reminderMonth = null, DateOnly? today = null)
     {
         var set = new TyreSet
         {
@@ -123,17 +148,52 @@ public sealed class TyreSet : IOwned, ISoftDeletable, ISynced
         };
         set.Apply(name, season, size, since, madeWeek, madeYear);
         set.ApplyMonths(usualMonths);
+        set.ReminderMonth = OwnReminderMonth(season, reminderMonth);
+        set.ReminderSince = today;
         set.ApplyRough(roughDistance, roughUntil);
         return set;
     }
 
     /// <param name="usualMonths">The months it is usually on the car; null (a client from before them) leaves them as they are.</param>
-    public void Update(string name, TyreSeason season, string? size, DateOnly since, int? madeWeek, int? madeYear, Guid? by = null, IReadOnlyList<int>? usualMonths = null)
+    /// <param name="reminderMonth">The month it is reminded from (0: no reminder); null (a client from before it) leaves it as it is.</param>
+    /// <param name="today">The day of the edit: a month that changes with it (its own, or its season's with the season) counts from then.</param>
+    public void Update(
+        string name, TyreSeason season, string? size, DateOnly since, int? madeWeek, int? madeYear, Guid? by = null, IReadOnlyList<int>? usualMonths = null,
+        int? reminderMonth = null, DateOnly? today = null)
     {
         RequireLive();
+        var before = EffectiveReminderMonth;
         Apply(name, season, size, since, madeWeek, madeYear);
         if (usualMonths is not null) ApplyMonths(usualMonths);
+        if (reminderMonth is not null) ReminderMonth = OwnReminderMonth(season, reminderMonth);
+        if (EffectiveReminderMonth != before) ReminderSince = today ?? ReminderSince;
         Bump(EntityChange.Edited, by);
+    }
+
+    /// <summary>
+    /// <em>Not this season</em> (#292): the reminder is off for <paramref name="season"/>, for everyone. Only the set's season of today can
+    /// be dismissed; any other (an older one, sent late from a device) changes nothing, and is no refusal.
+    /// </summary>
+    /// <remarks>
+    /// Not a change of the set's details, so its version is not bumped (like a vehicle's picture): a waiting edit of the set made on
+    /// another device must not be parked by it. The save still marks the set for the offline download (<c>UpdatedAt</c>).
+    /// </remarks>
+    /// <returns>Whether anything changed.</returns>
+    public bool DismissReminder(DateOnly season, DateOnly today)
+    {
+        RequireLive();
+        if (EffectiveReminderMonth is not { } month || TyreReminder.SeasonOf(month, today) != season || ReminderDismissedFor == season) return false;
+        ReminderDismissedFor = season;
+        return true;
+    }
+
+    /// <summary>Takes <em>Not this season</em> back (the toast's Undo); nothing to take back changes nothing.</summary>
+    public bool RestoreReminder()
+    {
+        RequireLive();
+        if (ReminderDismissedFor is null) return false;
+        ReminderDismissedFor = null;
+        return true;
     }
 
     /// <summary>Sets the rough figure and the first day it does not cover (the caller picks that day: never in the future, by default before the set's first installation).</summary>
@@ -209,6 +269,14 @@ public sealed class TyreSet : IOwned, ISoftDeletable, ISynced
         Size = trimmedSize;
         Since = since;
         (MadeWeek, MadeYear) = (madeWeek, madeYear);
+    }
+
+    /// <summary>A month of its own only when it differs from its season's (0 for none); null given is the season's.</summary>
+    private static int? OwnReminderMonth(TyreSeason season, int? given)
+    {
+        if (given is null) return null;
+        if (given is < 0 or > 12) throw new DomainException("tyres.reminderMonthInvalid", "The month to be reminded from is a number from 1 to 12, or 0 for no reminder.");
+        return given == (TyreReminder.DefaultMonth(season) ?? 0) ? null : given;
     }
 
     /// <summary>Months of its own only when they differ from its season's: the season's are kept as none, so they follow the season.</summary>

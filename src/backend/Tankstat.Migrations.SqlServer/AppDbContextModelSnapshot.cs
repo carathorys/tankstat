@@ -1275,6 +1275,15 @@ namespace Tankstat.Migrations.SqlServer
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateOnly?>("ReminderDismissedFor")
+                        .HasColumnType("date");
+
+                    b.Property<int?>("ReminderMonth")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly?>("ReminderSince")
+                        .HasColumnType("date");
+
                     b.Property<DateOnly?>("RetiredOn")
                         .HasColumnType("date");
 

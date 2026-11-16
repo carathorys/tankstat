@@ -196,6 +196,8 @@ export interface FakeVehicle {
   units: { distance: 'KILOMETERS' | 'MILES'; volume: 'LITERS' | 'US_GALLONS' | 'IMPERIAL_GALLONS' }
   refuelingCount: number
   recurring: FakeRecurring[]
+  /** The swap reminders due (#292). */
+  tyreReminders: { __typename: 'VehicleTyreReminder'; setId: string; name: string; setSeason: 'SUMMER' | 'WINTER' | 'ALL_SEASON'; month: number; season: string }[]
 }
 
 export const person = (displayName: string, over: Partial<Person> = {}): Person => ({ id: `p-${displayName}`, displayName, avatarUrl: null, ...over })
@@ -218,6 +220,7 @@ export const fakeVehicle = (over: Partial<FakeVehicle> & { ownerName?: string | 
     units: { distance: 'KILOMETERS', volume: 'LITERS' },
     refuelingCount: 2,
     recurring: [],
+    tyreReminders: [],
     ...rest,
   }
 }

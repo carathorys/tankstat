@@ -18,6 +18,14 @@ fragment VehicleCardFields on Vehicle {
     displayName
     avatarUrl
   }
+  # The tyre sets in storage whose month to be fitted has come (#292): a row each, after the schedules.
+  tyreReminders {
+    setId
+    name
+    setSeason
+    month
+    season
+  }
   # What needs attention on the card: the client shows the ones that are due soon or overdue.
   recurring {
     id

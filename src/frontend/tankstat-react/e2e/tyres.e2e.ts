@@ -658,3 +658,75 @@ test('estimates a used set from the fuel log: the usual months, what the log can
   await expectSoundLayout(page)
 })
 
+
+/**
+ * A summer set on the car and a winter one in storage reminded from this month (#292): the server's today is the UTC date, so the month is
+ * taken from it and the test does not depend on the day it runs.
+ */
+async function storedSetDueNow(page: Page) {
+  const day = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10)
+  const vehicle = await addVehicle(page)
+  await logRefueling(page, vehicle.id, { date: day(60), odometer: 1000 })
+  const addSet = 'mutation($i: AddTyreSetInput!) { addTyreSet(input: $i) { vehicleId } }'
+  const set = { vehicleId: vehicle.id, size: null, madeWeek: null, madeYear: null, roughDistance: 0, replace: false }
+  await graphql(page, addSet, { i: { ...set, name: 'Michelin Primacy 4', season: 'SUMMER', since: day(400), fitted: true, day: day(60), reminderMonth: 0 } })
+  await graphql(page, addSet, { i: { ...set, name: 'Continental WinterContact', season: 'WINTER', since: day(400), fitted: false, day: day(0), reminderMonth: new Date().getUTCMonth() + 1 } })
+  return vehicle
+}
+
+test('the swap reminder on the Tyres tab: Not this season and Undo, then Swap tyres from the note puts the set on (#292)', async ({ page }) => {
+  const vehicle = await storedSetDueNow(page)
+  await openVehicle(page, vehicle.id, 'tyres')
+
+  const note = page.getByRole('status').filter({ hasText: 'Time to fit the winter tyres' })
+  await expect(note).toContainText('Continental WinterContact is in storage, and you asked to be reminded from')
+  await expectSoundLayout(page) // the note above the sets, its buttons wrapping on a phone
+
+  await note.getByRole('button', { name: 'Not this season: Continental WinterContact' }).click()
+  await expect(page.getByText('Time to fit the winter tyres')).toBeHidden()
+  await expect(page.getByRole('article', { name: 'Continental WinterContact' })).toContainText('Reminder off for this season.')
+  await page.getByRole('button', { name: 'Undo' }).click()
+  await expect(note).toContainText('Time to fit the winter tyres')
+
+  await note.getByRole('button', { name: 'Swap tyres: fit Continental WinterContact' }).click()
+  const swap = page.getByRole('dialog', { name: 'Swap tyres' })
+  await swap.getByRole('button', { name: 'Swap tyres' }).click()
+  await expect(swap).toBeHidden()
+  await expect(page.getByText('Time to fit the winter tyres')).toBeHidden()
+  await expect(page.getByRole('article', { name: 'Continental WinterContact' }).getByText(/^On since /)).toBeVisible()
+})
+
+test('the swap reminder on the home card and in the notifications: the row after the schedules, Swap from the card, the notification to the Tyres tab (#292)', async ({ page }) => {
+  const vehicle = await storedSetDueNow(page)
+  await addDueRecurring(page, vehicle.id, 'Vignette')
+  await page.goto('/')
+  await pageLoaded(page)
+
+  const card = page.getByRole('link', { name: `Open ${vehicle.name}` }).locator('xpath=ancestor::li[1]')
+  const rows = card.getByRole('list', { name: 'Needs attention' }).getByRole('listitem')
+  await expect(rows).toHaveCount(2)
+  await expect(rows.first()).toContainText('Vignette')
+  await expect(rows.last()).toContainText('Time to swap')
+  await expect(rows.last()).toContainText('Continental WinterContact')
+  await expectSoundLayout(page) // the row and its two buttons on the card, at both sizes
+
+  // The notification: which tyres, on which car, and the way to its Tyres tab.
+  await page.getByRole('button', { name: /^Notifications, \d+ unread$/ }).click()
+  const bell = page.getByRole('dialog', { name: 'Notifications' })
+  const text = `Time to fit the winter tyres: Continental WinterContact on ${vehicle.name} is in storage, and its month has come.`
+  await bell.getByRole('list', { name: 'Latest notifications' }).getByRole('link', { name: text }).click()
+  await expect(page.getByRole('tab', { name: 'Tyres', selected: true })).toBeVisible()
+  await expect(page.getByText('Time to fit the winter tyres').first()).toBeVisible()
+
+  // Swap from the card: the dialog on the home page with the set chosen; done, the row leaves.
+  await page.goto('/')
+  await pageLoaded(page)
+  await rows.last().getByRole('button', { name: `Swap to Continental WinterContact on ${vehicle.name}` }).click()
+  const swap = page.getByRole('dialog', { name: 'Swap tyres' })
+  await expect(swap.getByText('Continental WinterContact').first()).toBeVisible()
+  await expectSoundLayout(page)
+  await swap.getByRole('button', { name: 'Swap tyres' }).click()
+  await expect(swap).toBeHidden()
+  await expect(card.getByText('Time to swap')).toBeHidden()
+  await expect(rows).toHaveCount(1)
+})

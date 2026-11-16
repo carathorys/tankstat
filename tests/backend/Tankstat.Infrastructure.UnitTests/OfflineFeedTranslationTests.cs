@@ -66,4 +66,22 @@ public class OfflineFeedTranslationTests
         Assert.Contains("GROUP BY", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("COUNT(", sql, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Theory]
+    [MemberData(nameof(Providers))]
+    public void TheSwapRemindersReads_TranslateToSql(DatabaseProvider provider)
+    {
+        // #292: the home page's cards and the notification read several vehicles' sets at once; nothing may be evaluated in memory.
+        using var db = Context(provider);
+        Guid[] ids = [Guid.NewGuid(), Guid.NewGuid()];
+        var scope = Tankstat.Application.Access.OwnerScope.Of([Guid.NewGuid()], [Guid.NewGuid()]);
+
+        foreach (var sql in new[]
+        {
+            TyreRepository.ReminderSets(db, ids).ToQueryString(), TyreRepository.ReminderInstallations(db, ids).ToQueryString(),
+            TyreRepository.ReminderVehicleIds(db, scope).ToQueryString(),
+        })
+            Assert.Contains("WHERE", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("DISTINCT", TyreRepository.ReminderVehicleIds(db, scope).ToQueryString(), StringComparison.OrdinalIgnoreCase);
+    }
 }

@@ -62,6 +62,10 @@ public enum SyncChangeKind
 
     // Tyres replaced early (#289 step 3).
     ReplaceTyres,
+
+    // The swap reminder (#292): Not this season, and its undo.
+    DismissTyreReminder,
+    RestoreTyreReminder,
 }
 
 /// <summary>Applied: the server has it. Parked: the server could not apply it and keeps it (with why) for a person to decide.</summary>

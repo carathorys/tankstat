@@ -1275,6 +1275,15 @@ namespace Tankstat.Migrations.PostgreSql
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateOnly?>("ReminderDismissedFor")
+                        .HasColumnType("date");
+
+                    b.Property<int?>("ReminderMonth")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly?>("ReminderSince")
+                        .HasColumnType("date");
+
                     b.Property<DateOnly?>("RetiredOn")
                         .HasColumnType("date");
 

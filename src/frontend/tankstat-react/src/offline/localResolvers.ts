@@ -381,7 +381,7 @@ async function vehicleOf(rows: RowStore, id: unknown, base: Record<string, unkno
   const add = addedVehicle(id)
   const fresh = add && {
     __typename: 'Vehicle', id, version: 0, licensePlate: null, pictureUrl: null, canEdit: true, logAccess: 'DELETE', refuelingCount: 0, owner: null,
-    summary: null, recurring: [], units: { __typename: 'MeasurementUnits', distance: 'KILOMETERS', volume: 'LITERS' },
+    summary: null, recurring: [], tyreReminders: [], units: { __typename: 'MeasurementUnits', distance: 'KILOMETERS', volume: 'LITERS' },
   }
   const start = fresh ?? base ?? (await rows.vehicles()).find((v) => v.id === id)
   if (!start) return undefined
@@ -423,6 +423,19 @@ function schedulesOf(vehicleId: string, base: readonly Record<string, unknown>[]
   return [...byId.values()]
 }
 
+/**
+ * A vehicle's swap reminders (#292) with the tyre changes waiting: the rows are the server's last answer (never worked out here), and one
+ * leaves at once when a waiting change fits its set, dismisses it for the season, retires it or puts it in the trash. A card kept before
+ * the field existed, or built here, has none.
+ */
+const HIDES_REMINDER: Record<string, string> = { swapTyres: 'setId', dismissTyreReminder: 'id', retireTyreSet: 'id', deleteTyreSet: 'id' }
+function remindersOf(vehicleId: string, base: unknown) {
+  const rows = Array.isArray(base) ? (base as Record<string, unknown>[]) : []
+  if (rows.length === 0) return rows
+  const gone = new Set(outbox.changes.filter((c) => c.entity === 'tyres' && c.vehicleId === vehicleId && c.action in HIDES_REMINDER).map((c) => String(c.input?.[HIDES_REMINDER[c.action]] ?? '')))
+  return rows.filter((r) => !gone.has(String(r.setId)))
+}
+
 const vehicleDetails: Resolver = async (rows, variables, kept) => {
   if (!outbox.changes.some((c) => c.entity === 'vehicles' && c.targetId === variables.id)) return undefined
   const vehicle = await vehicleOf(rows, variables.id, (await kept('VehicleDetails', variables))?.vehicle as Record<string, unknown> | undefined)
@@ -433,7 +446,13 @@ const vehicleCard: Resolver = async (rows, variables, kept) => {
   if (!outbox.changes.some((c) => c.vehicleId === variables.id)) return undefined
   const base = (await kept('VehicleCard', variables))?.vehicle as Record<string, unknown> | undefined
   const vehicle = await vehicleOf(rows, variables.id, base)
-  return vehicle && { vehicle: { ...vehicle, recurring: schedulesOf(String(variables.id), (vehicle.recurring as Record<string, unknown>[] | undefined) ?? []) } }
+  return vehicle && {
+    vehicle: {
+      ...vehicle,
+      recurring: schedulesOf(String(variables.id), (vehicle.recurring as Record<string, unknown>[] | undefined) ?? []),
+      tyreReminders: remindersOf(String(variables.id), vehicle.tyreReminders),
+    },
+  }
 }
 
 /** The home list: the last answer seen, with the vehicles' changes over it and the vehicles added here at the end of the first page. */
@@ -443,7 +462,7 @@ const welcome: Resolver = async (rows, variables, kept) => {
   const search = typeof variables.search === 'string' ? variables.search.trim().toLowerCase() : ''
   const listed = await Promise.all((base.myVehicles as Record<string, unknown>[]).map(async (v) => {
     const vehicle = (await vehicleOf(rows, v.id, v)) ?? v
-    return { ...vehicle, recurring: schedulesOf(String(v.id), (v.recurring as Record<string, unknown>[] | undefined) ?? []) }
+    return { ...vehicle, recurring: schedulesOf(String(v.id), (v.recurring as Record<string, unknown>[] | undefined) ?? []), tyreReminders: remindersOf(String(v.id), v.tyreReminders) }
   }))
   // Counted on every page, listed at the end of the last one only: the next page is asked from how many cards are shown, so the server's
   // own pages must stay where they are until the last. One the server lists already (its answer was lost, a download brought it) is not
@@ -453,7 +472,7 @@ const welcome: Resolver = async (rows, variables, kept) => {
     .filter((c) => c.entity === 'vehicles' && c.action === 'add' && !shown.has(c.targetId))
     .filter((c) => !search || String(c.input?.name ?? '').toLowerCase().includes(search) || String(c.input?.licensePlate ?? '').toLowerCase().includes(search))
   const lastPage = Number(variables.skip ?? 0) + listed.length >= Number(base.myVehicleCount ?? 0)
-  const adds = !lastPage ? [] : await Promise.all(waiting.map(async (c) => ({ ...(await vehicleOf(rows, c.targetId, undefined)), recurring: schedulesOf(c.targetId, []) })))
+  const adds = !lastPage ? [] : await Promise.all(waiting.map(async (c) => ({ ...(await vehicleOf(rows, c.targetId, undefined)), recurring: schedulesOf(c.targetId, []), tyreReminders: [] })))
   return { ...base, myVehicles: [...listed, ...adds], myVehicleCount: Number(base.myVehicleCount ?? 0) + waiting.length, vehicleTotal: Number(base.vehicleTotal ?? 0) + waiting.length }
 }
 

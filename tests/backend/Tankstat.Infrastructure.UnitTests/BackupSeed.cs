@@ -43,7 +43,7 @@ internal static class BackupSeed
         await db.Get<IExpenseRepository>().AddAsync(expense, default);
         // A tyre set with usual months of its own (#291): the one column of the model kept as bits behind a converter.
         var tyres = new TyreSave();
-        tyres.AddedSets.Add(TyreSet.Create(user.Id, user.Id, vehicle.Id, "Zz Winter", TyreSeason.Winter, null, Day, null, null, 0, null, usualMonths: [12, 1, 2]));
+        tyres.AddedSets.Add(TyreSet.Create(user.Id, user.Id, vehicle.Id, "Zz Winter", TyreSeason.Winter, null, Day, null, null, 0, null, usualMonths: [12, 1, 2], reminderMonth: 10, today: Day));
         await db.Get<ITyreRepository>().SaveAsync(tyres, default);
 
         var images = db.Get<IImageRepository>();
