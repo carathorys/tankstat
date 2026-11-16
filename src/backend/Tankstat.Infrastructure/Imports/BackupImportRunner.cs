@@ -169,6 +169,9 @@ internal sealed class BackupImportRunner(
             var targets = plan.Cars.Where(c => c.TargetVehicleId is not null).Select(c => c.TargetVehicleId!.Value).ToList();
             await scope.RunAsync(new RunStart(starter, targets, runId), async run =>
             {
+                // A cancel that came after the row said Running but before the run's mark existed found nothing to mark: kept here, and
+                // honoured before anything is saved.
+                if (held?.CancelledBy is not null) throw new RunStoppedException(RunEnd.Cancelled);
                 report = await sp.GetRequiredService<BackupImportWork>().RunAsync(run, starter, file, plan, p => held!.Progress = p, stopping);
                 // The run's last save, inside its transaction: the report commits with the cars, or neither does.
                 await runs.CompleteAsync(runId, ImportRunJson.Write(report), plan.Cars.Count, plan.Cars.Sum(c => c.Entries), clock.GetUtcNow(), stopping);

@@ -116,7 +116,8 @@ public sealed class BackupImportRunService(
         }
         // Running (or given its turn just now): the run is told, and its end is written by the server that runs it.
         runner.Cancelling(id, me.Id);
-        return await scope.CancelAsync(id, me, ct) || run.State == ImportRunState.Running;
+        // The run's mark may not exist yet (its turn came a moment ago): the runner keeps the request and the run honours it first.
+        return await scope.CancelAsync(id, me, ct) || await runs.FindAsync(id, ct) is { State: ImportRunState.Running };
     }
 
     private async Task<(Principal Me, IBackupCars File)> FileAsync(string token, CancellationToken ct)
