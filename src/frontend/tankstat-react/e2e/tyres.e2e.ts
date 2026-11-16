@@ -609,3 +609,52 @@ test('a visit with tyre details: with an amount its expense is the line\'s, with
   await expect(page.getByRole('row').filter({ hasText: 'Wheel balancing' })).toContainText('Tyre log')
 })
 
+test('estimates a used set from the fuel log: the usual months, what the log cannot cover, Use it, and the same offer in the rough figure dialog (#291)', async ({ page }) => {
+  const day = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10)
+  const vehicle = await addVehicle(page)
+  // The fuel log: 8,000 km over the last 200 days. The set is older than that.
+  await logRefueling(page, vehicle.id, { date: day(200), odometer: 1000 })
+  await logRefueling(page, vehicle.id, { date: day(100), odometer: 6000 })
+  await logRefueling(page, vehicle.id, { date: day(10), odometer: 9000 })
+  await openVehicle(page, vehicle.id, 'tyres')
+
+  await page.getByRole('button', { name: /^Add (a tyre set|the tyres on the car)$/ }).first().click()
+  const add = page.getByRole('dialog', { name: 'Add a tyre set' })
+  await add.getByLabel(/^Name/).fill('Vredestein Quatrac')
+  await add.getByRole('radio', { name: 'All-season' }).check({ force: true }) // the whole year: the figure does not depend on the day the test runs
+  await add.getByRole('radio', { name: 'In storage' }).check({ force: true })
+  const estimate = add.getByRole('button', { name: 'Estimate from the fuel log' })
+  await expect(estimate).toBeDisabled()
+  await typeDate(page, dateField(add, /In use since/), day(500))
+  await estimate.click()
+
+  const months = add.getByRole('group', { name: 'Usual months' })
+  await expect(months.getByRole('checkbox')).toHaveCount(12)
+  await expect(add.getByText(/^≈ 8,000 km in the whole year, from .* to today, as the fuel log measured them\.$/)).toBeVisible()
+  await expect(add.getByText(/^Not covered, before the fuel log: /)).toBeVisible()
+  await expectSoundLayout(page) // the panel and its twelve toggles, at both sizes
+
+  // A month taken out asks again and says the months are the set's own; Season's months goes back.
+  await months.getByRole('checkbox', { name: 'January' }).uncheck({ force: true })
+  await expect(add.getByText("Changed from its season's.")).toBeVisible()
+  await add.getByRole('button', { name: "Season's months" }).click()
+  await expect(add.getByText(/^≈ 8,000 km in the whole year/)).toBeVisible()
+  await add.getByRole('button', { name: /^Use the estimate, 8,000 km/ }).click()
+  await expect(add.getByLabel(/^Driven so far, roughly/)).toHaveValue('8000')
+  await add.getByRole('button', { name: 'Save set' }).click()
+  await expect(add).toBeHidden()
+
+  const card = page.getByRole('article', { name: 'Vredestein Quatrac' })
+  await expect(card).toContainText('≈ 8,000 km')
+
+  // The rough figure dialog offers the same, up to the day the figure stands for.
+  await card.getByRole('button', { name: 'History' }).click()
+  const history = page.getByRole('dialog', { name: 'Vredestein Quatrac' })
+  await history.getByRole('button', { name: /the rough figure$/i }).click()
+  const rough = page.getByRole('dialog', { name: 'The rough figure' })
+  await rough.getByRole('button', { name: 'Estimate from the fuel log' }).click()
+  await expect(rough.getByText(/^≈ 8,000 km in the whole year/)).toBeVisible()
+  await expect(rough.getByText(/^Not covered, before the fuel log: /)).toBeVisible()
+  await expectSoundLayout(page)
+})
+
