@@ -87,6 +87,7 @@ do
         .AddType<ReadingPointType>()
         .AddType<TyreSetViewType>()
         .AddType<TyreInstallationViewType>()
+        .AddType<TyreReminderViewType>()
         .AddType<TyreType>()
         .AddType<TyrePlaceType>()
         .AddType<TyreViewType>()

@@ -1143,6 +1143,7 @@
       "tyreNotYet": "Tyre {{label}} came on {{date}}: it cannot be on the car before.",
       "monthsRequired": "Pick at least one month.",
       "monthInvalid": "A month is a number from 1 to 12.",
+      "reminderMonthInvalid": "The month to be reminded from is a number from 1 to 12, or none.",
       "estimateSpan": "The day the estimate starts must be before the day it ends, and not in the future."
     }
   },

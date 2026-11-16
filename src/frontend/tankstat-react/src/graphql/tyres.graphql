@@ -13,6 +13,8 @@ fragment TyreSetFields on TyreSet {
   roughDistance
   roughUntil
   usualMonths
+  reminderMonth
+  reminderDismissedFor
   retiredOn
   isRetired
   brokenUpOn
@@ -95,6 +97,9 @@ fragment VehicleTyresFields on VehicleTyres {
   }
   sets {
     onTheCar
+    reminder {
+      season
+    }
     spent {
       currency
       amount

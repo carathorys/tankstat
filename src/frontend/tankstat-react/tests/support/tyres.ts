@@ -12,6 +12,11 @@ export type FakeTyreSet = {
   brokenUpOn?: string; tyres?: FakeTyre[]
   /** The months of its own (#291); left out: its season's. */
   usualMonths?: number[]
+  /** The reminder's month of its own (#292; 0: none); left out: its season's. */
+  reminderMonth?: number
+  reminderDismissedFor?: string
+  /** The season its swap reminder is due for. */
+  reminder?: string
   /** The first day its rough figure does not cover; left out: 28 March 2026, null: none yet. */
   roughUntil?: string | null
 }
@@ -91,11 +96,12 @@ export function fakeTyres(initial: FakeTyreSet[], entries: FakeTyreEntry[] = [],
     sets: state.sets.map((s) => ({
       __typename: 'TyreSetInfo',
       onTheCar: s.onTheCar,
+      reminder: s.reminder ? { __typename: 'TyreReminder', season: s.reminder } : null,
       spent: (s.spent ?? []).map((x) => ({ __typename: 'TyreSpent', ...x })),
       repairs: s.repairs ?? 0,
       set: {
         __typename: 'TyreSet', id: s.id, vehicleId: 'v1', name: s.name, season: s.season, size: null, since: '2023-03-25', madeWeek: 5, madeYear: 2023,
-        roughDistance: s.roughDistance, roughUntil: s.roughUntil === undefined ? '2026-03-28' : s.roughUntil, usualMonths: s.usualMonths ?? null, retiredOn: s.isRetired ? '2026-10-01' : null, isRetired: s.isRetired ?? false,
+        roughDistance: s.roughDistance, roughUntil: s.roughUntil === undefined ? '2026-03-28' : s.roughUntil, usualMonths: s.usualMonths ?? null, reminderMonth: s.reminderMonth ?? null, reminderDismissedFor: s.reminderDismissedFor ?? null, retiredOn: s.isRetired ? '2026-10-01' : null, isRetired: s.isRetired ?? false,
         brokenUpOn: s.brokenUpOn ?? null, version: 1,
       },
       tyres: (s.tyres ?? []).map((t) => ({

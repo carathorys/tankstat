@@ -16,8 +16,11 @@ namespace Tankstat.Application.Tyres;
 /// <param name="RoughDistance">What a used set ran before it is tracked, roughly (0 for a new one).</param>
 /// <param name="UsualMonths">The months it is usually on the car (#291; 1 = January): a new set without them takes its season's, an edit
 /// without them leaves the set's as they are.</param>
+/// <param name="ReminderMonth">The month it is reminded to be fitted from (#292; 0: no reminder): a new set without it takes its season's,
+/// an edit without it leaves the set's as it is.</param>
 public sealed record TyreSetInput(
-    string Name, TyreSeason Season, string? Size, DateOnly Since, int? MadeWeek, int? MadeYear, long RoughDistance = 0, IReadOnlyList<int>? UsualMonths = null);
+    string Name, TyreSeason Season, string? Size, DateOnly Since, int? MadeWeek, int? MadeYear, long RoughDistance = 0, IReadOnlyList<int>? UsualMonths = null,
+    int? ReminderMonth = null);
 
 /// <param name="Fitted">The set is on the car from <see cref="Day"/> (a swap that day); else it is in storage.</param>
 /// <param name="Day">The day tracking starts (the client's today); the rough figure stands for the time before it.</param>
@@ -123,8 +126,13 @@ public sealed record TyreInstallationView(TyreInstallation Installation, Install
 /// <param name="Spent">What it cost (#288 step 4): its live lines' live expenses, per currency.</param>
 /// <param name="Repairs">Its live punctures repaired and valves replaced.</param>
 /// <param name="Tyres">A broken-up set's tyres not in the trash, retired ones included, by label (#289).</param>
+/// <param name="Reminder">The swap reminder (#292) while the set is due, worked out on read (<see cref="TyreReminder"/>); null while it is quiet.</param>
 public sealed record TyreSetView(TyreSet Set, TyreSetFigures Figures, IReadOnlyList<TyreInstallationView> Installations, bool OnTheCar,
-    IReadOnlyList<TyreSpent>? Spent = null, int Repairs = 0, IReadOnlyList<TyreView>? Tyres = null);
+    IReadOnlyList<TyreSpent>? Spent = null, int Repairs = 0, IReadOnlyList<TyreView>? Tyres = null, TyreReminderView? Reminder = null);
+
+/// <summary>A set's swap reminder that is due (#292).</summary>
+/// <param name="Season">The season it is due for, its first day: what <em>Not this season</em> names.</param>
+public sealed record TyreReminderView(DateOnly Season);
 
 /// <summary>
 /// A vehicle's tyres as the Tyres tab shows them: the sets that are not in the trash and the tyre log's lines (those not in the trash, of
@@ -189,7 +197,7 @@ public sealed class TyreService(
         RequireNotFuture(input.Day);
         RequireNotFuture(input.Set.Since);
         var set = TyreSet.Create(vehicle.OwnerId, by, vehicle.Id, input.Set.Name, input.Set.Season, input.Set.Size, input.Set.Since, input.Set.MadeWeek, input.Set.MadeYear,
-            input.Set.RoughDistance, input.Set.RoughDistance > 0 ? input.Day : null, id, input.Set.UsualMonths);
+            input.Set.RoughDistance, input.Set.RoughDistance > 0 ? input.Day : null, id, input.Set.UsualMonths, input.Set.ReminderMonth, Today);
         var save = new TyreSave { Book = book, By = by };
         save.AddedSets.Add(set);
         if (input.Fitted)
@@ -222,7 +230,7 @@ public sealed class TyreService(
         VersionCheck.Require(expectedVersion, set.Version);
         RequireNotFuture(input.Since);
         var by = (await access.RequirePrincipalAsync(ct)).Id;
-        set.Update(input.Name, input.Season, input.Size, input.Since, input.MadeWeek, input.MadeYear, by, input.UsualMonths);
+        set.Update(input.Name, input.Season, input.Size, input.Since, input.MadeWeek, input.MadeYear, by, input.UsualMonths, input.ReminderMonth, Today);
         History(vehicle, book).Check(); // a later "in use since" may no longer fit its installations
         var save = new TyreSave();
         save.ChangedSets.Add(set);
@@ -731,6 +739,40 @@ public sealed class TyreService(
         return Overview(vehicle.Id, await tyres.LoadAsync(vehicle.Id, ct));
     }
 
+    /// <summary>
+    /// <em>Not this season</em> (#292, the owner's decisions 73 and 77): the set's reminder is off for <paramref name="season"/>, for
+    /// everyone who shares the car. A season that is not the set's of today (an older one sent late, the same again) changes nothing and is
+    /// answered as done: a refusal would park the change of a device that tapped it before another logged the swap.
+    /// </summary>
+    public async Task<TyreOverview> DismissReminderAsync(Guid id, DateOnly season, CancellationToken ct, int? expectedVersion = null)
+    {
+        var (vehicle, set, _) = await EditableSetAsync(id, ct);
+        VersionCheck.Require(expectedVersion, set.Version);
+        if (set.DismissReminder(season, Today, (await access.RequirePrincipalAsync(ct)).Id))
+        {
+            var save = new TyreSave();
+            save.ChangedSets.Add(set);
+            await SaveAsync(save, ct);
+            logger.LogDebug("The swap reminder of tyre set {SetId} of vehicle {VehicleId} was dismissed for a season", id, vehicle.Id);
+        }
+        return Overview(vehicle.Id, await tyres.LoadAsync(vehicle.Id, ct));
+    }
+
+    /// <summary>Takes <em>Not this season</em> back (the toast's Undo).</summary>
+    public async Task<TyreOverview> RestoreReminderAsync(Guid id, CancellationToken ct, int? expectedVersion = null)
+    {
+        var (vehicle, set, _) = await EditableSetAsync(id, ct);
+        VersionCheck.Require(expectedVersion, set.Version);
+        if (set.RestoreReminder((await access.RequirePrincipalAsync(ct)).Id))
+        {
+            var save = new TyreSave();
+            save.ChangedSets.Add(set);
+            await SaveAsync(save, ct);
+            logger.LogDebug("The swap reminder of tyre set {SetId} of vehicle {VehicleId} is back on", id, vehicle.Id);
+        }
+        return Overview(vehicle.Id, await tyres.LoadAsync(vehicle.Id, ct));
+    }
+
     /// <summary>Retires a set in storage on <paramref name="day"/> (the client's today): it keeps everything and takes no swap.</summary>
     public async Task<TyreOverview> RetireAsync(Guid id, DateOnly day, CancellationToken ct, int? expectedVersion = null)
     {
@@ -1021,9 +1063,10 @@ public sealed class TyreService(
 
     private DateOnly Today => DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
 
-    private static TyreOverview Overview(Guid vehicleId, TyreBook book)
+    private TyreOverview Overview(Guid vehicleId, TyreBook book)
     {
         var live = book.Installations.Where(s => !s.IsDeleted).ToList();
+        var due = Reminders(book.Sets, live, Today);
         // The single tyres (#289): each live tyre's live places, as the rules count them (its tyre, installation and set live).
         var places = new TyrePlaces(Guid.Empty, vehicleId, new TyreHistory(Guid.Empty, vehicleId, book.Sets, book.Installations), book.Sets, book.SingleTyres, book.TyrePlaces);
         var livePlaces = places.LivePlaces.ToList();
@@ -1052,12 +1095,30 @@ public sealed class TyreService(
                 return new TyreSetView(set, TyreCalculator.SetFigures(book.Readings, set, own),
                     [.. own.Select(s => new TyreInstallationView(s, TyreCalculator.Distance(book.Readings, s.From, s.Until)))], own.Any(s => s.IsOpen),
                     costs.SpentOn(set.Id), costs.RepairsOf(set.Id),
-                    set.IsBrokenUp ? [.. TyresOf(set).Select(v => v with { Spent = costs.SpentOnTyre(v.Tyre.Id), Repairs = costs.RepairsOfTyre(v.Tyre.Id) })] : []);
+                    set.IsBrokenUp ? [.. TyresOf(set).Select(v => v with { Spent = costs.SpentOnTyre(v.Tyre.Id), Repairs = costs.RepairsOfTyre(v.Tyre.Id) })] : [],
+                    due.TryGetValue(set.Id, out var season) ? new TyreReminderView(season) : null);
             })
             .ToList();
         var category = book.Entries.Where(e => !e.IsDeleted && e.ExpenseId is not null).OrderByDescending(e => e.Day).ThenByDescending(e => e.UpdatedAt)
             .Select(book.ExpenseOf).FirstOrDefault(x => x is { IsDeleted: false })?.Category;
         return new TyreOverview(vehicleId, sets, entries, book.Readings, category, costs.All, costs.NoSet);
+    }
+
+    /// <summary>The sets whose swap reminder is due on <paramref name="today"/> (#292), each with its season.</summary>
+    /// <param name="live">The vehicle's installations not in the trash.</param>
+    internal static Dictionary<Guid, DateOnly> Reminders(IReadOnlyList<TyreSet> sets, IReadOnlyList<TyreInstallation> live, DateOnly today)
+    {
+        var shown = sets.Where(s => !s.IsDeleted).ToList();
+        var ids = shown.Select(s => s.Id).ToHashSet();
+        var installations = live.Where(i => !i.IsDeleted && ids.Contains(i.SetId)).ToList();
+        var onTheCar = installations.Where(i => i.IsOpen).Select(i => i.SetId).ToHashSet();
+        var due = new Dictionary<Guid, DateOnly>();
+        foreach (var set in shown)
+        {
+            var others = shown.Where(o => o.Id != set.Id && onTheCar.Contains(o.Id)).Select(o => o.Season);
+            if (TyreReminder.DueSeason(set, installations.Where(i => i.SetId == set.Id).Select(i => (i.From, i.Until)), others, today) is { } season) due[set.Id] = season;
+        }
+        return due;
     }
 
     private static TyreHistory History(Vehicle vehicle, TyreBook book, TyreSet? extra = null) =>

@@ -1125,6 +1125,11 @@ type TyrePlaceInfo {
   distance: InstallationDistance!
 }
 
+type TyreReminder {
+  "The season it is due for, its first day (the latest 1st of the set's month): what Not this season names."
+  season: LocalDate!
+}
+
 type TyreRoughEstimate {
   distance: Long!
   from: LocalDate
@@ -1147,6 +1152,8 @@ type TyreSet {
   madeYear: Int
   roughDistance: Long!
   roughUntil: LocalDate
+  reminderMonth: Int
+  reminderDismissedFor: LocalDate
   retiredOn: LocalDate
   brokenUpOn: LocalDate
   isBrokenUp: Boolean!
@@ -1178,6 +1185,8 @@ type TyreSetInfo {
   repairs: Int!
   "A set tracked tyre by tyre (#289): its tyres not in the trash, retired ones included, by label; none for a whole set."
   tyres: [TyreInfo!]! @cost(weight: "10")
+  "The swap reminder (#292) while the set is due: in storage since the 1st of its month, not dismissed for this season; null while it is quiet."
+  reminder: TyreReminder
   set: TyreSet!
   figures: TyreSetFigures!
   installations: [TyreInstallationInfo!]!
@@ -1437,6 +1446,7 @@ input AddTyreSetInput {
   boughtOn: LocalDate
   boughtEntryId: UUID
   usualMonths: [Int!]
+  reminderMonth: Int
 }
 
 input AddVehicleInput {
@@ -1913,6 +1923,7 @@ input UpdateTyreSetInput {
   madeWeek: Int
   madeYear: Int
   usualMonths: [Int!]
+  reminderMonth: Int
 }
 
 input UpdateUiSettingsInput {

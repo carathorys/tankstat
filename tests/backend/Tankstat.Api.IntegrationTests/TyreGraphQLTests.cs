@@ -654,6 +654,30 @@ public class TyreGraphQLTests(ApiFixture api)
     }
 
     [Fact]
+    public async Task ASetsReminderMonth_ComesWithTheAddAndTheEdit_ItsSeasonsAnsweredAsNone_AndAStoredSetIsDueInItsMonth()
+    {
+        // #292: `reminderMonth` on the two inputs and the set, `reminder` on a stored set whose month runs.
+        var vehicle = await AddVehicle();
+        var id = Guid.NewGuid();
+        var month = DateTime.UtcNow.Month; // the server's today is the UTC date
+        const string selection = "sets { reminder { season } set { name reminderMonth reminderDismissedFor } }";
+        int? Month(JsonElement tyres) => SetNamed(tyres, "Nokian").GetProperty("set").GetProperty("reminderMonth") is { ValueKind: JsonValueKind.Number } m ? m.GetInt32() : null;
+
+        var added = await Mutate("addTyreSet", "AddTyreSetInput", new { vehicleId = vehicle, name = "Nokian", season = "ALL_SEASON", since = "2023-03-25", fitted = false, day = "2026-03-28", id, reminderMonth = month }, selection);
+        Assert.Equal(month, Month(added));
+        Assert.Equal(new DateOnly(DateTime.UtcNow.Year, month, 1).ToString("yyyy-MM-dd"), SetNamed(added, "Nokian").GetProperty("reminder").GetProperty("season").GetString());
+
+        var kept = await Mutate("updateTyreSet", "UpdateTyreSetInput", new { id, name = "Nokian", season = "ALL_SEASON", since = "2023-03-25" }, selection);
+        Assert.Equal(month, Month(kept)); // left out: kept
+        var none = await Mutate("updateTyreSet", "UpdateTyreSetInput", new { id, name = "Nokian", season = "ALL_SEASON", since = "2023-03-25", reminderMonth = 0 }, selection);
+        Assert.Null(Month(none)); // an all-season set's own: no reminder
+        Assert.Equal(JsonValueKind.Null, SetNamed(none, "Nokian").GetProperty("reminder").ValueKind);
+
+        var refused = await Send("mutation($i: UpdateTyreSetInput!) { updateTyreSet(input: $i) { vehicleId } }", new { i = new { id, name = "Nokian", season = "ALL_SEASON", since = "2023-03-25", reminderMonth = 13 } });
+        Assert.Equal("tyres.reminderMonthInvalid", refused.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
+    }
+
+    [Fact]
     public async Task TheRoughEstimate_AnswersFromTheFuelLog_SaysWhatIsNotCovered_AndAnUnseenVehicleIsNotFound()
     {
         // #291: `tyreRoughEstimate`.

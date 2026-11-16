@@ -19,6 +19,16 @@ const same = (a: readonly number[], b: readonly number[]) => a.length === b.leng
 /** The months a set is usually on the car: its own, else its season's. */
 export const monthsOf = (set: { season: TyreSeason; usualMonths?: readonly number[] | null }): number[] => [...(set.usualMonths ?? SEASON_MONTHS[set.season])]
 
+/** A season's usual month to fit its tyres (#292), as the server's `TyreReminder.DefaultMonth`: winter November, summer March, all-season none. */
+export const seasonReminderMonth = (season: TyreSeason): number | null => (season === 'WINTER' ? 11 : season === 'SUMMER' ? 3 : null)
+
+/** What a set keeps of the reminder's month chosen (0: no reminder): none (null) when it is its season's. */
+export const ownReminderMonth = (season: TyreSeason, month: number): number | null => (month === (seasonReminderMonth(season) ?? 0) ? null : month)
+
+/** The month a set is reminded from, its own or its season's; null: no reminder. */
+export const reminderMonthOf = (set: { season: TyreSeason; reminderMonth?: number | null }): number | null =>
+  set.reminderMonth == null ? seasonReminderMonth(set.season) : set.reminderMonth === 0 ? null : set.reminderMonth
+
 /** What a set keeps of the months chosen: none (null) when they are its season's. */
 export function ownMonths(season: TyreSeason, months: readonly number[]): number[] | null {
   const sorted = sortedMonths(months)

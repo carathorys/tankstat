@@ -636,6 +636,91 @@ public class TyreServiceTests
         Assert.Equal("tyres.monthsRequired", (await Assert.ThrowsAsync<DomainException>(() => s.Tyres.SetRoughAsync(plain, 9_000, null, default, usualMonths: []))).Key);
     }
 
+    // ---- the swap reminder (#292) -----------------------------------------------------------------------------------
+
+    private static void On(Scene s, int y, int m, int d) => s.W.Clock.SetUtcNow(new DateTimeOffset(y, m, d, 12, 0, 0, TimeSpan.Zero));
+    private async Task<TyreSetView> Now(Scene s, Guid id) => Set((await s.Tyres.OverviewAsync(s.Car.Id, default))!, id);
+
+    [Fact]
+    public async Task TheReminder_IsDueFromTheSetsMonth_UntilTheSwap_AndASetOfTheSameSeasonOnTheCarKeepsItQuiet()
+    {
+        var s = await Setup(); // 1 Oct 2026
+        var (_, _, winter) = await TwoSets(s); // the summer set on the car, the winter one stored
+        Assert.Null((await Now(s, winter)).Reminder);
+
+        On(s, 2026, 11, 16);
+        Assert.Equal(D(2026, 11, 1), (await Now(s, winter)).Reminder!.Season);
+
+        // A second winter set in storage is due too; once one of them is on the car, the other is quiet (decision 74).
+        var spare = Guid.NewGuid();
+        Assert.NotNull(Set(await s.Tyres.AddSetAsync(new NewTyreSet(s.Car.Id, Winter(0) with { Name = "Spare" }, Fitted: false, D(2026, 11, 16), null, null), default, spare), spare).Reminder);
+        var swapped = await s.Tyres.SwapAsync(new TyreSwapInput(s.Car.Id, winter, D(2026, 11, 16), null, false, null, null), default);
+        Assert.All(swapped.Sets, set => Assert.Null(set.Reminder));
+
+        // Off again in March: it was on the car since its month, so nothing is due; the spare is, with no winter set on the car.
+        On(s, 2027, 3, 20);
+        var summer = swapped.Sets.Single(x => x.Set.Season == TyreSeason.Summer).Set.Id;
+        var back = await s.Tyres.SwapAsync(new TyreSwapInput(s.Car.Id, summer, D(2027, 3, 20), null, false, null, null), default);
+        Assert.Null(Set(back, winter).Reminder);
+        Assert.Equal(D(2026, 11, 1), Set(back, spare).Reminder!.Season);
+        Assert.Null(Set(back, summer).Reminder); // on the car
+    }
+
+    [Fact]
+    public async Task TheRemindersMonth_ComesWithTheAddAndTheEdit_AClientWithoutItChangesNone_AndAChangeCountsFromThatDay()
+    {
+        var s = await Setup();
+        var (_, _, winter) = await TwoSets(s);
+        var set = (await Now(s, winter)).Set;
+        Assert.Equal((null, 11, D(2026, 10, 1)), (set.ReminderMonth, set.EffectiveReminderMonth, set.ReminderSince)); // its season's, from the day it was added
+
+        var own = Guid.NewGuid();
+        var added = Set(await s.Tyres.AddSetAsync(new NewTyreSet(s.Car.Id, Winter(0) with { Name = "Own", ReminderMonth = 10 }, Fitted: false, D(2026, 3, 28), null, null), default, own), own);
+        Assert.Equal(10, added.Set.ReminderMonth);
+        Assert.Equal(D(2026, 10, 1), added.Reminder!.Season); // added while its month runs: at once (decision 78)
+
+        // An edit from a client that knows no month leaves it; its season's is kept as none; 0 is no reminder.
+        Assert.Equal(10, Set(await s.Tyres.UpdateSetAsync(own, Winter(0) with { Name = "Own 2" }, default), own).Set.ReminderMonth);
+        Assert.Null(Set(await s.Tyres.UpdateSetAsync(own, Winter(0) with { ReminderMonth = 11 }, default), own).Set.ReminderMonth);
+        On(s, 2026, 11, 20);
+        Assert.NotNull((await Now(s, own)).Reminder);
+        var off = Set(await s.Tyres.UpdateSetAsync(own, Winter(0) with { ReminderMonth = 0 }, default), own);
+        Assert.Equal((0, (int?)null, (TyreReminderView?)null), (off.Set.ReminderMonth!.Value, off.Set.EffectiveReminderMonth, off.Reminder));
+
+        // A month changed on 20 November to October: October last came before the change, so it waits for the next one.
+        var october = Set(await s.Tyres.UpdateSetAsync(own, Winter(0) with { ReminderMonth = 10 }, default), own);
+        Assert.Equal((D(2026, 11, 20), (TyreReminderView?)null), (october.Set.ReminderSince!.Value, october.Reminder));
+        On(s, 2027, 10, 2);
+        Assert.Equal(D(2027, 10, 1), (await Now(s, own)).Reminder!.Season);
+        Assert.Equal("tyres.reminderMonthInvalid", (await Assert.ThrowsAsync<DomainException>(() => s.Tyres.UpdateSetAsync(own, Winter(0) with { ReminderMonth = 13 }, default))).Key);
+    }
+
+    [Fact]
+    public async Task NotThisSeason_QuietsTheSetForEveryone_UndoBringsItBack_ALateOneIsNoRefusal_AndItNeedsEdit()
+    {
+        var s = await Setup();
+        var (_, _, winter) = await TwoSets(s);
+        On(s, 2026, 11, 16);
+        var season = (await Now(s, winter)).Reminder!.Season;
+
+        s.W.Grants.Items.Add(AccessGrant.Create(s.Alice.Id, s.Bob.Id, AccessLevel.View));
+        s.W.Current.SignInAs(s.Bob);
+        Assert.NotNull((await Now(s, winter)).Reminder); // who may only view sees it
+        await Assert.ThrowsAsync<ForbiddenException>(() => s.Tyres.DismissReminderAsync(winter, season, default));
+        s.W.Current.SignInAs(s.Alice);
+
+        var dismissed = Set(await s.Tyres.DismissReminderAsync(winter, season, default), winter);
+        Assert.Equal((season, (TyreReminderView?)null), (dismissed.Set.ReminderDismissedFor!.Value, dismissed.Reminder));
+        var version = dismissed.Set.Version;
+        Assert.Equal(version, Set(await s.Tyres.DismissReminderAsync(winter, season, default), winter).Set.Version); // again: nothing changes
+        Assert.Equal(version, Set(await s.Tyres.DismissReminderAsync(winter, D(2025, 11, 1), default), winter).Set.Version); // an old season, sent late
+
+        Assert.Equal(season, Set(await s.Tyres.RestoreReminderAsync(winter, default), winter).Reminder!.Season);
+        await s.Tyres.DismissReminderAsync(winter, season, default);
+        On(s, 2027, 11, 2); // it ends by itself with the next season
+        Assert.Equal(D(2027, 11, 1), (await Now(s, winter)).Reminder!.Season);
+    }
+
     [Fact]
     public async Task ARoughFigure_GivenLater_CoversTheTimeBeforeTheFirstInstallation_AndNeverAFutureDay()
     {

@@ -1143,6 +1143,7 @@
       "tyreNotYet": "A(z) {{label}} gumi {{date}} napon érkezett: előtte nem lehetett az autón.",
       "monthsRequired": "Válassz legalább egy hónapot.",
       "monthInvalid": "A hónap 1 és 12 közötti szám.",
+      "reminderMonthInvalid": "Az emlékeztető hónapja 1 és 12 közötti szám, vagy nincs.",
       "estimateSpan": "A becslés kezdőnapja a zárónapja előtt legyen, és ne a jövőben."
     }
   },
