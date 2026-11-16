@@ -148,6 +148,34 @@ it('a gap asks which set was on the car: the set before it stretches, the set af
   expect(state.calls.AddTyreInstallation[0].input).toMatchObject({ setId: 's3', from: '2026-03-01', until: '2026-03-28', pairOneFront: null })
 })
 
+it('the same set on both sides of a gap, filled whole, becomes one period; a later period whose line holds a reading is kept and met', async () => {
+  const twice: FakeTyreSet = { ...tyreWinter, installations: [{ id: 'r4', setId: 's2', from: '2026-02-01', until: '2026-03-28', pairOneFront: true, distance: 900 }, { ...tyreWinter.installations[0], until: '2026-01-10' }] }
+  const filled = async (lines: Parameters<typeof fakeTyres>[2]) => {
+    const { ui, state } = setup([tyreSummer, twice], { lines })
+    await ui.click(within(await card()).getAllByRole('button', { name: /^No set recorded from Jan 10, 2026 to Feb 1, 2026\. Fill in$/ })[0])
+    const dialog = await screen.findByRole('dialog', { name: 'Which set was on the car?' })
+    await ui.click(within(dialog).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(state.calls.UpdateTyreInstallation).toHaveLength(1))
+    return state
+  }
+
+  const joined = await filled({})
+  expect(joined.calls.DeleteTyreInstallation).toEqual([{ id: 'r4' }])
+  expect(joined.calls.UpdateTyreInstallation[0].input).toMatchObject({ id: 'r2', from: '2025-11-15', until: '2026-03-28' })
+})
+
+it('a later period whose line holds a reading is not trashed: the earlier one stretches to meet it', async () => {
+  const twice: FakeTyreSet = { ...tyreWinter, installations: [{ id: 'r4', setId: 's2', from: '2026-02-01', until: '2026-03-28', pairOneFront: true, distance: 900 }, { ...tyreWinter.installations[0], until: '2026-01-10' }] }
+  const { ui, state } = setup([tyreSummer, twice], { lines: { r4: { odometer: 139_000 } } })
+
+  await ui.click(within(await card()).getAllByRole('button', { name: /^No set recorded from Jan 10, 2026 to Feb 1, 2026\. Fill in$/ })[0])
+  await ui.click(within(await screen.findByRole('dialog', { name: 'Which set was on the car?' })).getByRole('button', { name: 'Save' }))
+
+  await waitFor(() => expect(state.calls.UpdateTyreInstallation).toHaveLength(1))
+  expect(state.calls.UpdateTyreInstallation[0].input).toMatchObject({ id: 'r2', until: '2026-02-01' })
+  expect(state.calls.DeleteTyreInstallation).toBeUndefined()
+})
+
 it('the Show menu chooses the range, the layers and the sets, says what is chosen, and saves the choices with the account', async () => {
   const { ui, settings } = setup([tyreSummer, winterEarly])
   const tl = within(await card())
@@ -227,4 +255,12 @@ it('out of reach, a move is kept on the device, and its sets’ rows say Changed
   const again = within(await card())
   await waitFor(() => expect(again.getAllByText('Changed · not synced')).toHaveLength(2))
   expect(again.getAllByRole('button', { name: 'Michelin Primacy 4, on the car Apr 4, 2026 to today, updated once synced. Edit' })).toHaveLength(2)
+})
+
+it('choices this build cannot draw (a newer server’s layer) are left alone: the browser’s own stay', async () => {
+  setup([tyreSummer, tyreWinter], { timeline: { range: 'TWO_YEARS', layers: ['GAPS', 'USUAL_MONTHS' as never], hiddenSets: [] } })
+
+  const tl = within(await card())
+  await answered() // the account's answer is in: it changed nothing
+  expect(tl.getByText('All · 4 of 5 shown')).toBeInTheDocument()
 })

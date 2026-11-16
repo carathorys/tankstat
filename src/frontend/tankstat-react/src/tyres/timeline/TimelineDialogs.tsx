@@ -71,7 +71,9 @@ export function MoveSwapDialog({ vehicleId, tyres, boundary, open, onOpenChange,
  * *Which set was on the car?* (#332, edit C): a gap filled with a set. `addTyreInstallation` never joins, so the set next to the gap
  * stretches its own period when the chosen days touch it: the set before, from the gap's first day, ends later; the set after, up to the
  * gap's last day, starts earlier (its line, reading and expense move with it); anything else adds a period. The same set on both sides,
- * filled whole, becomes one period: the later one goes to the trash with its line, and the earlier one runs to where it ended.
+ * filled whole: the server never joins two periods of a set that meet, so the later one goes to the trash with its line and the earlier
+ * one runs to where it ended, one period. When the later one's line holds something (a reading, a note, an amount), nothing is trashed:
+ * the earlier one stretches to it and the two meet.
  */
 export function FillGapDialog({ vehicleId, tyres, gap, open, onOpenChange, onClosed }: { vehicleId: string; tyres: Tyres; gap: Gap; open: boolean; onOpenChange: (open: boolean) => void; onClosed: () => void }) {
   const { t } = useTranslation()
@@ -98,8 +100,10 @@ export function FillGapDialog({ vehicleId, tyres, gap, open, onOpenChange, onClo
     try {
       let saved
       if (setId === gap.before.setId && from === isoOf(gap.from)) {
-        if (setId === gap.after.setId && until === isoOf(gap.until)) {
-          // One set all along: one period. The later one's line goes to the trash with it (the trash brings both back).
+        const line = tyres.entries.find((x) => x.installationId === after.id)
+        const holds = !!line && (line.odometer != null || !!line.note || line.expenseId != null)
+        if (setId === gap.after.setId && until === isoOf(gap.until) && !holds) {
+          // One set all along: one period. The later one's empty line goes to the trash with it (the trash brings both back).
           await run(DeleteTyreInstallationDocument, { id: after.id })
           saved = await run(UpdateTyreInstallationDocument, { input: whole(gap.before, { from: before.from, until: after.until ?? null }) })
         } else saved = await run(UpdateTyreInstallationDocument, { input: whole(gap.before, { from: before.from, until }) })
