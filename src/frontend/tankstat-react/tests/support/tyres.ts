@@ -12,6 +12,8 @@ export type FakeTyreSet = {
   brokenUpOn?: string; tyres?: FakeTyre[]
   /** The months of its own (#291); left out: its season's. */
   usualMonths?: number[]
+  /** The first day its rough figure does not cover; left out: 28 March 2026, null: none yet. */
+  roughUntil?: string | null
 }
 
 /** A single tyre (#289) with its times on the car, as the server answers them. */
@@ -93,7 +95,7 @@ export function fakeTyres(initial: FakeTyreSet[], entries: FakeTyreEntry[] = [],
       repairs: s.repairs ?? 0,
       set: {
         __typename: 'TyreSet', id: s.id, vehicleId: 'v1', name: s.name, season: s.season, size: null, since: '2023-03-25', madeWeek: 5, madeYear: 2023,
-        roughDistance: s.roughDistance, roughUntil: '2026-03-28', usualMonths: s.usualMonths ?? null, retiredOn: s.isRetired ? '2026-10-01' : null, isRetired: s.isRetired ?? false,
+        roughDistance: s.roughDistance, roughUntil: s.roughUntil === undefined ? '2026-03-28' : s.roughUntil, usualMonths: s.usualMonths ?? null, retiredOn: s.isRetired ? '2026-10-01' : null, isRetired: s.isRetired ?? false,
         brokenUpOn: s.brokenUpOn ?? null, version: 1,
       },
       tyres: (s.tyres ?? []).map((t) => ({

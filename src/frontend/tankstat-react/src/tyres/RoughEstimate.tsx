@@ -3,11 +3,12 @@ import Button from '@mui/material/Button'
 import Link from '@mui/material/Link'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
-import { useEffect, useId, useState } from 'react'
+import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SegmentedChecks } from '../components/Segmented.tsx'
 import { todayIso } from '../forms/dates.ts'
 import { TyreRoughEstimateDocument, type DistanceUnit, type TyreSeason } from '../gql/generated.ts'
+import { useDebouncedValue } from '../hooks/useDebouncedValue.ts'
 import { useFormat } from '../i18n/format.ts'
 import { ErrorMessage } from '../messages.tsx'
 import { useConnectivity } from '../offline/useConnectivity.ts'
@@ -93,11 +94,7 @@ export function RoughEstimate({
   const wanted = valid ? { vehicleId, since, until: end, months: [...months] } : null
   // What is asked follows what is typed a little later, so a month tapped after another asks once.
   const key = wanted ? JSON.stringify(wanted) : ''
-  const [settled, setSettled] = useState(key)
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(key), 350)
-    return () => clearTimeout(timer)
-  }, [key])
+  const settled = useDebouncedValue(key, 350)
   const variables = settled ? (JSON.parse(settled) as NonNullable<typeof wanted>) : undefined
   const { data, error, loading } = useQuery(TyreRoughEstimateDocument, {
     variables: variables!,
@@ -109,13 +106,8 @@ export function RoughEstimate({
   const counted = !!estimate?.readings && !!estimate.from && estimate.distance > 0
   const why = !reachable ? t('tyres.estimate.offline') : !valid ? t('tyres.estimate.needsSince') : undefined
 
-  const monthsText = isSeasons(season, months)
-    ? months.length === 12
-      ? t('tyres.estimate.wholeYear')
-      : t('tyres.estimate.theSeasons')
-    : months.length === 12
-      ? t('tyres.estimate.wholeYear')
-      : format.list(months.map((m) => format.month(m, 'short')))
+  const monthsText =
+    months.length === 12 ? t('tyres.estimate.wholeYear') : isSeasons(season, months) ? t('tyres.estimate.theSeasons') : format.list(months.map((m) => format.month(m, 'short')))
 
   return (
     <Stack sx={{ gap: 1, minWidth: 0 }}>

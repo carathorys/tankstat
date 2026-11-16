@@ -365,8 +365,8 @@ export function RoughDialog({
   const [busy, setBusy] = useState(false)
   const suggestion = info.figures.suggestion
   const since = suggestion?.until ?? measuredFrom
-  // The first day the figure will not cover, as the save sends it: the estimate (#291) counts up to that very day.
-  const until = suggestion?.until ?? info.set.roughUntil ?? measuredFrom ?? todayIso()
+  // The first day the figure will not cover, as the save sends it: the estimate (#291) counts up to that very day (null: today, which it says).
+  const until = suggestion?.until ?? info.set.roughUntil ?? measuredFrom ?? null
   const start = String(suggestion?.distance ?? info.set.roughDistance)
   const [rough, setRough] = useState(start)
   const [months, setMonths] = useState<number[]>(() => monthsOf(info.set))

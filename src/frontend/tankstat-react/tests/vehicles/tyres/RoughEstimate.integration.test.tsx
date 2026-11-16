@@ -1,6 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { HttpResponse } from 'msw'
+import { todayIso } from '../../../src/forms/dates.ts'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../src/App.tsx'
 import { connectivity } from '../../../src/offline/connectivity.ts'
@@ -179,4 +180,17 @@ it("changes a set's usual months in Edit set, starting from its own", async () =
 
   await waitFor(() => expect(state.calls.UpdateTyreSet).toHaveLength(1))
   expect(state.calls.UpdateTyreSet[0].input).toMatchObject({ id: 's1', usualMonths: [3, 4, 5, 6, 7, 8, 9] })
+})
+
+it('says "to today" in the rough figure dialog when nothing ends the span before today', async () => {
+  const { ui, asked } = setup([{ ...tyreWinter, onTheCar: false, installations: [], roughUntil: null }])
+  const card = await screen.findByRole('article', { name: 'Continental WinterContact' })
+  await ui.click(within(card).getByRole('button', { name: 'History' }))
+  const history = await screen.findByRole('dialog', { name: /Continental WinterContact/ })
+  await ui.click(within(history).getByRole('button', { name: 'Change the rough figure' }))
+  const dialog = await screen.findByRole('dialog', { name: 'The rough figure' })
+
+  await ui.click(within(dialog).getByRole('button', { name: 'Estimate from the fuel log' }))
+  expect(await within(dialog).findByText(/^≈ 24,100 km in the season's, from June 2024 to today, as the fuel log measured them\.$/)).toBeInTheDocument()
+  expect(asked.at(-1)?.until).toBe(todayIso()) // counted up to today, and said so
 })
