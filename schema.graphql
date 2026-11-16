@@ -101,6 +101,8 @@ type Query {
   importPreview(token: String!, vehicleId: UUID): ImportPreviewInfo!
     @cost(weight: "10")
   importFormats: [String!]!
+  backupImport(token: String!): BackupImportInfo! @cost(weight: "10")
+  canImportFromBackup: Boolean! @cost(weight: "10")
   vehicleChartData(vehicleId: UUID!, config: ChartConfigInput!): ChartData!
     @cost(weight: "10")
   vehicleTrend(
@@ -219,6 +221,9 @@ type Mutation {
   markNotificationsRead(ids: [UUID!]): [NotificationInfo!]! @cost(weight: "10")
   confirmImport(input: ConfirmImportInput!): ImportResultInfo!
     @cost(weight: "10")
+  openBackupImport(input: OpenBackupImportInput!): BackupImportInfo!
+    @cost(weight: "10")
+  endBackupImport(token: String!): Boolean! @cost(weight: "10")
   saveVehicleChart(input: SaveChartInput!): VehicleChart! @cost(weight: "10")
   saveVehicleWidget(input: SaveWidgetInput!): SavedWidget! @cost(weight: "10")
   deleteVehicleChart(id: UUID!): Boolean! @cost(weight: "10")
@@ -251,6 +256,19 @@ type AccessGrantInfo {
 
 type AccessSettingsInfo {
   defaultLevelForOthers: AccessLevel!
+}
+
+type BackupCarInfo {
+  id: UUID!
+  name: String!
+  licensePlate: String
+  fuelType: FuelType!
+  distanceUnit: DistanceUnit!
+  volumeUnit: VolumeUnit!
+  ownerName: String
+  refuelings: Int!
+  expenses: Int!
+  schedules: Int!
 }
 
 type BackupDetailsInfo {
@@ -289,6 +307,28 @@ type BackupEnvironmentInfo {
   missingCertain: Boolean!
   overridden: [String!]!
   logLevelsMissing: [String!]!
+}
+
+type BackupFileInfo {
+  createdAt: DateTime!
+  version: String!
+  isExport: Boolean!
+  cars: [BackupCarInfo!]!
+  trashedCars: Int!
+}
+
+type BackupImportInfo {
+  token: String!
+  state: BackupImportState!
+  triesLeft: Int
+  wrongKey: Boolean!
+  file: BackupFileInfo
+  refusal: BackupImportRefusalInfo
+}
+
+type BackupImportRefusalInfo {
+  key: String!
+  args: Any!
 }
 
 type BackupKeySetInfo {
@@ -1690,6 +1730,11 @@ input OfflineVehicleWindowInput {
   window: String!
 }
 
+input OpenBackupImportInput {
+  token: String!
+  passphrase: String
+}
+
 input PastTyreSwapInput {
   day: LocalDate!
   setId: UUID!
@@ -2004,6 +2049,13 @@ enum AuthMode {
 enum BackupEnvironmentMode {
   RECORD
   MERGE
+}
+
+enum BackupImportState {
+  NEEDS_KEY
+  OPENING
+  OPENED
+  ENDED
 }
 
 enum BackupPhotos {

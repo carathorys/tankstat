@@ -943,6 +943,10 @@
       "notTrashed": "Ez a költség nincs a kukában."
     },
     "import": {
+      "notABackup": "Ez a fájl nem Tankstat mentés vagy export.",
+      "noTriesLeft": "Három hibás próbálkozás: a fájlt töröltük a szerverről. Válaszd ki újra az újrakezdéshez.",
+      "backupDisabled": "A mentésből importálás ki van kapcsolva ezen a szerveren.",
+      "fileInUse": "A korábban megnyitott fájlból még fut egy importálás. Várd meg, amíg befejeződik.",
       "busy": "A szerver éppen importál, próbáld újra egy pillanat múlva.",
       "unknownFormat": "Ez az importformátum nem támogatott: {{format}}.",
       "unreadable": "Ez a fájl nem a kiválasztott alkalmazás exportjának tűnik.",
@@ -2468,6 +2472,8 @@
       "Backups__Days": "A hét napjai, amelyeken a fenti időpontok érvényesek; alapból minden nap. Ha egy nap sincs bejelölve, magától nem készül mentés.",
       "Backups__Keep": "Minden mentés után, amelyet az alkalmazás készít, a tankstat-backup-… nevű fájlok közül csak ennyi legújabb marad (a backup parancséi és az ilyen néven kézzel bemásoltak is beleszámítanak; a frissítések előtti biztonsági mentések külön maradnak, a legújabb három); a legújabb sosem törlődik. A feltöltött és a más néven bemásolt fájlok nem számítanak bele. Üresen nincs darabszám-korlát.",
       "Backups__KeepDays": "Minden mentés után, amelyet az alkalmazás készít, törlődnek az ennyi napnál régebbi tankstat-backup-… nevű fájlok (a frissítések előtti biztonsági mentések külön maradnak, a legújabb három); a legújabb mindig megmarad. A feltöltött és a más néven bemásolt fájlok sosem törlődnek. Üresen nincs korkorlát.",
+      "Imports__BackupEnabled": "A felhasználók mentésből vagy exportból importálhatják az autóikat. Kikapcsolva csak az adminisztrátorok.",
+      "Imports__MaxUploadMb": "A legnagyobb mentés vagy export, amelyet valaki importáláshoz feltölthet (1–102400 MB, alapértelmezés: 200). Nagyobbhoz adminisztrátor kell.",
       "Runs__LimitMinutes": "Meddig futhat egy biztonsági mentésből történő importálás vagy egy részleges visszaállítás. Ha túllépi, a futás visszavonódik, és ezt jelzi. Mások mentései az érintett autókra addig várnak.",
       "Backups__Photos": "Csak akkor számít, ha a bejegyzések fényképeinek saját mappája van (Storage:PhotosPath): ezek korlát nélkül nőnek, ezért csak bekapcsolva kerülnek a mentésbe. Egy mappával mindig benne vannak.",
       "Backups__Environment": "Mit kezd a mentés az itteni környezeti változókban megadott beállításokkal: a „Csak a nevek” (Record) csak a nevüket írja a mentésbe, és ha közülük valamelyiknek nincs értéke egy kiszolgálón, ott a visszaállítást elutasítja, amíg be nem állítod; a „Nevek és értékek” (Merge) a kiszolgáló futó értékeit is beírja a mentés beállításfájl-másolatába (soha nem a kiszolgáló saját fájljába), így egy másik kiszolgálón a visszaállítás magával hozza őket, a titkokat csak akkor, ha a „Titkok a mentésekben” be van kapcsolva.",
@@ -2550,6 +2556,8 @@
       "Backups__Days": "Mentés napjai",
       "Backups__Keep": "Megőrzött legújabb mentések száma",
       "Backups__KeepDays": "Megőrzés (nap)",
+      "Imports__BackupEnabled": "A felhasználók importálhatnak mentésből",
+      "Imports__MaxUploadMb": "Legnagyobb importfeltöltés (MB)",
       "Runs__LimitMinutes": "Leghosszabb importálás vagy részleges visszaállítás (perc)",
       "Backups__Photos": "A bejegyzések fényképei is kerüljenek bele",
       "Backups__Environment": "A környezet beállításai",
