@@ -2,8 +2,8 @@ import { ApolloClient, ApolloLink, HttpLink, InMemoryCache } from '@apollo/clien
 import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { ErrorLink } from '@apollo/client/link/error'
 import { from, mergeMap, of } from 'rxjs'
-import { refreshSession } from './auth/refresh.ts'
-import { OfflineError } from './offline/errors.ts'
+import { RefreshBusyError, refreshSession } from './auth/refresh.ts'
+import { BUSY_KEY, OfflineError } from './offline/errors.ts'
 import { createOfflineLink } from './offline/offlineLink.ts'
 
 /**
@@ -35,12 +35,23 @@ const SIGN_IN_OPERATIONS = new Set(['Session', 'Login', 'Logout', 'RequestPasswo
 const REFRESHING_MODES = new Set(['STANDALONE', 'OIDC'])
 
 /** The refresh, told apart: signed in again, has to sign in, or the request did not get through (that is not "signed out"). */
-const refresh = () => refreshSession().then((signedIn) => (signedIn ? 'in' : 'out'), () => 'failed' as const)
+const refresh = () =>
+  refreshSession().then(
+    (signedIn) => (signedIn ? 'in' : 'out'),
+    (error: unknown) => (error instanceof RefreshBusyError ? ('busy' as const) : ('failed' as const)),
+  )
+
+/** The answer for an operation whose session could not be renewed because the server is busy with a run (#335): busy, never "sign in". */
+const busyAnswer = (): ApolloLink.Result => ({
+  data: null,
+  errors: [{ message: 'The server is busy with an import, try again in a moment.', extensions: { code: 'BUSY', key: BUSY_KEY, args: {} } }],
+})
 
 /**
  * The access cookie lasts a few minutes. When an operation is answered "sign in first", the refresh cookie buys a new one
  * (`refreshSession`) and the operation is sent once more; when the device has to sign in again, the original answer stands and the
- * session is asked again, so the sign-in screen appears. A refresh that did not get through leaves the answer as it is.
+ * session is asked again, so the sign-in screen appears. A refresh that did not get through leaves the answer as it is; one the server
+ * could not make because it is busy with a run (#335) makes the answer busy, so the save is told busy and nobody is signed out.
  *
  * The session itself is public: with the access cookie gone (the app opened again after a while) it says nobody is signed in rather than
  * "sign in first". In the modes with a refresh cookie that answer is checked once with a refresh before it stands, so whoever reads the
@@ -53,7 +64,9 @@ export const refreshLink = new ApolloLink((operation, forward) => {
       mergeMap((result) => {
         const session = (result.data as { session?: { mode?: string; user?: unknown } } | null | undefined)?.session
         if (result.errors?.length || session?.user !== null || !REFRESHING_MODES.has(session.mode ?? '')) return of(result)
-        return from(refresh()).pipe(mergeMap((outcome) => (outcome === 'in' ? forward(operation) : of(result))))
+        return from(refresh()).pipe(
+          mergeMap((outcome) => (outcome === 'in' ? forward(operation) : outcome === 'busy' ? of(busyAnswer()) : of(result))),
+        )
       }),
     )
   }
@@ -65,6 +78,7 @@ export const refreshLink = new ApolloLink((operation, forward) => {
         mergeMap((outcome) => {
           if (outcome === 'in') return forward(operation)
           if (outcome === 'out') void operation.client.refetchQueries({ include: ['Session'] }).catch(() => undefined)
+          if (outcome === 'busy') return of(busyAnswer())
           return of(result)
         }),
       )

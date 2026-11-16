@@ -142,6 +142,10 @@ public sealed class RunBusyApiTests : IDisposable
             var marked = await people.Bob.Gql("mutation { markNotificationsRead { id } }"); // Bob's unread one: being given access
             Assert.Equal(("BUSY", "import.busy"), (marked.ErrorCode(), marked.ErrorKey()));
 
+            // A sign-in saves the device's session: told busy, and the person signs in once the run ended.
+            var login = await app.NewClient().Gql("mutation($i: LoginInput!) { login(input: $i) { id } }", new { i = new { email = "bob@example.com", password = "bob-password-1" } });
+            Assert.Equal(("BUSY", "import.busy"), (login.ErrorCode(), login.ErrorKey()));
+
             // The bell's query, which brings the inbox up to date by writing, only reads meanwhile.
             (await people.Alice.Gql("query { notifications(unreadOnly: false) { id } notificationCount(unreadOnly: true) }")).Data();
             (await people.Alice.Gql("query { myVehicles { id } session { user { id } } }")).Data();

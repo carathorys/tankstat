@@ -11,6 +11,19 @@ const HEADERS = { 'X-Requested-With': 'fetch' }
 let pending: Promise<boolean> | null = null
 
 /**
+ * The server could not renew the session now: it is busy with a run (#335), whose transaction holds the database. The session is as good
+ * as it was; the request that needed the renewal is told busy, like any save meanwhile, and nobody is signed out.
+ */
+export class RefreshBusyError extends Error {
+  readonly response: Response
+  constructor(response: Response) {
+    super('The server is busy; the session is renewed later.')
+    this.name = 'RefreshBusyError'
+    this.response = response
+  }
+}
+
+/**
  * Asks for a new access cookie. True when the device is signed in again; false when it has to sign in (or the server has no token
  * endpoints: no authentication, or a proxy that signs every request in itself). A network failure rejects: that is not "signed out";
  * so does a server busy with a run (#335, a 409).
@@ -24,7 +37,7 @@ export function refreshSession(): Promise<boolean> {
     .then(
       (signedOut) => (signedOut ? false : trackedFetch('/auth/token/refresh', { method: 'POST', credentials: 'same-origin', headers: HEADERS }).then((response) => {
         // Busy with a run (#335): the session could not be renewed now. Like a network failure, that is not "signed out".
-        if (response.status === 409) throw new Error('The server is busy; the session is renewed later.')
+        if (response.status === 409) throw new RefreshBusyError(response)
         return response.ok
       })),
       () => false,
@@ -43,6 +56,13 @@ export function signOutDevice(signal?: AbortSignal): Promise<Response> {
 /** `fetch` for the REST endpoints: an answer of 401 is tried once more after a refresh. */
 export async function fetchSignedIn(input: string, init: RequestInit): Promise<Response> {
   const response = await trackedFetch(input, init)
-  if (response.status !== 401 || !(await refreshSession().catch(() => false))) return response
-  return trackedFetch(input, init)
+  if (response.status !== 401) return response
+  let signedIn: boolean
+  try {
+    signedIn = await refreshSession()
+  } catch (error) {
+    if (error instanceof RefreshBusyError) return error.response // busy (#335): its answer, which the caller tells as busy
+    return response
+  }
+  return signedIn ? trackedFetch(input, init) : response
 }
