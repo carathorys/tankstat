@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Tankstat.Domain.Tyres;
 using Tankstat.Domain.Vehicles;
@@ -31,6 +32,9 @@ internal sealed class TyreSetConfiguration : IEntityTypeConfiguration<TyreSet>
         TrashColumn.Map(b, s => s.DeletedAt);
         b.HasIndex(s => s.DeletedAt);
         b.Ignore(s => s.IsBrokenUp);
+        // The usual months (#291) as their twelve bits; null is the season's.
+        b.Property(s => s.UsualMonths).HasConversion(new ValueConverter<TyreMonths, int>(m => m.Mask, mask => TyreMonths.FromMask(mask)));
+        b.Ignore(s => s.Months);
         // Unlike a log, a trashed set is read by its own queries (its installations hide through it), so there is no query filter.
     }
 }

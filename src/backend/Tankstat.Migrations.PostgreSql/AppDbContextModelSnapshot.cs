@@ -1301,6 +1301,9 @@ namespace Tankstat.Migrations.PostgreSql
                         .HasColumnType("timestamp with time zone")
                         .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc));
 
+                    b.Property<int?>("UsualMonths")
+                        .HasColumnType("integer");
+
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("uuid");
 

@@ -1296,6 +1296,9 @@ namespace Tankstat.Migrations.Sqlite
                         .HasColumnType("TEXT")
                         .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc));
 
+                    b.Property<int?>("UsualMonths")
+                        .HasColumnType("INTEGER");
+
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("TEXT");
 

@@ -1298,6 +1298,9 @@ namespace Tankstat.Migrations.MySql
                         .HasColumnType("datetime(6)")
                         .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc));
 
+                    b.Property<int?>("UsualMonths")
+                        .HasColumnType("int");
+
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("char(36)");
 

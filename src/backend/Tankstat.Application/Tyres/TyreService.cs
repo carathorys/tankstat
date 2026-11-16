@@ -14,7 +14,10 @@ using Tankstat.Domain.Vehicles;
 namespace Tankstat.Application.Tyres;
 
 /// <param name="RoughDistance">What a used set ran before it is tracked, roughly (0 for a new one).</param>
-public sealed record TyreSetInput(string Name, TyreSeason Season, string? Size, DateOnly Since, int? MadeWeek, int? MadeYear, long RoughDistance = 0);
+/// <param name="UsualMonths">The months it is usually on the car (#291; 1 = January): a new set without them takes its season's, an edit
+/// without them leaves the set's as they are.</param>
+public sealed record TyreSetInput(
+    string Name, TyreSeason Season, string? Size, DateOnly Since, int? MadeWeek, int? MadeYear, long RoughDistance = 0, IReadOnlyList<int>? UsualMonths = null);
 
 /// <param name="Fitted">The set is on the car from <see cref="Day"/> (a swap that day); else it is in storage.</param>
 /// <param name="Day">The day tracking starts (the client's today); the rough figure stands for the time before it.</param>
@@ -168,7 +171,7 @@ public sealed class TyreService(
         RequireNotFuture(input.Day);
         RequireNotFuture(input.Set.Since);
         var set = TyreSet.Create(vehicle.OwnerId, by, vehicle.Id, input.Set.Name, input.Set.Season, input.Set.Size, input.Set.Since, input.Set.MadeWeek, input.Set.MadeYear,
-            input.Set.RoughDistance, input.Set.RoughDistance > 0 ? input.Day : null, id);
+            input.Set.RoughDistance, input.Set.RoughDistance > 0 ? input.Day : null, id, input.Set.UsualMonths);
         var save = new TyreSave { Book = book, By = by };
         save.AddedSets.Add(set);
         if (input.Fitted)
@@ -201,7 +204,7 @@ public sealed class TyreService(
         VersionCheck.Require(expectedVersion, set.Version);
         RequireNotFuture(input.Since);
         var by = (await access.RequirePrincipalAsync(ct)).Id;
-        set.Update(input.Name, input.Season, input.Size, input.Since, input.MadeWeek, input.MadeYear, by);
+        set.Update(input.Name, input.Season, input.Size, input.Since, input.MadeWeek, input.MadeYear, by, input.UsualMonths);
         History(vehicle, book).Check(); // a later "in use since" may no longer fit its installations
         var save = new TyreSave();
         save.ChangedSets.Add(set);
@@ -214,13 +217,14 @@ public sealed class TyreService(
     /// Sets the rough figure; <paramref name="until"/> (accepting a suggestion) moves the first day it does not cover. Without one it keeps
     /// the day it had, else it covers the time before the set's first installation (today when it has none), never time already measured.
     /// </summary>
-    public async Task<TyreOverview> SetRoughAsync(Guid id, long distance, DateOnly? until, CancellationToken ct, int? expectedVersion = null)
+    /// <param name="usualMonths">The months the figure was estimated over, kept with the set (#291); null leaves the set's as they are.</param>
+    public async Task<TyreOverview> SetRoughAsync(Guid id, long distance, DateOnly? until, CancellationToken ct, int? expectedVersion = null, IReadOnlyList<int>? usualMonths = null)
     {
         var (vehicle, set, book) = await EditableSetAsync(id, ct);
         VersionCheck.Require(expectedVersion, set.Version);
         if (until is { } given) RequireNotFuture(given);
         var first = book.Installations.Where(s => s.SetId == id && !s.IsDeleted).Select(s => (DateOnly?)s.From).Min();
-        set.SetRough(distance, until ?? set.RoughUntil ?? first ?? Today, (await access.RequirePrincipalAsync(ct)).Id);
+        set.SetRough(distance, until ?? set.RoughUntil ?? first ?? Today, (await access.RequirePrincipalAsync(ct)).Id, usualMonths);
         var save = new TyreSave();
         save.ChangedSets.Add(set);
         await SaveAsync(save, ct);
