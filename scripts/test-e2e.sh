@@ -61,7 +61,7 @@ app() {
 app > "${files}/app.log" 2>&1 &
 pids=($!)
 # The import's backup file is written inside the repository, which Playwright's container sees (the temporary folder it does not).
-fixtures="$repo/src/frontend/tankstat-react/e2e/files/generated"
+fixtures="$repo/src/frontend/tankstat-react/e2e/files/generated/${port}" # a folder per run: two runs on other ports do not share it
 trap 'kill "${pids[@]}" 2>/dev/null || true; wait "${pids[@]}" 2>/dev/null || true; rm -rf "$files" "$fixtures"' EXIT
 
 # Waits for a server's API: false when it stopped or never answered.
@@ -161,7 +161,16 @@ import_env() {
     Storage__Path="${dir}/uploads" Storage__PhotosPath="${dir}/photos" Backups__Path="${dir}/backups" Imports__ScratchFolder="${dir}/scratch" \
     DataProtection__KeysPath="${dir}/keys" Settings__Path="${dir}/settings.json" Auth__Mode=None Setup__Enabled=false
 }
-gql() { curl -sf -H 'Content-Type: application/json' -d "$2" "$1/graphql"; }
+# One GraphQL request of the fixture: fails on an error in the answer too (an error comes with HTTP 200), saying which request.
+gql() {
+  local answer
+  if ! answer="$(curl -sf -H 'Content-Type: application/json' -d "$2" "$1/graphql")" || [[ "$answer" == *'"errors"'* ]]; then
+    echo "The import fixture's request failed: $2" >&2
+    echo "${answer:-}" >&2
+    exit 1
+  fi
+  echo "$answer"
+}
 source_url="http://127.0.0.1:$((port + 7))"
 (import_env source; cd out; exec dotnet Tankstat.Api.dll --urls "$source_url") > "${files}/import-source.log" 2>&1 &
 source_pid=$!
@@ -220,6 +229,10 @@ if [[ "$status" != 0 ]]; then
   for name in "${setup_names[@]}"; do
     echo "The waiting server $name's last log lines:" >&2
     tail -n 20 "${files}/setup-$name.log" >&2
+  done
+  for name in phone desktop; do
+    echo "The import server $name's last log lines:" >&2
+    tail -n 20 "${files}/import-$name.log" >&2
   done
   echo "In src/frontend/tankstat-react: the report: npx playwright show-report; a failed test's video: test-results/e2e/<test>/video.webm, its trace: npx playwright show-trace test-results/e2e/<test>/trace.zip" >&2
 fi
