@@ -54,6 +54,9 @@ export function tyreInputOf(
   waitingBreakUp?: ExpenseTyreInput['breakUp'],
 ): { tyre: ExpenseTyreInput; named: string } {
   if (!state.kind) throw new Error('A kind is chosen before the input is made.')
+  // Each tyre's line keeps the id a waiting change gave it (#330); a tyre it did not pick takes a fresh one.
+  const fresh = [...ids.lines]
+  const lineOf = (tyreId: string) => ids.byTyre.get(tyreId) ?? fresh.shift()!
   const info = offered(tyres).find((s) => s.set.id === state.setId)
   if (!info || state.whole) return { tyre: { kind: state.kind, setId: info?.set.id ?? null, lineId: ids.line }, named: '' }
   if (state.picked.length === 0) throw new TyreRuleError('tyres.tapTyres')
@@ -61,14 +64,14 @@ export function tyreInputOf(
     // Its own break-up's tyres, picked by their ids: the break-up goes along, in the car's order.
     const ordered = EXACT.flatMap((c) => waitingBreakUp.tyres.filter((t) => t.corner === c && state.picked.includes(t.id ?? '')))
     return {
-      tyre: { kind: state.kind, setId: info.set.id, breakUp: waitingBreakUp, tyres: ordered.map((t, n) => ({ tyreId: t.id!, id: ids.lines[n] })) },
+      tyre: { kind: state.kind, setId: info.set.id, breakUp: waitingBreakUp, tyres: ordered.map((t) => ({ tyreId: t.id!, id: lineOf(t.id!) })) },
       named: ordered.map((t) => t.label).join(', '),
     }
   }
   if (info.set.brokenUpOn) {
     const ordered = liveTyresOf(info).filter((x) => state.picked.includes(x.tyre.id))
     return {
-      tyre: { kind: state.kind, setId: info.set.id, tyres: ordered.map((x, n) => ({ tyreId: x.tyre.id, id: ids.lines[n] })) },
+      tyre: { kind: state.kind, setId: info.set.id, tyres: ordered.map((x) => ({ tyreId: x.tyre.id, id: lineOf(x.tyre.id) })) },
       named: ordered.map((x) => x.tyre.label).join(', '),
     }
   }
@@ -76,7 +79,7 @@ export function tyreInputOf(
   const breakUp = { setId: info.set.id, day, tyres: EXACT.map((corner, n) => ({ id: ids.newTyres[n], label: (labels[n] ?? '').trim(), corner })) }
   const ordered = EXACT.filter((c) => state.picked.includes(c))
   return {
-    tyre: { kind: state.kind, setId: info.set.id, breakUp, tyres: ordered.map((c, n) => ({ tyreId: ids.newTyres[EXACT.indexOf(c)], id: ids.lines[n] })) },
+    tyre: { kind: state.kind, setId: info.set.id, breakUp, tyres: ordered.map((c) => ({ tyreId: ids.newTyres[EXACT.indexOf(c)], id: lineOf(ids.newTyres[EXACT.indexOf(c)]) })) },
     named: ordered.map((c) => (labels[EXACT.indexOf(c)] ?? '').trim()).join(', '),
   }
 }

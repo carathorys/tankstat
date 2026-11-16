@@ -32,9 +32,16 @@ export const EXACT_ORDER = ['FRONT_LEFT', 'FRONT_RIGHT', 'REAR_LEFT', 'REAR_RIGH
 /** The device's ids of what a save makes (see `ExpenseTyreSection`). */
 export interface TyreDetailsIds {
   line: string
+  /** Fresh ids for the lines of tyres the waiting change did not make lines for. */
   lines: readonly string[]
   newTyres: readonly string[]
+  /** A waiting change's line per tyre (#330): kept by the tyre, so a line other changes name stays that tyre's when fewer are picked. */
+  byTyre: ReadonlyMap<string, string>
 }
+
+/** A waiting change's lines by the tyre each is for. */
+export const tyreLineIds = (tyre: ExpenseTyreInput | null): ReadonlyMap<string, string> =>
+  new Map((tyre?.tyres ?? []).flatMap((t) => (t.id ? [[t.tyreId, t.id] as const] : [])))
 
 /**
  * The ids of the lines (and a whole set's new tyres) a dialog's tyre details make (#290): the same for every Save of one opening; a change
@@ -49,8 +56,9 @@ export function useTyreDetailsIds(open: boolean, waitingTyre: ExpenseTyreInput |
   const waitingNew = EXACT_ORDER.map((c) => waitingTyre?.breakUp?.tyres.find((t) => t.corner === c)?.id)
   return {
     line: waitingTyre?.lineId ?? fresh.line,
-    lines: fresh.lines.map((id, n) => waitingTyre?.tyres?.[n]?.id ?? id),
+    lines: fresh.lines,
     newTyres: fresh.newTyres.map((id, n) => waitingNew[n] ?? id),
+    byTyre: tyreLineIds(waitingTyre),
   }
 }
 
