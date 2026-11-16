@@ -138,6 +138,14 @@ public sealed class RunBusyApiTests : IDisposable
             Assert.Equal("import.busy", (await renewed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("key").GetString());
             Assert.DoesNotContain(renewed.Headers.TryGetValues("Set-Cookie", out var cookies) ? cookies : [], c => c.Contains("expires=Thu, 01 Jan 1970"));
 
+            // A sign-out cannot end the session now: told busy at once (the device gives the request five seconds), the cookies kept, so
+            // the device, signed out already on its side, can tell the server again once the run ended.
+            var asked = System.Diagnostics.Stopwatch.StartNew();
+            var signOut = await people.Alice.SendAsync(new HttpRequestMessage(HttpMethod.Post, "/auth/token/logout") { Headers = { { "X-Requested-With", "fetch" } } });
+            Assert.Equal(HttpStatusCode.Conflict, signOut.StatusCode);
+            Assert.InRange(asked.Elapsed, TimeSpan.Zero, TimeSpan.FromSeconds(1));
+            Assert.DoesNotContain(signOut.Headers.TryGetValues("Set-Cookie", out var cleared) ? cleared : [], c => c.Contains("expires=Thu, 01 Jan 1970"));
+
             // A statement of its own, not the context's save (marking notifications read is one UPDATE): told busy all the same.
             var marked = await people.Bob.Gql("mutation { markNotificationsRead { id } }"); // Bob's unread one: being given access
             Assert.Equal(("BUSY", "import.busy"), (marked.ErrorCode(), marked.ErrorKey()));

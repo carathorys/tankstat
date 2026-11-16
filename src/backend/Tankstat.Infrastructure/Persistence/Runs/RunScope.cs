@@ -32,7 +32,7 @@ internal sealed class RunScope(
         await markers.AddAsync(marker, ct);
         var stop = new Stop();
         _open[marker.Id] = stop;
-        gate.OpenHere(marker.Id, true);
+        gate.OpenedHere(marker.Id, start.VehicleIds);
         gate.Forget();
         logger.LogInformation("Run {RunId} started by {UserId} for {VehicleCount} vehicle(s)", marker.Id, start.Starter.Id, marker.Vehicles.Count);
         var end = RunEnd.Failed;
@@ -40,7 +40,9 @@ internal sealed class RunScope(
         {
             // Saves that passed the gate just before the mark finish meanwhile, and another server's gate sees the mark.
             if (timings.Settle > TimeSpan.Zero) await Task.Delay(timings.Settle, clock, ct);
-            await InTransactionAsync(start, marker.Id, stop, work, ct);
+            // Cancelled meanwhile: nothing is opened for it (work that never asks would otherwise run to its end).
+            if (stop.Cancelled) throw new RunStoppedException(RunEnd.Cancelled);
+            await InTransactionAsync(start, marker, stop, work, ct);
             end = RunEnd.Done;
         }
         catch (RunStoppedException e)
@@ -60,19 +62,21 @@ internal sealed class RunScope(
             {
                 logger.LogError(e, "Run {RunId} ended as {RunEnd} but its mark could not be ended; it stops blocking once it is older than the limit", marker.Id, end);
             }
-            gate.OpenHere(marker.Id, false);
+            gate.EndedHere(marker.Id);
             gate.Forget();
             logger.LogInformation("Run {RunId} ended: {RunEnd}", marker.Id, end);
         }
     }
 
-    private async Task InTransactionAsync(RunStart start, Guid runId, Stop stop, Func<IRun, Task> work, CancellationToken ct)
+    private async Task InTransactionAsync(RunStart start, RunMarker marker, Stop stop, Func<IRun, Task> work, CancellationToken ct)
     {
+        var runId = marker.Id;
         await using var root = new AppDbContext(options); // unpooled: it owns the run's connection, closed with it
         await root.Database.OpenConnectionAsync(ct);
         await using var transaction = await root.Database.BeginTransactionAsync(ct);
         // On SQLite the mark cannot be asked while the run holds the database's lock to write; a cancel there is this server's own.
-        var run = new Run(runId, transaction, clock, clock.GetUtcNow() + settings.CurrentValue.Limit,
+        // The limit counts from the mark's start, as the gates of other servers count it: they let go of the mark at that moment.
+        var run = new Run(runId, transaction, clock, marker.StartedAt + settings.CurrentValue.Limit,
             database.Value.Provider == DatabaseProvider.Sqlite ? null : markers, stop, logger);
         var sqlite = database.Value.Provider == DatabaseProvider.Sqlite;
         if (sqlite)

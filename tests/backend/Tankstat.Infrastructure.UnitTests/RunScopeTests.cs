@@ -511,6 +511,27 @@ public sealed class RunScopeTests(ITestOutputHelper output) : IDisposable
         Assert.Equal(1, (await CountAsync(database)).Vehicles);
     }
 
+    /// <summary>
+    /// The limit is asked between a run's entries, so its last entry may cross it: while the run's transaction is open on this server its
+    /// cars are held, whatever the clock says, or someone else's save would cross the run's (the owner's decision 1).
+    /// </summary>
+    [Theory, MemberData(nameof(Providers))]
+    public async Task ARunStillAlivePastItsLimit_StillHoldsItsCars(string provider)
+    {
+        if (Database(provider) is not { } database) return;
+        _user.Principal = Starter;
+        Guid held;
+        await using (var scope = database.Services.CreateAsyncScope()) held = await AddCarAsync(scope.ServiceProvider, "Held", logs: false);
+
+        await RunAsync(database, async (_, services) =>
+        {
+            await services.GetRequiredService<VehicleService>().UpdateAsync(held, "Held by the run", null, FuelType.Petrol, null, default);
+            _clock.Ahead = TimeSpan.FromMinutes(11); // its entry is still being saved, past the ten minutes
+            await Assert.ThrowsAsync<BusyException>(() => ElsewhereAsync(database, others =>
+                others.GetRequiredService<VehicleService>().UpdateAsync(held, "Someone else's", null, FuelType.Petrol, null, default)));
+        }, held);
+    }
+
     /// <summary>What a run removes leaves its tombstone for the devices, committed with the run and gone with it.</summary>
     [Theory, MemberData(nameof(Providers))]
     public async Task WhatARunRemoves_LeavesItsTombstone_OnlyWhenTheRunCommits(string provider)

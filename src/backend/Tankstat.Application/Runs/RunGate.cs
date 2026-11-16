@@ -19,16 +19,24 @@ public sealed class RunGateState
     /// </summary>
     public bool WritesLockedOut => Volatile.Read(ref _lockedOut) > 0;
 
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, bool> _here = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, IReadOnlySet<Guid>> _here = new();
 
     /// <summary>The runs open in this process: alive, however old their marks are.</summary>
     public bool IsOpenHere(Guid runId) => _here.ContainsKey(runId);
 
-    public void OpenHere(Guid runId, bool open)
-    {
-        if (open) _here[runId] = true;
-        else _here.TryRemove(runId, out _);
-    }
+    /// <summary>Whether any run is open in this process.</summary>
+    public bool AnyOpenHere => !_here.IsEmpty;
+
+    /// <summary>
+    /// Whether a run open in this process holds the car: until that run ends, whatever the clock says. Its limit is asked between its
+    /// entries, so its last entry may cross it with the transaction still open.
+    /// </summary>
+    public bool HoldsHere(Guid vehicleId) => _here.Values.Any(vehicles => vehicles.Contains(vehicleId));
+
+    /// <summary>A run opened in this process, with the cars it holds, from its mark until it ended.</summary>
+    public void OpenedHere(Guid runId, IEnumerable<Guid> vehicleIds) => _here[runId] = vehicleIds.ToHashSet();
+
+    public void EndedHere(Guid runId) => _here.TryRemove(runId, out _);
 
     public void LockedOut(bool entered) => _ = entered ? Interlocked.Increment(ref _lockedOut) : Interlocked.Decrement(ref _lockedOut);
 
@@ -76,6 +84,7 @@ public sealed class RunGate(IRunMarkerRepository markers, IOptionsMonitor<RunOpt
     /// <summary>Whether a run is open on any server, as far as this one knows (asked at most once in <see cref="RecheckAfter"/> while none is).</summary>
     public async Task<bool> AnyOpenAsync(CancellationToken ct)
     {
+        if (state.AnyOpenHere) return true; // this server's own run, alive: however old its mark is
         var now = clock.GetUtcNow();
         if (state.KnowsNoneOpen(now)) return false;
         if (await markers.AnyOpenAsync(now - options.CurrentValue.Limit, ct)) return true;
@@ -85,9 +94,13 @@ public sealed class RunGate(IRunMarkerRepository markers, IOptionsMonitor<RunOpt
 
     private async Task<bool> HeldAsync(Guid vehicleId, CancellationToken ct)
     {
+        // This server's own run holds its cars until it ends: its last entry may cross the limit with the transaction still open.
+        if (state.HoldsHere(vehicleId)) return true;
         var now = clock.GetUtcNow();
         if (state.KnowsNoneOpen(now)) return false;
-        var since = now - options.CurrentValue.Limit; // an older mark never blocks: its run is over, whatever the mark says
+        // Another server's mark older than the limit never blocks: its run is taken to be over, whatever the mark says (that run stops at
+        // its next entry past the limit, counted from the mark's start; until then this server cannot know it is still alive).
+        var since = now - options.CurrentValue.Limit;
         if (!await markers.AnyOpenAsync(since, ct))
         {
             state.NoneOpen(now + RecheckAfter);

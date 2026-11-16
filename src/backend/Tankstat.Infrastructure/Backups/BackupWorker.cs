@@ -149,7 +149,7 @@ internal sealed class BackupWorker(
                     await Task.Delay(TimeSpan.FromMilliseconds(Math.Ceiling((next - woke).TotalMilliseconds)), clock, ct);
                 plan = null; // this due time is served: the next round plans the one after it
                 if (await NothingToBackUpAsync(ct)) logger.LogInformation("The setup is not finished and the instance holds nothing yet: the backup due at {Due} is not written", next);
-                else await RunAsync();
+                else await RunAsync(ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -176,7 +176,7 @@ internal sealed class BackupWorker(
             if (schedule.Missed(NewestOwn(), clock.GetUtcNow(), zone))
             {
                 logger.LogInformation("The backup due at {Due} was not written: writing it now", schedule.LastDueAtOrBefore(clock.GetUtcNow(), zone));
-                await RunAsync();
+                await RunAsync(ct);
             }
         }
         catch (Exception e) when (e is not OperationCanceledException)
@@ -208,10 +208,11 @@ internal sealed class BackupWorker(
     }
 
     /// <summary>A run of the schedule; one Back up now started meanwhile is the backup, and is waited for.</summary>
-    private async Task RunAsync()
+    private async Task RunAsync(CancellationToken ct)
     {
         // A run (#335) holds SQLite's lock: the scheduled backup waits for its end (a run has a time limit of its own).
-        while (runs?.WritesLockedOut == true) await Task.Delay(TimeSpan.FromSeconds(1)); // the wall clock: a run's length is real time
+        // The wall clock: a run's length is real time. The app's stop ends the wait (the missed backup is found at the next start).
+        while (runs?.WritesLockedOut == true) await Task.Delay(TimeSpan.FromSeconds(1), ct);
         if (!runner.Start()) logger.LogInformation("A backup is being written already: the scheduled one is that one");
         await runner.WhenIdleAsync();
     }
