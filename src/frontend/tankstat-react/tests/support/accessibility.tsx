@@ -47,7 +47,9 @@ export function setup(route: string, viewport: 'desktop' | 'phone' = 'desktop', 
     fakeRecurring(),
   ])
   const attention = [fakeRecurring({ id: 'rc2', title: 'Tyres', kind: 'ODOMETER', intervalMonths: null, status: { state: 'OVERDUE', limit: 'ODOMETER', dueDate: null, dueOdometer: 60000, daysLeft: null, distanceLeft: -300 } })]
-  const vehicles = fakeVehicleBackend([fakeVehicle({ recurring: attention })], [fakeVehicle({ id: 't1', name: 'Old Fiat' })])
+  // A tyre set whose month has come (#292): its row on the card, after the schedule.
+  const tyreReminders = [{ __typename: 'VehicleTyreReminder' as const, setId: 's2', name: 'Continental WinterContact', setSeason: 'WINTER' as const, month: 11, season: '2026-11-01' }]
+  const vehicles = fakeVehicleBackend([fakeVehicle({ recurring: attention, tyreReminders })], [fakeVehicle({ id: 't1', name: 'Old Fiat' })])
   const inbox = fakeNotificationBackend([
     fakeNotification(),
     fakeNotification({ id: 'n2', kind: 'RECURRING_OVERDUE', read: true, args: [{ name: 'title', value: 'Tyres' }, { name: 'vehicleName', value: 'Octavia' }] }),

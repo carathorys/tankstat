@@ -87,6 +87,12 @@ it('shows the key of a refusal it cannot word, and does not trip over arguments 
   )
 })
 
+it('says which tyres to fit, on which car, and leads to its Tyres tab (#292)', () => {
+  const swap = say('TYRE_SWAP_DUE', { set: 'Continental WinterContact', season: 'WINTER', vehicleName: 'Family car' }, { subject: { type: 'TYRE_SET', id: 's2' } })
+  expect(swap).toEqual({ text: 'Time to fit the winter tyres: Continental WinterContact on Family car is in storage, and its month has come.', href: '/vehicles/v1?tab=tyres' })
+  expect(say('TYRE_SWAP_DUE', { set: 'Nokian', season: 'ALL_SEASON', vehicleName: 'Family car' }).text).toMatch(/^Time to fit the all-season tyres: Nokian/)
+})
+
 it('tells the administrators which backup failed and why, and leads to the Backups page', () => {
   const startedAt = '2027-01-10T02:00:00.0000000+00:00'
   // When, in this machine's time zone, as the app shows it: the day itself depends on the zone.

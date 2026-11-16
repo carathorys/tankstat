@@ -52,21 +52,29 @@ export function SwapDialog({
   tyres,
   rotate = false,
   setId,
+  open: openProp,
+  onOpenChange,
+  onClosed,
 }: {
-  trigger: ReactNode
+  /** Left out when something else opens it (`open` + `onOpenChange`: the home card's Swap, #292). */
+  trigger?: ReactNode
   vehicleId: string
   unit: DistanceUnit
   tyres: Tyres
   rotate?: boolean
   /** The set going on (a swap) or on the car (a change of positions) to start with. */
   setId?: string
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** After it closed and left the screen. */
+  onClosed?: () => void
 }) {
   const { t } = useTranslation()
   const format = useFormat()
   const notify = useTyreToasts()
   const words = useTyreWords(unit)
   const run = useTyreMutation(vehicleId)
-  const [open, setOpen] = useDialogState()
+  const [open, setOpen] = useDialogState({ open: openProp, onOpenChange })
   const installationId = useClientId(open)
   const expenseId = useClientId(open)
   const choices = tyres.sets.filter((s) => !s.set.isRetired && (rotate ? s.onTheCar : !s.onTheCar))
@@ -165,7 +173,10 @@ export function SwapDialog({
       <DialogFrame
         open={open}
         onClose={() => setOpen(false)}
-        onClosed={reset}
+        onClosed={() => {
+          reset()
+          onClosed?.()
+        }}
         busy={busy}
         maxWidth={520}
         title={rotate ? t('tyres.dialogs.rotateTitle') : t('tyres.dialogs.swapTitle')}

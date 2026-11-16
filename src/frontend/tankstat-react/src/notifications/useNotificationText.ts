@@ -64,6 +64,11 @@ export function useNotificationText() {
       case 'RECURRING_DUE_SOON':
       case 'RECURRING_OVERDUE':
         return { text: t(`notifications.kinds.${n.kind}`, names), href: vehicle && `${vehicle}?tab=recurring` }
+      case 'TYRE_SWAP_DUE': {
+        // A set in storage whose month has come (#292): which tyres to fit, and the car's Tyres tab to do it on.
+        const season = args.season === 'WINTER' || args.season === 'SUMMER' ? args.season : 'ALL_SEASON'
+        return { text: t('notifications.kinds.TYRE_SWAP_DUE', { ...names, title: t(`tyres.reminder.title.${season}`), set: args.set ?? '' }), href: vehicle && `${vehicle}?tab=tyres` }
+      }
       case 'LOG_FILLED_FROM_PHOTO':
       case 'LOG_NOT_FILLED': {
         // A log whose photo was read after it was saved: what was filled in (to check) or is still missing.

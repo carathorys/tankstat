@@ -127,6 +127,7 @@
       "DEFAULT_ACCESS_CHANGED": "{{actor}} módosította, mit tehet bárki a többi felhasználó adataival: {{level}}.",
       "RECURRING_DUE_SOON": "Hamarosan esedékes: {{title}} ({{vehicle}}).",
       "RECURRING_OVERDUE": "Lejárt: {{title}} ({{vehicle}}).",
+      "TYRE_SWAP_DUE": "{{title}}: a(z) {{set}} ({{vehicle}}) tárolva van, és eljött a hónapja.",
       "LOG_FILLED_FROM_PHOTO_REFUELING": "A(z) {{vehicle}} {{date}} tankolásának fotójáról kitöltöttük: {{values}}. Ellenőrizd.",
       "LOG_FILLED_FROM_PHOTO_EXPENSE": "A(z) {{title}} ({{date}}, {{vehicle}}) fotójáról kitöltöttük: {{values}}. Ellenőrizd.",
       "LOG_NOT_FILLED_REFUELING": "A(z) {{vehicle}} {{date}} tankolásának fotóin nem látszott: {{values}}. Töltsd ki.",
@@ -2955,6 +2956,27 @@
       "toastMany": "Pótolva. A(z) {{tyres}} a Kivonva részben vannak.",
       "retiredRow": "{{set}} · {{why}}, {{date}}",
       "retiredName": "{{label}} gumi, {{set}}, kivonva: {{date}}, {{why}}"
+    },
+    "reminder": {
+      "label": "Emlékeztess a felszerelésükre ettől",
+      "none": "Nincs emlékeztető",
+      "hint": "Sor a kezdőlapon, jelzés a Gumik lapon és értesítés, amíg a szett tárolva van. Az évszakának hónapja, hacsak meg nem változtatod.",
+      "changed": "Eltér az évszakáétól.",
+      "chip": "Ideje cserélni",
+      "title": {
+        "WINTER": "Ideje felszerelni a téli gumikat",
+        "SUMMER": "Ideje felszerelni a nyári gumikat",
+        "ALL_SEASON": "Ideje felszerelni a négyévszakos gumikat"
+      },
+      "text": "A(z) {{set}} tárolva van, és {{month}} hónaptól kértél emlékeztetőt.",
+      "swap": "Csere",
+      "swapAria": "Csere erre: {{set}} ({{vehicle}})",
+      "swapTyresAria": "Gumicsere: {{set}} felszerelése",
+      "dismiss": "Ebben a szezonban nem",
+      "dismissAria": "Ebben a szezonban nem: {{set}}",
+      "dismissed": "Emlékeztető kikapcsolva erre a szezonra.",
+      "from": "Emlékeztető {{month}} hónaptól.",
+      "off": "Nincs emlékeztető."
     },
     "estimate": {
       "button": "Becslés a tankolási naplóból",

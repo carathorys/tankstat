@@ -153,6 +153,18 @@ export function fakeTyres(initial: FakeTyreSet[], entries: FakeTyreEntry[] = [],
     mutation('DeleteTyreEntry', 'deleteTyreEntry'),
     mutation('RestoreTyreEntry', 'restoreTyreEntry'),
     mutation('RetireTyreSet', 'retireTyreSet'),
+    // Not this season and its undo (#292) change what the server answers: the reminder leaves, or is due again.
+    graphql.mutation('DismissTyreReminder', ({ variables }) => {
+      ;(state.calls.DismissTyreReminder ??= []).push(variables as Record<string, unknown>)
+      const { id, season } = (variables as { input: { id: string; season: string } }).input
+      state.sets = state.sets.map((s) => (s.id === id ? { ...s, reminder: undefined, reminderDismissedFor: season } : s))
+      return HttpResponse.json({ data: { dismissTyreReminder: answer() } })
+    }),
+    graphql.mutation('RestoreTyreReminder', ({ variables }) => {
+      ;(state.calls.RestoreTyreReminder ??= []).push(variables as Record<string, unknown>)
+      state.sets = state.sets.map((s) => (s.id === variables.id ? { ...s, reminder: s.reminderDismissedFor, reminderDismissedFor: undefined } : s))
+      return HttpResponse.json({ data: { restoreTyreReminder: answer() } })
+    }),
     mutation('AddTyreInstallation', 'addTyreInstallation'),
     mutation('UpdateTyreInstallation', 'updateTyreInstallation'),
     mutation('SetTyreRoughDistance', 'setTyreRoughDistance'),

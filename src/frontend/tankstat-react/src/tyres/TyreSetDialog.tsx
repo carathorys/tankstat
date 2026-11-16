@@ -7,6 +7,7 @@ import Typography from '@mui/material/Typography'
 import { useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Segmented } from '../components/Segmented.tsx'
+import { LabeledSelect } from '../components/UnitSelect.tsx'
 import { DialogButtons, DialogCancel, DialogFrame } from '../dialogs/DialogFrame.tsx'
 import { DialogTrigger } from '../dialogs/DialogTrigger.tsx'
 import { useClientId } from '../dialogs/useClientId.ts'
@@ -25,7 +26,7 @@ import { feeOf } from './entries.ts'
 import { FeeFields } from './FeeFields.tsx'
 import { noTyres } from './replay.ts'
 import { RoughEstimate, UsualMonths } from './RoughEstimate.tsx'
-import { isSeasons, monthsOf, ownMonths, SEASON_MONTHS } from './tyreMonths.ts'
+import { isSeasons, monthsOf, ownMonths, ownReminderMonth, reminderMonthOf, SEASON_MONTHS, seasonReminderMonth } from './tyreMonths.ts'
 import { keyedOf, type TyreSet, useTyreMutation, useTyreToasts, useTyreWords, wholeInvalid, wholeOrNull } from './tyres.ts'
 
 const SEASONS: TyreSeason[] = ['SUMMER', 'WINTER', 'ALL_SEASON']
@@ -66,8 +67,11 @@ export function TyreSetDialog({
   const [season, setSeasonOnly] = useState<TyreSeason>(edit?.season ?? 'SUMMER')
   // The usual months (#291): the season's until changed (in the estimate, or in Edit set); a set on its season's follows a change of season.
   const [months, setMonths] = useState<number[]>(() => monthsOf(edit ?? { season: 'SUMMER' }))
+  // The month the swap reminder starts from (#292; 0: none): its season's until changed, following a change of season like the months.
+  const [remind, setRemind] = useState<number>(() => reminderMonthOf(edit ?? { season: 'SUMMER' }) ?? 0)
   const setSeason = (next: TyreSeason) => {
     if (isSeasons(season, months)) setMonths([...SEASON_MONTHS[next]])
+    if (ownReminderMonth(season, remind) === null) setRemind(seasonReminderMonth(next) ?? 0)
     setSeasonOnly(next)
   }
   // The rough figure is the form's own value, so the estimate's Use it can fill it; the field stays editable.
@@ -82,6 +86,7 @@ export function TyreSetDialog({
   const reset = () => {
     setSeasonOnly(edit?.season ?? 'SUMMER')
     setMonths(monthsOf(edit ?? { season: 'SUMMER' }))
+    setRemind(reminderMonthOf(edit ?? { season: 'SUMMER' }) ?? 0)
     setRough('')
     setWhere(fittedFirst ? 'car' : 'storage')
     setIsNew(false)
@@ -102,7 +107,7 @@ export function TyreSetDialog({
     try {
       if (edit) {
         const saved = await run(UpdateTyreSetDocument, {
-          input: { id: edit.id, name: text('name'), season, size: text('size') || null, since: text('since'), madeWeek: made?.week ?? null, madeYear: made?.year ?? null, usualMonths: months },
+          input: { id: edit.id, name: text('name'), season, size: text('size') || null, since: text('since'), madeWeek: made?.week ?? null, madeYear: made?.year ?? null, usualMonths: months, reminderMonth: remind },
         })
         setOpen(false)
         notify.saved(saved, t('toast.saved'))
@@ -125,6 +130,7 @@ export function TyreSetDialog({
           // Months of its own only when they were changed in the estimate (decision 51); else its season's, which the server takes for none.
           // A new set has no estimate: what was picked in a panel its *These tyres are new* hid is not its own.
           ...(!isNew && ownMonths(season, months) ? { usualMonths: months } : {}),
+          reminderMonth: remind, // its season's is kept as none by the server
           replace: replace !== null,
           ...(text('feeAmount') !== ''
             ? {
@@ -179,6 +185,20 @@ export function TyreSetDialog({
                 <Segmented label={t('tyres.fields.season')} value={season} options={SEASONS.map((s) => ({ value: s, label: t(`tyres.seasons.${s}`) }))} onChange={setSeason} />
               </Stack>
               {edit && <UsualMonths season={season} months={months} onChange={setMonths} />}
+              <LabeledSelect
+                label={t('tyres.reminder.label')}
+                value={String(remind)}
+                options={[{ value: '0', label: t('tyres.reminder.none') }, ...Array.from({ length: 12 }, (_, n) => ({ value: String(n + 1), label: format.month(n + 1) }))]}
+                onChange={(v) => setRemind(Number(v))}
+                hint={t('tyres.reminder.hint')}
+                extra={
+                  ownReminderMonth(season, remind) !== null ? (
+                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                      {t('tyres.reminder.changed')}
+                    </Typography>
+                  ) : undefined
+                }
+              />
               <Field name="size" label={t('tyres.fields.size')}>
                 <FieldInput maxLength={40} autoComplete="off" placeholder="205/55 R16 91V" defaultValue={edit?.size ?? undefined} />
               </Field>

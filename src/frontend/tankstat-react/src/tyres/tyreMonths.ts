@@ -29,6 +29,12 @@ export const ownReminderMonth = (season: TyreSeason, month: number): number | nu
 export const reminderMonthOf = (set: { season: TyreSeason; reminderMonth?: number | null }): number | null =>
   set.reminderMonth == null ? seasonReminderMonth(set.season) : set.reminderMonth === 0 ? null : set.reminderMonth
 
+/** The season of a reminder's month on a day (ISO), as the server's `TyreReminder.SeasonOf`: the latest 1st of that month at or before it. */
+export function reminderSeasonOf(month: number, today: string): string {
+  const [year, thisMonth] = [Number(today.slice(0, 4)), Number(today.slice(5, 7))]
+  return `${String(month <= thisMonth ? year : year - 1).padStart(4, '0')}-${String(month).padStart(2, '0')}-01`
+}
+
 /** What a set keeps of the months chosen: none (null) when they are its season's. */
 export function ownMonths(season: TyreSeason, months: readonly number[]): number[] | null {
   const sorted = sortedMonths(months)
