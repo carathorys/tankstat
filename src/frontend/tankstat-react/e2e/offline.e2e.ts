@@ -445,3 +445,50 @@ test('a visit with tyre details saved offline: its line on the tyre log at once,
   expect((await graphql<{ parkedChanges: unknown[] }>(page, '{ parkedChanges { id } }')).parkedChanges).toEqual([])
 })
 
+
+test('a swap made offline from the home card hides its row at once, and reaches the server once it is back (#292)', async ({ page, context }) => {
+  test.setTimeout(120_000)
+  await signInAsNewUser(page)
+  const vehicle = await addVehicle(page)
+  const day = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10)
+  await logRefueling(page, vehicle.id, { date: day(60), volume: 35, odometer: 1000 })
+  const addSet = 'mutation($i: AddTyreSetInput!) { addTyreSet(input: $i) { vehicleId } }'
+  const set = { vehicleId: vehicle.id, size: null, madeWeek: null, madeYear: null, roughDistance: 0, replace: false }
+  await graphql(page, addSet, { i: { ...set, name: 'Michelin Primacy 4', season: 'SUMMER', since: day(400), fitted: true, day: day(60), reminderMonth: 0 } })
+  // Reminded from this month (the server's UTC one), so the row is there whatever day the test runs.
+  await graphql(page, addSet, { i: { ...set, name: 'Continental WinterContact', season: 'WINTER', since: day(400), fitted: false, day: day(0), reminderMonth: new Date().getUTCMonth() + 1 } })
+
+  await page.goto('/account')
+  await pageLoaded(page)
+  await page.getByRole('button', { name: 'Download now' }).click()
+  await expect(page.getByText('Downloaded.')).toBeVisible({ timeout: 30_000 })
+  await page.goto('/')
+  await pageLoaded(page)
+  const card = page.getByRole('link', { name: `Open ${vehicle.name}` }).locator('xpath=ancestor::li[1]')
+  await expect(card.getByText('Time to swap')).toBeVisible()
+
+  await goOffline(page, context)
+  await card.getByRole('button', { name: `Swap to Continental WinterContact on ${vehicle.name}` }).click()
+  const swap = page.getByRole('dialog', { name: 'Swap tyres' })
+  await expect(swap.getByText(/^You are offline\./)).toBeVisible()
+  await swap.getByRole('button', { name: 'Swap tyres' }).click()
+  await expect(swap).toBeHidden()
+  await expect(page.getByText('Saved on this device · syncs when online.')).toBeVisible()
+  await expect(card.getByText('Time to swap')).toBeHidden()
+  await expectSoundLayout(page)
+
+  await context.setOffline(false)
+  await expect
+    .poll(
+      async () => {
+        const data = await graphql<{ vehicleTyres: { sets: { onTheCar: boolean; set: { name: string } }[] } }>(
+          page,
+          'query($v: UUID!) { vehicleTyres(vehicleId: $v) { sets { onTheCar set { name } } } }',
+          { v: vehicle.id },
+        )
+        return data.vehicleTyres.sets.filter((s) => s.onTheCar).map((s) => s.set.name)
+      },
+      { timeout: 60_000 },
+    )
+    .toEqual(['Continental WinterContact'])
+})
