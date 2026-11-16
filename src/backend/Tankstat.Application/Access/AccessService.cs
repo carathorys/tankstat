@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Runs;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Vehicles;
 
@@ -15,6 +16,7 @@ public sealed class AccessService(
 {
     public async Task<Principal> RequirePrincipalAsync(CancellationToken ct)
     {
+        if (RunContext.Current is { } run) return run.Starter; // a run (#335) has no request: the services act as whoever started it
         if (await current.GetPrincipalAsync(ct) is { } principal) return principal;
         if (auth.Value.Mode == AuthMode.None) return Principal.Anonymous;
         throw new UnauthenticatedException();

@@ -32,6 +32,8 @@ using Tankstat.Infrastructure.Storage;
 using Tankstat.Application.Vehicles;
 using Tankstat.Infrastructure.Persistence;
 using Tankstat.Infrastructure.Persistence.Repositories;
+using Tankstat.Infrastructure.Persistence.Runs;
+using Tankstat.Application.Runs;
 
 namespace Tankstat.Infrastructure;
 
@@ -72,6 +74,14 @@ public static class DependencyInjection
                 default: throw new InvalidOperationException($"Unsupported database provider '{db.Provider}'.");
             }
         });
+
+        // Runs (#335): the factory everyone takes is the pooled one wrapped, so a run's contexts share its transaction.
+        var pooledFactory = services.Last(d => d.ServiceType == typeof(IDbContextFactory<AppDbContext>));
+        services.Remove(pooledFactory);
+        services.AddSingleton(sp => new RunDbContextFactory(
+            (IDbContextFactory<AppDbContext>)pooledFactory.ImplementationFactory!(sp), sp.GetRequiredService<DbContextOptions<AppDbContext>>()));
+        services.AddSingleton<IDbContextFactory<AppDbContext>>(sp => sp.GetRequiredService<RunDbContextFactory>());
+        services.AddSingleton<IRunScope, RunScope>();
 
         services.AddSingleton<IDatabaseProbe, EfDatabaseProbe>();
         services.AddSingleton<IFileProbe, FileProbe>(); // the telemetry certificate check of the settings page (#312)
