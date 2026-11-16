@@ -361,6 +361,13 @@ export interface FakeGridSettings extends GridSaved {
   gridId: string
 }
 
+/** The tyre timeline's choices as the server keeps them (#332). */
+export interface FakeTimeline {
+  range: 'ALL' | 'TWO_YEARS' | 'TWELVE_MONTHS'
+  layers: ('BEFORE_TRACKING' | 'GAPS' | 'MARKS' | 'RETIRED_SETS' | 'TABLE')[]
+  hiddenSets: string[]
+}
+
 /** The user's UI settings as the server keeps them: serves what is stored, stores what the UI saves, and records every call. */
 export function fakeSettingsBackend(
   initial: {
@@ -372,6 +379,8 @@ export function fakeSettingsBackend(
     dateFormat?: DateFormat | null
     defaultTimeFormat?: TimeFormat | null
     defaultDateFormat?: DateFormat | null
+    /** The tyre timeline's choices (#332); none: never chosen. */
+    timeline?: FakeTimeline | null
     grids?: FakeGridSettings[]
   } = {},
 ) {
@@ -385,6 +394,7 @@ export function fakeSettingsBackend(
       dateFormat: initial.dateFormat ?? null,
       defaultTimeFormat: initial.defaultTimeFormat ?? null,
       defaultDateFormat: initial.defaultDateFormat ?? null,
+      timeline: initial.timeline ? { __typename: 'TimelineSettingsInfo' as const, ...initial.timeline } : null,
       grids: initial.grids ?? [],
     } as {
       navOpen: boolean | null
@@ -395,6 +405,7 @@ export function fakeSettingsBackend(
       dateFormat: DateFormat | null
       defaultTimeFormat: TimeFormat | null
       defaultDateFormat: DateFormat | null
+      timeline: (FakeTimeline & { __typename: 'TimelineSettingsInfo' }) | null
       grids: FakeGridSettings[]
     },
     calls: {} as Record<string, unknown[]>,
@@ -418,6 +429,7 @@ export function fakeSettingsBackend(
         clearTimeFormat?: boolean | null
         dateFormat?: DateFormat | null
         clearDateFormat?: boolean | null
+        timeline?: FakeTimeline | null
       }
       if (input.navOpen != null) state.settings.navOpen = input.navOpen
       if (input.clearLanguage) state.settings.language = null
@@ -428,6 +440,7 @@ export function fakeSettingsBackend(
       else if (input.timeFormat != null) state.settings.timeFormat = input.timeFormat
       if (input.clearDateFormat) state.settings.dateFormat = null
       else if (input.dateFormat != null) state.settings.dateFormat = input.dateFormat
+      if (input.timeline) state.settings.timeline = { __typename: 'TimelineSettingsInfo', ...input.timeline }
       const { grids: _, ...settings } = state.settings
       return HttpResponse.json({ data: { updateUiSettings: settings } })
     }),

@@ -12,23 +12,26 @@ namespace Tankstat.Application.Settings;
 /// who chose none (unset too: as the language writes them).
 /// </summary>
 public sealed record UiSettingsView(
-    bool? NavOpen, string? Language, ColorMode? ColorMode, SurfaceStyle? Surface, TimeFormat? TimeFormat, DateFormat? DateFormat, TimeFormat? DefaultTimeFormat, DateFormat? DefaultDateFormat)
+    bool? NavOpen, string? Language, ColorMode? ColorMode, SurfaceStyle? Surface, TimeFormat? TimeFormat, DateFormat? DateFormat, TimeFormat? DefaultTimeFormat, DateFormat? DefaultDateFormat,
+    TimelineChoices? Timeline = null)
 {
     public static UiSettingsView Of(UiSettings? row, VehicleDefaultsOptions defaults) =>
-        new(row?.NavOpen, row?.Language, row?.ColorMode, row?.Surface, row?.TimeFormat, row?.DateFormat, defaults.TimeFormat, defaults.DateFormat);
+        new(row?.NavOpen, row?.Language, row?.ColorMode, row?.Surface, row?.TimeFormat, row?.DateFormat, defaults.TimeFormat, defaults.DateFormat, row?.Timeline);
 }
 
 /// <summary>
 /// A change to the settings: a null member leaves that setting as it is; <see cref="ClearLanguage"/> forgets the saved language and wins over
 /// a <see cref="Language"/> given at the same time. A colour mode is never forgotten, only changed (System is the device's own choice).
 /// Nor is a surface style. A time or date format is forgotten by its <c>Clear</c> flag, which wins over a format given at the same time.
+/// The tyre timeline's choices (#332) are given whole and replace what was saved; <see cref="ClearTimeline"/> forgets them.
 /// </summary>
 public sealed record UiSettingsChange(
     bool? NavOpen = null, string? Language = null, bool ClearLanguage = false, ColorMode? ColorMode = null, SurfaceStyle? Surface = null,
-    TimeFormat? TimeFormat = null, bool ClearTimeFormat = false, DateFormat? DateFormat = null, bool ClearDateFormat = false)
+    TimeFormat? TimeFormat = null, bool ClearTimeFormat = false, DateFormat? DateFormat = null, bool ClearDateFormat = false,
+    TimelineChoices? Timeline = null, bool ClearTimeline = false)
 {
     public bool IsEmpty => NavOpen is null && Language is null && !ClearLanguage && ColorMode is null && Surface is null
-        && TimeFormat is null && !ClearTimeFormat && DateFormat is null && !ClearDateFormat;
+        && TimeFormat is null && !ClearTimeFormat && DateFormat is null && !ClearDateFormat && Timeline is null && !ClearTimeline;
 }
 
 /// <summary>
@@ -68,6 +71,8 @@ public sealed class UiSettingsService(
         else if (change.TimeFormat is { } time) row.SetTimeFormat(time, now);
         if (change.ClearDateFormat) row.SetDateFormat(null, now);
         else if (change.DateFormat is { } date) row.SetDateFormat(date, now);
+        if (change.ClearTimeline) row.SetTimeline(null, now);
+        else if (change.Timeline is { } timeline) row.SetTimeline(timeline, now);
         await settings.SaveAsync(row, ct);
         logger.LogDebug("User {UserId} changed their UI settings", user.Id);
         return UiSettingsView.Of(row, defaults.Value);

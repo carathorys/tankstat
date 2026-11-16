@@ -970,6 +970,12 @@ type TileRecipe {
   template: String
 }
 
+type TimelineSettingsInfo {
+  range: TimelineRange!
+  layers: [TimelineLayer!]!
+  hiddenSets: [UUID!]!
+}
+
 type TrendFigureData {
   recent: TrendWindow!
   earlier: TrendWindow!
@@ -1228,6 +1234,7 @@ type UiSettingsInfo {
   dateFormat: DateFormat
   defaultTimeFormat: TimeFormat
   defaultDateFormat: DateFormat
+  timeline: TimelineSettingsInfo
   grids: [GridSettingsInfo!]! @cost(weight: "10")
 }
 
@@ -1828,6 +1835,12 @@ input TileRecipeInput {
   template: String
 }
 
+input TimelineSettingsInput {
+  range: TimelineRange!
+  layers: [TimelineLayer!]!
+  hiddenSets: [UUID!]!
+}
+
 input TrendPeriodInput {
   kind: TrendWindowKind!
   unit: TrendUnit
@@ -1955,6 +1968,8 @@ input UpdateUiSettingsInput {
   clearTimeFormat: Boolean
   dateFormat: DateFormat
   clearDateFormat: Boolean
+  timeline: TimelineSettingsInput
+  clearTimeline: Boolean
 }
 
 input UpdateUserInput {
@@ -2398,6 +2413,20 @@ enum SyncTargetState {
 enum TimeFormat {
   TWENTY_FOUR_HOUR
   TWELVE_HOUR
+}
+
+enum TimelineLayer {
+  BEFORE_TRACKING
+  GAPS
+  MARKS
+  RETIRED_SETS
+  TABLE
+}
+
+enum TimelineRange {
+  ALL
+  TWO_YEARS
+  TWELVE_MONTHS
 }
 
 enum TrendComparison {

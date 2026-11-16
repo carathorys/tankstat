@@ -848,6 +848,7 @@
       "languageInvalid": "A nyelv kódja en vagy en-GB alakú lehet.",
       "colorModeInvalid": "A színmód világos, sötét vagy rendszer lehet.",
       "surfaceInvalid": "A felület üveghatású, átlátszó vagy átlátszatlan lehet.",
+      "timelineInvalid": "Az idővonal beállításai között olyan van, amit az alkalmazás nem kínál.",
       "timeFormatInvalid": "Az időformátum 24 órás vagy 12 órás lehet.",
       "dateFormatInvalid": "A dátumformátum nem olyan, amilyet az alkalmazás kínál.",
       "unknownKey": "A(z) {{key}} nem itt módosítható beállítás.",

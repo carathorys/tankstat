@@ -13,11 +13,26 @@ public sealed record GridSettingsInfo(string GridId, IReadOnlyList<string> Order
 /// <summary>The current user's UI settings; a null value means nothing was chosen yet (the browser's own default applies). The grids are loaded only when selected.</summary>
 /// <param name="DefaultTimeFormat">The instance's time format for a user who chose none (none: as the language writes times).</param>
 /// <param name="DefaultDateFormat">The instance's date format for a user who chose none (none: as the language writes dates).</param>
+/// <param name="Timeline">What the tyre timeline shows (#332); null: never chosen, its defaults apply.</param>
 public sealed record UiSettingsInfo(
-    bool? NavOpen, string? Language, ColorMode? ColorMode, SurfaceStyle? Surface, TimeFormat? TimeFormat, DateFormat? DateFormat, TimeFormat? DefaultTimeFormat, DateFormat? DefaultDateFormat)
+    bool? NavOpen, string? Language, ColorMode? ColorMode, SurfaceStyle? Surface, TimeFormat? TimeFormat, DateFormat? DateFormat, TimeFormat? DefaultTimeFormat, DateFormat? DefaultDateFormat,
+    TimelineSettingsInfo? Timeline)
 {
     public static UiSettingsInfo From(UiSettingsView v) =>
-        new(v.NavOpen, v.Language, v.ColorMode, v.Surface, v.TimeFormat, v.DateFormat, v.DefaultTimeFormat, v.DefaultDateFormat);
+        new(v.NavOpen, v.Language, v.ColorMode, v.Surface, v.TimeFormat, v.DateFormat, v.DefaultTimeFormat, v.DefaultDateFormat,
+            v.Timeline is { } t ? new TimelineSettingsInfo(t.Range, t.Layers, t.HiddenSets) : null);
+}
+
+/// <summary>What a user chose to see on the tyre timeline (#332).</summary>
+/// <param name="Range">How far back it reaches.</param>
+/// <param name="Layers">The layers shown.</param>
+/// <param name="HiddenSets">The tyre sets hidden (at most 50; ids the app no longer knows are the client's to drop).</param>
+public sealed record TimelineSettingsInfo(TimelineRange Range, IReadOnlyList<TimelineLayer> Layers, IReadOnlyList<Guid> HiddenSets);
+
+/// <summary>The tyre timeline's choices, given whole: they replace what was saved.</summary>
+public sealed record TimelineSettingsInput(TimelineRange Range, IReadOnlyList<TimelineLayer> Layers, IReadOnlyList<Guid> HiddenSets)
+{
+    public TimelineChoices ToChoices() => new(Range, Layers, HiddenSets);
 }
 
 [ExtendObjectType<UiSettingsInfo>]
@@ -37,8 +52,11 @@ public sealed class UiSettingsInfoExtensions
 /// <param name="ClearTimeFormat">Forget the saved time format (the instance's default applies again); wins over a format given at the same time.</param>
 /// <param name="DateFormat">Omit to leave it as it is.</param>
 /// <param name="ClearDateFormat">Forget the saved date format (the instance's default applies again); wins over a format given at the same time.</param>
+/// <param name="Timeline">The tyre timeline's choices as a whole (#332); omit to leave them as they are.</param>
+/// <param name="ClearTimeline">Forget the timeline's choices (its defaults apply again); wins over choices given at the same time.</param>
 public sealed record UpdateUiSettingsInput(
-    bool? NavOpen, string? Language, bool? ClearLanguage, ColorMode? ColorMode, SurfaceStyle? Surface, TimeFormat? TimeFormat, bool? ClearTimeFormat, DateFormat? DateFormat, bool? ClearDateFormat);
+    bool? NavOpen, string? Language, bool? ClearLanguage, ColorMode? ColorMode, SurfaceStyle? Surface, TimeFormat? TimeFormat, bool? ClearTimeFormat, DateFormat? DateFormat, bool? ClearDateFormat,
+    TimelineSettingsInput? Timeline = null, bool? ClearTimeline = null);
 
 public sealed record GridSettingsInput(string GridId, IReadOnlyList<string> Order, IReadOnlyList<string> Hidden, int PageSize, string SortColumn, SortDirection SortDirection);
 
@@ -55,7 +73,8 @@ public sealed class UiSettingsMutations
 {
     public async Task<UiSettingsInfo> UpdateUiSettings(UpdateUiSettingsInput input, [Service] UiSettingsService settings, CancellationToken ct) =>
         UiSettingsInfo.From(await settings.UpdateAsync(new UiSettingsChange(
-            input.NavOpen, input.Language, input.ClearLanguage ?? false, input.ColorMode, input.Surface, input.TimeFormat, input.ClearTimeFormat ?? false, input.DateFormat, input.ClearDateFormat ?? false), ct));
+            input.NavOpen, input.Language, input.ClearLanguage ?? false, input.ColorMode, input.Surface, input.TimeFormat, input.ClearTimeFormat ?? false, input.DateFormat, input.ClearDateFormat ?? false,
+            input.Timeline?.ToChoices(), input.ClearTimeline ?? false), ct));
 
     public async Task<GridSettingsInfo> SaveGridSettings(GridSettingsInput input, [Service] UiSettingsService settings, CancellationToken ct) =>
         GridSettingsInfo.From(await settings.SaveGridAsync(input.GridId, new GridSettingsValues(input.Order, input.Hidden, input.PageSize, input.SortColumn, input.SortDirection), ct));

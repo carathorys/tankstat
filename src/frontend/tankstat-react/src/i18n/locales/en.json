@@ -848,6 +848,7 @@
       "languageInvalid": "The language code must look like en or en-GB.",
       "colorModeInvalid": "The colour mode must be light, dark or system.",
       "surfaceInvalid": "The surface style must be glossy, transparent or opaque.",
+      "timelineInvalid": "The timeline's choices are not ones the app offers.",
       "timeFormatInvalid": "The time format must be the 24-hour or the 12-hour clock.",
       "dateFormatInvalid": "The date format is not one the app offers.",
       "unknownKey": "{{key}} is not a setting that can be changed here.",

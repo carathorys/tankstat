@@ -166,7 +166,8 @@ public class ContractTests
     [InlineData("VehicleChart", "id", "vehicleId", "title", "metric", "grouping", "kind", "range", "rangeFrom", "rangeTo", "stacked", "trend", "runningTotal", "compareYearEarlier", "secondMetric", "secondKind", "isShared", "createdAt", "canEdit", "canDelete", "createdBy")]
     [InlineData("Refueling", "id", "vehicleId", "createdBy", "date", "volume", "totalCost", "discount", "currency", "odometer", "pricePerUnit", "pricePerUnitBeforeDiscount", "consumption", "isFullTank", "missedPreviousFillUp", "note", "deletedAt", "canEdit", "canDelete", "vehicle", "photos", "reviewState", "filledFromPhoto", "version", "updatedAt", "changedAt", "changedBy", "lastChange")]
     [InlineData("Expense", "id", "amount", "discount", "currency", "odometer", "reviewState", "filledFromPhoto")]
-    [InlineData("UiSettingsInfo", "navOpen", "language", "colorMode", "surface", "timeFormat", "dateFormat", "defaultTimeFormat", "defaultDateFormat", "grids")]
+    [InlineData("UiSettingsInfo", "navOpen", "language", "colorMode", "surface", "timeFormat", "dateFormat", "defaultTimeFormat", "defaultDateFormat", "grids", "timeline")]
+    [InlineData("TimelineSettingsInfo", "range", "layers", "hiddenSets")]
     [InlineData("GridSettingsInfo", "gridId", "order", "hidden", "pageSize", "sortColumn", "sortDirection")]
     public async Task Schema_TypeExposesContractFields(string type, params string[] fields)
     {
@@ -185,7 +186,8 @@ public class ContractTests
     [InlineData("AddRecurringExpenseInput", "vehicleId", "title", "kind", "intervalMonths", "intervalDistance", "lastDoneDate", "lastDoneOdometer", "id")]
     [InlineData("MarkRecurringExpensesDoneInput", "ids", "date", "odometer", "amount", "discount", "currency", "title", "category", "photoIds", "expenseId", "tyre")]
     [InlineData("GridSettingsInput", "gridId", "order", "hidden", "pageSize", "sortColumn", "sortDirection")]
-    [InlineData("UpdateUiSettingsInput", "navOpen", "language", "clearLanguage", "colorMode", "surface", "timeFormat", "clearTimeFormat", "dateFormat", "clearDateFormat")]
+    [InlineData("UpdateUiSettingsInput", "navOpen", "language", "clearLanguage", "colorMode", "surface", "timeFormat", "clearTimeFormat", "dateFormat", "clearDateFormat", "timeline", "clearTimeline")]
+    [InlineData("TimelineSettingsInput", "range", "layers", "hiddenSets")]
     [InlineData("ChangeInput", "id", "expectedVersion", "base", "setVehiclePicture", "removeVehiclePicture", "addTyreSet", "updateTyreSet", "setTyreRoughDistance",
         "retireTyreSet", "unretireTyreSet", "deleteTyreSet", "restoreTyreSet", "swapTyres", "changeTyrePositions", "addPastTyreSwaps", "addTyreInstallation",
         "updateTyreInstallation", "deleteTyreInstallation", "restoreTyreInstallation", "addTyreEntry", "updateTyreEntry", "deleteTyreEntry", "restoreTyreEntry",
@@ -260,6 +262,8 @@ public class ContractTests
     [InlineData("SortDirection", "ASC", "DESC")]
     [InlineData("ColorMode", "LIGHT", "DARK", "SYSTEM")]
     [InlineData("SurfaceStyle", "GLOSSY", "TRANSPARENT", "OPAQUE")]
+    [InlineData("TimelineRange", "ALL", "TWO_YEARS", "TWELVE_MONTHS")]
+    [InlineData("TimelineLayer", "BEFORE_TRACKING", "GAPS", "MARKS", "RETIRED_SETS", "TABLE")]
     [InlineData("AuthMode", "NONE", "STANDALONE", "OIDC", "PROXY_HEADER")]
     [InlineData("AccessLevel", "NONE", "VIEW", "EDIT", "DELETE")]
     [InlineData("DistanceUnit", "KILOMETERS", "MILES")]

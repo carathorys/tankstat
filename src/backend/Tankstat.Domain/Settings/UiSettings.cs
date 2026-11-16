@@ -33,6 +33,9 @@ public sealed partial class UiSettings
     /// <summary>How dates are written (null: the instance's default, else as the language writes them).</summary>
     public DateFormat? DateFormat { get; private set; }
 
+    /// <summary>What the tyre timeline shows (#332); null: never chosen, its defaults apply.</summary>
+    public TimelineChoices? Timeline { get; private set; }
+
     public DateTimeOffset UpdatedAt { get; private set; }
 
     public static UiSettings Create(Guid userId, DateTimeOffset now) => new() { UserId = userId, UpdatedAt = now };
@@ -86,6 +89,13 @@ public sealed partial class UiSettings
         if (format is { } f && !Enum.IsDefined(f))
             throw new DomainException("settings.dateFormatInvalid", "The date format is not one the app offers.");
         DateFormat = format;
+        UpdatedAt = now;
+    }
+
+    /// <summary>The timeline's choices as a whole (they check themselves); null forgets them, and the defaults apply again.</summary>
+    public void SetTimeline(TimelineChoices? choices, DateTimeOffset now)
+    {
+        Timeline = choices;
         UpdatedAt = now;
     }
 

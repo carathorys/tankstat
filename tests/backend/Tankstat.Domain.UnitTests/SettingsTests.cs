@@ -186,4 +186,20 @@ public class SettingsTests
         Assert.Equal(0, VehicleOrder.Create(Guid.NewGuid(), Guid.NewGuid(), 0).Position);
         Assert.Throws<ArgumentOutOfRangeException>(() => VehicleOrder.Create(Guid.NewGuid(), Guid.NewGuid(), -1));
     }
+
+    [Fact]
+    public void TheTimelinesChoices_KeepTheirShape_TheLayersOnceAndInOrder_AndTheLastFiftyHiddenSets()
+    {
+        // #332: shape and limits only; whether an id still names a set is the UI's business.
+        var ids = Enumerable.Range(0, 60).Select(_ => Guid.NewGuid()).ToList();
+        var choices = new TimelineChoices(TimelineRange.TwelveMonths, [TimelineLayer.Table, TimelineLayer.Gaps, TimelineLayer.Table], [.. ids, ids[59], Guid.Empty]);
+
+        Assert.Equal([TimelineLayer.Gaps, TimelineLayer.Table], choices.Layers);
+        Assert.Equal(ids[10..], choices.HiddenSets); // the oldest ten dropped, a repeat and an empty id left out
+        Assert.Equal(new TimelineChoices(TimelineRange.TwelveMonths, [TimelineLayer.Gaps, TimelineLayer.Table], ids[10..]), choices);
+        Assert.Empty(new TimelineChoices(TimelineRange.All, null, null).Layers);
+
+        Assert.Equal("settings.timelineInvalid", Assert.Throws<DomainException>(() => new TimelineChoices((TimelineRange)9, [], [])).Key);
+        Assert.Equal("settings.timelineInvalid", Assert.Throws<DomainException>(() => new TimelineChoices(TimelineRange.All, [(TimelineLayer)9], [])).Key);
+    }
 }

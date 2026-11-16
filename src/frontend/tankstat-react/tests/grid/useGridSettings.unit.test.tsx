@@ -17,6 +17,8 @@ const saved = (over: Partial<GridSaved> = {}): GridSaved => ({ order: ['plate', 
 const api = (over: Partial<UiSettingsApi> = {}): UiSettingsApi => ({
   server: {},
   navOpen: true,
+  timeline: { range: 'ALL', layers: [], hiddenSets: [] },
+  setTimeline: vi.fn(),
   setNavOpen: vi.fn(),
   setLanguage: vi.fn(),
   setColorMode: vi.fn(),
