@@ -85,6 +85,12 @@ type Query {
     skip: Int! = 0
     take: Int! = 50
   ): [TyreTrashRow!]! @cost(weight: "10")
+  tyreRoughEstimate(
+    vehicleId: UUID!
+    since: LocalDate!
+    until: LocalDate!
+    months: [Int!]!
+  ): TyreRoughEstimate! @cost(weight: "10")
   tyreTrashCount: Int! @cost(weight: "10")
   tyreTrashDeletableCount: Int! @cost(weight: "10")
   notifications(unreadOnly: Boolean! = false, skip: Int! = 0, take: Int! = 20): [NotificationInfo!]!
@@ -433,6 +439,11 @@ type DashboardTrends {
   costPerDistance: [CurrencyChange!]!
   consumption: ConsumptionChange
   distance: ValueChange
+}
+
+type DayRange {
+  from: LocalDate!
+  until: LocalDate!
 }
 
 type Expense {
@@ -1114,7 +1125,16 @@ type TyrePlaceInfo {
   distance: InstallationDistance!
 }
 
+type TyreRoughEstimate {
+  distance: Long!
+  from: LocalDate
+  notCovered: [DayRange!]!
+  leftOutDays: Int!
+  readings: Boolean!
+}
+
 type TyreSet {
+  usualMonths: [Int!] @cost(weight: "10")
   id: UUID!
   ownerId: UUID!
   vehicleId: UUID!
@@ -1416,6 +1436,7 @@ input AddTyreSetInput {
   price: TyreFeeInput
   boughtOn: LocalDate
   boughtEntryId: UUID
+  usualMonths: [Int!]
 }
 
 input AddVehicleInput {
@@ -1731,6 +1752,7 @@ input SetTyreRoughDistanceInput {
   id: UUID!
   distance: Long!
   until: LocalDate
+  usualMonths: [Int!]
 }
 
 input SetupFinishInput {
@@ -1890,6 +1912,7 @@ input UpdateTyreSetInput {
   since: LocalDate!
   madeWeek: Int
   madeYear: Int
+  usualMonths: [Int!]
 }
 
 input UpdateUiSettingsInput {

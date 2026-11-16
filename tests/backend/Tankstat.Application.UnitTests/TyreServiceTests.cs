@@ -588,6 +588,55 @@ public class TyreServiceTests
     }
 
     [Fact]
+    public async Task TheEstimate_IsWorkedOutFromTheCarsReadings_ForWhoeverMaySeeTheLogs_LeavingOutRecordedInstallations()
+    {
+        // #291. The car's readings: 140,000 on 1 March 2026 and 147,000 on 1 September (a straight line between them).
+        var s = await Setup();
+        var (winter, summer) = (Guid.NewGuid(), Guid.NewGuid());
+        await s.Tyres.AddSetAsync(new NewTyreSet(s.Car.Id, Winter(0), Fitted: true, D(2026, 3, 1), null, true), default, winter);
+        await s.Tyres.AddSetAsync(new NewTyreSet(s.Car.Id, Summer(0), Fitted: false, D(2026, 3, 1), null, null), default, summer);
+        await s.Tyres.SwapAsync(new TyreSwapInput(s.Car.Id, summer, D(2026, 4, 11), true, false, null, null), default);
+
+        var estimate = (await s.Tyres.EstimateRoughAsync(s.Car.Id, D(2025, 3, 25), D(2026, 4, 11), [3, 4], default))!;
+
+        // March 2025 is before the first reading; March 2026 and 1 to 10 April 2026 ran on the winter set, which is recorded: left out.
+        Assert.Equal((0L, 31 + 10, true), (estimate.Distance, estimate.LeftOutDays, estimate.Readings));
+        Assert.Equal([new DayRange(D(2025, 3, 1), D(2025, 4, 30))], estimate.NotCovered);
+
+        // The span starts on the first day of in use since's month (the owner's decision 48): a later day of the same month is still a span;
+        // a later month is not.
+        Assert.NotNull(await s.Tyres.EstimateRoughAsync(s.Car.Id, D(2026, 4, 12), D(2026, 4, 11), [4], default));
+        Assert.Equal("tyres.estimateSpan", (await Assert.ThrowsAsync<DomainException>(() => s.Tyres.EstimateRoughAsync(s.Car.Id, D(2026, 5, 1), D(2026, 4, 11), [4], default))).Key);
+        Assert.Equal("tyres.estimateSpan", (await Assert.ThrowsAsync<DomainException>(() => s.Tyres.EstimateRoughAsync(s.Car.Id, D(2025, 3, 25), D(2099, 1, 1), [4], default))).Key);
+        Assert.Equal("tyres.monthsRequired", (await Assert.ThrowsAsync<DomainException>(() => s.Tyres.EstimateRoughAsync(s.Car.Id, D(2025, 3, 25), D(2026, 4, 11), [], default))).Key);
+
+        s.W.Current.SignInAs(s.Bob); // no access to the car: it looks as if it were not there
+        Assert.Null(await s.Tyres.EstimateRoughAsync(s.Car.Id, D(2025, 3, 25), D(2026, 4, 11), [3, 4], default));
+    }
+
+    [Fact]
+    public async Task TheUsualMonths_ComeWithTheAdd_TheEditAndTheRoughFigure_AndAClientWithoutThemChangesNone()
+    {
+        // #291: the three inputs' rules.
+        var s = await Setup();
+        var (plain, own) = (Guid.NewGuid(), Guid.NewGuid());
+        await s.Tyres.AddSetAsync(new NewTyreSet(s.Car.Id, Summer(0), Fitted: false, D(2026, 3, 28), null, null), default, plain);
+        var added = Set(await s.Tyres.AddSetAsync(new NewTyreSet(s.Car.Id, Winter() with { UsualMonths = [10, 11, 12, 1, 2, 3] }, Fitted: false, D(2026, 3, 28), null, null), default, own), own);
+        Assert.Equal([1, 2, 3, 10, 11, 12], added.Set.UsualMonths!.Value.ToList());
+        Assert.Null(Set((await s.Tyres.OverviewAsync(s.Car.Id, default))!, plain).Set.UsualMonths); // left out: its season's
+
+        // An edit or a rough figure from a client that knows no months leaves them.
+        Assert.Equal([1, 2, 3, 10, 11, 12], Set(await s.Tyres.UpdateSetAsync(own, Winter() with { Name = "Continental TS 870" }, default), own).Set.UsualMonths!.Value.ToList());
+        Assert.Equal([1, 2, 3, 10, 11, 12], Set(await s.Tyres.SetRoughAsync(own, 12_000, null, default), own).Set.UsualMonths!.Value.ToList());
+
+        // Given, they are stored; its season's are kept as none.
+        Assert.Equal([4, 5, 6], Set(await s.Tyres.SetRoughAsync(plain, 9_000, null, default, usualMonths: [6, 5, 4]), plain).Set.UsualMonths!.Value.ToList());
+        Assert.Null(Set(await s.Tyres.UpdateSetAsync(own, Winter() with { UsualMonths = [11, 12, 1, 2, 3] }, default), own).Set.UsualMonths);
+        Assert.Equal("tyres.monthInvalid", (await Assert.ThrowsAsync<DomainException>(() => s.Tyres.UpdateSetAsync(own, Winter() with { UsualMonths = [0] }, default))).Key);
+        Assert.Equal("tyres.monthsRequired", (await Assert.ThrowsAsync<DomainException>(() => s.Tyres.SetRoughAsync(plain, 9_000, null, default, usualMonths: []))).Key);
+    }
+
+    [Fact]
     public async Task ARoughFigure_GivenLater_CoversTheTimeBeforeTheFirstInstallation_AndNeverAFutureDay()
     {
         var s = await Setup();

@@ -1,5 +1,6 @@
 using GreenDonut;
 using Tankstat.Application.Expenses;
+using Tankstat.Application;
 using Tankstat.Application.Tyres;
 using Tankstat.Application.Users;
 using Tankstat.Domain.Access;
@@ -16,10 +17,11 @@ namespace Tankstat.Api.GraphQL;
 /// <param name="InstallationId">The id of the installation a fitted set starts with.</param>
 /// <param name="Price">What the set cost (#288): a <c>BOUGHT</c> line of the tyre log with its expense, on <paramref name="BoughtOn"/> (left out: <paramref name="Day"/>).</param>
 /// <param name="BoughtEntryId">The client's id of that line.</param>
+/// <param name="UsualMonths">The months it is usually on the car (#291; 1 = January), which the rough figure's estimate counts; left out: its season's.</param>
 public sealed record AddTyreSetInput(
     Guid VehicleId, string Name, TyreSeason Season, string? Size, DateOnly Since, int? MadeWeek, int? MadeYear, bool Fitted, DateOnly Day,
     long RoughDistance = 0, long? Odometer = null, bool? PairOneFront = null, bool Replace = false, Guid? Id = null, Guid? InstallationId = null,
-    TyreFeeInput? Price = null, DateOnly? BoughtOn = null, Guid? BoughtEntryId = null);
+    TyreFeeInput? Price = null, DateOnly? BoughtOn = null, Guid? BoughtEntryId = null, IReadOnlyList<int>? UsualMonths = null);
 
 /// <summary>
 /// The amount of a tyre log line (#288): an ordinary expense on the Expenses tab, with the line's day and reading. Left out, the line's stays
@@ -54,10 +56,12 @@ public sealed record DeleteTyreEntryInput(Guid Id, bool WithExpense = true);
 /// <param name="Day">The device's today.</param>
 public sealed record RetireTyreSetInput(Guid Id, DateOnly Day);
 
-public sealed record UpdateTyreSetInput(Guid Id, string Name, TyreSeason Season, string? Size, DateOnly Since, int? MadeWeek, int? MadeYear);
+/// <param name="UsualMonths">The months it is usually on the car (#291; 1 = January); left out (a client from before them) keeps the set's.</param>
+public sealed record UpdateTyreSetInput(Guid Id, string Name, TyreSeason Season, string? Size, DateOnly Since, int? MadeWeek, int? MadeYear, IReadOnlyList<int>? UsualMonths = null);
 
 /// <param name="Until">The first day the rough figure does not cover, when accepting a suggestion; left out keeps it.</param>
-public sealed record SetTyreRoughDistanceInput(Guid Id, long Distance, DateOnly? Until = null);
+/// <param name="UsualMonths">The months the figure was estimated over, kept with the set (#291); left out keeps the set's.</param>
+public sealed record SetTyreRoughDistanceInput(Guid Id, long Distance, DateOnly? Until = null, IReadOnlyList<int>? UsualMonths = null);
 
 /// <param name="PairOneFront">True: pair 1 at the front; false: pair 2 at the front; null: not recorded ("Not sure").</param>
 /// <param name="Replace">A swap logged on that day already is replaced instead of refused with <c>tyres.swapExists</c>.</param>
@@ -151,6 +155,9 @@ public sealed class TyreSetType : ObjectType<TyreSet>
     {
         descriptor.Ignore(s => s.SavedVersion);
         descriptor.Ignore(s => s.IsDeleted);
+        descriptor.Ignore(s => s.Months);
+        // The months of its own (#291; 1 = January), null while it is on its season's: the client knows a season's months.
+        descriptor.Field(s => s.UsualMonths).Type<ListType<NonNullType<IntType>>>().Resolve(c => c.Parent<TyreSet>().UsualMonths?.ToList());
     }
 }
 
@@ -373,6 +380,16 @@ public sealed class TyreQueries
         int skip = 0, int take = 50) =>
         tyres.ListTrashAsync(skip, take, ct, direction == Tankstat.Domain.SortDirection.Desc);
 
+    /// <summary>
+    /// The automatic estimate of a used set's rough figure (#291): the car's logged distance in <paramref name="months"/> (1 = January) from
+    /// the month of <paramref name="since"/> up to <paramref name="until"/>, the first day the figure does not cover, less the days a
+    /// recorded installation covers. Only offered: nothing is saved. A vehicle that cannot be seen is <c>NOT_FOUND</c>.
+    /// </summary>
+    public async Task<TyreRoughEstimate> GetTyreRoughEstimate(
+        Guid vehicleId, DateOnly since, DateOnly until, IReadOnlyList<int> months, [Service] TyreService tyres, CancellationToken ct) =>
+        await tyres.EstimateRoughAsync(vehicleId, since, until, months, ct)
+        ?? throw new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId });
+
     public Task<int> GetTyreTrashCount([Service] TyreService tyres, CancellationToken ct) => tyres.CountTrashAsync(ct);
 
     public Task<int> GetTyreTrashDeletableCount([Service] TyreService tyres, CancellationToken ct) => tyres.CountDeletableTrashAsync(ct);
@@ -387,7 +404,7 @@ public sealed class TyreMutations
     public Task<TyreOverview> UpdateTyreSet(UpdateTyreSetInput input, [Service] TyreService tyres, CancellationToken ct) => TyreChanges.Update(input, tyres, ct);
 
     public Task<TyreOverview> SetTyreRoughDistance(SetTyreRoughDistanceInput input, [Service] TyreService tyres, CancellationToken ct) =>
-        tyres.SetRoughAsync(input.Id, input.Distance, input.Until, ct);
+        tyres.SetRoughAsync(input.Id, input.Distance, input.Until, ct, usualMonths: input.UsualMonths);
 
     public Task<TyreOverview> SwapTyres(SwapTyresInput input, [Service] TyreService tyres, CancellationToken ct) => tyres.SwapAsync(TyreChanges.Swap(input), ct, input.InstallationId);
 
@@ -478,11 +495,11 @@ internal static class TyreChanges
         tyres.UpdatePlaceAsync(i.Id, new TyrePlaceInput(i.From, i.Until, i.Corner), ct, version);
 
     public static Task<TyreOverview> Add(AddTyreSetInput i, TyreService tyres, CancellationToken ct) =>
-        tyres.AddSetAsync(new NewTyreSet(i.VehicleId, new TyreSetInput(i.Name, i.Season, i.Size, i.Since, i.MadeWeek, i.MadeYear, i.RoughDistance), i.Fitted, i.Day, i.Odometer, i.PairOneFront, i.Replace,
+        tyres.AddSetAsync(new NewTyreSet(i.VehicleId, new TyreSetInput(i.Name, i.Season, i.Size, i.Since, i.MadeWeek, i.MadeYear, i.RoughDistance, i.UsualMonths), i.Fitted, i.Day, i.Odometer, i.PairOneFront, i.Replace,
             i.Price?.ToFee(), i.BoughtOn, i.BoughtEntryId), ct, i.Id, i.InstallationId);
 
     public static Task<TyreOverview> Update(UpdateTyreSetInput i, TyreService tyres, CancellationToken ct, int? version = null) =>
-        tyres.UpdateSetAsync(i.Id, new TyreSetInput(i.Name, i.Season, i.Size, i.Since, i.MadeWeek, i.MadeYear), ct, version);
+        tyres.UpdateSetAsync(i.Id, new TyreSetInput(i.Name, i.Season, i.Size, i.Since, i.MadeWeek, i.MadeYear, UsualMonths: i.UsualMonths), ct, version);
 
     public static Task<TyreOverview> Past(AddPastTyreSwapsInput i, TyreService tyres, CancellationToken ct, bool repeat = false) =>
         tyres.AddPastSwapsAsync(i.VehicleId, [.. i.Swaps.Select(s => new TyrePastSwap(s.Day, s.SetId, s.Odometer, s.InstallationId))], i.Replace, ct, repeat);

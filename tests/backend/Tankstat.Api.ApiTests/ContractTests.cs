@@ -110,9 +110,11 @@ public class ContractTests
     [InlineData("TyreFigures", "distance", "approximate", "measured", "front", "rear", "unknown", "suggestion")]
     [InlineData("TyrePlaceInfo", "place", "distance")]
     [InlineData("TyrePlace", "id", "vehicleId", "tyreId", "installationId", "from", "until", "corner", "version", "updatedAt", "changedAt", "lastChange")]
-    [InlineData("TyreSet", "id", "vehicleId", "name", "season", "size", "since", "madeWeek", "madeYear", "roughDistance", "roughUntil", "retiredOn", "isRetired", "brokenUpOn", "deletedAt", "version", "updatedAt", "changedAt", "changedBy", "lastChange", "createdBy")]
+    [InlineData("TyreSet", "id", "vehicleId", "name", "season", "size", "since", "madeWeek", "madeYear", "roughDistance", "roughUntil", "usualMonths", "retiredOn", "isRetired", "brokenUpOn", "deletedAt", "version", "updatedAt", "changedAt", "changedBy", "lastChange", "createdBy")]
     [InlineData("TyreSetFigures", "distance", "approximate", "measured", "pairOneFront", "pairOneRear", "pairsUnknown", "suggestion")]
     [InlineData("RoughSuggestion", "distance", "until", "measuredBefore")]
+    [InlineData("TyreRoughEstimate", "distance", "from", "notCovered", "leftOutDays", "readings")]
+    [InlineData("DayRange", "from", "until")]
     [InlineData("TyreInstallationInfo", "installation", "distance")]
     [InlineData("TyreInstallation", "id", "vehicleId", "setId", "from", "until", "pairOneFront", "isOpen", "deletedAt", "version", "updatedAt", "changedAt", "lastChange")]
     [InlineData("InstallationDistance", "distance", "approximate", "measure")]
@@ -186,7 +188,9 @@ public class ContractTests
         "retireTyreSet", "unretireTyreSet", "deleteTyreSet", "restoreTyreSet", "swapTyres", "changeTyrePositions", "addPastTyreSwaps", "addTyreInstallation",
         "updateTyreInstallation", "deleteTyreInstallation", "restoreTyreInstallation", "addTyreEntry", "updateTyreEntry", "deleteTyreEntry", "restoreTyreEntry",
         "breakUpTyreSet", "updateTyre", "deleteTyre", "restoreTyre", "addTyrePlace", "updateTyrePlace", "deleteTyrePlace", "restoreTyrePlace", "replaceTyres")]
-    [InlineData("AddTyreSetInput", "vehicleId", "name", "season", "size", "since", "madeWeek", "madeYear", "fitted", "day", "roughDistance", "odometer", "pairOneFront", "replace", "id", "installationId", "price", "boughtOn", "boughtEntryId")]
+    [InlineData("AddTyreSetInput", "vehicleId", "name", "season", "size", "since", "madeWeek", "madeYear", "fitted", "day", "roughDistance", "odometer", "pairOneFront", "replace", "id", "installationId", "price", "boughtOn", "boughtEntryId", "usualMonths")]
+    [InlineData("UpdateTyreSetInput", "id", "name", "season", "size", "since", "madeWeek", "madeYear", "usualMonths")]
+    [InlineData("SetTyreRoughDistanceInput", "id", "distance", "until", "usualMonths")]
     [InlineData("SwapTyresInput", "vehicleId", "setId", "day", "pairOneFront", "replace", "odometer", "note", "installationId", "fee", "corners")]
     [InlineData("TyreCornerInput", "tyreId", "corner")]
     [InlineData("BreakUpTyreSetInput", "setId", "day", "tyres")]

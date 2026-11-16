@@ -4,7 +4,7 @@ import Checkbox from '@mui/material/Checkbox'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Segmented } from '../components/Segmented.tsx'
 import { DialogButtons, DialogCancel, DialogFrame } from '../dialogs/DialogFrame.tsx'
@@ -24,6 +24,8 @@ import { OfflineNote } from '../components/OfflineNote.tsx'
 import { feeOf } from './entries.ts'
 import { FeeFields } from './FeeFields.tsx'
 import { noTyres } from './replay.ts'
+import { RoughEstimate, UsualMonths } from './RoughEstimate.tsx'
+import { isSeasons, monthsOf, ownMonths, SEASON_MONTHS } from './tyreMonths.ts'
 import { keyedOf, type TyreSet, useTyreMutation, useTyreToasts, useTyreWords, wholeInvalid, wholeOrNull } from './tyres.ts'
 
 const SEASONS: TyreSeason[] = ['SUMMER', 'WINTER', 'ALL_SEASON']
@@ -61,7 +63,16 @@ export function TyreSetDialog({
   const [boughtOn, setBoughtOn] = useState<string | null>(null)
   const run = useTyreMutation(vehicleId)
   const words = useTyreWords(unit)
-  const [season, setSeason] = useState<TyreSeason>(edit?.season ?? 'SUMMER')
+  const [season, setSeasonOnly] = useState<TyreSeason>(edit?.season ?? 'SUMMER')
+  // The usual months (#291): the season's until changed (in the estimate, or in Edit set); a set on its season's follows a change of season.
+  const [months, setMonths] = useState<number[]>(() => monthsOf(edit ?? { season: 'SUMMER' }))
+  const setSeason = (next: TyreSeason) => {
+    if (isSeasons(season, months)) setMonths([...SEASON_MONTHS[next]])
+    setSeasonOnly(next)
+  }
+  // The rough figure is the form's own value, so the estimate's Use it can fill it; the field stays editable.
+  const [rough, setRough] = useState('')
+  const roughField = useRef<HTMLDivElement>(null)
   const [where, setWhere] = useState<'car' | 'storage'>(fittedFirst ? 'car' : 'storage')
   const [isNew, setIsNew] = useState(false)
   const [error, setError] = useState<unknown>()
@@ -69,7 +80,9 @@ export function TyreSetDialog({
   const [replace, setReplace] = useState<{ date: string; set: string } | null>(null)
 
   const reset = () => {
-    setSeason(edit?.season ?? 'SUMMER')
+    setSeasonOnly(edit?.season ?? 'SUMMER')
+    setMonths(monthsOf(edit ?? { season: 'SUMMER' }))
+    setRough('')
     setWhere(fittedFirst ? 'car' : 'storage')
     setIsNew(false)
     setPriced(false)
@@ -89,7 +102,7 @@ export function TyreSetDialog({
     try {
       if (edit) {
         const saved = await run(UpdateTyreSetDocument, {
-          input: { id: edit.id, name: text('name'), season, size: text('size') || null, since: text('since'), madeWeek: made?.week ?? null, madeYear: made?.year ?? null },
+          input: { id: edit.id, name: text('name'), season, size: text('size') || null, since: text('since'), madeWeek: made?.week ?? null, madeYear: made?.year ?? null, usualMonths: months },
         })
         setOpen(false)
         notify.saved(saved, t('toast.saved'))
@@ -109,6 +122,9 @@ export function TyreSetDialog({
           fitted: where === 'car',
           day: todayIso(),
           roughDistance: isNew ? 0 : (wholeOrNull(text('rough')) ?? 0),
+          // Months of its own only when they were changed in the estimate (decision 51); else its season's, which the server takes for none.
+          // A new set has no estimate: what was picked in a panel its *These tyres are new* hid is not its own.
+          ...(!isNew && ownMonths(season, months) ? { usualMonths: months } : {}),
           replace: replace !== null,
           ...(text('feeAmount') !== ''
             ? {
@@ -162,6 +178,7 @@ export function TyreSetDialog({
                 </Typography>
                 <Segmented label={t('tyres.fields.season')} value={season} options={SEASONS.map((s) => ({ value: s, label: t(`tyres.seasons.${s}`) }))} onChange={setSeason} />
               </Stack>
+              {edit && <UsualMonths season={season} months={months} onChange={setMonths} />}
               <Field name="size" label={t('tyres.fields.size')}>
                 <FieldInput maxLength={40} autoComplete="off" placeholder="205/55 R16 91V" defaultValue={edit?.size ?? undefined} />
               </Field>
@@ -195,9 +212,24 @@ export function TyreSetDialog({
                       <Field name="since" label={t('tyres.fields.since')} hint={t('tyres.fields.sinceHint')} required>
                         <FieldDate disableFuture value={since} onChange={setSince} />
                       </Field>
-                      <Field name="rough" label={t('tyres.fields.rough', { unit: words.unitShort })} hint={t('tyres.fields.roughHint')} invalid={wholeInvalid(t('forms.numberInvalid'))}>
-                        <FieldInput inputMode="numeric" autoComplete="off" />
-                      </Field>
+                      <div ref={roughField}>
+                        <Field name="rough" label={t('tyres.fields.rough', { unit: words.unitShort })} hint={t('tyres.fields.roughHint')} invalid={wholeInvalid(t('forms.numberInvalid'))}>
+                          <FieldInput inputMode="numeric" autoComplete="off" value={rough} onChange={(e) => setRough(e.target.value)} />
+                        </Field>
+                      </div>
+                      <RoughEstimate
+                        vehicleId={vehicleId}
+                        unit={unit}
+                        season={season}
+                        since={since}
+                        until={null}
+                        months={months}
+                        onMonths={setMonths}
+                        onUse={(distance) => {
+                          setRough(String(distance))
+                          roughField.current?.querySelector('input')?.focus() // the field says what it now holds
+                        }}
+                      />
                     </>
                   )}
                 </>

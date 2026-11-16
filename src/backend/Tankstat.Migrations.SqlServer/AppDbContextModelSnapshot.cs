@@ -1301,6 +1301,9 @@ namespace Tankstat.Migrations.SqlServer
                         .HasColumnType("datetime2")
                         .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc));
 
+                    b.Property<int?>("UsualMonths")
+                        .HasColumnType("int");
+
                     b.Property<Guid>("VehicleId")
                         .HasColumnType("uniqueidentifier");
 

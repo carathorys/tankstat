@@ -1140,7 +1140,10 @@
       "replaceRetiredSet": "A retired set's tyres cannot be replaced: {{set}}.",
       "whyInvalid": "Say why: damaged, worn or too old.",
       "tapToReplace": "Tap the tyres to replace.",
-      "tyreNotYet": "Tyre {{label}} came on {{date}}: it cannot be on the car before."
+      "tyreNotYet": "Tyre {{label}} came on {{date}}: it cannot be on the car before.",
+      "monthsRequired": "Pick at least one month.",
+      "monthInvalid": "A month is a number from 1 to 12.",
+      "estimateSpan": "The day the estimate starts must be before the day it ends, and not in the future."
     }
   },
   "a11y": {
@@ -2949,6 +2952,27 @@
       "toastMany": "Replaced. {{tyres}} are under Retired.",
       "retiredRow": "{{set}} · {{why}}, {{date}}",
       "retiredName": "Tyre {{label}}, {{set}}, retired on {{date}}: {{why}}"
+    },
+    "estimate": {
+      "button": "Estimate from the fuel log",
+      "months": "Usual months",
+      "monthsHint": "When the set is usually on the car. Its season's months unless you change them.",
+      "changed": "Changed from its season's.",
+      "seasons": "Season's months",
+      "result": "≈ {{distance}} in {{months}}, from {{from}} to {{until}}, as the fuel log measured them.",
+      "notCovered": "Not covered, before the fuel log: {{months}}. Add those by hand if you know them.",
+      "leftOut_one": "Left out: {{count}} day another set was on the car.",
+      "leftOut_other": "Left out: {{count}} days another set was on the car.",
+      "use": "Use it",
+      "useAria": "Use the estimate, {{distance}}, as the rough figure",
+      "offline": "Estimating needs the server. It works again once you are back online; the figure can be typed meanwhile.",
+      "noReading": "The car has no reading yet, so nothing can be estimated. Type the figure instead, or log a refuelling first.",
+      "nothing": "The fuel log has no distance in these months yet.",
+      "wholeYear": "the whole year",
+      "theSeasons": "the season's",
+      "today": "today",
+      "needsSince": "Fill in In use since first.",
+      "working": "Working it out…"
     }
   }
 }

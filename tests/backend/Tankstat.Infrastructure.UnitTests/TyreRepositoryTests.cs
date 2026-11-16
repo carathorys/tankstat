@@ -56,6 +56,25 @@ public class TyreRepositoryTests
     }
 
     [Fact]
+    public async Task ASetsUsualMonths_RoundTrip_NoneForItsSeasons()
+    {
+        // #291: twelve bits in a nullable column.
+        await using var db = Database();
+        var car = await Car(db);
+        var onSeason = Set(car);
+        var own = TyreSet.Create(car.OwnerId, car.OwnerId, car.Id, "Continental", TyreSeason.Winter, null, D(2023, 11, 1), null, null, 0, null, usualMonths: [12, 1, 2]);
+        var save = new TyreSave();
+        save.AddedSets.Add(onSeason);
+        save.AddedSets.Add(own);
+        await db.Get<ITyreRepository>().SaveAsync(save, default);
+
+        var book = await db.Get<ITyreRepository>().LoadAsync(car.Id, default);
+
+        Assert.Null(book.Sets.Single(s => s.Id == onSeason.Id).UsualMonths);
+        Assert.Equal([1, 2, 12], book.Sets.Single(s => s.Id == own.Id).UsualMonths!.Value.ToList());
+    }
+
+    [Fact]
     public async Task ASave_RoundTrips_AndTheLinesReading_IsOneOfTheCarsReadings()
     {
         await using var db = Database();

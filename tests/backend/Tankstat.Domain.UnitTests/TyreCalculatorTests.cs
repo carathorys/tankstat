@@ -102,4 +102,77 @@ public class TyreCalculatorTests
         Assert.Equal((20_050L, 12_900L, D(2025, 3, 29)), (suggestion.MeasuredBefore, suggestion.Distance, suggestion.Until));
         Assert.Null(TyreCalculator.SetFigures(Log, set, []).Suggestion);
     }
+
+    // ---- the estimate of a used set's rough figure (#291) ---------------------------------------------------------
+
+    private static readonly TyreMonths SummerMonths = TyreMonths.DefaultFor(TyreSeason.Summer);
+    private static readonly TyreMonths WinterMonths = TyreMonths.DefaultFor(TyreSeason.Winter);
+    private static readonly DateOnly Today = D(2026, 11, 10);
+
+    /// <summary>#286's worked example: the fuel log from June 2024, a reading on each day a counted run starts or ends.</summary>
+    private static readonly IReadOnlyList<ReadingPoint> Example = TyreCalculator.Sorted([
+        new(D(2024, 6, 1), 118_000), new(D(2024, 11, 1), 123_900), // June to October 2024: 5,900
+        new(D(2025, 4, 1), 127_700), new(D(2025, 4, 15), 128_000), new(D(2025, 11, 1), 137_100), // 15 April to October 2025: 9,100 (300 in the 14 days before)
+        new(D(2026, 4, 1), 140_000), new(D(2026, 11, 1), 149_100), new(D(2026, 11, 10), 149_400), // April to October 2026: 9,100
+    ]);
+
+    [Fact]
+    public void TheEstimate_OfTheWorkedExample_CountsTheSetsMonthsTheFuelLogMeasured_LessTheDaysAnotherSetWasOn()
+    {
+        // A summer set in use since March 2023, the winter set on until 14 April 2025, the figure covering up to 10 November 2026.
+        var estimate = TyreCalculator.Estimate(Example, [(D(2024, 11, 5), D(2025, 4, 15))], SummerMonths, D(2023, 3, 25), D(2026, 11, 10), Today);
+
+        Assert.Equal(24_100, estimate.Distance); // 5,900 + 9,100 + 9,100
+        Assert.Equal(D(2024, 6, 1), estimate.From);
+        Assert.Equal([new DayRange(D(2023, 4, 1), D(2023, 10, 31)), new DayRange(D(2024, 4, 1), D(2024, 5, 31))], estimate.NotCovered);
+        Assert.Equal(14, estimate.LeftOutDays);
+        Assert.True(estimate.Readings);
+    }
+
+    [Fact]
+    public void TheEstimate_OfAWinterSet_CountsMonthsThatWrapTheYear()
+    {
+        var log = TyreCalculator.Sorted([new(D(2024, 11, 1), 100_000), new(D(2025, 4, 1), 104_000), new(D(2025, 11, 1), 113_000), new(D(2026, 4, 1), 118_050)]);
+
+        var estimate = TyreCalculator.Estimate(log, [], WinterMonths, D(2024, 11, 1), D(2026, 11, 10), Today);
+
+        Assert.Equal(9_100, estimate.Distance); // 4,000 + 5,050 (rounded to 100), and 0 for November 2026: after the latest reading
+        Assert.Equal(D(2024, 11, 1), estimate.From);
+        Assert.Empty(estimate.NotCovered);
+    }
+
+    [Fact]
+    public void TheEstimate_CountsTheWholeMonthOfInUseSince_AndUpToTheDayItEnds()
+    {
+        var log = TyreCalculator.Sorted([new(D(2026, 6, 1), 10_000), new(D(2026, 6, 20), 11_900), new(D(2026, 7, 11), 14_000), new(D(2026, 8, 1), 16_000)]);
+
+        var estimate = TyreCalculator.Estimate(log, [], SummerMonths, D(2026, 6, 20), D(2026, 7, 11), Today);
+
+        Assert.Equal(4_000, estimate.Distance); // from 1 June (the month's first day), to 11 July, not to the month's end
+        Assert.Equal(D(2026, 6, 1), estimate.From);
+    }
+
+    [Fact]
+    public void TheEstimate_WithoutAReading_SaysSo_AndWithNothingInTheMonths_IsZeroWithWhatIsNotCovered()
+    {
+        var none = TyreCalculator.Estimate([], [], SummerMonths, D(2023, 3, 25), D(2026, 11, 10), Today);
+        Assert.Equal((0L, (DateOnly?)null, false), (none.Distance, none.From, none.Readings));
+        Assert.Empty(none.NotCovered);
+
+        // The fuel log starts after the span: every month of the set's is before it.
+        var late = TyreCalculator.Estimate([new(D(2026, 11, 1), 149_100)], [], SummerMonths, D(2026, 3, 1), D(2026, 11, 10), Today);
+        Assert.Equal((0L, (DateOnly?)null, true), (late.Distance, late.From, late.Readings));
+        Assert.Equal([new DayRange(D(2026, 4, 1), D(2026, 10, 31))], late.NotCovered);
+    }
+
+    [Fact]
+    public void TheEstimate_LeavesOutEveryInstallation_TheSetsOwnAndOneStillOnTheCar()
+    {
+        // The set's own measured installation inside the span (its figure's day never moved), and another set on the car since October.
+        var estimate = TyreCalculator.Estimate(Example, [(D(2026, 4, 1), D(2026, 7, 1)), (D(2026, 10, 1), null)], SummerMonths, D(2026, 4, 1), D(2026, 11, 10), Today);
+
+        Assert.Equal(91 + 31, estimate.LeftOutDays); // April to June, and October (up to today)
+        Assert.Equal(D(2026, 7, 1), estimate.From);
+        Assert.Equal(3_900, estimate.Distance); // July to September, a straight line between 1 April and 1 November: 9,100 × 92 / 214
+    }
 }

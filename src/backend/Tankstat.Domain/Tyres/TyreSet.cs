@@ -52,6 +52,15 @@ public sealed class TyreSet : IOwned, ISoftDeletable, ISynced
     /// <summary>The first day <see cref="RoughDistance"/> does not cover: from it on, the installations measure the distance. Null without a rough figure.</summary>
     public DateOnly? RoughUntil { get; private set; }
 
+    /// <summary>
+    /// The months it is usually on the car (#291), when they differ from its season's; null means the season's (<see cref="Months"/>), so a
+    /// set that never chose its own follows a change of season. What the estimate of the rough figure counts.
+    /// </summary>
+    public TyreMonths? UsualMonths { get; private set; }
+
+    /// <summary>The months it is usually on the car: its own, else its season's.</summary>
+    public TyreMonths Months => UsualMonths ?? TyreMonths.DefaultFor(Season);
+
     /// <summary>The day it was retired; a retired set takes no swap.</summary>
     public DateOnly? RetiredOn { get; private set; }
 
@@ -102,9 +111,10 @@ public sealed class TyreSet : IOwned, ISoftDeletable, ISynced
 
     /// <param name="roughUntil">The first day the rough figure does not cover (the day tracking starts); needed with a rough figure.</param>
     /// <param name="id">The id the client chose beforehand, if any (see <see cref="EntityId"/>).</param>
+    /// <param name="usualMonths">The months it is usually on the car (1 = January); null: its season's.</param>
     public static TyreSet Create(
         Guid ownerId, Guid createdById, Guid vehicleId, string name, TyreSeason season, string? size, DateOnly since, int? madeWeek, int? madeYear,
-        long roughDistance, DateOnly? roughUntil, Guid? id = null)
+        long roughDistance, DateOnly? roughUntil, Guid? id = null, IReadOnlyList<int>? usualMonths = null)
     {
         var set = new TyreSet
         {
@@ -112,22 +122,27 @@ public sealed class TyreSet : IOwned, ISoftDeletable, ISynced
             LastChange = EntityChange.Created, ChangedById = createdById,
         };
         set.Apply(name, season, size, since, madeWeek, madeYear);
+        set.ApplyMonths(usualMonths);
         set.ApplyRough(roughDistance, roughUntil);
         return set;
     }
 
-    public void Update(string name, TyreSeason season, string? size, DateOnly since, int? madeWeek, int? madeYear, Guid? by = null)
+    /// <param name="usualMonths">The months it is usually on the car; null (a client from before them) leaves them as they are.</param>
+    public void Update(string name, TyreSeason season, string? size, DateOnly since, int? madeWeek, int? madeYear, Guid? by = null, IReadOnlyList<int>? usualMonths = null)
     {
         RequireLive();
         Apply(name, season, size, since, madeWeek, madeYear);
+        if (usualMonths is not null) ApplyMonths(usualMonths);
         Bump(EntityChange.Edited, by);
     }
 
     /// <summary>Sets the rough figure and the first day it does not cover (the caller picks that day: never in the future, by default before the set's first installation).</summary>
-    public void SetRough(long roughDistance, DateOnly? roughUntil, Guid? by = null)
+    /// <param name="usualMonths">The months the figure was estimated over, kept with the set (#291, the owner's decision 55); null leaves them as they are.</param>
+    public void SetRough(long roughDistance, DateOnly? roughUntil, Guid? by = null, IReadOnlyList<int>? usualMonths = null)
     {
         RequireLive();
         ApplyRough(roughDistance, roughUntil ?? RoughUntil);
+        if (usualMonths is not null) ApplyMonths(usualMonths);
         Bump(EntityChange.Edited, by);
     }
 
@@ -194,6 +209,18 @@ public sealed class TyreSet : IOwned, ISoftDeletable, ISynced
         Size = trimmedSize;
         Since = since;
         (MadeWeek, MadeYear) = (madeWeek, madeYear);
+    }
+
+    /// <summary>Months of its own only when they differ from its season's: the season's are kept as none, so they follow the season.</summary>
+    private void ApplyMonths(IReadOnlyList<int>? usualMonths)
+    {
+        if (usualMonths is null)
+        {
+            UsualMonths = null;
+            return;
+        }
+        var months = TyreMonths.Of(usualMonths);
+        UsualMonths = months == TyreMonths.DefaultFor(Season) ? null : months;
     }
 
     private void ApplyRough(long roughDistance, DateOnly? roughUntil)

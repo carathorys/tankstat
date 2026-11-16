@@ -1140,7 +1140,10 @@
       "replaceRetiredSet": "Kivont szett gumijai nem pótolhatók: {{set}}.",
       "whyInvalid": "Add meg, miért: sérült, kopott vagy túl régi.",
       "tapToReplace": "Koppints a pótlandó gumikra.",
-      "tyreNotYet": "A(z) {{label}} gumi {{date}} napon érkezett: előtte nem lehetett az autón."
+      "tyreNotYet": "A(z) {{label}} gumi {{date}} napon érkezett: előtte nem lehetett az autón.",
+      "monthsRequired": "Válassz legalább egy hónapot.",
+      "monthInvalid": "A hónap 1 és 12 közötti szám.",
+      "estimateSpan": "A becslés kezdőnapja a zárónapja előtt legyen, és ne a jövőben."
     }
   },
   "a11y": {
@@ -2949,6 +2952,27 @@
       "toastMany": "Pótolva. A(z) {{tyres}} a Kivonva részben vannak.",
       "retiredRow": "{{set}} · {{why}}, {{date}}",
       "retiredName": "{{label}} gumi, {{set}}, kivonva: {{date}}, {{why}}"
+    },
+    "estimate": {
+      "button": "Becslés a tankolási naplóból",
+      "months": "Szokásos hónapok",
+      "monthsHint": "Amikor a szett általában az autón van. Az évszakának hónapjai, hacsak meg nem változtatod.",
+      "changed": "Az évszakáétól eltér.",
+      "seasons": "Az évszak hónapjai",
+      "result": "≈ {{distance}} a következő hónapokban: {{months}}, {{from}} és {{until}} között, ahogy a tankolási napló mérte.",
+      "notCovered": "Nincs benne, a tankolási napló előtti: {{months}}. Ha tudod, add hozzá kézzel.",
+      "leftOut_one": "Kimaradt: {{count}} nap, amikor másik szett volt az autón.",
+      "leftOut_other": "Kimaradt: {{count}} nap, amikor másik szett volt az autón.",
+      "use": "Ezt használom",
+      "useAria": "A becslés, {{distance}}, legyen a hozzávetőleges táv",
+      "offline": "A becsléshez kell a szerver. Ha újra elérhető, ismét működik; addig a táv beírható.",
+      "noReading": "Az autónak még nincs kilométeróra-állása, így nincs mit becsülni. Írd be a távot, vagy előbb rögzíts egy tankolást.",
+      "nothing": "A tankolási naplóban még nincs táv ezekben a hónapokban.",
+      "wholeYear": "az egész év",
+      "theSeasons": "az évszaké",
+      "today": "ma",
+      "needsSince": "Előbb töltsd ki a Használatban ettől mezőt.",
+      "working": "Számolás…"
     }
   }
 }

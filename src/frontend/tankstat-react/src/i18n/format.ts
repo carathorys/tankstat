@@ -116,6 +116,15 @@ export function useFormat() {
         if (index < 0) return day
         return new Intl.DateTimeFormat(language, { weekday: width, timeZone: 'UTC' }).format(new Date(Date.UTC(2024, 0, 1 + index))) // 1 January 2024 was a Monday
       },
+      /** A month of the year by its name (1 = January), as the language writes it standing alone. */
+      month: (month: number, width: 'long' | 'short' = 'long') => new Intl.DateTimeFormat(language, { month: width, timeZone: 'UTC' }).format(new Date(Date.UTC(2024, month - 1, 15))),
+      /** A day's month with its year ("June 2024"). */
+      monthOfYear: (isoDate: string) => new Intl.DateTimeFormat(language, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${isoDate}T00:00:00Z`)),
+      /** The months two days span ("April – October 2023"); one month when both are in it. */
+      monthsBetween: (fromIso: string, untilIso: string) => {
+        const months = new Intl.DateTimeFormat(language, { month: 'long', year: 'numeric', timeZone: 'UTC' })
+        return months.formatRange(new Date(`${fromIso}T00:00:00Z`), new Date(`${untilIso}T00:00:00Z`))
+      },
       /** A size on disk in the unit that suits it (1.2 GB, 340 kB), counted in thousands like the browser's storage figures. */
       bytes: (value: number) => {
         const units = ['byte', 'kilobyte', 'megabyte', 'gigabyte', 'terabyte'] as const

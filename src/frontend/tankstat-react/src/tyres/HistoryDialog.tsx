@@ -3,7 +3,7 @@ import Button from '@mui/material/Button'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BreakUpDialog } from './BreakUpDialog.tsx'
 import { ReplaceDialog } from './ReplaceDialog.tsx'
@@ -32,6 +32,8 @@ import { TyreSetDialog } from './TyreSetDialog.tsx'
 import { TrashEntryDialog } from './EntryDialog.tsx'
 import { OfflineNote } from '../components/OfflineNote.tsx'
 import { todayIso } from '../forms/dates.ts'
+import { RoughEstimate } from './RoughEstimate.tsx'
+import { monthsOf } from './tyreMonths.ts'
 import { type Tyres, type TyreSetInfo, type TyreInstallationInfo, useTyreMutation, useTyreToasts, useTyreWords, wholeInvalid, wholeOrNull } from './tyres.ts'
 
 /**
@@ -363,6 +365,12 @@ export function RoughDialog({
   const [busy, setBusy] = useState(false)
   const suggestion = info.figures.suggestion
   const since = suggestion?.until ?? measuredFrom
+  // The first day the figure will not cover, as the save sends it: the estimate (#291) counts up to that very day (null: today, which it says).
+  const until = suggestion?.until ?? info.set.roughUntil ?? measuredFrom ?? null
+  const start = String(suggestion?.distance ?? info.set.roughDistance)
+  const [rough, setRough] = useState(start)
+  const [months, setMonths] = useState<number[]>(() => monthsOf(info.set))
+  const roughField = useRef<HTMLDivElement>(null)
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -371,7 +379,8 @@ export function RoughDialog({
     setError(undefined)
     try {
       const saved = await run(SetTyreRoughDistanceDocument, {
-        input: { id: info.set.id, distance: wholeOrNull(String(form.get('rough') ?? '')) ?? 0, until: suggestion?.until ?? (info.set.roughUntil ? null : (measuredFrom ?? todayIso())) }, // the device's day: kept, it is sent later
+        // The device's day: kept, it is sent later. The months changed here are kept with the set (#291, decision 55).
+        input: { id: info.set.id, distance: wholeOrNull(String(form.get('rough') ?? '')) ?? 0, until: suggestion?.until ?? (info.set.roughUntil ? null : (measuredFrom ?? todayIso())), usualMonths: months },
       })
       setOpen(false)
       notify.saved(saved, t('toast.saved'))
@@ -384,7 +393,15 @@ export function RoughDialog({
 
   return (
     <>
-      <DialogTrigger trigger={trigger} open={open} onOpen={() => setOpen(true)} />
+      <DialogTrigger
+        trigger={trigger}
+        open={open}
+        onOpen={() => {
+          setRough(start) // from the set as it is now
+          setMonths(monthsOf(info.set))
+          setOpen(true)
+        }}
+      />
       <DialogFrame open={open} onClose={() => setOpen(false)} onClosed={() => setError(undefined)} busy={busy} maxWidth={460} title={t('tyres.dialogs.roughTitle')} description={info.set.name}>
         {open && (
           <Form onSubmit={submit} refusal={error}>
@@ -393,14 +410,30 @@ export function RoughDialog({
               <Typography variant="body2">
                 {since ? t('tyres.dialogs.roughText', { date: format.date(since), measured: words.distance(info.figures.measured) }) : t('tyres.dialogs.roughTextAll')}
               </Typography>
-              <Field
-                name="rough"
-                label={t('tyres.fields.roughBefore', { unit: words.unitShort })}
-                hint={suggestion ? t('tyres.dialogs.roughSuggestion', { old: words.distance(info.set.roughDistance), value: words.distance(suggestion.distance) }) : undefined}
-                invalid={wholeInvalid(t('forms.numberInvalid'))}
-              >
-                <FieldInput inputMode="numeric" autoComplete="off" defaultValue={String(suggestion?.distance ?? info.set.roughDistance)} />
-              </Field>
+              <div ref={roughField}>
+                <Field
+                  name="rough"
+                  label={t('tyres.fields.roughBefore', { unit: words.unitShort })}
+                  hint={suggestion ? t('tyres.dialogs.roughSuggestion', { old: words.distance(info.set.roughDistance), value: words.distance(suggestion.distance) }) : undefined}
+                  invalid={wholeInvalid(t('forms.numberInvalid'))}
+                >
+                  <FieldInput inputMode="numeric" autoComplete="off" value={rough} onChange={(e) => setRough(e.target.value)} />
+                </Field>
+              </div>
+              {/* The estimate (#291): a second offer beside the suggestion (decision 54), over the span the save stands for. */}
+              <RoughEstimate
+                vehicleId={vehicleId}
+                unit={unit}
+                season={info.set.season}
+                since={info.set.since}
+                until={until}
+                months={months}
+                onMonths={setMonths}
+                onUse={(distance) => {
+                  setRough(String(distance))
+                  roughField.current?.querySelector('input')?.focus()
+                }}
+              />
               {error !== undefined && <ErrorMessage error={error} />}
               <DialogButtons>
                 <DialogCancel />

@@ -1,3 +1,5 @@
+using Tankstat.Domain.Tyres;
+using Tankstat.Application.Tyres;
 using System.IO.Compression;
 using Tankstat.Application.Backups;
 using Tankstat.Application.Expenses;
@@ -39,6 +41,10 @@ internal static class BackupSeed
         await db.Get<IRefuelingRepository>().AddAsync(refueling, default);
         var expense = Expense.Create(user.Id, user.Id, vehicle.Id, Day, "Tyres", null, Cost.Create(user.Id, vehicle.Id, Day, 100, "EUR"), OdometerReading.Create(user.Id, vehicle.Id, Day, 1500));
         await db.Get<IExpenseRepository>().AddAsync(expense, default);
+        // A tyre set with usual months of its own (#291): the one column of the model kept as bits behind a converter.
+        var tyres = new TyreSave();
+        tyres.AddedSets.Add(TyreSet.Create(user.Id, user.Id, vehicle.Id, "Zz Winter", TyreSeason.Winter, null, Day, null, null, 0, null, usualMonths: [12, 1, 2]));
+        await db.Get<ITyreRepository>().SaveAsync(tyres, default);
 
         var images = db.Get<IImageRepository>();
         var picture = StoredImage.Create(Guid.NewGuid(), "image/webp", 3, Now, ImageFolders.VehiclePicture(vehicle.Id));

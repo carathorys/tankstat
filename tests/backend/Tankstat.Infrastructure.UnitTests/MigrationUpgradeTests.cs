@@ -109,6 +109,9 @@ public sealed class MigrationUpgradeTests : IAsyncDisposable
         await using var after = await Db();
         var installation = await after.TyreInstallations.IgnoreQueryFilters().SingleAsync(i => i.Id == stretch);
         Assert.Equal((set, new DateOnly(2026, 3, 28), (bool?)true), (installation.SetId, installation.From, installation.PairOneFront));
+        // A set from before the usual months (#291) has none of its own: its season's.
+        var old = await after.TyreSets.SingleAsync(s => s.Id == set);
+        Assert.Equal((null, Tankstat.Domain.Tyres.TyreMonths.DefaultFor(Tankstat.Domain.Tyres.TyreSeason.Summer)), (old.UsualMonths, old.Months));
         Assert.Equal(Tankstat.Domain.Sync.OfflineEntityType.TyreInstallation, (await after.Tombstones.SingleAsync(t => t.EntityId == gone)).EntityType);
         var update = await after.SyncChanges.SingleAsync(c => c.Id == parked);
         Assert.Equal((Tankstat.Domain.Sync.SyncChangeKind.UpdateTyreInstallation, "tyres.installationNotFound"), (update.Kind, update.ReasonKey));

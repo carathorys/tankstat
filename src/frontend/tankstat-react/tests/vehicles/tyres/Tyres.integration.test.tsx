@@ -288,7 +288,7 @@ it('suggests a new rough figure once the history reaches back, and saves it with
   expect(within(dialog).getByText(/It was 32,900 km and stood for more time\. 12,900 km keeps the total as it was\./)).toBeInTheDocument()
   await ui.click(within(dialog).getByRole('button', { name: 'Save' }))
 
-  await waitFor(() => expect(state.calls.SetTyreRoughDistance).toEqual([{ input: { id: 's1', distance: 12_900, until: '2025-03-29' } }]))
+  await waitFor(() => expect(state.calls.SetTyreRoughDistance).toEqual([{ input: { id: 's1', distance: 12_900, until: '2025-03-29', usualMonths: [4, 5, 6, 7, 8, 9, 10] } }])) // its months as they are (#291)
 })
 
 it('adds a line to the tyre log with the ids it chose, for the set on the car by default', async () => {
@@ -383,7 +383,7 @@ it('corrects a set’s own details from its history, without where it is or what
 
   await waitFor(() =>
     expect(state.calls.UpdateTyreSet).toEqual([
-      { input: { id: 's2', name: 'Continental TS 870', season: 'ALL_SEASON', size: '205/55 R16', since: '2023-03-25', madeWeek: 5, madeYear: 2023 } },
+      { input: { id: 's2', name: 'Continental TS 870', season: 'ALL_SEASON', size: '205/55 R16', since: '2023-03-25', madeWeek: 5, madeYear: 2023, usualMonths: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] } }, // on its season's months, it follows the new season (#291)
     ]),
   )
 })

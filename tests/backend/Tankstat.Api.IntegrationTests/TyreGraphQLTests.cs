@@ -624,4 +624,60 @@ public class TyreGraphQLTests(ApiFixture api)
         var made = Assert.Single(await Lines(vehicle), e => e.GetProperty("id").GetString() == line);
         Assert.Equal((148_300L, JsonValueKind.Null), (made.GetProperty("odometer").GetInt64(), made.GetProperty("expenseId").ValueKind));
     }
+
+    [Fact]
+    public async Task ASetsUsualMonths_ComeWithTheAdd_TheEditAndTheRoughFigure_ItsSeasonsAnsweredAsNone()
+    {
+        // #291: `usualMonths` on the three inputs and on the set.
+        var vehicle = await AddVehicle();
+        var id = Guid.NewGuid();
+        int[]? Months(JsonElement tyres) => SetNamed(tyres, "Michelin").GetProperty("set").GetProperty("usualMonths") is { ValueKind: JsonValueKind.Array } list
+            ? [.. list.EnumerateArray().Select(m => m.GetInt32())] : null;
+        const string selection = "sets { set { name usualMonths } }";
+
+        var added = await Mutate("addTyreSet", "AddTyreSetInput", new
+        {
+            vehicleId = vehicle, name = "Michelin", season = "SUMMER", since = "2023-03-25", fitted = false, day = "2026-03-28", id, usualMonths = new[] { 10, 3, 4, 5, 6, 7, 8, 9 },
+        }, selection);
+        Assert.Equal([3, 4, 5, 6, 7, 8, 9, 10], Months(added)!);
+
+        var edited = await Mutate("updateTyreSet", "UpdateTyreSetInput", new { id, name = "Michelin", season = "SUMMER", since = "2023-03-25", usualMonths = new[] { 4, 5, 6, 7, 8, 9, 10 } }, selection);
+        Assert.Null(Months(edited)); // its season's: none of its own
+
+        var rough = await Mutate("setTyreRoughDistance", "SetTyreRoughDistanceInput", new { id, distance = 24_000, until = "2026-03-28", usualMonths = new[] { 5, 6, 7 } }, selection);
+        Assert.Equal([5, 6, 7], Months(rough)!);
+        var kept = await Mutate("setTyreRoughDistance", "SetTyreRoughDistanceInput", new { id, distance = 25_000 }, selection);
+        Assert.Equal([5, 6, 7], Months(kept)!); // left out: kept
+
+        var refused = await Send("mutation($i: UpdateTyreSetInput!) { updateTyreSet(input: $i) { vehicleId } }", new { i = new { id, name = "Michelin", season = "SUMMER", since = "2023-03-25", usualMonths = Array.Empty<int>() } });
+        Assert.Equal("tyres.monthsRequired", refused.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
+    }
+
+    [Fact]
+    public async Task TheRoughEstimate_AnswersFromTheFuelLog_SaysWhatIsNotCovered_AndAnUnseenVehicleIsNotFound()
+    {
+        // #291: `tyreRoughEstimate`.
+        var vehicle = await AddVehicle();
+        foreach (var (date, odometer) in new[] { ("2026-06-01", 10_000), ("2026-08-01", 14_000) })
+            Assert.False((await Send("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }",
+                new { i = new { vehicleId = vehicle, date, volume = 40, totalCost = 60, currency = "EUR", odometer, isFullTank = true } })).TryGetProperty("errors", out var e), e.ToString());
+        const string query = "query($v: UUID!, $s: LocalDate!, $u: LocalDate!, $m: [Int!]!) { tyreRoughEstimate(vehicleId: $v, since: $s, until: $u, months: $m) { distance from notCovered { from until } leftOutDays readings } }";
+
+        var body = await Send(query, new { v = vehicle, s = "2026-05-10", u = "2026-08-01", m = new[] { 5, 6, 7 } });
+
+        Assert.False(body.TryGetProperty("errors", out var errors), errors.ToString());
+        var estimate = body.GetProperty("data").GetProperty("tyreRoughEstimate");
+        Assert.Equal((4_000L, "2026-06-01", 0, true), (estimate.GetProperty("distance").GetInt64(), estimate.GetProperty("from").GetString(), estimate.GetProperty("leftOutDays").GetInt32(), estimate.GetProperty("readings").GetBoolean()));
+        var gap = Assert.Single(estimate.GetProperty("notCovered").EnumerateArray());
+        Assert.Equal(("2026-05-01", "2026-05-31"), (gap.GetProperty("from").GetString(), gap.GetProperty("until").GetString()));
+
+        string? Key(JsonElement answer) => answer.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString();
+        // The span starts on the first of in use since's month (decision 48): a later day of the same month is a span, a later month is not.
+        var sameMonth = await Send(query, new { v = vehicle, s = "2026-08-02", u = "2026-08-01", m = new[] { 5 } });
+        Assert.False(sameMonth.TryGetProperty("errors", out var sameErrors), sameErrors.ToString());
+        Assert.Equal("tyres.estimateSpan", Key(await Send(query, new { v = vehicle, s = "2026-09-01", u = "2026-08-01", m = new[] { 5 } })));
+        Assert.Equal("tyres.monthInvalid", Key(await Send(query, new { v = vehicle, s = "2026-05-10", u = "2026-08-01", m = new[] { 13 } })));
+        var unseen = await Send(query, new { v = Guid.NewGuid(), s = "2026-05-10", u = "2026-08-01", m = new[] { 5 } });
+        Assert.Equal("NOT_FOUND", unseen.GetProperty("errors")[0].GetProperty("extensions").GetProperty("code").GetString());
+    }
 }

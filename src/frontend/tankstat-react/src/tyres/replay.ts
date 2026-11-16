@@ -1,3 +1,4 @@
+import { ownMonths } from './tyreMonths.ts'
 import { expenseTyreOf as tyreDetailsOf, type Change } from '../offline/changes.ts'
 import { isTyreAction } from '../offline/tyreChanges.ts'
 import { checked, moveSwap, TyreRuleError, type SetState, type InstallationState } from './tyreHistory.ts'
@@ -297,6 +298,17 @@ function addLines(m: Model, c: Change, input: Record<string, unknown>, moneyFor:
   m.entries = [...m.entries, ...added.map((e) => entryOf(lineOf(e), e, money))]
 }
 
+/**
+ * The usual months a change gives a set (#291), as the server's `TyreSet.ApplyMonths`: left out, they stay as they were (a new set's: its
+ * season's, none of its own); given, the set keeps them only when they differ from its season's; none or no month at all is refused.
+ */
+function monthsGiven(season: SetInfo['set']['season'], given: unknown, kept: number[] | null): number[] | null {
+  if (!Array.isArray(given)) return kept
+  if (given.some((m) => typeof m !== 'number' || !Number.isInteger(m) || m < 1 || m > 12)) throw new TyreRuleError('tyres.monthInvalid')
+  if (given.length === 0) throw new TyreRuleError('tyres.monthsRequired')
+  return ownMonths(season, given as number[])
+}
+
 /** Applies one tyre change to the model; a rule it breaks is thrown (`TyreRuleError`), as the server would refuse it. */
 function apply(m: Model, c: Change, vehicleId: string) {
   if (c.entity === 'expenses') return expenseEdited(m, c)
@@ -315,7 +327,7 @@ function apply(m: Model, c: Change, vehicleId: string) {
         set: named<SetInfo['set']>('TyreSet', {
           id: str(input.id), vehicleId, name: str(input.name), season: input.season as SetInfo['set']['season'], size: (input.size as string | null) ?? null,
           since: str(input.since), madeWeek: num(input.madeWeek), madeYear: num(input.madeYear), roughDistance: rough, roughUntil: rough > 0 ? day(input.day) : null, retiredOn: null, isRetired: false,
-          brokenUpOn: null, version: 0,
+          brokenUpOn: null, version: 0, usualMonths: monthsGiven(input.season as SetInfo['set']['season'], input.usualMonths, null),
         }),
         figures: named<SetInfo['figures']>('TyreSetFigures', { distance: rough, approximate: rough > 0, measured: 0, pairOneFront: 0, pairOneRear: 0, pairsUnknown: 0, suggestion: null }),
         spent: [],
@@ -337,14 +349,21 @@ function apply(m: Model, c: Change, vehicleId: string) {
     }
     case 'updateTyreSet': {
       const s = setOf(m, input.id)
-      s.set = { ...s.set, name: str(input.name), season: input.season as SetInfo['set']['season'], size: (input.size as string | null) ?? null, since: str(input.since), madeWeek: num(input.madeWeek), madeYear: num(input.madeYear) }
+      const season = input.season as SetInfo['set']['season']
+      s.set = {
+        ...s.set, name: str(input.name), season, size: (input.size as string | null) ?? null, since: str(input.since), madeWeek: num(input.madeWeek), madeYear: num(input.madeYear),
+        usualMonths: monthsGiven(season, input.usualMonths, s.set.usualMonths ?? null),
+      }
       return
     }
     case 'setTyreRoughDistance': {
       const s = setOf(m, input.id)
       // Without a day it keeps the one it had, else the set's first installation (the server's `SetRoughAsync`; `RoughDialog` sends a day then).
       const first = m.installations.filter((x) => x.setId === s.set.id).map((x) => x.from).sort()[0]
-      s.set = { ...s.set, roughDistance: num(input.distance) ?? 0, roughUntil: day(input.until) ?? s.set.roughUntil ?? first ?? null }
+      s.set = {
+        ...s.set, roughDistance: num(input.distance) ?? 0, roughUntil: day(input.until) ?? s.set.roughUntil ?? first ?? null,
+        usualMonths: monthsGiven(s.set.season, input.usualMonths, s.set.usualMonths ?? null),
+      }
       return
     }
     case 'retireTyreSet': {
