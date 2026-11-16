@@ -140,7 +140,7 @@ export function ParkedActions({ parked, change, label, onResolved }: { parked: P
       await resolve({ variables: { input: { id: parked.id, ...input } }, refetchQueries: ['ParkedChanges'], awaitRefetchQueries: true })
       // Decided: what was made on it here (when it was an add, or a tyre change that created sets and installations) may go to the server now.
       void (async () => {
-        for (const id of new Set([parked.targetId ?? '', ...createdBy(change)])) await unblockAdd(id) // one at a time: each rewrites the list
+        for (const id of new Set([parked.id, parked.targetId ?? '', ...createdBy(change)])) await unblockAdd(id) // one at a time: each rewrites the list
       })().catch(() => undefined)
       void client.refetchQueries({ include: 'active' }).catch(() => undefined)
       onResolved(t(input.action === 'APPLY' ? 'sync.appliedNow' : 'sync.discarded'))

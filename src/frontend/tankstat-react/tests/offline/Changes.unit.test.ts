@@ -343,9 +343,27 @@ describe("an expense's tyre details, then its trash (#330)", () => {
     expect(retitled.map((c) => [c.entity, c.action])).toEqual([['expenses', 'update'], ['tyres', 'updateTyreEntry'], ['expenses', 'trash']])
     expect(retitled[0]).toMatchObject({ id: list[0].id, seq: list[0].seq, expectedVersion: 2, input: { title: 'Flat', amount: 30, tyre: { lineId: 'l8' } } })
 
-    // Its tyre details switched off: the line's change goes with them, the trash stays.
+    // Its tyre details switched off: the line's change goes with them, and the edit and its trash are one ordinary trash again.
     const off = collapse(list, change('update', 'e1', { entity: 'expenses', input: { id: 'e1', title: 'Puncture', amount: 25, tyre: null } }))
-    expect(off.map((c) => [c.entity, c.action])).toEqual([['expenses', 'update'], ['expenses', 'trash']])
+    expect(off.map((c) => [c.entity, c.action, c.expectedVersion])).toEqual([['expenses', 'trash', 2]])
+  })
+
+  it('the trash names the edit it follows; the edit taken back, or edited to make no lines, leaves an ordinary trash from its version', () => {
+    const list = fold(giving, change('trash', 'e1', { entity: 'expenses', expectedVersion: 2 }))
+    expect(list[1]).toMatchObject({ action: 'trash', after: giving.id, expectedVersion: null })
+
+    // Remove of the waiting edit on the Sync page: the trash checks the version again, and waits for nothing.
+    const [alone, ...none] = discard(list, giving.id)
+    expect(none).toEqual([])
+    expect(alone).toMatchObject({ action: 'trash', expectedVersion: 2 })
+    expect(alone).not.toHaveProperty('after')
+    expect(alone.input).toBeUndefined() // the edit was taken back: nothing of it comes back with a restore
+
+    // Its Edit switching the tyre details off: an ordinary edit then trash, one trash carrying the edit.
+    const [folded, ...rest] = collapse(list, change('update', 'e1', { entity: 'expenses', input: { id: 'e1', title: 'Puncture', amount: 25, tyre: null } }))
+    expect(rest).toEqual([])
+    expect(folded).toMatchObject({ action: 'trash', expectedVersion: 2, input: { title: 'Puncture', tyre: null } })
+    expect(folded).not.toHaveProperty('after')
   })
 
   it('an edit that makes no lines still folds into the trash, as before', () => {

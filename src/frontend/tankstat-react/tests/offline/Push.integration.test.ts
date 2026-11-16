@@ -304,6 +304,31 @@ it("an edit of a parked visit's expense waits with the visit, and goes once the 
   expect(sync.requests.at(-1)!.map((c) => c.id)).toEqual(['edit'])
 })
 
+it("the trash that follows an expense's edit making tyre lines waits for it: parked, the edit holds the trash back until it is decided (#330)", async () => {
+  const sync = fakeSync((c) => (c.id === 'give' ? 'sync.versionMismatch' : null))
+  await keep({ id: 'give', entity: 'expenses', action: 'update', vehicleId: 'v1', targetId: 'e1', expectedVersion: 2, input: { id: 'e1', title: 'Puncture', amount: 25, tyre: { kind: 'PUNCTURE_REPAIRED', setId: 's1', lineId: 'l8' } } })
+  await keep({ id: 'bin', entity: 'expenses', action: 'trash', vehicleId: 'v1', targetId: 'e1', expectedVersion: 2 })
+  expect(outbox.changes.map((c) => c.id)).toEqual(['give', 'bin'])
+
+  await engine().run()
+  // Someone changed the expense meanwhile: the edit is parked, and the trash (which checks no version) must not go over their change.
+  expect(sync.requests.flat().map((c) => c.id)).toEqual(['give'])
+  expect(outbox.changes.map((c) => c.id)).toEqual(['bin'])
+
+  await unblockAdd('give') // the edit decided on the Sync page
+  await engine().run()
+  expect(sync.requests.at(-1)!.map((c) => c.id)).toEqual(['bin'])
+})
+
+it("the trash goes in a request after its edit's, never with it", async () => {
+  const sync = fakeSync()
+  await keep({ id: 'give', entity: 'expenses', action: 'update', vehicleId: 'v1', targetId: 'e1', expectedVersion: 2, input: { id: 'e1', title: 'Puncture', amount: 25, tyre: { kind: 'PUNCTURE_REPAIRED', setId: 's1', lineId: 'l8' } } })
+  await keep({ id: 'bin', entity: 'expenses', action: 'trash', vehicleId: 'v1', targetId: 'e1', expectedVersion: 2 })
+  await engine().run()
+  expect(sync.requests.map((r) => r.map((c) => c.id))).toEqual([['give'], ['bin']])
+  expect(outbox.changes).toEqual([])
+})
+
 it('once a parked add is applied or discarded on the Sync page, what was made on it goes with the next sync', async () => {
   const sync = fakeSync((c) => (c.id === 'golf' ? 'vehicle.nameRequired' : null))
   await keep({ id: 'golf', entity: 'vehicles', action: 'add', vehicleId: 'golf', targetId: 'golf', input: { id: 'golf', name: '', fuelType: 'PETROL' } })

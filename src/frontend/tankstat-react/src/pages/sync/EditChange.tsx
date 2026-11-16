@@ -114,7 +114,7 @@ export function EditChange({
     await outbox.dropDependents(change, { ...change, input }).catch(() => undefined)
     // Applied: what was made on it here (an add, a visit's expense and lines, #330) may go to the server now, as after Apply anyway.
     void (async () => {
-      for (const id of new Set([parked.targetId ?? '', ...createdBy(change), ...createdBy({ ...change, input })])) await unblockAdd(id) // one at a time: each rewrites the list
+      for (const id of new Set([parked.id, parked.targetId ?? '', ...createdBy(change), ...createdBy({ ...change, input })])) await unblockAdd(id) // one at a time: each rewrites the list
     })().catch(() => undefined)
     void client.refetchQueries({ include: 'active' }).catch(() => undefined)
     onDone(t('sync.appliedNow'))
