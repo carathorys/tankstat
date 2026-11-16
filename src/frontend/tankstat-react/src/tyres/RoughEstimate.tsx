@@ -105,6 +105,8 @@ export function RoughEstimate({
     fetchPolicy: 'no-cache', // worked out afresh every time: the readings change under it
   })
   const estimate = asked && variables && settled === key ? data?.tyreRoughEstimate : undefined
+  // Something to offer: a run that counted nothing (the fuel log ends before the months, or stood still in them) is "nothing in the months".
+  const counted = !!estimate?.readings && !!estimate.from && estimate.distance > 0
   const why = !reachable ? t('tyres.estimate.offline') : !valid ? t('tyres.estimate.needsSince') : undefined
 
   const monthsText = isSeasons(season, months)
@@ -144,11 +146,11 @@ export function RoughEstimate({
             ) : (
               <Stack sx={{ gap: 0.5 }}>
                 <Typography variant="body2">
-                  {estimate.from
+                  {counted
                     ? t('tyres.estimate.result', {
                         distance: words.distance(estimate.distance),
                         months: monthsText,
-                        from: format.monthOfYear(estimate.from),
+                        from: format.monthOfYear(estimate.from!),
                         until: until ? format.date(until) : t('tyres.estimate.today'),
                       })
                     : t('tyres.estimate.nothing')}
@@ -166,7 +168,7 @@ export function RoughEstimate({
               </Stack>
             )}
           </div>
-          {estimate?.readings && estimate.from && (
+          {estimate && counted && (
             <Button
               type="button"
               variant="soft"

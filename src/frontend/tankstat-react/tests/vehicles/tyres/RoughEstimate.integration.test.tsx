@@ -119,6 +119,18 @@ it('says so when the car has no reading yet, and when the fuel log has nothing i
   expect(within(dialog).queryByRole('button', { name: /^Use the estimate/ })).not.toBeInTheDocument()
 })
 
+it('a month the fuel log reaches but measured nothing in is nothing to offer either', async () => {
+  // The latest reading is before the set's months: the server counts a run of 0 from its first day.
+  const { ui } = setup([tyreSummer, tyreWinter], () => ({ distance: 0, from: '2026-07-01', notCovered: [], leftOutDays: 0, readings: true }))
+  const dialog = await addForm(ui)
+  await typeDate(ui, await findDateField(/In use since/, dialog), '2026-07-10')
+  await ui.click(within(dialog).getByRole('button', { name: 'Estimate from the fuel log' }))
+
+  expect(await within(dialog).findByText('The fuel log has no distance in these months yet.')).toBeInTheDocument()
+  expect(within(dialog).queryByText(/^≈ 0 km/)).not.toBeInTheDocument()
+  expect(within(dialog).queryByRole('button', { name: /^Use the estimate/ })).not.toBeInTheDocument()
+})
+
 it('needs the server: offline the button is off and says why, the figure can still be typed', async () => {
   const { ui, asked } = setup([tyreSummer, tyreWinter])
   const dialog = await addForm(ui)
