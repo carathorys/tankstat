@@ -138,6 +138,44 @@ it('a period’s edit says which set it was: another set is sent with the pairs 
   expect(state.calls.UpdateTyreInstallation[1].input).not.toHaveProperty('setId')
 })
 
+it('a period moved to another set is drawn in that set’s row, and its bar there takes the focus', async () => {
+  const { ui, state } = setup([tyreSummer, tyreWinter, spare])
+  // The server's answer has the period on the spare set (the fake answers its sets as they are: this moves them on first).
+  server.use(graphql.mutation('UpdateTyreInstallation', () => void (state.sets = [tyreSummer, { ...tyreWinter, installations: [] }, { ...spare, installations: [{ ...tyreWinter.installations[0], setId: 's3' }] }])))
+  const tl = within(await card())
+
+  await ui.click(tl.getAllByRole('button', { name: /^Continental WinterContact, on the car .* Edit$/ })[0])
+  const dialog = await screen.findByRole('dialog', { name: 'Edit the period' })
+  await ui.click(within(dialog).getByRole('combobox', { name: 'Set' }))
+  await ui.click(await screen.findByRole('option', { name: 'All-season: Spare all-season' }))
+  await ui.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  const moved = await waitFor(() => tl.getAllByRole('button', { name: /^Spare all-season, on the car Nov 15, 2025 to Mar 28, 2026, .* Edit$/ })[0])
+  await waitFor(() => expect(moved).toHaveFocus())
+})
+
+it('from a set’s History too: the period moved to another set leaves that list, and History stays usable', async () => {
+  const { ui, state } = setup([tyreSummer, tyreWinter, spare])
+  server.use(graphql.mutation('UpdateTyreInstallation', () => void (state.sets = [tyreSummer, { ...tyreWinter, installations: [] }, { ...spare, installations: [{ ...tyreWinter.installations[0], setId: 's3' }] }])))
+
+  await ui.click(within(await screen.findByRole('article', { name: 'Continental WinterContact' })).getByRole('button', { name: 'History' }))
+  const history = await screen.findByRole('dialog', { name: 'Continental WinterContact' })
+  await ui.click(within(history).getByRole('button', { name: 'Edit' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Edit the period' })
+  await ui.click(within(dialog).getByRole('combobox', { name: 'Set' }))
+  await ui.click(await screen.findByRole('option', { name: 'All-season: Spare all-season' }))
+  await ui.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+  await waitFor(() => expect(state.calls.UpdateTyreInstallation?.[0].input).toMatchObject({ id: 'r2', setId: 's3', pairOneFront: null }))
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit the period' })).not.toBeInTheDocument())
+  expect(await screen.findByText('Saved.')).toBeInTheDocument()
+  // The set's History is still open, now without that period, and still offers its own actions.
+  const still = screen.getByRole('dialog', { name: 'Continental WinterContact' })
+  await waitFor(() => expect(within(still).queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument())
+  expect(within(still).getByRole('button', { name: 'Add an installation' })).toBeEnabled()
+})
+
 it('a set tracked tyre by tyre refuses a period from another set, said in the dialog', async () => {
   const { ui, state } = setup([tyreSummer, tyreWinter, spare])
   state.failNext.push({ key: 'tyres.brokenUpSetCannotMove', args: { set: 'Spare all-season' } })

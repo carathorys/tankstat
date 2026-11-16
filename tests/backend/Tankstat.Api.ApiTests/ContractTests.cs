@@ -208,6 +208,7 @@ public class ContractTests
     [InlineData("AddPastTyreSwapsInput", "vehicleId", "swaps", "replace")]
     [InlineData("PastTyreSwapInput", "day", "setId", "odometer", "installationId")]
     [InlineData("AddTyreInstallationInput", "setId", "from", "until", "pairOneFront", "odometerFrom", "odometerUntil", "id")]
+    [InlineData("UpdateTyreInstallationInput", "id", "from", "until", "pairOneFront", "odometerFrom", "odometerUntil", "setId")]
     [InlineData("AddTyreEntryInput", "vehicleId", "kind", "day", "setId", "odometer", "note", "id", "fee", "tyres", "breakUp")]
     [InlineData("TyreLineInput", "tyreId", "id")]
     [InlineData("TyreFeeInput", "amount", "currency", "category", "title", "expenseId")]

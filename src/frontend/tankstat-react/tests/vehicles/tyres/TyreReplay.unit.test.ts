@@ -746,6 +746,12 @@ describe('a period moved to another set on the device (#332)', () => {
     expect(plain.tyres.sets.find((s) => s.set.id === 's2')!.installations[0].installation).toMatchObject({ id: 'r2', from: '2025-11-20' })
   })
 
+  it('a period moved here carries no version until synced, whatever its pairs were, so a second edit of it is never parked', () => {
+    const noPairs: Tyres = { ...base, sets: [...base.sets.map((s) => (s.set.id === 's2' ? { ...s, installations: s.installations.map((i) => ({ ...i, installation: { ...i.installation, pairOneFront: null as never } })) } : s)), third] }
+    const moved = replayTyres(noPairs, [edit({ setId: 's3' })]).tyres.sets.find((s) => s.set.id === 's3')!.installations[0]
+    expect(moved.installation).toMatchObject({ id: 'r2', pairOneFront: null, version: 0 })
+  })
+
   it('works the kinds out again: onto the set that went on next, the next line becomes a change of positions', () => {
     const { tyres } = replayTyres(base, [edit({ setId: 's1' })]) // the winter period was really the summer set's
     expect(tyres.entries.find((e) => e.id === 'r2')).toMatchObject({ setId: 's1', kind: 'SWAP' })

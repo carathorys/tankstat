@@ -204,11 +204,20 @@ export default function Timeline({
   const setOpen = (next: boolean) => setOpened((o) => o && { ...o, open: next })
   const closed = () => setOpened(null)
   const controls = [...periods.map((p) => `period:${p.id}`), ...boundaries.map((b) => `swap:${b.line.id}`), ...gaps.map((g) => `gap:${g.from}`)].join(' ')
+  // Where each bar is drawn: a period moved to another set (#332, B) is drawn anew in that set's row, and the focus its old bar held is lost.
+  const drawnIn = periods.map((p) => `${p.id}@${p.setId}`).join(' ')
   useEffect(() => {
-    if (opened || !acted.current || controls.split(' ').includes(acted.current)) return
+    if (opened || !acted.current) return
+    const lost = !document.activeElement || document.activeElement === document.body
+    if (controls.split(' ').includes(acted.current)) {
+      // Still there: a bar drawn anew in another row takes the focus its old self held.
+      const [kind, id] = acted.current.split(':')
+      if (lost && kind === 'period') scroll.current?.querySelector<HTMLElement>(`button[data-period="${id}"]`)?.focus()
+      return
+    }
     acted.current = null
-    if (!document.activeElement || document.activeElement === document.body) scroll.current?.focus()
-  }, [opened, controls])
+    if (lost) scroll.current?.focus()
+  }, [opened, controls, drawnIn])
 
   // What is drawn around each shown set's periods, worked out once for the picture and the table.
   const around = new Map(sets.map((s) => {
