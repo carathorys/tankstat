@@ -480,6 +480,7 @@ export type NoticeSeverity =
 
 export type NotificationEntityType =
   | 'EXPENSE'
+  | 'IMPORT_RUN'
   | 'INSTANCE'
   | 'RECURRING_EXPENSE'
   | 'REFUELING'
@@ -490,9 +491,13 @@ export type NotificationEntityType =
 
 export type NotificationKind =
   | 'BACKUP_FAILED'
+  | 'CARS_IMPORTED'
   | 'DATA_ACCESS_CHANGED'
   | 'DATA_SHARED'
   | 'DEFAULT_ACCESS_CHANGED'
+  | 'IMPORT_CANCELLED'
+  | 'IMPORT_FINISHED'
+  | 'IMPORT_NOT_FINISHED'
   | 'LOG_ACCESS_CHANGED'
   | 'LOG_FILLED_FROM_PHOTO'
   | 'LOG_NOT_FILLED'

@@ -103,6 +103,12 @@ type Query {
   importFormats: [String!]!
   backupImport(token: String!): BackupImportInfo! @cost(weight: "10")
   canImportFromBackup: Boolean! @cost(weight: "10")
+  backupImportCars(token: String!): ImportCarOffersInfo! @cost(weight: "10")
+  backupImportReview(token: String!, cars: [ImportCarChoiceInput!]!): [ImportCarReviewInfo!]!
+    @cost(weight: "10")
+  importRun(id: UUID!): ImportRunInfo @cost(weight: "10")
+  myImportRun: ImportRunInfo @cost(weight: "10")
+  importRuns: [ImportRunInfo!]! @cost(weight: "10")
   vehicleChartData(vehicleId: UUID!, config: ChartConfigInput!): ChartData!
     @cost(weight: "10")
   vehicleTrend(
@@ -224,6 +230,9 @@ type Mutation {
   openBackupImport(input: OpenBackupImportInput!): BackupImportInfo!
     @cost(weight: "10")
   endBackupImport(token: String!): Boolean! @cost(weight: "10")
+  startBackupImport(input: StartBackupImportInput!): ImportRunInfo!
+    @cost(weight: "10")
+  cancelImportRun(id: UUID!): Boolean! @cost(weight: "10")
   saveVehicleChart(input: SaveChartInput!): VehicleChart! @cost(weight: "10")
   saveVehicleWidget(input: SaveWidgetInput!): SavedWidget! @cost(weight: "10")
   deleteVehicleChart(id: UUID!): Boolean! @cost(weight: "10")
@@ -554,6 +563,52 @@ type HealthReport {
   databaseReachable: Boolean!
 }
 
+type ImportCarOfferInfo {
+  car: BackupCarInfo!
+  ownedByMe: Boolean!
+  suggestedTargetId: UUID
+}
+
+type ImportCarOffersInfo {
+  file: BackupFileInfo!
+  cars: [ImportCarOfferInfo!]!
+  targets: [ImportOwnCarInfo!]!
+}
+
+type ImportCarReportInfo {
+  carId: UUID!
+  name: String!
+  vehicleId: UUID
+  targetName: String
+  asNew: Boolean!
+  leftOut: Boolean!
+  refuelings: Int!
+  expenses: Int!
+  schedules: Int!
+  existing: Int!
+  differing: Int!
+  inTrash: Int!
+  refused: [ImportRefusedEntryInfo!]!
+  refusedMore: Int!
+}
+
+type ImportCarReviewInfo {
+  carId: UUID!
+  name: String!
+  ownerName: String
+  ownedByMe: Boolean!
+  targetVehicleId: UUID
+  targetName: String
+  newRefuelings: Int!
+  newExpenses: Int!
+  newSchedules: Int!
+  existingRefuelings: Int!
+  existingExpenses: Int!
+  existingSchedules: Int!
+  differing: Int!
+  inTrash: Int!
+}
+
 type ImportedVehicleInfo {
   name: String
   licensePlate: String
@@ -567,6 +622,14 @@ type ImportIssueInfo {
   row: Int!
   key: String!
   args: Any!
+}
+
+type ImportOwnCarInfo {
+  id: UUID!
+  name: String!
+  licensePlate: String
+  distanceUnit: DistanceUnit!
+  volumeUnit: VolumeUnit!
 }
 
 type ImportPreviewInfo {
@@ -583,6 +646,14 @@ type ImportPreviewInfo {
   issues: [ImportIssueInfo!]!
 }
 
+type ImportRefusedEntryInfo {
+  kind: String!
+  date: LocalDate
+  title: String
+  key: String!
+  args: Any!
+}
+
 type ImportResultInfo {
   vehicleId: UUID!
   fuelImported: Int!
@@ -592,6 +663,38 @@ type ImportResultInfo {
   expensesSkippedDuplicates: Int!
   recurringSkippedDuplicates: Int!
   errors: [ImportIssueInfo!]!
+}
+
+type ImportRunCarInfo {
+  carId: UUID!
+  name: String!
+  targetVehicleId: UUID
+  targetName: String
+}
+
+type ImportRunInfo {
+  id: UUID!
+  kind: ImportRunKind!
+  startedByName: String
+  mine: Boolean!
+  state: ImportRunState!
+  failure: ImportRunFailure
+  queuedAt: DateTime!
+  startedAt: DateTime
+  endedAt: DateTime
+  ahead: Int!
+  progress: ImportRunProgressInfo!
+  cars: [ImportRunCarInfo!]!
+  report: [ImportCarReportInfo!]
+  fileToken: String
+  limitMinutes: Int!
+}
+
+type ImportRunProgressInfo {
+  car: Int!
+  cars: Int!
+  done: Int!
+  total: Int!
 }
 
 type InstallationDistance {
@@ -1665,6 +1768,12 @@ input GridSettingsInput {
   sortDirection: SortDirection!
 }
 
+input ImportCarChoiceInput {
+  carId: UUID!
+  targetVehicleId: UUID
+  policy: RefusedEntryPolicy
+}
+
 input LoginInput {
   email: String!
   password: String!
@@ -1847,6 +1956,11 @@ input SetupFinishInput {
 input SetVehiclePictureInput {
   vehicleId: UUID!
   draftId: UUID!
+}
+
+input StartBackupImportInput {
+  token: String!
+  cars: [ImportCarChoiceInput!]!
 }
 
 input SwapTyresInput {
@@ -2210,6 +2324,26 @@ enum FuelType {
   LPG
 }
 
+enum ImportRunFailure {
+  FAILED
+  CANCELLED
+  TIMED_OUT
+  INTERRUPTED
+  DID_NOT_START
+}
+
+enum ImportRunKind {
+  IMPORT
+  RESTORE
+}
+
+enum ImportRunState {
+  WAITING
+  RUNNING
+  DONE
+  NOT_FINISHED
+}
+
 enum InstallationMeasure {
   MEASURED
   FROM_FIRST_READING
@@ -2237,6 +2371,7 @@ enum NotificationEntityType {
   EXPENSE
   SYNC_CHANGE
   TYRE_SET
+  IMPORT_RUN
 }
 
 enum NotificationKind {
@@ -2253,6 +2388,10 @@ enum NotificationKind {
   MORE_ACTIVITY
   BACKUP_FAILED
   TYRE_SWAP_DUE
+  IMPORT_FINISHED
+  IMPORT_NOT_FINISHED
+  IMPORT_CANCELLED
+  CARS_IMPORTED
 }
 
 enum OfflineEntityType {
@@ -2329,6 +2468,11 @@ enum RefuelingSortField {
   CREATED_BY
   VEHICLE
   DELETED_AT
+}
+
+enum RefusedEntryPolicy {
+  IMPORT_THE_REST
+  LEAVE_CAR_OUT
 }
 
 enum ReviewState {

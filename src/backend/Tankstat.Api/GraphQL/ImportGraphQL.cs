@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using Tankstat.Application.Access;
 using Tankstat.Application.Imports;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Measurements;
@@ -117,4 +118,109 @@ public sealed class BackupImportMutations
         await imports.EndAsync(token, ct);
         return true;
     }
+}
+
+/// <summary>A car of the importer's own that a backup's car can be added to.</summary>
+public sealed record ImportOwnCarInfo(Guid Id, string Name, string? LicensePlate, DistanceUnit DistanceUnit, VolumeUnit VolumeUnit);
+
+/// <summary>A car the file offers: <c>ownedByMe</c> when the backup's owner of it is the importer; <c>suggestedTargetId</c> the app's match among the importer's own cars.</summary>
+public sealed record ImportCarOfferInfo(BackupCarInfo Car, bool OwnedByMe, Guid? SuggestedTargetId);
+
+public sealed record ImportCarOffersInfo(BackupFileInfo File, IReadOnlyList<ImportCarOfferInfo> Cars, IReadOnlyList<ImportOwnCarInfo> Targets);
+
+/// <param name="TargetVehicleId">One of the importer's own cars to add the car to; omit to import it as a new car.</param>
+/// <param name="Policy">What happens when one of its entries cannot be saved; omit for the rest to be imported.</param>
+public sealed record ImportCarChoiceInput(Guid CarId, Guid? TargetVehicleId, RefusedEntryPolicy? Policy)
+{
+    public ImportCarChoice ToChoice() => new(CarId, TargetVehicleId, Policy ?? RefusedEntryPolicy.ImportTheRest);
+}
+
+public sealed record ImportCarReviewInfo(
+    Guid CarId, string Name, string? OwnerName, bool OwnedByMe, Guid? TargetVehicleId, string? TargetName, int NewRefuelings, int NewExpenses, int NewSchedules,
+    int ExistingRefuelings, int ExistingExpenses, int ExistingSchedules, int Differing, int InTrash);
+
+/// <param name="Token">From the upload (<c>POST /imports/tankstat</c>), once the file is opened.</param>
+public sealed record StartBackupImportInput(string Token, IReadOnlyList<ImportCarChoiceInput> Cars);
+
+public sealed record ImportRunProgressInfo(int Car, int Cars, int Done, int Total);
+
+public sealed record ImportRunCarInfo(Guid CarId, string Name, Guid? TargetVehicleId, string? TargetName);
+
+/// <summary>An entry that could not be saved: its kind (<c>refueling</c>, <c>expense</c>, <c>recurring</c>), its day or title, and the reason's key and arguments.</summary>
+public sealed record ImportRefusedEntryInfo(string Kind, DateOnly? Date, string? Title, string Key, JsonElement Args);
+
+public sealed record ImportCarReportInfo(
+    Guid CarId, string Name, Guid? VehicleId, string? TargetName, bool AsNew, bool LeftOut, int Refuelings, int Expenses, int Schedules, int Existing, int Differing, int InTrash,
+    IReadOnlyList<ImportRefusedEntryInfo> Refused, int RefusedMore);
+
+/// <summary>
+/// A run of an import: waiting in line (<c>ahead</c> runs before it), running (<c>progress</c>), done (<c>report</c>, its starter's alone)
+/// or not finished (<c>failure</c>; <c>fileToken</c> when the file is still open, to go back to the review).
+/// </summary>
+public sealed record ImportRunInfo(
+    Guid Id, Tankstat.Domain.Imports.ImportRunKind Kind, string? StartedByName, bool Mine, Tankstat.Domain.Imports.ImportRunState State, Tankstat.Domain.Imports.ImportRunFailure? Failure,
+    DateTimeOffset QueuedAt, DateTimeOffset? StartedAt, DateTimeOffset? EndedAt, int Ahead, ImportRunProgressInfo Progress, IReadOnlyList<ImportRunCarInfo> Cars,
+    IReadOnlyList<ImportCarReportInfo>? Report, string? FileToken, int LimitMinutes)
+{
+    public static ImportRunInfo From(ImportRunView v, Guid viewer, string? fileToken, int limitMinutes) => new(
+        v.Id, v.Kind, v.StartedByName, v.StartedById == viewer, v.State, v.Failure, v.QueuedAt, v.StartedAt, v.EndedAt, v.Ahead,
+        new ImportRunProgressInfo(v.Progress.Car, v.Progress.Cars, v.Progress.Done, v.Progress.Total),
+        [.. v.Plan.Cars.Select(c => new ImportRunCarInfo(c.CarId, c.Name, c.TargetVehicleId, c.TargetName))],
+        v.Report?.Cars.Select(c => new ImportCarReportInfo(c.CarId, c.Name, c.VehicleId, c.TargetName, c.AsNew, c.LeftOut, c.Refuelings, c.Expenses, c.Schedules, c.Existing, c.Differing, c.InTrash,
+            [.. c.Refused.Select(r => new ImportRefusedEntryInfo(r.Kind, r.Date, r.Title, r.Key, JsonSerializer.SerializeToElement(r.Args)))], c.RefusedMore)).ToList(),
+        fileToken, limitMinutes);
+}
+
+[ExtendObjectType(OperationTypeNames.Query)]
+public sealed class ImportRunQueries
+{
+    /// <summary>The opened file's cars, the importer's own cars one can be added to, and the app's suggestion for each.</summary>
+    public async Task<ImportCarOffersInfo> GetBackupImportCars(string token, [Service] BackupImportRunService imports, CancellationToken ct)
+    {
+        var o = await imports.OffersAsync(token, ct);
+        return new ImportCarOffersInfo(
+            new BackupFileInfo(o.File.CreatedAt, o.File.Version, o.File.IsExport, [.. o.File.Cars.Select(BackupCarInfo.From)], o.File.TrashedCars),
+            [.. o.Cars.Select(c => new ImportCarOfferInfo(BackupCarInfo.From(c.Car), c.OwnedByMe, c.SuggestedTargetId))],
+            [.. o.Targets.Select(t => new ImportOwnCarInfo(t.Id, t.Name, t.LicensePlate, t.Units.Distance, t.Units.Volume))]);
+    }
+
+    /// <summary>What importing the chosen cars would do, as far as it can be foreseen. Nothing is saved.</summary>
+    public async Task<IReadOnlyList<ImportCarReviewInfo>> GetBackupImportReview(string token, IReadOnlyList<ImportCarChoiceInput> cars, [Service] BackupImportRunService imports, CancellationToken ct) =>
+        [.. (await imports.ReviewAsync(token, [.. cars.Select(c => c.ToChoice())], ct)).Select(r => new ImportCarReviewInfo(
+            r.CarId, r.Name, r.OwnerName, r.OwnedByMe, r.TargetVehicleId, r.TargetName, r.NewRefuelings, r.NewExpenses, r.NewSchedules, r.ExistingRefuelings, r.ExistingExpenses,
+            r.ExistingSchedules, r.Differing, r.InTrash))];
+
+    /// <summary>A run by its id: its starter's (with the report, kept for a week), or for an administrator one that goes or waits. Null otherwise.</summary>
+    public async Task<ImportRunInfo?> GetImportRun(Guid id, [Service] BackupImportRunService imports, [Service] IBackupImportRunner runner, [Service] AccessService access,
+        [Service] IOptionsSnapshot<Tankstat.Application.Runs.RunOptions> runs, CancellationToken ct) =>
+        await imports.FindAsync(id, ct) is { } v ? ImportRunInfo.From(v, (await access.RequirePrincipalAsync(ct)).Id, v.FileKept ? runner.SessionOf(v.Id) : null, runs.Value.LimitMinutes) : null;
+
+    /// <summary>The signed-in person's run that goes or waits, else their latest one that is still kept; null without one.</summary>
+    public async Task<ImportRunInfo?> GetMyImportRun([Service] BackupImportRunService imports, [Service] IBackupImportRunner runner, [Service] AccessService access,
+        [Service] IOptionsSnapshot<Tankstat.Application.Runs.RunOptions> runs, CancellationToken ct) =>
+        await imports.MineAsync(ct) is { } v ? ImportRunInfo.From(v, (await access.RequirePrincipalAsync(ct)).Id, v.FileKept ? runner.SessionOf(v.Id) : null, runs.Value.LimitMinutes) : null;
+
+    /// <summary>For administrators: every import that goes or waits, the oldest first.</summary>
+    public async Task<IReadOnlyList<ImportRunInfo>> GetImportRuns([Service] BackupImportRunService imports, [Service] AccessService access,
+        [Service] IOptionsSnapshot<Tankstat.Application.Runs.RunOptions> runs, CancellationToken ct)
+    {
+        var active = await imports.ActiveAsync(ct);
+        var me = (await access.RequirePrincipalAsync(ct)).Id;
+        return [.. active.Select(v => ImportRunInfo.From(v, me, null, runs.Value.LimitMinutes))];
+    }
+}
+
+[ExtendObjectType(OperationTypeNames.Mutation)]
+public sealed class ImportRunMutations
+{
+    /// <summary>Queues the import of the chosen cars: it starts by itself, at once or when its turn comes. Ask <c>importRun</c> how it stands.</summary>
+    public async Task<ImportRunInfo> StartBackupImport(StartBackupImportInput input, [Service] BackupImportRunService imports, [Service] AccessService access,
+        [Service] IOptionsSnapshot<Tankstat.Application.Runs.RunOptions> runs, CancellationToken ct)
+    {
+        var v = await imports.StartAsync(input.Token, [.. input.Cars.Select(c => c.ToChoice())], ct);
+        return ImportRunInfo.From(v, (await access.RequirePrincipalAsync(ct)).Id, input.Token, runs.Value.LimitMinutes);
+    }
+
+    /// <summary>Cancels an import that goes or waits: its starter, or an administrator. Nothing of it is kept. False when it is over already.</summary>
+    public Task<bool> CancelImportRun(Guid id, [Service] BackupImportRunService imports, CancellationToken ct) => imports.CancelAsync(id, ct);
 }
