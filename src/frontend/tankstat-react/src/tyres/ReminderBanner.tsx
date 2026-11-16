@@ -25,15 +25,27 @@ export function ReminderBanners({ tyres, vehicleId, unit, canLog }: { tyres: Tyr
   // says what became of the reminder, instead of falling off the page.
   const ids = due.map((s) => s.set.id).join(' ')
   const shown = useRef<string[]>([])
+  // Only a note whose button held the focus (or was tapped) hands it on (a removed button fires no blur): one that leaves by itself (another device's
+  // swap, an answer asked again) while the focus is nowhere moves nothing.
+  const held = useRef(false)
   useEffect(() => {
     const now = ids ? ids.split(' ') : []
     const gone = shown.current.filter((id) => !now.includes(id))
     shown.current = now
-    if (gone.length === 0 || (document.activeElement && document.activeElement !== document.body)) return
+    if (gone.length === 0 || !held.current || (document.activeElement && document.activeElement !== document.body)) return
+    held.current = false
     document.querySelector<HTMLElement>(`[data-set-card="${gone[0]}"]`)?.focus()
   }, [ids])
   return (
-    <div role="status">
+    <div
+      role="status"
+      onFocus={() => (held.current = true)}
+      onClick={() => (held.current = true)} // Safari focuses no button it taps
+      onBlur={(e) => {
+        // A button that leaves or turns off moves the focus to nothing (no related target): that is the hand-off, not leaving the notes.
+        if (e.relatedTarget && !e.currentTarget.contains(e.relatedTarget)) held.current = false
+      }}
+    >
       {due.length > 0 && (
         <Stack sx={{ gap: 1 }}>
           {due.map((info) => (
@@ -56,6 +68,7 @@ function ReminderBanner({ info, tyres, vehicleId, unit, canLog }: { info: TyreSe
   return (
     <Alert
       severity="info"
+      role="none" // the status region around the notes says them; MUI's own alert role would interrupt
       icon={<ArrowLeftRight size={20} aria-hidden />}
       data-reminder={set.id}
       sx={{ alignItems: 'flex-start', '& .MuiAlert-message': { minWidth: 0, flex: 1 } }}

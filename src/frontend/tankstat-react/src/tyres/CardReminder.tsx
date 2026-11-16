@@ -16,7 +16,8 @@ export interface CardReminderAction {
  * tyre code and the vehicle's tyres are not, so both load only now. *Swap* asks for the vehicle's tyres (the device's kept answer while
  * out of reach) and opens the swap dialog with the set chosen; *Not this season* dismisses it, with the toast's Undo. Either way the card
  * is asked again afterwards (`refresh`), since a tyre change asks only for the Tyres tab's answer, and `onDone` says it is over (with
- * what went wrong, if anything).
+ * what went wrong, if anything): a dismissal once the card's answer came, a swap as soon as its dialog closed, so a tap on a row's
+ * button while that answer is on its way opens its dialog.
  */
 export function CardReminder({
   vehicleId,
@@ -57,7 +58,11 @@ export function CardReminder({
       setId={action.setId}
       open={open}
       onOpenChange={setOpen}
-      onClosed={() => void refresh().then(() => onDone())}
+      onClosed={() => {
+        // Over at once, so the row's buttons work again while the card is asked for (the row leaves once its answer is drawn).
+        onDone()
+        void refresh()
+      }}
     />
   )
 }
