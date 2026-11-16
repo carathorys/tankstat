@@ -960,6 +960,20 @@ internal sealed class InMemorySettings : IAccessSettingsRepository
     public Task SaveAsync(AccessSettings s, CancellationToken ct) => Task.CompletedTask;
 }
 
+/// <summary>The uploaded backups people have open (#336): only who had one, for what ends them.</summary>
+internal sealed class FakeBackupImportSessions : Tankstat.Application.Imports.IBackupImportSessions
+{
+    public List<Guid> EndedFor { get; } = [];
+    public Task<Tankstat.Application.Imports.BackupImportStatus> UploadAsync(Guid userId, Stream content, CancellationToken ct) => throw new NotSupportedException();
+    public Task<Tankstat.Application.Imports.BackupImportStatus> OpenFileAsync(Guid userId, string path, CancellationToken ct) => throw new NotSupportedException();
+    public Tankstat.Application.Imports.BackupImportStatus SubmitKey(Guid userId, string token, string? passphrase, string? identity) => throw new NotSupportedException();
+    public Tankstat.Application.Imports.BackupImportStatus? Find(Guid userId, string token) => null;
+    public Tankstat.Application.Imports.IBackupCars? Cars(Guid userId, string token) => null;
+    public IDisposable? Hold(Guid userId, string token) => null;
+    public void End(Guid userId, string token) { }
+    public void EndForUser(Guid userId) => EndedFor.Add(userId);
+}
+
 internal sealed class FakeCurrentUser : ICurrentUser
 {
     public Principal? Principal { get; set; }
@@ -1062,6 +1076,7 @@ internal sealed class World
     public InMemoryUsers Users { get; } = new();
     public FakeUserData UserData { get; } = new();
     public ImportSessionStore ImportSessions { get; }
+    public FakeBackupImportSessions BackupImports { get; } = new();
     public InMemoryTokens Tokens { get; } = new();
     public InMemorySessions Sessions { get; } = new();
     public InMemoryGrants Grants { get; } = new();
@@ -1183,7 +1198,7 @@ internal sealed class World
         ResetQueue = new FakeResetQueue(resets);
         Passwords = new PasswordRequirements(PasswordSettings, Log.For<PasswordRequirements>());
         Auth = new AuthService(Users, new FakeHasher(), resets, ResetQueue, SessionService, Access, options, Passwords, Clock, Log.For<AuthService>());
-        UserService = new UserService(Access, Users, UserData, resets, SessionService, new FakeHasher(), ImageService, ImportSessions, options, Passwords, Log.For<UserService>());
+        UserService = new UserService(Access, Users, UserData, resets, SessionService, new FakeHasher(), ImageService, ImportSessions, BackupImports, options, Passwords, Log.For<UserService>());
         AccessAdmin = new AccessAdminService(Access, Settings, Grants, Users, Notifier, Log.For<AccessAdminService>());
         Availability = new RecognitionAvailability(Recognizer, Clock, Log.For<RecognitionAvailability>());
         SetupStore = new InMemorySetupStore(Users, Vehicles) { Phase = SetupPhase.Completed };

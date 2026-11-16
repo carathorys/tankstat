@@ -27,6 +27,9 @@ public sealed record BackupManifest(
 {
     public const int CurrentFormat = 1;
     public const string Tankstat = "tankstat";
+
+    /// <summary>Who wrote an export of a person's own cars (#341): the same shape, read back by the import, never restored whole.</summary>
+    public const string Export = "tankstat-export";
     public const string FileName = "manifest.json";
 
     public static readonly JsonSerializerOptions Json = new()

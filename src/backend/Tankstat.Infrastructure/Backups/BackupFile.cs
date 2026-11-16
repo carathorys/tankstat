@@ -18,21 +18,28 @@ public static class BackupFile
     /// program's <c>manifest.json</c> (a browser extension's, say) reads as one with nothing set, and one that lacks what every backup states
     /// (the release and the database it came from, where its photos are) is no backup either, so nothing that lists backups meets a gap.
     /// </summary>
-    public static BackupManifest ReadManifest(string path)
+    /// <param name="exports">
+    /// Whether a file written as an export (<see cref="BackupManifest.Export"/>, #341) counts: only for the reader of cars (#336). An
+    /// export is never a restore point: everything else refuses it.
+    /// </param>
+    public static BackupManifest ReadManifest(string path, bool exports = false)
     {
         BackupManifest manifest;
         try
         {
             using var zip = ZipFile.OpenRead(path);
             var entry = zip.GetEntry(BackupManifest.FileName) ?? throw NotABackup();
-            using var reader = new StreamReader(entry.Open());
-            manifest = BackupManifest.FromJson(reader.ReadToEnd());
+            // A manifest is a few kilobytes: an entry far larger is no backup's, and is never read into memory whole (whatever its header says).
+            if (entry.Length > MaxManifestBytes) throw NotABackup();
+            using var stored = new MemoryStream();
+            using (var data = entry.Open()) CopyAtMost(data, stored, MaxManifestBytes);
+            manifest = BackupManifest.FromJson(System.Text.Encoding.UTF8.GetString(stored.GetBuffer(), 0, (int)stored.Length));
         }
         catch (Exception e) when (e is InvalidDataException or JsonException)
         {
             throw NotABackup();
         }
-        if (manifest.WrittenBy != BackupManifest.Tankstat) throw NotABackup();
+        if (manifest.WrittenBy != BackupManifest.Tankstat && !(exports && manifest.WrittenBy == BackupManifest.Export)) throw NotABackup();
         if (manifest.Format > BackupManifest.CurrentFormat)
             throw new DomainException("backup.newerFormat", "The backup was written by a newer release.", new { manifest.Format, manifest.AppVersion });
         if (manifest is not { AppVersion: not null, Provider: not null, Archive: { Name: not null, Sha256: not null }, Contents.Tables: not null, Sizes: not null }
@@ -84,6 +91,9 @@ public static class BackupFile
             throw NotABackup();
         }
     }
+
+    /// <summary>The most a manifest may hold.</summary>
+    private const int MaxManifestBytes = 1024 * 1024;
 
     /// <summary>The most a backup's settings entry may hold, as stored.</summary>
     private const int MaxSettingsBytes = 1024 * 1024;

@@ -173,6 +173,11 @@ public static class DependencyInjection
         services.AddSingleton<DatabaseMigrator>();
         services.AddHostedService(sp => sp.GetRequiredService<DatabaseMigrator>());
         services.AddHostedService(sp => sp.GetRequiredService<RestoreStep>());
+        services.AddSingleton<Backups.Reader.BackupImportSessions>(sp => new Backups.Reader.BackupImportSessions(
+            sp.GetRequiredService<IOptionsMonitor<Tankstat.Application.Imports.BackupImportOptions>>(), sp.GetRequiredService<TimeProvider>(),
+            sp.GetService<Microsoft.Extensions.Hosting.IHostApplicationLifetime>(), sp.GetRequiredService<ILogger<Backups.Reader.BackupImportSessions>>()));
+        services.AddSingleton<Tankstat.Application.Imports.IBackupImportSessions>(sp => sp.GetRequiredService<Backups.Reader.BackupImportSessions>());
+        services.AddHostedService(sp => sp.GetRequiredService<Backups.Reader.BackupImportSessions>());
         services.AddHostedService<RunMarkerSweep>(); // after the migrations and a restore: the marks it ends are today's
         services.AddHostedService<PhotosMove>();
         services.AddHostedService<SetupStep>();

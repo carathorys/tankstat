@@ -102,6 +102,7 @@ public static class SettingsCatalog
     [
         "Recognition:OpenAiCompatible:SystemPromptFile", // a path the app reads: the environment's business, like every other path
         "Backups:Path", // a folder, like Storage:Path: where the volume is, which the environment knows
+        "Imports:ScratchFolder", // a folder too: where an uploaded backup waits while cars are imported from it
     ];
 
     public static readonly IReadOnlyList<SettingDefinition> All =
@@ -165,6 +166,8 @@ public static class SettingsCatalog
         new(SettingsGroup.Backups, "Backups:Days", SettingKind.Days),
         new(SettingsGroup.Backups, "Backups:Keep", SettingKind.Integer),
         new(SettingsGroup.Backups, "Backups:KeepDays", SettingKind.Integer),
+        new(SettingsGroup.Backups, "Imports:BackupEnabled", SettingKind.Boolean),
+        new(SettingsGroup.Backups, "Imports:MaxUploadMb", SettingKind.Integer),
         new(SettingsGroup.Backups, "Runs:LimitMinutes", SettingKind.Integer),
         new(SettingsGroup.Backups, "Backups:Photos", SettingKind.Boolean),
         new(SettingsGroup.Backups, "Backups:Environment", SettingKind.Choice, Enum.GetNames<BackupEnvironmentMode>()),

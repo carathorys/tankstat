@@ -29,6 +29,7 @@ public class SettingsCatalogTests
         (typeof(RecognitionOptions), RecognitionOptions.SectionName),
         (typeof(Tankstat.Application.Backups.BackupOptions), Tankstat.Application.Backups.BackupOptions.SectionName),
         (typeof(TelemetryOptions), TelemetryOptions.SectionName),
+        (typeof(Tankstat.Application.Imports.BackupImportOptions), Tankstat.Application.Imports.BackupImportOptions.SectionName),
         (typeof(Tankstat.Application.Runs.RunOptions), Tankstat.Application.Runs.RunOptions.SectionName),
     ];
 

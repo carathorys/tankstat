@@ -11,8 +11,22 @@ public static class ImportEndpoints
 {
     public const int MaxBytes = 5 * 1024 * 1024;
 
+    /// <summary>The source's name for a Tankstat backup or export: a route of its own, since its file is far larger than a CSV.</summary>
+    public const string BackupFormat = "tankstat";
+
     public static void MapImportEndpoints(this WebApplication app)
     {
+        // A backup or an export to import cars from (#336): streamed to the server's scratch folder, never held in memory. Who is asking,
+        // the switch and the announced size are checked before a byte of the body is read; Kestrel's own limit is lifted only then, and
+        // every byte is counted against ours. The answer is the file's session; how the opening stands is asked through GraphQL.
+        app.MapPost("/imports/" + BackupFormat, async (HttpRequest request, BackupImportService imports, CancellationToken ct) =>
+        {
+            var uploader = await imports.RequireUploaderAsync(request.ContentLength, ct);
+            if (request.HttpContext.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit) limit.MaxRequestBodySize = null;
+            var status = await imports.UploadAsync(uploader, request.Body, ct);
+            return Results.Json(new { token = status.Token, format = BackupFormat });
+        }).AddEndpointFilter(MediaEndpoints.TranslateErrors);
+
         app.MapPost("/imports/{format}", async (string format, HttpRequest request, ImportService imports, CancellationToken ct) =>
         {
             if (request.ContentLength > MaxBytes) throw TooLarge();

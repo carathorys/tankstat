@@ -114,9 +114,12 @@ public static class DependencyInjection
         services.AddScoped<SyncTargetService>();
         services.AddScoped<SystemSettingsService>();
         services.AddScoped<InstanceStartService>();
+        services.AddOptions<BackupImportOptions>().Bind(configuration.GetSection(BackupImportOptions.SectionName)).ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<BackupImportOptions>, BackupImportOptionsValidator>());
         services.AddSingleton<ImportSessionStore>();
         services.AddSingleton<IImportParser, FuelioCsvParser>();
         services.AddScoped<ImportService>();
+        services.AddScoped<BackupImportService>();
         services.AddScoped<OdometerService>();
         services.AddScoped<ResourceSharingService>();
         services.AddScoped<Notifier>();

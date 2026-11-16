@@ -48,6 +48,34 @@ internal static class BackupUnpack
     }
 
     /// <summary>
+    /// The inner archive against the manifest's checksum, as stored, hashing no more than <paramref name="maxBytes"/> of it: a file that
+    /// inflates past that is no backup, whatever its header says.
+    /// </summary>
+    public static async Task VerifyChecksumAsync(string path, BackupManifest manifest, long maxBytes, CancellationToken ct)
+    {
+        try
+        {
+            using var zip = ZipFile.OpenRead(path);
+            await using var data = (zip.GetEntry(manifest.Archive.Name) ?? throw NotABackup()).Open();
+            using var sha = System.Security.Cryptography.IncrementalHash.CreateHash(System.Security.Cryptography.HashAlgorithmName.SHA256);
+            var buffer = new byte[81920];
+            long total = 0;
+            int read;
+            while ((read = await data.ReadAsync(buffer, ct)) > 0)
+            {
+                total += read;
+                if (total > maxBytes) throw NotABackup();
+                sha.AppendData(buffer, 0, read);
+            }
+            if (!string.Equals(Convert.ToHexStringLower(sha.GetHashAndReset()), manifest.Archive.Sha256, StringComparison.OrdinalIgnoreCase)) throw NotABackup();
+        }
+        catch (InvalidDataException)
+        {
+            throw NotABackup();
+        }
+    }
+
+    /// <summary>
     /// Writes the rows of the tables the reader loads (<see cref="ScratchTables"/>) from the inner archive into <paramref name="tablesFolder"/>,
     /// the tables as <paramref name="model"/> (the backup's migration) has them, <c>Users</c> reduced to who is who. Returns the row counts
     /// the load is to find: the manifest's for a loaded table, none for every other, whose file is not written.
