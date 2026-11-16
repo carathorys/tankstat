@@ -61,7 +61,9 @@ export async function fetchSignedIn(input: string, init: RequestInit): Promise<R
   try {
     signedIn = await refreshSession()
   } catch (error) {
-    if (error instanceof RefreshBusyError) return error.response // busy (#335): its answer, which the caller tells as busy
+    // Busy (#335): its answer, which the caller tells as busy. A copy each: callers at the same moment share the one refresh, and an
+    // answer's body is read once.
+    if (error instanceof RefreshBusyError) return error.response.clone()
     return response
   }
   return signedIn ? trackedFetch(input, init) : response

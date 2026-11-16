@@ -16,8 +16,11 @@ internal sealed class RunScope(
     DbContextOptions<AppDbContext> options, IRunMarkerRepository markers, RunGateState gate, IOptionsMonitor<RunOptions> settings, RunTimings timings, TimeProvider clock,
     IOptions<DatabaseOptions> database, ILogger<RunScope> logger) : IRunScope
 {
-    /// <summary>The runs open on this server, to cancel them without the database.</summary>
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, Run> _open = new();
+    /// <summary>
+    /// The runs open on this server, to cancel them without the database: from the mark on, so a cancel asked for before the transaction
+    /// opens (the settle, a connection waited for) is kept for the run, which SQLite could not be told through its mark.
+    /// </summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, Stop> _open = new();
 
     public async Task RunAsync(RunStart start, Func<IRun, Task> work, CancellationToken ct)
     {
@@ -27,6 +30,8 @@ internal sealed class RunScope(
         // rolled back is still known to have existed.
         var marker = RunMarker.Start(start.Starter.Id, start.VehicleIds, clock.GetUtcNow());
         await markers.AddAsync(marker, ct);
+        var stop = new Stop();
+        _open[marker.Id] = stop;
         gate.OpenHere(marker.Id, true);
         gate.Forget();
         logger.LogInformation("Run {RunId} started by {UserId} for {VehicleCount} vehicle(s)", marker.Id, start.Starter.Id, marker.Vehicles.Count);
@@ -35,7 +40,7 @@ internal sealed class RunScope(
         {
             // Saves that passed the gate just before the mark finish meanwhile, and another server's gate sees the mark.
             if (timings.Settle > TimeSpan.Zero) await Task.Delay(timings.Settle, clock, ct);
-            await InTransactionAsync(start, marker.Id, work, ct);
+            await InTransactionAsync(start, marker.Id, stop, work, ct);
             end = RunEnd.Done;
         }
         catch (RunStoppedException e)
@@ -45,6 +50,7 @@ internal sealed class RunScope(
         }
         finally
         {
+            _open.TryRemove(marker.Id, out _); // also when the transaction never opened
             // After the transaction, on a connection of its own (on SQLite nothing else could be written while the run was open).
             try
             {
@@ -60,15 +66,14 @@ internal sealed class RunScope(
         }
     }
 
-    private async Task InTransactionAsync(RunStart start, Guid runId, Func<IRun, Task> work, CancellationToken ct)
+    private async Task InTransactionAsync(RunStart start, Guid runId, Stop stop, Func<IRun, Task> work, CancellationToken ct)
     {
         await using var root = new AppDbContext(options); // unpooled: it owns the run's connection, closed with it
         await root.Database.OpenConnectionAsync(ct);
         await using var transaction = await root.Database.BeginTransactionAsync(ct);
         // On SQLite the mark cannot be asked while the run holds the database's lock to write; a cancel there is this server's own.
         var run = new Run(runId, transaction, clock, clock.GetUtcNow() + settings.CurrentValue.Limit,
-            database.Value.Provider == DatabaseProvider.Sqlite ? null : markers);
-        _open[runId] = run;
+            database.Value.Provider == DatabaseProvider.Sqlite ? null : markers, stop, logger);
         var sqlite = database.Value.Provider == DatabaseProvider.Sqlite;
         if (sqlite)
         {
@@ -78,11 +83,22 @@ internal sealed class RunScope(
         try
         {
             await InsideAsync(start, new RunTransaction(root.Database.GetDbConnection(), transaction), run, work);
-            await transaction.CommitAsync(ct);
+            // Asked to stop before the commit: rolled back. The commit itself is never cut short: one cancelled halfway may have gone
+            // through, and the undos below would then take back the files of rows that stayed.
+            ct.ThrowIfCancellationRequested();
+            await transaction.CommitAsync(CancellationToken.None);
         }
         catch
         {
-            await TryAsync(() => transaction.RollbackAsync(CancellationToken.None));
+            try
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+            }
+            catch (Exception e)
+            {
+                // It must not hide why the run failed; the database rolls the transaction back when its connection closes.
+                logger.LogDebug(e, "Run {RunId}: its transaction could not be rolled back by hand", runId);
+            }
             await run.RolledBackAsync();
             throw;
         }
@@ -105,7 +121,7 @@ internal sealed class RunScope(
         logger.LogInformation("Run {RunId} asked to cancel by {UserId}", runId, by.Id);
         if (_open.TryGetValue(runId, out var here))
         {
-            here.Cancel();
+            here.Cancelled = true;
             return true;
         }
         // Another server's run: through its mark, which that run asks between its entries.
@@ -123,31 +139,36 @@ internal sealed class RunScope(
         await work(run);
     }
 
-    private static async Task TryAsync(Func<Task> act)
+    /// <summary>Whether a run was asked to cancel on this server: set by <see cref="CancelAsync"/>, read by the run between its entries.</summary>
+    private sealed class Stop
     {
-        try { await act(); }
-        catch (Exception) { /* a rollback or an undo that fails must not hide why the run failed */ }
+        private volatile bool _cancelled;
+
+        public bool Cancelled
+        {
+            get => _cancelled;
+            set => _cancelled = value;
+        }
     }
 
-    private sealed class Run(Guid id, IDbContextTransaction transaction, TimeProvider clock, DateTimeOffset until, IRunMarkerRepository? markers) : IRun
+    private sealed class Run(
+        Guid id, IDbContextTransaction transaction, TimeProvider clock, DateTimeOffset until, IRunMarkerRepository? markers, Stop stop, ILogger logger) : IRun
     {
         private static readonly TimeSpan AskEvery = TimeSpan.FromSeconds(1);
-        private volatile bool _cancelled;
         private DateTimeOffset _asked;
 
         public Guid Id => id;
 
-        public void Cancel() => _cancelled = true;
-
         public async Task ThrowIfStoppedAsync()
         {
             var now = clock.GetUtcNow();
-            if (!_cancelled && markers is not null && now - _asked >= AskEvery)
+            if (!stop.Cancelled && markers is not null && now - _asked >= AskEvery)
             {
                 _asked = now;
-                _cancelled = await markers.IsCancelRequestedAsync(id, CancellationToken.None);
+                // Only ever set: a cancel asked for on this server while the mark is being read must not be written over by its answer.
+                if (await markers.IsCancelRequestedAsync(id, CancellationToken.None)) stop.Cancelled = true;
             }
-            if (_cancelled) throw new RunStoppedException(RunEnd.Cancelled);
+            if (stop.Cancelled) throw new RunStoppedException(RunEnd.Cancelled);
             if (now >= until) throw new RunStoppedException(RunEnd.TimedOut);
         }
 
@@ -166,24 +187,53 @@ internal sealed class RunScope(
             catch
             {
                 var undone = _levels.Pop();
-                await transaction.RollbackToSavepointAsync(savepoint);
-                await undone.RolledBackAsync();
+                try
+                {
+                    await transaction.RollbackToSavepointAsync(savepoint);
+                }
+                catch
+                {
+                    _levels.Peek().Take(undone); // not rolled back alone: its hooks follow what is around it, as if it were kept
+                    throw;
+                }
+                await UndoAsync(undone);
                 throw;
             }
+            // Before the release, so its hooks are not lost when that fails: still to undo if what is around it rolls back, still
+            // waiting for the commit.
             var kept = _levels.Pop();
+            _levels.Peek().Take(kept);
             await transaction.ReleaseSavepointAsync(savepoint);
-            _levels.Peek().Take(kept); // still to undo if what is around it rolls back, still waiting for the commit
         }
 
         public void OnRollback(Func<Task> undo) => _levels.Peek().Undo.Add(undo);
 
         public void AfterCommit(Func<Task> act) => _levels.Peek().Deferred.Add(act);
 
-        public Task RolledBackAsync() => _levels.Peek().RolledBackAsync();
+        public Task RolledBackAsync() => UndoAsync(_levels.Peek());
 
         public async Task CommittedAsync()
         {
-            foreach (var act in _levels.Peek().Deferred) await TryAsync(act);
+            foreach (var act in _levels.Peek().Deferred) await TryAsync(act, "an act after the commit");
+        }
+
+        /// <summary>The newest first, as an undo goes.</summary>
+        private async Task UndoAsync(Hooks level)
+        {
+            for (var i = level.Undo.Count - 1; i >= 0; i--) await TryAsync(level.Undo[i], "an undo after a rollback");
+        }
+
+        /// <summary>A hook that fails must not hide why the run failed, nor keep the ones after it from running: it is logged, ids only.</summary>
+        private async Task TryAsync(Func<Task> act, string step)
+        {
+            try
+            {
+                await act();
+            }
+            catch (Exception e)
+            {
+                logger.LogWarning(e, "Run {RunId}: {Step} failed; what it was to take back or finish outside the database may be left behind", id, step);
+            }
         }
     }
 
@@ -196,12 +246,6 @@ internal sealed class RunScope(
         {
             Undo.AddRange(inner.Undo);
             Deferred.AddRange(inner.Deferred);
-        }
-
-        /// <summary>The newest first, as an undo goes.</summary>
-        public async Task RolledBackAsync()
-        {
-            for (var i = Undo.Count - 1; i >= 0; i--) await TryAsync(Undo[i]);
         }
     }
 }

@@ -44,7 +44,7 @@ public sealed class RunScopeTests(ITestOutputHelper output) : IDisposable
     }
 
     /// <summary>A migrated database of the provider with the real services, or null (said in the output) when its server is not named.</summary>
-    private TestDatabase? Database(string provider)
+    private TestDatabase? Database(string provider, TimeSpan settle = default)
     {
         // No pause before a run's transaction and a short wait at the gate: the tests have no saves in flight to wait out.
         var settings = new Dictionary<string, string?> { ["Auth:Mode"] = "Standalone" };
@@ -60,7 +60,7 @@ public sealed class RunScopeTests(ITestOutputHelper output) : IDisposable
         }
         // Nobody is signed in unless a test says so: outside a run the services refuse, inside one they act as its starter.
         var database = new TestDatabase(settings, services => services.AddSingleton<ICurrentUser>(_user)
-            .AddSingleton(new RunTimings { Settle = TimeSpan.Zero, BusyWait = TimeSpan.FromSeconds(1) })
+            .AddSingleton(new RunTimings { Settle = settle, BusyWait = TimeSpan.FromSeconds(1) })
             .AddSingleton<TimeProvider>(_clock));
         _databases.Add(database);
         if (provider != "Sqlite") _servers.Add(database);
@@ -276,6 +276,37 @@ public sealed class RunScopeTests(ITestOutputHelper output) : IDisposable
         Assert.Equal(["undo: the run's", "undo: a car that was kept"], done);
     }
 
+    /// <summary>A hook that throws is said in the log, and keeps neither the hooks after it from running nor the run's own failure from showing.</summary>
+    [Fact]
+    public async Task AHookThatThrows_IsLogged_AndTheOthersStillRun()
+    {
+        var database = Database("Sqlite")!;
+        var done = new List<string>();
+        Task Note(string what) { done.Add(what); return Task.CompletedTask; }
+        var committed = Guid.Empty;
+
+        await RunAsync(database, (run, _) =>
+        {
+            committed = run.Id;
+            run.AfterCommit(() => throw new IOException("in use"));
+            run.AfterCommit(() => Note("after: the next one"));
+            return Task.CompletedTask;
+        });
+        var unexpected = await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync(database, (run, _) =>
+        {
+            run.OnRollback(() => Note("undo: the older one"));
+            run.OnRollback(() => throw new IOException("in use"));
+            throw new InvalidOperationException("unexpected");
+        }));
+
+        Assert.Equal("unexpected", unexpected.Message);
+        Assert.Equal(["after: the next one", "undo: the older one"], done);
+        var warnings = database.Log.From<RunScope>().Where(e => e.Level == Microsoft.Extensions.Logging.LogLevel.Warning).ToList();
+        Assert.Equal(2, warnings.Count);
+        Assert.Equal(committed, warnings[0].Values["RunId"]);
+        Assert.All(warnings, warning => Assert.IsType<IOException>(warning.Exception));
+    }
+
 
     [Theory, MemberData(nameof(Providers))]
     public async Task ARunsMark_IsThereWhileItRuns_AndSaysHowItEnded_AlsoWhenItRolledBack(string provider)
@@ -382,6 +413,37 @@ public sealed class RunScopeTests(ITestOutputHelper output) : IDisposable
         Assert.Equal(RunEnd.Cancelled, mark.End);
         Assert.False(await scope.CancelAsync(mark.Id, Starter, default)); // over already
         Assert.False(await scope.CancelAsync(Guid.NewGuid(), Starter, default));
+    }
+
+    /// <summary>A cancel asked for between a run's mark and its transaction (the pause, a connection waited for) is kept for the run.</summary>
+    [Theory, MemberData(nameof(Providers))]
+    public async Task ACancelAskedBeforeTheTransactionOpens_StillStopsTheRun(string provider)
+    {
+        if (Database(provider, settle: TimeSpan.FromMilliseconds(500)) is not { } database) return;
+        var scope = database.Get<IRunScope>();
+        var asked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var running = RunAsync(database, async (run, services) =>
+        {
+            await asked.Task;
+            await run.ThrowIfStoppedAsync();
+            await AddCarAsync(services, "First", logs: false);
+        });
+        // The mark is there from the start, the transaction only after the pause: SQLite's run cannot be told through its mark.
+        RunMarker? mark = null;
+        while (mark is null && !running.IsCompleted) // a run that ended before its mark showed has failed: said below, never waited for
+        {
+            await using var db = await database.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
+            mark = await db.RunMarkers.AsNoTracking().FirstOrDefaultAsync();
+            if (mark is null) await Task.Delay(20);
+        }
+        Assert.NotNull(mark);
+        Assert.True(await scope.CancelAsync(mark.Id, Starter, default));
+        asked.SetResult();
+
+        Assert.Equal(RunEnd.Cancelled, (await Assert.ThrowsAsync<RunStoppedException>(() => running)).Reason);
+        Assert.Equal(0, (await CountAsync(database)).Vehicles);
+        Assert.Equal(RunEnd.Cancelled, (await OnlyMarkerAsync(database)).End);
     }
 
     /// <summary>A run of another server is asked through its mark; SQLite cannot write a mark while a run is open, and has one server.</summary>

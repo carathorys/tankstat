@@ -188,6 +188,7 @@ public class SettingsCatalogTests
     [InlineData("Recognition:Provider", "None")]
     [InlineData("Recognition:MinConfidence", "0.6")] // invariantly, whatever the server's culture
     [InlineData("Recognition:OpenAiCompatible:TimeoutSeconds", "120")]
+    [InlineData("Runs:LimitMinutes", "10")] // #335: a section of its own, shown under Backups
     [InlineData("Logging:LogLevel:Default", "Information")] // the framework's, when no source sets the default category
     [InlineData(OtelSettings.Protocol, "grpc")] // the SDK's
     [InlineData(OtelSettings.ServiceName, "tankstat")] // the app's, which it names the service itself when nothing does

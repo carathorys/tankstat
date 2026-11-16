@@ -1,5 +1,5 @@
 import { ApolloClient, ApolloLink, InMemoryCache } from '@apollo/client'
-import { http, HttpResponse } from 'msw'
+import { delay, http, HttpResponse } from 'msw'
 import { graphql } from '../../support/graphql.ts'
 import { of } from 'rxjs'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
@@ -201,4 +201,22 @@ it('an upload whose refresh is answered busy (#335) gets the busy answer, not "s
 
   expect(response.status).toBe(409)
   expect(((await response.json()) as { key: string }).key).toBe('import.busy')
+})
+
+it('uploads at the same moment whose one refresh is answered busy (#335) each read the busy answer', async () => {
+  let refreshes = 0
+  server.use(
+    http.put('/media/me/avatar', () => HttpResponse.json({ key: 'auth.unauthenticated', args: {}, message: 'Sign in.' }, { status: 401 })),
+    http.post('/auth/token/refresh', async () => {
+      refreshes++
+      await delay(50) // both uploads are answered "sign in first" before it is
+      return HttpResponse.json({ key: 'import.busy', args: {}, message: 'Busy.' }, { status: 409 })
+    }),
+  )
+
+  const responses = await Promise.all([fetchSignedIn('/media/me/avatar', { method: 'PUT' }), fetchSignedIn('/media/me/avatar', { method: 'PUT' })])
+
+  // The refresh is shared, and an answer's body is read once: each caller has a copy of its own.
+  expect(refreshes).toBe(1)
+  for (const response of responses) expect(((await response.json()) as { key: string }).key).toBe('import.busy')
 })

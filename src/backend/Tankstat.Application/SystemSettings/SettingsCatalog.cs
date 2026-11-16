@@ -4,6 +4,7 @@ using Tankstat.Application.Auth;
 using Tankstat.Application.Backups;
 using Tankstat.Application.Notifications;
 using Tankstat.Application.Recognition;
+using Tankstat.Application.Runs;
 using Tankstat.Application.Sync;
 using Tankstat.Application.Telemetry;
 using Tankstat.Application.Users;
@@ -210,6 +211,7 @@ public static class SettingsCatalog
         (SyncOptions.SectionName, typeof(SyncOptions)),
         (RecognitionOptions.SectionName, typeof(RecognitionOptions)),
         (BackupOptions.SectionName, typeof(BackupOptions)),
+        (RunOptions.SectionName, typeof(RunOptions)),
         (TelemetryOptions.SectionName, typeof(TelemetryOptions)),
     ];
 
