@@ -74,6 +74,78 @@ Tyres (#286): a vehicle's tyre sets, their time on the car, what they cost and w
 - **The timeline's bars and gaps** are as wide as their time, the one departure from the 44 px touch target rule (`data-layout-exempt="timeline"`).
 - **New real-browser tests** at both sizes for the tyre flows; the Seeder's vehicles have tyre sets, the winter one tracked tyre by tyre.
 
+## 0.21.0 (2026-11-16)
+
+Tyres (#286): a vehicle's tyre sets, their time on the car, what they cost and when to swap them. Everything below was in the previews `0.21.0-preview-1` to `-6`.
+
+### Added
+
+- **Tyres** (#287: #294, #295, #297, #298). A vehicle's **Tyres** tab tracks its tyre sets, a summer and a winter set say.
+  - **Sets:** a name, a season, an optional size, the DOT made date and *in use since*. A used set starts with a rough figure for what it ran before (always shown with ≈).
+  - **Swaps:** *Swap tyres* puts a set on the car on a day, today or in the past, and what was on comes off. The pairs are followed: which pair was at the front, *Front ↔ rear*, *Not sure*; *Change positions* for a set that stays on.
+  - **From papers:** *Add past swaps*, a row per swap (up to 25), a reading only where the papers have one.
+  - **Distances:** worked out from the car's readings and the fuel log (≈ where a day's odometer is worked out between readings), never saved. A set's history shows how far each pair ran at the front and at the rear.
+  - **Trash:** installations, lines and sets go to the trash and come back from the Trash page's new **Tyres** tab. *Retire* ends a set's life in storage, with Undo.
+- **The tyre log** (#288: #300, #301, #303, #304). A line says what was done: a tyre swap, positions changed, a puncture repaired, a valve replaced, wheel balancing, a storage fee, bought, other, or a note. It has a set or none, a day, an optional odometer reading (one of the car's readings) and a note.
+  - *Add entry* adds one; a line opens *Edit entry*, and its bin asks first and can be undone.
+  - Every swap is its line: they go to the trash and come back together, and changing a swap line's day moves the swap.
+- **What tyres cost** (#288). An amount typed on a line (*Paid*, *Paid for the swap*, a new set's *Price*) is an ordinary expense on the Expenses tab, with a *Tyre log* chip.
+  - The line and its expense share one day and one reading: changing either changes the other.
+  - Removing a line asks whether its expense goes too.
+  - Each set's card has **Spent** (a figure per currency) and **Repairs**; **Spent on tyres** under the cards has a row for all, one per set, and *Not tied to a set*.
+- **Single tyres** (#289: #305, #306, #308, #309). *Track tyres one by one* in a set's *History* gives each of its four tyres a short label and a corner. It cannot be undone.
+  - **The car picture:** the set's card shows its tyres at their corners, with their distance, age and cost. *Swap tyres* and *Change positions* show *Where each tyre goes*.
+  - **A tyre's own dialog:** where it is, its age, its distance with a front/rear bar, its repairs, its cost and its history.
+  - **One entry for several tyres:** *Add entry* has *For* (the whole set, or the tyres tapped on the car picture). Several tyres get a line each, sharing one expense and one reading, shown as one row; a set counts the amount once, each tyre its even share.
+  - **Replacing tyres early:** *Replace tyres* retires the tyres tapped (damaged, worn or too old) with their history, and each new tyre starts at 0 km at the same corner.
+- **Tyre details on an expense and on a schedule marked done** (#290: #324, #325, #328, #329). *Add expense*, *Edit expense* and the Done dialog have a *Tyre details* switch, opened by a tyre category.
+  - You choose *What was done*, the *Set* and *For*, as in *Add entry*; saving makes the expense with its tyre log line or lines.
+  - A visit marked done without an amount logs the line on its own.
+  - A receipt read by the vision model can name the tyre work and offers *Use it*; a photo never makes or changes a line by itself.
+- **An estimate for a used set, from the fuel log** (#291: #331). A button under the rough figure works it out from the car's logged distance in the set's **usual months** (the season's at first, twelve toggles to change them), leaving out the days another set was on the car. It is only offered, and it needs the server.
+- **The swap reminder** (#292: #333). A set in storage says when its season comes.
+  - **When:** from the 1st of the set's month (its season's at first: winter November, summer March, all-season none; changed or switched off in *Add a tyre set* and *Edit set*), once a season, while no other set of that season is on the car.
+  - **Where:** a note at the top of the Tyres tab, a *Time to swap* row on the vehicle's home card, and a notification.
+  - **What you can do:** *Swap* opens the swap dialog with the set chosen; *Not this season* quiets it until the next season, and can be taken back.
+- **The tyre timeline** (#332: #344, #347). A card on the Tyres tab: a row per set, a bar for each time it was on the car, with the time before tracking, gaps, repairs and retired sets, and the same data as a table.
+  - ***Show*** chooses the range, the layers and the sets; the choices are kept with your account. Zoom goes from 1× to 16×.
+  - **Moving a swap:** the ⇄ handle between two bars opens *Move the swap*; one day moves both periods. On a desktop the handle can be dragged, and *Undo* takes the move back.
+  - **Filling a gap:** a gap asks which set was on the car, offering the set before it first.
+  - **Changing a period's set:** *Edit the period* (from a bar, and from *History*) has a *Set* field. A set tracked tyre by tyre refuses it and says why.
+- **All of it works offline.** Tyre changes are kept on the device like a log's, shown at once and marked *Changed · not synced*, checked by the same rules as on the server, and sent in order once the server is back. *Waiting to sync* names them, can edit or remove them, and asks before an edit removes later changes that were made on what it no longer makes (#330: #343).
+- **The issue-workflow skills for other AI agents** (#293): `.agents/skills` points at the same skills as `.claude/skills`.
+
+### Changed
+
+- **Vehicle lists answer faster** (#311: #314): the home page's and the administrators' list load every row's figures for the whole page at once.
+- **A change kept for sync can hold longer accented text.** An accented letter took six characters of the 4,000 a waiting change may hold, so a long Hungarian note could be refused as too large.
+- **A parked change of a kind the app does not know** (one a newer server added while a tab waited for its update) is left out of *Waiting to sync* instead of breaking it.
+- The phone's top-bar count of changes waiting is a full 44 px touch target.
+
+### Upgrading
+
+- **Nine database migrations** run at the first start, for every provider: `AddTyres`, `RenameTyreInstallations`, `AddTyreEntries`, `AddTyreEntryExpenses`, `AddSingleTyres`, `AddTyreEntryTyres`, `AddTyreSetUsualMonths`, `AddTyreSetReminder` and `AddUiSettingsTimeline`. They only add tables and columns; nothing existing changes. As always since 0.15, a backup is written into `data/backups` before the migration.
+- **From a preview:** a tyre change still waiting on a device from `0.21.0-preview-1` is not sent by later builds. Let that device sync before you update. Changes waiting from preview 2 or later are sent.
+- **The GraphQL schema only gains fields** against 0.20: `vehicleTyres`, `tyreTrash`, `tyreRoughEstimate`, `Vehicle.tyreReminders`, a mutation per tyre change, `tyre` on `addExpense`, `updateExpense` and `markRecurringExpensesDone`, `Expense.tyreEntries`, `uiSettings.timeline`, the notification kind `TYRE_SWAP_DUE`, photo reading's `TYRE_WORK`, and the tyre operations of the sync queue. A 0.20 web app still open shows no Tyres tab until *Reload* on the update notice.
+- **Photo reading:** the contract asks expense photos for `tyreWork`. The built-in system prompt is unchanged, so a custom one needs no change; the field is optional (`docs/photo-reading.md`).
+- **No setting changed.**
+- The Docker Compose example now runs 0.21 (`TANKSTAT_VERSION` in `.env.example`).
+
+### Known
+
+- Rows found on a device after a restore (*Found on this device*) leave tyres out.
+- A set put on the car offline from its *History* keeps its *Time to swap* row on the home card until the server answers (#342).
+- The tyre log's row buttons are named otherwise than they read (#346).
+
+### For developers
+
+- **The rules** of the area are in `.claude/rules/tyres.md`; a set's time on the car is an *installation* in the code, the API and the documentation.
+- **Shared contracts:** `tests/backend/contracts/tyre-swaps/tyre-swaps.json` is checked on the server (`TyreSwapContractTests`) and on the device (`TyreHistory.unit`), so the offline replay follows the server's rules.
+- **Row fields of a list** go through batch data loaders, and `LogListQueriesTests` / `VehicleListQueriesTests` count the database contexts a page uses (#314).
+- **Under the hood:** the Application layer reads and writes no file itself (#315); convention tidy-ups (#316, with #323 by @IG-ABHINAV); CI's development version is always a valid version (#317); jsdom 31 in the tests (#318).
+- **The timeline's bars and gaps** are as wide as their time, the one departure from the 44 px touch target rule (`data-layout-exempt="timeline"`).
+- **New real-browser tests** at both sizes for the tyre flows; the Seeder's vehicles have tyre sets, the winter one tracked tyre by tyre.
+
 ## 0.20.0 (2026-11-05)
 
 ### Added
