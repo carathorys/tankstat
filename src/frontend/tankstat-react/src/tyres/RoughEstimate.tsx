@@ -90,7 +90,9 @@ export function RoughEstimate({
   const noteId = useId()
   const [asked, setAsked] = useState(false)
   const end = until ?? todayIso()
-  const valid = /^\d{4}-\d{2}-\d{2}$/.test(since) && since <= end
+  // In use since filled, and a span: it starts on the first day of that month (the owner's decision 48), as the server checks it.
+  const filled = /^\d{4}-\d{2}-\d{2}$/.test(since)
+  const valid = filled && `${since.slice(0, 7)}-01` <= end
   const wanted = valid ? { vehicleId, since, until: end, months: [...months] } : null
   // What is asked follows what is typed a little later, so a month tapped after another asks once.
   const key = wanted ? JSON.stringify(wanted) : ''
@@ -104,7 +106,8 @@ export function RoughEstimate({
   const estimate = asked && variables && settled === key ? data?.tyreRoughEstimate : undefined
   // Something to offer: a run that counted nothing (the fuel log ends before the months, or stood still in them) is "nothing in the months".
   const counted = !!estimate?.readings && !!estimate.from && estimate.distance > 0
-  const why = !reachable ? t('tyres.estimate.offline') : !valid ? t('tyres.estimate.needsSince') : undefined
+  // Not filled says so; filled but after the day the figure stands for is the span the server would refuse.
+  const why = !reachable ? t('tyres.estimate.offline') : !filled ? t('tyres.estimate.needsSince') : !valid ? t('errors.tyres.estimateSpan') : undefined
 
   const monthsText =
     months.length === 12 ? t('tyres.estimate.wholeYear') : isSeasons(season, months) ? t('tyres.estimate.theSeasons') : format.list(months.map((m) => format.month(m, 'short')))

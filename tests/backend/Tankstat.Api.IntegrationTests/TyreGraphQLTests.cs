@@ -672,7 +672,10 @@ public class TyreGraphQLTests(ApiFixture api)
         Assert.Equal(("2026-05-01", "2026-05-31"), (gap.GetProperty("from").GetString(), gap.GetProperty("until").GetString()));
 
         string? Key(JsonElement answer) => answer.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString();
-        Assert.Equal("tyres.estimateSpan", Key(await Send(query, new { v = vehicle, s = "2026-08-02", u = "2026-08-01", m = new[] { 5 } })));
+        // The span starts on the first of in use since's month (decision 48): a later day of the same month is a span, a later month is not.
+        var sameMonth = await Send(query, new { v = vehicle, s = "2026-08-02", u = "2026-08-01", m = new[] { 5 } });
+        Assert.False(sameMonth.TryGetProperty("errors", out var sameErrors), sameErrors.ToString());
+        Assert.Equal("tyres.estimateSpan", Key(await Send(query, new { v = vehicle, s = "2026-09-01", u = "2026-08-01", m = new[] { 5 } })));
         Assert.Equal("tyres.monthInvalid", Key(await Send(query, new { v = vehicle, s = "2026-05-10", u = "2026-08-01", m = new[] { 13 } })));
         var unseen = await Send(query, new { v = Guid.NewGuid(), s = "2026-05-10", u = "2026-08-01", m = new[] { 5 } });
         Assert.Equal("NOT_FOUND", unseen.GetProperty("errors")[0].GetProperty("extensions").GetProperty("code").GetString());

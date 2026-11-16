@@ -167,7 +167,8 @@ public sealed class TyreService(
     public async Task<TyreRoughEstimate?> EstimateRoughAsync(Guid vehicleId, DateOnly since, DateOnly until, IReadOnlyList<int> months, CancellationToken ct)
     {
         if (await guard.ForVehicleAsync(vehicleId, ct) is null) return null;
-        if (since > until || until > LatestAllowedDate)
+        // The span starts on the first day of in use since's month (the owner's decision 48): that day, not the one given, comes before until.
+        if (new DateOnly(since.Year, since.Month, 1) > until || until > LatestAllowedDate)
             throw new DomainException("tyres.estimateSpan", "The day the estimate starts must be before the day it ends, and not in the future.");
         var chosen = TyreMonths.Of(months);
         var book = await tyres.LoadAsync(vehicleId, ct);

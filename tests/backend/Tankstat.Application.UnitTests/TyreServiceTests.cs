@@ -603,7 +603,10 @@ public class TyreServiceTests
         Assert.Equal((0L, 31 + 10, true), (estimate.Distance, estimate.LeftOutDays, estimate.Readings));
         Assert.Equal([new DayRange(D(2025, 3, 1), D(2025, 4, 30))], estimate.NotCovered);
 
-        Assert.Equal("tyres.estimateSpan", (await Assert.ThrowsAsync<DomainException>(() => s.Tyres.EstimateRoughAsync(s.Car.Id, D(2026, 4, 12), D(2026, 4, 11), [4], default))).Key);
+        // The span starts on the first day of in use since's month (the owner's decision 48): a later day of the same month is still a span;
+        // a later month is not.
+        Assert.NotNull(await s.Tyres.EstimateRoughAsync(s.Car.Id, D(2026, 4, 12), D(2026, 4, 11), [4], default));
+        Assert.Equal("tyres.estimateSpan", (await Assert.ThrowsAsync<DomainException>(() => s.Tyres.EstimateRoughAsync(s.Car.Id, D(2026, 5, 1), D(2026, 4, 11), [4], default))).Key);
         Assert.Equal("tyres.estimateSpan", (await Assert.ThrowsAsync<DomainException>(() => s.Tyres.EstimateRoughAsync(s.Car.Id, D(2025, 3, 25), D(2099, 1, 1), [4], default))).Key);
         Assert.Equal("tyres.monthsRequired", (await Assert.ThrowsAsync<DomainException>(() => s.Tyres.EstimateRoughAsync(s.Car.Id, D(2025, 3, 25), D(2026, 4, 11), [], default))).Key);
 
