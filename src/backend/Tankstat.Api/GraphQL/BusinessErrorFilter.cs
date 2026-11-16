@@ -2,6 +2,7 @@ using HotChocolate;
 using HotChocolate.Execution;
 using Tankstat.Application;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Runs;
 using Tankstat.Domain;
 
 namespace Tankstat.Api.GraphQL;
@@ -24,6 +25,7 @@ public sealed class BusinessErrorFilter : IErrorFilter
             UnauthenticatedException => "UNAUTHENTICATED",
             ForbiddenException => "FORBIDDEN",
             InvalidCredentialsException => "INVALID_CREDENTIALS",
+            BusyException => "BUSY", // a run (#335) holds what the save needs: to be tried again, never a rule's refusal
             _ => null,
         };
         if (code is null) return error;

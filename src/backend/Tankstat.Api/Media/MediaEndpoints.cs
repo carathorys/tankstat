@@ -4,6 +4,7 @@ using Tankstat.Api.Auth;
 using Tankstat.Application;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Runs;
 using Tankstat.Application.Backups;
 using Tankstat.Application.Images;
 using Tankstat.Application.Photos;
@@ -194,6 +195,8 @@ public static class MediaEndpoints
                 UnauthenticatedException => StatusCodes.Status401Unauthorized,
                 ForbiddenException => StatusCodes.Status403Forbidden,
                 NotFoundException => StatusCodes.Status404NotFound,
+                // A run (#335) holds the car. Not 503: a client reads that as a server it cannot reach, and this one answered.
+                BusyException => StatusCodes.Status409Conflict,
                 _ when e.Key.EndsWith(".tooLarge", StringComparison.Ordinal) => StatusCodes.Status413PayloadTooLarge,
                 _ => StatusCodes.Status400BadRequest,
             };

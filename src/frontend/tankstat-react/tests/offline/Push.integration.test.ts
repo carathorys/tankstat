@@ -490,3 +490,31 @@ it('tells its listeners when it syncs; a sync asked for meanwhile follows the on
   await push.run()
   expect(seen).toHaveLength(4)
 })
+
+it('a busy answer (a run holds the car, #335) keeps the changes, parks nothing, leaves the server reachable, and sends them again by itself', async () => {
+  const requests: string[][] = []
+  let busy = true
+  server.use(
+    graphql.mutation('SyncChanges', ({ variables }) => {
+      const changes = variables.input.changes as Sent[]
+      requests.push(changes.map((c) => c.id))
+      if (busy) return HttpResponse.json({ errors: [{ message: 'The server is busy with an import, try again in a moment.', extensions: { code: 'BUSY', key: 'import.busy', args: {} } }], data: null })
+      return HttpResponse.json({ data: { syncChanges: { __typename: 'SyncResultInfo', applied: changes.length, parked: 0, results: changes.map((c) => ({ __typename: 'SyncChangeResultInfo', id: c.id, status: 'APPLIED', entityId: null, version: 1, reason: null })) } } })
+    }),
+  )
+  await keep(log('r1'))
+  await keep(log('r2'))
+  const push = createPushEngine({ client: createApolloClient('http://localhost/graphql'), busyRetryMs: 30, pull: async () => void pulls.push(outbox.changes.length) })
+
+  await push.run()
+
+  expect(requests).toEqual([['r1', 'r2']]) // not tried one by one: busy is no refusal of a change
+  expect(outbox.changes.map((c) => c.id)).toEqual(['r1', 'r2'])
+  expect(push.state.last).toMatchObject({ applied: 0, parked: [], interrupted: true })
+  expect(connectivity.reachable).toBe(true)
+
+  busy = false
+  await vi.waitFor(() => expect(outbox.changes).toEqual([])) // the engine's own retry
+  expect(requests).toEqual([['r1', 'r2'], ['r1', 'r2']])
+  expect(push.state.last).toMatchObject({ applied: 2, parked: [], interrupted: false })
+})

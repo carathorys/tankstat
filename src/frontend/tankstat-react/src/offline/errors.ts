@@ -1,4 +1,4 @@
-import { ServerError, ServerParseError } from '@apollo/client/errors'
+import { CombinedGraphQLErrors, ServerError, ServerParseError } from '@apollo/client/errors'
 import { ApiError } from '../pictures/ApiError.ts'
 
 /**
@@ -31,6 +31,18 @@ export function classifyFailure(error: unknown): FailureKind {
   if (ServerError.is(error) && GATEWAY.has(error.statusCode)) return 'gateway'
   if (error instanceof ApiError && GATEWAY.has(error.status)) return 'gateway'
   return 'answered'
+}
+
+/** The key of the server's "busy" answer (#335): a run holds what the save needs. */
+export const BUSY_KEY = 'import.busy'
+
+/**
+ * The server answered that it is busy with a run (#335, the owner's decision 2): the save is to be tried again later. It is no rule's
+ * refusal, so a change kept on the device stays kept, and no sign of a server out of reach either: it answered.
+ */
+export function isBusy(error: unknown): boolean {
+  if (error instanceof ApiError) return error.key === BUSY_KEY
+  return CombinedGraphQLErrors.is(error) && error.errors.some((e) => e.extensions?.key === BUSY_KEY)
 }
 
 export const isConnectionFailure = (error: unknown): boolean => error instanceof OfflineError || classifyFailure(error) !== 'answered'

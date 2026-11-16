@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
+using Tankstat.Application.Runs;
 using Tankstat.Application.Telemetry;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain;
@@ -243,6 +244,10 @@ public sealed class SyncService(
                 logger.LogInformation("User {UserId} applied parked change {ChangeId} of vehicle {VehicleId}", me.Id, change.Id, change.VehicleId);
                 return change;
             }
+            catch (BusyException)
+            {
+                throw; // a run (#335) holds the car: the change stays parked as it was, to be applied again later
+            }
             catch (KeyedException refused) when (change.SubmittedById != me.Id && refused is NotFoundException or ForbiddenException)
             {
                 // Refused for what this person may not do: why the change was parked for the others stays as it was.
@@ -279,7 +284,7 @@ public sealed class SyncService(
             return SyncChange.Applied(change.Id, ownerId, submitter, vehicleId, applied.EntityId ?? change.TargetId, change.Kind,
                 change.ExpectedVersion, change.Payload, now, applied.EntityId, applied.Version);
         }
-        catch (KeyedException refused)
+        catch (KeyedException refused) when (refused is not BusyException) // busy (#335) parks nothing: the batch stops there and the device sends the rest again
         {
             var args = refused.Args.ToDictionary(a => a.Key, a => Convert.ToString(a.Value, CultureInfo.InvariantCulture) ?? "");
             var (vehicleId, ownerId) = await FiledUnderAsync(change.VehicleIdHint ?? (change.VehicleOf is { } find ? await find(ct) : null), submitter, ct);

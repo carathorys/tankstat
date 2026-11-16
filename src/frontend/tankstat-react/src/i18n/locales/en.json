@@ -943,6 +943,7 @@
       "notTrashed": "This expense is not in the trash."
     },
     "import": {
+      "busy": "The server is busy with an import, try again in a moment.",
       "unknownFormat": "This import format is not supported: {{format}}.",
       "unreadable": "This file does not look like an export of the chosen app.",
       "nothingFound": "The file contains no fuel logs, expenses or recurring expenses to import.",

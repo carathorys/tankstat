@@ -943,6 +943,7 @@
       "notTrashed": "Ez a költség nincs a kukában."
     },
     "import": {
+      "busy": "A szerver éppen importál, próbáld újra egy pillanat múlva.",
       "unknownFormat": "Ez az importformátum nem támogatott: {{format}}.",
       "unreadable": "Ez a fájl nem a kiválasztott alkalmazás exportjának tűnik.",
       "nothingFound": "A fájlban nincs importálható tankolás, költség vagy ismétlődő költség.",
