@@ -50,6 +50,29 @@ test('the tyre swap reminder, on the Tyres tab and on the home card, has no axe 
   expect(await violations(page)).toEqual([])
 })
 
+test('the tyre timeline, with a gap, a swap handle and its Show menu open, has no axe violations (#332)', async ({ page }) => {
+  const day = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10)
+  const vehicle = await addVehicle(page)
+  const addSet = 'mutation($i: AddTyreSetInput!) { addTyreSet(input: $i) { sets { set { id name } } } }'
+  const set = { vehicleId: vehicle.id, replace: false, reminderMonth: 0, fitted: false, day: day(0) } // no swap note above the card, whatever the month
+  await graphql(page, addSet, { i: { ...set, name: 'Michelin Primacy 4', season: 'SUMMER', since: day(900), roughDistance: 30_000 } })
+  await graphql(page, addSet, { i: { ...set, name: 'Spare all-season', season: 'ALL_SEASON', since: day(400), roughDistance: 0 } })
+  const sets = (await graphql<{ addTyreSet: { sets: { set: { id: string; name: string } }[] } }>(page, addSet, { i: { ...set, name: 'Continental WinterContact', season: 'WINTER', since: day(900), roughDistance: 0 } })).addTyreSet.sets
+  const id = (name: string) => sets.find((s) => s.set.name === name)!.set.id
+  const add = 'mutation($i: AddTyreInstallationInput!) { addTyreInstallation(input: $i) { vehicleId } }'
+  const period = (name: string, from: number, until: number | null) => graphql(page, add, { i: { setId: id(name), from: day(from), until: until === null ? null : day(until) } })
+  await period('Continental WinterContact', 300, 200)
+  await period('Spare all-season', 200, 180) // a swap, then two weeks nobody recorded
+  await period('Michelin Primacy 4', 166, null)
+  await openVehicle(page, vehicle.id, 'tyres')
+  const timeline = page.locator('[data-timeline]')
+  await expect(timeline.getByRole('button', { name: /Move the swap$/ }).first()).toBeVisible()
+  await timeline.getByRole('button', { name: 'Show' }).click()
+  await expect(timeline.getByRole('checkbox', { name: 'Gaps' })).toBeVisible()
+  // The card alone: the tyre log under it has a finding of its own (its rows' names, #346), which is not the timeline's.
+  expect(await violations(page, '[data-timeline]')).toEqual([])
+})
+
 test('a vehicle\'s dashboard, shown and being arranged, has no axe violations', async ({ page }) => {
   const vehicle = await addVehicle(page)
   await page.goto(`/vehicles/${vehicle.id}`)

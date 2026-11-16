@@ -78,6 +78,11 @@ public class TyreSwapContractTests
                     var positions = c.GetProperty("positions");
                     changes = history.ChangePositions(SetOf(positions), Day(positions.GetProperty("day")), Pairs(positions.GetProperty("pairOneFront")), Owner, IdOf("new"));
                     break;
+                case "toSet":
+                    var toSet = c.GetProperty("toSet");
+                    var moved = installations.Single(s => s.Id == IdOf(toSet.GetProperty("installation").GetString()!));
+                    changes = history.MoveToSet(moved, SetOf(toSet), moved.From, moved.Until, Pairs(toSet.GetProperty("pairOneFront")), Owner);
+                    break;
                 case "move":
                     var move = c.GetProperty("move");
                     changes = history.MoveSwap(installations.Single(s => s.Id == IdOf(move.GetProperty("installation").GetString()!)), Day(move.GetProperty("day")), Owner);

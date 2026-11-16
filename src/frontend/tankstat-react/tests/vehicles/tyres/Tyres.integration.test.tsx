@@ -269,7 +269,7 @@ it('adds an installation to a set’s history with its first day’s reading, an
   expect(state.calls.AddTyreInstallation[0].input).toMatchObject({ id: UUID, setId: 's2', from: '2024-11-09', until: '2025-03-29', pairOneFront: null, odometerFrom: 118_500 })
 
   await ui.click(within(history).getByRole('button', { name: 'Edit' }))
-  const edit = await screen.findByRole('dialog', { name: 'Edit installation' })
+  const edit = await screen.findByRole('dialog', { name: 'Edit the period' })
   await ui.click(within(edit).getByRole('combobox', { name: 'Pairs' }))
   await ui.click(screen.getByRole('option', { name: 'pair 2 at the front' }))
   await ui.click(within(edit).getByRole('button', { name: 'Save' }))

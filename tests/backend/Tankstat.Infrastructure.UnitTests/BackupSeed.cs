@@ -45,6 +45,10 @@ internal static class BackupSeed
         var tyres = new TyreSave();
         tyres.AddedSets.Add(TyreSet.Create(user.Id, user.Id, vehicle.Id, "Zz Winter", TyreSeason.Winter, null, Day, null, null, 0, null, usualMonths: [12, 1, 2], reminderMonth: 10, today: Day));
         await db.Get<ITyreRepository>().SaveAsync(tyres, default);
+        // The user's UI settings with the tyre timeline's choices (#332): one JSON text behind a converter.
+        var ui = Tankstat.Domain.Settings.UiSettings.Create(user.Id, new DateTimeOffset(2026, 11, 10, 12, 0, 0, TimeSpan.Zero));
+        ui.SetTimeline(new Tankstat.Domain.Settings.TimelineChoices(Tankstat.Domain.Settings.TimelineRange.TwoYears, [Tankstat.Domain.Settings.TimelineLayer.Gaps, Tankstat.Domain.Settings.TimelineLayer.Table], [Guid.Parse("11111111-2222-3333-4444-555555555555")]), ui.UpdatedAt);
+        await db.Get<Tankstat.Application.Settings.IUiSettingsRepository>().SaveAsync(ui, default);
 
         var images = db.Get<IImageRepository>();
         var picture = StoredImage.Create(Guid.NewGuid(), "image/webp", 3, Now, ImageFolders.VehiclePicture(vehicle.Id));

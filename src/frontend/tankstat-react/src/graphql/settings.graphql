@@ -10,6 +10,9 @@ query UiSettings {
     dateFormat
     defaultTimeFormat
     defaultDateFormat
+    timeline {
+      ...TimelineSettingsFields
+    }
     grids {
       gridId
       order
@@ -31,6 +34,9 @@ mutation UpdateUiSettings($input: UpdateUiSettingsInput!) {
     dateFormat
     defaultTimeFormat
     defaultDateFormat
+    timeline {
+      ...TimelineSettingsFields
+    }
   }
 }
 
@@ -47,4 +53,11 @@ mutation SaveGridSettings($input: GridSettingsInput!) {
 
 mutation ResetGridSettings($gridId: String!) {
   resetGridSettings(gridId: $gridId)
+}
+
+# What the tyre timeline shows (#332): the range, the layers shown and the sets hidden; null when the user never chose.
+fragment TimelineSettingsFields on TimelineSettingsInfo {
+  range
+  layers
+  hiddenSets
 }

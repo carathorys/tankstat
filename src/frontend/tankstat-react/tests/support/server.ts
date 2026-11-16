@@ -48,7 +48,7 @@ export const server = setupServer(
   graphql.query('VehicleTyres', () => HttpResponse.json({ data: { vehicleTyres: null } })),
   graphql.query('RecognitionStatus', () => HttpResponse.json({ data: { recognitionStatus: { available: false } } })),
   graphql.query('PasswordRequirements', () => HttpResponse.json({ data: { passwordRequirements: { minLength: 10, maxLength: 128 } } })),
-  graphql.query('UiSettings', () => HttpResponse.json({ data: { uiSettings: { navOpen: null, language: null, colorMode: null, surface: null, timeFormat: null, dateFormat: null, defaultTimeFormat: null, defaultDateFormat: null, grids: [] } } })),
+  graphql.query('UiSettings', () => HttpResponse.json({ data: { uiSettings: { navOpen: null, language: null, colorMode: null, surface: null, timeFormat: null, dateFormat: null, defaultTimeFormat: null, defaultDateFormat: null, timeline: null, grids: [] } } })),
   // The Account page's Offline data section: the default window, no vehicles of its own (tests with vehicles answer these themselves).
   graphql.query('OfflineSettings', () => HttpResponse.json({ data: { offlineSettings: { __typename: 'OfflineSettingsInfo', defaultWindow: 'span:P2M', vehicles: [] } } })),
   graphql.query('OfflineVehicles', () => HttpResponse.json({ data: { myVehicles: [] } })),
@@ -68,6 +68,7 @@ export const server = setupServer(
           dateFormat: variables.input.dateFormat ?? null,
           defaultTimeFormat: null,
           defaultDateFormat: null,
+          timeline: variables.input.timeline ? { __typename: 'TimelineSettingsInfo', ...variables.input.timeline } : null,
         },
       },
     }),

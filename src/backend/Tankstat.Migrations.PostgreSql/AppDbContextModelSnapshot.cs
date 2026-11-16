@@ -796,6 +796,10 @@ namespace Tankstat.Migrations.PostgreSql
                         .HasMaxLength(24)
                         .HasColumnType("character varying(24)");
 
+                    b.Property<string>("Timeline")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 

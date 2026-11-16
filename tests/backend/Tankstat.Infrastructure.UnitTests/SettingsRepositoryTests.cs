@@ -39,6 +39,36 @@ public class SettingsRepositoryTests
     }
 
     [Fact]
+    public async Task UiSettings_TheTimelinesChoices_RoundTrip_AsOneJsonText_AndNoneStaysNone()
+    {
+        // #332: the range and the layers by name, the hidden sets' ids.
+        await using var db = new TestDatabase();
+        var repo = db.Get<IUiSettingsRepository>();
+        var (user, other, hidden) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var settings = UiSettings.Create(user, Now);
+        settings.SetTimeline(new TimelineChoices(TimelineRange.TwoYears, [TimelineLayer.Table, TimelineLayer.Gaps], [hidden]), Now);
+        await repo.SaveAsync(settings, default);
+        var plain = UiSettings.Create(other, Now);
+        plain.SetNavOpen(true, Now);
+        await repo.SaveAsync(plain, default);
+
+        var loaded = (await repo.FindAsync(user, default))!.Timeline!;
+        Assert.Equal((TimelineRange.TwoYears, hidden), (loaded.Range, Assert.Single(loaded.HiddenSets)));
+        Assert.Equal([TimelineLayer.Gaps, TimelineLayer.Table], loaded.Layers);
+        Assert.Null((await repo.FindAsync(other, default))!.Timeline);
+        await using var ctx = await db.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
+        var text = await ctx.Database.SqlQueryRaw<string>("SELECT \"Timeline\" AS \"Value\" FROM \"UiSettings\" WHERE \"Timeline\" IS NOT NULL").SingleAsync();
+        Assert.Contains("\"range\":\"TwoYears\"", text);
+        Assert.Contains("\"layers\":[\"Gaps\",\"Table\"]", text);
+
+        // Forgotten again: the defaults apply.
+        var again = (await repo.FindAsync(user, default))!;
+        again.SetTimeline(null, Now.AddMinutes(1));
+        await repo.SaveAsync(again, default);
+        Assert.Null((await repo.FindAsync(user, default))!.Timeline);
+    }
+
+    [Fact]
     public async Task UiSettings_ColorMode_RoundTrips_StoredByName()
     {
         await using var db = new TestDatabase();

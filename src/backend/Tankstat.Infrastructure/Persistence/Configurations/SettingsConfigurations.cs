@@ -33,6 +33,8 @@ internal static class JsonListMapping
 
 internal sealed class UiSettingsConfiguration : IEntityTypeConfiguration<UiSettings>
 {
+    private static readonly JsonSerializerOptions TimelineJson = new(JsonSerializerDefaults.Web) { Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } };
+
     public void Configure(EntityTypeBuilder<UiSettings> b)
     {
         b.ToTable("UiSettings");
@@ -43,6 +45,13 @@ internal sealed class UiSettingsConfiguration : IEntityTypeConfiguration<UiSetti
         b.Property(s => s.Surface).HasConversion<string>().HasMaxLength(16);
         b.Property(s => s.TimeFormat).HasConversion<string>().HasMaxLength(24);
         b.Property(s => s.DateFormat).HasConversion<string>().HasMaxLength(24);
+        // The tyre timeline's choices (#332) as one JSON text, enums by name: the range, the layers shown and at most 50 hidden set ids.
+        b.Property(s => s.Timeline)
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, TimelineJson),
+                v => JsonSerializer.Deserialize<TimelineChoices>(v, TimelineJson)!,
+                new ValueComparer<TimelineChoices?>((a, c) => Equals(a, c), v => v == null ? 0 : v.GetHashCode(), v => v))
+            .HasMaxLength(4000);
         // Stored as a UTC date-time so comparisons translate on every provider (same as the other timestamps).
         b.Property(s => s.UpdatedAt).HasConversion(v => v.UtcDateTime, v => new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc)));
     }

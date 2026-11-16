@@ -1,7 +1,7 @@
 import { ownMonths, ownReminderMonth, reminderMonthOf } from './tyreMonths.ts'
 import { expenseTyreOf as tyreDetailsOf, type Change } from '../offline/changes.ts'
 import { isTyreAction } from '../offline/tyreChanges.ts'
-import { checked, moveSwap, TyreRuleError, type SetState, type InstallationState } from './tyreHistory.ts'
+import { checked, moveSwap, moveToSet, TyreRuleError, type SetState, type InstallationState } from './tyreHistory.ts'
 import { follow, type Joined, type LineState } from './tyreLog.ts'
 import {
   addPlace, breakUp, changePositionsPlaced, replace, follow as followPlaces, editPlace, livePlaces, requireLabelFree, checkedLabel, swapPlaced,
@@ -87,7 +87,7 @@ const tyreOf = (m: Model, id: unknown) => {
   return found
 }
 
-const states = (m: Model): SetState[] => m.sets.map((s) => ({ id: s.set.id, name: s.set.name, retiredOn: s.set.retiredOn ?? null }))
+const states = (m: Model): SetState[] => m.sets.map((s) => ({ id: s.set.id, name: s.set.name, retiredOn: s.set.retiredOn ?? null, brokenUp: !!s.set.brokenUpOn }))
 
 const setOf = (m: Model, id: unknown) => {
   const found = m.sets.find((s) => s.set.id === id)
@@ -465,13 +465,15 @@ function apply(m: Model, c: Change, vehicleId: string) {
       const old = m.installations.find((x) => x.id === input.id)
       if (!old) throw new TyreRuleError('tyres.installationNotFound')
       if (day(input.until) !== null && str(input.until) <= str(input.from)) throw new TyreRuleError('tyres.untilBeforeFrom', { from: str(input.from), until: str(input.until) })
-      history(m, checked(
-        states(m),
-        m.installations.map((x) => (x === old ? { ...old, from: str(input.from), until: day(input.until), pairOneFront: (input.pairOneFront as boolean | null) ?? null } : x)),
-        new Set([old.id]),
-      ), [], c.id)
-      typed(m, old.setId, day(input.from), num(input.odometerFrom), null, c.id)
-      typed(m, old.setId, day(input.until), num(input.odometerUntil), null, c.id)
+      // Another set named (#332): the period moves there, its line with it (`TyreHistory.MoveToSet`); left out, the set stays.
+      const setId = str(input.setId) || old.setId
+      const pairs = (input.pairOneFront as boolean | null) ?? null
+      history(m, setId !== old.setId
+        ? moveToSet(states(m), m.installations, old.id, setId, str(input.from), day(input.until), pairs)
+        : checked(states(m), m.installations.map((x) => (x === old ? { ...old, from: str(input.from), until: day(input.until), pairOneFront: pairs } : x)), new Set([old.id])),
+      [], c.id)
+      typed(m, setId, day(input.from), num(input.odometerFrom), null, c.id)
+      typed(m, setId, day(input.until), num(input.odometerUntil), null, c.id)
       return
     }
     case 'deleteTyreInstallation':

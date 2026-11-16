@@ -200,4 +200,50 @@ public class TyreHistoryTests
         history.Check(); // the trashed winter set's installation does not count
         Assert.Single(history.Live);
     }
+
+    // ---- a period moved to another set (#332, edit B) ------------------------------------------------------------
+
+    [Fact]
+    public void APeriodMovedToAnotherSet_TakesItsLineAlong_AndTheKindsAroundItAreWorkedOutAgain()
+    {
+        // Winter, then "summer" for two weeks that were really winter too, then summer.
+        var (first, wrong, last) = (S(_winter, D(2025, 11, 1), D(2026, 3, 1), true), S(_summer, D(2026, 3, 1), D(2026, 3, 15), true), S(_summer, D(2026, 3, 15), null, true));
+        var history = History(first, wrong, last);
+        var lines = new[] { first, wrong, last }.Select(i => TyreLog.LineFor(i, history, Owner)).ToList();
+        Assert.Equal([TyreEntryKind.Swap, TyreEntryKind.Swap, TyreEntryKind.PositionsChanged], lines.Select(l => l.Kind));
+
+        var changes = history.MoveToSet(wrong, _winter, wrong.From, wrong.Until, null, Owner);
+        TyreLog.Follow(changes, history, lines, Owner, Now);
+
+        Assert.Equal((_winter.Id, (bool?)null, 2), (wrong.SetId, wrong.PairOneFront, wrong.Version)); // pair 1 of one set is not pair 1 of another
+        Assert.Equal([wrong], changes.SetChanged);
+        // Its own line: winter came off that day, so the positions changed; the next one's: summer went on after winter, a swap.
+        Assert.Equal([(TyreEntryKind.Swap, _winter.Id), (TyreEntryKind.PositionsChanged, _winter.Id), (TyreEntryKind.Swap, _summer.Id)], lines.Select(l => (l.Kind, l.SetId!.Value)));
+
+        // And back again: as it was.
+        TyreLog.Follow(history.MoveToSet(wrong, _summer, wrong.From, wrong.Until, true, Owner), history, lines, Owner, Now);
+        Assert.Equal([TyreEntryKind.Swap, TyreEntryKind.Swap, TyreEntryKind.PositionsChanged], lines.Select(l => l.Kind));
+        Assert.Equal(_summer.Id, lines[1].SetId);
+    }
+
+    [Fact]
+    public void APeriodMovedToAnotherSet_IsCheckedLikeAnyChange_AndASetTrackedTyreByTyreRefusesIt()
+    {
+        var (winter, summer) = (S(_winter, D(2025, 11, 1), D(2026, 3, 1)), S(_summer, D(2026, 3, 1), null));
+        var retired = TyreSet.Create(Owner, Owner, Car, "Old Nokian", TyreSeason.Winter, null, D(2019, 11, 1), null, null, 0, null);
+        retired.Retire(D(2025, 12, 1));
+        var tracked = TyreSet.Create(Owner, Owner, Car, "Tracked", TyreSeason.Summer, null, D(2023, 3, 1), null, null, 0, null);
+        tracked.BreakUp(D(2026, 1, 1));
+        var history = new TyreHistory(Owner, Car, [_summer, _winter, retired, tracked], [winter, summer]);
+
+        Assert.Equal("tyres.brokenUpSetCannotMove", Key(() => history.MoveToSet(winter, tracked, winter.From, winter.Until, null, Owner)));
+        Assert.Equal(_winter.Id, winter.SetId);
+        Assert.Equal("tyres.setRetired", Key(() => history.MoveToSet(summer, retired, summer.From, summer.Until, null, Owner))); // on the car past its retirement
+
+        // The same set: a plain edit of the days.
+        var same = new TyreHistory(Owner, Car, [_summer, _winter], [S(_winter, D(2025, 11, 1), D(2026, 3, 1))]);
+        var only = same.Live.Single();
+        var edited = same.MoveToSet(only, _winter, D(2025, 11, 5), D(2026, 3, 1), true, Owner);
+        Assert.Equal((D(2025, 11, 5), 0), (only.From, edited.SetChanged.Count));
+    }
 }

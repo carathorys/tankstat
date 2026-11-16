@@ -10,6 +10,7 @@ import { LANGUAGES } from '../i18n/index.ts'
 import type { ColorModeChoice } from '../theme/colorMode.ts'
 import type { SurfaceChoice } from '../theme/surface.ts'
 import { setSurface as applySurface } from '../theme/surfaceStore.ts'
+import { DEFAULT_TIMELINE, isTimelineChoices, type TimelineChoices } from './timelineChoices.ts'
 import type { GridSaved } from './types.ts'
 import { UiSettingsContext, type UiSettingsApi } from './uiSettingsContext.ts'
 
@@ -79,6 +80,8 @@ export function UiSettingsProvider({ enabled, children }: { enabled: boolean; ch
   const surfaceTouched = useRef(false)
   const timeFormatTouched = useRef(false)
   const dateFormatTouched = useRef(false)
+  const [timeline, storeTimeline] = useStoredState('tankstat.timeline', DEFAULT_TIMELINE, isTimelineChoices)
+  const timelineTouched = useRef(false)
   const { data } = useQuery(UiSettingsDocument, { skip: !enabled, fetchPolicy: 'network-only' }) // never another user's cached answer
   const send = useSerialSaves()
   const [updateUi] = useMutation(UpdateUiSettingsDocument)
@@ -120,6 +123,23 @@ export function UiSettingsProvider({ enabled, children }: { enabled: boolean; ch
     })
   }, [server])
 
+  // ... and the tyre timeline's choices (#332). None on the account keeps the browser's copy, like the sidebar; choices this build cannot
+  // draw (a newer server's range or layer) are left alone.
+  useEffect(() => {
+    if (!server?.timeline || timelineTouched.current) return
+    const { range, layers, hiddenSets } = server.timeline
+    const choices = { range, layers: [...layers], hiddenSets: hiddenSets.map(String) }
+    if (isTimelineChoices(choices)) storeTimeline(choices)
+  }, [server, storeTimeline])
+
+  const setTimeline = useCallback(
+    (choices: TimelineChoices) => {
+      timelineTouched.current = true
+      storeTimeline(choices)
+      if (enabled) send('timeline', () => updateUi({ variables: { input: { timeline: choices } } }))
+    },
+    [enabled, storeTimeline, updateUi, send],
+  )
   const setNavOpen = useCallback(
     (open: boolean) => {
       navTouched.current = true
@@ -190,8 +210,8 @@ export function UiSettingsProvider({ enabled, children }: { enabled: boolean; ch
   )
 
   const value = useMemo<UiSettingsApi>(
-    () => ({ server, navOpen, setNavOpen, setLanguage, setColorMode, setSurface, setTimeFormat, setDateFormat, grid, saveGrid, resetGrid }),
-    [server, navOpen, setNavOpen, setLanguage, setColorMode, setSurface, setTimeFormat, setDateFormat, grid, saveGrid, resetGrid],
+    () => ({ server, navOpen, setNavOpen, setLanguage, setColorMode, setSurface, setTimeFormat, setDateFormat, timeline, setTimeline, grid, saveGrid, resetGrid }),
+    [server, navOpen, setNavOpen, setLanguage, setColorMode, setSurface, setTimeFormat, setDateFormat, timeline, setTimeline, grid, saveGrid, resetGrid],
   )
   return <UiSettingsContext.Provider value={value}>{children}</UiSettingsContext.Provider>
 }

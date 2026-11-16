@@ -294,7 +294,7 @@ test('breaks a set up in its History, shows its tyres at their corners, and swap
   await summer.getByRole('button', { name: 'History' }).click()
   const history = page.getByRole('dialog', { name: 'Michelin Primacy 4' })
   await history.getByRole('button', { name: 'Edit' }).first().click()
-  const installation = page.getByRole('dialog', { name: 'Edit installation' })
+  const installation = page.getByRole('dialog', { name: 'Edit the period' })
   await typeDate(page, dateField(installation, /First day on the car/), '2026-03-01')
   await installation.getByRole('button', { name: 'Save' }).click()
   await expect(installation).toBeHidden()
@@ -680,7 +680,12 @@ test('the swap reminder on the Tyres tab: Not this season and Undo, then Swap ty
 
   const note = page.getByRole('status').filter({ hasText: 'Time to fit the winter tyres' })
   await expect(note).toContainText('Continental WinterContact is in storage, and you asked to be reminded from')
-  await expectSoundLayout(page) // the note above the sets, its buttons wrapping on a phone
+  // The order on the tab (#332's decision 93): the note, then the timeline, then the sets.
+  const top = async (locator: Locator) => (await locator.boundingBox())!.y
+  const timelineTop = await top(timelineOf(page).getByRole('heading', { name: 'Timeline' }))
+  expect(await top(note)).toBeLessThan(timelineTop)
+  expect(timelineTop).toBeLessThan(await top(page.getByRole('article', { name: 'Michelin Primacy 4' })))
+  await expectSoundLayout(page) // the note above the timeline and the sets, its buttons wrapping on a phone
 
   await note.getByRole('button', { name: 'Not this season: Continental WinterContact' }).click()
   await expect(page.getByText('Time to fit the winter tyres')).toBeHidden()
@@ -729,4 +734,167 @@ test('the swap reminder on the home card and in the notifications: the row after
   await expect(swap).toBeHidden()
   await expect(card.getByText('Time to swap')).toBeHidden()
   await expect(rows).toHaveCount(1)
+})
+
+/**
+ * Two sets with a history for the timeline (#332): winter on from 160 days ago to 100 days ago, nothing for two weeks, then summer on
+ * since 86 days ago. Neither set reminds (`reminderMonth: 0`), so no swap note sits above the card whatever month the test runs in.
+ */
+async function historyWithAGap(page: Page) {
+  const day = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10)
+  const vehicle = await addVehicle(page)
+  await logRefueling(page, vehicle.id, { date: day(200), odometer: 1000 })
+  await logRefueling(page, vehicle.id, { date: day(10), odometer: 9000 })
+  const addSet = 'mutation($i: AddTyreSetInput!) { addTyreSet(input: $i) { sets { set { id name } } } }'
+  const set = { vehicleId: vehicle.id, size: null, madeWeek: null, madeYear: null, roughDistance: 0, replace: false, reminderMonth: 0, fitted: false, day: day(0) }
+  await graphql(page, addSet, { i: { ...set, name: 'Michelin Primacy 4', season: 'SUMMER', since: day(400) } })
+  const sets = (await graphql<{ addTyreSet: { sets: { set: { id: string; name: string } }[] } }>(page, addSet, { i: { ...set, name: 'Continental WinterContact', season: 'WINTER', since: day(400) } })).addTyreSet.sets
+  const id = (name: string) => sets.find((s) => s.set.name === name)!.set.id
+  const add = 'mutation($i: AddTyreInstallationInput!) { addTyreInstallation(input: $i) { vehicleId } }'
+  await graphql(page, add, { i: { setId: id('Continental WinterContact'), from: day(160), until: day(100), pairOneFront: null, odometerFrom: null, odometerUntil: null } })
+  await graphql(page, add, { i: { setId: id('Michelin Primacy 4'), from: day(86), until: null, pairOneFront: null, odometerFrom: null, odometerUntil: null } })
+  return { vehicle, day }
+}
+
+const timelineOf = (page: Page) => page.locator('[data-timeline]')
+
+test('the timeline: the sets side by side, a gap filled with the set before it, the Show menu kept after a reload, and zoom (#332)', async ({ page }) => {
+  const { vehicle } = await historyWithAGap(page)
+  await openVehicle(page, vehicle.id, 'tyres')
+  const timeline = timelineOf(page)
+  await expect(timeline.getByRole('heading', { name: 'Timeline' })).toBeVisible()
+  const picture = timeline.getByRole('group', { name: 'Timeline picture, scrolls sideways' })
+  await expect(picture.getByRole('button', { name: /^Michelin Primacy 4, on the car .* to today, .*\. Edit$/ })).toBeVisible()
+  await expect(picture.getByRole('button', { name: /^Continental WinterContact, on the car .*\. Edit$/ })).toBeVisible()
+  await expectSoundLayout(page) // the page never scrolls sideways; the picture scrolls inside its box
+
+  // The gap: the winter set simply stayed on until the summer one went on.
+  await picture.getByRole('button', { name: /^No set recorded from .* Fill in$/ }).evaluate((el: HTMLElement) => el.click())
+  const fill = page.getByRole('dialog', { name: 'Which set was on the car?' })
+  await expect(fill.getByRole('combobox', { name: 'Set' })).toContainText('Continental WinterContact')
+  await expectSoundLayout(page)
+  await fill.getByRole('button', { name: 'Save' }).click()
+  await expect(fill).toBeHidden()
+  await expect(picture.getByRole('button', { name: /^No set recorded/ })).toHaveCount(0)
+  // Now one came off the day the other went on: a swap, with its handle.
+  await expect(picture.getByRole('button', { name: /^Swap on .*: Continental WinterContact off, Michelin Primacy 4 on\. Move the swap$/ })).toBeVisible()
+
+  // The Show menu: the table off and a set hidden, said in its summary and kept with the account.
+  await timeline.getByRole('button', { name: 'Show' }).click()
+  await timeline.getByRole('checkbox', { name: 'Table' }).uncheck()
+  await timeline.getByRole('checkbox', { name: 'Continental WinterContact' }).uncheck()
+  await expect(timeline.getByText('All · 3 of 5 shown · 1 set hidden')).toBeVisible()
+  await expect(timeline.getByRole('columnheader', { name: 'Actions' })).toHaveCount(0)
+  await expectSoundLayout(page) // the open menu, at both sizes
+  await expect
+    .poll(async () => (await graphql<{ uiSettings: { timeline: { layers: string[]; hiddenSets: string[] } | null } }>(page, '{ uiSettings { timeline { layers hiddenSets } } }')).uiSettings.timeline?.hiddenSets.length)
+    .toBe(1)
+  await page.reload()
+  await pageLoaded(page)
+  await expect(timelineOf(page).getByText('All · 3 of 5 shown · 1 set hidden')).toBeVisible()
+  await expect(timelineOf(page).getByRole('button', { name: /^Continental WinterContact, on the car/ })).toHaveCount(0)
+
+  // Zoom: a wider picture inside the same box.
+  const box = timelineOf(page).getByRole('group', { name: 'Timeline picture, scrolls sideways' })
+  const width = () => box.evaluate((el) => el.scrollWidth)
+  const before = await width()
+  await timelineOf(page).getByRole('button', { name: 'Zoom in' }).click()
+  await expect(timelineOf(page).getByText('2×')).toBeVisible()
+  await expect.poll(width).toBeGreaterThan(before * 1.5)
+  await expectSoundLayout(page)
+})
+
+test('the timeline: a swap moved from its handle’s dialog, both periods with it, and taken back with Undo (#332)', async ({ page }) => {
+  const day = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10)
+  const vehicle = await addVehicle(page)
+  await logRefueling(page, vehicle.id, { date: day(200), odometer: 1000 })
+  const addSet = 'mutation($i: AddTyreSetInput!) { addTyreSet(input: $i) { vehicleId } }'
+  const set = { vehicleId: vehicle.id, size: null, madeWeek: null, madeYear: null, roughDistance: 0, replace: false, reminderMonth: 0 }
+  await graphql(page, addSet, { i: { ...set, name: 'Continental WinterContact', season: 'WINTER', since: day(400), fitted: true, day: day(160) } })
+  await graphql(page, addSet, { i: { ...set, name: 'Michelin Primacy 4', season: 'SUMMER', since: day(400), fitted: true, day: day(90) } })
+  await openVehicle(page, vehicle.id, 'tyres')
+  const timeline = timelineOf(page)
+  const periods = async () =>
+    (await graphql<{ vehicleTyres: { sets: { set: { name: string }; installations: { installation: { from: string; until: string | null } }[] }[] } }>(
+      page, 'query($v: UUID!) { vehicleTyres(vehicleId: $v) { sets { set { name } installations { installation { from until } } } } }', { v: vehicle.id },
+    )).vehicleTyres.sets.map((s) => `${s.set.name}: ${s.installations.map((i) => `${i.installation.from}..${i.installation.until ?? ''}`).join(' ')}`).sort()
+
+  await timeline.getByRole('group', { name: 'Timeline picture, scrolls sideways' }).getByRole('button', { name: /Continental WinterContact off, Michelin Primacy 4 on\. Move the swap$/ }).evaluate((el: HTMLElement) => el.click())
+  const move = page.getByRole('dialog', { name: 'Move the swap' })
+  await expect(move.getByText('Continental WinterContact came off and Michelin Primacy 4 went on that day. A new day moves both.')).toBeVisible()
+  await typeDate(page, dateField(move, /Day of the swap/), day(80))
+  await expectSoundLayout(page)
+  await move.getByRole('button', { name: 'Save' }).click()
+  await expect(move).toBeHidden()
+  await expect(page.getByText(/^Swap moved to /)).toBeVisible()
+  expect(await periods()).toEqual([`Continental WinterContact: ${day(160)}..${day(80)}`, `Michelin Primacy 4: ${day(80)}..`])
+
+  await page.getByRole('button', { name: 'Undo' }).click()
+  await expect.poll(periods).toEqual([`Continental WinterContact: ${day(160)}..${day(90)}`, `Michelin Primacy 4: ${day(90)}..`])
+})
+
+test('the timeline: on a desktop a swap is dragged by its handle to another day, the day shown above it, and Undo takes it back (#332)', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'a drag is a mouse’s: a touch opens the dialog')
+  await page.emulateMedia({ reducedMotion: 'reduce' }) // nothing moves under the pointer but the handle
+  const day = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10)
+  const vehicle = await addVehicle(page)
+  const addSet = 'mutation($i: AddTyreSetInput!) { addTyreSet(input: $i) { vehicleId } }'
+  const set = { vehicleId: vehicle.id, size: null, madeWeek: null, madeYear: null, roughDistance: 0, replace: false, reminderMonth: 0 }
+  await graphql(page, addSet, { i: { ...set, name: 'Continental WinterContact', season: 'WINTER', since: day(300), fitted: true, day: day(200) } })
+  await graphql(page, addSet, { i: { ...set, name: 'Michelin Primacy 4', season: 'SUMMER', since: day(300), fitted: true, day: day(100) } })
+  await openVehicle(page, vehicle.id, 'tyres')
+  const firstDay = async () =>
+    (await graphql<{ vehicleTyres: { sets: { set: { name: string }; installations: { installation: { from: string } }[] }[] } }>(
+      page, 'query($v: UUID!) { vehicleTyres(vehicleId: $v) { sets { set { name } installations { installation { from } } } } }', { v: vehicle.id },
+    )).vehicleTyres.sets.find((s) => s.set.name === 'Michelin Primacy 4')!.installations[0].installation.from
+
+  const handle = timelineOf(page).getByRole('group', { name: 'Timeline picture, scrolls sideways' }).getByRole('button', { name: /Move the swap$/ })
+  await handle.scrollIntoViewIfNeeded()
+  const box = (await handle.boundingBox())!
+  const [x, y] = [box.x + box.width / 2, box.y + box.height / 2]
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x - 40, y, { steps: 8 })
+  await expect(timelineOf(page).getByRole('status')).toBeVisible() // the day under the pointer
+  await page.mouse.up()
+
+  await expect(page.getByText(/^Swap moved to /)).toBeVisible()
+  await expect(page.getByRole('dialog')).toHaveCount(0) // a drag opens no dialog
+  await expect.poll(firstDay).not.toBe(day(100))
+  expect((await firstDay()) < day(100)).toBe(true) // dragged left: earlier
+  await page.getByRole('button', { name: 'Undo' }).click()
+  await expect.poll(firstDay).toBe(day(100))
+})
+
+test('the timeline: a period that was another set’s is moved there from its bar, its line with it (#332)', async ({ page }) => {
+  const day = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10)
+  const vehicle = await addVehicle(page)
+  const addSet = 'mutation($i: AddTyreSetInput!) { addTyreSet(input: $i) { sets { set { id name } } } }'
+  const set = { vehicleId: vehicle.id, size: null, madeWeek: null, madeYear: null, roughDistance: 0, replace: false, reminderMonth: 0, fitted: false, day: day(0) }
+  await graphql(page, addSet, { i: { ...set, name: 'Continental WinterContact', season: 'WINTER', since: day(900) } })
+  const sets = (await graphql<{ addTyreSet: { sets: { set: { id: string; name: string } }[] } }>(page, addSet, { i: { ...set, name: 'Spare all-season', season: 'ALL_SEASON', since: day(400) } })).addTyreSet.sets
+  const winter = sets.find((s) => s.set.name === 'Continental WinterContact')!.set.id
+  // Logged for the winter set, but it was the spare one that fortnight.
+  await graphql(page, 'mutation($i: AddTyreInstallationInput!) { addTyreInstallation(input: $i) { vehicleId } }', { i: { setId: winter, from: day(120), until: day(106), pairOneFront: true } })
+  await openVehicle(page, vehicle.id, 'tyres')
+  const state = async () => {
+    const tyres = (await graphql<{ vehicleTyres: { sets: { set: { id: string; name: string }; installations: { installation: { pairOneFront: boolean | null } }[] }[]; entries: { kind: string; setId: string | null }[] } }>(
+      page, 'query($v: UUID!) { vehicleTyres(vehicleId: $v) { sets { set { id name } installations { installation { pairOneFront } } } entries { kind setId } } }', { v: vehicle.id },
+    )).vehicleTyres
+    const name = (id: string | null) => tyres.sets.find((s) => s.set.id === id)?.set.name
+    return { periods: tyres.sets.map((s) => `${s.set.name}: ${s.installations.map((i) => String(i.installation.pairOneFront)).join(',')}`).sort(), lines: tyres.entries.map((e) => `${e.kind} ${name(e.setId)}`) }
+  }
+
+  await timelineOf(page).getByRole('group', { name: 'Timeline picture, scrolls sideways' }).getByRole('button', { name: /^Continental WinterContact, on the car .* Edit$/ }).evaluate((el: HTMLElement) => el.click())
+  const dialog = page.getByRole('dialog', { name: 'Edit the period' })
+  await expect(dialog.getByText('Which set was on the car, and from when to when.')).toBeVisible()
+  await dialog.getByRole('combobox', { name: 'Set' }).click()
+  await page.getByRole('option', { name: 'All-season: Spare all-season' }).click()
+  await expect(dialog.getByRole('combobox', { name: 'Pairs' })).toContainText('pairs not recorded') // not the winter set's pairs
+  await expectSoundLayout(page)
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  await expect(dialog).toBeHidden()
+
+  await expect(timelineOf(page).getByRole('group', { name: 'Timeline picture, scrolls sideways' }).getByRole('button', { name: /^Spare all-season, on the car .* Edit$/ })).toBeVisible()
+  expect(await state()).toEqual({ periods: ['Continental WinterContact: ', 'Spare all-season: null'], lines: ['SWAP Spare all-season'] })
 })

@@ -255,6 +255,19 @@ public sealed class TyreEntry : IOwned, ISoftDeletable, ISynced
         return (created, removed, true);
     }
 
+    /// <summary>
+    /// A swap's line follows its installation to another set (#332), and its kind is what it would be were it made now: positions changed
+    /// when the same set came off that day, else a swap. True when anything changed.
+    /// </summary>
+    public bool FollowInstallation(Guid setId, bool positionsChanged, Guid? by = null)
+    {
+        var kind = positionsChanged ? TyreEntryKind.PositionsChanged : TyreEntryKind.Swap;
+        if (!IsSwapLine || (SetId == setId && Kind == kind)) return false;
+        (SetId, Kind) = (setId, kind);
+        Bump(EntityChange.Edited, by);
+        return true;
+    }
+
     /// <summary>The line of an installation follows its first day; the reading typed for that day moves with it.</summary>
     public bool MoveTo(DateOnly day, Guid? by = null)
     {

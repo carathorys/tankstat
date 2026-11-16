@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react'
 import type { DateFormat, TimeFormat } from '../gql/generated.ts'
 import type { ColorModeChoice } from '../theme/colorMode.ts'
 import type { SurfaceChoice } from '../theme/surface.ts'
+import type { TimelineChoices } from './timelineChoices.ts'
 import type { GridSaved } from './types.ts'
 
 /** The UI settings of the current user, kept by `UiSettingsProvider`: the browser's copy at once, the server's as soon as it answers. */
@@ -21,6 +22,10 @@ export interface UiSettingsApi {
   setTimeFormat: (format: TimeFormat | null) => void
   /** Switches the date format (null: the default again) and tells the server. */
   setDateFormat: (format: DateFormat | null) => void
+  /** What the tyre timeline shows (#332): the browser's copy at once, the account's once the server answered. */
+  timeline: TimelineChoices
+  /** Keeps the timeline's choices in the browser and tells the server (whole: they replace what was saved). */
+  setTimeline: (choices: TimelineChoices) => void
   /** A grid's settings as the server knows them (or as saved in this session); undefined when it knows none, or has not answered yet. */
   grid: (gridId: string) => GridSaved | undefined
   saveGrid: (gridId: string, saved: GridSaved) => void

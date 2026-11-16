@@ -90,6 +90,20 @@ public sealed class TyreInstallation : IOwned, ISoftDeletable, ISynced
         return true;
     }
 
+    /// <summary>
+    /// The period was another set's (#332, edit B): it moves to <paramref name="setId"/> with the days and pairs given (pair 1 of one set is
+    /// not pair 1 of another, so the caller gives them anew or none). True when anything changed.
+    /// </summary>
+    public bool MoveToSet(Guid setId, DateOnly from, DateOnly? until, bool? pairOneFront, Guid? by = null)
+    {
+        RequireLive();
+        RequireDays(from, until);
+        if (SetId == setId) return Update(from, until, pairOneFront, by);
+        (SetId, From, Until, PairOneFront) = (setId, from, until, pairOneFront);
+        Bump(EntityChange.Edited, by);
+        return true;
+    }
+
     public void MarkDeleted(DateTimeOffset now, Guid? by = null)
     {
         if (IsDeleted) throw new DomainException("tyres.installationAlreadyTrashed", "This installation is already in the trash.");

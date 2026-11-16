@@ -10,6 +10,7 @@ import { expect, type Page } from '@playwright/test'
  *   links 44 × 44, a text link 44 px tall. Exempt are a link inline in a sentence (its parent has text of its own, WCAG 2.5.8) and
  *   whatever is out of sight (the skip link until it is focused); a stretched link (an absolutely positioned `::after`) counts by the
  *   box its `::after` covers.
+ *   The tyre timeline's bars and gaps (`data-layout-exempt="timeline"`, #332) are exempt too: as wide as their time, zoomed into.
  *
  * Measure before a full-page screenshot: under phone emulation the screenshot drops the touch emulation.
  */
@@ -60,6 +61,9 @@ export async function layoutProblems(page: Page): Promise<string[]> {
     }
     for (const el of document.querySelectorAll<HTMLElement>('button, a[href], [role="button"], [role="tab"]')) {
       if (!el.checkVisibility({ visibilityProperty: true })) continue
+      // The tyre timeline's bars and gaps (#332) are as wide as their time and may be narrower than a finger: the owner's answer to a
+      // crowded spot is to zoom in (decision 92). Its handles, zoom buttons and menu are not exempt.
+      if (el.dataset.layoutExempt === 'timeline') continue
       const textLink = el.matches('a[href]:not(.MuiButtonBase-root)') && !!el.textContent?.trim()
       if (textLink && ownText(el.parentElement)) continue // inline in a sentence
       const r = (stretched(el) ?? el).getBoundingClientRect()

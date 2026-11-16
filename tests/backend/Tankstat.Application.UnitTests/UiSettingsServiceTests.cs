@@ -84,6 +84,25 @@ public class UiSettingsServiceTests
     }
 
     [Fact]
+    public async Task TheTimelinesChoices_AreSavedWhole_StayThroughOtherChanges_AndAreForgotten()
+    {
+        // #332: null means never chosen (the defaults); given, they replace what was saved.
+        var w = new World();
+        w.Current.SignInAs(w.AddUser("alice@x.co"));
+        Assert.Null((await w.UiSettings.GetAsync(default)).Timeline);
+        var hidden = Guid.NewGuid();
+
+        await w.UiSettings.UpdateAsync(new UiSettingsChange(Timeline: new TimelineChoices(TimelineRange.TwoYears, [TimelineLayer.Gaps], [hidden])), default);
+        var after = await w.UiSettings.UpdateAsync(new UiSettingsChange(NavOpen: false), default);
+        Assert.Equal((TimelineRange.TwoYears, hidden, false), (after.Timeline!.Range, Assert.Single(after.Timeline.HiddenSets), after.NavOpen));
+
+        var replaced = await w.UiSettings.UpdateAsync(new UiSettingsChange(Timeline: new TimelineChoices(TimelineRange.All, [], [])), default);
+        Assert.Equal((TimelineRange.All, 0, 0), (replaced.Timeline!.Range, replaced.Timeline.Layers.Count, replaced.Timeline.HiddenSets.Count)); // everything off is a choice too
+        var cleared = await w.UiSettings.UpdateAsync(new UiSettingsChange(Timeline: new TimelineChoices(TimelineRange.All, [], []), ClearTimeline: true), default);
+        Assert.Equal((null, false), (cleared.Timeline, cleared.NavOpen));
+    }
+
+    [Fact]
     public async Task Grids_AreSavedPerUserAndGrid_ListedById_AndReset()
     {
         var w = new World();

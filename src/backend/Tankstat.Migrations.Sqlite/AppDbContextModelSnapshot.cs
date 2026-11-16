@@ -791,6 +791,10 @@ namespace Tankstat.Migrations.Sqlite
                         .HasMaxLength(24)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Timeline")
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 

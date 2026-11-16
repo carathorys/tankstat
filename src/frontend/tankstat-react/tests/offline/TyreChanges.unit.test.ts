@@ -90,6 +90,12 @@ describe('single tyres kept on the device (#289)', () => {
   const breakUp = tyre('breakUpTyreSet', { setId: 'n', day: '2026-11-10', tyres: [{ id: 't1', label: 'W1', corner: 'FRONT_LEFT' }, { id: 't2', label: 'W2', corner: null }] }, 'n')
   const placeEdit = tyre('updateTyrePlace', { id: 'p1', from: '2026-11-10', until: null, corner: 'REAR_LEFT', tyreId: 't1', installationId: 'st' }, 'p1')
 
+  it('a period moved to another set (#332) needs that set, so it is sent after a set added on this device', () => {
+    const input = { id: 'i1', from: '2025-11-15', until: '2026-03-28', pairOneFront: null, odometerFrom: null, odometerUntil: null, setId: 'n' }
+    expect([tyreTarget('updateTyreInstallation', input), tyreNeeds('updateTyreInstallation', input)]).toEqual(['i1', ['i1', 'n']])
+    expect(tyreNeeds('updateTyreInstallation', { ...input, setId: undefined })).toEqual(['i1']) // its own set: nothing more to wait for
+  })
+
   it('a break-up makes its tyres; a time on the car needs its tyre and installation, kept beside it and never sent', () => {
     expect([tyreTarget('breakUpTyreSet', breakUp.input), tyreCreates('breakUpTyreSet', breakUp.input), tyreNeeds('breakUpTyreSet', breakUp.input)]).toEqual(['n', ['t1', 't2'], ['n']])
     expect(tyreNeeds('updateTyrePlace', placeEdit.input)).toEqual(['p1', 't1', 'st'])

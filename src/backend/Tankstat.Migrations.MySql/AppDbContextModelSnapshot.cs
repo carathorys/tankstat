@@ -793,6 +793,10 @@ namespace Tankstat.Migrations.MySql
                         .HasMaxLength(24)
                         .HasColumnType("varchar(24)");
 
+                    b.Property<string>("Timeline")
+                        .HasMaxLength(4000)
+                        .HasColumnType("varchar(4000)");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");
 

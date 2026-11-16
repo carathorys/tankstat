@@ -118,6 +118,8 @@ export function useFormat() {
       },
       /** A month of the year by its name (1 = January), as the language writes it standing alone. */
       month: (month: number, width: 'long' | 'short' = 'long') => new Intl.DateTimeFormat(language, { month: width, timeZone: 'UTC' }).format(new Date(Date.UTC(2024, month - 1, 15))),
+      /** A day's year alone, as the language writes it (an axis' year mark). */
+      year: (isoDate: string) => new Intl.DateTimeFormat(language, { year: 'numeric', timeZone: 'UTC' }).format(new Date(`${isoDate}T00:00:00Z`)),
       /** A day's month with its year ("June 2024"). */
       monthOfYear: (isoDate: string) => new Intl.DateTimeFormat(language, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${isoDate}T00:00:00Z`)),
       /** The months two days span ("April – October 2023"); one month when both are in it. */

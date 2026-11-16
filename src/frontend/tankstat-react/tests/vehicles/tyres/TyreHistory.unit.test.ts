@@ -1,16 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import contract from '../../../../../../tests/backend/contracts/tyre-swaps/tyre-swaps.json'
-import { changePositions, checked, moveSwap, swap, TyreRuleError, type SetState, type InstallationState } from '../../../src/tyres/tyreHistory.ts'
+import { changePositions, checked, moveSwap, moveToSet, swap, TyreRuleError, type SetState, type InstallationState } from '../../../src/tyres/tyreHistory.ts'
 import { follow, lineFor, type Joined } from '../../../src/tyres/tyreLog.ts'
 
 interface Case {
   name: string
-  op: 'swap' | 'positions' | 'check' | 'move'
+  op: 'swap' | 'positions' | 'check' | 'move' | 'toSet'
   sets: SetState[]
   installations: { id: string; set: string; from: string; until: string | null; pairOneFront: boolean | null }[]
   swap?: { set: string; day: string; pairOneFront: boolean | null; replace: boolean; pairsGiven: boolean }
   positions?: { set: string; day: string; pairOneFront: boolean | null }
   move?: { installation: string; day: string }
+  toSet?: { installation: string; set: string; pairOneFront: boolean | null }
   moving?: string[]
   lineNotes?: Record<string, string>
   lines?: { id: string; kind: string; set: string; day: string; note: string | null }[]
@@ -35,6 +36,10 @@ describe('the tyre history follows the contract the server keeps', () => {
           id: 'new', replace: c.swap!.replace, pairsGiven: c.swap!.pairsGiven, joined: (id, day) => joined.push({ id, day }),
         })
       if (c.op === 'move') return moveSwap(c.sets, installations, c.move!.installation, c.move!.day)
+      if (c.op === 'toSet') {
+        const was = installations.find((i) => i.id === c.toSet!.installation)!
+        return moveToSet(c.sets, installations, was.id, c.toSet!.set, was.from, was.until, c.toSet!.pairOneFront)
+      }
       if (c.op === 'positions') return changePositions(c.sets, installations, c.positions!.set, c.positions!.day, c.positions!.pairOneFront, 'new')
       return checked(c.sets, installations, c.moving ? new Set(c.moving) : undefined)
     }

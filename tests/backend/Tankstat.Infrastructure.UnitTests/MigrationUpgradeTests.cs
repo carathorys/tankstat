@@ -84,6 +84,7 @@ public sealed class MigrationUpgradeTests : IAsyncDisposable
             await db.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = OFF;"); // the vehicle and the user are not the point
             await using var insert = db.Database.GetDbConnection().CreateCommand(); // a raw command: the JSON's braces are no format placeholders
             insert.CommandText = $$$"""
+                INSERT INTO "UiSettings" ("UserId", "NavOpen", "UpdatedAt") VALUES ('{{{G(owner)}}}', 0, '2026-11-10 12:00:00');
                 INSERT INTO "TyreSets" ("Id", "OwnerId", "VehicleId", "CreatedById", "Name", "Season", "Since", "RoughDistance", "Version", "UpdatedAt")
                 VALUES ('{{{G(set)}}}', '{{{G(owner)}}}', '{{{G(vehicle)}}}', '{{{G(owner)}}}', 'Michelin', 'Summer', '2023-03-01', 0, 1, '2026-11-10 12:00:00');
                 INSERT INTO "TyreStretches" ("Id", "OwnerId", "VehicleId", "SetId", "CreatedById", "From", "Until", "PairOneFront", "Version", "UpdatedAt")
@@ -115,6 +116,9 @@ public sealed class MigrationUpgradeTests : IAsyncDisposable
         // The swap reminder (#292): its season's month, counted from the day of the upgrade, so nothing is due for last season.
         Assert.Equal((null, 3, null), (old.ReminderMonth, old.EffectiveReminderMonth, old.ReminderDismissedFor));
         Assert.InRange(old.ReminderSince!.Value, DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1)), DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)));
+        // UI settings from before the tyre timeline (#332) have no choices for it: its defaults apply.
+        var ui = await after.UiSettings.SingleAsync(u => u.UserId == owner);
+        Assert.Equal((false, null), (ui.NavOpen, ui.Timeline));
         Assert.Equal(Tankstat.Domain.Sync.OfflineEntityType.TyreInstallation, (await after.Tombstones.SingleAsync(t => t.EntityId == gone)).EntityType);
         var update = await after.SyncChanges.SingleAsync(c => c.Id == parked);
         Assert.Equal((Tankstat.Domain.Sync.SyncChangeKind.UpdateTyreInstallation, "tyres.installationNotFound"), (update.Kind, update.ReasonKey));

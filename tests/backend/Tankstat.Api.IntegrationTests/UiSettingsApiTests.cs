@@ -55,6 +55,28 @@ public class UiSettingsApiTests : IDisposable
     }
 
     [Fact]
+    public async Task TheTimelinesChoices_StartUnchosen_FollowTheUser_AndAnUnknownLayerIsRefusedByTheSchema()
+    {
+        // #332: `uiSettings.timeline` and `updateUiSettings(input: { timeline })`.
+        var people = await _app.Users();
+        const string read = "{ uiSettings { timeline { range layers hiddenSets } } }";
+        Assert.Equal(JsonValueKind.Null, (await people.Alice.Gql(read)).Data().GetProperty("uiSettings").GetProperty("timeline").ValueKind);
+        var hidden = Guid.NewGuid();
+
+        var saved = (await people.Alice.Gql("mutation($t: TimelineSettingsInput!) { updateUiSettings(input: { timeline: $t }) { timeline { range layers hiddenSets } } }",
+            new { t = new { range = "TWO_YEARS", layers = new[] { "TABLE", "GAPS" }, hiddenSets = new[] { hidden } } })).Data().GetProperty("updateUiSettings").GetProperty("timeline");
+        Assert.Equal(("TWO_YEARS", hidden.ToString()), (saved.GetProperty("range").GetString(), saved.GetProperty("hiddenSets")[0].GetString()));
+        Assert.Equal(["GAPS", "TABLE"], saved.GetProperty("layers").EnumerateArray().Select(l => l.GetString()));
+
+        await people.Alice.Gql("mutation { updateUiSettings(input: { navOpen: true }) { navOpen } }");
+        Assert.Equal("TWO_YEARS", (await people.Alice.Gql(read)).Data().GetProperty("uiSettings").GetProperty("timeline").GetProperty("range").GetString());
+        Assert.Equal(JsonValueKind.Null, (await people.Bob.Gql(read)).Data().GetProperty("uiSettings").GetProperty("timeline").ValueKind);
+
+        var cleared = (await people.Alice.Gql("mutation { updateUiSettings(input: { clearTimeline: true }) { timeline { range } } }")).Data().GetProperty("updateUiSettings");
+        Assert.Equal(JsonValueKind.Null, cleared.GetProperty("timeline").ValueKind);
+    }
+
+    [Fact]
     public async Task ColorMode_StartsUnchosen_FollowsTheUser_AndStaysThroughOtherChanges()
     {
         var people = await _app.Users();

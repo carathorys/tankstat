@@ -224,31 +224,48 @@ type Pairs = 'none' | 'one' | 'two'
 const pairsValue = (p: boolean | null | undefined): Pairs => (p === true ? 'one' : p === false ? 'two' : 'none')
 const pairsOf = (v: Pairs) => (v === 'one' ? true : v === 'two' ? false : null)
 
-/** Adds an installation to a set's history, or changes one: its days, its pairs, and the readings of its days (kept on the tyre log's lines). */
-function InstallationDialog({
+/**
+ * Adds an installation to a set's history, or changes one: its days, its pairs, and the readings of its days (kept on the tyre log's lines).
+ * Opened from its trigger, or by the caller (`open` + `onOpenChange`: a bar of the timeline, #332).
+ */
+export function InstallationDialog({
   trigger,
   vehicleId,
   unit,
   tyres,
   setId,
   installation,
+  open: openProp,
+  onOpenChange,
+  onClosed,
 }: {
-  trigger: ReactNode
+  trigger?: ReactNode
   vehicleId: string
   unit: DistanceUnit
   tyres: Tyres
   setId: string
   installation?: TyreInstallationInfo['installation']
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** After it closed and left the screen. */
+  onClosed?: () => void
 }) {
   const { t } = useTranslation()
   const notify = useTyreToasts()
   const words = useTyreWords(unit)
   const run = useTyreMutation(vehicleId)
-  const [open, setOpen] = useDialogState()
+  const [open, setOpen] = useDialogState({ open: openProp, onOpenChange })
   const id = useClientId(open)
   const [from, setFrom] = useState(installation?.from ?? '')
   const [until, setUntil] = useState(installation?.until ?? '')
   const [pairs, setPairs] = useState<Pairs>(pairsValue(installation?.pairOneFront))
+  // Which set the period is of (#332): an edit may say it was another one. Pair 1 of one set is not pair 1 of another, so the pairs go
+  // to *Not sure* with the set, to be picked again here.
+  const [ofSet, setOfSet] = useState(setId)
+  const pickSet = (next: string) => {
+    if (next !== ofSet) setPairs(next === setId ? pairsValue(installation?.pairOneFront) : 'none')
+    setOfSet(next)
+  }
   const [error, setError] = useState<unknown>()
   const [busy, setBusy] = useState(false)
 
@@ -267,7 +284,7 @@ function InstallationDialog({
     setError(undefined)
     try {
       const saved = installation
-        ? await run(UpdateTyreInstallationDocument, { input: { id: installation.id, ...values } })
+        ? await run(UpdateTyreInstallationDocument, { input: { id: installation.id, ...values, ...(ofSet !== setId ? { setId: ofSet } : {}) } }) // named only when it changes
         : await run(AddTyreInstallationDocument, { input: { id, setId, ...values } })
       setOpen(false)
       notify.saved(saved, t('toast.saved'))
@@ -288,17 +305,27 @@ function InstallationDialog({
           setFrom(installation?.from ?? '')
           setUntil(installation?.until ?? '')
           setPairs(pairsValue(installation?.pairOneFront))
+          setOfSet(setId)
           setError(undefined)
+          onClosed?.()
         }}
         busy={busy}
         maxWidth={480}
-        title={installation ? t('tyres.dialogs.installationEdit') : t('tyres.dialogs.installationAdd')}
-        description={t('tyres.dialogs.installationDescription')}
+        title={installation ? t('tyres.timeline.editTitle') : t('tyres.dialogs.installationAdd')}
+        description={installation ? t('tyres.timeline.editText') : t('tyres.dialogs.installationDescription')}
       >
         {open && (
           <Form onSubmit={submit} refusal={error}>
             <OfflineNote />
             <Stack sx={{ gap: 1.5 }}>
+              {installation && (
+                <LabeledSelect
+                  label={t('tyres.timeline.set')}
+                  value={ofSet}
+                  options={tyres.sets.filter((s) => !s.set.isRetired || s.set.id === setId).map((s) => ({ value: s.set.id, label: `${t(`tyres.seasons.${s.set.season}`)}: ${s.set.name}` }))}
+                  onChange={pickSet}
+                />
+              )}
               <Field name="from" label={t('tyres.fields.from')} required>
                 <FieldDate disableFuture value={from} onChange={setFrom} />
               </Field>

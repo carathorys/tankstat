@@ -716,3 +716,51 @@ describe('Not this season on the device (#292)', () => {
     expect(of(replayTyres(due, [change('restoreTyreReminder', { id: 's2' })]).tyres).reminder).toEqual({ season: '2026-11-01' }) // nothing to take back
   })
 })
+
+describe('a swap moved from the timeline on the device (#332)', () => {
+  it('keeps the line’s amount, reading and note when the change names no fee, and moves both periods', () => {
+    const paid: Tyres = { ...base, entries: base.entries.map((e) => (e.id === 'r1' ? { ...e, odometer: 141_000, note: 'At the garage', expenseId: 'x1', amount: 70, currency: 'EUR', category: 'Tyres' } : e)) }
+    const { tyres, skipped } = replayTyres(paid, [change('updateTyreEntry', { id: 'r1', kind: 'SWAP', setId: 's1', day: '2026-04-04', odometer: 141_000, note: 'At the garage' })])
+
+    expect(skipped).toEqual([])
+    expect(tyres.entries.find((e) => e.id === 'r1')).toMatchObject({ day: '2026-04-04', odometer: 141_000, note: 'At the garage', expenseId: 'x1', amount: 70, currency: 'EUR' })
+    const period = (id: string) => tyres.sets.flatMap((s) => s.installations).find((i) => i.installation.id === id)!.installation
+    expect([period('r2').until, period('r1').from]).toEqual(['2026-04-04', '2026-04-04'])
+  })
+})
+
+describe('a period moved to another set on the device (#332)', () => {
+  const edit = (over: Record<string, unknown>) => change('updateTyreInstallation', { id: 'r2', from: '2025-11-15', until: '2026-03-28', pairOneFront: null, odometerFrom: null, odometerUntil: null, ...over })
+  const third = set('s3', 'Spare all-season', false, [])
+
+  it('moves the period and its line to the set named, marks both sets, and leaves it alone when no set is named', () => {
+    const withSpare: Tyres = { ...base, sets: [...base.sets, third] }
+    const { tyres, touched, skipped } = replayTyres(withSpare, [edit({ setId: 's3' })])
+    expect(skipped).toEqual([])
+    expect(tyres.sets.find((s) => s.set.id === 's3')!.installations.map((i) => i.installation.id)).toEqual(['r2'])
+    expect(tyres.sets.find((s) => s.set.id === 's2')!.installations).toEqual([])
+    expect(tyres.entries.find((e) => e.id === 'r2')).toMatchObject({ setId: 's3', kind: 'SWAP', day: '2025-11-15' })
+    expect([...touched].sort()).toEqual(['s2', 's3'])
+
+    const plain = replayTyres(withSpare, [edit({ from: '2025-11-20' })]) // a build from before the field
+    expect(plain.tyres.sets.find((s) => s.set.id === 's2')!.installations[0].installation).toMatchObject({ id: 'r2', from: '2025-11-20' })
+  })
+
+  it('a period moved here carries no version until synced, whatever its pairs were, so a second edit of it is never parked', () => {
+    const noPairs: Tyres = { ...base, sets: [...base.sets.map((s) => (s.set.id === 's2' ? { ...s, installations: s.installations.map((i) => ({ ...i, installation: { ...i.installation, pairOneFront: null as never } })) } : s)), third] }
+    const moved = replayTyres(noPairs, [edit({ setId: 's3' })]).tyres.sets.find((s) => s.set.id === 's3')!.installations[0]
+    expect(moved.installation).toMatchObject({ id: 'r2', pairOneFront: null, version: 0 })
+  })
+
+  it('works the kinds out again: onto the set that went on next, the next line becomes a change of positions', () => {
+    const { tyres } = replayTyres(base, [edit({ setId: 's1' })]) // the winter period was really the summer set's
+    expect(tyres.entries.find((e) => e.id === 'r2')).toMatchObject({ setId: 's1', kind: 'SWAP' })
+    expect(tyres.entries.find((e) => e.id === 'r1')).toMatchObject({ setId: 's1', kind: 'POSITIONS_CHANGED' })
+  })
+
+  it('refuses a set tracked tyre by tyre, the old one or the new one, as the server does', () => {
+    const tracked: Tyres = { ...base, sets: [...base.sets, { ...third, set: { ...third.set, brokenUpOn: '2026-01-01' } }] }
+    expect(() => applyTyreChange(tracked, edit({ setId: 's3' }))).toThrow(expect.objectContaining({ key: 'tyres.brokenUpSetCannotMove', args: { set: 'Spare all-season' } }))
+    expect(() => applyTyreChange(base, edit({ setId: 'nope' }))).toThrow(expect.objectContaining({ key: 'tyres.setNotFound' }))
+  })
+})
