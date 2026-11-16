@@ -118,13 +118,13 @@ public class TyreRepositoryTests
         await db.Get<ITyreRepository>().SaveAsync(save, default);
 
         var rows = await db.Get<ITyreRepository>().LoadRemindersAsync([first.Id, second.Id], default);
-        Assert.Equal([summer.Id, winter.Id], rows.Sets.Select(s => s.Id).Order().ToList().Intersect([summer.Id, winter.Id]).Order());
+        Assert.Equal(new HashSet<Guid> { summer.Id, winter.Id }, rows.Sets.Select(s => s.Id).ToHashSet()); // as a set: the database returns them in no set order
         Assert.Equal(2, rows.Sets.Count); // neither the retired nor the trashed one
         Assert.Equal(installation.Id, Assert.Single(rows.Installations).Id);
         Assert.Empty((await db.Get<ITyreRepository>().LoadRemindersAsync([], default)).Sets);
 
         // The car whose sets have no month is not asked about at all.
-        Assert.Equal(new[] { first.Id, second.Id }.Order(), (await db.Get<ITyreRepository>().ListReminderVehicleIdsAsync(OwnerScope.All, default)).Order());
+        Assert.Equal(new HashSet<Guid> { first.Id, second.Id }, (await db.Get<ITyreRepository>().ListReminderVehicleIdsAsync(OwnerScope.All, default)).ToHashSet());
         Assert.Empty(await db.Get<ITyreRepository>().ListReminderVehicleIdsAsync(OwnerScope.Of([Guid.NewGuid()]), default));
     }
 
