@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import App from '../../../src/App.tsx'
@@ -7,6 +7,7 @@ import { outbox } from '../../../src/offline/outbox.ts'
 import { findDateField, typeDate } from '../../support/dates.ts'
 import { fakeExpenseBackend, fakeSettingsBackend, fakeVehicle, healthHandler, renderWithApollo, sessionHandler, stubViewport, type FakeTimeline } from '../../support/mocks.tsx'
 import { answered, server } from '../../support/server.ts'
+import { graphql } from '../../support/graphql.ts'
 import { fakeTyres, tyreSummer, tyreWinter, type FakeTyreSet } from '../../support/tyres.ts'
 
 // The tyre timeline on the Tyres tab (#332): the picture's buttons, the Show menu and its saved choices, zoom, the table, moving a swap
@@ -263,4 +264,95 @@ it('choices this build cannot draw (a newer server’s layer) are left alone: th
   const tl = within(await card())
   await answered() // the account's answer is in: it changed nothing
   expect(tl.getByText('All · 4 of 5 shown')).toBeInTheDocument()
+})
+
+// A drag in jsdom: nothing is laid out, so a day is 0.55 px wide (the minimum scale); 11 px to the right is 20 days later.
+function dragHandle(handle: HTMLElement, dx: number) {
+  const pointer = (type: string, clientX: number) => fireEvent(handle, new MouseEvent(type, { bubbles: true, clientX, button: 0 }))
+  Object.defineProperty(handle, 'setPointerCapture', { value: () => undefined, configurable: true })
+  // jsdom's pointer events carry no pointerType: React's synthetic one reads it from the native event.
+  const down = new MouseEvent('pointerdown', { bubbles: true, clientX: 100, button: 0 })
+  Object.defineProperty(down, 'pointerType', { value: 'mouse' })
+  fireEvent(handle, down)
+  pointer('pointermove', 100 + dx / 2)
+  pointer('pointermove', 100 + dx)
+  return () => {
+    pointer('pointerup', 100 + dx)
+    fireEvent.click(handle) // the click a release makes: the drag's, not a request for the dialog
+  }
+}
+
+it('with a mouse a swap is dragged to another day: the day shown while it moves, saved on release with Undo, and no dialog', async () => {
+  const { ui, state } = setup()
+  const handle = within(await card()).getAllByRole('button', { name: SWAP })[0]
+
+  const release = dragHandle(handle, 11)
+  expect(within(await card()).getByRole('status')).toHaveTextContent('Apr 17, 2026')
+  release()
+
+  await waitFor(() => expect(state.calls.UpdateTyreEntry).toEqual([{ input: { id: 'r1', kind: 'SWAP', setId: 's1', day: '2026-04-17', odometer: null, note: null } }]))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(await screen.findByText('Swap moved to Apr 17, 2026.')).toBeInTheDocument()
+  await ui.click(screen.getByRole('button', { name: 'Undo' }))
+  await waitFor(() => expect(state.calls.UpdateTyreEntry).toHaveLength(2))
+})
+
+it('a refused drag says why in a toast and the handle goes back; less than a few pixels is a click, which opens the dialog', async () => {
+  const { state } = setup()
+  state.failNext.push({ key: 'tyres.swapBeforePrevious', args: { set: 'Continental WinterContact', from: '2025-11-15' } })
+  const handle = within(await card()).getAllByRole('button', { name: SWAP })[0]
+
+  dragHandle(handle, -90)()
+  expect(await screen.findByText(/^The swap cannot move to or before .*, the day Continental WinterContact went on the car before it\.$/)).toBeInTheDocument()
+  await waitFor(() => expect(within(screen.getByRole('heading', { name: 'Timeline' }).closest('section')!).queryByRole('status')).not.toBeInTheDocument())
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+  const pointer = (type: string, clientX: number) => fireEvent(handle, new MouseEvent(type, { bubbles: true, clientX, button: 0 }))
+  const down = new MouseEvent('pointerdown', { bubbles: true, clientX: 100, button: 0 })
+  Object.defineProperty(down, 'pointerType', { value: 'mouse' })
+  fireEvent(handle, down)
+  pointer('pointermove', 102)
+  pointer('pointerup', 102)
+  fireEvent.click(handle)
+  expect(await screen.findByRole('dialog', { name: 'Move the swap' })).toBeInTheDocument()
+  expect(state.calls.UpdateTyreEntry).toHaveLength(1)
+})
+
+it('out of reach, the device refuses a move the server would refuse, in the dialog, and keeps nothing', async () => {
+  const { ui } = setup()
+  const tl = within(await card())
+  await answered()
+  act(() => connectivity.failed())
+
+  await ui.click(tl.getAllByRole('button', { name: SWAP })[0])
+  const dialog = await screen.findByRole('dialog', { name: 'Move the swap' })
+  await typeDate(ui, await findDateField(/Day of the swap/, dialog), '2025-11-01') // before the winter set went on
+  await ui.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+  // Said at the field it is about and under the form, as every refusal is.
+  expect((await within(dialog).findAllByText(/^The swap cannot move to or before .*, the day Continental WinterContact went on the car before it\.$/)).length).toBeGreaterThan(0)
+  expect(outbox.changes).toHaveLength(0)
+})
+
+it('with a set’s month come, the page reads: the reminder’s note, the timeline, the sets', async () => {
+  setup([tyreSummer, { ...tyreWinter, reminder: '2026-11-01' }])
+  const timeline = await screen.findByRole('heading', { name: 'Timeline' })
+  const note = screen.getByText('Time to fit the winter tyres')
+  const sets = screen.getByRole('article', { name: 'Michelin Primacy 4' })
+
+  expect(note.compareDocumentPosition(timeline) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(timeline.compareDocumentPosition(sets) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+})
+
+it('a filled gap leaves with its button, and the focus it held goes to the picture', async () => {
+  const { ui, state } = setup([tyreSummer, winterEarly])
+  // The server's answer to the save has no gap any more (the fake answers its sets as they are: this moves them on first).
+  server.use(graphql.mutation('UpdateTyreInstallation', () => void (state.sets = [tyreSummer, tyreWinter])))
+  const tl = within(await card())
+
+  await ui.click(tl.getAllByRole('button', { name: /^No set recorded .* Fill in$/ })[0])
+  await ui.click(within(await screen.findByRole('dialog', { name: 'Which set was on the car?' })).getByRole('button', { name: 'Save' }))
+
+  await waitFor(() => expect(tl.queryByRole('button', { name: /^No set recorded/ })).not.toBeInTheDocument())
+  await waitFor(() => expect(tl.getByRole('group', { name: 'Timeline picture, scrolls sideways' })).toHaveFocus())
 })

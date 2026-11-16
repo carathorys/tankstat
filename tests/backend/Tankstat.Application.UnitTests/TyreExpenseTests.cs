@@ -223,6 +223,24 @@ public class TyreExpenseTests
     }
 
     [Fact]
+    public async Task ASwapMovedByItsLinesDay_WithNoFeeSent_KeepsItsAmount_AndTheExpenseFollowsTheDay()
+    {
+        // #332: the timeline's Move the swap sends the line with a new day and no fee; left out, the line's amount stays as it is.
+        var s = await Setup();
+        var swap = Guid.NewGuid();
+        await s.Tyres.SwapAsync(new TyreSwapInput(s.Car.Id, s.Winter, D(2026, 9, 10), true, false, 147_500, "At the garage", Fee(70)), default, swap);
+
+        await s.Tyres.UpdateEntryAsync(swap, new TyreEntryInput(TyreEntryKind.Swap, s.Winter, D(2026, 9, 14), 147_500, "At the garage"), default);
+
+        var line = s.W.Tyres.Entries.Single(l => l.Id == swap);
+        Assert.Equal((D(2026, 9, 14), (long?)147_500, "At the garage"), (line.Day, line.Odometer, line.Note));
+        Assert.Equal(D(2026, 9, 14), s.W.Tyres.Installations.Single(i => i.Id == swap).From);
+        var expense = ExpenseOf(s, swap);
+        Assert.Equal((D(2026, 9, 14), 70m, false), (expense.Date, expense.Amount, expense.IsDeleted));
+        PairHolds(s, swap);
+    }
+
+    [Fact]
     public async Task AJoiningSwapsFee_GoesOnAnOtherLineOfItsDay()
     {
         var s = await Setup();

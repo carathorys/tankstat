@@ -680,7 +680,12 @@ test('the swap reminder on the Tyres tab: Not this season and Undo, then Swap ty
 
   const note = page.getByRole('status').filter({ hasText: 'Time to fit the winter tyres' })
   await expect(note).toContainText('Continental WinterContact is in storage, and you asked to be reminded from')
-  await expectSoundLayout(page) // the note above the sets, its buttons wrapping on a phone
+  // The order on the tab (#332's decision 93): the note, then the timeline, then the sets.
+  const top = async (locator: Locator) => (await locator.boundingBox())!.y
+  const timelineTop = await top(timelineOf(page).getByRole('heading', { name: 'Timeline' }))
+  expect(await top(note)).toBeLessThan(timelineTop)
+  expect(timelineTop).toBeLessThan(await top(page.getByRole('article', { name: 'Michelin Primacy 4' })))
+  await expectSoundLayout(page) // the note above the timeline and the sets, its buttons wrapping on a phone
 
   await note.getByRole('button', { name: 'Not this season: Continental WinterContact' }).click()
   await expect(page.getByText('Time to fit the winter tyres')).toBeHidden()

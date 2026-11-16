@@ -149,7 +149,6 @@ export default function Timeline({
 
   // The swaps with a handle: whoever may log, a line the server knows (one made on this device has no id to move yet), a shown row.
   const handles = canLog ? boundaries.filter((b) => !isDeviceLine(b.line) && (shown.has(b.after.setId) || shown.has(b.before.setId)) && b.day > span.start) : []
-  const rowOf = (id: string) => sets.findIndex((s) => s.set.id === id)
 
   // A drag (a mouse on a desktop only): the handle follows the pointer by whole days; on release the swap is saved, with Undo.
   const [drag, setDrag] = useState<{ id: string; day: number } | null>(null)
@@ -172,23 +171,30 @@ export default function Timeline({
   const onHandleUp = () => {
     const d = dragging.current
     dragging.current = null
-    setDrag(null)
-    if (!d?.moved) return
+    if (!d?.moved) return void setDrag(null)
     suppressClick.current = true // the click that follows the release is the drag's, not a request for the dialog
-    if (d.day === d.boundary.day) return
-    // A refusal puts the handle back (the picture redraws from the answer it has) and says why.
-    moveSwap(d.boundary, isoOf(d.day)).catch((err: unknown) => toast(errorText(err)))
+    if (d.day === d.boundary.day) return void setDrag(null)
+    // The handle stays where it was dropped until the save settles: then the answer draws it there, or a refusal puts it back and says why.
+    moveSwap(d.boundary, isoOf(d.day)).catch((err: unknown) => toast(errorText(err))).finally(() => setDrag(null))
   }
   useEffect(() => () => void (dragging.current = null), [])
 
-  const open = (what: Opened) => setOpened({ what, open: true })
-  // The dialog closed: a control that is still there has the focus back from the dialog; one that left (a filled gap) hands it to the picture.
-  const closed = () => {
-    setOpened(null)
-    requestAnimationFrame(() => {
-      if (!document.activeElement || document.activeElement === document.body) scroll.current?.focus()
-    })
+  // What a dialog was opened from, by its key in the picture: when that control leaves (a filled gap, with the answer that redraws the
+  // picture) and the focus it held fell off the page, the focus goes to the picture. While it stays (a cancelled dialog handed the focus
+  // back to it), or the focus is elsewhere by then, nothing moves.
+  const acted = useRef<string | null>(null)
+  const keyOf = (o: Opened) => (o.kind === 'period' ? `period:${o.period.id}` : o.kind === 'swap' ? `swap:${o.boundary.line.id}` : `gap:${o.gap.from}`)
+  const open = (what: Opened) => {
+    acted.current = keyOf(what)
+    setOpened({ what, open: true })
   }
+  const closed = () => setOpened(null)
+  const controls = [...periods.map((p) => `period:${p.id}`), ...boundaries.map((b) => `swap:${b.line.id}`), ...gaps.map((g) => `gap:${g.from}`)].join(' ')
+  useEffect(() => {
+    if (opened || !acted.current || controls.split(' ').includes(acted.current)) return
+    acted.current = null
+    if (!document.activeElement || document.activeElement === document.body) scroll.current?.focus()
+  }, [opened, controls])
 
   const table = layer('TABLE')
   const rows = tableRows()
@@ -369,10 +375,46 @@ export default function Timeline({
                 {layer('MARKS') && marksOf(tyres.entries, s.set.id).filter((m) => inSpan(dayOf(m.day), dayOf(m.day) + 1)).map((m) => (
                   <Box key={m.id} title={t('tyres.timeline.mark', { kind: entryWords.kind(m.kind), date: format.date(m.day) })} sx={(theme) => ({ position: 'absolute', top: 2, left: X(dayOf(m.day)) - 5, width: 10, height: 10, transform: 'rotate(45deg)', bgcolor: theme.vars.palette.warning.main, border: `1px solid ${theme.vars.palette.text.primary}`, zIndex: 1 })} />
                 ))}
+                {/* The swaps' handles, each in the row of the set that went on (so a taller row moves none of them). */}
+                {handles.filter((b) => (shown.has(b.after.setId) ? b.after.setId : b.before.setId) === s.set.id).map((b) => {
+                  const at = drag?.id === b.line.id ? drag.day : b.day
+                  return (
+                    <Box
+                      key={b.line.id}
+                      component="button"
+                      type="button"
+                      data-swap={b.line.id}
+                      aria-label={swapName(b)}
+                      aria-haspopup="dialog"
+                      title={swapName(b)}
+                      onPointerDown={(e) => onHandleDown(e, b)}
+                      onPointerMove={onHandleMove}
+                      onPointerUp={onHandleUp}
+                      onPointerCancel={onHandleUp}
+                      onClick={() => {
+                        if (suppressClick.current) return void (suppressClick.current = false)
+                        open({ kind: 'swap', boundary: b })
+                      }}
+                      sx={(theme) => ({
+                        position: 'absolute', top: 6, left: X(at) - 22, width: 44, height: 44, border: 0, p: 0, m: 0, background: 'none', zIndex: 2,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: mouse ? 'ew-resize' : 'pointer', touchAction: 'pan-x', ...focusRing(theme),
+                      })}
+                    >
+                      <Box component="span" sx={(theme) => ({ width: 20, height: 30, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: `2px solid ${theme.vars.palette.primary.main}`, bgcolor: drag?.id === b.line.id ? theme.vars.palette.primary.main : theme.vars.palette.background.paper, color: drag?.id === b.line.id ? theme.vars.palette.primary.contrastText : theme.vars.palette.primary.main })}>
+                        <ArrowLeftRight size={12} aria-hidden />
+                      </Box>
+                    </Box>
+                  )
+                })}
+                {drag && handles.some((b) => b.line.id === drag.id && (shown.has(b.after.setId) ? b.after.setId : b.before.setId) === s.set.id) && (
+                  <Box role="status" sx={(theme) => ({ position: 'absolute', top: -2, left: X(drag.day), transform: 'translateX(-50%)', bgcolor: theme.vars.palette.primary.main, color: theme.vars.palette.primary.contrastText, typography: 'caption', fontWeight: 700, borderRadius: '6px', px: 0.75, whiteSpace: 'nowrap', zIndex: 5 })}>
+                    {day(drag.day)}
+                  </Box>
+                )}
               </Box>,
             ]
           })}
-          {/* Across the rows: the gaps (whole height) and the swaps' handles, each on the row of the set that went on. */}
+          {/* Across the rows: the gaps, whole height. */}
           <Box sx={{ position: 'absolute', left: labelWidth, top: HEAD, bottom: 0, width: W, pointerEvents: 'none' }}>
             {layer('GAPS') && gaps.filter((g) => inSpan(g.from, g.until)).map((g) => {
               const left = X(Math.max(g.from, span.start))
@@ -383,42 +425,6 @@ export default function Timeline({
                 <Box key={g.from} data-gap title={gapName(g, false)} sx={(theme) => ({ ...look(theme), pointerEvents: 'auto' })} />
               )
             })}
-            {handles.map((b) => {
-              const row = Math.max(0, rowOf(shown.has(b.after.setId) ? b.after.setId : b.before.setId))
-              const at = drag?.id === b.line.id ? drag.day : b.day
-              return (
-                <Box
-                  key={b.line.id}
-                  component="button"
-                  type="button"
-                  data-swap={b.line.id}
-                  aria-label={swapName(b)}
-                  aria-haspopup="dialog"
-                  title={swapName(b)}
-                  onPointerDown={(e) => onHandleDown(e, b)}
-                  onPointerMove={onHandleMove}
-                  onPointerUp={onHandleUp}
-                  onPointerCancel={onHandleUp}
-                  onClick={() => {
-                    if (suppressClick.current) return void (suppressClick.current = false)
-                    open({ kind: 'swap', boundary: b })
-                  }}
-                  sx={(theme) => ({
-                    position: 'absolute', top: row * (ROW + 1) + 6, left: X(at) - 22, width: 44, height: 44, border: 0, p: 0, m: 0, background: 'none', pointerEvents: 'auto', zIndex: 2,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: mouse ? 'ew-resize' : 'pointer', touchAction: 'pan-x', ...focusRing(theme),
-                  })}
-                >
-                  <Box component="span" sx={(theme) => ({ width: 20, height: 30, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: `2px solid ${theme.vars.palette.primary.main}`, bgcolor: drag?.id === b.line.id ? theme.vars.palette.primary.main : theme.vars.palette.background.paper, color: drag?.id === b.line.id ? theme.vars.palette.primary.contrastText : theme.vars.palette.primary.main })}>
-                    <ArrowLeftRight size={12} aria-hidden />
-                  </Box>
-                </Box>
-              )
-            })}
-            {drag && (
-              <Box role="status" sx={(theme) => ({ position: 'absolute', top: -2, left: X(drag.day), transform: 'translateX(-50%)', bgcolor: theme.vars.palette.primary.main, color: theme.vars.palette.primary.contrastText, typography: 'caption', fontWeight: 700, borderRadius: '6px', px: 0.75, whiteSpace: 'nowrap', zIndex: 5 })}>
-                {day(drag.day)}
-              </Box>
-            )}
           </Box>
         </Box>
       </Box>

@@ -1,3 +1,4 @@
+import { useApolloClient } from '@apollo/client/react'
 import Button from '@mui/material/Button'
 import Stack from '@mui/material/Stack'
 import { useState, type FormEvent } from 'react'
@@ -9,9 +10,10 @@ import { useClientId } from '../../dialogs/useClientId.ts'
 import { Field } from '../../forms/Field.tsx'
 import { FieldDate } from '../../forms/FieldDate.tsx'
 import { Form } from '../../forms/Form.tsx'
-import { AddTyreInstallationDocument, DeleteTyreInstallationDocument, UpdateTyreInstallationDocument } from '../../gql/generated.ts'
+import { AddTyreInstallationDocument, DeleteTyreInstallationDocument, RestoreTyreInstallationDocument, UpdateTyreInstallationDocument } from '../../gql/generated.ts'
 import { useFormat } from '../../i18n/format.ts'
 import { ErrorMessage } from '../../messages.tsx'
+import { discardChange } from '../../offline/submitChange.ts'
 import { type Tyres, useTyreMutation, useTyreToasts } from '../tyres.ts'
 import { isoOf, type Boundary, type Gap } from './model.ts'
 import { useMoveSwap } from './useMoveSwap.ts'
@@ -72,14 +74,15 @@ export function MoveSwapDialog({ vehicleId, tyres, boundary, open, onOpenChange,
  * stretches its own period when the chosen days touch it: the set before, from the gap's first day, ends later; the set after, up to the
  * gap's last day, starts earlier (its line, reading and expense move with it); anything else adds a period. The same set on both sides,
  * filled whole: the server never joins two periods of a set that meet, so the later one goes to the trash with its line and the earlier
- * one runs to where it ended, one period. When the later one's line holds something (a reading, a note, an amount), nothing is trashed:
- * the earlier one stretches to it and the two meet.
+ * one runs to where it ended, one period. When the later one's line holds something (a reading, a note, an amount), or the set is tracked
+ * tyre by tyre (its tyres' corners in that period would go too), nothing is trashed: the earlier one stretches to it and the two meet.
  */
 export function FillGapDialog({ vehicleId, tyres, gap, open, onOpenChange, onClosed }: { vehicleId: string; tyres: Tyres; gap: Gap; open: boolean; onOpenChange: (open: boolean) => void; onClosed: () => void }) {
   const { t } = useTranslation()
   const format = useFormat()
   const run = useTyreMutation(vehicleId)
   const notify = useTyreToasts()
+  const client = useApolloClient()
   const id = useClientId(open)
   const sets = tyres.sets.filter((s) => !s.set.isRetired)
   // The set before the gap first: the likeliest answer is that it simply stayed on.
@@ -101,11 +104,19 @@ export function FillGapDialog({ vehicleId, tyres, gap, open, onOpenChange, onClo
       let saved
       if (setId === gap.before.setId && from === isoOf(gap.from)) {
         const line = tyres.entries.find((x) => x.installationId === after.id)
+        // What trashing the later period would take along: something typed on its line, or (a set tracked tyre by tyre) its tyres' corners.
         const holds = !!line && (line.odometer != null || !!line.note || line.expenseId != null)
-        if (setId === gap.after.setId && until === isoOf(gap.until) && !holds) {
+        const tracked = !!tyres.sets.find((x) => x.set.id === setId)?.set.brokenUpOn
+        if (setId === gap.after.setId && until === isoOf(gap.until) && !holds && !tracked) {
           // One set all along: one period. The later one's empty line goes to the trash with it (the trash brings both back).
-          await run(DeleteTyreInstallationDocument, { id: after.id })
-          saved = await run(UpdateTyreInstallationDocument, { input: whole(gap.before, { from: before.from, until: after.until ?? null }) })
+          const trashed = await run(DeleteTyreInstallationDocument, { id: after.id })
+          try {
+            saved = await run(UpdateTyreInstallationDocument, { input: whole(gap.before, { from: before.from, until: after.until ?? null }) })
+          } catch (err) {
+            // The stretch was refused: the later period comes back (a trash kept on this device is taken back), so nothing is left half done.
+            await (trashed.queued ? discardChange(client, trashed.changeId) : run(RestoreTyreInstallationDocument, { id: after.id })).catch(() => undefined)
+            throw err
+          }
         } else saved = await run(UpdateTyreInstallationDocument, { input: whole(gap.before, { from: before.from, until }) })
       } else if (stretchesAfter) saved = await run(UpdateTyreInstallationDocument, { input: whole(gap.after, { from, until: after.until ?? null }) })
       else saved = await run(AddTyreInstallationDocument, { input: { id, setId, from, until, pairOneFront: null, odometerFrom: null, odometerUntil: null } })
