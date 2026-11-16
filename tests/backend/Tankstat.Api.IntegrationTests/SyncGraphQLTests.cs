@@ -82,6 +82,32 @@ public class SyncGraphQLTests : IDisposable
     }
 
     [Fact]
+    public async Task NotThisSeason_FromTheQueue_IsAppliedWhateverTheSetsVersion_AndAWaitingEditAfterItIsNotParked()
+    {
+        // #292: a dismissal tapped offline names the set's version as the device saw it; an edit made elsewhere meanwhile must not park it,
+        // and it bumps no version, so another device's waiting edit made before it is not parked either.
+        var people = await _app.Users();
+        var (car, winter) = (Guid.NewGuid(), Guid.NewGuid());
+        var month = DateTime.UtcNow.Month; // the server's today is the UTC date
+        var season = new DateOnly(DateTime.UtcNow.Year, month, 1).ToString("yyyy-MM-dd");
+        var setUp = await Send(people.Alice,
+            new { id = Guid.NewGuid(), addVehicle = new { id = car, name = "Octavia", fuelType = "PETROL" } },
+            new { id = Guid.NewGuid(), addTyreSet = new { id = winter, vehicleId = car, name = "Continental", season = "WINTER", since = "2022-11-19", fitted = false, day = "2026-03-28", reminderMonth = month } },
+            new { id = Guid.NewGuid(), updateTyreSet = new { id = winter, name = "Continental TS 870", season = "WINTER", since = "2022-11-19" } });
+        Assert.Equal(3, setUp.GetProperty("applied").GetInt32());
+
+        var result = await Send(people.Alice,
+            new { id = Guid.NewGuid(), expectedVersion = 1, dismissTyreReminder = new { id = winter, season } }, // made before the edit
+            new { id = Guid.NewGuid(), expectedVersion = 2, updateTyreSet = new { id = winter, name = "Continental TS 870 Eco", season = "WINTER", since = "2022-11-19" } });
+
+        Assert.Equal((2, 0), (result.GetProperty("applied").GetInt32(), result.GetProperty("parked").GetInt32()));
+        var set = (await people.Alice.Gql("query($v: UUID!) { vehicleTyres(vehicleId: $v) { sets { reminder { season } set { name reminderDismissedFor } } } }", new { v = car }))
+            .Data().GetProperty("vehicleTyres").GetProperty("sets")[0];
+        Assert.Equal(JsonValueKind.Null, set.GetProperty("reminder").ValueKind);
+        Assert.Equal(("Continental TS 870 Eco", season), (set.GetProperty("set").GetProperty("name").GetString(), set.GetProperty("set").GetProperty("reminderDismissedFor").GetString()));
+    }
+
+    [Fact]
     public async Task EveryKindOfTyreChange_IsApplied_ARepeatedTrashToo()
     {
         var people = await _app.Users();

@@ -28,21 +28,34 @@ internal sealed class TyreRepository(IDbContextFactory<AppDbContext> dbFactory, 
     {
         if (vehicleIds.Count == 0) return new TyreReminderRows([], []);
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var sets = await db.TyreSets.AsNoTracking().Where(s => vehicleIds.Contains(s.VehicleId) && s.DeletedAt == null && s.RetiredOn == null).ToListAsync(ct);
+        var sets = await ReminderSets(db, vehicleIds).ToListAsync(ct);
         if (sets.Count == 0) return new TyreReminderRows([], []);
-        var installations = await db.TyreInstallations.AsNoTracking().Where(i => vehicleIds.Contains(i.VehicleId) && i.DeletedAt == null).ToListAsync(ct);
+        var installations = await ReminderInstallations(db, vehicleIds).ToListAsync(ct);
         return new TyreReminderRows(sets, installations);
     }
+
+    /// <summary>The sets in use of several vehicles (#292); internal so the translation tests see its SQL on every provider.</summary>
+    internal static IQueryable<TyreSet> ReminderSets(AppDbContext db, IReadOnlyCollection<Guid> vehicleIds) =>
+        db.TyreSets.AsNoTracking().Where(s => vehicleIds.Contains(s.VehicleId) && s.DeletedAt == null && s.RetiredOn == null);
+
+    internal static IQueryable<TyreInstallation> ReminderInstallations(AppDbContext db, IReadOnlyCollection<Guid> vehicleIds) =>
+        db.TyreInstallations.AsNoTracking().Where(i => vehicleIds.Contains(i.VehicleId) && i.DeletedAt == null);
 
     public async Task<IReadOnlyList<Guid>> ListReminderVehicleIdsAsync(OwnerScope scope, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        // The vehicles' query filter leaves out the trashed ones. A month of 0 is no reminder; an all-season set on its season's has none either.
-        return await db.TyreSets.InScope(scope, s => s.VehicleId)
+        return await ReminderVehicleIds(db, scope).ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// The vehicles in scope with a set that can remind (#292). The vehicles' query filter leaves out the trashed ones. A month of 0 is no
+    /// reminder; an all-season set on its season's has none either.
+    /// </summary>
+    internal static IQueryable<Guid> ReminderVehicleIds(AppDbContext db, OwnerScope scope) =>
+        db.TyreSets.InScope(scope, s => s.VehicleId)
             .Where(s => s.DeletedAt == null && s.RetiredOn == null && (s.ReminderMonth == null ? s.Season != TyreSeason.AllSeason : s.ReminderMonth != 0))
             .Where(s => db.Vehicles.Any(v => v.Id == s.VehicleId))
-            .Select(s => s.VehicleId).Distinct().ToListAsync(ct);
-    }
+            .Select(s => s.VehicleId).Distinct();
 
     /// <summary>The lines made together for several tyres (#289) hold one reading row: one object, as their expense holds it too.</summary>
     private static void ShareReadings(IReadOnlyCollection<TyreEntry> entries)

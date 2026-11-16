@@ -753,7 +753,7 @@ public sealed class TyreService(
     public async Task<TyreOverview> DismissReminderAsync(Guid id, DateOnly season, CancellationToken ct)
     {
         var (vehicle, set, _) = await EditableSetAsync(id, ct);
-        if (set.DismissReminder(season, Today, (await access.RequirePrincipalAsync(ct)).Id))
+        if (set.DismissReminder(season, Today))
         {
             var save = new TyreSave();
             save.ChangedSets.Add(set);
@@ -767,7 +767,7 @@ public sealed class TyreService(
     public async Task<TyreOverview> RestoreReminderAsync(Guid id, CancellationToken ct)
     {
         var (vehicle, set, _) = await EditableSetAsync(id, ct);
-        if (set.RestoreReminder((await access.RequirePrincipalAsync(ct)).Id))
+        if (set.RestoreReminder())
         {
             var save = new TyreSave();
             save.ChangedSets.Add(set);

@@ -3,7 +3,7 @@ import AlertTitle from '@mui/material/AlertTitle'
 import Button from '@mui/material/Button'
 import Stack from '@mui/material/Stack'
 import { ArrowLeftRight } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { DistanceUnit } from '../gql/generated.ts'
 import { useFormat } from '../i18n/format.ts'
@@ -21,6 +21,17 @@ import { useReminderDismiss } from './useReminderDismiss.ts'
  */
 export function ReminderBanners({ tyres, vehicleId, unit, canLog }: { tyres: Tyres; vehicleId: string; unit: DistanceUnit; canLog: boolean }) {
   const due = tyres.sets.filter((s) => s.reminder && !s.onTheCar && !s.set.isRetired)
+  // A note that leaves (dismissed, or its set swapped on) takes the focused button with it: the focus goes to its set's card, which now
+  // says what became of the reminder, instead of falling off the page.
+  const ids = due.map((s) => s.set.id).join(' ')
+  const shown = useRef<string[]>([])
+  useEffect(() => {
+    const now = ids ? ids.split(' ') : []
+    const gone = shown.current.filter((id) => !now.includes(id))
+    shown.current = now
+    if (gone.length === 0 || (document.activeElement && document.activeElement !== document.body)) return
+    document.querySelector<HTMLElement>(`[data-set-card="${gone[0]}"]`)?.focus()
+  }, [ids])
   return (
     <div role="status">
       {due.length > 0 && (

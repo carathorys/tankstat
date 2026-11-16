@@ -386,7 +386,7 @@ function SetCard({
   }
 
   return (
-    <Paper variant="outlined" component="article" aria-label={set.name} sx={{ p: 1.75, borderRadius: 3, display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
+    <Paper variant="outlined" component="article" aria-label={set.name} data-set-card={set.id} tabIndex={-1} sx={{ p: 1.75, borderRadius: 3, display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
       <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
         <Chip size="small" icon={<>{SEASON_ICON[set.season]}</>} label={t(`tyres.seasons.${set.season}`)} />
         <Typography component="h3" variant="subtitle1" sx={{ fontWeight: 700, minWidth: 0, overflowWrap: 'anywhere' }}>

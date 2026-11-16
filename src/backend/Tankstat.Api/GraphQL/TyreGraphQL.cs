@@ -167,8 +167,8 @@ public sealed class TyreSetType : ObjectType<TyreSet>
         // the rest is the server's bookkeeping.
         descriptor.Ignore(s => s.EffectiveReminderMonth);
         descriptor.Ignore(s => s.ReminderSince);
-        descriptor.Ignore(s => s.DismissReminder(default, default, default));
-        descriptor.Ignore(s => s.RestoreReminder(default));
+        descriptor.Ignore(s => s.DismissReminder(default, default));
+        descriptor.Ignore(s => s.RestoreReminder());
         // The months of its own (#291; 1 = January), null while it is on its season's: the client knows a season's months.
         descriptor.Field(s => s.UsualMonths).Type<ListType<NonNullType<IntType>>>().Resolve(c => c.Parent<TyreSet>().UsualMonths?.ToList());
     }

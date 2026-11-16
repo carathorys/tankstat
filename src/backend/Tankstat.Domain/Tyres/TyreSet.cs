@@ -174,23 +174,25 @@ public sealed class TyreSet : IOwned, ISoftDeletable, ISynced
     /// <em>Not this season</em> (#292): the reminder is off for <paramref name="season"/>, for everyone. Only the set's season of today can
     /// be dismissed; any other (an older one, sent late from a device) changes nothing, and is no refusal.
     /// </summary>
+    /// <remarks>
+    /// Not a change of the set's details, so its version is not bumped (like a vehicle's picture): a waiting edit of the set made on
+    /// another device must not be parked by it. The save still marks the set for the offline download (<c>UpdatedAt</c>).
+    /// </remarks>
     /// <returns>Whether anything changed.</returns>
-    public bool DismissReminder(DateOnly season, DateOnly today, Guid? by = null)
+    public bool DismissReminder(DateOnly season, DateOnly today)
     {
         RequireLive();
         if (EffectiveReminderMonth is not { } month || TyreReminder.SeasonOf(month, today) != season || ReminderDismissedFor == season) return false;
         ReminderDismissedFor = season;
-        Bump(EntityChange.Edited, by);
         return true;
     }
 
     /// <summary>Takes <em>Not this season</em> back (the toast's Undo); nothing to take back changes nothing.</summary>
-    public bool RestoreReminder(Guid? by = null)
+    public bool RestoreReminder()
     {
         RequireLive();
         if (ReminderDismissedFor is null) return false;
         ReminderDismissedFor = null;
-        Bump(EntityChange.Edited, by);
         return true;
     }
 

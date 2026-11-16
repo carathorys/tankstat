@@ -58,6 +58,7 @@ it('Not this season turns it off for the season, and Undo brings it back', async
   expect(state.calls.DismissTyreReminder).toEqual([{ input: { id: 's2', season } }])
   expect(await screen.findByText('Reminder off for this season.', { selector: '.MuiSnackbar-root *' })).toBeInTheDocument()
   expect(within(screen.getByRole('article', { name: 'Continental WinterContact' })).getByText('Reminder off for this season.')).toBeInTheDocument()
+  expect(screen.getByRole('article', { name: 'Continental WinterContact' })).toHaveFocus() // the note left with its button: the set's card says what became of it
 
   await ui.click(screen.getByRole('button', { name: 'Undo' }))
   expect(await screen.findByText('Time to fit the winter tyres')).toBeInTheDocument()
