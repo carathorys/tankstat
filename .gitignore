@@ -554,3 +554,4 @@ tankstat-backup-*.zip.partial
 # ... and still never the Backups folders of the app's own code: a clone that ignores case (core.ignorecase, git's default on macOS and
 # Windows) matches them by the lines above (and Backup*/) too.
 !src/backend/*/Backups/
+src/frontend/tankstat-react/e2e/files/generated/

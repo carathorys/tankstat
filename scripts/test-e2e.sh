@@ -3,7 +3,8 @@
 # Playwright runs natively with E2E_NATIVE=1 (CI, which installs Chromium), otherwise in the Playwright image of the installed version
 # (this machine's Linux is not one Playwright supports). Arguments go to `playwright test`: scripts/test-e2e.sh --project phone
 # Besides it, six instances that wait for their setup (two of them set up first, so their setup reopens), on the next ports, for the
-# setup's tests (E2E_SETUP).
+# setup's tests (E2E_SETUP); and two more for the import from a backup (E2E_IMPORT), whose run locks SQLite for everyone on its server,
+# with a backup file the script writes for them from an instance of its own.
 set -euo pipefail
 
 repo="$(cd "$(dirname "$0")/.." && pwd)"
@@ -15,11 +16,11 @@ fi
 
 port="${E2E_PORT:-5097}"
 export E2E_URL="http://127.0.0.1:${port}"
-# The app and the six waiting servers take seven ports from it: one already answering (another run, another session's) would answer
-# for them, and the tests would fail on its data (#236).
-for p in $(seq "$port" $((port + 6))); do
+# The app, the six waiting servers, the import fixture's source and the two import servers take ten ports from it: one already answering
+# (another run, another session's) would answer for them, and the tests would fail on its data (#236).
+for p in $(seq "$port" $((port + 9))); do
   if curl -s -o /dev/null --max-time 2 "http://127.0.0.1:${p}"; then
-    echo "Something already answers on port ${p} (this run takes ${port}-$((port + 6))): stop it, or choose another start with E2E_PORT." >&2
+    echo "Something already answers on port ${p} (this run takes ${port}-$((port + 9))): stop it, or choose another start with E2E_PORT." >&2
     exit 1
   fi
 done
@@ -59,7 +60,9 @@ app() {
 # root@example.com, whom the tests sign in as (src/frontend/tankstat-react/e2e/support/app.ts).
 app > "${files}/app.log" 2>&1 &
 pids=($!)
-trap 'kill "${pids[@]}" 2>/dev/null || true; wait "${pids[@]}" 2>/dev/null || true; rm -rf "$files"' EXIT
+# The import's backup file is written inside the repository, which Playwright's container sees (the temporary folder it does not).
+fixtures="$repo/src/frontend/tankstat-react/e2e/files/generated"
+trap 'kill "${pids[@]}" 2>/dev/null || true; wait "${pids[@]}" 2>/dev/null || true; rm -rf "$files" "$fixtures"' EXIT
 
 # Waits for a server's API: false when it stopped or never answered.
 answers() {
@@ -148,6 +151,57 @@ for i in "${!setup_names[@]}"; do
 done
 export E2E_SETUP="{${setup}}"
 
+# The import from a backup (src/frontend/tankstat-react/e2e/import.e2e.ts, #337). Its file: an instance of its own (sign-in off) is given two
+# cars through the API, an Octavia with enough fill-ups for a run to be cancelled while it goes, and a Fabia; it is stopped, and its
+# backup written by the command line. Its servers: one per size with sign-in off, since a run locks SQLite for every other test.
+import_env() {
+  local dir="${files}/import-$1"
+  mkdir -p "$dir"
+  export ASPNETCORE_ENVIRONMENT=Production Database__Provider=Sqlite Database__ConnectionString="Data Source=${dir}/tankstat.db" \
+    Storage__Path="${dir}/uploads" Storage__PhotosPath="${dir}/photos" Backups__Path="${dir}/backups" Imports__ScratchFolder="${dir}/scratch" \
+    DataProtection__KeysPath="${dir}/keys" Settings__Path="${dir}/settings.json" Auth__Mode=None Setup__Enabled=false
+}
+gql() { curl -sf -H 'Content-Type: application/json' -d "$2" "$1/graphql"; }
+source_url="http://127.0.0.1:$((port + 7))"
+(import_env source; cd out; exec dotnet Tankstat.Api.dll --urls "$source_url") > "${files}/import-source.log" 2>&1 &
+source_pid=$!
+pids+=("$source_pid")
+if ! answers "$source_url" "$source_pid"; then
+  echo "The import fixture's source did not start on $source_url:" >&2
+  cat "${files}/import-source.log" >&2
+  exit 1
+fi
+car_id() { grep -oE '"id":"[0-9a-f-]{36}"' | head -n 1 | cut -d'"' -f4; }
+octavia="$(gql "$source_url" '{"query":"mutation { addVehicle(input: { name: \"Octavia\", licensePlate: \"IMP-001\", fuelType: DIESEL }) { id } }"}' | car_id)"
+fabia="$(gql "$source_url" '{"query":"mutation { addVehicle(input: { name: \"Fabia\", fuelType: PETROL }) { id } }"}' | car_id)"
+for i in $(seq 1 240); do
+  day="$(date -u -d "2024-01-01 + $((i * 3)) days" +%F)"
+  gql "$source_url" "{\"query\":\"mutation { logRefueling(input: { vehicleId: \\\"${octavia}\\\", date: \\\"${day}\\\", volume: 40, totalCost: 60, currency: \\\"EUR\\\", odometer: $((10000 + i * 600)), isFullTank: true }) { id } }\"}" >/dev/null
+done
+gql "$source_url" "{\"query\":\"mutation { addExpense(input: { vehicleId: \\\"${octavia}\\\", date: \\\"2024-03-01\\\", title: \\\"Car wash\\\", amount: 12, currency: \\\"EUR\\\" }) { id } }\"}" >/dev/null
+gql "$source_url" "{\"query\":\"mutation { addRecurringExpense(input: { vehicleId: \\\"${octavia}\\\", title: \\\"Oil change\\\", kind: TIME, intervalMonths: 12 }) { id } }\"}" >/dev/null
+gql "$source_url" "{\"query\":\"mutation { logRefueling(input: { vehicleId: \\\"${fabia}\\\", date: \\\"2025-05-01\\\", volume: 30, totalCost: 45, currency: \\\"EUR\\\", odometer: 55000, isFullTank: true }) { id } }\"}" >/dev/null
+kill "$source_pid" && wait "$source_pid" 2>/dev/null || true
+mkdir -p "$fixtures"
+if ! (import_env source; cd out; dotnet Tankstat.Api.dll backup --output "$fixtures/tankstat-backup.zip") > "${files}/import-backup.log" 2>&1; then
+  echo "The import fixture's backup could not be written:" >&2
+  cat "${files}/import-backup.log" >&2
+  exit 1
+fi
+import="" sep=""
+for i in 0 1; do
+  name="$([[ $i == 0 ]] && echo phone || echo desktop)" url="http://127.0.0.1:$((port + 8 + i))"
+  (import_env "$name"; cd out; exec dotnet Tankstat.Api.dll --urls "$url") > "${files}/import-${name}.log" 2>&1 &
+  pids+=($!)
+  if ! answers "$url" "$!"; then
+    echo "The import server $name did not start on $url:" >&2
+    cat "${files}/import-${name}.log" >&2
+    exit 1
+  fi
+  import+="${sep}\"$name\":{\"url\":\"$url\"}" sep=","
+done
+export E2E_IMPORT="{${import},\"backup\":\"$fixtures/tankstat-backup.zip\"}"
+
 # Playwright runs from the web app's folder: its config, node_modules, test-results/ and playwright-report/ are there.
 web="$repo/src/frontend/tankstat-react"
 status=0
@@ -157,7 +211,7 @@ else
   version="$(cd "$web" && node -p "require('@playwright/test/package.json').version")"
   # As the host user, so nothing it writes (test-results/, the report) belongs to root; the web app's own node_modules, the image's browsers.
   # The whole repository is mounted: a test reads a backup file from tests/backend/contracts.
-  docker run --rm --network host --ipc=host --user "$(id -u):$(id -g)" -e HOME=/tmp -e E2E_URL -e E2E_SETUP \
+  docker run --rm --network host --ipc=host --user "$(id -u):$(id -g)" -e HOME=/tmp -e E2E_URL -e E2E_SETUP -e E2E_IMPORT \
     -v "$repo:$repo" -w "$web" "mcr.microsoft.com/playwright:v${version}-noble" npx playwright test "$@" || status=$?
 fi
 if [[ "$status" != 0 ]]; then
