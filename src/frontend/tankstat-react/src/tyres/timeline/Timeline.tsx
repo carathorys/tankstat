@@ -26,7 +26,7 @@ import { PastSwapsDialog } from '../PastSwapsDialog.tsx'
 import { type Tyres, useTyreWords } from '../tyres.ts'
 import { useErrorText } from '../../i18n/errors.ts'
 import {
-  beforeTracking, boundariesOf, dayOf, draggedDay, gapsOf, isoOf, marksOf, periodsOf, pxPerDay, shownSets, spanOf, ticksOf, ZOOMS,
+  beforeTracking, boundariesOf, dayOf, draggedDay, gapsOf, isoOf, marksOf, periodsOf, pxPerDay, setNameOf, shownSets, spanOf, ticksOf, ZOOMS,
   type Boundary, type Gap, type Period,
 } from './model.ts'
 import { FillGapDialog, MoveSwapDialog } from './TimelineDialogs.tsx'
@@ -80,7 +80,8 @@ export default function Timeline({
   const setChoices = settings?.setTimeline ?? setOwn
   const [zoom, setZoom] = useState<number>(1)
   const [menu, setMenu] = useState(false)
-  const [opened, setOpened] = useState<{ what: Opened; open: boolean } | null>(null)
+  // `turn` counts the openings: a dialog opened again while the last one still leaves the screen starts afresh (its key), not from that one's fields.
+  const [opened, setOpened] = useState<{ what: Opened; open: boolean; turn: number } | null>(null)
   const menuId = useId()
   const phone = useMediaQuery(MEDIA.narrow, false)
   const mouse = !useMediaQuery(MEDIA.touch, false)
@@ -94,7 +95,7 @@ export default function Timeline({
   const shown = new Set(sets.map((s) => s.set.id))
   const layer = (l: TimelineLayer) => choices.layers.includes(l)
   const span = spanOf(choices.range, tyres, periods, today)
-  const nameOf = (id: string) => tyres.sets.find((s) => s.set.id === id)?.set.name ?? ''
+  const nameOf = (id: string) => setNameOf(tyres, id)
 
   // The picture's room: its box less the set column. jsdom lays nothing out (a width of 0), so the minimum scale applies there.
   const scroll = useRef<HTMLDivElement>(null)
@@ -149,12 +150,17 @@ export default function Timeline({
 
   // The swaps with a handle: whoever may log, a line the server knows (one made on this device has no id to move yet), a shown row.
   const handles = canLog ? boundaries.filter((b) => !isDeviceLine(b.line) && (shown.has(b.after.setId) || shown.has(b.before.setId)) && b.day > span.start) : []
+  /** The row a handle is drawn in: the set that went on, or the one that came off while that one is hidden. */
+  const rowOf = (b: Boundary) => (shown.has(b.after.setId) ? b.after.setId : b.before.setId)
 
   // A drag (a mouse on a desktop only): the handle follows the pointer by whole days; on release the swap is saved, with Undo.
   const [drag, setDrag] = useState<{ id: string; day: number } | null>(null)
   const dragging = useRef<{ boundary: Boundary; startX: number; moved: boolean; day: number } | null>(null)
   const suppressClick = useRef(false)
+  // A press or a key begins a click of its own: a release no click followed must not swallow it.
+  const ownClick = () => void (suppressClick.current = false)
   const onHandleDown = (e: ReactPointerEvent<HTMLButtonElement>, b: Boundary) => {
+    ownClick()
     if (!mouse || e.pointerType !== 'mouse' || e.button !== 0) return
     dragging.current = { boundary: b, startX: e.clientX, moved: false, day: b.day }
     e.currentTarget.setPointerCapture?.(e.pointerId)
@@ -175,7 +181,14 @@ export default function Timeline({
     suppressClick.current = true // the click that follows the release is the drag's, not a request for the dialog
     if (d.day === d.boundary.day) return void setDrag(null)
     // The handle stays where it was dropped until the save settles: then the answer draws it there, or a refusal puts it back and says why.
-    moveSwap(d.boundary, isoOf(d.day)).catch((err: unknown) => toast(errorText(err))).finally(() => setDrag(null))
+    // A drag begun meanwhile is not this save's to end.
+    const id = d.boundary.line.id
+    moveSwap(d.boundary, isoOf(d.day)).catch((err: unknown) => toast(errorText(err))).finally(() => setDrag((now) => (now?.id === id && !dragging.current ? null : now)))
+  }
+  // A drag the browser took away (the pointer lost) saves nothing: the handle goes back.
+  const onHandleCancel = () => {
+    dragging.current = null
+    setDrag(null)
   }
   useEffect(() => () => void (dragging.current = null), [])
 
@@ -186,8 +199,9 @@ export default function Timeline({
   const keyOf = (o: Opened) => (o.kind === 'period' ? `period:${o.period.id}` : o.kind === 'swap' ? `swap:${o.boundary.line.id}` : `gap:${o.gap.from}`)
   const open = (what: Opened) => {
     acted.current = keyOf(what)
-    setOpened({ what, open: true })
+    setOpened((o) => ({ what, open: true, turn: (o?.turn ?? 0) + 1 }))
   }
+  const setOpen = (next: boolean) => setOpened((o) => o && { ...o, open: next })
   const closed = () => setOpened(null)
   const controls = [...periods.map((p) => `period:${p.id}`), ...boundaries.map((b) => `swap:${b.line.id}`), ...gaps.map((g) => `gap:${g.from}`)].join(' ')
   useEffect(() => {
@@ -195,6 +209,17 @@ export default function Timeline({
     acted.current = null
     if (!document.activeElement || document.activeElement === document.body) scroll.current?.focus()
   }, [opened, controls])
+
+  // What is drawn around each shown set's periods, worked out once for the picture and the table.
+  const around = new Map(sets.map((s) => {
+    const before = layer('BEFORE_TRACKING') ? beforeTracking(s, periods) : null
+    const retiredOn = s.set.isRetired && s.set.retiredOn && dayOf(s.set.retiredOn) > span.start ? s.set.retiredOn : null
+    return [s.set.id, {
+      before: before && inSpan(before.from, before.until) ? before : null,
+      marks: layer('MARKS') ? marksOf(tyres.entries, s.set.id).filter((m) => inSpan(dayOf(m.day), dayOf(m.day) + 1)) : [],
+      retiredOn,
+    }] as const
+  }))
 
   const table = layer('TABLE')
   const rows = tableRows()
@@ -211,11 +236,11 @@ export default function Timeline({
     if (layer('GAPS')) for (const g of gaps.filter((x) => inSpan(x.from, x.until)))
       out.push({ key: `gap:${g.from}`, at: g.from, set: t('tyres.timeline.legend.gap'), from: day(g.from), until: day(g.until), distance: '–', actions: canLog ? [{ kind: 'gap', gap: g }] : undefined, tone: 'gap' })
     for (const s of sets) {
-      const before = layer('BEFORE_TRACKING') ? beforeTracking(s, periods) : null
-      if (before && inSpan(before.from, before.until)) out.push({ key: `before:${s.set.id}`, at: before.from, set: s.set.name, from: day(before.from), until: day(before.until), distance: `${t('tyres.timeline.table.before')} · ${words.distance(s.set.roughDistance, true)}` })
-      if (layer('MARKS')) for (const m of marksOf(tyres.entries, s.set.id).filter((x) => inSpan(dayOf(x.day), dayOf(x.day) + 1)))
+      const { before, marks, retiredOn } = around.get(s.set.id)!
+      if (before) out.push({ key: `before:${s.set.id}`, at: before.from, set: s.set.name, from: day(before.from), until: day(before.until), distance: `${t('tyres.timeline.table.before')} · ${words.distance(s.set.roughDistance, true)}` })
+      for (const m of marks)
         out.push({ key: `mark:${m.id}`, at: dayOf(m.day), set: s.set.name, from: day(dayOf(m.day)), until: '–', distance: entryWords.kind(m.kind) })
-      if (s.set.isRetired && s.set.retiredOn) out.push({ key: `retired:${s.set.id}`, at: dayOf(s.set.retiredOn), set: s.set.name, from: day(dayOf(s.set.retiredOn)), until: '–', distance: t('tyres.timeline.retiredOn', { date: day(dayOf(s.set.retiredOn)) }) })
+      if (retiredOn) out.push({ key: `retired:${s.set.id}`, at: dayOf(retiredOn), set: s.set.name, from: format.date(retiredOn), until: '–', distance: t('tyres.timeline.retiredOn', { date: format.date(retiredOn) }) })
     }
     return out.sort((a, b) => b.at - a.at || (a.key < b.key ? -1 : 1))
   }
@@ -311,7 +336,7 @@ export default function Timeline({
           <Box aria-hidden sx={{ position: 'relative', minHeight: HEAD, typography: 'caption', color: 'text.secondary' }}>
             {ticksOf(span, perDay).map((tick) => (
               <Box key={tick.day} sx={{ position: 'absolute', top: 0, bottom: 0, left: X(tick.day), borderLeft: 1, borderColor: tick.year ? 'text.secondary' : 'divider', px: 0.5, whiteSpace: 'nowrap', fontWeight: tick.year ? 700 : 400, color: tick.year ? 'text.primary' : 'text.secondary', fontSize: '0.7rem' }}>
-                {tick.year ? isoOf(tick.day).slice(0, 4) : format.month(tick.month, 'short')}
+                {tick.year ? format.year(isoOf(tick.day)) : format.month(tick.month, 'short')}
               </Box>
             ))}
             {/* To the left of its line: the picture ends soon after today, and a label to the right would be cut. */}
@@ -319,7 +344,7 @@ export default function Timeline({
           </Box>
           {sets.map((s) => {
             const tone = TONE[s.set.season]
-            const before = layer('BEFORE_TRACKING') ? beforeTracking(s, periods) : null
+            const { before, marks, retiredOn } = around.get(s.set.id)!
             const waiting = pending.get(s.set.id)
             return [
               <Box key={`${s.set.id}:label`} sx={{ position: 'sticky', left: 0, zIndex: 3, bgcolor: 'background.paper', borderRight: 1, borderTop: 1, borderColor: 'divider', px: 1, py: 0.5, minHeight: ROW, display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
@@ -337,7 +362,7 @@ export default function Timeline({
               </Box>,
               <Box key={`${s.set.id}:track`} sx={{ position: 'relative', minHeight: ROW, borderTop: 1, borderColor: 'divider' }}>
                 <Box aria-hidden sx={{ position: 'absolute', top: 0, bottom: 0, left: X(today), borderLeft: 2, borderColor: 'primary.main', opacity: 0.6 }} />
-                {before && inSpan(before.from, before.until) && (
+                {before && (
                   <Box
                     title={t('tyres.timeline.beforeTip', { date: format.date(s.set.since) })}
                     sx={(theme) => ({ position: 'absolute', top: 16, height: 24, left: X(Math.max(before.from, span.start)), width: X(before.until) - X(Math.max(before.from, span.start)), borderRadius: '6px', border: `1px dashed ${theme.vars.palette.text.secondary}`, background: hatch(theme), typography: 'caption', color: 'text.secondary', display: 'flex', alignItems: 'center', px: 0.75, whiteSpace: 'nowrap', overflow: 'hidden' })}
@@ -345,9 +370,9 @@ export default function Timeline({
                     ≈
                   </Box>
                 )}
-                {s.set.isRetired && s.set.retiredOn && dayOf(s.set.retiredOn) > span.start && (
-                  <Box sx={{ position: 'absolute', top: 8, bottom: 8, left: X(dayOf(s.set.retiredOn)), borderLeft: 3, borderColor: 'text.primary', pl: 0.5, typography: 'caption', color: 'text.secondary', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center' }}>
-                    {t('tyres.timeline.retired', { date: format.date(s.set.retiredOn) })}
+                {retiredOn && (
+                  <Box sx={{ position: 'absolute', top: 8, bottom: 8, left: X(dayOf(retiredOn)), borderLeft: 3, borderColor: 'text.primary', pl: 0.5, typography: 'caption', color: 'text.secondary', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center' }}>
+                    {t('tyres.timeline.retired', { date: format.date(retiredOn) })}
                   </Box>
                 )}
                 {periods.filter((p) => p.setId === s.set.id && inSpan(p.from, p.until)).map((p) => {
@@ -372,11 +397,11 @@ export default function Timeline({
                     </Box>
                   )
                 })}
-                {layer('MARKS') && marksOf(tyres.entries, s.set.id).filter((m) => inSpan(dayOf(m.day), dayOf(m.day) + 1)).map((m) => (
+                {marks.map((m) => (
                   <Box key={m.id} title={t('tyres.timeline.mark', { kind: entryWords.kind(m.kind), date: format.date(m.day) })} sx={(theme) => ({ position: 'absolute', top: 2, left: X(dayOf(m.day)) - 5, width: 10, height: 10, transform: 'rotate(45deg)', bgcolor: theme.vars.palette.warning.main, border: `1px solid ${theme.vars.palette.text.primary}`, zIndex: 1 })} />
                 ))}
                 {/* The swaps' handles, each in the row of the set that went on (so a taller row moves none of them). */}
-                {handles.filter((b) => (shown.has(b.after.setId) ? b.after.setId : b.before.setId) === s.set.id).map((b) => {
+                {handles.filter((b) => rowOf(b) === s.set.id).map((b) => {
                   const at = drag?.id === b.line.id ? drag.day : b.day
                   return (
                     <Box
@@ -390,7 +415,8 @@ export default function Timeline({
                       onPointerDown={(e) => onHandleDown(e, b)}
                       onPointerMove={onHandleMove}
                       onPointerUp={onHandleUp}
-                      onPointerCancel={onHandleUp}
+                      onPointerCancel={onHandleCancel}
+                      onKeyDown={ownClick}
                       onClick={() => {
                         if (suppressClick.current) return void (suppressClick.current = false)
                         open({ kind: 'swap', boundary: b })
@@ -406,7 +432,7 @@ export default function Timeline({
                     </Box>
                   )
                 })}
-                {drag && handles.some((b) => b.line.id === drag.id && (shown.has(b.after.setId) ? b.after.setId : b.before.setId) === s.set.id) && (
+                {drag && handles.some((b) => b.line.id === drag.id && rowOf(b) === s.set.id) && (
                   <Box role="status" sx={(theme) => ({ position: 'absolute', top: -2, left: X(drag.day), transform: 'translateX(-50%)', bgcolor: theme.vars.palette.primary.main, color: theme.vars.palette.primary.contrastText, typography: 'caption', fontWeight: 700, borderRadius: '6px', px: 0.75, whiteSpace: 'nowrap', zIndex: 5 })}>
                     {day(drag.day)}
                   </Box>
@@ -478,20 +504,21 @@ export default function Timeline({
       </Box>
 
       {opened?.what.kind === 'swap' && (
-        <MoveSwapDialog vehicleId={vehicleId} tyres={tyres} boundary={opened.what.boundary} open={opened.open} onOpenChange={(next) => setOpened((o) => o && { ...o, open: next })} onClosed={closed} />
+        <MoveSwapDialog key={opened.turn} vehicleId={vehicleId} tyres={tyres} boundary={opened.what.boundary} open={opened.open} onOpenChange={setOpen} onClosed={closed} />
       )}
       {opened?.what.kind === 'gap' && (
-        <FillGapDialog vehicleId={vehicleId} tyres={tyres} gap={opened.what.gap} open={opened.open} onOpenChange={(next) => setOpened((o) => o && { ...o, open: next })} onClosed={closed} />
+        <FillGapDialog key={opened.turn} vehicleId={vehicleId} tyres={tyres} gap={opened.what.gap} open={opened.open} onOpenChange={setOpen} onClosed={closed} />
       )}
       {opened?.what.kind === 'period' && (
         <InstallationDialog
+          key={opened.turn}
           vehicleId={vehicleId}
           unit={unit}
           tyres={tyres}
           setId={opened.what.period.setId}
           installation={opened.what.period.info.installation}
           open={opened.open}
-          onOpenChange={(next) => setOpened((o) => o && { ...o, open: next })}
+          onOpenChange={setOpen}
           onClosed={closed}
         />
       )}

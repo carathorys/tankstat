@@ -13,6 +13,9 @@ const DAY = 864e5
 export const dayOf = (iso: string): number => Math.round(Date.parse(`${iso}T00:00:00Z`) / DAY)
 export const isoOf = (day: number): string => new Date(day * DAY).toISOString().slice(0, 10)
 
+/** A set's name by its id (none for a set the answer no longer has). */
+export const setNameOf = (tyres: Tyres, id: string): string => tyres.sets.find((s) => s.set.id === id)?.set.name ?? ''
+
 /** One time on the car, as the picture and the table draw it. */
 export interface Period {
   id: string
