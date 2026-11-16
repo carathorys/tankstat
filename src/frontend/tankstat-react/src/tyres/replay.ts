@@ -731,11 +731,14 @@ function answerOf(base: Tyres, m: Model): { tyres: Tyres; touched: Set<string>; 
     const own = m.installations.filter((x) => x.setId === id).sort((a, b) => (a.from < b.from ? 1 : a.from > b.from ? -1 : 0))
     const was = before.installations.filter((x) => x.setId === id)
     const prior = baseSet.get(id)
-    const detailsChanged = !!prior && JSON.stringify({ ...prior.set, brokenUpOn: prior.set.brokenUpOn ?? null, version: 0 }) !== JSON.stringify({ ...info.set, version: 0 })
+    // Not this season (#292) is no change of the set's details: the server bumps no version for it, so a later edit keeps the set's.
+    const detailsChanged = !!prior &&
+      JSON.stringify({ ...prior.set, brokenUpOn: prior.set.brokenUpOn ?? null, reminderDismissedFor: null, version: 0 }) !== JSON.stringify({ ...info.set, reminderDismissedFor: null, version: 0 })
+    const dismissedChanged = !!prior && (prior.set.reminderDismissedFor ?? null) !== (info.set.reminderDismissedFor ?? null)
     if (!prior) added.add(id)
     const tyres = tyresOf(base, m, id, touchedTyres)
     const tyresChanged = tyres.some((t) => touchedTyres.has(t.tyre.id)) || (prior?.tyres ?? []).length !== tyres.length
-    if (!prior || detailsChanged || tyresChanged || own.length !== was.length || own.some((x) => !sameInstallation(was.find((w) => w.id === x.id), x))) touched.add(id)
+    if (!prior || detailsChanged || dismissedChanged || tyresChanged || own.length !== was.length || own.some((x) => !sameInstallation(was.find((w) => w.id === x.id), x))) touched.add(id)
     return {
       ...info,
       tyres,

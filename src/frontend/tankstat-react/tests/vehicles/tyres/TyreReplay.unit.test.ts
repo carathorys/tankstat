@@ -702,6 +702,9 @@ describe('Not this season on the device (#292)', () => {
     expect(dismissed.skipped).toEqual([])
     expect(of(dismissed.tyres)).toMatchObject({ reminder: null, set: { reminderDismissedFor: '2026-11-01' } })
     expect(dismissed.touched.has('s2')).toBe(true)
+    // No change of the set's details: the server bumps no version, so an edit made after it still names the set's.
+    expect(of(dismissed.tyres).set.version).toBe(of(due).set.version)
+    expect(of(due).set.version).toBeGreaterThan(0)
     const back = replayTyres(due, [change('dismissTyreReminder', { id: 's2', season: '2026-11-01' }), change('restoreTyreReminder', { id: 's2' })])
     expect(of(back.tyres)).toMatchObject({ reminder: { season: '2026-11-01' }, set: { reminderDismissedFor: null } })
   })
