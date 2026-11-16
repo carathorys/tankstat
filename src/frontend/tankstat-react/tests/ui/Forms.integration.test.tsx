@@ -245,3 +245,21 @@ it('a refusal of the server about one field (a required value) is said at that f
   await waitFor(() => expect(title).toHaveFocus())
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })
+
+it('a server busy with a run (#335) is said under the form in the settled words, and the form stays as it is', () => {
+  const busy = new CombinedGraphQLErrors({ errors: [{ message: 'Busy.', extensions: { code: 'BUSY', key: 'import.busy', args: {} } }] })
+  render(
+    <ThemeRoot>
+      <Form onSubmit={(e) => e.preventDefault()} refusal={busy}>
+        <Field name="title" label="Title">
+          <FieldInput defaultValue="Wash" />
+        </Field>
+        <ErrorMessage error={busy} />
+      </Form>
+    </ThemeRoot>,
+  )
+
+  expect(screen.getByRole('alert')).toHaveTextContent('The server is busy with an import, try again in a moment.')
+  expect(screen.getByRole('textbox', { name: 'Title' })).toHaveValue('Wash') // nothing typed is lost: the save is tried again
+  expect(screen.getByRole('textbox', { name: 'Title' })).not.toHaveAttribute('aria-invalid', 'true') // no field's fault
+})

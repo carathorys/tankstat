@@ -38,6 +38,7 @@ public sealed class ChartService(IVehicleRepository vehicles, IVehicleChartRepos
         var user = await access.RequirePrincipalAsync(ct);
         var (_, level) = await VisibleAsync(vehicleId, ct);
         RequireShareRight(input.Shared, level);
+        await access.WaitForRunsAsync(vehicleId, ct);
         if (await charts.CountByUserAsync(vehicleId, user.Id, ct) >= MaxPerUserAndVehicle)
             throw new DomainException("chart.limit", $"You can have at most {MaxPerUserAndVehicle} saved widgets for a vehicle.", new { Max = MaxPerUserAndVehicle });
 
@@ -51,6 +52,7 @@ public sealed class ChartService(IVehicleRepository vehicles, IVehicleChartRepos
     {
         var (chart, level) = await EditableAsync(id, ct);
         RequireShareRight(input.Shared, level);
+        await access.WaitForRunsAsync(chart.VehicleId, ct);
         chart.Update(input.Title, input.Config, input.Figure, input.Shared, clock.GetUtcNow());
         await charts.UpdateAsync(chart, ct);
         logger.LogDebug("Chart {ChartId} updated", chart.Id);
@@ -60,6 +62,7 @@ public sealed class ChartService(IVehicleRepository vehicles, IVehicleChartRepos
     public async Task DeleteAsync(Guid id, CancellationToken ct)
     {
         var (chart, _) = await EditableAsync(id, ct, allowDeleteLevel: true);
+        await access.WaitForRunsAsync(chart.VehicleId, ct);
         await charts.RemoveAsync(chart, ct);
         logger.LogDebug("Chart {ChartId} deleted", chart.Id);
     }

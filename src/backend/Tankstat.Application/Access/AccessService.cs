@@ -20,6 +20,9 @@ public sealed class AccessService(
     /// </summary>
     public Task WaitForRunsAsync(Guid vehicleId, CancellationToken ct) => runs?.WaitAsync(vehicleId, ct) ?? Task.CompletedTask;
 
+    /// <summary>The same before a change that is not about one car (emptying a trash, deleting a user with their cars): while any run is open.</summary>
+    public Task WaitForRunsAsync(CancellationToken ct) => runs?.WaitForAllAsync(ct) ?? Task.CompletedTask;
+
     public async Task<Principal> RequirePrincipalAsync(CancellationToken ct)
     {
         if (RunContext.Current is { } run) return run.Starter; // a run (#335) has no request: the services act as whoever started it

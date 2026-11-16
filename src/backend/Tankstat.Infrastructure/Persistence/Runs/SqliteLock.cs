@@ -79,17 +79,19 @@ internal sealed class SqliteLock(RunTimings timings) : DbCommandInterceptor
 
 /// <summary>
 /// The same for a transaction's start: a save begins one, and there SQLite waits by the connection's own timeout, not a command's. The
-/// connections are pooled, so the timeout is set either way each time: the gate's wait while a run is open, the driver's 30 seconds otherwise.
+/// connections are pooled, so the timeout is set either way each time: the gate's wait while a run is open, the connection string's own otherwise.
 /// </summary>
 internal sealed class SqliteLockTransactions(RunTimings timings) : DbTransactionInterceptor
 {
-    private const int DriverDefault = 30;
 
     private void Set(DbConnection connection)
     {
         if (connection is not SqliteConnection sqlite) return;
         var waits = SqliteLock.Held && RunTransaction.Current is null;
-        sqlite.DefaultTimeout = waits ? Math.Max(1, (int)Math.Ceiling(timings.BusyWait.TotalSeconds)) : DriverDefault;
+        // Otherwise the connection string's own (Default Timeout; the driver's 30 seconds without one).
+        sqlite.DefaultTimeout = waits
+            ? Math.Max(1, (int)Math.Ceiling(timings.BusyWait.TotalSeconds))
+            : new SqliteConnectionStringBuilder(sqlite.ConnectionString).DefaultTimeout;
     }
 
     public override InterceptionResult<DbTransaction> TransactionStarting(DbConnection connection, TransactionStartingEventData eventData, InterceptionResult<DbTransaction> result)

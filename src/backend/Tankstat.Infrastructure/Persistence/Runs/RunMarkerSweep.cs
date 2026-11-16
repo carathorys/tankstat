@@ -52,6 +52,7 @@ internal sealed class RunMarkerSweep(
         var alone = atStart && database.Value.Provider == DatabaseProvider.Sqlite;
         foreach (var marker in await markers.ListOpenAsync(alone ? null : now - settings.CurrentValue.Limit, ct))
         {
+            if (gate.IsOpenHere(marker.Id)) continue; // this process's own run, alive past its limit: it ends its mark itself
             await markers.EndAsync(marker.Id, RunEnd.Interrupted, now, ct);
             logger.LogWarning("Run {RunId} started by {UserId} did not finish: the server stopped while it ran, nothing of it was kept", marker.Id, marker.StartedById);
         }

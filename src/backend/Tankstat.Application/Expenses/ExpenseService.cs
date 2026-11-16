@@ -172,6 +172,7 @@ public sealed class ExpenseService(
     public async Task<int> EmptyTrashAsync(CancellationToken ct)
     {
         var user = await access.RequirePrincipalAsync(ct);
+        await access.WaitForRunsAsync(ct); // what is purged may be a run's (#335)
         var purged = await expenses.PurgeAsync(await access.LogScopeAsync(AccessLevel.Delete, ct), ct);
         await photos.DeleteFilesAsync(LogType.Expense, purged, ct); // their photos go with them
         if (purged.Count > 0) logger.LogInformation("User {UserId} emptied the expense trash: {Count} expenses deleted for good ({WithPhotos} with photos)", user.Id, purged.Count, purged.WithPhotos.Count);

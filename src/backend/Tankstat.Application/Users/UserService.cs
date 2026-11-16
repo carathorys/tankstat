@@ -147,6 +147,7 @@ public sealed class UserService(
             throw new DomainException("user.lastAdmin", "The last active administrator cannot be deleted.");
 
         Guid? target = null;
+        await access.WaitForRunsAsync(ct); // their cars may be a run's (#335)
         var ownsData = await userData.OwnsDataAsync(userId, ct);
         if (ownsData)
         {

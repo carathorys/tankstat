@@ -71,6 +71,16 @@ public sealed class RunBusyApiTests : IDisposable
         await Busy(people.Alice, "mutation($i: UpdateVehicleInput!) { updateVehicle(input: $i) { id } }", new { i = new { id = held, name = "Renamed", fuelType = "PETROL" } });
         await Busy(people.Alice, "mutation($id: UUID!) { deleteVehicle(id: $id) { id } }", new { id = held });
         await Busy(people.Alice, "mutation($i: SetLogAccessInput!) { setVehicleLogAccess(input: $i) }", new { i = new { vehicleId = held, userId = people.BobId, level = "NONE" } });
+        // Every service that saves to a car: its logs, schedules and tyres, its charts and dashboard.
+        await Busy(people.Alice, "mutation($i: AddExpenseInput!) { addExpense(input: $i) { id } }", new { i = new { vehicleId = held, date = "2026-09-01", title = "Wash", amount = 10, currency = "EUR" } });
+        await Busy(people.Alice, "mutation($i: AddRecurringExpenseInput!) { addRecurringExpense(input: $i) { id } }", new { i = new { vehicleId = held, title = "Oil", kind = "TIME", intervalMonths = 12 } });
+        await Busy(people.Alice, "mutation($i: AddTyreSetInput!) { addTyreSet(input: $i) { vehicleId } }", new { i = new { vehicleId = held, name = "Winter", season = "WINTER", since = "2026-09-01", fitted = false, day = "2026-09-01" } });
+        await Busy(people.Alice, "mutation($i: SaveWidgetInput!) { saveVehicleWidget(input: $i) { id } }",
+            new { i = new { vehicleId = held, title = "Bars", shared = true, chart = new { metric = "FUEL_VOLUME", grouping = "MONTH", kind = "BAR", range = "LAST6_MONTHS", stacked = false } } });
+        await Busy(people.Alice, "mutation($i: SaveDashboardLayoutInput!) { saveDashboardLayout(input: $i) }", new { i = new { vehicleId = held, personal = false, tiles = Array.Empty<object>(), hidden = Array.Empty<string>(), layoutVersion = 3 } });
+        // What is not about one car waits for any run: what a trash holds may be the run's.
+        foreach (var empty in new[] { "emptyTrash", "emptyRefuelingTrash", "emptyExpenseTrash", "emptyTyreTrash" })
+            await Busy(people.Alice, $"mutation {{ {empty} }}", new { });
         var picture = new ByteArrayContent(Png()) { Headers = { ContentType = new MediaTypeHeaderValue("image/png") } };
         var upload = await people.Alice.PutAsync($"/media/vehicles/{held}/picture", picture);
         Assert.Equal(HttpStatusCode.Conflict, upload.StatusCode); // never 503: a client reads that as a server it cannot reach
@@ -81,6 +91,13 @@ public sealed class RunBusyApiTests : IDisposable
 
         await Release(mark);
         (await people.Alice.Gql(Refuel, Fill(held))).Data();
+
+        // A car in the trash that a run holds: its restore waits too.
+        (await people.Alice.Gql("mutation($id: UUID!) { deleteVehicle(id: $id) { id } }", new { id = other })).Data();
+        var again = await Hold(other, Guid.Parse(people.AliceId));
+        await Busy(people.Alice, "mutation($id: UUID!) { restoreVehicle(id: $id) { id } }", new { id = other });
+        await Release(again);
+        (await people.Alice.Gql("mutation($id: UUID!) { restoreVehicle(id: $id) { id } }", new { id = other })).Data();
     }
 
     /// <summary>
@@ -93,6 +110,8 @@ public sealed class RunBusyApiTests : IDisposable
         using var app = TestApp.Standalone(services: s => s.AddSingleton(new RunTimings { BusyWait = TimeSpan.FromSeconds(1), Settle = TimeSpan.Zero }));
         var people = await app.Users();
         var other = await AddCar(people.Alice, "Other");
+        (await people.Alice.Gql("mutation($i: SetLogAccessInput!) { setVehicleLogAccess(input: $i) }", new { i = new { vehicleId = other, userId = people.BobId, level = "EDIT" } })).Data();
+        Assert.Equal(1, (await people.Bob.Gql("query { notificationCount(unreadOnly: true) }")).Data().GetProperty("notificationCount").GetInt32());
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var starter = new Tankstat.Application.Auth.Principal(Guid.Parse(people.AliceId), "alice", "alice@example.com", false);
@@ -118,6 +137,10 @@ public sealed class RunBusyApiTests : IDisposable
             Assert.Equal(HttpStatusCode.Conflict, renewed.StatusCode); // not 401: the device stays signed in
             Assert.Equal("import.busy", (await renewed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("key").GetString());
             Assert.DoesNotContain(renewed.Headers.TryGetValues("Set-Cookie", out var cookies) ? cookies : [], c => c.Contains("expires=Thu, 01 Jan 1970"));
+
+            // A statement of its own, not the context's save (marking notifications read is one UPDATE): told busy all the same.
+            var marked = await people.Bob.Gql("mutation { markNotificationsRead { id } }"); // Bob's unread one: being given access
+            Assert.Equal(("BUSY", "import.busy"), (marked.ErrorCode(), marked.ErrorKey()));
 
             // The bell's query, which brings the inbox up to date by writing, only reads meanwhile.
             (await people.Alice.Gql("query { notifications(unreadOnly: false) { id } notificationCount(unreadOnly: true) }")).Data();

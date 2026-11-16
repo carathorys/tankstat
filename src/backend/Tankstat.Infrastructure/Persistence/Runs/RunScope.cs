@@ -27,6 +27,7 @@ internal sealed class RunScope(
         // rolled back is still known to have existed.
         var marker = RunMarker.Start(start.Starter.Id, start.VehicleIds, clock.GetUtcNow());
         await markers.AddAsync(marker, ct);
+        gate.OpenHere(marker.Id, true);
         gate.Forget();
         logger.LogInformation("Run {RunId} started by {UserId} for {VehicleCount} vehicle(s)", marker.Id, start.Starter.Id, marker.Vehicles.Count);
         var end = RunEnd.Failed;
@@ -53,6 +54,7 @@ internal sealed class RunScope(
             {
                 logger.LogError(e, "Run {RunId} ended as {RunEnd} but its mark could not be ended; it stops blocking once it is older than the limit", marker.Id, end);
             }
+            gate.OpenHere(marker.Id, false);
             gate.Forget();
             logger.LogInformation("Run {RunId} ended: {RunEnd}", marker.Id, end);
         }

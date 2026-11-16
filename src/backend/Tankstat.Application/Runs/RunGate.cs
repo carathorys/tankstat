@@ -19,6 +19,17 @@ public sealed class RunGateState
     /// </summary>
     public bool WritesLockedOut => Volatile.Read(ref _lockedOut) > 0;
 
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, bool> _here = new();
+
+    /// <summary>The runs open in this process: alive, however old their marks are.</summary>
+    public bool IsOpenHere(Guid runId) => _here.ContainsKey(runId);
+
+    public void OpenHere(Guid runId, bool open)
+    {
+        if (open) _here[runId] = true;
+        else _here.TryRemove(runId, out _);
+    }
+
     public void LockedOut(bool entered) => _ = entered ? Interlocked.Increment(ref _lockedOut) : Interlocked.Decrement(ref _lockedOut);
 
     /// <summary>A mark was just written or ended on this server: the next save asks.</summary>
@@ -45,6 +56,31 @@ public sealed class RunGate(IRunMarkerRepository markers, IOptionsMonitor<RunOpt
             if (clock.GetUtcNow() >= deadline) throw new BusyException();
             await Task.Delay(Poll, clock, ct);
         }
+    }
+
+    /// <summary>
+    /// For a change that is not about one car (emptying a trash, deleting a user with their cars): waits while any run is open, since
+    /// what it removes may be a run's car or one of its rows.
+    /// </summary>
+    public async Task WaitForAllAsync(CancellationToken ct)
+    {
+        if (RunContext.Current is not null) return;
+        var deadline = clock.GetUtcNow() + timings.BusyWait;
+        while (await AnyOpenAsync(ct))
+        {
+            if (clock.GetUtcNow() >= deadline) throw new BusyException();
+            await Task.Delay(Poll, clock, ct);
+        }
+    }
+
+    /// <summary>Whether a run is open on any server, as far as this one knows (asked at most once in <see cref="RecheckAfter"/> while none is).</summary>
+    public async Task<bool> AnyOpenAsync(CancellationToken ct)
+    {
+        var now = clock.GetUtcNow();
+        if (state.KnowsNoneOpen(now)) return false;
+        if (await markers.AnyOpenAsync(now - options.CurrentValue.Limit, ct)) return true;
+        state.NoneOpen(now + RecheckAfter);
+        return false;
     }
 
     private async Task<bool> HeldAsync(Guid vehicleId, CancellationToken ct)

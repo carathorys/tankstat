@@ -211,7 +211,7 @@ internal sealed class BackupWorker(
     private async Task RunAsync()
     {
         // A run (#335) holds SQLite's lock: the scheduled backup waits for its end (a run has a time limit of its own).
-        while (runs?.WritesLockedOut == true) await Task.Delay(TimeSpan.FromSeconds(5), clock);
+        while (runs?.WritesLockedOut == true) await Task.Delay(TimeSpan.FromSeconds(1)); // the wall clock: a run's length is real time
         if (!runner.Start()) logger.LogInformation("A backup is being written already: the scheduled one is that one");
         await runner.WhenIdleAsync();
     }

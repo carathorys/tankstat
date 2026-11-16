@@ -18,7 +18,8 @@ internal sealed class RunMarkerRepository(RunDbContextFactory dbFactory) : IRunM
     public async Task EndAsync(Guid id, RunEnd end, DateTimeOffset at, CancellationToken ct)
     {
         await using var db = dbFactory.CreateOutside();
-        await db.RunMarkers.Where(m => m.Id == id && m.EndedAt == null)
+        // A run's own word replaces a sweep's guess: another server may have taken a long run's mark for a dead one.
+        await db.RunMarkers.Where(m => m.Id == id && (m.EndedAt == null || (m.End == RunEnd.Interrupted && end != RunEnd.Interrupted)))
             .ExecuteUpdateAsync(s => s.SetProperty(m => m.EndedAt, at).SetProperty(m => m.End, end), ct);
     }
 

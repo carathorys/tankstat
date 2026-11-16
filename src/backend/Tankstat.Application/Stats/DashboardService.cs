@@ -70,6 +70,7 @@ public sealed class DashboardService(IVehicleRepository vehicles, IDashboardLayo
         if (level < AccessLevel.View) throw new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId });
         if (!personal && level < AccessLevel.Edit)
             throw new ForbiddenException("dashboard.needEditToChange", "You need edit access to the vehicle's logs to change its dashboard.");
+        await access.WaitForRunsAsync(vehicleId, ct); // a run (#335) may bring the car's charts and dashboard
         return user;
     }
 }

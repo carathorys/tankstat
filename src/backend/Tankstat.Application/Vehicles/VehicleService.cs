@@ -122,6 +122,7 @@ public sealed class VehicleService(
     public async Task<int> EmptyTrashAsync(CancellationToken ct)
     {
         var user = await access.RequirePrincipalAsync(ct);
+        await access.WaitForRunsAsync(ct); // what is purged may be a run's (#335)
         var purged = await vehicles.PurgeAsync(await access.ScopeAsync(AccessLevel.Delete, ct), ct);
         await images.DeleteVehicleFilesAsync(purged.VehicleIds, purged.ImageIds, ct); // their pictures and photos go with them
         if (purged.Count > 0) logger.LogInformation("User {UserId} emptied the vehicle trash: {Count} vehicles deleted for good ({VehicleIds})", user.Id, purged.Count, Listed(purged.VehicleIds));

@@ -10,7 +10,7 @@ public interface IRunMarkerRepository
 {
     Task AddAsync(RunMarker marker, CancellationToken ct);
 
-    /// <summary>Ends an open mark; one ended already stays as it is.</summary>
+    /// <summary>Ends an open mark; one ended already stays as it is, except that a run's own end replaces <see cref="RunEnd.Interrupted"/> (a sweep's guess).</summary>
     Task EndAsync(Guid id, RunEnd end, DateTimeOffset at, CancellationToken ct);
 
     Task<RunMarker?> FindAsync(Guid id, CancellationToken ct);

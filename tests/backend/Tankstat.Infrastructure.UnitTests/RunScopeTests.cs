@@ -422,6 +422,97 @@ public sealed class RunScopeTests(ITestOutputHelper output) : IDisposable
         Assert.Equal(RunEnd.TimedOut, (await OnlyMarkerAsync(database)).End);
     }
 
+    /// <summary>
+    /// A run alive past its limit (its last entry crossed it) is not taken for a dead one by this server's sweep, and what another
+    /// server's sweep guessed is replaced by the run's own word.
+    /// </summary>
+    [Theory, MemberData(nameof(Providers))]
+    public async Task ARunStillAlivePastItsLimit_KeepsItsMarkThroughTheSweep_AndItsOwnEndReplacesAnotherServersGuess(string provider)
+    {
+        if (Database(provider) is not { } database) return;
+        var sweep = database.Services.GetServices<Microsoft.Extensions.Hosting.IHostedService>().OfType<RunMarkerSweep>().Single();
+        var markers = database.Get<IRunMarkerRepository>();
+
+        await RunAsync(database, async (run, services) =>
+        {
+            await AddCarAsync(services, "First", logs: false);
+            _clock.Ahead = TimeSpan.FromMinutes(11);
+            if (provider != "Sqlite") // SQLite cannot write a mark while the run is open; its sweep only runs at start
+            {
+                await ElsewhereAsync(database, async _ => { await sweep.SweepAsync(atStart: false, default); return 0; });
+                Assert.True((await markers.FindAsync(run.Id, default))!.IsOpen);
+                await ElsewhereAsync(database, async _ => { await markers.EndAsync(run.Id, RunEnd.Interrupted, DateTimeOffset.UtcNow, default); return 0; }); // another server's sweep
+            }
+        });
+
+        Assert.Equal(RunEnd.Done, (await OnlyMarkerAsync(database)).End);
+        Assert.Equal(1, (await CountAsync(database)).Vehicles);
+    }
+
+    /// <summary>What a run removes leaves its tombstone for the devices, committed with the run and gone with it.</summary>
+    [Theory, MemberData(nameof(Providers))]
+    public async Task WhatARunRemoves_LeavesItsTombstone_OnlyWhenTheRunCommits(string provider)
+    {
+        if (provider == "MySql" || Database(provider) is not { } database) return; // #345: no schedule can be read on MySQL
+        async Task RemoveAScheduleAsync(IServiceProvider services)
+        {
+            var car = await AddCarAsync(services, "First", logs: false);
+            var recurring = services.GetRequiredService<RecurringExpenseService>();
+            var schedule = await recurring.AddAsync(car, new RecurringExpenseInput("Oil change", null, null, RecurrenceKind.Time, 12, null, Day, null, null, null), default);
+            await recurring.DeleteAsync(schedule.Item.Id, default);
+        }
+        async Task<int> TombstonesAsync()
+        {
+            await using var db = await database.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
+            return await db.Tombstones.CountAsync();
+        }
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync(database, async (_, services) =>
+        {
+            await RemoveAScheduleAsync(services);
+            throw new InvalidOperationException("unexpected");
+        }));
+        Assert.Equal(0, await TombstonesAsync());
+
+        await RunAsync(database, (_, services) => RemoveAScheduleAsync(services));
+        Assert.Equal(1, await TombstonesAsync());
+    }
+
+    /// <summary>
+    /// Why reads go on while a run holds SQLite's lock to write, however much it has written: the app's databases are in WAL mode (EF
+    /// sets it when it creates the file), where a writer never shuts readers out.
+    /// </summary>
+    [Fact]
+    public async Task TheAppsSqliteDatabase_IsInWalMode_SoARunNeverShutsReadersOut()
+    {
+        var database = Database("Sqlite")!;
+        await using var db = await database.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
+        Assert.Equal("wal", await db.Database.SqlQueryRaw<string>("PRAGMA journal_mode").ToListAsync().ContinueWith(t => t.Result.Single()));
+    }
+
+    /// <summary>The logging canary for a run: its lines name the run and its starter by id, never a car or what was saved.</summary>
+    [Fact]
+    public async Task ARunsLogLines_CarryIdsOnly()
+    {
+        var database = Database("Sqlite")!;
+        Guid id = default;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync(database, async (run, services) =>
+        {
+            id = run.Id;
+            await AddCarAsync(services, "Canary-Car-7731", logs: false);
+            await database.Get<IRunScope>().CancelAsync(run.Id, Starter, default);
+            throw new InvalidOperationException("Canary-Failure-7731");
+        }));
+
+        var lines = database.Log.From<RunScope>().ToList();
+        Assert.Contains(lines, e => e.Message.Contains(id.ToString()) && e.Message.Contains(Starter.Id.ToString()) && e.Message.Contains("started"));
+        Assert.Contains(lines, e => e.Message.Contains(id.ToString()) && e.Message.Contains("ended: Failed"));
+        Assert.Contains(lines, e => e.Message.Contains("asked to cancel"));
+        Assert.False(database.Log.Mentions("Canary-Car-7731"));
+        Assert.False(database.Log.Mentions("Canary-Failure-7731")); // the failure is its starter's to log, with what it knows
+        Assert.False(database.Log.Mentions(Starter.Email));
+    }
+
     [Fact]
     public async Task ARunInsideARun_IsRefused_AndOutsideARunNobodyIsSignedIn()
     {

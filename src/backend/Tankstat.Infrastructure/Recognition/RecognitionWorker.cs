@@ -31,7 +31,7 @@ internal sealed class RecognitionSignal : IRecognitionSignal
 /// reading is not set up; settings that cannot be used are logged as a warning, never thrown. Queued readings live in the database,
 /// so they survive a restart, and the periodic look also picks up retries and attempts cut short.
 /// </summary>
-internal sealed class RecognitionWorker(IServiceScopeFactory scopes, RecognitionSetup setup, RecognitionSignal signal, ILogger<RecognitionWorker> logger, RunGateState? runs = null)
+internal sealed class RecognitionWorker(IServiceScopeFactory scopes, RecognitionSetup setup, RecognitionSignal signal, ILogger<RecognitionWorker> logger, RunGate? runs = null)
     : BackgroundService
 {
     internal static readonly TimeSpan Sweep = TimeSpan.FromSeconds(10);
@@ -55,8 +55,9 @@ internal sealed class RecognitionWorker(IServiceScopeFactory scopes, Recognition
             var worked = false;
             try
             {
-                // A run (#335) holds SQLite's lock: nothing read could be saved. The photos wait for the next sweep.
-                if (runs?.WritesLockedOut == true) throw new BusyException();
+                // A run (#335) is open: on SQLite nothing read could be saved, and anywhere the log a photo fills may be the run's. The
+                // photos wait for the next sweep.
+                if (runs is not null && await runs.AnyOpenAsync(stopping)) throw new BusyException();
                 await using var scope = scopes.CreateAsyncScope();
                 foreach (var done in await scope.ServiceProvider.GetRequiredService<PhotoReadingProcessor>().ProcessDueAsync(stopping))
                 {
