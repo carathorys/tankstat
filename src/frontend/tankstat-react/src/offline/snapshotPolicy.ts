@@ -49,6 +49,7 @@ const POLICIES: Record<string, SnapshotPolicy> = {
   SetupRestorePoints: 'onlineOnly',
   SetupBackupDetails: 'onlineOnly',
   Trash: 'onlineOnly',
+  TyreRoughEstimate: 'onlineOnly', // the estimate of a rough figure (#291) needs every reading: the device never works distances out
   TyreTrash: 'onlineOnly', // like the vehicles' trash until #287's part 4 keeps tyres on the device
   ArrangeVehicles: 'onlineOnly',
   LogAccess: 'onlineOnly',

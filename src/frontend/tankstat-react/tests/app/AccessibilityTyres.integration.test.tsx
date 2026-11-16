@@ -1,6 +1,9 @@
 import { screen, within } from '@testing-library/react'
+import { HttpResponse } from 'msw'
 import { expect, it } from 'vitest'
 import { check, setup, setupAccessibilityTests } from '../support/accessibility.tsx'
+import { findDateField, typeDate } from '../support/dates.ts'
+import { graphql } from '../support/graphql.ts'
 import { server } from '../support/server.ts'
 import { brokenUpSummer, fakeTyres, tyreSummer, tyreWinter } from '../support/tyres.ts'
 
@@ -140,3 +143,27 @@ it('the replace dialog and the retired tyres’ rows are labelled and free of vi
   expect(await screen.findByRole('button', { name: /^Tyre S0, Michelin Primacy 4, retired on/ })).toBeInTheDocument()
   await check(document.body)
 })
+
+it("the estimate of a used set's rough figure: the off button says why, the months are a labelled group, the result is a status (#291)", async () => {
+  const { ui } = withTyres('/vehicles/v1?tab=tyres')
+  server.use(
+    graphql.query('TyreRoughEstimate', () =>
+      HttpResponse.json({
+        data: { tyreRoughEstimate: { __typename: 'TyreRoughEstimate', distance: 24_100, from: '2024-06-01', notCovered: [{ __typename: 'DayRange', from: '2023-04-01', until: '2023-10-31' }], leftOutDays: 14, readings: true } },
+      }),
+    ),
+  )
+  await screen.findByRole('article', { name: 'Michelin Primacy 4' })
+  await ui.click(screen.getByRole('button', { name: 'Add a tyre set' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Add a tyre set' })
+  expect(within(dialog).getByRole('button', { name: 'Estimate from the fuel log' })).toHaveAccessibleDescription('Fill in In use since first.')
+
+  await typeDate(ui, await findDateField(/In use since/, dialog), '2023-03-25')
+  await ui.click(within(dialog).getByRole('button', { name: 'Estimate from the fuel log' }))
+  const months = within(dialog).getByRole('group', { name: 'Usual months' })
+  expect(within(months).getAllByRole('checkbox')).toHaveLength(12)
+  expect(within(months).getByRole('checkbox', { name: 'April' })).toBeChecked() // the long name, the short one only seen
+  expect((await within(dialog).findByText(/^≈ 24,100 km/)).closest('[role="status"]')).not.toBeNull() // said when it arrives
+  await check(document.body)
+})
+
