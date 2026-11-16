@@ -12,7 +12,7 @@ const installation = (id: string, setId: string, from: string, until: string | n
 })
 const set = (id: string, name: string, onTheCar: boolean, installations: ReturnType<typeof installation>[]) => ({
   onTheCar,
-  set: { id, vehicleId: 'v1', name, season: 'SUMMER' as const, size: null, since: '2023-03-01', madeWeek: null, madeYear: null, roughDistance: 0, roughUntil: null, retiredOn: null, isRetired: false, brokenUpOn: null, version: 2 },
+  set: { id, vehicleId: 'v1', name, season: 'SUMMER' as const, size: null, since: '2023-03-01', madeWeek: null, madeYear: null, roughDistance: 0, roughUntil: null, retiredOn: null, isRetired: false, brokenUpOn: null, version: 2, usualMonths: null as number[] | null },
   figures: { distance: 9000, approximate: false, measured: 9000, pairOneFront: 9000, pairOneRear: 0, pairsUnknown: 0, suggestion: null },
   spent: [],
   repairs: 0,
@@ -630,3 +630,32 @@ describe("an expense's tyre details waiting on the device (#290)", () => {
   })
 })
 
+
+describe("a set's usual months on the device (#291)", () => {
+  const added = (over: Record<string, unknown> = {}) =>
+    change('addTyreSet', { id: 's9', vehicleId: 'v1', name: 'Nokian', season: 'WINTER', size: null, since: '2024-11-01', madeWeek: null, madeYear: null, fitted: false, day: '2026-10-01', roughDistance: 0, ...over })
+  const monthsOf = (tyres: Tyres, id: string) => tyres.sets.find((s) => s.set.id === id)!.set.usualMonths
+
+  it('come with the add, the edit and the rough figure; its season\'s are kept as none, and a change without them leaves them', () => {
+    const own = replayTyres(base, [added({ usualMonths: [12, 1, 2] })])
+    expect(own.skipped).toEqual([])
+    expect(monthsOf(own.tyres, 's9')).toEqual([1, 2, 12])
+    expect(monthsOf(replayTyres(base, [added({ usualMonths: [11, 12, 1, 2, 3] })]).tyres, 's9')).toBeNull() // its season's
+    expect(monthsOf(replayTyres(base, [added()]).tyres, 's9')).toBeNull()
+
+    const edit = (over: Record<string, unknown>) => change('updateTyreSet', { id: 's9', name: 'Nokian', season: 'WINTER', size: null, since: '2024-11-01', madeWeek: null, madeYear: null, ...over })
+    expect(monthsOf(replayTyres(base, [added({ usualMonths: [12, 1, 2] }), edit({})]).tyres, 's9')).toEqual([1, 2, 12]) // a build from before them
+    expect(monthsOf(replayTyres(base, [added({ usualMonths: [12, 1, 2] }), edit({ season: 'SUMMER', usualMonths: [4, 5, 6, 7, 8, 9, 10] })]).tyres, 's9')).toBeNull()
+    expect(monthsOf(replayTyres(base, [added(), change('setTyreRoughDistance', { id: 's9', distance: 9000, until: '2026-10-01', usualMonths: [11, 12] })]).tyres, 's9')).toEqual([11, 12])
+    expect(monthsOf(replayTyres(base, [added({ usualMonths: [12, 1, 2] }), change('setTyreRoughDistance', { id: 's9', distance: 9000, until: '2026-10-01' })]).tyres, 's9')).toEqual([1, 2, 12])
+  })
+
+  it('refuses what the server would, and reads an answer kept before them as its season\'s', () => {
+    expect(() => applyTyreChange(base, added({ usualMonths: [] }))).toThrow(TyreRuleError)
+    expect(() => applyTyreChange(base, added({ usualMonths: [13] }))).toThrow(TyreRuleError)
+    const older = { ...base, sets: base.sets.map((s) => ({ ...s, set: { ...s.set, usualMonths: undefined as never } })) }
+    const { tyres, skipped } = replayTyres(older, [change('setTyreRoughDistance', { id: 's1', distance: 9000, until: '2026-03-28' })])
+    expect(skipped).toEqual([])
+    expect(monthsOf(tyres, 's1')).toBeNull()
+  })
+})

@@ -1140,7 +1140,9 @@
       "replaceRetiredSet": "A retired set's tyres cannot be replaced: {{set}}.",
       "whyInvalid": "Say why: damaged, worn or too old.",
       "tapToReplace": "Tap the tyres to replace.",
-      "tyreNotYet": "Tyre {{label}} came on {{date}}: it cannot be on the car before."
+      "tyreNotYet": "Tyre {{label}} came on {{date}}: it cannot be on the car before.",
+      "monthsRequired": "Pick at least one month.",
+      "monthInvalid": "A month is a number from 1 to 12."
     }
   },
   "a11y": {

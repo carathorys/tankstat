@@ -1140,7 +1140,9 @@
       "replaceRetiredSet": "Kivont szett gumijai nem pótolhatók: {{set}}.",
       "whyInvalid": "Add meg, miért: sérült, kopott vagy túl régi.",
       "tapToReplace": "Koppints a pótlandó gumikra.",
-      "tyreNotYet": "A(z) {{label}} gumi {{date}} napon érkezett: előtte nem lehetett az autón."
+      "tyreNotYet": "A(z) {{label}} gumi {{date}} napon érkezett: előtte nem lehetett az autón.",
+      "monthsRequired": "Válassz legalább egy hónapot.",
+      "monthInvalid": "A hónap 1 és 12 közötti szám."
     }
   },
   "a11y": {
