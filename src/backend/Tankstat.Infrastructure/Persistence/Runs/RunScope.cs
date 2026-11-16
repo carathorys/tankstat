@@ -1,6 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Tankstat.Application.Runs;
+using Tankstat.Domain.Runs;
 
 namespace Tankstat.Infrastructure.Persistence.Runs;
 
@@ -8,15 +11,50 @@ namespace Tankstat.Infrastructure.Persistence.Runs;
 /// A run's one transaction (#335): a connection of its own, opened and begun here, shared with every context the services lease while
 /// the work runs (<see cref="RunDbContextFactory"/>). The work's exception rolls everything back and is rethrown.
 /// </summary>
-internal sealed class RunScope(DbContextOptions<AppDbContext> options) : IRunScope
+internal sealed class RunScope(
+    DbContextOptions<AppDbContext> options, IRunMarkerRepository markers, RunGateState gate, IOptionsMonitor<RunOptions> settings, RunTimings timings, TimeProvider clock,
+    ILogger<RunScope> logger) : IRunScope
 {
     public async Task RunAsync(RunStart start, Func<IRun, Task> work, CancellationToken ct)
     {
         if (RunTransaction.Current is not null) throw new InvalidOperationException("A run cannot be started inside a run.");
+
+        // The mark first, outside the transaction: saves to these cars wait from here on, on every server, and a run a stopped server
+        // rolled back is still known to have existed.
+        var marker = RunMarker.Start(start.Starter.Id, start.VehicleIds, clock.GetUtcNow());
+        await markers.AddAsync(marker, ct);
+        gate.Forget();
+        logger.LogInformation("Run {RunId} started by {UserId} for {VehicleCount} vehicle(s)", marker.Id, start.Starter.Id, marker.Vehicles.Count);
+        var end = RunEnd.Failed;
+        try
+        {
+            // Saves that passed the gate just before the mark finish meanwhile, and another server's gate sees the mark.
+            if (timings.Settle > TimeSpan.Zero) await Task.Delay(timings.Settle, clock, ct);
+            await InTransactionAsync(start, marker.Id, work, ct);
+            end = RunEnd.Done;
+        }
+        finally
+        {
+            // After the transaction, on a connection of its own (on SQLite nothing else could be written while the run was open).
+            try
+            {
+                await markers.EndAsync(marker.Id, end, clock.GetUtcNow(), CancellationToken.None);
+            }
+            catch (Exception e)
+            {
+                logger.LogError(e, "Run {RunId} ended as {RunEnd} but its mark could not be ended; it stops blocking once it is older than the limit", marker.Id, end);
+            }
+            gate.Forget();
+            logger.LogInformation("Run {RunId} ended: {RunEnd}", marker.Id, end);
+        }
+    }
+
+    private async Task InTransactionAsync(RunStart start, Guid runId, Func<IRun, Task> work, CancellationToken ct)
+    {
         await using var root = new AppDbContext(options); // unpooled: it owns the run's connection, closed with it
         await root.Database.OpenConnectionAsync(ct);
         await using var transaction = await root.Database.BeginTransactionAsync(ct);
-        var run = new Run(transaction);
+        var run = new Run(runId, transaction);
         try
         {
             await InsideAsync(start, new RunTransaction(root.Database.GetDbConnection(), transaction), run, work);
@@ -48,8 +86,10 @@ internal sealed class RunScope(DbContextOptions<AppDbContext> options) : IRunSco
         catch (Exception) { /* a rollback or an undo that fails must not hide why the run failed */ }
     }
 
-    private sealed class Run(IDbContextTransaction transaction) : IRun
+    private sealed class Run(Guid id, IDbContextTransaction transaction) : IRun
     {
+        public Guid Id => id;
+
         /// <summary>The hooks of the savepoint being worked in, the run's own at the bottom.</summary>
         private readonly Stack<Hooks> _levels = new([new Hooks()]);
 

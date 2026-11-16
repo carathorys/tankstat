@@ -232,6 +232,7 @@ public sealed class ImageService(
         var level = vehicle is null ? AccessLevel.None : await access.VehicleLevelAsync(vehicle, ct);
         if (vehicle is null || level < AccessLevel.View) throw new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId });
         if (level < AccessLevel.Edit) throw new ForbiddenException("vehicle.viewOnly", "You may only view this vehicle.");
+        await access.WaitForRunsAsync(vehicle.Id, ct);
         return vehicle;
     }
 

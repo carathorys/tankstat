@@ -202,14 +202,14 @@ public sealed class ExpenseService(
     private async Task<Vehicle?> VisibleVehicleAsync(Guid vehicleId, CancellationToken ct) => (await guard.ForVehicleAsync(vehicleId, ct))?.Vehicle;
 
     private async Task<Vehicle> EditableVehicleAsync(Guid vehicleId, CancellationToken ct) =>
-        LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(vehicleId, ct),
-            () => new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId })).Vehicle;
+        (await guard.RequireEditAsync(await guard.ForVehicleAsync(vehicleId, ct),
+            () => new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId }), ct)).Vehicle;
 
     private async Task<Expense> EditableAsync(Guid id, bool includeDeleted, CancellationToken ct)
     {
         var expense = includeDeleted ? await expenses.FindIncludingDeletedAsync(id, ct) : await expenses.FindAsync(id, ct);
-        LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(expense?.VehicleId, ct),
-            () => new NotFoundException("expense.notFound", $"Expense {id} does not exist.", new { Id = id }));
+        await guard.RequireEditAsync(await guard.ForVehicleAsync(expense?.VehicleId, ct),
+            () => new NotFoundException("expense.notFound", $"Expense {id} does not exist.", new { Id = id }), ct);
         return expense!;
     }
 

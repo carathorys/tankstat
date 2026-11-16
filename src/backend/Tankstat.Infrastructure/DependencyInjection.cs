@@ -82,6 +82,7 @@ public static class DependencyInjection
             (IDbContextFactory<AppDbContext>)pooledFactory.ImplementationFactory!(sp), sp.GetRequiredService<DbContextOptions<AppDbContext>>()));
         services.AddSingleton<IDbContextFactory<AppDbContext>>(sp => sp.GetRequiredService<RunDbContextFactory>());
         services.AddSingleton<IRunScope, RunScope>();
+        services.AddSingleton<IRunMarkerRepository, RunMarkerRepository>();
 
         services.AddSingleton<IDatabaseProbe, EfDatabaseProbe>();
         services.AddSingleton<IFileProbe, FileProbe>(); // the telemetry certificate check of the settings page (#312)
@@ -169,6 +170,7 @@ public static class DependencyInjection
         services.AddSingleton<DatabaseMigrator>();
         services.AddHostedService(sp => sp.GetRequiredService<DatabaseMigrator>());
         services.AddHostedService(sp => sp.GetRequiredService<RestoreStep>());
+        services.AddHostedService<RunMarkerSweep>(); // after the migrations and a restore: the marks it ends are today's
         services.AddHostedService<PhotosMove>();
         services.AddHostedService<SetupStep>();
         services.AddHostedService<ModeChangeSignOut>();

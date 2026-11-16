@@ -146,6 +146,7 @@ public sealed class VehicleService(
         var level = vehicle is null ? AccessLevel.None : await access.VehicleLevelAsync(vehicle, ct);
         if (vehicle is null || level < AccessLevel.View) throw new NotFoundException("vehicle.notFound", $"Vehicle {id} does not exist.", new { Id = id });
         if (level < AccessLevel.Edit) throw new Auth.ForbiddenException("vehicle.viewOnly", "You may only view this vehicle.");
+        await access.WaitForRunsAsync(vehicle.Id, ct);
         return vehicle;
     }
 }

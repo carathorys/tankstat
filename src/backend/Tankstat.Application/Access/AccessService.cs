@@ -12,8 +12,14 @@ namespace Tankstat.Application.Access;
 /// </summary>
 public sealed class AccessService(
     ICurrentUser current, IOptions<AuthOptions> auth, IAccessGrantRepository grants, IAccessSettingsRepository settings,
-    IResourceGrantRepository resourceGrants)
+    IResourceGrantRepository resourceGrants, RunGate? runs = null)
 {
+    /// <summary>
+    /// Before a change to a car is made: waits while a run (#335) holds the car, then refuses as busy. Every door that changes a car or what
+    /// belongs to it calls this once access is settled (<see cref="LogAccessGuard.RequireEditAsync"/>, the car's own edit, its picture, its sharing).
+    /// </summary>
+    public Task WaitForRunsAsync(Guid vehicleId, CancellationToken ct) => runs?.WaitAsync(vehicleId, ct) ?? Task.CompletedTask;
+
     public async Task<Principal> RequirePrincipalAsync(CancellationToken ct)
     {
         if (RunContext.Current is { } run) return run.Starter; // a run (#335) has no request: the services act as whoever started it

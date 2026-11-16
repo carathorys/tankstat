@@ -27,9 +27,9 @@ public sealed class LogPhotoAccess(
 
     /// <summary>The log for changing its photos: unseen means not found, view-only is forbidden.</summary>
     public async Task<LogContext> EditableAsync(LogType logType, Guid logId, CancellationToken ct) =>
-        LogAccessGuard.RequireEdit(await FindAsync(logType, logId, ct),
+        await guard.RequireEditAsync(await FindAsync(logType, logId, ct),
             () => new NotFoundException(logType == LogType.Expense ? "expense.notFound" : "refueling.notFound",
-                $"The log {logId} does not exist.", new { Id = logId }));
+                $"The log {logId} does not exist.", new { Id = logId }), ct);
 
     /// <summary>Whether the image is a photo of a log the current user may see.</summary>
     public async Task<bool> CanSeeImageAsync(Guid imageId, CancellationToken ct) =>

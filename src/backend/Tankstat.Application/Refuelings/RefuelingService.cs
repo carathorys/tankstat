@@ -237,16 +237,16 @@ public sealed class RefuelingService(
     /// <summary>A visible vehicle the user may add logs to; others look missing, view-only users are forbidden.</summary>
     private async Task<(Vehicle Vehicle, AccessLevel Level)> EditableVehicleAsync(Guid vehicleId, CancellationToken ct)
     {
-        var context = LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(vehicleId, ct),
-            () => new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId }));
+        var context = (await guard.RequireEditAsync(await guard.ForVehicleAsync(vehicleId, ct),
+            () => new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId }), ct));
         return (context.Vehicle, context.Level);
     }
 
     private async Task<Refueling> EditableLogAsync(Guid id, bool includeDeleted, CancellationToken ct)
     {
         var refueling = includeDeleted ? await refuelings.FindIncludingDeletedAsync(id, ct) : await refuelings.FindAsync(id, ct);
-        LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(refueling?.VehicleId, ct),
-            () => new NotFoundException("refueling.notFound", $"Refuelling {id} does not exist.", new { Id = id }));
+        await guard.RequireEditAsync(await guard.ForVehicleAsync(refueling?.VehicleId, ct),
+            () => new NotFoundException("refueling.notFound", $"Refuelling {id} does not exist.", new { Id = id }), ct);
         return refueling!;
     }
 

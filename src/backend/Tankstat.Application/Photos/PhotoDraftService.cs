@@ -21,8 +21,8 @@ public sealed class PhotoDraftService(
     /// <summary>Stores the picture (JPEG, PNG or WebP) as a draft for a new log of the vehicle and returns its id.</summary>
     public async Task<Guid> UploadAsync(Guid vehicleId, ReadOnlyMemory<byte> data, CancellationToken ct)
     {
-        var vehicle = LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(vehicleId, ct),
-            () => new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId })).Vehicle;
+        var vehicle = (await guard.RequireEditAsync(await guard.ForVehicleAsync(vehicleId, ct),
+            () => new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId }), ct)).Vehicle;
         var me = await access.RequirePrincipalAsync(ct);
 
         await RemoveExpiredAsync(ct);

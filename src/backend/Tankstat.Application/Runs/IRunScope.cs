@@ -22,6 +22,9 @@ public interface IRunScope
 /// <summary>What the work of a run is handed.</summary>
 public interface IRun
 {
+    /// <summary>The run's id: its mark's (<see cref="IRunMarkerRepository"/>).</summary>
+    Guid Id { get; }
+
     /// <summary>
     /// Runs <paramref name="work"/> in a savepoint of its own, which may hold further ones (a car, an entry inside it). When it throws,
     /// everything it saved is rolled back, the run goes on, and the exception reaches the caller, who decides what a refusal means.

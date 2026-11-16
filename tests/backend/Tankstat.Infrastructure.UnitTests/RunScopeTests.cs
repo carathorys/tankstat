@@ -9,9 +9,11 @@ using Tankstat.Application.Tyres;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Recurring;
+using Tankstat.Domain.Runs;
 using Tankstat.Domain.Tyres;
 using Tankstat.Domain.Vehicles;
 using Tankstat.Infrastructure.Persistence;
+using Tankstat.Infrastructure.Persistence.Runs;
 using Xunit.Abstractions;
 
 namespace Tankstat.Infrastructure.UnitTests;
@@ -29,6 +31,7 @@ public sealed class RunScopeTests(ITestOutputHelper output) : IDisposable
 
     private readonly List<TestDatabase> _databases = [];
     private readonly List<TestDatabase> _servers = [];
+    private readonly SignedIn _user = new();
 
     public static TheoryData<string> Providers => new("Sqlite", "PostgreSql", "SqlServer", "MySql");
 
@@ -42,6 +45,7 @@ public sealed class RunScopeTests(ITestOutputHelper output) : IDisposable
     /// <summary>A migrated database of the provider with the real services, or null (said in the output) when its server is not named.</summary>
     private TestDatabase? Database(string provider)
     {
+        // No pause before a run's transaction and a short wait at the gate: the tests have no saves in flight to wait out.
         var settings = new Dictionary<string, string?> { ["Auth:Mode"] = "Standalone" };
         if (provider != "Sqlite")
         {
@@ -53,16 +57,35 @@ public sealed class RunScopeTests(ITestOutputHelper output) : IDisposable
             settings["Database:Provider"] = provider;
             settings["Database:ConnectionString"] = template.Replace("{db}", $"tankstat_run_{Guid.NewGuid():N}"[..40]);
         }
-        // Nobody is signed in: outside a run the services refuse, inside one they act as its starter.
-        var database = new TestDatabase(settings, services => services.AddScoped<ICurrentUser, Nobody>());
+        // Nobody is signed in unless a test says so: outside a run the services refuse, inside one they act as its starter.
+        var database = new TestDatabase(settings, services => services.AddSingleton<ICurrentUser>(_user)
+            .AddSingleton(new RunTimings { Settle = TimeSpan.Zero, BusyWait = TimeSpan.FromSeconds(1) }));
         _databases.Add(database);
         if (provider != "Sqlite") _servers.Add(database);
         return database;
     }
 
-    private sealed class Nobody : ICurrentUser
+    private sealed class SignedIn : ICurrentUser
     {
-        public Task<Principal?> GetPrincipalAsync(CancellationToken ct) => Task.FromResult<Principal?>(null);
+        public Principal? Principal { get; set; }
+        public Task<Principal?> GetPrincipalAsync(CancellationToken ct) => Task.FromResult(Principal);
+    }
+
+    /// <summary>Someone else's request while a run is open: its own services, outside the run (the execution context is not handed on).</summary>
+    private static Task<T> ElsewhereAsync<T>(TestDatabase database, Func<IServiceProvider, Task<T>> act)
+    {
+        using var _ = ExecutionContext.SuppressFlow();
+        return Task.Run(async () =>
+        {
+            await using var scope = database.Services.CreateAsyncScope();
+            return await act(scope.ServiceProvider);
+        });
+    }
+
+    private static async Task<RunMarker> OnlyMarkerAsync(TestDatabase database)
+    {
+        await using var db = await database.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
+        return await db.RunMarkers.AsNoTracking().Include(m => m.Vehicles).SingleAsync();
     }
 
     private static Task RunAsync(TestDatabase database, Func<IRun, IServiceProvider, Task> work, params Guid[] vehicles) =>
@@ -242,6 +265,87 @@ public sealed class RunScopeTests(ITestOutputHelper output) : IDisposable
             throw new InvalidOperationException("unexpected");
         }));
         Assert.Equal(["undo: the run's", "undo: a car that was kept"], done);
+    }
+
+
+    [Theory, MemberData(nameof(Providers))]
+    public async Task ARunsMark_IsThereWhileItRuns_AndSaysHowItEnded_AlsoWhenItRolledBack(string provider)
+    {
+        if (Database(provider) is not { } database) return;
+        var car = Guid.NewGuid();
+
+        await RunAsync(database, async (run, _) =>
+        {
+            // Read on another connection: the mark was saved before the run's transaction and is not part of it.
+            var open = await ElsewhereAsync(database, _ => OnlyMarkerAsync(database));
+            Assert.Equal(run.Id, open.Id);
+            Assert.True(open.IsOpen);
+            Assert.Equal(Starter.Id, open.StartedById);
+            Assert.Equal([car], open.Vehicles.Select(v => v.VehicleId));
+        }, car);
+        var done = await OnlyMarkerAsync(database);
+        Assert.Equal(RunEnd.Done, done.End);
+        Assert.NotNull(done.EndedAt);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync(database, (_, _) => throw new InvalidOperationException("unexpected"), car));
+        await using var db = await database.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
+        Assert.Equal([RunEnd.Done, RunEnd.Failed], (await db.RunMarkers.OrderBy(m => m.StartedAt).ToListAsync()).Select(m => m.End!.Value));
+    }
+
+    /// <summary>The owner's decision 1: the cars in the run wait, on every database; another car's save goes through where the database lets it.</summary>
+    [Theory, MemberData(nameof(Providers))]
+    public async Task SomeoneElsesSaveToACarOfTheRun_WaitsAndIsRefusedAsBusy_AndGoesThroughOnceTheRunEnded(string provider)
+    {
+        if (Database(provider) is not { } database) return;
+        _user.Principal = Starter;
+        Guid held, other;
+        await using (var scope = database.Services.CreateAsyncScope())
+        {
+            held = await AddCarAsync(scope.ServiceProvider, "Held", logs: false);
+            other = await AddCarAsync(scope.ServiceProvider, "Other", logs: false);
+        }
+        Task<Vehicle> Rename(Guid id, string name) => ElsewhereAsync(database, services =>
+            services.GetRequiredService<VehicleService>().UpdateAsync(id, name, null, FuelType.Petrol, null, default));
+
+        await RunAsync(database, async (_, services) =>
+        {
+            await services.GetRequiredService<VehicleService>().UpdateAsync(held, "Held by the run", null, FuelType.Petrol, null, default); // the run's own save passes
+            var waited = System.Diagnostics.Stopwatch.StartNew();
+            var busy = await Assert.ThrowsAsync<BusyException>(() => Rename(held, "Someone else's"));
+            Assert.Equal("import.busy", busy.Key);
+            Assert.InRange(waited.Elapsed, TimeSpan.FromMilliseconds(900), TimeSpan.FromSeconds(8)); // it waited the configured second first
+            if (provider != "Sqlite") Assert.Equal("Other, renamed", (await Rename(other, "Other, renamed")).Name); // SQLite locks the whole database
+        }, held);
+
+        Assert.Equal("Afterwards", (await Rename(held, "Afterwards")).Name);
+    }
+
+    [Theory, MemberData(nameof(Providers))]
+    public async Task AMarkLeftOpenByAServerThatStopped_IsEndedAtStart_AndNoLongerMakesSavesWait(string provider)
+    {
+        if (Database(provider) is not { } database) return;
+        _user.Principal = Starter;
+        Guid car;
+        await using (var scope = database.Services.CreateAsyncScope()) car = await AddCarAsync(scope.ServiceProvider, "Held", logs: false);
+        var markers = database.Get<IRunMarkerRepository>();
+        var clock = database.Get<TimeProvider>();
+        // On a database server only a mark older than the limit is known to be dead: another server may be in the middle of its run.
+        var age = provider == "Sqlite" ? TimeSpan.FromSeconds(5) : TimeSpan.FromMinutes(11);
+        var left = RunMarker.Start(Starter.Id, [car], clock.GetUtcNow() - age);
+        await markers.AddAsync(left, default);
+        var ended = RunMarker.Start(Starter.Id, [car], clock.GetUtcNow() - TimeSpan.FromDays(40));
+        await markers.AddAsync(ended, default);
+        await markers.EndAsync(ended.Id, RunEnd.Done, clock.GetUtcNow() - TimeSpan.FromDays(40), default);
+
+        var sweep = database.Services.GetServices<Microsoft.Extensions.Hosting.IHostedService>().OfType<RunMarkerSweep>().Single();
+        await sweep.SweepAsync(atStart: true, default);
+
+        var found = await markers.FindAsync(left.Id, default);
+        Assert.Equal(RunEnd.Interrupted, found!.End);
+        Assert.Null(await markers.FindAsync(ended.Id, default)); // an ended mark is kept a month
+        Assert.Contains(database.Log.Entries, e => e.Message.Contains(left.Id.ToString()) && e.Message.Contains("did not finish"));
+        await using var after = database.Services.CreateAsyncScope();
+        await after.ServiceProvider.GetRequiredService<VehicleService>().UpdateAsync(car, "Free again", null, FuelType.Petrol, null, default);
     }
 
     [Fact]

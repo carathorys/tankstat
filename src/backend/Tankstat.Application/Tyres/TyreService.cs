@@ -1659,14 +1659,14 @@ public sealed class TyreService(
     }
 
     private async Task<Vehicle> EditableVehicleAsync(Guid vehicleId, CancellationToken ct) =>
-        LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(vehicleId, ct),
-            () => new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId })).Vehicle;
+        (await guard.RequireEditAsync(await guard.ForVehicleAsync(vehicleId, ct),
+            () => new NotFoundException("vehicle.notFound", $"Vehicle {vehicleId} does not exist.", new { Id = vehicleId }), ct)).Vehicle;
 
     private async Task<(Vehicle, TyreSet, TyreBook)> EditableSetAsync(Guid id, CancellationToken ct, bool trashed = false)
     {
         var set = await tyres.FindSetAsync(id, ct);
         NotFoundException Missing() => new("tyres.setNotFound", $"Tyre set {id} does not exist.", new { Id = id });
-        var vehicle = LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(set?.VehicleId, ct), Missing).Vehicle;
+        var vehicle = (await guard.RequireEditAsync(await guard.ForVehicleAsync(set?.VehicleId, ct), Missing, ct)).Vehicle;
         if (set!.IsDeleted != trashed) throw trashed ? new DomainException("tyres.notTrashed", "This tyre set is not in the trash.") : Missing();
         var book = await tyres.LoadAsync(vehicle.Id, ct);
         return (vehicle, book.Sets.First(s => s.Id == id), book);
@@ -1677,7 +1677,7 @@ public sealed class TyreService(
     {
         var entry = await tyres.FindEntryAsync(id, ct);
         NotFoundException Missing() => new("tyres.entryNotFound", $"Tyre log line {id} does not exist.", new { Id = id });
-        var vehicle = LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(entry?.VehicleId, ct), Missing).Vehicle;
+        var vehicle = (await guard.RequireEditAsync(await guard.ForVehicleAsync(entry?.VehicleId, ct), Missing, ct)).Vehicle;
         var book = await tyres.LoadAsync(vehicle.Id, ct);
         var loaded = book.Entries.First(e => e.Id == id);
         if (loaded.SetId is { } setId && book.Sets.First(s => s.Id == setId).IsDeleted) throw Missing();
@@ -1690,7 +1690,7 @@ public sealed class TyreService(
     {
         var tyre = (await tyres.ListTyresAsync([id], ct)).FirstOrDefault();
         NotFoundException Missing() => new("tyres.tyreNotFound", $"Tyre {id} does not exist.", new { Id = id });
-        var vehicle = LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(tyre?.VehicleId, ct), Missing).Vehicle;
+        var vehicle = (await guard.RequireEditAsync(await guard.ForVehicleAsync(tyre?.VehicleId, ct), Missing, ct)).Vehicle;
         var book = await tyres.LoadAsync(vehicle.Id, ct);
         var loaded = book.SingleTyres.First(t => t.Id == id);
         if (book.Sets.First(s => s.Id == loaded.SetId).IsDeleted) throw Missing();
@@ -1703,7 +1703,7 @@ public sealed class TyreService(
     {
         var place = (await tyres.ListPlacesAsync([id], ct)).FirstOrDefault();
         NotFoundException Missing() => new("tyres.placeNotFound", $"Time on the car {id} does not exist.", new { Id = id });
-        var vehicle = LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(place?.VehicleId, ct), Missing).Vehicle;
+        var vehicle = (await guard.RequireEditAsync(await guard.ForVehicleAsync(place?.VehicleId, ct), Missing, ct)).Vehicle;
         var book = await tyres.LoadAsync(vehicle.Id, ct);
         var loaded = book.TyrePlaces.First(p => p.Id == id);
         var tyre = book.SingleTyres.First(t => t.Id == loaded.TyreId);
@@ -1717,7 +1717,7 @@ public sealed class TyreService(
     {
         var installation = await tyres.FindInstallationAsync(id, ct);
         NotFoundException Missing() => new("tyres.installationNotFound", $"Tyre installation {id} does not exist.", new { Id = id });
-        var vehicle = LogAccessGuard.RequireEdit(await guard.ForVehicleAsync(installation?.VehicleId, ct), Missing).Vehicle;
+        var vehicle = (await guard.RequireEditAsync(await guard.ForVehicleAsync(installation?.VehicleId, ct), Missing, ct)).Vehicle;
         var book = await tyres.LoadAsync(vehicle.Id, ct);
         var loaded = book.Installations.First(s => s.Id == id);
         var setTrashed = book.Sets.First(s => s.Id == loaded.SetId).IsDeleted;

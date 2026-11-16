@@ -34,6 +34,17 @@ public sealed class LogAccessGuard(IVehicleRepository vehicles, AccessService ac
             .ToDictionary(v => v.Id, v => new LogContext(v, levels[v.Id]));
     }
 
+    /// <summary>
+    /// <see cref="RequireEdit"/> for a change about to be made: it also waits while a run (#335) holds the car, and is refused as busy when
+    /// the run is still open after the wait.
+    /// </summary>
+    public async Task<LogContext> RequireEditAsync(LogContext? context, Func<NotFoundException> notFound, CancellationToken ct)
+    {
+        var editable = RequireEdit(context, notFound);
+        await access.WaitForRunsAsync(editable.Vehicle.Id, ct);
+        return editable;
+    }
+
     /// <summary>The context for changing logs: unseen is <paramref name="notFound"/>, view-only is forbidden.</summary>
     public static LogContext RequireEdit(LogContext? context, Func<NotFoundException> notFound)
     {
