@@ -28,6 +28,12 @@ public sealed class BackupImportSessionsTests : IAsyncDisposable
     private static readonly Guid Alice = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000001");
     private static readonly Guid Bob = Guid.Parse("bbbbbbbb-0000-0000-0000-000000000002");
 
+    /// <summary>Sign-in is off in these instances: whoever asks is the anonymous user.</summary>
+    private sealed class Nobody : Tankstat.Application.Auth.ICurrentUser
+    {
+        public Task<Tankstat.Application.Auth.Principal?> GetPrincipalAsync(CancellationToken ct) => Task.FromResult<Tankstat.Application.Auth.Principal?>(null);
+    }
+
     private sealed class SettableClock : TimeProvider
     {
         public TimeSpan Ahead { get; set; }
@@ -57,7 +63,7 @@ public sealed class BackupImportSessionsTests : IAsyncDisposable
             ["Backups:Encryption:Salt"] = encrypted ? Convert.ToBase64String(Salt) : null,
             ["Imports:ScratchFolder"] = Path.Combine(_root, "scratch"),
             ["Imports:MaxUploadMb"] = maxUploadMb.ToString(),
-        }, services => services.AddSingleton<TimeProvider>(_clock));
+        }, services => services.AddSingleton<TimeProvider>(_clock).AddSingleton<Tankstat.Application.Auth.ICurrentUser>(new Nobody()));
         _databases.Add(database);
         return database;
     }
@@ -144,6 +150,51 @@ public sealed class BackupImportSessionsTests : IAsyncDisposable
         // Someone else knows nothing of it.
         Assert.Null(database.Get<IBackupImportSessions>().Find(Bob, uploaded.Token));
         Assert.Null(database.Get<IBackupImportSessions>().Cars(Bob, uploaded.Token));
+    }
+
+    /// <summary>
+    /// A car as people keep one, saved through the services: its schedules, a visit that marked one done (the expense's link), and what
+    /// is in the trash, an entry and a whole car, which the reader leaves out and counts.
+    /// </summary>
+    [Fact]
+    public async Task ACarsSchedulesAndAVisitsLink_AreRead_AndWhatWasInTheTrashIsLeftOut()
+    {
+        var database = Instance();
+        var day = new DateOnly(2026, 3, 1);
+        Guid car, kept, trashedFill, schedule, visit;
+        await using (var scope = database.Services.CreateAsyncScope())
+        {
+            var services = scope.ServiceProvider;
+            var vehicles = services.GetRequiredService<Tankstat.Application.Vehicles.VehicleService>();
+            car = (await vehicles.AddAsync("Octavia", "ABC-123", Tankstat.Domain.Vehicles.FuelType.Diesel, Tankstat.Domain.Measurements.MeasurementUnits.Metric, default)).Id;
+            var gone = await vehicles.AddAsync("Sold long ago", null, Tankstat.Domain.Vehicles.FuelType.Petrol, Tankstat.Domain.Measurements.MeasurementUnits.Metric, default);
+            await vehicles.DeleteAsync(gone.Id, default);
+            var fills = services.GetRequiredService<Tankstat.Application.Refuelings.RefuelingService>();
+            kept = (await fills.LogAsync(car, new(day, 40, 60, "EUR", 10_000, true, "kept"), default)).Id;
+            trashedFill = (await fills.LogAsync(car, new(day.AddDays(9), 35, 52, "EUR", 10_600, true, "in the trash"), default)).Id;
+            await fills.DeleteAsync(trashedFill, default);
+            var recurring = services.GetRequiredService<Tankstat.Application.Recurring.RecurringExpenseService>();
+            schedule = (await recurring.AddAsync(car, new("Oil change", "Service", null, Tankstat.Domain.Recurring.RecurrenceKind.Time, 12, null, day.AddYears(-1), null, null, null), default)).Item.Id;
+            await recurring.AddAsync(car, new("Inspection", null, null, Tankstat.Domain.Recurring.RecurrenceKind.Time, 24, null, day, null, null, null), default);
+            visit = (await recurring.MarkDoneAsync([schedule], new(day.AddDays(3), 10_200, 95, "EUR"), default)).Expense!.Id;
+            await services.GetRequiredService<Tankstat.Application.Expenses.ExpenseService>().AddAsync(car, new(day.AddDays(1), "Car wash", null, 12, "EUR", null, null), default);
+        }
+        var backup = await database.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
+
+        var uploaded = await UploadAsync(database, Alice, backup.Path);
+        var opened = await SettledAsync(database, Alice, uploaded.Token);
+
+        var summary = Assert.Single(opened.Summary!.Cars);
+        Assert.Equal((car, "Octavia", 1, 2, 2), (summary.Id, summary.Name, summary.Refuelings, summary.Expenses, summary.Schedules));
+        Assert.Equal(1, opened.Summary.TrashedCars);
+        var read = (await database.Get<IBackupImportSessions>().Cars(Alice, uploaded.Token)!.ReadCarAsync(car, default))!;
+        Assert.Equal([kept], read.Refuelings.Select(r => r.Id)); // not the one in the trash
+        Assert.Equal(["Inspection", "Oil change"], read.Schedules.Select(s => s.Values.Title));
+        var oil = read.Schedules.Single(s => s.Id == schedule).Values;
+        Assert.Equal(("Service", Tankstat.Domain.Recurring.RecurrenceKind.Time, 12, day.AddDays(3), 10_200L), (oil.Category, oil.Kind, oil.IntervalMonths, oil.LastDoneDate, oil.LastDoneOdometer));
+        Assert.Equal([schedule], read.Expenses.Single(e => e.Id == visit).CompletedScheduleIds); // the visit's link
+        Assert.Empty(read.Expenses.Single(e => e.Values.Title == "Car wash").CompletedScheduleIds);
+        Assert.Equal((95m, "EUR", 10_200L), (read.Expenses.Single(e => e.Id == visit).Values.Amount, read.Expenses.Single(e => e.Id == visit).Values.Currency, read.Expenses.Single(e => e.Id == visit).Values.Odometer));
     }
 
     [Fact]

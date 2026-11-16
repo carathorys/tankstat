@@ -19,12 +19,15 @@ export async function uploadImportFile(format: string, file: Blob): Promise<{ to
 /**
  * Sends a Tankstat backup or export to import cars from (#336): streamed as the raw body, it can be hundreds of megabytes, so
  * `onProgress` hears the share sent (0..1). The access cookie is renewed first, so the file is not sent twice when the cookie ran
- * out. The answer is the file's token; how its opening stands is asked through GraphQL.
+ * out. The answer is the file's token; how its opening stands is asked through GraphQL. `signal` gives the upload up.
  */
-export async function uploadBackupImport(file: Blob, onProgress?: (share: number) => void): Promise<{ token: string }> {
+export async function uploadBackupImport(file: Blob, onProgress?: (share: number) => void, signal?: AbortSignal): Promise<{ token: string }> {
   await refreshSession().catch(() => false)
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest()
+    // Given up (the step was left): the upload stops, and the server throws away what it had taken.
+    signal?.addEventListener('abort', () => request.abort())
+    request.onabort = () => reject(new DOMException('The upload was given up.', 'AbortError'))
     request.open('POST', '/imports/tankstat')
     request.withCredentials = true
     request.setRequestHeader('Content-Type', 'application/zip')

@@ -193,6 +193,7 @@ public class UserAdministrationTests
         await w.UserService.DeleteAsync(alice.Id, null, null, default);
 
         Assert.Null(w.ImportSessions.Find(alice.Id, token));
+        Assert.Equal([alice.Id], w.BackupImports.EndedFor); // an uploaded backup of theirs still open (#336): its files go now
     }
 
     [Fact]

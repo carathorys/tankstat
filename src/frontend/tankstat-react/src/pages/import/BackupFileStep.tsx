@@ -44,11 +44,16 @@ export function BackupFileStep({ onOpened, pollMs = OPENING_POLL_MS }: { onOpene
   const [open] = useMutation(OpenBackupImportDocument)
   const token = useRef<string | undefined>(undefined)
   const done = useRef(false)
+  const leaving = useRef(new AbortController())
 
   // Leaving with a file still on the server (not handed on to the next step): it is given up there.
   useEffect(
-    () => () => {
-      if (token.current && !done.current) void client.mutate({ mutation: EndBackupImportDocument, variables: { token: token.current } }).catch(() => undefined)
+    () => {
+      leaving.current = new AbortController() // a fresh one per mount (development mounts twice)
+      return () => {
+        leaving.current.abort() // an upload under way stops
+        if (token.current && !done.current) void client.mutate({ mutation: EndBackupImportDocument, variables: { token: token.current } }).catch(() => undefined)
+      }
     },
     [client],
   )
@@ -86,13 +91,14 @@ export function BackupFileStep({ onOpened, pollMs = OPENING_POLL_MS }: { onOpene
     setStatus(undefined)
     setShare(0)
     try {
-      const uploaded = await uploadBackupImport(file, setShare)
+      const uploaded = await uploadBackupImport(file, setShare, leaving.current.signal)
       token.current = uploaded.token
       setShare(undefined)
       const { data } = await client.query({ query: BackupImportDocument, variables: { token: uploaded.token }, fetchPolicy: 'network-only' })
       if (!data) throw new Error('No answer.')
       await settle(data.backupImport)
     } catch (err) {
+      if (leaving.current.signal.aborted) return // the step is gone
       setError(err)
     } finally {
       setBusy(false)

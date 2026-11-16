@@ -33,7 +33,9 @@ public static class BackupFile
             if (entry.Length > MaxManifestBytes) throw NotABackup();
             using var stored = new MemoryStream();
             using (var data = entry.Open()) CopyAtMost(data, stored, MaxManifestBytes);
-            manifest = BackupManifest.FromJson(System.Text.Encoding.UTF8.GetString(stored.GetBuffer(), 0, (int)stored.Length));
+            stored.Position = 0;
+            using var reader = new StreamReader(stored); // as before the cap: a byte order mark is skipped
+            manifest = BackupManifest.FromJson(reader.ReadToEnd());
         }
         catch (Exception e) when (e is InvalidDataException or JsonException)
         {

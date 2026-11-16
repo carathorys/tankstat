@@ -39,7 +39,10 @@ public sealed class BackupCarsTests(ITestOutputHelper output) : IAsyncDisposable
             await db.Database.EnsureDeletedAsync();
         }
         foreach (var services in _services) await services.DisposeAsync();
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        // Only these databases' pooled connections: ClearAllPools would also close the ones of tests running in parallel.
+        if (Directory.Exists(_root))
+            foreach (var file in Directory.GetFiles(_root, "tankstat.db", SearchOption.AllDirectories))
+                using (var pooled = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={file}")) Microsoft.Data.Sqlite.SqliteConnection.ClearPool(pooled);
         if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
     }
 
@@ -183,6 +186,44 @@ public sealed class BackupCarsTests(ITestOutputHelper output) : IAsyncDisposable
         Assert.Equal("Owner", (await scratch.Users.SingleAsync()).DisplayName);
         // What is never loaded stayed out, and the migrations that rewrite it passed on empty tables.
         Assert.Equal((0, 0), (await scratch.Tombstones.CountAsync(), await scratch.UiSettings.CountAsync()));
+    }
+
+    /// <summary>
+    /// The other migration that rewrites the cars' rows: a fill-up's odometer and cost, once columns of its own, became a reading and a
+    /// cost row. A backup from before it reads as its own database became by upgrading; no migration fills a loaded table from one the
+    /// reader leaves out (read in the migrations' SQL: those only rename and delete inside the sync ledger, the tombstones and the
+    /// notifications).
+    /// </summary>
+    [Theory, MemberData(nameof(Providers))]
+    public async Task ABackupFromBeforeReadingsAndCosts_ReadsAsItsOwnDatabaseBecameByUpgrading(string provider)
+    {
+        if (Instance(provider, "oldest") is not { } services) return;
+        var (vehicle, owner, fill) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        await AtMigration(services, "AddVehicleSoftDelete");
+        await using (var db = await Db(services))
+        {
+            var model = MigrationModels.ModelOf(db, MigrationModels.IdOf(db, "AddVehicleSoftDelete")!);
+            await InsertAsync(db, model, "Users", new() { ["Id"] = owner, ["Email"] = "owner@example.com", ["DisplayName"] = "Owner" });
+            await InsertAsync(db, model, "Vehicles", new() { ["Id"] = vehicle, ["OwnerId"] = owner, ["Name"] = "Octavia" });
+            await InsertAsync(db, model, "Refuelings", new()
+            {
+                ["Id"] = fill, ["VehicleId"] = vehicle, ["OwnerId"] = owner, ["Date"] = new DateOnly(2025, 5, 1), ["OdometerKm"] = 12_345, ["Liters"] = 40.5m, ["TotalCost"] = 61.25m, ["IsFullTank"] = true,
+            });
+        }
+
+        // The app's own start: the backup, then the upgrade (the oracle). On MySQL the app cannot start with a fill-up at all (#345: its
+        // start reads their dates), so only the backup is written there.
+        var backup = provider == "MySql" ? (await services.GetRequiredService<IBackupWriter>().WriteAsync(new BackupRequest(), default)).Path : await StartAsync(services, "oldest");
+        await using var read = await ReadAsync(backup);
+
+        static async Task<string> FillsAsync(AppDbContext db) => string.Join(" | ", (await db.Refuelings.IgnoreQueryFilters().AsNoTracking()
+                .Include(r => r.Cost).Include(r => r.OdometerReading).OrderBy(r => r.Id).ToListAsync())
+            .Select(r => FormattableString.Invariant($"{r.Id} car {r.VehicleId} {r.Date:yyyy-MM-dd} {r.Odometer} {r.Volume:0.###} {r.TotalCost:0.###} {r.Currency} full {r.IsFullTank}")));
+        await using var scratch = read.Read();
+        var found = await FillsAsync(scratch);
+        Assert.Equal($"{fill} car {vehicle} 2025-05-01 12345 40.5 61.25 EUR full True", found);
+        await using var upgraded = await Db(services);
+        if (provider != "MySql") Assert.Equal(await FillsAsync(upgraded), found); // #345: MySQL cannot read a date column
     }
 
     public static TheoryData<string> OlderMigrations()

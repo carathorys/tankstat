@@ -143,6 +143,12 @@ public class ContractTests
     [InlineData("ImportPreviewInfo", "sourceVehicle", "fuelRows", "expenseRows", "recurringRows", "duplicateFuelRows", "duplicateExpenseRows", "duplicateRecurringRows", "firstDate", "lastDate", "categories", "issues")]
     [InlineData("ImportResultInfo", "vehicleId", "fuelImported", "expensesImported", "recurringImported", "fuelSkippedDuplicates", "expensesSkippedDuplicates", "recurringSkippedDuplicates", "errors")]
     [InlineData("ImportIssueInfo", "section", "row", "key", "args")]
+    [InlineData("Query", "backupImport", "canImportFromBackup")]
+    [InlineData("Mutation", "openBackupImport", "endBackupImport")]
+    [InlineData("BackupImportInfo", "token", "state", "triesLeft", "wrongKey", "file", "refusal")]
+    [InlineData("BackupFileInfo", "createdAt", "version", "isExport", "cars", "trashedCars")]
+    [InlineData("BackupCarInfo", "id", "name", "licensePlate", "fuelType", "distanceUnit", "volumeUnit", "ownerName", "refuelings", "expenses", "schedules")]
+    [InlineData("BackupImportRefusalInfo", "key", "args")]
     [InlineData("VehicleSummary", "lastFillUpDate", "latestOdometer", "averageConsumption", "currency", "thisMonthSpend", "lastMonthSpend", "spendTrend", "fillUpCount", "expenseCount", "spending", "trends")]
     [InlineData("DashboardTrends", "spending", "costPerDistance", "consumption", "distance")]
     [InlineData("CurrencyChange", "currency", "recent", "earlier")]
@@ -177,6 +183,7 @@ public class ContractTests
     }
 
     [Theory]
+    [InlineData("OpenBackupImportInput", "token", "passphrase")]
     [InlineData("LogRefuelingInput", "vehicleId", "date", "volume", "totalCost", "discount", "currency", "odometer", "isFullTank", "note", "photoIds", "missedPreviousFillUp", "id")]
     [InlineData("UpdateRefuelingInput", "id", "date", "volume", "totalCost", "discount", "currency", "odometer", "isFullTank", "note", "missedPreviousFillUp")]
     [InlineData("AddExpenseInput", "vehicleId", "date", "title", "category", "amount", "discount", "currency", "odometer", "note", "photoIds", "id", "tyre")]

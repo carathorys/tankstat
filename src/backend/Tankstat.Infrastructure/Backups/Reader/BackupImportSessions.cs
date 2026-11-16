@@ -54,6 +54,7 @@ internal sealed class BackupImportSessions(
     private readonly ConcurrentDictionary<string, Session> _sessions = new();
     private DateTimeOffset Now => clock.GetUtcNow();
     private readonly SemaphoreSlim _derivations = new(1, 1); // each asks for 64 MiB: one at a time on this server
+    private readonly object _replacing = new();
     private ITimer? _timer;
 
     /// <summary>The app's own folder inside the scratch place: all of it is this server's to delete.</summary>
@@ -132,10 +133,6 @@ internal sealed class BackupImportSessions(
     private BackupImportStatus Begin(string token, Guid userId, BackupFileOrigin origin, string folder, string file)
     {
         var manifest = Inspect(file);
-        Session? held;
-        lock (_sessions) held = _sessions.Values.FirstOrDefault(s => s.UserId == userId && s.Holds > 0);
-        if (held is not null) throw new DomainException(InUseKey, "An import is still running from the file you opened before.");
-        EndForUser(userId);
         var session = new Session(token, userId, origin, folder, file, manifest) { Expires = clock.GetUtcNow() + Lifetime };
         if (manifest.Encryption is null) session.State = BackupImportState.Opening;
         else
@@ -143,7 +140,14 @@ internal sealed class BackupImportSessions(
             session.State = BackupImportState.NeedsKey;
             session.TriesLeft = origin == BackupFileOrigin.Upload ? MaxTries : null; // a restore point cannot be thrown away (the owner's decision 1)
         }
-        _sessions[token] = session;
+        // One at a time: two uploads of one person arriving together must leave one session, not two.
+        lock (_replacing)
+        {
+            if (_sessions.Values.Any(s => s.UserId == userId && s.Holds > 0))
+                throw new DomainException(InUseKey, "An import is still running from the file you opened before.");
+            EndForUser(userId);
+            _sessions[token] = session;
+        }
         logger.LogDebug("Import session {Session} of user {UserId} started from {Origin}", token, userId, origin);
         if (session.State == BackupImportState.Opening) StartOpening(session, null, null);
         return StatusOf(session);
