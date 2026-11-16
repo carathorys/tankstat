@@ -120,6 +120,10 @@ public static class DependencyInjection
         services.AddSingleton<IImportParser, FuelioCsvParser>();
         services.AddScoped<ImportService>();
         services.AddScoped<BackupImportService>();
+        services.AddScoped<BackupImportRules>();
+        services.AddScoped<BackupImportWork>();
+        services.AddScoped<BackupImportRunService>();
+        services.AddScoped<ImportRunNotifier>();
         services.AddScoped<OdometerService>();
         services.AddScoped<ResourceSharingService>();
         services.AddScoped<Notifier>();

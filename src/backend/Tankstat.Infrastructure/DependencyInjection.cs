@@ -179,6 +179,11 @@ public static class DependencyInjection
         services.AddSingleton<Tankstat.Application.Imports.IBackupImportSessions>(sp => sp.GetRequiredService<Backups.Reader.BackupImportSessions>());
         services.AddHostedService(sp => sp.GetRequiredService<Backups.Reader.BackupImportSessions>());
         services.AddHostedService<RunMarkerSweep>(); // after the migrations and a restore: the marks it ends are today's
+        services.AddSingleton<Tankstat.Application.Imports.IImportRunRepository, Imports.ImportRunRepository>();
+        services.AddSingleton<Tankstat.Application.Imports.IImportTargetReader, Imports.ImportTargetReader>();
+        services.AddSingleton<Imports.BackupImportRunner>();
+        services.AddSingleton<Tankstat.Application.Imports.IBackupImportRunner>(sp => sp.GetRequiredService<Imports.BackupImportRunner>());
+        services.AddHostedService(sp => sp.GetRequiredService<Imports.BackupImportRunner>()); // after the marks' sweep: a run found running is judged by its mark
         services.AddHostedService<PhotosMove>();
         services.AddHostedService<SetupStep>();
         services.AddHostedService<ModeChangeSignOut>();

@@ -1,0 +1,141 @@
+using Microsoft.Extensions.Logging;
+using Tankstat.Application.Access;
+using Tankstat.Application.Auth;
+using Tankstat.Application.Runs;
+using Tankstat.Application.Users;
+using Tankstat.Domain;
+using Tankstat.Domain.Imports;
+
+namespace Tankstat.Application.Imports;
+
+/// <summary>
+/// Importing cars from an opened backup or export (#337), as the person drives it: the cars the file offers and their targets, the
+/// review, the start, how the run stands, its cancel and its report. The import itself is <see cref="BackupImportWork"/>, run by the
+/// server's queue (<see cref="IBackupImportRunner"/>): one run at a time on the instance, the others wait in line.
+/// </summary>
+public sealed class BackupImportRunService(
+    AccessService access, BackupImportService imports, IBackupImportSessions sessions, IImportTargetReader targets, BackupImportRules rules,
+    IImportRunRepository runs, IBackupImportRunner runner, IRunScope scope, IUserRepository users, ImportRunNotifier notifier, TimeProvider clock,
+    ILogger<BackupImportRunService> logger)
+{
+    public const string AlreadyRunningKey = "import.alreadyRunning";
+
+    /// <summary>The file's cars and the person's own cars to add one to, with the app's suggestion: the same plate, else the same name, in the same units.</summary>
+    public async Task<ImportCarOffers> OffersAsync(string token, CancellationToken ct)
+    {
+        var (me, file) = await FileAsync(token, ct);
+        var owned = await targets.OwnedAsync(me.Id, ct);
+        static string? Plate(string? plate) => string.IsNullOrWhiteSpace(plate) ? null : new string([.. plate.Where(char.IsLetterOrDigit)]).ToUpperInvariant();
+        var offers = file.Summary.Cars.Select(car =>
+        {
+            var usable = owned.Where(v => v.Units == car.Units).ToList();
+            var match = usable.FirstOrDefault(v => Plate(car.LicensePlate) is { } plate && Plate(v.LicensePlate) == plate)
+                ?? usable.FirstOrDefault(v => string.Equals(v.Name.Trim(), car.Name.Trim(), StringComparison.CurrentCultureIgnoreCase));
+            return new ImportCarOffer(car, car.OwnerId == me.Id, match?.Id);
+        }).ToList();
+        return new ImportCarOffers(file.Summary, offers, [.. owned.Select(v => new ImportOwnCar(v.Id, v.Name, v.LicensePlate, v.FuelType, v.Units))]);
+    }
+
+    /// <summary>What importing the chosen cars would do, as far as it can be foreseen. Nothing is saved, and a rule's refusal is only met by the run.</summary>
+    public async Task<IReadOnlyList<ImportCarReview>> ReviewAsync(string token, IReadOnlyList<ImportCarChoice> choices, CancellationToken ct)
+    {
+        var (me, file) = await FileAsync(token, ct);
+        BackupImportRules.RequireSound(choices, file.Summary);
+        var reviews = new List<ImportCarReview>();
+        foreach (var choice in choices)
+        {
+            var car = await file.ReadCarAsync(choice.CarId, ct) ?? throw new DomainException("import.unknownCar", "The file has no such car.");
+            var target = choice.TargetVehicleId is { } id ? await rules.TargetAsync(me.Id, car.Car, id, ct) : null;
+            var delta = target is null ? BackupImportRules.Everything(car) : await rules.MissingAsync(car, target, ct);
+            reviews.Add(new ImportCarReview(car.Car.Id, car.Car.Name, car.Car.OwnerName, car.Car.OwnerId == me.Id, target?.Id, target?.Name,
+                delta.Refuelings.Count, delta.Expenses.Count, delta.Schedules.Count, delta.ExistingRefuelings, delta.ExistingExpenses, delta.ExistingSchedules, delta.Differing, delta.InTrash));
+        }
+        return reviews;
+    }
+
+    /// <summary>
+    /// Queues the import and answers its run: it starts by itself when no other run is open, else when its turn comes. One run per
+    /// person at a time. Where the database cannot give a run its one transaction, nothing is queued (<see cref="IBackupImportRunner.UnavailableKey"/>).
+    /// </summary>
+    public async Task<ImportRunView> StartAsync(string token, IReadOnlyList<ImportCarChoice> choices, CancellationToken ct)
+    {
+        var (me, file) = await FileAsync(token, ct);
+        if (runner.UnavailableKey is { } unavailable) throw new DomainException(unavailable, "Importing from a backup is not available on this server's database.");
+        if (await runs.LatestOfAsync(me.Id, ct) is { IsActive: true }) throw new DomainException(AlreadyRunningKey, "An import of yours is running or waiting already.");
+        var reviews = await ReviewAsync(token, choices, ct); // every refusal that can be foreseen, before anything is queued
+        var plan = new ImportRunPlan([.. choices.Zip(reviews, (choice, review) => new ImportCarPlan(
+            choice.CarId, review.Name, review.TargetVehicleId, review.TargetName, choice.Policy, review.NewRefuelings + review.NewExpenses + review.NewSchedules))]);
+        var run = ImportRun.Queue(Guid.NewGuid(), ImportRunKind.Import, me.Id, runner.Server, ImportRunJson.Write(plan), plan.Cars.Count, plan.Cars.Sum(c => c.Entries), clock.GetUtcNow());
+        await runs.AddAsync(run, ct);
+        runner.Enqueue(run.Id, me.Id, token);
+        logger.LogInformation("User {UserId} queued import run {RunId}: {Cars} cars, {Entries} entries", me.Id, run.Id, run.Cars, run.Entries);
+        return await ViewOfAsync(run, me, ct);
+    }
+
+    /// <summary>A run: its starter's always (the report with it, while it is kept), an administrator's while it goes or waits. Anyone else finds nothing.</summary>
+    public async Task<ImportRunView?> FindAsync(Guid id, CancellationToken ct)
+    {
+        var me = await access.RequirePrincipalAsync(ct);
+        if (await runs.FindAsync(id, ct) is not { } run) return null;
+        if (run.StartedById != me.Id && !(IsAdministrator(me) && run.IsActive)) return null;
+        return await ViewOfAsync(run, me, ct);
+    }
+
+    /// <summary>The person's run that goes or waits, else their latest one (its report is shown until another file is chosen); null when they have none kept.</summary>
+    public async Task<ImportRunView?> MineAsync(CancellationToken ct)
+    {
+        var me = await access.RequirePrincipalAsync(ct);
+        return await runs.LatestOfAsync(me.Id, ct) is { } run ? await ViewOfAsync(run, me, ct) : null;
+    }
+
+    /// <summary>For administrators: every run that goes or waits, the oldest first, without their reports.</summary>
+    public async Task<IReadOnlyList<ImportRunView>> ActiveAsync(CancellationToken ct)
+    {
+        var me = await access.RequireAdminAsync(ct);
+        var views = new List<ImportRunView>();
+        foreach (var run in await runs.ListActiveAsync(ct)) views.Add(await ViewOfAsync(run, me, ct));
+        return views;
+    }
+
+    /// <summary>
+    /// Cancels a run: its starter or any administrator. A waiting one ends at once; a running one stops between its entries and rolls
+    /// back whole. False when it is over already (or is nobody's to cancel here).
+    /// </summary>
+    public async Task<bool> CancelAsync(Guid id, CancellationToken ct)
+    {
+        var me = await access.RequirePrincipalAsync(ct);
+        if (await runs.FindAsync(id, ct) is not { IsActive: true } run) return false;
+        if (run.StartedById != me.Id && !IsAdministrator(me)) return false;
+        logger.LogInformation("User {UserId} cancels import run {RunId} of user {StarterId}", me.Id, id, run.StartedById);
+        if (run.State == ImportRunState.Waiting && await runs.FailAsync(id, ImportRunFailure.Cancelled, me.Id, clock.GetUtcNow(), ct))
+        {
+            runner.Dropped(id);
+            await notifier.NotFinishedAsync(run, ImportRunFailure.Cancelled, me.Id, ct);
+            runner.Wake();
+            return true;
+        }
+        // Running (or given its turn just now): the run is told, and its end is written by the server that runs it.
+        runner.Cancelling(id, me.Id);
+        return await scope.CancelAsync(id, me, ct) || run.State == ImportRunState.Running;
+    }
+
+    private async Task<(Principal Me, IBackupCars File)> FileAsync(string token, CancellationToken ct)
+    {
+        var me = await imports.RequireImporterAsync(ct);
+        return (me, sessions.Cars(me.Id, token) ?? throw new DomainException("import.expired", "This import has expired. Choose the file again."));
+    }
+
+    private static bool IsAdministrator(Principal p) => p.IsAdmin && !p.IsAnonymous;
+
+    private async Task<ImportRunView> ViewOfAsync(ImportRun run, Principal viewer, CancellationToken ct)
+    {
+        var mine = run.StartedById == viewer.Id;
+        var ahead = run.State == ImportRunState.Waiting ? (await runs.ListActiveAsync(ct)).Count(r => r.Id != run.Id && (r.State == ImportRunState.Running || r.QueuedAt < run.QueuedAt)) : 0;
+        var plan = ImportRunJson.Read<ImportRunPlan>(run.Plan) ?? new ImportRunPlan([]);
+        var progress = runner.ProgressOf(run.Id) ?? new ImportRunProgress(Math.Min(run.DoneCars + 1, run.Cars), run.Cars, run.DoneEntries, run.Entries);
+        return new ImportRunView(
+            run.Id, run.Kind, run.StartedById, mine ? viewer.DisplayName : (await users.FindByIdAsync(run.StartedById, ct))?.DisplayName, run.State, run.Failure, run.CancelledById,
+            run.QueuedAt, run.StartedAt, run.EndedAt, ahead, progress, plan, mine ? ImportRunJson.Read<ImportRunReport>(run.Report) : null,
+            mine && runner.SessionOf(run.Id) is not null);
+    }
+}

@@ -60,6 +60,9 @@ public sealed class BackupImportService(
         return options.Value.BackupEnabled || IsAdministrator(me);
     }
 
+    /// <summary>Whoever is asking, when they may import from a backup at all (signed in, and the switch).</summary>
+    public Task<Principal> RequireImporterAsync(CancellationToken ct) => RequireUserAsync(ct);
+
     private async Task<Principal> RequireUserAsync(CancellationToken ct)
     {
         var me = await access.RequirePrincipalAsync(ct);
