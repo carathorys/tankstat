@@ -67,6 +67,12 @@ internal sealed class RunScope(
         var run = new Run(runId, transaction, clock, clock.GetUtcNow() + settings.CurrentValue.Limit,
             database.Value.Provider == DatabaseProvider.Sqlite ? null : markers);
         _open[runId] = run;
+        var sqlite = database.Value.Provider == DatabaseProvider.Sqlite;
+        if (sqlite)
+        {
+            SqliteLock.Enter(); // from here every other save waits for this run, then is told busy
+            gate.LockedOut(true);
+        }
         try
         {
             await InsideAsync(start, new RunTransaction(root.Database.GetDbConnection(), transaction), run, work);
@@ -81,6 +87,11 @@ internal sealed class RunScope(
         finally
         {
             _open.TryRemove(runId, out _);
+            if (sqlite)
+            {
+                SqliteLock.Leave();
+                gate.LockedOut(false);
+            }
         }
         await run.CommittedAsync();
     }

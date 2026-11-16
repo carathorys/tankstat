@@ -1,4 +1,5 @@
 using System.Globalization;
+using Tankstat.Application.Runs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -20,7 +21,7 @@ namespace Tankstat.Infrastructure.Backups;
 /// </summary>
 internal sealed class BackupWorker(
     BackupRunner runner, IBackupStore store, IOptionsMonitor<BackupOptions> options, SetupStatus setup, IServiceScopeFactory scopes, TimeProvider clock,
-    ILogger<BackupWorker> logger)
+    ILogger<BackupWorker> logger, RunGateState? runs = null)
     : BackgroundService
 {
     private readonly Lock _sleep = new();
@@ -209,6 +210,8 @@ internal sealed class BackupWorker(
     /// <summary>A run of the schedule; one Back up now started meanwhile is the backup, and is waited for.</summary>
     private async Task RunAsync()
     {
+        // A run (#335) holds SQLite's lock: the scheduled backup waits for its end (a run has a time limit of its own).
+        while (runs?.WritesLockedOut == true) await Task.Delay(TimeSpan.FromSeconds(5), clock);
         if (!runner.Start()) logger.LogInformation("A backup is being written already: the scheduled one is that one");
         await runner.WhenIdleAsync();
     }

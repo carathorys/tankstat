@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Tankstat.Application.Runs;
 using Tankstat.Domain;
+using Tankstat.Infrastructure.Persistence.Runs;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Instance;
 using Tankstat.Domain.Charts;
@@ -35,6 +37,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         {
             throw ChangedMeanwhile(synced);
         }
+        catch (Exception e) when (SqliteLock.IsBusy(e))
+        {
+            throw new BusyException(); // a run (#335) holds SQLite's lock: the save waited its time and is to be tried again
+        }
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
@@ -46,6 +52,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         catch (DbUpdateConcurrencyException e) when (OfSynced(e) is { } synced)
         {
             throw ChangedMeanwhile(synced);
+        }
+        catch (Exception e) when (SqliteLock.IsBusy(e))
+        {
+            throw new BusyException(); // a run (#335) holds SQLite's lock: the save waited its time and is to be tried again
         }
     }
 

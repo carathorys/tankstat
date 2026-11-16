@@ -66,7 +66,9 @@ public static class DependencyInjection
             switch (db.Provider)
             {
                 case DatabaseProvider.Sqlite:
-                    builder.UseSqlite(db.ConnectionString!, o => o.MigrationsAssembly(migrations)).AddInterceptors(SqliteUnicodeLower.Instance);
+                    builder.UseSqlite(db.ConnectionString!, o => o.MigrationsAssembly(migrations))
+                        .AddInterceptors(SqliteUnicodeLower.Instance, new SqliteLock(sp.GetService<RunTimings>() ?? new RunTimings()),
+                            new SqliteLockTransactions(sp.GetService<RunTimings>() ?? new RunTimings()));
                     break;
                 case DatabaseProvider.PostgreSql: builder.UseNpgsql(db.ConnectionString!, o => o.MigrationsAssembly(migrations)); break;
                 case DatabaseProvider.SqlServer: builder.UseSqlServer(db.ConnectionString!, o => o.MigrationsAssembly(migrations)); break;
@@ -83,6 +85,7 @@ public static class DependencyInjection
         services.AddSingleton<IDbContextFactory<AppDbContext>>(sp => sp.GetRequiredService<RunDbContextFactory>());
         services.AddSingleton<IRunScope, RunScope>();
         services.AddSingleton<IRunMarkerRepository, RunMarkerRepository>();
+        services.AddSingleton<IBusyFailures, BusyFailures>();
 
         services.AddSingleton<IDatabaseProbe, EfDatabaseProbe>();
         services.AddSingleton<IFileProbe, FileProbe>(); // the telemetry certificate check of the settings page (#312)

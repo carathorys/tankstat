@@ -186,7 +186,14 @@ public static class MediaEndpoints
     {
         try
         {
-            return await next(context);
+            try
+            {
+                return await next(context);
+            }
+            catch (Exception raw) when (raw is not KeyedException && context.HttpContext.RequestServices.GetRequiredService<IBusyFailures>().IsBusy(raw))
+            {
+                throw new BusyException(); // the database itself refused the save because a run holds it (#335)
+            }
         }
         catch (KeyedException e)
         {

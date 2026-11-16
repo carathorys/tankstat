@@ -83,6 +83,55 @@ public sealed class RunBusyApiTests : IDisposable
         (await people.Alice.Gql(Refuel, Fill(held))).Data();
     }
 
+    /// <summary>
+    /// SQLite, which these tests run on: an open run holds the database's one lock to write, so a save to any car waits (here a second,
+    /// in the app about ten) and is told busy, by the context's save or by a statement of its own; nobody is signed out; reads go on.
+    /// </summary>
+    [Fact]
+    public async Task WhileARunIsOpenOnSqlite_EverySaveIsToldBusy_ASessionRenewalToo_AndReadsGoOn()
+    {
+        using var app = TestApp.Standalone(services: s => s.AddSingleton(new RunTimings { BusyWait = TimeSpan.FromSeconds(1), Settle = TimeSpan.Zero }));
+        var people = await app.Users();
+        var other = await AddCar(people.Alice, "Other");
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var starter = new Tankstat.Application.Auth.Principal(Guid.Parse(people.AliceId), "alice", "alice@example.com", false);
+        Task run;
+        using (ExecutionContext.SuppressFlow())
+            run = Task.Run(() => app.Factory.Services.GetRequiredService<IRunScope>().RunAsync(new RunStart(starter, []), async _ =>
+            {
+                await using var scope = app.Factory.Services.CreateAsyncScope();
+                await scope.ServiceProvider.GetRequiredService<Tankstat.Application.Vehicles.VehicleService>().AddAsync(
+                    "The run's", null, Tankstat.Domain.Vehicles.FuelType.Petrol, Tankstat.Domain.Measurements.MeasurementUnits.Metric, default); // the lock is taken
+                entered.SetResult();
+                await release.Task;
+            }, default));
+        await entered.Task;
+        try
+        {
+            var refused = await people.Alice.Gql("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }",
+                new { i = new { vehicleId = other, date = "2026-09-01", volume = 40, totalCost = 60, currency = "EUR", odometer = 1000, isFullTank = true } });
+            Assert.Equal(("BUSY", "import.busy"), (refused.ErrorCode(), refused.ErrorKey()));
+
+            var refresh = new HttpRequestMessage(HttpMethod.Post, "/auth/token/refresh") { Headers = { { "X-Requested-With", "fetch" } } };
+            var renewed = await people.Alice.SendAsync(refresh);
+            Assert.Equal(HttpStatusCode.Conflict, renewed.StatusCode); // not 401: the device stays signed in
+            Assert.Equal("import.busy", (await renewed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("key").GetString());
+            Assert.DoesNotContain(renewed.Headers.TryGetValues("Set-Cookie", out var cookies) ? cookies : [], c => c.Contains("expires=Thu, 01 Jan 1970"));
+
+            // The bell's query, which brings the inbox up to date by writing, only reads meanwhile.
+            (await people.Alice.Gql("query { notifications(unreadOnly: false) { id } notificationCount(unreadOnly: true) }")).Data();
+            (await people.Alice.Gql("query { myVehicles { id } session { user { id } } }")).Data();
+        }
+        finally
+        {
+            release.SetResult();
+            await run;
+        }
+        (await people.Alice.Gql("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }",
+            new { i = new { vehicleId = other, date = "2026-09-01", volume = 40, totalCost = 60, currency = "EUR", odometer = 1000, isFullTank = true } })).Data();
+    }
+
     [Fact]
     public async Task ADevicesBatch_StopsAtTheHeldCar_ParksNothing_AndIsAppliedOnceWhenSentAgain()
     {

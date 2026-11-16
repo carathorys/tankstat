@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Tankstat.Application.Runs;
 using Microsoft.Extensions.Options;
 using Tankstat.Application.Access;
 using Tankstat.Application.Recurring;
@@ -16,7 +17,7 @@ namespace Tankstat.Application.Sync;
 /// </summary>
 public sealed class OfflineFeedService(
     LogAccessGuard guard, IOfflineFeedRepository feed, RecurringExpenseService recurring, Tyres.TyreService tyres, IOptionsSnapshot<SyncOptions> options,
-    TimeProvider clock, ILogger<OfflineFeedService> logger)
+    TimeProvider clock, ILogger<OfflineFeedService> logger, RunGateState? runs = null)
 {
     public const int MaxTake = 200;
 
@@ -90,6 +91,7 @@ public sealed class OfflineFeedService(
     /// <summary>Old tombstones go on the same lazy path, at most once an hour (no background job).</summary>
     private async Task SweepAsync(DateTimeOffset now, CancellationToken ct)
     {
+        if (runs?.WritesLockedOut == true) return; // a run (#335) holds SQLite's lock: the next download sweeps
         var last = Interlocked.Read(ref _lastSweepTicks);
         if (now.UtcTicks - last < TimeSpan.TicksPerHour || Interlocked.CompareExchange(ref _lastSweepTicks, now.UtcTicks, last) != last) return;
         var swept = await feed.SweepTombstonesAsync(now - Retention, ct);

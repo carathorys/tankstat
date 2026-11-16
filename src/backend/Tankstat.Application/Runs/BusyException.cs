@@ -11,3 +11,13 @@ public sealed class BusyException() : KeyedException(BusyKey, "The server is bus
 {
     public const string BusyKey = "import.busy";
 }
+
+/// <summary>
+/// Whether a failure that is not a <see cref="BusyException"/> means the same: the database itself refused a save because a run holds it
+/// (SQLite's lock, met by a statement that does not go through the context's save). Whoever turns failures into answers asks here, so
+/// such a save is told busy too and never an unexpected error.
+/// </summary>
+public interface IBusyFailures
+{
+    bool IsBusy(Exception failure);
+}

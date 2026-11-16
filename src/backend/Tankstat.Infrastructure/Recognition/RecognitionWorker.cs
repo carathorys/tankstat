@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Tankstat.Application.Runs;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Tankstat.Application.Recognition;
@@ -30,7 +31,7 @@ internal sealed class RecognitionSignal : IRecognitionSignal
 /// reading is not set up; settings that cannot be used are logged as a warning, never thrown. Queued readings live in the database,
 /// so they survive a restart, and the periodic look also picks up retries and attempts cut short.
 /// </summary>
-internal sealed class RecognitionWorker(IServiceScopeFactory scopes, RecognitionSetup setup, RecognitionSignal signal, ILogger<RecognitionWorker> logger)
+internal sealed class RecognitionWorker(IServiceScopeFactory scopes, RecognitionSetup setup, RecognitionSignal signal, ILogger<RecognitionWorker> logger, RunGateState? runs = null)
     : BackgroundService
 {
     internal static readonly TimeSpan Sweep = TimeSpan.FromSeconds(10);
@@ -54,6 +55,8 @@ internal sealed class RecognitionWorker(IServiceScopeFactory scopes, Recognition
             var worked = false;
             try
             {
+                // A run (#335) holds SQLite's lock: nothing read could be saved. The photos wait for the next sweep.
+                if (runs?.WritesLockedOut == true) throw new BusyException();
                 await using var scope = scopes.CreateAsyncScope();
                 foreach (var done in await scope.ServiceProvider.GetRequiredService<PhotoReadingProcessor>().ProcessDueAsync(stopping))
                 {
@@ -68,6 +71,10 @@ internal sealed class RecognitionWorker(IServiceScopeFactory scopes, Recognition
             catch (OperationCanceledException) when (stopping.IsCancellationRequested)
             {
                 break;
+            }
+            catch (BusyException)
+            {
+                logger.LogDebug("Reading photos waits for a run to end");
             }
             catch (Exception e)
             {

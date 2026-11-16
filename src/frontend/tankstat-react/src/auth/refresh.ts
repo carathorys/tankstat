@@ -12,7 +12,8 @@ let pending: Promise<boolean> | null = null
 
 /**
  * Asks for a new access cookie. True when the device is signed in again; false when it has to sign in (or the server has no token
- * endpoints: no authentication, or a proxy that signs every request in itself). A network failure rejects: that is not "signed out".
+ * endpoints: no authentication, or a proxy that signs every request in itself). A network failure rejects: that is not "signed out";
+ * so does a server busy with a run (#335, a 409).
  * Callers at the same moment share one request, so a refresh token is never traded in twice by this tab. Never while this device signed
  * out without the server hearing of it (#162): its cookies would sign it straight back in; nor while the device cannot read whether it
  * did (one refresh lost is the price; the next sign-in mends it).
@@ -21,7 +22,11 @@ export function refreshSession(): Promise<boolean> {
   pending ??= deviceData
     .signedOutHere()
     .then(
-      (signedOut) => (signedOut ? false : trackedFetch('/auth/token/refresh', { method: 'POST', credentials: 'same-origin', headers: HEADERS }).then((response) => response.ok)),
+      (signedOut) => (signedOut ? false : trackedFetch('/auth/token/refresh', { method: 'POST', credentials: 'same-origin', headers: HEADERS }).then((response) => {
+        // Busy with a run (#335): the session could not be renewed now. Like a network failure, that is not "signed out".
+        if (response.status === 409) throw new Error('The server is busy; the session is renewed later.')
+        return response.ok
+      })),
       () => false,
     )
     .finally(() => {

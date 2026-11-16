@@ -6,10 +6,20 @@ namespace Tankstat.Application.Runs;
 public sealed class RunGateState
 {
     private long _noneOpenUntil; // ticks; 0: ask
+    private int _lockedOut;
 
     public bool KnowsNoneOpen(DateTimeOffset now) => now.UtcTicks < Interlocked.Read(ref _noneOpenUntil);
 
     public void NoneOpen(DateTimeOffset until) => Interlocked.Exchange(ref _noneOpenUntil, until.UtcTicks);
+
+    /// <summary>
+    /// A run of this server holds the whole database's lock to write (SQLite, #335): nothing else can be saved until it ends. Work that
+    /// writes on its own time (the photo worker, the scheduled backup) and reads that write on the side (the inbox's bring-up-to-date,
+    /// the tombstone sweep) look here and come again later, the owner's decision 5; a person's save waits and is then refused as busy.
+    /// </summary>
+    public bool WritesLockedOut => Volatile.Read(ref _lockedOut) > 0;
+
+    public void LockedOut(bool entered) => _ = entered ? Interlocked.Increment(ref _lockedOut) : Interlocked.Decrement(ref _lockedOut);
 
     /// <summary>A mark was just written or ended on this server: the next save asks.</summary>
     public void Forget() => Interlocked.Exchange(ref _noneOpenUntil, 0);

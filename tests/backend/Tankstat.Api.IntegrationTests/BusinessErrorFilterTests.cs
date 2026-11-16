@@ -20,6 +20,7 @@ public class BusinessErrorFilterTests
         { new NotFoundException("vehicle.notFound", "Not found."), "NOT_FOUND" },
         { new UnauthenticatedException(), "UNAUTHENTICATED" },
         { new ForbiddenException(), "FORBIDDEN" },
+        { new Tankstat.Application.Runs.BusyException(), "BUSY" },
         { new InvalidCredentialsException(), "INVALID_CREDENTIALS" },
     };
 
