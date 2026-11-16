@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Change } from '../../src/offline/changes.ts'
 import type { SyncChangeKind } from '../../src/gql/generated.ts'
-import { batches, toChangeInput, withPhotosAlone } from '../../src/offline/push.ts'
+import { batches, needs, toChangeInput, withPhotosAlone } from '../../src/offline/push.ts'
 import { canForce, fromParked, SYNC_KINDS } from '../../src/offline/syncKinds.ts'
 
 let seq = 0
@@ -85,6 +85,13 @@ describe('batches', () => {
     const visit = change({ id: 'visit', entity: 'recurring', action: 'markDone', targetId: 'e1', targetIds: ['s1'] })
 
     expect(batches([log, other, golf, schedule, visit]).map((b) => b.map((c) => c.id))).toEqual([['golf'], ['log', 'other', 's1'], ['visit']])
+  })
+
+  it("an edit of the expense a waiting visit logs goes in a request after the visit's, and needs it (#330)", () => {
+    const visit = change({ id: 'visit', entity: 'recurring', action: 'markDone', targetId: 'e1', targetIds: ['s0'], input: { ids: ['s0'], amount: 30, expenseId: 'e1' } })
+    const edit = change({ id: 'edit', entity: 'expenses', action: 'update', targetId: 'e1', input: { id: 'e1', note: 'x' } })
+    expect(needs(edit)).toContain('e1')
+    expect(batches([visit, edit]).map((b) => b.map((c) => c.id))).toEqual([['visit'], ['edit']])
   })
 
   it('cuts requests at the size given', () => {

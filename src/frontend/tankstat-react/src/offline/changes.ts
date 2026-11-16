@@ -108,13 +108,13 @@ const expenseTyreCreates = (tyre: Record<string, unknown>): string[] => [
 ]
 
 /**
- * The ids a change creates: an add's own, a tyre change's sets and installations, an expense's tyre log lines (#290) (what is made on them
- * must reach the server after it).
+ * The ids a change creates: an add's own, a tyre change's sets and installations, an expense's tyre log lines (#290), the expense a visit
+ * logs (#330) (what is made on them must reach the server after it).
  */
 export function createdBy(c: Change): string[] {
   if (isTyreAction(c.action)) return tyreCreates(c.action, c.input)
   const tyre = expenseTyreOf(c)
-  return [...(c.action === 'add' ? [c.targetId] : []), ...(tyre ? expenseTyreCreates(tyre) : [])]
+  return [...(c.action === 'add' || logsExpense(c) ? [c.targetId] : []), ...(tyre ? expenseTyreCreates(tyre) : [])]
 }
 
 /**
@@ -265,8 +265,15 @@ export function discard(existing: readonly Change[], id: string): Change[] {
   return removed?.action === 'add' ? withoutDependents(withLines, removed) : withLines
 }
 
-/** A visit that logs the expense `expenseId` (one with an amount; its expense id is its target). */
-const isVisitOf = (c: Change, expenseId: string) => c.action === 'markDone' && c.targetId === expenseId && c.input?.amount != null
+/**
+ * A visit that logs an expense: one with an amount or photos, as the server decides (`RecurringExpenseService.MarkDoneAsync`, #330); its
+ * expense id is its target.
+ */
+export const logsExpense = (c: Change) =>
+  c.action === 'markDone' && (c.input?.amount != null || (Array.isArray(c.input?.photoIds) && c.input.photoIds.length > 0))
+
+/** A visit that logs the expense `expenseId`. */
+const isVisitOf = (c: Change, expenseId: string) => logsExpense(c) && c.targetId === expenseId
 
 /**
  * What else goes with an add that is taken back: a vehicle's logs, schedules and visits (they were made to a vehicle that never reached the

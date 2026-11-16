@@ -4,10 +4,10 @@ import { useTranslation } from 'react-i18next'
 import type { ChangeEdit, MergeInfo } from '../../dialogs/changeEdit.ts'
 import { ExpenseFormDialog, type ExpenseValues } from '../../ExpenseFormDialog.tsx'
 import { RecurringExpensesDocument, ResolveSyncChangeDocument, type DistanceUnit, type ParkedChangeFieldsFragment, type VolumeUnit } from '../../gql/generated.ts'
-import { keptPhotosOf, type Change } from '../../offline/changes.ts'
+import { createdBy, keptPhotosOf, type Change } from '../../offline/changes.ts'
 import { currentValues, merge, situationOf, type Current } from '../../offline/conflicts.ts'
 import { outbox } from '../../offline/outbox.ts'
-import { toChangeInput } from '../../offline/push.ts'
+import { toChangeInput, unblockAdd } from '../../offline/push.ts'
 import { uuidV4 } from '../../offline/uuid.ts'
 import { RecurringDoneDialog, type DoneValues } from '../../RecurringDoneDialog.tsx'
 import { RecurringFormDialog, type RecurringValues } from '../../RecurringFormDialog.tsx'
@@ -82,6 +82,10 @@ export function EditChange({
       void client.refetchQueries({ include: ['ParkedChanges'] }).catch(() => undefined) // its new reason
       throw error
     }
+    // Applied: what was made on it here (an add, a visit's expense and lines, #330) may go to the server now, as after Apply anyway.
+    void (async () => {
+      for (const id of new Set([parked.targetId ?? '', ...createdBy(change), ...createdBy({ ...change, input })])) await unblockAdd(id) // one at a time: each rewrites the list
+    })().catch(() => undefined)
     void client.refetchQueries({ include: 'active' }).catch(() => undefined)
     onDone(t('sync.appliedNow'))
   }

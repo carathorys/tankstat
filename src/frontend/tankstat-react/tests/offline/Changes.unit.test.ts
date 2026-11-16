@@ -200,6 +200,18 @@ describe('vehicles, schedules and visits', () => {
     expect(after[0]).toMatchObject({ action: 'markDone', targetIds: ['s1'], input: { amount: null, photoIds: null } })
   })
 
+  it('a visit with photos and no amount logs an expense too: it makes it, and taken back takes its changes along (#330)', () => {
+    const photosOnly = change('markDone', 'e2', { entity: 'recurring', targetIds: ['s1'], input: { ids: ['s1'], expenseId: 'e2', amount: null, photoIds: ['local:p'] } })
+    const plain = change('markDone', 'e3', { entity: 'recurring', targetIds: ['s1'], input: { ids: ['s1'], amount: null, photoIds: [] } })
+    expect(createdBy(photosOnly)).toEqual(['e2'])
+    expect(createdBy(plain)).toEqual([]) // logs no expense: its id is its own, made on by nothing
+
+    const list = fold(photosOnly, ofExpense('update', 'e2', { input: { id: 'e2', note: 'x' } }), ofExpense('trash', 'e7'))
+    expect(discard(list, photosOnly.id).map((c) => c.targetId)).toEqual(['e7'])
+    // Its expense trashed while it waits: the visit logs none, as one with an amount.
+    expect(collapse(fold(photosOnly), ofExpense('trash', 'e2'))).toEqual([expect.objectContaining({ action: 'markDone', input: expect.objectContaining({ photoIds: null }) })])
+  })
+
   it('a visit taken back takes what was made to its expense along', () => {
     const list = fold(paidVisit('e1'), ofExpense('update', 'e1', { input: { id: 'e1', note: 'x' } }), ofExpense('trash', 'e7'))
     const after = discard(list, list[0].id)

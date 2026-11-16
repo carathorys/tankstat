@@ -289,6 +289,21 @@ it('keeps an edit made while its change is on its way as a change of its own, af
   expect(outbox.changes).toMatchObject([{ id: 'e1', action: 'update', input: { volume: 50 } }])
 })
 
+it("an edit of a parked visit's expense waits with the visit, and goes once the visit is decided (#330)", async () => {
+  const sync = fakeSync((c) => (c.id === 'visit' ? 'recurring.doneBeforeLast' : null))
+  await keep({ id: 'visit', entity: 'recurring', action: 'markDone', vehicleId: 'v1', targetId: 'e1', targetIds: ['s1'], input: { ids: ['s1'], date: '2026-10-01', amount: 30, currency: 'EUR', expenseId: 'e1' } })
+  await keep({ id: 'edit', entity: 'expenses', action: 'update', vehicleId: 'v1', targetId: 'e1', input: { id: 'e1', note: 'x' }, expectedVersion: 1 })
+
+  await engine().run()
+  expect(sync.requests.flat().map((c) => c.id)).toEqual(['visit']) // its expense was never made: the edit would be parked as not found
+  expect(outbox.changes.map((c) => c.id)).toEqual(['edit'])
+  expect(await parkedAdds(deviceData)).toEqual(['e1'])
+
+  await unblockAdd('e1') // the visit applied on the Sync page
+  await engine().run()
+  expect(sync.requests.at(-1)!.map((c) => c.id)).toEqual(['edit'])
+})
+
 it('once a parked add is applied or discarded on the Sync page, what was made on it goes with the next sync', async () => {
   const sync = fakeSync((c) => (c.id === 'golf' ? 'vehicle.nameRequired' : null))
   await keep({ id: 'golf', entity: 'vehicles', action: 'add', vehicleId: 'golf', targetId: 'golf', input: { id: 'golf', name: '', fuelType: 'PETROL' } })
