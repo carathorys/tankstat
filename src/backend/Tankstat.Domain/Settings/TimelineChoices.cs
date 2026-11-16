@@ -22,8 +22,9 @@ public enum TimelineLayer
 
 /// <summary>
 /// What a user chose to see on the tyre timeline (#332, the owner's decisions 86 to 88), kept with the account: the range, the layers shown
-/// and the sets hidden. Shape and limits only: whether a set id still names a set is the UI's business (it drops the ones it no longer
-/// knows). A user who never chose has none, and the defaults apply: the whole range, everything but the retired sets, no set hidden.
+/// and the sets hidden. Shape and limits only. The hidden sets are one list for all the user's vehicles: a client knows only the open
+/// car's sets, so it never drops an id it does not know (another car's, as far as it can tell); it changes the one id toggled, a newly
+/// hidden one going last, and the oldest leave here once there are more than fifty. A user who never chose has none, and the defaults apply: the whole range, everything but the retired sets, no set hidden.
 /// </summary>
 public sealed record TimelineChoices
 {

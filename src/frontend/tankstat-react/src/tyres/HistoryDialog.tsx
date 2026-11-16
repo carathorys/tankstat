@@ -224,27 +224,37 @@ type Pairs = 'none' | 'one' | 'two'
 const pairsValue = (p: boolean | null | undefined): Pairs => (p === true ? 'one' : p === false ? 'two' : 'none')
 const pairsOf = (v: Pairs) => (v === 'one' ? true : v === 'two' ? false : null)
 
-/** Adds an installation to a set's history, or changes one: its days, its pairs, and the readings of its days (kept on the tyre log's lines). */
-function InstallationDialog({
+/**
+ * Adds an installation to a set's history, or changes one: its days, its pairs, and the readings of its days (kept on the tyre log's lines).
+ * Opened from its trigger, or by the caller (`open` + `onOpenChange`: a bar of the timeline, #332).
+ */
+export function InstallationDialog({
   trigger,
   vehicleId,
   unit,
   tyres,
   setId,
   installation,
+  open: openProp,
+  onOpenChange,
+  onClosed,
 }: {
-  trigger: ReactNode
+  trigger?: ReactNode
   vehicleId: string
   unit: DistanceUnit
   tyres: Tyres
   setId: string
   installation?: TyreInstallationInfo['installation']
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** After it closed and left the screen. */
+  onClosed?: () => void
 }) {
   const { t } = useTranslation()
   const notify = useTyreToasts()
   const words = useTyreWords(unit)
   const run = useTyreMutation(vehicleId)
-  const [open, setOpen] = useDialogState()
+  const [open, setOpen] = useDialogState({ open: openProp, onOpenChange })
   const id = useClientId(open)
   const [from, setFrom] = useState(installation?.from ?? '')
   const [until, setUntil] = useState(installation?.until ?? '')
@@ -289,6 +299,7 @@ function InstallationDialog({
           setUntil(installation?.until ?? '')
           setPairs(pairsValue(installation?.pairOneFront))
           setError(undefined)
+          onClosed?.()
         }}
         busy={busy}
         maxWidth={480}

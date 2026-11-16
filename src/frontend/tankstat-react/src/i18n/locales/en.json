@@ -2990,6 +2990,67 @@
       "from": "Reminder from {{month}}.",
       "off": "No reminder."
     },
+    "timeline": {
+      "title": "Timeline",
+      "range": "Range",
+      "ranges": {
+        "ALL": "All",
+        "TWO_YEARS": "Last 2 years",
+        "TWELVE_MONTHS": "Last 12 months"
+      },
+      "show": "Show",
+      "layers": {
+        "BEFORE_TRACKING": "Time before tracking",
+        "GAPS": "Gaps",
+        "MARKS": "Repairs and costs",
+        "RETIRED_SETS": "Retired sets",
+        "TABLE": "Table"
+      },
+      "sets": "Sets",
+      "summary": "{{range}} · {{count}} of 5 shown",
+      "summaryHidden_one": "{{range}} · {{shown}} of 5 shown · {{count}} set hidden",
+      "summaryHidden_other": "{{range}} · {{shown}} of 5 shown · {{count}} sets hidden",
+      "legend": {
+        "before": "Before tracking (≈ rough figure)",
+        "gap": "No set recorded",
+        "repair": "Repair"
+      },
+      "today": "today",
+      "retired": "retired {{date}}",
+      "onTheCar": "on the car",
+      "period": "{{set}}, on the car {{from}} to {{until}}, {{distance}}. Edit",
+      "periodText": "{{set}}, on the car {{from}} to {{until}}, {{distance}}.",
+      "swap": "Swap on {{date}}: {{off}} off, {{on}} on. Move the swap",
+      "moveTitle": "Move the swap",
+      "moveText": "{{off}} came off and {{on}} went on that day. A new day moves both.",
+      "moveDay": "Day of the swap",
+      "moveHint": "The reading typed with the swap moves with it.",
+      "moved": "Swap moved to {{date}}.",
+      "gap": "No set recorded from {{from}} to {{until}}. Fill in",
+      "gapText": "No set recorded from {{from}} to {{until}}.",
+      "gapTitle": "Which set was on the car?",
+      "gapNothing": "Nothing is recorded from {{from}} to {{until}}.",
+      "set": "Set",
+      "noSwaps": "No swaps are recorded yet, so only the time before tracking shows.",
+      "picture": "Timeline picture, scrolls sideways",
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out",
+      "beforeTip": "In use since {{date}}; the rough figure stands for this time.",
+      "mark": "{{kind}}, {{date}}",
+      "retiredOn": "Retired on {{date}}",
+      "table": {
+        "caption": "The timeline as a table",
+        "set": "Set",
+        "from": "From",
+        "until": "Until",
+        "distance": "Distance",
+        "actions": "Actions",
+        "fillIn": "Fill in",
+        "edit": "Edit",
+        "moveSwap": "Move the swap",
+        "before": "Before tracking"
+      }
+    },
     "estimate": {
       "button": "Estimate from the fuel log",
       "months": "Usual months",

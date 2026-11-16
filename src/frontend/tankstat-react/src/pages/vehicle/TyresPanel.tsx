@@ -7,7 +7,7 @@ import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import { Archive, ArrowLeftRight, ArrowUpDown, CircleDot, CloudUpload, History, NotebookPen, Plus, Snowflake, Sun } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { lazy, Suspense, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router'
 import { ConfirmDialog } from '../../components/ConfirmDialog.tsx'
@@ -31,6 +31,9 @@ import { type Tyres, type TyreSetInfo, useTyreMutation, useTyreToasts, useTyreWo
 import { CarPicture, TyreButton } from '../../tyres/CarPicture.tsx'
 import { isExactCorner, liveTyresOf, useCornerWords, type ExactCorner } from '../../tyres/singleTyres.ts'
 import { TyreDialog } from '../../tyres/TyreDialog.tsx'
+
+// The timeline (#332) is a drawing of the app's own, in a chunk of its own: loaded once the tab has a set to draw.
+const Timeline = lazy(() => import('../../tyres/timeline/Timeline.tsx'))
 
 const SEASON_ICON: Record<TyreSeason, ReactNode> = {
   SUMMER: <Sun size={14} aria-hidden />,
@@ -110,6 +113,10 @@ export function TyresPanel({ vehicle, canLog }: { vehicle: { id: string; units: 
         </Typography>
       )}
       <ReminderBanners tyres={tyres} vehicleId={vehicle.id} unit={unit} canLog={canLog} />
+      {/* After the reminder's notes, before the sets (the owner's decision 93 on #332). */}
+      <Suspense fallback={null}>
+        <Timeline tyres={tyres} vehicleId={vehicle.id} unit={unit} canLog={canLog} pending={pending.cards} />
+      </Suspense>
       <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: { xs: 'minmax(0,1fr)', md: 'minmax(0,1.1fr) minmax(0,1fr)' }, alignItems: 'start' }}>
         <Stack sx={{ gap: 2.5, minWidth: 0 }}>
           <Section title={t('tyres.onCar')}>
