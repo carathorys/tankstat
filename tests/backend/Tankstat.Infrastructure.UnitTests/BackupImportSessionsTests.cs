@@ -310,8 +310,28 @@ public sealed class BackupImportSessionsTests : IAsyncDisposable
             _clock.Ahead = TimeSpan.FromHours(2);
             database.Get<BackupImportSessions>().SweepNow();
             Assert.NotNull(sessions.Cars(Alice, second.Token)); // a run reads it: neither replaced nor expired
+            sessions.End(Alice, second.Token); // the person leaves the step: the file is the run's until it lets go
+            Assert.NotNull(sessions.Cars(Alice, second.Token));
         }
         Assert.Equal(new[] { second.Token }, Folders()); // Bob's expired meanwhile, and the refused upload left nothing
+    }
+
+    /// <summary>
+    /// In the system's temporary folder the scratch root has a name anyone on the machine can make first: only a real folder this
+    /// account owns is used (a link is refused; a folder of another account fails the same check, which a test cannot stage).
+    /// </summary>
+    [Fact]
+    public void TheDefaultScratchRoot_MustBeARealFolderOfThisAccount_NeverALink()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var real = Directory.CreateDirectory(Path.Combine(_root, "real", "tankstat-import")).FullName;
+        var link = Path.Combine(_root, "link");
+        Directory.CreateSymbolicLink(link, real);
+
+        Assert.True(BackupImportSessions.IsOwnFolder(real));
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute, File.GetUnixFileMode(real)); // whatever it was made with
+        Assert.False(BackupImportSessions.IsOwnFolder(link));
+        Assert.False(BackupImportSessions.IsOwnFolder(Path.Combine(_root, "missing")));
     }
 
     [Fact]

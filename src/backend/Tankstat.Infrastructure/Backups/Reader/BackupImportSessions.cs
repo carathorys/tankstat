@@ -23,6 +23,7 @@ internal sealed class BackupImportSessions(
     public const string NotABackupKey = "import.notABackup";
     public const string NoTriesLeftKey = "import.noTriesLeft";
     public const string InUseKey = "import.fileInUse";
+    public const string ScratchUnusableKey = "import.scratchUnusable";
     public const int MaxTries = 3;
     public const string FolderName = "tankstat-import";
     private const string UploadName = "upload.zip";
@@ -384,7 +385,15 @@ internal sealed class BackupImportSessions(
 
     public void End(Guid userId, string token)
     {
-        if (Mine(userId, token) is { } session) Close(session, null, forget: true);
+        if (Mine(userId, token) is not { } session) return;
+        // A session a run holds is the run's until it lets go (#336: neither replaced nor expired while a run goes): the person leaving
+        // the step does not take the file from under it. With Hold, so a hold never lands between this look and the end.
+        lock (_replacing)
+        {
+            lock (session)
+                if (session.Holds > 0) return;
+            Close(session, null, forget: true);
+        }
     }
 
     public void EndForUser(Guid userId)
@@ -466,10 +475,38 @@ internal sealed class BackupImportSessions(
         if (OperatingSystem.IsWindows()) Directory.CreateDirectory(folder);
         else
         {
-            Directory.CreateDirectory(Root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-            Directory.CreateDirectory(folder, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            Directory.CreateDirectory(Root, OwnerOnly);
+            // In the system's temporary folder (no Imports:ScratchFolder) the root has a name anyone on the machine can make first: a
+            // folder someone else owns, or a link, would let them swap a session's folder under the decrypted file. A folder the operator
+            // named is theirs to keep private (docs/configuration.md).
+            if (string.IsNullOrWhiteSpace(options.CurrentValue.ScratchFolder) && !IsOwnFolder(Root))
+            {
+                logger.LogError("The import scratch folder {Folder} is a link or belongs to another account: uploads are refused until it is removed or Imports:ScratchFolder names a private folder", Root);
+                throw new DomainException(ScratchUnusableKey, "The server cannot take an upload right now. Ask an administrator.");
+            }
+            Directory.CreateDirectory(folder, OwnerOnly);
         }
         return (token, folder);
+    }
+
+    private const UnixFileMode OwnerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+
+    /// <summary>
+    /// Whether a folder is a real one this process's account owns, made owner-only: a link is refused, and setting the mode succeeds only
+    /// for the owner (or root), which also takes away what a folder made earlier with wider rights allowed.
+    /// </summary>
+    internal static bool IsOwnFolder(string folder)
+    {
+        try
+        {
+            if (new DirectoryInfo(folder) is not { Exists: true, LinkTarget: null }) return false;
+            if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(folder, OwnerOnly);
+            return true;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     private void DeleteFolder(string folder)

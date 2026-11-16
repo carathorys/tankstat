@@ -959,7 +959,8 @@
       "templateSkipped": "“{{title}}” is a one-off reminder, which is not imported.",
       "incomeSkipped": "“{{title}}” is income, which is not imported.",
       "titleMissing": "The row has no title or category.",
-      "unitsDiffer": "The file uses other units than this vehicle. Numbers are imported as they are, without conversion."
+      "unitsDiffer": "The file uses other units than this vehicle. Numbers are imported as they are, without conversion.",
+      "scratchUnusable": "The server cannot take an upload right now. Ask an administrator."
     },
     "chart": {
       "invalid": "This chart is not valid.",

@@ -959,7 +959,8 @@
       "templateSkipped": "A(z) „{{title}}” egyszeri emlékeztető, amelyet nem importálunk.",
       "incomeSkipped": "A(z) „{{title}}” bevétel, amelyet nem importálunk.",
       "titleMissing": "A sorban nincs megnevezés vagy kategória.",
-      "unitsDiffer": "A fájl más mértékegységeket használ, mint ez a jármű. A számok átváltás nélkül, úgy kerülnek be, ahogy vannak."
+      "unitsDiffer": "A fájl más mértékegységeket használ, mint ez a jármű. A számok átváltás nélkül, úgy kerülnek be, ahogy vannak.",
+      "scratchUnusable": "A szerver most nem tud feltöltést fogadni. Szólj egy adminisztrátornak."
     },
     "chart": {
       "invalid": "Ez a grafikon nem érvényes.",

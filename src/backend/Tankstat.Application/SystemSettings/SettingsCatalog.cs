@@ -214,6 +214,7 @@ public static class SettingsCatalog
         (SyncOptions.SectionName, typeof(SyncOptions)),
         (RecognitionOptions.SectionName, typeof(RecognitionOptions)),
         (BackupOptions.SectionName, typeof(BackupOptions)),
+        (Tankstat.Application.Imports.BackupImportOptions.SectionName, typeof(Tankstat.Application.Imports.BackupImportOptions)),
         (RunOptions.SectionName, typeof(RunOptions)),
         (TelemetryOptions.SectionName, typeof(TelemetryOptions)),
     ];
