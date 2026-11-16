@@ -8,6 +8,8 @@ paths:
   - ".env.example"
   - "docker-compose.example.yml"
   - "CHANGELOG.md"
+  - "CONTRIBUTORS.md"
+  - "scripts/contributors.sh"
 ---
 
 # Docker and the release workflow
@@ -19,3 +21,5 @@ paths:
 - **Image tags:** a release `vX.Y.Z` gets `X.Y.Z`, `X.Y` and (from 1.0 on) `X`, plus `latest` (docker/metadata-action's `latest=auto`, no `flavor` set), which moves with every stable release published, an older minor's patch too: the action compares with nothing; a pre-release gets only its full version (`docs/self-hosting.md` says the same).
 
 - **The Compose example** (`docker-compose.example.yml` with `.env.example`) runs the minor version `.env.example`'s `TANKSTAT_VERSION` names, never `latest` (an upgrade is a deliberate step: the changelog's *Upgrading* section first). **The changelog PR of a new minor (or major) release also moves `TANKSTAT_VERSION` to it**; a patch release needs nothing, its minor tag follows. A setting the example uses that an older release does not know is said beside it, since an unknown variable is ignored without a word; so is what only a newer release allows. When the bump reaches such a release, that note goes (the move to 0.16 took out the last two: the backups' "0.15 or later" and the setup page's "releases after 0.15").
+
+- **Credit** (the owner's decisions: every real person whose work is merged, by GitHub login with a link, in `CONTRIBUTORS.md` and in the release notes): `mise run contributors` (`scripts/contributors.sh`, needs `gh` signed in; never in CI) rewrites `CONTRIBUTORS.md` from the history: the commit authors of the default branch as GitHub maps them to accounts (`repos/{repo}/contributors`, `type == "User"`) plus everyone a `Co-authored-by` line names with a GitHub noreply address (`<login>@…` or `<id>+<login>@users.noreply.github.com`), without bots (`[bot]`) and AI co-authors (Claude, Anthropic, Copilot), in alphabetical order; no e-mail address or git name is written, and a co-author line with any other address is counted on stderr and left out. **Every release:** the changelog PR runs it and commits the file, and `mise run contributors -- --since <the previous release's tag>` prints the thanks line (`Thanks to @a, @b for their contributions.`: everyone but the repository's owner; nothing when nobody else contributed) that ends the release's section in `CHANGELOG.md` and with it the release notes; a preview's notes take the same line since the previous preview. `CONTRIBUTING.md` and the README's Contributing section say that people are credited.

@@ -97,6 +97,8 @@ See [Development](docs/development.md) for the layout, the test layers and the t
 
 Bug reports, questions and pull requests are welcome: [CONTRIBUTING.md](CONTRIBUTING.md) says what a change needs and how work is tracked here (the labels you will see in the issues), [Discussions](https://github.com/carathorys/tankstat/discussions) take questions and ideas, and issues labelled [`good first issue`](https://github.com/carathorys/tankstat/labels/good%20first%20issue) are picked out as a place to start, when there are some. Security problems go through [SECURITY.md](SECURITY.md), privately.
 
+Everyone whose work is in Tankstat is named in [CONTRIBUTORS.md](CONTRIBUTORS.md).
+
 ## License
 
 [MIT](LICENSE).

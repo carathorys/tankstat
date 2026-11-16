@@ -100,6 +100,10 @@ run = [
   "scripts/screenshots.sh",
 ]
 
+[tasks.contributors]
+description = "Rewrite CONTRIBUTORS.md from the history (commit authors and co-authors by GitHub account, no bots or AI co-authors), for every release; with -- --since <tag>, print the release notes' thanks line instead. Needs the gh CLI, signed in"
+run = "scripts/contributors.sh"
+
 [tasks."test:durations"]
 description = "Measure how long each frontend test file takes into src/frontend/tankstat-react/tests/durations.json (CI balances its shards by it); rerun when files were added or got much slower"
 dir = "src/frontend/tankstat-react"
