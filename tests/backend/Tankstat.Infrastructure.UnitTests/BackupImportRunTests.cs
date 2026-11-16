@@ -156,6 +156,20 @@ public sealed class BackupImportRunTests(ITestOutputHelper output) : IAsyncDispo
     private Task<ImportRunView> StartAsync(TestDatabase database, Principal who, string token, params ImportCarChoice[] choices) =>
         AsAsync(database, who, sp => sp.GetRequiredService<BackupImportRunService>().StartAsync(token, choices, default));
 
+    /// <summary>
+    /// A person's notifications once at least <paramref name="count"/> are there: a run tells people after its row says how it ended (after
+    /// the commit, or after its failure is written), so a test that saw the row may be a moment ahead of them.
+    /// </summary>
+    private static async Task<List<Notification>> ToldAsync(TestDatabase database, Guid recipient, int count = 1)
+    {
+        for (var i = 0; ; i++)
+        {
+            var told = await NotificationsAsync(database, recipient);
+            if (told.Count >= count || i == 250) return told;
+            await Task.Delay(20);
+        }
+    }
+
     private static async Task<List<Notification>> NotificationsAsync(TestDatabase database, Guid recipient)
     {
         await using var db = await database.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
@@ -196,9 +210,9 @@ public sealed class BackupImportRunTests(ITestOutputHelper output) : IAsyncDispo
             Assert.Equal(0, await db.RunMarkers.CountAsync(m => m.EndedAt == null));
         }
         // Who is told, after the commit: the importer, and the administrators with the importer as who did it.
-        var bobs = Assert.Single(await NotificationsAsync(here, bob.Id));
+        var bobs = Assert.Single(await ToldAsync(here, bob.Id));
         Assert.Equal((NotificationKind.ImportFinished, queued.Id, "1", "Octavia", "0"), (bobs.Kind, bobs.SubjectId, bobs.Args["count"], bobs.Args["names"], bobs.Args["refused"]));
-        var roots = Assert.Single(await NotificationsAsync(here, admin.Id));
+        var roots = Assert.Single(await ToldAsync(here, admin.Id));
         Assert.Equal((NotificationKind.CarsImported, "Bob", "Octavia"), (roots.Kind, roots.Args["actor"], roots.Args["names"]));
         Assert.Null(here.Get<IBackupImportSessions>().Find(bob.Id, token)); // the file is done with
         Assert.Contains(here.Log.Entries, e => e.Message.Contains(queued.Id.ToString()) && e.Message.Contains("imported 1 cars"));
@@ -300,7 +314,7 @@ public sealed class BackupImportRunTests(ITestOutputHelper output) : IAsyncDispo
         Assert.Equal((1, 0, 0), (await db.Refuelings.CountAsync(r => r.VehicleId == leftOut), // its own fill-up only: the backup's first one went with the car
             await db.Expenses.CountAsync(e => e.VehicleId == leftOut), await db.RecurringExpenses.CountAsync(s => s.VehicleId == leftOut)));
         Assert.Equal(2, await db.Vehicles.CountAsync(v => v.Name == "Fabia")); // each run's Fabia came in
-        var told = (await NotificationsAsync(here, bob.Id)).Where(n => n.Kind == NotificationKind.ImportFinished).ToList();
+        var told = (await ToldAsync(here, bob.Id, 2)).Where(n => n.Kind == NotificationKind.ImportFinished).ToList();
         Assert.Equal(["2", "1"], told.Select(n => n.Args["count"])); // the cars that came in
     }
 
@@ -355,7 +369,7 @@ public sealed class BackupImportRunTests(ITestOutputHelper output) : IAsyncDispo
         _clock.Ahead = TimeSpan.FromMinutes(31);
         var gaveUp = await FinishedAsync(here, third.Id);
         Assert.Equal((ImportRunState.NotFinished, ImportRunFailure.DidNotStart), (gaveUp.State, gaveUp.Failure));
-        var told = Assert.Single(await NotificationsAsync(here, dave.Id));
+        var told = Assert.Single(await ToldAsync(here, dave.Id));
         Assert.Equal((NotificationKind.ImportNotFinished, "DidNotStart"), (told.Kind, told.Args["reason"]));
     }
 
@@ -364,6 +378,26 @@ public sealed class BackupImportRunTests(ITestOutputHelper output) : IAsyncDispo
     {
         await using var content = File.OpenRead(backup);
         return (await Assert.ThrowsAsync<DomainException>(() => database.Get<IBackupImportSessions>().UploadAsync(who.Id, content, default))).Key;
+    }
+
+    [Theory, MemberData(nameof(Providers))]
+    public async Task ACancel_ThatCameBeforeTheRunsMarkExisted_IsKeptAndHonouredBeforeAnythingIsSaved(string provider)
+    {
+        if (Instance(provider, "here") is not { } here) return;
+        var source = await SourceAsync();
+        var (bob, admin) = (await PersonAsync(here, "Bob"), await PersonAsync(here, "Root", admin: true));
+        var run = await StartAsync(here, bob, await OpenAsync(here, bob, source.Backup), new ImportCarChoice(source.Octavia, null));
+
+        // What the cancel leaves when it finds no mark to set (the run's turn came a moment ago): the request, kept by the runner.
+        here.Get<BackupImportRunner>().Cancelling(run.Id, admin.Id);
+        await here.Get<BackupImportRunner>().TickAsync(default);
+
+        var ended = await FinishedAsync(here, run.Id);
+        Assert.Equal((ImportRunState.NotFinished, ImportRunFailure.Cancelled, admin.Id), (ended.State, ended.Failure, ended.CancelledById));
+        await using (var db = await here.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync())
+            Assert.Equal((0, 0), (await db.Vehicles.CountAsync(), await db.RunMarkers.CountAsync(m => m.EndedAt == null)));
+        var told = Assert.Single(await ToldAsync(here, bob.Id));
+        Assert.Equal((NotificationKind.ImportCancelled, "Root"), (told.Kind, told.Args["actor"]));
     }
 
     [Theory, MemberData(nameof(Providers))]
@@ -394,7 +428,7 @@ public sealed class BackupImportRunTests(ITestOutputHelper output) : IAsyncDispo
         Assert.Equal((ImportRunState.NotFinished, ImportRunFailure.Cancelled, carol.Id), (carols.State, carols.Failure, carols.CancelledById));
         await using (var db = await here.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync())
             Assert.Equal((0, 0), (await db.Vehicles.CountAsync(), await db.RunMarkers.CountAsync(m => m.EndedAt == null)));
-        var told = Assert.Single(await NotificationsAsync(here, bob.Id));
+        var told = Assert.Single(await ToldAsync(here, bob.Id));
         Assert.Equal((NotificationKind.ImportCancelled, "Root"), (told.Kind, told.Args["actor"]));
         Assert.Empty(await NotificationsAsync(here, carol.Id)); // she cancelled it herself
         Assert.False(await Cancel(bob, running.Id)); // over already

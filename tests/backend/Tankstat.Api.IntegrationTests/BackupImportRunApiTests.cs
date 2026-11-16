@@ -67,6 +67,17 @@ public sealed class BackupImportRunApiTests : IDisposable
         throw new TimeoutException("The run did not end.");
     }
 
+    /// <summary>A person's notifications once one of the kind is there: a run tells people after its row says how it ended.</summary>
+    private static async Task<List<JsonElement>> Told(HttpClient c, string kind)
+    {
+        for (var i = 0; ; i++)
+        {
+            var all = await Notifications(c);
+            if (i == 100 || all.Any(n => n.GetProperty("kind").GetString() == kind)) return all;
+            await Task.Delay(50);
+        }
+    }
+
     private static async Task<List<JsonElement>> Notifications(HttpClient c) =>
         [.. (await c.Gql("query { notifications { kind subject { type id } args { name value } } }")).Data().GetProperty("notifications").EnumerateArray()];
 
@@ -111,10 +122,10 @@ public sealed class BackupImportRunApiTests : IDisposable
         Assert.Equal(0, (await people.Admin.Gql("query { importRuns { id } }")).Data().GetProperty("importRuns").GetArrayLength());
         Assert.Equal("FORBIDDEN", (await people.Bob.Gql("query { importRuns { id } }")).ErrorCode());
 
-        var bobs = Assert.Single(await Notifications(people.Bob), n => n.GetProperty("kind").GetString() == "IMPORT_FINISHED");
+        var bobs = Assert.Single(await Told(people.Bob, "IMPORT_FINISHED"), n => n.GetProperty("kind").GetString() == "IMPORT_FINISHED");
         Assert.Equal(("IMPORT_RUN", started.GetProperty("id").GetString(), "1", "Zzcanary Octavia", "0"),
             (bobs.GetProperty("subject").GetProperty("type").GetString(), bobs.GetProperty("subject").GetProperty("id").GetString(), Arg(bobs, "count"), Arg(bobs, "names"), Arg(bobs, "refused")));
-        var roots = Assert.Single(await Notifications(people.Admin), n => n.GetProperty("kind").GetString() == "CARS_IMPORTED");
+        var roots = Assert.Single(await Told(people.Admin, "CARS_IMPORTED"), n => n.GetProperty("kind").GetString() == "CARS_IMPORTED");
         Assert.Equal(("bob", "Zzcanary Octavia"), (Arg(roots, "actor"), Arg(roots, "names")));
         Assert.DoesNotContain(await Notifications(people.Alice), n => n.GetProperty("kind").GetString()!.Contains("IMPORT"));
 
@@ -150,7 +161,7 @@ public sealed class BackupImportRunApiTests : IDisposable
         Assert.Equal(("NOT_FINISHED", "CANCELLED", JsonValueKind.Null), (ended.GetProperty("state").GetString(), ended.GetProperty("failure").GetString(), ended.GetProperty("report").ValueKind));
         Assert.Equal(token, ended.GetProperty("fileToken").GetString()); // the file is still open: back to the review
         Assert.DoesNotContain((await people.Bob.Gql("query { myVehicles { name } }")).Data().GetProperty("myVehicles").EnumerateArray(), v => v.GetProperty("name").GetString() == "Zzcanary Octavia");
-        var told = Assert.Single(await Notifications(people.Bob), n => n.GetProperty("kind").GetString() == "IMPORT_CANCELLED");
+        var told = Assert.Single(await Told(people.Bob, "IMPORT_CANCELLED"), n => n.GetProperty("kind").GetString() == "IMPORT_CANCELLED");
         Assert.StartsWith("Admin", Arg(told, "actor")); // who cancelled it, by name
         Assert.False((await people.Admin.Gql("mutation($id: UUID!) { cancelImportRun(id: $id) }", new { id })).Data().GetProperty("cancelImportRun").GetBoolean()); // over already
     }
