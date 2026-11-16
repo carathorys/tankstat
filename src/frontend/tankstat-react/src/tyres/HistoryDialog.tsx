@@ -259,6 +259,13 @@ export function InstallationDialog({
   const [from, setFrom] = useState(installation?.from ?? '')
   const [until, setUntil] = useState(installation?.until ?? '')
   const [pairs, setPairs] = useState<Pairs>(pairsValue(installation?.pairOneFront))
+  // Which set the period is of (#332): an edit may say it was another one. Pair 1 of one set is not pair 1 of another, so the pairs go
+  // to *Not sure* with the set, to be picked again here.
+  const [ofSet, setOfSet] = useState(setId)
+  const pickSet = (next: string) => {
+    if (next !== ofSet) setPairs(next === setId ? pairsValue(installation?.pairOneFront) : 'none')
+    setOfSet(next)
+  }
   const [error, setError] = useState<unknown>()
   const [busy, setBusy] = useState(false)
 
@@ -277,7 +284,7 @@ export function InstallationDialog({
     setError(undefined)
     try {
       const saved = installation
-        ? await run(UpdateTyreInstallationDocument, { input: { id: installation.id, ...values } })
+        ? await run(UpdateTyreInstallationDocument, { input: { id: installation.id, ...values, ...(ofSet !== setId ? { setId: ofSet } : {}) } }) // named only when it changes
         : await run(AddTyreInstallationDocument, { input: { id, setId, ...values } })
       setOpen(false)
       notify.saved(saved, t('toast.saved'))
@@ -298,18 +305,27 @@ export function InstallationDialog({
           setFrom(installation?.from ?? '')
           setUntil(installation?.until ?? '')
           setPairs(pairsValue(installation?.pairOneFront))
+          setOfSet(setId)
           setError(undefined)
           onClosed?.()
         }}
         busy={busy}
         maxWidth={480}
-        title={installation ? t('tyres.dialogs.installationEdit') : t('tyres.dialogs.installationAdd')}
-        description={t('tyres.dialogs.installationDescription')}
+        title={installation ? t('tyres.timeline.editTitle') : t('tyres.dialogs.installationAdd')}
+        description={installation ? t('tyres.timeline.editText') : t('tyres.dialogs.installationDescription')}
       >
         {open && (
           <Form onSubmit={submit} refusal={error}>
             <OfflineNote />
             <Stack sx={{ gap: 1.5 }}>
+              {installation && (
+                <LabeledSelect
+                  label={t('tyres.timeline.set')}
+                  value={ofSet}
+                  options={tyres.sets.filter((s) => !s.set.isRetired || s.set.id === setId).map((s) => ({ value: s.set.id, label: `${t(`tyres.seasons.${s.set.season}`)}: ${s.set.name}` }))}
+                  onChange={pickSet}
+                />
+              )}
               <Field name="from" label={t('tyres.fields.from')} required>
                 <FieldDate disableFuture value={from} onChange={setFrom} />
               </Field>

@@ -110,8 +110,45 @@ it('a bar opens its period’s edit', async () => {
 
   await ui.click(within(await card()).getAllByRole('button', { name: /^Continental WinterContact, on the car .* Edit$/ })[0])
 
-  const dialog = await screen.findByRole('dialog', { name: 'Edit installation' })
+  const dialog = await screen.findByRole('dialog', { name: 'Edit the period' })
   expect(await findDateField(/^First day on the car/, dialog)).toBeInTheDocument()
+})
+
+it('a period’s edit says which set it was: another set is sent with the pairs not sure, its own set is not named at all (#332, B)', async () => {
+  const { ui, state } = setup([tyreSummer, tyreWinter, spare])
+  const bar = async () => within(await card()).getAllByRole('button', { name: /^Continental WinterContact, on the car .* Edit$/ })[0]
+
+  await ui.click(await bar())
+  let dialog = await screen.findByRole('dialog', { name: 'Edit the period' })
+  expect(dialog).toHaveAccessibleDescription('Which set was on the car, and from when to when.')
+  const set = within(dialog).getByRole('combobox', { name: 'Set' })
+  expect(set).toHaveTextContent('Winter: Continental WinterContact')
+  expect(within(dialog).getByRole('combobox', { name: 'Pairs' })).toHaveTextContent('pair 1 at the front')
+  await ui.click(set)
+  await ui.click(await screen.findByRole('option', { name: 'All-season: Spare all-season' }))
+  expect(within(dialog).getByRole('combobox', { name: 'Pairs' })).toHaveTextContent('pairs not recorded') // pair 1 of one set is not pair 1 of another
+  await ui.click(within(dialog).getByRole('button', { name: 'Save' }))
+  await waitFor(() => expect(state.calls.UpdateTyreInstallation).toEqual([{ input: { id: 'r2', from: '2025-11-15', until: '2026-03-28', pairOneFront: null, odometerFrom: null, odometerUntil: null, setId: 's3' } }]))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+  await ui.click(await bar())
+  dialog = await screen.findByRole('dialog', { name: 'Edit the period' })
+  await ui.click(within(dialog).getByRole('button', { name: 'Save' }))
+  await waitFor(() => expect(state.calls.UpdateTyreInstallation).toHaveLength(2))
+  expect(state.calls.UpdateTyreInstallation[1].input).not.toHaveProperty('setId')
+})
+
+it('a set tracked tyre by tyre refuses a period from another set, said in the dialog', async () => {
+  const { ui, state } = setup([tyreSummer, tyreWinter, spare])
+  state.failNext.push({ key: 'tyres.brokenUpSetCannotMove', args: { set: 'Spare all-season' } })
+
+  await ui.click(within(await card()).getAllByRole('button', { name: /^Continental WinterContact, on the car .* Edit$/ })[0])
+  const dialog = await screen.findByRole('dialog', { name: 'Edit the period' })
+  await ui.click(within(dialog).getByRole('combobox', { name: 'Set' }))
+  await ui.click(await screen.findByRole('option', { name: 'All-season: Spare all-season' }))
+  await ui.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+  expect(await within(dialog).findByText('A period of a set tracked tyre by tyre cannot move to another set. Move it to the trash and add the right one instead.')).toBeInTheDocument()
 })
 
 it('a gap asks which set was on the car: the set before it stretches, the set after it starts earlier, another one gets a period', async () => {

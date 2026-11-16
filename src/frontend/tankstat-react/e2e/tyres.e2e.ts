@@ -294,7 +294,7 @@ test('breaks a set up in its History, shows its tyres at their corners, and swap
   await summer.getByRole('button', { name: 'History' }).click()
   const history = page.getByRole('dialog', { name: 'Michelin Primacy 4' })
   await history.getByRole('button', { name: 'Edit' }).first().click()
-  const installation = page.getByRole('dialog', { name: 'Edit installation' })
+  const installation = page.getByRole('dialog', { name: 'Edit the period' })
   await typeDate(page, dateField(installation, /First day on the car/), '2026-03-01')
   await installation.getByRole('button', { name: 'Save' }).click()
   await expect(installation).toBeHidden()
@@ -864,4 +864,37 @@ test('the timeline: on a desktop a swap is dragged by its handle to another day,
   expect((await firstDay()) < day(100)).toBe(true) // dragged left: earlier
   await page.getByRole('button', { name: 'Undo' }).click()
   await expect.poll(firstDay).toBe(day(100))
+})
+
+test('the timeline: a period that was another set’s is moved there from its bar, its line with it (#332)', async ({ page }) => {
+  const day = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10)
+  const vehicle = await addVehicle(page)
+  const addSet = 'mutation($i: AddTyreSetInput!) { addTyreSet(input: $i) { sets { set { id name } } } }'
+  const set = { vehicleId: vehicle.id, size: null, madeWeek: null, madeYear: null, roughDistance: 0, replace: false, reminderMonth: 0, fitted: false, day: day(0) }
+  await graphql(page, addSet, { i: { ...set, name: 'Continental WinterContact', season: 'WINTER', since: day(900) } })
+  const sets = (await graphql<{ addTyreSet: { sets: { set: { id: string; name: string } }[] } }>(page, addSet, { i: { ...set, name: 'Spare all-season', season: 'ALL_SEASON', since: day(400) } })).addTyreSet.sets
+  const winter = sets.find((s) => s.set.name === 'Continental WinterContact')!.set.id
+  // Logged for the winter set, but it was the spare one that fortnight.
+  await graphql(page, 'mutation($i: AddTyreInstallationInput!) { addTyreInstallation(input: $i) { vehicleId } }', { i: { setId: winter, from: day(120), until: day(106), pairOneFront: true } })
+  await openVehicle(page, vehicle.id, 'tyres')
+  const state = async () => {
+    const tyres = (await graphql<{ vehicleTyres: { sets: { set: { id: string; name: string }; installations: { installation: { pairOneFront: boolean | null } }[] }[]; entries: { kind: string; setId: string | null }[] } }>(
+      page, 'query($v: UUID!) { vehicleTyres(vehicleId: $v) { sets { set { id name } installations { installation { pairOneFront } } } entries { kind setId } } }', { v: vehicle.id },
+    )).vehicleTyres
+    const name = (id: string | null) => tyres.sets.find((s) => s.set.id === id)?.set.name
+    return { periods: tyres.sets.map((s) => `${s.set.name}: ${s.installations.map((i) => String(i.installation.pairOneFront)).join(',')}`).sort(), lines: tyres.entries.map((e) => `${e.kind} ${name(e.setId)}`) }
+  }
+
+  await timelineOf(page).getByRole('group', { name: 'Timeline picture, scrolls sideways' }).getByRole('button', { name: /^Continental WinterContact, on the car .* Edit$/ }).evaluate((el: HTMLElement) => el.click())
+  const dialog = page.getByRole('dialog', { name: 'Edit the period' })
+  await expect(dialog.getByText('Which set was on the car, and from when to when.')).toBeVisible()
+  await dialog.getByRole('combobox', { name: 'Set' }).click()
+  await page.getByRole('option', { name: 'All-season: Spare all-season' }).click()
+  await expect(dialog.getByRole('combobox', { name: 'Pairs' })).toContainText('pairs not recorded') // not the winter set's pairs
+  await expectSoundLayout(page)
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  await expect(dialog).toBeHidden()
+
+  await expect(timelineOf(page).getByRole('group', { name: 'Timeline picture, scrolls sideways' }).getByRole('button', { name: /^Spare all-season, on the car .* Edit$/ })).toBeVisible()
+  expect(await state()).toEqual({ periods: ['Continental WinterContact: ', 'Spare all-season: null'], lines: ['SWAP Spare all-season'] })
 })

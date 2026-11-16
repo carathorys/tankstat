@@ -68,6 +68,13 @@ it('the timeline’s Move the swap dialog is labelled, described and free of vio
   const dialog = await screen.findByRole('dialog', { name: 'Move the swap' })
   expect(dialog).toHaveAccessibleDescription(/came off and .* went on that day/)
   await check(dialog)
+  await ui.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+  // A bar's dialog: the period's edit, with the set it is of (#332, B).
+  await ui.click(within(card).getAllByRole('button', { name: /^Continental WinterContact, on the car .* Edit$/ })[0])
+  const period = await screen.findByRole('dialog', { name: 'Edit the period' })
+  expect(within(period).getByRole('combobox', { name: 'Set' })).toBeInTheDocument()
+  await check(period)
 })
 
 it('the add set, past swaps and history dialogs are labelled and free of violations', async () => {
