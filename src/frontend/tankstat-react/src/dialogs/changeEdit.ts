@@ -31,6 +31,12 @@ export class SaveCancelled extends Error {
   }
 }
 
+/**
+ * After Cancel in an edit's confirmation: the focus back on the form's Save, once it can take it again (it was off while the question was
+ * open).
+ */
+export const focusSaveAgain = (form: HTMLFormElement) => setTimeout(() => form.querySelector<HTMLButtonElement>('button[type="submit"]')?.focus())
+
 /** One value of a field changed on both sides: as the change's input has it, and in words. */
 export interface MergeSide {
   value: unknown

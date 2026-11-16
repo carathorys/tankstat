@@ -136,7 +136,8 @@ export function tyreNeedsOf(c: Change): string[] {
  *   from that version, keeping the edit's values so that taking the trash back brings the edit back, unless the update makes tyre log
  *   lines (#330): then it stays, and the trash follows it without a version;
  * - a trash then a restore, or a restore then a trash, is nothing (back where the server is, or the edit the trash took the place of);
- * - a second trash or restore of the same log, or an edit of one on its way to the trash, changes nothing.
+ * - a second trash or restore of the same log, or an edit of one on its way to the trash, changes nothing (an edit that stayed beside its
+ *   trash, as above, still takes its own edit).
  * A change that was sent already (`sent`) is never folded into: what follows it waits as a change of its own, from the version the log has
  * once it is applied. Anything else waits as it is, in order.
  */
@@ -186,7 +187,9 @@ export function collapse(existing: readonly Change[], incoming: Change): Change[
     case 'add':
       return [...existing, incoming]
     case 'update':
-      if (trash) return [...existing] // on its way to the trash: nothing to edit
+      // On its way to the trash: nothing to edit, unless the edit that makes tyre log lines stayed beside its trash (#330): that one is
+      // still edited on Waiting to sync, and its edit folds into it as below, the trash following it as it did.
+      if (trash && !update) return [...existing]
       // An edit folding in may stop making what the change made (#330: tyre details switched off or fewer tyres): what was made on that goes.
       if (add) return replacing(existing, add, { ...add, input: { ...add.input, ...pick(incoming.input, UPDATABLE[incoming.entity]), ...foldedTyre(add.input, incoming.input) } })
       if (update) {

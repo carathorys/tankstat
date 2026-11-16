@@ -14,7 +14,7 @@ import { RecurringStatusBadge } from './components/RecurringStatus.tsx'
 import type { Saved } from './components/usePhotoQueue.ts'
 import { useOdometerLabel } from './components/useOdometerLabel.ts'
 import { usePhotoSession } from './components/usePhotoSession.ts'
-import { SaveCancelled } from './dialogs/changeEdit.ts'
+import { focusSaveAgain, SaveCancelled } from './dialogs/changeEdit.ts'
 import { DialogButtons, DialogCancel, DialogFrame } from './dialogs/DialogFrame.tsx'
 import { LeftBehindNote } from './dialogs/LeftBehindNote.tsx'
 import { DialogTrigger } from './dialogs/DialogTrigger.tsx'
@@ -376,9 +376,9 @@ function DoneFields({
       }
       await onSubmit(values, logsExpense)
     } catch (err) {
-      if (!(err instanceof SaveCancelled)) setError(err)
-      // Cancel in the confirmation: as it was, the focus back on Save once it can take it again (it was off while the question was open).
-      else setTimeout(() => formElement.querySelector<HTMLButtonElement>('button[type="submit"]')?.focus())
+      // Cancel in the confirmation: as it was, with nothing to say and the focus back on Save.
+      if (err instanceof SaveCancelled) focusSaveAgain(formElement)
+      else setError(err)
     } finally {
       setBusy(false)
     }

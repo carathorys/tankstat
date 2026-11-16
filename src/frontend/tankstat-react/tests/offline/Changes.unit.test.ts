@@ -337,6 +337,17 @@ describe("an expense's tyre details, then its trash (#330)", () => {
     expect(collapse(list, change('restore', 'e1', { entity: 'expenses' }))).toEqual(list.slice(0, 2))
   })
 
+  it("the edit that stays beside the trash is still edited on Waiting to sync: the edit folds into it, and what it no longer makes goes", () => {
+    const list = fold(giving, onLine, change('trash', 'e1', { entity: 'expenses', expectedVersion: 2 }))
+    const retitled = collapse(list, change('update', 'e1', { entity: 'expenses', input: { id: 'e1', title: 'Flat', amount: 30, tyre: { kind: 'PUNCTURE_REPAIRED', setId: 's1', lineId: 'l8' } } }))
+    expect(retitled.map((c) => [c.entity, c.action])).toEqual([['expenses', 'update'], ['tyres', 'updateTyreEntry'], ['expenses', 'trash']])
+    expect(retitled[0]).toMatchObject({ id: list[0].id, seq: list[0].seq, expectedVersion: 2, input: { title: 'Flat', amount: 30, tyre: { lineId: 'l8' } } })
+
+    // Its tyre details switched off: the line's change goes with them, the trash stays.
+    const off = collapse(list, change('update', 'e1', { entity: 'expenses', input: { id: 'e1', title: 'Puncture', amount: 25, tyre: null } }))
+    expect(off.map((c) => [c.entity, c.action])).toEqual([['expenses', 'update'], ['expenses', 'trash']])
+  })
+
   it('an edit that makes no lines still folds into the trash, as before', () => {
     const linked = change('update', 'e1', { entity: 'expenses', expectedVersion: 2, input: { id: 'e1', title: 'Valve', tyre: { kind: 'VALVE_REPLACED', setId: 's1' } } })
     const [only, ...rest] = fold(linked, change('trash', 'e1', { entity: 'expenses', expectedVersion: 2 }))

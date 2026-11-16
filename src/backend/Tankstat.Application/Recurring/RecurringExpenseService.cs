@@ -172,10 +172,9 @@ public sealed class RecurringExpenseService(
         // stands at its day (and odometer, when given). The same request again then changes nothing, as with an expense: a line the person
         // trashed since stays there. A failed first try left the schedules where they were, so it is never read as recorded.
         var withExpense = input.Amount is not null || input.PhotoIds is { Count: > 0 };
-        var linesBefore = !withExpense && input.Tyre is { } named && GivenLineIds(named) is { Count: > 0 } givenIds
-            ? await tyres.LineStatesAsync(vehicleId, creator.Id, givenIds, ct)
-            : null;
-        if (linesBefore is not null && linesBefore.Count == GivenLineIds(input.Tyre!)!.Count
+        var givenIds = !withExpense && input.Tyre is { } named ? GivenLineIds(named) : null;
+        var linesBefore = givenIds is { Count: > 0 } ? await tyres.LineStatesAsync(vehicleId, creator.Id, givenIds, ct) : null;
+        if (linesBefore is not null && linesBefore.Count == givenIds!.Count
             && found.All(i => i.LastDoneDate == input.Date && (input.Odometer is null || i.LastDoneOdometer == input.Odometer)))
         {
             logger.LogDebug("Recurring expenses {RecurringIds} of vehicle {VehicleId} were already marked done with tyre log lines {EntryIds}; the request came again", wanted, vehicleId, linesBefore.Keys);
