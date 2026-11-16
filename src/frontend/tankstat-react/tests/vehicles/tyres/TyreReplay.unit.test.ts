@@ -716,3 +716,15 @@ describe('Not this season on the device (#292)', () => {
     expect(of(replayTyres(due, [change('restoreTyreReminder', { id: 's2' })]).tyres).reminder).toEqual({ season: '2026-11-01' }) // nothing to take back
   })
 })
+
+describe('a swap moved from the timeline on the device (#332)', () => {
+  it('keeps the line’s amount, reading and note when the change names no fee, and moves both periods', () => {
+    const paid: Tyres = { ...base, entries: base.entries.map((e) => (e.id === 'r1' ? { ...e, odometer: 141_000, note: 'At the garage', expenseId: 'x1', amount: 70, currency: 'EUR', category: 'Tyres' } : e)) }
+    const { tyres, skipped } = replayTyres(paid, [change('updateTyreEntry', { id: 'r1', kind: 'SWAP', setId: 's1', day: '2026-04-04', odometer: 141_000, note: 'At the garage' })])
+
+    expect(skipped).toEqual([])
+    expect(tyres.entries.find((e) => e.id === 'r1')).toMatchObject({ day: '2026-04-04', odometer: 141_000, note: 'At the garage', expenseId: 'x1', amount: 70, currency: 'EUR' })
+    const period = (id: string) => tyres.sets.flatMap((s) => s.installations).find((i) => i.installation.id === id)!.installation
+    expect([period('r2').until, period('r1').from]).toEqual(['2026-04-04', '2026-04-04'])
+  })
+})
