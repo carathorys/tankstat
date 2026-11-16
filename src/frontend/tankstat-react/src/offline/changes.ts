@@ -44,6 +44,11 @@ export interface Change {
    * as already done, and what folded in lost); a later change of the same log follows it as a change of its own.
    */
   sent?: boolean
+  /**
+   * The waiting change this one follows (#330: the trash of an expense after the edit that gave it tyre log lines, which checks no
+   * version of its own): sent in a later request than it, and held while the server has that one parked, until it is decided. Never sent.
+   */
+  after?: string
 }
 
 /** How the device marks something with a change waiting. */
@@ -108,13 +113,13 @@ const expenseTyreCreates = (tyre: Record<string, unknown>): string[] => [
 ]
 
 /**
- * The ids a change creates: an add's own, a tyre change's sets and installations, an expense's tyre log lines (#290) (what is made on them
- * must reach the server after it).
+ * The ids a change creates: an add's own, a tyre change's sets and installations, an expense's tyre log lines (#290), the expense a visit
+ * logs (#330) (what is made on them must reach the server after it).
  */
 export function createdBy(c: Change): string[] {
   if (isTyreAction(c.action)) return tyreCreates(c.action, c.input)
   const tyre = expenseTyreOf(c)
-  return [...(c.action === 'add' ? [c.targetId] : []), ...(tyre ? expenseTyreCreates(tyre) : [])]
+  return [...(c.action === 'add' || logsExpense(c) ? [c.targetId] : []), ...(tyre ? expenseTyreCreates(tyre) : [])]
 }
 
 /**
@@ -133,9 +138,11 @@ export function tyreNeedsOf(c: Change): string[] {
  * The changes waiting after `incoming` joins them. Changes of one log fold into one:
  * - an add then an update is the add with the new values; an add then a trash is nothing at all;
  * - an update then an update is the last one, from the first one's version (and values, `base`); an update then a trash is the trash,
- *   from that version, keeping the edit's values so that taking the trash back brings the edit back;
+ *   from that version, keeping the edit's values so that taking the trash back brings the edit back, unless the update makes tyre log
+ *   lines (#330): then it stays, and the trash follows it without a version;
  * - a trash then a restore, or a restore then a trash, is nothing (back where the server is, or the edit the trash took the place of);
- * - a second trash or restore of the same log, or an edit of one on its way to the trash, changes nothing.
+ * - a second trash or restore of the same log, or an edit of one on its way to the trash, changes nothing (an edit that stayed beside its
+ *   trash, as above, still takes its own edit).
  * A change that was sent already (`sent`) is never folded into: what follows it waits as a change of its own, from the version the log has
  * once it is applied. Anything else waits as it is, in order.
  */
@@ -185,11 +192,17 @@ export function collapse(existing: readonly Change[], incoming: Change): Change[
     case 'add':
       return [...existing, incoming]
     case 'update':
-      if (trash) return [...existing] // on its way to the trash: nothing to edit
-      if (add) return replace(existing, add, { ...add, input: { ...add.input, ...pick(incoming.input, UPDATABLE[incoming.entity]), ...foldedTyre(add.input, incoming.input) } })
+      // On its way to the trash: nothing to edit, unless the edit that makes tyre log lines stayed beside its trash (#330): that one is
+      // still edited on Waiting to sync, and its edit folds into it as below, the trash following it as it did.
+      if (trash && !update) return [...existing]
+      // An edit folding in may stop making what the change made (#330: tyre details switched off or fewer tyres): what was made on that goes.
+      if (add) return replacing(existing, add, { ...add, input: { ...add.input, ...pick(incoming.input, UPDATABLE[incoming.entity]), ...foldedTyre(add.input, incoming.input) } })
       if (update) {
         const folded = from(update, incoming)
-        return replace(existing, update, { ...folded, input: { ...folded.input, ...foldedTyre(update.input, incoming.input) }, id: update.id, seq: update.seq, createdAt: update.createdAt })
+        const edited = { ...folded, input: { ...folded.input, ...foldedTyre(update.input, incoming.input) }, id: update.id, seq: update.seq, createdAt: update.createdAt }
+        const list = replacing(existing, update, edited)
+        // The edit beside its trash no longer makes lines: the two are an ordinary edit-then-trash again, one trash from the edit's version.
+        return trash && createdBy(edited).length === 0 ? list.flatMap((c) => (c.id === edited.id ? [] : c.id === trash.id ? [asTrashOf(edited, trash)] : [c])) : list
       }
       return [...existing, next]
     case 'trash': {
@@ -202,6 +215,11 @@ export function collapse(existing: readonly Change[], incoming: Change): Change[
       // Photos of a log in the trash can be neither added nor removed: those changes go (a restore does not bring them back).
       const kept = existing.filter((c) => !photosOfLog(c))
       if (restore) return kept.filter((c) => c !== restore)
+      // An edit that makes tyre log lines (#290) stays (#330): online the lines would stay too, live, without the expense's amount, and
+      // what was made on them waits after it. The trash follows as a change of its own, without a version: the edit and the lines' own
+      // changes move the expense's, which this device cannot count. Taken back, only the trash goes.
+      // It waits for the edit (`after`): were the edit parked, a trash that checks no version would go over what someone changed meanwhile.
+      if (update && createdBy(update).length > 0) return [...kept, { ...incoming, expectedVersion: null, after: update.id }]
       if (update) return replace(kept, update, { ...from(update, incoming), id: update.id, seq: update.seq, createdAt: update.createdAt, input: update.input })
       return [...kept, next]
     }
@@ -242,6 +260,14 @@ const from = (first: Change, incoming: Change): Change => {
 /** The version a log has once a change sent before is applied: an add's is the server's to say (no check), any other one is one more. */
 const versionAfter = (sent: Change) => (sent.action === 'add' || sent.expectedVersion == null ? null : sent.expectedVersion + 1)
 
+/** The trash that followed `edit` on its own (`after`), taking the edit's place as an ordinary trash does: its version, base and values. */
+function asTrashOf(edit: Change, trash: Change): Change {
+  const { after: _, ...rest } = trash
+  const folded: Change = { ...rest, expectedVersion: edit.expectedVersion, input: edit.input }
+  if (edit.base) folded.base = edit.base
+  return folded
+}
+
 /** A trash that took the place of an edit, taken back: the edit again. */
 const asEdit = (trash: Change): Change => ({ ...trash, action: 'update' })
 
@@ -258,15 +284,30 @@ export function discard(existing: readonly Change[], id: string): Change[] {
     // Its tyre details' lines (#290) go too, and what was made on them, as an expense add's.
     return expenseTyreOf(removed) ? withoutTyreDependents(rest, createdBy(removed)) : rest
   }
-  const rest = existing.filter((c) => c.id !== id)
+  // The edit a trash follows (#330), taken back: the trash is from the edit's version again, and no longer waits for it.
+  const rest = existing.flatMap((c) => {
+    if (c.id === id) return []
+    if (removed && c.after === id) {
+      const { after: _, input: __, ...trash } = asTrashOf(removed, c)
+      return [trash as Change]
+    }
+    return [c]
+  })
   if (removed?.entity === 'tyres') return withoutTyreDependents(rest, createdBy(removed))
   // An expense taken back that made tyre log lines (#290): what was made on its lines goes with it.
   const withLines = removed && expenseTyreOf(removed) ? withoutTyreDependents(rest, createdBy(removed)) : rest
   return removed?.action === 'add' ? withoutDependents(withLines, removed) : withLines
 }
 
-/** A visit that logs the expense `expenseId` (one with an amount; its expense id is its target). */
-const isVisitOf = (c: Change, expenseId: string) => c.action === 'markDone' && c.targetId === expenseId && c.input?.amount != null
+/**
+ * A visit that logs an expense: one with an amount or photos, as the server decides (`RecurringExpenseService.MarkDoneAsync`, #330); its
+ * expense id is its target.
+ */
+export const logsExpense = (c: Change) =>
+  c.action === 'markDone' && (c.input?.amount != null || (Array.isArray(c.input?.photoIds) && c.input.photoIds.length > 0))
+
+/** A visit that logs the expense `expenseId`. */
+const isVisitOf = (c: Change, expenseId: string) => logsExpense(c) && c.targetId === expenseId
 
 /**
  * What else goes with an add that is taken back: a vehicle's logs, schedules and visits (they were made to a vehicle that never reached the
@@ -301,6 +342,38 @@ function withoutTyreDependents(list: readonly Change[], created: readonly string
 }
 
 const replace = (list: readonly Change[], old: Change, next: Change) => list.map((c) => (c === old ? next : c))
+
+/**
+ * What saving `change` with `input` (its edit on Waiting to sync) would remove from `list` (#330): a visit's edit takes its place, a parked
+ * change is applied as edited, and an edit of a waiting add or edit folds into it (`collapse`), each without the changes made on what it
+ * no longer makes.
+ */
+export function editLeavesBehind(list: readonly Change[], change: Change, input: Record<string, unknown>, parked = false): Change[] {
+  if (parked || change.action === 'markDone') return dependentsOf(list, change, { ...change, input })
+  const edit: Change = { id: `${change.id}:edit`, seq: Number.MAX_SAFE_INTEGER, createdAt: 0, entity: change.entity, action: 'update', vehicleId: change.vehicleId, targetId: change.targetId, input }
+  const after = new Set(collapse(list, edit).map((c) => c.id))
+  return list.filter((c) => c.id !== change.id && !after.has(c.id))
+}
+
+/** `old` replaced by `next`, without the changes made on what `old` made and `next` no longer does. */
+function replacing(list: readonly Change[], old: Change, next: Change): Change[] {
+  const gone = new Set(dependentsOf(list, old, next).map((c) => c.id))
+  return replace(list, old, next).filter((c) => !gone.has(c.id))
+}
+
+/**
+ * The changes waiting in `list` that were made on what `before` makes and `after`, its edit, no longer would (#330): an expense's or a
+ * visit's tyre log lines and a break-up's tyres no longer made (details switched off, fewer tyres, another set), the expense a visit no
+ * longer logs; and in turn what was made on what those make. Saving the edit removes them, since the server could only park them as not found.
+ */
+export function dependentsOf(list: readonly Change[], before: Change, after: Change): Change[] {
+  const made = new Set(createdBy(after))
+  const lost = createdBy(before).filter((id) => !made.has(id))
+  if (lost.length === 0) return []
+  const others = list.filter((c) => c.id !== before.id)
+  const left = new Set(withoutTyreDependents(others, lost))
+  return others.filter((c) => !left.has(c))
+}
 
 function pick(input: Record<string, unknown> | undefined, keys: readonly string[]) {
   return Object.fromEntries(keys.filter((k) => input && k in input).map((k) => [k, input![k]]))

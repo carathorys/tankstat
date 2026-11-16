@@ -2259,7 +2259,18 @@
     "signOutFound_one": "{{count}} entry found on this device after the server was restored is not on the server.",
     "signOutFound_other": "{{count}} entries found on this device after the server was restored are not on the server.",
     "signOutDeleted": "Signing out deletes everything this device keeps for your account, and these with it: they cannot be sent later.",
-    "signOutFailed": "This device could not sign out: it cannot note it, and the server cannot be reached to end the session. Nothing was deleted. Try again once the server can be reached."
+    "signOutFailed": "This device could not sign out: it cannot note it, and the server cannot be reached to end the session. Nothing was deleted. Try again once the server can be reached.",
+    "leftBehind": {
+      "note_one": "Saving also removes 1 change waiting on this device: {{list}}.",
+      "note_other": "Saving also removes {{count}} changes waiting on this device: {{list}}.",
+      "noteList_one": "Saving also removes 1 change waiting on this device:",
+      "noteList_other": "Saving also removes {{count}} changes waiting on this device:",
+      "confirmTitle_one": "Remove this change too?",
+      "confirmTitle_other": "Remove these changes too?",
+      "cannotBack_one": "It cannot be brought back.",
+      "cannotBack_other": "They cannot be brought back.",
+      "saveAndRemove": "Save and remove"
+    }
   },
   "setup": {
     "title": "Set up Tankstat",

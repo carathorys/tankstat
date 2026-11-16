@@ -5,7 +5,7 @@ import { deviceData } from '../../src/offline/deviceData.ts'
 import { memoryStorage } from '../../src/offline/deviceStorage.ts'
 import { outbox } from '../../src/offline/outbox.ts'
 import { snapshotKey } from '../../src/offline/snapshotPolicy.ts'
-import { useDescribed, useWaitingChanges } from '../../src/offline/waitingChanges.ts'
+import { describe as named, useDescribed, useWaitingChanges } from '../../src/offline/waitingChanges.ts'
 
 let seq = 0
 const change = (fields: Partial<Change> & Pick<Change, 'entity' | 'action' | 'targetId'>): Change => ({
@@ -97,5 +97,15 @@ describe('the changes waiting, as the Sync page names them', () => {
 
     expect(groups.map((g) => g.items.map((i) => i.name))).toEqual([['Michelin'], ['Nokian']])
     expect(groups[1].items[0].date).toBe('2026-11-10')
+  })
+
+  it('names a few of the changes waiting among all of them: a set added here is named by its own change (#330)', async () => {
+    deviceData.reset(memoryStorage())
+    await deviceData.signedIn('alice')
+    const added = change({ entity: 'tyres', action: 'addTyreSet', targetId: 's9', input: { id: 's9', name: 'Winter' } })
+    const onLine = change({ entity: 'tyres', action: 'updateTyreEntry', targetId: 'l1', input: { id: 'l1', setId: 's9', kind: 'VALVE_REPLACED', day: '2026-10-01' } })
+
+    expect((await named([onLine], [added, onLine])).map((g) => g.items.map((i) => [i.change.id, i.name]))).toEqual([[[onLine.id, 'Winter']]])
+    expect((await named([onLine]))[0].items[0].name).toBeUndefined() // on its own it has no name to take
   })
 })

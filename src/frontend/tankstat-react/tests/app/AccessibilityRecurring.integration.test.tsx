@@ -1,7 +1,10 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { expect, it } from 'vitest'
+import { connectivity } from '../../src/offline/connectivity.ts'
+import { deviceData } from '../../src/offline/deviceData.ts'
+import { outbox } from '../../src/offline/outbox.ts'
 import { check, setup, setupAccessibilityTests } from '../support/accessibility.tsx'
-import { server } from '../support/server.ts'
+import { answered, server } from '../support/server.ts'
 import { fakeTyres, tyreSummer, tyreWinter } from '../support/tyres.ts'
 
 // The recurring expenses (table, dialogs, selection) and the home cards with their quick actions.
@@ -103,4 +106,32 @@ it('the dialogs opened from a home card are labelled, described and free of viol
   dialog = await screen.findByRole('dialog', { name: 'Mark as done: Tyres' })
   await waitFor(() => expect(within(dialog).getByLabelText('Currency')).toHaveValue('HUF'))
   await check(document.body)
+})
+
+it("a visit's edit on Waiting to sync that leaves changes behind: its note and its confirmation are labelled and free of violations (#330)", async () => {
+  const { ui } = setup('/vehicles/v1?tab=recurring')
+  await screen.findByRole('table', { name: 'Recurring expenses' }) // its schedules kept on the device, for the Done dialog offline
+  await deviceData.settled()
+  await answered()
+  connectivity.failed() // kept here, nothing sent meanwhile
+  await (await deviceData.rows())!.putVehicles([{ id: 'v1', name: 'Octavia', logAccess: 'DELETE', version: 1, units: { distance: 'KILOMETERS', volume: 'LITERS' } } as never]) // downloaded: its changes can be edited
+  await outbox.enqueue({
+    id: 'm1', entity: 'recurring', action: 'markDone', vehicleId: 'v1', targetId: 'e7', targetIds: ['rc2'],
+    input: { ids: ['rc2'], date: '2026-10-05', odometer: 99_000, amount: 250, currency: 'EUR', title: 'Tyres', category: 'Tyres', expenseId: 'e7', photoIds: [] },
+  })
+  await outbox.enqueue({ id: 'x1', entity: 'expenses', action: 'update', vehicleId: 'v1', targetId: 'e7', input: { id: 'e7', date: '2026-10-05', title: 'Tyres', amount: 250, currency: 'EUR' } })
+  await ui.click(await screen.findByRole('link', { name: /^Waiting to sync/ }))
+
+  await screen.findByRole('heading', { name: 'Waiting to sync', level: 1 })
+  await ui.click(await screen.findByRole('button', { name: /^Edit the change: Marked as done/ }, { timeout: 10_000 }))
+  const dialog = await screen.findByRole('dialog', { name: 'Edit the change' })
+  await waitFor(() => expect(within(dialog).getByLabelText('Amount (optional)')).toHaveValue('250'))
+  await ui.clear(within(dialog).getByLabelText('Amount (optional)'))
+  expect((await within(dialog).findByText(/^Saving also removes 1 change waiting on this device/)).closest('[role="status"]')).not.toBeNull() // said politely
+  await check(document.body)
+
+  await ui.click(within(dialog).getByRole('button', { name: 'Save the change' }))
+  const ask = await screen.findByRole('alertdialog', { name: 'Remove this change too?' })
+  expect(ask).toHaveAccessibleDescription(/It cannot be brought back\.$/)
+  await check(ask)
 })

@@ -446,6 +446,69 @@ test('a visit with tyre details saved offline: its line on the tyre log at once,
 })
 
 
+test("a waiting visit edited on Waiting to sync without its tyre details: says and asks what goes of the changes made on its line, and nothing is parked once back (#330)", async ({ page, context }) => {
+  test.setTimeout(120_000)
+  await signInAsNewUser(page)
+  const vehicle = await addVehicle(page)
+  const day = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10)
+  await logRefueling(page, vehicle.id, { date: day(60), volume: 35, odometer: 1000 })
+  await graphql(page, 'mutation($i: AddTyreSetInput!) { addTyreSet(input: $i) { vehicleId } }', {
+    i: { vehicleId: vehicle.id, size: null, madeWeek: null, madeYear: null, roughDistance: 0, replace: false, name: 'Michelin Primacy 4', season: 'SUMMER', since: day(400), fitted: true, day: day(60) },
+  })
+  await addDueRecurring(page, vehicle.id, 'Wheel balancing', 'Tyres')
+  await page.goto('/account')
+  await pageLoaded(page)
+  await page.getByRole('button', { name: 'Download now' }).click()
+  await expect(page.getByText('Downloaded.')).toBeVisible({ timeout: 30_000 })
+  await openVehicle(page, vehicle.id, 'recurring')
+  await expect(page.getByRole('button', { name: 'Mark Wheel balancing as done' })).toBeVisible()
+
+  // Offline: the visit with its tyre details and an amount, then a note on the line it made.
+  await goOffline(page, context)
+  await page.getByRole('button', { name: 'Mark Wheel balancing as done' }).click()
+  const done = page.getByRole('dialog', { name: 'Mark as done: Wheel balancing' })
+  await done.getByRole('group', { name: 'Tyre details' }).getByRole('combobox', { name: 'What was done' }).click()
+  await page.getByRole('option', { name: 'Wheel balancing' }).click()
+  await done.getByLabel('Amount (optional)').fill('9000')
+  await done.getByRole('button', { name: 'Mark as done' }).click()
+  await expect(done).toBeHidden()
+  await page.getByRole('tab', { name: 'Tyres' }).click()
+  await page.getByRole('region', { name: 'Tyre log' }).getByRole('button', { name: /^Wheel balancing, Michelin Primacy 4,/ }).click()
+  const entry = page.getByRole('dialog', { name: 'Edit entry' })
+  await entry.getByLabel('Note').fill('Valves checked')
+  await entry.getByRole('button', { name: 'Save' }).click()
+  await expect(entry).toBeHidden()
+
+  // Waiting to sync: the visit's tyre details switched off would leave the line's change behind. The dialog says so, Save asks.
+  await page.getByRole('link', { name: '2 changes waiting to sync' }).first().click() // the top bar's; a desktop's navigation has one too
+  await page.getByRole('button', { name: /^Edit the change: Marked as done/ }).click()
+  const edit = page.getByRole('dialog', { name: 'Edit the change' })
+  await edit.getByRole('switch', { name: 'Tyre details' }).click()
+  await expect(edit.getByText(/^Saving also removes 1 change waiting on this device: Changed line in the tyre log/)).toBeVisible()
+  await expectSoundLayout(page)
+  await edit.getByRole('button', { name: 'Save the change' }).click()
+  const ask = page.getByRole('alertdialog', { name: 'Remove this change too?' })
+  await expect(ask).toContainText('It cannot be brought back.')
+  await expectSoundLayout(page)
+  await ask.getByRole('button', { name: 'Save and remove' }).click()
+  await expect(page.getByText('The change is saved on this device; it is sent when the server can be reached.')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Changed line in the tyre log' })).toBeHidden()
+
+  // Back online: the visit's expense reaches the server without a line, and nothing is parked.
+  await context.setOffline(false)
+  type Server = { expenses: { amount: number | null }[]; vehicleTyres: { entries: { kind: string }[] } }
+  await expect
+    .poll(
+      async () => {
+        const data = await graphql<Server>(page, 'query($v: UUID!) { expenses(vehicleId: $v) { amount } vehicleTyres(vehicleId: $v) { entries { kind } } }', { v: vehicle.id })
+        return [data.expenses.map((e) => e.amount), data.vehicleTyres.entries.filter((e) => e.kind === 'WHEEL_BALANCING').length]
+      },
+      { timeout: 60_000 },
+    )
+    .toEqual([[9_000], 0])
+  expect((await graphql<{ parkedChanges: unknown[] }>(page, '{ parkedChanges { id } }')).parkedChanges).toEqual([])
+})
+
 test('a swap made offline from the home card hides its row at once, and reaches the server once it is back (#292)', async ({ page, context }) => {
   test.setTimeout(120_000)
   await signInAsNewUser(page)

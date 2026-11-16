@@ -50,18 +50,23 @@ export function useDescribed(changes: readonly Change[], version: unknown): Wait
   return groups
 }
 
-async function describe(changes: readonly Change[]): Promise<WaitingGroup[]> {
+/**
+ * Names changes from what the device holds, grouped by vehicle (`useDescribed` for a screen; the edit's confirmation asks it at once, #330).
+ * `among` are the changes a name may come from, when only some of them are asked for: a set, a schedule or a vehicle added here is named
+ * by its own change, so a few of the changes waiting are named as the page names them only among all of them.
+ */
+export async function describe(changes: readonly Change[], among: readonly Change[] = changes): Promise<WaitingGroup[]> {
   const rows = await deviceData.rows()
   const vehicles = new Map((rows ? await rows.vehicles() : []).map((v) => [v.id, v]))
   const names = new Map<string, string>([...vehicles].map(([id, v]) => [id, v.name]))
-  for (const c of changes) if (c.entity === 'vehicles' && c.input?.name) names.set(c.targetId, String(c.input.name))
+  for (const c of among) if (c.entity === 'vehicles' && c.input?.name) names.set(c.targetId, String(c.input.name))
 
   const schedules = new Map<string, string>()
   for (const vehicleId of new Set(changes.filter((c) => c.entity === 'recurring').map((c) => c.vehicleId))) {
     const kept = (await deviceData.read(snapshotKey('RecurringExpenses', { vehicleId })))?.data as { vehicle?: { recurring?: { id: string; title: string }[] } } | undefined
     for (const s of kept?.vehicle?.recurring ?? []) schedules.set(s.id, s.title)
   }
-  for (const c of changes) if (c.entity === 'recurring' && c.input?.title && c.action !== 'markDone') schedules.set(c.targetId, String(c.input.title))
+  for (const c of among) if (c.entity === 'recurring' && c.input?.title && c.action !== 'markDone') schedules.set(c.targetId, String(c.input.title))
 
   // Tyre changes are named by their set (#287): from the kept answer of the Tyres tab, a set added here by its own change; an installation's
   // and a tyre log line's by the set they belong to (#288). An answer an older build kept (#288: its sets have stretches, no installations,
@@ -93,7 +98,7 @@ async function describe(changes: readonly Change[]): Promise<WaitingGroup[]> {
     }
     for (const e of kept?.vehicleTyres?.entries ?? []) if (e.setId) installationSet.set(e.id, e.setId)
   }
-  for (const c of changes) {
+  for (const c of among) {
     if (c.action === 'addTyreSet' || c.action === 'updateTyreSet') tyreSets.set(String(c.input?.id), String(c.input?.name))
     for (const id of createdBy(c)) if (typeof c.input?.setId === 'string') installationSet.set(id, c.input.setId)
     if (c.action === 'addTyreSet' && typeof c.input?.installationId === 'string') installationSet.set(c.input.installationId, String(c.input.id))
@@ -151,7 +156,7 @@ async function describe(changes: readonly Change[]): Promise<WaitingGroup[]> {
   for (const item of items) {
     const id = item.change.vehicleId
     const vehicle = vehicles.get(id) as { units?: { volume?: string; distance?: string } } | undefined
-    const added = changes.find((c) => c.entity === 'vehicles' && c.action === 'add' && c.targetId === id)?.input?.units as { volume?: string; distance?: string } | undefined
+    const added = among.find((c) => c.entity === 'vehicles' && c.action === 'add' && c.targetId === id)?.input?.units as { volume?: string; distance?: string } | undefined
     const group = groups.get(id) ?? {
       vehicleId: id,
       vehicleName: names.get(id) ?? null,

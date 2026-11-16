@@ -22,6 +22,7 @@ import { canEdit } from '../offline/changes.ts'
 import { EditChange } from './sync/EditChange.tsx'
 import { FoundOnDevice } from './sync/FoundOnDevice.tsx'
 import { ParkedAccount, ParkedActions } from './sync/ParkedDecision.tsx'
+import { useChangeLabel } from './sync/useChangeLabel.ts'
 import type { Units } from './sync/useFieldText.ts'
 
 /**
@@ -193,22 +194,11 @@ function Item({
 }) {
   const { t } = useTranslation()
   const reasonText = useReasonText()
+  const changeLabel = useChangeLabel()
   const format = useFormat()
   const client = useApolloClient()
   const { change } = item
-  // Every entity and action a change can have has its text (a schedule is deleted, not trashed; only schedules are marked done).
-  const kind: string = t(`sync.kinds.${change.entity}.${change.action}` as 'sync.kinds.refuelings.add')
-
-  // What the change carries (or what it changes), in a line: "1 Sep 2026 · 40 L · €60.00", "Oil change · €35.00", "Golf".
-  const money = (amount: number | null | undefined) => (amount != null && item.currency ? format.money(amount, item.currency) : null)
-  const parts = [
-    item.date ? format.date(item.date) : null,
-    item.name ?? item.title ?? null,
-    item.titles?.filter(Boolean).length ? format.list(item.titles.filter(Boolean)) : null,
-    item.volume != null && units.volume ? format.volume(item.volume, units.volume) : null,
-    money(item.totalCost) ?? money(item.amount),
-  ].filter((p): p is string => !!p)
-  const label = parts.length ? `${kind}, ${parts.join(', ')}` : kind
+  const { kind, parts, label } = changeLabel(item, units)
   // An edit of what is in the trash now, or gone, is not applied as edited: it comes back with its change, or is discarded.
   const editableAsParked = (p: Parked) => !['trashedMeanwhile', 'gone'].includes(situationOf(change, p.current, p.reason?.key) ?? '')
 

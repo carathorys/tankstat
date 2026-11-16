@@ -114,8 +114,20 @@ export async function unblockAdd(id: string, device: typeof deviceData = deviceD
   await device.keep(PARKED_ADDS_KEY, (await parkedAdds(device)).filter((kept) => kept !== id))
 }
 
-/** What a change needs the server to have first: the vehicle it was made on, or the schedule it changes or marks done, when added here. */
-const needs = (c: Change): string[] => [c.vehicleId, ...(c.entity === 'recurring' ? [c.targetId, ...(c.targetIds ?? [])] : []), ...tyreNeedsOf(c)]
+/**
+ * What a change needs the server to have first: the vehicle it was made on, the schedule it changes or marks done, or the expense it
+ * changes (a visit waiting here logs one, #330), when made here.
+ */
+export const needs = (c: Change): string[] => [
+  c.vehicleId,
+  ...(c.entity === 'recurring' ? [c.targetId, ...(c.targetIds ?? [])] : []),
+  ...(c.entity === 'expenses' && c.action !== 'add' ? [c.targetId] : []),
+  ...(c.after ? [c.after] : []), // the change it follows (#330: a trash after its expense's edit)
+  ...tyreNeedsOf(c),
+]
+
+/** What a change gives the ones after it to wait for: what it creates, and itself (a change that follows it names its id). */
+const gives = (c: Change): string[] => [c.id, ...createdBy(c)]
 
 /**
  * The order the server gets the changes in: the vehicles added here first (everything else may be made on them), then the rest as it was
@@ -135,7 +147,7 @@ export function batches(changes: readonly Change[], size = CHUNK_SIZE): Change[]
       addsIn.clear()
     }
     current.push(change)
-    for (const id of createdBy(change)) addsIn.add(id)
+    for (const id of gives(change)) addsIn.add(id)
   }
   if (current.length > 0) out.push(current)
   return out
@@ -230,7 +242,7 @@ export function createPushEngine({ client, device = deviceData, pull, chunkSize 
         answered.push(change.id)
         if (result.status === 'PARKED') {
           parked.push({ change, key: result.reason?.key ?? '', args: Object.fromEntries((result.reason?.args ?? []).map((a) => [a.name, a.value])) })
-          for (const id of createdBy(change)) blocked.add(id)
+          for (const id of gives(change)) blocked.add(id)
         }
       }
     }

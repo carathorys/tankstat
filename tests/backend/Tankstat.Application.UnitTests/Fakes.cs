@@ -57,6 +57,19 @@ internal static class Fake
         items.Add(item);
         return true;
     }
+
+    private static readonly System.Reflection.MethodInfo Clone = typeof(object).GetMethod("MemberwiseClone", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+
+    /// <summary>A shallow copy of a row, as a database keeps it apart from the objects a service changes.</summary>
+    public static T Copy<T>(T item) where T : class => (T)Clone.Invoke(item, null)!;
+
+    /// <summary>Puts every field of <paramref name="from"/> into <paramref name="into"/>: a row the service holds back to what was saved.</summary>
+    public static void CopyInto<T>(T from, T into) where T : class
+    {
+        for (var type = typeof(T); type is not null; type = type.BaseType)
+            foreach (var field in type.GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly))
+                field.SetValue(into, field.GetValue(from));
+    }
 }
 
 internal sealed class InMemoryVehicles : IVehicleRepository
@@ -204,10 +217,37 @@ internal sealed class InMemoryRecurring(InMemoryVehicles vehicles) : IRecurringE
     public Task<IReadOnlyList<RecurringExpense>> FindManyAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<RecurringExpense>>(Items.Where(i => ids.Contains(i.Id)).ToList());
     public bool LoseNextAdd { get; set; }
-    public Task<bool> AddAsync(RecurringExpense item, CancellationToken ct) => Task.FromResult(Fake.AddOnce(Items, item, i => i.Id, LoseNextAdd && !(LoseNextAdd = false)));
-    /// <summary>When set, <see cref="UpdateAsync"/> and <see cref="CompleteAsync"/> throw it (a failing database).</summary>
+    public Task<bool> AddAsync(RecurringExpense item, CancellationToken ct)
+    {
+        var added = Fake.AddOnce(Items, item, i => i.Id, LoseNextAdd && !(LoseNextAdd = false));
+        if (added) Keep([item]);
+        return Task.FromResult(added);
+    }
+
+    /// <summary>
+    /// The schedules as last saved. The rows are shared with the services, which change them before they save; a failed save puts them back,
+    /// as a database that never wrote them (#330: a failed visit leaves its schedules where they were).
+    /// </summary>
+    private readonly Dictionary<Guid, RecurringExpense> saved = [];
+    private void Keep(IEnumerable<RecurringExpense> items)
+    {
+        foreach (var item in items) saved[item.Id] = Fake.Copy(item);
+    }
+    private Task Failed(IEnumerable<RecurringExpense> items, Exception e)
+    {
+        foreach (var item in items)
+            if (saved.TryGetValue(item.Id, out var before)) Fake.CopyInto(before, item);
+        return Task.FromException(e);
+    }
+
+    /// <summary>When set, <see cref="UpdateAsync"/> and <see cref="CompleteAsync"/> throw it (a failing database), the rows put back as last saved.</summary>
     public Exception? FailUpdateWith { get; set; }
-    public Task UpdateAsync(RecurringExpense item, CancellationToken ct) => FailUpdateWith is { } e ? Task.FromException(e) : Task.CompletedTask; // shared references
+    public Task UpdateAsync(RecurringExpense item, CancellationToken ct)
+    {
+        if (FailUpdateWith is { } e) return Failed([item], e);
+        Keep([item]);
+        return Task.CompletedTask;
+    }
     public Task RemoveAsync(RecurringExpense item, CancellationToken ct)
     {
         Items.Remove(item);
@@ -226,16 +266,19 @@ internal sealed class InMemoryRecurring(InMemoryVehicles vehicles) : IRecurringE
         if (TwinCompletesNext && !(TwinCompletesNext = false))
         {
             Completions.AddRange(links);
+            Keep(items); // the twin saved them
             return Task.FromException(new InvalidOperationException("duplicate key"));
         }
         // A twin of a visit without an expense saved the schedules at this visit first: they are saved, this save fails on its version.
         if (TwinSavesSchedulesNext && !(TwinSavesSchedulesNext = false))
         {
             foreach (var item in items) ((Tankstat.Domain.Sync.ISynced)item).Saved();
+            Keep(items); // the twin saved them
             return Task.FromException(new InvalidOperationException("version changed"));
         }
-        if (FailUpdateWith is { } e) return Task.FromException(e); // the schedules share references: their baselines moved anyway, the links did not
+        if (FailUpdateWith is { } e) return Failed(items, e); // neither the baselines nor the links were written
         Completions.AddRange(links);
+        Keep(items);
         return Task.CompletedTask;
     }
     public Task<IReadOnlyList<CompletedSchedule>> ListCompletionsForExpensesAsync(IReadOnlyCollection<Guid> expenseIds, CancellationToken ct) =>

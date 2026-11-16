@@ -2259,7 +2259,18 @@
     "signOutFound_one": "{{count}} bejegyzés, amelyet a szerver visszaállítása után ezen az eszközön találtunk, nincs a szerveren.",
     "signOutFound_other": "{{count}} bejegyzés, amelyet a szerver visszaállítása után ezen az eszközön találtunk, nincs a szerveren.",
     "signOutDeleted": "A kijelentkezés törli mindazt, amit ez az eszköz a fiókodhoz tárol, ezeket is: később már nem küldhetők el.",
-    "signOutFailed": "Ez az eszköz nem tudott kijelentkezni: nem tudja feljegyezni, és a szerver sem érhető el, hogy lezárja a munkamenetet. Semmi sem törlődött. Próbáld újra, amikor a szerver elérhető."
+    "signOutFailed": "Ez az eszköz nem tudott kijelentkezni: nem tudja feljegyezni, és a szerver sem érhető el, hogy lezárja a munkamenetet. Semmi sem törlődött. Próbáld újra, amikor a szerver elérhető.",
+    "leftBehind": {
+      "note_one": "A mentés az eszközön várakozó 1 módosítást is eltávolít: {{list}}.",
+      "note_other": "A mentés az eszközön várakozó {{count}} módosítást is eltávolít: {{list}}.",
+      "noteList_one": "A mentés az eszközön várakozó 1 módosítást is eltávolít:",
+      "noteList_other": "A mentés az eszközön várakozó {{count}} módosítást is eltávolít:",
+      "confirmTitle_one": "Ezt a módosítást is eltávolítod?",
+      "confirmTitle_other": "Ezeket a módosításokat is eltávolítod?",
+      "cannotBack_one": "Nem hozható vissza.",
+      "cannotBack_other": "Nem hozhatók vissza.",
+      "saveAndRemove": "Mentés és eltávolítás"
+    }
   },
   "setup": {
     "title": "A Tankstat beállítása",

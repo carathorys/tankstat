@@ -367,6 +367,44 @@ it('Edit and apply, on a visit the server parked for its tyre details (#290, dec
   expect(sent[0].change.markRecurringExpensesDone).not.toHaveProperty('photoIds')
 })
 
+it("Edit and apply, on a parked visit whose tyre details are switched off, says and asks what goes of the changes waiting on its line, and removes them once applied (#330)", async () => {
+  await downloaded()
+  connectivity.reset()
+  const row = parkedRow('c9', 'MARK_RECURRING_EXPENSES_DONE', {
+    id: 'c9', markRecurringExpensesDone: {
+      ids: ['s-v1'], date: '2026-09-25', odometer: 1500, amount: 250, currency: 'EUR', title: 'Insurance', category: 'Fees', expenseId: 'e9',
+      tyre: { kind: 'WHEEL_BALANCING', setId: 's1', lineId: 'l9' },
+    },
+  }, 'tyres.setNotFound', { targetId: 'e9' })
+  let parked = [row]
+  server.use(
+    ...fakeTyres([tyreSummer, tyreWinter]).handlers,
+    ...fakeRecurringBackend([fakeRecurring({ id: 's-v1', title: 'Insurance', category: 'Fees' })]).handlers,
+    graphql.query('LogDefaults', () => HttpResponse.json({ data: { logDefaults: { __typename: 'LogDefaults', lastOdometer: 1500, lastDate: '2026-09-20', currency: 'EUR' } } })),
+    graphql.query('ExpenseCategories', () => HttpResponse.json({ data: { expenseCategories: ['Fees'] } })),
+    graphql.query('ParkedChanges', () => HttpResponse.json({ data: { parkedChanges: parked } })),
+    graphql.mutation('ResolveSyncChange', () => {
+      parked = []
+      return HttpResponse.json({ data: { resolveSyncChange: { ...row, status: 'APPLIED' } } })
+    }),
+  )
+  // Made on its line here after the visit, held back while it is parked.
+  await outbox.enqueue({ id: 'u9', entity: 'tyres', action: 'updateTyreEntry', vehicleId: 'v1', targetId: 'l9', input: { id: 'l9', kind: 'VALVE_REPLACED', day: '2026-09-25', setId: 's1' } })
+  renderWithApollo(<App />, '/sync')
+  const ui = userEvent.setup()
+
+  await ui.click(await screen.findByRole('button', { name: /^Edit and apply: Marked as done/ }, { timeout: 10_000 }))
+  const dialog = await screen.findByRole('dialog', { name: 'Edit and apply the change' })
+  await within(dialog).findByRole('group', { name: 'Tyre details' })
+  await ui.click(within(dialog).getByRole('switch', { name: 'Tyre details' }))
+  expect(await within(dialog).findByText(/^Saving also removes 1 change waiting on this device: Changed line in the tyre log/)).toBeInTheDocument()
+  await ui.click(within(dialog).getByRole('button', { name: 'Apply' }))
+  await ui.click(within(await screen.findByRole('alertdialog', { name: 'Remove this change too?' })).getByRole('button', { name: 'Save and remove' }))
+
+  expect(await screen.findByText('Applied.')).toBeInTheDocument()
+  await waitFor(() => expect(outbox.changes).toEqual([]))
+})
+
 it('Edit, on an add whose amounts wait for its kept photos, saves without them', async () => {
   await downloaded()
   await outbox.enqueue({ id: 'n1', entity: 'refuelings', action: 'add', vehicleId: 'v1', targetId: 'n1', input: { id: 'n1', vehicleId: 'v1', date: '2026-10-05', volume: null, totalCost: null, currency: 'EUR', odometer: null, isFullTank: true, missedPreviousFillUp: false, note: null, photoIds: ['local:kept'] } })

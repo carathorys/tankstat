@@ -1,18 +1,24 @@
 import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
 import Button from '@mui/material/Button'
+import Typography from '@mui/material/Typography'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { ChangeEdit, MergeInfo } from '../../dialogs/changeEdit.ts'
+import { ConfirmDialog } from '../../components/ConfirmDialog.tsx'
+import { SaveCancelled, type ChangeEdit, type MergeInfo } from '../../dialogs/changeEdit.ts'
+import { useLeftBehindLabels } from '../../dialogs/leftBehindLabels.ts'
+import { LeftBehindList } from '../../dialogs/LeftBehindNote.tsx'
 import { ExpenseFormDialog, type ExpenseValues } from '../../ExpenseFormDialog.tsx'
 import { RecurringExpensesDocument, ResolveSyncChangeDocument, type DistanceUnit, type ParkedChangeFieldsFragment, type VolumeUnit } from '../../gql/generated.ts'
-import { keptPhotosOf, type Change } from '../../offline/changes.ts'
+import { createdBy, editLeavesBehind, keptPhotosOf, type Change } from '../../offline/changes.ts'
 import { currentValues, merge, situationOf, type Current } from '../../offline/conflicts.ts'
 import { outbox } from '../../offline/outbox.ts'
-import { toChangeInput } from '../../offline/push.ts'
+import { toChangeInput, unblockAdd } from '../../offline/push.ts'
 import { uuidV4 } from '../../offline/uuid.ts'
 import { RecurringDoneDialog, type DoneValues } from '../../RecurringDoneDialog.tsx'
 import { RecurringFormDialog, type RecurringValues } from '../../RecurringFormDialog.tsx'
 import { RefuelingFormDialog, type RefuelingValues } from '../../RefuelingFormDialog.tsx'
 import { VehicleFormDialog, type VehicleValues } from '../../VehicleFormDialog.tsx'
+import { useFormat } from '../../i18n/format.ts'
 import { useFieldText } from './useFieldText.ts'
 
 type Values = RefuelingValues | ExpenseValues | VehicleValues | RecurringValues | DoneValues
@@ -43,14 +49,36 @@ export function EditChange({
   const client = useApolloClient()
   const [resolve] = useMutation(ResolveSyncChangeDocument)
   const fields = useFieldText(units)
+  const format = useFormat()
+  const labelsOf = useLeftBehindLabels()
+  // The confirmation of an edit that leaves changes behind (#330): open while Save waits for the answer.
+  const [asking, setAsking] = useState<{ labels: string[]; open: boolean } | null>(null)
+  const answer = useRef<(yes: boolean) => void>(() => undefined)
 
   const visit = change.action === 'markDone'
+  // The values replace the change's own (the add's id and vehicle stay); photos are never part of an edit. A visit (#290, decision 71)
+  // has no id of its own to keep, and a waiting one keeps its kept photos; a parked one has none (the server keeps none of a change).
+  const inputOf = (values: Record<string, unknown>) =>
+    visit ? { ...change.input, ...values, photoIds: parked ? undefined : change.input?.photoIds } : { ...change.input, ...values, id: change.targetId, photoIds: undefined }
+  // The changes waiting here that saving these values would remove (#330), against the change as kept now (another tab may have folded
+  // an edit into it); a parked one is not kept here.
+  const leftBehind = (values: Record<string, unknown>) => {
+    const kept = parked ? change : (outbox.changes.find((c) => c.id === change.id) ?? change)
+    return editLeavesBehind(outbox.changes, kept, inputOf(values), !!parked)
+  }
+
   const save = async (values: Values) => {
-    // The values replace the change's own (the add's id and vehicle stay); photos are never part of an edit. A visit (#290, decision 71)
-    // has no id of its own to keep, and a waiting one keeps its kept photos; a parked one has none (the server keeps none of a change).
-    const input = visit
-      ? { ...change.input, ...values, photoIds: parked ? undefined : change.input?.photoIds }
-      : { ...change.input, ...values, id: change.targetId, photoIds: undefined }
+    const input = inputOf(values as unknown as Record<string, unknown>)
+    // Save decides, whatever the note said: asked when something would go, nothing saved on Cancel.
+    const behind = leftBehind(values as unknown as Record<string, unknown>)
+    if (behind.length > 0) {
+      const labels = await labelsOf(behind)
+      const yes = await new Promise<boolean>((resolve) => {
+        answer.current = resolve
+        setAsking({ labels, open: true })
+      })
+      if (!yes) throw new SaveCancelled()
+    }
     if (!parked && visit) {
       // Visits never fold: the edit takes the waiting visit's place (its id, order and kept photos stay).
       await outbox.replaceInput(change.id, input, (values as DoneValues).ids)
@@ -82,6 +110,12 @@ export function EditChange({
       void client.refetchQueries({ include: ['ParkedChanges'] }).catch(() => undefined) // its new reason
       throw error
     }
+    // What still waits here on what it no longer makes goes (#330), as it would have from a waiting one.
+    await outbox.dropDependents(change, { ...change, input }).catch(() => undefined)
+    // Applied: what was made on it here (an add, a visit's expense and lines, #330) may go to the server now, as after Apply anyway.
+    void (async () => {
+      for (const id of new Set([parked.id, parked.targetId ?? '', ...createdBy(change), ...createdBy({ ...change, input })])) await unblockAdd(id) // one at a time: each rewrites the list
+    })().catch(() => undefined)
     void client.refetchQueries({ include: 'active' }).catch(() => undefined)
     onDone(t('sync.appliedNow'))
   }
@@ -99,6 +133,7 @@ export function EditChange({
         mayWait: !parked && (change.action === 'add' || visit) && keptPhotosOf(change).length > 0,
         targetId: change.targetId,
         parked: !!parked,
+        leftBehind,
       }
   const trigger = merging ? (
     <Button variant="soft" size="large" disabled={disabled} aria-label={t('sync.merge.openAria', { change: label })}>
@@ -110,21 +145,60 @@ export function EditChange({
     </Button>
   )
   const vehicle = { id: change.vehicleId, units }
-
-  switch (change.entity) {
-    case 'refuelings':
-      return <RefuelingFormDialog trigger={trigger} vehicle={vehicle} change={edit} onSubmit={save} />
-    case 'expenses':
-      return <ExpenseFormDialog trigger={trigger} vehicle={vehicle} change={edit} onSubmit={save} />
-    case 'vehicles':
-      return <VehicleFormDialog trigger={trigger} change={edit} onSubmit={save} />
-    case 'recurring':
-      return visit ? (
-        <VisitEdit trigger={trigger} vehicle={vehicle} edit={edit} onSubmit={save} />
-      ) : (
-        <RecurringFormDialog trigger={trigger} vehicleId={change.vehicleId} unit={units.distance} change={edit} onSubmit={save} />
-      )
+  const decide = (yes: boolean) => {
+    answer.current(yes)
+    answer.current = () => undefined
   }
+  // Save and remove answers yes before the confirmation is gone; once it is gone without that (Cancel, Escape), the answer is no.
+  const confirmation = asking && (
+    <ConfirmDialog
+      open={asking.open}
+      onOpenChange={(open) => setAsking((a) => a && { ...a, open })}
+      onClosed={() => {
+        decide(false)
+        setAsking(null)
+      }}
+      title={t('sync.leftBehind.confirmTitle', { count: asking.labels.length })}
+      // The note's sentence, then that they cannot be brought back (the owner's decision 6); from three on the list comes between them.
+      description={
+        asking.labels.length < 3
+          ? `${t('sync.leftBehind.note', { count: asking.labels.length, list: format.list(asking.labels) })} ${t('sync.leftBehind.cannotBack', { count: asking.labels.length })}`
+          : t('sync.leftBehind.noteList', { count: asking.labels.length })
+      }
+      confirmLabel={t('sync.leftBehind.saveAndRemove')}
+      onConfirm={() => decide(true)}
+    >
+      {asking.labels.length >= 3 && (
+        <>
+          <LeftBehindList labels={asking.labels} />
+          <Typography variant="body2">{t('sync.leftBehind.cannotBack', { count: asking.labels.length })}</Typography>
+        </>
+      )}
+    </ConfirmDialog>
+  )
+
+  const dialog = (() => {
+    switch (change.entity) {
+      case 'refuelings':
+        return <RefuelingFormDialog trigger={trigger} vehicle={vehicle} change={edit} onSubmit={save} />
+      case 'expenses':
+        return <ExpenseFormDialog trigger={trigger} vehicle={vehicle} change={edit} onSubmit={save} />
+      case 'vehicles':
+        return <VehicleFormDialog trigger={trigger} change={edit} onSubmit={save} />
+      case 'recurring':
+        return visit ? (
+          <VisitEdit trigger={trigger} vehicle={vehicle} edit={edit} onSubmit={save} />
+        ) : (
+          <RecurringFormDialog trigger={trigger} vehicleId={change.vehicleId} unit={units.distance} change={edit} onSubmit={save} />
+        )
+    }
+  })()
+  return (
+    <>
+      {dialog}
+      {confirmation}
+    </>
+  )
 }
 
 /** A visit's edit (#290, decision 71): the Done dialog over the vehicle's schedules (kept on the device), the visit's ticked. */

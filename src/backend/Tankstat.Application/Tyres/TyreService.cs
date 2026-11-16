@@ -727,6 +727,18 @@ public sealed class TyreService(
             if (await tyres.FindEntryAsync(id, ct) is { IsDeleted: false }) await TrashEntryAsync(id, ct, withExpense: false);
     }
 
+    /// <summary>
+    /// Of the given lines, those on the vehicle made by <paramref name="creatorId"/>, each with whether it is live (#330: what tells a visit
+    /// without an expense it was recorded, and which lines a failed try may take back). The caller checked the access to the vehicle.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<Guid, bool>> LineStatesAsync(Guid vehicleId, Guid creatorId, IReadOnlyList<Guid> lineIds, CancellationToken ct)
+    {
+        var states = new Dictionary<Guid, bool>();
+        foreach (var id in lineIds.Distinct())
+            if (await tyres.FindEntryAsync(id, ct) is { } line && line.VehicleId == vehicleId && line.CreatedById == creatorId) states[id] = !line.IsDeleted;
+        return states;
+    }
+
     /// <summary>The lines a failed visit took back (#290), brought back by its try again; live ones and unknown ids are left alone.</summary>
     public async Task RestoreTakenBackAsync(IReadOnlyList<Guid> lineIds, CancellationToken ct)
     {

@@ -167,6 +167,20 @@ public sealed class RecurringExpenseService(
             return await CurrentAsync(found, vehicleId, await expenses.FindAsync(expenseId, ct), ct);
         }
 
+        // Without an expense (no amount, no photos) nothing links the visit to its schedules, so what is there tells whether it was recorded
+        // (#330): every line it names (by the ids the client gave) is on this vehicle by this person, live or in the trash, and every schedule
+        // stands at its day (and odometer, when given). The same request again then changes nothing, as with an expense: a line the person
+        // trashed since stays there. A failed first try left the schedules where they were, so it is never read as recorded.
+        var withExpense = input.Amount is not null || input.PhotoIds is { Count: > 0 };
+        var givenIds = !withExpense && input.Tyre is { } named ? GivenLineIds(named) : null;
+        var linesBefore = givenIds is { Count: > 0 } ? await tyres.LineStatesAsync(vehicleId, creator.Id, givenIds, ct) : null;
+        if (linesBefore is not null && linesBefore.Count == givenIds!.Count
+            && found.All(i => i.LastDoneDate == input.Date && (input.Odometer is null || i.LastDoneOdometer == input.Odometer)))
+        {
+            logger.LogDebug("Recurring expenses {RecurringIds} of vehicle {VehicleId} were already marked done with tyre log lines {EntryIds}; the request came again", wanted, vehicleId, linesBefore.Keys);
+            return await CurrentAsync(found, vehicleId, null, ct);
+        }
+
         CheckDate(input.Date);
         Cost.RequireAmountForDiscount(input.Amount, input.Discount); // before anything moves: a discount without the amount it was taken off
         foreach (var item in found) item.CheckDone(input.Date, input.Odometer); // every schedule's own rules first: nothing is logged for a day one would refuse
@@ -174,7 +188,6 @@ public sealed class RecurringExpenseService(
         // Tyre details (#290) name their lines here, so a failure below can take them back and a try again finds them.
         var tyre = input.Tyre is { } given ? WithLineIds(given) : null;
         var lineIds = tyre is null ? [] : LineIdsOf(tyre);
-        var withExpense = input.Amount is not null || input.PhotoIds is { Count: > 0 };
         var logged = withExpense
             ? await expenses.AddAsync(vehicleId, new ExpenseInput(
                 input.Date, input.Title ?? RecurringDoneDefaults.Title(found), input.Category ?? RecurringDoneDefaults.Category(found),
@@ -217,7 +230,10 @@ public sealed class RecurringExpenseService(
             // The expense and the schedules are saved separately, so undo the expense (to the trash) when the schedules could not move on:
             // they are then still due, and a second try does not log the cost twice. Its tyre lines go too, or the lines made without one.
             if (logged is not null) await TryTrashAsync(logged.Id, wanted);
-            if (lineIds.Count > 0) await TryTakeBackLinesAsync(lineIds, wanted);
+            // Without an expense only the lines this request made or brought back go: one live before it (a visit recorded earlier whose
+            // schedules were moved since) is not its to take back. With one, the lines go with the expense, as they came.
+            var ownLines = logged is not null || linesBefore is null ? lineIds : [.. lineIds.Where(id => !linesBefore.GetValueOrDefault(id))];
+            if (ownLines.Count > 0) await TryTakeBackLinesAsync(ownLines, wanted);
             throw;
         }
         logger.LogDebug("User {UserId} marked recurring expenses {RecurringIds} of vehicle {VehicleId} done (expense logged: {ExpenseId})", creator.Id, wanted, vehicleId, logged?.Id);
@@ -261,6 +277,11 @@ public sealed class RecurringExpenseService(
     private static ExpenseTyreDetails WithLineIds(ExpenseTyreDetails tyre) => tyre.Tyres is { Count: > 0 } picked
         ? tyre with { Tyres = [.. picked.Select(t => t with { Id = t.Id ?? Guid.NewGuid() })] }
         : tyre with { LineId = tyre.LineId ?? Guid.NewGuid() };
+
+    /// <summary>The line ids the client gave, every one of them; null when the server would choose any (those are never recognised).</summary>
+    private static IReadOnlyList<Guid>? GivenLineIds(ExpenseTyreDetails tyre) => tyre.Tyres is { Count: > 0 } picked
+        ? picked.All(t => t.Id is not null) ? [.. picked.Select(t => t.Id!.Value)] : null
+        : tyre.LineId is { } id ? [id] : null;
 
     private static IReadOnlyList<Guid> LineIdsOf(ExpenseTyreDetails tyre) =>
         tyre.Tyres is { Count: > 0 } picked ? [.. picked.Select(t => t.Id!.Value)] : [tyre.LineId!.Value];

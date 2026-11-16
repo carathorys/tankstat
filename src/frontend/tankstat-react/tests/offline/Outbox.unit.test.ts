@@ -135,3 +135,27 @@ it('refuses to edit in place a visit no longer waiting here, keyed so the dialog
   await expect(outbox.replaceInput('m1', { amount: 20 }, ['s1'])).rejects.toMatchObject({ key: 'sync.notFound' })
   await expect(outbox.replaceInput('gone', { amount: 20 })).rejects.toMatchObject({ key: 'sync.notFound' })
 })
+
+describe("a visit's edit that leaves changes behind (#330)", () => {
+  const editOfExpense = (id: string, expenseId: string): ChangeDraft => ({ id, entity: 'expenses', action: 'update', vehicleId: 'v1', targetId: expenseId, input: { id: expenseId, note: 'x' } })
+
+  it('replacing its input removes, in the same write, the changes made on the expense it no longer logs', async () => {
+    await outbox.enqueue(visit('m1', 'e1', ['s1'], { amount: 30, currency: 'EUR' }))
+    await outbox.enqueue(editOfExpense('x1', 'e1'))
+    await outbox.enqueue(log('r1'))
+
+    await outbox.replaceInput('m1', { ids: ['s1'], expenseId: 'e1', amount: null }, ['s1'])
+
+    expect(outbox.changes.map((c) => c.id)).toEqual(['m1', 'r1'])
+    expect(await (await deviceData.rows())!.changes()).toHaveLength(2) // written as one
+  })
+
+  it('a parked visit applied with such an edit drops what still waits here on its expense', async () => {
+    await outbox.enqueue(editOfExpense('x1', 'e1'))
+    const parked = { ...visit('m1', 'e1', ['s1'], { amount: 30 }), seq: 0, createdAt: 0 }
+
+    await outbox.dropDependents(parked, { ...parked, input: { ...parked.input, amount: null } })
+
+    expect(outbox.changes).toEqual([])
+  })
+})

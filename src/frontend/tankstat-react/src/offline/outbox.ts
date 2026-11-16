@@ -1,5 +1,5 @@
 import { useMemo, useSyncExternalStore } from 'react'
-import { collapse, discard, keptPhotosOf, markOf, type Change, type ChangeEntity, type PendingMark } from './changes.ts'
+import { collapse, dependentsOf, discard, keptPhotosOf, markOf, type Change, type ChangeEntity, type PendingMark } from './changes.ts'
 import { deviceData } from './deviceData.ts'
 import type { RowStore } from './deviceStorage.ts'
 import { isTyreAction, tyreFeeExpense } from './tyreChanges.ts'
@@ -132,7 +132,25 @@ export const outbox = {
       const found = changes.find((c) => c.id === id)
       // Sent meanwhile (a sync took it while its Edit was open) or gone: said in the person's language (`errors.sync.notFound`).
       if (!found || found.sent) throw new ApiError('sync.notFound', {}, `The change ${id} is no longer waiting on this device.`, 409)
-      const next = changes.map((c) => (c.id === id ? { ...c, input, ...(targetIds ? { targetIds } : {}) } : c))
+      const edited = { ...found, input, ...(targetIds ? { targetIds } : {}) }
+      // What was made on what it no longer makes goes in the same write (#330), worked out from the changes as they are now.
+      const gone = new Set(dependentsOf(changes, found, edited).map((c) => c.id))
+      const next = changes.flatMap((c) => (c.id === id ? [edited] : gone.has(c.id) ? [] : [c]))
+      await persist(changes, next)
+      changes = next
+      changed()
+    })
+  },
+
+  /**
+   * A parked change applied with an edit (#330): the changes still waiting here that were made on what it no longer makes go, as they
+   * would have from a waiting one; the server could only park them as not found.
+   */
+  dropDependents(before: Change, after: Change): Promise<void> {
+    return exclusive(async () => {
+      const gone = new Set(dependentsOf(changes, before, after).map((c) => c.id))
+      if (gone.size === 0) return
+      const next = changes.filter((c) => !gone.has(c.id))
       await persist(changes, next)
       changes = next
       changed()

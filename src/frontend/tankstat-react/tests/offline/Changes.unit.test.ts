@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { collapse, createdBy, discard, keptPhotosOf, markOf, tyreNeedsOf, type Change } from '../../src/offline/changes.ts'
+import { collapse, createdBy, dependentsOf, discard, keptPhotosOf, markOf, tyreNeedsOf, type Change } from '../../src/offline/changes.ts'
 
 let seq = 0
 const change = (action: Change['action'], targetId = 'r1', over: Partial<Change> = {}): Change => ({
@@ -200,6 +200,18 @@ describe('vehicles, schedules and visits', () => {
     expect(after[0]).toMatchObject({ action: 'markDone', targetIds: ['s1'], input: { amount: null, photoIds: null } })
   })
 
+  it('a visit with photos and no amount logs an expense too: it makes it, and taken back takes its changes along (#330)', () => {
+    const photosOnly = change('markDone', 'e2', { entity: 'recurring', targetIds: ['s1'], input: { ids: ['s1'], expenseId: 'e2', amount: null, photoIds: ['local:p'] } })
+    const plain = change('markDone', 'e3', { entity: 'recurring', targetIds: ['s1'], input: { ids: ['s1'], amount: null, photoIds: [] } })
+    expect(createdBy(photosOnly)).toEqual(['e2'])
+    expect(createdBy(plain)).toEqual([]) // logs no expense: its id is its own, made on by nothing
+
+    const list = fold(photosOnly, ofExpense('update', 'e2', { input: { id: 'e2', note: 'x' } }), ofExpense('trash', 'e7'))
+    expect(discard(list, photosOnly.id).map((c) => c.targetId)).toEqual(['e7'])
+    // Its expense trashed while it waits: the visit logs none, as one with an amount.
+    expect(collapse(fold(photosOnly), ofExpense('trash', 'e2'))).toEqual([expect.objectContaining({ action: 'markDone', input: expect.objectContaining({ photoIds: null }) })])
+  })
+
   it('a visit taken back takes what was made to its expense along', () => {
     const list = fold(paidVisit('e1'), ofExpense('update', 'e1', { input: { id: 'e1', note: 'x' } }), ofExpense('trash', 'e7'))
     const after = discard(list, list[0].id)
@@ -310,6 +322,58 @@ describe("an expense's tyre details (#290)", () => {
 })
 
 
+describe("an expense's tyre details, then its trash (#330)", () => {
+  const giving = change('update', 'e1', { entity: 'expenses', expectedVersion: 2, input: { id: 'e1', title: 'Puncture', amount: 25, tyre: { kind: 'PUNCTURE_REPAIRED', setId: 's1', lineId: 'l8' } } })
+  const onLine = change('updateTyreEntry', 'l8', { entity: 'tyres', input: { id: 'l8', kind: 'VALVE_REPLACED', day: '2026-10-01' } })
+
+  it('an edit that gives a plain expense its lines stays: the line, edited, and then the trash, without a version, in that order', () => {
+    const list = fold(giving, onLine, change('trash', 'e1', { entity: 'expenses', expectedVersion: 2 }))
+    expect(list.map((c) => [c.entity, c.action, c.targetId])).toEqual([['expenses', 'update', 'e1'], ['tyres', 'updateTyreEntry', 'l8'], ['expenses', 'trash', 'e1']])
+    expect(list[0]).toMatchObject({ expectedVersion: 2, input: { tyre: { lineId: 'l8' } } })
+    expect(list[2].expectedVersion).toBeNull() // the edit and the line's change move its version
+    expect(list[2].input).toBeUndefined() // nothing to give back: the edit is still there
+
+    expect(discard(list, list[2].id)).toEqual(list.slice(0, 2)) // taken back, only the trash goes
+    expect(collapse(list, change('restore', 'e1', { entity: 'expenses' }))).toEqual(list.slice(0, 2))
+  })
+
+  it("the edit that stays beside the trash is still edited on Waiting to sync: the edit folds into it, and what it no longer makes goes", () => {
+    const list = fold(giving, onLine, change('trash', 'e1', { entity: 'expenses', expectedVersion: 2 }))
+    const retitled = collapse(list, change('update', 'e1', { entity: 'expenses', input: { id: 'e1', title: 'Flat', amount: 30, tyre: { kind: 'PUNCTURE_REPAIRED', setId: 's1', lineId: 'l8' } } }))
+    expect(retitled.map((c) => [c.entity, c.action])).toEqual([['expenses', 'update'], ['tyres', 'updateTyreEntry'], ['expenses', 'trash']])
+    expect(retitled[0]).toMatchObject({ id: list[0].id, seq: list[0].seq, expectedVersion: 2, input: { title: 'Flat', amount: 30, tyre: { lineId: 'l8' } } })
+
+    // Its tyre details switched off: the line's change goes with them, and the edit and its trash are one ordinary trash again.
+    const off = collapse(list, change('update', 'e1', { entity: 'expenses', input: { id: 'e1', title: 'Puncture', amount: 25, tyre: null } }))
+    expect(off.map((c) => [c.entity, c.action, c.expectedVersion])).toEqual([['expenses', 'trash', 2]])
+  })
+
+  it('the trash names the edit it follows; the edit taken back, or edited to make no lines, leaves an ordinary trash from its version', () => {
+    const list = fold(giving, change('trash', 'e1', { entity: 'expenses', expectedVersion: 2 }))
+    expect(list[1]).toMatchObject({ action: 'trash', after: giving.id, expectedVersion: null })
+
+    // Remove of the waiting edit on the Sync page: the trash checks the version again, and waits for nothing.
+    const [alone, ...none] = discard(list, giving.id)
+    expect(none).toEqual([])
+    expect(alone).toMatchObject({ action: 'trash', expectedVersion: 2 })
+    expect(alone).not.toHaveProperty('after')
+    expect(alone.input).toBeUndefined() // the edit was taken back: nothing of it comes back with a restore
+
+    // Its Edit switching the tyre details off: an ordinary edit then trash, one trash carrying the edit.
+    const [folded, ...rest] = collapse(list, change('update', 'e1', { entity: 'expenses', input: { id: 'e1', title: 'Puncture', amount: 25, tyre: null } }))
+    expect(rest).toEqual([])
+    expect(folded).toMatchObject({ action: 'trash', expectedVersion: 2, input: { title: 'Puncture', tyre: null } })
+    expect(folded).not.toHaveProperty('after')
+  })
+
+  it('an edit that makes no lines still folds into the trash, as before', () => {
+    const linked = change('update', 'e1', { entity: 'expenses', expectedVersion: 2, input: { id: 'e1', title: 'Valve', tyre: { kind: 'VALVE_REPLACED', setId: 's1' } } })
+    const [only, ...rest] = fold(linked, change('trash', 'e1', { entity: 'expenses', expectedVersion: 2 }))
+    expect(rest).toEqual([])
+    expect(only).toMatchObject({ action: 'trash', expectedVersion: 2, input: linked.input })
+  })
+})
+
 describe("an expense's tyre details replaced or taken back (#290)", () => {
   const picked = { kind: 'PUNCTURE_REPAIRED', setId: 's9', tyres: [{ tyreId: 'nt1', id: 'l1' }], breakUp: { setId: 's9', day: '2026-10-01', tyres: [{ id: 'nt1' }, { id: 'nt2' }] } }
   const expenseAdd = change('add', 'e1', { id: 'e1', entity: 'expenses', input: { id: 'e1', vehicleId: 'v1', date: '2026-10-01', title: 'Puncture', amount: 25, tyre: picked } })
@@ -324,5 +388,55 @@ describe("an expense's tyre details replaced or taken back (#290)", () => {
     const onLine = change('updateTyreEntry', '', { entity: 'tyres', input: { id: 'l1', kind: 'VALVE_REPLACED' } })
     const other = change('updateTyreEntry', '', { entity: 'tyres', input: { id: 'l9', kind: 'VALVE_REPLACED' } })
     expect(fold(expenseAdd, onLine, other, change('trash', 'e1', { entity: 'expenses' }))).toEqual([other])
+  })
+})
+
+describe('what an edit leaves behind (#330)', () => {
+  const visit = (input: Record<string, unknown>) => change('markDone', 'e1', { entity: 'recurring', targetIds: ['s1'], input: { ids: ['s1'], date: '2026-10-01', expenseId: 'e1', ...input } })
+  const ofExpense = change('update', 'e1', { entity: 'expenses', input: { id: 'e1', note: 'x' } })
+  const onLine = (id: string) => change('updateTyreEntry', '', { entity: 'tyres', input: { id, kind: 'VALVE_REPLACED' } })
+  const other = change('trash', 'e9', { entity: 'expenses' })
+
+  it("2a: a visit's amount emptied leaves its expense's changes behind; with kept photos it still logs one", () => {
+    const before = visit({ amount: 30, currency: 'EUR' })
+    expect(dependentsOf([before, ofExpense, other], before, visit({ amount: null }))).toEqual([ofExpense])
+    const withPhotos = visit({ amount: 30, photoIds: ['local:p'] })
+    expect(dependentsOf([withPhotos, ofExpense], withPhotos, visit({ amount: null, photoIds: ['local:p'] }))).toEqual([])
+  })
+
+  it("2b: a visit's tyre details switched off leave its lines' changes behind, and what was made on those", () => {
+    const before = visit({ amount: 30, tyre: { kind: 'WHEEL_BALANCING', setId: 's9', lineId: 'l9' } })
+    const feeOnLine = change('updateTyreEntry', '', { entity: 'tyres', input: { id: 'l9', kind: 'WHEEL_BALANCING', fee: { amount: 3, expenseId: 'fx' } } })
+    expect(dependentsOf([before, onLine('l9'), onLine('l1'), other], before, visit({ amount: 30, tyre: null })).map((c) => c.input?.id)).toEqual(['l9'])
+    expect(dependentsOf([before, feeOnLine], before, visit({ amount: 30 }))).toHaveLength(1)
+  })
+
+  it('a shrunk For leaves only the dropped tyre\'s line behind; a whole set no longer broken up, its tyres too', () => {
+    const two = { kind: 'PUNCTURE_REPAIRED', setId: 's9', tyres: [{ tyreId: 't1', id: 'l1' }, { tyreId: 't2', id: 'l2' }] }
+    const before = visit({ amount: 30, tyre: two })
+    const after = visit({ amount: 30, tyre: { ...two, tyres: [two.tyres[1]] } })
+    expect(dependentsOf([before, onLine('l1'), onLine('l2')], before, after).map((c) => c.input?.id)).toEqual(['l1'])
+
+    const broken = { kind: 'PUNCTURE_REPAIRED', setId: 's9', breakUp: { setId: 's9', day: '2026-10-01', tyres: [{ id: 'n1' }, { id: 'n2' }] }, tyres: [{ tyreId: 'n1', id: 'l1' }] }
+    const labelOfNew = change('updateTyre', '', { entity: 'tyres', input: { id: 'n2', label: 'S9' } })
+    const plain = visit({ amount: 30, tyre: broken })
+    expect(dependentsOf([plain, labelOfNew], plain, visit({ amount: 30, tyre: { kind: 'PUNCTURE_REPAIRED', setId: 's9', lineId: 'l5' } }))).toEqual([labelOfNew])
+  })
+
+  it('2c: the edit of a waiting new expense that switches its tyre details off takes its lines\' changes along, in the fold', () => {
+    const expenseAdd = change('add', 'e1', { id: 'e1', entity: 'expenses', input: { id: 'e1', vehicleId: 'v1', date: '2026-10-01', title: 'Puncture', amount: 25, tyre: { kind: 'PUNCTURE_REPAIRED', setId: 's9', lineId: 'l1' } } })
+    const after = fold(expenseAdd, onLine('l1'), other, change('update', 'e1', { entity: 'expenses', input: { id: 'e1', title: 'Puncture', tyre: null } }))
+    expect(after.map((c) => [c.action, c.targetId])).toEqual([['add', 'e1'], ['trash', 'e9']])
+  })
+
+  it("the same for a waiting edit that gave a plain expense its lines (item 1's kind)", () => {
+    const giving = change('update', 'e1', { entity: 'expenses', expectedVersion: 2, input: { id: 'e1', title: 'Puncture', tyre: { kind: 'PUNCTURE_REPAIRED', setId: 's9', lineId: 'l1' } } })
+    const after = fold(giving, onLine('l1'), change('update', 'e1', { entity: 'expenses', input: { id: 'e1', title: 'Puncture', tyre: null } }))
+    expect(after.map((c) => c.action)).toEqual(['update'])
+  })
+
+  it('an edit that keeps making the same lines leaves nothing behind', () => {
+    const before = visit({ amount: 30, tyre: { kind: 'WHEEL_BALANCING', setId: 's9', lineId: 'l9' } })
+    expect(dependentsOf([before, onLine('l9')], before, visit({ amount: 40, tyre: { kind: 'VALVE_REPLACED', setId: 's9', lineId: 'l9' } }))).toEqual([])
   })
 })
