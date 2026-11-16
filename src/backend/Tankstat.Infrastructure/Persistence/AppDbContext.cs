@@ -10,6 +10,7 @@ using Tankstat.Domain.Notifications;
 using Tankstat.Domain.Odometers;
 using Tankstat.Domain.Recognition;
 using Tankstat.Domain.Recurring;
+using Tankstat.Domain.Runs;
 using Tankstat.Domain.Settings;
 using Tankstat.Domain.Sync;
 using Tankstat.Domain.Users;
@@ -55,6 +56,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         new("sync.versionMismatch", "It was changed meanwhile.", new { Expected = entity.SavedVersion });
 
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
+    public DbSet<RunMarker> RunMarkers => Set<RunMarker>();
     public DbSet<Refueling> Refuelings => Set<Refueling>();
     public DbSet<Expense> Expenses => Set<Expense>();
     public DbSet<RecurringExpense> RecurringExpenses => Set<RecurringExpense>();

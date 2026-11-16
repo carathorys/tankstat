@@ -689,6 +689,52 @@ namespace Tankstat.Migrations.SqlServer
                     b.ToTable("RecurringExpenses", (string)null);
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Runs.RunMarker", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CancelRequestedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CancelRequestedById")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("End")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("StartedById")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EndedAt");
+
+                    b.ToTable("RunMarkers", (string)null);
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Runs.RunMarkerVehicle", b =>
+                {
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RunId", "VehicleId");
+
+                    b.HasIndex("VehicleId");
+
+                    b.ToTable("RunMarkerVehicles", (string)null);
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Settings.GridSettings", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -1842,6 +1888,15 @@ namespace Tankstat.Migrations.SqlServer
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Runs.RunMarkerVehicle", b =>
+                {
+                    b.HasOne("Tankstat.Domain.Runs.RunMarker", null)
+                        .WithMany("Vehicles")
+                        .HasForeignKey("RunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Settings.OfflineVehicleSetting", b =>
                 {
                     b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
@@ -2017,6 +2072,11 @@ namespace Tankstat.Migrations.SqlServer
 
                     b.Navigation("Units")
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Runs.RunMarker", b =>
+                {
+                    b.Navigation("Vehicles");
                 });
 #pragma warning restore 612, 618
         }

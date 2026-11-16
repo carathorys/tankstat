@@ -689,6 +689,52 @@ namespace Tankstat.Migrations.PostgreSql
                     b.ToTable("RecurringExpenses", (string)null);
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Runs.RunMarker", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("CancelRequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CancelRequestedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("End")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("StartedById")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EndedAt");
+
+                    b.ToTable("RunMarkers", (string)null);
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Runs.RunMarkerVehicle", b =>
+                {
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("RunId", "VehicleId");
+
+                    b.HasIndex("VehicleId");
+
+                    b.ToTable("RunMarkerVehicles", (string)null);
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Settings.GridSettings", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -1838,6 +1884,15 @@ namespace Tankstat.Migrations.PostgreSql
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Tankstat.Domain.Runs.RunMarkerVehicle", b =>
+                {
+                    b.HasOne("Tankstat.Domain.Runs.RunMarker", null)
+                        .WithMany("Vehicles")
+                        .HasForeignKey("RunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Tankstat.Domain.Settings.OfflineVehicleSetting", b =>
                 {
                     b.HasOne("Tankstat.Domain.Vehicles.Vehicle", null)
@@ -2013,6 +2068,11 @@ namespace Tankstat.Migrations.PostgreSql
 
                     b.Navigation("Units")
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Tankstat.Domain.Runs.RunMarker", b =>
+                {
+                    b.Navigation("Vehicles");
                 });
 #pragma warning restore 612, 618
         }
