@@ -200,6 +200,9 @@ type Mutation {
   restoreTyreEntry(id: UUID!): VehicleTyres! @cost(weight: "10")
   retireTyreSet(id: UUID!, day: LocalDate!): VehicleTyres! @cost(weight: "10")
   unretireTyreSet(id: UUID!): VehicleTyres! @cost(weight: "10")
+  dismissTyreReminder(input: DismissTyreReminderInput!): VehicleTyres!
+    @cost(weight: "10")
+  restoreTyreReminder(id: UUID!): VehicleTyres! @cost(weight: "10")
   deleteTyreSet(id: UUID!): VehicleTyres! @cost(weight: "10")
   restoreTyreSet(id: UUID!): VehicleTyres! @cost(weight: "10")
   breakUpTyreSet(input: BreakUpTyreSetInput!): VehicleTyres! @cost(weight: "10")
@@ -1515,6 +1518,8 @@ input ChangeInput {
   deleteTyrePlace: UUID
   restoreTyrePlace: UUID
   replaceTyres: ReplaceTyresInput
+  dismissTyreReminder: DismissTyreReminderInput
+  restoreTyreReminder: UUID
   base: String
 }
 
@@ -1573,6 +1578,11 @@ input DeleteUserInput {
   userId: UUID!
   data: UserDataDisposition
   moveToUserId: UUID
+}
+
+input DismissTyreReminderInput {
+  id: UUID!
+  season: LocalDate!
 }
 
 input ExpenseTyreInput {
@@ -2354,6 +2364,8 @@ enum SyncChangeKind {
   DELETE_TYRE_PLACE
   RESTORE_TYRE_PLACE
   REPLACE_TYRES
+  DISMISS_TYRE_REMINDER
+  RESTORE_TYRE_REMINDER
 }
 
 enum SyncChangeStatus {

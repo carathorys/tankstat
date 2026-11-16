@@ -744,10 +744,10 @@ public sealed class TyreService(
     /// everyone who shares the car. A season that is not the set's of today (an older one sent late, the same again) changes nothing and is
     /// answered as done: a refusal would park the change of a device that tapped it before another logged the swap.
     /// </summary>
-    public async Task<TyreOverview> DismissReminderAsync(Guid id, DateOnly season, CancellationToken ct, int? expectedVersion = null)
+    /// <remarks>No version is asked for: the reminder is apart from the set's details, so an edit of them made elsewhere never parks it.</remarks>
+    public async Task<TyreOverview> DismissReminderAsync(Guid id, DateOnly season, CancellationToken ct)
     {
         var (vehicle, set, _) = await EditableSetAsync(id, ct);
-        VersionCheck.Require(expectedVersion, set.Version);
         if (set.DismissReminder(season, Today, (await access.RequirePrincipalAsync(ct)).Id))
         {
             var save = new TyreSave();
@@ -759,10 +759,9 @@ public sealed class TyreService(
     }
 
     /// <summary>Takes <em>Not this season</em> back (the toast's Undo).</summary>
-    public async Task<TyreOverview> RestoreReminderAsync(Guid id, CancellationToken ct, int? expectedVersion = null)
+    public async Task<TyreOverview> RestoreReminderAsync(Guid id, CancellationToken ct)
     {
         var (vehicle, set, _) = await EditableSetAsync(id, ct);
-        VersionCheck.Require(expectedVersion, set.Version);
         if (set.RestoreReminder((await access.RequirePrincipalAsync(ct)).Id))
         {
             var save = new TyreSave();

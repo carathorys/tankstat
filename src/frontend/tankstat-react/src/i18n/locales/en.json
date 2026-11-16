@@ -2066,7 +2066,9 @@
         "updateTyrePlace": "Changed time on the car of a tyre",
         "deleteTyrePlace": "A tyre's time on the car to the trash",
         "restoreTyrePlace": "A tyre's time on the car back from the trash",
-        "replaceTyres": "Tyres replaced"
+        "replaceTyres": "Tyres replaced",
+        "dismissTyreReminder": "Swap reminder off for this season",
+        "restoreTyreReminder": "Swap reminder back on"
       }
     },
     "remove": "Remove the change",

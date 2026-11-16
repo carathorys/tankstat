@@ -692,3 +692,24 @@ describe("a set's swap reminder on the device (#292)", () => {
     expect(() => applyTyreChange(base, added({ reminderMonth: 13 }))).toThrow(TyreRuleError)
   })
 })
+
+describe('Not this season on the device (#292)', () => {
+  const due: Tyres = { ...base, sets: base.sets.map((s) => (s.set.id === 's2' ? { ...s, set: { ...s.set, season: 'WINTER' as const }, reminder: { season: '2026-11-01' } } : s)) }
+  const of = (tyres: Tyres) => tyres.sets.find((s) => s.set.id === 's2')!
+
+  it('hides the reminder at once and marks the set; taken back, it shows again', () => {
+    const dismissed = replayTyres(due, [change('dismissTyreReminder', { id: 's2', season: '2026-11-01' })])
+    expect(dismissed.skipped).toEqual([])
+    expect(of(dismissed.tyres)).toMatchObject({ reminder: null, set: { reminderDismissedFor: '2026-11-01' } })
+    expect(dismissed.touched.has('s2')).toBe(true)
+    const back = replayTyres(due, [change('dismissTyreReminder', { id: 's2', season: '2026-11-01' }), change('restoreTyreReminder', { id: 's2' })])
+    expect(of(back.tyres)).toMatchObject({ reminder: { season: '2026-11-01' }, set: { reminderDismissedFor: null } })
+  })
+
+  it('a season that is not the one shown changes nothing, and an undo of a dismissal the server holds shows the reminder again', () => {
+    expect(of(replayTyres(due, [change('dismissTyreReminder', { id: 's2', season: '2025-11-01' })]).tyres)).toMatchObject({ reminder: { season: '2026-11-01' }, set: { reminderDismissedFor: null } })
+    const held: Tyres = { ...due, sets: due.sets.map((s) => (s.set.id === 's2' ? { ...s, reminder: null, set: { ...s.set, reminderDismissedFor: '2026-11-01' } } : s)) }
+    expect(of(replayTyres(held, [change('restoreTyreReminder', { id: 's2' })]).tyres)).toMatchObject({ reminder: { season: '2026-11-01' }, set: { reminderDismissedFor: null } })
+    expect(of(replayTyres(due, [change('restoreTyreReminder', { id: 's2' })]).tyres).reminder).toEqual({ season: '2026-11-01' }) // nothing to take back
+  })
+})

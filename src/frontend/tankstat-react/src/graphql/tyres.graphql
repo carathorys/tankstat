@@ -260,6 +260,19 @@ mutation RetireTyreSet($id: UUID!, $day: LocalDate!) {
   }
 }
 
+# Not this season (#292): the set's swap reminder off for the season it is due for, and its undo.
+mutation DismissTyreReminder($input: DismissTyreReminderInput!) {
+  dismissTyreReminder(input: $input) {
+    ...VehicleTyresFields
+  }
+}
+
+mutation RestoreTyreReminder($id: UUID!) {
+  restoreTyreReminder(id: $id) {
+    ...VehicleTyresFields
+  }
+}
+
 mutation UnretireTyreSet($id: UUID!) {
   unretireTyreSet(id: $id) {
     ...VehicleTyresFields

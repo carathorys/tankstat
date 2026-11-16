@@ -34,6 +34,9 @@ export const TYRE_ACTIONS = [
   'restoreTyrePlace',
   // Tyres replaced early (#289 step 3).
   'replaceTyres',
+  // The swap reminder (#292): Not this season, and its undo.
+  'dismissTyreReminder',
+  'restoreTyreReminder',
 ] as const
 
 export type TyreAction = (typeof TYRE_ACTIONS)[number]
@@ -43,7 +46,7 @@ export const isTyreAction = (action: string): action is TyreAction => (TYRE_ACTI
 /** The actions whose `ChangeInput` field is a bare id (`deleteTyreSet: "<id>"`), kept as `{ id }`. */
 export const BARE_ID: ReadonlySet<TyreAction> = new Set([
   'unretireTyreSet', 'deleteTyreSet', 'restoreTyreSet', 'deleteTyreInstallation', 'restoreTyreInstallation', 'restoreTyreEntry',
-  'deleteTyre', 'restoreTyre', 'deleteTyrePlace', 'restoreTyrePlace',
+  'deleteTyre', 'restoreTyre', 'deleteTyrePlace', 'restoreTyrePlace', 'restoreTyreReminder',
 ])
 
 type Input = Record<string, unknown> | undefined

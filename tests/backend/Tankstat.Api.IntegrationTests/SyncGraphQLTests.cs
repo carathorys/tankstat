@@ -108,6 +108,9 @@ public class SyncGraphQLTests : IDisposable
             new { id = Guid.NewGuid(), deleteTyreEntry = new { id = entry } },
             new { id = Guid.NewGuid(), deleteTyreEntry = new { id = entry } }, // in the trash already: nothing left to do
             new { id = Guid.NewGuid(), restoreTyreEntry = entry },
+            // Not this season (#292) for a season that is over, and an undo with nothing to take back: applied, never parked.
+            new { id = Guid.NewGuid(), dismissTyreReminder = new { id = summer, season = "2020-03-01" } },
+            new { id = Guid.NewGuid(), restoreTyreReminder = summer },
             new { id = Guid.NewGuid(), retireTyreSet = new { id = summer, day = "2026-10-02" } },
             new { id = Guid.NewGuid(), unretireTyreSet = summer },
             new { id = Guid.NewGuid(), deleteTyreSet = summer },

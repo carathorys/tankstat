@@ -2066,7 +2066,9 @@
         "updateTyrePlace": "Gumi módosított autón töltött ideje",
         "deleteTyrePlace": "Gumi autón töltött ideje a kukába",
         "restoreTyrePlace": "Gumi autón töltött ideje vissza a kukából",
-        "replaceTyres": "Gumik pótolva"
+        "replaceTyres": "Gumik pótolva",
+        "dismissTyreReminder": "Csere-emlékeztető kikapcsolva erre a szezonra",
+        "restoreTyreReminder": "Csere-emlékeztető visszakapcsolva"
       }
     },
     "remove": "Módosítás eltávolítása",

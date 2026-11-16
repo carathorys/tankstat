@@ -50,6 +50,7 @@ public sealed record ChangeInput(
     BreakUpTyreSetInput? BreakUpTyreSet = null, UpdateTyreInput? UpdateTyre = null, Guid? DeleteTyre = null, Guid? RestoreTyre = null,
     AddTyrePlaceInput? AddTyrePlace = null, UpdateTyrePlaceInput? UpdateTyrePlace = null, Guid? DeleteTyrePlace = null, Guid? RestoreTyrePlace = null,
     ReplaceTyresInput? ReplaceTyres = null,
+    DismissTyreReminderInput? DismissTyreReminder = null, Guid? RestoreTyreReminder = null,
     string? Base = null);
 
 /// <summary>A photo added to a saved log while offline: uploaded as a draft of the log's vehicle (<c>PUT /media/vehicles/{id}/photo-drafts</c>) just before.</summary>
@@ -370,6 +371,9 @@ public sealed class SyncMutations
         if (c.UpdateTyreSet is { } u) return OnSet(SyncChangeKind.UpdateTyreSet, u.Id, ct => TyreChanges.Update(u, tyres, ct, version));
         if (c.SetTyreRoughDistance is { } r) return OnSet(SyncChangeKind.SetTyreRoughDistance, r.Id, ct => tyres.SetRoughAsync(r.Id, r.Distance, r.Until, ct, version, r.UsualMonths));
         if (c.RetireTyreSet is { } rt) return OnSet(SyncChangeKind.RetireTyreSet, rt.Id, ct => tyres.RetireAsync(rt.Id, rt.Day, ct, version));
+        // The swap reminder (#292): no version asked for, and a season that is over is answered as applied (never parked).
+        if (c.DismissTyreReminder is { } dr) return OnSet(SyncChangeKind.DismissTyreReminder, dr.Id, ct => tyres.DismissReminderAsync(dr.Id, dr.Season, ct));
+        if (c.RestoreTyreReminder is { } rr) return OnSet(SyncChangeKind.RestoreTyreReminder, rr, ct => tyres.RestoreReminderAsync(rr, ct));
         if (c.UnretireTyreSet is { } ur) return OnSet(SyncChangeKind.UnretireTyreSet, ur, ct => tyres.UnretireAsync(ur, ct, version));
         if (c.DeleteTyreSet is { } ds)
             return make(SyncChangeKind.DeleteTyreSet, ds, null, async ct =>
@@ -541,7 +545,7 @@ public sealed class SyncMutations
             c.SwapTyres, c.ChangeTyrePositions, c.AddPastTyreSwaps, c.AddTyreInstallation, c.UpdateTyreInstallation, c.DeleteTyreInstallation, c.RestoreTyreInstallation,
             c.AddTyreEntry, c.UpdateTyreEntry, c.DeleteTyreEntry, c.RestoreTyreEntry,
             c.BreakUpTyreSet, c.UpdateTyre, c.DeleteTyre, c.RestoreTyre, c.AddTyrePlace, c.UpdateTyrePlace, c.DeleteTyrePlace, c.RestoreTyrePlace,
-            c.ReplaceTyres,
+            c.ReplaceTyres, c.DismissTyreReminder, c.RestoreTyreReminder,
         }.Count(o => o is not null);
         if (set != 1) throw new DomainException("sync.oneOperationRequired", "A change carries exactly one operation.", new { c.Id });
         var payload = JsonSerializer.Serialize(c with { Base = null }, Json);

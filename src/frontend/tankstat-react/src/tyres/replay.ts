@@ -397,6 +397,22 @@ function apply(m: Model, c: Change, vehicleId: string) {
       m.tyres = m.tyres.map((t) => (t.setId === s.set.id && t.retiredWhy === 'SET_RETIRED' ? { ...t, retiredOn: null, retiredWhy: null, isRetired: false } : t))
       return
     }
+    case 'dismissTyreReminder': {
+      // Not this season (#292): kept with the set, so the reminder the server last answered hides at once. A season that is not the one
+      // shown changes nothing, as on the server.
+      const s = setOf(m, input.id)
+      if (s.reminder && s.reminder.season === input.season) s.set = { ...s.set, reminderDismissedFor: str(input.season) }
+      return
+    }
+    case 'restoreTyreReminder': {
+      // Its undo: the season dismissed is due again, as far as the device knows (the server says for certain).
+      const s = setOf(m, input.id)
+      const season = s.set.reminderDismissedFor
+      if (!season) return
+      s.set = { ...s.set, reminderDismissedFor: null }
+      s.reminder = s.reminder ?? named<NonNullable<SetInfo['reminder']>>('TyreReminder', { season })
+      return
+    }
     case 'deleteTyreSet': {
       const s = setOf(m, input.id)
       m.sets = m.sets.filter((x) => x !== s)

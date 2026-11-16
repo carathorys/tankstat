@@ -57,6 +57,10 @@ public sealed record DeleteTyreEntryInput(Guid Id, bool WithExpense = true);
 /// <param name="Day">The device's today.</param>
 public sealed record RetireTyreSetInput(Guid Id, DateOnly Day);
 
+/// <summary>Not this season (#292): the set's swap reminder off for the season it is due for.</summary>
+/// <param name="Season">The season's first day, as <c>TyreSetInfo.reminder.season</c> gave it; one that is over changes nothing.</param>
+public sealed record DismissTyreReminderInput(Guid Id, DateOnly Season);
+
 /// <param name="UsualMonths">The months it is usually on the car (#291; 1 = January); left out (a client from before them) keeps the set's.</param>
 /// <param name="ReminderMonth">The month the swap reminder starts from (#292; 0: no reminder); left out (a client from before it) keeps the set's.</param>
 public sealed record UpdateTyreSetInput(
@@ -456,6 +460,13 @@ public sealed class TyreMutations
     public Task<TyreOverview> RetireTyreSet(Guid id, DateOnly day, [Service] TyreService tyres, CancellationToken ct) => tyres.RetireAsync(id, day, ct);
 
     public Task<TyreOverview> UnretireTyreSet(Guid id, [Service] TyreService tyres, CancellationToken ct) => tyres.UnretireAsync(id, ct);
+
+    /// <summary>Not this season (#292): the set's swap reminder is off for that season, for everyone; a season that is over changes nothing.</summary>
+    public Task<TyreOverview> DismissTyreReminder(DismissTyreReminderInput input, [Service] TyreService tyres, CancellationToken ct) =>
+        tyres.DismissReminderAsync(input.Id, input.Season, ct);
+
+    /// <summary>Takes Not this season back.</summary>
+    public Task<TyreOverview> RestoreTyreReminder(Guid id, [Service] TyreService tyres, CancellationToken ct) => tyres.RestoreReminderAsync(id, ct);
 
     public Task<TyreOverview> DeleteTyreSet(Guid id, [Service] TyreService tyres, CancellationToken ct) => tyres.TrashSetAsync(id, ct);
 

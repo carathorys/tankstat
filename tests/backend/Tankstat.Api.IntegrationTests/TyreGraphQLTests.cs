@@ -667,6 +667,13 @@ public class TyreGraphQLTests(ApiFixture api)
         Assert.Equal(month, Month(added));
         Assert.Equal(new DateOnly(DateTime.UtcNow.Year, month, 1).ToString("yyyy-MM-dd"), SetNamed(added, "Nokian").GetProperty("reminder").GetProperty("season").GetString());
 
+        // Not this season, and its undo.
+        var season = SetNamed(added, "Nokian").GetProperty("reminder").GetProperty("season").GetString();
+        var dismissed = SetNamed(await Mutate("dismissTyreReminder", "DismissTyreReminderInput", new { id, season }, selection), "Nokian");
+        Assert.Equal((JsonValueKind.Null, season), (dismissed.GetProperty("reminder").ValueKind, dismissed.GetProperty("set").GetProperty("reminderDismissedFor").GetString()));
+        var back = (await Send($"mutation($id: UUID!) {{ restoreTyreReminder(id: $id) {{ {selection} }} }}", new { id })).GetProperty("data").GetProperty("restoreTyreReminder");
+        Assert.Equal(season, SetNamed(back, "Nokian").GetProperty("reminder").GetProperty("season").GetString());
+
         var kept = await Mutate("updateTyreSet", "UpdateTyreSetInput", new { id, name = "Nokian", season = "ALL_SEASON", since = "2023-03-25" }, selection);
         Assert.Equal(month, Month(kept)); // left out: kept
         var none = await Mutate("updateTyreSet", "UpdateTyreSetInput", new { id, name = "Nokian", season = "ALL_SEASON", since = "2023-03-25", reminderMonth = 0 }, selection);
