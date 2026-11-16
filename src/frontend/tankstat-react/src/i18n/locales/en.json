@@ -1325,6 +1325,20 @@
     }
   },
   "import": {
+    "backup": {
+      "source": "Tankstat backup or export",
+      "hint": "A backup file of this app, or an export made on its Import and export page (.zip).",
+      "encrypted": "This file is encrypted. Its passphrase is used for this import only and kept nowhere.",
+      "passphrase": "Passphrase",
+      "passphraseHint": "The passphrase the backup's key was made from.",
+      "open": "Open the file",
+      "triesLeft_one": "{{count}} try left.",
+      "triesLeft_other": "{{count}} tries left.",
+      "opened_one": "A backup of {{date}}, written by Tankstat {{version}}: {{count}} car.",
+      "opened_other": "A backup of {{date}}, written by Tankstat {{version}}: {{count}} cars.",
+      "largerNeedsAdmin": "A larger one needs an administrator.",
+      "next": "Next"
+    },
     "title": "Import",
     "intro": "Bring fuel logs and other costs from another app into Tankstat. You see what will happen before anything is saved.",
     "steps": {

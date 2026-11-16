@@ -1325,6 +1325,20 @@
     }
   },
   "import": {
+    "backup": {
+      "source": "Tankstat mentés vagy export",
+      "hint": "Az alkalmazás mentésfájlja, vagy az Importálás és exportálás oldalon készült export (.zip).",
+      "encrypted": "A fájl titkosított. A jelmondatát csak ehhez az importáláshoz használjuk, sehol nem tároljuk.",
+      "passphrase": "Jelmondat",
+      "passphraseHint": "A jelmondat, amelyből a mentés kulcsa készült.",
+      "open": "A fájl megnyitása",
+      "triesLeft_one": "Még {{count}} próbálkozás.",
+      "triesLeft_other": "Még {{count}} próbálkozás.",
+      "opened_one": "{{date}}-i mentés, a Tankstat {{version}} írta: {{count}} autó.",
+      "opened_other": "{{date}}-i mentés, a Tankstat {{version}} írta: {{count}} autó.",
+      "largerNeedsAdmin": "Nagyobbhoz adminisztrátor kell.",
+      "next": "Tovább"
+    },
     "title": "Importálás",
     "intro": "Hozz át tankolásokat és más költségeket egy másik alkalmazásból. Mentés előtt látod, mi fog történni.",
     "steps": {

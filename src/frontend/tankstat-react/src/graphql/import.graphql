@@ -58,3 +58,47 @@ mutation ConfirmImport($input: ConfirmImportInput!) {
     }
   }
 }
+
+# Importing cars from a Tankstat backup or export (#336): the file is uploaded with POST /imports/tankstat (which answers its token);
+# how its opening stands is asked here, again while it is OPENING (a large file takes longer than a request may).
+fragment BackupImportFields on BackupImportInfo {
+  token
+  state
+  triesLeft
+  wrongKey
+  refusal {
+    key
+    args
+  }
+  file {
+    createdAt
+    version
+    isExport
+    trashedCars
+    cars {
+      id
+      name
+      licensePlate
+      ownerName
+      refuelings
+      expenses
+      schedules
+    }
+  }
+}
+
+query BackupImport($token: String!) {
+  backupImport(token: $token) {
+    ...BackupImportFields
+  }
+}
+
+mutation OpenBackupImport($input: OpenBackupImportInput!) {
+  openBackupImport(input: $input) {
+    ...BackupImportFields
+  }
+}
+
+mutation EndBackupImport($token: String!) {
+  endBackupImport(token: $token)
+}

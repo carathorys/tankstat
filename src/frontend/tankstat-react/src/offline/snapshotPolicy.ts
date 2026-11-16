@@ -55,6 +55,7 @@ const POLICIES: Record<string, SnapshotPolicy> = {
   LogAccess: 'onlineOnly',
   ImportTargets: 'onlineOnly',
   ImportPreview: 'onlineOnly',
+  BackupImport: 'onlineOnly', // an uploaded backup's opening (#336): the server's own, asked afresh every time
   MySessions: 'onlineOnly',
   OfflineEstimates: 'onlineOnly',
   ParkedChanges: 'onlineOnly', // deciding about them needs the server anyway
