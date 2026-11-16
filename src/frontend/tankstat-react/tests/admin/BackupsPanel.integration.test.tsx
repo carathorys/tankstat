@@ -319,6 +319,33 @@ it('backs up now, follows the run, and lists the new backup when it is written',
   await waitFor(() => expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(3)) // the overview asked again
 })
 
+it('shows the imports that go or wait only while there are any, each with its cancel', async () => {
+  backupsServer()
+  const run = { __typename: 'ImportRunInfo', id: 'r1', kind: 'IMPORT', startedByName: 'Bob', mine: false, state: 'RUNNING', failure: null, queuedAt: '2026-11-16T10:00:00Z', startedAt: '2026-11-16T10:01:00Z',
+    ahead: 0, fileToken: null, limitMinutes: 10, progress: { __typename: 'ImportRunProgressInfo', car: 1, cars: 1, done: 3, total: 9 }, cars: [{ __typename: 'ImportRunCarInfo', carId: 'c1', name: 'Octavia', targetName: null }], report: null }
+  let runs = [run]
+  const cancelled: string[] = []
+  server.use(
+    graphql.query('ImportRuns', () => HttpResponse.json({ data: { importRuns: runs } })),
+    graphql.mutation('CancelImportRun', ({ variables }) => {
+      cancelled.push(variables.id as string)
+      runs = []
+      return HttpResponse.json({ data: { cancelImportRun: true } })
+    }),
+  )
+  const ui = await openBackups()
+
+  const section = within(await screen.findByRole('region', { name: 'Imports' }))
+  expect(section.getByText('Shown only while an import runs or waits.')).toBeInTheDocument()
+  expect(section.getByText(/^An import started by Bob has been running since .* \(1 cars, 3 of 9 entries\)\.$/)).toBeInTheDocument()
+
+  await ui.click(section.getByRole('button', { name: 'Cancel it: Bob' }))
+  await ui.click(within(await screen.findByRole('alertdialog', { name: 'Cancel the import?' })).getByRole('button', { name: 'Cancel the import' }))
+
+  await waitFor(() => expect(cancelled).toEqual(['r1']))
+  await waitFor(() => expect(screen.queryByRole('region', { name: 'Imports' })).not.toBeInTheDocument()) // nothing goes or waits: no section
+})
+
 it('says why the last run failed, in words', async () => {
   backupsServer({ run: { ...idle, startedAt: '2026-10-11T08:00:00Z', finishedAt: '2026-10-11T08:00:01Z', error: 'backup.failed' } })
   await openBackups()

@@ -1,4 +1,5 @@
 import { useQuery } from '@apollo/client/react'
+import { useEffect } from 'react'
 import { ImportRunsDocument, type ImportRunFieldsFragment } from '../gql/generated.ts'
 
 /** How often the administrators' lists ask while an import goes or waits. */
@@ -9,10 +10,14 @@ export const IMPORT_RUNS_POLL_MS = 2000
  * every two seconds while there is one. Empty for anyone the server refuses.
  */
 export function useImportRuns(): { runs: ImportRunFieldsFragment[]; refetch: () => void } {
-  const query = useQuery(ImportRunsDocument, { fetchPolicy: 'network-only' })
-  const runs = query.data?.importRuns ?? []
+  const { data, refetch, startPolling, stopPolling } = useQuery(ImportRunsDocument, { fetchPolicy: 'network-only' })
+  const runs = data?.importRuns ?? []
   const some = runs.length > 0
-  // Polled only while there is something to watch end.
-  const polled = useQuery(ImportRunsDocument, { fetchPolicy: 'network-only', pollInterval: IMPORT_RUNS_POLL_MS, skip: !some })
-  return { runs: polled.data?.importRuns ?? runs, refetch: () => void query.refetch().catch(() => undefined) }
+  // Polled only while there is something to watch end: one query, so an empty answer empties the list.
+  useEffect(() => {
+    if (!some) return
+    startPolling(IMPORT_RUNS_POLL_MS)
+    return stopPolling
+  }, [some, startPolling, stopPolling])
+  return { runs, refetch: () => void refetch().catch(() => undefined) }
 }
