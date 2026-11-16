@@ -1,6 +1,6 @@
 # Changelog
 
-Every release of Tankstat, newest first. Each one is a Docker image, `ghcr.io/carathorys/tankstat:<version>`, and a [GitHub release](https://github.com/carathorys/tankstat/releases). The numbers in brackets are the pull requests. Pre-releases (the previews) are not listed: their changes are in the release that followed them.
+Every release of Tankstat, newest first. Each one is a Docker image, `ghcr.io/carathorys/tankstat:<version>`, and a [GitHub release](https://github.com/carathorys/tankstat/releases). The numbers in brackets are the pull requests. Pre-releases (the previews) are not listed: their changes are in the release that followed them. From 0.21.0 on, a release that carries other people's work ends with a line thanking them; everyone is named in [CONTRIBUTORS.md](CONTRIBUTORS.md).
 
 ## 0.20.0 (2026-11-05)
 

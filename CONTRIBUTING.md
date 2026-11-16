@@ -42,6 +42,7 @@ See [Development](docs/development.md) for the layout, running single tests, mig
 - Keep it a draft while you are working on it; mark it ready when the checks above are done. The description says what changes and why, and links the issue.
 - CI runs the whole suite, the real-browser tests against the published build, on a pull request that changes more than Markdown files; one of Markdown files only runs nothing. On your first pull request from a fork, nothing runs until the maintainer approves the workflows, so run `mise run test` yourself first. A pull request is merged by the maintainer after review.
 - Commits are squashed or kept as they are at the maintainer's choice, so their messages need not be polished, but the pull request description should be.
+- Your work is credited: once it is merged, your GitHub account is listed in [CONTRIBUTORS.md](CONTRIBUTORS.md) with the next release, and that release's notes thank you by name. The list is made from the history, so a co-author is credited too when the commit names them in a `Co-authored-by` line with their GitHub address (`<login>@users.noreply.github.com`).
 
 ## How work is tracked here
 
