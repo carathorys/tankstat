@@ -43,8 +43,8 @@ internal sealed class ScratchCars(ScratchDatabase database, BackupFileSummary su
         // The foreign keys are off: a row may name any car or owner, so only those of the cars shown are asked for.
         var ids = vehicles.Select(v => v.Id).ToList();
         var ownerIds = vehicles.Select(v => v.OwnerId).Distinct().ToList();
-        var owners = await db.Users.Where(u => ownerIds.Contains(u.Id)).Select(u => new { u.Id, DisplayName = u.DisplayName.Substring(0, max) })
-            .ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
+        var owners = await db.Users.Where(u => ownerIds.Contains(u.Id)).Select(u => new { u.Id, DisplayName = u.DisplayName.Substring(0, max), Email = u.Email!.Substring(0, max) })
+            .ToDictionaryAsync(u => u.Id, u => (u.DisplayName, u.Email), ct);
         var refuelings = await db.Refuelings.Where(r => ids.Contains(r.VehicleId)).GroupBy(r => r.VehicleId).Select(g => new { g.Key, Count = g.Count() })
             .ToDictionaryAsync(g => g.Key, g => g.Count, ct);
         var expenses = await db.Expenses.Where(e => ids.Contains(e.VehicleId)).GroupBy(e => e.VehicleId).Select(g => new { g.Key, Count = g.Count() })
@@ -53,8 +53,9 @@ internal sealed class ScratchCars(ScratchDatabase database, BackupFileSummary su
             .ToDictionaryAsync(g => g.Key, g => g.Count, ct);
         var cars = vehicles.Select(v => new BackupCarSummary(
             v.Id, BackupCarShapes.Cut(v.Name) ?? "", BackupCarShapes.Cut(v.LicensePlate), v.FuelType, MeasurementUnits.Create(v.Distance, v.Volume), v.OwnerId,
-            BackupCarShapes.Cut(owners.GetValueOrDefault(v.OwnerId)),
-            refuelings.GetValueOrDefault(v.Id), expenses.GetValueOrDefault(v.Id), schedules.GetValueOrDefault(v.Id))).ToList();
+            BackupCarShapes.Cut(owners.GetValueOrDefault(v.OwnerId).DisplayName),
+            refuelings.GetValueOrDefault(v.Id), expenses.GetValueOrDefault(v.Id), schedules.GetValueOrDefault(v.Id),
+            string.IsNullOrWhiteSpace(owners.GetValueOrDefault(v.OwnerId).Email) ? null : BackupCarShapes.Cut(owners.GetValueOrDefault(v.OwnerId).Email))).ToList();
         return new ScratchCars(database, new BackupFileSummary(
             manifest.CreatedAt, BackupReaderText.Version(manifest.AppVersion), manifest.WrittenBy == BackupManifest.Export, cars, trashed), archive, manifest.Contents.Photos);
     }
@@ -79,8 +80,8 @@ internal sealed class ScratchCars(ScratchDatabase database, BackupFileSummary su
                 var costs = db.Expenses.Where(e => e.VehicleId == carId).Select(e => e.Id);
                 logPhotos = [.. (await db.LogPhotos.AsNoTracking().Where(p => p.VehicleId == carId
                         && ((p.LogType == Tankstat.Domain.Photos.LogType.Refueling && fuel.Contains(p.LogId)) || (p.LogType == Tankstat.Domain.Photos.LogType.Expense && costs.Contains(p.LogId))))
-                    .Select(p => new { p.LogType, p.LogId, p.ImageId, p.CreatedAt }).ToListAsync(ct))
-                    .OrderBy(p => p.CreatedAt).ThenBy(p => p.ImageId).Select(p => new BackupPhoto(p.LogType, p.LogId, p.ImageId, p.CreatedAt))];
+                    .Select(p => new { p.LogType, p.LogId, p.ImageId, p.CreatedAt, p.Id, p.CreatedById }).ToListAsync(ct))
+                    .OrderBy(p => p.CreatedAt).ThenBy(p => p.ImageId).Select(p => new BackupPhoto(p.LogType, p.LogId, p.ImageId, p.CreatedAt, p.Id, p.CreatedById))];
             }
             if (await db.VehicleCharts.CountAsync(c => c.VehicleId == carId, ct) > MaxMediaRowsPerCar
                 || await db.VehicleCharts.AnyAsync(c => c.VehicleId == carId && c.Title.Length > Tankstat.Domain.Charts.VehicleChart.MaxTitleLength, ct))
@@ -196,6 +197,63 @@ internal sealed class ScratchCars(ScratchDatabase database, BackupFileSummary su
         {
             throw NotABackup(); // a row that is not its table's: a value no column of ours takes
         }
+    }
+
+    public async Task<BackupRestoreData?> ReadRestoreAsync(Guid carId, CancellationToken ct)
+    {
+        if (Summary.Cars.All(c => c.Id != carId)) return null;
+        try
+        {
+            await using var db = database.Read();
+            // The counts were bounded when the car's rows were read (ReadCarAsync, ReadTyresAsync, ReadMediaAsync); these are ids and numbers.
+            static IReadOnlyDictionary<Guid, RestoreStamp> Of(IEnumerable<RestoreStamp> rows) => rows.GroupBy(r => r.Id).ToDictionary(g => g.Key, g => g.First());
+            var stamps = new Dictionary<RestoreTable, IReadOnlyDictionary<Guid, RestoreStamp>>
+            {
+                [RestoreTable.Vehicle] = Of(await db.Vehicles.IgnoreQueryFilters().Where(v => v.Id == carId).Select(v => new RestoreStamp(v.Id, null, v.Version, null)).ToListAsync(ct)),
+                [RestoreTable.Refueling] = Of(await db.Refuelings.IgnoreQueryFilters().Where(r => r.VehicleId == carId).Take(MaxRowsPerCar)
+                    .Select(r => new RestoreStamp(r.Id, r.CreatedById, r.Version, null)).ToListAsync(ct)),
+                [RestoreTable.Expense] = Of(await db.Expenses.IgnoreQueryFilters().Where(r => r.VehicleId == carId).Take(MaxRowsPerCar)
+                    .Select(r => new RestoreStamp(r.Id, r.CreatedById, r.Version, null)).ToListAsync(ct)),
+                [RestoreTable.RecurringExpense] = Of(await db.RecurringExpenses.IgnoreQueryFilters().Where(r => r.VehicleId == carId).Take(MaxRowsPerCar)
+                    .Select(r => new RestoreStamp(r.Id, r.CreatedById, r.Version, r.CreatedAt)).ToListAsync(ct)),
+                [RestoreTable.TyreSet] = Of(await db.TyreSets.IgnoreQueryFilters().Where(r => r.VehicleId == carId).Take(MaxTyreRowsPerCar)
+                    .Select(r => new RestoreStamp(r.Id, r.CreatedById, r.Version, null)).ToListAsync(ct)),
+                [RestoreTable.TyreInstallation] = Of(await db.TyreInstallations.IgnoreQueryFilters().Where(r => r.VehicleId == carId).Take(MaxTyreRowsPerCar)
+                    .Select(r => new RestoreStamp(r.Id, r.CreatedById, r.Version, null)).ToListAsync(ct)),
+                [RestoreTable.TyreEntry] = Of(await db.TyreEntries.IgnoreQueryFilters().Where(r => r.VehicleId == carId).Take(MaxTyreRowsPerCar)
+                    .Select(r => new RestoreStamp(r.Id, r.CreatedById, r.Version, null)).ToListAsync(ct)),
+                [RestoreTable.Tyre] = Of(await db.Tyres.IgnoreQueryFilters().Where(r => r.VehicleId == carId).Take(MaxTyreRowsPerCar)
+                    .Select(r => new RestoreStamp(r.Id, r.CreatedById, r.Version, null)).ToListAsync(ct)),
+                [RestoreTable.TyrePlace] = Of(await db.TyrePlaces.IgnoreQueryFilters().Where(r => r.VehicleId == carId).Take(MaxTyreRowsPerCar)
+                    .Select(r => new RestoreStamp(r.Id, r.CreatedById, r.Version, null)).ToListAsync(ct)),
+                [RestoreTable.Chart] = Of(await db.VehicleCharts.Where(r => r.VehicleId == carId).Take(MaxMediaRowsPerCar)
+                    .Select(r => new RestoreStamp(r.Id, r.CreatedById, null, r.CreatedAt)).ToListAsync(ct)),
+                [RestoreTable.LogPhoto] = Of(await db.LogPhotos.Where(r => r.VehicleId == carId).Take(MaxMediaRowsPerCar)
+                    .Select(r => new RestoreStamp(r.Id, r.CreatedById, null, r.CreatedAt)).ToListAsync(ct)),
+            };
+            var grants = await db.ResourceGrants.Where(g => g.ResourceType == Tankstat.Domain.Access.ResourceType.Vehicle && g.ResourceId == carId
+                    && g.Feature == Tankstat.Domain.Access.GrantedFeature.Logs).Take(MaxMediaRowsPerCar)
+                .Select(g => new { g.GranteeId, g.Level }).ToListAsync(ct);
+            var names = await ReadUsersAsync([.. grants.Select(g => g.GranteeId)], ct);
+            return new BackupRestoreData(stamps, [.. grants.Where(g => Enum.IsDefined(g.Level))
+                .Select(g => new BackupGrant(g.GranteeId, names.GetValueOrDefault(g.GranteeId)?.Name, g.Level))]);
+        }
+        catch (Exception e) when (e is InvalidOperationException or InvalidCastException or FormatException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            throw NotABackup(); // a row that is not its table's: a value no column of ours takes
+        }
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, BackupUser>> ReadUsersAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct)
+    {
+        if (ids.Count == 0) return new Dictionary<Guid, BackupUser>();
+        const int max = BackupCarShapes.MaxTextLength;
+        await using var db = database.Read();
+        var found = new List<BackupUser>();
+        foreach (var chunk in ids.Distinct().Chunk(500))
+            found.AddRange((await db.Users.Where(u => chunk.Contains(u.Id)).Select(u => new { u.Id, Name = u.DisplayName.Substring(0, max), Email = u.Email!.Substring(0, max) })
+                .ToListAsync(ct)).Select(u => new BackupUser(u.Id, BackupCarShapes.Cut(u.Name), string.IsNullOrWhiteSpace(u.Email) ? null : BackupCarShapes.Cut(u.Email))));
+        return found.GroupBy(u => u.Id).ToDictionary(g => g.Key, g => g.First());
     }
 
     public static DomainException NotABackup() => new(BackupImportSessions.NotABackupKey, "This file is not a Tankstat backup or export.");

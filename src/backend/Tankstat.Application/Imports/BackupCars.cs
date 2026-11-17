@@ -23,9 +23,13 @@ public enum BackupImportState
     Ended,
 }
 
-/// <summary>A car in the file: what it is, whose it was (the name only), and how much of each kind it has (what was in the trash left out).</summary>
+/// <summary>
+/// A car in the file: what it is, whose it was (the name; the e-mail only from a restore point, #340: the owner picker's suggestion), and
+/// how much of each kind it has (what was in the trash left out).
+/// </summary>
 public sealed record BackupCarSummary(
-    Guid Id, string Name, string? LicensePlate, FuelType FuelType, MeasurementUnits Units, Guid OwnerId, string? OwnerName, int Refuelings, int Expenses, int Schedules);
+    Guid Id, string Name, string? LicensePlate, FuelType FuelType, MeasurementUnits Units, Guid OwnerId, string? OwnerName, int Refuelings, int Expenses, int Schedules,
+    string? OwnerEmail = null);
 
 /// <summary>What an opened file holds. <see cref="Version"/> is the file's own word, cut to a release's shape: shown as text only.</summary>
 public sealed record BackupFileSummary(DateTimeOffset CreatedAt, string Version, bool IsExport, IReadOnlyList<BackupCarSummary> Cars, int TrashedCars);
@@ -52,8 +56,26 @@ public sealed record BackupExpense(Guid Id, ExpenseInput Values, IReadOnlyList<G
 /// <summary>A schedule of a backup's car.</summary>
 public sealed record BackupSchedule(Guid Id, RecurringExpenseInput Values) : IBackupEntry;
 
-/// <summary>A photo of one of a backup car's logs: which log, the image, and when it was added (the order a log shows its photos in).</summary>
-public sealed record BackupPhoto(Domain.Photos.LogType LogType, Guid LogId, Guid ImageId, DateTimeOffset CreatedAt);
+/// <summary>
+/// A photo of one of a backup car's logs: which log, the image, and when it was added (the order a log shows its photos in); its own id
+/// and who added it (a partial restore keeps both, #340).
+/// </summary>
+public sealed record BackupPhoto(Domain.Photos.LogType LogType, Guid LogId, Guid ImageId, DateTimeOffset CreatedAt, Guid Id = default, Guid CreatedById = default);
+
+/// <summary>A person the car's logs were shared with in the backup (#340), with their name there and the level they had.</summary>
+public sealed record BackupGrant(Guid GranteeId, string? Name, Domain.Access.AccessLevel Level);
+
+/// <summary>
+/// What a partial restore takes from the backup besides the values (#340): every row's stamps by table and id (the trash included), and the
+/// car's sharing of its logs.
+/// </summary>
+public sealed record BackupRestoreData(IReadOnlyDictionary<RestoreTable, IReadOnlyDictionary<Guid, RestoreStamp>> Stamps, IReadOnlyList<BackupGrant> Grants)
+{
+    public RestoreStamp? StampOf(RestoreTable table, Guid id) => Stamps.TryGetValue(table, out var rows) && rows.TryGetValue(id, out var stamp) ? stamp : null;
+}
+
+/// <summary>A person of the file as the reader keeps one: the name, and the e-mail only from a restore point.</summary>
+public sealed record BackupUser(Guid Id, string? Name, string? Email);
 
 /// <summary>A dashboard of a backup's car: the vehicle's (<see cref="UserId"/> null) or a person's own.</summary>
 public sealed record BackupDashboard(Guid? UserId, Domain.Charts.DashboardLayoutValues Values);
@@ -96,6 +118,12 @@ public interface IBackupCars
     /// has no such car.
     /// </summary>
     Task<Tyres.TyreBook?> ReadTyresAsync(Guid carId, CancellationToken ct);
+
+    /// <summary>A partial restore's (#340): the car's rows' stamps and its sharing. Null when the file has no such car.</summary>
+    Task<BackupRestoreData?> ReadRestoreAsync(Guid carId, CancellationToken ct);
+
+    /// <summary>The file's people by id (the ones it has; names and e-mails cut), for the owner picker and the review (#340).</summary>
+    Task<IReadOnlyDictionary<Guid, BackupUser>> ReadUsersAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct);
 }
 
 /// <summary>What a service's entity is to the reader: the same shapes a backup's rows are read into, so the two can be compared.</summary>

@@ -340,6 +340,8 @@ public sealed partial class BackupImportRunTests(ITestOutputHelper output) : IAs
         public Task<Tankstat.Application.Tyres.TyreBook?> ReadTyresAsync(Guid carId, CancellationToken ct) => inner.ReadTyresAsync(carId, ct);
         public Task<BackupMedia?> ReadMediaAsync(Guid carId, CancellationToken ct) => inner.ReadMediaAsync(carId, ct);
         public Task<byte[]?> ReadImageAsync(Guid carId, BackupPhoto? photo, Guid imageId, int maxBytes, CancellationToken ct) => inner.ReadImageAsync(carId, photo, imageId, maxBytes, ct);
+        public Task<BackupRestoreData?> ReadRestoreAsync(Guid carId, CancellationToken ct) => inner.ReadRestoreAsync(carId, ct);
+        public Task<IReadOnlyDictionary<Guid, BackupUser>> ReadUsersAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct) => inner.ReadUsersAsync(ids, ct);
     }
 
     [Theory, MemberData(nameof(Providers))]
