@@ -50,8 +50,8 @@ export function ExportTab() {
         {t('export.intro')}
       </Typography>
       {file && <FileState file={file} />}
-      {kept && kept !== file && <FileState file={kept} />}
-      {kept && !again && (
+      {kept && kept !== file && <FileState file={kept} earlier />}
+      {kept && !again && !building && (
         <Card sx={{ p: 1.5 }}>
           <Typography component="h2" variant="h6">
             {t('export.again')}
@@ -75,7 +75,7 @@ export function ExportTab() {
 }
 
 /** One export as the tab says it: being built (with its progress and Cancel), ready (Download, Delete), or how it ended. */
-function FileState({ file }: { file: ExportFileFieldsFragment }) {
+function FileState({ file, earlier = false }: { file: ExportFileFieldsFragment; earlier?: boolean }) {
   const { t } = useTranslation()
   const { bytes, dateTime } = useFormat()
   const keyText = useKeyText()
@@ -86,9 +86,8 @@ function FileState({ file }: { file: ExportFileFieldsFragment }) {
   switch (file.state) {
     case 'BUILDING': {
       const p = file.progress
-      const status = [t('export.building'), p && p.cars > 0 ? t('export.buildingCar', { car: p.car, cars: p.cars }) : null, p && p.total > 0 ? t('export.buildingPhotos', { done: p.done, total: p.total }) : null]
-        .filter(Boolean)
-        .join(' · ')
+      const steps = [p && p.cars > 0 ? t('export.buildingCar', { car: p.car, cars: p.cars }) : null, p && p.total > 0 ? t('export.buildingPhotos', { done: p.done, total: p.total }) : null].filter(Boolean)
+      const status = steps.length > 0 ? `${t('export.building')} ${steps.join(' · ')}` : t('export.building')
       return (
         <Card sx={{ p: 1.5 }}>
           <Stack sx={{ gap: 1, alignItems: 'flex-start' }}>
@@ -125,8 +124,9 @@ function FileState({ file }: { file: ExportFileFieldsFragment }) {
       return (
         <Card sx={{ p: 1.5 }}>
           <Stack sx={{ gap: 1, alignItems: 'flex-start' }}>
-            <SuccessMessage>{t('export.ready')}</SuccessMessage>
-            <Typography sx={{ fontWeight: 700 }}>{file.carNames.join(', ')}</Typography>
+            {/* The earlier file, when the newest export ended without replacing it: still there, said so. */}
+            {earlier ? <Typography sx={{ fontWeight: 700 }}>{t('export.keptEarlier')}</Typography> : <SuccessMessage>{t('export.ready')}</SuccessMessage>}
+            <Typography sx={{ fontWeight: 700, overflowWrap: 'anywhere' }}>{`tankstat-export-${file.startedAt.slice(0, 10)}.zip`}</Typography>
             <Typography variant="body2">{line}</Typography>
             {file.largerThanImport && <WarningMessage>{t('export.tooLarge', { maxMb: file.importMaxMb })}</WarningMessage>}
             {error !== undefined && <ErrorMessage error={error} />}

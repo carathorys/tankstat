@@ -68,8 +68,8 @@ internal sealed class ExportRunner(
         try
         {
             var written = await writer.WriteAsync(job.Request, p => running.Progress = p, running.Stop.Token);
-            // Written: the person's earlier export goes now, never before.
-            foreach (var old in files.Records().Where(r => r.OwnerId == record.OwnerId && r.Id != record.Id))
+            // Written: the person's earlier export goes now, never before; a newer one being built (it could not stop this one in time) stays.
+            foreach (var old in files.Records().Where(r => r.OwnerId == record.OwnerId && r.Id != record.Id && r.State != ExportState.Building))
             {
                 files.DeleteFile(old.Id);
                 files.DeleteRecord(old.Id);

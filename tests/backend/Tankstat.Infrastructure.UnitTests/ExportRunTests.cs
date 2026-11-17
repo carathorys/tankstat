@@ -141,6 +141,7 @@ public sealed partial class BackupImportRunTests
             AsAsync(here, who, sp => sp.GetRequiredService<ExportService>().StartAsync(cars, pass, again, default));
 
         Assert.Equal(ExportService.DisabledKey, (await Assert.ThrowsAsync<ForbiddenException>(() => Start(anna, [new ExportCar(golf, ExportKinds.All)]))).Key);
+        Assert.Equal(ExportService.DisabledKey, (await Assert.ThrowsAsync<ForbiddenException>(() => AsAsync(here, anna, sp => sp.GetRequiredService<ExportService>().DownloadAsync(Guid.NewGuid(), default)))).Key);
         Assert.False(await AsAsync(here, anna, sp => sp.GetRequiredService<ExportService>().MayExportAsync(default)));
         Assert.Equal(ExportService.NoCarsKey, (await Assert.ThrowsAsync<DomainException>(() => Start(ada, []))).Key);
         Assert.Equal("vehicle.notFound", (await Assert.ThrowsAsync<NotFoundException>(() => Start(ada, [new ExportCar(golf, ExportKinds.All)]))).Key); // not hers, admin or not

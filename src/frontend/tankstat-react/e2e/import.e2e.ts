@@ -262,8 +262,8 @@ test.describe('from a Tankstat backup', () => {
     await dialog.getByRole('button', { name: 'Export', exact: true }).click()
     await page.getByRole('button', { name: 'Open Import and export' }).click()
     await expect(page.getByRole('tab', { name: 'Export', selected: true })).toBeVisible()
-    await expect(page.getByText('Your export is ready.')).toBeVisible({ timeout: 60_000 })
-    await expect(page.getByText(/^1 car · .+ · not encrypted · kept until /)).toBeVisible()
+    // "Your export is ready." would match the first file at once: the second one is the one not encrypted.
+    await expect(page.getByText(/^1 car · .+ · not encrypted · kept until /)).toBeVisible({ timeout: 60_000 })
 
     // The first file, imported back as a new car with its passphrase.
     await page.getByRole('tab', { name: 'Import' }).click()

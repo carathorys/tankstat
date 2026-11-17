@@ -130,6 +130,15 @@ it('only administrators can open the administration page', async () => {
 
 const navLinks = () => within(screen.getByRole('navigation', { name: 'Main navigation' })).getAllByRole('link').map((l) => l.textContent)
 
+it('the navigation names the page Import and export once exporting is the person\'s, Import otherwise (#341)', async () => {
+  stubViewport('desktop')
+  server.use(adminSession(), healthHandler, ...withBackend(), graphql.query('CanExport', () => HttpResponse.json({ data: { canExport: true } })))
+  renderWithApollo(<App />, '/vehicles')
+  await screen.findByRole('heading', { name: 'Vehicles' })
+  await waitFor(() => expect(navLinks()).toContain('Import and export'))
+  expect(navLinks()).not.toContain('Import')
+})
+
 it('on a desktop the navigation is docked and open by default, and its links navigate', async () => {
   const ui = userEvent.setup()
   stubViewport('desktop')

@@ -29,7 +29,7 @@ const ready = (over: Record<string, unknown> = {}) =>
   file('READY', { readyAt: '2026-11-17T10:01:00Z', keptUntil: '2026-11-18T10:01:00Z', bytes: 62 * MB, downloadUrl: '/media/exports/e1', ...over })
 
 /** The server's side of the Export tab, each start and delete recorded; `mine` answers myExport in turn (the last one stays). */
-function setup(opts: { cars?: unknown[]; mine?: unknown[]; can?: boolean; startError?: unknown } = {}) {
+function setup(opts: { cars?: unknown[]; mine?: unknown[]; can?: boolean; startError?: unknown; keptOnStart?: unknown } = {}) {
   stubViewport('desktop')
   const calls = { starts: [] as Record<string, unknown>[], deleted: 0, cancelled: 0, heads: 0 }
   const answers = [...(opts.mine ?? [null])]
@@ -40,7 +40,7 @@ function setup(opts: { cars?: unknown[]; mine?: unknown[]; can?: boolean; startE
     graphql.mutation('StartExport', ({ variables }) => {
       if (opts.startError) return HttpResponse.json(opts.startError)
       calls.starts.push(variables.input as Record<string, unknown>)
-      answers.splice(0, answers.length, file('BUILDING', { progress: { __typename: 'ExportProgressInfo', car: 1, cars: 1, done: 21, total: 38 } }))
+      answers.splice(0, answers.length, file('BUILDING', { id: 'e2', progress: { __typename: 'ExportProgressInfo', car: 1, cars: 1, done: 21, total: 38 }, kept: opts.keptOnStart ?? null }))
       return HttpResponse.json({ data: { startExport: answers[0] } })
     }),
     graphql.mutation('CancelExport', () => {
@@ -120,7 +120,7 @@ it('exports the ticked car with its kinds and a passphrase typed twice, then fol
     passphrase: 'a long enough passphrase',
     passphraseConfirmation: 'a long enough passphrase',
   })
-  expect(await screen.findByText('Building your export… · car 1 of 1 · 21 of 38 photos')).toHaveAttribute('role', 'status')
+  expect(await screen.findByText('Building your export… car 1 of 1 · 21 of 38 photos')).toHaveAttribute('role', 'status')
   expect(screen.queryByRole('button', { name: 'Export' })).not.toBeInTheDocument()
 
   // Cancelled: nothing kept, and the form is back.
@@ -154,6 +154,7 @@ it('a ready file is downloaded once the server says it is there, deleted after a
   renderWithApollo(<ImportPage />, '/import?tab=export')
   expect(await screen.findByText('Your export is ready.')).toBeInTheDocument()
   expect(screen.getByText(/^1 car · 62 MB · encrypted · kept until /)).toBeInTheDocument()
+  expect(screen.getByText('tankstat-export-2026-11-17.zip')).toBeInTheDocument()
   expect(screen.getByText(/larger than this server accepts as an import \(200 MB\)/)).toBeInTheDocument()
   // The form waits behind Export again, which says it replaces the file.
   expect(screen.queryByRole('checkbox', { name: 'Golf (ABC-123)' })).not.toBeInTheDocument()
@@ -162,14 +163,25 @@ it('a ready file is downloaded once the server says it is there, deleted after a
   await waitFor(() => expect(download).toHaveBeenCalledWith('/media/exports/e1'))
   expect(calls.heads).toBe(1)
 
-  await userEvent.click(screen.getByRole('button', { name: 'Export again' }))
-  expect(await screen.findByRole('checkbox', { name: 'Golf (ABC-123)' })).toBeInTheDocument()
-  expect(screen.getByText(/An export of yours is kept until .+\. This one replaces it\./)).toBeInTheDocument()
-
   await userEvent.click(screen.getByRole('button', { name: 'Delete it' }))
   await userEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete it' }))
   await waitFor(() => expect(calls.deleted).toBe(1))
   await waitFor(() => expect(screen.queryByText('Your export is ready.')).not.toBeInTheDocument())
+})
+
+it('Export again opens the form, which says it replaces the file; while the new one is built the kept file stays and nothing offers a third', async () => {
+  const kept = ready()
+  const calls = setup({ mine: [kept], keptOnStart: kept })
+  renderWithApollo(<ImportPage />, '/import?tab=export')
+  await userEvent.click(await screen.findByRole('button', { name: 'Export again' }))
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Golf (ABC-123)' }))
+  expect(screen.getByText(/An export of yours is kept until .+\. This one replaces it\./)).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Export' }))
+  await waitFor(() => expect(calls.starts).toHaveLength(1))
+  expect(await screen.findByText('Building your export… car 1 of 1 · 21 of 38 photos')).toBeInTheDocument()
+  expect(screen.getByText('Your earlier export is still kept.')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Export again' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Export' })).not.toBeInTheDocument()
 })
 
 it('a download of a file gone since is said on the page', async () => {
@@ -185,7 +197,8 @@ it('says how the last export ended: failed with its reason and the earlier file 
   setup({ mine: [file('FAILED', { failureKey: 'export.failed', kept: ready({ id: 'e0' }) })] })
   const { unmount } = renderWithApollo(<ImportPage />, '/import?tab=export')
   expect(await screen.findByText('The export could not be built: Something went wrong while it was written. Nothing was kept.')).toBeInTheDocument()
-  expect(screen.getByText('Your export is ready.')).toBeInTheDocument()
+  expect(screen.getByText('Your earlier export is still kept.')).toBeInTheDocument()
+  expect(screen.queryByText('Your export is ready.')).not.toBeInTheDocument()
   unmount()
 
   setup({ mine: [file('INTERRUPTED')] })

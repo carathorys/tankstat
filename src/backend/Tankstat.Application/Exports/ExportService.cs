@@ -186,7 +186,8 @@ public sealed class ExportService(
     /// <summary>The finished file of an export for its download: only for the person who made it (anyone else's looks non-existent).</summary>
     public async Task<(Stream Content, string Name)> DownloadAsync(Guid id, CancellationToken ct)
     {
-        var me = await access.RequirePrincipalAsync(ct);
+        // Switched off, a kept file is not handed out either, as nothing else of the export is.
+        var me = await RequireExporterAsync(ct);
         Sweep();
         var owner = me.IsAnonymous ? Guid.Empty : me.Id;
         var record = files.Records().FirstOrDefault(r => r.Id == id && r.OwnerId == owner && r.State == ExportState.Ready);

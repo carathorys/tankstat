@@ -1213,8 +1213,8 @@
     },
     "export": {
       "disabled": "Ezen a szerveren ki van kapcsolva az exportálás.",
-      "noCars": "Jelölj ki legalább egy autót.",
-      "noKinds": "Jelölj ki legalább egy fajtát ehhez: {{car}}.",
+      "noCars": "Jelölj be legalább egy autót.",
+      "noKinds": "Jelölj be legalább egy fajtát a(z) {{car}} autóhoz.",
       "carTwice": "Egy autót csak egyszer lehet kiválasztani.",
       "notFound": "Ezt az exportot már nem őrizzük.",
       "failed": "Hiba történt az írása közben."
