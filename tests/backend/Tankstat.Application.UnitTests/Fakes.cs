@@ -162,6 +162,7 @@ internal sealed class InMemoryRefuelings : IRefuelingRepository
         Items.RemoveAll(doomed.Contains);
         return Task.FromResult(new PurgedLogs(doomed.Count, doomed.Select(r => (r.VehicleId, r.Id)).ToList()));
     }
+    public Task<VehiclePurge> PurgeForVehicleAsync(Guid vehicleId, CancellationToken ct) => Task.FromResult(new VehiclePurge(Items.RemoveAll(r => r.VehicleId == vehicleId), 0, 0));
 }
 
 internal sealed class InMemoryExpenses : IExpenseRepository
@@ -196,6 +197,7 @@ internal sealed class InMemoryExpenses : IExpenseRepository
         Items.RemoveAll(doomed.Contains);
         return Task.FromResult(new PurgedLogs(doomed.Count, doomed.Select(e => (e.VehicleId, e.Id)).ToList()));
     }
+    public Task<VehiclePurge> PurgeForVehicleAsync(Guid vehicleId, CancellationToken ct) => Task.FromResult(new VehiclePurge(Items.RemoveAll(e => e.VehicleId == vehicleId), 0, 0));
 }
 
 internal sealed class InMemoryRecurring(InMemoryVehicles vehicles) : IRecurringExpenseRepository
@@ -280,6 +282,12 @@ internal sealed class InMemoryRecurring(InMemoryVehicles vehicles) : IRecurringE
         Completions.AddRange(links);
         Keep(items);
         return Task.CompletedTask;
+    }
+    public Task<bool> LinkAsync(Guid expenseId, Guid recurringExpenseId, CancellationToken ct)
+    {
+        if (Completions.Any(c => c.ExpenseId == expenseId && c.RecurringExpenseId == recurringExpenseId)) return Task.FromResult(false);
+        Completions.Add(RecurringCompletion.Create(expenseId, recurringExpenseId));
+        return Task.FromResult(true);
     }
     public Task<IReadOnlyList<CompletedSchedule>> ListCompletionsForExpensesAsync(IReadOnlyCollection<Guid> expenseIds, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<CompletedSchedule>>(Completions.Where(c => expenseIds.Contains(c.ExpenseId))

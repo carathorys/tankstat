@@ -25,6 +25,12 @@ public interface IRecurringExpenseRepository
     /// <summary>Which schedules the given expenses covered, with their titles as they are now; schedules deleted since are left out.</summary>
     Task<IReadOnlyList<CompletedSchedule>> ListCompletionsForExpensesAsync(IReadOnlyCollection<Guid> expenseIds, CancellationToken ct);
 
+    /// <summary>
+    /// Links an expense to a schedule it marked done <b>without moving the schedule</b> (#338: a visit's link carried by an import). False
+    /// when the link was there already: nothing changes then.
+    /// </summary>
+    Task<bool> LinkAsync(Guid expenseId, Guid recurringExpenseId, CancellationToken ct);
+
     /// <summary>Saves a new schedule; false when one with its id already existed (a concurrent add with the same client id won).</summary>
     Task<bool> AddAsync(RecurringExpense item, CancellationToken ct);
     Task UpdateAsync(RecurringExpense item, CancellationToken ct);

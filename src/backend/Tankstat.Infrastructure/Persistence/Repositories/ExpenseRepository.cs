@@ -105,6 +105,24 @@ internal sealed class ExpenseRepository(IDbContextFactory<AppDbContext> dbFactor
         return new PurgedLogs(doomed.Count, doomed.Where(e => withPhotos.Contains(e.Id)).Select(e => (e.VehicleId, e.Id)).ToList());
     }
 
+    public async Task<VehiclePurge> PurgeForVehicleAsync(Guid vehicleId, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var withPhotos = await db.LogPhotos.Where(p => p.LogType == LogType.Expense && p.VehicleId == vehicleId).Select(p => p.LogId).Distinct().CountAsync(ct);
+        var onLines = await db.TyreEntries.IgnoreQueryFilters().Where(l => l.VehicleId == vehicleId && l.ExpenseId != null).Select(l => l.ExpenseId).Distinct().CountAsync(ct);
+        if (withPhotos + onLines > 0) return new VehiclePurge(0, withPhotos, onLines);
+        // Tracked and removed one by one, never a bulk delete: the tombstones the devices follow are written from the change tracker.
+        var doomed = await WithLinks(db.Expenses.IgnoreQueryFilters()).Where(e => e.VehicleId == vehicleId).ToListAsync(ct);
+        // The schedules an expense covered are linked without a foreign key on the expense side (see RecurringCompletionConfiguration).
+        db.RecurringCompletions.RemoveRange(await db.RecurringCompletions
+            .Where(c => db.Expenses.IgnoreQueryFilters().Any(e => e.Id == c.ExpenseId && e.VehicleId == vehicleId)).ToListAsync(ct));
+        db.Expenses.RemoveRange(doomed);
+        db.OdometerReadings.RemoveRange(doomed.Where(e => e.OdometerReading is not null).Select(e => e.OdometerReading!));
+        db.Costs.RemoveRange(doomed.Where(e => e.Cost is not null).Select(e => e.Cost!));
+        await db.SaveChangesAsync(ct);
+        return new VehiclePurge(doomed.Count, 0, 0);
+    }
+
     private static IQueryable<Expense> Trashed(AppDbContext db, OwnerScope scope) =>
         WithLinks(db.Expenses.IgnoreQueryFilters()).Where(e => e.DeletedAt != null).InScope(scope, e => e.VehicleId);
 

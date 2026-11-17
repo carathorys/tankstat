@@ -66,6 +66,18 @@ internal sealed class RecurringExpenseRepository(IDbContextFactory<AppDbContext>
             .ToListAsync(ct);
     }
 
+    public async Task<bool> LinkAsync(Guid expenseId, Guid recurringExpenseId, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        if (await db.RecurringCompletions.AnyAsync(c => c.ExpenseId == expenseId && c.RecurringExpenseId == recurringExpenseId, ct)) return false;
+        db.RecurringCompletions.Add(RecurringCompletion.Create(expenseId, recurringExpenseId));
+        await using var tx = await db.BeginInnerAsync(ct);
+        await db.SaveChangesAsync(ct);
+        await db.TouchExpensesOfSchedulesAsync([recurringExpenseId], clock.GetUtcNow(), ct); // the expense now lists it
+        await tx.CommitAsync(ct);
+        return true;
+    }
+
     public Task<bool> AddAsync(RecurringExpense item, CancellationToken ct) => dbFactory.AddOnceAsync(item, item.Id, ct);
 
     public async Task UpdateAsync(RecurringExpense item, CancellationToken ct)

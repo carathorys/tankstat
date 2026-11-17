@@ -848,7 +848,8 @@
       "notFound": "This vehicle does not exist.",
       "viewOnly": "You may only view this vehicle.",
       "unitsLocked": "The units cannot be changed once the vehicle has logs.",
-      "unknownUnit": "Unknown unit: {{value}}."
+      "unknownUnit": "Unknown unit: {{value}}.",
+      "deleteNotAllowed": "You may not delete this vehicle's logs for good."
     },
     "vehicleOrder": {
       "tooMany": "At most {{max}} vehicles can be arranged."
@@ -980,7 +981,8 @@
       "unknownCar": "The file has no such car any more. Choose the file again.",
       "carTwice": "A car can be chosen once, and each of your cars can take one car of the file.",
       "alreadyRunning": "An import of yours is running or waiting already.",
-      "notOnMySql": "Importing from a backup is not available on a server that runs on MySQL yet."
+      "notOnMySql": "Importing from a backup is not available on a server that runs on MySQL yet.",
+      "replaceHeldBack": "These entries have photos or tyre log lines, so they cannot be replaced yet."
     },
     "chart": {
       "invalid": "This chart is not valid.",

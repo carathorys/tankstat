@@ -36,4 +36,11 @@ public interface IExpenseRepository
 
     /// <summary>Physically removes the trashed expenses in scope, with their photo rows. Returns which ones, so their photo files can be removed.</summary>
     Task<PurgedLogs> PurgeAsync(OwnerScope scope, CancellationToken ct);
+
+    /// <summary>
+    /// Deletes every expense of the vehicle for good, those in the trash too, with their readings, costs and the links to the schedules
+    /// they marked done, through the change tracker (the devices learn of each). Deletes nothing when one of them has a photo or belongs
+    /// to a tyre log line (<see cref="VehiclePurge.HeldBack"/>).
+    /// </summary>
+    Task<VehiclePurge> PurgeForVehicleAsync(Guid vehicleId, CancellationToken ct);
 }

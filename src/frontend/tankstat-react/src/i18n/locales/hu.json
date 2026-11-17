@@ -848,7 +848,8 @@
       "notFound": "Ez a jármű nem létezik.",
       "viewOnly": "Ezt a járművet csak megtekintheted.",
       "unitsLocked": "A mértékegységek nem módosíthatók, ha a járműnek már vannak naplóbejegyzései.",
-      "unknownUnit": "Ismeretlen mértékegység: {{value}}."
+      "unknownUnit": "Ismeretlen mértékegység: {{value}}.",
+      "deleteNotAllowed": "Ennek a járműnek a naplóit nem törölheted véglegesen."
     },
     "vehicleOrder": {
       "tooMany": "Legfeljebb {{max}} jármű rendezhető sorba."
@@ -980,7 +981,8 @@
       "unknownCar": "A fájlban már nincs ilyen autó. Válaszd ki újra a fájlt.",
       "carTwice": "Egy autó egyszer választható, és minden autód a fájl egy autóját kaphatja.",
       "alreadyRunning": "Már fut vagy várakozik egy importálásod.",
-      "notOnMySql": "A mentésből importálás MySQL-en futó szerveren még nem érhető el."
+      "notOnMySql": "A mentésből importálás MySQL-en futó szerveren még nem érhető el.",
+      "replaceHeldBack": "Ezekhez a bejegyzésekhez fénykép vagy gumiabroncs-naplósor tartozik, ezért még nem cserélhetők le."
     },
     "chart": {
       "invalid": "Ez a grafikon nem érvényes.",
