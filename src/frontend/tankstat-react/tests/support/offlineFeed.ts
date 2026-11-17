@@ -34,7 +34,7 @@ export function fakeFeed() {
   const refueling = (r: FeedRow) => ({
     __typename: 'Refueling', id: r.id, vehicleId: r.vehicleId, date: r.date, volume: r.volume, totalCost: 100, discount: null, currency: 'EUR', pricePerUnit: 100 / r.volume, pricePerUnitBeforeDiscount: 100 / r.volume,
     consumption: null, odometer: 1000, isFullTank: true, missedPreviousFillUp: false, note: null, reviewState: 'NONE', filledFromPhoto: [], canEdit: true,
-    canDelete: true, deletedAt: null, version: 1, updatedAt: new Date(r.updatedAt).toISOString(), createdBy: null, photos: [],
+    canDelete: true, deletedAt: null, version: 1, updatedAt: new Date(r.updatedAt).toISOString(), createdBy: null, createdByGone: false, photos: [],
   })
   const vehicle = (id: string) => ({
     __typename: 'Vehicle', id, version: 3, name: `Car ${id}`, licensePlate: null, fuelType: 'PETROL', pictureUrl: null, canEdit: true, logAccess: 'DELETE', refuelingCount: 0,

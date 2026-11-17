@@ -140,96 +140,112 @@ query BackupImportCars($token: String!) {
   }
 }
 
+fragment ImportEntryPageFields on ImportEntryPageInfo {
+  total
+  items {
+    id
+    date
+    odometer
+    title
+    amount
+    currency
+    volume
+    differences {
+      field
+      backup
+      target
+    }
+  }
+}
+
 # A page of the Choose dialog (#338): one kind's entries that are only in the backup, or (differing) that differ from the car's.
 query BackupImportEntries($token: String!, $carId: UUID!, $targetVehicleId: UUID!, $kind: String!, $differing: Boolean!, $skip: Int!, $take: Int!, $tyres: ImportTyreChoiceInput) {
   backupImportEntries(token: $token, carId: $carId, targetVehicleId: $targetVehicleId, kind: $kind, differing: $differing, skip: $skip, take: $take, tyres: $tyres) {
-    total
-    items {
+    ...ImportEntryPageFields
+  }
+}
+
+fragment ImportCarReviewFields on ImportCarReviewInfo {
+  carId
+  name
+  ownerName
+  ownedByMe
+  targetVehicleId
+  targetName
+  newRefuelings
+  newExpenses
+  newSchedules
+  existingRefuelings
+  existingExpenses
+  existingSchedules
+  differing
+  inTrash
+  links
+  linksLost
+  media {
+    photosNew
+    photosHere
+    photosLeftOut
+    picture
+    targetPicture
+    chartsNew
+    chartsHere
+    ownChartsNew
+    dashboard
+    targetDashboard
+    ownDashboard
+    targetOwnDashboard
+  }
+  tyres {
+    expenses
+    noSetLines
+    noSetExpenses
+    sets {
       id
-      date
-      odometer
-      title
-      amount
-      currency
-      volume
-      differences {
-        field
-        backup
-        target
-      }
+      name
+      season
+      state
+      installations
+      lines
+      tyres
+      expenses
+      refusalKey
+      refusalArgs
     }
+  }
+  kinds {
+    kind
+    mode
+    backup
+    new
+    differ
+    same
+    inTrash
+    adds
+    takes
+    targetLive
+    targetTrashed
+    withPhotos
+    onTyreLines
+    photosLost
+  }
+  restore {
+    state
+    ownerId
+    ownerName
+    access
+    goneAccess
   }
 }
 
 query BackupImportReview($token: String!, $cars: [ImportCarChoiceInput!]!) {
   backupImportReview(token: $token, cars: $cars) {
-    carId
-    name
-    ownerName
-    ownedByMe
-    targetVehicleId
-    targetName
-    newRefuelings
-    newExpenses
-    newSchedules
-    existingRefuelings
-    existingExpenses
-    existingSchedules
-    differing
-    inTrash
-    links
-    linksLost
-    media {
-      photosNew
-      photosHere
-      photosLeftOut
-      picture
-      targetPicture
-      chartsNew
-      chartsHere
-      ownChartsNew
-      dashboard
-      targetDashboard
-      ownDashboard
-      targetOwnDashboard
-    }
-    tyres {
-      expenses
-      noSetLines
-      noSetExpenses
-      sets {
-        id
-        name
-        season
-        state
-        installations
-        lines
-        tyres
-        expenses
-        refusalKey
-        refusalArgs
-      }
-    }
-    kinds {
-      kind
-      mode
-      backup
-      new
-      differ
-      same
-      inTrash
-      adds
-      takes
-      targetLive
-      targetTrashed
-      withPhotos
-      onTyreLines
-      photosLost
-    }
+    ...ImportCarReviewFields
   }
 }
 
 fragment ImportRunFields on ImportRunInfo {
+  backupOf
   id
   kind
   startedByName
@@ -276,6 +292,13 @@ fragment ImportRunFields on ImportRunInfo {
       dashboard
       ownDashboard
       tilesLeftOut
+    }
+    restore {
+      ownerId
+      cameBack
+      grants
+      goneGrantees
+      peopleLeftOut
     }
     tyres {
       sets

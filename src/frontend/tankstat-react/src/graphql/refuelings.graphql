@@ -35,6 +35,7 @@ query Refuelings(
     isFullTank @include(if: $withFullTank)
     missedPreviousFillUp @include(if: $withFullTank)
     note @include(if: $withNote)
+    createdByGone @include(if: $withCreatedBy)
     createdBy @include(if: $withCreatedBy) {
       id
       displayName
@@ -73,6 +74,7 @@ query RefuelingTrash(
     currency @include(if: $withCost)
     odometer @include(if: $withOdometer)
     deletedAt @include(if: $withDeletedAt)
+    createdByGone @include(if: $withCreatedBy)
     createdBy @include(if: $withCreatedBy) {
       id
       displayName

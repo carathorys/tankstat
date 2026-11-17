@@ -107,7 +107,8 @@ export function sortLogs(kind: LogKind, rows: readonly LogRow[], field: string, 
 function asAnswer(row: LogRow, vehicle: VehicleRow | undefined): Record<string, unknown> {
   const { pulledAt: _pulledAt, ...fields } = row
   const known = row.__typename === 'Refueling' ? withDiscount(fields) : row.__typename === 'Expense' ? { ...fields, discount: fields.discount ?? null, tyreEntry: fields.tyreEntry ?? null } : fields
-  return { ...known, canEdit: atLeast(vehicle?.logAccess, 'EDIT'), canDelete: atLeast(vehicle?.logAccess, 'DELETE') }
+  // A row downloaded before #340 has no word on its creator's account: none gone, as it was shown.
+  return { ...known, createdByGone: known.createdByGone ?? false, canEdit: atLeast(vehicle?.logAccess, 'EDIT'), canDelete: atLeast(vehicle?.logAccess, 'DELETE') }
 }
 
 function withDiscount(row: Record<string, unknown>): Record<string, unknown> {
@@ -147,7 +148,7 @@ function withValues(kind: LogKind, row: LogRow, input: Record<string, unknown> |
 function added(kind: LogKind, change: Change): LogRow {
   const common = {
     id: change.targetId, vehicleId: change.vehicleId, date: '', deletedAt: null, version: 0, updatedAt: new Date(change.createdAt).toISOString(),
-    createdBy: null, photos: [], pulledAt: 0, note: null, odometer: null, currency: null,
+    createdBy: null, createdByGone: false, photos: [], pulledAt: 0, note: null, odometer: null, currency: null,
   }
   const row: LogRow =
     kind === 'refuelings'

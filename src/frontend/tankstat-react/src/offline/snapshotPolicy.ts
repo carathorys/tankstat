@@ -62,6 +62,13 @@ const POLICIES: Record<string, SnapshotPolicy> = {
   BackupImportEntries: 'onlineOnly',
   ImportRun: 'onlineOnly',
   MyImportRun: 'onlineOnly',
+  // Restore cars (#340): an administrator's, on a file of the server's; nothing to keep on a device.
+  CarRestore: 'onlineOnly',
+  RestoreCars: 'onlineOnly',
+  RestorePeople: 'onlineOnly',
+  RestoreReview: 'onlineOnly',
+  RestoreEntries: 'onlineOnly',
+  MyRestoreRun: 'onlineOnly',
   ImportRuns: 'onlineOnly',
   MySessions: 'onlineOnly',
   OfflineEstimates: 'onlineOnly',

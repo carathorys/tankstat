@@ -222,6 +222,14 @@ it('an expense whose creator is no longer known shows a dash for who logged it, 
   expect(byColumn).toMatchObject({ amount: '–', createdBy: '–', category: 'Care' })
 })
 
+it('an expense whose creator has no account any more (a restored one, #340) says so, not a dash', async () => {
+  setup(fakeVehicle(), [fakeExpense({ id: 'e4', title: 'Car wash', createdBy: null as never, createdByGone: true })])
+
+  const row = (await screen.findByText('Car wash')).closest<HTMLElement>('[role="row"]')!
+  const cell = within(row).getAllByRole('gridcell').find((c) => c.getAttribute('data-field') === 'createdBy')
+  expect(cell).toHaveTextContent('Someone who no longer has an account')
+})
+
 it('view-only access: no add button and no edit or delete', async () => {
   setup(fakeVehicle({ canEdit: false, logAccess: 'VIEW' }), expenses.map((e) => ({ ...e, canEdit: false })))
 

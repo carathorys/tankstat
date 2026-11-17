@@ -117,7 +117,7 @@ export function RefuelingsPanel({
           ),
       },
       { id: 'note', label: 'columns.note', include: 'withNote', cell: (r) => r.note || none },
-      { id: 'createdBy', label: 'columns.createdBy', include: 'withCreatedBy', sortField: 'CREATED_BY', cell: (r) => (r.createdBy ? <UserChip user={r.createdBy} /> : none) },
+      { id: 'createdBy', label: 'columns.createdBy', include: 'withCreatedBy', sortField: 'CREATED_BY', cell: (r) => (r.createdBy ? <UserChip user={r.createdBy} /> : r.createdByGone ? t('columns.createdByGone') : none) },
     ]
   }, [t, format, units])
 
