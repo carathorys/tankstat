@@ -13,6 +13,9 @@ namespace Tankstat.Infrastructure.Backups;
 /// </summary>
 public static class BackupFile
 {
+    /// <summary>An export given where a backup is wanted (the folder's upload, a restore, the command line).</summary>
+    public const string IsExportKey = "backup.isExport";
+
     /// <summary>
     /// The manifest of a backup file; <c>backup.corrupt</c> when the file is not a backup. Only a whole manifest Tankstat wrote counts: another
     /// program's <c>manifest.json</c> (a browser extension's, say) reads as one with nothing set, and one that lacks what every backup states
@@ -22,9 +25,6 @@ public static class BackupFile
     /// Whether a file written as an export (<see cref="BackupManifest.Export"/>, #341) counts: only for the reader of cars (#336). An
     /// export is never a restore point: everything else refuses it.
     /// </param>
-    /// <summary>An export given where a backup is wanted (the folder's upload, a restore, the command line).</summary>
-    public const string IsExportKey = "backup.isExport";
-
     public static BackupManifest ReadManifest(string path, bool exports = false)
     {
         BackupManifest manifest;

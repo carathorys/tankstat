@@ -26,7 +26,7 @@ public sealed class ExportOptions
     /// </summary>
     public string Folder { get; set; } = "exports";
 
-    public string Root => Path.GetFullPath(Folder);
+    public string Root => Folders.Full(Folder);
 
     public TimeSpan Keep => TimeSpan.FromHours(KeepHours);
 }

@@ -36,8 +36,8 @@ public interface IExportFiles
     void RemovePartials();
 }
 
-/// <summary>A job the runner builds: the record it ends, the request it writes, the exporter's name for the administrators' notification.</summary>
-public sealed record ExportJob(ExportRecord Record, ExportWriteRequest Request, string? ExporterName);
+/// <summary>A job the runner builds: the record it ends and the request it writes.</summary>
+public sealed record ExportJob(ExportRecord Record, ExportWriteRequest Request);
 
 /// <summary>The exports being built on this server, in the background.</summary>
 public interface IExportRunner
@@ -142,7 +142,7 @@ public sealed class ExportService(
         var id = Guid.NewGuid();
         var record = new ExportRecord(id, owner, ExportState.Building, [.. cars.Select(c => own[c.VehicleId].Name)], encryption is not null, clock.GetUtcNow());
         files.Save(record);
-        runner.Start(new ExportJob(record, new ExportWriteRequest(me.IsAnonymous ? null : me.Id, cars, encryption, files.FileOf(id)), me.IsAnonymous ? null : me.DisplayName));
+        runner.Start(new ExportJob(record, new ExportWriteRequest(me.IsAnonymous ? null : me.Id, cars, encryption, files.FileOf(id))));
         logger.LogInformation("User {UserId} started export {ExportId}: {Cars} cars, {Encryption}", owner, id, cars.Count, encryption is null ? "in plain" : "encrypted");
         return View(record);
     }

@@ -302,7 +302,8 @@ internal sealed class ExportWriter(
             var chartIds = charts.ToHashSet();
 
             var model = db.Model;
-            int At(string table, string column) => TableDump.Tables(model).First(t => t.Name == table).Columns.ToList().FindIndex(c => c.Name == column);
+            var tables = TableDump.Tables(model).ToDictionary(t => t.Name, StringComparer.Ordinal);
+            int At(string table, string column) => tables[table].Columns.ToList().FindIndex(c => c.Name == column);
             Func<object?[], bool> Ids(string table, IReadOnlySet<Guid> ids)
             {
                 var id = At(table, "Id");
@@ -384,13 +385,14 @@ internal sealed class ExportWriter(
             foreach (var chunk in ids.Chunk(Chunk))
                 foreach (var image in await db.Images.AsNoTracking().Where(i => chunk.Contains(i.Id)).ToListAsync(ct)) stored[image.Id] = image;
             var files = new List<(StoredImage, string, bool, int)>();
-            foreach (var (imageId, car, type, log) in _images.OrderBy(i => _cars.ToList().IndexOf(i.Car)))
+            var order = _cars.Select((car, index) => (car, index)).ToDictionary(c => c.car, c => c.index);
+            foreach (var (imageId, car, type, log) in _images.OrderBy(i => order[i.Car]))
             {
                 if (!stored.TryGetValue(imageId, out var image)) continue;
                 var name = imageId.ToString("N");
                 files.Add(type is { } logType
-                    ? (image, $"files/photos/{ImageFolders.LogPhotos(car, logType, log!.Value)}/{name}", true, _cars.ToList().IndexOf(car))
-                    : (image, $"files/pictures/{ImageFolders.VehiclePicture(car)}/{name}", false, _cars.ToList().IndexOf(car)));
+                    ? (image, $"files/photos/{ImageFolders.LogPhotos(car, logType, log!.Value)}/{name}", true, order[car])
+                    : (image, $"files/pictures/{ImageFolders.VehiclePicture(car)}/{name}", false, order[car]));
             }
             return files;
         }
