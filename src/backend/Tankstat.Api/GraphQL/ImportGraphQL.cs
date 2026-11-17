@@ -128,16 +128,50 @@ public sealed record ImportCarOfferInfo(BackupCarInfo Car, bool OwnedByMe, Guid?
 
 public sealed record ImportCarOffersInfo(BackupFileInfo File, IReadOnlyList<ImportCarOfferInfo> Cars, IReadOnlyList<ImportOwnCarInfo> Targets);
 
-/// <param name="TargetVehicleId">One of the importer's own cars to add the car to; omit to import it as a new car.</param>
-/// <param name="Policy">What happens when one of its entries cannot be saved; omit for the rest to be imported.</param>
-public sealed record ImportCarChoiceInput(Guid CarId, Guid? TargetVehicleId, RefusedEntryPolicy? Policy)
+/// <summary>
+/// What comes of one kind of a car's entries. With <c>CHOOSE</c> the picks are a default and its exceptions (the backup's entry ids):
+/// <c>addNew</c> (true when omitted) for the entries only in the backup, <c>takeBackups</c> (false when omitted) for the ones that differ.
+/// </summary>
+public sealed record ImportKindChoiceInput(ImportKindMode Mode, bool? AddNew, IReadOnlyList<Guid>? NewExceptions, bool? TakeBackups, IReadOnlyList<Guid>? DifferExceptions)
 {
-    public ImportCarChoice ToChoice() => new(CarId, TargetVehicleId, Policy ?? RefusedEntryPolicy.ImportTheRest);
+    public ImportKindChoice ToChoice() => new(Mode, AddNew ?? true, NewExceptions, TakeBackups ?? false, DifferExceptions);
 }
 
+/// <param name="TargetVehicleId">One of the importer's own cars to add the car to; omit to import it as a new car.</param>
+/// <param name="Policy">What happens when one of its entries cannot be saved; omit for the rest to be imported. A car with a <c>REPLACE_ALL</c> is always all or nothing.</param>
+/// <param name="Refuelings">What comes of its refuellings; omit for only the missing. A new car's kind comes whole unless it is <c>DONT_IMPORT</c>.</param>
+/// <param name="ConfirmedName">The target car's name as the person typed it: a start with a <c>REPLACE_ALL</c> is refused without it.</param>
+public sealed record ImportCarChoiceInput(
+    Guid CarId, Guid? TargetVehicleId, RefusedEntryPolicy? Policy, ImportKindChoiceInput? Refuelings = null, ImportKindChoiceInput? Expenses = null,
+    ImportKindChoiceInput? Schedules = null, string? ConfirmedName = null)
+{
+    public ImportCarChoice ToChoice() => new(CarId, TargetVehicleId, Policy ?? RefusedEntryPolicy.ImportTheRest,
+        Refuelings is null && Expenses is null && Schedules is null ? null : new ImportCarKinds(Refuelings?.ToChoice(), Expenses?.ToChoice(), Schedules?.ToChoice()),
+        ConfirmedName);
+}
+
+/// <summary>
+/// One kind (<c>refueling</c>, <c>expense</c>, <c>recurring</c>) of a chosen car. Of the backup's entries: <c>new</c> only there,
+/// <c>differ</c>, <c>same</c>, <c>inTrash</c> matching the target's trash. By the choice: <c>adds</c> will be added and <c>takes</c> of the
+/// target's take the backup's values. The target has <c>targetLive</c> and <c>targetTrashed</c> of the kind; <c>withPhotos</c> and
+/// <c>onTyreLines</c> of them hold a Replace all back.
+/// </summary>
+public sealed record ImportKindReviewInfo(
+    string Kind, ImportKindMode Mode, int Backup, int New, int Differ, int Same, int InTrash, int Adds, int Takes, int TargetLive, int TargetTrashed, int WithPhotos, int OnTyreLines);
+
+/// <param name="Links">Visits keep their link between an expense and the recurring expenses it marked done (neither kind is left out).</param>
+/// <param name="LinksLost">The target's such links that will not be there after the import.</param>
 public sealed record ImportCarReviewInfo(
     Guid CarId, string Name, string? OwnerName, bool OwnedByMe, Guid? TargetVehicleId, string? TargetName, int NewRefuelings, int NewExpenses, int NewSchedules,
-    int ExistingRefuelings, int ExistingExpenses, int ExistingSchedules, int Differing, int InTrash);
+    int ExistingRefuelings, int ExistingExpenses, int ExistingSchedules, int Differing, int InTrash, IReadOnlyList<ImportKindReviewInfo> Kinds, bool Links, int LinksLost);
+
+/// <summary>A value that differs between the backup's entry and the car's, by the input's field name; each side as invariant text (a day as yyyy-MM-dd).</summary>
+public sealed record ImportFieldDifferenceInfo(string Field, string? Backup, string? Target);
+
+/// <summary>An entry of the backup in the Choose dialog; for a recurring expense <c>date</c> and <c>odometer</c> are when it was last done.</summary>
+public sealed record ImportEntryInfo(Guid Id, DateOnly? Date, long? Odometer, string? Title, decimal? Amount, string? Currency, decimal? Volume, IReadOnlyList<ImportFieldDifferenceInfo> Differences);
+
+public sealed record ImportEntryPageInfo(int Total, IReadOnlyList<ImportEntryInfo> Items);
 
 /// <param name="Token">From the upload (<c>POST /imports/tankstat</c>), once the file is opened.</param>
 public sealed record StartBackupImportInput(string Token, IReadOnlyList<ImportCarChoiceInput> Cars);
@@ -149,9 +183,14 @@ public sealed record ImportRunCarInfo(Guid CarId, string Name, Guid? TargetVehic
 /// <summary>An entry that could not be saved: its kind (<c>refueling</c>, <c>expense</c>, <c>recurring</c>), its day or title, and the reason's key and arguments.</summary>
 public sealed record ImportRefusedEntryInfo(string Kind, DateOnly? Date, string? Title, string Key, JsonElement Args);
 
+/// <summary>What came of one kind of a car: added from the backup, changed to the backup's values, and deleted for good first.</summary>
+public sealed record ImportKindReportInfo(string Kind, ImportKindMode Mode, int Imported, int Changed, int Deleted);
+
+/// <param name="Replacing">The car had a Replace all: with <c>leftOut</c> it was left exactly as it was.</param>
+/// <param name="Links">The visits' links that were added.</param>
 public sealed record ImportCarReportInfo(
     Guid CarId, string Name, Guid? VehicleId, string? TargetName, bool AsNew, bool LeftOut, int Refuelings, int Expenses, int Schedules, int Existing, int Differing, int InTrash,
-    IReadOnlyList<ImportRefusedEntryInfo> Refused, int RefusedMore);
+    IReadOnlyList<ImportRefusedEntryInfo> Refused, int RefusedMore, IReadOnlyList<ImportKindReportInfo> Kinds, bool Replacing, int Links);
 
 /// <summary>
 /// A run of an import: waiting in line (<c>ahead</c> runs before it), running (<c>progress</c>), done (<c>report</c>, its starter's alone)
@@ -167,7 +206,8 @@ public sealed record ImportRunInfo(
         new ImportRunProgressInfo(v.Progress.Car, v.Progress.Cars, v.Progress.Done, v.Progress.Total),
         [.. v.Plan.Cars.Select(c => new ImportRunCarInfo(c.CarId, c.Name, c.TargetVehicleId, c.TargetName))],
         v.Report?.Cars.Select(c => new ImportCarReportInfo(c.CarId, c.Name, c.VehicleId, c.TargetName, c.AsNew, c.LeftOut, c.Refuelings, c.Expenses, c.Schedules, c.Existing, c.Differing, c.InTrash,
-            [.. c.Refused.Select(r => new ImportRefusedEntryInfo(r.Kind, r.Date, r.Title, r.Key, JsonSerializer.SerializeToElement(r.Args)))], c.RefusedMore)).ToList(),
+            [.. c.Refused.Select(r => new ImportRefusedEntryInfo(r.Kind, r.Date, r.Title, r.Key, JsonSerializer.SerializeToElement(r.Args)))], c.RefusedMore,
+            [.. (c.Kinds ?? []).Select(k => new ImportKindReportInfo(k.Kind, k.Mode, k.Imported, k.Changed, k.Deleted))], c.Replacing, c.Links)).ToList(),
         fileToken, limitMinutes);
 }
 
@@ -188,7 +228,21 @@ public sealed class ImportRunQueries
     public async Task<IReadOnlyList<ImportCarReviewInfo>> GetBackupImportReview(string token, IReadOnlyList<ImportCarChoiceInput> cars, [Service] BackupImportRunService imports, CancellationToken ct) =>
         [.. (await imports.ReviewAsync(token, [.. cars.Select(c => c.ToChoice())], ct)).Select(r => new ImportCarReviewInfo(
             r.CarId, r.Name, r.OwnerName, r.OwnedByMe, r.TargetVehicleId, r.TargetName, r.NewRefuelings, r.NewExpenses, r.NewSchedules, r.ExistingRefuelings, r.ExistingExpenses,
-            r.ExistingSchedules, r.Differing, r.InTrash))];
+            r.ExistingSchedules, r.Differing, r.InTrash,
+            [.. r.Kinds.Select(k => new ImportKindReviewInfo(k.Kind, k.Mode, k.Backup, k.New, k.Differ, k.Same, k.InTrash, k.Adds, k.Takes, k.TargetLive, k.TargetTrashed, k.WithPhotos, k.OnTyreLines))],
+            r.Links, r.LinksLost))];
+
+    /// <summary>
+    /// A page of the Choose dialog: the entries of one kind (<c>refueling</c>, <c>expense</c>, <c>recurring</c>) of a backup's car that are
+    /// only in the backup, or with <c>differing</c> the ones that differ from the target's, at most 200 at a time.
+    /// </summary>
+    public async Task<ImportEntryPageInfo> GetBackupImportEntries(
+        string token, Guid carId, Guid targetVehicleId, string kind, bool differing, int skip, int take, [Service] BackupImportRunService imports, CancellationToken ct)
+    {
+        var page = await imports.EntriesAsync(token, carId, targetVehicleId, kind, differing, skip, take, ct);
+        return new ImportEntryPageInfo(page.Total, [.. page.Items.Select(e => new ImportEntryInfo(e.Id, e.Date, e.Odometer, e.Title, e.Amount, e.Currency, e.Volume,
+            [.. e.Differences.Select(d => new ImportFieldDifferenceInfo(d.Field, d.Backup, d.Target))]))]);
+    }
 
     /// <summary>A run by its id: its starter's (with the report, kept for a week), or for an administrator one that goes or waits. Null otherwise.</summary>
     public async Task<ImportRunInfo?> GetImportRun(Guid id, [Service] BackupImportRunService imports, [Service] IBackupImportRunner runner, [Service] AccessService access,

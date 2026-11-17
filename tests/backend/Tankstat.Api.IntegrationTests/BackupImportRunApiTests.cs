@@ -15,7 +15,7 @@ public sealed class BackupImportRunApiTests : IDisposable
 {
     private const string Run = """
         id kind startedByName mine state failure ahead fileToken limitMinutes progress { car cars done total } cars { name targetName }
-        report { name vehicleId targetName asNew leftOut refuelings expenses schedules existing differing inTrash refusedMore refused { kind date title key args } }
+        report { name vehicleId targetName asNew leftOut refuelings expenses schedules existing differing inTrash refusedMore refused { kind date title key args } replacing links kinds { kind mode imported changed deleted } }
         """;
 
     private readonly List<TestApp> _apps = [];
@@ -132,6 +132,60 @@ public sealed class BackupImportRunApiTests : IDisposable
         // The log: who imported how much, never a car's name or an entry's.
         Assert.Contains(app.Log.Entries, e => e.Message.Contains(people.BobId) && e.Message.Contains("imported 1 cars"));
         Assert.DoesNotContain(app.Log.Entries, e => e.Category.Contains("Import") && (e.Message.Contains("Zzcanary") || e.Message.Contains("wash")));
+    }
+
+    [Fact]
+    public async Task IntoAnOwnCar_AKindIsReplacedBehindTheTypedName_AndEntriesAreChosenOneByOne_AllThroughTheApi()
+    {
+        var app = App();
+        var people = await app.Users();
+        var (file, car) = await BackupAsync(app, people.Alice);
+        var mine = (await people.Bob.Gql("mutation { addVehicle(input: { name: \"Bob's own\", fuelType: DIESEL }) { id } }")).Data().GetProperty("addVehicle").GetProperty("id").GetString()!;
+        (await people.Bob.Gql("mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }",
+            new { i = new { vehicleId = mine, date = "2026-08-01", volume = 30, totalCost = 45, currency = "EUR", odometer = 500, isFullTank = true } })).Data();
+        // The backup's wash, at another amount's note: it differs.
+        (await people.Bob.Gql("mutation($i: AddExpenseInput!) { addExpense(input: $i) { id } }",
+            new { i = new { vehicleId = mine, date = "2026-09-02", title = "Zzcanary wash", amount = 12, currency = "EUR", note = "Zzcanary mine" } })).Data();
+        var token = await OpenAsync(people.Bob, file);
+        object[] Cars(string? typed) => [new { carId = car, targetVehicleId = mine, refuelings = new { mode = "REPLACE_ALL" }, expenses = new { mode = "CHOOSE", takeBackups = true }, confirmedName = typed }];
+
+        var review = (await people.Bob.Gql(
+            "query($t: String!, $c: [ImportCarChoiceInput!]!) { backupImportReview(token: $t, cars: $c) { links linksLost kinds { kind mode backup new differ same inTrash adds takes targetLive targetTrashed withPhotos onTyreLines } } }",
+            new { t = token, c = Cars(null) })).Data().GetProperty("backupImportReview")[0];
+        var kinds = review.GetProperty("kinds").EnumerateArray().ToDictionary(k => k.GetProperty("kind").GetString()!);
+        Assert.Equal(("REPLACE_ALL", 2, 2, 1), (kinds["refueling"].GetProperty("mode").GetString(), kinds["refueling"].GetProperty("backup").GetInt32(), kinds["refueling"].GetProperty("adds").GetInt32(), kinds["refueling"].GetProperty("targetLive").GetInt32()));
+        Assert.Equal(("CHOOSE", 1, 0, 1), (kinds["expense"].GetProperty("mode").GetString(), kinds["expense"].GetProperty("differ").GetInt32(), kinds["expense"].GetProperty("adds").GetInt32(), kinds["expense"].GetProperty("takes").GetInt32()));
+        Assert.Equal((true, 0), (review.GetProperty("links").GetBoolean(), review.GetProperty("linksLost").GetInt32()));
+
+        var page = (await people.Bob.Gql(
+            "query($t: String!, $c: UUID!, $v: UUID!) { backupImportEntries(token: $t, carId: $c, targetVehicleId: $v, kind: \"expense\", differing: true, skip: 0, take: 50) { total items { id date title amount currency differences { field backup target } } } }",
+            new { t = token, c = car, v = mine })).Data().GetProperty("backupImportEntries");
+        var entry = Assert.Single(page.GetProperty("items").EnumerateArray());
+        var difference = Assert.Single(entry.GetProperty("differences").EnumerateArray());
+        Assert.Equal((1, "Zzcanary wash", "note", JsonValueKind.Null, "Zzcanary mine"),
+            (page.GetProperty("total").GetInt32(), entry.GetProperty("title").GetString(), difference.GetProperty("field").GetString(), difference.GetProperty("backup").ValueKind, difference.GetProperty("target").GetString()));
+
+        // The name is the server's to check: without it, or with another, nothing is queued.
+        const string start = "mutation($i: StartBackupImportInput!) { startBackupImport(input: $i) { id } }";
+        Assert.Equal("import.replaceNotConfirmed", (await people.Bob.Gql(start, new { i = new { token, cars = Cars(null) } })).ErrorKey());
+        Assert.Equal("import.replaceNotConfirmed", (await people.Bob.Gql(start, new { i = new { token, cars = Cars("Zzcanary Octavia") } })).ErrorKey());
+        var id = (await people.Bob.Gql(start, new { i = new { token, cars = Cars("bob's OWN") } })).Data().GetProperty("startBackupImport").GetProperty("id").GetString()!;
+        var done = await EndedAsync(people.Bob, id);
+
+        Assert.Equal("DONE", done.GetProperty("state").GetString());
+        var report = Assert.Single(done.GetProperty("report").EnumerateArray());
+        var came = report.GetProperty("kinds").EnumerateArray().ToDictionary(k => k.GetProperty("kind").GetString()!, k => (k.GetProperty("mode").GetString(), k.GetProperty("imported").GetInt32(), k.GetProperty("changed").GetInt32(), k.GetProperty("deleted").GetInt32()));
+        Assert.Equal((false, true), (report.GetProperty("leftOut").GetBoolean(), report.GetProperty("replacing").GetBoolean()));
+        Assert.Equal(("REPLACE_ALL", 2, 0, 1), came["refueling"]);
+        Assert.Equal(("CHOOSE", 0, 1, 0), came["expense"]);
+        var refuelings = (await people.Bob.Gql("query($v: UUID!) { refuelings(vehicleId: $v) { odometer } }", new { v = mine })).Data().GetProperty("refuelings").EnumerateArray().Select(r => r.GetProperty("odometer").GetInt64()).Order();
+        Assert.Equal([1000L, 1600L], refuelings); // exactly the backup's
+        var wash = Assert.Single((await people.Bob.Gql("query($v: UUID!) { expenses(vehicleId: $v) { title note } }", new { v = mine })).Data().GetProperty("expenses").EnumerateArray());
+        Assert.Equal(JsonValueKind.Null, wash.GetProperty("note").ValueKind); // took the backup's values
+
+        // The log says who deleted what of which car, in ids and counts only.
+        Assert.Contains(app.Log.Entries, e => e.Message.Contains(people.BobId) && e.Message.Contains(mine) && e.Message.Contains("for good: 1"));
+        Assert.DoesNotContain(app.Log.Entries, e => (e.Category.Contains("Import") || e.Category.Contains("Refueling") || e.Category.Contains("Expense")) && e.Message.Contains("Zzcanary"));
     }
 
     [Fact]

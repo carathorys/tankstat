@@ -106,6 +106,15 @@ type Query {
   backupImportCars(token: String!): ImportCarOffersInfo! @cost(weight: "10")
   backupImportReview(token: String!, cars: [ImportCarChoiceInput!]!): [ImportCarReviewInfo!]!
     @cost(weight: "10")
+  backupImportEntries(
+    token: String!
+    carId: UUID!
+    targetVehicleId: UUID!
+    kind: String!
+    differing: Boolean!
+    skip: Int!
+    take: Int!
+  ): ImportEntryPageInfo! @cost(weight: "10")
   importRun(id: UUID!): ImportRunInfo @cost(weight: "10")
   myImportRun: ImportRunInfo @cost(weight: "10")
   importRuns: [ImportRunInfo!]! @cost(weight: "10")
@@ -590,6 +599,9 @@ type ImportCarReportInfo {
   inTrash: Int!
   refused: [ImportRefusedEntryInfo!]!
   refusedMore: Int!
+  kinds: [ImportKindReportInfo!]!
+  replacing: Boolean!
+  links: Int!
 }
 
 type ImportCarReviewInfo {
@@ -607,6 +619,9 @@ type ImportCarReviewInfo {
   existingSchedules: Int!
   differing: Int!
   inTrash: Int!
+  kinds: [ImportKindReviewInfo!]!
+  links: Boolean!
+  linksLost: Int!
 }
 
 type ImportedVehicleInfo {
@@ -617,11 +632,57 @@ type ImportedVehicleInfo {
   volumeUnit: VolumeUnit
 }
 
+type ImportEntryInfo {
+  id: UUID!
+  date: LocalDate
+  odometer: Long
+  title: String
+  amount: Decimal
+  currency: String
+  volume: Decimal
+  differences: [ImportFieldDifferenceInfo!]!
+}
+
+type ImportEntryPageInfo {
+  total: Int!
+  items: [ImportEntryInfo!]!
+}
+
+type ImportFieldDifferenceInfo {
+  field: String!
+  backup: String
+  target: String
+}
+
 type ImportIssueInfo {
   section: String!
   row: Int!
   key: String!
   args: Any!
+}
+
+type ImportKindReportInfo {
+  kind: String!
+  mode: ImportKindMode!
+  imported: Int!
+  changed: Int!
+  deleted: Int!
+}
+
+type ImportKindReviewInfo {
+  kind: String!
+  mode: ImportKindMode!
+  backup: Int!
+  new: Int!
+  differ: Int!
+  same: Int!
+  inTrash: Int!
+  adds: Int!
+  takes: Int!
+  targetLive: Int!
+  targetTrashed: Int!
+  withPhotos: Int!
+  onTyreLines: Int!
 }
 
 type ImportOwnCarInfo {
@@ -1772,6 +1833,18 @@ input ImportCarChoiceInput {
   carId: UUID!
   targetVehicleId: UUID
   policy: RefusedEntryPolicy
+  refuelings: ImportKindChoiceInput
+  expenses: ImportKindChoiceInput
+  schedules: ImportKindChoiceInput
+  confirmedName: String
+}
+
+input ImportKindChoiceInput {
+  mode: ImportKindMode!
+  addNew: Boolean
+  newExceptions: [UUID!]
+  takeBackups: Boolean
+  differExceptions: [UUID!]
 }
 
 input LoginInput {
@@ -2322,6 +2395,13 @@ enum FuelType {
   PETROL
   DIESEL
   LPG
+}
+
+enum ImportKindMode {
+  ONLY_MISSING
+  DONT_IMPORT
+  REPLACE_ALL
+  CHOOSE
 }
 
 enum ImportRunFailure {

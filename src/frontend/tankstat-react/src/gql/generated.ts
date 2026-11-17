@@ -413,9 +413,27 @@ export type GridSettingsInput = {
 
 export type ImportCarChoiceInput = {
   carId: string;
+  confirmedName?: string | null | undefined;
+  expenses?: ImportKindChoiceInput | null | undefined;
   policy?: RefusedEntryPolicy | null | undefined;
+  refuelings?: ImportKindChoiceInput | null | undefined;
+  schedules?: ImportKindChoiceInput | null | undefined;
   targetVehicleId?: string | null | undefined;
 };
+
+export type ImportKindChoiceInput = {
+  addNew?: boolean | null | undefined;
+  differExceptions?: Array<string> | null | undefined;
+  mode: ImportKindMode;
+  newExceptions?: Array<string> | null | undefined;
+  takeBackups?: boolean | null | undefined;
+};
+
+export type ImportKindMode =
+  | 'CHOOSE'
+  | 'DONT_IMPORT'
+  | 'ONLY_MISSING'
+  | 'REPLACE_ALL';
 
 export type ImportRunFailure =
   | 'CANCELLED'
