@@ -37,6 +37,12 @@ internal sealed class FileBackupStore(IOptionsMonitor<BackupOptions> options, ID
 
     private static readonly JsonSerializerOptions HoldJson = new(JsonSerializerDefaults.Web);
 
+    public string PathOfBackup(string fileName)
+    {
+        Find(fileName); // a backup of the folder, whose manifest reads
+        return PathOf(fileName);
+    }
+
     public RestorePoint Find(string fileName)
     {
         var path = PathOf(fileName);

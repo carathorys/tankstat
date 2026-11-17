@@ -175,7 +175,27 @@ public sealed record ImportCarOffers(BackupFileSummary File, IReadOnlyList<Impor
 public sealed record ImportCarReview(
     Guid CarId, string Name, string? OwnerName, bool OwnedByMe, Guid? TargetVehicleId, string? TargetName,
     int NewRefuelings, int NewExpenses, int NewSchedules, int ExistingRefuelings, int ExistingExpenses, int ExistingSchedules, int Differing, int InTrash,
-    IReadOnlyList<ImportKindReview> Kinds, bool Links, int LinksLost, ImportTyreReview? Tyres = null, int TyreSteps = 0, ImportMediaReview? Media = null, int MediaSteps = 0);
+    IReadOnlyList<ImportKindReview> Kinds, bool Links, int LinksLost, ImportTyreReview? Tyres = null, int TyreSteps = 0, ImportMediaReview? Media = null, int MediaSteps = 0,
+    RestoreCarReview? Restore = null);
+
+/// <summary>What a car of a restore point is to this instance (#340): by its id, never by a look-alike.</summary>
+public enum RestoreCarState
+{
+    /// <summary>A car with its id is here: only what is missing comes (unless chosen otherwise); its owner and sharing stay as they are today.</summary>
+    Here,
+    /// <summary>Not here any more: it comes back whole, to its owner, with its sharing.</summary>
+    Gone,
+    /// <summary>Not here any more, and its owner has no account: the administrator picks who gets it.</summary>
+    OwnerGone,
+    /// <summary>In the trash here: refused (restore it from the trash, or empty the trash, first).</summary>
+    InTrash,
+}
+
+/// <summary>
+/// What a partial restore will do with a car besides its entries (#340): its state, whose it will be, who gets access back with it (a
+/// gone car's grantees who have an account) and who had access but has no account (by their name in the backup).
+/// </summary>
+public sealed record RestoreCarReview(RestoreCarState State, Guid OwnerId, string? OwnerName, IReadOnlyList<string> Access, IReadOnlyList<string> GoneAccess);
 
 /// <summary>What a backup's set is to the car (#339): new, here already (it stays as it is), or one the car's history refuses.</summary>
 public enum ImportSetState { New, Here, Refused }

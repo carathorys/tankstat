@@ -13,7 +13,8 @@ public interface IImportRunRepository
     Task<IReadOnlyList<ImportRun>> ListActiveAsync(CancellationToken ct);
 
     /// <summary>The person's run that goes or waits, else their latest one that ended.</summary>
-    Task<ImportRun?> LatestOfAsync(Guid userId, CancellationToken ct);
+    /// <param name="kind">Only runs of this kind (#340: the Import page and the Restore cars page each show their own); null: either.</param>
+    Task<ImportRun?> LatestOfAsync(Guid userId, CancellationToken ct, ImportRunKind? kind = null);
 
     /// <summary>
     /// Gives the run its turn: waiting to running, only when no run is running and none waits longer. One statement, so two servers

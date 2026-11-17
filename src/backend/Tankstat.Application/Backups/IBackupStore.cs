@@ -10,6 +10,12 @@ public interface IBackupStore
     RestorePoint Find(string fileName);
 
     /// <summary>
+    /// Where a backup of the folder is on disk, for the reader that opens a restore point to restore cars from (#340); <c>backup.notFound</c>
+    /// for a name that is no backup there.
+    /// </summary>
+    string PathOfBackup(string fileName) => throw new NotSupportedException();
+
+    /// <summary>
     /// Holds a backup of the folder since <paramref name="since"/> (null: releases it), so retention never removes it and it counts towards
     /// no limit; kept beside it as <c>&lt;file&gt;.hold</c>, so a restore, which replaces the database, keeps it, and so does another server
     /// sharing the folder. <c>backup.notFound</c> for a name that is no backup there.

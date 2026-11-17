@@ -125,6 +125,7 @@ public static class DependencyInjection
         services.AddScoped<BackupTyreReplay>();
         services.AddScoped<BackupMediaWork>();
         services.AddScoped<BackupImportRunService>();
+        services.AddScoped<CarRestoreService>();
         services.AddScoped<ImportRunNotifier>();
         services.AddScoped<OdometerService>();
         services.AddScoped<ResourceSharingService>();

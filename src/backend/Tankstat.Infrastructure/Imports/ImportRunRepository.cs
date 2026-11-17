@@ -33,10 +33,10 @@ internal sealed class ImportRunRepository(RunDbContextFactory outside, IDbContex
             .OrderBy(r => r.QueuedAt).ThenBy(r => r.Id).ToListAsync(ct);
     }
 
-    public async Task<ImportRun?> LatestOfAsync(Guid userId, CancellationToken ct)
+    public async Task<ImportRun?> LatestOfAsync(Guid userId, CancellationToken ct, ImportRunKind? kind = null)
     {
         await using var db = outside.CreateOutside();
-        var mine = db.ImportRuns.AsNoTracking().Where(r => r.StartedById == userId);
+        var mine = db.ImportRuns.AsNoTracking().Where(r => r.StartedById == userId && (kind == null || r.Kind == kind));
         return await mine.Where(r => r.State == ImportRunState.Waiting || r.State == ImportRunState.Running).OrderBy(r => r.QueuedAt).FirstOrDefaultAsync(ct)
             ?? await mine.OrderByDescending(r => r.QueuedAt).ThenBy(r => r.Id).FirstOrDefaultAsync(ct);
     }
