@@ -71,7 +71,10 @@ internal sealed class ExportWriter(
         try
         {
             ExportWritten written;
-            await using (var file = new FileStream(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            // Someone's cars, in plain unless they chose a passphrase: owner-only on Unix.
+            var create = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None };
+            if (!OperatingSystem.IsWindows()) create.UnixCreateMode = Settings.SettingsFileStore.OwnerOnly;
+            await using (var file = new FileStream(partial, create))
                 written = await WriteFileAsync(file, request, progress, ct);
             File.Move(partial, request.Output, overwrite: true);
             return written;

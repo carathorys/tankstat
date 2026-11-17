@@ -109,6 +109,14 @@ public static class MediaEndpoints
             http.Response.Headers.XContentTypeOptions = "nosniff";
             return Results.Stream(content, "application/zip", fileDownloadName: file);
         });
+        // A person's export (#341): only for the person who made it (anyone else's looks non-existent), never cached.
+        media.MapGet("/exports/{id:guid}", async (Guid id, Tankstat.Application.Exports.ExportService exports, HttpContext http, CancellationToken ct) =>
+        {
+            var (content, name) = await exports.DownloadAsync(id, ct);
+            http.Response.Headers.CacheControl = "no-store";
+            http.Response.Headers.XContentTypeOptions = "nosniff";
+            return Results.Stream(content, "application/zip", fileDownloadName: name);
+        });
         // Whether a backup can be downloaded, asked by the page first: a refusal (a file gone since the list, a session that ended) is then
         // said on the page instead of replacing it. Nothing is read.
         media.MapMethods("/backups/{file}", [HttpMethods.Head], async (string file, BackupAdminService backups, CancellationToken ct) =>

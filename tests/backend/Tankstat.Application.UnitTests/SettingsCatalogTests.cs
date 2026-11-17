@@ -31,6 +31,7 @@ public class SettingsCatalogTests
         (typeof(TelemetryOptions), TelemetryOptions.SectionName),
         (typeof(Tankstat.Application.Imports.BackupImportOptions), Tankstat.Application.Imports.BackupImportOptions.SectionName),
         (typeof(Tankstat.Application.Runs.RunOptions), Tankstat.Application.Runs.RunOptions.SectionName),
+        (typeof(Tankstat.Application.Exports.ExportOptions), Tankstat.Application.Exports.ExportOptions.SectionName),
     ];
 
     [Fact]

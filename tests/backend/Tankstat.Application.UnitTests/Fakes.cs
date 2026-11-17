@@ -1086,6 +1086,7 @@ internal sealed class World
     public FakeUserData UserData { get; } = new();
     public ImportSessionStore ImportSessions { get; }
     public FakeBackupImportSessions BackupImports { get; } = new();
+    public FakeExports Exports { get; } = new();
     public InMemoryTokens Tokens { get; } = new();
     public InMemorySessions Sessions { get; } = new();
     public InMemoryGrants Grants { get; } = new();
@@ -1207,7 +1208,7 @@ internal sealed class World
         ResetQueue = new FakeResetQueue(resets);
         Passwords = new PasswordRequirements(PasswordSettings, Log.For<PasswordRequirements>());
         Auth = new AuthService(Users, new FakeHasher(), resets, ResetQueue, SessionService, Access, options, Passwords, Clock, Log.For<AuthService>());
-        UserService = new UserService(Access, Users, UserData, resets, SessionService, new FakeHasher(), ImageService, ImportSessions, BackupImports, options, Passwords, Log.For<UserService>());
+        UserService = new UserService(Access, Users, UserData, resets, SessionService, new FakeHasher(), ImageService, ImportSessions, BackupImports, Exports, Exports, options, Passwords, Log.For<UserService>());
         AccessAdmin = new AccessAdminService(Access, Settings, Grants, Users, Notifier, Log.For<AccessAdminService>());
         Availability = new RecognitionAvailability(Recognizer, Clock, Log.For<RecognitionAvailability>());
         SetupStore = new InMemorySetupStore(Users, Vehicles) { Phase = SetupPhase.Completed };
@@ -1306,4 +1307,28 @@ internal sealed class FakeFileProbe : Tankstat.Application.IFileProbe
 {
     public HashSet<string> Files { get; } = [];
     public bool Exists(string path) => Files.Contains(path);
+}
+
+/// <summary>The exports' folder and runner in memory (#341): what a deleted account leaves of them.</summary>
+public sealed class FakeExports : Tankstat.Application.Exports.IExportFiles, Tankstat.Application.Exports.IExportRunner
+{
+    public Dictionary<Guid, Tankstat.Application.Exports.ExportRecord> Saved { get; } = [];
+    public HashSet<Guid> Files { get; } = [];
+    public List<Guid> Cancelled { get; } = [];
+
+    public IReadOnlyList<Tankstat.Application.Exports.ExportRecord> Records() => [.. Saved.Values];
+    public void Save(Tankstat.Application.Exports.ExportRecord record) => Saved[record.Id] = record;
+    public string FileOf(Guid id) => $"{id:N}.zip";
+    public Stream? OpenRead(Guid id) => Files.Contains(id) ? new MemoryStream() : null;
+    public void DeleteFile(Guid id) => Files.Remove(id);
+    public void DeleteRecord(Guid id) => Saved.Remove(id);
+    public void RemovePartials() { }
+    public void Start(Tankstat.Application.Exports.ExportJob job) { }
+    public bool Cancel(Guid ownerId)
+    {
+        Cancelled.Add(ownerId);
+        return false;
+    }
+    public Tankstat.Application.Exports.ExportProgress? ProgressOf(Guid id) => null;
+    public bool IsRunning(Guid id) => false;
 }

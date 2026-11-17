@@ -51,6 +51,7 @@ internal sealed class TestApp : IDisposable
 
     /// <summary>The backups folder of this host, unless its settings name another.</summary>
     public string BackupsPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-backups");
+    public string ExportsPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-exports");
 
     /// <summary>Where an uploaded backup waits while cars are imported from it (#336): this host's own, since every start empties it.</summary>
     public string ImportScratchPath { get; } = Path.Combine(Path.GetTempPath(), $"tankstat-it-{Guid.NewGuid():N}-import");
@@ -93,6 +94,7 @@ internal sealed class TestApp : IDisposable
             ["DataProtection:KeysPath"] = KeysPath, // the cookies' keys of this host only, never in the build output
             ["Backups:Path"] = BackupsPath, // a backups folder of its own
             ["Imports:ScratchFolder"] = ImportScratchPath,
+            ["Exports:Folder"] = ExportsPath, // people's exports (#341), never beside the build output
             ["Logging:LogLevel:Tankstat"] = "Debug", // the Debug lines are part of what is tested
             // Every host starts on an empty database, which would wait for its setup (a notice more, the setup's code): only the setup's
             // own tests turn it on.
@@ -201,6 +203,7 @@ internal sealed class TestApp : IDisposable
         if (Directory.Exists(PhotosPath)) Directory.Delete(PhotosPath, recursive: true);
         if (Directory.Exists(KeysPath)) Directory.Delete(KeysPath, recursive: true);
         if (Directory.Exists(BackupsPath)) Directory.Delete(BackupsPath, recursive: true);
+        if (Directory.Exists(ExportsPath)) Directory.Delete(ExportsPath, recursive: true);
         if (Directory.Exists(ImportScratchPath)) Directory.Delete(ImportScratchPath, recursive: true);
         if (_ownSettingsFile)
         {

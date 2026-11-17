@@ -13,7 +13,8 @@ namespace Tankstat.Application.Users;
 /// <summary>Administrator-only user management.</summary>
 public sealed class UserService(
     AccessService access, IUserRepository users, IUserDataRepository userData, PasswordResetService resets, UserSessionService sessions, IPasswordHasher hasher,
-    ImageService images, ImportSessionStore importSessions, IBackupImportSessions backupImports, IOptions<AuthOptions> auth, PasswordRequirements passwords, ILogger<UserService> logger)
+    ImageService images, ImportSessionStore importSessions, IBackupImportSessions backupImports, Exports.IExportFiles exports, Exports.IExportRunner exportRuns, IOptions<AuthOptions> auth, PasswordRequirements passwords,
+    ILogger<UserService> logger)
 {
     /// <summary>One new local user per address at a time within this process (an instance per request, so static).</summary>
     private static readonly StripedLocks Creating = new();
@@ -167,6 +168,13 @@ public sealed class UserService(
         await images.DeleteFoldersAsync([ImageFolders.Avatar(userId)], ct); // the avatar's folder (and its rows) goes with the account
         importSessions.RemoveForUser(userId);
         backupImports.EndForUser(userId); // an uploaded backup of theirs still open: its files go now
+        // Their export (#341): one under way stops, a kept file and its record go with the account.
+        exportRuns.Cancel(userId);
+        foreach (var export in exports.Records().Where(r => r.OwnerId == userId))
+        {
+            exports.DeleteFile(export.Id);
+            exports.DeleteRecord(export.Id);
+        }
         logger.LogInformation("Administrator {AdminId} deleted user {UserId} (data: {Data}, moved to: {TargetId}, purged vehicles: {Vehicles}, pictures: {Pictures})",
             self.Id, userId, ownsData ? (target is null ? "purged" : "moved") : "none", target?.ToString() ?? "nobody", purged.VehicleIds.Count, purged.PictureIds.Count);
     }

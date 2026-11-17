@@ -112,6 +112,8 @@ do
         .AddTypeExtension<ImportRunMutations>()
         .AddTypeExtension<CarRestoreQueries>()
         .AddTypeExtension<CarRestoreMutations>()
+        .AddTypeExtension<ExportQueries>()
+        .AddTypeExtension<ExportMutations>()
         .AddType<VehicleChartType>()
         .AddType<TrendPeriodType>()
         .AddType<ChartConfigType>()

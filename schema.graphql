@@ -140,6 +140,9 @@ type Query {
     tyres: ImportTyreChoiceInput
   ): ImportEntryPageInfo! @cost(weight: "10")
   myRestoreRun: ImportRunInfo @cost(weight: "10")
+  canExport: Boolean! @cost(weight: "10")
+  exportCars: [ExportCarOfferInfo!]! @cost(weight: "10")
+  myExport: ExportInfo @cost(weight: "10")
   vehicleChartData(vehicleId: UUID!, config: ChartConfigInput!): ChartData!
     @cost(weight: "10")
   vehicleTrend(
@@ -270,6 +273,9 @@ type Mutation {
   startCarRestore(input: StartCarRestoreInput!): ImportRunInfo!
     @cost(weight: "10")
   endCarRestore(token: String!): Boolean! @cost(weight: "10")
+  startExport(input: StartExportInput!): ExportInfo! @cost(weight: "10")
+  cancelExport: Boolean! @cost(weight: "10")
+  deleteExport: Boolean! @cost(weight: "10")
   saveVehicleChart(input: SaveChartInput!): VehicleChart! @cost(weight: "10")
   saveVehicleWidget(input: SaveWidgetInput!): SavedWidget! @cost(weight: "10")
   deleteVehicleChart(id: UUID!): Boolean! @cost(weight: "10")
@@ -569,6 +575,45 @@ type Expense {
   schedules: [RecurringRef!]! @cost(weight: "10")
   tyreEntry: TyreEntryRef @cost(weight: "10")
   tyreEntries: [TyreEntryRef!]! @cost(weight: "10")
+}
+
+type ExportCarOfferInfo {
+  id: UUID!
+  name: String!
+  licensePlate: String
+  refuelings: Int!
+  expenses: Int!
+  schedules: Int!
+  tyreSets: Int!
+  charts: Int!
+  photos: Int!
+  photoBytes: Long!
+  pictureBytes: Long!
+  rowBytes: Long!
+}
+
+type ExportInfo {
+  id: UUID!
+  state: ExportState!
+  carNames: [String!]!
+  encrypted: Boolean!
+  startedAt: DateTime!
+  readyAt: DateTime
+  keptUntil: DateTime
+  deletedAt: DateTime
+  bytes: Long
+  failureKey: String
+  progress: ExportProgressInfo
+  largerThanImport: Boolean!
+  importMaxMb: Int!
+  downloadUrl: String
+}
+
+type ExportProgressInfo {
+  car: Int!
+  cars: Int!
+  done: Int!
+  total: Int!
 }
 
 type FigureData {
@@ -1962,6 +2007,17 @@ input ExpenseTyreInput {
   lineId: UUID
 }
 
+input ExportCarInput {
+  vehicleId: UUID!
+  refuelings: Boolean
+  expenses: Boolean
+  schedules: Boolean
+  tyres: Boolean
+  charts: Boolean
+  photos: Boolean
+  picture: Boolean
+}
+
 input FigureRecipeInput {
   measure: FigureMeasure!
   period: TrendPeriodInput
@@ -2205,6 +2261,12 @@ input StartBackupImportInput {
 input StartCarRestoreInput {
   token: String!
   cars: [ImportCarChoiceInput!]!
+}
+
+input StartExportInput {
+  cars: [ExportCarInput!]!
+  passphrase: String
+  passphraseConfirmation: String
 }
 
 input SwapTyresInput {
@@ -2547,6 +2609,15 @@ enum ExpenseSortField {
   DELETED_AT
 }
 
+enum ExportState {
+  BUILDING
+  READY
+  FAILED
+  CANCELLED
+  INTERRUPTED
+  EXPIRED
+}
+
 enum FigureMeasure {
   TOTAL_SPEND
   FUEL_COST
@@ -2631,6 +2702,7 @@ enum NotificationEntityType {
   SYNC_CHANGE
   TYRE_SET
   IMPORT_RUN
+  EXPORT
 }
 
 enum NotificationKind {
@@ -2656,6 +2728,9 @@ enum NotificationKind {
   RESTORE_CANCELLED
   CARS_RESTORED
   CAR_RESTORED
+  EXPORT_READY
+  EXPORT_FAILED
+  CARS_EXPORTED
 }
 
 enum OfflineEntityType {

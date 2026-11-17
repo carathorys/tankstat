@@ -153,6 +153,11 @@ public class ContractTests
     [InlineData("Mutation", "startBackupImport", "cancelImportRun")]
     [InlineData("Query", "carRestore", "restoreCars", "restorePeople", "restoreReview", "restoreEntries", "myRestoreRun")]
     [InlineData("Mutation", "openCarRestore", "submitCarRestoreKey", "startCarRestore", "endCarRestore")]
+    [InlineData("Query", "canExport", "exportCars", "myExport")]
+    [InlineData("Mutation", "startExport", "cancelExport", "deleteExport")]
+    [InlineData("ExportCarOfferInfo", "id", "name", "licensePlate", "refuelings", "expenses", "schedules", "tyreSets", "charts", "photos", "photoBytes", "pictureBytes", "rowBytes")]
+    [InlineData("ExportInfo", "id", "state", "carNames", "encrypted", "startedAt", "readyAt", "keptUntil", "deletedAt", "bytes", "failureKey", "progress", "largerThanImport", "importMaxMb", "downloadUrl")]
+    [InlineData("ExportProgressInfo", "car", "cars", "done", "total")]
     [InlineData("RestoreCarPageInfo", "total", "cars", "owners")]
     [InlineData("RestoreCarOfferInfo", "car", "state", "ownerIdHere", "ownerNameHere", "missingRefuelings", "missingExpenses", "missingSchedules", "missingTyreSets", "grants", "goneGrantees", "sameEmailUserId")]
     [InlineData("RestoreOwnerInfo", "id", "name")]
@@ -332,8 +337,8 @@ public class ContractTests
     [InlineData("RefusedEntryPolicy", "IMPORT_THE_REST", "LEAVE_CAR_OUT")]
     [InlineData("ImportKindMode", "ONLY_MISSING", "DONT_IMPORT", "REPLACE_ALL", "CHOOSE")]
     [InlineData("ImportSetState", "NEW", "HERE", "REFUSED", "IN_TRASH")]
-    [InlineData("NotificationKind", "LOG_ACCESS_CHANGED", "VEHICLE_SHARED", "DATA_ACCESS_CHANGED", "DATA_SHARED", "DEFAULT_ACCESS_CHANGED", "RECURRING_DUE_SOON", "RECURRING_OVERDUE", "LOG_FILLED_FROM_PHOTO", "LOG_NOT_FILLED", "SYNC_CHANGE_PARKED", "MORE_ACTIVITY", "BACKUP_FAILED", "TYRE_SWAP_DUE", "IMPORT_FINISHED", "IMPORT_NOT_FINISHED", "IMPORT_CANCELLED", "CARS_IMPORTED", "RESTORE_FINISHED", "RESTORE_NOT_FINISHED", "RESTORE_CANCELLED", "CARS_RESTORED", "CAR_RESTORED")]
-    [InlineData("NotificationEntityType", "INSTANCE", "VEHICLE", "RECURRING_EXPENSE", "USER", "REFUELING", "EXPENSE", "SYNC_CHANGE", "TYRE_SET", "IMPORT_RUN")]
+    [InlineData("NotificationKind", "LOG_ACCESS_CHANGED", "VEHICLE_SHARED", "DATA_ACCESS_CHANGED", "DATA_SHARED", "DEFAULT_ACCESS_CHANGED", "RECURRING_DUE_SOON", "RECURRING_OVERDUE", "LOG_FILLED_FROM_PHOTO", "LOG_NOT_FILLED", "SYNC_CHANGE_PARKED", "MORE_ACTIVITY", "BACKUP_FAILED", "TYRE_SWAP_DUE", "IMPORT_FINISHED", "IMPORT_NOT_FINISHED", "IMPORT_CANCELLED", "CARS_IMPORTED", "RESTORE_FINISHED", "RESTORE_NOT_FINISHED", "RESTORE_CANCELLED", "CARS_RESTORED", "CAR_RESTORED", "EXPORT_READY", "EXPORT_FAILED", "CARS_EXPORTED")]
+    [InlineData("NotificationEntityType", "INSTANCE", "VEHICLE", "RECURRING_EXPENSE", "USER", "REFUELING", "EXPENSE", "SYNC_CHANGE", "TYRE_SET", "IMPORT_RUN", "EXPORT")]
     [InlineData("SyncChangeKind", "LOG_REFUELING", "UPDATE_REFUELING", "DELETE_REFUELING", "RESTORE_REFUELING", "ADD_EXPENSE", "UPDATE_EXPENSE", "DELETE_EXPENSE", "RESTORE_EXPENSE", "ADD_RECURRING_EXPENSE", "UPDATE_RECURRING_EXPENSE", "DELETE_RECURRING_EXPENSE", "MARK_RECURRING_EXPENSES_DONE", "ADD_VEHICLE", "UPDATE_VEHICLE", "DELETE_VEHICLE", "RESTORE_VEHICLE", "ADD_REFUELING_PHOTO", "REMOVE_REFUELING_PHOTO", "ADD_EXPENSE_PHOTO", "REMOVE_EXPENSE_PHOTO", "SET_VEHICLE_PICTURE", "REMOVE_VEHICLE_PICTURE", "ADD_TYRE_SET", "UPDATE_TYRE_SET", "SET_TYRE_ROUGH_DISTANCE", "RETIRE_TYRE_SET", "UNRETIRE_TYRE_SET", "DELETE_TYRE_SET", "RESTORE_TYRE_SET", "SWAP_TYRES", "CHANGE_TYRE_POSITIONS", "ADD_PAST_TYRE_SWAPS", "ADD_TYRE_INSTALLATION", "UPDATE_TYRE_INSTALLATION", "DELETE_TYRE_INSTALLATION", "RESTORE_TYRE_INSTALLATION", "ADD_TYRE_ENTRY", "UPDATE_TYRE_ENTRY", "DELETE_TYRE_ENTRY", "RESTORE_TYRE_ENTRY", "BREAK_UP_TYRE_SET", "UPDATE_TYRE", "DELETE_TYRE", "RESTORE_TYRE", "ADD_TYRE_PLACE", "UPDATE_TYRE_PLACE", "DELETE_TYRE_PLACE", "RESTORE_TYRE_PLACE", "REPLACE_TYRES", "DISMISS_TYRE_REMINDER", "RESTORE_TYRE_REMINDER")]
     [InlineData("TyreSeason", "SUMMER", "WINTER", "ALL_SEASON")]
     [InlineData("InstallationMeasure", "MEASURED", "FROM_FIRST_READING", "NOT_MEASURED")]
@@ -421,6 +426,16 @@ public class ContractTests
         var body = await Query(operation);
 
         Assert.Equal("auth.adminRequired", body.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
+    }
+
+    [Fact]
+    public async Task WithSignInOff_TheInstanceExports_AndAnExportOfNoCarIsRefused()
+    {
+        // Sign-in off (#341, the owner's decision 7): every car is the anonymous user's, so the Export tab offers them all.
+        Assert.True((await Query("{ canExport }")).GetProperty("data").GetProperty("canExport").GetBoolean());
+        Assert.Equal(JsonValueKind.Array, (await Query("{ exportCars { id name rowBytes } }")).GetProperty("data").GetProperty("exportCars").ValueKind);
+        var none = await Query("mutation { startExport(input: { cars: [] }) { id } }");
+        Assert.Equal("export.noCars", none.GetProperty("errors")[0].GetProperty("extensions").GetProperty("key").GetString());
     }
 
     [Fact]

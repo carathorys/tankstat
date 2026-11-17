@@ -48,7 +48,7 @@ Auth__Mode=None dotnet run --project src/backend/Tankstat.Seeder -- --yes \
   cd out
   ASPNETCORE_ENVIRONMENT=Production \
     Database__Provider=Sqlite Database__ConnectionString="Data Source=${files}/tankstat.db" \
-    Storage__Path="${files}/uploads" Storage__PhotosPath="${files}/photos" Backups__Path="${files}/backups" \
+    Storage__Path="${files}/uploads" Storage__PhotosPath="${files}/photos" Backups__Path="${files}/backups" Exports__Folder="${files}/exports" \
     DataProtection__KeysPath="${files}/keys" Settings__Path="${files}/settings.json" \
     Auth__Mode=None Setup__Enabled=false \
     exec dotnet Tankstat.Api.dll --urls "$E2E_URL"

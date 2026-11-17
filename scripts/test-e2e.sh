@@ -51,7 +51,7 @@ app() {
   cd out
   ASPNETCORE_ENVIRONMENT=Production \
     Database__Provider=Sqlite Database__ConnectionString="Data Source=${files}/tankstat.db" \
-    Storage__Path="${files}/uploads" Storage__PhotosPath="${files}/photos" Backups__Path="${files}/backups" \
+    Storage__Path="${files}/uploads" Storage__PhotosPath="${files}/photos" Backups__Path="${files}/backups" Exports__Folder="${files}/exports" \
     DataProtection__KeysPath="${files}/keys" Settings__Path="${files}/settings.json" \
     Auth__Mode=Standalone \
     exec env "${instance_env[@]}" dotnet Tankstat.Api.dll --urls "$E2E_URL"
@@ -98,7 +98,7 @@ setup_app() {
   mkdir -p "$dir"
   cd out
   export ASPNETCORE_ENVIRONMENT=Production Database__Provider=Sqlite Database__ConnectionString="Data Source=${dir}/tankstat.db" \
-    Storage__Path="${dir}/uploads" Storage__PhotosPath="${dir}/photos" Backups__Path="${dir}/backups" \
+    Storage__Path="${dir}/uploads" Storage__PhotosPath="${dir}/photos" Backups__Path="${dir}/backups" Exports__Folder="${dir}/exports" \
     DataProtection__KeysPath="${dir}/keys" Settings__Path="${dir}/settings.json"
   if [[ "$1" == *-restore ]]; then export Auth__Mode=Standalone "${instance_env[@]}"; fi
   if [[ "$1" == *-reopened ]]; then
@@ -158,7 +158,7 @@ import_env() {
   local dir="${files}/import-$1"
   mkdir -p "$dir"
   export ASPNETCORE_ENVIRONMENT=Production Database__Provider=Sqlite Database__ConnectionString="Data Source=${dir}/tankstat.db" \
-    Storage__Path="${dir}/uploads" Storage__PhotosPath="${dir}/photos" Backups__Path="${dir}/backups" Imports__ScratchFolder="${dir}/scratch" \
+    Storage__Path="${dir}/uploads" Storage__PhotosPath="${dir}/photos" Backups__Path="${dir}/backups" Exports__Folder="${dir}/exports" Imports__ScratchFolder="${dir}/scratch" \
     DataProtection__KeysPath="${dir}/keys" Settings__Path="${dir}/settings.json" Auth__Mode=None Setup__Enabled=false
 }
 # One GraphQL request of the fixture: fails on an error in the answer too (an error comes with HTTP 200), saying which request.
@@ -245,7 +245,7 @@ restore_app() {
   mkdir -p "$dir"
   cd out
   ASPNETCORE_ENVIRONMENT=Production Database__Provider=Sqlite Database__ConnectionString="Data Source=${dir}/tankstat.db" \
-    Storage__Path="${dir}/uploads" Storage__PhotosPath="${dir}/photos" Backups__Path="${dir}/backups" Imports__ScratchFolder="${dir}/scratch" \
+    Storage__Path="${dir}/uploads" Storage__PhotosPath="${dir}/photos" Backups__Path="${dir}/backups" Exports__Folder="${dir}/exports" Imports__ScratchFolder="${dir}/scratch" \
     DataProtection__KeysPath="${dir}/keys" Settings__Path="${dir}/settings.json" Auth__Mode=Standalone \
     exec dotnet Tankstat.Api.dll --urls "$2"
 }

@@ -183,6 +183,11 @@ public static class DependencyInjection
         services.AddSingleton<Tankstat.Application.Imports.IImportTargetReader, Imports.ImportTargetReader>();
         services.AddSingleton<Tankstat.Application.Imports.IRestoreStamps, Imports.RestoreStamps>();
         services.AddSingleton<Tankstat.Application.Exports.IExportWriter, Exports.ExportWriter>();
+        services.AddSingleton<Tankstat.Application.Exports.IExportFiles, Exports.ExportFiles>();
+        services.AddSingleton<Tankstat.Application.Exports.IExportFacts, Exports.ExportFacts>();
+        services.AddSingleton<Exports.ExportRunner>();
+        services.AddSingleton<Tankstat.Application.Exports.IExportRunner>(sp => sp.GetRequiredService<Exports.ExportRunner>());
+        services.AddHostedService(sp => sp.GetRequiredService<Exports.ExportRunner>());
         services.AddSingleton<Imports.BackupImportRunner>();
         services.AddSingleton<Tankstat.Application.Imports.IBackupImportRunner>(sp => sp.GetRequiredService<Imports.BackupImportRunner>());
         services.AddHostedService(sp => sp.GetRequiredService<Imports.BackupImportRunner>()); // after the marks' sweep: a run found running is judged by its mark

@@ -551,6 +551,7 @@ export type NoticeSeverity =
 
 export type NotificationEntityType =
   | 'EXPENSE'
+  | 'EXPORT'
   | 'IMPORT_RUN'
   | 'INSTANCE'
   | 'RECURRING_EXPENSE'
@@ -562,12 +563,15 @@ export type NotificationEntityType =
 
 export type NotificationKind =
   | 'BACKUP_FAILED'
+  | 'CARS_EXPORTED'
   | 'CARS_IMPORTED'
   | 'CARS_RESTORED'
   | 'CAR_RESTORED'
   | 'DATA_ACCESS_CHANGED'
   | 'DATA_SHARED'
   | 'DEFAULT_ACCESS_CHANGED'
+  | 'EXPORT_FAILED'
+  | 'EXPORT_READY'
   | 'IMPORT_CANCELLED'
   | 'IMPORT_FINISHED'
   | 'IMPORT_NOT_FINISHED'

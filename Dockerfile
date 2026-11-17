@@ -88,10 +88,11 @@ ENV ASPNETCORE_URLS=http://+:8080 \
     Storage__Path=/data/uploads \
     DataProtection__KeysPath=/data/keys \
     Settings__Path=/data/settings.json \
-    Backups__Path=/data/backups
-# /data/photos and /data/backups are made here for volumes of their own: a volume mounted where the image has no folder starts out owned by root, and the
+    Backups__Path=/data/backups \
+    Exports__Folder=/data/exports
+# /data/photos, /data/backups and /data/exports are made here for volumes of their own: a volume mounted where the image has no folder starts out owned by root, and the
 # app could not write to it.
-RUN mkdir -p /data/photos /data/backups && chown -R "$APP_UID:$APP_UID" /data
+RUN mkdir -p /data/photos /data/backups /data/exports && chown -R "$APP_UID:$APP_UID" /data
 VOLUME /data
 
 USER $APP_UID

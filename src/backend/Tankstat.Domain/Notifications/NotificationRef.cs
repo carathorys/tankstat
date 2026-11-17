@@ -14,6 +14,8 @@ public enum NotificationEntityType
     TyreSet,
     /// <summary>A run of an import from a backup (#337); its report opens from the notification while it is kept.</summary>
     ImportRun,
+    /// <summary>A person's export of their cars (#341); the Export tab shows it while it is kept.</summary>
+    Export,
 }
 
 /// <summary>
@@ -27,6 +29,7 @@ public readonly record struct NotificationRef(NotificationEntityType Type, Guid 
     public static NotificationRef RecurringExpense(Guid id) => new(NotificationEntityType.RecurringExpense, id);
     public static NotificationRef User(Guid id) => new(NotificationEntityType.User, id);
     public static NotificationRef ImportRun(Guid id) => new(NotificationEntityType.ImportRun, id);
+    public static NotificationRef Export(Guid id) => new(NotificationEntityType.Export, id);
     public static NotificationRef Refueling(Guid id) => new(NotificationEntityType.Refueling, id);
     public static NotificationRef Expense(Guid id) => new(NotificationEntityType.Expense, id);
     public static NotificationRef SyncChange(Guid id) => new(NotificationEntityType.SyncChange, id);

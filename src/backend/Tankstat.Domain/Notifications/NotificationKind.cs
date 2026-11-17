@@ -70,6 +70,15 @@ public enum NotificationKind
 
     /// <summary>To a restored car's owner and everyone it is shared with: what came back (#340, one per car).</summary>
     CarRestored,
+
+    /// <summary>To the person who started it: their export is ready to download (#341), kept for <c>Exports:KeepHours</c>.</summary>
+    ExportReady,
+
+    /// <summary>To the person who started it: their export could not be built; nothing was kept.</summary>
+    ExportFailed,
+
+    /// <summary>To every administrator: a user exported cars (the owner's decision 3 on #341).</summary>
+    CarsExported,
 }
 
 /// <summary>
@@ -109,7 +118,7 @@ public static class NotificationKinds
         NotificationKind.TyreSwapDue => NotificationTopic.Tyres,
         NotificationKind.ImportFinished or NotificationKind.ImportNotFinished or NotificationKind.ImportCancelled or NotificationKind.CarsImported
             or NotificationKind.RestoreFinished or NotificationKind.RestoreNotFinished or NotificationKind.RestoreCancelled or NotificationKind.CarsRestored
-            or NotificationKind.CarRestored => NotificationTopic.Imports,
+            or NotificationKind.CarRestored or NotificationKind.ExportReady or NotificationKind.ExportFailed or NotificationKind.CarsExported => NotificationTopic.Imports,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 

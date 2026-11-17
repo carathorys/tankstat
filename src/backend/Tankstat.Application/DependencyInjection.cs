@@ -116,6 +116,8 @@ public static class DependencyInjection
         services.AddScoped<InstanceStartService>();
         services.AddOptions<BackupImportOptions>().Bind(configuration.GetSection(BackupImportOptions.SectionName)).ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<BackupImportOptions>, BackupImportOptionsValidator>());
+        services.AddOptions<Exports.ExportOptions>().Bind(configuration.GetSection(Exports.ExportOptions.SectionName)).ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<Exports.ExportOptions>, Exports.ExportOptionsValidator>());
         services.AddSingleton<ImportSessionStore>();
         services.AddSingleton<IImportParser, FuelioCsvParser>();
         services.AddScoped<ImportService>();
@@ -127,6 +129,8 @@ public static class DependencyInjection
         services.AddScoped<BackupImportRunService>();
         services.AddScoped<CarRestoreService>();
         services.AddScoped<ImportRunNotifier>();
+        services.AddScoped<Exports.ExportNotifier>();
+        services.AddScoped<Exports.ExportService>();
         services.AddScoped<OdometerService>();
         services.AddScoped<ResourceSharingService>();
         services.AddScoped<Notifier>();
