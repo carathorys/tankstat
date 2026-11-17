@@ -361,6 +361,14 @@ public sealed partial class BackupImportRunTests
         Assert.Empty(ImportRunJson.Read<ImportRunReport>(ended.Report)!.Cars.Single().Refused);
 
         var (theirs, ours) = (await RowsOfAsync(source.Database, source.Car), await RowsOfAsync(here, source.Car));
+        // What was in the backup's trash does not come (#337): a time on the car moved there, with its line and its tyres' places.
+        await using (var db = await source.Database.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync())
+        {
+            var trashed = (await db.TyreInstallations.IgnoreQueryFilters().Where(i => i.VehicleId == source.Car && i.DeletedAt != null).Select(i => i.Id).ToListAsync())
+                .Select(id => id.ToString()).ToList();
+            foreach (var table in new[] { "TyreInstallations", "TyreEntries", "TyrePlaces" })
+                theirs[table] = [.. theirs[table].Where(l => !trashed.Any(id => l.StartsWith(id, StringComparison.Ordinal) || l.Contains($" on {id} ", StringComparison.Ordinal)))];
+        }
         foreach (var table in theirs.Keys.Where(t => t is not ("Dashboards" or "ResourceGrants" or "VehicleCharts" or "LogPhotos")))
         {
             // The owner is Zoe now; who logged each row is still Anna, who has no account here.
