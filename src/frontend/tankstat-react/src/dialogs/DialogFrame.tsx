@@ -22,6 +22,7 @@ export function DialogFrame({
   maxWidth = 450,
   busy = false,
   role = 'dialog',
+  fullScreen = false,
   children,
 }: {
   open: boolean
@@ -33,6 +34,8 @@ export function DialogFrame({
   busy?: boolean
   /** "alertdialog" for a confirmation before something hard to undo. */
   role?: 'dialog' | 'alertdialog'
+  /** The whole screen (a long list on a phone); `maxWidth` does not apply then. */
+  fullScreen?: boolean
   children: ReactNode
 }) {
   const descriptionId = useId()
@@ -45,7 +48,8 @@ export function DialogFrame({
       }}
       aria-describedby={description ? descriptionId : undefined}
       maxWidth={false}
-      slotProps={{ paper: { role, sx: { maxWidth } }, transition: { onExited: onClosed } }}
+      fullScreen={fullScreen}
+      slotProps={{ paper: { role, sx: fullScreen ? undefined : { maxWidth } }, transition: { onExited: onClosed } }}
     >
       <DialogTitle>{title}</DialogTitle>
       <DialogContent>

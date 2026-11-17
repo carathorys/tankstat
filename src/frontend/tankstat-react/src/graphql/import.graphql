@@ -140,6 +140,27 @@ query BackupImportCars($token: String!) {
   }
 }
 
+# A page of the Choose dialog (#338): one kind's entries that are only in the backup, or (differing) that differ from the car's.
+query BackupImportEntries($token: String!, $carId: UUID!, $targetVehicleId: UUID!, $kind: String!, $differing: Boolean!, $skip: Int!, $take: Int!) {
+  backupImportEntries(token: $token, carId: $carId, targetVehicleId: $targetVehicleId, kind: $kind, differing: $differing, skip: $skip, take: $take) {
+    total
+    items {
+      id
+      date
+      odometer
+      title
+      amount
+      currency
+      volume
+      differences {
+        field
+        backup
+        target
+      }
+    }
+  }
+}
+
 query BackupImportReview($token: String!, $cars: [ImportCarChoiceInput!]!) {
   backupImportReview(token: $token, cars: $cars) {
     carId
@@ -156,6 +177,23 @@ query BackupImportReview($token: String!, $cars: [ImportCarChoiceInput!]!) {
     existingSchedules
     differing
     inTrash
+    links
+    linksLost
+    kinds {
+      kind
+      mode
+      backup
+      new
+      differ
+      same
+      inTrash
+      adds
+      takes
+      targetLive
+      targetTrashed
+      withPhotos
+      onTyreLines
+    }
   }
 }
 
@@ -195,6 +233,15 @@ fragment ImportRunFields on ImportRunInfo {
     existing
     differing
     inTrash
+    replacing
+    links
+    kinds {
+      kind
+      mode
+      imported
+      changed
+      deleted
+    }
     refusedMore
     refused {
       kind

@@ -32,9 +32,14 @@ const offers = (over: Record<string, unknown> = {}) => ({
   targets: [own('v1', 'My Octavia', { licensePlate: 'ABC 123' }), own('v2', 'Old Golf')],
   ...over,
 })
+/** One kind of a reviewed car: only the missing unless said otherwise. */
+const kindOf = (kind: string, over: Record<string, unknown> = {}) => ({
+  __typename: 'ImportKindReviewInfo', kind, mode: 'ONLY_MISSING', backup: 0, new: 0, differ: 0, same: 0, inTrash: 0, adds: 0, takes: 0, targetLive: 0, targetTrashed: 0, withPhotos: 0, onTyreLines: 0, ...over,
+})
 const reviewOf = (carId: string, name: string, over: Record<string, unknown> = {}) => ({
   __typename: 'ImportCarReviewInfo', carId, name, ownerName: 'Anna', ownedByMe: false, targetVehicleId: null, targetName: null,
-  newRefuelings: 10, newExpenses: 2, newSchedules: 0, existingRefuelings: 0, existingExpenses: 0, existingSchedules: 0, differing: 0, inTrash: 0, ...over,
+  newRefuelings: 10, newExpenses: 2, newSchedules: 0, existingRefuelings: 0, existingExpenses: 0, existingSchedules: 0, differing: 0, inTrash: 0,
+  links: true, linksLost: 0, kinds: [kindOf('refueling'), kindOf('expense'), kindOf('recurring')], ...over,
 })
 const run = (state: string, over: Record<string, unknown> = {}) => ({
   __typename: 'ImportRunInfo', id: 'run1', kind: 'IMPORT', startedByName: 'Me', mine: true, state, failure: null, queuedAt: '2026-11-16T10:00:00Z', startedAt: null, ahead: 0,
@@ -43,7 +48,7 @@ const run = (state: string, over: Record<string, unknown> = {}) => ({
 })
 const reportCar = (over: Record<string, unknown> = {}) => ({
   __typename: 'ImportCarReportInfo', carId: 'c1', name: 'Octavia', vehicleId: 'v1', targetName: 'My Octavia', asNew: false, leftOut: false,
-  refuelings: 300, expenses: 50, schedules: 2, existing: 112, differing: 4, inTrash: 1, refusedMore: 0, refused: [], ...over,
+  refuelings: 300, expenses: 50, schedules: 2, existing: 112, differing: 4, inTrash: 1, refusedMore: 0, refused: [], replacing: false, links: 0, kinds: [], ...over,
 })
 
 /** The flow from the Cars step on (the file is #336's step, tested there), with the server's answers; what was asked is kept. */

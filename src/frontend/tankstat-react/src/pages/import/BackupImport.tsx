@@ -31,6 +31,8 @@ import { useKeyText } from '../../i18n/errors.ts'
 import { useFormat } from '../../i18n/format.ts'
 import { ErrorMessage, SuccessMessage } from '../../messages.tsx'
 import { BackupFileStep } from './BackupFileStep.tsx'
+import { KindsDisclosure, ReplaceConfirmations, type Replacement } from './BackupKinds.tsx'
+import { defaultKinds, kindsInput, nothingChosen, replaces, useKindLine, type CarReview, type Kind, type Kinds } from './backupKinds.ts'
 
 export type BackupStep = 'file' | 'cars' | 'review' | 'done'
 
@@ -46,6 +48,8 @@ interface Choice {
   asNew: boolean
   target: string | null
   policy: RefusedEntryPolicy
+  /** What comes of each kind (#338); only the missing unless the person chose otherwise. */
+  kinds: Kinds
 }
 
 const active = (run: ImportRunFieldsFragment | undefined) => run?.state === 'WAITING' || run?.state === 'RUNNING'
@@ -133,11 +137,11 @@ function useUnits() {
   return (distance: DistanceUnit, volume: VolumeUnit) => `${t(`units.distanceShort.${distance}`)}, ${t(`units.volumeShort.${volume}`)}`
 }
 
-/** The choices as the server takes them: the picked cars, each new or into its target. */
-const toInput = (choices: Record<string, Choice>) =>
+/** The choices as the server takes them: the picked cars, each new or into its target, with its kinds' choices and (for a Replace all) the typed name. */
+const toInput = (choices: Record<string, Choice>, names: Record<string, string> = {}) =>
   Object.entries(choices)
     .filter(([, c]) => c.picked)
-    .map(([carId, c]) => ({ carId, targetVehicleId: c.asNew ? null : c.target, policy: c.policy }))
+    .map(([carId, c]) => ({ carId, targetVehicleId: c.asNew ? null : c.target, policy: c.policy, ...kindsInput(c.kinds, c.asNew), confirmedName: names[carId] }))
 
 // ---- 2. the cars ---------------------------------------------------------------------------------------------
 
@@ -165,12 +169,14 @@ function CarsStep({
   if (!data) return <Loading />
 
   // A car the person has not touched yet: not picked; once picked, the app's match if it has one, else a new car.
-  const choiceOf = (offer: Offer): Choice => choices[offer.car.id] ?? { picked: false, asNew: offer.suggestedTargetId == null, target: offer.suggestedTargetId ?? null, policy: 'IMPORT_THE_REST' }
+  const choiceOf = (offer: Offer): Choice =>
+    choices[offer.car.id] ?? { picked: false, asNew: offer.suggestedTargetId == null, target: offer.suggestedTargetId ?? null, policy: 'IMPORT_THE_REST', kinds: defaultKinds() }
   const set = (offer: Offer, change: Partial<Choice>) => onChoices({ ...choices, [offer.car.id]: { ...choiceOf(offer), ...change } })
   const picked = data.cars.filter((o) => choiceOf(o).picked)
   const problemOf = (offer: Offer): string | null => {
     const choice = choiceOf(offer)
-    if (!choice.picked || choice.asNew) return null
+    if (!choice.picked) return null
+    if (choice.asNew) return nothingChosen(choice.kinds) ? t('errors.import.nothingChosen', { car: offer.car.name }) : null
     const target = data.targets.find((v) => v.id === choice.target)
     if (!target) return t('import.cars.neither')
     if (target.distanceUnit !== offer.car.distanceUnit || target.volumeUnit !== offer.car.volumeUnit)
@@ -181,6 +187,7 @@ function CarsStep({
         targetUnits: unitsOf(target.distanceUnit, target.volumeUnit),
       })
     if (picked.some((other) => other.car.id !== offer.car.id && !choiceOf(other).asNew && choiceOf(other).target === choice.target)) return t('import.cars.taken', { target: target.name })
+    if (nothingChosen(choice.kinds)) return t('errors.import.nothingChosen', { car: offer.car.name })
     return null
   }
   const ready = picked.length > 0 && picked.every((o) => problemOf(o) === null)
@@ -202,7 +209,9 @@ function CarsStep({
           choice={choiceOf(offer)}
           problem={problemOf(offer)}
           showUnits={!usual || usual.distanceUnit !== offer.car.distanceUnit || usual.volumeUnit !== offer.car.volumeUnit}
-          onChange={(change) => set(offer, change)}
+          token={token}
+          // What is chosen per kind is about one target: another target, or a new car, starts from only the missing again.
+          onChange={(change) => set(offer, 'asNew' in change || 'target' in change ? { ...change, kinds: defaultKinds() } : change)}
         />
       ))}
       {picked.length === 0 && (
@@ -228,6 +237,7 @@ function CarCard({
   choice,
   problem,
   showUnits,
+  token,
   onChange,
 }: {
   offer: Offer
@@ -235,11 +245,15 @@ function CarCard({
   choice: Choice
   problem: string | null
   showUnits: boolean
+  token: string
   onChange: (change: Partial<Choice>) => void
 }) {
   const { t } = useTranslation()
   const unitsOf = useUnits()
   const heading = useId()
+  const target = choice.asNew ? null : (targets.find((v) => v.id === choice.target) ?? null)
+  // The kinds' choices need the comparison with a target that can take the car (same units; the server refuses another).
+  const comparable = choice.asNew || (target !== null && target.distanceUnit === offer.car.distanceUnit && target.volumeUnit === offer.car.volumeUnit)
   const group = useId()
   const note = useId()
   const { car } = offer
@@ -289,6 +303,7 @@ function CarCard({
                   </RadioGroup>
                 </>
               ))}
+            {comparable && <KindsDisclosure token={token} car={car} target={target} kinds={choice.kinds} onKinds={(kinds) => onChange({ kinds })} />}
             {problem && (
               <Typography id={note} variant="body2" role="status" sx={{ color: 'error.main' }}>
                 {problem}
@@ -317,12 +332,11 @@ function ReviewStep({
   onStarted: (run: ImportRunFieldsFragment) => void
 }) {
   const { t } = useTranslation()
-  // What is compared is the cars and their targets: a policy changed here asks nothing again.
-  const compared = useMemo(
-    () => toInput(choices).map(({ carId, targetVehicleId }) => ({ carId, targetVehicleId })),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(toInput(choices).map((c) => [c.carId, c.targetVehicleId]))],
-  )
+  // What is compared is the cars, their targets and their kinds' choices: a policy changed here asks nothing again.
+  const asked = JSON.stringify(toInput(choices).map(({ policy: _policy, confirmedName: _name, ...car }) => car))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const compared = useMemo(() => JSON.parse(asked) as ReturnType<typeof toInput>, [asked])
+  const [confirming, setConfirming] = useState(false)
   const review = useQuery(BackupImportReviewDocument, { variables: { token, cars: compared }, fetchPolicy: 'network-only' })
   const [start, started] = useMutation(StartBackupImportDocument)
 
@@ -338,10 +352,29 @@ function ReviewStep({
   }
   if (!review.data) return <Loading />
 
+  // The cars whose import deletes: each asks for its target's name, typed, before anything starts (the owner's decisions 6 and 10).
+  const replacements: Replacement[] = review.data.backupImportReview
+    .filter((car) => car.targetName && replaces(choices[car.carId]?.kinds ?? defaultKinds()))
+    .map((car) => {
+      const replaced = car.kinds.filter((k) => k.mode === 'REPLACE_ALL')
+      return {
+        carId: car.carId,
+        target: car.targetName ?? '',
+        deleted: replaced.map((k) => ({ kind: k.kind as Kind, count: k.targetLive + k.targetTrashed })),
+        trashed: replaced.reduce((sum, k) => sum + k.targetTrashed, 0),
+        linksLost: car.linksLost,
+      }
+    })
+  const begin = (names: Record<string, string>) => {
+    void start({ variables: { input: { token, cars: toInput(choices, names) } } })
+      .then(({ data }) => data && onStarted(data.startBackupImport))
+      .catch(() => undefined) // said under the cards
+  }
+
   return (
     <Stack sx={{ gap: 2, alignItems: 'stretch' }}>
       {review.data.backupImportReview.map((car) => (
-        <ReviewCard key={car.carId} car={car} policy={choices[car.carId]?.policy ?? 'IMPORT_THE_REST'} onPolicy={(policy) => onChoices({ ...choices, [car.carId]: { ...choices[car.carId], policy } })} />
+        <ReviewCard key={car.carId} car={car} kinds={choices[car.carId]?.kinds ?? defaultKinds()} policy={choices[car.carId]?.policy ?? 'IMPORT_THE_REST'} onPolicy={(policy) => onChoices({ ...choices, [car.carId]: { ...choices[car.carId], policy } })} />
       ))}
       <Typography variant="body2">{t('import.plan.yours')}</Typography>
       <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -355,31 +388,33 @@ function ReviewStep({
         <Button
           size="large"
           loading={started.loading}
-          onClick={() => {
-            void start({ variables: { input: { token, cars: toInput(choices) } } })
-              .then(({ data }) => data && onStarted(data.startBackupImport))
-              .catch(() => undefined) // said under the cards
-          }}
+          onClick={() => (replacements.length > 0 ? setConfirming(true) : begin({}))}
         >
           {t('import.plan.import')}
         </Button>
       </Stack>
+      {confirming && (
+        <ReplaceConfirmations
+          cars={replacements}
+          onCancel={() => setConfirming(false)}
+          onConfirmed={(names) => {
+            setConfirming(false)
+            begin(names)
+          }}
+        />
+      )}
     </Stack>
   )
 }
 
-function ReviewCard({
-  car,
-  policy,
-  onPolicy,
-}: {
-  car: { name: string; ownerName?: string | null; ownedByMe: boolean; targetName?: string | null; newRefuelings: number; newExpenses: number; newSchedules: number; existingRefuelings: number; existingExpenses: number; existingSchedules: number; differing: number; inTrash: number }
-  policy: RefusedEntryPolicy
-  onPolicy: (policy: RefusedEntryPolicy) => void
-}) {
+function ReviewCard({ car, kinds, policy, onPolicy }: { car: CarReview; kinds: Kinds; policy: RefusedEntryPolicy; onPolicy: (policy: RefusedEntryPolicy) => void }) {
   const { t } = useTranslation()
+  const line = useKindLine()
   const heading = useId()
   const existing = car.existingRefuelings + car.existingExpenses + car.existingSchedules
+  // Only the missing of every kind is said as #337 said it; once a kind has a choice of its own, each kind says what its choice does.
+  const perKind = car.kinds.some((k) => k.mode !== 'ONLY_MISSING')
+  const replacing = car.targetName != null && car.kinds.some((k) => k.mode === 'REPLACE_ALL')
   return (
     <Card component="section" aria-labelledby={heading} sx={{ p: 2 }}>
       <Stack sx={{ gap: 1 }}>
@@ -392,40 +427,70 @@ function ReviewCard({
           </Typography>
         )}
         <Stack component="ul" sx={{ gap: 0.5, m: 0, pl: 2.5 }}>
-          <Typography component="li" variant="body2">
-            {t('import.plan.new', { fuel: car.newRefuelings, expenses: car.newExpenses, recurring: car.newSchedules })}
-          </Typography>
-          {existing > 0 && (
-            <Typography component="li" variant="body2">
-              {t('import.plan.existing', { fuel: car.existingRefuelings, expenses: car.existingExpenses, recurring: car.existingSchedules })}
-            </Typography>
-          )}
-          {car.differing > 0 && (
-            <Typography component="li" variant="body2">
-              {t('import.plan.differ', { count: car.differing })}
-            </Typography>
+          {perKind ? (
+            car.kinds.map((k) => {
+              const kind = k.kind as Kind
+              return (
+                <Typography key={kind} component="li" variant="body2" sx={k.mode === 'REPLACE_ALL' ? { color: 'error.main' } : undefined}>
+                  {k.mode === 'DONT_IMPORT'
+                    ? t(`import.kinds.${kind}.reviewNone`)
+                    : k.mode === 'REPLACE_ALL'
+                      ? k.targetTrashed > 0
+                        ? t(`import.kinds.${kind}.reviewReplace`, { count: k.targetLive, trash: k.targetTrashed, total: k.backup })
+                        : line(kind, kinds[kind], k, car.targetName ?? car.name)
+                      : k.mode === 'CHOOSE'
+                        ? t(`import.kinds.${kind}.reviewChosen`, { count: k.adds, taken: k.takes })
+                        : t(`import.kinds.${kind}.reviewMissing`, { new: k.new, differ: k.differ, same: k.same })}
+                </Typography>
+              )
+            })
+          ) : (
+            <>
+              <Typography component="li" variant="body2">
+                {t('import.plan.new', { fuel: car.newRefuelings, expenses: car.newExpenses, recurring: car.newSchedules })}
+              </Typography>
+              {existing > 0 && (
+                <Typography component="li" variant="body2">
+                  {t('import.plan.existing', { fuel: car.existingRefuelings, expenses: car.existingExpenses, recurring: car.existingSchedules })}
+                </Typography>
+              )}
+              {car.differing > 0 && (
+                <Typography component="li" variant="body2">
+                  {t('import.plan.differ', { count: car.differing })}
+                </Typography>
+              )}
+            </>
           )}
           {car.inTrash > 0 && (
             <Typography component="li" variant="body2">
               {t('import.plan.inTrash', { count: car.inTrash, target: car.targetName ?? '' })}
             </Typography>
           )}
+          <Typography component="li" variant="body2">
+            {car.links ? t('import.kinds.links') : t('import.kinds.noLinks')}
+          </Typography>
           {car.targetName && (
             <Typography component="li" variant="body2">
               {t('import.plan.pastFigures', { target: car.targetName })}
             </Typography>
           )}
         </Stack>
-        <Typography variant="body2">{t('import.plan.policy')}</Typography>
-        <Segmented
-          label={`${car.name}: ${t('import.plan.policy')}`}
-          value={policy}
-          onChange={onPolicy}
-          options={[
-            { value: 'IMPORT_THE_REST', label: t('import.plan.policyRest') },
-            { value: 'LEAVE_CAR_OUT', label: t('import.plan.policyLeaveOut') },
-          ]}
-        />
+        {replacing ? (
+          <Typography variant="body2">{t('import.kinds.allOrNothing', { car: car.targetName ?? car.name })}</Typography>
+        ) : (
+          <>
+            <Typography variant="body2">{t('import.plan.policy')}</Typography>
+            <Segmented
+              label={`${car.name}: ${t('import.plan.policy')}`}
+              value={policy}
+              onChange={onPolicy}
+              options={[
+                { value: 'IMPORT_THE_REST', label: t('import.plan.policyRest') },
+                { value: 'LEAVE_CAR_OUT', label: t('import.plan.policyLeaveOut') },
+              ]}
+            />
+          </>
+        )}
       </Stack>
     </Card>
   )
@@ -535,18 +600,48 @@ function Report({ run, onAnother }: { run: ImportRunFieldsFragment; onAnother: (
   const cars = run.report ?? []
   return (
     <Stack sx={{ gap: 2, alignItems: 'stretch' }}>
-      <SuccessMessage>{t('import.run.finished', { count: cars.filter((c) => !c.leftOut).length })}</SuccessMessage>
+      <SuccessMessage>
+        {cars.some((c) => c.leftOut && c.replacing)
+          ? t('import.kinds.finishedOf', { done: cars.filter((c) => !c.leftOut).length, count: cars.length })
+          : t('import.run.finished', { count: cars.filter((c) => !c.leftOut).length })}
+      </SuccessMessage>
       {cars.map((car) => {
         // A car left out for a refusal of its own (its target went to the trash or changed its units since the review), not for an entry.
         const own = car.leftOut ? car.refused.find((entry) => entry.kind === CAR_REFUSAL) : undefined
         const refused = car.refused.filter((entry) => entry.kind !== CAR_REFUSAL)
+        // A car with a Replace all that was put back (#338): left exactly as it was, for an entry that could not be saved or for a
+        // photo or tyre log line one of its entries got since the review.
+        const putBack = car.leftOut && car.replacing
+        const heldKind = own?.key === 'import.replaceHeldBack' && (own.args as { kind?: string } | null)?.kind === 'expense' ? 'expense' : 'refueling'
+        const refusedKind = (refused[0]?.kind === 'expense' || refused[0]?.kind === 'recurring' ? refused[0].kind : 'refueling') as Kind
+        const perKind = !car.leftOut && car.kinds.some((k) => k.mode !== 'ONLY_MISSING')
         return (
         <Card key={car.carId} component="section" aria-label={car.name} sx={{ p: 2 }}>
           <Stack sx={{ gap: 1, alignItems: 'flex-start' }}>
             <Typography component="h2" variant="h6">
-              {car.targetName ? t('import.plan.cardAdded', { car: car.name, target: car.targetName }) : t('import.plan.cardNew', { car: car.name })}
+              {putBack
+                ? t('import.kinds.leftAsWas', { car: car.targetName ?? car.name })
+                : car.targetName
+                  ? t('import.plan.cardAdded', { car: car.name, target: car.targetName })
+                  : t('import.plan.cardNew', { car: car.name })}
             </Typography>
-            {own ? (
+            {putBack && own?.key === 'import.replaceHeldBack' ? (
+              <Typography variant="body2">{t(`import.kinds.${heldKind}.heldSince`, { car: car.targetName ?? car.name })}</Typography>
+            ) : putBack && !own ? (
+              <Typography variant="body2">{t(`import.kinds.${refusedKind}.leftRefused`, { car: car.targetName ?? car.name })}</Typography>
+            ) : perKind ? (
+              <Stack component="ul" sx={{ gap: 0.5, m: 0, pl: 2.5 }}>
+                {car.kinds
+                  .filter((k) => k.mode !== 'DONT_IMPORT')
+                  .map((k) => (
+                    <Typography key={k.kind} component="li" variant="body2">
+                      {k.mode === 'REPLACE_ALL'
+                        ? t(`import.kinds.${k.kind as Kind}.replaced`, { deleted: k.deleted, imported: k.imported })
+                        : t(`import.kinds.${k.kind as Kind}.imported`, { count: k.imported, taken: k.changed })}
+                    </Typography>
+                  ))}
+              </Stack>
+            ) : own ? (
               <Typography variant="body2">{t('import.run.leftOutCar', { reason: keyText(own.key, (own.args ?? {}) as Record<string, unknown>) ?? own.key })}</Typography>
             ) : car.leftOut ? (
               <Typography variant="body2">{t('import.run.leftOut')}</Typography>

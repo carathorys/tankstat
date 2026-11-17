@@ -59,6 +59,7 @@ const POLICIES: Record<string, SnapshotPolicy> = {
   CanImportFromBackup: 'onlineOnly',
   BackupImportCars: 'onlineOnly',
   BackupImportReview: 'onlineOnly',
+  BackupImportEntries: 'onlineOnly',
   ImportRun: 'onlineOnly',
   MyImportRun: 'onlineOnly',
   ImportRuns: 'onlineOnly',
