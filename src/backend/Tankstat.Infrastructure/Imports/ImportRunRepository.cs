@@ -115,10 +115,22 @@ internal sealed class ImportTargetReader(IDbContextFactory<AppDbContext> dbFacto
             expenses = expenses.IgnoreQueryFilters().Where(e => e.DeletedAt != null);
         }
         var schedules = trash ? [] : await db.RecurringExpenses.AsNoTracking().Where(s => s.VehicleId == vehicle.Id).ToListAsync(ct);
+        // The schedules each expense marked done (#338: the links a Replace all takes away, and the ones that need not be added again).
+        var links = (await db.RecurringCompletions.AsNoTracking()
+            .Where(c => db.Expenses.IgnoreQueryFilters().Any(e => e.Id == c.ExpenseId && e.VehicleId == vehicle.Id))
+            .Select(c => new { c.ExpenseId, c.RecurringExpenseId }).ToListAsync(ct)).ToLookup(c => c.ExpenseId, c => c.RecurringExpenseId);
         var summary = new BackupCarSummary(vehicle.Id, vehicle.Name, vehicle.LicensePlate, vehicle.FuelType, vehicle.Units, vehicle.OwnerId, null, 0, 0, 0);
         return new BackupCar(summary,
             [.. (await refuelings.ToListAsync(ct)).Select(BackupCarShapes.Of)],
-            [.. (await expenses.ToListAsync(ct)).Select(e => BackupCarShapes.Of(e, []))],
+            [.. (await expenses.ToListAsync(ct)).Select(e => BackupCarShapes.Of(e, [.. links[e.Id]]))],
             [.. schedules.Select(BackupCarShapes.Of)]);
+    }
+
+    public async Task<ImportHeldBack> HeldBackAsync(Tankstat.Domain.Vehicles.Vehicle vehicle, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var photos = await db.LogPhotos.AsNoTracking().Where(p => p.VehicleId == vehicle.Id).Select(p => new { p.LogType, p.LogId }).Distinct().ToListAsync(ct);
+        var lines = await db.TyreEntries.IgnoreQueryFilters().Where(l => l.VehicleId == vehicle.Id && l.ExpenseId != null).Select(l => l.ExpenseId).Distinct().CountAsync(ct);
+        return new ImportHeldBack(photos.Count(p => p.LogType == Tankstat.Domain.Photos.LogType.Refueling), photos.Count(p => p.LogType == Tankstat.Domain.Photos.LogType.Expense), lines);
     }
 }

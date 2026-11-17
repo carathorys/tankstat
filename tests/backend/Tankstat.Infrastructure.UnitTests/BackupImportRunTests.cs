@@ -31,7 +31,7 @@ namespace Tankstat.Infrastructure.UnitTests;
 /// on SQLite always, and on the database servers the environment names (docs/development.md). The backup is written by another
 /// instance of the app, so every id in it is foreign here.
 /// </summary>
-public sealed class BackupImportRunTests(ITestOutputHelper output) : IAsyncDisposable
+public sealed partial class BackupImportRunTests(ITestOutputHelper output) : IAsyncDisposable
 {
     private static readonly DateOnly Day = new(2026, 3, 1);
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"tankstat-import-run-{Guid.NewGuid():N}");

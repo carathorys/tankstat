@@ -40,7 +40,9 @@ public sealed class BackupImportRunService(
     }
 
     /// <summary>What importing the chosen cars would do, as far as it can be foreseen. Nothing is saved, and a rule's refusal is only met by the run.</summary>
-    public async Task<IReadOnlyList<ImportCarReview>> ReviewAsync(string token, IReadOnlyList<ImportCarChoice> choices, CancellationToken ct)
+    public Task<IReadOnlyList<ImportCarReview>> ReviewAsync(string token, IReadOnlyList<ImportCarChoice> choices, CancellationToken ct) => ReviewAsync(token, choices, starting: false, ct);
+
+    private async Task<IReadOnlyList<ImportCarReview>> ReviewAsync(string token, IReadOnlyList<ImportCarChoice> choices, bool starting, CancellationToken ct)
     {
         var (me, file) = await FileAsync(token, ct);
         BackupImportRules.RequireSound(choices, file.Summary);
@@ -49,11 +51,64 @@ public sealed class BackupImportRunService(
         {
             var car = await file.ReadCarAsync(choice.CarId, ct) ?? throw new DomainException("import.unknownCar", "The file has no such car.");
             var target = choice.TargetVehicleId is { } id ? await rules.TargetAsync(me.Id, car.Car, id, ct) : null;
-            var delta = target is null ? BackupImportRules.Everything(car) : await rules.MissingAsync(car, target, ct);
+            var compared = target is null ? BackupImportRules.Whole(car) : await rules.CompareAsync(car, target, ct);
+            BackupImportRules.RequireSound(car.Car, compared, choice.Kinds);
+            // A Replace all asks for the target's name, typed (#338): checked when the start is accepted, never again when a waiting
+            // run's turn comes, so a car renamed meanwhile does not end the run.
+            if (starting && target is not null && (choice.Kinds ?? ImportCarKinds.Missing).All.Any(k => k.Mode == ImportKindMode.ReplaceAll)
+                && !string.Equals(choice.ConfirmedName?.Trim(), target.Name.Trim(), StringComparison.InvariantCultureIgnoreCase))
+                throw new DomainException(BackupImportRules.ReplaceNotConfirmedKey, "Type the car's name to confirm what is deleted.", new { Car = target.Name });
+            var work = BackupImportRules.Work(compared, choice.Kinds);
             reviews.Add(new ImportCarReview(car.Car.Id, car.Car.Name, car.Car.OwnerName, car.Car.OwnerId == me.Id, target?.Id, target?.Name,
-                delta.Refuelings.Count, delta.Expenses.Count, delta.Schedules.Count, delta.ExistingRefuelings, delta.ExistingExpenses, delta.ExistingSchedules, delta.Differing, delta.InTrash));
+                work.Refuelings.Adds.Count, work.Expenses.Adds.Count, work.Schedules.Adds.Count,
+                compared.Refuelings.Same.Count, compared.Expenses.Same.Count, compared.Schedules.Same.Count,
+                compared.Refuelings.Differ.Count + compared.Expenses.Differ.Count + compared.Schedules.Differ.Count, compared.Refuelings.InTrash + compared.Expenses.InTrash,
+                [
+                    KindReview(BackupImportRules.Refueling, compared.Refuelings, work.Refuelings),
+                    KindReview(BackupImportRules.Expense, compared.Expenses, work.Expenses),
+                    KindReview(BackupImportRules.Recurring, compared.Schedules, work.Schedules),
+                ], work.Links, work.LinksLost));
         }
         return reviews;
+    }
+
+    private static ImportKindReview KindReview<T>(string kind, ImportKindComparison<T> compared, ImportKindWork<T> work) where T : IBackupEntry => new(
+        kind, work.Mode, compared.Backup.Count, compared.New.Count, compared.Differ.Count, compared.Same.Count, compared.InTrash, work.Adds.Count, work.Takes.Count,
+        compared.TargetIds.Count, compared.TargetTrashed, compared.WithPhotos, compared.OnTyreLines);
+
+    /// <summary>
+    /// A page of one section of the <i>Choose…</i> dialog (#338): the entries of a kind that are only in the backup, or that differ from
+    /// the target's (with both sides of each field that does), in the backup's order, at most 200 at a time.
+    /// </summary>
+    public async Task<ImportEntryPage> EntriesAsync(string token, Guid carId, Guid targetVehicleId, string kind, bool differing, int skip, int take, CancellationToken ct)
+    {
+        var (me, file) = await FileAsync(token, ct);
+        var car = await file.ReadCarAsync(carId, ct) ?? throw new DomainException("import.unknownCar", "The file has no such car.");
+        var compared = await rules.CompareAsync(car, await rules.TargetAsync(me.Id, car.Car, targetVehicleId, ct), ct);
+        (skip, take) = (Math.Max(0, skip), Math.Clamp(take, 1, 200));
+        return kind switch
+        {
+            BackupImportRules.Refueling => Page(compared.Refuelings, r => new ImportEntryView(r.Id, r.Values.Date, r.Values.Odometer, null, r.Values.TotalCost, r.Values.Currency, r.Values.Volume, [])),
+            BackupImportRules.Expense => Page(compared.Expenses, e => new ImportEntryView(e.Id, e.Values.Date, e.Values.Odometer, e.Values.Title, e.Values.Amount, e.Values.Currency, null, [])),
+            BackupImportRules.Recurring => Page(compared.Schedules, r => new ImportEntryView(r.Id, r.Values.LastDoneDate, r.Values.LastDoneOdometer, r.Values.Title, null, null, null, [])),
+            _ => throw new DomainException("import.unknownKind", "There is no such kind of entry."),
+        };
+
+        ImportEntryPage Page<T>(ImportKindComparison<T> of, Func<T, ImportEntryView> view) where T : IBackupEntry => differing
+            ? new ImportEntryPage(of.Differ.Count, [.. of.Differ.Skip(skip).Take(take).Select(d => view(d.Entry) with
+            {
+                Differences = [.. d.Differences.Select(f => new ImportFieldDifference(f.Field, Text(f.Backup), Text(f.Target)))],
+            })])
+            : new ImportEntryPage(of.New.Count, [.. of.New.Skip(skip).Take(take).Select(view)]);
+
+        static string? Text(object? value) => value switch
+        {
+            null => null,
+            DateOnly day => day.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            bool yes => yes ? "true" : "false",
+            IFormattable number => number.ToString(null, System.Globalization.CultureInfo.InvariantCulture),
+            _ => value.ToString(),
+        };
     }
 
     /// <summary>
@@ -69,9 +124,9 @@ public sealed class BackupImportRunService(
         try
         {
             if (await runs.LatestOfAsync(me.Id, ct) is { IsActive: true }) throw new DomainException(AlreadyRunningKey, "An import of yours is running or waiting already.");
-            var reviews = await ReviewAsync(token, choices, ct); // every refusal that can be foreseen, before anything is queued
+            var reviews = await ReviewAsync(token, choices, starting: true, ct); // every refusal that can be foreseen, before anything is queued
             var plan = new ImportRunPlan([.. choices.Zip(reviews, (choice, review) => new ImportCarPlan(
-                choice.CarId, review.Name, review.TargetVehicleId, review.TargetName, choice.Policy, review.NewRefuelings + review.NewExpenses + review.NewSchedules))]);
+                choice.CarId, review.Name, review.TargetVehicleId, review.TargetName, choice.Policy, review.Kinds.Sum(k => k.Adds + k.Takes), choice.Kinds))]);
             var run = ImportRun.Queue(Guid.NewGuid(), ImportRunKind.Import, me.Id, runner.Server, ImportRunJson.Write(plan), plan.Cars.Count, plan.Cars.Sum(c => c.Entries), clock.GetUtcNow());
             // The file first: the queue ends a waiting run of this server that it holds no file for, so the row must never be there without it.
             runner.Enqueue(run.Id, me.Id, token);

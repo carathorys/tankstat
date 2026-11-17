@@ -37,14 +37,20 @@ public sealed record BackupImportRefusal(string Key, IReadOnlyDictionary<string,
 public sealed record BackupImportStatus(
     string Token, BackupFileOrigin Origin, BackupImportState State, int? TriesLeft, bool WrongKey, BackupFileSummary? Summary, BackupImportRefusal? Refusal);
 
+/// <summary>An entry of a backup's car (or of a car that is here, read into the same shape): its id there.</summary>
+public interface IBackupEntry
+{
+    Guid Id { get; }
+}
+
 /// <summary>A refuelling of a backup's car with its id, as the service takes one.</summary>
-public sealed record BackupRefueling(Guid Id, RefuelingInput Values);
+public sealed record BackupRefueling(Guid Id, RefuelingInput Values) : IBackupEntry;
 
 /// <summary>An expense of a backup's car. <see cref="CompletedScheduleIds"/>: the schedules its visit marked done (the link comes only when both kinds do).</summary>
-public sealed record BackupExpense(Guid Id, ExpenseInput Values, IReadOnlyList<Guid> CompletedScheduleIds);
+public sealed record BackupExpense(Guid Id, ExpenseInput Values, IReadOnlyList<Guid> CompletedScheduleIds) : IBackupEntry;
 
 /// <summary>A schedule of a backup's car.</summary>
-public sealed record BackupSchedule(Guid Id, RecurringExpenseInput Values);
+public sealed record BackupSchedule(Guid Id, RecurringExpenseInput Values) : IBackupEntry;
 
 /// <summary>A car of the file with its logs and schedules (nothing that was in the trash).</summary>
 public sealed record BackupCar(BackupCarSummary Car, IReadOnlyList<BackupRefueling> Refuelings, IReadOnlyList<BackupExpense> Expenses, IReadOnlyList<BackupSchedule> Schedules);

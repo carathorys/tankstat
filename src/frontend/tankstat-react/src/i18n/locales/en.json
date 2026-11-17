@@ -982,7 +982,12 @@
       "carTwice": "A car can be chosen once, and each of your cars can take one car of the file.",
       "alreadyRunning": "An import of yours is running or waiting already.",
       "notOnMySql": "Importing from a backup is not available on a server that runs on MySQL yet.",
-      "replaceHeldBack": "These entries have photos or tyre log lines, so they cannot be replaced yet."
+      "replaceHeldBack": "These entries have photos or tyre log lines, so they cannot be replaced yet.",
+      "nothingChosen": "Choose at least one kind to import for {{car}}, or leave the car out.",
+      "replaceNotConfirmed": "Type the car's name to confirm what is deleted.",
+      "replaceNothing": "The backup has none of this kind, so there is nothing to replace yours with.",
+      "tooManyChoices": "Too many entries were chosen one by one. Use Tick all or Untick all, then change the few that differ.",
+      "unknownKind": "There is no such kind of entry."
     },
     "chart": {
       "invalid": "This chart is not valid.",

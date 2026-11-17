@@ -55,7 +55,16 @@ public interface IImportTargetReader
 
     /// <summary>The car's refuellings and expenses that are in the trash (schedules have none).</summary>
     Task<BackupCar> TrashAsync(Vehicle vehicle, CancellationToken ct);
+
+    /// <summary>
+    /// What holds a <i>Replace all</i> back (#338, the owner's decision 2): how many of the car's refuellings and expenses, live or in the
+    /// trash, have photos, and how many of its expenses belong to a tyre log line.
+    /// </summary>
+    Task<ImportHeldBack> HeldBackAsync(Vehicle vehicle, CancellationToken ct);
 }
+
+/// <summary>The entries of a car that a backup cannot bring back yet, per kind: counted, never listed.</summary>
+public sealed record ImportHeldBack(int RefuelingPhotos, int ExpensePhotos, int ExpenseTyreLines);
 
 /// <summary>The server's side of the queue (#337): it holds the files of the runs it was given and starts each when its turn comes.</summary>
 public interface IBackupImportRunner

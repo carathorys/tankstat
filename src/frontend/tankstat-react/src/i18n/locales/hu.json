@@ -982,7 +982,12 @@
       "carTwice": "Egy autó egyszer választható, és minden autód a fájl egy autóját kaphatja.",
       "alreadyRunning": "Már fut vagy várakozik egy importálásod.",
       "notOnMySql": "A mentésből importálás MySQL-en futó szerveren még nem érhető el.",
-      "replaceHeldBack": "Ezekhez a bejegyzésekhez fénykép vagy gumiabroncs-naplósor tartozik, ezért még nem cserélhetők le."
+      "replaceHeldBack": "Ezekhez a bejegyzésekhez fénykép vagy gumiabroncs-naplósor tartozik, ezért még nem cserélhetők le.",
+      "nothingChosen": "Válassz legalább egy fajtát a(z) {{car}} autóhoz, vagy hagyd ki az autót.",
+      "replaceNotConfirmed": "A törlés megerősítéséhez írd be az autó nevét.",
+      "replaceNothing": "A mentésben nincs ilyen fajta adat, így nincs mire cserélni a tiédet.",
+      "tooManyChoices": "Túl sok bejegyzést választottál ki egyenként. Használd a Mind bejelölése vagy a Jelölések törlése gombot, majd módosítsd azt a néhányat, amelyik eltér.",
+      "unknownKind": "Nincs ilyen fajta bejegyzés."
     },
     "chart": {
       "invalid": "Ez a grafikon nem érvényes.",
