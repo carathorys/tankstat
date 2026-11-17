@@ -200,6 +200,14 @@ for e in "2025-01-12 Wash 10" "2025-01-15 Wipers 20" "2025-01-18 Polish 15"; do
   read -r day title amount <<< "$e"
   gql "$source_url" "{\"query\":\"mutation { addExpense(input: { vehicleId: \\\"${polo}\\\", date: \\\"${day}\\\", title: \\\"${title}\\\", amount: ${amount}, currency: \\\"EUR\\\" }) { id } }\"}" >/dev/null
 done
+# A Corolla with its tyres (#339): a winter set on the car since November 2025, tracked tyre by tyre (W1 to W4), and a puncture of W1
+# with an amount. The ids are made here, so the later calls can name them.
+corolla="$(gql "$source_url" '{"query":"mutation { addVehicle(input: { name: \"Corolla\", fuelType: PETROL }) { id } }"}' | car_id)"
+gql "$source_url" "{\"query\":\"mutation { logRefueling(input: { vehicleId: \\\"${corolla}\\\", date: \\\"2025-10-01\\\", volume: 40, totalCost: 60, currency: \\\"EUR\\\", odometer: 80000, isFullTank: true }) { id } }\"}" >/dev/null
+winter="$(cat /proc/sys/kernel/random/uuid)" w1="$(cat /proc/sys/kernel/random/uuid)"
+gql "$source_url" "{\"query\":\"mutation { addTyreSet(input: { id: \\\"${winter}\\\", vehicleId: \\\"${corolla}\\\", name: \\\"Nordic winter\\\", season: WINTER, since: \\\"2024-10-01\\\", fitted: true, day: \\\"2025-11-01\\\" }) { vehicleId } }\"}" >/dev/null
+gql "$source_url" "{\"query\":\"mutation { breakUpTyreSet(input: { setId: \\\"${winter}\\\", day: \\\"2025-11-01\\\", tyres: [{ id: \\\"${w1}\\\", label: \\\"W1\\\", corner: FRONT_LEFT }, { label: \\\"W2\\\", corner: FRONT_RIGHT }, { label: \\\"W3\\\", corner: REAR_LEFT }, { label: \\\"W4\\\", corner: REAR_RIGHT }] }) { vehicleId } }\"}" >/dev/null
+gql "$source_url" "{\"query\":\"mutation { addTyreEntry(input: { vehicleId: \\\"${corolla}\\\", kind: PUNCTURE_REPAIRED, day: \\\"2025-12-02\\\", setId: \\\"${winter}\\\", note: \\\"A nail\\\", tyres: [{ tyreId: \\\"${w1}\\\" }], fee: { amount: 25, currency: \\\"EUR\\\", category: \\\"Tyres\\\", title: \\\"Puncture W1\\\" } }) { vehicleId } }\"}" >/dev/null
 kill "$source_pid" && wait "$source_pid" 2>/dev/null || true
 mkdir -p "$fixtures"
 if ! (import_env source; cd out; dotnet Tankstat.Api.dll backup --output "$fixtures/tankstat-backup.zip") > "${files}/import-backup.log" 2>&1; then
