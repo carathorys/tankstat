@@ -121,6 +121,25 @@ it('words an import from a backup for its starter and for the administrators, an
   expect(say('CARS_IMPORTED', { actor: 'Bob', count: '2', names: 'Octavia, Fabia' }, run)).toEqual({ text: 'Bob imported 2 cars from a backup: Octavia, Fabia.', href: null })
 })
 
+it("words a partial restore for the administrator who ran it, the other administrators, and each car's owner and sharers (#340)", () => {
+  const run = { subject: { type: 'IMPORT_RUN' as const, id: 'run1' }, context: null }
+  expect(say('RESTORE_FINISHED', { count: '2', names: 'Golf, Polo', refused: '0' }, run)).toEqual({
+    text: 'Your restore finished: 2 cars (Golf, Polo). 0 entries could not be saved.',
+    href: '/admin/backups/restore?run=run1',
+  })
+  expect(say('RESTORE_NOT_FINISHED', { reason: 'Failed' }, run)).toEqual({ text: 'Your restore did not finish: nothing was restored.', href: '/admin/backups/restore?run=run1' })
+  expect(say('RESTORE_CANCELLED', { actor: 'Eve' }, run).text).toBe('Eve cancelled your restore: nothing was restored.')
+  expect(say('CARS_RESTORED', { actor: 'Ada', count: '2', names: 'Golf, Polo', date: '2026-11-03' }, run).text).toMatch(/^Ada restored 2 cars from the backup of .*2026.*: Golf, Polo\.$/)
+  const car = { subject: { type: 'VEHICLE' as const, id: 'golf' }, context: null }
+  const back = say('CAR_RESTORED', { actor: 'Ada', vehicleName: 'Golf', date: '2026-11-03', how: 'back', count: '3', kinds: '' }, car)
+  expect(back.href).toBe('/vehicles/golf')
+  expect(back.text).toMatch(/^Ada restored Golf from the backup of .*: 3 entries came back\.$/)
+  expect(say('CAR_RESTORED', { actor: 'Ada', vehicleName: 'Golf', date: '2026-11-03', how: 'replaced', count: '2', kinds: 'refueling,expense' }, car).text).toMatch(
+    /: 2 refuellings and expenses were replaced by the backup's\.$/,
+  )
+  expect(say('CAR_RESTORED', { actor: 'Ada', vehicleName: 'Polo', date: '2026-11-03', how: 'again', count: '1', kinds: '' }, car).text).toMatch(/^Ada restored Polo from the backup of .*\. It is yours again\.$/)
+})
+
 it('says plainly that something happened it cannot describe yet, without a link, instead of breaking the list', () => {
   // A kind of a newer server, while this tab still runs the release before it.
   expect(say('SOMETHING_NEWER' as NotificationKind, {}, { context: null })).toEqual({

@@ -109,7 +109,7 @@ it('lists the imports that go or wait, each with its cancel behind a confirmatio
     ahead: 0, fileToken: null, limitMinutes: 10, progress: { __typename: 'ImportRunProgressInfo', car: 1, cars: 2, done: 310, total: 470 },
     cars: [{ __typename: 'ImportRunCarInfo', carId: 'c1', name: 'Octavia', targetName: null }, { __typename: 'ImportRunCarInfo', carId: 'c2', name: 'Fabia', targetName: null }], report: null,
   })
-  let runs = [run('r1', 'RUNNING', 'Bob'), run('r2', 'WAITING', 'Carol')]
+  let runs = [run('r1', 'RUNNING', 'Bob'), run('r2', 'WAITING', 'Carol'), { ...run('r3', 'WAITING', 'Ada'), kind: 'RESTORE' }]
   const cancelled: string[] = []
   server.use(
     graphql.query('ImportRuns', () => HttpResponse.json({ data: { importRuns: runs } })),
@@ -124,6 +124,7 @@ it('lists the imports that go or wait, each with its cancel behind a confirmatio
   const view = await overview()
   expect(await view.findByText(/^An import started by Bob has been running since .* \(2 cars, 310 of 470 entries\)\.$/)).toBeInTheDocument()
   expect(view.getByText(/^An import started by Carol has been waiting since .* \(2 cars\)\.$/)).toBeInTheDocument()
+  expect(view.getByText(/^A restore started by Ada has been waiting since .* \(2 cars\)\.$/)).toBeInTheDocument() // the same line holds restores (#340)
   expect(view.queryByText('Nothing needs your attention.')).not.toBeInTheDocument()
 
   await ui.click(view.getByRole('button', { name: 'Cancel it: Carol' }))

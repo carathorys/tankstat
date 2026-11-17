@@ -303,6 +303,9 @@ it('shows the server, where its backups go, and every backup in the folder with 
   expect(within(rows[3]).getByText('Holds the database as an older release left it: brought up to date as it is restored.')).toBeInTheDocument()
   expect(within(rows[3]).getByRole('button', { name: /^Restore the backup of/ })).toBeInTheDocument()
   expect(within(rows[0]).getByRole('button', { name: /^Restore the backup of/ })).toBeInTheDocument()
+  // Restore cars (#340) is offered where the full restore is, and opens its page on that file.
+  expect(within(rows[2]).queryByRole('link', { name: /^Restore cars/ })).not.toBeInTheDocument()
+  expect(within(rows[3]).getByRole('link', { name: /^Restore cars from the backup of/ })).toHaveAttribute('href', expect.stringMatching(/^\/admin\/backups\/restore\?file=/))
   await userEvent.setup().click(within(rows[3]).getByRole('button', { name: /^Restore the backup of/ }))
   expect(await screen.findByRole('alertdialog')).toHaveAccessibleDescription(/holds the database as an older release left it \(the file was written by Tankstat 0\.9\.0\): the database is set up as that release left it/)
 })

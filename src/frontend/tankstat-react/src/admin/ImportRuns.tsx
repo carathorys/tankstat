@@ -22,10 +22,12 @@ export function ImportRunLines({ runs, onCancelled }: { runs: readonly ImportRun
       {runs.map((run) => {
         const name = run.startedByName ?? ''
         const cars = run.cars.length
+        // A partial restore (#340) waits in the same line: said as one.
+        const restore = run.kind === 'RESTORE'
         const text =
           run.state === 'RUNNING'
-            ? t('admin.imports.running', { name, time: dateTime(run.startedAt ?? run.queuedAt), cars, done: run.progress.done, total: run.progress.total })
-            : t('admin.imports.waiting', { name, time: dateTime(run.queuedAt), cars })
+            ? t(restore ? 'admin.imports.restoreRunning' : 'admin.imports.running', { name, time: dateTime(run.startedAt ?? run.queuedAt), cars, done: run.progress.done, total: run.progress.total })
+            : t(restore ? 'admin.imports.restoreWaiting' : 'admin.imports.waiting', { name, time: dateTime(run.queuedAt), cars })
         return (
           <Stack key={run.id} component="li" direction="row" sx={{ gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
             <Typography sx={{ flex: '1 1 16rem', minWidth: 0 }}>{text}</Typography>
@@ -35,13 +37,13 @@ export function ImportRunLines({ runs, onCancelled }: { runs: readonly ImportRun
                   {t('admin.imports.cancel')}
                 </Button>
               }
-              title={t('import.run.cancelTitle')}
-              description={t('import.run.cancelText')}
-              confirmLabel={t('import.run.cancel')}
+              title={t(restore ? 'restore.run.cancelTitle' : 'import.run.cancelTitle')}
+              description={t(restore ? 'restore.run.cancelText' : 'import.run.cancelText')}
+              confirmLabel={t(restore ? 'restore.run.cancel' : 'import.run.cancel')}
               onConfirm={() =>
                 void cancel({ variables: { id: run.id } })
                   .then(({ data }) => {
-                    if (data?.cancelImportRun) toast(t('admin.imports.cancelled')) // false: it was over already, and the list says so
+                    if (data?.cancelImportRun) toast(t(restore ? 'admin.imports.restoreCancelled' : 'admin.imports.cancelled')) // false: it was over already, and the list says so
                     onCancelled()
                   })
                   .catch(() => undefined)

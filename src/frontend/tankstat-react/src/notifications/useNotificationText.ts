@@ -98,6 +98,29 @@ export function useNotificationText() {
         return { text: t('notifications.kinds.IMPORT_NOT_FINISHED'), href: `/import?run=${n.subject.id}` }
       case 'IMPORT_CANCELLED':
         return { text: t('notifications.kinds.IMPORT_CANCELLED', { actor: args.actor ?? '' }), href: `/import?run=${n.subject.id}` }
+      // A partial restore (#340): the administrator's own, its report behind the link; the others' and each car's owner's and sharers'.
+      case 'RESTORE_FINISHED':
+        return { text: t('notifications.kinds.RESTORE_FINISHED', { count: Number(args.count ?? 0), names: args.names ?? '', refused: args.refused ?? '0' }), href: `/admin/backups/restore?run=${n.subject.id}` }
+      case 'RESTORE_NOT_FINISHED':
+        return { text: t('notifications.kinds.RESTORE_NOT_FINISHED'), href: `/admin/backups/restore?run=${n.subject.id}` }
+      case 'RESTORE_CANCELLED':
+        return { text: t('notifications.kinds.RESTORE_CANCELLED', { actor: args.actor ?? '' }), href: `/admin/backups/restore?run=${n.subject.id}` }
+      case 'CARS_RESTORED':
+        return { text: t('notifications.kinds.CARS_RESTORED', { actor: args.actor ?? '', count: Number(args.count ?? 0), names: args.names ?? '', date: args.date ? date(args.date) : '' }), href: null }
+      case 'CAR_RESTORED': {
+        const how = args.how === 'replaced' ? 'replaced' : args.how === 'again' ? 'again' : 'back'
+        const kinds = (args.kinds ?? '').split(',').filter((k): k is 'refueling' | 'expense' | 'recurring' => k === 'refueling' || k === 'expense' || k === 'recurring')
+        return {
+          text: t(`notifications.kinds.CAR_RESTORED_${how}`, {
+            actor: args.actor ?? '',
+            car: args.vehicleName ?? '',
+            date: args.date ? date(args.date) : '',
+            count: Number(args.count ?? 0),
+            kind: list(kinds.map((k) => t(`import.kinds.${k}.name`).toLocaleLowerCase())),
+          }),
+          href: `/vehicles/${n.subject.id}`,
+        }
+      }
       case 'CARS_IMPORTED':
         return { text: t('notifications.kinds.CARS_IMPORTED', { actor: args.actor ?? '', count: Number(args.count ?? 0), names: args.names ?? '' }), href: null }
       default:

@@ -42,6 +42,7 @@ const AdminPanel = lazy(() => import('./admin/AdminPanel.tsx').then((m) => ({ de
 const SystemSettingsPage = lazy(() => import('./admin/SystemSettingsPage.tsx').then((m) => ({ default: m.SystemSettingsPage })))
 const AdminOverviewPage = lazy(() => import('./admin/AdminOverviewPage.tsx').then((m) => ({ default: m.AdminOverviewPage })))
 const BackupsPage = lazy(() => import('./admin/BackupsPage.tsx').then((m) => ({ default: m.BackupsPage })))
+const RestoreCarsPage = lazy(() => import('./admin/RestoreCars.tsx').then((m) => ({ default: m.RestoreCarsPage })))
 const SetupPage = lazy(() => import('./setup/SetupPage.tsx').then((m) => ({ default: m.SetupPage })))
 
 /**
@@ -294,6 +295,7 @@ function Content({ data }: { data: SessionQuery }) {
             <Route path="/admin/vehicles" element={isAdmin ? <VehiclesPage /> : <Navigate to="/" replace />} />
             <Route path="/admin/settings" element={isAdmin ? <SystemSettingsPage /> : <Navigate to="/" replace />} />
             <Route path="/admin/backups" element={isAdmin ? <BackupsPage /> : <Navigate to="/" replace />} />
+            <Route path="/admin/backups/restore" element={isAdmin ? <RestoreCarsPage /> : <Navigate to="/" replace />} />
             <Route path="/setup" element={<SetupPage mode={mode} />} />
             <Route path="*" element={<Typography>{t('app.notFound')}</Typography>} />
           </Routes>
