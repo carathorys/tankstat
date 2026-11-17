@@ -417,6 +417,7 @@ export type ImportCarChoiceInput = {
   confirmedName?: string | null | undefined;
   expenses?: ImportKindChoiceInput | null | undefined;
   media?: ImportMediaChoiceInput | null | undefined;
+  ownerId?: string | null | undefined;
   policy?: RefusedEntryPolicy | null | undefined;
   refuelings?: ImportKindChoiceInput | null | undefined;
   schedules?: ImportKindChoiceInput | null | undefined;
@@ -555,6 +556,8 @@ export type NotificationEntityType =
 export type NotificationKind =
   | 'BACKUP_FAILED'
   | 'CARS_IMPORTED'
+  | 'CARS_RESTORED'
+  | 'CAR_RESTORED'
   | 'DATA_ACCESS_CHANGED'
   | 'DATA_SHARED'
   | 'DEFAULT_ACCESS_CHANGED'
@@ -567,6 +570,9 @@ export type NotificationKind =
   | 'MORE_ACTIVITY'
   | 'RECURRING_DUE_SOON'
   | 'RECURRING_OVERDUE'
+  | 'RESTORE_CANCELLED'
+  | 'RESTORE_FINISHED'
+  | 'RESTORE_NOT_FINISHED'
   | 'SYNC_CHANGE_PARKED'
   | 'TYRE_SWAP_DUE'
   | 'VEHICLE_SHARED';
