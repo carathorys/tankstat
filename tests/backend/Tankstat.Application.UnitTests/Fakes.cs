@@ -1329,6 +1329,9 @@ public sealed class FakeExports : Tankstat.Application.Exports.IExportFiles, Tan
         Cancelled.Add(ownerId);
         return false;
     }
+    public List<Guid> Forgotten { get; } = [];
+    public void Forget(Guid ownerId) => Forgotten.Add(ownerId);
+    public DateTimeOffset Since => DateTimeOffset.MinValue;
     public Tankstat.Application.Exports.ExportProgress? ProgressOf(Guid id) => null;
     public bool IsRunning(Guid id) => false;
 }

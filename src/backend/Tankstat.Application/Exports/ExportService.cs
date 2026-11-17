@@ -45,6 +45,10 @@ public interface IExportRunner
     void Start(ExportJob job);
     /// <summary>Asks the person's export under way to stop; false when none is.</summary>
     bool Cancel(Guid ownerId);
+    /// <summary>The person's account is deleted: their export under way stops, and whatever it ends with is deleted, file and record.</summary>
+    void Forget(Guid ownerId);
+    /// <summary>When this process began building exports: a record still building from before was cut short by a restart.</summary>
+    DateTimeOffset Since { get; }
     /// <summary>How far an export under way is; null when none of that id is.</summary>
     ExportProgress? ProgressOf(Guid id);
     bool IsRunning(Guid id);
@@ -64,7 +68,8 @@ public interface IExportFacts
 /// A person's export as the page sees it: its record, how far it is while it is built, and whether this server's import would take it (the
 /// owner's decision 8: said on the ready file).
 /// </summary>
-public sealed record ExportView(ExportRecord Record, ExportProgress? Progress, bool LargerThanImport, int ImportMaxMb);
+/// <param name="Kept">The person's earlier file, still kept, when the newest export did not replace it (it failed, was cancelled or cut short).</param>
+public sealed record ExportView(ExportRecord Record, ExportProgress? Progress, bool LargerThanImport, int ImportMaxMb, ExportView? Kept = null);
 
 /// <summary>
 /// Export my data (#341): a person's own cars as a file, chosen car by car and kind by kind, optionally encrypted with a passphrase, built in
@@ -115,6 +120,8 @@ public sealed class ExportService(
         if (!string.IsNullOrEmpty(passphrase) || !string.IsNullOrEmpty(repeated))
         {
             PasswordPolicy.RequireRepeated(passphrase, repeated);
+            // Only spaces is no passphrase anyone would type again: refused, never a file locked with it.
+            if (string.IsNullOrWhiteSpace(passphrase)) throw new DomainException("backup.passphraseRequired", "A passphrase is expected.");
             BackupPassphrase.Validate(passphrase!, backups.Value.PassphraseMinLength);
             var set = keys.FromPassphrase(passphrase!);
             encryption = new BackupEncryption(BackupEncryption.AgeX25519, set.Recipient, set.Salt, Argon2idParameters.Default);
@@ -139,7 +146,11 @@ public sealed class ExportService(
         var me = await RequireExporterAsync(ct);
         Sweep();
         var owner = me.IsAnonymous ? Guid.Empty : me.Id;
-        return Latest(owner) is { } record ? View(record) : null;
+        var records = files.Records().Where(r => r.OwnerId == owner).OrderByDescending(r => r.StartedAt).ThenBy(r => r.Id).ToList();
+        if (records.Count == 0) return null;
+        var view = View(records[0]);
+        // A failed, cancelled or cut-short export left the earlier file: the page still offers it.
+        return records[0].State != ExportState.Ready && records.Skip(1).FirstOrDefault(r => r.State == ExportState.Ready) is { } kept ? view with { Kept = View(kept) } : view;
     }
 
     /// <summary>Asks the person's export under way to stop: nothing of it is kept, the earlier file stays.</summary>
@@ -177,9 +188,6 @@ public sealed class ExportService(
         return (content, $"tankstat-export-{record!.StartedAt.UtcDateTime:yyyy-MM-dd}.zip");
     }
 
-    private ExportRecord? Latest(Guid owner) =>
-        files.Records().Where(r => r.OwnerId == owner).OrderByDescending(r => r.StartedAt).ThenBy(r => r.Id).FirstOrDefault();
-
     private ExportView View(ExportRecord record) =>
         new(record, runner.ProgressOf(record.Id), record.Bytes > imports.Value.MaxUploadBytes, imports.Value.MaxUploadMb);
 
@@ -198,7 +206,8 @@ public sealed class ExportService(
                 files.Save(record with { State = ExportState.Expired, DeletedAt = now });
                 logger.LogInformation("Export {ExportId} expired and was deleted", record.Id);
             }
-            else if (record.State == ExportState.Building && !runner.IsRunning(record.Id))
+            // Only one started before this process began: one of its own may have just ended (its record saved after this read).
+            else if (record.State == ExportState.Building && record.StartedAt < runner.Since)
                 files.Save(record with { State = ExportState.Interrupted });
         }
         files.RemovePartials();

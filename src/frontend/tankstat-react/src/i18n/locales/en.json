@@ -1209,6 +1209,14 @@
       "alreadyRunning": "A restore of yours is running or waiting already.",
       "expired": "This restore has expired. Open the backup again from the Backups page.",
       "ownerGone": "The owner {{car}} was to come back to has no account any more: pick another and restore it again."
+    },
+    "export": {
+      "disabled": "Exporting is switched off on this server.",
+      "noCars": "Tick at least one car.",
+      "noKinds": "Tick at least one kind for {{car}}.",
+      "carTwice": "A car can be chosen once.",
+      "notFound": "This export is no longer kept.",
+      "failed": "Something went wrong while it was written."
     }
   },
   "a11y": {

@@ -10,16 +10,17 @@ public sealed record ExportProgressInfo(int Car, int Cars, int Done, int Total);
 
 /// <summary>
 /// The person's export: building (with its progress), ready (its size, key and how long it is kept; <c>downloadUrl</c> for the file;
-/// <c>largerThanImport</c> when this server's import would refuse it), or how the last one ended (<c>failureKey</c>, <c>deletedAt</c>).
+/// <c>largerThanImport</c> when this server's import would refuse it), or how the last one ended (<c>failureKey</c>, <c>deletedAt</c>);
+/// <c>kept</c>: the earlier file, still there, when the newest export ended without replacing it.
 /// </summary>
 public sealed record ExportInfo(
     Guid Id, ExportState State, IReadOnlyList<string> CarNames, bool Encrypted, DateTimeOffset StartedAt, DateTimeOffset? ReadyAt, DateTimeOffset? KeptUntil,
-    DateTimeOffset? DeletedAt, long? Bytes, string? FailureKey, ExportProgressInfo? Progress, bool LargerThanImport, int ImportMaxMb, string? DownloadUrl)
+    DateTimeOffset? DeletedAt, long? Bytes, string? FailureKey, ExportProgressInfo? Progress, bool LargerThanImport, int ImportMaxMb, string? DownloadUrl, ExportInfo? Kept)
 {
     public static ExportInfo From(ExportView v) => new(
         v.Record.Id, v.Record.State, v.Record.CarNames, v.Record.Encrypted, v.Record.StartedAt, v.Record.ReadyAt, v.Record.KeptUntil, v.Record.DeletedAt, v.Record.Bytes,
         v.Record.FailureKey, v.Progress is { } p ? new ExportProgressInfo(p.Car, p.Cars, p.Done, p.Total) : null, v.LargerThanImport, v.ImportMaxMb,
-        v.Record.State == ExportState.Ready ? $"/media/exports/{v.Record.Id}" : null);
+        v.Record.State == ExportState.Ready ? $"/media/exports/{v.Record.Id}" : null, v.Kept is { } kept ? From(kept) : null);
 }
 
 /// <summary>A car to export and what of it goes; a kind left out (null) goes.</summary>

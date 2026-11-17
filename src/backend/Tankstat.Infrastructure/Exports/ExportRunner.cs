@@ -26,9 +26,12 @@ internal sealed class ExportRunner(
         public CancellationTokenSource Stop { get; } = stop;
         public ExportProgress? Progress { get; set; }
         public Task Task { get; set; } = Task.CompletedTask;
+        public volatile bool Forgotten;
     }
 
     private readonly ConcurrentDictionary<Guid, Running> _byOwner = new();
+
+    public DateTimeOffset Since { get; } = clock.GetUtcNow();
 
     public void Start(ExportJob job)
     {
@@ -43,6 +46,13 @@ internal sealed class ExportRunner(
         if (!_byOwner.TryGetValue(ownerId, out var running)) return false;
         running.Stop.Cancel();
         return true;
+    }
+
+    public void Forget(Guid ownerId)
+    {
+        if (!_byOwner.TryGetValue(ownerId, out var running)) return;
+        running.Forgotten = true;
+        running.Stop.Cancel();
     }
 
     public ExportProgress? ProgressOf(Guid id) => _byOwner.Values.FirstOrDefault(r => r.Job.Record.Id == id)?.Progress;
@@ -69,9 +79,10 @@ internal sealed class ExportRunner(
             files.Save(record);
             logger.LogInformation("User {UserId} exported {Cars} cars in export {ExportId}: {Bytes} bytes, {Encryption}",
                 record.OwnerId, written.Cars, record.Id, written.Bytes, record.Encrypted ? "encrypted" : "in plain");
-            await TellAsync(n => n.ReadyAsync(record, CancellationToken.None), record);
+            if (!running.Forgotten) await TellAsync(n => n.ReadyAsync(record, CancellationToken.None), record);
         }
-        catch (OperationCanceledException) when (running.Stop.IsCancellationRequested)
+        // A stop, whatever it surfaced as (SqlClient reports a cancelled read as a SqlException).
+        catch (Exception) when (running.Stop.IsCancellationRequested)
         {
             var interrupted = lifetime?.ApplicationStopping.IsCancellationRequested == true;
             files.Save(record with { State = interrupted ? ExportState.Interrupted : ExportState.Cancelled });
@@ -89,6 +100,12 @@ internal sealed class ExportRunner(
         }
         finally
         {
+            if (running.Forgotten)
+            {
+                // The account was deleted meanwhile: nothing of its export stays, however the run ended.
+                files.DeleteFile(record.Id);
+                files.DeleteRecord(record.Id);
+            }
             _byOwner.TryRemove(new KeyValuePair<Guid, Running>(record.OwnerId, running));
             running.Stop.Dispose();
         }

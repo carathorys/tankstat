@@ -112,6 +112,8 @@ public sealed partial class BackupImportRunTests
         await stuck.Get<ExportRunner>().WhenIdleAsync();
         Assert.Contains(stuck.Get<IExportFiles>().Records(), r => r.Id == earlier.Id && r.State == ExportState.Ready); // the earlier file stays
         Assert.Contains(stuck.Get<IExportFiles>().Records(), r => r.OwnerId == anna.Id && r.State == ExportState.Cancelled);
+        var afterCancel = (await MyExportAsync(stuck, anna))!;
+        Assert.Equal((ExportState.Cancelled, earlier.Id), (afterCancel.Record.State, afterCancel.Kept?.Record.Id)); // the page still offers the earlier file
 
         var failing = ExportInstance("failing", new StuckWriter(fail: true));
         var bob = await PersonAsync(failing, "Bob");
@@ -124,7 +126,7 @@ public sealed partial class BackupImportRunTests
         Assert.False(failing.Log.Mentions("Zzcanary"));
 
         // A record still building that no runner here builds: the server stopped meanwhile.
-        failing.Get<IExportFiles>().Save(new ExportRecord(Guid.NewGuid(), bob.Id, ExportState.Building, ["Polo"], false, _clock.GetUtcNow().AddMinutes(1)));
+        failing.Get<IExportFiles>().Save(new ExportRecord(Guid.NewGuid(), bob.Id, ExportState.Building, ["Polo"], false, failing.Get<IExportRunner>().Since.AddMinutes(-1)));
         Assert.Equal(ExportState.Interrupted, (await MyExportAsync(failing, bob))!.Record.State);
     }
 
@@ -150,5 +152,26 @@ public sealed partial class BackupImportRunTests
         Assert.Equal(["Fiat"], (await AsAsync(here, ada, sp => sp.GetRequiredService<ExportService>().CarsAsync(default))).Select(c => c.Name)); // her own only
         Assert.Equal(1, (await AsAsync(here, ada, sp => sp.GetRequiredService<ExportService>().CarsAsync(default))).Single().Refuelings);
         _ = bob;
+    }
+
+    [Fact]
+    public async Task WithSignInOff_TheInstanceHasOneExport_OfEveryCar_WithNoUserInIt()
+    {
+        var none = new TestDatabase(new Dictionary<string, string?>
+        {
+            ["Auth:Mode"] = "None", ["Storage:Path"] = Path.Combine(_root, "none-off", "uploads"), ["Backups:Path"] = Path.Combine(_root, "none-off", "backups"),
+            ["DataProtection:KeysPath"] = Path.Combine(_root, "none-off", "keys"), ["Exports:Folder"] = Path.Combine(_root, "none-off", "exports"),
+        }, services => services.AddSingleton<ICurrentUser>(_user).AddSingleton<TimeProvider>(_clock));
+        _databases.Add(none);
+        var golf = await CarWithFillsAsync(none, Principal.Anonymous, "Golf");
+        var view = await StartExportAsync(none, Principal.Anonymous, golf);
+        Assert.Equal(Guid.Empty, view.Record.OwnerId);
+        await none.Get<ExportRunner>().WhenIdleAsync();
+        var ready = (await MyExportAsync(none, Principal.Anonymous))!.Record;
+        Assert.Equal(ExportState.Ready, ready.State);
+        var (tables, _) = Read(none.Get<IExportFiles>().FileOf(ready.Id));
+        Assert.Equal(golf, Assert.Single(tables["Vehicles"]).GetProperty("Id").GetGuid());
+        Assert.Empty(tables["Users"]);
+        Assert.Single(tables["Refuelings"]);
     }
 }

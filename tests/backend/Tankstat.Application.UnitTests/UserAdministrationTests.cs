@@ -200,7 +200,7 @@ public class UserAdministrationTests
         Assert.Null(w.ImportSessions.Find(alice.Id, token));
         Assert.Equal([alice.Id], w.BackupImports.EndedFor); // an uploaded backup of theirs still open (#336): its files go now
         // Their export (#341) stops and goes, file and record; someone else's stays.
-        Assert.Equal([alice.Id], w.Exports.Cancelled);
+        Assert.Equal([alice.Id], w.Exports.Forgotten);
         Assert.Equal([others.Id], w.Exports.Saved.Keys);
         Assert.Equal([others.Id], w.Exports.Files);
     }

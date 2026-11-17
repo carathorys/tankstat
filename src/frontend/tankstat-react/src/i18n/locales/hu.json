@@ -1209,6 +1209,14 @@
       "alreadyRunning": "Már fut vagy vár egy visszaállításod.",
       "expired": "Ez a visszaállítás lejárt. Nyisd meg újra a mentést a Mentések oldalról.",
       "ownerGone": "Annak, akihez a(z) {{car}} autónak vissza kellett volna kerülnie, már nincs fiókja: válassz mást, és állítsd vissza újra."
+    },
+    "export": {
+      "disabled": "Ezen a szerveren ki van kapcsolva az exportálás.",
+      "noCars": "Jelölj ki legalább egy autót.",
+      "noKinds": "Jelölj ki legalább egy fajtát ehhez: {{car}}.",
+      "carTwice": "Egy autót csak egyszer lehet kiválasztani.",
+      "notFound": "Ezt az exportot már nem őrizzük.",
+      "failed": "Hiba történt az írása közben."
     }
   },
   "a11y": {

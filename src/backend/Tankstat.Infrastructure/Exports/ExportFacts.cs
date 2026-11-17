@@ -6,7 +6,7 @@ using Tankstat.Infrastructure.Persistence;
 namespace Tankstat.Infrastructure.Exports;
 
 /// <summary>
-/// The person's own cars for the Export tab (#341), counted by the database: what each holds (what is in the trash left out) and what its
+/// The person's own cars for the Export tab (#341), counted by the database: what each holds (what is in the trash left out: the logs and readings by their query filters, the tyre sets here) and what its
 /// photos and picture add (<c>Images.SizeBytes</c>, no file read), with a rough size of the rows themselves.
 /// </summary>
 internal sealed class ExportFacts(IDbContextFactory<AppDbContext> dbFactory) : IExportFacts
@@ -23,8 +23,10 @@ internal sealed class ExportFacts(IDbContextFactory<AppDbContext> dbFactory) : I
         var fuel = await db.Refuelings.Where(r => ids.Contains(r.VehicleId)).GroupBy(r => r.VehicleId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
         var costs = await db.Expenses.Where(e => ids.Contains(e.VehicleId)).GroupBy(e => e.VehicleId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
         var plans = await db.RecurringExpenses.Where(s => ids.Contains(s.VehicleId)).GroupBy(s => s.VehicleId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
-        var sets = await db.TyreSets.Where(s => ids.Contains(s.VehicleId)).GroupBy(s => s.VehicleId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
-        var charts = await db.VehicleCharts.Where(c => ids.Contains(c.VehicleId)).GroupBy(c => c.VehicleId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
+        var sets = await db.TyreSets.Where(s => ids.Contains(s.VehicleId) && s.DeletedAt == null).GroupBy(s => s.VehicleId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
+        var me = ownerId ?? Guid.Empty;
+        // The charts the file takes: the shared ones and the exporter's own, never someone else's private one (not even its count).
+        var charts = await db.VehicleCharts.Where(c => ids.Contains(c.VehicleId) && (c.IsShared || c.CreatedById == me)).GroupBy(c => c.VehicleId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
         // The photos of live logs only, and their sizes.
         var fuelIds = db.Refuelings.Where(r => ids.Contains(r.VehicleId)).Select(r => r.Id);
         var costIds = db.Expenses.Where(e => ids.Contains(e.VehicleId)).Select(e => e.Id);

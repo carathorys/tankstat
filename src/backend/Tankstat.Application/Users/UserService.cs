@@ -169,7 +169,7 @@ public sealed class UserService(
         importSessions.RemoveForUser(userId);
         backupImports.EndForUser(userId); // an uploaded backup of theirs still open: its files go now
         // Their export (#341): one under way stops, a kept file and its record go with the account.
-        exportRuns.Cancel(userId);
+        exportRuns.Forget(userId);
         foreach (var export in exports.Records().Where(r => r.OwnerId == userId))
         {
             exports.DeleteFile(export.Id);

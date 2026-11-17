@@ -607,6 +607,7 @@ type ExportInfo {
   largerThanImport: Boolean!
   importMaxMb: Int!
   downloadUrl: String
+  kept: ExportInfo
 }
 
 type ExportProgressInfo {

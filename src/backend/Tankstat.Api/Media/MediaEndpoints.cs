@@ -117,6 +117,13 @@ public static class MediaEndpoints
             http.Response.Headers.XContentTypeOptions = "nosniff";
             return Results.Stream(content, "application/zip", fileDownloadName: name);
         });
+        // Whether it can be downloaded, asked by the page first: a file gone since (expired, replaced) is said on the page. Nothing is read.
+        media.MapMethods("/exports/{id:guid}", [HttpMethods.Head], async (Guid id, Tankstat.Application.Exports.ExportService exports, CancellationToken ct) =>
+        {
+            var (content, _) = await exports.DownloadAsync(id, ct);
+            await content.DisposeAsync();
+            return Results.Ok();
+        });
         // Whether a backup can be downloaded, asked by the page first: a refusal (a file gone since the list, a session that ended) is then
         // said on the page instead of replacing it. Nothing is read.
         media.MapMethods("/backups/{file}", [HttpMethods.Head], async (string file, BackupAdminService backups, CancellationToken ct) =>

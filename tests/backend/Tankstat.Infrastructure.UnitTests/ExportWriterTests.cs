@@ -104,8 +104,9 @@ public sealed partial class BackupImportRunTests
         Assert.Equal(4, tables["Images"].Count);
         Assert.Equal(3, files.Count(f => f.StartsWith("files/photos/", StringComparison.Ordinal)));
         Assert.Single(files, f => f.StartsWith("files/pictures/", StringComparison.Ordinal));
-        foreach (var never in new[] { "ResourceGrants", "UserSessions", "Notifications", "SyncChanges", "Tombstones", "PhotoDrafts", "AccessGrants", "UiSettings", "ImportRuns", "RunMarkers" })
-            Assert.Empty(tables[never]);
+        // What never goes is empty, and only the tables the writer says it writes hold rows.
+        Assert.All(Tankstat.Infrastructure.Exports.ExportWriter.Never, never => Assert.Empty(tables[never]));
+        Assert.All(tables.Where(t => t.Value.Count > 0), t => Assert.Contains(t.Key, Tankstat.Infrastructure.Exports.ExportWriter.Written));
 
         // Anna takes it back into a new car of hers: the photos, the picture, the shared chart and her own come with it.
         var token = await OpenAsync(source.Database, source.Anna, export);
@@ -145,6 +146,9 @@ public sealed partial class BackupImportRunTests
             await fills.DeleteAsync(fill, default);
             return fill;
         });
+        // The Export tab counts what the file would take: the trashed refuelling and Carl's private chart are not counted.
+        var offer = Assert.Single(await media.Database.Get<IExportFacts>().OwnCarsAsync(media.Anna.Id, default));
+        Assert.Equal((1, 2, 3), (offer.Refuelings, offer.Charts, offer.Photos));
         var (bare, files) = Read(await ExportAsync(media.Database, media.Anna.Id, [new ExportCar(media.Car, ExportKinds.All with { Photos = false, Picture = false, Charts = false })]));
         Assert.DoesNotContain(bare["Refuelings"], r => r.GetProperty("Id").GetGuid() == trashedFill);
         Assert.Equal(JsonValueKind.Null, Assert.Single(bare["Vehicles"]).GetProperty("PictureImageId").ValueKind);
