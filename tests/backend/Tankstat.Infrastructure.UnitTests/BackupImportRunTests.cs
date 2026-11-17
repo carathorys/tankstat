@@ -366,7 +366,7 @@ public sealed class BackupImportRunTests(ITestOutputHelper output) : IAsyncDispo
         await using var scope = here.Services.CreateAsyncScope();
         var work = scope.ServiceProvider.GetRequiredService<BackupImportWork>();
         ImportRunReport? report = null;
-        await here.Get<IRunScope>().RunAsync(new RunStart(bob, []), async run => report = await work.RunAsync(run, bob, file, plan, _ => { }, default), default);
+        await here.Get<IRunScope>().RunAsync(new RunStart(bob, [mine]), async run => report = await work.RunAsync(run, bob, file, plan, _ => { }, default), default);
 
         var octavia = report!.Cars.Single(c => c.CarId == source.Octavia);
         var refused = Assert.Single(octavia.Refused);
