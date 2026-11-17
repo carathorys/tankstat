@@ -10,12 +10,16 @@ public sealed class RunContext
 {
     private static readonly AsyncLocal<RunContext?> Ambient = new();
 
-    public RunContext(Principal starter, IReadOnlyCollection<Guid> vehicleIds, IRun? run = null)
+    public RunContext(Principal starter, IReadOnlyCollection<Guid> vehicleIds, IRun? run = null, bool restoring = false)
     {
         Starter = starter;
         VehicleIds = vehicleIds;
         Run = run;
+        Restoring = restoring;
     }
+
+    /// <summary>The run is a partial restore (#340): what it adds keeps the backup's ids, owners and creators (<see cref="RunRestore"/>).</summary>
+    public bool Restoring { get; }
 
     /// <summary>
     /// The run itself (#339), for what outside the database a service does inside it: a file written goes when its savepoint is rolled

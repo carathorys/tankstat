@@ -56,11 +56,12 @@ public sealed class ImageService(
         logger.LogDebug("User {UserId} removed their avatar", user.Id);
     }
 
-    public Task<Guid> SetVehiclePictureAsync(Guid vehicleId, ReadOnlyMemory<byte> data, CancellationToken ct) => OnePictureChangeAsync(vehicleId, ct, async () =>
+    /// <param name="imageId">A partial restore's (#340): the backup's id, kept only with the backup's own bytes (a device keeps an image by its id).</param>
+    public Task<Guid> SetVehiclePictureAsync(Guid vehicleId, ReadOnlyMemory<byte> data, CancellationToken ct, Guid? imageId = null) => OnePictureChangeAsync(vehicleId, ct, async () =>
     {
         var vehicle = await EditableVehicleAsync(vehicleId, ct);
         var previous = vehicle.PictureImageId;
-        var id = await StoreAsync(data, ImageFolders.VehiclePicture(vehicle.Id), ct);
+        var id = await StoreAsync(data, ImageFolders.VehiclePicture(vehicle.Id), ct, imageId);
 
         vehicle.SetPicture(id);
         await vehicles.UpdateAsync(vehicle, ct);
@@ -252,10 +253,16 @@ public sealed class ImageService(
     }
 
     /// <summary>Validates, then writes the file first and the row second; a failure in between removes the file again.</summary>
-    public async Task<Guid> StoreAsync(ReadOnlyMemory<byte> data, string folder, CancellationToken ct)
+    /// <param name="id">A partial restore's (#340, <see cref="RunRestore"/>): the backup's id; one in use is <c>sync.idTaken</c>.</param>
+    public async Task<Guid> StoreAsync(ReadOnlyMemory<byte> data, string folder, CancellationToken ct, Guid? id = null)
     {
         var contentType = ImageFormat.Detect(data.Span);
-        var image = StoredImage.Create(Guid.NewGuid(), contentType, data.Length, clock.GetUtcNow(), folder);
+        if (id is { } given)
+        {
+            RunRestore.Require(await access.RequirePrincipalAsync(ct));
+            if (await images.FindAsync(given, ct) is not null) throw new DomainException("sync.idTaken", $"The id {given} is already in use.", new { Id = given });
+        }
+        var image = StoredImage.Create(id ?? Guid.NewGuid(), contentType, data.Length, clock.GetUtcNow(), folder);
 
         await store.SaveAsync(image, data, ct);
         try

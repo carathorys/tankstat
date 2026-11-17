@@ -4,7 +4,8 @@ namespace Tankstat.Application.Runs;
 
 /// <summary>Who starts a run and the cars it will touch (#335).</summary>
 /// <param name="RunId">The run's id, when whoever starts it keeps a record of its own under it (#337); else one is made.</param>
-public sealed record RunStart(Principal Starter, IReadOnlyCollection<Guid> VehicleIds, Guid? RunId = null);
+/// <param name="Restore">A partial restore (#340): the services' restore-only ways in (<see cref="RunRestore"/>) are open inside it.</param>
+public sealed record RunStart(Principal Starter, IReadOnlyCollection<Guid> VehicleIds, Guid? RunId = null, bool Restore = false);
 
 /// <summary>
 /// A run (#335): background work, an import or a partial restore, whose every save through the app's services lands in one database

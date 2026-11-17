@@ -355,6 +355,7 @@ export type EntityChange =
   | 'EDITED'
   | 'FILLED_FROM_PHOTO'
   | 'RESTORED'
+  | 'RESTORED_FROM_BACKUP'
   | 'TRASHED';
 
 export type ExpenseSortField =

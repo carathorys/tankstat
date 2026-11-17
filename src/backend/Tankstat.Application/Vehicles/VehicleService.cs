@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Tankstat.Application.Access;
 using Tankstat.Application.Images;
+using Tankstat.Application.Runs;
 using Tankstat.Domain;
 using Tankstat.Application.Odometers;
 using Tankstat.Application.Tyres;
@@ -62,6 +63,22 @@ public sealed class VehicleService(
         if (!await vehicles.AddAsync(vehicle, ct)) // the same add, sent twice at once: the other one saved it
             return Repeated(await vehicles.FindIncludingDeletedAsync(vehicle.Id, ct) ?? vehicle, owner.Id);
         logger.LogDebug("User {UserId} added vehicle {VehicleId}", owner.Id, vehicle.Id);
+        return vehicle;
+    }
+
+    /// <summary>
+    /// A partial restore's way in (#340, <see cref="RunRestore"/>): a car that is gone comes back under its own id, to its owner (the backup's,
+    /// or the one the administrator picked when that owner has no account). Its entries, added afterwards, take their owner from it. An id
+    /// another car has (one here, or in the trash) is refused: <c>sync.idTaken</c>.
+    /// </summary>
+    public async Task<Vehicle> RestoreAsync(Guid id, Guid ownerId, string name, string? licensePlate, FuelType fuelType, MeasurementUnits units, CancellationToken ct)
+    {
+        var admin = await access.RequirePrincipalAsync(ct);
+        RunRestore.Require(admin);
+        if (await vehicles.FindIncludingDeletedAsync(id, ct) is not null) throw new DomainException("sync.idTaken", $"The id {id} is already in use.", new { Id = id });
+        var vehicle = Vehicle.Create(ownerId, name, licensePlate, fuelType, units, id);
+        if (!await vehicles.AddAsync(vehicle, ct)) throw new DomainException("sync.idTaken", $"The id {id} is already in use.", new { Id = id });
+        logger.LogDebug("Administrator {UserId} restored vehicle {VehicleId} to user {OwnerId}", admin.Id, vehicle.Id, ownerId);
         return vehicle;
     }
 

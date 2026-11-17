@@ -131,6 +131,20 @@ public sealed class AccessService(
         });
     }
 
+    /// <summary>
+    /// <see cref="LogLevelAsync"/> as another person has it (#340: a partial restore brings someone's private charts and own dashboard only
+    /// when they can see the car afterwards): an administrator or the owner everything, else the larger of the instance default, their
+    /// grant from the owner and the car's log grant.
+    /// </summary>
+    public async Task<AccessLevel> LogLevelOfAsync(Guid userId, bool isAdmin, Vehicle vehicle, CancellationToken ct)
+    {
+        if (isAdmin || userId == vehicle.OwnerId) return AccessLevel.Delete;
+        var defaults = (await settings.GetAsync(ct)).DefaultLevelForOthers;
+        var level = AccessPolicy.Resolve(userId, false, vehicle.OwnerId, defaults, await grants.ListForGranteeAsync(userId, ct));
+        var grant = await resourceGrants.FindAsync(ResourceType.Vehicle, vehicle.Id, userId, GrantedFeature.Logs, ct);
+        return level == AccessLevel.Delete ? level : (AccessLevel)Math.Max((int)level, (int)(grant?.Level ?? AccessLevel.None));
+    }
+
     private async Task<AccessLevel> LogGrantAsync(Guid vehicleId, CancellationToken ct)
     {
         var principal = await RequirePrincipalAsync(ct);

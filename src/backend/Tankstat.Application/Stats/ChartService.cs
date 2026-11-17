@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Tankstat.Application.Access;
 using Tankstat.Application.Auth;
 using Tankstat.Application.Vehicles;
+using Tankstat.Application.Runs;
 using Tankstat.Domain;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Charts;
@@ -33,16 +34,26 @@ public sealed class ChartService(IVehicleRepository vehicles, IVehicleChartRepos
         return vehicle is null ? [] : await charts.ListVisibleAsync(vehicleId, user.Id, ct);
     }
 
-    public async Task<VehicleChart> CreateAsync(Guid vehicleId, ChartInput input, CancellationToken ct)
+    /// <param name="restored">
+    /// A partial restore's (#340, <see cref="RunRestore"/>): the backup's id, and whose widget it is (its creator, whose 30 it counts among).
+    /// </param>
+    public async Task<VehicleChart> CreateAsync(Guid vehicleId, ChartInput input, CancellationToken ct, (Guid Id, Guid CreatedById)? restored = null)
     {
         var user = await access.RequirePrincipalAsync(ct);
         var (_, level) = await VisibleAsync(vehicleId, ct);
         RequireShareRight(input.Shared, level);
         await access.WaitForRunsAsync(vehicleId, ct);
-        if (await charts.CountByUserAsync(vehicleId, user.Id, ct) >= MaxPerUserAndVehicle)
+        var creator = user.Id;
+        if (restored is { } given)
+        {
+            RunRestore.Require(user);
+            if (await charts.FindAsync(given.Id, ct) is not null) throw new DomainException("sync.idTaken", $"The id {given.Id} is already in use.", new { Id = given.Id });
+            creator = given.CreatedById;
+        }
+        if (await charts.CountByUserAsync(vehicleId, creator, ct) >= MaxPerUserAndVehicle)
             throw new DomainException("chart.limit", $"You can have at most {MaxPerUserAndVehicle} saved widgets for a vehicle.", new { Max = MaxPerUserAndVehicle });
 
-        var chart = VehicleChart.Create(vehicleId, user.Id, input.Title, input.Config, input.Figure, input.Shared, clock.GetUtcNow());
+        var chart = VehicleChart.Create(vehicleId, creator, input.Title, input.Config, input.Figure, input.Shared, clock.GetUtcNow(), restored?.Id);
         await charts.AddAsync(chart, ct);
         logger.LogDebug("User {UserId} created chart {ChartId} for vehicle {VehicleId}", user.Id, chart.Id, vehicleId);
         return chart;

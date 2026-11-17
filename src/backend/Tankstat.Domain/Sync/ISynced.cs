@@ -27,6 +27,12 @@ public enum EntityChange
 
     /// <summary>Its photos filled in values (nobody did it: <see cref="ISynced.ChangedById"/> is null).</summary>
     FilledFromPhoto,
+
+    /// <summary>
+    /// An administrator brought it back from a backup (#340): its id, creator and version are the backup's, this change the
+    /// administrator's, today. (<see cref="Restored"/> is taken out of the trash.)
+    /// </summary>
+    RestoredFromBackup,
 }
 
 /// <summary>

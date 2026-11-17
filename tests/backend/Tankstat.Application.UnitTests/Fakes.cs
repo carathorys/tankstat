@@ -729,6 +729,7 @@ internal sealed class InMemoryLogPhotos : ILogPhotoRepository
     public Task<int> CountForLogAsync(LogType logType, Guid logId, CancellationToken ct) =>
         Task.FromResult(Items.Count(p => p.LogType == logType && p.LogId == logId));
     public Task<LogPhoto?> FindByImageAsync(Guid imageId, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(p => p.ImageId == imageId));
+    public Task<LogPhoto?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(p => p.Id == id));
     public Task AddAsync(LogPhoto photo, CancellationToken ct)
     {
         if (FailAdds) throw new InvalidOperationException("database down");

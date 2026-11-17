@@ -4,6 +4,7 @@ using Tankstat.Application.Auth;
 using Tankstat.Application.Notifications;
 using Tankstat.Application.Users;
 using Tankstat.Application.Vehicles;
+using Tankstat.Application.Runs;
 using Tankstat.Domain;
 using Tankstat.Domain.Access;
 using Tankstat.Domain.Notifications;
@@ -70,6 +71,27 @@ public sealed class ResourceSharingService(
         var actor = await access.RequirePrincipalAsync(ct);
         logger.LogInformation("User {ActorId} set the log access of user {GranteeId} to vehicle {VehicleId} from {Before} to {After}", actor.Id, grantee.Id, vehicle.Id, before, level);
         await NotifyAsync(vehicle, grantee, actor, before, level, ct);
+    }
+
+    /// <summary>
+    /// A partial restore's way in (#340, <see cref="RunRestore"/>): a gone car's sharing as the backup had it, for the grantees who still
+    /// have an account (the caller passes only those), each written as it was. Nobody is told here: the restore's one notification per car
+    /// stands for these. Answers how many the car has again.
+    /// </summary>
+    public async Task<int> RestoreLogAccessAsync(Guid vehicleId, IReadOnlyList<(Guid UserId, AccessLevel Level)> granted, CancellationToken ct)
+    {
+        RunRestore.Require(await access.RequirePrincipalAsync(ct));
+        var vehicle = await ManageableVehicleAsync(vehicleId, ct);
+        var written = 0;
+        foreach (var (userId, level) in granted)
+        {
+            if (userId == vehicle.OwnerId || level == AccessLevel.None) continue;
+            // A purge leaves a car's grants behind (they name the car without a foreign key): one still there is the car's again.
+            if (await grants.FindAsync(ResourceType.Vehicle, vehicle.Id, userId, GrantedFeature.Logs, ct) is null)
+                await grants.AddAsync(ResourceGrant.Create(ResourceType.Vehicle, vehicle.Id, userId, GrantedFeature.Logs, level), ct);
+            written++;
+        }
+        return written;
     }
 
     private async Task NotifyAsync(Vehicle vehicle, User grantee, Principal actor, AccessLevel before, AccessLevel after, CancellationToken ct)

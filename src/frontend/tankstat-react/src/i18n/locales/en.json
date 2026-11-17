@@ -2482,6 +2482,7 @@
         "RESTORED": "On the server: {{who}} brought it back from the trash ({{when}}).",
         "DONE": "On the server: {{who}} marked it done ({{when}}).",
         "FILLED_FROM_PHOTO": "On the server: its photos filled in values ({{when}}).",
+        "RESTORED_FROM_BACKUP": "On the server: {{who}} restored it from a backup ({{when}}).",
         "unknown": "On the server: it was changed ({{when}})."
       },
       "earlier": "earlier",

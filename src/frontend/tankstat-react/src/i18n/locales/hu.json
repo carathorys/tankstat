@@ -2482,6 +2482,7 @@
         "RESTORED": "A szerveren: {{who}} visszahozta a kukából ({{when}}).",
         "DONE": "A szerveren: {{who}} elvégzettnek jelölte ({{when}}).",
         "FILLED_FROM_PHOTO": "A szerveren: a fotói kitöltöttek értékeket ({{when}}).",
+        "RESTORED_FROM_BACKUP": "A szerveren: {{who}} visszaállította egy mentésből ({{when}}).",
         "unknown": "A szerveren: módosult ({{when}})."
       },
       "earlier": "korábban",

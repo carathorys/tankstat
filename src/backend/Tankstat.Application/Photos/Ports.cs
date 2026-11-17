@@ -13,6 +13,9 @@ public interface ILogPhotoRepository
     /// <summary>The photo that shows this image, if the image is a log photo.</summary>
     Task<LogPhoto?> FindByImageAsync(Guid imageId, CancellationToken ct);
 
+    /// <summary>A photo row by its own id, whichever log or car it is of (#340: a restored id must be free).</summary>
+    Task<LogPhoto?> FindAsync(Guid id, CancellationToken ct);
+
     Task AddAsync(LogPhoto photo, CancellationToken ct);
     Task RemoveAsync(LogPhoto photo, CancellationToken ct);
 }

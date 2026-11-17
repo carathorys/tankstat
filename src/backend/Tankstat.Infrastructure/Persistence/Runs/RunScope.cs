@@ -139,7 +139,7 @@ internal sealed class RunScope(
     private static async Task InsideAsync(RunStart start, RunTransaction shared, Run run, Func<IRun, Task> work)
     {
         RunTransaction.Current = shared;
-        using var _ = RunContext.Enter(new RunContext(start.Starter, start.VehicleIds, run));
+        using var _ = RunContext.Enter(new RunContext(start.Starter, start.VehicleIds, run, start.Restore));
         await work(run);
     }
 

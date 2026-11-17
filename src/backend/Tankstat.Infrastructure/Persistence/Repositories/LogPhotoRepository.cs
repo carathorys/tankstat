@@ -31,6 +31,12 @@ internal sealed class LogPhotoRepository(IDbContextFactory<AppDbContext> dbFacto
         return await db.LogPhotos.AsNoTracking().FirstOrDefaultAsync(p => p.ImageId == imageId, ct);
     }
 
+    public async Task<LogPhoto?> FindAsync(Guid id, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.LogPhotos.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, ct);
+    }
+
     public async Task AddAsync(LogPhoto photo, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
