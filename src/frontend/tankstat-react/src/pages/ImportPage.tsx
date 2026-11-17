@@ -62,7 +62,7 @@ export function ImportPage() {
   const [params, setParams] = useSearchParams()
   const [format, setFormat] = useState<Format>('fuelio')
   const [step, setStep] = useState<Step>('file')
-  const [backupStep, setBackupStep] = useState<BackupStep>('file')
+  const [backupStep, setBackupStep] = useState<BackupStep>() // none until a step is taken here: a run that is found opens at its own
   const [token, setToken] = useState<string>()
   const [result, setResult] = useState<Result>()
   // A backup or an export is a source for whoever may import from one (the instance's switch; administrators always).
@@ -71,11 +71,16 @@ export function ImportPage() {
   const asked = params.get('run')
   const mine = useQuery(MyImportRunDocument, { fetchPolicy: 'network-only', skip: asked !== null })
   const byId = useQuery(ImportRunDocument, { variables: { id: asked ?? '' }, fetchPolicy: 'network-only', skip: asked === null })
-  const going = mine.data?.myImportRun?.state === 'WAITING' || mine.data?.myImportRun?.state === 'RUNNING' ? mine.data.myImportRun : undefined
+  const myRun = mine.data?.myImportRun ?? undefined
+  const myRunGoes = myRun?.state === 'WAITING' || myRun?.state === 'RUNNING'
+  // Once found going it stays this page's run when it ends: the cache follows the run as it is asked about, and its report shows here.
+  const [goingId, setGoingId] = useState<string>()
+  if (myRun && myRunGoes && goingId !== myRun.id) setGoingId(myRun.id) // kept while rendering: no render in between shows the file step
+  const going = myRun && (myRunGoes || myRun.id === goingId) ? myRun : undefined
   const [left, setLeft] = useState(false) // the run that was found was left for another file
   const found = left ? undefined : asked !== null ? (byId.data?.importRun ?? undefined) : going
   const backup = found !== undefined || format === 'tankstat'
-  const shownStep: BackupStep = found !== undefined && backupStep === 'file' ? (found.state === 'DONE' || found.state === 'NOT_FINISHED' ? 'done' : 'review') : backupStep
+  const shownStep: BackupStep = backupStep ?? (found === undefined ? 'file' : found.state === 'DONE' || found.state === 'NOT_FINISHED' ? 'done' : 'review')
 
   const steps = backup ? BACKUP_STEPS : STEPS
   const current = backup ? BACKUP_STEPS.indexOf(shownStep) : STEPS.indexOf(step)
@@ -110,14 +115,14 @@ export function ImportPage() {
       )}
       {!waiting && (asked === null || found || left) && (
         <>
-          {!found && (backup ? backupStep : step) === 'file' && (
+          {!found && (backup ? shownStep : step) === 'file' && (
             <Box sx={{ mb: 2 }}>
               <LabeledSelect
                 label={t('import.file.format')}
                 value={format}
                 onChange={(next) => {
                   setFormat(next)
-                  setBackupStep('file')
+                  setBackupStep(undefined)
                 }}
                 options={FORMATS.filter((f) => f !== 'tankstat' || allowed).map((f) => ({ value: f, label: t(`import.file.formats.${f}`) }))}
               />
@@ -131,7 +136,7 @@ export function ImportPage() {
               run={found}
               onAnother={() => {
                 setLeft(true)
-                setBackupStep('file')
+                setBackupStep(undefined)
                 if (asked !== null) setParams({}, { replace: true })
               }}
             />

@@ -1478,6 +1478,7 @@
       "imported": "{{fuel}} tankolás, {{expenses}} kiadás és {{recurring}} ismétlődő kiadás importálva.",
       "skipped": "{{existing}} bejegyzés már megvolt, ezeket kihagytuk; {{differing}} eltér, és marad, ahogy van; {{inTrash}} az autó kukájában van.",
       "leftOut": "Ez az autó kimaradt: az egyik bejegyzését nem lehetett menteni.",
+      "leftOutCar": "Ez az autó kimaradt: {{reason}}",
       "refused_one": "{{count}} bejegyzést nem sikerült menteni:",
       "refused_other": "{{count}} bejegyzést nem sikerült menteni:",
       "refusedMore_one": "…és még {{count}}.",

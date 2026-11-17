@@ -40,8 +40,8 @@ export function ImportRunLines({ runs, onCancelled }: { runs: readonly ImportRun
               confirmLabel={t('import.run.cancel')}
               onConfirm={() =>
                 void cancel({ variables: { id: run.id } })
-                  .then(() => {
-                    toast(t('admin.imports.cancelled'))
+                  .then(({ data }) => {
+                    if (data?.cancelImportRun) toast(t('admin.imports.cancelled')) // false: it was over already, and the list says so
                     onCancelled()
                   })
                   .catch(() => undefined)

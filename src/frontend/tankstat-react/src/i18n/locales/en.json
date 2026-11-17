@@ -1478,6 +1478,7 @@
       "imported": "Imported {{fuel}} refuellings, {{expenses}} expenses and {{recurring}} recurring expenses.",
       "skipped": "{{existing}} entries already existed and were skipped; {{differing}} differ and stay as they are; {{inTrash}} are in the car's trash.",
       "leftOut": "This car was left out: one of its entries could not be saved.",
+      "leftOutCar": "This car was left out: {{reason}}",
       "refused_one": "{{count}} entry could not be saved:",
       "refused_other": "{{count}} entries could not be saved:",
       "refusedMore_one": "…and {{count}} more.",

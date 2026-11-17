@@ -86,11 +86,18 @@ export function BackupImport({
             ? () => {
                 setToken(run.fileToken ?? undefined)
                 setRun(undefined)
-                onStep('review')
+                // The choices are this page's own: a run found when the page opened (or by its link) left none here, so the cars are picked again.
+                onStep(toInput(choices).length > 0 ? 'review' : 'cars')
               }
             : undefined
         }
-        onAnother={onAnother}
+        onAnother={() => {
+          // The run is over with: the next file's review must not show this one's report.
+          setRun(undefined)
+          setToken(undefined)
+          setChoices({})
+          onAnother()
+        }}
       />
     )
   }
@@ -518,6 +525,9 @@ function RunView({
   )
 }
 
+/** The kind of a refusal that is the car's own, not an entry's (the server's `ImportRefusedEntry.Car`). */
+const CAR_REFUSAL = 'car'
+
 function Report({ run, onAnother }: { run: ImportRunFieldsFragment; onAnother: () => void }) {
   const { t } = useTranslation()
   const { date } = useFormat()
@@ -526,13 +536,19 @@ function Report({ run, onAnother }: { run: ImportRunFieldsFragment; onAnother: (
   return (
     <Stack sx={{ gap: 2, alignItems: 'stretch' }}>
       <SuccessMessage>{t('import.run.finished', { count: cars.filter((c) => !c.leftOut).length })}</SuccessMessage>
-      {cars.map((car) => (
+      {cars.map((car) => {
+        // A car left out for a refusal of its own (its target went to the trash or changed its units since the review), not for an entry.
+        const own = car.leftOut ? car.refused.find((entry) => entry.kind === CAR_REFUSAL) : undefined
+        const refused = car.refused.filter((entry) => entry.kind !== CAR_REFUSAL)
+        return (
         <Card key={car.carId} component="section" aria-label={car.name} sx={{ p: 2 }}>
           <Stack sx={{ gap: 1, alignItems: 'flex-start' }}>
             <Typography component="h2" variant="h6">
               {car.targetName ? t('import.plan.cardAdded', { car: car.name, target: car.targetName }) : t('import.plan.cardNew', { car: car.name })}
             </Typography>
-            {car.leftOut ? (
+            {own ? (
+              <Typography variant="body2">{t('import.run.leftOutCar', { reason: keyText(own.key, (own.args ?? {}) as Record<string, unknown>) ?? own.key })}</Typography>
+            ) : car.leftOut ? (
               <Typography variant="body2">{t('import.run.leftOut')}</Typography>
             ) : (
               <Typography variant="body2">{t('import.run.imported', { fuel: car.refuelings, expenses: car.expenses, recurring: car.schedules })}</Typography>
@@ -542,11 +558,11 @@ function Report({ run, onAnother }: { run: ImportRunFieldsFragment; onAnother: (
                 {t('import.run.skipped', { existing: car.existing, differing: car.differing, inTrash: car.inTrash })}
               </Typography>
             )}
-            {car.refused.length > 0 && (
+            {refused.length > 0 && (
               <>
-                <Typography variant="body2">{t('import.run.refused', { count: car.refused.length + car.refusedMore })}</Typography>
+                <Typography variant="body2">{t('import.run.refused', { count: refused.length + car.refusedMore })}</Typography>
                 <Stack component="ul" sx={{ gap: 0.5, m: 0, pl: 2.5 }}>
-                  {car.refused.map((entry, i) => (
+                  {refused.map((entry, i) => (
                     <Typography key={i} component="li" variant="body2">
                       {t(`import.run.entry.${entry.kind === 'expense' || entry.kind === 'recurring' ? entry.kind : 'refueling'}`, { date: entry.date ? date(entry.date) : '', title: entry.title ?? '' })}
                       {': '}
@@ -564,7 +580,8 @@ function Report({ run, onAnother }: { run: ImportRunFieldsFragment; onAnother: (
             )}
           </Stack>
         </Card>
-      ))}
+        )
+      })}
       <Stack direction="row" sx={{ gap: 1.5, flexWrap: 'wrap' }}>
         <Button size="large" variant="soft" onClick={onAnother}>
           {t('import.run.another')}

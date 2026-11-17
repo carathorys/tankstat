@@ -47,7 +47,7 @@ const reportCar = (over: Record<string, unknown> = {}) => ({
 })
 
 /** The flow from the Cars step on (the file is #336's step, tested there), with the server's answers; what was asked is kept. */
-function setup(opts: { step?: BackupStep; offers?: unknown; review?: (cars: { carId: string; targetVehicleId: string | null }[]) => unknown[]; started?: unknown; statuses?: unknown[]; found?: unknown } = {}) {
+function setup(opts: { step?: BackupStep; offers?: unknown; review?: (cars: { carId: string; targetVehicleId: string | null }[]) => unknown[]; started?: unknown; statuses?: unknown[]; found?: unknown; afterAnother?: BackupStep } = {}) {
   stubViewport('desktop')
   const calls = { reviews: [] as unknown[], starts: [] as { token: string; cars: unknown[] }[], cancelled: [] as string[], asked: 0, another: vi.fn() }
   server.use(
@@ -76,7 +76,16 @@ function setup(opts: { step?: BackupStep; offers?: unknown; review?: (cars: { ca
     return (
       <>
         <p data-testid="step">{step}</p>
-        <BackupImport step={step} onStep={setStep} run={opts.found as never} onAnother={calls.another} pollMs={5} />
+        <BackupImport
+          step={step}
+          onStep={setStep}
+          run={opts.found as never}
+          onAnother={() => {
+            calls.another()
+            if (opts.afterAnother) setStep(opts.afterAnother)
+          }}
+          pollMs={5}
+        />
       </>
     )
   }
@@ -90,8 +99,8 @@ const withFile = (opts: Parameters<typeof setup>[0] = {}) => setup({ ...opts, fo
 
 it("the cars step lists the file's cars, with whose they were, their counts and units, and Next stays off until one is ticked", async () => {
   const { view, ui } = withFile({ found: run('NOT_FINISHED', { failure: 'CANCELLED' }), step: 'done' })
-  await ui.click(await screen.findByRole('button', { name: 'Back to the review' })) // the file is still open: its token comes back
-  await ui.click(await screen.findByRole('button', { name: 'Back' }))
+  await ui.click(await screen.findByRole('button', { name: 'Back to the review' })) // the file is still open: its token comes back, and with no choices here, the cars
+  expect(screen.getByTestId('step')).toHaveTextContent('cars')
 
   expect(await screen.findByText(/^A backup of .*2026.*, written by Tankstat 0\.21\.0: 3 cars\. Pick the ones to import; what you import becomes yours\.$/)).toBeInTheDocument()
   expect(screen.getByText('1 car of this file was in the trash and is left out.')).toBeInTheDocument()
@@ -109,7 +118,6 @@ it("the cars step lists the file's cars, with whose they were, their counts and 
 it("a ticked car comes as a new car or into one of the person's own cars, the app's match preselected and said; other units and a car taken twice hold Next back", async () => {
   const { view, ui } = withFile({ found: run('NOT_FINISHED', { failure: 'CANCELLED' }), step: 'done' })
   await ui.click(await screen.findByRole('button', { name: 'Back to the review' }))
-  await ui.click(await screen.findByRole('button', { name: 'Back' }))
   const octavia = await screen.findByRole('region', { name: 'Octavia · ABC-123' })
 
   await ui.click(within(octavia).getByRole('checkbox', { name: 'Octavia · ABC-123' }))
@@ -152,7 +160,6 @@ it('the review says per car what is new, exists, differs and is in the trash; th
     statuses: [run('RUNNING'), run('DONE', { report: [reportCar()] })],
   })
   await ui.click(await screen.findByRole('button', { name: 'Back to the review' }))
-  await ui.click(await screen.findByRole('button', { name: 'Back' }))
   await ui.click(within(await screen.findByRole('region', { name: 'Octavia · ABC-123' })).getByRole('checkbox', { name: 'Octavia · ABC-123' }))
   await ui.click(within(screen.getByRole('region', { name: 'Fabia' })).getByRole('checkbox', { name: 'Fabia' }))
   await ui.click(screen.getByRole('button', { name: 'Next' }))
@@ -217,6 +224,9 @@ it('the report says per car what came in and what was skipped, each entry that c
         ], refusedMore: 3 }),
         reportCar({ carId: 'c2', name: 'Fabia', vehicleId: null, targetName: null, asNew: true, leftOut: true, refuelings: 0, expenses: 0, schedules: 0, existing: 0, differing: 0, inTrash: 0,
           refused: [{ __typename: 'ImportRefusedEntryInfo', kind: 'recurring', date: null, title: 'Oil change', key: 'recurring.titleRequired', args: {} }] }),
+        // Left out for a refusal of its own: its target went to the trash while the run waited.
+        reportCar({ carId: 'c3', name: 'Superb', vehicleId: null, targetName: 'My Superb', asNew: false, leftOut: true, refuelings: 0, expenses: 0, schedules: 0, existing: 0, differing: 0, inTrash: 0,
+          refused: [{ __typename: 'ImportRefusedEntryInfo', kind: 'car', date: null, title: null, key: 'vehicle.notFound', args: {} }] }),
       ],
     }),
   })
@@ -235,10 +245,25 @@ it('the report says per car what came in and what was skipped, each entry that c
   expect(within(fabia).getByText('This car was left out: one of its entries could not be saved.')).toBeInTheDocument()
   expect(within(fabia).getByText(/^Oil change \(recurring expense\): /)).toBeInTheDocument()
   expect(within(fabia).queryByRole('link')).not.toBeInTheDocument()
+  const superb = screen.getByRole('region', { name: 'Superb' })
+  expect(within(superb).getByText('This car was left out: This vehicle does not exist.')).toBeInTheDocument()
+  expect(within(superb).queryByText(/could not be saved/)).not.toBeInTheDocument() // the car's own refusal is no entry
+  expect(within(superb).queryByRole('listitem')).not.toBeInTheDocument()
   await check(view.container)
 
   await ui.click(screen.getByRole('button', { name: 'Import another file' }))
   expect(calls.another).toHaveBeenCalled()
+})
+
+it("after Import another file the run is let go: a later review never shows the earlier run's report", async () => {
+  // The page keeps this component mounted for a run started on it; the next file's steps come back to Review.
+  const { ui } = setup({ step: 'done', found: run('DONE', { report: [reportCar()] }), afterAnother: 'review' })
+  expect(screen.getByText('Import finished: 1 car.')).toBeInTheDocument()
+
+  await ui.click(screen.getByRole('button', { name: 'Import another file' }))
+
+  expect(await screen.findByRole('button', { name: 'Choose file' })).toBeInTheDocument() // no file yet: the file step, whatever the step says
+  expect(screen.queryByText('Import finished: 1 car.')).not.toBeInTheDocument()
 })
 
 it.each([
@@ -294,6 +319,22 @@ it("coming back to the page while an import of the person's goes shows it, witho
   expect(screen.queryByRole('combobox', { name: 'Source' })).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Cancel the import' })).toBeInTheDocument()
 })
+
+it("a run of the person's found going when the page opened shows its report there when it ends", async () => {
+  stubViewport('desktop')
+  server.use(
+    graphql.query('MyImportRun', () => HttpResponse.json({ data: { myImportRun: run('RUNNING') } })),
+    graphql.query('ImportRun', () => HttpResponse.json({ data: { importRun: run('DONE', { report: [reportCar()] }) } })),
+  )
+  renderWithApollo(<ImportPage />)
+  expect(await screen.findByText('Importing… car 1 of 2 · 310 of 470 entries')).toBeInTheDocument()
+
+  // The answer about the run also reaches the cached MyImportRun (the same object by its id): the page must keep the run it found.
+  expect(await screen.findByText('Import finished: 1 car.', undefined, { timeout: 5000 })).toBeInTheDocument()
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  expect(screen.getByText('Import finished: 1 car.')).toBeInTheDocument()
+  expect(screen.queryByRole('combobox', { name: 'Source' })).not.toBeInTheDocument()
+}, 15_000)
 
 it('the report opens by its link from the notification, and a report that is no longer kept is said so', async () => {
   stubViewport('desktop')
