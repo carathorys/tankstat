@@ -118,6 +118,24 @@ A restore replaces the instance's data **as a whole**, never merges: every table
 
 **Devices with offline data.** Every device refers to the server's entries by their ids and versions; after a restore the server's history is another one (changes made after the backup are gone, versions moved back). The server tells every session which history its data belongs to (a *generation* that the restore renews), and a device that sees a new one sets what it holds aside, drops its downloaded data and kept screens, and downloads afresh. Its changes still waiting are sent as they are and apply or park by the normal rules, so nothing is silently lost; what it held and the server no longer has shows under **Found on this device** on Waiting to sync, where each entry can be sent to the server again or forgotten (see [Install as an app](install-as-an-app.md)).
 
+## Restoring chosen cars
+
+A full restore replaces everything. To put **only some cars** back as they were (a car someone deleted for good, entries lost since a backup), an administrator uses **Restore cars…** on a backup's row of the Backups page (offered wherever *Restore…* is). It opens *Backups › Restore cars*, in four steps:
+
+1. **Key**: the backup's passphrase or its identity, as many tries as it takes (skipped for a plain backup). The file is read where it is, never copied or deleted.
+2. **Cars**: the backup's cars in pages, with a search (name or plate) and a filter by owner, each in one of four states, said in words:
+   - **Still here** (a car with the same id): only what is missing comes back, by id (entries, schedules, tyre sets, photos, charts); its owner and its sharing stay as they are today. *Choose what to restore* offers the import's choices per kind, *Replace all* included: its typed confirmation names the car's owner, and says they and everyone the car is shared with are told.
+   - **Not here any more**: it comes back whole, to its owner, with its sharing for the people who still have an account.
+   - **Not here any more, its owner has no account**: you pick who gets it (you, unless you choose someone; an account with the same e-mail is listed first, marked).
+   - **In the trash here**: it cannot be restored until it is restored from the trash, or the trash is emptied.
+   The car's id decides, never its name: a car re-created since under another id is another car, and the backup's comes back beside it (use [Importing](importing.md) to merge into it). A backup of another server matches no id here, so every car is *not here any more*.
+3. **Review**: per car, what comes back, whose it is, who gets access back and who had access but has no account; then who is told.
+4. **Done**: the report, kept for a week; the run waits in the same line as imports (one at a time), can be cancelled, and is listed for every administrator while it goes (Overview, Backups page).
+
+**As they were.** Everything comes back under its **own id**, logged by **whoever logged it** (also someone who no longer has an account: the app then says *Someone who no longer has an account*), at **its version**, so a device's change made from that version still applies. Each restored entry's last change reads *restored from a backup* by the administrator, today. Every rule of today still applies: an entry the rules refuse is left out and listed in the report. Private charts and personal dashboards come back for the people who still have an account and can see the car; the others are counted in the report. Devices download the restored entries as any change; a car that comes back is listed again.
+
+**Who is told**, after the restore: each car's owner and everyone it is shared with (one notification per car; a car still here that got nothing back tells nobody), the other administrators, and you.
+
 ## On the administration page
 
 The **Backups** page of the administration (`/admin/backups`, in the menu's Administration group; administrators only; with sign-in off there is none, so the commands above are the way) shows:
