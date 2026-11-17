@@ -330,7 +330,7 @@ public sealed class BackupImportWork(
         // has. One that is refused is tried again after the others, as long as a round saves something: a change can need another one
         // first (two readings that both move), and no single order suits every case. What is still refused then is refused.
         var steps = work.Refuelings.Takes.Select(t => new Step(t.Entry.Values.Date, t.Entry.Values.Odometer ?? 0, BackupImportRules.Refueling, null,
-                () => refuelings.UpdateAsync(t.TargetId, Whole(t.Entry.Values), ct), () => fuelChanged++))
+                () => refuelings.UpdateAsync(t.TargetId, Whole(t.Entry.Values), ct, recalculateConsumption: false), () => fuelChanged++))
             .Concat(work.Refuelings.Adds.Select(r => new Step(r.Values.Date, r.Values.Odometer ?? 0, BackupImportRules.Refueling, null,
                 () => refuelings.LogAsync(vehicle.Id, r.Values, ct, recalculateConsumption: false), () => fuelAdded++)))
             .Concat(work.Expenses.Takes.Select(t => new Step(t.Entry.Values.Date, t.Entry.Values.Odometer ?? 0, BackupImportRules.Expense, t.Entry.Values.Title,
@@ -366,7 +366,7 @@ public sealed class BackupImportWork(
             }
             steps = [.. again.Select(a => a.Step)];
         }
-        if (fuelAdded > 0) await refuelings.RecalculateConsumptionAsync(vehicle.Id, ct); // once for the car (a change works its own out)
+        if (fuelAdded + fuelChanged > 0) await refuelings.RecalculateConsumptionAsync(vehicle.Id, ct); // once for the car, not after every entry
 
         // Schedules last: one that counts distance without a known odometer starts from the car's latest reading, which now includes the import.
         async Task ScheduleAsync(BackupSchedule schedule, Func<Task> save, Action saved)
@@ -432,8 +432,11 @@ public sealed class BackupImportWork(
         }
     }
 
-    /// <summary>The backup's values as an update takes them: a discount the backup has none of is sent as none (left out, the entry's own would stay).</summary>
-    private static RefuelingInput Whole(RefuelingInput values) => values with { Discount = values.Discount ?? (values.TotalCost is null ? null : 0) };
+    /// <summary>
+    /// The backup's values as an update takes them: a discount the backup has none of is sent as none (left out, the entry's own would
+    /// stay, and without the backup's amount it would be refused as a discount with nothing to take it off).
+    /// </summary>
+    private static RefuelingInput Whole(RefuelingInput values) => values with { Discount = values.Discount ?? 0 };
 
-    private static ExpenseInput Whole(ExpenseInput values) => values with { Discount = values.Discount ?? (values.Amount is null ? null : 0) };
+    private static ExpenseInput Whole(ExpenseInput values) => values with { Discount = values.Discount ?? 0 };
 }

@@ -118,7 +118,7 @@ internal sealed class RefuelingRepository(IDbContextFactory<AppDbContext> dbFact
     public async Task<VehiclePurge> PurgeForVehicleAsync(Guid vehicleId, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var withPhotos = await db.LogPhotos.Where(p => p.LogType == LogType.Refueling && p.VehicleId == vehicleId).Select(p => p.LogId).Distinct().CountAsync(ct);
+        var withPhotos = await db.CountLogsWithPhotosAsync(LogType.Refueling, vehicleId, ct);
         if (withPhotos > 0) return new VehiclePurge(0, withPhotos, 0);
         // Tracked and removed one by one, never a bulk delete: the tombstones the devices follow are written from the change tracker.
         var doomed = await db.Refuelings.IgnoreQueryFilters().Include(r => r.OdometerReading).Include(r => r.Cost).Where(r => r.VehicleId == vehicleId).ToListAsync(ct);

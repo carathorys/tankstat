@@ -25,6 +25,7 @@ public sealed record ImportKindChoice(
 {
     public static readonly ImportKindChoice Missing = new();
 
+    [JsonIgnore] // worked out: not kept in a run's plan
     public int Exceptions => (NewExceptions?.Count ?? 0) + (DifferExceptions?.Count ?? 0);
 }
 
@@ -33,6 +34,7 @@ public sealed record ImportCarKinds(ImportKindChoice? Refuelings = null, ImportK
 {
     public static readonly ImportCarKinds Missing = new();
 
+    [JsonIgnore] // worked out: kept in a run's plan, it would write every exception's id twice
     public IEnumerable<ImportKindChoice> All => [Refuelings ?? ImportKindChoice.Missing, Expenses ?? ImportKindChoice.Missing, Schedules ?? ImportKindChoice.Missing];
 }
 
@@ -48,6 +50,7 @@ public sealed record ImportCarChoice(
 public sealed record ImportCarPlan(Guid CarId, string Name, Guid? TargetVehicleId, string? TargetName, RefusedEntryPolicy Policy, int Entries, ImportCarKinds? Kinds = null)
 {
     /// <summary>A <i>Replace all</i> into an own car: one refusal puts the whole car back (the owner's decision 1).</summary>
+    [JsonIgnore]
     public bool Replacing => TargetVehicleId is not null && (Kinds ?? ImportCarKinds.Missing).All.Any(k => k.Mode == ImportKindMode.ReplaceAll);
 }
 
@@ -149,7 +152,10 @@ public sealed record ImportCarReview(
 public sealed record ImportKindReview(
     string Kind, ImportKindMode Mode, int Backup, int New, int Differ, int Same, int InTrash, int Adds, int Takes, int TargetLive, int TargetTrashed, int WithPhotos, int OnTyreLines);
 
-/// <summary>An entry of the backup for the <i>Choose…</i> dialog: what tells it apart, and for one that differs both sides of each field that does (as text, invariant).</summary>
+/// <summary>
+/// An entry of the backup for the <i>Choose…</i> dialog: what tells it apart, and for one that differs both sides of each field that does
+/// (as text, invariant; a day as yyyy-MM-dd, an enum by its GraphQL name).
+/// </summary>
 public sealed record ImportEntryView(Guid Id, DateOnly? Date, long? Odometer, string? Title, decimal? Amount, string? Currency, decimal? Volume, IReadOnlyList<ImportFieldDifference> Differences);
 
 public sealed record ImportFieldDifference(string Field, string? Backup, string? Target);

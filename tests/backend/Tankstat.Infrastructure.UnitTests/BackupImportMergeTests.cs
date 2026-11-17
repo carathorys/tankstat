@@ -99,6 +99,8 @@ public sealed partial class BackupImportRunTests
         await AsAsync(here, bob, sp => sp.GetRequiredService<RefuelingService>().UpdateAsync(mine, new(Day, 41, 61, "EUR", 1_000, true, "edited later"), default));
         var car = await ReportAsync(here, queued.Id);
 
+        // The run's plan keeps each exception's id once: what is worked out from the choices is not written beside them.
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches((await FinishedAsync(here, queued.Id)).Plan, golf.Third.ToString()));
         Assert.Equal((false, false, 1), (car.LeftOut, car.Replacing, car.Links));
         Assert.Equal(new ImportKindReport("refueling", ImportKindMode.Choose, Imported: 1, Changed: 1, Deleted: 0), Kind(car, "refueling"));
         Assert.Equal(new ImportKindReport("expense", ImportKindMode.OnlyMissing, 1, 0, 0), Kind(car, "expense"));
@@ -285,6 +287,34 @@ public sealed partial class BackupImportRunTests
         Assert.Equal(new ImportKindReport("expense", ImportKindMode.Choose, Imported: 0, Changed: 2, Deleted: 0), Kind(report, "expense"));
         await using var db = await here.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
         Assert.Equal([2_200L, 2_500L], (await db.Expenses.Include(e => e.OdometerReading).Where(e => e.VehicleId == own).OrderBy(e => e.Date).ToListAsync()).Select(e => e.Odometer!.Value));
+    }
+
+    [Theory, MemberData(nameof(Providers))]
+    public async Task ADifferingScheduleKind_IsSaidByItsGraphQLName_AsThePageWordsIt(string provider)
+    {
+        if (Instance(provider, "here") is not { } here) return;
+        // The backup's oil change goes by distance, mine by time.
+        var source = Instance("Sqlite", "kinds")!;
+        var anna = await PersonAsync(source, "Anna");
+        var car = await AsAsync(source, anna, async sp =>
+        {
+            var id = (await sp.GetRequiredService<VehicleService>().AddAsync("Polo", null, FuelType.Petrol, MeasurementUnits.Metric, default)).Id;
+            await sp.GetRequiredService<RecurringExpenseService>().AddAsync(id, new("Oil change", null, null, RecurrenceKind.Odometer, null, 15_000, Day, 1_000, null, null), default);
+            return id;
+        });
+        var backup = (await source.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default)).Path;
+        var bob = await PersonAsync(here, "Bob");
+        var own = await AsAsync(here, bob, async sp =>
+        {
+            var id = (await sp.GetRequiredService<VehicleService>().AddAsync("My Polo", null, FuelType.Petrol, MeasurementUnits.Metric, default)).Id;
+            await sp.GetRequiredService<RecurringExpenseService>().AddAsync(id, new("Oil change", null, null, RecurrenceKind.Time, 12, null, Day, null, null, null), default);
+            return id;
+        });
+        var token = await OpenAsync(here, bob, backup);
+
+        var schedule = Assert.Single((await AsAsync(here, bob, sp => sp.GetRequiredService<BackupImportRunService>().EntriesAsync(token, car, own, "recurring", differing: true, 0, 50, default))).Items);
+
+        Assert.Contains(new ImportFieldDifference("kind", "ODOMETER", "TIME"), schedule.Differences); // `recurring.kind.ODOMETER`, never the C# name
     }
 
     [Theory, MemberData(nameof(Providers))]

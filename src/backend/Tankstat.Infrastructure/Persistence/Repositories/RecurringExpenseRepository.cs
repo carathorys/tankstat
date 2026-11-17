@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Tankstat.Application.Access;
 using Tankstat.Application.Recurring;
+using Tankstat.Domain.Photos;
 using Tankstat.Domain.Recurring;
 using Tankstat.Infrastructure.Persistence.Runs;
 
@@ -73,7 +74,7 @@ internal sealed class RecurringExpenseRepository(IDbContextFactory<AppDbContext>
         db.RecurringCompletions.Add(RecurringCompletion.Create(expenseId, recurringExpenseId));
         await using var tx = await db.BeginInnerAsync(ct);
         await db.SaveChangesAsync(ct);
-        await db.TouchExpensesOfSchedulesAsync([recurringExpenseId], clock.GetUtcNow(), ct); // the expense now lists it
+        await db.TouchLogAsync(LogType.Expense, expenseId, clock.GetUtcNow(), ct); // the expense now lists it (the schedule's other expenses stay as they are)
         await tx.CommitAsync(ct);
         return true;
     }

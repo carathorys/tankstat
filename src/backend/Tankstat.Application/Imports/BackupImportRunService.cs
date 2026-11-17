@@ -106,6 +106,8 @@ public sealed class BackupImportRunService(
             null => null,
             DateOnly day => day.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
             bool yes => yes ? "true" : "false",
+            // As GraphQL names it (TIME, IMPORT_THE_REST): the page words it by that name. Before the numbers: an enum is formattable too.
+            Enum name => string.Concat(name.ToString().Select((c, i) => i > 0 && char.IsUpper(c) ? "_" + c : c.ToString())).ToUpperInvariant(),
             IFormattable number => number.ToString(null, System.Globalization.CultureInfo.InvariantCulture),
             _ => value.ToString(),
         };

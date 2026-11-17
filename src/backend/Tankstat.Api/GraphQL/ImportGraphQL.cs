@@ -165,7 +165,7 @@ public sealed record ImportCarReviewInfo(
     Guid CarId, string Name, string? OwnerName, bool OwnedByMe, Guid? TargetVehicleId, string? TargetName, int NewRefuelings, int NewExpenses, int NewSchedules,
     int ExistingRefuelings, int ExistingExpenses, int ExistingSchedules, int Differing, int InTrash, IReadOnlyList<ImportKindReviewInfo> Kinds, bool Links, int LinksLost);
 
-/// <summary>A value that differs between the backup's entry and the car's, by the input's field name; each side as invariant text (a day as yyyy-MM-dd).</summary>
+/// <summary>A value that differs between the backup's entry and the car's, by the input's field name; each side as invariant text (a day as yyyy-MM-dd, an enum by its name here, such as TIME).</summary>
 public sealed record ImportFieldDifferenceInfo(string Field, string? Backup, string? Target);
 
 /// <summary>An entry of the backup in the Choose dialog; for a recurring expense <c>date</c> and <c>odometer</c> are when it was last done.</summary>

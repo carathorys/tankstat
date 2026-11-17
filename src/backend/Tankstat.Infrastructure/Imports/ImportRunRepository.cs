@@ -129,8 +129,10 @@ internal sealed class ImportTargetReader(IDbContextFactory<AppDbContext> dbFacto
     public async Task<ImportHeldBack> HeldBackAsync(Tankstat.Domain.Vehicles.Vehicle vehicle, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var photos = await db.LogPhotos.AsNoTracking().Where(p => p.VehicleId == vehicle.Id).Select(p => new { p.LogType, p.LogId }).Distinct().ToListAsync(ct);
-        var lines = await db.TyreEntries.IgnoreQueryFilters().Where(l => l.VehicleId == vehicle.Id && l.ExpenseId != null).Select(l => l.ExpenseId).Distinct().CountAsync(ct);
-        return new ImportHeldBack(photos.Count(p => p.LogType == Tankstat.Domain.Photos.LogType.Refueling), photos.Count(p => p.LogType == Tankstat.Domain.Photos.LogType.Expense), lines);
+        // Counted as the purges count them (HeldBackLogs): what the review says is held back is what a Replace all would be refused for.
+        return new ImportHeldBack(
+            await db.CountLogsWithPhotosAsync(Tankstat.Domain.Photos.LogType.Refueling, vehicle.Id, ct),
+            await db.CountLogsWithPhotosAsync(Tankstat.Domain.Photos.LogType.Expense, vehicle.Id, ct),
+            await db.CountExpensesOnTyreLinesAsync(vehicle.Id, ct));
     }
 }

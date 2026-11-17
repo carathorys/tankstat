@@ -106,7 +106,8 @@ public sealed class RefuelingService(
     }
 
     /// <param name="expectedVersion">The version the change was made from; refused when the log was saved since (see <see cref="VersionCheck"/>).</param>
-    public async Task<Refueling> UpdateAsync(Guid id, RefuelingInput input, CancellationToken ct, int? expectedVersion = null)
+    /// <param name="recalculateConsumption">False when the caller changes many logs of the vehicle and recalculates once itself (an import).</param>
+    public async Task<Refueling> UpdateAsync(Guid id, RefuelingInput input, CancellationToken ct, int? expectedVersion = null, bool recalculateConsumption = true)
     {
         var refueling = await EditableLogAsync(id, includeDeleted: false, ct);
         VersionCheck.Require(expectedVersion, refueling.Version);
@@ -121,7 +122,7 @@ public sealed class RefuelingService(
         await refuelings.UpdateAsync(refueling, changes, ct);
         // Readings that finished before the save are taken now (the worker's round may have passed while the log did not wait yet).
         if (refueling.ReviewState == ReviewState.AwaitingPhotos) await filler.FillAsync(LogType.Refueling, id, ct);
-        await RecalculateConsumptionAsync(refueling.VehicleId, ct);
+        if (recalculateConsumption) await RecalculateConsumptionAsync(refueling.VehicleId, ct);
         logger.LogDebug("Refueling {RefuelingId} of vehicle {VehicleId} updated", id, refueling.VehicleId);
         if (waited != ReviewState.None && refueling.ReviewState == ReviewState.None)
             await filler.ReviewedAsync(LogType.Refueling, id, refueling.CreatedById, ct);

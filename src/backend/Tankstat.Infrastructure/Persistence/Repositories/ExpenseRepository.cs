@@ -108,8 +108,8 @@ internal sealed class ExpenseRepository(IDbContextFactory<AppDbContext> dbFactor
     public async Task<VehiclePurge> PurgeForVehicleAsync(Guid vehicleId, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var withPhotos = await db.LogPhotos.Where(p => p.LogType == LogType.Expense && p.VehicleId == vehicleId).Select(p => p.LogId).Distinct().CountAsync(ct);
-        var onLines = await db.TyreEntries.IgnoreQueryFilters().Where(l => l.VehicleId == vehicleId && l.ExpenseId != null).Select(l => l.ExpenseId).Distinct().CountAsync(ct);
+        var withPhotos = await db.CountLogsWithPhotosAsync(LogType.Expense, vehicleId, ct);
+        var onLines = await db.CountExpensesOnTyreLinesAsync(vehicleId, ct);
         if (withPhotos + onLines > 0) return new VehiclePurge(0, withPhotos, onLines);
         // Tracked and removed one by one, never a bulk delete: the tombstones the devices follow are written from the change tracker.
         var doomed = await WithLinks(db.Expenses.IgnoreQueryFilters()).Where(e => e.VehicleId == vehicleId).ToListAsync(ct);
