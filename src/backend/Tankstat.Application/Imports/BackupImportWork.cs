@@ -53,7 +53,28 @@ public sealed record ImportCarWork(
 /// The rules of an import from a backup that the review and the run share (#337, #338), so the run does what the review said, as far as
 /// the cars stayed as they were: which cars may be targets, how a backup's car compares with its target, and what each kind's choice does.
 /// </summary>
-public sealed class BackupImportRules(IImportTargetReader targets, IVehicleRepository vehicles)
+/// <summary>
+/// A car's tyres against the car they go into (#339): the backup's book, each live set with what it is to the car, and the lines of no set
+/// to come. <see cref="ExpensesOf"/>: the backup's expenses the chosen tyres bring with their lines, which the expense step leaves to them.
+/// </summary>
+public sealed record ImportTyreComparison(Tyres.TyreBook Backup, IReadOnlyList<(Domain.Tyres.TyreSet Set, ImportSetOffer Offer)> Sets, IReadOnlyList<Domain.Tyres.TyreEntry> NoSetLines)
+{
+    public static readonly ImportTyreComparison None = new(new Tyres.TyreBook([], [], [], []), [], []);
+
+    public IReadOnlyList<Domain.Tyres.TyreSet> Chosen(ImportTyreChoice? choice) =>
+        choice is null ? [] : [.. Sets.Where(s => s.Offer.State == ImportSetState.New && choice.Sets.Contains(s.Set.Id)).Select(s => s.Set)];
+
+    public IReadOnlySet<Guid> ExpensesOf(ImportTyreChoice? choice)
+    {
+        if (choice is null) return new HashSet<Guid>();
+        var chosen = Chosen(choice).Select(s => s.Id).ToHashSet();
+        return Backup.Entries.Where(e => Backup.IsLive(e) && e.ExpenseId is not null && ((e.SetId is { } set && chosen.Contains(set))
+                || (choice.NoSetLines && e.SetId is null && NoSetLines.Contains(e))) && Backup.ExpenseOf(e) is { IsDeleted: false })
+            .Select(e => e.ExpenseId!.Value).ToHashSet();
+    }
+}
+
+public sealed class BackupImportRules(IImportTargetReader targets, IVehicleRepository vehicles, Tyres.ITyreRepository tyreBooks)
 {
     public const string UnitsDifferKey = "import.carUnitsDiffer";
     public const string NothingChosenKey = "import.nothingChosen";
@@ -123,6 +144,57 @@ public sealed class BackupImportRules(IImportTargetReader targets, IVehicleRepos
             onlyThere.Count - fresh.Count, [.. live.Select(e => e.Id)], inTrashOfTarget, photos, lines);
     }
 
+    /// <summary>
+    /// A backup car's tyres against the car they go into (null: a new car). <b>The same set</b> is the one with its id in the car, else the
+    /// one with its name, season, size and <i>in use since</i> month (without case); two of the backup's on one: the first by <i>since</i>
+    /// then id takes it. A set here stays as it is. A new set the car's history would refuse (another set on the car then) or whose tyres'
+    /// labels the car's tyres have is refused, with the reason the services give. In a car that is here, only the missing lines of no set
+    /// come (by id, else by day, kind and amount).
+    /// </summary>
+    public async Task<ImportTyreComparison> CompareTyresAsync(IBackupCars file, Guid carId, Vehicle? target, CancellationToken ct)
+    {
+        var book = await file.ReadTyresAsync(carId, ct) ?? ImportTyreComparison.None.Backup;
+        var here = target is null ? null : await tyreBooks.LoadAsync(target.Id, ct);
+        var hereSets = here?.Sets.Where(s => !s.IsDeleted).ToList() ?? [];
+        static string Key(Domain.Tyres.TyreSet s) =>
+            $"{s.Name.Trim().ToLowerInvariant()}|{s.Season}|{s.Size?.Trim().ToLowerInvariant()}|{s.Since.Year}-{s.Since.Month}";
+        var taken = new HashSet<Guid>();
+        var sets = new List<(Domain.Tyres.TyreSet, ImportSetOffer)>();
+        foreach (var set in book.Sets.Where(s => !s.IsDeleted).OrderBy(s => s.Since).ThenBy(s => s.Id))
+        {
+            var lines = book.Entries.Where(e => e.SetId == set.Id && book.IsLive(e)).ToList();
+            var installations = book.Installations.Where(i => i.SetId == set.Id && !i.IsDeleted).ToList();
+            var singles = book.SingleTyres.Where(t => t.SetId == set.Id && !t.IsDeleted).ToList();
+            var expenses = lines.Where(l => book.ExpenseOf(l) is { IsDeleted: false }).Select(l => l.ExpenseId).Distinct().Count();
+            var match = hereSets.FirstOrDefault(s => s.Id == set.Id && taken.Add(s.Id)) ?? hereSets.FirstOrDefault(s => Key(s) == Key(set) && taken.Add(s.Id));
+            var (state, key, args) = (ImportSetState.New, (string?)null, (IReadOnlyDictionary<string, string>?)null);
+            if (match is not null) state = ImportSetState.Here;
+            else if (here is not null && target is not null)
+            {
+                try
+                {
+                    // The car's history with this set's times on the car added: the checks every change of it meets.
+                    new Domain.Tyres.TyreHistory(target.OwnerId, target.Id, [.. hereSets, set], [.. here.Installations.Where(i => !i.IsDeleted), .. installations]).Check(installations);
+                    var labels = here.SingleTyres.Where(t => !t.IsDeleted && hereSets.Any(s => s.Id == t.SetId)).Select(t => t.Label).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    if (singles.FirstOrDefault(t => labels.Contains(t.Label)) is { } clash)
+                        throw new DomainException("tyres.labelTaken", "Another tyre is already called that.", new { Label = clash.Label });
+                }
+                catch (DomainException e)
+                {
+                    (state, key, args) = (ImportSetState.Refused, e.Key, e.Args.ToDictionary(a => a.Key, a => Convert.ToString(a.Value, System.Globalization.CultureInfo.InvariantCulture) ?? ""));
+                }
+            }
+            sets.Add((set, new ImportSetOffer(set.Id, BackupCarShapes.Cut(set.Name)!, set.Season, state, installations.Count, lines.Count, singles.Count, expenses, key, args)));
+        }
+        var noSet = book.Entries.Where(e => e.SetId is null && book.IsLive(e)).ToList();
+        if (here is not null)
+        {
+            var hereLines = here.Entries.Where(e => e.SetId is null && here.IsLive(e)).Select(e => (e.Id, e.Day, e.Kind, Amount: here.ExpenseOf(e)?.Amount)).ToList();
+            noSet = [.. noSet.Where(l => !hereLines.Any(h => h.Id == l.Id || (h.Day == l.Day && h.Kind == l.Kind && h.Amount == book.ExpenseOf(l)?.Amount)))];
+        }
+        return new ImportTyreComparison(book, sets, noSet);
+    }
+
     /// <summary>A car that comes as a new one has nothing to compare with: everything of it is new.</summary>
     public static ImportCarComparison Whole(BackupCar car)
     {
@@ -134,9 +206,19 @@ public sealed class BackupImportRules(IImportTargetReader targets, IVehicleRepos
     /// What the choices do with the car as it compares now. A new car's kind comes whole or not at all. A visit's link comes only when
     /// neither expenses nor recurring expenses are left out, between entries that are both the car's afterwards.
     /// </summary>
-    public static ImportCarWork Work(ImportCarComparison compared, ImportCarKinds? kinds)
+    /// <param name="tyreExpenses">The backup's expenses the chosen tyres bring with their lines (#339): the expense step leaves them out.</param>
+    public static ImportCarWork Work(ImportCarComparison compared, ImportCarKinds? kinds, IReadOnlySet<Guid>? tyreExpenses = null)
     {
         kinds ??= ImportCarKinds.Missing;
+        if (tyreExpenses is { Count: > 0 })
+            compared = compared with
+            {
+                Expenses = compared.Expenses with
+                {
+                    New = [.. compared.Expenses.New.Where(e => !tyreExpenses.Contains(e.Id))],
+                    Backup = [.. compared.Expenses.Backup.Where(e => !tyreExpenses.Contains(e.Id))],
+                },
+            };
         var refuelings = Kind(compared.Refuelings, kinds.Refuelings, compared.NewCar);
         var expenses = Kind(compared.Expenses, kinds.Expenses, compared.NewCar);
         var schedules = Kind(compared.Schedules, kinds.Schedules, compared.NewCar);
@@ -200,7 +282,7 @@ public sealed class BackupImportRules(IImportTargetReader targets, IVehicleRepos
     public static void RequireSound(BackupCarSummary car, ImportCarComparison compared, ImportCarKinds? kinds)
     {
         kinds ??= ImportCarKinds.Missing;
-        if (kinds.All.All(k => k.Mode == ImportKindMode.DontImport))
+        if (kinds.All.All(k => k.Mode == ImportKindMode.DontImport) && !kinds.AnyTyres)
             throw new DomainException(NothingChosenKey, "Choose at least one kind to import for this car, or leave the car out.", new { Car = car.Name });
         if (compared.NewCar) return;
         Check(compared.Refuelings, kinds.Refuelings);
@@ -230,8 +312,11 @@ public sealed class BackupImportRules(IImportTargetReader targets, IVehicleRepos
 /// </summary>
 public sealed class BackupImportWork(
     BackupImportRules rules, VehicleService vehicles, RefuelingService refuelings, ExpenseService expenses, RecurringExpenseService recurring,
-    ILogger<BackupImportWork> logger)
+    BackupTyreReplay tyreReplay, IExpenseRepository expenseRows, Tyres.ITyreRepository tyreBooks, ILogger<BackupImportWork> logger)
 {
+    /// <summary>The kinds of a refused tyre row (#339): a set (its name as the title), the lines of no set.</summary>
+    public const string TyreSetKind = "tyreSet", NoSetLinesKind = "tyreLines";
+
     private sealed class CarLeftOut(ImportRefusedEntry refused) : Exception
     {
         public ImportRefusedEntry Refused { get; } = refused;
@@ -251,7 +336,7 @@ public sealed class BackupImportWork(
             var before = done;
             try
             {
-                await run.InSavepointAsync(async () => report = await CarAsync(run, starter, car, chosen, () => progress(new ImportRunProgress(carNumber, plan.Cars.Count, ++done, total)), ct));
+                await run.InSavepointAsync(async () => report = await CarAsync(run, starter, file, car, chosen, () => progress(new ImportRunProgress(carNumber, plan.Cars.Count, ++done, total)), ct));
             }
             catch (CarLeftOut left)
             {
@@ -273,10 +358,12 @@ public sealed class BackupImportWork(
     /// <summary>One save of the car's logs, in the order they are tried: by day, then by reading.</summary>
     private sealed record Step(DateOnly Date, long Order, string Kind, string? Title, Func<Task> Save, Action Saved);
 
-    private async Task<ImportCarReport> CarAsync(IRun run, Principal starter, BackupCar car, ImportCarPlan chosen, Action step, CancellationToken ct)
+    private async Task<ImportCarReport> CarAsync(IRun run, Principal starter, IBackupCars file, BackupCar car, ImportCarPlan chosen, Action step, CancellationToken ct)
     {
         Vehicle vehicle;
         ImportCarComparison compared;
+        ImportTyreComparison tyres = ImportTyreComparison.None;
+        var tyreChoice = chosen.Kinds?.Tyres;
         ImportCarWork work;
         var deleted = (Refuelings: 0, Expenses: 0, Schedules: 0);
         try
@@ -286,13 +373,16 @@ public sealed class BackupImportWork(
                 // Again, now that the run holds the car: what the review saw may have changed since (decisions 7, 8 and 11).
                 vehicle = await rules.TargetAsync(starter.Id, car.Car, targetId, ct);
                 compared = await rules.CompareAsync(car, vehicle, ct);
+                if (tyreChoice is not null) tyres = await rules.CompareTyresAsync(file, car.Car.Id, vehicle, ct);
             }
             else
             {
                 vehicle = await vehicles.AddAsync(car.Car.Name, car.Car.LicensePlate, car.Car.FuelType, car.Car.Units, ct);
                 compared = BackupImportRules.Whole(car);
+                if (tyreChoice is not null) tyres = await rules.CompareTyresAsync(file, car.Car.Id, null, ct);
             }
-            work = BackupImportRules.Work(compared, chosen.Kinds);
+            // The expenses the chosen tyres' lines hold come with the tyres (#339, the owner's decision 1), not with the expenses.
+            work = BackupImportRules.Work(compared, chosen.Kinds, tyres.ExpensesOf(tyreChoice));
             // Replace all: what is there now goes for good, the trash too (decisions 3 and 8), before anything of the backup's is saved.
             // A kind that got a photo or a tyre log line since the review is refused by its purge: the car is put back (decision 11).
             if (work.Refuelings.Purge) deleted.Refuelings = await HeldBackAs(BackupImportRules.Refueling, () => refuelings.PurgeForVehicleAsync(vehicle.Id, ct));
@@ -391,6 +481,67 @@ public sealed class BackupImportWork(
         foreach (var schedule in work.Schedules.Adds)
             await ScheduleAsync(schedule, async () => scheduleIds[schedule.Id] = (await recurring.AddAsync(vehicle.Id, schedule.Values, ct)).Item.Id, () => schedulesAdded++);
 
+        // The tyres (#339): set by set, each in a savepoint of its own, after the logs (their readings) and the schedules; then the lines
+        // of no set. A set the rules refuse is a refused entry like a log's, under the car's policy (all or nothing with a Replace all).
+        ImportTyreReport? tyreReport = null;
+        if (tyreChoice is not null)
+        {
+            var heldByLines = (await tyreBooks.LoadAsync(vehicle.Id, ct)).Entries.Where(e => e.ExpenseId is not null).Select(e => e.ExpenseId!.Value).ToHashSet();
+            var pool = new ImportExpensePool((await expenseRows.ListAllForVehicleAsync(vehicle.Id, ct))
+                .Where(e => !heldByLines.Contains(e.Id)).Select(e => (e.Id, e.Date, e.Title, e.Amount)));
+            var (names, lines, singles, noSet, made, amountsHere) = (new List<string>(), 0, 0, 0, 0, 0);
+            // A chosen set the car's history refuses now (it changed since the review) is that set's refusal; one here now stays as it is.
+            foreach (var (set, offer) in tyres.Sets.Where(s => s.Offer.State == ImportSetState.Refused && tyreChoice.Sets.Contains(s.Set.Id)))
+            {
+                step();
+                Refused(new ImportRefusedEntry(TyreSetKind, null, offer.Name, offer.RefusalKey!, offer.RefusalArgs ?? new Dictionary<string, string>()));
+            }
+            foreach (var set in tyres.Chosen(tyreChoice))
+            {
+                await run.ThrowIfStoppedAsync();
+                var mark = pool.Mark();
+                try
+                {
+                    TyreReplayed? replayed = null;
+                    await run.InSavepointAsync(async () => replayed = await tyreReplay.SetAsync(vehicle.Id, tyres.Backup, set, ct, pool));
+                    names.Add(BackupCarShapes.Cut(set.Name)!);
+                    (lines, singles, made, amountsHere) = (lines + replayed!.Lines, singles + replayed.Tyres, made + replayed.ExpensesMade, amountsHere + replayed.AmountsHere);
+                    foreach (var (old, @new) in replayed.Ids) expenseIds.TryAdd(old, @new); // a tyre line's expense a visit marked done keeps its link
+                }
+                catch (KeyedException e)
+                {
+                    pool.Restore(mark);
+                    Refused(new ImportRefusedEntry(TyreSetKind, null, BackupCarShapes.Cut(set.Name), e.Key, ArgsOf(e)));
+                }
+                finally
+                {
+                    step();
+                }
+            }
+            if (tyreChoice.NoSetLines && tyres.NoSetLines.Count > 0)
+            {
+                await run.ThrowIfStoppedAsync();
+                var mark = pool.Mark();
+                try
+                {
+                    TyreReplayed? replayed = null;
+                    await run.InSavepointAsync(async () => replayed = await tyreReplay.LinesOfNoSetAsync(vehicle.Id, tyres.Backup, [.. tyres.NoSetLines.Select(l => l.Id)], ct, pool));
+                    (noSet, made, amountsHere) = (replayed!.Lines, made + replayed.ExpensesMade, amountsHere + replayed.AmountsHere);
+                    foreach (var (old, @new) in replayed.Ids) expenseIds.TryAdd(old, @new);
+                }
+                catch (KeyedException e)
+                {
+                    pool.Restore(mark);
+                    Refused(new ImportRefusedEntry(NoSetLinesKind, null, null, e.Key, ArgsOf(e)));
+                }
+                finally
+                {
+                    step();
+                }
+            }
+            tyreReport = new ImportTyreReport(names, lines, singles, noSet, made, amountsHere);
+        }
+
         // The visits' links (#338): an expense of the backup and a schedule it marked done, when both are the car's now and neither kind
         // was left out. One that is there already stays as it is: a second run adds nothing.
         var links = 0;
@@ -409,7 +560,7 @@ public sealed class BackupImportWork(
                 new ImportKindReport(BackupImportRules.Refueling, work.Refuelings.Mode, fuelAdded, fuelChanged, deleted.Refuelings),
                 new ImportKindReport(BackupImportRules.Expense, work.Expenses.Mode, expensesAdded, expensesChanged, deleted.Expenses),
                 new ImportKindReport(BackupImportRules.Recurring, work.Schedules.Mode, schedulesAdded, schedulesChanged, deleted.Schedules),
-            ], work.Replacing, links);
+            ], work.Replacing, links, tyreReport);
     }
 
     /// <summary>What the car's choices leave as it is, all kinds together.</summary>

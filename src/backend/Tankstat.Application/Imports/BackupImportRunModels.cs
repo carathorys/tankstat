@@ -29,10 +29,20 @@ public sealed record ImportKindChoice(
     public int Exceptions => (NewExceptions?.Count ?? 0) + (DifferExceptions?.Count ?? 0);
 }
 
-/// <summary>The three kinds' choices for a car; a kind left out is <see cref="ImportKindChoice.Missing"/>.</summary>
-public sealed record ImportCarKinds(ImportKindChoice? Refuelings = null, ImportKindChoice? Expenses = null, ImportKindChoice? Schedules = null)
+/// <summary>
+/// The tyres chosen of a car (#339, the owner's choice: checkboxes, no Replace all): the backup's sets by their ids (a set already here
+/// stays as it is, one the history would refuse cannot come), and whether the tyre log's lines of no set come (in a car that is here only
+/// the missing ones).
+/// </summary>
+public sealed record ImportTyreChoice(IReadOnlyList<Guid> Sets, bool NoSetLines = true);
+
+/// <summary>The kinds' choices for a car; a log kind left out is <see cref="ImportKindChoice.Missing"/>, the tyres left out do not come (#337's way).</summary>
+public sealed record ImportCarKinds(ImportKindChoice? Refuelings = null, ImportKindChoice? Expenses = null, ImportKindChoice? Schedules = null, ImportTyreChoice? Tyres = null)
 {
     public static readonly ImportCarKinds Missing = new();
+
+    /// <summary>Tyres chosen: a set, or the lines of no set.</summary>
+    public bool AnyTyres => Tyres is { } t && (t.Sets.Count > 0 || t.NoSetLines);
 
     [JsonIgnore] // worked out: kept in a run's plan, it would write every exception's id twice
     public IEnumerable<ImportKindChoice> All => [Refuelings ?? ImportKindChoice.Missing, Expenses ?? ImportKindChoice.Missing, Schedules ?? ImportKindChoice.Missing];
@@ -74,7 +84,13 @@ public sealed record ImportRefusedEntry(string Kind, DateOnly? Date, string? Tit
 public sealed record ImportCarReport(
     Guid CarId, string Name, Guid? VehicleId, string? TargetName, bool AsNew, bool LeftOut, int Refuelings, int Expenses, int Schedules,
     int Existing, int Differing, int InTrash, IReadOnlyList<ImportRefusedEntry> Refused, int RefusedMore,
-    IReadOnlyList<ImportKindReport>? Kinds = null, bool Replacing = false, int Links = 0);
+    IReadOnlyList<ImportKindReport>? Kinds = null, bool Replacing = false, int Links = 0, ImportTyreReport? Tyres = null);
+
+/// <summary>
+/// What came of a car's tyres (#339): the sets imported by name, their lines and single tyres, the lines of no set, the expenses their
+/// lines brought, and the amounts left off because the same expense was among the car's already (a fee cannot be tied to one).
+/// </summary>
+public sealed record ImportTyreReport(IReadOnlyList<string> Sets, int Lines, int Tyres, int NoSetLines, int Expenses, int AmountsHere);
 
 /// <summary>
 /// What came of one kind of a car (#338): how it was to be done, how many of the backup's were added, how many of the car's took the
@@ -141,7 +157,21 @@ public sealed record ImportCarOffers(BackupFileSummary File, IReadOnlyList<Impor
 public sealed record ImportCarReview(
     Guid CarId, string Name, string? OwnerName, bool OwnedByMe, Guid? TargetVehicleId, string? TargetName,
     int NewRefuelings, int NewExpenses, int NewSchedules, int ExistingRefuelings, int ExistingExpenses, int ExistingSchedules, int Differing, int InTrash,
-    IReadOnlyList<ImportKindReview> Kinds, bool Links, int LinksLost);
+    IReadOnlyList<ImportKindReview> Kinds, bool Links, int LinksLost, ImportTyreReview? Tyres = null, int TyreSteps = 0);
+
+/// <summary>What a backup's set is to the car (#339): new, here already (it stays as it is), or one the car's history refuses.</summary>
+public enum ImportSetState { New, Here, Refused }
+
+/// <summary>A set of the backup as the Cars step offers it: its counts, and for a refused one the history's reason as everywhere.</summary>
+public sealed record ImportSetOffer(
+    Guid Id, string Name, Domain.Tyres.TyreSeason Season, ImportSetState State, int Installations, int Lines, int Tyres, int Expenses,
+    string? RefusalKey, IReadOnlyDictionary<string, string>? RefusalArgs);
+
+/// <summary>
+/// A car's tyres (#339): every live set of the backup with what it is to the car, the lines of no set to come (in a car that is here, the
+/// missing ones) and the expenses they hold, and how many expenses the chosen tyres bring.
+/// </summary>
+public sealed record ImportTyreReview(IReadOnlyList<ImportSetOffer> Sets, int NoSetLines, int NoSetExpenses, int Expenses);
 
 /// <summary>
 /// One kind of a chosen car, as the review and the Cars step say it (#338). Of the backup's <see cref="Backup"/> entries: <see cref="New"/>

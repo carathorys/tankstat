@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Tankstat.Application.Backups;
 using Tankstat.Application.Expenses;
@@ -8,6 +9,7 @@ using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Tyres;
 using Tankstat.Domain.Vehicles;
+using Tankstat.Infrastructure.Persistence;
 
 namespace Tankstat.Infrastructure.UnitTests;
 
@@ -127,5 +129,93 @@ public sealed partial class BackupImportRunTests
         output.WriteLine(string.Join("\n", actual));
         Assert.Equal(expected, actual);
         Assert.Equal(expectedCosts, await AsAsync(here, bob, sp => CostsAsync(sp, car)));
+    }
+
+    private static async Task<int> ExpenseCountAsync(TestDatabase here, Guid car)
+    {
+        await using var db = await here.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
+        return await db.Expenses.CountAsync(e => e.VehicleId == car);
+    }
+
+    private static async Task<List<string>> SetNamesAsync(TestDatabase here, Guid car)
+    {
+        await using var db = await here.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
+        return await db.TyreSets.Where(s => s.VehicleId == car).OrderBy(s => s.Name).Select(s => s.Name).ToListAsync();
+    }
+
+    [Theory, MemberData(nameof(Providers))]
+    public async Task ATyreCost_ComesOnce_WhicheverKindsAreChosen_AndAcrossTwoRuns(string provider)
+    {
+        if (Instance(provider, "here") is not { } here) return;
+        var source = await TyreSourceAsync(); // five expenses, every one a tyre line's
+        var bob = await PersonAsync(here, "Bob");
+        var token = await OpenAsync(here, bob, source.Backup);
+        var all = (await AsAsync(here, bob, sp => sp.GetRequiredService<BackupImportRunService>().ReviewAsync(token, [new(source.Car, null)], default)))
+            .Single().Tyres!.Sets.Select(s => s.Id).ToList();
+        async Task<ImportCarReport> RunAsync(ImportCarChoice choice) =>
+            ImportRunJson.Read<ImportRunReport>((await FinishedAsync(here, (await StartAsync(here, bob, await OpenAsync(here, bob, source.Backup), choice)).Id)).Report)!.Cars.Single();
+
+        var both = await RunAsync(new(source.Car, null, Kinds: new ImportCarKinds(Tyres: new(all))));
+        Assert.Equal((5, 3, 0), (await ExpenseCountAsync(here, both.VehicleId!.Value), both.Tyres!.Sets.Count, both.Tyres.AmountsHere));
+        Assert.Equal(0, both.Expenses); // every one came with its line
+        var onlyTyres = await RunAsync(new(source.Car, null, Kinds: new ImportCarKinds(Expenses: new(ImportKindMode.DontImport), Tyres: new(all))));
+        Assert.Equal((5, 5), (await ExpenseCountAsync(here, onlyTyres.VehicleId!.Value), onlyTyres.Tyres!.Expenses));
+        var onlyExpenses = await RunAsync(new(source.Car, null));
+        Assert.Equal((5, 5, null), (await ExpenseCountAsync(here, onlyExpenses.VehicleId!.Value), onlyExpenses.Expenses, onlyExpenses.Tyres));
+        Assert.Empty(await SetNamesAsync(here, onlyExpenses.VehicleId!.Value));
+
+        // The tyres later, into the car the expenses came into: the plain ones are found, never made again.
+        var later = await RunAsync(new(source.Car, onlyExpenses.VehicleId, Kinds: new ImportCarKinds(Tyres: new(all))));
+        Assert.Equal(5, await ExpenseCountAsync(here, onlyExpenses.VehicleId!.Value));
+        Assert.Equal((3, 0, 3), (later.Tyres!.Sets.Count, later.Tyres.Expenses, later.Tyres.AmountsHere)); // the swap's fee, the price and the replacement's: left on their lines
+        await using (var db = await here.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync())
+            Assert.Equal(2, await db.TyreEntries.Where(e => e.VehicleId == onlyExpenses.VehicleId && e.ExpenseId != null).Select(e => e.ExpenseId).Distinct().CountAsync()); // the puncture's and the alignment's tied
+
+        // A second tyres import finds every set here.
+        var again = Assert.Single(await AsAsync(here, bob, async sp => await sp.GetRequiredService<BackupImportRunService>().ReviewAsync(
+            await OpenAsync(here, bob, source.Backup), [new(source.Car, onlyExpenses.VehicleId, Kinds: new ImportCarKinds(Tyres: new(all)))], default)));
+        Assert.All(again.Tyres!.Sets, s => Assert.Equal(ImportSetState.Here, s.State));
+        Assert.Equal((0, 0), (again.Tyres.NoSetLines, again.Tyres.Expenses));
+    }
+
+    [Theory, MemberData(nameof(Providers))]
+    public async Task ASetThatCollidesWithTheCarsHistory_IsForeseenInTheReview_AndRefusedInTheRun_WhileTheOthersCome(string provider)
+    {
+        if (Instance(provider, "here") is not { } here) return;
+        var source = await TyreSourceAsync();
+        var bob = await PersonAsync(here, "Bob");
+        // Bob's own Golf had its own winter set on from November 2024 to March 2025: the backup's Nokian WR was on then too.
+        var own = await AsAsync(here, bob, async sp =>
+        {
+            var car = (await sp.GetRequiredService<VehicleService>().AddAsync("My Golf", null, FuelType.Petrol, MeasurementUnits.Metric, default)).Id;
+            var tyres = sp.GetRequiredService<TyreService>();
+            var mine = Guid.NewGuid();
+            await tyres.AddSetAsync(new NewTyreSet(car, new TyreSetInput("Hankook", TyreSeason.Winter, null, D(2024, 10, 1), null, null), false, D(2024, 11, 1), null, null), default, mine);
+            await tyres.AddInstallationAsync(mine, new TyreInstallationInput(D(2024, 11, 1), D(2025, 3, 1), null, null, null), default);
+            return car;
+        });
+        var token = await OpenAsync(here, bob, source.Backup);
+        var sets = Assert.Single(await AsAsync(here, bob, sp => sp.GetRequiredService<BackupImportRunService>().ReviewAsync(token, [new(source.Car, own)], default))).Tyres!.Sets;
+        var nokian = sets.Single(s => s.Name == "Nokian WR");
+        Assert.Equal((ImportSetState.Refused, "tyres.twoSetsAtOnce"), (nokian.State, nokian.RefusalKey));
+        Assert.All(sets.Where(s => s != nokian), s => Assert.Equal(ImportSetState.New, s.State));
+        Assert.Equal((3, 6, 5, 3), (nokian.Installations, nokian.Lines, nokian.Tyres, nokian.Expenses));
+
+        // The others chosen; one that collides only since the review is refused in the run, said in the report, and the others come.
+        var choice = new ImportCarChoice(source.Car, own, Kinds: new ImportCarKinds(Tyres: new([.. sets.Where(s => s != nokian).Select(s => s.Id)])));
+        var queued = await StartAsync(here, bob, token, choice);
+        await AsAsync(here, bob, async sp =>
+        {
+            var tyres = sp.GetRequiredService<TyreService>();
+            var late = Guid.NewGuid();
+            await tyres.AddSetAsync(new NewTyreSet(own, new TyreSetInput("Late summer", TyreSeason.Summer, null, D(2025, 1, 1), null, null), false, D(2025, 4, 1), null, null), default, late);
+            return await tyres.AddInstallationAsync(late, new TyreInstallationInput(D(2025, 4, 1), D(2025, 10, 1), null, null, null), default);
+        });
+        var report = ImportRunJson.Read<ImportRunReport>((await FinishedAsync(here, queued.Id)).Report)!.Cars.Single();
+        Assert.False(report.LeftOut);
+        var refused = Assert.Single(report.Refused);
+        Assert.Equal((BackupImportWork.TyreSetKind, "Michelin Primacy", "tyres.twoSetsAtOnce"), (refused.Kind, refused.Title, refused.Key));
+        Assert.Equal(["Old all-season"], report.Tyres!.Sets);
+        Assert.Equal(["Hankook", "Late summer", "Old all-season"], await SetNamesAsync(here, own));
     }
 }

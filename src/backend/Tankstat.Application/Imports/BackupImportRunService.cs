@@ -53,12 +53,16 @@ public sealed class BackupImportRunService(
             var target = choice.TargetVehicleId is { } id ? await rules.TargetAsync(me.Id, car.Car, id, ct) : null;
             var compared = target is null ? BackupImportRules.Whole(car) : await rules.CompareAsync(car, target, ct);
             BackupImportRules.RequireSound(car.Car, compared, choice.Kinds);
+            // The tyres always (#339): the Cars step offers each set from this answer.
+            var tyres = await rules.CompareTyresAsync(file, car.Car.Id, target, ct);
+            var tyreChoice = choice.Kinds?.Tyres;
             // A Replace all asks for the target's name, typed (#338): checked when the start is accepted, never again when a waiting
             // run's turn comes, so a car renamed meanwhile does not end the run.
             if (starting && target is not null && (choice.Kinds ?? ImportCarKinds.Missing).All.Any(k => k.Mode == ImportKindMode.ReplaceAll)
                 && !string.Equals(choice.ConfirmedName?.Trim(), target.Name.Trim(), StringComparison.OrdinalIgnoreCase))
                 throw new DomainException(BackupImportRules.ReplaceNotConfirmedKey, "Type the car's name to confirm what is deleted.", new { Car = target.Name });
-            var work = BackupImportRules.Work(compared, choice.Kinds);
+            var tyreExpenses = tyres.ExpensesOf(tyreChoice);
+            var work = BackupImportRules.Work(compared, choice.Kinds, tyreExpenses);
             var (fuel, expenses, schedules) = (BackupImportRules.Left(compared.Refuelings, work.Refuelings), BackupImportRules.Left(compared.Expenses, work.Expenses), BackupImportRules.Left(compared.Schedules, work.Schedules));
             reviews.Add(new ImportCarReview(car.Car.Id, car.Car.Name, car.Car.OwnerName, car.Car.OwnerId == me.Id, target?.Id, target?.Name,
                 work.Refuelings.Adds.Count, work.Expenses.Adds.Count, work.Schedules.Adds.Count,
@@ -67,7 +71,10 @@ public sealed class BackupImportRunService(
                     KindReview(BackupImportRules.Refueling, compared.Refuelings, work.Refuelings),
                     KindReview(BackupImportRules.Expense, compared.Expenses, work.Expenses),
                     KindReview(BackupImportRules.Recurring, compared.Schedules, work.Schedules),
-                ], work.Links, work.LinksLost));
+                ], work.Links, work.LinksLost,
+                new ImportTyreReview([.. tyres.Sets.Select(s => s.Offer)], tyres.NoSetLines.Count,
+                    tyres.NoSetLines.Where(l => tyres.Backup.ExpenseOf(l) is { IsDeleted: false }).Select(l => l.ExpenseId).Distinct().Count(), tyreExpenses.Count),
+                TyreSteps: tyres.Chosen(tyreChoice).Count + (tyreChoice is { NoSetLines: true } && tyres.NoSetLines.Count > 0 ? 1 : 0)));
         }
         return reviews;
     }
@@ -128,7 +135,7 @@ public sealed class BackupImportRunService(
             if (await runs.LatestOfAsync(me.Id, ct) is { IsActive: true }) throw new DomainException(AlreadyRunningKey, "An import of yours is running or waiting already.");
             var reviews = await ReviewAsync(token, choices, starting: true, ct); // every refusal that can be foreseen, before anything is queued
             var plan = new ImportRunPlan([.. choices.Zip(reviews, (choice, review) => new ImportCarPlan(
-                choice.CarId, review.Name, review.TargetVehicleId, review.TargetName, choice.Policy, review.Kinds.Sum(k => k.Adds + k.Takes), choice.Kinds))]);
+                choice.CarId, review.Name, review.TargetVehicleId, review.TargetName, choice.Policy, review.Kinds.Sum(k => k.Adds + k.Takes) + review.TyreSteps, choice.Kinds))]);
             var run = ImportRun.Queue(Guid.NewGuid(), ImportRunKind.Import, me.Id, runner.Server, ImportRunJson.Write(plan), plan.Cars.Count, plan.Cars.Sum(c => c.Entries), clock.GetUtcNow());
             // The file first: the queue ends a waiting run of this server that it holds no file for, so the row must never be there without it.
             runner.Enqueue(run.Id, me.Id, token);
