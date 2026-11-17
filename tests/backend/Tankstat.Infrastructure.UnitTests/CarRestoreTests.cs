@@ -14,6 +14,9 @@ using Tankstat.Application.Stats;
 using Tankstat.Application.Tyres;
 using Tankstat.Application.Vehicles;
 using Tankstat.Domain.Access;
+using Tankstat.Domain.Imports;
+using Tankstat.Domain.Notifications;
+using Tankstat.Domain.Users;
 using Tankstat.Domain.Charts;
 using Tankstat.Domain.Measurements;
 using Tankstat.Domain.Photos;
@@ -180,5 +183,86 @@ public sealed partial class BackupImportRunTests
             e => Assert.Equal((EntityChange.RestoredFromBackup, (Guid?)source.Ada.Id), (e.LastChange!.Value, e.ChangedById)));
         var vehicle = await check.Vehicles.SingleAsync(v => v.Id == source.Car);
         Assert.Equal((EntityChange?)EntityChange.RestoredFromBackup, vehicle.LastChange);
+    }
+
+    [Theory, MemberData(nameof(Providers))]
+    public async Task ThroughTheQueue_EachCarByItsId_StillHereGetsWhatIsMissing_GoneComesToItsOwnerOrTheOnePicked_TrashedIsRefused_AndEveryoneIsTold(string provider)
+    {
+        if (Instance(provider, "here") is not { } here) return;
+        var (anna, bob, dave, ada, eve) = (await PersonAsync(here, "Anna"), await PersonAsync(here, "Bob"), await PersonAsync(here, "Dave"),
+            await PersonAsync(here, "Ada", admin: true), await PersonAsync(here, "Eve", admin: true));
+        var (golf, fiat, gone) = await AsAsync(here, anna, async sp =>
+        {
+            var vehicles = sp.GetRequiredService<VehicleService>();
+            var fills = sp.GetRequiredService<RefuelingService>();
+            var golf = (await vehicles.AddAsync("Golf", "ABC-123", FuelType.Petrol, MeasurementUnits.Metric, default)).Id;
+            await fills.LogAsync(golf, new(Day, 40, 60, "EUR", 10_000, true, null), default);
+            var gone = (await fills.LogAsync(golf, new(Day.AddDays(10), 38, 57, "EUR", 10_600, true, null), default)).Id;
+            await sp.GetRequiredService<ResourceSharingService>().SetLogAccessAsync(golf, bob.Id, AccessLevel.Edit, default);
+            var fiat = (await vehicles.AddAsync("Fiat", null, FuelType.Petrol, MeasurementUnits.Metric, default)).Id;
+            return (golf, fiat, gone);
+        });
+        var polo = await AsAsync(here, dave, async sp =>
+        {
+            var polo = (await sp.GetRequiredService<VehicleService>().AddAsync("Polo", null, FuelType.Diesel, MeasurementUnits.Metric, default)).Id;
+            await sp.GetRequiredService<RefuelingService>().LogAsync(polo, new(Day, 30, 45, "EUR", 5_000, true, null), default);
+            return polo;
+        });
+        var backup = await here.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
+        // Since the backup: one of the Golf's fill-ups purged, the Fiat in the trash, the Polo purged and Dave's account gone; a new
+        // account has his e-mail.
+        await AsAsync(here, anna, async sp =>
+        {
+            await sp.GetRequiredService<RefuelingService>().DeleteAsync(gone, default);
+            await sp.GetRequiredService<RefuelingService>().EmptyTrashAsync(default);
+            return await sp.GetRequiredService<VehicleService>().DeleteAsync(fiat, default);
+        });
+        await AsAsync(here, dave, async sp =>
+        {
+            await sp.GetRequiredService<VehicleService>().DeleteAsync(polo, default);
+            return await sp.GetRequiredService<VehicleService>().EmptyTrashAsync(default);
+        });
+        await using (var db = await here.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync())
+            await db.Users.Where(u => u.Id == dave.Id).ExecuteDeleteAsync();
+        var newDave = User.CreateLocal("dave@example.com", "Dave New", false);
+        await here.Get<Tankstat.Application.Users.IUserRepository>().AddAsync(newDave, default);
+
+        var status = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().OpenAsync(Path.GetFileName(backup.Path), default));
+        for (var i = 0; i < 600 && here.Get<IBackupImportSessions>().Find(ada.Id, status.Token)!.State == BackupImportState.Opening; i++) await Task.Delay(50);
+        var page = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().CarsAsync(status.Token, null, null, 0, 50, default));
+        RestoreCarOffer Offer(Guid id) => page.Cars.Single(c => c.Car.Id == id);
+        Assert.Equal((RestoreCarState.Here, 1, anna.Id), (Offer(golf).State, Offer(golf).MissingRefuelings, Offer(golf).OwnerIdHere));
+        Assert.Equal(1, Offer(golf).Grants);
+        Assert.Equal((RestoreCarState.OwnerGone, (Guid?)newDave.Id), (Offer(polo).State, Offer(polo).SameEmailUserId));
+        Assert.Equal(RestoreCarState.InTrash, Offer(fiat).State);
+        // Only the administrators: a user's open file is not a way in.
+        await Assert.ThrowsAsync<ForbiddenException>(() => AsAsync(here, anna, sp => sp.GetRequiredService<CarRestoreService>().CarsAsync(status.Token, null, null, 0, 50, default)));
+
+        var review = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().ReviewAsync(status.Token, [new(golf, null), new(polo, null, OwnerId: newDave.Id)], default));
+        Assert.Equal((RestoreCarState.Here, "Anna"), (review[0].Restore!.State, review[0].Restore!.OwnerName));
+        Assert.Equal((RestoreCarState.OwnerGone, "Dave New"), (review[1].Restore!.State, review[1].Restore!.OwnerName));
+        var run = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().StartAsync(status.Token, [new(golf, null), new(polo, null, OwnerId: newDave.Id)], default));
+        Assert.Equal(ImportRunKind.Restore, run.Kind);
+        Assert.Equal(ImportRunState.Done, (await FinishedAsync(here, run.Id)).State);
+
+        await using (var db = await here.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync())
+        {
+            Assert.True(await db.Refuelings.AnyAsync(r => r.Id == gone && r.CreatedById == anna.Id && r.LastChange == Tankstat.Domain.Sync.EntityChange.RestoredFromBackup));
+            Assert.Equal(2, await db.Refuelings.CountAsync(r => r.VehicleId == golf));
+            Assert.Equal(anna.Id, (await db.Vehicles.SingleAsync(v => v.Id == golf)).OwnerId);
+            Assert.Equal(newDave.Id, (await db.Vehicles.SingleAsync(v => v.Id == polo)).OwnerId);
+            Assert.Equal(dave.Id, (await db.Refuelings.SingleAsync(r => r.VehicleId == polo)).CreatedById); // who logged it, though gone
+            Assert.Equal(newDave.Id, (await db.Refuelings.SingleAsync(r => r.VehicleId == polo)).OwnerId);
+        }
+        // Who is told, after the commit: each car's owner and sharers, the other administrators, the one who ran it.
+        Assert.Contains(await ToldAsync(here, anna.Id), n => n.Kind == NotificationKind.CarRestored && n.Args["how"] == "back" && n.Args["count"] == "1");
+        Assert.Contains(await ToldAsync(here, bob.Id), n => n.Kind == NotificationKind.CarRestored && n.Args["vehicleName"] == "Golf");
+        Assert.Contains(await ToldAsync(here, newDave.Id), n => n.Kind == NotificationKind.CarRestored && n.Args["how"] == "again");
+        Assert.Contains(await ToldAsync(here, eve.Id), n => n.Kind == NotificationKind.CarsRestored && n.Args["count"] == "2");
+        var mine = await ToldAsync(here, ada.Id);
+        Assert.Contains(mine, n => n.Kind == NotificationKind.RestoreFinished);
+        Assert.DoesNotContain(mine, n => n.Kind is NotificationKind.CarRestored or NotificationKind.CarsRestored);
+        // The Import page never shows a restore.
+        Assert.Null(await AsAsync(here, ada, sp => sp.GetRequiredService<BackupImportRunService>().MineAsync(default)));
     }
 }

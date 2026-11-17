@@ -55,6 +55,21 @@ public enum NotificationKind
 
     /// <summary>To every administrator: a user imported cars from a backup.</summary>
     CarsImported,
+
+    /// <summary>To the administrator who started it: their partial restore finished (#340); the report is kept for a week.</summary>
+    RestoreFinished,
+
+    /// <summary>To the administrator who started it: their restore brought nothing back.</summary>
+    RestoreNotFinished,
+
+    /// <summary>To the administrator who started it: another administrator cancelled their restore.</summary>
+    RestoreCancelled,
+
+    /// <summary>To the other administrators: an administrator restored cars from a backup.</summary>
+    CarsRestored,
+
+    /// <summary>To a restored car's owner and everyone it is shared with: what came back (#340, one per car).</summary>
+    CarRestored,
 }
 
 /// <summary>
@@ -92,7 +107,9 @@ public static class NotificationKinds
         NotificationKind.MoreActivity => NotificationTopic.Digest,
         NotificationKind.BackupFailed => NotificationTopic.Backup,
         NotificationKind.TyreSwapDue => NotificationTopic.Tyres,
-        NotificationKind.ImportFinished or NotificationKind.ImportNotFinished or NotificationKind.ImportCancelled or NotificationKind.CarsImported => NotificationTopic.Imports,
+        NotificationKind.ImportFinished or NotificationKind.ImportNotFinished or NotificationKind.ImportCancelled or NotificationKind.CarsImported
+            or NotificationKind.RestoreFinished or NotificationKind.RestoreNotFinished or NotificationKind.RestoreCancelled or NotificationKind.CarsRestored
+            or NotificationKind.CarRestored => NotificationTopic.Imports,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 

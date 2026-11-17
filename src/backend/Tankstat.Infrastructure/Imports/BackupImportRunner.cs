@@ -168,8 +168,9 @@ internal sealed class BackupImportRunner(
             var file = (held is null ? null : sessions.Cars(held.UserId, held.Token)) ?? throw new InvalidOperationException("The run's file is gone.");
 
             ImportRunReport? report = null;
-            var targets = plan.Cars.Where(c => c.TargetVehicleId is not null).Select(c => c.TargetVehicleId!.Value).ToList();
-            await scope.RunAsync(new RunStart(starter, targets, runId), async run =>
+            // A restore holds every chosen car by its own id (#340): a gone one comes back under it.
+            var targets = plan.Restore ? [.. plan.Cars.Select(c => c.CarId)] : plan.Cars.Where(c => c.TargetVehicleId is not null).Select(c => c.TargetVehicleId!.Value).ToList();
+            await scope.RunAsync(new RunStart(starter, targets, runId, plan.Restore), async run =>
             {
                 // A cancel that came after the row said Running but before the run's mark existed found nothing to mark: kept here, and
                 // honoured before anything is saved.
@@ -182,8 +183,8 @@ internal sealed class BackupImportRunner(
             // Committed. The file is done with; then who is told, and the log line (ids and counts only).
             Dropped(runId);
             sessions.End(held!.UserId, held.Token);
-            logger.LogInformation("User {UserId} imported {Cars} cars from a backup in run {RunId}: {Refuelings} refuellings, {Expenses} expenses, {Schedules} recurring expenses; {Refused} entries could not be saved",
-                row.StartedById, report!.Imported, runId, report.Cars.Sum(c => c.Refuelings), report.Cars.Sum(c => c.Expenses), report.Cars.Sum(c => c.Schedules), report.Refused);
+            logger.LogInformation("User {UserId} {Did} {Cars} cars from a backup in run {RunId}: {Refuelings} refuellings, {Expenses} expenses, {Schedules} recurring expenses; {Refused} entries could not be saved",
+                row.StartedById, plan.Restore ? "restored" : "imported", report!.Imported, runId, report.Cars.Sum(c => c.Refuelings), report.Cars.Sum(c => c.Expenses), report.Cars.Sum(c => c.Schedules), report.Refused);
             try
             {
                 await sp.GetRequiredService<ImportRunNotifier>().FinishedAsync(row, report, CancellationToken.None);
