@@ -18,6 +18,7 @@ import { Field } from '../../forms/Field.tsx'
 import { FieldInput } from '../../forms/FieldInput.tsx'
 import { BackupImportEntriesDocument, BackupImportReviewDocument, type BackupImportEntriesQuery } from '../../gql/generated.ts'
 import { useFormat } from '../../i18n/format.ts'
+import { validLocale } from '../../i18n/locale.ts'
 import { ErrorMessage } from '../../messages.tsx'
 import { MEDIA } from '../../theme/media.ts'
 import { KINDS, useHeldBack, useKindLine, type Kind, type KindChoice, type KindReview, type Kinds } from './backupKinds.ts'
@@ -406,7 +407,7 @@ export function ReplaceConfirmations({ cars, onCancel, onConfirmed }: { cars: Re
   if (!car) return null
   const typed = names[car.carId] ?? ''
   const last = index === cars.length - 1
-  const list = new Intl.ListFormat(i18n.resolvedLanguage ?? 'en', { type: 'conjunction' }).format(car.deleted.map((d) => t(`import.kinds.${d.kind}.listItem`, { count: d.count })))
+  const list = new Intl.ListFormat(validLocale(i18n.language, i18n.resolvedLanguage), { type: 'conjunction' }).format(car.deleted.map((d) => t(`import.kinds.${d.kind}.listItem`, { count: d.count })))
   const go = () => {
     if (!sameName(typed, car.target)) return
     if (last) onConfirmed(names)

@@ -62,7 +62,7 @@ public sealed class BackupImportRules(IImportTargetReader targets, IVehicleRepos
     public const string TooManyChoicesKey = "import.tooManyChoices";
 
     /// <summary>The ids a run's choices may name as exceptions, all cars together: they are kept in the run's plan.</summary>
-    public const int MaxExceptions = 20_000;
+    public const int MaxExceptions = 10_000;
 
     public const string Refueling = "refueling", Expense = "expense", Recurring = "recurring";
 
@@ -144,15 +144,32 @@ public sealed class BackupImportRules(IImportTargetReader targets, IVehicleRepos
         var lost = 0;
         if (expenses.Purge || schedules.Purge)
         {
-            // Every link of the car goes with a replaced kind (a schedule's links go with it, an expense's with it); less what comes back.
+            // Every link of the car goes with a replaced kind (a schedule's links go with it, an expense's with it), less the ones the
+            // run adds back: a link of the backup's between the same two entries (matched as the comparison matches them), both of
+            // which come in.
             var (comingExpenses, comingSchedules) = (Coming(expenses), Coming(schedules));
-            var back = links ? compared.Expenses.Backup.Where(e => comingExpenses.Contains(e.Id)).Sum(e => e.CompletedScheduleIds.Count(comingSchedules.Contains)) : 0;
-            lost = Math.Max(0, compared.TargetLinks.Count - back);
+            var (expenseMatch, scheduleMatch) = (Matches(compared.Expenses), Matches(compared.Schedules));
+            var back = !links ? [] : compared.Expenses.Backup
+                .Where(e => comingExpenses.Contains(e.Id) && expenseMatch.ContainsKey(e.Id))
+                .SelectMany(e => e.CompletedScheduleIds.Where(s => comingSchedules.Contains(s) && scheduleMatch.ContainsKey(s)).Select(s => (expenseMatch[e.Id], scheduleMatch[s])))
+                .ToHashSet();
+            lost = compared.TargetLinks.Count(l => !back.Contains(l));
         }
         return new ImportCarWork(refuelings, expenses, schedules, links, lost);
     }
 
     private static HashSet<Guid> Coming<T>(ImportKindWork<T> kind) where T : IBackupEntry => [.. kind.Adds.Select(e => e.Id), .. kind.Counterparts.Keys];
+
+    /// <summary>The backup's entries the comparison matched with one of the target's (the same, or differing), by the backup's id.</summary>
+    private static Dictionary<Guid, Guid> Matches<T>(ImportKindComparison<T> kind) where T : IBackupEntry =>
+        kind.Differ.Concat(kind.Same).ToDictionary(e => e.Entry.Id, e => e.TargetId!.Value);
+
+    /// <summary>
+    /// What of a kind is left as it is by its choice, as the review and the report say it: the entries that are the same, the ones that
+    /// differ and are not taken, the ones that match the target's trash. A kind left out or replaced leaves none of these.
+    /// </summary>
+    public static (int Same, int Differ, int InTrash) Left<T>(ImportKindComparison<T> kind, ImportKindWork<T> work) where T : IBackupEntry =>
+        work.Mode is ImportKindMode.OnlyMissing or ImportKindMode.Choose ? (kind.Same.Count, kind.Differ.Count - work.Takes.Count, kind.InTrash) : (0, 0, 0);
 
     private static ImportKindWork<T> Kind<T>(ImportKindComparison<T> compared, ImportKindChoice? choice, bool newCar) where T : IBackupEntry
     {
@@ -383,17 +400,23 @@ public sealed class BackupImportWork(
                     if (expenseIds.TryGetValue(expense.Id, out var expenseId) && scheduleIds.TryGetValue(schedule, out var scheduleId)
                         && await recurring.LinkAsync(expenseId, scheduleId, ct)) links++;
 
+        var left = Leftovers(compared, work);
         return new ImportCarReport(
             chosen.CarId, car.Car.Name, vehicle.Id, chosen.TargetVehicleId is null ? null : vehicle.Name, chosen.TargetVehicleId is null, LeftOut: false,
             fuelAdded, expensesAdded, schedulesAdded,
-            compared.Refuelings.Same.Count + compared.Expenses.Same.Count + compared.Schedules.Same.Count,
-            compared.Refuelings.Differ.Count + compared.Expenses.Differ.Count + compared.Schedules.Differ.Count,
-            compared.Refuelings.InTrash + compared.Expenses.InTrash, refused, refusedMore,
+            left.Same, left.Differ, left.InTrash, refused, refusedMore,
             [
                 new ImportKindReport(BackupImportRules.Refueling, work.Refuelings.Mode, fuelAdded, fuelChanged, deleted.Refuelings),
                 new ImportKindReport(BackupImportRules.Expense, work.Expenses.Mode, expensesAdded, expensesChanged, deleted.Expenses),
                 new ImportKindReport(BackupImportRules.Recurring, work.Schedules.Mode, schedulesAdded, schedulesChanged, deleted.Schedules),
             ], work.Replacing, links);
+    }
+
+    /// <summary>What the car's choices leave as it is, all kinds together.</summary>
+    internal static (int Same, int Differ, int InTrash) Leftovers(ImportCarComparison compared, ImportCarWork work)
+    {
+        var (f, e, s) = (BackupImportRules.Left(compared.Refuelings, work.Refuelings), BackupImportRules.Left(compared.Expenses, work.Expenses), BackupImportRules.Left(compared.Schedules, work.Schedules));
+        return (f.Same + e.Same + s.Same, f.Differ + e.Differ + s.Differ, f.InTrash + e.InTrash);
     }
 
     /// <summary>A purge's refusal, with the kind it is about (the report's reason names it).</summary>

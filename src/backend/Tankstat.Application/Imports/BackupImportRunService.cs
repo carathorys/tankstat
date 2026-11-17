@@ -56,13 +56,13 @@ public sealed class BackupImportRunService(
             // A Replace all asks for the target's name, typed (#338): checked when the start is accepted, never again when a waiting
             // run's turn comes, so a car renamed meanwhile does not end the run.
             if (starting && target is not null && (choice.Kinds ?? ImportCarKinds.Missing).All.Any(k => k.Mode == ImportKindMode.ReplaceAll)
-                && !string.Equals(choice.ConfirmedName?.Trim(), target.Name.Trim(), StringComparison.InvariantCultureIgnoreCase))
+                && !string.Equals(choice.ConfirmedName?.Trim(), target.Name.Trim(), StringComparison.OrdinalIgnoreCase))
                 throw new DomainException(BackupImportRules.ReplaceNotConfirmedKey, "Type the car's name to confirm what is deleted.", new { Car = target.Name });
             var work = BackupImportRules.Work(compared, choice.Kinds);
+            var (fuel, expenses, schedules) = (BackupImportRules.Left(compared.Refuelings, work.Refuelings), BackupImportRules.Left(compared.Expenses, work.Expenses), BackupImportRules.Left(compared.Schedules, work.Schedules));
             reviews.Add(new ImportCarReview(car.Car.Id, car.Car.Name, car.Car.OwnerName, car.Car.OwnerId == me.Id, target?.Id, target?.Name,
                 work.Refuelings.Adds.Count, work.Expenses.Adds.Count, work.Schedules.Adds.Count,
-                compared.Refuelings.Same.Count, compared.Expenses.Same.Count, compared.Schedules.Same.Count,
-                compared.Refuelings.Differ.Count + compared.Expenses.Differ.Count + compared.Schedules.Differ.Count, compared.Refuelings.InTrash + compared.Expenses.InTrash,
+                fuel.Same, expenses.Same, schedules.Same, fuel.Differ + expenses.Differ + schedules.Differ, fuel.InTrash + expenses.InTrash,
                 [
                     KindReview(BackupImportRules.Refueling, compared.Refuelings, work.Refuelings),
                     KindReview(BackupImportRules.Expense, compared.Expenses, work.Expenses),

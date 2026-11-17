@@ -286,4 +286,36 @@ public sealed partial class BackupImportRunTests
         await using var db = await here.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
         Assert.Equal([2_200L, 2_500L], (await db.Expenses.Include(e => e.OdometerReading).Where(e => e.VehicleId == own).OrderBy(e => e.Date).ToListAsync()).Select(e => e.Odometer!.Value));
     }
+
+    [Theory, MemberData(nameof(Providers))]
+    public async Task ALinkLost_IsOneOfTheCarsThatDoesNotComeBack_TheSameVisitComesBack_AndAReplacedKindLeavesNothingAsItWas(string provider)
+    {
+        if (Instance(provider, "here") is not { } here) return;
+        var golf = await GolfAsync();
+        var bob = await PersonAsync(here, "Bob");
+        async Task<Guid> CarWithVisitAsync(string name, string schedule, string visit, decimal amount) => await AsAsync(here, bob, async sp =>
+        {
+            var own = (await sp.GetRequiredService<VehicleService>().AddAsync(name, null, FuelType.Petrol, MeasurementUnits.Metric, default)).Id;
+            // The backup's first fill-up, with a note of its own: it differs.
+            await sp.GetRequiredService<RefuelingService>().LogAsync(own, new(Day, 40, 60, "EUR", 1_000, true, "mine"), default);
+            var recurring = sp.GetRequiredService<RecurringExpenseService>();
+            var id = (await recurring.AddAsync(own, new(schedule, null, null, RecurrenceKind.Time, 12, null, Day.AddYears(-1), null, null, null), default)).Item.Id;
+            await recurring.MarkDoneAsync([id], new MarkDoneInput(Day.AddDays(5), null, amount, "EUR", visit), default);
+            return own;
+        });
+        var other = await CarWithVisitAsync("Other Golf", "Old check", "Visit", 25); // a visit the backup does not have
+        var same = await CarWithVisitAsync("Same Golf", "Oil change", "Service", 80); // the backup's own visit
+        var token = await OpenAsync(here, bob, golf.Backup);
+        var kinds = new ImportCarKinds(Refuelings: new(ImportKindMode.ReplaceAll), Schedules: new(ImportKindMode.ReplaceAll));
+        async Task<ImportCarReview> ReviewAsync(Guid target) =>
+            Assert.Single(await AsAsync(here, bob, sp => sp.GetRequiredService<BackupImportRunService>().ReviewAsync(token, [new(golf.Id, target, Kinds: kinds)], default)));
+
+        var lost = await ReviewAsync(other);
+        Assert.Equal((true, 1), (lost.Links, lost.LinksLost)); // the Old check's link goes with it; the backup's Service brings back another one
+        var kept = await ReviewAsync(same);
+        Assert.Equal((true, 0), (kept.Links, kept.LinksLost)); // the Service and the Oil change are the same two: their link comes back
+        // A replaced kind leaves nothing "as it is": the differing fill-up is not said to stay.
+        Assert.Equal((0, 0, 0), (kept.ExistingRefuelings, kept.Differing, kept.InTrash));
+        Assert.Equal(1, kept.ExistingExpenses); // expenses, only the missing: the Service is there already
+    }
 }
