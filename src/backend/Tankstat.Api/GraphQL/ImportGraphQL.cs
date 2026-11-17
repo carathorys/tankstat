@@ -137,10 +137,6 @@ public sealed record ImportKindChoiceInput(ImportKindMode Mode, bool? AddNew, IR
     public ImportKindChoice ToChoice() => new(Mode, AddNew ?? true, NewExceptions, TakeBackups ?? false, DifferExceptions);
 }
 
-/// <param name="TargetVehicleId">One of the importer's own cars to add the car to; omit to import it as a new car.</param>
-/// <param name="Policy">What happens when one of its entries cannot be saved; omit for the rest to be imported. A car with a <c>REPLACE_ALL</c> is always all or nothing.</param>
-/// <param name="Refuelings">What comes of its refuellings; omit for only the missing. A new car's kind comes whole unless it is <c>DONT_IMPORT</c>.</param>
-/// <param name="ConfirmedName">The target car's name as the person typed it: a start with a <c>REPLACE_ALL</c> is refused without it.</param>
 /// <summary>
 /// The tyres chosen of a car (#339): the backup's sets by id, or (<c>sets</c> left out) every new set but those in <c>except</c>; one here or
 /// refused is left out. <c>noSetLines</c> (true when omitted): the lines of no set come.
@@ -159,6 +155,10 @@ public sealed record ImportMediaChoiceInput(bool Photos, bool? Picture, bool Cha
     public ImportMediaChoice ToChoice() => new(Photos, Picture, Charts, Dashboard, OwnDashboard);
 }
 
+/// <param name="TargetVehicleId">One of the importer's own cars to add the car to; omit to import it as a new car.</param>
+/// <param name="Policy">What happens when one of its entries cannot be saved; omit for the rest to be imported. A car with a <c>REPLACE_ALL</c> is always all or nothing.</param>
+/// <param name="Refuelings">What comes of its refuellings; omit for only the missing. A new car's kind comes whole unless it is <c>DONT_IMPORT</c>.</param>
+/// <param name="ConfirmedName">The target car's name as the person typed it: a start with a <c>REPLACE_ALL</c> is refused without it.</param>
 /// <param name="Tyres">The tyres to import (#339); omit for none.</param>
 /// <param name="Media">The photos, the picture, the charts and the dashboards to import (#339); omit for none.</param>
 public sealed record ImportCarChoiceInput(
