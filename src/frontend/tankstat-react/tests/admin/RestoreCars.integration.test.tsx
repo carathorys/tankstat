@@ -49,7 +49,7 @@ const run = (state: string, over: Record<string, unknown> = {}) => ({
   cars: [{ __typename: 'ImportRunCarInfo', carId: 'polo', name: 'Polo', targetName: null }], report: null, ...over,
 })
 
-function setup(opts: { opened?: unknown; keyed?: (input: Record<string, unknown>) => unknown } = {}) {
+function setup(opts: { opened?: unknown; keyed?: (input: Record<string, unknown>) => unknown; runs?: unknown[]; total?: number; route?: string } = {}) {
   stubViewport('desktop')
   const calls = { cars: [] as Record<string, unknown>[], reviews: [] as unknown[], starts: [] as unknown[], keys: [] as Record<string, unknown>[] }
   server.use(
@@ -65,7 +65,7 @@ function setup(opts: { opened?: unknown; keyed?: (input: Record<string, unknown>
       calls.cars.push(variables)
       const search = String(variables.search ?? '').toLowerCase()
       const cars = OFFERS.filter((o) => !search || o.car.name.toLowerCase().includes(search))
-      return HttpResponse.json({ data: { restoreCars: { __typename: 'RestoreCarPageInfo', total: cars.length, cars, owners: [{ __typename: 'RestoreOwnerInfo', id: 'anna', name: 'Anna' }, { __typename: 'RestoreOwnerInfo', id: 'dave', name: 'Dave' }] } } })
+      return HttpResponse.json({ data: { restoreCars: { __typename: 'RestoreCarPageInfo', total: opts.total ?? cars.length, cars, owners: [{ __typename: 'RestoreOwnerInfo', id: 'anna', name: 'Anna' }, { __typename: 'RestoreOwnerInfo', id: 'dave', name: 'Dave' }] } } })
     }),
     graphql.query('RestorePeople', () =>
       HttpResponse.json({
@@ -96,7 +96,7 @@ function setup(opts: { opened?: unknown; keyed?: (input: Record<string, unknown>
       return HttpResponse.json({ data: { startCarRestore: run('RUNNING') } })
     }),
     graphql.query('ImportRun', () =>
-      HttpResponse.json({
+      opts.runs ? HttpResponse.json({ data: { importRun: opts.runs.length > 1 ? opts.runs.shift() : opts.runs[0] } }) : HttpResponse.json({
         data: {
           importRun: run('DONE', {
             report: [
@@ -111,7 +111,7 @@ function setup(opts: { opened?: unknown; keyed?: (input: Record<string, unknown>
       }),
     ),
   )
-  const view = renderWithApollo(<RestoreCarsPage pollMs={5} openingPollMs={5} />, '/admin/backups/restore?file=tankstat-backup-20261103T081500Z.zip')
+  const view = renderWithApollo(<RestoreCarsPage pollMs={5} openingPollMs={5} />, opts.route ?? '/admin/backups/restore?file=tankstat-backup-20261103T081500Z.zip')
   return { calls, view, ui: userEvent.setup() }
 }
 
@@ -224,4 +224,47 @@ it("Choose what to restore, on a car still here, compares it by the restore's ow
 
   expect((await within(golf).findAllByText("Don't restore")).length).toBeGreaterThan(0)
   expect(calls.reviews.some((cars) => (cars as { carId: string }[]).some((c) => c.carId === 'golf'))).toBe(true)
+})
+
+it('the search, the owner filter and the pages ask the server, a page at a time', async () => {
+  const { ui, calls } = setup({ total: 25 })
+  await screen.findByRole('region', { name: "Golf · ABC-123 · Anna's" })
+  expect(screen.getByText('Page 1 of 3')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Previous page' })).toBeDisabled()
+
+  await ui.click(screen.getByRole('button', { name: 'Next page' }))
+  await waitFor(() => expect(calls.cars.at(-1)).toMatchObject({ skip: 10, take: 10 }))
+  expect(await screen.findByText('Page 2 of 3')).toBeInTheDocument()
+
+  await ui.click(screen.getByRole('combobox', { name: 'Owner' }))
+  await ui.click(await screen.findByRole('option', { name: 'Dave' }))
+  await waitFor(() => expect(calls.cars.at(-1)).toMatchObject({ ownerId: 'dave', skip: 0 }))
+})
+
+it('a restore point the server refuses says why, and nothing else is offered', async () => {
+  setup({ opened: file('ENDED', { refusal: { __typename: 'BackupImportRefusalInfo', key: 'backup.corrupt', args: {} } }) })
+  expect(await screen.findByRole('alert')).toHaveTextContent(/damaged|corrupt/i)
+  expect(screen.queryByRole('button', { name: 'Review' })).not.toBeInTheDocument()
+})
+
+it("a run opened from its notification shows its report; another restore goes back to the Backups page's files", async () => {
+  const { ui } = setup({ route: '/admin/backups/restore?run=run1' })
+  expect(await screen.findByText("It is Dave New's again.")).toBeInTheDocument()
+  expect(screen.getByRole('heading', { level: 1, name: /^Restore cars from the backup of .*2026/ })).toBeInTheDocument()
+
+  await ui.click(screen.getByRole('button', { name: 'Restore other cars' }))
+  expect(await screen.findByText('Choose a backup on the Backups page first.')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Go to Backups' })).toHaveAttribute('href', '/admin/backups')
+})
+
+it('a restore cancelled while it goes leaves the choices: back to the review, the same cars', async () => {
+  const { ui } = setup({ runs: [run('NOT_FINISHED', { failure: 'CANCELLED' })] })
+  const polo = await screen.findByRole('region', { name: "Polo · Dave's" })
+  await ui.click(within(polo).getByRole('checkbox', { name: "Polo · Dave's" }))
+  await ui.click(screen.getByRole('button', { name: 'Review' }))
+  await ui.click(await screen.findByRole('button', { name: 'Restore 1 car' }))
+
+  expect(await screen.findByText(/The restore was cancelled\. Nothing was restored: the cars are as they were\./)).toBeInTheDocument()
+  await ui.click(screen.getByRole('button', { name: 'Back to the review' }))
+  expect(await screen.findByRole('region', { name: 'Polo' })).toBeInTheDocument()
 })
