@@ -2,7 +2,7 @@
 
 For people who bring their logs from another app.
 
-The *Import* page walks through four steps: choose the file, choose the target (an existing vehicle you may add logs to, or a new one), review, done. Nothing is saved before you confirm.
+The *Import* tab of the *Import and export* page walks through four steps: choose the file, choose the target (an existing vehicle you may add logs to, or a new one), review, done. Nothing is saved before you confirm.
 
 - The file is uploaded raw with `POST /imports/{format}` (the answer is a token for the parsed file, kept in memory for 30 minutes); the preview (`importPreview`) and the confirmation (`confirmImport`) are GraphQL.
 - **Fuelio** (`fuelio`): the "sync" CSV export of one vehicle (unzip it first). Fuel logs, other costs (with their category names) and the vehicle's name, plate, units and fuel type are read; reminder templates that repeat (every so many months and/or kilometres) become recurring expenses, counting from where the reminder stands now (their amount is not kept; one-off reminders are skipped), a log Fuelio marks as following a missed fill-up keeps that mark, stations, GPS and weather are ignored, income rows are skipped, and a cost with odometer 0 gets no odometer. Fuelio files carry no currency, so you enter one (it defaults to `Defaults:Currency`). Dates keep only the day.
@@ -12,7 +12,7 @@ The *Import* page walks through four steps: choose the file, choose the target (
 
 ## Cars from a backup
 
-Choose *Tankstat backup or export* as the source on the Import page (with `Imports:BackupEnabled` turned off it is offered to administrators only, and with sign-in off to nobody).
+Choose *Tankstat backup or export* as the source on the Import tab (with `Imports:BackupEnabled` turned off it is offered to administrators only, and with sign-in off to nobody).
 
 1. **File.** Upload the backup (up to `Imports:MaxUploadMb`, 200 MB by default). An encrypted one asks for its passphrase: three tries, then the file is removed from the server; the passphrase is used for that try and kept nowhere. The file waits on the server for 30 minutes after its last use, one file per person, and for as long as an import of it waits or runs. A file is refused as not being a backup when one of its cars holds more than 50,000 refuellings, expenses or recurring expenses, or a text longer than the app itself accepts.
 2. **Cars.** The file's cars, each with whose it was and how much it holds. Tick the ones you want. A car comes **as a new car**, or is **added to one of your own cars** (the app suggests one when the name or the license plate matches). A car can only be added to a car in the same units; numbers are never converted. Cars that were in the backup's trash are left out.
@@ -38,3 +38,15 @@ What you import **becomes yours**. Sharing, who logged an entry and marks for re
 An import is **all or nothing**: when it is cancelled, takes longer than the server allows (`Runs:LimitMinutes`), or the server restarts while it runs, nothing of it is kept and your cars are as they were. While it runs, saving may have to wait for a moment, for you and for others. One import runs at a time on an instance: another waits in line and starts by itself (for up to 30 minutes). You can leave the page; a notification tells you when it is done and leads to the report, which is kept for 7 days. You, or an administrator, can cancel an import that waits or runs; administrators see them on the Overview and the Backups page, and are notified of what was imported.
 
 Importing from a backup does not work on **MySQL** yet.
+
+## Exporting your cars
+
+The *Export* tab of the *Import and export* page makes a file of **your own cars** that the Import tab reads back, here or on another Tankstat (cars shared with you are their owners' to export). With `Exports:Enabled` off only administrators have the tab, and the page is *Import* as before; with sign-in off every car is offered, and the instance has one export.
+
+- **What goes:** tick the cars; under each, *Choose what to export* has a box per kind, all ticked: refuellings, expenses, recurring expenses, tyres (the sets with their history), saved charts and dashboards (the shared ones and your own; never someone else's own), the photos of entries and the car's picture, each with how much it adds. What is in the trash is not exported, and neither is sharing or who else logged an entry. An entry whose kind is left out is not named by what goes (a tyre log line comes without its amount when the expenses stay behind).
+- **A passphrase** (optional, typed twice, at least `Backups:PassphraseMinLength` characters) encrypts the file with age, as an encrypted backup; you type it again when you import the file. Without one the file is a plain zip anyone can read. The passphrase is used to make the key and kept nowhere.
+- **Built in the background.** You can leave the page: a notification tells you when the file is ready (or could not be built), and administrators are told who exported how many cars. *Cancel the export* stops it; nothing of it is kept.
+- **One file per person**, kept for `Exports:KeepHours` (24 by default) and then deleted: *Download* it, or *Delete it* sooner. A new export replaces it, the earlier file going only once the new one is written (a failed or cancelled one leaves it). The page says when the file is larger than this server's `Imports:MaxUploadMb`, so you know it can only be imported where the limit is higher.
+- **From a car:** *Export this car* on an own car's *Details* tab opens the same choice for that car alone; the progress and the file are then on the Export tab.
+
+The file is shaped like a backup, marked as an export: a restore and the Backups page refuse it ("This file is an export of someone's cars, not a backup of the server"), only the Import tab takes it. It is downloaded from `GET /media/exports/{id}` (yours only).
