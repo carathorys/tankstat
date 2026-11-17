@@ -70,6 +70,69 @@ public sealed class BackupStoreTests : IDisposable
         writer.Write(manifest.ToJsonString());
     }
 
+    /// <summary>A copy of a backup whose manifest says it is an export (#341): what the export writer marks its files with.</summary>
+    private static void CopyAsExport(string backup, string copy)
+    {
+        File.Copy(backup, copy);
+        using var zip = ZipFile.Open(copy, ZipArchiveMode.Update);
+        var entry = zip.GetEntry(BackupManifest.FileName)!;
+        JsonObject manifest;
+        using (var reader = new StreamReader(entry.Open())) manifest = JsonNode.Parse(reader.ReadToEnd())!.AsObject();
+        manifest["writtenBy"] = BackupManifest.Export;
+        entry.Delete();
+        using var writer = new StreamWriter(zip.CreateEntry(BackupManifest.FileName).Open());
+        writer.Write(manifest.ToJsonString());
+    }
+
+    [Fact]
+    public async Task AnExport_IsNoRestorePoint_ItsUploadDownloadAndRestoreAreRefusedAsAnExport_AndOnlyTheReaderOfCarsTakesIt()
+    {
+        var backup = await BackupFileAsync();
+        var export = Path.Combine(_data, "export.zip");
+        CopyAsExport(backup, export);
+        var store = Store();
+
+        Assert.Equal(BackupFile.IsExportKey, Key(() => Upload(store, export, "mine.zip")));
+        Directory.CreateDirectory(Backups);
+        File.Copy(export, Path.Combine(Backups, "copied-by-hand.zip"));
+        Assert.Empty(store.List()); // not listed, so neither restored nor deleted from the page
+        Assert.Equal(BackupFile.IsExportKey, Key(() => Task.FromResult(store.ReadManifest("copied-by-hand.zip"))));
+        Assert.Equal(BackupFile.IsExportKey, Key(() => Task.FromResult(store.Find("copied-by-hand.zip"))));
+        Assert.Equal(BackupFile.IsExportKey, Key(() => Task.FromResult(store.PathOfBackup("copied-by-hand.zip")))); // Restore cars (#340) too
+        Assert.Equal("backup.notFound", Key(() => Task.FromResult(store.OpenRead("copied-by-hand.zip")))); // a download names only restore points
+        Assert.Equal(BackupManifest.Export, BackupFile.ReadManifest(export, exports: true).WrittenBy);
+        Assert.Equal(BackupManifest.Tankstat, BackupFile.ReadManifest(backup).WrittenBy); // a backup reads as before
+    }
+
+    /// <summary>
+    /// Every call that reads a manifest, with its decision about an export (#341): a new caller fails this until it says whether it takes
+    /// exports. Only the reader of cars does; every other refuses them (<c>backup.isExport</c>, by the default of <c>ReadManifest</c>).
+    /// </summary>
+    [Fact]
+    public void EveryCallerOfReadManifest_HasADecisionAboutExports()
+    {
+        var decided = new Dictionary<string, string>
+        {
+            ["Tankstat.Application/Backups/RestoreService.cs"] = "refuses",
+            ["Tankstat.Application/Backups/BackupCommandService.cs"] = "refuses",
+            ["Tankstat.Api/Backups/BackupCommands.cs"] = "refuses",
+            ["Tankstat.Infrastructure/Backups/BackupFileArchive.cs"] = "refuses",
+            ["Tankstat.Infrastructure/Backups/FileBackupStore.cs"] = "refuses",
+            ["Tankstat.Infrastructure/Backups/RestoreStep.cs"] = "refuses",
+            ["Tankstat.Infrastructure/Backups/Reader/BackupImportSessions.cs"] = "takes",
+        };
+        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../../src/backend"));
+        var callers = Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
+            .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}") && !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
+            .Where(f => File.ReadAllText(f).Contains("ReadManifest(", StringComparison.Ordinal))
+            .Select(f => Path.GetRelativePath(root, f).Replace(Path.DirectorySeparatorChar, '/'))
+            .Where(f => f is not "Tankstat.Infrastructure/Backups/BackupFile.cs" and not "Tankstat.Application/Backups/IBackupStore.cs" and not "Tankstat.Application/Backups/BackupCommandPorts.cs")
+            .Order().ToList();
+        Assert.Equal(decided.Keys.Order(), callers);
+        foreach (var (file, decision) in decided)
+            Assert.Equal(decision == "takes", File.ReadAllText(Path.Combine(root, file)).Contains("exports: true", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task TheRestorePoints_AreEveryReadableBackup_NewestFirst_AndNothingElseInTheFolder()
     {

@@ -540,6 +540,6 @@ public sealed class BackupImportSessionsTests : IAsyncDisposable
         var opened = await SettledAsync(database, Alice, uploaded.Token);
 
         Assert.True(opened.Summary!.IsExport);
-        Assert.Equal("backup.corrupt", Assert.Throws<DomainException>(() => BackupFile.ReadManifest(export)).Key);
+        Assert.Equal(BackupFile.IsExportKey, Assert.Throws<DomainException>(() => BackupFile.ReadManifest(export)).Key); // said as an export (#341)
     }
 }

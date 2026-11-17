@@ -22,6 +22,9 @@ public static class BackupFile
     /// Whether a file written as an export (<see cref="BackupManifest.Export"/>, #341) counts: only for the reader of cars (#336). An
     /// export is never a restore point: everything else refuses it.
     /// </param>
+    /// <summary>An export given where a backup is wanted (the folder's upload, a restore, the command line).</summary>
+    public const string IsExportKey = "backup.isExport";
+
     public static BackupManifest ReadManifest(string path, bool exports = false)
     {
         BackupManifest manifest;
@@ -41,6 +44,9 @@ public static class BackupFile
         {
             throw NotABackup();
         }
+        // An export of someone's cars (#341) is never a restore point: said as such, so the person is sent to the Import and export page.
+        if (manifest.WrittenBy == BackupManifest.Export && !exports)
+            throw new DomainException(IsExportKey, "This file is an export of someone's cars, not a backup of the server.");
         if (manifest.WrittenBy != BackupManifest.Tankstat && !(exports && manifest.WrittenBy == BackupManifest.Export)) throw NotABackup();
         if (manifest.Format > BackupManifest.CurrentFormat)
             throw new DomainException("backup.newerFormat", "The backup was written by a newer release.", new { manifest.Format, manifest.AppVersion });
