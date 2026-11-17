@@ -203,14 +203,23 @@ done
 # A Corolla with its tyres (#339): a winter set on the car since November 2025, tracked tyre by tyre (W1 to W4), and a puncture of W1
 # with an amount. The ids are made here, so the later calls can name them.
 corolla="$(gql "$source_url" '{"query":"mutation { addVehicle(input: { name: \"Corolla\", fuelType: PETROL }) { id } }"}' | car_id)"
-gql "$source_url" "{\"query\":\"mutation { logRefueling(input: { vehicleId: \\\"${corolla}\\\", date: \\\"2025-10-01\\\", volume: 40, totalCost: 60, currency: \\\"EUR\\\", odometer: 80000, isFullTank: true }) { id } }\"}" >/dev/null
+corolla_fill="$(gql "$source_url" "{\"query\":\"mutation { logRefueling(input: { vehicleId: \\\"${corolla}\\\", date: \\\"2025-10-01\\\", volume: 40, totalCost: 60, currency: \\\"EUR\\\", odometer: 80000, isFullTank: true }) { id } }\"}" | car_id)"
 winter="$(cat /proc/sys/kernel/random/uuid)" w1="$(cat /proc/sys/kernel/random/uuid)"
 gql "$source_url" "{\"query\":\"mutation { addTyreSet(input: { id: \\\"${winter}\\\", vehicleId: \\\"${corolla}\\\", name: \\\"Nordic winter\\\", season: WINTER, since: \\\"2024-10-01\\\", fitted: true, day: \\\"2025-11-01\\\" }) { vehicleId } }\"}" >/dev/null
 gql "$source_url" "{\"query\":\"mutation { breakUpTyreSet(input: { setId: \\\"${winter}\\\", day: \\\"2025-11-01\\\", tyres: [{ id: \\\"${w1}\\\", label: \\\"W1\\\", corner: FRONT_LEFT }, { label: \\\"W2\\\", corner: FRONT_RIGHT }, { label: \\\"W3\\\", corner: REAR_LEFT }, { label: \\\"W4\\\", corner: REAR_RIGHT }] }) { vehicleId } }\"}" >/dev/null
 gql "$source_url" "{\"query\":\"mutation { addTyreEntry(input: { vehicleId: \\\"${corolla}\\\", kind: PUNCTURE_REPAIRED, day: \\\"2025-12-02\\\", setId: \\\"${winter}\\\", note: \\\"A nail\\\", tyres: [{ tyreId: \\\"${w1}\\\" }], fee: { amount: 25, currency: \\\"EUR\\\", category: \\\"Tyres\\\", title: \\\"Puncture W1\\\" } }) { vehicleId } }\"}" >/dev/null
+# The Corolla's media (#339): a photo of its fill-up (a PNG's signature is all the app checks), a shared chart, and the vehicle's dashboard
+# showing it.
+printf '\x89PNG\r\n\x1a\n\x00\x00\x00\x0dcorolla' > "${files}/corolla.png"
+if ! curl -sf -X PUT -H 'Content-Type: image/png' -H 'X-Requested-With: XMLHttpRequest' --data-binary "@${files}/corolla.png" "$source_url/media/refuelings/${corolla_fill}/photos" >/dev/null; then
+  echo "The import fixture's photo could not be added." >&2
+  exit 1
+fi
+chart="$(gql "$source_url" "{\"query\":\"mutation { saveVehicleChart(input: { vehicleId: \\\"${corolla}\\\", title: \\\"Corolla spend\\\", shared: true, config: { metric: TOTAL_SPEND, grouping: MONTH, kind: BAR, range: ALL, stacked: false } }) { id } }\"}" | car_id)"
+gql "$source_url" "{\"query\":\"mutation { saveDashboardLayout(input: { vehicleId: \\\"${corolla}\\\", personal: false, layoutVersion: 3, hidden: [], tiles: [{ id: \\\"chart:${chart}\\\", x: 0, y: 0, w: 2, h: 2 }] }) }\"}" >/dev/null
 kill "$source_pid" && wait "$source_pid" 2>/dev/null || true
 mkdir -p "$fixtures"
-if ! (import_env source; cd out; dotnet Tankstat.Api.dll backup --output "$fixtures/tankstat-backup.zip") > "${files}/import-backup.log" 2>&1; then
+if ! (import_env source; cd out; dotnet Tankstat.Api.dll backup --photos --output "$fixtures/tankstat-backup.zip") > "${files}/import-backup.log" 2>&1; then
   echo "The import fixture's backup could not be written:" >&2
   cat "${files}/import-backup.log" >&2
   exit 1

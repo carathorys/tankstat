@@ -175,7 +175,7 @@ test.describe('from a Tankstat backup', () => {
   })
 
   // Tyres (#339): a car's sets come with their history, its single tyres and the expenses their lines hold.
-  test('imports a car with its tyre set, tracked tyre by tyre, and the Tyres tab shows them', async ({ page }) => {
+  test('imports a car with its tyre set, its photo, chart and dashboard, and the car shows them', async ({ page }) => {
     const server = importServer()
     await openTheBackup(page, server)
     const corolla = page.getByRole('region', { name: 'Corolla', exact: true })
@@ -185,6 +185,10 @@ test.describe('from a Tankstat backup', () => {
     const sets = corolla.getByRole('group', { name: 'Tyre sets of Corolla' })
     await expect(sets.getByRole('checkbox', { name: 'Nordic winter' })).toBeChecked()
     await expect(sets.getByText('Winter · 1 times on the car · 2 lines · 4 single tyres')).toBeVisible()
+    // Its media (#339): the photo of its fill-up, its shared chart and its dashboard, ticked for a new car.
+    await expect(corolla.getByRole('checkbox', { name: 'Photos of entries' })).toBeChecked()
+    await expect(corolla.getByRole('checkbox', { name: 'Charts' })).toBeChecked()
+    await expect(corolla.getByRole('checkbox', { name: 'The dashboard' })).toBeChecked()
     await expectSoundLayout(page)
     await page.getByRole('button', { name: 'Next' }).click()
 
@@ -195,8 +199,13 @@ test.describe('from a Tankstat backup', () => {
 
     await expect(page.getByRole('status').filter({ hasText: 'Import finished: 1 car.' })).toBeVisible({ timeout: 60_000 })
     await expect(page.getByText('Imported 1 tyre set (Nordic winter) with 2 lines and 4 single tyres.')).toBeVisible()
+    await expect(page.getByText('Imported 1 photo.')).toBeVisible()
+    await expect(page.getByText('Imported 1 chart.')).toBeVisible()
+    await expect(page.getByText('Imported the dashboard.')).toBeVisible()
     await page.getByRole('link', { name: 'Open the vehicle: Corolla' }).click()
     await expect(page.getByRole('heading', { level: 1, name: 'Corolla' })).toBeVisible()
+    // The dashboard shows the imported chart.
+    await expect(page.getByRole('heading', { name: 'Corolla spend' }).first()).toBeVisible()
     await page.getByRole('tab', { name: 'Tyres' }).click()
     await expect(page.getByRole('cell', { name: 'Nordic winter' }).first()).toBeVisible()
     // The puncture of W1 with its note and amount, on the tyre log.
