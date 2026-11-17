@@ -51,7 +51,7 @@ test.describe('from a Tankstat backup', () => {
     await page.getByRole('button', { name: 'Choose file' }).click()
     await (await chooser).setFiles(server.backup)
     await page.getByRole('button', { name: 'Read the file' }).click()
-    await expect(page.getByRole('status').filter({ hasText: /written by Tankstat .*: 2 cars\./ })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('status').filter({ hasText: /written by Tankstat .*: 3 cars\./ })).toBeVisible({ timeout: 30_000 })
     await expectSoundLayout(page)
     await page.getByRole('button', { name: 'Next' }).click()
     await expect(page.getByText(/Pick the ones to import; what you import becomes yours\./)).toBeVisible()
@@ -116,5 +116,61 @@ test.describe('from a Tankstat backup', () => {
     await expect(page.getByRole('button', { name: 'Back to the review' })).toBeVisible()
     await expectSoundLayout(page)
     expect(await cars(page, server.url)).toEqual(before)
+  })
+
+  // The details of a merge (#338): into an own car, refuellings replaced behind the car's name, expenses chosen one by one.
+  test('replaces one kind of an own car and chooses the other entry by entry, then the car holds exactly that', async ({ page }) => {
+    const server = importServer()
+    const own = (await api<{ addVehicle: { id: string } }>(page, server.url, 'mutation { addVehicle(input: { name: "My Polo", fuelType: PETROL }) { id } }')).addVehicle.id
+    await api(page, server.url, 'mutation($i: LogRefuelingInput!) { logRefueling(input: $i) { id } }', {
+      i: { vehicleId: own, date: '2025-01-05', volume: 30, totalCost: 45, currency: 'EUR', odometer: 29000, isFullTank: true },
+    })
+    // The backup's wash, with a note of his own: it differs.
+    await api(page, server.url, 'mutation($i: AddExpenseInput!) { addExpense(input: $i) { id } }', {
+      i: { vehicleId: own, date: '2025-01-12', title: 'Wash', amount: 10, currency: 'EUR', note: 'mine' },
+    })
+    await openTheBackup(page, server)
+
+    const polo = page.getByRole('region', { name: 'Polo', exact: true })
+    await polo.getByRole('checkbox', { name: 'Polo', exact: true }).check()
+    await polo.getByRole('checkbox', { name: 'As a new car' }).uncheck()
+    await polo.getByRole('radio', { name: 'My Polo' }).check()
+    await polo.getByRole('button', { name: 'Choose what to import' }).click()
+    await expect(polo.getByText('In the backup: 3 only there · 0 differ · 0 the same')).toBeVisible()
+    await polo.getByRole('radiogroup', { name: 'Refuellings of Polo', exact: true }).locator('label').filter({ hasText: 'Replace all' }).click()
+    await expect(polo.getByText("Your My Polo's 1 refuelling is deleted for good, then the backup's 3 come in.")).toBeVisible()
+    await polo.getByRole('radiogroup', { name: 'Expenses of Polo', exact: true }).locator('label').filter({ hasText: 'Choose…' }).click()
+    await expectSoundLayout(page)
+    await polo.getByRole('button', { name: 'Choose expenses…' }).click()
+
+    const dialog = page.getByRole('dialog', { name: 'Choose expenses · Polo' })
+    await dialog.getByRole('checkbox', { name: /^Polish/ }).uncheck()
+    await dialog.getByRole('radio', { name: "Take the backup's" }).check()
+    await expectSoundLayout(page)
+    await dialog.getByRole('button', { name: 'Done' }).click()
+    await expect(polo.getByText("1 of 2 new are added; 1 of 1 that differ take the backup's values.")).toBeVisible()
+    await page.getByRole('button', { name: 'Next' }).click()
+
+    const card = page.getByRole('region', { name: 'Polo · added to your car My Polo' })
+    await expect(card.getByText('If an entry cannot be saved, My Polo stays exactly as it is: nothing of it is deleted or imported.')).toBeVisible()
+    await page.getByRole('button', { name: 'Import', exact: true }).click()
+    const confirm = page.getByRole('alertdialog', { name: 'Delete and replace?' })
+    await expect(confirm.getByRole('button', { name: 'Delete and import' })).toBeDisabled()
+    await confirm.getByRole('textbox', { name: "Type the car's name, My Polo, to go on" }).fill('my polo')
+    await expectSoundLayout(page)
+    await confirm.getByRole('button', { name: 'Delete and import' }).click()
+
+    await expect(page.getByRole('status').filter({ hasText: 'Import finished: 1 car.' })).toBeVisible({ timeout: 60_000 })
+    const done = page.getByRole('region', { name: 'Polo', exact: true })
+    await expect(done.getByText('Replaced refuellings: 1 deleted, 3 imported.')).toBeVisible()
+    await expect(done.getByText("Imported 1 expense; changed 1 to the backup's values.")).toBeVisible()
+    await expectSoundLayout(page)
+
+    await done.getByRole('link', { name: 'Open the vehicle: My Polo' }).click()
+    await expect(page.getByRole('heading', { level: 1, name: 'My Polo' })).toBeVisible()
+    const data = await api<{ refuelings: { odometer: number }[]; expenses: { title: string; note: string | null }[] }>(page, server.url,
+      'query($v: UUID!) { refuelings(vehicleId: $v) { odometer } expenses(vehicleId: $v) { title note } }', { v: own })
+    expect(data.refuelings.map((r) => r.odometer).sort()).toEqual([30000, 30500, 31000])
+    expect(data.expenses.map((e) => [e.title, e.note]).sort()).toEqual([['Wash', null], ['Wipers', null]])
   })
 })

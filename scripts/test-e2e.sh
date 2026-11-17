@@ -190,6 +190,16 @@ done
 gql "$source_url" "{\"query\":\"mutation { addExpense(input: { vehicleId: \\\"${octavia}\\\", date: \\\"2024-03-01\\\", title: \\\"Car wash\\\", amount: 12, currency: \\\"EUR\\\" }) { id } }\"}" >/dev/null
 gql "$source_url" "{\"query\":\"mutation { addRecurringExpense(input: { vehicleId: \\\"${octavia}\\\", title: \\\"Oil change\\\", kind: TIME, intervalMonths: 12 }) { id } }\"}" >/dev/null
 gql "$source_url" "{\"query\":\"mutation { logRefueling(input: { vehicleId: \\\"${fabia}\\\", date: \\\"2025-05-01\\\", volume: 30, totalCost: 45, currency: \\\"EUR\\\", odometer: 55000, isFullTank: true }) { id } }\"}" >/dev/null
+# A Polo for the details of a merge (#338): three fill-ups and three expenses, nothing with a photo or a tyre log line.
+polo="$(gql "$source_url" '{"query":"mutation { addVehicle(input: { name: \"Polo\", fuelType: PETROL }) { id } }"}' | car_id)"
+for f in "2025-01-10 30000" "2025-01-20 30500" "2025-01-30 31000"; do
+  read -r day odo <<< "$f" # never `set --`: the arguments are the tests to run
+  gql "$source_url" "{\"query\":\"mutation { logRefueling(input: { vehicleId: \\\"${polo}\\\", date: \\\"${day}\\\", volume: 35, totalCost: 52, currency: \\\"EUR\\\", odometer: ${odo}, isFullTank: true }) { id } }\"}" >/dev/null
+done
+for e in "2025-01-12 Wash 10" "2025-01-15 Wipers 20" "2025-01-18 Polish 15"; do
+  read -r day title amount <<< "$e"
+  gql "$source_url" "{\"query\":\"mutation { addExpense(input: { vehicleId: \\\"${polo}\\\", date: \\\"${day}\\\", title: \\\"${title}\\\", amount: ${amount}, currency: \\\"EUR\\\" }) { id } }\"}" >/dev/null
+done
 kill "$source_pid" && wait "$source_pid" 2>/dev/null || true
 mkdir -p "$fixtures"
 if ! (import_env source; cd out; dotnet Tankstat.Api.dll backup --output "$fixtures/tankstat-backup.zip") > "${files}/import-backup.log" 2>&1; then
