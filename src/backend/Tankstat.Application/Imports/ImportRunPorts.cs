@@ -24,8 +24,12 @@ public interface IImportRunRepository
     /// <summary>Done, with its report: called inside the run, as its last save.</summary>
     Task CompleteAsync(Guid id, string report, int cars, int entries, DateTimeOffset now, CancellationToken ct);
 
-    /// <summary>Ends a run that brought nothing in; one that ended already stays as it is. False when it had ended.</summary>
-    Task<bool> FailAsync(Guid id, ImportRunFailure failure, Guid? cancelledById, DateTimeOffset now, CancellationToken ct);
+    /// <summary>
+    /// Ends a run that brought nothing in; one that ended already stays as it is. False when it had ended, or, with
+    /// <paramref name="waitingOnly"/>, when it no longer waits: whoever ends a run because it waits (a cancel, the wait's limit, a file
+    /// that is gone) must not end one that was given its turn since they looked.
+    /// </summary>
+    Task<bool> FailAsync(Guid id, ImportRunFailure failure, Guid? cancelledById, DateTimeOffset now, CancellationToken ct, bool waitingOnly = false);
 
     /// <summary>Says how far a running run is. Never called on a database that the run locks.</summary>
     Task ProgressAsync(Guid id, int doneCars, int doneEntries, CancellationToken ct);
@@ -35,9 +39,6 @@ public interface IImportRunRepository
 
     /// <summary>Removes the ended runs older than <paramref name="endedBefore"/>.</summary>
     Task<int> PruneAsync(DateTimeOffset endedBefore, CancellationToken ct);
-
-    /// <summary>Removes a deleted account's runs.</summary>
-    Task DeleteForUserAsync(Guid userId, CancellationToken ct);
 }
 
 /// <summary>

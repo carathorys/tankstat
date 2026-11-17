@@ -22,7 +22,7 @@ namespace Tankstat.Infrastructure.Imports;
 /// </summary>
 internal sealed class BackupImportRunner(
     IServiceScopeFactory scopes, IImportRunRepository runs, IBackupImportSessions sessions, IRunMarkerRepository markers, IRunScope scope, RunGateState gate,
-    IOptions<DatabaseOptions> database, IOptions<AuthOptions> auth, IOptionsMonitor<RunOptions> runOptions, TimeProvider clock, ILogger<BackupImportRunner> logger)
+    IOptions<DatabaseOptions> database, IOptions<AuthOptions> auth, TimeProvider clock, ILogger<BackupImportRunner> logger)
     : BackgroundService, IBackupImportRunner
 {
     public const string NotOnMySqlKey = "import.notOnMySql";
@@ -139,7 +139,9 @@ internal sealed class BackupImportRunner(
 
     private async Task EndAsync(ImportRun run, ImportRunFailure failure, Guid? cancelledBy, CancellationToken ct)
     {
-        if (!await runs.FailAsync(run.Id, failure, cancelledBy, clock.GetUtcNow(), ct)) return;
+        // A run ended because it waits (too long, or its file is gone) is ended only while it still waits: another server may have
+        // given it its turn since this one looked.
+        if (!await runs.FailAsync(run.Id, failure, cancelledBy, clock.GetUtcNow(), ct, waitingOnly: run.State == ImportRunState.Waiting)) return;
         Dropped(run.Id);
         logger.LogWarning("Import run {RunId} of user {UserId} brought nothing in: {Failure}", run.Id, run.StartedById, failure);
         await using var services = scopes.CreateAsyncScope();
@@ -182,7 +184,17 @@ internal sealed class BackupImportRunner(
             sessions.End(held!.UserId, held.Token);
             logger.LogInformation("User {UserId} imported {Cars} cars from a backup in run {RunId}: {Refuelings} refuellings, {Expenses} expenses, {Schedules} recurring expenses; {Refused} entries could not be saved",
                 row.StartedById, report!.Imported, runId, report.Cars.Sum(c => c.Refuelings), report.Cars.Sum(c => c.Expenses), report.Cars.Sum(c => c.Schedules), report.Refused);
-            await sp.GetRequiredService<ImportRunNotifier>().FinishedAsync(row, report, CancellationToken.None);
+            try
+            {
+                await sp.GetRequiredService<ImportRunNotifier>().FinishedAsync(row, report, CancellationToken.None);
+            }
+            catch (Exception e)
+            {
+                // The cars are in and the report is kept: a notification that could not be saved must not be read as a run that failed.
+                // The type only, as below: a database error quotes values, here the cars' names.
+                logger.LogWarning("Import run {RunId} finished, but who is told of it could not be saved ({Failure})", runId, e.GetType().Name);
+                logger.LogDebug(e, "Import run {RunId}: the notifications' failure", runId);
+            }
         }
         catch (RunStoppedException e)
         {
@@ -201,31 +213,36 @@ internal sealed class BackupImportRunner(
         }
         finally
         {
-            _running = null;
             gate.Forget();
         }
-        if (failure is { } why && row is not null)
+        try
         {
-            try
+            if (failure is { } why && row is not null)
             {
-                Guid? by = why == ImportRunFailure.Cancelled ? held?.CancelledBy ?? (await markers.FindAsync(runId, CancellationToken.None))?.CancelRequestedById : null;
-                held?.Hold?.Dispose(); // the file stays open for its half hour: back to the review
-                if (held is not null) held.Hold = null;
-                if (await runs.FailAsync(runId, why, by, clock.GetUtcNow(), CancellationToken.None))
+                try
                 {
-                    logger.LogWarning("Import run {RunId} of user {UserId} brought nothing in: {Failure}", runId, row.StartedById, why);
-                    await using var services = scopes.CreateAsyncScope();
-                    await services.ServiceProvider.GetRequiredService<ImportRunNotifier>().NotFinishedAsync(row, why, by, CancellationToken.None);
+                    Guid? by = why == ImportRunFailure.Cancelled ? held?.CancelledBy ?? (await markers.FindAsync(runId, CancellationToken.None))?.CancelRequestedById : null;
+                    held?.Hold?.Dispose(); // the file stays open for its half hour: back to the review
+                    if (held is not null) held.Hold = null;
+                    if (await runs.FailAsync(runId, why, by, clock.GetUtcNow(), CancellationToken.None))
+                    {
+                        logger.LogWarning("Import run {RunId} of user {UserId} brought nothing in: {Failure}", runId, row.StartedById, why);
+                        await using var services = scopes.CreateAsyncScope();
+                        await services.ServiceProvider.GetRequiredService<ImportRunNotifier>().NotFinishedAsync(row, why, by, CancellationToken.None);
+                    }
+                }
+                catch (Exception e)
+                {
+                    logger.LogError(e, "Import run {RunId} ended as {Failure}, which could not be recorded", runId, why);
                 }
             }
-            catch (Exception e)
-            {
-                logger.LogError(e, "Import run {RunId} ended as {Failure}, which could not be recorded", runId, why);
-            }
         }
-        Wake();
+        finally
+        {
+            // Only now is the queue looked at again for this run: its row said Running with its mark already ended, which a look in
+            // between would have taken for a run whose server stopped, and written Interrupted over the reason recorded above.
+            _running = null;
+            Wake();
+        }
     }
-
-    /// <summary>The longest a run may hold its transaction, for the text that says a run was stopped past it.</summary>
-    public int LimitMinutes => runOptions.CurrentValue.LimitMinutes;
 }

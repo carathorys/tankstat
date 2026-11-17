@@ -20,6 +20,9 @@ public sealed class BackupImportRunService(
 {
     public const string AlreadyRunningKey = "import.alreadyRunning";
 
+    /// <summary>One start at a time per person in this process: the look for a run of theirs and the new run's row are one step (a second tab, a double press).</summary>
+    private static readonly StripedLocks Starting = new();
+
     /// <summary>The file's cars and the person's own cars to add one to, with the app's suggestion: the same plate, else the same name, in the same units.</summary>
     public async Task<ImportCarOffers> OffersAsync(string token, CancellationToken ct)
     {
@@ -61,15 +64,34 @@ public sealed class BackupImportRunService(
     {
         var (me, file) = await FileAsync(token, ct);
         if (runner.UnavailableKey is { } unavailable) throw new DomainException(unavailable, "Importing from a backup is not available on this server's database.");
-        if (await runs.LatestOfAsync(me.Id, ct) is { IsActive: true }) throw new DomainException(AlreadyRunningKey, "An import of yours is running or waiting already.");
-        var reviews = await ReviewAsync(token, choices, ct); // every refusal that can be foreseen, before anything is queued
-        var plan = new ImportRunPlan([.. choices.Zip(reviews, (choice, review) => new ImportCarPlan(
-            choice.CarId, review.Name, review.TargetVehicleId, review.TargetName, choice.Policy, review.NewRefuelings + review.NewExpenses + review.NewSchedules))]);
-        var run = ImportRun.Queue(Guid.NewGuid(), ImportRunKind.Import, me.Id, runner.Server, ImportRunJson.Write(plan), plan.Cars.Count, plan.Cars.Sum(c => c.Entries), clock.GetUtcNow());
-        await runs.AddAsync(run, ct);
-        runner.Enqueue(run.Id, me.Id, token);
-        logger.LogInformation("User {UserId} queued import run {RunId}: {Cars} cars, {Entries} entries", me.Id, run.Id, run.Cars, run.Entries);
-        return await ViewOfAsync(run, me, ct);
+        var gate = Starting.For(me.Id);
+        await gate.WaitAsync(ct);
+        try
+        {
+            if (await runs.LatestOfAsync(me.Id, ct) is { IsActive: true }) throw new DomainException(AlreadyRunningKey, "An import of yours is running or waiting already.");
+            var reviews = await ReviewAsync(token, choices, ct); // every refusal that can be foreseen, before anything is queued
+            var plan = new ImportRunPlan([.. choices.Zip(reviews, (choice, review) => new ImportCarPlan(
+                choice.CarId, review.Name, review.TargetVehicleId, review.TargetName, choice.Policy, review.NewRefuelings + review.NewExpenses + review.NewSchedules))]);
+            var run = ImportRun.Queue(Guid.NewGuid(), ImportRunKind.Import, me.Id, runner.Server, ImportRunJson.Write(plan), plan.Cars.Count, plan.Cars.Sum(c => c.Entries), clock.GetUtcNow());
+            // The file first: the queue ends a waiting run of this server that it holds no file for, so the row must never be there without it.
+            runner.Enqueue(run.Id, me.Id, token);
+            try
+            {
+                await runs.AddAsync(run, ct);
+            }
+            catch
+            {
+                runner.Dropped(run.Id);
+                throw;
+            }
+            runner.Wake();
+            logger.LogInformation("User {UserId} queued import run {RunId}: {Cars} cars, {Entries} entries", me.Id, run.Id, run.Cars, run.Entries);
+            return await ViewOfAsync(run, me, ct);
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     /// <summary>A run: its starter's always (the report with it, while it is kept), an administrator's while it goes or waits. Anyone else finds nothing.</summary>
@@ -92,8 +114,9 @@ public sealed class BackupImportRunService(
     public async Task<IReadOnlyList<ImportRunView>> ActiveAsync(CancellationToken ct)
     {
         var me = await access.RequireAdminAsync(ct);
+        var active = await runs.ListActiveAsync(ct);
         var views = new List<ImportRunView>();
-        foreach (var run in await runs.ListActiveAsync(ct)) views.Add(await ViewOfAsync(run, me, ct));
+        foreach (var run in active) views.Add(await ViewOfAsync(run, me, ct, active)); // the line is read once, not again for every run in it
         return views;
     }
 
@@ -107,7 +130,8 @@ public sealed class BackupImportRunService(
         if (await runs.FindAsync(id, ct) is not { IsActive: true } run) return false;
         if (run.StartedById != me.Id && !IsAdministrator(me)) return false;
         logger.LogInformation("User {UserId} cancels import run {RunId} of user {StarterId}", me.Id, id, run.StartedById);
-        if (run.State == ImportRunState.Waiting && await runs.FailAsync(id, ImportRunFailure.Cancelled, me.Id, clock.GetUtcNow(), ct))
+        // Only while it still waits: one given its turn since the look above is running, and is told below like any running one.
+        if (run.State == ImportRunState.Waiting && await runs.FailAsync(id, ImportRunFailure.Cancelled, me.Id, clock.GetUtcNow(), ct, waitingOnly: true))
         {
             runner.Dropped(id);
             await notifier.NotFinishedAsync(run, ImportRunFailure.Cancelled, me.Id, ct);
@@ -128,10 +152,10 @@ public sealed class BackupImportRunService(
 
     private static bool IsAdministrator(Principal p) => p.IsAdmin && !p.IsAnonymous;
 
-    private async Task<ImportRunView> ViewOfAsync(ImportRun run, Principal viewer, CancellationToken ct)
+    private async Task<ImportRunView> ViewOfAsync(ImportRun run, Principal viewer, CancellationToken ct, IReadOnlyList<ImportRun>? active = null)
     {
         var mine = run.StartedById == viewer.Id;
-        var ahead = run.State == ImportRunState.Waiting ? (await runs.ListActiveAsync(ct)).Count(r => r.Id != run.Id && (r.State == ImportRunState.Running || r.QueuedAt < run.QueuedAt)) : 0;
+        var ahead = run.State == ImportRunState.Waiting ? (active ?? await runs.ListActiveAsync(ct)).Count(r => r.Id != run.Id && (r.State == ImportRunState.Running || r.QueuedAt < run.QueuedAt)) : 0;
         var plan = ImportRunJson.Read<ImportRunPlan>(run.Plan) ?? new ImportRunPlan([]);
         var progress = runner.ProgressOf(run.Id) ?? new ImportRunProgress(Math.Min(run.DoneCars + 1, run.Cars), run.Cars, run.DoneEntries, run.Entries);
         return new ImportRunView(

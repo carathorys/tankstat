@@ -21,7 +21,11 @@ public sealed record ImportRunPlan(IReadOnlyList<ImportCarPlan> Cars);
 /// An entry that could not be saved: what it is (its kind, its day, a title for an expense or a schedule), and the reason as the server
 /// keys it everywhere, with the values the reason's text is filled with.
 /// </summary>
-public sealed record ImportRefusedEntry(string Kind, DateOnly? Date, string? Title, string Key, IReadOnlyDictionary<string, string> Args);
+public sealed record ImportRefusedEntry(string Kind, DateOnly? Date, string? Title, string Key, IReadOnlyDictionary<string, string> Args)
+{
+    /// <summary>The <see cref="Kind"/> of a refusal that is the car's own, not an entry's: the car was left out for it, whatever its policy.</summary>
+    public const string Car = "car";
+}
 
 /// <summary>
 /// What came of one car. <see cref="LeftOut"/>: an entry was refused and the car's policy left it out whole (nothing of it came in;
@@ -37,7 +41,8 @@ public sealed record ImportRunReport(IReadOnlyList<ImportCarReport> Cars)
     public const int MaxRefusedPerCar = 100;
 
     public int Imported => Cars.Count(c => !c.LeftOut);
-    public int Refused => Cars.Sum(c => c.Refused.Count + c.RefusedMore);
+    /// <summary>The entries that could not be saved; a car left out for a refusal of its own (<see cref="ImportRefusedEntry.Car"/>) is no entry.</summary>
+    public int Refused => Cars.Sum(c => c.Refused.Count(r => r.Kind != ImportRefusedEntry.Car) + c.RefusedMore);
 }
 
 /// <summary>How far a run is.</summary>

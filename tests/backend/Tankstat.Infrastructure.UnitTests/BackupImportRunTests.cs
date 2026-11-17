@@ -345,6 +345,38 @@ public sealed class BackupImportRunTests(ITestOutputHelper output) : IAsyncDispo
         Assert.Equal((0, 0, 0, 0), (await db.Vehicles.CountAsync(), await db.Refuelings.CountAsync(), await db.Expenses.CountAsync(), await db.RecurringExpenses.CountAsync()));
     }
 
+    /// <summary>
+    /// A run may wait half an hour for its turn, and its target can go to the trash meanwhile. That is a refusal of the car, not a failure
+    /// of the run: the car is left out with the reason, whatever its policy, and the other cars come in.
+    /// </summary>
+    [Theory, MemberData(nameof(Providers))]
+    public async Task ACarWhoseTargetWentToTheTrashSinceTheReview_IsLeftOutWithTheReason_AndTheOtherCarsComeIn(string provider)
+    {
+        if (Instance(provider, "here") is not { } here) return;
+        var source = await SourceAsync();
+        var bob = await PersonAsync(here, "Bob");
+        var mine = await AsAsync(here, bob, async sp => (await sp.GetRequiredService<VehicleService>().AddAsync("Mine", null, FuelType.Diesel, MeasurementUnits.Metric, default)).Id);
+        var token = await OpenAsync(here, bob, source.Backup);
+        var file = here.Get<IBackupImportSessions>().Cars(bob.Id, token)!;
+        // The plan as the review made it, with the target still there...
+        var plan = new ImportRunPlan([new(source.Octavia, "Octavia", mine, "Mine", RefusedEntryPolicy.ImportTheRest, 4), new(source.Fabia, "Fabia", null, null, RefusedEntryPolicy.ImportTheRest, 1)]);
+        // ...which goes to the trash before the run gets its turn.
+        await AsAsync(here, bob, async sp => (await sp.GetRequiredService<VehicleService>().DeleteAsync(mine, default)).Id);
+
+        await using var scope = here.Services.CreateAsyncScope();
+        var work = scope.ServiceProvider.GetRequiredService<BackupImportWork>();
+        ImportRunReport? report = null;
+        await here.Get<IRunScope>().RunAsync(new RunStart(bob, []), async run => report = await work.RunAsync(run, bob, file, plan, _ => { }, default), default);
+
+        var octavia = report!.Cars.Single(c => c.CarId == source.Octavia);
+        var refused = Assert.Single(octavia.Refused);
+        Assert.Equal((true, ImportRefusedEntry.Car, "vehicle.notFound"), (octavia.LeftOut, refused.Kind, refused.Key));
+        Assert.False(report.Cars.Single(c => c.CarId == source.Fabia).LeftOut);
+        Assert.Equal((1, 0), (report.Imported, report.Refused)); // the car's own refusal is no refused entry
+        await using var db = await here.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
+        Assert.Equal(["Fabia"], await db.Vehicles.Select(v => v.Name).ToListAsync());
+    }
+
     [Theory, MemberData(nameof(Providers))]
     public async Task ASecondRun_WaitsInLine_AndStartsByItself_AndOneThatWaitsTooLongGivesUp(string provider)
     {
@@ -455,6 +487,27 @@ public sealed class BackupImportRunTests(ITestOutputHelper output) : IAsyncDispo
 
         Assert.All(new[] { waited.Id, ran.Id }, id => Assert.Equal((ImportRunState.NotFinished, ImportRunFailure.Interrupted), (runs.FindAsync(id, default).Result!.State, runs.FindAsync(id, default).Result!.Failure)));
         Assert.Equal([NotificationKind.ImportNotFinished, NotificationKind.ImportNotFinished], (await NotificationsAsync(here, bob.Id)).Select(n => n.Kind));
+    }
+
+    [Theory, MemberData(nameof(Providers))]
+    public async Task ARunGivenItsTurnSinceItWasSeenWaiting_IsNotEndedAsAWaitingOne_AndOneEndedFromOutsideIsNotCompleted(string provider)
+    {
+        if (Instance(provider, "here") is not { } here) return;
+        var bob = await PersonAsync(here, "Bob");
+        var runs = here.Get<IImportRunRepository>();
+        var now = _clock.GetUtcNow();
+        var run = ImportRun.Queue(Guid.NewGuid(), ImportRunKind.Import, bob.Id, "another-server", "{\"cars\":[]}", 1, 3, now);
+        await runs.AddAsync(run, default);
+        Assert.True(await runs.ClaimAsync(run.Id, now, default)); // its turn came after a cancel (or the wait's limit) read it as waiting
+
+        // What ends a run because it waits finds it running: nothing is written, and the cancel goes on to tell the run instead.
+        Assert.False(await runs.FailAsync(run.Id, ImportRunFailure.Cancelled, bob.Id, now, default, waitingOnly: true));
+        Assert.Equal((ImportRunState.Running, null), ((await runs.FindAsync(run.Id, default))!.State, (await runs.FindAsync(run.Id, default))!.Failure));
+
+        // Ended from outside while it ran (its starter was told so): its last save refuses, so the run rolls back with it.
+        Assert.True(await runs.FailAsync(run.Id, ImportRunFailure.Interrupted, null, now, default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => runs.CompleteAsync(run.Id, "{\"cars\":[]}", 1, 3, now, default));
+        Assert.Equal((ImportRunState.NotFinished, ImportRunFailure.Interrupted), ((await runs.FindAsync(run.Id, default))!.State, (await runs.FindAsync(run.Id, default))!.Failure));
     }
 
     [Fact]

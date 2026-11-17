@@ -121,20 +121,32 @@ public sealed class BackupImportWork(
         return new ImportRunReport(reports);
     }
 
+    private static Dictionary<string, string> ArgsOf(KeyedException e) =>
+        e.Args.ToDictionary(a => a.Key, a => Convert.ToString(a.Value, CultureInfo.InvariantCulture) ?? "");
+
     private async Task<ImportCarReport> CarAsync(IRun run, Principal starter, BackupCar car, ImportCarPlan chosen, Action step, CancellationToken ct)
     {
         Vehicle vehicle;
         ImportCarDelta delta;
-        if (chosen.TargetVehicleId is { } targetId)
+        try
         {
-            // Again, now that the run holds the car: what the review saw may have changed since.
-            vehicle = await rules.TargetAsync(starter.Id, car.Car, targetId, ct);
-            delta = await rules.MissingAsync(car, vehicle, ct);
+            if (chosen.TargetVehicleId is { } targetId)
+            {
+                // Again, now that the run holds the car: what the review saw may have changed since.
+                vehicle = await rules.TargetAsync(starter.Id, car.Car, targetId, ct);
+                delta = await rules.MissingAsync(car, vehicle, ct);
+            }
+            else
+            {
+                vehicle = await vehicles.AddAsync(car.Car.Name, car.Car.LicensePlate, car.Car.FuelType, car.Car.Units, ct);
+                delta = BackupImportRules.Everything(car);
+            }
         }
-        else
+        catch (KeyedException e)
         {
-            vehicle = await vehicles.AddAsync(car.Car.Name, car.Car.LicensePlate, car.Car.FuelType, car.Car.Units, ct);
-            delta = BackupImportRules.Everything(car);
+            // The car itself is refused (its target went to the trash or changed its units while the run waited, or the new car's own
+            // values are refused): a refusal, not a failure. Whatever its policy, this car is left out with the reason and the others go on.
+            throw new CarLeftOut(new ImportRefusedEntry(ImportRefusedEntry.Car, null, null, e.Key, ArgsOf(e)));
         }
 
         var refused = new List<ImportRefusedEntry>();
@@ -149,7 +161,7 @@ public sealed class BackupImportWork(
             }
             catch (KeyedException e)
             {
-                var entry = new ImportRefusedEntry(kind, date, title, e.Key, e.Args.ToDictionary(a => a.Key, a => Convert.ToString(a.Value, CultureInfo.InvariantCulture) ?? ""));
+                var entry = new ImportRefusedEntry(kind, date, title, e.Key, ArgsOf(e));
                 if (chosen.Policy == RefusedEntryPolicy.LeaveCarOut) throw new CarLeftOut(entry);
                 if (refused.Count < ImportRunReport.MaxRefusedPerCar) refused.Add(entry);
                 else refusedMore++;

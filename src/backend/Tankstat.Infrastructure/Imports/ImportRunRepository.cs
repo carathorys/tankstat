@@ -55,14 +55,16 @@ internal sealed class ImportRunRepository(RunDbContextFactory outside, IDbContex
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct); // inside the run: its transaction's
         var run = await db.ImportRuns.FirstAsync(r => r.Id == id, ct);
+        // Ended from outside meanwhile (its starter was told so): what the row says stands, and the run rolls back with this.
+        if (run.State != ImportRunState.Running) throw new InvalidOperationException("The run was ended while it ran.");
         run.Complete(report.Length > ImportRun.MaxJsonLength ? "{\"cars\":[]}" : report, cars, entries, now);
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task<bool> FailAsync(Guid id, ImportRunFailure failure, Guid? cancelledById, DateTimeOffset now, CancellationToken ct)
+    public async Task<bool> FailAsync(Guid id, ImportRunFailure failure, Guid? cancelledById, DateTimeOffset now, CancellationToken ct, bool waitingOnly = false)
     {
         await using var db = outside.CreateOutside();
-        return await db.ImportRuns.Where(r => r.Id == id && (r.State == ImportRunState.Waiting || r.State == ImportRunState.Running))
+        return await db.ImportRuns.Where(r => r.Id == id && (r.State == ImportRunState.Waiting || (!waitingOnly && r.State == ImportRunState.Running)))
             .ExecuteUpdateAsync(s => s.SetProperty(r => r.State, ImportRunState.NotFinished).SetProperty(r => r.Failure, failure)
                 .SetProperty(r => r.CancelledById, cancelledById).SetProperty(r => r.EndedAt, now), ct) > 0;
     }
@@ -85,12 +87,6 @@ internal sealed class ImportRunRepository(RunDbContextFactory outside, IDbContex
     {
         await using var db = outside.CreateOutside();
         return await db.ImportRuns.Where(r => r.EndedAt != null && r.EndedAt < endedBefore).ExecuteDeleteAsync(ct);
-    }
-
-    public async Task DeleteForUserAsync(Guid userId, CancellationToken ct)
-    {
-        await using var db = outside.CreateOutside();
-        await db.ImportRuns.Where(r => r.StartedById == userId).ExecuteDeleteAsync(ct);
     }
 }
 
