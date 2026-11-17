@@ -433,6 +433,10 @@ public sealed class BackupImportWork(
                 {
                     // Gone: it comes back whole, to its owner (or the one picked), with its sharing for those who still have an account.
                     var owner = chosen.OwnerId ?? car.Car.OwnerId;
+                    // Decided when the run was queued; the account may be gone since (the car purged while the run waited, the one picked
+                    // deleted): never a car for nobody. The car is left out with the reason.
+                    if (await users.FindByIdAsync(owner, ct) is not { IsDisabled: false })
+                        throw new DomainException("restore.ownerGone", "The owner this car was to come back to has no account any more.", new { Car = car.Car.Name });
                     vehicle = await vehicles.RestoreAsync(car.Car.Id, owner, car.Car.Name, car.Car.LicensePlate, car.Car.FuelType, car.Car.Units, ct);
                     compared = BackupImportRules.Whole(car);
                     if (tyreChoice is not null) tyres = await rules.CompareTyresAsync(file, car.Car.Id, null, ct, byId: true);

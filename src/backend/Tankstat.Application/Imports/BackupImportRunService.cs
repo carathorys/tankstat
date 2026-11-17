@@ -295,8 +295,8 @@ public sealed class BackupImportRunService(
     {
         var me = restore ? await access.RequireAdminAsync(ct) : await imports.RequireImporterAsync(ct);
         // A restore keeps ids, owners and creators: only from a restore point of the server's own (the owner's decision on #334), never an upload.
-        if (restore && sessions.Find(me.Id, token) is { Origin: not BackupFileOrigin.RestorePoint }) throw new DomainException("import.expired", "This import has expired. Choose the file again.");
-        return (me, sessions.Cars(me.Id, token) ?? throw new DomainException("import.expired", "This import has expired. Choose the file again."));
+        if (restore && sessions.Find(me.Id, token) is { Origin: not BackupFileOrigin.RestorePoint }) throw CarRestoreService.Expired();
+        return (me, sessions.Cars(me.Id, token) ?? throw (restore ? CarRestoreService.Expired() : new DomainException("import.expired", "This import has expired. Choose the file again.")));
     }
 
     private static bool IsAdministrator(Principal p) => p.IsAdmin && !p.IsAnonymous;

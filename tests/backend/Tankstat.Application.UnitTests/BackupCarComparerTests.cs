@@ -40,6 +40,18 @@ public class BackupCarComparerTests
     }
 
     [Fact]
+    public void ForARestore_AnEntryIsTheTargetsByItsIdAlone_NeverByAKey()
+    {
+        // #340: the car's id decides, and so does each entry's: one that only looks the same is missing and comes back under its own id.
+        var result = BackupCarComparer.Compare(
+            Car([Fill(1, Day, 10_000)], [Cost(2, Day, "Wash", 12)], [Plan(3, "Oil")]),
+            Car([Fill(11, Day, 10_000)], [Cost(12, Day, "Wash", 12)], [Plan(13, "Oil")]),
+            byKey: false);
+
+        Assert.Equal((1, 1, 1), (result.Refuelings.OnlyInBackup, result.Expenses.OnlyInBackup, result.Schedules.OnlyInBackup));
+    }
+
+    [Fact]
     public void AnEntryWithAnotherId_IsTheTargetsByItsKey_ARefuellingByDateAndOdometer_AnExpenseByDateTitleAndAmount_AScheduleByTitle()
     {
         var result = BackupCarComparer.Compare(

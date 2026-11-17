@@ -52,7 +52,10 @@ public sealed class CarRestoreService(
         sessions.SubmitKey((await access.RequireAdminAsync(ct)).Id, token, passphrase, identity);
 
     public async Task<BackupImportStatus> StatusAsync(string token, CancellationToken ct) =>
-        sessions.Find((await access.RequireAdminAsync(ct)).Id, token) ?? throw BackupImportService.Expired();
+        sessions.Find((await access.RequireAdminAsync(ct)).Id, token) ?? throw Expired();
+
+    /// <summary>The opened restore point is gone (its half hour, a restart, another file): opened again from the Backups page.</summary>
+    public static DomainException Expired() => new("restore.expired", "This restore has expired. Open the backup again from the Backups page.");
 
     public async Task EndAsync(string token, CancellationToken ct) => sessions.End((await access.RequireAdminAsync(ct)).Id, token);
 
@@ -63,7 +66,7 @@ public sealed class CarRestoreService(
     public async Task<RestoreCarPage> CarsAsync(string token, string? search, Guid? ownerId, int skip, int take, CancellationToken ct)
     {
         var admin = await access.RequireAdminAsync(ct);
-        var file = (sessions.Find(admin.Id, token) is { Origin: BackupFileOrigin.RestorePoint } ? sessions.Cars(admin.Id, token) : null) ?? throw BackupImportService.Expired();
+        var file = (sessions.Find(admin.Id, token) is { Origin: BackupFileOrigin.RestorePoint } ? sessions.Cars(admin.Id, token) : null) ?? throw Expired();
         var words = search?.Trim();
         var matching = file.Summary.Cars
             .Where(c => ownerId is null || c.OwnerId == ownerId)

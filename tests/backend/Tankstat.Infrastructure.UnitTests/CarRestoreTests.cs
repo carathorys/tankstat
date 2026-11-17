@@ -403,4 +403,42 @@ public sealed partial class BackupImportRunTests
         await Task.Delay(200);
         Assert.Empty(await NotificationsAsync(here, anna.Id));
     }
+
+    [Theory, MemberData(nameof(Providers))]
+    public async Task AGoneCarWhoseOwnerHasNoAccountWhenItsTurnComes_IsLeftOutWithTheReason_AndAnUploadNamesNoOwnersEmail(string provider)
+    {
+        if (Instance(provider, "here") is not { } here) return;
+        var (anna, ada, zoe) = (await PersonAsync(here, "Anna"), await PersonAsync(here, "Ada", admin: true), await PersonAsync(here, "Zoe"));
+        var golf = await AsAsync(here, anna, async sp =>
+        {
+            var golf = (await sp.GetRequiredService<VehicleService>().AddAsync("Golf", null, FuelType.Petrol, MeasurementUnits.Metric, default)).Id;
+            await sp.GetRequiredService<RefuelingService>().LogAsync(golf, new(Day, 40, 60, "EUR", 10_000, true, null), default);
+            return golf;
+        });
+        var backup = await here.Get<IBackupWriter>().WriteAsync(new BackupRequest(), default);
+        // A person's upload of the same file names no owner's e-mail: the reduced users keep it for a restore point only.
+        var uploaded = here.Get<IBackupImportSessions>().Cars(anna.Id, await OpenAsync(here, anna, backup.Path))!;
+        Assert.All(uploaded.Summary.Cars, c => Assert.Null(c.OwnerEmail));
+        await AsAsync(here, anna, async sp =>
+        {
+            await sp.GetRequiredService<VehicleService>().DeleteAsync(golf, default);
+            return await sp.GetRequiredService<VehicleService>().EmptyTrashAsync(default);
+        });
+        await using (var db = await here.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync())
+            await db.Users.Where(u => u.Id == anna.Id).ExecuteDeleteAsync();
+
+        var status = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().OpenAsync(Path.GetFileName(backup.Path), default));
+        for (var i = 0; i < 600 && here.Get<IBackupImportSessions>().Find(ada.Id, status.Token)!.State == BackupImportState.Opening; i++) await Task.Delay(50);
+        Assert.Equal("anna@example.com", here.Get<IBackupImportSessions>().Cars(ada.Id, status.Token)!.Summary.Cars.Single().OwnerEmail);
+        var run = await AsAsync(here, ada, sp => sp.GetRequiredService<CarRestoreService>().StartAsync(status.Token, [new(golf, null, OwnerId: zoe.Id)], default));
+        // Zoe's account goes before the run gets its turn.
+        await using (var db = await here.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync())
+            await db.Users.Where(u => u.Id == zoe.Id).ExecuteDeleteAsync();
+        var ended = await FinishedAsync(here, run.Id);
+
+        var car = Assert.Single(ImportRunJson.Read<ImportRunReport>(ended.Report)!.Cars);
+        Assert.Equal((true, "restore.ownerGone"), (car.LeftOut, Assert.Single(car.Refused).Key));
+        await using var check = await here.Get<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
+        Assert.False(await check.Vehicles.IgnoreQueryFilters().AnyAsync(v => v.Id == golf));
+    }
 }
