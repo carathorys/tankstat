@@ -33,7 +33,7 @@ export interface NotificationText {
  */
 export function useNotificationText() {
   const { t } = useTranslation()
-  const { date, dateTime, list } = useFormat()
+  const { bytes, date, dateTime, list } = useFormat()
   const keyText = useKeyText()
 
   return (n: NotificationFieldsFragment): NotificationText => {
@@ -121,6 +121,16 @@ export function useNotificationText() {
           href: `/vehicles/${n.subject.id}`,
         }
       }
+      // An export of the person's cars (#341): theirs on the Export tab while it is kept; the administrators are only told.
+      case 'EXPORT_READY':
+        return {
+          text: t('notifications.kinds.EXPORT_READY', { count: Number(args.count ?? 0), size: bytes(Number(args.bytes ?? 0)), time: args.keptUntil ? dateTime(args.keptUntil) : '' }),
+          href: '/import?tab=export',
+        }
+      case 'EXPORT_FAILED':
+        return { text: t('notifications.kinds.EXPORT_FAILED'), href: '/import?tab=export' }
+      case 'CARS_EXPORTED':
+        return { text: t('notifications.kinds.CARS_EXPORTED', { actor: args.actor ?? '', count: Number(args.count ?? 0), names: args.names ?? '' }), href: null }
       case 'CARS_IMPORTED':
         return { text: t('notifications.kinds.CARS_IMPORTED', { actor: args.actor ?? '', count: Number(args.count ?? 0), names: args.names ?? '' }), href: null }
       default:

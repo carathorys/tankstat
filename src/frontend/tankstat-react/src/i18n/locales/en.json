@@ -151,7 +151,12 @@
       "CAR_RESTORED_back": "{{actor}} restored {{car}} from the backup of {{date}}: {{count}} entries came back.",
       "CAR_RESTORED_replaced": "{{actor}} restored {{car}} from the backup of {{date}}: {{count}} {{kind}} were replaced by the backup's.",
       "CAR_RESTORED_changed": "{{actor}} restored {{car}} from the backup of {{date}}.",
-      "CAR_RESTORED_again": "{{actor}} restored {{car}} from the backup of {{date}}. It is yours again."
+      "CAR_RESTORED_again": "{{actor}} restored {{car}} from the backup of {{date}}. It is yours again.",
+      "EXPORT_READY_one": "Your export is ready: {{count}} car, {{size}}. It is kept until {{time}}.",
+      "EXPORT_READY_other": "Your export is ready: {{count}} cars, {{size}}. It is kept until {{time}}.",
+      "EXPORT_FAILED": "Your export could not be built. Nothing was kept.",
+      "CARS_EXPORTED_one": "{{actor}} exported {{count}} car: {{names}}.",
+      "CARS_EXPORTED_other": "{{actor}} exported {{count}} cars: {{names}}."
     }
   },
   "status": {
@@ -3024,7 +3029,9 @@
       "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc (the default, usually port 4317) or http/protobuf (usually port 4318), as the endpoint expects.",
       "OTEL_EXPORTER_OTLP_HEADERS": "Sent with every export, as key=value pairs separated by commas, such as a backend's API key (x-api-key=...). It is never shown back.",
       "OTEL_SERVICE_NAME": "The name the telemetry is filed under in the backend; tankstat by default.",
-      "Telemetry__TraceDatabase": "Also sends a span for every database command, with its SQL text. Beta: EF Core's instrumentation is a pre-release, and its masking of the values written into a command can miss one, so a value could reach the backend; what people type is sent as parameters, which are never exported. Off by default, and only with an endpoint."
+      "Telemetry__TraceDatabase": "Also sends a span for every database command, with its SQL text. Beta: EF Core's instrumentation is a pre-release, and its masking of the values written into a command can miss one, so a value could reach the backend; what people type is sent as parameters, which are never exported. Off by default, and only with an endpoint.",
+      "Exports__Enabled": "Users may export their own cars as a file. When off, the Export tab and Export this car are hidden for users; administrators keep them.",
+      "Exports__KeepHours": "How many hours a finished export is kept for download before it is deleted (1 to 720, 24 by default)."
     },
     "sections": {
       "sessions": "Sessions (Standalone and OIDC)",
@@ -3108,7 +3115,9 @@
       "OTEL_EXPORTER_OTLP_PROTOCOL": "Protocol",
       "OTEL_EXPORTER_OTLP_HEADERS": "Headers",
       "OTEL_SERVICE_NAME": "Service name",
-      "Telemetry__TraceDatabase": "Trace database commands"
+      "Telemetry__TraceDatabase": "Trace database commands",
+      "Exports__Enabled": "Users may export their cars",
+      "Exports__KeepHours": "Keep a finished export (hours)"
     },
     "choices": {
       "authMode": {

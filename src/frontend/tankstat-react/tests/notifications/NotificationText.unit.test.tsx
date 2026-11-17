@@ -121,6 +121,16 @@ it('words an import from a backup for its starter and for the administrators, an
   expect(say('CARS_IMPORTED', { actor: 'Bob', count: '2', names: 'Octavia, Fabia' }, run)).toEqual({ text: 'Bob imported 2 cars from a backup: Octavia, Fabia.', href: null })
 })
 
+it('words an export for the person who made it, and for the administrators (#341)', () => {
+  const export_ = { subject: { type: 'EXPORT' as const, id: 'e1' }, context: null }
+  const ready = say('EXPORT_READY', { count: '2', bytes: '1500000', keptUntil: '2026-11-18T10:00:00Z' }, export_)
+  expect(ready.href).toBe('/import?tab=export')
+  expect(ready.text).toMatch(/^Your export is ready: 2 cars, 1\.5 MB\. It is kept until .+\.$/)
+  expect(say('EXPORT_READY', { count: '1', bytes: '900', keptUntil: '2026-11-18T10:00:00Z' }, export_).text).toMatch(/^Your export is ready: 1 car, 900 byte/)
+  expect(say('EXPORT_FAILED', { reason: 'export.failed' }, export_)).toEqual({ text: 'Your export could not be built. Nothing was kept.', href: '/import?tab=export' })
+  expect(say('CARS_EXPORTED', { actor: 'Anna', count: '1', names: 'Golf' }, export_)).toEqual({ text: 'Anna exported 1 car: Golf.', href: null })
+})
+
 it("words a partial restore for the administrator who ran it, the other administrators, and each car's owner and sharers (#340)", () => {
   const run = { subject: { type: 'IMPORT_RUN' as const, id: 'run1' }, context: null }
   expect(say('RESTORE_FINISHED', { count: '2', names: 'Golf, Polo', refused: '0' }, run)).toEqual({

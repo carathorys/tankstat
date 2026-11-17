@@ -151,7 +151,12 @@
       "CAR_RESTORED_back": "{{actor}} visszaállította a(z) {{car}} autót a(z) {{date}}-i mentésből: {{count}} bejegyzés került vissza.",
       "CAR_RESTORED_replaced": "{{actor}} visszaállította a(z) {{car}} autót a(z) {{date}}-i mentésből: a(z) {{kind}} helyére a mentés {{count}} bejegyzése került.",
       "CAR_RESTORED_changed": "{{actor}} visszaállította a(z) {{car}} autót a(z) {{date}}-i mentésből.",
-      "CAR_RESTORED_again": "{{actor}} visszaállította a(z) {{car}} autót a(z) {{date}}-i mentésből. Újra a tiéd."
+      "CAR_RESTORED_again": "{{actor}} visszaállította a(z) {{car}} autót a(z) {{date}}-i mentésből. Újra a tiéd.",
+      "EXPORT_READY_one": "Az exportod elkészült: {{count}} autó, {{size}}. Eddig őrizzük: {{time}}.",
+      "EXPORT_READY_other": "Az exportod elkészült: {{count}} autó, {{size}}. Eddig őrizzük: {{time}}.",
+      "EXPORT_FAILED": "Az exportodat nem sikerült elkészíteni. Semmi nem maradt meg.",
+      "CARS_EXPORTED_one": "{{actor}} {{count}} autót exportált: {{names}}.",
+      "CARS_EXPORTED_other": "{{actor}} {{count}} autót exportált: {{names}}."
     }
   },
   "status": {
@@ -3024,7 +3029,9 @@
       "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc (alapértelmezés, általában a 4317-es port) vagy http/protobuf (általában a 4318-as port), ahogy a végpont várja.",
       "OTEL_EXPORTER_OTLP_HEADERS": "Minden küldéssel együtt megy, vesszővel elválasztott kulcs=érték párokként, például egy háttérrendszer API-kulcsa (x-api-key=...). Sosem jelenik meg újra.",
       "OTEL_SERVICE_NAME": "A név, amely alatt a telemetria a háttérrendszerben megjelenik; alapból tankstat.",
-      "Telemetry__TraceDatabase": "Minden adatbázis-parancsról is küld egy spant, az SQL-szövegével együtt. Béta: az EF Core instrumentációja előzetes kiadás, és a parancsba írt értékek elrejtése elvéthet egyet, így egy érték eljuthat a háttérrendszerbe; amit begépelnek, az paraméterként megy, ezeket sosem küldi el. Alapból ki van kapcsolva, és csak végponttal működik."
+      "Telemetry__TraceDatabase": "Minden adatbázis-parancsról is küld egy spant, az SQL-szövegével együtt. Béta: az EF Core instrumentációja előzetes kiadás, és a parancsba írt értékek elrejtése elvéthet egyet, így egy érték eljuthat a háttérrendszerbe; amit begépelnek, az paraméterként megy, ezeket sosem küldi el. Alapból ki van kapcsolva, és csak végponttal működik.",
+      "Exports__Enabled": "A felhasználók fájlba exportálhatják a saját autóikat. Kikapcsolva az Exportálás fül és Az autó exportálása eltűnik a felhasználóknál; az adminisztrátoroknál megmarad.",
+      "Exports__KeepHours": "Hány óráig őrizzük letöltésre az elkészült exportot, mielőtt törlődik (1–720, alapértelmezés: 24)."
     },
     "sections": {
       "sessions": "Munkamenetek (Standalone és OIDC)",
@@ -3108,7 +3115,9 @@
       "OTEL_EXPORTER_OTLP_PROTOCOL": "Protokoll",
       "OTEL_EXPORTER_OTLP_HEADERS": "Fejlécek",
       "OTEL_SERVICE_NAME": "Szolgáltatásnév",
-      "Telemetry__TraceDatabase": "Adatbázis-parancsok követése"
+      "Telemetry__TraceDatabase": "Adatbázis-parancsok követése",
+      "Exports__Enabled": "A felhasználók exportálhatják az autóikat",
+      "Exports__KeepHours": "Az elkészült export őrzése (óra)"
     },
     "choices": {
       "authMode": {
