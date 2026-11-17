@@ -602,6 +602,7 @@ type ImportCarReportInfo {
   kinds: [ImportKindReportInfo!]!
   replacing: Boolean!
   links: Int!
+  tyres: ImportTyreReportInfo
 }
 
 type ImportCarReviewInfo {
@@ -622,6 +623,7 @@ type ImportCarReviewInfo {
   kinds: [ImportKindReviewInfo!]!
   links: Boolean!
   linksLost: Int!
+  tyres: ImportTyreReviewInfo!
 }
 
 type ImportedVehicleInfo {
@@ -756,6 +758,35 @@ type ImportRunProgressInfo {
   cars: Int!
   done: Int!
   total: Int!
+}
+
+type ImportSetOfferInfo {
+  id: UUID!
+  name: String!
+  season: TyreSeason!
+  state: ImportSetState!
+  installations: Int!
+  lines: Int!
+  tyres: Int!
+  expenses: Int!
+  refusalKey: String
+  refusalArgs: Any
+}
+
+type ImportTyreReportInfo {
+  sets: [String!]!
+  lines: Int!
+  tyres: Int!
+  noSetLines: Int!
+  expenses: Int!
+  amountsHere: Int!
+}
+
+type ImportTyreReviewInfo {
+  sets: [ImportSetOfferInfo!]!
+  noSetLines: Int!
+  noSetExpenses: Int!
+  expenses: Int!
 }
 
 type InstallationDistance {
@@ -1837,6 +1868,7 @@ input ImportCarChoiceInput {
   expenses: ImportKindChoiceInput
   schedules: ImportKindChoiceInput
   confirmedName: String
+  tyres: ImportTyreChoiceInput
 }
 
 input ImportKindChoiceInput {
@@ -1845,6 +1877,11 @@ input ImportKindChoiceInput {
   newExceptions: [UUID!]
   takeBackups: Boolean
   differExceptions: [UUID!]
+}
+
+input ImportTyreChoiceInput {
+  sets: [UUID!]!
+  noSetLines: Boolean
 }
 
 input LoginInput {
@@ -2422,6 +2459,12 @@ enum ImportRunState {
   RUNNING
   DONE
   NOT_FINISHED
+}
+
+enum ImportSetState {
+  NEW
+  HERE
+  REFUSED
 }
 
 enum InstallationMeasure {

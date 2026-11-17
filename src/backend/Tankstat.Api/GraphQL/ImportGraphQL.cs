@@ -141,14 +141,31 @@ public sealed record ImportKindChoiceInput(ImportKindMode Mode, bool? AddNew, IR
 /// <param name="Policy">What happens when one of its entries cannot be saved; omit for the rest to be imported. A car with a <c>REPLACE_ALL</c> is always all or nothing.</param>
 /// <param name="Refuelings">What comes of its refuellings; omit for only the missing. A new car's kind comes whole unless it is <c>DONT_IMPORT</c>.</param>
 /// <param name="ConfirmedName">The target car's name as the person typed it: a start with a <c>REPLACE_ALL</c> is refused without it.</param>
+/// <summary>The tyres chosen of a car (#339): the backup's sets by id (one here or refused is left out), and whether the lines of no set come.</summary>
+public sealed record ImportTyreChoiceInput(IReadOnlyList<Guid> Sets, bool? NoSetLines)
+{
+    public ImportTyreChoice ToChoice() => new(Sets, NoSetLines ?? true);
+}
+
+/// <param name="Tyres">The tyres to import (#339); omit for none.</param>
 public sealed record ImportCarChoiceInput(
     Guid CarId, Guid? TargetVehicleId, RefusedEntryPolicy? Policy, ImportKindChoiceInput? Refuelings = null, ImportKindChoiceInput? Expenses = null,
-    ImportKindChoiceInput? Schedules = null, string? ConfirmedName = null)
+    ImportKindChoiceInput? Schedules = null, string? ConfirmedName = null, ImportTyreChoiceInput? Tyres = null)
 {
     public ImportCarChoice ToChoice() => new(CarId, TargetVehicleId, Policy ?? RefusedEntryPolicy.ImportTheRest,
-        Refuelings is null && Expenses is null && Schedules is null ? null : new ImportCarKinds(Refuelings?.ToChoice(), Expenses?.ToChoice(), Schedules?.ToChoice()),
+        Refuelings is null && Expenses is null && Schedules is null && Tyres is null
+            ? null : new ImportCarKinds(Refuelings?.ToChoice(), Expenses?.ToChoice(), Schedules?.ToChoice(), Tyres?.ToChoice()),
         ConfirmedName);
 }
+
+/// <summary>A set of the backup against the car (#339): its counts, and for a refused one the reason's key and arguments.</summary>
+public sealed record ImportSetOfferInfo(
+    Guid Id, string Name, Tankstat.Domain.Tyres.TyreSeason Season, ImportSetState State, int Installations, int Lines, int Tyres, int Expenses, string? RefusalKey, JsonElement? RefusalArgs);
+
+/// <param name="Expenses">The expenses the chosen tyres bring with their lines.</param>
+public sealed record ImportTyreReviewInfo(IReadOnlyList<ImportSetOfferInfo> Sets, int NoSetLines, int NoSetExpenses, int Expenses);
+
+public sealed record ImportTyreReportInfo(IReadOnlyList<string> Sets, int Lines, int Tyres, int NoSetLines, int Expenses, int AmountsHere);
 
 /// <summary>
 /// One kind (<c>refueling</c>, <c>expense</c>, <c>recurring</c>) of a chosen car. Of the backup's entries: <c>new</c> only there,
@@ -163,7 +180,8 @@ public sealed record ImportKindReviewInfo(
 /// <param name="LinksLost">The target's such links that will not be there after the import.</param>
 public sealed record ImportCarReviewInfo(
     Guid CarId, string Name, string? OwnerName, bool OwnedByMe, Guid? TargetVehicleId, string? TargetName, int NewRefuelings, int NewExpenses, int NewSchedules,
-    int ExistingRefuelings, int ExistingExpenses, int ExistingSchedules, int Differing, int InTrash, IReadOnlyList<ImportKindReviewInfo> Kinds, bool Links, int LinksLost);
+    int ExistingRefuelings, int ExistingExpenses, int ExistingSchedules, int Differing, int InTrash, IReadOnlyList<ImportKindReviewInfo> Kinds, bool Links, int LinksLost,
+    ImportTyreReviewInfo Tyres);
 
 /// <summary>A value that differs between the backup's entry and the car's, by the input's field name; each side as invariant text (a day as yyyy-MM-dd, an enum by its name here, such as TIME).</summary>
 public sealed record ImportFieldDifferenceInfo(string Field, string? Backup, string? Target);
@@ -190,7 +208,7 @@ public sealed record ImportKindReportInfo(string Kind, ImportKindMode Mode, int 
 /// <param name="Links">The visits' links that were added.</param>
 public sealed record ImportCarReportInfo(
     Guid CarId, string Name, Guid? VehicleId, string? TargetName, bool AsNew, bool LeftOut, int Refuelings, int Expenses, int Schedules, int Existing, int Differing, int InTrash,
-    IReadOnlyList<ImportRefusedEntryInfo> Refused, int RefusedMore, IReadOnlyList<ImportKindReportInfo> Kinds, bool Replacing, int Links);
+    IReadOnlyList<ImportRefusedEntryInfo> Refused, int RefusedMore, IReadOnlyList<ImportKindReportInfo> Kinds, bool Replacing, int Links, ImportTyreReportInfo? Tyres);
 
 /// <summary>
 /// A run of an import: waiting in line (<c>ahead</c> runs before it), running (<c>progress</c>), done (<c>report</c>, its starter's alone)
@@ -207,7 +225,8 @@ public sealed record ImportRunInfo(
         [.. v.Plan.Cars.Select(c => new ImportRunCarInfo(c.CarId, c.Name, c.TargetVehicleId, c.TargetName))],
         v.Report?.Cars.Select(c => new ImportCarReportInfo(c.CarId, c.Name, c.VehicleId, c.TargetName, c.AsNew, c.LeftOut, c.Refuelings, c.Expenses, c.Schedules, c.Existing, c.Differing, c.InTrash,
             [.. c.Refused.Select(r => new ImportRefusedEntryInfo(r.Kind, r.Date, r.Title, r.Key, JsonSerializer.SerializeToElement(r.Args)))], c.RefusedMore,
-            [.. (c.Kinds ?? []).Select(k => new ImportKindReportInfo(k.Kind, k.Mode, k.Imported, k.Changed, k.Deleted))], c.Replacing, c.Links)).ToList(),
+            [.. (c.Kinds ?? []).Select(k => new ImportKindReportInfo(k.Kind, k.Mode, k.Imported, k.Changed, k.Deleted))], c.Replacing, c.Links,
+            c.Tyres is { } t ? new ImportTyreReportInfo(t.Sets, t.Lines, t.Tyres, t.NoSetLines, t.Expenses, t.AmountsHere) : null)).ToList(),
         fileToken, limitMinutes);
 }
 
@@ -230,7 +249,9 @@ public sealed class ImportRunQueries
             r.CarId, r.Name, r.OwnerName, r.OwnedByMe, r.TargetVehicleId, r.TargetName, r.NewRefuelings, r.NewExpenses, r.NewSchedules, r.ExistingRefuelings, r.ExistingExpenses,
             r.ExistingSchedules, r.Differing, r.InTrash,
             [.. r.Kinds.Select(k => new ImportKindReviewInfo(k.Kind, k.Mode, k.Backup, k.New, k.Differ, k.Same, k.InTrash, k.Adds, k.Takes, k.TargetLive, k.TargetTrashed, k.WithPhotos, k.OnTyreLines))],
-            r.Links, r.LinksLost))];
+            r.Links, r.LinksLost,
+            new ImportTyreReviewInfo([.. (r.Tyres?.Sets ?? []).Select(o => new ImportSetOfferInfo(o.Id, o.Name, o.Season, o.State, o.Installations, o.Lines, o.Tyres, o.Expenses, o.RefusalKey,
+                o.RefusalArgs is null ? null : JsonSerializer.SerializeToElement(o.RefusalArgs)))], r.Tyres?.NoSetLines ?? 0, r.Tyres?.NoSetExpenses ?? 0, r.Tyres?.Expenses ?? 0)))];
 
     /// <summary>
     /// A page of the Choose dialog: the entries of one kind (<c>refueling</c>, <c>expense</c>, <c>recurring</c>) of a backup's car that are

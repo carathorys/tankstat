@@ -419,6 +419,7 @@ export type ImportCarChoiceInput = {
   refuelings?: ImportKindChoiceInput | null | undefined;
   schedules?: ImportKindChoiceInput | null | undefined;
   targetVehicleId?: string | null | undefined;
+  tyres?: ImportTyreChoiceInput | null | undefined;
 };
 
 export type ImportKindChoiceInput = {
@@ -451,6 +452,11 @@ export type ImportRunState =
   | 'NOT_FINISHED'
   | 'RUNNING'
   | 'WAITING';
+
+export type ImportTyreChoiceInput = {
+  noSetLines?: boolean | null | undefined;
+  sets: Array<string>;
+};
 
 export type InstallationMeasure =
   | 'FROM_FIRST_READING'

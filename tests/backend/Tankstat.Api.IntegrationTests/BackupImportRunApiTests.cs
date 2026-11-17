@@ -189,6 +189,44 @@ public sealed class BackupImportRunApiTests : IDisposable
     }
 
     [Fact]
+    public async Task ACarsTyres_AreOfferedSetBySet_ImportedWithTheirExpenses_AndReported()
+    {
+        var app = App();
+        var people = await app.Users();
+        var car = (await people.Alice.Gql("mutation { addVehicle(input: { name: \"Zzcanary Polo\", fuelType: PETROL }) { id } }")).Data().GetProperty("addVehicle").GetProperty("id").GetString()!;
+        var set = (await people.Alice.Gql("mutation($i: AddTyreSetInput!) { addTyreSet(input: $i) { sets { set { id } } } }", new { i = new
+        {
+            vehicleId = car, name = "Zzcanary winter", season = "WINTER", since = "2024-10-01", day = "2024-11-01", fitted = true,
+            price = new { amount = 300, currency = "EUR", category = "Tyres", title = "Bought: Zzcanary" }, boughtOn = "2024-10-15",
+        } })).Data().GetProperty("addTyreSet").GetProperty("sets")[0].GetProperty("set").GetProperty("id").GetString()!;
+        var backup = await app.Factory.Services.GetRequiredService<IBackupWriter>().WriteAsync(new BackupRequest(), default);
+        var token = await OpenAsync(people.Bob, await File.ReadAllBytesAsync(backup.Path));
+
+        var review = (await people.Bob.Gql(
+            "query($t: String!, $c: [ImportCarChoiceInput!]!) { backupImportReview(token: $t, cars: $c) { tyres { expenses noSetLines sets { id name season state installations lines tyres expenses refusalKey } } } }",
+            new { t = token, c = new[] { new { carId = car, tyres = new { sets = new[] { set } } } } })).Data().GetProperty("backupImportReview")[0].GetProperty("tyres");
+        var offer = Assert.Single(review.GetProperty("sets").EnumerateArray());
+        Assert.Equal(("Zzcanary winter", "WINTER", "NEW", 1, 2, 1), (offer.GetProperty("name").GetString(), offer.GetProperty("season").GetString(), offer.GetProperty("state").GetString(),
+            offer.GetProperty("installations").GetInt32(), offer.GetProperty("lines").GetInt32(), offer.GetProperty("expenses").GetInt32()));
+        Assert.Equal(1, review.GetProperty("expenses").GetInt32());
+
+        var id = (await people.Bob.Gql("mutation($i: StartBackupImportInput!) { startBackupImport(input: $i) { id } }",
+            new { i = new { token, cars = new[] { new { carId = car, tyres = new { sets = new[] { set } } } } } })).Data().GetProperty("startBackupImport").GetProperty("id").GetString()!;
+        var done = await EndedAsync(people.Bob, id);
+        var report = Assert.Single(done.GetProperty("report").EnumerateArray());
+        var tyres = (await people.Bob.Gql($"query($id: UUID!) {{ importRun(id: $id) {{ report {{ tyres {{ sets lines tyres noSetLines expenses amountsHere }} }} }} }}", new { id }))
+            .Data().GetProperty("importRun").GetProperty("report")[0].GetProperty("tyres");
+        Assert.Equal(["Zzcanary winter"], tyres.GetProperty("sets").EnumerateArray().Select(n => n.GetString()));
+        Assert.Equal((2, 1, 0), (tyres.GetProperty("lines").GetInt32(), tyres.GetProperty("expenses").GetInt32(), tyres.GetProperty("amountsHere").GetInt32()));
+        var vehicle = report.GetProperty("vehicleId").GetString();
+        var mine = (await people.Bob.Gql("query($v: UUID!) { vehicleTyres(vehicleId: $v) { sets { set { name } onTheCar } entries { kind amount } } }", new { v = vehicle })).Data().GetProperty("vehicleTyres");
+        Assert.Equal(("Zzcanary winter", true), (mine.GetProperty("sets")[0].GetProperty("set").GetProperty("name").GetString(), mine.GetProperty("sets")[0].GetProperty("onTheCar").GetBoolean()));
+        Assert.Contains(mine.GetProperty("entries").EnumerateArray(), e => e.GetProperty("kind").GetString() == "BOUGHT" && e.GetProperty("amount").GetDecimal() == 300);
+        // The log names no tyre text.
+        Assert.DoesNotContain(app.Log.Entries, e => e.Message.Contains("Zzcanary"));
+    }
+
+    [Fact]
     public async Task AnAdministrator_SeesARunThatGoes_AndCancelsIt_NothingComesIn_AndItsStarterIsTold()
     {
         var app = App(settle: TimeSpan.FromSeconds(3)); // long enough to be found running before its transaction opens
