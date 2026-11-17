@@ -126,7 +126,7 @@ A full restore replaces everything. To put **only some cars** back as they were 
 2. **Cars**: the backup's cars in pages, with a search (name or plate) and a filter by owner, each in one of four states, said in words:
    - **Still here** (a car with the same id): only what is missing comes back, by id (entries, schedules, tyre sets, photos, charts); its owner and its sharing stay as they are today. *Choose what to restore* offers the import's choices per kind, *Replace all* included: its typed confirmation names the car's owner, and says they and everyone the car is shared with are told.
    - **Not here any more**: it comes back whole, to its owner, with its sharing for the people who still have an account.
-   - **Not here any more, its owner has no account**: you pick who gets it (you, unless you choose someone; an account with the same e-mail is listed first, marked).
+   - **Not here any more, its owner has no account** (or the account is disabled): you pick who gets it (you, unless you choose someone; an account with the same e-mail is listed first, marked).
    - **In the trash here**: it cannot be restored until it is restored from the trash, or the trash is emptied.
    The car's id decides, never its name: a car re-created since under another id is another car, and the backup's comes back beside it (use [Importing](importing.md) to merge into it). A backup of another server matches no id here, so every car is *not here any more*.
 3. **Review**: per car, what comes back, whose it is, who gets access back and who had access but has no account; then who is told.

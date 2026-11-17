@@ -125,7 +125,8 @@ public sealed class BackupImportRunService(
             return (new RestoreCarReview(RestoreCarState.Here, target.OwnerId, owner?.DisplayName, [], []),
                 new RestoreMedia(async (id, token) => await users.FindByIdAsync(id, token) is { } u && await access.LogLevelOfAsync(u.Id, u.IsAdmin, target, token) >= Domain.Access.AccessLevel.View));
         }
-        var backupOwner = await users.FindByIdAsync(car.OwnerId, ct);
+        // A disabled account counts as none, as the run and the owner picker count it: the administrator picks who gets the car.
+        var backupOwner = await users.FindByIdAsync(car.OwnerId, ct) is { IsDisabled: false } enabled ? enabled : null;
         var state = backupOwner is null ? RestoreCarState.OwnerGone : RestoreCarState.Gone;
         var ownerId = backupOwner?.Id ?? choice.OwnerId ?? me.Id;
         var chosen = backupOwner ?? await users.FindByIdAsync(ownerId, ct) ?? throw new NotFoundException("user.notFound", $"User {ownerId} does not exist.", new { Id = ownerId });
@@ -210,8 +211,9 @@ public sealed class BackupImportRunService(
         await gate.WaitAsync(ct);
         try
         {
-            if (await runs.LatestOfAsync(me.Id, ct) is { IsActive: true })
-                throw restore ? new DomainException(RestoreAlreadyRunningKey, "A restore of yours is running or waiting already.")
+            // One run per person whatever its kind; the refusal names the kind that is going.
+            if (await runs.LatestOfAsync(me.Id, ct) is { IsActive: true } going)
+                throw going.Kind == ImportRunKind.Restore ? new DomainException(RestoreAlreadyRunningKey, "A restore of yours is running or waiting already.")
                     : new DomainException(AlreadyRunningKey, "An import of yours is running or waiting already.");
             var reviews = await ReviewAsync(token, choices, starting: true, ct, restore); // every refusal that can be foreseen, before anything is queued
             var plan = new ImportRunPlan([.. choices.Zip(reviews, (choice, review) => new ImportCarPlan(

@@ -158,7 +158,9 @@ public sealed class BackupMediaWork(
         if (target is not null)
             foreach (var layout in own)
                 ownHere |= await layouts.FindPersonalAsync(layout.UserId!.Value, target.Id, ct) is not null;
-        return new ImportMediaReview(fresh, here, media.PhotosLeftOut, media.PictureImageId is not null, target?.PictureImageId is not null && target.PictureImageId != media.PictureImageId,
+        // A restore brings no picture the car has already under the backup's id (the run takes none then, so it is no step either).
+        var picture = media.PictureImageId is not null && (restore is null || target?.PictureImageId != media.PictureImageId);
+        return new ImportMediaReview(fresh, here, media.PhotosLeftOut, picture, target?.PictureImageId is not null,
             coming.Count - chartsHere, chartsHere, ownNew,
             media.Dashboards.Any(d => d.UserId is null), target is not null && await layouts.FindSharedAsync(target.Id, ct) is not null,
             own.Count > 0, ownHere);
@@ -209,14 +211,12 @@ public sealed class BackupMediaWork(
                 if (restore is not null)
                 {
                     // The same photo is the one with its id; it comes under that id, its image under the backup's with the backup's bytes.
-                    if (await photoRows.FindAsync(photo.Id, ct) is not null) here++;
-                    else if (await SavedAsync(() => photos.AddAsync(photo.LogType, log, bytes, ct, (photo.Id, photo.ImageId)), PhotoKind, null))
+                    if (await photoRows.FindAsync(photo.Id, ct) is not null)
                     {
-                        added++;
-                        continue;
+                        here++;
+                        step();
                     }
-                    else continue;
-                    step();
+                    else if (await SavedAsync(() => photos.AddAsync(photo.LogType, log, bytes, ct, (photo.Id, photo.ImageId)), PhotoKind, null)) added++;
                     continue;
                 }
                 var hashes = await HashesOfAsync(photo.LogType, log, cache, ct);

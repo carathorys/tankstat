@@ -75,8 +75,9 @@ public sealed class CarRestoreService(
             .ToList();
         var page = new List<RestoreCarOffer>();
         var everyone = (await users.ListAsync(ct)).ToList();
+        var known = everyone.Select(u => u.Id).ToHashSet();
         foreach (var car in matching.Skip(Math.Max(0, skip)).Take(Math.Clamp(take, 1, MaxPage)))
-            page.Add(await OfferAsync(file, car, everyone, ct));
+            page.Add(await OfferAsync(file, car, everyone, known, ct));
         var owners = file.Summary.Cars.GroupBy(c => c.OwnerId).Select(g => new RestoreOwner(g.Key, g.First().OwnerName))
             .OrderBy(o => o.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
         return new RestoreCarPage(file.Summary, matching.Count, page, owners);
@@ -90,11 +91,11 @@ public sealed class CarRestoreService(
             .Select(u => new RestorePerson(u.Id, u.DisplayName, u.Email))];
     }
 
-    private async Task<RestoreCarOffer> OfferAsync(IBackupCars file, BackupCarSummary car, IReadOnlyList<Domain.Users.User> everyone, CancellationToken ct)
+    private async Task<RestoreCarOffer> OfferAsync(IBackupCars file, BackupCarSummary car, IReadOnlyList<Domain.Users.User> everyone, IReadOnlySet<Guid> known,
+        CancellationToken ct)
     {
         var data = await file.ReadRestoreAsync(car.Id, ct);
         var grants = data?.Grants ?? [];
-        var known = everyone.Select(u => u.Id).ToHashSet();
         var gone = grants.Where(g => !known.Contains(g.GranteeId)).Select(g => g.Name ?? "").ToList();
         var count = grants.Count(g => known.Contains(g.GranteeId) && g.GranteeId != car.OwnerId);
         var here = await rules.FindHereAsync(car.Id, ct);
@@ -111,7 +112,8 @@ public sealed class CarRestoreService(
                 compared?.Refuelings.New.Count ?? 0, compared?.Expenses.New.Count ?? 0, compared?.Schedules.New.Count ?? 0,
                 tyres.Sets.Count(s => s.Offer.State == ImportSetState.New), count, gone, null);
         }
-        if (known.Contains(car.OwnerId)) return new RestoreCarOffer(car, RestoreCarState.Gone, null, null, 0, 0, 0, 0, count, gone, null);
+        // A disabled account counts as none, as the run and the owner picker count it.
+        if (everyone.Any(u => u.Id == car.OwnerId && !u.IsDisabled)) return new RestoreCarOffer(car, RestoreCarState.Gone, null, null, 0, 0, 0, 0, count, gone, null);
         var same = car.OwnerEmail is { } email ? everyone.FirstOrDefault(u => !u.IsDisabled && string.Equals(u.Email, email.Trim(), StringComparison.OrdinalIgnoreCase)) : null;
         return new RestoreCarOffer(car, RestoreCarState.OwnerGone, null, null, 0, 0, 0, 0, count, gone, same?.Id);
     }
